@@ -147,15 +147,25 @@ describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
     expect(nachher.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
     expect(nachher.erfassung[`a1|${HEUTE}`]).toEqual(vorher.erfassung[`a1|${HEUTE}`]);
   });
-  it("F. anschließendes Speichern mit der lokalen Kopie: 200, Serverstand bleibt", async () => {
+  /* Bis WP-06 wurde eine abweichende Stempelkopie still übergangen (200).
+     Jetzt ist sie ein Widerspruch zum Beleg: 403, nichts gespeichert. Die
+     unveränderte Kopie speichert weiter (200), der Serverstand bleibt. */
+  it("F. anschließendes Speichern: veränderte Stempelkopie 403 (nichts gespeichert), unveränderte 200, Serverstand bleibt", async () => {
     const r = await anfrage("/api/bestand", { methode: "GET", token: tA });
     const b = JSON.parse(JSON.stringify(r.bestand));
     const vorher = await stand();
-    b.mandanten[0].einstempeln = { ...(b.mandanten[0].einstempeln || {}), [`a1|${HEUTE}`]: { start: "00:00", ende: "23:59" } };
+    const falsch = JSON.parse(JSON.stringify(b));
+    falsch.mandanten[0].einstempeln = { ...(falsch.mandanten[0].einstempeln || {}), [`a1|${HEUTE}`]: { start: "00:00", ende: "23:59" } };
+    falsch.mandanten[0].personen.find((p) => p.id === "a1").telefon = "0150";
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: tA, rumpf: { bestand: falsch, etag: r.etag } });
+    expect([w.status, w.code]).toEqual([403, "STEMPEL_UNVERAENDERLICH"]);
+    let m = await stand();
+    expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
+    expect(m.personen.find((p) => p.id === "a1").telefon).not.toBe("0150");
     b.mandanten[0].personen.find((p) => p.id === "a1").telefon = "0151";
-    const w = await anfrage("/api/bestand", { methode: "PUT", token: tA, rumpf: { bestand: b, etag: r.etag } });
-    expect(w.status).toBe(200);
-    const m = await stand();
+    const ok = await anfrage("/api/bestand", { methode: "PUT", token: tA, rumpf: { bestand: b, etag: r.etag } });
+    expect(ok.status).toBe(200);
+    m = await stand();
     expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
     expect(m.personen.find((p) => p.id === "a1").telefon).toBe("0151");
   });

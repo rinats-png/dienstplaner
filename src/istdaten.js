@@ -97,6 +97,74 @@ export function zeitraumJahr(jahr) {
   return { von: `${jahr}-01-01`, bis: `${jahr}-12-31` };
 }
 
+/** Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat (LANGER_DIENST). */
+export const zurPruefung = (e) => !!e && e.bestaetigt === false && typeof e.grund === "string"
+  && e.grund.startsWith("LANGER_DIENST");
+
+/**
+ * Stempel-Erfassungen eines Monats, die die Leitung noch prüfen muss.
+ * @returns {Array<{personId: string, datum: string, erfassung: object}>}
+ */
+export function erfassungenZurPruefung(m, ym) {
+  return Object.entries((m && m.erfassung) || {})
+    .filter(([k, e]) => String(k).split("|")[1] && String(k).split("|")[1].startsWith(ym) && zurPruefung(e))
+    .map(([k, e]) => ({ personId: String(k).split("|")[0], datum: String(k).split("|")[1], erfassung: e }))
+    .sort((a, b) => a.datum.localeCompare(b.datum));
+}
+
+/** Kennzeichnung eines Tages, dessen Ist-Zeit noch geprüft werden muss (WP-17, W1). */
+export const ZUR_PRUEFUNG_TEXT = "zur Prüfung, Planzeit vorläufig";
+
+const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
+  "Oktober", "November", "Dezember"];
+
+/**
+ * Der Hinweis für Lohnausgabe und Stundenkonto, solange im Monat Ist-Zeiten
+ * zur Prüfung offen sind — dort zählt sonst still die Planzeit (WP-17, W1).
+ * Mit `personId` nur die Fälle dieser Person. Ohne offene Fälle null.
+ * @returns {null | {anzahl: number, monat: string, faelle: Array<{personId: string, datum: string}>, text: string}}
+ */
+export function pruefHinweis(m, ym, personId) {
+  const faelle = erfassungenZurPruefung(m, ym)
+    .filter((f) => personId === undefined || personId === null || String(f.personId) === String(personId))
+    .map(({ personId: pid, datum }) => ({ personId: pid, datum }));
+  if (!faelle.length) return null;
+  const [j, mo] = String(ym).split("-");
+  const monat = `${MONATE[Number(mo) - 1] || mo} ${j}`;
+  const n = faelle.length;
+  return { anzahl: n, monat, faelle,
+    text: `${n === 1 ? "1 Ist-Zeit" : `${n} Ist-Zeiten`} im ${monat} zur Prüfung: Bis zur Bestätigung zählen dort `
+      + "im Stundenkonto und in der Lohnausgabe vorläufig die Planzeiten." };
+}
+
+/**
+ * Vormonate (bis zu `monate` vor ym, ym selbst nicht), in denen noch Ist-Zeiten
+ * zur Prüfung offen sind — für den Hinweis im Zwölf-Monats-Verlauf (Nachprüfung
+ * WP-17, A2). Mit `personId` nur die Fälle dieser Person.
+ * @returns {Array<{ym: string, anzahl: number, monat: string}>}  älteste zuerst
+ */
+export function vormonateMitPruefung(m, ym, personId, monate = 12) {
+  const [j, mo] = String(ym).split("-").map(Number);
+  const out = [];
+  for (let i = monate; i >= 1; i--) {
+    const d = new Date(Date.UTC(j, mo - 1 - i, 1));
+    const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const h = pruefHinweis(m, k, personId);
+    if (h) out.push({ ym: k, anzahl: h.anzahl, monat: h.monat });
+  }
+  return out;
+}
+
+/**
+ * Die Rückfrage vor einem Lohn-Export (Lohnausgabe-CSV, Zuschläge-CSV), solange
+ * im Monat Ist-Zeiten zur Prüfung offen sind; sonst null.
+ */
+export function exportWarnung(m, ym) {
+  const h = pruefHinweis(m, ym);
+  if (!h) return null;
+  return [h.text, `Betroffen: ${h.faelle.map((f) => f.datum).join(", ")} (${ZUR_PRUEFUNG_TEXT}).`, "Trotzdem jetzt ausgeben?"].join("\n\n");
+}
+
 /**
  * Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante.
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
@@ -106,6 +174,10 @@ export function istZeitFuer(m, p, d, da) {
   /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
      ein Nachtdienst sieben oder neun Stunden, nicht acht. */
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
+  /* Ein gestempelter langer Dienst, den die Leitung noch nicht bestätigt hat
+     (WP-17, LANGER_DIENST): Bis zur Bestätigung zählt die Planzeit — aber
+     nicht still: `zurPruefung` lässt Konto und Auswertung darauf hinweisen. */
+  if (e && !e.bestaetigt && zurPruefung(e)) return { std: dauerAm(d, da), erfasst: false, abweichung: 0, zurPruefung: true };
   if (!e || !e.bestaetigt) return { std: dauerAm(d, da), erfasst: false, abweichung: 0 };
   const roh = { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 };
   const std = dauerAm(d, roh);
