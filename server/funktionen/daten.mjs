@@ -26,6 +26,7 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
+import { uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -1429,6 +1430,11 @@ export default async (req, context) => {
              bestätigt (DAUER_NULL), die Leitung trägt sie über die Korrektur ein. */
           const dauerNull = dauerMin !== null && dauerMin <= 0;
           if (dauerNull) markieren("DAUER_NULL");
+          /* WP-14b (M2): In der Herbstnacht ist „02:30" zweimal. Weicht die Uhrzeit-Dauer (mit Zeitumstellung,
+             bruttoAm) von der gemessenen um mehr als eine halbe Stunde ab, ist die Ist-Zeit nicht automatisch
+             bestätigt — sonst würden aus 50 Minuten 23:50 Stunden. Die Leitung trägt eindeutige Zeiten ein. */
+          const uhrAbweichend = !dauerNull && dauerMin !== null && uhrDauerAbweichend(String(datum), alt.start, zeit, dauerMin);
+          if (uhrAbweichend) markieren("ZEITUMSTELLUNG");
           /* Ungeplanter Dienst (WP-13): Ohne geplanten Dienst an diesem Tag gibt
              es keine Planzeit, auf die die Ist-Zeit zurückfallen könnte. Aus
              Beginn und Ende entsteht deshalb eine Erfassung zur Prüfung
@@ -1467,9 +1473,13 @@ export default async (req, context) => {
           if (mitErfassung && !korrigiert) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
               /* Dauer 0 vor ungeplant: Bestätigt würde 06:00–06:00 als 24 Stunden zählen. */
+              /* WP-14b (M3): ohne Plan auch mit der Marke ungeplant — nach der Korrektur zählt der Tag. */
               [k]: dauerNull
-                ? { start: neu.start, ende: zeit, bestaetigt: false,
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ...(ungeplant ? { ungeplant: true } : {}),
                   grund: "DAUER_NULL: Beginn und Ende in derselben Minute — Zeiten bitte über die Korrektur eintragen" }
+                : uhrAbweichend
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ...(ungeplant ? { ungeplant: true } : {}),
+                  grund: `ZEITUMSTELLUNG: ${Math.round(dauerMin / 6) / 10} Stunden gemessen, die Uhrzeiten ergeben eine andere Dauer — Zeiten bitte über die Korrektur eintragen` }
                 : ungeplant
                 ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
                   grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }
@@ -1550,7 +1560,7 @@ export default async (req, context) => {
         const r = korrekturAnhaengen(mK, rumpf || {}, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
           new Date(), `k-${randomBytes(6).toString("hex")}`);
         if ("status" in r) {
-          await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${r.grund}`, wer);
+          await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund }, r.status);
         }
         const ergK = await bestandSchreiben(store, s.bestand,
@@ -1560,8 +1570,11 @@ export default async (req, context) => {
           await protokoll("schreiben", kK, "konflikt", "Stempelkorrektur", wer);
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
+        /* WP-14b (M1): Die Spur liest der Betreiber (Auftragsverarbeiter). Darin stehen keine betroffene Person, kein
+           Tag, keine Ist-Zeiten und keine Schutzkennungen (Art. 9) — nur die Kennung des Ereignisses und die Zahl der
+           Hinweise. Was geändert wurde, steht am Stempel (Ereignis mit vorher/nachher, Hinweisen, wer, wann). */
         await protokoll("schreiben", kK, "erfolg",
-          `Stempelkorrektur ${rumpf.personId}|${rumpf.datum} ${r.ereignis.vorher ? `${r.ereignis.vorher.start || "–"}–${r.ereignis.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}`, wer);
+          `Stempelkorrektur ${r.ereignis.id}${r.ereignis.selbstfreigabe ? " · Selbstfreigabe" : ""}${spurHinweise(r.hinweise)}`, wer);
         return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, hinweise: r.hinweise, etag: ergK.stand || null });
       });
     }
@@ -1587,7 +1600,7 @@ export default async (req, context) => {
         const r = antragStellen(mA, { personId: pA.id, name: s.name || null, rolle: s.rolle }, rumpf || {}, new Date(),
           `ka-${randomBytes(6).toString("hex")}`, heuteBerlin());
         if ("status" in r) {
-          await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag: ${r.grund}`, wer);
+          await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund }, r.status);
         }
         const ergA = await bestandSchreiben(store, s.bestand,
@@ -1597,8 +1610,8 @@ export default async (req, context) => {
           await protokoll("schreiben", kA, "konflikt", "Korrekturantrag", wer);
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
-        await protokoll("schreiben", kA, "erfolg",
-          `Korrekturantrag ${r.antrag.id} ${pA.id}|${rumpf.datum}: ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.antrag.vorschlag.start}–${r.antrag.vorschlag.ende}`, wer);
+        /* WP-14b (M1): ohne Tag und Zeiten — sie stehen am Antrag (Stempel). */
+        await protokoll("schreiben", kA, "erfolg", `Korrekturantrag ${r.antrag.id}: gestellt`, wer);
         return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, etag: ergA.stand || null });
       });
     }
@@ -1626,7 +1639,7 @@ export default async (req, context) => {
         const r = antragEntscheiden(mE, rumpf || {}, { personId: s.person, name: s.name || null, rolle: s.rolle }, new Date(),
           `k-${randomBytes(6).toString("hex")}`);
         if ("status" in r) {
-          await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden: ${r.grund}`, wer);
+          await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund }, r.status);
         }
         const ergE = await bestandSchreiben(store, s.bestand,
@@ -1636,10 +1649,12 @@ export default async (req, context) => {
           await protokoll("schreiben", kE, "konflikt", "Korrekturantrag entscheiden", wer);
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
+        /* WP-14b (M1): keine Person, kein Tag, keine Zeiten, keine Hinweiskennungen (MUTTERSCHUTZ/JUGENDSCHUTZ sind
+           Art.-9-Angaben) — nur Antrag, Ausgang, Kennung des Korrekturereignisses und die Zahl der Hinweise. */
         await protokoll("schreiben", kE, "erfolg",
-          `Korrekturantrag ${r.antrag.id} ${rumpf.personId}|${rumpf.datum}: ${r.antrag.status}`
-          + (r.ereignis ? ` · ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}` : "")
-          + (r.hinweise && r.hinweise.length ? ` · Hinweise: ${r.hinweise.map((x) => x.code).join(",")}` : ""), wer);
+          `Korrekturantrag ${r.antrag.id}: ${r.antrag.status}`
+          + (r.ereignis ? ` · Korrektur ${r.ereignis.id}${r.ereignis.selbstfreigabe ? " · Selbstfreigabe" : ""}` : "")
+          + spurHinweise(r.hinweise), wer);
         return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, erfassung: r.erfassung || null, ereignis: r.ereignis || null,
           hinweise: r.hinweise || [], hinweis: r.hinweis || null, etag: ergE.stand || null });
       });

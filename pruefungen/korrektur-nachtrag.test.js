@@ -200,6 +200,17 @@ describe("M2: Zeitumstellung — Pause gegen die wirkliche Anwesenheit, Ist nie 
     expect(ist.erfasst).toBe(true);
     expect(ist.std).toBe(0);
   });
+  it("Herbst 25.10.: ein ZEITUMSTELLUNG-Prüffall lässt sich nicht mit denselben Uhrzeiten bestätigen (422); eindeutige Zeiten gehen", () => {
+    const m = klein({ abweichungen: { "a|2026-10-25": "F" },
+      einstempeln: { "a|2026-10-25": { start: "02:30", startAm: "2026-10-25T00:30:00.000Z", ende: "02:20", endeAm: "2026-10-25T01:20:00.000Z", markierungen: ["ZEITUMSTELLUNG"] } },
+      erfassung: { "a|2026-10-25": { start: "02:30", ende: "02:20", bestaetigt: false, grund: "ZEITUMSTELLUNG: 0,8 Stunden gemessen" } } });
+    const k = (start, ende) => korrekturAnhaengen(m, { personId: "a", datum: "2026-10-25", start, ende, pause: 0, grund: "Herbstnacht geprüft, Zeiten eindeutig" },
+      { personId: "l", rolle: "leitung" }, new Date("2026-10-26T08:00:00Z"), "k-1");
+    expect(k("02:30", "02:20").status).toBe(422);
+    const gut = k("02:30", "03:20");
+    expect("status" in gut).toBe(false);
+    expect(istZeitFuer(gut.mandant, gut.mandant.personen[0], "2026-10-25", DA[0]).std).toBeCloseTo(50 / 60, 2);
+  });
   it("Herbst 25.10.: Direktkorrektur 02:30–02:30 (Pause 30) ⇒ 422 (Beginn = Ende), keine 23,5-h-Ist", async () => {
     const r = await anfrage("stempel-korrektur", { token: await token("l1"),
       rumpf: { personId: "a2", datum: "2026-10-25", start: "02:30", ende: "02:30", pause: 30, grund: "Ende laut Übergabe nachgetragen" } });
@@ -249,6 +260,19 @@ describe("M4: Beginn = Ende wird serverseitig abgewiesen", { timeout: 120000 }, 
       rumpf: { personId: "a4", datum: tag(-1), start: "06:00", ende: "06:00", grund: "Ganzer Tag laut Dienstbuch" } });
     expect(r.status, r.roh).toBe(422);
     expect((await mandant()).erfassung[`a4|${tag(-1)}`]).toEqual(vor);
+  });
+  it("Ausnahme nur mit geplantem 24-Stunden-Dienst (Dienstart Beginn = Ende): Korrektur und Antrag 07:00–07:00 gehen", () => {
+    const m = klein({ dienstarten: [...DA, { id: "D24", name: "24 Stunden", start: "07:00", ende: "07:00", pause: 30 }],
+      abweichungen: { "a|2026-11-01": "D24", "a|2026-10-31": "F" },
+      einstempeln: { "a|2026-11-01": { start: "07:00" }, "a|2026-10-31": { start: "07:00" } } });
+    const k = (datum) => korrekturAnhaengen(m, { personId: "a", datum, start: "07:00", ende: "07:00", grund: "24-Stunden-Dienst wie geplant" },
+      { personId: "l", rolle: "leitung" }, new Date("2026-11-03T08:00:00Z"), "k-1");
+    expect("status" in k("2026-11-01")).toBe(false);
+    expect(k("2026-10-31").status).toBe(422);                                  // Frühdienst geplant: keine Ausnahme
+    const a = (datum) => antragStellen(m, { personId: "a" }, antrag(datum, "07:00", "07:00", "24-Stunden-Dienst wie geplant"),
+      new Date("2026-11-03T08:00:00Z"), "ka-1", "2026-11-03");
+    expect("status" in a("2026-11-01")).toBe(false);
+    expect(a("2026-10-31").status).toBe(422);
   });
   it("Antrag 06:00–06:00 mit und ohne Pause ⇒ 422, kein Antrag am Stempel", async () => {
     const t = await token("a4");

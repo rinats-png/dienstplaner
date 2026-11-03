@@ -309,6 +309,41 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
   return { mandant: { ...zielM, einstempeln, erfassung }, geloescht, verworfen };
 }
 
+/** M4 (WP-14b): Beginn gleich Ende ist als Uhrzeit zweideutig — 0 oder 24 Stunden. Die Stundenrechnung liest
+    24 h; eine Korrektur oder ein Antrag mit gleicher Uhrzeit wird deshalb abgewiesen. Einzige Ausnahme: An dem
+    Tag ist ein 24-Stunden-Dienst geplant (Dienstart mit Beginn = Ende) — die ausdrückliche Kennung ist der Plan. */
+export const BEGINN_GLEICH_ENDE = "Beginn und Ende sind dieselbe Uhrzeit — das wäre eine Dauer von 0 oder 24 Stunden. "
+  + "Bitte die tatsächlichen Zeiten angeben; 24 Stunden gehen nur an einem Tag mit geplantem 24-Stunden-Dienst.";
+
+/**
+ * Ist an diesem Tag ein 24-Stunden-Dienst geplant (Dienstart mit Beginn = Ende)? Nur dann darf eine
+ * Korrektur bzw. ein Antrag Beginn = Ende nennen (M4).
+ * @returns {boolean}
+ */
+export function geplant24Stunden(m, personId, datum) {
+  const pd = geplanterDienst(m, ((m && m.personen) || []).find((p) => p && String(p.id) === String(personId)), datum);
+  const da = pd ? ((m && m.dienstarten) || []).find((d) => d && String(d.id) === String(pd)) : null;
+  return !!da && UHR.test(String(da.start)) && da.start === da.ende;
+}
+
+/**
+ * Die Pause, mit der eine Korrektur rechnet: die genannte, sonst die zuletzt erfasste, sonst die der
+ * geplanten Dienstart, sonst 0. Dieselbe Regel für Antrag und Genehmigung (WP-14b, N1).
+ * @param {any} m
+ * @param {string|number} personId
+ * @param {string} datum
+ * @param {number} [genannt]  die im Antrag bzw. in der Korrektur genannte Pause
+ * @returns {number}
+ */
+export function pauseFuerKorrektur(m, personId, datum, genannt) {
+  if (genannt !== undefined) return genannt;
+  const alt = ((m && m.erfassung) || {})[`${personId}|${datum}`];
+  if (objekt(alt) && alt.pause !== undefined) return alt.pause;
+  const planDienst = geplanterDienst(m, ((m && m.personen) || []).find((p) => p && String(p.id) === String(personId)), datum);
+  const dienstart = planDienst ? ((m && m.dienstarten) || []).find((d) => d && String(d.id) === String(planDienst)) : null;
+  return (dienstart && Number(dienstart.pause)) || 0;
+}
+
 /**
  * Eine Korrektur prüfen und als Ereignis anhängen.
  * @param {object} m  gespeicherter Betrieb
@@ -331,6 +366,7 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
   if (!TAG.test(String(datum || ""))) return { status: 400, grund: "Tag fehlt oder ist ungültig (JJJJ-MM-TT)." };
   if (!UHR.test(String(start || "")) || !UHR.test(String(ende || "")))
     return { status: 422, grund: "Beginn und Ende als Uhrzeit (HH:MM) angeben." };
+  if (start === ende && !geplant24Stunden(m, personId, datum)) return { status: 422, grund: BEGINN_GLEICH_ENDE };
   if (grund.length < KORREKTUR_GRUND_MIN || grund.length > KORREKTUR_GRUND_MAX)
     return { status: 422, grund: `Eine Korrektur braucht einen Grund (${KORREKTUR_GRUND_MIN}–${KORREKTUR_GRUND_MAX} Zeichen).` };
   if (!(m.personen || []).some((p) => p && String(p.id) === String(personId)))
@@ -354,6 +390,12 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
   const gleichePause = !pauseGegeben || (objekt(alt) && alt.pause === pause);
   if (objekt(alt) && alt.bestaetigt && alt.start === start && alt.ende === ende && gleichePause && !altbestandUngeplant)
     return { status: 409, grund: "Diese Zeit ist schon so bestätigt — nichts zu korrigieren." };
+  /* WP-14b (M2): Ein Stempel aus der Herbstnacht, dessen Uhrzeiten nicht zur gemessenen Dauer passen, lässt
+     sich nicht „wie gestempelt" bestätigen — dieselben Uhrzeiten ergäben wieder die falsche Dauer. */
+  if (objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG")
+      && alt.start === start && alt.ende === ende)
+    return { status: 422, grund: "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
+      + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben." };
 
   /** @type {any} */
   const ereignis = {
@@ -366,21 +408,27 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     wann: jetzt.toISOString(),
     grund,
     ...(opt.antrag ? { antrag: opt.antrag } : {}),
+    /* N2 (WP-14b): Die handelnde Person korrigiert bzw. genehmigt die eigene Zeit. Nur ein Kennzeichen —
+       ob das ohne zweite Person zulässig ist (Vier-Augen), ist eine offene Entscheidung; das Recht bleibt. */
+    ...(wer && wer.personId !== undefined && wer.personId !== null && String(wer.personId) === String(personId) ? { selbstfreigabe: true } : {}),
   };
   /* Die gültige Pause: die genannte, sonst die zuletzt erfasste, sonst die der geplanten Dienstart. */
-  const dienstart = planDienst ? (m.dienstarten || []).find((d) => d && String(d.id) === String(planDienst)) : null;
-  const gueltigePause = pauseGegeben ? pause : (objekt(alt) && alt.pause !== undefined ? alt.pause : (dienstart && Number(dienstart.pause)) || 0);
-  /* Auflage C1: auch die übernommene Pause (zuletzt erfasste oder der Dienstart) muss kleiner sein als die neue Anwesenheit. */
-  if (pauseZuLang(start, ende, gueltigePause))
+  const gueltigePause = pauseFuerKorrektur(m, personId, datum, pauseGegeben ? pause : undefined);
+  /* Auflage C1: auch die übernommene Pause (zuletzt erfasste oder der Dienstart) muss kleiner sein als die neue
+     Anwesenheit — gemessen an der wirklichen Dauer des Tages (Zeitumstellung, WP-14b M2). */
+  if (pauseZuLang(start, ende, gueltigePause, datum))
     return { status: 422, grund: `Die Pause (${gueltigePause} min) muss kürzer sein als die Anwesenheit von ${start} bis ${ende} Uhr.` };
   const hinweise = regelHinweise(m, personId, datum, { start, ende, pause: gueltigePause });
   if (hinweise.length) ereignis.hinweise = hinweise;
   const eintrag = { ...stempel, [KORREKTUREN]: [...bisher, ereignis] };
   /* Die Marke eines ungeplanten Dienstes (WP-13) bleibt: Mit ihr zählt der
-     Tag nach der Bestätigung in Konto und Lohnausgabe. */
+     Tag nach der Bestätigung in Konto und Lohnausgabe. Ein Tag ohne Plan mit
+     UNGEPLANTER_DIENST bekommt sie mit jeder Prüfung durch die Leitung —
+     auch wenn die vorige Ist-Zeit sie nicht trug (DAUER_NULL, frühere
+     Korrektur ohne Marke; WP-14b, M3): Sonst zählte der Tag nie. */
   const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true,
     ...(pauseGegeben ? { pause } : (objekt(alt) && alt.pause !== undefined ? { pause: alt.pause } : {})),
-    ...((objekt(alt) && alt.ungeplant === true) || altbestandUngeplant || (ohnePlan && !objekt(alt)) ? { ungeplant: true } : {}) };
+    ...((objekt(alt) && alt.ungeplant === true) || ohnePlan ? { ungeplant: true } : {}) };
   /* Auffällig oft korrigiert: Die Leitung bekommt es in der Antwort gesagt. */
   const hinweis = bisher.length + 1 >= KORREKTUR_HINWEIS_AB
     ? `Dieser Stempel wurde jetzt ${bisher.length + 1}-mal korrigiert — bitte prüfen, ob etwas nicht stimmt.` : null;
