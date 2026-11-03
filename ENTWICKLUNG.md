@@ -153,6 +153,7 @@ Vorlage `.env.example`).
 | `REDIS_REST_URL` | optional: atomarer Zähler für die Bremse | nein |
 | `REDIS_REST_TOKEN` | optional: Token dazu | **ja** |
 | `CENTRIC_AUFRAEUMEN` | `aus` schaltet den täglichen Löschlauf ab (Vorgabe: an) | nein |
+| `CENTRIC_DATENSCHUTZLAUF` | `aus`, `vorschau` (Vorgabe: berichtet, löscht nichts) oder `an` (löscht nach Aufbewahrungsfristen; vorher Sicherung) — siehe `.env.example` | nein |
 
 Schlüsselpaar für Push erzeugen:
 

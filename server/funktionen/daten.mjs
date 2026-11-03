@@ -19,7 +19,8 @@ import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { zustellen } from "../lib/versand.mjs";
+import { zustellen, pushSchluessel } from "../lib/versand.mjs";
+import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -786,7 +787,7 @@ export default async (req, context) => {
     /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
        beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */
     const wer = { rolle: s.rolle, person: s.person, weg: pfad,
-      verfahren: req.method, herkunft: herkunft(req) };
+      verfahren: req.method, herkunft: herkunft(req), mandantId: s.mandantId || null };
 
     /* Ein Sicherungsschlüssel darf genau einen Pfad, und zwar lesend.
 
@@ -966,7 +967,7 @@ export default async (req, context) => {
           return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
         }
 
-        const form = pruefeGestalt(zuSchreiben);
+        const form = pruefeGestalt(zuSchreiben, { vorher: jetzt ? jetzt.bestand : null });
         if (!form.ok) {
           await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
           return antwort({ fehler: "Der Stand sieht unvollständig aus.",
@@ -1265,7 +1266,67 @@ export default async (req, context) => {
       await sitzungBeenden(merkmalAus(req));
       return antwort({ ok: true });
     }
-
+    /* ------------------- Auskunft nach Artikel 15 -------------------
+       Serverseitig, maschinenlesbar (lib/auskunft.mjs). Ohne Angabe die
+       eigene Person der Sitzung. Mit ?person=<id> nur für Leitung und
+       „kunde" (dieselben Rollen wie bei Sicherungen) und nur für eine Person
+       des eigenen Betriebs — mit genau dem, was diese Rolle ohnehin sieht,
+       ohne Protokoll, Push-, Kalender- und Kontoangaben. Eigene Bremse
+       („auskunft"): Jede Auskunft liest das Protokoll der letzten 30 Tage.
+       Jede Auskunft steht im Protokoll — die durch die Leitung so, dass die
+       Person sie in ihrer eigenen Auskunft wiederfindet (Empfänger). */
+    if (pfad === "auskunft" && req.method === "GET") {
+      const kA = kennung(req, s);
+      /* Je anfragender Person, nicht je Raum (M5-Rest): Eine Person, die
+         ihre Grenze ausschöpft, sperrt sonst den ganzen Betrieb. Ohne
+         Personenbezug zählt die Rolle der Sitzung. */
+      const wer5 = s.person !== null && s.person !== undefined ? `p:${s.person}` : `r:${s.rolle || "?"}`;
+      const bA = await bremse("auskunft", `${kA}:${createHash("sha256")
+        .update(`${String(s.mandantId ?? s.betrieb ?? "")}|${wer5}`).digest("hex").slice(0, 16)}`);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      if (s.rolle === "betreiber")
+        return antwort({ fehler: "Der Betreiber erstellt keine Auskunft aus einem Betrieb." }, 403);
+      const angefragt = new URL(req.url).searchParams.get("person");
+      const selbst = angefragt === null || angefragt === "" || String(angefragt) === String(s.person);
+      if (selbst && (s.person === null || s.person === undefined))
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      if (!selbst && !AUSKUNFT_FUER_ANDERE.includes(s.rolle)) {
+        await protokoll("auskunft", kA, "abgewiesen", `fremde Person · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Auskunft über andere Personen erstellt nur die Leitung.",
+          text: absageText(s.rolle) }, 403);
+      }
+      const mitA = await bestandJetzt();
+      if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      /* Die Person selbst bekommt ihren vollständigen Datensatz; die Leitung
+         den Betrieb in ihrer eigenen Sicht — keine Erweiterung der Rechte. */
+      const quelle = selbst ? mitA.bestand : bestandFuerRolle(mitA.bestand, s);
+      const mA = eigenerMandant(quelle, s);
+      if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const pid = selbst ? s.person : angefragt;
+      const personA = (mA.personen || []).find((x) => x && String(x.id) === String(pid));
+      if (!personA) return antwort({ fehler: "Diese Person gibt es im eigenen Betrieb nicht." }, 404);
+      const erstellt = new Date().toISOString();
+      let zusatz = {};
+      if (selbst) {
+        const einBetrieb = Array.isArray(mitA.bestand.mandanten) && mitA.bestand.mandanten.length === 1;
+        const protokollA = await protokollZurPerson(getStore({ name: "centric-spur" }),
+          { raumKennung: kennung(null, s), mandantId: mA.id, personId: personA.id, einBetrieb });
+        const push = !!(await store.getMetadata(pushSchluessel(s.bestand, mA.id, personA.id)).catch(() => null));
+        const kalender = !!(await store.getMetadata(`feedperson:${s.bestand}:${mA.id}:${personA.id}`).catch(() => null));
+        /* Die Sammlungen mit eigenen Einträgen aus der Sicht einer
+           Beschäftigten — dieselbe Positivliste wie /api/bestand, also ohne
+           Daten Dritter (sicht.mjs). */
+        const eigeneSicht = eigenerMandant(bestandFuerRolle(mitA.bestand, { ...s, rolle: "mitarbeiter" }), s);
+        /* Das Konto, wenn die Sitzung aus einem stammt (lib/auskunft.mjs). */
+        const konto = await kontoFuerAuskunft(store, s);
+        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht };
+      }
+      const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
+        ...zusatz });
+      await protokoll("auskunft", kA, "erfolg", `${selbst ? "selbst" : "durch Leitung"} · Person ${personA.id}`, wer);
+      return antwort(inhalt, 200, { "content-disposition":
+        `attachment; filename="auskunft-${String(personA.id).replace(/[^A-Za-z0-9_-]/g, "_")}-${erstellt.slice(0, 10)}.json"` });
+    }
     /* ------------------------- Vollausgabe --------------------------
        Die Datenmitnahme in der Oberfläche gibt CSV-Dateien aus — gut zum
        Weiterverarbeiten, ungeeignet als Sicherung: Sie läuft im Browser, sie
@@ -1490,7 +1551,7 @@ export default async (req, context) => {
           return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
         }
         w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
-        const form = pruefeGestalt(w.bestand);
+        const form = pruefeGestalt(w.bestand, { vorher: jetztGelesen.bestand });
         if (!form.ok)
           return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
@@ -1511,8 +1572,11 @@ export default async (req, context) => {
             text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
             etag: ergW.stand }, 409);
         }
-        await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
-        return antwort({ ok: true, etag: ergW.stand, marke });
+        /* Was die Fristen dabei bewirkt hätten oder bewirkt haben (N-3) —
+           bei „aus"/„vorschau" nur gemeldet, nichts gelöscht. */
+        await protokoll("schreiben", kW, "erfolg",
+          `wiederhergestellt aus ${marke}${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
+        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
       });
     }
 

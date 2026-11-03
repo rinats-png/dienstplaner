@@ -222,7 +222,7 @@ import {
 import {
   fristen as loeschFristen, vorschau as loeschVorschau,
   raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
-  berichtstext as loeschBericht, PLANDATEN_MINDEST,
+  berichtstext as loeschBericht, PLANDATEN_MINDEST, fristWert, FRIST_GRENZEN,
 } from "./aufbewahrung.js";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
@@ -11804,7 +11804,7 @@ function Datenschutz({ sitz, akt }) {
 
   const FristFeld = ({ schluessel, label, hint, wert }) => (
     <Field label={label} hint={hint}>
-      <Inp type="number" min="1" value={wert}
+      <Inp type="number" min={FRIST_GRENZEN.min} max={FRIST_GRENZEN.max} step="1" value={wert}
         onChange={(e) => akt.setzeAufbewahrung(schluessel, Number(e.target.value))} />
     </Field>);
 
@@ -22408,7 +22408,7 @@ function AppInnen() {
         melde(`${(tarifwerk(id) || {}).name || id} angewendet.`);
       },
       setzeAufbewahrung: (k, v) => mUpd((m) => ({ ...m,
-        aufbewahrung: { ...loeschFristen(m), [k]: Math.max(1, Number(v) || 1) } }), null),
+        aufbewahrung: { ...loeschFristen(m), [k]: fristWert(v) } }), null),
       setzeEinheit: (id, k, v) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === id ? { ...e, [k]: v } : e) }), null),
       neueEinheit: () => mUpd((m) => ({ ...m, einheiten: [...m.einheiten, { id: uid("e"),
         name: `${m.einheitLabel} ${m.einheiten.length + 1}`, versatz: m.einheiten.length % m.zyklus.wochen,
