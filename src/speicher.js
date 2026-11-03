@@ -19,6 +19,7 @@
    ausdrücklich „Zugang merken" gewählt hat — auf dem eigenen Telefon
    sinnvoll, am Stationsrechner nicht. */
 import * as PUF from "./stempelpuffer.js";
+import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 
 const SCHLUESSEL = "centric:token";
 const GEMERKT = "centric:gemerkt";
@@ -358,6 +359,14 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, o
   return Promise.resolve();
 }
 
+/* Ausnahmeweg Art. 16/17/18 (WP-19.0, zweiter Opus-Review): Die Angabe geht genau einmal hinaus —
+   mit dem ersten Schreibvorgang, dessen Bestand die Änderung enthält (erkennt), danach ist sie
+   verbraucht, ob der Server annimmt oder abweist. Im lokalen Stand steht sie nie (sonst ginge sie mit
+   jedem späteren Speichern wieder mit und sperrte es, H1). */
+let einmalig = null;
+/** @param {any} mandantId @param {any} angabe @param {(m: any) => boolean} erkennt */
+export function ausnahmeMitschicken(mandantId, angabe, erkennt) { einmalig = { mandantId, angabe, erkennt }; }
+
 /* Der letzte Schreibversuch, der nicht durchkam.
 
    Vorher wurde er weggeworfen: Bei einer abgelaufenen Sitzung kehrte
@@ -442,7 +451,9 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    const hinaus = { ...auftrag.bestand, session: null };
+    const mit = mitEinmaligerAngabe({ ...auftrag.bestand, session: null }, einmalig);
+    if (mit.verbraucht) einmalig = null;
+    const hinaus = mit.bestand;
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });

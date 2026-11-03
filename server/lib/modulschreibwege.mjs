@@ -20,13 +20,23 @@
 
         Ausnahmeweg Art. 16/17 DSGVO (Berichtigung, Löschung): Die Leitung
         (org.edit) schickt mit der Änderung `moduldatenAusnahme: { modul, art:
-        "berichtigung" | "loeschung", grund, eintraege: { feld: [Schlüssel
-        oder Kennung, …] } }`. Durch geht genau das Benannte: bei „loeschung"
+        "berichtigung" | "loeschung", grund: "art16" | "art17" | "art18",
+        aktenzeichen?, eintraege: { feld: [Schlüssel oder Kennung, …] } }`.
+        Der Grund ist eine Kategorie (zweiter Opus-Review M4: kein Freitext,
+        der eine Person nennen könnte); das Aktenzeichen ist optional, nur
+        Buchstaben, Ziffern und Bindestrich mit mindestens einer Ziffer, höchstens
+        20 Zeichen — keine Namen. Durch geht genau das Benannte: bei „loeschung"
         fehlen genau diese Einträge, bei „berichtigung" ändern sich genau diese
-        (nichts kommt dazu); jede weitere Abweichung → 403. Protokolliert wird
-        im Modulprotokoll (Art, Modul, Feld, Anzahl, Grund, Wann/Wer — keine
+        (nichts kommt dazu); jede weitere Abweichung → 403. Listenfelder nur mit
+        Objekten mit eindeutiger id (N4). Protokolliert wird im Modulprotokoll
+        (Art, Modul, Feld, Anzahl, Grund, Aktenzeichen, Wann/Wer — keine
         Schlüssel, kein Person|Tag) und im Betriebsprotokoll ohne Personenbezug
-        (modulProtokollZeilen). Die Angabe selbst wird nie gespeichert.
+        (modulProtokollZeilen). Dazu ein Löschvermerk je Datensatz
+        (einstellungen.moduldatenLoeschvermerke: gehashte Kennung, kein
+        Klartext), den das Wiederherstellen beachtet (sicherungen.mjs, M3).
+        Die Angabe selbst wird nie gespeichert und wirkt NUR aus der
+        Übermittlung, die rechte.mjs vor der Rückfüllung merkt — ein
+        gespeichertes Feld gleichen Namens wird verworfen, nie geglaubt (H1).
      2. Die Schreibwege der Module (Form, Wann/Wer) — in der Reihenfolge der
         Liste. Jeder Eintrag: { modul, felder, zusammen(altM, neuM, ktx) →
         { mandant } | { grund } }. Ein Modul prüft nur seine `felder`; ein
@@ -38,7 +48,10 @@
 
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { BRANCHENMODULE, modulVon, modulNurLesen } from "./branchenmodule.mjs";
+import { createHash } from "node:crypto";
+import { BRANCHENMODULE, modulVon, modulNurLesen, AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER } from "./branchenmodule.mjs";
+
+export { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER };
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const hat = (o, k) => istObjekt(o) && Object.prototype.hasOwnProperty.call(o, k);
@@ -76,7 +89,6 @@ export function pruefeModulSchreibwege(wege = MODUL_SCHREIBWEGE, liste = BRANCHE
 }
 
 export const AUSNAHME_ARTEN = Object.freeze(["berichtigung", "loeschung"]);
-export const AUSNAHME_GRUND_MAX = 300;
 
 /** Die Einträge eines Datenfelds als Map Schlüssel → Wert: Objekt nach Schlüssel, Liste nach `id`. */
 function eintraegeVon(w) {
@@ -85,15 +97,126 @@ function eintraegeVon(w) {
   return new Map();
 }
 
+/** N4: Ein Datenfeld ist für den Ausnahmeweg eindeutig adressierbar — Objekt (Schlüssel) oder Liste von Objekten mit eindeutiger id. */
+function eindeutigAdressierbar(w) {
+  if (w === undefined || istObjekt(w)) return true;
+  if (!Array.isArray(w)) return false;
+  const ids = new Set();
+  for (const x of w) {
+    if (!istObjekt(x)) return false;
+    const ok = (typeof x.id === "string" && x.id !== "") || (typeof x.id === "number" && Number.isFinite(x.id));
+    if (!ok || ids.has(String(x.id))) return false;
+    ids.add(String(x.id));
+  }
+  return true;
+}
+
+/* Vergleich und Hash unabhängig von der Reihenfolge der Schlüssel. */
+const stabil = (x) => (Array.isArray(x) ? x.map(stabil) : istObjekt(x)
+  ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, stabil(x[k])])) : x);
+
+/**
+ * Löschvermerk eines Datensatzes (M3/A4): gehasht aus Betrieb, Feld, Schlüssel und — bei
+ * Berichtigung — dem alten Wert. Kein Klartext (die Kennung „personId|Tag" steht nicht darin).
+ * @param {any} mandantId @param {string} feld @param {string} schluessel @param {any} [wert]
+ */
+export function loeschvermerkHash(mandantId, feld, schluessel, wert) {
+  const teile = [String(mandantId), String(feld), String(schluessel)];
+  if (arguments.length > 3) teile.push(JSON.stringify(stabil(wert)) ?? "undefined");
+  return createHash("sha256").update(teile.join("\u0000")).digest("hex").slice(0, 32);
+}
+
+/**
+ * Wendet die Löschvermerke auf einen Betrieb an (Wiederherstellen, sicherungen.mjs):
+ * gelöschte Datensätze fallen weg, berichtigte alte Werte werden durch den jetzigen
+ * Wert ersetzt (fehlt er jetzt, fällt der Datensatz weg).
+ * @param {any} m Betrieb (aus der Sicherung)
+ * @param {any} jetzt gespeicherter Betrieb (Vermerke und jetzige Werte)
+ * @param {readonly any[]} [liste]
+ * @returns {{ mandant: any, entfernt: number, berichtigt: number }}
+ */
+export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE) {
+  const e = istObjekt(jetzt) && istObjekt(jetzt.einstellungen) ? jetzt.einstellungen : {};
+  const vermerke = Array.isArray(e.moduldatenLoeschvermerke) ? e.moduldatenLoeschvermerke.filter(istObjekt) : [];
+  if (!istObjekt(m) || !vermerke.length) return { mandant: m, entfernt: 0, berichtigt: 0 };
+  const loesch = new Set(vermerke.filter((v) => v.art === "loeschung").map((v) => v.h));
+  const bericht = new Set(vermerke.filter((v) => v.art === "berichtigung").map((v) => v.h));
+  const id = jetzt.id;
+  let aus = m, entfernt = 0, berichtigt = 0;
+  for (const feld of new Set(liste.flatMap((x) => (x && Array.isArray(x.datenfelder) ? x.datenfelder : [])))) {
+    const w = m[feld];
+    if (!istObjekt(w) && !Array.isArray(w)) continue;
+    const jetzige = eintraegeVon(jetzt[feld]);
+    /** @returns {{ weg: boolean, ersatz?: any }} */
+    const urteil = (k, v) => {
+      if (loesch.has(loeschvermerkHash(id, feld, k))) return { weg: true };
+      if (bericht.has(loeschvermerkHash(id, feld, k, v))) return jetzige.has(k) ? { weg: false, ersatz: jetzige.get(k) } : { weg: true };
+      return { weg: false };
+    };
+    let neu;
+    if (Array.isArray(w)) {
+      neu = [];
+      for (const x of w) {
+        if (!istObjekt(x)) { neu.push(x); continue; }
+        const u = urteil(String(x.id), x);
+        if (u.weg) { entfernt++; continue; }
+        if (hat(u, "ersatz")) { berichtigt++; neu.push(u.ersatz); } else neu.push(x);
+      }
+    } else {
+      neu = {};
+      for (const [k, v] of Object.entries(w)) {
+        const u = urteil(k, v);
+        if (u.weg) { entfernt++; continue; }
+        if (hat(u, "ersatz")) { berichtigt++; neu[k] = u.ersatz; } else neu[k] = v;
+      }
+    }
+    if (!gleich(neu, w)) aus = { ...aus, [feld]: neu };
+  }
+  return { mandant: aus, entfernt, berichtigt };
+}
+
+/**
+ * Wiederherstellen (sicherungen.mjs, zweiter Opus-Review M3 / A4): ändert `zurueck` (den Betrieb aus
+ * der Sicherung) an Ort und Stelle —
+ *   - Datenfelder eines Moduls, das heute nur lesbar ist, kommen aus dem jetzigen Stand `alt`
+ *     (kein Umweg am Nur-Lesen vorbei, ohne Ausnahmeweg und Protokoll);
+ *   - Löschvermerke des Ausnahmewegs wirken auf die Sicherung (Gelöschtes kommt nicht zurück,
+ *     Berichtigtes nicht in der alten Fassung) — auch wenn das Modul inzwischen wieder an ist;
+ *   - eine Ausnahmeangabe ist nie Teil des Betriebs (H1).
+ * @param {any} alt gespeicherter Betrieb (heute)
+ * @param {any} zurueck Betrieb aus der Sicherung (wird geändert)
+ * @param {readonly any[]} [liste]
+ * @returns {{ entfernt: number, berichtigt: number }}
+ */
+export function moduldatenBeiWiederherstellung(alt, zurueck, liste = BRANCHENMODULE) {
+  if (!istObjekt(alt) || !istObjekt(zurueck)) return { entfernt: 0, berichtigt: 0 };
+  for (const mod of liste) {
+    if (!mod || !Array.isArray(mod.datenfelder) || !mod.datenfelder.length || !modulNurLesen(alt, mod.id, liste)) continue;
+    for (const feld of mod.datenfelder) {
+      if (hat(alt, feld)) zurueck[feld] = alt[feld]; else delete zurueck[feld];
+    }
+  }
+  const lv = loeschvermerkeAnwenden(zurueck, alt, liste);
+  Object.assign(zurueck, lv.mandant);                         // ändert nur Datenfelder
+  delete zurueck.moduldatenAusnahme;
+  return { entfernt: lv.entfernt, berichtigt: lv.berichtigt };
+}
+
 /** Prüft die Form der Ausnahmeangabe; Grund oder null. */
 function ausnahmeFormFehler(a, liste) {
-  const form = "Ausnahmeweg Art. 16/17 DSGVO: erwartet wird { modul, art: \"berichtigung\" oder \"loeschung\", grund, eintraege: { feld: [ … ] } }.";
-  if (!istObjekt(a) || Object.keys(a).some((k) => !["modul", "art", "grund", "eintraege"].includes(k))) return form;
+  const form = "Ausnahmeweg Art. 16/17 DSGVO: erwartet wird { modul, art: \"berichtigung\" oder \"loeschung\", grund: \"art16\" | \"art17\" | \"art18\", "
+    + "aktenzeichen (optional), eintraege: { feld: [ … ] } }.";
+  if (!istObjekt(a) || Object.keys(a).some((k) => !["modul", "art", "grund", "aktenzeichen", "eintraege"].includes(k))) return form;
   const mod = modulVon(a.modul, liste);
   if (!mod) return form;
   if (!AUSNAHME_ARTEN.includes(a.art)) return form;
-  if (typeof a.grund !== "string" || !a.grund.trim()) return "Ausnahmeweg Art. 16/17 DSGVO: Der Grund (Antrag, Anlass) ist Pflicht.";
-  if (a.grund.length > AUSNAHME_GRUND_MAX) return `Ausnahmeweg Art. 16/17 DSGVO: Grund höchstens ${AUSNAHME_GRUND_MAX} Zeichen.`;
+  if (typeof a.grund !== "string" || !a.grund.trim()) return "Ausnahmeweg Art. 16/17 DSGVO: Der Grund (Art. 16, 17 oder 18 DSGVO) ist Pflicht.";
+  if (!hat(AUSNAHME_GRUND_ARTEN, a.grund))
+    return "Ausnahmeweg Art. 16/17 DSGVO: Grund nur als Kategorie „art16\", „art17\" oder „art18\" — kein Freitext (keine Namen).";
+  if (!AUSNAHME_GRUND_ARTEN[a.grund].includes(a.art)) return `Ausnahmeweg Art. 16/17 DSGVO: ${AUSNAHME_GRUENDE[a.grund]} passt nicht zur Art „${a.art}".`;
+  if (hat(a, "aktenzeichen") && a.aktenzeichen !== null && a.aktenzeichen !== ""
+    && (typeof a.aktenzeichen !== "string" || !AKTENZEICHEN_MUSTER.test(a.aktenzeichen)))
+    return "Ausnahmeweg Art. 16/17 DSGVO: Aktenzeichen nur Buchstaben, Ziffern und Bindestrich, mit Ziffer, höchstens 20 Zeichen — keine Namen.";
   if (!istObjekt(a.eintraege) || !Object.keys(a.eintraege).length) return form;
   for (const [feld, schl] of Object.entries(a.eintraege)) {
     if (!mod.datenfelder.includes(feld)) return `Ausnahmeweg Art. 16/17 DSGVO: „${String(feld).slice(0, 40)}" ist kein Datenfeld von ${mod.name}.`;
@@ -111,20 +234,24 @@ function ausnahmeFormFehler(a, liste) {
  * @param {any} neuM übermittelter Betrieb
  * @param {readonly any[]} [liste]
  * @param {{ darfOrgEdit?: boolean, sitzung?: any, jetzt?: string, ausnahme?: any }} [ktx]
- *   ausnahme: die Angabe, wenn der Schreibweg sie vor der Rückfüllung gemerkt hat (rechte.mjs);
- *   sonst gilt `neuM.moduldatenAusnahme`.
+ *   ausnahme: die Angabe, die der Schreibweg vor der Rückfüllung aus der Übermittlung gemerkt hat
+ *   (rechte.mjs) — die einzige Quelle. `neuM.moduldatenAusnahme` (etwa ein gespeichertes Feld, das die
+ *   Rückfüllung wieder eingesetzt hat) zählt nie und wird entfernt (zweiter Opus-Review H1).
  * @returns {{ mandant: any, grund?: undefined } | { grund: string, mandant?: undefined }}
  */
 export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrgEdit = false, sitzung = null, jetzt, ...ktx } = {}) {
-  if (!istObjekt(altM) || !istObjekt(neuM)) return { mandant: neuM };
-  /* Die Ausnahmeangabe ist nie Teil des gespeicherten Betriebs. */
-  const ausnahme = hat(ktx, "ausnahme") ? ktx.ausnahme : hat(neuM, "moduldatenAusnahme") ? neuM.moduldatenAusnahme : undefined;
+  if (!istObjekt(neuM)) return { mandant: neuM };
   let aus = neuM;
   if (hat(neuM, "moduldatenAusnahme")) { aus = { ...neuM }; delete aus.moduldatenAusnahme; }
+  if (!istObjekt(altM)) return { mandant: aus };
+  /* Die Ausnahmeangabe ist nie Teil des gespeicherten Betriebs — nur aus dem Kontext. */
+  const ausnahme = ktx.ausnahme;
   const stand = { ...altM, einstellungen: istObjekt(neuM.einstellungen) ? neuM.einstellungen : altM.einstellungen };
   let benutzt = false;
   /** @type {any[]} */
   const ereignisse = [];
+  /** @type {any[]} */
+  const vermerke = [];
   for (const mod of liste) {
     if (!mod || !Array.isArray(mod.datenfelder) || !mod.datenfelder.length) continue;
     if (!modulNurLesen(stand, mod.id, liste)) continue;
@@ -141,6 +268,8 @@ export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrg
       const formFehler = ausnahmeFormFehler(ausnahme, liste);
       if (formFehler) return { grund: formFehler };
       if (ausnahme.modul !== mod.id || !hat(ausnahme.eintraege, feld)) return { grund: nurLesen };
+      if (!eindeutigAdressierbar(altM[feld]) || !eindeutigAdressierbar(aus[feld]))
+        return { grund: `Ausnahmeweg Art. 16/17 DSGVO: ${feld} braucht Datensätze als Objekte mit eindeutiger id.` };
       /* Genau das Benannte — nicht mehr, nicht weniger, nichts Neues. */
       const vorher = eintraegeVon(altM[feld]), nachher = eintraegeVon(aus[feld]);
       const benannt = new Set(ausnahme.eintraege[feld]);
@@ -156,6 +285,8 @@ export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrg
       for (const k of geaendert) if (!benannt.has(k)) return { grund: `${nurLesen} (Ausnahmeweg: nur die benannten Einträge)` };
       benutzt = true;
       ereignisse.push({ art: `moduldaten-${ausnahme.art}`, modul: mod.id, feld, anzahl: benannt.size });
+      for (const k of benannt) vermerke.push({ modul: mod.id, feld, art: ausnahme.art,
+        h: ausnahme.art === "loeschung" ? loeschvermerkHash(altM.id, feld, k) : loeschvermerkHash(altM.id, feld, k, vorher.get(k)) });
     }
   }
   /* Benannt, aber keine passende Änderung: abgewiesen (die Angabe muss genau das Geänderte beschreiben). */
@@ -172,8 +303,13 @@ export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrg
     const von = sitzung && sitzung.person !== undefined ? sitzung.person : null;
     const e = istObjekt(aus.einstellungen) ? aus.einstellungen : {};
     const bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
+    const az = typeof ausnahme.aktenzeichen === "string" && ausnahme.aktenzeichen ? { aktenzeichen: ausnahme.aktenzeichen } : {};
+    /* Löschvermerke: aus dem gespeicherten Stand (nie vom Client) plus die neuen. */
+    const altE = istObjekt(altM.einstellungen) ? altM.einstellungen : {};
+    const altV = Array.isArray(altE.moduldatenLoeschvermerke) ? altE.moduldatenLoeschvermerke : [];
     aus = { ...aus, einstellungen: { ...e, modulprotokoll: [...bisher,
-      ...ereignisse.map((x) => ({ ...x, grund: ausnahme.grund.trim(), am, von }))] } };
+      ...ereignisse.map((x) => ({ ...x, grund: ausnahme.grund, ...az, am, von }))],
+      moduldatenLoeschvermerke: [...altV, ...vermerke.map((v) => ({ ...v, am }))] } };
   }
   return { mandant: aus };
 }
@@ -187,8 +323,7 @@ export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrg
  * @returns {{ mandant: any, grund?: undefined } | { grund: string, mandant?: undefined }}
  */
 export function modulSchreibwegeAnwenden(altM, neuM, { wege = MODUL_SCHREIBWEGE, liste = BRANCHENMODULE, ...ktx } = {}) {
-  const lesen = moduldatenZusammen(altM, neuM, liste, { darfOrgEdit: ktx.darfOrgEdit === true, sitzung: ktx.sitzung,
-    ...(hat(ktx, "ausnahme") ? { ausnahme: ktx.ausnahme } : {}) });
+  const lesen = moduldatenZusammen(altM, neuM, liste, { darfOrgEdit: ktx.darfOrgEdit === true, sitzung: ktx.sitzung, ausnahme: ktx.ausnahme });
   if (lesen.grund) return lesen;
   let aus = lesen.mandant;
   for (const w of wege) {

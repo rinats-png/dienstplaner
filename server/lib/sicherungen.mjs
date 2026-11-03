@@ -21,6 +21,8 @@ import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { planFreigabeAktiv } from "./planfreigabe.mjs";
+import { MODULEINSTELLUNGEN_FELDER } from "./branchenmodule.mjs";
+import { moduldatenBeiWiederherstellung } from "./modulschreibwege.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -223,17 +225,24 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     }
     zurueck.einstellungen = z;
   }
-  /* Branchenmodule (WP-19.0): Schalter samt Mitbestimmungsbestätigung, betriebliche Regelwerte und das
-     Modulprotokoll gelten weiter, wie sie heute sind. Eine alte Sicherung schaltet kein Modul ohne
-     Bestätigung ein, hebt keinen Regelwert an und kürzt das Protokoll nicht. Die Moduldaten selbst
-     kommen aus der Sicherung wie alle Betriebsdaten. */
+  /* Branchenmodule (WP-19.0): Schalter samt Mitbestimmungsbestätigung, betriebliche Regelwerte, das
+     Modulprotokoll und die Löschvermerke gelten weiter, wie sie heute sind. Eine alte Sicherung schaltet
+     kein Modul ohne Bestätigung ein, hebt keinen Regelwert an und kürzt das Protokoll nicht. */
   {
     const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
-    for (const f of ["branchenmodule", "regelwerte", "modulprotokoll"]) {
+    for (const f of MODULEINSTELLUNGEN_FELDER) {
       if (f in altE) z[f] = altE[f]; else delete z[f];
     }
     if ((zurueck.einstellungen && typeof zurueck.einstellungen === "object") || Object.keys(z).length) zurueck.einstellungen = z;
   }
+  /* Moduldaten (zweiter Opus-Review M3, Betreiber-Ergänzung A4):
+     - Die Daten eines Moduls, das heute nur lesbar ist (G3), kommen aus dem jetzigen Stand —
+       sonst wäre Wiederherstellen ein Umweg am Nur-Lesen vorbei (ohne Ausnahmeweg, ohne Protokoll).
+     - Was über den Ausnahmeweg gelöscht oder berichtigt wurde (Art. 16/17), kommt nicht zurück:
+       Die Löschvermerke (einstellungen.moduldatenLoeschvermerke, gehasht) wirken auf die Sicherung,
+       auch wenn das Modul inzwischen wieder eingeschaltet ist.
+     - Eine Ausnahmeangabe (moduldatenAusnahme) ist nie Teil eines Betriebs (H1). */
+  moduldatenBeiWiederherstellung(alt, zurueck);
   if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
     zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
       ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };

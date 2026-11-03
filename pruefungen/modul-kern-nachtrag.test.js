@@ -42,14 +42,17 @@ const BEST = { bestaetigt: true, grundlage: GRUNDLAGE };
 const EIN = "2026-10-01T08:00:00.000Z";                       // erstes echtes Einschalten (vom Server)
 
 const TM = Object.freeze({ id: "testmodul", merkmal: "testmodul", name: "Testmodul", pakete: ["sicherheit"], status: "vorlaeufig",
-  abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], regelIds: [],
+  abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], regelIds: [], ausnahmeUi: true,
   parameter: {}, abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/wp19-13-nachweis.md" } });
 const TMB = Object.freeze({ ...TM, id: "testwache", merkmal: "testwache", name: "Testwache", mitbestimmung: true,
   datenfelder: ["testWache"], personenfelder: ["testWache"] });
 const LISTE = [...BRANCHENMODULE, TM, TMB];
 /* Dieselbe Registry, in der Wachbuch und Bereichsplan nicht mehr „geplant" sind (Stand nach einer Abnahme). */
 const AKTIV = BRANCHENMODULE.map((x) => (["wachbuch", "bereichsplan", "posten"].includes(x.id)
-  ? { ...x, status: "vorlaeufig", abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/wp19-13-nachweis.md" } } : x));
+  ? { ...x, status: "vorlaeufig", ausnahmeUi: true, abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/wp19-13-nachweis.md" } } : x));
+/* Zweiter Opus-Review / A3: gelöscht wird nur nach geprüfter Aufbewahrungsregel — für die Löschlauf-Fälle eine geprüfte Fassung. */
+const GEPRUEFT = (r) => ({ ...r, pruefstatus: "geprueft", geprueftAm: "2026-11-01T00:00:00.000Z", gueltigAb: "2026-01-01" });
+const REGELN = { moduldaten: GEPRUEFT(BM.MODULDATEN_AUFBEWAHRUNG), modulprotokoll: GEPRUEFT(BM.MODULPROTOKOLL_FRIST) };
 
 const betrieb = (bm, extra = {}) => ({ ...branchenbestand({ pakete: ["sicherheit", "pflege"], branchenmodule: bm }).mandanten[0], ...extra });
 const mitE = (m, e) => ({ ...m, einstellungen: { ...m.einstellungen, ...e } });
@@ -63,7 +66,7 @@ const GEFAELSCHT = () => ({
     bereichsplan: { an: false, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "x" },
   },
   regelwerte: { "POSTEN-QUAL-01": { quelle: "Q", fundstelle: "F", version: "1", gueltigAb: "2026-01-01", gueltigBis: null,
-    pruefstatus: "verified", stufe: "achtung", geprueftAm: EIN, geprueftVon: "x", geaendertAm: EIN, geaendertVon: "x" } },
+    pruefstatus: "geprueft", stufe: "achtung", geprueftAm: EIN, geprueftVon: "x", geaendertAm: EIN, geaendertVon: "x" } },
   modulprotokoll: [{ art: "eingeschaltet", modul: "wachbuch", am: EIN, von: "x", grundlage: "erfunden" }],
 });
 const ohneModulfelder = (e) => {
@@ -119,7 +122,8 @@ describe("N2a — Ausnahmeweg Art. 16/17 DSGVO trotz Nur-Lesen", () => {
     g.mandanten[0].objekte = kopie(OBJ);
     return g;
   };
-  const LOESCH = { modul: "posten", art: "loeschung", grund: "Antrag nach Art. 17 DSGVO vom 03.11.2026", eintraege: { postenPlan: ["a1|2026-11-02"] } };
+  /* Grund als Kategorie (zweiter Opus-Review M4). */
+  const LOESCH = { modul: "posten", art: "loeschung", grund: "art17", eintraege: { postenPlan: ["a1|2026-11-02"] } };
 
   it("Leitung löscht genau den benannten Eintrag: gespeichert ohne ihn, Rest unverändert, Protokoll ohne Personenbezug", () => {
     const g = gesamt();
@@ -139,28 +143,28 @@ describe("N2a — Ausnahmeweg Art. 16/17 DSGVO trotz Nur-Lesen", () => {
   it("Berichtigung (Art. 16): nur der benannte Eintrag ändert sich, nichts kommt dazu", () => {
     const ok = schreibeAls(gesamt(), "LT", (m) => {
       m.postenPlan["a1|2026-11-03"] = "po2";
-      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "Antrag nach Art. 16 DSGVO", eintraege: { postenPlan: ["a1|2026-11-03"] } };
+      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "art16", eintraege: { postenPlan: ["a1|2026-11-03"] } };
     });
     expect(ok.verweigert).toBeFalsy();
     expect(ok.mandanten[0].postenPlan["a1|2026-11-03"]).toBe("po2");
     expect(ok.mandanten[0].einstellungen.modulprotokoll[0]).toMatchObject({ art: "moduldaten-berichtigung", anzahl: 1 });
     const neu = schreibeAls(gesamt(), "LT", (m) => {
       m.postenPlan["a1|2026-11-04"] = "po2";
-      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "Art. 16", eintraege: { postenPlan: ["a1|2026-11-04"] } };
+      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "art16", eintraege: { postenPlan: ["a1|2026-11-04"] } };
     });
     expect(neu.verweigert).toMatch(/nur lesbar|Ausnahmeweg/);
     /* Benannter Eintrag berichtigt, nebenbei ein unbenannter neu: abgewiesen. */
     const nebenbei = schreibeAls(gesamt(), "LT", (m) => {
       m.postenPlan["a1|2026-11-03"] = "po2";
       m.postenPlan["a1|2026-11-05"] = "po2";
-      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "Art. 16", eintraege: { postenPlan: ["a1|2026-11-03"] } };
+      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "art16", eintraege: { postenPlan: ["a1|2026-11-03"] } };
     });
     expect(nebenbei.verweigert).toMatch(/nichts Neues/);
   });
   it("Löschung in einer Liste (Objekte) über die Kennung", () => {
     const v = schreibeAls(gesamt(), "LT", (m) => {
       m.objekte = m.objekte.filter((o) => o.id !== "ob2");
-      m.moduldatenAusnahme = { modul: "posten", art: "loeschung", grund: "Art. 17", eintraege: { objekte: ["ob2"] } };
+      m.moduldatenAusnahme = { modul: "posten", art: "loeschung", grund: "art17", eintraege: { objekte: ["ob2"] } };
     });
     expect(v.verweigert).toBeFalsy();
     expect(v.mandanten[0].objekte.map((o) => o.id)).toEqual(["ob1"]);
@@ -189,8 +193,9 @@ describe("N2a — Ausnahmeweg Art. 16/17 DSGVO trotz Nur-Lesen", () => {
   });
   it("ohne Ausnahmeweg bleibt es beim Nur-Lesen; ein Rundweg mit Ausnahmeangabe ohne Änderung speichert sie nicht", () => {
     expect(schreibeAls(gesamt(), "LT", (m) => { delete m.postenPlan["a1|2026-11-02"]; }).verweigert).toMatch(/nur lesbar/);
-    const r = MS.moduldatenZusammen(gesamt().mandanten[0], { ...gesamt().mandanten[0], moduldatenAusnahme: LOESCH }, BRANCHENMODULE,
-      { darfOrgEdit: true, sitzung: SITZ });
+    /* Die Angabe kommt nur aus dem Kontext (rechte.mjs merkt sie vor der Rückfüllung; zweiter Opus-Review H1). */
+    const r = MS.moduldatenZusammen(gesamt().mandanten[0], { ...gesamt().mandanten[0] }, BRANCHENMODULE,
+      { darfOrgEdit: true, sitzung: SITZ, ausnahme: LOESCH });
     expect(r.grund).toBeTruthy();                                       // benannt, aber nicht gelöscht
     const ohne = MS.moduldatenZusammen(gesamt().mandanten[0], { ...gesamt().mandanten[0] }, BRANCHENMODULE, { darfOrgEdit: true, sitzung: SITZ });
     expect("moduldatenAusnahme" in ohne.mandant).toBe(false);
@@ -205,83 +210,90 @@ describe("N2a — Ausnahmeweg Art. 16/17 DSGVO trotz Nur-Lesen", () => {
 });
 
 /* ------------------------------------------------------------------------ */
-describe("N2b — Löschlauf räumt Moduldaten mit ab (WP-26)", () => {
+describe("N2b — Löschlauf räumt Moduldaten mit ab (WP-26) — seit dem zweiten Opus-Review nur nach Datum und geprüfter Regel", () => {
   const HEUTE = "2026-11-03";
   const m0 = () => ({ id: "m1", aufbewahrung: {}, personen: [
       { id: "a1", nachname: "A", austritt: "2026-01-31" },              // fällig (6 Monate nach Austritt)
       { id: "a2", nachname: "B" },
       { id: "a3", nachname: "C", anonym: true }],                       // bereits anonymisiert
     postenPlan: { "a1|2026-10-01": "po1", "a2|2026-10-01": "po1", "a2|2024-09-01": "po1", "a3|2026-10-02": "po1" },
-    bereichsPlan: { "a1|2026-10-01": "b1", "a2|2026-10-01": "b1" },
+    bereichsPlan: { "a1|2026-10-01": "b1", "a2|2026-10-01": "b1", "a1|2023-05-01": "b1" },
     objekte: [{ id: "ob1", name: "Werk", posten: [] }] });
 
-  it("Vorschau zählt Zuordnungen ausgeschiedener Personen und Einträge hinter der Plandatenfrist", () => {
-    const v = AUF.vorschau(m0(), HEUTE);
-    expect(v.moduldaten).toBe(4);       // a1 (2×), a3, a2|2024-09-01
+  it("Vorschau zählt Einträge hinter der Plandatenfrist (nicht: Zuordnungen anonymisierter Personen)", () => {
+    const v = AUF.vorschau(m0(), HEUTE, { regeln: REGELN });
+    expect(v.moduldaten).toBe(2);       // a2|2024-09-01, a1|2023-05-01
     expect(v.gesamt).toBeGreaterThanOrEqual(v.moduldaten + v.personen.length);
   });
-  it("Löschlauf entfernt sie; Objekte (ohne Personenbezug) und übrige Zuordnungen bleiben; Bericht nennt sie", () => {
-    const r = AUF.raeumen(m0(), HEUTE);
-    expect(r.mandant.postenPlan).toEqual({ "a2|2026-10-01": "po1" });
-    expect(r.mandant.bereichsPlan).toEqual({ "a2|2026-10-01": "b1" });
+  it("Löschlauf entfernt sie; Objekte (ohne Personenbezug) und Zuordnungen in der Frist bleiben; Bericht nennt sie", () => {
+    const r = AUF.raeumen(m0(), HEUTE, { regeln: REGELN });
+    expect(r.mandant.postenPlan).toEqual({ "a1|2026-10-01": "po1", "a2|2026-10-01": "po1", "a3|2026-10-02": "po1" });
+    expect(r.mandant.bereichsPlan).toEqual({ "a1|2026-10-01": "b1", "a2|2026-10-01": "b1" });
     expect(r.mandant.objekte).toEqual(m0().objekte);
     expect(AUF.berichtstext(r.bericht)).toMatch(/Modulzuordnung/);
-    expect(AUF.vorschau(r.mandant, HEUTE).moduldaten).toBe(0);
+    expect(AUF.vorschau(r.mandant, HEUTE, { regeln: REGELN }).moduldaten).toBe(0);
   });
   it("jedes Personenfeld der Registry hängt am Löschlauf (technischer Nachweis, auch für künftige Module)", () => {
     const felder = [...new Set(LISTE.flatMap((x) => x.personenfelder || []))];
     expect(felder).toEqual(expect.arrayContaining(["postenPlan", "bereichsPlan"]));
     for (const f of felder) {
-      const m = { id: "m", personen: [{ id: "x", anonym: true }, { id: "y" }], [f]: { "x|2026-10-01": "1", "y|2026-10-01": "1" } };
-      expect(AUF.raeumen(m, HEUTE, { module: LISTE }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
+      const m = { id: "m", personen: [{ id: "x", anonym: true }, { id: "y" }], [f]: { "x|2023-10-01": "1", "y|2026-10-01": "1" } };
+      expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
+      /* ungeprüfte Regel (Vorgabe): nichts gelöscht */
+      expect(AUF.raeumen(m, HEUTE, { module: LISTE }).mandant[f], f).toEqual(m[f]);
     }
   });
-  it("Wiederherstellen bringt Zuordnungen anonymisierter Personen nicht zurück", () => {
+  it("Wiederherstellen: Zuordnungen anonymisierter Personen in der Frist kommen wie die übrigen Plandaten derselben Kennung zurück", () => {
     const g = branchenbestand({ pakete: ["sicherheit"] });
     const heute = kopie(g);
     heute.mandanten[0].personen = heute.mandanten[0].personen.map((p) => (p.id === "a1" ? { ...p, anonym: true, nachname: "Ausgeschieden" } : p));
     const sicherung = kopie(g);
     sicherung.mandanten[0].postenPlan = { "a1|2026-10-01": "po1", "s1|2026-10-01": "po1" };
+    sicherung.mandanten[0].abweichungen = { "a1|2026-10-01": "F" };
     const w = betriebWiederherstellen(heute, sicherung, SITZUNGEN.LT, { marke: "x", heute: new Date("2026-11-03T10:00:00Z"), datenschutz: "an" });
     expect(w.verweigert).toBeFalsy();
-    expect(w.bestand.mandanten[0].postenPlan).toEqual({ "s1|2026-10-01": "po1" });
+    expect(w.bestand.mandanten[0].postenPlan).toEqual({ "a1|2026-10-01": "po1", "s1|2026-10-01": "po1" });
+    expect(w.bestand.mandanten[0].abweichungen).toEqual({ "a1|2026-10-01": "F" });
+    expect(w.bestand.mandanten[0].personen.find((p) => p.id === "a1").anonym).toBe(true);
   });
 });
 
 /* ------------------------------------------------------------------------ */
 describe("N2c — Modulprotokoll: Aufbewahrungsfrist statt Dauersperre", () => {
-  it("Vorgabe ist ein Entwurfswert und ausdrücklich als solcher gekennzeichnet; konfigurierbar wie die übrigen Fristen", () => {
-    expect(BM.MODULPROTOKOLL_FRIST).toMatchObject({ monate: expect.any(Number) });
+  it("Vorgabe ist ein Entwurfswert und ausdrücklich als solcher gekennzeichnet; keine Übersteuerung je Betrieb (zweiter Review M1)", () => {
+    expect(BM.MODULPROTOKOLL_FRIST).toMatchObject({ monate: expect.any(Number), pruefstatus: "vorlaeufig" });
     expect(BM.MODULPROTOKOLL_FRIST.stand).toMatch(/Entwurfswert, zu bestätigen/);
     expect(BM.modulprotokollMonate({})).toBe(BM.MODULPROTOKOLL_FRIST.monate);
-    expect(BM.modulprotokollMonate({ aufbewahrung: { modulprotokollMonate: 12 } })).toBe(12);
+    expect(BM.modulprotokollMonate({ aufbewahrung: { modulprotokollMonate: 12 } })).toBe(BM.MODULPROTOKOLL_FRIST.monate);
     expect(BM.modulprotokollMonate({ aufbewahrung: { modulprotokollMonate: 0.5 } })).toBe(BM.MODULPROTOKOLL_FRIST.monate);
-    expect(AUF.aufbewahrungFehler({ modulprotokollMonate: 12 })).toBeNull();
-    expect(AUF.aufbewahrungFehler({ modulprotokollMonate: -1 })).toMatch(/modulprotokollMonate/);
   });
-  it("an der Grenze: abgelaufene Einträge gehen, die neue Handlung wird protokolliert — keine Dauersperre", () => {
+  it("an der Grenze (geprüfte Regel): abgelaufene Einträge gehen bis auf den zustandsbegründenden, die neue Handlung wird protokolliert", () => {
     const alt = betrieb({ testmodul: { an: false, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "l1" } });
-    alt.einstellungen.modulprotokoll = Array.from({ length: BM.MODULPROTOKOLL_GRENZE }, () => ({ art: "parameter", modul: "testmodul", am: "2020-01-01T00:00:00.000Z", von: "l1" }));
-    const r = zus(alt, mitE(alt, { branchenmodule: { testmodul: { an: true } } }));
+    alt.einstellungen.modulprotokoll = Array.from({ length: BM.MODULPROTOKOLL_GRENZE }, (_, i) => ({ art: "parameter", modul: "testmodul", am: "2020-01-01T00:00:00.000Z", von: "l1", i }));
+    const r = BM.branchenmoduleZusammen(alt, mitE(alt, { branchenmodule: { testmodul: { an: true } } }), SITZ, true, LISTE, { protokollRegel: REGELN.modulprotokoll });
     expect(r.grund).toBeUndefined();
-    expect(r.mandant.einstellungen.modulprotokoll).toEqual([expect.objectContaining({ art: "eingeschaltet", modul: "testmodul" })]);
-    /* Das Betriebsprotokoll erkennt den neuen Eintrag, obwohl das Protokoll kürzer wurde. */
-    expect(BM.modulProtokollZeilen({ mandanten: [alt] }, { mandanten: [r.mandant] })).toEqual(["Branchenmodul testmodul eingeschaltet"]);
+    expect(r.mandant.einstellungen.modulprotokoll).toEqual([alt.einstellungen.modulprotokoll.at(-1), expect.objectContaining({ art: "eingeschaltet", modul: "testmodul" })]);
+    /* Das Betriebsprotokoll erkennt den neuen Eintrag, obwohl das Protokoll kürzer wurde, und nennt die Kürzung. */
+    expect(BM.modulProtokollZeilen({ mandanten: [alt] }, { mandanten: [r.mandant] }))
+      .toEqual([`Modulprotokoll: ${BM.MODULPROTOKOLL_GRENZE - 1} Einträge nach Ablauf der Aufbewahrungsfrist entfernt`, "Branchenmodul testmodul eingeschaltet"]);
+    /* Ungeprüfte Regel (Vorgabe): an der Grenze nichts verdrängt — nur Ausschalten und Art. 16/17 gehen. */
+    expect(zus(alt, mitE(alt, { branchenmodule: { testmodul: { an: true } } })).grund).toMatch(/Grenze/);
   });
-  it("der Löschlauf behält die gesetzte Frist des Modulprotokolls", () => {
+  it("der Löschlauf entfernt eine gespeicherte Übersteuerung (modulprotokollMonate) und rechnet mit der Regel", () => {
     const m = { id: "m1", personen: [], aufbewahrung: { modulprotokollMonate: 12 } };
-    expect(AUF.raeumen(m, "2026-11-03").mandant.aufbewahrung.modulprotokollMonate).toBe(12);
-    const mitFaelligem = { ...m, einstellungen: { modulprotokoll: [{ art: "parameter", modul: "posten", am: "2025-01-01T00:00:00.000Z", von: "l1" }] } };
-    const r = AUF.raeumen(mitFaelligem, "2026-11-03");
-    expect(r.mandant.aufbewahrung.modulprotokollMonate).toBe(12);
-    expect(r.mandant.einstellungen.modulprotokoll).toEqual([]);                // 22 Monate alt, Frist 12
+    expect("modulprotokollMonate" in AUF.raeumen(m, "2026-11-03").mandant.aufbewahrung).toBe(false);
+    const mitFaelligem = { ...m, einstellungen: { modulprotokoll: [{ art: "parameter", modul: "posten", am: "2025-01-01T00:00:00.000Z", von: "l1" },
+      { art: "parameter", modul: "posten", am: "2025-02-01T00:00:00.000Z", von: "l1" }] } };
+    const r = AUF.raeumen(mitFaelligem, "2026-11-03", { regeln: REGELN });
+    expect(r.mandant.einstellungen.modulprotokoll).toHaveLength(2);           // 22 Monate alt, Frist 24 (nicht 12)
   });
-  it("Löschlauf: Vorschau zählt abgelaufene Protokolleinträge, der Lauf entfernt sie, jüngere bleiben", () => {
+  it("Löschlauf (geprüfte Regel): Vorschau zählt abgelaufene, überholte Protokolleinträge, der Lauf entfernt sie, jüngere bleiben", () => {
     const jung = { art: "eingeschaltet", modul: "posten", am: "2026-10-01T08:00:00.000Z", von: "l1" };
-    const m = { id: "m1", personen: [], einstellungen: { ruhezeit: 11, modulprotokoll: [{ art: "parameter", modul: "posten", am: "2023-01-01T00:00:00.000Z", von: "l1" }, jung] } };
-    expect(AUF.vorschau(m, "2026-11-03").modulprotokoll).toBe(1);
-    const r = AUF.raeumen(m, "2026-11-03");
-    expect(r.mandant.einstellungen).toEqual({ ruhezeit: 11, modulprotokoll: [jung] });
+    const neuP = { art: "parameter", modul: "posten", am: "2026-10-02T08:00:00.000Z", von: "l1" };
+    const m = { id: "m1", personen: [], einstellungen: { ruhezeit: 11, modulprotokoll: [{ art: "parameter", modul: "posten", am: "2023-01-01T00:00:00.000Z", von: "l1" }, jung, neuP] } };
+    expect(AUF.vorschau(m, "2026-11-03", { regeln: REGELN }).modulprotokoll).toBe(1);
+    const r = AUF.raeumen(m, "2026-11-03", { regeln: REGELN });
+    expect(r.mandant.einstellungen).toEqual({ ruhezeit: 11, modulprotokoll: [jung, neuP] });
     expect(AUF.berichtstext(r.bericht)).toMatch(/Modulprotokoll/);
   });
 });
@@ -306,12 +318,12 @@ describe("N2d — Statusvertrag: kein Modul mit Daten verlässt „geplant\" ohn
         const istListe = (mod.sachfelder || []).includes(f);
         const alt = { id: "m", pakete: mod.pakete, personen: [{ id: "x", anonym: true }],
           einstellungen: { branchenmodule: { [mod.id]: { an: false, eingeschaltetAm: EIN } } },
-          [f]: istListe ? [{ id: "k1" }, { id: "k2" }] : { "x|2026-10-01": "1", "y|2026-10-01": "1" } };
-        const neu = { ...kopie(alt), [f]: istListe ? [{ id: "k2" }] : { "y|2026-10-01": "1" },
-          moduldatenAusnahme: { modul: mod.id, art: "loeschung", grund: "Art. 17", eintraege: { [f]: [istListe ? "k1" : "x|2026-10-01"] } } };
-        const r = MS.moduldatenZusammen(alt, neu, AKTIV, { darfOrgEdit: true, sitzung: SITZ });
+          [f]: istListe ? [{ id: "k1" }, { id: "k2" }] : { "x|2023-10-01": "1", "y|2026-10-01": "1" } };
+        const neu = { ...kopie(alt), [f]: istListe ? [{ id: "k2" }] : { "y|2026-10-01": "1" } };
+        const r = MS.moduldatenZusammen(alt, neu, AKTIV, { darfOrgEdit: true, sitzung: SITZ,
+          ausnahme: { modul: mod.id, art: "loeschung", grund: "art17", eintraege: { [f]: [istListe ? "k1" : "x|2023-10-01"] } } });
         expect(r.grund, `${mod.id}.${f}`).toBeUndefined();
-        if (!istListe) expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
+        if (!istListe) expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV, regeln: REGELN }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
       }
     }
   });
@@ -361,7 +373,7 @@ describe("N3 — G10: Ausschalten eines nie geschalteten Moduls ändert nichts",
 describe("N4 — fehlende einstellungen: der Schreibweg stellt selbst wieder her (Lehre WP-23b)", () => {
   const gespeichert = () => {
     const m = betrieb({ testmodul: { an: true, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "l1" } });
-    m.einstellungen.regelwerte = { "POSTEN-QUAL-01": { pruefstatus: "provisional", stufe: "hinweis", geaendertAm: EIN, geaendertVon: "l1" } };
+    m.einstellungen.regelwerte = { "POSTEN-QUAL-01": { pruefstatus: "vorlaeufig", stufe: "hinweis", geaendertAm: EIN, geaendertVon: "l1" } };
     m.einstellungen.modulprotokoll = [{ art: "eingeschaltet", modul: "testmodul", am: EIN, von: "l1" }];
     return m;
   };
@@ -420,7 +432,7 @@ describe("N5 — Testlücken aus dem Review", () => {
 describe("N6 — Regelwert-Formular verliert den Wert nicht", () => {
   it("regelwertSauber übernimmt den Wert (Zahl bleibt Zahl, Text bleibt Text); leer heißt ohne Wert", () => {
     expect(typeof KERN.regelwertSauber).toBe("function");
-    const basis = { quelle: "Q", fundstelle: "F", version: "1", gueltigAb: "2026-01-01", gueltigBis: "", pruefstatus: "verified", stufe: "achtung" };
+    const basis = { quelle: "Q", fundstelle: "F", version: "1", gueltigAb: "2026-01-01", gueltigBis: "", pruefstatus: "geprueft", stufe: "achtung" };
     expect(KERN.regelwertSauber({ ...basis, wert: 3 }).wert).toBe(3);
     expect(KERN.regelwertSauber({ ...basis, wert: "5" }, { wert: 3 }).wert).toBe(5);
     expect(KERN.regelwertSauber({ ...basis, wert: "Sachkunde" }, { wert: "x" }).wert).toBe("Sachkunde");

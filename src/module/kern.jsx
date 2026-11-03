@@ -14,15 +14,23 @@
         geltendes Recht", „Achtung" nur geprüft, nie „recht".
      3. Moduloberflächen (Einhängepunkte aus ./index.js): aktive Module, nach
         dem Abschalten nur lesend mit Export (G3).
+     4. Ausnahmeweg Art. 16/17/18 DSGVO (AusnahmewegKarte, nur Leitung mit
+        org.edit, nur für nur lesbare Moduldaten): Art, Grund als Kategorie,
+        optionales Aktenzeichen (keine Namen), Auswahl der Datensätze,
+        Bestätigungsschritt. Die Angabe geht einmal mit dem Speichern hinaus
+        (akt.moduldatenAusnahme → src/speicher.js), nie in den lokalen Stand.
 
    Gespeichert wird über akt.setzeEinstellung (der gewöhnliche Schreibweg).
    Keine festen Breiten (360 px ohne Querscrollen).
    ========================================================================== */
 import { useState } from "react";
 import { BRANCHENMODULE, modulEinstellung, modulZustand, modulNurLesen, MITBESTIMMUNG_HINWEIS, GRUNDLAGE_MAX,
-  pruefeRegelwert } from "../../server/lib/branchenmodule.mjs";
+  pruefeRegelwert, regelwertMigrieren } from "../../server/lib/branchenmodule.mjs";
 import { REGELN_BRANCHEN } from "../../server/lib/branchenkatalog.mjs";
 import { oberflaechenFuer, hatModuldaten, moduldatenExport } from "./index.js";
+import { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, ausnahmeAngabe, eintraegeListe, leeresFormular } from "./ausnahmeweg.js";
+
+export { ausnahmeAngabe };
 
 const ZUSTAND = {
   "in-vorbereitung": "in Vorbereitung — noch nicht einschaltbar",
@@ -71,8 +79,84 @@ function MitbestimmungEinschalten({ mod, onEinschalten }) {
     </div>);
 }
 
+/** Anzeige eines Datensatzes: Personenfelder „Person, Tag: Wert", Listen nach Name oder Kennung. */
+function datensatzText(m, x) {
+  if (x.wert && typeof x.wert === "object") return String(x.wert.name || x.wert.titel || x.schluessel);
+  const [pid, tag] = String(x.schluessel).split("|");
+  const wer = nameVon(m, pid) || pid;
+  return `${wer}${tag ? `, ${datum(tag) || tag}` : ""}: ${String(x.wert)}`;
+}
+
+/**
+ * Ausnahmeweg Art. 16/17/18 DSGVO für die Daten eines nur lesbaren Moduls (nur Leitung).
+ * onAusfuehren(ausnahme, aendern, erkennt) — der Aufrufer speichert (akt.moduldatenAusnahme).
+ * @param {{ m: any, mod: any, onAusfuehren: (ausnahme: any, aendern: (m: any) => any, erkennt: (m: any) => boolean) => void,
+ *   anfang?: any }} props anfang: Formularstand (Prüfungen)
+ */
+export function AusnahmewegKarte({ m, mod, onAusfuehren, anfang }) {
+  const [f, setF] = useState(() => anfang || leeresFormular());
+  const [schritt, setSchritt] = useState(anfang && anfang.schritt === "bestaetigen" ? "bestaetigen" : "formular");
+  const [erledigt, setErledigt] = useState(false);
+  const liste = eintraegeListe(m, mod);
+  const angabe = ausnahmeAngabe(m, mod, f);
+  const gruende = Object.keys(AUSNAHME_GRUENDE).filter((g) => AUSNAHME_GRUND_ARTEN[g].includes(f.art));
+  const setze = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const waehle = (feld, k, an) => setF((x) => ({ ...x, auswahl: { ...x.auswahl, [feld]: { ...(x.auswahl[feld] || {}), [k]: an } } }));
+  const neuWert = (feld, k, v) => setF((x) => ({ ...x, neu: { ...x.neu, [feld]: { ...((x.neu || {})[feld] || {}), [k]: v } } }));
+  const art = (a) => setF((x) => ({ ...x, art: a, grund: AUSNAHME_GRUND_ARTEN[x.grund] && AUSNAHME_GRUND_ARTEN[x.grund].includes(a) ? x.grund
+    : (a === "loeschung" ? "art17" : "art16") }));
+  if (erledigt) return <p role="status" style={{ margin: "8px 0 0" }}>Ausnahmeweg ausgeführt — wird gespeichert. Der Server prüft und protokolliert ihn.</p>;
+  return (
+    <section aria-label={`Datenschutz-Ausnahmeweg ${mod.name}`} style={{ ...RAHMEN, marginTop: 8, display: "grid", gap: 8 }}>
+      <h4 style={{ margin: 0, fontSize: 14 }}>Datenschutz-Ausnahmeweg (Art. 16/17/18 DSGVO)</h4>
+      <p style={{ margin: 0 }}>Nur für Anträge betroffener Personen. Gelöscht oder berichtigt werden genau die ausgewählten
+        Datensätze; der Vorgang wird ohne Personenbezug protokolliert und bleibt auch nach einer Wiederherstellung wirksam.</p>
+      {schritt === "formular" && (<>
+        <label style={FELD}>Art<select value={f.art} onChange={(e) => art(e.target.value)} style={EINGABE}>
+          <option value="loeschung">Löschung</option><option value="berichtigung">Berichtigung</option></select></label>
+        <label style={FELD}>Grund<select value={f.grund} onChange={(e) => setze("grund", e.target.value)} style={EINGABE}>
+          {gruende.map((g) => <option key={g} value={g}>{AUSNAHME_GRUENDE[g]}</option>)}</select></label>
+        <label style={FELD}>Aktenzeichen (optional — keine Namen; Buchstaben, Ziffern, Bindestrich)
+          <input value={f.aktenzeichen} maxLength={20} inputMode="text" autoComplete="off" style={EINGABE}
+            onChange={(e) => setze("aktenzeichen", e.target.value)} /></label>
+        <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 6, minWidth: 0 }}>
+          <legend style={{ padding: 0 }}>Datensätze</legend>
+          {!liste.length && <p style={{ margin: 0 }}>Keine Datensätze.</p>}
+          {liste.map((x) => {
+            const an = !!(f.auswahl[x.feld] && f.auswahl[x.feld][x.schluessel]);
+            const sperre = f.art === "berichtigung" && !x.berichtigbar;
+            return (
+              <div key={`${x.feld}|${x.schluessel}`} style={{ display: "grid", gap: 4 }}>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", minWidth: 0 }}>
+                  <input type="checkbox" checked={an} disabled={sperre} onChange={(e) => waehle(x.feld, x.schluessel, e.target.checked)} />
+                  <span style={{ overflowWrap: "anywhere" }}>{datensatzText(m, x)}{sperre ? " (nur löschbar)" : ""}</span>
+                </label>
+                {an && f.art === "berichtigung" && x.berichtigbar && (
+                  <label style={FELD}>Berichtigter Wert<input value={((f.neu || {})[x.feld] || {})[x.schluessel] || ""} style={EINGABE}
+                    onChange={(e) => neuWert(x.feld, x.schluessel, e.target.value)} /></label>)}
+              </div>);
+          })}
+        </fieldset>
+        {angabe.fehler && <p role="alert" style={{ margin: 0 }}>{angabe.fehler}</p>}
+        <div><button type="button" disabled={!!angabe.fehler} onClick={() => setSchritt("bestaetigen")}>Weiter zur Bestätigung</button></div>
+      </>)}
+      {schritt === "bestaetigen" && !angabe.fehler && (
+        <div role="alertdialog" aria-label="Ausnahmeweg bestätigen" style={{ display: "grid", gap: 8 }}>
+          <p style={{ margin: 0 }}><strong>{f.art === "loeschung" ? "Endgültig löschen" : "Berichtigen"}:</strong> {angabe.anzahl}
+            {angabe.anzahl === 1 ? " Datensatz" : " Datensätze"} · {AUSNAHME_GRUENDE[f.grund]}
+            {angabe.ausnahme.aktenzeichen ? ` · Aktenzeichen ${angabe.ausnahme.aktenzeichen}` : ""}.
+            {f.art === "loeschung" ? " Das lässt sich nicht rückgängig machen, auch nicht über eine Sicherung." : ""}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => { onAusfuehren(angabe.ausnahme, angabe.aendern, angabe.erkennt); setErledigt(true); }}>
+              {f.art === "loeschung" ? "Löschen bestätigen" : "Berichtigung bestätigen"}</button>
+            <button type="button" onClick={() => setSchritt("formular")}>Zurück</button>
+          </div>
+        </div>)}
+    </section>);
+}
+
 /** Eine Zeile je Modul. */
-function ModulZeile({ m, mod, liste, darfSchalten, darfExport, setze }) {
+function ModulZeile({ m, mod, liste, darfSchalten, darfExport, setze, onAusnahme }) {
   const zustand = modulZustand(m, mod.id, liste);
   const e = modulEinstellung(m, mod.id);
   const nurLesen = modulNurLesen(m, mod.id, liste);
@@ -97,6 +181,8 @@ function ModulZeile({ m, mod, liste, darfSchalten, darfExport, setze }) {
       {nurLesen && darfExport && hatModuldaten(m, mod.id, liste) && (
         <div style={{ marginTop: 8 }}><button type="button"
           onClick={() => herunterladen(`${mod.id}-daten.json`, moduldatenExport(m, mod.id, liste))}>Daten exportieren (JSON)</button></div>)}
+      {nurLesen && darfSchalten && onAusnahme && hatModuldaten(m, mod.id, liste) && (
+        <AusnahmewegKarte m={m} mod={mod} onAusfuehren={onAusnahme} />)}
       {schaltbar && an && (
         <div style={{ marginTop: 8 }}><button type="button" onClick={() => setze(mod.id, { ...e, an: false })}>Ausschalten</button></div>)}
       {schaltbar && !an && mod.mitbestimmung && (
@@ -131,7 +217,7 @@ export function regelwertSauber(f, vorher = null) {
 /** Formular für einen betrieblichen Regelwert (nur org.edit). */
 function RegelwertFormular({ regel, wert, onSpeichern, onEntfernen }) {
   const [f, setF] = useState(() => ({ quelle: "", fundstelle: "", version: "", gueltigAb: "", gueltigBis: "",
-    pruefstatus: "provisional", stufe: "hinweis", ...(wert || {}),
+    pruefstatus: "vorlaeufig", stufe: "hinweis", ...(regelwertMigrieren(wert) || {}),
     wert: wert && wert.wert !== undefined && wert.wert !== null ? String(wert.wert) : "" }));
   const feld = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const sauber = regelwertSauber(f, wert);
@@ -144,7 +230,7 @@ function RegelwertFormular({ regel, wert, onSpeichern, onEntfernen }) {
       <label style={FELD}>Gültig ab<input type="date" value={f.gueltigAb || ""} onChange={feld("gueltigAb")} style={EINGABE} /></label>
       <label style={FELD}>Gültig bis<input type="date" value={f.gueltigBis || ""} onChange={feld("gueltigBis")} style={EINGABE} /></label>
       <label style={FELD}>Prüfstatus<select value={f.pruefstatus} onChange={feld("pruefstatus")}>
-        <option value="provisional">ungeprüft</option><option value="verified">Quelle geprüft</option></select></label>
+        <option value="vorlaeufig">ungeprüft (vorläufig)</option><option value="geprueft">Quelle geprüft</option><option value="zurueckgezogen">zurückgezogen (wirkt nicht)</option></select></label>
       <label style={FELD}>Stufe<select value={f.stufe} onChange={feld("stufe")}>
         <option value="hinweis">Hinweis</option><option value="achtung">Achtung (nur geprüft)</option></select></label>
       {fehler && <p role="alert" style={{ margin: 0 }}>{fehler}</p>}
@@ -158,12 +244,16 @@ function RegelwertFormular({ regel, wert, onSpeichern, onEntfernen }) {
 function RegelwertZeile({ m, regel, darfSchalten, setzeRegelwert }) {
   const [offen, setOffen] = useState(false);
   const rw = m && m.einstellungen && m.einstellungen.regelwerte ? m.einstellungen.regelwerte[regel.id] : null;
-  const geprueft = rw && rw.pruefstatus === "verified" && rw.geprueftAm;
+  const status = rw ? regelwertMigrieren(rw).pruefstatus : null;
+  const geprueft = rw && status === "geprueft" && rw.geprueftAm;
+  const abgelaufen = geprueft && rw.gueltigBis && heuteTag() > rw.gueltigBis;
   return (
     <li style={{ marginBottom: 8 }}>
       <strong>{regel.bezeichnung}</strong> <span>({regel.id})</span>
       <div>{!rw && "Kein betrieblicher Wert — Hinweis nach Registervorgabe (ungeprüft, kein geltendes Recht)."}
-        {rw && !geprueft && `Betrieblicher Wert ungeprüft — kein geltendes Recht, höchstens Hinweis${rw.quelle ? ` (Quelle: ${rw.quelle})` : ""}.`}
+        {rw && status === "zurueckgezogen" && "Betrieblicher Wert zurückgezogen — wirkt nicht."}
+        {rw && !geprueft && status !== "zurueckgezogen" && `Betrieblicher Wert ungeprüft — kein geltendes Recht, höchstens Hinweis${rw.quelle ? ` (Quelle: ${rw.quelle})` : ""}.`}
+        {abgelaufen && `Abgelaufen am ${datum(rw.gueltigBis)} — wirkt nicht mehr; höchstens Hinweis nach Registervorgabe. `}
         {rw && geprueft && `Geprüft am ${datum(rw.geprueftAm)}: ${rw.quelle} ${rw.fundstelle}, Fassung ${rw.version}, gültig ab ${datum(rw.gueltigAb)}`
           + `${rw.gueltigBis ? ` bis ${datum(rw.gueltigBis)}` : ""} — Stufe ${rw.stufe === "achtung" ? "Achtung" : "Hinweis"}. Keine Feststellung eines Rechtsverstoßes, keine Sperre.`}</div>
       {darfSchalten && !offen && <button type="button" onClick={() => setOffen(true)}>Regelwert bearbeiten</button>}
@@ -223,6 +313,9 @@ export function BranchenModule({ sitz, akt, darf, kontext, liste = BRANCHENMODUL
   const e = m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : {};
   const setze = (id, wert) => akt.setzeEinstellung("branchenmodule", { ...(e.branchenmodule || {}), [id]: wert });
   const setzeRegelwert = (id, wert) => akt.setzeEinstellung("regelwerte", { ...(e.regelwerte || {}), [id]: wert });
+  /* Ausnahmeweg: nur wenn der Aufrufer den einmaligen Schreibweg anbietet (App.jsx → src/speicher.js). */
+  const onAusnahme = darfSchalten && akt && typeof akt.moduldatenAusnahme === "function"
+    ? (ausnahme, aendern, erkennt) => akt.moduldatenAusnahme(ausnahme, aendern, erkennt) : null;
   const gebuchteModule = new Set(liste.filter((x) => (m.pakete || []).some((p) => x.pakete.includes(p))).map((x) => x.id));
   const regeln = REGELN_BRANCHEN.filter((r) => gebuchteModule.has(r.modul));
   return (
@@ -232,7 +325,7 @@ export function BranchenModule({ sitz, akt, darf, kontext, liste = BRANCHENMODUL
         nicht fertig und lassen sich nicht einschalten. Bestehende Funktionen hängen an keinem Modul.
         {!darfSchalten && " Ein- und Ausschalten und betriebliche Regelwerte: Organisationsleitung (Recht „Betrieb verwalten“)."}</p>
       <div style={{ display: "grid", gap: 10 }}>
-        {liste.map((mod) => <ModulZeile key={mod.id} m={m} mod={mod} liste={liste} darfSchalten={darfSchalten} darfExport={darfExport} setze={setze} />)}
+        {liste.map((mod) => <ModulZeile key={mod.id} m={m} mod={mod} liste={liste} darfSchalten={darfSchalten} darfExport={darfExport} setze={setze} onAusnahme={onAusnahme} />)}
       </div>
       {regeln.length > 0 && (
         <div>

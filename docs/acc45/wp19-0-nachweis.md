@@ -341,3 +341,148 @@ NM19 Grundlage aus Leerzeichen · NM20 alte Bestätigung wiederverwendet · NM21
   offen (FN-32); Personenfelder folgen bis dahin der Plandatenfrist.
 - Ein Altstand mit `{ an: true }` ohne `eingeschaltetAm` (nur aus Testbeständen denkbar, kein Modul ist einschaltbar) wird
   nach dem Ausschalten nicht nur lesbar — bewusst fail-open zugunsten von G10.
+
+## 12. Nachtrag zweiter Opus-Delta-Review (Urteil „integrierbar mit Auflagen") und Betreiber-Ergänzung Querschnittssicherheit
+
+Stand 2026-11-03, Basis: Merge `integration/centric-complete` (07ec4af inkl. Statusprüfungs-Fix bca96dc; Sammelzeile
+`pruefung` in package.json vorher/nachher 98 Schritte, unverändert). Prüfdateien (beide über das Präfix `modul-` in
+`pruefung:branchenmodule`, package.json und Workflow unverändert):
+`pruefungen/modul-kern-nachtrag2.test.js` (Befunde H1–N4, UI, Regelstatus) und `pruefungen/modul-integritaet-quer.test.js`
+(Querschnitts-Akzeptanzfälle Q1–Q6, Q4 über den echten Handler `PUT /api/bestand`). Testlücke Nebenbefund in
+`pruefungen/sicherungen.test.js`.
+
+**Überholt** sind damit in Abschnitt 10 Punkt 4 und Abschnitt 11: die Frist je Betrieb `aufbewahrung.modulprotokollMonate`
+(entfällt, M1), das Räumen von Zuordnungen anonymisierter Personen (entfällt, M2), das Löschen nach Entwurfsfristen (nur
+noch nach geprüfter Regel, A3), der Freitext-Grund (Kategorie, M4), „Oberfläche für den Ausnahmeweg fehlt" (12.2) und der
+bewusst fail-open belassene Altstand `{ an: true }` (N2, jetzt fail-closed).
+
+### 12.1 Befunde des Reviews
+
+| Befund | Behebung | Test |
+|---|---|---|
+| **H1 HOCH** gespeichertes `moduldatenAusnahme` sperrt jedes Speichern (Sonde: „Leitung speichert: VERWEIGERT: Ausnahmeweg …", SV ebenso) | `rechte.mjs` übergibt `ausnahme` **immer** (auch `undefined`); `moduldatenZusammen` kennt keinen Rückgriff auf `neuM.moduldatenAusnahme` mehr und entfernt ein solches Feld (es wird bereinigt, nie geglaubt). Hineinkommen verschlossen: `moduleinstellungenVerwerfen` (Betreiber-Neuanlage, `bestandOhneModuleinstellungen` → `/api/bestand-anlegen`) und Wiederherstellen (`moduldatenBeiWiederherstellung`) entfernen das Feld. | H1 (4), Q3 |
+| **M1 MITTEL** Planung/Leitung stellen die Protokollfrist auf 1 Monat | **Übersteuerung je Betrieb entfernt** (kleinere, sichere Lösung bis FN-32): `modulprotokollMonate` liest nur die Regel, `aufbewahrungFehler` prüft das Feld nicht mehr, der Löschlauf entfernt einen gespeicherten Altwert. Begründung: kein neuer Rechteweg in `rechte.mjs` (Konfliktzone), das Protokoll ist Mitbestimmungs-/Rechenschaftsnachweis, die Frist ist ohnehin ein Entwurfswert. Zusätzlich löscht der Löschlauf aus dem Protokoll erst nach **geprüfter** Regel (A3, unten). | M1 (2), N2c |
+| **M2 MITTEL** Löschlauf räumt Modul-Personenfelder pauschal (anonymisierte/fällige Personen, unabhängig vom Datum) | Personenfelder nur nach **Datum** (Stichtag ≥ Plandatenfrist, nie unter `PLANDATEN_MINDEST`) wie `abweichungen` derselben (nach Anonymisierung pseudonymen) Kennung — und nur nach geprüfter Regel `MODULDATEN_AUFBEWAHRUNG` (A3). § 21 BewachV ist als Fachfrage in der Regelquelle vermerkt (FN-32), keine Norm behauptet. | M2 (4), N2b |
+| **M3 MITTEL** Wiederherstellen bringt Art.-17-Löschungen zurück und umgeht Nur-Lesen | `moduldatenBeiWiederherstellung` (modulschreibwege.mjs): Felder heute nur lesbarer Module aus dem jetzigen Stand; **Löschvermerk je Datensatz** (`einstellungen.moduldatenLoeschvermerke`, SHA-256 aus Betrieb, Feld, Schlüssel — bei Berichtigung zusätzlich alter Wert —, kein Klartext) wirkt auf die Sicherung, auch wenn das Modul wieder an ist; Berichtigtes kommt nicht in der alten Fassung zurück. Vermerke schreibt nur der Server (nie vom Client, nie bei Neuanlage), sie überstehen Wiederherstellen und Migration. | M3 (5), Q1 (4) |
+| **M4 MITTEL fachlich** Freitext-Grund (bis 24 Monate, an den Betriebsrat) | Grund nur als Kategorie `art16` / `art17` / `art18` (passend zur Art; Art. 18 löst Berichtigung oder Löschung aus), optionales Aktenzeichen `^(?=\D*\d)[A-Za-z0-9-]{1,20}$` (Hinweis „keine Namen"). Betriebsrat und Auskunft bekommen das Modulprotokoll nur nach **Positivkatalog** (`modulprotokollPositiv`: art, modul, regelId, feld, anzahl, stufe, pruefstatus, grundlage, am, von) — ohne Grund, Aktenzeichen und Altfreitext. | M4 (3) |
+| **N1** aktives Modul: Protokoll nach 24 Monaten ganz leer | je Modul und Regel bleibt der letzte zustandsbegründende Eintrag (Schalter, Bestätigung, Parameter, Regelwert); Kürzen an der Grenze erzeugt die Betriebsprotokollzeile „Modulprotokoll: N Einträge nach Ablauf der Aufbewahrungsfrist entfernt". | N1 (4), N2c |
+| **N2** Altstand `{ an: true }` ohne `eingeschaltetAm` fail-open | Migration beim Lesen (`eingeschaltetSeit`: aus `geaendertAm`, sonst „unbekannt") und beim Ausschalten (`eingeschaltetAm` aus `geaendertAm`) → danach nur lesbar. `{ an: false }` ohne Vorgänger bleibt G10-frei. | N2 (2), Q3 |
+| **N3** gespeicherte Regelwerte/Schalter werden bei jedem Speichern neu geprüft | unverändert Zurückgeschicktes (Regelwert ohne Serverfelder, Schalter als Ganzes) wird vor der Prüfung durchgelassen; nur Neues/Geändertes wird geprüft. | N3 (2) |
+| **N4** Ausnahmeweg bei Listen ohne eindeutige id | `eindeutigAdressierbar`: Listenfelder nur aus Objekten mit eindeutiger, nicht leerer id (vorher und nachher), sonst Abweisung. | N4 (2) |
+| **Statusvertrag (neu)** | `pruefeModulStatus` verlangt für ein Modul mit Datenfeldern `ausnahmeUi: true` (Registry, vom Modulpaket gesetzt) **und** die Kernoberfläche (`AUSNAHMEWEG_OBERFLAECHE`, gebunden an `AusnahmewegKarte`). Alle zwölf Module bleiben „geplant"; keines trägt `ausnahmeUi`. | UI (4) |
+| **Nebenbefund** Mutation der Planfreigabe-Zeile in `sicherungen.mjs` überlebte | zwei Fälle in `sicherungen.test.js` (Feld fehlt jetzt, Sicherung hat es → bleibt fehlend; alle drei Felder wie jetzt) | NM52 getötet |
+
+### 12.2 Oberfläche des Ausnahmewegs (A6)
+
+`src/module/kern.jsx` `AusnahmewegKarte` (nur Leitung mit org.edit, nur für nur lesbare Moduldaten mit Inhalt, nur wenn der
+Aufrufer den einmaligen Schreibweg anbietet): Art, Grund (Auswahl, passend zur Art), Aktenzeichen (optional, „keine Namen"),
+Auswahl der Datensätze (Personenfelder „Person, Tag: Wert" — berichtigbar bei Text/Zahl; Listen-Datensätze nur löschbar),
+Bestätigungsschritt (`alertdialog`, „lässt sich nicht rückgängig machen, auch nicht über eine Sicherung"). Keine festen
+Breiten (360 px). Reine Hilfen in `src/module/ausnahmeweg.js` (`ausnahmeAngabe`, `mitEinmaligerAngabe`). Die Angabe geht
+**einmal** mit dem ersten Speichervorgang hinaus, dessen Bestand die Änderung enthält (`src/speicher.js`
+`ausnahmeMitschicken`), und steht nie im lokalen Stand — sonst entstünde aus der Oberfläche wieder H1. App.jsx: eine Zeile
+(`akt.moduldatenAusnahme`). Test: Serverrendering (Leitung ja, Planung nein, ohne Schreibweg nein, Bestätigungsschritt) und
+Bedienablauf (Formular → Angabe → Änderung → einmal mitgeschickt → Server nimmt an → nächstes Speichern ohne Angabe).
+Grenze: Berichtigung von Datensätzen als Objekt (Sachfelder, ohne Personenbezug) bietet die Karte nicht an — Art. 16 betrifft
+personenbezogene Daten; ein Modul mit Personenfeldern aus Objekten muss seine Oberfläche ergänzen, bevor es `ausnahmeUi` setzt.
+
+### 12.3 Querschnittssicherheit (Betreiber-Ergänzung A/B)
+
+| Fehlerklasse (A) | Umsetzung | Test |
+|---|---|---|
+| (1) eingeschleuste/fehlerhafte Ausnahmevermerke | H1; Feld wird entfernt, nie geglaubt; unförmige Löschvermerke/Protokolleinträge brechen nichts | H1, Q3 |
+| (2) Auditnachweise nie vollständig löschbar | Protokoll nur vom Server (Leitung schickt `[]` → bleibt), keine Übersteuerung, Löschen nur mit geprüfter Regel, zustandsbegründende Einträge bleiben | N1, M1 |
+| (3) keine pauschale Löschung, nur nach geprüfter Regel | `MODULDATEN_AUFBEWAHRUNG` (AUFB-MODULDATEN-01) und `MODULPROTOKOLL_FRIST` (AUFB-MODULPROTOKOLL-01) tragen Regel-ID, Quelle, Fundstelle, Fassung, Prüfstatus; Status über `regelstatus.mjs`. Heute **vorlaeufig** → der Löschlauf löscht daraus nichts, Vorschau/Bericht: `moduldatenZurueckgehalten`, `modulprotokollZurueckgehalten`, „Prüfung/Freigabe erforderlich". Abgelaufen/zurückgezogen/unbekannt löscht nicht. | M2, N1, Q1 |
+| (4) Gelöschtes kommt nicht zurück (Restore, Rollback, Migration) | Löschvermerke (M3); Rollback = zweimaliges Wiederherstellen; Migration (`migriere`) behält `einstellungen` | M3, Q1 |
+| (5) Freitexte nicht an Betriebsrat/Exporte | Positivkatalog (BR-Sicht, Auskunft); Löschvermerke für keine eingeschränkte Rolle; Moduldaten-Export (`moduldatenExport`) enthält nur Datenfelder, nicht das Protokoll | M4 |
+| (6) bedienbare Oberfläche, Statusbedingung | 12.2 | UI |
+
+Querschnittsfälle (B): Q1 löschen → Sicherung → bleibt gelöscht (Modi an/aus/vorschau, Modul wieder an, Rollback,
+Migration, Löschlauf); Q2 Modul aus → Berichtigung über die Oberfläche und Auskunft (Art. 15) gehen; Q3 Altdaten mit
+fehlerhaftem Status → LT/PL/SV speichern, unbekannter Prüfstatus wirkt nie als geprüft; Q4 zwei Planende, echter Handler:
+gleicher Eintrag → 409, die erste Änderung bleibt; verschiedene Einträge → 409 oder beide erhalten, nie still verloren;
+Q5 Plan/Ist eines Tages hängt nicht an Moduldaten (WP-16 ist in diesem Stand **nicht integriert**: Fall „abgeschlossener
+Monat → Moduldaten ändern → `istAbdruck`/`istEingefroren` unverändert" als `it.skip` mit Grund „wp16 nicht integriert",
+nach dem Merge von WP-16 zu aktivieren); Q6 Beschäftigte nur eigene Zuordnung, Betriebsrat keine, Rollenwechsel, Versetzung
+(Schichtverantwortung sieht die Zuordnung nach dem Wechsel nicht).
+
+**Wechselwirkungen**
+
+| Paket | Wechselwirkung | Stand |
+|---|---|---|
+| WP-16 Monatsabschluss/Snapshots | Moduldaten (`postenPlan`, `bereichsPlan`, `objekte`) gehen nicht ins Ist/eingefrorene Ist ein; `abschlussBeiWiederherstellung` (WP-16) und `moduldatenBeiWiederherstellung` (hier) laufen beide im Wiederherstellen — beim Merge Reihenfolge prüfen (unabhängige Felder) | Q5 (Vorlage skip) |
+| WP-26 Löschlauf | Personenfelder nur nach Datum und geprüfter Regel; Protokoll mit N1-Schutz; Bericht nennt Zurückgehaltenes | M2, N1 |
+| WP-43 Filter (Sicht) | Positivkatalog Modulprotokoll für den Betriebsrat; Löschvermerke für eingeschränkte Rollen entfernt; `postenPlan`-Sicht unverändert | M4, Q6 |
+| WP-45 Journal/atomar | Ausnahmeweg und Löschvermerk entstehen im selben `zusammenfuehren` wie die Änderung (ein Schreibvorgang, ETag/409 wie jedes PUT) | Q4 |
+| Backup/Restore | Löschvermerke, Nur-Lesen, `moduldatenAusnahme` entfernt | M3, Q1 |
+| WP-16c Revisionen (folgt) | Eine Revision, die Moduldaten zurückholt, muss `moduldatenBeiWiederherstellung` bzw. die Löschvermerke ebenso anwenden | offen, Vorgabe für WP-16c |
+
+### 12.4 Einheitliches Regelstatus-Schema (C)
+
+`server/lib/regelstatus.mjs`: kanonisch `geprueft | vorlaeufig | abgelaufen | zurueckgezogen` mit Metadaten (Regel-ID, Quelle,
+Fundstelle, Fassung, geprueftAm/-Von als ISO, gueltigAb/-Bis als Tag). Exporte für andere Module: `kanonischerStatus`,
+`regelKanonisch`, `regelWirkung`, `regelGeprueft`, `zeitpunktIso`, `REGELSTATUS_ABBILDUNG` (Beispiel im Dateikopf).
+
+| Herkunft | Wert | kanonisch |
+|---|---|---|
+| WP-19.0 Regelwerte (Altwert) | provisional / verified | vorlaeufig / geprueft (nur mit Quelle, Fundstelle, Fassung, gültig ab, geprueftAm) |
+| Industrie-Adapter (wp19-10) | provisional / geprueft (geprueftAm Tag) | vorlaeufig / geprueft (Tag → ISO) |
+| Branchenkatalog | provisional / verified / watchlist / deprecated | vorlaeufig / geprueft / zurueckgezogen / zurueckgezogen |
+| Regelregister | verified / legacy_verified / provisional / watchlist / deprecated | geprueft / geprueft / vorlaeufig / zurueckgezogen / zurueckgezogen |
+| jede | unbekannt, fehlerhaft, unbekannte Herkunft, gesendetes „abgelaufen" | vorlaeufig (fail-closed) |
+| jede | gueltigBis überschritten (war geprüft) | abgelaufen (Wirkung höchstens Hinweis) |
+
+watchlist/deprecated wirken heute nicht; die Abbildung auf `zurueckgezogen` erhält das (keine Aufwertung zum Hinweis).
+WP-19.0 schreibt nur noch kanonisch: `REGELWERT_PRUEFSTATUS = vorlaeufig | geprueft | zurueckgezogen`; gespeicherte Altwerte
+wirken über `regelwertMigrieren` (achtung ohne Prüfung → hinweis) und sperren das Speichern nicht (N3). Oberfläche
+(`kern.jsx`): Auswahl „ungeprüft (vorläufig)", „Quelle geprüft", „zurückgezogen", Anzeige „abgelaufen". Regelregister und
+Branchenkatalog rechnen weiter mit ihrem eigenen Vokabular (keine Verhaltensänderung); Umstellung des Industrie-Branches:
+separater Auftrag gegen diese Schnittstelle.
+
+### 12.5 Rot → grün, Mutanten
+
+Rot gegen den Stand vor diesem Nachtrag (Merge-Commit, Code unverändert): `modul-kern-nachtrag2` 33 von 35 der zuerst
+geschriebenen Fälle rot (die Sonde H1 meldet genau „Ausnahmeweg Art. 16/17 DSGVO: Nur für Daten eines ausgeschalteten Moduls
+…"); grün waren N4 „wohlgeformt geht" (Gegenprobe) und die Nebenbefund-Fälle in `sicherungen.test.js` (Code richtig, Lücke nur
+im Test — durch NM52 belegt). Nach der Umsetzung: `modul-kern-nachtrag2` 37/37, `modul-integritaet-quer` 15/15 (+1 skip
+WP-16), `sicherungen` 33/33; gezielt grün: alle `modul-*`, `branchenmodule`, `branchen-andock`, `branchen-app`, `rechtematrix`,
+`rechtematrix-zeilen` (599), `sicht`, `sicht-planung-leitung`, `sicht-schichtverantwortung`, `dsgvo-server`, `aufbewahrung`,
+`aufraeumen`, `erstbefuellung`, `entwuerfe`, `oberflaeche-render`, `doku`.
+
+**Angepasste Prüfdaten bestehender Tests (Verhalten bewusst geändert, keine Abschwächung):** Regelwert-Vokabular
+`provisional/verified` → `vorlaeufig/geprueft` (modul-kern, -nachtrag, -nachtrag-handler, -oberflaeche); der frühere Fall
+„`geprueft` wird abgewiesen" prüft jetzt `verified` und `abgelaufen`. Testmodule tragen `ausnahmeUi: true`. N2a: Grund als
+Kategorie; die Angabe kommt aus dem Kontext (`ausnahme`), nicht aus dem Betrieb (H1). N2b: kein Räumen nach Anonymisierung
+(M2), Löschen nur mit geprüfter Regel (A3), Wiederherstellen bringt Zuordnungen in der Frist wie `abweichungen` zurück. N2c:
+keine Frist je Betrieb (M1), an der Grenze bleibt der zustandsbegründende Eintrag und die Kürzung wird gemeldet (N1);
+ungeprüfte Regel → Grenze sperrt (nur Ausschalten und Art. 16/17 gehen).
+
+**Mutanten (Werkzeug lokal, je eingesetzt → Prüfung → zurückgeschrieben):** 32 von 32 getötet — NM23 Rückgriff auf
+`neuM.moduldatenAusnahme` · NM24 rechte.mjs übergibt `ausnahme` nur bedingt · NM25 Verwerfen lässt die Angabe stehen · NM26
+Wiederherstellen lässt sie stehen · NM27 Übersteuerung je Betrieb wirkt · NM28 ungeprüfte Moduldaten-Regel löscht · NM29
+Anonymisierte vor der Frist geräumt · NM30 Untergrenze Plandatenfrist fehlt · NM31 Nur-Lesen beim Wiederherstellen ignoriert ·
+NM32 Löschvermerke nicht angewandt · NM33 Berichtigungsvermerk ignoriert · NM34 Löschvermerke vom Client · NM35 Freitext-Grund ·
+NM36 Aktenzeichen ohne Muster · NM37 Betriebsrat ohne Positivkatalog · NM38 Auskunft ohne Positivkatalog · NM39
+zustandsbegründende Einträge ungeschützt · NM40 Kürzung ohne Protokollzeile · NM41 ungeprüfte Protokollregel löscht · NM42
+Altstand fail-open · NM43 unveränderter Regelwert neu geprüft · NM44 unveränderter Schalter neu geprüft · NM45 Listen ohne
+eindeutige id · NM46 Statusvertrag ohne `ausnahmeUi` · **NM47 unbekannter Status gilt als geprüft** · NM48 kein Ablauf · NM49
+geprüft ohne Metadaten · NM50 Migration lässt „achtung" ungeprüft · NM51 Anwenden ohne Prüfnachweis · NM52 Nebenbefund
+Planfreigabe-Feld aus der Sicherung (getötet von `sicherungen.test.js`) · NM53 Angabe vor der Änderung mitgeschickt · NM54
+Leitung leert das Protokoll. `tsc -p jsconfig.json` und eslint (geänderte Dateien) ohne Fehler. `acc45-status` lokal wie
+zuvor 1 rot (CRLF im Windows-Arbeitsbaum, Abschnitt 11), im CI maßgeblich.
+
+### 12.6 Offen
+
+- **FN-32 (Betreiber/Fach):** Prüfung und Freigabe der beiden Aufbewahrungsregeln (AUFB-MODULDATEN-01, AUFB-MODULPROTOKOLL-01;
+  § 21 BewachV, Dokumentationsart W3). Bis dahin löscht der Löschlauf weder Modul-Personenfelder noch Modulprotokoll
+  (Hinweis „Prüfung/Freigabe erforderlich"); an der Protokollgrenze (2000) gehen dann nur Ausschalten und Art. 16/17.
+- **FN-33 (Kunde/Kanzlei):** Kategorie Art. 18 (Einschränkung) als Anlass für Berichtigung oder Löschung — fachlich zu
+  bestätigen; Grund und Aktenzeichen sieht der Betriebsrat nicht (Positivkatalog), `von` weiter Einordnung **B**.
+- **Grenze Löschvermerk:** Er hindert die Wiederherstellung, nicht eine spätere bewusste Neuplanung desselben Schlüssels
+  (Person|Tag) bei wieder eingeschaltetem Modul. Ein Code-Rollback auf eine Fassung vor diesem Nachtrag kennt die Vermerke nicht.
+  Löschvermerke haben keine eigene Frist (gehasht, ohne Klartext; Frist mit FN-32).
+- Die zustandsbegründenden Protokolleinträge (N1) behalten `von` auch nach Ablauf der Frist.
+- **Nebenbeobachtung (nicht Teil des Auftrags):** `aufbewahrung.stammdatenMonate`/`gruendeMonate` sind wie zuvor ohne
+  Rechteprüfung durch Planung/Leitung schreibbar (rechte.mjs); die Plandatenfrist hat eine Untergrenze, diese beiden nicht.
+- Konflikte (informativ, nicht gelöst): wp16 (aufbewahrung.mjs, daten.mjs, sicht.mjs, App.jsx), wp19-10-industrie
+  (Regelstatus-Vokabular, jetzt über `regelstatus.mjs`), wp19-0b-g9 (rebase).

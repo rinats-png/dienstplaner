@@ -40,6 +40,7 @@
 /* Gegenseitiger Import mit dem Katalog: beide lesen einander nur in
    Funktionen, nie beim Laden. */
 import { REGELN_BRANCHEN } from "./branchenkatalog.mjs";
+import { kanonischerStatus, regelGeprueft } from "./regelstatus.mjs";
 
 /**
  * Status eines Moduls.
@@ -82,6 +83,7 @@ export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswah
  *   datenfelder: string[],
  *   personenfelder?: string[],
  *   sachfelder?: string[],
+ *   ausnahmeUi?: boolean,
  *   beschreibung?: string,
  *   abnahme?: { datum: string, nachweis: string },
  * }} BranchenModul
@@ -100,6 +102,9 @@ export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswah
  * sachfelder    Datenfelder ohne Personenbezug (Liste von Datensätzen mit `id`)
  *               Jedes Datenfeld steht in genau einer der beiden Listen, bevor das Modul
  *               „geplant" verlässt (pruefeModulStatus).
+ * ausnahmeUi    Die Oberfläche des Ausnahmewegs (Art. 16/17/18, src/module/kern.jsx, AusnahmewegKarte)
+ *               deckt die Datenfelder des Moduls ab (vom Modulpaket geprüft). Ohne sie verlässt
+ *               ein Modul mit Datenfeldern „geplant" nicht (pruefeModulStatus, zweiter Opus-Review).
  */
 
 /**
@@ -348,15 +353,19 @@ export function pruefeModulEinstellung(id, wert, liste = BRANCHENMODULE) {
 
      - Stufe höchstens „achtung" — nie „recht": eine Branchenregel wird nie
        automatisch als Rechtsverstoß eingestuft (G4), und nie eine Sperre (G5).
-     - „achtung" nur mit Prüfstatus „verified"; „verified" nur mit Quelle,
+     - „achtung" nur mit Prüfstatus „geprueft"; „geprueft" nur mit Quelle,
        Fundstelle, Version und Gültigkeitsbeginn (dokumentierte Quellenprüfung).
-     - Ungeprüft („provisional") bleibt jeder Wert ein Hinweis und wird nie als
-       geltendes Recht dargestellt.
+     - Ungeprüft („vorlaeufig") bleibt jeder Wert ein Hinweis und wird nie als
+       geltendes Recht dargestellt; „zurueckgezogen" wirkt nie.
+     - Prüfstatus im kanonischen Schema (server/lib/regelstatus.mjs). Gespeicherte
+       Altwerte (provisional/verified, Stand vor dem zweiten Opus-Review) bildet
+       regelwertMigrieren über den geprüften Adapter ab; gesendet werden nur
+       kanonische Werte. „abgelaufen" ergibt sich aus gueltigBis.
      - Schreiben nur mit org.edit; Wann/Wer der Änderung und der Prüfung setzt
        der Server (geaendertAm/-Von, geprueftAm/-Von).
    -------------------------------------------------------------------------- */
 export const REGELWERT_STUFEN = Object.freeze(["hinweis", "achtung"]);
-export const REGELWERT_PRUEFSTATUS = Object.freeze(["provisional", "verified"]);
+export const REGELWERT_PRUEFSTATUS = Object.freeze(["vorlaeufig", "geprueft", "zurueckgezogen"]);
 const REGELWERT_FELDER = ["wert", "quelle", "fundstelle", "version", "gueltigAb", "gueltigBis", "pruefstatus", "stufe",
   "geprueftAm", "geprueftVon", "geaendertAm", "geaendertVon"];
 const REGELWERT_SERVER = ["geprueftAm", "geprueftVon", "geaendertAm", "geaendertVon"];
@@ -382,7 +391,7 @@ export function pruefeRegelwert(regelId, w, katalog = REGELN_BRANCHEN) {
   if (fremd) return `${wo}: Feld „${String(fremd).slice(0, 40)}" ist unbekannt.`;
   if (w.stufe === "recht") return `${wo}: „recht" ist für Branchenregeln nicht zulässig — höchstens „achtung" (keine automatische Einstufung als Rechtsverstoß).`;
   if (!REGELWERT_STUFEN.includes(w.stufe)) return `${wo}: Stufe „hinweis" oder „achtung" erwartet.`;
-  if (!REGELWERT_PRUEFSTATUS.includes(w.pruefstatus)) return `${wo}: Prüfstatus „provisional" oder „verified" erwartet.`;
+  if (!REGELWERT_PRUEFSTATUS.includes(w.pruefstatus)) return `${wo}: Prüfstatus „vorlaeufig", „geprueft" oder „zurueckgezogen" erwartet.`;
   if (!(w.wert === undefined || w.wert === null || typeof w.wert === "boolean" || (typeof w.wert === "number" && Number.isFinite(w.wert))
     || (typeof w.wert === "string" && w.wert.length <= 200))) return `${wo}: Wert muss Zahl, Wahrheitswert oder Text (höchstens 200 Zeichen) sein.`;
   if (!textFeld(w.quelle, 200)) return `${wo}: Quelle höchstens 200 Zeichen.`;
@@ -391,9 +400,9 @@ export function pruefeRegelwert(regelId, w, katalog = REGELN_BRANCHEN) {
   for (const k of ["gueltigAb", "gueltigBis"])
     if (!(w[k] === undefined || w[k] === null || gueltigerTag(w[k]))) return `${wo}: ${k} ist kein gültiger Tag (JJJJ-MM-TT).`;
   if (gueltigerTag(w.gueltigAb) && gueltigerTag(w.gueltigBis) && w.gueltigBis < w.gueltigAb) return `${wo}: gültig bis liegt vor gültig ab.`;
-  if (w.stufe === "achtung" && w.pruefstatus !== "verified")
-    return `${wo}: „achtung" nur für geprüfte Werte (Prüfstatus „verified", dokumentierte Quellenprüfung).`;
-  if (w.pruefstatus === "verified") {
+  if (w.stufe === "achtung" && w.pruefstatus !== "geprueft")
+    return `${wo}: „achtung" nur für geprüfte Werte (Prüfstatus „geprueft", dokumentierte Quellenprüfung).`;
+  if (w.pruefstatus === "geprueft") {
     if (!voll(w.quelle)) return `${wo}: geprüft nur mit Quelle.`;
     if (!voll(w.fundstelle)) return `${wo}: geprüft nur mit Fundstelle.`;
     if (!voll(w.version)) return `${wo}: geprüft nur mit Version.`;
@@ -410,12 +419,30 @@ export function pruefeRegelwert(regelId, w, katalog = REGELN_BRANCHEN) {
  * @param {string} tag JJJJ-MM-TT
  */
 export function regelwertFuer(m, regelId, tag) {
-  const rw = m && istObjekt(m.einstellungen) && istObjekt(m.einstellungen.regelwerte) && hat(m.einstellungen.regelwerte, regelId)
+  const roh = m && istObjekt(m.einstellungen) && istObjekt(m.einstellungen.regelwerte) && hat(m.einstellungen.regelwerte, regelId)
     ? m.einstellungen.regelwerte[regelId] : null;
+  const rw = regelwertMigrieren(roh);
   if (!rw || pruefeRegelwert(regelId, rw)) return null;
   if (gueltigerTag(rw.gueltigAb) && gueltigerTag(tag) && tag < rw.gueltigAb) return null;
   if (gueltigerTag(rw.gueltigBis) && gueltigerTag(tag) && tag > rw.gueltigBis) return null;
   return rw;
+}
+
+/**
+ * Ein gespeicherter Regelwert im kanonischen Schema: Altwerte „provisional"/„verified"
+ * über den Adapter (regelstatus.mjs, Herkunft „wp19-0"); „verified" wird nur dann
+ * „geprueft", wenn Quelle, Fundstelle, Fassung, gültig ab und Prüfzeitpunkt vorliegen.
+ * Unbekanntes → „vorlaeufig" (fail-closed), eine „achtung" ohne Prüfung → „hinweis".
+ * Kanonische Werte bleiben, wie sie sind.
+ * @param {any} rw
+ */
+export function regelwertMigrieren(rw) {
+  if (!istObjekt(rw) || REGELWERT_PRUEFSTATUS.includes(rw.pruefstatus)) return rw;
+  const s = kanonischerStatus({ ...rw, fassung: rw.version }, { herkunft: "wp19-0" });
+  /** @type {Record<string, any>} */
+  const aus = { ...rw, pruefstatus: s };
+  if (s !== "geprueft" && aus.stufe === "achtung") aus.stufe = "hinweis";
+  return aus;
 }
 
 /**
@@ -430,7 +457,7 @@ export function regelwertFuer(m, regelId, tag) {
 export function regelwertAnwenden(m, befund, tag) {
   if (!befund || befund.offen || befund.art !== "branche") return befund;
   const rw = regelwertFuer(m, befund.regelId, tag);
-  if (!rw || rw.pruefstatus !== "verified" || rw.stufe !== "achtung" || !voll(rw.geprueftAm)) return befund;
+  if (!rw || rw.stufe !== "achtung" || !regelGeprueft({ ...rw, fassung: rw.version }, { heute: tag })) return befund;
   return { ...befund, stufe: "achtung",
     quelle: `${rw.quelle} ${rw.fundstelle} (Fassung ${rw.version}; vom Betrieb geprüft)`.slice(0, 300) };
 }
@@ -445,21 +472,48 @@ export function regelwertAnwenden(m, befund, tag) {
    Art. 16/17 DSGVO (modulschreibwege.mjs) werden auch an der Grenze noch
    protokolliert — beides geht immer.
 
-   Aufbewahrung (G3, Review-Nachtrag): Einträge gelten MODULPROTOKOLL_FRIST
-   (Entwurfswert, zu bestätigen; je Betrieb `aufbewahrung.modulprotokollMonate`).
-   Ältere gehen im Löschlauf (aufbewahrung.mjs) und an der Grenze vor dem
-   Anhängen — keine Dauersperre und keine unbegrenzte Aufbewahrung. Sind
-   alle Einträge noch in der Frist, bleibt die Grenze eine befristete
-   Sperre bis zum Ablauf der ältesten (nur Ausschalten und Art. 16/17 gehen).
+   Aufbewahrung (G3, Review-Nachträge): Das Modulprotokoll ist Auditnachweis
+   (Mitbestimmungsbestätigungen, Aktivierungen, Art.-16/17-Vorgänge). Gelöscht
+   wird daraus nur nach einer GEPRÜFTEN Aufbewahrungsregel (MODULPROTOKOLL_FRIST,
+   Regelstatus kanonisch, regelstatus.mjs) — heute „vorlaeufig" (FN-32), also
+   löscht der Löschlauf nichts und meldet „Prüfung/Freigabe erforderlich".
+   Auch nach geprüfter Regel bleibt je Modul und Regel der letzte
+   zustandsbegründende Eintrag (Schalter, Bestätigung, Parameter, Regelwert).
+   Eine Frist je Betrieb gibt es nicht (zweiter Opus-Review M1: Planung und
+   Leitung hätten das Audit auf einen Monat stellen können). An der Grenze
+   werden zuerst fällige Einträge entfernt (nur mit geprüfter Regel); sonst
+   bleibt die Grenze eine Sperre — Ausschalten und Art. 16/17 gehen immer.
    -------------------------------------------------------------------------- */
 export const MODULPROTOKOLL_GRENZE = 2000;
-/** Aufbewahrung des Modulprotokolls. Entwurfswert wie die übrigen Fristvorgaben (aufbewahrung.mjs VORGABE) — fachlich zu bestätigen (FN-32). */
-export const MODULPROTOKOLL_FRIST = Object.freeze({ monate: 24, stand: "Entwurfswert, zu bestätigen (FN-32)" });
+/** Aufbewahrungsregel des Modulprotokolls — Entwurfswert, fachlich zu bestätigen (FN-32). Löscht erst mit Prüfstatus „geprueft". */
+export const MODULPROTOKOLL_FRIST = Object.freeze({ regelId: "AUFB-MODULPROTOKOLL-01", monate: 24, pruefstatus: "vorlaeufig",
+  quelle: "Art. 5 Abs. 1 lit. e und Abs. 2 DSGVO (Speicherbegrenzung, Rechenschaft); § 87 Abs. 1 Nr. 6 BetrVG (Nachweis der Einführung)",
+  fundstelle: "Frist fachlich offen (FN-32)", fassung: "Entwurf 2026-11-03", stand: "Entwurfswert, zu bestätigen (FN-32)" });
+/** Aufbewahrungsregel der Personenfelder von Branchenmodulen (postenPlan, bereichsPlan …) — Entwurf, ungeprüft. */
+export const MODULDATEN_AUFBEWAHRUNG = Object.freeze({ regelId: "AUFB-MODULDATEN-01", monate: 24, pruefstatus: "vorlaeufig",
+  quelle: "§ 16 Abs. 2 ArbZG, § 17 Abs. 1 MiLoG (Plandatenfrist, entsprechend); § 21 BewachV (Bewachungsgewerbe) fachlich zu klären",
+  fundstelle: "Frist je Modul und Dokumentationsart fachlich offen (FN-32)", fassung: "Entwurf 2026-11-03",
+  stand: "Entwurfswert, zu bestätigen (FN-32)" });
 
-/** Die Frist des Betriebs in Monaten: `aufbewahrung.modulprotokollMonate` (ganze Zahl 1–600), sonst die Vorgabe. */
-export function modulprotokollMonate(m) {
-  const w = m && istObjekt(m.aufbewahrung) ? Number(m.aufbewahrung.modulprotokollMonate) : NaN;
+/** Die Frist des Modulprotokolls in Monaten — die Regel, keine Übersteuerung je Betrieb (M1). */
+export function modulprotokollMonate(_m, regel = MODULPROTOKOLL_FRIST) {
+  void _m;
+  const w = regel && Number(regel.monate);
   return Number.isInteger(w) && w >= 1 && w <= 600 ? w : MODULPROTOKOLL_FRIST.monate;
+}
+
+/** Schlüssel der Zustände, die ein Eintrag begründet (N1): Schalter, Bestätigung, Parameter je Modul, Regelwert je Regel. */
+function zustandsSchluessel(x) {
+  if (!istObjekt(x)) return [];
+  const mod = String(x.modul);
+  switch (x.art) {
+    case "eingeschaltet": return x.grundlage ? [`schalter|${mod}`, `bestaetigung|${mod}`] : [`schalter|${mod}`];
+    case "ausgeschaltet": return [`schalter|${mod}`];
+    case "mitbestimmung": return [`bestaetigung|${mod}`];
+    case "parameter": return [`parameter|${mod}`];
+    case "regelwert": case "regelwert-entfernt": return [`regel|${String(x.regelId)}`];
+    default: return [];
+  }
 }
 
 /** Stichtag (JJJJ-MM-TT) `monate` Monate vor `heute` (JJJJ-MM-TT oder ISO). */
@@ -472,18 +526,28 @@ function stichtagVor(heute, monate) {
 }
 
 /**
- * Die Einträge des Modulprotokolls, die nach der Frist des Betriebs fällig
- * sind (Zeitpunkt vor dem Stichtag), und die übrigen. Einträge ohne lesbaren
- * Zeitpunkt bleiben (lieber behalten als still löschen; aufbewahrung.mjs).
- * @param {any} m Betrieb (für Frist und Protokoll)
+ * Die Einträge des Modulprotokolls, die nach der Aufbewahrungsregel fällig
+ * sind (Zeitpunkt vor dem Stichtag), und die übrigen. Fällig ist nur, was
+ * (a) die Regel als „geprueft" trägt (regelstatus.mjs; sonst zurückgehalten),
+ * (b) einen lesbaren Zeitpunkt hat und (c) nicht der letzte
+ * zustandsbegründende Eintrag seines Moduls bzw. seiner Regel ist (N1).
+ * @param {any} m Betrieb (Protokoll)
  * @param {string} heute JJJJ-MM-TT
- * @returns {{ faellig: number, rest: any[] }}
+ * @param {{ regel?: any }} [o] Aufbewahrungsregel (Vorgabe MODULPROTOKOLL_FRIST)
+ * @returns {{ faellig: number, rest: any[], zurueckgehalten: number }}
  */
-export function modulprotokollFaellig(m, heute) {
+export function modulprotokollFaellig(m, heute, { regel = MODULPROTOKOLL_FRIST } = {}) {
   const liste = m && istObjekt(m.einstellungen) && Array.isArray(m.einstellungen.modulprotokoll) ? m.einstellungen.modulprotokoll : [];
-  const stichtag = stichtagVor(heute, modulprotokollMonate(m));
-  const rest = liste.filter((x) => !(istObjekt(x) && typeof x.am === "string" && TAG.test(x.am.slice(0, 10)) && x.am.slice(0, 10) < stichtag));
-  return { faellig: liste.length - rest.length, rest };
+  const stichtag = stichtagVor(heute, modulprotokollMonate(m, regel));
+  /** @type {Map<string, number>} */
+  const letzte = new Map();
+  liste.forEach((x, i) => { for (const k of zustandsSchluessel(x)) letzte.set(k, i); });
+  const tragend = new Set(letzte.values());
+  const alt = (x, i) => istObjekt(x) && typeof x.am === "string" && TAG.test(x.am.slice(0, 10)) && x.am.slice(0, 10) < stichtag && !tragend.has(i);
+  const n = liste.filter(alt).length;
+  if (!regelGeprueft(regel, { heute: String(heute).slice(0, 10) })) return { faellig: 0, rest: liste, zurueckgehalten: n };
+  const rest = liste.filter((x, i) => !alt(x, i));
+  return { faellig: liste.length - rest.length, rest, zurueckgehalten: 0 };
 }
 
 /* --------------------------------------------------------------------------
@@ -495,12 +559,19 @@ export function modulprotokollFaellig(m, heute) {
    /api/bestand-anlegen (leer, test, demo, eigener Inhalt) —, beginnt ohne:
    Was er mitbringt, wird verworfen, nicht geprüft.
    -------------------------------------------------------------------------- */
-export const MODULEINSTELLUNGEN_FELDER = Object.freeze(["branchenmodule", "regelwerte", "modulprotokoll"]);
+/* moduldatenLoeschvermerke: Löschvermerke des Ausnahmewegs (modulschreibwege.mjs) — nur der Server
+   schreibt sie; sie überstehen Wiederherstellen (sicherungen.mjs) und Migration. */
+export const MODULEINSTELLUNGEN_FELDER = Object.freeze(["branchenmodule", "regelwerte", "modulprotokoll", "moduldatenLoeschvermerke"]);
 
-/** Der Betrieb ohne Moduleinstellungen; ohne Bedarf dasselbe Objekt. */
+/** Der Betrieb ohne Moduleinstellungen und ohne Ausnahmeangabe (H1); ohne Bedarf dasselbe Objekt. */
 export function moduleinstellungenVerwerfen(m) {
-  if (!istObjekt(m) || !istObjekt(m.einstellungen) || !MODULEINSTELLUNGEN_FELDER.some((f) => hat(m.einstellungen, f))) return m;
-  return { ...m, einstellungen: ohne(m.einstellungen, MODULEINSTELLUNGEN_FELDER) };
+  if (!istObjekt(m)) return m;
+  const angabe = hat(m, "moduldatenAusnahme");
+  const felder = istObjekt(m.einstellungen) && MODULEINSTELLUNGEN_FELDER.some((f) => hat(m.einstellungen, f));
+  if (!angabe && !felder) return m;
+  const aus = felder ? { ...m, einstellungen: ohne(m.einstellungen, MODULEINSTELLUNGEN_FELDER) } : { ...m };
+  delete aus.moduldatenAusnahme;
+  return aus;
 }
 
 /** Jeder Betrieb eines Bestands ohne Moduleinstellungen; ohne Bedarf dasselbe Objekt. */
@@ -539,7 +610,7 @@ const ohne = (o, felder) => Object.fromEntries(Object.entries(istObjekt(o) ? o :
  * @param {readonly BranchenModul[]} [liste]
  * @returns {{ mandant: any, grund?: undefined } | { grund: string, mandant?: undefined }}
  */
-export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste = BRANCHENMODULE) {
+export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste = BRANCHENMODULE, { protokollRegel = MODULPROTOKOLL_FRIST } = {}) {
   if (!istObjekt(neuM)) return { mandant: neuM };
   const altE = altM && istObjekt(altM.einstellungen) ? altM.einstellungen : {};
   /* Fehlende oder unförmige einstellungen ändern nichts (Lehre WP-23b): Die
@@ -552,8 +623,9 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   const e = { ...neuM.einstellungen };
   const zurueck = (k) => { if (hat(altE, k)) e[k] = altE[k]; else delete e[k]; };
   const fertig = () => ({ mandant: { ...neuM, einstellungen: e } });
-  /* Das Protokoll schreibt nur der Server. */
+  /* Das Protokoll und die Löschvermerke schreibt nur der Server. */
   zurueck("modulprotokoll");
+  zurueck("moduldatenLoeschvermerke");
   if (!darfOrgEdit) { zurueck("branchenmodule"); zurueck("regelwerte"); return fertig(); }
 
   const jetzt = new Date().toISOString();
@@ -570,10 +642,13 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
     /** @type {Record<string, ModulEinstellung>} */
     const ergebnis = alt ? { ...alt } : {};
     for (const [id, wert] of Object.entries(neu)) {
+      const vorher = alt && hat(alt, id) && istObjekt(alt[id]) ? alt[id] : null;
+      /* N3: Unverändert Zurückgeschicktes wird nicht neu geprüft — ändert sich Registry oder
+         Vokabular, sperrt ein gespeicherter Stand sonst jedes Speichern der Leitung. */
+      if (vorher && gleich(wert, vorher)) continue;
       const fehler = pruefeModulEinstellung(id, wert, liste);
       if (fehler) return { grund: fehler };
       const mod = /** @type {BranchenModul} */ (modulVon(id, liste));
-      const vorher = alt && hat(alt, id) && istObjekt(alt[id]) ? alt[id] : null;
       /* G10: Ausschalten eines nie geschalteten Moduls legt nichts an — sonst
          machte ein bloßes { an: false } die Daten des Moduls nur lesbar. */
       if (!vorher && wert.an === false) continue;
@@ -603,9 +678,10 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
         continue;                                                          // unverändert: Wann und Wer bleiben
       /** @type {ModulEinstellung & { mitbestimmung?: any }} */
       const eintrag = { an: wert.an, geaendertAm: jetzt, geaendertVon: wer };
-      /* Erstes echtes Einschalten: vom Server, danach behalten — Grundlage für Nur-Lesen (G3). */
-      const eingeschaltetAm = vorher && typeof vorher.eingeschaltetAm === "string" && vorher.eingeschaltetAm
-        ? vorher.eingeschaltetAm : (wert.an === true ? jetzt : null);
+      /* Erstes echtes Einschalten: vom Server, danach behalten — Grundlage für Nur-Lesen (G3).
+         N2: Ein Altstand { an: true } ohne eingeschaltetAm war eingeschaltet — übernommen aus
+         geaendertAm (sonst jetzt), damit er nach dem Ausschalten nur lesbar wird (fail-closed). */
+      const eingeschaltetAm = (vorher && eingeschaltetSeit(vorher)) || (wert.an === true ? jetzt : null);
       if (eingeschaltetAm) eintrag.eingeschaltetAm = eingeschaltetAm;
       if (Object.keys(parameter).length) eintrag.parameter = { ...parameter };
       if (neueBestaetigung) eintrag.mitbestimmung = { grundlage: gesendet.grundlage.trim(), bestaetigtAm: jetzt, bestaetigtVon: wer };
@@ -633,13 +709,14 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
         if (vorher) { delete ergebnis[id]; ereignisse.push({ art: "regelwert-entfernt", regelId: id, am: jetzt, von: wer }); }
         continue;
       }
+      const inhalt = ohne(w, REGELWERT_SERVER);
+      /* N3: unverändert (auch ein Altwert im früheren Vokabular) — nicht neu geprüft, Wann und Wer bleiben. */
+      if (vorher && gleich(ohne(vorher, REGELWERT_SERVER), inhalt)) continue;
       const fehler = pruefeRegelwert(id, w);
       if (fehler) return { grund: fehler };
-      const inhalt = ohne(w, REGELWERT_SERVER);
-      if (vorher && gleich(ohne(vorher, REGELWERT_SERVER), inhalt)) continue;   // unverändert: Wann und Wer bleiben
       /** @type {Record<string, any>} */
       const eintrag = { ...inhalt, geaendertAm: jetzt, geaendertVon: wer };
-      if (w.pruefstatus === "verified") { eintrag.geprueftAm = jetzt; eintrag.geprueftVon = wer; }
+      if (w.pruefstatus === "geprueft") { eintrag.geprueftAm = jetzt; eintrag.geprueftVon = wer; }
       ergebnis[id] = eintrag;
       ereignisse.push({ art: "regelwert", regelId: id, am: jetzt, von: wer, stufe: w.stufe, pruefstatus: w.pruefstatus });
     }
@@ -650,10 +727,11 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   if (ereignisse.length) {
     let bisher = Array.isArray(altE.modulprotokoll) ? altE.modulprotokoll : [];
     /* An der Grenze zuerst die nach der Frist fälligen Einträge entfernen (statt Dauersperre). */
-    if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10)).rest;
+    if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
     if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "ausgeschaltet"))
       return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Ausschalten geht weiter; `
-        + "alles andere wieder, sobald die ältesten Einträge ihre Aufbewahrungsfrist erreicht haben (Einträge in der Frist werden nicht verdrängt)." };
+        + "alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen "
+        + "(Einträge in der Frist und zustandsbegründende Einträge werden nicht verdrängt; Prüfung/Freigabe der Regel erforderlich, FN-32)." };
     e.modulprotokoll = [...bisher, ...ereignisse];
   }
   return fertig();
@@ -678,6 +756,13 @@ export function modulProtokollZeilen(altB, neuB) {
   const zeilen = [];
   for (const m of betriebe(neuB)) {
     const bekannt = altP.get(m.id) || new Set();
+    /* N1: An der Grenze gekürzt (branchenmoduleZusammen) — dass und wie viele, ohne Inhalt. */
+    if (altP.has(m.id)) {
+      const jetzt = new Set(protokollVon(m).map((x) => JSON.stringify(x)));
+      let weg = 0;
+      for (const k of bekannt) if (!jetzt.has(k)) weg++;
+      if (weg) zeilen.push(`Modulprotokoll: ${weg} ${weg === 1 ? "Eintrag" : "Einträge"} nach Ablauf der Aufbewahrungsfrist entfernt`);
+    }
     for (const x of protokollVon(m)) {
       if (!istObjekt(x) || bekannt.has(JSON.stringify(x))) continue;
       if (x.art === "regelwert") zeilen.push(`Regelwert ${kennung(x.regelId)}: ${REGELWERT_STUFEN.includes(x.stufe) ? x.stufe : "?"}, ${REGELWERT_PRUEFSTATUS.includes(x.pruefstatus) ? x.pruefstatus : "?"}`);
@@ -695,6 +780,23 @@ export function modulProtokollZeilen(altB, neuB) {
   }
   return zeilen.slice(0, 50);
 }
+
+/* --------------------------------------------------------------------------
+   AUSNAHMEWEG ART. 16/17/18 — Kategorien (Schreibweg: modulschreibwege.mjs,
+   Oberfläche: src/module/kern.jsx). Hier, damit Server und Oberfläche
+   dieselben Werte lesen (modulschreibwege.mjs ist nur Server).
+   -------------------------------------------------------------------------- */
+/** Gründe als Kategorie (zweiter Opus-Review M4) — Anzeige; gespeichert wird die Kennung. */
+export const AUSNAHME_GRUENDE = Object.freeze({
+  art16: "Berichtigung (Art. 16 DSGVO)",
+  art17: "Löschung (Art. 17 DSGVO)",
+  art18: "Einschränkung der Verarbeitung (Art. 18 DSGVO)",
+});
+/** Welche Art zu welchem Grund passt: Art. 16 berichtigt, Art. 17 löscht, Art. 18 kann beides auslösen. */
+export const AUSNAHME_GRUND_ARTEN = Object.freeze({ art16: Object.freeze(["berichtigung"]), art17: Object.freeze(["loeschung"]),
+  art18: Object.freeze(["berichtigung", "loeschung"]) });
+/** Aktenzeichen: Buchstaben (ohne Umlaute), Ziffern, Bindestrich; mindestens eine Ziffer; höchstens 20 Zeichen — keine Namen. */
+export const AKTENZEICHEN_MUSTER = /^(?=[^\d]*\d)[A-Za-z0-9-]{1,20}$/;
 
 /* --------------------------------------------------------------------------
    ZUSTAND, NUR-LESEN, SICHT
@@ -734,8 +836,31 @@ export function modulZustand(m, id, liste = BRANCHENMODULE) {
 export function modulNurLesen(m, id, liste = BRANCHENMODULE) {
   const mod = modulVon(id, liste);
   const e = modulEinstellung(m, id);
-  if (!mod || !e || typeof e.eingeschaltetAm !== "string" || !e.eingeschaltetAm || modulAktiv(m, id, liste)) return false;
+  if (!mod || !e || !eingeschaltetSeit(e) || modulAktiv(m, id, liste)) return false;
   return e.an === false || mod.status !== "geplant";
+}
+
+/**
+ * Seit wann das Modul (erstmals echt) eingeschaltet war — vom Server gesetzt. Altstand (N2):
+ * { an: true } ohne eingeschaltetAm gilt als eingeschaltet (seit geaendertAm, sonst „unbekannt").
+ * { an: false } ohne eingeschaltetAm bleibt ohne (G10: ein bloßes Aus sperrt nichts).
+ * @param {any} e gespeicherte Einstellung
+ * @returns {string | null}
+ */
+function eingeschaltetSeit(e) {
+  if (!istObjekt(e)) return null;
+  if (typeof e.eingeschaltetAm === "string" && e.eingeschaltetAm) return e.eingeschaltetAm;
+  if (e.an === true) return typeof e.geaendertAm === "string" && e.geaendertAm ? e.geaendertAm : "unbekannt";
+  return null;
+}
+
+/* Positivkatalog des Modulprotokolls für den Betriebsrat und die Auskunft (M4/A5): kein Grund, kein
+   Aktenzeichen, kein Freitext außer der Mitbestimmungsgrundlage (G6/G7, Einordnung FN-33). */
+const PROTOKOLL_POSITIV = Object.freeze(["art", "modul", "regelId", "feld", "anzahl", "stufe", "pruefstatus", "grundlage", "am", "von"]);
+/** Das Modulprotokoll ohne Felder außerhalb des Positivkatalogs. */
+export function modulprotokollPositiv(liste) {
+  return (Array.isArray(liste) ? liste : []).filter(istObjekt)
+    .map((x) => Object.fromEntries(PROTOKOLL_POSITIV.filter((k) => hat(x, k)).map((k) => [k, x[k]])));
 }
 
 /**
@@ -750,9 +875,14 @@ export function modulNurLesen(m, id, liste = BRANCHENMODULE) {
 export function moduleinstellungenSicht(e, rolle) {
   if (!istObjekt(e)) return e;
   const aus = { ...e };
+  /* Löschvermerke (gehasht) braucht keine eingeschränkte Rolle. */
+  delete aus.moduldatenLoeschvermerke;
   /* Der Betriebsrat prüft Einführung und Anwendung technischer Einrichtungen (§ 87 Abs. 1 Nr. 6 BetrVG):
-     Aktivierungsstand, Bestätigung und Protokoll bekommt er ganz. */
-  if (rolle === "betriebsrat") return aus;
+     Aktivierungsstand, Bestätigung und Protokoll — das Protokoll nach Positivkatalog (ohne Grund/Aktenzeichen). */
+  if (rolle === "betriebsrat") {
+    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll);
+    return aus;
+  }
   delete aus.modulprotokoll;
   if (istObjekt(e.branchenmodule)) aus.branchenmodule = Object.fromEntries(Object.entries(e.branchenmodule).map(([k, x]) => {
     if (!istObjekt(x)) return [k, x];
@@ -817,7 +947,7 @@ export function pruefeModulRegistry(liste = BRANCHENMODULE, { regelIds = null } 
  * @param {readonly any[]} [liste]
  * @returns {string[]}
  */
-export function pruefeModulStatus(liste = BRANCHENMODULE) {
+export function pruefeModulStatus(liste = BRANCHENMODULE, { ausnahmeOberflaeche = AUSNAHMEWEG_OBERFLAECHE } = {}) {
   const m = [];
   for (const x of liste) {
     if (!x || x.status === "geplant") continue;
@@ -832,6 +962,12 @@ export function pruefeModulStatus(liste = BRANCHENMODULE) {
       if (n !== 1) m.push(`${x.id}: Datenfeld „${f}" ist nicht eindeutig als Personen- oder Sachfeld eingeordnet — ohne Löschlauf und Ausnahmeweg kein Statuswechsel (G3)`);
     }
     for (const f of [...personen, ...sachen]) if (!daten.includes(f)) m.push(`${x.id}: „${f}" steht nicht in datenfelder`);
+    /* Zweiter Opus-Review: Berichtigung/Löschung müssen bedienbar sein, bevor ein Modul mit Daten „geplant" verlässt. */
+    if (daten.length && (x.ausnahmeUi !== true || ausnahmeOberflaeche !== true))
+      m.push(`${x.id}: ohne Oberfläche des Ausnahmewegs (Art. 16/17/18, ausnahmeUi) kein Statuswechsel`);
   }
   return m;
 }
+
+/** Gibt es die Kernoberfläche des Ausnahmewegs (src/module/kern.jsx, AusnahmewegKarte)? Prüfung: modul-kern-nachtrag2. */
+export const AUSNAHMEWEG_OBERFLAECHE = true;

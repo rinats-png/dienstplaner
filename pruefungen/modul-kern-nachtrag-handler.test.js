@@ -33,7 +33,7 @@ const roh = async (raum) => (await B.bestandLesen(laden(), raum)).bestand;
 const GEFAELSCHT = () => ({
   branchenmodule: { wachbuch: { an: true, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "x",
     mitbestimmung: { grundlage: "erfunden", bestaetigtAm: EIN, bestaetigtVon: "x" } } },
-  regelwerte: { "POSTEN-QUAL-01": { quelle: "Q", fundstelle: "F", version: "1", gueltigAb: "2026-01-01", pruefstatus: "verified",
+  regelwerte: { "POSTEN-QUAL-01": { quelle: "Q", fundstelle: "F", version: "1", gueltigAb: "2026-01-01", pruefstatus: "geprueft",
     stufe: "achtung", geprueftAm: EIN, geprueftVon: "x" } },
   modulprotokoll: [{ art: "eingeschaltet", modul: "wachbuch", am: EIN, von: "x", grundlage: "erfunden" }],
 });

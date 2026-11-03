@@ -23231,6 +23231,8 @@ function AppInnen() {
       setzeBranche: (b) => mUpd((m) => ({ ...m, branche: b, einheitLabel: brancheEinheit(b) }),
         "Branche gewechselt"),
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
+      /* WP-19.0: Ausnahmeweg Art. 16/17/18 — Änderung lokal, die Angabe einmalig beim Speichern (speicher.js). */
+      moduldatenAusnahme: (angabe, aendern, erkennt) => { if (!sitz || !sitz.mandant) return; SP.ausnahmeMitschicken(sitz.mandant.id, angabe, erkennt); mUpd(aendern, null); },
       /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
          sie gehören zum Löschkonzept, nicht zum Regelwerk. */
       /* Direkt in ein Kapitel springen — die Tour öffnet sich dort. */

@@ -43,7 +43,7 @@ const ZWOELF = ["posten", "wachbuch", "objektbericht", "bereichsplan", "pflegequ
 
 /* Zwei einschaltbare Testmodule: ohne und mit Mitbestimmungsbestätigung, je mit einem Datenfeld. */
 const TM = Object.freeze({ id: "testmodul", merkmal: "testmodul", name: "Testmodul", pakete: ["sicherheit"], status: "vorlaeufig",
-  abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], regelIds: [],
+  abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], ausnahmeUi: true, regelIds: [],
   parameter: { intervall: { typ: "zahl", standard: 120, min: 15, max: 720, vorlaeufig: true } } });
 const TMB = Object.freeze({ ...TM, id: "testwache", merkmal: "testwache", name: "Testwache", mitbestimmung: true, datenfelder: ["testWache"], personenfelder: ["testWache"], parameter: {} });
 const LISTE = [...BRANCHENMODULE, TM, TMB];
@@ -110,7 +110,7 @@ describe("G1 — nach Buchung verfügbar, zunächst aus", () => {
 describe("G2 — nur org.edit schaltet, serverseitig erzwungen", () => {
   const gespeichert = { wachbuch: { an: false, geaendertAm: "2026-11-01T08:00:00.000Z", geaendertVon: "l1" } };
   const RW = { quelle: "Betriebsvereinbarung", fundstelle: "§ 4", version: "2026-10", gueltigAb: "2026-01-01", gueltigBis: null,
-    pruefstatus: "verified", stufe: "achtung" };
+    pruefstatus: "geprueft", stufe: "achtung" };
 
   it("Beschäftigte, Betriebsrat und Planung: der gespeicherte Stand bleibt — Schalter, Regelwerte und Protokoll", () => {
     const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: gespeichert });
@@ -149,7 +149,7 @@ describe("G2 — nur org.edit schaltet, serverseitig erzwungen", () => {
       expect(w, r).toMatchObject({ ...RW, geprueftVon: SITZUNGEN[r].person, geaendertVon: SITZUNGEN[r].person });
       expect(w.geprueftAm, r).not.toBe("1999-01-01");
       expect(v.mandanten[0].einstellungen.modulprotokoll, r).toEqual([
-        { art: "regelwert", regelId: "POSTEN-QUAL-01", am: w.geaendertAm, von: SITZUNGEN[r].person, stufe: "achtung", pruefstatus: "verified" }]);
+        { art: "regelwert", regelId: "POSTEN-QUAL-01", am: w.geaendertAm, von: SITZUNGEN[r].person, stufe: "achtung", pruefstatus: "geprueft" }]);
     }
   });
   it("PUT-Umgehung: mitgeschicktes Wann/Wer, Bestätigungsvermerk und Protokoll zählen nicht", () => {
@@ -205,7 +205,7 @@ describe("Fehlende oder ungültige Felder ändern nichts still (Lehre aus WP-23b
   });
   it("ohne `branchenmodule`, `regelwerte`, `modulprotokoll` oder ganz ohne `einstellungen`: gespeicherter Stand", () => {
     const a = mitE(an(), { regelwerte: { "POSTEN-QUAL-01": { quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null,
-      pruefstatus: "verified", stufe: "achtung", geprueftAm: "t", geprueftVon: "l0", geaendertAm: "t", geaendertVon: "l0" } },
+      pruefstatus: "geprueft", stufe: "achtung", geprueftAm: "t", geprueftVon: "l0", geaendertAm: "t", geaendertVon: "l0" } },
     modulprotokoll: [{ art: "eingeschaltet", modul: "testmodul", am: "t0", von: "l0" }] });
     for (const neu of [{ ...a, einstellungen: { ruhezeit: 11 } }, { ...a, einstellungen: { ...a.einstellungen, branchenmodule: undefined } }]) {
       const e = { ...neu.einstellungen };
@@ -224,7 +224,7 @@ describe("Fehlende oder ungültige Felder ändern nichts still (Lehre aus WP-23b
     nein({ branchenmodule: "an" }, /Branchenmodul/);
     nein({ branchenmodule: { testmodul: { an: true, parameter: { intervall: 5 } } } }, /intervall/);
     nein({ regelwerte: [] }, /Regelwert/);
-    nein({ regelwerte: { "GIBT-ES-NICHT-01": { pruefstatus: "provisional", stufe: "hinweis" } } }, /unbekannt/);
+    nein({ regelwerte: { "GIBT-ES-NICHT-01": { pruefstatus: "vorlaeufig", stufe: "hinweis" } } }, /unbekannt/);
     nein({ regelwerte: { "POSTEN-QUAL-01": "achtung" } }, /Regelwert/);
   });
 });
@@ -347,7 +347,7 @@ describe("G4 — betrieblicher Regelwert: Aufwertung nur mit geprüfter Quelle, 
   const F = { id: "F", name: "Früh", start: "06:00", ende: "14:00" };
   const MO = "2026-11-02";
   const RW = { quelle: "Gefährdungsbeurteilung Presse", fundstelle: "Abschnitt 4.2", version: "2026-10", gueltigAb: "2026-01-01", gueltigBis: "2026-12-31",
-    pruefstatus: "verified", stufe: "achtung", geprueftAm: "2026-10-01T00:00:00.000Z", geprueftVon: "l1", geaendertAm: "2026-10-01T00:00:00.000Z", geaendertVon: "l1" };
+    pruefstatus: "geprueft", stufe: "achtung", geprueftAm: "2026-10-01T00:00:00.000Z", geprueftVon: "l1", geaendertAm: "2026-10-01T00:00:00.000Z", geaendertVon: "l1" };
   const mit = (rw) => ({ ...branchenbestand({ pakete: ["industrie"], branchenmodule: { anlagen: { an: true } } }).mandanten[0],
     betriebsmittel: [PRESSE], einstellungen: { ruhezeit: 11, branchenmodule: { anlagen: { an: true } }, ...(rw ? { regelwerte: { "ANLAGEN-BESETZUNG-01": rw } } : {}) } });
   const stufe = (m, d = MO) => branchenBefunde(m, F, d, { personenImDienst: () => [], module: AKTIV }).map((b) => b.stufe);
@@ -360,7 +360,7 @@ describe("G4 — betrieblicher Regelwert: Aufwertung nur mit geprüfter Quelle, 
     expect(b[0].quelle).not.toMatch(/Rechtsverstoß|verboten|unzulässig/);
   });
   it("ungeprüft, ohne Prüfvermerk, außerhalb der Gültigkeit oder mit ungültiger Form: Hinweis", () => {
-    expect(stufe(mit({ ...RW, pruefstatus: "provisional" }))).toEqual(["hinweis"]);
+    expect(stufe(mit({ ...RW, pruefstatus: "vorlaeufig" }))).toEqual(["hinweis"]);
     const ohneVermerk = { ...RW }; delete ohneVermerk.geprueftAm;
     expect(stufe(mit(ohneVermerk))).toEqual(["hinweis"]);
     expect(stufe(mit({ ...RW, gueltigAb: "2026-11-03" }))).toEqual(["hinweis"]);
@@ -373,28 +373,29 @@ describe("G4 — betrieblicher Regelwert: Aufwertung nur mit geprüfter Quelle, 
   it("Formprüfung beim Schreiben: Stufe, Prüfstatus, Quelle, Gültigkeit, Kennung", () => {
     const ok = (w) => expect(BM.pruefeRegelwert("ANLAGEN-BESETZUNG-01", w), JSON.stringify(w)).toBeNull();
     const nein = (w, muster) => expect(BM.pruefeRegelwert("ANLAGEN-BESETZUNG-01", w), JSON.stringify(w)).toMatch(muster);
-    ok({ pruefstatus: "provisional", stufe: "hinweis" });
-    ok({ pruefstatus: "provisional", stufe: "hinweis", quelle: "Tarif", wert: 2 });
-    ok({ quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null, pruefstatus: "verified", stufe: "achtung" });
-    nein({ pruefstatus: "provisional", stufe: "recht" }, /recht/);
-    nein({ pruefstatus: "provisional", stufe: "achtung", quelle: "q", fundstelle: "f" }, /geprüft/);
-    nein({ pruefstatus: "verified", stufe: "achtung", fundstelle: "f", version: "1", gueltigAb: "2026-01-01" }, /Quelle/);
-    nein({ pruefstatus: "verified", stufe: "achtung", quelle: "q", version: "1", gueltigAb: "2026-01-01" }, /Fundstelle/);
-    nein({ pruefstatus: "verified", stufe: "achtung", quelle: "q", fundstelle: "f", gueltigAb: "2026-01-01" }, /Version/);
-    nein({ pruefstatus: "verified", stufe: "achtung", quelle: "q", fundstelle: "f", version: "1" }, /gültig/i);
-    nein({ pruefstatus: "geprueft", stufe: "hinweis" }, /Prüfstatus/);
-    nein({ pruefstatus: "provisional", stufe: "hinweis", gueltigAb: "2026-13-01" }, /gültig/i);
-    nein({ pruefstatus: "provisional", stufe: "hinweis", gueltigAb: "2026-05-01", gueltigBis: "2026-04-01" }, /gültig/i);
-    nein({ pruefstatus: "provisional", stufe: "hinweis", sperrt: true }, /unbekannt/);
-    nein({ pruefstatus: "provisional", stufe: "hinweis", wert: { x: 1 } }, /Wert/);
-    nein({ pruefstatus: "provisional", stufe: "hinweis", quelle: "x".repeat(201) }, /Quelle/);
-    expect(BM.pruefeRegelwert("NICHT-DA-01", { pruefstatus: "provisional", stufe: "hinweis" })).toMatch(/unbekannt/);
+    ok({ pruefstatus: "vorlaeufig", stufe: "hinweis" });
+    ok({ pruefstatus: "vorlaeufig", stufe: "hinweis", quelle: "Tarif", wert: 2 });
+    ok({ quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null, pruefstatus: "geprueft", stufe: "achtung" });
+    nein({ pruefstatus: "vorlaeufig", stufe: "recht" }, /recht/);
+    nein({ pruefstatus: "vorlaeufig", stufe: "achtung", quelle: "q", fundstelle: "f" }, /geprüft/);
+    nein({ pruefstatus: "geprueft", stufe: "achtung", fundstelle: "f", version: "1", gueltigAb: "2026-01-01" }, /Quelle/);
+    nein({ pruefstatus: "geprueft", stufe: "achtung", quelle: "q", version: "1", gueltigAb: "2026-01-01" }, /Fundstelle/);
+    nein({ pruefstatus: "geprueft", stufe: "achtung", quelle: "q", fundstelle: "f", gueltigAb: "2026-01-01" }, /Version/);
+    nein({ pruefstatus: "geprueft", stufe: "achtung", quelle: "q", fundstelle: "f", version: "1" }, /gültig/i);
+    nein({ pruefstatus: "verified", stufe: "hinweis" }, /Prüfstatus/);              // Altvokabular: nur über den Adapter, nie gesendet
+    nein({ pruefstatus: "abgelaufen", stufe: "hinweis" }, /Prüfstatus/);            // ergibt sich, wird nie gesetzt
+    nein({ pruefstatus: "vorlaeufig", stufe: "hinweis", gueltigAb: "2026-13-01" }, /gültig/i);
+    nein({ pruefstatus: "vorlaeufig", stufe: "hinweis", gueltigAb: "2026-05-01", gueltigBis: "2026-04-01" }, /gültig/i);
+    nein({ pruefstatus: "vorlaeufig", stufe: "hinweis", sperrt: true }, /unbekannt/);
+    nein({ pruefstatus: "vorlaeufig", stufe: "hinweis", wert: { x: 1 } }, /Wert/);
+    nein({ pruefstatus: "vorlaeufig", stufe: "hinweis", quelle: "x".repeat(201) }, /Quelle/);
+    expect(BM.pruefeRegelwert("NICHT-DA-01", { pruefstatus: "vorlaeufig", stufe: "hinweis" })).toMatch(/unbekannt/);
     /* Nur Regeln der Branchenmodule — ein betrieblicher Wert hebt keine Gesetzesregel des Kerns an. */
-    expect(BM.pruefeRegelwert("ARBZG-RUHE-01", { pruefstatus: "provisional", stufe: "hinweis" })).toMatch(/unbekannt/);
+    expect(BM.pruefeRegelwert("ARBZG-RUHE-01", { pruefstatus: "vorlaeufig", stufe: "hinweis" })).toMatch(/unbekannt/);
   });
   it("Zurückstufen auf ungeprüft löscht den Prüfvermerk; Entfernen mit null; beides protokolliert", () => {
     const a = mit({ ...RW });
-    const r = zus(a, mitE(a, { regelwerte: { "ANLAGEN-BESETZUNG-01": { ...RW, pruefstatus: "provisional", stufe: "hinweis" } } }));
+    const r = zus(a, mitE(a, { regelwerte: { "ANLAGEN-BESETZUNG-01": { ...RW, pruefstatus: "vorlaeufig", stufe: "hinweis" } } }));
     const w = r.mandant.einstellungen.regelwerte["ANLAGEN-BESETZUNG-01"];
     expect(w.geprueftAm).toBeUndefined();
     expect(w.geprueftVon).toBeUndefined();
@@ -456,7 +457,7 @@ describe("Sicht: nur, was die Rolle braucht", () => {
   const mitRegel = () => {
     const x = g();
     x.mandanten[0].einstellungen.regelwerte = { "POSTEN-QUAL-01": { quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null,
-      pruefstatus: "verified", stufe: "achtung", geprueftAm: "t", geprueftVon: "l1", geaendertAm: "t", geaendertVon: "l1" } };
+      pruefstatus: "geprueft", stufe: "achtung", geprueftAm: "t", geprueftVon: "l1", geaendertAm: "t", geaendertVon: "l1" } };
     x.mandanten[0].einstellungen.modulprotokoll = [{ art: "eingeschaltet", modul: "wachbuch", am: "t", von: "l1", grundlage: "BV-GEHEIM-GRUNDLAGE" }];
     return x;
   };
@@ -467,7 +468,7 @@ describe("Sicht: nur, was die Rolle braucht", () => {
         mitbestimmung: { bestaetigtAm: "2026-10-01T00:00:00.000Z" } });
       expect(e.modulprotokoll, r).toBeUndefined();
       expect(e.regelwerte["POSTEN-QUAL-01"], r).toEqual({ quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null,
-        pruefstatus: "verified", stufe: "achtung", geprueftAm: "t", geaendertAm: "t" });
+        pruefstatus: "geprueft", stufe: "achtung", geprueftAm: "t", geaendertAm: "t" });
       expect(JSON.stringify(e), r).not.toMatch(/BV-GEHEIM-GRUNDLAGE|"l1"/);
       expect(e.ruhezeit, r).toBe(11);                    // übrige Einstellungen unverändert
     }
@@ -497,7 +498,7 @@ describe("Wiederherstellen, Auskunft und Betriebsprotokoll", () => {
     heute.mandanten[0].einstellungen.modulprotokoll = [{ art: "ausgeschaltet", modul: "wachbuch", am: "t2", von: "l1" }];
     const sicherung = kopie(heute);
     sicherung.mandanten[0].einstellungen.branchenmodule = { wachbuch: { an: true, geaendertAm: "t1", geaendertVon: "l1" } };
-    sicherung.mandanten[0].einstellungen.regelwerte = { "POSTEN-QUAL-01": { pruefstatus: "verified", stufe: "achtung", quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", geprueftAm: "t" } };
+    sicherung.mandanten[0].einstellungen.regelwerte = { "POSTEN-QUAL-01": { pruefstatus: "geprueft", stufe: "achtung", quelle: "q", fundstelle: "f", version: "1", gueltigAb: "2026-01-01", geprueftAm: "t" } };
     sicherung.mandanten[0].einstellungen.modulprotokoll = [];
     sicherung.mandanten[0].einstellungen.ruhezeit = 12;
     const w = betriebWiederherstellen(heute, sicherung, SITZUNGEN.LT, { marke: "m1" });
@@ -523,9 +524,9 @@ describe("Wiederherstellen, Auskunft und Betriebsprotokoll", () => {
     const neu = kopie(alt);
     neu.mandanten[0].einstellungen.modulprotokoll = [
       { art: "eingeschaltet", modul: "wachbuch", am: "2026-11-03T10:00:00.000Z", von: "l1", grundlage: "BV MUTTERSCHUTZ a1|2026-11-03" },
-      { art: "regelwert", regelId: "POSTEN-QUAL-01", am: "2026-11-03T10:00:00.000Z", von: "l1", stufe: "achtung", pruefstatus: "verified" }];
+      { art: "regelwert", regelId: "POSTEN-QUAL-01", am: "2026-11-03T10:00:00.000Z", von: "l1", stufe: "achtung", pruefstatus: "geprueft" }];
     const z = BM.modulProtokollZeilen(alt, neu);
-    expect(z).toEqual(["Branchenmodul wachbuch eingeschaltet (Mitbestimmung bestätigt)", "Regelwert POSTEN-QUAL-01: achtung, verified"]);
+    expect(z).toEqual(["Branchenmodul wachbuch eingeschaltet (Mitbestimmung bestätigt)", "Regelwert POSTEN-QUAL-01: achtung, geprueft"]);
     for (const x of z) expect(x).not.toMatch(/l1|\||MUTTERSCHUTZ|JUGENDSCHUTZ|BV|\d{2}:\d{2}/);
     expect(BM.modulProtokollZeilen(neu, neu)).toEqual([]);
     expect(BM.modulProtokollZeilen(null, null)).toEqual([]);

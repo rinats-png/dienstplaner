@@ -1372,8 +1372,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
        der Module aus MODUL_SCHREIBWEGE — der eine Einhängepunkt für Planung, Leitung und
        Schichtverantwortung (server/lib/modulschreibwege.mjs). */
     {
+      /* Die Angabe immer übergeben, auch undefined: Ein gespeichertes Feld, das die Rückfüllung wieder
+         eingesetzt hat, darf nie als Angabe gelten (zweiter Opus-Review H1 — es sperrte jedes Speichern). */
       const modulweg = modulSchreibwegeAnwenden(ort.betrieb, geschickt, { sitzung, rolle, umfang, darfOrgEdit: darf(rolle, "org.edit"),
-        ...(moduldatenAusnahme === undefined ? {} : { ausnahme: moduldatenAusnahme }) });
+        ausnahme: moduldatenAusnahme });
       if (modulweg.grund) return { verweigert: modulweg.grund };
       geschickt = modulweg.mandant;
     }

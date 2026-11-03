@@ -165,7 +165,7 @@ describe("G1/G2/G6 — Einschalt-Oberfläche (BranchenModule)", () => {
   });
   it("Regelwerte: ungeprüfte Werte erscheinen nie als geltendes Recht", () => {
     const m = betrieb(["industrie"]);
-    m.einstellungen = { ...m.einstellungen, regelwerte: { "ANLAGEN-BESETZUNG-01": { pruefstatus: "provisional", stufe: "hinweis", quelle: "Eigene Vorgabe" } } };
+    m.einstellungen = { ...m.einstellungen, regelwerte: { "ANLAGEN-BESETZUNG-01": { pruefstatus: "vorlaeufig", stufe: "hinweis", quelle: "Eigene Vorgabe" } } };
     const t = text(h(KERN.BranchenModule, { sitz: sitzFuer(m, "leitung"), akt, darf: () => true }));
     expect(t).toMatch(/ungeprüft/);
     expect(t).toMatch(/kein geltendes Recht|nicht als geltendes Recht/);
