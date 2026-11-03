@@ -668,7 +668,7 @@ const schichtAnfragen = (w, ctx) => {
 const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
   const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
   if (u === "eigen") return v;
-  if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause"]);
+  if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause", "ungeplant"]);
   return undefined;
 });
 const schichtSchluessel = (erlaubt) => (w, ctx) => objektFilter(w, (k, v) =>

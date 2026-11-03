@@ -76,7 +76,7 @@ describe("W1: langer Dienst zur Prüfung — nicht still", () => {
     /* Seit WP-06 als Korrekturereignis über den Server (Vermerk: Ereignis am
        Stempel und Betriebsprotokoll „Stempelkorrektur"), nicht mehr mUpd. */
     expect(app).toMatch(/langerDienstBestaetigen: \(pid, d\) => \{/);
-    expect(app).toMatch(/return akt\.stempelKorrigieren\(pid, d, e\.start, e\.ende, "Langer Dienst geprüft und bestätigt"\);/);
+    expect(app).toMatch(/return akt\.stempelKorrigieren\(pid, d, e\.start, e\.ende, bestaetigungsGrund\(e\)\);/);
     expect(app).toMatch(/const erg = await SP\.stempelKorrektur\(pid, d, start, ende, grund\);/);
     expect(MARKIERUNG_TEXT.LANGER_DIENST).toBeTruthy();
   });
@@ -105,10 +105,10 @@ describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", ()
     const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
     const ist = app.slice(app.indexOf("function istStunden("), app.indexOf("§ 3 ArbZG"));
     expect(ist).toMatch(/if \(idn\.zurPruefung\) pruefFaelle\+\+;/);
-    expect(ist).toMatch(/zurPruefung: pruefFaelle \}/);
+    expect(ist).toMatch(/zurPruefung: pruefFaelle, ungeplant: ungeplantTage \}/);
     const blatt = app.slice(app.indexOf("function lohnausgabeText("), app.indexOf("BELASTBARKEIT UND ENTSCHEIDUNG"));
     expect(blatt).toMatch(/\.\.\.lohnPruefZeilen\(m, ym\)/);
-    expect(app).toMatch(/h\.faelle\.map\(\(f\) => `  \$\{f\.datum\}  \$\{nameVon\(f\.personId\)\}: \$\{ZUR_PRUEFUNG_TEXT\}`\)/);
+    expect(app).toMatch(/h\.faelle\.map\(\(f\) => `  \$\{f\.datum\}  \$\{nameVon\(f\.personId\)\}: \$\{pruefFallText\(f\.art\)\}`\)/);
     const csv = app.slice(app.indexOf("exportDATEV: (ym) => {"), app.indexOf("exportLohnBlatt: (ym) => {"));
     expect(csv.indexOf("exportWarnung(sitz.mandant, ym)")).toBeGreaterThan(-1);
     expect(csv.indexOf("window.confirm")).toBeGreaterThan(-1);
@@ -118,7 +118,7 @@ describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", ()
     expect(abr).toMatch(/onClick=\{\(\) => setReiter\("stempel"\)\}>Zur Prüfliste/);
     expect(app).toMatch(/pruefHinweis\(m, ym, p\.id\)/);       // Personalakte, Stundenkonto
     expect(app).toMatch(/pruefHinweis\(m, ym, ich\.id\)/);     // Mein Stundenkonto
-    expect(app).toMatch(/status: zurPruefung\(v\) \? ZUR_PRUEFUNG_TEXT/);  // Gesamtexport
+    expect(app).toMatch(/status: zurPruefung\(v\) \? pruefFallText/);  // Gesamtexport
   });
   it("Bestätigen: nur staff.edit (nicht Schichtverantwortung), nie die eigene Zeit", async () => {
     const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");

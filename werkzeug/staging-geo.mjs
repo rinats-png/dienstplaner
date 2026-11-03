@@ -115,7 +115,8 @@ const BETRIEB = { id: `${RAUM}-m`, name: `${MARKE} Geobetrieb (Wegwerf)`, status
   /* a8 ohne Dienst (UNGEPLANTER_DIENST), a10 Nachtdienst seit gestern mit offenem Beginn,
      a11 ein alter Stempel von gestern ohne geoStart/geoEnde, a12/a13 ohne Dienst. */
   abweichungen: { ...Object.fromEntries(MA.filter((i) => !["a8", "a10", "a11", "a12", "a13"].includes(i)).map((i) => [`${i}|${HEUTE}`, "F"])),
-    [`a10|${GESTERN}`]: "N", [`a11|${GESTERN}`]: "F" },
+    [`a10|${GESTERN}`]: "N", [`a11|${GESTERN}`]: "F",
+    /* a13: am Tag des Beginns Frühdienst geplant — kein ungeplanter Dienst (WP-13). */ [`a13|${VOR9.tag}`]: "F" },
   einstempeln: { [`a10|${GESTERN}`]: { start: "22:01" },
     [`a12|${VOR21.tag}`]: { start: VOR21.start, startAm: VOR21.startAm },
     [`a13|${VOR9.tag}`]: { start: VOR9.start, startAm: VOR9.startAm },

@@ -299,7 +299,10 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id) {
     grund,
   };
   const eintrag = { ...stempel, [KORREKTUREN]: [...bisher, ereignis] };
-  const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true };
+  /* Die Marke eines ungeplanten Dienstes (WP-13) bleibt: Mit ihr zählt der
+     Tag nach der Bestätigung in Konto und Lohnausgabe. */
+  const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true,
+    ...(objekt(alt) && alt.ungeplant === true ? { ungeplant: true } : {}) };
   /* Auffällig oft korrigiert: Die Leitung bekommt es in der Antwort gesagt. */
   const hinweis = bisher.length + 1 >= KORREKTUR_HINWEIS_AB
     ? `Dieser Stempel wurde jetzt ${bisher.length + 1}-mal korrigiert — bitte prüfen, ob etwas nicht stimmt.` : null;

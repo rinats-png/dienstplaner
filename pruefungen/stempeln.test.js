@@ -90,7 +90,8 @@ beforeAll(async () => {
     einheiten: [{ id: "e1", name: "WB 1" }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("a1", "mitarbeiter"), person("a2", "mitarbeiter"), person("s1", "subplaner"),
       person("b1", "mitarbeiter"), person("x1", "mitarbeiter")],
-    abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {} }] }, { durch: "Pruefung" });
+    /* a1 hat heute Frühdienst: Ohne Plan wäre der Stempel ein ungeplanter Dienst (WP-13). */
+    abweichungen: { [`a1|${HEUTE}`]: "F" }, abwesenheiten: [], erfassung: {}, einstempeln: {} }] }, { durch: "Pruefung" });
   tA = await sitzung("STMP-AAAA-0001", "mitarbeiter", "a1");
   tS = await sitzung("STMP-SSSS-0002", "subplaner", "s1");
   tB = await sitzung("STMP-BBBB-0003", "mitarbeiter", "b1");
