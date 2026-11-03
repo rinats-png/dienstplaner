@@ -62,9 +62,22 @@ Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests
 3. WP-04: Speicherziel, Verwahrung des restic-Passworts, Alarmdienst.
 4. WP-03-Einführung: Migration der Produktions-`.env`, gesperrte Bilder samt Tags entfernen.
 5. WP-44 (A9): Ablauf Z1–Z7.
-6. Fachlich: Einwilligung/Genehmigung MuSchG (sonst harte Sperre 20–6 Uhr und sonntags); 120-Tage-Horizont der Server-Nachrechnung; Archiv Bestätigungsprotokoll; sperren oder warnen (Ruhezeit, Qualifikation, keineNacht, maxDiensteWoche, keinAlleindienst).
+6. Fachlich: 120-Tage-Horizont der Server-Nachrechnung; Archiv Bestätigungsprotokoll; sperren oder warnen (Ruhezeit, Qualifikation, keineNacht, maxDiensteWoche, keinAlleindienst).
    Weiter fachlich: `zuschlaege` als Lohnbestandteil? Eigene Bank-/Lohndaten für Beschäftigte sichtbar (Art. 15)? `rolleSeit`/`rolleVerlauf` für MA/BR/SV? Sondereinsätze tagesgenau (umgesetzt) bestätigen.
 7. Externe Gates: Pentest beauftragen, iPhone/Tablet, Rechtstext-Inhalte, Kriterien je Branchenpaket.
+
+### Bewusst zurückgestellt (Nutzerentscheidung 2026-11-03, vor dem Produktiv-Release erneut vorlegen)
+
+- **Mindestbesetzung / PpUGV:** warnen mit Bestätigung oder sperren. Vorläufig umgesetzt: warnen.
+- **Alarmweg (WP-05):** externer Uptime-Check und interner Webhook-Kanal. Bis dahin `CENTRIC_ALARM_WEBHOOK` leer, Alarme nur im Log.
+- **Einrichtungen:** GitHub-Umgebung `produktion`; Deploy-Skripte und Forced-Command-Schlüssel auf dem Server; `CENTRIC_VERTRAUTE_PROXYS` (Pflicht vor dem nächsten Produktiv-Deploy); WP-30 Mail und Push; alte Netlify-Site; Pflicht-2FA für Betreibercodes.
+
+### Entschieden (2026-11-03)
+
+- Einwilligung/Genehmigung nach MuSchG an der Person erfassbar.
+- Planung darf die Einrichtung bearbeiten (Dienstarten, Zeiten, Mindestbesetzung, Vorlagen).
+- Lange Dienste (> 10 h) automatisch erlaubt, nur Hinweis.
+- Jugendschutz-Schalter „mehrschichtig“ auch für die Planung.
 
 ## Release-Risiken
 
