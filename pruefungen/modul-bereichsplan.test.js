@@ -170,6 +170,32 @@ describe("Schreibweg (Server) — Planung, Leitung und Schichtverantwortung (B2 
     expect(loeschen.verweigert).toBeFalsy();
     expect(loeschen.mandanten[0].bereichsPlan).toEqual({});
   });
+  it("Mutant imBereich: gültiger eigener Bereich, aber fremde Person → abgewiesen (nicht erst am falschen Bereich)", () => {
+    const g = bestand();
+    const v = schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`x2|${MO}`]: "b1" }; });         // x2 gehört zu e2, b1 zur eigenen Einheit e1
+    expect(v.verweigert).toMatch(/gehört.*nicht zu deinem Bereich/);
+    const loeschen = schreibeAls(bestand({ plan: { [`a1|${MO}`]: "b1" } }), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1", [`x2|${MO}`]: "b2" }; });
+    expect(loeschen.verweigert).toMatch(/gehört.*nicht zu deinem Bereich/);
+  });
+  it("Obergrenzen auch im Weg der Schichtverantwortung: Änderungen je Speichern und plausibler Tagesbereich", () => {
+    const tagPlus = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const echt = Object.fromEntries(Array.from({ length: BEREICH_GRENZEN.aenderungenSchicht + 1 }, (_, i) => [`${i % 2 ? "a1" : "s1"}|${tagPlus(-300 + i)}`, "b1"]));
+    expect(schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = echt; }).verweigert).toMatch(/höchstens \d+ Änderungen/);
+    const weit = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = { [`a1|${tagPlus(5000)}`]: "b1" }; });
+    expect(weit.verweigert).toMatch(/Tag/);
+    const weitZurueck = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = { [`a1|${tagPlus(-5000)}`]: "b1" }; });
+    expect(weitZurueck.verweigert).toMatch(/Tag/);
+    const imRahmen = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = { [`a1|${tagPlus(400)}`]: "b1" }; });
+    expect(imRahmen.verweigert).toBeFalsy();
+  });
+  it("Tagesbereich gilt für alle Wege (Planung, Leitung, bereichsplanZusammen)", () => {
+    const tagPlus = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    for (const r of ["PL", "LT"]) expect(schreibeAls(bestand(), r, (m) => { m.bereichsPlan = { [`a1|${tagPlus(5000)}`]: "b1" }; }).verweigert, r).toMatch(/Tag/);
+    expect(pruefeBereichsPlan({ [`a1|${tagPlus(731)}`]: "b1" })).toBeNull();
+    expect(pruefeBereichsPlan({ [`a1|${tagPlus(740)}`]: "b1" })).toMatch(/Tag/);
+    const alt = { [`a1|${tagPlus(5000)}`]: "b1" };
+    expect(pruefeBereichsPlan(alt, alt)).toBeNull();                                   // Altbestand blockiert nicht
+  });
   it("Beschäftigte schreiben keine Zuordnung", () => {
     const g = bestand({ plan: { [`a1|${MO}`]: "b1" } });
     const v = schreibeAls(g, "MA", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; });

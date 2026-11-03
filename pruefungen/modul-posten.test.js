@@ -146,6 +146,23 @@ describe("Schreibweg und Sicht (Server)", () => {
     }
     expect(schreibeAls(g, "PL", (m) => { m.objekte = [{ id: "o" }]; }).verweigert).toMatch(/Objekt/);
   });
+  it("Kundenrolle schreibt wie die Leitung; Betriebsrat schreibt nichts", () => {
+    const g = branchenbestand({ pakete: ["sicherheit"] });
+    const kd = schreibeAls(g, "KD", (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; });
+    expect(kd.verweigert).toBeFalsy();
+    expect(kd.mandanten[0].objekte).toEqual(OBJEKTE);
+    const br = schreibeAls(g, "BR", (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; });
+    expect(br === null || !!br.verweigert, "Betriebsrat darf nichts schreiben").toBe(true);
+  });
+  it("Tagesbereich (zwei Jahre) für neue Einträge; Altbestand blockiert nicht", () => {
+    const tagPlus = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    expect(pruefePostenPlan({ [`a|${tagPlus(5000)}`]: "po1" })).toMatch(/Tag/);
+    expect(pruefePostenPlan({ [`a|${tagPlus(-5000)}`]: "po1" })).toMatch(/Tag/);
+    expect(pruefePostenPlan({ [`a|${tagPlus(300)}`]: "po1" })).toBeNull();
+    const alt = { [`a|${tagPlus(5000)}`]: "po1" };
+    expect(pruefePostenPlan(alt, alt)).toBeNull();
+    for (const r of ["PL", "LT"]) expect(schreibeAls(branchenbestand({ pakete: ["sicherheit"] }), r, (m) => { m.postenPlan = { [`a1|${tagPlus(5000)}`]: "po1" }; }).verweigert, r).toMatch(/Tag/);
+  });
   it("Beschäftigte und Schichtverantwortung schreiben weder Objekte noch Einteilungen", () => {
     const g = { ...branchenbestand({ pakete: ["sicherheit"] }) };
     g.mandanten[0].objekte = OBJEKTE;
@@ -157,11 +174,26 @@ describe("Schreibweg und Sicht (Server)", () => {
       }
     }
   });
-  it("Sicht: Objekte sehen alle Rollen; die Einteilung wie der Plan (abweichungen), Betriebsrat nicht", () => {
+  it("Sicht (W3, konservativ bis zur Nutzerentscheidung): Objekte sehen Beschäftigte und Schichtverantwortung nur mit Einteilung, Betriebsrat keine", () => {
+    const g = branchenbestand({ pakete: ["sicherheit"] });
+    const zweites = { id: "o2", name: "Objekt Süd", standortId: null, posten: [{ id: "po9", name: "Tor", soll: { F: 1 }, qualifikationen: [] }] };
+    g.mandanten[0].objekte = [...OBJEKTE, zweites];
+    g.mandanten[0].postenPlan = { [`a1|${MO}`]: "po1", [`s1|${MO}`]: "po2" };
+    const namen = (r) => (bestandFuerRolle(g, SITZUNGEN[r]).mandanten[0].objekte || []).map((o) => o.id);
+    expect(namen("MA")).toEqual(["o1"]);                    // a1 ist auf po1 (Objekt o1) eingeteilt
+    expect(namen("SV")).toEqual(["o1"]);                    // s1 selbst und a1 im Bereich: beide auf o1
+    expect(namen("PL")).toEqual(["o1", "o2"]);
+    expect(namen("LT")).toEqual(["o1", "o2"]);
+    expect(namen("KD")).toEqual(["o1", "o2"]);
+    expect(namen("BR")).toEqual([]);
+    const ohneEinteilung = branchenbestand({ pakete: ["sicherheit"] });
+    ohneEinteilung.mandanten[0].objekte = OBJEKTE;
+    expect(bestandFuerRolle(ohneEinteilung, SITZUNGEN.MA).mandanten[0].objekte).toEqual([]);
+  });
+  it("Sicht: die Einteilung sehen Beschäftigte nur für sich, die Schichtverantwortung im Bereich am Tag, Betriebsrat nicht", () => {
     const g = branchenbestand({ pakete: ["sicherheit"] });
     g.mandanten[0].objekte = OBJEKTE;
     g.mandanten[0].postenPlan = { [`a1|${MO}`]: "po1", [`s1|${MO}`]: "po2" };
-    for (const r of ["MA", "SV", "PL", "LT", "BR"]) expect(bestandFuerRolle(g, SITZUNGEN[r]).mandanten[0].objekte, r).toEqual(OBJEKTE);
     for (const r of ["PL", "LT"]) expect(Object.keys(bestandFuerRolle(g, SITZUNGEN[r]).mandanten[0].postenPlan), r).toHaveLength(2);
     expect(Object.keys(bestandFuerRolle(g, SITZUNGEN.MA).mandanten[0].postenPlan || {})).toEqual([`a1|${MO}`]);
     expect(Object.keys(bestandFuerRolle(g, SITZUNGEN.BR).mandanten[0].postenPlan || {})).toEqual([]);
