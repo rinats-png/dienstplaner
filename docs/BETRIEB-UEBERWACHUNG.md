@@ -34,7 +34,7 @@ Alte Sicherung oder gehäufte Fehler sind Warnungen.
 | `platz` — freier Platz unter `CENTRIC_DATEN` | < `CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT` (15) | < `CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT` (3) oder < `CENTRIC_GESUND_PLATZ_KRITISCH_MB` (200) — nur Alarmstufe, nach außen „warnung“ |
 | `sicherung` — Alter der letzten erfolgreichen Sicherung außer Haus (WP-04) | älter als `CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN` (26) oder Statusdatei unlesbar | — |
 | `loeschlauf` — letzter Lauf des Löschlaufs (`aufraeumen:letzter`) | älter als `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN` (26) oder mit Fehlern | — |
-| `fehler` — gleitend über 15 min: 5xx-Antworten, unlesbare Räume, Journal-Wiederanläufe, Bremse fail-closed | 5xx ≥ `CENTRIC_GESUND_5XX_WARNUNG` (10) oder eines der anderen ≥ 1 | — |
+| `fehler` — gleitend über 15 min: 5xx-Antworten, unlesbare Räume, Journal-Wiederanläufe, Bremse fail-closed, `429-last` (Lastgrenze lehnte ehrliche Anfragen ab) | 5xx ≥ `CENTRIC_GESUND_5XX_WARNUNG` (10) oder `429-last` ≥ `CENTRIC_GESUND_429_WARNUNG` (20) oder eines der anderen ≥ 1 | — |
 
 `sicherung` braucht den Pfad zur Statusdatei der Sicherung
 (`STATUS_VERZEICHNIS/letzte-erfolgreiche.json`, WP-04) im Container: in

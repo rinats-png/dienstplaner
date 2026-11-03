@@ -64,6 +64,7 @@ export function grenzwerte() {
     sicherungWarnungStunden: zahl("CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN", 26),
     loeschlaufWarnungStunden: zahl("CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN", 26),
     fehler5xxWarnung: zahl("CENTRIC_GESUND_5XX_WARNUNG", 10),
+    fehler429Warnung: zahl("CENTRIC_GESUND_429_WARNUNG", 20),
     cacheMs: zahl("CENTRIC_GESUND_CACHE_MS", 10000),
     zeitgrenzeMs: zahl("CENTRIC_GESUND_ZEITGRENZE_MS", 15000),
   };
@@ -171,7 +172,8 @@ async function loeschlaufPruefen(g, jetzt) {
 
 function fehlerPruefen(g, jetzt) {
   const z = zaehlung(jetzt);
-  const warn = z["5xx"] >= g.fehler5xxWarnung || z.unlesbar > 0 || z["bremse-ausfall"] > 0 || z.journal > 0;
+  const warn = z["5xx"] >= g.fehler5xxWarnung || z.unlesbar > 0 || z["bremse-ausfall"] > 0 || z.journal > 0
+    || z["429-last"] >= g.fehler429Warnung;
   return { stufe: warn ? "warnung" : "ok", fensterMinuten: FENSTER_MS / 60000, ...z };
 }
 

@@ -379,7 +379,10 @@ beforeAll(async () => {
     personen: [person("l1", "leitung", { bereich: "ALLE" }), person("p1", "planer", { bereich: "ALLE" }), person("r1", "betriebsrat", { bereich: "ALLE" }),
       ...ids.map((i) => person(i, "mitarbeiter")), ...zs.map((i) => person(i, "mitarbeiter"))],
     /* a2 hat heute keinen geplanten Dienst; alle anderen Frühdienst, a6 gestern Nachtdienst */
-    abweichungen: Object.fromEntries([...ids.filter((i) => i !== "a2").map((i) => [`${i}|${HEUTE}`, "F"]), [`a6|${GESTERN}`, "N"]]),
+    /* Die z-Personen haben an beiden Tagen Frühdienst geplant: Ihre Fälle prüfen das Zuordnen und die Grenzen,
+       nicht den ungeplanten Dienst (WP-13, ungeplante-dienste.test.js). */
+    abweichungen: Object.fromEntries([...ids.filter((i) => i !== "a2").map((i) => [`${i}|${HEUTE}`, "F"]), [`a6|${GESTERN}`, "N"],
+      ...zs.flatMap((z) => [[`${z}|${HEUTE}`, "F"], [`${z}|${GESTERN}`, "F"]])]),
     einstempeln: { [`a6|${GESTERN}`]: { start: "21:57", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true, geprueftStart: true } },
     erfassung: {}, anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [],
   }] }, { durch: "Pruefung" });

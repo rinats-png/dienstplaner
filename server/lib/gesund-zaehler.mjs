@@ -14,11 +14,16 @@
                      zu Ende geschrieben (bestand.mjs)
      bremse-ausfall  die Bremse zählte wegen eines Ablagefehlers nur noch im
                      Prozessspeicher (schutz.mjs, fail-closed)
+     429-last        eine ehrliche Anfrage wurde von einer LASTgrenze abgewiesen
+                     (Stempeln je Person/Raum, gelungene Anmeldungen je
+                     Betrieb; WP-47) — nicht: Fehlversuche beim Anmelden, die
+                     sind gewollt. Wächst sie, gibt es eine Spitze, die die
+                     Grenzen nicht tragen.
 
    Gleitend: gezählt wird, was in den letzten FENSTER_MS geschah.
    ========================================================================== */
 
-export const ARTEN = ["5xx", "unlesbar", "journal", "bremse-ausfall"];
+export const ARTEN = ["5xx", "unlesbar", "journal", "bremse-ausfall", "429-last"];
 export const FENSTER_MS = 15 * 60 * 1000;
 const HOECHSTENS = 10000;   // je Art — mehr braucht keine Zählung
 

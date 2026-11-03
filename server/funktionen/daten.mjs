@@ -1,7 +1,8 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
+import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
+import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
@@ -20,6 +21,7 @@ import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrze
   offenSeitMinuten, langerDienstGrenze } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
+import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -83,6 +85,23 @@ const RUMPF_MAX = 6 * 1024 * 1024;
    Konflikt nur von einem Schreiber kommen, der an ihr vorbeischreibt —
    drei Wiederholungen sind dafür reichlich; danach eine klare Absage. */
 const STEMPEL_WIEDERHOLUNGEN = 3;
+
+/* Personen je Raum, zuletzt gesehen (WP-47): Der Raumdeckel fürs Stempeln hängt
+   an der Betriebsgröße (schutz.mjs, stempelDeckel), und die Bremse läuft VOR
+   dem Lesen des Bestands. Gemerkt wird beim Lesen, Schreiben und Stempeln —
+   nur die Zahl, nie Namen. Nach einem Neustart gilt bis zum ersten Zugriff
+   die vorsichtige Vorgabe. */
+const raumGroesse = new Map();
+function groesseMerken(raum, bestand) {
+  try {
+    const n = (Array.isArray(bestand && bestand.mandanten) ? bestand.mandanten : [])
+      .reduce((a, m) => a + (m && Array.isArray(m.personen) ? m.personen.length : 0), 0);
+    if (n > 0) {
+      if (raumGroesse.size > 5000) raumGroesse.clear();
+      raumGroesse.set(String(raum), n);
+    }
+  } catch { /* nur eine Schätzung */ }
+}
 
 async function rumpfLesen(req) {
   const laenge = Number(req.headers.get("content-length") || 0);
@@ -675,6 +694,34 @@ export default async (req, context) => {
          nicht mehr darauf, gilt er nicht. Ein alter Code ohne Kennung in
          einem Raum mit genau einem Betrieb bekommt sie hier einmalig;
          in Räumen mit mehreren Betrieben wird nicht geraten. */
+      /* Lastgrenzen für GÜLTIGE Codes (WP-47). Der Code war richtig; es geht
+         nicht ums Raten, sondern darum, die Sitzungsablage und das Lesen des
+         Bestands vor einer Welle zu schützen. Betreiberzugänge zählen nicht mit.
+           1. je Code (Review-Auflage M1): Eine Skriptschleife mit dem eigenen
+              Code verbraucht nur ihr eigenes Kontingent — sie erreicht die
+              Grenze des Betriebs nicht und sperrt keine Kolleginnen.
+           2. je Betrieb: die großzügige Grenze gegen eine echte Welle.
+         Beide VOR dem Lesen des Bestands (Review-Auflage M3): Eine Abweisung
+         kostet kein teures Lesen mehr. Die Kennung des Betriebs kommt deshalb
+         aus dem Konto (bestand|mandantId), nicht aus der Bindungsprüfung.
+         Bei einer Abweisung werden nur die Vermerke dieses Versuchs bei Ziel
+         und Gesamt zurückgenommen (ein gültiger Code ist kein Rateversuch und
+         soll den Betrieb nicht füllen); die Herkunft bleibt gezählt — entlastet
+         wird sie nur bei einer gelungenen Anmeldung. Protokolliert wird die
+         Abweisung, die eine Sperre setzt (`neu`); /gesund zählt jede. */
+      if (eintrag.rolle !== "betreiber") {
+        const lastAbweisung = async (bl, text) => {
+          await vermerkeZuruecknehmen(b);
+          notentlasten("anmelden", k, { nurGesamt: true });
+          ereignis("429-last");
+          if (bl.neu) await protokoll("anmelden", k, "gebremst", text);
+          return zuVielAntwort(bl.wartet);
+        };
+        const bCode = lastbremse("anmelden-code", kennungCode(fund.schluessel));
+        if (!bCode.frei) return lastAbweisung(bCode, "Lastgrenze je Code");
+        const bLast = lastbremse("anmelden-erfolg", kennungRaum(`${eintrag.bestand}|${eintrag.mandantId ?? ""}`));
+        if (!bLast.frei) return lastAbweisung(bLast, "Lastgrenze gelungener Anmeldungen");
+      }
       const gelesenC = eintrag.rolle === "betreiber" ? null : await bestandLesen(store, eintrag.bestand);
       const bindungC = codeBindung(gelesenC && gelesenC.bestand, eintrag);
       if (!bindungC.ok) {
@@ -726,7 +773,7 @@ export default async (req, context) => {
         }
       } catch { /* darf keine Anmeldung scheitern lassen */ }
 
-      await entlasten("anmelden", k);
+      await entlasten("anmelden", k, b);
       notentlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
@@ -831,6 +878,7 @@ export default async (req, context) => {
       const bl = await bremse("lesen", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
       const mit = await bestandJetzt();
+      if (mit) groesseMerken(s.bestand, mit.bestand);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
@@ -992,6 +1040,7 @@ export default async (req, context) => {
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+        groesseMerken(s.bestand, zuSchreiben);
 
         /* Einwilligungen nach dem Mutterschutzgesetz (Review N1): dass sie sich
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
@@ -1103,9 +1152,27 @@ export default async (req, context) => {
        und die Entscheidung liegen hier; die Zeit ebenfalls, denn eine
        gestellte Uhr im Gerät ist genauso leicht zu ändern. */
     if (pfad === "stempeln" && req.method === "POST") {
+      /* Eigene Bremsarten (WP-47, Nachweis WP-28): je Person, und je Raum als Deckel
+         nach Betriebsgröße. Die Planung (schreiben, 120/min) bleibt davon
+         unberührt, ein Schichtwechsel blockiert sie nicht. Eine Abweisung ist eine
+         LASTabweisung: gezählt für /gesund, mit Retry-After; gestempelt ist dann
+         NICHTS — die Oberfläche wiederholt (speicher.js). */
       const kSt = kennung(req, s);
-      const bSt = await bremse("schreiben", kSt);
-      if (!bSt.frei) return zuVielAntwort(bSt.wartet);
+      const bSt = lastbremse("stempeln", kennungPerson(s));
+      /* Protokolliert wird nur die Abweisung, die die Sperre SETZT (`neu`,
+         Review-Auflage M2) — eine Datei je Abweisung wäre unter Last genau die
+         Plattenarbeit, die die Lastbremse vermeiden soll. /gesund zählt jede. */
+      if (!bSt.frei) {
+        ereignis("429-last");
+        if (bSt.neu) await protokoll("schreiben", kSt, "gebremst", "stempeln (Person)", wer);
+        return zuVielAntwort(bSt.wartet);
+      }
+      const bRaum = lastbremse("stempeln-raum", kSt, stempelDeckel(raumGroesse.get(String(s.bestand))));
+      if (!bRaum.frei) {
+        ereignis("429-last");
+        if (bRaum.neu) await protokoll("schreiben", kSt, "gebremst", "stempeln (Raum)", wer);
+        return zuVielAntwort(bRaum.wartet);
+      }
 
       /* `datum` des Geräts nur noch zur Plausibilität — den Tag bestimmt der
          Server (zeiterfassung.mjs, stempelZiel; Geo-Spezifikation B7). */
@@ -1145,6 +1212,7 @@ export default async (req, context) => {
           const mit = await bestandLesenStreng(store, s.bestand);
           if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
           const bestand = mit.bestand;
+          groesseMerken(s.bestand, bestand);
           const i = Number(s.betrieb);
           const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
             ? bestand.mandanten[i] : (bestand.mandanten || [])[0];
@@ -1228,6 +1296,15 @@ export default async (req, context) => {
           const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
           const langerDienst = dauerMin !== null && dauerMin > langerDienstGrenze(m, person, String(datum));
           if (langerDienst) markieren("LANGER_DIENST");
+          /* Ungeplanter Dienst (WP-13): Ohne geplanten Dienst an diesem Tag gibt
+             es keine Planzeit, auf die die Ist-Zeit zurückfallen könnte. Aus
+             Beginn und Ende entsteht deshalb eine Erfassung zur Prüfung
+             (`ungeplant`, bestaetigt: false): Sie zählt in Konto und Lohnausgabe
+             erst, wenn die Leitung sie über die Stempelkorrektur bestätigt hat
+             — dann mit der gestempelten Dauer. Der Stempel selbst bleibt das
+             unveränderte Original (WP-06). */
+          const ungeplant = mitErfassung && !geplanterDienst(m, person, String(datum));
+          if (ungeplant) markieren("UNGEPLANTER_DIENST");
           if (markierungen.length) neu.markierungen = markierungen;
 
           let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
@@ -1250,7 +1327,10 @@ export default async (req, context) => {
           const korrigiert = Array.isArray(alt.korrekturen) && alt.korrekturen.length > 0;
           if (mitErfassung && !korrigiert) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-              [k]: langerDienst
+              [k]: ungeplant
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
+                  grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }
+                : langerDienst
                 ? { start: neu.start, ende: zeit, bestaetigt: false,
                   grund: `LANGER_DIENST: ${Math.round(dauerMin / 6) / 10} Stunden — bitte prüfen` }
                 : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
@@ -1322,7 +1402,86 @@ export default async (req, context) => {
         }
         await protokoll("schreiben", kK, "erfolg",
           `Stempelkorrektur ${rumpf.personId}|${rumpf.datum} ${r.ereignis.vorher ? `${r.ereignis.vorher.start || "–"}–${r.ereignis.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}`, wer);
-        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, etag: ergK.stand || null });
+        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, hinweise: r.hinweise, etag: ergK.stand || null });
+      });
+    }
+
+    /* ------------------------ Korrekturantrag (WP-14) -----------------------
+       Antrag → Freigabe → Ist (lib/korrekturworkflow.mjs). Gestellt wird er von
+       der Person selbst für einen eigenen Stempel der letzten Tage — also auch
+       von Schichtverantwortung und Betriebsrat, die stempeln. Der Antrag liegt
+       am Stempel; das Original bleibt unverändert. */
+    if (pfad === "korrektur-antrag" && req.method === "POST") {
+      const kA = kennung(req, s);
+      const bA = await bremse("schreiben", kA);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitA = await bestandLesenStreng(store, s.bestand);
+        if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mA = eigenerMandant(mitA.bestand, s);
+        if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const pA = (mA.personen || []).find((x) => x && String(x.id) === String(s.person));
+        if (!pA) return antwort({ fehler: "Person nicht gefunden." }, 404);
+        const r = antragStellen(mA, { personId: pA.id, name: s.name || null, rolle: s.rolle }, rumpf || {}, new Date(),
+          `ka-${randomBytes(6).toString("hex")}`, heuteBerlin());
+        if ("status" in r) {
+          await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergA = await bestandSchreiben(store, s.bestand,
+          { ...mitA.bestand, mandanten: mitA.bestand.mandanten.map((x) => (x === mA ? r.mandant : x)) },
+          { erwarteterStand: mitA.stand, durch: s.name || "Korrekturantrag" });
+        if (!ergA.ok) {
+          await protokoll("schreiben", kA, "konflikt", "Korrekturantrag", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kA, "erfolg",
+          `Korrekturantrag ${r.antrag.id} ${pA.id}|${rumpf.datum}: ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.antrag.vorschlag.start}–${r.antrag.vorschlag.ende}`, wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, etag: ergA.stand || null });
+      });
+    }
+
+    /* Entscheiden: Leitung und Planung (staff.edit) genehmigen oder lehnen ab; die
+       antragstellende Person zieht zurück. Die Schichtverantwortung sieht fremde
+       Stempel nicht (H8+) und entscheidet deshalb nicht. Genehmigt wird als
+       Korrekturereignis am Stempel — mit Kennung des Antrags und Regelhinweisen. */
+    if (pfad === "korrektur-entscheiden" && req.method === "POST") {
+      const kE = kennung(req, s);
+      const entscheidungE = rumpf && rumpf.entscheidung;
+      if (entscheidungE !== "zurueckgezogen" && (schreibumfang(s.rolle) === SCHREIBEN_NEIN || !darf(s.rolle, "staff.edit"))) {
+        await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: "Korrekturanträge entscheiden Leitung und Planung." }, 403);
+      }
+      const bE = await bremse("schreiben", kE);
+      if (!bE.frei) return zuVielAntwort(bE.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitE = await bestandLesenStreng(store, s.bestand);
+        if (!mitE) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mE = eigenerMandant(mitE.bestand, s);
+        if (!mE) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const r = antragEntscheiden(mE, rumpf || {}, { personId: s.person, name: s.name || null, rolle: s.rolle }, new Date(),
+          `k-${randomBytes(6).toString("hex")}`);
+        if ("status" in r) {
+          await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergE = await bestandSchreiben(store, s.bestand,
+          { ...mitE.bestand, mandanten: mitE.bestand.mandanten.map((x) => (x === mE ? r.mandant : x)) },
+          { erwarteterStand: mitE.stand, durch: s.name || "Korrekturantrag" });
+        if (!ergE.ok) {
+          await protokoll("schreiben", kE, "konflikt", "Korrekturantrag entscheiden", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kE, "erfolg",
+          `Korrekturantrag ${r.antrag.id} ${rumpf.personId}|${rumpf.datum}: ${r.antrag.status}`
+          + (r.ereignis ? ` · ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}` : "")
+          + (r.hinweise && r.hinweise.length ? ` · Hinweise: ${r.hinweise.map((x) => x.code).join(",")}` : ""), wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, erfassung: r.erfassung || null, ereignis: r.ereignis || null,
+          hinweise: r.hinweise || [], hinweis: r.hinweis || null, etag: ergE.stand || null });
       });
     }
 

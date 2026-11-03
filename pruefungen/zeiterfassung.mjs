@@ -65,6 +65,7 @@ abw[`a1|${tag(-3)}`] = "-";
    Prüflaufs (W4). h1 hatte gestern nichts geplant: Ende immer heute. */
 abw[`n1|${tag(-1)}`] = "NL";
 abw[`a1|${tag(1)}`] = "F";
+abw[`a1|${HEUTE}`] = "F";          // heute Frühdienst: Der Stempel ist kein ungeplanter Dienst (WP-13)
 abw[`s1|${tag(-1)}`] = "F";
 abw[`a1|${tag(-20)}`] = "F";
 const person = (id, rolle) => ({ id, vorname: "V", nachname: id, rolle, bereich: "e1",

@@ -348,8 +348,27 @@ export async function sicherung() {
   return daten;
 }
 export async function sicherungen() {
-  const { daten } = await ruf("sicherungen");
+  const { status, daten } = await ruf("sicherungen");
+  /* Eine Absage ist keine leere Liste (WP-25). */
+  if (status !== 200) throw new Error(daten?.text || daten?.fehler || "Die Sicherungen ließen sich nicht laden.");
   return daten?.sicherungen || [];
+}
+
+/**
+ * Den eigenen Betrieb aus einer Sicherung zurückspielen (WP-25). Vorher wird
+ * Ausstehendes geschrieben — der Server spielt nur auf den Stand zurück, den
+ * diese Sitzung zuletzt gesehen hat (ETag). Gibt { status, daten } zurück,
+ * auch bei einer Absage; die Deutung steht in sicherungen-ui.js.
+ */
+export async function wiederherstellen(marke) {
+  try { await schreibenAbschliessen(); } catch { /* der Server prüft den Stand ohnehin */ }
+  if (schreibenAusstehend())
+    return { status: 0, daten: { fehler: "Es wird noch gespeichert. Bitte kurz warten und erneut versuchen." } };
+  if (gescheitert)
+    return { status: 0, daten: { fehler: "Eine Änderung ist noch nicht gespeichert. Erst speichern oder verwerfen, dann zurückspielen." } };
+  const { status, daten } = await ruf("wiederherstellen", { method: "POST", body: JSON.stringify({ marke, etag }) });
+  if (status === 200 && daten && daten.etag !== undefined) etag = daten.etag;
+  return { status, daten };
 }
 
 /* ==========================================================================
@@ -486,13 +505,48 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord) {
-  const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ datum, art,
-      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
-      accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null }) });
-  const d = await a.json();
-  if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
-  return d;
+  const body = JSON.stringify({ datum, art,
+    lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
+    accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
+  /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
+     Das ist kein Fehler des Stempels, sondern eine Spitze (Schichtwechsel). Die
+     Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s
+     plus 0–20 % Streuung); die Stempelzeit ist die des Servers beim
+     erfolgreichen Eintreffen, also höchstens ≈ 36 s später als das Tippen.
+     Die Sperre je Person auf dem Server dauert 15 s (schutz.mjs) — eine
+     Wiederholung kommt also nach ihrem Ende an. Bleibt es dabei, sagt die
+     Meldung ehrlich, dass der Stempel noch NICHT erfasst ist. */
+  let wiederholt = 0;
+  for (;;) {
+    const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(), body });
+    if (a.status === 429 && wiederholt < STEMPEL_429_WIEDERHOLUNGEN) {
+      wiederholt += 1;
+      await new Promise((r) => setTimeout(r, wartezeitMitStreuung(a)));
+      continue;
+    }
+    let d = {};
+    try { d = await a.json(); } catch { /* keine Antwort */ }
+    if (a.status === 429)
+      throw new Error("Gerade stempeln sehr viele gleichzeitig. Dein Stempel ist noch NICHT erfasst — bitte in einigen Sekunden noch einmal tippen.");
+    if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
+    return d;
+  }
+}
+
+/** Wiederholungen bei 429 (Lastgrenze) und die Wartezeit nach Retry-After, höchstens 15 s. */
+export const STEMPEL_429_WIEDERHOLUNGEN = 2;
+export function wartezeit429(antwort) {
+  const s = Number(antwort && antwort.headers && antwort.headers.get && antwort.headers.get("retry-after"));
+  return Math.min(15, Math.max(1, Number.isFinite(s) && s > 0 ? s : 5)) * 1000;
+}
+
+/** Streuung auf die Wartezeit (Review-Auflage M4): 0 bis 20 % länger, nie kürzer
+    als Retry-After. Ohne Streuung kämen alle Geräte, die dieselbe Sperre traf,
+    im selben Augenblick wieder — und liefen gemeinsam in die nächste. */
+export const STEMPEL_429_STREUUNG = 0.2;
+export function wartezeitMitStreuung(antwort, zufall = Math.random) {
+  const z = Math.min(1, Math.max(0, Number(zufall()) || 0));
+  return Math.round(wartezeit429(antwort) * (1 + STEMPEL_429_STREUUNG * z));
 }
 
 /**
@@ -516,12 +570,40 @@ export async function zeitBestaetigen(datum, start, ende, grund) {
  * Ereignis angehängt. Antwort: der gespeicherte Stempel (eintrag) und die
  * abgeleitete Ist-Zeit (erfassung).
  */
-export async function stempelKorrektur(personId, datum, start, ende, grund) {
+export async function stempelKorrektur(personId, datum, start, ende, grund, pause) {
   const a = await fetch("/api/stempel-korrektur", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "" }) });
+    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Korrektur ließ sich nicht speichern.");
+  return d;
+}
+
+/**
+ * Einen Korrekturantrag stellen (WP-14): für den eigenen Stempel eines der letzten Tage
+ * gewünschter Beginn, gewünschtes Ende, Pause (optional) und Grund.
+ */
+export async function korrekturAntrag(datum, start, ende, pause, grund) {
+  const a = await fetch("/api/korrektur-antrag", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, start, ende, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Der Antrag ließ sich nicht stellen.");
+  return d;
+}
+
+/**
+ * Einen Korrekturantrag entscheiden (WP-14): "genehmigt" und "abgelehnt" (Leitung, Planung;
+ * Ablehnung mit Begründung) oder "zurueckgezogen" (die antragstellende Person).
+ */
+export async function korrekturEntscheiden(personId, datum, antragId, entscheidung, begruendung) {
+  const a = await fetch("/api/korrektur-entscheiden", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, antragId, entscheidung, begruendung: begruendung || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Entscheidung ließ sich nicht speichern.");
   return d;
 }
 
