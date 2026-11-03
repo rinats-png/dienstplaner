@@ -27,6 +27,9 @@ import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
+import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
+import { postenZusammen } from "./modul-posten.mjs";
+import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1137,11 +1140,20 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       if (module.grund) return { verweigert: module.grund };
       geschickt = module.mandant;
       /* Anlagen (WP-19): Form von Mindestbesetzung und Laufzeit an Betriebsmitteln der Art „anlage“. */
-      const anlagen = anlagenZusammen(geschickt);
+      const anlagen = anlagenZusammen(geschickt, ort.betrieb);
       if (anlagen.grund) return { verweigert: anlagen.grund };
       /* Maschinenqualifikationen (WP-19): befähigte Person und Wiederholung an Kompetenzen zu Anlagen. */
-      const maschinen = maschinenqualZusammen(geschickt);
+      const maschinen = maschinenqualZusammen(geschickt, ort.betrieb);
       if (maschinen.grund) return { verweigert: maschinen.grund };
+      /* Geteilte Dienste (WP-19): Form des zweiten Abschnitts einer Dienstart. */
+      const geteilt = geteilterdienstZusammen(geschickt, ort.betrieb);
+      if (geteilt.grund) return { verweigert: geteilt.grund };
+      /* Posten (WP-19): Form von Objekten und Postenplan, nur Neues oder Geändertes streng. */
+      const posten = postenZusammen(geschickt, ort.betrieb);
+      if (posten.grund) return { verweigert: posten.grund };
+      /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
+      const bereiche = bereichsplanZusammen(geschickt, ort.betrieb);
+      if (bereiche.grund) return { verweigert: bereiche.grund };
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
@@ -1745,6 +1757,17 @@ export function einheitZusammen(altM, neuM, sitzung) {
             return nein(ohneEinheit(pid, tag) ? OHNE_EINHEIT : `${personen.get(pid).nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.`);
         }
         aus.abweichungen = neuO;
+        break;
+      }
+
+      /* --- Bereichsplan (WP-19, Matrix B2 b): Zuordnung der eigenen Leute am Tag zu Bereichen der eigenen Einheit.
+             Die Rückfüllung vor dieser Prüfung hat Unsichtbares (fremde Bereiche) schon wieder eingesetzt. --- */
+      case "bereichsPlan": {
+        const eigeneE = (altM.einheiten || []).find((x) => x && String(x.id) === String(eigene));
+        const urteil = bereichsPlanSchicht(a, n, { imBereich,
+          eigeneBereiche: new Set((eigeneE && Array.isArray(eigeneE.bereiche) ? eigeneE.bereiche : []).filter(Boolean).map((b) => b.id)) });
+        if (urteil.ok === false) return nein(urteil.grund);
+        aus.bereichsPlan = urteil.plan;
         break;
       }
 

@@ -72,6 +72,10 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Selbstplanung: Einträge anderer samt `hinweise` | nur Tag und Dienst ²² | – | nur eigener Bereich am Tag ¹⁵ ²² | ✓ | ✓ | – | ✓ | ✓ | A |
 | Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf | nur eigene ²⁵ | – | nur eigener Bereich am Tag ²⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
+| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -324,6 +328,34 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
   nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
   (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
+- *Geteilte Dienste* (`server/lib/modul-geteilterdienst.mjs`): keine neuen Betriebsfelder. Das Feld `zweiterAbschnitt` einer
+  Dienstart gibt es im Bestand; Dienstarten ändern nur Rollen mit `org.edit` oder `pattern.edit` (WP-22). Der Server
+  weist eine falsche Form des zweiten Abschnitts ab (`geteilterdienstZusammen`: Uhrzeiten, Lücke, höchstens 24 Stunden
+  Spanne). Parameter `hoechstSpanneStunden` in `einstellungen.branchenmodule` (nur `org.edit`). Befunde nur als
+  Hinweis, nur bei aktivem Modul; die Rechnung braucht nur die Dienstart und die Dienste der Nachbartage. Das Stempeln je Abschnitt ist
+  rechnerisch vorbereitet (`istJeAbschnitt`), die Ablage zweier Stempelpaare je Tag noch nicht angebunden.
+  Geprüft in `pruefungen/modul-geteilterdienst.test.js`.
+- *Posten* (`server/lib/modul-posten.mjs`): zwei neue Betriebsfelder. `objekte` (Objekte mit Posten, Sollbesetzung
+  und verlangten Qualifikationen; keine Personendaten) liefert der Server Planung und Leitung voll, Beschäftigten und der
+  Schichtverantwortung nur mit Einteilung (eigene Einteilung bzw. Einteilung im eigenen Bereich am Tag), dem Betriebsrat
+  nicht — **Nutzerentscheidung W3 offen**, bis dahin konservativ. `postenPlan`
+  (Einteilung auf Posten, Schlüssel „Person|Tag“) sehen Beschäftigte nur für sich selbst, die Schichtverantwortung
+  im eigenen Bereich am Tag (`schichtSchluessel`, tagesgenau), Betriebsrat und Betreiber nicht; Planung und
+  Leitung voll. Beide schreiben nur Planung und Leitung (Voll-Schreibweg); der Server prüft die Form
+  (`postenZusammen`: Kennungen, Soll 0 bis 99, Schlüssel mit echtem Tag, nur Neues oder Geändertes streng). Die
+  Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Einteilungen auf Posten (`postenzuordnungen`). Befunde nur
+  als Hinweis und nur bei aktivem Modul. Die Posten-Dienstarten des Bestands (`posten: true`) bleiben unverändert.
+  Geprüft in `pruefungen/modul-posten.test.js`.
+- *Bereichsplan* (`server/lib/modul-bereichsplan.mjs`): ein neues Betriebsfeld und ein Feld an der Einheit. Die Bereiche
+  (`einheiten[].bereiche`: Kennung, Name, Soll je Dienstart; keine Personendaten) liefert der Server mit den Einheiten
+  an alle Rollen. `bereichsPlan` (Zuordnung, Schlüssel „Person|Tag“ → Bereich) sehen Beschäftigte nur für sich selbst,
+  die Schichtverantwortung im eigenen Bereich am Tag (`schichtSchluessel`), Betriebsrat und Betreiber nicht; Planung und
+  Leitung voll. Schreiben: Planung und Leitung über den Voll-Schreibweg (`bereichsplanZusammen`, nur Neues oder
+  Geändertes streng, Tage höchstens zwei Jahre von heute entfernt); die Schichtverantwortung ordnet Personen ihres Bereichs am Tag Bereichen der eigenen Einheit zu
+  oder hebt die Zuordnung auf (`einheitZusammen`, Fall `bereichsPlan`; höchstens 500 Änderungen je Speichern, Tage wie oben; Unsichtbares fremder Bereiche bleibt durch die
+  Rückfüllung erhalten, Fremdes wird abgewiesen — Nutzerentscheidung B2 b, vorläufig). Beschäftigte schreiben nicht.
+  Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
+  und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
@@ -344,6 +376,8 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | `/api/zugang-sperren` | Leitung (eigener Betrieb), Betreiber (raumweit) | ohne Existenz-Orakel | A |
 | `/api/stempeln`, `/api/zeit-bestaetigen` | Person mit Zugang | nur die eigene Person, Antwort nur der eigene Eintrag. Geo V1: Urteil nur bei eingeschaltetem Betriebsschalter `einstellungen.geoPruefung` (Vorgabe aus; schalten nur Rollen mit `org.edit`, Zeitpunkt und Person setzt der Server); Rohkoordinate und exakte Entfernung werden nicht gespeichert. Offline (WP-07): `clientEventId` je Person idempotent (Kennung am Stempel, unter der Raumsperre), Ereignis mit fremdem `inhaber` → 409 `STEMPEL_FREMDE_SITZUNG`, Erfassungszeit plausibilisiert (`GERAETEZEIT_ABWEICHEND`, `OFFLINE_ALT`, und — ohne Betriebsschalter `einstellungen.offlineStempelVertrauen` (nur `org.edit`, Wann/Wer vom Server, Vorgabe aus) — jede offline erfasste Zeit, die 15 min oder später eingeht → Ist-Zeit zur Prüfung `OFFLINE_PRUEFEN`); gleiche Kennung mit anderer Art → 422 `STEMPEL_EREIGNIS_WIDERSPRUCH`, `offlineStart`/`offlineEnde` Teil des unveränderlichen Originals | A |
 | `/api/stempel-korrektur` | Leitung, Planung, Probierraum (`staff.edit`) | Ist-Zeit eines gestempelten Tages korrigieren — nur als Ereignis `{vorher, nachher, wer, wann, grund}` am Stempel (`server/lib/stempelintegritaet.mjs`, WP-06); das Original bleibt. Ein Originalstempel ist über `PUT /api/bestand` für **jede** Rolle unveränderlich (ändern, löschen, erfinden, Korrektur am Ereignisweg vorbei, Ist-Zeit eines gestempelten Tages ändern: 403 `STEMPEL_UNVERAENDERLICH`). Ausnahmen: Löschlauf der Leitung nach Ablauf der Aufbewahrungsfrist (mind. 24 Monate); Wiederherstellen behält alle heutigen Stempel samt Korrekturen. Die Ereignisse sieht nur, wer den Stempel sieht (`einstempeln` `NUR_EIGENE` für Beschäftigte, Schichtverantwortung, Betriebsrat) | A |
+| `/api/korrektur-antrag` | Person mit Zugang (auch Schichtverantwortung, Betriebsrat) | Antrag auf Korrektur der Ist-Zeit am **eigenen** Stempel der letzten 62 Tage (Beginn, Ende, Pause, Grund ≥ 10 Zeichen); ein offener Antrag je Stempel; liegt am Stempel (`einstempeln[k].antraege`) und folgt dessen Sicht — die Schichtverantwortung sieht fremde nicht (H8+). Der Stempel bleibt unverändert (`server/lib/korrekturworkflow.mjs`, WP-14) | A |
+| `/api/korrektur-entscheiden` | Leitung, Planung, Probierraum (`staff.edit`); Zurückziehen nur die antragstellende Person | genehmigen (→ Korrekturereignis am Stempel mit Antrags-Kennung und Regelhinweisen, Ist ändert sich), ablehnen (Begründung ≥ 10 Zeichen) oder zurückziehen; nicht Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber (403) | A |
 | `/api/anmelden`, `/api/demo`, `/api/demos` | öffentlich | Sitzung bzw. Name/Kennung der Demozugänge, keine Codes | A |
 | `/api/account/*` | eigenes Konto | Mitgliedschaften des eigenen Kontos | A |
 | `/api/zugaenge`, `/api/zugaenge-uebersicht`, `/api/raum-loeschen`, `/api/bestand-anlegen`, `/lage` | Betreiber | raumweit, ohne Codes und Prüfsummen | A |

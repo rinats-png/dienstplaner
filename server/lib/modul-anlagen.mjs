@@ -149,13 +149,19 @@ export function anlagenBefunde(m, datum, dienstId, personen, { auswerten, module
 }
 
 /**
- * Schreibweg: prüft die Anlagenfelder aller übermittelten Betriebsmittel.
- * Andere Betriebsmittel bleiben unberührt.
+ * Schreibweg: prüft die Anlagenfelder der übermittelten Betriebsmittel.
+ * Andere Betriebsmittel bleiben unberührt. Mit `altM` wird nur Neues oder
+ * Geändertes streng geprüft: Ein alter fehlerhafter Eintrag blockiert nicht
+ * den ganzen Betrieb (Review-Auflage 2).
  * @param {any} neuM übermittelter Betrieb
+ * @param {any} [altM] gespeicherter Betrieb
  * @returns {{ grund?: string }}
  */
-export function anlagenZusammen(neuM) {
+export function anlagenZusammen(neuM, altM) {
+  const vorher = new Map((Array.isArray(altM && altM.betriebsmittel) ? altM.betriebsmittel : [])
+    .filter((x) => x && typeof x === "object").map((x) => [String(x.id), JSON.stringify(x)]));
   for (const bm of Array.isArray(neuM && neuM.betriebsmittel) ? neuM.betriebsmittel : []) {
+    if (bm && typeof bm === "object" && vorher.get(String(bm.id)) === JSON.stringify(bm)) continue;
     const f = pruefeAnlage(bm);
     if (f) return { grund: f };
   }

@@ -10,7 +10,7 @@
    ========================================================================== */
 import { qualifikationsMatrix } from "../../server/lib/modul-maschinenqual.mjs";
 
-const WORT = { gueltig: "gültig", laeuft_ab: "läuft ab", abgelaufen: "abgelaufen", fehlt: "fehlt" };
+const WORT = { gueltig: "gültig", laeuft_ab: "läuft ab", abgelaufen: "abgelaufen", fehlt: "fehlt", unbekannt: "nicht bewertbar" };
 const datumKurz = (d) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : "");
 
 /** @param {{ m: any, datum: string, stand: (k: any, n: any, d: string) => { stand: string, bis?: string|null } }} props */

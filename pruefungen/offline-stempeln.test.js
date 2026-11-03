@@ -153,7 +153,7 @@ describe("Idempotenz: dieselbe clientEventId ergibt genau einen Stempel", () => 
 
 describe("Offline erfasst: Zeit aus dem Ereignis, gekennzeichnet", () => {
   it("Flugmodus: Beginn 06:00 und Ende 14:00 erst um 15:00 gesendet → ein Stempel 06:00–14:00, offline, Ist-Zeit zur Prüfung (Auflage A1)", async () => {
-    await raumAnlegen("of-flug", ["a1"]);
+    await raumAnlegen("of-flug", ["a1"], { abweichungen: {"a1|2026-11-06": "F"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-06T14:00:00Z");                                       // 15:00 Berlin, Netz wieder da
     const s = await stempeln("of-flug", "a1", { art: "start", clientEventId: ID(7), offline: true,
       erfasstAm: "2026-11-06T05:00:00.000Z", gesendetAm: "2026-11-06T14:00:00.000Z" });
@@ -199,7 +199,7 @@ describe("Offline erfasst: Zeit aus dem Ereignis, gekennzeichnet", () => {
   });
 
   it("Nachtdienst offline: Beginn 22:00, Ende 06:00, beides am Morgen gesendet → beim Beginn, endeDatum", async () => {
-    await raumAnlegen("of-nacht", ["a1"]);
+    await raumAnlegen("of-nacht", ["a1"], { abweichungen: {"a1|2026-11-06": "N"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-07T07:00:00Z");                                       // 08:00 am 07.11.
     const s = await stempeln("of-nacht", "a1", { art: "start", clientEventId: ID(11), offline: true,
       erfasstAm: "2026-11-06T21:00:00.000Z", gesendetAm: "2026-11-07T07:00:00.000Z" });
@@ -209,12 +209,13 @@ describe("Offline erfasst: Zeit aus dem Ereignis, gekennzeichnet", () => {
     expect([e.status, e.datum]).toEqual([200, "2026-11-06"]);
     expect(e.eintrag).toMatchObject({ start: "22:00", ende: "06:00", endeDatum: "2026-11-07" });
     expect(e.erfassung).toMatchObject({ start: "22:00", ende: "06:00", bestaetigt: false });   // A1: über 15 min nach Erfassung eingegangen
+    expect(e.erfassung.grund).toMatch(/^OFFLINE_PRUEFEN/);
   });
 });
 
 describe("Gerätezeit nie still übernommen", () => {
   it("Geräteuhr eine Stunde nach: Zeit berichtigt, GERAETEZEIT_ABWEICHEND, Ist-Zeit zur Prüfung", async () => {
-    await raumAnlegen("of-uhr", ["a1"]);
+    await raumAnlegen("of-uhr", ["a1"], { abweichungen: {"a1|2026-11-08": "F"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-08T14:00:00Z");                                       // Server 15:00, Gerät meint 14:00
     const s = await stempeln("of-uhr", "a1", { art: "start", clientEventId: ID(13), offline: true,
       erfasstAm: "2026-11-08T04:00:00.000Z", gesendetAm: "2026-11-08T13:00:00.000Z" });
@@ -253,7 +254,7 @@ describe("Gerätezeit nie still übernommen", () => {
   });
 
   it("älter als 48 Stunden: gespeichert und zur Prüfung, nie abgelehnt; Wiederholung bleibt idempotent", async () => {
-    await raumAnlegen("of-alt", ["a1"]);
+    await raumAnlegen("of-alt", ["a1"], { abweichungen: {"a1|2026-11-02": "F"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-12T07:00:00Z");
     const ev = (art, n, erfasstAm) => ({ art, clientEventId: ID(n), offline: true, erfasstAm, gesendetAm: "2026-11-12T07:00:00.000Z" });
     const s = await stempeln("of-alt", "a1", ev("start", 18, "2026-11-02T05:00:00.000Z"));
@@ -262,6 +263,7 @@ describe("Gerätezeit nie still übernommen", () => {
     const e = await stempeln("of-alt", "a1", ev("ende", 19, "2026-11-02T13:00:00.000Z"));
     expect([e.status, e.datum]).toEqual([200, "2026-11-02"]);
     expect(e.erfassung).toMatchObject({ start: "06:00", ende: "14:00", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^OFFLINE_PRUEFEN/);
     const w = await stempeln("of-alt", "a1", ev("start", 18, "2026-11-02T05:00:00.000Z"));
     expect([w.status, w.wiederholt]).toEqual([200, true]);
     expect(stempelVon(await mandant("of-alt"), "a1")).toHaveLength(1);
@@ -320,7 +322,7 @@ describe("Sitzungsbindung und Unveränderlichkeit", () => {
 /* ---------------------- Auflagen aus dem Opus-Review ---------------------- */
 describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bestätigt", () => {
   it("R1: Flugmodus + Geräteuhr auf gestern: ganzer Vortag 06:00–14:00 am Folgetag gesendet → zur Prüfung", async () => {
-    await raumAnlegen("rv-r1", ["a1"]);
+    await raumAnlegen("rv-r1", ["a1"], { abweichungen: {"a1|2026-11-06": "F"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-07T07:00:00Z");                                       // Uhr wieder richtig gestellt
     const ev = (art, n, erfasstAm) => ({ art, clientEventId: ID(n), offline: true, erfasstAm, gesendetAm: "2026-11-07T07:00:00.000Z" });
     const s = await stempeln("rv-r1", "a1", ev("start", 101, "2026-11-06T05:00:00.000Z"));
@@ -332,7 +334,7 @@ describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bes
   });
 
   it("R1b: kommt 09:00, meldet offline 06:00 als Beginn, Ende online → zur Prüfung", async () => {
-    await raumAnlegen("rv-r1b", ["a1"]);
+    await raumAnlegen("rv-r1b", ["a1"], { abweichungen: {"a1|2026-11-06": "F"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-06T08:00:00Z");                                       // 09:00 Berlin
     const s = await stempeln("rv-r1b", "a1", { art: "start", clientEventId: ID(103), offline: true,
       erfasstAm: "2026-11-06T05:00:00.000Z", gesendetAm: "2026-11-06T08:00:00.000Z" });
@@ -346,7 +348,7 @@ describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bes
   });
 
   it("kurz offline (unter 15 min zwischen Erfassung und Eingang): bestätigt", async () => {
-    await raumAnlegen("rv-kurz", ["a1"]);
+    await raumAnlegen("rv-kurz", ["a1"], { abweichungen: {"a1|2026-11-06": "F"} });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-06T05:10:00Z");
     expect((await stempeln("rv-kurz", "a1", { art: "start", clientEventId: ID(105), offline: true,
       erfasstAm: "2026-11-06T05:00:00.000Z", gesendetAm: "2026-11-06T05:10:00.000Z" })).zeit).toBe("06:00");
@@ -357,7 +359,8 @@ describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bes
   });
 
   it("Betriebsschalter „Offline-Stempeln vertrauen“: dann bestätigt (Uhrabweichung bleibt zur Prüfung)", async () => {
-    await raumAnlegen("rv-schalter", ["a1", "a2"], { einstellungen: { offlineStempelVertrauen: true } });
+    await raumAnlegen("rv-schalter", ["a1", "a2"], { einstellungen: { offlineStempelVertrauen: true },
+      abweichungen: { "a1|2026-11-06": "N", "a2|2026-11-07": "F" } });   // geplant (sonst ungeplant, WP-13)
     zeitAuf("2026-11-07T07:00:00Z");
     const ev = (art, n, erfasstAm, gesendetAm = "2026-11-07T07:00:00.000Z") => ({ art, clientEventId: ID(n), offline: true, erfasstAm, gesendetAm });
     await stempeln("rv-schalter", "a1", ev("start", 107, "2026-11-06T21:00:00.000Z"));
@@ -366,6 +369,7 @@ describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bes
     await stempeln("rv-schalter", "a2", ev("start", 109, "2026-11-07T04:00:00.000Z", "2026-11-07T06:00:00.000Z"));
     const e2 = await stempeln("rv-schalter", "a2", ev("ende", 110, "2026-11-07T05:30:00.000Z", "2026-11-07T06:00:00.000Z"));
     expect(e2.erfassung.bestaetigt).toBe(false);                          // Uhr 1 h falsch: weiter zur Prüfung
+    expect(e2.erfassung.grund).toMatch(/^OFFLINE_PRUEFEN/);
   });
 
   it("Schalter: nur org.edit (Leitung) schaltet, Wann/Wer setzt der Server; die Planung nicht", async () => {
