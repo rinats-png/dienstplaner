@@ -647,6 +647,9 @@ Je Mutante eine Änderung an der Quelle, gezielte Prüfung, danach `git checkout
 - `monatsabschluss-lib.test.js` „Abschluss: Prüfsumme …“: Die Prüfsumme wurde mit dem Stand ohne Freeze verglichen (galt,
   weil der Freeze des Testbetriebs leer war). Seit Schema 2 friert jeder Abschluss das Verzeichnis ein; geprüft wird die
   Prüfsumme des abgeschlossenen Standes, dass sie vom Stand ohne Freeze **abweicht**, und `schema: 2`, `revision: 1`.
+- `zeiterfassung.mjs` (HTTP, CI): erwartete den Tag der Selbstauskunft in der Betreiber-Lage und das Muster
+  `stempeln <art> <tag> … schon gestempelt`. Neu (Auftrag N7): Vorgang weiter in der Lage, der Tag dort **nicht** (auch kein
+  Feld `tag`), Muster `stempeln <art>: schon gestempelt` — eine zusätzliche Prüfung, keine weggefallene.
 
 ### Tests lokal (Windows, einzeln, `--testTimeout=120000 --hookTimeout=120000`)
 
@@ -677,4 +680,7 @@ ohne Fehler. Neue Prüfdatei in `pruefung:zeiterfassung` aufgenommen.
   den Aufruf `exportWarnung(…)` wörtlich in den Export-Aktionen; die Export-Rückfrage lief über `lohnWarnung(m, ym)`.
   Behoben, ohne die Prüfungen zu ändern: `lohnWarnung(m, ym, exportWarnung(m, ym))`. Im selben Lauf
   M-neu-1 auf dem CI-Rechner: **245 ms** (400 Personen × 24 Monate).
-- Folgekopf: siehe Bericht (Prüfung nach der Korrektur).
+- Kopf 2a26281: Prüfung 41705954710 rot im Schritt „Zeiterfassung (HTTP)“ (`pruefungen/zeiterfassung.mjs`, kein Flake):
+  Die Prüfung verlangte den Tag der Selbstauskunft in der Betreiber-Lage — genau das, was N7 entfernt. Angepasst auf das
+  neue Soll (siehe unten); Vitest-Prüfungen in diesem Lauf grün.
+- Folgekopf: siehe Bericht.
