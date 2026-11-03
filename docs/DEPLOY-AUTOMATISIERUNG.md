@@ -58,8 +58,11 @@ Warnung im Protokoll, kein R0. Hat das neue Bild schon geschrieben
 **Platz nach der Sicherung (WP-05 N1):** Nach der geprüften Sicherung wird der
 freie Platz unter den Daten gegen dieselben Kritisch-Schwellen wie /gesund
 geprüft (`CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT`/`_MB` aus der `.env`,
-Vorgabe 3 % / 200 MB). Darunter wird nicht gewechselt: Der bisherige Stand
-läuft weiter (nur wenn er `digest-pruefen.sh` besteht, sonst R0).
+Vorgabe 3 % / 200 MB; dezimal erlaubt wie in /gesund, eine ungültige Angabe
+bricht vor jedem Wechsel ab). Geprüft wird nach der Aufbewahrung — alte
+Sicherungen sind dann entfernt, die neue bleibt. Darunter wird nicht
+gewechselt: Der bisherige Stand läuft weiter (nur wenn er `digest-pruefen.sh`
+besteht, sonst R0).
 
 **Aufbewahrung und Platz (N4):** Vor dem Anhalten wird geprüft, dass im
 Sicherungsverzeichnis mindestens das Doppelte der Daten frei ist. Nach einer
