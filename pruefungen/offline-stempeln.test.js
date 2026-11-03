@@ -152,7 +152,7 @@ describe("Idempotenz: dieselbe clientEventId ergibt genau einen Stempel", () => 
 });
 
 describe("Offline erfasst: Zeit aus dem Ereignis, gekennzeichnet", () => {
-  it("Flugmodus: Beginn 06:00 und Ende 14:00 erst um 15:00 gesendet → ein Stempel 06:00–14:00, offline, bestätigt", async () => {
+  it("Flugmodus: Beginn 06:00 und Ende 14:00 erst um 15:00 gesendet → ein Stempel 06:00–14:00, offline, Ist-Zeit zur Prüfung (Auflage A1)", async () => {
     await raumAnlegen("of-flug", ["a1"]);
     zeitAuf("2026-11-06T14:00:00Z");                                       // 15:00 Berlin, Netz wieder da
     const s = await stempeln("of-flug", "a1", { art: "start", clientEventId: ID(7), offline: true,
@@ -172,7 +172,10 @@ describe("Offline erfasst: Zeit aus dem Ereignis, gekennzeichnet", () => {
     expect(st.offlineEnde.offline).toBe(true);
     expect(st.markierungen).toContain("OFFLINE_ERFASST");
     expect(st.markierungen).not.toContain("GERAETEZEIT_ABWEICHEND");
-    expect(m.erfassung["a1|2026-11-06"]).toEqual({ start: "06:00", ende: "14:00", bestaetigt: true, grund: "" });
+    /* Auflage A1 (Review): Erfassungszeit Stunden vor dem Eingang ist nicht prüfbar (Flugmodus + Uhr
+       zurückgestellt genügt zum Fälschen) — die Ist-Zeit steht zur Prüfung, bis die Leitung bestätigt. */
+    expect(m.erfassung["a1|2026-11-06"]).toMatchObject({ start: "06:00", ende: "14:00", bestaetigt: false });
+    expect(m.erfassung["a1|2026-11-06"].grund).toMatch(/^OFFLINE_PRUEFEN/);
   });
 
   it("auch ohne offline-Kennzeichen: über eine Minute zwischen Drücken und Senden gilt die Erfassungszeit", async () => {
@@ -205,7 +208,7 @@ describe("Offline erfasst: Zeit aus dem Ereignis, gekennzeichnet", () => {
       erfasstAm: "2026-11-07T05:00:00.000Z", gesendetAm: "2026-11-07T07:00:00.000Z" });
     expect([e.status, e.datum]).toEqual([200, "2026-11-06"]);
     expect(e.eintrag).toMatchObject({ start: "22:00", ende: "06:00", endeDatum: "2026-11-07" });
-    expect(e.erfassung).toMatchObject({ start: "22:00", ende: "06:00", bestaetigt: true });
+    expect(e.erfassung).toMatchObject({ start: "22:00", ende: "06:00", bestaetigt: false });   // A1: über 15 min nach Erfassung eingegangen
   });
 });
 
@@ -311,5 +314,141 @@ describe("Sitzungsbindung und Unveränderlichkeit", () => {
     const s = await stempeln("of-reihe", "a1", { art: "start", clientEventId: ID(22), offline: true,
       erfasstAm: "2026-11-11T05:00:00.000Z", gesendetAm: "2026-11-11T14:00:00.000Z" });
     expect([s.status, s.code]).toEqual([409, "STEMPEL_SCHON_AUSGESTEMPELT"]);
+  });
+});
+
+/* ---------------------- Auflagen aus dem Opus-Review ---------------------- */
+describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bestätigt", () => {
+  it("R1: Flugmodus + Geräteuhr auf gestern: ganzer Vortag 06:00–14:00 am Folgetag gesendet → zur Prüfung", async () => {
+    await raumAnlegen("rv-r1", ["a1"]);
+    zeitAuf("2026-11-07T07:00:00Z");                                       // Uhr wieder richtig gestellt
+    const ev = (art, n, erfasstAm) => ({ art, clientEventId: ID(n), offline: true, erfasstAm, gesendetAm: "2026-11-07T07:00:00.000Z" });
+    const s = await stempeln("rv-r1", "a1", ev("start", 101, "2026-11-06T05:00:00.000Z"));
+    expect([s.status, s.datum]).toEqual([200, "2026-11-06"]);
+    expect(s.markierungen).not.toContain("GERAETEZEIT_ABWEICHEND");      // der Versatz ist unauffällig
+    const e = await stempeln("rv-r1", "a1", ev("ende", 102, "2026-11-06T13:00:00.000Z"));
+    expect(e.erfassung).toMatchObject({ start: "06:00", ende: "14:00", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^OFFLINE_PRUEFEN/);
+  });
+
+  it("R1b: kommt 09:00, meldet offline 06:00 als Beginn, Ende online → zur Prüfung", async () => {
+    await raumAnlegen("rv-r1b", ["a1"]);
+    zeitAuf("2026-11-06T08:00:00Z");                                       // 09:00 Berlin
+    const s = await stempeln("rv-r1b", "a1", { art: "start", clientEventId: ID(103), offline: true,
+      erfasstAm: "2026-11-06T05:00:00.000Z", gesendetAm: "2026-11-06T08:00:00.000Z" });
+    expect([s.status, s.zeit]).toEqual([200, "06:00"]);
+    zeitAuf("2026-11-06T13:00:00Z");
+    const e = await stempeln("rv-r1b", "a1", { art: "ende", clientEventId: ID(104), offline: false,
+      erfasstAm: "2026-11-06T13:00:00.000Z", gesendetAm: "2026-11-06T13:00:00.000Z" });
+    expect(e.status).toBe(200);
+    expect(e.erfassung).toMatchObject({ start: "06:00", ende: "14:00", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^OFFLINE_PRUEFEN/);
+  });
+
+  it("kurz offline (unter 15 min zwischen Erfassung und Eingang): bestätigt", async () => {
+    await raumAnlegen("rv-kurz", ["a1"]);
+    zeitAuf("2026-11-06T05:10:00Z");
+    expect((await stempeln("rv-kurz", "a1", { art: "start", clientEventId: ID(105), offline: true,
+      erfasstAm: "2026-11-06T05:00:00.000Z", gesendetAm: "2026-11-06T05:10:00.000Z" })).zeit).toBe("06:00");
+    zeitAuf("2026-11-06T13:05:00Z");
+    const e = await stempeln("rv-kurz", "a1", { art: "ende", clientEventId: ID(106), offline: true,
+      erfasstAm: "2026-11-06T13:00:00.000Z", gesendetAm: "2026-11-06T13:05:00.000Z" });
+    expect(e.erfassung).toEqual({ start: "06:00", ende: "14:00", bestaetigt: true, grund: "" });
+  });
+
+  it("Betriebsschalter „Offline-Stempeln vertrauen“: dann bestätigt (Uhrabweichung bleibt zur Prüfung)", async () => {
+    await raumAnlegen("rv-schalter", ["a1", "a2"], { einstellungen: { offlineStempelVertrauen: true } });
+    zeitAuf("2026-11-07T07:00:00Z");
+    const ev = (art, n, erfasstAm, gesendetAm = "2026-11-07T07:00:00.000Z") => ({ art, clientEventId: ID(n), offline: true, erfasstAm, gesendetAm });
+    await stempeln("rv-schalter", "a1", ev("start", 107, "2026-11-06T21:00:00.000Z"));
+    const e = await stempeln("rv-schalter", "a1", ev("ende", 108, "2026-11-07T05:00:00.000Z"));
+    expect(e.erfassung).toMatchObject({ start: "22:00", ende: "06:00", bestaetigt: true });
+    await stempeln("rv-schalter", "a2", ev("start", 109, "2026-11-07T04:00:00.000Z", "2026-11-07T06:00:00.000Z"));
+    const e2 = await stempeln("rv-schalter", "a2", ev("ende", 110, "2026-11-07T05:30:00.000Z", "2026-11-07T06:00:00.000Z"));
+    expect(e2.erfassung.bestaetigt).toBe(false);                          // Uhr 1 h falsch: weiter zur Prüfung
+  });
+
+  it("Schalter: nur org.edit (Leitung) schaltet, Wann/Wer setzt der Server; die Planung nicht", async () => {
+    zeitAuf("2026-11-08T07:00:00Z");
+    await raumAnlegen("rv-recht", ["a1", "l1", "p1"]);
+    const tok = async (rolle, person) => (await sitzungAnlegen({ bestand: "rv-recht", name: rolle, rolle, person, betrieb: 0,
+      mandantId: "m1", einheit: null }, 24 * 60 * 60 * 1000)).token;
+    const setzen = async (token, wert) => {
+      const g = await anfrage("/api/bestand", { methode: "GET", token });
+      const b = structuredClone(g.bestand);
+      b.mandanten[0].einstellungen = { ...(b.mandanten[0].einstellungen || {}), offlineStempelVertrauen: wert,
+        offlineStempelVertrauenAm: "1999-01-01T00:00:00.000Z", offlineStempelVertrauenVon: "jemand" };
+      return anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "T" } });
+    };
+    await setzen(await tok("planer", "p1"), true);
+    expect((await mandant("rv-recht")).einstellungen?.offlineStempelVertrauen).not.toBe(true);
+    const r = await setzen(await tok("leitung", "l1"), true);
+    expect(r.status, JSON.stringify(r)).toBe(200);
+    const e = (await mandant("rv-recht")).einstellungen;
+    expect(e).toMatchObject({ offlineStempelVertrauen: true, offlineStempelVertrauenAm: "2026-11-08T07:00:00.000Z",
+      offlineStempelVertrauenVon: "l1" });
+  });
+});
+
+describe("Review A3/L2–L5: Fenster, Uhr vor, Art, Klemmen, Rohwerte, Inhaber", () => {
+  it("S1: Wiederholung nach über 14 Tagen mit derselben Erfassungszeit findet den Stempel (Ereignistag im Fenster)", async () => {
+    zeitAuf("2026-11-02T05:00:00Z");
+    await raumAnlegen("rv-s1", ["a1"]);
+    const ev = { art: "start", clientEventId: ID(111), erfasstAm: "2026-11-02T05:00:00.000Z" };
+    expect((await stempeln("rv-s1", "a1", { ...ev, gesendetAm: "2026-11-02T05:00:00.000Z" })).status).toBe(200);
+    zeitAuf("2026-11-22T05:00:00Z");
+    const w = await stempeln("rv-s1", "a1", { ...ev, offline: true, gesendetAm: "2026-11-22T05:00:00.000Z" });
+    expect([w.status, w.wiederholt, w.datum]).toEqual([200, true, "2026-11-02"]);
+  });
+
+  it("S7: Geräteuhr eine Stunde VOR: berichtigt und markiert", async () => {
+    await raumAnlegen("rv-s7", ["a1"]);
+    zeitAuf("2026-11-08T14:00:00Z");
+    const s = await stempeln("rv-s7", "a1", { art: "start", clientEventId: ID(112), offline: true,
+      erfasstAm: "2026-11-08T06:00:00.000Z", gesendetAm: "2026-11-08T15:00:00.000Z" });
+    expect([s.status, s.zeit]).toEqual([200, "06:00"]);
+    expect(s.markierungen).toContain("GERAETEZEIT_ABWEICHEND");
+  });
+
+  it("L2: dieselbe Kennung mit anderer Art → 422, kein Stempel", async () => {
+    zeitAuf("2026-11-09T05:00:00Z");
+    await raumAnlegen("rv-l2", ["a1"]);
+    expect((await stempeln("rv-l2", "a1", { art: "start", clientEventId: ID(113) })).status).toBe(200);
+    const x = await stempeln("rv-l2", "a1", { art: "ende", clientEventId: ID(113) });
+    expect([x.status, x.code]).toEqual([422, "STEMPEL_EREIGNIS_WIDERSPRUCH"]);
+    expect((await mandant("rv-l2")).einstempeln["a1|2026-11-09"].ende).toBeUndefined();
+  });
+
+  it("L3: ehrlicher kleiner Uhrversatz — Ende minimal vor dem Beginn wird auf den Beginn geklemmt, nicht START_VERALTET", async () => {
+    await raumAnlegen("rv-l3", ["a1"]);
+    zeitAuf("2026-11-09T05:00:00Z");
+    expect((await stempeln("rv-l3", "a1", { art: "start", clientEventId: ID(114) })).zeit).toBe("06:00");
+    zeitAuf("2026-11-09T05:03:00Z");
+    const e = await stempeln("rv-l3", "a1", { art: "ende", clientEventId: ID(115), offline: true,
+      erfasstAm: "2026-11-09T04:58:00.000Z", gesendetAm: "2026-11-09T05:01:00.000Z" });
+    expect(e.status).toBe(200);
+    expect(e.markierungen).not.toContain("START_VERALTET");
+    expect(e.eintrag).toMatchObject({ start: "06:00", ende: "06:00" });
+  });
+
+  it("L4: unlesbare Gerätezeiten werden nicht roh gespeichert", async () => {
+    await raumAnlegen("rv-l4", ["a1"]);
+    zeitAuf("2026-11-09T07:00:00Z");
+    const s = await stempeln("rv-l4", "a1", { art: "start", clientEventId: ID(116), offline: true,
+      erfasstAm: "<script>gestern</script>", gesendetAm: "irgendwann" });
+    expect(s.status).toBe(200);
+    const st = (await mandant("rv-l4")).einstempeln["a1|2026-11-09"];
+    expect(st.offlineStart.geraetAm).toBeNull();
+    expect(st.offlineStart.gesendetAm).toBeNull();
+  });
+
+  it("L5: Inhaber hängt am Betrieb (mandantId), nicht an seiner Position", async () => {
+    await raumAnlegen("rv-l5", ["a1"]);
+    const tok = async (betrieb) => (await sitzungAnlegen({ bestand: "rv-l5", name: "a1", rolle: "mitarbeiter", person: "a1",
+      betrieb, mandantId: "m1", einheit: null }, 24 * 60 * 60 * 1000)).token;
+    const a = await anfrage("/api/bestand", { methode: "GET", token: await tok(0) });
+    const b = await anfrage("/api/bestand", { methode: "GET", token: await tok(3) });
+    expect(a.inhaber).toMatch(/^[0-9a-f]{32}$/);
+    expect(b.inhaber).toBe(a.inhaber);
   });
 });
