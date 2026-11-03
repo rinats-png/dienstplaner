@@ -126,6 +126,8 @@ export const MARKIERUNG_TEXT = Object.freeze({
   DAUER_NULL: "Beginn gleich Ende — Zeiten über die Korrektur eintragen",
   ORT_PRUEFEN: "Ort nicht bestätigt — bitte klären",
   UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
+  PAUSE_ZU_KURZ: "Pause kürzer als gesetzlich nötig (§ 4 ArbZG / § 11 JArbSchG) — Hinweis",
+  PAUSE_UNGUELTIG: "Pausenangabe ungültig — ohne Pause gespeichert",
 });
 
 /** Anzeigetext eines Stempelereignisses im Puffer (WP-07). */

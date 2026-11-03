@@ -18,6 +18,7 @@
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
+import { abschlussBeiWiederherstellung } from "./monatsabschluss.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { planFreigabeAktiv } from "./planfreigabe.mjs";
@@ -264,7 +265,11 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
      Das kommt VOR den Fristen: Was die Aufbewahrungsfrist überschritten hat, löscht der
      Datenschutzlauf (Modus „an") — auch aus dem, was die Sicherung zurückbringt
      (Art. 5 Abs. 1 lit. e DSGVO). Umgekehrt käme Gelöschtes zurück. */
-  const st = stempelBeiWiederherstellung(alt, zurueck);
+  const st0 = stempelBeiWiederherstellung(alt, zurueck);
+  /* Monatsabschluss (WP-16): Der Abschlussstand bleibt der heutige, und in heute abgeschlossenen Monaten
+     bleiben Stempel und Ist-Zeiten, wie sie heute sind — eine Sicherung öffnet keinen Monat und dreht
+     kein abgeschlossenes Ist zurück. Vor den Fristen (gleicher Grund wie oben). */
+  const st = { ...st0, mandant: abschlussBeiWiederherstellung(alt, st0.mandant).mandant };
   const stempelProtokoll = st.behalten
     ? { ...st.mandant, protokoll: [{ ...eintrag, text: `${eintrag.text} · ${st.behalten} Stempel aus dem aktuellen Stand behalten` },
       ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])] }

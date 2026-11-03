@@ -24,6 +24,7 @@ import { planungsregelnAbleiten } from "./planungsregeln.mjs";
 import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
+import { abschlussStatus } from "./monatsabschluss.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -526,6 +527,10 @@ export const BETRIEB = {
      Fachlich bestätigt am 2026-11-02; dokumentiert in RECHTEMATRIX.md ¹⁴. */
   erfassung: [NUR_EIGENE, WEG],
   einstempeln: [NUR_EIGENE, NUR_EIGENE],
+  /* Monatsabschluss (WP-16): Beschäftigte, Betriebsrat und — über diese Spalte — die Schichtverantwortung
+     sehen nur, welche Monate abgeschlossen sind; Wer, Wann, Grund, Verlauf, Prüfsumme und die abgewiesenen
+     Stempel (mit Person und Tag) nur Planung und Leitung (RECHTEMATRIX ²⁹). */
+  monatsabschluss: [R(abschlussStatus), R(abschlussStatus)],
   fahrzeiten: [NUR_EIGENE, WEG],
   checks: [NUR_EIGENE, WEG],
   ansichten: [NUR_EIGENE, NUR_EIGENE],

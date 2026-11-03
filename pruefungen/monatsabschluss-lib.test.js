@@ -9,8 +9,9 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 import { abschliessen, wiederoeffnen, abschlussWiderspruch, abschlussBeiWiederherstellung, abschlussStatus, istAbdruck,
-  offenePunkte, abschlussSperre, monatAbgeschlossen, abschlussAusGespeichert, abgewiesenVermerken, letzteWiederoeffnung } from "../server/lib/monatsabschluss.mjs";
+  offenePunkte, abschlussSperre, monatAbgeschlossen, abschlussAusGespeichert, abgewiesenVermerken, letzteWiederoeffnung, sha256Hex } from "../server/lib/monatsabschluss.mjs";
 import { korrekturAnhaengen } from "../server/lib/stempelintegritaet.mjs";
 import { auswertungHolen, auswertungenVergessen, BR_NEUBERECHNUNG_MS } from "../server/lib/br-auswertung.mjs";
 import { betriebSicht } from "../server/lib/sicht.mjs";
@@ -37,6 +38,10 @@ describe("abschliessen / wiederoeffnen", () => {
     expect(monatAbgeschlossen(m, "2026-09-30")).toBe(false);
     expect(abschlussSperre(m, "2026-10-31")).toMatchObject({ status: 409, code: "MONAT_ABGESCHLOSSEN", monat: "2026-10" });
     expect(abschlussSperre(m, "2026-11-01")).toBeNull();
+  });
+  it("SHA-256 ohne node:crypto (die Datei erreicht die Oberfläche) stimmt mit node:crypto überein", () => {
+    for (const t of ["", "abc", "ä€😀", "x".repeat(55), "y".repeat(56), "z".repeat(64), "w".repeat(1000)])
+      expect(sha256Hex(t), JSON.stringify(t.slice(0, 5))).toBe(createHash("sha256").update(t).digest("hex"));
   });
   it("Prüfsumme unabhängig von der Reihenfolge der Schlüssel, abhängig vom Inhalt", () => {
     const a = basis(), b = basis();

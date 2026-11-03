@@ -307,7 +307,7 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
  * @param {string} id
- * @param {{antrag?: {id: string, vonPersonId: (string|number|null)}}} [opt]  antrag: die Korrektur geht auf diesen Antrag zurück (WP-14)
+ * @param {{antrag?: {id: string, vonPersonId: (string|number|null)}, nachWiederoeffnung?: (string|null)}} [opt]  antrag: die Korrektur geht auf diesen Antrag zurück (WP-14); nachWiederoeffnung: Kennung der Wiederöffnung des Monats (WP-16)
  * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object, hinweis: (string|null), hinweise: Array<{code: string, text: string}>}}
  */
 export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
@@ -357,6 +357,8 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     wann: jetzt.toISOString(),
     grund,
     ...(opt.antrag ? { antrag: opt.antrag } : {}),
+    /* WP-16: im wiedergeöffneten Monat die Kennung der Wiederöffnung — nachvollziehbar, dass nach einem Abschluss korrigiert wurde. */
+    ...(opt.nachWiederoeffnung ? { nachWiederoeffnung: String(opt.nachWiederoeffnung) } : {}),
   };
   /* Die gültige Pause: die genannte, sonst die zuletzt erfasste, sonst die der geplanten Dienstart. */
   const dienstart = planDienst ? (m.dienstarten || []).find((d) => d && String(d.id) === String(planDienst)) : null;

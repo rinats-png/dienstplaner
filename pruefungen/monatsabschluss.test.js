@@ -228,6 +228,29 @@ describe("Abgeschlossener Monat: jeder Schreibweg auf Ist-Daten wird abgewiesen"
   });
 });
 
+describe("Veraltete Kopie nach dem Abschluss: der Abschluss bleibt", { timeout: 120000 }, () => {
+  it("Leitung lädt, Planung schließt ab, Leitung speichert mit der alten Kopie (Abschluss darin noch offen): nie überschrieben", async () => {
+    const raum = "wp16-veraltet";
+    await raumAnlegen(raum, { monatsabschluss: {} });
+    const tl = await token("l1", raum);
+    const g = await anfrage("bestand", { methode: "GET", token: tl });
+    const zu = await anfrage("monatsabschluss", { token: await token("p1", raum), rumpf: { aktion: "abschliessen", monat: "2026-09" } });
+    expect(zu.status, zu.roh).toBe(200);
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    b.mandanten[0].erfassung["a1|2026-11-04"] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "nachgetragen" };
+    const r = await anfrage("bestand", { methode: "PUT", token: tl, rumpf: { bestand: b, etag: g.etag } });
+    expect([200, 409]).toContain(r.status);                                 // 409: bekannter Kern-Konflikt, die Oberfläche lädt neu
+    expect((await mandant(raum)).monatsabschluss["2026-09"].abgeschlossen).toBe(true);
+    /* Mit dem aktuellen Stand und einem „offenen“ September darin: wirkungslos. */
+    const g2 = await anfrage("bestand", { methode: "GET", token: tl });
+    const b2 = JSON.parse(JSON.stringify(g2.bestand));
+    delete b2.mandanten[0].monatsabschluss["2026-09"];
+    const r2 = await anfrage("bestand", { methode: "PUT", token: tl, rumpf: { bestand: b2, etag: g2.etag } });
+    expect(r2.status, r2.roh).toBe(200);
+    expect((await mandant(raum)).monatsabschluss["2026-09"].abgeschlossen).toBe(true);
+  });
+});
+
 describe("Abschließen und Wiederöffnen: Rechte, Grund, Verlauf, Protokoll", { timeout: 120000 }, () => {
   const abschluss = async (id, rumpf) => anfrage("monatsabschluss", { token: id === "bt" ? await betreiber() : await token(id), rumpf });
 
@@ -334,7 +357,7 @@ describe("Datenschutz: Abschlussdetails nur für Planung und Leitung", { timeout
       const g = await anfrage("bestand", { methode: "GET", token: await token(id) });
       const okt = g.bestand.mandanten[0].monatsabschluss["2026-10"];
       expect(okt.verlauf[0]).toMatchObject({ id: "ma-1", grund: "Lohnlauf Oktober" });
-      expect(okt.abgewiesen).toHaveLength(1);
+      expect(okt.abgewiesen.map((x) => [x.personId, x.datum, x.art])).toEqual([["a1", "2026-10-31", "start"], ["a2", "2026-10-31", "ende"]]);
     }
   });
 });

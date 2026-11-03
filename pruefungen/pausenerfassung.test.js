@@ -44,8 +44,9 @@ describe("Mindestpause: eine Rechnung für Erwachsene und Jugendliche", () => {
     expect(pause("j", "06:00", "13:30", 30)).toEqual([expect.objectContaining({ text: expect.stringMatching(/nötig sind 60 min.*§ 11 JArbSchG/) })]);
     expect(pause("e", "06:00", "12:00", 0)).toEqual([]);                    // genau 6 h: keine Pause nötig
     expect(pause("e", "06:00", "12:01", 0)).toEqual([expect.objectContaining({ text: expect.stringMatching(/nötig sind 30 min.*§ 4 ArbZG/) })]);
-    expect(pause("e", "06:00", "15:01", 30)).toEqual([expect.objectContaining({ text: expect.stringMatching(/nötig sind 45 min/) })]);
-    expect(pause("e", "06:00", "15:01", 45)).toEqual([]);
+    expect(pause("e", "06:00", "15:30", 30)).toEqual([]);                    // netto genau 9 h: 30 min genügen
+    expect(pause("e", "06:00", "15:31", 30)).toEqual([expect.objectContaining({ text: expect.stringMatching(/nötig sind 45 min/) })]);
+    expect(pause("e", "06:00", "15:46", 45)).toEqual([]);
   });
   it("Prüfung der Oberfläche (pruefZeitFuer) rechnet mit der erfassten Pause, nicht mit der der Dienstart", () => {
     const da = { id: "F", start: "06:00", ende: "14:00", pause: 30 };
@@ -96,13 +97,13 @@ async function raum(name, personen, extra = {}) {
   await B.bestandSchreiben(laden(), name, { version: 9, mandanten: [{ id: "m1", name: "Haus", einheiten: [{ id: "e1", name: "WB" }],
     dienstarten: [F], personen, abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, ...extra }] }, { durch: "Pruefung" });
 }
+/* Je Stempel eine frische Sitzung (wie offline-stempeln.test.js): Zwischen Beginn und Ende liegen Stunden ohne Anfrage. */
 const dienst = async (r, pid, endeIso, pause) => {
-  const t = await token(r, pid);
   zeitAuf("2026-11-10T05:00:00Z");                                          // 06:00 Berlin
-  const s = await anfrage("stempeln", { token: t, rumpf: { art: "start" } });
+  const s = await anfrage("stempeln", { token: await token(r, pid), rumpf: { art: "start" } });
   expect(s.status, s.roh).toBe(200);
   zeitAuf(endeIso);
-  return anfrage("stempeln", { token: t, rumpf: { art: "ende", ...(pause === undefined ? {} : { pause }) } });
+  return anfrage("stempeln", { token: await token(r, pid), rumpf: { art: "ende", ...(pause === undefined ? {} : { pause }) } });
 };
 
 beforeAll(async () => {
@@ -170,7 +171,7 @@ describe("Ausstempeln mit Pause", { timeout: 120000 }, () => {
     for (const [i, p] of ["viel", -5, 400, 600].entries()) {
       const r0 = `p-falsch-${i}`;
       await raum(r0, [person("a1")], { abweichungen: { "a1|2026-11-10": "F" } });
-      const r = await dienst(r0, "a1", i === 3 ? "2026-11-10T09:00:00Z" : "2026-11-10T13:00:00Z", i === 3 ? 180 : p);
+      const r = await dienst(r0, "a1", i === 3 ? "2026-11-10T08:00:00Z" : "2026-11-10T13:00:00Z", i === 3 ? 180 : p);   // i = 3: 180 min bei 3 h Anwesenheit
       expect(r.status, `${p} ${r.roh}`).toBe(200);
       expect(r.markierungen, String(p)).toContain("PAUSE_UNGUELTIG");
       expect("pause" in r.eintrag).toBe(false);
@@ -191,10 +192,10 @@ describe("Ausstempeln mit Pause", { timeout: 120000 }, () => {
   });
   it("offline erfasstes Ende aus dem Puffer mit Pause: die Pause kommt an", async () => {
     await raum("p-offline", [person("a1")], { abweichungen: { "a1|2026-11-10": "F" } });
-    const t = await token("p-offline", "a1");
     zeitAuf("2026-11-10T05:00:00Z");
-    expect((await anfrage("stempeln", { token: t, rumpf: { art: "start" } })).status).toBe(200);
+    expect((await anfrage("stempeln", { token: await token("p-offline", "a1"), rumpf: { art: "start" } })).status).toBe(200);
     zeitAuf("2026-11-10T13:30:00Z");
+    const t = await token("p-offline", "a1");
     const sp = PUF.speicherFluechtig();
     const ev = await PUF.erfassen(sp, { art: "ende", inhaber: "a1", pause: 30, offline: true, jetzt: new Date("2026-11-10T13:30:00Z") });
     zeitAuf("2026-11-10T13:31:00Z");

@@ -230,6 +230,7 @@ import {
 /* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
+import { monatAbgeschlossen, monatText } from "../server/lib/monatsabschluss.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
@@ -1852,9 +1853,11 @@ function pruefen(m, von, bis) {
           continue;
         }
 
-        if (!pauseGenuegt(ist)) {
+        /* Jugendliche: § 11 JArbSchG (WP-16) — dieselbe Rechnung wie Stempeln und Korrektur. */
+        const jungAm = alterAm(p.geburtstag, d) !== null && alterAm(p.geburtstag, d) < 18;
+        if (!pauseGenuegt(ist, jungAm)) {
           const anwesend = bruttoAm(d, ist);
-          const noetig = pausePflicht(anwesend - (ist.pause || 0) / 60);
+          const noetig = pausePflicht(anwesend - (ist.pause || 0) / 60, jungAm);
           push({ art: "pause", schwere: "danger", datum: d, ref: `${p.id}|pause`, personId: p.id,
             titel: `Ruhepause zu kurz — ${p.nachname}`,
             text: `${da.name}: ${ist.pause || 0} min eingetragen, nötig sind ${noetig} min bei ${n1(anwesend)} h Anwesenheit` });
@@ -11642,6 +11645,68 @@ function korrekturMeldung(erg) {
 const UHR_FORMAT = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ANTRAG_STATUS_TEXT = { offen: "offen", genehmigt: "genehmigt", abgelehnt: "abgelehnt", zurueckgezogen: "zurückgezogen" };
 
+/* --------------------------------------------------------------------------
+   MONATSABSCHLUSS (WP-16) — Oberfläche
+   -------------------------------------------------------------------------- */
+/** Ist der Monat dieses Tages abgeschlossen? Dieselbe Regel wie der Server (lib/monatsabschluss.mjs). */
+const monatGesperrt = (m, datum) => monatAbgeschlossen(m, datum);
+const zeitpunktText = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime())
+  ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"; };
+
+/**
+ * Stand des Monats in den Stempelbefunden — nur für Leitung und Planung (staff.edit). Abgeschlossen:
+ * Wann, Wer, Verlauf mit Grund, nach dem Abschluss abgewiesene Stempel; „Wiederöffnen“ nur mit
+ * org.edit (Leitung), mit Grund. Offen und vergangen: „Monat abschließen“. Laufender Monat: Hinweis.
+ */
+function Monatsabschluss({ sitz, ym, akt }) {
+  const m = sitz.mandant;
+  const [grund, setGrund] = useState("");
+  const [oeffnen, setOeffnen] = useState(false);
+  if (!darf(sitz, "staff.edit") || !ym) return null;
+  const e = m.monatsabschluss && m.monatsabschluss[ym] && typeof m.monatsabschluss[ym] === "object" ? m.monatsabschluss[ym] : null;
+  const zu = !!e && e.abgeschlossen === true;
+  const laufend = ym >= heute().slice(0, 7);
+  const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
+  const verlauf = e && Array.isArray(e.verlauf) ? e.verlauf : [];
+  const abgewiesen = e && Array.isArray(e.abgewiesen) ? e.abgewiesen : [];
+  return (
+    <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <b style={{ fontSize: 13.5 }}>{zu ? `${monatText(ym)} abgeschlossen` : laufend ? `${monatText(ym)} läuft` : `${monatText(ym)} ist offen`}</b>
+        {zu && <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>am {zeitpunktText(e.am)}{e.wer && e.wer.name ? ` von ${e.wer.name}` : ""}</span>}
+        {!zu && !laufend && akt && <Btn size="sm" kind="primary" onClick={() => akt.monatAbschliessen(ym)}>Monat abschließen</Btn>}
+        {zu && akt && darf(sitz, "org.edit") && !oeffnen && <Btn size="sm" onClick={() => { setOeffnen(true); setGrund(""); }}>Wiederöffnen</Btn>}
+      </div>
+      <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.45 }}>
+        {zu ? "Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats sind gesperrt. Wieder öffnen kann ihn nur die Leitung, mit Grund."
+          : laufend ? "Abschließen lässt sich ein Monat erst nach dem Monatsende."
+            : "Mit dem Abschluss werden Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats gesperrt."}</div>
+      {oeffnen && zu && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+          <Inp value={grund} onChange={(x) => setGrund(x.target.value)} aria-label="Grund für das Wiederöffnen" placeholder="Grund (mindestens 10 Zeichen)" style={{ flex: 1, minWidth: 240 }} />
+          <Btn size="sm" kind="danger" disabled={grund.trim().length < 10}
+            onClick={async () => { if (await akt.monatWiederoeffnen(ym, grund)) setOeffnen(false); }}>Monat wiederöffnen</Btn>
+          <Btn size="sm" onClick={() => setOeffnen(false)}>Abbrechen</Btn>
+        </div>)}
+      {abgewiesen.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.warn }}>
+            {abgewiesen.length === 1 ? "1 Stempel nach dem Abschluss abgewiesen" : `${abgewiesen.length} Stempel nach dem Abschluss abgewiesen`}</div>
+          <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
+            Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Ist der Monat wieder offen, lässt er sich dort erneut senden.</div>
+          {abgewiesen.map((x, i) => (
+            <div key={`${x.ereignis || i}`} style={{ fontSize: 12.5, ...NUM }}>
+              {name(x.personId)} · {fKurz(x.datum)} · {x.art === "start" ? "Beginn" : "Ende"} {x.zeit || ""}{x.offline ? " · offline erfasst" : ""}</div>))}
+        </div>)}
+      {verlauf.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {verlauf.map((x) => (
+            <div key={x.id} style={{ fontSize: 12.5, color: C.dim, ...NUM }}>
+              {x.art === "wiederoeffnung" ? "wiedergeöffnet" : "abgeschlossen"} {zeitpunktText(x.am)}{x.wer && x.wer.name ? ` · ${x.wer.name}` : ""}{x.grund ? ` — ${x.grund}` : ""}</div>))}
+        </div>)}
+    </div>);
+}
+
 /** Beginn, Ende, Pause und Grund — für Antrag und direkte Korrektur. */
 function ZeitFormular({ start = "", ende = "", pause = "", knopf, onSenden, onAbbrechen, grundHilfe = "Grund (mindestens 10 Zeichen)" }) {
   const [v, setV] = useState({ start, ende, pause: pause === undefined || pause === null ? "" : String(pause), grund: "" });
@@ -11683,6 +11748,8 @@ function KorrekturKarte({ sitz, akt }) {
         const letzter = antraege[antraege.length - 1];
         const ist = (m.erfassung || {})[`${p.id}|${datum}`];
         const marken = [...(e.markierungen || []), ...(endeFehlt(datum, e) ? ["ENDE_FEHLT"] : [])];
+        /* Monatsabschluss (WP-16): im abgeschlossenen Monat kein Antrag — der Server nimmt ihn nicht an. */
+        const zu = monatGesperrt(m, datum);
         return (
           <div key={datum} style={{ padding: "8px 0", borderTop: `1px solid ${C.lineSoft}` }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -11692,9 +11759,10 @@ function KorrekturKarte({ sitz, akt }) {
               {marken.map((x) => <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>)}
               {letzter && <Pill size="sm" tone={letzter.status === "genehmigt" ? "ok" : letzter.status === "abgelehnt" ? "danger" : "accent"}>
                 Antrag {ANTRAG_STATUS_TEXT[letzter.status] || letzter.status}</Pill>}
-              {(!letzter || letzter.status !== "offen") && offen !== datum &&
+              {zu && <Pill size="sm" tone="neutral">Monat abgeschlossen — Korrektur nur nach Wiederöffnen durch die Leitung</Pill>}
+              {!zu && (!letzter || letzter.status !== "offen") && offen !== datum &&
                 <Btn size="sm" onClick={() => setOffen(datum)}>Korrektur beantragen</Btn>}
-              {letzter && letzter.status === "offen" &&
+              {!zu && letzter && letzter.status === "offen" &&
                 <Btn size="sm" onClick={() => akt.korrekturEntscheiden(String(p.id), datum, letzter.id, "zurueckgezogen")}>Antrag zurückziehen</Btn>}
             </div>
             {letzter && letzter.status === "offen" && (
@@ -11872,6 +11940,7 @@ function StempelBefunde({ sitz, ym, akt }) {
                 : <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
         </div>)}
+      <Monatsabschluss sitz={sitz} ym={ym} akt={akt} />
       <KorrekturAntraege sitz={sitz} akt={akt} />
       <KorrekturOffene sitz={sitz} ym={ym} akt={akt} />
       {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (
@@ -13408,18 +13477,35 @@ function StempelPuffer({ akt }) {
     </div>);
 }
 
+/** Pause beim Ausstempeln (WP-16): vorbelegt mit der Pause der geplanten Dienstart, sonst leer. */
+function pauseVorgabe(m, p, datum) {
+  const t = datum ? personTag(m, p, datum) : null;
+  const da = t && t.dienstId ? (m.dienstarten || []).find((x) => x.id === t.dienstId) : null;
+  return da && Number.isFinite(Number(da.pause)) && Number(da.pause) > 0 ? String(da.pause) : "";
+}
+/** Eingabe der genommenen Pause neben „Ausstempeln“ (WP-16). Der Server prüft; eine ungültige Angabe kostet nie den Stempel. */
+function PauseFeld({ wert, setWert, gross }) {
+  return (
+    <label style={{ fontSize: gross ? 13.5 : 12, color: C.dim, display: "inline-flex", alignItems: "center", gap: 6 }}>
+      Pause (min)
+      <Inp type="number" min="0" max="180" inputMode="numeric" value={wert} onChange={(e) => setWert(e.target.value)}
+        aria-label="Pause in Minuten" style={{ width: gross ? 84 : 70 }} />
+    </label>);
+}
+
 function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
+  const [pause, setPause] = useState(() => pauseVorgabe(m, p, datum));
 
   /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
        Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
-    positionHolen(geoAn, (koord) => { Promise.resolve(akt.stempeln(p.id, tag, art, koord)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (koord) => { Promise.resolve(akt.stempeln(p.id, tag, art, koord, art === "ende" ? pause : null)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
@@ -13452,8 +13538,11 @@ function Stempeluhr({ sitz, akt, vorgang }) {
     <div style={{ textAlign: "right" }}>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 8, ...NUM }}>
         Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}{st.vorlaeufig ? " · vorläufig (offline gespeichert)" : ""}</div>
-      <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>
-        {laeuft ? wartet : "Ausstempeln"}</Btn>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+        <PauseFeld wert={pause} setWert={setPause} />
+        <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>
+          {laeuft ? wartet : "Ausstempeln"}</Btn>
+      </div>
     </div>);
   return (
     <div style={{ textAlign: "right" }}>
@@ -20426,10 +20515,11 @@ function MStempel({ sitz, akt, vorgang }) {
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
+  const [pause, setPause] = useState(() => pauseVorgabe(m, p, datum));
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
-    positionHolen(geoAn, (k) => { Promise.resolve(akt.stempeln(p.id, tag, art, k)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (k) => { Promise.resolve(akt.stempeln(p.id, tag, art, k, art === "ende" ? pause : null)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
@@ -20456,6 +20546,7 @@ function MStempel({ sitz, akt, vorgang }) {
   if (!st.ende) return (<>
     <div style={{ fontSize: 14, color: C.dim, marginBottom: 11, ...NUM }}>
       Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}{st.vorlaeufig ? " · vorläufig (offline gespeichert)" : ""}</div>
+    <div style={{ marginBottom: 10 }}><PauseFeld wert={pause} setWert={setPause} gross /></div>
     <Flaeche kind="ok" onClick={() => stempeln("ende")}>Ausstempeln</Flaeche></>);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -22948,6 +23039,26 @@ function AppInnen() {
        Stempel aus dem Puffer, die später durchkamen). Mehrere Quittungen
        eines Sendelaufs kommen gesammelt — ein Nachladen, nicht eines je
        Stempel (Review L6). eintraege: [{ datum, art, erg }]. */
+    /* Nach einem eigenen Serverweg (Monatsabschluss, WP-16): den gespeicherten Stand samt ETag
+       nachladen — wie stempelUebernehmen —, damit kein PUT mit altem ETag hinterherläuft und am
+       geänderten Kern scheitert. Steht lokal etwas aus, wird die Antwort nur gespiegelt. */
+    const serverstandNachladen = async (spiegeln) => {
+      if (ref.current && !SP.schreibenAusstehend() && abbildVon(ref.current) === zuletztGeschrieben.current) {
+        try {
+          const neu = await SP.lies();
+          const mig = neu.bestand && !neu.ausSpeicher ? migriere(neu.bestand) : null;
+          const jetzt = ref.current;
+          if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
+            && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
+            zuletztGeschrieben.current = abbildVon(naechster);
+            setDb(naechster);
+            return;
+          }
+        } catch { /* nachladen gescheitert: lokal spiegeln */ }
+      }
+      upd(spiegeln);
+    };
     const stempelUebernehmen = async (pid, eintraege) => {
       if (!eintraege.length) return;
       /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
@@ -23375,6 +23486,40 @@ function AppInnen() {
       },
       /* Korrekturworkflow (WP-14): Antrag stellen, zurückziehen, entscheiden. Übernommen wird,
          was der Server gespeichert hat. */
+      /* Monatsabschluss (WP-16): Abschließen (Leitung, Planung) und Wiederöffnen (nur Leitung, mit Grund)
+         laufen über den Server; übernommen wird der Eintrag, den er gespeichert hat. Offene Prüffälle:
+         einmal nachfragen, dann ausdrücklich „trotzdem“. */
+      monatAbschliessen: async (monat) => {
+        const uebernehmen = (erg) => serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+          : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+        try {
+          await uebernehmen(await SP.monatsabschluss("abschliessen", monat));
+          melde("Monat abgeschlossen — Ist-Zeiten, Stempel, Korrekturen und Anträge dieses Monats sind gesperrt.");
+          return true;
+        } catch (e) {
+          if (e && e.code === "ABSCHLUSS_PRUEFFAELLE" && typeof window !== "undefined" && window.confirm(e.message)) {
+            try {
+              await uebernehmen(await SP.monatsabschluss("abschliessen", monat, { trotzPrueffaellen: true }));
+              melde("Monat abgeschlossen — die offenen Prüffälle stehen im Verlauf.");
+              return true;
+            } catch (e2) { melde(e2.message || "Der Monat ließ sich nicht abschließen."); return false; }
+          }
+          melde((e && e.message) || "Der Monat ließ sich nicht abschließen.");
+          return false;
+        }
+      },
+      monatWiederoeffnen: async (monat, grund) => {
+        try {
+          const erg = await SP.monatsabschluss("wiederoeffnen", monat, { grund });
+          await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+          melde("Monat wiedergeöffnet — Korrekturen stehen weiter als Ereignis am Stempel.");
+          return true;
+        } catch (e) {
+          melde((e && e.message) || "Der Monat ließ sich nicht wiederöffnen.");
+          return false;
+        }
+      },
       korrekturBeantragen: async (datum, start, ende, pause, grund) => {
         try {
           const erg = await SP.korrekturAntrag(datum, start, ende, pause, grund);
@@ -24265,16 +24410,22 @@ function AppInnen() {
          bleibt es vorläufig (offline gespeichert) und wird wiederholt; eine
          Absage des Servers wird mit Grund gemeldet und bleibt sichtbar
          (OfflineStempel). */
-      stempeln: async (pid, datum, art, koord) => {
+      stempeln: async (pid, datum, art, koord, pause = null) => {
+        /* Mindestpause (WP-16): ein Hinweis, keine Sperre — gespeichert ist der Stempel ohnehin. */
+        const pauseHinweis = (d) => {
+          const hw = (d && Array.isArray(d.hinweise) ? d.hinweise : []).filter((x) => x && x.code === "PAUSE");
+          if (hw.length) melde(`Ausgestempelt. Hinweis: ${hw[0].text}`);
+        };
         try {
           /* Zuerst ablegen (Review L1): Der Stempel ist gesichert, bevor
              irgendetwas anderes ins Netz geht. */
-          const ev = await SP.stempelErfassen(datum, art, koord);
+          const ev = await SP.stempelErfassen(datum, art, koord, pause);
           if (!ev) {
             /* Inhaber unbekannt (Antwort eines älteren Servers): direkt wie bisher. */
             await SP.schreibenAbschliessen();
-            const erg = await SP.stempeln(datum, art, koord);
+            const erg = await SP.stempeln(datum, art, koord, pause);
             await stempelUebernehmen(pid, [{ datum, art, erg }]);
+            pauseHinweis(erg);
             return;
           }
           /* Was noch zum Schreiben ansteht, geht vorher regulär hinaus — sonst
@@ -24283,7 +24434,7 @@ function AppInnen() {
           await Promise.race([SP.schreibenAbschliessen(), new Promise((ok) => setTimeout(ok, 5000))]);
           const lauf = await SP.stempelSenden({ sofort: true });
           const r = lauf.ergebnisse[ev.id];
-          if (r && r.art === "ok") return;
+          if (r && r.art === "ok") { pauseHinweis(r.daten); return; }
           if (r && r.art === "abgelehnt") { melde(`Stempel abgelehnt: ${r.grund}`); return; }
           if (lauf.angehalten === "abgemeldet" || lauf.angehalten === "fremde-sitzung") {
             melde("Die Anmeldung ist abgelaufen — der Stempel ist auf dem Gerät gespeichert und wird nach der Anmeldung gesendet.");
@@ -25297,6 +25448,6 @@ function abmeldenMitHinweis() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
+export { Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
   PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };

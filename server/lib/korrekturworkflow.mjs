@@ -103,9 +103,10 @@ export function antragStellen(m, von, rumpf, jetzt, id, heute) {
  * @param {{personId: (string|number|null), name?: (string|null), rolle?: (string|null)}} durch  wer entscheidet
  * @param {Date} jetzt
  * @param {string} korrekturId  Kennung des Korrekturereignisses (nur bei „genehmigt")
+ * @param {{nachWiederoeffnung?: (string|null)}} [zusatz]  WP-16: Kennung der Wiederöffnung des Monats für das Korrekturereignis
  * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, antrag: object, erfassung?: object, ereignis?: object, hinweise?: Array<{code: string, text: string}>}}
  */
-export function antragEntscheiden(m, r, durch, jetzt, korrekturId) {
+export function antragEntscheiden(m, r, durch, jetzt, korrekturId, zusatz = {}) {
   const { personId, datum, antragId, entscheidung } = r || {};
   const begruendung = typeof (r && r.begruendung) === "string" ? r.begruendung.trim() : "";
   if (!["genehmigt", "abgelehnt", "zurueckgezogen"].includes(entscheidung))
@@ -129,7 +130,7 @@ export function antragEntscheiden(m, r, durch, jetzt, korrekturId) {
   if (entscheidung === "genehmigt") {
     const k = korrekturAnhaengen(m, { personId: String(personId), datum, start: antrag.vorschlag.start, ende: antrag.vorschlag.ende,
       pause: antrag.vorschlag.pause, grund: `Antrag ${antrag.id}: ${antrag.grund}`.slice(0, KORREKTUR_GRUND_MAX) },
-    wer(durch), jetzt, korrekturId, { antrag: { id: antrag.id, vonPersonId: antrag.von ? antrag.von.personId : null } });
+    wer(durch), jetzt, korrekturId, { ...zusatz, antrag: { id: antrag.id, vonPersonId: antrag.von ? antrag.von.personId : null } });
     if ("status" in k) return k;
     basis = k.mandant;
     erg = { erfassung: k.erfassung, ereignis: k.ereignis, hinweise: k.hinweise, hinweis: k.hinweis };

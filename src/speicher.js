@@ -286,14 +286,14 @@ export function stempelSenden({ sofort = false } = {}) {
  * Ein Stempeln ablegen. Gibt das Ereignis zurück — oder null, wenn der
  * Inhaber unbekannt ist (dann stempelt die Oberfläche wie bisher direkt).
  */
-export async function stempelErfassen(datum, art, koord) {
+export async function stempelErfassen(datum, art, koord, pause = null) {
   const inhaber = stempelInhaber();
   if (!inhaber) return null;
   /* Nicht unter der Sendesperre: Ein hängender Sendeversuch darf das
      Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
      eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
      localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
-  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber,
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber, pause,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();
   return ev;
@@ -701,8 +701,9 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * Browser wäre alles davon manipulierbar, und eine Zeiterfassung, die sich
  * manipulieren lässt, belegt nichts.
  */
-export async function stempeln(datum, art, koord) {
+export async function stempeln(datum, art, koord, pause = null) {
   const body = JSON.stringify({ datum, art,
+    ...(art === "ende" && pause !== null && pause !== undefined && pause !== "" ? { pause: Number(pause) } : {}),
     lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
     accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
   /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
@@ -752,9 +753,10 @@ export function wartezeitMitStreuung(antwort, zufall = Math.random) {
  * ausdrücklich; eine verworfene Angabe kommt als Fehler mit Grund zurück,
  * statt im allgemeinen Speichern still zu verschwinden.
  */
-export async function zeitBestaetigen(datum, start, ende, grund) {
+export async function zeitBestaetigen(datum, start, ende, grund, pause) {
   const a = await fetch("/api/zeit-bestaetigen", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "" }) });
+    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
@@ -788,6 +790,20 @@ export async function korrekturAntrag(datum, start, ende, pause, grund) {
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Der Antrag ließ sich nicht stellen.");
+  return d;
+}
+
+/**
+ * Monatsabschluss (WP-16): "abschliessen" (Leitung, Planung; bei offenen Prüffällen nur mit trotzPrueffaellen)
+ * oder "wiederoeffnen" (nur Leitung, mit Grund). Antwort: der Eintrag des Monats und das Ereignis im Verlauf.
+ * Ein Fehler trägt code und offen (Zahlen der offenen Punkte), damit die Oberfläche nachfragen kann.
+ */
+export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false } = {}) {
+  const a = await fetch("/api/monatsabschluss", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}) }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) { const f = new Error(d.text || d.fehler || "Der Monatsabschluss ließ sich nicht speichern."); f.code = d.code || null; f.offen = d.offen || null; throw f; }
   return d;
 }
 

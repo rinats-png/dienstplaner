@@ -4,7 +4,7 @@ import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungP
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
@@ -20,12 +20,15 @@ import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "..
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
   offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
-  offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS }
+  offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
+import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, abgewiesenVermerken, letzteWiederoeffnung,
+  monatAbgeschlossen, monatVon, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
+import { regelHinweise } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -1008,6 +1011,16 @@ export default async (req, context) => {
             return antwort({ fehler: "Keine Schreibberechtigung.", code: "STEMPEL_UNVERAENDERLICH",
               text: w.grund }, 403);
           }
+          /* Monatsabschluss (WP-16, lib/monatsabschluss.mjs): Ist-Zeiten und Stempel eines
+             abgeschlossenen Monats ändern sich über das Speichern für keine Rolle — weder
+             ändern noch anlegen noch löschen (Ausnahme: Löschlauf nach Fristablauf). Erst
+             nach dem Wiederöffnen durch die Leitung. */
+          const wa = abschlussWiderspruch(altNachId.get(id) || null, gesendet, stempelO);
+          if (wa) {
+            await protokoll("schreiben", ks, "abgewiesen", `Monat abgeschlossen ${wa.schluessel}`, wer);
+            return antwort({ fehler: "Keine Schreibberechtigung.", code: MONAT_ABGESCHLOSSEN, monat: wa.monat,
+              text: wa.grund }, 403);
+          }
         }
 
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
@@ -1336,6 +1349,31 @@ export default async (req, context) => {
           const datum = ziel.datum;
           zielDatum = datum;
 
+          /* Monatsabschluss (WP-16): Ein Stempel, der in einen abgeschlossenen Monat fällt —
+             meist ein offline erfasster, der erst nach dem Abschluss ankommt (WP-07) —, ändert
+             den Monat nicht. Er geht aber auch nicht still verloren: Die Leitung sieht ihn am
+             Abschluss (`abgewiesen`, je Ereigniskennung einmal; die Ist-Daten und ihre
+             Prüfsumme bleiben unverändert), das Gerät zeigt die Absage mit Grund und kann ihn
+             nach dem Wiederöffnen erneut senden. 409 ist für den Puffer eine endgültige Absage
+             (kein Wiederholen in Schleife). Geprüft unter der Raumsperre am frischen Stand:
+             Abschluss und Stempel kommen nacheinander, nie durcheinander. */
+          const sperreM = abschlussSperre(m, String(datum));
+          if (sperreM) {
+            const vermerkt = abgewiesenVermerken(m, sperreM.monat, { personId: person.id, datum: String(datum), art, zeit: uhrzeitBerlin(jetzt),
+              zeitAm: jetzt.toISOString(), offline: !!stEreignis.offline, ereignis: stEreignis.id || null, am: eingang.toISOString() });
+            if (vermerkt !== m) {
+              const ergV = await bestandSchreiben(store, s.bestand,
+                { ...bestand, mandanten: bestand.mandanten.map((x) => (x === m ? vermerkt : x)) },
+                { erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
+              if (!ergV.ok) continue;                                   // aus dem frischen Stand noch einmal
+            }
+            await protokoll("schreiben", kSt, "abgewiesen",
+              `stempeln ${art} ${datum}: Monat abgeschlossen${stEreignis.offline ? " · offline" : ""}`, wer);
+            return antwort({ fehler: sperreM.grund, code: MONAT_ABGESCHLOSSEN, datum: String(datum), monat: sperreM.monat,
+              text: `${sperreM.grund} Dieser Stempel wurde nicht gespeichert — die Leitung sieht ihn am Monatsabschluss; `
+                + "nach dem Wiederöffnen lässt er sich erneut senden." }, 409);
+          }
+
           /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
              Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
              mitgeschickte Koordinaten bleiben dann unbeachtet. Das Urteil lehnt
@@ -1412,6 +1450,25 @@ export default async (req, context) => {
              bestätigt (DAUER_NULL), die Leitung trägt sie über die Korrektur ein. */
           const dauerNull = dauerMin !== null && dauerMin <= 0;
           if (dauerNull) markieren("DAUER_NULL");
+          /* Pause (WP-16): beim Ausstempeln die genommene Pause in Minuten. Sie gehört zum
+             Original (über das Speichern unveränderlich, WP-06) und steht an der Ist-Zeit. Eine
+             ungültige Angabe (keine ganze Zahl 0–180, nicht kürzer als die Anwesenheit) kostet
+             nie den Stempel: gespeichert ohne Pause, gekennzeichnet. Die Mindestpause (§ 4
+             ArbZG, für Jugendliche § 11 JArbSchG; zeitregeln.mjs) ist ein Hinweis, keine Sperre —
+             eine angegebene, zu kurze Pause trägt PAUSE_ZU_KURZ. Ohne Angabe gilt wie bisher die
+             Pause der Dienstart. */
+          let pauseMin;
+          if (art === "ende" && rumpf.pause !== undefined && rumpf.pause !== null && rumpf.pause !== "") {
+            const p = pauseAngabe(rumpf.pause);
+            if (p === null || (p !== undefined && dauerMin !== null && dauerMin > 0 && p >= dauerMin)) markieren("PAUSE_UNGUELTIG");
+            else pauseMin = p;
+          }
+          if (pauseMin !== undefined) neu.pause = pauseMin;
+          const planDa = (m.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(m, person, String(datum))));
+          const hinweise = mitErfassung && !dauerNull && alt.start
+            ? regelHinweise(m, person.id, String(datum), { start: alt.start, ende: zeit,
+              pause: pauseMin !== undefined ? pauseMin : (planDa && Number(planDa.pause)) || 0 }) : [];
+          if (pauseMin !== undefined && hinweise.some((x) => x.code === "PAUSE")) markieren("PAUSE_ZU_KURZ");
           /* Ungeplanter Dienst (WP-13): Ohne geplanten Dienst an diesem Tag gibt
              es keine Planzeit, auf die die Ist-Zeit zurückfallen könnte. Aus
              Beginn und Ende entsteht deshalb eine Erfassung zur Prüfung
@@ -1434,7 +1491,9 @@ export default async (req, context) => {
              wird nicht angehängt (stempelZiel: eigenes START_FEHLT auf heute).
              Der alte Vorgang bekommt KONFLIKT und bleibt für die Korrektur
              durch die Leitung offen. */
-          if (ziel.konfliktAm) {
+          /* Liegt der alte Vorgang in einem abgeschlossenen Monat (WP-16), bleibt er unberührt —
+             auch kein Kennzeichen; die Leitung klärt ihn nach dem Wiederöffnen. */
+          if (ziel.konfliktAm && !monatAbgeschlossen(m, ziel.konfliktAm)) {
             const kAlt = `${person.id}|${ziel.konfliktAm}`;
             const vorgang = neuerMandant.einstempeln[kAlt];
             if (vorgang) {
@@ -1448,9 +1507,10 @@ export default async (req, context) => {
              Ist-Zeit — das nachgereichte Ende ändert sie nicht still. */
           const korrigiert = Array.isArray(alt.korrekturen) && alt.korrekturen.length > 0;
           if (mitErfassung && !korrigiert) {
+            const mitPause = (e) => (pauseMin !== undefined ? { ...e, pause: pauseMin } : e);
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
               /* Dauer 0 vor ungeplant: Bestätigt würde 06:00–06:00 als 24 Stunden zählen. */
-              [k]: dauerNull
+              [k]: mitPause(dauerNull
                 ? { start: neu.start, ende: zeit, bestaetigt: false,
                   grund: "DAUER_NULL: Beginn und Ende in derselben Minute — Zeiten bitte über die Korrektur eintragen" }
                 : ungeplant
@@ -1462,7 +1522,7 @@ export default async (req, context) => {
                 : offlinePruefen
                   ? { start: neu.start, ende: zeit, bestaetigt: false,
                     grund: "OFFLINE_PRUEFEN: offline gestempelt (spät eingegangen, Uhr des Geräts abweichend oder älter als 48 Stunden) — bitte prüfen" }
-                  : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
+                  : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" }) } };
           }
           const neuerBestand = { ...bestand,
             mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
@@ -1472,7 +1532,7 @@ export default async (req, context) => {
           const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
             erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
           if (ergSt.ok) {
-            return { ergSt, urteil, neu, zeit, erfassung: mitErfassung && !korrigiert ? neuerMandant.erfassung[k] : null };
+            return { ergSt, urteil, neu, zeit, erfassung: mitErfassung && !korrigiert ? neuerMandant.erfassung[k] : null, hinweise };
           }
           /* Jeder gescheiterte Versuch steht im Protokoll — „wiederholt",
              solange noch einer folgt; erst der letzte ist ein Konflikt. */
@@ -1500,14 +1560,14 @@ export default async (req, context) => {
           erfassung: w.art === "ende" ? erfW : null, inhaber, offline: !!e[`offline${ph}`] });
       }
 
-      const { ergSt, urteil, neu, zeit, erfassung } = ergebnis;
+      const { ergSt, urteil, neu, zeit, erfassung, hinweise } = ergebnis;
       await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}${stEreignis.offline ? " · offline" : ""}`, wer);
       /* Zurück geht der gespeicherte Stempel — genau der Eintrag, den der
          erfolgreiche Versuch geschrieben hat —, damit die Oberfläche ihn
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
         geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum: zielDatum, eintrag: neu,
-        erfassung, art, inhaber, offline: stEreignis.offline });
+        erfassung, art, inhaber, offline: stEreignis.offline, hinweise: hinweise || [] });
     }
 
     /* ------------------------ Stempelkorrektur (WP-06) ---------------------
@@ -1530,8 +1590,14 @@ export default async (req, context) => {
         if (!mitK) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         const mK = eigenerMandant(mitK.bestand, s);
         if (!mK) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        /* Monatsabschluss (WP-16): im abgeschlossenen Monat keine Korrektur — erst nach dem Wiederöffnen. */
+        const sperreK = abschlussSperre(mK, String((rumpf && rumpf.datum) || ""));
+        if (sperreK) {
+          await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur ${rumpf.personId}|${rumpf.datum}: Monat abgeschlossen`, wer);
+          return antwort({ fehler: sperreK.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreK.monat }, 409);
+        }
         const r = korrekturAnhaengen(mK, rumpf || {}, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
-          new Date(), `k-${randomBytes(6).toString("hex")}`);
+          new Date(), `k-${randomBytes(6).toString("hex")}`, { nachWiederoeffnung: letzteWiederoeffnung(mK, String((rumpf && rumpf.datum) || "")) });
         if ("status" in r) {
           await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${r.grund}`, wer);
           return antwort({ fehler: r.grund }, r.status);
@@ -1567,6 +1633,12 @@ export default async (req, context) => {
         if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
         const pA = (mA.personen || []).find((x) => x && String(x.id) === String(s.person));
         if (!pA) return antwort({ fehler: "Person nicht gefunden." }, 404);
+        /* Monatsabschluss (WP-16): im abgeschlossenen Monat kein Antrag. */
+        const sperreA = abschlussSperre(mA, String((rumpf && rumpf.datum) || ""));
+        if (sperreA) {
+          await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag ${pA.id}|${rumpf.datum}: Monat abgeschlossen`, wer);
+          return antwort({ fehler: sperreA.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreA.monat }, 409);
+        }
         const r = antragStellen(mA, { personId: pA.id, name: s.name || null, rolle: s.rolle }, rumpf || {}, new Date(),
           `ka-${randomBytes(6).toString("hex")}`, heuteBerlin());
         if ("status" in r) {
@@ -1606,8 +1678,15 @@ export default async (req, context) => {
         if (!mitE) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         const mE = eigenerMandant(mitE.bestand, s);
         if (!mE) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        /* Monatsabschluss (WP-16): Genehmigen, Ablehnen und Zurückziehen ändern den Stempel —
+           im abgeschlossenen Monat erst nach dem Wiederöffnen. */
+        const sperreE = abschlussSperre(mE, String((rumpf && rumpf.datum) || ""));
+        if (sperreE) {
+          await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden ${rumpf.personId}|${rumpf.datum}: Monat abgeschlossen`, wer);
+          return antwort({ fehler: sperreE.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreE.monat }, 409);
+        }
         const r = antragEntscheiden(mE, rumpf || {}, { personId: s.person, name: s.name || null, rolle: s.rolle }, new Date(),
-          `k-${randomBytes(6).toString("hex")}`);
+          `k-${randomBytes(6).toString("hex")}`, { nachWiederoeffnung: letzteWiederoeffnung(mE, String((rumpf && rumpf.datum) || "")) });
         if ("status" in r) {
           await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden: ${r.grund}`, wer);
           return antwort({ fehler: r.grund }, r.status);
@@ -1625,6 +1704,53 @@ export default async (req, context) => {
           + (r.hinweise && r.hinweise.length ? ` · Hinweise: ${r.hinweise.map((x) => x.code).join(",")}` : ""), wer);
         return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, erfassung: r.erfassung || null, ereignis: r.ereignis || null,
           hinweise: r.hinweise || [], hinweis: r.hinweis || null, etag: ergE.stand || null });
+      });
+    }
+
+    /* ------------------------ Monatsabschluss (WP-16) -----------------------
+       Abschließen: Leitung, Planung, Kundenrolle (staff.edit, Vollschreibrecht).
+       Wiederöffnen: nur Leitung und Kundenrolle (org.edit), mit Grund. Beides
+       unter der Raumsperre am frischen Stand und in einem Schreibvorgang
+       (WP-02, WP-45); Wann, Wer und Grund im Verlauf am Monat und im
+       Betriebsprotokoll (lib/monatsabschluss.mjs, rechte.mjs abschlussRecht). */
+    if (pfad === "monatsabschluss" && req.method === "POST") {
+      const kM = kennung(req, s);
+      const aktionM = rumpf && rumpf.aktion;
+      if (aktionM !== "abschliessen" && aktionM !== "wiederoeffnen")
+        return antwort({ fehler: "aktion: abschliessen oder wiederoeffnen." }, 400);
+      const monatM = monatVon(rumpf && rumpf.monat) || String((rumpf && rumpf.monat) ?? "").slice(0, 20);
+      if (!abschlussRecht(s.rolle, aktionM)) {
+        await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM} · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionM === "wiederoeffnen"
+          ? "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." : "Monate schließen Leitung und Planung ab." }, 403);
+      }
+      const bM = await bremse("schreiben", kM);
+      if (!bM.frei) return zuVielAntwort(bM.wartet);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitM = await bestandLesenStreng(store, s.bestand);
+        if (!mitM) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mM = eigenerMandant(mitM.bestand, s);
+        if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const werM = { personId: s.person ?? null, name: s.name || null, rolle: s.rolle };
+        const idM = `ma-${randomBytes(6).toString("hex")}`;
+        const r = aktionM === "abschliessen"
+          ? abschliessen(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
+          : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
+        if ("status" in r) {
+          await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}) }, r.status);
+        }
+        const ergM = await bestandSchreiben(store, s.bestand,
+          { ...mitM.bestand, mandanten: mitM.bestand.mandanten.map((x) => (x === mM ? r.mandant : x)) },
+          { erwarteterStand: mitM.stand, durch: s.name || "Monatsabschluss" });
+        if (!ergM.ok) {
+          await protokoll("schreiben", kM, "konflikt", `Monatsabschluss ${aktionM} ${monatM}`, wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
+          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
+          : `Monatsabschluss ${monatM} wiedergeöffnet: ${r.ereignis.grund}`, wer);
+        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null });
       });
     }
 
@@ -1646,7 +1772,7 @@ export default async (req, context) => {
       if (!bZ.frei) return zuVielAntwort(bZ.wartet);
       if (s.person === null || s.person === undefined)
         return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
-      const { datum, start = null, ende = null, grund = "" } = rumpf || {};
+      const { datum, start = null, ende = null, grund = "", pause } = rumpf || {};
 
       /* Lesen, Prüfen und Schreiben unter der Sperre des Raums, aus dem
          frisch gelesenen Stand (WP-02) — wie beim Stempeln: Eine
@@ -1663,11 +1789,18 @@ export default async (req, context) => {
         if (!personZ) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
         const kTag = `${personZ.id}|${datum}`;
+        /* Monatsabschluss (WP-16): zuerst — ein abgeschlossener Monat nimmt keine Selbstauskunft an. */
+        const sperreZ = abschlussSperre(mZ, String(datum ?? ""));
+        if (sperreZ) {
+          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: Monat abgeschlossen`, wer);
+          return antwort({ fehler: sperreZ.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreZ.monat }, 409);
+        }
         if ((mZ.erfassung || {})[kTag]) {
           await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: schon erfasst`, wer);
           return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
         }
-        const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund });
+        const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund,
+          ...(pause === undefined || pause === null || pause === "" ? {} : { pause }) });
         if (urteilZ.grund) {
           await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: ${urteilZ.grund}`, wer);
           return antwort({ fehler: urteilZ.grund }, 422);
@@ -1681,7 +1814,13 @@ export default async (req, context) => {
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
         await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten: ${datum}`, wer);
-        return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null });
+        /* Hinweise zur Ist-Zeit (Pause § 4 ArbZG / § 11 JArbSchG u. a., WP-16) — keine Absage. */
+        const daZ = (mZ.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(mZ, personZ, String(datum))));
+        const eZ = urteilZ.eintrag;
+        const istZ = { start: eZ.start || (daZ && daZ.start), ende: eZ.ende || (daZ && daZ.ende),
+          pause: eZ.pause !== undefined ? eZ.pause : (daZ && Number(daZ.pause)) || 0 };
+        return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null,
+          hinweise: regelHinweise(mZ, personZ.id, String(datum), istZ) });
       });
     }
 
