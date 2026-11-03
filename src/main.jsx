@@ -420,8 +420,8 @@ function SelbstStarten({ onZurueck, onFertig }) {
   const BRANCHEN = [
     /* G9: nur Nutzbares wird beschrieben, Geplantes steht als „in Vorbereitung". */
     ["sicherheit", "Sicherheitsdienst", "Objektschutz, Sachkunde nach § 34a, Geofence nach Freischaltung (Wachbuch in Vorbereitung)"],
-    ["pflege", "Pflege", "Fachkraftquote, Übergabe nach Freischaltung (Wohnbereichsplanung in Vorbereitung)"],
-    ["klinik", "Klinik", "Fachkraftquote, Übergabe nach Freischaltung (Bereitschaft, Rufbereitschaft, geteilte Dienste in Vorbereitung)"],
+    ["pflege", "Pflege", "Fachkraftquote, Übergabe im Pilot nach Freischaltung durch den Betreiber (Wohnbereichsplanung in Vorbereitung)"],
+    ["klinik", "Klinik", "Fachkraftquote, Übergabe im Pilot nach Freischaltung durch den Betreiber (Bereitschaft, Rufbereitschaft, geteilte Dienste in Vorbereitung)"],
     ["industrie", "Produktion", "Die Grundfunktionen (Kontischicht, Anlagen, Maschinenqualifikationen in Vorbereitung)"],
     ["sonstige", "Etwas anderes", "Die Grundfunktionen ohne Branchenzusatz"],
   ];

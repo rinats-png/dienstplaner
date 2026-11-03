@@ -87,6 +87,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Betriebsprotokoll | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Billing: Preisgrundlage des eigenen Betriebs (`tarif`, `preisgestaltung`, `rabattGrund`; oben nur der eigene Tarifeintrag) — nur lesend, für die Kostenanzeige (B2) | – | – | – | – | ✓ | ✓ | – | – | A |
 | Billing: übriger Vertrag, Rechnungsangaben, USt-ID | – | – | – | – | – | ✓ | – | – | A |
+| Billing: Zustimmungen und Grundlagen zu Paketen (`paketZustimmungen`, `paketGrundlage`) — nur Betreiber; Leitung und Kundenrolle bekommen vom Pilot nur `seit`/`bis` | – | – | – | – | – | ✓ | – | – | A |
 | Betreiberfelder: Raumkennung, Firmenstamm, Preisliste, Selbststarts | – | – | – | – | – | ✓ | – | – | A |
 | Betriebsnotiz `notiz` (keine Oberfläche liest sie) | – | – | – | – | – | – ¹¹ | – | – | A |
 | `session` ganz oben im Bestand — Legacy-Feld, kein Bestandsfeld mehr ¹² | – | – | – | – | – | – | – | – | A |

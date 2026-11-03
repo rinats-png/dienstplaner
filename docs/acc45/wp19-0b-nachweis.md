@@ -215,3 +215,29 @@ Historie vom Client, Ende ohne Historie, Zeitraumgrenzen `seit`/`bis`, Historie 
 der Serverregel, Zeitzone UTC, heutiger Pilot statt Monat, Stichtag heute, `grundEntziehen`, `pilotSetzen` ohne Historie bzw.
 überschreibend, Zeichenkette als Paketliste, fehlender Preis, `/api/bestand-anlegen` ohne Regel, Konsole ohne Entzug) — alle 30
 rot, nach Rücknahme grün.
+
+### 7.6 Nachtrag 3: zweites unabhängiges Delta-Review (N-A bis N-F, R1)
+
+Statusstufen unverändert: (1) implementiert ja · (2) lokal getestet ja · CI siehe Bericht · (3) erneuter unabhängiger Review
+**folgt** · (4)–(7) nein. Betreiberregeln unverändert (nie automatische Zubuchung, keine rückwirkende Berechnung, Pilot nur
+protokolliert, erste Berechnung nur mit Zustimmung oder Grundlage, eine Freigabequelle); Zielpreise und Staffelung nicht angefasst.
+Merge-Konflikt mit WP-19.0 in `rechte.mjs`/`daten.mjs` bewusst nicht aufgelöst; die Änderungen dort sind klein
+(`rechte.mjs`: Import und eine Zeile in der Preisgrundlage; `daten.mjs`: Import, drei Zeilen Demo, ein Block Protokoll und die Antwort).
+
+| Befund | Umsetzung |
+|---|---|
+| N-A Speichern verschiebt eine Zustimmung | `eintraegeBereinigen` vergleicht „unverändert“ ohne `datum` und gibt bei Treffer den GESPEICHERTEN Eintrag samt Datum zurück (Rückdatieren bleibt ausgeschlossen: ein neuer oder inhaltlich geänderter Eintrag bekommt den Servertag). Die PUT-Antwort des Betreibers trägt `vertragsstand` (`vertragsstandVon`: je Betrieb `pakete`, `paketZustimmungen`, `paketGrundlage`, `preisgestaltung` inkl. Pilot und Historie); `speicher.js` reicht ihn über `onServerstand` an `App.jsx`, `vertragsstandUebernehmen` (`paketlogik.js`) setzt nur diese Felder und lässt den Rest unberührt. Grenze: bearbeitet die Person zwischen Senden und Antwort dieselben Paketfelder, gilt der Serverstand (der nächste Schreibvorgang läuft idempotent). |
+| N-B `preisgestaltung` = null, [], Text, 0 | `pilotNachServerregel` behandelt ein Nicht-Objekt wie `{}`: ein laufender Pilot endet mit Servertag, die Historie bleibt immer erhalten. Getestet für alle vier Werte. |
+| N-C Grenztage | Tests: `bis === stichtag` → Pilotmonat; `seit === Folgemonatsanfang` → nicht der Monat davor. **Regel (zugunsten des Kunden):** Ein Pilot, der am 01. eines Monats endet oder am letzten Tag eines Monats beginnt, stellt den ganzen Berührungsmonat frei. Er wird für diesen Monat nicht berechnet; berechnet wird frühestens der Folgemonat bzw. der Monat davor ohne Berührung. |
+| N-D Vorlage „demo“ | `demoOhneVertrag` (`erstbefuellung.mjs`) entfernt `paketZustimmungen`, `paketGrundlage`, `preisgestaltung.pilot` und `pilotHistorie`; `/api/bestand-anlegen` ruft es bei `vorlage === "demo"` vor `demoGestaltPruefen` auf. Die Beispielpakete (`pakete`) der Demo bleiben; ohne Grund und Pilot wird nichts berechnet. |
+| N-E Protokoll | Konsole: `setzePaket` schreibt „Paket … zugebucht/abgeschaltet“ ins Betreiberprotokoll (`bLog`). Server: `paketAenderungen` (Paket, Zustimmung, Grundlage, Pilot; ohne Freitexte) schreibt nach jedem erfolgreichen Betreiber-PUT Zeilen ins vorhandene Serverprotokoll (`protokoll("schreiben", …, "paket", …)`); kein Neubau. |
+| N-F Pilotgrund in der Kundensicht | Leitung und Kundenrolle (`billing.view`) bekommen vom Pilot nur `seit` und `bis`; `von` und `grund` ersetzt `preisgestaltungFuerKunde` durch neutrale Platzhalter, damit `pilotAktiv`/`pilotImZeitraum` für die Kostenanzeige gültig bleiben. Der Betreiber sieht alles. Kein Umbau der Anzeige nötig. |
+| R1 Altdaten (P5) | Nur gespeicherte Einträge zu Paketen aus `altM.pakete` gelten als „unverändert“ (`altGebucht` in `paketfelderGeprueft`); wer ein Paket zubucht, dessen alte Zustimmung noch im Bestand steht, bekommt den Servertag. |
+| Doku/Text | `RECHTEMATRIX.md` neue Zeile „Billing: Zustimmungen und Grundlagen zu Paketen“ (nur Betreiber; Prüfzeile in `rechtematrix-zeilen.test.js` samt Sonden). Selbststart Pflege und Klinik: „… Übergabe im Pilot nach Freischaltung durch den Betreiber (…)“. |
+
+**Abrechnung und Server (ehrlich).** Die Abrechnung läuft nur im Betreiber-Client (`mandantPaketkosten`, `preis()`,
+`baueRechnung`); der Server rechnet nicht nach und prüft Beträge von Rechnungen nicht. Er sichert die Eingaben: Form, gebuchte
+Pakete, Servertag, Pilot-Historie. Eine Nachrechnung auf dem Server wäre ein eigenes Folgepaket (vor Zustand 5 zu entscheiden).
+
+Prüfung: `pruefungen/g9-nachtrag3.test.js` (neu; rot gegen `bff51a5`: 26 von 31 Fällen, die fünf grünen sind Grenzfälle, die den
+Bestand absichern). Angepasst: `rechtematrix-zeilen.test.js` (neue Zeile, Sonden; nichts abgeschwächt). Mutanten: 27 (Grenzen `bis`/`seit`/Datum, laufender Pilot, Servertag, Historie, Ende ohne Historie, Neuanlage, Vergleich mit Datum, Treffer, Altdaten, Nicht-Objekt, Demo x3, Konsolenprotokoll, Serverprotokoll x3, Kundensicht x3, Vertragsstand x5); der erste Lauf liess einen überleben (Durchreichen in `speicher.js`, Quelltext-Muster zu weit), Muster geschärft, danach alle 27 rot, nach Rücknahme grün.

@@ -27,7 +27,7 @@ import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
-import { paketfelderGeprueft } from "./paketstand.mjs";
+import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
@@ -548,7 +548,8 @@ function bestandFuerRolleKern(bestand, sitzung) {
        kommen beim Speichern immer aus dem gespeicherten Stand. Die Planung
        hat billing.view nicht und bekommt nichts davon. */
     if (eigenerV && aus.mandanten && darf(rolle, "billing.view")) {
-      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld)) aus.mandanten[0][feld] = eigenerV[feld];
+      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld))
+        aus.mandanten[0][feld] = feld === "preisgestaltung" ? preisgestaltungFuerKunde(eigenerV[feld]) : eigenerV[feld];
       const eigenerTarif = Array.isArray(bestand.tarife)
         ? bestand.tarife.filter((t) => t && typeof t === "object" && t.id === eigenerV.tarif) : [];
       if (eigenerTarif.length) aus.tarife = eigenerTarif;

@@ -208,7 +208,7 @@ import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAG
   PAKETE, paketVon, preisFuer, paketBuchbar, paketZustand, PAKET_ZUSTAENDE, paketAnzeige, pilotAktiv, merkmalNutzbar,
   leistungenAnzeige } from "./stufen.js";
 import { kannMerkmal, mandantPaketkosten, paketAufpreisSumme, paketPositionen, paketSchalten, pilotSetzen,
-  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, folgemonatsanfang, paketTag } from "./paketlogik.js";
+  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, folgemonatsanfang, paketTag, vertragsstandUebernehmen } from "./paketlogik.js";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
@@ -22888,6 +22888,7 @@ function AppInnen() {
       onFachbefunde: (d) => setFachFrage(d),
       onFehler: (lage) => setNichtGespeichert(lage),
       onGespeichert: (b) => { zustellungAnstossen(b); },
+      onServerstand: (st) => setDb((s) => vertragsstandUebernehmen(s, st)),
     });
   }, [db, zustellungAnstossen]);
 
@@ -23245,7 +23246,8 @@ function AppInnen() {
         if (!m) return s;
         const r = paketSchalten(m, paket, an);
         if (!r.ok) { melde(r.grund); return s; }
-        return { ...s, mandanten: s.mandanten.map((x) => (x.id === mid ? { ...x, pakete: r.pakete, ...(an ? {} : grundEntziehen(x, paket)) } : x)) };
+        return bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id === mid ? { ...x, pakete: r.pakete, ...(an ? {} : grundEntziehen(x, paket)) } : x)) },
+          `Paket ${paketVon(paket).name} bei ${m.name} ${an ? "zugebucht" : "abgeschaltet"}`);
       }),
       loescheMandant: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);

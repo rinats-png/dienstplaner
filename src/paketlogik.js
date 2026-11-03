@@ -155,3 +155,26 @@ export function pilotSetzen(m, an, tag, grund) {
   }
   return alt;
 }
+
+/**
+ * Review N-A: Nach einem erfolgreichen Speichern übernimmt die Betreiberkonsole die Vertragsfelder der
+ * Pakete (pakete, paketZustimmungen, paketGrundlage, preisgestaltung inkl. Pilot und Historie) aus der
+ * Serverantwort. Der Server setzt Datum, Pilot-Beginn und -Ende; der Client behält sonst keinen
+ * Serverstand. Ändert sich nichts, kommt dasselbe Objekt zurück (kein Neuschreiben); andere Felder
+ * bleiben unberührt, ein unbekannter Betrieb wird übergangen.
+ */
+export function vertragsstandUebernehmen(db, stand) {
+  if (!db || !Array.isArray(db.mandanten) || !Array.isArray(stand)) return db;
+  let geaendert = false;
+  const mandanten = db.mandanten.map((m) => {
+    const s = m && stand.find((x) => x && x.id === m.id);
+    if (!s) return m;
+    const neu = { ...m };
+    /* Fehlend und leer gelten als gleich (kein Schreiben ohne Grund). */
+    const norm = (f, v) => (v === undefined ? (f === "preisgestaltung" ? {} : []) : v);
+    for (const f of ["pakete", "paketZustimmungen", "paketGrundlage", "preisgestaltung"])
+      if (Object.hasOwn(s, f) && JSON.stringify(norm(f, s[f])) !== JSON.stringify(norm(f, m[f]))) { neu[f] = s[f]; geaendert = true; }
+    return geaendert && Object.keys(neu).some((f) => neu[f] !== m[f]) ? neu : m;
+  });
+  return geaendert ? { ...db, mandanten } : db;
+}

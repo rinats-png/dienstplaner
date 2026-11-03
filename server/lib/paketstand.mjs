@@ -202,8 +202,10 @@ export function pilotImZeitraum(m, stichtag) {
  *   - die Historie ist nur anhängbar: der gespeicherte Stand gilt, Mitgeschicktes nicht.
  * Übrige Felder der Preisgestaltung bleiben, wie der Client sie schickt.
  */
-export function pilotNachServerregel(neuPg, altPg, heute = paketTag()) {
-  if (!istObjekt(neuPg)) return neuPg;
+export function pilotNachServerregel(neuPg0, altPg, heute = paketTag()) {
+  /* Review N-B: null, Liste, Text, Zahl sind kein Preisgestaltungsobjekt — wie {} behandeln: ein laufender
+     Pilot endet mit Servertag, die Historie geht nie verloren. */
+  const neuPg = istObjekt(neuPg0) ? neuPg0 : {};
   const altP = pilotEintragGueltig(altPg && altPg.pilot) ? altPg.pilot : null;
   const neuP = pilotEintragGueltig(neuPg.pilot) ? neuPg.pilot : null;
   const hist = pilotHistorie(altPg).map((h) => ({ seit: h.seit, bis: h.bis, von: h.von, grund: h.grund }));
@@ -274,14 +276,19 @@ function eintraegeBereinigen(liste, gueltig, felder, optionen = {}) {
   const { alt, pakete, heute } = optionen;
   const gesehen = new Set();
   const gespeichert = liste_(alt);
-  const gleich = (a, b) => istObjekt(a) && felder.every((k) => a[k] === b[k]);
+  /* Review N-A: „unverändert“ heißt gleicher Inhalt OHNE das Datum — das Datum des Clients zählt nie. */
+  const inhalt = felder.filter((k) => k !== "datum");
+  const gleich = (a, b) => istObjekt(a) && inhalt.every((k) => a[k] === b[k]);
   return liste_(liste).filter((x) => {
     if (!istObjekt(x) || !gueltig(x, x.paket) || gesehen.has(x.paket)) return false;
     if (Array.isArray(pakete) && !pakete.includes(x.paket)) return false;
     gesehen.add(x.paket); return true;
   }).map((x) => {
     const e = Object.fromEntries(felder.map((k) => [k, x[k]]));
-    return heute && !gespeichert.some((a) => gleich(a, e)) ? { ...e, datum: heute } : e;
+    if (!heute) return e;
+    /* Treffer: der GESPEICHERTE Eintrag samt Datum (nicht nach vorn, nicht zurück datierbar). */
+    const treffer = gespeichert.find((a) => gleich(a, e));
+    return treffer ? Object.fromEntries(felder.map((k) => [k, treffer[k]])) : { ...e, datum: heute };
   });
 }
 
@@ -342,12 +349,85 @@ export function paketfelderGeprueft(m0, altM, heute = paketTag()) {
   if (Object.hasOwn(m, "pakete"))
     m = { ...m, pakete: paketeNachServerregel(altM ? altM.pakete : [], m.pakete, pilotAktiv(m)) };
   const pakete = liste_(m.pakete);
+  /* Review R1: „unverändert“ gilt nur für gespeicherte Einträge zu Paketen, die schon gebucht waren. */
+  const altGebucht = (l) => liste_(l).filter((e) => istObjekt(e) && liste_(alt.pakete).includes(e.paket));
   if (Object.hasOwn(m, "paketZustimmungen"))
-    m = { ...m, paketZustimmungen: zustimmungenBereinigen(m.paketZustimmungen, { alt: alt.paketZustimmungen, pakete, heute }) };
+    m = { ...m, paketZustimmungen: zustimmungenBereinigen(m.paketZustimmungen, { alt: altGebucht(alt.paketZustimmungen), pakete, heute }) };
   if (Object.hasOwn(m, "paketGrundlage")) {
     const { paketGrundlage, ...rest } = m;
-    const g = grundlageBereinigen(paketGrundlage, { alt: alt.paketGrundlage, pakete, heute });
+    const g = grundlageBereinigen(paketGrundlage, { alt: altGebucht(alt.paketGrundlage), pakete, heute });
     m = g.length ? { ...rest, paketGrundlage: g } : rest;
   }
   return m;
+}
+
+/* --------------------------------------------------------------------------
+   VERTRAGSSTAND, PROTOKOLL, KUNDENSICHT (Nachtrag 3, Review N-A, N-E, N-F)
+   ------------------------------------------------------------------------ */
+
+/**
+ * Die Vertragsfelder der Pakete je Betrieb, wie der Server sie gespeichert hat. Die Antwort auf den
+ * Betreiber-PUT trägt sie, damit die Konsole den Serverstand (Servertag, Pilot, Historie) übernimmt.
+ */
+export const vertragsstandVon = (bestand) => liste_(bestand && bestand.mandanten).filter(istObjekt).map((m) => ({
+  id: m.id, pakete: liste_(m.pakete), paketZustimmungen: liste_(m.paketZustimmungen), paketGrundlage: liste_(m.paketGrundlage),
+  preisgestaltung: m.preisgestaltung === undefined ? {} : m.preisgestaltung }));
+
+/**
+ * Was sich an Paketen, Zustimmungen, Grundlagen und Pilot je Betrieb geändert hat — als Protokollzeilen
+ * ohne Freitexte (kein Grund, keine Notiz, keine Namen). `alt` darf null sein (neuer Raum).
+ */
+export function paketAenderungen(alt, neu) {
+  const vorher = new Map(liste_(alt && alt.mandanten).filter(istObjekt).map((m) => [m.id, m]));
+  const zeilen = [];
+  const pk = (x) => liste_(x && x.pakete).filter((p) => typeof p === "string");
+  const laeuft = (x) => pilotAktiv({ preisgestaltung: x && x.preisgestaltung });
+  for (const m of liste_(neu && neu.mandanten).filter(istObjekt)) {
+    const a = vorher.get(m.id) || {};
+    for (const p of pk(m)) if (!pk(a).includes(p)) zeilen.push(`${m.id}: Paket ${p} zugebucht`);
+    for (const p of pk(a)) if (!pk(m).includes(p)) zeilen.push(`${m.id}: Paket ${p} abgeschaltet`);
+    for (const [feld, wort] of [["paketZustimmungen", "Zustimmung"], ["paketGrundlage", "Grundlage"]]) {
+      const eintraege = (x) => liste_(x && x[feld]).filter(istObjekt);
+      const schluessel = (e) => `${e.paket}|${e.datum}|${e.preis}`;
+      const vor = eintraege(a);
+      for (const e of eintraege(m)) if (!vor.some((v) => schluessel(v) === schluessel(e)))
+        zeilen.push(`${m.id}: ${wort} zu ${e.paket} festgehalten (${e.preis} € ${e.intervall})`);
+      for (const v of vor) if (!eintraege(m).some((e) => e.paket === v.paket)) zeilen.push(`${m.id}: ${wort} zu ${v.paket} entfernt`);
+    }
+    if (laeuft(m) && !laeuft(a)) zeilen.push(`${m.id}: Pilot gesetzt`);
+    if (!laeuft(m) && laeuft(a)) zeilen.push(`${m.id}: Pilot beendet`);
+  }
+  return zeilen;
+}
+
+/**
+ * Die Preisgestaltung in der Sicht von Leitung und Kundenrolle (Review N-F): vom Pilot nur Beginn und
+ * Ende. Grund und Betreiberkennung sind Betreiberwissen; neutrale Platzhalter halten den Pilot für die
+ * Kostenanzeige gültig (pilotAktiv/pilotImZeitraum). Ohne Pilot unverändert.
+ */
+export function preisgestaltungFuerKunde(pg) {
+  if (!istObjekt(pg)) return pg;
+  const aus = { ...pg };
+  const rest = { von: "Betreiber", grund: "Pilotbetrieb" };
+  if (istObjekt(aus.pilot)) aus.pilot = { seit: aus.pilot.seit, ...rest };
+  if (Array.isArray(aus.pilotHistorie))
+    aus.pilotHistorie = aus.pilotHistorie.filter(istObjekt).map((h) => ({ seit: h.seit, bis: h.bis, ...rest }));
+  return aus;
+}
+
+/**
+ * Review N-D: entfernt aus allen Betrieben eines Bestands Zustimmungen, Grundlagen, Pilot und
+ * Pilot-Historie (Vorlage „demo“: Beispielpakete ja, Abrechnungsgrund und Pilot nein). Der Rest bleibt.
+ */
+export function betriebeOhneAbrechnungsgrund(bestand) {
+  if (!istObjekt(bestand) || !Array.isArray(bestand.mandanten)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => {
+    if (!istObjekt(m)) return m;
+    const { paketZustimmungen, paketGrundlage, ...rest } = m; // eslint-disable-line no-unused-vars
+    if (istObjekt(rest.preisgestaltung)) {
+      const { pilot, pilotHistorie, ...ohne } = rest.preisgestaltung; // eslint-disable-line no-unused-vars
+      rest.preisgestaltung = ohne;
+    }
+    return rest;
+  }) };
 }
