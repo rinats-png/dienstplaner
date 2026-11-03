@@ -241,6 +241,7 @@ Werkzeug (gleicher Branch): `pruefungen/acc45-status.test.js` teilt `DEPENDENCIE
 4. `zustellung-rechte.mjs` (HTTP): Person `s1` (Schichtverantwortung) im Prüfraum für die Sonde; bestehende Prüfungen unverändert.
 5. `acc45-status.test.js`: siehe oben (CRLF-Toleranz).
 7. `zustellung-rechte.test.js`: setzt (wie schon `CENTRIC_ZUSTELL_PERSON_MAIL=1000`) die neuen Flut-Grenzen hoch (`…_DRINGEND_PAAR_MAIL`, `…_DRINGEND_QUELLE_MAIL`, `CENTRIC_NOTRUF_JE_STUNDE`): Die Datei legt bewusst viele Notrufe derselben Person an und prüft Rechte, nicht Grenzen; zwei Prüfungen waren sonst rot, weil die neue Bremse griff. Die Grenzen selbst prüft `mail-push-produktion`. Keine Erwartung geändert.
+8. `server.test.js` („erreicht jede der sechs Funktionen unter ihrem Pfad“): erwartet für `GET /zustellung/schluessel` ohne Sitzung jetzt 401 statt 200 — die gewollte Folge von B7. Geprüft wird weiterhin, dass die Funktion selbst (JSON) antwortet und nicht der Rückfall auf `index.html`; der erste CI-Lauf (41717064303, Kopf `eb8395b`) war nur in diesem Schritt rot.
 6. Die bestehenden Prüfungen zu Kontingenten blieben **unverändert** grün: „Betriebsgrenze gilt auch für dringende Arten“
    (die Reserve ist Teil der Betriebsgrenze, nicht zusätzlich), „Personengrenze …“ (endgültig wie bisher), „Grenze 0 sperrt
    den Kanal“ (jetzt zurückgestellt statt übersprungen; geprüft wird `grund: "kontingent"` und dass nichts hinausgeht).
