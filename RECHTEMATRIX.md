@@ -336,7 +336,9 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   rechnerisch vorbereitet (`istJeAbschnitt`), die Ablage zweier Stempelpaare je Tag noch nicht angebunden.
   Geprüft in `pruefungen/modul-geteilterdienst.test.js`.
 - *Posten* (`server/lib/modul-posten.mjs`): zwei neue Betriebsfelder. `objekte` (Objekte mit Posten, Sollbesetzung
-  und verlangten Qualifikationen; keine Personendaten) liefert der Server allen Rollen aus. `postenPlan`
+  und verlangten Qualifikationen; keine Personendaten) liefert der Server Planung und Leitung voll, Beschäftigten und der
+  Schichtverantwortung nur mit Einteilung (eigene Einteilung bzw. Einteilung im eigenen Bereich am Tag), dem Betriebsrat
+  nicht — **Nutzerentscheidung W3 offen**, bis dahin konservativ. `postenPlan`
   (Einteilung auf Posten, Schlüssel „Person|Tag“) sehen Beschäftigte nur für sich selbst, die Schichtverantwortung
   im eigenen Bereich am Tag (`schichtSchluessel`, tagesgenau), Betriebsrat und Betreiber nicht; Planung und
   Leitung voll. Beide schreiben nur Planung und Leitung (Voll-Schreibweg); der Server prüft die Form
@@ -349,8 +351,8 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   an alle Rollen. `bereichsPlan` (Zuordnung, Schlüssel „Person|Tag“ → Bereich) sehen Beschäftigte nur für sich selbst,
   die Schichtverantwortung im eigenen Bereich am Tag (`schichtSchluessel`), Betriebsrat und Betreiber nicht; Planung und
   Leitung voll. Schreiben: Planung und Leitung über den Voll-Schreibweg (`bereichsplanZusammen`, nur Neues oder
-  Geändertes streng); die Schichtverantwortung ordnet Personen ihres Bereichs am Tag Bereichen der eigenen Einheit zu
-  oder hebt die Zuordnung auf (`einheitZusammen`, Fall `bereichsPlan`; Unsichtbares fremder Bereiche bleibt durch die
+  Geändertes streng, Tage höchstens zwei Jahre von heute entfernt); die Schichtverantwortung ordnet Personen ihres Bereichs am Tag Bereichen der eigenen Einheit zu
+  oder hebt die Zuordnung auf (`einheitZusammen`, Fall `bereichsPlan`; höchstens 500 Änderungen je Speichern, Tage wie oben; Unsichtbares fremder Bereiche bleibt durch die
   Rückfüllung erhalten, Fremdes wird abgewiesen — Nutzerentscheidung B2 b, vorläufig). Beschäftigte schreiben nicht.
   Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
   und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.

@@ -21,13 +21,16 @@
 import { modulAktiv, BRANCHENMODULE } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
-export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, sollMax: 99, textMax: 120, idMax: 60 });
+export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
+  sollMax: 99, textMax: 120, idMax: 60 });
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const liste = (w) => (Array.isArray(w) ? w.filter((x) => x && typeof x === "object") : []);
 const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const echterTag = (s) => { if (!TAG.test(s)) return false; const t = new Date(`${s}T12:00:00Z`); return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === s; };
+/** Liegt der Tag im plausiblen Bereich (zwei Jahre vor und nach heute)? */
+const imFenster = (s, jetzt = Date.now()) => Math.abs(new Date(`${s}T12:00:00Z`).getTime() - jetzt) <= BEREICH_GRENZEN.tageSpanne * 86400000 + 43200000;
 const idOk = (s) => typeof s === "string" && s.length >= 1 && s.length <= BEREICH_GRENZEN.idMax;
 
 /**
@@ -80,6 +83,7 @@ export function pruefeBereichsPlan(plan, alt) {
     if (hat(vorher, k) && vorher[k] === plan[k]) continue;
     const i = k.lastIndexOf("|");
     if (i < 1 || i > BEREICH_GRENZEN.idMax || !echterTag(k.slice(i + 1))) return "Bereichsplan: Schlüssel haben die Form „Person|JJJJ-MM-TT“.";
+    if (!imFenster(k.slice(i + 1))) return "Bereichsplan: der Tag liegt mehr als zwei Jahre von heute entfernt.";
     if (!idOk(plan[k])) return "Bereichsplan: der Bereich ist eine Kennung.";
   }
   return null;
@@ -181,11 +185,16 @@ export function bereichsplanZusammen(neuM, altM) {
 export function bereichsPlanSchicht(altO, neuO, { imBereich, eigeneBereiche }) {
   const alt = istObjekt(altO) ? altO : {};
   if (!istObjekt(neuO)) return { ok: false, grund: "Bereichsplan: ungültige Form." };
+  if (Object.keys(neuO).length > BEREICH_GRENZEN.planEintraege) return { ok: false, grund: `Bereichsplan: höchstens ${BEREICH_GRENZEN.planEintraege} Einträge.` };
+  let geaendert = 0;
   for (const k of new Set([...Object.keys(alt), ...Object.keys(neuO)])) {
     if (alt[k] === neuO[k]) continue;
+    if (++geaendert > BEREICH_GRENZEN.aenderungenSchicht)
+      return { ok: false, grund: `Bereichsplan: höchstens ${BEREICH_GRENZEN.aenderungenSchicht} Änderungen je Speichern.` };
     const i = k.lastIndexOf("|");
     const pid = k.slice(0, i), tag = k.slice(i + 1);
     if (i < 1 || !echterTag(tag)) return { ok: false, grund: "Bereichsplan: ungültiger Schlüssel." };
+    if (hat(neuO, k) && !imFenster(tag)) return { ok: false, grund: "Bereichsplan: der Tag liegt mehr als zwei Jahre von heute entfernt." };
     if (!imBereich(pid, tag)) return { ok: false, grund: "Die Person gehört an diesem Tag nicht zu deinem Bereich." };
     if (hat(neuO, k) && (typeof neuO[k] !== "string" || !eigeneBereiche.has(neuO[k])))
       return { ok: false, grund: "Dieser Bereich gehört nicht zu deiner Einheit." };
