@@ -109,3 +109,30 @@ sauber.
 **Tests, rot vorher:** `dsgvo-server.test.js` (jetzt 22) und der angepasste Test in `sicherungen.test.js` gegen einen Export von 2c1aa8e (eigener Ordner, nicht der Arbeitsbaum): 17 rot (u. a. PUT „Infinity" → 200; Leitung bekommt Protokoll; fremder Antrag mit „Arzttermin"; Wiederherstellen → 409; Vorschau löschte; keine Schutzsicherung; Bremse fehlte). Die beiden Fälle „Infinity in minusMonate" und „ungültige Frist in der Ablage" lassen sich gegen den alten Stand nicht als Test laufen lassen — sie **hängen** den Prozess: `minusMonate("2026-11-02", Infinity)` brach nach 5 s Zeitgrenze ab (Exit 124), jetzt wirft sie sofort. Nachher alle grün.
 
 Geänderter bestehender Test: `sicherungen.test.js` „keine Sicherung von vor oder vom Tag des letzten Löschlaufs" → „zurückgespielt, Fristabgelaufenes bleibt gelöscht" (H3, ausdrücklich verlangt).
+
+## Nachprüfung: integrierbar mit Auflagen — umgesetzt (Agent B, vertretungsweise)
+
+Branch `acc45/security/wp26-dsgvo-server`, vorher 6fc5b8f.
+
+**0. Integration hineingemischt** (3b17d9c, Merge von `origin/integration/centric-complete`). Konflikte:
+- `server.mjs`: Importe `datenschutzLauf`/`modusAusUmgebung` und `gesund`/`gesund-zaehler` beide behalten.
+- `package.json`: `pruefung:dsgvo-server` in die Sammelzeile `pruefung` der Integration eingefügt (nach
+  `pruefung:aufbewahrung`); geprüft, dass sonst nichts aus der Zeile fehlt.
+- `RECHTEMATRIX.md`: Fußnote ²¹ gehört WP-10 (²¹–²⁵); die WP-26-Fußnote ist jetzt **²⁶**, Verweise in diesem Nachweis
+  angepasst (Tabelle oben). Andere Verweise auf ²¹ (`REGELWERK-REGISTRY.md`, `schutzdurchsetzung.mjs`) meinen WP-10.
+- Nach dem Merge lokal grün: `dsgvo-server`, `sicherungen`, `sicht`, `rechtematrix-zeilen` (593/593).
+
+| Auflage | Umsetzung (7e6a4bb) | Test (rot auf 3b17d9c → grün) |
+|---|---|---|
+| **N-1** Altwert in m2 sperrt Speichern für m1 | `pruefeGestalt(bestand, { vorher })`: Fristen nur bei Betrieben streng geprüft, die ihre `aufbewahrung` ändern oder neu sind (`aufbewahrungGeaendert`); PUT und Wiederherstellen geben den gespeicherten Stand mit, das Anlegen eines Raums bleibt streng. Altwerte: beim Lesen gilt nur eine ganze Zahl 1–600, sonst die Vorgabe (`fristen`); der Lauf überspringt und meldet (wie bisher); beim Zurückspielen wird mit einer ungültigen Angabe nie geräumt, nur gemeldet. Gelöscht oder umgeschrieben wird ein Altwert nie. Oberfläche: `FristFeld` mit `min`/`max` 1–600 und `step="1"`, gespeichert über `fristWert` (gerundet, begrenzt) statt `Math.max(1, Number(v))`. | „N-1: ein ungültiger Altwert in Betrieb m2 …“ (PUT m1 → 200, Altwert bleibt, eigener Bruch → 422, Lauf meldet m2); „N-1: Lesen … Oberfläche …“; `sicherungen.test.js` „N-1: … löscht beim Zurückspielen nie“. |
+| **M5-Rest** Bremse je Raum; `list()` über alle Mandanten | Bremse `auskunft` je anfragender Person (Hash aus Betrieb und Personenkennung bzw. Rolle ohne Person) statt je Raum. Spur: je Tag ein Präfix `JJJJ-MM-TT/` über das Fenster von 30 Tagen statt `list()` über die ganze Spur. **Grenze, Backlog:** Die Schlüssel der Spur lauten `Tag/Art/Marke` (`schutz.mjs`) — Raum und Person stehen nicht darin. Eine Präfixsuche je Raum/Person bräuchte ein anderes Schlüsselformat (oder einen Index) und eine Umstellung von `spurLesen`, `spurAufraeumen` und den Altbeständen; das gehört in ein eigenes Paket. Innerhalb eines Tages werden weiter alle Betriebe durchgesehen. | „M5: … je Stunde und Person …, andere Personen bleiben frei“; „M5-Rest: die Spur wird je Tag über ein Präfix gelesen“ (31 Präfixe, keine Liste ohne Präfix). |
+| **N-2** Leitungszeilen mit Herkunft und Person | Zeilen „Auskunft durch die Leitung über mich“ gehen in der Selbstauskunft nur als `{ zeit, art, rolle }` hinaus. Lücke im Hinweis genannt. | M1-Test angepasst: diese Zeilen haben genau die Schlüssel `art`, `rolle`, `zeit` (vorher wurde `zusatz` mit Kennung erwartet). |
+| **N-3** Zurückspielen löscht trotz `vorschau`/`aus` | Gekoppelt: `betriebWiederherstellen(…, { datenschutz })`, Vorgabe aus `CENTRIC_DATENSCHUTZLAUF`. Nur bei `an` wird nach Fristen geräumt; bei `vorschau`/`aus` bleibt alles, und das Ergebnis meldet, was fällig wäre (`fristen: { modus, geloescht, faellig, text }`, auch im Protokoll und in der Antwort von `/api/wiederherstellen`). Stichtag `heuteBerlin` statt UTC. Modus und Leser liegen jetzt in `aufbewahrung.mjs` (`datenschutzModus`, `datenschutzlauf.mjs` reicht sie weiter), damit `sicherungen.mjs` keinen Importkreis bildet. | `sicherungen.test.js`: „N-3: … „vorschau“ oder „aus“ …“, „N-3: der Stichtag ist der Tag in Berlin“; `dsgvo-server.test.js` „N-3: Zurückspielen bei … „vorschau“ …“ (HTTP). Angepasst: der bisherige Test „Fristabgelaufenes bleibt gelöscht“ und H3 laufen jetzt ausdrücklich mit `an`. |
+| **N-4** Bestätigungen fehlen | Sammlung `bestaetigungen` (WP-10): Einträge **über** die Person. Selbst: Felder aus `BESTAETIGUNG_FELDER` ohne `durch`/`durchId` (nur `rolle`); Leitung: ihre Sicht. Bestätigungen, die die Person für andere abgab, und die Zählwerte des Betriebsrats sind ausdrücklich in der Lückenliste. | „N-4: Bestätigungen über die Person …“ (nur eigener Eintrag, kein Name der Leitung, Leitung bekommt ihn auch). |
+
+Rot auf 3b17d9c (Implementierung zurückgesetzt, Tests von 7e6a4bb): 11 von 52 in `dsgvo-server` und `sicherungen`
+rot; jetzt grün. Lokal zusätzlich `aufbewahrung`, `sicht`, `wiederherstellung-schutz`: 125/125; eslint (0 Fehler), tsc
+ohne Befund.
+
+**Angepasste bestehende Tests:** M1 (N-2), M5 (je Person), H3 und „Fristabgelaufenes bleibt gelöscht“ (mit `an`, N-3) —
+alle wegen der verlangten Verhaltensänderung, keine Abschwächung.
