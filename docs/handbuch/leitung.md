@@ -7,7 +7,8 @@ dazu:
 |---|---|
 | Betriebsdaten, Einheiten, Standorte, Dienstarten | „Verwaltung“ → „Betrieb“, „Dienstarten“ |
 | Zugänge ausgeben und Rollen vergeben; Zugänge zurückziehen (laufende Sitzungen enden mit) | Verwaltung |
-| Standortprüfung beim Stempeln ein- oder ausschalten (Vorgabe aus) | Betriebseinstellungen |
+| Standortprüfung beim Stempeln ein- oder ausschalten (Vorgabe aus); Prüfmodus „Hinweis“ oder „verpflichtend“ (nur mit Bestätigung zu Datenschutz und Mitbestimmung) | Betriebseinstellungen |
+| Einsatzorte (Kunde, Baustelle) anlegen; je Dienstart festlegen, worauf sich die Standortprüfung bezieht: Standort der Einheit, Einsatzort oder Außendienst (kein fester Ort) | Betriebseinstellungen, Dienstarten |
 | Jugendschutz-Einstellung „mehrschichtig“ (§ 14 Abs. 2 Nr. 2 JArbSchG) | Betriebseinstellungen |
 | Kosten des Betriebs sehen (Preisgrundlage, nur lesend) | Kostenanzeige |
 | Sicherung des Betriebs anlegen | Einstellungen → „Sicherung anlegen“, „Vorher sichern“ |

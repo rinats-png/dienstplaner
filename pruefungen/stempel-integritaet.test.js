@@ -391,3 +391,79 @@ describe("B1 (Datenschutzlauf) und B2 (eine Frist-Rechnung)", () => {
     expect(loeschStichtag({ aufbewahrung: { plandatenMonate: "viel" } }, HEUTE_ISO)).toBeNull();
   });
 });
+
+/* WP-20 / Review A1: Der Datenschutzlauf nimmt die Standort-Ergebnisse alter Stempel heraus
+   (gruendeMonate). Eine davor geladene Kopie trägt sie noch — das ist kein Widerspruch zum Beleg
+   (Zeiten und Kennzeichen sind unverändert), und sie kommen nicht zurück. */
+describe("A1: Standort-Ergebnisse nach dem Datenschutzlauf — alte Kopie wird nicht abgewiesen, nichts kommt zurück", () => {
+  const STANDORT = ["geoStart", "geoEnde", "ortStart", "ortEnde", "innerhalbStart", "innerhalbEnde", "geprueftStart", "geprueftEnde"];
+  const mitStandort = () => ({ start: "06:00", startAm: "x", ende: "14:00", endeAm: "y",
+    geoStart: { urteil: "innerhalb" }, geoEnde: { urteil: "innerhalb" }, ortStart: "Station", ortEnde: "Station",
+    innerhalbStart: true, innerhalbEnde: true, geprueftStart: true, geprueftEnde: true });
+  const HEUTE_ISO = "2026-11-03";
+
+  it("Einheit: gespeichert ohne Standortfelder, Kopie mit ⇒ kein Widerspruch (vor dem Stichtag); sonst weiter Widerspruch", () => {
+    const rest = (e) => { const r = { ...e }; for (const f of STANDORT) delete r[f]; return r; };
+    const alt = "a1|2026-06-01", jung = "a1|2026-10-20";
+    const gespeichert = { id: "m1", einstempeln: { [alt]: rest(mitStandort()), [jung]: rest(mitStandort()) } };
+    const kopieAlt = { id: "m1", einstempeln: { [alt]: mitStandort() } };
+    expect(stempelWiderspruch(gespeichert, kopieAlt, { heute: HEUTE_ISO })).toBeNull();
+    expect(stempelWiderspruch(gespeichert, kopieAlt, { heute: HEUTE_ISO, vollSicht: true, loeschlauf: true })).toBeNull();
+    /* Gegenprobe: ein junger Stempel (nach dem Standort-Stichtag) kann sein Ergebnis nicht erfinden. */
+    const kopieJung = { id: "m1", einstempeln: { [jung]: mitStandort() } };
+    expect(stempelWiderspruch(gespeichert, kopieJung, { heute: HEUTE_ISO })).toMatchObject({ schluessel: jung });
+    /* Gegenprobe: ein anderes Feld bleibt unveränderlich, ein erfundenes ebenso. */
+    const fremd = { id: "m1", einstempeln: { [alt]: { ...mitStandort(), start: "05:00" } } };
+    expect(stempelWiderspruch(gespeichert, fremd, { heute: HEUTE_ISO })).toMatchObject({ schluessel: alt });
+    const neu = { id: "m1", einstempeln: { [alt]: { ...mitStandort(), erfunden: 1 } } };
+    expect(stempelWiderspruch(gespeichert, neu, { heute: HEUTE_ISO })).toMatchObject({ schluessel: alt });
+  });
+
+  it("Einheit: stempelSichern schreibt gelöschte Standortfelder nie zurück (sicherer und unsicherer Monat)", () => {
+    const k = "a1|2026-06-01";
+    const gesp = { id: "m1", einstempeln: { [k]: { start: "06:00", ende: "14:00" } }, erfassung: {} };
+    const kopie = { id: "m1", einstempeln: { [k]: mitStandort() }, erfassung: {} };
+    for (const unveraendert of [undefined, new Set()]) {
+      const r = stempelSichern(gesp, kopie, { ...kopie }, { heute: HEUTE_ISO, ...(unveraendert ? { unveraendert } : {}) }).mandant;
+      for (const f of STANDORT) expect(r.einstempeln[k], `${f} / ${unveraendert ? "unsicher" : "sicher"}`).not.toHaveProperty(f);
+      expect(r.einstempeln[k]).toMatchObject({ start: "06:00", ende: "14:00" });
+    }
+  });
+
+  for (const rolle of ["leitung", "planer"]) {
+    it(`Handler (${rolle}): Stempel von vor 150 Tagen, Datenschutzlauf, dann PUT der alten Kopie mit nur einer Namensänderung ⇒ 200, Standortfelder bleiben gelöscht`, async () => {
+      const k = `a1|${tag(-150)}`;
+      const D = await import("../server/lib/datenschutzlauf.mjs");
+      const setzen = async () => {
+        const jetzt = await B.bestandLesen(laden(), RAUM);
+        const mm = JSON.parse(JSON.stringify(jetzt.bestand));
+        mm.mandanten[0].einstempeln[k] = mitStandort();
+        mm.mandanten[0].erfassung[k] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" };
+        await B.bestandSchreiben(laden(), RAUM, mm, { durch: "Pruefung" });
+      };
+      /* Ein erster Lauf setzt den Vermerk „zuletzt geräumt“ des Betriebs auf heute; der zweite ändert den Kern
+         nicht mehr — sonst wäre jede Stammdatenänderung einer alten Kopie ein gewöhnlicher Konflikt (409). */
+      await setzen();
+      await D.datenschutzLauf(laden(), { spur: false, modus: "an" });
+      await setzen();
+
+      const r = await anfrage("bestand", { methode: "GET", token: T[rolle] });
+      expect(r.bestand.mandanten[0].einstempeln[k].geoStart, "Kopie trägt das Ergebnis").toBeTruthy();
+
+      const v = await D.datenschutzLauf(laden(), { spur: false, modus: "an" });
+      expect(v.fehler, JSON.stringify(v.fehler)).toEqual([]);
+      const nachLauf = (await gespeichert()).einstempeln[k];
+      expect(nachLauf, "Lauf hat den Stempel erhalten").toMatchObject({ start: "06:00", ende: "14:00" });
+      for (const f of STANDORT) expect(nachLauf, `${f} nach dem Lauf`).not.toHaveProperty(f);
+
+      const b = JSON.parse(JSON.stringify(r.bestand));
+      b.mandanten[0].personen.find((p) => p.id === "a1").vorname = `Neu${rolle}`;
+      const w = await anfrage("bestand", { methode: "PUT", token: T[rolle], rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+      expect([w.status, w.code], w.roh).toEqual([200, undefined]);
+      const g = await gespeichert();
+      expect(g.personen.find((p) => p.id === "a1").vorname).toBe(`Neu${rolle}`);
+      for (const f of STANDORT) expect(g.einstempeln[k], `${f} nach dem Speichern`).not.toHaveProperty(f);
+      expect(g.einstempeln[k]).toMatchObject({ start: "06:00", ende: "14:00" });
+    });
+  }
+});

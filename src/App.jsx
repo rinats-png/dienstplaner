@@ -6,7 +6,7 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
   ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
-import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
+import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland, GEO_MODUS_TEXT } from "../server/lib/geo.mjs";
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
@@ -9539,6 +9539,22 @@ function Dienstarten({ sitz, akt }) {
             <Field label="Farbe">
               <Farbwahl wert={f.farbe} onChange={(c) => setF({ ...f, farbe: c })} /></Field>
           </div>
+          {/* WP-20: Worauf sich die Standortprüfung beim Stempeln dieser Dienstart bezieht. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
+            <Field label="Standortprüfung bezieht sich auf"
+              hint="Wirkt nur, wenn die Standortprüfung im Betrieb eingeschaltet ist.">
+              <Sel value={f.ortModus || "standort"}
+                onChange={(e) => { const { einsatzortId, ...rest } = f; setF(e.target.value === "standort" ? { ...rest, ortModus: undefined }
+                  : e.target.value === "einsatzort" ? { ...rest, ortModus: "einsatzort", einsatzortId: einsatzortId || "" } : { ...rest, ortModus: e.target.value }); }}>
+                <option value="standort">Standort der Einheit</option>
+                <option value="einsatzort">Einsatzort</option>
+                <option value="aussendienst">Außendienst (kein fester Ort)</option></Sel></Field>
+            {f.ortModus === "einsatzort" && (
+              <Field label="Einsatzort" hint={(m.einsatzorte || []).length ? undefined : "Zuerst unter Betrieb einen Einsatzort anlegen."}>
+                <Sel value={f.einsatzortId || ""} onChange={(e) => setF({ ...f, einsatzortId: e.target.value })}>
+                  <option value="">— wählen —</option>
+                  {(m.einsatzorte || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Sel></Field>)}
+          </div>
           <div className="karte-still" style={{ padding: 16, borderRadius: "var(--r)" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
               <input type="checkbox" checked={!!f.posten} onChange={(e) => setF({ ...f, posten: e.target.checked, quelle: e.target.checked ? (f.quelle || m.dienstarten[0].id) : null })} />
@@ -10349,6 +10365,12 @@ const SPEICHERLAGE = {
     titel: "Diese Änderung ist mit deiner Rolle nicht zulässig",
     text: "Der Server hat sie abgewiesen. Was du siehst, ist noch dein Stand — "
       + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
+    neuladen: true,
+  },
+  stempelStand: {
+    titel: "Der Bestand ist veraltet — bitte neu laden",
+    text: "Seit du die Daten geladen hast, hat sich ein Stempel geändert, und gestempelte Werte bleiben unverändert. "
+      + "Die Änderung ist nicht gespeichert. Lade den Bestand neu und trage sie dann noch einmal ein.",
     neuladen: true,
   },
   zuGross: {
@@ -21482,7 +21504,9 @@ function Tarifwerk({ sitz, akt }) {
 function GeoSchalter({ sitz, akt }) {
   const e = sitz.mandant.einstellungen || {};
   const an = e.geoPruefung === true;
+  const pflicht = an && e.geoModus === "pflicht";
   const [geprueft, setGeprueft] = useState(false);
+  const [modusGeprueft, setModusGeprueft] = useState(false);
   const durch = e.geoPruefungAktiviertVon
     ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.geoPruefungAktiviertVon)) || {}) : null;
   return (
@@ -21494,6 +21518,24 @@ function GeoSchalter({ sitz, akt }) {
         ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet und die Messgenauigkeit —
         keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst, auch ohne Position oder außerhalb des
         Umkreises.
+        {an && (
+          <div style={{ marginTop: 14, color: C.text }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Prüfmodus: {pflicht ? "verpflichtend" : "Hinweis"}</div>
+            <div style={{ color: C.dim }}>
+              {pflicht
+                ? "Ein Stempel, dessen Ort nicht bestätigt ist (außerhalb, ohne Position, nicht bewertbar), bekommt die Markierung „Ort nicht bestätigt“ und geht in die Klärung der Leitung. Die Arbeitszeit wird trotzdem erfasst."
+                : "Das Ergebnis wird gespeichert und angezeigt; es entsteht keine Markierung."}
+              {" "}Beim Außendienst gibt es keinen festen Ort — dort wird nichts gemessen.
+            </div>
+            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              {pflicht ? <Btn onClick={() => akt.setzeGeoModus("hinweis")}>Auf Hinweis zurückstellen</Btn> : (<>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", maxWidth: 560 }}>
+                  <input type="checkbox" checked={modusGeprueft} onChange={(x) => setModusGeprueft(x.target.checked)} />
+                  <span>{GEO_MODUS_TEXT}</span>
+                </label>
+                <Btn disabled={!modusGeprueft} onClick={() => { akt.setzeGeoModus("pflicht"); setModusGeprueft(false); }}>Verpflichtend stellen</Btn></>)}
+            </div>
+          </div>)}
         {an && e.geoPruefungAktiviertAm && (
           <div style={{ marginTop: 10, ...NUM }}>Eingeschaltet am {fDatum(String(e.geoPruefungAktiviertAm).slice(0, 10))}
             {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
@@ -21505,6 +21547,57 @@ function GeoSchalter({ sitz, akt }) {
             </label>
             <Btn kind="primary" disabled={!geprueft} onClick={() => { akt.setzeGeoPruefung(true); setGeprueft(false); }}>
               Einschalten</Btn></>)}
+        </div>
+      </div>
+    </Card>);
+}
+
+/**
+ * Einsatzorte (WP-20): Orte außerhalb der Standorte — Kunde, Objekt, Baustelle —, auf die sich die
+ * Standortprüfung einer Dienstart beziehen kann. Sie haben keinen Einfluss auf Preis oder Feiertage;
+ * Koordinate und Umkreis sehen nur Planung und Leitung, der Server entscheidet über den Stempel.
+ */
+function Einsatzorte({ sitz, akt }) {
+  const m = sitz.mandant;
+  const liste = m.einsatzorte || [];
+  const [name, setName] = useState("");
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill>{liste.length}</Pill>}>Einsatzorte</CardHead>
+      <div style={{ padding: 22, display: "grid", gap: 12 }}>
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+          Ein Einsatzort ist ein Ziel für Dienstarten ohne festen Standort der Einheit — etwa ein Kunde oder eine
+          Baustelle. Die Dienstart wählt ihn unter „Standortprüfung bezieht sich auf“. Gespeichert wird beim Stempeln
+          nur das Ergebnis und eine grobe Abstandsklasse, nie eine Koordinate. Bitte als Bezeichnung keinen
+          Personennamen verwenden.
+        </div>
+        {liste.map((o) => {
+          const verwendet = (m.dienstarten || []).filter((d) => d.ortModus === "einsatzort" && d.einsatzortId === o.id);
+          return (
+            <div key={o.id} className="karte-still" style={{ borderRadius: "var(--r)", padding: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+                <Field label="Bezeichnung"><Inp value={o.name} onChange={(e) => akt.setzeEinsatzort(o.id, { name: e.target.value })} /></Field>
+                <GeoZahl label="Breitengrad" wert={o.lat} hinweis="−90 bis 90"
+                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeEinsatzort(o.id, { lat: x })} />
+                <GeoZahl label="Längengrad" wert={o.lon} hinweis="−180 bis 180"
+                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeEinsatzort(o.id, { lon: x })} />
+                <GeoZahl label="Umkreis in Metern" wert={o.radius} hinweis={`${RADIUS_MIN} bis ${RADIUS_MAX}`}
+                  gueltig={radiusGueltig} onCommit={(x) => akt.setzeEinsatzort(o.id, { radius: x })} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                {koordinateGueltig(o.lat, o.lon) && radiusGueltig(o.radius ?? RADIUS_VORGABE)
+                  ? <Pill size="sm" tone="ok">Prüfung möglich</Pill>
+                  : <Pill size="sm">Ohne Koordinate „nicht bewertbar“</Pill>}
+                {verwendet.length > 0 && <Pill size="sm">verwendet von {verwendet.map((d) => d.name).join(", ")}</Pill>}
+                <span style={{ flex: 1 }} />
+                <Btn size="sm" kind="danger" disabled={verwendet.length > 0} onClick={() => akt.loescheEinsatzort(o.id)}>Entfernen</Btn>
+              </div>
+            </div>);
+        })}
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <Field label="Neuer Einsatzort" style={{ flex: "1 1 220px" }}>
+            <Inp value={name} placeholder="Baustelle Hafenstraße" onChange={(e) => setName(e.target.value)} /></Field>
+          <Btn kind="primary" disabled={name.trim().length < 2} onClick={() => { akt.einsatzortAnlegen(name.trim()); setName(""); }}>Anlegen</Btn>
         </div>
       </div>
     </Card>);
@@ -21848,6 +21941,8 @@ function Betrieb({ sitz, akt }) {
       <Standorte sitz={sitz} akt={akt} />
 
       <GeoSchalter sitz={sitz} akt={akt} />
+
+      <Einsatzorte sitz={sitz} akt={akt} />
 
       <PlanFreigabeSchalter sitz={sitz} akt={akt} />
 
@@ -23256,6 +23351,23 @@ function AppInnen() {
         if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
         return { ...m, einstellungen: e };
       }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
+      /* Prüfmodus der Standortprüfung (WP-20): nur die Leitung; „pflicht" mit Bestätigung in derselben
+         Anfrage (Mitbestimmung), Wann/Wer setzt der Server. */
+      setzeGeoModus: (modus) => mUpd((m) => {
+        const e = { ...(m.einstellungen || {}), geoModus: modus };
+        if (modus === "pflicht") e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
+        return { ...m, einstellungen: e };
+      }, modus === "pflicht" ? "Standortprüfung verpflichtend gestellt" : "Standortprüfung auf Hinweis gestellt"),
+      /* Einsatzorte (WP-20): getrennt von den Standorten. */
+      einsatzortAnlegen: (name) => mUpd((m) => ({ ...m,
+        einsatzorte: [...(m.einsatzorte || []), { id: uid("eo"), name, radius: RADIUS_VORGABE }] }), `Einsatzort „${name}“ angelegt`),
+      setzeEinsatzort: (id, felder) => mUpd((m) => ({ ...m,
+        einsatzorte: (m.einsatzorte || []).map((o) => o.id === id ? { ...o, ...felder } : o) }), null),
+      loescheEinsatzort: (id) => mUpd((m) => {
+        const n = (m.dienstarten || []).filter((d) => d.ortModus === "einsatzort" && d.einsatzortId === id).length;
+        if (n) { melde(`Der Einsatzort wird noch von ${n} Dienstart(en) verwendet.`); return m; }
+        return { ...m, einsatzorte: (m.einsatzorte || []).filter((o) => o.id !== id) };
+      }, "Einsatzort gelöscht"),
       /* Planfreigabe als Pflicht (WP-23): nur org.edit; wann und von wem, setzt der Server. */
       setzePlanFreigabePflicht: (an) => mUpd((m) => ({ ...m,
         einstellungen: { ...(m.einstellungen || {}), planFreigabePflicht: !!an } }),
@@ -24962,4 +25074,4 @@ export default function App() {
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter };

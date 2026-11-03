@@ -478,7 +478,9 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
 
   const meine = new Set(abweichende(abdBasis, abdNeu));
   const fremde = new Set(abweichende(abdBasis, abdAktuell));
-  const streit = [...meine].filter((id) => fremde.has(id));
+  /* Beide haben denselben Inhalt erzeugt (z. B. der Löschlauf nahm Standort-Ergebnisse heraus, die
+     eine ältere Kopie nie zurückbringt, WP-20/A1): Das ist kein Streit — nichts geht verloren. */
+  const streit = [...meine].filter((id) => fremde.has(id) && abdNeu[id] !== abdAktuell[id]);
 
   if (streit.length) {
     return { ok: false, grund: "konflikt", streit,
