@@ -5,17 +5,12 @@
 # Kein Ziel außerhalb des Runners, keine Secrets. Ergebnis als JSON in der
 # Zusammenfassung des Laufs und als Artefakt.
 #
-# Auslöser: von Hand (workflow_dispatch) — sobald diese Datei auf dem
-# Standardzweig liegt. Solange sie nur auf dem Paketzweig liegt, kennt GitHub
-# sie für den Handstart nicht; dann löst ein Push auf EINE Anforderungsdatei
-# (werkzeug/last/ci-anforderung.txt, eine Zeile "profil nur", "-" = alle
-# Szenarien) den Lauf aus. Nie bei normalen Pushes oder PRs.
+# Auslöser: nur von Hand (workflow_dispatch) — und erst, wenn diese Datei auf
+# dem Standardzweig liegt (GitHub kennt einen Workflow für den Handstart nur
+# von dort). Nie bei Pushes oder PRs.
 name: Lasttest
 
 on:
-  push:
-    branches: ["acc45/infra/wp28-lasttest"]
-    paths: ["werkzeug/last/ci-anforderung.txt"]
   workflow_dispatch:
     inputs:
       profil:
@@ -39,7 +34,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: npm
@@ -51,11 +46,6 @@ jobs:
         run: |
           set -euo pipefail
           PROFIL="$EIN_PROFIL"; NUR="$EIN_NUR"
-          if [[ -z "$PROFIL" ]]; then
-            read -r PROFIL NUR < werkzeug/last/ci-anforderung.txt || true
-            NUR="${NUR:-}"
-            if [[ "$NUR" == "-" ]]; then NUR=""; fi
-          fi
           [[ "$PROFIL" == "voll" || "$PROFIL" == "kurz" ]] || { echo "::error::Profil unbekannt"; exit 1; }
           [[ -z "$NUR" || "$NUR" =~ ^S[0-6](,S[0-6])*$ ]] || { echo "::error::nur: z. B. S1,S3"; exit 1; }
           echo "PROFIL=$PROFIL" >> "$GITHUB_ENV"
@@ -74,7 +64,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Ergebnis als Artefakt
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: lasttest-ergebnis
           path: ${{ runner.temp }}/last.json

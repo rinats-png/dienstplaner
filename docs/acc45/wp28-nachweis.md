@@ -1,6 +1,8 @@
 # WP-28 — Lasttest und Skalierungsentscheid: Nachweis
 
-Branch `acc45/infra/wp28-lasttest`, Basis `integration/centric-complete` (57717df). WP-17 (Serverdatum beim
+Branch `acc45/infra/wp28-lasttest`, gebaut auf `integration/centric-complete` 57717df, gemessen auf den Ständen 5d57ea4,
+91499a9 und 5e2921c (Server-Code unverändert gegenüber 57717df), zusammengeführt mit `integration/centric-complete`
+d5b27bd (Stand der Durchsicht). WP-17 (Serverdatum beim
 Stempeln) ist noch nicht integriert: Das Werkzeug läuft nach dem Merge unverändert erneut (siehe „Wiederholung“).
 
 ## 1. Was gemessen wurde und womit
@@ -150,9 +152,13 @@ Ziel: Missbrauch begrenzen, aber ehrliche Spitzen durchlassen. Alle Zahlen sind 
 Nutzers, abgeleitet aus Abschnitt 2.2.
 
 1. **Stempeln von „schreiben“ trennen.** Eigene Bremsart `stempeln` mit zwei Ebenen: **je Sitzung/Person** (z. B. 10/min —
-   niemand stempelt öfter) und **je Raum** als Schutz der Rechenleistung statt als Missbrauchsgrenze, abgestuft nach
-   Betriebsgröße aus der Haltedauer (Höchstens die Hälfte der gemessenen Obergrenze): bis 1000 Personen 600/min,
-   bis 2000 Personen 400/min, darüber 200/min.
+   niemand stempelt öfter) und **je Raum** als Schutz der Rechenleistung statt als Missbrauchsgrenze. Der Raumdeckel ist
+   **die Hälfte der kleinsten gemessenen Obergrenze** der Stufe (Tabelle in 2.2, beide Läufe): bis 1000 Personen
+   Obergrenze 1923–2062/min → **≈ 950, gerundet 900/min**; bis 2000 Personen 483–1263/min → **240/min** (Hälfte des
+   schlechteren Laufs); darüber (gemessen 4000 Personen) 403–736/min → **200/min**. Eine Spitze mit einem Drittel der
+   Belegschaft in 5 min (2000 Personen ≈ 133/min) bleibt damit unter dem Deckel. (Eine frühere Fassung dieses
+   Vorschlags nannte 600/400/200; sie lag für 2000 Personen über der Hälfte des schlechteren Laufs und war nicht aus der
+   Herleitung abgeleitet.)
 2. **Planänderungen (PUT) getrennt** je Raum belassen (120/min, genügt für 50 Planende bei 30 s), damit eine
    Stempelspitze keine Planung blockiert und umgekehrt.
 3. **Kennung je Sitzung statt je Raum** für alles, was eine Person auslöst: Ein fehlerhafter Client verbraucht nur sein
@@ -172,7 +178,7 @@ werden. Die Schwellen folgen aus den Messungen (Linux-CI, eine Instanz mit 4 vCP
 
 | Schwelle | Wert | Herleitung |
 |---|---|---|
-| Personen je Betrieb | **bis 2000** | Bestand 4,6 MB bei 2000 Personen mit 100 Tagen Abweichungen; darüber nähert sich die Antwort `RUMPF_MAX` (6 MB), und ein Kern schafft nur ≈ 200 Antworten/min. Einzel-GET 0,4–0,5 s. |
+| Personen je Betrieb | **Obergrenze 2000 — nicht Komfortwert** (Komfortwert ≈ 1000: Haltedauer ≤ 31 ms, Antwort 177 KB) | Bestand 4,6 MB bei 2000 Personen mit 100 Tagen Abweichungen; darüber nähert sich die Antwort `RUMPF_MAX` (6 MB), und ein Kern schafft nur ≈ 200 Antworten/min. Einzel-GET 0,4–0,5 s. |
 | Stempelspitze, alle Betriebe zusammen | **bis ≈ 800 Stempel/min** | S1: 200/min mit 13–16 % Prozessor, linear hochgerechnet ≈ 1250–1500/min bis zur Auslastung eines Kerns; **60 % Reserve** → 800/min. Das ist **hochgerechnet, nicht gemessen** (gemessen bis 200/min). |
 | Personen insgesamt | **bis ≈ 10 000** (≈ 100 Betriebe à 100) | Bei einem Drittel der Belegschaft in 5 min: 800/min ↔ 12 000 Personen; mit Sicherheitsabschlag 10 000. Zeiten hängen nicht von der Zahl der Betriebe ab (bis 600 Betriebe geprüft). |
 | Instanzen | **genau eine** | Raumsperre, Bremse und Zähler liegen im Prozess und in Dateien eines Verzeichnisses; zwei Instanzen auf derselben Ablage sind nicht vorgesehen (siehe `prozesssperre`). |
@@ -203,12 +209,15 @@ unter den Schwellen.
 node werkzeug/last/lauf.mjs --profil kurz|voll [--nur S1,S3] [--aus ergebnis.json]
 ```
 
-CI: Workflow `Lasttest` (`.github/workflows/lasttest.yml`): von Hand (`workflow_dispatch`) — sobald die Datei auf
-dem Standardzweig liegt. Solange sie nur auf dem Paketzweig liegt, löst ein Push auf
-`werkzeug/last/ci-anforderung.txt` (Zeile `profil nur`, `-` = alle) den Lauf aus; **dieser Push-Auslöser ist beim
-Zusammenführen zu entfernen**. Ergebnis: Zusammenfassung des Laufs und Artefakt `lasttest-ergebnis`. Der Workflow läuft
-nie bei normalen Pushes oder PRs, braucht keine Secrets und spricht nur den Server im Runner an.
+CI: Workflow `Lasttest` (`.github/workflows/lasttest.yml`), Auslöser nur `workflow_dispatch`. GitHub kennt den
+Handstart erst, wenn die Datei auf dem **Standardzweig** liegt; bis dahin läuft der Lasttest nur lokal oder über einen
+**temporären** Branch mit einem eigens hinzugefügten `push:`-Auslöser (so entstanden die hier ausgewerteten CI-Läufe;
+der Auslöser ist aus dem Paketzweig wieder entfernt). Ergebnis: Zusammenfassung des Laufs und Artefakt
+`lasttest-ergebnis`. Der Workflow läuft nie bei Pushes oder PRs, braucht keine Secrets und spricht nur den Server im
+Runner an. Die Aktionen sind auf Commit-SHA festgelegt.
 
 Nach WP-17 (Serverdatum) unverändert erneut ausführen; die Werkzeug-Aufrufe schicken das Datum weiter mit.
-Ergebnisdateien der hier ausgewerteten Läufe: Artefakte der oben genannten CI-Läufe (Aufbewahrung 90 Tage);
-Laptop-Ergebnisse nicht im Repository.
+**Rohdaten** (CI-Artefakte verfallen nach 90 Tagen): [`wp28-rohdaten/`](wp28-rohdaten/) — `ci-lauf1-5d57ea4.json`,
+`ci-lauf2-91499a9.json`, `ci-s6-5e2921c.json` (Linux) sowie `laptop-kurz.json`, `laptop-s1-s5.json`, `laptop-s6.json`
+(Windows). Bereinigt: lokale Pfade durch `<pfad>` ersetzt; keine Adressen, Geheimnisse oder Zugangscodes (die Codes
+der Messdaten sind erfunden und stehen nicht in den Ergebnissen).

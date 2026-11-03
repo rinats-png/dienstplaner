@@ -1,0 +1,194 @@
+{
+ "umgebung": {
+  "profil": "kurz",
+  "plattform": "win32",
+  "kerne": 4,
+  "cpu": "Intel(R) Celeron(R) N4120 CPU @ 1.10GHz",
+  "speicherGB": 12,
+  "node": "v24.18.0",
+  "heute": "2026-11-03",
+  "ci": false
+ },
+ "ablageVorher": {
+  "dateien": 1679,
+  "mb": 14.49,
+  "stores": {
+   ".gesund": {
+    "dateien": 0,
+    "mb": 0
+   },
+   "centric": {
+    "dateien": 658,
+    "mb": 14.21
+   },
+   "centric-sitzungen": {
+    "dateien": 1021,
+    "mb": 0.27
+   }
+  }
+ },
+ "S6": {
+  "betriebe_50": {
+   "dateienAblage": 1934,
+   "lesen": {
+    "n": 20,
+    "p50": 51,
+    "p95": 301,
+    "p99": 301,
+    "max": 301,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 136,
+    "p95": 492,
+    "p99": 492,
+    "max": 492,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "readdirMs": 3.12,
+   "readFileMs": 2.33
+  },
+  "betriebe_150": {
+   "dateienAblage": 2364,
+   "lesen": {
+    "n": 20,
+    "p50": 50,
+    "p95": 207,
+    "p99": 207,
+    "max": 207,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 125,
+    "p95": 325,
+    "p99": 325,
+    "max": 325,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "readdirMs": 3.65,
+   "readFileMs": 2.77
+  },
+  "betriebe_300": {
+   "dateienAblage": 2954,
+   "lesen": {
+    "n": 20,
+    "p50": 53,
+    "p95": 142,
+    "p99": 142,
+    "max": 142,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 131,
+    "p95": 227,
+    "p99": 227,
+    "max": 227,
+    "fehlerquote": 25,
+    "status": {
+     "200": 15,
+     "409": 5
+    }
+   },
+   "readdirMs": 4.14,
+   "readFileMs": 1.83
+  }
+ },
+ "ablageNachher": {
+  "dateien": 2954,
+  "mb": 21.77,
+  "stores": {
+   ".gesund": {
+    "dateien": 0,
+    "mb": 0
+   },
+   "centric": {
+    "dateien": 1633,
+    "mb": 21.44
+   },
+   "centric-sitzungen": {
+    "dateien": 1141,
+    "mb": 0.3
+   },
+   "centric-spur": {
+    "dateien": 60,
+    "mb": 0.02
+   },
+   "centric-takt": {
+    "dateien": 120,
+    "mb": 0.01
+   }
+  }
+ },
+ "serverGesamt": {
+  "eldP99Max": 457.7,
+  "eldMax": 457.7,
+  "rssStart": 69,
+  "rssEnde": 72,
+  "rssMax": 76,
+  "heapMax": 16,
+  "sekunden": 45,
+  "cpuMittel": 20,
+  "cpuMax": 91,
+  "fs": {
+   "mkdir": {
+    "n": 5,
+    "ms": 42,
+    "msJeAufruf": 8.4
+   },
+   "fh.writeFile": {
+    "n": 456,
+    "ms": 514,
+    "msJeAufruf": 1.13
+   },
+   "readdir": {
+    "n": 365,
+    "ms": 1329,
+    "msJeAufruf": 3.64
+   },
+   "writeFile": {
+    "n": 1,
+    "ms": 2,
+    "msJeAufruf": 2
+   },
+   "fh.sync": {
+    "n": 911,
+    "ms": 1166,
+    "msJeAufruf": 1.28
+   },
+   "readFile": {
+    "n": 1549,
+    "ms": 3684,
+    "msJeAufruf": 2.38
+   },
+   "unlink": {
+    "n": 56,
+    "ms": 81,
+    "msJeAufruf": 1.45
+   },
+   "rename": {
+    "n": 455,
+    "ms": 1119,
+    "msJeAufruf": 2.46
+   }
+  }
+ },
+ "dauerMin": 1.1
+}
