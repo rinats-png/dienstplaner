@@ -222,6 +222,9 @@ import {
 } from "./aufbewahrung.js";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
+/* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
+import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung, BESTAETIGUNG_TEXT }
+  from "./sicherungen-ui.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 
@@ -17325,6 +17328,10 @@ function Einstellungen({ sitz, akt, gehZu }) {
   const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
   const [gespeichert, setGespeichert] = useState(null);
   const melde = (was) => { setGespeichert(was); setTimeout(() => setGespeichert(null), 2200); };
+  /* Sicherungen (WP-25): Was die Rolle darf, sagt der Server über den
+     Zugang (rolle aus dem Zugangscode), nicht die Rolle der Person im Plan. */
+  const serverRolle = (SP.zugangsdaten() || {}).rolle || null;
+  const [sicherungsRunde, setSicherungsRunde] = useState(0);
   /* Eine schlichte Rückmeldung am oberen Rand — die Anwendung hat dafür
      keinen eigenen Baustein, und für zwei Zeilen lohnt keiner. */
   const Hinweis = ({ children }) => <div role="status" className="toast">{children}</div>;
@@ -17629,15 +17636,107 @@ function Einstellungen({ sitz, akt, gehZu }) {
             <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
           </Zeile>
           <Zeile titel="Sicherung anlegen"
-            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
-            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
+            text="Legt eine Kopie des heutigen Standes an. Zurückspielen kann die Leitung unten unter „Sicherungen“.">
+            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); setSicherungsRunde((n) => n + 1); }}>
               Jetzt sichern</Btn>
           </Zeile>
         </Card>)}
 
+      {/* ------------- Sicherungen: Liste und Zurückspielen (WP-25) ------------- */}
+      {sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle) && (
+        <SicherungenVerwalten key={sicherungsRunde} rolle={serverRolle}
+          laden={akt.sicherungenLaden} zurueckspielen={akt.zurueckspielen} />)}
+
       </div>
       </div>
     </div>);
+}
+
+/* ==========================================================================
+   SICHERUNGEN VERWALTEN (WP-25)
+   Liste der In-App-Sicherungen des eigenen Betriebs und Zurückspielen mit
+   Bestätigung. Sehen: Leitung und Kundenrolle; zurückspielen: nur die
+   Leitung (wie der Server, server/lib/sicherungen.mjs). Was eine Antwort
+   bedeutet, steht in src/sicherungen-ui.js.
+   `vorgabe` ({ liste, fehler }) nur für Prüfungen ohne Netz.
+   ========================================================================== */
+export function SicherungenVerwalten({ rolle, laden, zurueckspielen, vorgabe = null }) {
+  const [liste, setListe] = useState(vorgabe ? vorgabe.liste || [] : null);
+  const [fehler, setFehler] = useState(vorgabe ? vorgabe.fehler || null : null);
+  const [auswahl, setAuswahl] = useState(null);
+  const [laeuft, setLaeuft] = useState(false);
+  const [ergebnis, setErgebnis] = useState(null);
+  const zurueck = darfZurueckspielen(rolle);
+
+  useEffect(() => {
+    if (vorgabe || !laden) return undefined;
+    let aktiv = true;
+    laden().then((l) => { if (aktiv) { setListe(l); setFehler(null); } },
+      (e) => { if (aktiv) { setListe([]); setFehler(String((e && e.message) || e)); } });
+    return () => { aktiv = false; };
+  }, [laden, vorgabe]);
+
+  const bestaetigt = async () => {
+    if (!auswahl || laeuft) return;
+    setLaeuft(true);
+    let a;
+    try { a = await zurueckspielen(auswahl.marke); }
+    catch (e) { a = { status: 0, daten: { fehler: String((e && e.message) || e) } }; }
+    setLaeuft(false);
+    setErgebnis(ergebnisMeldung(a));
+  };
+
+  return (
+    <Card>
+      <CardHead>Sicherungen</CardHead>
+      <div style={{ padding: "var(--pad-y) var(--pad-x)", display: "grid", gap: 10 }}>
+        <div style={{ fontSize: 13, color: C.dim }}>
+          {zurueck
+            ? "Kopien des eigenen Betriebs. Eine davon lässt sich zurückspielen — vorher wird der jetzige Stand gesichert."
+            : "Kopien des eigenen Betriebs. Zurückspielen kann nur die Leitung."}
+        </div>
+        {fehler && <div role="alert" style={{ fontSize: 13, color: C.danger }}>{fehler}</div>}
+        {liste === null && !fehler && <div style={{ fontSize: 13, color: C.dim }}>Lädt …</div>}
+        {liste && !liste.length && !fehler && <div style={{ fontSize: 13, color: C.dim }}>Noch keine Sicherung vorhanden.</div>}
+        {liste && liste.map((e) => {
+          const t = eintragText(e);
+          return (
+            <div key={e.marke} data-sicherung={e.marke} style={{ display: "flex", alignItems: "center", gap: 12,
+              padding: "8px 0", borderBottom: `1px solid ${C.lineSoft}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t.titel}</div>
+                <div style={{ fontSize: 12.5, color: C.dim }}>{t.text}</div>
+              </div>
+              {zurueck && <Btn size="sm" onClick={() => { setErgebnis(null); setAuswahl(e); }}>Zurückspielen</Btn>}
+            </div>);
+        })}
+      </div>
+      <Sheet open={!!auswahl} onClose={() => { if (!laeuft) { setAuswahl(null); setErgebnis(null); } }}
+        titel={ergebnis ? ergebnis.titel : "Sicherung zurückspielen?"} width={560}>
+        {auswahl && !ergebnis && (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ fontWeight: 600 }}>Stand vom {eintragText(auswahl).titel}</div>
+            <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6, fontSize: 13.5 }}>
+              {BESTAETIGUNG_TEXT.map((x) => <li key={x}>{x}</li>)}
+            </ul>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn onClick={() => setAuswahl(null)} disabled={laeuft}>Abbrechen</Btn>
+              <Btn kind="danger" onClick={bestaetigt} disabled={laeuft}>
+                {laeuft ? "Wird zurückgespielt …" : "Ja, zurückspielen"}</Btn>
+            </div>
+          </div>)}
+        {ergebnis && (
+          <div role={ergebnis.ok ? "status" : "alert"} style={{ display: "grid", gap: 10, fontSize: 13.5 }}>
+            <div>{ergebnis.text}</div>
+            {ergebnis.fristen && <div style={{ color: C.dim }}>{ergebnis.fristen}</div>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              {ergebnis.neuLaden
+                ? <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>
+                : <Btn onClick={() => { setAuswahl(null); setErgebnis(null); }}>Schließen</Btn>}
+            </div>
+          </div>)}
+      </Sheet>
+    </Card>);
 }
 
 /* ==========================================================================
