@@ -68,10 +68,26 @@ export const radiusGueltig = (r) => zahl(r) && r >= RADIUS_MIN && r <= RADIUS_MA
    beim Stempeln behandelt ihn als NICHT_BEWERTBAR. Ungültiges wird
    abgewiesen, nicht still korrigiert.
    -------------------------------------------------------------------------- */
+/* Herkunft der Koordinate (B2): beschreibt die Herkunft, nicht die Qualität. */
+export const GEO_QUELLEN = Object.freeze(["adresse", "geraet", "karte", "manuell"]);
+/* Art eines Einsatzorts (B9). Neutrale Kategorien, keine Personen. */
+export const EINSATZORT_ARTEN = Object.freeze(["kunde", "objekt", "patient", "baustelle", "sonstiger"]);
+/* Vorgabe-Umkreis am Einsatzort, wenn keiner hinterlegt ist (B9); am Standort gilt RADIUS_VORGABE. */
+export const EINSATZORT_RADIUS_VORGABE = 100;
+
+const datumGueltig = (x) => {
+  if (typeof x !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(x)) return false;
+  const d = new Date(`${x}T00:00:00Z`);
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === x;
+};
 const STANDORT_FELDER = {
   lat: { gueltig: (x) => zahl(x) && x >= -90 && x <= 90, text: "Der Breitengrad muss eine Zahl zwischen −90 und 90 sein." },
   lon: { gueltig: (x) => zahl(x) && x >= -180 && x <= 180, text: "Der Längengrad muss eine Zahl zwischen −180 und 180 sein." },
   radius: { gueltig: radiusGueltig, text: `Der Umkreis muss eine Zahl zwischen ${RADIUS_MIN} und ${RADIUS_MAX} Metern sein.` },
+  koordinatenQuelle: { gueltig: (x) => GEO_QUELLEN.includes(x), text: `Die Quelle der Koordinate muss „${GEO_QUELLEN.join("“, „")}“ sein.` },
+  koordinatenGeprueftAm: { gueltig: datumGueltig, text: "Das Datum der Bestätigung muss ein gültiges Datum im Format JJJJ-MM-TT sein." },
+  art: { gueltig: (x) => EINSATZORT_ARTEN.includes(x), text: `Die Art muss „${EINSATZORT_ARTEN.join("“, „")}“ sein.` },
+  aktiv: { gueltig: (x) => typeof x === "boolean", text: "Das Feld „aktiv“ muss ja oder nein sein." },
 };
 const gesetzt = (x) => x !== undefined && x !== null;
 
@@ -209,10 +225,27 @@ export function referenzOrt(m, person, datum, dienstart) {
   return st || null;
 }
 
+/* Gründe, die das Gerät für eine fehlende Position nennen darf (B1, B4): Die Freigabe wurde verweigert,
+   die Messung dauerte zu lange oder das Gerät kann nicht orten. Nur diese Werte werden übernommen;
+   alles andere bleibt „keine_position". */
+export const POSITION_GRUENDE = Object.freeze(["keine_freigabe", "timeout", "nicht_verfuegbar"]);
+
+/* Texte für die Anzeige (B13, B14). Gespeichert wird nur, was hier steht: Ergebnis, gerundete Entfernung,
+   Messgenauigkeit, Prüfort — nie eine Koordinate. */
+export const GEO_DATENSCHUTZ_TEXT = "Beim Stempeln wird einmalig geprüft, ob du am Standort bist. Gespeichert werden das Ergebnis, "
+  + "die Entfernung grob gerundet, die Messgenauigkeit und der Prüfort (Standort oder Einsatzort) — keine Koordinate, kein Verlauf.";
+export const GEO_SPOOFING_TEXT = "Eine Standortangabe ist ein Hinweis, kein Beweis: Ein Smartphone-Browser kann gefälschte Positionen "
+  + "nicht zuverlässig erkennen. Ein Häkchen ist kein Anwesenheitsnachweis, ein Ausrufezeichen kein Verstoß — ein auffälliges "
+  + "Ergebnis ist ein Anlass für ein Gespräch, nicht für automatische Konsequenzen.";
+
 const TEXTE = {
   aussendienst: "Außendienst — ohne festen Ort",
   pruefung_aus: "Ohne Standortprüfung erfasst",
   keine_position: "Ohne Standortfreigabe erfasst",
+  keine_freigabe: "Ohne Standortfreigabe erfasst",
+  timeout: "Standort nicht bewertbar (Zeitüberschreitung bei der Ortung)",
+  nicht_verfuegbar: "Standort nicht bewertbar (Ortung auf diesem Gerät nicht verfügbar)",
+  einsatzort_ungueltig: "Einsatzort nicht nutzbar (inaktiv)",
   ungueltige_koordinate: "Standort nicht bewertbar (ungültige Position)",
   ungueltige_genauigkeit: "Standort nicht bewertbar (Genauigkeit unbekannt)",
   kein_referenzort: "Kein Standort hinterlegt",
@@ -221,13 +254,16 @@ const TEXTE = {
   genauigkeit_zu_schlecht: "Standort nicht bewertbar (Messung zu ungenau)",
 };
 
+/** Klartext zu einem Grund (für die Anzeige des Befunds); leer ohne Grund. */
+export const grundText = (grund) => (grund ? TEXTE[grund] || "Standort nicht bewertbar" : "");
+
 /**
  * Das Geo-Urteil eines Stempelereignisses.
  *
  * Der Referenzort kommt von der Dienstart, die an dem Tag für die Person
  * geplant ist (dienstId überschreibt das; undefined: aus dem Plan). Die
  * Koordinate des Geräts ist nur Eingabe — das Urteil fällt der Server.
- * @param {{ m: any, person: any, datum: string, messung?: { lat?: any, lon?: any, accuracy?: any } | null, dienstId?: (string|null) }} e
+ * @param {{ m: any, person: any, datum: string, messung?: { lat?: any, lon?: any, accuracy?: any, grund?: any } | null, dienstId?: (string|null) }} e
  * @returns {{ geo: object, geprueft: boolean, innerhalb: (boolean|null), text: string, markierungen: string[] }}
  *   geo: das gespeicherte Objekt; geprueft/innerhalb/text: die bisherigen Felder;
  *   markierungen: Kennzeichen für den Stempel (nur im Modus „pflicht").
@@ -255,14 +291,19 @@ export function geoUrteil({ m, person, datum, messung, dienstId }) {
      verglichen noch gespeichert. */
   if (ortModus === "aussendienst") return nicht("aussendienst");
   const lat = messung && messung.lat, lon = messung && messung.lon, a = messung && messung.accuracy;
-  if ((lat === null || lat === undefined) && (lon === null || lon === undefined)) return nicht("keine_position");
+  if ((lat === null || lat === undefined) && (lon === null || lon === undefined)) {
+    const g = messung && messung.grund;
+    return nicht(POSITION_GRUENDE.includes(g) ? g : "keine_position");
+  }
   if (!koordinateGueltig(lat, lon)) return nicht("ungueltige_koordinate");
   if (!genauigkeitGueltig(a)) return nicht("ungueltige_genauigkeit");
   const genauigkeitM = Math.round(a);
   const genauigkeitWarnung = a > GENAUIGKEIT_WARNUNG;
   if (!st) return nicht("kein_referenzort", { genauigkeitM, genauigkeitWarnung });
+  /* Ein inaktiver Einsatzort gilt nicht — und fällt nie auf den Standort zurück (B10). */
+  if (ortModus === "einsatzort" && st.aktiv === false) return nicht("einsatzort_ungueltig", { genauigkeitM, genauigkeitWarnung });
   if (!koordinateGueltig(st.lat, st.lon)) return nicht("keine_koordinate_am_referenzort", { genauigkeitM, genauigkeitWarnung });
-  const r = st.radius === undefined || st.radius === null ? RADIUS_VORGABE : st.radius;
+  const r = st.radius === undefined || st.radius === null ? (ortModus === "einsatzort" ? EINSATZORT_RADIUS_VORGABE : RADIUS_VORGABE) : st.radius;
   if (!radiusGueltig(r)) return nicht("radius_ungueltig", { genauigkeitM, genauigkeitWarnung });
 
   const d = abstandMeter(lat, lon, st.lat, st.lon);            // exakt, nur hier

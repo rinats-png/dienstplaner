@@ -88,6 +88,7 @@ export async function anmelden(zugangscode, merken, zweifaktor) {
     if (d.zweifaktor) /** @type {any} */ (f).zweifaktor = d.zweifaktor;
     throw f;
   }
+  await offlineCacheLeeren();   // Rollenwechsel: nichts von der vorherigen Person bleibt liegen (WP-37)
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis };
   tokenAblegen(token, merken);
@@ -109,6 +110,7 @@ export async function demoOeffnen(id, merken) {
     headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Demozugang nicht verfügbar.");
+  await offlineCacheLeeren();   // Rollenwechsel (WP-37)
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name };
   /* Eine Betreibersitzung wird nie über das Schließen des Browsers hinaus
@@ -293,7 +295,7 @@ export async function stempelErfassen(datum, art, koord, pause = null) {
      Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
      eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
      localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
-  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber, pause,
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund: koord && koord.grund, inhaber, pause,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();
   return ev;
@@ -662,12 +664,23 @@ export async function offlineDatenLoeschen(inhaber = stempelInhaber()) {
     try { await PUF.abmeldenAufraeumen(await pufferSpeicher(), inhaber); } catch { /* weiter */ }
     stempelPufferMelden().catch(() => {});
   }
+  await offlineCacheLeeren();
+}
+
+/** Den gespeicherten Bestand wegräumen — beim Abmelden und bei jeder
+    Anmeldung (Rollenwechsel, WP-37): Ein Gerät, das ohne Abmelden an eine
+    andere Person ging, darf deren Bestand nicht offline zeigen. Beide Wege
+    laufen unabhängig voneinander; fehlt der Dienstarbeiter, wird trotzdem
+    gelöscht. */
+export async function offlineCacheLeeren() {
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const ziel = (reg && (reg.active || reg.waiting)) || navigator.serviceWorker.controller;
     if (ziel) ziel.postMessage({ art: "daten-loeschen" });
-    /* Zusätzlich unmittelbar — der Dienstarbeiter kann gerade neu starten,
-       und Personaldaten sollen dabei nicht liegen bleiben. */
+  } catch { /* kein Dienstarbeiter — weiter mit dem unmittelbaren Löschen */ }
+  /* Unmittelbar — der Dienstarbeiter kann gerade neu starten, und
+     Personaldaten sollen dabei nicht liegen bleiben. */
+  try {
     if (typeof caches !== "undefined")
       for (const n of await caches.keys()) if (n.startsWith("centric-daten-")) await caches.delete(n);
   } catch { /* egal */ }
@@ -702,12 +715,16 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord, pause = null) {
+  /* Ohne Position kann koord nur den Grund als Code tragen ({ grund }: keine_freigabe, timeout, nicht_verfuegbar);
+     der Server prüft ihn gegen die Liste. Eine Koordinate geht nie zusammen mit einem Grund hinaus. */
+  const ort = koord && typeof koord.lat === "number" && typeof koord.lon === "number" ? koord : null;
   /* Keine Zahl (etwa „abc" im Pausenfeld): keine Angabe senden — nicht NaN, das als null ankäme (Review WP-16). */
   const pauseZahl = pause !== null && pause !== undefined && pause !== "" ? Number(pause) : NaN;
   const body = JSON.stringify({ datum, art,
     ...(art === "ende" && Number.isFinite(pauseZahl) ? { pause: pauseZahl } : {}),
-    lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
-    accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
+    lat: ort ? ort.lat : null, lon: ort ? ort.lon : null,
+    accuracy: ort && typeof ort.accuracy === "number" ? ort.accuracy : null,
+    ...(!ort && koord && typeof koord.grund === "string" ? { positionGrund: koord.grund } : {}) });
   /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
      Das ist kein Fehler des Stempels, sondern eine Spitze (Schichtwechsel). Die
      Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s

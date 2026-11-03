@@ -59,6 +59,8 @@ export const HANDBUCH = [
           "Verwaltung → Betrieb öffnen.",
           "Für jeden Standort Bezeichnung, Bundesland und — wenn beim Stempeln geprüft werden soll — Breiten- und Längengrad sowie den Umkreis in Metern eintragen. „Aktuelle Position übernehmen\" setzt die Koordinate vor Ort.",
           "Der Umkreis gilt für die Standortprüfung beim Stempeln (25 bis 5000 m; 200 Meter sind ein guter Anfang — bei großen Werksgeländen mehr). Die Prüfung selbst schaltet die Organisationsleitung ein; Vorgabe ist aus.",
+          "Eine von „Aktuelle Position übernehmen“ gesetzte Koordinate bleibt als „noch nicht bestätigt“ markiert, bis „Koordinate bestätigen“ gedrückt ist (die Prüfung beim Stempeln wartet darauf nicht); ist die Messung ungenauer als 100 m, warnt CENTRIC und die Position sollte wiederholt werden. Von Hand eingetragene Werte stehen als „von Hand“ da.",
+          "Eine Standortangabe ist ein Hinweis, kein Beweis: Ein Smartphone-Browser kann gefälschte Positionen nicht zuverlässig erkennen. Ein Häkchen ist kein Anwesenheitsnachweis, ein Ausrufezeichen kein Verstoß — ein auffälliges Ergebnis ist ein Anlass für ein Gespräch, nicht für automatische Konsequenzen.",
         ],
         pruefen: "Im Monatsplan sind die Feiertage deines Bundeslandes rot markiert. Stimmt das nicht, ist das Bundesland falsch.",
         merke: "Betriebe mit mehreren Standorten in verschiedenen Bundesländern legen jeden einzeln an — sonst rechnet CENTRIC mit den falschen Feiertagen.",
@@ -356,7 +358,7 @@ export const HANDBUCH = [
           "Anliegen: Anträge, Krankmeldung, Tauschbörse, Stundenkonto.",
           "Mehr: Verfügbarkeit, Wunschdienste, Nachweise, Schwarzes Brett, Feldmodus.",
         ],
-        merke: "Ist die Standortprüfung eingeschaltet, wird beim Stempeln einmalig geprüft, ob jemand am Standort ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet und die Messgenauigkeit — keine Koordinate, kein Verlauf, keine Dauerortung. Die Arbeitszeit wird immer erfasst.",
+        merke: "Ist die Standortprüfung eingeschaltet, wird beim Stempeln einmalig geprüft, ob jemand am Standort ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet, die Messgenauigkeit und der Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung. Die Arbeitszeit wird immer erfasst.",
       },
       {
         titel: "Häufige Fragen",

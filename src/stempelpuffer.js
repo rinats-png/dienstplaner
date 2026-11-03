@@ -31,6 +31,8 @@
    Browser prüfen lassen (pruefungen/stempelpuffer.test.js).
    ========================================================================== */
 
+import { POSITION_GRUENDE } from "../server/lib/geo.mjs";
+
 export const BESTAETIGT_HALTEN_MS = 24 * 60 * 60 * 1000;
 export const WARTEN_MIN_MS = 2000;
 export const WARTEN_MAX_MS = 5 * 60 * 1000;
@@ -115,7 +117,7 @@ export async function speicherWaehlen(umgebung = globalThis) {
  * Ein neues Stempelereignis. `koord` nur, wenn die Geo-Prüfung an ist
  * (stempelvorgang.js, positionHolen) — sonst null; mehr wird nicht abgelegt.
  */
-export async function erfassen(speicher, { art, datum = null, koord = null, inhaber, jetzt = new Date(), kennung = neueKennung,
+export async function erfassen(speicher, { art, datum = null, koord = null, positionGrund = null, inhaber, jetzt = new Date(), kennung = neueKennung,
   offline = false, pause = null }) {
   if (art !== "start" && art !== "ende") throw new Error("Nur start oder ende.");
   if (!inhaber) throw new Error("Ohne Inhaber wird kein Stempel abgelegt.");
@@ -127,6 +129,8 @@ export async function erfassen(speicher, { art, datum = null, koord = null, inha
     koord: koord && typeof koord.lat === "number" && typeof koord.lon === "number"
       ? { lat: koord.lat, lon: koord.lon, accuracy: typeof koord.accuracy === "number" ? koord.accuracy : null } : null,
     zustand: "wartet", versuche: 0, naechsterVersuchAm: 0, fehler: null, quittung: null };
+  /* Ohne Position nur der Grund als Code (Spezifikation B4) — nie ein Freitext, nie neben einer Koordinate. */
+  if (!ev.koord && POSITION_GRUENDE.includes(positionGrund)) ev.positionGrund = positionGrund;
   await speicher.setzen(ev);
   return ev;
 }
@@ -184,7 +188,7 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       const d = r.daten;
       /* Quittiert: Der Standort (nur im Geo-Modus abgelegt) wird nicht mehr
          gebraucht und bleibt nicht auf dem Gerät (Review A2, H8+). */
-      const neu = { ...versuch, koord: null, zustand: "bestaetigt", bestaetigtAm: new Date(jetzt()).toISOString(), fehler: null,
+      const neu = { ...versuch, koord: null, positionGrund: null, zustand: "bestaetigt", bestaetigtAm: new Date(jetzt()).toISOString(), fehler: null,
         quittung: { datum: d.datum || null, zeit: d.zeit || null, offline: !!d.offline, wiederholt: !!d.wiederholt,
           markierungen: Array.isArray(d.markierungen) ? d.markierungen : [] } };
       await speicher.setzen(neu);
@@ -192,7 +196,7 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       if (beiQuittung) { try { beiQuittung(neu, d); } catch { /* Anzeige darf das Senden nicht stören */ } }
     } else if (art === "endgueltig") {
       const grund = (r.daten && (r.daten.text || r.daten.fehler)) || `Abgelehnt (Status ${r.status}).`;
-      await speicher.setzen({ ...versuch, koord: null, zustand: "abgelehnt", fehler: { grund: String(grund), code: (r.daten && r.daten.code) || null, status: r.status } });
+      await speicher.setzen({ ...versuch, koord: null, positionGrund: null, zustand: "abgelehnt", fehler: { grund: String(grund), code: (r.daten && r.daten.code) || null, status: r.status } });
       ergebnisse[ev.id] = { art: "abgelehnt", grund: String(grund) };
     } else if (art === "halt") {
       /* Der Versuch zählt nicht: Es lag an der Sitzung, nicht am Ereignis. */
@@ -228,7 +232,7 @@ export async function abmeldenAufraeumen(speicher, inhaber) {
   for (const e of await ereignisseVon(speicher, inhaber)) {
     if (e.zustand === "bestaetigt") await speicher.entfernen(e.id);
     else if (e.zustand === "wartet") wartend++;
-    else if (e.koord) await speicher.setzen({ ...e, koord: null });
+    else if (e.koord || e.positionGrund) await speicher.setzen({ ...e, koord: null, positionGrund: null });
   }
   return wartend;
 }
@@ -255,7 +259,8 @@ export function rumpfFuer(ev, gesendet = new Date()) {
     gesendetAm: gesendet.toISOString(), offline: !!ev.offline, inhaber: ev.inhaber,
     lat: ev.koord ? ev.koord.lat : null, lon: ev.koord ? ev.koord.lon : null,
     accuracy: ev.koord && typeof ev.koord.accuracy === "number" ? ev.koord.accuracy : null,
-    ...(ev.art === "ende" && typeof ev.pause === "number" ? { pause: ev.pause } : {}) };
+    ...(ev.art === "ende" && typeof ev.pause === "number" ? { pause: ev.pause } : {}),
+    ...(!ev.koord && POSITION_GRUENDE.includes(ev.positionGrund) ? { positionGrund: ev.positionGrund } : {}) };
 }
 
 /** Wartezeit aus Retry-After (Sekunden oder HTTP-Datum) — oder null. */

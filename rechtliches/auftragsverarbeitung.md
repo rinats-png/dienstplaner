@@ -217,7 +217,9 @@ nicht. Offene Punkte stehen am Ende und sind bewusst nicht beschönigt.
 - IP-Adressen werden ausschließlich als Hashwert verarbeitet, nie im
   Klartext gespeichert.
 - Die Standortprüfung beim Stempeln speichert nur das Ergebnis
-  („innerhalb" oder „abweichend" mit Entfernungsangabe), keine Koordinaten.
+  („innerhalb" oder „abweichend" mit grob gerundeter Entfernung), die
+  Messgenauigkeit und den Prüfort; fehlt die Position, nur den Grund als Code
+  (keine_freigabe, timeout, nicht_verfuegbar) — keine Koordinate.
 - Der Datenbestand liegt als Dateien auf dem virtuellen Server, zugänglich
   nur für den Prozess der Anwendung (Dateirechte 700 für Verzeichnisse und
   600 für Dateien, eigener unprivilegierter Benutzer, schreibgeschützter

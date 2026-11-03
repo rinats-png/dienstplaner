@@ -7,7 +7,7 @@
    Befund angezeigt wird.
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
-import { entfernungText, geoAktiv, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
+import { entfernungText, geoAktiv, grundText, koordinateGueltig, genauigkeitGueltig, GENAUIGKEIT_WARNUNG, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
 import { startZuordenbar, nachtdienstOffen, heuteBerlin, uhrzeitBerlin } from "../server/lib/zeiterfassung.mjs";
 import { vorlaeufige } from "./stempelpuffer.js";
 
@@ -46,17 +46,56 @@ export const POSITION_OPTIONEN = Object.freeze({ enableHighAccuracy: true, timeo
 /** Ist die Geo-Prüfung im Betrieb eingeschaltet? Dieselbe Regel wie auf dem Server (geo.mjs). */
 export const geoPruefungAn = geoAktiv;
 
+/** Warum keine Position vorliegt (Spezifikation B4): nach dem Fehlercode der Schnittstelle. */
+function positionsGrund(fehler) {
+  const code = fehler && typeof fehler === "object" ? fehler.code : null;
+  return code === 1 ? "keine_freigabe" : code === 3 ? "timeout" : "nicht_verfuegbar";
+}
+
 /**
  * Position für ein Stempelereignis holen — nur, wenn die Prüfung an ist.
- * Bei „aus", fehlender Schnittstelle oder Ablehnung: fertig(null). Die
- * Stempelung hängt nie davon ab.
+ * Bei „aus": fertig(null). Bei fehlender Schnittstelle, Ablehnung oder
+ * Zeitüberschreitung: fertig(null, grund) mit „nicht_verfuegbar",
+ * „keine_freigabe" oder „timeout" — der Grund ist nur ein Code, keine
+ * Position. Die Stempelung hängt nie davon ab.
  */
 export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !== "undefined" ? navigator.geolocation : null)) {
-  if (!aktiv || !geolocation) return fertig(null);
+  if (!aktiv) return fertig(null);
+  if (!geolocation) return fertig(null, "nicht_verfuegbar");
   geolocation.getCurrentPosition(
     (pos) => fertig({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-    () => fertig(null), POSITION_OPTIONEN);
+    (fehler) => fertig(null, positionsGrund(fehler)), POSITION_OPTIONEN);
 }
+
+/**
+ * Was an `akt.stempeln` geht: die Messung — oder, ohne Position, nur der Grund
+ * als Code (`{ grund }`, ohne Koordinate). Ohne Prüfung und ohne Grund: null.
+ */
+export const koordMitGrund = (koord, grund) => koord || (typeof grund === "string" && grund ? { grund } : null);
+
+/**
+ * „Aktuelle Position übernehmen" (Standortkarte, B3): aus der Antwort der
+ * Schnittstelle die Felder für den Standort. Die Koordinate wird auf sechs
+ * Stellen gerundet, die Quelle ist „geraet", bestätigt ist sie noch nicht
+ * (koordinatenGeprueftAm: null — das tut die Leitung). Über 100 m Ungenauigkeit
+ * wird gewarnt; übernommen wird trotzdem, die Leitung entscheidet.
+ * @returns {{ ok: boolean, felder?: object, warnung: boolean, meldung: string }}
+ */
+export function positionsUebernahme(pos) {
+  const c = pos && pos.coords;
+  const lat = c ? Math.round(c.latitude * 1e6) / 1e6 : NaN, lon = c ? Math.round(c.longitude * 1e6) / 1e6 : NaN;
+  if (!koordinateGueltig(lat, lon)) return { ok: false, warnung: false, meldung: "Die Position war ungültig und wurde nicht übernommen." };
+  if (!genauigkeitGueltig(c.accuracy)) return { ok: false, warnung: false, meldung: "Die Genauigkeit der Position ist unbekannt — nicht übernommen." };
+  const a = Math.round(c.accuracy);
+  const warnung = c.accuracy > GENAUIGKEIT_WARNUNG;
+  return { ok: true, warnung,
+    felder: { lat, lon, koordinatenQuelle: "geraet", koordinatenGeprueftAm: null },
+    meldung: `Position übernommen · Genauigkeit ca. ${a} m`
+      + (warnung ? ` — schlechter als ${GENAUIGKEIT_WARNUNG} m: bitte mit besserem Empfang wiederholen oder die Werte prüfen.` : "") };
+}
+
+/** Ein von Hand geänderter Koordinatenwert: Quelle „manuell", eine frühere Bestätigung gilt nicht mehr. */
+export const koordinatenFelder = (feld, wert) => ({ [feld]: wert, koordinatenQuelle: "manuell", koordinatenGeprueftAm: null });
 
 /**
  * Welcher Vorgang wird gestempelt? Ein offener Beginn von gestern (Dienst
@@ -157,7 +196,9 @@ export function geoAnzeige(eintrag, phase) {
     const KLASSE = { bis_1km: "weniger als 1 km", bis_5km: "1 bis 5 km", ueber_5km: "mehr als 5 km" };
     const basis = { entfernung: geo.entfernungGerundet != null ? entfernungText(geo.entfernungGerundet) : KLASSE[geo.abstandsklasse] || "",
       genauigkeit: geo.genauigkeitM ?? null,
-      warnung: !!geo.genauigkeitWarnung, referenz: geo.referenz && geo.referenz.name ? geo.referenz.name : null };
+      warnung: !!geo.genauigkeitWarnung, referenz: geo.referenz && geo.referenz.name ? geo.referenz.name : null,
+      /* B11: bei „nicht bewertbar" der Grund als Klartext. */
+      grundText: geo.status === INNERHALB || geo.status === AUSSERHALB ? "" : grundText(geo.grund) };
     if (geo.status === INNERHALB) return { symbol: HAKEN, ton: "ok", text: "Standort bestätigt", ...basis };
     if (geo.status === AUSSERHALB) return { symbol: "!", ton: "warn", text: "Standort abweichend", ...basis };
     if (geo.grund === "pruefung_aus") return { symbol: "○", ton: "text", text: "Geo-Prüfung aus", ...basis };
@@ -167,7 +208,7 @@ export function geoAnzeige(eintrag, phase) {
   /* Altbestand: nur das bisherige Urteil. Der alte Text trug die exakte
      Entfernung; er wird nicht angezeigt. */
   const innerhalb = eintrag[`innerhalb${phase}`];
-  const leer = { entfernung: "", genauigkeit: null, warnung: false, referenz: null };
+  const leer = { entfernung: "", genauigkeit: null, warnung: false, referenz: null, grundText: "" };
   if (innerhalb === true) return { symbol: HAKEN, ton: "ok", text: "Standort bestätigt", ...leer };
   if (innerhalb === false) return { symbol: "!", ton: "warn", text: "Standort abweichend", ...leer };
   return { symbol: "?", ton: "text", text: "Standort nicht bewertbar", ...leer };

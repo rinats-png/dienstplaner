@@ -107,9 +107,12 @@ Nutzt ein Betrieb die Stempeluhr mit Standortprüfung, übermittelt das Gerät
 beim Stempeln einmalig Koordinaten. Der Server berechnet daraus den Abstand
 zum hinterlegten Einsatzort.
 
-**Gespeichert wird nur das Ergebnis** — ob jemand am Einsatzort war und wie
-weit entfernt. Die Koordinate selbst wird nicht abgelegt und nicht
-weitergegeben. Es entsteht kein Bewegungsprofil.
+**Gespeichert wird nur das Ergebnis** — ob jemand am Einsatzort war, wie
+weit entfernt (grob gerundet), die Messgenauigkeit und der Prüfort (Standort
+oder Einsatzort mit Bezeichnung). Fehlt die Position, wird nur der Grund als
+Code vermerkt (keine_freigabe, timeout, nicht_verfuegbar). Die Koordinate
+selbst wird nicht abgelegt und nicht weitergegeben — keine Koordinate. Es
+entsteht kein Bewegungsprofil.
 
 Für diesen Einsatz ist der Betrieb verantwortlich. In Betrieben mit
 Betriebsrat ist er nach § 87 Abs. 1 Nr. 6 BetrVG mitbestimmungspflichtig.

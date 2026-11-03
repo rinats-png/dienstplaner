@@ -46,7 +46,7 @@ export const P = [
   ["WP-21", "Smartphone/Tablet für alle Rollen", "P1", 10, ["WP-12", "WP-39"], "E", "BLOCKED", "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix", "Playwright-Viewports, Geräte", "src/ansichten/*"],
   ["WP-22", "Fachprüfungen auf dem Server, org.edit", "P2", 6, ["WP-11"], "C", "INTEGRATED", "Qualifikation/Ruhezeit/Höchstarbeitszeit/Untergrenzen serverseitig, Warnung mit Bestätigungsprotokoll; Dienstarten nur mit org.edit", "Unit, HTTP", "server/lib"],
   ["WP-23", "Entwürfe nicht an Beschäftigte ausliefern", "P2", 1, ["WP-43"], "A", "INTEGRATED", "Nicht freigegebene Monate fehlen in der API-Antwort für Beschäftigte", "Unit, HTTP", "server/lib/sicht.mjs"],
-  ["WP-24", "Kalender-Feed live und gebunden", "P2", 2, ["WP-43"], "E", "REVIEW", "Feed aus aktuellem Bestand; Sperre widerruft; raumLoeschen räumt Indizes", "HTTP", "server/funktionen/kalender.mjs"],
+  ["WP-24", "Kalender-Feed live und gebunden", "P2", 2, ["WP-43"], "E", "INTEGRATED", "Feed aus aktuellem Bestand; Sperre widerruft; raumLoeschen räumt Indizes", "HTTP", "server/funktionen/kalender.mjs"],
   ["WP-25", "Wiederherstellen in der Oberfläche", "P2", 2, ["WP-43"], "E", "INTEGRATED", "Liste, Vorschau, Wiederherstellen mit Bestätigung (nur Leitung)", "E2E", "src"],
   ["WP-26", "DSGVO serverseitig (Art. 15, Löschlauf, Ausdünnung)", "P2", 4, ["WP-09"], "A", "INTEGRATED", "Auskunft inkl. Stempel; serverseitiger Löschlauf nach Fristen; Ausdünnung Sicherungen/Spur", "Unit, HTTP", "server"],
   ["WP-27", "Betriebsrat-Auswertung aggregiert, reduzierte Sichten", "P2", 4, ["WP-43"], "A", "INTEGRATED", "Aggregation ohne Personenbezug unter Mindestgruppe; Leistungsnachweis/Belastung korrekt oder gesperrt", "Unit, E2E", "server, src"],
