@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 432,2–735 PT in 80 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 441,7–749,5 PT in 85 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -48,6 +48,11 @@ flowchart LR
     WP_19_12["WP-19.12<br/>BLOCKED"]
     WP_19_13["WP-19.13<br/>BLOCKED"]
     WP_19_R["WP-19.R<br/>BLOCKED"]
+    G9S_1["G9S-1<br/>BLOCKED"]
+    G9S_2["G9S-2<br/>BLOCKED"]
+    G9S_3["G9S-3<br/>BLOCKED"]
+    G9S_4["G9S-4<br/>BLOCKED"]
+    G9S_5["G9S-5<br/>BLOCKED"]
   end
   subgraph intelligence[Intelligence]
     WP_I1["WP-I1<br/>BLOCKED"]
@@ -353,6 +358,12 @@ flowchart LR
   WP_S1 --> WP_PILOT
   WP_19_0 --> WP_PILOT
   E_19 --> WP_PILOT
+  WP_19_0 --> G9S_1
+  G9S_1 --> G9S_2
+  G9S_2 --> G9S_3
+  G9S_3 --> G9S_4
+  G9S_4 --> G9S_5
+  WP_19_0 --> G9S_5
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -504,3 +515,8 @@ flowchart LR
 | WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-19.R | wp19 | P1 | 7–11 | 7–11 | WP-19.0, WP-19.4 | – | sonnet + opus-review | BLOCKED |
 | WP-PILOT | folge | P2 | 4–8 | 2–4 | WP-S1, WP-19.0, E-19 | – | sonnet | IN_PROGRESS |
+| G9S-1 | wp19 | P1 | 1–1,5 | 1–1,5 | WP-19.0 | – | sonnet | BLOCKED |
+| G9S-2 | wp19 | P1 | 2,5–4 | 2,5–4 | G9S-1 | – | sonnet | BLOCKED |
+| G9S-3 | wp19 | P1 | 2–3 | 2–3 | G9S-2 | – | sonnet | BLOCKED |
+| G9S-4 | wp19 | P1 | 2,5–3,5 | 2,5–3,5 | G9S-3 | – | sonnet | BLOCKED |
+| G9S-5 | wp19 | P1 | 1,5–2,5 | 1,5–2,5 | G9S-4, WP-19.0 | App.jsx, rechte.mjs | sonnet | BLOCKED |
