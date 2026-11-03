@@ -39,7 +39,7 @@ export const ZUSTELLARTEN = {
   offeneSchicht: { mail: false, push: true, dringend: false },
   tauschAngebot: { mail: false, push: true, dringend: false },
   urlaubVerfaellt: { mail: true, push: false, dringend: false },
-  nachweisLaeuftAb: { mail: true, push: false, dringend: false },
+  nachweisLaeuftAb: { mail: false, push: false, dringend: false },
   zeitFehlt: { mail: false, push: true, dringend: false },
   aushang: { mail: false, push: true, dringend: false },
   uebergabeFehlt: { mail: false, push: true, dringend: true },
@@ -115,12 +115,15 @@ export function mitteilungenVorfiltern(altM, neuM, { grenzenPruefen = true } = {
 /** Name einer Person für Texte. */
 const name = (p) => (p ? `${p.vorname || ""} ${p.nachname || ""}`.trim() : "") || "Jemand";
 
-/** Eine Mitteilung des Servers. */
-function mitteilung({ id, personId, art, titel, text, ziel, quelle }) {
+/** Eine Mitteilung des Servers.
+ * @param {{id: any, personId: any, art: any, titel: any, text: any, ziel: any, quelle: any, tag?: any}} o */
+function mitteilung({ id, personId, art, titel, text, ziel, quelle, tag }) {
   const jetzt = new Date();
   return { id, personId, art, titel: kuerzen(titel, TITEL_MAX), text: kuerzen(text, TEXT_MAX), ziel,
     zeit: jetzt.toLocaleString("de-DE"), erstellt: jetzt.toISOString(), gelesen: false,
-    dringend: !!(ZUSTELLARTEN[art] || {}).dringend, quelle };
+    dringend: !!(ZUSTELLARTEN[art] || {}).dringend, quelle,
+    /* WP-30: der Tag, den die Mitteilung betrifft — für die Entwurfsregel (zustellregeln.mjs). */
+    ...(typeof tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tag) ? { tag } : {}) };
 }
 
 /** Wer einen Notruf bekommt: ausschließlich die im Notruf gespeicherten
@@ -198,7 +201,7 @@ export function mitteilungenErzeugen(altM, neuM, ich) {
     dazu(mitteilung({ id: `n-tausch-${vorher.id}-${ichP.id}`, personId: vorher.personId, art: "tauschAngebot",
       titel: "Meldung auf dein Tauschgesuch",
       text: `${name(ichP)} bietet an, den Dienst${tag ? ` am ${tag}` : ""} zu übernehmen.`,
-      ziel: "tausch", quelle: { art: "tausch", id: vorher.id, von: ichP.id } }));
+      ziel: "tausch", quelle: { art: "tausch", id: vorher.id, von: ichP.id }, tag: vorher.von }));
   }
 
   if (!neue.length) return aus;

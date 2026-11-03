@@ -22,13 +22,22 @@
  * Antwort, keine Ausnahme — sonst reißt ein Ausfall beim Versand einen
  * ganzen Vorgang mit, der ohne die Nachricht weiterlaufen könnte.
  *
+ * WP-30: Eine Fehlerantwort trägt eine Klasse — `dauerhaft` (der Anbieter
+ * weist die Nachricht oder Adresse ab: 400/422, nie wiederholen),
+ * `konfiguration` (401/403: Schlüssel oder Absenderdomain stimmen nicht — ein
+ * Betreiberproblem, später erneut) oder `temporaer` (408/409/429, 5xx, Netz).
+ * `idempotenz` geht als Idempotency-Key an den Anbieter: Ein Versuch, dessen
+ * Ausgang unbekannt blieb (Absturz nach dem Senden), wird mit demselben
+ * Schlüssel wiederholt und beim Anbieter nicht doppelt zugestellt.
+ *
  * @param {string} an
  * @param {string} betreff
  * @param {string} text
+ * @param {{idempotenz?: string}} [opt]
  * @returns {Promise<{ok: boolean, trocken?: boolean, id?: string, fehler?: string,
- *                    an?: string, betreff?: string}>}
+ *                    klasse?: string, status?: number, an?: string, betreff?: string}>}
  */
-export async function sendeMail(an, betreff, text) {
+export async function sendeMail(an, betreff, text, opt = {}) {
   const schluessel = process.env.RESEND_API_KEY;
   const absender = process.env.CENTRIC_ABSENDER || "CENTRIC <kein-absender@example.invalid>";
   if (!schluessel) {
@@ -38,20 +47,28 @@ export async function sendeMail(an, betreff, text) {
   try {
     const a = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { authorization: `Bearer ${schluessel}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${schluessel}`, "content-type": "application/json",
+        ...(opt.idempotenz ? { "idempotency-key": String(opt.idempotenz).slice(0, 256) } : {}) },
       body: JSON.stringify({ from: absender, to: [an], subject: betreff, text }),
     });
     if (!a.ok) {
       const fehler = await a.text();
-      return { ok: false, fehler: fehler.slice(0, 200) };
+      return { ok: false, fehler: fehler.slice(0, 200), status: a.status, klasse: mailKlasse(a.status) };
     }
     const d = await a.json();
     return { ok: true, id: d.id };
   } catch (e) {
     /* Netz weg, Zeitüberschreitung, kaputte Antwort: derselbe Fall wie ein
-       abgewiesener Versand. */
-    return { ok: false, fehler: String((e && e.message) || e).slice(0, 200) };
+       abgewiesener Versand — später erneut. */
+    return { ok: false, fehler: String((e && e.message) || e).slice(0, 200), klasse: "temporaer" };
   }
+}
+
+/** Antwortklasse des Mailanbieters nach HTTP-Status. */
+export function mailKlasse(status) {
+  if (status === 400 || status === 422) return "dauerhaft";
+  if (status === 401 || status === 403) return "konfiguration";
+  return "temporaer";
 }
 
 /**

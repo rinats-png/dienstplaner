@@ -39,6 +39,7 @@ import { schreibstopp, alleFrei } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
 import { datenschutzLauf, modusAusUmgebung } from "./server/lib/datenschutzlauf.mjs";
 import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./server/lib/gesund.mjs";
+import { nachfassen, zustellungAufraeumen } from "./server/lib/versand.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
@@ -513,11 +514,45 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
     } catch (e) {
       console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);
     }
+    /* Zustellprotokoll, Kontingentplätze, verwaiste Push-Anmeldungen (WP-30).
+       Gleicher Schalter wie der Datenschutzlauf: aus | vorschau | an. Frist:
+       CENTRIC_ZUSTELLPROTOKOLL_TAGE (Vorgabe 30, höchstens 365). */
+    try {
+      const modus = modusAusUmgebung();
+      if (modus !== "aus") {
+        const t = Number(process.env.CENTRIC_ZUSTELLPROTOKOLL_TAGE);
+        const tage = Number.isInteger(t) && t >= 1 && t <= 365 ? t : 30;
+        const z = await zustellungAufraeumen(getStore({ name: "centric", consistency: "strong" }),
+          { tage, trocken: modus !== "an" });
+        console.log(`Zustellaufräumen (${modus}): ${z.protokoll} Protokolleinträge, ${z.kontingent} Kontingentplätze, `
+          + `${z.waisen} verwaiste Anmeldungen, ${z.fehler} Fehler`);
+      }
+    } catch (e) {
+      console.error("Zustellaufräumen fehlgeschlagen:", e && e.message ? e.message : e);
+    }
   };
   setTimeout(lauf, AUFRAEUMEN_START_MS).unref();
   setInterval(lauf, AUFRAEUMEN_TAKT_MS).unref();
 } else {
   console.log("Löschlauf: abgeschaltet (CENTRIC_AUFRAEUMEN=aus)");
+}
+
+/* ---------------------------------------------------------------------------
+   Zustell-Warteschlange (WP-30): Wiederholungen nach einem Fehler holt der
+   Server selbst ab, nicht erst, wenn eine Oberfläche nachfragt. Alle 60
+   Sekunden, höchstens ein Lauf zugleich; ein Fehler nimmt den Server nicht mit.
+   Schalter CENTRIC_ZUSTELL_TAKT=aus (nur für Wartung).
+   --------------------------------------------------------------------------- */
+if ((process.env.CENTRIC_ZUSTELL_TAKT || "an").trim().toLowerCase() !== "aus") {
+  let nachfassenLaeuft = false;
+  const takt = async () => {
+    if (nachfassenLaeuft) return;
+    nachfassenLaeuft = true;
+    try { await nachfassen(getStore({ name: "centric", consistency: "strong" })); }
+    catch (e) { console.error("Zustell-Warteschlange fehlgeschlagen:", e && e.message ? e.message : e); }
+    finally { nachfassenLaeuft = false; }
+  };
+  setInterval(takt, 60_000).unref();
 }
 
 /* Sauber aufhören: keine neuen Verbindungen, laufende zu Ende, dann Schluss.

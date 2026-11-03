@@ -69,6 +69,16 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT` | `1`: Betreibercode ohne zweiten Faktor bekommt keine Sitzung | aus | ja (auskommentiert) |
 | `RESEND_API_KEY`, `CENTRIC_ABSENDER` | E-Mail-Versand (ohne: Trockenlauf) | aus | ja |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_KONTAKT` | Web-Push (beide Hälften nötig) | aus | ja |
+| `CENTRIC_ZUSTELL_BACKOFF` | Mail/Push (WP-30): Wartezeiten in Sekunden vor Wiederholung 2, 3, …, Komma-getrennt; Anzahl + 1 = höchste Versuchszahl | `60,300,1800,7200` | ja (auskommentiert) |
+| `CENTRIC_ZUSTELL_PERSON_MAIL`, `CENTRIC_ZUSTELL_PERSON_PUSH` | Tageskontingent je Person und Kanal (dringende Arten ausgenommen); `0` sperrt den Kanal | 10 / 30 | ja (auskommentiert) |
+| `CENTRIC_ZUSTELL_BETRIEB_MAIL`, `CENTRIC_ZUSTELL_BETRIEB_PUSH` | Tageskontingent je Betrieb und Kanal | 200 / 1000 | ja (auskommentiert) |
+| `CENTRIC_ZUSTELLPROTOKOLL_TAGE` | Aufbewahrung des Zustellprotokolls (1–365); wirkt im Datenschutzlauf (`CENTRIC_DATENSCHUTZLAUF`: `vorschau` zählt, `an` löscht) | 30 | ja (auskommentiert) |
+| `CENTRIC_PUSH_HOSTS` | zusätzliche erlaubte Hosts für Push-Endpunkte (Komma; `*.endung`); Vorgabe sind die Dienste von Chrome/Edge, Firefox, Safari, Windows | leer | ja (auskommentiert) |
+| `CENTRIC_PUSH_JE_BETRIEB_MAX` | höchste Zahl angemeldeter Geräte je Betrieb | 5000 | ja (auskommentiert) |
+| `CENTRIC_ZUSTELL_TAKT` | `aus` stellt den Takt der Zustell-Warteschlange ab (nur Wartung) | an | ja (auskommentiert) |
+| `CENTRIC_GESUND_ZUSTELLUNG_WARNUNG` | Warnung, wenn so viele Zustellungen je Kanal in einer Stunde endgültig fehlschlagen und mehr als gelingen | 3 | ja (auskommentiert) |
+
+Einrichtung Schritt für Schritt (DNS, Anbieter, VAPID, Zustelltest, Fehlersuche): [MAIL-PUSH-EINRICHTUNG.md](MAIL-PUSH-EINRICHTUNG.md).
 | `REDIS_REST_URL`, `REDIS_REST_TOKEN` | atomare Bremse über Instanzen | aus (Ablage + Prozess) | ja |
 
 ### Überwachung (WP-05, [BETRIEB-UEBERWACHUNG.md](BETRIEB-UEBERWACHUNG.md))

@@ -334,6 +334,12 @@ jobs:
       - name: Zustellung-Rechte
         run: npm run pruefung:zustellung-rechte
 
+      # WP-30 Mail und Push in Produktion: Warteschlange mit Backoff, keine Doppelzustellung, Bounce,
+      # Abos (410, SSRF-Schutz, Logout, Löschung), Inhalte ohne Personendaten, Entwurfsregel, Bremsen.
+      # Alles gegen Attrappen: nichts geht hinaus, keine Schlüssel.
+      - name: Mail und Push (WP-30)
+        run: npm run pruefung:mail-push-produktion && npm run pruefung:mail-push-anbieter && npm run pruefung:mail-push-handler
+
       # Ausschreibungen: verantwortende Einheit, Bewerbungen nur bei eigener Einheit (C1).
       - name: Bereich Ausschreibungen
         run: npm run pruefung:bereich-ausschreibungen

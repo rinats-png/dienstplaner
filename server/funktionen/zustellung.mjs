@@ -3,7 +3,8 @@ import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../l
 import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, rolleBekannt } from "../lib/rechte.mjs";
-import { zustellen, pushAnmelden, pushAbmelden } from "../lib/versand.mjs";
+import { zustellen, pushAnmelden, pushAbmelden, zustellStatusEigene } from "../lib/versand.mjs";
+import { pushEndpunktErlaubt } from "../lib/webpush.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -127,13 +128,39 @@ export default async (req) => {
         return antwort({ ok: true });
       }
       const { anmeldung } = await req.json().catch(() => ({}));
-      if (!anmeldung || typeof anmeldung.endpoint !== "string" || !/^https:\/\//.test(anmeldung.endpoint)
+      /* WP-30: Der Endpunkt, an den der Server später sendet, kommt vom Gerät —
+         nur https-Adressen der Push-Dienste (lib/webpush.mjs), Schlüssel in
+         Form und Größe begrenzt. Sonst wäre das ein Weg für Anfragen des
+         Servers an beliebige Ziele. */
+      const k = anmeldung && typeof anmeldung.keys === "object" && anmeldung.keys && !Array.isArray(anmeldung.keys) ? anmeldung.keys : {};
+      const schluesselOk = (v, max) => v === undefined || (typeof v === "string" && v.length <= max && /^[A-Za-z0-9_=-]*$/.test(v));
+      if (!anmeldung || !pushEndpunktErlaubt(anmeldung.endpoint)
+        || !schluesselOk(k.p256dh, 128) || !schluesselOk(k.auth, 64)
+        || (anmeldung.expirationTime !== undefined && anmeldung.expirationTime !== null && !Number.isFinite(anmeldung.expirationTime))
         || JSON.stringify(anmeldung).length > 4000)
         return antwort({ fehler: "Ungültig." }, 400);
       if (!da) return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
-      await pushAnmelden(store(), s.bestand, bestand, m.id, s.person,
-        { endpoint: anmeldung.endpoint, expirationTime: anmeldung.expirationTime ?? null, keys: anmeldung.keys || {} });
+      const bza = await bremse("zustellen", kennung(req, s));
+      if (!bza.frei) return zuVielAntwort(bza.wartet);
+      const gespeichert = await pushAnmelden(store(), s.bestand, bestand, m.id, s.person,
+        { endpoint: anmeldung.endpoint, expirationTime: anmeldung.expirationTime ?? null,
+          keys: { ...(k.p256dh !== undefined ? { p256dh: k.p256dh } : {}), ...(k.auth !== undefined ? { auth: k.auth } : {}) } });
+      if (!gespeichert) return antwort({ fehler: "Zu viele Geräte im Betrieb angemeldet." }, 409);
       return antwort({ ok: true });
+    }
+
+    /* ------------------- Zustellstatus der eigenen Person -------------------
+       WP-30: Je eigener Mitteilung und Kanal: zugestellt, zurückgestellt,
+       fehlgeschlagen, übersprungen — ohne Inhalt und ohne Adresse. Nur die
+       Person selbst; wer keiner Person zugeordnet ist, bekommt nichts. */
+    if (pfad === "status" && req.method === "GET") {
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      const gelesen = await bestandLesen(store(), s.bestand);
+      const bestand = gelesen && gelesen.bestand;
+      const m = bestand ? eigenerMandant(bestand, s) : null;
+      if (!m) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      return antwort({ stand: await zustellStatusEigene(store(), s.bestand, m, s.person) });
     }
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);

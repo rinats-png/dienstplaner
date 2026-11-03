@@ -36,7 +36,9 @@ vi.mock("../server/lib/post.mjs", async (original) => ({
     return { ok: true };
   },
 }));
-vi.mock("../server/lib/webpush.mjs", () => ({
+/* WP-30: pushEndpunktErlaubt (Endpunktprüfung beim Anmelden) bleibt echt; ersetzt wird nur das Senden. */
+vi.mock("../server/lib/webpush.mjs", async (original) => ({
+  ...(await original()),
   sendePush: async (anmeldung, titel, text, ziel) => {
     post.pushes.push({ endpoint: anmeldung && anmeldung.endpoint, titel, text, ziel });
     return post.pushAntwort || { ok: true };
@@ -89,6 +91,11 @@ beforeAll(async () => {
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
   process.env.CENTRIC_PFEFFER = "pfeffer-nur-zum-pruefen-0123456789";
+  /* WP-30: Drei Versuche ohne Wartezeit (Standard: wachsende Abstände, siehe
+     mail-push-produktion.test.js), und die Tageskontingente stören diese
+     Prüfungen der Rechte nicht. */
+  process.env.CENTRIC_ZUSTELL_BACKOFF = "0,0";
+  process.env.CENTRIC_ZUSTELL_PERSON_MAIL = "1000";
   const { getStore } = await import("../server/lib/ablage.mjs");
   laden = () => getStore({ name: "centric", consistency: "strong" });
   const schutz = await import("../server/lib/schutz.mjs");
@@ -158,14 +165,18 @@ describe("Z1 — kein freier Versand", () => {
     expect(post.mails).toEqual([]);
     expect(await status("m-a", "n-z1", "mail")).toBeNull();
   });
-  it("Inhalt kommt aus dem gespeicherten Stand: Titel und Text der Mitteilung, Adresse der Person", async () => {
+  it("Inhalt kommt aus dem gespeicherten Stand: Adresse der Person und Art der Mitteilung — als Hinweis, nicht als Text", async () => {
+    /* WP-30: bisher ging Titel und Text der Mitteilung hinaus („Dienst geändert — A“, „Früh statt Spät“).
+       Jetzt nur noch ein neutraler Hinweis je Art mit Verweis in die Anwendung (zustellregeln.mjs);
+       Inhalt, Namen und Zeiten bleiben in der Anwendung, wo die Sichtregeln gelten. */
     await planungLegtAn(mitteilung("n-inhalt", "l1", { titel: "Dienst geändert", text: "Früh statt Spät" }));
     const r = await senden(T.p1, { nachrichten: ["n-inhalt"] });
     expect(r.ergebnis).toEqual([{ id: "n-inhalt", stand: "erledigt" }]);
     expect(post.mails).toHaveLength(1);
     expect(post.mails[0].an).toBe("l1@x.de");
-    expect(post.mails[0].betreff).toBe("Dienst geändert — A");
-    expect(post.mails[0].text).toContain("Früh statt Spät");
+    expect(post.mails[0].betreff).toBe("Dienstplan geändert — A");
+    expect(post.mails[0].text).not.toContain("Früh statt Spät");
+    expect(post.mails[0].text).toContain("Bitte in CENTRIC öffnen.");
   });
 });
 
@@ -339,11 +350,12 @@ describe("Z5 — kein paralleler Mehrfachversand: atomarer Claim, Wiederholung",
     expect((await senden(T.p1, { nachrichten: ["n-retry"] })).ergebnis).toEqual([{ id: "n-retry", stand: "erledigt" }]);
     expect(await status("m-a", "n-retry", "mail")).toMatchObject({ status: "gesendet", versuche: 2 });
 
+    post.mails.length = 0;
     await planungLegtAn(mitteilung("n-tot", "l1"));
     post.mailFehler = 99;
     for (let i = 0; i < 5; i++) await senden(T.p1, { nachrichten: ["n-tot"] });
-    expect(post.mails.filter((x) => x.betreff.startsWith("T n-tot"))).toHaveLength(3);
-    expect(await status("m-a", "n-tot", "mail")).toMatchObject({ status: "fehler", versuche: 3 });
+    expect(post.mails).toHaveLength(3);                                      // WP-30: vorher gefiltert nach dem Titel; der Betreff ist jetzt der neutrale Hinweis
+    expect(await status("m-a", "n-tot", "mail")).toMatchObject({ status: "gescheitert", grund: "versuche", versuche: 3 });   // WP-30: endgültig fehlgeschlagen statt „fehler“
   });
   it("Push 404/410: Anmeldung gelöscht, Kanal endgültig", async () => {
     await anfrage(zustellung, "/zustellung/anmelden", { token: T.l1, rumpf: ANM("l1") });

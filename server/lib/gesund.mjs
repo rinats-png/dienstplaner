@@ -45,6 +45,8 @@ import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
 import { sperrZustand } from "./raumsperre.mjs";
 import { zaehlung, FENSTER_MS } from "./gesund-zaehler.mjs";
+import { zustellZaehlung, ZAEHL_FENSTER_MS } from "./zustellzaehler.mjs";
+import { zustellKonfiguration } from "./versand.mjs";
 
 export const STUFEN = ["ok", "warnung", "kritisch"];
 const rang = (s) => STUFEN.indexOf(s);
@@ -65,6 +67,7 @@ export function grenzwerte() {
     loeschlaufWarnungStunden: zahl("CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN", 26),
     fehler5xxWarnung: zahl("CENTRIC_GESUND_5XX_WARNUNG", 10),
     fehler429Warnung: zahl("CENTRIC_GESUND_429_WARNUNG", 20),
+    zustellungEndgueltigWarnung: zahl("CENTRIC_GESUND_ZUSTELLUNG_WARNUNG", 3),
     cacheMs: zahl("CENTRIC_GESUND_CACHE_MS", 10000),
     zeitgrenzeMs: zahl("CENTRIC_GESUND_ZEITGRENZE_MS", 15000),
   };
@@ -177,6 +180,22 @@ function fehlerPruefen(g, jetzt) {
   return { stufe: warn ? "warnung" : "ok", fensterMinuten: FENSTER_MS / 60000, ...z };
 }
 
+/** Mail und Push (WP-30). Nur Ja/Nein und Zähler — nie ein Wert, nie ein
+    Empfänger, nie ein Text. „warnung“, wenn ein Kanal dauerhaft scheitert:
+    mindestens die Schwelle endgültig fehlgeschlagen und mehr Fehlschläge als
+    Zustellungen im Fenster, oder der Anbieter lehnt Schlüssel/Absender ab. */
+function zustellungPruefen(g, jetzt) {
+  const z = zustellZaehlung(jetzt);
+  const k = zustellKonfiguration();
+  let warn = false;
+  for (const kanal of ["mail", "push"]) {
+    const c = z[kanal];
+    if (c.konfiguration > 0) warn = true;
+    if (c.endgueltig >= g.zustellungEndgueltigWarnung && c.endgueltig > c.zugestellt) warn = true;
+  }
+  return { stufe: warn ? "warnung" : "ok", konfiguriert: k, fensterMinuten: ZAEHL_FENSTER_MS / 60000, ...z };
+}
+
 /* ------------------------------------------------------------------ */
 
 let letzte = null;
@@ -238,6 +257,7 @@ async function pruefenAlle(g, jetzt) {
     sicherung: await sicherungPruefen(g, jetzt),
     loeschlauf: await loeschlaufPruefen(g, jetzt),
     fehler: fehlerPruefen(g, jetzt),
+    zustellung: zustellungPruefen(g, jetzt),
   };
   const stufe = Object.values(pruefungen).reduce((a, p) => schlimmer(a, p.stufe), "ok");
   const ergebnis = { stufe, pruefungen, zeit: new Date(jetzt).toISOString() };
