@@ -160,6 +160,16 @@ describe("Schreibweg (Server)", () => {
   });
 });
 
+describe("Review-Auflage 2: Altbestand blockiert nicht", () => {
+  it("ein unveränderter fehlerhafter Eintrag wird toleriert, ein geänderter oder neuer streng geprüft", () => {
+    const kaputt = { ...GET, zweiterAbschnitt: { start: "09:00", ende: "12:00" } };
+    const alt = { dienstarten: [kaputt] };
+    expect(geteilterdienstZusammen(alt, alt).grund).toBeUndefined();
+    expect(geteilterdienstZusammen({ dienstarten: [{ ...kaputt, name: "Umbenannt" }] }, alt).grund).toMatch(/Umbenannt/);
+    expect(geteilterdienstZusammen({ dienstarten: [kaputt, { ...kaputt, id: "H" }] }, alt).grund).toMatch(/Geteilt/);
+  });
+});
+
 describe("Oberfläche", () => {
   it("zeigt beide Abschnitte, Arbeitszeit, Lücke und Spanne in Worten", () => {
     const html = renderToStaticMarkup(h(AbschnittsAnzeige, { da: GET }));
