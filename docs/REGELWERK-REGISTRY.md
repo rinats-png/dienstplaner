@@ -268,11 +268,20 @@ Abs. 2 Nr. 2 JArbSchG Jugendlichen über 16 Jahren im mehrschichtigen Betrieb Ar
 Auszubildende). Jetzt (`jugendNachtBewertung`, `server/lib/schutzpruefung.mjs`): unter 16 Jahren sperrt jede
 Überschneidung mit 20–6 Uhr (`JARBSCHG-14`); ab 16 Jahren sperrt 23–6 Uhr einschließlich eines Beginns vor 6 Uhr
 (`JARBSCHG-14`), 20–23 Uhr meldet `JARBSCHG-14-02` — ohne Einstellung „Achtung" mit Bestätigungspflicht, mit der
-Betriebseinstellung `jugendschutz.mehrschichtig` (nur `org.edit`) einen Hinweis. Ob der Betrieb tatsächlich
+Betriebseinstellung `jugendschutz.mehrschichtig` (`org.edit` oder `pattern.edit`) einen Hinweis. Ob der Betrieb tatsächlich
 mehrschichtig arbeitet, prüft CENTRIC nicht. **Bekannte Grenze:** Die Branchenfenster des § 14 Abs. 2 bis 7
 (Gaststätten und Schaustellergewerbe bis 22 Uhr, Bäckereien und Konditoreien ab 5 Uhr bzw. über 17 Jahren ab 4 Uhr,
 Landwirtschaft ab 5 oder bis 21 Uhr, Bewilligungen nach Abs. 6 und 7) sind nicht modelliert; ein Bäckereibeginn um
-5 Uhr sperrt weiterhin. Mutterschutz (`MUSCHG-05`) bleibt unverändert hart (Fachfrage B2 beim Nutzer).
+5 Uhr sperrt weiterhin. Mutterschutz: siehe den folgenden Absatz.
+**Einwilligung nach dem Mutterschutzgesetz (Nutzerentscheidung, 3. November 2026).** An der Person lassen sich
+Einwilligungen erfassen (`mutterschutzEinwilligungen`): Art „nacht“ (§ 5 Abs. 2, 20–22 Uhr) oder „sonntag“ (§ 6 Abs. 1),
+Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor“ (§ 28). Im Zeitraum wird der jeweilige harte Befund zum
+Hinweis (`MUSCHG-05-02`, `MUSCHG-06-01`); Nachtarbeit nach 22 Uhr bleibt hart, außerhalb des Zeitraums ist alles wieder
+hart. Schreiben nur Planung, Leitung und Kundenrolle (wie die Schutzmerkmale); der Server prüft die Form und setzt
+`geaendertAm`/`geaendertVon`. Sichtbar wie die Schutzmerkmale; die Person selbst sieht ihre eigenen. Die
+Schichtverantwortung bekommt Einsatzregeln mit Zeitraum, nur ab heute (`einsatzfensterBis22`, `sonntagFreigegeben`). Restrisiko: Diese Regeln entstehen heute nur aus dem Mutterschutz — bei Erwachsenen lässt sich aus ihnen auf ihn schließen (DSFA, Betriebsvereinbarung). Änderungen an Schutzangaben werden immer gespeichert; widersprechende bestehende Einteilungen meldet der Server Planung und Leitung (Nachprüfung 9717ddf).
+Ob ärztliche Unbedenklichkeit und Genehmigung tatsächlich vorliegen und die Einwilligung nicht widerrufen ist, prüft
+CENTRIC nicht — das verantwortet der Betrieb. Feiertage prüft die Schutzprüfung nicht gesondert.
 
 **Betriebsratsprotokoll.** Abweichend von Anhang G: Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe,
 unter 3 als „<3"; jede Schutzregel — auch der Jugendarbeitsschutz — heißt dort `schutz` (Kette B behandelt das Alter
