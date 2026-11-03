@@ -125,6 +125,7 @@ fehlt. Grün auf dem alten Stand blieben nur Fälle, die bestehendes Verhalten f
   Pausenhinweis. Die Prüfung meint „keine Nacht-Hinweise am Tag“; die Pause ist jetzt 60 min. Die Aussage bleibt, sie ist
   nur rechtlich korrekt.
 - `stempel-429-client.test.js` (Auflage N1, Quelltextprüfung): Das Muster für den gesperrten Stempelknopf erlaubt jetzt den fünften Wert (die Pause beim Ausstempeln). Die Aussage — gesperrt, bis das Stempeln samt Wiederholungen fertig ist, in Stempeluhr und mobiler Fläche (genau 2 Treffer) — bleibt unverändert. Rot im ersten CI-Lauf 41659840303.
+- `oberflaeche-selbstservice.test.js` „Stempeln“ (Quelltextprüfung): Anker `stempeln: async (pid, datum, art, koord, pause = null)` und Muster `SP.stempeln(datum, art, koord(, pause)?)` — gleiche Aussage (Serverantwort übernommen, Fehler nur gemeldet). Rot im CI-Lauf 41660308323.
 - `rollen-failclosed.test.js`: zusätzlich `/api/monatsabschluss` (beide Aktionen).
 - `rechtematrix-zeilen.test.js`: Import über den Namensraum (damit eine fehlende Funktion auf dem alten Stand rot statt
   Ladefehler ist), neue Zeilen und Sonden.
