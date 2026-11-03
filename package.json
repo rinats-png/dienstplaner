@@ -73,7 +73,7 @@
     "pruefung:bereich-tagesnotizen-http": "node pruefungen/bereich-tagesnotizen.mjs",
     "pruefung:schutzmerkmale-sicht": "vitest run pruefungen/schutzmerkmale-sicht.test.js",
     "pruefung:schutzmerkmale-sicht-http": "node pruefungen/schutzmerkmale-sicht.mjs",
-    "pruefung:fachpruefung": "vitest run pruefungen/fachpruefung-server.test.js",
+    "pruefung:fachpruefung": "vitest run pruefungen/fachpruefung-server.test.js pruefungen/schutzkonflikte.test.js",
     "pruefung:fachpruefung-http": "node pruefungen/fachpruefung-server.mjs",
     "pruefung:schutzregeln-ersatzsuche": "vitest run pruefungen/schutzregeln-ersatzsuche.test.js",
     "pruefung:betreiber-sicht": "vitest run pruefungen/betreiber-sicht.test.js",
