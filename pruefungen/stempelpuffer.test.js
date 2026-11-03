@@ -340,3 +340,98 @@ describe("Abnahme: Flugmodus → Stempel → Neustart → Netz: genau ein Stempe
     expect(Object.keys((await B.bestandLesen(laden(), raum)).bestand.mandanten[0].einstempeln)).toHaveLength(1);
   });
 });
+
+/* ---------------------- Auflagen aus dem Opus-Review ---------------------- */
+describe("Review A4: Bremse (429/503) ist kein Netzausfall", () => {
+  it("nach 429/503/500 bleibt das Ereignis online — die Stempelzeit ist dann die des Servers beim Eintreffen", async () => {
+    for (const status of [429, 503, 500]) {
+      const sp = PUF.speicherFluechtig();
+      await PUF.erfassen(sp, { art: "start", inhaber: "i1" });
+      await PUF.abarbeiten(sp, "i1", async () => ({ status, daten: null, warteMs: 1000 }), { jetzt: () => 0 });
+      const [ev] = await sp.alle();
+      expect([ev.zustand, ev.offline, ev.versuche]).toEqual(["wartet", false, 1]);
+      expect(PUF.rumpfFuer({ ...ev, versuche: 2 }).offline).toBe(false);
+    }
+  });
+  it("nur ein echter Netzausfall (keine Antwort) macht es zum Offline-Ereignis", async () => {
+    const sp = PUF.speicherFluechtig();
+    await PUF.erfassen(sp, { art: "start", inhaber: "i1" });
+    await PUF.abarbeiten(sp, "i1", async () => { throw new TypeError("Failed to fetch"); }, { jetzt: () => 0 });
+    const [ev] = await sp.alle();
+    expect(ev.offline).toBe(true);
+    expect(PUF.rumpfFuer(ev).offline).toBe(true);
+  });
+});
+
+describe("Review A2: Standort und Bestätigtes nicht länger als nötig auf dem Gerät", () => {
+  const koord = { lat: 50.1, lon: 8.6, accuracy: 12 };
+  it("nach Quittung und nach Absage keine Rohkoordinaten mehr im Puffer", async () => {
+    const sp = PUF.speicherFluechtig();
+    const a = await PUF.erfassen(sp, { art: "start", inhaber: "i1", koord });
+    const b = await PUF.erfassen(sp, { art: "ende", inhaber: "i1", koord });
+    expect((await sp.alle()).every((e) => e.koord)).toBe(true);
+    const gesendet = [];
+    await PUF.abarbeiten(sp, "i1", async (ev) => { gesendet.push(PUF.rumpfFuer(ev)); return ev.id === a.id ? ok("start") : { status: 409, daten: { code: "STEMPEL_SCHON_AUSGESTEMPELT", fehler: "schon" } }; });
+    expect(gesendet.map((r) => r.lat)).toEqual([50.1, 50.1]);          // gesendet wurde mit Standort
+    const nach = await sp.alle();
+    expect(nach.find((e) => e.id === a.id)).toMatchObject({ zustand: "bestaetigt", koord: null });
+    expect(nach.find((e) => e.id === b.id)).toMatchObject({ zustand: "abgelehnt", koord: null });
+  });
+  it("Abmelden: Bestätigte weg, Wartende und Abgelehnte bleiben (nie still verloren), fremde unberührt", async () => {
+    const sp = PUF.speicherFluechtig();
+    const best = await PUF.erfassen(sp, { art: "start", inhaber: "i1" });
+    await PUF.abarbeiten(sp, "i1", async () => ok("start"));
+    const abg = await PUF.erfassen(sp, { art: "ende", inhaber: "i1" });
+    await PUF.abarbeiten(sp, "i1", async () => ({ status: 400, daten: { fehler: "nein" } }));
+    const wart = await PUF.erfassen(sp, { art: "start", inhaber: "i1", koord });
+    const fremd = await PUF.erfassen(sp, { art: "start", inhaber: "i2" });
+    await sp.setzen({ ...(await sp.alle()).find((e) => e.id === fremd.id), zustand: "bestaetigt", bestaetigtAm: new Date().toISOString() });
+    const wartend = await PUF.abmeldenAufraeumen(sp, "i1");
+    expect(wartend).toBe(1);
+    const ids = (await sp.alle()).map((e) => e.id).sort();
+    expect(ids).toEqual([abg.id, wart.id, fremd.id].sort());
+    expect(ids).not.toContain(best.id);
+  });
+});
+
+describe("Review L6/A2: Speicherschicht — Quittungen gesammelt, Abmelden räumt den Puffer auf", () => {
+  it("zwei Stempel nach dem Netz: eine gesammelte Quittung; Abmelden entfernt Bestätigtes, Wartendes bleibt", async () => {
+    const ls = lokalerSpeicher();
+    globalThis.localStorage = ls;
+    let netz = false;
+    const antwortVon = (status, d) => ({ status, ok: status < 400, json: async () => d, headers: { get: () => null } });
+    globalThis.fetch = async (url, opt = {}) => {
+      if (url === "/api/anmelden") return antwortVon(200, { token: "t-nur-zum-pruefen", name: "B", rolle: "mitarbeiter" });
+      if (url === "/api/bestand") return antwortVon(200, { bestand: null, etag: "e", rolle: "mitarbeiter", person: "a1", inhaber: "i9" });
+      if (url === "/api/abmelden") return antwortVon(200, {});
+      if (url === "/api/stempeln") {
+        if (!netz) throw new TypeError("Failed to fetch");
+        const b = JSON.parse(opt.body);
+        return antwortVon(200, { ok: true, art: b.art, datum: "2026-11-06", zeit: "06:00", markierungen: [], eintrag: {} });
+      }
+      return antwortVon(404, {});
+    };
+    const SP = await import("../src/speicher.js");
+    await SP.anmelden("code-nur-zum-pruefen", false);
+    await SP.lies();
+    const quittungen = [];
+    SP.stempelSyncEinrichten((liste) => quittungen.push(liste.map((q) => q.ev.art)));
+    await SP.stempelErfassen("2026-11-06", "start", null);
+    await SP.stempelErfassen("2026-11-06", "ende", null);
+    await SP.stempelSenden({ sofort: true });
+    expect(SP.stempelWartendAnzahl()).toBe(2);
+    netz = true;
+    await SP.stempelSenden({ sofort: true });
+    expect(quittungen).toEqual([["start", "ende"]]);                      // ein Abnehmeraufruf, nicht zwei
+    expect(SP.stempelWartendAnzahl()).toBe(0);
+    netz = false;
+    await SP.stempelErfassen("2026-11-06", "start", null);
+    await SP.stempelSenden({ sofort: true });
+    expect(SP.stempelWartendAnzahl()).toBe(1);
+    SP.abmelden();
+    await new Promise((ok) => setTimeout(ok, 50));
+    const rest = await PUF.ereignisseVon(PUF.speicherLokal(ls), "i9");
+    expect(rest.map((e) => e.zustand)).toEqual(["wartet"]);
+    expect(SP.stempelWartendAnzahl()).toBe(0);                           // ohne Inhaber nichts angezeigt
+  });
+});
