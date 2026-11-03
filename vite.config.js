@@ -38,10 +38,15 @@ const proxy = Object.fromEntries(
 
 /* WP-37: Die Fassung des Dienstarbeiters kommt aus dem Bau (Hashwert über das
    Ergebnis), nicht aus einer von Hand gezählten Zeichenkette. */
+let swAus = "dist";
 const swFassungAusBau = {
   name: "sw-fassung",
   apply: "build",
-  async closeBundle() { await swStempeln("dist"); },
+  /* writeBundle, nicht das Schlusssignal des Baus: Dieses läuft auch nach einem
+     fehlgeschlagenen Bau und würde dessen Fehlermeldung mit einer Meldung
+     über fehlende Dateien oder einen alten dist/-Ordner überdecken. */
+  configResolved(c) { swAus = c.build.outDir; },
+  writeBundle: { order: "post", async handler() { await swStempeln(swAus); } },
 };
 
 export default defineConfig({

@@ -40,3 +40,14 @@ Commit `bf194d6` (nur der Test, gegen den alten Stand): 13 von 17 rot, 4 grün (
 - Echtgeräte iOS (Safari, „Zum Home-Bildschirm“) und Android (Chrome): Installierbarkeit, Langdruck-Verknüpfungen „Meine Schichten“ und „Krank melden“ (auf iOS werden Manifest-Verknüpfungen nicht angeboten), Maskierbare Icons, Start im Standalone-Modus.
 - Verhalten bei Aktualisierung der Fassung auf einem Gerät mit altem Dienstarbeiter (`v4`): `skipWaiting`/`claim` und Löschen alter `centric-*`-Speicher im `activate`; im Browser zu bestätigen.
 - Offline-Start mit echtem Funkloch nach Anmeldung als andere Person.
+
+## Review-Auflagen (Opus-Review), umgesetzt
+
+- **A1** `pruefung:pwa` als eigener Schritt in `.github/workflows/pruefung.yml`; der Test prüft den Schritt.
+- **A2** Verknüpfung „Meine Schichten“ für reine Mitarbeitende im Schichtdienst: Die Mobilschale kennt keine Ansichten, nur Reiter. `verknuepfungAnwenden` liefert dafür `mobilTab: "plan"` (wie die bestehende Abbildung `meine` → `plan` in der Mobilschale), `MobilSchale` bekommt `startTab` und zieht nach, auch wenn sie schon gezeichnet ist.
+- **A3** Logik als reine Funktion `verknuepfungAnwenden` plus `ohneVerknuepfung` in `src/verknuepfung.js`; `verknuepfungFuer(sitz, ziel)` in `src/App.jsx` (exportiert) nutzt echte Navigation und Rechte. Getestet je Rolle: Betreiber (nichts), Mitarbeitende im Schichtdienst (Reiter plan, Krank), Betriebsrat und Schichtverantwortung (Ansicht), Leitung, Planung und Geschäftszimmer (`imSchichtdienst: false`) ohne Recht auf „meine“ (nichts), Krank für alle Personen im Betrieb.
+- **N1** Plugin nutzt `writeBundle` (`order: "post"`) statt des Schlusssignals; ein fehlgeschlagener Bau behält seine eigene Fehlermeldung. Ausgabeordner aus der aufgelösten Konfiguration.
+- **N2** Neue SW-Tests: Gerüst nicht aus Weiterleitung, nicht aus Nicht-HTML; Offline-Antwort ohne Sitzungsmarke; `activate` verwirft alte `centric-*`-Speicher (Migration von `v4`), fremde Namen bleiben.
+- **Info/Folgepunkt:** Alte Reiter können nach einem Fassungswechsel auf nicht mehr vorhandene Bauteile (Chunk-404) stoßen; ein Hinweis „neu laden“ bei `controllerchange` ist ein Folgepunkt.
+
+Mutanten dieser Runde (alle getötet): Rechtefilter der Navigation entfernt; Betreiber-Krank erlaubt; `replaceState` entfernt; `ohneVerknuepfung` ohne Löschen; `mobilTab` entfernt; `startTab` nicht übernommen; `!netz.redirected` entfernt; Content-Type-Prüfung entfernt; `activate` löscht nicht; Sitzungsmarke bleibt in der Offline-Antwort; Schlusssignal statt `writeBundle`; CI-Schritt entfernt. Ein erster Lauf ließ drei überleben (Rechtefilter wegen Zeilenende-Muster nicht angewandt, Betreiber-Krank nur über die Zusammensetzung, `startTab`-Effekt); dazu Tests ergänzt, danach getötet.

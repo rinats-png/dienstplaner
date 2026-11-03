@@ -8,7 +8,7 @@
       Bestand an die Sitzung; Authentifizierung, Schreibzugriffe und Seiten
       des Servers (Einrichten, Kalender, Zustellung) landen nie darin.
    ========================================================================== */
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFile, mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -37,10 +37,69 @@ describe("Verknüpfungen des Manifests", () => {
       "?ansicht=<script>", "?x=meine", "?ansicht=MEINE", "?ansicht=http://boese.invalid"])
       expect(verknuepfungsZiel(s), s).toBeNull();
   });
-  it("die Oberfläche wertet die Verknüpfung aus und bleibt in der eigenen Navigation", async () => {
+  it("die Oberfläche wertet die Verknüpfung aus", async () => {
     const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
-    expect(app).toMatch(/verknuepfungsZiel/);
-    expect(app).toMatch(/nav\.some\(\(\[id\]\) => id === ziel\.id\)/);
+    expect(app).toMatch(/verknuepfungsZiel\(window\.location\.search\)/);
+    expect(app).toMatch(/verknuepfungFuer\(sitz, ziel\)/);
+  });
+  it("die Adresse wird bereinigt: nur der Parameter fällt weg", async () => {
+    const { ohneVerknuepfung } = await import("../src/verknuepfung.js");
+    expect(ohneVerknuepfung("https://beispiel.invalid/?ansicht=krank")).toBe("/");
+    expect(ohneVerknuepfung("https://beispiel.invalid/pfad?a=1&ansicht=meine&b=2#x")).toBe("/pfad?a=1&b=2#x");
+  });
+  it("Quelltext: die Bereinigung wird tatsächlich aufgerufen", async () => {
+    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    expect(app).toMatch(/history\.replaceState\(null, "", ohneVerknuepfung\(window\.location\.href\)\)/);
+  });
+});
+
+/* Die Verknüpfung je Rolle, mit der echten Navigation und den echten Rechten der Oberfläche. */
+describe("Verknüpfung je Rolle (Navigation samt Rechten)", () => {
+  let A, m, einheit;
+  const sitz = (rolle, extra = {}) => {
+    const p = { ...A.zugangsPerson(rolle, einheit, 1), id: "p", rolle, ...extra };
+    return { rolle: "kunde", db: {}, mandant: { ...m, personen: [p] }, person: p };
+  };
+  const meine = { art: "ansicht", id: "meine" }, krank = { art: "krank" };
+  beforeAll(async () => {
+    A = await import("../src/App.jsx");
+    m = A.leererMandant("Verknuepfung", "pflege"); einheit = m.einheiten[0].id;
+  }, 120000);
+
+  it("Betreiber: weder Ansicht noch Krankmeldung", () => {
+    expect(A.verknuepfungFuer({ rolle: "betreiber" }, meine)).toBeNull();
+    expect(A.verknuepfungFuer({ rolle: "betreiber" }, krank)).toBeNull();
+  });
+  it("Mitarbeitende im Schichtdienst (Telefon): „meine“ öffnet den Reiter „plan“, Krank geht", () => {
+    expect(A.verknuepfungFuer(sitz("mitarbeiter"), meine)).toEqual({ art: "ansicht", id: "meine", mobilTab: "plan" });
+    expect(A.verknuepfungFuer(sitz("mitarbeiter"), krank)).toEqual({ art: "krank", personId: "p" });
+  });
+  it("Betriebsrat und Schichtverantwortung: Ansicht „meine“ am Rechner ohne Telefon-Reiter", () => {
+    for (const r of ["betriebsrat", "subplaner"])
+      expect(A.verknuepfungFuer(sitz(r), meine), r).toEqual({ art: "ansicht", id: "meine", mobilTab: null });
+  });
+  it("ohne Recht auf „Meine Schichten“ (Leitung, Planung, Geschäftszimmer) öffnet die Verknüpfung nichts", () => {
+    for (const s of [sitz("leitung"), sitz("planer"), sitz("mitarbeiter", { imSchichtdienst: false })])
+      expect(A.verknuepfungFuer(s, meine), s.person.rolle).toBeNull();
+  });
+  it("Krank melden gilt für jede Person im Betrieb", () => {
+    for (const s of [sitz("leitung"), sitz("planer"), sitz("subplaner"), sitz("betriebsrat"),
+      sitz("mitarbeiter", { imSchichtdienst: false })])
+      expect(A.verknuepfungFuer(s, krank), s.person.rolle).toEqual({ art: "krank", personId: "p" });
+  });
+  it("die Mobilschale bekommt den Start-Reiter", async () => {
+    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    expect(app).toMatch(/<MobilSchale [^>]*startTab=\{mobilStart\}/);
+    expect(app).toMatch(/useState\(startTab \|\| "heute"\)/);
+    /* die Mobilschale ist beim Eintreffen der Verknüpfung schon gezeichnet: der Reiter muss nachziehen */
+    expect(app).toMatch(/useEffect\(\(\) => \{ if \(startTab\) setTab\(startTab\); \}, \[startTab\]\)/);
+  });
+  it("verknuepfungAnwenden selbst: Betreiber nie Krank, nie fremde Ansicht, ohne Person nichts", async () => {
+    const { verknuepfungAnwenden } = await import("../src/verknuepfung.js");
+    expect(verknuepfungAnwenden({ betreiber: true, navIds: ["meine"], personId: "p" }, { art: "krank" })).toBeNull();
+    expect(verknuepfungAnwenden({ betreiber: false, navIds: ["meine"], personId: null }, { art: "krank" })).toBeNull();
+    expect(verknuepfungAnwenden({ betreiber: false, navIds: ["plan"], personId: "p" }, { art: "ansicht", id: "meine" })).toBeNull();
+    expect(verknuepfungAnwenden({ betreiber: false, navIds: [], personId: "p" }, null)).toBeNull();
   });
 });
 
@@ -81,6 +140,11 @@ describe("Fassung des Dienstarbeiters aus dem Bau", () => {
   it("vite.config bindet das Stempeln in den Bau ein, und der Docker-Bau sieht das Werkzeug", async () => {
     const c = await readFile(new URL("../vite.config.js", import.meta.url), "utf8");
     expect(c).toMatch(/swStempeln/);
+    /* nach einem fehlgeschlagenen Bau darf die Fassung nicht gesetzt werden und dessen Fehler nicht überdecken */
+    expect(c).toMatch(/writeBundle/);
+    expect(c).not.toMatch(/closeBundle/);
+    const wf = await readFile(new URL("../.github/workflows/pruefung.yml", import.meta.url), "utf8");
+    expect(wf).toMatch(/npm run pruefung:pwa/);
     const ig = (await readFile(new URL("../.dockerignore", import.meta.url), "utf8")).split(String.fromCharCode(10)).map((z) => z.trim());
     expect(ig).toContain("!werkzeug/sw-fassung.mjs");
   });
@@ -117,7 +181,8 @@ async function dienstarbeiter({ netz }) {
   };
   const nachricht = async (art) => { let w = null;
     hoerer.message({ data: { art }, waitUntil: (x) => { w = x; } }); await w; };
-  return { anfrage, caches, nachricht };
+  const aktivieren = async () => { let w = null; hoerer.activate({ waitUntil: (x) => { w = x; } }); await w; };
+  return { anfrage, caches, nachricht, aktivieren };
 }
 const html = (t, s = 200) => new Response(t, { status: s, headers: { "content-type": "text/html" } });
 const leer = (sw) => [...sw.caches.alle.values()].every((m) => m.size === 0);
@@ -169,6 +234,40 @@ describe("Dienstarbeiter: Zwischenspeicher und Sitzung", () => {
     await (await sw.anfrage("GET", "/?ansicht=meine", { mode: "navigate" })).text();
     await warte();
     expect([...sw.caches.alle.values()].some((m) => m.has("/"))).toBe(true);
+  });
+  it("das Gerüst wird weder aus einer Weiterleitung noch aus Nicht-HTML gespeichert", async () => {
+    const weiter = { ok: true, redirected: true, headers: new Headers({ "content-type": "text/html" }),
+      clone() { return new Response("<p>x</p>", { headers: { "content-type": "text/html" } }); } };
+    const sw = await dienstarbeiter({ netz: { fn: async () => weiter } });
+    await sw.anfrage("GET", "/", { mode: "navigate" });
+    await warte();
+    expect(leer(sw)).toBe(true);
+    const json = await dienstarbeiter({ netz: { fn: async () => new Response("{}", { status: 200,
+      headers: { "content-type": "application/json" } }) } });
+    await (await json.anfrage("GET", "/", { mode: "navigate" })).text();
+    await warte();
+    expect(leer(json)).toBe(true);
+  });
+  it("Offline-Antwort trägt den Offline-Vermerk, aber nicht die Sitzungsmarke", async () => {
+    const netz = { fn: async () => new Response("{}", { status: 200 }) };
+    const sw = await dienstarbeiter({ netz });
+    await (await sw.anfrage("GET", "/api/bestand", { kennung: "a" })).text();
+    await warte();
+    netz.fn = async () => { throw new Error("kein Netz"); };
+    const r = await sw.anfrage("GET", "/api/bestand", { kennung: "a" });
+    expect(r.headers.get("x-centric-offline")).toBe("ja");
+    expect(r.headers.get("x-centric-sitzung")).toBeNull();
+  });
+  it("Aktivieren verwirft Speicher älterer Fassungen (Migration), nur eigene Namen bleiben", async () => {
+    const sw = await dienstarbeiter({ netz: { fn: async () => html("x") } });
+    for (const n of ["centric-schale-v4", "centric-daten-v4", "centric-daten-alt", "fremd-speicher"])
+      await sw.caches.open(n);
+    await sw.aktivieren();
+    const namen = [...sw.caches.alle.keys()];
+    expect(namen).not.toContain("centric-schale-v4");
+    expect(namen).not.toContain("centric-daten-v4");
+    expect(namen).not.toContain("centric-daten-alt");
+    expect(namen).toContain("fremd-speicher");
   });
   it("Schreiben und Anmelden werden nie abgefangen", async () => {
     const sw = await dienstarbeiter({ netz: { fn: async () => html("x") } });
