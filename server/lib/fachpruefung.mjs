@@ -29,6 +29,7 @@ import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schut
 import { pad, pISO, addDays, dow, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
+import { branchenBefunde } from "./branchenbefunde.mjs";
 
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
 /** Das erste Objekt einer Liste, das passt — ohne Zwischenliste (Laufzeit, WP-22). */
@@ -203,7 +204,8 @@ const stufeVon = (regel, sonst) => (BEFUND_KATALOG[regel] && BEFUND_KATALOG[rege
  * @param {any} p Person (Rohdaten)
  * @param {any} da Dienstart mit start/ende
  * @param {string} d Tag JJJJ-MM-TT
- * @param {{ dienstAm: (p: any, d: string) => any, alleinOhnePartner: (p: any, d: string, daId: any) => boolean, heute: string }} k
+ * @param {{ dienstAm: (p: any, d: string) => any, alleinOhnePartner: (p: any, d: string, daId: any) => boolean, heute: string,
+ *   branchen?: { personenImDienst: (d: string, daId: any) => any[], module?: readonly any[] } }} k
  * @returns {{ regel: string, stufe: string, text: string, quelle: string, art: string, offen?: boolean, neutral?: boolean }[]}
  */
 export function einteilungsBefunde(m, p, da, d, k) {
@@ -277,6 +279,11 @@ export function einteilungsBefunde(m, p, da, d, k) {
      der Betrieb. Rufbereitschaft zählt nicht. */
   if (!rufbereitschaft(da) && dauer(da) > HOECHST_TAG)
     push("tagesgrenze", `Dienst über ${n1(HOECHST_TAG)} Stunden (${n1(dauer(da))} h) — zulässig nur mit Regelung nach § 7 ArbZG`, "§ 3, § 7 ArbZG", "tagesgrenze");
+  /* Branchenmodule (WP-19, Andockpunkt A2): nur aktive Module, nur wenn der
+     Aufrufer die Besetzung des Dienstes kennt (die Oberfläche). Befundart
+     „branche": Hinweis, sperrt nie. Die Nachrechnung des Servers reicht
+     k.branchen nicht herein und bleibt dadurch so schnell wie vorher. */
+  if (k.branchen && typeof k.branchen.personenImDienst === "function") for (const b of branchenBefunde(m, da, d, k.branchen)) g.push(b);
   return g;
 }
 

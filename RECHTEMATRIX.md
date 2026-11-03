@@ -265,6 +265,12 @@ Steuer). Dazu kommen:
   Betrieb) samt der Auskünfte, die die Leitung über sie erteilt hat;
 - ob Push-Anmeldung und Kalenderverweis bestehen.
 
+Zwei Einschränkungen der Selbstauskunft (WP-26): Zeilen „Auskunft durch die Leitung über mich“ gehen nur als
+`{ zeit, art, rolle }` hinaus — ohne Herkunft und ohne Person der Leitung (N-2). Bestätigungen aus dem
+Bestätigungsprotokoll (`bestaetigungen`, WP-10) **über** die Person kommen mit den Feldern des Eintrags, aber ohne die
+bestätigende Person (`durch`, `durchId`) — nur deren Rolle (N-4). Bestätigungen, die die Person selbst für andere
+abgab, und die Zählwerte des Betriebsrats sind nicht Teil der Auskunft.
+
 Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre eigene Sicht
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
@@ -293,6 +299,31 @@ im Betrieb eine bekannte Rolle hat.
 **Schreibweg dazu (A):** Was eine Rolle nicht sieht, kommt beim Speichern aus dem gespeicherten Stand
 (Rückfüllung: `schichtRueckfuellen`, `vollRueckfuellen`); mitgeschickte verborgene Werte sind wirkungslos
 oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Betreiber (1e.2a).
+
+**Branchenmodule (WP-19, A):** Welche Pakete gebucht sind (`pakete`), bleibt Vertragsfeld des Betreibers.
+Innerhalb gebuchter Pakete schaltet der Betrieb die Module in `einstellungen.branchenmodule` — schreiben
+dürfen nur Rollen mit `org.edit` (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Stand.
+Form `{ an: boolean, parameter?: {…} }` je bekanntem Modul, Parameter nach Typ und Grenzen der Registry;
+Einschalten nur, wenn das Paket gebucht und das Modul nicht mehr „geplant" ist, Ausschalten immer; Wann und
+Wer setzt der Server (`branchenmoduleZusammen`, `server/lib/branchenmodule.mjs`). Lesen wie die übrigen
+Einstellungen. Daten, die ein Modul später anlegt, bekommen vorher je eine eigene Zeile in dieser Matrix.
+Geprüft in `pruefungen/branchenmodule.test.js`.
+- *Kontimodelle* (`server/lib/modul-kontimodelle.mjs`): keine neuen Daten. Der Assistent rechnet nur; was er
+  übernimmt, schreibt die Oberfläche in die bestehenden Felder `zyklus`, `anker`, `einheiten` (wie bisher
+  `pattern.edit`). Parameter `sollWochenstunden`, `stundenJeFreischicht` in `einstellungen.branchenmodule`.
+  Geprüft in `pruefungen/modul-kontimodelle.test.js`.
+- *Anlagen* (`server/lib/modul-anlagen.mjs`): keine neuen Betriebsfelder. Eine Anlage ist ein Eintrag in
+  `betriebsmittel` mit `art: "anlage"` und den Feldern `mindestBesetzung`, `laufzeit`; Lesen und Schreiben wie
+  Betriebsmittel (Positivkatalog `betriebsmittel` in `server/lib/sicht.mjs`: Beschäftigte und
+  Schichtverantwortung sehen nicht ausgegebene Betriebsmittel, also auch Anlagen; Betriebsrat nicht). Der Server
+  weist eine falsche Form ab (`anlagenZusammen`). Befunde nur als Hinweis und nur bei aktivem Modul.
+  Geprüft in `pruefungen/modul-anlagen.test.js`.
+- *Maschinenqualifikationen* (`server/lib/modul-maschinenqual.mjs`): keine neuen Betriebsfelder. Liest
+  `kompetenzen` und `kompetenzNachweise` wie bisher (Positivkatalog unverändert: Beschäftigte nur eigene
+  Zuweisung, Schichtverantwortung ohne fremde Kompetenznachweise ¹⁸); neues Feld `befaehigtePerson` (Ja/Nein) an
+  der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
+  nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
+  (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue

@@ -117,6 +117,12 @@ jobs:
       - name: Branchenprofile
         run: npm run pruefung:branchen
 
+      # Branchenmodule (WP-19): Registry, Aktivierung je Betrieb, Rechte,
+      # Katalog-Erweiterungspunkt — Vertrag zwischen Kern und Modul; dazu
+      # jede Modulprüfung pruefungen/modul-<id>.test.js (Filter „modul-“).
+      - name: Branchenmodule
+        run: npm run pruefung:branchenmodule
+
       # Pflegepersonaluntergrenzen: Verhältniszahlen, Hilfskraftanteil,
       # und der Unterschied zwischen „eingehalten" und „nicht bewertbar".
       - name: Untergrenzen
@@ -226,6 +232,10 @@ jobs:
       # Wiederherstellen mit derselben Grenze wie Speichern: Betreiberstamm, verborgene Personen- und Betriebsfelder aus dem jetzigen Stand.
       - name: Wiederherstellung schützt Verborgenes
         run: npm run pruefung:wiederherstellung-schutz
+
+      # WP-12: Kette A + B zusammen über die Schnittstelle und die Dateiablage (Rundreise je Rolle × Feld).
+      - name: Integrationsabnahme Kette A + B
+        run: npm run pruefung:abnahme-ab
 
       # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
       - name: Preisanzeige nach Rolle
@@ -369,6 +379,11 @@ jobs:
       # Healthcheck-Kompatibilität.
       - name: Überwachung (/gesund, Alarm)
         run: npm run pruefung:gesund
+
+      # WP-41: Verweise der Betriebs- und Nutzerdokumentation, jede
+      # Umgebungsvariable im Betriebshandbuch, keine Geheimnisse.
+      - name: Dokumentation
+        run: npm run pruefung:doku
 
       # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
       # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.

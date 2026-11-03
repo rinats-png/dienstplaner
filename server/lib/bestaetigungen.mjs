@@ -19,6 +19,7 @@
    Rein: keine Ablage, kein Versand.
    ========================================================================== */
 import { ZUSTELLARTEN, TITEL_MAX, TEXT_MAX } from "./mitteilungen.mjs";
+import { BRANCHEN_BEFUNDART } from "./branchenkatalog.mjs";
 
 /** Die Gründe, die der Warndialog anbietet — dieselben Kennungen wie
     ABWEICHUNG_GRUENDE in src/warnstufen.js (pruefungen/bestaetigungen.test.js
@@ -68,6 +69,9 @@ export const BEFUND_KATALOG = Object.freeze({
      (Vorgabe des Betriebs, bestätigungspflichtig). */
   tagesgrenze: { text: "Dienst über zehn Stunden (Regelung nach § 7 ArbZG nötig)", quelle: "§ 3, § 7 ArbZG", stufe: "hinweis", sperrt: false },
   untergrenze: { text: "Mindestbesetzung unterschritten", quelle: "Vorgabe des Betriebs", stufe: "achtung", sperrt: false },
+  /* WP-19 (Andockpunkt A1): Befunde aktiver Branchenmodule — vorläufige Registerregeln,
+     höchstens Hinweis, sperren nie (server/lib/branchenkatalog.mjs). */
+  ...BRANCHEN_BEFUNDART,
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
 export const sperrtBefund = (regel) => (Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, regel) ? BEFUND_KATALOG[regel].sperrt : true);
