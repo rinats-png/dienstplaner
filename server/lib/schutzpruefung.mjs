@@ -89,6 +89,9 @@ export function imNachtfenster22bis6(d) {
 }
 
 /** Arten einer Einwilligung nach dem Mutterschutzgesetz: 20–22 Uhr (§ 5 Abs. 2), Sonn- und Feiertag (§ 6 Abs. 1). */
+/** JJJJ-MM-TT — ein anders geformtes Datum gilt nicht (Review N1). */
+const TAG_FORM = /^\d{4}-\d{2}-\d{2}$/;
+
 export const EINWILLIGUNG_ARTEN = Object.freeze(["nacht", "sonntag"]);
 
 /**
@@ -100,7 +103,8 @@ export const EINWILLIGUNG_ARTEN = Object.freeze(["nacht", "sonntag"]);
 export function einwilligungAm(person, art, datum) {
   const l = person && Array.isArray(person.mutterschutzEinwilligungen) ? person.mutterschutzEinwilligungen : [];
   for (const e of l)
-    if (e && typeof e === "object" && e.art === art && typeof e.ab === "string" && e.ab <= datum && (!e.bis || datum <= e.bis)) return e;
+    if (e && typeof e === "object" && e.art === art && TAG_FORM.test(String(e.ab)) && e.ab <= datum
+      && (!e.bis || (TAG_FORM.test(String(e.bis)) && datum <= e.bis))) return e;
   return null;
 }
 
@@ -295,7 +299,7 @@ export const EINSATZREGEL_TEXTE = {
   nachtAb23NichtZulaessig: "Nachteinsatz 23–6 Uhr nicht zulässig.",
   nachtSpaetPruefen: "Einsatz 20–23 Uhr nur mit einer betrieblichen Ausnahme — bitte prüfen.",
   nachtSpaetAusnahme: "Einsatz bis 23 Uhr: Ausnahme des Betriebs hinterlegt.",
-  nachtAb22NichtZulaessig: "Nachteinsatz 22–6 Uhr nicht zulässig.",
+  einsatzfensterBis22: "Nachteinsatz 22–6 Uhr nicht zulässig.",
   nachtMitFreigabe: "Einsatz 20–22 Uhr: Freigabe hinterlegt.",
   sonntagMitFreigabe: "Sonntagseinsatz: Freigabe hinterlegt.",
   hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
@@ -340,8 +344,8 @@ export function regelBefunde(planungsregeln, dienstart, datum, einst) {
       /* Mit hinterlegter Einwilligung (Nutzerentscheidung, WP-11): dieselbe
          Bewertung wie schutzBefunde — 22–6 Uhr hart, 20–22 Uhr bzw. Sonntag
          nur ein Hinweis. Treffer heißen wie mit Rohdaten. */
-      case "nachtAb22NichtZulaessig":
-        if (imNachtfenster22bis6(dienstart)) aus.push({ regel: "nachtNichtZulaessig", hart: true, text: EINSATZREGEL_TEXTE.nachtAb22NichtZulaessig });
+      case "einsatzfensterBis22":
+        if (imNachtfenster22bis6(dienstart)) aus.push({ regel: "nachtNichtZulaessig", hart: true, text: EINSATZREGEL_TEXTE.einsatzfensterBis22 });
         else if (imNachtfenster20bis6(dienstart)) aus.push({ regel: "nachtMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.nachtMitFreigabe });
         break;
       case "sonntagFreigegeben":

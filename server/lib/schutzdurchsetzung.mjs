@@ -177,7 +177,10 @@ function planStrukturGeaendert(altM, neuM) {
     /* Review U1: Eine neu angelegte Person bekommt ihre Dienste aus der
        Schichtfolge ihrer Einheit — das ist eine Einteilung wie jede andere. */
     if (!a) return true;
-    for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "eintritt", "austritt", "status"]) if (!gleich(a[f], p[f])) return true;
+    /* Review M2: auch Schutzmerkmale und Einwilligungen — wer sie ändert,
+       ändert, ob bestehende Einteilungen zulässig sind. */
+    for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "eintritt", "austritt", "status",
+      "mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum"]) if (!gleich(a[f], p[f])) return true;
   }
   return false;
 }
@@ -310,6 +313,9 @@ function pruefen(altM, neuM, heute, zaehler) {
       /* Altbestand je Regel: „nicht im Bestand" vorher deckt keinen Schutzbefund nachher (U1, Wiedereintritt). */
       const neuerBefund = neu.find((b) => !vorher.some((v) => v.regel === b.regel));
       if (!neuerBefund) continue;                                           // Altbestand
+      /* Dieselbe Einteilung wie vorher, nur die Person hat sich geändert (Review M2): klar sagen, dass erst umzuplanen ist. */
+      if (pAlt && !personGleich && String(idAlt) === String(idNeu))
+        return `Bestehende Einteilung am ${d} widerspricht der Änderung an der Person: ${neuerBefund.text}. Bitte erst umplanen, dann ändern.`;
       return absage(d, `${neuerBefund.text} (durch geänderte Dienstzeiten, Schichtfolge, Zugehörigkeit oder Person)`);
     }
   }

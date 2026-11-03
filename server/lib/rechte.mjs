@@ -823,7 +823,7 @@ const EINWILLIGUNG_FELDER = ["art", "ab", "bis", "genehmigung", "geaendertAm", "
 function einwilligungenZusammen(altM, neuM, sitzung) {
   if (!neuM || !Array.isArray(neuM.personen)) return { mandant: neuM };
   const alt = new Map((altM && Array.isArray(altM.personen) ? altM.personen : []).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p]));
-  const grund = "Einwilligungen (Mutterschutz): erwartet wird eine Liste aus { art: \"nacht\" oder \"sonntag\", ab, bis (oder leer), genehmigung }.";
+  const grund = "Einwilligungen (Mutterschutz): erwartet wird eine Liste aus { art: \"nacht\" oder \"sonntag\", ab, bis (Pflicht, nicht vor ab), genehmigung }.";
   const istTag = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
   let fehler = null;
   const personen = neuM.personen.map((p) => {
@@ -838,7 +838,7 @@ function einwilligungenZusammen(altM, neuM, sitzung) {
     for (const e of l) {
       if (!e || typeof e !== "object" || Array.isArray(e) || Object.keys(e).some((k) => !EINWILLIGUNG_FELDER.includes(k))
         || !EINWILLIGUNG_ARTEN.includes(e.art) || !istTag(e.ab)
-        || !(e.bis === undefined || e.bis === null || (istTag(e.bis) && e.bis >= e.ab))
+        || !(istTag(e.bis) && e.bis >= e.ab)                                   // Ende Pflicht (Review N1)
         || !(e.genehmigung === undefined || typeof e.genehmigung === "boolean")) { fehler = grund; return p; }
       const kern = { art: e.art, ab: e.ab, bis: e.bis || null, ...(e.genehmigung ? { genehmigung: true } : {}) };
       const gleicherAlter = vorher.find((v) => v && v.art === kern.art && v.ab === kern.ab && (v.bis || null) === kern.bis && !!v.genehmigung === !!kern.genehmigung);
@@ -848,6 +848,17 @@ function einwilligungenZusammen(altM, neuM, sitzung) {
     return { ...p, mutterschutzEinwilligungen: sauber };
   });
   return fehler ? { grund: fehler } : { mandant: { ...neuM, personen } };
+}
+
+/** Wie viele Personen haben geänderte Einwilligungen (für das Betriebsprotokoll, ohne Inhalt)? */
+export function einwilligungsAenderungen(altB, neuB) {
+  const liste = (b) => (b && Array.isArray(b.mandanten) ? b.mandanten : []).filter((m) => m && typeof m === "object");
+  const altP = new Map();
+  for (const m of liste(altB)) for (const p of (Array.isArray(m.personen) ? m.personen : [])) if (p) altP.set(`${m.id}|${p.id}`, p.mutterschutzEinwilligungen || []);
+  let n = 0;
+  for (const m of liste(neuB)) for (const p of (Array.isArray(m.personen) ? m.personen : []))
+    if (p && !gleich(altP.get(`${m.id}|${p.id}`) || [], p.mutterschutzEinwilligungen || [])) n++;
+  return n;
 }
 
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
