@@ -115,6 +115,13 @@ Datei `pruefungen/zustellung-rechte.test.js`, nur diese Stellen:
 4. „nach drei Versuchen Schluss“: Status jetzt `gescheitert` (endgültig) statt `fehler`; die Mailzählung nicht mehr nach
    dem Titel gefiltert (der Betreff ist der neutrale Hinweis), sondern nach Leeren der Zählliste.
 
+Datei `pruefungen/zustellung-rechte.mjs` (HTTP-Prüfung im Container, CI-Schritt „Zustellung-Rechte (HTTP)“):
+
+5. Die Prüfung „Push-Anmeldung: eigene Person 200“ meldete `https://push.example/a1` an. Im Container (`NODE_ENV=production`)
+   gilt `.example` bewusst nicht als Push-Host (SSRF-Schutz); der erste CI-Lauf (Lauf 41704158203, Kopf `0613586`) wies sie mit 400
+   ab — nur dieser Schritt war rot. Jetzt meldet sie einen erlaubten Hersteller-Host an (wird nie angefragt: kein VAPID-Paar im
+   Container) und prüft zusätzlich, dass interne Ziele und fremde Hosts 400 ergeben. Keine Abschwächung, eine Prüfung mehr.
+
 ## 4. Mutanten (sicherheitsrelevante Regeln)
 
 24 gezielte Fehler in den Quelldateien eingebaut, je mit den zuständigen Prüfdateien gelaufen, danach zurückgesetzt
