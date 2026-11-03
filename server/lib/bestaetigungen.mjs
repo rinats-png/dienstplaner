@@ -19,6 +19,7 @@
    Rein: keine Ablage, kein Versand.
    ========================================================================== */
 import { ZUSTELLARTEN, TITEL_MAX, TEXT_MAX } from "./mitteilungen.mjs";
+import { BRANCHEN_BEFUNDART } from "./branchenkatalog.mjs";
 
 /** Die Gründe, die der Warndialog anbietet — dieselben Kennungen wie
     ABWEICHUNG_GRUENDE in src/warnstufen.js (pruefungen/bestaetigungen.test.js
@@ -68,6 +69,9 @@ export const BEFUND_KATALOG = Object.freeze({
      (Vorgabe des Betriebs, bestätigungspflichtig). */
   tagesgrenze: { text: "Dienst über zehn Stunden (Regelung nach § 7 ArbZG nötig)", quelle: "§ 3, § 7 ArbZG", stufe: "hinweis", sperrt: false },
   untergrenze: { text: "Mindestbesetzung unterschritten", quelle: "Vorgabe des Betriebs", stufe: "achtung", sperrt: false },
+  /* WP-19 (Andockpunkt A1): Befunde aktiver Branchenmodule — vorläufige Registerregeln,
+     höchstens Hinweis, sperren nie (server/lib/branchenkatalog.mjs). */
+  ...BRANCHEN_BEFUNDART,
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
 export const sperrtBefund = (regel) => (Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, regel) ? BEFUND_KATALOG[regel].sperrt : true);
@@ -103,6 +107,8 @@ const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleichId = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);
 const name = (p) => (p ? `${p.vorname || ""} ${p.nachname || ""}`.trim() : "") || "Jemand";
 const kuerzen = (t, n) => String(t ?? "").slice(0, n);
+/** TT.MM.JJJJ — für Mitteilungen, die über den Jahreswechsel gelesen werden (Nachtrag WP-22b). */
+const tagMitJahr = (d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : "");
 const tagKurz = (d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}.${d.slice(5, 7)}.` : "");
 
 /** Wer bei einem bestätigten Rechtsverstoß unterrichtet wird: die Leitung
@@ -123,6 +129,9 @@ export function schutzKonfliktMitteilungen(altM, neuM, konflikte, ich) {
   if (!istObjekt(neuM) || !Array.isArray(konflikte) || !konflikte.length) return neuM;
   const personen = (Array.isArray(neuM.personen) ? neuM.personen : Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt);
   const heute = new Date().toISOString().slice(0, 10);
+  /* Empfänger nach Rolle, nicht nach Recht (Review NIEDRIG 5): Die Startseite zeigt die Pflichtaufgabe bei
+     pattern.edit oder org.edit; in der Rechtetabelle sind das Leitung, Planung und der eigene Datenraum
+     „kunde“ (dort gibt es keine zweite Person). pruefungen/schutzkonflikte.test.js hält beides zusammen. */
   const empfaenger = personen.filter((p) => (p.rolle === "leitung" || p.rolle === "planer") && !p.anonym
     && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute));
   const vorhanden = new Set([...(Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : []),
@@ -136,7 +145,7 @@ export function schutzKonfliktMitteilungen(altM, neuM, konflikte, ich) {
       if (vorhanden.has(id)) continue;
       vorhanden.add(id);
       neue.push({ id, personId: e.id, art: "planGeaendert", titel: kuerzen("Einteilung widerspricht Schutz- oder Einsatzregel", TITEL_MAX),
-        text: kuerzen(`${name(wer)} · ${tagKurz(k.datum)} — Die Einteilung widerspricht einer Schutz- oder Einsatzregel der Person. Bitte umplanen.`, TEXT_MAX),
+        text: kuerzen(`${name(wer)} · ${tagMitJahr(k.datum)} — Die Einteilung widerspricht einer Schutz- oder Einsatzregel der Person. Bitte umplanen.`, TEXT_MAX),
         ziel: "pruef", zeit: jetzt.toLocaleString("de-DE"), erstellt: jetzt.toISOString(), gelesen: false, dringend: true,
         quelle: { art: "schutzkonflikt", von: ich } });
     }

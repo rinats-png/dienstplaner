@@ -8,7 +8,7 @@ import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGAB
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
-  einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
+  einteilungsBefunde, planeSchutzkonflikte } from "../server/lib/fachpruefung.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -2588,6 +2588,12 @@ function hindernisBefunde(m, p, d, da) {
       return !(b ? b.personen : []).some((y) => y.id !== x.id && !einschr(y).keinAlleindienst);
     },
     heute: heute(),
+    /* Branchenmodule (WP-19): die Besetzung des Dienstes so, wie sie mit dieser
+       Einteilung wäre. Befunde nur aus aktiven Modulen, höchstens Hinweis. */
+    branchen: { personenImDienst: (t, daId) => {
+      const l = ((besetzung(m, t) || {})[daId] || { personen: [] }).personen;
+      return l.some((y) => y.id === p.id) ? l : [...l, p];
+    } },
   });
   const fachPush = (b) => {
     const regelId = b.art === "schutz" ? (b.neutral || b.quelle === SCHUTZ_QUELLE_EINSCHRAENKUNG ? null
@@ -2609,6 +2615,8 @@ function hindernisBefunde(m, p, d, da) {
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
     push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
   for (const b of bis(["ruhezeitGesetz", "ruhezeitBetrieb", "maxDiensteWoche", "keinAlleindienst", "tagesgrenze"])) fachPush(b);
+  /* Branchenmodule (WP-19): Hinweise mit eigener Regelkennung aus dem Register. */
+  for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, b.regelId || null);
   // Dienste in Folge (Einstellung des Betriebs; nur die Oberfläche)
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
@@ -2682,34 +2690,38 @@ function bestaetigungVermerken(m, best, wer, aktion) {
  * bleiben sichtbar (Startseite, Monatsplan), bis umgeplant ist. Gerechnet für
  * Personen mit Schutzangaben oder Einsatzregeln: die Schichtfolge ein Jahr
  * voraus, ausdrückliche Einteilungen für den ganzen künftigen Zeitraum.
- * Schlüssel „personId|Datum".
+ * Schlüssel „personId|Datum". Die Rechnung steht in schutzkonflikteSchritte
+ * (server/lib/fachpruefung.mjs) — dieselbe Quelle wie Server und Einsatzregeln.
  */
-function offeneSchutzkonflikte(m) {
-  const d0 = heute();
-  return memo(m, `schutzkonflikte|${d0}`, () => {
-    const aus = new Map();
-    const bis = addDays(d0, 365);
-    const relevant = m.personen.filter((p) => p.mutterschutz || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
-      || (() => { const a = alterAm(p.geburtstag || p.geburtsdatum, d0); return a !== null && a < 18; })());
-    if (!relevant.length) return aus;
-    const daNach = new Map(m.dienstarten.map((x) => [x.id, x]));
-    const pruefe = (p, d) => {
-      const t = personTag(m, p, d);
-      if (!t.dienstId || t.abwesenheit || !imDienst(p, d)) return;
-      const da = daNach.get(t.dienstId);
-      if (!da || !da.start || !da.ende) return;
-      if (schutzEinsatz(p, da, d, m.einstellungen).some((b) => b.sperrt)) aus.set(`${p.id}|${d}`, { person: p, datum: d, da });
-    };
-    for (const p of relevant) {
-      for (let d = d0; d <= bis; d = addDays(d, 1)) pruefe(p, d);
-      for (const k of Object.keys(m.abweichungen || {})) {
-        if (!k.startsWith(`${p.id}|`)) continue;
-        const d = k.slice(k.lastIndexOf("|") + 1);
-        if (d > bis) pruefe(p, d);
-      }
-    }
-    return aus;
-  });
+/** Der Plan der Oberfläche für die Konfliktrechnung (personTag, Abwesenheit frei). */
+const schutzkonfliktPlan = (m) => ({ heute: heute(),
+  dienstAm: (p, d) => { const t = personTag(m, p, d); return t.abwesenheit ? null : t.dienstId; } });
+
+/**
+ * Offene Schutzkonflikte für eine Ansicht (Nachtrag WP-22b): entprellt
+ * (250 ms nach der letzten Änderung) und in Häppchen gerechnet
+ * (schutzkonflikteSchritte, höchstens SCHUTZKONFLIKT_HAEPPCHEN_MS am Stück),
+ * damit der Plan beim Bearbeiten nicht ruckelt. Bis das Ergebnis da ist,
+ * gilt das vorige.
+ */
+const SK_LEER = new Map();
+/** Letzte fertige Rechnung je Betrieb: Ein neu gezeigter Teil der Oberfläche beginnt damit statt leer (Review MITTEL 4). */
+const SK_LETZTE = new Map();
+const SK_ENTPRELLUNG_MS = 250;
+/**
+ * @param {any} m Betrieb
+ * @param {boolean} [aktiv] false: nicht rechnen (die Ansicht braucht das Ergebnis nicht)
+ */
+function useSchutzkonflikte(m, aktiv = true) {
+  const h = heute();                                                   // Tageswechsel ohne Datenänderung rechnet neu
+  const [ergebnis, setErgebnis] = useState(() => (SK_LETZTE.get(m.id) || { ergebnis: SK_LEER }).ergebnis);
+  useEffect(() => {
+    if (!aktiv) return undefined;
+    /* Nichts Bekanntes: gleich anfangen (kein Warten vor der ersten Anzeige); sonst entprellen. */
+    return planeSchutzkonflikte(m, schutzkonfliktPlan(m), (r) => { SK_LETZTE.set(m.id, { ergebnis: r }); setErgebnis(r); },
+      { verzoegerungMs: SK_LETZTE.has(m.id) ? SK_ENTPRELLUNG_MS : 0 });
+  }, [m, h, aktiv]);
+  return aktiv ? ergebnis : SK_LEER;
 }
 
 /**
@@ -8966,7 +8978,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const [nurAbw, setNurAbw] = useState(false);
   const planVon = tage[0], planBis = tage[tage.length - 1];
   const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
-  const schutzkonflikte = useMemo(() => offeneSchutzkonflikte(m), [m]);
+  const schutzkonflikte = useSchutzkonflikte(m);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -15665,6 +15677,8 @@ function Datenmitnahme({ sitz, akt }) {
 function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
+  /* Nur für Planung und Leitung (dieselbe Bedingung wie die Pflichtaufgabe unten); entprellt, in Häppchen (Nachtrag WP-22b). */
+  const schutzkonflikte = useSchutzkonflikte(m, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"));
   const [alles, setAlles] = useState(false);
   const aufgaben = useMemo(() => tagesaufgaben(sitz), [m, p.id]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
@@ -15733,7 +15747,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
     /* Offene Schutzkonflikte (A2): eine Pflichtaufgabe für Planung und Leitung,
        bis umgeplant ist — vor allem anderen. */
     if (darf(sitz, "pattern.edit") || darf(sitz, "org.edit")) {
-      const sk = [...offeneSchutzkonflikte(m).values()].sort((a, b) => (a.datum < b.datum ? -1 : 1));
+      const sk = [...schutzkonflikte.values()].sort((a, b) => (a.datum < b.datum ? -1 : 1));
       if (sk.length)
         l.unshift({ id: "schutzkonflikt", zahl: sk.length, einheit: sk.length === 1 ? "Einteilung" : "Einteilungen",
           titel: "Widersprechen einer Schutz- oder Einsatzregel",
@@ -15742,7 +15756,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
     }
     const rang = { danger: 0, warn: 1, accent: 2 };
     return l.sort((a, b) => rang[a.ton] - rang[b.ton]).slice(0, 3);
-  }, [m, p.id, sitz]);
+  }, [m, p.id, sitz, schutzkonflikte]);
 
   const rest = aufgaben.filter((a) => !oben.some((o) => o.id === a.art || o.id === a.ziel));
   const ton = (t) => t === "danger" ? C.danger : t === "warn" ? C.warn : C.accent;
@@ -17552,7 +17566,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
             <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
           </Zeile>
           <Zeile titel="Sicherung anlegen"
-            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
+            text="Legt eine Kopie des heutigen Standes an. Zurückspielen ist in der Oberfläche noch nicht möglich (in Vorbereitung).">
             <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
               Jetzt sichern</Btn>
           </Zeile>
