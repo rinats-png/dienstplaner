@@ -534,6 +534,42 @@ exec /usr/bin/df "$@"
     expect(aufrufe()).not.toContain("exec -i");
   });
 
+  it("WP-05b R3: Platz-Schwellen dezimal wie /gesund; ungültige Angabe bricht vor jedem Wechsel ab", () => {
+    writeFileSync(path.join(verz, ".env"), ENV_START + "CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT=0.5\nCENTRIC_GESUND_PLATZ_KRITISCH_MB=0.25\n");
+    expect(lauf([A]).code).toBe(0);
+    writeFileSync(path.join(verz, ".env"), ENV_START + "CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT=drei\n");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(4);
+    expect(r.alles).toMatch(/KRITISCH_PROZENT=drei .* keine Zahl/);
+    expect(aufrufe().split("\n").filter((z) => z.includes(" stop "))).toHaveLength(1);   // nur vom ersten Lauf
+  });
+
+  it.skipIf(FAKES_FEHLEN)("WP-05b R3: erst alte Sicherungen aufräumen (die neue bleibt), dann Platz prüfen", () => {
+    const sich = path.join(verz, "deploy-sicherungen");
+    for (let i = 1; i <= 6; i++) {
+      mkdirSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`), { recursive: true });
+      writeFileSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`, "FERTIG"), "");
+    }
+    writeFileSync(path.join(bin, "df"), `#!/usr/bin/env bash
+for a in "$@"; do letzt="$a"; done
+if [[ "$letzt" == */data ]]; then
+  echo 'Filesystem 1-blocks Used Available Capacity Mounted'
+  echo 'x 100000000000 99000000000 1000000000 99% /'
+  exit 0
+fi
+exec /usr/bin/df "$@"
+`);
+    chmodSync(path.join(bin, "df"), 0o755);
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(r.alles).toMatch(/kritisch wenig Platz/);
+    const rest = readdirSync(sich).filter((n) => n.startsWith("centric-sicherung-"));
+    expect(rest).toContain("centric-sicherung-20261103T000000Z");
+    expect(rest).toHaveLength(5);
+    expect(protokoll().indexOf("sicherung entfernt")).toBeLessThan(protokoll().indexOf("kritisch wenig Platz"));
+    expect(containerBild()).toBe(ID_B);
+  });
+
   it.skipIf(!FLOCK)("N1: eine zweite gleichzeitige Auslieferung bricht ab", async () => {
     const halter = spawn(BASH, ["-c", `exec 9>"${p(path.join(verz, ".deploy.lock"))}"; flock 9; echo bereit; sleep 30`]);
     await new Promise((fertig) => halter.stdout.once("data", fertig));
