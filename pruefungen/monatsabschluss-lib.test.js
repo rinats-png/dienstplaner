@@ -12,6 +12,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createHash } from "node:crypto";
 import { abschliessen, wiederoeffnen, abschlussWiderspruch, abschlussBeiWiederherstellung, abschlussStatus, istAbdruck,
   offenePunkte, abschlussSperre, monatAbgeschlossen, abschlussAusGespeichert, abgewiesenVermerken, letzteWiederoeffnung, sha256Hex } from "../server/lib/monatsabschluss.mjs";
+/* Neue Grenzen (Review M3) über den Namensraum: auf dem Stand davor rot statt Ladefehler. */
+import * as MAB from "../server/lib/monatsabschluss.mjs";
+import { vorschau, raeumen, berichtstext } from "../server/lib/aufbewahrung.mjs";
+import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import { korrekturAnhaengen } from "../server/lib/stempelintegritaet.mjs";
 import { auswertungHolen, auswertungenVergessen, BR_NEUBERECHNUNG_MS } from "../server/lib/br-auswertung.mjs";
 import { betriebSicht } from "../server/lib/sicht.mjs";
@@ -204,5 +208,121 @@ describe("Betriebsrat-Auswertung: Wiederöffnen und Korrektur nach der Frist ble
     expect(nachher.istStunden).toBe(25.5);
     expect(nachher.istKorrigiert).toBe(true);
     expect(vorher.istKorrigiert).toBeUndefined();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   Review WP-16, M3: Abgewiesene Stempel lassen sich nicht fluten
+   --------------------------------------------------------------------------- */
+describe("abgewiesene Stempel: Obergrenze je Person, Zusammenfassen, begrenzte Schreibvorgänge (M3)", () => {
+  const v = (pid, tag, art, n, extra = {}) => ({ personId: pid, datum: `2026-10-${String(tag).padStart(2, "0")}`, art, zeit: "06:00",
+    zeitAm: `2026-10-${String(tag).padStart(2, "0")}T05:00:00.000Z`, offline: true, ereignis: `${pid}-${art}-${tag}-${n}`,
+    am: "2026-11-05T09:00:00.000Z", ...extra });
+  it("eine Person flutet 25 Tage: 20 Einträge, 5 nur gezählt — der Eintrag einer anderen Person bleibt", () => {
+    let m = abgewiesenVermerken(geschlossen(), "2026-10", v("a2", 30, "ende", 1));
+    for (let t = 1; t <= 25; t++) m = abgewiesenVermerken(m, "2026-10", v("a1", t, "start", 1));
+    const e = m.monatsabschluss["2026-10"];
+    expect(e.abgewiesen.filter((x) => x.personId === "a1")).toHaveLength(MAB.ABGEWIESEN_JE_PERSON);
+    expect(e.abgewiesen.filter((x) => x.personId === "a2")).toHaveLength(1);
+    expect(e.abgewiesenGezaehlt).toEqual({ a1: 5 });
+    expect(istAbdruck(m, "2026-10")).toBe(e.abdruck);                                 // Ist unverändert
+  });
+  it("je Person, Tag und Art zusammengefasst (anzahl); an der Obergrenze kein Schreibvorgang mehr (dasselbe Objekt)", () => {
+    let m = geschlossen();
+    for (let n = 1; n <= 3; n++) m = abgewiesenVermerken(m, "2026-10", v("a1", 3, "start", n));
+    expect(m.monatsabschluss["2026-10"].abgewiesen).toEqual([expect.objectContaining({ datum: "2026-10-03", art: "start", anzahl: 3 })]);
+    for (let n = 4; n <= MAB.ABGEWIESEN_ANZAHL_MAX; n++) m = abgewiesenVermerken(m, "2026-10", v("a1", 3, "start", n));
+    expect(m.monatsabschluss["2026-10"].abgewiesen[0].anzahl).toBe(MAB.ABGEWIESEN_ANZAHL_MAX);
+    expect(abgewiesenVermerken(m, "2026-10", v("a1", 3, "start", 999))).toBe(m);
+    for (let t = 1; t <= 31; t++) m = abgewiesenVermerken(m, "2026-10", v("a1", t, "ende", 1));
+    let z = m;
+    for (let n = 0; n < MAB.ABGEWIESEN_GEZAEHLT_MAX + 5; n++) z = abgewiesenVermerken(z, "2026-10", v("a1", 4, "start", n));
+    expect(z.monatsabschluss["2026-10"].abgewiesenGezaehlt.a1).toBe(MAB.ABGEWIESEN_GEZAEHLT_MAX);
+    expect(abgewiesenVermerken(z, "2026-10", v("a1", 5, "start", 1))).toBe(z);
+  });
+  it("offline erst nach über 48 Stunden gesendet: gekennzeichnet (alt), unter derselben Obergrenze", () => {
+    const m = abgewiesenVermerken(geschlossen(), "2026-10", v("a1", 2, "start", 1));
+    expect(m.monatsabschluss["2026-10"].abgewiesen[0]).toMatchObject({ alt: true, offline: true });
+    const frisch = abgewiesenVermerken(geschlossen(), "2026-10", v("a1", 31, "ende", 1, { zeitAm: "2026-11-05T08:00:00.000Z" }));
+    expect(frisch.monatsabschluss["2026-10"].abgewiesen[0].alt).toBeUndefined();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   Review WP-16, M2: Löschfrist, Auskunft, Anonymisierung
+   --------------------------------------------------------------------------- */
+describe("abgewiesene Stempel und eingefrorenes Ist: Frist, Auskunft, Anonymisierung (M2)", () => {
+  const mitAbgewiesen = () => {
+    let m = geschlossen();
+    for (const [pid, tag] of [["a1", "2026-10-30"], ["a2", "2026-10-31"]])
+      m = abgewiesenVermerken(m, "2026-10", { personId: pid, datum: tag, art: "start", zeit: "06:00", zeitAm: `${tag}T05:00:00.000Z`,
+        offline: true, ereignis: `e-${pid}`, am: "2026-11-05T09:00:00.000Z" });
+    for (let t = 1; t <= MAB.ABGEWIESEN_JE_PERSON + 2; t++)
+      m = abgewiesenVermerken(m, "2026-10", { personId: "a2", datum: `2026-10-${String(t).padStart(2, "0")}`, art: "ende", zeit: "14:00",
+        zeitAm: "2026-10-01T12:00:00.000Z", offline: true, ereignis: `f-${t}`, am: "2026-11-05T09:00:00.000Z" });
+    return m;
+  };
+  it("Vorschau und Löschlauf: nach der Frist der Gründe gezählt und entfernt (samt Zähler), vorher nicht", () => {
+    const m = mitAbgewiesen();
+    expect(vorschau(m, "2026-12-15").abgewiesen).toBe(0);                              // Frist (3 Monate) noch nicht abgelaufen
+    const v = vorschau(m, "2027-02-15");
+    expect(v.abgewiesen).toBe(m.monatsabschluss["2026-10"].abgewiesen.length + 1);    // Einträge + Zähler von a2
+    expect(v.gesamt).toBeGreaterThanOrEqual(v.abgewiesen);
+    const { mandant, bericht } = raeumen(m, "2027-02-15");
+    expect(mandant.monatsabschluss["2026-10"].abgewiesen).toBeUndefined();
+    expect(mandant.monatsabschluss["2026-10"].abgewiesenGezaehlt).toBeUndefined();
+    expect(mandant.monatsabschluss["2026-10"]).toMatchObject({ abgeschlossen: true, abdruck: m.monatsabschluss["2026-10"].abdruck });
+    expect(berichtstext(bericht)).toMatch(/abgewiesene Stempel am Monatsabschluss entfernt/);
+  });
+  it("Löschlauf: das eingefrorene Ist geht mit der Plandatenfrist wie die Erfassung", () => {
+    const m = { ...geschlossen(), istEingefroren: { "a1|2026-10-28": { std: 7.5, da: { id: "F" } }, "a1|2024-05-02": { std: 8, da: { id: "F" } } } };
+    expect(vorschau(m, "2026-11-05").plandaten.istEingefroren).toBe(1);
+    const { mandant } = raeumen(m, "2026-11-05");
+    expect(Object.keys(mandant.istEingefroren)).toEqual(["a1|2026-10-28"]);
+  });
+  it("Anonymisierung oder Entfernen der Person (Speichern): ihre abgewiesenen Stempel und Zähler gehen mit, die anderer bleiben", () => {
+    const alt = mitAbgewiesen();
+    const anonym = abschlussAusGespeichert(alt, { ...alt, personen: [{ id: "a1" }, { id: "a2", anonym: true }] });
+    expect(anonym.monatsabschluss["2026-10"].abgewiesen.map((x) => x.personId)).toEqual(["a1"]);
+    expect(anonym.monatsabschluss["2026-10"].abgewiesenGezaehlt).toBeUndefined();
+    const entfernt = abschlussAusGespeichert(alt, { ...alt, personen: [{ id: "a2" }] });
+    expect(entfernt.monatsabschluss["2026-10"].abgewiesen.every((x) => x.personId === "a2")).toBe(true);
+    expect(abschlussAusGespeichert(alt, { ...alt, personen: alt.personen }).monatsabschluss).toBe(alt.monatsabschluss);
+  });
+  it("Löschlauf mit fälliger Anonymisierung: die abgewiesenen Stempel der Person gehen mit", () => {
+    const m = mitAbgewiesen();
+    m.personen = [{ id: "a1" }, { id: "a2", austritt: "2026-03-31" }];
+    const { mandant } = raeumen(m, "2026-11-05");
+    expect(mandant.personen.find((p) => p.id === "a2").anonym).toBe(true);
+    expect(mandant.monatsabschluss["2026-10"].abgewiesen.map((x) => x.personId)).toEqual(["a1"]);
+  });
+  it("Auskunft (Art. 15): eigene abgewiesene Stempel samt Zähler und das eigene eingefrorene Ist — nichts von anderen", () => {
+    const m = { ...mitAbgewiesen(), istEingefroren: { "a1|2026-10-28": { std: 7.5, da: { id: "F" } }, "a2|2026-10-28": { std: 8, da: { id: "F" } } } };
+    const a2 = auskunftBauen(m, { id: "a2" }, { raum: "r", erstellt: "2026-11-05T09:00:00.000Z", umfang: "selbst" });
+    expect(a2.abgewieseneStempel.filter((x) => x.datum).map((x) => x.datum)).toContain("2026-10-31");
+    expect(a2.abgewieseneStempel).toEqual(expect.arrayContaining([{ monat: "2026-10", nurGezaehlt: 3 }]));
+    expect(a2.istEingefroren).toEqual([{ datum: "2026-10-28", std: 8, da: { id: "F" } }]);
+    const a1 = auskunftBauen(m, { id: "a1" }, { raum: "r", erstellt: "2026-11-05T09:00:00.000Z", umfang: "selbst" });
+    expect(a1.abgewieseneStempel).toEqual([expect.objectContaining({ monat: "2026-10", datum: "2026-10-30", art: "start", anzahl: 1 })]);
+    expect(JSON.stringify(a1)).not.toMatch(/2026-10-31|e-a2/);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   Review WP-16 (niedrig): Nutzerführung, wenn ein Dienst vom Monatsletzten noch läuft
+   --------------------------------------------------------------------------- */
+describe("Abschluss mit laufendem Dienst vom Monatsletzten", () => {
+  it("die Meldung erklärt, dass das Ausstempeln zu diesem Monat gehört und abgewiesen würde", () => {
+    const m = basis();
+    m.einstempeln["a2|2026-10-31"] = { start: "22:00", startAm: "2026-10-31T21:00:00.000Z" };
+    const r = abschliessen(m, { monat: "2026-10" }, WER_L, JETZT, "ma-n", "2026-11-01");
+    expect(r).toMatchObject({ status: 409, code: "ABSCHLUSS_PRUEFFAELLE", offen: { offeneStempel: 1, nachtOffen: 1 } });
+    expect(r.grund).toMatch(/vom Monatsletzten noch nicht ausgestempelt.*abgewiesen/);
+    delete m.einstempeln["a2|2026-10-31"];
+    m.einstempeln["a2|2026-10-12"] = { start: "06:00", startAm: "x" };
+    const ohne = abschliessen(m, { monat: "2026-10" }, WER_L, JETZT, "ma-n", "2026-11-01");
+    expect(ohne).toMatchObject({ status: 409, offen: { offeneStempel: 1 } });
+    expect(ohne.offen.nachtOffen).toBeUndefined();
+    expect(ohne.grund).not.toMatch(/Monatsletzten/);
   });
 });

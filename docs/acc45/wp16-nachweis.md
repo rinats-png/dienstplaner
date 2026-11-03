@@ -31,9 +31,11 @@ Akzeptanz: Pausenerfassung, ArbZG-Mindestpause-Warnung; Abschluss sperrt Ist; Wi
 ## Monatsabschluss
 
 Ablage: `m.monatsabschluss["JJJJ-MM"] = { abgeschlossen, am, wer, abdruck?, verlauf: [...], abgewiesen? }` im Kern des
-Betriebs (`server/lib/monatsabschluss.mjs`). `abdruck` ist eine SHA-256-Prüfsumme der Ist-Daten des Monats (Stempel und
-Erfassung, Schlüssel geordnet) zum Abschluss. SHA-256 ist in reinem JS umgesetzt, weil die Datei über `sicht.mjs` auch ins
-Oberflächen-Bündel geht; gegen `node:crypto` geprüft.
+Betriebs (`server/lib/monatsabschluss.mjs`). `abdruck` ist eine SHA-256-Prüfsumme der Ist-Daten des Monats (Stempel,
+Erfassung und — seit der Review-Auflage H1 — das eingefrorene Ist, Schlüssel geordnet) zum Abschluss. Sie ist eine
+**Änderungsanzeige**, kein Manipulationsschutz: Wer direkt auf die Ablage schreibt, kann sie neu berechnen; sie zeigt beim
+Wiederöffnen (`abdruckGleich`), ob sich das Ist am Server vorbei oder durch den Löschlauf geändert hat. SHA-256 ist in reinem
+JS umgesetzt, weil die Datei über `sicht.mjs` auch ins Oberflächen-Bündel geht; gegen `node:crypto` geprüft.
 
 ### Abschließen und Wiederöffnen (`POST /api/monatsabschluss`)
 
@@ -161,6 +163,103 @@ Gezielt gegen die neuen Prüfdateien, je Mutante eine Ersetzung (Skript im Arbei
 | Abgewiesener Stempel nicht vermerkt | gefangen (3) |
 | Speichern: Abschluss aus der Übermittlung (Leitung/Planung/Kunde; Rückfüllung ohne abschlussAusGespeichert) | gefangen (10; von Hand, weil die Zeile zweimal vorkommt) |
 
+## Auflagen aus dem unabhängigen Review (Opus, Urteil „integrierbar mit Auflagen“)
+
+Je Auflage: Prüfung zuerst rot auf dem Stand davor, dann die Änderung, dann Mutanten. Keine bestehende Prüfung
+abgeschwächt, keine Funktion gekürzt.
+
+### M1 — instabile Prüfung (vor Merge)
+
+`monatsabschluss.test.js` prüfte die GET-Antwort der Beschäftigten mit `not.toMatch(/…|ma-1/)`. Die Korrektur am eigenen
+Stempel trägt legitim `nachWiederoeffnung: "ma-<Hex>"` — bei Hex-Beginn „1“ (etwa jeder 16. Lauf) rot. Jetzt
+`"ma-1"` mit Anführungszeichen (genau die Kennung des Oktober-Abschlusses). Rot bestätigt mit erzwungenem Präfix `ma-1`
+(Kennung im Server vorübergehend `ma-1<Hex>`), danach mit demselben erzwungenen Präfix grün — der schlechteste Fall ist
+damit abgedeckt, unabhängig vom Zufall. Wiederholungsnachweis: siehe „Läufe“ unten.
+
+### H1 — abgeschlossener Monat über den Plan änderbar (Blocker Produktion)
+
+Gewählt: die bevorzugte Lösung — **das Ist wird beim Abschluss eingefroren**; Plan-Korrekturen bleiben möglich.
+
+- `server/lib/isteinfrieren.mjs` (neu): `istEinfrieren(m, monat)` rechnet am gespeicherten, vollständigen Stand je Person und
+  Tag, was ins Ist eingeht — mit **derselben** Rechnung wie die Oberfläche: `istZeitFuer`/`ungeplanterDienst`
+  (dafür `src/istdaten.js` → `server/lib/istdaten.mjs`, `src/istdaten.js` reicht weiter wie `src/regelwerk.js`), die
+  Planrechnung wie `personTag` (Schichtfolge mit Teilzeit, Abweichung, **Posten** — `postenBesatzung` und `mindestFuer`
+  ebenfalls dorthin verschoben, die Oberfläche benutzt sie von dort; die Feiertage dafür nach `server/lib/feiertage.mjs`),
+  Abwesenheit. Eintrag je Tag: `{ da: Dienstart wie an dem Tag (ohne Besetzungsvorgaben), std, e?: erfasst, p?: zur
+  Prüfung }` oder `{ a: [Abwesenheitsarten], pl?: geplant, w: Wochenstunden }`; kein Eintrag = weder Dienst noch Abwesenheit.
+- Ablage: neues Monatsfeld `m.istEingefroren["personId|JJJJ-MM-TT"]`, je Monat in der Scherbe (`scherben.mjs`
+  `MONATSFELDER`; ein Betrieb ohne das Feld bekommt es beim Zusammensetzen nicht) — der Kern wächst nicht.
+- Teil der Ist-Felder des Abschlusses (`IST_FELDER`): in der **Prüfsumme**, über `PUT /api/bestand` nicht änderbar (403
+  `MONAT_ABGESCHLOSSEN` bei Änderung; mitgeschickt oder weggelassen immer der gespeicherte Stand,
+  `abschlussAusGespeichert`), **Wiederherstellen** behält Abschluss und Freeze von heute (nie den der Sicherung).
+- **Wiederöffnen verwirft den Freeze** und protokolliert im Verlauf `istNeu`: wie viele Personentage das neu gerechnete Ist
+  vom eingefrorenen abweicht (ohne Personen; Oberfläche: „Ist an N Personentagen seit dem Abschluss geändert“).
+- **Verbraucher** (alle Fundstellen von `istZeitFuer`/`istDauer`/`personTag` mit Stundenbezug, per grep): eine Stelle
+  `istTag(m, p, d)` in `src/App.jsx` — im abgeschlossenen Monat nur der Freeze. Darüber laufen `istStunden`
+  (Stundenkonto, Lohnausgabe, Zwölf-Monats-Verlauf, Abrechnungsdaten), `zuschlagStunden`/`zuschlagWert` (Zuschläge-CSV,
+  DATEV), `datevSaetze` (auch Bereitschafts- und Rufstunden), `ausgleichPruefen` (§ 3 ArbZG), die Prüfungsansicht
+  (Pause/Tagesgrenze), `UngeplantHinweis`. Die Selbstauskunft („Zeiten bestätigen“, `offeneErfassung`) bietet keine Tage
+  abgeschlossener Monate mehr an. **Betriebsrat-Auswertung** (WP-27, Server): das Ist abgeschlossener Monate aus dem Freeze
+  (bestätigt erfasste Tage, Stunden aus `istZeitFuer`). Rein planbezogene Rechnungen (Besetzung, Ruhezeit nach Plan,
+  Nachtarbeitnehmer-Zählung, Vollexport des Dienstplans) bleiben beim Plan.
+- **Sicht** (`sicht.mjs`): wie die Erfassung — Beschäftigte nur eigene Tage, Betriebsrat nichts, Schichtverantwortung eigene
+  und Bereich am Tag (Abwesenheitsart im Bereich wie bei den Abwesenheiten: sensible Arten als „abwesend“). Rollen ohne
+  Zugang rechnen wie bisher „nicht verfügbar“ (`istVerfuegbar` vor dem Freeze).
+- Löschfrist: wie die Erfassung (Plandatenfrist, `aufbewahrung.mjs` `PLAN_FELDER`); in der Auskunft (Art. 15).
+
+Prüfungen (`pruefungen/monatsabschluss-ist.test.js`, neu, im Gate `pruefung:zeiterfassung`; gegen die echte
+Serverfunktion, gerechnet mit den Funktionen der Oberfläche auf dem ausgelieferten Stand): Sonden P1/P2 als Prüfung
+(F → N durch die Planung 200, Pause N → 0 durch die Leitung 200, Urlaub im Oktober 200 — Konto, Ist, Zuschläge, DATEV,
+Ausgleich bleiben exakt wie zum Abschluss, 29./30.10. je 7,5 h; Gegenprobe ohne Freeze 8,0 h); eigene Sicht der
+Beschäftigten; Betriebsrat ohne Freeze; Freeze über PUT nicht änderbar; Wiederöffnen (`abdruckGleich` true, `istNeu` 4,
+danach neues Ist, neuer Abschluss mit neuer Prüfsumme); Prüfsumme deckt den Freeze (am Server vorbei geändert →
+`abdruckGleich` false); Wiederherstellen (Sicherung mit altem Freeze → Freeze von heute); Betriebsrat-Auswertung (Pause
+der Dienstart geändert: abgeschlossen gleich, wiedergeöffnet anders); Planrechnung Server = `personTag` für alle
+Personen und Tage der drei Demobetriebe (mit Posten) und eingefroren dasselbe Ist/Zuschläge/DATEV wie offen gerechnet.
+
+### M2 — abgewiesene Stempel: Löschfrist, Auskunft, Personenlöschung
+
+- Frist der Gründe (`gruendeMonate`): `aufbewahrung.mjs` `vorschau` zählt (`abgewiesen`, in `gesamt` und im
+  Berichtstext), `raeumen` entfernt Einträge vor dem Stichtag und die Zähler abgelaufener Monate — im serverseitigen
+  Datenschutzlauf (Modus aus/vorschau/an wie bisher). Hinweis: Der Löschlauf aus der Oberfläche speichert über PUT; dort
+  gilt der gespeicherte Abschlussstand, die abgewiesenen Stempel räumt dann der nächste Serverlauf.
+- Auskunft (`auskunft.mjs`): `abgewieseneStempel` (Monat, Tag, Art, Zeit, offline, Eingang, Anzahl; nur Gezähltes als
+  `nurGezaehlt`) und `istEingefroren` der Person — nichts von anderen.
+- Anonymisierung oder Entfernen einer Person: beim Speichern (`abschlussAusGespeichert`) und im Löschlauf (fällige
+  Anonymisierung) gehen ihre abgewiesenen Stempel und Zähler mit (`abschlussPersonenRaeumen`); die anderer bleiben.
+
+### M3 — Fluten der abgewiesenen Stempel
+
+- Je Person, Tag und Art **ein** Eintrag (`anzahl` zählt hoch, höchstens 10), je Person höchstens 20 Einträge, darüber nur
+  ein Zähler je Person (`abgewiesenGezaehlt`, höchstens 99). An den Grenzen kein Schreibvorgang mehr (dasselbe Objekt
+  zurück). Je Person und Monat also höchstens rund 300 Schreibvorgänge (dazu die Bremse je Person); niemand verdrängt die
+  Einträge anderer (die Gesamtgrenze 200 wirkt erst bei mehr als zehn fluteden Personen).
+- **Abweichung vom Vorschlag „> 48 h nicht vermerken oder nur zählen“, begründet:** Ein Offline-Stempel, der Tage später
+  ankommt, ist genau der Fall, für den der Vermerk existiert (Gerät offline, Monat inzwischen abgeschlossen); die Leitung
+  braucht Person, Tag und Zeit, um über das Wiederöffnen zu entscheiden. Bestehende Prüfungen halten das fest (Puffer
+  vom 30.10., gesendet am 05.11.). Solche Einträge sind jetzt gekennzeichnet (`alt`, Oberfläche: „erst nach über 48 Stunden
+  gesendet“) und zählen unter dieselbe Obergrenze — das Fluten ist damit begrenzt, ohne echte Fälle zu verlieren.
+
+### M4 — Testlücken (Verhalten stimmte)
+
+Drei Prüfungen gegen die überlebenden Mutanten: `abdruckGleich` false nach Änderung am Ist (Erfassung gelöscht, Stempel
+geändert); KONFLIKT am alten Vorgang (B6.3): im abgeschlossenen Monat unberührt, im offenen gesetzt (Gegenprobe);
+Selbstauskunft mit Pause gleich und länger als die Anwesenheit (120/150 min bei 2 h) → 422, 119 min → 200.
+
+### Niedrig
+
+- Prüfsumme heißt im Nachweis und im Quelltext **Änderungsanzeige** (kein Manipulationsschutz bei direktem Ablagezugriff).
+- `speicher.stempeln`: eine Pause, die keine Zahl ist, wird nicht gesendet (vorher `NaN` → im JSON `null`); geprüft in
+  `stempel-429-client.test.js`.
+- Abschluss mit laufendem Dienst vom Monatsletzten: Die Meldung (409 `ABSCHLUSS_PRUEFFAELLE`) erklärt, dass das Ausstempeln
+  noch zu diesem Monat gehört und nach dem Abschluss abgewiesen würde (`offen.nachtOffen`).
+
+### Angepasste bestehende Prüfungen
+
+- `monatsabschluss.test.js` (M1): Muster `"ma-1"` statt `ma-1` — schärfer, nicht schwächer (trifft die Kennung genau).
+- Keine weitere bestehende Prüfung geändert. Die Quelltextprüfung in `ungeplante-dienste.test.js` (Zeile mit
+  `ungeplantAm`) gilt unverändert — die Zeile steht jetzt in `istTag`, der einen Stelle für alle Ist-Rechnungen.
+
 ## Offene Entscheidungen
 
 - **Wer darf abschließen?** Umgesetzt: Leitung, Planung, Kundenrolle (wer Stempel korrigiert, schließt ab). Alternative: nur
@@ -168,8 +267,15 @@ Gezielt gegen die neuen Prüfdateien, je Mutante eine Ersetzung (Skript im Arbei
 - **Wiederöffnungsfrist:** keine Frist umgesetzt — die Leitung kann jeden abgeschlossenen Monat wiederöffnen (mit Grund,
   protokolliert, Prüfsumme). Vorschlag: nach Ablauf des Lohnlaufs (z. B. 3 Monate) nur mit Zusatzbestätigung oder gar nicht.
 - **Was sperrt der Abschluss außerdem?** Umgesetzt: Ist (Stempel, Erfassung, Korrekturen, Anträge, Selbstauskunft).
-  Abwesenheiten, Plan (`abweichungen`) und Konten sind nicht gesperrt; sie wirken über das Stundenkonto auf abgeschlossene
-  Monate. Entscheidung: auch Abwesenheiten eines abgeschlossenen Monats sperren?
+  Abwesenheiten, Plan (`abweichungen`) und Dienstarten bleiben änderbar — seit der Auflage H1 wirken sie aber **nicht mehr**
+  auf das Ist eines abgeschlossenen Monats (eingefrorenes Ist, siehe unten). Weiter offen (Alternative aus dem Review, nicht
+  umgesetzt): Plan, Abwesenheiten und Dienstart-Zeiten eines abgeschlossenen Monats zusätzlich sperren? Dagegen spricht:
+  Dienstarten gelten für alle Monate, Plan-Korrekturen (Dokumentation) sollen möglich bleiben.
+- **Soll (Vertragsstunden) im abgeschlossenen Monat:** Eingefroren ist das Ist samt Gutschrift bezahlter Abwesenheit (mit
+  den Wochenstunden zum Abschluss). Das Soll (`sollStunden`: Wochenstunden, Feiertage, Beschäftigungszeitraum) und
+  Betriebseinstellungen (Nachtfenster, Zuschlagssätze, Lohnarten) werden weiter aktuell gerechnet. Eine rückwirkende
+  Änderung der Wochenstunden ändert also den Saldo eines abgeschlossenen Monats. Entscheidung: Soll und Einstellungen
+  ebenfalls einfrieren?
 - **Prüffälle beim Abschluss:** Offene Korrekturanträge sperren immer; unvollständige Stempel und Ist-Zeiten zur Prüfung nur
   mit ausdrücklichem „trotzdem“. Soll der Abschluss mit Prüffällen ganz gesperrt sein?
 - **Pausenerfassung als Minuten beim Ausstempeln**, nicht als eigene Stempel „Pause Beginn/Ende“. Eigene Pausenstempel
@@ -177,8 +283,9 @@ Gezielt gegen die neuen Prüfdateien, je Mutante eine Ersetzung (Skript im Arbei
   wären ein Folgepaket (Puffer, Idempotenz je Ereignis, Oberfläche).
 - **Kennzeichen nur bei angegebener Pause:** Ohne Angabe gibt es den Hinweis nur in der Antwort; die Prüfungsansicht der
   Oberfläche zeigt „Ruhepause zu kurz“ ohnehin.
-- **Abgewiesene Stempel am Abschluss** tragen Person, Tag und Zeit; sie unterliegen keiner eigenen Löschfrist (höchstens 200
-  je Monat). Vorschlag: mit der Frist der Gründe (`gruendeMonate`) im Datenschutzlauf räumen.
+- **Abgewiesene Stempel am Abschluss:** erledigt mit der Auflage M2 (Frist der Gründe, Auskunft, Anonymisierung) und M3
+  (Obergrenze je Person). Offen nur: Offline-Zeiten, die älter als 48 h ankommen, stehen gekennzeichnet in der Liste statt
+  nur gezählt (Begründung unten) — so gewollt?
 - **Veraltete Kopien nach einem Abschluss:** Der Abschluss ändert den Kern des Betriebs. Eine Oberfläche, die vorher geladen
   hat, bekommt beim nächsten Speichern den bekannten Kern-Konflikt (409, „Stammdaten geändert“) und lädt neu — wie bei jeder
   anderen Kern-Änderung durch andere. Der Abschluss selbst wird dabei nie überschrieben (getestet).
@@ -191,3 +298,11 @@ Gezielt gegen die neuen Prüfdateien, je Mutante eine Ersetzung (Skript im Arbei
 StempelBefunde, Aktionen, Export-Zeile), `src/speicher.js`, `src/stempelpuffer.js`, `RECHTEMATRIX.md` (zwei Zeilen
 Abschnitt 1, Fußnote ²⁹, eine Zeile Abschnitt 2), `package.json` (`pruefung:zeiterfassung`). `rechte.mjs`/`sicht.mjs` sind
 Konfliktzone (bis WP-10 frei, dann Agent C) — die Änderungen sind klein und additiv.
+
+Mit den Review-Auflagen dazu: `src/istdaten.js` → `server/lib/istdaten.mjs` (Weiterleitung bleibt), neu
+`server/lib/isteinfrieren.mjs` (mit `mindestFuer` und `postenBesatzung` aus `src/App.jsx`) und `server/lib/feiertage.mjs`
+(Feiertage aus `src/App.jsx`), `server/lib/scherben.mjs` (`MONATSFELDER` + `istEingefroren`), `server/lib/aufbewahrung.mjs`,
+`server/lib/auskunft.mjs`, `server/lib/br-auswertung.mjs`, `server/lib/sicht.mjs` (eine Katalogzeile, eine SV-Regel),
+`src/App.jsx` (`istTag` und seine Verbraucher, Monatsabschluss-Anzeige, Export-Zeile: `demobestand`, `sollStunden`,
+`ausgleichPruefen`, `offeneErfassung` für die Prüfungen), `src/speicher.js` (Pause), `package.json` (`pruefung:zeiterfassung`
++ `monatsabschluss-ist.test.js`).

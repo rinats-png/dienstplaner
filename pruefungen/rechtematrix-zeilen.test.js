@@ -137,6 +137,8 @@ const bestand = () => ({
     /* Einsatzorte (WP-20): Koordinate und Umkreis gehen nur an Planung und Leitung. */
     einsatzorte: [{ id: "es1", name: M("EINSATZORT-NAME"), lat: M("EINSATZORT-LAT"), lon: M("EINSATZORT-LON"), radius: M("EINSATZORT-UMKREIS") }],
     einsatzorteGeaendertAm: M("EINSATZORTE-AM"), einsatzorteGeaendertVon: M("EINSATZORTE-VON"),
+    /* Eingefrorenes Ist (WP-16, Review H1): wie die Erfassung. */
+    istEingefroren: { [`b1|${tag(-2)}`]: { std: M("FREEZE-STD-B1"), a: [M("FREEZE-ART-B1")] } },
     erfassung: {
       [`b1|${tag(-2)}`]: { start: M("ERF-ZEIT-B1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-B1") },
       [`a1|${tag(-2)}`]: { start: M("ERF-ZEIT-A1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-A1") },
@@ -335,6 +337,8 @@ const ZEILEN = {
       && s.betrieb.monatsabschluss["2026-09"].abgeschlossen === true), { titel: "monatsabschluss 2026-09 abgeschlossen" })] },
   "Monatsabschluss: Wer, Wann, Grund, Verlauf, Prüfsumme, abgewiesene Stempel": {
     sonden: [mk("ABSCHLUSS-AM"), mk("ABSCHLUSS-WER"), mk("ABSCHLUSS-ABDRUCK"), mk("ABSCHLUSS-GRUND"), mk("ABSCHLUSS-ABGEWIESEN")] },
+  "Monatsabschluss: eingefrorenes Ist fremder Personen (`istEingefroren`, je Tag Dienst, Dauer, Abwesenheitsart)": {
+    sonden: [mk("FREEZE-STD-B1"), mk("FREEZE-ART-B1")] },
   "Abwesenheiten mit Anmerkung": {
     sonden: [mk("ABW-ID-B1"), mk("ABW-NOTIZ-B1"), mk("ABW-URLAUB-ID-B1"), mk("ABW-URLAUB-NOTIZ-B1")],
     /* Auflage B2: Krankheit und jede andere Kategorie werden zu „abwesend";

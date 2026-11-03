@@ -38,6 +38,7 @@
 import { addDays, dow, dauer, fenster } from "./regelwerk.mjs";
 import { dienstAm, einheitAm, imDienst, nachtAnteil, nachtschwelle } from "./fachpruefung.mjs";
 import { RUECKBLICK_TAGE } from "./zeiterfassung.mjs";
+import { eingefrorenerTag } from "./isteinfrieren.mjs";
 
 /** Mindestgruppe für Zählwerte an den Betriebsrat (WP-10 M1-Rest, WP-27). */
 export const BR_MINDESTGRUPPE = 3;
@@ -94,13 +95,24 @@ export function* auswertungSchritte(m, heute) {
     let vorher = null;                                                       // { d, ende } des letzten Dienstes
     for (let d = von; d <= bis; d = addDays(d, 1)) {
       if ((++n & 15) === 0 && performance.now() - t > BR_HAEPPCHEN_MS) { yield; t = performance.now(); }
+      /* Abgeschlossener Monat (WP-16, Review H1): Das Ist kommt nur aus dem eingefrorenen Stand —
+         eine spätere Plan-, Dienstart- oder Abwesenheitsänderung ändert es nicht. Bestätigt erfasste
+         Tage, wie im offenen Monat; die Stunden aus derselben Rechnung wie Konto und Lohn (istZeitFuer). */
+      const fz = eingefrorenerTag(m, p, d);
+      if (fz && fz.da && fz.e && d < heute) {
+        const eidF = String(einheitAm(p, d) || "ohne");
+        for (const z of [zeile(monatVon(d), eidF), zeile(monatVon(d), "*")]) {
+          z.istSet.add(String(p.id));
+          if (istFrei(monatVon(d))) { z.istStunden += Math.max(0, Number(fz.std) || 0); z.istErfasst++; }
+        }
+      }
       if (!imDienst(p, d)) { vorher = null; continue; }
       const id = dienstAm(m, p, d);
       const x = id ? da.get(String(id)) : null;
       if (!x || !x.start || !x.ende) { if (!id) vorher = null; continue; }
       const eid = einheitAm(p, d) || "ohne";
       const [start, ende] = fenster(d, x);
-      const ist = erfassung[`${p.id}|${d}`];
+      const ist = fz === undefined ? erfassung[`${p.id}|${d}`] : null;     // abgeschlossen: oben aus dem eingefrorenen Ist
       const istZaehlt = d < heute && ist && ist.bestaetigt && istFrei(monatVon(d));
       const istTeilnahme = d < heute && ist && ist.bestaetigt;              // trägt zum Ist bei, auch wenn der Monat noch nicht frei ist
       for (const z of [zeile(monatVon(d), String(eid)), zeile(monatVon(d), "*")]) {

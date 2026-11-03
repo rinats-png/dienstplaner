@@ -702,8 +702,10 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord, pause = null) {
+  /* Keine Zahl (etwa „abc" im Pausenfeld): keine Angabe senden — nicht NaN, das als null ankäme (Review WP-16). */
+  const pauseZahl = pause !== null && pause !== undefined && pause !== "" ? Number(pause) : NaN;
   const body = JSON.stringify({ datum, art,
-    ...(art === "ende" && pause !== null && pause !== undefined && pause !== "" ? { pause: Number(pause) } : {}),
+    ...(art === "ende" && Number.isFinite(pauseZahl) ? { pause: pauseZahl } : {}),
     lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
     accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
   /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.

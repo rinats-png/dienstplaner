@@ -112,3 +112,19 @@ describe("speicher.stempeln bei 429", () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 });
+
+/* Review WP-16 (niedrig): Eine Pause, die keine Zahl ist, wird nicht als NaN (im JSON: null) gesendet. */
+describe("speicher.stempeln: Pause beim Ausstempeln", () => {
+  const rumpf = async (art, pause) => {
+    const f = vi.fn(async () => antwort(200, { ok: true, zeit: "14:00", ort: "ok", eintrag: { ende: "14:00" } }));
+    vi.stubGlobal("fetch", f);
+    await SP.stempeln("2026-11-03", art, null, pause);
+    return JSON.parse(f.mock.calls[0][1].body);
+  };
+  it("keine Zahl → keine Angabe; Zahl → gesendet; beim Beginn nie", async () => {
+    for (const x of ["abc", "", null, undefined, "3x"]) expect("pause" in (await rumpf("ende", x)), String(x)).toBe(false);
+    expect((await rumpf("ende", "30")).pause).toBe(30);
+    expect((await rumpf("ende", 0)).pause).toBe(0);
+    expect("pause" in (await rumpf("start", 30))).toBe(false);
+  });
+});

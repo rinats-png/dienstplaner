@@ -231,6 +231,8 @@ import {
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
 import { monatAbgeschlossen, monatText } from "../server/lib/monatsabschluss.mjs";
+import { mindestFuer, postenBesatzung as postenBesatzungRechnen, eingefrorenerTag, eingefrorenerDienst } from "../server/lib/isteinfrieren.mjs";
+import { feiertage, feiertag } from "../server/lib/feiertage.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
@@ -655,35 +657,8 @@ const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 const LAENDER = [["BW","Baden-Württemberg"],["BY","Bayern"],["BE","Berlin"],["BB","Brandenburg"],["HB","Bremen"],
   ["HH","Hamburg"],["HE","Hessen"],["MV","Mecklenburg-Vorpommern"],["NI","Niedersachsen"],["NW","Nordrhein-Westfalen"],
   ["RP","Rheinland-Pfalz"],["SL","Saarland"],["SN","Sachsen"],["ST","Sachsen-Anhalt"],["SH","Schleswig-Holstein"],["TH","Thüringen"]];
-function ostern(y) {
-  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
-  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1;
-  return iso(new Date(y, mo - 1, da));
-}
-function bubettag(y) { let d = `${y}-11-22`; while (dow(d) !== 2) d = addDays(d, -1); return d; }
-const fCache = {};
-function feiertage(y, land) {
-  const k = `${y}|${land}`;
-  if (fCache[k]) return fCache[k];
-  const e = ostern(y);
-  const h = { [`${y}-01-01`]: "Neujahr", [addDays(e, -2)]: "Karfreitag", [addDays(e, 1)]: "Ostermontag",
-    [`${y}-05-01`]: "Tag der Arbeit", [addDays(e, 39)]: "Christi Himmelfahrt", [addDays(e, 50)]: "Pfingstmontag",
-    [`${y}-10-03`]: "Tag der Deutschen Einheit", [`${y}-12-25`]: "1. Weihnachtstag", [`${y}-12-26`]: "2. Weihnachtstag" };
-  const add = (c, d, n) => { if (c) h[d] = n; };
-  add(["BW","BY","ST"].includes(land), `${y}-01-06`, "Heilige Drei Könige");
-  add(["BE","MV"].includes(land), `${y}-03-08`, "Internationaler Frauentag");
-  add(["BW","BY","HE","NW","RP","SL"].includes(land), addDays(e, 60), "Fronleichnam");
-  add(land === "SL", `${y}-08-15`, "Mariä Himmelfahrt");
-  add(land === "TH", `${y}-09-20`, "Weltkindertag");
-  add(["BB","HB","HH","MV","NI","SN","ST","SH","TH"].includes(land), `${y}-10-31`, "Reformationstag");
-  add(["BW","BY","NW","RP","SL"].includes(land), `${y}-11-01`, "Allerheiligen");
-  add(land === "SN", bubettag(y), "Buß- und Bettag");
-  fCache[k] = h; return h;
-}
-const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
+/* ostern, feiertage und feiertag: server/lib/feiertage.mjs (WP-16, Review H1) — der Server braucht sie für die
+   Postenbesetzung beim Einfrieren des Ist. */
 
 /* ------------------------------ Zeitrechnung ------------------------------ */
 /* Das Nachtfenster ist nicht überall dasselbe.
@@ -1470,42 +1445,10 @@ function abwesenheitAm(m, pid, d) {
 /* versatzTageVon, zyklusLaenge und einheitDienst (Schichtfolge einer Einheit)
    stehen seit WP-22 in server/lib/fachpruefung.mjs — der Server rechnet
    damit dieselbe Folge. Ein Betrieb ohne zyklus.tage liefert dort null. */
-/** C5: Ein Feiertag hebt die Vorgabe an, senkt sie nie. */
-function mindestFuer(m, da, d) {
-  const w = dow(d);
-  const wt = w === 6 ? da.mindest.so : w === 5 ? da.mindest.sa : w === 4 ? da.mindest.fr : da.mindest.mo_do;
-  return Math.max(wt, feiertag(d, m.bundesland) ? da.mindest.so : 0);
-}
-/**
- * Postenbesetzung: manuelle Zuweisungen zählen an, der Pool bleibt stabil.
- * Ungeeignete werden während der Iteration übersprungen, nicht vorher entfernt —
- * dadurch verschiebt ein einzelner Ausfall die Besatzung nur um eine Person.
- */
-function postenBesatzung(m, eid, d, pid) {
-  const c = cache(m), k = `${eid}|${d}|${pid}`;
-  if (c.posten.has(k)) return c.posten.get(k);
-  const posten = m.dienstarten.find((x) => x.id === pid);
-  const soll = posten ? mindestFuer(m, posten, d) : 0;
-  const manuell = m.personen.filter((p) => imDienst(p, d) && m.abweichungen[`${p.id}|${d}`] === pid).map((p) => p.id);
-  const rest = Math.max(0, soll - manuell.length);
-  const out = new Set(manuell);
-  if (rest === 0) { c.posten.set(k, out); return out; }
-  const pool = m.personen.filter((p) => imDienst(p, d) && einheitAm(p, d) === eid
-      && p.imSchichtdienst !== false && p.funktion !== "Schichtleitung")
-    .sort((a, b) => (a.id < b.id ? -1 : 1));
-  if (!pool.length) { c.posten.set(k, out); return out; }
-  const start = Math.abs(between(m.anker, d)) % pool.length;
-  let n = 0;
-  for (let i = 0; i < pool.length && n < rest; i++) {
-    const p = pool[(start + i) % pool.length];
-    if (abwesenheitAm(m, p.id, d)) continue;
-    if (m.abweichungen[`${p.id}|${d}`] !== undefined) continue;
-    // Teilzeitkräfte, die an diesem Tag nicht arbeiten, können den Posten nicht besetzen
-    if (p.springer || !teilzeitDienst(m, p, d, einheitDienst(m, eid, d))) continue;
-    out.add(p.id); n++;
-  }
-  c.posten.set(k, out); return out;
-}
+/* mindestFuer (C5: ein Feiertag hebt die Vorgabe an, senkt sie nie) und die Postenbesetzung stehen seit
+   WP-16 (Review H1) in server/lib/isteinfrieren.mjs: Der Server friert beim Monatsabschluss das Ist mit
+   derselben Planrechnung ein. Hier nur der Zwischenspeicher je Bestand. */
+const postenBesatzung = (m, eid, d, pid) => postenBesatzungRechnen(m, eid, d, pid, cache(m).posten);
 function personTag(m, p, d) {
   if (!imDienst(p, d)) return { dienstId: null, plan: null, abweichung: null, abwesenheit: null, quelle: "extern" };
   /* Entwurf (WP-23): Der Server lässt die Einteilungen nicht freigegebener Monate nach heute für
@@ -1560,24 +1503,25 @@ function istStunden(m, p, ym) {
      Ist-Stunden — auch nicht aus dem Plan. */
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
-    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
+    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1);
     let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0, ungeplantTage = 0;
     for (let i = 1; i <= n; i++) {
-      const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
+      /* istTag: im abgeschlossenen Monat nur das eingefrorene Ist (WP-16, Review H1). */
+      const d = `${ym}-${pad(i)}`; const t = istTag(m, p, d);
       if (t.abwesenheit) {
         /* Ungeklärt ist nicht unbezahlt: nichts gutschreiben, aber zählen, damit
            die Prüfansicht sagen kann, dass das Konto dort unvollständig ist. */
         const es = entgeltStatus(abwArt(t.abwesenheit.art));
-        if (es === "bezahlt" && t.plan) gg += proTag;
+        if (es === "bezahlt" && t.plan) gg += t.wochenstunden / 5;
         else if (es === "ungeklaert" && t.plan) ungeklaert++;
         continue;
       }
       /* Ohne geplanten Dienst zählt nur ein gestempelter und von der Leitung
          bestätigter ungeplanter Dienst (WP-13) — mit seiner Ist-Dauer. */
-      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+      const da = t.da;
       if (!da) continue;
       if (da.ungeplant) ungeplantTage++;
-      const idn = istDauer(m, p, d, da);
+      const idn = t.idn;
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
       /* Ist-Zeit zur Prüfung (WP-17, W1): vorläufig die Planzeit — gezählt,
          damit Konto und Lohnausgabe es sagen können, statt still zu rechnen. */
@@ -1608,11 +1552,9 @@ function ausgleichPruefen(m, p, bis) {
   return memo(m, `ausgl|${p.id}|${bis}`, () => {
     const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
     const stundenAmTag = (d) => {
-      const t = personTag(m, p, d);
-      if (t.abwesenheit) return 0;
-      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
-      if (!da) return 0;
-      return istDauer(m, p, d, da).std;
+      const t = istTag(m, p, d);                       // abgeschlossener Monat: eingefroren (WP-16, H1)
+      if (t.abwesenheit || !t.da) return 0;
+      return t.idn.std;
     };
     return ausgleichszeitraum(stundenAmTag, bis, { wochen, grenze: DURCHSCHNITT_TAG });
   });
@@ -1834,9 +1776,16 @@ function pruefen(m, von, bis) {
          Importe. Ein Dienst über zehn Stunden und ein Dienst ohne
          ausreichende Pause liefen deshalb ohne Befund durch. */
       for (let d = von; d <= bis; d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (t.abwesenheit || !t.dienstId) continue;
-        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        /* Abgeschlossener Monat (WP-16, Review H1): der eingefrorene Dienst und seine Ist-Dauer. Geprüft
+           werden wie bisher nur geplante Dienste, kein ungeplanter. */
+        const tz = eingefrorenerTag(m, p, d) !== undefined ? istTag(m, p, d) : null;
+        let da;
+        if (tz) da = tz.da && !tz.da.ungeplant ? tz.da : null;
+        else {
+          const t = personTag(m, p, d);
+          if (t.abwesenheit || !t.dienstId) continue;
+          da = m.dienstarten.find((x) => x.id === t.dienstId);
+        }
         if (!da || da.form === "ruf") continue;
 
         /* Gegen die tatsächlich erfassten Zeiten, wo sie bestätigt sind —
@@ -1863,7 +1812,7 @@ function pruefen(m, von, bis) {
             text: `${da.name}: ${ist.pause || 0} min eingetragen, nötig sind ${noetig} min bei ${n1(anwesend)} h Anwesenheit` });
         }
 
-        const std = istDauer(m, p, d, da).std;
+        const std = tz ? tz.idn.std : istDauer(m, p, d, da).std;
         /* Lange Dienste (Nutzerentscheidung, WP-22): automatisch erlaubt — nur
            ein Hinweis. Ob eine Regelung nach § 7 ArbZG (Tarifvertrag,
            Betriebsvereinbarung) die Verlängerung trägt, verantwortet der Betrieb. */
@@ -2536,9 +2485,40 @@ const istDauer = (m, p, d, da) => istZeitFuer(m, p, d, da);
    die Person im Dienst und nichts geplant oder abwesend ist. Der Aufrufer hat
    den Plan schon befragt (personTag.dienstId leer). */
 const ungeplantAm = (m, p, d) => (imDienst(p, d) && !abwesenheitAm(m, p.id, d) ? ungeplanterDienst(m, p, d) : null);
+/**
+ * Der Tag einer Person, wie er ins Ist eingeht — die eine Stelle für Stundenkonto, Lohnausgabe/DATEV,
+ * Zuschläge, Ausgleichszeitraum und Prüfungsansicht:
+ *   abwesenheit  die Abwesenheit des Tages (nur `art`) oder null
+ *   plan         ob nach Schichtfolge ein Dienst geplant war (Gutschrift bezahlter Abwesenheit)
+ *   da           die Dienstart, die zählt (auch ein bestätigter ungeplanter Dienst), sonst null
+ *   idn          istZeitFuer für diesen Dienst, sonst null
+ *   wochenstunden  für die Gutschrift (im abgeschlossenen Monat die zum Abschluss)
+ * Abgeschlossener Monat (WP-16, Review H1): NUR das eingefrorene Ist (server/lib/isteinfrieren.mjs) —
+ * eine spätere Änderung an Plan, Dienstart oder Abwesenheit ändert es nicht. Nicht zugängliche Ist-Daten
+ * (Rollenschutz): wie bisher, also „nicht verfügbar", nie die Planzeit.
+ */
+function istTag(m, p, d) {
+  const fz = eingefrorenerTag(m, p, d);
+  if (fz !== undefined) {
+    if (!fz) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true };
+    if (Array.isArray(fz.a) && fz.a.length) {
+      const art = fz.a.reduce((best, x) => (best === null || abwArt(x).rang > abwArt(best).rang ? x : best), null);
+      return { abwesenheit: { art }, plan: fz.pl ? true : null, da: null, idn: null,
+        wochenstunden: Number.isFinite(Number(fz.w)) ? Number(fz.w) : p.wochenstunden, eingefroren: true };
+    }
+    const da = eingefrorenerDienst(fz);
+    return { abwesenheit: null, plan: null, da, eingefroren: true, wochenstunden: p.wochenstunden,
+      idn: da ? { std: Number(fz.std), erfasst: fz.e === 1, abweichung: 0, ...(fz.p === 1 ? { zurPruefung: true } : {}) } : null };
+  }
+  const t = personTag(m, p, d);
+  const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+  return { abwesenheit: t.abwesenheit, plan: t.plan, da: da || null, idn: da ? istDauer(m, p, d, da) : null, wochenstunden: p.wochenstunden };
+}
 const offeneErfassung = (m, p, bis) => {
   const out = [];
   for (let d = addDays(bis, -13); d <= bis; d = addDays(d, 1)) {
+    /* Abgeschlossener Monat (WP-16): keine Selbstauskunft mehr — der Server nimmt sie nicht an. */
+    if (monatAbgeschlossen(m, d)) continue;
     const t = personTag(m, p, d);
     if (!t.dienstId) continue;
     if (m.erfassung && m.erfassung[`${p.id}|${d}`]) continue;
@@ -2968,10 +2948,11 @@ function zuschlagStunden(m, p, ym) {
     const r = { nacht: 0, sonntag: 0, feiertag: 0, samstag: 0, gesamt: 0 };
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`;
-      const t = personTag(m, p, d);
-      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+      /* Abgeschlossener Monat: der eingefrorene Dienst und seine Ist-Dauer (WP-16, Review H1). */
+      const t = istTag(m, p, d);
+      const da = t.da;
       if (!da) continue;
-      const gearbeitet = istDauer(m, p, d, da).std;
+      const gearbeitet = t.idn.std;
       r.gesamt += gearbeitet;
       r.nacht += nachtAnteilAm(d, da, m.einstellungen);
       for (const teil of tagesanteile(d, da)) {
@@ -4592,9 +4573,8 @@ function datevSaetze(m, ym) {
     const [y, mo] = ym.split("-").map(Number);
     for (let i = 1; i <= dim_(y, mo - 1); i++) {
       const d = `${ym}-${pad(i)}`;
-      const t = personTag(m, p, d);
-      if (!t.dienstId) continue;
-      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      /* Abgeschlossener Monat: der eingefrorene Dienst (WP-16, Review H1). */
+      const da = istTag(m, p, d).da;
       if (!da) continue;
       if (da.form === "bereitschaft") ber += dauer(da);
       else if (da.form === "ruf" || da.rufbereitschaft) ruf += dauer(da);
@@ -11669,6 +11649,10 @@ function Monatsabschluss({ sitz, ym, akt }) {
   const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
   const verlauf = e && Array.isArray(e.verlauf) ? e.verlauf : [];
   const abgewiesen = e && Array.isArray(e.abgewiesen) ? e.abgewiesen : [];
+  /* Review M3: weitere über der Obergrenze je Person nur gezählt. */
+  const gezaehlt = e && e.abgewiesenGezaehlt && typeof e.abgewiesenGezaehlt === "object"
+    ? Object.entries(e.abgewiesenGezaehlt).filter(([, n]) => Number(n) > 0) : [];
+  const anzahlAbgewiesen = abgewiesen.reduce((a, x) => a + (Number(x.anzahl) || 1), 0) + gezaehlt.reduce((a, [, n]) => a + Number(n), 0);
   return (
     <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -11678,7 +11662,7 @@ function Monatsabschluss({ sitz, ym, akt }) {
         {zu && akt && darf(sitz, "org.edit") && !oeffnen && <Btn size="sm" onClick={() => { setOeffnen(true); setGrund(""); }}>Wiederöffnen</Btn>}
       </div>
       <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.45 }}>
-        {zu ? "Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats sind gesperrt. Wieder öffnen kann ihn nur die Leitung, mit Grund."
+        {zu ? "Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats sind gesperrt; Stundenkonto und Lohnausgabe rechnen mit dem Ist zum Abschluss — spätere Änderungen an Plan, Dienstarten oder Abwesenheiten wirken erst, wenn der Monat wieder offen ist. Wieder öffnen kann ihn nur die Leitung, mit Grund."
           : laufend ? "Abschließen lässt sich ein Monat erst nach dem Monatsende."
             : "Mit dem Abschluss werden Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats gesperrt."}</div>
       {oeffnen && zu && (
@@ -11688,21 +11672,24 @@ function Monatsabschluss({ sitz, ym, akt }) {
             onClick={async () => { if (await akt.monatWiederoeffnen(ym, grund)) setOeffnen(false); }}>Monat wiederöffnen</Btn>
           <Btn size="sm" onClick={() => setOeffnen(false)}>Abbrechen</Btn>
         </div>)}
-      {abgewiesen.length > 0 && (
+      {anzahlAbgewiesen > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.warn }}>
-            {abgewiesen.length === 1 ? "1 Stempel nach dem Abschluss abgewiesen" : `${abgewiesen.length} Stempel nach dem Abschluss abgewiesen`}</div>
+            {anzahlAbgewiesen === 1 ? "1 Stempel nach dem Abschluss abgewiesen" : `${anzahlAbgewiesen} Stempel nach dem Abschluss abgewiesen`}</div>
           <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
             Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Ist der Monat wieder offen, lässt er sich dort erneut senden.</div>
           {abgewiesen.map((x, i) => (
             <div key={`${x.ereignis || i}`} style={{ fontSize: 12.5, ...NUM }}>
-              {name(x.personId)} · {fKurz(x.datum)} · {x.art === "start" ? "Beginn" : "Ende"} {x.zeit || ""}{x.offline ? " · offline erfasst" : ""}</div>))}
+              {name(x.personId)} · {fKurz(x.datum)} · {x.art === "start" ? "Beginn" : "Ende"} {x.zeit || ""}{x.offline ? " · offline erfasst" : ""}{x.alt ? ", erst nach über 48 Stunden gesendet" : ""}{Number(x.anzahl) > 1 ? ` · ${x.anzahl}-mal` : ""}</div>))}
+          {gezaehlt.map(([pid, n]) => (
+            <div key={`gezaehlt-${pid}`} style={{ fontSize: 12.5, color: C.dim, ...NUM }}>
+              {name(pid)} · {n} weitere nur gezählt (über der Obergrenze je Person)</div>))}
         </div>)}
       {verlauf.length > 0 && (
         <div style={{ marginTop: 8 }}>
           {verlauf.map((x) => (
             <div key={x.id} style={{ fontSize: 12.5, color: C.dim, ...NUM }}>
-              {x.art === "wiederoeffnung" ? "wiedergeöffnet" : "abgeschlossen"} {zeitpunktText(x.am)}{x.wer && x.wer.name ? ` · ${x.wer.name}` : ""}{x.grund ? ` — ${x.grund}` : ""}</div>))}
+              {x.art === "wiederoeffnung" ? "wiedergeöffnet" : "abgeschlossen"} {zeitpunktText(x.am)}{x.wer && x.wer.name ? ` · ${x.wer.name}` : ""}{x.grund ? ` — ${x.grund}` : ""}{x.art === "wiederoeffnung" && Number(x.istNeu) > 0 ? ` · Ist an ${x.istNeu} Personentagen seit dem Abschluss geändert (Plan, Dienstart oder Abwesenheit)` : ""}</div>))}
         </div>)}
     </div>);
 }
@@ -13262,8 +13249,10 @@ const AufgabeSymbol = ({ art }) => AUFGABE_SYMBOL[art]
 function UngeplantHinweis({ m, p, d, ...rest }) {
   const e = p ? (m.erfassung || {})[`${p.id}|${d}`] : null;
   if (!istUngeplant(e)) return null;
-  const da = e.bestaetigt ? ungeplantAm(m, p, d) : null;
-  const std = da ? istDauer(m, p, d, da).std : null;
+  /* Abgeschlossener Monat: die eingefrorene Dauer (WP-16, Review H1). */
+  const tz = eingefrorenerTag(m, p, d) !== undefined ? istTag(m, p, d) : null;
+  const da = tz ? (tz.da && tz.da.ungeplant ? tz.da : null) : e.bestaetigt ? ungeplantAm(m, p, d) : null;
+  const std = da ? (tz ? tz.idn.std : istDauer(m, p, d, da).std) : null;
   /* C1: An einem Tag mit Abwesenheit zählt auch ein bestätigter ungeplanter Dienst nicht (Konto, Lohn). */
   const abwesend = !!abwesenheitAm(m, p.id, d);
   return (
@@ -25450,4 +25439,5 @@ function abmeldenMitHinweis() {
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis,
+  demobestand, sollStunden, ausgleichPruefen, offeneErfassung };

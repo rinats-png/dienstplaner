@@ -531,6 +531,9 @@ export const BETRIEB = {
      sehen nur, welche Monate abgeschlossen sind; Wer, Wann, Grund, Verlauf, Prüfsumme und die abgewiesenen
      Stempel (mit Person und Tag) nur Planung und Leitung (RECHTEMATRIX ²⁹). */
   monatsabschluss: [R(abschlussStatus), R(abschlussStatus)],
+  /* Eingefrorenes Ist abgeschlossener Monate (WP-16, Review H1; isteinfrieren.mjs): wie die Erfassung —
+     Beschäftigte die eigenen Tage, Betriebsrat nichts (er rechnet kein Ist einzelner Personen). */
+  istEingefroren: [NUR_EIGENE, WEG],
   fahrzeiten: [NUR_EIGENE, WEG],
   checks: [NUR_EIGENE, WEG],
   ansichten: [NUR_EIGENE, NUR_EIGENE],
@@ -731,6 +734,14 @@ const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
   if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause", "ungeplant"]);
   return undefined;
 });
+/* Eingefrorenes Ist (WP-16, Review H1): wie die Erfassung — eigene Tage ganz, im Bereich an genau diesem Tag;
+   die Abwesenheitsart im Bereich nur wie bei den Abwesenheiten (artFuerSV: sensible Arten als „abwesend"). */
+const schichtIstEingefroren = (w, ctx) => objektFilter(w, (k, v) => {
+  const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
+  if (u === "eigen") return v;
+  if (u === "bereich") return v && Array.isArray(v.a) ? { ...v, a: v.a.map(artFuerSV) } : v;
+  return undefined;
+});
 const schichtSchluessel = (erlaubt) => (w, ctx) => objektFilter(w, (k, v) =>
   (imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), erlaubt) ? v : undefined));
 const schichtEintraege = (erlaubt, felder) => (w, ctx) => liste(w)
@@ -816,6 +827,7 @@ Object.assign(SCHICHT, {
   abwesenheiten: R(schichtAbwesenheiten),
   anfragen: R(schichtAnfragen),
   erfassung: R(schichtErfassung),
+  istEingefroren: R(schichtIstEingefroren),
   einstempeln: NUR_EIGENE,
   wuensche: R(schichtEintraege(["eigen", "bereich"], ["id", "personId", "datum", "art"])),
   einspruenge: R(schichtEintraege(["eigen", "bereich", "pool"], ["id", "personId", "datum", "dienstId", "zeit"])),

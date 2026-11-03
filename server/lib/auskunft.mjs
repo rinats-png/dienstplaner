@@ -57,6 +57,20 @@ const nachTag = (obj, pid) => Object.entries(obj && typeof obj === "object" ? ob
 const liste = (w) => (Array.isArray(w) ? w : []);
 const eigene = (w, pid) => liste(w).filter((x) => x && gleich(x.personId, pid));
 
+/** Nach dem Monatsabschluss abgewiesene Stempel einer Person (einzeln und nur gezählt), je Monat — ohne die Abschlussdetails. */
+function abgewieseneStempel(w, pid) {
+  const aus = [];
+  for (const [monat, e] of Object.entries(w && typeof w === "object" && !Array.isArray(w) ? w : {}).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!e || typeof e !== "object") continue;
+    for (const x of eigene(e.abgewiesen, pid))
+      aus.push({ monat, datum: x.datum, art: x.art, zeit: x.zeit ?? null, zeitAm: x.zeitAm ?? null, offline: !!x.offline,
+        eingegangen: x.am ?? null, anzahl: Number(x.anzahl) || 1 });
+    const z = e.abgewiesenGezaehlt && typeof e.abgewiesenGezaehlt === "object" ? e.abgewiesenGezaehlt[String(pid)] : undefined;
+    if (Number(z) > 0) aus.push({ monat, nurGezaehlt: Number(z) });
+  }
+  return aus;
+}
+
 /** Die eigenen Einträge einer Sammlung — als Liste (personId) oder als Objekt (Schlüssel „pid|…"). */
 function eigeneAus(wert, pid) {
   if (Array.isArray(wert)) return eigene(wert, pid);
@@ -166,6 +180,10 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     person,
     stempel: nachTag(m.einstempeln, pid),
     istZeiten: nachTag(m.erfassung, pid),
+    /* Monatsabschluss (WP-16): das eingefrorene Ist abgeschlossener Monate (Review H1) und die nach dem
+       Abschluss abgewiesenen eigenen Stempel samt Zähler (Review M2). */
+    istEingefroren: nachTag(m.istEingefroren, pid),
+    abgewieseneStempel: abgewieseneStempel(m.monatsabschluss, pid),
     planabweichungen: abweichungen,
     ...(postenzuordnungen.length ? { postenzuordnungen } : {}),
     ...(bereichszuordnungen.length ? { bereichszuordnungen } : {}),

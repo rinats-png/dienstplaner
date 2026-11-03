@@ -34,11 +34,33 @@
 
    Form: m.monatsabschluss["JJJJ-MM"] = { abgeschlossen, am, wer, abdruck?,
    verlauf: [{ id, art: "abschluss"|"wiederoeffnung", am, wer, grund, … }],
-   abgewiesen?: [{ personId, datum, art, zeitAm, offline, ereignis, am }] }.
-   `abdruck` ist eine Prüfsumme der Ist-Daten des Monats zum Abschluss.
+   abgewiesen?: [{ personId, datum, art, zeit, zeitAm, offline, ereignis, am, anzahl? }],
+   abgewiesenGezaehlt?: { personId: Anzahl } }.
+   `abdruck` ist eine Prüfsumme der Ist-Daten des Monats zum Abschluss —
+   eine Änderungsanzeige (wer direkt auf die Ablage schreibt, kann sie
+   neu berechnen; sie ist kein Manipulationsschutz).
+
+   EINGEFRORENES IST (Review H1, isteinfrieren.mjs): Der Abschluss friert das
+   Ist je Person und Tag ein (m.istEingefroren, auch Planzeit-Anteile, Pause
+   der Dienstart, Abwesenheit). Plan, Dienstarten und Abwesenheiten bleiben
+   änderbar, wirken auf den abgeschlossenen Monat aber nicht mehr: Konto,
+   Lohnausgabe/DATEV, Zuschläge, Betriebsrat-Auswertung rechnen dort nur mit
+   dem eingefrorenen Ist. Es gehört zu den Ist-Feldern (Prüfsumme, PUT-Sperre,
+   Wiederherstellen); Wiederöffnen verwirft es (im Verlauf: wie viele
+   Personentage das neu gerechnete Ist abweicht).
+
+   ABGEWIESENE STEMPEL (Review M2/M3): höchstens ABGEWIESEN_JE_PERSON
+   Einträge je Person, je Person, Tag und Art zusammengefasst (anzahl);
+   alles über der Obergrenze nur gezählt; Offline-Zeiten älter als 48 h
+   gekennzeichnet (alt). Löschfrist wie die Gründe (aufbewahrung.mjs), in der
+   Auskunft (auskunft.mjs), bei Anonymisierung oder Löschung der Person weg.
    ========================================================================== */
 
 import { loeschStichtag } from "./stempelintegritaet.mjs";
+import { IST_EINGEFROREN, istEinfrieren, istAbweichungen } from "./isteinfrieren.mjs";
+import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
+
+export { abschlussPersonenRaeumen };
 
 /* SHA-256 ohne node:crypto: Diese Datei erreicht über sicht.mjs und
    rechte.mjs auch die Oberfläche (Vite-Bündel), dort gibt es node:crypto
@@ -90,8 +112,17 @@ export const WIEDEROEFFNEN_GRUND_MIN = 10;
 export const ABSCHLUSS_GRUND_MAX = 500;
 export const ABSCHLUSS_VERLAUF_MAX = 200;
 export const ABGEWIESEN_MAX = 200;
-/** Die Sammlungen, die der Abschluss sperrt (Ist-Zeiten und Stempel samt Korrekturen und Anträgen). */
-export const IST_FELDER = Object.freeze(["einstempeln", "erfassung"]);
+/** Höchstens so viele abgewiesene Stempel je Person und Monat einzeln (Review M3); darüber nur gezählt. */
+export const ABGEWIESEN_JE_PERSON = 20;
+/** Obergrenzen der Zähler: je Eintrag `anzahl` (Person, Tag, Art) und je Person `abgewiesenGezaehlt`. Erreicht,
+    wächst nichts mehr — kein Schreibvorgang mehr. Je Person und Monat also höchstens etwa
+    ABGEWIESEN_JE_PERSON × ABGEWIESEN_ANZAHL_MAX + ABGEWIESEN_GEZAEHLT_MAX Schreibvorgänge (dazu die Bremse je Person). */
+export const ABGEWIESEN_ANZAHL_MAX = 10;
+export const ABGEWIESEN_GEZAEHLT_MAX = 99;
+/** Offline-Zeiten, die älter als 48 Stunden ankommen (wie OFFLINE_MAX_ALTER_MS, WP-07): als `alt` gekennzeichnet. */
+export const ABGEWIESEN_ALT_MS = 48 * 60 * 60 * 1000;
+/** Die Sammlungen, die der Abschluss sperrt (Ist-Zeiten und Stempel samt Korrekturen und Anträgen) und das eingefrorene Ist. */
+export const IST_FELDER = Object.freeze(["einstempeln", "erfassung", IST_EINGEFROREN]);
 
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -150,7 +181,7 @@ function geordnet(x) {
   if (objekt(x)) return Object.fromEntries(Object.keys(x).sort().map((k) => [k, geordnet(x[k])]));
   return x;
 }
-/** Die Ist-Daten (Stempel und Erfassung) eines Monats, Schlüssel geordnet. */
+/** Die Ist-Daten (Stempel, Erfassung, eingefrorenes Ist) eines Monats, Schlüssel geordnet. */
 export function istDesMonats(m, monat) {
   const aus = {};
   for (const feld of IST_FELDER) {
@@ -192,6 +223,14 @@ export function offenePunkte(m, monat) {
   return { antraege, offeneStempel, zurPruefung };
 }
 
+/** Stempel vom letzten Tag des Monats mit Beginn und ohne Ende (laufender Dienst über Mitternacht). */
+export function laufendAmMonatsletzten(m, monat) {
+  const [j, mo] = String(monat).split("-").map(Number);
+  const letzter = new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10);
+  const st = m && objekt(m.einstempeln) ? m.einstempeln : {};
+  return Object.entries(st).filter(([k, e]) => String(k).split("|")[1] === letzter && objekt(e) && e.start && !e.ende).length;
+}
+
 /* --------------------------------------------------------------------------
    Abschließen und wiederöffnen
    -------------------------------------------------------------------------- */
@@ -224,15 +263,31 @@ export function abschliessen(m, r, wer, jetzt, id, heute) {
   if (offen.antraege)
     return { status: 409, code: "ABSCHLUSS_ANTRAEGE_OFFEN", offen,
       grund: `Im ${monatText(monat)} ${offen.antraege === 1 ? "ist noch 1 Korrekturantrag" : `sind noch ${offen.antraege} Korrekturanträge`} offen. Bitte zuerst entscheiden.` };
-  if ((offen.offeneStempel || offen.zurPruefung) && !(r && r.trotzPrueffaellen === true))
-    return { status: 409, code: "ABSCHLUSS_PRUEFFAELLE", offen,
-      grund: `Im ${monatText(monat)} sind noch ${offen.offeneStempel} unvollständige Stempel und ${offen.zurPruefung} Ist-Zeiten zur Prüfung offen. Trotzdem abschließen?` };
-  const abdruck = istAbdruck(m, monat);
+  if ((offen.offeneStempel || offen.zurPruefung) && !(r && r.trotzPrueffaellen === true)) {
+    /* Nutzerführung (Review WP-16): Ein am Monatsletzten begonnener Dienst ohne Ende ist meist ein
+       laufender Nachtdienst. Sein Ausstempeln gehört zum Tag des Beginns — nach dem Abschluss würde es
+       abgewiesen. Das sagt die Meldung, statt nur „unvollständig" zu zählen. */
+    const nachtOffen = laufendAmMonatsletzten(m, monat);
+    return { status: 409, code: "ABSCHLUSS_PRUEFFAELLE", offen: { ...offen, ...(nachtOffen ? { nachtOffen } : {}) },
+      grund: `Im ${monatText(monat)} sind noch ${offen.offeneStempel} unvollständige Stempel und ${offen.zurPruefung} Ist-Zeiten zur Prüfung offen.`
+        + (nachtOffen ? ` Davon ${nachtOffen === 1 ? "ist 1 Dienst" : `sind ${nachtOffen} Dienste`} vom Monatsletzten noch nicht ausgestempelt `
+          + "(etwa ein laufender Nachtdienst): Das Ausstempeln gehört noch zu diesem Monat und würde nach dem Abschluss abgewiesen "
+          + "— besser erst abschließen, wenn ausgestempelt ist." : "")
+        + " Trotzdem abschließen?" };
+  }
+  /* Das Ist je Person und Tag einfrieren (Review H1) — am gespeicherten, vollständigen Stand. Die Prüfsumme deckt es mit. */
+  const mitIst = { ...m, [IST_EINGEFROREN]: { ...ohneMonat(m[IST_EINGEFROREN], monat), ...istEinfrieren(m, monat) } };
+  const abdruck = istAbdruck(mitIst, monat);
   /** @type {any} */
   const ereignis = { id, art: "abschluss", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
     ...(offen.offeneStempel || offen.zurPruefung ? { offen: { offeneStempel: offen.offeneStempel, zurPruefung: offen.zurPruefung } } : {}) };
   const eintrag = { ...(alt || {}), abgeschlossen: true, am: ereignis.am, wer: ereignis.wer, abdruck, verlauf: [...verlauf, ereignis] };
-  return { ereignis, eintrag, mandant: { ...m, [ABSCHLUSS_FELD]: { ...(objekt(m[ABSCHLUSS_FELD]) ? m[ABSCHLUSS_FELD] : {}), [monat]: eintrag } } };
+  return { ereignis, eintrag, mandant: { ...mitIst, [ABSCHLUSS_FELD]: { ...(objekt(m[ABSCHLUSS_FELD]) ? m[ABSCHLUSS_FELD] : {}), [monat]: eintrag } } };
+}
+
+/** Eine Sammlung „personId|JJJJ-MM-TT" ohne die Einträge eines Monats. */
+function ohneMonat(w, monat) {
+  return Object.fromEntries(Object.entries(objekt(w) ? w : {}).filter(([k]) => monatDesSchluessels(k) !== monat));
 }
 
 /**
@@ -253,12 +308,16 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
   if (verlauf.length >= ABSCHLUSS_VERLAUF_MAX)
     return { status: 409, grund: "Dieser Monat wurde so oft abgeschlossen und wiedergeöffnet, dass der Server keinen weiteren Schritt annimmt. Bitte mit der Betriebsleitung klären." };
   const abdruck = istAbdruck(m, monat);
+  /* istNeu: so viele Personentage rechnen nach dem Wiederöffnen anders als eingefroren
+     (Plan, Dienstart oder Abwesenheit seit dem Abschluss geändert) — ohne Personen. */
   const ereignis = { id, art: "wiederoeffnung", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
-    abdruckGleich: abdruck === alt.abdruck };
+    abdruckGleich: abdruck === alt.abdruck, istNeu: istAbweichungen(m, monat) };
   const { abdruck: _weg, ...rest } = alt;
   void _weg;
   const eintrag = { ...rest, abgeschlossen: false, am: ereignis.am, wer: ereignis.wer, verlauf: [...verlauf, ereignis] };
-  return { ereignis, eintrag, mandant: { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
+  /* Das eingefrorene Ist wird verworfen: Ab jetzt gilt wieder das gerechnete (Review H1). */
+  return { ereignis, eintrag, mandant: { ...m, [IST_EINGEFROREN]: ohneMonat(m[IST_EINGEFROREN], monat),
+    [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
 }
 
 /** Die letzte Wiederöffnung eines (jetzt offenen) Monats — für den Vermerk an Korrekturen. */
@@ -275,27 +334,63 @@ export function letzteWiederoeffnung(m, datum) {
  * wurde, am Abschluss vermerken — für die Leitung sichtbar (Prüfung statt
  * Verlust). Dieselbe Ereigniskennung wird nur einmal vermerkt. Der Vermerk
  * ändert keine Ist-Daten (Prüfsumme unverändert).
+ *
+ * Gegen Fluten (Review M3): Je Person, Tag und Art ein Eintrag (weitere
+ * zählen `anzahl` hoch), je Person höchstens ABGEWIESEN_JE_PERSON Einträge;
+ * darüber nur ein Zähler je Person (`abgewiesenGezaehlt`). Zähler bleiben an
+ * ihrer Obergrenze stehen — dann kein Schreibvorgang mehr. So verdrängt
+ * niemand die Einträge anderer, und erfundene Ereignisse kosten höchstens
+ * begrenzt viele Schreibvorgänge. Offline-Zeiten, die älter als 48 Stunden
+ * ankommen, stehen gekennzeichnet (`alt`) in derselben Liste unter derselben
+ * Obergrenze — nicht nur gezählt: Das ist genau der Fall, für den der Vermerk
+ * da ist (Gerät tagelang offline, Monat inzwischen abgeschlossen; die Leitung
+ * braucht Person, Tag und Zeit, um über das Wiederöffnen zu entscheiden).
  */
 export function abgewiesenVermerken(m, monat, v) {
   const e = abschlussEintrag(m, monat);
   if (!e) return m;
   const liste = Array.isArray(e.abgewiesen) ? e.abgewiesen : [];
   if (v.ereignis && liste.some((x) => objekt(x) && x.ereignis === v.ereignis)) return m;
+  const pid = String(v.personId);
+  const setze = (neuE) => ({ ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: neuE } });
+  const zaehlen = () => {
+    const z = objekt(e.abgewiesenGezaehlt) ? e.abgewiesenGezaehlt : {};
+    const n = Number(z[pid]) || 0;
+    if (n >= ABGEWIESEN_GEZAEHLT_MAX) return m;
+    return setze({ ...e, abgewiesenGezaehlt: { ...z, [pid]: n + 1 } });
+  };
+  const alt = !!v.offline && Date.parse(v.am) - Date.parse(v.zeitAm) > ABGEWIESEN_ALT_MS;
+  const i = liste.findIndex((x) => objekt(x) && String(x.personId) === pid && x.datum === v.datum && x.art === v.art);
+  if (i >= 0) {
+    const n = Number(liste[i].anzahl) || 1;
+    if (n >= ABGEWIESEN_ANZAHL_MAX) return m;
+    return setze({ ...e, abgewiesen: liste.map((x, j) => (j === i ? { ...x, anzahl: n + 1, zuletzt: v.am } : x)) });
+  }
+  if (liste.filter((x) => objekt(x) && String(x.personId) === pid).length >= ABGEWIESEN_JE_PERSON) return zaehlen();
   const neu = { personId: v.personId, datum: v.datum, art: v.art, zeit: v.zeit || null, zeitAm: v.zeitAm || null,
-    offline: !!v.offline, ereignis: v.ereignis || null, am: v.am };
-  return { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: { ...e, abgewiesen: [...liste, neu].slice(-ABGEWIESEN_MAX) } } };
+    offline: !!v.offline, ...(alt ? { alt: true } : {}), ereignis: v.ereignis || null, am: v.am };
+  return setze({ ...e, abgewiesen: [...liste, neu].slice(-ABGEWIESEN_MAX) });
 }
 
 /* --------------------------------------------------------------------------
    Speichern (PUT /api/bestand) und Wiederherstellen
    -------------------------------------------------------------------------- */
 
-/** Beim Speichern gilt immer der gespeicherte Abschlussstand — mitgeschickt ist er wirkungslos. */
+/**
+ * Beim Speichern gilt immer der gespeicherte Abschlussstand samt
+ * eingefrorenem Ist — mitgeschickt ist beides wirkungslos. Einzige Folge der
+ * Übermittlung: Wird eine Person anonymisiert oder entfernt, gehen ihre
+ * abgewiesenen Stempel am Abschluss mit (Review M2).
+ */
 export function abschlussAusGespeichert(altM, neuM) {
   if (!objekt(neuM)) return neuM;
   const aus = { ...neuM };
-  if (altM && Object.prototype.hasOwnProperty.call(altM, ABSCHLUSS_FELD)) aus[ABSCHLUSS_FELD] = altM[ABSCHLUSS_FELD];
-  else delete aus[ABSCHLUSS_FELD];
+  for (const feld of [ABSCHLUSS_FELD, IST_EINGEFROREN]) {
+    if (altM && Object.prototype.hasOwnProperty.call(altM, feld)) aus[feld] = altM[feld];
+    else delete aus[feld];
+  }
+  if (Object.prototype.hasOwnProperty.call(aus, ABSCHLUSS_FELD) && Array.isArray(neuM.personen))
+    aus[ABSCHLUSS_FELD] = abschlussPersonenRaeumen(aus[ABSCHLUSS_FELD], { personen: neuM.personen }).wert;
   return aus;
 }
 
@@ -325,7 +420,7 @@ export function abschlussWiderspruch(altM, gesendetM, o = {}) {
         const tag = String(k).split("|")[1];
         if (n[k] === undefined && stich && tag < stich) continue;               // Löschlauf nach Fristablauf
         return { schluessel: k, monat,
-          grund: `Der Monat ${monatText(monat)} ist abgeschlossen — ${feld === "erfassung" ? "Ist-Zeiten" : "Stempel"} dieses Monats ändern sich erst nach dem Wiederöffnen durch die Leitung. Es wurde nichts gespeichert.` };
+          grund: `Der Monat ${monatText(monat)} ist abgeschlossen — ${feld === "erfassung" ? "Ist-Zeiten" : feld === IST_EINGEFROREN ? "das eingefrorene Ist" : "Stempel"} dieses Monats ändern sich erst nach dem Wiederöffnen durch die Leitung. Es wurde nichts gespeichert.` };
       }
     }
   }
@@ -335,7 +430,8 @@ export function abschlussWiderspruch(altM, gesendetM, o = {}) {
 /**
  * Wiederherstellen aus einer Sicherung: Der Abschlussstand bleibt der
  * heutige, und in heute abgeschlossenen Monaten bleiben Stempel und
- * Ist-Zeiten, wie sie heute sind (kein Zurückdrehen, kein Wiederkehren).
+ * Ist-Zeiten, wie sie heute sind (kein Zurückdrehen, kein Wiederkehren) —
+ * ebenso das eingefrorene Ist (heutiger Stand, nie das der Sicherung).
  * @returns {{mandant: object, monate: number}}
  */
 export function abschlussBeiWiederherstellung(jetztM, zurueckM) {
