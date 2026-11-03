@@ -84,3 +84,21 @@ Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests
 - Personaldaten-Filter in Produktion erst mit dem Integrationsstand (bis dahin keine echten Beschäftigtendaten).
 - WP-19 (25 PT) ohne fachliche Kriterien nicht abnahmefähig.
 - Echte Geräte und externer Pentest sind nicht von Agenten erbringbar.
+
+## CENTRIC Intelligence – eigener Entwicklungsblock
+
+Intelligence ist **kein ACC45-Paket** und steht weder in den 46 Paketen noch in den 165,5 PT. Der Block wird getrennt geführt (Stand 2026-11-03, Vorschlag zur Freigabe, nichts begonnen):
+
+- Abgleich Spezifikation gegen Code: [`INTELLIGENCE-ABGLEICH.md`](INTELLIGENCE-ABGLEICH.md)
+- Entwicklungsplan (WP-I1 … WP-I37, Abhängigkeiten, Recht, Abnahme): [`INTELLIGENCE-ENTWICKLUNGSPLAN.md`](INTELLIGENCE-ENTWICKLUNGSPLAN.md)
+
+**Ehrliche Statuszahl, F1–F18 (Funktionskatalog Fassung 7):**
+
+| Klasse | Funktionen |
+|---|---|
+| 1 vollständig implementiert | **0 von 18** |
+| 2 teilweise implementiert (nur deterministischer Kern, ohne KI) | **3 von 18** (F2, F3, F7/F7A) |
+| 3 nur spezifiziert | **11 von 18** (F1, F4, F5, F6, F8, F9, F10, F11, F12, F14, F15) |
+| 4 noch gar nicht umgesetzt (nur Konzept) | **4 von 18** (F13, F16, F17, F18) |
+
+Kein Gateway, kein Modell, kein Anbieter-Zugang im Code. Geschätzter Aufwand des gesamten Blocks: 288–505 PT (Schätzung, nicht belegt; ohne Anwalts-, Anbieter- und Pilotarbeit). Abhängigkeiten zu ACC45: WP-11, WP-22, WP-43 (integriert), WP-19 und WP-42 (offen); Intelligence blockiert keinen ACC45-Schritt.
