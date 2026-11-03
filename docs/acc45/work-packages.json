@@ -3,12 +3,12 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 141,
   "statusZaehlung": {
-    "BLOCKED": 83,
-    "READY": 23,
+    "BLOCKED": 79,
+    "READY": 25,
     "IN_PROGRESS": 2,
-    "REVIEW": 2,
+    "REVIEW": 3,
     "INTEGRATED": 29,
-    "DONE": 2
+    "DONE": 3
   },
   "jeStrang": {
     "acc45": {
@@ -23,8 +23,8 @@
       "pakete": 14,
       "offen": 14,
       "restPT": {
-        "min": 63,
-        "max": 98
+        "min": 59.8,
+        "max": 93.2
       }
     },
     "intelligence": {
@@ -45,16 +45,16 @@
     },
     "extern": {
       "pakete": 32,
-      "offen": 32,
+      "offen": 31,
       "restPT": {
-        "min": 19.35,
-        "max": 43.6
+        "min": 18.85,
+        "max": 42.6
       }
     }
   },
   "offenerAufwandPT": {
-    "min": 412,
-    "max": 702
+    "min": 408.8,
+    "max": 697.2
   },
   "kritischerPfad": {
     "summe": 105,
@@ -1771,7 +1771,7 @@
       "prio": "P1",
       "aufwandPT": {"min":4,"max":6},
       "abhaengigkeiten": ["WP-11","WP-22"],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -1790,7 +1790,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13."
+      "notiz": "Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet)."
     },
     {
       "id": "WP-19.1",
@@ -2191,7 +2191,7 @@
       "prio": "P2",
       "aufwandPT": {"min":3,"max":6},
       "abhaengigkeiten": ["WP-11","E-21i"],
-      "status": "BLOCKED",
+      "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -2219,7 +2219,7 @@
       "prio": "P2",
       "aufwandPT": {"min":8,"max":14},
       "abhaengigkeiten": ["WP-11","E-21i"],
-      "status": "BLOCKED",
+      "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -2303,7 +2303,7 @@
       "prio": "P2",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["E-21i"],
-      "status": "BLOCKED",
+      "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -2415,7 +2415,7 @@
       "prio": "P3",
       "aufwandPT": {"min":2,"max":4},
       "abhaengigkeiten": ["E-21i"],
-      "status": "BLOCKED",
+      "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -3839,15 +3839,15 @@
       "aufwandPT": {"min":0.5,"max":1},
       "wartezeitAT": {"min":1,"max":10},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "DONE",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
+        "fachlichFreigegeben": {"wert":true,"beleg":"Betreiberentscheidung 2026-11-03 (Master-Execution-Modus, Chat); Entscheidung erteilt, kein Produktivbetrieb"},
+        "produktiv": {"wert":true,"beleg":"Betreiberentscheidung 2026-11-03 (Master-Execution-Modus, Chat); Entscheidung erteilt, kein Produktivbetrieb"}
       },
       "branch": null,
       "agent": "Betreiber / extern",
@@ -3858,7 +3858,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nicht in der Übergabeliste; Betreiberentscheidung aus INTELLIGENCE-ENTWICKLUNGSPLAN.md §13, hier als Teil von E-21 geführt."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nicht in der Übergabeliste; Betreiberentscheidung aus INTELLIGENCE-ENTWICKLUNGSPLAN.md §13, hier als Teil von E-21 geführt. Betreiber hat die technische Umsetzung von WP-I1…I37 am 2026-11-03 (Master-Execution-Modus) freigegeben; echte Modellaufrufe mit Personendaten bleiben an Rechts-/Datenschutzfreigaben gebunden. Beauftragung von Kanzlei/Anbieter ist NICHT Teil dieser Freigabe (E-25…E-28)."
     },
     {
       "id": "E-22",
