@@ -1,0 +1,136 @@
+name: Pilot-Fehler
+description: Fehler oder Abweichung aus dem Pilotbetrieb melden. Keine Personendaten, keine Echtdaten, keine Zugangsdaten.
+title: "[Pilot] "
+labels: ["pilot-fehler", "status:neu"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Dieses Repository ist öffentlich.** Alles hier ist für jede Person sichtbar.
+        Nicht eintragen: Namen, Mailadressen, Telefonnummern, Firmen-, Objekt- oder Bewohnernamen,
+        Hosts, Adressen, Zugangscodes, Schlüssel, Screenshots oder Dateien mit echten Daten.
+        Beschreibe mit Rollen („Testkonto Planung"), Szenario-IDs und erfundenen Beispielwerten.
+        Bei einem geschlossenen Pilot mit echten Nutzern geht die Meldung zuerst über den
+        nicht öffentlichen Kanal der Pilotleitung; hier steht nur die bereinigte Fassung
+        (siehe `docs/acc45/PILOT-BETRIEBSKONZEPT.md`, Abschnitt 3).
+        Verdacht auf Datenverlust, falsche Rechte oder Datenabfluss: zuerst die Pilotleitung
+        auf dem nicht öffentlichen Weg informieren, nicht hier beschreiben.
+  - type: dropdown
+    id: pilot
+    attributes:
+      label: Pilot
+      options: ["A (Pflegebetrieb)", "B (Sicherheitsunternehmen)", "übergreifend"]
+    validations:
+      required: true
+  - type: dropdown
+    id: betriebsform
+    attributes:
+      label: Betriebsform
+      options: ["intern, synthetische Daten", "geschlossen, echte Nutzer (bereinigte Meldung)"]
+    validations:
+      required: true
+  - type: input
+    id: szenario
+    attributes:
+      label: Szenario-ID
+      description: "Aus PILOT-TESTSZENARIEN.md, z. B. PS-P-07 oder PS-S-03. Außerhalb eines Szenarios: frei"
+      placeholder: "PS-P-07"
+    validations:
+      required: true
+  - type: input
+    id: pilottag
+    attributes:
+      label: Pilottag (1 bis 14)
+      placeholder: "5"
+    validations:
+      required: true
+  - type: dropdown
+    id: rolle
+    attributes:
+      label: Rolle des Testkontos
+      options: ["Mitarbeitende", "Schichtverantwortung", "Planung", "Leitung", "Betriebsrat", "Kunde/Inhaber", "Betreiber", "ohne Anmeldung"]
+    validations:
+      required: true
+  - type: dropdown
+    id: bereich
+    attributes:
+      label: Bereich
+      options: ["Planung", "Stempeln/Zeiterfassung", "Offline/Sync", "Monatsabschluss/Lohnexport", "Export/Bericht", "Rechte/Sichten", "Wachbuch/Dienstbuch", "Branchenmodul", "Oberfläche/Bedienung", "Betrieb/Verfügbarkeit", "Sonstiges"]
+    validations:
+      required: true
+  - type: dropdown
+    id: prio
+    attributes:
+      label: Vorgeschlagene Priorität
+      description: "Die Pilotleitung setzt die endgültige Priorität. P0 = Datenverlust, Rechteleck, Stempelverlust, falscher Lohnexport ohne Warnung. Siehe Konzept Abschnitt 5."
+      options: ["P0", "P1", "P2", "P3", "unklar"]
+    validations:
+      required: true
+  - type: textarea
+    id: kurz
+    attributes:
+      label: Kurzbeschreibung
+      description: "Ein bis zwei Sätze, ohne Personen- und Firmennamen."
+    validations:
+      required: true
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte zum Nachstellen
+      description: "Nummeriert, mit Rolle und erfundenen Beispielwerten."
+    validations:
+      required: true
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Erwartetes Verhalten
+    validations:
+      required: true
+  - type: textarea
+    id: beobachtet
+    attributes:
+      label: Beobachtetes Verhalten
+    validations:
+      required: true
+  - type: input
+    id: stand
+    attributes:
+      label: Stand der Umgebung
+      description: "Kurzer Commit (7 Zeichen) oder Versionsangabe aus dem Pilotprotokoll"
+    validations:
+      required: true
+  - type: input
+    id: zeitpunkt
+    attributes:
+      label: Zeitpunkt (UTC, JJJJ-MM-TT HH:MM)
+      placeholder: "2026-12-14 08:30"
+    validations:
+      required: true
+  - type: dropdown
+    id: geraet
+    attributes:
+      label: Gerät und Zugang
+      options: ["Desktop-Browser", "Smartphone-Browser", "installierte Web-App (PWA)", "kein Gerät beteiligt (Betrieb)", "unbekannt"]
+    validations:
+      required: true
+  - type: dropdown
+    id: wiederholbar
+    attributes:
+      label: Wiederholbar
+      options: ["immer", "manchmal", "einmalig", "nicht versucht"]
+    validations:
+      required: true
+  - type: textarea
+    id: auswirkung
+    attributes:
+      label: Auswirkung und Umgehung
+      description: "Wer ist betroffen (Rollen, ungefähre Anzahl), gibt es eine Umgehung? Daten oder Zeiten betroffen?"
+  - type: checkboxes
+    id: datenschutz
+    attributes:
+      label: Bestätigung
+      options:
+        - label: "Diese Meldung enthält keine Personendaten, keine echten Firmen-, Objekt- oder Bewohnernamen, keine Zugangsdaten, keine Hosts oder Adressen und keine Anhänge mit echten Daten."
+          required: true
+        - label: "Bei Verdacht auf Datenverlust, falsche Rechte oder Datenabfluss habe ich zuerst die Pilotleitung auf dem nicht öffentlichen Weg informiert."
+          required: true
