@@ -76,4 +76,10 @@ Befund.
 
 ## CI
 
-(wird nach den Läufen ergänzt)
+Auf 0aaa694: „Prüfung“ (Lauf 41612621854) dreimal in Folge grün — Versuch 1 aus dem Push, Versuch 2 und 3 als
+vollständiger Neustart des Workflows (nicht nur der fehlgeschlagenen Jobs). Dazu Sicherheit 41612621975, Betrieb:
+Deploy-Skripte 41612621904 und Lieferkette 41612621857 grün.
+
+Offen: Dass ein Flackertest nie wieder rot wird, beweisen drei Läufe nicht. Die Ursachen sind beseitigt (Wartebedingung
+statt Uhr, vom Betriebssystem vergebene Ports); bleibt ein Fehler, zeigt die Meldung jetzt, ob die Aktivität nie ankam
+(`zuletzt erreichte … nicht`) oder der Server nicht hochkam (`Server kam nicht hoch (Port …)` mit dem Log).
