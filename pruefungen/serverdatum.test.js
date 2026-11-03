@@ -22,6 +22,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { istZeitFuer, zurPruefung, pruefHinweis } from "../src/istdaten.js";
 
 const WIRT = "127.0.0.1:3000";
 let wurzel, laden, daten, sitzungAnlegen, B;
@@ -238,4 +239,52 @@ describe("B5: gleichzeitige Stempel", () => {
     const m = await mandant("sd-zwanzig");
     expect(ids.filter((id) => m.einstempeln[`${id}|2026-11-02`])).toHaveLength(20);
   }, 60000);
+});
+
+describe("WP-14b M2/M3: Stempeln an den Umstellungstagen und Dauer 0 ohne Plan", () => {
+  it("Herbst 25.10.: Beginn 02:30 MESZ, Ende 02:20 MEZ (50 min) — keine bestätigte 23:50-Ist, sondern zur Prüfung (ZEITUMSTELLUNG)", async () => {
+    await raumAnlegen("sd-herbst", ["a1", "a2"], { abweichungen: { "a1|2026-10-25": "F", "a2|2026-10-25": "F" } });
+    zeitAuf("2026-10-25T00:30:00Z");                                   // 02:30 MESZ (erste Stunde)
+    expect((await stempeln("sd-herbst", "a1", { art: "start" })).status).toBe(200);
+    zeitAuf("2026-10-25T01:20:00Z");                                   // 02:20 MEZ (zweite Stunde)
+    const e = await stempeln("sd-herbst", "a1", { art: "ende" });
+    expect(e.status, JSON.stringify(e)).toBe(200);
+    expect(e.eintrag).toMatchObject({ start: "02:30", ende: "02:20" });
+    expect(e.markierungen).toContain("ZEITUMSTELLUNG");
+    expect(e.erfassung).toMatchObject({ start: "02:30", ende: "02:20", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^ZEITUMSTELLUNG/);
+    expect(zurPruefung(e.erfassung)).toBe(true);
+    /* Gegenrichtung: 02:10 MESZ bis 02:50 MEZ sind 100 min, die Uhr zeigt 40 — auch zur Prüfung. */
+    zeitAuf("2026-10-25T00:10:00Z");
+    expect((await stempeln("sd-herbst", "a2", { art: "start" })).status).toBe(200);
+    zeitAuf("2026-10-25T01:50:00Z");
+    const z = await stempeln("sd-herbst", "a2", { art: "ende" });
+    expect(z.erfassung).toMatchObject({ start: "02:10", ende: "02:50", bestaetigt: false });
+  });
+  it("Frühjahr 29.03.: 01:30 MEZ bis 03:10 MESZ (40 min) mit Dienstart-Pause 60 — bestätigt, Ist 0 statt negativ", async () => {
+    await raumAnlegen("sd-fruehjahr", ["a1"], { abweichungen: { "a1|2026-03-29": "N2" },
+      dienstarten: [{ id: "N2", name: "Nacht", start: "22:00", ende: "06:00", pause: 60 }] });
+    zeitAuf("2026-03-29T00:30:00Z");                                   // 01:30 MEZ
+    expect((await stempeln("sd-fruehjahr", "a1", { art: "start" })).status).toBe(200);
+    zeitAuf("2026-03-29T01:10:00Z");                                   // 03:10 MESZ
+    const e = await stempeln("sd-fruehjahr", "a1", { art: "ende" });
+    expect(e.status, JSON.stringify(e)).toBe(200);
+    expect(e.erfassung).toMatchObject({ start: "01:30", ende: "03:10", bestaetigt: true });
+    const m = await mandant("sd-fruehjahr");
+    const ist = istZeitFuer(m, m.personen[0], "2026-03-29", m.dienstarten[0]);
+    expect(ist.erfasst).toBe(true);
+    expect(ist.std).toBe(0);
+  });
+  it("M3: Beginn und Ende in derselben Minute ohne Plan — DAUER_NULL mit Marke ungeplant, im Hinweis „ungeplant“", async () => {
+    await raumAnlegen("sd-null", ["a1"]);
+    zeitAuf("2026-11-02T05:00:00Z");
+    expect((await stempeln("sd-null", "a1", { art: "start" })).status).toBe(200);
+    zeitAuf("2026-11-02T05:00:20Z");
+    const e = await stempeln("sd-null", "a1", { art: "ende" });
+    expect(e.markierungen).toEqual(expect.arrayContaining(["DAUER_NULL", "UNGEPLANTER_DIENST"]));
+    expect(e.erfassung).toMatchObject({ bestaetigt: false, ungeplant: true });
+    expect(e.erfassung.grund).toMatch(/^DAUER_NULL/);
+    const h = pruefHinweis(await mandant("sd-null"), "2026-11");
+    expect(h.faelle.map((f) => f.art)).toEqual(["ungeplant"]);
+  });
 });
