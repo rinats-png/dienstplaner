@@ -151,7 +151,12 @@ pruef("Tausch: Meldung auf offenes Gesuch erzeugt genau eine Servermitteilung an
 
 /* Push-Anmeldung */
 pruef("Push-Anmeldung: nur https-Endpunkt", (await rufe(tA1, "/zustellung/anmelden", "POST", { anmeldung: { endpoint: "http://intern/" } })).status === 400);
-pruef("Push-Anmeldung: eigene Person 200", (await rufe(tA1, "/zustellung/anmelden", "POST", { anmeldung: { endpoint: "https://push.example/a1", keys: {} } })).status === 200);
+/* WP-30: Der Server sendet nur an Endpunkte der Push-Dienste; im Container (NODE_ENV=production)
+   gilt auch „.example“ nicht. Der Endpunkt ist ein erlaubter Hersteller-Host und wird nie angefragt (kein VAPID-Paar). */
+pruef("Push-Anmeldung: eigene Person 200", (await rufe(tA1, "/zustellung/anmelden", "POST", { anmeldung: { endpoint: "https://fcm.googleapis.com/fcm/send/pruefung-a1", keys: {} } })).status === 200);
+pruef("Push-Anmeldung: interne Ziele und fremde Hosts 400 (kein SSRF)",
+  (await Promise.all(["https://127.0.0.1/x", "https://169.254.169.254/latest", "https://fremd.invalid/x"]
+    .map((e) => rufe(tA1, "/zustellung/anmelden", "POST", { anmeldung: { endpoint: e, keys: {} } })))).every((r) => r.status === 400));
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;
 console.log(`\n${bestanden} von ${ergebnisse.length} Prüfungen bestanden.`);
