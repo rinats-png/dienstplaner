@@ -150,6 +150,11 @@
     "pruefung:kontrast": "vitest run pruefungen/kontrast.test.js",
     "pruefung:gestalt": "vitest run pruefungen/gestalt.test.js",
     "pruefung:pentest": "node pruefungen/pentest.mjs",
+    "pruefung:sicherheit-intern": "vitest run pruefungen/sicherheit-intern.test.js pruefungen/routen-inventar.test.js",
+    "sicherheit:statik": "node werkzeug/sicherheit/statik.mjs",
+    "sicherheit:abhaengigkeiten": "node werkzeug/sicherheit/abhaengigkeiten.mjs",
+    "sicherheit:geheimnisse": "node werkzeug/sicherheit/geheimnisse.mjs",
+    "sicherheit:wiederherstellung": "node werkzeug/sicherheit/wiederherstellung-uebung.mjs",
     "pruefung:vergleich": "node pruefungen/vergleich.mjs"
   },
   "dependencies": {
