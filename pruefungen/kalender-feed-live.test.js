@@ -94,7 +94,7 @@ describe("live aus dem aktuellen Bestand", () => {
   }, LIMIT);
 
   it("was ein Gerät an /kalender/daten schickt, erscheint nie im Feed", async () => {
-    const ich = await aktiv("gerät", "leitung");
+    const ich = await aktiv("geraet", "leitung");
     const g = await einrichten(ich.token);
     const s = await Z.bearer(Z.kalender, "/kalender/daten", ich.token, { methode: "POST", rumpf: { geheim: g, name: "x", betrieb: "y",
       termine: [{ id: "bose-1", datum: tag(1), von: "01:00", endDatum: tag(1), bisZeit: "02:00", ganztags: false, titel: "EINGESCHMUGGELT", text: "Diagnose X", ort: "" }] } });
@@ -198,7 +198,7 @@ describe("Sperre und Entzug widerrufen den Feed", () => {
     expect(feedHerkunftAus({})).toBeNull();
   }, LIMIT);
 
-  it("Mitgliedschaft entzogen: 404, endgültig widerrufen — auch nach neuer Mitgliedschaft", async () => {
+  it("Mitgliedschaft entzogen: 404, endgültig widerrufen, der Verweis bleibt tot", async () => {
     const ich = await aktiv("entzug", "leitung");
     const g = await einrichten(ich.token);
     expect((await feed(g)).status).toBe(200);
@@ -209,9 +209,18 @@ describe("Sperre und Entzug widerrufen den Feed", () => {
     expect(f.text).not.toContain("BEGIN:VCALENDAR");
     expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
     expect(await Z.laden().get(`feedperson:${ich.raum}:m1:p_1`, { type: "json" })).toBeNull();
-    const a = await Z.A.mitgliedschaftAktivieren(Z.laden(), ich.k.id, ich.raum);
-    expect(a.ok, JSON.stringify(a)).toBe(true);
-    expect((await feed(g)).status).toBe(404);                                  // der alte Verweis bleibt tot
+    expect((await feed(g)).status).toBe(404);                                  // der alte Verweis bleibt tot (ein Entzug ist endgültig, es gibt keinen Rückweg zu „aktiv“)
+  }, LIMIT);
+
+  it("Status der Mitgliedschaft allein genügt: nicht „aktiv“ bei unveränderter Generation → 404", async () => {
+    const ich = await aktiv("mstatus", "leitung");
+    const g = await einrichten(ich.token);
+    expect((await feed(g)).status).toBe(200);
+    const schluessel = Z.A.mitgliedSchluessel(ich.k.id, ich.raum);
+    const m = await Z.laden().get(schluessel, { type: "json" });
+    await Z.laden().setJSON(schluessel, { ...m, status: "entzogen" });          // ohne den Lauf weiterzuzählen
+    expect((await feed(g)).status).toBe(404);
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
   }, LIMIT);
 
   it("Konto gesperrt: 404 und widerrufen", async () => {

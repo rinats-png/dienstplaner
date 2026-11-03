@@ -349,6 +349,10 @@ jobs:
       - name: Kalenderfeed-Autorität
         run: npm run pruefung:kalender-feed-autoritaet
 
+      # Kalenderfeed live aus dem Bestand, nur eigene Dienste, Herkunft (Konto/Mitgliedschaft/Code), DTSTAMP, raumLoeschen, Entwürfe (WP-24).
+      - name: Kalenderfeed live und gebunden
+        run: npm run pruefung:kalender-feed-live
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
