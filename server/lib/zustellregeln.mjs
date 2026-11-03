@@ -75,6 +75,7 @@ export function hinweis(n) {
     (kein CR/LF — keine Kopfzeilen-Injektion), höchstens `max` Zeichen
     (Nachtrag Opus-Review B2). */
 export const einzeilig = (s, max = 80) => String(s ?? "")
+  // eslint-disable-next-line no-control-regex -- Steuerzeichen sind genau das, was hier entfernt wird
   .replace(/[\u0000-\u001f\u007f-\u009f\u{2028}\u{2029}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
 /** Das Ziel für den Klick auf die Benachrichtigung: nur ein kurzes Stichwort. */

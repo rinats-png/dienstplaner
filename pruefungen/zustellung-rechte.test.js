@@ -96,6 +96,11 @@ beforeAll(async () => {
      Prüfungen der Rechte nicht. */
   process.env.CENTRIC_ZUSTELL_BACKOFF = "0,0";
   process.env.CENTRIC_ZUSTELL_PERSON_MAIL = "1000";
+  /* Nachtrag Opus-Review WP-30: Flut-Schutz für dringende Arten und Notrufe je Stunde.
+     Diese Datei legt bewusst viele Notrufe derselben Person an; die Grenzen selbst prüft mail-push-produktion.test.js. */
+  process.env.CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL = "1000";
+  process.env.CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL = "1000";
+  process.env.CENTRIC_NOTRUF_JE_STUNDE = "100";
   const { getStore } = await import("../server/lib/ablage.mjs");
   laden = () => getStore({ name: "centric", consistency: "strong" });
   const schutz = await import("../server/lib/schutz.mjs");
