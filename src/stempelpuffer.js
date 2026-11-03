@@ -186,7 +186,7 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       const d = r.daten;
       /* Quittiert: Der Standort (nur im Geo-Modus abgelegt) wird nicht mehr
          gebraucht und bleibt nicht auf dem Gerät (Review A2, H8+). */
-      const neu = { ...versuch, koord: null, zustand: "bestaetigt", bestaetigtAm: new Date(jetzt()).toISOString(), fehler: null,
+      const neu = { ...versuch, koord: null, positionGrund: null, zustand: "bestaetigt", bestaetigtAm: new Date(jetzt()).toISOString(), fehler: null,
         quittung: { datum: d.datum || null, zeit: d.zeit || null, offline: !!d.offline, wiederholt: !!d.wiederholt,
           markierungen: Array.isArray(d.markierungen) ? d.markierungen : [] } };
       await speicher.setzen(neu);
@@ -194,7 +194,7 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       if (beiQuittung) { try { beiQuittung(neu, d); } catch { /* Anzeige darf das Senden nicht stören */ } }
     } else if (art === "endgueltig") {
       const grund = (r.daten && (r.daten.text || r.daten.fehler)) || `Abgelehnt (Status ${r.status}).`;
-      await speicher.setzen({ ...versuch, koord: null, zustand: "abgelehnt", fehler: { grund: String(grund), code: (r.daten && r.daten.code) || null, status: r.status } });
+      await speicher.setzen({ ...versuch, koord: null, positionGrund: null, zustand: "abgelehnt", fehler: { grund: String(grund), code: (r.daten && r.daten.code) || null, status: r.status } });
       ergebnisse[ev.id] = { art: "abgelehnt", grund: String(grund) };
     } else if (art === "halt") {
       /* Der Versuch zählt nicht: Es lag an der Sitzung, nicht am Ereignis. */
@@ -230,7 +230,7 @@ export async function abmeldenAufraeumen(speicher, inhaber) {
   for (const e of await ereignisseVon(speicher, inhaber)) {
     if (e.zustand === "bestaetigt") await speicher.entfernen(e.id);
     else if (e.zustand === "wartet") wartend++;
-    else if (e.koord) await speicher.setzen({ ...e, koord: null });
+    else if (e.koord || e.positionGrund) await speicher.setzen({ ...e, koord: null, positionGrund: null });
   }
   return wartend;
 }

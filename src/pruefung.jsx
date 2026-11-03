@@ -3840,7 +3840,7 @@ const HANDBUCH = [
           "„Wie viele Urlaubstage habe ich noch?\" — Mehr, oben in den Kennzahlen.",
           "„Kann ich tauschen?\" — Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.",
           "„Warum steht mein Konto im Minus?\" — Anliegen, Stundenkonto, mit Verlauf über sechs Monate.",
-          "„Sieht der Chef, wo ich bin?\" — Nein. Nur Ergebnis, grob gerundete Entfernung und Messgenauigkeit beim Stempeln.",
+          "„Sieht der Chef, wo ich bin?\" — Nein. Nur Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort beim Stempeln.",
         ],
       },
     ],

@@ -540,6 +540,9 @@ export default async (req, context) => {
       const neuerBestand = personenAngleichen(roh);
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
+      /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
+      const ortA = bestandStandorteFehler(null, neuerBestand) || bestandDienstartOrtFehler(null, neuerBestand);
+      if (ortA) return antwort({ fehler: "Der Bestand ist ungültig.", text: ortA }, 422);
       if (vorlage === "demo") {
         const demoGrund = demoGestaltPruefen(neuerBestand);
         if (demoGrund) return antwort({ fehler: "Das ist nicht die Demo.", text: demoGrund }, 422);
@@ -1978,6 +1981,9 @@ export default async (req, context) => {
         const form = pruefeGestalt(w.bestand, { vorher: jetztGelesen.bestand });
         if (!form.ok)
           return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
+        /* Geänderte Standort- und Einsatzortangaben müssen gültig sein (Wertebereiche, Quelle, Art). */
+        const ortW = bestandStandorteFehler(jetztGelesen.bestand, w.bestand);
+        if (ortW) return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: ortW }, 422);
 
         /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
         const m2 = markeNeu();
