@@ -349,7 +349,9 @@ describe("Datenschutz: Abschlussdetails nur für Planung und Leitung", { timeout
       const ma = g.bestand.mandanten[0].monatsabschluss;
       expect(Object.values(ma).every((x) => JSON.stringify(x) === JSON.stringify({ abgeschlossen: true })), id).toBe(true);
       expect(ma["2026-10"], id).toEqual({ abgeschlossen: true });
-      expect(g.roh, id).not.toMatch(/Lohnlauf|Nachtrag eines|abgewiesen|ma-1/);
+      /* Die Kennung des Oktober-Abschlusses genau ("ma-1" in Anführungszeichen): Die Korrektur am eigenen Stempel trägt
+         legitim `nachWiederoeffnung: "ma-<Hex>"` — ein Muster ohne Begrenzung träfe sie bei Hex-Beginn „1“ (Review WP-16, M1). */
+      expect(g.roh, id).not.toMatch(/Lohnlauf|Nachtrag eines|abgewiesen|"ma-1"/);
     }
   });
   it("Planung und Leitung: der volle Verlauf mit Grund und den abgewiesenen Stempeln", async () => {
