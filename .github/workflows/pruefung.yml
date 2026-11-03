@@ -209,6 +209,10 @@ jobs:
       - name: Oberfläche gerendert
         run: npm run pruefung:render
 
+      # WP-23: Entwürfe (nicht freigegebene Monate) gehen nicht an Beschäftigte.
+      - name: Entwürfe nicht an Beschäftigte
+        run: npm run pruefung:entwuerfe
+
       # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
       - name: Sicherungen in der Oberfläche
         run: npm run pruefung:wiederherstellen-ui
