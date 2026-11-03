@@ -960,6 +960,20 @@ export const zuVielAntwort = (wartet) => new Response(JSON.stringify({
 const SPUR_TAGE = 30;
 
 /**
+ * Die Adresse einer Anfrage, wie sie in ein Protokoll oder die Konsole darf:
+ * Der Pfad eines Kalender-Feeds trägt das Geheimnis (/kalender/feed/<geheim>.ics,
+ * ein Bearer-Zugang) — er wird geschwärzt, die Abfrage (?…) fällt immer weg.
+ * WP-24, Review-Befund 9: server.mjs schrieb bei einer Ausnahme req.url ungekürzt.
+ * @param {unknown} url  req.url (Pfad mit Abfrage) oder eine volle Adresse
+ * @returns {string}
+ */
+export function adresseFuersProtokoll(url) {
+  const roh = String(url ?? "");
+  const ohneAbfrage = roh.split(/[?#]/)[0];
+  return ohneAbfrage.replace(/(\/kalender\/+feed\/+).*$/i,"$1[geschwärzt]").slice(0, 300);
+}
+
+/**
  * Ein Eintrag ins Protokoll.
  *
  * `wer` ist neu und beantwortet die Frage, die ein Protokoll beantworten

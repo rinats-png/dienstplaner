@@ -23,6 +23,9 @@ import { baueICS } from "../server/funktionen/kalender.mjs";
 import { feedTermine, ABWESENHEIT_OEFFENTLICH, HINWEIS_ENTWURF } from "../server/lib/kalenderfeed.mjs";
 import { feedHerkunftAus } from "../server/lib/feedherkunft.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
+import { fileURLToPath } from "node:url";
+import { bestandFuerRolle } from "../server/lib/rechte.mjs";
+import { planFreigabeAktiv, istEntwurfstag } from "../server/lib/planfreigabe.mjs";
 
 let Z, RL, kontoSchreiben, ablageSchluessel, daten;
 const LIMIT = 60000;
@@ -357,4 +360,324 @@ describe("Entwürfe (WP-23): Beschäftigte sehen im Feed nur Freigegebenes", () 
     expect(f.text).toContain(`DTSTART;VALUE=DATE:${kurz(ferner)}`);
     expect(f.text).toContain("SUMMARY:Urlaub");
   }, LIMIT);
+});
+
+/* --------------------------------------------------------------------------
+   Auflage A1 (Review WP-24): EINE Entwurfsregel. Der Feed entscheidet mit
+   planfreigabe.mjs wie die Sicht (sicht.mjs, bestandFuerRolle) — Tag für Tag,
+   je Betriebsform und Rolle gleich. Rolle im Feed: p.rolle, ohne Angabe
+   „mitarbeiter" (gleich oder strenger).
+   -------------------------------------------------------------------------- */
+describe("Entwurfsregel des Feeds = Sicht (planfreigabe.mjs)", () => {
+  const monat = (k) => {
+    const [j, mo] = HEUTE.slice(0, 7).split("-").map(Number);
+    const n = j * 12 + (mo - 1) + k;
+    return `${Math.floor(n / 12)}-${String((n % 12) + 1).padStart(2, "0")}`;
+  };
+  const FORMEN = [
+    ["ohne Freigabe, ohne Pflicht", {}],
+    ["Pflicht ohne Freigabe", { einstellungen: { planFreigabePflicht: true } }],
+    ["Pflicht als Text (zählt nicht)", { einstellungen: { planFreigabePflicht: "true" } }],
+    ["laufender Monat frei", { freigaben: { [monat(0)]: true } }],
+    ["nächster Monat frei", { freigaben: { [monat(1)]: true } }],
+    ["laufender und nächster frei", { freigaben: { [monat(0)]: true, [monat(1)]: { von: "p_9" } } }],
+    ["ferner Monat frei (Lücke davor)", { freigaben: { [monat(3)]: true } }],
+    ["Freigabe auf false", { freigaben: { [monat(1)]: false } }],
+    ["nur ungültige Schlüssel", { freigaben: { "2026-1": true, x: true } }],
+    ["Pflicht und nächster frei", { einstellungen: { planFreigabePflicht: true }, freigaben: { [monat(1)]: true } }],
+    ["Freigaben kein Objekt", { freigaben: ["2026-01"], einstellungen: { planFreigabePflicht: false } }],
+  ];
+  const TAGE = 204;                                                           // 205 Tage: heute bis heute + 204
+  const ROLLEN = ["mitarbeiter", "betriebsrat", "subplaner", "planer", "leitung", undefined];
+
+  it("Quelle: kalenderfeed.mjs nimmt planFreigabeAktiv/istEntwurfstag aus planfreigabe.mjs und führt keine eigene Fassung", async () => {
+    const quelle = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "lib", "kalenderfeed.mjs"), "utf8");
+    expect(quelle).toMatch(/import \{[^}]*\bplanFreigabeAktiv\b[^}]*\bistEntwurfstag\b[^}]*\} from "\.\/planfreigabe\.mjs"/);
+    expect(quelle.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/freigaben|planFreigabePflicht|MONAT_FORM/);
+  });
+
+  for (const [name, extra] of FORMEN) {
+    it(`${name}: je Rolle und Tag dieselbe Entscheidung wie bestandFuerRolle`, () => {
+      for (const rolle of ROLLEN) {
+        const p1 = person("p_1", "Rina", "Schmitt", rolle);
+        if (rolle === undefined) delete p1.rolle;
+        const b = betrieb([p1, person("p_2", "Jan", "Weber")], JSON.parse(JSON.stringify(extra)));
+        const m = b.mandanten[0];
+        for (let n = 0; n <= TAGE; n++) m.abweichungen[`p_1|${tag(n)}`] = "F";
+        const sitzRolle = rolle === undefined ? "mitarbeiter" : rolle;
+        const sicht = bestandFuerRolle(JSON.parse(JSON.stringify(b)), { rolle: sitzRolle, person: "p_1", betrieb: 0 });
+        const sichtbar = new Set(Object.keys(sicht.mandanten[0].abweichungen || {})
+          .filter((k) => k.startsWith("p_1|")).map((k) => k.slice(4)));
+        const termine = feedTermine(m, "p_1", HEUTE, TAGE);
+        const imFeed = new Set(termine.filter((t) => !t.ganztags).map((t) => t.datum));
+        const verborgen = [];
+        for (let n = 0; n <= TAGE; n++) if (!sichtbar.has(tag(n))) verborgen.push(tag(n));
+        expect([...imFeed].sort(), `${name} / ${rolle}`).toEqual([...sichtbar].sort());
+        /* Je Monat mit verborgenen Tagen genau ein Hinweis, sonst keiner. */
+        const hinweise = termine.filter((t) => t.titel === HINWEIS_ENTWURF).map((t) => t.datum.slice(0, 7)).sort();
+        expect(hinweise, `${name} / ${rolle}`).toEqual([...new Set(verborgen.map((d) => d.slice(0, 7)))].sort());
+        /* Gegenprobe: die Entscheidung je Tag aus planfreigabe.mjs. */
+        for (let n = 0; n <= TAGE; n++) {
+          const d = tag(n);
+          const versteckt = sitzRolle === "mitarbeiter" && planFreigabeAktiv(m) && istEntwurfstag(m, d, HEUTE);
+          expect(imFeed.has(d), `${name} / ${rolle} / ${d}`).toBe(!versteckt);
+        }
+      }
+    });
+  }
+});
+
+/* --------------------------------------------------------------------------
+   Auflage A2 (Review WP-24): ROLLEN-SONDE des Feeds über MA, BR, SV, PL, LT.
+   Durch den echten Handler: nur die eigenen Dienste, keine fremden Marker,
+   und die Entwürfe je Rolle genau wie die Sicht (sicht.mjs): verborgen nur
+   für Beschäftigte. RECHTEMATRIX.md (Zeile /kalender/feed) verweist hierauf.
+   -------------------------------------------------------------------------- */
+describe("Rollen-Sonde Kalender-Feed (MA, BR, SV, PL, LT)", () => {
+  const SPALTEN = { MA: "mitarbeiter", BR: "betriebsrat", SV: "subplaner", PL: "planer", LT: "leitung" };
+  const ENTWURF_SICHTBAR = { MA: false, BR: true, SV: true, PL: true, LT: true };
+  const FREMD = ["FREMD-VORNAME", "FREMD-NACHNAME", "p_2", "FREMD-NOTIZ", "FREMD-GRUND", "FREMD-DIENST", "Spätdienst",
+    "EIGEN-GRUND", "EIGEN-NOTIZ", "Krank", "krank", "1999"];
+  for (const [spalte, rolle] of Object.entries(SPALTEN)) {
+    it(`${spalte}: nur eigene Dienste, keine fremden Marker, Entwurf ${ENTWURF_SICHTBAR[spalte] ? "sichtbar" : "verborgen"} wie in der Sicht`, async () => {
+      const ferner = tag(70);
+      const personen = [
+        person("p_1", "Rina", "Schmitt", rolle, { geburtstag: "1999-01-01", notiz: "EIGEN-NOTIZ" }),
+        person("p_2", "FREMD-VORNAME", "FREMD-NACHNAME", "mitarbeiter", { notiz: "FREMD-NOTIZ" }),
+      ];
+      const extra = {
+        dienstarten: [{ id: "F", name: "Frühdienst", start: "06:00", ende: "14:00", pause: 30 },
+          { id: "S", name: "Spätdienst", start: "14:00", ende: "22:00" }, { id: "X", name: "FREMD-DIENST", start: "08:00", ende: "09:00" }],
+        einstellungen: { planFreigabePflicht: true }, freigaben: { [HEUTE.slice(0, 7)]: true },
+        abweichungen: { [`p_2|${tag(1)}`]: "X", [`p_2|${tag(2)}`]: "S", [`p_2|${ferner}`]: "X", [`p_1|${ferner}`]: "F" },
+        abwesenheiten: [{ id: "a1", personId: "p_2", von: tag(4), bis: tag(4), art: "krank", grund: "FREMD-GRUND" },
+          { id: "a2", personId: "p_1", von: tag(6), bis: tag(6), art: "krank", grund: "EIGEN-GRUND" }],
+      };
+      const ich = await aktiv(`sonde-${spalte.toLowerCase()}`, rolle, personen, extra);
+      const f = await feed(await einrichten(ich.token));
+      expect(f.status).toBe(200);
+      for (const u of f.text.match(/^UID:.*$/gm) || []) expect(u, u).toMatch(/^UID:(d|abw|entwurf)-p_1-/);
+      for (const marker of FREMD) expect(f.text, marker).not.toContain(marker);
+      expect(f.text).not.toContain(`DTSTART;TZID=Europe/Berlin:${kurz(tag(1))}T080000`);    // fremde Einteilung
+      expect(f.text).toContain(`DTSTART;VALUE=DATE:${kurz(tag(6))}`);                          // eigene Abwesenheit, neutral
+      /* Entwürfe: die Erwartung je Rolle UND die Sicht derselben Rolle (bestandFuerRolle) sagen dasselbe. */
+      const gelesen = (await Z.B.bestandLesen(Z.laden(), ich.raum)).bestand;
+      const sicht = bestandFuerRolle(gelesen, { rolle, person: "p_1", betrieb: 0 });
+      const inSicht = Object.prototype.hasOwnProperty.call(sicht.mandanten[0].abweichungen || {}, `p_1|${ferner}`);
+      expect(inSicht, "Sicht").toBe(ENTWURF_SICHTBAR[spalte]);
+      expect(f.text.includes(`DTSTART;TZID=Europe/Berlin:${kurz(ferner)}T060000`), "Feed").toBe(ENTWURF_SICHTBAR[spalte]);
+      expect(entwurf(f.text) > 0, "Hinweis").toBe(!ENTWURF_SICHTBAR[spalte]);
+    }, LIMIT);
+  }
+});
+
+/* --------------------------------------------------------------------------
+   Auflage A3 (Review WP-24)
+   -------------------------------------------------------------------------- */
+describe("Generation und Zwischenspeicher", () => {
+  it("Entzug und Neuvergabe ohne Abruf dazwischen: der alte Verweis bleibt tot (404)", async () => {
+    const ich = await aktiv("neuvergabe", "leitung");
+    const g = await einrichten(ich.token);
+    expect((await feed(g)).status).toBe(200);
+    const r = await Z.A.mitgliedschaftEntziehen(Z.laden(), ich.k.id, ich.raum);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    /* Neuvergabe: der Grabstein wird entfernt, eine neue Mitgliedschaft ausgesprochen — sie trägt die nächste Generation. */
+    await Z.laden().delete(Z.A.mitgliedSchluessel(ich.k.id, ich.raum));
+    await Z.mitgliedAnlegen(ich.k.id, ich.raum, "leitung");
+    const m = await Z.laden().get(Z.A.mitgliedSchluessel(ich.k.id, ich.raum), { type: "json" });
+    expect(m.status).toBe("aktiv");
+    const e = await Z.laden().get(`feed:${hash(g)}`, { type: "json" });
+    expect(e.herkunft.generation).toBeLessThan(m.generation);
+    const f = await feed(g);
+    expect(f.status).toBe(404);
+    expect(f.text).not.toContain("BEGIN:VCALENDAR");
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
+  }, LIMIT);
+
+  it("cache-control ist private (nie ein gemeinsamer Zwischenspeicher)", async () => {
+    const ich = await aktiv("cache", "leitung");
+    const g = await einrichten(ich.token);
+    const antwort = await Z.kalender(new Request(`http://${WIRT}/kalender/feed/${g}.ics`,
+      { headers: { host: WIRT, "x-forwarded-for": "198.51.100.251" } }), {});
+    expect(antwort.status).toBe(200);
+    const cc = String(antwort.headers.get("cache-control") || "");
+    expect(cc.split(/\s*,\s*/)).toContain("private");
+    expect(cc).not.toMatch(/\bpublic\b/);
+  }, LIMIT);
+});
+
+/* --------------------------------------------------------------------------
+   Auflage A4 (Review WP-24) und Folgepunkte (Befunde 3, 7, 9)
+   -------------------------------------------------------------------------- */
+const codeAnlegen = async (raum, code, felder = {}, schluessel = ablageSchluessel(code)) => {
+  await kontoSchreiben(Z.laden(), schluessel, { name: "p_2", bestand: raum, rolle: "mitarbeiter", person: "p_2", betrieb: 0,
+    mandantId: "m1", angelegt: "2026-01-01T00:00:00.000Z", ...felder });
+};
+const mitCode = async (code) => {
+  const a = await Z.bearer(daten, "/api/anmelden", null, { methode: "POST", rumpf: { zugangscode: code } });
+  expect(a.status, JSON.stringify(a.daten)).toBe(200);
+  return a.daten.token;
+};
+/** Einen frisch eingerichteten Feed zum Altfeed machen (Herkunft entfernen), wie vor WP-24. */
+const zumAltfeed = async (g) => {
+  const e = await Z.laden().get(`feed:${hash(g)}`, { type: "json" });
+  const { herkunft, ...ohne } = e;
+  expect(herkunft).toBeTruthy();
+  await Z.laden().setJSON(`feed:${hash(g)}`, ohne);
+};
+
+describe("A4a: Sperre widerruft herkunftslose Feeds der gebundenen Person", () => {
+  it("Kontosperre: Altfeed der eigenen Person widerrufen; Altfeed einer anderen Person bleibt", async () => {
+    const ich = await aktiv("alt-kontosperre", "leitung");
+    const g = await einrichten(ich.token);
+    await zumAltfeed(g);
+    const code = "ALTFEED-KOLLEGE-0001";
+    await codeAnlegen(ich.raum, code);
+    const g2 = await einrichten(await mitCode(code));
+    await zumAltfeed(g2);
+    expect((await feed(g)).status).toBe(200);
+    const r = await Z.A.accountSperren(Z.laden(), ich.k.id);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(r.account.status).toBe("gesperrt");
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
+    expect(await Z.laden().get(`feedperson:${ich.raum}:m1:p_1`, { type: "json" })).toBeNull();
+    expect((await feed(g)).status).toBe(404);
+    expect(await Z.laden().get(`feed:${hash(g2)}`, { type: "json" })).toBeTruthy();       // fremde Person: unberührt
+    expect((await feed(g2)).status).toBe(200);
+  }, LIMIT);
+
+  it("Codesperre (/api/zugang-sperren): Altfeed der gebundenen Person widerrufen", async () => {
+    const ich = await aktiv("alt-codesperre", "leitung");
+    const code = "ALTFEED-CODE-0002";
+    await codeAnlegen(ich.raum, code);
+    const g = await einrichten(await mitCode(code));
+    await zumAltfeed(g);
+    const eigen = await einrichten(ich.token);                                          // Feed der Leitung (p_1)
+    await zumAltfeed(eigen);
+    expect((await feed(g)).status).toBe(200);
+    const s = await Z.bearer(daten, "/api/zugang-sperren", ich.token, { methode: "POST", rumpf: { code } });
+    expect(s.status, JSON.stringify(s.daten)).toBe(200);
+    expect(s.daten.gesperrt).toBe(1);
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
+    expect(await Z.laden().get(`feedperson:${ich.raum}:m1:p_2`, { type: "json" })).toBeNull();
+    expect((await feed(g)).status).toBe(404);
+    expect((await feed(eigen)).status).toBe(200);                                       // andere Person: unberührt
+  }, LIMIT);
+
+  it("ein Index, der auf den Feed einer anderen Person oder eines anderen Betriebs zeigt, löscht nichts", async () => {
+    const { herkunftsloseFeedsWiderrufen } = await import("../server/lib/feedwiderruf.mjs");
+    const st = Z.laden();
+    const raum = Z.raum("index-fremd");
+    await st.setJSON(`feedperson:${raum}:m1:p_1`, { hash: "h-fremd-person", seit: "2026-01-01" });
+    await st.setJSON("feed:h-fremd-person", { bestand: raum, mandantId: "m1", personId: "p_9", seit: "2026-01-01" });
+    await st.setJSON(`feedperson:${raum}:m1:p_3`, { hash: "h-fremd-betrieb", seit: "2026-01-01" });
+    await st.setJSON("feed:h-fremd-betrieb", { bestand: raum, mandantId: "m2", personId: "p_3", seit: "2026-01-01" });
+    await st.setJSON(`feedperson:${raum}:m1:p_4`, { hash: "h-fremd-raum", seit: "2026-01-01" });
+    await st.setJSON("feed:h-fremd-raum", { bestand: "anderer-raum", mandantId: "m1", personId: "p_4", seit: "2026-01-01" });
+    const r = await herkunftsloseFeedsWiderrufen(st, ["p_1", "p_3", "p_4"].map((personId) => ({ raum, mandantId: "m1", personId })));
+    expect(r).toEqual({ widerrufen: 0, fehler: 0 });
+    for (const h of ["h-fremd-person", "h-fremd-betrieb", "h-fremd-raum"]) expect(await st.get(`feed:${h}`, { type: "json" }), h).toBeTruthy();
+  });
+
+  it("ein Feed MIT Herkunft wird von dieser Bereinigung nicht angefasst (er fällt erst beim Abruf)", async () => {
+    const ich = await aktiv("mit-herkunft-sperre", "leitung");
+    const g = await einrichten(ich.token);
+    await Z.A.accountSperren(Z.laden(), ich.k.id);
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeTruthy();
+    expect((await feed(g)).status).toBe(404);
+  }, LIMIT);
+});
+
+describe("A4: alte Geräte-Termine (feeddaten:*) über den Datenschutzlauf", () => {
+  it("Vorschau zählt und löscht nichts; „an“ löscht", async () => {
+    const DS = await import("../server/lib/datenschutzlauf.mjs");
+    const st = Z.laden();
+    for (const n of [1, 2, 3]) await st.setJSON(`feeddaten:alt-${n}`, { name: "Alt", betrieb: "x", termine: [{ titel: "Krank" }] });
+    const vorher = (await st.list({ prefix: "feeddaten:" })).blobs.length;
+    expect(vorher).toBeGreaterThanOrEqual(3);
+    const v = await DS.datenschutzLauf(st, { modus: "vorschau", spur: false });
+    expect(v.feeddatenFaellig).toBe(vorher);
+    expect(v.feeddatenGeloescht).toBe(0);
+    expect((await st.list({ prefix: "feeddaten:" })).blobs.length).toBe(vorher);
+    const a = await DS.datenschutzLauf(st, { modus: "an", spur: false });
+    expect(a.feeddatenGeloescht).toBe(vorher);
+    expect((await st.list({ prefix: "feeddaten:" })).blobs).toHaveLength(0);
+    const aus = await DS.datenschutzLauf(st, { modus: "aus", spur: false });
+    expect(aus.uebersprungen).toBe(true);
+  }, LIMIT);
+});
+
+describe("Befund 3: Umschlüsselung — der Feed folgt dem Nachfolger des alten Eintrags", () => {
+  it("Feed aus einer Sitzung mit altem Schlüssel: Sperre des neuen Eintrags widerruft ihn", async () => {
+    const { altHash } = await import("../server/lib/codes.mjs");
+    const ich = await aktiv("umschluesseln", "leitung");
+    const code = "UMSCHLUESSEL-CODE-0003";
+    expect(altHash(code)).not.toBe(ablageSchluessel(code));                            // ein Pfeffer ist gesetzt
+    await codeAnlegen(ich.raum, code, {}, altHash(code));
+    const g = await einrichten(await mitCode(code));
+    const e = await Z.laden().get(`feed:${hash(g)}`, { type: "json" });
+    expect(e.herkunft).toEqual({ art: "code", konto: altHash(code) });                  // die Sitzung trägt den alten Schlüssel
+    const alt = await Z.K.kontoLesen(Z.laden(), altHash(code));
+    expect(alt.ersetztDurch).toBe(ablageSchluessel(code));
+    expect((await feed(g)).status).toBe(200);
+    const neu = await Z.K.kontoLesen(Z.laden(), ablageSchluessel(code));
+    await Z.K.kontoSchreiben(Z.laden(), ablageSchluessel(code), { ...neu, gesperrt: true });
+    expect((await feed(g)).status).toBe(404);
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
+  }, LIMIT);
+
+  it("ein fehlender Nachfolger oder ein Kreis gilt nicht", async () => {
+    const { feedHerkunftGilt } = await import("../server/lib/feedherkunft.mjs");
+    const st = Z.laden();
+    await kontoSchreiben(st, "kette-a", { name: "x", bestand: "r", ersetztDurch: "kette-b" });
+    expect(await feedHerkunftGilt(st, { bestand: "r", herkunft: { art: "code", konto: "kette-a" } })).toEqual({ gilt: false, grund: "code-fehlt" });
+    await kontoSchreiben(st, "kette-b", { name: "x", bestand: "r", ersetztDurch: "kette-a" });
+    expect(await feedHerkunftGilt(st, { bestand: "r", herkunft: { art: "code", konto: "kette-a" } })).toEqual({ gilt: false, grund: "code-kette" });
+    await kontoSchreiben(st, "kette-b", { name: "x", bestand: "r" });
+    expect(await feedHerkunftGilt(st, { bestand: "r", herkunft: { art: "code", konto: "kette-a" } })).toEqual({ gilt: true });
+    await kontoSchreiben(st, "kette-a", { name: "x", bestand: "r", ersetztDurch: "kette-b", gesperrt: true });
+    expect((await feedHerkunftGilt(st, { bestand: "r", herkunft: { art: "code", konto: "kette-a" } })).gilt).toBe(false);
+  });
+});
+
+describe("Befund 7: Herkunft fail-closed, Testraum-Code mit Enddatum", () => {
+  it("ein neuer Feed ohne ableitbare Herkunft wird nicht eingerichtet (403)", async () => {
+    const ich = await aktiv("ohne-herkunft", "leitung");
+    const { token } = await Z.S.sitzungAnlegen({ bestand: ich.raum, rolle: "leitung", person: "p_1", betrieb: 0, name: "Ohne Herkunft" });
+    const e = await Z.bearer(Z.kalender, "/kalender/einrichten", token, { methode: "POST", rumpf: {} });
+    expect(e.status, JSON.stringify(e.daten)).toBe(403);
+    expect(e.daten.geheim).toBeUndefined();
+    expect(await Z.laden().get(`feedperson:${ich.raum}:m1:p_1`, { type: "json" })).toBeNull();
+  }, LIMIT);
+
+  it("Code mit laeuftAb: bis zum Enddatum 200, danach 404 und widerrufen", async () => {
+    const ich = await aktiv("laeuftab", "leitung");
+    const code = "TESTRAUM-CODE-0004";
+    await codeAnlegen(ich.raum, code, { laeuftAb: new Date(Date.now() + 86400000).toISOString() });
+    const g = await einrichten(await mitCode(code));
+    expect((await feed(g)).status).toBe(200);
+    const k = await Z.K.kontoLesen(Z.laden(), ablageSchluessel(code));
+    await Z.K.kontoSchreiben(Z.laden(), ablageSchluessel(code), { ...k, laeuftAb: new Date(Date.now() - 1000).toISOString() });
+    expect((await feed(g)).status).toBe(404);
+    expect(await Z.laden().get(`feed:${hash(g)}`, { type: "json" })).toBeNull();
+  }, LIMIT);
+});
+
+describe("Befund 9: das Feed-Geheimnis landet nicht in der Konsole", () => {
+  it("adresseFuersProtokoll schwärzt den Feed-Pfad und lässt die Abfrage weg", async () => {
+    const { adresseFuersProtokoll } = await import("../server/lib/schutz.mjs");
+    const geheim = "GEHEIMNIS-0123456789abcdefABCDEF";
+    for (const url of [`/kalender/feed/${geheim}.ics`, `/kalender/feed/${geheim}.ics?x=1`, `//kalender//feed/${geheim}.ics`,
+      `/KALENDER/FEED/${geheim}`, `/kalender/feed/${geheim}/mehr`])
+      expect(adresseFuersProtokoll(url), url).not.toContain("GEHEIMNIS");
+    expect(adresseFuersProtokoll(`/kalender/feed/${geheim}.ics`)).toBe("/kalender/feed/[geschwärzt]");
+    expect(adresseFuersProtokoll("/api/bestand?token=abc")).toBe("/api/bestand");
+    expect(adresseFuersProtokoll("/kalender/einrichten")).toBe("/kalender/einrichten");
+  });
+  it("server.mjs schreibt bei einer Ausnahme nie die rohe Adresse", async () => {
+    const quelle = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server.mjs"), "utf8");
+    const fehlerzeilen = quelle.split(/\r?\n/).filter((l) => /console\.(error|warn|log)\(/.test(l));
+    for (const l of fehlerzeilen) expect(l, l).not.toMatch(/\$\{\s*req\.url\s*\}/);
+    expect(quelle).toMatch(/console\.error\(`[^`]*\$\{adresseFuersProtokoll\(req\.url\)\}/);
+  });
 });

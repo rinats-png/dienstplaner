@@ -41,7 +41,7 @@ import { datenschutzLauf, modusAusUmgebung } from "./server/lib/datenschutzlauf.
 import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./server/lib/gesund.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
-import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden } from "./server/lib/schutz.mjs";
+import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -435,7 +435,8 @@ const server = createServer(async (req, res) => {
        Antwort oder ein Protokolleintrag nützen würde. */
     if (req.destroyed || res.destroyed) return;
     ereignis("5xx");
-    console.error(`${new Date().toISOString()} ${req.method} ${req.url}:`, e && e.stack ? e.stack : e);
+    /* Nie die rohe Adresse: Der Pfad eines Kalender-Feeds trägt dessen Geheimnis (WP-24, Befund 9). */
+    console.error(`${new Date().toISOString()} ${req.method} ${adresseFuersProtokoll(req.url)}:`, e && e.stack ? e.stack : e);
     /* Vorübergehend nicht lesbar oder gerade gesperrt (lib/bestand.mjs,
        voruebergehend): 503 mit Wiederholungshinweis, nicht 500 — und erst
        recht nicht „gibt es nicht". Für alle Funktionen, die solche Fehler
@@ -507,7 +508,8 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
       const d = await datenschutzLauf(getStore({ name: "centric", consistency: "strong" }), { modus });
       if (d.uebersprungen) console.log(`Datenschutzlauf: ${modus === "aus" ? "abgeschaltet" : "übersprungen, ein anderer läuft noch"}`);
       else console.log(`Datenschutzlauf (${modus}): ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
-        + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, ${d.fehler.length} Fehler`);
+        + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, `
+        + `${d.feeddatenGeloescht} alte Kalender-Termine entfernt (${d.feeddatenFaellig} fällig), ${d.fehler.length} Fehler`);
     } catch (e) {
       console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);
     }

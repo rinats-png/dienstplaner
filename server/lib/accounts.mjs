@@ -56,6 +56,7 @@ import { randomBytes } from "node:crypto";
 import { mailNormieren, mailBrauchbar } from "./adressen.mjs";
 import { neuHash, altHash } from "./codes.mjs";
 import { RANG } from "./rollenvergabe.mjs";
+import { herkunftsloseFeedsWiderrufen } from "./feedwiderruf.mjs";
 
 /* --------------------------------------------------------------------------
    SCHLÜSSEL
@@ -604,9 +605,25 @@ export async function testbetriebOeffnen(store, accountId) {
     ist nicht ausgetreten, und eine Dienstplanung, aus der seine Rolle
     verschwindet, wäre hinterher nicht mehr nachvollziehbar. Was eine Sperre
     für laufende Sitzungen bedeutet, entscheidet die Anmeldung, nicht der
-    Speicher. */
-export const accountSperren = (store, accountId) =>
-  accountAendern(store, accountId, { status: "gesperrt" });
+    Speicher.
+
+    WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24
+    trägt keine Herkunft und hinge sonst nur an der Person. Die Sperre
+    widerruft darum zusätzlich den herkunftslosen Feed jeder Person, an die
+    dieses Konto gebunden ist (Index feedperson:, feedwiderruf.mjs). Ein
+    Fehler dabei lässt die Sperre selbst nicht scheitern. */
+export async function accountSperren(store, accountId) {
+  const erg = await accountAendern(store, accountId, { status: "gesperrt" });
+  if (erg && erg.ok) {
+    try {
+      const bindungen = (await mitgliedschaftenDesAccounts(store, accountId))
+        .filter((m) => m && m.person !== null && m.person !== undefined && typeof m.mandantId === "string")
+        .map((m) => ({ raum: m.raum, mandantId: m.mandantId, personId: String(m.person) }));
+      await herkunftsloseFeedsWiderrufen(store, bindungen);
+    } catch { /* die Sperre gilt; der Altfeed bleibt bis zur Prüfung der Person */ }
+  }
+  return erg;
+}
 
 /** Zeitpunkt der letzten Anmeldung. */
 export const anmeldungVermerken = (store, accountId) =>

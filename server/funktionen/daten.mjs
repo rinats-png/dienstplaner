@@ -11,6 +11,7 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
@@ -460,6 +461,17 @@ export default async (req, context) => {
           if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
         }
       }
+      /* WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24 trägt keine Herkunft
+         und hinge sonst nur an der Person. Die Sperre widerruft zusätzlich den herkunftslosen Feed der
+         Person, an die der Code gebunden ist (Index feedperson:, lib/feedwiderruf.mjs). Ein Code ohne
+         Betriebskennung (mandantId, vor dem ersten Anmelden nach D1) hat keinen eindeutigen Index —
+         sein Altfeed hängt weiter an der Person (Grenze, docs/acc45/wp24-nachweis.md). */
+      try {
+        await herkunftsloseFeedsWiderrufen(store, erlaubt.map((h) => konten[h])
+          .filter((k) => k && k.gesperrt && typeof k.bestand === "string" && typeof k.mandantId === "string"
+            && k.person !== null && k.person !== undefined)
+          .map((k) => ({ raum: k.bestand, mandantId: k.mandantId, personId: String(k.person) })));
+      } catch { /* die Sperre gilt; der Altfeed bleibt bis zur Prüfung der Person */ }
 
       /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
          noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
@@ -767,6 +779,10 @@ export default async (req, context) => {
              wird beim nächsten Sperren mit erfasst. */
           await kontoSchreiben(store, ablageSchluessel(zugangscode),
             { ...eintrag, umgeschluesselt: new Date().toISOString() });
+          /* Die Sitzung trägt noch den alten Schlüssel (konto: fund.schluessel), und ein Kalender-Feed
+             aus ihr trägt ihn als Herkunft. Damit eine Sperre des neuen Eintrags auch ihn trifft, vermerkt
+             der alte, wer ihn ersetzt (WP-24, Review-Befund 3); feedherkunft.mjs folgt dem Vermerk. */
+          await kontoSchreiben(store, fund.schluessel, { ...eintrag, ersetztDurch: ablageSchluessel(zugangscode) });
         } else {
           /* Aus dem Sammelblob auf einen Einzelschlüssel heben. */
           await kontoVereinzeln(store, fund.schluessel);

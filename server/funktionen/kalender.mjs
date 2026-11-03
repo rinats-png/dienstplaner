@@ -106,10 +106,10 @@ function gehoertMir(eintrag, b) {
    endet im allgemeinen Fehlerzweig (500, protokolliert) und lässt den Feed
    unangetastet.
 
-   Noch nicht geprüft: Konto, Mitgliedschaft, Sperre des Zugangscodes. Dafür
-   müsste ein Feed seine Herkunft tragen (Zugangscode bzw. accountId und
-   Generation) — ein späterer Schritt; Feeds ohne diese Angabe würden dann
-   weiterhin nur über Person und Betrieb geprüft.
+   Seit WP-24 zusätzlich: Konto, Mitgliedschaft und Generation bzw. der
+   Zugangscode, aus dem der Feed eingerichtet wurde (lib/feedherkunft.mjs).
+   Feeds aus der Zeit davor tragen keine Herkunft; sie widerruft die Sperre
+   des Kontos oder Codes über den Index der Person (lib/feedwiderruf.mjs).
    -------------------------------------------------------------------------- */
 async function feedBetrieb(raum) {
   /* Der vollständige Bestand in einem Durchgang (WP-24: auch für die Termine).
@@ -414,13 +414,16 @@ export default async (req) => {
       const r = await rumpfLesen(req);
       if (r.antwort) return r.antwort;
       const { alt } = r.daten;
+      /* Die Herkunft aus der einrichtenden Sitzung (WP-24): Sperre oder Entzug widerrufen den Feed.
+         Lässt sie sich nicht ableiten (weder Konto noch Zugangscode), entsteht kein Feed — er hinge
+         sonst nur an der Person und überlebte jede Sperre (fail-closed, Review-Befund 7). */
+      const herkunft = feedHerkunftAus(s);
+      if (!herkunft) return antwort({ fehler: "Für diese Anmeldung lässt sich kein Kalender einrichten.",
+        text: "Bitte neu anmelden und den Kalender dann einrichten." }, 403);
       const geheim = randomBytes(24).toString("base64url");
       const neu = hash(geheim);
       const seit = new Date().toISOString();
-      /* Die Herkunft aus der einrichtenden Sitzung (WP-24): Sperre oder Entzug widerrufen den Feed. */
-      const herkunft = feedHerkunftAus(s);
-      await store().setJSON(`feed:${neu}`, { bestand: b.raum, mandantId: b.mandantId, personId: b.personId, seit,
-        ...(herkunft ? { herkunft } : {}) });
+      await store().setJSON(`feed:${neu}`, { bestand: b.raum, mandantId: b.mandantId, personId: b.personId, seit, herkunft });
       await store().setJSON(indexSchluessel(b), { hash: neu, seit });
       /* „alt" nur, wenn es nachweislich der eigenen Person gehört (gehoertMir). */
       await eigeneFeedsWiderrufen(b, neu, typeof alt === "string" && alt ? hash(alt) : null);

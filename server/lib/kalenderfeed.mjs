@@ -1,6 +1,7 @@
 import { dienstAm, imDienst } from "./fachpruefung.mjs";
 import { dauer } from "./schutzpruefung.mjs";
 import { tagePlus } from "./zeiterfassung.mjs";
+import { planFreigabeAktiv, istEntwurfstag } from "./planfreigabe.mjs";
 
 /* ==========================================================================
    DIE TERMINE EINES KALENDER-FEEDS, LIVE AUS DEM BESTAND (WP-24)
@@ -32,36 +33,25 @@ export const ABWESENHEIT_OEFFENTLICH = Object.freeze({
 const NEUTRAL = "abwesend";
 
 /* --------------------------------------------------------------------------
-   ENTWÜRFE (WP-23) — an EINER Stelle gekapselt
+   ENTWÜRFE (WP-23) — dieselbe Regel wie die Sicht, nicht eine zweite
 
    Beschäftigte bekommen Einteilungen nur für freigegebene Monate und für Tage
-   bis einschließlich heute (server/lib/sicht.mjs, planOhneEntwurf, WP-23). Der
-   Feed darf nicht mehr zeigen als die Sicht, die dieselbe Person in der
-   Anwendung hat. Dieselbe Regel, nicht eine zweite:
+   bis einschließlich heute (server/lib/sicht.mjs, planOhneEntwurf). Der Feed
+   darf nicht mehr zeigen als die Sicht, die dieselbe Person in der Anwendung
+   hat. Entschieden wird an der EINEN Stelle, an der auch Sicht und Oberfläche
+   entscheiden: server/lib/planfreigabe.mjs (planFreigabeAktiv, istEntwurfstag).
 
-   STAND: WP-23 ist noch nicht im Integrationsstand. Bis dahin steht die Regel
-   hier (entwurfSichtbar) in der Fassung des Branches acc45/security/wp23-
-   entwuerfe plus der Übergangsregel der Koordination: Der Entwurfsfilter wirkt,
-   wenn der Betrieb mindestens eine Freigabe hat oder
-   einstellungen.planFreigabePflicht === true. SOBALD WP-23 INTEGRIERT IST:
-   entwurfSichtbar durch die dortige Funktion/Bedingung aus sicht.mjs ersetzen
-   (laufenderTag, freigegebeneMonate, ctx.entwurfVerbergen) — der Test
+   Wer den Entwurf sieht, entscheidet wie in der Sicht die Rolle: nur
+   Beschäftigte nicht (sicht.mjs: entwurfVerbergen = rolle === "mitarbeiter"
+   && planFreigabeAktiv). Betriebsrat (Mitbestimmung vor der Freigabe),
+   Schichtverantwortung, Planung und Leitung sehen ihn. Die Rolle im Feed ist
+   die der Person im Bestand (p.rolle); ohne Angabe „mitarbeiter" — gleich
+   oder strenger als die Sitzung, die dieselbe Person bekäme.
    pruefungen/kalender-feed-live.test.js hält die Gleichheit mit der Sicht
-   (bestandFuerRolle) fest, sobald beides da ist.
+   (bestandFuerRolle) je Betriebsform, Rolle und Tag fest.
    -------------------------------------------------------------------------- */
-const MONAT_FORM = /^\d{4}-\d{2}$/;
-export const freigegebeneMonateFuerFeed = (m) => new Set(Object.keys(m && m.freigaben && typeof m.freigaben === "object" ? m.freigaben : {})
-  .filter((k) => MONAT_FORM.test(k) && m.freigaben[k]));
-/** Wirkt der Entwurfsfilter in diesem Betrieb für diese Rolle? */
-export function entwurfsfilterWirkt(m, rolle) {
-  if (rolle !== "mitarbeiter") return false;                            // Planung, Leitung, SV, Betriebsrat sehen den Entwurf
-  return freigegebeneMonateFuerFeed(m).size > 0 || !!(m && m.einstellungen && m.einstellungen.planFreigabePflicht === true);
-}
-/** Darf der Dienst an diesem Tag im Feed stehen? */
-export function entwurfSichtbar(m, rolle, tag, heute) {
-  if (!entwurfsfilterWirkt(m, rolle)) return true;
-  return tag <= heute || freigegebeneMonateFuerFeed(m).has(tag.slice(0, 7));
-}
+/** Wirkt der Entwurfsfilter in diesem Betrieb für diese Rolle? (wie sicht.mjs, entwurfVerbergen) */
+export const entwurfVerbergen = (m, rolle) => rolle === "mitarbeiter" && planFreigabeAktiv(m);
 /** Hinweis statt leerer Zukunft: ein ganztägiger Termin am ersten verborgenen Tag je Monat. */
 export const HINWEIS_ENTWURF = "Plan noch nicht veröffentlicht";
 
@@ -86,6 +76,7 @@ export function feedTermine(m, personId, heute, tage = 180) {
   const out = [];
   const rolle = typeof p.rolle === "string" ? p.rolle : "mitarbeiter";
   const hinweisMonate = new Set();
+  const verbergen = entwurfVerbergen(m, rolle);
   for (let n = 0; n <= tage; n++) {
     const d = tagePlus(heute, n);
     if (!imDienst(p, d)) continue;
@@ -99,7 +90,7 @@ export function feedTermine(m, personId, heute, tage = 180) {
     }
 
     /* Entwurf: nichts ausliefern, stattdessen einmal je Monat der Hinweis. */
-    if (!entwurfSichtbar(m, rolle, d, heute)) {
+    if (verbergen && istEntwurfstag(m, d, heute)) {
       const monat = d.slice(0, 7);
       if (!hinweisMonate.has(monat)) {
         hinweisMonate.add(monat);

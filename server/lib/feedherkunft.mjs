@@ -24,8 +24,14 @@ import { kontoIdSchluessel, mitgliedSchluessel, mitgliedlaufSchluessel, generati
               gültig. Die Epoche (Passwortwechsel) und die Anmeldesitzung
               zählen hier nicht: Ein Kalender kann sich nicht erneut anmelden;
               wer den Verweis zurückziehen will, tut das einzeln (loeschen).
-     code     Das Zugangskonto gibt es noch und ist nicht gesperrt.
-     ohne     Feeds aus der Zeit vor WP-24: nur die Prüfung der Person.
+     code     Das Zugangskonto gibt es noch, ist nicht gesperrt und nicht
+              abgelaufen (laeuftAb, Testräume); nach einer Umschlüsselung
+              (ersetztDurch) gilt dasselbe für jeden Eintrag der Kette.
+     ohne     Feeds aus der Zeit vor WP-24: nur die Prüfung der Person. Die
+              Sperre eines Kontos oder Codes widerruft sie zusätzlich über
+              den Index der gebundenen Person (feedwiderruf.mjs).
+   Ein NEUER Feed ohne ableitbare Herkunft wird nicht eingerichtet (403,
+   kalender.mjs) — fail-closed.
 
    Alles außer einem eindeutig negativen Befund ist KEIN Widerruf: Ein
    Lesefehler der Ablage wirft (500/503), der Feed bleibt unangetastet.
@@ -44,6 +50,15 @@ export function feedHerkunftAus(sitzung) {
 
 /** Strenges Lesen: ein Lesefehler wirft, nur ein fehlender Schlüssel ergibt null. */
 const lies = (store, schluessel) => store.get(schluessel, { type: "json" });
+/** Ein Zugangskonto: Einzelschlüssel, sonst der Sammelblob aus der Zeit davor. */
+async function codeLesen(store, schluessel) {
+  const k = await lies(store, `konto:${schluessel}`);
+  if (k) return k;
+  const sammel = (await lies(store, "konten")) || {};
+  return sammel[schluessel] || null;
+}
+/** Höchstens so viele Umschlüsselungen hintereinander (in der Praxis eine). */
+const ERSETZT_TIEFE = 8;
 
 /**
  * @param {any} store
@@ -75,14 +90,26 @@ export async function feedHerkunftGilt(store, eintrag) {
 
   if (h.art === "code") {
     if (typeof h.konto !== "string" || !h.konto) return { gilt: false, grund: "herkunft" };
-    let k = await lies(store, `konto:${h.konto}`);
-    if (!k) {                                                           // Sammelblob aus der Zeit vor den Einzelschlüsseln
-      const sammel = (await lies(store, "konten")) || {};
-      k = sammel[h.konto] || null;
+    /* Umschlüsselung (Pfeffer, daten.mjs): Die Sitzung und damit der Feed tragen den alten Schlüssel;
+       der alte Eintrag vermerkt den neuen (ersetztDurch). Gefolgt wird der ganzen Kette: Gesperrt oder
+       abgelaufen an irgendeiner Stelle, ein fehlender Nachfolger oder ein Kreis — kein Feed. */
+    const gesehen = new Set();
+    let schluessel = h.konto;
+    for (;;) {
+      if (gesehen.has(schluessel) || gesehen.size >= ERSETZT_TIEFE) return { gilt: false, grund: "code-kette" };
+      gesehen.add(schluessel);
+      const k = await codeLesen(store, schluessel);
+      if (!k) return { gilt: false, grund: "code-fehlt" };
+      if (k.gesperrt) return { gilt: false, grund: "code-gesperrt" };
+      /* Testraum-Codes tragen ein Enddatum (daten.mjs, Anmelden): danach kein Feed mehr. */
+      if (k.laeuftAb !== undefined && k.laeuftAb !== null) {
+        const ende = new Date(k.laeuftAb).getTime();
+        if (!Number.isFinite(ende) || ende < Date.now()) return { gilt: false, grund: "code-abgelaufen" };
+      }
+      if (k.ersetztDurch === undefined || k.ersetztDurch === null) return { gilt: true };
+      if (typeof k.ersetztDurch !== "string" || !k.ersetztDurch) return { gilt: false, grund: "code-kette" };
+      schluessel = k.ersetztDurch;
     }
-    if (!k) return { gilt: false, grund: "code-fehlt" };
-    if (k.gesperrt) return { gilt: false, grund: "code-gesperrt" };
-    return { gilt: true };
   }
 
   return { gilt: false, grund: "herkunft" };
