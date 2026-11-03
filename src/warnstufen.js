@@ -59,19 +59,10 @@ export function hoechsteStufe(befunde) {
   return aus;
 }
 
-/** Gesetzliche Mindestruhezeit nach § 5 Abs. 1 ArbZG. Was darüber liegt, ist Tarif oder Betrieb. */
-export const RUHEZEIT_GESETZ = 11;
-
-/**
- * Stufe einer zu kurzen Ruhezeit. Unter der gesetzlichen Grenze ist es ein
- * Rechtsverstoß; zwischen Gesetz und der Einstellung des Betriebs (Tarif,
- * Betriebsvereinbarung) eine Achtung. Null, wenn die Ruhezeit reicht.
- */
-export function ruhezeitStufe(ruheStunden, einstellung) {
-  const grenze = Number(einstellung) || RUHEZEIT_GESETZ;
-  if (ruheStunden >= grenze) return null;
-  return ruheStunden < Math.min(RUHEZEIT_GESETZ, grenze) ? "recht" : "achtung";
-}
+/* Gesetzliche Mindestruhezeit (§ 5 Abs. 1 ArbZG) und die Stufe einer zu
+   kurzen Ruhezeit stehen seit WP-22 in server/lib/fachpruefung.mjs — der
+   Server prüft mit derselben Fassung. Hier nur weitergereicht. */
+export { RUHEZEIT_GESETZ, ruhezeitStufe } from "../server/lib/fachpruefung.mjs";
 
 /** Gründe, die bei einem bestätigten Rechtsverstoß zur Auswahl stehen. Die Angabe ist freiwillig. */
 export const ABWEICHUNG_GRUENDE = [

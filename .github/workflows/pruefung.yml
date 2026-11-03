@@ -94,6 +94,10 @@ jobs:
       - name: Eine Schutzprüfung
         run: npm run pruefung:schutz-eine
 
+      # Fachprüfungen auf dem Server: Qualifikation, Ruhezeit, Tagesgrenze, Mindestbesetzung, Dienstarten nur mit org.edit (WP-22).
+      - name: Fachprüfungen Server
+        run: npm run pruefung:fachpruefung
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
@@ -772,6 +776,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.3.
+
+      # Fachprüfungen über echte Anmeldung: 403, 409 mit Befundliste, Bestätigung, org.edit (WP-22).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Fachprüfungen Server (HTTP)
+        run: npm run pruefung:fachpruefung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.7.1.
 
       # Betreibersicht über echte Anmeldung: GET, 409, Rundweg, Anlegen und Löschen.
       - name: Container frisch starten

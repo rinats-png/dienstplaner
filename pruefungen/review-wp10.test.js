@@ -117,15 +117,22 @@ describe("H1: was sperrt, steht an einer Stelle und ist streng", () => {
     const h = funktionAb("function hindernisBefunde(m, p, d, da) {");
     expect(h).toContain("sperrt: sperrtArt(");
     expect(h.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/sperrt: true/);
-    for (const k of ["\"bestand\", \"bestand\"", "\"keineNacht\"", "\"maxDiensteWoche\"", "\"keinAlleindienst\"",
-      "\"qualifikationGesetzlich\"", "\"kompetenz\", \"kompetenz\"", "\"ruhezeitGesetz\""])
-      expect(h, k).toContain(k);
+    /* WP-22: Die Fachprüfung der Einteilung steht in server/lib/fachpruefung.mjs
+       (einteilungsBefunde) — dieselbe, mit der der Server prüft. hindernisBefunde
+       übernimmt Schlüssel und Stufe von dort; sperrt bleibt aus der Tabelle. */
+    expect(h).toContain("einteilungsBefunde(m, p, da, d, {");
+    const FP = readFileSync(path.join(process.cwd(), "server/lib/fachpruefung.mjs"), "utf8").replace(/\r\n/g, "\n");
+    const e = FP.slice(FP.indexOf("export function einteilungsBefunde("), FP.indexOf("\n}\n", FP.indexOf("export function einteilungsBefunde(")));
+    for (const k of ["push(\"bestand\"", "push(\"keineNacht\"", "push(\"maxDiensteWoche\"", "push(\"keinAlleindienst\"",
+      "\"qualifikationGesetzlich\"", "push(\"kompetenz\"", "\"ruhezeitGesetz\""])
+      expect(e, k).toContain(k);
+    expect(e.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/sperrt: true/);
     /* WP-11: harte Schutzbefunde aus der einen Schutzprüfung heißen „schutz“. */
-    expect(h).toMatch(/b\.sperrt \? "schutz"/);
-    /* Einschränkungen: Stufe aus derselben Tabelle wie die Planprüfung
-       (EINSCHRAENKUNG_BEWERTUNG aus sperrtArt) — streng: Rechtsverstoß. */
-    expect(h).toContain("einschraenkung(\"keineNacht\", \"keine Nachtdienste zugelassen\")");
-    expect(h).toContain("einschraenkung(\"maxDiensteWoche\"");
+    expect(e).toMatch(/b\.sperrt \? "schutz"/);
+    /* Einschränkungen: Stufe aus dem Befundkatalog (wie die Planprüfung über
+       EINSCHRAENKUNG_BEWERTUNG aus sperrtArt) — streng: Rechtsverstoß. */
+    expect(e).toContain("push(\"keineNacht\", \"keine Nachtdienste zugelassen\"");
+    expect(e).toContain("stufeVon(regel, \"achtung\")");
     expect(APP).toMatch(/const EINSCHRAENKUNG_BEWERTUNG = Object\.fromEntries\(\["keineNacht", "keinAlleindienst", "maxDiensteWoche"\]\s*\.map\(\(k\) => \[k, sperrtArt\(k\) \? \{ stufe: "recht", schwere: "danger" \}/);
   });
   it("Bewerbung und Selbstplanung sind bei einem sperrenden Befund nicht möglich", () => {

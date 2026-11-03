@@ -256,6 +256,21 @@ und weist ab, wenn ein sperrender Befund neu entsteht (Review F2; Teilzeit und P
 Altbestand blockiert nicht). Ruhezeit, Einschränkungen, Qualifikationen und Einweisungen setzt bisher nur die
 Oberfläche durch (offen).
 
+**Fachprüfungen auf dem Server (WP-22, überholt den letzten Satz).** Die Prüfung einer Einteilung steht jetzt in
+`server/lib/fachpruefung.mjs` (`einteilungsBefunde`) — eine Fassung für Oberfläche (`hindernisBefunde` liest sie mit
+dem Plan der Oberfläche) und Server (`server/lib/schutzdurchsetzung.mjs` mit einer Planrechnung aus Abweichungen,
+Schichtfolge, Teilzeit und Abwesenheiten). Das Regelwerk liegt dafür in `server/lib/regelwerk.mjs`; `src/regelwerk.js`
+reicht es weiter. Der Server setzt durch: Bestand, Schutz, Einschränkungen, gesetzliche und betriebliche
+Qualifikationen (`QUAL-SPERRE-01` über `verbindlichkeit`), Einweisungen (`KOMP-EINWEISUNG-01`), Ruhezeit (`AZ-RUHE-01`, Gesetz und Vorgabe
+des Betriebs), Tagesgrenze (`AZ-TAG-01`, § 3 ArbZG, je Dienst über zehn Stunden, Katalog `tagesgrenze` — nach Nutzerentscheidung nur
+ein Hinweis: keine Bestätigung, kein Protokoll, keine Mitteilung; ob eine Regelung nach § 7 ArbZG den langen Dienst trägt,
+verantwortet der Betrieb; Rufbereitschaft zählt nicht und unterbricht keine Ruhezeit) und Mindestbesetzung (`BES-MINDEST-01`, Katalog `untergrenze`, Achtung).
+Nur **neue** Befunde zählen; sperrende werden abgewiesen, warnende brauchen einen neuen Protokolleintrag zu Person, Tag
+und Regel im selben Speichervorgang, sonst antwortet der Server 409 mit neutraler Befundliste. **Grenzen:** Posten und
+die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche; der Durchschnitt nach § 3 Satz 2 ArbZG (acht
+Stunden über sechs Monate) und Dienste in Folge (`folge`) prüft der Server nicht je Einteilung; die Verfügbarkeit der
+Person und Teilzeit-Wochentage bleiben Hinweise der Oberfläche. Nachweis: `docs/acc45/wp22-nachweis.md`.
+
 **Nachtruhe 20–6 Uhr (Review F3).** `JARBSCHG-14` und `MUSCHG-05` prüfen jede Überschneidung eines Dienstes mit 20
 bis 6 Uhr — vorher nur „Nachtdienst" (über zwei Stunden zwischen 23 und 6) oder Beginn vor 6 Uhr, obwohl der Text „20
 bis 6 Uhr" sagte. **Bekannte Grenze:** Die Ausnahmen nach § 14 Abs. 2 bis 7 JArbSchG und § 5 Abs. 2 MuSchG (20–22 Uhr
