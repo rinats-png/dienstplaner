@@ -31,6 +31,18 @@ function inderNacht(start, ende) {
 }
 
 /**
+ * Auflage C1: Die Pause muss kleiner sein als die Anwesenheit (Beginn bis Ende, auch über Mitternacht).
+ * Sonst wäre die Netto-Dauer null oder negativ — und Konto, Lohn und Export mit ihr.
+ * @param {string} start "HH:MM"
+ * @param {string} ende  "HH:MM"
+ * @param {number} pause Minuten
+ * @returns {boolean} true, wenn die Pause die Anwesenheit erreicht oder übersteigt
+ */
+export function pauseZuLang(start, ende, pause) {
+  return Number(pause) >= Math.round(brutto({ start, ende }) * 60);
+}
+
+/**
  * Hinweise zu einer Ist-Zeit.
  * @param {any} m        Betrieb (personen, erfassung, einstellungen)
  * @param {string|number} personId
@@ -52,6 +64,10 @@ export function regelHinweise(m, personId, datum, ist) {
     aus.push({ code: "PAUSE", text: pause
       ? `Pause ${pause} min eingetragen, nötig sind ${noetig} min bei ${zeitText(anwesend)} h Anwesenheit (§ 4 ArbZG).`
       : `Keine Pause erfasst, nötig sind ${noetig} min bei ${zeitText(anwesend)} h Anwesenheit (§ 4 ArbZG).` });
+
+  /* Die Pause macht den größten Teil der Anwesenheit aus: ein Hinweis, keine Sperre (die Sperre ist pauseZuLang). */
+  if (pause > 0 && pause * 2 > anwesend * 60 && !pauseZuLang(ist.start, ist.ende, pause))
+    aus.push({ code: "PAUSE_LANG", text: `Pause ${pause} min bei ${zeitText(anwesend)} h Anwesenheit — die Pause ist der größte Teil der Schicht. Bitte prüfen.` });
 
   /* C3: Tageshöchstzeit (§ 3 ArbZG). */
   if (netto > HOECHST_TAG)

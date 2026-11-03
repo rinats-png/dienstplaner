@@ -339,3 +339,41 @@ describe("Ungeplanter Dienst: Pause und Altbestand (C4, C5)", { timeout: 120000 
     expect(e.status).toBe(404);
   });
 });
+
+describe("Pause kleiner als die Anwesenheit (Auflage C1)", { timeout: 120000 }, () => {
+  it("Antrag: Pause gleich oder größer als die Brutto-Dauer (auch über Mitternacht) wird mit 422 abgelehnt; der Stempel bleibt unverändert", async () => {
+    const t = await token("a3");
+    const vorher = await mandant();
+    const p = (rumpf) => anfrage("korrektur-antrag", { token: t, rumpf });
+    const a = await p(antrag(tag(-1), "08:00", "09:00", "Pause zu lang eingetragen", { pause: 180 }));
+    expect(a.status, a.roh).toBe(422);
+    expect((await p(antrag(tag(-1), "08:00", "09:00", "Pause so lang wie der Dienst", { pause: 60 }))).status).toBe(422);
+    expect((await p(antrag(tag(-1), "22:00", "01:00", "Nachtdienst, Pause so lang wie der Dienst", { pause: 180 }))).status).toBe(422);
+    expect(await mandant()).toEqual(vorher);
+    /* eine kürzere Pause ist keine 422 mehr (200, oder 409 wenn schon ein Antrag offen ist) */
+    expect((await p(antrag(tag(-1), "08:00", "09:00", "Pause kürzer als der Dienst", { pause: 59 }))).status).not.toBe(422);
+    expect((await p(antrag(tag(-1), "22:00", "02:00", "Nachtdienst, Pause kürzer", { pause: 180 }))).status).not.toBe(422);
+  });
+  it("direkte Korrektur (/api/stempel-korrektur): Pause nicht kleiner als die Brutto-Dauer → 422, Ist bleibt; 59 min bei 1 h gehen", async () => {
+    const t = await token("l1");
+    const vor = (await mandant()).erfassung[`a1|${tag(-3)}`];
+    const k = (extra) => anfrage("stempel-korrektur", { token: t, rumpf: { personId: "a1", datum: tag(-3), grund: "Pause falsch eingetragen, Korrektur", ...extra } });
+    expect((await k({ start: "08:00", ende: "09:00", pause: 180 })).status).toBe(422);
+    expect((await k({ start: "08:00", ende: "09:00", pause: 60 })).status).toBe(422);
+    expect((await k({ start: "22:00", ende: "01:00", pause: 180 })).status).toBe(422);        // über Mitternacht: 3 h brutto
+    expect((await mandant()).erfassung[`a1|${tag(-3)}`]).toEqual(vor);
+    const gut = await k({ start: "08:00", ende: "09:00", pause: 59 });
+    expect(gut.status, gut.roh).toBe(200);
+    const m = await mandant();
+    expect(istZeitFuer(m, m.personen.find((x) => x.id === "a1"), tag(-3), { start: "08:00", ende: "09:00", pause: 59 }).std).toBeGreaterThanOrEqual(0);
+  });
+  it("ohne genannte Pause zählt die zuletzt erfasste: sie darf die neue Dauer nicht übersteigen", async () => {
+    const r = await anfrage("stempel-korrektur", { token: await token("l1"), rumpf: { personId: "a1", datum: tag(-3), start: "08:00", ende: "08:30", grund: "Dienst war nur kurz, Ende korrigiert" } });
+    expect(r.status, r.roh).toBe(422);
+  });
+  it("Hinweis (keine Sperre), wenn die Pause den größten Teil der Anwesenheit ausmacht", () => {
+    const m = { personen: [], erfassung: {} };
+    expect(regelHinweise(m, "p", "2026-11-02", { start: "08:00", ende: "10:00", pause: 90 }).map((x) => x.code)).toContain("PAUSE_LANG");
+    expect(regelHinweise(m, "p", "2026-11-02", { start: "08:00", ende: "16:00", pause: 30 }).map((x) => x.code)).not.toContain("PAUSE_LANG");
+  });
+});

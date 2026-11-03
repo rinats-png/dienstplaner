@@ -54,7 +54,7 @@ const antragFest = (x) => (objekt(x) ? { id: x.id, von: x.von, gestellt: x.geste
 
 import { stichtage, aufbewahrungFehler } from "./aufbewahrung.mjs";
 import { geplanterDienst } from "./zeiterfassung.mjs";
-import { regelHinweise } from "./zeitregeln.mjs";
+import { regelHinweise, pauseZuLang } from "./zeitregeln.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -332,6 +332,9 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
   /* Die gültige Pause: die genannte, sonst die zuletzt erfasste, sonst die der geplanten Dienstart. */
   const dienstart = planDienst ? (m.dienstarten || []).find((d) => d && String(d.id) === String(planDienst)) : null;
   const gueltigePause = pauseGegeben ? pause : (objekt(alt) && alt.pause !== undefined ? alt.pause : (dienstart && Number(dienstart.pause)) || 0);
+  /* Auflage C1: auch die übernommene Pause (zuletzt erfasste oder der Dienstart) muss kleiner sein als die neue Anwesenheit. */
+  if (pauseZuLang(start, ende, gueltigePause))
+    return { status: 422, grund: `Die Pause (${gueltigePause} min) muss kürzer sein als die Anwesenheit von ${start} bis ${ende} Uhr.` };
   const hinweise = regelHinweise(m, personId, datum, { start, ende, pause: gueltigePause });
   if (hinweise.length) ereignis.hinweise = hinweise;
   const eintrag = { ...stempel, [KORREKTUREN]: [...bisher, ereignis] };

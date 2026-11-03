@@ -25,6 +25,7 @@
    KONFLIKT, Ende fehlt) ist der Weg, ihn aufzulösen.
    ========================================================================== */
 
+import { pauseZuLang } from "./zeitregeln.mjs";
 import { korrekturAnhaengen, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
 
 export const ANTRAG_RUECKBLICK_TAGE = 62;
@@ -61,6 +62,8 @@ export function antragStellen(m, von, rumpf, jetzt, id, heute) {
   const pause = pauseGegeben ? Number(pauseRoh) : undefined;
   if (pauseGegeben && !(Number.isInteger(pause) && pause >= 0 && pause <= 180))
     return { status: 422, grund: "Die Pause in Minuten angeben (0 bis 180)." };
+  if (pauseGegeben && pauseZuLang(start, ende, pause))
+    return { status: 422, grund: "Die Pause muss kürzer sein als die Anwesenheit von Beginn bis Ende." };
   if (grund.length < KORREKTUR_GRUND_MIN || grund.length > KORREKTUR_GRUND_MAX)
     return { status: 422, grund: `Ein Antrag braucht einen Grund (${KORREKTUR_GRUND_MIN}–${KORREKTUR_GRUND_MAX} Zeichen).` };
   const schluessel = `${von.personId}|${datum}`;
