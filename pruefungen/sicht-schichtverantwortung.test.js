@@ -179,9 +179,9 @@ describe("Rundweg und Rückfüllung", () => {
     return { g, e: zusammenfuehren(g, gelesen, SUB) };
   }
   it("gekürzte Sicht lesen, im Bereich planen, zurückschreiben: angenommen, nichts Verborgenes verloren", () => {
-    const { g, e } = rundweg((m) => { m.abweichungen[`a1|${tag(3)}`] = "F"; });
+    const { g, e } = rundweg((m) => { m.abweichungen[`a1|${WERKTAG6}`] = "F"; });
     expect(e.verweigert).toBeFalsy();
-    expect(e.mandanten[0].abweichungen[`a1|${tag(3)}`]).toBe("F");
+    expect(e.mandanten[0].abweichungen[`a1|${WERKTAG6}`]).toBe("F");
     expect(e.mandanten[0].personen).toEqual(g.mandanten[0].personen);           // wertgleich
     expect(JSON.stringify(e.mandanten[0].personen)).not.toContain("sichtbereich");
     /* Die Leitung liest seit 1e.3 nach ihrem eigenen Katalog; gespeichert ist alles. */
@@ -202,7 +202,7 @@ describe("Rundweg und Rückfüllung", () => {
     /* sichtIstDaten (E1) ist ein Antwortvermerk; zusammenfuehren entfernt ihn
        vorab (abgeleiteteEntfernen). Hier wird einheitZusammen direkt geprüft. */
     delete sicht.sichtIstDaten;
-    sicht.abweichungen[`a1|${tag(3)}`] = "F";
+    sicht.abweichungen[`a1|${WERKTAG6}`] = "F";
     expect(einheitZusammen(g.mandanten[0], sicht, SUB).ok).toBe(false);
     expect(einheitZusammen(g.mandanten[0], personenRueckfuellen(g.mandanten[0], sicht, SUB), SUB).ok).toBe(true);
   });

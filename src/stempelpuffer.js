@@ -118,12 +118,14 @@ export async function speicherWaehlen(umgebung = globalThis) {
  * (stempelvorgang.js, positionHolen) — sonst null; mehr wird nicht abgelegt.
  */
 export async function erfassen(speicher, { art, datum = null, koord = null, positionGrund = null, inhaber, jetzt = new Date(), kennung = neueKennung,
-  offline = false }) {
+  offline = false, pause = null }) {
   if (art !== "start" && art !== "ende") throw new Error("Nur start oder ende.");
   if (!inhaber) throw new Error("Ohne Inhaber wird kein Stempel abgelegt.");
   const alle = await speicher.alle();
   const reihe = alle.reduce((n, e) => Math.max(n, Number(e.reihe) || 0), 0) + 1;
-  const ev = { id: kennung(), art, datum, inhaber, reihe, erfasstAm: jetzt.toISOString(), offline: !!offline,
+  /* Pause (WP-16): nur beim Ende, wie eingegeben — der Server prüft sie (eine ungültige kostet nie den Stempel). */
+  const p = art === "ende" && pause !== null && pause !== undefined && pause !== "" && Number.isFinite(Number(pause)) ? Number(pause) : null;
+  const ev = { id: kennung(), art, datum, inhaber, reihe, erfasstAm: jetzt.toISOString(), offline: !!offline, pause: p,
     koord: koord && typeof koord.lat === "number" && typeof koord.lon === "number"
       ? { lat: koord.lat, lon: koord.lon, accuracy: typeof koord.accuracy === "number" ? koord.accuracy : null } : null,
     zustand: "wartet", versuche: 0, naechsterVersuchAm: 0, fehler: null, quittung: null };
@@ -257,6 +259,7 @@ export function rumpfFuer(ev, gesendet = new Date()) {
     gesendetAm: gesendet.toISOString(), offline: !!ev.offline, inhaber: ev.inhaber,
     lat: ev.koord ? ev.koord.lat : null, lon: ev.koord ? ev.koord.lon : null,
     accuracy: ev.koord && typeof ev.koord.accuracy === "number" ? ev.koord.accuracy : null,
+    ...(ev.art === "ende" && typeof ev.pause === "number" ? { pause: ev.pause } : {}),
     ...(!ev.koord && POSITION_GRUENDE.includes(ev.positionGrund) ? { positionGrund: ev.positionGrund } : {}) };
 }
 

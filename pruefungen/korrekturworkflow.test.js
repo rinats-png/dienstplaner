@@ -314,7 +314,7 @@ describe("Regelhinweise und Pause (C3, C4)", () => {
     expect(codes(mu)).toContain("MUTTERSCHUTZ");
     const jung = regelHinweise(m({ person: { geburtstag: "2010-05-05" } }), "p", "2026-11-02", { start: "13:00", ende: "21:00", pause: 30 });
     expect(codes(jung)).toContain("JUGENDSCHUTZ");
-    expect(codes(regelHinweise(m({ person: { mutterschutz: true, geburtstag: "2010-05-05" } }), "p", "2026-11-02", { start: "08:00", ende: "16:00", pause: 30 }))).toEqual([]);
+    expect(codes(regelHinweise(m({ person: { mutterschutz: true, geburtstag: "2010-05-05" } }), "p", "2026-11-02", { start: "08:00", ende: "16:00", pause: 60 }))).toEqual([]);   // WP-16: Jugendliche über 6 h brauchen 60 min (§ 11 JArbSchG)
   });
 });
 

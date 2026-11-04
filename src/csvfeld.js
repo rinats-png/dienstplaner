@@ -25,12 +25,16 @@ export const csvFeld = (v) => {
  * Beginnt der Text (auch nach Leerraum) mit = + - @ oder mit Tabulator bzw.
  * Wagenrücklauf, wertet eine Tabellenkalkulation ihn als Formel aus. Ein
  * vorangestelltes Hochkomma macht ihn zu Text. Danach wie csvFeld maskiert
- * (Semikolon, Anführungszeichen, Zeilenumbruch). Nur für Text — Zahlen wie
- * „-2,50" gehen weiter über csvFeld.
+ * (Semikolon, Anführungszeichen, Zeilenumbruch) und zusätzlich bei Komma
+ * oder Tabulator in Anführungszeichen gesetzt (Review S3): Tabellenprogramme
+ * mit automatischer Trennzeichenerkennung teilen auch dort, und ein
+ * abgespaltener Rest könnte in seiner eigenen Zelle als Formel beginnen.
+ * Nur für Text — Zahlen wie „-2,50" gehen weiter über csvFeld.
  * @param {unknown} v
  * @returns {string}
  */
 export const csvText = (v) => {
   const s = String(v == null ? "" : v);
-  return csvFeld(/^[\t\r]|^\s*[=+\-@]/.test(s) ? `'${s}` : s);
+  const t = /^[\t\r]|^\s*[=+\-@]/.test(s) ? `'${s}` : s;
+  return /[,\t]/.test(t) ? `"${t.replace(/"/g, '""')}"` : csvFeld(t);
 };

@@ -16,6 +16,7 @@
 
 import { GEO_MODUS_TEXT } from "./geo.mjs";
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
+import { abschlussAusGespeichert } from "./monatsabschluss.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
@@ -26,7 +27,9 @@ import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
-import { branchenmoduleZusammen } from "./branchenmodule.mjs";
+import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenmodule.mjs";
+import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
+import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -137,6 +140,24 @@ export function schreibumfang(rolle) {
      keine Vorsicht, sondern die Zusage aus § 3 des AV-Vertrags. */
   if (rolle === "betreiber") return SCHREIBEN_BETREIBER;
   return SCHREIBEN_NEIN;
+}
+
+/**
+ * Monatsabschluss (WP-16): Abschließen dürfen Rollen mit Vollschreibrecht und
+ * staff.edit (Leitung, Planung, Kundenrolle) — sie korrigieren auch Stempel.
+ * Wiederöffnen hebt eine Sperre auf, auf die sich Lohn und Auswertungen
+ * verlassen; das darf nur die Leitung (org.edit, ebenso die Kundenrolle im
+ * eigenen Probierraum). Alle anderen Rollen und Aktionen: nein.
+ * @param {string|null|undefined} rolle
+ * @param {string} aktion "abschliessen" | "wiederoeffnen"
+ */
+export function abschlussRecht(rolle, aktion) {
+  if (!rolle || !rolleBekannt(rolle) || schreibumfang(rolle) !== SCHREIBEN_VOLL) return false;
+  if (aktion === "abschliessen") return darf(rolle, "staff.edit");
+  if (aktion === "wiederoeffnen") return darf(rolle, "org.edit");
+  /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): wie das Wiederöffnen — org.edit. */
+  if (aktion === "lohnexport") return darf(rolle, "org.edit");
+  return false;
 }
 
 /* Was eine beschäftigte Person am Betrieb ändern darf: ihre eigenen
@@ -410,7 +431,7 @@ const BETREIBER_FELDER = ["betreiber", "tarife", "rechnungen", "protokoll",
    rechte Seite kommt der Betreiber über diesen Weg nicht, auch wenn seine
    Oberfläche sie mitschickt. */
 const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
-  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",
   "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "einheitLabel",
   /* Die Rollenbezeichnungen darf auch der Betreiber setzen — beim
      Einrichten eines Hauses ist er derjenige, der weiß, ob dort
@@ -447,8 +468,13 @@ export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "
 /** Was Leitung und Kundenrolle zur Preisanzeige lesen (B2) — nur lesend. */
 const PREISGRUNDLAGE = ["tarif", "preisgestaltung", "rabattGrund"];
 
+/* G9 (Review F1, Nachtrag 2): Pakete lassen sich unter Zustand 5 nur in einem Betrieb mit Pilot
+   zubuchen; Pilot, Zustimmungen und Grundlagen mit Servertag, nur für gebuchte Pakete. Die Regel
+   steht in paketstand.mjs (paketfelderGeprueft) — /api/bestand-anlegen nutzt dieselbe. */
+const paketeGeprueft = (m0, altM) => paketfelderGeprueft(m0, altM);
+
 export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
-  "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",
   "laeuftAb", "selbstAngelegt"];
 
 /* --------------------------------------------------------------------------
@@ -541,7 +567,8 @@ function bestandFuerRolleKern(bestand, sitzung) {
        kommen beim Speichern immer aus dem gespeicherten Stand. Die Planung
        hat billing.view nicht und bekommt nichts davon. */
     if (eigenerV && aus.mandanten && darf(rolle, "billing.view")) {
-      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld)) aus.mandanten[0][feld] = eigenerV[feld];
+      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld))
+        aus.mandanten[0][feld] = feld === "preisgestaltung" ? preisgestaltungFuerKunde(eigenerV[feld]) : eigenerV[feld];
       const eigenerTarif = Array.isArray(bestand.tarife)
         ? bestand.tarife.filter((t) => t && typeof t === "object" && t.id === eigenerV.tarif) : [];
       if (eigenerTarif.length) aus.tarife = eigenerTarif;
@@ -1274,6 +1301,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     /* Mitteilungen: Notruf- und Tauschmitteilungen des Clients verworfen,
        Zustellwege und -status aus dem gespeicherten Stand, Grenzen für
        Titel und Text (Commit 4, mitteilungen.mjs). */
+    /* Ausnahmeweg Art. 16/17 DSGVO für Daten ausgeschalteter Branchenmodule (modulschreibwege.mjs):
+       Die Angabe ist kein Betriebsfeld (die Rückfüllung unten verwirft sie) — sie wird hier gemerkt
+       und nur dem Modulschreibweg übergeben, gespeichert wird sie nie. */
+    const moduldatenAusnahme = geschickt && typeof geschickt === "object" && hat(geschickt, "moduldatenAusnahme")
+      ? geschickt.moduldatenAusnahme : undefined;
     const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt);
     if (vorgefiltert.grund) return { verweigert: vorgefiltert.grund };
     geschickt = vorgefiltert.mandant;
@@ -1281,6 +1313,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
     if (umfang === SCHREIBEN_VOLL) {
       geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Monatsabschluss (WP-16): abgeschlossen und wiedergeöffnet wird nur über POST /api/monatsabschluss —
+         mitgeschickt ist er wirkungslos (auch eine veraltete Kopie überschreibt ihn nicht). */
+      geschickt = abschlussAusGespeichert(ort.betrieb, geschickt);
       /* Geo-Prüfung beim Stempeln (E7): schalten darf nur die Leitung. */
       const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (schalter.grund) return { verweigert: schalter.grund };
@@ -1358,9 +1393,22 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
     if (umfang === SCHREIBEN_EINHEIT) {
       geschickt = schichtRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Monatsabschluss (WP-16): immer der gespeicherte Stand — die verkürzte Form der Sicht ist keine Änderung. */
+      geschickt = abschlussAusGespeichert(ort.betrieb, geschickt);
       const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
+    }
+    /* Branchenmodule (WP-19.0): Daten ausgeschalteter Module nur lesbar (G3), danach die Schreibwege
+       der Module aus MODUL_SCHREIBWEGE — der eine Einhängepunkt für Planung, Leitung und
+       Schichtverantwortung (server/lib/modulschreibwege.mjs). */
+    {
+      /* Die Angabe immer übergeben, auch undefined: Ein gespeichertes Feld, das die Rückfüllung wieder
+         eingesetzt hat, darf nie als Angabe gelten (zweiter Opus-Review H1 — es sperrte jedes Speichern). */
+      const modulweg = modulSchreibwegeAnwenden(ort.betrieb, geschickt, { sitzung, rolle, umfang, darfOrgEdit: darf(rolle, "org.edit"),
+        ausnahme: moduldatenAusnahme });
+      if (modulweg.grund) return { verweigert: modulweg.grund };
+      geschickt = modulweg.mandant;
     }
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
@@ -1434,13 +1482,15 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       .filter(Boolean)
       .map((geschickt) => {
         const alt = alteNachId.get(geschickt.id);
-        if (!alt) return geschickt;               // neu angelegt
+        /* Neu angelegt — ohne Moduleinstellungen: Schalter, Bestätigungen, Regelwerte und
+           Modulprotokoll entstehen nur über branchenmoduleZusammen (G2/G6, WP-19.0 Nachtrag). */
+        if (!alt) return paketeGeprueft(moduleinstellungenVerwerfen(geschickt), null);
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {
           if (Object.prototype.hasOwnProperty.call(geschickt, feld))
             zusammen[feld] = geschickt[feld];
         }
-        return zusammen;                          // alles Übrige bleibt, wie es war
+        return paketeGeprueft(zusammen, alt);     // alles Übrige bleibt, wie es war
       });
     return aus;
   }

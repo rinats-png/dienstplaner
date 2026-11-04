@@ -10,7 +10,7 @@ import Startbild from "./startbild.jsx";
 import { ANWENDUNG_URL } from "./kontakt.js";
 import Ringregler from "./ringregler.jsx";
 import { Icon } from "./gestalt/icons.jsx";
-import { STUFEN, PAKETE, preisFuer, passendeStufe } from "./stufen.js";
+import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe, branchenpaketeHinweis, leistungenAnzeige } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
 import { ZweifaktorFeld } from "./betreiber-2fa.jsx";
 
@@ -121,7 +121,7 @@ function Preise({ onZurueck, onStarten }) {
      schon auseinandergelaufen (kein paketeFrei, anderer Leistungstext),
      und eine zweite Preisliste ist am Ende ein Preisversprechen, das die
      Anwendung nicht einhält. */
-  const alle = STUFEN.map((s) => preisFuer(s, planer, standorte, pakete));
+  const alle = STUFEN.map((s) => preisFuer(s, planer, standorte, buchbareAuswahl(pakete)));
   const passend = alle.find((a) => a.stufe.id === passendeStufe(planer).id) || alle[alle.length - 1];
 
   const aendereStandort = (i, wert) =>
@@ -240,27 +240,33 @@ function Preise({ onZurueck, onStarten }) {
             Branchenpakete</legend>
           <div style={{ display: "grid", gap: 9,
             gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
-            {PAKETE.filter((p) => !p.pflicht).map((p) => {
-              const an = pakete.includes(p.id);
+            {paketeAngebot().map((p) => {
+              const an = p.buchbar && pakete.includes(p.id);
               return (
-                <label key={p.id} style={{ display: "flex", alignItems: "baseline",
+                <label key={p.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline",
                   justifyContent: "space-between", gap: 10, padding: "12px 14px",
-                  borderRadius: 10, cursor: "pointer",
+                  borderRadius: 10, cursor: p.buchbar ? "pointer" : "default",
+                  opacity: p.buchbar ? 1 : 0.7,
                   border: `1px solid ${an ? C.accent : C.line}`,
                   background: an ? C.accentLight : "transparent" }}>
-                  <input type="checkbox" checked={an} style={{ position: "absolute", opacity: 0,
-                    width: 1, height: 1 }}
+                  <input type="checkbox" checked={an} disabled={!p.buchbar}
+                    style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
                     onChange={() => setPakete((s) => an
                       ? s.filter((x) => x !== p.id) : [...s, p.id])} />
                   <span style={{ fontSize: 13.5 }}>{p.name}</span>
-                  <span style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums",
-                    color: an ? C.accent : C.dim }}>+{p.aufpreis} €</span>
+                  {/* G9: Was nicht nutzbar ist, wird nicht angeboten und trägt keinen Preis. */}
+                  {p.buchbar
+                    ? <span style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums",
+                        color: an ? C.accent : C.dim }}>+{p.aufpreis} €</span>
+                    : <span style={{ fontSize: 12.5, color: C.dim }}>in Vorbereitung – nicht buchbar</span>}
+                  {p.inVorbereitung.length > 0 && (
+                    <span style={{ flexBasis: "100%", fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
+                      In Vorbereitung: {p.inVorbereitung.join(", ")}</span>)}
                 </label>);
             })}
           </div>
           <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, marginTop: 10 }}>
-            Je Betrieb, nicht je Standort und nicht je Kopf. In Enterprise sind zwei
-            Pakete enthalten — angerechnet werden die beiden teuersten.
+            Je Betrieb, nicht je Standort und nicht je Kopf. {branchenpaketeHinweis()}
           </div>
         </fieldset>
 
@@ -332,7 +338,7 @@ function Preise({ onZurueck, onStarten }) {
                 {" "}{a.stufe.standorteInklusive} Standort{a.stufe.standorteInklusive === 1 ? "" : "e"} inklusive
               </div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 9 }}>
-                {a.stufe.leistungen.map((w, i) => (
+                {leistungenAnzeige(a.stufe.leistungen).map((w, i) => (
                   <li key={i} style={{ display: "flex", gap: 9, fontSize: 13.5,
                     lineHeight: 1.5 }}>
                     <span style={{ color: C.accent, flexShrink: 0, display: "flex", marginTop: 2 }}><Icon n="haken" size={16} /></span>
@@ -412,10 +418,11 @@ function SelbstStarten({ onZurueck, onFertig }) {
   const [fertig, setFertig] = useState(null);
 
   const BRANCHEN = [
-    ["sicherheit", "Sicherheitsdienst", "Objektschutz, Sachkunde nach § 34a, Wachbuch"],
-    ["pflege", "Pflege", "Fachkraftquote, Übergabe, Wohnbereiche"],
-    ["klinik", "Klinik", "Bereitschaft, Rufbereitschaft, geteilte Dienste"],
-    ["industrie", "Produktion", "Kontischicht, Anlagen, Maschinenqualifikationen"],
+    /* G9: nur Nutzbares wird beschrieben, Geplantes steht als „in Vorbereitung". */
+    ["sicherheit", "Sicherheitsdienst", "Objektschutz, Sachkunde nach § 34a, Geofence nach Freischaltung (Wachbuch in Vorbereitung)"],
+    ["pflege", "Pflege", "Fachkraftquote, Übergabe im Pilot nach Freischaltung durch den Betreiber (Wohnbereichsplanung in Vorbereitung)"],
+    ["klinik", "Klinik", "Fachkraftquote, Übergabe im Pilot nach Freischaltung durch den Betreiber (Bereitschaft, Rufbereitschaft, geteilte Dienste in Vorbereitung)"],
+    ["industrie", "Produktion", "Die Grundfunktionen (Kontischicht, Anlagen, Maschinenqualifikationen in Vorbereitung)"],
     ["sonstige", "Etwas anderes", "Die Grundfunktionen ohne Branchenzusatz"],
   ];
   const ROLLENNAMEN = { leitung: "Organisationsleitung", planer: "Planung",

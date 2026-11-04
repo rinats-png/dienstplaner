@@ -38,13 +38,25 @@
    NODE_ENV=test —, dieselbe Referenz in den HTTP-Prüfungen; in Unit-Tests
    der Parameter `heute` bzw. vi.setSystemTime.
    ========================================================================== */
+import { pauseZuLang } from "./zeitregeln.mjs";
 
 const TAG_MS = 86400000;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const UHRZEIT = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
 export const RUECKBLICK_TAGE = 14;
 const GRUND_MAX = 500;
-const FELDER = ["start", "ende", "bestaetigt", "grund"];
+const FELDER = ["start", "ende", "bestaetigt", "grund", "pause"];
+/** Höchste Pause in Minuten (wie Korrektur und Antrag, WP-14; Stempeln und Selbstauskunft, WP-16). */
+export const PAUSE_MAX = 180;
+/** Beginn = Ende (0 oder 24 Stunden): eine Meldung für Selbstauskunft, Korrektur und Antrag (WP-14b M4, F8). */
+export const BEGINN_GLEICH_ENDE = "Beginn und Ende sind dieselbe Uhrzeit — das wäre eine Dauer von 0 oder 24 Stunden. "
+  + "Bitte die tatsächlichen Zeiten angeben; 24 Stunden gehen nur an einem Tag mit geplantem 24-Stunden-Dienst.";
+/** Eine angegebene Pause: ganze Minuten 0–180. undefined = keine Angabe, null = ungültig. */
+export function pauseAngabe(roh) {
+  if (roh === undefined || roh === null || roh === "") return undefined;
+  const n = typeof roh === "number" ? roh : (typeof roh === "string" && /^\d{1,3}$/.test(roh.trim()) ? Number(roh.trim()) : NaN);
+  return Number.isInteger(n) && n >= 0 && n <= PAUSE_MAX ? n : null;
+}
 
 const utc = (s) => new Date(`${s}T00:00:00Z`);
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -218,20 +230,35 @@ export function selbstauskunftPruefen(m, person, datum, wert, heute = heuteBerli
   if (wert.bestaetigt !== true) return { grund: "Eine Selbstauskunft ist eine Bestätigung." };
   const grund = wert.grund ?? "";
   if (typeof grund !== "string" || grund.length > GRUND_MAX) return { grund: "Der Grund ist zu lang oder ungültig." };
+  /* Pause (WP-16): ganze Minuten 0–180, kürzer als die Anwesenheit; sonst keine Angabe. */
+  const pause = pauseAngabe(wert.pause);
+  if (pause === null) return { grund: `Die Pause in Minuten angeben (0 bis ${PAUSE_MAX}).` };
+  const mitPause = pause === undefined ? {} : { pause };
+  const da = (m.dienstarten || []).find((x) => x && String(x.id) === String(dienstId));
+  const anwesend = (s, e) => (minuten(e) - minuten(s) + 1440) % 1440 || 1440;
   const { start = null, ende = null } = wert;
-  if (start === null && ende === null)                         // „wie geplant"
-    return { eintrag: { start: null, ende: null, bestaetigt: true, grund } };
+  if (start === null && ende === null) {                       // „wie geplant"
+    /* Gemessen an der wirklichen Dauer des Tages (Zeitumstellung, WP-14b M2) — dieselbe Regel wie die Korrektur. */
+    if (pause !== undefined && da && UHRZEIT.test(String(da.start)) && UHRZEIT.test(String(da.ende)) && pauseZuLang(da.start, da.ende, pause, datum))
+      return { grund: "Die Pause muss kürzer sein als der Dienst." };
+    return { eintrag: { start: null, ende: null, bestaetigt: true, grund, ...mitPause } };
+  }
   if (typeof start !== "string" || typeof ende !== "string" || !UHRZEIT.test(start) || !UHRZEIT.test(ende)
       || start === "24:00")
     return { grund: "Beginn und Ende als Uhrzeit (HH:MM) angeben." };
+  /* Beginn = Ende hieße 0 oder 24 Stunden (über Mitternacht gelesen: 24 h). Wie bei Korrektur und Antrag
+     (stempelintegritaet.mjs; WP-14b-Review F8) nur an einem Tag mit geplantem
+     24-Stunden-Dienst (Dienstart mit Beginn = Ende). */
+  if (start === ende && !(da && UHRZEIT.test(String(da.start)) && da.start === da.ende))
+    return { grund: BEGINN_GLEICH_ENDE };
   /* Ende vor oder gleich Beginn heißt: über Mitternacht. Das ist nur
      plausibel, wenn der geplante Dienst selbst über Mitternacht läuft. */
-  const da = (m.dienstarten || []).find((x) => x && String(x.id) === String(dienstId));
-  const dauer = (minuten(ende) - minuten(start) + 1440) % 1440 || 1440;
+  const dauer = anwesend(start, ende);
   if (minuten(ende) <= minuten(start) && !uebernacht(da))
     return { grund: "Das Ende liegt vor dem Beginn, der geplante Dienst läuft aber nicht über Mitternacht." };
   if (dauer > 24 * 60) return { grund: "Unplausible Dauer." };
-  return { eintrag: { start, ende, bestaetigt: true, grund } };
+  if (pause !== undefined && pauseZuLang(start, ende, pause, datum)) return { grund: "Die Pause muss kürzer sein als die Anwesenheit." };
+  return { eintrag: { start, ende, bestaetigt: true, grund, ...mitPause } };
 }
 
 /**

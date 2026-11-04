@@ -57,7 +57,7 @@ const ANTRAEGE = "antraege";
 const antragFest = (x) => (objekt(x) ? { id: x.id, von: x.von, gestellt: x.gestellt, vorschlag: x.vorschlag, grund: x.grund } : x);
 
 import { stichtage, aufbewahrungFehler, STANDORT_FELDER } from "./aufbewahrung.mjs";
-import { geplanterDienst } from "./zeiterfassung.mjs";
+import { geplanterDienst, BEGINN_GLEICH_ENDE } from "./zeiterfassung.mjs";
 import { regelHinweise, pauseZuLang } from "./zeitregeln.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
@@ -312,8 +312,7 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
 /** M4 (WP-14b): Beginn gleich Ende ist als Uhrzeit zweideutig — 0 oder 24 Stunden. Die Stundenrechnung liest
     24 h; eine Korrektur oder ein Antrag mit gleicher Uhrzeit wird deshalb abgewiesen. Einzige Ausnahme: An dem
     Tag ist ein 24-Stunden-Dienst geplant (Dienstart mit Beginn = Ende) — die ausdrückliche Kennung ist der Plan. */
-export const BEGINN_GLEICH_ENDE = "Beginn und Ende sind dieselbe Uhrzeit — das wäre eine Dauer von 0 oder 24 Stunden. "
-  + "Bitte die tatsächlichen Zeiten angeben; 24 Stunden gehen nur an einem Tag mit geplantem 24-Stunden-Dienst.";
+export { BEGINN_GLEICH_ENDE };
 
 /**
  * Ist an diesem Tag ein 24-Stunden-Dienst geplant (Dienstart mit Beginn = Ende)? Nur dann darf eine
@@ -365,7 +364,7 @@ export function zeitumstellungSperre(alt, start, ende) {
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
  * @param {string} id
- * @param {{antrag?: {id: string, vonPersonId: (string|number|null)}}} [opt]  antrag: die Korrektur geht auf diesen Antrag zurück (WP-14)
+ * @param {{antrag?: {id: string, vonPersonId: (string|number|null)}, nachWiederoeffnung?: (string|null)}} [opt]  antrag: die Korrektur geht auf diesen Antrag zurück (WP-14); nachWiederoeffnung: Kennung der Wiederöffnung des Monats (WP-16)
  * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object, hinweis: (string|null), hinweise: Array<{code: string, text: string}>}}
  */
 export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
@@ -420,6 +419,8 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     wann: jetzt.toISOString(),
     grund,
     ...(opt.antrag ? { antrag: opt.antrag } : {}),
+    /* WP-16: im wiedergeöffneten Monat die Kennung der Wiederöffnung — nachvollziehbar, dass nach einem Abschluss korrigiert wurde. */
+    ...(opt.nachWiederoeffnung ? { nachWiederoeffnung: String(opt.nachWiederoeffnung) } : {}),
     /* N2 (WP-14b): Die handelnde Person korrigiert bzw. genehmigt die eigene Zeit. Nur ein Kennzeichen —
        ob das ohne zweite Person zulässig ist (Vier-Augen), ist eine offene Entscheidung; das Recht bleibt. */
     ...(wer && wer.personId !== undefined && wer.personId !== null && String(wer.personId) === String(personId) ? { selbstfreigabe: true } : {}),

@@ -48,6 +48,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Interne Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md):
+  # Regressionstests der Befunde, Routen-Inventar (Pflicht-Sondenprüfung),
+  # statische Prüfung, eigener Geheimnis-Lauf über die ganze Historie und die
+  # Wiederherstellungsübung mit synthetischen Daten. Fremde Actions per SHA.
+  interne-pruefung:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Regressionstests und Routen-Inventar
+        run: npm run pruefung:sicherheit-intern
+      - name: Statische Prüfung (ESLint-Sicherheitsregeln, Muster)
+        run: npm run sicherheit:statik
+      - name: Geheimnisse in der gesamten Historie (ohne Werte)
+        run: npm run sicherheit:geheimnisse
+      - name: Lockfile (ohne Netz)
+        run: node werkzeug/sicherheit/abhaengigkeiten.mjs --ohne-audit
+      - name: Wiederherstellungsübung
+        run: npm run sicherheit:wiederherstellung
+
   muster:
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -219,8 +219,11 @@ pruef("… gestempelte Zeit vom Server bestätigt (bzw. Dauer 0 zur Prüfung)", 
   const lage = await fetch(`${BASIS}/lage?tage=1`, { headers: { authorization: `Bearer ${tBetr}` } })
     .then((x) => x.json()).catch(() => ({}));
   const zeilen = JSON.stringify(lage.letzte || []);
-  pruef("Protokoll vermerkt die Selbstauskünfte", zeilen.includes("Selbstauskunft Zeiten") && zeilen.includes(tag(-2)));
-  pruef("… und abgewiesene Stempelversuche", /stempeln (start|ende) .*schon gestempelt/.test(zeilen));
+  /* WP-16 Nachtrag N7: Der Tag steht nicht mehr im Text, sondern im eigenen Feld `tag` (für die Auskunft nach Art. 15);
+     die Betreiber-Lage entfernt es — dort also der Vorgang, aber kein Tag. */
+  pruef("Protokoll vermerkt die Selbstauskünfte", zeilen.includes("Selbstauskunft Zeiten"));
+  pruef("… ohne den Tag in der Betreiber-Lage", !zeilen.includes(tag(-2)) && !/"tag":/.test(zeilen));
+  pruef("… und abgewiesene Stempelversuche", /stempeln (start|ende): schon gestempelt/.test(zeilen));
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

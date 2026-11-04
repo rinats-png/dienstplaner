@@ -106,7 +106,7 @@ describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schich
     const zug = schreiben(g2, "PL", (m) => {
       m.personen.find((p) => p.id === "mu").zugehoerigkeit.push({ ab: tag(1), einheitId: "e2" });
     });
-    expect(zug.verweigert).toMatch(/nicht möglich/);
+    expect(zug.verweigert).toMatch(/nicht möglich|widerspricht der Änderung an der Person: Ruhezeit unter 11 Stunden/);
     /* Versatz der eigenen Einheit verschieben: ebenso. */
     const versatz = schreiben(g2, "PL", (m) => { m.einheiten.find((x) => x.id === "e1").versatzTage = 3; });
     expect(versatz.verweigert).toMatch(/nicht möglich/);

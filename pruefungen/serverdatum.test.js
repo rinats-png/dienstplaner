@@ -261,6 +261,19 @@ describe("WP-14b M2/M3: Stempeln an den Umstellungstagen und Dauer 0 ohne Plan",
     const z = await stempeln("sd-herbst", "a2", { art: "ende" });
     expect(z.erfassung).toMatchObject({ start: "02:10", ende: "02:50", bestaetigt: false });
   });
+  it("Zusammenführung WP-16: Herbst 25.10. mit angegebener Pause — die Pause steht am Prüffall, aber keine Hinweise/PAUSE_ZU_KURZ aus der 23:50-Uhrzeitdauer", async () => {
+    await raumAnlegen("sd-herbst-pause", ["a3"], { abweichungen: { "a3|2026-10-25": "F" } });
+    zeitAuf("2026-10-25T00:30:00Z");                                   // 02:30 MESZ
+    expect((await stempeln("sd-herbst-pause", "a3", { art: "start" })).status).toBe(200);
+    zeitAuf("2026-10-25T01:20:00Z");                                   // 02:20 MEZ — 50 min gemessen, die Uhr zeigt 23:50
+    const e = await stempeln("sd-herbst-pause", "a3", { art: "ende", pause: 0 });
+    expect(e.status, JSON.stringify(e)).toBe(200);
+    expect(e.markierungen).toContain("ZEITUMSTELLUNG");
+    expect(e.markierungen).not.toContain("PAUSE_ZU_KURZ");
+    expect(e.markierungen).not.toContain("PAUSE_UNGUELTIG");
+    expect(e.erfassung).toMatchObject({ start: "02:30", ende: "02:20", bestaetigt: false, pause: 0 });
+    expect(e.hinweise || []).toEqual([]);
+  });
   it("Frühjahr 29.03.: 01:30 MEZ bis 03:10 MESZ (40 min) mit Dienstart-Pause 60 — bestätigt, Ist 0 statt negativ", async () => {
     await raumAnlegen("sd-fruehjahr", ["a1"], { abweichungen: { "a1|2026-03-29": "N2" },
       dienstarten: [{ id: "N2", name: "Nacht", start: "22:00", ende: "06:00", pause: 60 }] });

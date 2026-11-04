@@ -38,9 +38,45 @@ import { fristen } from "./aufbewahrung.mjs";
 import { geplanterDienst, tagePlus } from "./zeiterfassung.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
 import { BESTAETIGUNG_FELDER } from "./sicht.mjs";
+import { modulprotokollPositiv } from "./branchenmodule.mjs";
+/* Eingefrorenes Ist mit aufgelöster Dienstart (Schema 2 verweist auf das Verzeichnis des Monats, WP-16 Nachtrag). */
+import { eingefrorenFuerPerson } from "./isteinfrieren.mjs";
 
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 2;
+
+/**
+ * Erklärung der Kurzfelder im eingefrorenen Ist (`istEingefroren`, WP-16; Nachtrag dritter Review N-b). Schlüssel
+ * „Person|JJJJ-MM-TT" sind Tage, „Person|JJJJ-MM" Monatswerte zum Monatsabschluss.
+ */
+export const IST_EINGEFROREN_LEGENDE = Object.freeze({
+  datum: "JJJJ-MM-TT: ein Tag (Felder unter „tag“); JJJJ-MM: Werte des Monats, wie sie beim Monatsabschluss galten (Felder unter „monat“).",
+  tag: Object.freeze({
+    da: "Dienstart, wie sie an dem Tag galt (Name, Beginn, Ende, Pause, Form)",
+    d: "Verweis auf die Dienstart im Verzeichnis des Monats (aufgelöst als da)",
+    std: "Ist-Stunden des Dienstes",
+    e: "1 = Zeit erfasst (Stempel oder bestätigte Zeit), sonst Planzeit",
+    p: "1 = Ist-Zeit war beim Abschluss zur Prüfung offen",
+    a: "Abwesenheitsarten des Tages",
+    pl: "1 = an dem Tag war nach Schichtfolge ein Dienst geplant",
+    w: "Wochenstunden für die Gutschrift der Abwesenheit",
+    u: "Einheit (Wohnbereich/Abteilung) an dem Tag",
+  }),
+  monat: Object.freeze({
+    s: "Soll-Stunden des Monats",
+    z: "Zuschlagsstunden [Nacht, Sonntag, Feiertag, Samstag]",
+    nn: "Zahl der Nachtdienste",
+    i: "1 = am 28. des Monats im Beschäftigungsverhältnis (Lohnausgabe)",
+    u: "Einheit zu Monatsbeginn",
+    g: "geleistete Stunden (gewertet)",
+    gg: "gutgeschriebene Stunden (bezahlte Abwesenheit)",
+    ig: "Ist-Stunden gesamt",
+    k: "Stundenkonto zum Monatsende (mit Übertrag und Vormonaten des Jahres)",
+    ue: "Übertrag aus dem Vorjahr, mit dem das Konto gerechnet wurde",
+    br: "Stunden [Bereitschaftsdienst, Rufbereitschaft]",
+    nm: "[Personalnummer, Nachname, Vorname] für die Lohnausgabe",
+  }),
+});
 
 /** Rollen, die für eine andere Person des eigenen Betriebs Auskunft erstellen dürfen. */
 export const AUSKUNFT_FUER_ANDERE = Object.freeze(["leitung", "kunde"]);
@@ -56,6 +92,20 @@ const nachTag = (obj, pid) => Object.entries(obj && typeof obj === "object" ? ob
   .sort((a, b) => a.datum.localeCompare(b.datum));
 const liste = (w) => (Array.isArray(w) ? w : []);
 const eigene = (w, pid) => liste(w).filter((x) => x && gleich(x.personId, pid));
+
+/** Nach dem Monatsabschluss abgewiesene Stempel einer Person (einzeln und nur gezählt), je Monat — ohne die Abschlussdetails. */
+function abgewieseneStempel(w, pid) {
+  const aus = [];
+  for (const [monat, e] of Object.entries(w && typeof w === "object" && !Array.isArray(w) ? w : {}).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!e || typeof e !== "object") continue;
+    for (const x of eigene(e.abgewiesen, pid))
+      aus.push({ monat, datum: x.datum, art: x.art, zeit: x.zeit ?? null, zeitAm: x.zeitAm ?? null, offline: !!x.offline,
+        eingegangen: x.am ?? null, anzahl: Number(x.anzahl) || 1 });
+    const z = e.abgewiesenGezaehlt && typeof e.abgewiesenGezaehlt === "object" ? e.abgewiesenGezaehlt[String(pid)] : undefined;
+    if (Number(z) > 0) aus.push({ monat, nurGezaehlt: Number(z) });
+  }
+  return aus;
+}
 
 /** Die eigenen Einträge einer Sammlung — als Liste (personId) oder als Objekt (Schlüssel „pid|…"). */
 function eigeneAus(wert, pid) {
@@ -94,12 +144,12 @@ const felder = (o, liste) => Object.fromEntries(liste.filter((f) => f in o).map(
  * @param {object} m  der Betrieb (vollständig bzw. in der Sicht der anfragenden Leitung)
  * @param {object} person  der Personendatensatz aus m
  * @param {{ raum: string, erstellt: string, umfang: "selbst"|"leitung", protokoll?: object[],
- *   push?: boolean, kalender?: boolean, konto?: object|null, eigeneSicht?: object|null }} o
+ *   push?: boolean, kalender?: boolean, konto?: object|null, eigeneSicht?: object|null, zustellprotokoll?: object[]|null }} o
  *   `eigeneSicht`: derselbe Betrieb in der Sicht einer Beschäftigten (bestandFuerRolle) —
  *   aus ihr kommen die Sammlungen mit eigenen Einträgen, ohne Daten Dritter.
  */
 export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [], push = false, kalender = false,
-  konto = null, eigeneSicht = null }) {
+  konto = null, eigeneSicht = null, zustellprotokoll = null }) {
   const pid = person.id;
   const selbst = umfang === "selbst";
   const abweichungen = Object.entries(m.abweichungen || {}).filter(([k]) => eigenerSchluessel(pid)(k))
@@ -113,6 +163,11 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
   const bereichszuordnungen = Object.entries(m.bereichsPlan || {}).filter(([k]) => eigenerSchluessel(pid)(k))
     .map(([k, v]) => ({ datum: String(k).split("|")[1], bereich: v }))
     .sort((a, b) => a.datum.localeCompare(b.datum));
+  /* Modulprotokoll (WP-19.0): was die Person selbst an Branchenmodulen geschaltet, bestätigt oder
+     als Regelwert gesetzt hat (Leitung, Kundenrolle) — nach Positivkatalog: ohne Grund und Aktenzeichen
+     des Ausnahmewegs (ein Altstand mit Freitext könnte eine andere Person nennen; zweiter Opus-Review M4). */
+  const modulhandlungen = modulprotokollPositiv((m.einstellungen && Array.isArray(m.einstellungen.modulprotokoll) ? m.einstellungen.modulprotokoll : [])
+    .filter((x) => x && typeof x === "object" && gleich(x.von, pid)));
   /* Der Plan, wie er sich aus Schichtfolge, Teilzeit, Abweichungen und
      Abwesenheiten ergibt — vom vorletzten bis zum übernächsten Monat. */
   const heute = String(erstellt).slice(0, 10);
@@ -166,9 +221,16 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     person,
     stempel: nachTag(m.einstempeln, pid),
     istZeiten: nachTag(m.erfassung, pid),
+    /* Monatsabschluss (WP-16): das eingefrorene Ist abgeschlossener Monate (Review H1) und die nach dem
+       Abschluss abgewiesenen eigenen Stempel samt Zähler (Review M2). */
+    istEingefroren: nachTag(eingefrorenFuerPerson(m, pid), pid),
+    /* Schlüsselerklärung der Kurzfelder (WP-16, Nachtrag dritter Review N-b): Die Auskunft muss verständlich sein. */
+    istEingefrorenLegende: IST_EINGEFROREN_LEGENDE,
+    abgewieseneStempel: abgewieseneStempel(m.monatsabschluss, pid),
     planabweichungen: abweichungen,
     ...(postenzuordnungen.length ? { postenzuordnungen } : {}),
     ...(bereichszuordnungen.length ? { bereichszuordnungen } : {}),
+    ...(modulhandlungen.length ? { modulhandlungen } : {}),
     plan,
     abwesenheiten: eigene(m.abwesenheiten, pid),
     antraege,
@@ -181,6 +243,8 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
       betriebsprotokoll: eigene(m.protokoll, pid),
       konto,
       pushAnmeldung: !!push,
+      /* WP-30: Zustellstatus je eigener Mitteilung und Kanal — ohne Inhalt, ohne Adresse. */
+      ...(Array.isArray(zustellprotokoll) ? { zustellprotokoll } : {}),
       kalenderverweis: !!kalender,
       protokoll: [...protokoll].sort((a, b) => String(a.zeit).localeCompare(String(b.zeit))),
     } : {}),

@@ -19,6 +19,7 @@
    ausdrücklich „Zugang merken" gewählt hat — auf dem eigenen Telefon
    sinnvoll, am Stationsrechner nicht. */
 import * as PUF from "./stempelpuffer.js";
+import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 
 const SCHLUESSEL = "centric:token";
 const GEMERKT = "centric:gemerkt";
@@ -28,11 +29,13 @@ let token = null;
 let etag = null;
 let offen = null;            // ausstehender Schreibvorgang
 let uhr = null;
-let unterwegs = false;       // ein PUT ist abgeschickt, die Antwort steht aus
+let unterwegs = 0;           // Zahl der abgeschickten PUTs, deren Antwort aussteht (beim Schließen kann es mehr als einer sein)
+/** Fünfter Review B-2: Ein PUT, der nicht antwortet, bricht nach dieser Zeit ab (Fehlerart „netz“, Wiederholen möglich). */
+export const SCHREIBEN_ZEITGRENZE = 45000;
 
 /** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
     Stand nicht der gespeicherte. */
-export const schreibenAusstehend = () => !!offen || unterwegs;
+export const schreibenAusstehend = () => !!offen || unterwegs > 0;
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -42,6 +45,11 @@ try {
   if (!token && localStorage.getItem(GEMERKT) === "ja")
     token = localStorage.getItem(SCHLUESSEL);
 } catch { /* privater Modus */ }
+/* Keine Sitzung, aber noch ein Offline-Bestand im Speicher des Dienstarbeiters
+   (Reiter geschlossen statt abgemeldet, etwa am Stationsrechner): Er gehört
+   niemandem mehr und wird sofort geräumt (SI-07, interne Prüfung 2026-11).
+   Die Funktion fängt jeden Fehler selbst ab. */
+if (!token) offlineCacheLeeren();
 
 const kopf = () => ({ "content-type": "application/json",
   ...(token ? { authorization: `Bearer ${token}` } : {}) });
@@ -288,14 +296,14 @@ export function stempelSenden({ sofort = false } = {}) {
  * Ein Stempeln ablegen. Gibt das Ereignis zurück — oder null, wenn der
  * Inhaber unbekannt ist (dann stempelt die Oberfläche wie bisher direkt).
  */
-export async function stempelErfassen(datum, art, koord) {
+export async function stempelErfassen(datum, art, koord, pause = null) {
   const inhaber = stempelInhaber();
   if (!inhaber) return null;
   /* Nicht unter der Sendesperre: Ein hängender Sendeversuch darf das
      Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
      eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
      localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
-  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund: koord && koord.grund, inhaber,
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund: koord && koord.grund, inhaber, pause,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();
   return ev;
@@ -350,13 +358,27 @@ export function stempelSyncEinrichten(beiQuittung) {
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, sofort } = {}) {
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand };
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
   return Promise.resolve();
 }
+
+/* Ausnahmeweg Art. 16/17/18 (WP-19.0, zweiter Opus-Review): Die Angabe geht mit jedem Schreibvorgang
+   hinaus, dessen Bestand die Änderung enthält (erkennt), und hängt am Auftrag (auftrag.ausnahme) — eine
+   Wiederholung nach Netz-, Server- oder Sitzungsfehler (nochmalSchreiben) schickt sie erneut mit.
+   Verworfen wird sie erst, wenn der Server annimmt (200), oder wenn er abweist (403, 409): Dann wird die
+   lokale Änderung zurückgenommen — die Lage „ausnahmeZurueck" verlangt Neuladen (dritter Review F2;
+   vorher war sie schon vor dem Senden verbraucht, und jeder Fehlschlag endete in „nur lesbar").
+   Im lokalen Stand steht sie nie (sonst ginge sie mit jedem späteren Speichern wieder mit, H1). */
+let einmalig = null;
+/* Vierter Review N-2: Angaben, die gerade in einem Auftrag unterwegs sind bzw. schon angenommen wurden. */
+const angabenUnterwegs = new WeakSet();
+const angenommeneAngaben = new WeakSet();
+/** @param {any} mandantId @param {any} angabe @param {(m: any) => boolean} erkennt */
+export function ausnahmeMitschicken(mandantId, angabe, erkennt) { einmalig = { mandantId, angabe, erkennt }; }
 
 /* Der letzte Schreibversuch, der nicht durchkam.
 
@@ -399,6 +421,7 @@ function fehlerart(e, status) {
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   if (status && status >= 500) return "server";
+  if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
   if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
     return "netz";
   return "unbekannt";
@@ -407,7 +430,20 @@ function fehlerart(e, status) {
 /* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
 let laufend = null;
 function jetztSchreiben(beimSchliessen) {
-  const lauf = schreibenAusfuehren(beimSchliessen);
+  /* Vierter Review N-2: Schreibvorgänge laufen nacheinander. Ein zweiter, der mit dem alten ETag und
+     derselben noch nicht verbrauchten Ausnahmeangabe losginge, bekäme einen 409 und löste einen
+     falschen Alarm aus (die eigene Änderung würde verworfen). Er wartet auf den ersten und nimmt
+     dann den neuen ETag; was er schreibt, holt er erst dann aus `offen`. */
+  const vorher = laufend;
+  /* Fünfter Review B-3: Beim Schließen (beforeunload/visibilitychange) wartet nichts auf einen laufenden
+     Request — der Seitentod käme vor dessen Antwort. Es geht sofort hinaus (keepalive); eine Ausnahmeangabe,
+     die schon unterwegs ist, hängt dank angabenUnterwegs/angenommeneAngaben nicht doppelt an. */
+  if (beimSchliessen && vorher) {
+    const sofort = schreibenAusfuehren(true);
+    sofort.catch(() => {});
+    return sofort;
+  }
+  const lauf = vorher ? vorher.catch(() => {}).then(() => schreibenAusfuehren(beimSchliessen)) : schreibenAusfuehren(beimSchliessen);
   laufend = lauf;
   lauf.finally(() => { if (laufend === lauf) laufend = null; });
   return lauf;
@@ -428,11 +464,31 @@ export async function schreibenAbschliessen() {
   }
 }
 
+/**
+ * Felder, die nur der Server schreibt (WP-16, Nachtrag H-neu-1): der Monatsabschluss und das eingefrorene
+ * Ist abgeschlossener Monate. Der Server übernimmt sie beim Speichern nie (abschlussAusGespeichert) und
+ * behandelt „nicht mitgeschickt" als unverändert. Mitgeschickt blähten sie jeden Speichervorgang auf —
+ * das eingefrorene Ist wächst mit jedem abgeschlossenen Monat, der Server nimmt höchstens 6 MB an.
+ */
+export const SERVER_FELDER = Object.freeze(["istEingefroren", "monatsabschluss"]);
+export function ohneServerFelder(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => {
+    if (!m || typeof m !== "object") return m;
+    const aus = { ...m };
+    for (const f of SERVER_FELDER) delete aus[f];
+    return aus;
+  }) };
+}
+
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
   let status = null;
-  unterwegs = true;
+  unterwegs += 1;
+  /* Fünfter Review B-2: Ohne Zeitgrenze hielte ein hängender Request die Schreibkette (jetztSchreiben) dauerhaft. */
+  const abbruch = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const zeitgeber = abbruch ? setTimeout(() => abbruch.abort(), SCHREIBEN_ZEITGRENZE) : null;
   try {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
@@ -442,9 +498,22 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    const hinaus = { ...auftrag.bestand, session: null };
+    /* Eine Angabe, die schon in einem anderen Auftrag unterwegs ist, hängt nicht an einen zweiten.
+       Serverfelder (Monatsabschluss, eingefrorenes Ist — WP-16) gehen nicht mit hinaus. */
+    const angabe = auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig) ? einmalig : null);
+    const mit = mitEinmaligerAngabe(ohneServerFelder({ ...auftrag.bestand, session: null }), angabe);
+    if (mit.verbraucht) { auftrag.ausnahme = angabe; angabenUnterwegs.add(angabe); }
+    const hinaus = mit.bestand;
+    /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
+    const ausnahmeAbgewiesen = (text) => {
+      if (einmalig === auftrag.ausnahme) einmalig = null;
+      auftrag.ausnahme = null;
+      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
+      if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+    };
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
+      ...(abbruch ? { signal: abbruch.signal } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     const daten = antwort.daten;
@@ -461,9 +530,13 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     if (status === 409) {
       etag = daten.etag;
+      /* Wurde dieselbe Angabe inzwischen angenommen, ist der 409 ein gewöhnlicher Konflikt (kein Alarm). */
+      if (auftrag.ausnahme && angenommeneAngaben.has(auftrag.ausnahme)) auftrag.ausnahme = null;
+      if (auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.text || daten?.fehler || "Der Bestand hat sich geändert.")); return; }
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
       return;
     }
+    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen.")); return; }
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
@@ -471,6 +544,11 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     etag = daten.etag;
     gescheitert = null;
+    /* Angenommen: erst jetzt ist die Angabe verbraucht. */
+    if (auftrag.ausnahme) angenommeneAngaben.add(auftrag.ausnahme);
+    if (auftrag.ausnahme && einmalig === auftrag.ausnahme) einmalig = null;
+    /* Der Betreiber bekommt den gespeicherten Vertragsstand der Pakete zurück (Servertag, Pilot, Historie). */
+    if (auftrag.onServerstand && daten.vertragsstand) { try { auftrag.onServerstand(daten.vertragsstand); } catch { /* egal */ } }
     if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
     const art = fehlerart(e, status);
@@ -479,7 +557,9 @@ async function schreibenAusfuehren(beimSchliessen) {
       zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
-    unterwegs = false;
+    if (auftrag.ausnahme) angabenUnterwegs.delete(auftrag.ausnahme);
+    if (zeitgeber) clearTimeout(zeitgeber);
+    unterwegs -= 1;
   }
 }
 
@@ -714,11 +794,14 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * Browser wäre alles davon manipulierbar, und eine Zeiterfassung, die sich
  * manipulieren lässt, belegt nichts.
  */
-export async function stempeln(datum, art, koord) {
+export async function stempeln(datum, art, koord, pause = null) {
   /* Ohne Position kann koord nur den Grund als Code tragen ({ grund }: keine_freigabe, timeout, nicht_verfuegbar);
      der Server prüft ihn gegen die Liste. Eine Koordinate geht nie zusammen mit einem Grund hinaus. */
   const ort = koord && typeof koord.lat === "number" && typeof koord.lon === "number" ? koord : null;
+  /* Keine Zahl (etwa „abc" im Pausenfeld): keine Angabe senden — nicht NaN, das als null ankäme (Review WP-16). */
+  const pauseZahl = pause !== null && pause !== undefined && pause !== "" ? Number(pause) : NaN;
   const body = JSON.stringify({ datum, art,
+    ...(art === "ende" && Number.isFinite(pauseZahl) ? { pause: pauseZahl } : {}),
     lat: ort ? ort.lat : null, lon: ort ? ort.lon : null,
     accuracy: ort && typeof ort.accuracy === "number" ? ort.accuracy : null,
     ...(!ort && koord && typeof koord.grund === "string" ? { positionGrund: koord.grund } : {}) });
@@ -769,9 +852,10 @@ export function wartezeitMitStreuung(antwort, zufall = Math.random) {
  * ausdrücklich; eine verworfene Angabe kommt als Fehler mit Grund zurück,
  * statt im allgemeinen Speichern still zu verschwinden.
  */
-export async function zeitBestaetigen(datum, start, ende, grund) {
+export async function zeitBestaetigen(datum, start, ende, grund, pause) {
   const a = await fetch("/api/zeit-bestaetigen", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "" }) });
+    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
@@ -805,6 +889,31 @@ export async function korrekturAntrag(datum, start, ende, pause, grund) {
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Der Antrag ließ sich nicht stellen.");
+  return d;
+}
+
+/**
+ * Monatsabschluss (WP-16): "abschliessen" (Leitung, Planung; bei offenen Prüffällen nur mit trotzPrueffaellen)
+ * oder "wiederoeffnen" (nur Leitung, mit Grund). Antwort: der Eintrag des Monats und das Ereignis im Verlauf.
+ * Ein Fehler trägt code und offen (Zahlen der offenen Punkte), damit die Oberfläche nachfragen kann, beim Lohnexport
+ * dazu vormonate ({ offen, geaendert }: VORMONAT_OFFEN / VORMONAT_GEAENDERT, WP-16 Nachtrag vierter Review A-1).
+ * trotzVormonat: { kategorie, grund } — die ausdrückliche Überstimmung offener oder geänderter Vormonate.
+ */
+export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false, exportStand = null, trotzVormonat = null } = {}) {
+  /* Lohnexport bestätigen (WP-16, Nachtrag dritter Review H-2): der Stand der ausgegebenen Datei. */
+  const stand = exportStand && typeof exportStand === "object"
+    ? { abdruck: exportStand.abdruck, stand: exportStand.stand, revision: exportStand.revision, zeilen: exportStand.zeilen } : {};
+  const trotz = trotzVormonat && typeof trotzVormonat === "object"
+    ? { trotzVormonat: true, vormonatKategorie: trotzVormonat.kategorie, vormonatGrund: trotzVormonat.grund } : {};
+  const a = await fetch("/api/monatsabschluss", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}), ...stand, ...trotz }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) {
+    const f = new Error(d.text || d.fehler || "Der Monatsabschluss ließ sich nicht speichern.");
+    f.code = d.code || null; f.offen = d.offen || null; f.vormonate = d.vormonate || null;
+    throw f;
+  }
   return d;
 }
 

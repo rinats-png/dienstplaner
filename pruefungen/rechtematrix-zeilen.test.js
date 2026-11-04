@@ -26,7 +26,10 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
+import * as RECHTE from "../server/lib/rechte.mjs";
+const { bestandFuerRolle, zusammenfuehren } = RECHTE;
+/* Rechte am Monatsabschluss (WP-16); fehlt die Funktion, ist das Ergebnis null (rot, nicht Ladefehler). */
+const abschlussRecht = (rolle, aktion) => (typeof RECHTE.abschlussRecht === "function" ? RECHTE.abschlussRecht(rolle, aktion) : null);
 import { vollausgabeBetrieb } from "../server/lib/sicherungen.mjs";
 import { PERSONENFELDER } from "../server/lib/sicht.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "../server/lib/planungsregeln.mjs";
@@ -124,6 +127,13 @@ const bestand = () => ({
       { id: "ob4", name: M("OBJEKT-OHNE-EINTEILUNG"), posten: [] }],
     postenPlan: { [`m0|${tag(1)}`]: "po1", [`b1|${tag(1)}`]: "po2", [`a1|${tag(1)}`]: "po3" },
     bereichsPlan: { [`m0|${tag(1)}`]: "be1", [`b1|${tag(1)}`]: "be9", [`a1|${tag(1)}`]: "be1" },
+    /* Branchenmodule (WP-19.0): Schalter mit Mitbestimmungsbestätigung, betrieblicher Regelwert, Modulprotokoll. */
+    einstellungen: { ruhezeit: 11,
+      branchenmodule: { wachbuch: { an: false, geaendertAm: M("MODUL-AM"), geaendertVon: M("MODUL-VON"),
+        mitbestimmung: { grundlage: M("MB-GRUNDLAGE"), bestaetigtAm: M("MB-AM"), bestaetigtVon: M("MB-VON") } } },
+      regelwerte: { "POSTEN-QUAL-01": { quelle: M("RW-QUELLE"), fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null,
+        pruefstatus: "verified", stufe: "achtung", geprueftAm: M("RW-AM"), geprueftVon: M("RW-VON"), geaendertAm: "t", geaendertVon: M("RW-AENDERER") } },
+      modulprotokoll: [{ art: "eingeschaltet", modul: "wachbuch", am: "t", von: M("PROTOKOLL-VON"), grundlage: M("PROTOKOLL-GRUNDLAGE") }] },
     qualifikationen: [{ id: "pfk", name: "PFK" }, { id: "masern", name: "Masern", nurStatus: true }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
@@ -134,6 +144,13 @@ const bestand = () => ({
     /* Einsatzorte (WP-20): Koordinate und Umkreis gehen nur an Planung und Leitung. */
     einsatzorte: [{ id: "es1", name: M("EINSATZORT-NAME"), lat: M("EINSATZORT-LAT"), lon: M("EINSATZORT-LON"), radius: M("EINSATZORT-UMKREIS") }],
     einsatzorteGeaendertAm: M("EINSATZORTE-AM"), einsatzorteGeaendertVon: M("EINSATZORTE-VON"),
+    /* Eingefrorenes Ist (WP-16, Review H1): wie die Erfassung. */
+    istEingefroren: { [`b1|${tag(-2)}`]: { std: M("FREEZE-STD-B1"), a: [M("FREEZE-ART-B1")] },
+      /* Schema 3 (WP-16, Nachtrag vierter Review N-4): Monatseintrag mit Konto, Übertrag, Personalangaben, Summen,
+         Bereitschaft/Ruf — wie das eingefrorene Ist fremder Personen; das Verzeichnis mit den Lohnarten wie `lohnarten`. */
+      [`b1|${tag(-2).slice(0, 7)}`]: { s: 1, i: 1, u: "e2", k: M("FREEZE-K-B1"), ue: M("FREEZE-UE-B1"),
+        nm: [M("FREEZE-NM-B1"), "B", "V"], g: M("FREEZE-G-B1"), br: [M("FREEZE-BR-B1"), 0] },
+      [`*|${tag(-2).slice(0, 7)}`]: { v: 3, da: {}, zs: [], rv: 2, la: { mehrarbeit: { nr: M("FREEZE-LA"), text: "Mehrarbeit" } } } },
     erfassung: {
       [`b1|${tag(-2)}`]: { start: M("ERF-ZEIT-B1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-B1") },
       [`a1|${tag(-2)}`]: { start: M("ERF-ZEIT-A1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-A1") },
@@ -199,9 +216,17 @@ const bestand = () => ({
       { id: "as1", datum: tag(6), dienstId: "F", status: "offen", einheitId: "e1",
         bewerbungen: [{ personId: "b1", text: M("BEWERBUNG-E1") }] }],
     protokoll: [{ id: "bl", zeit: "2026-01-01", text: M("BETRIEBSPROTOKOLL") }],
+    /* Monatsabschluss (WP-16): Status für alle Rollen des Betriebs, Details nur Planung und Leitung. */
+    monatsabschluss: { "2026-09": { abgeschlossen: true, am: M("ABSCHLUSS-AM"), wer: { personId: "l1", name: M("ABSCHLUSS-WER") },
+      abdruck: M("ABSCHLUSS-ABDRUCK"), verlauf: [{ id: "ma", art: "abschluss", grund: M("ABSCHLUSS-GRUND") }],
+      abgewiesen: [{ personId: "b1", datum: "2026-09-30", art: "start", ereignis: M("ABSCHLUSS-ABGEWIESEN") }] } },
     adressAenderungen: [{ personId: "b1", zeit: "1", von: M("ADRESSE-ALT"), nach: M("ADRESSE-NEU") }],
     lohnarten: [{ id: M("LOHNART") }],
-    tarif: "tarif-eigen", preisgestaltung: { grund: M("KONDITION") }, rabattGrund: M("RABATTGRUND"),
+    tarif: "tarif-eigen", rabattGrund: M("RABATTGRUND"),
+    preisgestaltung: { grund: M("KONDITION"), pilot: { seit: "2026-11-03", von: M("PILOT-VON"), grund: M("PILOT-GRUND") } },
+    pakete: ["pflege"],
+    paketZustimmungen: [{ paket: "pflege", datum: "2026-12-01", preis: 89, intervall: "monatlich", von: M("ZUSTIMMUNG-VON") }],
+    paketGrundlage: [{ paket: "pflege", datum: "2026-12-01", preis: 89, intervall: "monatlich", von: "B", notiz: M("GRUNDLAGE-NOTIZ") }],
     ustId: M("USTID"), kontakt: M("KONTAKT"), kontaktName: M("KONTAKTNAME"), anschrift: M("FIRMENANSCHRIFT"),
     notiz: M("BETRIEBSNOTIZ"), raum: M("RAUMKENNUNG"), status: "aktiv",
     unbekanntImBetrieb: M("UNBEKANNT-BETRIEB"),
@@ -323,6 +348,14 @@ const ZEILEN = {
   "Stempeldaten der eigenen Person (für die eigene Zeiterfassung)": {
     sondenFuer: (spalte) => (EIGENE_STEMPEL[spalte] ? [mk(`STEMPEL-EIGEN-${EIGENE_STEMPEL[spalte]}`)]
       : Object.values(EIGENE_STEMPEL).map((id) => mk(`STEMPEL-EIGEN-${id}`))) },
+  "Monatsabschluss: Status je Monat (`monatsabschluss`, nur „abgeschlossen“)": {
+    sonden: [Object.assign((s) => !!(s.betrieb && s.betrieb.monatsabschluss && s.betrieb.monatsabschluss["2026-09"]
+      && s.betrieb.monatsabschluss["2026-09"].abgeschlossen === true), { titel: "monatsabschluss 2026-09 abgeschlossen" })] },
+  "Monatsabschluss: Wer, Wann, Grund, Verlauf, Prüfsumme, abgewiesene Stempel": {
+    sonden: [mk("ABSCHLUSS-AM"), mk("ABSCHLUSS-WER"), mk("ABSCHLUSS-ABDRUCK"), mk("ABSCHLUSS-GRUND"), mk("ABSCHLUSS-ABGEWIESEN")] },
+  "Monatsabschluss: eingefrorenes Ist fremder Personen (`istEingefroren`, je Tag Dienst, Dauer, Abwesenheitsart)": {
+    sonden: [mk("FREEZE-STD-B1"), mk("FREEZE-ART-B1"), mk("FREEZE-K-B1"), mk("FREEZE-UE-B1"), mk("FREEZE-NM-B1"), mk("FREEZE-G-B1"),
+      mk("FREEZE-BR-B1")] },
   "Abwesenheiten mit Anmerkung": {
     sonden: [mk("ABW-ID-B1"), mk("ABW-NOTIZ-B1"), mk("ABW-URLAUB-ID-B1"), mk("ABW-URLAUB-NOTIZ-B1")],
     /* Auflage B2: Krankheit und jede andere Kategorie werden zu „abwesend";
@@ -371,6 +404,16 @@ const ZEILEN = {
     } },
   "Einteilung auf Posten (`postenPlan`; Branchenmodul Posten)": planZeile("postenPlan"),
   "Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan)": planZeile("bereichsPlan"),
+  /* WP-19.0 (²⁹): Moduleinstellungen in `einstellungen`. */
+  "Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`)": {
+    sonden: [mk("MODUL-AM"), mk("MB-AM"), Object.assign((s) => {
+      const e = s.betrieb && s.betrieb.einstellungen;
+      return !!e && !!e.branchenmodule && hat(e.branchenmodule.wachbuch, "an");
+    }, { titel: "branchenmodule.wachbuch.an" })] },
+  "Branchenmodule: wer geschaltet, bestätigt oder geprüft hat, Grundlage der Mitbestimmung, Modulprotokoll (`geaendertVon`, `mitbestimmung.grundlage`/`bestaetigtVon`, `regelwerte[].geprueftVon`/`geaendertVon`, `einstellungen.modulprotokoll`)": {
+    sonden: [mk("MODUL-VON"), mk("MB-GRUNDLAGE"), mk("MB-VON"), mk("RW-VON"), mk("RW-AENDERER"), mk("PROTOKOLL-VON"), mk("PROTOKOLL-GRUNDLAGE")] },
+  "Betriebliche Regelwerte (`einstellungen.regelwerte`: Wert, Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus, Stufe, Prüf- und Änderungszeitpunkt)": {
+    sonden: [mk("RW-QUELLE"), mk("RW-AM")] },
   "Dienstbuch": einheitZeile("DIENSTBUCH"),
   "Übergaben": einheitZeile("UEBERGABE"),
   "Tagesnotizen (`notizen` „tag|…\")": einheitZeile("TAGESNOTIZ"),
@@ -448,11 +491,14 @@ const ZEILEN = {
   "Kalendergeheimnis, -verweis, -stand": { sonden: [mk("KALGEHEIM-B1"), mk("KALVERWEIS-B1"), mk("KALSTAND-B1")] },
   "Push-Schlüssel, Zustelleinstellungen": { sonden: [mk("PUSH-B1"), mk("ZUSTELLUNG-B1")] },
   "Adressänderungen im Betrieb": { sonden: [mk("ADRESSE-ALT"), mk("ADRESSE-NEU")] },
-  "Lohnarten": { sonden: [mk("LOHNART")] },
+  /* Dazu die eingefrorenen Lohnarten im Verzeichnis „*|JJJJ-MM“ (`la`, WP-16 Nachtrag vierter Review N-4). */
+  "Lohnarten": { sonden: [mk("LOHNART"), mk("FREEZE-LA")] },
   "Betriebsprotokoll": { sonden: [mk("BETRIEBSPROTOKOLL")] },
   "Billing: Preisgrundlage des eigenen Betriebs (`tarif`, `preisgestaltung`, `rabattGrund`; oben nur der eigene Tarifeintrag) — nur lesend, für die Kostenanzeige (B2)": {
     sonden: [mk("KONDITION"), mk("RABATTGRUND"), mk("PREISLISTE-EIGEN"),
       Object.assign((s) => hat(s.betrieb, "tarif"), { titel: "tarif" })] },
+  "Billing: Zustimmungen und Grundlagen zu Paketen (`paketZustimmungen`, `paketGrundlage`) — nur Betreiber; Leitung und Kundenrolle bekommen vom Pilot nur `seit`/`bis`": {
+    sonden: [mk("ZUSTIMMUNG-VON"), mk("GRUNDLAGE-NOTIZ"), mk("PILOT-GRUND"), mk("PILOT-VON")] },
   "Billing: übriger Vertrag, Rechnungsangaben, USt-ID": {
     sonden: [mk("USTID"), mk("KONTAKT"), mk("KONTAKTNAME"), mk("FIRMENANSCHRIFT")] },
   "Betreiberfelder: Raumkennung, Firmenstamm, Preisliste, Selbststarts": {
@@ -749,6 +795,39 @@ describe("RECHTEMATRIX.md, Abschnitt 2: Dienstarten mit org.edit oder pattern.ed
       const e = zusammenfuehren(g, sicht, SITZ[k]);
       const gespeichert = !!e && !e.verweigert && JSON.stringify(e).includes("SONDE-ORG-EDIT");
       expect(gespeichert, `${k}: ${e && e.verweigert}`).toBe(DUERFEN.includes(k));
+    });
+  }
+});
+
+/* Abschnitt 2, WP-16: Monatsabschluss. Abschließen Leitung, Planung, Kundenrolle; Wiederöffnen nur Leitung und
+   Kundenrolle; alle anderen nicht. Dazu: der Abschluss lässt sich über das Speichern für keine Rolle ändern. */
+describe("RECHTEMATRIX.md, Abschnitt 2: Monatsabschluss (WP-16)", () => {
+  it("die Zeile steht in der Matrix", () => {
+    const text = fs.readFileSync(MATRIX_DATEI, "utf8");
+    expect(text.split(/^## 2\./m)[1]).toMatch(/`POST \/api\/monatsabschluss`[^\n]*Wiederöffnen: nur Leitung und Probierraum \(`org\.edit`\)/);
+  });
+  const SOLL = { abschliessen: ["PL", "LT", "KU"], wiederoeffnen: ["LT", "KU"] };
+  for (const aktion of Object.keys(SOLL)) {
+    for (const k of Object.keys(SITZ)) {
+      it(`${k}: ${aktion} — ${SOLL[aktion].includes(k) ? "erlaubt" : "nicht erlaubt"}`, () => {
+        expect(abschlussRecht(SITZ[k].rolle, aktion), k).toBe(SOLL[aktion].includes(k));
+      });
+    }
+  }
+  it("unbekannte Rolle und unbekannte Aktion: nie", () => {
+    for (const r of ["gast", "", null, undefined]) for (const a of ["abschliessen", "wiederoeffnen"]) expect(abschlussRecht(r, a)).toBe(false);
+    expect(abschlussRecht("leitung", "loeschen")).toBe(false);
+  });
+  for (const k of ["MA", "SV", "PL", "LT", "KU", "BT"]) {
+    it(`${k}: Monatsabschluss über das Speichern öffnen oder setzen — abgewiesen oder wirkungslos`, () => {
+      const g = bestand();
+      const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SITZ[k])));
+      const m = sicht.mandanten.find((x) => x && x.id === "m1");
+      m.monatsabschluss = { "2026-09": { abgeschlossen: false }, "2026-08": { abgeschlossen: true, grund: "SONDE-ABSCHLUSS" } };
+      const e = zusammenfuehren(g, sicht, SITZ[k]);
+      if (e && e.verweigert) return;
+      const m1 = e.mandanten.find((x) => x && x.id === "m1");
+      expect(m1.monatsabschluss, k).toEqual(g.mandanten[0].monatsabschluss);
     });
   }
 });

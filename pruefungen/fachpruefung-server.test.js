@@ -17,7 +17,7 @@
 
    Aufruf: npx vitest run pruefungen/fachpruefung-server.test.js
    ========================================================================== */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 import { bestaetigungenBetriebsrat } from "../server/lib/sicht.mjs";
@@ -297,4 +297,33 @@ describe("Review S1: Sammelbestätigung eng", () => {
     const br = bestaetigungenBetriebsrat(e.mandanten[0].bestaetigungen);
     expect(br.reduce((a, x) => a + (typeof x.anzahl === "number" ? x.anzahl : 0), 0)).toBe(anzahl);
   });
+});
+
+/* Regression (Datumswechsel): Der Server rechnete „heute“ der Fachprüfung als UTC-Tag, die Oberfläche und
+   alle anderen Stellen als Berliner Tag. Zwischen 22/23 Uhr UTC und Mitternacht UTC (00:00–02:00 Berliner
+   Zeit) lag der Prüfbeginn einen Tag zu früh; eine Sammelbestätigung ab dem Berliner Heute deckte dann den
+   „gestrigen“ Befund nicht und das Speichern wurde mit 409 abgewiesen. */
+describe("Fachprüfung: „heute“ ist der Berliner Tag, nicht der UTC-Tag", () => {
+  const gS2 = () => {
+    const gg = g();
+    for (let i = 0; i < 5; i++) gg.mandanten[0].personen.push(person(`h${i}`, "mitarbeiter", "e1", { qualifikationen: ["qG"] }));
+    gg.mandanten[0].personen = gg.mandanten[0].personen.filter((p) => !["oq", "oB", "mu"].includes(p.id));
+    gg.mandanten[0].personen.find((p) => p.id === "s1").qualifikationen = ["qG", "qB"];
+    return gg;
+  };
+  const jetzt = ["2026-11-03T23:30:00Z", "2026-11-04T12:00:00Z", "2026-07-14T22:30:00Z", "2027-03-27T23:30:00Z", "2026-12-31T23:30:00Z"];
+  for (const t of jetzt) {
+    it(`Uhr ${t}: Sammelbestätigung ab Berliner Heute deckt alle Befunde`, () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(t));
+      try {
+        const h = heuteBerlin();
+        const e = schreiben(gS2(), "PL", (m) => { m.zyklus = { tage: ["F", "F", "F", "F", "F", "F", "F"] };
+          m.bestaetigungen.push({ id: "b-s1", art: "sammel", regel: "qualifikationBetrieblich", aktion: "speichern",
+            einheitId: "e1", von: h, bis: tagePlus(h, 130) }); });
+        expect(e.verweigert, e.verweigert).toBeFalsy();
+        expect(e.mandanten[0].bestaetigungen.find((b) => b.id === "b-s1").von >= h).toBe(true);
+      } finally { vi.useRealTimers(); }
+    });
+  }
 });
