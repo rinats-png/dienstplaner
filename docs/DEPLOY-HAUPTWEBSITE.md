@@ -1,65 +1,35 @@
-# Hauptwebsite ausliefern (centric-dienstplanung.de)
+# Hauptwebsite ausliefern (centric-dienstplanung.de) - Variante B
 
-Statische Website, ausgeliefert vom Caddy-Container neben der App. Skripte und Site-Datei:
-`deploy/website/`. Bauen und Uebertragen: `deploy/website/dist-bauen.md`.
-Nichts davon ist auf dem Server ausgefuehrt; alle Angaben zum VPS sind unten als Befehle formuliert,
-die die Ausgabe zeigen.
+Statische Website im vorhandenen Caddy-Container, neben der App. Kein neuer Mount, kein Container-Neustart,
+nur `caddy reload`. Bestaetigter Stand (Betreiber, direkt am Server): Container `caddy`; Mounts
+`/opt/proxy/config`->`/config` rw, `/opt/proxy/data`->`/data` rw, `/opt/proxy/Caddyfile`->`/etc/caddy/Caddyfile` ro,
+`/opt/proxy/sites`->`/etc/caddy/sites` ro (im Container); Hauptdatei enthaelt `import sites/*.caddy`.
+Diese Werte sind die Vorgaben der Skripte: **keine Variable setzen**.
 
-## Betreiber-Checkliste (VPS, in dieser Reihenfolge)
+## Checkliste (in dieser Reihenfolge)
 
-1. Laptop: bauen, packen, uebertragen laut `dist-bauen.md`. Auf dem VPS entpacken nach `~/website-dist`.
-2. Vorpruefung (rein lesend): `cd ~/website-deploy && ./website-vorpruefung.sh caddy`. Sie zeigt die Mounts, prueft `import sites/*.caddy`, den Host-Pfad von `/etc/caddy/sites`, Schreibrechte und ob Variante B (ohne Caddy-Neustart) moeglich ist - und druckt die fertigen `export`-Zeilen.
-3. Bei `VARIANTE B IST MOEGLICH`: die ausgegebenen `export`-Zeilen uebernehmen, `mkdir -p "$WEB_DIR_HOST"` (liegt im bereits eingehaengten Sites-Ordner).
-4. Sonst Variante A (Mount, kurzer Caddy-Neustart, nur nach gesonderter Freigabe) - Ausgabe der Vorpruefung schicken.
-5. `./website-ausliefern.sh ~/website-dist` (sichert, validiert VOR dem Reload, laedt nur bei Erfolg neu, Rollback bei Fehler).
-6. Rueckweg jederzeit: `./website-zurueck.sh <stempel>` (Stempel steht am Ende der Ausgabe).
-7. Erfolg: letzte Zeilen `Versuch n: Hauptdomain 200, App 200, Hauptdomain/unbekannt 404`, dann `FERTIG`.
-8. Von aussen: `curl -sI https://centric-dienstplanung.de | head -3` -> `200`; `curl -sI https://app.centric-dienstplanung.de | head -1` -> `200`.
-9. Bei Fehler: das Skript rollt selbst zurueck und meldet die App-Antwort. Nach Erfolg zurueck: `./website-zurueck.sh` (Stempel steht am Ende der Ausgabe).
-10. DNS (IONOS, Betreiber): A-Eintrag `www` auf dieselbe IPv4 wie die Hauptdomain. Erst dann `https://www.centric-dienstplanung.de` -> 301 auf die Hauptdomain.
+1. Laptop: `python build.py`, packen, Pruefsumme, `scp` des `.tgz` - siehe `deploy/website/dist-bauen.md`.
+2. VPS: `sha256sum -c`, entpacken nach `~/website-dist`; Skripte aus dem oeffentlichen Repo: `git clone --depth 1 --filter=blob:none --sparse --branch deploy/hauptwebsite-docker https://github.com/rinats-png/dienstplaner.git ~/centric-src && cd ~/centric-src && git sparse-checkout set deploy/website && cd deploy/website`
+3. Vorpruefung (rein lesend): `sudo -E ./website-vorpruefung.sh` - erwartet `OK`-Zeilen fuer alle vier Mounts, `import`-Zeile, App-Datei, am Ende `VARIANTE B PASST`. Bei `ABWEICHUNG`: nicht weitermachen, Ausgabe melden.
+4. Ausfuehren: `sudo -E ./website-ausliefern.sh ~/website-dist` (legt `/opt/proxy/sites/centric-website` selbst an; ohne `sudo -E` meldet es "Kein Schreibrecht ... mit sudo -E ausfuehren"; findet sudo `docker` nicht: `sudo -E env "PATH=$PATH" ./website-ausliefern.sh ~/website-dist`).
+5. Erfolg: Zeilen `Versuch n: Hauptdomain 200, App 200, Hauptdomain/unbekannt 404`, dann `FERTIG` mit Stempel. Bei jedem Fehler rollt das Skript selbst zurueck und nennt die App-Antwort (soll 200).
+6. Rueckweg jederzeit: `sudo -E ./website-zurueck.sh <stempel>` (Stempel am Ende der Ausfuehrung; ohne Stempel: letzter Lauf).
+7. DNS (IONOS, Betreiber): A-Eintrag `www` auf dieselbe IPv4 wie die Hauptdomain; erst dann liefert `www.` ein Zertifikat und leitet per 301 um.
+8. Von aussen: `curl -sI https://centric-dienstplanung.de | head -3` -> 200; `curl -sI https://app.centric-dienstplanung.de | head -1` -> 200; `curl -sI https://centric-dienstplanung.de/gibt-es-nicht | head -1` -> 404.
 
-## Vorab: die Angaben, die noch fehlen
+## Was das Skript garantiert
 
-```bash
-docker ps --format '{{.Names}}  {{.Image}}'                      # Name des Caddy-Containers
-docker inspect <caddy> --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}} ({{if .RW}}rw{{else}}ro{{end}}){{println}}{{end}}'
-docker exec <caddy> grep -n import /etc/caddy/Caddyfile         # wie werden die Sites eingebunden?
-docker inspect <caddy> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'   # Ordner der Caddy-Compose
-```
+- **Schreibt nur** `centric-dienstplanung.de.caddy` (und kurz die Punktdatei `.centric-dienstplanung.de.caddy.tmp`) sowie das Unterverzeichnis `centric-website/` im Sites-Ordner. `app.centric-dienstplanung.de.caddy` und alle anderen Dateien bleiben byte- und mtime-gleich - bei Erfolg, Fehler und Rollback (Test).
+- **Vorab, ohne Aenderung bei Abbruch:** Schreibrecht auf `SITES_DIR_HOST`/`WEB_DIR_HOST`; Container sieht die App-Datei unter `/etc/caddy/sites` (Pfadzuordnung); `import sites/*.caddy` im Caddyfile; dist vollstaendig; freier Platz mindestens dist x 3 + 50 MB; App antwortet 200.
+- **Rechte:** abgelegte Fassung und Site-Datei werden auf `u=rwX,go=rX` normalisiert, damit der Caddy-Container (anderer Benutzer) lesen kann.
+- **Nach dem Ablegen:** im Container `test -f /etc/caddy/sites/centric-website/aktuell/index.html`, `readlink -f` des relativen Links `aktuell -> releases/<stempel>`, `test -f` der eigenen `.caddy`.
+- **Validierung vor Reload:** `docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` prueft die Gesamtkonfiguration einschliesslich der importierten `sites/*.caddy` (Import-Pfade gelten relativ zum Caddyfile); danach `caddy adapt` zum Beleg, dass die Hauptdomain darin steht. Bei Fehler wird die neue Datei **vor** dem Reload zurueckgenommen - Caddy wurde nie neu geladen und lief durchgehend mit der alten Konfiguration.
+- **Reload:** `docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`. Das ist ein Konfigurationswechsel im laufenden Prozess (Sekundenbruchteile bis wenige Sekunden); bestehende Verbindungen werden nicht getrennt, auch die App bleibt erreichbar. Scheitert die Gegenprobe, folgt Rollback mit erneutem validate und Reload.
+- **Sicherungen** liegen unter `/opt/proxy/sites/centric-website/sicherung/<stempel>/` (auch `sites/*.caddy`-Kopien). Der Import `sites/*.caddy` erfasst nur direkte Kinder von `sites/`, diese tieferen Kopien werden nicht geladen (Test mit Attrappe). Deshalb darf `centric-website` nie auf `.caddy` enden (das Skript verweigert es). Alte Fassungen (`releases/`, je ca. 2 MB) und Sicherungen werden nicht automatisch geloescht.
+- Test ohne Server: `npm run pruefung:website` (Attrappen fuer docker, curl, df; Linux-CI). Er ersetzt nicht die Gegenprobe auf dem VPS.
 
-- `SITES_DIR_HOST` = die Quelle (`Source`) der Zeile, deren Ziel `/etc/caddy/sites` ist. Ist stattdessen
-  `/etc/caddy` als Ganzes eingehaengt, ist es `<Source>/sites`.
-- Dieselbe Ausgabe zeigt, ob `/data` (Zertifikate) ein Volume oder Bind-Mount ist. Ist es das nicht,
-  **nicht** neu erstellen (Variante B).
-- Das Skript prueft selbst, dass im Sites-Ordner die App-Datei liegt (Schutz gegen den falschen Pfad).
+## Rueckfall Variante A (nur nach gesonderter Freigabe)
 
-## Verzeichnis im Container sichtbar machen
-
-Warum nicht das Web-Verzeichnis selbst als Mount: Wird ein eingehaengtes Verzeichnis durch ein neues ersetzt,
-sieht der Container weiter das alte. Deshalb wird `WEB_DIR_HOST` einmal eingehaengt, die Fassungen liegen darin
-unter `releases/<stempel>`, und der Link `aktuell` zeigt auf die gueltige - Austausch und Rueckweg sind ein
-atomarer Link-Wechsel.
-
-**Variante A (Standard):** Compose-Fragment `deploy/website/caddy-compose-fragment.yml` in die Caddy-Compose
-uebernehmen (nur der `volumes`-Eintrag), dann im Ordner der Caddy-Compose `docker compose up -d <dienst>`.
-Das erstellt den Caddy-Container neu: wenige Sekunden Unterbrechung aller Seiten. Danach kontrollieren:
-`docker exec <caddy> ls /srv/centric-website` (leer, kein Fehler) und `curl -sI https://app.centric-dienstplanung.de | head -1`.
-
-**Variante B (ohne Neustart):** `WEB_DIR_HOST` innerhalb des bereits eingehaengten Sites-Ordners anlegen, z. B.
-`$SITES_DIR_HOST/_centric-website`, und `export WEB_ROOT_CONTAINER=/etc/caddy/sites/_centric-website`.
-Nur zulaessig, wenn die `import`-Zeile aus der Ausgabe oben auf `*.caddy` endet (ein Ordner darf nicht
-mitgeladen werden). Sonst Variante A.
-
-## Hinweise
-
-- `website-ausliefern.sh` aendert nur `centric-dienstplanung.de.caddy` im Sites-Ordner und `WEB_DIR_HOST`.
-  Vorher legt es eine Sicherung aller `.caddy`-Dateien unter `WEB_DIR_HOST/sicherung/<stempel>` an;
-  `caddy validate` laeuft vor dem `caddy reload`; ein Fehler an irgendeiner Stelle stellt den alten Zustand her.
-- Das Skript bricht ab, wenn die App vorab nicht 200 liefert, wenn `index.html`, `404.html` oder `assets/` im
-  dist fehlen oder wenn der Container das Verzeichnis nicht sieht - jeweils ohne Aenderung.
-- Die Site-Datei erwartet, dass der Haupt-`Caddyfile` die Sites einbindet (die App-Seite funktioniert so
-  schon). Die Content-Security-Policy ist gegen den echten dist-Inhalt geprueft (keine Inline-Skripte,
-  keine externen Ressourcen).
-- Test ohne Server: `npm run pruefung:website` (Attrappen fuer docker und curl). Das ersetzt nicht die
-  Gegenprobe auf dem VPS.
-- Alte Fassungen (`releases/`, je ca. 2 MB) und Sicherungen werden nicht automatisch geloescht.
+Stimmt die Vorpruefung nicht (z. B. Sites-Ordner nicht eingehaengt): eigener Mount per `deploy/website/caddy-compose-fragment.yml`
+mit `WEB_DIR_HOST`/`WEB_ROOT_CONTAINER=/srv/centric-website` ausserhalb des Sites-Ordners; erstellt den Caddy-Container neu
+(wenige Sekunden Unterbrechung aller Seiten). Dazu vorher die Ausgabe der Vorpruefung melden.

@@ -29,23 +29,20 @@ Die Pruefsumme (64 Zeichen) notieren; sie dient dem Abgleich nach der Uebertragu
 ## 3. Uebertragen (unter Betreiberkontrolle)
 
 Mit dem eigenen SSH-Zugang des Betreibers; Benutzer, Host und Schluessel stehen nicht im Repository.
+Nur das Archiv wird uebertragen; die Skripte holt der VPS aus dem oeffentlichen Repository
+(siehe `docs/DEPLOY-HAUPTWEBSITE.md`, Schritt 2).
 
 ```powershell
 scp centric-website-dist.tgz <benutzer>@<vps>:~/
-scp -r <pfad-zum-repo>\deploy\website <benutzer>@<vps>:~/website-deploy
 ```
-
-(Das Verzeichnis `deploy/website` enthaelt die Skripte und die Site-Datei; sie muessen zusammen
-liegen.)
 
 ## 4. Auf dem VPS entpacken und pruefen
 
 ```bash
 echo "<pruefsumme>  centric-website-dist.tgz" | sha256sum -c -
 mkdir -p ~/website-dist && tar -xzf centric-website-dist.tgz -C ~/website-dist
-chmod +x ~/website-deploy/*.sh
 ```
 
-Weiter mit `docs/DEPLOY-HAUPTWEBSITE.md` (Ausliefern). Das Skript gibt ausserdem eine
+Weiter mit `docs/DEPLOY-HAUPTWEBSITE.md` (Vorpruefung, Ausliefern). Das Skript gibt ausserdem eine
 Pruefsumme ueber alle Dateien des dist-Ordners aus (sha256 ueber die sortierte Liste der
 Datei-Pruefsummen); sie steht im Protokoll des Laufs.

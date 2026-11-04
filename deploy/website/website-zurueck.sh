@@ -2,7 +2,7 @@
 # Rueckweg zu website-ausliefern.sh: stellt den Zustand VOR dem gewaehlten Lauf wieder her.
 #
 # Nutzung:
-#   CADDY_CONTAINER=<name> SITES_DIR_HOST=<pfad> WEB_DIR_HOST=<pfad> ./website-zurueck.sh [stempel]
+#   sudo -E ./website-zurueck.sh [stempel]       (Vorgaben = bestaetigter VPS-Stand, siehe website-lib.sh)
 # Ohne Stempel: der neueste Lauf unter $WEB_DIR_HOST/sicherung. Stempel stehen am Ende der Ausgabe von
 # website-ausliefern.sh, oder: ls $WEB_DIR_HOST/sicherung
 #
