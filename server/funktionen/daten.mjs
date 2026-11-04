@@ -23,6 +23,8 @@ import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrze
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { paketfelderGeprueft } from "../lib/paketstand.mjs";
+import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
@@ -31,7 +33,7 @@ import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
-import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
+import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
   betriebsSicherung, auszuduennen, listenEintrag, betriebWiederherstellen,
@@ -541,7 +543,14 @@ export default async (req, context) => {
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
       /* Moduleinstellungen (Schalter, Bestätigungen, Regelwerte, Modulprotokoll) bringt kein
          Inhalt mit — jeder Betrieb beginnt ohne (G1/G2/G6, WP-19.0 Nachtrag). */
-      const neuerBestand = bestandOhneModuleinstellungen(personenAngleichen(roh));
+      let neuerBestand = bestandOhneModuleinstellungen(personenAngleichen(roh));
+      /* Review N-D: die Demo bringt Beispielpakete, aber keinen Abrechnungsgrund und keinen Pilot mit. */
+      if (vorlage === "demo") neuerBestand = demoOhneVertrag(neuerBestand);
+      /* G9 (Review N3): eigener Inhalt durchläuft dieselbe Paketregel wie der Betreiber-PUT —
+         Pakete unter Zustand 5 nur mit Pilot, Pilot/Zustimmungen/Grundlagen mit Servertag.
+         Die Demo bringt ihre Beispielpakete mit (demoGestaltPruefen). */
+      if (vorlage === undefined && Array.isArray(neuerBestand.mandanten))
+        neuerBestand.mandanten = neuerBestand.mandanten.map((m) => paketfelderGeprueft(m, null));
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
@@ -1221,7 +1230,17 @@ export default async (req, context) => {
       } catch (e) {
         await protokoll("fehler", ks, "zustellung", String(e && e.message || e).slice(0, 200)).catch(() => {});
       }
+      /* Review N-E: Änderungen an Paketen, Zustimmungen, Grundlagen und Pilot stehen im Serverprotokoll
+         (ohne Freitexte). Ein Protokollfehler ändert nichts am gespeicherten Vorgang. */
+      if (s.rolle === "betreiber") {
+        try {
+          for (const z of paketAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben))
+            await protokoll("schreiben", ks, "paket", z, wer);
+        } catch { /* egal */ }
+      }
       return antwort({ ok: true, etag: erg.stand,
+        /* Review N-A: der Betreiber bekommt den gespeicherten Vertragsstand der Pakete zurück. */
+        vertragsstand: s.rolle === "betreiber" ? vertragsstandVon(zuSchreiben) : undefined,
         zusammengefuehrt: erg.zusammengefuehrt || null,
         ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht und wurden aus der älteren Kopie nicht übernommen. Bitte neu laden.` } : {}) });
     }
