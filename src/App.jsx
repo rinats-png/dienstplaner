@@ -3204,6 +3204,10 @@ function datenauskunft(m, personId) {
   z.push("", "MITTEILUNGEN");
   const na = (m.nachrichten || []).filter((x) => x.personId === personId).slice(0, 40);
   na.length ? na.forEach((x) => z.push(`  ${x.zeit}: ${x.titel}`)) : z.push("  —");
+  /* WP-30: Einstellungen zu Benachrichtigungen; der Zustellstatus je Mitteilung steht in der serverseitigen Auskunft. */
+  const kz = (p.zustellung || {}).kanal || {};
+  z.push("", "BENACHRICHTIGUNGEN", `  E-Mail insgesamt: ${kz.mail === false ? "aus" : "an"}`,
+    `  Gerätemitteilungen insgesamt: ${kz.push === false ? "aus" : "an"}`);
   /* Artikel 15 Abs. 1 lit. d DSGVO verlangt die Dauer der Speicherung —
      und zwar alle drei, nicht nur die für Stammdaten. */
   const fr = loeschFristen(m);
@@ -16733,7 +16737,7 @@ const ZUSTELLARTEN = {
      nachweisbar stehen. */
   urlaubVerfaellt: { titel: "Resturlaub verfällt", mail: true, push: false, dringend: false,
     text: "Nicht genommener Urlaub verfällt zum Jahresende, wenn er nicht eingeplant wird." },
-  nachweisLaeuftAb: { titel: "Nachweis läuft ab", mail: true, push: false, dringend: false,
+  nachweisLaeuftAb: { titel: "Nachweis läuft ab", mail: false, push: false, dringend: false,
     text: "Eine Qualifikation verliert demnächst ihre Gültigkeit." },
   zeitFehlt: { titel: "Zeiten offen", mail: false, push: true, dringend: false,
     text: "Erfasste Zeiten warten auf Bestätigung." },
@@ -16759,11 +16763,13 @@ function zustellwege(person, art) {
   const vorgabe = ZUSTELLARTEN[art];
   if (!vorgabe) return { postfach: true, mail: false, push: false };
   const eigen = (person.zustellung || {})[art] || {};
+  /* WP-30: Sammelschalter je Kanal (zustellung.kanal) — wie auf dem Server (zustellregeln.mjs, kanalAus). */
+  const kanalAus = (k) => !!((person.zustellung || {}).kanal) && person.zustellung.kanal[k] === false;
   const hatMail = !!(person.email && person.email.includes("@"));
   return {
     postfach: true,
-    mail: hatMail && (eigen.mail !== undefined ? eigen.mail : vorgabe.mail),
-    push: (eigen.push !== undefined ? eigen.push : vorgabe.push) && !!(person.pushSchluessel),
+    mail: hatMail && !kanalAus("mail") && (eigen.mail !== undefined ? eigen.mail : vorgabe.mail),
+    push: !kanalAus("push") && (eigen.push !== undefined ? eigen.push : vorgabe.push) && !!(person.pushSchluessel),
     dringend: vorgabe.dringend,
   };
 }
@@ -16777,8 +16783,10 @@ const zustellungAusstehend = new Set();
  * hinausgeht, entscheidet seit Commit 4 der Server aus dem gespeicherten
  * Stand — Adresse, Push-Anmeldung und Zustellstatus stehen nicht mehr hier.
  * Titel höchstens 120, Text höchstens 500 Zeichen (prüft auch der Server).
+ * `tag` (JJJJ-MM-TT): der Plantag, den die Mitteilung betrifft — der Server
+ * stellt sie Beschäftigten nicht zu, solange der Monat Entwurf ist (WP-30).
  */
-function baueMitteilung(m, personId, art, titel, text, ziel) {
+function baueMitteilung(m, personId, art, titel, text, ziel, tag) {
   const p = m.personen.find((x) => x.id === personId);
   if (!p) return null;
   const id = uid("n");
@@ -16788,6 +16796,7 @@ function baueMitteilung(m, personId, art, titel, text, ziel) {
     ziel: ziel || null,
     zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
     gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
+    ...(typeof tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tag) ? { tag } : {}),
   };
 }
 
@@ -17945,6 +17954,15 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
             onChange={(v) => akt.pushUmschalten(v)} />
         </Zeile>
+        {/* WP-30: Sammelschalter je Kanal — aus bedeutet: über diesen Weg geht nichts hinaus. */}
+        {[["mail", "E-Mail insgesamt", "Aus: keine Benachrichtigung per E-Mail, gleich welche Art."],
+          ["push", "Gerätemitteilungen insgesamt", "Aus: keine Benachrichtigung auf dieses oder ein anderes Gerät."]].map(([weg, titel, text]) => {
+          const an = !(p.zustellung && p.zustellung.kanal && p.zustellung.kanal[weg] === false);
+          return (
+            <Zeile key={weg} titel={titel} text={text}>
+              <Schalter an={an} label={titel} onChange={(v) => akt.setzeZustellungKanal(p.id, weg, v)} />
+            </Zeile>);
+        })}
         {Object.entries(ZUSTELLARTEN).map(([id, a]) => {
           const w = zustellwege(p, id);
           return (
@@ -23320,7 +23338,7 @@ function AppInnen() {
           if (istFreigegeben(m, d.slice(0, 7))) {
             const nam = (x) => x === "-" || !x ? "frei" : (m.dienstarten.find((y) => y.id === x) || {}).name || x;
             next = { ...next, nachrichten: [baueMitteilung(next, pid, "planGeaendert", `Dienst am ${fKurz(d)} geändert`,
-              `${nam(vorher)} → ${nam(nachher)}${vl < 14 ? ` · ${vl} Tage Vorlauf` : ""}`, "meine"), ...(next.nachrichten || [])].slice(0, 400) };
+              `${nam(vorher)} → ${nam(nachher)}${vl < 14 ? ` · ${vl} Tage Vorlauf` : ""}`, "meine", d), ...(next.nachrichten || [])].slice(0, 400) };
           }
         }
         return next;
@@ -23387,7 +23405,7 @@ function AppInnen() {
           aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: "-", nach: dienstId,
             zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [baueMitteilung(m, pid, "planGeaendert", `Zusätzlicher Dienst am ${fKurz(d)}`,
-            `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine"), ...(m.nachrichten || [])].slice(0, 400) };
+            `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine", d), ...(m.nachrichten || [])].slice(0, 400) };
       }, "Ersatz eingeteilt"),
       freigeben: (ym2) => mUpd((m) => {
         const alt = freigabeStand(m, ym2);
@@ -24157,6 +24175,9 @@ function AppInnen() {
       setzeZustellung: (pid, art, weg, an) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === pid ? { ...p, zustellung: { ...(p.zustellung || {}),
           [art]: { ...((p.zustellung || {})[art] || {}), [weg]: an } } } : p) }), null),
+      setzeZustellungKanal: (pid, weg, an) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
+        p.id === pid ? { ...p, zustellung: { ...(p.zustellung || {}),
+          kanal: { ...((p.zustellung || {}).kanal || {}), [weg]: an } } } : p) }), null),
       pushUmschalten: async (ein) => {
         const pid = (ref.current.session || {}).personId;
         if (!pid) return;

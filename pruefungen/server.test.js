@@ -139,12 +139,13 @@ describe("Ausliefern", () => {
 
 describe("Funktionen", () => {
   it("erreicht jede der sechs Funktionen unter ihrem Pfad", async () => {
-    /* Jede antwortet fachlich — meist 401 oder 405, /zustellung/schluessel
-       öffentlich mit 200 — aber eben sie, nicht der Rückfall auf index.html.
+    /* Jede antwortet fachlich — meist 401 oder 405 (/zustellung/schluessel
+       seit dem Nachtrag Opus-Review WP-30 nur mit Sitzung, also 401) — aber
+       eben sie, nicht der Rückfall auf index.html.
        Der Rumpf ist in jedem Fall JSON aus der Funktion. */
     const faelle = [
       ["GET", "/api/bestand", 401], ["POST", "/einrichten", 401], ["GET", "/einrichten/verwalter", 401],
-      ["GET", "/starten", 405], ["GET", "/kalender/daten", 401], ["GET", "/zustellung/schluessel", 200],
+      ["GET", "/starten", 405], ["GET", "/kalender/daten", 401], ["GET", "/zustellung/schluessel", 401],
       ["GET", "/lage", 401], ["GET", "/einrichten/uebersicht?bestand=demo-schau", 401],
       ["GET", "/api/zugaenge-uebersicht?bestand=demo-schau", 401],
     ];

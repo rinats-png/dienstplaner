@@ -974,7 +974,7 @@
       "konfliktzonen": [],
       "pr": [],
       "nachweis": null,
-      "akzeptanz": "Resend (SPF/DKIM) und VAPID eingerichtet; Zustelltest",
+      "akzeptanz": "implementiert: synchrone Anbieterantworten klassifiziert (4xx/5xx, 422 ohne Empfängersperre außer ungültigem Empfänger), Notruf-Reserve und Zurückstellen statt Verwerfen, Doppelzustellung mit dokumentierter Restrisikogrenze (Idempotenz 24 h, Push-Topic), SSRF-Abwehr (Allowlist, kein Redirect, keine IP-Literale) mit Tests; asynchrone Bounces/Beschwerden (Webhook mit Signaturprüfung) als Teilpaket WP-30b; produktiv freigegeben erst nach E-9: Resend (SPF/DKIM/DMARC) und VAPID eingerichtet, echter Zustelltest Android + iOS-PWA (extern, Betreiber); Kriterien in docs/acc45/wp30-nachweis.md, Abschnitt Abnahmekriterien",
       "tests": "Zustelltest",
       "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
       "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“."

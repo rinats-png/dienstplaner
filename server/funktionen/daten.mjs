@@ -28,7 +28,7 @@ import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/s
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { zustellen, pushSchluessel } from "../lib/versand.mjs";
+import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
@@ -1221,6 +1221,24 @@ export default async (req, context) => {
       } catch (e) {
         await protokoll("fehler", ks, "zustellung", String(e && e.message || e).slice(0, 200)).catch(() => {});
       }
+      /* WP-30: Wer aus dem Betrieb entfernt wurde, verliert Push-Anmeldung,
+         Adresssperre, Kontingentplätze und den Zustellstatus seiner
+         Mitteilungen (DSGVO Art. 17). Die tägliche Aufräumarbeit fängt
+         Reste ab (zustellungAufraeumen, Waisen). */
+      try {
+        for (const mAlt of (jetzt && Array.isArray(jetzt.bestand && jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [])) {
+          const mNeu = (Array.isArray(zuSchreiben && zuSchreiben.mandanten) ? zuSchreiben.mandanten : []).find((x) => x && x.id === mAlt.id);
+          if (!mNeu || !Array.isArray(mNeu.personen) || !Array.isArray(mAlt.personen)) continue;
+          const da = new Set(mNeu.personen.map((p) => String(p && p.id)));
+          for (const p of mAlt.personen) {
+            if (!p || da.has(String(p.id))) continue;
+            const ids = (Array.isArray(mAlt.nachrichten) ? mAlt.nachrichten : []).filter((n) => n && String(n.personId) === String(p.id)).map((n) => String(n.id));
+            await personBereinigen(store, s.bestand, mAlt.id, p.id, ids);
+          }
+        }
+      } catch (e) {
+        await protokoll("fehler", ks, "zustellung-bereinigen", String(e && e.message || e).slice(0, 200)).catch(() => {});
+      }
       return antwort({ ok: true, etag: erg.stand,
         zusammengefuehrt: erg.zusammengefuehrt || null,
         ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht und wurden aus der älteren Kopie nicht übernommen. Bitte neu laden.` } : {}) });
@@ -1736,6 +1754,17 @@ export default async (req, context) => {
 
     /* ------------------------------ Abmelden ------------------------- */
     if (pfad === "abmelden" && req.method === "POST") {
+      /* WP-30: Die Push-Anmeldung gehört zum Gerät der angemeldeten Person.
+         Beim Abmelden wird sie entfernt — sonst gingen die Mitteilungen der
+         einen Person auf einem geteilten Gerät weiter ein, wenn dort jemand
+         anderes arbeitet. Ein Fehler hier hält das Abmelden nicht auf. */
+      try {
+        if (s.person !== null && s.person !== undefined) {
+          const g = await bestandLesen(store, s.bestand);
+          const mL = g && g.bestand ? eigenerMandant(g.bestand, s) : null;
+          if (mL) await geraetAbmelden(store, s.bestand, g.bestand, mL.id, s.person);
+        }
+      } catch { /* das Abmelden geht vor */ }
       await sitzungBeenden(merkmalAus(req));
       return antwort({ ok: true });
     }
@@ -1792,7 +1821,8 @@ export default async (req, context) => {
         const eigeneSicht = eigenerMandant(bestandFuerRolle(mitA.bestand, { ...s, rolle: "mitarbeiter" }), s);
         /* Das Konto, wenn die Sitzung aus einem stammt (lib/auskunft.mjs). */
         const konto = await kontoFuerAuskunft(store, s);
-        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht };
+        const zustellprotokoll = await zustellStatusEigene(store, s.bestand, mA, personA.id).catch(() => []);
+        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht, zustellprotokoll };
       }
       const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
         ...zusatz });

@@ -118,9 +118,12 @@ describe("Abweichungen werden erkannt (Kopie, nie im Repo)", () => {
   it("Kante im DEPENDENCIES-Graph von Hand entfernt → DEPENDENCIES.md weicht ab", async () => {
     const w = await kopie("graph");
     const t = await readFile(path.join(w, "docs/acc45/DEPENDENCIES.md"), "utf8");
-    const kante = t.split("\n").find((z) => /^ {2}\S+ --> \S+$/.test(z));
+    /* CRLF-tolerant: unter Windows (core.autocrlf) endet jede Zeile auf \r\n. */
+    const kante = t.split(/\r?\n/).find((z) => /^ {2}\S+ --> \S+$/.test(z));
     expect(kante).toBeTruthy();
-    await writeFile(path.join(w, "docs/acc45/DEPENDENCIES.md"), t.replace(`${kante}\n`, ""));
+    const ohne = t.replace(new RegExp(`${kante.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\r?\\n`), "");
+    expect(ohne).not.toBe(t);
+    await writeFile(path.join(w, "docs/acc45/DEPENDENCIES.md"), ohne);
     expect(BL.abweichungen(w)).toEqual(["docs/acc45/DEPENDENCIES.md: weicht von work-packages.json ab"]);
   });
 
