@@ -19,6 +19,7 @@
 
 import { baueLeerenBetrieb } from "./leerbetrieb.mjs";
 import { eigenerMandant } from "./rechte.mjs";
+import { betriebeOhneAbrechnungsgrund } from "./paketstand.mjs";
 
 /* Die drei Demobetriebe — Kennungen und Reihenfolge sind fest. Den Inhalt
    erzeugt bis auf Weiteres die Oberfläche (startbestand() in src/App.jsx);
@@ -38,6 +39,12 @@ export function demoGestaltPruefen(bestand) {
   }
   return null;
 }
+
+/**
+ * Review N-D: Die Demo bringt ihre Beispielpakete mit, aber keinen Abrechnungsgrund. Die Regel steht in
+ * paketstand.mjs (betriebeOhneAbrechnungsgrund); der Rest des Betriebs bleibt.
+ */
+export const demoOhneVertrag = betriebeOhneAbrechnungsgrund;
 
 /* Die kleinen Vorlagen erzeugt der Server selbst — ein Betrieb, ohne
    Beispieldaten, mit dem Raumnamen als Kennung (wie /starten). */

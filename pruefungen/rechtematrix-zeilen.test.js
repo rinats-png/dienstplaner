@@ -208,7 +208,11 @@ const bestand = () => ({
     protokoll: [{ id: "bl", zeit: "2026-01-01", text: M("BETRIEBSPROTOKOLL") }],
     adressAenderungen: [{ personId: "b1", zeit: "1", von: M("ADRESSE-ALT"), nach: M("ADRESSE-NEU") }],
     lohnarten: [{ id: M("LOHNART") }],
-    tarif: "tarif-eigen", preisgestaltung: { grund: M("KONDITION") }, rabattGrund: M("RABATTGRUND"),
+    tarif: "tarif-eigen", rabattGrund: M("RABATTGRUND"),
+    preisgestaltung: { grund: M("KONDITION"), pilot: { seit: "2026-11-03", von: M("PILOT-VON"), grund: M("PILOT-GRUND") } },
+    pakete: ["pflege"],
+    paketZustimmungen: [{ paket: "pflege", datum: "2026-12-01", preis: 89, intervall: "monatlich", von: M("ZUSTIMMUNG-VON") }],
+    paketGrundlage: [{ paket: "pflege", datum: "2026-12-01", preis: 89, intervall: "monatlich", von: "B", notiz: M("GRUNDLAGE-NOTIZ") }],
     ustId: M("USTID"), kontakt: M("KONTAKT"), kontaktName: M("KONTAKTNAME"), anschrift: M("FIRMENANSCHRIFT"),
     notiz: M("BETRIEBSNOTIZ"), raum: M("RAUMKENNUNG"), status: "aktiv",
     unbekanntImBetrieb: M("UNBEKANNT-BETRIEB"),
@@ -470,6 +474,8 @@ const ZEILEN = {
   "Billing: Preisgrundlage des eigenen Betriebs (`tarif`, `preisgestaltung`, `rabattGrund`; oben nur der eigene Tarifeintrag) — nur lesend, für die Kostenanzeige (B2)": {
     sonden: [mk("KONDITION"), mk("RABATTGRUND"), mk("PREISLISTE-EIGEN"),
       Object.assign((s) => hat(s.betrieb, "tarif"), { titel: "tarif" })] },
+  "Billing: Zustimmungen und Grundlagen zu Paketen (`paketZustimmungen`, `paketGrundlage`) — nur Betreiber; Leitung und Kundenrolle bekommen vom Pilot nur `seit`/`bis`": {
+    sonden: [mk("ZUSTIMMUNG-VON"), mk("GRUNDLAGE-NOTIZ"), mk("PILOT-GRUND"), mk("PILOT-VON")] },
   "Billing: übriger Vertrag, Rechnungsangaben, USt-ID": {
     sonden: [mk("USTID"), mk("KONTAKT"), mk("KONTAKTNAME"), mk("FIRMENANSCHRIFT")] },
   "Betreiberfelder: Raumkennung, Firmenstamm, Preisliste, Selbststarts": {
