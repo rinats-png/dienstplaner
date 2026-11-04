@@ -39,7 +39,7 @@ jobs:
   # 2026-11-02). `caddy validate` lädt die Konfiguration samt Modulen, holt
   # aber kein Zertifikat und erreicht kein Upstream.
   caddy-vorlage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -53,7 +53,7 @@ jobs:
             caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   bild-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       BILD: centric-lieferkette:${{ github.sha }}
