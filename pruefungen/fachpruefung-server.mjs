@@ -55,7 +55,12 @@ const pruef = (name, bedingung, detail) => {
 };
 
 const tagPlus = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const T1 = tagPlus(10), T2 = tagPlus(11);
+/* Dienstag oder Mittwoch, kein fester Feiertag: Sonn- und Feiertage lösen beim Mutterschutz eigene Befunde aus
+   (und damit zusätzliche Mitteilungen); die Prüfung hängt sonst vom Wochentag ab, an dem sie läuft. */
+const FEST = new Set(["01-01", "05-01", "10-03", "12-24", "12-25", "12-26", "12-31"]);
+const werktag = (ab) => { for (let n = ab; ; n++) { const t = tagPlus(n); const w = new Date(`${t}T12:00:00Z`).getUTCDay(); if ((w === 2 || w === 3) && !FEST.has(t.slice(5))) return { t, n }; } };
+const w1_ = werktag(10), w2_ = werktag(w1_.n + 1), w3_ = werktag(20);
+const T1 = w1_.t, T2 = w2_.t, T3 = w3_.t;
 const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: `V${id}`, nachname: `N${id}`, rolle, bereich: einheit, status: "aktiv",
   geburtstag: "1980-01-01", zugehoerigkeit: einheit === "ALLE" ? [] : [{ ab: "2020-01-01", einheitId: einheit }], qualifikationen: [], ...extra });
 
@@ -111,7 +116,7 @@ pruef("… mit Bestätigung — 200, gespeichert", w2.status === 200 && nach.abw
 pruef("… Wer und Zeit setzt der Server", !!eintrag && eintrag.durch !== "Angreifer" && eintrag.zeit !== "2000-01-01T00:00:00Z");
 
 /* Schutzangaben: immer gespeichert, Konflikt gemeldet (Nachprüfung 9717ddf, M2) */
-const nacht = await schreibe(tP, (m) => { m.abweichungen[`a1|${tagPlus(20)}`] = "N"; });
+const nacht = await schreibe(tP, (m) => { m.abweichungen[`a1|${T3}`] = "N"; });
 pruef("Nachtdienst für a1 — 200", nacht.status === 200, `Status ${nacht.status}`);
 const ms = await schreibe(tP, (m) => { m.personen.find((p) => p.id === "a1").mutterschutz = true; });
 const nachMs = await betriebVon(tL);

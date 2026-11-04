@@ -50,6 +50,7 @@
    Rein: keine Ablage.
    ========================================================================== */
 import { schutzEinsatz, addDays, tagUTC } from "./schutzpruefung.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
 import { BEFUND_KATALOG, sperrtBefund, befundText } from "./bestaetigungen.mjs";
 import { einteilungsBefunde, imDienst, mindestOhneFeiertag, einheitAm, einheitDienst, teilzeitDienst,
   landFuerEinheit } from "./fachpruefung.mjs";
@@ -250,7 +251,7 @@ export function strukturAenderung(altM, neuM) {
  *   imBereich: Schreibumfang der Schichtverantwortung (Review B4)
  * @returns {null | Fachergebnis}
  */
-export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOString().slice(0, 10), opt = {}) {
+export function fachpruefungUebermittlung(altM, neuM, heute = heuteBerlin(), opt = {}) {
   const t0 = performance.now();
   const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
   try {
@@ -275,7 +276,7 @@ export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOSt
  * @param {{ imBereich?: (personId: any, tag: string) => boolean, budgetMs?: number }} [opt]
  * @returns {Promise<null | Fachergebnis>}
  */
-export async function fachpruefungUebermittlungAsync(altM, neuM, heute = new Date().toISOString().slice(0, 10), opt = {}) {
+export async function fachpruefungUebermittlungAsync(altM, neuM, heute = heuteBerlin(), opt = {}) {
   const t0 = performance.now();
   const budget = opt.budgetMs || ZEITBUDGET_MS;
   const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
