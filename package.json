@@ -41,6 +41,7 @@
     "pruefung:registrierung-http": "vitest run pruefungen/registrierung-http.test.js",
     "pruefung:registrierung-schalter": "vitest run pruefungen/registrierung-schalter.test.js",
     "pruefung:selbststart-schalter": "vitest run pruefungen/selbststart-schalter.test.js",
+    "pruefung:demo-schalter": "vitest run pruefungen/demo-schalter.test.js",
     "pruefung:passwort-http": "vitest run pruefungen/passwort-http.test.js",
     "pruefung:accountanmeldung": "vitest run pruefungen/accountanmeldung.test.js",
     "pruefung:anmeldung-http": "vitest run pruefungen/anmeldung-http.test.js",

@@ -48,7 +48,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<host>/starten \
 |---|---|---|
 | `POST /starten`, `/starten/neu` | legt Raum, Betrieb, Zugangscodes, Nachfassliste an | `CENTRIC_SELBSTSTART` (Standard aus) |
 | `POST /api/registrierung`, `/verifizieren`, `/passwort` | legt Konto und Token an, löst Mail aus | `CENTRIC_PUBLIC_REGISTRATION` (Standard aus) |
-| `POST /api/demo`, `GET /api/demos` | öffnet eine 12-Stunden-Sitzung für einen vorhandenen Demozugang (nur Räume `demo-*`, keine Betreiberrolle); legt keinen Raum, kein Konto und keine Mail an | keiner; gebremst; nur wirksam, wenn Demozugänge existieren |
+| `POST /api/demo`, `GET /api/demos` | öffnet eine 12-Stunden-Sitzung für einen vorhandenen Demozugang (nur Räume `demo-*`, keine Betreiberrolle); legt keinen Raum, kein Konto und keine Mail an | `CENTRIC_DEMO` (Standard aus, `docs/DEMO-SCHALTER.md`) |
 | `POST /api/anmelden`, `/api/account/anmelden` | Sitzung bei gültigem Code bzw. Passwort; Fehlversuche werden gebremst und protokolliert | keiner (Anmeldung) |
 | `POST /einrichten*`, `/api/zugaenge`, `/api/bestand-anlegen`, `/lage` | nur mit Verwaltungsschlüssel bzw. Betreibersitzung | Authentifizierung |
 | `POST /zustellung/senden` (Mail/Push) | nur mit Sitzung; Empfänger nur aus dem eigenen Betrieb | Authentifizierung |

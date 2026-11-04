@@ -27,6 +27,8 @@ services:
       # CENTRIC_SELBSTSTART (öffentlicher Selbststart /starten) steht bewusst
       # NICHT hier: Vorgabe ist AUS. Einschalten nur über .env mit genau "true"
       # (docs/SELBSTSTART-SCHALTER.md).
+      # CENTRIC_DEMO (öffentlicher Demozugang /api/demo, /api/demos) ebenso
+      # NICHT hier: Vorgabe ist AUS (docs/DEMO-SCHALTER.md).
 
     networks:
       - proxy

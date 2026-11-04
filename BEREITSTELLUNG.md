@@ -110,6 +110,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 | `CENTRIC_AUFRAEUMEN` | nein | `aus` schaltet den täglichen Löschlauf für abgelaufene Testbetriebe ab (Vorgabe: an) |
 | `CENTRIC_PUBLIC_REGISTRATION` | nein | **Vorgabe: aus.** Nur genau `true` öffnet die öffentliche Selbstregistrierung (`/api/registrierung*`); jeder andere Wert lässt sie zu. Erst setzen, wenn das Account-Onboarding steht — siehe 5.8 |
 | `CENTRIC_SELBSTSTART` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Selbststart (`/starten`, „Eigenen Betrieb anlegen"); jeder andere Wert lässt ihn aus. Im internen Piloten nicht setzen — siehe `docs/SELBSTSTART-SCHALTER.md` |
+| `CENTRIC_DEMO` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Demozugang (`POST /api/demo`, `GET /api/demos`, die drei Beispielbetriebe auf der Anmeldeseite); sonst 403 bzw. leere Liste, ohne Sitzung und ohne Datei. Siehe `docs/DEMO-SCHALTER.md`. |
 
 Die Anwendung **läuft auch ohne die optionalen Variablen**. Was fehlt:
 
@@ -241,7 +242,7 @@ genauso.
 | Was | Wie | Wodurch |
 |---|---|---|
 | Betreiberkonsole | Code, Rolle `betreiber` | `/einrichten` |
-| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite | `/einrichten`, `demo: true` |
+| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite, **nur mit `CENTRIC_DEMO=true`** (Vorgabe aus, `docs/DEMO-SCHALTER.md`) | `/einrichten`, `demo: true` |
 | Ein leerer Testbetrieb | eigener Raum, 30 Tage | `/starten` |
 
 **Abgelaufene Testbetriebe löscht der Server selbst.** Ein selbst angelegter

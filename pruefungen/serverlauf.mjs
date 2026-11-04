@@ -100,7 +100,8 @@ const server = spawn(process.execPath, ["server.mjs"], {
   cwd: WURZEL,
   env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
     CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: PFEFFER,
-    NODE_ENV: "production" },
+    /* Rechte- und Demoprüfung nutzen den Demozugang; er ist ab Werk aus. */
+    CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true", NODE_ENV: "production" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 server.stdout.on("data", (d) => { serverLog += d; });
