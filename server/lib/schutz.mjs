@@ -992,7 +992,7 @@ export function adresseFuersProtokoll(url) {
  * @param {string} ausgang
  * @param {string} [zusatz]
  * @param {{rolle?: string, person?: (string|number|null), weg?: string,
- *          verfahren?: string, herkunft?: string, mandantId?: string}} [wer]
+ *          verfahren?: string, herkunft?: string, mandantId?: string, tag?: string}} [wer]
  */
 export async function protokoll(art, kennung, ausgang, zusatz, wer) {
   try {
@@ -1004,6 +1004,9 @@ export async function protokoll(art, kennung, ausgang, zusatz, wer) {
       ...(wer && wer.person !== undefined && wer.person !== null
         ? { person: String(wer.person).slice(0, 40) } : {}),
       ...(wer && wer.weg ? { weg: String(wer.weg).slice(0, 60) } : {}),
+      /* Der Tag eines Vorgangs (WP-16, Nachtrag N7): eigenes Feld statt im Text — für die Auskunft nach
+         Art. 15 (protokollZurPerson) vollständig, in der Betreiber-Lage entfernt (spurFuerBetreiber). */
+      ...(wer && typeof wer.tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(wer.tag) ? { tag: wer.tag } : {}),
       /* Der Betrieb (WP-26): Personenkennungen gelten je Betrieb. Ohne ihn
          ließ sich eine Zeile in einem Raum mit mehreren Betrieben nicht
          der richtigen Person zuordnen (Auskunft nach Art. 15). */
@@ -1065,6 +1068,7 @@ export function spurFuerBetreiber(z) {
   if (!z || typeof z !== "object") return z;
   const rest = { ...z };
   delete rest.person;
+  delete rest.tag;                                                      // WP-16, Nachtrag N7: kein Tag in der Betreiber-Lage
   if (typeof rest.zusatz === "string") {
     rest.zusatz = rest.zusatz
       .replace(/\s*·\s*Hinweise:\s*[A-Z_,]+/g, " · Hinweise")

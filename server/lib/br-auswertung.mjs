@@ -50,6 +50,7 @@ import { addDays, dow, dauer, fenster } from "./regelwerk.mjs";
 import { dienstAm, einheitAm, imDienst, nachtAnteil, nachtschwelle, rufbereitschaft } from "./fachpruefung.mjs";
 import { RUECKBLICK_TAGE } from "./zeiterfassung.mjs";
 import { istZeitFuer, ungeplanterDienst } from "./istdaten.mjs";
+import { eingefrorenerTag } from "./isteinfrieren.mjs";
 import { unterRaumsperre } from "./raumsperre.mjs";
 import { kernSchluessel } from "./scherben.mjs";
 
@@ -125,9 +126,22 @@ export function* auswertungSchritte(m, heute) {
     let vorher = null;                                                       // { d, ende } des letzten Dienstes
     for (let d = von; d <= bis; d = addDays(d, 1)) {
       if ((++n & 15) === 0 && performance.now() - t > BR_HAEPPCHEN_MS) { yield; t = performance.now(); }
+      /* Abgeschlossener Monat (WP-16, Review H1): Das Ist kommt nur aus dem eingefrorenen Stand —
+         eine spätere Plan-, Dienstart- oder Abwesenheitsänderung ändert es nicht. Bestätigt erfasste
+         Tage (auch ungeplante Dienste, WP-13), wie im offenen Monat; die Stunden hat der Abschluss mit
+         derselben Rechnung wie Konto und Lohn (istZeitFuer) eingefroren. */
+      const fz = eingefrorenerTag(m, p, d);
+      if (fz && fz.da && fz.e && d < heute) {
+        /* Zugehörigkeit wie zum Abschluss (WP-16, Nachtrag M-neu-2): eine spätere Versetzung ordnet nicht um. */
+        const eidF = String((fz.u !== undefined ? fz.u : einheitAm(p, d)) || "ohne");
+        for (const z of [zeile(monatVon(d), eidF), zeile(monatVon(d), "*")]) {
+          z.istSet.add(String(p.id));
+          if (istFrei(monatVon(d))) { z.istStunden += Math.max(0, Number(fz.std) || 0); z.istErfasst++; }
+        }
+      }
       if (!imDienst(p, d)) { vorher = null; continue; }
       const id = dienstAm(m, p, d);
-      const ist = erfassung[`${p.id}|${d}`];
+      const ist = fz === undefined ? erfassung[`${p.id}|${d}`] : null;     // abgeschlossen: oben aus dem eingefrorenen Ist
       if (!id) {
         vorher = null;
         /* Kein Dienst nach Plan: Ein bestätigter ungeplanter Dienst (WP-13) zählt im

@@ -98,10 +98,21 @@ export const STANDORT_FELDER = Object.freeze(["geoStart", "geoEnde", "ortStart",
   "innerhalbStart", "innerhalbEnde", "geprueftStart", "geprueftEnde"]);
 const hatStandort = (e) => !!e && typeof e === "object" && STANDORT_FELDER.some((f) => f in e);
 
+/** Zeitdaten je Person und Tag mit der Plandatenfrist; istEingefroren: das eingefrorene Ist
+    abgeschlossener Monate (WP-16, Review H1). */
+export const PLAN_FELDER = Object.freeze(["abweichungen", "erfassung", "einstempeln", "istEingefroren"]);
+
 /** Der Tagesanteil aus einem Schlüssel "personId|JJJJ-MM-TT". */
 const tagVon = (schluessel) => {
   const teil = String(schluessel).split("|")[1] || "";
-  return /^\d{4}-\d{2}-\d{2}$/.test(teil) ? teil : null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(teil)) return teil;
+  /* Monatsschlüssel des eingefrorenen Ists ("personId|JJJJ-MM", "*|JJJJ-MM"; WP-16 Nachtrag): es zählt der
+     letzte Tag des Monats — gelöscht, wenn der ganze Monat aus der Frist ist. */
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(teil)) {
+    const [j, mo] = teil.split("-").map(Number);
+    return new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10);
+  }
+  return null;
 };
 
 /* Grenzen für die drei Fristen (Monate). Eine Angabe außerhalb ist kein
@@ -239,6 +250,43 @@ function moduldatenFaellig(m, heuteIso, module, regel) {
 const PRUEFHINWEIS = "Prüfung/Freigabe erforderlich: Die Aufbewahrungsregel für Branchenmodul-Daten bzw. das Modulprotokoll "
   + "ist nicht geprüft (FN-32). Bis dahin wird daraus nichts gelöscht.";
 
+const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+
+/**
+ * Personenbezug am Abschluss räumen (Review M2): abgewiesene Stempel und
+ * Zähler von Personen, die anonymisiert oder nicht mehr im Betrieb sind,
+ * und — mit `grundStichtag` (Frist der Gründe) — alle,
+ * deren Tag davor liegt. Unverändert: dasselbe Objekt.
+ * @param {any} w  m.monatsabschluss
+ * @param {{personen?: any[], grundStichtag?: string|null}} o
+ * @returns {{wert: any, entfernt: number}}
+ */
+export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null } = {}) {
+  if (!istObjekt(w)) return { wert: w, entfernt: 0 };
+  const aktiv = Array.isArray(personen)
+    ? new Set(personen.filter((p) => p && typeof p === "object" && p.anonym !== true).map((p) => String(p.id))) : null;
+  const bleibt = (pid) => !aktiv || aktiv.has(String(pid));
+  let entfernt = 0;
+  const aus = {};
+  for (const [mon, e] of Object.entries(w)) {
+    if (!istObjekt(e) || (!Array.isArray(e.abgewiesen) && !istObjekt(e.abgewiesenGezaehlt))) { aus[mon] = e; continue; }
+    const abgelaufen = (tag) => !!grundStichtag && String(tag) < grundStichtag;
+    const liste = (Array.isArray(e.abgewiesen) ? e.abgewiesen : []).filter((x) => istObjekt(x) && bleibt(x.personId) && !abgelaufen(x.datum));
+    const vorher = Array.isArray(e.abgewiesen) ? e.abgewiesen.length : 0;
+    /* Zähler hängen am Monat: abgelaufen, wenn der letzte Tag des Monats vor dem Stichtag liegt. */
+    const monatAbgelaufen = !!grundStichtag && /^\d{4}-(0[1-9]|1[0-2])$/.test(mon) && `${mon}-31` < grundStichtag;
+    const z = istObjekt(e.abgewiesenGezaehlt) ? e.abgewiesenGezaehlt : {};
+    const zNeu = monatAbgelaufen ? {} : Object.fromEntries(Object.entries(z).filter(([pid]) => bleibt(pid)));
+    const weg = vorher - liste.length + Object.keys(z).length - Object.keys(zNeu).length;
+    if (!weg) { aus[mon] = e; continue; }
+    entfernt += weg;
+    const { abgewiesen: _a, abgewiesenGezaehlt: _z, ...rest } = e;
+    void _a; void _z;
+    aus[mon] = { ...rest, ...(liste.length ? { abgewiesen: liste } : {}), ...(Object.keys(zNeu).length ? { abgewiesenGezaehlt: zNeu } : {}) };
+  }
+  return entfernt ? { wert: aus, entfernt } : { wert: w, entfernt: 0 };
+}
+
 /* --------------------------------------------------------------------------
    Vorschau
    -------------------------------------------------------------------------- */
@@ -249,6 +297,7 @@ const PRUEFHINWEIS = "Prüfung/Freigabe erforderlich: Die Aufbewahrungsregel fü
  * personen   zur Anonymisierung fällige Personen
  * plandaten  Anzahl je Feld
  * gruende    Freitexte, die entfallen
+ * abgewiesen abgewiesene Stempel/Zähler am Monatsabschluss nach der Frist der Gründe (WP-16)
  * moduldaten Einträge in Modul-Personenfeldern hinter der Frist (nur mit geprüfter Regel)
  * modulprotokoll  Einträge im Modulprotokoll nach dessen Frist (nur mit geprüfter Regel)
  * moduldatenZurueckgehalten, modulprotokollZurueckgehalten  wären fällig, Regel ungeprüft — nicht gelöscht
@@ -259,9 +308,9 @@ const PRUEFHINWEIS = "Prüfung/Freigabe erforderlich: Die Aufbewahrungsregel fü
  * @param {string} heuteIso
  * @param {{ module?: readonly any[], regeln?: { moduldaten?: any, modulprotokoll?: any } }} [o]
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
- *   planSumme: number, aenderungen: number, gruende: number, standort: number, moduldaten: number,
- *   modulprotokoll: number, moduldatenZurueckgehalten: number, modulprotokollZurueckgehalten: number,
- *   pruefhinweis: (string|null), gesamt: number,
+ *   planSumme: number, aenderungen: number, gruende: number, standort: number, abgewiesen: number,
+ *   moduldaten: number, modulprotokoll: number, moduldatenZurueckgehalten: number,
+ *   modulprotokollZurueckgehalten: number, pruefhinweis: (string|null), gesamt: number,
  *   warnung: (string|null)}}
  */
 export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = {}) {
@@ -276,7 +325,8 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
 
   const plandaten = {};
   let planSumme = 0;
-  for (const feld of ["abweichungen", "erfassung", "einstempeln"]) {
+  /* istEingefroren (WP-16, Review H1): das eingefrorene Ist abgeschlossener Monate — Zeitdaten wie die Erfassung. */
+  for (const feld of PLAN_FELDER) {
     const inhalt = m[feld];
     let n = 0;
     if (inhalt && typeof inhalt === "object") {
@@ -310,6 +360,9 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     return ende && ende < st.grund;
   }).length;
 
+  /* Abgewiesene Stempel am Monatsabschluss (WP-16, Review M2): Person, Tag, Uhrzeit — mit der Frist der Gründe. */
+  const abgewiesen = abschlussPersonenRaeumen(m.monatsabschluss, { grundStichtag: st.grund }).entfernt;
+
   const warnung = st.fristen.plandatenMonate < PLANDATEN_MINDEST
     ? `Die Frist für Plandaten steht auf ${st.fristen.plandatenMonate} Monaten. `
       + "§ 16 Abs. 2 Arbeitszeitgesetz verlangt mindestens zwei Jahre für die "
@@ -328,12 +381,13 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     aenderungen,
     gruende,
     standort,
+    abgewiesen,
     moduldaten: md.anzahl,
     modulprotokoll,
     moduldatenZurueckgehalten: md.zurueckgehalten,
     modulprotokollZurueckgehalten: mp.zurueckgehalten,
     pruefhinweis: md.zurueckgehalten || mp.zurueckgehalten ? PRUEFHINWEIS : null,
-    gesamt: personen.length + planSumme + aenderungen + gruende + standort + md.anzahl + modulprotokoll,
+    gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + md.anzahl + modulprotokoll,
     warnung,
   };
 }
@@ -393,8 +447,9 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
     .map(([f, raus]) => [f, Object.fromEntries(Object.entries(m[f]).filter(([k]) => !raus.has(k)))]));
 
   const gekuerzt = {};
-  for (const feld of ["abweichungen", "erfassung", "einstempeln"]) {
+  for (const feld of PLAN_FELDER) {
     const inhalt = m[feld];
+    if (feld === "istEingefroren" && !(feld in m)) continue;
     if (!inhalt || typeof inhalt !== "object") { gekuerzt[feld] = inhalt; continue; }
     const neu = {};
     for (const [k, v] of Object.entries(inhalt)) {
@@ -413,13 +468,28 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
     }
     gekuerzt[feld] = neu;
   }
+  const personenNeu = (m.personen || []).map((p) => (faellig.has(p.id)
+    ? { ...anonymisiere(p), anonymSeit: heuteIso } : p));
+  /* Personalangaben im Freeze (WP-16, Nachtrag dritter Review H-1: `nm` je Person und Monat für die Lohnausgabe)
+     gehen mit der Anonymisierung — wie im Personalstamm. */
+  if (istObjekt(gekuerzt.istEingefroren) && faellig.size) {
+    const anonym = new Map(personenNeu.filter((p) => faellig.has(p.id)).map((p) => [String(p.id), p]));
+    const neu = {};
+    for (const [k, v] of Object.entries(gekuerzt.istEingefroren)) {
+      const a = anonym.get(String(k).split("|")[0]);
+      neu[k] = a && istObjekt(v) && Array.isArray(v.nm) ? { ...v, nm: [a.personalnummer || a.id, a.nachname ?? null, a.vorname ?? null] } : v;
+    }
+    gekuerzt.istEingefroren = neu;
+  }
+  /* Abgewiesene Stempel (WP-16, Review M2): nach der Frist der Gründe und mit der Anonymisierung der Person. */
+  if (istObjekt(m.monatsabschluss))
+    gekuerzt.monatsabschluss = abschlussPersonenRaeumen(m.monatsabschluss, { personen: personenNeu, grundStichtag: st.grund }).wert;
 
   return {
     mandant: {
       ...m,
       ...gekuerzt,
-      personen: (m.personen || []).map((p) => (faellig.has(p.id)
-        ? { ...anonymisiere(p), anonymSeit: heuteIso } : p)),
+      personen: personenNeu,
       aenderungen: (m.aenderungen || [])
         .filter((c) => !(c && c.datum && String(c.datum).slice(0, 10) < st.plan)),
       abwesenheiten: (m.abwesenheiten || []).map((a) => {
@@ -458,6 +528,8 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.standort, "Standort-Ergebnis", "Standort-Ergebnisse")} entfernt`);
   if (b.gruende)
     teile.push(`${zahlwort(b.gruende, "Abwesenheitsgrund", "Abwesenheitsgründe")} entfernt`);
+  if (b.abgewiesen)
+    teile.push(`${zahlwort(b.abgewiesen, "abgewiesener Stempel", "abgewiesene Stempel")} am Monatsabschluss entfernt`);
   if (b.moduldaten)
     teile.push(`${zahlwort(b.moduldaten, "Modulzuordnung", "Modulzuordnungen")} entfernt`);
   if (b.modulprotokoll)

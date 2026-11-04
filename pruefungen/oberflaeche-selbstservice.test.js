@@ -191,7 +191,8 @@ describe("Zeiten bestätigen", () => {
    Erfolg, und die Oberfläche baute daraus eine eigene Kopie. Jetzt wird der
    gespeicherte Eintrag des Servers übernommen; ein Fehler ändert lokal nichts. */
 describe("Stempeln", () => {
-  const i = APP.indexOf("      stempeln: async (pid, datum, art, koord) => {");
+  /* WP-16: fünfter Wert die Pause beim Ausstempeln — Anker und Muster lassen ihn zu, die Aussagen bleiben. */
+  const i = APP.indexOf("      stempeln: async (pid, datum, art, koord, pause = null) => {");
   const q = APP.slice(i, APP.indexOf("\n      setzeVerfuegbarkeit:", i));
   /* Seit WP-07 steht das Übernehmen der Serverantwort in stempelUebernehmen —
      dieselbe Stelle für sofort und später (Stempelpuffer) gesendete Stempel. */
@@ -207,7 +208,7 @@ describe("Stempeln", () => {
   });
   it("nachgezogen wird erst nach der Antwort; ein Fehler meldet nur", () => {
     /* Nur mit der Antwort des Servers: direkt (älterer Server) oder als Quittung aus dem Stempelpuffer. */
-    expect(q).toMatch(/const erg = await SP\.stempeln\(datum, art, koord\);\s*await stempelUebernehmen\(pid, \[\{ datum, art, erg \}\]\);/);
+    expect(q).toMatch(/const erg = await SP\.stempeln\(datum, art, koord(?:, pause)?\);\s*await stempelUebernehmen\(pid, \[\{ datum, art, erg \}\]\);/);
     /* Quittungen aus dem Puffer gesammelt (Review L6), je eine mit der Serverantwort (q.daten). */
     expect(q).toMatch(/stempelQuittung: \(liste\) => \{[\s\S]*stempelUebernehmen\(pid, liste\.filter\(\(q\) => q && q\.daten\)/);
     expect(q.split("stempelUebernehmen(").length - 1).toBe(2);

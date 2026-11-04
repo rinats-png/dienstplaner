@@ -259,8 +259,11 @@ export function istZeitFuer(m, p, d, da) {
 export function pruefZeitFuer(m, p, d, da) {
   if (!istVerfuegbar(m, p, d)) return null;
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
+  /* Eine erfasste Pause (Stempeln, Korrektur, Selbstauskunft; WP-14/WP-16) gilt vor der der Dienstart —
+     dieselbe Regel wie istZeitFuer. */
   return e && e.bestaetigt
-    ? { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 }
+    ? { start: e.start || da.start, ende: e.ende || da.ende,
+      pause: e.pause !== undefined && e.pause !== null && Number.isFinite(Number(e.pause)) ? Number(e.pause) : (da.pause || 0) }
     : da;
 }
 

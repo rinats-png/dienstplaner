@@ -196,7 +196,15 @@ export function bruttoAm(datum, d) {
    Aufteilbar in Abschnitte von mindestens fünfzehn Minuten.
    -------------------------------------------------------------------------- */
 
-export function pausePflicht(arbeitsstunden) {
+/* § 11 Abs. 1 JArbSchG (WP-16): Jugendliche — mehr als viereinhalb bis sechs
+   Stunden: dreißig Minuten; mehr als sechs Stunden: sechzig Minuten. Eine
+   Rechnung für Plan, Stempel, Korrektur und Selbstauskunft. */
+export function pausePflicht(arbeitsstunden, jugendlich = false) {
+  if (jugendlich) {
+    if (arbeitsstunden > 6) return 60;
+    if (arbeitsstunden > 4.5) return 30;
+    return 0;
+  }
   if (arbeitsstunden > 9) return 45;
   if (arbeitsstunden > 6) return 30;
   return 0;
@@ -207,9 +215,9 @@ export function pausePflicht(arbeitsstunden) {
  * Gerechnet wird gegen die Anwesenheit, nicht gegen die bezahlte Zeit —
  * die Pause ist ja gerade das, was dazwischen liegt.
  */
-export function pauseGenuegt(d) {
+export function pauseGenuegt(d, jugendlich = false) {
   const anwesend = brutto(d);
-  const noetig = pausePflicht(anwesend - (d.pause || 0) / 60);
+  const noetig = pausePflicht(anwesend - (d.pause || 0) / 60, jugendlich);
   return (d.pause || 0) >= noetig;
 }
 

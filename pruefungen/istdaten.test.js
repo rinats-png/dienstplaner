@@ -46,6 +46,23 @@ const sicht = (rolle, person) => bestandFuerRolle(bestand(), { rolle, person, be
 const person = (m, id) => m.personen.find((p) => p.id === id);
 const PLAN = 7.5, IST17 = 10, IST18 = 10.5;   // 06:00–14:00 −30 min · 06:00–16:30 −30 · 06:00–17:00 −30
 
+describe("Eine Fassung der Ist-Rechnung: src/istdaten.js reicht nur weiter (WP-27b-Review, Zusammenführung WP-16)", () => {
+  it("src/istdaten.js enthält außer dem Kopfkommentar genau eine Zeile: export * from server/lib/istdaten.mjs", () => {
+    const src = readFileSync(new URL("../src/istdaten.js", import.meta.url), "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").trim();
+    expect(code).toBe('export * from "../server/lib/istdaten.mjs";');
+  });
+  it("die Serverfassung trägt die Änderungen beider Pakete (WP-14b: ZEITUMSTELLUNG, nie negativ; WP-16: erfasste Pause in pruefZeitFuer)", () => {
+    const q = readFileSync(new URL("../server/lib/istdaten.mjs", import.meta.url), "utf8");
+    expect(q).toMatch(/startsWith\("ZEITUMSTELLUNG"\)/);
+    expect(q).toMatch(/Math\.max\(0, dauerAm\(d, roh\)\)/);
+    expect(q).toMatch(/ohnePlanDauerNull/);
+    const p = { id: "a" }, da = { id: "F", start: "06:00", ende: "14:00", pause: 30 };
+    const m = { personen: [p], dienstarten: [da], erfassung: { "a|2026-11-09": { start: "06:00", ende: "14:00", bestaetigt: true, pause: 10 } } };
+    expect(pruefZeitFuer(m, p, "2026-11-09", da)).toEqual({ start: "06:00", ende: "14:00", pause: 10 });
+  });
+});
+
 describe("istVerfuegbar", () => {
   it("ohne Vermerk des Servers: alles verfügbar (Leitung, Planung, lokale Daten)", () => {
     expect(istVerfuegbar({}, { id: "x" })).toBe(true);
