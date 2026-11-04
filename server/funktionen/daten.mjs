@@ -14,6 +14,7 @@ import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
+import { demoAn } from "../lib/schalter.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
@@ -598,6 +599,9 @@ export default async (req, context) => {
 
     /* ------------------------- Demozugänge auflisten ----------------- */
     if (pfad === "demos" && req.method === "GET") {
+      /* Schalter CENTRIC_DEMO (docs/DEMO-SCHALTER.md): aus = leere Liste,
+         ohne Konten zu lesen, und nichts darf zwischengespeichert werden. */
+      if (!demoAn()) return antwort({ demos: [] }, 200);
       /* Auch das Auflisten wird gebremst — sonst ist es ein ungedeckelter
          Aufruf, der bei jedem Treffer den kompletten Kontenbestand liest. */
       const bDemo = await bremse("demo", kennung(req, null));
@@ -620,6 +624,9 @@ export default async (req, context) => {
 
     /* ------------------- Ohne Code in einen Demozugang --------------- */
     if (pfad === "demo" && req.method === "POST") {
+      /* Schalter: vor Bremse, Konten und Sitzung — keine Datei, kein Zähler. */
+      if (!demoAn())
+        return antwort({ ok: false, fehler: "Der Demozugang ist derzeit nicht freigeschaltet." }, 403);
       const kd = kennung(req, null);
       const bd = await bremse("demo", kd);
       if (!bd.frei) return zuVielAntwort(bd.wartet);

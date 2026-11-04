@@ -39,6 +39,8 @@ services:
       # CENTRIC_SELBSTSTART (öffentlicher Selbststart /starten) steht bewusst
       # NICHT hier: Vorgabe ist AUS. Einschalten nur über .env mit genau "true"
       # (docs/SELBSTSTART-SCHALTER.md).
+      # CENTRIC_DEMO (öffentlicher Demozugang /api/demo, /api/demos) ebenso
+      # NICHT hier: Vorgabe ist AUS (docs/DEMO-SCHALTER.md).
       # Überwachung (WP-05, docs/BETRIEB-UEBERWACHUNG.md): Alter der letzten
       # Sicherung außer Haus. Erst einschalten, wenn die Sicherung (WP-04)
       # eingerichtet ist — dann auch den Mount unten.
