@@ -270,10 +270,12 @@ dl("website-konsole.sh: Skriptstand, www, Kontrollbefehle (A1, B12, www)", () =>
     const ok = lauf({ args: [sh(a)], env: { ERWARTETER_KOPF: kopf.slice(0, 10) } });
     expect(ok.code, ok.aus).toBe(0);
     expect(ok.aus).toContain("stimmt mit ERWARTETER_KOPF ueberein");
+    writeFileSync(log, "");
     const falsch = lauf({ args: [sh(a)], env: { ERWARTETER_KOPF: "0".repeat(10) } });
     expect(falsch.code).toBe(1);
     expect(falsch.aus).toContain("stimmt nicht mit ERWARTETER_KOPF");
     expect(falsch.log).not.toContain("ausliefern");
+    writeFileSync(log, "");
     const murks = lauf({ args: [sh(a)], env: { ERWARTETER_KOPF: "abc; rm" } });
     expect(murks.code).toBe(1);
     expect(murks.log).not.toContain("ausliefern");
