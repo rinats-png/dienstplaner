@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER,
   KONTAKT_AB_ZUSCHLAGSSTANDORTE, PAKETE, paketkosten, preisFuer, passendeStufe }
   from "../src/stufen.js";
+import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
 
 describe("Die Zahlen selbst", () => {
   it("nennt drei Stufen mit den vereinbarten Grundgebühren", () => {
@@ -88,14 +89,23 @@ describe("Der Preis eines Betriebs", () => {
 });
 
 describe("Branchenpakete", () => {
+  /* Der Rechenweg gilt für Pakete im Zustand 5 (buchbar und abrechenbar,
+     G9). Solange alle Module „geplant" sind, rechnet kein Paket
+     (pruefungen/g9-verkauf.test.js); hier steht eine Registry, in der alle
+     vier Pakete abgenommen und freigegeben sind. */
+  const ABN = { datum: "2026-12-01", nachweis: "docs/x.md" };
+  const LISTE = BRANCHENMODULE.map((m) => ({ ...m, status: "vorlaeufig", abnahme: ABN }));
+  const FREI = Object.fromEntries(["sicherheit", "pflege", "klinik", "industrie"].map((id) =>
+    [id, { stufe: "buchbar", datum: "2026-12-15", von: "Betreiber", nachweis: "docs/y.md" }]));
+
   it("werden je Betrieb aufgeschlagen", () => {
-    const p = preisFuer(stufeVon("basis"), 1, [10], ["pflege", "klinik"]);
+    const p = preisFuer(stufeVon("basis"), 1, [10], ["pflege", "klinik"], LISTE, FREI);
     expect(p.summePakete).toBe(89 + 129);
     expect(p.gesamt).toBe(89 + 89 + 129);
   });
 
   it("sind in Enterprise zweimal frei — und zwar die teuersten", () => {
-    const k = paketkosten(["industrie", "pflege", "klinik"], 2);
+    const k = paketkosten(["industrie", "pflege", "klinik"], 2, LISTE, FREI);
     expect(k.frei.map((p) => p.id)).toEqual(["klinik", "pflege"]);
     expect(k.summe).toBe(59);
   });
@@ -103,8 +113,8 @@ describe("Branchenpakete", () => {
   it("bestrafen kein zusätzliches Paket", () => {
     /* Wer Pflege und Klinik hat und Industrie dazunimmt, darf nicht
        schlechter dastehen als vorher. */
-    const zwei = paketkosten(["pflege", "klinik"], 2).summe;
-    const drei = paketkosten(["pflege", "klinik", "industrie"], 2).summe;
+    const zwei = paketkosten(["pflege", "klinik"], 2, LISTE, FREI).summe;
+    const drei = paketkosten(["pflege", "klinik", "industrie"], 2, LISTE, FREI).summe;
     expect(zwei).toBe(0);
     expect(drei).toBeGreaterThanOrEqual(zwei);
   });

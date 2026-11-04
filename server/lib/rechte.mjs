@@ -27,6 +27,7 @@ import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenmodule.mjs";
+import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
@@ -411,7 +412,7 @@ const BETREIBER_FELDER = ["betreiber", "tarife", "rechnungen", "protokoll",
    rechte Seite kommt der Betreiber über diesen Weg nicht, auch wenn seine
    Oberfläche sie mitschickt. */
 const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
-  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",
   "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "einheitLabel",
   /* Die Rollenbezeichnungen darf auch der Betreiber setzen — beim
      Einrichten eines Hauses ist er derjenige, der weiß, ob dort
@@ -448,8 +449,13 @@ export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "
 /** Was Leitung und Kundenrolle zur Preisanzeige lesen (B2) — nur lesend. */
 const PREISGRUNDLAGE = ["tarif", "preisgestaltung", "rabattGrund"];
 
+/* G9 (Review F1, Nachtrag 2): Pakete lassen sich unter Zustand 5 nur in einem Betrieb mit Pilot
+   zubuchen; Pilot, Zustimmungen und Grundlagen mit Servertag, nur für gebuchte Pakete. Die Regel
+   steht in paketstand.mjs (paketfelderGeprueft) — /api/bestand-anlegen nutzt dieselbe. */
+const paketeGeprueft = (m0, altM) => paketfelderGeprueft(m0, altM);
+
 export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
-  "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",
   "laeuftAb", "selbstAngelegt"];
 
 /* --------------------------------------------------------------------------
@@ -542,7 +548,8 @@ function bestandFuerRolleKern(bestand, sitzung) {
        kommen beim Speichern immer aus dem gespeicherten Stand. Die Planung
        hat billing.view nicht und bekommt nichts davon. */
     if (eigenerV && aus.mandanten && darf(rolle, "billing.view")) {
-      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld)) aus.mandanten[0][feld] = eigenerV[feld];
+      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld))
+        aus.mandanten[0][feld] = feld === "preisgestaltung" ? preisgestaltungFuerKunde(eigenerV[feld]) : eigenerV[feld];
       const eigenerTarif = Array.isArray(bestand.tarife)
         ? bestand.tarife.filter((t) => t && typeof t === "object" && t.id === eigenerV.tarif) : [];
       if (eigenerTarif.length) aus.tarife = eigenerTarif;
@@ -1453,13 +1460,13 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
         const alt = alteNachId.get(geschickt.id);
         /* Neu angelegt — ohne Moduleinstellungen: Schalter, Bestätigungen, Regelwerte und
            Modulprotokoll entstehen nur über branchenmoduleZusammen (G2/G6, WP-19.0 Nachtrag). */
-        if (!alt) return moduleinstellungenVerwerfen(geschickt);
+        if (!alt) return paketeGeprueft(moduleinstellungenVerwerfen(geschickt), null);
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {
           if (Object.prototype.hasOwnProperty.call(geschickt, feld))
             zusammen[feld] = geschickt[feld];
         }
-        return zusammen;                          // alles Übrige bleibt, wie es war
+        return paketeGeprueft(zusammen, alt);     // alles Übrige bleibt, wie es war
       });
     return aus;
   }

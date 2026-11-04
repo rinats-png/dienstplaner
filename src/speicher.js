@@ -353,8 +353,8 @@ export function stempelSyncEinrichten(beiQuittung) {
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, sofort } = {}) {
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand };
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
@@ -524,6 +524,8 @@ async function schreibenAusfuehren(beimSchliessen) {
     /* Angenommen: erst jetzt ist die Angabe verbraucht. */
     if (auftrag.ausnahme) angenommeneAngaben.add(auftrag.ausnahme);
     if (auftrag.ausnahme && einmalig === auftrag.ausnahme) einmalig = null;
+    /* Der Betreiber bekommt den gespeicherten Vertragsstand der Pakete zurück (Servertag, Pilot, Historie). */
+    if (auftrag.onServerstand && daten.vertragsstand) { try { auftrag.onServerstand(daten.vertragsstand); } catch { /* egal */ } }
     if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
     const art = fehlerart(e, status);
