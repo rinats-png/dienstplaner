@@ -572,3 +572,36 @@ ohne `am` wirkt nicht · `erzeugt` vor Metadaten-Zeit · `ab < am` · Kennungsve
 Aktenzeichen {0,5} / Kleinbuchstaben / Bindestrich am Ende / Doppel-Bindestrich / Länge 21 · Serialisierung entfernt ·
 Kennung aus Schlüsselbytes. **Überlebt (gleichwertig, bewusst):** die Markierung „Angabe unterwegs" und der 409-Schutz
 „inzwischen angenommen" in `speicher.js` — bei serialisierten Vorgängen nicht erreichbar, sie sind nur Absicherung.
+
+## 15. Nachtrag fünfter Opus-Delta-Review (letzte Runde)
+
+| Befund | Behebung | Test |
+|---|---|---|
+| **B-1 MITTEL** (Datenverlust) Die Pauschalregel aus §14 N-1 („automatische Sicherung = Zeit unbekannt = jeder Vermerk wirkt") löschte beim Wiederherstellen nach einem Unfall legitime Daten: Sonde des Reviewers — Art. 17 auf `a1\|2026-11-02`, Art. 16 auf `a1\|2026-11-03` (po1→po2), Modul wieder an, Neuplanung von 11-02, Unfall-PUT, Restore der automatischen Sicherung → Postenplan `{}`; auch die Sicherung „vor Wiederherstellung“ war betroffen (nicht rückgängig zu machen) | Die Pauschalregel gilt nur noch für **Altbestand**: Neue automatische Sicherungen (vor Verlust, vor Wiederherstellung) tragen als `metadata.zeit` die **Lesezeit** des gesicherten Stands (vor `zusammenfuehren`, bei „vor Wiederherstellung“ vor dem Lesen unter der Raumsperre) und die Markierung `zeitquelle: "lesezeit"`. `betriebWiederherstellen(…, { automatisch, zeitquelle })`: nur eine automatische Sicherung **ohne** diese Markierung gilt als „Zeit unbekannt“ (jeder Vermerk wirkt, datenschutzfreundlich für Altsicherungen); sonst zählt die Zeit wie bei einer manuellen Sicherung. N-1 bleibt allein durch die Lesezeit behoben (Vermerk derselben Anfrage ist jünger als die Sicherung). | `modul-kern-nachtrag5-handler` (echte Handler): komplette Sonde (Neuplanung UND Berichtigung bleiben); Gegenprobe F1 (manuelle Sicherung); Gegenprobe N-1 (Art.-17-Löschung + ≥ 34 % Verlust im selben PUT bleibt gelöscht); „vor Wiederherstellung“ vollständig rückgängig; Altsicherung ohne Markierung → Vermerk wirkt. `modul-kern-nachtrag4`: die Fälle Vermerk ±40/+5000 ms gelten unverändert für Altsicherungen ohne Markierung; neu dieselben Zeiten mit Markierung (≤ Vermerk wirkt, > Vermerk nicht) |
+| **B-2 NIEDRIG–MITTEL** `src/speicher.js`: ein PUT ohne Timeout hielt die neue Schreibkette dauerhaft (`schreibenAusstehend` blieb wahr) | `AbortController` mit `SCHREIBEN_ZEITGRENZE` = 45 s; der Abbruch endet als Fehlerart „netz“ (Wiederholen wie bisher), der Auftrag bleibt liegen, die Kette ist frei. `unterwegs` ist ein Zähler. | `modul-kern-nachtrag5-speicher` (hängender Fetch-Mock, fake timers; Kette danach frei; rechtzeitige Antwort wird nicht abgebrochen) |
+| **B-3 NIEDRIG** die keepalive-Speicherung beim Schließen hing hinter dem laufenden Request und ging bei Seitentod nie hinaus | `beforeunload`/`visibilitychange` senden **sofort** und an der Kette vorbei; eine bereits unterwegs befindliche Ausnahmeangabe hängt dank `angabenUnterwegs`/`angenommeneAngaben` nicht doppelt an (dort jetzt wirksam). | `modul-kern-nachtrag5-speicher` (beide Auslöser; Mutante „über Kette“ wird rot) |
+| **B-4 NIEDRIG** der 503-Text nannte nur den fehlenden Schlüssel | Text nennt auch den **geänderten** Schlüssel. Betreiberhinweis unten. Kleinigkeit: der F5-Titel in `modul-kern-nachtrag3` heißt nun „zwei bis fünf Buchstaben vorweg“ (wie das Muster aus N-5). | `modul-kern-nachtrag3`, `modul-kern-nachtrag4` N-3 |
+
+**Betreiberhinweis Pfefferwechsel (`CENTRIC_PFEFFER`).** Löschvermerke des Ausnahmewegs sind mit dem Serverschlüssel gehasht
+(`k1:<Kennung>:<Hash>`). Wird der Schlüssel gewechselt oder fehlt er, weist das Wiederherstellen eines Betriebs mit
+solchen Vermerken mit 503 ab (fail-closed). Rotationspfad: den alten Schlüssel setzen, Wiederherstellungen abschließen,
+dann die Vermerke mit dem neuen Schlüssel **neu schlüsseln** (jeden Vermerk aus den noch bekannten Schlüsseln
+`(Betrieb, Datenfeld, Eintrag)` neu hashen; ein solches Werkzeug gibt es bisher nicht — bis dahin den Schlüssel nicht
+wechseln). Ältere Vermerke ohne Kennung (`k1:<Hash>`) lassen einen Wechsel nicht erkennen; sie wirken dann stillschweigend nicht.
+Kein Code in dieser Runde.
+
+**Verbleibende Grenzen (ehrlich):**
+- Altsicherungen ohne Markierung werden bewusst streng behandelt: Ein dort passender Vermerk wirkt auch auf legitim neuere Daten
+  (Datenschutz vor Verfügbarkeit). Das trifft nur Sicherungen aus der Zeit vor diesem Nachtrag.
+- Die Zeit stammt von der Serveruhr; ein Vermerk und eine Sicherung im selben Millisekundenfenster gelten als „Vermerk wirkt“.
+- Beim Schließen kann der sofortige keepalive-PUT mit dem ETag des noch laufenden Requests kollidieren (409); das ist die
+  gewollte Abwägung gegenüber einer nie gesendeten Änderung. keepalive-Anfragen sind browserseitig auf ca. 64 KB Körper begrenzt;
+  größere Bestände bleiben auf die Rückfrage (`beforeunload`) und den Wiederholpfad angewiesen.
+- Die Pfeffer-Rotation (Neuschlüsselung) ist nicht umgesetzt, nur dokumentiert.
+- Unverändert nicht aufgelöst: Konflikte mit WP-16/G9.
+
+**Rot → grün:** die Sonde (B-1), die Markierungsfälle, B-2 (Timeout) und B-3 (Bypass) sind gegen 7a740e2 rot. **Mutanten**
+(Scratchpad, eigene Kopie): 11 von 11 getötet — Pauschalregel zurück · Markierung nie gelesen · „vor Verlust“ mit neuer Zeit ·
+„vor Wiederherstellung“ ohne Markierung · Alt-/Neu-Unterscheidung entfernt · PUT ohne Signal · Zeitgrenze 90 s · AbortError nicht
+„netz“ · Schließen hinter der Kette · Angabe beim Bypass doppelt · Zeitgeber 10 ms. Nicht als Mutant geführt (gleichwertig):
+die Zeit der Sicherung „vor Wiederherstellung“ als spätere Serverzeit — unter der Raumsperre kann kein Vermerk dazwischen entstehen.

@@ -46,9 +46,9 @@ const loeschen = () => {
   return { vorher, nachher: wiederAn(v), am: vermerke(v).at(-1).am };
 };
 
-describe("N-1 — automatische Sicherung: der Vermerk wirkt unabhängig von der abgelegten Zeit", () => {
+describe("N-1 — automatische Sicherung OHNE Zeitquellen-Markierung (Altbestand): der Vermerk wirkt unabhängig von der abgelegten Zeit", () => {
   for (const delta of [-40, 0, 40, 5000]) {
-    it(`automatisch, Sicherungszeit = Vermerk ${delta >= 0 ? "+" : "−"} ${Math.abs(delta)} ms → Eintrag bleibt gelöscht`, () => {
+    it(`Altsicherung (automatisch, keine zeitquelle), Sicherungszeit = Vermerk ${delta >= 0 ? "+" : "−"} ${Math.abs(delta)} ms → Eintrag bleibt gelöscht`, () => {
       const { vorher, nachher, am } = loeschen();
       expect(eintrag(zurueck(nachher, vorher, { sicherungsZeit: um(am, delta), automatisch: true }))).toBeUndefined();
     });
@@ -59,6 +59,22 @@ describe("N-1 — automatische Sicherung: der Vermerk wirkt unabhängig von der 
     expect(eintrag(zurueck(nachher, spaeter, { sicherungsZeit: um(am, 5000), automatisch: false }))).toBe("po2");
     expect(eintrag(zurueck(nachher, vorher, { sicherungsZeit: um(am, -40) }))).toBeUndefined();
   });
+});
+
+describe("N-1 / B-1 — automatische Sicherung MIT zeitquelle \"lesezeit\": die Lesezeit gilt wie eine echte Sicherungszeit", () => {
+  for (const delta of [-40, 0]) {
+    it(`Lesezeit = Vermerk ${delta >= 0 ? "+" : "−"} ${Math.abs(delta)} ms (Sicherung nicht jünger als der Vermerk) → Eintrag bleibt gelöscht`, () => {
+      const { vorher, nachher, am } = loeschen();
+      expect(eintrag(zurueck(nachher, vorher, { sicherungsZeit: um(am, delta), automatisch: true, zeitquelle: "lesezeit" }))).toBeUndefined();
+    });
+  }
+  for (const delta of [40, 5000]) {
+    it(`Lesezeit = Vermerk + ${delta} ms (Sicherung jünger als der Vermerk) → der Vermerk wirkt nicht, der Stand der Sicherung bleibt`, () => {
+      const { nachher, am } = loeschen();
+      const spaeter = kopie(nachher); spaeter.mandanten[0].postenPlan["a1|2026-11-02"] = "po2";
+      expect(eintrag(zurueck(nachher, spaeter, { sicherungsZeit: um(am, delta), automatisch: true, zeitquelle: "lesezeit" }))).toBe("po2");
+    });
+  }
 });
 
 describe("N-4 — Testlücken", () => {

@@ -29,11 +29,13 @@ let token = null;
 let etag = null;
 let offen = null;            // ausstehender Schreibvorgang
 let uhr = null;
-let unterwegs = false;       // ein PUT ist abgeschickt, die Antwort steht aus
+let unterwegs = 0;           // Zahl der abgeschickten PUTs, deren Antwort aussteht (beim Schließen kann es mehr als einer sein)
+/** Fünfter Review B-2: Ein PUT, der nicht antwortet, bricht nach dieser Zeit ab (Fehlerart „netz“, Wiederholen möglich). */
+export const SCHREIBEN_ZEITGRENZE = 45000;
 
 /** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
     Stand nicht der gespeicherte. */
-export const schreibenAusstehend = () => !!offen || unterwegs;
+export const schreibenAusstehend = () => !!offen || unterwegs > 0;
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -414,6 +416,7 @@ function fehlerart(e, status) {
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   if (status && status >= 500) return "server";
+  if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
   if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
     return "netz";
   return "unbekannt";
@@ -427,6 +430,14 @@ function jetztSchreiben(beimSchliessen) {
      falschen Alarm aus (die eigene Änderung würde verworfen). Er wartet auf den ersten und nimmt
      dann den neuen ETag; was er schreibt, holt er erst dann aus `offen`. */
   const vorher = laufend;
+  /* Fünfter Review B-3: Beim Schließen (beforeunload/visibilitychange) wartet nichts auf einen laufenden
+     Request — der Seitentod käme vor dessen Antwort. Es geht sofort hinaus (keepalive); eine Ausnahmeangabe,
+     die schon unterwegs ist, hängt dank angabenUnterwegs/angenommeneAngaben nicht doppelt an. */
+  if (beimSchliessen && vorher) {
+    const sofort = schreibenAusfuehren(true);
+    sofort.catch(() => {});
+    return sofort;
+  }
   const lauf = vorher ? vorher.catch(() => {}).then(() => schreibenAusfuehren(beimSchliessen)) : schreibenAusfuehren(beimSchliessen);
   laufend = lauf;
   lauf.finally(() => { if (laufend === lauf) laufend = null; });
@@ -452,7 +463,10 @@ async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
   let status = null;
-  unterwegs = true;
+  unterwegs += 1;
+  /* Fünfter Review B-2: Ohne Zeitgrenze hielte ein hängender Request die Schreibkette (jetztSchreiben) dauerhaft. */
+  const abbruch = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const zeitgeber = abbruch ? setTimeout(() => abbruch.abort(), SCHREIBEN_ZEITGRENZE) : null;
   try {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
@@ -476,6 +490,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     };
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
+      ...(abbruch ? { signal: abbruch.signal } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     const daten = antwort.daten;
@@ -518,7 +533,8 @@ async function schreibenAusfuehren(beimSchliessen) {
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
     if (auftrag.ausnahme) angabenUnterwegs.delete(auftrag.ausnahme);
-    unterwegs = false;
+    if (zeitgeber) clearTimeout(zeitgeber);
+    unterwegs -= 1;
   }
 }
 

@@ -1164,7 +1164,7 @@ export default async (req, context) => {
             await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
               { metadata: { zeit: lesezeit,
                 durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
-                automatisch: "ja" } }).catch(() => {});
+                automatisch: "ja", zeitquelle: "lesezeit" } }).catch(() => {});
             await sicherungenAusduennen(store, s.bestand);
             await protokoll("schreiben", ks, "gesichert",
               `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
@@ -2006,6 +2006,8 @@ export default async (req, context) => {
          Ohne Sperre konnte zwischen Prüfung und Tausch jemand speichern —
          seine Arbeit fehlte dann in der Sicherung „vor Wiederherstellung". */
       return await unterRaumsperre(s.bestand, async () => {
+        /* Fünfter Review B-1: Lesezeit des Stands, der unten als „vor Wiederherstellung" gesichert wird. */
+        const lesezeitW = new Date().toISOString();
         const jetztGelesen = await bestandLesenStreng(store, s.bestand);
         if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
@@ -2019,7 +2021,8 @@ export default async (req, context) => {
 
         const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
           { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null,
-            automatisch: metaW?.metadata?.automatisch === "ja" });
+            automatisch: metaW?.metadata?.automatisch === "ja",
+            zeitquelle: metaW?.metadata?.zeitquelle === "lesezeit" ? "lesezeit" : null });
         if (w.verweigert) {
           await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
           return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
@@ -2035,8 +2038,8 @@ export default async (req, context) => {
         /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
         const m2 = markeNeu();
         await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
-          { metadata: { zeit: new Date().toISOString(),
-            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
+          { metadata: { zeit: lesezeitW,
+            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja", zeitquelle: "lesezeit" } })
           .catch(() => {});
         await sicherungenAusduennen(store, s.bestand);
 

@@ -153,11 +153,11 @@ export function listenEintrag(marke, meta, eigeneId) {
  * @param {any} jetzt
  * @param {any} sicherung
  * @param {any} sitzung
- * @param {{ marke?: string, sicherungsZeit?: (string|null), automatisch?: boolean, heute?: Date, datenschutz?: string }} [o]
+ * @param {{ marke?: string, sicherungsZeit?: (string|null), automatisch?: boolean, zeitquelle?: (string|null), heute?: Date, datenschutz?: string }} [o]
  *   datenschutz: Modus des Datenschutzlaufs („an" löscht nach Fristen, sonst nur melden)
  */
 export function betriebWiederherstellen(jetzt, sicherung, sitzung,
-  { marke, sicherungsZeit, automatisch = false, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
+  { marke, sicherungsZeit, automatisch = false, zeitquelle = null, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
   const ort = eigenerBetrieb(jetzt, sitzung);
   if (!ort) return { verweigert: "Zu dieser Sitzung gehört kein gespeicherter Betrieb.", status: 409 };
   const alt = ort.betrieb;
@@ -177,9 +177,13 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
      Sie wirken nur auf Sicherungen, die vor dem Vermerk entstanden. Quelle: die
      Metadaten-Zeit der Ablage, sonst `erzeugt` der Betriebssicherung, sonst
      unbekannt (dann wirkt jeder Vermerk). */
-  /* Vierter Review N-1: Eine automatische Sicherung („vor Verlust") entsteht im selben Speichervorgang
-     wie ein Vermerk; ihre Zeit gilt als unbekannt, damit jeder Vermerk wirkt (Datenschutz zuerst). */
-  const zeitDerSicherung = automatisch ? null
+  /* Vierter Review N-1 / fünfter Review B-1: Eine automatische Sicherung („vor Verlust") entsteht im selben
+     Speichervorgang wie ein Vermerk. Seit dem fünften Review trägt jede NEUE automatische Sicherung als Zeit
+     die Lesezeit des gesicherten Stands (vor dem Zusammenführen) und die Markierung `zeitquelle: "lesezeit"`;
+     dann gilt diese Zeit wie bei einer manuellen Sicherung (ein Vermerk derselben Anfrage ist jünger und wirkt,
+     eine spätere Berichtigung oder Neuplanung bleibt erhalten). Nur eine automatische Sicherung OHNE diese
+     Markierung (Altbestand, Zeit nicht verlässlich) gilt als „Zeit unbekannt": dort wirkt jeder Vermerk. */
+  const zeitDerSicherung = (automatisch && zeitquelle !== "lesezeit") ? null
     : typeof sicherungsZeit === "string" && sicherungsZeit ? sicherungsZeit
     : (sicherung && typeof sicherung.erzeugt === "string" && sicherung.erzeugt ? sicherung.erzeugt : null);
 
@@ -254,7 +258,8 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
   /* Dritter Review F4: Geschlüsselte Löschvermerke ohne Serverschlüssel (CENTRIC_PFEFFER fehlt) sind nicht
      prüfbar — dann kein Wiederherstellen, statt Gelöschtes womöglich zurückzubringen (fail-closed). */
   if (md.unpruefbar) return { verweigert: "Löschvermerke des Datenschutz-Ausnahmewegs sind ohne den Serverschlüssel "
-    + "(CENTRIC_PFEFFER) nicht prüfbar. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
+    + "(CENTRIC_PFEFFER) nicht prüfbar — er fehlt oder wurde gegenüber dem Schlüssel geändert, mit dem die Vermerke "
+    + "entstanden. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
   if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
     zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
       ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };

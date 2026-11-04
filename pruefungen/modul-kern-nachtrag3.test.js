@@ -169,7 +169,7 @@ describe("F4 — Löschvermerke mit dem Serverschlüssel (CENTRIC_PFEFFER), sons
 });
 
 /* ======================================================================== */
-describe("F5 — Aktenzeichen: höchstens vier Buchstaben vorweg, keine Namen", () => {
+describe("F5 — Aktenzeichen: zwei bis fünf Buchstaben vorweg (nach N-5), keine Namen", () => {
   const mit = (az) => schreibeAls(gesamt(), "LT", (m) => { delete m.postenPlan["a1|2026-11-02"]; m.moduldatenAusnahme = { ...LOESCH, aktenzeichen: az }; });
   it("Sonde: „Mueller-1\" und andere Namen mit Ziffer werden abgewiesen", () => {
     for (const az of ["Mueller-1", "MaxMustermann2", "Schulz-2026-1", "Abcde-1", "1-Meier", "DS-1a", "<script>1"])
