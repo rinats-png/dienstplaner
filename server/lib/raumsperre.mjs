@@ -92,6 +92,20 @@ export function sperreGehalten(raum) {
   return !!(eintrag && eintrag.aktiv);
 }
 
+/**
+ * Die gehaltene Sperre dieses Raums als Objekt — oder null, wenn der laufende
+ * Ablauf sie nicht hält. Das Objekt lebt genau so lange wie die Sperre (ein
+ * Wiedereintritt bekommt dasselbe). Für den Lesecache in bestand.mjs
+ * (WP-48.2): Was unter dieser Sperre gelesen wurde, hängt an diesem Objekt
+ * und ist mit der Freigabe vergessen.
+ * @returns {object|null}
+ */
+export function sperrKontext(raum) {
+  const h = gehalten.getStore();
+  const eintrag = h && h.get(String(raum));
+  return eintrag && eintrag.aktiv ? eintrag : null;
+}
+
 /** Wie viele Räume gerade eine Reihe haben (nur für Prüfungen und Lage). */
 export const offeneReihen = () => reihe.size;
 

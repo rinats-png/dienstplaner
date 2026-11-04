@@ -2263,7 +2263,7 @@ export default async (req, context) => {
         await sicherungenAusduennen(store, s.bestand);
 
         const ergW = await bestandSchreiben(store, s.bestand, w.bestand, {
-          erwarteterStand: jetztGelesen.stand,
+          erwarteterStand: jetztGelesen.stand, neueEpoche: true,   // WP-48.2: offene Teilstände laden neu
           durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
         if (!ergW.ok) {
           await protokoll("schreiben", kW, "konflikt", `wiederherstellen ${marke}`, wer);

@@ -32,10 +32,10 @@
    sich beide nicht, wird zusammengeführt.
    ========================================================================== */
 
-import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
-  from "./scherben.mjs";
+import { zerlegen, zusammensetzen, abdruck, kernAbdruck, abdruckNormal, monatVon, MONATSFELDER,
+  kernSchluessel, scherbenSchluessel } from "./scherben.mjs";
 import { ereignis } from "./gesund-zaehler.mjs";
-import { unterRaumsperre, sperreGehalten, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
+import { unterRaumsperre, sperreGehalten, sperrKontext, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
@@ -52,6 +52,75 @@ const STAND_ZEIGER = (raum) => `stand:${raum}:aktuell`;
    Abstand zwischen Laden und Speichern ab; wer länger offen hat, bekommt
    eine gewöhnliche Konfliktmeldung statt eines Abgleichs. */
 const VERMERKE = 10;
+
+/* ---------------------------------------------------------------------------
+   Standvermerk und Epoche (WP-48.2)
+
+   Ein Vermerk trägt je Segment (kern, „mandantId::JJJJ-MM") einen Abdruck.
+   Seit WP-48.2 ist das ein SHA-256-Präfix (scherben.mjs abdruck/kernAbdruck)
+   statt des vollständigen Texts — vorher war jeder Vermerk so groß wie der
+   Bestand. Vermerke älterer Server werden beim Lesen übersetzt
+   (abdruckNormal); ein Vermerk, der sich nicht sicher deuten lässt, gilt als
+   fehlend (fail-closed).
+
+   Die Epoche zählt „Welten": Sie wechselt beim ersten Schreiben, beim
+   Wiederherstellen (Option neueEpoche), beim Wiederanlauf nach einem Abbruch
+   und wenn ein Server ohne Epoche zwischendurch geschrieben hat. Wer auf
+   Erwartungswerten einer anderen Epoche arbeitet (Teilweg, WP-48.3), muss
+   neu laden. Sie steht in den Metadaten des Kerns (gelesen zusammen mit dem
+   Stand, also widerspruchsfrei) und im Standzeiger.
+   --------------------------------------------------------------------------- */
+
+/** Die Abdrücke eines gelesenen Vermerks in heutiger Form — null, wenn er fehlt oder unklar ist. */
+function vermerkAbdruecke(v) {
+  const roh = v && typeof v === "object" ? v.abdruecke : null;
+  if (!roh || typeof roh !== "object" || Array.isArray(roh) || !("kern" in roh)) return null;
+  const aus = {};
+  for (const [id, wert] of Object.entries(roh)) {
+    const n = abdruckNormal(wert);
+    if (n === null) return null;
+    aus[id] = n;
+  }
+  return aus;
+}
+
+const neueEpoche = () => randomBytes(8).toString("hex");
+const epocheGueltig = (e) => typeof e === "string" && /^[0-9a-f]{8,64}$/.test(e);
+
+/* ---------------------------------------------------------------------------
+   Lesecache (WP-48.2)
+
+   Unter der Raumsperre liest ein Schreibweg den Bestand oft zweimal: der
+   Endpunkt für Rechte und Prüfungen, danach bestandSchreiben für den
+   Drei-Wege-Abgleich oder den Wiederanlauf. Was bestandLesenStreng unter
+   der Sperre gelesen hat, gilt deshalb bis zum nächsten Schreiben — aber nur
+   - unter derselben Sperre (das Gedächtnis hängt am Sperrobjekt aus
+     raumsperre.mjs und ist mit der Freigabe vergessen),
+   - für dieselbe Ablage (WeakMap je Ablageobjekt),
+   - solange kein Journal liegt und Kern-Stand, Kern-Zeit, Epoche und das
+     Verzeichnis der Scherben unverändert sind (geprüft bei jedem Treffer),
+   - als Kopie (structuredClone) — ein Aufrufer, der das Gelesene verändert,
+     verändert nicht, was der nächste liest.
+   Jeder Schreibvorgang dieser Datei leert das Gedächtnis des Raums.
+   --------------------------------------------------------------------------- */
+
+/** Sperrobjekt → WeakMap(Ablage → { marke, wert }) */
+const LESECACHE = new WeakMap();
+
+function lesecacheLeeren(raum) {
+  const k = sperrKontext(raum);
+  if (k) LESECACHE.delete(k);
+}
+
+/** Woran erkannt wird, dass sich die Platte seit dem Lesen bewegt hat. null: Journal liegt (nicht merken). */
+async function lesemarke(store, raum) {
+  if (await store.get(JOURNAL(raum), { type: "json" })) return null;
+  const m = await store.getMetadata(kernSchluessel(raum));
+  if (!m) return null;
+  const { blobs } = await store.list({ prefix: `scherbe:${raum}:` });
+  return JSON.stringify([m.metadata?.stand ?? null, m.metadata?.zeit ?? null, m.metadata?.epoche ?? null,
+    blobs.map((b) => b.key)]);
+}
 
 /* ---------------------------------------------------------------------------
    Lesen
@@ -163,6 +232,7 @@ async function journalAbschliessen(store, raum) {
   try { j = await journalLesen(store, raum); }
   catch (e) { throw unlesbar(raum, "Schreibjournal", e); }
   if (!j) return false;
+  lesecacheLeeren(raum);
   await schritteAusfuehren(store, j.schritte);
   await store.delete(JOURNAL(raum));
   return true;
@@ -235,7 +305,7 @@ async function lesen(store, raum, streng) {
     const roh = await rohLesen(store, raum, versuch, kritisch);
     return zusammenbauen(j ? ueberlagern(roh, raum, j) : roh, raum, streng);
   };
-  if (sperreGehalten(raum)) return einmal();
+  if (sperreGehalten(raum)) return streng ? mitLesecache(store, raum, einmal) : einmal();
 
   /* Die Reihenfolge ist wesentlich: Stand, Journal, Inhalt, Journal, Stand.
      Ein Schreiber legt erst das Journal, dann den Kern (mit neuem Stand),
@@ -274,6 +344,27 @@ async function lesen(store, raum, streng) {
   return unterRaumsperre(raum, einmal);
 }
 
+/** Strenges Lesen unter der gehaltenen Sperre über den Lesecache (siehe oben). */
+async function mitLesecache(store, raum, einmal) {
+  const kontext = sperrKontext(raum);
+  if (!kontext || !store || typeof store !== "object") return einmal();
+  let jeAblage = LESECACHE.get(kontext);
+  if (!jeAblage) { jeAblage = new WeakMap(); LESECACHE.set(kontext, jeAblage); }
+  const vorher = jeAblage.get(store);
+  /* Lässt sich die Marke nicht lesen, gibt es keinen Treffer: Das Lesen geht
+     den gewöhnlichen Weg und meldet einen Fehler dort, wie bisher. */
+  const markeJetzt = () => lesemarke(store, raum).catch(() => null);
+  const marke = await markeJetzt();
+  if (vorher && marke !== null && vorher.marke === marke) return structuredClone(vorher.wert);
+  jeAblage.delete(store);
+  const erg = await einmal();
+  /* Gemerkt wird nur ein zerlegter Bestand, ohne liegendes Journal, und nur,
+     wenn sich die Platte während des Lesens nicht bewegt hat. */
+  if (erg && !erg.unzerlegt && marke !== null && marke === await markeJetzt())
+    jeAblage.set(store, { marke, wert: structuredClone(erg) });
+  return erg;
+}
+
 /**
  * Ist dieser Fehler vorübergehend — „gerade nicht lesbar" oder „gerade
  * gesperrt" — statt „gibt es nicht"? Aufrufer, die einen fehlenden Bestand
@@ -309,6 +400,8 @@ function zusammenbauen({ kern, alt, scherben }, raum, streng) {
     stand: String(kern.metadata?.stand ?? 0),
     zeit: kern.metadata?.zeit || null,
     durch: kern.metadata?.durch || null,
+    /* WP-48.2: null bei einem Bestand, den zuletzt ein Server ohne Epoche schrieb. */
+    epoche: epocheGueltig(kern.metadata?.epoche) ? kern.metadata.epoche : null,
   };
 }
 
@@ -318,7 +411,7 @@ function zusammenbauen({ kern, alt, scherben }, raum, streng) {
 
 /** Fingerabdrücke aller Scherben eines zerlegten Bestands. */
 function abdruecke(zerlegt) {
-  const aus = { kern: JSON.stringify(zerlegt.kern) };
+  const aus = { kern: kernAbdruck(zerlegt.kern) };
   for (const [id, s] of zerlegt.scherben) aus[id] = abdruck(s);
   return aus;
 }
@@ -339,8 +432,10 @@ export const monatAusKennung = (id) => (String(id).split("::")[1] || id);
  *
  * @param erwarteterStand Der Stand, den die Oberfläche beim Laden bekam.
  *   Fehlt er, wird ohne Abgleich geschrieben (erster Schreibvorgang).
+ * @param neueEpoche (Option) true beim Wiederherstellen: Es beginnt eine neue
+ *   Epoche (WP-48.2), Teilstände der alten Welt laden neu.
  * @returns {Promise<object>} — bei Erfolg { ok: true, stand, geschrieben,
- *   zusammengefuehrt }, sonst { ok: false, grund: "konflikt", streit,
+ *   epoche, zusammengefuehrt }, sonst { ok: false, grund: "konflikt", streit,
  *   bestand, stand, zeit, durch }
  */
 /** session ganz oben (D1b) und am Betrieb (D1c) sind keine Bestandsfelder:
@@ -372,7 +467,7 @@ export function bestandSchreiben(store, raum, neuerBestandRoh, opt = {}) {
 
 /** Der eigentliche Schreibvorgang — nur unter der Sperre des Raums aufrufen. */
 async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
-  erwarteterStand = null, durch = "unbekannt",
+  erwarteterStand = null, durch = "unbekannt", neueEpoche: epocheWechseln = false,
 } = {}) {
   /* session ist kein Bestandsfeld (Commit D1b): Die Sitzung lebt im Browser
      und auf dem Server getrennt vom Bestand. Ganz oben gespeichert war sie
@@ -408,7 +503,7 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   /* --- Erster Schreibvorgang oder Übernahme eines unzerlegten Betriebs --- */
   if (!kernMeta) {
     return schreibeAlles(store, raum, zNeu, abdNeu, (zeiger ?? 0) + 1, durch,
-      { neuAngelegt: true, abdVorher: null });
+      { neuAngelegt: true, abdVorher: null, epoche: neueEpoche() });
   }
 
   /* --- Wiederanlauf nach einem Abbruch ---
@@ -429,9 +524,16 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
      kann eine solche Lücke nur von einem Abbruch stammen. */
   let aktuellerStand = Math.max(kernStand ?? 0, zeiger ?? 0);
   let abdAktuell = aktuellerStand > 0
-    ? (await streng(`Vermerk ${aktuellerStand}`,
-      () => store.get(STAND(raum, aktuellerStand), { type: "json" })))?.abdruecke || null
+    ? vermerkAbdruecke(await streng(`Vermerk ${aktuellerStand}`,
+      () => store.get(STAND(raum, aktuellerStand), { type: "json" })))
     : null;
+  /* Die Epoche gilt nur, wenn Kern und Zeiger dieselbe tragen. Fehlt sie oder
+     weichen sie ab (ein Server ohne Epoche hat zwischendurch geschrieben),
+     beginnt eine neue — fail-closed für jeden, der auf der alten arbeitet. */
+  const epocheKern = kernMeta.metadata?.epoche;
+  let epoche = !epocheWechseln && epocheGueltig(epocheKern) && zeigerRoh && zeigerRoh.epoche === epocheKern
+    ? epocheKern : neueEpoche();
+  let wiederanlauf = false;
   const { blobs: vorhandene } = await streng("Verzeichnis der Scherben",
     () => store.list({ prefix: `scherbe:${raum}:` }));
   const unbekannt = abdAktuell
@@ -443,13 +545,18 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
     const zIst = zerlegen(ohneSitzung(ist.bestand));
     abdAktuell = abdruecke(zIst);
     const zeit = new Date().toISOString();
+    /* Nach einem Wiederanlauf beginnt eine neue Epoche (WP-48.2): Wer auf
+       Erwartungswerten von vorher arbeitet, lädt neu. */
+    epoche = neueEpoche();
+    wiederanlauf = true;
+    lesecacheLeeren(raum);
     if (kernStand !== aktuellerStand) {
       await store.setJSON(kernSchluessel(raum), zIst.kern,
-        { metadata: { ...(kernMeta.metadata || {}), stand: aktuellerStand } });
+        { metadata: { ...(kernMeta.metadata || {}), stand: aktuellerStand, epoche } });
     }
     await store.setJSON(STAND(raum, aktuellerStand),
       { abdruecke: abdAktuell, zeit, durch: "Wiederanlauf nach Abbruch" });
-    await store.setJSON(STAND_ZEIGER(raum), { nr: aktuellerStand, zeit });
+    await store.setJSON(STAND_ZEIGER(raum), { nr: aktuellerStand, zeit, epoche });
     console.warn(`Bestand ${raum}: Stand nach Abbruch angeglichen (Kern ${kernStand}, Zeiger ${zeiger} → ${aktuellerStand})`);
   }
 
@@ -457,13 +564,13 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   if (erwarteterStand === null || erwarteterStand === undefined
       || String(erwarteterStand) === String(aktuellerStand)) {
     return schreibeAlles(store, raum, zNeu, abdNeu, aktuellerStand + 1, durch,
-      { nurDiese: abweichende(abdAktuell, abdNeu), abdVorher: abdAktuell });
+      { nurDiese: abweichende(abdAktuell, abdNeu), abdVorher: abdAktuell, epoche, aufraeumenVoll: wiederanlauf });
   }
 
   /* --- Der Stand ist veraltet: Drei-Wege-Abgleich --- */
   const abdBasis = Number.isFinite(Number(erwarteterStand))
-    ? (await streng(`Vermerk ${erwarteterStand}`,
-      () => store.get(STAND(raum, Number(erwarteterStand)), { type: "json" })))?.abdruecke || null
+    ? vermerkAbdruecke(await streng(`Vermerk ${erwarteterStand}`,
+      () => store.get(STAND(raum, Number(erwarteterStand)), { type: "json" })))
     : null;
 
   const jetzt = await bestandLesenStreng(store, raum);
@@ -506,7 +613,8 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   const zusammen = { kern: kernNimmt, scherben };
   const abdZusammen = abdruecke(zusammen);
   const erg = await schreibeAlles(store, raum, zusammen, abdZusammen,
-    aktuellerStand + 1, durch, { nurDiese: abweichende(abdAktuell, abdZusammen), abdVorher: abdAktuell });
+    aktuellerStand + 1, durch, { nurDiese: abweichende(abdAktuell, abdZusammen), abdVorher: abdAktuell,
+      epoche, aufraeumenVoll: wiederanlauf });
   return { ...erg, zusammengefuehrt: [...meine].map(monatAusKennung) };
 }
 
@@ -560,9 +668,10 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
      erst vollständig ins Journal, dann ausgeführt (siehe „Das
      Schreibjournal" oben). Auch wenn der Kern unverändert bleibt, wird er
      geschrieben: Der Stand steht in seinen Metadaten. */
+  const epoche = epocheGueltig(opt.epoche) ? opt.epoche : neueEpoche();
   /** @type {Array<{art: "setzen"|"loeschen", schluessel: string, wert?: any, metadata?: object}>} */
   const schritte = [{ art: "setzen", schluessel: kernSchluessel(raum), wert: zerlegt.kern,
-    metadata: { zeit, durch, stand: neuerStand } }];
+    metadata: { zeit, durch, stand: neuerStand, epoche } }];
   if (!nur || nur.has("kern")) geschrieben++;
   for (const [id, s] of zerlegt.scherben) {
     if (nur && !nur.has(id)) continue;
@@ -571,20 +680,9 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
   }
   for (const schluessel of weg) schritte.push({ art: "loeschen", schluessel });
   schritte.push({ art: "setzen", schluessel: STAND(raum, neuerStand), wert: { abdruecke: abd, zeit, durch } });
-  schritte.push({ art: "setzen", schluessel: STAND_ZEIGER(raum), wert: { nr: neuerStand, zeit } });
+  schritte.push({ art: "setzen", schluessel: STAND_ZEIGER(raum), wert: { nr: neuerStand, zeit, epoche } });
 
-  /* Festschreiben: eine Datei, atomar und auf der Platte (ablage.mjs). Ab
-     hier gilt der neue Stand — auch nach einem Absturz. */
-  await store.setJSON(JOURNAL(raum), { id: randomBytes(8).toString("hex"), stand: neuerStand, zeit,
-    schritte, pruefsumme: pruefsummeVon(schritte) });
-  await schritteAusfuehren(store, schritte);
-  await store.delete(JOURNAL(raum));
-
-  /* Alte Vermerke wegräumen — sie sind klein, aber unbegrenzt wären sie
-     trotzdem falsch. */
-  for (let n = neuerStand - VERMERKE; n > 0 && n > neuerStand - VERMERKE - 5; n--) {
-    await store.delete(STAND(raum, n)).catch(() => {});
-  }
+  await festschreiben(store, raum, schritte, neuerStand, zeit, opt.aufraeumenVoll);
 
   /* Der unzerlegte Altbestand hat ausgedient, sobald der Kern steht. Er
      bleibt als Sicherung liegen, wird aber nicht mehr gelesen. */
@@ -598,7 +696,194 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
     }
   }
 
-  return { ok: true, stand: String(neuerStand), geschrieben };
+  return { ok: true, stand: String(neuerStand), geschrieben, epoche };
+}
+
+/**
+ * Festschreiben: das Journal als eine Datei (atomar und auf der Platte,
+ * ablage.mjs) — ab hier gilt der neue Stand, auch nach einem Absturz —,
+ * dann die Schritte, dann das Journal löschen und alte Vermerke wegräumen.
+ */
+async function festschreiben(store, raum, schritte, neuerStand, zeit, aufraeumenVoll = false) {
+  lesecacheLeeren(raum);
+  await store.setJSON(JOURNAL(raum), { id: randomBytes(8).toString("hex"), stand: neuerStand, zeit,
+    schritte, pruefsumme: pruefsummeVon(schritte) });
+  await schritteAusfuehren(store, schritte);
+  await store.delete(JOURNAL(raum));
+  lesecacheLeeren(raum);
+
+  /* Alte Vermerke wegräumen — sie sind klein, aber unbegrenzt wären sie
+     trotzdem falsch. Gewöhnlich steigt der Stand um eins, dann reicht das
+     Fenster hinter den letzten zehn. Nach einem Sprung (Wiederanlauf) läge
+     alles davor für immer: dann über das Verzeichnis. */
+  if (aufraeumenVoll) {
+    const { blobs } = await store.list({ prefix: `stand:${raum}:` }).catch(() => ({ blobs: [] }));
+    for (const b of blobs) {
+      const rest = b.key.slice(`stand:${raum}:`.length);
+      if (/^\d+$/.test(rest) && Number(rest) <= neuerStand - VERMERKE) await store.delete(b.key).catch(() => {});
+    }
+  }
+  for (let n = neuerStand - VERMERKE; n > 0 && n > neuerStand - VERMERKE - 5; n--) {
+    await store.delete(STAND(raum, n)).catch(() => {});
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Segmentschreiber (WP-48.2)
+
+   Schreibt nur den Kern und/oder einzelne Monatsscherben — mit demselben
+   Journal, demselben Vermerk (Hash) und demselben Zeiger wie bestandSchreiben.
+   Der Abdruck aller übrigen Segmente kommt aus dem Vermerk des aktuellen
+   Stands; gelesen, zerlegt und gehasht wird nur, was geschrieben wird.
+
+   Das Ergebnis auf der Platte ist dasselbe, als hätte bestandSchreiben den
+   ganzen Bestand mit diesen Segmenten geschrieben (geprüft in
+   pruefungen/wp48-speicherkern.test.js, „Gleichwertigkeit").
+
+   Bewusst eng und fail-closed:
+   - Es gibt keinen Abgleich. Der erwartete Stand muss der aktuelle sein
+     (compare-and-set), sonst „konflikt" — die Entscheidung je Zelle trifft
+     der Aufrufer vorher unter derselben Sperre (WP-48.3). Ohne erwarteten
+     Stand wird gar nicht geschrieben.
+   - Passen Kern, Zeiger, Vermerk und Verzeichnis nicht zusammen (Abbruch,
+     fehlender oder unklarer Vermerk, Altbestand ohne Kern, ohne Epoche),
+     heißt das „unbestimmt": nichts wird geschrieben, der Aufrufer nimmt den
+     vollen Weg (der den Wiederanlauf kennt).
+   - Eine Scherbe trägt genau die Monatsfelder, jeder Schlüssel liegt in
+     ihrem Monat, der Betrieb steht im Kern; der Kern trägt keine
+     Monatsdaten und dieselben Betriebe wie vorher. Sonst TEILE_UNGUELTIG.
+   - Eine Scherbe ohne jeden Eintrag wird entfernt (wie beim Zerlegen).
+   - Rechte, Stempel-Integrität, Gestalt: nicht hier. Das bleibt der
+     Schreibkette vorbehalten (WP-48.3: virtueller Vollrumpf).
+   --------------------------------------------------------------------------- */
+
+/** Fehlercode einer unzulässigen Form im Segmentschreiber. */
+export const TEILE_UNGUELTIG = "TEILE_UNGUELTIG";
+
+const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function teileFehler(text) {
+  const f = /** @type {Error & {code?: string}} */ (new Error(`Teilschreiben: ${text}`));
+  f.code = TEILE_UNGUELTIG;
+  return f;
+}
+
+/** Form der Teile prüfen und in die gespeicherte Gestalt bringen. */
+function teileGeprueft(teile, kernAlt) {
+  if (!istObjekt(teile)) throw teileFehler("keine Teile");
+  const mandantenIds = (k) => (Array.isArray(k.mandanten) ? k.mandanten : [])
+    .map((m) => (istObjekt(m) ? m.id : undefined));
+  let kern = null;
+  if (Object.prototype.hasOwnProperty.call(teile, "kern") && teile.kern !== undefined) {
+    const k = teile.kern;
+    if (!istObjekt(k) || !Array.isArray(k.mandanten)) throw teileFehler("Kern ohne Betriebsliste");
+    if (zerlegen(k).scherben.size) throw teileFehler("Kern mit Monatsdaten");
+    if (JSON.stringify(mandantenIds(k)) !== JSON.stringify(mandantenIds(kernAlt)))
+      throw teileFehler("Kern mit anderen Betrieben");
+    kern = k;
+  }
+  const scherbenRoh = teile.scherben === undefined ? [] : teile.scherben;
+  if (!Array.isArray(scherbenRoh)) throw teileFehler("Scherben keine Liste");
+  const bekannt = new Set(mandantenIds(kern || kernAlt).filter((id) => id !== undefined && id !== null).map(String));
+  const scherben = new Map();
+  for (const s of scherbenRoh) {
+    if (!istObjekt(s) || typeof s.mandantId !== "string" || !bekannt.has(s.mandantId))
+      throw teileFehler("Scherbe eines unbekannten Betriebs");
+    if (typeof s.monat !== "string" || !MONAT.test(s.monat)) throw teileFehler("Monat ungültig");
+    if (!istObjekt(s.felder) || Object.keys(s.felder).some((f) => !MONATSFELDER.includes(f)))
+      throw teileFehler("unbekanntes Feld in einer Scherbe");
+    const felder = {};
+    for (const f of MONATSFELDER) {
+      const w = s.felder[f] === undefined ? {} : s.felder[f];
+      if (!istObjekt(w)) throw teileFehler(`${f} ist kein Objekt`);
+      for (const k of Object.keys(w)) if (monatVon(k) !== s.monat) throw teileFehler("Schlüssel außerhalb des Monats");
+      felder[f] = { ...w };
+    }
+    const id = `${s.mandantId}::${s.monat}`;
+    if (scherben.has(id)) throw teileFehler("Scherbe doppelt");
+    scherben.set(id, { mandantId: s.mandantId, monat: s.monat, felder });
+  }
+  return { kern, scherben };
+}
+
+/**
+ * Schreibt Kern und/oder einzelne Monatsscherben als neuen Stand.
+ *
+ * @param {{ kern?: object, scherben?: Array<{mandantId: string, monat: string, felder: object}> }} teile
+ *   kern: der ganze Kern in zerlegter Form (ohne Monatsdaten); fehlt er, bleibt der gespeicherte.
+ *   scherben: je Monat der ganze neue Inhalt der Scherbe; alle Felder leer = Scherbe entfernen.
+ * @param {{ erwarteterStand?: string|number, erwarteteEpoche?: string|null, durch?: string }} opt
+ *   erwarteterStand ist Pflicht (ohne ihn: Fehler, nichts geschrieben).
+ * @returns {Promise<object>} { ok: true, stand, geschrieben, epoche } oder
+ *   { ok: false, grund: "konflikt" | "epoche" | "unbestimmt", stand?, epoche? }
+ */
+export function teileSchreiben(store, raum, teile, opt = {}) {
+  const { erwarteterStand } = opt;
+  if (erwarteterStand === null || erwarteterStand === undefined || !Number.isFinite(Number(erwarteterStand)))
+    return Promise.reject(new Error("teileSchreiben: erwarteterStand fehlt"));
+  return unterRaumsperre(raum, () => teileSchreibenGesperrt(store, raum, teile, opt));
+}
+
+async function teileSchreibenGesperrt(store, raum, teile, { erwarteterStand = null, erwarteteEpoche = null, durch = "unbekannt" }) {
+  const streng = async (was, arbeit) => {
+    try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
+  };
+  if (await journalAbschliessen(store, raum)) {
+    ereignis("journal");
+    console.warn(`Bestand ${raum}: abgebrochenen Schreibvorgang aus dem Journal zu Ende geschrieben`);
+  }
+  const zeigerRoh = await streng("Standzeiger", () => store.get(STAND_ZEIGER(raum), { type: "json" }));
+  const kernRoh = await streng("Kern", () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }));
+  const unbestimmt = { ok: false, grund: "unbestimmt" };
+  if (!kernRoh || !istObjekt(kernRoh.data) || !zeigerRoh) return unbestimmt;
+  const stand = Number(kernRoh.metadata?.stand);
+  const epoche = kernRoh.metadata?.epoche;
+  if (!Number.isFinite(stand) || stand < 1 || Number(zeigerRoh.nr) !== stand
+      || !epocheGueltig(epoche) || zeigerRoh.epoche !== epoche) return unbestimmt;
+  const abd = vermerkAbdruecke(await streng(`Vermerk ${stand}`, () => store.get(STAND(raum, stand), { type: "json" })));
+  if (!abd) return unbestimmt;
+  const { blobs } = await streng("Verzeichnis der Scherben", () => store.list({ prefix: `scherbe:${raum}:` }));
+  const vorhanden = new Set(blobs.map((b) => scherbenKennung(raum, b.key)));
+  const imVermerk = Object.keys(abd).filter((id) => id !== "kern");
+  if (imVermerk.length !== vorhanden.size || imVermerk.some((id) => !vorhanden.has(id))) return unbestimmt;
+
+  /* Die Welt zuerst, dann der Stand (Design 2.3). */
+  if (erwarteteEpoche !== null && erwarteteEpoche !== undefined && String(erwarteteEpoche) !== epoche)
+    return { ok: false, grund: "epoche", epoche, stand: String(stand) };
+  if (String(erwarteterStand) !== String(stand)) return { ok: false, grund: "konflikt", stand: String(stand), epoche };
+
+  const { kern, scherben } = teileGeprueft(teile, kernRoh.data);
+  const neuerStand = stand + 1;
+  const zeit = new Date().toISOString();
+  const kernNeu = kern || kernRoh.data;
+  const abdNeu = { ...abd, kern: kernAbdruck(kernNeu) };
+  let geschrieben = abdNeu.kern !== abd.kern ? 1 : 0;
+  /** @type {Array<{art: "setzen"|"loeschen", schluessel: string, wert?: any, metadata?: object}>} */
+  const schritte = [{ art: "setzen", schluessel: kernSchluessel(raum), wert: kernNeu,
+    metadata: { zeit, durch, stand: neuerStand, epoche } }];
+  for (const [id, s] of scherben) {
+    const leer = MONATSFELDER.every((f) => Object.keys(s.felder[f]).length === 0);
+    const schluessel = scherbenSchluessel(raum, s.mandantId, s.monat);
+    if (leer) {
+      if (!(id in abd)) continue;
+      /* Wie beim vollen Weg: Was gelöscht wird, muss vorher lesbar sein. */
+      await streng(`Scherbe ${schluessel}`, () => store.get(schluessel, { type: "json" }));
+      delete abdNeu[id];
+      schritte.push({ art: "loeschen", schluessel });
+      geschrieben++;
+      continue;
+    }
+    const a = abdruck(s);
+    if (abd[id] === a) continue;
+    abdNeu[id] = a;
+    schritte.push({ art: "setzen", schluessel, wert: s });
+    geschrieben++;
+  }
+  schritte.push({ art: "setzen", schluessel: STAND(raum, neuerStand), wert: { abdruecke: abdNeu, zeit, durch } });
+  schritte.push({ art: "setzen", schluessel: STAND_ZEIGER(raum), wert: { nr: neuerStand, zeit, epoche } });
+  await festschreiben(store, raum, schritte, neuerStand, zeit);
+  return { ok: true, stand: String(neuerStand), geschrieben, epoche };
 }
 
 /**
@@ -618,7 +903,8 @@ export async function unveraenderteScherben(store, raum, erwarteterStand, aktuel
   if (erwarteterStand === null || erwarteterStand === undefined
       || String(erwarteterStand) === String(aktuell.stand)) return new Set(ids);
   if (!Number.isFinite(Number(erwarteterStand))) return new Set();
-  const basis = (await store.get(STAND(raum, Number(erwarteterStand)), { type: "json" }).catch(() => null))?.abdruecke;
+  /* Ein alter Vermerk (Text) wird übersetzt; ein unklarer gilt als fehlend: keine (WP-48.2). */
+  const basis = vermerkAbdruecke(await store.get(STAND(raum, Number(erwarteterStand)), { type: "json" }).catch(() => null));
   if (!basis) return new Set();
   return new Set(ids.filter((id) => basis[id] === abd[id]));
 }
