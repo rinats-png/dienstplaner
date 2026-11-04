@@ -4237,34 +4237,6 @@
       "notiz": "Neu (2026-11-04): Die Dienstleisternamen sind Eingabe der Rechtstexte (WP-36/E-18) und der Auswahl in E-7, E-8, E-9. Anbieter sind nicht benannt, nichts beauftragt. Gerüst: docs/acc45/extern/KI-VO-UND-ANBIETER-PRUEFLISTE.md Teil B. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-23 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
-      "id": "WP-48",
-      "titel": "Sichere Teilspeicherung (Delta je Segment mit Versionen) und kurze Raumsperre beim Monatsabschluss",
-      "strang": "acc45",
-      "prio": "P0",
-      "aufwandPT": {"min":16,"max":26},
-      "abhaengigkeiten": ["WP-16"],
-      "status": "BLOCKED",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": "acc45/docs/wp48-teilspeicherung-entwurf",
-      "agent": "Agent A – Security & Data Integrity",
-      "modell": "opus",
-      "konfliktzonen": ["daten.mjs","rechte.mjs","App.jsx","stempelintegritaet.mjs"],
-      "pr": [],
-      "nachweis": "docs/acc45/WP48-TEILSPEICHERUNG.md",
-      "akzeptanz": "Siehe WP48-TEILSPEICHERUNG.md Abschnitt 4.4: PUT-Rumpf je Änderung unabhängig von der Historie (Einteilung < 300 KB), nie 413 bis 400 Personen × 36 Monate bei unverändertem RUMPF_MAX 6 MB, Teil-PUT gleichwertig zum Voll-PUT für jede Rolle (Rechte unverändert, fehlende Segmente ändern nichts), Konflikt je Zelle bzw. Kernfeld, Raumsperre bei Speichern und Monatsabschluss < 2 s bei 400 × 36, /gesund nie kritisch durch Speichern oder Abschluss",
-      "tests": "Gleichwertigkeit Teil/Voll je Rolle × Segment, Rennen, Konflikte, Versatz alter Clients, Journal/Restore, Messmatrix 60/150/400 × 12/24/36 (werkzeug/wp48-messung.mjs), Rot vorher, Mutanten",
-      "dateien": "server/lib/bestand.mjs, server/lib/scherben.mjs, server/funktionen/daten.mjs, server/lib/rechte.mjs, server/lib/monatsabschluss.mjs, server/lib/stempelintegritaet.mjs, src/speicher.js, src/App.jsx",
-      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung."
-    },
-    {
       "id": "WP-19.R",
       "titel": "Rettungsdienst-Branchenprofil (eigenes Paket, Rettungsmittel-Besetzung, Besetzungsnachweis)",
       "strang": "wp19",
