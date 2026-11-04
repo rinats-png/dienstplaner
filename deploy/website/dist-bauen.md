@@ -34,7 +34,7 @@ ab, liegt es meist an einer anderen tar-/gzip-Version; die Summe, die ausgeliefe
 - `deploy/website/DIST-SHA256.txt`: die neue Summe (eine Zeile, 64 Hexzeichen; Zeilen mit `#` sind Kommentar).
   Ohne passende Summe bricht `website-konsole.sh` ab, bevor etwas geaendert wird.
 - `deploy/website/DIST-QUELLE.txt`: **optional** die Download-URL (nur `https://`, eine Zeile, ohne Anfuehrungszeichen und
-  ohne Sonderzeichen wie `;`, `$`, Leerzeichen). Leer lassen, solange das Archiv nicht veroeffentlicht ist; dann muss die Datei
+  ohne Sonderzeichen wie `;`, `$`, Leerzeichen). Erlaubt ist nur der Host `raw.githubusercontent.com` (Allowlist im Skript); aktuell Branch `website/dist`. Leer = kein Download; dann muss die Datei
   `/root/centric-website-dist.tgz` auf dem Server liegen (oder der Pfad wird als Argument uebergeben).
 - Beide Dateien gehoeren in den Zweig `deploy/hauptwebsite-docker`; die Konsole holt sie mit `git clone`.
 - Die Veroeffentlichung des Archivs (Download-Ort) entscheidet der Betreiber; das Repository ist oeffentlich, das

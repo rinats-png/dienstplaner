@@ -98,7 +98,7 @@ dl("website-konsole.sh: echte Dateien im Repo", () => {
     const summen = readFileSync(join(QUELLE, "DIST-SHA256.txt"), "utf8").split("\n").filter((z) => z.trim() && !z.startsWith("#"));
     expect(summen).toEqual(["69f51e7031e0ea22bae9d542bbbd29904306cdb8b88409163fcfdb3cac6684c8"]);
     const urls = readFileSync(join(QUELLE, "DIST-QUELLE.txt"), "utf8").split("\n").filter((z) => z.trim() && !z.startsWith("#"));
-    for (const u of urls) expect(u).toMatch(/^https:\/\//);
+    expect(urls).toEqual(["https://raw.githubusercontent.com/rinats-png/dienstplaner/website/dist/centric-website-dist.tgz"]);
   });
 });
 
@@ -227,7 +227,7 @@ dl("website-konsole.sh: Download", () => {
 
   ohneStandard("https-URL aus DIST-QUELLE.txt: curl mit --fail --location --max-filesize und https-Zwang, dann Erfolg", () => {
     const a = archivBauen("ok"); sollSetzen(sha(a));
-    writeFileSync(join(skripte, "DIST-QUELLE.txt"), "# x\nhttps://example.invalid/pfad/centric-website-dist.tgz\n");
+    writeFileSync(join(skripte, "DIST-QUELLE.txt"), "# x\nhttps://raw.githubusercontent.com/x/pfad/centric-website-dist.tgz\n");
     const r = lauf({ archiv: a });
     expect(r.code, r.aus).toBe(0);
     expect(r.log).toContain("--fail");
@@ -235,14 +235,14 @@ dl("website-konsole.sh: Download", () => {
     expect(r.log).toContain("--max-filesize 20000000");
     expect(r.log).toContain("--proto =https");
     expect(r.log).toContain("--proto-redir =https");
-    expect(r.log).toContain("https://example.invalid/pfad/centric-website-dist.tgz");
-    expect(r.aus).toContain("Download https://example.invalid/");
+    expect(r.log).toContain("https://raw.githubusercontent.com/x/pfad/centric-website-dist.tgz");
+    expect(r.aus).toContain("Download https://raw.githubusercontent.com/x/");
     expect(r.log).toMatch(/ausliefern 3/);
   });
 
   ohneStandard("Download mit falscher Pruefsumme: Abbruch ohne ausliefern", () => {
     const a = archivBauen("ok"); sollSetzen("1".repeat(64));
-    writeFileSync(join(skripte, "DIST-QUELLE.txt"), "https://example.invalid/a.tgz\n");
+    writeFileSync(join(skripte, "DIST-QUELLE.txt"), "https://raw.githubusercontent.com/x/a.tgz\n");
     const r = lauf({ archiv: a });
     expect(r.code).toBe(1);
     expect(r.aus).toContain("Pruefsumme stimmt nicht");
@@ -261,9 +261,19 @@ dl("website-konsole.sh: Download", () => {
     }
   });
 
+  ohneStandard("andere https-Domain (auch Tricks wie raw.githubusercontent.com.evil): Abbruch, kein curl", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    for (const url of ["https://example.invalid/a.tgz", "https://raw.githubusercontent.com.evil.invalid/a.tgz", "https://raw.githubusercontent.com@evil.invalid/a.tgz"]) {
+      writeFileSync(join(skripte, "DIST-QUELLE.txt"), url + "\n");
+      const r = lauf({ archiv: a });
+      expect(r.code, url).toBe(1);
+      expect(r.log).not.toContain("curl ");
+    }
+  });
+
   ohneStandard("URL mit Sonderzeichen (Leerzeichen-/Shell-Zeichen) wird abgelehnt", () => {
     const a = archivBauen("ok"); sollSetzen(sha(a));
-    writeFileSync(join(skripte, "DIST-QUELLE.txt"), "https://example.invalid/a;rm$IFS-rf\n");
+    writeFileSync(join(skripte, "DIST-QUELLE.txt"), "https://raw.githubusercontent.com/x/a;rm$IFS-rf\n");
     const r = lauf({ archiv: a });
     expect(r.code).toBe(1);
     expect(r.log).not.toContain("curl ");

@@ -50,6 +50,7 @@ else
   fi
   [ -n "$URL" ] || ende "Kein Archiv: weder $STANDARD_ARCHIV noch eine URL in DIST-QUELLE.txt."
   [[ "$URL" =~ ^https://[A-Za-z0-9._~:/?#@!%+=,-]+$ ]] || ende "Die Download-URL muss mit https:// beginnen (und darf keine Sonderzeichen enthalten)."
+  [[ "$URL" =~ ^https://raw\.githubusercontent\.com/[^/?#@:]+ ]] || ende "Download nur von https://raw.githubusercontent.com/ erlaubt."
   command -v curl >/dev/null 2>&1 || ende "curl fehlt."
   curl --fail --location --silent --show-error --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --max-redirs 5 --max-filesize "$MAX_BYTES" --connect-timeout 20 --max-time 300 \

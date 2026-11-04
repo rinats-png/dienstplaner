@@ -8,7 +8,7 @@ Diese Werte sind die Vorgaben der Skripte: **keine Variable setzen**.
 
 ## Ablauf A: Remotekonsole (root, zwei kurze Befehle)
 
-Voraussetzung: Das Website-Archiv ist verfuegbar, entweder als Datei `/root/centric-website-dist.tgz` oder ueber die
+Voraussetzung: Das Website-Archiv ist verfuegbar (veroeffentlicht auf Branch `website/dist`; Download nur von raw.githubusercontent.com), entweder als Datei `/root/centric-website-dist.tgz` oder ueber die
 URL in `deploy/website/DIST-QUELLE.txt` (nach Veroeffentlichung durch den Betreiber). Die erwartete Pruefsumme steht in
 `deploy/website/DIST-SHA256.txt`; Bauen und Aktualisieren: `deploy/website/dist-bauen.md`.
 

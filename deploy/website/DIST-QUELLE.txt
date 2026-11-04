@@ -1,2 +1,3 @@
-# Download-URL des Website-Archivs (nur https). Leer = kein Download; dann /root/centric-website-dist.tgz noetig.
-# Wird nach Veroeffentlichung des Archivs durch den Betreiber eingetragen (eine Zeile, ohne Anfuehrungszeichen).
+# Download-URL des Website-Archivs (nur https, nur Host raw.githubusercontent.com). Eine Zeile.
+# Quelle: Branch website/dist (Commit 052d98e). Die Pruefsumme steht in DIST-SHA256.txt und wird immer geprueft.
+https://raw.githubusercontent.com/rinats-png/dienstplaner/website/dist/centric-website-dist.tgz
