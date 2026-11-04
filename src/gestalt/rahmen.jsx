@@ -178,7 +178,7 @@ export function Kopfblock({
                 <div className="menue-trenner" />
                 <div className="rubrik" style={{ padding: "10px 12px 6px" }}>Erscheinungsbild</div>
                 <div style={{ padding: "0 12px 8px" }}>
-                  <Umschalter wert={thema || "hell"} label="Erscheinungsbild" onWahl={onThema}
+                  <Umschalter wert={thema || "auto"} label="Erscheinungsbild" onWahl={onThema}
                     optionen={[["hell", "Hell"], ["dunkel", "Dunkel"], ["auto", "Wie das Gerät"]]} />
                 </div></>)}
             </Menue>

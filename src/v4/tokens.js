@@ -24,6 +24,7 @@ export const V4_FARBEN = {
   hell: {
     bg: "#f0f3ed", flaeche: "#fffefa", flaecheStill: "#e6ebe3",
     text: "#112b30", dim: "#3e585c", aus: "#566e72",
+    akzentAufDunkel: "#5fc9b3",                /* Akzent auf der dunklen Seitenleiste, >= 4,5:1 dort */
     line: "#c2cec9", lineSoft: "#d3dcd7", lineStark: "#9db0ab",
     steuer: "#6a8083",                       /* Rand von Bedienelementen, >= 3:1 */
     accent: "#0b6058", accentHi: "#0f7a6f", accentDeep: "#084a44",
@@ -36,7 +37,8 @@ export const V4_FARBEN = {
   },
   dunkel: {
     bg: "#071e22", flaeche: "#0e3034", flaecheStill: "#123b40",
-    text: "#eef8f3", dim: "#bad0cc", aus: "#93aeaa",
+    text: "#eef8f3", dim: "#bad0cc", aus: "#7c9a96",
+    akzentAufDunkel: "#b9efdc",
     line: "#27494d", lineSoft: "#1c3d41", lineStark: "#3a6166",
     steuer: "#6f979b",
     accent: "#b9efdc", accentHi: "#d2f6e9", accentDeep: "#8fe0c6",
@@ -60,7 +62,7 @@ export const V4_GLAS = {
 /* Verlauf hinter der Titelzone; nur `text` und `dim` liegen darauf. */
 export const V4_VERLAUF = {
   hell: { a: "rgba(11,96,88,.16)", b: "rgba(15,122,111,.08)", c: "rgba(8,74,68,.07)" },
-  dunkel: { a: "rgba(185,239,220,.14)", b: "rgba(143,224,198,.07)", c: "rgba(25,65,68,.30)" },
+  dunkel: { a: "rgba(185,239,220,.14)", b: "rgba(143,224,198,.07)", c: "rgba(25,65,68,.22)" },
 };
 
 export const V4_SCHATTEN = {
@@ -105,9 +107,9 @@ export function v4AlsAltePalette(thema) {
     text: f.text, dim: f.dim, dimmer: f.dim, aus: f.aus,
     line: f.line, lineSoft: f.lineSoft, lineStark: f.lineStark, steuer: f.steuer,
     aufAkzent: f.aufAkzent,
-    accent: f.accent, accentHi: f.accentHi, accentOrig: f.accentHi,
+    accent: f.accent, accentHi: f.accentHi, accentOrig: f.akzentAufDunkel,
     accentDeep: f.accentDeep, accentLight: f.accentLight,
-    accentGlanz: f.accentHi, marke: f.marke,
+    accentGlanz: f.akzentAufDunkel, marke: f.marke,
     ok: f.ok, warn: f.warn, danger: f.danger, violet: f.info,
     okLight: f.okLight, warnLight: f.warnLight, dangerLight: f.dangerLight,
     verlaufA: v.a, verlaufB: v.b, verlaufC: v.c,

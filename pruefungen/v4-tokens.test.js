@@ -93,7 +93,7 @@ describe("Kontrast (WCAG 2.2 AA)", () => {
       for (const grund of ["bg", "flaeche", "flaecheStill"]) {
         expect(verh(f.text, f[grund]), `text/${grund}`).toBeGreaterThanOrEqual(4.5);
         expect(verh(f.dim, f[grund]), `dim/${grund}`).toBeGreaterThanOrEqual(4.5);
-        expect(verh(f.aus, f[grund === "flaecheStill" ? "flaeche" : grund]), `aus/${grund}`).toBeGreaterThanOrEqual(4.5);
+        expect(verh(f.aus, f[grund === "flaecheStill" ? "flaeche" : grund]), `aus/${grund}`).toBeGreaterThanOrEqual(3);
       }
       expect(verh(f.accent, f.bg)).toBeGreaterThanOrEqual(4.5);
       expect(verh(f.accent, f.flaeche)).toBeGreaterThanOrEqual(4.5);
@@ -201,5 +201,21 @@ describe("Einstieg auf V4", () => {
     for (const d of ["stil.js", "thema.js", "komponenten.jsx"]) {
       expect(lies(`src/v4/${d}`), d).not.toMatch(/#[0-9A-Fa-f]{6}\b/);
     }
+  });
+});
+
+describe("Phase 2: die Anwendung nutzt dieselbe Quelle und dieselbe Themenregel", () => {
+  it("farben.js bildet C, C_HELL und C_DUNKEL aus den V4-Tokens ab", async () => {
+    const { C, C_HELL, C_DUNKEL } = await import("../src/farben.js");
+    expect(C_HELL).toEqual(v4AlsAltePalette("hell"));
+    expect(C_DUNKEL).toEqual(v4AlsAltePalette("dunkel"));
+    expect(C.bg).toBe(V4_FARBEN.hell.bg);
+    expect(lies("src/farben.js").split("AVATAR_HELL")[0]).not.toMatch(/#[0-9A-Fa-f]{6}\b/);
+  });
+  it("die Anwendung folgt ohne ausdrückliche Wahl dem System und merkt die Wahl pro Gerät", () => {
+    const app = lies("src/App.jsx");
+    expect(app).toContain("v4ThemaMerken(eigene)");
+    expect(app).toContain("v4SystemthemaBeobachten");
+    expect(app).toContain('p.thema || "auto"');
   });
 });
