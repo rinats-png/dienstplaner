@@ -73,6 +73,7 @@ beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-rollen-eintritt-"));
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
+  process.env.CENTRIC_DEMO = "true"; /* Der Demozugang ist ab Werk aus; dieser Test prüft ihn im eingeschalteten Zustand. */
   process.env.CENTRIC_PFEFFER = "pfeffer-nur-zum-pruefen-0123456789";
   delete process.env.REDIS_REST_URL;
   delete process.env.REDIS_REST_TOKEN;
