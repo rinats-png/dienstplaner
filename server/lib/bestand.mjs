@@ -827,7 +827,7 @@ function teileGeprueft(teile, kernAlt) {
  * @returns {Promise<object>} { ok: true, stand, geschrieben, epoche } oder
  *   { ok: false, grund: "konflikt" | "epoche" | "unbestimmt", stand?, epoche? }
  */
-export function teileSchreiben(store, raum, teile, opt = {}) {
+export function teileSchreiben(store, raum, teile, opt = /** @type {any} */ ({})) {
   const { erwarteterStand, erwarteteEpoche } = opt;
   if (erwarteterStand === null || erwarteterStand === undefined || !Number.isFinite(Number(erwarteterStand)))
     return Promise.reject(new Error("teileSchreiben: erwarteterStand fehlt"));
