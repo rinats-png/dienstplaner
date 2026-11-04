@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, chmodSync, rmSync, symlinkSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync, chmodSync, rmSync, symlinkSync, cpSync, appendFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -46,6 +46,15 @@ ziel=""; prev=""
 for a in "$@"; do [ "$prev" = "--output" ] && ziel="$a"; prev="$a"; done
 [ -n "$ziel" ] && cp "$FAKE_ARCHIV" "$ziel"
 exit 0
+`;
+
+// getent: www.* aufloesbar (Vorgabe) oder, mit FAKE_WWW_DNS=0, nicht.
+const GETENT = `#!/bin/bash
+if [ "$1" = ahosts ]; then
+  case "$2" in www.*) [ "\${FAKE_WWW_DNS:-1}" = 1 ] || exit 2 ;; esac
+  echo "192.0.2.1 STREAM $2"; exit 0
+fi
+exit 2
 `;
 
 let wurzel, skripte, arbeit, log;
@@ -89,7 +98,8 @@ beforeEach(() => {
   writeFileSync(join(skripte, "website-zurueck.sh"), "#!/bin/bash\n");
   writeFileSync(join(skripte, "DIST-QUELLE.txt"), "# leer\n");
   writeFileSync(join(wurzel, "bin", "curl"), CURL);
-  for (const f of [join(skripte, "website-vorpruefung.sh"), join(skripte, "website-ausliefern.sh"), join(wurzel, "bin", "curl")]) chmodSync(f, 0o755);
+  writeFileSync(join(wurzel, "bin", "getent"), GETENT);
+  for (const f of [join(skripte, "website-vorpruefung.sh"), join(skripte, "website-ausliefern.sh"), join(wurzel, "bin", "curl"), join(wurzel, "bin", "getent")]) chmodSync(f, 0o755);
 });
 afterEach(() => { rmSync(wurzel, { recursive: true, force: true }); });
 
@@ -219,6 +229,100 @@ dl("website-konsole.sh: lokales Archiv", () => {
     const r = lauf({ args: [sh(join(arbeit, "gibtsnicht.tgz"))] });
     expect(r.code).toBe(1);
     expect(r.aus).toContain("Archiv nicht gefunden");
+  });
+});
+
+// Die Skripte als Git-Repository (deploy/website), damit der Kopf-Hash ermittelt werden kann.
+function repoAufbauen() {
+  const repo = join(wurzel, "repo");
+  const ziel = join(repo, "deploy", "website");
+  mkdirSync(ziel, { recursive: true });
+  cpSync(skripte, ziel, { recursive: true });
+  const git = (...a) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...a], { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error("git " + a.join(" ") + ": " + r.stderr);
+    return r.stdout.trim();
+  };
+  git("init", "-q");
+  git("add", "-A");
+  git("commit", "-q", "-m", "stand");
+  skripte = ziel;
+  return { repo, kopf: git("rev-parse", "HEAD"), git };
+}
+
+dl("website-konsole.sh: Skriptstand, www, Kontrollbefehle (A1, B12, www)", () => {
+  it("im Git-Klon: 'Skriptstand: <hash>' (voll) und Kurz-Hash in der Zusammenfassung und vor der JA-Frage", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    const { kopf } = repoAufbauen();
+    const r = lauf({ args: [sh(a)] });
+    expect(r.code, r.aus).toBe(0);
+    expect(r.aus).toContain(`Skriptstand: ${kopf}`);
+    expect(r.aus).toContain(`  Skriptstand: ${kopf.slice(0, 12)}`);
+    expect(r.aus).toContain(`mit dem Kurz-Hash in der Anweisung`);
+    expect(r.aus).toMatch(/JA gilt nur bei uebereinstimmendem Skriptstand/);
+    // die Frage kommt erst NACH der Anzeige des Skriptstands
+    expect(r.aus.indexOf("Skriptstand:")).toBeLessThan(r.aus.indexOf("JA gilt nur"));
+  });
+
+  it("ERWARTETER_KOPF: passender Anfang -> weiter; abweichender -> Abbruch ohne ausliefern; kein Hash -> Abbruch", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    const { kopf } = repoAufbauen();
+    const ok = lauf({ args: [sh(a)], env: { ERWARTETER_KOPF: kopf.slice(0, 10) } });
+    expect(ok.code, ok.aus).toBe(0);
+    expect(ok.aus).toContain("stimmt mit ERWARTETER_KOPF ueberein");
+    const falsch = lauf({ args: [sh(a)], env: { ERWARTETER_KOPF: "0".repeat(10) } });
+    expect(falsch.code).toBe(1);
+    expect(falsch.aus).toContain("stimmt nicht mit ERWARTETER_KOPF");
+    expect(falsch.log).not.toContain("ausliefern");
+    const murks = lauf({ args: [sh(a)], env: { ERWARTETER_KOPF: "abc; rm" } });
+    expect(murks.code).toBe(1);
+    expect(murks.log).not.toContain("ausliefern");
+  });
+
+  it("lokal veraenderter Klon: Abbruch ohne ausliefern", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    repoAufbauen();
+    appendFileSync(join(skripte, "website-ausliefern.sh"), "# manipuliert\n");
+    const r = lauf({ args: [sh(a)] });
+    expect(r.code).toBe(1);
+    expect(r.aus).toContain("lokal veraendert");
+    expect(r.log).not.toContain("ausliefern");
+  });
+
+  it("ohne Git-Stand (kopierte Skripte): 'Skriptstand: unbekannt ...' wird angezeigt, kein Absturz", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    const r = lauf({ args: [sh(a)] });
+    expect(r.code, r.aus).toBe(0);
+    expect(r.aus).toContain("Skriptstand: unbekannt");
+  });
+
+  it("www ohne DNS: Zusammenfassung und Schluss melden es mit dem Befehl zum erneuten Ausfuehren", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    const r = lauf({ args: [sh(a)], env: { FAKE_WWW_DNS: "0" } });
+    expect(r.code, r.aus).toBe(0);
+    expect(r.aus).toContain("noch kein DNS-Eintrag - Weiterleitung wird weggelassen");
+    expect(r.aus).toContain("www hat noch keinen DNS-Eintrag - nach dem Eintrag diesen Befehl erneut ausfuehren: bash ");
+    expect(r.aus).toContain("website-konsole.sh");
+    const mit = lauf({ args: [sh(a)], env: { FAKE_WWW_DNS: "1" } });
+    expect(mit.code, mit.aus).toBe(0);
+    expect(mit.aus).toContain("DNS-Eintrag vorhanden");
+    expect(mit.aus).not.toContain("www hat noch keinen DNS-Eintrag");
+  });
+
+  it("B12: Kontrollbefehle enthalten curl -sI .../x (404 mit Kopfzeilen)", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    const r = lauf({ args: [sh(a)] });
+    expect(r.aus).toContain("curl -sI https://centric-dienstplanung.de/x");
+    expect(r.aus).toContain("404");
+    expect(r.aus).toContain("Strict-Transport-Security");
+  });
+
+  it("WARNUNG/HINWEIS der Vorpruefung werden angezeigt, ohne abzubrechen", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    writeFileSync(join(skripte, "website-vorpruefung.sh"), '#!/bin/bash\necho "  WARNUNG: /config fehlt"\necho "VARIANTE B PASST ZUM BESTAETIGTEN STAND"\nexit 0\n');
+    const r = lauf({ args: [sh(a)] });
+    expect(r.code, r.aus).toBe(0);
+    expect(r.aus).toContain("WARNUNG: /config fehlt");
   });
 });
 

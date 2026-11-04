@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync,
-  lstatSync, statSync, readlinkSync, chmodSync, utimesSync,
+  lstatSync, statSync, readlinkSync, chmodSync, utimesSync, symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -67,6 +67,9 @@ case "$1" in
           *) echo "$aufg" ;;
         esac
         exit 0 ;;
+      cat)
+        [ -f "$FAKE_CADDYFILE" ] || exit 1
+        cat "$FAKE_CADDYFILE"; exit 0 ;;
       grep)
         args=("$@"); unset 'args[\${#args[@]}-1]'; shift
         [ -f "$FAKE_CADDYFILE" ] || exit 2
@@ -74,10 +77,29 @@ case "$1" in
       caddy)
         case "$2" in
           validate)
+            # --config /etc/caddy/Caddyfile = LIVE; jede andere Datei = Probekopie (PRUEF), deren sites/
+            # neben ihr liegt (wie "import sites/*.caddy": relativ zur importierenden Datei)
+            cfg="$4"
+            if [ "$cfg" = /etc/caddy/Caddyfile ]; then art=LIVE; sdir="$FAKE_SITES"
+            else
+              art=PRUEF
+              real="$(host_pfad "$cfg")" || { echo "Error: $cfg nicht gefunden (attrappe)" >&2; exit 1; }
+              [ -f "$real" ] || { echo "Error: $cfg nicht gefunden (attrappe)" >&2; exit 1; }
+              sdir="$(dirname "$real")/sites"
+            fi
             # wie "import sites/*.caddy": nur direkte Kinder, die auf .caddy enden
-            nam=""; for f in "$FAKE_SITES"/*.caddy; do [ -f "$f" ] && nam="$nam $(basename "$f")"; done
+            nam=""; for f in "$sdir"/*.caddy; do [ -f "$f" ] && nam="$nam $(basename "$f")"; done
             echo "IMPORT:$nam" >> "$FAKE_LOG"
+            if [ -f "$FAKE_SITES/centric-dienstplanung.de.caddy" ]; then lv=1; else lv=0; fi
+            echo "VALIDATE-$art eigene-datei-live=$lv" >> "$FAKE_LOG"
+            # Prozess hart beenden (SIGKILL/Stromausfall) beim ersten validate
+            [ -n "\${FAKE_KILL_BEI_VALIDATE:-}" ] && { kill -KILL $PPID; exit 1; }
+            # Signale an das Skript, sobald schon neu geladen wurde (= waehrend des Rollbacks)
+            if [ -n "\${FAKE_SIGNAL_NACH_RELOAD:-}" ] && grep -q "caddy reload" "$FAKE_LOG"; then
+              kill -s "$FAKE_SIGNAL_NACH_RELOAD" $PPID; sleep 0.2; kill -s "$FAKE_SIGNAL_NACH_RELOAD" $PPID; sleep 0.2
+            fi
             [ "\${FAKE_VALIDATE_FAIL:-0}" = 1 ] && { echo "Error: Caddyfile (attrappe)" >&2; exit 1; }
+            [ "$art" = PRUEF ] && [ "\${FAKE_VALIDATE_FAIL_PRUEF:-0}" = 1 ] && { echo "Error: Probekopie (attrappe)" >&2; exit 1; }
             exit 0 ;;
           adapt)
             if [ -f "$FAKE_SITES/centric-dienstplanung.de.caddy" ] && [ "\${FAKE_ADAPT_EMPTY:-0}" != 1 ]; then
@@ -106,6 +128,43 @@ if [ -n "$FAKE_DF_KB" ]; then
 else
   command -p df "$@"
 fi
+`;
+
+// getent: www.* ist per DNS aufloesbar (Vorgabe) oder nicht (FAKE_WWW_DNS=0); ahostsv6 liefert nur den
+// IPv4-gemappten Eintrag, ausser FAKE_AAAA ist gesetzt (dann zusaetzlich dieser AAAA-Eintrag).
+const GETENT = `#!/bin/bash
+case "$1" in
+  ahosts)
+    case "$2" in
+      www.*) [ "\${FAKE_WWW_DNS:-1}" = 1 ] || exit 2 ;;
+    esac
+    echo "192.0.2.1 STREAM $2"; exit 0 ;;
+  ahostsv6)
+    [ -z "\${FAKE_AAAA:-}" ] || echo "$FAKE_AAAA STREAM $2"
+    echo "::ffff:192.0.2.1 STREAM $2"; exit 0 ;;
+esac
+exit 2
+`;
+const IP = `#!/bin/bash
+[ -z "\${FAKE_LOCAL_V6:-}" ] || echo "2: eth0    inet6 $FAKE_LOCAL_V6/64 scope global"
+exit 0
+`;
+// mv/cp-Attrappen: tun das Echte und senden danach ein Signal (FAKE_MV_SIGNAL_ZIEL: Ende des Zielpfads)
+// bzw. scheitern fuer eine halb kopierte Fassung (FAKE_CP_FAIL).
+const MV = `#!/bin/bash
+ziel="\${@: -1}"
+command -p mv "$@" || exit $?
+if [ -n "\${FAKE_MV_SIGNAL_ZIEL:-}" ]; then
+  case "$ziel" in *"$FAKE_MV_SIGNAL_ZIEL") kill -s TERM $PPID; sleep 0.2 ;; esac
+fi
+exit 0
+`;
+const CP = `#!/bin/bash
+ziel="\${@: -1}"
+if [ "\${FAKE_CP_FAIL:-0}" = 1 ]; then
+  case "$ziel" in */.neu-*) echo "cp: Fehler (attrappe)" >&2; exit 1 ;; esac
+fi
+command -p cp "$@"
 `;
 
 let wurzel, sites, web, dist, bin, log, caddyfile;
@@ -174,8 +233,8 @@ beforeEach(() => {
   writeFileSync(join(dist, "index.html"), "<html>start</html>");
   writeFileSync(join(dist, "404.html"), "<html>404</html>");
   writeFileSync(join(dist, "assets", "site.js"), "x");
-  writeFileSync(join(bin, "docker"), DOCKER); writeFileSync(join(bin, "curl"), CURL); writeFileSync(join(bin, "df"), DF);
-  for (const f of ["docker", "curl", "df"]) chmodSync(join(bin, f), 0o755);
+  const fakes = { docker: DOCKER, curl: CURL, df: DF, getent: GETENT, ip: IP, mv: MV, cp: CP };
+  for (const [n, inhalt] of Object.entries(fakes)) { writeFileSync(join(bin, n), inhalt); chmodSync(join(bin, n), 0o755); }
 });
 afterEach(() => {
   try { chmodSync(sites, 0o755); } catch { /* schon weg */ }
@@ -315,12 +374,14 @@ dl("website-ausliefern.sh", () => {
     expect(readFileSync(join(web, "aktuell", "index.html"), "utf8")).toBe("<html>start</html>");
   });
 
-  it("Gegenprobe-Fehler: Rollback inklusive erneutem validate und Reload (zwei Reloads insgesamt)", () => {
+  it("Gegenprobe-Fehler: Rollback inklusive erneutem validate und Reload (zwei Reloads; validate: Probekopie, live, Rollback)", () => {
     const r = ausliefern({ FAKE_MAIN_CODE: "502" });
     expect(r.code).toBe(1);
     expect(r.aus).toContain("Gegenprobe nicht bestanden");
     expect(zaehle(r.docker, /caddy reload/g)).toBe(2);
-    expect(zaehle(r.docker, /caddy validate/g)).toBe(2);
+    expect(zaehle(r.docker, /caddy validate/g)).toBe(3);
+    expect(zaehle(r.aus, /ROLLBACK \.\.\./g)).toBe(1);   // B8: Meldungen nicht doppelt
+    expect(zaehle(r.aus, /FEHLER:/g)).toBe(1);
     expect(r.aus).toContain("alter Zustand wieder geladen");
   });
 
@@ -565,5 +626,297 @@ dl("website-vorpruefung.sh", () => {
     writeFileSync(caddyfile, "{\n}\n");
     const r = lauf("website-vorpruefung.sh");
     expect(r.aus).toContain("ABWEICHUNG: keine Zeile 'import sites/*.caddy'");
+  });
+
+  it("A3: App antwortet vorab genau 200 (--resolve 127.0.0.1); sonst ABWEICHUNG mit klarer Meldung", () => {
+    const gut = lauf("website-vorpruefung.sh");
+    expect(gut.aus).toContain("OK: App antwortet vorab genau 200");
+    const r = lauf("website-vorpruefung.sh", [], { FAKE_APP_CODE: "502" });
+    expect(r.aus).toContain("ABWEICHUNG: App antwortet vorab mit 502 statt 200");
+    expect(r.aus).toContain("NICHT ausliefern");
+    expect(r.aus).not.toContain("sudo -E ./website-ausliefern.sh");
+  });
+
+  it("A4: fehlender /config-Mount ist nur eine WARNUNG (fuer die Auslieferung nicht noetig), keine ABWEICHUNG", () => {
+    const mounts = MOUNTS_SOLL(sh(sites)).split("\n").slice(1).join("\n");
+    const r = lauf("website-vorpruefung.sh", [], { FAKE_MOUNTS: mounts });
+    expect(r.aus).toContain("WARNUNG: erwartet /opt/proxy/config -> /config (rw)");
+    expect(r.aus).not.toContain("ABWEICHUNG");
+    expect(r.aus).toContain("VARIANTE B PASST ZUM BESTAETIGTEN STAND");
+    // die anderen Mounts bleiben Pflicht
+    const ohneData = MOUNTS_SOLL(sh(sites)).split("\n").filter((z) => !z.includes("|/data|")).join("\n");
+    expect(lauf("website-vorpruefung.sh", [], { FAKE_MOUNTS: ohneData }).aus).toContain("ABWEICHUNG: erwartet /opt/proxy/data");
+  });
+
+  it("DNS: www aufloesbar -> OK; sonst HINWEIS (Weiterleitung wird weggelassen); beides rein lesend", () => {
+    const vor = baum(sites);
+    expect(lauf("website-vorpruefung.sh").aus).toContain("OK: www.centric-dienstplanung.de ist per DNS aufloesbar");
+    const r = lauf("website-vorpruefung.sh", [], { FAKE_WWW_DNS: "0" });
+    expect(r.aus).toContain("HINWEIS: www.centric-dienstplanung.de hat noch keinen DNS-Eintrag");
+    expect(r.aus).toContain("VARIANTE B PASST ZUM BESTAETIGTEN STAND");
+    expect(baum(sites)).toEqual(vor);
+  });
+
+  it("AAAA-Eintrag der Hauptdomain, der nicht zu den lokalen Adressen passt: HINWEIS (DNS beim Kunden); passt er, OK; keiner: OK", () => {
+    const fremd = lauf("website-vorpruefung.sh", [], { FAKE_AAAA: "2001:DB8::5" });
+    expect(fremd.aus).toContain("HINWEIS: centric-dienstplanung.de hat einen AAAA-Eintrag (2001:db8::5), der nicht zu den lokalen Adressen");
+    expect(fremd.aus).toContain("DNS beim Kunden");
+    expect(fremd.aus).not.toContain("ABWEICHUNG");
+    const eigen = lauf("website-vorpruefung.sh", [], { FAKE_AAAA: "2001:DB8::5", FAKE_LOCAL_V6: "2001:db8::5" });
+    expect(eigen.aus).toContain("OK: AAAA-Eintrag von centric-dienstplanung.de (2001:db8::5) gehoert zu diesem Server");
+    expect(eigen.aus).not.toContain("AAAA-Eintrag (");
+    expect(lauf("website-vorpruefung.sh").aus).toContain("OK: kein AAAA-Eintrag");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Auflagen des unabhaengigen Reviews (B1-B8, www). Je Befund ein roter Test bei Sabotage.
+// ---------------------------------------------------------------------------------------------
+dl("Auflagen: Vorab-Validierung (B1)", () => {
+  const eigene = () => join(sites, "centric-dienstplanung.de.caddy");
+
+  it("die neue Datei wird in einer Probekopie validiert, bevor sie in sites/ liegt; danach validate live; Reihenfolge Probe < live < reload", () => {
+    const r = ausliefern();
+    expect(r.code, r.aus).toBe(0);
+    const z = r.docker.split("\n");
+    const probe = z.findIndex((l) => l.startsWith("VALIDATE-PRUEF"));
+    const live = z.findIndex((l) => l.startsWith("VALIDATE-LIVE"));
+    const reload = z.findIndex((l) => l.includes("caddy reload"));
+    expect(probe).toBeGreaterThanOrEqual(0);
+    expect(probe).toBeLessThan(live);
+    expect(live).toBeLessThan(reload);
+    expect(z[probe]).toBe("VALIDATE-PRUEF eigene-datei-live=0");  // live liegt die Datei zu diesem Zeitpunkt noch nicht
+    expect(z[live]).toBe("VALIDATE-LIVE eigene-datei-live=1");
+    // die Probe sieht die neue Datei neben den uebrigen
+    expect(z[probe - 1]).toBe("IMPORT: andere.beispiel.caddy app.centric-dienstplanung.de.caddy centric-dienstplanung.de.caddy");
+    expect(r.docker).toContain("cat /etc/caddy/Caddyfile");
+    expect(r.docker).toMatch(/caddy validate --config \/etc\/caddy\/sites\/centric-website\/sicherung\/[^/]+\/pruef\/Caddyfile --adapter caddyfile/);
+  });
+
+  it("Fehler in der Probe: sites/ nie beruehrt (nie eine eigene Datei, nie eine Punktdatei), kein live-validate, kein reload", () => {
+    const vor = bestandMeta();
+    const r = ausliefern({ FAKE_VALIDATE_FAIL_PRUEF: "1" });
+    expect(r.code).toBe(1);
+    expect(r.docker).toContain("VALIDATE-PRUEF");
+    expect(r.docker).not.toContain("VALIDATE-LIVE");
+    expect(r.docker).not.toContain("caddy reload");
+    expect(existsSync(eigene())).toBe(false);
+    expect(readdirSync(sites).filter((n) => n.startsWith("."))).toEqual([]);
+    expect(bestandMeta()).toEqual(vor);
+    expect(r.aus).toContain("Probekopie");
+    expect(r.aus).toContain("NICHT neu geladen");
+  });
+
+  it("Prozess hart beendet (SIGKILL) beim ersten validate: keine ungepruefte Datei in sites/", () => {
+    const vor = bestandMeta();
+    const r = ausliefern({ FAKE_KILL_BEI_VALIDATE: "1" });
+    expect(r.code).not.toBe(0);
+    expect(r.docker).toContain("VALIDATE-PRUEF");       // das erste validate ist die Probe ...
+    expect(r.docker).not.toContain("VALIDATE-LIVE");
+    expect(existsSync(eigene())).toBe(false);            // ... und zu diesem Zeitpunkt liegt nichts Neues in sites/
+    expect(readdirSync(sites).filter((n) => n.startsWith("."))).toEqual([]);
+    expect(bestandMeta()).toEqual(vor);
+  });
+});
+
+dl("Auflagen: Abbruchsicherheit (B2, B3, B8)", () => {
+  it.each(["INT", "TERM", "HUP", "QUIT"])("B2: waehrend des Rollbacks %s (zweimal) ignoriert - Rollback laeuft zu Ende", (sig) => {
+    const r = ausliefern({ FAKE_MAIN_CODE: "502", FAKE_SIGNAL_NACH_RELOAD: sig });
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain("Gegenprobe nicht bestanden");
+    expect(r.aus).toContain("Rollback: alter Zustand wieder geladen");
+    expect(r.aus).toContain("App jetzt:");
+    expect(existsSync(join(sites, "centric-dienstplanung.de.caddy"))).toBe(false);
+    expect(existsSync(join(web, "aktuell"))).toBe(false);
+    expect(zaehle(r.aus, /ROLLBACK \.\.\./g)).toBe(1);
+  });
+
+  it.each([
+    ["Site-Datei", "centric-dienstplanung.de.caddy"],
+    ["Link aktuell", "/aktuell"],
+  ])("B3: Signal unmittelbar nach der Aktion (%s) -> der Merker war schon gesetzt, Rollback macht es rueckgaengig", (_n, ziel) => {
+    const vor = bestandMeta();
+    const r = ausliefern({ FAKE_MV_SIGNAL_ZIEL: ziel });
+    expect(r.code, r.aus).toBe(143);
+    expect(r.aus).toContain("abgebrochen (Signal TERM)");
+    expect(r.aus).toContain("ROLLBACK");
+    expect(existsSync(join(sites, "centric-dienstplanung.de.caddy"))).toBe(false);
+    expect(existsSync(join(web, "aktuell"))).toBe(false);
+    expect(readdirSync(sites).filter((n) => n.startsWith("."))).toEqual([]);
+    expect(bestandMeta()).toEqual(vor);
+  });
+
+  it("B3: Signal nach der Aktion bei vorhandener Altfassung: Altfassung und Altlink kommen zurueck", () => {
+    expect(ausliefern().code).toBe(0);
+    const siteAlt = readFileSync(join(sites, "centric-dienstplanung.de.caddy"), "utf8");
+    const linkAlt = readlinkSync(join(web, "aktuell"));
+    const r = ausliefern({ FAKE_MV_SIGNAL_ZIEL: "centric-dienstplanung.de.caddy" });
+    expect(r.code).toBe(143);
+    expect(readFileSync(join(sites, "centric-dienstplanung.de.caddy"), "utf8")).toBe(siteAlt);
+    expect(readlinkSync(join(web, "aktuell"))).toBe(linkAlt);
+  });
+
+  it("B8: Abbruch durch set -e (kein ERR-Fall der Ablauflogik): Rollback ueber die EXIT-Falle, genau eine Meldung, Reste weg", () => {
+    const vor = bestandMeta();
+    const r = ausliefern({ FAKE_CP_FAIL: "1" });
+    expect(r.code).toBe(1);
+    expect(r.aus).toContain("FEHLER: unerwarteter Abbruch");
+    expect(zaehle(r.aus, /ROLLBACK \.\.\./g)).toBe(1);
+    expect(zaehle(r.aus, /FEHLER:/g)).toBe(1);
+    expect(readdirSync(join(web, "releases")).filter((n) => n.startsWith(".neu"))).toEqual([]);
+    expect(existsSync(join(web, "aktuell"))).toBe(false);
+    expect(existsSync(join(sites, "centric-dienstplanung.de.caddy"))).toBe(false);
+    expect(bestandMeta()).toEqual(vor);
+  });
+
+  it("Erfolg: keine Rollback-Meldung, Exitcode 0 (EXIT-Falle erkennt den Erfolgsmerker)", () => {
+    const r = ausliefern();
+    expect(r.code, r.aus).toBe(0);
+    expect(r.aus).not.toContain("ROLLBACK");
+    expect(r.aus).not.toContain("FEHLER");
+  });
+});
+
+dl("Auflagen: Pfade, Links, Hostnamen (B4-B7)", () => {
+  it("B4: liegt an der Punktdatei ein Link auf die App-Datei, wird die App-Datei nicht beschrieben", () => {
+    const appPfad = join(sites, "app.centric-dienstplanung.de.caddy");
+    const st0 = statSync(appPfad);
+    symlinkSync(appPfad, join(sites, ".centric-dienstplanung.de.caddy.tmp"));
+    const r = ausliefern();
+    expect(r.code, r.aus).toBe(0);
+    const st1 = statSync(appPfad);
+    expect(readFileSync(appPfad, "utf8")).toBe(APP_INHALT);
+    expect(st1.mtimeMs).toBe(st0.mtimeMs);
+    expect(st1.mode).toBe(st0.mode);
+    const eigene = join(sites, "centric-dienstplanung.de.caddy");
+    expect(lstatSync(eigene).isFile()).toBe(true);
+    expect(readFileSync(eigene, "utf8")).toContain("file_server");
+    expect(readdirSync(sites).filter((n) => n.startsWith("."))).toEqual([]);
+  });
+
+  it("B4: auch der Rueckweg schreibt nicht ueber einen Link an der Punktdatei", () => {
+    expect(ausliefern().code).toBe(0);
+    expect(ausliefern().code).toBe(0);
+    const appPfad = join(sites, "app.centric-dienstplanung.de.caddy");
+    symlinkSync(appPfad, join(sites, ".centric-dienstplanung.de.caddy.tmp"));
+    const r = lauf("website-zurueck.sh");
+    expect(r.code, r.aus).toBe(0);
+    expect(readFileSync(appPfad, "utf8")).toBe(APP_INHALT);
+  });
+
+  it("B5: WEB_DIR_HOST, releases oder sicherung als Link -> Abbruch ohne Aenderung", () => {
+    const anderswo = join(wurzel, "anderswo");
+    mkdirSync(anderswo);
+    const faelle = [
+      () => symlinkSync(anderswo, web),
+      () => { mkdirSync(web); symlinkSync(anderswo, join(web, "releases")); },
+      () => { mkdirSync(web); symlinkSync(anderswo, join(web, "sicherung")); },
+    ];
+    for (const einrichten of faelle) {
+      rmSync(web, { recursive: true, force: true });
+      einrichten();
+      const vor = baum(sites);
+      const r = ausliefern();
+      expect(r.code, r.aus).toBe(1);
+      expect(r.aus).toContain("symbolischer Link");
+      expect(baum(sites)).toEqual(vor);
+      expect(readdirSync(anderswo)).toEqual([]);
+      expect(r.docker).not.toMatch(/caddy (validate|reload)/);
+    }
+  });
+
+  it("B5: Pfadteile '.' und '..' sowie doppelte Schraegstriche werden abgelehnt (auch bei vorhandenem Verzeichnis)", () => {
+    mkdirSync(join(web, "releases"), { recursive: true });
+    const vor = baum(sites);
+    const pfade = [
+      `${sh(web)}/releases/..`,
+      `${sh(sites)}/./centric-website`,
+      `${sh(sites)}//centric-website`,
+      `${sh(sites)}/centric-website/.`,
+    ];
+    for (const p of pfade) {
+      const r = ausliefern({ WEB_DIR_HOST: p });
+      expect(r.code, p).toBe(1);
+      expect(r.aus, p).toContain("Pfadteile");
+      expect(baum(sites)).toEqual(vor);
+    }
+    const r = ausliefern({ SITES_DIR_HOST: `${sh(sites)}/.` });
+    expect(r.code).toBe(1);
+    expect(r.aus).toContain("Pfadteile");
+  });
+
+  it.each([
+    ["HAUPT_HOST", "../x"], ["HAUPT_HOST", "Evil.de"], ["HAUPT_HOST", "a b"], ["HAUPT_HOST", "x..y"], ["HAUPT_HOST", "-x.de"], ["HAUPT_HOST", "x/y"],
+    ["APP_HOST", "../app"], ["APP_HOST", "App.de"], ["APP_HOST", "a;b"],
+  ])("B6: %s=%j wird abgelehnt, nichts geaendert", (name, wert) => {
+    const vor = baum(sites);
+    const r = ausliefern({ [name]: wert });
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain(`${name} ist kein gueltiger Hostname`);
+    expect(baum(sites)).toEqual(vor);
+    expect(existsSync(web)).toBe(false);
+  });
+
+  it.each(["/", "../x", "releases/..", "releases/a/b", "/etc", "releases/.versteckt"])("B7: vorhandener Link 'aktuell' mit Ziel %j -> Abbruch ohne Aenderung", (ziel) => {
+    expect(ausliefern().code).toBe(0);
+    rmSync(join(web, "aktuell"));
+    symlinkSync(ziel, join(web, "aktuell"));
+    const vor = baum(sites);
+    const r = ausliefern();
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain("erlaubt nur releases/<name>");
+    expect(readlinkSync(join(web, "aktuell"))).toBe(ziel);
+    expect(baum(sites)).toEqual(vor);
+  });
+
+  it.each(["/", "../x", "releases/..", "releases/a/b", "/etc/passwd"])("B7: manipuliertes aktuell.vorher %j -> Rueckweg bricht ab, nichts geaendert", (inhalt) => {
+    expect(ausliefern().code).toBe(0);
+    const stempel = readdirSync(join(web, "sicherung"))[0];
+    writeFileSync(join(web, "sicherung", stempel, "aktuell.vorher"), inhalt + "\n");
+    const linkVor = readlinkSync(join(web, "aktuell"));
+    const siteVor = readFileSync(join(sites, "centric-dienstplanung.de.caddy"), "utf8");
+    writeFileSync(log, "");
+    const r = lauf("website-zurueck.sh", [stempel]);
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain("kein gueltiges Link-Ziel");
+    expect(readlinkSync(join(web, "aktuell"))).toBe(linkVor);
+    expect(readFileSync(join(sites, "centric-dienstplanung.de.caddy"), "utf8")).toBe(siteVor);
+    expect(r.docker).not.toMatch(/caddy (validate|reload)/);
+  });
+});
+
+dl("Auflagen: www-Block nur mit DNS (B13/A2)", () => {
+  const site = () => readFileSync(join(sites, "centric-dienstplanung.de.caddy"), "utf8");
+
+  it("www per DNS aufloesbar: Weiterleitung ist in der Site-Datei", () => {
+    const r = ausliefern({ FAKE_WWW_DNS: "1" });
+    expect(r.code, r.aus).toBe(0);
+    expect(site()).toContain("www.centric-dienstplanung.de {");
+    expect(site()).toContain("redir https://centric-dienstplanung.de{uri} permanent");
+    expect(r.aus).toContain("Weiterleitung (301) wird eingerichtet");
+  });
+
+  it("www ohne DNS: Site-Datei OHNE www-Block, Hauptdomain vollstaendig; klare Meldung zum Wiederholen", () => {
+    const r = ausliefern({ FAKE_WWW_DNS: "0" });
+    expect(r.code, r.aus).toBe(0);
+    expect(site()).not.toContain("www.centric-dienstplanung.de {");
+    expect(site()).not.toContain("redir ");
+    expect(site()).not.toContain("WWW-BEGIN");
+    expect(site()).toMatch(/^centric-dienstplanung\.de \{$/m);
+    expect(site()).toContain("file_server");
+    expect(site()).toContain("root * /etc/caddy/sites/centric-website/aktuell");
+    expect(r.aus).toContain("hat noch keinen DNS-Eintrag");
+    expect(r.aus).toContain("diesen Befehl erneut ausfuehren");
+  });
+
+  it("Wiederholung nach dem DNS-Eintrag ist idempotent: der www-Block kommt hinzu, der Rest bleibt gleich", () => {
+    expect(ausliefern({ FAKE_WWW_DNS: "0" }).code).toBe(0);
+    const ohne = site();
+    expect(ausliefern({ FAKE_WWW_DNS: "1" }).code).toBe(0);
+    const mit = site();
+    expect(mit).toContain("www.centric-dienstplanung.de {");
+    expect(mit.replace(/# WWW-BEGIN[\s\S]*?# WWW-ENDE\n/, "")).toBe(ohne);
+    expect(ausliefern({ FAKE_WWW_DNS: "1" }).code).toBe(0);
+    expect(site()).toBe(mit);
   });
 });

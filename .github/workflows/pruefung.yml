@@ -46,6 +46,17 @@ jobs:
       - name: Website-Auslieferung
         run: npm run pruefung:website
 
+      # Die echte Site-Datei der Hauptwebsite mit dem echten Caddy: validate und
+      # adapt (mit und ohne www-Block) samt "import sites/*.caddy" und einer
+      # Attrappen-App-Site, dazu ein Rauchtest gegen ein Dummy-dist (200, 404 mit
+      # eigener Seite und Kopfzeilen, 301 fuer www). Kein Netz zu Dritten; dasselbe
+      # per Digest gepinnte Bild wie der Job caddy-vorlage in lieferkette.yml
+      # (caddy:2-alpine, 2.11.7).
+      - name: Website-Site mit echtem Caddy
+        env:
+          CADDY_BILD: caddy:2-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+        run: bash pruefungen/website-caddy.sh
+
       # Der Regelkern: Ruhezeiten, Ausgleichszeitraum, Schutzvorschriften.
       # Läuft ohne Server in Millisekunden.
       - name: Regelwerk

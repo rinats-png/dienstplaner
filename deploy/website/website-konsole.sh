@@ -24,6 +24,29 @@ if grep -q "ABWEICHUNG" <<< "$VP_AUS" || ! grep -q "PASST ZUM BESTAETIGTEN STAND
   ende "Vorpruefung: ABWEICHUNG vom bestaetigten Stand. Ausgabe melden."
 fi
 echo "    Vorpruefung: PASST"
+grep -E "WARNUNG|HINWEIS" <<< "$VP_AUS" | sed 's/^ */    /' || true
+
+# --- a2) Skriptstand (A1): Kopf-Hash des eigenen Repositorys. Der Betreiber gleicht den Kurz-Hash mit der
+# Anweisung ab; JA gilt nur dann. Optional erzwingt ERWARTETER_KOPF=<hash oder Anfang> den Abgleich selbst.
+KOPF="unbekannt (kein Git-Stand)"
+if command -v git >/dev/null 2>&1; then
+  TOP="$(git -C "$SKRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$TOP" ] && [ "$(cd "$TOP/deploy/website" 2>/dev/null && pwd -P)" = "$(cd "$SKRIPT_DIR" && pwd -P)" ]; then
+    KOPF="$(git -C "$SKRIPT_DIR" rev-parse HEAD 2>/dev/null || echo unbekannt)"
+    if [ -n "$(git -C "$SKRIPT_DIR" status --porcelain 2>/dev/null)" ]; then
+      ende "Das Skript-Repository $TOP ist lokal veraendert (git status). Frisch klonen: rm -rf $TOP und den Klon-Befehl der Anweisung erneut ausfuehren."
+    fi
+  fi
+fi
+if [[ "$KOPF" =~ ^[0-9a-f]{40}$ ]]; then KOPF_KURZ="${KOPF:0:12}"; else KOPF_KURZ="$KOPF"; fi
+echo "Skriptstand: $KOPF"
+if [ -n "${ERWARTETER_KOPF:-}" ]; then
+  [[ "$ERWARTETER_KOPF" =~ ^[0-9a-f]{7,40}$ ]] || ende "ERWARTETER_KOPF ist kein Git-Hash."
+  case "$KOPF" in
+    "$ERWARTETER_KOPF"*) echo "    Skriptstand stimmt mit ERWARTETER_KOPF ueberein." ;;
+    *) ende "Skriptstand $KOPF stimmt nicht mit ERWARTETER_KOPF $ERWARTETER_KOPF ueberein." ;;
+  esac
+fi
 
 # --- b) Soll-Pruefsumme und Quelle
 SOLL=""
@@ -84,7 +107,14 @@ echo "  sha256:     $IST (stimmt mit DIST-SHA256.txt)"
 echo "  Dateien:    $ANZAHL"
 echo "  Geaendert:  nur $SITES/centric-dienstplanung.de.caddy und $SITES/centric-website/"
 echo "  Sicherung und Rollback automatisch; die App-Datei bleibt unberuehrt."
-printf 'Zum Ausliefern JA eintippen (alles andere bricht ab): '
+echo "  Skriptstand: $KOPF_KURZ"
+if getent ahosts "www.centric-dienstplanung.de" >/dev/null 2>&1; then
+  echo "  www:        DNS-Eintrag vorhanden - Weiterleitung auf die Hauptdomain wird eingerichtet."
+else
+  echo "  www:        noch kein DNS-Eintrag - Weiterleitung wird weggelassen (spaeter wiederholen)."
+fi
+echo "Vergleichen Sie den Skriptstand ($KOPF_KURZ) mit dem Kurz-Hash in der Anweisung. Stimmt er nicht, NICHT bestaetigen."
+printf 'JA gilt nur bei uebereinstimmendem Skriptstand. Zum Ausliefern JA eintippen (alles andere bricht ab): '
 ANTWORT=""
 read -r ANTWORT || true
 echo ""
@@ -94,5 +124,11 @@ echo ""
 echo "4/4 Ausliefern ..."
 bash "$SKRIPT_DIR/website-ausliefern.sh" "$ZIEL" || { echo "FEHLER beim Ausliefern; siehe Meldungen oben (Rollback erfolgte automatisch)." >&2; exit 1; }
 echo ""
-echo "FERTIG. Kontrolle: curl -sI https://centric-dienstplanung.de  und  curl -sI https://app.centric-dienstplanung.de  (je HTTP 200)."
+echo "FERTIG. Kontrolle (von aussen):"
+echo "  curl -sI https://centric-dienstplanung.de        (HTTP 200)"
+echo "  curl -sI https://app.centric-dienstplanung.de    (HTTP 200)"
+echo "  curl -sI https://centric-dienstplanung.de/x      (HTTP 404, und auch hier die Sicherheits-Kopfzeilen: Strict-Transport-Security, X-Content-Type-Options, Content-Security-Policy)"
+if ! getent ahosts "www.centric-dienstplanung.de" >/dev/null 2>&1; then
+  echo "www hat noch keinen DNS-Eintrag - nach dem Eintrag diesen Befehl erneut ausfuehren: bash $SKRIPT_DIR/website-konsole.sh"
+fi
 echo "Rueckweg: bash $SKRIPT_DIR/website-zurueck.sh"

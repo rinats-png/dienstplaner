@@ -17,6 +17,7 @@ say() { echo "$*"; }
 gut() { echo "  OK: $*"; }
 abw() { echo "  ABWEICHUNG: $*"; ok=0; }
 hinweis() { echo "  HINWEIS: $*"; }
+warnung() { echo "  WARNUNG: $*"; }
 
 say "== Container '$CADDY_CONTAINER'"
 if [ "$(docker inspect -f '{{.State.Running}}' "$CADDY_CONTAINER" 2>/dev/null)" != "true" ]; then
@@ -30,7 +31,12 @@ echo "$MOUNTS" | sed 's/^/    /'
 soll() { # Quelle Ziel Modus
   if echo "$MOUNTS" | grep -q -x -F "$1|$2|$3"; then gut "$1 -> $2 ($3)"; else abw "erwartet $1 -> $2 ($3)"; fi
 }
-soll "$PROXY_DIR_HOST/config" /config rw
+# A4: /config ist fuer die Auslieferung nicht noetig (nur Caddys Autosave) - fehlt der Mount, nur WARNUNG.
+if echo "$MOUNTS" | grep -q -x -F "$PROXY_DIR_HOST/config|/config|rw"; then
+  gut "$PROXY_DIR_HOST/config -> /config (rw)"
+else
+  warnung "erwartet $PROXY_DIR_HOST/config -> /config (rw) - fuer die Auslieferung nicht noetig, bitte trotzdem melden"
+fi
 soll "$PROXY_DIR_HOST/data" /data rw
 soll "$PROXY_DIR_HOST/Caddyfile" "$CADDYFILE_CONTAINER" ro
 soll "$SITES_DIR_HOST" "$SITES_DIR_CONTAINER" ro
@@ -68,6 +74,41 @@ if [ -d "$SITES_DIR_HOST" ]; then
   if [ -e "$WEB_DIR_HOST" ]; then hinweis "$WEB_DIR_HOST existiert bereits (frueherer Lauf?)"; else gut "$WEB_DIR_HOST wird vom Skript selbst angelegt"; fi
 else
   abw "$SITES_DIR_HOST existiert nicht"
+fi
+
+say "== App (A3)"
+if command -v curl >/dev/null 2>&1; then
+  APP_CODE="$(http_code "$APP_HOST" /)"
+  if [ "$APP_CODE" = "200" ]; then
+    gut "App antwortet vorab genau 200 (https://$APP_HOST/ ueber --resolve 127.0.0.1)"
+  else
+    abw "App antwortet vorab mit $APP_CODE statt 200 (https://$APP_HOST/ ueber --resolve 127.0.0.1) - erst die App klaeren, nichts ausliefern"
+  fi
+else
+  abw "curl fehlt - die App kann vorab nicht geprueft werden"
+fi
+
+say "== DNS (rein lesend)"
+if www_aufloesbar; then
+  gut "www.$HAUPT_HOST ist per DNS aufloesbar (die Weiterleitung wird mit eingerichtet)"
+else
+  hinweis "www.$HAUPT_HOST hat noch keinen DNS-Eintrag - die Weiterleitung wird weggelassen; nach dem Eintrag das Ausliefern wiederholen"
+fi
+AAAA=""
+if command -v getent >/dev/null 2>&1; then
+  AAAA="$(getent ahostsv6 "$HAUPT_HOST" 2>/dev/null | awk '{print tolower($1)}' | grep -v '^::ffff:' | sort -u || true)"
+fi
+if [ -n "$AAAA" ]; then
+  LOKAL="$( { ip -o -6 addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1; hostname -I 2>/dev/null | tr ' ' '\n'; } | tr 'A-F' 'a-f' | sort -u || true)"
+  for a in $AAAA; do
+    if echo "$LOKAL" | grep -q -x -F "$a"; then
+      gut "AAAA-Eintrag von $HAUPT_HOST ($a) gehoert zu diesem Server"
+    else
+      hinweis "$HAUPT_HOST hat einen AAAA-Eintrag ($a), der nicht zu den lokalen Adressen dieses Servers passt. Let's Encrypt prueft bevorzugt IPv6 - das Zertifikat kann scheitern (z. B. IONOS-Parking). Bitte DNS beim Kunden klaeren (AAAA entfernen oder auf diesen Server richten)."
+    fi
+  done
+else
+  gut "kein AAAA-Eintrag fuer $HAUPT_HOST (oder nicht ermittelbar) - IPv6-Pruefung von Let's Encrypt unkritisch"
 fi
 
 say "== Ergebnis"

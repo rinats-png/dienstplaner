@@ -25,7 +25,7 @@ cd ..
 sha256sum centric-website-dist.tgz
 ```
 
-(Der Zeitstempel ist ein fester Wert und darf bei jedem Bau gleich bleiben.) Referenzstand: 36 Dateien, 498032 Bytes,
+(Der Zeitstempel ist ein fester Wert und darf bei jedem Bau gleich bleiben.) Referenzstand: 32 Dateien in 4 Verzeichnissen, 498032 Bytes,
 sha256 `69f51e7031e0ea22bae9d542bbbd29904306cdb8b88409163fcfdb3cac6684c8`. Weicht die Summe bei unveraendertem `dist/`
 ab, liegt es meist an einer anderen tar-/gzip-Version; die Summe, die ausgeliefert wird, ist immer die in `DIST-SHA256.txt`.
 

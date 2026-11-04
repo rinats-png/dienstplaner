@@ -29,6 +29,8 @@ SICH="$WEB_DIR_HOST/sicherung/$STEMPEL"
 
 LINK_VORHER="$(head -n 1 "$SICH/aktuell.vorher")"
 if [ -n "$LINK_VORHER" ]; then
+  # B7: der Inhalt der Sicherungsdatei wird zum Link-Ziel - nur releases/<name> ist erlaubt.
+  link_ziel_gueltig "$LINK_VORHER" || fehler_ende "Sicherung $SICH: aktuell.vorher enthaelt kein gueltiges Link-Ziel (erlaubt nur releases/<name>): '$LINK_VORHER'. Nichts geaendert."
   [ -d "$WEB_DIR_HOST/$LINK_VORHER" ] || fehler_ende "Vorherige Fassung fehlt: $WEB_DIR_HOST/$LINK_VORHER"
 fi
 

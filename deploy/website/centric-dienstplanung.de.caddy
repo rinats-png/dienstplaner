@@ -20,9 +20,13 @@
 #  Bilder. Das Kontaktformular baut eine mailto:-Nachricht (kein Versand).
 # =====================================================================
 
+# WWW-BEGIN
+# Dieser Abschnitt bleibt nur, wenn www.centric-dienstplanung.de per DNS aufloesbar ist; sonst laesst
+# website-ausliefern.sh ihn weg (Caddy wuerde sonst fuer einen unaufloesbaren Namen Zertifikate versuchen).
 www.centric-dienstplanung.de {
 	redir https://centric-dienstplanung.de{uri} permanent
 }
+# WWW-ENDE
 
 centric-dienstplanung.de {
 	root * /srv/centric-website/aktuell

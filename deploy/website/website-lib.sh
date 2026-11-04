@@ -40,6 +40,15 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 meldung() { echo "$*"; }
 fehler_ende() { echo "FEHLER: $*" >&2; exit 1; }
 SKRIPT_NAME="$(basename "${0:-skript}")"
+# B6: HAUPT_HOST/APP_HOST kommen aus der Umgebung und bilden Dateinamen (SITE_DATEI) - nur gewoehnliche
+# Kleinbuchstaben-Hostnamen, nie '..', '/', Leerzeichen.
+for _h in HAUPT_HOST APP_HOST; do
+  _w="${!_h}"
+  if ! [[ "$_w" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || [[ "$_w" == *..* ]]; then
+    fehler_ende "$_h ist kein gueltiger Hostname (nur a-z, 0-9, Punkt, Bindestrich; kein '..'): $_w"
+  fi
+done
+unset _h _w
 SUDO_HINWEIS="mit 'sudo -E' ausfuehren: sudo -E ./$SKRIPT_NAME ..."
 
 # Freier Platz in KB (df -P) fuer den Ordner, in dem geschrieben wird.
@@ -58,6 +67,10 @@ einstellungen_pruefen() {
     [ -n "$w" ] || fehler_ende "$v ist leer."
     [[ "$w" == /* ]] || fehler_ende "$v muss ein absoluter Pfad sein: $w"
     [[ "$w" =~ ^[A-Za-z0-9_./-]+$ ]] || fehler_ende "$v enthaelt Leerzeichen oder Sonderzeichen: $w"
+    # B5: kein Pfadteil '.' oder '..', keine doppelten Schraegstriche
+    if [[ "$w" =~ (^|/)\.\.?(/|$) ]] || [[ "$w" == *//* ]]; then
+      fehler_ende "$v darf keine Pfadteile '.' oder '..' und keine doppelten Schraegstriche enthalten: $w"
+    fi
   done
   [ -d "$SITES_DIR_HOST" ] || fehler_ende "SITES_DIR_HOST existiert nicht als Verzeichnis: $SITES_DIR_HOST"
   [ "$SITES_DIR_HOST" != "$WEB_DIR_HOST" ] || fehler_ende "SITES_DIR_HOST und WEB_DIR_HOST duerfen nicht gleich sein."
@@ -73,6 +86,13 @@ einstellungen_pruefen() {
       *) fehler_ende "WEB_DIR_HOST existiert nicht und liegt nicht unter SITES_DIR_HOST: $WEB_DIR_HOST" ;;
     esac
   fi
+  # B5: WEB_DIR_HOST, releases und sicherung duerfen keine symbolischen Links sein (sonst landen
+  # Fassungen und Sicherungen an einem unbeabsichtigten Ort).
+  local d
+  for d in "$WEB_DIR_HOST" "$WEB_DIR_HOST/releases" "$WEB_DIR_HOST/sicherung"; do
+    [ ! -L "$d" ] || fehler_ende "$d ist ein symbolischer Link - nicht erlaubt. Nichts geaendert."
+    [ ! -e "$d" ] || [ -d "$d" ] || fehler_ende "$d existiert, ist aber kein Verzeichnis. Nichts geaendert."
+  done
   [[ "$WEB_ROOT_CONTAINER" =~ ^/[A-Za-z0-9_./-]+$ ]] || fehler_ende "WEB_ROOT_CONTAINER ungueltig: $WEB_ROOT_CONTAINER"
   WEB_ROOT_CONTAINER="${WEB_ROOT_CONTAINER%/}"
   [[ "$GEGENPROBE_VERSUCHE" =~ ^[0-9]+$ && "$GEGENPROBE_PAUSE" =~ ^[0-9]+$ && "$PLATZ_RESERVE_KB" =~ ^[0-9]+$ ]] \
@@ -168,7 +188,11 @@ gegenprobe() {
 # Die eigene Site-Datei atomar in den Sites-Ordner legen (nur diese eine Datei; lesbar fuer den Container).
 site_datei_installieren() {
   local quelle="$1" tmp="$SITES_DIR_HOST/.$SITE_DATEI.tmp"
-  cp "$quelle" "$tmp" && chmod u=rw,go=r "$tmp" && mv -f "$tmp" "$SITES_DIR_HOST/$SITE_DATEI"
+  # B4: Punktdatei vorher entfernen und per Noclobber (O_EXCL) neu anlegen - ein dort liegender
+  # Link wird nie verfolgt (die App-Datei bleibt unberuehrt).
+  rm -f "$tmp" || return 1
+  ( set -C; cat "$quelle" > "$tmp" ) || return 1
+  chmod u=rw,go=r "$tmp" && mv -f "$tmp" "$SITES_DIR_HOST/$SITE_DATEI"
 }
 site_datei_entfernen() { rm -f "$SITES_DIR_HOST/$SITE_DATEI"; }
 
@@ -180,3 +204,41 @@ aktuell_setzen() {
 }
 aktuell_entfernen() { rm -f "$WEB_DIR_HOST/aktuell"; }
 aktuell_lesen() { [ -L "$WEB_DIR_HOST/aktuell" ] && readlink "$WEB_DIR_HOST/aktuell" || true; }
+
+# B7: Das Ziel des Links "aktuell" (aus readlink oder aus der Sicherung) wird nur akzeptiert, wenn es
+# genau releases/<name> ist - nie '/', '..', mehrere Ebenen.
+link_ziel_gueltig() {
+  [[ "$1" =~ ^releases/[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ "$1" != *..* ]]
+}
+
+# Site-Datei aus der Vorlage bauen: Container-Pfad ersetzen; ohne www-DNS den markierten Abschnitt
+# (# WWW-BEGIN ... # WWW-ENDE) weglassen. Argumente: vorlage ziel web_root mit_www(1|0)
+site_datei_bauen() {
+  local vorlage="$1" ziel="$2" root="$3" www="$4"
+  if [ "$www" = 1 ]; then
+    sed "s#/srv/centric-website#$root#g" "$vorlage" > "$ziel"
+  else
+    sed -e '/^# WWW-BEGIN/,/^# WWW-ENDE/d' -e "s#/srv/centric-website#$root#g" "$vorlage" > "$ziel"
+  fi
+}
+
+# Rein lesend: loest www.<Hauptdomain> per DNS auf (A oder AAAA)? Ohne getent: nein.
+www_aufloesbar() {
+  command -v getent >/dev/null 2>&1 && getent ahosts "www.$HAUPT_HOST" >/dev/null 2>&1
+}
+
+# Pruefkopie (B1): die NEUE Site-Datei wird gemeinsam mit Kopien aller uebrigen Site-Dateien und dem
+# Hauptcaddyfile in einem Unterordner der Sicherung vom Container validiert. Der Live-Ordner
+# $SITES_DIR_HOST bleibt dabei unberuehrt; erst danach wird die Datei eingespielt.
+# Argumente: sicherungsordner stempel neu.caddy
+site_datei_vorab_pruefen() {
+  local sich="$1" stempel="$2" neu="$3" p="$1/pruef"
+  mkdir -p "$p/sites" || return 1
+  find "$SITES_DIR_HOST" -maxdepth 1 -type f -name '*.caddy' ! -name "$SITE_DATEI" -exec cp {} "$p/sites/" \; || return 1
+  cat "$neu" > "$p/sites/$SITE_DATEI" || return 1
+  caddy_im_container cat "$CADDYFILE_CONTAINER" > "$p/Caddyfile" || return 1
+  # der Caddy-Container laeuft als anderer Benutzer und muss die Probekopie lesen koennen
+  chmod u=rwx,go=rx "$WEB_DIR_HOST/sicherung" "$sich" || return 1
+  chmod -R u=rwX,go=rX "$p" || return 1
+  caddy_im_container caddy validate --config "$WEB_ROOT_CONTAINER/sicherung/$stempel/pruef/Caddyfile" --adapter caddyfile
+}
