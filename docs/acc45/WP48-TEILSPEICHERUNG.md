@@ -608,6 +608,20 @@ umgesetzt. Kein Teilweg (48.3), keine Oberfläche, kein Löschlauf, keine Datenm
   `daten.mjs`, eine Zeile), beim Wiederanlauf und wenn Kern und Zeiger nicht dieselbe tragen (ein Server ohne Epoche
   hat geschrieben). `bestandLesen` liefert `epoche` (null bei Altbestand).
 
+**Integration mit WP-16 und Review-Auflagen (Branch acc45/backend/wp48-integration):**
+- `istEingefroren` (WP-16) ist ein Monatsfeld in `MONATSFELDER`; der Segmentschreiber übernimmt die Liste. Der Abdruck einer
+  Scherbe lässt ein **leeres spätes Feld weg** (`SPAETE_FELDER`): Vermerke von Servern vor WP-16 bleiben gültig, ein Text aus der Zeit
+  dazwischen (`…|istEingefroren:0:`) übersetzt `abdruckNormal` in denselben Hash. Update-Tests: `pruefungen/wp48-speicherkern.test.js`
+  „Update auf WP-48 über einen Bestand mit eingefrorenem Ist (H1)".
+- **M4:** `abdruckText` ist eindeutig: Schlüssel mit Trenner (Komma, Gleichheitszeichen, Anführungszeichen, Zeilenumbruch, mehr als ein
+  senkrechter Strich, führende Tilde) stehen als „~"+JSON-Text. Gewöhnliche Schlüssel bleiben unverändert (gleicher Hash wie früher).
+- `teileSchreiben`: `session` (oben und am Betrieb) wird wie im vollen Weg entfernt (`ohneSitzung`); die Betriebskennung gilt strikt
+  (`===`, nichtleerer Text ohne „:", eindeutig im Kern); `erwarteteEpoche` ist Pflicht (ohne gültige Epoche: Fehler, nichts geschrieben).
+- Rundweg-Prüfbestand trägt jetzt `monatsabschluss` und `istEingefroren` (Katalogprüfung). Befund: Der Betreiber-PUT macht aus
+  `preisgestaltung: null` ein `{}` (`pilotNachServerregel`, Review N-B) — gewollt; der Prüfbetrieb nutzt `{}`, der Teilweg (48.3)
+  muss `null` und `{}` gleich behandeln.
+- Mutanten: 32 (25 + S1–S7 für die obigen Auflagen), Lauf auf dem Integrationsstand: 32 von 32 getötet.
+
 **Rückweg auf einen Server vor 48.2** (bewertet, nicht als Prüfung): Der alte Server vergleicht seine Text-Abdrücke
 mit den Hash-Abdrücken im Vermerk. Er hält dann jede Scherbe für geändert (schreibt alle, nimmt
 `unveraenderteScherben` als leer, meldet im Drei-Wege eher einen Konflikt) — mehr Konflikte und strengere

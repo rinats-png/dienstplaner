@@ -92,6 +92,15 @@ function reicherBestand() {
     }
   }
   stempel[`m0|${p(0)}`] = { start: "05:59", quelle: "app" };
+  /* WP-16: ein abgeschlossener Monat (vor 40 Tagen) mit eingefrorenem Ist je Person und Tag (Dienst und Abwesenheit). */
+  const abgeschlossen = p(-40).slice(0, 7);
+  const monatsabschluss = { [abgeschlossen]: { abgeschlossen: true, am: "2026-01-02T08:00:00.000Z", wer: "l1",
+    verlauf: [{ id: "v1", art: "abschluss", am: "2026-01-02T08:00:00.000Z", wer: "l1", grund: "" }] } };
+  const istEingefroren = {
+    [`m0|${p(-40)}`]: { d: "F", std: 7.5, e: 1 },
+    [`b1|${p(-40)}`]: { d: "F", std: 7.5, e: 1, p: 1 },
+    [`a1|${p(-40)}`]: { a: ["krank"], pl: 1, w: 39 },
+  };
   return { version: 9, stand: 1, mandanten: [{
     id: "m1", name: "Haus", branche: "pflege", bundesland: "BE", einheitLabel: "Wohnbereich", status: "aktiv",
     stichtag: null, laeuftAb: null, pakete: [], matrix: null,
@@ -104,7 +113,7 @@ function reicherBestand() {
     personen: [person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1", { notiz: "privat", iban: "DE00" }),
       person("b1", "mitarbeiter", "e2"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
       person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), vollePerson("x1", "e1"), vollePerson("y1", "e2")],
-    abweichungen: plan, planstaende: {}, freigaben: {}, unterschreitungen: [], belegung: {}, therapie: {}, aushang: [],
+    abweichungen: plan, monatsabschluss, istEingefroren, planstaende: {}, freigaben: {}, unterschreitungen: [], belegung: {}, therapie: {}, aushang: [],
     standorte: [], einsatzorte: [], einsatzorteGeaendertAm: null, einsatzorteGeaendertVon: null, abwesenheiten: [
       { id: "abw4", personId: "x1", art: "krank", von: p(1), bis: p(3), notiz: "Befund" },
       { id: "abw1", personId: "a1", art: "krank", von: p(5), bis: p(6), notiz: "Grippe" },
@@ -119,7 +128,7 @@ function reicherBestand() {
     kompetenzen: [], einarbeitung: [], objekte: [], postenPlan: {}, bereichsPlan: {}, betriebsmittel: [],
     sondereinsaetze: [], aenderungen: [], bestaetigungen: [], dienstbuch: [], uebergaben: [], protokoll: [],
     notizen: {}, tagesnotizen: {}, adressAenderungen: [],
-    tarif: "basis", seit: "2026-01-01", bis: null, testTage: 0, selbstAngelegt: false, preisgestaltung: null,
+    tarif: "basis", seit: "2026-01-01", bis: null, testTage: 0, selbstAngelegt: false, preisgestaltung: {},
     rabattGrund: "", kontakt: "k@example.org", kontaktName: "K", anschrift: "Weg 1", ustId: "", notiz: "",
     raum: null, lohnarten: [], aufbewahrung: null, aushaenge: [], checklisten: [], listeneintraege: [],
   }] };

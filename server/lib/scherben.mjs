@@ -170,19 +170,38 @@ const ABDRUCK_FORM = /^[0-9a-f]{32}$/;
 export function abdruckNormal(wert) {
   if (typeof wert !== "string") return null;
   if (ABDRUCK_FORM.test(wert)) return wert;
-  if (wert.startsWith(`${MONATSFELDER[0]}:`) || wert.startsWith("{")) return praefix(wert);
+  if (wert.startsWith("{")) return praefix(wert);
+  if (wert.startsWith(`${MONATSFELDER[0]}:`)) {
+    /* Ein Text aus der Zeit zwischen WP-16 und WP-48 trägt das späte Feld auch leer;
+       abdruckText lässt ein leeres spätes Feld weg (wie jeder Text davor). */
+    const ohneLeeres = wert.replace(/\|istEingefroren:0:$/, "");
+    return praefix(ohneLeeres);
+  }
   return null;
 }
 
-/** Der stabil sortierte Text einer Scherbe — die Grundlage des Abdrucks (und der Abdruck vor WP-48.2). */
+/** Ein Schlüssel im Abdrucktext. Gewöhnliche Schlüssel („p3|2026-08-14") stehen unverändert da —
+    damit bleibt der Abdruck gleich dem früherer Versionen. Einer mit Trenner (Komma, Gleichheitszeichen,
+    Anführungszeichen, Zeilenumbruch, mehr als ein senkrechter Strich) oder mit führender Tilde steht als
+    „~" + JSON-Text; so lässt sich der Text eindeutig zurücklesen (WP-48 Review M4: vorher konnten zwei
+    verschiedene Inhalte denselben Text ergeben, z. B. der Schlüssel „a=1,b" und die zwei Schlüssel „a", „b"). */
+function schluesselText(k) {
+  const sicher = !/[,="\r\n]/.test(k) && !k.startsWith("~") && k.split("|").length <= 2;
+  return sicher ? k : `~${JSON.stringify(k)}`;
+}
+
+/** Der stabil sortierte Text einer Scherbe — die Grundlage des Abdrucks (und der Abdruck vor WP-48.2).
+    Ein spätes Feld (SPAETE_FELDER) ohne Einträge fehlt im Text: Eine Scherbe ohne dieses Feld und eine mit
+    leerem Feld haben denselben Abdruck, und Vermerke vor WP-16 bleiben gültig. */
 export function abdruckText(scherbe) {
   if (!scherbe) return "";
   const teile = [];
   for (const feld of MONATSFELDER) {
     const inhalt = (scherbe.felder || {})[feld] || {};
     const schluessel = Object.keys(inhalt).sort();
+    if (!schluessel.length && SPAETE_FELDER.has(feld)) continue;
     teile.push(`${feld}:${schluessel.length}:`
-      + schluessel.map((k) => `${k}=${JSON.stringify(inhalt[k])}`).join(","));
+      + schluessel.map((k) => `${schluesselText(k)}=${JSON.stringify(inhalt[k])}`).join(","));
   }
   return teile.join("|");
 }

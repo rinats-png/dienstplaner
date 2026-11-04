@@ -769,6 +769,10 @@ function teileFehler(text) {
   return f;
 }
 
+/** Eine Betriebskennung, wie sie in einer Scherbe stehen darf: nichtleerer Text ohne „:" (der Schlüssel
+    scherbe:Raum:Betrieb:Monat bliebe sonst mehrdeutig). */
+const betriebIdGueltig = (id) => typeof id === "string" && id.length > 0 && !id.includes(":");
+
 /** Form der Teile prüfen und in die gespeicherte Gestalt bringen. */
 function teileGeprueft(teile, kernAlt) {
   if (!istObjekt(teile)) throw teileFehler("keine Teile");
@@ -776,7 +780,8 @@ function teileGeprueft(teile, kernAlt) {
     .map((m) => (istObjekt(m) ? m.id : undefined));
   let kern = null;
   if (Object.prototype.hasOwnProperty.call(teile, "kern") && teile.kern !== undefined) {
-    const k = teile.kern;
+    /* session ist kein Bestandsfeld (D1b/D1c): wie im vollen Weg entfernt, nicht gespeichert und nicht verglichen. */
+    const k = ohneSitzung(teile.kern);
     if (!istObjekt(k) || !Array.isArray(k.mandanten)) throw teileFehler("Kern ohne Betriebsliste");
     if (zerlegen(k).scherben.size) throw teileFehler("Kern mit Monatsdaten");
     if (JSON.stringify(mandantenIds(k)) !== JSON.stringify(mandantenIds(kernAlt)))
@@ -785,10 +790,14 @@ function teileGeprueft(teile, kernAlt) {
   }
   const scherbenRoh = teile.scherben === undefined ? [] : teile.scherben;
   if (!Array.isArray(scherbenRoh)) throw teileFehler("Scherben keine Liste");
-  const bekannt = new Set(mandantenIds(kern || kernAlt).filter((id) => id !== undefined && id !== null).map(String));
+  /* Strikt: dieselbe Kennung (===, ein Text), keine Umwandlung — sonst landete die Scherbe eines Betriebs „1"
+     unter dem Betrieb 1, den zusammensetzen() nicht wiederfindet — und jede Kennung nur einmal. */
+  const ids = mandantenIds(kern || kernAlt);
+  if (new Set(ids).size !== ids.length) throw teileFehler("Betriebskennung doppelt");
+  const bekannt = new Set(ids.filter(betriebIdGueltig));
   const scherben = new Map();
   for (const s of scherbenRoh) {
-    if (!istObjekt(s) || typeof s.mandantId !== "string" || !bekannt.has(s.mandantId))
+    if (!istObjekt(s) || !betriebIdGueltig(s.mandantId) || !bekannt.has(s.mandantId))
       throw teileFehler("Scherbe eines unbekannten Betriebs");
     if (typeof s.monat !== "string" || !MONAT.test(s.monat)) throw teileFehler("Monat ungültig");
     if (!istObjekt(s.felder) || Object.keys(s.felder).some((f) => !MONATSFELDER.includes(f)))
@@ -813,19 +822,22 @@ function teileGeprueft(teile, kernAlt) {
  * @param {{ kern?: object, scherben?: Array<{mandantId: string, monat: string, felder: object}> }} teile
  *   kern: der ganze Kern in zerlegter Form (ohne Monatsdaten); fehlt er, bleibt der gespeicherte.
  *   scherben: je Monat der ganze neue Inhalt der Scherbe; alle Felder leer = Scherbe entfernen.
- * @param {{ erwarteterStand?: string|number, erwarteteEpoche?: string|null, durch?: string }} opt
- *   erwarteterStand ist Pflicht (ohne ihn: Fehler, nichts geschrieben).
+ * @param {{ erwarteterStand: string|number, erwarteteEpoche: string, durch?: string }} opt
+ *   erwarteterStand und erwarteteEpoche sind Pflicht (ohne sie: Fehler, nichts geschrieben).
  * @returns {Promise<object>} { ok: true, stand, geschrieben, epoche } oder
  *   { ok: false, grund: "konflikt" | "epoche" | "unbestimmt", stand?, epoche? }
  */
 export function teileSchreiben(store, raum, teile, opt = {}) {
-  const { erwarteterStand } = opt;
+  const { erwarteterStand, erwarteteEpoche } = opt;
   if (erwarteterStand === null || erwarteterStand === undefined || !Number.isFinite(Number(erwarteterStand)))
     return Promise.reject(new Error("teileSchreiben: erwarteterStand fehlt"));
+  /* Die Epoche ist Pflicht (Design 2.3): Wer sie nicht kennt, hat nicht neu geladen. */
+  if (!epocheGueltig(erwarteteEpoche))
+    return Promise.reject(new Error("teileSchreiben: erwarteteEpoche fehlt"));
   return unterRaumsperre(raum, () => teileSchreibenGesperrt(store, raum, teile, opt));
 }
 
-async function teileSchreibenGesperrt(store, raum, teile, { erwarteterStand = null, erwarteteEpoche = null, durch = "unbekannt" }) {
+async function teileSchreibenGesperrt(store, raum, teile, { erwarteterStand, erwarteteEpoche, durch = "unbekannt" }) {
   const streng = async (was, arbeit) => {
     try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
   };
@@ -849,7 +861,7 @@ async function teileSchreibenGesperrt(store, raum, teile, { erwarteterStand = nu
   if (imVermerk.length !== vorhanden.size || imVermerk.some((id) => !vorhanden.has(id))) return unbestimmt;
 
   /* Die Welt zuerst, dann der Stand (Design 2.3). */
-  if (erwarteteEpoche !== null && erwarteteEpoche !== undefined && String(erwarteteEpoche) !== epoche)
+  if (erwarteteEpoche !== epoche)
     return { ok: false, grund: "epoche", epoche, stand: String(stand) };
   if (String(erwarteterStand) !== String(stand)) return { ok: false, grund: "konflikt", stand: String(stand), epoche };
 
