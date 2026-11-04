@@ -153,11 +153,11 @@ export function listenEintrag(marke, meta, eigeneId) {
  * @param {any} jetzt
  * @param {any} sicherung
  * @param {any} sitzung
- * @param {{ marke?: string, sicherungsZeit?: (string|null), heute?: Date, datenschutz?: string }} [o]
+ * @param {{ marke?: string, sicherungsZeit?: (string|null), automatisch?: boolean, heute?: Date, datenschutz?: string }} [o]
  *   datenschutz: Modus des Datenschutzlaufs („an" löscht nach Fristen, sonst nur melden)
  */
 export function betriebWiederherstellen(jetzt, sicherung, sitzung,
-  { marke, sicherungsZeit, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
+  { marke, sicherungsZeit, automatisch = false, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
   const ort = eigenerBetrieb(jetzt, sitzung);
   if (!ort) return { verweigert: "Zu dieser Sitzung gehört kein gespeicherter Betrieb.", status: 409 };
   const alt = ort.betrieb;
@@ -177,7 +177,10 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
      Sie wirken nur auf Sicherungen, die vor dem Vermerk entstanden. Quelle: die
      Metadaten-Zeit der Ablage, sonst `erzeugt` der Betriebssicherung, sonst
      unbekannt (dann wirkt jeder Vermerk). */
-  const zeitDerSicherung = typeof sicherungsZeit === "string" && sicherungsZeit ? sicherungsZeit
+  /* Vierter Review N-1: Eine automatische Sicherung („vor Verlust") entsteht im selben Speichervorgang
+     wie ein Vermerk; ihre Zeit gilt als unbekannt, damit jeder Vermerk wirkt (Datenschutz zuerst). */
+  const zeitDerSicherung = automatisch ? null
+    : typeof sicherungsZeit === "string" && sicherungsZeit ? sicherungsZeit
     : (sicherung && typeof sicherung.erzeugt === "string" && sicherung.erzeugt ? sicherung.erzeugt : null);
 
   const jetztPersonen = new Map((alt.personen || []).filter(Boolean).map((p) => [String(p.id), p]));

@@ -1026,6 +1026,10 @@ export default async (req, context) => {
            (personenAngleichen, WP-12): Sonst gilt eine Person, die im Altstand
            kein `qualifikationen` trägt, beim unveränderten Zurückschreiben als
            geändert — und die Schichtverantwortung bekam 403. */
+        /* Vierter Review N-1: Die Lesezeit des gespeicherten Stands wird VOR dem Zusammenführen
+           festgehalten. Ein Löschvermerk (am = jetzt) entsteht erst darin; die Sicherung „vor Verlust"
+           zeigt den Stand vor dieser Änderung und trägt deshalb diese frühere Zeit — nie eine spätere. */
+        const lesezeit = new Date().toISOString();
         let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
@@ -1158,7 +1162,7 @@ export default async (req, context) => {
           if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
             const marke = markeNeu();
             await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
-              { metadata: { zeit: new Date().toISOString(),
+              { metadata: { zeit: lesezeit,
                 durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
                 automatisch: "ja" } }).catch(() => {});
             await sicherungenAusduennen(store, s.bestand);
@@ -2014,7 +2018,8 @@ export default async (req, context) => {
         const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
 
         const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
-          { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null });
+          { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null,
+            automatisch: metaW?.metadata?.automatisch === "ja" });
         if (w.verweigert) {
           await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
           return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);

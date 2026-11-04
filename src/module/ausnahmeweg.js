@@ -61,7 +61,7 @@ export function ausnahmeAngabe(m, mod, f) {
     return { fehler: "Grund wählen, der zur Art passt." };
   const az = String(f.aktenzeichen || "").trim();
   if (az && !AKTENZEICHEN_MUSTER.test(az))
-    return { fehler: "Aktenzeichen: höchstens vier Buchstaben vorweg, dann Ziffern und Bindestriche, höchstens 20 Zeichen — keine Namen." };
+    return { fehler: "Aktenzeichen: nur Ziffernfolge, ggf. mit 2 bis 5 Großbuchstaben vorweg (z. B. DS-2026-014), höchstens 20 Zeichen — keine Namen." };
   const alle = eintraegeListe(m, mod);
   /** @type {Record<string, string[]>} */
   const eintraege = {};

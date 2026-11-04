@@ -367,6 +367,9 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, o
    vorher war sie schon vor dem Senden verbraucht, und jeder Fehlschlag endete in „nur lesbar").
    Im lokalen Stand steht sie nie (sonst ginge sie mit jedem späteren Speichern wieder mit, H1). */
 let einmalig = null;
+/* Vierter Review N-2: Angaben, die gerade in einem Auftrag unterwegs sind bzw. schon angenommen wurden. */
+const angabenUnterwegs = new WeakSet();
+const angenommeneAngaben = new WeakSet();
 /** @param {any} mandantId @param {any} angabe @param {(m: any) => boolean} erkennt */
 export function ausnahmeMitschicken(mandantId, angabe, erkennt) { einmalig = { mandantId, angabe, erkennt }; }
 
@@ -419,7 +422,12 @@ function fehlerart(e, status) {
 /* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
 let laufend = null;
 function jetztSchreiben(beimSchliessen) {
-  const lauf = schreibenAusfuehren(beimSchliessen);
+  /* Vierter Review N-2: Schreibvorgänge laufen nacheinander. Ein zweiter, der mit dem alten ETag und
+     derselben noch nicht verbrauchten Ausnahmeangabe losginge, bekäme einen 409 und löste einen
+     falschen Alarm aus (die eigene Änderung würde verworfen). Er wartet auf den ersten und nimmt
+     dann den neuen ETag; was er schreibt, holt er erst dann aus `offen`. */
+  const vorher = laufend;
+  const lauf = vorher ? vorher.catch(() => {}).then(() => schreibenAusfuehren(beimSchliessen)) : schreibenAusfuehren(beimSchliessen);
   laufend = lauf;
   lauf.finally(() => { if (laufend === lauf) laufend = null; });
   return lauf;
@@ -454,9 +462,10 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    const angabe = auftrag.ausnahme || einmalig;
+    /* Eine Angabe, die schon in einem anderen Auftrag unterwegs ist, hängt nicht an einen zweiten. */
+    const angabe = auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig) ? einmalig : null);
     const mit = mitEinmaligerAngabe({ ...auftrag.bestand, session: null }, angabe);
-    if (mit.verbraucht) auftrag.ausnahme = angabe;
+    if (mit.verbraucht) { auftrag.ausnahme = angabe; angabenUnterwegs.add(angabe); }
     const hinaus = mit.bestand;
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
     const ausnahmeAbgewiesen = (text) => {
@@ -483,6 +492,8 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     if (status === 409) {
       etag = daten.etag;
+      /* Wurde dieselbe Angabe inzwischen angenommen, ist der 409 ein gewöhnlicher Konflikt (kein Alarm). */
+      if (auftrag.ausnahme && angenommeneAngaben.has(auftrag.ausnahme)) auftrag.ausnahme = null;
       if (auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.text || daten?.fehler || "Der Bestand hat sich geändert.")); return; }
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
       return;
@@ -496,6 +507,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     etag = daten.etag;
     gescheitert = null;
     /* Angenommen: erst jetzt ist die Angabe verbraucht. */
+    if (auftrag.ausnahme) angenommeneAngaben.add(auftrag.ausnahme);
     if (auftrag.ausnahme && einmalig === auftrag.ausnahme) einmalig = null;
     if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
@@ -505,6 +517,7 @@ async function schreibenAusfuehren(beimSchliessen) {
       zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
+    if (auftrag.ausnahme) angabenUnterwegs.delete(auftrag.ausnahme);
     unterwegs = false;
   }
 }

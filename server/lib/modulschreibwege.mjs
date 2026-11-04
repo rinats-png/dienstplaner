@@ -136,6 +136,22 @@ export function loeschvermerkSchluessel() {
  * @param {Buffer | null} [geheim] Schlüssel; Vorgabe aus CENTRIC_PFEFFER, null = ungeschlüsselt
  */
 export function loeschvermerkHash(mandantId, feld, schluessel, geheim = loeschvermerkSchluessel()) {
+  if (geheim) return `k1:${schluesselKennung(geheim)}:${loeschvermerkHashOhneKennung(mandantId, feld, schluessel, geheim).slice(3)}`;
+  return loeschvermerkHashOhneKennung(mandantId, feld, schluessel, null);
+}
+
+/**
+ * Kennung des Vermerkschlüssels (vierter Review N-3): 8 Hexzeichen eines HMAC über einen festen Text mit dem
+ * abgeleiteten Schlüssel — verrät den Schlüssel nicht (nicht umkehrbar), zeigt aber, dass er ein anderer ist.
+ * @param {Buffer} geheim
+ */
+const schluesselKennung = (geheim) => createHmac("sha256", geheim).update("centric-loeschvermerk-kennung").digest("hex").slice(0, 8);
+
+/**
+ * Die Form vor der Schlüsselkennung (`k1:<hash>`) — für alte Vermerke lesbar (Rückwärtskompatibilität).
+ * @param {any} mandantId @param {string} feld @param {string} schluessel @param {Buffer | null} geheim
+ */
+export function loeschvermerkHashOhneKennung(mandantId, feld, schluessel, geheim = loeschvermerkSchluessel()) {
   const text = [String(mandantId), String(feld), String(schluessel)].join("\u0000");
   if (geheim) return "k1:" + createHmac("sha256", geheim).update(text).digest("hex").slice(0, 32);
   return createHash("sha256").update(text).digest("hex").slice(0, 32);
@@ -171,7 +187,13 @@ export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE, { siche
   /* Wirkt ein Vermerk auf diese Sicherung? Unbekannte Zeiten: ja. */
   const wirkt = (v) => { const am = zeitMs(v.am); return ab === null || am === null || ab <= am; };
   const geschluesselt = (v) => typeof v.h === "string" && v.h.startsWith("k1:");
-  const unpruefbar = geheim ? 0 : vermerke.filter((v) => geschluesselt(v) && wirkt(v)).length;
+  /* Vierter Review N-3: Ein Vermerk mit Schlüsselkennung (`k1:<kennung>:…`) ist nur mit demselben Schlüssel
+     prüfbar — ein geänderter Pfeffer wirkt wie ein fehlender (Abweisung), nicht still wirkungslos. Alte
+     Vermerke ohne Kennung (`k1:<hash>`) bleiben mit dem Schlüssel lesbar. */
+  const kennungVon = (v) => { const t = /^k1:([0-9a-f]{8}):[0-9a-f]{32}$/.exec(String(v.h)); return t ? t[1] : null; };
+  const aktuelleKennung = geheim ? schluesselKennung(geheim) : null;
+  const unpruefbar = vermerke.filter((v) => geschluesselt(v) && wirkt(v)
+    && (!geheim || (kennungVon(v) !== null && kennungVon(v) !== aktuelleKennung))).length;
   const loesch = new Set(vermerke.filter((v) => v.art === "loeschung" && wirkt(v)).map((v) => v.h));
   const bericht = new Set(vermerke.filter((v) => v.art === "berichtigung" && wirkt(v)).map((v) => v.h));
   if (!loesch.size && !bericht.size) return { mandant: m, entfernt: 0, berichtigt: 0, unpruefbar };
@@ -184,7 +206,8 @@ export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE, { siche
     /** @returns {{ weg: boolean, ersatz?: any }} */
     const urteil = (k) => {
       /* Ungeschlüsselte Altvermerke (vor dem Pfeffer) und geschlüsselte gleichermaßen. */
-      const hs = [loeschvermerkHash(id, feld, k, null), ...(geheim ? [loeschvermerkHash(id, feld, k, geheim)] : [])];
+      const hs = [loeschvermerkHash(id, feld, k, null),
+        ...(geheim ? [loeschvermerkHash(id, feld, k, geheim), loeschvermerkHashOhneKennung(id, feld, k, geheim)] : [])];
       if (hs.some((h) => loesch.has(h))) return { weg: true };
       if (hs.some((h) => bericht.has(h))) return jetzige.has(k) ? { weg: false, ersatz: jetzige.get(k) } : { weg: true };
       return { weg: false };
@@ -254,7 +277,7 @@ function ausnahmeFormFehler(a, liste) {
   if (!AUSNAHME_GRUND_ARTEN[a.grund].includes(a.art)) return `Ausnahmeweg Art. 16/17 DSGVO: ${AUSNAHME_GRUENDE[a.grund]} passt nicht zur Art „${a.art}".`;
   if (hat(a, "aktenzeichen") && a.aktenzeichen !== null && a.aktenzeichen !== ""
     && (typeof a.aktenzeichen !== "string" || !AKTENZEICHEN_MUSTER.test(a.aktenzeichen)))
-    return "Ausnahmeweg Art. 16/17 DSGVO: Aktenzeichen höchstens vier Buchstaben vorweg, dann Ziffern und Bindestriche, höchstens 20 Zeichen — keine Namen.";
+    return "Ausnahmeweg Art. 16/17 DSGVO: Aktenzeichen nur als Ziffernfolge, ggf. mit 2 bis 5 Großbuchstaben vorweg (z. B. DS-2026-014), höchstens 20 Zeichen — keine Namen.";
   if (!istObjekt(a.eintraege) || !Object.keys(a.eintraege).length) return form;
   for (const [feld, schl] of Object.entries(a.eintraege)) {
     if (!mod.datenfelder.includes(feld)) return `Ausnahmeweg Art. 16/17 DSGVO: „${String(feld).slice(0, 40)}" ist kein Datenfeld von ${mod.name}.`;

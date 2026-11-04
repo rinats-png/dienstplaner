@@ -146,7 +146,7 @@ describe("F4 — Löschvermerke mit dem Serverschlüssel (CENTRIC_PFEFFER), sons
     const vorher = gesamt();
     const v = schreibeAls(vorher, "LT", (m) => { delete m.postenPlan["a1|2026-11-02"]; m.moduldatenAusnahme = LOESCH; });
     const h = v.mandanten[0].einstellungen.moduldatenLoeschvermerke[0].h;
-    expect(h).toMatch(/^k1:[0-9a-f]{32}$/);
+    expect(h).toMatch(/^k1:[0-9a-f]{8}:[0-9a-f]{32}$/);   // seit N-3 mit Schlüsselkennung
     expect(durchprobieren(h, (k) => MS.loeschvermerkHash("m1", "postenPlan", k, null))).toBeNull();
     expect(zurueck(wiederAn(v), vorher).bestand.mandanten[0].postenPlan["a1|2026-11-02"]).toBeUndefined();
     /* Ein anderer Pfeffer erzeugt einen anderen Vermerk. */
@@ -176,7 +176,7 @@ describe("F5 — Aktenzeichen: höchstens vier Buchstaben vorweg, keine Namen", 
       expect(mit(az).verweigert, az).toMatch(/Aktenzeichen/);
   });
   it("übliche Aktenzeichen gehen", () => {
-    for (const az of ["DS-2026-014", "AZ-12", "2026-3", "ABCD12", "ds-7", "1"]) expect(mit(az).verweigert, az).toBeFalsy();
+    for (const az of ["DS-2026-014", "AZ-12", "2026-3", "ABCD12", "DS-7", "1"]) expect(mit(az).verweigert, az).toBeFalsy();
     expect(BM.AKTENZEICHEN_MUSTER.test("A".repeat(4) + "-" + "1".repeat(16))).toBe(false);   // höchstens 20 Zeichen
   });
 });

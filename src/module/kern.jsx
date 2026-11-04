@@ -116,7 +116,7 @@ export function AusnahmewegKarte({ m, mod, onAusfuehren, anfang }) {
           <option value="loeschung">Löschung</option><option value="berichtigung">Berichtigung</option></select></label>
         <label style={FELD}>Grund<select value={f.grund} onChange={(e) => setze("grund", e.target.value)} style={EINGABE}>
           {gruende.map((g) => <option key={g} value={g}>{AUSNAHME_GRUENDE[g]}</option>)}</select></label>
-        <label style={FELD}>Aktenzeichen (optional — keine Namen; bis zu vier Buchstaben, dann Ziffern, z. B. DS-2026-014)
+        <label style={FELD}>Aktenzeichen (optional — keine Namen; 2 bis 5 Großbuchstaben, dann Ziffern, z. B. DS-2026-014)
           <input value={f.aktenzeichen} maxLength={20} inputMode="text" autoComplete="off" style={EINGABE}
             onChange={(e) => setze("aktenzeichen", e.target.value)} /></label>
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 6, minWidth: 0 }}>

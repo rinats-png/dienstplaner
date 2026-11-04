@@ -544,3 +544,31 @@ N20 Posten-Schema nimmt alles.
 **Offen:** Folgepaket `stammdatenMonate`/`gruendeMonate` (12.6); FN-33 (Grundlage, Art. 18); 401 (Sitzung abgelaufen) ist im
 Test nicht nachgestellt — derselbe Weg wie Netz/5xx (Auftrag bleibt mit Angabe liegen, Anmelden → `nochmalSchreiben`).
 Konflikte mit WP-16/G9 unverändert nicht aufgelöst.
+
+## 14. Nachtrag vierter Opus-Delta-Review
+
+| Befund | Behebung | Test |
+|---|---|---|
+| **N-1 MITTEL** Löschvermerk greift nicht bei der automatischen Sicherung „vor Verlust" im selben PUT (Sicherungszeit lag nach `am` des Vermerks → Restore brachte den Art.-17-gelöschten Eintrag zurück) | `daten.mjs`: die Lesezeit wird vor `zusammenfuehren` festgehalten und ist `metadata.zeit` der Sicherung vor Verlust (nie nach dem Vermerk). Zusätzlich robust: eine automatische Sicherung (`automatisch: "ja"`) gilt beim Wiederherstellen als „Zeit unbekannt" (`betriebWiederherstellen(…, { automatisch })`) → jeder Vermerk wirkt (Datenschutz zuerst). | `modul-kern-nachtrag4-handler` (echter PUT mit Löschung + ≥ 34 % Listenverlust, Modul wieder an, Restore; Sicherungszeit ≤ Vermerkzeit; automatische Sicherung mit Vermerk + 5000 ms), `modul-kern-nachtrag4` N-1 (Δ −40, 0, +40, +5000 ms) |
+| **N-2** zwei gleichzeitige Speichervorgänge verbrauchen dieselbe Ausnahmeangabe (`src/speicher.js`): falscher Alarm `ausnahmeZurueck`, Änderungen von B verworfen | Schreibvorgänge laufen nacheinander (B wartet auf A und nimmt den neuen ETag); die Angabe gilt als „unterwegs" und hängt nicht an einen zweiten Auftrag; ein 409 für eine inzwischen angenommene Angabe ist ein gewöhnlicher Konflikt. | `modul-kern-nachtrag4` N-2 (Fetch-Mock mit Konfliktschutz, A verzögert) |
+| **N-3 NIEDRIG** geänderter `CENTRIC_PFEFFER` machte `k1:`-Vermerke still unwirksam | Vermerk `k1:<kennung8>:<hash32>`; die Kennung ist ein HMAC über einen festen Text mit dem abgeleiteten Schlüssel (nie der Schlüssel). Passt sie nicht (anderer oder fehlender Pfeffer): `unpruefbar` → Restore abgewiesen (wie fehlender Pfeffer). Alte Vermerke `k1:<hash32>` ohne Kennung bleiben lesbar (Hinweis: bei geändertem Pfeffer sind genau diese nicht erkennbar). | `modul-kern-nachtrag4` N-3 |
+| **N-4 NIEDRIG** Testlücken (Vermerk ohne lesbares `am`; Reihenfolge der Zeitquellen) | je ein Fall (fehlt, kaputt, leer, Zahl, null; Metadaten-Zeit vor `erzeugt`, beide Richtungen) | `modul-kern-nachtrag4` N-4 |
+| **N-5 NIEDRIG** Aktenzeichen-Muster ließ `Anna-1`, `Ute1`, `Max-2026`, `Kai-12-3`, `-1`, `1-`, `A1--------` zu | `AKTENZEICHEN_MUSTER = /^(?=.{1,20}$)(?:[A-Z]{2,5}-?)?\d+(?:-\d+)*$/`: reine Ziffernfolge oder 2–5 Großbuchstaben vorweg (5 wegen `DSGVO-2026-1`), einzelne Bindestriche zwischen Ziffernblöcken, kein abschließender Bindestrich. Texte in Server, Hilfe und Karte angepasst. | `modul-kern-nachtrag4` N-5 |
+
+**Aussage zu Namen (abgeschwächt):** Frühere Fassungen sagten „so passt kein Name hinein". Das Muster hält übliche
+Namensschreibweisen (Groß-/Kleinschreibung, Ziffer am Namen, Bindestrichketten) fern; ein Name in GROSSBUCHSTABEN mit höchstens
+fünf Buchstaben (`MAX-1`) passt formal weiterhin. Ein Format ersetzt nicht den Hinweis „keine Namen" (Anleitung, FN-33).
+
+**Angepasste Prüfdaten bestehender Tests (Verschärfung, keine Abschwächung):** `modul-kern-nachtrag3` erwartet für den
+geschlüsselten Vermerk die neue Form `k1:<8 hex>:<32 hex>`; das gültige Aktenzeichen `ds-7` heißt `DS-7` (Kleinbuchstaben sind
+nun ungültig, in `-nachtrag4` ausdrücklich abgewiesen).
+
+Konflikte mit WP-16/G9 unverändert nicht aufgelöst.
+
+**Rot → grün:** `modul-kern-nachtrag4-handler` (N-1-Sonde) und sechs Fälle in `modul-kern-nachtrag4` (N-2, N-3 ×3, N-5 ×2) waren
+gegen c041f9b rot; N-4 und die Δ-Fälle sind Testlücken (grün, Mutanten gezielt). **Mutanten (Scratchpad, eigene Kopie):**
+15 von 17 getötet — Sicherungszeit neu statt Lesezeit · automatisch-Flag nicht weitergereicht · Flag ohne Wirkung · Vermerk
+ohne `am` wirkt nicht · `erzeugt` vor Metadaten-Zeit · `ab < am` · Kennungsvergleich entfernt · Altform nicht gelesen ·
+Aktenzeichen {0,5} / Kleinbuchstaben / Bindestrich am Ende / Doppel-Bindestrich / Länge 21 · Serialisierung entfernt ·
+Kennung aus Schlüsselbytes. **Überlebt (gleichwertig, bewusst):** die Markierung „Angabe unterwegs" und der 409-Schutz
+„inzwischen angenommen" in `speicher.js` — bei serialisierten Vorgängen nicht erreichbar, sie sind nur Absicherung.

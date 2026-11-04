@@ -809,10 +809,13 @@ export const AUSNAHME_GRUENDE = Object.freeze({
 /** Welche Art zu welchem Grund passt: Art. 16 berichtigt, Art. 17 löscht, Art. 18 kann beides auslösen. */
 export const AUSNAHME_GRUND_ARTEN = Object.freeze({ art16: Object.freeze(["berichtigung"]), art17: Object.freeze(["loeschung"]),
   art18: Object.freeze(["berichtigung", "loeschung"]) });
-/** Aktenzeichen (dritter Opus-Review F5): höchstens vier Buchstaben vorweg (ohne Umlaute), optional ein
-    Bindestrich, dann eine Ziffer und weiter nur Ziffern und Bindestriche; höchstens 20 Zeichen — so passt
-    kein Name hinein („Mueller-1" nicht, „DS-2026-014" ja). */
-export const AKTENZEICHEN_MUSTER = /^(?=.{1,20}$)[A-Za-z]{0,4}-?\d[\d-]{0,15}$/;
+/** Aktenzeichen (dritter Opus-Review F5, vierter N-5): entweder eine reine Ziffernfolge oder 2 bis 5 GROSSbuchstaben
+    (ohne Umlaute) mit optionalem Bindestrich vorweg; dann Ziffernblöcke, durch einzelne Bindestriche getrennt,
+    ohne abschließenden Bindestrich; höchstens 20 Zeichen („DS-2026-014" und „DSGVO-2026-1" ja; „Anna-1",
+    „Ute1", „Max-2026", „-1", „1-" nein). Das Muster hält übliche Namensschreibweisen fern, nicht jede Zeichenfolge:
+    ein bis zu fünfbuchstabiger Name in Großbuchstaben („MAX-1") oder Kürzel passt formal — ein technisches
+    Format ersetzt nicht den Hinweis „keine Namen" (Schulung/Anleitung, Einordnung FN-33). */
+export const AKTENZEICHEN_MUSTER = /^(?=.{1,20}$)(?:[A-Z]{2,5}-?)?\d+(?:-\d+)*$/;
 
 /* --------------------------------------------------------------------------
    ZUSTAND, NUR-LESEN, SICHT
