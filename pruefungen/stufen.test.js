@@ -94,7 +94,7 @@ describe("Branchenpakete", () => {
      (pruefungen/g9-verkauf.test.js); hier steht eine Registry, in der alle
      vier Pakete abgenommen und freigegeben sind. */
   const ABN = { datum: "2026-12-01", nachweis: "docs/x.md" };
-  const LISTE = BRANCHENMODULE.map((m) => ({ ...m, status: "vorlaeufig", abnahme: ABN }));
+  const LISTE = BRANCHENMODULE.map((m) => ({ ...m, status: "vorlaeufig", abnahme: ABN, ausnahmeUi: true }));
   const FREI = Object.fromEntries(["sicherheit", "pflege", "klinik", "industrie"].map((id) =>
     [id, { stufe: "buchbar", datum: "2026-12-15", von: "Betreiber", nachweis: "docs/y.md" }]));
 

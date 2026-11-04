@@ -32,7 +32,7 @@ const ZIELPREISE = { sicherheit: 79, pflege: 89, klinik: 129, industrie: 59 };
 
 /** Registry, in der die Module der genannten Pakete (oder die genannten Module) so weit sind. */
 const lage = ({ impl = [], abgenommen = [] } = {}) => BRANCHENMODULE.map((m) => {
-  if (m.pakete.some((p) => abgenommen.includes(p))) return { ...m, status: "vorlaeufig", abnahme: ABNAHME };
+  if (m.pakete.some((p) => abgenommen.includes(p))) return { ...m, status: "vorlaeufig", abnahme: ABNAHME, ausnahmeUi: true };
   if (m.pakete.some((p) => impl.includes(p))) return { ...m, status: "vorlaeufig" };   // ohne Abnahmenachweis
   return m;
 });

@@ -32,7 +32,7 @@ const ZIEL = { sicherheit: 79, pflege: 89, klinik: 129, industrie: 59 };
 const zust = (ids, datum = "2026-12-20") => ({ paketZustimmungen: ids.map((paket) => ({ paket, datum, preis: ZIEL[paket], intervall: "monatlich", von: "Kunde" })) });
 const FG = (stufe) => ({ stufe, datum: "2026-12-15", von: "Betreiber", nachweis: "docs/acc45/freigabe-test.md" });
 const lage = (abgenommen = []) => BRANCHENMODULE.map((m) =>
-  (m.pakete.some((p) => abgenommen.includes(p)) ? { ...m, status: "vorlaeufig", abnahme: ABNAHME } : m));
+  (m.pakete.some((p) => abgenommen.includes(p)) ? { ...m, status: "vorlaeufig", abnahme: ABNAHME, ausnahmeUi: true } : m));
 const z5 = (id) => ({ liste: lage([id]), freigaben: { [id]: FG("buchbar") } });
 
 /* ------------------------------ F1 ------------------------------------- */

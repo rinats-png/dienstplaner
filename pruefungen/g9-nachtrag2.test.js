@@ -30,7 +30,7 @@ const ABNAHME = { datum: "2026-12-01", nachweis: "docs/acc45/abnahme-test.md" };
 const ZIEL = { sicherheit: 79, pflege: 89, klinik: 129, industrie: 59 };
 const FG = (stufe) => ({ stufe, datum: "2026-12-15", von: "Betreiber", nachweis: "docs/acc45/freigabe-test.md" });
 const lage = (abgenommen = []) => BRANCHENMODULE.map((m) =>
-  (m.pakete.some((p) => abgenommen.includes(p)) ? { ...m, status: "vorlaeufig", abnahme: ABNAHME } : m));
+  (m.pakete.some((p) => abgenommen.includes(p)) ? { ...m, status: "vorlaeufig", abnahme: ABNAHME, ausnahmeUi: true } : m));
 const z5 = (id) => ({ liste: lage([id]), freigaben: { [id]: FG("buchbar") } });
 const Z = (paket, datum = "2026-12-20", preis = ZIEL[paket]) => ({ paket, datum, preis, intervall: "monatlich", von: "Kunde" });
 const G = (paket, datum = "2026-12-01", preis = ZIEL[paket]) =>
