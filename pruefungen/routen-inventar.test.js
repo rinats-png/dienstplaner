@@ -56,6 +56,7 @@ export const INVENTAR = {
   "/api/stempel-korrektur": ["korrekturworkflow.test.js", "rollen-failclosed.test.js"],
   "/api/korrektur-antrag": ["rollen-failclosed.test.js"],
   "/api/korrektur-entscheiden": ["rollen-failclosed.test.js"],
+  "/api/monatsabschluss": ["rollen-failclosed.test.js"],   // WP-16: abschliessen staff.edit, wiederoeffnen/lohnexport org.edit; Matrixzeile §2
   "/api/zeit-bestaetigen": ["rollen-failclosed.test.js", "zeiterfassung.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/auskunft": ["dsgvo-server.test.js"],
   "/api/vollausgabe": ["pentest.mjs", "rollen-failclosed.test.js"],
