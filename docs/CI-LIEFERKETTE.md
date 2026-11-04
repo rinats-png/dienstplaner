@@ -81,5 +81,15 @@ Für diese Änderung ist `bild-scan` der entscheidende Check (Workflow
 
 ## Negativprobe (Gate greift)
 
-Siehe PR-Beschreibung: ein Wegwerf-Lauf auf einem Probe-Branch zeigt, dass
-das Gate mit einem bekannt verwundbaren, nur in der CI gebauten Bild rot wird.
+Wegwerf-Branch (inzwischen gelöscht), Gate-Schritt gegen das öffentliche,
+bekannt verwundbare `alpine:3.10` statt gegen das Projektbild: Lauf 41750461290,
+`Total: 1 (HIGH: 0, CRITICAL: 1)`, Schritt "Gate" endet mit Exit 1, Job rot.
+Nichts davon steht im Repository.
+
+## Ergebnis der Korrektur
+
+10 von 10 Läufen mit der neuen Fassung grün (3 Push-, 7 manuell ausgelöste
+Läufe, alle ohne Trivy-Binary-Cache, also im früheren Fehlerpfad). Ein
+elfter Lauf scheiterte sofort an einem Tippfehler (fehlende Umgebungsvariable)
+im ersten Commit, nicht an Trivy; ein zwölfter wurde von Hand abgebrochen.
+Bezug von `ghcr.io` (Bild und Datenbank): 10 von 10 erfolgreich.
