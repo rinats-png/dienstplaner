@@ -13,6 +13,7 @@ import { Icon } from "./gestalt/icons.jsx";
 import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe, branchenpaketeHinweis, leistungenAnzeige } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
 import { ZweifaktorFeld } from "./betreiber-2fa.jsx";
+import { v4EinstiegAnwenden, v4EinstiegVerlassen, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 
 /* ==========================================================================
    EINSTIEG
@@ -38,14 +39,14 @@ const ROLLENTEXT = {
 /* Rahmen der öffentlichen Seiten: Grund, Verlauf hinter der Titelzone (dieselben Tokens
    wie in der Anwendung; nur text und dim liegen darauf) und die Markenzeile. Die Klassen
    der Anwendung sind hier noch nicht geladen — alles läuft über Inline-Werte und C. */
-const SEITE = { minHeight: "100vh", position: "relative", isolation: "isolate", background: C.bg,
-  padding: "5vh 20px 8vh", fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: C.text };
+const SEITE = { minHeight: "100vh", position: "relative", isolation: "isolate", background: "var(--v4-bg)",
+  padding: "5vh 20px 8vh", fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: "var(--v4-text)" };
 const VERLAUF = { position: "absolute", left: 0, right: 0, top: 0, height: 440, zIndex: -1,
   pointerEvents: "none",
-  background: `radial-gradient(ellipse 46% 60% at 46% 0%, ${C.verlaufA}, ${C.verlaufB} 48%, transparent 76%),`
-    + ` radial-gradient(ellipse 28% 44% at 82% 14%, ${C.verlaufC}, transparent 74%)` };
-const KARTE = { background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 18,
-  boxShadow: "0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05)" };
+  background: "radial-gradient(ellipse 46% 60% at 46% 0%, var(--v4-verlauf-a), var(--v4-verlauf-b) 48%, transparent 76%),"
+    + " radial-gradient(ellipse 28% 44% at 82% 14%, var(--v4-verlauf-c), transparent 74%)" };
+const KARTE = { background: "var(--v4-flaeche)", border: "1px solid var(--v4-line)", borderRadius: 18,
+  boxShadow: "var(--v4-schatten)" };
 const Markenzeile = () => (
   <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
     <Marke data-marke-ziel="" />
@@ -70,6 +71,11 @@ const Markenzeile = () => (
    bereits angemeldet ist, braucht die Demoliste nicht; den Bestand holt
    sich App selbst.
    ========================================================================== */
+/* V4: Erscheinungsbild des Einstiegs noch vor dem ersten Bild setzen (Startbild,
+   Anmeldung, Registrierung, Fehlermeldungen). Wer schon angemeldet ist, bekommt
+   gleich die Anwendung mit ihrem eigenen Thema. */
+if (!SP.angemeldet()) v4EinstiegAnwenden();
+
 const schriftenBereit = (() => {
   try {
     return document.fonts ? document.fonts.ready.then(() => {}, () => {}) : Promise.resolve();
@@ -607,17 +613,18 @@ function SelbstStarten({ onZurueck, onFertig }) {
 }
 
 function Einstieg() {
-  /* Die Anmeldeseite ist immer hell. Sie kennt die Person noch nicht und
-     damit auch keine Themenwahl — und ein dunkler Anmeldebildschirm vor
-     einer hellen Anwendung wäre ein Bruch. */
-  useEffect(() => {
-    try {
-      document.documentElement.style.colorScheme = "light";
-      document.body.style.background = C.bg;
-      document.body.style.margin = "0";
-    } catch { /* egal */ }
-  }, []);
   const [an, setAn] = useState(SP.angemeldet());
+  /* Erscheinungsbild des Einstiegs (V4): Nutzereinstellung dieses Geräts, sonst
+     Systemeinstellung, sonst hell (v4/thema.js). Ohne feste Wahl folgt die Seite
+     einer Umstellung des Systems; nach der Anmeldung übernimmt die Anwendung. */
+  const [, setThemaZaehler] = useState(0);
+  useEffect(() => {
+    if (an) { v4EinstiegVerlassen(); return undefined; }
+    v4EinstiegAnwenden();
+    const w = v4ThemaGemerkt();
+    if (w === "hell" || w === "dunkel") return undefined;
+    return v4SystemthemaBeobachten(() => { v4EinstiegAnwenden(); setThemaZaehler((n) => n + 1); });
+  }, [an]);
   /* Solange dies falsch ist, liegt die Startsequenz über der Seite. */
   const [gestartet, setGestartet] = useState(false);
   /* Die Dauer der Markenreise, gesetzt sobald sie beginnt — zugleich das

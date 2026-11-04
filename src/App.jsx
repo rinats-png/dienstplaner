@@ -35,6 +35,7 @@ import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
 import { addMonate } from "./regelbaukasten.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 import { csvFeld, csvText } from "./csvfeld.js";
+import { v4ThemaMerken } from "./v4/thema.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -23259,6 +23260,7 @@ function AppInnen() {
   useEffect(() => {
     const p = sitz && sitz.person;
     const wahl = p ? p.thema : null;
+    v4ThemaMerken(wahl); /* Wahl pro Gerät merken: Einstieg und Fehlerseiten zeigen dasselbe Erscheinungsbild */
     if (wahl === "auto") {
       themaSetzen(themaVomSystem());
       setThemaZaehler((n) => n + 1);
