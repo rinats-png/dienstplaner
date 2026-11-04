@@ -489,6 +489,11 @@ jobs:
       - name: Schalter der öffentlichen Registrierung
         run: npm run pruefung:registrierung-schalter
 
+      # Der Selbststart (/starten) ist ab Werk aus: ohne CENTRIC_SELBSTSTART=true
+      # keine Datei, kein Raum, kein Konto, kein Bremsenzähler.
+      - name: Schalter des Selbststarts
+        run: npm run pruefung:selbststart-schalter
+
       # Das erste Passwort: ein Nachweis, einmal, fünfzehn Minuten — und ein
       # falsches Passwort verbrennt ihn nicht.
       - name: Erstes Passwort über HTTP
@@ -629,6 +634,7 @@ jobs:
           docker rm -fv centric-pruefung >/dev/null 2>&1 || true
           docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
             -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
+            -e CENTRIC_SELBSTSTART=true \
             -e CENTRIC_BASIS=http://127.0.0.1:3000 \
             -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
             --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \

@@ -36,6 +36,9 @@ services:
       PORT: "3000"
       CENTRIC_DATEN: /data
       CENTRIC_ABLAGE: dateien
+      # CENTRIC_SELBSTSTART (öffentlicher Selbststart /starten) steht bewusst
+      # NICHT hier: Vorgabe ist AUS. Einschalten nur über .env mit genau "true"
+      # (docs/SELBSTSTART-SCHALTER.md).
       # Überwachung (WP-05, docs/BETRIEB-UEBERWACHUNG.md): Alter der letzten
       # Sicherung außer Haus. Erst einschalten, wenn die Sicherung (WP-04)
       # eingerichtet ist — dann auch den Mount unten.
