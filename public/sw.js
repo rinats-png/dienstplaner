@@ -220,26 +220,40 @@ self.addEventListener("fetch", (e) => {
    PUSH-MITTEILUNGEN
    Entgegennehmen, anzeigen, bei Klick öffnen.
    ========================================================================== */
+/* WP-30: Der Server schickt nur einen Hinweis {titel, text, ziel} ohne
+   Personen- und Inhaltsdaten (server/lib/zustellregeln.mjs). Dieser Teil der
+   Datei ist von der Zwischenspeicherung oben getrennt: Er liest und schreibt
+   keinen Speicher (caches), fängt keine Anfrage ab und hält den Inhalt einer
+   Benachrichtigung nirgends fest — er zeigt sie an und ist fertig. Beim
+   Klick wird nur ein Pfad der eigenen Herkunft geöffnet, nie eine fremde
+   Adresse, die jemand in die Nutzlast geschrieben hätte. */
+const kurz = (t, n) => String(t == null ? "" : t).slice(0, n);
+/* Kein „//…“ am Anfang: das wäre eine protokollrelative fremde Adresse (Nachtrag Opus-Review B5). */
+const eigenerPfad = (z) => (typeof z === "string" && /^\/(?!\/)[A-Za-z0-9/_-]{0,80}$/.test(z) ? z : "/");
+
 self.addEventListener("push", (e) => {
   if (!e.data) return;
   let d = {};
-  try { d = e.data.json(); } catch { d = { titel: "CENTRIC", text: e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.titel || "CENTRIC", {
-    body: d.text || "",
+  try { d = e.data.json(); } catch { d = { titel: "CENTRIC", text: "" }; }
+  if (!d || typeof d !== "object") d = {};
+  e.waitUntil(self.registration.showNotification(kurz(d.titel, 120) || "CENTRIC", {
+    body: kurz(d.text, 200),
     icon: "/icon-192.png",
     badge: "/favicon-32.png",
-    tag: d.ziel || "centric",
-    data: { ziel: d.ziel || "/" },
+    tag: typeof d.ziel === "string" && /^[a-z]{1,20}$/.test(d.ziel) ? d.ziel : "centric",
+    data: { ziel: eigenerPfad(d.ziel) },
     lang: "de",
   }));
 });
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const ziel = (e.notification.data && e.notification.data.ziel) || "/";
+  const ziel = eigenerPfad(e.notification.data && e.notification.data.ziel);
   e.waitUntil((async () => {
     const fenster = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    for (const f of fenster) if (f.url.includes(self.location.origin)) return f.focus();
-    return self.clients.openWindow(ziel.startsWith("/") ? ziel : "/");
+    /* Ursprung als Präfix samt „/“ — „includes“ träfe auch fremde Adressen,
+       die den eigenen Ursprung irgendwo enthalten (SI-04). */
+    for (const f of fenster) if (f.url.startsWith(self.location.origin + "/")) return f.focus();
+    return self.clients.openWindow(ziel);
   })());
 });

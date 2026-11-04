@@ -45,6 +45,11 @@ try {
   if (!token && localStorage.getItem(GEMERKT) === "ja")
     token = localStorage.getItem(SCHLUESSEL);
 } catch { /* privater Modus */ }
+/* Keine Sitzung, aber noch ein Offline-Bestand im Speicher des Dienstarbeiters
+   (Reiter geschlossen statt abgemeldet, etwa am Stationsrechner): Er gehört
+   niemandem mehr und wird sofort geräumt (SI-07, interne Prüfung 2026-11).
+   Die Funktion fängt jeden Fehler selbst ab. */
+if (!token) offlineCacheLeeren();
 
 const kopf = () => ({ "content-type": "application/json",
   ...(token ? { authorization: `Bearer ${token}` } : {}) });

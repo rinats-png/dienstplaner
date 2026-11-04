@@ -33,6 +33,7 @@ Alte Sicherung oder gehäufte Fehler sind Warnungen.
 | `ablage` — Probe schreiben, synchronisieren, zurücklesen, löschen in `<Daten>/.gesund/` mit eigenem Dateinamen je Lauf (keine Kundendaten, keine Raumsperre, kein Store — daher kein Konflikt mit WP-02 und keiner mit älteren Fassungen von `ablage-sicherung`, die Punkt-Ordner überspringen); vor „kritisch“ einmal wiederholt | — | Probe scheitert zweimal |
 | `platz` — freier Platz unter `CENTRIC_DATEN` | < `CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT` (15) | < `CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT` (3) oder < `CENTRIC_GESUND_PLATZ_KRITISCH_MB` (200) — nur Alarmstufe, nach außen „warnung“ |
 | `sicherung` — Alter der letzten erfolgreichen Sicherung außer Haus (WP-04) | älter als `CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN` (26) oder Statusdatei unlesbar | — |
+| `zustellung` — Mail und Push (WP-30), gleitend über 60 min: je Kanal zugestellt / zurückgestellt / endgültig fehlgeschlagen / Konfiguration abgelehnt; dazu `konfiguriert` ja/nein je Kanal (nie ein Wert, nie ein Empfänger, nie ein Text) | ein Kanal mit ≥ `CENTRIC_GESUND_ZUSTELLUNG_WARNUNG` (3) endgültigen Fehlschlägen **und** mehr Fehlschlägen als Zustellungen, oder eine Ablehnung von Schlüssel/Absender (401/403) | — |
 | `loeschlauf` — letzter Lauf des Löschlaufs (`aufraeumen:letzter`) | älter als `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN` (26) oder mit Fehlern | — |
 | `fehler` — gleitend über 15 min: 5xx-Antworten, unlesbare Räume, Journal-Wiederanläufe, Bremse fail-closed, `429-last` (Lastgrenze lehnte ehrliche Anfragen ab) | 5xx ≥ `CENTRIC_GESUND_5XX_WARNUNG` (10) oder `429-last` ≥ `CENTRIC_GESUND_429_WARNUNG` (20) oder eines der anderen ≥ 1 | — |
 
@@ -109,7 +110,8 @@ POST mit JSON hinaus:
 Nur Prüfungsnamen, keine personenbezogenen Daten. Mail: über einen Webhook,
 der an Mail weiterleitet (die meisten Alarm- und Uptime-Dienste können das);
 eine eigene Mailanbindung im Server gibt es bewusst nicht — sie hinge an
-Resend (WP-30 offen) und fiele aus, wenn der Dienst selbst gestört ist.
+Resend und fiele aus, wenn der Dienst selbst gestört ist. (Die Zustellung der
+Benachrichtigungen an Beschäftigte hat dagegen ihre eigene Prüfung `zustellung`, WP-30.)
 
 Grenze: Der Alarm läuft **im** Dienst. Steht der Container, alarmiert er
 nicht — dafür ist der externe Check da (4).
