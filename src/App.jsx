@@ -18,7 +18,7 @@ import { verknuepfungsZiel, verknuepfungAnwenden, ohneVerknuepfung } from "./ver
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
-  dauer, brutto, fenster,
+  dauer, dauerAm, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
   schutzEinsatz, jugendMehrschichtig, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
@@ -237,6 +237,15 @@ import {
 /* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
+import { monatAbgeschlossen, monatText, datevZeilenAbdruck, datevReihenfolge, lohnexportVergleich,
+  VORMONAT_KATEGORIEN as VORMONAT_KATEGORIEN_SERVER } from "../server/lib/monatsabschluss.mjs";
+import { mindestFuer, postenBesatzung as postenBesatzungRechnen, eingefrorenerTag, eingefrorenerDienst, eingefrorenerMonat, eingefrorenerBetrieb,
+  abschlussLuecke, abschlussLuecken, abschlussLueckeText, feiertagFuer, sollMonat, nachtAnteilAm, tagesanteile, zuschlagTagAddieren,
+  eingefrorenFuerPerson, freezeStatus, datevAusFreeze, datevHinweise } from "../server/lib/isteinfrieren.mjs";
+/* Dienstformen, Anrechnungsfaktor und Standard-Lohnarten stehen seit WP-16 (Nachtrag dritter Review H-1/N-d) in
+   server/lib/lohnrechnung.mjs: Der Monatsabschluss rechnet damit Ist-Summe und Konto zum Abschluss ein. */
+import { DIENSTFORMEN, dienstform, anrechnungsfaktor, gewertet, LOHNARTEN_STD } from "../server/lib/lohnrechnung.mjs";
+import { feiertage, feiertag } from "../server/lib/feiertage.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
@@ -663,35 +672,8 @@ const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 const LAENDER = [["BW","Baden-Württemberg"],["BY","Bayern"],["BE","Berlin"],["BB","Brandenburg"],["HB","Bremen"],
   ["HH","Hamburg"],["HE","Hessen"],["MV","Mecklenburg-Vorpommern"],["NI","Niedersachsen"],["NW","Nordrhein-Westfalen"],
   ["RP","Rheinland-Pfalz"],["SL","Saarland"],["SN","Sachsen"],["ST","Sachsen-Anhalt"],["SH","Schleswig-Holstein"],["TH","Thüringen"]];
-function ostern(y) {
-  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
-  const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1;
-  return iso(new Date(y, mo - 1, da));
-}
-function bubettag(y) { let d = `${y}-11-22`; while (dow(d) !== 2) d = addDays(d, -1); return d; }
-const fCache = {};
-function feiertage(y, land) {
-  const k = `${y}|${land}`;
-  if (fCache[k]) return fCache[k];
-  const e = ostern(y);
-  const h = { [`${y}-01-01`]: "Neujahr", [addDays(e, -2)]: "Karfreitag", [addDays(e, 1)]: "Ostermontag",
-    [`${y}-05-01`]: "Tag der Arbeit", [addDays(e, 39)]: "Christi Himmelfahrt", [addDays(e, 50)]: "Pfingstmontag",
-    [`${y}-10-03`]: "Tag der Deutschen Einheit", [`${y}-12-25`]: "1. Weihnachtstag", [`${y}-12-26`]: "2. Weihnachtstag" };
-  const add = (c, d, n) => { if (c) h[d] = n; };
-  add(["BW","BY","ST"].includes(land), `${y}-01-06`, "Heilige Drei Könige");
-  add(["BE","MV"].includes(land), `${y}-03-08`, "Internationaler Frauentag");
-  add(["BW","BY","HE","NW","RP","SL"].includes(land), addDays(e, 60), "Fronleichnam");
-  add(land === "SL", `${y}-08-15`, "Mariä Himmelfahrt");
-  add(land === "TH", `${y}-09-20`, "Weltkindertag");
-  add(["BB","HB","HH","MV","NI","SN","ST","SH","TH"].includes(land), `${y}-10-31`, "Reformationstag");
-  add(["BW","BY","NW","RP","SL"].includes(land), `${y}-11-01`, "Allerheiligen");
-  add(land === "SN", bubettag(y), "Buß- und Bettag");
-  fCache[k] = h; return h;
-}
-const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
+/* ostern, feiertage und feiertag: server/lib/feiertage.mjs (WP-16, Review H1) — der Server braucht sie für die
+   Postenbesetzung beim Einfrieren des Ist. */
 
 /* ------------------------------ Zeitrechnung ------------------------------ */
 /* Das Nachtfenster ist nicht überall dasselbe.
@@ -719,12 +701,8 @@ const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
  * Die Schwellenprüfungen („ist das ein Nachtdienst?") benutzen weiterhin
  * die datumsfreie Fassung — eine Dienstart ist an jedem Tag dieselbe.
  */
-function nachtAnteilAm(datum, d, einst) {
-  const [von, bis] = fenster(datum, d);
-  const versatz = uhrversatz(von, bis);
-  if (!versatz) return nachtAnteil(d, einst);
-  return Math.max(0, Math.round((nachtAnteil(d, einst) + versatz / 60) * 100) / 100);
-}
+/* nachtAnteilAm steht seit WP-16 (Nachtrag M-neu-2) in server/lib/isteinfrieren.mjs — der Monatsabschluss
+   friert mit derselben Fassung ein. */
 
 /* ------------------------------- Rollenwerk ------------------------------- */
 const ROLLEN = [
@@ -1478,42 +1456,10 @@ function abwesenheitAm(m, pid, d) {
 /* versatzTageVon, zyklusLaenge und einheitDienst (Schichtfolge einer Einheit)
    stehen seit WP-22 in server/lib/fachpruefung.mjs — der Server rechnet
    damit dieselbe Folge. Ein Betrieb ohne zyklus.tage liefert dort null. */
-/** C5: Ein Feiertag hebt die Vorgabe an, senkt sie nie. */
-function mindestFuer(m, da, d) {
-  const w = dow(d);
-  const wt = w === 6 ? da.mindest.so : w === 5 ? da.mindest.sa : w === 4 ? da.mindest.fr : da.mindest.mo_do;
-  return Math.max(wt, feiertag(d, m.bundesland) ? da.mindest.so : 0);
-}
-/**
- * Postenbesetzung: manuelle Zuweisungen zählen an, der Pool bleibt stabil.
- * Ungeeignete werden während der Iteration übersprungen, nicht vorher entfernt —
- * dadurch verschiebt ein einzelner Ausfall die Besatzung nur um eine Person.
- */
-function postenBesatzung(m, eid, d, pid) {
-  const c = cache(m), k = `${eid}|${d}|${pid}`;
-  if (c.posten.has(k)) return c.posten.get(k);
-  const posten = m.dienstarten.find((x) => x.id === pid);
-  const soll = posten ? mindestFuer(m, posten, d) : 0;
-  const manuell = m.personen.filter((p) => imDienst(p, d) && m.abweichungen[`${p.id}|${d}`] === pid).map((p) => p.id);
-  const rest = Math.max(0, soll - manuell.length);
-  const out = new Set(manuell);
-  if (rest === 0) { c.posten.set(k, out); return out; }
-  const pool = m.personen.filter((p) => imDienst(p, d) && einheitAm(p, d) === eid
-      && p.imSchichtdienst !== false && p.funktion !== "Schichtleitung")
-    .sort((a, b) => (a.id < b.id ? -1 : 1));
-  if (!pool.length) { c.posten.set(k, out); return out; }
-  const start = Math.abs(between(m.anker, d)) % pool.length;
-  let n = 0;
-  for (let i = 0; i < pool.length && n < rest; i++) {
-    const p = pool[(start + i) % pool.length];
-    if (abwesenheitAm(m, p.id, d)) continue;
-    if (m.abweichungen[`${p.id}|${d}`] !== undefined) continue;
-    // Teilzeitkräfte, die an diesem Tag nicht arbeiten, können den Posten nicht besetzen
-    if (p.springer || !teilzeitDienst(m, p, d, einheitDienst(m, eid, d))) continue;
-    out.add(p.id); n++;
-  }
-  c.posten.set(k, out); return out;
-}
+/* mindestFuer (C5: ein Feiertag hebt die Vorgabe an, senkt sie nie) und die Postenbesetzung stehen seit
+   WP-16 (Review H1) in server/lib/isteinfrieren.mjs: Der Server friert beim Monatsabschluss das Ist mit
+   derselben Planrechnung ein. Hier nur der Zwischenspeicher je Bestand. */
+const postenBesatzung = (m, eid, d, pid) => postenBesatzungRechnen(m, eid, d, pid, cache(m).posten);
 function personTag(m, p, d) {
   if (!imDienst(p, d)) return { dienstId: null, plan: null, abweichung: null, abwesenheit: null, quelle: "extern" };
   /* Entwurf (WP-23): Der Server lässt die Einteilungen nicht freigegebener Monate nach heute für
@@ -1557,35 +1503,49 @@ function besetzung(m, d) {
 }
 function sollStunden(m, p, ym) {
   return memo(m, `soll|${p.id}|${ym}`, () => {
-    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); let t = 0;
-    for (let i = 1; i <= n; i++) { const d = `${ym}-${pad(i)}`;
-      if (imDienst(p, d) && dow(d) < 5 && !feiertagFuer(m, d, p)) t++; }
-    return Math.round(p.wochenstunden / 5 * t * 100) / 100;
+    /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): das Soll zum Abschluss — spätere Änderungen an
+       Wochenstunden, Eintritt/Austritt, Standort oder Bundesland ändern es nicht. */
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && Number.isFinite(fm.s) && !abschlussLuecke(m, p, ym)) return fm.s;
+    /* Schema ≥ 2 (WP-16, Nachtrag dritter Review M-1/N-e): ohne brauchbaren Monatseintrag kein live gerechnetes
+       Soll — „nicht verfügbar" (null), auch für Rollen, die den Eintrag nicht sehen (Betriebsrat, Schicht-
+       verantwortung ohne den ganzen Monat im Bereich). Nur wer im Monat gar nicht im Dienst war, hat Soll 0. */
+    const st = freezeStatus(m, ym);
+    if (st && (st.unbekannt || st.schema >= 2) && !(fm && !Number.isFinite(fm.s) && !abschlussLuecke(m, p, ym))) {
+      const [y, mo] = ym.split("-").map(Number);
+      let im = false;
+      for (let i = 1; i <= dim_(y, mo - 1) && !im; i++) im = imDienst(p, `${ym}-${pad(i)}`);
+      return im ? null : 0;
+    }
+    return sollMonat(m, p, ym);
   });
 }
 function istStunden(m, p, ym) {
   /* Ohne Zugang zu den Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine
      Ist-Stunden — auch nicht aus dem Plan. */
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
+  /* Abgeschlossener Monat ohne Freeze dieser Person (WP-16, Nachtrag N3): nicht 0 h, sondern Prüffall. */
+  if (abschlussLuecke(m, p, ym)) return { ...IST_NICHT_VERFUEGBAR, abschlussLuecke: true };
   return memo(m, `ist|${p.id}|${ym}`, () => {
-    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
+    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1);
     let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0, ungeplantTage = 0;
     for (let i = 1; i <= n; i++) {
-      const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
+      /* istTag: im abgeschlossenen Monat nur das eingefrorene Ist (WP-16, Review H1). */
+      const d = `${ym}-${pad(i)}`; const t = istTag(m, p, d);
       if (t.abwesenheit) {
         /* Ungeklärt ist nicht unbezahlt: nichts gutschreiben, aber zählen, damit
            die Prüfansicht sagen kann, dass das Konto dort unvollständig ist. */
         const es = entgeltStatus(abwArt(t.abwesenheit.art));
-        if (es === "bezahlt" && t.plan) gg += proTag;
+        if (es === "bezahlt" && t.plan) gg += t.wochenstunden / 5;
         else if (es === "ungeklaert" && t.plan) ungeklaert++;
         continue;
       }
       /* Ohne geplanten Dienst zählt nur ein gestempelter und von der Leitung
          bestätigter ungeplanter Dienst (WP-13) — mit seiner Ist-Dauer. */
-      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+      const da = t.da;
       if (!da) continue;
       if (da.ungeplant) ungeplantTage++;
-      const idn = istDauer(m, p, d, da);
+      const idn = t.idn;
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
       /* Ist-Zeit zur Prüfung (WP-17, W1): vorläufig die Planzeit — gezählt,
          damit Konto und Lohnausgabe es sagen können, statt still zu rechnen. */
@@ -1593,6 +1553,14 @@ function istStunden(m, p, ym) {
       const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
+    /* Abgeschlossener Monat: Nachtstunden und Nachtdienste wie zum Abschluss (Nachtfenster von damals, M-neu-2). */
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && Array.isArray(fm.z)) { nacht = Number(fm.z[0]) || 0; naechte = Number(fm.nn) || 0; }
+    /* Schema 3 (WP-16, Nachtrag dritter Review N-d): die Summen wie zum Abschluss gerechnet — eine spätere Änderung an
+       Anrechnungsfaktor oder Entgeltstatus (Code-Konstanten) ändert den abgeschlossenen Monat nicht. */
+    if (fm && Number.isFinite(fm.g) && Number.isFinite(fm.gg) && Number.isFinite(fm.ig))
+      return { geleistet: fm.g, gutgeschrieben: fm.gg, gesamt: fm.ig, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert,
+        zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
   });
@@ -1613,14 +1581,15 @@ function istStunden(m, p, ym) {
 function ausgleichPruefen(m, p, bis) {
   const ausglWochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
   if (!istVerfuegbar(m, p, { von: addDays(bis, -(ausglWochen * 7 - 1)), bis })) return { nichtVerfuegbar: true, eingehalten: null };
+  /* Ein abgeschlossener Monat im Zeitraum ohne Freeze dieser Person (N3): nicht bewertbar statt 0 h. */
+  for (let ym = addDays(bis, -(ausglWochen * 7 - 1)).slice(0, 7); ym <= bis.slice(0, 7); ym = addDays(`${ym}-01`, 32).slice(0, 7))
+    if (abschlussLuecke(m, p, ym)) return { nichtVerfuegbar: true, eingehalten: null, abschlussLuecke: true };
   return memo(m, `ausgl|${p.id}|${bis}`, () => {
     const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
     const stundenAmTag = (d) => {
-      const t = personTag(m, p, d);
-      if (t.abwesenheit) return 0;
-      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
-      if (!da) return 0;
-      return istDauer(m, p, d, da).std;
+      const t = istTag(m, p, d);                       // abgeschlossener Monat: eingefroren (WP-16, H1)
+      if (t.abwesenheit || !t.da) return 0;
+      return t.idn.std;
     };
     return ausgleichszeitraum(stundenAmTag, bis, { wochen, grenze: DURCHSCHNITT_TAG });
   });
@@ -1681,8 +1650,24 @@ function urlaubskonto(m, p, jahr) {
 function stundenkonto(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumBisMonat(ym))) return null;
   return memo(m, `kto|${p.id}|${ym}`, () => {
+    /* Abgeschlossener Monat (WP-16, Nachtrag dritter Review H-1): das Konto zum Monatsende, wie der Abschluss es
+       rechnete — mit dem Übertrag und den Vormonaten von damals. Ein später geänderter Übertrag oder ein geänderter
+       offener Vormonat ändert es nicht (Lohnart Mehrarbeit). Unbrauchbarer Freeze: nicht verfügbar. */
+    const st = freezeStatus(m, ym);
+    if (st) {
+      if (st.unbekannt || abschlussLuecke(m, p, ym)) return null;
+      const fm = eingefrorenerMonat(m, p, ym);
+      if (st.reproduzierbar && fm) return Number.isFinite(fm.k) ? fm.k : null;
+    }
     const j = Number(ym.slice(0, 4)), bis = Number(ym.slice(5, 7)); let d = p.stundenuebertrag || 0;
-    for (let x = 1; x <= bis; x++) { const k = `${j}-${pad(x)}`; d += istStunden(m, p, k).gesamt - sollStunden(m, p, k); }
+    for (let x = 1; x <= bis; x++) {
+      const k = `${j}-${pad(x)}`; const ist = istStunden(m, p, k).gesamt;
+      /* Ein abgeschlossener Monat ohne Freeze (N3): Konto unbekannt, nicht geschätzt. */
+      if (ist === null || ist === undefined) return null;
+      const soll = sollStunden(m, p, k);
+      if (soll === null || soll === undefined) return null;
+      d += ist - soll;
+    }
     return Math.round(d * 10) / 10;
   });
 }
@@ -1690,7 +1675,11 @@ function nachtJahr(m, p, jahr) {
   if (!istVerfuegbar(m, p, zeitraumJahr(jahr))) return { stunden: null, anzahl: null, nichtVerfuegbar: true };
   return memo(m, `nacht|${p.id}|${jahr}`, () => {
     let h = 0, n = 0;
-    for (let x = 1; x <= 12; x++) { const r = istStunden(m, p, `${jahr}-${pad(x)}`); h += r.nacht; n += r.naechte; }
+    for (let x = 1; x <= 12; x++) {
+      const r = istStunden(m, p, `${jahr}-${pad(x)}`);
+      if (r.abschlussLuecke) return { stunden: null, anzahl: null, nichtVerfuegbar: true, abschlussLuecke: true };
+      h += r.nacht; n += r.naechte;
+    }
     return { stunden: Math.round(h * 10) / 10, anzahl: n };
   });
 }
@@ -1842,9 +1831,16 @@ function pruefen(m, von, bis) {
          Importe. Ein Dienst über zehn Stunden und ein Dienst ohne
          ausreichende Pause liefen deshalb ohne Befund durch. */
       for (let d = von; d <= bis; d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (t.abwesenheit || !t.dienstId) continue;
-        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        /* Abgeschlossener Monat (WP-16, Review H1): der eingefrorene Dienst und seine Ist-Dauer. Geprüft
+           werden wie bisher nur geplante Dienste, kein ungeplanter. */
+        const tz = eingefrorenerTag(m, p, d) !== undefined ? istTag(m, p, d) : null;
+        let da;
+        if (tz) da = tz.da && !tz.da.ungeplant ? tz.da : null;
+        else {
+          const t = personTag(m, p, d);
+          if (t.abwesenheit || !t.dienstId) continue;
+          da = m.dienstarten.find((x) => x.id === t.dienstId);
+        }
         if (!da || da.form === "ruf") continue;
 
         /* Gegen die tatsächlich erfassten Zeiten, wo sie bestätigt sind —
@@ -1861,15 +1857,17 @@ function pruefen(m, von, bis) {
           continue;
         }
 
-        if (!pauseGenuegt(ist)) {
+        /* Jugendliche: § 11 JArbSchG (WP-16) — dieselbe Rechnung wie Stempeln und Korrektur. */
+        const jungAm = alterAm(p.geburtstag, d) !== null && alterAm(p.geburtstag, d) < 18;
+        if (!pauseGenuegt(ist, jungAm)) {
           const anwesend = bruttoAm(d, ist);
-          const noetig = pausePflicht(anwesend - (ist.pause || 0) / 60);
+          const noetig = pausePflicht(anwesend - (ist.pause || 0) / 60, jungAm);
           push({ art: "pause", schwere: "danger", datum: d, ref: `${p.id}|pause`, personId: p.id,
             titel: `Ruhepause zu kurz — ${p.nachname}`,
             text: `${da.name}: ${ist.pause || 0} min eingetragen, nötig sind ${noetig} min bei ${n1(anwesend)} h Anwesenheit` });
         }
 
-        const std = istDauer(m, p, d, da).std;
+        const std = tz ? tz.idn.std : istDauer(m, p, d, da).std;
         /* Lange Dienste (Nutzerentscheidung, WP-22): automatisch erlaubt — nur
            ein Hinweis. Ob eine Regelung nach § 7 ArbZG (Tarifvertrag,
            Betriebsvereinbarung) die Verlängerung trägt, verantwortet der Betrieb. */
@@ -2543,9 +2541,42 @@ const istDauer = (m, p, d, da) => istZeitFuer(m, p, d, da);
    die Person im Dienst und nichts geplant oder abwesend ist. Der Aufrufer hat
    den Plan schon befragt (personTag.dienstId leer). */
 const ungeplantAm = (m, p, d) => (imDienst(p, d) && !abwesenheitAm(m, p.id, d) ? ungeplanterDienst(m, p, d) : null);
+/**
+ * Der Tag einer Person, wie er ins Ist eingeht — die eine Stelle für Stundenkonto, Lohnausgabe/DATEV,
+ * Zuschläge, Ausgleichszeitraum und Prüfungsansicht:
+ *   abwesenheit  die Abwesenheit des Tages (nur `art`) oder null
+ *   plan         ob nach Schichtfolge ein Dienst geplant war (Gutschrift bezahlter Abwesenheit)
+ *   da           die Dienstart, die zählt (auch ein bestätigter ungeplanter Dienst), sonst null
+ *   idn          istZeitFuer für diesen Dienst, sonst null
+ *   wochenstunden  für die Gutschrift (im abgeschlossenen Monat die zum Abschluss)
+ * Abgeschlossener Monat (WP-16, Review H1): NUR das eingefrorene Ist (server/lib/isteinfrieren.mjs) —
+ * eine spätere Änderung an Plan, Dienstart oder Abwesenheit ändert es nicht. Nicht zugängliche Ist-Daten
+ * (Rollenschutz): wie bisher, also „nicht verfügbar", nie die Planzeit.
+ */
+function istTag(m, p, d) {
+  const fz = eingefrorenerTag(m, p, d);
+  if (fz !== undefined) {
+    if (!fz) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true };
+    /* Freeze fehlt (N3): kein Dienst „0 h", sondern ein Prüffall — die Monatsrechnungen geben null zurück. */
+    if (fz.luecke) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true, luecke: true };
+    if (Array.isArray(fz.a) && fz.a.length) {
+      const art = fz.a.reduce((best, x) => (best === null || abwArt(x).rang > abwArt(best).rang ? x : best), null);
+      return { abwesenheit: { art }, plan: fz.pl ? true : null, da: null, idn: null,
+        wochenstunden: Number.isFinite(Number(fz.w)) ? Number(fz.w) : p.wochenstunden, eingefroren: true };
+    }
+    const da = eingefrorenerDienst(fz);
+    return { abwesenheit: null, plan: null, da, eingefroren: true, wochenstunden: p.wochenstunden,
+      idn: da ? { std: Number(fz.std), erfasst: fz.e === 1, abweichung: 0, ...(fz.p === 1 ? { zurPruefung: true } : {}) } : null };
+  }
+  const t = personTag(m, p, d);
+  const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+  return { abwesenheit: t.abwesenheit, plan: t.plan, da: da || null, idn: da ? istDauer(m, p, d, da) : null, wochenstunden: p.wochenstunden };
+}
 const offeneErfassung = (m, p, bis) => {
   const out = [];
   for (let d = addDays(bis, -13); d <= bis; d = addDays(d, 1)) {
+    /* Abgeschlossener Monat (WP-16): keine Selbstauskunft mehr — der Server nimmt sie nicht an. */
+    if (monatAbgeschlossen(m, d)) continue;
     const t = personTag(m, p, d);
     if (!t.dienstId) continue;
     if (m.erfassung && m.erfassung[`${p.id}|${d}`]) continue;
@@ -2956,16 +2987,7 @@ function preisAnteilig(db, m, ym) {
  * Ein Nachtdienst von Samstag 21:30 bis Sonntag 07:15 zählt anteilig
  * als Samstags- und als Sonntagsarbeit.
  */
-function tagesanteile(datum, da) {
-  const s = toMin(da.start);
-  let e = toMin(da.ende);
-  if (e <= s) e += 1440;
-  const out = [];
-  const ersterTeil = Math.min(e, 1440) - s;
-  if (ersterTeil > 0) out.push({ datum, minuten: ersterTeil });
-  if (e > 1440) out.push({ datum: addDays(datum, 1), minuten: e - 1440 });
-  return out;
-}
+/* tagesanteile und zuschlagTagAddieren: server/lib/isteinfrieren.mjs (WP-16, Nachtrag M-neu-2). */
 /** Zuschlagsrelevante Stunden einer Person in einem Monat. */
 function zuschlagStunden(m, p, ym) {
   const ohneIst = !istVerfuegbar(m, p, zeitraumMonat(ym));
@@ -2975,21 +2997,21 @@ function zuschlagStunden(m, p, ym) {
     const r = { nacht: 0, sonntag: 0, feiertag: 0, samstag: 0, gesamt: 0 };
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`;
-      const t = personTag(m, p, d);
-      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+      /* Abgeschlossener Monat: der eingefrorene Dienst und seine Ist-Dauer (WP-16, Review H1). */
+      const t = istTag(m, p, d);
+      const da = t.da;
       if (!da) continue;
-      const gearbeitet = istDauer(m, p, d, da).std;
+      const gearbeitet = t.idn.std;
       r.gesamt += gearbeitet;
-      r.nacht += nachtAnteilAm(d, da, m.einstellungen);
-      for (const teil of tagesanteile(d, da)) {
-        const std = teil.minuten / 60;
-        const w = dow(teil.datum);
-        if (feiertagFuer(m, teil.datum, p)) r.feiertag += std;
-        else if (w === 6) r.sonntag += std;
-        else if (w === 5) r.samstag += std;
-      }
+      zuschlagTagAddieren(m, p, d, da, r);
     }
     for (const k of Object.keys(r)) r[k] = Math.round(r[k] * 100) / 100;
+    /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Nacht-, Sonn-, Feiertags- und Samstagsstunden wie zum
+       Abschluss — Nachtfenster, Bundesland/Feiertage und Standort von damals. */
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && Array.isArray(fm.z)) [r.nacht, r.sonntag, r.feiertag, r.samstag] = fm.z.map((x) => Number(x) || 0);
+    /* Freeze fehlt (N3): keine Zahlen statt 0. */
+    if (abschlussLuecke(m, p, ym)) return { nacht: null, sonntag: null, feiertag: null, samstag: null, gesamt: null, nichtVerfuegbar: true, abschlussLuecke: true };
     /* Nacht-, Sonn- und Feiertagsanteile folgen dem Plan; die gearbeiteten
        Stunden gibt es ohne Ist-Daten nicht. */
     if (ohneIst) { r.gesamt = null; r.nichtVerfuegbar = true; }
@@ -3003,7 +3025,15 @@ function zuschlagStunden(m, p, ym) {
  */
 function zuschlagWert(m, p, ym) {
   const std = zuschlagStunden(m, p, ym);
-  const zeilen = (m.zuschlaege || []).filter((z) => z.aktiv).map((z) => {
+  /* Abgeschlossener Monat: die Zuschlagsregeln zum Abschluss (M-neu-2). */
+  const fb = eingefrorenerBetrieb(m, ym);
+  /* Schema ≥ 2 ohne eingefrorene Regeln (WP-16, Nachtrag dritter Review M-1, P7): nicht die heutigen Regeln
+     rückwirkend anwenden, sondern „nicht verfügbar". */
+  const st = freezeStatus(m, ym);
+  if (st && (st.unbekannt || (st.schema >= 2 && !(fb && Array.isArray(fb.zs)))))
+    return { std, zeilen: [], summe: null, nichtVerfuegbar: true };
+  const regeln = fb && Array.isArray(fb.zs) ? fb.zs : m.zuschlaege;
+  const zeilen = (regeln || []).filter((z) => z.aktiv).map((z) => {
     const h = std[z.art] || 0;
     return { regel: z, stunden: Math.round(h * 100) / 100,
       wert: Math.round(h * z.prozent / 100 * 100) / 100 };
@@ -3205,6 +3235,27 @@ function datenauskunft(m, personId) {
   const erf = Object.entries(m.erfassung || {}).filter(([k]) => k.startsWith(personId + "|"));
   erf.length ? erf.forEach(([k, v]) => z.push(`  ${fDatum(k.split("|")[1])}: ${v.start || "wie geplant"}–${v.ende || ""}${v.grund ? ` (${v.grund})` : ""}`))
     : z.push("  —");
+  /* Monatsabschluss (WP-16, Nachtrag N6): wie die Auskunft des Servers (auskunft.mjs) — das eingefrorene Ist
+     abgeschlossener Monate und die nach dem Abschluss abgewiesenen eigenen Stempel. */
+  z.push("", "EINGEFRORENES IST (MONATSABSCHLUSS)");
+  const fz = Object.entries(eingefrorenFuerPerson(m, personId)).sort(([a], [b]) => a.localeCompare(b));
+  fz.length ? fz.forEach(([k, v]) => {
+    const t = k.split("|")[1];
+    if (t.length === 7) z.push(`  ${t}: Soll ${v.s ?? "—"} h${Array.isArray(v.z) ? ` · Nacht ${v.z[0]} h, Sonntag ${v.z[1]} h, Feiertag ${v.z[2]} h, Samstag ${v.z[3]} h` : ""}`);
+    else if (Array.isArray(v.a)) z.push(`  ${fDatum(t)}: ${v.a.map((x) => abwArt(x).label).join(", ")}`);
+    else z.push(`  ${fDatum(t)}: ${(v.da && (v.da.name || v.da.kurz)) || "Dienst"} ${n1(Number(v.std) || 0)} h${v.e ? " (erfasst)" : ""}${v.p ? " (zur Prüfung)" : ""}`);
+  }) : z.push("  —");
+  z.push("", "ABGEWIESENE STEMPEL (ABGESCHLOSSENER MONAT)");
+  const abgew = [];
+  for (const [mon, e] of Object.entries(m.monatsabschluss || {})) {
+    if (!e || typeof e !== "object") continue;
+    for (const x of Array.isArray(e.abgewiesen) ? e.abgewiesen : [])
+      if (x && String(x.personId) === String(personId))
+        abgew.push(`  ${fDatum(x.datum)}: ${x.art === "ende" ? "Ende" : "Beginn"}${x.zeit ? ` ${x.zeit}` : ""}${x.offline ? " (offline)" : ""}${x.anzahl > 1 ? ` · ${x.anzahl}×` : ""}`);
+    const n = e.abgewiesenGezaehlt && Number(e.abgewiesenGezaehlt[personId]);
+    if (n) abgew.push(`  ${mon}: ${n} weitere (nur gezählt)`);
+  }
+  abgew.length ? abgew.forEach((x) => z.push(x)) : z.push("  —");
   z.push("", "MITTEILUNGEN");
   const na = (m.nachrichten || []).filter((x) => x.personId === personId).slice(0, 40);
   na.length ? na.forEach((x) => z.push(`  ${x.zeit}: ${x.titel}`)) : z.push("  —");
@@ -3247,9 +3298,7 @@ async function fremdstandPruefen(schluessel, eigenerStand) {
 /* --------------------- Standortbezogene Feiertage ------------------------ */
 /* landFuerEinheit: server/lib/fachpruefung.mjs (WP-22). */
 /** Feiertag aus Sicht einer bestimmten Person an einem Tag. */
-function feiertagFuer(m, datum, p) {
-  return feiertag(datum, p ? landFuerEinheit(m, einheitAm(p, datum)) : m.bundesland);
-}
+/* feiertagFuer: server/lib/isteinfrieren.mjs (WP-16, Nachtrag M-neu-2 — der Abschluss friert Soll und Zuschläge damit ein). */
 /** Alle im Betrieb vorkommenden Bundesländer. */
 const laenderImBetrieb = (m) => [...new Set([m.bundesland, ...((m.standorte || []).map((s) => s.bundesland))])].filter(Boolean);
 
@@ -3277,9 +3326,8 @@ function teilzeitProfil(m, p) {
  *
  * Woher der Faktor kommt, entscheidet anrechnungsfaktor(): ein gesetzter
  * Wert der Dienstart, sonst der erfasste Einsatzanteil, sonst der Vorschlag
- * der Dienstform.
+ * der Dienstform. gewertet() steht in server/lib/lohnrechnung.mjs (WP-16, Nachtrag dritter Review).
  */
-const gewertet = (da, std) => Math.round(std * anrechnungsfaktor(da) * 100) / 100;
 
 /* ------------------------------- Personalimport -------------------------- */
 const IMPORT_SPALTEN = ["nachname", "vorname", "einheit", "funktion", "wochenstunden",
@@ -4379,24 +4427,9 @@ function fachkraftLage(m, datum, dienstId) {
  * Bereitschaftsdienst (Anwesenheit am Arbeitsplatz) und Rufbereitschaft
  * (Erreichbarkeit von zu Hause) zählen unterschiedlich. Beide sind
  * Arbeitszeit im Sinne des Arbeitsschutzes, aber nicht in voller Höhe
- * vergütungs- oder kontenwirksam.
+ * vergütungs- oder kontenwirksam. DIENSTFORMEN, dienstform() und anrechnungsfaktor() stehen in
+ * server/lib/lohnrechnung.mjs (WP-16, Nachtrag dritter Review: der Abschluss rechnet damit).
  */
-const DIENSTFORMEN = [
-  { id: "regel", name: "Regeldienst", faktor: 1, ruhezeitNeutral: false,
-    aufenthalt: "arbeitsplatz",
-    hinweis: "Volle Arbeitszeit, unterbricht die Ruhezeit." },
-  { id: "bereitschaft", name: "Bereitschaftsdienst", faktor: 0.6, ruhezeitNeutral: false,
-    aufenthalt: "arbeitsplatz", abrufMinuten: 0,
-    hinweis: "Anwesenheit am Arbeitsplatz oder an einer vom Betrieb bestimmten Stelle. "
-      + "Arbeitszeit im Sinne des ArbZG, auf dem Konto anteilig." },
-  { id: "ruf", name: "Rufbereitschaft", faktor: 0.125, ruhezeitNeutral: true,
-    aufenthalt: "frei", abrufMinuten: 30,
-    hinweis: "Aufenthalt frei wählbar, nur Erreichbarkeit geschuldet. Unterbricht die "
-      + "Ruhezeit nicht, solange kein Einsatz erfolgt." },
-  { id: "geteilt", name: "Geteilter Dienst", faktor: 1, ruhezeitNeutral: false, geteilt: true,
-    aufenthalt: "arbeitsplatz",
-    hinweis: "Zwei Abschnitte mit Unterbrechung. Die Pause dazwischen ist keine Arbeitszeit." },
-];
 
 /* --------------------------------------------------------------------------
    AUFENTHALTSBINDUNG
@@ -4466,24 +4499,6 @@ function bereitschaftHinweise(da) {
         + "arbeitszeitrechtliche Bewertung hängt — ohne sie lässt sich die Form nicht belegen." });
 
   return aus;
-}
-const dienstform = (id) => DIENSTFORMEN.find((x) => x.id === id) || DIENSTFORMEN[0];
-
-/**
- * Womit wird diese Dienstart auf das Konto gerechnet?
- *
- * Der Betrieb kann einen Faktor setzen. Ist stattdessen ein Einsatzanteil
- * erfasst — wie viel der Bereitschaft erfahrungsgemäß Einsatz ist —, ist
- * das die ehrlichere Zahl: Sie stammt aus der Beobachtung und nicht aus
- * einer Verhandlung. Sie greift nur, wenn kein eigener Faktor gesetzt ist.
- */
-function anrechnungsfaktor(da) {
-  if (!da) return 1;
-  if (da.faktor !== undefined && da.faktor !== null) return da.faktor;
-  const anteil = Number(da.einsatzAnteil);
-  if ((da.form === "ruf" || da.form === "bereitschaft") && Number.isFinite(anteil) && anteil > 0)
-    return Math.min(1, anteil);
-  return dienstform(da.form).faktor;
 }
 
 /** Dauer eines geteilten Dienstes: beide Abschnitte ohne die Lücke dazwischen. */
@@ -4555,30 +4570,35 @@ function offeneUebergaben(m, tage = 3, einheitId = null) {
 }
 
 /* --------------------------- Lohnausgabe --------------------------------- */
-/**
- * Übliche Lohnartennummern als Startwerte. Sie sind keine Vorgabe von DATEV,
- * sondern in deutschen Lohnbüros verbreitete Hausnummern — jeder Betrieb
- * führt seinen eigenen Lohnartenschlüssel, deshalb sind sie einstellbar.
- */
-const LOHNARTEN_STD = {
-  grund: { nr: "1000", text: "Gehalt" },
-  nacht: { nr: "1400", text: "Nachtzuschlag steuerfrei" },
-  sonntag: { nr: "1410", text: "Sonntagszuschlag steuerfrei" },
-  feiertag: { nr: "1420", text: "Feiertagszuschlag steuerfrei" },
-  samstag: { nr: "1430", text: "Samstagszuschlag" },
-  bereitschaft: { nr: "1500", text: "Bereitschaftsdienst" },
-  ruf: { nr: "1510", text: "Rufbereitschaft" },
-  mehrarbeit: { nr: "1200", text: "Mehrarbeit" },
-};
+/* LOHNARTEN_STD (übliche Lohnartennummern als Startwerte, einstellbar) steht seit WP-16 (Nachtrag dritter Review
+   N-d) in server/lib/lohnrechnung.mjs: Der Abschluss friert die wirksamen Lohnarten ein — eigene oder diese. */
 /**
  * Erzeugt den Lohnartensatz je Person für einen Monat.
  * Bewusst als Stunden je Lohnart — Entgelte gehören in die Lohnabrechnung.
+ *
+ * Abgeschlossener Monat (WP-16, Nachtrag dritter Review H-1): NUR aus dem Freeze (datevAusFreeze) — Lohnarten,
+ * Zugehörigkeit, Zuschläge, Bereitschaft/Ruf, Konto (Mehrarbeit) und Personalangaben wie zum Abschluss. Ein später
+ * geänderter Übertrag, ein geänderter offener Vormonat, ein umbenannter oder aus dem Personalstamm entfernter
+ * Mensch ändern die Zeilen nicht; der Server rechnet beim Bestätigen des Lohnexports dieselben Zeilen nach.
+ * Unbrauchbarer Freeze (Version, Verzeichnis, Lohnarten): keine Zeilen — die Lohnausgabe nennt den Prüffall.
+ * Altabschlüsse (Schema 1/2) rechnen wie bisher, gekennzeichnet als nicht reproduzierbar.
  */
 function datevSaetze(m, ym) {
-  const la = m.lohnarten || LOHNARTEN_STD;
+  const st = freezeStatus(m, ym);
+  if (st && st.unbekannt) return [];
+  if (st && st.reproduzierbar) return datevAusFreeze(m, ym) || [];
+  /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Lohnarten und Zugehörigkeit (im Dienst am 28.) wie zum
+     Abschluss — ein rückwirkend verlegter Austritt lässt niemanden aus dem abgeschlossenen Monat fallen. */
+  const fb = eingefrorenerBetrieb(m, ym);
+  /* Schema 2 ohne Lohnarten (la: null): nicht die heutigen nehmen (Nachtrag dritter Review M-1) — keine Zeilen. */
+  if (st && st.schema >= 2 && !(fb && fb.la && typeof fb.la === "object")) return [];
+  const la = (fb && "la" in fb ? fb.la : m.lohnarten) || LOHNARTEN_STD;
   const zeilen = [];
   for (const p of m.personen) {
-    if (!imDienst(p, `${ym}-28`)) continue;
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && (fm.i === 0 || fm.i === 1) ? fm.i !== 1 : !imDienst(p, `${ym}-28`)) continue;
+    /* Freeze fehlt (N3): keine Zeilen statt 0 h — die Lohnausgabe nennt den Prüffall (lohnPruefZeilen, exportWarnung). */
+    if (abschlussLuecke(m, p, ym)) continue;
     const w = zuschlagWert(m, p, ym);
     const kto = stundenkonto(m, p, ym);
     const eintrag = (schluessel, stunden) => {
@@ -4596,12 +4616,14 @@ function datevSaetze(m, ym) {
     const [y, mo] = ym.split("-").map(Number);
     for (let i = 1; i <= dim_(y, mo - 1); i++) {
       const d = `${ym}-${pad(i)}`;
-      const t = personTag(m, p, d);
-      if (!t.dienstId) continue;
-      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      /* Abgeschlossener Monat: der eingefrorene Dienst (WP-16, Review H1). Stunden aus dem Ist des Tages — Sommerzeit,
+         erfasste Zeit (Nachtrag vierter Review N-1, wie summeAusTagen im Freeze); ohne Ist-Zeit die Dauer an dem Tag. */
+      const t = istTag(m, p, d);
+      const da = t.da;
       if (!da) continue;
-      if (da.form === "bereitschaft") ber += dauer(da);
-      else if (da.form === "ruf" || da.rufbereitschaft) ruf += dauer(da);
+      const std = t.idn && t.idn.std !== null && t.idn.std !== undefined && Number.isFinite(Number(t.idn.std)) ? Number(t.idn.std) : dauerAm(d, da);
+      if (da.form === "bereitschaft") ber += std;
+      else if (da.form === "ruf" || da.rufbereitschaft) ruf += std;
     }
     eintrag("bereitschaft", ber);
     eintrag("ruf", ruf);
@@ -4609,40 +4631,108 @@ function datevSaetze(m, ym) {
   }
   return zeilen;
 }
-/* csvFeld (ein Feld der Trennzeichendatei) und csvText (Freitext, zus\u00E4tzlich
+/* csvFeld (ein Feld der Trennzeichendatei) und csvText (Freitext, zusätzlich
    gegen Formel-Injection) stehen in src/csvfeld.js. */
+
+/**
+ * Der Stand, aus dem die Lohnausgabe eines abgeschlossenen Monats entsteht (WP-16, Nachtrag dritter Review H-2):
+ * Prüfsumme und Kennung des Abschlusses, Revision und die Prüfsumme der Zeilen. Die Oberfläche merkt ihn sich beim
+ * Ausgeben der Datei und schickt genau ihn beim Bestätigen des Lohnexports mit; der Server vergleicht (409 bei
+ * Abweichung). null für einen offenen Monat.
+ */
+/** Der zuletzt ausgegebene Stand je Betrieb und Monat (nur in dieser Sitzung der Oberfläche). */
+const EXPORT_STAND = new Map();
+function lohnexportStand(m, ym) {
+  const e = m && m.monatsabschluss && m.monatsabschluss[ym];
+  if (!e || e.abgeschlossen !== true) return null;
+  return { monat: ym, abdruck: e.abdruck ?? null, stand: e.stand ?? null, revision: Number.isInteger(e.revision) ? e.revision : 1,
+    zeilen: datevZeilenAbdruck(datevSaetze(m, ym)) };
+}
+/** Dateiname der Lohnausgabe: im abgeschlossenen Monat mit Revision und Prüfsumme (die Datei selbst bleibt im Format). */
+function lohnausgabeDateiname(m, ym, endung) {
+  const s = lohnexportStand(m, ym);
+  return `lohnausgabe_${String(m.name || "").replace(/\W+/g, "_")}_${ym}${s && s.abdruck ? `_r${s.revision}_${String(s.abdruck).slice(0, 12)}` : ""}.${endung}`;
+}
+
+/** Kategorien der Überstimmung offener oder geänderter Vormonate beim Lohnexport — dieselbe Liste wie der Server. */
+const VORMONAT_KATEGORIEN = Object.entries(VORMONAT_KATEGORIEN_SERVER).map(([id, text]) => ({ id, text }));
+/**
+ * Rückfrage vor dem Bestätigen des Lohnexports (WP-16, Nachtrag vierter Review A-2): Nennt die Vormonate des Jahres,
+ * die offen sind (oder beim Abschluss waren) oder seit dem Abschluss wiederöffnet und neu abgeschlossen wurden. Mit
+ * `vormonate: true` bestätigt der Server nur mit ausdrücklicher Überstimmung (Kategorie und Begründung).
+ */
+function lohnexportRueckfrage(m, ym) {
+  const h = datevHinweise(m, ym);
+  const offen = h ? h.vormonateOffen : [], geaendert = h ? h.vormonatGeaendert : [];
+  const teile = [
+    geaendert.length ? `Seit dem Abschluss wiederöffnet und neu abgeschlossen (geändert): ${geaendert.map(monatText).join(", ")} — das Konto (Mehrarbeit) dieses Monats ist veraltet.` : "",
+    offen.length ? `Vormonat offen oder beim Abschluss offen: ${offen.map(monatText).join(", ")} — das Konto (Mehrarbeit) ist vorläufig.` : ""].filter(Boolean);
+  return { vormonate: teile.length > 0, offen, geaendert, text: teile.join("\n") };
+}
+/** Die Lohnartennummer der Mehrarbeit (Kontostand) für einen Monat: im abgeschlossenen Monat aus dem Freeze. */
+function mehrarbeitNr(m, ym) {
+  const fb = eingefrorenerBetrieb(m, ym);
+  const la = (fb && fb.la && typeof fb.la === "object" ? fb.la : m.lohnarten) || LOHNARTEN_STD;
+  return String(((la && la.mehrarbeit) || LOHNARTEN_STD.mehrarbeit).nr);
+}
+const KONTOSTAND_TEXT = "Mehrarbeit = Stand des Stundenkontos zum Monatsende (Übertrag + alle Monate des Jahres), "
+  + "kein Zuwachs dieses Monats — nicht über mehrere Monate addieren.";
+/**
+ * Personen, die im Monat beschäftigt waren, aber am 28. nicht (Austritt oder Eintritt im Monat): Sie bekommen keine
+ * Zeilen (Produktentscheidung offen, WP-16 Nachtrag vierter Review A-5) — die Lohnausgabe sagt es. Abgeschlossen
+ * (Schema 3) aus dem Freeze, sonst aus dem Personalstamm.
+ */
+function ohneZeilenImMonat(m, ym) {
+  const h = datevHinweise(m, ym);
+  if (h && !h.unbekannt && !h.nichtReproduzierbar) return h.ausgetreten;
+  const [y, mo] = ym.split("-").map(Number);
+  const tage = Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
+  return m.personen.filter((p) => !imDienst(p, `${ym}-28`) && tage.some((d) => imDienst(p, d)))
+    .map((p) => ({ personId: p.id, personalnummer: p.personalnummer || p.id, nachname: p.nachname, vorname: p.vorname,
+      austritt: typeof p.austritt === "string" && p.austritt.slice(0, 7) === ym ? p.austritt.slice(0, 10) : null }));
+}
+function ohneZeilenText(m, ym) {
+  const l = ohneZeilenImMonat(m, ym);
+  if (!l.length) return [];
+  const datum = (x) => `${x.slice(8, 10)}.${x.slice(5, 7)}.${x.slice(0, 4)}`;
+  return [`HINWEIS: ${l.length === 1 ? "1 Person" : `${l.length} Personen`} am 28. nicht im Dienst — ausgetreten – Zeilen nicht ausgegeben `
+    + "(auch keine Zuschläge, Bereitschaft oder Mehrarbeit; offene Entscheidung, siehe Nachweis WP-16):",
+  ...l.map((x) => `  ${x.nachname || "?"}, ${x.vorname || "?"} (${x.personalnummer})${x.austritt ? `, Austritt ${datum(x.austritt)}` : ", Eintritt nach dem 28."}`), ""];
+}
 
 /**
  * Die Lohnausgabe als Trennzeichendatei.
  *
- * Kein amtliches DATEV-Importformat \u2014 die gibt es (LODAS und Lohn und Gehalt),
+ * Kein amtliches DATEV-Importformat — die gibt es (LODAS und Lohn und Gehalt),
  * beide mit vorgeschriebenem Kopfsatz und fester Feldfolge. Diese Datei ist
- * eine schlichte, klar benannte Spaltenliste, wie sie ein Lohnb\u00FCro in seinen
- * Import einliest oder in die eigene Maske \u00FCbernimmt. Sie ist bewusst so
- * gehalten, dass ein Mensch sie lesen und pr\u00FCfen kann, bevor er sie weitergibt.
+ * eine schlichte, klar benannte Spaltenliste, wie sie ein Lohnbüro in seinen
+ * Import einliest oder in die eigene Maske übernimmt. Sie ist bewusst so
+ * gehalten, dass ein Mensch sie lesen und prüfen kann, bevor er sie weitergibt.
  *
  * Byte-Reihenfolge-Marke und CRLF stehen davor, damit Excel Umlaute nicht
- * zerlegt \u2014 ohne beides wird aus M\u00FCller ein M\u00C3\u00BCller.
+ * zerlegt — ohne beides wird aus Müller ein MÃ¼ller.
+ *
+ * Prüfsumme und Revision eines abgeschlossenen Monats stehen nicht in der Datei (das Spaltenformat bleibt, wie
+ * Importe es erwarten), sondern im Dateinamen und im Blatt zum Gegenlesen (lohnausgabeText).
  */
 function datevCSV(m, ym) {
   /* Feste Reihenfolge: Personalnummer, dann Lohnart. Vorher kam die Reihenfolge
-     aus der Personalliste \u2014 zwei Ausgaben desselben Monats konnten sich
-     unterscheiden, ohne dass sich eine Zahl ge\u00E4ndert hatte. */
-  const z = datevSaetze(m, ym).slice().sort((a, b) =>
-    String(a.personalnummer).localeCompare(String(b.personalnummer), "de", { numeric: true })
-    || String(a.lohnart).localeCompare(String(b.lohnart), "de", { numeric: true }));
+     aus der Personalliste — zwei Ausgaben desselben Monats konnten sich
+     unterscheiden, ohne dass sich eine Zahl geändert hatte. */
+  /* Dieselbe Reihenfolge wie die Zeilen-Prüfsumme (datevReihenfolge, WP-16 Nachtrag vierter Review N-2). */
+  const z = datevSaetze(m, ym).slice().sort(datevReihenfolge);
   const [jahr, monat] = ym.split("-");
   const kopf = ["Personalnummer", "Nachname", "Vorname", "Lohnart", "Bezeichnung",
     "Stunden", "Monat", "Jahr"];
   const zeilen = [kopf.join(";")];
   for (const x of z) zeilen.push([x.personalnummer, x.nachname, x.vorname, x.lohnart,
     x.bezeichnung, n2(x.stunden), monat, jahr].map(csvFeld).join(";"));
-  return "\uFEFF" + zeilen.join("\r\n");
+  return "﻿" + zeilen.join("\r\n");
 }
 
 /**
- * Dieselben Zahlen als lesbares Blatt \u2014 zum Gegenlesen, bevor die Datei das
- * Haus verl\u00E4sst. Eine Trennzeichendatei pr\u00FCft niemand gern am Bildschirm.
+ * Dieselben Zahlen als lesbares Blatt — zum Gegenlesen, bevor die Datei das
+ * Haus verlässt. Eine Trennzeichendatei prüft niemand gern am Bildschirm.
  */
 /**
  * Ist-Zeiten zur Prüfung (WP-17, W1) im Blatt zum Gegenlesen: je betroffenem
@@ -4650,14 +4740,78 @@ function datevCSV(m, ym) {
  */
 function lohnPruefZeilen(m, ym) {
   const h = pruefHinweis(m, ym);
-  if (!h) return [];
+  /* Abgeschlossener Monat ohne Freeze einer Person (WP-16, Nachtrag N3): Prüffall statt still 0 h. */
+  /* Nach Frist gelöscht (Nachtrag vierter Review A-3): kein Prüffall je Person — freezeZeilen sagt es einmal. */
+  const lu = freezeGeloescht(m, ym) ? [] : abschlussLuecken(m, ym);
+  const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${abschlussLueckeText(m, ym)}`,
+    ...lu.map((p) => `  ${p.nachname}, ${p.vorname}`), ""] : [];
+  /* Austritt im Monat (A-5): keine Zeilen — gesagt, nicht still. */
+  const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym)];
+  if (!h) return [...luZeilen, ...fz];
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
     `ACHTUNG: ${h.text}`,
     ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${pruefFallText(f.art)}`),
     "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
     "",
+    ...luZeilen,
+    ...fz,
   ];
+}
+/**
+ * Hinweise aus dem Freeze eines abgeschlossenen Monats (WP-16, Nachtrag dritter Review H-1, M-1, N-d) — Prüffälle
+ * statt stiller Zahlen: unbrauchbarer oder nicht reproduzierbarer Abschluss, Personen nicht mehr im Personalstamm
+ * (Zeilen aus dem Abschluss), Konto nicht rechenbar, offene Vormonate, anderer Rechenstand. Seit dem vierten Review
+ * dazu: Vormonat nach dem Abschluss geändert (A-1), Abweichung von der bestätigten Ausgabe und Freeze nach Frist
+ * gelöscht (A-3), Übertrag ohne Jahresbezug (A-4).
+ */
+const freezeGeloescht = (m, ym) => { const st = freezeStatus(m, ym); return !!st && st.grund === "geloescht"; };
+function freezeZeilen(m, ym) {
+  const h = datevHinweise(m, ym);
+  if (!h) return [];
+  const name = (x) => `  ${x.nachname || "?"}, ${x.vorname || "?"} (${x.personalnummer})`;
+  const aus = [];
+  /* Bestätigte Ausgabe gegen die heutige (A-3): Zeilen-Prüfsumme vergleichen, gelöschten Freeze benennen. */
+  const vg = lohnexportVergleich(m, ym, datevSaetze(m, ym));
+  const bestaetigt = vg ? `bestätigt am ${zeitpunktText(vg.am)}, Zeilen-Prüfsumme ${vg.bestaetigt || "unbekannt"}${Number.isFinite(vg.n) ? `, ${vg.n} Zeilen` : ""}` : "";
+  if (h.unbekannt && h.geloescht) aus.push(`HINWEIS: Nach Frist gelöscht — ${abschlussLueckeText(m, ym)} Keine Lohnartensätze mehr; `
+    + `die Ausgabe von damals gilt (${bestaetigt}).`, "");
+  else if (h.unbekannt) aus.push("ACHTUNG: Der Abschluss dieses Monats ist in einem unbekannten oder unvollständigen Format — "
+    + "keine Lohnartensätze (Prüffall: Monat wiederöffnen und erneut abschließen).", "");
+  if (vg && vg.status === "abweichend") aus.push("ACHTUNG: Diese Ausgabe weicht von der bestätigten Ausgabe ab (Anonymisierung/Softwarestand) — "
+    + `Zeilen-Prüfsumme heute ${vg.heute}, ${bestaetigt}. Maßgeblich bleibt die bestätigte Datei.`, "");
+  if (h.nichtReproduzierbar) aus.push(`ACHTUNG: Abschluss im älteren Format (Schema ${h.schema}) — nicht reproduzierbar: `
+    + "Soll, Zuschläge oder Konto teils mit heutigen Stammdaten gerechnet. Vor dem Lohnexport wiederöffnen und erneut abschließen.", "");
+  if (h.lohnartenFehlen) aus.push("ACHTUNG: Im Abschluss fehlen die Lohnarten — keine Lohnartensätze (Prüffall).", "");
+  if (h.entfernt.length) aus.push(`HINWEIS: ${h.entfernt.length === 1 ? "1 Person steht" : `${h.entfernt.length} Personen stehen`} `
+    + "nicht mehr im Personalstamm — ihre Zeilen kommen aus dem Abschluss:", ...h.entfernt.map(name), "");
+  if (h.kontoFehlt.length) aus.push(`ACHTUNG: Konto zum Abschluss nicht rechenbar (keine Mehrarbeitszeile) für `
+    + `${h.kontoFehlt.length === 1 ? "1 Person" : `${h.kontoFehlt.length} Personen`}:`, ...h.kontoFehlt.map(name), "");
+  if (h.vormonateOffen.length) aus.push(`HINWEIS: Konto vorläufig — Vormonat offen (${h.vormonateOffen.map(monatText).join(", ")}). `
+    + "Das Konto dieses Monats ist der Stand zum Abschluss; Änderungen in offenen Vormonaten wirken erst in späteren Monaten.", "");
+  if (h.vormonatGeaendert.length) aus.push(`ACHTUNG: Vormonat nach dem Abschluss geändert (${h.vormonatGeaendert.map(monatText).join(", ")}) — `
+    + "wiederöffnet und neu abgeschlossen. Das Konto (Mehrarbeit) dieses Monats ist der Stand vor der Änderung und damit veraltet; "
+    + "der Lohnexport lässt sich nur mit ausdrücklicher Begründung bestätigen.", "");
+  if (h.uebertragGeaendert.length) {
+    const seit = [...new Set(h.uebertragGeaendert.map((x) => x.seit))].sort();
+    for (const s of seit) aus.push(`HINWEIS: Übertrag seit ${monatText(s)} geändert — der Übertrag hat keinen Jahresbezug; `
+      + "das Konto rechnet mit dem Wert zum Abschluss, nichts umgerechnet. Bitte prüfen:",
+    ...h.uebertragGeaendert.filter((x) => x.seit === s).map((x) => `${name(x)}: ${zahl(x.vorher)} → ${zahl(x.ue)}`), "");
+  }
+  if (h.uebertragJahreswechsel) aus.push(`HINWEIS: Übertrag ohne Jahresbezug — der Monat wurde erst nach dem Jahreswechsel abgeschlossen. `
+    + `Bitte prüfen, ob der eingefrorene Übertrag noch der des Jahres ${ym.slice(0, 4)} war; nichts umgerechnet.`, "");
+  if (h.rechenstand !== undefined) aus.push(`HINWEIS: Abschluss mit Rechenstand ${h.rechenstand ?? "unbekannt"} — die Software rechnet heute anders. `
+    + "Die eingefrorenen Werte gelten unverändert.", "");
+  return aus;
+}
+
+/** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
+function lohnWarnung(m, ym, w) {
+  const l = freezeGeloescht(m, ym) ? 0 : abschlussLuecken(m, ym).length;
+  const fz = freezeZeilen(m, ym).filter((z) => z.startsWith("ACHTUNG")).join("\n");
+  if (!l && !fz) return w;
+  const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${abschlussLueckeText(m, ym)} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
+  return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;
 }
 
 function lohnausgabeText(m, ym) {
@@ -4672,28 +4826,36 @@ function lohnausgabeText(m, ym) {
   const summen = Object.values(jeLohnart).sort((a, b) =>
     String(a.nr).localeCompare(String(b.nr), "de", { numeric: true }));
   const breite = (s, n) => String(s).padEnd(n).slice(0, n);
+  /* Begleitprotokoll (WP-16, Nachtrag dritter Review H-2): Abschluss, Revision und Prüfsummen des ausgegebenen Standes. */
+  const st = lohnexportStand(m, ym);
+  /* Mehrarbeit ist der Kontostand zum Monatsende, kein Monatszuwachs (Nachtrag vierter Review A-6) — im Blatt so benannt. */
+  const ma = mehrarbeitNr(m, ym);
+  const kontostand = summen.some((l) => String(l.nr) === ma);
+  for (const l of summen) if (String(l.nr) === ma) l.text = `${l.text} (Kontostand)`;
   return [
     `Lohnausgabe ${m.name}`,
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
     `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+    ...(st ? [`Abschluss: Revision ${st.revision} · Prüfsumme ${st.abdruck} · Zeilen-Prüfsumme ${st.zeilen}`]
+      : ["Monat nicht abgeschlossen — vorläufige Ausgabe, nicht als Lohnexport bestätigbar."]),
     "",
     ...lohnPruefZeilen(m, ym),
     "Summen je Lohnart",
-    "\u2014".repeat(58),
+    "—".repeat(58),
     `${breite("Lohnart", 10)}${breite("Bezeichnung", 32)}${"Personen".padStart(9)}${"Stunden".padStart(11)}`,
     ...summen.map((l) => `${breite(l.nr, 10)}${breite(l.text, 32)}`
       + `${String(l.personen.size).padStart(9)}${n2(l.stunden).padStart(11)}`),
-    "\u2014".repeat(58),
+    "—".repeat(58),
     `${breite("", 42)}${String(new Set(z.map((x) => x.personalnummer)).size).padStart(9)}`
       + `${n2(z.reduce((a, x) => a + x.stunden, 0)).padStart(11)}`,
     "",
-    `${zahl(z.length)} Lohnartens\u00E4tze f\u00FCr ${zahl(new Set(z.map((x) => x.personalnummer)).size)} Personen.`,
+    `${zahl(z.length)} Lohnartensätze für ${zahl(new Set(z.map((x) => x.personalnummer)).size)} Personen.`,
     "",
-    "Ausgewiesen werden Stunden je Lohnart, keine Entgelte. Stundens\u00E4tze,",
-    "Tarifgruppen und Steuerfreibetr\u00E4ge geh\u00F6ren in die Lohnabrechnung.",
+    ...(kontostand ? [`Lohnart ${ma}: ${KONTOSTAND_TEXT}`, ""] : []),
+    "Ausgewiesen werden Stunden je Lohnart, keine Entgelte. Stundensätze,",
+    "Tarifgruppen und Steuerfreibeträge gehören in die Lohnabrechnung.",
   ].join("\n");
 }
-
 /* ==========================================================================
    BELASTBARKEIT UND ENTSCHEIDUNGSUNTERSTÜTZUNG
    Ein Plan, der heute aufgeht, sagt nichts darüber, ob er morgen noch trägt.
@@ -11649,6 +11811,108 @@ function korrekturMeldung(erg) {
 const UHR_FORMAT = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ANTRAG_STATUS_TEXT = { offen: "offen", genehmigt: "genehmigt", abgelehnt: "abgelehnt", zurueckgezogen: "zurückgezogen" };
 
+/* --------------------------------------------------------------------------
+   MONATSABSCHLUSS (WP-16) — Oberfläche
+   -------------------------------------------------------------------------- */
+/** Ist der Monat dieses Tages abgeschlossen? Dieselbe Regel wie der Server (lib/monatsabschluss.mjs). */
+const monatGesperrt = (m, datum) => monatAbgeschlossen(m, datum);
+const zeitpunktText = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime())
+  ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"; };
+
+/**
+ * Stand des Monats in den Stempelbefunden — nur für Leitung und Planung (staff.edit). Abgeschlossen:
+ * Wann, Wer, Verlauf mit Grund, nach dem Abschluss abgewiesene Stempel; „Wiederöffnen“ nur mit
+ * org.edit (Leitung), mit Grund. Offen und vergangen: „Monat abschließen“. Laufender Monat: Hinweis.
+ */
+function Monatsabschluss({ sitz, ym, akt }) {
+  const m = sitz.mandant;
+  const [grund, setGrund] = useState("");
+  const [oeffnen, setOeffnen] = useState(false);
+  /* Überstimmung offener/geänderter Vormonate beim Lohnexport (WP-16, Nachtrag vierter Review A-2): Kategorie und Begründung. */
+  const [trotz, setTrotz] = useState(null);
+  if (!darf(sitz, "staff.edit") || !ym) return null;
+  const e = m.monatsabschluss && m.monatsabschluss[ym] && typeof m.monatsabschluss[ym] === "object" ? m.monatsabschluss[ym] : null;
+  const zu = !!e && e.abgeschlossen === true;
+  const exportiert = zu && !!e.lohnexport && typeof e.lohnexport === "object";
+  const luecken = zu && !freezeGeloescht(m, ym) ? abschlussLuecken(m, ym) : [];
+  const rueckfrage = zu && !exportiert ? lohnexportRueckfrage(m, ym) : null;
+  const bestaetigen = () => { if (rueckfrage && rueckfrage.vormonate) setTrotz({ kategorie: "", grund: "" }); else akt.lohnexportBestaetigen(ym); };
+  const laufend = ym >= heute().slice(0, 7);
+  const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
+  const verlauf = e && Array.isArray(e.verlauf) ? e.verlauf : [];
+  const abgewiesen = e && Array.isArray(e.abgewiesen) ? e.abgewiesen : [];
+  /* Review M3: weitere über der Obergrenze je Person nur gezählt. */
+  const gezaehlt = e && e.abgewiesenGezaehlt && typeof e.abgewiesenGezaehlt === "object"
+    ? Object.entries(e.abgewiesenGezaehlt).filter(([, n]) => Number(n) > 0) : [];
+  const anzahlAbgewiesen = abgewiesen.reduce((a, x) => a + (Number(x.anzahl) || 1), 0) + gezaehlt.reduce((a, [, n]) => a + Number(n), 0);
+  return (
+    <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <b style={{ fontSize: 13.5 }}>{zu ? `${monatText(ym)} abgeschlossen` : laufend ? `${monatText(ym)} läuft` : `${monatText(ym)} ist offen`}</b>
+        {zu && <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>am {zeitpunktText(e.am)}{e.wer && e.wer.name ? ` von ${e.wer.name}` : ""}</span>}
+        {!zu && !laufend && akt && <Btn size="sm" kind="primary" onClick={() => akt.monatAbschliessen(ym)}>Monat abschließen</Btn>}
+        {zu && akt && darf(sitz, "org.edit") && !oeffnen && !exportiert && <Btn size="sm" onClick={() => { setOeffnen(true); setGrund(""); }}>Wiederöffnen</Btn>}
+        {/* Lohnexport bestätigen (Betreiberentscheidung 2026-11-03): danach kein einfaches Wiederöffnen mehr. */}
+        {zu && akt && akt.lohnexportBestaetigen && darf(sitz, "org.edit") && !exportiert && !oeffnen && !trotz
+          && <Btn size="sm" onClick={bestaetigen}>Lohnexport bestätigen</Btn>}
+        {exportiert && <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>Lohnexport bestätigt am {zeitpunktText(e.lohnexport.am)}{e.lohnexport.wer && e.lohnexport.wer.name ? ` von ${e.lohnexport.wer.name}` : ""}</span>}
+      </div>
+      {exportiert && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+        Der Lohnexport ist bestätigt — der Abschluss lässt sich nicht mehr einfach wiederöffnen; eine Änderung braucht den Korrekturprozess.</div>}
+      {luecken.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+        {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {abschlussLueckeText(m, ym)}</div>}
+      {trotz && zu && !exportiert && (
+        <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: 6 }}>
+          <div style={{ fontSize: 12.5, color: C.warn, whiteSpace: "pre-line", lineHeight: 1.45 }}>{rueckfrage ? rueckfrage.text : ""}</div>
+          <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Bestätigen nur ausdrücklich: Kategorie wählen und begründen (steht im Verlauf).</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <Sel value={trotz.kategorie} aria-label="Kategorie der Begründung" onChange={(x) => setTrotz({ ...trotz, kategorie: x.target.value })}>
+              <option value="">— Kategorie wählen —</option>
+              {VORMONAT_KATEGORIEN.map((k) => <option key={k.id} value={k.id}>{k.text}</option>)}</Sel>
+            <Inp value={trotz.grund} maxLength={500} onChange={(x) => setTrotz({ ...trotz, grund: x.target.value })} aria-label="Begründung für den Lohnexport trotz Vormonat"
+              placeholder="Begründung (10–500 Zeichen)" style={{ flex: 1, minWidth: 240 }} />
+            <Btn size="sm" kind="danger" disabled={!trotz.kategorie || trotz.grund.trim().length < 10 || trotz.grund.trim().length > 500}
+              onClick={async () => { if (await akt.lohnexportBestaetigen(ym, { kategorie: trotz.kategorie, grund: trotz.grund.trim() })) setTrotz(null); }}>Trotz Vormonat bestätigen</Btn>
+            <Btn size="sm" onClick={() => setTrotz(null)}>Abbrechen</Btn>
+          </div>
+        </div>)}
+      {/* Freeze-Hinweise (WP-16, Nachtrag dritter Review H-1/M-1/N-d): Format, offene Vormonate, Rechenstand, entfernte Personen. */}
+      {zu && freezeZeilen(m, ym).filter(Boolean).map((t, i) => <div key={i} style={{ fontSize: 12.5, color: /^ACHTUNG/.test(t) ? C.warn : C.dim, marginTop: 4 }}>{t}</div>)}
+      <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.45 }}>
+        {zu ? "Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats sind gesperrt; Stundenkonto und Lohnausgabe rechnen mit dem Ist zum Abschluss — spätere Änderungen an Plan, Dienstarten oder Abwesenheiten wirken erst, wenn der Monat wieder offen ist. Wieder öffnen kann ihn nur die Leitung, mit Grund."
+          : laufend ? "Abschließen lässt sich ein Monat erst nach dem Monatsende."
+            : "Mit dem Abschluss werden Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats gesperrt."}</div>
+      {oeffnen && zu && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+          <Inp value={grund} onChange={(x) => setGrund(x.target.value)} aria-label="Grund für das Wiederöffnen" placeholder="Grund (mindestens 10 Zeichen)" style={{ flex: 1, minWidth: 240 }} />
+          <Btn size="sm" kind="danger" disabled={grund.trim().length < 10}
+            onClick={async () => { if (await akt.monatWiederoeffnen(ym, grund)) setOeffnen(false); }}>Monat wiederöffnen</Btn>
+          <Btn size="sm" onClick={() => setOeffnen(false)}>Abbrechen</Btn>
+        </div>)}
+      {anzahlAbgewiesen > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.warn }}>
+            {anzahlAbgewiesen === 1 ? "1 Stempel nach dem Abschluss abgewiesen" : `${anzahlAbgewiesen} Stempel nach dem Abschluss abgewiesen`}</div>
+          <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
+            {exportiert
+              ? "Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Der Lohnexport ist bestätigt — ein Nachtrag geht nur noch über den Korrekturprozess, nicht durch erneutes Senden."
+              : "Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Ist der Monat wieder offen, lässt er sich dort erneut senden."}</div>
+          {abgewiesen.map((x, i) => (
+            <div key={`${x.ereignis || i}`} style={{ fontSize: 12.5, ...NUM }}>
+              {name(x.personId)} · {fKurz(x.datum)} · {x.art === "start" ? "Beginn" : "Ende"} {x.zeit || ""}{x.offline ? " · offline erfasst" : ""}{x.alt ? ", erst nach über 48 Stunden gesendet" : ""}{Number(x.anzahl) > 1 ? ` · ${x.anzahl}-mal` : ""}</div>))}
+          {gezaehlt.map(([pid, n]) => (
+            <div key={`gezaehlt-${pid}`} style={{ fontSize: 12.5, color: C.dim, ...NUM }}>
+              {name(pid)} · {n} weitere nur gezählt (über der Obergrenze je Person)</div>))}
+        </div>)}
+      {verlauf.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {verlauf.map((x) => (
+            <div key={x.id} style={{ fontSize: 12.5, color: C.dim, ...NUM }}>
+              {x.art === "wiederoeffnung" ? "wiedergeöffnet" : x.art === "lohnexport" ? "Lohnexport bestätigt" : "abgeschlossen"} {zeitpunktText(x.am)}{x.wer && x.wer.name ? ` · ${x.wer.name}` : ""}{x.grund ? ` — ${x.grund}` : ""}{x.art === "wiederoeffnung" && Number(x.istNeu) > 0 ? ` · Ist an ${x.istNeu} Personentagen seit dem Abschluss geändert (Plan, Dienstart oder Abwesenheit)` : ""}</div>))}
+        </div>)}
+    </div>);
+}
+
 /** Beginn, Ende, Pause und Grund — für Antrag und direkte Korrektur. */
 function ZeitFormular({ start = "", ende = "", pause = "", knopf, onSenden, onAbbrechen, grundHilfe = "Grund (mindestens 10 Zeichen)" }) {
   const [v, setV] = useState({ start, ende, pause: pause === undefined || pause === null ? "" : String(pause), grund: "" });
@@ -11690,6 +11954,8 @@ function KorrekturKarte({ sitz, akt }) {
         const letzter = antraege[antraege.length - 1];
         const ist = (m.erfassung || {})[`${p.id}|${datum}`];
         const marken = [...(e.markierungen || []), ...(endeFehlt(datum, e) ? ["ENDE_FEHLT"] : [])];
+        /* Monatsabschluss (WP-16): im abgeschlossenen Monat kein Antrag — der Server nimmt ihn nicht an. */
+        const zu = monatGesperrt(m, datum);
         return (
           <div key={datum} style={{ padding: "8px 0", borderTop: `1px solid ${C.lineSoft}` }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -11699,9 +11965,10 @@ function KorrekturKarte({ sitz, akt }) {
               {marken.map((x) => <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>)}
               {letzter && <Pill size="sm" tone={letzter.status === "genehmigt" ? "ok" : letzter.status === "abgelehnt" ? "danger" : "accent"}>
                 Antrag {ANTRAG_STATUS_TEXT[letzter.status] || letzter.status}</Pill>}
-              {(!letzter || letzter.status !== "offen") && offen !== datum &&
+              {zu && <Pill size="sm" tone="neutral">Monat abgeschlossen — Korrektur nur nach Wiederöffnen durch die Leitung</Pill>}
+              {!zu && (!letzter || letzter.status !== "offen") && offen !== datum &&
                 <Btn size="sm" onClick={() => setOffen(datum)}>Korrektur beantragen</Btn>}
-              {letzter && letzter.status === "offen" &&
+              {!zu && letzter && letzter.status === "offen" &&
                 <Btn size="sm" onClick={() => akt.korrekturEntscheiden(String(p.id), datum, letzter.id, "zurueckgezogen")}>Antrag zurückziehen</Btn>}
             </div>
             {letzter && letzter.status === "offen" && (
@@ -11884,6 +12151,7 @@ function StempelBefunde({ sitz, ym, akt }) {
                 : <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
         </div>)}
+      <Monatsabschluss sitz={sitz} ym={ym} akt={akt} />
       <KorrekturAntraege sitz={sitz} akt={akt} />
       <KorrekturOffene sitz={sitz} ym={ym} akt={akt} />
       {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (
@@ -11972,8 +12240,8 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
                     {p.nachname}, {p.vorname}</span></td>
                 {["gesamt", "nacht", "sonntag", "feiertag", "samstag"].map((f) => (
                   <td key={f} style={{ textAlign: "right", fontSize: 13,
-                    color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1(z.std[f])}</td>))}
-                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1(z.summe)} h</td>
+                    color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1Ist(z.std[f])}</td>))}
+                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1Ist(z.summe)} h</td>
               </tr>))}</tbody>
           </table>
         </Card>
@@ -12265,6 +12533,10 @@ function Lohnausgabe({ sitz, ym, akt }) {
     }
     return Object.values(g).sort((a, b) => (a.nr < b.nr ? -1 : 1));
   }, [saetze]);
+  /* Hinweise wie im Blatt zum Gegenlesen (WP-16, Nachtrag vierter Review A-1/A-3/A-4/A-5): Vormonate, Abweichung von der
+     bestätigten Ausgabe, Freeze nach Frist gelöscht, Übertrag, Austritt im Monat. Mehrarbeit heißt Kontostand (A-6). */
+  const hinweise = useMemo(() => [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym)].filter(Boolean), [m, ym]);
+  const maNr = useMemo(() => mehrarbeitNr(m, ym), [m, ym]);
 
   return (
     <div>
@@ -12273,6 +12545,13 @@ function Lohnausgabe({ sitz, ym, akt }) {
         <Kpi label="Lohnarten" value={nachLohnart.length} />
         <Kpi label="Betroffene Personen" value={new Set(saetze.map((z) => z.personalnummer)).size} />
       </KpiRow>
+
+      {hinweise.length > 0 && (
+        <Card style={{ marginTop: 18, borderLeft: `3px solid ${C.warn}` }}>
+          <div style={{ padding: "14px 20px", fontSize: 13, lineHeight: 1.55 }}>
+            {hinweise.map((t, i) => <div key={i} style={{ color: /^ACHTUNG/.test(t) ? C.warn : /^ {2}/.test(t) ? C.dim : C.text }}>{t}</div>)}
+          </div>
+        </Card>)}
 
       {ohneNummer.length > 0 && (
         <Card style={{ marginTop: 18, borderLeft: `3px solid ${C.warn}`, background: C.warnLight }}>
@@ -12307,7 +12586,7 @@ function Lohnausgabe({ sitz, ym, akt }) {
               {nachLohnart.map((l) => (
                 <tr key={l.nr}>
                   <td style={NUM}>{l.nr}</td>
-                  <td>{l.text}</td>
+                  <td>{l.text}{String(l.nr) === maNr ? " (Kontostand)" : ""}</td>
                   <td style={{ textAlign: "right", ...NUM }}>{l.personen}</td>
                   <td style={{ textAlign: "right", fontWeight: 600, ...NUM }}>{n2(l.stunden)}</td>
                 </tr>))}
@@ -12327,6 +12606,9 @@ function Lohnausgabe({ sitz, ym, akt }) {
           Diese Datei ist eine klar benannte Spaltenliste, wie sie ein Lohnbüro einliest oder
           übernimmt. Vor dem ersten Lauf einmal mit der Lohnbuchhaltung abstimmen, welche
           Lohnartennummern dort geführt werden — sie lassen sich je Betrieb anpassen.
+          <div style={{ marginTop: 8 }}>
+            <b style={{ color: C.text }}>Lohnart {maNr}</b>: {KONTOSTAND_TEXT}
+          </div>
           <div style={{ marginTop: 8 }}>
             <b style={{ color: C.text }}>Das Blatt zum Gegenlesen</b> enthält dieselben Zahlen als
             lesbare Aufstellung mit Gesamtsumme — gedacht für den Blick darauf, bevor die Datei
@@ -12510,7 +12792,10 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
           {leute.map((p) => {
             const ohneIst = !istVerfuegbar(m, p, zeitraumJahr(jahr));
             const jahresIst = ohneIst ? null : monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
-            const jahresSoll = monate.reduce((a, i) => a + sollStunden(m, p, `${jahr}-${pad(i + 1)}`), 0);
+            /* Ein Monat ohne verfügbares Soll (abgeschlossen, Eintrag nicht sichtbar — Nachtrag dritter Review N-e):
+               keine Jahressumme statt einer zu kleinen. */
+            const sollJe = monate.map((i) => sollStunden(m, p, `${jahr}-${pad(i + 1)}`));
+            const jahresSoll = sollJe.some((x) => x === null || x === undefined) ? null : sollJe.reduce((a, x) => a + x, 0);
             const url = urlaubskonto(m, p, jahr);
             return (
               <div key={p.id} style={{ minWidth: 0 }}>
@@ -12521,7 +12806,8 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                   {p.teilzeit && p.teilzeit.aktiv && <Pill size="sm">Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
                   {p.springer && <Pill size="sm" tone="violet">Springer</Pill>}
                   <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
-                    {ohneIst ? `Ist nicht verfügbar · Soll ${n1(jahresSoll)} h` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`}{url.anspruch === null ? "" : ` · Urlaub ${url.genommen}/${url.anspruch}`}</span>
+                    {ohneIst ? `Ist nicht verfügbar · Soll ${jahresSoll === null ? "nicht verfügbar" : `${n1(jahresSoll)} h`}`
+                      : jahresSoll === null ? `${n1(jahresIst)} h · Soll nicht verfügbar` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`}{url.anspruch === null ? "" : ` · Urlaub ${url.genommen}/${url.anspruch}`}</span>
                 </div>
                 {/* Zwölf Blöcke statt 365 Härchen.
 
@@ -13205,8 +13491,10 @@ const AufgabeSymbol = ({ art }) => AUFGABE_SYMBOL[art]
 function UngeplantHinweis({ m, p, d, ...rest }) {
   const e = p ? (m.erfassung || {})[`${p.id}|${d}`] : null;
   if (!istUngeplant(e)) return null;
-  const da = e.bestaetigt ? ungeplantAm(m, p, d) : null;
-  const std = da ? istDauer(m, p, d, da).std : null;
+  /* Abgeschlossener Monat: die eingefrorene Dauer (WP-16, Review H1). */
+  const tz = eingefrorenerTag(m, p, d) !== undefined ? istTag(m, p, d) : null;
+  const da = tz ? (tz.da && tz.da.ungeplant ? tz.da : null) : e.bestaetigt ? ungeplantAm(m, p, d) : null;
+  const std = da ? (tz ? tz.idn.std : istDauer(m, p, d, da).std) : null;
   /* C1: An einem Tag mit Abwesenheit zählt auch ein bestätigter ungeplanter Dienst nicht (Konto, Lohn). */
   const abwesend = !!abwesenheitAm(m, p.id, d);
   return (
@@ -13419,18 +13707,35 @@ function StempelPuffer({ akt }) {
     </div>);
 }
 
+/** Pause beim Ausstempeln (WP-16): vorbelegt mit der Pause der geplanten Dienstart, sonst leer. */
+function pauseVorgabe(m, p, datum) {
+  const t = datum ? personTag(m, p, datum) : null;
+  const da = t && t.dienstId ? (m.dienstarten || []).find((x) => x.id === t.dienstId) : null;
+  return da && Number.isFinite(Number(da.pause)) && Number(da.pause) > 0 ? String(da.pause) : "";
+}
+/** Eingabe der genommenen Pause neben „Ausstempeln“ (WP-16). Der Server prüft; eine ungültige Angabe kostet nie den Stempel. */
+function PauseFeld({ wert, setWert, gross }) {
+  return (
+    <label style={{ fontSize: gross ? 13.5 : 12, color: C.dim, display: "inline-flex", alignItems: "center", gap: 6 }}>
+      Pause (min)
+      <Inp type="number" min="0" max="180" inputMode="numeric" value={wert} onChange={(e) => setWert(e.target.value)}
+        aria-label="Pause in Minuten" style={{ width: gross ? 84 : 70 }} />
+    </label>);
+}
+
 function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
+  const [pause, setPause] = useState(() => pauseVorgabe(m, p, datum));
 
   /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
        Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
-    positionHolen(geoAn, (koord, grund) => { const ort = koordMitGrund(koord, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (koord, grund) => { const ort = koordMitGrund(koord, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort, art === "ende" ? pause : null)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
@@ -13463,8 +13768,11 @@ function Stempeluhr({ sitz, akt, vorgang }) {
     <div style={{ textAlign: "right" }}>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 8, ...NUM }}>
         Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}{st.vorlaeufig ? " · vorläufig (offline gespeichert)" : ""}</div>
-      <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>
-        {laeuft ? wartet : "Ausstempeln"}</Btn>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+        <PauseFeld wert={pause} setWert={setPause} />
+        <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>
+          {laeuft ? wartet : "Ausstempeln"}</Btn>
+      </div>
     </div>);
   return (
     <div style={{ textAlign: "right" }}>
@@ -20478,10 +20786,11 @@ function MStempel({ sitz, akt, vorgang }) {
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
+  const [pause, setPause] = useState(() => pauseVorgabe(m, p, datum));
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
-    positionHolen(geoAn, (k, grund) => { const ort = koordMitGrund(k, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (k, grund) => { const ort = koordMitGrund(k, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort, art === "ende" ? pause : null)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
@@ -20508,6 +20817,7 @@ function MStempel({ sitz, akt, vorgang }) {
   if (!st.ende) return (<>
     <div style={{ fontSize: 14, color: C.dim, marginBottom: 11, ...NUM }}>
       Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}{st.vorlaeufig ? " · vorläufig (offline gespeichert)" : ""}</div>
+    <div style={{ marginBottom: 10 }}><PauseFeld wert={pause} setWert={setPause} gross /></div>
     <Flaeche kind="ok" onClick={() => stempeln("ende")}>Ausstempeln</Flaeche></>);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -23048,6 +23358,26 @@ function AppInnen() {
        Stempel aus dem Puffer, die später durchkamen). Mehrere Quittungen
        eines Sendelaufs kommen gesammelt — ein Nachladen, nicht eines je
        Stempel (Review L6). eintraege: [{ datum, art, erg }]. */
+    /* Nach einem eigenen Serverweg (Monatsabschluss, WP-16): den gespeicherten Stand samt ETag
+       nachladen — wie stempelUebernehmen —, damit kein PUT mit altem ETag hinterherläuft und am
+       geänderten Kern scheitert. Steht lokal etwas aus, wird die Antwort nur gespiegelt. */
+    const serverstandNachladen = async (spiegeln) => {
+      if (ref.current && !SP.schreibenAusstehend() && abbildVon(ref.current) === zuletztGeschrieben.current) {
+        try {
+          const neu = await SP.lies();
+          const mig = neu.bestand && !neu.ausSpeicher ? migriere(neu.bestand) : null;
+          const jetzt = ref.current;
+          if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
+            && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
+            zuletztGeschrieben.current = abbildVon(naechster);
+            setDb(naechster);
+            return;
+          }
+        } catch { /* nachladen gescheitert: lokal spiegeln */ }
+      }
+      upd(spiegeln);
+    };
     const stempelUebernehmen = async (pid, eintraege) => {
       if (!eintraege.length) return;
       /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
@@ -23521,6 +23851,69 @@ function AppInnen() {
       },
       /* Korrekturworkflow (WP-14): Antrag stellen, zurückziehen, entscheiden. Übernommen wird,
          was der Server gespeichert hat. */
+      /* Monatsabschluss (WP-16): Abschließen (Leitung, Planung) und Wiederöffnen (nur Leitung, mit Grund)
+         laufen über den Server; übernommen wird der Eintrag, den er gespeichert hat. Offene Prüffälle:
+         einmal nachfragen, dann ausdrücklich „trotzdem“. */
+      monatAbschliessen: async (monat) => {
+        const uebernehmen = (erg) => serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+          : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+        try {
+          await uebernehmen(await SP.monatsabschluss("abschliessen", monat));
+          melde("Monat abgeschlossen — Ist-Zeiten, Stempel, Korrekturen und Anträge dieses Monats sind gesperrt.");
+          return true;
+        } catch (e) {
+          if (e && e.code === "ABSCHLUSS_PRUEFFAELLE" && typeof window !== "undefined" && window.confirm(e.message)) {
+            try {
+              await uebernehmen(await SP.monatsabschluss("abschliessen", monat, { trotzPrueffaellen: true }));
+              melde("Monat abgeschlossen — die offenen Prüffälle stehen im Verlauf.");
+              return true;
+            } catch (e2) { melde(e2.message || "Der Monat ließ sich nicht abschließen."); return false; }
+          }
+          melde((e && e.message) || "Der Monat ließ sich nicht abschließen.");
+          return false;
+        }
+      },
+      monatWiederoeffnen: async (monat, grund) => {
+        try {
+          const erg = await SP.monatsabschluss("wiederoeffnen", monat, { grund });
+          await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+          melde("Monat wiedergeöffnet — Korrekturen stehen weiter als Ereignis am Stempel.");
+          return true;
+        } catch (e) {
+          melde((e && e.message) || "Der Monat ließ sich nicht wiederöffnen.");
+          return false;
+        }
+      },
+      /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): Wann, Wer, Prüfsumme — sperrt einfaches Wiederöffnen. */
+      lohnexportBestaetigen: async (monat, trotzVormonat = null) => {
+        /* Bestätigt wird genau die ausgegebene Datei (WP-16, Nachtrag dritter Review H-2): Prüfsumme, Abschluss, Revision
+           und Zeilen-Prüfsumme des Standes, aus dem sie entstand. Der Server vergleicht mit dem heutigen Abschluss.
+           Der ausgegebene Stand gilt nur in dieser Sitzung — nach dem Neuladen erst die Lohnausgabe neu erzeugen
+           (sonst EXPORTSTAND_FEHLT, fail-closed). */
+        const schluessel = `${sitz.mandant.id}|${monat}`;
+        const exportStand = EXPORT_STAND.get(schluessel);
+        if (!exportStand) { melde(`Bitte zuerst die Lohnausgabe für ${monatText(monat)} erzeugen — bestätigt wird genau die ausgegebene Datei.`); return false; }
+        /* Offene oder geänderte Vormonate (Nachtrag vierter Review A-2): Die Rückfrage nennt sie; ohne Überstimmung
+           (Kategorie und Begründung aus dem Monatsabschluss) bestätigt der Server nicht. */
+        const rf = lohnexportRueckfrage(sitz.mandant, monat);
+        if (rf.vormonate && !trotzVormonat) { melde(`${rf.text} Bestätigen nur mit Kategorie und Begründung.`); return false; }
+        if (!window.confirm(`Lohnexport für ${monatText(monat)} bestätigen (Revision ${exportStand.revision}, Prüfsumme ${String(exportStand.abdruck).slice(0, 12)})?`
+          + (rf.vormonate ? `\n\n${rf.text}\nBegründung: ${trotzVormonat.grund}` : "")
+          + "\n\nDanach lässt sich der Monat nicht mehr einfach wiederöffnen — Änderungen brauchen den Korrekturprozess.")) return false;
+        try {
+          const erg = await SP.monatsabschluss("lohnexport", monat, { exportStand, trotzVormonat });
+          EXPORT_STAND.delete(schluessel);
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+          melde("Lohnexport bestätigt.");
+          return true;
+        } catch (e) {
+          if (e && (e.code === "EXPORTSTAND_ABWEICHEND" || e.code === "FREEZE_NICHT_REPRODUZIERBAR")) EXPORT_STAND.delete(schluessel);
+          melde((e && e.message) || "Der Lohnexport ließ sich nicht bestätigen.");
+          return false;
+        }
+      },
       korrekturBeantragen: async (datum, start, ende, pause, grund) => {
         try {
           const erg = await SP.korrekturAntrag(datum, start, ende, pause, grund);
@@ -23846,17 +24239,20 @@ function AppInnen() {
       exportDATEV: (ym) => {
         /* Ist-Zeiten zur Prüfung (WP-17, W1): Die Datei rechnet dort vorläufig
            mit der Planzeit — vor dem Download ausdrücklich sagen. */
-        const warnung = exportWarnung(sitz.mandant, ym);
+        const warnung = lohnWarnung(sitz.mandant, ym, exportWarnung(sitz.mandant, ym));
         if (warnung && !window.confirm(warnung)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
-        if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))
+        /* Den Stand der ausgegebenen Datei merken (WP-16, Nachtrag dritter Review H-2): Bestätigt wird genau er. */
+        const stand = lohnexportStand(sitz.mandant, ym);
+        if (stand) EXPORT_STAND.set(`${sitz.mandant.id}|${ym}`, stand); else EXPORT_STAND.delete(`${sitz.mandant.id}|${ym}`);
+        if (lade(lohnausgabeDateiname(sitz.mandant, ym, "csv"), inhalt, "text/csv"))
           melde(`${z} Lohnartensätze ausgegeben.`);
         else setAusgabe({ titel: "Lohnausgabe", inhalt });
       },
       exportLohnBlatt: (ym) => {
         const inhalt = lohnausgabeText(sitz.mandant, ym);
-        if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.txt`,
+        if (lade(lohnausgabeDateiname(sitz.mandant, ym, "txt"),
           inhalt, "text/plain;charset=utf-8")) melde("Blatt zum Gegenlesen heruntergeladen.");
         else setAusgabe({ titel: "Lohnausgabe zum Gegenlesen", inhalt });
       },
@@ -24411,16 +24807,22 @@ function AppInnen() {
          bleibt es vorläufig (offline gespeichert) und wird wiederholt; eine
          Absage des Servers wird mit Grund gemeldet und bleibt sichtbar
          (OfflineStempel). */
-      stempeln: async (pid, datum, art, koord) => {
+      stempeln: async (pid, datum, art, koord, pause = null) => {
+        /* Mindestpause (WP-16): ein Hinweis, keine Sperre — gespeichert ist der Stempel ohnehin. */
+        const pauseHinweis = (d) => {
+          const hw = (d && Array.isArray(d.hinweise) ? d.hinweise : []).filter((x) => x && x.code === "PAUSE");
+          if (hw.length) melde(`Ausgestempelt. Hinweis: ${hw[0].text}`);
+        };
         try {
           /* Zuerst ablegen (Review L1): Der Stempel ist gesichert, bevor
              irgendetwas anderes ins Netz geht. */
-          const ev = await SP.stempelErfassen(datum, art, koord);
+          const ev = await SP.stempelErfassen(datum, art, koord, pause);
           if (!ev) {
             /* Inhaber unbekannt (Antwort eines älteren Servers): direkt wie bisher. */
             await SP.schreibenAbschliessen();
-            const erg = await SP.stempeln(datum, art, koord);
+            const erg = await SP.stempeln(datum, art, koord, pause);
             await stempelUebernehmen(pid, [{ datum, art, erg }]);
+            pauseHinweis(erg);
             return;
           }
           /* Was noch zum Schreiben ansteht, geht vorher regulär hinaus — sonst
@@ -24429,7 +24831,7 @@ function AppInnen() {
           await Promise.race([SP.schreibenAbschliessen(), new Promise((ok) => setTimeout(ok, 5000))]);
           const lauf = await SP.stempelSenden({ sofort: true });
           const r = lauf.ergebnisse[ev.id];
-          if (r && r.art === "ok") return;
+          if (r && r.art === "ok") { pauseHinweis(r.daten); return; }
           if (r && r.art === "abgelehnt") { melde(`Stempel abgelehnt: ${r.grund}`); return; }
           if (lauf.angehalten === "abgemeldet" || lauf.angehalten === "fremde-sitzung") {
             melde("Die Anmeldung ist abgelaufen — der Stempel ist auf dem Gerät gespeichert und wird nach der Anmeldung gesendet.");
@@ -24904,7 +25306,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
         /* Dieselbe Rückfrage wie bei der Lohnausgabe (Nachprüfung WP-17, A1):
            Auch hier zählen Ist-Zeiten zur Prüfung vorläufig mit der Planzeit. */
-        const warnung = exportWarnung(m, ym2);
+        const warnung = lohnWarnung(m, ym2, exportWarnung(m, ym2));
         if (warnung && !window.confirm(warnung)) return;
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",
@@ -24913,7 +25315,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         for (const p of m.personen.filter((x) => imDienst(x, `${ym2}-28`))) {
           const w = zuschlagWert(m, p, ym2);
           z.push([p.nachname, p.vorname, p.id, n1(w.std.gesamt), n1(w.std.nacht), n1(w.std.sonntag),
-            n1(w.std.feiertag), n1(w.std.samstag), ...w.zeilen.map((l) => n1(l.wert)), n1(w.summe)].join(";"));
+            n1(w.std.feiertag), n1(w.std.samstag), ...w.zeilen.map((l) => n1(l.wert)), n1Ist(w.summe)].join(";"));
         }
         const inhalt = "\uFEFF" + z.join("\n");
         if (lade(`zuschlaege_${ym2}.csv`, inhalt, "text/csv;charset=utf-8")) melde("Export für die Lohnstelle erstellt.");
@@ -25462,6 +25864,11 @@ function abmeldenMitHinweis() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { verknuepfungFuer, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
+export { verknuepfungFuer, Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis, Betrieb };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis, Betrieb,
+  demobestand, sollStunden, ausgleichPruefen, offeneErfassung, datenauskunft, nachtJahr,
+  /* WP-16, Nachtrag dritter Review: Abgleich der Rechenkonstanten mit dem Server, Exportstand, Dateiname, Hinweise. */
+  ABW, lohnexportStand, lohnausgabeDateiname, freezeZeilen,
+  /* WP-16, Nachtrag vierter Review: Rückfrage mit Vormonaten, Kategorien der Überstimmung, Lohnart des Kontostands. */
+  lohnexportRueckfrage, VORMONAT_KATEGORIEN, mehrarbeitNr };

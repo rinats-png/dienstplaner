@@ -16,6 +16,7 @@
 
 import { GEO_MODUS_TEXT } from "./geo.mjs";
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
+import { abschlussAusGespeichert } from "./monatsabschluss.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
@@ -139,6 +140,24 @@ export function schreibumfang(rolle) {
      keine Vorsicht, sondern die Zusage aus § 3 des AV-Vertrags. */
   if (rolle === "betreiber") return SCHREIBEN_BETREIBER;
   return SCHREIBEN_NEIN;
+}
+
+/**
+ * Monatsabschluss (WP-16): Abschließen dürfen Rollen mit Vollschreibrecht und
+ * staff.edit (Leitung, Planung, Kundenrolle) — sie korrigieren auch Stempel.
+ * Wiederöffnen hebt eine Sperre auf, auf die sich Lohn und Auswertungen
+ * verlassen; das darf nur die Leitung (org.edit, ebenso die Kundenrolle im
+ * eigenen Probierraum). Alle anderen Rollen und Aktionen: nein.
+ * @param {string|null|undefined} rolle
+ * @param {string} aktion "abschliessen" | "wiederoeffnen"
+ */
+export function abschlussRecht(rolle, aktion) {
+  if (!rolle || !rolleBekannt(rolle) || schreibumfang(rolle) !== SCHREIBEN_VOLL) return false;
+  if (aktion === "abschliessen") return darf(rolle, "staff.edit");
+  if (aktion === "wiederoeffnen") return darf(rolle, "org.edit");
+  /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): wie das Wiederöffnen — org.edit. */
+  if (aktion === "lohnexport") return darf(rolle, "org.edit");
+  return false;
 }
 
 /* Was eine beschäftigte Person am Betrieb ändern darf: ihre eigenen
@@ -1294,6 +1313,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
     if (umfang === SCHREIBEN_VOLL) {
       geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Monatsabschluss (WP-16): abgeschlossen und wiedergeöffnet wird nur über POST /api/monatsabschluss —
+         mitgeschickt ist er wirkungslos (auch eine veraltete Kopie überschreibt ihn nicht). */
+      geschickt = abschlussAusGespeichert(ort.betrieb, geschickt);
       /* Geo-Prüfung beim Stempeln (E7): schalten darf nur die Leitung. */
       const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (schalter.grund) return { verweigert: schalter.grund };
@@ -1371,6 +1393,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
     if (umfang === SCHREIBEN_EINHEIT) {
       geschickt = schichtRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Monatsabschluss (WP-16): immer der gespeicherte Stand — die verkürzte Form der Sicht ist keine Änderung. */
+      geschickt = abschlussAusGespeichert(ort.betrieb, geschickt);
       const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;

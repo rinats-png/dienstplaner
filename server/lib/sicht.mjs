@@ -25,6 +25,8 @@ import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 import { moduleinstellungenSicht } from "./branchenmodule.mjs";
+import { abschlussStatus } from "./monatsabschluss.mjs";
+import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -37,6 +39,25 @@ const gleich = (a, b) => a !== null && a !== undefined && b !== null && b !== un
 const eigen = (e, ich) => !!e && gleich(e.personId, ich);
 const eigenerSchluessel = (k, ich) => gleich(String(k).split("|")[0], ich);
 const liste = (w) => (Array.isArray(w) ? w : []);
+/* Das Verzeichnis des Betriebs („*|JJJJ-MM") für Beschäftigte und Schichtverantwortung — Positivkatalog (WP-16,
+   Nachtrag dritter Review M-2): Schema, Dienstarten, Zuschlagsregeln (wie `zuschlaege`, für diese Rollen ohnehin
+   sichtbar) und Rechenstand. Die Lohnarten (`la`) nicht — `lohnarten` ist für Beschäftigte und Betriebsrat WEG —,
+   ebenso wenig, was künftig dazukommt. */
+export const VERZEICHNIS_FELDER_EINGESCHRAENKT = Object.freeze(["v", "da", "zs", "rv"]);
+const verzeichnisEingeschraenkt = (v) => nimm(v, VERZEICHNIS_FELDER_EINGESCHRAENKT);
+/* Monatseintrag einer anderen Person im Bereich der Schichtverantwortung: Soll, Zuschläge, Nachtdienste,
+   Zugehörigkeit, Einheit — wie vor Schema 3. */
+export const MONAT_FELDER_BEREICH = Object.freeze(["s", "z", "nn", "i", "u"]);
+/* Eingefrorenes Ist für Beschäftigte: eigene Einträge und das Verzeichnis des Betriebs („*|JJJJ-MM", gekürzt). */
+function eigenesIstEingefroren(w, ctx) {
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  const aus = {};
+  for (const [k, v] of Object.entries(w)) {
+    if (istBetriebsSchluessel(k)) aus[k] = verzeichnisEingeschraenkt(v);
+    else if (eigenerSchluessel(k, ctx.ich)) aus[k] = v;
+  }
+  return aus;
+}
 const nimm = (o, felder) => {
   const aus = {};
   for (const f of felder) if (o && Object.prototype.hasOwnProperty.call(o, f)) aus[f] = o[f];
@@ -551,6 +572,15 @@ export const BETRIEB = {
      kann. Keine Ist-Erfassung (erfassung), keine fremden Zeiten. */
   erfassung: [NUR_EIGENE, WEG],
   einstempeln: [NUR_EIGENE, NUR_EIGENE],
+  /* Monatsabschluss (WP-16): Beschäftigte, Betriebsrat und — über diese Spalte — die Schichtverantwortung
+     sehen nur, welche Monate abgeschlossen sind; Wer, Wann, Grund, Verlauf, Prüfsumme und die abgewiesenen
+     Stempel (mit Person und Tag) nur Planung und Leitung (RECHTEMATRIX ²⁹). */
+  monatsabschluss: [R(abschlussStatus), R(abschlussStatus)],
+  /* Eingefrorenes Ist abgeschlossener Monate (WP-16, Review H1; isteinfrieren.mjs): wie die Erfassung —
+     Beschäftigte die eigenen Tage, Betriebsrat nichts (er rechnet kein Ist einzelner Personen).
+     Dazu das Verzeichnis des Betriebs je Monat („*|JJJJ-MM": Dienstarten, Lohnarten, Zuschlagsregeln — ohne
+     Personenbezug; WP-16 Nachtrag H-neu-1), auf das die eigenen Tage verweisen. */
+  istEingefroren: [R(eigenesIstEingefroren), WEG],
   fahrzeiten: [NUR_EIGENE, WEG],
   checks: [NUR_EIGENE, WEG],
   ansichten: [NUR_EIGENE, NUR_EIGENE],
@@ -751,6 +781,30 @@ const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
   if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause", "ungeplant"]);
   return undefined;
 });
+/* Eingefrorenes Ist (WP-16, Review H1): wie die Erfassung — eigene Tage ganz, im Bereich an genau diesem Tag;
+   die Abwesenheitsart im Bereich nur wie bei den Abwesenheiten (artFuerSV: sensible Arten als „abwesend"). */
+const schichtIstEingefroren = (w, ctx) => objektFilter(w, (k, v) => {
+  /* Verzeichnis des Betriebs (ohne Personenbezug, WP-16 Nachtrag H-neu-1): die Tage verweisen darauf. */
+  if (istBetriebsSchluessel(k)) return verzeichnisEingeschraenkt(v);       // ohne Lohnarten (Nachtrag dritter Review M-2)
+  /* Monatseintrag einer Person (Soll, Zuschläge, Zugehörigkeit): nur eigen oder an jedem Tag des Monats im Bereich
+     — sonst enthielte er Stunden aus Tagen außerhalb des Bereichs. Für andere nur der Positivkatalog
+     (MONAT_FELDER_BEREICH): kein Konto, Übertrag, keine Ist-Summen über das Jahr, keine Personalnummer. */
+  if (istMonatsSchluessel(k)) {
+    const pid = schluesselPerson(k), mon = schluesselTag(k);
+    if (umfangDer(ctx, pid) === "eigen") return v;
+    const [j, mo] = mon.split("-").map(Number);
+    const n = new Date(Date.UTC(j, mo, 0)).getUTCDate();
+    for (let i = 1; i <= n; i++) {
+      const u = umfangImZeitraum(ctx, pid, `${mon}-${String(i).padStart(2, "0")}`);
+      if (u !== "eigen" && u !== "bereich") return undefined;
+    }
+    return nimm(v, MONAT_FELDER_BEREICH);
+  }
+  const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
+  if (u === "eigen") return v;
+  if (u === "bereich") return v && Array.isArray(v.a) ? { ...v, a: v.a.map(artFuerSV) } : v;
+  return undefined;
+});
 const schichtSchluessel = (erlaubt) => (w, ctx) => objektFilter(w, (k, v) =>
   (imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), erlaubt) ? v : undefined));
 const schichtEintraege = (erlaubt, felder) => (w, ctx) => liste(w)
@@ -836,6 +890,7 @@ Object.assign(SCHICHT, {
   abwesenheiten: R(schichtAbwesenheiten),
   anfragen: R(schichtAnfragen),
   erfassung: R(schichtErfassung),
+  istEingefroren: R(schichtIstEingefroren),
   einstempeln: NUR_EIGENE,
   wuensche: R(schichtEintraege(["eigen", "bereich"], ["id", "personId", "datum", "art"])),
   einspruenge: R(schichtEintraege(["eigen", "bereich", "pool"], ["id", "personId", "datum", "dienstId", "zeit"])),

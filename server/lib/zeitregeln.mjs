@@ -90,13 +90,17 @@ export function regelHinweise(m, personId, datum, ist) {
   const dienst = { start: ist.start, ende: ist.ende, pause };
   const anwesend = bruttoAm(datum, dienst);                   // mit Zeitumstellung (WP-14b, M2)
   const netto = anwesend - pause / 60;
+  const p = (m && Array.isArray(m.personen) ? m.personen : []).find((x) => x && String(x.id) === String(personId));
+  const alter = p ? alterAm(p.geburtstag, datum) : null;
+  const jugendlich = alter !== null && alter < 18;
 
-  /* C4: Pause (§ 4 ArbZG) — gegen die Anwesenheit gerechnet. */
-  const noetig = pausePflicht(netto);
+  /* C4: Pause (§ 4 ArbZG; Jugendliche § 11 JArbSchG, WP-16) — gegen die Anwesenheit gerechnet. */
+  const noetig = pausePflicht(netto, jugendlich);
+  const norm = jugendlich ? "§ 11 JArbSchG" : "§ 4 ArbZG";
   if (pause < noetig)
     aus.push({ code: "PAUSE", text: pause
-      ? `Pause ${pause} min eingetragen, nötig sind ${noetig} min bei ${zeitText(anwesend)} h Anwesenheit (§ 4 ArbZG).`
-      : `Keine Pause erfasst, nötig sind ${noetig} min bei ${zeitText(anwesend)} h Anwesenheit (§ 4 ArbZG).` });
+      ? `Pause ${pause} min eingetragen, nötig sind ${noetig} min bei ${zeitText(anwesend)} h Anwesenheit (${norm}).`
+      : `Keine Pause erfasst, nötig sind ${noetig} min bei ${zeitText(anwesend)} h Anwesenheit (${norm}).` });
 
   /* Die Pause macht den größten Teil der Anwesenheit aus: ein Hinweis, keine Sperre (die Sperre ist pauseZuLang). */
   if (pause > 0 && pause * 2 > anwesend * 60 && !pauseZuLang(ist.start, ist.ende, pause, datum))
@@ -125,12 +129,10 @@ export function regelHinweise(m, personId, datum, ist) {
   }
 
   /* C3: Mutterschutz und Jugendschutz — Zeiten vor 6 und nach 20 Uhr. */
-  const p = (m && Array.isArray(m.personen) ? m.personen : []).find((x) => x && String(x.id) === String(personId));
   if (p && inderNacht(ist.start, ist.ende)) {
     if (p.mutterschutz === true)
       aus.push({ code: "MUTTERSCHUTZ", text: `Arbeit zwischen ${NACHT_NACH} und ${NACHT_VOR} Uhr bei Mutterschutz (§ 5 MuSchG) — bitte prüfen.` });
-    const alter = alterAm(p.geburtstag, datum);
-    if (alter !== null && alter < 18)
+    if (jugendlich)
       aus.push({ code: "JUGENDSCHUTZ", text: `Arbeit zwischen ${NACHT_NACH} und ${NACHT_VOR} Uhr bei einer Person unter 18 Jahren (§ 14 JArbSchG) — bitte prüfen.` });
   }
   return aus;

@@ -28,9 +28,12 @@
    zwei Planer in verschiedenen Monaten stören einander nicht mehr.
    ========================================================================== */
 
-/** Felder, die je Monat abgelegt werden. Alle drei tragen Schlüssel der
+/** Felder, die je Monat abgelegt werden. Alle tragen Schlüssel der
     Form "personId|JJJJ-MM-TT". */
-export const MONATSFELDER = ["abweichungen", "erfassung", "einstempeln"];
+export const MONATSFELDER = ["abweichungen", "erfassung", "einstempeln", "istEingefroren"];
+/** Erst mit dem Monatsabschluss entstanden (WP-16, Review H1: das eingefrorene Ist je Person und Tag).
+    Ein Betrieb ohne dieses Feld bekommt es beim Zusammensetzen nur, wenn eine Scherbe Einträge trägt. */
+const SPAETE_FELDER = new Set(["istEingefroren"]);
 
 /** Aus "p3|2026-08-14" den Monat "2026-08" holen. */
 function monatVon(schluessel) {
@@ -112,6 +115,8 @@ export function zusammensetzen(kern, scherbenListe) {
       if (!meine || !meine.length) return m;
       const zusammen = { ...m };
       for (const feld of MONATSFELDER) {
+        if (SPAETE_FELDER.has(feld) && !(feld in m)
+          && !meine.some((s) => s.felder && s.felder[feld] && Object.keys(s.felder[feld]).length)) continue;
         const ziel = { ...(m[feld] || {}) };
         for (const s of meine) Object.assign(ziel, (s.felder || {})[feld] || {});
         zusammen[feld] = ziel;

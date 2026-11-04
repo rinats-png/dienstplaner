@@ -401,16 +401,16 @@ Querschnittsfälle (B): Q1 löschen → Sicherung → bleibt gelöscht (Modi an/
 Migration, Löschlauf); Q2 Modul aus → Berichtigung über die Oberfläche und Auskunft (Art. 15) gehen; Q3 Altdaten mit
 fehlerhaftem Status → LT/PL/SV speichern, unbekannter Prüfstatus wirkt nie als geprüft; Q4 zwei Planende, echter Handler:
 gleicher Eintrag → 409, die erste Änderung bleibt; verschiedene Einträge → 409 oder beide erhalten, nie still verloren;
-Q5 Plan/Ist eines Tages hängt nicht an Moduldaten (WP-16 ist in diesem Stand **nicht integriert**: Fall „abgeschlossener
-Monat → Moduldaten ändern → `istAbdruck`/`istEingefroren` unverändert" als `it.skip` mit Grund „wp16 nicht integriert",
-nach dem Merge von WP-16 zu aktivieren); Q6 Beschäftigte nur eigene Zuordnung, Betriebsrat keine, Rollenwechsel, Versetzung
+Q5 Plan/Ist eines Tages hängt nicht an Moduldaten; seit der Integration von WP-16 aktiv: abgeschlossener Monat →
+Moduldaten ändern (Schreibweg der Leitung) und eine ältere Sicherung zurückspielen → `istAbdruck`/`istEingefroren`
+unverändert (vorher `it.skip` „wp16 nicht integriert"); Q6 Beschäftigte nur eigene Zuordnung, Betriebsrat keine, Rollenwechsel, Versetzung
 (Schichtverantwortung sieht die Zuordnung nach dem Wechsel nicht).
 
 **Wechselwirkungen**
 
 | Paket | Wechselwirkung | Stand |
 |---|---|---|
-| WP-16 Monatsabschluss/Snapshots | Moduldaten (`postenPlan`, `bereichsPlan`, `objekte`) gehen nicht ins Ist/eingefrorene Ist ein; `abschlussBeiWiederherstellung` (WP-16) und `moduldatenBeiWiederherstellung` (hier) laufen beide im Wiederherstellen — beim Merge Reihenfolge prüfen (unabhängige Felder) | Q5 (Vorlage skip) |
+| WP-16 Monatsabschluss/Snapshots | Moduldaten (`postenPlan`, `bereichsPlan`, `objekte`) gehen nicht ins Ist/eingefrorene Ist ein; `abschlussBeiWiederherstellung` (WP-16) und `moduldatenBeiWiederherstellung` (hier) laufen beide im Wiederherstellen — beim Merge geprüft: erst Moduldaten (Modulfelder, Löschvermerke), danach Abschluss und Ist-Felder (`einstempeln`, `erfassung`, `istEingefroren`, `monatsabschluss`); unabhängige Felder | Q5 (aktiv) |
 | WP-26 Löschlauf | Personenfelder nur nach Datum und geprüfter Regel; Protokoll mit N1-Schutz; Bericht nennt Zurückgehaltenes | M2, N1 |
 | WP-43 Filter (Sicht) | Positivkatalog Modulprotokoll für den Betriebsrat; Löschvermerke für eingeschränkte Rollen entfernt; `postenPlan`-Sicht unverändert | M4, Q6 |
 | WP-45 Journal/atomar | Ausnahmeweg und Löschvermerk entstehen im selben `zusammenfuehren` wie die Änderung (ein Schreibvorgang, ETag/409 wie jedes PUT) | Q4 |

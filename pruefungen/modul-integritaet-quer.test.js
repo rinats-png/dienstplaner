@@ -13,7 +13,7 @@
          Fehlerhaftes wird sicher behandelt (nie geglaubt, nie aufgewertet)
      Q4  zwei Planende ändern gleichzeitig Moduldaten → 409, kein stiller Verlust
      Q5  Monatsabschluss (WP-16) → spätere Moduldaten-Änderungen ändern das
-         Ist nicht (Moduldaten gehen nicht ins Ist) — Vorlage bis WP-16 integriert
+         Ist nicht (Moduldaten gehen nicht ins Ist), auch nicht über Wiederherstellen
      Q6  Rollenwechsel/Versetzung → keine fremden Moduldaten
    Wechselwirkungen (WP-16, WP-26, WP-43, WP-45, Backup, WP-16c):
    docs/acc45/wp19-0-nachweis.md, Abschnitt „Nachtrag zweiter Opus-Delta-Review".
@@ -28,6 +28,7 @@ import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { betriebWiederherstellen } from "../server/lib/sicherungen.mjs";
 import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import { geplanterDienst } from "../server/lib/zeiterfassung.mjs";
+import { abschliessen, istAbdruck } from "../server/lib/monatsabschluss.mjs";
 import { migriere } from "../src/migration.js";
 import { ausnahmeAngabe, mitEinmaligerAngabe, leeresFormular } from "../src/module/ausnahmeweg.js";
 import { branchenbestand, schreibeAls, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
@@ -237,9 +238,45 @@ describe("Q5 — Monatsabschluss (WP-16): Moduldaten verändern das Ist nicht", 
     const geaendert = { ...m, postenPlan: { "a1|2026-11-02": "po2" }, bereichsPlan: { "a1|2026-11-03": "b1" }, objekte: [] };
     expect(["2026-11-02", "2026-11-03", "2026-11-04"].map((d) => geplanterDienst(geaendert, p, d))).toEqual(vorher);
   });
-  it.skip("wp16 nicht integriert: abgeschlossener Monat → Moduldaten ändern → eingefrorenes Ist und Abdruck unverändert (Vorlage)", () => {
-    /* Nach dem Merge von WP-16 (server/lib/monatsabschluss.mjs, isteinfrieren.mjs): abschliessen(m, …) → postenPlan/bereichsPlan
-       des Monats ändern (Leitung) → istAbdruck(m, monat) gleich, istEingefroren gleich. Eintrag im Nachweis. */
+  it("abgeschlossener Monat → Moduldaten ändern (Leitung, Wiederherstellen) → eingefrorenes Ist und Abdruck unverändert", () => {
+    /* WP-16 integriert (server/lib/monatsabschluss.mjs, isteinfrieren.mjs): Oktober mit Postenzuordnungen und Ist abschließen,
+       dann postenPlan/bereichsPlan des Oktobers über den Schreibweg der Leitung ändern und eine Sicherung von vor der
+       Änderung zurückspielen — das eingefrorene Ist und die Prüfsumme des Monats bleiben, wie sie beim Abschluss waren. */
+    const OKT = "2026-10";
+    const g = gesamt({});
+    const m0 = g.mandanten[0];
+    m0.postenPlan = { ...m0.postenPlan, "a1|2026-10-05": "po1", "a1|2026-10-06": "po1", "s1|2026-10-05": "po2" };
+    m0.erfassung = { "a1|2026-10-05": { start: null, ende: null, bestaetigt: true, grund: "" },
+      "a1|2026-10-06": { start: "06:00", ende: "13:00", bestaetigt: true, grund: "früher gegangen" } };
+    const r = abschliessen(m0, { monat: OKT }, { personId: "l1", name: "L", rolle: "leitung" },
+      new Date("2026-11-03T09:00:00Z"), "ab1", "2026-11-03");
+    expect("mandant" in r, JSON.stringify(r)).toBe(true);
+    g.mandanten[0] = /** @type {any} */ (r).mandant;
+    const abdruck = g.mandanten[0].monatsabschluss[OKT].abdruck;
+    const freeze = kopie(g.mandanten[0].istEingefroren);
+    expect(Object.keys(freeze).length).toBeGreaterThan(0);
+    expect(istAbdruck(g.mandanten[0], OKT)).toBe(abdruck);
+    const vorher = kopie(g);
+
+    /* Leitung ändert die Moduldaten des abgeschlossenen Monats (Posten und Bereich) — der Plan bleibt änderbar. */
+    const v = schreibeAls(g, "LT", (m) => {
+      m.postenPlan = { ...m.postenPlan, "a1|2026-10-05": "po2", "a1|2026-10-07": "po1" };
+      delete m.postenPlan["a1|2026-10-06"];
+      m.bereichsPlan = { ...(m.bereichsPlan || {}), "a1|2026-10-05": "b1" };
+    });
+    expect(v.verweigert, v.verweigert).toBeFalsy();
+    const nach = v.mandanten[0];
+    expect(nach.postenPlan["a1|2026-10-05"]).toBe("po2");                       // die Moduldaten haben sich geändert
+    expect(nach.istEingefroren).toEqual(freeze);                                 // das eingefrorene Ist nicht
+    expect(istAbdruck(nach, OKT)).toBe(abdruck);
+    expect(nach.monatsabschluss[OKT].abgeschlossen).toBe(true);
+
+    /* Wiederherstellen (Moduldaten und Abschluss unabhängig): die alte Sicherung bringt ihre Postenzuordnung zurück,
+       Abschluss und Freeze bleiben die heutigen. */
+    const w = zurueck({ ...v }, vorher).bestand.mandanten[0];
+    expect(w.istEingefroren).toEqual(freeze);
+    expect(istAbdruck(w, OKT)).toBe(abdruck);
+    expect(w.monatsabschluss[OKT].abdruck).toBe(abdruck);
   });
 });
 

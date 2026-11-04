@@ -291,14 +291,14 @@ export function stempelSenden({ sofort = false } = {}) {
  * Ein Stempeln ablegen. Gibt das Ereignis zurück — oder null, wenn der
  * Inhaber unbekannt ist (dann stempelt die Oberfläche wie bisher direkt).
  */
-export async function stempelErfassen(datum, art, koord) {
+export async function stempelErfassen(datum, art, koord, pause = null) {
   const inhaber = stempelInhaber();
   if (!inhaber) return null;
   /* Nicht unter der Sendesperre: Ein hängender Sendeversuch darf das
      Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
      eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
      localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
-  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund: koord && koord.grund, inhaber,
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund: koord && koord.grund, inhaber, pause,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();
   return ev;
@@ -459,6 +459,23 @@ export async function schreibenAbschliessen() {
   }
 }
 
+/**
+ * Felder, die nur der Server schreibt (WP-16, Nachtrag H-neu-1): der Monatsabschluss und das eingefrorene
+ * Ist abgeschlossener Monate. Der Server übernimmt sie beim Speichern nie (abschlussAusGespeichert) und
+ * behandelt „nicht mitgeschickt" als unverändert. Mitgeschickt blähten sie jeden Speichervorgang auf —
+ * das eingefrorene Ist wächst mit jedem abgeschlossenen Monat, der Server nimmt höchstens 6 MB an.
+ */
+export const SERVER_FELDER = Object.freeze(["istEingefroren", "monatsabschluss"]);
+export function ohneServerFelder(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => {
+    if (!m || typeof m !== "object") return m;
+    const aus = { ...m };
+    for (const f of SERVER_FELDER) delete aus[f];
+    return aus;
+  }) };
+}
+
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
@@ -476,9 +493,10 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    /* Eine Angabe, die schon in einem anderen Auftrag unterwegs ist, hängt nicht an einen zweiten. */
+    /* Eine Angabe, die schon in einem anderen Auftrag unterwegs ist, hängt nicht an einen zweiten.
+       Serverfelder (Monatsabschluss, eingefrorenes Ist — WP-16) gehen nicht mit hinaus. */
     const angabe = auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig) ? einmalig : null);
-    const mit = mitEinmaligerAngabe({ ...auftrag.bestand, session: null }, angabe);
+    const mit = mitEinmaligerAngabe(ohneServerFelder({ ...auftrag.bestand, session: null }), angabe);
     if (mit.verbraucht) { auftrag.ausnahme = angabe; angabenUnterwegs.add(angabe); }
     const hinaus = mit.bestand;
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
@@ -771,11 +789,14 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * Browser wäre alles davon manipulierbar, und eine Zeiterfassung, die sich
  * manipulieren lässt, belegt nichts.
  */
-export async function stempeln(datum, art, koord) {
+export async function stempeln(datum, art, koord, pause = null) {
   /* Ohne Position kann koord nur den Grund als Code tragen ({ grund }: keine_freigabe, timeout, nicht_verfuegbar);
      der Server prüft ihn gegen die Liste. Eine Koordinate geht nie zusammen mit einem Grund hinaus. */
   const ort = koord && typeof koord.lat === "number" && typeof koord.lon === "number" ? koord : null;
+  /* Keine Zahl (etwa „abc" im Pausenfeld): keine Angabe senden — nicht NaN, das als null ankäme (Review WP-16). */
+  const pauseZahl = pause !== null && pause !== undefined && pause !== "" ? Number(pause) : NaN;
   const body = JSON.stringify({ datum, art,
+    ...(art === "ende" && Number.isFinite(pauseZahl) ? { pause: pauseZahl } : {}),
     lat: ort ? ort.lat : null, lon: ort ? ort.lon : null,
     accuracy: ort && typeof ort.accuracy === "number" ? ort.accuracy : null,
     ...(!ort && koord && typeof koord.grund === "string" ? { positionGrund: koord.grund } : {}) });
@@ -826,9 +847,10 @@ export function wartezeitMitStreuung(antwort, zufall = Math.random) {
  * ausdrücklich; eine verworfene Angabe kommt als Fehler mit Grund zurück,
  * statt im allgemeinen Speichern still zu verschwinden.
  */
-export async function zeitBestaetigen(datum, start, ende, grund) {
+export async function zeitBestaetigen(datum, start, ende, grund, pause) {
   const a = await fetch("/api/zeit-bestaetigen", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "" }) });
+    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
@@ -862,6 +884,31 @@ export async function korrekturAntrag(datum, start, ende, pause, grund) {
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Der Antrag ließ sich nicht stellen.");
+  return d;
+}
+
+/**
+ * Monatsabschluss (WP-16): "abschliessen" (Leitung, Planung; bei offenen Prüffällen nur mit trotzPrueffaellen)
+ * oder "wiederoeffnen" (nur Leitung, mit Grund). Antwort: der Eintrag des Monats und das Ereignis im Verlauf.
+ * Ein Fehler trägt code und offen (Zahlen der offenen Punkte), damit die Oberfläche nachfragen kann, beim Lohnexport
+ * dazu vormonate ({ offen, geaendert }: VORMONAT_OFFEN / VORMONAT_GEAENDERT, WP-16 Nachtrag vierter Review A-1).
+ * trotzVormonat: { kategorie, grund } — die ausdrückliche Überstimmung offener oder geänderter Vormonate.
+ */
+export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false, exportStand = null, trotzVormonat = null } = {}) {
+  /* Lohnexport bestätigen (WP-16, Nachtrag dritter Review H-2): der Stand der ausgegebenen Datei. */
+  const stand = exportStand && typeof exportStand === "object"
+    ? { abdruck: exportStand.abdruck, stand: exportStand.stand, revision: exportStand.revision, zeilen: exportStand.zeilen } : {};
+  const trotz = trotzVormonat && typeof trotzVormonat === "object"
+    ? { trotzVormonat: true, vormonatKategorie: trotzVormonat.kategorie, vormonatGrund: trotzVormonat.grund } : {};
+  const a = await fetch("/api/monatsabschluss", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}), ...stand, ...trotz }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) {
+    const f = new Error(d.text || d.fehler || "Der Monatsabschluss ließ sich nicht speichern.");
+    f.code = d.code || null; f.offen = d.offen || null; f.vormonate = d.vormonate || null;
+    throw f;
+  }
   return d;
 }
 

@@ -87,7 +87,8 @@ describe("speicher.stempeln bei 429", () => {
     /* Früher: akt.stempeln(...) ohne Warten, sofort setLaeuft(false) — während der
        Wiederholungen nach 429 (bis ≈ 36 s) war der Knopf wieder frei. */
     expect(app).not.toMatch(/akt\.stempeln\([^)]*\);\s*setLaeuft\(false\)/);
-    const warten = app.match(/Promise\.resolve\(akt\.stempeln\(p\.id, tag, art, \w+\)\)\.finally\(\(\) => setLaeuft\(false\)\)/g) || [];
+    /* WP-16: der fünfte Wert ist die Pause beim Ausstempeln — die Sperre bis zum Ende bleibt dieselbe. */
+    const warten = app.match(/Promise\.resolve\(akt\.stempeln\(p\.id, tag, art, \w+(?:, [^)]*)?\)\)\.finally\(\(\) => setLaeuft\(false\)\)/g) || [];
     expect(warten, "Stempeluhr und MStempel").toHaveLength(2);
   });
 
@@ -109,5 +110,21 @@ describe("speicher.stempeln bei 429", () => {
     vi.stubGlobal("fetch", f);
     await expect(SP.stempeln("2026-11-03", "start", null)).rejects.toThrow(/Schon gestempelt/);
     expect(f).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* Review WP-16 (niedrig): Eine Pause, die keine Zahl ist, wird nicht als NaN (im JSON: null) gesendet. */
+describe("speicher.stempeln: Pause beim Ausstempeln", () => {
+  const rumpf = async (art, pause) => {
+    const f = vi.fn(async () => antwort(200, { ok: true, zeit: "14:00", ort: "ok", eintrag: { ende: "14:00" } }));
+    vi.stubGlobal("fetch", f);
+    await SP.stempeln("2026-11-03", art, null, pause);
+    return JSON.parse(f.mock.calls[0][1].body);
+  };
+  it("keine Zahl → keine Angabe; Zahl → gesendet; beim Beginn nie", async () => {
+    for (const x of ["abc", "", null, undefined, "3x"]) expect("pause" in (await rumpf("ende", x)), String(x)).toBe(false);
+    expect((await rumpf("ende", "30")).pause).toBe(30);
+    expect((await rumpf("ende", 0)).pause).toBe(0);
+    expect("pause" in (await rumpf("start", 30))).toBe(false);
   });
 });
