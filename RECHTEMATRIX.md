@@ -77,6 +77,9 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
 | Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Branchenmodule: wer geschaltet, bestätigt oder geprüft hat, Grundlage der Mitbestimmung, Modulprotokoll (`geaendertVon`, `mitbestimmung.grundlage`/`bestaetigtVon`, `regelwerte[].geprueftVon`/`geaendertVon`, `einstellungen.modulprotokoll`) ²⁹ | – | ✓ | – | ✓ | ✓ | – | ✓ | ✓ | B |
+| Betriebliche Regelwerte (`einstellungen.regelwerte`: Wert, Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus, Stufe, Prüf- und Änderungszeitpunkt) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -431,6 +434,26 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   Rückfüllung erhalten, Fremdes wird abgewiesen — Nutzerentscheidung B2 b, vorläufig). Beschäftigte schreiben nicht.
   Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
   und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.
+
+²⁹ WP-19.0 (gemeinsamer Kern der Branchenmodule), drei neue Zeilen, keine neue Spalte. **Aktivierung, Mitbestimmung,
+Regelwerte.** Die Moduleinstellungen stehen in `einstellungen` (Zeile bisher ohne eigene Matrixzeile, für alle Rollen voll).
+Seit WP-19.0 kürzt `moduleinstellungenSicht` (`server/lib/branchenmodule.mjs`, eingebunden in `sicht.mjs`, Zeile
+`einstellungen`) für **Beschäftigte und Schichtverantwortung**: Schalter, Parameter, Zeitpunkte und Regelwerte gehen hinaus
+(die Oberfläche braucht sie, um Module anzuzeigen und Befunde zu rechnen); wer geschaltet, bestätigt oder geprüft hat, die
+Grundlage der Mitbestimmung und das Modulprotokoll nicht. Der **Betriebsrat** bekommt alles davon: Er prüft Einführung und
+Anwendung technischer Einrichtungen (§ 87 Abs. 1 Nr. 6 BetrVG) und muss sehen, welches Modul wann mit welcher Grundlage
+eingeschaltet wurde (Entscheidung G6/G7). Die Daten der Module selbst (`objekte`, `postenPlan` …) haben eigene Zeilen;
+für weitere Module folgt die Sicht des Betriebsrats je Modul (G7, FN-33). Einordnung **B** für die Zeile „wer …“: Ob der
+Betriebsrat auch die Personenkennung der handelnden Leitung braucht, ist fachlich offen (FN-33). **Schreiben:** nur mit
+`org.edit` (Leitung, Kundenrolle) über `branchenmoduleZusammen`; Planung, Beschäftigte, Betriebsrat: gespeicherter Stand
+bleibt, Schichtverantwortung: abgewiesen (`einheitZusammen`). Wann/Wer, Prüfvermerk und Modulprotokoll setzt nur der Server;
+fehlende Felder lassen den gespeicherten Stand stehen. Einschalten eines mitbestimmungsrelevanten Moduls (Wachbuch,
+Objektbericht) nur mit Bestätigung und Grundlage; ein Regelwert hebt eine Branchenregel höchstens auf „Achtung“, nur
+geprüft mit Quelle, Fundstelle, Fassung und Gültigkeit, nie auf „recht“ und nie zur Sperre. **Nach dem Abschalten** sind die
+Datenfelder des Moduls nur lesbar (`modulschreibwege.mjs`, `moduldatenZusammen`) — erst nach echtem Einschalten (`eingeschaltetAm`, ein Zeitpunkt ohne Person, für alle Rollen wie `geaendertAm`). Gelöscht wird über den Löschlauf (`aufbewahrung.mjs`: Einträge hinter der Plandatenfrist und Modulprotokoll nach Frist — beides nur nach **geprüfter** Aufbewahrungsregel, heute vorläufig, also zurückgehalten mit Hinweis; keine Löschung wegen Anonymisierung; zustandsbegründende Protokolleinträge bleiben) und über den Ausnahmeweg Art. 16/17 DSGVO der Leitung (`moduldatenAusnahme`, nur genau benannte Einträge, Grund als Kategorie Art. 16/17/18 und optionales Aktenzeichen, protokolliert ohne Personenbezug, gehashter Löschvermerk `einstellungen.moduldatenLoeschvermerke`). Neu angelegte Betriebe (Betreiber, `/api/bestand-anlegen`) bringen keine Moduleinstellungen und keine Ausnahmeangabe mit (Nachträge Opus-Review). Der **Betriebsrat** bekommt das Modulprotokoll nach Positivkatalog (ohne Grund und Aktenzeichen des Ausnahmewegs, zweiter Opus-Review M4); die Löschvermerke bekommt keine eingeschränkte Rolle.
+**Wiederherstellen** lässt Schalter, Bestätigungen, Regelwerte, Modulprotokoll und Löschvermerke, wie sie heute sind; Daten heute nur lesbarer Module kommen aus dem jetzigen Stand, per Ausnahmeweg Gelöschtes oder Berichtigtes nicht zurück. Die Selbstauskunft nach
+Art. 15 DSGVO nennt die eigenen Einträge im Modulprotokoll (`modulhandlungen`); das Betriebsprotokoll des Servers nur Modul
+und Art (WP-14b, M1). Geprüft in `pruefungen/modul-kern.test.js`, `pruefungen/rechtematrix-zeilen.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue

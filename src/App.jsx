@@ -239,6 +239,8 @@ import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
 import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung, BESTAETIGUNG, sicherungenAktionen }
   from "./sicherungen-ui.js";
+/* WP-19.0: Branchenmodule — Aktivierung, Regelwerte und alle Moduloberflächen über einen Einhängepunkt (src/module/index.js). */
+import { BranchenModule } from "./module/kern.jsx";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 
@@ -10363,6 +10365,12 @@ const SPEICHERLAGE = {
     titel: "Diese Änderung ist mit deiner Rolle nicht zulässig",
     text: "Der Server hat sie abgewiesen. Was du siehst, ist noch dein Stand — "
       + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
+    neuladen: true,
+  },
+  ausnahmeZurueck: {
+    titel: "Die Datenschutz-Berichtigung oder -Löschung ist nicht gespeichert",
+    text: "Der Server hat sie abgewiesen, oder der Bestand hat sich inzwischen geändert. Die Änderung wird "
+      + "zurückgenommen: Lade die Seite neu und führe den Ausnahmeweg danach noch einmal aus.",
     neuladen: true,
   },
   stempelStand: {
@@ -22032,6 +22040,9 @@ function Betrieb({ sitz, akt }) {
           <Standorte sitz={sitz} akt={akt} />
           {/* Jugendarbeitsschutz „mehrschichtig“: auch die Planung (pattern.edit, Nutzerentscheidung). */}
           {darf(sitz, "pattern.edit") && <JugendschutzSchalter sitz={sitz} akt={akt} />}
+          {/* WP-19.0: Branchenmodule — die Planung sieht den Stand und nutzt eingeschaltete Module, schaltet nicht. */}
+          <BranchenModule sitz={sitz} akt={akt} darf={(r) => darf(sitz, r)}
+            kontext={{ personenImDienst: (t, daId) => ((besetzung(m, t) || {})[daId] || { personen: [] }).personen }} />
         </div>);
     return <Card><Leer titel="Kein Zugriff" text="Die Betriebsverwaltung ist der Organisationsleitung vorbehalten." /></Card>;
   }
@@ -22061,6 +22072,10 @@ function Betrieb({ sitz, akt }) {
       <PlanFreigabeSchalter sitz={sitz} akt={akt} />
 
       <JugendschutzSchalter sitz={sitz} akt={akt} />
+
+      {/* WP-19.0: Branchenmodule — Einschalten nur mit org.edit, Wann/Wer und Prüfung beim Server. */}
+      <BranchenModule sitz={sitz} akt={akt} darf={(r) => darf(sitz, r)}
+        kontext={{ personenImDienst: (t, daId) => ((besetzung(m, t) || {})[daId] || { personen: [] }).personen }} />
 
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
         Stammdaten</Abschnitt>
@@ -23222,6 +23237,8 @@ function AppInnen() {
       setzeBranche: (b) => mUpd((m) => ({ ...m, branche: b, einheitLabel: brancheEinheit(b) }),
         "Branche gewechselt"),
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
+      /* WP-19.0: Ausnahmeweg Art. 16/17/18 — Änderung lokal, die Angabe einmalig beim Speichern (speicher.js). */
+      moduldatenAusnahme: (angabe, aendern, erkennt) => { if (!sitz || !sitz.mandant) return; SP.ausnahmeMitschicken(sitz.mandant.id, angabe, erkennt); mUpd(aendern, null); },
       /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
          sie gehören zum Löschkonzept, nicht zum Regelwerk. */
       /* Direkt in ein Kapitel springen — die Tour öffnet sich dort. */
@@ -25356,4 +25373,4 @@ function abmeldenMitHinweis() {
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { verknuepfungFuer, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis, Betrieb };

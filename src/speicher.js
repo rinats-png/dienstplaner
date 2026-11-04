@@ -19,6 +19,7 @@
    ausdrücklich „Zugang merken" gewählt hat — auf dem eigenen Telefon
    sinnvoll, am Stationsrechner nicht. */
 import * as PUF from "./stempelpuffer.js";
+import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 
 const SCHLUESSEL = "centric:token";
 const GEMERKT = "centric:gemerkt";
@@ -28,11 +29,13 @@ let token = null;
 let etag = null;
 let offen = null;            // ausstehender Schreibvorgang
 let uhr = null;
-let unterwegs = false;       // ein PUT ist abgeschickt, die Antwort steht aus
+let unterwegs = 0;           // Zahl der abgeschickten PUTs, deren Antwort aussteht (beim Schließen kann es mehr als einer sein)
+/** Fünfter Review B-2: Ein PUT, der nicht antwortet, bricht nach dieser Zeit ab (Fehlerart „netz“, Wiederholen möglich). */
+export const SCHREIBEN_ZEITGRENZE = 45000;
 
 /** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
     Stand nicht der gespeicherte. */
-export const schreibenAusstehend = () => !!offen || unterwegs;
+export const schreibenAusstehend = () => !!offen || unterwegs > 0;
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -358,6 +361,20 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, o
   return Promise.resolve();
 }
 
+/* Ausnahmeweg Art. 16/17/18 (WP-19.0, zweiter Opus-Review): Die Angabe geht mit jedem Schreibvorgang
+   hinaus, dessen Bestand die Änderung enthält (erkennt), und hängt am Auftrag (auftrag.ausnahme) — eine
+   Wiederholung nach Netz-, Server- oder Sitzungsfehler (nochmalSchreiben) schickt sie erneut mit.
+   Verworfen wird sie erst, wenn der Server annimmt (200), oder wenn er abweist (403, 409): Dann wird die
+   lokale Änderung zurückgenommen — die Lage „ausnahmeZurueck" verlangt Neuladen (dritter Review F2;
+   vorher war sie schon vor dem Senden verbraucht, und jeder Fehlschlag endete in „nur lesbar").
+   Im lokalen Stand steht sie nie (sonst ginge sie mit jedem späteren Speichern wieder mit, H1). */
+let einmalig = null;
+/* Vierter Review N-2: Angaben, die gerade in einem Auftrag unterwegs sind bzw. schon angenommen wurden. */
+const angabenUnterwegs = new WeakSet();
+const angenommeneAngaben = new WeakSet();
+/** @param {any} mandantId @param {any} angabe @param {(m: any) => boolean} erkennt */
+export function ausnahmeMitschicken(mandantId, angabe, erkennt) { einmalig = { mandantId, angabe, erkennt }; }
+
 /* Der letzte Schreibversuch, der nicht durchkam.
 
    Vorher wurde er weggeworfen: Bei einer abgelaufenen Sitzung kehrte
@@ -399,6 +416,7 @@ function fehlerart(e, status) {
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   if (status && status >= 500) return "server";
+  if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
   if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
     return "netz";
   return "unbekannt";
@@ -407,7 +425,20 @@ function fehlerart(e, status) {
 /* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
 let laufend = null;
 function jetztSchreiben(beimSchliessen) {
-  const lauf = schreibenAusfuehren(beimSchliessen);
+  /* Vierter Review N-2: Schreibvorgänge laufen nacheinander. Ein zweiter, der mit dem alten ETag und
+     derselben noch nicht verbrauchten Ausnahmeangabe losginge, bekäme einen 409 und löste einen
+     falschen Alarm aus (die eigene Änderung würde verworfen). Er wartet auf den ersten und nimmt
+     dann den neuen ETag; was er schreibt, holt er erst dann aus `offen`. */
+  const vorher = laufend;
+  /* Fünfter Review B-3: Beim Schließen (beforeunload/visibilitychange) wartet nichts auf einen laufenden
+     Request — der Seitentod käme vor dessen Antwort. Es geht sofort hinaus (keepalive); eine Ausnahmeangabe,
+     die schon unterwegs ist, hängt dank angabenUnterwegs/angenommeneAngaben nicht doppelt an. */
+  if (beimSchliessen && vorher) {
+    const sofort = schreibenAusfuehren(true);
+    sofort.catch(() => {});
+    return sofort;
+  }
+  const lauf = vorher ? vorher.catch(() => {}).then(() => schreibenAusfuehren(beimSchliessen)) : schreibenAusfuehren(beimSchliessen);
   laufend = lauf;
   lauf.finally(() => { if (laufend === lauf) laufend = null; });
   return lauf;
@@ -432,7 +463,10 @@ async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
   let status = null;
-  unterwegs = true;
+  unterwegs += 1;
+  /* Fünfter Review B-2: Ohne Zeitgrenze hielte ein hängender Request die Schreibkette (jetztSchreiben) dauerhaft. */
+  const abbruch = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const zeitgeber = abbruch ? setTimeout(() => abbruch.abort(), SCHREIBEN_ZEITGRENZE) : null;
   try {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
@@ -442,9 +476,21 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    const hinaus = { ...auftrag.bestand, session: null };
+    /* Eine Angabe, die schon in einem anderen Auftrag unterwegs ist, hängt nicht an einen zweiten. */
+    const angabe = auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig) ? einmalig : null);
+    const mit = mitEinmaligerAngabe({ ...auftrag.bestand, session: null }, angabe);
+    if (mit.verbraucht) { auftrag.ausnahme = angabe; angabenUnterwegs.add(angabe); }
+    const hinaus = mit.bestand;
+    /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
+    const ausnahmeAbgewiesen = (text) => {
+      if (einmalig === auftrag.ausnahme) einmalig = null;
+      auftrag.ausnahme = null;
+      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
+      if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+    };
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
+      ...(abbruch ? { signal: abbruch.signal } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     const daten = antwort.daten;
@@ -461,9 +507,13 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     if (status === 409) {
       etag = daten.etag;
+      /* Wurde dieselbe Angabe inzwischen angenommen, ist der 409 ein gewöhnlicher Konflikt (kein Alarm). */
+      if (auftrag.ausnahme && angenommeneAngaben.has(auftrag.ausnahme)) auftrag.ausnahme = null;
+      if (auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.text || daten?.fehler || "Der Bestand hat sich geändert.")); return; }
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
       return;
     }
+    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen.")); return; }
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
@@ -471,6 +521,9 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     etag = daten.etag;
     gescheitert = null;
+    /* Angenommen: erst jetzt ist die Angabe verbraucht. */
+    if (auftrag.ausnahme) angenommeneAngaben.add(auftrag.ausnahme);
+    if (auftrag.ausnahme && einmalig === auftrag.ausnahme) einmalig = null;
     if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
     const art = fehlerart(e, status);
@@ -479,7 +532,9 @@ async function schreibenAusfuehren(beimSchliessen) {
       zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
-    unterwegs = false;
+    if (auftrag.ausnahme) angabenUnterwegs.delete(auftrag.ausnahme);
+    if (zeitgeber) clearTimeout(zeitgeber);
+    unterwegs -= 1;
   }
 }
 

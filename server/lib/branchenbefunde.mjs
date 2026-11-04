@@ -16,9 +16,12 @@
    und rechnet deshalb keine Branchenbefunde — sie setzt nur sperrende und
    bestätigungspflichtige Regeln durch, und „branche" ist keine davon.
 
+   Ein geprüfter Regelwert des Betriebs (einstellungen.regelwerte, WP-19.0)
+   hebt einen Befund auf „Achtung“ (regelwertAnwenden) — nie auf „recht“.
+
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { BRANCHENMODULE } from "./branchenmodule.mjs";
+import { BRANCHENMODULE, regelwertAnwenden } from "./branchenmodule.mjs";
 import { pruefeRegel } from "./regelbaukasten.mjs";
 import { kompetenzStand } from "./regelwerk.mjs";
 import { anlagenBefunde } from "./modul-anlagen.mjs";
@@ -38,11 +41,13 @@ export function branchenBefunde(m, da, d, { personenImDienst, person, dienstAm, 
   if (!m || !da || typeof personenImDienst !== "function") return [];
   const personen = (personenImDienst(d, da.id) || []).filter((p) => p && typeof p === "object");
   const auswerten = (r, kontext) => pruefeRegel(r, kontext);
+  /* Betriebliche Regelwerte (WP-19.0, G4): ein geprüfter Wert mit Quelle hebt einen Hinweis auf
+     „Achtung“ — nie höher, nie eine Sperre (Befundart „branche“ sperrt nicht). */
   return [
     ...anlagenBefunde(m, d, da.id, personen.map((p) => ({ id: p.id, merkmale: [] })), { auswerten, module }),
     ...maschinenqualBefunde(m, d, da.id, personen, { auswerten, stand: kompetenzStand, module }),
     ...geteilterdienstBefunde(m, da, d, { person, dienstAm, auswerten, module }),
     ...(typeof einheitAm === "function" ? bereichsplanBefunde(m, da, d, person, personen, { auswerten, einheitAm, module }) : []),
     ...(typeof qualGueltig === "function" ? postenBefunde(m, da, d, person, personen, { auswerten, qualGueltig, heute: heute || d, module }) : []),
-  ];
+  ].map((b) => regelwertAnwenden(m, b, d));
 }

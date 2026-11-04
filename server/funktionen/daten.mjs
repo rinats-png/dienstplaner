@@ -30,6 +30,7 @@ import { uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.m
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
+import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -538,7 +539,9 @@ export default async (req, context) => {
       /* Personen: ein falscher Typ wird abgewiesen, eine fehlende Liste ergänzt (gestalt.mjs). */
       const personA = personenFehler(roh);
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
-      const neuerBestand = personenAngleichen(roh);
+      /* Moduleinstellungen (Schalter, Bestätigungen, Regelwerte, Modulprotokoll) bringt kein
+         Inhalt mit — jeder Betrieb beginnt ohne (G1/G2/G6, WP-19.0 Nachtrag). */
+      const neuerBestand = bestandOhneModuleinstellungen(personenAngleichen(roh));
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
@@ -1023,6 +1026,10 @@ export default async (req, context) => {
            (personenAngleichen, WP-12): Sonst gilt eine Person, die im Altstand
            kein `qualifikationen` trägt, beim unveränderten Zurückschreiben als
            geändert — und die Schichtverantwortung bekam 403. */
+        /* Vierter Review N-1: Die Lesezeit des gespeicherten Stands wird VOR dem Zusammenführen
+           festgehalten. Ein Löschvermerk (am = jetzt) entsteht erst darin; die Sicherung „vor Verlust"
+           zeigt den Stand vor dieser Änderung und trägt deshalb diese frühere Zeit — nie eine spätere. */
+        const lesezeit = new Date().toISOString();
         let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
@@ -1115,6 +1122,9 @@ export default async (req, context) => {
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
         const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
+        /* Branchenmodule (WP-19.0): geschaltet, Mitbestimmung bestätigt, Regelwert gesetzt — nur Modul und
+           Art, ohne Person, Grundlage oder Person|Tag (WP-14b, M1). Wer, steht im Modulprotokoll des Betriebs. */
+        for (const z of modulProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "branchenmodul", z, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         {
@@ -1152,9 +1162,9 @@ export default async (req, context) => {
           if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
             const marke = markeNeu();
             await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
-              { metadata: { zeit: new Date().toISOString(),
+              { metadata: { zeit: lesezeit,
                 durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
-                automatisch: "ja" } }).catch(() => {});
+                automatisch: "ja", zeitquelle: "lesezeit" } }).catch(() => {});
             await sicherungenAusduennen(store, s.bestand);
             await protokoll("schreiben", ks, "gesichert",
               `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
@@ -1996,6 +2006,8 @@ export default async (req, context) => {
          Ohne Sperre konnte zwischen Prüfung und Tausch jemand speichern —
          seine Arbeit fehlte dann in der Sicherung „vor Wiederherstellung". */
       return await unterRaumsperre(s.bestand, async () => {
+        /* Fünfter Review B-1: Lesezeit des Stands, der unten als „vor Wiederherstellung" gesichert wird. */
+        const lesezeitW = new Date().toISOString();
         const jetztGelesen = await bestandLesenStreng(store, s.bestand);
         if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
@@ -2008,7 +2020,9 @@ export default async (req, context) => {
         const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
 
         const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
-          { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null });
+          { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null,
+            automatisch: metaW?.metadata?.automatisch === "ja",
+            zeitquelle: metaW?.metadata?.zeitquelle === "lesezeit" ? "lesezeit" : null });
         if (w.verweigert) {
           await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
           return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
@@ -2024,8 +2038,8 @@ export default async (req, context) => {
         /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
         const m2 = markeNeu();
         await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
-          { metadata: { zeit: new Date().toISOString(),
-            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
+          { metadata: { zeit: lesezeitW,
+            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja", zeitquelle: "lesezeit" } })
           .catch(() => {});
         await sicherungenAusduennen(store, s.bestand);
 

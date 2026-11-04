@@ -38,6 +38,11 @@ und `sperreEigen` sind bereits gebaut und nicht Teil von WP-19.
 | Befundform | `alsEinteilungsBefund(regel, ergebnis)` | Befund in der Form von `einteilungsBefunde`, Befundart `branche` (Hinweis, sperrt nie) |
 | Testhilfe | `pruefungen/hilfen/branchenbetrieb.mjs` | Betrieb mit Paketen und Moduleinstellungen, Schreiben als Rolle über den Serverweg |
 | Vertragstest | `pruefungen/branchenmodule.test.js` (`npm run pruefung:branchenmodule`) | Registry, Aktivierung, Rechte, Katalog, Befundform |
+| Mitbestimmung (WP-19.0, G6) | `branchenmoduleZusammen`, `modulAktiv` | Einschalten mitbestimmungsrelevanter Module nur mit `{ bestaetigt: true, grundlage }`; Zeit/Person vom Server; ohne Bestätigung keine Wirkung |
+| Betriebliche Regelwerte (WP-19.0, G4) | `einstellungen.regelwerte`, `pruefeRegelwert`, `regelwertAnwenden` | Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus; höchstens „achtung“, nie „recht“, nie Sperre |
+| Abschalten (WP-19.0, G3) | `modulNurLesen`, `server/lib/modulschreibwege.mjs` | Datenfelder ausgeschalteter Module nur lesbar; Export in der Oberfläche |
+| Einhängepunkte (WP-19.0) | `src/module/index.js`, `src/module/kern.jsx`, `MODUL_SCHREIBWEGE` | eine Stelle in App.jsx und rechte.mjs; Schnittstelle in `wp19-0-nachweis.md` Abschnitt 4 |
+| Statusvertrag (WP-19.0, G8) | `pruefeModulStatus` | `vorlaeufig`/`freigegeben` nur mit `abnahme: { datum, nachweis }` (WP-19.13) |
 
 Noch nicht angedockt (nach dem Merge von WP-22): Befundart `branche` im Befundkatalog, Branchenbefunde in
 `einteilungsBefunde`, Regelbaukasten auf dem Server. Bis dahin erzeugt kein Modul einen Befund.

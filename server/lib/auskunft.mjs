@@ -38,6 +38,7 @@ import { fristen } from "./aufbewahrung.mjs";
 import { geplanterDienst, tagePlus } from "./zeiterfassung.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
 import { BESTAETIGUNG_FELDER } from "./sicht.mjs";
+import { modulprotokollPositiv } from "./branchenmodule.mjs";
 
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 2;
@@ -113,6 +114,11 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
   const bereichszuordnungen = Object.entries(m.bereichsPlan || {}).filter(([k]) => eigenerSchluessel(pid)(k))
     .map(([k, v]) => ({ datum: String(k).split("|")[1], bereich: v }))
     .sort((a, b) => a.datum.localeCompare(b.datum));
+  /* Modulprotokoll (WP-19.0): was die Person selbst an Branchenmodulen geschaltet, bestätigt oder
+     als Regelwert gesetzt hat (Leitung, Kundenrolle) — nach Positivkatalog: ohne Grund und Aktenzeichen
+     des Ausnahmewegs (ein Altstand mit Freitext könnte eine andere Person nennen; zweiter Opus-Review M4). */
+  const modulhandlungen = modulprotokollPositiv((m.einstellungen && Array.isArray(m.einstellungen.modulprotokoll) ? m.einstellungen.modulprotokoll : [])
+    .filter((x) => x && typeof x === "object" && gleich(x.von, pid)));
   /* Der Plan, wie er sich aus Schichtfolge, Teilzeit, Abweichungen und
      Abwesenheiten ergibt — vom vorletzten bis zum übernächsten Monat. */
   const heute = String(erstellt).slice(0, 10);
@@ -169,6 +175,7 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     planabweichungen: abweichungen,
     ...(postenzuordnungen.length ? { postenzuordnungen } : {}),
     ...(bereichszuordnungen.length ? { bereichszuordnungen } : {}),
+    ...(modulhandlungen.length ? { modulhandlungen } : {}),
     plan,
     abwesenheiten: eigene(m.abwesenheiten, pid),
     antraege,

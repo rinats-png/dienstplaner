@@ -55,6 +55,11 @@
    kürzer stellen will, muss wissen, welche der beiden ihn bindet.
    ========================================================================== */
 
+/* Branchenmodule (WP-19.0, Nachtrag G3): Personenfelder der Module („personId|Tag")
+   und das Modulprotokoll hängen am selben Lauf — siehe moduldatenFaellig unten. */
+import { BRANCHENMODULE, modulprotokollFaellig, MODULPROTOKOLL_FRIST, MODULDATEN_AUFBEWAHRUNG } from "./branchenmodule.mjs";
+import { regelGeprueft } from "./regelstatus.mjs";
+
 /** Voreinstellungen, falls ein Betrieb sie noch nicht hat. */
 export const VORGABE = {
   plandatenMonate: 24,
@@ -114,6 +119,8 @@ const FRIST_FELDER = ["plandatenMonate", "stammdatenMonate", "gruendeMonate"];
 export function aufbewahrungFehler(a) {
   if (a === undefined || a === null) return null;
   if (typeof a !== "object" || Array.isArray(a)) return "Aufbewahrung: kein Objekt.";
+  /* modulprotokollMonate (Frist des Modulprotokolls je Betrieb) gibt es nicht mehr (zweiter Opus-Review M1):
+     ein gespeicherter Altwert wirkt nicht und fällt beim nächsten Löschlauf weg. */
   for (const f of FRIST_FELDER) {
     const w = a[f];
     if (w === undefined || w === null || w === 0 || w === "") continue;
@@ -194,6 +201,44 @@ export function stichtage(m, heuteIso) {
   };
 }
 
+/**
+ * Moduldaten mit Personenbezug (Registry: `personenfelder`, Schlüssel
+ * „personId|JJJJ-MM-TT"), die fällig sind — wie die übrigen Plandaten NUR nach
+ * Datum (zweiter Opus-Review M2): Eine Anonymisierung entfernt keine
+ * Zuordnungen; danach ist der Schlüssel pseudonym, wie in abweichungen. Und
+ * nur nach einer GEPRÜFTEN Aufbewahrungsregel (Betreiber-Ergänzung A3,
+ * MODULDATEN_AUFBEWAHRUNG, regelstatus.mjs): Ist sie ungeprüft, abgelaufen
+ * oder zurückgezogen, wird nichts gelöscht — die Vorschau zählt es als
+ * „zurückgehalten" und verlangt Prüfung/Freigabe. Die Frist ist nie kürzer
+ * als die Plandatenfrist (PLANDATEN_MINDEST). Gilt unabhängig vom Schalter.
+ * @returns {{ anzahl: number, zurueckgehalten: number, felder: Record<string, Set<string>> }}
+ */
+function moduldatenFaellig(m, heuteIso, module, regel) {
+  const felder = [...new Set((module || []).flatMap((x) => (x && Array.isArray(x.personenfelder) ? x.personenfelder : [])))];
+  const monate = Math.max(Number.isInteger(Number(regel && regel.monate)) ? Number(regel.monate) : PLANDATEN_MINDEST,
+    PLANDATEN_MINDEST, fristen(m).plandatenMonate);
+  const stichtag = minusMonate(heuteIso, monate);
+  const geprueft = regelGeprueft(regel, { heute: String(heuteIso).slice(0, 10) });
+  /** @type {Record<string, Set<string>>} */
+  const raus = {};
+  let anzahl = 0;
+  for (const f of felder) {
+    const inhalt = m[f];
+    if (!inhalt || typeof inhalt !== "object" || Array.isArray(inhalt)) continue;
+    for (const k of Object.keys(inhalt)) {
+      const tag = tagVon(k);
+      if (!tag || tag >= stichtag) continue;                    // unerwartete Form oder in der Frist: bleibt liegen
+      (raus[f] = raus[f] || new Set()).add(k);
+      anzahl++;
+    }
+  }
+  return geprueft ? { anzahl, zurueckgehalten: 0, felder: raus } : { anzahl: 0, zurueckgehalten: anzahl, felder: {} };
+}
+
+/** Hinweis, wenn eine Aufbewahrungsregel ungeprüft ist und deshalb nichts gelöscht wurde. */
+const PRUEFHINWEIS = "Prüfung/Freigabe erforderlich: Die Aufbewahrungsregel für Branchenmodul-Daten bzw. das Modulprotokoll "
+  + "ist nicht geprüft (FN-32). Bis dahin wird daraus nichts gelöscht.";
+
 /* --------------------------------------------------------------------------
    Vorschau
    -------------------------------------------------------------------------- */
@@ -204,18 +249,30 @@ export function stichtage(m, heuteIso) {
  * personen   zur Anonymisierung fällige Personen
  * plandaten  Anzahl je Feld
  * gruende    Freitexte, die entfallen
+ * moduldaten Einträge in Modul-Personenfeldern hinter der Frist (nur mit geprüfter Regel)
+ * modulprotokoll  Einträge im Modulprotokoll nach dessen Frist (nur mit geprüfter Regel)
+ * moduldatenZurueckgehalten, modulprotokollZurueckgehalten  wären fällig, Regel ungeprüft — nicht gelöscht
+ * pruefhinweis  „Prüfung/Freigabe erforderlich", wenn etwas zurückgehalten ist
  * gesamt     Summe aller Eingriffe
  *
+ * @param {any} m
+ * @param {string} heuteIso
+ * @param {{ module?: readonly any[], regeln?: { moduldaten?: any, modulprotokoll?: any } }} [o]
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
- *   planSumme: number, aenderungen: number, gruende: number, standort: number, gesamt: number,
+ *   planSumme: number, aenderungen: number, gruende: number, standort: number, moduldaten: number,
+ *   modulprotokoll: number, moduldatenZurueckgehalten: number, modulprotokollZurueckgehalten: number,
+ *   pruefhinweis: (string|null), gesamt: number,
  *   warnung: (string|null)}}
  */
-export function vorschau(m, heuteIso) {
+export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = {}) {
   const st = stichtage(m, heuteIso);
   const personen = (m.personen || []).filter((p) => {
     if (!p || p.anonym || !p.austritt) return false;
     return String(p.austritt).slice(0, 10) <= st.stamm;
   });
+  const md = moduldatenFaellig(m, heuteIso, module, regeln.moduldaten || MODULDATEN_AUFBEWAHRUNG);
+  const mp = modulprotokollFaellig(m, heuteIso, { regel: regeln.modulprotokoll || MODULPROTOKOLL_FRIST });
+  const modulprotokoll = mp.faellig;
 
   const plandaten = {};
   let planSumme = 0;
@@ -271,7 +328,12 @@ export function vorschau(m, heuteIso) {
     aenderungen,
     gruende,
     standort,
-    gesamt: personen.length + planSumme + aenderungen + gruende + standort,
+    moduldaten: md.anzahl,
+    modulprotokoll,
+    moduldatenZurueckgehalten: md.zurueckgehalten,
+    modulprotokollZurueckgehalten: mp.zurueckgehalten,
+    pruefhinweis: md.zurueckgehalten || mp.zurueckgehalten ? PRUEFHINWEIS : null,
+    gesamt: personen.length + planSumme + aenderungen + gruende + standort + md.anzahl + modulprotokoll,
     warnung,
   };
 }
@@ -309,10 +371,14 @@ export function anonymisiere(p) {
  * Der Bericht hat dieselbe Gestalt wie die Vorschau, damit die Oberfläche
  * beides gleich darstellt.
  *
+ * @param {any} m
+ * @param {string} heuteIso
+ * @param {{ module?: readonly any[], regeln?: { moduldaten?: any, modulprotokoll?: any } }} [o]
  * @returns {{mandant: object, bericht: object}}
  */
-export function raeumen(m, heuteIso) {
-  const plan = vorschau(m, heuteIso);
+export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = {}) {
+  const plan = vorschau(m, heuteIso, { module, regeln });
+  /* Eine Frist des Modulprotokolls je Betrieb (modulprotokollMonate) gibt es nicht mehr (M1): Sie fällt hier weg. */
   if (plan.gesamt === 0) {
     return {
       mandant: { ...m, aufbewahrung: { ...fristen(m), zuletztGeraeumt: heuteIso } },
@@ -321,6 +387,10 @@ export function raeumen(m, heuteIso) {
   }
   const st = plan.stichtage;
   const faellig = new Set(plan.personen.map((p) => p.id));
+  /* Moduldaten (Personenfelder der Branchenmodule): fällige Schlüssel entfernen (nur geprüfte Regel, nur nach Datum). */
+  const md = moduldatenFaellig(m, heuteIso, module, regeln.moduldaten || MODULDATEN_AUFBEWAHRUNG);
+  const moduldatenGeraeumt = Object.fromEntries(Object.entries(md.felder)
+    .map(([f, raus]) => [f, Object.fromEntries(Object.entries(m[f]).filter(([k]) => !raus.has(k)))]));
 
   const gekuerzt = {};
   for (const feld of ["abweichungen", "erfassung", "einstempeln"]) {
@@ -361,6 +431,9 @@ export function raeumen(m, heuteIso) {
            keine Fehlzeitenstatistik mehr. */
         return { ...a, notiz: "", grund: "", grundGeloescht: heuteIso };
       }),
+      ...moduldatenGeraeumt,
+      ...(plan.modulprotokoll ? { einstellungen: { ...m.einstellungen,
+        modulprotokoll: modulprotokollFaellig(m, heuteIso, { regel: regeln.modulprotokoll || MODULPROTOKOLL_FRIST }).rest } } : {}),
       aufbewahrung: { ...fristen(m), zuletztGeraeumt: heuteIso },
     },
     bericht: { ...plan, ausgefuehrt: true },
@@ -372,7 +445,8 @@ const zahlwort = (n, eins, viele) => `${n} ${n === 1 ? eins : viele}`;
 
 /** Ein Satz für die Oberfläche und fürs Protokoll. */
 export function berichtstext(b) {
-  if (!b || b.gesamt === 0) return "Nichts fällig — alle Fristen eingehalten.";
+  if (!b) return "Nichts fällig — alle Fristen eingehalten.";
+  if (b.gesamt === 0) return b.pruefhinweis || "Nichts fällig — alle Fristen eingehalten.";
   const teile = [];
   if (b.personen.length)
     teile.push(`${zahlwort(b.personen.length, "Person", "Personen")} anonymisiert`);
@@ -384,5 +458,10 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.standort, "Standort-Ergebnis", "Standort-Ergebnisse")} entfernt`);
   if (b.gruende)
     teile.push(`${zahlwort(b.gruende, "Abwesenheitsgrund", "Abwesenheitsgründe")} entfernt`);
-  return `${teile.join(", ")}.`;
+  if (b.moduldaten)
+    teile.push(`${zahlwort(b.moduldaten, "Modulzuordnung", "Modulzuordnungen")} entfernt`);
+  if (b.modulprotokoll)
+    teile.push(`${zahlwort(b.modulprotokoll, "Eintrag", "Einträge")} im Modulprotokoll entfernt`);
+  if (!teile.length) return b.pruefhinweis || "Nichts fällig — alle Fristen eingehalten.";
+  return `${teile.join(", ")}.${b.pruefhinweis ? ` ${b.pruefhinweis}` : ""}`;
 }

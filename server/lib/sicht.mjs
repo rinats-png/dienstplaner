@@ -24,6 +24,7 @@ import { planungsregelnAbleiten } from "./planungsregeln.mjs";
 import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
+import { moduleinstellungenSicht } from "./branchenmodule.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -493,7 +494,11 @@ export const BETRIEB = {
   bundesland: [VOLL, VOLL], einheitLabel: [VOLL, VOLL], einheiten: [VOLL, VOLL],
   dienstarten: [VOLL, VOLL], zyklus: [VOLL, VOLL], anker: [VOLL, VOLL],
   zyklusLaenge: [VOLL, VOLL], gruppen: [VOLL, VOLL], versatzTageVon: [VOLL, VOLL],
-  zuschlaege: [VOLL, VOLL], einstellungen: [VOLL, VOLL], rollennamen: [VOLL, VOLL],
+  zuschlaege: [VOLL, VOLL], rollennamen: [VOLL, VOLL],
+  /* Einstellungen: alles wie bisher; nur die Branchenmodule (WP-19.0) gekürzt — Beschäftigte und
+     Schichtverantwortung ohne Wer, Mitbestimmungsgrundlage und Modulprotokoll, der Betriebsrat ganz
+     (moduleinstellungenSicht, server/lib/branchenmodule.mjs; RECHTEMATRIX ²⁹). */
+  einstellungen: [R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle)), R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle))],
   /* Die Oberfläche richtet Navigation und Knöpfe danach (darf → m.matrix). */
   matrix: [VOLL, VOLL],
   briefing: [VOLL, VOLL], aufgaben: [VOLL, VOLL], qualifikationen: [VOLL, VOLL],

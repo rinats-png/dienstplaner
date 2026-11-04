@@ -320,3 +320,26 @@ describe("Wiederherstellen: Vermerk der Ortsangaben (WP-20, N8)", () => {
     expect(g).not.toHaveProperty("ortGeaendertAm");
   });
 });
+
+describe("Wiederherstellen: Planfreigabe-Pflicht samt Wann/Wer aus dem jetzigen Stand (WP-23, Testlücke WP-19.0)", () => {
+  const PFL = ["planFreigabePflicht", "planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"];
+  const mit = (e) => { const b = raum(); b.mandanten[1].einstellungen = { ruhezeit: 11, ...e }; return b; };
+  const zurueck = (jetzt, sicherungE) => {
+    const m = kopie(raum().mandanten[1]); m.einstellungen = { ruhezeit: 9, ...sicherungE };
+    return betriebWiederherstellen(jetzt, { umfang: "betrieb", mandantId: "m-b", mandant: m, erzeugt: "2026-10-10T08:00:00Z" }, LEITUNG_B,
+      { marke: "x", heute: new Date("2026-10-18T10:00:00Z"), datenschutz: "aus" }).bestand.mandanten[1].einstellungen;
+  };
+  it("jedes der drei Felder kommt aus dem jetzigen Stand — vorhandene bleiben, fehlende werden nicht aus der Sicherung übernommen", () => {
+    const jetzt = mit({ planFreigabePflicht: true, planFreigabePflichtGeaendertAm: "2026-10-15T08:00:00.000Z" });
+    const e = zurueck(jetzt, { planFreigabePflicht: false, planFreigabePflichtGeaendertAm: "2026-01-01T00:00:00.000Z", planFreigabePflichtGeaendertVon: "alt" });
+    expect(e.planFreigabePflicht).toBe(true);
+    expect(e.planFreigabePflichtGeaendertAm).toBe("2026-10-15T08:00:00.000Z");
+    expect("planFreigabePflichtGeaendertVon" in e).toBe(false);
+    expect(e.ruhezeit).toBe(9);                                       // übrige Einstellungen aus der Sicherung
+  });
+  it("alle drei gesetzt: unverändert wie jetzt", () => {
+    const pfl = { planFreigabePflicht: true, planFreigabePflichtGeaendertAm: "2026-10-15T08:00:00.000Z", planFreigabePflichtGeaendertVon: "b-l" };
+    const e = zurueck(mit(pfl), { planFreigabePflicht: false });
+    for (const f of PFL) expect(e[f], f).toEqual(pfl[f]);
+  });
+});

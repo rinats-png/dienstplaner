@@ -26,7 +26,8 @@ import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
-import { branchenmoduleZusammen } from "./branchenmodule.mjs";
+import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenmodule.mjs";
+import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -1274,6 +1275,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     /* Mitteilungen: Notruf- und Tauschmitteilungen des Clients verworfen,
        Zustellwege und -status aus dem gespeicherten Stand, Grenzen für
        Titel und Text (Commit 4, mitteilungen.mjs). */
+    /* Ausnahmeweg Art. 16/17 DSGVO für Daten ausgeschalteter Branchenmodule (modulschreibwege.mjs):
+       Die Angabe ist kein Betriebsfeld (die Rückfüllung unten verwirft sie) — sie wird hier gemerkt
+       und nur dem Modulschreibweg übergeben, gespeichert wird sie nie. */
+    const moduldatenAusnahme = geschickt && typeof geschickt === "object" && hat(geschickt, "moduldatenAusnahme")
+      ? geschickt.moduldatenAusnahme : undefined;
     const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt);
     if (vorgefiltert.grund) return { verweigert: vorgefiltert.grund };
     geschickt = vorgefiltert.mandant;
@@ -1362,6 +1368,17 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
     }
+    /* Branchenmodule (WP-19.0): Daten ausgeschalteter Module nur lesbar (G3), danach die Schreibwege
+       der Module aus MODUL_SCHREIBWEGE — der eine Einhängepunkt für Planung, Leitung und
+       Schichtverantwortung (server/lib/modulschreibwege.mjs). */
+    {
+      /* Die Angabe immer übergeben, auch undefined: Ein gespeichertes Feld, das die Rückfüllung wieder
+         eingesetzt hat, darf nie als Angabe gelten (zweiter Opus-Review H1 — es sperrte jedes Speichern). */
+      const modulweg = modulSchreibwegeAnwenden(ort.betrieb, geschickt, { sitzung, rolle, umfang, darfOrgEdit: darf(rolle, "org.edit"),
+        ausnahme: moduldatenAusnahme });
+      if (modulweg.grund) return { verweigert: modulweg.grund };
+      geschickt = modulweg.mandant;
+    }
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
        nicht nur im Warndialog der Oberfläche. */
@@ -1434,7 +1451,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       .filter(Boolean)
       .map((geschickt) => {
         const alt = alteNachId.get(geschickt.id);
-        if (!alt) return geschickt;               // neu angelegt
+        /* Neu angelegt — ohne Moduleinstellungen: Schalter, Bestätigungen, Regelwerte und
+           Modulprotokoll entstehen nur über branchenmoduleZusammen (G2/G6, WP-19.0 Nachtrag). */
+        if (!alt) return moduleinstellungenVerwerfen(geschickt);
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {
           if (Object.prototype.hasOwnProperty.call(geschickt, feld))

@@ -21,6 +21,8 @@ import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { planFreigabeAktiv } from "./planfreigabe.mjs";
+import { MODULEINSTELLUNGEN_FELDER } from "./branchenmodule.mjs";
+import { moduldatenBeiWiederherstellung } from "./modulschreibwege.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -151,11 +153,11 @@ export function listenEintrag(marke, meta, eigeneId) {
  * @param {any} jetzt
  * @param {any} sicherung
  * @param {any} sitzung
- * @param {{ marke?: string, sicherungsZeit?: (string|null), heute?: Date, datenschutz?: string }} [o]
+ * @param {{ marke?: string, sicherungsZeit?: (string|null), automatisch?: boolean, zeitquelle?: (string|null), heute?: Date, datenschutz?: string }} [o]
  *   datenschutz: Modus des Datenschutzlaufs („an" löscht nach Fristen, sonst nur melden)
  */
 export function betriebWiederherstellen(jetzt, sicherung, sitzung,
-  { marke, sicherungsZeit, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
+  { marke, sicherungsZeit, automatisch = false, zeitquelle = null, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
   const ort = eigenerBetrieb(jetzt, sitzung);
   if (!ort) return { verweigert: "Zu dieser Sitzung gehört kein gespeicherter Betrieb.", status: 409 };
   const alt = ort.betrieb;
@@ -170,8 +172,20 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
      Jetzt wird der zurückgespielte Betrieb vor dem Schreiben noch einmal durch
      den Löschlauf geschickt (raeumen, mit den heutigen Fristen): Was nach den
      Fristen fort sein muss, ist es auch danach; anonymisierte Personen bleiben
-     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr. */
-  void sicherungsZeit;
+     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr —
+     wohl aber für die Löschvermerke des Ausnahmewegs (unten, dritter Review F1):
+     Sie wirken nur auf Sicherungen, die vor dem Vermerk entstanden. Quelle: die
+     Metadaten-Zeit der Ablage, sonst `erzeugt` der Betriebssicherung, sonst
+     unbekannt (dann wirkt jeder Vermerk). */
+  /* Vierter Review N-1 / fünfter Review B-1: Eine automatische Sicherung („vor Verlust") entsteht im selben
+     Speichervorgang wie ein Vermerk. Seit dem fünften Review trägt jede NEUE automatische Sicherung als Zeit
+     die Lesezeit des gesicherten Stands (vor dem Zusammenführen) und die Markierung `zeitquelle: "lesezeit"`;
+     dann gilt diese Zeit wie bei einer manuellen Sicherung (ein Vermerk derselben Anfrage ist jünger und wirkt,
+     eine spätere Berichtigung oder Neuplanung bleibt erhalten). Nur eine automatische Sicherung OHNE diese
+     Markierung (Altbestand, Zeit nicht verlässlich) gilt als „Zeit unbekannt": dort wirkt jeder Vermerk. */
+  const zeitDerSicherung = (automatisch && zeitquelle !== "lesezeit") ? null
+    : typeof sicherungsZeit === "string" && sicherungsZeit ? sicherungsZeit
+    : (sicherung && typeof sicherung.erzeugt === "string" && sicherung.erzeugt ? sicherung.erzeugt : null);
 
   const jetztPersonen = new Map((alt.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
   const personen = (Array.isArray(aus.personen) ? aus.personen : []).map((p) => {
@@ -223,6 +237,29 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     }
     zurueck.einstellungen = z;
   }
+  /* Branchenmodule (WP-19.0): Schalter samt Mitbestimmungsbestätigung, betriebliche Regelwerte, das
+     Modulprotokoll und die Löschvermerke gelten weiter, wie sie heute sind. Eine alte Sicherung schaltet
+     kein Modul ohne Bestätigung ein, hebt keinen Regelwert an und kürzt das Protokoll nicht. */
+  {
+    const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
+    for (const f of MODULEINSTELLUNGEN_FELDER) {
+      if (f in altE) z[f] = altE[f]; else delete z[f];
+    }
+    if ((zurueck.einstellungen && typeof zurueck.einstellungen === "object") || Object.keys(z).length) zurueck.einstellungen = z;
+  }
+  /* Moduldaten (zweiter Opus-Review M3, Betreiber-Ergänzung A4):
+     - Die Daten eines Moduls, das heute nur lesbar ist (G3), kommen aus dem jetzigen Stand —
+       sonst wäre Wiederherstellen ein Umweg am Nur-Lesen vorbei (ohne Ausnahmeweg, ohne Protokoll).
+     - Was über den Ausnahmeweg gelöscht oder berichtigt wurde (Art. 16/17), kommt nicht zurück:
+       Die Löschvermerke (einstellungen.moduldatenLoeschvermerke, gehasht) wirken auf die Sicherung,
+       auch wenn das Modul inzwischen wieder eingeschaltet ist.
+     - Eine Ausnahmeangabe (moduldatenAusnahme) ist nie Teil eines Betriebs (H1). */
+  const md = moduldatenBeiWiederherstellung(alt, zurueck, undefined, { sicherungsZeit: zeitDerSicherung });
+  /* Dritter Review F4: Geschlüsselte Löschvermerke ohne Serverschlüssel (CENTRIC_PFEFFER fehlt) sind nicht
+     prüfbar — dann kein Wiederherstellen, statt Gelöschtes womöglich zurückzubringen (fail-closed). */
+  if (md.unpruefbar) return { verweigert: "Löschvermerke des Datenschutz-Ausnahmewegs sind ohne den Serverschlüssel "
+    + "(CENTRIC_PFEFFER) nicht prüfbar — er fehlt oder wurde gegenüber dem Schlüssel geändert, mit dem die Vermerke "
+    + "entstanden. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
   if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
     zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
       ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };
