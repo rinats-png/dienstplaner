@@ -1,0 +1,4 @@
+# Testmarken in pruefungen/mail-push-produktion.test.js (Zeilen 541–543): keine echten Zugangsdaten,
+# sondern erkennbare Platzhalter (…-nur-zum-pruefen-MARKEn), die prüfen, dass Werte nicht in /gesund erscheinen.
+d2aa9dd0b8d0c9f7a1a1ffee6d513ba41f169821:pruefungen/mail-push-produktion.test.js:generic-api-key:541
+d2aa9dd0b8d0c9f7a1a1ffee6d513ba41f169821:pruefungen/mail-push-produktion.test.js:generic-api-key:543
