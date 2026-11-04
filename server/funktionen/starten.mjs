@@ -41,6 +41,26 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
    Herkunftsprüfung, Eingabeprüfung, Zugangscodes, Nachfassliste,
    Protokoll und die Antwortform. */
 
+/* --------------------------------------------------------------------------
+   SCHALTER: ÖFFENTLICHER SELBSTSTART — Vorgabe AUS
+
+   Dieser Weg legt ohne Anmeldung einen Betrieb samt Zugangscodes an. Solange
+   CENTRIC nicht öffentlich angeboten wird (interner Pilot, synthetische
+   Daten), darf das niemand von außen auslösen. Die Absage kommt nach der
+   Pfad- und Methodenprüfung, aber VOR der Bremse, dem Rumpf, dem Protokoll
+   und der Anlage: kein Zählerstand, kein Raum, kein Konto, keine Datei.
+
+   An ist der Schalter nur bei genau `CENTRIC_SELBSTSTART=true`. „1", „yes",
+   „TRUE" und alles andere bleiben aus. Er ist unabhängig vom Schalter der
+   Selbstregistrierung (`CENTRIC_PUBLIC_REGISTRATION`, /api/registrierung*).
+
+   Gelesen wird bei jeder Anfrage, nicht beim Laden.
+   -------------------------------------------------------------------------- */
+export const selbststartAn = () => process.env.CENTRIC_SELBSTSTART === "true";
+
+const NICHT_FREIGESCHALTET =
+  "Der Selbststart ist derzeit nicht freigeschaltet. Zugang nur mit Zugangscode.";
+
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/(starten)\/?/, "");
@@ -52,6 +72,10 @@ export default async (req) => {
   try {
     if (pfad !== "" && pfad !== "neu") return antwort({ fehler: "Unbekannter Pfad." }, 404);
     if (req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
+
+    /* Schalter: vor Bremse, Rumpf, Protokoll und Anlage (siehe oben). */
+    if (!selbststartAn())
+      return antwort({ ok: false, fehler: NICHT_FREIGESCHALTET }, 403);
 
     const k = kennung(req, null);
     const b = await bremse("starten", k);
