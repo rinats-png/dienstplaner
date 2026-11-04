@@ -22,7 +22,7 @@
     "pruefung:herkunft": "vitest run pruefungen/herkunft-xff.test.js",
     "pruefung:betreiber-zweifaktor": "vitest run pruefungen/betreiber-zweifaktor.test.js",
     "pruefung:ablage": "vitest run pruefungen/ablage.test.js",
-    "pruefung:website": "vitest run pruefungen/website-ausliefern.test.js",
+    "pruefung:website": "vitest run pruefungen/website-ausliefern.test.js pruefungen/website-konsole.test.js",
     "pruefung:aufraeumen": "vitest run pruefungen/aufraeumen.test.js",
     "pruefung:bremse-lokal": "vitest run pruefungen/bremse-lokal.test.js",
     "pruefung:bremse-wp47": "vitest run pruefungen/bremse-wp47.test.js pruefungen/stempel-429-client.test.js",

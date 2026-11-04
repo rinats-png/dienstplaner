@@ -1,0 +1,2 @@
+# Download-URL des Website-Archivs (nur https). Leer = kein Download; dann /root/centric-website-dist.tgz noetig.
+# Wird nach Veroeffentlichung des Archivs durch den Betreiber eingetragen (eine Zeile, ohne Anfuehrungszeichen).

@@ -1,7 +1,7 @@
 # Website bauen und auf den VPS bringen
 
-Quelle: das Website-Repository (`build.py`, `assets/`). Gebaut wird auf dem Windows-Laptop des
-Betreibers. Es wird nichts ausgeliefert, was nicht unter `dist/` liegt.
+Quelle: das Website-Repository (`build.py`, `assets/`; liegt nur auf dem Laptop des Betreibers). Gebaut wird
+auf dem Windows-Laptop. Es wird nichts ausgeliefert, was nicht unter `dist/` liegt.
 
 ## 1. Bauen (Laptop, im Website-Ordner)
 
@@ -9,40 +9,48 @@ Betreibers. Es wird nichts ausgeliefert, was nicht unter `dist/` liegt.
 python build.py
 ```
 
-`dist/` ist danach vollstaendig: 15 HTML-Seiten, `robots.txt`, `sitemap.xml`, `assets/`
-(CSS, JS, Schriften, three.min.js). Der Ordner ist **ohne Python lauffaehig**: reine statische
-Dateien, keine Build-Schritte auf dem Server, keine externen Ressourcen. Python wird nur zum Bauen
-gebraucht, nicht zum Ausliefern.
+`python build.py` laeuft **nur auf dem Laptop**. `dist/` ist danach vollstaendig: HTML-Seiten, `robots.txt`,
+`sitemap.xml`, `assets/` (CSS, JS, Schriften, three.min.js). Der Ordner ist **ohne Python lauffaehig**: reine
+statische Dateien, keine Build-Schritte und keine Python-Annahme auf dem Server, keine externen Ressourcen.
+`index.html`, `404.html` und `assets/` muessen da sein; die Skripte pruefen das ohnehin.
 
-Kurzer Blick vorher (optional): `index.html`, `404.html` und `assets/` muessen da sein; das
-Auslieferungsskript prueft das ohnehin und bricht sonst ab.
+## 2. Reproduzierbares Archiv (Laptop, Git-Bash oder WSL mit GNU tar)
 
-## 2. Packen und Pruefsumme (Laptop, PowerShell)
-
-```powershell
-tar -czf centric-website-dist.tgz -C dist .
-Get-FileHash -Algorithm SHA256 centric-website-dist.tgz
-```
-
-Die Pruefsumme (64 Zeichen) notieren; sie dient dem Abgleich nach der Uebertragung.
-
-## 3. Uebertragen (unter Betreiberkontrolle)
-
-Mit dem eigenen SSH-Zugang des Betreibers; Benutzer, Host und Schluessel stehen nicht im Repository.
-Nur das Archiv wird uebertragen; die Skripte holt der VPS aus dem oeffentlichen Repository
-(siehe `docs/DEPLOY-HAUPTWEBSITE.md`, Schritt 2).
-
-```powershell
-scp centric-website-dist.tgz <benutzer>@<vps>:~/
-```
-
-## 4. Auf dem VPS entpacken und pruefen
+Gleicher Inhalt ergibt dieselbe Pruefsumme: sortierte Namen, fester Zeitstempel, Eigentuemer 0, kein Name/Zeitstempel im gzip.
 
 ```bash
-echo "<pruefsumme>  centric-website-dist.tgz" | sha256sum -c -
-mkdir -p ~/website-dist && tar -xzf centric-website-dist.tgz -C ~/website-dist
+cd dist
+tar --sort=name --mtime='2026-11-04 00:00:00' --owner=0 --group=0 --numeric-owner -cf - . | gzip -n -9 > ../centric-website-dist.tgz
+cd ..
+sha256sum centric-website-dist.tgz
 ```
 
-Weiter mit `docs/DEPLOY-HAUPTWEBSITE.md` (Vorpruefung, Ausliefern). Das Skript gibt ausserdem eine
-Pruefsumme ueber alle Dateien des dist-Ordners aus (sha256 ueber die sortierte Liste der
-Datei-Pruefsummen); sie steht im Protokoll des Laufs.
+(Der Zeitstempel ist ein fester Wert und darf bei jedem Bau gleich bleiben.) Referenzstand: 36 Dateien, 498032 Bytes,
+sha256 `69f51e7031e0ea22bae9d542bbbd29904306cdb8b88409163fcfdb3cac6684c8`. Weicht die Summe bei unveraendertem `dist/`
+ab, liegt es meist an einer anderen tar-/gzip-Version; die Summe, die ausgeliefert wird, ist immer die in `DIST-SHA256.txt`.
+
+## 3. Pruefsumme und Quelle im Repository eintragen
+
+- `deploy/website/DIST-SHA256.txt`: die neue Summe (eine Zeile, 64 Hexzeichen; Zeilen mit `#` sind Kommentar).
+  Ohne passende Summe bricht `website-konsole.sh` ab, bevor etwas geaendert wird.
+- `deploy/website/DIST-QUELLE.txt`: **optional** die Download-URL (nur `https://`, eine Zeile, ohne Anfuehrungszeichen und
+  ohne Sonderzeichen wie `;`, `$`, Leerzeichen). Leer lassen, solange das Archiv nicht veroeffentlicht ist; dann muss die Datei
+  `/root/centric-website-dist.tgz` auf dem Server liegen (oder der Pfad wird als Argument uebergeben).
+- Beide Dateien gehoeren in den Zweig `deploy/hauptwebsite-docker`; die Konsole holt sie mit `git clone`.
+- Die Veroeffentlichung des Archivs (Download-Ort) entscheidet der Betreiber; das Repository ist oeffentlich, das
+  Archiv enthaelt nur die oeffentliche Website, keine Zugangsdaten oder Personendaten.
+
+## 4. Auf den VPS bringen
+
+Normalfall (Remotekonsole, ohne scp): `docs/DEPLOY-HAUPTWEBSITE.md`, Ablauf A (zwei Befehle). Das Skript prueft
+Summe und Archivinhalt selbst, entpackt in ein frisches Temp-Verzeichnis und verlangt `JA`.
+
+Fallback mit SSH-Zugang (Benutzer, Host und Schluessel stehen nicht im Repository):
+
+```powershell
+scp centric-website-dist.tgz <benutzer>@<vps>:/root/
+```
+
+danach auf dem VPS `bash /root/cs/deploy/website/website-konsole.sh`, oder von Hand (Ablauf B im Doku-Dokument) mit
+`sha256sum -c` und `tar -xzf`. Das Ausliefern-Skript gibt ausserdem eine Pruefsumme ueber alle Dateien des dist-Ordners
+aus (sha256 ueber die sortierte Liste der Datei-Pruefsummen); sie steht im Protokoll des Laufs.

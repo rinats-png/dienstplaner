@@ -6,16 +6,40 @@ nur `caddy reload`. Bestaetigter Stand (Betreiber, direkt am Server): Container 
 `/opt/proxy/sites`->`/etc/caddy/sites` ro (im Container); Hauptdatei enthaelt `import sites/*.caddy`.
 Diese Werte sind die Vorgaben der Skripte: **keine Variable setzen**.
 
-## Checkliste (in dieser Reihenfolge)
+## Ablauf A: Remotekonsole (root, zwei kurze Befehle)
+
+Voraussetzung: Das Website-Archiv ist verfuegbar, entweder als Datei `/root/centric-website-dist.tgz` oder ueber die
+URL in `deploy/website/DIST-QUELLE.txt` (nach Veroeffentlichung durch den Betreiber). Die erwartete Pruefsumme steht in
+`deploy/website/DIST-SHA256.txt`; Bauen und Aktualisieren: `deploy/website/dist-bauen.md`.
+
+```
+git clone --depth 1 --branch deploy/hauptwebsite-docker https://github.com/rinats-png/dienstplaner.git /root/cs
+bash /root/cs/deploy/website/website-konsole.sh
+```
+
+`website-konsole.sh` macht der Reihe nach: rein lesende Vorpruefung (bei `ABWEICHUNG` Abbruch, nichts geaendert) ->
+Archiv beschaffen (lokale Datei oder https-Download) -> Pflicht-Pruefsumme sha256 gegen `DIST-SHA256.txt` -> Archivinhalt
+pruefen (keine absoluten Pfade, kein `..`, keine Links/Geraete) und in ein frisches Temp-Verzeichnis entpacken ->
+kurze Zusammenfassung (Quelle, Summe, Dateianzahl, was geaendert wird) -> Sie tippen `JA` (alles andere bricht ab, es gibt
+keine Option, das zu umgehen) -> `website-ausliefern.sh` (Sicherung, Validierung, Reload, Gegenprobe, Rollback bei Fehler).
+Ein anderer Archivpfad: `bash /root/cs/deploy/website/website-konsole.sh /pfad/archiv.tgz`.
+Am Ende stehen zwei Kontrollbefehle und der Rueckweg. Wiederholung ist unschaedlich (neue Fassung, alte bleibt als Sicherung).
+
+Rueckweg: `bash /root/cs/deploy/website/website-zurueck.sh` (ohne Stempel: letzter Lauf; ein Stempel steht am Ende der Ausfuehrung).
+
+Danach, unabhaengig davon:
+- DNS (IONOS, Betreiber): A-Eintrag `www` auf dieselbe IPv4 wie die Hauptdomain; erst dann liefert `www.` ein Zertifikat und leitet per 301 um.
+- Von aussen: `curl -sI https://centric-dienstplanung.de` -> 200; `curl -sI https://app.centric-dienstplanung.de` -> 200; `curl -sI https://centric-dienstplanung.de/gibt-es-nicht` -> 404.
+
+## Ablauf B: Fallback mit SSH und scp (Schritt fuer Schritt)
 
 1. Laptop: `python build.py`, packen, Pruefsumme, `scp` des `.tgz` - siehe `deploy/website/dist-bauen.md`.
 2. VPS: `sha256sum -c`, entpacken nach `~/website-dist`; Skripte aus dem oeffentlichen Repo: `git clone --depth 1 --filter=blob:none --sparse --branch deploy/hauptwebsite-docker https://github.com/rinats-png/dienstplaner.git ~/centric-src && cd ~/centric-src && git sparse-checkout set deploy/website && cd deploy/website`
 3. Vorpruefung (rein lesend): `sudo -E ./website-vorpruefung.sh` - erwartet `OK`-Zeilen fuer alle vier Mounts, `import`-Zeile, App-Datei, am Ende `VARIANTE B PASST`. Bei `ABWEICHUNG`: nicht weitermachen, Ausgabe melden.
 4. Ausfuehren: `sudo -E ./website-ausliefern.sh ~/website-dist` (legt `/opt/proxy/sites/centric-website` selbst an; ohne `sudo -E` meldet es "Kein Schreibrecht ... mit sudo -E ausfuehren"; findet sudo `docker` nicht: `sudo -E env "PATH=$PATH" ./website-ausliefern.sh ~/website-dist`).
 5. Erfolg: Zeilen `Versuch n: Hauptdomain 200, App 200, Hauptdomain/unbekannt 404`, dann `FERTIG` mit Stempel. Bei jedem Fehler rollt das Skript selbst zurueck und nennt die App-Antwort (soll 200).
-6. Rueckweg jederzeit: `sudo -E ./website-zurueck.sh <stempel>` (Stempel am Ende der Ausfuehrung; ohne Stempel: letzter Lauf).
-7. DNS (IONOS, Betreiber): A-Eintrag `www` auf dieselbe IPv4 wie die Hauptdomain; erst dann liefert `www.` ein Zertifikat und leitet per 301 um.
-8. Von aussen: `curl -sI https://centric-dienstplanung.de | head -3` -> 200; `curl -sI https://app.centric-dienstplanung.de | head -1` -> 200; `curl -sI https://centric-dienstplanung.de/gibt-es-nicht | head -1` -> 404.
+6. Rueckweg jederzeit: `sudo -E ./website-zurueck.sh <stempel>`.
+7. DNS und Kontrolle von aussen wie oben.
 
 ## Was das Skript garantiert
 

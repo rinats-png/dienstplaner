@@ -41,7 +41,8 @@ jobs:
 
       # Auslieferung der Hauptwebsite (deploy/website): Ablauf mit Attrappen
       # fuer docker und curl — Rollback, Abbruch ohne Aenderung, App-Datei
-      # unberuehrt. Kein Server, keine Netzzugriffe.
+      # unberuehrt; dazu der Konsolen-Einstieg (Pruefsumme, https, Archivinhalt,
+      # JA-Bestaetigung). Kein Server, keine Netzzugriffe.
       - name: Website-Auslieferung
         run: npm run pruefung:website
 
