@@ -204,6 +204,12 @@ jobs:
       - name: Sicht der Beschäftigten
         run: npm run pruefung:sicht
 
+      # Intelligence-Faktenpaket (WP-I11): Datenverträge, Positivliste je
+      # Funktion (Abdruck), Alias (keyed HMAC), Leck-Prüfung fail closed,
+      # Mandantentrennung, Property-Tests. Kein Modellaufruf, kein Netz.
+      - name: Intelligence-Faktenpaket (Positivliste, Alias, Leck-Prüfung)
+        run: npm run pruefung:intelligence
+
       # Krankmeldung, Selbstplanung und Notruf von Beschäftigten: genau der
       # vorgesehene Vorgang wird gespeichert, sonst nichts.
       - name: Selbstservice der Beschäftigten
