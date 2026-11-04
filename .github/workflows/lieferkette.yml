@@ -57,6 +57,8 @@ jobs:
     timeout-minutes: 20
     env:
       BILD: centric-lieferkette:${{ github.sha }}
+      TRIVY_BILD: ghcr.io/aquasecurity/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e
+      TRIVY_CACHE: ${{ runner.temp }}/trivy-cache
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
