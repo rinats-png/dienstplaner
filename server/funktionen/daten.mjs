@@ -249,6 +249,14 @@ export default async (req, context) => {
       if (!ziel || !Array.isArray(eintraege) || !eintraege.length)
         return antwort({ fehler: "Unvollständig." }, 400);
       if (eintraege.length > 20) return antwort({ fehler: "Zu viele auf einmal." }, 400);
+      /* Nur bekannte Rollen, nie „betreiber“ (SI-06, interne Prüfung 2026-11):
+         Sonst prägte eine einzige Betreibersitzung dauerhafte Betreiber-Codes. */
+      const rolleUngueltig = eintraege.find((e) => !e || typeof e !== "object"
+        || (e.rolle !== undefined && typeof e.rolle !== "string") || e.rolle === "betreiber" || !rolleBekannt(e.rolle));
+      if (rolleUngueltig !== undefined) {
+        await protokoll("zugaenge", kZ, "abgewiesen", "Rolle nicht vergebbar");
+        return antwort({ fehler: "Diese Rolle kann hier nicht vergeben werden." }, 400);
+      }
       /* Beschäftigte und Schichtverantwortung ohne Person könnten nichts
          schreiben — siehe einrichten.mjs. */
       const ohnePerson = eintraege.find((e) => e && (e.rolle === "mitarbeiter" || e.rolle === "subplaner")
@@ -278,7 +286,7 @@ export default async (req, context) => {
         erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
       }
       await protokoll("einrichten", kennung(req, sB), "erfolg",
-        `${erzeugt.length} Zugänge für ${ziel}`);
+        `${erzeugt.length} Zugänge für ${ziel} (${erzeugt.map((z) => z.rolle || "kunde").join(", ")})`);
       return antwort({ ok: true, zugaenge: erzeugt });
     }
 

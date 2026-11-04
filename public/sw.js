@@ -251,7 +251,9 @@ self.addEventListener("notificationclick", (e) => {
   const ziel = eigenerPfad(e.notification.data && e.notification.data.ziel);
   e.waitUntil((async () => {
     const fenster = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    for (const f of fenster) if (f.url.startsWith(self.location.origin)) return f.focus();
+    /* Ursprung als Präfix samt „/“ — „includes“ träfe auch fremde Adressen,
+       die den eigenen Ursprung irgendwo enthalten (SI-04). */
+    for (const f of fenster) if (f.url.startsWith(self.location.origin + "/")) return f.focus();
     return self.clients.openWindow(ziel);
   })());
 });

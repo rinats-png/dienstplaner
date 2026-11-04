@@ -4638,8 +4638,9 @@ function datevCSV(m, ym) {
   const kopf = ["Personalnummer", "Nachname", "Vorname", "Lohnart", "Bezeichnung",
     "Stunden", "Monat", "Jahr"];
   const zeilen = [kopf.join(";")];
-  for (const x of z) zeilen.push([x.personalnummer, x.nachname, x.vorname, x.lohnart,
-    x.bezeichnung, n2(x.stunden), monat, jahr].map(csvFeld).join(";"));
+  /* Textfelder gegen Formel-Injection (SI-02), Zahlen über csvFeld. */
+  for (const x of z) zeilen.push([csvText(x.personalnummer), csvText(x.nachname), csvText(x.vorname), csvText(x.lohnart),
+    csvText(x.bezeichnung), csvFeld(n2(x.stunden)), csvFeld(monat), csvFeld(jahr)].join(";"));
   return "\uFEFF" + zeilen.join("\r\n");
 }
 
@@ -5001,11 +5002,9 @@ function vollExport(m) {
 function tabelleCSV(zeilen) {
   if (!zeilen.length) return "";
   const spalten = Object.keys(zeilen[0]);
-  const feld = (v) => {
-    const s = String(v == null ? "" : v);
-    return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return "\uFEFF" + [spalten.join(";"),
+  /* Text gegen Formel-Injection (csvText, SI-02), Zahlen unverändert. */
+  const feld = (v) => (typeof v === "number" ? csvFeld(v) : csvText(v));
+  return "\uFEFF" + [spalten.map(csvText).join(";"),
     ...zeilen.map((z) => spalten.map((s) => feld(z[s])).join(";"))].join("\r\n");
 }
 /** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
@@ -12770,7 +12769,7 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
     const url = weg === "whatsapp" ? `https://wa.me/?text=${t}`
       : weg === "sms" ? `sms:?body=${t}`
       : `mailto:?subject=${encodeURIComponent("Dienstanfrage " + fKurz(datum))}&body=${t}`;
-    try { window.open(url, "_blank"); } catch (e) { setText(nachricht); }
+    try { window.open(url, "_blank", "noopener,noreferrer"); } catch (e) { setText(nachricht); }
     akt.anfrageVermerken(datum, dienstId, weg);
   };
 
@@ -24585,6 +24584,11 @@ function AppInnen() {
         const woch = [];
         for (let i = 0; i < zellen.length; i += 7) woch.push(zellen.slice(i, i + 7));
         const fg = freigabeStand(m, ym2);
+        /* Daten aus dem Bestand nur maskiert ins HTML (SI-03): Betriebs-,
+           Einheiten- und Dienstartnamen sind Freitext anderer Rollen. */
+        const h = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        const farbeSicher = (x) => (/^#[0-9a-f]{3,8}$/i.test(String(x || "")) ? x : "inherit");
         const html = `<!doctype html><html lang="de"><head><meta charset="utf-8">
 <title>Dienstplan ${MON[mo - 1]} ${y}</title><style>
 @page{size:A4 landscape;margin:12mm}
@@ -24602,10 +24606,10 @@ td{border:1px solid #E3E1DD;height:74px;vertical-align:top;padding:5px 6px}
 .z{font-size:7.5pt;color:#5A6670;margin-top:1px}
 .fuss{margin-top:12px;font-size:8pt;color:#5A6670;display:flex;justify-content:space-between;border-top:1px solid #E3E1DD;padding-top:7px}
 </style></head><body>
-<div class="kopf"><div><div class="rub">${m.name}</div>
-<h1>${e ? e.name : ""} — <b>${MON[mo - 1]} ${y}</b></h1></div>
-<div style="text-align:right"><div class="rub">${fg ? `Freigegeben · Stand ${fg.stand}` : "Entwurf"}</div>
-<div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? fg.zeit : `erstellt ${new Date().toLocaleString("de-DE")}`}</div></div></div>
+<div class="kopf"><div><div class="rub">${h(m.name)}</div>
+<h1>${e ? h(e.name) : ""} — <b>${MON[mo - 1]} ${y}</b></h1></div>
+<div style="text-align:right"><div class="rub">${fg ? `Freigegeben · Stand ${h(fg.stand)}` : "Entwurf"}</div>
+<div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? h(fg.zeit) : `erstellt ${new Date().toLocaleString("de-DE")}`}</div></div></div>
 <table><thead><tr>${DOW.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
 ${woch.map((w) => `<tr>${w.map((d) => {
   if (!d) return '<td style="border:none"></td>';
@@ -24614,10 +24618,10 @@ ${woch.map((w) => `<tr>${w.map((d) => {
   const id = einheitDienst(m, einheitId, d);
   const da = id && map[id];
   return `<td class="${fei ? "fei" : we ? "we" : ""}"><div class="tag">${Number(d.slice(8))}${fei ? " · Feiertag" : ""}</div>
-${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">${da.start}–${da.ende}</div>` : ""}</td>`;
+${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div><div class="z">${h(da.start)}–${h(da.ende)}</div>` : ""}</td>`;
 }).join("")}</tr>`).join("")}
 </tbody></table>
-<div class="fuss"><span>CENTRIC · ${m.name}</span><span>Zum Aushang bestimmt. Änderungen werden gesondert bekanntgegeben.</span></div>
+<div class="fuss"><span>CENTRIC · ${h(m.name)}</span><span>Zum Aushang bestimmt. Änderungen werden gesondert bekanntgegeben.</span></div>
 </body></html>`;
         const w = window.open("", "_blank");
         if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); melde("Aushangplan erstellt."); }
@@ -24839,10 +24843,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",
           ...regeln.map((z) => `${z.name} (${z.prozent}%)`), "Zuschlagswert gesamt"];
-        const z = [kopf.join(";")];
+        const z = [kopf.map(csvText).join(";")];   // Freitext gegen Formel-Injection (SI-02)
         for (const p of m.personen.filter((x) => imDienst(x, `${ym2}-28`))) {
           const w = zuschlagWert(m, p, ym2);
-          z.push([p.nachname, p.vorname, p.id, n1(w.std.gesamt), n1(w.std.nacht), n1(w.std.sonntag),
+          z.push([csvText(p.nachname), csvText(p.vorname), csvText(p.id), n1(w.std.gesamt), n1(w.std.nacht), n1(w.std.sonntag),
             n1(w.std.feiertag), n1(w.std.samstag), ...w.zeilen.map((l) => n1(l.wert)), n1(w.summe)].join(";"));
         }
         const inhalt = "\uFEFF" + z.join("\n");
@@ -24855,11 +24859,12 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const s = ref.current; const m = s.mandanten.find((x) => x.id === s.session.mandantId);
         const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1);
         const tage = Array.from({ length: n }, (_, i) => `${ym}-${pad(i + 1)}`);
-        const z = [["Nachname", "Vorname", m.einheitLabel, ...tage.map(fKurz)].join(";")];
+        const z = [["Nachname", "Vorname", m.einheitLabel, ...tage.map(fKurz)].map(csvText).join(";")];
         for (const p of aktive(m, tage[0])) {
           const e = m.einheiten.find((x) => x.id === einheitAm(p, tage[0]));
-          z.push([p.nachname, p.vorname, e ? e.name : "", ...tage.map((d) => {
-            const t = personTag(m, p, d); return t.abwesenheit ? abwArt(t.abwesenheit.art).label : t.dienstId || ""; })].join(";"));
+          /* Freitext gegen Formel-Injection und Trennzeichen (SI-02) */
+          z.push([csvText(p.nachname), csvText(p.vorname), csvText(e ? e.name : ""), ...tage.map((d) => {
+            const t = personTag(m, p, d); return csvText(t.abwesenheit ? abwArt(t.abwesenheit.art).label : t.dienstId || ""); })].join(";"));
         }
         const inhalt = "\uFEFF" + z.join("\n");
         if (lade(`dienstplan_${ym}.csv`, inhalt, "text/csv;charset=utf-8")) melde("CSV erstellt."); else setAusgabe({ titel: "CSV", inhalt });

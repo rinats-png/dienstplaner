@@ -19,30 +19,12 @@
      im Dienstarbeiter zwischengespeichert (public/sw.js).
    ========================================================================== */
 
-const ANBIETER = ["fcm.googleapis.com", "android.googleapis.com", "updates.push.services.mozilla.com",
-  "*.push.services.mozilla.com", "web.push.apple.com", "*.push.apple.com", "*.notify.windows.com"];
+import { pushEndpunktErlaubt } from "./pushziel.mjs";
 
-function hostErlaubt(host) {
-  const h = host.toLowerCase();
-  const eigene = String(process.env.CENTRIC_PUSH_HOSTS || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
-  /* „.example“ ist nach RFC 2606 nie auflösbar. Nur außerhalb der Auslieferung
-     zugelassen, damit Prüfungen ohne echten Anbieter eine Anmeldung bilden. */
-  if (process.env.NODE_ENV !== "production" && (h === "example" || h.endsWith(".example"))) return true;
-  return [...ANBIETER, ...eigene].some((m) => (m.startsWith("*.") ? h.endsWith(m.slice(1)) && h.length > m.length - 1 : h === m));
-}
-
-/**
- * Darf der Server an diesen Endpunkt senden? https, keine Zugangsdaten in der
- * Adresse, Standardport, Host eines bekannten Push-Dienstes.
- * @param {unknown} endpunkt
- */
-export function pushEndpunktErlaubt(endpunkt) {
-  if (typeof endpunkt !== "string" || endpunkt.length > 1000) return false;
-  let u;
-  try { u = new URL(endpunkt); } catch { return false; }
-  if (u.protocol !== "https:" || u.username || u.password || (u.port && u.port !== "443")) return false;
-  return hostErlaubt(u.hostname);
-}
+/* Die Positivliste der Push-Dienste hat genau eine Quelle: ./pushziel.mjs
+   (SI-01 + WP-30 + Parser-Gleichlauf S1). Hier nur weitergereicht, damit
+   bestehende Aufrufer (W.pushEndpunktErlaubt) unverändert bleiben. */
+export { pushEndpunktErlaubt };
 
 /** Aus der Antwort des Push-Dienstes: welche Klasse von Fehler? */
 export function pushKlasse(status) {
@@ -69,8 +51,11 @@ export const PUSH_FRIST_MS = 10_000;
 export async function sendePush(anmeldung, titel, text, ziel, opt = {}) {
   const oeff = process.env.VAPID_PUBLIC, priv = process.env.VAPID_PRIVATE;
   if (!oeff || !priv) return { ok: true, trocken: true };
+  /* Nie einen Host ansprechen, der kein Push-Dienst ist (SI-01) — auch nicht
+     für Anmeldungen, die vor dieser Prüfung gespeichert wurden. „erloschen“:
+     der Versand behandelt die Anmeldung dann wie eine abgelaufene. */
   if (!anmeldung || !pushEndpunktErlaubt(anmeldung.endpoint))
-    return { ok: false, erloschen: true, klasse: "erloschen", fehler: "endpunkt-nicht-erlaubt" };
+    return { ok: false, erloschen: true, klasse: "erloschen", fehler: "push-ziel-nicht-erlaubt" };
   /** @type {any} */
   let wecker;
   try {

@@ -613,7 +613,7 @@ describe("Nachtrag WP-27b B6: Betrieb ohne Kennung, CSV, Doku", () => {
     expect(auswertungStatistik().gestartet).toBe(0);
   });
   it("CSV: Freitext gegen Formel-Injection geschützt, Trennzeichen und Anführungszeichen maskiert; Zahlen unverändert", () => {
-    for (const [ein, aus] of [["=SUMME(A1:A9)", "'=SUMME(A1:A9)"], ["+49 30", "'+49 30"], ["-1", "'-1"], ["@heute", "'@heute"], ["\tWohnbereich", "'\tWohnbereich"],
+    for (const [ein, aus] of [["=SUMME(A1:A9)", "'=SUMME(A1:A9)"], ["+49 30", "'+49 30"], ["-1", "'-1"], ["@heute", "'@heute"], ["\tWohnbereich", "\"'\tWohnbereich\""],
       [" =1+1", "' =1+1"], ["Station; Nord", '"Station; Nord"'], ['Haus "A"', '"Haus ""A"""'], ["=a;b", "\"'=a;b\""], ["Wohnbereich 1", "Wohnbereich 1"]])
       expect(csvText(ein), JSON.stringify(ein)).toBe(aus);
     expect(csvFeld("-2,50")).toBe("-2,50");

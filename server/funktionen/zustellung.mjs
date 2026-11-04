@@ -4,7 +4,7 @@ import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, rolleBekannt } from "../lib/rechte.mjs";
 import { zustellen, pushAnmelden, pushAbmelden, zustellStatusEigene } from "../lib/versand.mjs";
-import { pushEndpunktErlaubt } from "../lib/webpush.mjs";
+import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -133,7 +133,7 @@ export default async (req) => {
       }
       const { anmeldung } = await req.json().catch(() => ({}));
       /* WP-30: Der Endpunkt, an den der Server später sendet, kommt vom Gerät —
-         nur https-Adressen der Push-Dienste (lib/webpush.mjs), Schlüssel in
+         nur https-Adressen der Push-Dienste (lib/pushziel.mjs, SI-01), Schlüssel in
          Form und Größe begrenzt. Sonst wäre das ein Weg für Anfragen des
          Servers an beliebige Ziele. */
       const k = anmeldung && typeof anmeldung.keys === "object" && anmeldung.keys && !Array.isArray(anmeldung.keys) ? anmeldung.keys : {};

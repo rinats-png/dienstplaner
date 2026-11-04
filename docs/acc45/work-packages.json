@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 147,
+  "anzahl": 155,
   "statusZaehlung": {
     "BLOCKED": 81,
-    "READY": 27,
+    "READY": 35,
     "IN_PROGRESS": 3,
     "REVIEW": 4,
     "INTEGRATED": 29,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 51,
-      "offen": 20,
+      "pakete": 59,
+      "offen": 28,
       "restPT": {
-        "min": 64,
-        "max": 99.5
+        "min": 75,
+        "max": 120
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 432.20000000000005,
-    "max": 735
+    "min": 443.20000000000005,
+    "max": 755.5
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -4291,6 +4291,230 @@
       "tests": "pruefungen/acc45-status.test.js, pruefungen/doku.test.js; Szenarien manuell, Lauf je Szenario protokolliert",
       "dateien": "docs/acc45/PILOT-ERHEBUNG-PFLEGE.md, docs/acc45/PILOT-ERHEBUNG-SICHERHEIT.md, docs/acc45/PILOT-TESTSZENARIEN.md, docs/acc45/PILOT-DATENSCHUTZ-RAHMEN.md",
       "notiz": "SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar."
+    },
+    {
+      "id": "SI-P1",
+      "titel": "Sicherungsschlüssel an Ersteller binden und mit Austritt/Sperre widerrufen (Befund P1, mittel)",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":1.5,"max":3},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p1",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "sk: speichert Ersteller (Konto bzw. Code) und prüft ihn beim Lesen wie den Kontoanker; zugang-sperren und Entzug der Mitgliedschaft widerrufen; Ersteller in der Liste sichtbar; Höchstdauer gesenkt; Negativtest: ausgeschiedene Leitung → 401/403 auf /api/vollausgabe",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/funktionen/daten.mjs (sicherungsschluessel), server/lib/sicherung*.mjs",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P2",
+      "titel": "Code-Sitzung endet, wenn die Person den Betrieb verlässt (Befund P2, mittel)",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p2",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": ["rechte.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "Person nicht mehr im Betrieb, anonymisiert oder ausgetreten → Sitzung abgewiesen und beendet; gesperrt des Codes geprüft; kein Rückfall von wirksameRolle auf die Code-Rolle",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/lib/arbeitssitzung.mjs, server/lib/rechte.mjs",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P3",
+      "titel": "Mailversand aus Test- und Demoräumen begrenzen (Befund P3, mittel)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p3",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "kein Mailversand aus Test-/Demoräumen ohne Freigabe oder Tagesobergrenze je Raum oder nur an bestätigte Kontoadressen (Produktentscheidung vorlegen)",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/lib/versand.mjs, server/funktionen/zustellung.mjs",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P4",
+      "titel": "Zweiter Faktor für Leitung, Planung und Kunde (Befund P4, mittel)",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":3,"max":5},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p4",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": ["App.jsx","daten.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "TOTP für Leitung/Planung/Kunde mindestens im Pilot; bis dahin „Zugang merken“ für Leitung gesperrt; Tests für Anmeldung mit/ohne zweiten Faktor",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/lib/zweifaktor.mjs, server/lib/betreiber-zweifaktor.mjs, src",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P5",
+      "titel": "Matrixzeilen und Negativ-Sonden für die festgeschriebenen Lücken (Befund P5, niedrig)",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p5",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "LUECKEN in pruefungen/routen-inventar.test.js leer (Zeilen in RECHTEMATRIX.md §2); Negativ-Sonden für zugaenge-uebersicht, sicherung/sicherungen, sicherungsschluessel GET/DELETE, /lage, korrektur-antrag",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "RECHTEMATRIX.md, pruefungen/",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P6",
+      "titel": "Betreiber-Leitungscodes nur mit frischer Anmeldung und frischem zweiten Faktor (Befund P6, HOCH)",
+      "strang": "acc45",
+      "prio": "P0",
+      "aufwandPT": {"min":1.5,"max":3},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p6",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "POST /api/zugaenge durch den Betreiber verlangt frisch() und einen frischen 2FA-Code; Leitung-Codes für bestehende Kundenräume nur mit Zustimmung des Kunden oder über /einrichten; CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT im Deploy erzwungen (Freigabe Betreiber)",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/funktionen/daten.mjs (zugaenge), deploy/",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P7",
+      "titel": "Herkunftssperre trifft keine gültigen Codes; IPv6 nach /64 (Befund P7, mittel)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":1.5,"max":2.5},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p7",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "nur Fehlversuche zählen; gültige Codes trotz gesperrter Herkunft (Code+IP als Kennung); IPv6 nach /64 gruppiert; Tests für Stations-NAT",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/funktionen/daten.mjs (anmelden), server/lib/schutz.mjs",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P8",
+      "titel": "Alle fremden Actions per Commit-SHA pinnen (Befund P8, mittel)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p8",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "deploy.yml, sicherheit.yml, pruefung.yml ohne Tag-Referenzen auf fremde Actions; deploy.yml zuerst (Freigabe Betreiber für Deploy-Pipeline)",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": ".github/workflows/*.yml",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
     }
   ]
 }
