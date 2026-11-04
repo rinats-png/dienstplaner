@@ -61,7 +61,7 @@ beforeAll(async () => {
       CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "probe-pfeffer",
       /* Das Skript legt den leeren Testbetrieb über /starten an; der
          Selbststart ist ab Werk aus. */
-      CENTRIC_SELBSTSTART: "true", NODE_ENV: "production" },
+      CENTRIC_SELBSTSTART: "true", CENTRIC_DEMO: "true", NODE_ENV: "production" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   kind.stdout.on("data", (d) => { ausgabe += d; });
