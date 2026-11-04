@@ -3259,6 +3259,10 @@ function datenauskunft(m, personId) {
   z.push("", "MITTEILUNGEN");
   const na = (m.nachrichten || []).filter((x) => x.personId === personId).slice(0, 40);
   na.length ? na.forEach((x) => z.push(`  ${x.zeit}: ${x.titel}`)) : z.push("  —");
+  /* WP-30: Einstellungen zu Benachrichtigungen; der Zustellstatus je Mitteilung steht in der serverseitigen Auskunft. */
+  const kz = (p.zustellung || {}).kanal || {};
+  z.push("", "BENACHRICHTIGUNGEN", `  E-Mail insgesamt: ${kz.mail === false ? "aus" : "an"}`,
+    `  Gerätemitteilungen insgesamt: ${kz.push === false ? "aus" : "an"}`);
   /* Artikel 15 Abs. 1 lit. d DSGVO verlangt die Dauer der Speicherung —
      und zwar alle drei, nicht nur die für Stammdaten. */
   const fr = loeschFristen(m);
@@ -4725,9 +4729,10 @@ function datevCSV(m, ym) {
   const kopf = ["Personalnummer", "Nachname", "Vorname", "Lohnart", "Bezeichnung",
     "Stunden", "Monat", "Jahr"];
   const zeilen = [kopf.join(";")];
-  for (const x of z) zeilen.push([x.personalnummer, x.nachname, x.vorname, x.lohnart,
-    x.bezeichnung, n2(x.stunden), monat, jahr].map(csvFeld).join(";"));
-  return "﻿" + zeilen.join("\r\n");
+  /* Textfelder gegen Formel-Injection (SI-02), Zahlen über csvFeld. */
+  for (const x of z) zeilen.push([csvText(x.personalnummer), csvText(x.nachname), csvText(x.vorname), csvText(x.lohnart),
+    csvText(x.bezeichnung), csvFeld(n2(x.stunden)), csvFeld(monat), csvFeld(jahr)].join(";"));
+  return "\uFEFF" + zeilen.join("\r\n");
 }
 
 /**
@@ -5160,11 +5165,9 @@ function vollExport(m) {
 function tabelleCSV(zeilen) {
   if (!zeilen.length) return "";
   const spalten = Object.keys(zeilen[0]);
-  const feld = (v) => {
-    const s = String(v == null ? "" : v);
-    return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return "\uFEFF" + [spalten.join(";"),
+  /* Text gegen Formel-Injection (csvText, SI-02), Zahlen unverändert. */
+  const feld = (v) => (typeof v === "number" ? csvFeld(v) : csvText(v));
+  return "\uFEFF" + [spalten.map(csvText).join(";"),
     ...zeilen.map((z) => spalten.map((s) => feld(z[s])).join(";"))].join("\r\n");
 }
 /** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
@@ -13057,7 +13060,7 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
     const url = weg === "whatsapp" ? `https://wa.me/?text=${t}`
       : weg === "sms" ? `sms:?body=${t}`
       : `mailto:?subject=${encodeURIComponent("Dienstanfrage " + fKurz(datum))}&body=${t}`;
-    try { window.open(url, "_blank"); } catch (e) { setText(nachricht); }
+    try { window.open(url, "_blank", "noopener,noreferrer"); } catch (e) { setText(nachricht); }
     akt.anfrageVermerken(datum, dienstId, weg);
   };
 
@@ -17087,7 +17090,7 @@ const ZUSTELLARTEN = {
      nachweisbar stehen. */
   urlaubVerfaellt: { titel: "Resturlaub verfällt", mail: true, push: false, dringend: false,
     text: "Nicht genommener Urlaub verfällt zum Jahresende, wenn er nicht eingeplant wird." },
-  nachweisLaeuftAb: { titel: "Nachweis läuft ab", mail: true, push: false, dringend: false,
+  nachweisLaeuftAb: { titel: "Nachweis läuft ab", mail: false, push: false, dringend: false,
     text: "Eine Qualifikation verliert demnächst ihre Gültigkeit." },
   zeitFehlt: { titel: "Zeiten offen", mail: false, push: true, dringend: false,
     text: "Erfasste Zeiten warten auf Bestätigung." },
@@ -17113,11 +17116,13 @@ function zustellwege(person, art) {
   const vorgabe = ZUSTELLARTEN[art];
   if (!vorgabe) return { postfach: true, mail: false, push: false };
   const eigen = (person.zustellung || {})[art] || {};
+  /* WP-30: Sammelschalter je Kanal (zustellung.kanal) — wie auf dem Server (zustellregeln.mjs, kanalAus). */
+  const kanalAus = (k) => !!((person.zustellung || {}).kanal) && person.zustellung.kanal[k] === false;
   const hatMail = !!(person.email && person.email.includes("@"));
   return {
     postfach: true,
-    mail: hatMail && (eigen.mail !== undefined ? eigen.mail : vorgabe.mail),
-    push: (eigen.push !== undefined ? eigen.push : vorgabe.push) && !!(person.pushSchluessel),
+    mail: hatMail && !kanalAus("mail") && (eigen.mail !== undefined ? eigen.mail : vorgabe.mail),
+    push: !kanalAus("push") && (eigen.push !== undefined ? eigen.push : vorgabe.push) && !!(person.pushSchluessel),
     dringend: vorgabe.dringend,
   };
 }
@@ -17131,8 +17136,10 @@ const zustellungAusstehend = new Set();
  * hinausgeht, entscheidet seit Commit 4 der Server aus dem gespeicherten
  * Stand — Adresse, Push-Anmeldung und Zustellstatus stehen nicht mehr hier.
  * Titel höchstens 120, Text höchstens 500 Zeichen (prüft auch der Server).
+ * `tag` (JJJJ-MM-TT): der Plantag, den die Mitteilung betrifft — der Server
+ * stellt sie Beschäftigten nicht zu, solange der Monat Entwurf ist (WP-30).
  */
-function baueMitteilung(m, personId, art, titel, text, ziel) {
+function baueMitteilung(m, personId, art, titel, text, ziel, tag) {
   const p = m.personen.find((x) => x.id === personId);
   if (!p) return null;
   const id = uid("n");
@@ -17142,6 +17149,7 @@ function baueMitteilung(m, personId, art, titel, text, ziel) {
     ziel: ziel || null,
     zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
     gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
+    ...(typeof tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tag) ? { tag } : {}),
   };
 }
 
@@ -18299,6 +18307,15 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
             onChange={(v) => akt.pushUmschalten(v)} />
         </Zeile>
+        {/* WP-30: Sammelschalter je Kanal — aus bedeutet: über diesen Weg geht nichts hinaus. */}
+        {[["mail", "E-Mail insgesamt", "Aus: keine Benachrichtigung per E-Mail, gleich welche Art."],
+          ["push", "Gerätemitteilungen insgesamt", "Aus: keine Benachrichtigung auf dieses oder ein anderes Gerät."]].map(([weg, titel, text]) => {
+          const an = !(p.zustellung && p.zustellung.kanal && p.zustellung.kanal[weg] === false);
+          return (
+            <Zeile key={weg} titel={titel} text={text}>
+              <Schalter an={an} label={titel} onChange={(v) => akt.setzeZustellungKanal(p.id, weg, v)} />
+            </Zeile>);
+        })}
         {Object.entries(ZUSTELLARTEN).map(([id, a]) => {
           const w = zustellwege(p, id);
           return (
@@ -23741,7 +23758,7 @@ function AppInnen() {
           if (istFreigegeben(m, d.slice(0, 7))) {
             const nam = (x) => x === "-" || !x ? "frei" : (m.dienstarten.find((y) => y.id === x) || {}).name || x;
             next = { ...next, nachrichten: [baueMitteilung(next, pid, "planGeaendert", `Dienst am ${fKurz(d)} geändert`,
-              `${nam(vorher)} → ${nam(nachher)}${vl < 14 ? ` · ${vl} Tage Vorlauf` : ""}`, "meine"), ...(next.nachrichten || [])].slice(0, 400) };
+              `${nam(vorher)} → ${nam(nachher)}${vl < 14 ? ` · ${vl} Tage Vorlauf` : ""}`, "meine", d), ...(next.nachrichten || [])].slice(0, 400) };
           }
         }
         return next;
@@ -23808,7 +23825,7 @@ function AppInnen() {
           aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: "-", nach: dienstId,
             zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [baueMitteilung(m, pid, "planGeaendert", `Zusätzlicher Dienst am ${fKurz(d)}`,
-            `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine"), ...(m.nachrichten || [])].slice(0, 400) };
+            `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine", d), ...(m.nachrichten || [])].slice(0, 400) };
       }, "Ersatz eingeteilt"),
       freigeben: (ym2) => mUpd((m) => {
         const alt = freigabeStand(m, ym2);
@@ -24644,6 +24661,9 @@ function AppInnen() {
       setzeZustellung: (pid, art, weg, an) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === pid ? { ...p, zustellung: { ...(p.zustellung || {}),
           [art]: { ...((p.zustellung || {})[art] || {}), [weg]: an } } } : p) }), null),
+      setzeZustellungKanal: (pid, weg, an) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
+        p.id === pid ? { ...p, zustellung: { ...(p.zustellung || {}),
+          kanal: { ...((p.zustellung || {}).kanal || {}), [weg]: an } } } : p) }), null),
       pushUmschalten: async (ein) => {
         const pid = (ref.current.session || {}).personId;
         if (!pid) return;
@@ -25057,6 +25077,11 @@ function AppInnen() {
         const woch = [];
         for (let i = 0; i < zellen.length; i += 7) woch.push(zellen.slice(i, i + 7));
         const fg = freigabeStand(m, ym2);
+        /* Daten aus dem Bestand nur maskiert ins HTML (SI-03): Betriebs-,
+           Einheiten- und Dienstartnamen sind Freitext anderer Rollen. */
+        const h = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        const farbeSicher = (x) => (/^#[0-9a-f]{3,8}$/i.test(String(x || "")) ? x : "inherit");
         const html = `<!doctype html><html lang="de"><head><meta charset="utf-8">
 <title>Dienstplan ${MON[mo - 1]} ${y}</title><style>
 @page{size:A4 landscape;margin:12mm}
@@ -25074,10 +25099,10 @@ td{border:1px solid #E3E1DD;height:74px;vertical-align:top;padding:5px 6px}
 .z{font-size:7.5pt;color:#5A6670;margin-top:1px}
 .fuss{margin-top:12px;font-size:8pt;color:#5A6670;display:flex;justify-content:space-between;border-top:1px solid #E3E1DD;padding-top:7px}
 </style></head><body>
-<div class="kopf"><div><div class="rub">${m.name}</div>
-<h1>${e ? e.name : ""} — <b>${MON[mo - 1]} ${y}</b></h1></div>
-<div style="text-align:right"><div class="rub">${fg ? `Freigegeben · Stand ${fg.stand}` : "Entwurf"}</div>
-<div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? fg.zeit : `erstellt ${new Date().toLocaleString("de-DE")}`}</div></div></div>
+<div class="kopf"><div><div class="rub">${h(m.name)}</div>
+<h1>${e ? h(e.name) : ""} — <b>${MON[mo - 1]} ${y}</b></h1></div>
+<div style="text-align:right"><div class="rub">${fg ? `Freigegeben · Stand ${h(fg.stand)}` : "Entwurf"}</div>
+<div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? h(fg.zeit) : `erstellt ${new Date().toLocaleString("de-DE")}`}</div></div></div>
 <table><thead><tr>${DOW.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
 ${woch.map((w) => `<tr>${w.map((d) => {
   if (!d) return '<td style="border:none"></td>';
@@ -25086,10 +25111,10 @@ ${woch.map((w) => `<tr>${w.map((d) => {
   const id = einheitDienst(m, einheitId, d);
   const da = id && map[id];
   return `<td class="${fei ? "fei" : we ? "we" : ""}"><div class="tag">${Number(d.slice(8))}${fei ? " · Feiertag" : ""}</div>
-${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">${da.start}–${da.ende}</div>` : ""}</td>`;
+${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div><div class="z">${h(da.start)}–${h(da.ende)}</div>` : ""}</td>`;
 }).join("")}</tr>`).join("")}
 </tbody></table>
-<div class="fuss"><span>CENTRIC · ${m.name}</span><span>Zum Aushang bestimmt. Änderungen werden gesondert bekanntgegeben.</span></div>
+<div class="fuss"><span>CENTRIC · ${h(m.name)}</span><span>Zum Aushang bestimmt. Änderungen werden gesondert bekanntgegeben.</span></div>
 </body></html>`;
         const w = window.open("", "_blank");
         if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); melde("Aushangplan erstellt."); }
@@ -25311,10 +25336,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",
           ...regeln.map((z) => `${z.name} (${z.prozent}%)`), "Zuschlagswert gesamt"];
-        const z = [kopf.join(";")];
+        const z = [kopf.map(csvText).join(";")];   // Freitext gegen Formel-Injection (SI-02)
         for (const p of m.personen.filter((x) => imDienst(x, `${ym2}-28`))) {
           const w = zuschlagWert(m, p, ym2);
-          z.push([p.nachname, p.vorname, p.id, n1(w.std.gesamt), n1(w.std.nacht), n1(w.std.sonntag),
+          z.push([csvText(p.nachname), csvText(p.vorname), csvText(p.id), n1(w.std.gesamt), n1(w.std.nacht), n1(w.std.sonntag),
             n1(w.std.feiertag), n1(w.std.samstag), ...w.zeilen.map((l) => n1(l.wert)), n1Ist(w.summe)].join(";"));
         }
         const inhalt = "\uFEFF" + z.join("\n");
@@ -25327,11 +25352,12 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const s = ref.current; const m = s.mandanten.find((x) => x.id === s.session.mandantId);
         const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1);
         const tage = Array.from({ length: n }, (_, i) => `${ym}-${pad(i + 1)}`);
-        const z = [["Nachname", "Vorname", m.einheitLabel, ...tage.map(fKurz)].join(";")];
+        const z = [["Nachname", "Vorname", m.einheitLabel, ...tage.map(fKurz)].map(csvText).join(";")];
         for (const p of aktive(m, tage[0])) {
           const e = m.einheiten.find((x) => x.id === einheitAm(p, tage[0]));
-          z.push([p.nachname, p.vorname, e ? e.name : "", ...tage.map((d) => {
-            const t = personTag(m, p, d); return t.abwesenheit ? abwArt(t.abwesenheit.art).label : t.dienstId || ""; })].join(";"));
+          /* Freitext gegen Formel-Injection und Trennzeichen (SI-02) */
+          z.push([csvText(p.nachname), csvText(p.vorname), csvText(e ? e.name : ""), ...tage.map((d) => {
+            const t = personTag(m, p, d); return csvText(t.abwesenheit ? abwArt(t.abwesenheit.art).label : t.dienstId || ""); })].join(";"));
         }
         const inhalt = "\uFEFF" + z.join("\n");
         if (lade(`dienstplan_${ym}.csv`, inhalt, "text/csv;charset=utf-8")) melde("CSV erstellt."); else setAusgabe({ titel: "CSV", inhalt });

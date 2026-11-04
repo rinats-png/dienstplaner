@@ -144,12 +144,12 @@ const felder = (o, liste) => Object.fromEntries(liste.filter((f) => f in o).map(
  * @param {object} m  der Betrieb (vollständig bzw. in der Sicht der anfragenden Leitung)
  * @param {object} person  der Personendatensatz aus m
  * @param {{ raum: string, erstellt: string, umfang: "selbst"|"leitung", protokoll?: object[],
- *   push?: boolean, kalender?: boolean, konto?: object|null, eigeneSicht?: object|null }} o
+ *   push?: boolean, kalender?: boolean, konto?: object|null, eigeneSicht?: object|null, zustellprotokoll?: object[]|null }} o
  *   `eigeneSicht`: derselbe Betrieb in der Sicht einer Beschäftigten (bestandFuerRolle) —
  *   aus ihr kommen die Sammlungen mit eigenen Einträgen, ohne Daten Dritter.
  */
 export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [], push = false, kalender = false,
-  konto = null, eigeneSicht = null }) {
+  konto = null, eigeneSicht = null, zustellprotokoll = null }) {
   const pid = person.id;
   const selbst = umfang === "selbst";
   const abweichungen = Object.entries(m.abweichungen || {}).filter(([k]) => eigenerSchluessel(pid)(k))
@@ -243,6 +243,8 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
       betriebsprotokoll: eigene(m.protokoll, pid),
       konto,
       pushAnmeldung: !!push,
+      /* WP-30: Zustellstatus je eigener Mitteilung und Kanal — ohne Inhalt, ohne Adresse. */
+      ...(Array.isArray(zustellprotokoll) ? { zustellprotokoll } : {}),
       kalenderverweis: !!kalender,
       protokoll: [...protokoll].sort((a, b) => String(a.zeit).localeCompare(String(b.zeit))),
     } : {}),
