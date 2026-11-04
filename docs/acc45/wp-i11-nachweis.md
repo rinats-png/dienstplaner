@@ -209,3 +209,19 @@ Läufer `scratchpad/wpi11-nachtrag/mutanten.mjs` (außerhalb des Repos), nur im 
 4. I13: Schlüsselquelle (Umgebungsvariable + `.env.example` + Betriebshandbuch), Weitergabe des Audits an `protokoll()`, Ablage der Alias-Karte (I14), Bereichsbegrenzung der Planung.
 5. I12: Regeldienste aus der Schichtfolge und alle berechneten Felder über die Faktenquelle.
 6. Positivliste ist ein erster Stand; jede Funktion (I20 ff.) prüft ihre Felder beim Bau und ändert den Abdruck sichtbar.
+
+## Nachzieher aus dem Delta-Review (Integration)
+
+- Tests `pruefungen/intelligence-nachtrag2.test.js` gegen die überlebenden Mutanten X3 (C1-Steuerzeichen = fremde Schrift), X4 (Raum des Betriebs in der Rückübersetzung), X5/X6 (Dienst-Opazität für Kennungs-Wert und ref), X7 (ungültiges MAC-Hex-Muster: Fehler `KI_NICHT_GEFUNDEN`, kein `RangeError`).
+- Befund 2: Formatzeichen (Cf: U+00AD, U+200B–U+200F, U+2060, U+FEFF) werden in `normalisieren` vor jedem Abgleich entfernt („T­im“ wird als Klarname erkannt).
+- Befund 1: der Text wird zusätzlich mit `umlautKurz` normalisiert, beide Varianten werden gegen die Sperrliste abgeglichen (kleiner Eingriff in `textBefunde`).
+
+## Bedingungen vor einem Anbieteranschluss (Hinweis an WP-I13)
+
+1. `modellOrt` nur aus der Serverkonfiguration, nie aus Anfrage oder Nutzereingabe.
+2. Getrennte Schlüssel (Alias-Schlüssel, MAC-Schlüssel der Karte) mit Rotation.
+3. Rückübersetzung nur nach bestandener Schemaprüfung der Modellausgabe.
+4. Jede Ausgabe in Richtung Nutzerin läuft durch die Leck-Prüfung.
+5. F7A bleibt gesperrt (bis serverseitige Maskierung).
+6. Namenspolitik (Sperrliste, Kurznamen, Doppelgänger) vor Freischaltung der Freitext-Funktionen festlegen.
+7. Restrisiken-Freigabe (Abschnitt „Restrisiken") durch die Produktverantwortung.

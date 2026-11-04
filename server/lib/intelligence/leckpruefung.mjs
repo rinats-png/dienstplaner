@@ -77,7 +77,9 @@ const UMLAUT_KURZ = { ä: "a", ö: "o", ü: "u" };
  * @param {{ umlautKurz?: boolean }} [o] umlautKurz: ä → a statt ae (zweite Schreibweise der Sperrliste)
  */
 export function normalisieren(s, o = {}) {
-  const t = [...String(s).normalize("NFKC")].map((c) => DOPPELGAENGER.get(c) ?? c).join("").toLowerCase();
+  /* Formatzeichen (Cf: weiches Trennzeichen U+00AD, Nullbreiten-Zeichen U+200B–U+200F, U+2060, U+FEFF …)
+     sind unsichtbar und würden einen Namen zerreißen („T-U+00AD-im“): vor allem anderen entfernen. */
+  const t = [...String(s).replace(/\p{Cf}+/gu, "").normalize("NFKC")].map((c) => DOPPELGAENGER.get(c) ?? c).join("").toLowerCase();
   const um = o.umlautKurz ? UMLAUT_KURZ : UMLAUT_LANG;
   return t.replace(/[äöü]/g, (c) => um[c]).replace(/ß/g, "ss")
     .normalize("NFKD").replace(/\p{M}+/gu, "")
@@ -318,12 +320,18 @@ function textBefunde(s, sp, befunde, pfad) {
   /* Ab vier Zeichen als Teilzeichenfolge (auch über Trennzeichen hinweg),
      kürzer als Wortanfang mit höchstens zwei angehängten Buchstaben
      („Tims“, „TimF“ — Review F6). */
+  /* Beide Schreibweisen der Umlaute auch im Text (ä → ae und ä → a), wie in der Sperrliste. */
+  const alt = normalisieren(s, { umlautKurz: true });
+  const sichten = [{ n, k, woerter, wortSet }];
+  if (alt !== n) { const w2 = alt ? alt.split(" ") : []; sichten.push({ n: alt, k: kompakt(alt), woerter: w2, wortSet: new Set(w2) }); }
   const treffer = (eintraege, kategorie) => {
     for (const [e, ek] of eintraege) {
-      if (ek.length >= 4) { if (k.includes(ek) || n.includes(e)) { add(kategorie); return; } }
-      else if (ek.length >= 2 && (wortSet.has(e) || n === e
-        || (!e.includes(" ") && woerter.some((w) => w.length <= e.length + 2 && w.startsWith(e) && /^\p{L}*$/u.test(w.slice(e.length))))))
-      { add(kategorie); return; }
+      for (const sicht of sichten) {
+        if (ek.length >= 4) { if (sicht.k.includes(ek) || sicht.n.includes(e)) { add(kategorie); return; } }
+        else if (ek.length >= 2 && (sicht.wortSet.has(e) || sicht.n === e
+          || (!e.includes(" ") && sicht.woerter.some((w) => w.length <= e.length + 2 && w.startsWith(e) && /^\p{L}*$/u.test(w.slice(e.length))))))
+        { add(kategorie); return; }
+      }
     }
   };
   treffer(sp.namenK, "KLARNAME");
