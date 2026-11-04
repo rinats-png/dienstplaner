@@ -146,7 +146,7 @@ async function zeitAsync(fn) { const a = performance.now(); const erg = await fn
 
 /** Eine Zelle der Matrix messen. */
 export async function zelleMessen(n, anzahlMonate, o = {}) {
-  const { zerlegen, abdruck, zusammensetzen } = await import("../server/lib/scherben.mjs");
+  const { zerlegen, abdruck, abdruckText, zusammensetzen } = await import("../server/lib/scherben.mjs");
   const monate = monateBis(LAUFEND, anzahlMonate);
   const b = bestandErzeugen(n, monate);
   const m = b.mandanten[0];
@@ -164,10 +164,10 @@ export async function zelleMessen(n, anzahlMonate, o = {}) {
   aus.scherben = scherbenGroessen.length;
   aus.scherbeMittelKB = kb(scherbenGroessen.reduce((a, x) => a + x, 0) / Math.max(1, scherbenGroessen.length));
   aus.scherbeMaxKB = kb(Math.max(0, ...scherbenGroessen));
-  /* Standvermerk heute: je Scherbe der volle Abdruck-Text (scherben.mjs abdruck, „bewusst kein Hash") plus
+  /* Standvermerk heute: je Scherbe der volle Abdruck-Text (vor WP-48.2: scherben.mjs abdruckText, „bewusst kein Hash") plus
      JSON des Kerns — so groß wie der Bestand ohne Stempel-Ersparnis. Entwurf: SHA-256, 32 Hex-Zeichen je Segment. */
   const vermerkHeute = { kern: JSON.stringify(z.kern) };
-  for (const [id, s] of z.scherben) vermerkHeute[id] = abdruck(s);
+  for (const [id, s] of z.scherben) vermerkHeute[id] = abdruckText(s);
   aus.vermerkHeuteMB = mb(groesse({ abdruecke: vermerkHeute }));
   const h = (t) => createHash("sha256").update(t).digest("hex").slice(0, 32);
   aus.vermerkHashKB = Math.round(groesse({ abdruecke: Object.fromEntries(Object.entries(vermerkHeute).map(([k, v]) => [k, h(v)])) }) / 102.4) / 10;
@@ -180,7 +180,7 @@ export async function zelleMessen(n, anzahlMonate, o = {}) {
   /* Teil-PUT A: eine Einteilung im laufenden Monat → Scherbe des Monats (ohne einstempeln, ohne Freeze) + Abdrücke. */
   const sLaufend = z.scherben.get(`${m.id}::${LAUFEND}`) || { felder: { abweichungen: {}, erfassung: {} } };
   const teilA = { format: "teile-1", basisStand: "7", durch: "Mess", segmente: {
-    [`${m.id}::${LAUFEND}`]: { basis: createHash("sha256").update(abdruck(sLaufend)).digest("hex").slice(0, 32),
+    [`${m.id}::${LAUFEND}`]: { basis: createHash("sha256").update(abdruckText(sLaufend)).digest("hex").slice(0, 32),
       felder: { abweichungen: { ...sLaufend.felder.abweichungen, [`p2|${LAUFEND}-20`]: "S" }, erfassung: sLaufend.felder.erfassung } } } };
   aus.teilPutEinteilungKB = kb(Buffer.byteLength(JSON.stringify(teilA)));
   /* Teil-PUT A': dieselbe Einteilung im Vormonat (voller Monat Erfassung) — der typische Fall nach Monatsende. */

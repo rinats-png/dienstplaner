@@ -194,6 +194,7 @@ flowchart LR
   WP_16c --> WP_42a
   WP_32d --> WP_42a
   WP_30 --> WP_42a
+  WP_16 --> WP_48
   WP_16 --> WP_14c
   WP_16 --> WP_16b
   E_21 --> WP_24b
@@ -351,7 +352,6 @@ flowchart LR
   E_31 --> E_24
   E_24 --> E_24i
   WP_16c --> E_29
-  WP_16 --> WP_48
   WP_19_0 --> WP_19_R
   WP_19_4 --> WP_19_R
   WP_S1 --> WP_PILOT
@@ -411,6 +411,7 @@ flowchart LR
 | WP-16c | acc45 | P0 | 6–10 | 6–10 | WP-16 | App.jsx, daten.mjs, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-32d | acc45 | P0 | 1–2 | 1–2 | WP-32 | – | opus | READY |
 | WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1, WP-16c, WP-32d, WP-30 | – | opus | BLOCKED |
+| WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-14c | folge | P1 | 3–5 | 3–5 | WP-14, WP-16 | App.jsx, daten.mjs | opus | BLOCKED |
 | WP-27c | folge | P2 | 1,5–3 | 1,5–3 | WP-27 | – | opus | READY |
 | WP-47b | folge | P2 | 2–4 | 2–4 | WP-47, WP-24 | daten.mjs | opus | READY |
@@ -505,7 +506,6 @@ flowchart LR
 | E-30 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
 | E-31 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
 | E-32 | extern | P1 | 0,5–1,5 | 0,5–1,5 | – | – | – | READY |
-| WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-19.R | wp19 | P1 | 7–11 | 7–11 | WP-19.0, WP-19.4 | – | sonnet + opus-review | BLOCKED |
 | WP-PILOT | folge | P2 | 4–8 | 2–4 | WP-S1, WP-19.0, E-19 | – | sonnet | IN_PROGRESS |
 | SI-P1 | acc45 | P1 | 1,5–3 | 1,5–3 | – | daten.mjs | opus | READY |
