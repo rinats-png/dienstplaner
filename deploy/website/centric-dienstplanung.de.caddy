@@ -28,17 +28,9 @@ www.centric-dienstplanung.de {
 }
 # WWW-ENDE
 
-centric-dienstplanung.de {
-	root * /srv/centric-website/aktuell
-	encode zstd gzip
-	file_server
-
-	# Eigene 404-Seite der Website (dist/404.html), Status bleibt 404.
-	handle_errors {
-		rewrite * /404.html
-		file_server
-	}
-
+# Kopfzeilen als Snippet: Caddy verwirft sie fuer Fehlerantworten (handle_errors), der CI-Rauchtest hat das
+# gezeigt. Deshalb wird dasselbe Snippet im Hauptpfad und in handle_errors eingebunden.
+(centric_website_kopf) {
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
@@ -48,6 +40,21 @@ centric-dienstplanung.de {
 		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
 		-Server
 	}
+}
+
+centric-dienstplanung.de {
+	root * /srv/centric-website/aktuell
+	encode zstd gzip
+	file_server
+
+	# Eigene 404-Seite der Website (dist/404.html), Status bleibt 404; mit denselben Kopfzeilen.
+	handle_errors {
+		import centric_website_kopf
+		rewrite * /404.html
+		file_server
+	}
+
+	import centric_website_kopf
 
 	# Zugriffsprotokoll bewusst keines (Datenschutz, wie bei der App).
 }

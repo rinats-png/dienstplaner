@@ -888,6 +888,13 @@ dl("Auflagen: Pfade, Links, Hostnamen (B4-B7)", () => {
 dl("Auflagen: www-Block nur mit DNS (B13/A2)", () => {
   const site = () => readFileSync(join(sites, "centric-dienstplanung.de.caddy"), "utf8");
 
+  it("B12: die Sicherheits-Kopfzeilen gelten auch fuer Fehlerseiten (Snippet in handle_errors eingebunden)", () => {
+    const vorlage = readFileSync(join(SKRIPTE, "centric-dienstplanung.de.caddy"), "utf8");
+    expect(vorlage).toMatch(/handle_errors \{\s*import centric_website_kopf/);
+    expect((vorlage.match(/import centric_website_kopf/g) || []).length).toBe(2);
+    expect(vorlage).toMatch(/\(centric_website_kopf\) \{\s*header \{[\s\S]*?Strict-Transport-Security/);
+  });
+
   it("www per DNS aufloesbar: Weiterleitung ist in der Site-Datei", () => {
     const r = ausliefern({ FAKE_WWW_DNS: "1" });
     expect(r.code, r.aus).toBe(0);
