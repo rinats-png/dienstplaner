@@ -3,11 +3,11 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 155,
   "statusZaehlung": {
-    "BLOCKED": 81,
+    "BLOCKED": 80,
     "READY": 35,
     "IN_PROGRESS": 3,
     "REVIEW": 4,
-    "INTEGRATED": 29,
+    "INTEGRATED": 30,
     "DONE": 3
   },
   "jeStrang": {
@@ -29,10 +29,10 @@
     },
     "intelligence": {
       "pakete": 37,
-      "offen": 37,
+      "offen": 36,
       "restPT": {
-        "min": 286.4,
-        "max": 501.8
+        "min": 280.4,
+        "max": 491.8
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 443.20000000000005,
-    "max": 755.5
+    "min": 437.20000000000005,
+    "max": 745.5
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -2443,26 +2443,26 @@
       "prio": "P3",
       "aufwandPT": {"min":6,"max":10},
       "abhaengigkeiten": ["WP-43","WP-I10"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"intelligence/wp-i11-faktenpaket b466bc6"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/intelligence-*.test.js, eslint, tsc (lokal)"},
+        "reviewt": {"wert":true,"beleg":"Opus-Sicherheitsreview + Delta-Review (2 Runden)"},
+        "integriert": {"wert":true,"beleg":"#86 (intelligence/wp-i11-integration)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "intelligence/wp-i11-faktenpaket-vertrag-posi",
+      "branch": "intelligence/wp-i11-faktenpaket",
       "agent": "Intelligence (eigener Block)",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
+      "pr": ["#86"],
+      "nachweis": "docs/acc45/wp-i11-nachweis.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
-      "tests": "pruefungen/ki-*.test.js",
+      "tests": "pruefungen/intelligence-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "Nicht-produktiv: keine Route, kein Anbieter. Bedingungen vor Anbieteranschluss siehe WP-I13 und Nachweis."
     },
     {
       "id": "WP-I12",
@@ -2518,7 +2518,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "Bedingungen aus WP-I11 vor Anbieteranschluss: modellOrt nur aus Serverkonfiguration; getrennte Schluessel mit Rotation; Rueckuebersetzung nur nach Schemapruefung; Ausgabe durch die Leck-Pruefung; F7A gesperrt; Namenspolitik vor Freitext-Funktionen; Restrisiken-Freigabe (docs/acc45/wp-i11-nachweis.md)."
     },
     {
       "id": "WP-I14",
