@@ -104,7 +104,8 @@ const server = spawn(process.execPath, ["server.mjs"], {
        nicht gegenseitig in die Bremse treiben. Das gilt nur von einem
        vertrauten Absender (B-XFF-1) — hier die eigene Maschine. */
     CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1",
-    NODE_ENV: "production" },
+    /* Rechte- und Demoprüfung nutzen den Demozugang; er ist ab Werk aus. */
+    CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true", NODE_ENV: "production" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 server.stdout.on("data", (d) => { serverLog += d; });
