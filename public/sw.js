@@ -60,7 +60,7 @@ const DATEN = `centric-daten-${FASSUNG}`;
 const GERUEST = [
   "/",
   "/manifest.webmanifest",
-  "/icon-192.png",
+  "/icon-v4-192.png",
   "/favicon-32.png",
 ];
 
@@ -238,7 +238,7 @@ self.addEventListener("push", (e) => {
   if (!d || typeof d !== "object") d = {};
   e.waitUntil(self.registration.showNotification(kurz(d.titel, 120) || "CENTRIC", {
     body: kurz(d.text, 200),
-    icon: "/icon-192.png",
+    icon: "/icon-v4-192.png",
     badge: "/favicon-32.png",
     tag: typeof d.ziel === "string" && /^[a-z]{1,20}$/.test(d.ziel) ? d.ziel : "centric",
     data: { ziel: eigenerPfad(d.ziel) },

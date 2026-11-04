@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { C } from "../farben.js";
 import { Icon } from "./icons.jsx";
 import { Menue } from "./bausteine.jsx";
-import { BALKEN } from "../marke.jsx";
+import { Marke } from "../marke.jsx";
 
 /* ==========================================================================
    RAHMEN — Kopfzeile, Bereichsnavigation, Unterleiste, Menüs
@@ -23,14 +23,9 @@ import { BALKEN } from "../marke.jsx";
 const BEREICH_ICON = { heute: "raster", planung: "kalender", anliegen: "pruefliste", team: "personen",
   auswertung: "saeulen", verwaltung: "zahnrad", betreiber: "zahnrad" };
 
-/** Die Bildmarke in der Kopfzeile: drei Balken, der mittlere in Türkis. Die
- *  Höhen stammen aus marke.jsx, damit es dieselbe Marke bleibt. */
+/** Die Bildmarke in der Kopfzeile: das C-Zeichen aus marke.jsx. */
 export function Bildmarke({ size = 26 }) {
-  return (
-    <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
-      {BALKEN.map((b) => (
-        <rect key={b.y} x="6" y={b.y} width="88" height="26" rx="13" fill={b.ton === "marke" ? C.marke : C.text} />))}
-    </svg>);
+  return <Marke size={size} />;
 }
 
 const Zaehler = ({ n, warn, klasse }) => n > 0

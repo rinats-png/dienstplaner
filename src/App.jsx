@@ -38,70 +38,11 @@ import { csvFeld, csvText } from "./csvfeld.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
-   Bildmarke: drei gestapelte Balken, verbunden durch eine durchlaufende
-   S-Kurve. Vollständig als Vektor gezeichnet, damit sie in jeder Größe
-   scharf bleibt und die Farben aus dem Farbschema kommen.
+   Das C-Zeichen kommt aus marke.jsx; hier bleibt nur der alte Name Logo()
+   für die Aufrufer. Die Markenfarben sind fest, `hell` ändert nichts mehr.
    ========================================================================== */
-const MARKE = {
-  dunkel: "#023441",       // tiefes Teal — trägt die Bildmarke
-  dunkelHell: "#017070",   // Traditional Turquoise, als Glanz auf dem oberen Balken
-  limette: "#02A0A0",      // helles Teal als Glanzlicht statt Limette
-  creme: "#D9E4E8",
-};
-
-function Logo({ size = 40, wortmarke = false, hell = false }) {
-  const id = useRef(`lg${Math.random().toString(36).slice(2, 8)}`).current;
-  const w = size, h = size * (wortmarke ? 1.42 : 1.0);
-  const d = hell ? "#FFFFFF" : MARKE.dunkel;
-  const dh = hell ? "rgba(255,255,255,.72)" : MARKE.dunkelHell;
-  return (
-    <svg width={w} height={h} viewBox={`0 0 100 ${wortmarke ? 142 : 100}`} fill="none"
-      style={{ display: "block", flexShrink: 0 }} aria-label="CENTRIC">
-      <defs>
-        {/* Feines Rautennetz auf den dunklen Balken */}
-        <pattern id={`${id}n`} width="14" height="14" patternUnits="userSpaceOnUse">
-          <path d="M0 0 L14 14 M14 0 L0 14 M7 0 L7 14 M0 7 L14 7"
-            stroke={hell ? "rgba(0,0,0,.20)" : "rgba(255,255,255,.075)"} strokeWidth=".7" />
-        </pattern>
-        {/* Weicher Verlauf auf dem oberen Balken, wie in der Vorlage */}
-        <linearGradient id={`${id}g`} x1="55%" y1="0%" x2="100%" y2="70%">
-          <stop offset="0%" stopColor={d} /><stop offset="100%" stopColor={dh} />
-        </linearGradient>
-        <clipPath id={`${id}c1`}><rect x="6" y="8" width="88" height="26" rx="13" /></clipPath>
-        <clipPath id={`${id}c3`}><rect x="6" y="66" width="88" height="26" rx="13" /></clipPath>
-        <clipPath id={`${id}c2`}><rect x="6" y="37" width="88" height="26" rx="13" /></clipPath>
-      </defs>
-
-      {/* Oberer Balken */}
-      <g clipPath={`url(#${id}c1)`}>
-        <rect x="6" y="8" width="88" height="26" rx="13" fill={d} />
-        <path d="M52 8 C74 8 66 34 94 34 L94 8 Z" fill={`url(#${id}g)`} />
-        <rect x="6" y="8" width="88" height="26" rx="13" fill={`url(#${id}n)`} />
-      </g>
-
-      {/* Mittlerer Balken in Limette, mit weicher Schattierung unter der Kurve */}
-      <g clipPath={`url(#${id}c2)`}>
-        <rect x="6" y="37" width="88" height="26" rx="13" fill={MARKE.limette} />
-        <path d="M6 50 C6 43 20 43 28 47 C40 53 52 57 62 51 C72 45 80 41 94 41 L94 63 L6 63 Z"
-          fill="rgba(0,0,0,.06)" />
-      </g>
-
-      {/* Unterer Balken */}
-      <g clipPath={`url(#${id}c3)`}>
-        <rect x="6" y="66" width="88" height="26" rx="13" fill={d} />
-        <rect x="6" y="66" width="88" height="26" rx="13" fill={`url(#${id}n)`} />
-      </g>
-
-      {/* Durchlaufende S-Kurve — verbindet alle drei Balken */}
-      <path d="M92 26 C99 30 99 41 90 45 C78 50 62 44 50 47 C38 50 26 58 20 63 C13 69 13 78 20 82"
-        stroke={d} strokeWidth="1.9" fill="none" strokeLinecap="round" opacity=".92" />
-
-      {wortmarke && (
-        <text x="50" y="126" textAnchor="middle" fill={d}
-          style={{ font: `800 20px Inter, -apple-system, system-ui, sans-serif`, letterSpacing: "-.4px" }}>
-          CENTRIC
-        </text>)}
-    </svg>);
+function Logo({ size = 40, hell = false }) {
+  return <Marke size={size} aria-hidden={undefined} role="img" aria-label="CENTRIC" />;
 }
 
 /* ==========================================================================
@@ -199,6 +140,7 @@ import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten 
 import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
   Abschnittskopf, Punkt, Grosszahl, Zeitwahl, Statuszeile, Fehlerband } from "./gestalt/ansichten.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
+import { Marke } from "./marke.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,

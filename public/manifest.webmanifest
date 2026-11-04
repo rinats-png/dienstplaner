@@ -13,16 +13,16 @@
   "categories": ["business", "productivity"],
   "icons": [
     { "src": "/favicon-32.png", "sizes": "32x32", "type": "image/png" },
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-192-maskierbar.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icon-512-maskierbar.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-v4-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-v4-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-v4-192-maskierbar.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-v4-512-maskierbar.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
     { "name": "Meine Schichten", "short_name": "Schichten", "url": "/?ansicht=meine",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+      "icons": [{ "src": "/icon-v4-192.png", "sizes": "192x192" }] },
     { "name": "Krank melden", "short_name": "Krank", "url": "/?ansicht=krank",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+      "icons": [{ "src": "/icon-v4-192.png", "sizes": "192x192" }] }
   ]
 }
