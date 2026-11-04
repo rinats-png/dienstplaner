@@ -57,8 +57,10 @@ export const HANDBUCH = [
         text: "Jeder Standort hat ein eigenes Bundesland. Das ist keine Formalie: Feiertage unterscheiden sich, und ein Feiertagszuschlag hängt daran.",
         schritte: [
           "Verwaltung → Betrieb öffnen.",
-          "Für jeden Standort Bezeichnung, Bundesland und Umkreis in Metern eintragen.",
-          "Der Umkreis gilt für die Standortprüfung beim Einstempeln. 200 Meter sind ein guter Anfang — bei großen Werksgeländen mehr.",
+          "Für jeden Standort Bezeichnung, Bundesland und — wenn beim Stempeln geprüft werden soll — Breiten- und Längengrad sowie den Umkreis in Metern eintragen. „Aktuelle Position übernehmen\" setzt die Koordinate vor Ort.",
+          "Der Umkreis gilt für die Standortprüfung beim Stempeln (25 bis 5000 m; 200 Meter sind ein guter Anfang — bei großen Werksgeländen mehr). Die Prüfung selbst schaltet die Organisationsleitung ein; Vorgabe ist aus.",
+          "Eine von „Aktuelle Position übernehmen“ gesetzte Koordinate bleibt als „noch nicht bestätigt“ markiert, bis „Koordinate bestätigen“ gedrückt ist (die Prüfung beim Stempeln wartet darauf nicht); ist die Messung ungenauer als 100 m, warnt CENTRIC und die Position sollte wiederholt werden. Von Hand eingetragene Werte stehen als „von Hand“ da.",
+          "Eine Standortangabe ist ein Hinweis, kein Beweis: Ein Smartphone-Browser kann gefälschte Positionen nicht zuverlässig erkennen. Ein Häkchen ist kein Anwesenheitsnachweis, ein Ausrufezeichen kein Verstoß — ein auffälliges Ergebnis ist ein Anlass für ein Gespräch, nicht für automatische Konsequenzen.",
         ],
         pruefen: "Im Monatsplan sind die Feiertage deines Bundeslandes rot markiert. Stimmt das nicht, ist das Bundesland falsch.",
         merke: "Betriebe mit mehreren Standorten in verschiedenen Bundesländern legen jeden einzeln an — sonst rechnet CENTRIC mit den falschen Feiertagen.",
@@ -242,7 +244,7 @@ export const HANDBUCH = [
           "Ab dann löst jede Änderung eine Mitteilung an die Betroffenen aus.",
           "Der Planstandvergleich zeigt, was sich seit der Freigabe geändert hat.",
         ],
-        pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name.",
+        pruefen: "Unter dem Titel des Monatsplans steht „Freigegeben\" mit Datum und Name.",
         merke: "Vor der Freigabe ist alles Entwurf und niemand wird benachrichtigt. Danach zählt jede Änderung in die Planungssicherheit.",
       },
     ],
@@ -356,7 +358,7 @@ export const HANDBUCH = [
           "Anliegen: Anträge, Krankmeldung, Tauschbörse, Stundenkonto.",
           "Mehr: Verfügbarkeit, Wunschdienste, Nachweise, Schwarzes Brett, Feldmodus.",
         ],
-        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert wird nur, ob jemand am Einsatzort war — keine Koordinate, kein Verlauf, keine Dauerortung.",
+        merke: "Ist die Standortprüfung eingeschaltet, wird beim Stempeln einmalig geprüft, ob jemand am Standort ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet, die Messgenauigkeit und der Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung. Die Arbeitszeit wird immer erfasst.",
       },
       {
         titel: "Häufige Fragen",
@@ -366,7 +368,7 @@ export const HANDBUCH = [
           "„Wie viele Urlaubstage habe ich noch?\" — Mehr, oben in den Kennzahlen.",
           "„Kann ich tauschen?\" — Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.",
           "„Warum steht mein Konto im Minus?\" — Anliegen, Stundenkonto, mit Verlauf über sechs Monate.",
-          "„Sieht der Chef, wo ich bin?\" — Nein. Nur ob du beim Stempeln am Einsatzort warst.",
+          "„Sieht der Chef, wo ich bin?\" — Nein. Ist die Standortprüfung eingeschaltet, sieht die Leitung nur, ob du beim Stempeln am Standort warst, grob gerundet wie weit entfernt und wie genau die Messung war.",
         ],
       },
     ],
@@ -410,13 +412,14 @@ export const HANDBUCH = [
     abschnitte: [
       {
         titel: "Sachkunde nach § 34a",
-        text: "Gesetzlich zwingend — ohne sie ist kein Einsatz zulässig.",
+        text: "Gesetzlich zwingend — ohne sie ist der Einsatz ein Rechtsverstoß.",
         schritte: [
           "Bei der Qualifikation den Schalter „gesetzlich zwingend\" setzen.",
-          "CENTRIC sperrt daraufhin jeden Einsatz ohne diese Qualifikation, unabhängig von der Dienstart.",
-          "Auch die Ersatzsuche schließt betroffene Personen aus, mit Begründung.",
+          "CENTRIC warnt daraufhin bei jedem Einsatz ohne diese Qualifikation als Rechtsverstoß, unabhängig von der Dienstart.",
+          "Die Ersatzsuche führt betroffene Personen unter „Nur mit Abweichung“, mit Begründung.",
+          "Wer trotzdem einteilt, bestätigt im Warndialog; die Bestätigung steht im Protokoll und in der Prüfung.",
         ],
-        merke: "Anders als eine normale Mindestqualifikation gilt die harte Sperre für alle Dienste. Das entspricht der Rechtslage.",
+        merke: "CENTRIC sperrt nicht, es warnt und dokumentiert. Die Verantwortung für den Einsatz bleibt beim Arbeitgeber.",
       },
       {
         titel: "Außenposten",

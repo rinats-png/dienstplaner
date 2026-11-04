@@ -1,11 +1,17 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
-  protokoll } from "../lib/schutz.mjs";
+  protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
-import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
+import { bestandLesen } from "../lib/bestand.mjs";
+import { BEKANNTE_ROLLEN, rolleBekannt } from "../lib/rechte.mjs";
+import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
+import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
+  verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
+import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
+  zweifaktorAbschalten, nachweisAusstellen, zweifaktorMoeglich } from "../lib/zweifaktor.mjs";
 
 /* ==========================================================================
    EINRICHTUNG
@@ -26,7 +32,7 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/einrichten\/?/, "");
-  if (!["", "verwalter", "umgebung", "uebersicht"].includes(pfad))
+  if (!["", "verwalter", "umgebung", "uebersicht", "bindung", "zweifaktor"].includes(pfad))
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
@@ -72,6 +78,146 @@ export default async (req) => {
   }
   await entlasten("einrichten", k);
 
+  /* ---------------------------- Zweiter Faktor (WP-32) ---------------
+     Ist für diesen Schlüssel ein zweiter Faktor eingerichtet, gilt er für
+     JEDEN Aufruf von /einrichten — Lesen eingeschlossen. Mitzuschicken ist
+     ein Code der App (Rumpf `zweifaktor` oder Kopf `x-centric-zweifaktor`),
+     ein Wiederherstellungscode oder ein Nachweis
+     (Kopf `x-centric-zweifaktor-nachweis`, siehe zweifaktor.mjs).
+     Abschalten und das Holen eines Nachweises verlangen einen frischen
+     Code, nie einen Nachweis.
+
+     Ebenso Anlegen und Sperren von Verwalterschlüsseln (WP-32 M1): Wer
+     einen Nachweis abgreift, soll sich damit keinen eigenen Dauerzugang
+     anlegen können.
+
+     Pflicht für Schlüssel OHNE zweiten Faktor — sie kommen nur noch an
+     /einrichten/zweifaktor heran, zum Einrichten:
+       - sobald irgendein nutzbarer Verwalterschlüssel einen aktiven
+         zweiten Faktor hat (automatisch; sonst wäre ein neu angelegter
+         Schlüssel der Weg um ihn herum), oder
+       - mit CENTRIC_ZWEIFAKTOR_PFLICHT=1 von Anfang an. */
+  const zfCode = (body && body.zweifaktor) || req.headers.get("x-centric-zweifaktor") || null;
+  const zfNachweis = req.headers.get("x-centric-zweifaktor-nachweis") || null;
+  const zfAktion = pfad === "zweifaktor" && req.method === "POST" ? String(body.aktion || "") : "";
+  const zfAbschalten = pfad === "zweifaktor" && req.method === "DELETE";
+  const zfPflichtUmgebung = (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  const zfVerwalterAenderung = pfad === "verwalter" && (req.method === "POST" || req.method === "DELETE");
+  const zfKennungen = [`v:${wer.zweifaktorId.slice(0, 16)}`, k];
+  /** Bremse für Code-Versuche: je Schlüssel und je Herkunft, fail-closed. */
+  const zfBremse = async () => {
+    for (const kk of zfKennungen) {
+      const bz = await bremse("zweifaktor", kk);
+      if (!bz.frei) { await protokoll("zweifaktor", k, "gebremst", bz.grund);
+        return zuVielAntwort(bz.wartet); }
+      if (bz.fehler && GRENZEN.zweifaktor.failClosed)
+        return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+          + "Bitte später erneut versuchen." }, 503);
+    }
+    return null;
+  };
+  const zfEntlasten = async () => { for (const kk of zfKennungen) await entlasten("zweifaktor", kk); };
+
+  let zfStand;
+  try { zfStand = await zweifaktorStand(s0, wer.zweifaktorId); }
+  catch {
+    return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+      + "Bitte später erneut versuchen." }, 503);
+  }
+  const zfPflicht = zfPflichtUmgebung || zfStand.aktiv || await verwalterZweifaktorIrgendwo(s0);
+  if (zfStand.aktiv) {
+    const nurCode = zfAbschalten || zfAktion === "nachweis" || zfVerwalterAenderung;
+    if (!zfCode && (nurCode || !zfNachweis)) {
+      await protokoll("zweifaktor", k, "abgewiesen", `fehlt · ${wer.name}`);
+      return antwort({ fehler: nurCode
+        ? "Dafür ist ein frischer Code aus der App nötig."
+        : "Für diesen Schlüssel ist ein zweiter Faktor eingerichtet. Bitte den Code aus der App mitschicken.",
+      zweifaktor: "erforderlich" }, 401);
+    }
+    if (zfCode) { const gebremst = await zfBremse(); if (gebremst) return gebremst; }
+    const p = await zweifaktorPruefen(s0, wer.zweifaktorId,
+      { code: zfCode || undefined, nachweis: zfNachweis || undefined, nachweisErlaubt: !nurCode });
+    if (!p.ok) {
+      await new Promise((r) => setTimeout(r, 400));
+      await protokoll("zweifaktor", k, "abgewiesen", `${p.grund} · ${wer.name}`);
+      return antwort({ fehler: p.grund === "wiederholt"
+        ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+        : "Der zweite Faktor stimmt nicht.", zweifaktor: "falsch" }, 401);
+    }
+    if (zfCode) await zfEntlasten();
+    if (p.art === "wiederherstellung")
+      await protokoll("zweifaktor", k, "erfolg", `Wiederherstellungscode verbraucht · ${wer.name}`);
+  } else if (zfPflicht && pfad !== "zweifaktor") {
+    await protokoll("zweifaktor", k, "abgewiesen", `Pflicht, nicht eingerichtet · ${wer.name}`);
+    return antwort({ fehler: "Ein zweiter Faktor ist Pflicht und für diesen Schlüssel noch nicht "
+      + "eingerichtet. Zuerst unter /einrichten/zweifaktor einrichten.", zweifaktor: "einrichten" }, 403);
+  }
+
+  if (pfad === "zweifaktor") {
+    const id = wer.zweifaktorId;
+    if (req.method === "GET") {
+      /* Neu gelesen: Ein eben verbrauchter Wiederherstellungscode zählt mit. */
+      const st = await zweifaktorStand(s0, id);
+      return antwort({ aktiv: st.aktiv, ausstehend: st.ausstehend,
+        wiederherstellungUebrig: st.wiederherstellungUebrig, pflicht: zfPflicht,
+        moeglich: zweifaktorMoeglich(), ich: wer.name });
+    }
+
+    if (req.method === "DELETE") {
+      if (!zfStand.aktiv) return antwort({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409);
+      try { await zweifaktorAbschalten(s0, id); }
+      catch {
+        return antwort({ fehler: "Abschalten gerade nicht möglich — die Ablage antwortet nicht. "
+          + "Der zweite Faktor bleibt eingerichtet." }, 503);
+      }
+      await protokoll("zweifaktor", k, "erfolg", `abgeschaltet · ${wer.name}`);
+      return antwort({ ok: true, aktiv: false });
+    }
+
+    if (req.method !== "POST") return antwort({ fehler: "Nur GET, POST oder DELETE." }, 405);
+
+    if (zfAktion === "beginnen") {
+      if (zfStand.aktiv) return antwort({ fehler: "Der zweite Faktor ist schon eingerichtet. "
+        + "Zum Neueinrichten erst abschalten." }, 409);
+      const erg = await zweifaktorBeginnen(s0, id, wer.name);
+      if (erg.fehler === "pfeffer") return antwort({ fehler: "CENTRIC_PFEFFER fehlt. Ohne ihn lässt "
+        + "sich das Geheimnis nicht verschlüsselt ablegen." }, 503);
+      if (erg.fehler) return antwort({ fehler: "Der zweite Faktor ist schon eingerichtet." }, 409);
+      await protokoll("zweifaktor", k, "erfolg", `Einrichtung begonnen · ${wer.name}`);
+      return antwort({ ok: true, geheimnis: erg.geheimnis, otpauth: erg.otpauth,
+        hinweis: "Geheimnis und Adresse erscheinen genau einmal. In der App erfassen und "
+          + "mit dem ersten Code bestätigen (aktion: bestaetigen)." });
+    }
+
+    if (zfAktion === "bestaetigen") {
+      if (zfStand.aktiv) return antwort({ fehler: "Der zweite Faktor ist schon eingerichtet." }, 409);
+      if (!zfStand.ausstehend) return antwort({ fehler: "Es ist keine Einrichtung begonnen." }, 409);
+      if (!zfCode) return antwort({ fehler: "Bitte den ersten Code aus der App angeben." }, 400);
+      const gebremst = await zfBremse(); if (gebremst) return gebremst;
+      const erg = await zweifaktorBestaetigen(s0, id, zfCode);
+      if (erg.fehler === "pfeffer") return antwort({ fehler: "Das Geheimnis lässt sich nicht "
+        + "entschlüsseln (CENTRIC_PFEFFER fehlt oder wurde geändert). Neu beginnen." }, 503);
+      if (erg.fehler) {
+        await new Promise((r) => setTimeout(r, 400));
+        await protokoll("zweifaktor", k, "abgewiesen", `Bestätigung · ${wer.name}`);
+        return antwort({ fehler: "Der Code stimmt nicht.", zweifaktor: "falsch" }, 401);
+      }
+      await zfEntlasten();
+      await protokoll("zweifaktor", k, "erfolg", `eingerichtet · ${wer.name}`);
+      return antwort({ ok: true, aktiv: true, wiederherstellung: erg.wiederherstellung,
+        hinweis: "Die Wiederherstellungscodes erscheinen genau einmal. Jeder gilt einmal. "
+          + "Gespeichert ist nur ihre Prüfsumme." });
+    }
+
+    if (zfAktion === "nachweis") {
+      if (!zfStand.aktiv) return antwort({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409);
+      return antwort({ ok: true, ...(await nachweisAusstellen(s0, id)),
+        hinweis: "Im Kopf x-centric-zweifaktor-nachweis mitschicken. Gilt 15 Minuten, nur für "
+          + "diesen Schlüssel, nicht zum Abschalten." });
+    }
+    return antwort({ fehler: "Unbekannte Aktion. Erlaubt: beginnen, bestaetigen, nachweis." }, 400);
+  }
+
   /* Beschäftigte und Schichtverantwortung schreiben nur, was zu ihrer
      Person gehört — ein Code dieser Rollen ohne Person kann deshalb nichts
      und sieht in der Oberfläche eine Rollenauswahl statt eines Menschen.
@@ -81,6 +227,14 @@ export default async (req) => {
      dem Entlasten: Wer sich ausgewiesen hat und dann einen fachlichen
      Fehler macht, soll dafür nicht in die Bremse gegen das Erraten des
      Schlüssels laufen. */
+  /* Nur Rollen, die es gibt (Commit D1d). Bis hierher nahm diese Stelle
+     jede Bezeichnung an; eine Sitzung mit erfundener Rolle fiel beim Lesen
+     auf den Rohbestand des eigenen Betriebs durch. Ohne Angabe bleibt es
+     bei „kunde" wie bisher. */
+  if (req.method === "POST" && !pfad && rolle !== undefined && rolle !== null && !rolleBekannt(rolle))
+    return antwort({ fehler: "Diese Rolle gibt es nicht.",
+      text: `Erlaubt sind: ${BEKANNTE_ROLLEN.join(", ")}.` }, 400);
+
   if (req.method === "POST" && !pfad && (rolle === "mitarbeiter" || rolle === "subplaner")
       && (person === null || person === undefined || person === ""))
     return antwort({ fehler: `Ein Zugang der Rolle „${rolle}" braucht eine Person. `
@@ -153,6 +307,11 @@ export default async (req) => {
     if (gesetzt("VAPID_PUBLIC") !== gesetzt("VAPID_PRIVATE"))
       warnungen.push("Vom VAPID-Paar ist nur eine Hälfte gesetzt. So lässt sich "
         + "keine Push-Mitteilung versenden.");
+    /* B-XFF-1: ohne Vertrauensliste teilen sich hinter Caddy alle Nutzer eine Herkunft. */
+    if (!gesetzt("CENTRIC_VERTRAUTE_PROXYS") && xffOhneVertrauen() > 0)
+      warnungen.push("CENTRIC_VERTRAUTE_PROXYS fehlt, aber Anfragen kommen mit X-Forwarded-For "
+        + "(also über einen Proxy). Alle Nutzer zählen unter der Adresse des Proxys — die Bremse "
+        + "je Herkunft träfe alle gemeinsam. Netz des Caddy-Containers eintragen.");
 
     return antwort({
       gepr: new Date().toISOString(),
@@ -165,6 +324,8 @@ export default async (req) => {
         pushOeffentlich: gesetzt("VAPID_PUBLIC"),
         pushPrivat: gesetzt("VAPID_PRIVATE"),
         bremseAtomar: gesetzt("REDIS_REST_URL") && gesetzt("REDIS_REST_TOKEN"),
+        vertrauteProxys: gesetzt("CENTRIC_VERTRAUTE_PROXYS"),
+        zweifaktorPflicht: (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1",
       },
       verwalterkonten: await verwalterAktiv(s0),
       warnungen,
@@ -189,7 +350,69 @@ export default async (req) => {
     return antwort({ ...(await raumUebersicht(s0, raum)), ich: wer.name });
   }
 
+  /* ------------------- Alte Codes an ihren Betrieb binden -------------
+     Codes von vor Oktober 2026 zeigen nur über ihre Position auf den
+     Betrieb. In einem Raum mit genau einem Betrieb ergänzt die Anmeldung
+     die Kennung von selbst. In Räumen mit mehreren Betrieben — dem
+     Demoraum — wird nicht geraten: GET zeigt, worauf jeder Code heute
+     zeigt (Trockenlauf). POST bindet nur, was ein Mensch geprüft und
+     ausdrücklich bestätigt hat, und nur, wenn die Position noch auf
+     genau diesen Betrieb zeigt. */
+  if (pfad === "bindung") {
+    const raumB = req.method === "GET" ? (url.searchParams.get("bestand") || "") : String(body.bestand || "");
+    if (!/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(raumB))
+      return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+    const gelesenB = await bestandLesen(s0, raumB);
+    const bestandB = gelesenB && gelesenB.bestand;
+    if (!bestandB) return antwort({ fehler: "Raum ist noch nicht eingerichtet." }, 409);
+    const konten = await alleKonten(s0);
+    const eigene = Object.entries(konten).filter(([, kk]) => kk && kk.bestand === raumB && kk.rolle !== "betreiber");
+    const zugaenge = eigene.map(([h, kk]) => ({ ...kk, kennung: h.slice(-8) }));
+    if (req.method === "GET")
+      return antwort({ bestand: raumB, trockenlauf: true,
+        betriebe: (bestandB.mandanten || []).map((m, i) => ({ stelle: i, id: m.id, name: m.name || null })),
+        zugaenge: bindungsVorschau(bestandB, zugaenge) });
+    if (req.method !== "POST") return antwort({ fehler: "Nur GET oder POST." }, 405);
+    const zuordnung = Array.isArray(body.zuordnung) ? body.zuordnung : [];
+    if (!zuordnung.length) return antwort({ fehler: "Keine Zuordnung angegeben." }, 400);
+    const ergebnis = [];
+    for (const z of zuordnung) {
+      const treffer = eigene.filter(([h]) => h.slice(-8) === String(z && z.kennung));
+      if (treffer.length !== 1) { ergebnis.push({ kennung: z && z.kennung, gebunden: false, grund: "nicht eindeutig" }); continue; }
+      const [h, kk] = treffer[0];
+      if (kk.mandantId) { ergebnis.push({ kennung: z.kennung, gebunden: false, grund: "schon gebunden" }); continue; }
+      const i = Number(kk.betrieb ?? 0);
+      const m = Number.isInteger(i) ? (bestandB.mandanten || [])[i] : null;
+      if (!m || m.id !== z.mandantId) {
+        ergebnis.push({ kennung: z.kennung, gebunden: false, grund: "Position zeigt nicht auf diesen Betrieb" });
+        continue;
+      }
+      await kontoSchreiben(s0, h, { ...kk, mandantId: m.id, gebunden: new Date().toISOString(),
+        gebundenDurch: wer.name });
+      ergebnis.push({ kennung: z.kennung, gebunden: true, mandantId: m.id });
+    }
+    await protokoll("einrichten", k, "erfolg",
+      `Bindung ${raumB}: ${ergebnis.filter((x) => x.gebunden).length} von ${ergebnis.length} durch ${wer.name}`);
+    return antwort({ bestand: raumB, ergebnis });
+  }
+
   if (!name || !bestand) return antwort({ fehler: "name und bestand sind nötig." }, 400);
+
+  /* Codes für Kundenrollen nur für einen eingerichteten Raum, gebunden an
+     Position und Kennung des Betriebs. Bis Oktober 2026 entstand hier auch
+     ein Code für einen Raum, den es noch nicht gab — und der erste Client
+     befüllte ihn. Den leeren Raum richtet jetzt der Betreiber ein
+     (/api/bestand-anlegen); sein eigener Code darf deshalb vorher entstehen. */
+  let bindungE = { betrieb: betrieb ?? 0, mandantId: null };
+  if ((rolle || "kunde") !== "betreiber") {
+    const gelesenE = await bestandLesen(s0, bestand);
+    const b2 = betriebFuerNeuenCode(gelesenE && gelesenE.bestand, betrieb);
+    if (b2.grund) {
+      await protokoll("einrichten", k, "abgewiesen", `${bestand}: ${b2.grund}`);
+      return antwort({ fehler: b2.grund }, 409);
+    }
+    bindungE = b2;
+  }
 
   /* Ein Demozugang je Betrieb und Rolle. Die Startseite zeigt jeden
      aktiven Demozugang als eigene Karte; zwei gleiche wären zwei Karten
@@ -222,7 +445,8 @@ export default async (req) => {
   const konto = { name, bestand,
     rolle: rolle || "kunde",       // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
-    betrieb: betrieb ?? 0,         // Index des Betriebs im Bestand
+    betrieb: bindungE.betrieb,     // Index des Betriebs im Bestand
+    mandantId: bindungE.mandantId, // und seine Kennung — beides muss zusammenpassen
     hinweis: hinweis || null,
     /* Als Demozugang gekennzeichnete Konten erscheinen auf der Anmeldeseite
        und lassen sich ohne Code öffnen. Alle übrigen bleiben geschützt. */

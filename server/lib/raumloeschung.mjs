@@ -31,6 +31,11 @@
    gelöschten Raum ist folgenlos.
    ========================================================================== */
 
+import { unterRaumsperre, KONTEN_SPERRE } from "./raumsperre.mjs";
+import { journalSchluessel } from "./bestand.mjs";
+
+export { KONTEN_SPERRE };
+
 /**
  * @typedef {{ raum: string, geloescht: number, vollstaendig: boolean,
  *   fehler: Array<{ schluessel: string, grund: string }> }} Loeschergebnis
@@ -64,13 +69,51 @@ export async function raumLoeschen(store, sitzungen, raum) {
     return blobs;
   };
 
-  /* 1. Scherben, Stände, Sicherungen */
-  for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`])
+  /* 1. Ein liegengebliebenes Schreibjournal zuerst (bestand.mjs). Bliebe es
+        stehen, legte jeder Leser es über das, was noch da ist — und der
+        Kern des gelöschten Raums erschiene wieder. Dann Scherben, Stände,
+        Sicherungen. */
+  try { await store.delete(journalSchluessel(raum)); }                // fehlt es, ist nichts zu tun
+  catch (e) { fehler.push({ schluessel: journalSchluessel(raum), grund: grundVon(e) }); }
+  for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`,
+    `journal-beiseite:${raum}:`,           // beiseitegelegte Journale (werkzeug/journal-pruefen.mjs)
+    `beiseite:${raum}:`])                  // beiseitegelegte Dateien (werkzeug/ablage-pruefen.mjs)
     await praefixWeg(praefix);
 
-  /* 2. Zugangscodes des Raums — einzeln abgelegte und die im Sammelblob.
-        Gelesen wird gezielt über das Präfix, nicht über alleKonten(): Ein
-        unlesbares Konto darf den Lauf nicht beenden, es landet als Fehler. */
+  /* 2. Zugangscodes des Raums — erst der Sammelblob, dann die einzeln
+        abgelegten.
+
+        Der Sammelblob „konten" gehört allen Räumen zugleich. Lesen, Ändern
+        und Zurückschreiben unter einer festen, raumübergreifenden Sperre
+        (KONTEN_SPERRE): Zwei gleichzeitige Löschungen lasen sonst beide den
+        alten Blob, und der zweite schrieb die Codes des ersten Raums wieder
+        hinein. Reihenfolge stets Raum, dann „@konten" — nie umgekehrt,
+        damit sich zwei Löschungen nicht gegenseitig festhalten.
+
+        Erst der Sammelblob, weil die Anmeldung aus ihm Einzelkonten macht
+        (kontoVereinzeln, konten.mjs — ebenfalls unter „@konten"). In der
+        umgekehrten Reihenfolge konnte eine Anmeldung zwischen den beiden
+        Schritten konto:X aus dem noch vollen Sammelblob neu anlegen, und der
+        Code zeigte danach auf einen gelöschten Raum. So entsteht ein
+        Einzelkonto nur noch vor der Bereinigung des Sammelblobs — und wird
+        dann im nächsten Schritt mit gelöscht.
+
+        Die Einzelkonten gezielt über das Präfix, nicht über alleKonten():
+        Ein unlesbares Konto darf den Lauf nicht beenden, es landet als
+        Fehler. */
+  try {
+    await unterRaumsperre(KONTEN_SPERRE, async () => {
+      const sammel = await store.get("konten", { type: "json" });
+      if (sammel && typeof sammel === "object") {
+        const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
+        if (eigene.length) {
+          for (const s of eigene) delete sammel[s];
+          await store.setJSON("konten", sammel);
+          geloescht += eigene.length;
+        }
+      }
+    });
+  } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
   const zuLoeschen = [];
   try {
     const { blobs } = await store.list({ prefix: "konto:" });
@@ -82,17 +125,6 @@ export async function raumLoeschen(store, sitzungen, raum) {
     }
   } catch (e) { fehler.push({ schluessel: "konto:*", grund: grundVon(e) }); }
   for (const schl of zuLoeschen) await weg(`konto:${schl}`);
-  try {
-    const sammel = await store.get("konten", { type: "json" });
-    if (sammel && typeof sammel === "object") {
-      const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
-      if (eigene.length) {
-        for (const s of eigene) delete sammel[s];
-        await store.setJSON("konten", sammel);
-        geloescht += eigene.length;
-      }
-    }
-  } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
 
   /* 2b. Persönliche Mitgliedschaften dieses Raums — und der Raumindex dazu.
 
@@ -132,6 +164,14 @@ export async function raumLoeschen(store, sitzungen, raum) {
         zuordnen konnte. Das Präfix endet auf einem Doppelpunkt, damit ein Raum
         „t-ab" nicht die Anmeldungen von „t-a" mitnimmt. */
   await praefixWeg(`push:${raum}:`);
+  /* Seit Commit 4 auch push:<raum>:<mandantId>:<personId> (dasselbe Präfix)
+     und der Zustellstatus samt Versand-Claims je Mitteilung (versand.mjs). */
+  await praefixWeg(`zustellung:${raum}:`);
+  await praefixWeg(`zustellclaim:${raum}:`);
+  /* WP-30: Warteschlange, Adresssperren und Tageskontingente je Raum. */
+  await praefixWeg(`zustellwarte:${raum}:`);
+  await praefixWeg(`unzustellbar:${raum}:`);
+  await praefixWeg(`zustellquote:${raum}:`);
 
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein
@@ -168,6 +208,12 @@ export async function raumLoeschen(store, sitzungen, raum) {
       }
     }
   } catch (e) { fehler.push({ schluessel: "feed:*", grund: grundVon(e) }); }
+  /* WP-24: Die Indizes feedperson:<raum>:<mandantId>:<personId> (je Person der Hash ihres aktiven Feeds)
+     gehören zum Raum und blieben bisher liegen — auch wenn der Feed selbst schon weg war. */
+  await praefixWeg(`feedperson:${raum}:`);
+
+  /* WP-27: Das eingefrorene Ist der Betriebsrat-Auswertung (brist:<raum>:…) gehört zum Raum. */
+  await praefixWeg(`brist:${encodeURIComponent(raum)}:`);
 
   /* 5. Der Vermerk in der Nachfassliste */
   try {

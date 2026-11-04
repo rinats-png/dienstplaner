@@ -15,18 +15,96 @@
    Gründe, viel zu löschen — aber rückholbar gemacht.
    ========================================================================== */
 
+import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
+
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
 
 /** Listen je Betrieb, die ein Array sein müssen, wenn sie vorhanden sind. */
 const LISTEN = ["personen", "einheiten", "dienstarten", "abwesenheiten",
-  "anfragen", "qualifikationen", "standorte"];
+  "anfragen", "qualifikationen", "standorte", "einsatzorte", "uebergaben"];
+
+/**
+ * Altform angleichen (Commit C2): Über die Betreiberkonsole angelegte
+ * Betriebe trugen `uebergaben: {}` statt einer Liste. Inhalt konnte darin
+ * nie stehen — das Speichern einer Übergabe scheiterte daran schon im
+ * Browser. Ein leeres Objekt wird zur leeren Liste, bevor die Gestalt
+ * geprüft wird; alles andere bleibt, wie es ist (und fällt dann auf).
+ * @param {any} bestand
+ */
+export function uebergabenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const leer = (u) => !!u && typeof u === "object" && !Array.isArray(u) && Object.keys(u).length === 0;
+  if (!bestand.mandanten.some((m) => m && leer(m.uebergaben))) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (m && leer(m.uebergaben) ? { ...m, uebergaben: [] } : m)) };
+}
+
+/* --------------------------------------------------------------------------
+   PERSONEN: qualifikationen
+
+   Die Oberfläche liest `person.qualifikationen` an vielen Stellen als Liste
+   (Tagesaufgaben, Nachweise, Personal). Fehlte das Feld — eine über die
+   Schnittstelle angelegte Person —, stürzte die Startseite jeder Rolle ab
+   („reading 'map'"). Die Gestaltprüfung sah es nicht: Sie prüft die Listen
+   eines Betriebs, nicht die Felder einer Person.
+
+   Zwei Fälle, bewusst getrennt:
+   - fehlt oder null: eine fehlende optionale Liste → []. Das ist keine
+     Aussage, die verloren ginge.
+   - ein anderer Typ in einer Eingabe (Text, Zahl, Objekt): ein Fehler des
+     Absenders. Er wird abgewiesen (personenFehler), nicht still zu []
+     gemacht — sonst verschwänden Angaben, ohne dass es jemand merkt.
+   Ein schon gespeicherter Altbestand mit falschem Typ ist keine Eingabe:
+   Beim Lesen und beim Zusammenführen wird er zu [], damit er weder die
+   Oberfläche abstürzen lässt noch jeden künftigen Schreibvorgang sperrt.
+   -------------------------------------------------------------------------- */
+
+/** Ist das eine Person, deren Liste angeglichen werden muss? */
+const qualAngleichen = (p) => !!p && typeof p === "object" && !Array.isArray(p.qualifikationen);
+
+/**
+ * Setzt bei jeder Person ohne gültige Liste `qualifikationen: []`.
+ * Gültige Listen und alle anderen Felder bleiben unverändert; ohne Bedarf
+ * kommt dasselbe Objekt zurück (nichts wird verändert, nichts kopiert).
+ * @param {any} bestand
+ */
+export function personenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const braucht = (m) => !!m && Array.isArray(m.personen) && m.personen.some(qualAngleichen);
+  if (!bestand.mandanten.some(braucht)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (braucht(m)
+    ? { ...m, personen: m.personen.map((p) => (qualAngleichen(p) ? { ...p, qualifikationen: [] } : p)) }
+    : m)) };
+}
+
+/**
+ * Prüft eine übermittelte Eingabe: `qualifikationen` darf fehlen, null oder
+ * eine Liste sein — jeder andere Typ ist ein Fehler des Absenders.
+ * Gibt null oder { grund, feld } zurück.
+ * @param {any} bestand
+ */
+export function personenFehler(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return null;
+  for (const [i, m] of bestand.mandanten.entries()) {
+    if (!m || !Array.isArray(m.personen)) continue;
+    for (const [j, p] of m.personen.entries()) {
+      if (!p || typeof p !== "object") continue;
+      const q = p.qualifikationen;
+      if (q !== undefined && q !== null && !Array.isArray(q))
+        return { grund: `Bei Person ${p.id ?? j} ist qualifikationen keine Liste.`, feld: `mandanten[${i}].personen[${j}].qualifikationen` };
+    }
+  }
+  return null;
+}
 
 /**
  * Prüft die Form eines Bestands.
  * Gibt { ok: true } oder { ok: false, grund, feld } zurück.
+ * @param {any} bestand
+ * @param {{ vorher?: any }} [o]  der gespeicherte Stand: Aufbewahrungsfristen
+ *   werden dann nur bei Betrieben geprüft, die sie ändern oder neu sind.
  */
-export function pruefeGestalt(bestand) {
+export function pruefeGestalt(bestand, { vorher = null } = {}) {
   if (!bestand || typeof bestand !== "object" || Array.isArray(bestand))
     return { ok: false, grund: "Kein Bestandsobjekt." };
 
@@ -43,11 +121,11 @@ export function pruefeGestalt(bestand) {
   if (!bestand.mandanten.length)
     return { ok: false, grund: "Ein Bestand ohne Betrieb wird nicht gespeichert.", feld: "mandanten" };
 
+  const ids = mandantenKennungenGeprueft(bestand.mandanten);
+  if (ids) return ids;
+  const geaendert = aufbewahrungGeaendert(vorher);
+
   for (const m of bestand.mandanten) {
-    if (!m || typeof m !== "object")
-      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
-    if (!m.id)
-      return { ok: false, grund: "Einem Betrieb fehlt die Kennung.", feld: "mandanten[].id" };
     for (const liste of LISTEN) {
       if (liste in m && !Array.isArray(m[liste]))
         return { ok: false, grund: `${m.id}.${liste} ist keine Liste.`, feld: liste };
@@ -67,12 +145,51 @@ export function pruefeGestalt(bestand) {
 
     const zuViel = mengeGeprueft(m);
     if (zuViel) return zuViel;
+    /* Aufbewahrungsfristen (WP-26, H1): ganze Zahlen in festen Grenzen.
+       Bis November 2026 ungeprüft — „Infinity" ließ den Datenschutzlauf
+       ewig rechnen und hielt damit den ganzen Server an. */
+    /* Nur geänderte oder neue Betriebe streng (N-1): Ein ungültiger Altwert
+       in einem anderen Betrieb desselben Raums (z. B. 1.5 aus der früheren
+       Oberfläche) sperrte sonst das Speichern für alle. Der Datenschutzlauf
+       überspringt und meldet ihn. */
+    const frist = geaendert(m) ? aufbewahrungFehler(m.aufbewahrung) : null;
+    if (frist) return { ok: false, grund: `${m.id}: ${frist}`, feld: "aufbewahrung" };
   }
 
   const uferlos = laengeGeprueft(bestand);
   if (uferlos) return uferlos;
 
   return { ok: true };
+}
+
+/* --------------------------------------------------------------------------
+   KENNUNGEN DER BETRIEBE
+
+   Zwei Betriebe mit derselben Kennung hielt bis Oktober 2026 nichts auf.
+   Genau das ließ sich ausnutzen: Neben dem eigenen Betrieb ein zweites
+   Exemplar mit derselben Kennung mitschicken — die Einheitsprüfung sah nur
+   das erste, beim Zerlegen in Monatsscherben verschmolzen beide, und die
+   Änderungen am zweiten standen danach im echten Betrieb.
+
+   Kennungen sind im ganzen Produkt Zeichenketten (uid, Raumname, „m-…").
+   Alles andere wird abgewiesen, ebenso leere. Verglichen wird ohne
+   Leerraum am Rand, damit „A" und „ A " nicht als zwei Betriebe
+   durchgehen. Die Kennung selbst wird nicht verändert.
+   -------------------------------------------------------------------------- */
+export function mandantenKennungenGeprueft(mandanten) {
+  if (!Array.isArray(mandanten)) return null;
+  const gesehen = new Set();
+  for (const m of mandanten) {
+    if (!m || typeof m !== "object" || Array.isArray(m))
+      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
+    if (typeof m.id !== "string" || !m.id.trim())
+      return { ok: false, grund: "Einem Betrieb fehlt eine gültige Kennung.", feld: "mandanten[].id" };
+    const vergleich = m.id.trim();
+    if (gesehen.has(vergleich))
+      return { ok: false, grund: "Zwei Betriebe tragen dieselbe Kennung.", feld: "mandanten[].id" };
+    gesehen.add(vergleich);
+  }
+  return null;
 }
 
 /* --------------------------------------------------------------------------
@@ -96,8 +213,8 @@ const TEXT_MAX = 100_000;
 
 /** Wie viele Einträge darf eine Liste je Betrieb tragen? */
 const MENGEN = {
-  personen: 20_000, einheiten: 2_000, dienstarten: 500, standorte: 500,
-  qualifikationen: 500, kompetenzen: 5_000, aufgaben: 500, betriebsmittel: 50_000,
+  personen: 20_000, einheiten: 2_000, dienstarten: 500, standorte: 500, einsatzorte: 5_000,
+  qualifikationen: 500, kompetenzen: 5_000, aufgaben: 500, betriebsmittel: 50_000, objekte: 500,
   abwesenheiten: 200_000, anfragen: 100_000,
   nachrichten: 100_000, wuensche: 200_000, ausschreibungen: 20_000,
   uebergaben: 100_000, protokoll: 50_000, aenderungen: 100_000,

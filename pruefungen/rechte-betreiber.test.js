@@ -165,7 +165,11 @@ describe("Betriebliches bleibt liegen", () => {
    Anlegen sinnlos — und wenn sie zu viel kann, ist es gefährlich.
    ========================================================================== */
 
-const LEITUNG = { rolle: "leitung", mandantId: "m2", person: "p1" };
+/* Sitzungen finden ihren Betrieb über den Index im Bestand (sitzung.betrieb).
+   m2 steht an Stelle 1 — bis Oktober 2026 fehlte der Index hier, der Server
+   ordnete die Sitzung deshalb m1 zu, und der Test lief nur, weil der
+   Schreibweg damals jeden mitgeschickten Betrieb übernahm. */
+const LEITUNG = { rolle: "leitung", betrieb: 1, person: "p1" };
 
 /* Was die Leitung von m2 ausgeliefert bekommt: ihren eigenen Betrieb, die
    Betreiberangaben für die Rechnungsansicht — aber nicht die Betriebe der
@@ -333,11 +337,11 @@ describe("Rollenwechsel beim Speichern", () => {
 });
 
 describe("Randfälle", () => {
-  it("ohne gespeicherten Stand wird der übermittelte genommen", () => {
-    /* Der allererste Schreibvorgang in einen leeren Raum. Gäbe es hier
-       null zurück, ließe sich ein Betrieb nie anlegen. */
-    const neu = bestand();
-    expect(zusammenfuehren(null, neu, SITZUNG)).toBe(neu);
+  it("ohne gespeicherten Stand wird über diesen Weg nichts angelegt", () => {
+    /* Einen leeren Raum richtet seit Oktober 2026 /api/bestand-anlegen ein,
+       mit Gestaltprüfung (erstbefuellung.mjs). Vorher nahm dieser Weg den
+       übermittelten Bestand ungeprüft als ersten Stand. */
+    expect(zusammenfuehren(null, bestand(), SITZUNG).verweigert).toBeTruthy();
   });
 
   it("ohne übermittelten Stand wird nichts geschrieben", () => {

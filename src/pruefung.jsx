@@ -8,11 +8,15 @@ import React from "react";
 
 import { C, C_DUNKEL, C_HELL } from "./farben.js";
 import { ANWENDUNG_URL } from "./kontakt.js";
+import { PAKETE, branchenpaketeZeile } from "./stufen.js";
+import { kannMerkmal, mandantPaketkosten, paketPositionen } from "./paketlogik.js";
 /* Diese Datei trägt an vielen Stellen eigene Kopien aus App.jsx. Die
    Verbindlichkeit einer Anforderung gehört ausdrücklich nicht dazu: Eine
    zweite, abweichende Auslegung davon, was gesetzlich zwingend ist, wäre
    genau der Fehler, den das Merkmal verhindern soll. */
 import { verbindlichkeit } from "./regelwerk.js";
+/* Die Ortsprüfung beim Stempeln gibt es nur einmal (server/lib/geo.mjs). */
+import { abstandMeter, geoUrteil } from "../server/lib/geo.mjs";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -451,7 +455,7 @@ const TARIFE_STD = [
   { id: "enterprise", name: "Enterprise", jeStandort: 239, bisPersonen: null,
     grenzen: { einheiten: 200, personen: 100000 },
     paketeFrei: 2,
-    leistungen: ["Alles aus Professional", "Zwei Branchenpakete enthalten",
+    leistungen: ["Alles aus Professional", branchenpaketeZeile(),
       "Beliebig viele Personen je Standort", "Leistungsnachweis für Auftraggeber",
       "Auftragsverarbeitung nach Artikel 28", "Bevorzugter Rückruf"] },
 ];
@@ -1384,15 +1388,19 @@ function preis(db, m) {
   const st = staffel(zeilen.length);
   for (const z of zeilen) z.netto = Math.round(z.einzel * (1 - st.rabatt) * 100) / 100;
   const summeStandorte = Math.round(zeilen.reduce((a, z) => a + z.netto, 0) * 100) / 100;
-  // Branchenpakete werden je Betrieb berechnet, nicht je Standort
-  const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
-  const summePakete = pakete.reduce((a, p) => a + (p.aufpreis || 0), 0);
+  const t = zeilen.length ? zeilen.reduce((a, z) =>
+    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
+  // Branchenpakete werden je Betrieb berechnet, nicht je Standort. Dieselbe Logik wie die
+  // Betreiberkonsole (paketlogik.js): Zustand < 5 und Pilot berechnen nichts, die in der
+  // Stufe enthaltenen Pakete sind frei.
+  const pk = mandantPaketkosten(m, (t && t.paketeFrei) || 0);
+  const pakete = pk.gewaehlt;
+  const summePakete = pk.summe;
   const gesamt = Math.round((summeStandorte + summePakete) * 100) / 100;
   const zahlt = stat(m.status).zahlt;
   const personen = aktiv.length;
-  const t = zeilen.length ? zeilen.reduce((a, z) =>
-    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
   return { t, zeilen, standorte: zeilen.length, st, pakete, summeStandorte, summePakete,
+    paketeFrei: pk.frei, paketeNichtBerechnet: pk.nichtBerechnet,
     gesamt, zahlt, wirksam: zahlt ? gesamt : 0, personen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0,
     ueberEinheiten: m.einheiten.length > t.grenzen.einheiten,
@@ -1569,9 +1577,7 @@ function baueRechnung(db, m, monatISO) {
   if (p.st.rabatt > 0)
     positionen.push({ text: `Mengenstaffel ${p.st.label}`, menge: "", einzel: "",
       betrag: `−${Math.round(p.st.rabatt * 100)} %` });
-  for (const pk of p.pakete)
-    positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
-      betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+  positionen.push(...paketPositionen(p, eur));
   if (p.anteil < 1)
     positionen.push({ text: `Anteilig ${p.tage} von ${p.gesamtTage} Tagen`, menge: "",
       einzel: "", betrag: "" });
@@ -2516,31 +2522,10 @@ function nachweisLage(m) {
 }
 
 /* ------------------------ Standortprüfung beim Stempeln ------------------ */
-/** Abstand zweier Koordinaten in Metern (Haversine). */
-function abstandMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000, rad = (x) => (x * Math.PI) / 180;
-  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-/**
- * Bewertet einen Stempelvorgang gegen den hinterlegten Einsatzort.
- * Bewusst nur als Ereignis: kein Verlauf, keine Hintergrundortung.
- * Gespeichert wird ausschließlich das Ergebnis, nicht die Koordinate.
- */
-function stempelPruefen(m, p, datum, koord) {
-  const t = personTag(m, p, datum);
-  const da = t.dienstId && m.dienstarten.find((x) => x.id === t.dienstId);
-  const eid = einheitAm(p, datum);
-  const e = m.einheiten.find((x) => x.id === eid);
-  const st = e && m.standorte.find((x) => x.id === e.standortId);
-  if (!koord || !st || st.lat === undefined)
-    return { geprueft: false, text: "Ohne Standortfreigabe erfasst" };
-  const d = abstandMeter(koord.lat, koord.lon, st.lat, st.lon);
-  const radius = st.radius || 200;
-  return { geprueft: true, abstand: d, radius, innerhalb: d <= radius, standort: st.name,
-    text: d <= radius ? `Am Einsatzort (${d} m)` : `Abweichend, ${d > 1500 ? `${n1(d / 1000)} km` : `${d} m`} entfernt` };
-}
+/* Selbsttest gegen die eine Prüfung (server/lib/geo.mjs), mit eingeschaltetem
+   Betriebsschalter — keine eigene Kopie mehr. */
+const stempelPruefen = (m, p, datum, messung) => geoUrteil({
+  m: { ...m, einstellungen: { ...(m.einstellungen || {}), geoPruefung: true } }, person: p, datum, messung });
 const stempelStand = (m, p, datum) => (m.einstempeln || {})[`${p.id}|${datum}`] || null;
 
 /* -------------------------------- Auslastung ----------------------------- */
@@ -3018,34 +3003,11 @@ function antragUmsetzen(m, a) {
    freigeschaltet — der Rechenkern bleibt für alle derselbe.
    ========================================================================== */
 
-/**
- * Pakete bestimmen, welche Ansichten und Regeln ein Betrieb sieht.
- * Bewusst grob geschnitten: fünf Pakete statt fünfzig einzelner Schalter.
- */
-const PAKETE = [
-  { id: "kern", name: "Kernplattform", pflicht: true,
-    beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen.",
-    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
-  { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
-    beschreibung: "Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, Standortprüfung beim Stempeln.",
-    merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
-  { id: "pflege", name: "Pflege", aufpreis: 89,
-    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, Betreuungskräfte nach § 43b.",
-    merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
-  { id: "klinik", name: "Klinik", aufpreis: 129,
-    beschreibung: "Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, geteilte Dienste, Funktionsdienste, Rotationen.",
-    merkmale: ["bereitschaftsdienst", "geteilterdienst", "funktionsdienst", "rotation", "uebergabe", "fachkraftquote"] },
-  { id: "industrie", name: "Industrie und Anlagen", aufpreis: 59,
-    beschreibung: "Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
-    merkmale: ["anlagen", "maschinenqual", "kontimodelle"] },
-];
-
-const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
+/* PAKETE und paketVon stehen in stufen.js (eine Fassung, G9). Die frühere
+   Kopie an dieser Stelle war veraltet: andere Namen und Texte, und sie
+   bewarb Geplantes als verfügbar. */
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
-const kann = (m, merkmal) => {
-  const aktiv = ["kern", ...(m.pakete || [])];
-  return PAKETE.filter((p) => aktiv.includes(p.id)).some((p) => p.merkmale.includes(merkmal));
-};
+const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
 /** Welche Pakete schlägt eine Branche vor? */
 const paketeFuerBranche = (b) => ({
   sicherheit: ["sicherheit"], pflege: ["pflege"], klinik: ["klinik"],
@@ -3849,7 +3811,7 @@ const HANDBUCH = [
           "Anliegen: Anträge, Krankmeldung, Tauschbörse, Stundenkonto.",
           "Mehr: Verfügbarkeit, Wunschdienste, Nachweise, Schwarzes Brett, Feldmodus.",
         ],
-        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert wird nur, ob jemand am Einsatzort war — keine Koordinate, kein Verlauf, keine Dauerortung.",
+        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung.",
       },
       {
         titel: "Häufige Fragen",
@@ -3859,7 +3821,7 @@ const HANDBUCH = [
           "„Wie viele Urlaubstage habe ich noch?\" — Mehr, oben in den Kennzahlen.",
           "„Kann ich tauschen?\" — Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.",
           "„Warum steht mein Konto im Minus?\" — Anliegen, Stundenkonto, mit Verlauf über sechs Monate.",
-          "„Sieht der Chef, wo ich bin?\" — Nein. Nur ob du beim Stempeln am Einsatzort warst.",
+          "„Sieht der Chef, wo ich bin?\" — Nein. Nur Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort beim Stempeln.",
         ],
       },
     ],
@@ -3898,7 +3860,8 @@ const HANDBUCH = [
   /* ------------------------------------------------------------------ */
   {
     id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    nurWenn: (m) => kann(m, "sperreEigen") || kann(m, "posten"),
+    /* Nur das Paketmerkmal des Bestands, kein Branchenmodul (G10, WP-19.0) — „posten" liegt im selben Paket. */
+    nurWenn: (m) => kann(m, "sperreEigen"),
     einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
     abschnitte: [
       {
@@ -4950,7 +4913,7 @@ const TOUR = {
           pruefen: "Steht dort „frei\", hast du heute keinen Dienst." },
         { titel: "Ein- und ausstempeln", ziel: "heute",
           text: "Der große Knopf auf der Startseite. Beim Stempeln wird einmalig geprüft, ob du am Einsatzort bist.",
-          merke: "Gespeichert wird nur, ob du dort warst — keine Koordinate, kein Verlauf, keine Dauerortung." },
+          merke: "Gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung." },
         { titel: "Mein Plan", ziel: "meinplan",
           text: "Kommende Dienste als Liste oder Monatsansicht. Filter für nur Dienste, nur frei, Nachtdienste, Wochenende.",
           tun: "Wechsle einmal zwischen Liste und Monat." },
@@ -6161,7 +6124,7 @@ const EINFUEHRUNG = {
     { titel: "Willkommen bei CENTRIC", ziel: null,
       text: "Hier findest du deinen Dienstplan, stempelst ein und stellst Anträge. Der Rundgang dauert eine Minute." },
     { titel: "Heute", ziel: null,
-      text: "Der Startbildschirm zeigt deinen Dienst des Tages mit einem großen Knopf zum Ein- und Ausstempeln. Beim Stempeln wird einmalig der Standort geprüft — gespeichert wird nur, ob du am Einsatzort warst, keine Koordinate und kein Verlauf." },
+      text: "Der Startbildschirm zeigt deinen Dienst des Tages mit einem großen Knopf zum Ein- und Ausstempeln. Beim Stempeln wird einmalig der Standort geprüft — gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort, keine Koordinate und kein Verlauf." },
     { titel: "Mein Plan", ziel: null,
       text: "Kommende Dienste als Liste oder Monatsansicht. Ein Tipp auf einen Tag öffnet die Möglichkeiten: Tausch suchen, frei beantragen oder einen Wunsch hinterlegen." },
     { titel: "Anliegen", ziel: null,
@@ -6801,9 +6764,9 @@ function selbsttest() {
     const km = abstandMeter(50.1109, 8.6821, 52.3759, 9.7320) / 1000;
     return km > 255 && km < 270; })());
   ok("Stempel am Einsatzort wird erkannt", true,
-    stempelPruefen(m, m.personen[3], heute(), { lat: 50.1112, lon: 8.6825 }).innerhalb);
+    stempelPruefen(m, m.personen[3], heute(), { lat: 50.1112, lon: 8.6825, accuracy: 10 }).innerhalb);
   ok("Stempel abseits wird erkannt", false,
-    stempelPruefen(m, m.personen[3], heute(), { lat: 50.15, lon: 8.72 }).innerhalb);
+    stempelPruefen(m, m.personen[3], heute(), { lat: 50.15, lon: 8.72, accuracy: 10 }).innerhalb);
   ok("Ohne Standortfreigabe wird nicht geprueft", false,
     stempelPruefen(m, m.personen[3], heute(), null).geprueft);
 

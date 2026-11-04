@@ -16,6 +16,8 @@
    still auf den Einzelschlüssel.
    ========================================================================== */
 
+import { unterRaumsperre, KONTEN_SPERRE } from "./raumsperre.mjs";
+
 const PRAEFIX = "konto:";
 const SAMMEL = "konten";
 
@@ -64,13 +66,20 @@ export async function alleKonten(store) {
  * Läuft beiläufig bei der Anmeldung; ein Fehler bleibt folgenlos.
  */
 export async function kontoVereinzeln(store, schluessel) {
+  /* Unter der Sperre des Sammelblobs (KONTEN_SPERRE, raumsperre.mjs) — wie
+     dessen Bereinigung bei der Raumlöschung (raumloeschung.mjs). Ohne sie
+     konnte eine Anmeldung während der Löschung konto:X aus dem noch vollen
+     Sammelblob neu anlegen, und der Code zeigte danach auf einen gelöschten
+     Raum. */
   try {
-    const einzeln = await store.get(PRAEFIX + schluessel, { type: "json" });
-    if (einzeln) return false;
-    const sammel = (await store.get(SAMMEL, { type: "json" })) || {};
-    if (!sammel[schluessel]) return false;
-    await store.setJSON(PRAEFIX + schluessel, sammel[schluessel]);
-    return true;
+    return await unterRaumsperre(KONTEN_SPERRE, async () => {
+      const einzeln = await store.get(PRAEFIX + schluessel, { type: "json" });
+      if (einzeln) return false;
+      const sammel = (await store.get(SAMMEL, { type: "json" })) || {};
+      if (!sammel[schluessel]) return false;
+      await store.setJSON(PRAEFIX + schluessel, sammel[schluessel]);
+      return true;
+    });
   } catch { return false; }
 }
 
@@ -94,7 +103,7 @@ export async function raumUebersicht(store, raum, { eigen = null } = {}) {
     .filter(([, k]) => k && k.bestand === raum)
     .map(([h, k]) => ({
       kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
-      betrieb: k.betrieb ?? 0, person: k.person ?? null, demo: !!k.demo,
+      betrieb: k.betrieb ?? 0, mandantId: k.mandantId || null, person: k.person ?? null, demo: !!k.demo,
       gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
       selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,
       angelegt: k.angelegt || null,

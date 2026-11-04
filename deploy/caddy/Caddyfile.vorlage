@@ -1,0 +1,82 @@
+# =====================================================================
+#  CENTRIC — Caddy-Site für app.centric-dienstplanung.de (VORLAGE, WP-32)
+#
+#  Diese Datei ist eine Vorlage im Repository, NICHT die Konfiguration
+#  auf dem VPS. Die laufende Fassung liegt unter
+#  /opt/proxy/sites/app.centric-dienstplanung.de.caddy und wurde für diese
+#  Vorlage nicht gelesen (kein Zugriff auf den VPS). Vor dem Einspielen
+#  mit der laufenden Fassung vergleichen und die Unterschiede bewusst
+#  entscheiden — siehe docs/CADDY-UND-XFF.md, Abschnitt „Einspielen“.
+#
+#  Voraussetzung: Caddy 2.7 oder neuer (getestet ist die Vorlage nicht
+#  gegen einen laufenden Caddy; `caddy validate` vor dem Neuladen).
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Globale Optionen — gehören in /opt/proxy/Caddyfile, nicht in die Site.
+# Hier nur als Kommentar, damit die Entscheidung dokumentiert ist:
+#
+#   {
+#       servers {
+#           # KEIN trusted_proxies.
+#           #
+#           # Caddy ist die erste Station hinter dem Internet; vor ihm
+#           # steht kein CDN und kein Lastverteiler. Damit ist kein
+#           # Absender vertrauenswürdig, und Caddy verwirft jedes
+#           # mitgeschickte X-Forwarded-For, statt es fortzuschreiben.
+#           #
+#           # Kommt eines Tages ein CDN davor, gehören GENAU dessen
+#           # Adressbereiche hierher (trusted_proxies static <CIDR …>) —
+#           # nie `private_ranges` und nie 0.0.0.0/0. Sonst bestimmt der
+#           # Client selbst, welche Adresse die Bremse zählt.
+#       }
+#   }
+# ---------------------------------------------------------------------
+
+app.centric-dienstplanung.de {
+	# TLS, Zertifikat und die Umleitung von http auf https erledigt Caddy
+	# von selbst (automatic HTTPS).
+
+	encode zstd gzip
+
+	# Sicherheitsköpfe. Der Anwendungsserver setzt sie bereits auf jede
+	# Antwort (server.mjs, SICHERHEIT) — einschließlich einer CSP, die nur
+	# er kennt. Caddy ergänzt nur, was fehlt (`?`), damit kein Kopf doppelt
+	# erscheint und keine schwächere Fassung die strengere überschreibt.
+	# `defer`: erst nach der Antwort des Upstreams anwenden.
+	header {
+		defer
+		?Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		?X-Content-Type-Options "nosniff"
+		?X-Frame-Options "SAMEORIGIN"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		?Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
+		-Server
+		-X-Powered-By
+	}
+
+	reverse_proxy centric-dp-web:3000 {
+		# X-Forwarded-For ausdrücklich überschreiben: genau eine Adresse,
+		# die des unmittelbaren Gegenübers von Caddy. {remote_host} hängt
+		# nicht an trusted_proxies — selbst wenn dort später etwas
+		# eingetragen wird, kann ein Client über diesen Kopf keine fremde
+		# Adresse unterschieben. Der Anwendungsserver nimmt den ersten
+		# Eintrag (server/lib/schutz.mjs, herkunft()) — hier ist es der
+		# einzige.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# Ein hängender Upstream soll nicht Verbindungen ansammeln.
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+	}
+
+	# Zugriffsprotokoll: bewusst keines in dieser Vorlage. Die Anwendung
+	# protokolliert ohne Klartextadressen (schutz.mjs, protokoll()); ein
+	# Caddy-Zugriffsprotokoll hielte jede IP-Adresse im Klartext fest und
+	# braucht eine eigene Löschfrist (Datenschutz), bevor es eingeschaltet
+	# wird.
+}

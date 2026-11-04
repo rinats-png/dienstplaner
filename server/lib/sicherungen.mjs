@@ -1,0 +1,409 @@
+/* ==========================================================================
+   SICHERUNGEN — betriebsbezogen anlegen, ausgeben und wiederherstellen
+
+   Bis Oktober 2026 arbeiteten Sicherung, Vollausgabe und Wiederherstellung
+   auf dem ganzen Raum. In einem Raum mit mehreren Betrieben hieß das: Die
+   Leitung eines Betriebs lud die Rohdaten aller Betriebe herunter, und eine
+   Wiederherstellung setzte alle Betriebe auf einen alten Stand zurück —
+   samt Reihenfolge, Rollen, Vertragsfeldern und Protokollen. Sie ging an
+   jeder Prüfung des Schreibwegs vorbei (rechte.mjs) und konnte damit mehr
+   als ein gewöhnliches Speichern. Anlegen und Auflisten durfte jede Rolle,
+   ohne Bremse; zwanzig Sicherungen einer Pflegekraft verdrängten jeden
+   Wiederherstellungspunkt des Tages.
+
+   Hier steht die reine Logik — ohne Speicher, damit sie sich prüfen lässt.
+   Die Endpunkte stehen in server/funktionen/daten.mjs.
+   ========================================================================== */
+
+import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
+import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
+import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
+import { abschlussBeiWiederherstellung } from "./monatsabschluss.mjs";
+import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
+import { planFreigabeAktiv } from "./planfreigabe.mjs";
+import { MODULEINSTELLUNGEN_FELDER } from "./branchenmodule.mjs";
+import { moduldatenBeiWiederherstellung } from "./modulschreibwege.mjs";
+
+/* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
+   verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
+   Rechten, und die Datenschutzansicht bietet dort vor dem Löschlauf
+   „Vorher sichern" an. Planung, Schichtverantwortung, Beschäftigte und
+   Betriebsrat nicht. */
+export const SICHERUNG_ROLLEN = ["leitung", "kunde"];
+
+/* Wer zurückspielen darf: nur die Leitung. Es gibt dafür keine Oberfläche;
+   die Wiederherstellung ist der schwerste Eingriff in einen Betrieb. */
+export const WIEDERHERSTELLEN_ROLLEN = ["leitung"];
+
+/* Zustellwege und Geheimnisse einer Person kommen nie aus einer Sicherung
+   zurück: Ein rotiertes Kalender-Geheimnis oder eine erneuerte
+   Push-Anmeldung darf nicht auf einen alten, womöglich bekannten Wert
+   springen. */
+const PERSON_GEHEIMNISSE = ["kalenderGeheim", "kalenderVerweis", "kalenderStand",
+  "pushSchluessel", "zustellung"];
+
+/** Zeitmarke einer Sicherung: Datum, Uhrzeit, vier Zufallsziffern.
+    Die Ziffern halten zwei Sicherungen derselben Sekunde auseinander. */
+export function markeNeu(jetzt = new Date(), zufall = Math.random) {
+  const zeit = jetzt.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  return `${zeit}-${String(Math.floor(zufall() * 10000)).padStart(4, "0")}`;
+}
+export const MARKE = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(-\d{4})?$/;
+
+/** Der Betrieb dieser Sitzung im gespeicherten Bestand — oder null. */
+export function eigenerBetrieb(bestand, sitzung) {
+  const ort = gespeicherterBetrieb(bestand, sitzung);
+  if (!ort || !ort.betrieb || typeof ort.betrieb.id !== "string") return null;
+  return ort;
+}
+
+/** Was in eine manuelle Sicherung kommt: nur der eigene Betrieb. */
+export function betriebsSicherung(bestand, ort, { stand = null, durch = null, jetzt = new Date() } = {}) {
+  /* session am Betrieb ist kein Bestandsfeld (Commit D1c) — auch nicht in einer neuen Sicherung. */
+  const { session, ...mandant } = ort.betrieb; // eslint-disable-line no-unused-vars
+  return {
+    centric: "sicherung", fassung: 2, umfang: "betrieb",
+    mandantId: ort.betrieb.id, erzeugt: jetzt.toISOString(), stand, durch,
+    mandant,
+  };
+}
+
+/** Den Betrieb mit dieser Kennung aus einer Sicherung holen — aus einer
+    betriebsbezogenen (fassung 2) oder einer raumweiten (automatische und
+    ältere Sicherungen: ein ganzer Bestand). */
+export function betriebAusSicherung(sicherung, mandantId) {
+  if (!sicherung || typeof sicherung !== "object") return null;
+  if (sicherung.umfang === "betrieb")
+    return sicherung.mandantId === mandantId && sicherung.mandant
+      && sicherung.mandant.id === mandantId ? sicherung.mandant : null;
+  if (Array.isArray(sicherung.mandanten)) {
+    const treffer = sicherung.mandanten.filter((m) => m && m.id === mandantId);
+    return treffer.length === 1 ? treffer[0] : null;
+  }
+  return null;
+}
+
+/** Zu welchem Kontingent gehört eine Sicherung? Automatische, je Betrieb
+    manuelle und ältere raumweite werden getrennt ausgedünnt — eine Flut
+    manueller Sicherungen verdrängt so keinen automatischen Schutzpunkt
+    und keine Sicherung eines anderen Betriebs. */
+export function kontingent(meta) {
+  if (meta && meta.automatisch === "ja") return "automatisch";
+  if (meta && meta.mandantId) return `betrieb:${meta.mandantId}`;
+  return "raum";
+}
+
+/** Welche Sicherungen fallen weg? Je Kontingent die zwanzig neuesten,
+    von älteren Tagen je die jüngste. Eingabe: [{ key, marke, meta }]. */
+export function auszuduennen(eintraege, behaltenNeueste = 20) {
+  const nachKontingent = new Map();
+  for (const e of eintraege) {
+    const k = kontingent(e.meta);
+    if (!nachKontingent.has(k)) nachKontingent.set(k, []);
+    nachKontingent.get(k).push(e);
+  }
+  const weg = [];
+  for (const liste of nachKontingent.values()) {
+    const sortiert = [...liste].sort((a, b) => b.marke.localeCompare(a.marke));
+    const tage = new Set();
+    sortiert.forEach((e, i) => {
+      if (i < behaltenNeueste) return;
+      const tag = String(e.marke).slice(0, 10);
+      if (tage.has(tag)) weg.push(e.key);
+      else tage.add(tag);
+    });
+  }
+  return weg;
+}
+
+/** Ein Eintrag der Liste, wie ihn die Leitung sieht. Raumweite Sicherungen
+    erscheinen, weil sich der eigene Betrieb aus ihnen zurückholen lässt —
+    wer sie angelegt hat, nur bei automatischen (dann steht dort kein Name). */
+export function listenEintrag(marke, meta, eigeneId) {
+  const m = meta || {};
+  if (m.mandantId && m.mandantId !== eigeneId) return null;
+  const automatisch = m.automatisch === "ja";
+  return { marke, zeit: m.zeit || null, automatisch,
+    umfang: m.mandantId ? "betrieb" : "raum",
+    durch: m.mandantId || automatisch ? (m.durch || null) : null };
+}
+
+/**
+ * Den eigenen Betrieb aus einer Sicherung zurückspielen.
+ *
+ * Gibt den neuen Bestand zurück oder { verweigert, status }. Ersetzt wird
+ * genau der Betrieb der Sitzung, an seiner Stelle. Alle anderen Betriebe und
+ * die oberste Ebene bleiben, wie sie sind. Aus dem jetzigen Stand bleiben:
+ * Vertragsfelder, Protokoll und Planänderungen des Betriebs, anonymisierte
+ * Personen, Zustellwege und Geheimnisse. Rollen werden geprüft wie beim
+ * Speichern — eine Sicherung holt keine höhere Rolle zurück, als die Leitung
+ * vergeben dürfte.
+ *
+ * Ebenso aus dem jetzigen Stand: alles, was die Leitung beim gewöhnlichen
+ * Speichern nicht schreiben darf — die Rechnungsstammdaten des Betreibers
+ * (BETREIBERSTAMM), Felder außerhalb ihrer Sicht im Betrieb (VOLL_BETRIEB)
+ * und an bestehenden Personen (VOLL_PERSON, für die eigene Person
+ * PERSONENFELDER), also etwa Bank-, Steuer- und Lohnangaben. Dieselbe Grenze
+ * wie vollRueckfuellen in rechte.mjs. Bis hierher kamen diese Felder aus der
+ * Sicherung zurück: Die Leitung konnte eine USt-ID des Betreibers oder eine
+ * geänderte IBAN auf einen älteren Stand zurückdrehen. Personen, die es
+ * heute nicht mehr gibt, kommen vollständig aus der Sicherung zurück — das
+ * ist Wiederherstellen, kein Zurückdrehen.
+ *
+ * @param {any} jetzt
+ * @param {any} sicherung
+ * @param {any} sitzung
+ * @param {{ marke?: string, sicherungsZeit?: (string|null), automatisch?: boolean, zeitquelle?: (string|null), heute?: Date, datenschutz?: string }} [o]
+ *   datenschutz: Modus des Datenschutzlaufs („an" löscht nach Fristen, sonst nur melden)
+ */
+export function betriebWiederherstellen(jetzt, sicherung, sitzung,
+  { marke, sicherungsZeit, automatisch = false, zeitquelle = null, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
+  const ort = eigenerBetrieb(jetzt, sitzung);
+  if (!ort) return { verweigert: "Zu dieser Sitzung gehört kein gespeicherter Betrieb.", status: 409 };
+  const alt = ort.betrieb;
+  const aus = betriebAusSicherung(sicherung, alt.id);
+  if (!aus) return { verweigert: "Diese Sicherung enthält den eigenen Betrieb nicht.", status: 404 };
+
+  /* Was ein Löschlauf entfernt oder anonymisiert hat, kommt nicht zurück.
+     Bis November 2026 wurde dafür jede Sicherung abgelehnt, die vor oder am
+     Tag des letzten Löschlaufs entstand. Seit der Löschlauf täglich auf dem
+     Server läuft (datenschutzlauf.mjs), wäre das fast jede Sicherung — ein
+     älterer Betrieb hätte praktisch nie mehr zurückspielen können (WP-26, H3).
+     Jetzt wird der zurückgespielte Betrieb vor dem Schreiben noch einmal durch
+     den Löschlauf geschickt (raeumen, mit den heutigen Fristen): Was nach den
+     Fristen fort sein muss, ist es auch danach; anonymisierte Personen bleiben
+     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr —
+     wohl aber für die Löschvermerke des Ausnahmewegs (unten, dritter Review F1):
+     Sie wirken nur auf Sicherungen, die vor dem Vermerk entstanden. Quelle: die
+     Metadaten-Zeit der Ablage, sonst `erzeugt` der Betriebssicherung, sonst
+     unbekannt (dann wirkt jeder Vermerk). */
+  /* Vierter Review N-1 / fünfter Review B-1: Eine automatische Sicherung („vor Verlust") entsteht im selben
+     Speichervorgang wie ein Vermerk. Seit dem fünften Review trägt jede NEUE automatische Sicherung als Zeit
+     die Lesezeit des gesicherten Stands (vor dem Zusammenführen) und die Markierung `zeitquelle: "lesezeit"`;
+     dann gilt diese Zeit wie bei einer manuellen Sicherung (ein Vermerk derselben Anfrage ist jünger und wirkt,
+     eine spätere Berichtigung oder Neuplanung bleibt erhalten). Nur eine automatische Sicherung OHNE diese
+     Markierung (Altbestand, Zeit nicht verlässlich) gilt als „Zeit unbekannt": dort wirkt jeder Vermerk. */
+  const zeitDerSicherung = (automatisch && zeitquelle !== "lesezeit") ? null
+    : typeof sicherungsZeit === "string" && sicherungsZeit ? sicherungsZeit
+    : (sicherung && typeof sicherung.erzeugt === "string" && sicherung.erzeugt ? sicherung.erzeugt : null);
+
+  const jetztPersonen = new Map((alt.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
+  const personen = (Array.isArray(aus.personen) ? aus.personen : []).map((p) => {
+    if (!p || typeof p !== "object") return p;
+    const heute2 = jetztPersonen.get(String(p.id));
+    if (heute2 && heute2.anonym) return heute2;                 // anonymisiert bleibt anonymisiert
+    const rein = { ...p };
+    for (const f of PERSON_GEHEIMNISSE) {
+      if (heute2 && f in heute2) rein[f] = heute2[f];
+      else delete rein[f];
+    }
+    if (heute2) {
+      const sichtbar = String(p.id) === String(sitzung.person) ? PERSONENFELDER : VOLL_PERSON;
+      for (const f of new Set([...Object.keys(rein), ...Object.keys(heute2)])) {
+        if (sichtbar.includes(f)) continue;
+        if (f in heute2) rein[f] = heute2[f];
+        else delete rein[f];
+      }
+    }
+    return rein;
+  });
+
+  const eintrag = { id: `w-${marke || "?"}`, zeit: heute.toLocaleString("de-DE"),
+    text: `Betrieb aus der Sicherung ${marke || "?"} wiederhergestellt` };
+  const zurueck = { ...aus, id: alt.id, personen,
+    protokoll: [eintrag, ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])],
+    aenderungen: alt.aenderungen };
+  if (!("aenderungen" in alt)) delete zurueck.aenderungen;
+  const behalten = ["id", "personen", "protokoll", "aenderungen"];
+  for (const feld of new Set([...Object.keys(zurueck), ...Object.keys(alt)])) {
+    if (behalten.includes(feld) || VOLL_BETRIEB.includes(feld)) continue;
+    if (feld in alt) zurueck[feld] = alt[feld];
+    else delete zurueck[feld];
+  }
+  for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) {
+    if (feld in alt) zurueck[feld] = alt[feld];
+    else delete zurueck[feld];
+  }
+
+  /* Planfreigabe (WP-23): Die Pflicht samt Wann/Wer gilt weiter, wie sie heute ist — eine alte
+     Sicherung (vor WP-23 oder vor der Aktivierung) schaltet den Entwurfsschutz nicht still ab.
+     Wirkte der Filter bisher nur über Freigaben und hat die Sicherung keine, bleiben die
+     jetzigen Freigaben (Vereinigung): sonst sähen Beschäftigte danach wieder Entwürfe. */
+  const altE = alt.einstellungen && typeof alt.einstellungen === "object" ? alt.einstellungen : {};
+  if ("planFreigabePflicht" in altE) {
+    const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
+    for (const f of ["planFreigabePflicht", "planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"]) {
+      if (f in altE) z[f] = altE[f]; else delete z[f];
+    }
+    zurueck.einstellungen = z;
+  }
+  /* Branchenmodule (WP-19.0): Schalter samt Mitbestimmungsbestätigung, betriebliche Regelwerte, das
+     Modulprotokoll und die Löschvermerke gelten weiter, wie sie heute sind. Eine alte Sicherung schaltet
+     kein Modul ohne Bestätigung ein, hebt keinen Regelwert an und kürzt das Protokoll nicht. */
+  {
+    const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
+    for (const f of MODULEINSTELLUNGEN_FELDER) {
+      if (f in altE) z[f] = altE[f]; else delete z[f];
+    }
+    if ((zurueck.einstellungen && typeof zurueck.einstellungen === "object") || Object.keys(z).length) zurueck.einstellungen = z;
+  }
+  /* Moduldaten (zweiter Opus-Review M3, Betreiber-Ergänzung A4):
+     - Die Daten eines Moduls, das heute nur lesbar ist (G3), kommen aus dem jetzigen Stand —
+       sonst wäre Wiederherstellen ein Umweg am Nur-Lesen vorbei (ohne Ausnahmeweg, ohne Protokoll).
+     - Was über den Ausnahmeweg gelöscht oder berichtigt wurde (Art. 16/17), kommt nicht zurück:
+       Die Löschvermerke (einstellungen.moduldatenLoeschvermerke, gehasht) wirken auf die Sicherung,
+       auch wenn das Modul inzwischen wieder eingeschaltet ist.
+     - Eine Ausnahmeangabe (moduldatenAusnahme) ist nie Teil eines Betriebs (H1). */
+  const md = moduldatenBeiWiederherstellung(alt, zurueck, undefined, { sicherungsZeit: zeitDerSicherung });
+  /* Dritter Review F4: Geschlüsselte Löschvermerke ohne Serverschlüssel (CENTRIC_PFEFFER fehlt) sind nicht
+     prüfbar — dann kein Wiederherstellen, statt Gelöschtes womöglich zurückzubringen (fail-closed). */
+  if (md.unpruefbar) return { verweigert: "Löschvermerke des Datenschutz-Ausnahmewegs sind ohne den Serverschlüssel "
+    + "(CENTRIC_PFEFFER) nicht prüfbar — er fehlt oder wurde gegenüber dem Schlüssel geändert, mit dem die Vermerke "
+    + "entstanden. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
+  if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
+    zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
+      ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };
+  }
+
+  /* Wann/Wer der Ortsangaben (WP-20, N8): Die Liste der Einsatzorte und die Ortsmodi der Dienstarten kommen aus
+     der Sicherung — mit deren Vermerk. Fehlt er (Sicherung vor dem Vermerk) und der Stand ändert sich dadurch,
+     ist die Wiederherstellung selbst die Änderung: jetzt, durch die zurückspielende Person. Bleibt der Stand
+     gleich, gilt der gespeicherte Vermerk weiter. */
+  {
+    const jetztIso = heute.toISOString();
+    const wer = sitzung && sitzung.person !== undefined ? sitzung.person : null;
+    const gleichJ = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    delete zurueck.einsatzorteGeaendertAm; delete zurueck.einsatzorteGeaendertVon;
+    if ("einsatzorteGeaendertAm" in aus) {
+      zurueck.einsatzorteGeaendertAm = aus.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in aus) zurueck.einsatzorteGeaendertVon = aus.einsatzorteGeaendertVon;
+    } else if (!gleichJ(aus.einsatzorte, alt.einsatzorte)) {
+      zurueck.einsatzorteGeaendertAm = jetztIso; zurueck.einsatzorteGeaendertVon = wer;
+    } else {
+      if ("einsatzorteGeaendertAm" in alt) zurueck.einsatzorteGeaendertAm = alt.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in alt) zurueck.einsatzorteGeaendertVon = alt.einsatzorteGeaendertVon;
+    }
+    const altD = new Map((Array.isArray(alt.dienstarten) ? alt.dienstarten : []).filter((d) => d && typeof d === "object").map((d) => [String(d.id), d]));
+    if (Array.isArray(zurueck.dienstarten)) {
+      zurueck.dienstarten = zurueck.dienstarten.map((d) => {
+        if (!d || typeof d !== "object" || "ortGeaendertAm" in d) return d;
+        const v = altD.get(String(d.id));
+        const geaendert = v ? !Object.is(v.ortModus, d.ortModus) || !Object.is(v.einsatzortId, d.einsatzortId)
+          : d.ortModus !== undefined || d.einsatzortId !== undefined;
+        return geaendert ? { ...d, ortGeaendertAm: jetztIso, ortGeaendertVon: wer } : d;
+      });
+    }
+  }
+
+  /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen
+     Stempel zurück und setzt keinen auf einen älteren Stand. Was heute gespeichert ist, bleibt —
+     mit Korrekturen und abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat.
+     Das kommt VOR den Fristen: Was die Aufbewahrungsfrist überschritten hat, löscht der
+     Datenschutzlauf (Modus „an") — auch aus dem, was die Sicherung zurückbringt
+     (Art. 5 Abs. 1 lit. e DSGVO). Umgekehrt käme Gelöschtes zurück. */
+  const st0 = stempelBeiWiederherstellung(alt, zurueck);
+  /* Monatsabschluss (WP-16): Der Abschlussstand bleibt der heutige, und in heute abgeschlossenen Monaten
+     bleiben Stempel und Ist-Zeiten, wie sie heute sind — eine Sicherung öffnet keinen Monat und dreht
+     kein abgeschlossenes Ist zurück. Vor den Fristen (gleicher Grund wie oben). */
+  const st = { ...st0, mandant: abschlussBeiWiederherstellung(alt, st0.mandant).mandant };
+  const stempelProtokoll = st.behalten
+    ? { ...st.mandant, protokoll: [{ ...eintrag, text: `${eintrag.text} · ${st.behalten} Stempel aus dem aktuellen Stand behalten` },
+      ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])] }
+    : st.mandant;
+
+  /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung), am
+     heutigen Tag in Berlin (wie der Datenschutzlauf). Gelöscht wird nur im
+     Modus „an" (N-3) — bei „aus" und „vorschau" löscht auch der Lauf nicht;
+     dann wird nur gemeldet, was nach den Fristen fällig wäre. Eine ungültige
+     Fristangabe löscht nie (fail-closed, wie im Lauf). */
+  const heuteIso = heuteBerlin(heute);
+  const mitFristen = { ...stempelProtokoll, aufbewahrung: alt.aufbewahrung ?? stempelProtokoll.aufbewahrung };
+  const ungueltig = aufbewahrungFehler(mitFristen.aufbewahrung);
+  let ergebnis = mitFristen;
+  let fristen;
+  if (ungueltig) {
+    fristen = { modus: datenschutz, geloescht: false, faellig: null, text: `Nicht nach Fristen bereinigt: ${ungueltig}` };
+  } else if (datenschutz === "an") {
+    const r = raeumen(mitFristen, heuteIso);
+    ergebnis = r.mandant;
+    fristen = { modus: datenschutz, geloescht: r.bericht.gesamt > 0, faellig: r.bericht.gesamt, text: berichtstext(r.bericht) };
+  } else {
+    const plan = vorschau(mitFristen, heuteIso);
+    fristen = { modus: datenschutz, geloescht: false, faellig: plan.gesamt,
+      text: plan.gesamt ? `Nach den Fristen fällig, aber nicht gelöscht (Datenschutzlauf „${datenschutz}"): ${berichtstext(plan)}`
+        : berichtstext(plan) };
+  }
+  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? ergebnis : m)) };
+  const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
+  if (!rw.ok) return { verweigert: rw.grund, status: 403 };
+  return { bestand: neu, fristen, stempelBehalten: st.behalten };
+}
+
+/* --------------------------------------------------------------------------
+   DATENEXPORT (Vollausgabe) — zwei Umfänge, beide als Positivliste
+
+   Bis Oktober 2026 ging der eigene Betrieb hier roh hinaus: mit den
+   Kalender- und Push-Geheimnissen aller Personen, der internen Notiz des
+   Betreibers, Konditionen und Rechnungsangaben, unbekannten Feldern. Für
+   die Leitung war das ein Umweg an der Lesesicht vorbei (Commit 1e.3), und
+   mit einem fremden Kalendergeheimnis ließ sich dessen Feed lesen und
+   überschreiben.
+
+   Jetzt zwei ausdrückliche Kataloge. Was nicht darin steht, geht nicht
+   hinaus. In keinem: technische Geheimnisse (EXPORT_GEHEIMNISSE) und
+   Betreiberinterna (die Betriebsfelder außerhalb von VOLL_BETRIEB).
+
+   - leitung: die Lesesicht der Leitung (VOLL_PERSON, VOLL_BETRIEB) ohne
+     Zustellfelder — keine Daten, die ihr die normale Sicht nicht gibt; für
+     alle Personen gleich, auch die eigene.
+   - sicherung (Sicherungsschlüssel, externe Datenmitnahme): dazu die
+     Personaldaten des Kunden (Bank, Steuer, Sozialversicherung, Lohn,
+     Notfallkontakt, frühere Anmeldeadresse).
+
+   Sammlungen, Plan und Regelwerk gehen in beiden vollständig hinaus — die
+   Leitung liest sie auch in der normalen Sicht vollständig.
+
+   Das ist ein Datenexport, kein Wiederherstellungsformat: Zurückgespielt
+   wird aus den Sicherungen auf dem Server (oben) bzw. mit
+   werkzeug/ablage-sicherung.mjs.
+   -------------------------------------------------------------------------- */
+export const EXPORT_GEHEIMNISSE = ["kalenderGeheim", "kalenderVerweis", "kalenderStand", "pushSchluessel", "zustellung"];
+export const EXPORT_BETRIEB = VOLL_BETRIEB;
+export const EXPORT_PERSON = {
+  leitung: VOLL_PERSON.filter((x) => !EXPORT_GEHEIMNISSE.includes(x)),
+  sicherung: PERSONENFELDER.filter((x) => !EXPORT_GEHEIMNISSE.includes(x)),
+};
+const nimmNur = (o, felder) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => felder.includes(k)));
+
+/** Der Betrieb im Umfang des Exports. modus: "leitung" oder "sicherung". */
+export function exportBetrieb(m, { modus }) {
+  const personFelder = EXPORT_PERSON[modus];
+  if (!personFelder) throw new Error(`Unbekannter Exportumfang: ${modus}`);
+  const aus = nimmNur(m, EXPORT_BETRIEB);
+  if (Array.isArray(m.personen)) aus.personen = m.personen.map((p) => (p && typeof p === "object" ? nimmNur(p, personFelder) : p));
+  return aus;
+}
+
+/**
+ * Was die Vollausgabe hergibt: den eigenen Betrieb, nicht den Raum.
+ * Ein Sicherungsschlüssel trägt seit Oktober 2026 die Kennung seines
+ * Betriebs. Ältere Schlüssel ohne Kennung gelten nur in einem Raum mit
+ * genau einem Betrieb — sonst wäre unklar, welchen sie meinen.
+ */
+export function vollausgabeBetrieb(bestand, sitzung) {
+  const liste = bestand && Array.isArray(bestand.mandanten) ? bestand.mandanten : [];
+  if (sitzung.nurSicherung) {
+    if (sitzung.mandantId) {
+      const m = liste.find((x) => x && x.id === sitzung.mandantId);
+      return m ? { betrieb: exportBetrieb(m, { modus: "sicherung" }), modus: "sicherung" }
+        : { verweigert: "Der Betrieb dieses Schlüssels besteht nicht mehr.", status: 404 };
+    }
+    if (liste.length === 1) return { betrieb: exportBetrieb(liste[0], { modus: "sicherung" }), modus: "sicherung" };
+    return { verweigert: "Dieser ältere Sicherungsschlüssel ist keinem Betrieb zugeordnet. "
+      + "Bitte einen neuen anlegen.", status: 403 };
+  }
+  const ort = eigenerBetrieb(bestand, sitzung);
+  return ort ? { betrieb: exportBetrieb(ort.betrieb, { modus: "leitung" }), modus: "leitung" }
+    : { verweigert: "Kein Betrieb vorhanden.", status: 404 };
+}

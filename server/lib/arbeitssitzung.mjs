@@ -4,8 +4,9 @@ import {
 import { getStore } from "./ablage.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
-import { bestandLesen } from "./bestand.mjs";
+import { bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
+import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
 
 /* ==========================================================================
@@ -271,7 +272,30 @@ export async function arbeitssitzungPruefen(store, sitzung,
   /* Kein Anker: eine Sitzung aus einem Zugangscode oder ein
      Sicherungsschlüssel. Hier endet die Prüfung, ohne einen Account
      anzufassen. */
-  if (!hatHerkunft(sitzung)) return { ok: true, art: "legacy" };
+  if (!hatHerkunft(sitzung)) {
+    /* Seit Oktober 2026 trägt ein Zugangscode die Kennung seines Betriebs,
+       und die Sitzung mit ihm. Zeigt die Position nicht mehr auf genau
+       diesen Betrieb, gilt sie nicht — dieselbe Prüfung wie unten in
+       Schritt 5 für Sitzungen aus einem Konto. Codes ohne Kennung bleiben
+       wie bisher (erstbefuellung.mjs, codeBindung). */
+    if (typeof sitzung.mandantId === "string" && sitzung.mandantId) {
+      let gelesen;
+      try {
+        gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, sitzung.bestand);
+      } catch (e) {
+        /* Vorübergehend nicht lesbar: weiterreichen (→ 503), die Sitzung bleibt. */
+        if (voruebergehend(e)) throw e;
+        return { ok: false, grund: "bestand-fehler" };
+      }
+      const bestand = gelesen && gelesen.bestand;
+      const grund = bestand ? mandantPruefen(bestand, sitzung.betrieb, sitzung.mandantId) : null;
+      if (grund) {
+        if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
+        return { ok: false, grund };
+      }
+    }
+    return { ok: true, art: "legacy" };
+  }
 
   const h = sitzung.herkunft;
   /* Ab hier wird jede Absage zum Wegräumen der Sitzung führen: Sie ist
@@ -334,12 +358,18 @@ export async function arbeitssitzungPruefen(store, sitzung,
   let gelesen;
   try {
     gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, raum);
-  } catch { return absage("bestand-fehler"); }
+  } catch (e) {
+    /* Vorübergehend nicht lesbar oder gesperrt: kein Grund, die Sitzung
+       wegzuräumen — weiterreichen (→ 503). Erst ein wirklich fehlender
+       Bestand ist eine Absage. */
+    if (voruebergehend(e)) throw e;
+    return absage("bestand-fehler");
+  }
   const bestand = gelesen && gelesen.bestand;
   if (!bestand) return absage("bestand-fehlt");
+  const grundM = mandantPruefen(bestand, sitzung.betrieb, m.mandantId);
+  if (grundM) return absage(grundM);
   const mandant = eigenerMandant(bestand, { betrieb: sitzung.betrieb });
-  if (!mandant) return absage("mandant-fehlt");
-  if (String(mandant.id) !== String(m.mandantId)) return absage("mandant-verschoben");
   const dabei = (Array.isArray(mandant.personen) ? mandant.personen : [])
     .some((p) => p && String(p.id) === String(person));
   if (!dabei) return absage("person-fehlt");

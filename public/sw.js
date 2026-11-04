@@ -15,7 +15,17 @@
      der zuletzt geladene Plan ist lesbar
      die Anwendung sagt, dass sie offline ist und wie alt der Stand ist
 
-   Was nicht geht, und zwar mit Absicht: schreiben. Ein Schichttausch, der
+   Stempeln geht ohne Netz (WP-07) — aber nicht über diese Datei. Die
+   Anwendung legt jedes Stempeln als Ereignis mit eigener Kennung im
+   Stempelpuffer ab (src/stempelpuffer.js, IndexedDB) und sendet es selbst,
+   sobald Netz da ist: beim Start, bei „online", im Vordergrund. Hier wird
+   /api/stempeln nie abgefangen und nie aus einem Speicher beantwortet — eine
+   gespeicherte Antwort wäre eine Quittung für einen Stempel, den der Server
+   nie gesehen hat. Hintergrundsynchronisation (Background Sync) wird nicht
+   genutzt: Safari/iOS kennt sie nicht, und der Dienstarbeiter müsste dafür
+   den Zugang selbst halten.
+
+   Was sonst nicht geht, und zwar mit Absicht: schreiben. Ein Schichttausch, der
    offline „gespeichert" aussieht und beim nächsten Netz mit dem Stand von
    drei anderen kollidiert, richtet mehr Schaden an als eine ehrliche
    Absage. Wer offline etwas ändert, sichert es als Datei — dafür gibt es
@@ -35,10 +45,13 @@
    sich ihr Inhalt ändert — und beim Aktivieren wirft der Dienstarbeiter dann
    jeden Speicher weg, der nicht auf die neue Fassung lautet.
 
-   v3 → v4, weil ein Telefon eine Fassung zeigte, die älter war als alles in
-   diesem Verlauf. Wer eine neue Fassung veröffentlicht und alte Bestände
-   verdächtigt, zählt hier hoch. */
-const FASSUNG = "v4";
+   Die Fassung wird nicht von Hand gezählt (WP-37): Beim Bauen ersetzt
+   werkzeug/sw-fassung.mjs den Platzhalter durch einen Hashwert über den
+   gesamten Bau (Dateinamen der Bauteile, Startseite, diese Datei). Jede neue
+   Auslieferung ist damit eine neue Fassung, und jeder Speicher der alten
+   wird beim Aktivieren verworfen. Im Entwicklungsbetrieb bleibt der
+   Platzhalter stehen — er ist ein gültiger Name. */
+const FASSUNG = "__CENTRIC_BUILD__";
 const SCHALE = `centric-schale-${FASSUNG}`;
 const DATEN = `centric-daten-${FASSUNG}`;
 
@@ -47,7 +60,7 @@ const DATEN = `centric-daten-${FASSUNG}`;
 const GERUEST = [
   "/",
   "/manifest.webmanifest",
-  "/icon-192.png",
+  "/icon-v4-192.png",
   "/favicon-32.png",
 ];
 
@@ -100,6 +113,18 @@ self.addEventListener("message", (e) => {
   }
 });
 
+/* Wem gehört ein gespeicherter Bestand? Abgelegt wird nur ein Hashwert der
+   Sitzungskennung, nie die Kennung selbst. */
+const SITZUNGSKOPF = "x-centric-sitzung";
+async function sitzungsmarke(req) {
+  try {
+    const a = req.headers && req.headers.get("authorization");
+    if (!a) return null;
+    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(a));
+    return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch { return null; }
+}
+
 const istBauteil = (url) =>
   url.pathname.startsWith("/assets/") || url.pathname.endsWith(".woff2");
 
@@ -108,16 +133,28 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;                 // Schreiben nie abfangen
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;  // Fremdes nie anfassen
+  /* Von der Schnittstelle nur der Bestand — /api/stempeln und alles andere
+     geht immer unmittelbar ans Netz (WP-07). */
+  if (url.pathname.startsWith("/api/") && url.pathname !== "/api/bestand") return;
 
   /* --- Gerüst: Netz zuerst, sonst die gespeicherte Seite ---------------
      Netz zuerst, damit eine neue Fassung sofort ankommt. Der Rückfall
      greift nur, wenn wirklich nichts geht. */
   if (req.mode === "navigate") {
+    /* Nur die Anwendung selbst. Seiten, die der Server erzeugt (Einrichten,
+       Kalender-Feed, Zustellung, Lage, Starten), gehen unmittelbar ans Netz:
+       sie können Zugangsdaten oder Personendaten enthalten und dürfen weder
+       als Gerüst gespeichert noch offline an ihrer Stelle gezeigt werden. */
+    if (url.pathname !== "/" && url.pathname !== "/index.html") return;
     e.respondWith((async () => {
       try {
         const netz = await fetch(req);
-        const c = await caches.open(SCHALE);
-        c.put("/", netz.clone()).catch(() => {});
+        /* Nur eine erfolgreiche, unveränderte HTML-Antwort wird zum Gerüst —
+           keine Fehlerseite, keine Weiterleitung. */
+        if (netz.ok && !netz.redirected && /text\/html/i.test(netz.headers.get("content-type") || "")) {
+          const c = await caches.open(SCHALE);
+          c.put("/", netz.clone()).catch(() => {});
+        }
         return netz;
       } catch {
         const c = await caches.open(SCHALE);
@@ -149,13 +186,16 @@ self.addEventListener("fetch", (e) => {
      schlimmer als gar keiner. */
   if (url.pathname === "/api/bestand") {
     e.respondWith((async () => {
+      const sitzung = await sitzungsmarke(req);
       try {
         const netz = await fetch(req);
-        if (netz.ok) {
+        /* Nur eine erfolgreiche Antwort auf eine Anfrage mit Sitzung. */
+        if (netz.ok && sitzung) {
           const c = await caches.open(DATEN);
           const kopie = netz.clone();
           const kopf = new Headers(kopie.headers);
           kopf.set("x-centric-geholt", new Date().toISOString());
+          kopf.set(SITZUNGSKOPF, sitzung);
           c.put("bestand", new Response(await kopie.blob(), {
             status: kopie.status, headers: kopf })).catch(() => {});
         }
@@ -163,8 +203,12 @@ self.addEventListener("fetch", (e) => {
       } catch (fehler) {
         const c = await caches.open(DATEN);
         const alt = await c.match("bestand");
-        if (!alt) throw fehler;
+        /* Der Stand gehört der Sitzung, mit der er geholt wurde. Wer sich mit
+           einem anderen Zugang meldet (Rollenwechsel), bekommt ihn nie zu
+           sehen — auch dann nicht, wenn das Aufräumen beim Abmelden ausblieb. */
+        if (!alt || !sitzung || alt.headers.get(SITZUNGSKOPF) !== sitzung) throw fehler;
         const kopf = new Headers(alt.headers);
+        kopf.delete(SITZUNGSKOPF);
         kopf.set("x-centric-offline", "ja");
         return new Response(await alt.blob(), { status: 200, headers: kopf });
       }
@@ -176,26 +220,40 @@ self.addEventListener("fetch", (e) => {
    PUSH-MITTEILUNGEN
    Entgegennehmen, anzeigen, bei Klick öffnen.
    ========================================================================== */
+/* WP-30: Der Server schickt nur einen Hinweis {titel, text, ziel} ohne
+   Personen- und Inhaltsdaten (server/lib/zustellregeln.mjs). Dieser Teil der
+   Datei ist von der Zwischenspeicherung oben getrennt: Er liest und schreibt
+   keinen Speicher (caches), fängt keine Anfrage ab und hält den Inhalt einer
+   Benachrichtigung nirgends fest — er zeigt sie an und ist fertig. Beim
+   Klick wird nur ein Pfad der eigenen Herkunft geöffnet, nie eine fremde
+   Adresse, die jemand in die Nutzlast geschrieben hätte. */
+const kurz = (t, n) => String(t == null ? "" : t).slice(0, n);
+/* Kein „//…“ am Anfang: das wäre eine protokollrelative fremde Adresse (Nachtrag Opus-Review B5). */
+const eigenerPfad = (z) => (typeof z === "string" && /^\/(?!\/)[A-Za-z0-9/_-]{0,80}$/.test(z) ? z : "/");
+
 self.addEventListener("push", (e) => {
   if (!e.data) return;
   let d = {};
-  try { d = e.data.json(); } catch { d = { titel: "CENTRIC", text: e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.titel || "CENTRIC", {
-    body: d.text || "",
-    icon: "/icon-192.png",
+  try { d = e.data.json(); } catch { d = { titel: "CENTRIC", text: "" }; }
+  if (!d || typeof d !== "object") d = {};
+  e.waitUntil(self.registration.showNotification(kurz(d.titel, 120) || "CENTRIC", {
+    body: kurz(d.text, 200),
+    icon: "/icon-v4-192.png",
     badge: "/favicon-32.png",
-    tag: d.ziel || "centric",
-    data: { ziel: d.ziel || "/" },
+    tag: typeof d.ziel === "string" && /^[a-z]{1,20}$/.test(d.ziel) ? d.ziel : "centric",
+    data: { ziel: eigenerPfad(d.ziel) },
     lang: "de",
   }));
 });
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const ziel = (e.notification.data && e.notification.data.ziel) || "/";
+  const ziel = eigenerPfad(e.notification.data && e.notification.data.ziel);
   e.waitUntil((async () => {
     const fenster = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    for (const f of fenster) if (f.url.includes(self.location.origin)) return f.focus();
-    return self.clients.openWindow(ziel.startsWith("/") ? ziel : "/");
+    /* Ursprung als Präfix samt „/“ — „includes“ träfe auch fremde Adressen,
+       die den eigenen Ursprung irgendwo enthalten (SI-04). */
+    for (const f of fenster) if (f.url.startsWith(self.location.origin + "/")) return f.focus();
+    return self.clients.openWindow(ziel);
   })());
 });

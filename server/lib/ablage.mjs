@@ -3,7 +3,8 @@
 
    Die Anwendung ruft an sieben Stellen `getStore()` auf und benutzt davon
    genau sieben Methoden: get, getWithMetadata, getMetadata, set, setJSON,
-   delete, list. Diese Datei stellt diese Schnittstelle bereit und legt die
+   delete, list — dazu setJSONWennNeu für den Versand (Commit 4): anlegen
+   nur, wenn der Schlüssel noch fehlt, atomar. Diese Datei stellt diese Schnittstelle bereit und legt die
    Werte als Dateien auf dem eigenen Server ab — keine Datenbank, kein
    Fremddienst, kein offener Port.
 
@@ -36,7 +37,7 @@
                       an — es gibt nur diese eine Ablage.
    ========================================================================== */
 
-import { mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
+import { link, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import path from "node:path";
 
@@ -68,8 +69,10 @@ function ablagePruefen() {
    Die Schlüssel der Anwendung sind höchstens rund 90 Zeichen lang. */
 const NAME_MAX = 200;
 
-/** @param {string} schluessel */
-function dateiname(schluessel) {
+/** Der Dateiname eines Schlüssels (exportiert für Werkzeuge, die eine Datei
+    beiseitelegen müssen, die sich nicht mehr lesen lässt).
+    @param {string} schluessel */
+export function dateiname(schluessel) {
   if (typeof schluessel !== "string" || !schluessel.length)
     throw new Error("Ablage: leerer Schlüssel");
   let aus = "";
@@ -139,6 +142,30 @@ async function anlegen(verzeichnis) {
 }
 
 /**
+ * Umbenennen über eine bestehende Datei. Unter Windows scheitert das mit
+ * EPERM, EACCES oder EBUSY, solange ein Leser die Zieldatei gerade offen hat
+ * — ein Leser ohne Sperre (bestand.mjs) liest jederzeit. Dann kurz warten
+ * und erneut versuchen — aber nur wenige Male (zusammen rund 50 ms): Hält
+ * ein Virenscanner eine frisch geschriebene Datei länger fest, würde ein
+ * langes Warten jeden Schreibvorgang auf einen viel benutzten Schlüssel
+ * (Bremszähler) um Sekunden verzögern. Unter Linux ersetzt rename() auch
+ * eine offene Datei; dort greift das nie.
+ * @param {string} von
+ * @param {string} nach
+ */
+async function umbenennen(von, nach) {
+  for (let versuch = 0; ; versuch++) {
+    try { await rename(von, nach); return; }
+    catch (e) {
+      const voruebergehend = process.platform === "win32"
+        && e && (e.code === "EPERM" || e.code === "EACCES" || e.code === "EBUSY");
+      if (!voruebergehend || versuch >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 5 * (versuch + 1)));
+    }
+  }
+}
+
+/**
  * Schreibt erst daneben, dann um. Niemand sieht eine halbe Datei.
  * @param {string} ziel
  * @param {string} inhalt
@@ -153,7 +180,7 @@ async function atomarSchreiben(ziel, inhalt) {
     await fh.close();
   }
   try {
-    await rename(tmp, ziel);
+    await umbenennen(tmp, ziel);
   } catch (e) {
     await unlink(tmp).catch(() => {});
     throw e;
@@ -164,6 +191,41 @@ async function atomarSchreiben(ziel, inhalt) {
     const dh = await open(path.dirname(ziel), "r");
     try { await dh.sync(); } finally { await dh.close(); }
   } catch { /* nicht jedes Dateisystem erlaubt das; dann ohne */ }
+}
+
+/**
+ * Legt die Datei nur an, wenn es sie noch nicht gibt — atomar, auch gegen
+ * gleichzeitige Schreiber in anderen Prozessen. Erst vollständig in eine
+ * Zwischendatei schreiben und auf die Platte bringen, dann per link() unter
+ * dem Zielnamen eintragen: link() scheitert mit EEXIST, wenn das Ziel schon
+ * da ist, und es entsteht nie eine halbe Zieldatei (anders als open("wx")
+ * mit anschließendem Schreiben). Von vielen gleichzeitigen gewinnt genau einer.
+ * @param {string} ziel
+ * @param {string} inhalt
+ * @returns {Promise<boolean>} true, wenn diese Anlage gewonnen hat
+ */
+async function atomarAnlegen(ziel, inhalt) {
+  const tmp = `${ziel}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  const fh = await open(tmp, "wx", 0o600);
+  try {
+    await fh.writeFile(inhalt, "utf8");
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  try {
+    await link(tmp, ziel);
+  } catch (e) {
+    if (e && e.code === "EEXIST") return false;
+    throw e;
+  } finally {
+    await unlink(tmp).catch(() => {});
+  }
+  try {
+    const dh = await open(path.dirname(ziel), "r");
+    try { await dh.sync(); } finally { await dh.close(); }
+  } catch { /* nicht jedes Dateisystem erlaubt das; dann ohne */ }
+  return true;
 }
 
 /**
@@ -222,8 +284,9 @@ function dateiStore(name) {
    * @param {"json"|"text"} typ
    * @param {any} daten
    * @param {{metadata?: object}|undefined} opts
+   * @param {(ziel: string, inhalt: string) => Promise<any>} [art]
    */
-  const schreiben = async (schluessel, typ, daten, opts) => {
+  const schreiben = async (schluessel, typ, daten, opts, art = atomarSchreiben) => {
     await sicherstellen(verzeichnis);
     const metadata = opts && opts.metadata && typeof opts.metadata === "object" ? opts.metadata : {};
     const serialisiert = typ === "json" ? JSON.stringify(daten) : String(daten);
@@ -232,13 +295,13 @@ function dateiStore(name) {
       daten: typ === "json" ? daten : serialisiert };
     const inhalt = JSON.stringify(umschlag);
     try {
-      await atomarSchreiben(pfad(schluessel), inhalt);
+      return await art(pfad(schluessel), inhalt);
     } catch (e) {
       /* Verzeichnis unter uns weggeräumt? Einmal neu anlegen, dann nochmal. */
       if (!e || e.code !== "ENOENT") throw e;
       angelegt.delete(verzeichnis);
       await sicherstellen(verzeichnis);
-      await atomarSchreiben(pfad(schluessel), inhalt);
+      return await art(pfad(schluessel), inhalt);
     }
   };
 
@@ -292,6 +355,18 @@ function dateiStore(name) {
      */
     async setJSON(schluessel, daten, opts) {
       await schreiben(schluessel, "json", daten, opts);
+    },
+
+    /**
+     * Wie setJSON, aber nur, wenn der Schlüssel noch fehlt — atomar (siehe
+     * atomarAnlegen). Für Versand-Claims: genau ein Aufrufer bekommt true.
+     * @param {string} schluessel
+     * @param {any} daten
+     * @param {{metadata?: object}} [opts]
+     * @returns {Promise<boolean>}
+     */
+    async setJSONWennNeu(schluessel, daten, opts) {
+      return !!(await schreiben(schluessel, "json", daten, opts, atomarAnlegen));
     },
 
     /** @param {string} schluessel */

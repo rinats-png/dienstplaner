@@ -35,11 +35,11 @@ async function zugang(rolle, person) {
 
 /* Die Rolle kommt aus der Person im Betrieb (siehe wirksameRolle) — der
    Betriebsratscode gehört deshalb zu Person 2, die dort Betriebsrat ist. */
-const CODES = {
-  leitung: await zugang("leitung", null),
-  betriebsrat: await zugang("betriebsrat", 2),
-  mitarbeiter: await zugang("mitarbeiter", 0),
-};
+/* Seit Oktober 2026 gibt es Codes für Kundenrollen nur für einen
+   eingerichteten Raum, und einrichten darf ihn nur der Betreiber
+   (/api/bestand-anlegen). Sein Code entsteht deshalb zuerst; die übrigen
+   unten, sobald der Raum steht. */
+const CODE_BETREIBER = await zugang("betreiber", null);
 
 const anmelden = async (code) => {
   const a = await fetch(`${BASIS}/api/anmelden`, { method: "POST",
@@ -65,8 +65,7 @@ const pruef = (name, bedingung, detail) => {
   console.log(`${bedingung ? "  BESTANDEN" : "  FEHLGESCHLAGEN"}  ${name}${detail ? ` — ${detail}` : ""}`);
 };
 
-/* --- Grundbestand als Leitung anlegen --- */
-const tL = await anmelden(CODES.leitung);
+/* --- Grundbestand: richtet der Betreiber ein --- */
 const start = {
   version: 5, stand: 1,
   session: { mandantId: "m1", personId: 0, rolle: "kunde" },
@@ -89,12 +88,34 @@ const start = {
       { id: "a1", personId: 1, art: "krank", von: "2026-08-10", bis: "2026-08-14",
         grund: "Bandscheibenvorfall", nachweis: "AU vom 10.08." },
     ],
-    anfragen: [], erfassung: {}, nachrichten: [],
+    anfragen: [], nachrichten: [],
+    /* S2: Stempel und Ist-Zeiten aus der Erstbefüllung (Import). Über das
+       allgemeine Speichern legt seit WP-06 niemand mehr Stempel an. */
+    erfassung: {
+      "0|2026-09-01": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
+      "1|2026-09-01": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
+    },
+    einstempeln: {
+      "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
+      "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
+    },
     dienstarten: [{ id: "F", name: "Früh", kurz: "F" }],
     einheiten: [{ id: "e1", name: "Wohnbereich 1" }],
   }],
 };
-const w0 = await schreib(tL, start, null);
+const tBetreiberStart = await anmelden(CODE_BETREIBER);
+const wAnlegen = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
+  headers: { authorization: `Bearer ${tBetreiberStart}`, "content-type": "application/json" },
+  body: JSON.stringify({ bestand: RAUM, inhalt: start }) });
+pruef("Betreiber richtet den Raum ein", wAnlegen.status === 200, `Status ${wAnlegen.status}`);
+const CODES = {
+  leitung: await zugang("leitung", null),
+  betriebsrat: await zugang("betriebsrat", 2),
+  mitarbeiter: await zugang("mitarbeiter", 0),
+};
+const tL = await anmelden(CODES.leitung);
+const r0 = await lies(tL);
+const w0 = await schreib(tL, r0.bestand, r0.etag);
 pruef("Leitung darf schreiben", w0.status === 200, `Status ${w0.status}`);
 
 /* --- Befund 1a: Betriebsrat darf nicht schreiben --- */
@@ -161,8 +182,12 @@ pruef("Krankheitsgrund wurde nicht durch das Lesen gelöscht",
   `grund=${JSON.stringify(mP.abwesenheiten[0].grund)}`);
 pruef("Dienstarten wurden nicht gelöscht", mP.dienstarten.length === 1,
   `dienstarten=${mP.dienstarten.length}`);
+/* Seit 1e.3 liest die Leitung die Betreiberdaten nicht mehr — nachgesehen
+   wird als Betreiber. */
+const danachBetreiber = await lies(tBetreiberStart);
 pruef("Betreiberdaten überlebten den Schreibvorgang",
-  danach.bestand.betreiber && danach.bestand.betreiber.iban === "DE00 1111 2222 3333");
+  danachBetreiber.bestand.betreiber && danachBetreiber.bestand.betreiber.iban === "DE00 1111 2222 3333");
+pruef("… und die Leitung bekommt sie nicht ausgeliefert", danach.bestand.betreiber === undefined);
 
 /* --- Befund 3: Zugang sperren --- */
 const sperr = await fetch(`${BASIS}/api/zugang-sperren`, { method: "POST",
@@ -184,27 +209,30 @@ const sperrB = await fetch(`${BASIS}/api/zugang-sperren`, { method: "POST",
   body: JSON.stringify({ code: CODES.leitung }) });
 pruef("Betriebsrat darf keine Zugänge sperren", sperrB.status === 403, `Status ${sperrB.status}`);
 
-/* --- Befund 2: Mailversand nur an eigene Belegschaft --- */
-const send = await fetch(`${BASIS}/zustellung/senden`, { method: "POST",
-  headers: { authorization: `Bearer ${tB}`, "content-type": "application/json" },
+/* --- Befund 2: kein freier Mailversand ---
+   Bis Commit 4 nahm /zustellung/senden Aufträge mit Betreff und Text an —
+   auch vom Betriebsrat — und prüfte nur, ob die personId im Betrieb steht.
+   Seit Commit 4 nur Kennungen gespeicherter Mitteilungen, und der
+   Betriebsrat stößt keinen Versand an (Einzelheiten: zustellung-rechte.mjs). */
+const sendeAlt = (t) => fetch(`${BASIS}/zustellung/senden`, { method: "POST",
+  headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
   body: JSON.stringify({ auftraege: [
     { id: "x1", personId: 0, betreff: "Intern", text: "Regulär" },
     { id: "x2", mail: "opfer@example.com", betreff: "Spam", text: "Fremd" },
-    { id: "x3", personId: 999, betreff: "Spam", text: "Unbekannte Person" },
   ] }) });
-const sendD = await send.json();
-const z = Object.fromEntries((sendD.ergebnis || []).map((e) => [e.id, e]));
-pruef("Eigene Belegschaft wird zugestellt", z.x1 && z.x1.mail === "trocken",
-  `x1=${JSON.stringify(z.x1)}`);
-pruef("Freie Adresse im Rumpf wird abgewiesen", z.x2 && z.x2.mail === "abgewiesen",
-  `x2=${JSON.stringify(z.x2)}`);
-pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
-  `x3=${JSON.stringify(z.x3)}`);
+pruef("Freie Aufträge mit Betreff und Text werden nicht mehr angenommen", (await sendeAlt(tL)).status === 400);
+const sendB = await fetch(`${BASIS}/zustellung/senden`, { method: "POST",
+  headers: { authorization: `Bearer ${tB}`, "content-type": "application/json" },
+  body: JSON.stringify({ nachrichten: ["x1"] }) });
+pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${sendB.status}`);
 
 
 
-/* --- S1: Die Stempeluhr entscheidet auf dem Server --- */
+/* --- S1: Die Stempeluhr entscheidet auf dem Server ---
+   Gestempelt wird heute: Seit Commit 1d.1 nimmt /api/stempeln keine
+   künftigen und keine älteren Tage mehr an (zeiterfassung.mjs). */
 {
+  const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
   const tS = await anmelden(await zugang("mitarbeiter", 0));
   /* Standort für den Wohnbereich hinterlegen (als Leitung) */
   const rL2 = await lies(tL);
@@ -214,12 +242,15 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   bb.mandanten[0].einheiten = [{ id: "e1", name: "Wohnbereich 1", standortId: "st1" }];
   bb.mandanten[0].personen = bb.mandanten[0].personen.map((p) => p.id === 0
     ? { ...p, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] } : p);
+  /* Seit Geo V1 prüft der Server nur bei eingeschaltetem Betriebsschalter
+     (Vorgabe aus, schalten darf die Leitung) und mit Genauigkeit der Messung. */
+  bb.mandanten[0].einstellungen = { ...(bb.mandanten[0].einstellungen || {}), geoPruefung: true, geoPruefungBestaetigt: true };
   await schreib(tL, bb, rL2.etag);
 
   const stempel = async (art, lat, lon) => {
     const a = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
       headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
-      body: JSON.stringify({ datum: "2026-08-14", art, lat, lon }) });
+      body: JSON.stringify({ datum: heute, art, lat, lon, accuracy: 10 }) });
     return { status: a.status, ...(await a.json()) };
   };
 
@@ -228,17 +259,19 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
     amOrt.status === 200 && amOrt.innerhalb === true && amOrt.geprueft === true,
     JSON.stringify({ innerhalb: amOrt.innerhalb, ort: amOrt.ort }));
 
-  const weitWeg = await stempel("ende", 52.5200, 13.4050);   // Berlin
-  pruef("Weit entfernt wird als abweichend erkannt",
-    weitWeg.status === 200 && weitWeg.innerhalb === false,
-    JSON.stringify({ innerhalb: weitWeg.innerhalb, ort: weitWeg.ort }));
-
-  /* Der eigentliche Punkt: Der Client kann das Urteil nicht mitliefern. */
+  /* Ausstempeln aus Berlin, mit einem mitgeschickten Urteil „innerhalb".
+     Seit Commit 1d.3 lässt sich am selben Tag nicht ein zweites Mal
+     einstempeln — beide Prüfungen laufen deshalb über das Ausstempeln. */
   const gelogen = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
     headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
-    body: JSON.stringify({ datum: "2026-08-15", art: "start",
-      lat: 52.5200, lon: 13.4050, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
+    body: JSON.stringify({ datum: heute, art: "ende",
+      lat: 52.5200, lon: 13.4050, accuracy: 10, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
   const gelogenD = await gelogen.json();
+  pruef("Weit entfernt wird als abweichend erkannt",
+    gelogen.status === 200 && gelogenD.innerhalbEnde !== true && gelogenD.innerhalb === false,
+    JSON.stringify({ innerhalb: gelogenD.innerhalb, ort: gelogenD.ort }));
+
+  /* Der eigentliche Punkt: Der Client kann das Urteil nicht mitliefern. */
   pruef("Ein mitgeschicktes Urteil wird ignoriert",
     gelogenD.innerhalb === false,
     `innerhalb=${gelogenD.innerhalb} trotz innerhalb:true im Rumpf`);
@@ -248,18 +281,16 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
     typeof amOrt.zeit === "string" && /^\d{2}:\d{2}$/.test(amOrt.zeit),
     `zeit=${amOrt.zeit}`);
 
+  /* Die Stempel stammen aus der Erstbefüllung (oben). Anlegen oder ändern
+     über das allgemeine Speichern kann auch die Leitung nicht (WP-06). */
   const rL3 = await lies(tL);
   const bb2 = JSON.parse(JSON.stringify(rL3.bestand));
-  bb2.mandanten[0].erfassung = {
-    "0|2026-09-01": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
-    "1|2026-09-01": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
-  };
-  bb2.mandanten[0].einstempeln = {
-    "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
-    "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
-  };
+  bb2.mandanten[0].einstempeln = { ...bb2.mandanten[0].einstempeln,
+    "1|2026-09-01": { ...bb2.mandanten[0].einstempeln["1|2026-09-01"], ortStart: "Am Einsatzort (5 m)", innerhalbStart: true },
+    "0|2026-09-02": { start: "06:00", ende: "14:00" } };
   const wS2 = await schreib(tL, bb2, rL3.etag);
-  pruef("S2: Leitung legt Stempelereignisse an", wS2.status === 200, `Status ${wS2.status}`);
+  pruef("S2: Leitung ändert oder erfindet keine Stempel über das Speichern (403)", wS2.status === 403,
+    `Status ${wS2.status}`);
 
   /* Die Sitzung der Stempeluhr (tS) und der vorhandene Betriebsratscode:
      weitere Zugänge anzulegen, träfe die Bremse. */
@@ -299,118 +330,6 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("S2: Speichern einer gefilterten Sicht löscht keine fremden Stempel",
     wM.status === 200 && !!nachher["1|2026-09-01"] && !!nachher["0|2026-09-01"],
     `Status ${wM.status}, ${JSON.stringify(Object.keys(nachher))}`);
-
-  /* ---- S2b: Schichtverantwortung, Konfliktantwort, eigener Stempel des Betriebsrats ----
-     Ohne neue Zugänge (Bremse): Die Leitung macht Person 0 vorübergehend zur
-     Schichtverantwortung — die Rolle folgt der Person (wirksameRolle) — und
-     legt eine Person im zweiten Bereich an. Am Ende wird zurückgestellt. */
-  const rS2b = await lies(tL);
-  const bS2b = JSON.parse(JSON.stringify(rS2b.bestand));
-  const mS2b = bS2b.mandanten[0];
-  mS2b.einheiten = [...(mS2b.einheiten || []).filter((e) => e.id !== "e2"), { id: "e2", name: "Wohnbereich 2" }];
-  mS2b.personen = mS2b.personen.filter((p) => p.id !== 4).map((p) => (p.id === 0 ? { ...p, rolle: "subplaner" } : p));
-  mS2b.personen.push({ id: 4, vorname: "Frieda", nachname: "Fremd", rolle: "mitarbeiter", bereich: "e2",
-    zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
-  mS2b.erfassung = { ...(mS2b.erfassung || {}),
-    "4|2026-09-01": { start: "07:00", ende: "15:00", bestaetigt: true, grund: "Bereich zwei privat" } };
-  mS2b.einstempeln = { ...(mS2b.einstempeln || {}),
-    "4|2026-09-01": { start: "07:00", ortStart: "Abweichend, 9,9 km entfernt", innerhalbStart: false } };
-  const wS2b = await schreib(tL, bS2b, rS2b.etag);
-  pruef("S2b: Leitung richtet Schichtverantwortung und zweiten Bereich ein", wS2b.status === 200, `Status ${wS2b.status}`);
-
-  const tSV = tS;
-  const rSV = await lies(tSV);
-  const mSV = rSV.bestand.mandanten[0];
-  const textSV = JSON.stringify(rSV.bestand);
-  pruef("S2b: Rolle der Sitzung ist Schichtverantwortung", rSV.rolle === "subplaner", `rolle=${rSV.rolle}`);
-  pruef("S2b: Schichtverantwortung sieht nur den eigenen Stempel",
-    JSON.stringify(Object.keys(mSV.einstempeln || {})) === JSON.stringify(["0|2026-09-01"]), JSON.stringify(Object.keys(mSV.einstempeln || {})));
-  pruef("S2b: keine Standortdetails anderer Personen", !textSV.includes("3,2 km") && !textSV.includes("9,9 km"));
-  pruef("S2b: Erfassung im Bereich ohne freien Grund",
-    !!(mSV.erfassung || {})["1|2026-09-01"] && !("grund" in mSV.erfassung["1|2026-09-01"]) && !textSV.includes("Übergabe länger"),
-    JSON.stringify((mSV.erfassung || {})["1|2026-09-01"]));
-  pruef("S2b: fremder Bereich: keine Erfassung, kein Grund",
-    !(mSV.erfassung || {})["4|2026-09-01"] && !textSV.includes("Bereich zwei privat"));
-  pruef("S2b: Ist-Vermerk nennt nur eigene Person und Bereich",
-    mSV.sichtIstDaten && mSV.sichtIstDaten.umfang === "auswahl" && !mSV.sichtIstDaten.personen.includes(4),
-    JSON.stringify(mSV.sichtIstDaten));
-
-  /* Unverändert zurückspeichern: nichts geht verloren, nichts wird gespeichert, was nur Antwort war. */
-  const wSV = await schreib(tSV, rSV.bestand, rSV.etag);
-  const nachSV = (await lies(tL)).bestand.mandanten[0];
-  pruef("S2b: Rückspeichern der Sicht der Schichtverantwortung: Status 200", wSV.status === 200, `Status ${wSV.status} ${wSV.fehler || ""}`);
-  pruef("S2b: … fremde Stempel und Gründe bleiben erhalten",
-    Object.keys(nachSV.einstempeln || {}).length === 3
-    && nachSV.erfassung["1|2026-09-01"].grund === "Übergabe länger"
-    && nachSV.erfassung["4|2026-09-01"].grund === "Bereich zwei privat",
-    JSON.stringify(Object.keys(nachSV.einstempeln || {})));
-  pruef("S2b: … der Ist-Vermerk wird nicht gespeichert", !("sichtIstDaten" in nachSV));
-
-  /* Änderung im Bereich kommt an; Grund und fremder Bereich bleiben unberührt. */
-  const rSV2 = await lies(tSV);
-  const bSV2 = JSON.parse(JSON.stringify(rSV2.bestand));
-  bSV2.mandanten[0].erfassung["1|2026-09-01"] = { ...bSV2.mandanten[0].erfassung["1|2026-09-01"], ende: "15:00", grund: "überschrieben" };
-  bSV2.mandanten[0].erfassung["4|2026-09-01"] = { start: "00:00", ende: "23:59", bestaetigt: true };
-  bSV2.mandanten[0].einstempeln["1|2026-09-01"] = { start: "01:00", innerhalbStart: true };
-  const wSV2 = await schreib(tSV, bSV2, rSV2.etag);
-  const nachSV2 = (await lies(tL)).bestand.mandanten[0];
-  pruef("S2b: Schichtverantwortung ändert eine Zeit im Bereich", wSV2.status === 200 && nachSV2.erfassung["1|2026-09-01"].ende === "15:00",
-    `Status ${wSV2.status}`);
-  pruef("S2b: … der freie Grund bleibt, wie er war", nachSV2.erfassung["1|2026-09-01"].grund === "Übergabe länger");
-  pruef("S2b: … fremder Bereich unverändert", nachSV2.erfassung["4|2026-09-01"].start === "07:00");
-  pruef("S2b: … Stempel über den Bestand unverändert", nachSV2.einstempeln["1|2026-09-01"].start === "05:58");
-
-  /* Echter Versionskonflikt: Die Konfliktantwort trägt denselben Schutz. */
-  const rAltSV = await lies(tSV);
-  const rAltM = await lies(tL);
-  const bLK = JSON.parse(JSON.stringify(rAltM.bestand));
-  bLK.mandanten[0].erfassung["0|2026-09-01"] = { ...bLK.mandanten[0].erfassung["0|2026-09-01"], ende: "14:10" };
-  const wLK = await schreib(tL, bLK, rAltM.etag);
-  const bSK = JSON.parse(JSON.stringify(rAltSV.bestand));
-  bSK.mandanten[0].erfassung["0|2026-09-01"] = { ...bSK.mandanten[0].erfassung["0|2026-09-01"], ende: "14:20" };
-  const wSK = await schreib(tSV, bSK, rAltSV.etag);
-  const kText = JSON.stringify(wSK.bestand || {});
-  pruef("S2b: Konflikt entsteht (Leitung schrieb dazwischen)", wLK.status === 200 && wSK.status === 409,
-    `Leitung ${wLK.status}, Schichtverantwortung ${wSK.status}`);
-  pruef("S2b: 409-Antwort an die Schichtverantwortung ohne fremde Stempel, Gründe, Standortdetails",
-    wSK.status === 409 && !!wSK.bestand && !kText.includes("Übergabe länger") && !kText.includes("Bereich zwei privat")
-    && !kText.includes("3,2 km") && !kText.includes("9,9 km")
-    && JSON.stringify(Object.keys(wSK.bestand.mandanten[0].einstempeln || {})) === JSON.stringify(["0|2026-09-01"]));
-  const nachK = (await lies(tL)).bestand.mandanten[0];
-  pruef("S2b: … der abgewiesene Stand hat nichts verändert", nachK.erfassung["0|2026-09-01"].ende === "14:10");
-
-  /* Betriebsrat: eigener Stempel ja, fremde nein, keine Erfassung. */
-  const brSt = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
-    headers: { authorization: `Bearer ${tBs}`, "content-type": "application/json" },
-    body: JSON.stringify({ datum: "2026-09-02", art: "start" }) });
-  const rBr = await lies(tBs);
-  const eBr = rBr.bestand.mandanten[0].einstempeln || {};
-  pruef("S2b: Betriebsrat sieht den eigenen Stempel und keinen fremden",
-    brSt.status === 200 && JSON.stringify(Object.keys(eBr)) === JSON.stringify(["2|2026-09-02"]), JSON.stringify(Object.keys(eBr)));
-  pruef("S2b: Betriebsrat erhält weiterhin keine Erfassung", Object.keys(rBr.bestand.mandanten[0].erfassung || {}).length === 0);
-
-  /* Konfliktantwort an eine beschäftigte Person (Person 1 bekommt einen eigenen Zugang nicht —
-     deshalb über den Rückstellschritt: Person 0 wieder Mitarbeiterin, dann Konflikt). */
-  const rZur = await lies(tL);
-  const bZur = JSON.parse(JSON.stringify(rZur.bestand));
-  bZur.mandanten[0].personen = bZur.mandanten[0].personen.map((p) => (p.id === 0 ? { ...p, rolle: "mitarbeiter" } : p));
-  const wZur = await schreib(tL, bZur, rZur.etag);
-  const rMa = await lies(tSV);
-  pruef("S2b: Person 0 ist wieder Mitarbeiterin", wZur.status === 200 && rMa.rolle === "mitarbeiter", `rolle=${rMa.rolle}`);
-  const rL4 = await lies(tL);
-  const bL4 = JSON.parse(JSON.stringify(rL4.bestand));
-  bL4.mandanten[0].erfassung["0|2026-09-01"] = { ...bL4.mandanten[0].erfassung["0|2026-09-01"], ende: "14:15" };
-  const wL4 = await schreib(tL, bL4, rL4.etag);
-  const bMK = JSON.parse(JSON.stringify(rMa.bestand));
-  bMK.mandanten[0].erfassung["0|2026-09-01"] = { ...bMK.mandanten[0].erfassung["0|2026-09-01"], ende: "14:25" };
-  const wMK = await schreib(tSV, bMK, rMa.etag);
-  const mText = JSON.stringify(wMK.bestand || {});
-  pruef("S2b: 409-Antwort an Beschäftigte ohne fremde Stempel, Erfassung, Gründe",
-    wL4.status === 200 && wMK.status === 409 && !!wMK.bestand
-    && !mText.includes("Übergabe länger") && !mText.includes("Bereich zwei privat") && !mText.includes("3,2 km")
-    && Object.keys(wMK.bestand.mandanten[0].erfassung || {}).every((k) => k.startsWith("0|"))
-    && Object.keys(wMK.bestand.mandanten[0].einstempeln || {}).every((k) => k.startsWith("0|")),
-    `Leitung ${wL4.status}, Mitarbeiter ${wMK.status}`);
 }
 
 
@@ -433,6 +352,14 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
       anfragen: [], nachrichten: [] }] };
 
   const tS1 = await anmelden(await zugang("leitung", null));
+  /* Stempel sind Belege (WP-06): Auch ein vollständig neu geschriebener
+     Bestand übernimmt sie unverändert — ohne sie wäre das ein Löschen (403). */
+  {
+    const vorher = (await lies(tS1)).bestand.mandanten[0];
+    raumBasis.mandanten[0].einstempeln = vorher.einstempeln || {};
+    raumBasis.mandanten[0].erfassung = Object.fromEntries(Object.entries(vorher.erfassung || {})
+      .filter(([k]) => k in (vorher.einstempeln || {})));
+  }
   const w = await schreib(tS1, raumBasis, null);
   pruef("Ein Bestand lässt sich zerlegt schreiben", w.status === 200, `Status ${w.status}`);
 
@@ -509,16 +436,26 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("Dienstarten darf sie nicht anlegen", wStamm.status === 403,
     `Status ${wStamm.status} — ${wStamm.text || ""}`);
 
-  /* Anträge fremder Bereiche entscheidet die Leitung. */
+  /* Anträge fremder Bereiche entscheidet die Leitung. Bis Oktober 2026
+     stand hier als „eigener Bereich" der Antrag der Schichtverantwortung
+     selbst (p1) — sie genehmigte sich den eigenen Urlaub. Jetzt gehört der
+     Antrag p3, einer Beschäftigten in e1; der eigene wird abgewiesen. */
   const rL4 = await lies(tL);
   const bL4 = JSON.parse(JSON.stringify(rL4.bestand));
+  bL4.mandanten[0].personen = [...bL4.mandanten[0].personen,
+    { id: "p3", nachname: "Lenz", rolle: "mitarbeiter", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] }];
   bL4.mandanten[0].anfragen = [...(bL4.mandanten[0].anfragen || []),
     { id: "s4-fremd", personId: "p2", art: "urlaub", von: "2026-11-20", bis: "2026-11-20", status: "offen" },
-    { id: "s4-eigen", personId: "p1", art: "urlaub", von: "2026-11-21", bis: "2026-11-21", status: "offen" }];
+    { id: "s4-eigen", personId: "p3", art: "urlaub", von: "2026-11-21", bis: "2026-11-21", status: "offen" },
+    { id: "s4-selbst", personId: "p1", art: "urlaub", von: "2026-11-22", bis: "2026-11-22", status: "offen" }];
   await schreib(tL, bL4, rL4.etag);
   const r4 = await lies(tSub);
   const g = JSON.parse(JSON.stringify(r4.bestand));
-  g.mandanten[0].anfragen = g.mandanten[0].anfragen.map((a) => a.id === "s4-fremd" ? { ...a, status: "genehmigt" } : a);
+  /* Seit 1e.2 sieht die Schichtverantwortung den fremden Antrag nicht —
+     der Angriff schleust ihn genehmigt ein. */
+  const s4fremd = (await lies(tL)).bestand.mandanten[0].anfragen.find((a) => a.id === "s4-fremd");
+  pruef("Den Antrag aus dem fremden Bereich sieht sie nicht", !g.mandanten[0].anfragen.some((a) => a.id === "s4-fremd"));
+  g.mandanten[0].anfragen.push({ ...s4fremd, status: "genehmigt" });
   const wFremdA = await schreib(tSub, g, r4.etag);
   pruef("Einen Antrag aus dem fremden Bereich darf sie nicht entscheiden", wFremdA.status === 403,
     `Status ${wFremdA.status} — ${wFremdA.text || ""}`);
@@ -528,6 +465,12 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   const wEigenA = await schreib(tSub, h, r5.etag);
   pruef("Einen Antrag aus dem eigenen Bereich schon", wEigenA.status === 200,
     `Status ${wEigenA.status} — ${wEigenA.text || ""}`);
+  const r6 = await lies(tSub);
+  const s6 = JSON.parse(JSON.stringify(r6.bestand));
+  s6.mandanten[0].anfragen = s6.mandanten[0].anfragen.map((a) => a.id === "s4-selbst" ? { ...a, status: "genehmigt" } : a);
+  const wSelbst = await schreib(tSub, s6, r6.etag);
+  pruef("Den eigenen Antrag genehmigt sie sich nicht selbst", wSelbst.status === 403,
+    `Status ${wSelbst.status} — ${wSelbst.text || ""}`);
 }
 
 /* --- S5: Beschäftigte schreiben nur ihre eigenen Einträge ---
@@ -551,7 +494,9 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("Beschäftigte dürfen ihre eigenen Einträge schreiben", w.status === 200, `Status ${w.status}`);
 
   const n = (await lies(tL)).bestand.mandanten[0];
-  pruef("Eigene Zeiterfassung ist gespeichert", !!(n.erfassung || {})["0|2026-12-01"]);
+  /* Seit Commit 1d.1: eine rohe eigene Zeit für einen künftigen Tag, mit
+     fremden Feldern, ist keine zulässige Selbstauskunft (zeiterfassung.mjs). */
+  pruef("Eigene Rohzeit für einen künftigen Tag ist verworfen", !(n.erfassung || {})["0|2026-12-01"]);
   pruef("Fremde Zeiterfassung ist nicht gespeichert", !(n.erfassung || {})["1|2026-12-01"]);
   pruef("Fremder Antrag ist verworfen", !(n.anfragen || []).some((a) => a.id === "s5-fremd"));
   const eigen = (n.anfragen || []).find((a) => a.id === "s5-eigen");
@@ -657,7 +602,7 @@ let tBetreiber = null;
   pruef("Ein Rumpf über sechs Megabyte gibt 413", riesig.status === 413, `Status ${riesig.status}`);
 
   /* Löschkonzept: Ein Betreiber löscht einen Raum vollständig. */
-  const tBetr = await anmelden(await zugang("betreiber", null));
+  const tBetr = await anmelden(CODE_BETREIBER);
   tBetreiber = tBetr;
   const raum = `probe-loesch-${Date.now().toString(36)}`;
   const anlegen = await post("bestand-anlegen", tBetr, JSON.stringify({ bestand: raum,
@@ -709,7 +654,7 @@ let tBetreiber = null;
     body: JSON.stringify({ zugangscode: selbstCode }) });
   pruef("Seine Zugangscodes führen ins Leere", selbstAnm.status === 401, `Status ${selbstAnm.status}`);
   const selbstFrei = await post("bestand-anlegen", tBetr2, JSON.stringify({ bestand: selbstD.raum,
-    inhalt: { version: 5, stand: 1, mandanten: [] } }));
+    inhalt: { version: 5, stand: 1, mandanten: [{ id: "m-frei", name: "Frei" }] } }));
   pruef("Und der Raum ist wieder frei", selbstFrei.status === 200, `Status ${selbstFrei.status}`);
   await post("raum-loeschen", tBetr2, JSON.stringify({ bestand: selbstD.raum, bestaetigung: selbstD.raum }));
 
@@ -723,6 +668,9 @@ let tBetreiber = null;
     headers: { "content-type": "application/json", ...herkunft() },
     body: JSON.stringify({ verwaltung: GEHEIM, name: "Fremder Demobetrieb", bestand: "demo-fremd",
       rolle: "leitung", betrieb, demo: true, gruppe: "Prüfung" }) })).json());
+  /* Codes gibt es nur für einen eingerichteten Raum (seit Oktober 2026). */
+  await post("bestand-anlegen", tBetr2, JSON.stringify({ bestand: "demo-fremd",
+    inhalt: { version: 5, stand: 1, mandanten: [{ id: "m-f0", name: "F0" }, { id: "m-f1", name: "F1" }] } }));
   const dA = await demoAnlegen(0);
   const dB = await demoAnlegen(1);
   pruef("Zwei Demozugänge in einem fremden Raum angelegt", !!dA.zugangscode && !!dB.zugangscode,
@@ -817,6 +765,10 @@ let tBetreiber = null;
     `Status ${apiMitSchluessel.status}`);
 }
 
+/* Der Code der beschäftigten Person p2 — S10 legt ihn an, S11 nutzt ihn
+   wieder: Das Anlegen von Zugängen ist gebremst. */
+let CODE_P2 = null;
+
 /* --- S10: Die eigene Person pflegen, aber nicht befördern ---
 
    Bis September 2026 kam an der eigenen Person alles durch, was nicht
@@ -826,7 +778,8 @@ let tBetreiber = null;
 {
   /* Der Grundbestand wurde von S3 ersetzt; dort ist p2 die beschäftigte
      Person. Über sie läuft dieser Block. */
-  const tM10 = await anmelden(await zugang("mitarbeiter", "p2"));
+  CODE_P2 = await zugang("mitarbeiter", "p2");
+  const tM10 = await anmelden(CODE_P2);
   const r = await lies(tM10);
   const b = JSON.parse(JSON.stringify(r.bestand));
   b.mandanten[0].personen = b.mandanten[0].personen.map((p) => (p.id !== "p2" ? p : {
@@ -855,6 +808,77 @@ let tBetreiber = null;
   pruef("Personalnummer und Funktion bleiben unangetastet",
     nach.personalnummer !== "GEFAELSCHT" && nach.funktion !== "Pflegedienstleitung",
     `${nach.personalnummer} / ${nach.funktion}`);
+}
+
+/* --- S11: Krankmeldung, Selbstplanung und Notruf von Beschäftigten ---
+
+   Die Oberfläche bot alle drei an; der Server verwarf sie bis Oktober 2026
+   und antwortete trotzdem mit „ok". Hier läuft der echte Weg: schreiben,
+   neu laden, aus Sicht der Leitung und einer Kollegin lesen. */
+{
+  const tL11 = await anmelden(CODES.leitung);
+  const r0 = await lies(tL11);
+  const b0 = JSON.parse(JSON.stringify(r0.bestand));
+  const m0 = b0.mandanten[0];
+  if (!m0.personen.some((p) => p.id === "p3"))
+    m0.personen.push({ id: "p3", nachname: "Lind", rolle: "mitarbeiter",
+      zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
+  m0.abwesenheiten = m0.abwesenheiten || [];
+  m0.notrufe = m0.notrufe || [];
+  m0.selbstplanung = [{ id: "sp11", monat: "2026-11", status: "offen", eintraege: [
+    { personId: "p3", datum: "2026-11-02", dienstId: "F", zeit: "t" }] }];
+  const w0 = await schreib(tL11, b0, r0.etag);
+  pruef("S11: Grundbestand mit zweiter Beschäftigter und offener Runde", w0.status === 200, `Status ${w0.status}`);
+
+  const tP2 = await anmelden(CODE_P2);
+  const tP3 = await anmelden(await zugang("mitarbeiter", "p3"));
+  const r1 = await lies(tP2);
+  const b1 = JSON.parse(JSON.stringify(r1.bestand));
+  const m1 = b1.mandanten[0];
+  m1.abwesenheiten.push({ id: "k11", personId: "p2", art: "krank", von: "2026-11-05",
+    bis: "2026-11-06", notiz: "Fieber", diagnose: "J11" });
+  m1.selbstplanung.find((r) => r.id === "sp11").eintraege.push(
+    { personId: "p2", datum: "2026-11-03", dienstId: "S", zeit: "t2" });
+  m1.notrufe.unshift({ id: "nr11", personId: "p2", art: "hilfe", notiz: "Hilfe",
+    zeit: "2026-10-18T09:00:00Z", datum: "2026-10-18", empfaenger: ["p1"], bestaetigt: "gefälscht" });
+  const w1 = await schreib(tP2, b1, r1.etag);
+  pruef("S11: Beschäftigte schreiben Krankmeldung, Selbstplanung und Notruf", w1.status === 200, `Status ${w1.status}`);
+
+  const leitung = (await lies(tL11)).bestand.mandanten[0];
+  const k = (leitung.abwesenheiten || []).find((a) => a.id === "k11");
+  pruef("S11: die Krankmeldung ist gespeichert, mit Anmerkung, ohne Diagnose",
+    k && k.notiz === "Fieber" && k.art === "krank" && k.diagnose === undefined, JSON.stringify(k));
+  const sp = (leitung.selbstplanung || []).find((r) => r.id === "sp11");
+  pruef("S11: der Selbstplanungs-Eintrag ist gespeichert, der fremde bleibt",
+    sp && sp.eintraege.some((e) => e.personId === "p2" && e.dienstId === "S")
+      && sp.eintraege.some((e) => e.personId === "p3"), JSON.stringify(sp && sp.eintraege));
+  const nr = (leitung.notrufe || []).find((n) => n.id === "nr11");
+  pruef("S11: der Notruf ist gespeichert und unbestätigt",
+    nr && nr.bestaetigt === null && nr.art === "hilfe", JSON.stringify(nr));
+
+  const selbst = (await lies(tP2)).bestand.mandanten[0];
+  pruef("S11: nach dem Neuladen sieht die Person alle drei",
+    selbst.abwesenheiten.some((a) => a.id === "k11") && selbst.notrufe.some((n) => n.id === "nr11")
+      && selbst.selbstplanung[0].eintraege.some((e) => e.personId === "p2"));
+
+  const kollegin = (await lies(tP3)).bestand.mandanten[0];
+  const kk = kollegin.abwesenheiten.find((a) => a.id === "k11");
+  pruef("S11: die Kollegin sieht nur „abwesend“ ohne Anmerkung",
+    kk && kk.art === "abwesend" && kk.notiz === undefined, JSON.stringify(kk));
+  pruef("S11: die Kollegin sieht den Notruf nicht", !kollegin.notrufe.some((n) => n.id === "nr11"));
+  pruef("S11: die Kollegin sieht im Selbstplanungs-Eintrag keine Person",
+    kollegin.selbstplanung[0].eintraege.every((e) => e.personId === undefined || e.personId === "p3"),
+    JSON.stringify(kollegin.selbstplanung[0].eintraege));
+
+  /* Die Kollegin schreibt ihre gekürzte Sicht zurück — es geht nichts verloren. */
+  const r3 = await lies(tP3);
+  const w3 = await schreib(tP3, r3.bestand, r3.etag);
+  const danach = (await lies(tL11)).bestand.mandanten[0];
+  pruef("S11: Zurückschreiben der gekürzten Sicht verliert nichts",
+    w3.status === 200 && danach.abwesenheiten.find((a) => a.id === "k11")?.notiz === "Fieber"
+      && danach.notrufe.some((n) => n.id === "nr11")
+      && danach.selbstplanung[0].eintraege.some((e) => e.personId === "p2"),
+    `Status ${w3.status}`);
 }
 
 /* --- S9: Herkunft, Grenzen, Protokoll ---
@@ -892,8 +916,10 @@ let tBetreiber = null;
 
   const r11 = await lies(tL9);
   const viele = JSON.parse(JSON.stringify(r11.bestand));
-  viele.mandanten[0].dienstarten = Array.from({ length: 501 },
-    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D" }));
+  /* Die bisherigen Dienstarten bleiben: Eine noch verwendete zu löschen weist
+     der Server schon vorher ab (Nachprüfung WP-11, N1) — geprüft wird hier die Obergrenze. */
+  viele.mandanten[0].dienstarten = [...viele.mandanten[0].dienstarten, ...Array.from({ length: 501 },
+    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D" }))];
   const wViele = await schreib(tL9, viele, r11.etag);
   pruef("501 Dienstarten werden abgewiesen", wViele.status === 422, `Status ${wViele.status}`);
 

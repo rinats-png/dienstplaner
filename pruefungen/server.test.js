@@ -9,16 +9,16 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { spawn } from "node:child_process";
+import { serverStarten } from "./hilfen/port.mjs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PORT = 30000 + Math.floor(Math.random() * 20000);
-const B = `http://127.0.0.1:${PORT}`;
-let kind, statik, daten, ausgabe = "";
+/* Port und Basis stehen erst nach dem Start fest (hilfen/port.mjs: das
+   Betriebssystem vergibt den Port, bei EADDRINUSE neuer Versuch). */
+let PORT, B, kind, statik, daten, ausgabe = () => "";
 
 /** Eine rohe HTTP/1.1-Anfrage über den Socket — für Formen, die fetch nicht baut. */
 function roh(text) {
@@ -43,20 +43,14 @@ beforeAll(async () => {
   await writeFile(path.join(statik, "manifest.webmanifest"), '{"name":"Probe"}');
   await writeFile(path.join(statik, "icon-192.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
-  kind = spawn(process.execPath, ["server.mjs"], {
+  const s = await serverStarten({
     cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-    env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
+    env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
       CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: "probe-geheim", NODE_ENV: "production" },
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  kind.stdout.on("data", (d) => { ausgabe += d; });
-  kind.stderr.on("data", (d) => { ausgabe += d; });
-  for (let i = 0; i < 100; i++) {
-    if (await fetch(`${B}/gesund`).then((r) => r.ok).catch(() => false)) return;
-    await new Promise((w) => setTimeout(w, 100));
-  }
-  throw new Error(`Server kam nicht hoch:\n${ausgabe}`);
-}, 20000);
+  ({ kind, port: PORT, basis: B } = s);
+  ausgabe = s.log;
+}, 60000);
 
 afterAll(async () => {
   if (kind && kind.exitCode === null) kind.kill("SIGKILL");
@@ -145,12 +139,13 @@ describe("Ausliefern", () => {
 
 describe("Funktionen", () => {
   it("erreicht jede der sechs Funktionen unter ihrem Pfad", async () => {
-    /* Jede antwortet fachlich — meist 401 oder 405, /zustellung/schluessel
-       öffentlich mit 200 — aber eben sie, nicht der Rückfall auf index.html.
+    /* Jede antwortet fachlich — meist 401 oder 405 (/zustellung/schluessel
+       seit dem Nachtrag Opus-Review WP-30 nur mit Sitzung, also 401) — aber
+       eben sie, nicht der Rückfall auf index.html.
        Der Rumpf ist in jedem Fall JSON aus der Funktion. */
     const faelle = [
       ["GET", "/api/bestand", 401], ["POST", "/einrichten", 401], ["GET", "/einrichten/verwalter", 401],
-      ["GET", "/starten", 405], ["GET", "/kalender/daten", 401], ["GET", "/zustellung/schluessel", 200],
+      ["GET", "/starten", 405], ["GET", "/kalender/daten", 401], ["GET", "/zustellung/schluessel", 401],
       ["GET", "/lage", 401], ["GET", "/einrichten/uebersicht?bestand=demo-schau", 401],
       ["GET", "/api/zugaenge-uebersicht?bestand=demo-schau", 401],
     ];
@@ -212,7 +207,7 @@ describe("Funktionen", () => {
   });
 
   it("überlebt eine abgebrochene Anfrage ohne Protokolleintrag", async () => {
-    const vorher = ausgabe.length;
+    const vorher = ausgabe().length;
     await new Promise((erfuellt) => {
       const s = connect(PORT, "127.0.0.1", () => {
         s.write(`POST /api/anmelden HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 100000\r\n\r\n{"a":`);
@@ -221,7 +216,7 @@ describe("Funktionen", () => {
     });
     await new Promise((w) => setTimeout(w, 200));
     expect((await fetch(`${B}/gesund`)).status).toBe(200);
-    expect(ausgabe.slice(vorher)).not.toMatch(/Interner Fehler|Error/);
+    expect(ausgabe().slice(vorher)).not.toMatch(/Interner Fehler|Error/);
   });
 });
 
@@ -232,6 +227,6 @@ describe("Beenden", () => {
     const { code, signal } = await ende;
     expect(signal).toBeNull();
     expect(code).toBe(0);
-    expect(ausgabe).toContain("SIGTERM: Server wird beendet");
+    expect(ausgabe()).toContain("SIGTERM: Server wird beendet");
   }, 15000);
 });

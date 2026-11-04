@@ -3,8 +3,8 @@ import {
   generationStimmt, accountLesenPerId, raumErlaubt,
 } from "./accounts.mjs";
 import { HERKUNFT_KONTO } from "./arbeitssitzung.mjs";
-import { bestandLesen } from "./bestand.mjs";
-import { wirksameRolle, eigenerMandant } from "./rechte.mjs";
+import { bestandLesen, voruebergehend } from "./bestand.mjs";
+import { wirksameRolle, eigenerMandant, rolleBekannt } from "./rechte.mjs";
 import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from "./sitzungen.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
@@ -124,7 +124,7 @@ export async function mitgliedschaftenFuerAuswahl(store, accountId) {
       const mandant = gelesen && gelesen.bestand
         ? eigenerMandant(gelesen.bestand, { betrieb: m.betrieb }) : null;
       if (mandant && mandant.name) name = String(mandant.name);
-    } catch { /* Name unbekannt, Raum bleibt anwählbar */ }
+    } catch { /* Name unbekannt (auch bei vorübergehendem Lesefehler), Raum bleibt anwählbar */ }
     aus.push({ raum: m.raum, name });
   }
   return { ok: true, mitgliedschaften: aus };
@@ -174,6 +174,10 @@ export async function betriebWaehlen(store,
   if (!m) return absage("keine-mitgliedschaft");
   if (m.status !== "aktiv") return absage(`status:${m.status}`);
   if (!m.person) return absage("ohne-person");
+  /* Eine Mitgliedschaft mit einer Rolle, die es nicht gibt (Altbestand),
+     ergibt keine Arbeitssitzung (Commit D1e). Nach außen dieselbe Absage
+     wie jede andere. */
+  if (!rolleBekannt(m.rolle)) return absage("rolle");
 
   /* Die Generation dieser Beziehung muss stimmen, bevor irgendetwas
      entsteht: Eine Mitgliedschaft, deren Generation nicht die aktuelle ist,
@@ -194,7 +198,9 @@ export async function betriebWaehlen(store,
   const epoche = Number(konto.epoche);
   if (!Number.isInteger(epoche) || epoche < 1) return absage("epoche");
 
-  const gelesen = await bestandLesen(store, raum).catch(() => null);
+  /* „Nicht lesbar" oder „gerade gesperrt" ist nicht „kein Bestand": weiterreichen
+     (→ 503), statt den Betrieb als fehlend abzulehnen (bestand.mjs, voruebergehend). */
+  const gelesen = await bestandLesen(store, raum).catch((e) => { if (voruebergehend(e)) throw e; return null; });
   if (!gelesen || !gelesen.bestand) return absage("kein-bestand");
 
   /* Der Betriebsindex aus der Mitgliedschaft muss auf denselben Mandanten
