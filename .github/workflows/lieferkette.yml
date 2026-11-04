@@ -91,16 +91,34 @@ jobs:
       - name: Schwachstellen-Datenbank laden
         run: |
           mkdir -p "$TRIVY_CACHE"
-          docker run --rm -v "$TRIVY_CACHE:/root/.cache/trivy" "$TRIVY_BILD"             image --download-db-only
+          docker run --rm -v "$TRIVY_CACHE:/root/.cache/trivy" "$TRIVY_BILD" \
+            image --download-db-only
 
       # Erst der volle Bericht ueber alle Schweregrade, ohne Abbruch - damit
       # im Protokoll steht, was es gibt, nicht nur, was aufhaelt.
       - name: Bericht (alle Schweregrade, hält nicht auf)
         run: |
-          docker run --rm             -v /var/run/docker.sock:/var/run/docker.sock             -v "$TRIVY_CACHE:/root/.cache/trivy"             "$TRIVY_BILD" image --skip-db-update             --format table             --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL             --exit-code 0             "$BILD"
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$TRIVY_CACHE:/root/.cache/trivy" \
+            "$TRIVY_BILD" image --skip-db-update \
+            --format table \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --exit-code 0 \
+            "$BILD"
 
       # Das Gate: CRITICAL/HIGH mit verfuegbarem Fix, Exit 1 = rot.
       # Kein continue-on-error, kein Ueberspringen.
       - name: Gate (CRITICAL/HIGH mit verfügbarem Fix)
         run: |
-          docker run --rm             -v /var/run/docker.sock:/var/run/docker.sock             -v "$TRIVY_CACHE:/root/.cache/trivy"             -v "$PWD/.trivyignore:/.trivyignore:ro"             "$TRIVY_BILD" image --skip-db-update             --format table             --severity HIGH,CRITICAL             --ignore-unfixed             --ignorefile /.trivyignore             --exit-code 1             "$BILD"
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$TRIVY_CACHE:/root/.cache/trivy" \
+            -v "$PWD/.trivyignore:/.trivyignore:ro" \
+            "$TRIVY_BILD" image --skip-db-update \
+            --format table \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --ignorefile /.trivyignore \
+            --exit-code 1 \
+            "$BILD"
