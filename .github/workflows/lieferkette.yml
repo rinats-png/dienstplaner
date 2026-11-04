@@ -15,10 +15,10 @@
 # Quelltext etwas ändert. Der Montagslauf zeigt sie, auch wenn eine Woche
 # lang niemand pusht.
 #
-# Jede fremde Action ist per Commit-SHA gepinnt (Kommentar: Version). Ein Tag
-# lässt sich umhängen — bei trivy-action ist genau das im März 2026
-# geschehen. v0.36.0 ist danach erschienen, signiert, und pinnt seine
-# eigenen Abhängigkeiten (setup-trivy, actions/cache) ebenfalls per SHA.
+# Jede fremde Action ist per Commit-SHA gepinnt (Kommentar: Version), Trivy
+# selbst per Image-Digest. Ein Tag laesst sich umhaengen - bei trivy-action
+# ist genau das im Maerz 2026 geschehen. trivy-action/setup-trivy werden
+# nicht mehr benutzt (Ursache und Betrieb: docs/CI-LIEFERKETTE.md).
 name: Lieferkette
 
 on:
@@ -57,6 +57,8 @@ jobs:
     timeout-minutes: 20
     env:
       BILD: centric-lieferkette:${{ github.sha }}
+      TRIVY_BILD: ghcr.io/aquasecurity/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e
+      TRIVY_CACHE: /tmp/trivy-cache
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -74,28 +76,49 @@ jobs:
           push: false
           tags: ${{ env.BILD }}
 
-      # Erst der volle Bericht über alle Schweregrade, ohne Abbruch — damit
-      # im Protokoll steht, was es gibt, nicht nur, was aufhält.
-      - name: Bericht (alle Schweregrade, hält nicht auf)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          version: v0.70.0
-          scan-type: image
-          image-ref: ${{ env.BILD }}
-          format: table
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          exit-code: "0"
+      # Trivy kommt als offizielles Container-Image, per Digest gepinnt
+      # (ghcr.io/aquasecurity/trivy 0.70.0, Multi-Arch-Index). Grund: Das
+      # Installationsskript von setup-trivy lud das Binary von github.com
+      # und scheiterte seit 2026-11-03 bei jedem Lauf ohne Cache-Treffer
+      # (curl Exit 6, Namensaufloesung) - der Scan lief dann nie. Das Bild
+      # kommt ueber Docker-Daemon und Registry; der Digest macht es
+      # unveraenderlich. Scanumfang und Gate sind unveraendert.
+      - name: Trivy-Bild holen (Digest-gepinnt)
+        run: docker pull "$TRIVY_BILD"
 
-      # Das Gate.
+      # Datenbank einmal laden; das Gate nutzt dieselbe (--skip-db-update).
+      # Scheitert der Bezug, scheitert der Job - es wird nie ohne Scan gruen.
+      - name: Schwachstellen-Datenbank laden
+        run: |
+          mkdir -p "$TRIVY_CACHE"
+          docker run --rm -v "$TRIVY_CACHE:/root/.cache/trivy" "$TRIVY_BILD" \
+            image --download-db-only
+
+      # Erst der volle Bericht ueber alle Schweregrade, ohne Abbruch - damit
+      # im Protokoll steht, was es gibt, nicht nur, was aufhaelt.
+      - name: Bericht (alle Schweregrade, hält nicht auf)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$TRIVY_CACHE:/root/.cache/trivy" \
+            "$TRIVY_BILD" image --skip-db-update \
+            --format table \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --exit-code 0 \
+            "$BILD"
+
+      # Das Gate: CRITICAL/HIGH mit verfuegbarem Fix, Exit 1 = rot.
+      # Kein continue-on-error, kein Ueberspringen.
       - name: Gate (CRITICAL/HIGH mit verfügbarem Fix)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          version: v0.70.0
-          skip-setup-trivy: true
-          scan-type: image
-          image-ref: ${{ env.BILD }}
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-          exit-code: "1"
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$TRIVY_CACHE:/root/.cache/trivy" \
+            -v "$PWD/.trivyignore:/.trivyignore:ro" \
+            "$TRIVY_BILD" image --skip-db-update \
+            --format table \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --ignorefile /.trivyignore \
+            --exit-code 1 \
+            "$BILD"
