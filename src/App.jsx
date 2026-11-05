@@ -216,6 +216,9 @@ function themaSetzen(dunkel) {
     wurzel.setAttribute("data-v4-app", "");
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.bg : C_HELL.bg);
+    /* Der Einstieg setzt den Körper inline (v4/thema.js); nach der Anmeldung muss er dem
+       gewählten Erscheinungsbild folgen, sonst bleibt hinter der Anwendung die Farbe des Einstiegs. */
+    document.body.style.background = dunkel ? C_DUNKEL.bg : C_HELL.bg;
   }
 }
 
@@ -23183,6 +23186,11 @@ function AppInnen() {
     return { rolle: "kunde", db, mandant: m, person: p };
   }, [db]);
 
+  /* Dichte: Die Einstellung der Person ist die Quelle — in den Einstellungen wie im Kopfmenü.
+     Vorher speicherte die Einstellung nur p.dichte, und nichts las sie: die Umschaltung blieb wirkungslos. */
+  const dichtePerson = sitz && sitz.person ? sitz.person.dichte : undefined;
+  useEffect(() => { if (dichtePerson === "kompakt" || dichtePerson === "komfortabel") setDicht(dichtePerson === "kompakt"); }, [dichtePerson]);
+
   /* Beim ersten Anmelden startet die Tour von selbst — außer sie wurde
      abgeschlossen oder abgeschaltet.
 
@@ -25561,7 +25569,8 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
               kurz: istBetreiber ? "BE" : (((sitz.person.vorname || " ")[0] + (sitz.person.nachname || " ")[0]).toUpperCase().trim() || r.kurz),
               rolle: r.label }}
             ungelesen={ungelesen}
-            dicht={dicht} onDicht={setDicht} fokus={fokus} onFokus={setFokus}
+            dicht={dicht} fokus={fokus} onFokus={setFokus}
+            onDicht={(an) => { setDicht(an); if (!istBetreiber) akt.setzeMeineEinstellung("dichte", an ? "kompakt" : "komfortabel"); }}
             feldmodus={!istBetreiber && !!sitz.person.kontrastmodus}
             onFeldmodus={istBetreiber ? undefined : (an) => akt.setzeKontrastmodus(an)}
             thema={istBetreiber ? undefined : sitz.person.thema}

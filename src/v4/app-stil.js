@@ -54,6 +54,9 @@ html[data-v4-app] .btn-primary:hover{background:var(--v4-accent-hi); border-colo
 html[data-v4-app] .btn:focus-visible{outline:var(--v4-fokus-breite) solid var(--v4-focus); outline-offset:var(--v4-fokus-abstand);}
 html[data-v4-app] .btn-sm{min-height:34px;}
 
+/* Auswahlfelder in der Akzentfarbe statt Systemblau */
+html[data-v4-app] input[type="checkbox"], html[data-v4-app] input[type="radio"]{accent-color:var(--v4-accent);}
+
 /* Eingabe: Rand mindestens 3:1, Fokus als Ring (nicht nur Randfarbe) */
 html[data-v4-app] .inp,
 html[data-v4-app] .sel,

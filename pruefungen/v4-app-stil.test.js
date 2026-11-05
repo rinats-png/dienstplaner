@@ -60,6 +60,14 @@ describe("V4 App-Schicht: Bezug zum tatsächlichen App-Stil", () => {
     for (const k of verwendet) expect(V4_APP_KLASSEN).toContain(k);
   });
 
+  it("der Körper folgt nach der Anmeldung dem Erscheinungsbild (kein Rest des Einstiegs)", () => {
+    expect(app).toContain("document.body.style.background = dunkel ? C_DUNKEL.bg : C_HELL.bg;");
+  });
+
+  it("Checkboxen und Optionsfelder tragen die Akzentfarbe", () => {
+    expect(schicht).toContain('input[type="checkbox"], html[data-v4-app] input[type="radio"]{accent-color:var(--v4-accent);}');
+  });
+
   it("App.jsx bindet die Schicht ein und setzt das Attribut data-v4-app", () => {
     expect(app).toMatch(/import \{ v4AppStil \} from "\.\/v4\/app-stil\.js"/);
     expect(app).toMatch(/\$\{v4AppStil\(\)\}/);
