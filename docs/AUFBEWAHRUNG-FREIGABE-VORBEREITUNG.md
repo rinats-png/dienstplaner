@@ -1,5 +1,9 @@
 # Aufbewahrung und Datenschutzlauf: Freigabe-Vorbereitung
 
+## Entscheidung des Betreibers (2026-11-05)
+
+**Der Modus bleibt `vorschau`.** Keine produktive Datenlöschung und keine Aktivierung ohne gesonderte Freigabe. Die Fristen je Datenkategorie (Abschnitt 3) müssen vorher fachlich und rechtlich abgesichert sein. PR #96 (Bestätigungsprotokoll im Lauf, Schutz gegen Wiedereinspielen) bleibt Entwurf und wird nach der Staging-Abnahme weiterbearbeitet. Keine automatische Löschung.
+
 Status: **vorbereitet, nicht aktiviert.** Keine produktive Löschung ohne verifizierte Aufbewahrungsregeln und ausdrückliche Betreiberfreigabe.
 Stand: Release-Kandidat `rc-2026-11-04` (Commit `466f624`), Befund P0-2 aus der Prüfung von PR #17.
 

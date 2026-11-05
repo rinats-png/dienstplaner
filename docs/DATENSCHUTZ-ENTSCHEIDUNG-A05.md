@@ -1,6 +1,10 @@
 # Entscheidungsvorlage A05: Rückschluss auf Mutterschutz über Planungsregeln
 
 Status: **offen, fachliche Datenschutzentscheidung erforderlich.** Keine Code-Änderung ohne diese Entscheidung.
+
+## Entscheidung des Betreibers (2026-11-05)
+
+**Mutterschutzmerkmale werden im Pilot nicht erfasst oder verwendet.** Vor einer späteren Aktivierung sind die organisatorischen, rechtlichen und technischen Voraussetzungen (Abschnitt 3, Punkte A–F) zu klären. Bis dahin: keine Code-Änderung, kein produktives Erfassen des Merkmals; die Pilotbetriebe werden darauf hingewiesen.
 Quelle: Prüfung PR #16 (Basis vor D1), Matrix `A05`. Stand Release-Kandidat `rc-2026-11-04` (Commit `466f624`).
 Verwandt: Art.-9-Schutz für Gesundheits- und Schwangerschaftsdaten; Review-Vermerk M1 im Code.
 
