@@ -16,7 +16,7 @@
 
 /** Klassen, die diese Schicht überschreibt. Der Test prüft, dass jede davon im App-Stil vorkommt. */
 export const V4_APP_KLASSEN = [
-  "seitenleiste", "slink", "karte", "karte-still", "btn", "btn-primary", "btn-sm", "inp", "sel", "blatt", "sheet-back", "toast", "seg", "suchknopf",
+  "seitenleiste", "slink", "karte", "karte-still", "karte-hover", "btn", "btn-primary", "btn-sm", "inp", "sel", "blatt", "sheet-back", "toast", "seg", "suchknopf",
 ];
 
 export const v4AppStil = () => `
