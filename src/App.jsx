@@ -9784,6 +9784,8 @@ function Antraege({ sitz, akt }) {
 function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, setStandortId = () => {} }) {
   const m = sitz.mandant;
   const [q, setQ] = useState(""), [such, setSuch] = useState(""), [filter, setFilter] = useState("alle"), [neu, setNeu] = useState(false);
+  /* Fehlermeldung des Dialogs „Person hinzufügen“: nie stumm abweisen. */
+  const [neuFehler, setNeuFehler] = useState(null);
   useEffect(() => { const t = setTimeout(() => setSuch(q), 200); return () => clearTimeout(t); }, [q]);
   const jahr = Number(ym.slice(0, 4)), d0 = heute();
   const zeigt = darf(sitz, "account.view.all");
@@ -9943,12 +9945,13 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
           <Btn kind="primary" onClick={() => setNeu(true)}>Person hinzufügen</Btn>
         </Fussleiste>)}
 
-      <Sheet open={neu} onClose={() => setNeu(false)} titel="Person hinzufügen" width={580}>
+      <Sheet open={neu} onClose={() => { setNeu(false); setNeuFehler(null); }} titel="Person hinzufügen" width={580}>
         <div style={{ display: "grid", gap: 15 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
-            <Field label="Vorname"><Inp value={f.vorname} onChange={(e) => setF({ ...f, vorname: e.target.value })} /></Field>
-            <Field label="Nachname"><Inp value={f.nachname} onChange={(e) => setF({ ...f, nachname: e.target.value })} /></Field>
+            <Field label="Vorname"><Inp id="neu-person-vorname" value={f.vorname} aria-invalid={neuFehler && !f.vorname ? "true" : undefined} aria-describedby={neuFehler ? "neu-person-fehler" : undefined} onChange={(e) => { setF({ ...f, vorname: e.target.value }); setNeuFehler(null); }} /></Field>
+            <Field label="Nachname"><Inp id="neu-person-nachname" value={f.nachname} aria-invalid={neuFehler && !f.nachname ? "true" : undefined} aria-describedby={neuFehler ? "neu-person-fehler" : undefined} onChange={(e) => { setF({ ...f, nachname: e.target.value }); setNeuFehler(null); }} /></Field>
           </div>
+          {neuFehler && <div id="neu-person-fehler" role="alert" style={{ color: C.danger, fontSize: 13, fontWeight: 600 }}>{neuFehler}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Funktion"><Sel value={f.funktion} onChange={(e) => setF({ ...f, funktion: e.target.value })}>
               {["Schichtleitung", "Stellvertretung", "Fachkraft", "Hilfskraft", "Auszubildende"].map((x) => <option key={x}>{x}</option>)}</Sel></Field>
@@ -9965,7 +9968,16 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
               {ROLLEN.filter((x) => !x.extern).map((x) => <option key={x.id} value={x.id}>{rollenName(m, x.id)}</option>)}</Sel></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={() => setNeu(false)}>Abbrechen</Btn>
-            <Btn kind="primary" onClick={() => { if (f.vorname && f.nachname) { akt.neuePerson(f); setNeu(false); setF({ ...f, vorname: "", nachname: "" }); } }}>Hinzufügen</Btn>
+            <Btn kind="primary" onClick={() => {
+              if (!f.vorname.trim() || !f.nachname.trim()) {
+                setNeuFehler("Bitte Vor- und Nachnamen angeben.");
+                /* Fokus auf das erste ungültige Feld (Tastatur, Screenreader). */
+                const feld = document.getElementById(!f.vorname.trim() ? "neu-person-vorname" : "neu-person-nachname");
+                if (feld) feld.focus();
+                return;
+              }
+              akt.neuePerson(f); setNeu(false); setNeuFehler(null); setF({ ...f, vorname: "", nachname: "" });
+            }}>Hinzufügen</Btn>
           </div>
         </div>
       </Sheet>
@@ -25397,8 +25409,10 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
       <div className="sw-root"><div style={{ minHeight: "100vh", display: "flex",
         alignItems: "center", justifyContent: "center", padding: "5vh 20px" }}>
         <Card style={{ padding: 30, maxWidth: 520 }}>
-          <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
-          <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
+          <div role="alert">
+            <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
+            <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
+          </div>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
             {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
             {f.demoAnlegen && <Btn kind="primary" onClick={async () => {

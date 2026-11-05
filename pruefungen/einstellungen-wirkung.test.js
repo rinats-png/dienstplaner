@@ -29,3 +29,35 @@ describe("Dichte", () => {
     expect(app).toContain('`sw-root${dicht ? " dicht" : ""}');
   });
 });
+
+describe("Fehlerzustände sind für Screenreader erreichbar", () => {
+  it("der Ladefehler-Bildschirm meldet Titel und Text als Hinweis (role=alert)", () => {
+    expect(app).toMatch(/<div role="alert">\s*<div style=\{\{ fontSize: 19, fontWeight: 650, marginBottom: 10 \}\}>\{f\.titel\}<\/div>/);
+  });
+  it("das Lade-Gerüst meldet den Zustand (role=status)", () => {
+    expect(app).toContain('role="status" aria-live="polite">CENTRIC wird geladen');
+  });
+});
+
+describe("Dialog Person hinzufügen weist nicht stumm ab", () => {
+  it("leere Namen erzeugen eine Meldung (role=alert) statt keiner Reaktion", () => {
+    expect(app).toContain('setNeuFehler("Bitte Vor- und Nachnamen angeben.")');
+    expect(app).toMatch(/id="neu-person-fehler" role="alert"/);
+  });
+  it("die Felder tragen aria-invalid und verweisen auf die Meldung", () => {
+    expect(app).toContain('aria-invalid={neuFehler && !f.vorname ? "true" : undefined}');
+    expect(app).toContain('aria-invalid={neuFehler && !f.nachname ? "true" : undefined}');
+    expect(app).toContain('aria-describedby={neuFehler ? "neu-person-fehler" : undefined}');
+  });
+  it("Leerzeichen allein zählen nicht als Name", () => {
+    expect(app).toContain("!f.vorname.trim() || !f.nachname.trim()");
+  });
+});
+
+describe("Dialog Person hinzufügen: Fokus bei Fehler", () => {
+  it("der Fokus springt auf das erste ungültige Feld", () => {
+    expect(app).toContain('document.getElementById(!f.vorname.trim() ? "neu-person-vorname" : "neu-person-nachname")');
+    expect(app).toContain('id="neu-person-vorname"');
+    expect(app).toContain('id="neu-person-nachname"');
+  });
+});
