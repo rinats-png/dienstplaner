@@ -116,6 +116,12 @@ export function wirksameRolle(sitzung, bestand) {
 export const BEKANNTE_ROLLEN = Object.freeze([...Object.keys(RANG), "kunde"]);
 export const rolleBekannt = (rolle) => BEKANNTE_ROLLEN.includes(rolle === undefined || rolle === null ? "kunde" : rolle);
 
+/* P0 (PR #17-Prüfung): Für eine SITZUNG gilt kein Rückfall. Ohne eine Rolle,
+   die als Zeichenkette in der Rangliste steht, gibt es keinen Zugriff —
+   kein Bestand, kein Schreiben, keine Sicht. Die Eingabe-Vorgabe „kunde“
+   (rolleBekannt) bleibt für Anlagen unverändert. */
+export const sitzungsRolleBekannt = (rolle) => typeof rolle === "string" && BEKANNTE_ROLLEN.includes(rolle);
+
 export const SCHREIBEN_VOLL = "voll";
 export const SCHREIBEN_EINHEIT = "einheit";
 export const SCHREIBEN_EIGENES = "eigenes";
@@ -523,8 +529,8 @@ function bestandFuerRolleKern(bestand, sitzung) {
   if (!bestand || typeof bestand !== "object") return bestand;
   /* Unbekannte Rolle: nichts (Commit D1d). Bis hierher fiel sie unten auf
      eine Rohkopie des eigenen Betriebs durch. */
-  if (!sitzung || !rolleBekannt(sitzung.rolle)) return null;
-  const rolle = sitzung.rolle || "kunde";
+  if (!sitzung || !sitzungsRolleBekannt(sitzung.rolle)) return null;
+  const rolle = sitzung.rolle;
   /* Seit Commit D1 eine Positivliste statt des ganzen Raums (sicht.mjs). */
   if (rolle === "betreiber") return bestandSichtBetreiber(bestand);
 
@@ -1260,9 +1266,9 @@ export function sammelAnzahlSetzen(mandant, sammel, altM = null) {
 function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {}) {
   /* Unbekannte Rolle schreibt nicht (Commit D1d) — vorher machte
      „|| kunde" aus einer leeren Bezeichnung das volle Schreibrecht. */
-  if (!sitzung || !rolleBekannt(sitzung.rolle)) return null;
+  if (!sitzung || !sitzungsRolleBekannt(sitzung.rolle)) return null;
   const uebermittelt = abgeleiteteEntfernen(uebermitteltRoh);
-  const rolle = sitzung.rolle || "kunde";
+  const rolle = sitzung.rolle;
   const umfang = schreibumfang(rolle);
   if (umfang === SCHREIBEN_NEIN) return null;
 

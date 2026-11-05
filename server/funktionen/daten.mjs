@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
-import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
+import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
@@ -656,7 +656,7 @@ export default async (req, context) => {
       if (eintrag.rolle === "betreiber")
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
       /* Ebenso keine Rolle, die es nicht gibt (Commit D1e). */
-      if (!rolleBekannt(eintrag.rolle))
+      if (!sitzungsRolleBekannt(eintrag.rolle))
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
       const gelesenD = await bestandLesen(store, eintrag.bestand);
       const bindungD = codeBindung(gelesenD && gelesenD.bestand, eintrag);
@@ -749,7 +749,7 @@ export default async (req, context) => {
       /* Eine Rolle, die es nicht gibt (Commit D1e): keine Sitzung. Vor dem
          Nachtragen der Betriebsbindung und vor dem Umschlüsseln — die
          Absage verändert nichts. Die Antwort nennt die Rolle nicht. */
-      if (!rolleBekannt(eintrag.rolle)) {
+      if (!sitzungsRolleBekannt(eintrag.rolle)) {
         await protokoll("anmelden", k, "abgewiesen", "unbekannte Rolle");
         return antwort({ fehler: "Dieser Zugang ist nicht nutzbar.",
           text: "Bitte wende dich an die Organisationsleitung." }, 403);
@@ -816,7 +816,7 @@ export default async (req, context) => {
         } catch { /* darf keine Anmeldung scheitern lassen; beim nächsten Mal erneut */ }
       }
       const { token, gueltigBis } = await sitzungAnlegen({
-        bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
+        bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         mandantId: bindungC.mandantId,
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
@@ -848,7 +848,7 @@ export default async (req, context) => {
       await entlasten("anmelden", k, b);
       notentlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
-      return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
+      return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         hinweis: eintrag.hinweis || null, gueltigBis,
         ...(zfAktiv === null ? {} : { zweifaktor: zfAktiv }) });
@@ -937,7 +937,7 @@ export default async (req, context) => {
     /* Geprüft wird die gespeicherte Rolle der Sitzung und die wirksame
        (Commit D1e): Eine unbekannte Kontorolle wird nicht dadurch gültig,
        dass die gebundene Person im Betrieb eine bekannte Rolle hat. */
-    if ((!rolleBekannt(s0.rolle) || !rolleBekannt(s.rolle)) && !(pfad === "abmelden" && req.method === "POST")) {
+    if ((!sitzungsRolleBekannt(s0.rolle) || !sitzungsRolleBekannt(s.rolle)) && !(pfad === "abmelden" && req.method === "POST")) {
       await protokoll("schreiben", kennung(req, s), "abgewiesen", "unbekannte Rolle", wer);
       return antwort({ fehler: "Keine Berechtigung.", text: absageText(s.rolle) }, 403);
     }
