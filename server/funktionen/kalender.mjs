@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesen, bestandLesenStreng, voruebergehend } from "../lib/bestand.mjs";
-import { eigenerMandant, rolleBekannt } from "../lib/rechte.mjs";
+import { eigenerMandant, sitzungsRolleBekannt, rolleBekannt } from "../lib/rechte.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
 import { feedTermine } from "../lib/kalenderfeed.mjs";
 import { feedHerkunftAus, feedHerkunftGilt } from "../lib/feedherkunft.mjs";
@@ -397,7 +397,7 @@ export default async (req) => {
     const s = (await arbeitssitzungLesen(req, { store: store() })).sitzung;
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
     /* Unbekannte Rolle: kein Zugriff, auch nicht auf den eigenen Kalender (Commit D1e). */
-    if (!rolleBekannt(s.rolle)) return antwort({ fehler: "Keine Berechtigung." }, 403);
+    if (!sitzungsRolleBekannt(s.rolle)) return antwort({ fehler: "Keine Berechtigung." }, 403);
 
     /* Alle Wege ab hier: nur für die eigene Person. */
     const b = (pfad === "einrichten" || pfad === "daten" || pfad === "loeschen") ? await eigeneBindung(s) : null;

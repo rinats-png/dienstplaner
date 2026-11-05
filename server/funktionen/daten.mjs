@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
-import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
+import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
@@ -937,7 +937,7 @@ export default async (req, context) => {
     /* Geprüft wird die gespeicherte Rolle der Sitzung und die wirksame
        (Commit D1e): Eine unbekannte Kontorolle wird nicht dadurch gültig,
        dass die gebundene Person im Betrieb eine bekannte Rolle hat. */
-    if ((!rolleBekannt(s0.rolle) || !rolleBekannt(s.rolle)) && !(pfad === "abmelden" && req.method === "POST")) {
+    if ((!sitzungsRolleBekannt(s0.rolle) || !sitzungsRolleBekannt(s.rolle)) && !(pfad === "abmelden" && req.method === "POST")) {
       await protokoll("schreiben", kennung(req, s), "abgewiesen", "unbekannte Rolle", wer);
       return antwort({ fehler: "Keine Berechtigung.", text: absageText(s.rolle) }, 403);
     }

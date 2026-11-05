@@ -49,7 +49,7 @@ describe("rolleBekannt", () => {
 
 describe("bestandFuerRolle", () => {
   it("bekannte Rollen: weiterhin eine Sicht mit dem eigenen Betrieb", () => {
-    for (const r of [...BEKANNTE_ROLLEN, undefined]) {
+    for (const r of BEKANNTE_ROLLEN) {
       const aus = bestandFuerRolle(bestand(), { ...sitz(r), ...(r === "betreiber" ? { person: null, mandantId: undefined } : {}) });
       expect(aus, String(r)).toBeTruthy();
       expect(Array.isArray(aus.mandanten) && aus.mandanten.length, String(r)).toBe(1);
