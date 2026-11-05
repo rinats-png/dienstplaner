@@ -21138,8 +21138,8 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
       <MTitel rubrik={e ? e.name : ""}>{p.vorname} {p.nachname}</MTitel>
 
       <MKarte style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-        {[["Auslastung", `${ausl.pct} %`], ["Wochenstunden", `${n1(p.wochenstunden)} h`],
-          ["Urlaub übrig", `${urlaubskonto(m, p, new Date().getFullYear()).rest} Tage`]].map(([l, v]) => (
+        {[["Auslastung", ausl.pct == null ? "–" : `${ausl.pct} %`], ["Wochenstunden", `${n1(p.wochenstunden)} h`],
+          ["Urlaub übrig", (() => { const r = urlaubskonto(m, p, new Date().getFullYear()).rest; return r == null ? "–" : `${r} Tage`; })()]].map(([l, v]) => (
           <div key={l} style={{ flex: "1 1 90px" }}>
             <div style={{ fontSize: 11.5, color: C.dimmer }}>{l}</div>
             <div style={{ fontSize: 19, fontWeight: 650, marginTop: 3, ...NUM }}>{v}</div>
@@ -21192,6 +21192,15 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
       <MKarte style={{ padding: "4px 18px" }}>
         <MZeile links="Feldmodus" unten="Größere Schrift, maximaler Kontrast"
           rechts={<Schalter an={!!p.kontrastmodus} onChange={() => akt.setzeKontrastmodus(!p.kontrastmodus)} />} />
+        {/* Erscheinungsbild: Hell, Dunkel oder dem Gerät folgen — die Wahl bleibt gespeichert. */}
+        <div style={{ padding: "15px 4px", borderBottom: `1px solid ${C.lineSoft}` }}>
+          <div style={{ fontSize: 15.5, fontWeight: 500 }}>Erscheinungsbild</div>
+          <div style={{ fontSize: 13, color: C.dimmer, marginTop: 3, lineHeight: 1.4 }}>„Wie das Gerät“ folgt der Systemeinstellung, auch wenn sie sich später ändert.</div>
+          <div style={{ marginTop: 10 }}>
+            <Seg value={p.thema || "auto"} onChange={(v) => akt.setzeMeineEinstellung("thema", v)}
+              options={[{ id: "hell", label: "Hell" }, { id: "dunkel", label: "Dunkel" }, { id: "auto", label: "Wie das Gerät" }]} />
+          </div>
+        </div>
         <MZeile links="Rundgang wiederholen" unten="Wie CENTRIC funktioniert, in fünf Schritten"
           onClick={akt.starteEinfuehrung} />
         <MZeile links="Rechneransicht" unten="Alle Tabellen und Auswertungen"
@@ -23270,6 +23279,9 @@ function AppInnen() {
 
 
   const [themaZaehler, setThemaZaehler] = useState(0);
+  /* Betreiber haben keine Person, an der die Wahl hängt: Ihre Wahl gilt für dieses Gerät
+     (derselbe Speicher wie im Einstieg, v4/thema.js). */
+  const [betreiberThema, setBetreiberThema] = useState(() => v4ThemaGemerkt() || "auto");
 
   /* Vorrang: ausdrückliche Wahl (Hell/Dunkel der Person, sonst die auf diesem
      Gerät gemerkte) vor der Systemeinstellung. Ohne Wahl — oder bei "Wie das
@@ -23278,7 +23290,7 @@ function AppInnen() {
      gemerkt, damit beide übereinstimmen. */
   useEffect(() => {
     const p = sitz && sitz.person;
-    const eigene = p ? p.thema : null;
+    const eigene = p ? p.thema : betreiberThema;
     v4ThemaMerken(eigene);
     const wahl = eigene === "hell" || eigene === "dunkel" ? eigene : (eigene === "auto" ? null : v4ThemaGemerkt());
     if (wahl === "hell" || wahl === "dunkel") {
@@ -23289,7 +23301,7 @@ function AppInnen() {
     themaSetzen(themaVomSystem());
     setThemaZaehler((n) => n + 1);
     return v4SystemthemaBeobachten((e) => { themaSetzen(e.matches); setThemaZaehler((n) => n + 1); });
-  }, [sitz && sitz.person && sitz.person.thema]);
+  }, [sitz && sitz.person && sitz.person.thema, sitz && !sitz.person ? betreiberThema : null]);
 
 
   const akt = useMemo(() => {
@@ -25587,8 +25599,8 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
             onDicht={(an) => { setDicht(an); if (!istBetreiber) akt.setzeMeineEinstellung("dichte", an ? "kompakt" : "komfortabel"); }}
             feldmodus={!istBetreiber && !!sitz.person.kontrastmodus}
             onFeldmodus={istBetreiber ? undefined : (an) => akt.setzeKontrastmodus(an)}
-            thema={istBetreiber ? undefined : sitz.person.thema}
-            onThema={istBetreiber ? undefined : (v) => akt.setzeMeineEinstellung("thema", v)}
+            thema={istBetreiber ? betreiberThema : sitz.person.thema}
+            onThema={istBetreiber ? setBetreiberThema : (v) => akt.setzeMeineEinstellung("thema", v)}
             onAnsicht={(id) => { setView(id); setDetail(null); setSeiteOffen(false); }}
             onSuche={() => setKmd(true)} onZurueck={akt.zurueck} onPostfach={() => setPostfach(true)}
             onDrawer={() => setSeiteOffen(!seiteOffen)} drawerOffen={seiteOffen}

@@ -61,3 +61,27 @@ describe("Dialog Person hinzufügen: Fokus bei Fehler", () => {
     expect(app).toContain('id="neu-person-nachname"');
   });
 });
+
+describe("Erscheinungsbild: Hell/Dunkel/System für alle Oberflächen (Entscheidung)", () => {
+  it("Betreiber wählen ihr Erscheinungsbild im Kopfmenü; die Wahl gilt für das Gerät", () => {
+    expect(app).toContain('const [betreiberThema, setBetreiberThema] = useState(() => v4ThemaGemerkt() || "auto");');
+    expect(app).toContain("const eigene = p ? p.thema : betreiberThema;");
+    expect(app).toContain("thema={istBetreiber ? betreiberThema : sitz.person.thema}");
+    expect(app).toContain('onThema={istBetreiber ? setBetreiberThema : (v) => akt.setzeMeineEinstellung("thema", v)}');
+  });
+  it("Personen: die Wahl wird an der Person gespeichert und auf dem Gerät gemerkt", () => {
+    expect(app).toContain('akt.setzeMeineEinstellung("thema", v)');
+    expect(app).toContain("v4ThemaMerken(eigene);");
+  });
+});
+
+describe("Beschäftigtenoberfläche (Mehr)", () => {
+  it("bietet das Erscheinungsbild Hell, Dunkel, Wie das Gerät an und speichert es an der Person", () => {
+    expect(app).toContain('<Seg value={p.thema || "auto"} onChange={(v) => akt.setzeMeineEinstellung("thema", v)}');
+    expect(app).toContain('{ id: "auto", label: "Wie das Gerät" }');
+  });
+  it("Kennzahlen zeigen einen Strich statt „null“, wenn kein Wert vorliegt", () => {
+    expect(app).toContain('ausl.pct == null ? "–" : `${ausl.pct} %`');
+    expect(app).toContain('return r == null ? "–" : `${r} Tage`;');
+  });
+});
