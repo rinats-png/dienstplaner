@@ -16,7 +16,7 @@
 
 /** Klassen, die diese Schicht überschreibt. Der Test prüft, dass jede davon im App-Stil vorkommt. */
 export const V4_APP_KLASSEN = [
-  "seitenleiste", "slink", "karte", "karte-still", "karte-hover", "btn", "btn-primary", "btn-sm", "inp", "sel", "blatt", "sheet-back", "toast", "seg", "suchknopf", "inhalt",
+  "seitenleiste", "slink", "karte", "karte-still", "karte-hover", "noprint", "btn", "btn-primary", "btn-sm", "inp", "sel", "blatt", "sheet-back", "toast", "seg", "suchknopf", "inhalt",
 ];
 
 export const v4AppStil = () => `
@@ -38,6 +38,8 @@ html[data-v4-app] .slink.on::before{background:var(--v4-akzent-auf-dunkel);}
 
 /* Karten im Raster: Rasterspalte darf schmaler werden als der Inhalt (kein Überlauf) */
 html[data-v4-app] .karte, html[data-v4-app] .karte-hover{min-width:0; max-width:100%; box-sizing:border-box;}
+/* Auswahlleisten und Behälter im Inhalt: nicht breiter als die Spalte (Personal, 320 px) */
+html[data-v4-app] .noprint, html[data-v4-app] .seg{min-width:0; max-width:100%; box-sizing:border-box;}
 
 /* Karten: opake Fläche, Rand 1px, großer Radius, V4-Schatten */
 html[data-v4-app] .karte{background:var(--v4-flaeche); border:1px solid var(--v4-line);
