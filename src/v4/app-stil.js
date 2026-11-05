@@ -24,6 +24,10 @@ export const v4AppStil = () => `
 html[data-v4-app] :focus-visible{
   outline:var(--v4-fokus-breite) solid var(--v4-focus); outline-offset:var(--v4-fokus-abstand);}
 
+/* Inhalt: auf schmalen Breiten ohne Überlauf (Innenabstand zählt zur Breite) */
+html[data-v4-app] main.bereich{box-sizing:border-box; max-width:100%; min-width:0;}
+html[data-v4-app] .inhalt{min-width:0; max-width:100%;}
+
 /* Navigation: dunkle Seitenleiste; aktiver Eintrag als Glasfläche mit Akzentkante */
 html[data-v4-app] .seitenleiste{background:var(--v4-sidebar); border-right:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink{min-height:var(--v4-ziel); border-radius:var(--v4-r-mittel);}
@@ -31,6 +35,9 @@ html[data-v4-app] .slink:hover{background:var(--v4-glas);}
 html[data-v4-app] .slink.on{background:var(--v4-glas); color:var(--v4-text);
   border:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink.on::before{background:var(--v4-akzent-auf-dunkel);}
+
+/* Karten im Raster: Rasterspalte darf schmaler werden als der Inhalt (kein Überlauf) */
+html[data-v4-app] .karte, html[data-v4-app] .karte-hover{min-width:0; max-width:100%; box-sizing:border-box;}
 
 /* Karten: opake Fläche, Rand 1px, großer Radius, V4-Schatten */
 html[data-v4-app] .karte{background:var(--v4-flaeche); border:1px solid var(--v4-line);
