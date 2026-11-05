@@ -119,3 +119,13 @@ describe("V4 Regel: nie weiße Schrift auf dem Akzent", () => {
     expect(app).not.toMatch(/: C\.accent,\s*\r?\n\s*color: SP\.pushErlaubt\(\) \? C\.text : "#fff"/);
   });
 });
+
+describe("Kopfzeilen: rechte Aktionsgruppen brechen um (320 px)", () => {
+  it("jede Aktionsgruppe in H1 right={…} mit display:flex trägt flexWrap", () => {
+    /* Nur die Slots der Seitenüberschrift H1 (Zeile beginnt mit right=); CardHead-Zeilen sind Kartenköpfe. */
+    const stellen = app.split(/\r?\n/).filter((z) => /^\s*right=\{<div style=\{\{ display: "flex"/.test(z));
+    expect(stellen.length).toBeGreaterThan(0);
+    const ohne = stellen.filter((z) => !z.includes('flexWrap: "wrap"'));
+    expect(ohne).toEqual([]);
+  });
+});

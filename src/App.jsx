@@ -8082,7 +8082,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
     <div>
       <Btn size="sm" kind="quiet" onClick={zurueck} style={{ marginBottom: 16 }}><Icon n="chevron-links" size={14} /> Alle Mandanten</Btn>
       <H1 sub={`${(BRANCHEN.find((b) => b[0] === s.branche) || [])[1]} · Tarif ${p.t.name} · ${stat(s.status).label}`}
-        right={<div style={{ display: "flex", gap: 9 }}>
+        right={<div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
           <Btn kind="primary" onClick={() => akt.rechnungStellen(m.id)}>Rechnung erzeugen</Btn>
           <Btn kind="danger" onClick={() => akt.loescheMandant(m.id)}>Löschen</Btn></div>}>{s.name}</H1>
 
@@ -8257,7 +8257,7 @@ function BetreiberRechnungen({ db, akt }) {
   return (
     <div>
       <H1 sub="Die Rechnung entsteht aus dem Zugangsbestand zum Zeitpunkt der Erstellung. Ausgabe als PDF oder als Word-Dokument."
-        right={<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Inp type="month" value={monat} onChange={(e) => setMonat(e.target.value)} style={{ width: 168 }} />
           <Btn kind="primary" onClick={() => akt.rechnungslauf(monat)}>Rechnungslauf starten</Btn>
         </div>}>Rechnungen</H1>
@@ -16857,7 +16857,7 @@ function Handbuch({ sitz, akt, gehZu }) {
     <div>
       <H1 rubrik="Hilfe"
         sub="Ein durchgehender Weg von der leeren Anwendung bis zum laufenden Betrieb — und danach ein Nachschlagewerk. Jeder Schritt nennt, woran du merkst, dass es geklappt hat."
-        right={<div style={{ display: "flex", gap: 10 }}>
+        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Btn onClick={akt.druckeHandbuch}>Als PDF drucken</Btn>
         </div>}>
         Handbuch</H1>
@@ -20259,7 +20259,7 @@ function Selbststarts({ db, akt }) {
     <div>
       <H1 rubrik="Betreiber"
         sub="Wer sich selbst einen Testbetrieb angelegt hat. Die Liste, die man abends durchgeht — wer hat angefangen, bei wem lohnt ein Anruf."
-        right={<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={String(tage)} onChange={(v) => setTage(Number(v))}
             options={[{ id: "7", label: "7 Tage" }, { id: "30", label: "30 Tage" },
               { id: "90", label: "90 Tage" }]} />
