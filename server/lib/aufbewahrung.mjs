@@ -194,6 +194,18 @@ export function aufbewahrungGeaendert(vorher) {
   return (m) => !alt.has(String(m && m.id)) || alt.get(String(m.id)) !== JSON.stringify(m.aufbewahrung ?? null);
 }
 
+/**
+ * Der Tag, ab dem ein Eintrag des Bestätigungsprotokolls aus der Frist laufen kann: der
+ * späteste der Tage, die er trägt (Zeit der Bestätigung, Einsatztag, Ende des Zeitraums).
+ * Ohne erkennbaren Tag bleibt der Eintrag liegen — lieber mitschleppen als stillschweigend löschen.
+ * § 16 Abs. 2 ArbZG: zwei Jahre; es gilt dieselbe Frist wie für Plandaten (stichtage().plan).
+ */
+export function bestaetigungTag(e) {
+  if (!e || typeof e !== "object") return null;
+  const tage = [e.zeit, e.datum, e.bis, e.von].map((x) => String(x || "").slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+  return tage.length ? tage.sort().at(-1) : null;
+}
+
 /** Die drei Stichtage, ab denen rückwärts gelöscht wird. */
 export function stichtage(m, heuteIso) {
   const f = fristen(m);
@@ -351,6 +363,10 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
   const aenderungen = (m.aenderungen || [])
     .filter((c) => c && c.datum && String(c.datum).slice(0, 10) < st.plan).length;
 
+  /* Bestätigungsprotokoll (Warnen statt sperren): nach der Plandatenfrist, mindestens zwei Jahre. */
+  const bestaetigungen = (Array.isArray(m.bestaetigungen) ? m.bestaetigungen : [])
+    .filter((e) => { const tag = bestaetigungTag(e); return tag !== null && tag < st.plan; }).length;
+
   /* Ein Grund zählt nur, wenn es ihn gibt und die Abwesenheit vorbei ist. */
   const gruende = (m.abwesenheiten || []).filter((a) => {
     if (!a) return false;
@@ -379,6 +395,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     plandaten,
     planSumme,
     aenderungen,
+    bestaetigungen,
     gruende,
     standort,
     abgewiesen,
@@ -387,7 +404,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     moduldatenZurueckgehalten: md.zurueckgehalten,
     modulprotokollZurueckgehalten: mp.zurueckgehalten,
     pruefhinweis: md.zurueckgehalten || mp.zurueckgehalten ? PRUEFHINWEIS : null,
-    gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + md.anzahl + modulprotokoll,
+    gesamt: personen.length + planSumme + aenderungen + bestaetigungen + gruende + standort + abgewiesen + md.anzahl + modulprotokoll,
     warnung,
   };
 }
@@ -492,6 +509,8 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
       personen: personenNeu,
       aenderungen: (m.aenderungen || [])
         .filter((c) => !(c && c.datum && String(c.datum).slice(0, 10) < st.plan)),
+      ...(Array.isArray(m.bestaetigungen) ? { bestaetigungen: m.bestaetigungen
+        .filter((e) => { const tag = bestaetigungTag(e); return !(tag !== null && tag < st.plan); }) } : {}),
       abwesenheiten: (m.abwesenheiten || []).map((a) => {
         if (!a) return a;
         const ende = String(a.bis || a.von || "").slice(0, 10);
@@ -524,6 +543,8 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.planSumme, "Plan- oder Zeiteintrag", "Plan- und Zeiteinträge")} gelöscht`);
   if (b.aenderungen)
     teile.push(`${zahlwort(b.aenderungen, "Änderungsvermerk", "Änderungsvermerke")} gelöscht`);
+  if (b.bestaetigungen)
+    teile.push(`${zahlwort(b.bestaetigungen, "Bestätigung", "Bestätigungen")} im Bestätigungsprotokoll entfernt`);
   if (b.standort)
     teile.push(`${zahlwort(b.standort, "Standort-Ergebnis", "Standort-Ergebnisse")} entfernt`);
   if (b.gruende)

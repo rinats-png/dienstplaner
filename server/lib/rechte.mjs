@@ -1792,6 +1792,17 @@ const kurzText = (t, max) => typeof t === "string" && t.length <= max;
  * @param {null | ((pid: any, tag: string) => boolean)} imBereich nur für die Schichtverantwortung
  * @returns {{liste?: any[], grund?: string}}
  */
+/** Frist des Bestätigungsprotokolls: zwei Jahre (§ 16 Abs. 2 ArbZG), wie PLANDATEN_MINDEST in aufbewahrung.mjs
+    (dort nicht importierbar: aufbewahrung -> branchenmodule -> rechte). */
+const BESTAETIGUNG_FRIST_TAGE = 730;
+function bestaetigungVerfallen(e, heute = heuteBerlin()) {
+  const tage = [e.datum, e.bis, e.von].filter((x) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x));
+  if (!tage.length) return false;
+  const letzter = tage.sort().at(-1);
+  const grenze = new Date(Date.parse(heute) - BESTAETIGUNG_FRIST_TAGE * 86400000).toISOString().slice(0, 10);
+  return letzter < grenze;
+}
+
 function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
   const personen = new Map((Array.isArray(altM.personen) ? altM.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
   const dienste = new Set((Array.isArray(altM.dienstarten) ? altM.dienstarten : []).filter(Boolean).map((d) => String(d.id)));
@@ -1881,6 +1892,11 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
        geändert mitschickt (etwa seine eigene Zeit statt der des Servers),
        ist wirkungslos — das Protokoll ändert sich nur durch Anhängen. */
     if (bekannt.has(id)) continue;
+    /* Aufbewahrung (A32): Ein unbekannter Eintrag, dessen Tag schon aus der Frist von zwei Jahren ist,
+       wäre ein Rest eines veralteten Clients — der Aufbewahrungslauf hat ihn bereits entfernt (oder
+       entfernt ihn sofort wieder). Ohne Fehlermeldung übergehen: Eine Ablehnung würde das ganze
+       Speichern dieses Clients blockieren, die Wiederaufnahme das Gelöschte neu datieren. */
+    if (bestaetigungVerfallen(e)) continue;
     const sauber = neuerEintrag(e);
     if (sauber === SPERRT) return { grund: "bestaetigungen: Ein sperrender Befund (Schutz, Einschränkung, gesetzliche Qualifikation, Einweisung, Ruhezeit unter 11 Stunden, Bestand) lässt sich nicht bestätigen." };
     if (!sauber) return { grund: "bestaetigungen: Dieser Eintrag ist über diesen Zugang nicht möglich." };
@@ -1893,7 +1909,8 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
      werden neue Einträge abgewiesen; gelöscht wird nichts. Dazu eine Bremse
      je bestätigender Person und Tag. Ältere Einträge auszulagern (Archiv je
      Monat) oder nach Frist zu löschen (§ 16 Abs. 2 ArbZG: zwei Jahre) ist
-     ein eigener, protokollierter Aufbewahrungslauf — noch offen. */
+     Sache des Aufbewahrungslaufs (aufbewahrung.mjs, bestaetigungTag): vorbereitet,
+     im Modus „vorschau“ nur gezählt; gelöscht wird erst nach ausdrücklicher Freigabe. */
   if (neue.length && altL.length + neue.length > BESTAETIGUNGEN_GESAMT)
     return { grund: `bestaetigungen: Das Bestätigungsprotokoll hat seine Grenze von ${BESTAETIGUNGEN_GESAMT} Einträgen erreicht. Bitte die Leitung ansprechen — ältere Einträge werden nicht verdrängt.` };
   if (neue.length && ich) {
