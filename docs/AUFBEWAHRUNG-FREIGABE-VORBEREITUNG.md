@@ -18,7 +18,7 @@ Der ursprüngliche Befund „Datenschutzlauf löscht standardmäßig nichts“ w
 | Stammdaten | 6 Monate (`VORGABE.stammdatenMonate`) | keine | **nein** |
 | Gründe (Abwesenheitsgründe, Standortergebnisse) | 3 Monate (`VORGABE.gruendeMonate`) | keine | **nein** |
 | Frist-Grenzen allgemein | 1 bis 600 Monate (`FRIST_GRENZEN`) | — | Eingabegrenzen, keine Rechtsfrist |
-| Bestätigungsprotokoll (Geo) | keine Löschfrist | — | **offen** (PR #16 A32, § 16 Abs. 2 ArbZG) |
+| Bestätigungsprotokoll (Warnen statt sperren) | PR #96 (Entwurf): wie Plandaten, mindestens 24 Monate; im Modus `vorschau` nur gezählt | 24 Monate hart (gleiche Regel wie Plandaten) | Technik vorbereitet; **Frist noch nicht bestätigt** (PR #16 A32, § 16 Abs. 2 ArbZG) |
 | Spur / Protokoll | 30 Tage (`schutz.mjs`, `spurAufraeumen`) | — | Betriebsentscheidung, nicht verifiziert |
 | Sicherungen | Betriebssicherung (restic), eigene Frist | — | außerhalb des Löschlaufs; Frist nicht geprüft |
 
@@ -28,7 +28,7 @@ Ergebnis: Die 24 Monate bei Plandaten sind der einzige Wert mit einer Untergrenz
 
 1. **Stammdaten:** Frist festlegen und Grundlage nennen (z. B. Personalakte, Gehaltsnachweise, Steuer- und Sozialversicherungsrecht). Ohne Grundlage keine Löschung.
 2. **Gründe und Standortergebnisse:** Frist und Zweck bestätigen.
-3. **Bestätigungsprotokoll (Geo):** Frist festlegen. Vorschlag: an die Plandatenfrist koppeln, mindestens 24 Monate.
+3. **Bestätigungsprotokoll:** Frist bestätigen. Umgesetzt als Vorschlag in PR #96: Plandatenfrist, mindestens 24 Monate, nur Vorschau.
 4. **Spur (Protokoll):** Frist bestätigen. 30 Tage nur, wenn die Protokollpflicht nicht anders greift.
 5. **Betriebssicherung:** Verhältnis zur Löschfrist klären. Gelöschtes darf nicht über alte Sicherungen zurückkommen.
 6. **Freigabe:** Schriftliche Freigabe des Betreibers, wer den Schalter auf `an` setzen darf und unter welchen Bedingungen.
