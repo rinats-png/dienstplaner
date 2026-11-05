@@ -36,6 +36,7 @@ import { addMonate } from "./regelbaukasten.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 import { csvFeld, csvText } from "./csvfeld.js";
 import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
+import { v4AppStil } from "./v4/app-stil.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -212,6 +213,7 @@ function themaSetzen(dunkel) {
     const wurzel = document.documentElement;
     wurzel.style.colorScheme = dunkel ? "dark" : "light";
     wurzel.setAttribute("data-thema", dunkel ? "dunkel" : "hell");
+    wurzel.setAttribute("data-v4-app", "");
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.bg : C_HELL.bg);
   }
@@ -571,6 +573,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
 }
 ${gestaltStil()}
+${v4AppStil()}
 `;
 
 /* --------------------------------- Datum --------------------------------- */
