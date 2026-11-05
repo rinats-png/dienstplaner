@@ -5715,7 +5715,7 @@ function Anmeldung({ db, onLogin }) {
           <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }}
             {...klickbar(() => onLogin({ rolle: "betreiber" }), "Zur Betreiberkonsole")}>
             <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: "#fff",
+              <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: C.aufAkzent,
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>BE</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 17, fontWeight: 600 }}>Zur Betreiberkonsole</div>
@@ -5979,7 +5979,7 @@ function LinienDiagramm({ daten, hoehe = 168, wert = "y", label = "label", nulll
       </div>
       {aktiv !== null && (
         <div style={{ position: "absolute", top: -6, left: `${(aktiv / (daten.length - 1)) * 100}%`,
-          transform: "translateX(-50%)", background: C.accentDeep, color: "#fff", padding: "5px 10px",
+          transform: "translateX(-50%)", background: C.accentDeep, color: C.aufAkzent, padding: "5px 10px",
           borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", pointerEvents: "none", ...NUM }}>
           {f(daten[aktiv][wert])}
         </div>)}
@@ -6015,7 +6015,7 @@ function BalkenDiagramm({ daten, hoehe = 150, wert = "y", label = "label", einhe
                 cursor: klick ? "pointer" : "default", position: "relative", minWidth: 4 }}>
               {aktiv === i && (
                 <div style={{ position: "absolute", bottom: "calc(100% + 7px)", left: "50%",
-                  transform: "translateX(-50%)", background: C.accentDeep, color: "#fff", padding: "5px 10px",
+                  transform: "translateX(-50%)", background: C.accentDeep, color: C.aufAkzent, padding: "5px 10px",
                   borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", zIndex: 5, ...NUM }}>
                   {d[label]} · {n1(d[wert])}{einheit}
                 </div>)}
@@ -20848,7 +20848,7 @@ function MPlan({ sitz, akt, oeffnen }) {
           <button key={id} onClick={() => setSchnell(id)} className="btn btn-sm"
             style={{ background: schnell === id ? C.accent : C.flaeche,
               borderColor: schnell === id ? C.accent : C.line,
-              color: schnell === id ? "#fff" : C.dim, fontWeight: schnell === id ? 650 : 500 }}>
+              color: schnell === id ? C.aufAkzent : C.dim, fontWeight: schnell === id ? 650 : 500 }}>
             {l}</button>))}
       </div>
 
@@ -21547,7 +21547,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
                         ? ` · ${(a.bewerbungen || []).length} haben sich schon gemeldet` : ""}</div>
                     <button onClick={() => akt.bewirbDich(a.id, "")}
                       style={{ marginTop: 14, width: "100%", padding: "14px", borderRadius: 12,
-                        border: "none", background: C.accent, color: "#fff", fontFamily: "inherit",
+                        border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
                         fontSize: 15.5, fontWeight: 600, cursor: "pointer", minHeight: 48 }}>
                       Ich übernehme das</button>
                   </MKarte>);
@@ -21585,7 +21585,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
                 <button onClick={() => akt.pushUmschalten(!SP.pushErlaubt())}
                   style={{ marginTop: 12, padding: "11px 18px", borderRadius: 12, border: "none",
                     background: SP.pushErlaubt() ? C.flaecheStill : C.accent,
-                    color: SP.pushErlaubt() ? C.text : "#fff", fontFamily: "inherit",
+                    color: SP.pushErlaubt() ? C.text : C.aufAkzent, fontFamily: "inherit",
                     fontSize: 14.5, fontWeight: 600, cursor: "pointer", minHeight: 48 }}>
                   {SP.pushErlaubt() ? "Ausschalten" : "Einschalten"}</button>)}
             </div>

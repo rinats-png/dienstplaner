@@ -100,3 +100,22 @@ describe("V4 App-Schicht: Zugänglichkeit", () => {
     });
   }
 });
+
+describe("V4 Regel: nie weiße Schrift auf dem Akzent", () => {
+  /* Im dunklen Thema ist accent ein heller Mintton. Weiße Schrift darauf ist
+     unlesbar (DESIGNSYSTEM: Primäre Buttons tragen dunkle Schrift auf Mint).
+     Die Schriftfarbe auf accent und accentDeep ist C.aufAkzent. */
+  it("kein background: C.accent/C.accentDeep mit color: \"#fff\" in einem Ausdruck", () => {
+    const treffer = app.split(/\r?\n/).map((z, i) => [i + 1, z])
+      .filter(([, z]) => /background:\s*C\.accent(Deep|Hi|Light)?[^,}]*,\s*color:\s*"#fff"/.test(z));
+    expect(treffer).toEqual([]);
+  });
+  it("kein color: \"#fff\" in Abhängigkeit von der Auswahl auf accent (Schnellwahl)", () => {
+    expect(app).not.toMatch(/color: schnell === id \? "#fff"/);
+    expect(app).toContain("color: schnell === id ? C.aufAkzent : C.dim");
+  });
+  it("Knöpfe mit accent-Hintergrund und #fff in zwei Zeilen: BE-Kachel, Übernehmen, Push", () => {
+    expect(app).not.toMatch(/background: C\.accent, color: "#fff"/);
+    expect(app).not.toMatch(/: C\.accent,\s*\r?\n\s*color: SP\.pushErlaubt\(\) \? C\.text : "#fff"/);
+  });
+});
