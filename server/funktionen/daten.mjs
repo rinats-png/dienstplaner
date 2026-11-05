@@ -656,7 +656,7 @@ export default async (req, context) => {
       if (eintrag.rolle === "betreiber")
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
       /* Ebenso keine Rolle, die es nicht gibt (Commit D1e). */
-      if (!rolleBekannt(eintrag.rolle))
+      if (!sitzungsRolleBekannt(eintrag.rolle))
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
       const gelesenD = await bestandLesen(store, eintrag.bestand);
       const bindungD = codeBindung(gelesenD && gelesenD.bestand, eintrag);
@@ -749,7 +749,7 @@ export default async (req, context) => {
       /* Eine Rolle, die es nicht gibt (Commit D1e): keine Sitzung. Vor dem
          Nachtragen der Betriebsbindung und vor dem Umschlüsseln — die
          Absage verändert nichts. Die Antwort nennt die Rolle nicht. */
-      if (!rolleBekannt(eintrag.rolle)) {
+      if (!sitzungsRolleBekannt(eintrag.rolle)) {
         await protokoll("anmelden", k, "abgewiesen", "unbekannte Rolle");
         return antwort({ fehler: "Dieser Zugang ist nicht nutzbar.",
           text: "Bitte wende dich an die Organisationsleitung." }, 403);
@@ -816,7 +816,7 @@ export default async (req, context) => {
         } catch { /* darf keine Anmeldung scheitern lassen; beim nächsten Mal erneut */ }
       }
       const { token, gueltigBis } = await sitzungAnlegen({
-        bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
+        bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         mandantId: bindungC.mandantId,
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
@@ -848,7 +848,7 @@ export default async (req, context) => {
       await entlasten("anmelden", k, b);
       notentlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
-      return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
+      return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         hinweis: eintrag.hinweis || null, gueltigBis,
         ...(zfAktiv === null ? {} : { zweifaktor: zfAktiv }) });

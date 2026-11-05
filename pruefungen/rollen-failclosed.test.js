@@ -166,6 +166,40 @@ describe("Sitzung mit unbekannter Rolle", () => {
   });
 });
 
+/* P0 (Prüfung PR #17): ohne Rolle gibt es keinen Zugriff — weder für eine alte Sitzung
+   noch für einen Zugangscode. Vorher machte „|| kunde“ daraus die Kundenrolle. */
+describe("Sitzung und Zugangscode ohne Rolle (P0)", () => {
+  it("Altsitzung ohne Rolle: Bestand, PUT und Vollausgabe 403, nichts ausgeliefert", async () => {
+    for (const rolle of [undefined, null]) {
+      const tok = await altsitzung(rolle, "am");
+      const g = await anfrage(daten, "/api/bestand", { methode: "GET", token: tok });
+      expect(g.status, g.roh).toBe(403);
+      expect(g.bestand).toBeUndefined();
+      expect(funde(g.roh)).toEqual([]);
+      const l = await anfrage(daten, "/api/bestand", { methode: "GET", token: T.leitung });
+      for (const [pfad, methode, rumpf] of [["/api/bestand", "PUT", { bestand: l.bestand, etag: l.etag }], ["/api/vollausgabe", "GET"],
+        ["/api/stempeln", "POST", { art: "start" }]]) {
+        const x = await anfrage(daten, pfad, { methode, token: tok, rumpf });
+        expect(x.status, `${methode} ${pfad} ${x.roh}`).toBe(403);
+        expect(funde(x.roh)).toEqual([]);
+      }
+    }
+  });
+  it("Zugangscode ohne Rolle: Anmeldung 403 und keine Sitzung (kein Rückfall auf kunde)", async () => {
+    const code = "ROL6-OHNE-0006";
+    await kontoSchreiben(laden(), ablageSchluessel(code), { name: "Ohne Rolle", bestand: RAUM, person: "am",
+      betrieb: 0, mandantId: "m-a", angelegt: "2026-01-01T00:00:00.000Z" });
+    const a = await anfrage(daten, "/api/anmelden", { rumpf: { zugangscode: code } });
+    expect(a.status, a.roh).toBe(403);
+    expect(a.token).toBeUndefined();
+  });
+  it("Gegenstück: ein Code mit ausdrücklicher Rolle kunde meldet sich weiterhin an", async () => {
+    const tok = await sitzung("ROL7-KUND-0007", "kunde", null);
+    const g = await anfrage(daten, "/api/bestand", { methode: "GET", token: tok });
+    expect(g.status, g.roh).toBe(200);
+  });
+});
+
 describe("/einrichten", () => {
   const anlegen = (rolle, extra = {}) => anfrage(einrichten, "/einrichten", { rumpf: { verwaltung: ADMIN, name: `Neu ${String(rolle)}`,
     bestand: RAUM, betrieb: 0, person: "am", ...(rolle === undefined ? {} : { rolle }), ...extra } });
