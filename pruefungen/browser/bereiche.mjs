@@ -1,0 +1,133 @@
+/* global document, window */
+/* Bereichs-Sweep (lokal, Wegwerfdaten): geht je Rolle alle Navigationsziele durch
+   und prüft je Breite (1280/768/375/320) und Thema (hell/dunkel):
+   Seitenfehler, Konsolenfehler, Querscroll, dauerhaftes „Lädt …", leere Bereiche,
+   zu kleine Touchziele (<40 px) auf dem Telefon, offene Dialoge ohne Fokus.
+   Aufruf: npx vite build; node pruefungen/browser/bereiche.mjs [rollen] [breiten]
+   Voraussetzung: playwright-core + Edge. Schreibt Bilder nach $BILDER (optional). */
+import { chromium } from "playwright-core";
+import { spawn } from "node:child_process";
+import { mkdtemp, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const WT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..").split(path.sep).join("/");
+const PORT = Number(process.env.PORT || 3194), BASE = `http://127.0.0.1:${PORT}`;
+const ADMIN = "lokal-admin-" + Math.random().toString(36).slice(2), RAUM = "lokal-sweep";
+const ROLLEN = (process.argv[2] || "leitung,mitarbeiter,planer,betreiber").split(",");
+const BREITEN = (process.argv[3] || "1280,375").split(",").map(Number);
+const THEMEN = (process.env.THEMEN || "light,dark").split(",");
+const BILDER = process.env.BILDER || null;
+if (BILDER) await mkdir(BILDER, { recursive: true });
+
+const daten = await mkdtemp(path.join(tmpdir(), "centric-sweep-"));
+const srv = spawn(process.execPath, ["server.mjs"], { cwd: WT, stdio: "ignore",
+  env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: WT + "/dist", CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
+    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production" } });
+let xz = 0;
+const j = async (p, b, t) => { const a = await fetch(BASE + p, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `10.8.0.${++xz}`, ...(t ? { authorization: "Bearer " + t } : {}) }, body: JSON.stringify(b) }); return { s: a.status, d: await a.json().catch(() => ({})) }; };
+for (let i = 0; i < 50; i++) { try { if ((await fetch(BASE + "/gesund")).ok) break; } catch { /* warten */ } await new Promise((r) => setTimeout(r, 200)); }
+
+const befunde = [];
+const melde = (k, text) => { befunde.push({ k, text }); console.log(`BEFUND [${k}] ${text}`); };
+let geprueft = 0;
+try {
+  const e = await j("/einrichten", { verwaltung: ADMIN, name: "Betreiber", bestand: RAUM, rolle: "betreiber", person: null, betrieb: 0 });
+  const betreiberCode = e.d.zugangscode;
+  const bt = (await j("/api/anmelden", { zugangscode: betreiberCode })).d.token;
+  const person = (id, r, vn) => ({ id, vorname: vn, nachname: "Sweep", rolle: r, bereich: "ALLE", status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
+  const { baueLeerenBetrieb } = await import("file:///" + WT + "/server/lib/leerbetrieb.mjs");
+  const voll = baueLeerenBetrieb({ name: "Sweep Betrieb", branche: "pflege", email: null, land: "DE", raum: RAUM, laeuftAb: null });
+  voll.mandanten[0].personen = [person("l", "leitung", "Lena"), person("p", "planer", "Paul"), person("m1", "mitarbeiter", "Mia"), person("m2", "mitarbeiter", "Max")];
+  await j("/api/bestand-anlegen", { inhalt: voll }, bt);
+  const z = await j("/api/zugaenge", { bestand: RAUM, eintraege: [
+    { rolle: "leitung", personId: "l", name: "Lena" }, { rolle: "planer", personId: "p", name: "Paul" }, { rolle: "mitarbeiter", personId: "m1", name: "Mia" }] }, bt);
+  const codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code, betreiber: betreiberCode };
+
+  const b = await chromium.launch({ channel: "msedge" });
+  for (const rolle of ROLLEN) for (const w of BREITEN) for (const thema of THEMEN) {
+    const ctx = await b.newContext({ viewport: { width: w, height: 850 }, serviceWorkers: "block", colorScheme: thema, hasTouch: w < 700 });
+    const p = await ctx.newPage();
+    let akt = "Anmeldung"; const fehler = new Set();
+    p.on("pageerror", (x) => fehler.add(`${akt}: pageerror ${String(x).slice(0, 120)}`));
+    p.on("console", (m) => { if (m.type() === "error" && !/favicon|Failed to load resource/.test(m.text())) fehler.add(`${akt}: console ${m.text().slice(0, 120)}`); });
+    const marke = `${rolle}@${w}/${thema}`;
+    await p.goto(BASE + "/", { waitUntil: "networkidle" });
+    await p.locator("input").first().fill(codes[rolle]);
+    await p.getByRole("button", { name: /anmelden/i }).first().click();
+    await p.waitForTimeout(2500);
+    /* Tour stört die Messung der Bereiche: einklappen/schließen falls offen */
+    const schliessen = p.locator('[aria-label="Tour schließen"]');
+    /* Standard: Tour bleibt offen wie beim echten Erstanmelden (TOUR=zu schließt sie) */
+    if (process.env.TOUR === "zu" && await schliessen.count()) await schliessen.first().click().catch(() => {});
+    await p.waitForTimeout(300);
+    /* Navigation: Bereichspillen (.bpille, nur breit) und Unterreiter (.utab); schmal: Menüknopf */
+    const messen = async (akt0) => {
+      akt = akt0; geprueft++;
+      const m = await p.evaluate(() => {
+        const dok = document.documentElement; const vw = window.innerWidth;
+        const haupt = document.querySelector("main") || document.body;
+        const txt = (haupt.innerText || "").trim();
+        const klein = [...document.querySelectorAll("button, a[href], input, select, [role=button]")]
+          .filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect())
+          .filter((r) => r.width > 0 && r.height > 0 && r.top < innerHeight && (r.height < 40 || r.width < 40)).length;
+        /* Kontrast: Text gegen den ersten deckenden Hintergrund darüber (Verläufe/Bilder werden übersprungen) */
+        const rgb = (c) => { const m2 = /rgba?\(([^)]+)\)/.exec(c); if (!m2) return null; const t = m2[1].split(",").map((x) => parseFloat(x)); return { r: t[0], g: t[1], b: t[2], a: t.length > 3 ? t[3] : 1 }; };
+        const lum = (c) => { const k = [c.r, c.g, c.b].map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * k[0] + 0.7152 * k[1] + 0.0722 * k[2]; };
+        const grund = (el) => { for (let e = el; e; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.backgroundImage !== "none") return null; const c = rgb(cs.backgroundColor); if (c && c.a >= 0.95) return c; } return rgb(getComputedStyle(document.body).backgroundColor); };
+        let schwach = 0; const beispiele = [];
+        for (const e of document.querySelectorAll("main *, header *, nav *")) {
+          if (!e.offsetParent || e.closest("svg")) continue;
+          const eigen = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 1);
+          if (!eigen) continue;
+          const cs = getComputedStyle(e); if (cs.visibility === "hidden" || parseFloat(cs.opacity) < 0.5) continue;
+          const fg = rgb(cs.color), bg = grund(e); if (!fg || !bg || fg.a < 0.5) continue;
+          const l1 = lum(fg), l2 = lum(bg); const v = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+          const gross = parseFloat(cs.fontSize) >= 24 || (parseFloat(cs.fontSize) >= 18.66 && parseInt(cs.fontWeight, 10) >= 700);
+          if (v < (gross ? 3 : 4.5) && !e.closest("[disabled]") && !e.closest("[aria-disabled='true']")) { schwach++; if (beispiele.length < 3) beispiele.push((e.innerText || "").trim().slice(0, 24) + " " + v.toFixed(1)); }
+        }
+        return { quer: dok.scrollWidth - vw, lang: txt.length, laedt: /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test(txt), klein, schwach, beispiele };
+      });
+      if (m.quer > 1) melde("querscroll", `${akt}: Seite ${m.quer}px breiter als Fenster`);
+      if (m.laedt) { await p.waitForTimeout(3000); const noch = await p.evaluate(() => /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test((document.querySelector("main") || document.body).innerText)); if (noch) melde("haengt-in-laden", `${akt}: „Lädt …“ nach 4 s noch sichtbar`); }
+      if (m.schwach > 0) melde("kontrast", `${akt}: ${m.schwach} Textstellen unter WCAG-Kontrast (z. B. ${m.beispiele.join("; ")})`);
+      if (m.lang < 20) melde("leer", `${akt}: Bereich praktisch leer (${m.lang} Zeichen)`);
+      if (w < 700 && m.klein > 12) melde("touchziele", `${akt}: ${m.klein} Bedienelemente kleiner als 40 px`);
+      if (BILDER) await p.screenshot({ path: path.join(BILDER, `${rolle}-${w}-${thema}-${akt0.split(" ").slice(1).join("_").replace(/[^a-z0-9_]+/gi, "")}.png`) }).catch(() => {});
+    };
+    const texte = async (sel) => p.evaluate((q) => [...document.querySelectorAll(q)].filter((e) => e.offsetParent).map((e) => (e.innerText || "").trim().split(String.fromCharCode(10))[0]), sel);
+    try {
+      const gruppen = await texte(".bpille");
+      if (!gruppen.length) {
+        /* Schmale Ansicht: untere Leiste (.tabbar) bzw. Mobilschale (.m-tabs) */
+        const sel = (await p.locator(".m-tabs button:visible").count()) ? ".m-tabs button" : ".tabbar button";
+        const leiste = await texte(sel);
+        if (!leiste.length) melde("keine-navigation", `${marke}: weder Bereichspillen noch untere Leiste sichtbar`);
+        for (let ti = 0; ti < leiste.length; ti++) {
+          if (/^(Post|Krank)$/.test(leiste[ti])) continue;   // öffnen Dialoge, eigener Test
+          await p.locator(sel + ":visible").nth(ti).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} ${leiste[ti]}: Klick scheitert`));
+          await p.waitForTimeout(1300);
+          await messen(`${marke} ${leiste[ti]}`);
+        }
+      }
+      for (let gi = 0; gi < gruppen.length; gi++) {
+        await p.locator(".bpille:visible").nth(gi).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} Gruppe ${gruppen[gi]}: Klick scheitert`));
+        await p.waitForTimeout(500);
+        const tabs = await texte(".utab");
+        for (let ti = 0; ti < tabs.length; ti++) {
+          await p.locator(".utab:visible").nth(ti).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} ${gruppen[gi]}/${tabs[ti]}: Klick scheitert`));
+          await p.waitForTimeout(1300);
+          await messen(`${marke} ${gruppen[gi]}/${tabs[ti]}`);
+        }
+      }
+    } catch (x) { melde("absturz", `${akt}: ${String(x).slice(0, 100)}`); }
+    for (const f of fehler) melde("fehler", f);
+    await ctx.close();
+  }
+  await b.close();
+} finally { srv.kill(); }
+const nach = {};
+for (const x of befunde) nach[x.k] = (nach[x.k] || 0) + 1;
+console.log(`\nBereiche geprüft: ${geprueft}; Befunde: ${befunde.length}`, JSON.stringify(nach));
+process.exit(befunde.length ? 1 : 0);

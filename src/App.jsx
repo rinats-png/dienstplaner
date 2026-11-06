@@ -605,16 +605,23 @@ const heute = () => iso(new Date());
 const fLang = (s) => { const d = pISO(s); return `${DOW[dow(s)]}, ${d.getDate()}. ${MON[d.getMonth()]} ${d.getFullYear()}`; };
 const fKurz = (s) => (s ? `${pad(pISO(s).getDate())}.${pad(pISO(s).getMonth() + 1)}.` : "—");
 const fDatum = (s) => (s ? s.split("-").reverse().join(".") : "—");
-const n1 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const n2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const sgn = (v) => (v >= 0 ? "+" : "−") + n1(Math.abs(v));
+/* Zahlenformate fallen bei fehlendem Wert auf „–" zurück statt mit einem
+   TypeError die ganze Ansicht abzureißen (Browserprobe: „Anliegen" in der
+   Mobilansicht). Zahlen als Text werden gewandelt; null/undefined/NaN bleiben leer. */
+const zahlOder = (v, f) => {
+  const x = typeof v === "number" ? v : (v === null || v === undefined || v === "" ? NaN : Number(v));
+  return Number.isFinite(x) ? f(x) : "–";
+};
+const n1 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+const n2 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const sgn = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? (v >= 0 ? "+" : "−") + n1(Math.abs(v)) : "–");
 /* Ist-Stunden, Stundenkonto und Nachtstunden dürfen aus Datenschutzgründen
    fehlen (E1, src/istdaten.js): null wird „–", nie 0 und nie ein Absturz. */
 const n1Ist = (v) => stundenText(v, n1);
 const sgnIst = (v) => stundenText(v, sgn);
-const eur =(v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
-const eur0 = (v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-const zahl = (v) => v.toLocaleString("de-DE");
+const eur = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }));
+const eur0 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }));
+const zahl = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE"));
 const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 
 /* ------------------------ Feiertage aller Bundesländer -------------------- */
@@ -5931,10 +5938,12 @@ function ZiehHinweis({ text }) {
    ========================================================================== */
 
 /** Verlauf einer Größe über die Zeit, mit Nulllinie. */
-function LinienDiagramm({ daten, hoehe = 168, wert = "y", label = "label", nulllinie = true,
+function LinienDiagramm({ daten: rohdaten, hoehe = 168, wert = "y", label = "label", nulllinie = true,
   farbe = C.accent, einheit = "", format }) {
   const id = useRef(`ld${Math.random().toString(36).slice(2, 7)}`).current;
   const [aktiv, setAktiv] = useState(null);
+  /* Nicht-endliche Werte (fehlende Messung) würden NaN-Koordinaten im SVG erzeugen. */
+  const daten = Array.isArray(rohdaten) ? rohdaten.filter((d) => d && Number.isFinite(d[wert])) : null;
   if (!daten || daten.length < 2) return null;
   const W = 100, H = 100, pad = 4;
   const werte = daten.map((d) => d[wert]);
@@ -17868,7 +17877,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
      weitergeht — alles Übrige ist einen Klick entfernt. */
   if (eingeklappt) {
     return (
-      <div role="dialog" aria-label="Geführte Tour, eingeklappt" style={rahmen}>
+      <div role="dialog" aria-label="Geführte Tour, eingeklappt" className="tourleiste" style={rahmen}>
         <div style={{ height: 3, background: C.bg }}>
           <div style={{ width: `${((st.idx + 1) / st.gesamt) * 100}%`, height: "100%",
             background: C.accent, transition: "width .25s" }} /></div>
@@ -17895,7 +17904,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
   }
 
   return (
-    <div role="dialog" aria-label="Geführte Tour" style={rahmen}>
+    <div role="dialog" aria-label="Geführte Tour" className="tourleiste" style={rahmen}>
 
       {/* Fortschritt als dünner Balken ganz oben */}
       <div style={{ height: 3, background: C.bg }}>
@@ -18411,7 +18420,7 @@ export function SicherungenVerwalten({ rolle, laden, zurueckspielen, vorgabe = n
         {nichtVerdrahtet && <div role="alert" style={{ fontSize: 13, color: C.danger }}>
           Die Sicherungen sind in dieser Fassung nicht angeschlossen (Programmfehler). Bitte den Betreiber verständigen.</div>}
         {fehler && <div role="alert" style={{ fontSize: 13, color: C.danger }}>{fehler}</div>}
-        {liste === null && !fehler && !nichtVerdrahtet && <div style={{ fontSize: 13, color: C.dim }}>Lädt …</div>}
+        {liste === null && !fehler && !nichtVerdrahtet && <Laden zeilen={2} text="Sicherungen werden geladen …" />}
         {liste && !liste.length && !fehler && <div style={{ fontSize: 13, color: C.dim }}>Noch keine Sicherung vorhanden.</div>}
         {liste && liste.map((e) => {
           const t = eintragText(e);
@@ -21079,6 +21088,16 @@ function MAnliegen({ sitz, akt, oeffnen }) {
  * der Verlauf trägt die Aussage, alles andere tritt zurück.
  */
 function Kontoblatt({ m, verlauf, jetzt, trend }) {
+  /* Fehlt das Konto (Datenschutz E1, neue Person ohne Ist-Zeiten), gibt es
+     nichts zu zeichnen: ehrlicher Hinweis statt NaN-Linie oder Absturz. */
+  if (!Array.isArray(verlauf) || !verlauf.length || !verlauf.every((x) => Number.isFinite(x.kto))
+    || !Number.isFinite(jetzt) || !Number.isFinite(trend)) {
+    return (
+      <div style={{ background: C.flaeche, borderRadius: 24, padding: "24px 26px",
+        border: `1px solid ${C.line}`, marginBottom: 12, color: C.dim, fontSize: 14.5, lineHeight: 1.5 }}>
+        Für dein Stundenkonto liegen noch keine Werte vor.
+      </div>);
+  }
   const grenze = m.einstellungen.ausgleichGrenze || 40;
   const werte = verlauf.map((x) => x.kto);
   const min = Math.min(...werte, 0), max = Math.max(...werte, 0);

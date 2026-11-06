@@ -178,6 +178,14 @@ export const gestaltStil = () => `
 .tabbar button.on{background:${C.accentLight}; color:${C.accent}; font-weight:620;}
 @media (min-width: 1025px){ .tabbar{display:none;} }
 @media print{ .tabbar{display:none !important;} }
+/* Geführte Tour: Auf schmalen Ansichten sitzt sie über der Unterleiste, nicht
+   darüber — sonst deckt sie die Navigation zu (Browserprobe 375 px: Klick auf
+   „Schichten" scheiterte). Hoch genug bleibt sie scrollbar statt den Inhalt
+   zu verdrängen. */
+@media (max-width: 1024px){
+  .tourleiste{bottom:calc(76px + env(safe-area-inset-bottom)) !important;
+    max-height:calc(100dvh - 76px - 72px - env(safe-area-inset-bottom)); overflow-y:auto !important;}
+}
 
 /* ------------------------- 5. Ansichten (Ü und E) --------------------------
    Kennzahlkarten, Leitraster, Seitenkarten, Hinweisband. Abstände laufen über

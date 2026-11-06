@@ -1035,7 +1035,8 @@ export default async (req, context) => {
            jede fremde Änderung. Jetzt: Ohne ETag wird nur geschrieben, wenn es noch keinen
            Bestand gibt (Erstanlage). Sonst 409 mit dem aktuellen Stand zum Neuladen. Gilt nur für
            diesen Endpunkt; interne Lese-Ändern-Schreiben-Abläufe halten ihre Sperre selbst. */
-        if ((etag === null || etag === undefined || etag === "") && jetzt && jetzt.bestand) {
+        const etagGueltig = (typeof etag === "string" || typeof etag === "number") && /^[0-9]+$/.test(String(etag));
+        if (!etagGueltig && jetzt && jetzt.bestand) {
           await protokoll("schreiben", ks, "konflikt", "ohne ETag auf vorhandenem Bestand", wer);
           return antwort({ fehler: "konflikt",
             text: "Der Stand ist ohne Versionsangabe nicht überschreibbar. Bitte neu laden.",

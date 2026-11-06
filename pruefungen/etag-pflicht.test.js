@@ -84,6 +84,17 @@ describe("PUT /api/bestand: ETag-Pflicht bei vorhandenem Bestand", () => {
     expect(w.status, w.roh).toBe(409);
     expect(namen(await lesen(T))).toBe(namen(g));
   });
+  for (const [name, wert] of [["0 (Zahl)", 0], ["\"0\"", "0"], ["Leerzeichen", " "], ["false", false], ["Liste", []], ["Objekt", {}], ["\"05\"", "05"], ["\" 5 \"", " 5 "]]) {
+    it(`unsauberer ETag ${name}: 409 vor jeder Nebenwirkung, nichts geändert`, async () => {
+      const g = await lesen(T);
+      const w = await anfrage("/api/bestand", { methode: "PUT", token: T, rumpf: { bestand: mit(g, "UNSAUBER"), etag: wert } });
+      expect(w.status, w.roh).toBe(409);
+      expect(w.etag).toBe(g.etag);
+      const danach = await lesen(T);
+      expect(namen(danach)).toBe(namen(g));
+      expect(danach.etag).toBe(g.etag);
+    });
+  }
   it("Neuladen nach dem 409 und erneutes Speichern mit dem gelieferten ETag: 200", async () => {
     const w1 = await anfrage("/api/bestand", { methode: "PUT", token: T, rumpf: { bestand: mit(await lesen(T), "OHNE") } });
     expect(w1.status).toBe(409);
