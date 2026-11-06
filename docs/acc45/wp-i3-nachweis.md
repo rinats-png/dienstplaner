@@ -28,7 +28,7 @@ Plan 5.3 (Wochenend-Rotation) wird aus Zählregel (über `wochenendZaehlregel`/`
 6. Tarif-/Gesetzeswerte kommen nur aus Registereinträgen; der Code enthält keine.
 
 ## Tests
-- `pruefungen/intelligence-regelbaukasten.test.js`: 87 Tests (je Art positiv/negativ/Rand, vier Gemeinsamkeits-Zusagen je Art, Wochenend-Rotation, Testlauf, Dispatcher, Laufzeit 31 Tage x 40 Personen < 1 s; gemessen etwa 10 ms).
+- `pruefungen/intelligence-regelbaukasten.test.js`: 87 Tests (je Art positiv/negativ/Rand, vier Gemeinsamkeits-Zusagen je Art, Wochenend-Rotation, Testlauf, Dispatcher, Laufzeit 31 Tage x 40 Personen < 1 s; Musterregel für 40 Personen x 31 Tage gemessen etwa 7 ms).
 - `pruefungen/regelbaukasten.test.js`: eine Zusicherung angepasst. „Eine nicht gerechnete Regelart wirft" prüfte mit `musterregel`, die jetzt gerechnet wird; der Test nutzt jetzt den Platzhalter-Typ `zauberregel` (gleiche Erwartung, gleiche Meldung). Sonst unverändert.
 - Gelaufen und grün: `regelwerk`, `regelregister`, `fachpruefung-server`, `konsistenz`, `branchen*`, `schutzregeln-ersatzsuche` (zusammen 379 grün).
 - **Nicht von I3 verursacht, schon auf Basis 9aac167 rot:** `regelbaukasten.test.js` „die neuen Registerregeln der gerechneten Arten sind auswertbar" (`BEREIT-HOECHST-01` hat `grenzeAus` statt Grenze). Weder verändert noch umgangen.
