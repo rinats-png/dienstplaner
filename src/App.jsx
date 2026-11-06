@@ -7,8 +7,7 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText,
   positionsUebernahme, koordinatenFelder, koordMitGrund } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
-import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE, EINSATZORT_ARTEN, standortBundesland, GEO_MODUS_TEXT,
-  GEO_DATENSCHUTZ_TEXT, GEO_SPOOFING_TEXT } from "../server/lib/geo.mjs";
+import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE, EINSATZORT_ARTEN, standortBundesland, GEO_DATENSCHUTZ_TEXT, GEO_SPOOFING_TEXT } from "../server/lib/geo.mjs";
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
@@ -21,7 +20,7 @@ import {
   dauer, dauerAm, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzEinsatz, jugendMehrschichtig, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
+  schutzEinsatz, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
   alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
@@ -200,6 +199,8 @@ import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung,
   from "./sicherungen-ui.js";
 /* WP-19.0: Branchenmodule — Aktivierung, Regelwerte und alle Moduloberflächen über einen Einhängepunkt (src/module/index.js). */
 import { BranchenModule } from "./module/kern.jsx";
+import { JugendschutzSchalter } from "./ansichten/jugendschutz-schalter.jsx";
+import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
 import { ROLLEN, rolle, anzahlWort, mehrzahl, ROLLENBEZEICHNUNG, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, MATRIX_STD } from "./lib/rollen.js";
 import { Einwilligungen } from "./ansichten/einwilligungen.jsx";
@@ -21534,58 +21535,6 @@ function OfflineSchalter({ sitz, akt }) {
     </Card>);
 }
 
-function GeoSchalter({ sitz, akt }) {
-  const e = sitz.mandant.einstellungen || {};
-  const an = e.geoPruefung === true;
-  const pflicht = an && e.geoModus === "pflicht";
-  const [geprueft, setGeprueft] = useState(false);
-  const [modusGeprueft, setModusGeprueft] = useState(false);
-  const durch = e.geoPruefungAktiviertVon
-    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.geoPruefungAktiviertVon)) || {}) : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={an ? "ok" : undefined}>{an ? "eingeschaltet" : "aus"}</Pill>}>
-        Standortprüfung beim Stempeln</CardHead>
-      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-        Ist sie eingeschaltet, prüft der Server beim Ein- und Ausstempeln einmalig, ob die Person am Standort
-        ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet, die Messgenauigkeit und
-        der Prüfort (Standort oder Einsatzort) — keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst,
-        auch ohne Position oder außerhalb des Umkreises.
-        <div style={{ marginTop: 10 }}>{GEO_SPOOFING_TEXT}</div>
-        {an && (
-          <div style={{ marginTop: 14, color: C.text }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Prüfmodus: {pflicht ? "verpflichtend" : "Hinweis"}</div>
-            <div style={{ color: C.dim }}>
-              {pflicht
-                ? "Ein Stempel, dessen Ort nicht bestätigt ist (außerhalb, ohne Position, nicht bewertbar), bekommt die Markierung „Ort nicht bestätigt“ und geht in die Klärung der Leitung. Die Arbeitszeit wird trotzdem erfasst."
-                : "Das Ergebnis wird gespeichert und angezeigt; es entsteht keine Markierung."}
-              {" "}Beim Außendienst gibt es keinen festen Ort — dort wird nichts gemessen.
-            </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {pflicht ? <Btn onClick={() => akt.setzeGeoModus("hinweis")}>Auf Hinweis zurückstellen</Btn> : (<>
-                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", maxWidth: 560 }}>
-                  <input type="checkbox" checked={modusGeprueft} onChange={(x) => setModusGeprueft(x.target.checked)} />
-                  <span>{GEO_MODUS_TEXT}</span>
-                </label>
-                <Btn disabled={!modusGeprueft} onClick={() => { akt.setzeGeoModus("pflicht"); setModusGeprueft(false); }}>Verpflichtend stellen</Btn></>)}
-            </div>
-          </div>)}
-        {an && e.geoPruefungAktiviertAm && (
-          <div style={{ marginTop: 10, ...NUM }}>Eingeschaltet am {fDatum(String(e.geoPruefungAktiviertAm).slice(0, 10))}
-            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          {an ? <Btn onClick={() => akt.setzeGeoPruefung(false)}>Ausschalten</Btn> : (<>
-            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", color: C.text, maxWidth: 560 }}>
-              <input type="checkbox" checked={geprueft} onChange={(x) => setGeprueft(x.target.checked)} />
-              <span>Datenschutz und gegebenenfalls Mitbestimmung für diese Funktion wurden betrieblich geprüft.</span>
-            </label>
-            <Btn kind="primary" disabled={!geprueft} onClick={() => { akt.setzeGeoPruefung(true); setGeprueft(false); }}>
-              Einschalten</Btn></>)}
-        </div>
-      </div>
-    </Card>);
-}
-
 const QUELLE_TEXT = { adresse: "Adresse", geraet: "Gerät", karte: "Karte", manuell: "von Hand" };
 const ART_TEXT = { kunde: "Kunde", objekt: "Objekt", patient: "Patient/in", baustelle: "Baustelle", sonstiger: "Sonstiger" };
 
@@ -21655,40 +21604,6 @@ function Einsatzorte({ sitz, akt }) {
           <Field label="Neuer Einsatzort" style={{ flex: "1 1 220px" }}>
             <Inp value={name} placeholder="Baustelle Hafenstraße" onChange={(e) => setName(e.target.value)} /></Field>
           <Btn kind="primary" disabled={name.trim().length < 2} onClick={() => { akt.einsatzortAnlegen(name.trim()); setName(""); }}>Anlegen</Btn>
-        </div>
-      </div>
-    </Card>);
-}
-
-/**
- * Jugendarbeitsschutz: mehrschichtiger Betrieb (§ 14 Abs. 2 Nr. 2 JArbSchG,
- * Nachprüfung WP-11). Eingeschaltet dürfen Jugendliche ab 16 Jahren bis 23 Uhr
- * eingeteilt werden — die Prüfung meldet dann nur einen Hinweis. Aus: Einsätze
- * 20–23 Uhr sind „Achtung" und brauchen eine Bestätigung. Unter 16 Jahren und
- * 23–6 Uhr sperrt die Prüfung in jedem Fall. Schalten darf, wer org.edit oder pattern.edit
- * hat; wann und von wem, setzt der Server.
- */
-function JugendschutzSchalter({ sitz, akt }) {
-  const e = sitz.mandant.einstellungen || {};
-  const an = jugendMehrschichtig(e);
-  const j = e.jugendschutz || {};
-  const durch = j.geaendertVon ? (sitz.mandant.personen.find((x) => String(x.id) === String(j.geaendertVon)) || {}) : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={an ? "ok" : undefined}>{an ? "mehrschichtig" : "nicht hinterlegt"}</Pill>}>
-        Jugendarbeitsschutz: mehrschichtiger Betrieb</CardHead>
-      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-        In mehrschichtigen Betrieben dürfen Jugendliche ab 16 Jahren bis 23 Uhr beschäftigt werden
-        (§ 14 Abs. 2 Nr. 2 JArbSchG). Ist das hinterlegt, meldet die Prüfung einen Einsatz bis 23 Uhr nur als
-        Hinweis; sonst ist er „Achtung" und braucht eine Bestätigung. Unter 16 Jahren und zwischen 23 und 6 Uhr
-        bleibt jeder Einsatz gesperrt. Weitere Branchenausnahmen (Gaststätten, Bäckereien, Landwirtschaft) kennt
-        die Prüfung nicht.
-        {j.geaendertAm && (
-          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(j.geaendertAm).slice(0, 10))}
-            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        <div style={{ marginTop: 14 }}>
-          <Btn kind={an ? undefined : "primary"} onClick={() => akt.setzeJugendMehrschichtig(!an)}>
-            {an ? "Nicht mehr als mehrschichtig führen" : "Als mehrschichtigen Betrieb hinterlegen"}</Btn>
         </div>
       </div>
     </Card>);
