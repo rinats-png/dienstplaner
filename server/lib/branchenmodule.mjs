@@ -159,6 +159,7 @@ export const BRANCHENMODULE = Object.freeze([
     } }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,
     abhaengigVon: ["posten"],
+    /* server/lib/modul-objektbericht.mjs: nur Ausgabe (CSV), keine eigenen Betriebsfelder. */
     beschreibung: "Bericht je Objekt und Zeitraum für den Auftraggeber: Soll- und Ist-Besetzung der Posten, optional Wachbuchauszug." }),
   /* Pflege */
   modul({ id: "bereichsplan", merkmal: "bereichsplan", name: "Bereichs- und Wachabteilungsplanung", pakete: ["pflege"],
