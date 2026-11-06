@@ -127,6 +127,23 @@ const bestand = () => ({
       { id: "ob4", name: M("OBJEKT-OHNE-EINTEILUNG"), posten: [] }],
     postenPlan: { [`m0|${tag(1)}`]: "po1", [`b1|${tag(1)}`]: "po2", [`a1|${tag(1)}`]: "po3" },
     bereichsPlan: { [`m0|${tag(1)}`]: "be1", [`b1|${tag(1)}`]: "be9", [`a1|${tag(1)}`]: "be1" },
+    /* Branchenmodule (WP-19, Rechte): Wachbuch, Bereitschaft, Funktionsdienst, Rotation, Pflegeniveaus. s1 ist die Schichtverantwortung (e1). */
+    wachbuch: {
+      [`w-m0|${tag(1)}`]: { id: "w-m0", vonId: "m0", einheitId: "e1", text: M("WACHBUCH-EIGEN-M0") },
+      [`w-a1|${tag(1)}`]: { id: "w-a1", vonId: "a1", einheitId: "e1", text: M("WACHBUCH-BEREICH-A1") },
+      [`w-b1|${tag(1)}`]: { id: "w-b1", vonId: "b1", einheitId: "e2", text: M("WACHBUCH-FREMD-B1") },
+      [`w-o1|${tag(1)}`]: { id: "w-o1", vonId: "b1", text: M("WACHBUCH-OHNE-EINHEIT") } },
+    bereitschaft: { [`m0|${tag(1)}`]: { art: M("BEREITSCHAFT-M0") }, [`s1|${tag(1)}`]: { art: M("BEREITSCHAFT-S1") },
+      [`a1|${tag(1)}`]: { art: M("BEREITSCHAFT-A1") }, [`b1|${tag(1)}`]: { art: M("BEREITSCHAFT-B1") } },
+    bereitschaftStufen: [{ id: "st1", name: M("BEREITSCHAFTSSTUFE-NAME") }],
+    funktionsPlan: { [`m0|${tag(1)}`]: "fb1", [`b1|${tag(1)}`]: "fb2", [`a1|${tag(1)}`]: "fb1" },
+    funktionsbereiche: [{ id: "fb1", name: M("FUNKTIONSBEREICH-NAME") }],
+    rotationen: {
+      [`r-m0|${tag(1)}`]: { id: "r-m0", personId: "m0", art: "einsatz", einheitId: M("ROTATION-M0") },
+      [`r-s1|${tag(1)}`]: { id: "r-s1", personId: "s1", art: "einsatz", einheitId: M("ROTATION-S1") },
+      [`r-a1|${tag(1)}`]: { id: "r-a1", personId: "a1", art: "einsatz", einheitId: M("ROTATION-A1") },
+      [`r-b1|${tag(1)}`]: { id: "r-b1", personId: "b1", art: "einsatz", einheitId: M("ROTATION-B1") } },
+    pflegeNiveaus: [{ id: "n1", name: M("PFLEGENIVEAU-NAME") }],
     /* Branchenmodule (WP-19.0): Schalter mit Mitbestimmungsbestätigung, betrieblicher Regelwert, Modulprotokoll. */
     einstellungen: { ruhezeit: 11,
       branchenmodule: { wachbuch: { an: false, geaendertAm: M("MODUL-AM"), geaendertVon: M("MODUL-VON"),
@@ -404,6 +421,35 @@ const ZEILEN = {
     } },
   "Einteilung auf Posten (`postenPlan`; Branchenmodul Posten)": planZeile("postenPlan"),
   "Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan)": planZeile("bereichsPlan"),
+  /* WP-19 Rechte: Wachbuch, Bereitschaft, Funktionsdienst, Rotation, Pflegeniveaus. */
+  "Wachbuch (`wachbuch`: Einträge mit Objekt, Uhrzeit, Art, Text; Branchenmodul Wachbuch) — Sicht fachlich offen (WB-2)": {
+    sonden: [mk("WACHBUCH-EIGEN-M0"), mk("WACHBUCH-BEREICH-A1"), mk("WACHBUCH-FREMD-B1"), mk("WACHBUCH-OHNE-EINHEIT")],
+    bedingt: {
+      "nur eigene Einträge": (s) => {
+        expect(mk("WACHBUCH-EIGEN-M0")(s), "selbst verfasst").toBe(true);
+        for (const x of ["WACHBUCH-BEREICH-A1", "WACHBUCH-FREMD-B1", "WACHBUCH-OHNE-EINHEIT"]) expect(mk(x)(s), x).toBe(false);
+      },
+      "nur eigene Einheit": (s) => {
+        for (const x of ["WACHBUCH-EIGEN-M0", "WACHBUCH-BEREICH-A1"]) expect(mk(x)(s), x).toBe(true);
+        for (const x of ["WACHBUCH-FREMD-B1", "WACHBUCH-OHNE-EINHEIT"]) expect(mk(x)(s), x).toBe(false);
+      },
+    } },
+  "Bereitschaftsdienste (`bereitschaft`: Dienst je Person und Tag; Branchenmodul Bereitschaftsdienst) — vorläufig": {
+    sonden: [mk("BEREITSCHAFT-M0"), mk("BEREITSCHAFT-S1"), mk("BEREITSCHAFT-A1"), mk("BEREITSCHAFT-B1")],
+    bedingt: {
+      "nur eigene": (s) => { expect(mk("BEREITSCHAFT-M0")(s), "eigene").toBe(true); for (const x of ["S1", "A1", "B1"]) expect(mk(`BEREITSCHAFT-${x}`)(s), x).toBe(false); },
+      "nur die eigene Person": (s) => { expect(mk("BEREITSCHAFT-S1")(s), "eigene").toBe(true); for (const x of ["M0", "A1", "B1"]) expect(mk(`BEREITSCHAFT-${x}`)(s), x).toBe(false); },
+    } },
+  "Bereitschaftsstufen (`bereitschaftStufen`: Anrechnungsfaktoren; Branchenmodul Bereitschaftsdienst) — vorläufig": { sonden: [mk("BEREITSCHAFTSSTUFE-NAME")] },
+  "Einteilung auf Funktionsbereiche (`funktionsPlan`; Branchenmodul Funktionsdienst)": planZeile("funktionsPlan"),
+  "Funktionsbereiche (`funktionsbereiche`: Name, Soll, Qualifikationen; Branchenmodul Funktionsdienst) — vorläufig": { sonden: [mk("FUNKTIONSBEREICH-NAME")] },
+  "Rotationen (`rotationen`: Einsatz, Zugehörigkeitswechsel, Ziel; Branchenmodul Rotation) — tagesgenaue Sicht offen (RO-3)": {
+    sonden: [mk("ROTATION-M0"), mk("ROTATION-S1"), mk("ROTATION-A1"), mk("ROTATION-B1")],
+    bedingt: {
+      "nur eigene Einträge": (s) => { expect(mk("ROTATION-M0")(s), "eigene").toBe(true); for (const x of ["S1", "A1", "B1"]) expect(mk(`ROTATION-${x}`)(s), x).toBe(false); },
+      "nur die eigene Person": (s) => { expect(mk("ROTATION-S1")(s), "eigene").toBe(true); for (const x of ["M0", "A1", "B1"]) expect(mk(`ROTATION-${x}`)(s), x).toBe(false); },
+    } },
+  "Pflegeniveaus (`pflegeNiveaus`: Niveaus je Betrieb; Branchenmodul Pflegequalifikation) — vorläufig": { sonden: [mk("PFLEGENIVEAU-NAME")] },
   /* WP-19.0 (²⁹): Moduleinstellungen in `einstellungen`. */
   "Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`)": {
     sonden: [mk("MODUL-AM"), mk("MB-AM"), Object.assign((s) => {

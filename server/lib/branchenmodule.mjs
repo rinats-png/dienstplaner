@@ -118,6 +118,9 @@ const kennungenVon = (liste, unter) => new Set((Array.isArray(liste) ? liste : [
 const bekannterPosten = (w, m) => typeof w === "string" && kennungenVon(m && m.objekte, "posten").has(w);
 /** Berichtigung bereichsPlan: ein Bereich, den es im Betrieb gibt (einheiten[].bereiche[].id). */
 const bekannterBereich = (w, m) => typeof w === "string" && kennungenVon(m && m.einheiten, "bereiche").has(w);
+/** Berichtigung funktionsPlan: ein Funktionsbereich, den es im Betrieb gibt (funktionsbereiche[].id). */
+const bekannterFunktionsbereich = (w, m) => typeof w === "string" && Array.isArray(m && m.funktionsbereiche)
+  && m.funktionsbereiche.some((b) => b && b.id === w);
 
 /**
  * Die gespeicherte Einstellung eines Moduls am Betrieb
@@ -148,9 +151,18 @@ export const BRANCHENMODULE = Object.freeze([
     datenfelder: ["objekte", "postenPlan"], personenfelder: ["postenPlan"], sachfelder: ["objekte"], regelIds: ["POSTEN-BESETZUNG-01", "POSTEN-QUAL-01"],
     berichtigungsWerte: Object.freeze({ postenPlan: bekannterPosten }) }),
   modul({ id: "wachbuch", merkmal: "wachbuch", name: "Wachbuch", pakete: ["sicherheit"], mitbestimmung: true,
-    beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung." }),
+    beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung.",
+    /* server/lib/modul-wachbuch.mjs: eigenes Betriebsfeld `wachbuch`, Form „Kennung|Tag“ (W1 a); der Verfasser je
+       Eintrag macht es zum Personenfeld. Berichtigung über den Ausnahmeweg gibt es nicht (W2 a): nur Löschung. */
+    datenfelder: ["wachbuch"], personenfelder: ["wachbuch"], ausnahmeUi: true,
+    berichtigungsWerte: Object.freeze({ wachbuch: () => false }),
+    parameter: {
+      kontrollIntervallMinuten: { typ: "zahl", standard: 0, min: 0, max: 1440, ganzzahl: true, vorlaeufig: true,
+        text: "Längste erlaubte Zeit zwischen zwei Kontrollgängen; 0 = keine Meldung (Matrix W5 b, standardmäßig aus)." },
+    } }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,
     abhaengigVon: ["posten"],
+    /* server/lib/modul-objektbericht.mjs: nur Ausgabe (CSV), keine eigenen Betriebsfelder. */
     beschreibung: "Bericht je Objekt und Zeitraum für den Auftraggeber: Soll- und Ist-Besetzung der Posten, optional Wachbuchauszug." }),
   /* Pflege */
   modul({ id: "bereichsplan", merkmal: "bereichsplan", name: "Bereichs- und Wachabteilungsplanung", pakete: ["pflege"],
@@ -159,11 +171,23 @@ export const BRANCHENMODULE = Object.freeze([
     datenfelder: ["bereichsPlan"], personenfelder: ["bereichsPlan"], regelIds: ["BEREICH-BESETZUNG-01"],
     berichtigungsWerte: Object.freeze({ bereichsPlan: bekannterBereich }) }),
   modul({ id: "pflegequal", merkmal: "pflegequal", name: "Pflegequalifikationen", pakete: ["pflege"],
-    beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst." }),
+    beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst.",
+    /* server/lib/modul-pflegequal.mjs: Niveaus als Sachfeld (Konfiguration, keine Personendaten). Betreuung wird getrennt
+       gezählt (Q2 a). Keine Registerregel: die Besetzungswerte sind offen (Q3 b). */
+    datenfelder: ["pflegeNiveaus"], sachfelder: ["pflegeNiveaus"], ausnahmeUi: true }),
   /* Klinik */
   modul({ id: "bereitschaftsdienst", merkmal: "bereitschaftsdienst", name: "Bereitschaftsdienst und Rufbereitschaft mit Anrechnung",
     pakete: ["klinik"],
-    beschreibung: "Bereitschaftsstufen mit Anrechnungsfaktor, Inanspruchnahme, Anrechnung auf Höchstarbeitszeit." }),
+    beschreibung: "Bereitschaftsstufen mit Anrechnungsfaktor, Inanspruchnahme, Anrechnung auf Höchstarbeitszeit.",
+    /* server/lib/modul-bereitschaftsdienst.mjs: Stufen (Sachfeld, R1 a) und Dienste je Person und Tag (Personenfeld,
+       Verfasser- und Zeitbezug; Berichtigung gibt es nicht, nur Löschung). Keine Opt-out-Daten (R3 offen). */
+    datenfelder: ["bereitschaftStufen", "bereitschaft"], sachfelder: ["bereitschaftStufen"], personenfelder: ["bereitschaft"],
+    ausnahmeUi: true, berichtigungsWerte: Object.freeze({ bereitschaft: () => false }),
+    regelIds: ["BEREIT-HOECHST-01"],
+    parameter: {
+      hoechstArbeitszeitStunden: { typ: "zahl", standard: 0, min: 0, max: 168, ganzzahl: false, vorlaeufig: true,
+        text: "Höchstarbeitszeit je Woche einschließlich Bereitschaft, gegen die der Hinweis prüft; 0 = keine Prüfung (Vorgabe des Betriebs, R4 offen)." },
+    } }),
   modul({ id: "geteilterdienst", merkmal: "geteilterdienst", name: "Geteilte Dienste", pakete: ["klinik"],
     beschreibung: "Dienste mit zwei Abschnitten: Bearbeitung, Dauer, Ruhezeit und Besetzung je Abschnitt.",
     /* server/lib/modul-geteilterdienst.mjs: Feld zweiterAbschnitt der Dienstart (Bestand) — keine neuen Betriebsfelder. */
@@ -173,9 +197,18 @@ export const BRANCHENMODULE = Object.freeze([
         text: "Höchstspanne vom Beginn des ersten bis zum Ende des zweiten Abschnitts; 0 = keine Grenze (Matrix T2 b)." },
     } }),
   modul({ id: "funktionsdienst", merkmal: "funktionsdienst", name: "Funktionsdienste", pakete: ["klinik"],
-    beschreibung: "Funktionsbereiche (etwa OP, Anästhesie, Endoskopie) mit eigener Besetzung und Qualifikation." }),
+    beschreibung: "Funktionsbereiche (etwa OP, Anästhesie, Endoskopie) mit eigener Besetzung und Qualifikation.",
+    /* server/lib/modul-funktionsdienst.mjs: Bereiche (Sachfeld, F1 a) und Einteilung je Person und Tag (Personenfeld). */
+    datenfelder: ["funktionsbereiche", "funktionsPlan"], sachfelder: ["funktionsbereiche"], personenfelder: ["funktionsPlan"],
+    ausnahmeUi: true, berichtigungsWerte: Object.freeze({ funktionsPlan: bekannterFunktionsbereich }),
+    regelIds: ["FUNKTION-BESETZUNG-01", "FUNKTION-QUAL-01"] }),
   modul({ id: "rotation", merkmal: "rotation", name: "Rotationen", pakete: ["klinik"],
-    beschreibung: "Geplante Wechsel von Personen zwischen Einheiten über Zeiträume (Einsatzrotation)." }),
+    beschreibung: "Geplante Wechsel von Personen zwischen Einheiten über Zeiträume (Einsatzrotation).",
+    /* server/lib/modul-rotation.mjs: Einsätze und Zugehörigkeitswechsel, Form „Kennung|von“ (X2 a). Personenfeld;
+       Berichtigung gibt es nicht (nur Löschung). Ein Dienstplaneintrag ändert die Zugehörigkeit nie (X2). */
+    datenfelder: ["rotationen"], personenfelder: ["rotationen"], ausnahmeUi: true,
+    berichtigungsWerte: Object.freeze({ rotationen: () => false }),
+    regelIds: ["ROTATION-UEBERSCHNEIDUNG-01"] }),
   /* Industrie */
   modul({ id: "anlagen", merkmal: "anlagen", name: "Anlagenbindung", pakete: ["industrie"],
     beschreibung: "Anlagen als Einsatzort mit Mindestbesetzung und Laufzeitkalender.",
@@ -582,9 +615,12 @@ export function moduleinstellungenVerwerfen(m) {
   if (!istObjekt(m)) return m;
   const angabe = hat(m, "moduldatenAusnahme");
   const felder = istObjekt(m.einstellungen) && MODULEINSTELLUNGEN_FELDER.some((f) => hat(m.einstellungen, f));
-  if (!angabe && !felder) return m;
+  /* Ein neu angelegter Betrieb hat keine Moduldaten (Wachbuch, Rotationen, Bereitschaft …): sie entstehen erst über die Schreibwege. */
+  const daten = BRANCHENMODULE.flatMap((x) => x.datenfelder).filter((f) => hat(m, f));
+  if (!angabe && !felder && !daten.length) return m;
   const aus = felder ? { ...m, einstellungen: ohne(m.einstellungen, MODULEINSTELLUNGEN_FELDER) } : { ...m };
   delete aus.moduldatenAusnahme;
+  for (const f of daten) delete aus[f];
   return aus;
 }
 

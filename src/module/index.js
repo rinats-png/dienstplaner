@@ -24,6 +24,12 @@ import { createElement as h } from "react";
 import { BRANCHENMODULE, modulVon, modulAktiv, modulNurLesen, modulParameter } from "../../server/lib/branchenmodule.mjs";
 import { kompetenzStand } from "../../server/lib/regelwerk.mjs";
 import { PostenUebersicht } from "./posten.jsx";
+import { WachbuchTages } from "./wachbuch.jsx";
+import { ObjektberichtVorschau } from "./objektbericht.jsx";
+import { BereitschaftsUebersicht } from "./bereitschaftsdienst.jsx";
+import { FunktionsUebersicht } from "./funktionsdienst.jsx";
+import { RotationUebersicht } from "./rotation.jsx";
+import { PflegeVerteilung } from "./pflegequal.jsx";
 import { BereichsUebersicht } from "./bereichsplan.jsx";
 import { AbschnittsAnzeige } from "./geteilterdienst.jsx";
 import { AnlagenUebersicht } from "./anlagen.jsx";
@@ -43,6 +49,18 @@ const dienstzeiten = (m) => Object.fromEntries((Array.isArray(m && m.dienstarten
 export const MODUL_OBERFLAECHEN = Object.freeze([
   { modul: "posten", ort: "tag", titel: "Posten je Objekt",
     ansicht: (k) => h(PostenUebersicht, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
+  { modul: "wachbuch", ort: "tag", titel: "Wachbuch",
+    ansicht: (k) => h(WachbuchTages, { m: k.m, datum: k.datum, zugriff: k.wachbuchZugriff || "keiner", person: k.person || null, eigeneEinheit: k.eigeneEinheit || null }) },
+  { modul: "objektbericht", ort: "betrieb", titel: "Objektbericht (Vorschau)",
+    ansicht: (k) => h(ObjektberichtVorschau, { m: k.m, von: k.heute, bis: k.heute, zugriff: k.berichtZugriff || "keiner", dienstzeit: k.dienstzeit }) },
+  { modul: "bereitschaftsdienst", ort: "tag", titel: "Bereitschaft",
+    ansicht: (k) => h(BereitschaftsUebersicht, { m: k.m, datum: k.datum, personen: Object.fromEntries((k.personenImDienst || []).map((p) => [p.id, `${p.vorname || ""} ${p.nachname || ""}`.trim()])) }) },
+  { modul: "funktionsdienst", ort: "tag", titel: "Funktionsbereiche",
+    ansicht: (k) => h(FunktionsUebersicht, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst || null }) },
+  { modul: "rotation", ort: "betrieb", titel: "Rotation",
+    ansicht: (k) => h(RotationUebersicht, { m: k.m, datum: k.heute, heute: k.heute, personen: Object.fromEntries((k.personen || []).map((x) => [x.id, `${x.vorname || ""} ${x.nachname || ""}`.trim()])) }) },
+  { modul: "pflegequal", ort: "tag", titel: "Pflegeniveaus im Dienst",
+    ansicht: (k) => h(PflegeVerteilung, { m: k.m, personenImDienst: k.personenImDienst || [], qualGueltig: k.qualGueltig, heute: k.heute }) },
   { modul: "bereichsplan", ort: "tag", titel: "Bereiche",
     ansicht: (k) => h(BereichsUebersicht, { m: k.m, einheitId: k.einheitId, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
   { modul: "anlagen", ort: "tag", titel: "Anlagen",

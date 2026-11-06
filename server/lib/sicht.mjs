@@ -509,6 +509,11 @@ function objekteEigene(w, ctx) {
   return objekteMitPosten(w, ids);
 }
 
+/* Wachbuch (modul-wachbuch.mjs): Einträge der Form { "Kennung|Tag": Eintrag } nach Verfasser. */
+export const wachbuchEigene = (w, ctx) => objektFilter(w, (k, v) => (istObj(v) && gleich(v.vonId, ctx.ich) ? v : undefined));
+/* Rotation (modul-rotation.mjs): Einträge { "Kennung|von": Eintrag } der eigenen Person. */
+const rotationEigene = (w, ctx) => objektFilter(w, (k, v) => (istObj(v) && gleich(v.personId, ctx.ich) ? v : undefined));
+
 export const BETRIEB = {
   /* Stammdaten und Regelwerk — ohne sie rechnet kein Plan. */
   id: [VOLL, VOLL], name: [VOLL, VOLL], branche: [VOLL, VOLL],
@@ -593,6 +598,22 @@ export const BETRIEB = {
   postenPlan: [R(eigenOhneEntwurf), WEG],
   /* Bereichsplan (WP-19, modul-bereichsplan.mjs): wie postenPlan. Die Bereiche selbst stehen an der Einheit (einheiten). */
   bereichsPlan: [R(eigenOhneEntwurf), WEG],
+  /* Wachbuch (WP-19, modul-wachbuch.mjs, W4 a+b): Beschäftigte nur die selbst verfassten Einträge (keine Namen Dritter),
+     die Schichtverantwortung nur Einträge der eigenen Einheit (SCHICHT unten), der Betriebsrat nichts; Planung und Leitung alles. */
+  wachbuch: [R(wachbuchEigene), WEG],
+  /* Bereitschaftsdienst (WP-19, modul-bereitschaftsdienst.mjs): Dienste je Person und Tag nur für die Person selbst
+     (vorläufig, Betreiberentscheidung nötig); die Stufen (Faktoren, Sachfeld) nur Planung und Leitung. */
+  bereitschaftStufen: [WEG, WEG],
+  bereitschaft: [R(eigenOhneEntwurf), WEG],
+  /* Funktionsdienst (WP-19, modul-funktionsdienst.mjs): Einteilung wie bereichsPlan (Plan: „Sicht wie bereichsPlan“); die
+     Bereiche selbst (Sachfeld) nur Planung und Leitung (vorläufig). */
+  funktionsbereiche: [WEG, WEG],
+  funktionsPlan: [R(eigenOhneEntwurf), WEG],
+  /* Rotation (WP-19, modul-rotation.mjs): Einsätze und Zugehörigkeitswechsel je Person, Form „Kennung|von“ — Beschäftigte
+     und Schichtverantwortung nur die eigenen Einträge (tagesgenaue Sicht fremder Personen offen, RO-3), Betriebsrat nichts. */
+  rotationen: [R(rotationEigene), WEG],
+  /* Pflegequalifikation (WP-19, modul-pflegequal.mjs): Niveaus je Betrieb (Konfiguration, keine Personendaten). Fail-closed. */
+  pflegeNiveaus: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
@@ -922,6 +943,10 @@ Object.assign(SCHICHT, {
     return objekteMitPosten(w, ids);
   }),
   bereichsPlan: R(schichtSchluessel(["eigen", "bereich"])),
+  /* Funktionsdienst (WP-19): wie bereichsPlan. */
+  funktionsPlan: R(schichtSchluessel(["eigen", "bereich"])),
+  /* Wachbuch (WP-19, W4 a+b): nur Einträge der eigenen Einheit (nie Pool, nie ohne Einheit). */
+  wachbuch: R((w, ctx) => objektFilter(w, (k, v) => (istObj(v) && eigeneEinheitNutzbar(ctx.eigene, ctx.pool) && eintragDerEinheit(v, ctx.eigene) ? v : undefined))),
   sondereinsaetze: R(schichtSondereinsaetze),
   dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
   /* Totes Feld (keine Ansicht liest oder schreibt es) — nicht ausliefern (C3). */

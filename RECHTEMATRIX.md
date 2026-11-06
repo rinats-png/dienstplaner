@@ -80,6 +80,13 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
 | Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Wachbuch (`wachbuch`: Einträge mit Objekt, Uhrzeit, Art, Text; Branchenmodul Wachbuch) — Sicht fachlich offen (WB-2) | nur eigene Einträge | – | nur eigene Einheit | ✓ | ✓ | – | ✓ | ✓ | B |
+| Bereitschaftsdienste (`bereitschaft`: Dienst je Person und Tag; Branchenmodul Bereitschaftsdienst) — vorläufig | nur eigene | – | nur die eigene Person | ✓ | ✓ | – | ✓ | ✓ | B |
+| Bereitschaftsstufen (`bereitschaftStufen`: Anrechnungsfaktoren; Branchenmodul Bereitschaftsdienst) — vorläufig | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
+| Einteilung auf Funktionsbereiche (`funktionsPlan`; Branchenmodul Funktionsdienst) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | B |
+| Funktionsbereiche (`funktionsbereiche`: Name, Soll, Qualifikationen; Branchenmodul Funktionsdienst) — vorläufig | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
+| Rotationen (`rotationen`: Einsatz, Zugehörigkeitswechsel, Ziel; Branchenmodul Rotation) — tagesgenaue Sicht offen (RO-3) | nur eigene Einträge | – | nur die eigene Person | ✓ | ✓ | – | ✓ | ✓ | B |
+| Pflegeniveaus (`pflegeNiveaus`: Niveaus je Betrieb; Branchenmodul Pflegequalifikation) — vorläufig | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
 | Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Branchenmodule: wer geschaltet, bestätigt oder geprüft hat, Grundlage der Mitbestimmung, Modulprotokoll (`geaendertVon`, `mitbestimmung.grundlage`/`bestaetigtVon`, `regelwerte[].geprueftVon`/`geaendertVon`, `einstellungen.modulprotokoll`) ²⁹ | – | ✓ | – | ✓ | ✓ | – | ✓ | ✓ | B |
 | Betriebliche Regelwerte (`einstellungen.regelwerte`: Wert, Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus, Stufe, Prüf- und Änderungszeitpunkt) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -458,6 +465,21 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   Rückfüllung erhalten, Fremdes wird abgewiesen — Nutzerentscheidung B2 b, vorläufig). Beschäftigte schreiben nicht.
   Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
   und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.
+- *Wachbuch, Bereitschaftsdienst, Funktionsdienst, Rotation, Pflegequalifikation, Objektbericht* (WP-19, Rechte, **alle vorläufig,
+  Betreiberentscheidung nötig**; `server/lib/modul-wege.mjs`, Sicht in `sicht.mjs`, Auskunft in `auskunft.mjs`, geprüft in
+  `pruefungen/modul-rechte-wp19.test.js`). *Lesen:* Planung, Leitung und Kundenrolle alles; Betriebsrat und Betreiber nichts.
+  Beschäftigte: Wachbuch nur selbst verfasste Einträge (Entscheidung W4 b: keine Namen Dritter), Bereitschaft, Funktionsplan und
+  Rotation nur die eigenen Einträge (Funktionsplan wie `bereichsPlan`). Schichtverantwortung: Wachbuch nur Einträge der eigenen
+  Einheit (W4 a), Funktionsplan im eigenen Bereich am Tag, Bereitschaft und Rotation nur die eigene Person (restriktiv, bis
+  entschieden). Die Sachfelder `bereitschaftStufen`, `funktionsbereiche`, `pflegeNiveaus` gehen nur an Planung und Leitung.
+  *Schreiben:* Beschäftigte, Schichtverantwortung und Betriebsrat schreiben diese Module nie (die Schichtverantwortung wird in
+  `einheitZusammen` abgewiesen). Planung und Leitung (Voll-Schreibweg) schreiben `bereitschaft` und `funktionsPlan`; nur die
+  Organisationsleitung (`org.edit`: Leitung, Kundenrolle) `bereitschaftStufen`, `funktionsbereiche`, `pflegeNiveaus` und
+  `rotationen` (Versetzung ist mitbestimmungsrelevant, X2). Das Wachbuch kennt nur Anhängen (W2 a); eintragen darf, wer am Tag auf
+  einem Posten des Objekts im Postenplan eingeteilt ist — Beschäftigte haben keinen Schreibweg, das Eintragen bleibt bis zu einem
+  eigenen Endpunkt geschlossen. Der Objektbericht hat kein Betriebsfeld (berechnet, nur Planung und Leitung, Zugriff `voll`).
+  Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Einträge (`wachbucheintraege` ohne Text wegen Rechten Dritter,
+  `bereitschaftsdienste`, `funktionszuordnungen`, `rotationen`). Die Rolle „Kundenrolle“ gilt serverseitig wie die Leitung (Demo-Datenraum).
 
 ²⁹ WP-19.0 (gemeinsamer Kern der Branchenmodule), drei neue Zeilen, keine neue Spalte. **Aktivierung, Mitbestimmung,
 Regelwerte.** Die Moduleinstellungen stehen in `einstellungen` (Zeile bisher ohne eigene Matrixzeile, für alle Rollen voll).

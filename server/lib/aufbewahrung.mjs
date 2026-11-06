@@ -237,7 +237,10 @@ function moduldatenFaellig(m, heuteIso, module, regel) {
     const inhalt = m[f];
     if (!inhalt || typeof inhalt !== "object" || Array.isArray(inhalt)) continue;
     for (const k of Object.keys(inhalt)) {
-      const tag = tagVon(k);
+      /* Rotationen („Kennung|von“): maßgeblich ist das Ende (bis), nicht der Beginn im Schlüssel — ein laufender oder
+         offener Eintrag (Zugehörigkeit ohne Ende, Ziel) wird nie gelöscht. */
+      const wert = inhalt[k];
+      const tag = f === "rotationen" && istObjekt(wert) ? (typeof wert.bis === "string" ? wert.bis.slice(0, 10) : null) : tagVon(k);
       if (!tag || tag >= stichtag) continue;                    // unerwartete Form oder in der Frist: bleibt liegen
       (raus[f] = raus[f] || new Set()).add(k);
       anzahl++;

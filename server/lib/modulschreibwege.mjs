@@ -53,6 +53,7 @@
    Löschvermerke (wie codes.mjs/zweifaktor.mjs; ohne ihn ungeschlüsselt, F4).
    ========================================================================== */
 import { createHash, createHmac, hkdfSync } from "node:crypto";
+import { MODULWEGE_WP19 } from "./modul-wege.mjs";
 import { BRANCHENMODULE, modulVon, modulNurLesen, AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER } from "./branchenmodule.mjs";
 
 export { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER };
@@ -72,7 +73,7 @@ const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  * WP-19.1 ff. — mit eigener Prüfung in pruefungen/modul-<id>.test.js.
  * @type {readonly ModulSchreibweg[]}
  */
-export const MODUL_SCHREIBWEGE = Object.freeze([]);
+export const MODUL_SCHREIBWEGE = Object.freeze([...MODULWEGE_WP19]);
 
 /**
  * Vertrag der Liste: bekanntes Modul, nur dessen Datenfelder, eine Funktion.
@@ -315,7 +316,10 @@ export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrg
   const vermerke = [];
   for (const mod of liste) {
     if (!mod || !Array.isArray(mod.datenfelder) || !mod.datenfelder.length) continue;
-    if (!modulNurLesen(stand, mod.id, liste)) continue;
+    /* Auch ein eingeschaltetes Modul mit Ausnahmeweg-Oberfläche lässt sich über denselben geprüften Weg löschen
+       (nur Löschung, nie Änderung, nur Leitung mit Grund; Art. 17 DSGVO). */
+    const loeschwegAktiv = mod.ausnahmeUi === true && istObjekt(ausnahme) && ausnahme.modul === mod.id && ausnahme.art === "loeschung";
+    if (!modulNurLesen(stand, mod.id, liste) && !loeschwegAktiv) continue;
     for (const feld of mod.datenfelder) {
       if (!hat(aus, feld)) {
         if (hat(altM, feld)) aus = { ...aus, [feld]: altM[feld] };
@@ -399,7 +403,7 @@ export function modulSchreibwegeAnwenden(altM, neuM, { wege = MODUL_SCHREIBWEGE,
   if (lesen.grund) return lesen;
   let aus = lesen.mandant;
   for (const w of wege) {
-    const r = w.zusammen(altM, aus, ktx);
+    const r = w.zusammen(altM, aus, { ...ktx, liste });
     if (!r || r.grund) return { grund: (r && r.grund) || `Branchenmodul ${w.modul}: Schreibweg ohne Ergebnis.` };
     aus = r.mandant;
   }

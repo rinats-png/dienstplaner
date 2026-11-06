@@ -29,6 +29,7 @@ import { BRANCHENMODULE, modulEinstellung, modulZustand, modulNurLesen, MITBESTI
 import { REGELN_BRANCHEN } from "../../server/lib/branchenkatalog.mjs";
 import { oberflaechenFuer, hatModuldaten, moduldatenExport } from "./index.js";
 import { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, ausnahmeAngabe, eintraegeListe, leeresFormular } from "./ausnahmeweg.js";
+import { modulKontext } from "./zugriff.js";
 
 export { ausnahmeAngabe };
 
@@ -265,7 +266,7 @@ function RegelwertZeile({ m, regel, darfSchalten, setzeRegelwert }) {
 }
 
 /** Moduloberflächen an den Einhängepunkten (./index.js). */
-function Oberflaechen({ m, darf, kontext, liste }) {
+function Oberflaechen({ m, sitz, darf, kontext, liste }) {
   const dienstarten = (Array.isArray(m.dienstarten) ? m.dienstarten : []).filter((d) => d && d.id);
   const einheiten = (Array.isArray(m.einheiten) ? m.einheiten : []).filter((e) => e && e.id);
   const [tag, setTag] = useState(heuteTag());
@@ -275,7 +276,8 @@ function Oberflaechen({ m, darf, kontext, liste }) {
   const betrieb = oberflaechenFuer(m, "betrieb", o), tagE = oberflaechenFuer(m, "tag", o), da = oberflaechenFuer(m, "dienstart", o);
   if (!betrieb.length && !tagE.length && !da.length) return <p>Keine Moduloberfläche: Kein Branchenmodul wirkt in diesem Betrieb.</p>;
   const personen = kontext && typeof kontext.personenImDienst === "function" ? (kontext.personenImDienst(tag, dienstId) || []) : [];
-  const basis = { m, heute: heuteTag(), darf };
+  /* Basiskontext der Ansichten (zugriff.js): Zugriffsstufen, Person, Qualifikationsprüfung, Personen, Dienstzeit — fail-closed. */
+  const basis = { m, heute: heuteTag(), darf, ...modulKontext({ sitz, kontext }) };
   const rahmen = (x, inhalt, schluessel) => (
     <section key={schluessel} style={RAHMEN} aria-label={x.eintrag.titel}>
       <h3 style={{ margin: 0, fontSize: 15 }}>{x.eintrag.titel}</h3>
@@ -339,7 +341,7 @@ export function BranchenModule({ sitz, akt, darf, kontext, liste = BRANCHENMODUL
         </div>)}
       <div>
         <h3 style={{ margin: "8px 0 4px", fontSize: 16 }}>Moduloberflächen</h3>
-        <Oberflaechen m={m} darf={darf} kontext={kontext} liste={liste} />
+        <Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} />
       </div>
     </section>);
 }
