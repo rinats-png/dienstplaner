@@ -1,3 +1,4 @@
+/* NODE_ENV=development: unter production verlangt der Server seit WP-32d für Betreibercodes den zweiten Faktor; die Browserproben melden sich als Betreiber an. */
 /* global document */
 /* Funktionsabläufe im Browser mit gefülltem Demo-Betrieb (lokal, Wegwerfdaten).
    Prüft echte Bedienwege über mehrere Rollen:
@@ -20,7 +21,7 @@ const ADMIN = "lokal-admin-" + Math.random().toString(36).slice(2), RAUM = "loka
 const daten = await mkdtemp(path.join(tmpdir(), "centric-ablauf-"));
 const srv = spawn(process.execPath, ["server.mjs"], { cwd: WT, stdio: "ignore",
   env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: WT + "/dist", CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
-    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production",
+    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "development",
     CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true" } });
 let xz = 0;
 const j = async (p, b, t) => { const a = await fetch(BASE + p, { method: b ? "POST" : "GET", headers: { "content-type": "application/json", "x-forwarded-for": `10.5.0.${++xz}`, ...(t ? { authorization: "Bearer " + t } : {}) }, body: b ? JSON.stringify(b) : undefined }); return { s: a.status, d: await a.json().catch(() => ({})) }; };

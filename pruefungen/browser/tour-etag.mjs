@@ -11,7 +11,7 @@ const PORT = 3193, BASE = `http://127.0.0.1:${PORT}`, ADMIN = "lokal-admin-" + M
 const daten = await mkdtemp(path.join(tmpdir(), "centric-ui-"));
 const srv = spawn(process.execPath, ["server.mjs"], { cwd: WT, stdio: "ignore",
   env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: WT + "/dist", CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
-    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production" } });
+    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "development" } });
 let xz = 0;
 const j = async (p, b, t, m = "POST") => { const a = await fetch(BASE + p, { method: m, headers: { "content-type": "application/json", "x-forwarded-for": `10.9.0.${++xz}`, ...(t ? { authorization: "Bearer " + t } : {}) }, body: b ? JSON.stringify(b) : undefined }); return { s: a.status, d: await a.json().catch(() => ({})), et: a.headers.get("etag") }; };
 for (let i = 0; i < 50; i++) { try { if ((await fetch(BASE + "/gesund")).ok) break; } catch {} await new Promise(r => setTimeout(r, 200)); }

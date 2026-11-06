@@ -24,7 +24,7 @@ if (BILDER) await mkdir(BILDER, { recursive: true });
 const daten = await mkdtemp(path.join(tmpdir(), "centric-sweep-"));
 const srv = spawn(process.execPath, ["server.mjs"], { cwd: WT, stdio: "ignore",
   env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: WT + "/dist", CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
-    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production", ...(process.env.DEMO ? { CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true" } : {}) } });
+    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "development", ...(process.env.DEMO ? { CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true" } : {}) } });
 let xz = 0;
 const j = async (p, b, t) => { const a = await fetch(BASE + p, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `10.8.0.${++xz}`, ...(t ? { authorization: "Bearer " + t } : {}) }, body: JSON.stringify(b) }); return { s: a.status, d: await a.json().catch(() => ({})) }; };
 for (let i = 0; i < 50; i++) { try { if ((await fetch(BASE + "/gesund")).ok) break; } catch { /* warten */ } await new Promise((r) => setTimeout(r, 200)); }
