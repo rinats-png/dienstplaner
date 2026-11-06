@@ -29,7 +29,7 @@ import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
-import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, abgewiesenVermerken, letzteWiederoeffnung,
+import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, abgewiesenVermerken, letzteWiederoeffnung,
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
@@ -1874,15 +1874,17 @@ export default async (req, context) => {
     if (pfad === "monatsabschluss" && req.method === "POST") {
       const kM = kennung(req, s);
       const aktionM = rumpf && rumpf.aktion;
-      if (aktionM !== "abschliessen" && aktionM !== "wiederoeffnen" && aktionM !== "lohnexport")
-        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen oder lohnexport." }, 400);
+      if (!["abschliessen", "wiederoeffnen", "lohnexport", "korrektur-beginnen", "korrektur-freigeben"].includes(aktionM))
+        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen, lohnexport, korrektur-beginnen oder korrektur-freigeben." }, 400);
       /* Nur ein gültiger Monat JJJJ-MM kommt in die Spur (WP-16, Nachtrag N2) — nie Freitext aus dem Rumpf. */
       const monatM = (rumpf && typeof rumpf.monat === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(rumpf.monat)) ? rumpf.monat : "ungültig";
       if (!abschlussRecht(s.rolle, aktionM)) {
         await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM} · Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionM === "abschliessen"
           ? "Monate schließen Leitung und Planung ab."
-          : aktionM === "lohnexport" ? "Den Lohnexport bestätigt nur die Leitung." : "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." }, 403);
+          : aktionM === "lohnexport" ? "Den Lohnexport bestätigt nur die Leitung."
+            : aktionM.startsWith("korrektur-") ? "Eine Korrektur nach dem Lohnexport beginnt und gibt nur die Leitung frei."
+              : "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." }, 403);
       }
       const bM = await bremse("schreiben", kM);
       if (!bM.frei) return zuVielAntwort(bM.wartet);
@@ -1896,11 +1898,13 @@ export default async (req, context) => {
         const r = aktionM === "abschliessen"
           ? abschliessen(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
           : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpf || {}, werM, new Date(), idM)
-            : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
+            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(mM, rumpf || {}, werM, new Date(), idM)
+              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
+                : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),
-            ...(r.vormonate ? { vormonate: r.vormonate } : {}) }, r.status);
+            ...(r.vormonate ? { vormonate: r.vormonate } : {}), ...(r.differenz ? { differenz: r.differenz } : {}) }, r.status);
         }
         const ergM = await bestandSchreiben(store, s.bestand,
           { ...mitM.bestand, mandanten: mitM.bestand.mandanten.map((x) => (x === mM ? r.mandant : x)) },
@@ -1912,12 +1916,15 @@ export default async (req, context) => {
         /* WP-14b (M1): Die Spur liest der Betreiber — nur Monat, Ausgang, Kennung und Zahlen; der Grund (Freitext)
            steht im Verlauf am Monat, nicht in der Spur. */
         await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
-          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
+          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.revision > 1 ? ` · Revision ${r.ereignis.revision}` : ""}${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
           : aktionM === "lohnexport" ? `Monatsabschluss ${monatM} Lohnexport bestätigt ${r.ereignis.id} · Revision ${r.ereignis.revision}`
             /* Überstimmung offener/geänderter Vormonate (WP-16, Nachtrag vierter Review A-1): nur die Kategorie aus der festen Liste. */
             + (r.ereignis.trotzVormonat ? ` · trotz Vormonat (${r.ereignis.trotzVormonat.kategorie})` : "")
-            : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
-        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null });
+            : aktionM === "korrektur-beginnen" ? `Monatsabschluss ${monatM} Korrektur begonnen ${r.ereignis.id} · Revision ${r.ereignis.revision} · Grund im Verlauf`
+              : aktionM === "korrektur-freigeben" ? `Monatsabschluss ${monatM} Korrektur freigegeben ${r.ereignis.id} · ${r.ereignis.n} Zeilen`
+                : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
+        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null,
+          ...(r.differenz ? { differenz: r.differenz } : {}) });
       });
     }
 

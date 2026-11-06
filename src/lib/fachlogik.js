@@ -16,7 +16,7 @@ import { darf } from "./berechtigung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege } from "../standorte.js";
 import { mandantPaketkosten, monatsanfang, paketTag, paketPositionen, kannMerkmal } from "../paketlogik.js";
 import { monatspreis } from "../preisgestaltung.js";
-import { monatAbgeschlossen, datevZeilenAbdruck, VORMONAT_KATEGORIEN as VORMONAT_KATEGORIEN_SERVER, monatText, datevReihenfolge, lohnexportVergleich } from "../../server/lib/monatsabschluss.mjs";
+import { monatAbgeschlossen, datevZeilenAbdruck, VORMONAT_KATEGORIEN as VORMONAT_KATEGORIEN_SERVER, monatText, datevReihenfolge, lohnexportVergleich, exportZeilenFuer } from "../../server/lib/monatsabschluss.mjs";
 import { sperrtArt, stufeRang, abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "../warnstufen.js";
 import { useSchutzkonflikte as useSchutzkonflikteBasis } from "../schutzkonflikte-hook.js";
 import { fristen as loeschFristen } from "../aufbewahrung.js";
@@ -3132,7 +3132,8 @@ export function offeneUebergaben(m, tage = 3, einheitId = null) {
 export function datevSaetze(m, ym) {
   const st = freezeStatus(m, ym);
   if (st && st.unbekannt) return [];
-  if (st && st.reproduzierbar) return datevAusFreeze(m, ym) || [];
+  /* Ab Revision 2 (WP-16c) nur die Differenz zur exportierten Revision — der gekennzeichnete Korrekturexport. */
+  if (st && st.reproduzierbar) return exportZeilenFuer(m, ym).zeilen;
   /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Lohnarten und Zugehörigkeit (im Dienst am 28.) wie zum
      Abschluss — ein rückwirkend verlegter Austritt lässt niemanden aus dem abgeschlossenen Monat fallen. */
   const fb = eingefrorenerBetrieb(m, ym);
@@ -3197,7 +3198,7 @@ export function lohnexportStand(m, ym) {
 /** Dateiname der Lohnausgabe: im abgeschlossenen Monat mit Revision und Prüfsumme (die Datei selbst bleibt im Format). */
 export function lohnausgabeDateiname(m, ym, endung) {
   const s = lohnexportStand(m, ym);
-  return `lohnausgabe_${String(m.name || "").replace(/\W+/g, "_")}_${ym}${s && s.abdruck ? `_r${s.revision}_${String(s.abdruck).slice(0, 12)}` : ""}.${endung}`;
+  return `lohnausgabe_${String(m.name || "").replace(/\W+/g, "_")}_${ym}${s && s.abdruck ? `_${s.revision > 1 ? "korrektur_" : ""}r${s.revision}_${String(s.abdruck).slice(0, 12)}` : ""}.${endung}`;
 }
 
 /** Kategorien der Überstimmung offener oder geänderter Vormonate beim Lohnexport — dieselbe Liste wie der Server. */
