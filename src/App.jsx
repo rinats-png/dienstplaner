@@ -1828,7 +1828,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                         borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                         background: amZeiger ? C.accentLight : anGewaehlt ? C.bg : "transparent",
                         borderLeft: amZeiger ? `3px solid ${C.accent}` : "3px solid transparent" }}>
-                      <input type="checkbox" checked={anGewaehlt} onClick={(ev) => ev.stopPropagation()}
+                      <input type="checkbox" checked={anGewaehlt} aria-label={`Antrag von ${p ? `${p.nachname}, ${p.vorname}` : "unbekannt"} für Sammelentscheidung auswählen`} onClick={(ev) => ev.stopPropagation()}
                         onChange={(ev) => setGewaehlt(ev.target.checked
                           ? [...gewaehlt, a.id] : gewaehlt.filter((x) => x !== a.id))}
                         style={{ width: 15, height: 15, flexShrink: 0, accentColor: C.accent }} />
@@ -5761,8 +5761,8 @@ function TourLeiste({ sitz, akt, gehZu }) {
             })}
           </div>
 
-          <h3 style={{ fontSize: 18, fontWeight: 640, letterSpacing: "-.02em",
-            margin: "0 0 8px" }}>{punkt.titel}</h3>
+          <h2 style={{ fontSize: 18, fontWeight: 640, letterSpacing: "-.02em",
+            margin: "0 0 8px" }}>{punkt.titel}</h2>
           <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
             {punkt.text}</p>
 
@@ -9128,7 +9128,7 @@ function Betrieb({ sitz, akt }) {
               <div key={e.id} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
                 <Farbpunkt wert={e.farbe} onChange={(c) => akt.setzeEinheit(e.id, "farbe", c)}
                   titel={`Farbe von ${e.name}`} />
-                <Inp value={e.name} onChange={(ev) => akt.setzeEinheit(e.id, "name", ev.target.value)} style={{ flex: 1 }} />
+                <Inp value={e.name} aria-label="Name der Einheit" onChange={(ev) => akt.setzeEinheit(e.id, "name", ev.target.value)} style={{ flex: 1 }} />
                 <span style={{ fontSize: 12.5, color: C.dimmer, width: 64, ...NUM }}>
                   {aktive(m, heute()).filter((x) => einheitAm(x, heute()) === e.id).length} Pers.</span>
                 <Btn size="sm" kind="danger" onClick={() => akt.loescheEinheit(e.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
@@ -9143,8 +9143,8 @@ function Betrieb({ sitz, akt }) {
               <div key={q.id} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
                 <Farbpunkt wert={q.farbe} onChange={(c) => akt.setzeQual(q.id, "farbe", c)}
                   titel={`Farbe von ${q.name}`} />
-                <Inp value={q.name} onChange={(e) => akt.setzeQual(q.id, "name", e.target.value)} style={{ flex: 1 }} />
-                <Inp value={q.kurz} maxLength={4} onChange={(e) => akt.setzeQual(q.id, "kurz", e.target.value.toUpperCase())} style={{ width: 76 }} />
+                <Inp value={q.name} aria-label="Name der Qualifikation" onChange={(e) => akt.setzeQual(q.id, "name", e.target.value)} style={{ flex: 1 }} />
+                <Inp value={q.kurz} maxLength={4} aria-label="Kürzel der Qualifikation" onChange={(e) => akt.setzeQual(q.id, "kurz", e.target.value.toUpperCase())} style={{ width: 76 }} />
                 <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
             <Erklaerkasten style={{ marginTop: 12 }}>

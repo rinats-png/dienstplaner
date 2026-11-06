@@ -99,6 +99,16 @@ try {
         const rgb = (c) => { const m2 = /rgba?\(([^)]+)\)/.exec(c); if (!m2) return null; const t = m2[1].split(",").map((x) => parseFloat(x)); return { r: t[0], g: t[1], b: t[2], a: t.length > 3 ? t[3] : 1 }; };
         const lum = (c) => { const k = [c.r, c.g, c.b].map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * k[0] + 0.7152 * k[1] + 0.0722 * k[2]; };
         const grund = (el) => { for (let e = el; e; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.backgroundImage !== "none") return null; const c = rgb(cs.backgroundColor); if (c && c.a >= 0.95) return c; } return rgb(getComputedStyle(document.body).backgroundColor); };
+        /* Zugänglichkeit (grobe Näherung, ersetzt kein axe): Namen, Labels, doppelte IDs, Überschriften, Sprache */
+        const sichtbar = (e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none"; };
+        const name = (e) => (e.getAttribute("aria-label") || "").trim() || (e.getAttribute("aria-labelledby") && (document.getElementById(e.getAttribute("aria-labelledby")) || {}).innerText) || (e.innerText || "").trim() || (e.getAttribute("title") || "").trim() || (e.querySelector("img[alt]") ? "x" : "") || ((e.labels && e.labels.length) ? "x" : "") || (e.getAttribute("placeholder") || "").trim();
+        const ohneName = [...document.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=switch], [role=tab]")].filter((e) => sichtbar(e) && !name(e)).length;
+        const ids = {}; let doppelt = 0; for (const e of document.querySelectorAll("[id]")) { if (ids[e.id]) doppelt++; ids[e.id] = 1; }
+        const ueb = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].filter(sichtbar).map((h) => Number(h.tagName[1])); let sprung = 0; for (let i = 1; i < ueb.length; i++) if (ueb[i] - ueb[i - 1] > 1) sprung++;
+        const eins = ueb.filter((x) => x === 1).length;
+        const probe = [...document.querySelectorAll("button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=switch], [role=tab]")].filter((e) => sichtbar(e) && !name(e)).slice(0, 3).map((e) => e.tagName + "." + String(e.className || "").slice(0, 16) + "[" + (e.getAttribute("type") || "") + "]" + (e.parentElement ? " in " + e.parentElement.outerHTML.slice(0, 160).split(String.fromCharCode(10)).join(" ") : "")).join(" ; ");
+        const uebFolge = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].filter(sichtbar).slice(0, 6).map((h) => h.tagName + ":" + (h.innerText || "").trim().slice(0, 14)).join(" > ");
+        const a11y = { ohneName, doppelt, sprung, eins: eins === 1 ? 0 : 1, lang: document.documentElement.lang ? 0 : 1, landmark: document.querySelector("main") ? 0 : 1, info: ohneName ? probe : sprung ? uebFolge : "" };
         let schwach = 0; const beispiele = [];
         for (const e of document.querySelectorAll("main *, header *, nav *")) {
           if (!e.offsetParent || e.closest("svg")) continue;
@@ -110,7 +120,7 @@ try {
           const gross = parseFloat(cs.fontSize) >= 24 || (parseFloat(cs.fontSize) >= 18.66 && parseInt(cs.fontWeight, 10) >= 700);
           if (v < (gross ? 3 : 4.5) && !e.closest("[disabled]") && !e.closest("[aria-disabled='true']")) { schwach++; if (beispiele.length < 3) beispiele.push((e.innerText || "").trim().slice(0, 24) + " " + v.toFixed(1) + " <" + e.tagName + "." + String(e.className || "").slice(0, 30) + "> fg=" + cs.color + " bg=" + bg.r + "," + bg.g + "," + bg.b); }
         }
-        return { quer: dok.scrollWidth - vw, lang: txt.length, laedt: /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test(txt), klein, schwach, beispiele };
+        return { quer: dok.scrollWidth - vw, lang: txt.length, laedt: /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test(txt), klein, schwach, beispiele, a11y };
       });
       if (m.quer > 1) {
         const process_env_kette = !!process.env.KETTE;
@@ -120,6 +130,7 @@ try {
       }
       if (m.laedt) { await p.waitForTimeout(3000); const noch = await p.evaluate(() => /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test((document.querySelector("main") || document.body).innerText)); if (noch) melde("haengt-in-laden", `${akt}: „Lädt …“ nach 4 s noch sichtbar`); }
       if (m.schwach > 0) melde("kontrast", `${akt}: ${m.schwach} Textstellen unter WCAG-Kontrast (z. B. ${m.beispiele.join("; ")})`);
+      { const z = Object.entries(m.a11y).filter(([k, v]) => k !== "info" && v > 0).map(([k, v]) => k + "=" + v); if (z.length) melde("a11y", `${akt}: ${z.join(", ")} ${m.a11y.info}`); }
       if (m.lang < 20) melde("leer", `${akt}: Bereich praktisch leer (${m.lang} Zeichen)`);
       if (w < 700 && m.klein > 12) melde("touchziele", `${akt}: ${m.klein} Bedienelemente kleiner als 40 px`);
       if (await p.locator('[aria-modal="true"]').count()) { melde("dialog-offen", `${akt}: beim Öffnen der Ansicht steht ein Dialog offen (${(await p.locator('[aria-modal="true"]').first().getAttribute("aria-label")) || "ohne Titel"})`); await p.keyboard.press("Escape"); await p.waitForTimeout(300); }
