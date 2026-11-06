@@ -60,7 +60,7 @@ describe("F1: die Schichtverantwortung sieht nur die Arten von vor #6", () => {
     expect(e.mandanten[0].selbstplanung).toEqual(vorher.mandanten[0].selbstplanung);
   });
   it("der Kommentar in abwesenheitsarten.js verweist auf die tatsächliche Stelle", () => {
-    const s = readFileSync(path.join(process.cwd(), "src/abwesenheitsarten.js"), "utf8");
+    const s = readFileSync(path.join(process.cwd(), "server/lib/engine/abwesenheitsarten.mjs"), "utf8");
     expect(s).not.toContain("abwesenheitSaeubern");
     expect(s).toContain("ABWESENHEITSARTEN_SV");
   });

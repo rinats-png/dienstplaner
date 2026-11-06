@@ -17,7 +17,7 @@ import { regelnFuer, REGELN } from "../src/regelregister.js";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 
 const app = appQuelle();
-const arten = readFileSync(new URL("../src/abwesenheitsarten.js", import.meta.url), "utf8");
+const arten = readFileSync(new URL("../server/lib/engine/abwesenheitsarten.mjs", import.meta.url), "utf8");
 const rechte = readFileSync(new URL("../server/lib/rechte.mjs", import.meta.url), "utf8");
 
 describe("Beschäftigungsmodelle", () => {

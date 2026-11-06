@@ -24,6 +24,10 @@
      P-07  Baustein/Parameter nicht im Katalog der Funktion
      P-08  Grenzen: leer, zu lang (nie kürzen), zu viele Bausteine
      P-09  geschweifte Klammern (Platzhalter entstehen nur im Server aus Alias)
+     P-10  Gegenrechnung (WP-I12): nur wenn eine Funktion `gegenrechnung` eingehängt ist; sie rechnet die Zahlen des
+           Pakets mit dem Rechenkern nach. Meldet sie etwas anderes als ok:true, wirft sie oder braucht sie zu lange
+           (hier: jeder Rückgabewert außer { ok: true }), wird die Antwort verworfen. Ohne eingehängte Funktion
+           ändert sich nichts (das Gateway bleibt inert).
 
    INVARIANTEN
    P1  Fail closed: jede Ausnahme in der Prüfung = Ablehnung.
@@ -206,7 +210,7 @@ export function erlaubtAusPaket(paket) {
 export function ausgabePruefen(o) {
   const codes = new Set();
   try {
-    const { ausgabe, paket, bausteinKatalog, sperrliste } = o;
+    const { ausgabe, paket, bausteinKatalog, sperrliste, gegenrechnung } = o;
     const abbruch = () => ({ ok: false, codes: [...codes].sort() });
 
     /* P-01 Struktur ------------------------------------------------------ */
@@ -290,6 +294,17 @@ export function ausgabePruefen(o) {
     /* P-06 Leck-Prüfung des Betriebs (nur Zeichenketten) ----------------- */
     const leck = leckPruefen(strings, sperrliste);
     if (!leck || leck.ok !== true) { codes.add("P-06"); return abbruch(); }
+
+    /* P-10 Gegenrechnung durch den Rechenkern (WP-I12) — nur wenn eingehängt; synchron, fail closed. Die Funktion
+       bekommt nur die Momentaufnahme (eingefroren), nie die Anbieterausgabe selbst. */
+    if (gegenrechnung !== undefined && gegenrechnung !== null) {
+      let urteil = null;
+      try {
+        if (typeof gegenrechnung !== "function") throw new TypeError("gegenrechnung");
+        urteil = gegenrechnung(Object.freeze({ ausgabe: ergebnis, paket }));
+      } catch { urteil = null; }
+      if (!urteil || typeof urteil !== "object" || urteil.ok !== true) { codes.add("P-10"); return abbruch(); }
+    }
 
     return { ok: true, ergebnis, neutralisiert };
   } catch {

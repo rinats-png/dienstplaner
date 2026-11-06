@@ -88,6 +88,7 @@ const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.
  *   funktionenFreigegeben?: Iterable<string>,
  *   bausteinKatalog?: Record<string, Record<string, { parameter?: readonly string[] }>>,
  *   faktenquelle?: Function,
+ *   gegenrechnung?: (a: { ausgabe: any, paket: any }) => { ok: boolean },   // WP-I12: Rechenkern prüft die Zahlen nach (P-10)
  *   hoechsteStufe?: 1|2|3,
  *   zeiten?: Partial<typeof ZEITEN_VORGABE>,
  *   jetzt?: () => number,
@@ -263,7 +264,7 @@ export function erzeugeGateway(o) {
       if (fp) {
         const gespeichert = await speicher.lesen({ raum: sitzung.bestand, fingerprint: fp });
         if (gespeichert) {
-          const p0 = ausgabePruefen({ ausgabe: gespeichert, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste });
+          const p0 = ausgabePruefen({ ausgabe: gespeichert, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste, gegenrechnung: o.gegenrechnung });
           if (p0.ok) { ergebnis = p0.ergebnis; neutralisiert = p0.neutralisiert; treffer = true; } else await speicher.verwerfen({ raum: sitzung.bestand, fingerprint: fp });
         }
       }
@@ -314,7 +315,7 @@ export function erzeugeGateway(o) {
         }
         versucheGesamt += antwort.versuche;
         tokensAus = antwort.nutzung.ausgabeToken;
-        const p = ausgabePruefen({ ausgabe: antwort.ausgabe, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste });
+        const p = ausgabePruefen({ ausgabe: antwort.ausgabe, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste, gegenrechnung: o.gegenrechnung });
         audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: p.ok ? "ok" : "KI_PRUEFER",
           codes: p.ok ? undefined : p.codes, dauerMs: Math.max(0, jetzt() - sStart), versuche: antwort.versuche });
         if (p.ok) { ergebnis = p.ergebnis; neutralisiert = p.neutralisiert; break; }

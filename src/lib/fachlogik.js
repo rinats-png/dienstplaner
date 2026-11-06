@@ -1,19 +1,17 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { branchenListe } from "../../server/lib/branchen.mjs";
-import { ABW_WEITERE, entgeltStatus } from "../abwesenheitsarten.js";
 import { uid, n1, eur, zahl, n2, sgn } from "./format.js";
-import { nachtAnteil, imDienst, einheitAm, einheitDienst, teilzeitDienst, nachtschwelle, sperreWirkt, landFuerEinheit, zyklusLaenge, versatzTageVon, einteilungsBefunde, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig } from "../../server/lib/fachpruefung.mjs";
-import { addDays, montag, toMin, dim_, pad, AUSGLEICH_WOCHEN, ausgleichszeitraum, DURCHSCHNITT_TAG, istNachtdienst, EBENEN, aufgabeGedeckt, aufgabeSchwere, fenster, uhrversatz, alterAm, pauseGenuegt, bruttoAm, pausePflicht, tagesgrenzeVerletzt, HOECHST_TAG, ersatzruhetage, dow, freieSonntage, FREIE_SONNTAGE_MIN, vorsorgeFaellig, stundengrenzeAusRegeln, dauer, schutzEinsatz, regelMaengel, stundengrenzeHinweis, REGELSTAND, between, kompetenzStand, dauerAm } from "../regelwerk.js";
+import { nachtAnteil, imDienst, einheitAm, einheitDienst, nachtschwelle, zyklusLaenge, versatzTageVon, einteilungsBefunde } from "../../server/lib/fachpruefung.mjs";
+import { addDays, montag, toMin, dim_, pad, AUSGLEICH_WOCHEN, ausgleichszeitraum, DURCHSCHNITT_TAG, EBENEN, fenster, dow, dauer, stundengrenzeHinweis, REGELSTAND, between, kompetenzStand, dauerAm } from "../regelwerk.js";
 import { DOW, heute, fKurz, fDatum, MON, fLang, zeitpunktText } from "./datum.js";
 import { MATRIX_STD, ROLLEN, rollenName, anzahlWort } from "./rollen.js";
-import { istEntwurfstag, planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
+import { planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
-import { postenBesatzung as postenBesatzungRechnen, mindestFuer, eingefrorenerMonat, abschlussLuecke, freezeStatus, sollMonat, nachtAnteilAm, feiertagFuer, eingefrorenerTag, eingefrorenerDienst, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText } from "../../server/lib/isteinfrieren.mjs";
-import { istVerfuegbar, zeitraumMonat, IST_NICHT_VERFUEGBAR, zurPruefung, zeitraumBisMonat, zeitraumJahr, pruefZeitFuer, ISTDATEN_TEXT, istZeitFuer, ungeplanterDienst, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
-import { gewertet, LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
+import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText } from "../../server/lib/isteinfrieren.mjs";
+import { istVerfuegbar, zeitraumMonat, zurPruefung, zeitraumJahr, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
+import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
-import { addMonate } from "../regelbaukasten.js";
 import { darf } from "./berechtigung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege } from "../standorte.js";
 import { mandantPaketkosten, monatsanfang, paketTag, paketPositionen, kannMerkmal } from "../paketlogik.js";
@@ -21,10 +19,17 @@ import { monatspreis } from "../preisgestaltung.js";
 import { monatAbgeschlossen, datevZeilenAbdruck, VORMONAT_KATEGORIEN as VORMONAT_KATEGORIEN_SERVER, monatText, datevReihenfolge, lohnexportVergleich } from "../../server/lib/monatsabschluss.mjs";
 import { sperrtArt, stufeRang, abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "../warnstufen.js";
 import { useSchutzkonflikte as useSchutzkonflikteBasis } from "../schutzkonflikte-hook.js";
-import { feiertag } from "../../server/lib/feiertage.mjs";
 import { fristen as loeschFristen } from "../aufbewahrung.js";
 import { stempelVorgang, MARKIERUNG_TEXT } from "../stempelvorgang.js";
 import { csvText, csvFeld } from "../csvfeld.js";
+
+/* WP-I12: Die Planrechnung steht im Rechenkern (server/lib/engine/); hier nur Weiterleitung und der Merkmalshaken. */
+export { ABW, ABW_NEUTRAL, abwArt, _c, cache, memo, absIdx, aktive, abwesenheitAm, postenBesatzung, personTag, besetzung, sollStunden, istStunden, nachtTageImJahr, stundenkonto, istDauer, ungeplantAm, istTag, nachweisStand, qualGueltig } from "../../server/lib/engine/plan.mjs";
+import { abwArt, memo, absIdx, aktive, abwesenheitAm, personTag, besetzung, sollStunden, istStunden, stundenkonto, istTag, nachweisStand, qualGueltig } from "../../server/lib/engine/plan.mjs";
+export { EINSCHRAENKUNG_BEWERTUNG, fachkraftLage, pruefen } from "../../server/lib/engine/befunde.mjs";
+import { pruefen } from "../../server/lib/engine/befunde.mjs";
+export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.mjs";
+import { merkmalPruefungSetzen } from "../../server/lib/engine/befunde.mjs";
 
 /* Bundesländer, in denen Feiertage von der Gemeinde abhängen.
 
@@ -127,19 +132,9 @@ export const stat = (id) => STATUS.find((s) => s.id === id) || STATUS[0];
    dieselbe Quelle. */
 export const BRANCHEN = branchenListe();
 
-export const ABW = [
-  { id: "urlaub", label: "Urlaub", kurz: "U", farbe: "#2E6B4F", urlaub: true, bezahlt: true, rang: 3 },
-  { id: "krank", label: "Krank", kurz: "K", farbe: "#B3261E", urlaub: false, bezahlt: true, rang: 5 },
-  { id: "schulung", label: "Schulung", kurz: "S", farbe: "#35506B", urlaub: false, bezahlt: true, rang: 4 },
-  { id: "frei", label: "Freistellung", kurz: "F", farbe: "#878C93", urlaub: false, bezahlt: false, rang: 1 },
-  { id: "sonst", label: "Sonstiges", kurz: "X", farbe: "#8A5A00", urlaub: false, bezahlt: true, rang: 2 },
-  { id: "ausgleich", label: "Freizeitausgleich", kurz: "A", farbe: "#0369A1", urlaub: false, bezahlt: false, rang: 2 },
-  ...ABW_WEITERE,
-];
-/* WP-27: Wer Abwesenheiten nur gekürzt bekommt (Betriebsrat, Beschäftigte für
-   fremde Personen), sieht „abwesend" — nicht „Sonstiges". */
-export const ABW_NEUTRAL = { id: "abwesend", label: "abwesend", kurz: "–", farbe: ABW[3].farbe, urlaub: false, bezahlt: true, rang: 1 };   // Farbe wie „Freistellung“
-export const abwArt = (id) => ABW.find((a) => a.id === id) || (id === "abwesend" ? ABW_NEUTRAL : ABW[4]);
+
+   // Farbe wie „Freistellung“
+
 
 /* ------------------------------- Zyklusvorlagen --------------------------- */
 export const VORLAGEN = [
@@ -664,140 +659,19 @@ export function modellPruefen(modell) {
     maxSerie, maxNacht, ruhe, einzel, mind, proTag };
 }
 
-/* ==========================================================================
-   ENGINE — arbeitet immer auf genau einem Mandanten
-   ========================================================================== */
-export const _c = new WeakMap();
-export function cache(m) { let c = _c.get(m); if (!c) { c = { map: new Map(), abs: null, posten: new Map() }; _c.set(m, c); } return c; }
-export function memo(m, k, fn) { const c = cache(m); if (c.map.has(k)) return c.map.get(k); const v = fn(); c.map.set(k, v); return v; }
-export function absIdx(m) {
-  const c = cache(m); if (c.abs) return c.abs;
-  const x = new Map();
-  for (const a of m.abwesenheiten) { if (!x.has(a.personId)) x.set(a.personId, []); x.get(a.personId).push(a); }
-  c.abs = x; return x;
-}
 
-/* einheitAm und imDienst: server/lib/fachpruefung.mjs (WP-22). */
-export const aktive = (m, d) => memo(m, `akt|${d}`, () => m.personen.filter((p) => imDienst(p, d)));
 
-export function abwesenheitAm(m, pid, d) {
-  const l = absIdx(m).get(pid); if (!l) return null;
-  let best = null;
-  for (const a of l) if (a.von <= d && a.bis >= d && (!best || abwArt(a.art).rang > abwArt(best.art).rang)) best = a;
-  return best;
-}
-/* versatzTageVon, zyklusLaenge und einheitDienst (Schichtfolge einer Einheit)
-   stehen seit WP-22 in server/lib/fachpruefung.mjs — der Server rechnet
-   damit dieselbe Folge. Ein Betrieb ohne zyklus.tage liefert dort null. */
-/* mindestFuer (C5: ein Feiertag hebt die Vorgabe an, senkt sie nie) und die Postenbesetzung stehen seit
-   WP-16 (Review H1) in server/lib/isteinfrieren.mjs: Der Server friert beim Monatsabschluss das Ist mit
-   derselben Planrechnung ein. Hier nur der Zwischenspeicher je Bestand. */
-export const postenBesatzung = (m, eid, d, pid) => postenBesatzungRechnen(m, eid, d, pid, cache(m).posten);
-export function personTag(m, p, d) {
-  if (!imDienst(p, d)) return { dienstId: null, plan: null, abweichung: null, abwesenheit: null, quelle: "extern" };
-  /* Entwurf (WP-23): Der Server lässt die Einteilungen nicht freigegebener Monate nach heute für
-     Beschäftigte weg und sagt es in sichtEntwuerfe. Ohne diesen Zweig rechnete die Oberfläche für
-     solche Tage die Schichtfolge und zeigte einen Regeldienst, den die Planung vielleicht längst
-     geändert hat — falscher als gar nichts. */
-  if (m.sichtEntwuerfe && istEntwurfstag(m, d, m.sichtEntwuerfe.heute))
-    return { dienstId: null, plan: null, abweichung: null, abwesenheit: abwesenheitAm(m, p.id, d), quelle: "entwurf" };
-  const eid = einheitAm(p, d);
-  // Geschäftszimmer: Planung und Leitung fahren keine Rotation mit.
-  // Sie erscheinen im Plan nur durch ausdrückliche Zuweisung.
-  const roh = (eid && !p.springer && p.imSchichtdienst !== false) ? einheitDienst(m, eid, d) : null;
-  const plan = teilzeitDienst(m, p, d, roh);
-  const ab = m.abweichungen[`${p.id}|${d}`];
-  let basis = ab !== undefined ? (ab === "-" ? null : ab) : plan;
-  if (ab === undefined && plan) {
-    const po = m.dienstarten.find((x) => x.posten && x.quelle === plan);
-    if (po && postenBesatzung(m, eid, d, po.id).has(p.id)) basis = po.id;
-  }
-  const abw = abwesenheitAm(m, p.id, d);
-  return { dienstId: abw ? null : basis, plan, abweichung: ab !== undefined ? ab : null, abwesenheit: abw,
-    quelle: ab !== undefined ? "abweichung" : "plan" };
-}
-export function besetzung(m, d) {
-  return memo(m, `bes|${d}`, () => {
-    const out = {};
-    for (const da of m.dienstarten) out[da.id] = { da, personen: [], soll: mindestFuer(m, da, d) };
-    for (const p of aktive(m, d)) { const t = personTag(m, p, d); if (t.dienstId && out[t.dienstId]) out[t.dienstId].personen.push(p); }
-    for (const k of Object.keys(out)) {
-      const e = out[k];
-      e.anzahl = e.personen.length; e.diff = e.anzahl - e.soll;
-      e.qual = Object.entries(e.da.mindestQual || {}).filter(([, n]) => n > 0).map(([qid, n]) => {
-        const ist = e.personen.filter((p) => qualGueltig(m, p, qid)).length;
-        return { qid, noetig: n, ist, ok: ist >= n };
-      });
-      e.qualFehlt = e.qual.some((q) => !q.ok);
-      e.status = e.diff < -1 ? "danger" : e.diff < 0 || e.qualFehlt ? "warn" : "ok";
-    }
-    return out;
-  });
-}
-export function sollStunden(m, p, ym) {
-  return memo(m, `soll|${p.id}|${ym}`, () => {
-    /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): das Soll zum Abschluss — spätere Änderungen an
-       Wochenstunden, Eintritt/Austritt, Standort oder Bundesland ändern es nicht. */
-    const fm = eingefrorenerMonat(m, p, ym);
-    if (fm && Number.isFinite(fm.s) && !abschlussLuecke(m, p, ym)) return fm.s;
-    /* Schema ≥ 2 (WP-16, Nachtrag dritter Review M-1/N-e): ohne brauchbaren Monatseintrag kein live gerechnetes
-       Soll — „nicht verfügbar" (null), auch für Rollen, die den Eintrag nicht sehen (Betriebsrat, Schicht-
-       verantwortung ohne den ganzen Monat im Bereich). Nur wer im Monat gar nicht im Dienst war, hat Soll 0. */
-    const st = freezeStatus(m, ym);
-    if (st && (st.unbekannt || st.schema >= 2) && !(fm && !Number.isFinite(fm.s) && !abschlussLuecke(m, p, ym))) {
-      const [y, mo] = ym.split("-").map(Number);
-      let im = false;
-      for (let i = 1; i <= dim_(y, mo - 1) && !im; i++) im = imDienst(p, `${ym}-${pad(i)}`);
-      return im ? null : 0;
-    }
-    return sollMonat(m, p, ym);
-  });
-}
-export function istStunden(m, p, ym) {
-  /* Ohne Zugang zu den Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine
-     Ist-Stunden — auch nicht aus dem Plan. */
-  if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
-  /* Abgeschlossener Monat ohne Freeze dieser Person (WP-16, Nachtrag N3): nicht 0 h, sondern Prüffall. */
-  if (abschlussLuecke(m, p, ym)) return { ...IST_NICHT_VERFUEGBAR, abschlussLuecke: true };
-  return memo(m, `ist|${p.id}|${ym}`, () => {
-    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1);
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0, ungeplantTage = 0;
-    for (let i = 1; i <= n; i++) {
-      /* istTag: im abgeschlossenen Monat nur das eingefrorene Ist (WP-16, Review H1). */
-      const d = `${ym}-${pad(i)}`; const t = istTag(m, p, d);
-      if (t.abwesenheit) {
-        /* Ungeklärt ist nicht unbezahlt: nichts gutschreiben, aber zählen, damit
-           die Prüfansicht sagen kann, dass das Konto dort unvollständig ist. */
-        const es = entgeltStatus(abwArt(t.abwesenheit.art));
-        if (es === "bezahlt" && t.plan) gg += t.wochenstunden / 5;
-        else if (es === "ungeklaert" && t.plan) ungeklaert++;
-        continue;
-      }
-      /* Ohne geplanten Dienst zählt nur ein gestempelter und von der Leitung
-         bestätigter ungeplanter Dienst (WP-13) — mit seiner Ist-Dauer. */
-      const da = t.da;
-      if (!da) continue;
-      if (da.ungeplant) ungeplantTage++;
-      const idn = t.idn;
-      g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
-      /* Ist-Zeit zur Prüfung (WP-17, W1): vorläufig die Planzeit — gezählt,
-         damit Konto und Lohnausgabe es sagen können, statt still zu rechnen. */
-      if (idn.zurPruefung) pruefFaelle++;
-      const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
-      if (na >= nachtschwelle(m.einstellungen)) naechte++;
-    }
-    /* Abgeschlossener Monat: Nachtstunden und Nachtdienste wie zum Abschluss (Nachtfenster von damals, M-neu-2). */
-    const fm = eingefrorenerMonat(m, p, ym);
-    if (fm && Array.isArray(fm.z)) { nacht = Number(fm.z[0]) || 0; naechte = Number(fm.nn) || 0; }
-    /* Schema 3 (WP-16, Nachtrag dritter Review N-d): die Summen wie zum Abschluss gerechnet — eine spätere Änderung an
-       Anrechnungsfaktor oder Entgeltstatus (Code-Konstanten) ändert den abgeschlossenen Monat nicht. */
-    if (fm && Number.isFinite(fm.g) && Number.isFinite(fm.gg) && Number.isFinite(fm.ig))
-      return { geleistet: fm.g, gutgeschrieben: fm.gg, gesamt: fm.ig, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert,
-        zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
-    return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
-  });
-}
+
+
+
+
+
+
+
+
+
+
+
 /* --------------------------------------------------------------------------
    § 3 ArbZG — AUSGLEICHSZEITRAUM
 
@@ -828,29 +702,7 @@ export function ausgleichPruefen(m, p, bis) {
   });
 }
 
-/* --------------------------------------------------------------------------
-   § 2 Abs. 5 ArbZG — WER NACHTARBEITNEHMER IST
 
-   Nicht jeder, der einmal nachts arbeitet. Nachtarbeitnehmer ist, wer
-   Nachtarbeit in Wechselschicht leistet oder sonst an mindestens 48 Tagen
-   im Kalenderjahr. Gezählt wird deshalb über das ganze Jahr, nicht über den
-   angesehenen Monat — und zwar mit istNachtdienst aus dem Regelwerk, das
-   die Nachtzeit von 23 bis 6 Uhr und die Zwei-Stunden-Grenze des § 2 Abs. 4
-   kennt. Die betriebliche Nachtschwelle aus den Einstellungen ist etwas
-   anderes und gilt hier ausdrücklich nicht.
-   -------------------------------------------------------------------------- */
-export function nachtTageImJahr(m, p, jahr) {
-  return memo(m, `nt|${p.id}|${jahr}`, () => {
-    let n = 0;
-    for (let d = `${jahr}-01-01`; d <= `${jahr}-12-31`; d = addDays(d, 1)) {
-      const t = personTag(m, p, d);
-      if (t.abwesenheit || !t.dienstId) continue;
-      const da = m.dienstarten.find((x) => x.id === t.dienstId);
-      if (da && da.form !== "ruf" && istNachtdienst(da)) n++;
-    }
-    return n;
-  });
-}
 
 /** Alle Personen, deren Ausgleichszeitraum gerissen ist. */
 export function ausgleichVerstoesse(m, bis) {
@@ -880,30 +732,7 @@ export function urlaubskonto(m, p, jahr) {
     return { anspruch, genommen, rest: anspruch === null ? null : anspruch - genommen, zeilen };
   });
 }
-export function stundenkonto(m, p, ym) {
-  if (!istVerfuegbar(m, p, zeitraumBisMonat(ym))) return null;
-  return memo(m, `kto|${p.id}|${ym}`, () => {
-    /* Abgeschlossener Monat (WP-16, Nachtrag dritter Review H-1): das Konto zum Monatsende, wie der Abschluss es
-       rechnete — mit dem Übertrag und den Vormonaten von damals. Ein später geänderter Übertrag oder ein geänderter
-       offener Vormonat ändert es nicht (Lohnart Mehrarbeit). Unbrauchbarer Freeze: nicht verfügbar. */
-    const st = freezeStatus(m, ym);
-    if (st) {
-      if (st.unbekannt || abschlussLuecke(m, p, ym)) return null;
-      const fm = eingefrorenerMonat(m, p, ym);
-      if (st.reproduzierbar && fm) return Number.isFinite(fm.k) ? fm.k : null;
-    }
-    const j = Number(ym.slice(0, 4)), bis = Number(ym.slice(5, 7)); let d = p.stundenuebertrag || 0;
-    for (let x = 1; x <= bis; x++) {
-      const k = `${j}-${pad(x)}`; const ist = istStunden(m, p, k).gesamt;
-      /* Ein abgeschlossener Monat ohne Freeze (N3): Konto unbekannt, nicht geschätzt. */
-      if (ist === null || ist === undefined) return null;
-      const soll = sollStunden(m, p, k);
-      if (soll === null || soll === undefined) return null;
-      d += ist - soll;
-    }
-    return Math.round(d * 10) / 10;
-  });
-}
+
 export function nachtJahr(m, p, jahr) {
   if (!istVerfuegbar(m, p, zeitraumJahr(jahr))) return { stunden: null, anzahl: null, nichtVerfuegbar: true };
   return memo(m, `nacht|${p.id}|${jahr}`, () => {
@@ -965,405 +794,7 @@ export function rechtsquelleDirekt(b) {
   return RECHTSQUELLE[b.art] || null;
 }
 
-export function pruefen(m, von, bis) {
-  return memo(m, `pr|${von}|${bis}`, () => {
-    const out = []; const push = (o) => out.push({ id: `${o.art}|${o.datum}|${o.ref || ""}`, ...o });
-    for (let d = von; d <= bis; d = addDays(d, 1)) {
-      const b = besetzung(m, d);
-      for (const k of Object.keys(b)) {
-        const e = b[k];
-        // Fachkraftquote (Pflege, Klinik)
-        const fl = fachkraftLage(m, d, k);
-        if (fl && !fl.erfuellt)
-          push({ art: "fachkraft", schwere: "danger", datum: d, ref: k,
-            titel: `${e.da.name}: Fachkraftquote unterschritten`,
-            text: `${fl.fk} von ${fl.gesamt} sind Fachkräfte (${fl.ist} %), gefordert sind ${fl.soll} % — es fehlen ${fl.fehlt}` });
-        if (e.diff < 0) {
-          const u = (m.unterschreitungen || []).find((x) => x.datum === d && x.dienstId === k);
-          push({ art: "besetzung", schwere: u ? "warn" : (e.diff <= -2 ? "danger" : "warn"), datum: d, ref: k,
-            titel: `${e.da.name} unterbesetzt${u ? " · dokumentiert" : ""}`,
-            text: u ? `${e.anzahl} von ${e.soll} — begründet: ${u.grund}` : `${e.anzahl} von ${e.soll} — es fehlen ${Math.abs(e.diff)}` });
-        }
-        for (const q of e.qual.filter((x) => !x.ok)) {
-          const qn = m.qualifikationen.find((x) => x.id === q.qid);
-          push({ art: "qualifikation", schwere: "danger", datum: d, ref: `${k}|${q.qid}`,
-            titel: `${e.da.name}: ${qn ? qn.name : q.qid} fehlt`, text: `${q.ist} von ${q.noetig} erforderlich` });
-        }
 
-        /* Vorbehaltene Aufgaben — anders als die Quote eine Anwesenheit.
-
-           Eine Schicht kann jede Quote erfüllen und trotzdem rechtswidrig
-           sein, weil niemand da ist, der die Pflegeplanung verantworten
-           darf (§ 4 PflBG). Geprüft wird je Dienstart, an der die Aufgabe
-           hängt. */
-        for (const a of (m.aufgaben || []).filter((x) => (x.dienstarten || []).includes(k))) {
-          const u = aufgabeGedeckt(a, e.personen, (p, qid) => qualGueltig(m, p, qid));
-          const schwere = aufgabeSchwere(u);
-          if (!schwere) continue;
-          push({ art: "aufgabe", schwere, datum: d, ref: `${k}|${a.id}`,
-            titel: u.offen ? `${e.da.name}: ${a.name} nicht prüfbar` : `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
-        }
-      }
-    }
-    /* Abwesenheiten, deren Entgeltstatus nicht geklärt ist: Das Stundenkonto
-       schreibt dafür nichts gut — und sagt es, statt still zu kürzen. */
-    for (const p of m.personen) {
-      for (let ym = von.slice(0, 7); ym <= bis.slice(0, 7); ym = addMonate(ym + "-01", 1).slice(0, 7)) {
-        const n = istStunden(m, p, ym).ungeklaert;
-        if (n > 0)
-          push({ art: "entgelt", schwere: "warn", datum: `${ym}-01`, ref: `${p.id}|${ym}`, personId: p.id,
-            titel: `${p.nachname}: Entgeltstatus der Abwesenheit nicht geklärt`,
-            text: `${n} geplante Abwesenheitstag(e) im ${ym} haben keinen geprüften Entgeltstatus. Das Stundenkonto schreibt dafür nichts gut; bitte Lohnbuchhaltung oder Tarif klären.` });
-      }
-    }
-    const vor = addDays(von, -10);
-    for (const p of m.personen) {
-      const reihe = [];
-      for (let d = vor; d <= addDays(bis, 2); d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (t.dienstId) { const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          if (da && !da.ruhezeitNeutral) reihe.push({ d, da }); }
-      }
-      for (let i = 1; i < reihe.length; i++) {
-        const [, e1] = fenster(reihe[i - 1].d, reihe[i - 1].da); const [s2] = fenster(reihe[i].d, reihe[i].da);
-        /* Über die Zeitumstellung hinweg ist die Ruhezeit eine Stunde kürzer
-           oder länger, als die Uhr zeigt. Im März wurden aus elf Stunden auf
-           dem Plan zehn in Wirklichkeit — ein Verstoß gegen § 5 Abs. 1 ArbZG,
-           den die Prüfung nicht sah. */
-        const ruhe = (s2 - e1 + uhrversatz(e1, s2)) / 60;
-        if (ruhe < m.einstellungen.ruhezeit && reihe[i].d >= von && reihe[i].d <= bis)
-          push({ art: "ruhezeit", schwere: ruhe < 8 ? "danger" : "warn", datum: reihe[i].d, ref: p.id, personId: p.id,
-            titel: `Ruhezeit unterschritten — ${p.nachname}`,
-            text: `${n1(ruhe)} h zwischen ${reihe[i - 1].da.kurz} am ${fKurz(reihe[i - 1].d)} und ${reihe[i].da.kurz}` });
-      }
-      let lauf = 0, nl = 0, ab = null;
-      for (let d = vor; d <= addDays(bis, 2); d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (t.dienstId) {
-          if (!lauf) ab = d; lauf++;
-          const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          nl = da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) ? nl + 1 : 0;
-          if (lauf === m.einstellungen.maxFolge + 1 && d >= von && d <= bis)
-            push({ art: "folge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
-              titel: `${lauf} Dienste in Folge — ${p.nachname}`, text: `Serie ab ${fKurz(ab)}, Grenzwert ${m.einstellungen.maxFolge}` });
-          if (nl === m.einstellungen.maxNachtFolge + 1 && d >= von && d <= bis)
-            push({ art: "nachtfolge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
-              titel: `${nl} Nachtdienste in Folge — ${p.nachname}`, text: `Grenzwert ${m.einstellungen.maxNachtFolge}` });
-        } else { lauf = 0; nl = 0; }
-      }
-      for (let d = von; d <= bis; d = addDays(d, 1)) {
-        const a = m.abweichungen[`${p.id}|${d}`], w = abwesenheitAm(m, p.id, d);
-        if (a && a !== "-" && w) push({ art: "abwesend", schwere: "danger", datum: d, ref: p.id, personId: p.id,
-          titel: `Dienst trotz ${abwArt(w.art).label} — ${p.nachname}`, text: `Eingetragen: ${a}. Abwesend bis ${fKurz(w.bis)}` });
-      }
-
-      /* --- § 4 ArbZG Ruhepausen und § 3 ArbZG Tagesgrenze ---
-
-         Beide Regeln standen in regelwerk.js und waren dort geprüft, wurden
-         aber nie auf einen Plan angewendet: In App.jsx hingen sie als tote
-         Importe. Ein Dienst über zehn Stunden und ein Dienst ohne
-         ausreichende Pause liefen deshalb ohne Befund durch. */
-      for (let d = von; d <= bis; d = addDays(d, 1)) {
-        /* Abgeschlossener Monat (WP-16, Review H1): der eingefrorene Dienst und seine Ist-Dauer. Geprüft
-           werden wie bisher nur geplante Dienste, kein ungeplanter. */
-        const tz = eingefrorenerTag(m, p, d) !== undefined ? istTag(m, p, d) : null;
-        let da;
-        if (tz) da = tz.da && !tz.da.ungeplant ? tz.da : null;
-        else {
-          const t = personTag(m, p, d);
-          if (t.abwesenheit || !t.dienstId) continue;
-          da = m.dienstarten.find((x) => x.id === t.dienstId);
-        }
-        if (!da || da.form === "ruf") continue;
-
-        /* Gegen die tatsächlich erfassten Zeiten, wo sie bestätigt sind —
-           sonst gegen den Plan. Die Pause ist Teil der Dienstart, weil sie
-           nach § 4 Satz 1 im Voraus feststehen muss. */
-        const ist = pruefZeitFuer(m, p, d, da);
-        /* Ohne Zugang zu den Ist-Daten nicht bewertbar — nie gegen den Plan
-           als Ersatz prüfen. Ein Befund für die ganze Ansicht genügt. */
-        if (!ist) {
-          if (!out.some((x) => x.art === "istdaten"))
-            push({ art: "istdaten", schwere: "warn", datum: von, ref: "istdaten",
-              titel: "Pausen, Tageshöchstarbeitszeit und Ausgleichszeitraum nicht bewertbar",
-              text: `${ISTDATEN_TEXT} Diese Prüfungen brauchen die tatsächlichen Arbeitszeiten.` });
-          continue;
-        }
-
-        /* Jugendliche: § 11 JArbSchG (WP-16) — dieselbe Rechnung wie Stempeln und Korrektur. */
-        const jungAm = alterAm(p.geburtstag, d) !== null && alterAm(p.geburtstag, d) < 18;
-        if (!pauseGenuegt(ist, jungAm)) {
-          const anwesend = bruttoAm(d, ist);
-          const noetig = pausePflicht(anwesend - (ist.pause || 0) / 60, jungAm);
-          push({ art: "pause", schwere: "danger", datum: d, ref: `${p.id}|pause`, personId: p.id,
-            titel: `Ruhepause zu kurz — ${p.nachname}`,
-            text: `${da.name}: ${ist.pause || 0} min eingetragen, nötig sind ${noetig} min bei ${n1(anwesend)} h Anwesenheit` });
-        }
-
-        const std = tz ? tz.idn.std : istDauer(m, p, d, da).std;
-        /* Lange Dienste (Nutzerentscheidung, WP-22): automatisch erlaubt — nur
-           ein Hinweis. Ob eine Regelung nach § 7 ArbZG (Tarifvertrag,
-           Betriebsvereinbarung) die Verlängerung trägt, verantwortet der Betrieb. */
-        if (tagesgrenzeVerletzt(std)) {
-          push({ art: "tagesgrenze", schwere: "info", datum: d, ref: `${p.id}|tag`, personId: p.id,
-            titel: `Über zehn Stunden — ${p.nachname}`,
-            text: `${da.name} ergibt ${n1(std)} h. Mehr als ${HOECHST_TAG} h werktäglich erlaubt § 3 nur mit einer Regelung nach § 7 ArbZG (Tarif oder Betriebsvereinbarung) — das verantwortet der Betrieb.` });
-        }
-      }
-
-      /* --- § 11 ArbZG Sonn- und Feiertagsruhe ---
-
-         Zwei Vorschriften, die vorher beide fehlten. Der Ersatzruhetag wird
-         zugeordnet, nicht gezählt: Ein einzelner freier Tag zwischen zwei
-         gearbeiteten Sonntagen deckt nur einen von beiden.
-
-         Gesucht wird über den geprüften Zeitraum hinaus, weil der Ersatztag
-         davor oder danach liegen darf. Beurteilt wird nur, was vollständig
-         im betrachteten Fenster liegt — für einen Anspruch am Rand ist die
-         Antwort schlicht noch nicht bekannt, und eine Meldung „kein
-         Ersatzruhetag" wäre dort schlicht falsch. */
-      const ARBEITET = new Map();
-      const arbeitet = (d) => {
-        if (ARBEITET.has(d)) return ARBEITET.get(d);
-        const t = personTag(m, p, d);
-        const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
-        const v = !t.abwesenheit && !!da && da.form !== "ruf";
-        ARBEITET.set(d, v);
-        return v;
-      };
-      const istFei = (d) => !!feiertagFuer(m, d, p);
-      const RAND = 56;                       // die längere Frist, § 11 Abs. 3 Satz 2
-      const weitVon = addDays(von, -RAND), weitBis = addDays(bis, RAND);
-      const er = ersatzruhetage(arbeitet, istFei, weitVon, weitBis);
-      for (const o of er.offen) {
-        if (o.datum < von || o.datum > bis) continue;
-        /* Nur melden, wenn das ganze Fenster betrachtet wurde. */
-        if (addDays(o.datum, -(o.frist - 1)) < weitVon) continue;
-        if (addDays(o.datum, o.frist - 1) > weitBis) continue;
-        push({ art: "ersatzruhe", schwere: "warn", datum: o.datum, ref: `${p.id}|er`, personId: p.id,
-          titel: `Ersatzruhetag fehlt — ${p.nachname}`,
-          text: o.art === "sonntag"
-            ? `Dienst am Sonntag, ${fKurz(o.datum)}. Innerhalb von zwei Wochen steht kein freier Werktag zur Verfügung.`
-            : `Dienst am Feiertag, ${fKurz(o.datum)}. Innerhalb von acht Wochen steht kein freier Werktag zur Verfügung.` });
-      }
-
-      /* Die Jahresbilanz nach Absatz 1 ist kein Tagesereignis. Sie hängt am
-         letzten Sonntag des geprüften Zeitraums, damit sie überhaupt
-         irgendwo erscheint — und sie meldet erst dann einen Verstoß, wenn
-         selbst alle noch offenen Sonntage die fünfzehn nicht mehr retten. */
-      let letzterSo = null;
-      for (let d = von; d <= bis; d = addDays(d, 1)) if (dow(d) === 6) letzterSo = d;
-      if (letzterSo) {
-        const jahr = Number(letzterSo.slice(0, 4));
-        const fs = freieSonntage(arbeitet, jahr, letzterSo);
-        if (fs.verletzt || fs.knapp)
-          push({ art: "sonntagsfrei", schwere: fs.verletzt ? "danger" : "warn",
-            datum: letzterSo, ref: `${p.id}|so${jahr}`, personId: p.id,
-            titel: `Freie Sonntage ${fs.verletzt ? "unterschritten" : "knapp"} — ${p.nachname}`,
-            text: fs.verletzt
-              ? `${fs.frei} frei, ${fs.gearbeitet} gearbeitet. Selbst mit allen ${fs.offen} noch offenen Sonntagen sind ${FREIE_SONNTAGE_MIN} nicht mehr erreichbar.`
-              : `${fs.frei} von ${FREIE_SONNTAGE_MIN} bisher frei, ${fs.offen} Sonntage stehen noch offen.` });
-
-        /* --- § 6 Abs. 3 ArbZG: die arbeitsmedizinische Untersuchung ---
-
-           Ein Anspruch der Beschäftigten, keine Pflicht. Der Befund sagt dem
-           Betrieb, dass das Angebot fällig ist — er sperrt nie einen Einsatz,
-           denn wer nicht untersucht werden will, muss nicht. */
-        const vs = vorsorgeFaellig({
-          nachtTage: nachtTageImJahr(m, p, jahr),
-          alter: alterAm(p.geburtstag, letzterSo),
-          letzte: p.nachtvorsorge || null,
-          stichtag: letzterSo,
-        });
-        /* Ohne Rohdaten (Sicht der Schichtverantwortung, Commit S1) gibt es
-           weder Untersuchungsdatum noch Alter — und die Pflicht liegt bei
-           Planung und Leitung. Kein Befund statt eines falschen. */
-        if (vs.nachtarbeitnehmer && vs.faellig && !("sichtbereich" in p))
-          push({ art: "vorsorge", schwere: "warn", datum: letzterSo, ref: `${p.id}|vs${jahr}`, personId: p.id,
-            titel: `Arbeitsmedizinische Untersuchung anzubieten — ${p.nachname}`,
-            text: vs.letzte
-              ? `Zuletzt am ${fKurz(vs.letzte)}, fällig seit ${fKurz(vs.faellig_am)} (Abstand ${vs.abstand} Monate).`
-              : `Noch keine Untersuchung hinterlegt. Der Anspruch besteht schon vor Beginn der Nachtarbeit.` });
-      }
-      // Personenbezogene Einschränkungen
-      const ein = p.einschraenkungen || {};
-      for (let d = von; d <= bis; d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (!t.dienstId) continue;
-        const da = m.dienstarten.find((x) => x.id === t.dienstId);
-        if (!da) continue;
-        if (ein.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
-          push({ art: "einschraenkung", schwere: EINSCHRAENKUNG_BEWERTUNG.keineNacht.schwere, datum: d, ref: p.id, personId: p.id,
-            titel: `Nachtdienst trotz Einschränkung — ${p.nachname}`,
-            text: `${da.name} eingeteilt, obwohl keine Nachtdienste zugelassen sind` });
-        if (ein.keinAlleindienst) {
-          const mit = besetzung(m, d)[t.dienstId].personen.filter((x) => x.id !== p.id && !(x.einschraenkungen || {}).keinAlleindienst);
-          if (mit.length === 0)
-            push({ art: "einschraenkung", schwere: EINSCHRAENKUNG_BEWERTUNG.keinAlleindienst.schwere, datum: d, ref: p.id, personId: p.id,
-              titel: `Alleindienst nicht zulässig — ${p.nachname}`,
-              text: `${da.name}: keine weitere eingewiesene Person eingeteilt` });
-        }
-        /* Ohne Rohdaten kommt die Grenze neutral aus planungsregeln (S1). */
-        const wNeutral = !ein.wiedereingliederung ? stundengrenzeAusRegeln(p.planungsregeln) : null;
-        const w = ein.wiedereingliederung || wNeutral;
-        if (w && w.von <= d && w.bis >= d && dow(d) === 0) {
-          let std = 0;
-          for (let i = 0; i < 7; i++) { const tt = personTag(m, p, addDays(d, i));
-            if (!tt.dienstId) continue; const xx = m.dienstarten.find((y) => y.id === tt.dienstId); if (xx) std += dauer(xx); }
-          if (std > w.maxStundenWoche)
-            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id, neutral: !!wNeutral,
-              titel: wNeutral ? `Wochenstundengrenze überschritten — ${p.nachname}` : `Wiedereingliederung überschritten — ${p.nachname}`,
-              text: `${n1(std)} h geplant, zulässig sind ${n1(w.maxStundenWoche)} h je Woche` });
-        }
-      }
-      if (ein.maxDiensteWoche) {
-        for (let d = montag(von); d <= bis; d = addDays(d, 7)) {
-          let n = 0;
-          for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(d, i)).dienstId) n++;
-          if (n > ein.maxDiensteWoche)
-            push({ art: "einschraenkung", schwere: EINSCHRAENKUNG_BEWERTUNG.maxDiensteWoche.schwere, datum: d < von ? von : d, ref: `${p.id}|w`, personId: p.id,
-              titel: `${n} Dienste in der Woche — ${p.nachname}`,
-              text: `vereinbart sind höchstens ${ein.maxDiensteWoche}` });
-        }
-      }
-      // Dienst mit abgelaufenem Pflichtnachweis
-      for (const qid of p.qualifikationen) {
-        const q = m.qualifikationen.find((x) => x.id === qid);
-        if (!q || !q.nachweisPflicht) continue;
-        const st = nachweisStand(m, p, qid);
-        if (st.stand !== "abgelaufen") continue;
-        for (let d = von; d <= bis; d = addDays(d, 1)) {
-          const t2 = personTag(m, p, d);
-          if (!t2.dienstId) continue;
-          const da2 = m.dienstarten.find((x) => x.id === t2.dienstId);
-          if (!da2 || !(da2.mindestQual || {})[qid]) continue;
-          push({ art: "nachweis", schwere: "danger", datum: d, ref: `${p.id}|${qid}`, personId: p.id,
-            titel: `Nachweis abgelaufen — ${p.nachname}`,
-            text: `${q.name} seit ${fKurz(st.ablauf)} ungültig, wird aber für ${da2.name} gezählt` });
-          break;
-        }
-      }
-      /* Harte Sperre: eine zwingende Qualifikation gilt für jeden Dienst,
-         nicht nur dort, wo sie als Mindestbesetzung genannt ist.
-
-         Der Wortlaut folgt jetzt der Ebene. Vorher stand unter jeder Sperre
-         „Der Einsatz ist unzulässig" — auch dann, wenn dahinter nur eine
-         betriebliche Festlegung stand. Eine Anwendung, die Gesetzeskraft
-         behauptet, wo keine ist, richtet mehr Schaden an als eine, die
-         schweigt.
-
-         Und Landesrecht wirkt nur dort, wo es gilt: Eine Anforderung, die
-         Nordrhein-Westfalen stellt, sperrt keinen Dienst am bayerischen
-         Standort desselben Betriebs. */
-      {
-        for (const q of m.qualifikationen) {
-          if (!q.harteSperre) continue;
-          for (let d = von; d <= bis; d = addDays(d, 1)) {
-            const t2 = personTag(m, p, d);
-            if (!t2.dienstId) continue;
-            const da2 = m.dienstarten.find((x) => x.id === t2.dienstId);
-            if (!da2 || da2.form === "ruf") continue;
-            if (qualGueltig(m, p, q.id)) continue;
-            const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
-            if (!v) continue;
-            const st = nachweisStand(m, p, q.id);
-            const woher = st.stand === "abgelaufen"
-              ? `${q.name} ist seit ${fKurz(st.ablauf)} ungültig.`
-              : `${q.name} liegt nicht vor.`;
-            push({ art: "sperre", schwere: v.gesetzlich ? "danger" : "warn",
-              datum: d, ref: `${p.id}|${q.id}`, personId: p.id,
-              titel: `Einsatz ohne ${q.name} — ${p.nachname}`,
-              text: `${woher} Der Einsatz am ${fKurz(d)} ist ${v.wort}`
-                + (v.gesetzlich ? "." : ` — ${v.label}, kein gesetzliches Verbot.`),
-              /* Die Fundstelle kommt aus der Qualifikation selbst, nicht aus
-                 der festen Tabelle: Was hier gilt, hat der Betrieb hinterlegt. */
-              quelle: q.grundlage || null, ebene: v.ebene });
-            break;
-          }
-        }
-      }
-      const l = (absIdx(m).get(p.id) || []).filter((a) => a.bis >= von && a.von <= bis);
-      for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++)
-        if (l[i].von <= l[j].bis && l[j].von <= l[i].bis)
-          push({ art: "ueberlappung", schwere: "danger", datum: l[j].von > von ? l[j].von : von, ref: `${p.id}|${i}|${j}`, personId: p.id,
-            titel: `Überlappende Abwesenheiten — ${p.nachname}`,
-            text: `${abwArt(l[i].art).label} und ${abwArt(l[j].art).label} überschneiden sich` });
-    }
-    /* --- Besondere Personengruppen ---
-
-       Jugendliche, Schwangere und Stillende, schwerbehinderte Menschen. Drei
-       Fälle, in denen ein Plan unzulässig ist, der für alle anderen in
-       Ordnung wäre — und alle drei sind in Pflege und Sicherheit alltäglich.
-
-       Die Regeln stehen in src/regelwerk.js und sind dort geprüft; hier
-       werden sie nur auf den Plan angewendet. */
-    /* Drei Wege, nie zwei zugleich (Commit S1):
-       - Rohdaten (Planung, Leitung): schutzBefunde, mit Fundstelle;
-       - Einsatzregeln (Schichtverantwortung, Bereich und Pool): regelBefunde,
-         neutral — ohne Diagnose, ohne Gesetz;
-       - die Sicht erwartet Einsatzregeln, sie fehlen: Die Prüfung ist nicht
-         möglich, und das sperrt (fail-closed). Eine Person ohne Daten ist
-         nicht frei planbar. */
-    for (const p of m.personen) {
-      if (!imDienst(p, von) && !imDienst(p, bis)) continue;
-      const abgeleitet = Array.isArray(p.planungsregeln);
-      const erwartet = p.sichtbereich === "bereich" || p.sichtbereich === "pool";
-      if (!abgeleitet && !erwartet) {
-        /* Ohne Merkmal und mit bekanntem Alter ab 18 gibt es nichts zu prüfen —
-           das spart bei einem Betrieb ohne Jugendliche und ohne Mutterschutz
-           den ganzen Durchlauf. Ein unbekanntes Alter (Geburtsdatum fehlt oder
-           ungültig) überspringt die Prüfung nicht: Es wird einmal je Person als
-           „nicht bewertbar" gemeldet (Kette A). */
-        const alterHeute = alterAm(p.geburtstag || p.geburtsdatum, bis);
-        if (!p.mutterschutz && !p.schwerbehindert && alterHeute !== null && alterHeute >= 18) continue;
-      }
-      if (abgeleitet && !p.planungsregeln.some((x) => x && x.regel !== "stundengrenzeWoche")) continue;
-      let datenGemeldet = false;
-
-      for (let d = von; d <= bis; d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (t.abwesenheit || !t.dienstId) continue;
-        const da = m.dienstarten.find((x) => x.id === t.dienstId);
-        if (!da) continue;
-        /* Die eine Schutzprüfung (schutzEinsatz), wie im Warndialog. */
-        for (const b of schutzEinsatz(p, da, d, m.einstellungen)) {
-          if (b.offen) { if (datenGemeldet) continue; datenGemeldet = true; }
-          push({ art: "schutz", schwere: b.schwere, datum: d,
-            ref: `${p.id}|${b.regel}`, personId: p.id, neutral: b.neutral,
-            titel: b.regel === "pruefungNichtMoeglich" ? `Schutzprüfung nicht möglich — ${p.nachname}`
-              : b.neutral ? `Einsatzregel verletzt — ${p.nachname}` : `${b.regel} — ${p.nachname}`,
-            text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
-        }
-      }
-    }
-
-    /* --- Die Regeln selbst, nicht der Plan ---
-
-       Eine Sperre ohne Grundlage ist keine Rechtsdurchsetzung, sondern eine
-       Behauptung. Und eine tätigkeitsabhängige Anforderung, die pauschal
-       jeden Dienst sperrt, ist genau der Fehler, den § 34a GewO nicht
-       hergibt — dort unterscheidet das Gesetz nach Tätigkeiten, und wer das
-       einebnet, sperrt Menschen von Diensten aus, die sie ausüben dürfen.
-
-       Der Befund hängt am ersten Tag des Zeitraums: Er gilt für den Betrieb,
-       nicht für einen Tag. */
-    for (const q of m.qualifikationen) {
-      for (const mangel of regelMaengel(q)) {
-        push({ art: "regelsatz", schwere: mangel.schwere, datum: von, ref: `q|${q.id}|${mangel.art}`,
-          titel: `Regel prüfen: ${q.name}`, text: mangel.text });
-      }
-    }
-
-    for (let d = von; d <= bis; d = addDays(d, 1)) for (const e of m.einheiten) {
-      const n = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && (abwesenheitAm(m, p.id, d) || {}).art === "urlaub").length;
-      if (n > m.einstellungen.maxUrlaubJeEinheit)
-        push({ art: "urlaub", schwere: "warn", datum: d, ref: e.id, titel: `${e.name}: ${n} gleichzeitig im Urlaub`,
-          text: `Obergrenze ${m.einstellungen.maxUrlaubJeEinheit}` });
-    }
-    out.sort((a, b) => a.datum === b.datum ? (a.schwere === b.schwere ? 0 : a.schwere === "danger" ? -1 : 1) : (a.datum < b.datum ? -1 : 1));
-    return out;
-  });
-}
 
 /* Befunde, die auf Personendaten beruhen, die der Server Beschäftigten und
    dem Betriebsrat nicht ausliefert (server/lib/sicht.mjs): Mutterschutz,
@@ -1745,48 +1176,9 @@ export function rolleAm(p, d) {
 }
 export const einschr = (p) => p.einschraenkungen || {};
 
-/* ------------------------------ Ist-Erfassung ---------------------------- */
-/** Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante. */
-/* Diese Stelle ist der Engpass für alle geleisteten Stunden — Stundenkonto,
-   Lohnausgabe, Ausgleichszeitraum, Belastung hängen daran. Die Rechnung steht
-   in src/istdaten.js, mit dem Rollenschutz: Ohne Zugang zu den Ist-Daten
-   ist std null, nie die Planzeit. */
-export const istDauer = (m, p, d, da) => istZeitFuer(m, p, d, da);
-/* Der bestätigte ungeplante Dienst eines Tages (WP-13), sonst null — nur wo
-   die Person im Dienst und nichts geplant oder abwesend ist. Der Aufrufer hat
-   den Plan schon befragt (personTag.dienstId leer). */
-export const ungeplantAm = (m, p, d) => (imDienst(p, d) && !abwesenheitAm(m, p.id, d) ? ungeplanterDienst(m, p, d) : null);
-/**
- * Der Tag einer Person, wie er ins Ist eingeht — die eine Stelle für Stundenkonto, Lohnausgabe/DATEV,
- * Zuschläge, Ausgleichszeitraum und Prüfungsansicht:
- *   abwesenheit  die Abwesenheit des Tages (nur `art`) oder null
- *   plan         ob nach Schichtfolge ein Dienst geplant war (Gutschrift bezahlter Abwesenheit)
- *   da           die Dienstart, die zählt (auch ein bestätigter ungeplanter Dienst), sonst null
- *   idn          istZeitFuer für diesen Dienst, sonst null
- *   wochenstunden  für die Gutschrift (im abgeschlossenen Monat die zum Abschluss)
- * Abgeschlossener Monat (WP-16, Review H1): NUR das eingefrorene Ist (server/lib/isteinfrieren.mjs) —
- * eine spätere Änderung an Plan, Dienstart oder Abwesenheit ändert es nicht. Nicht zugängliche Ist-Daten
- * (Rollenschutz): wie bisher, also „nicht verfügbar", nie die Planzeit.
- */
-export function istTag(m, p, d) {
-  const fz = eingefrorenerTag(m, p, d);
-  if (fz !== undefined) {
-    if (!fz) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true };
-    /* Freeze fehlt (N3): kein Dienst „0 h", sondern ein Prüffall — die Monatsrechnungen geben null zurück. */
-    if (fz.luecke) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true, luecke: true };
-    if (Array.isArray(fz.a) && fz.a.length) {
-      const art = fz.a.reduce((best, x) => (best === null || abwArt(x).rang > abwArt(best).rang ? x : best), null);
-      return { abwesenheit: { art }, plan: fz.pl ? true : null, da: null, idn: null,
-        wochenstunden: Number.isFinite(Number(fz.w)) ? Number(fz.w) : p.wochenstunden, eingefroren: true };
-    }
-    const da = eingefrorenerDienst(fz);
-    return { abwesenheit: null, plan: null, da, eingefroren: true, wochenstunden: p.wochenstunden,
-      idn: da ? { std: Number(fz.std), erfasst: fz.e === 1, abweichung: 0, ...(fz.p === 1 ? { zurPruefung: true } : {}) } : null };
-  }
-  const t = personTag(m, p, d);
-  const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
-  return { abwesenheit: t.abwesenheit, plan: t.plan, da: da || null, idn: da ? istDauer(m, p, d, da) : null, wochenstunden: p.wochenstunden };
-}
+
+
+
 export const offeneErfassung = (m, p, bis) => {
   const out = [];
   for (let d = addDays(bis, -13); d <= bis; d = addDays(d, 1)) {
@@ -1817,17 +1209,7 @@ export const offeneErfassung = (m, p, bis) => {
 export const SCHUTZ_QUELLE_NEUTRAL = "Schutzvorschrift oder Einsatzregel für diese Person";
 export const SCHUTZ_QUELLE_EINSCHRAENKUNG = "Schutzvorschrift oder Einsatzeinschränkung für diese Person";
 
-/**
- * Wie schwer eine Einschränkung an der Person wiegt — für Planprüfung
- * (pruefen: schwere) und Einteilung (hindernisBefunde: stufe) aus derselben
- * Quelle: der Spalte `sperrt` im Befundkatalog (SPERR_REGELN, WP-11). Bis
- * dahin meldete die Planprüfung „keine Nacht" als Verstoß (danger), der
- * Warndialog nur „Achtung" zum Wegklicken, und die Höchstzahl Dienste je
- * Woche war hier „warn", im Dialog „recht". Bis zur Fachentscheidung gilt
- * die strenge Variante (Review H1): alle drei sperren.
- */
-export const EINSCHRAENKUNG_BEWERTUNG = Object.fromEntries(["keineNacht", "keinAlleindienst", "maxDiensteWoche"]
-  .map((k) => [k, sperrtArt(k) ? { stufe: "recht", schwere: "danger" } : { stufe: "achtung", schwere: "warn" }]));
+
 
 /** Die in der Kalenderwoche von d schon geplanten Stunden einer Person. */
 export function wochenStundenGeplant(m, p, d) {
@@ -2104,40 +1486,7 @@ export function planungssicherheit(m, ym, grenze = 14) {
     anteil: alle.length ? Math.round(kurz.length / alle.length * 100) : 0, jePerson, grenze };
 }
 
-/* --------------------------- Verteilungsgerechtigkeit -------------------- */
-/**
- * Belastungsverteilung über einen Zeitraum: Wochenendnächte, Feiertagsdienste,
- * Nachtdienste, kurzfristige Änderungen. Grundlage für Streitfreiheit.
- */
-export function verteilung(m, von, bis) {
-  return memo(m, `vert|${von}|${bis}`, () => {
-    const kurz = {};
-    for (const a of m.aenderungen || []) if (a.datum >= von && a.datum <= bis && a.vorlauf < 14)
-      kurz[a.personId] = (kurz[a.personId] || 0) + 1;
-    const zeilen = m.personen.filter((p) => imDienst(p, bis)).map((p) => {
-      let weNacht = 0, feier = 0, naechte = 0, wochenenden = 0, dienste = 0;
-      for (let d = von; d <= bis; d = addDays(d, 1)) {
-        const t = personTag(m, p, d);
-        if (!t.dienstId) continue;
-        const da = m.dienstarten.find((x) => x.id === t.dienstId);
-        if (!da) continue;
-        dienste++;
-        const w = dow(d), nacht = nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen);
-        if (nacht) naechte++;
-        if (nacht && (w === 4 || w === 5)) weNacht++;
-        if (w >= 5) wochenenden++;
-        if (feiertag(d, m.bundesland)) feier++;
-      }
-      return { person: p, weNacht, feier, naechte, wochenenden, dienste, kurzfristig: kurz[p.id] || 0 };
-    });
-    const felder = ["weNacht", "feier", "naechte", "wochenenden", "kurzfristig"];
-    const mittel = {};
-    for (const f of felder) mittel[f] = zeilen.length ? zeilen.reduce((a, z) => a + z[f], 0) / zeilen.length : 0;
-    for (const z of zeilen) { z.abw = {}; for (const f of felder) z.abw[f] = z[f] - mittel[f]; }
-    zeilen.sort((a, b) => (b.weNacht + b.feier) - (a.weNacht + a.feier));
-    return { zeilen, mittel, felder };
-  });
-}
+
 
 /* --------------------------- Anteilige Abrechnung ------------------------ */
 /**
@@ -2786,10 +2135,7 @@ export function verfuegbarkeitQuote(p) {
   return v.raster.filter(Boolean).length / 21;
 }
 
-/* --------------------------- Nachweise und Ablauf ------------------------ */
-/* Gültigkeitsstand eines Nachweises: server/lib/fachpruefung.mjs (WP-22),
-   dort mit dem Tag als Argument — hier immer heute. */
-export const nachweisStand = (m, p, qualId) => fpNachweisStand(m, p, qualId, heute());
+
 /* --------------------------------------------------------------------------
    KOMPETENZEN AN DER PERSON
 
@@ -2842,9 +2188,7 @@ export function kompetenzLage(m) {
   });
 }
 
-/* sperreWirkt: server/lib/fachpruefung.mjs (WP-22). Seit E-21 warnen eigene
-   Vorgaben in jeder Stufe; die Verbindlichkeit bestimmt nur die Warnstufe. */
-export const qualGueltig = (m, p, qualId) => fpQualGueltig(m, p, qualId, heute());
+
 /** Alle Nachweise eines Betriebs, die Aufmerksamkeit brauchen. */
 export function nachweisLage(m) {
   return memo(m, "nachweise", () => {
@@ -3583,6 +2927,7 @@ export function antragUmsetzen(m, a) {
 
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
 export const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
+merkmalPruefungSetzen(kannMerkmal);   // WP-I12: der Rechenkern fragt die Paketlogik des Clients über diesen Haken
 /* ------------------------ Branchenbegriffe ------------------------------- */
 /**
  * Dieselbe Sache heißt je Branche anders. Die Begriffe stecken an einer Stelle,
@@ -3621,19 +2966,7 @@ export function istFachkraft(m, p) {
   return m.qualifikationen.some((q) => q.fachkraft && qualGueltig(m, p, q.id));
 }
 
-export function fachkraftLage(m, datum, dienstId) {
-  if (!kann(m, "fachkraftquote")) return null;
-  const da = m.dienstarten.find((x) => x.id === dienstId);
-  if (!da || !da.fachkraftQuote) return null;
-  const b = besetzung(m, datum)[dienstId];
-  const fkQuals = m.qualifikationen.filter((q) => q.fachkraft).map((q) => q.id);
-  if (!fkQuals.length) return null;
-  const fk = b.personen.filter((p) => fkQuals.some((q) => qualGueltig(m, p, q))).length;
-  const ist = b.anzahl > 0 ? fk / b.anzahl : 0;
-  const noetig = Math.ceil(b.anzahl * da.fachkraftQuote);
-  return { fk, gesamt: b.anzahl, ist: Math.round(ist * 100), soll: Math.round(da.fachkraftQuote * 100),
-    noetig, fehlt: Math.max(0, noetig - fk), erfuellt: fk >= noetig };
-}
+
 
 /* ------------------ Anrechnung von Bereitschaft und Teildiensten --------- */
 /**
@@ -4270,28 +3603,7 @@ export function rangGruende(m, x, datum, dienstId) {
   return g;
 }
 
-/* ==========================================================================
-   SZENARIENVERGLEICH
-   Zwei Planvarianten nebeneinander, mit denselben Kennzahlen gemessen.
-   ========================================================================== */
-export function planKennzahlen(m, von, bis) {
-  const bef = pruefen(m, von, bis);
-  const schwer = bef.filter((x) => x.schwere === "danger").length;
-  let unterbesetzt = 0, ueberbesetzt = 0, dienste = 0, stunden = 0;
-  for (let d = von; d <= bis; d = addDays(d, 1)) {
-    for (const [k, e] of Object.entries(besetzung(m, d))) {
-      if (e.soll === 0) continue;
-      dienste += e.anzahl;
-      if (e.diff < 0) unterbesetzt++;
-      if (e.diff > 1) ueberbesetzt++;
-      if (e.da) stunden += e.anzahl * dauer(e.da);
-    }
-  }
-  const v = verteilung(m, von.slice(0, 7));
-  return { befunde: bef.length, schwer, unterbesetzt, ueberbesetzt, dienste,
-    stunden: Math.round(stunden), spanne: v.spanne,
-    wochenenden: v.zeilen.reduce((a, z) => a + z.wochenendNaechte, 0) };
-}
+
 
 /* ==========================================================================
    AUSSTIEGSSICHERHEIT

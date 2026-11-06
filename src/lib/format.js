@@ -4,11 +4,8 @@ import { stundenText } from "../istdaten.js";
 /* Zahlenformate fallen bei fehlendem Wert auf „–" zurück statt mit einem
    TypeError die ganze Ansicht abzureißen (Browserprobe: „Anliegen" in der
    Mobilansicht). Zahlen als Text werden gewandelt; null/undefined/NaN bleiben leer. */
-export const zahlOder = (v, f) => {
-  const x = typeof v === "number" ? v : (v === null || v === undefined || v === "" ? NaN : Number(v));
-  return Number.isFinite(x) ? f(x) : "–";
-};
-export const n1 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+import { zahlOder, n1 } from "../../server/lib/engine/textformat.mjs";
+export { zahlOder, n1 };
 export const n2 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 export const sgn = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? (v >= 0 ? "+" : "−") + n1(Math.abs(v)) : "–");
 /* Ist-Stunden, Stundenkonto und Nachtstunden dürfen aus Datenschutzgründen

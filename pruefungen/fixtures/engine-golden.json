@@ -1,0 +1,179 @@
+{
+ "erzeugtMit": "bda8b68 src/lib/fachlogik.js",
+ "uhr": "2026-11-06T10:00:00.000Z",
+ "betriebe": {
+  "leer": {
+   "personen": 0,
+   "dienstarten": 3,
+   "pruefen": {
+    "anzahl": 2,
+    "arten": {
+     "regelsatz": 2
+    },
+    "sha": "f040d0ebbb550359"
+   },
+   "besetzung": "042e2fe62e208466",
+   "personTag": "4f53cda18c2baa0c",
+   "soll": "4f53cda18c2baa0c",
+   "ist": "4f53cda18c2baa0c",
+   "konto": "4f53cda18c2baa0c",
+   "nachtTage": "4f53cda18c2baa0c",
+   "kontoWerte": [],
+   "sollWerte": [],
+   "fachkraft": "d66b20beb97c8c2d",
+   "verteilung": "581433a5f1a2956d",
+   "kennzahlen": {
+    "befunde": 2,
+    "schwer": 0,
+    "unterbesetzt": 0,
+    "ueberbesetzt": 0,
+    "dienste": 0,
+    "stunden": 0,
+    "wochenenden": 0
+   }
+  },
+  "demo1-sicherheit": {
+   "personen": 86,
+   "dienstarten": 5,
+   "pruefen": {
+    "anzahl": 1473,
+    "arten": {
+     "pause": 1315,
+     "schutz": 81,
+     "regelsatz": 1,
+     "vorsorge": 76
+    },
+    "sha": "2cbd2533de813745"
+   },
+   "besetzung": "3b27e98572263e5b",
+   "personTag": "68fc13e0d925ebe4",
+   "soll": "f64a703c52a56666",
+   "ist": "8f155b9b3b83d792",
+   "konto": "0cb7415989c96655",
+   "nachtTage": "ff06619d35fc3755",
+   "kontoWerte": [
+    -1936,
+    -1.7,
+    6.6,
+    26.8,
+    22.4,
+    -25.8
+   ],
+   "sollWerte": [
+    172.2,
+    172.2,
+    172.2,
+    172.2,
+    172.2,
+    86.1
+   ],
+   "fachkraft": "3f71510b152e5ceb",
+   "verteilung": "2a6e26d54f070040",
+   "kennzahlen": {
+    "befunde": 1473,
+    "schwer": 1315,
+    "unterbesetzt": 0,
+    "ueberbesetzt": 89,
+    "dienste": 1315,
+    "stunden": 12851,
+    "wochenenden": null
+   }
+  },
+  "demo2-pflege": {
+   "personen": 57,
+   "dienstarten": 3,
+   "pruefen": {
+    "anzahl": 1180,
+    "arten": {
+     "pause": 1036,
+     "schutz": 53,
+     "sonntagsfrei": 42,
+     "vorsorge": 49
+    },
+    "sha": "5fcece23258d8e45"
+   },
+   "besetzung": "1da4c9a899ed1689",
+   "personTag": "3d10dfd98d7b7b29",
+   "soll": "1e8e145f7f712dcf",
+   "ist": "5d055c9fcca83453",
+   "konto": "1ad2f50c83522009",
+   "nachtTage": "ba4779540a4a4aba",
+   "kontoWerte": [
+    -1795.5,
+    210.5,
+    181.4,
+    187.2,
+    214.4,
+    62.4
+   ],
+   "sollWerte": [
+    161.7,
+    161.7,
+    161.7,
+    161.7,
+    161.7,
+    81.9
+   ],
+   "fachkraft": "09568c0b19c6f1b9",
+   "verteilung": "e90911c26c97f30d",
+   "kennzahlen": {
+    "befunde": 1180,
+    "schwer": 1036,
+    "unterbesetzt": 0,
+    "ueberbesetzt": 90,
+    "dienste": 1036,
+    "stunden": 8288,
+    "wochenenden": null
+   }
+  },
+  "demo3-produktion": {
+   "personen": 48,
+   "dienstarten": 3,
+   "pruefen": {
+    "anzahl": 988,
+    "arten": {
+     "pause": 846,
+     "sperre": 23,
+     "schutz": 44,
+     "regelsatz": 1,
+     "sonntagsfrei": 34,
+     "vorsorge": 40
+    },
+    "sha": "86c8dcb600672ef9"
+   },
+   "besetzung": "26efd3d37aed229e",
+   "personTag": "a9f1d5eedf8497ec",
+   "soll": "c099602caeed3838",
+   "ist": "eb904969cc93a520",
+   "konto": "f188435360ba9d2d",
+   "nachtTage": "8938aed5a79df576",
+   "kontoWerte": [
+    -1673.6,
+    342,
+    371,
+    355.4,
+    370.9,
+    161
+   ],
+   "sollWerte": [
+    147,
+    147,
+    147,
+    147,
+    147,
+    73.5
+   ],
+   "fachkraft": "d66b20beb97c8c2d",
+   "verteilung": "ae4552177781c99e",
+   "kennzahlen": {
+    "befunde": 988,
+    "schwer": 869,
+    "unterbesetzt": 0,
+    "ueberbesetzt": 90,
+    "dienste": 846,
+    "stunden": 6768,
+    "wochenenden": null
+   }
+  }
+ }
+}
