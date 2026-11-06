@@ -113,7 +113,7 @@ try {
         /* Schublade: alle Ansichten der Seitenleiste */
         const anzahlSl = await p.evaluate(() => document.querySelectorAll(".seitenleiste .slink").length);
         for (let si = 0; si < anzahlSl; si++) {
-          await p.locator("header button").first().click({ timeout: 3000 }).catch(() => melde("klick", `${marke} Menüknopf: Klick scheitert`));
+          if (!(await p.locator(".seitenleiste.offen").count())) await p.locator("header button").first().click({ timeout: 3000 }).catch(() => melde("klick", `${marke} Menüknopf: Klick scheitert`));
           await p.waitForTimeout(400);
           const name = await p.evaluate((i) => ((document.querySelectorAll(".seitenleiste .slink")[i] || {}).innerText || "").trim().split(String.fromCharCode(10))[0], si);
           if (si === 0) await messen(`${marke} Schublade offen`);

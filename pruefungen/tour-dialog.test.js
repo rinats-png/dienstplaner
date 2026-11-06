@@ -16,7 +16,7 @@ describe("Tour und Dialoge", () => {
     /* Hooks vor dem frühen return, sonst wechselt die Hook-Reihenfolge */
     expect(rumpf.indexOf("useModalOffen()")).toBeLessThan(rumpf.indexOf("return null"));
   });
-  it("useModalOffen fragt aria-modal am Dokument ab", () => {
+  it("useModalOffen fragt aria-modal und die offene Seitenleiste am Dokument ab", () => {
     const i = app.indexOf("function useModalOffen(");
     expect(app.slice(i, i + 700)).toContain('[aria-modal="true"]');
   });

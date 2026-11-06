@@ -237,7 +237,9 @@ const TON = (farbe, staerke = 1) => ({
 /** Farben von Dienstarten und Einheiten sind Daten, gewählt für hellen Grund. Als Schrift
  *  oder Kante auf dem dunklen Kartengrund werden sie aufgehellt (nur Darstellung, siehe
  *  gestalt/lesbar.js). Im hellen Erscheinungsbild bleibt die Farbe, wie sie ist. */
-const lesbar = (farbe, mindest = 4.5) => (_dunkel ? aufhellenBis(farbe, C.flaeche, mindest) : farbe);
+/* Gegen beide Kartenflächen geprüft: auf `flaecheStill` (karte-still) ist der Grund heller als auf `flaeche`. */
+const lesbar = (farbe, mindest = 4.5) => (_dunkel
+  ? aufhellenBis(aufhellenBis(farbe, C.flaeche, mindest), C.flaecheStill || C.flaeche, mindest) : farbe);
 
 const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif";
 const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" };
@@ -6534,7 +6536,7 @@ function Assistent2({ sitz, akt, onClose }) {
                       </Sel></Field>
                     <div style={{ flex: 1, minWidth: 180, marginBottom: 4 }}>
                       <Lab style={{ marginBottom: 5 }}>Erste 21 Tage</Lab>
-                      <div style={{ display: "flex", gap: 2 }}>
+                      <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                         {Array.from({ length: 21 }, (_, i) => {
                           const idx = (((i - g.versatzTage) % tage.length) + tage.length) % tage.length;
                           const dd = dienste.find((x) => x.id === tage[idx]);
@@ -9459,7 +9461,7 @@ function Schichtfolge({ sitz, akt }) {
                   {m.zyklus.tage.map((t2, i) => {
                     const dd = map[t2];
                     return <option key={i} value={i}>Tag {i + 1} — {dd ? dd.name : "frei"}</option>; })}</Sel>
-                <div style={{ display: "flex", gap: 2 }}>
+                <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                   {Array.from({ length: Math.min(21, sim.len) }, (_, i) => {
                     const idx = (((i - versatzTageVon(e)) % sim.len) + sim.len) % sim.len;
                     return <Zelle key={i} da={map[m.zyklus.tage[idx]]} size={15} blass />; })}</div>
@@ -17819,10 +17821,11 @@ function useModalOffen() {
   const [offen, setOffen] = useState(false);
   useEffect(() => {
     if (typeof document === "undefined" || typeof MutationObserver === "undefined") return undefined;
-    const pruefe = () => setOffen(!!document.querySelector('[aria-modal="true"]'));
+    /* Auch die geöffnete Seitenleiste (Schublade auf schmalen Ansichten) gilt als Dialog */
+    const pruefe = () => setOffen(!!document.querySelector('[aria-modal="true"], .seitenleiste.offen'));
     pruefe();
     const mo = new MutationObserver(pruefe);
-    mo.observe(document.body, { childList: true, subtree: true });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     return () => mo.disconnect();
   }, []);
   return offen;
