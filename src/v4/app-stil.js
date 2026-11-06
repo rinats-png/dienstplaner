@@ -29,6 +29,8 @@ html[data-v4-app] main.bereich{box-sizing:border-box; max-width:100%; min-width:
 html[data-v4-app] .inhalt{min-width:0; max-width:100%;}
 /* Raster ohne eigene Spaltenvorgabe: Kinder dürfen schmaler werden als ihr Inhalt (Formularfelder
    mit Platzhaltertext weiteten sonst die Spalte über das Fenster, belegt in der Betreiberkonsole „Neuer Mandant“) */
+/* Zeilen, die umbrechen dürfen, begrenzen ihre Kinder auf die Zeilenbreite (Jahresansicht-Kopf auf 320 px) */
+html[data-v4-app] main.bereich [style*="flex-wrap: wrap"] > *{max-width:100%;}
 html[data-v4-app] main.bereich [style*="display: grid"]:not([style*="grid-template-columns"]) > *{min-width:0;}
 
 /* Navigation: dunkle Seitenleiste; aktiver Eintrag als Glasfläche mit Akzentkante */

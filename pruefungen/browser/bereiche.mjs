@@ -78,7 +78,8 @@ try {
     await p.goto(BASE + "/", { waitUntil: "networkidle" });
     await p.locator("input").first().fill(codes[rolle]);
     await p.getByRole("button", { name: /anmelden/i }).first().click();
-    await p.waitForTimeout(2500);
+    await p.locator(".bpille, .tabbar button, .m-tabs button").first().waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+    await p.waitForTimeout(1500);
     /* Tour stört die Messung der Bereiche: einklappen/schließen falls offen */
     const schliessen = p.locator('[aria-label="Tour schließen"]');
     /* Standard: Tour bleibt offen wie beim echten Erstanmelden (TOUR=zu schließt sie) */
@@ -107,21 +108,24 @@ try {
           const fg = rgb(cs.color), bg = grund(e); if (!fg || !bg || fg.a < 0.5) continue;
           const l1 = lum(fg), l2 = lum(bg); const v = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
           const gross = parseFloat(cs.fontSize) >= 24 || (parseFloat(cs.fontSize) >= 18.66 && parseInt(cs.fontWeight, 10) >= 700);
-          if (v < (gross ? 3 : 4.5) && !e.closest("[disabled]") && !e.closest("[aria-disabled='true']")) { schwach++; if (beispiele.length < 3) beispiele.push((e.innerText || "").trim().slice(0, 24) + " " + v.toFixed(1)); }
+          if (v < (gross ? 3 : 4.5) && !e.closest("[disabled]") && !e.closest("[aria-disabled='true']")) { schwach++; if (beispiele.length < 3) beispiele.push((e.innerText || "").trim().slice(0, 24) + " " + v.toFixed(1) + " <" + e.tagName + "." + String(e.className || "").slice(0, 30) + "> fg=" + cs.color + " bg=" + bg.r + "," + bg.g + "," + bg.b); }
         }
         return { quer: dok.scrollWidth - vw, lang: txt.length, laedt: /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test(txt), klein, schwach, beispiele };
       });
       if (m.quer > 1) {
-        const taeter = await p.evaluate(() => { const vw = window.innerWidth; const o = []; const geklemmt = (el) => { for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const ov = getComputedStyle(a).overflowX; if (ov === "auto" || ov === "scroll" || ov === "hidden") return true; } return false; }; for (const e of document.querySelectorAll("body *")) { const r = e.getBoundingClientRect(); if (r.width > 0 && r.right > vw + 1 && !geklemmt(e)) o.push({ r: Math.round(r.right), t: e.tagName + "." + String(e.className || "").slice(0, 24) + "[" + (e.innerText || "").trim().slice(0, 18).split(String.fromCharCode(10))[0] + "] pos=" + getComputedStyle(e).position }); } if (!o.length) { for (const e of document.querySelectorAll("body *")) { if (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX === "visible" && e.clientWidth > 0) o.push({ r: e.scrollWidth, t: "SB " + e.tagName + "." + String(e.className || "").slice(0, 24) + "[" + (e.innerText || "").trim().slice(0, 18).split(String.fromCharCode(10))[0] + "] cw=" + e.clientWidth }); } } return o.sort((x, y) => y.r - x.r).slice(0, 3).map((x) => x.r + " " + x.t).join(" ; "); });
+        const process_env_kette = !!process.env.KETTE;
+        const taeter = await p.evaluate((process_env_kette) => { const vw = window.innerWidth; const o = []; const geklemmt = (el) => { for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const ov = getComputedStyle(a).overflowX; if (ov === "auto" || ov === "scroll" || ov === "hidden") return true; } return false; }; for (const e of document.querySelectorAll("body *")) { const r = e.getBoundingClientRect(); if (r.width > 0 && r.right > vw + 1 && !geklemmt(e)) o.push({ r: Math.round(r.right), t: e.tagName + "." + String(e.className || "").slice(0, 24) + "[" + (e.innerText || "").trim().slice(0, 18).split(String.fromCharCode(10))[0] + "] pos=" + getComputedStyle(e).position }); } if (!o.length) { for (const e of document.querySelectorAll("body *")) { const rr = e.getBoundingClientRect(); const ps = getComputedStyle(e).position; if (rr.width > 0 && rr.right > vw + 1 && (ps === "absolute" || ps === "fixed")) o.push({ r: Math.round(rr.right), t: "ABS " + e.tagName + "." + String(e.className || "").slice(0, 24) + "[" + (e.innerText || "").trim().slice(0, 18).split(String.fromCharCode(10))[0] + "] w=" + Math.round(rr.width) + " st=" + (e.getAttribute("style") || "").slice(0, 80) }); }
+          for (const e of document.querySelectorAll("body *")) { if (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX === "visible" && e.clientWidth > 0) o.push({ r: e.scrollWidth, t: "SB " + e.tagName + "." + String(e.className || "").slice(0, 24) + "[" + (e.innerText || "").trim().slice(0, 18).split(String.fromCharCode(10))[0] + "] cw=" + e.clientWidth }); } } const first = [...document.querySelectorAll("body *")].find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > vw + 1 && !geklemmt(e); }); let kette = ""; if (process_env_kette && first) { for (let e = first; e && e !== document.body; e = e.parentElement) kette += " < " + e.tagName + "." + String(e.className || "").slice(0, 14) + " w" + Math.round(e.getBoundingClientRect().width) + "/" + (e.getAttribute("style") || "").slice(0, 60); } return o.sort((x, y) => y.r - x.r).slice(0, 3).map((x) => x.r + " " + x.t).join(" ; ") + kette; }, process_env_kette);
         melde("querscroll", `${akt}: Seite ${m.quer}px breiter als Fenster — ${taeter}`);
       }
       if (m.laedt) { await p.waitForTimeout(3000); const noch = await p.evaluate(() => /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test((document.querySelector("main") || document.body).innerText)); if (noch) melde("haengt-in-laden", `${akt}: „Lädt …“ nach 4 s noch sichtbar`); }
       if (m.schwach > 0) melde("kontrast", `${akt}: ${m.schwach} Textstellen unter WCAG-Kontrast (z. B. ${m.beispiele.join("; ")})`);
       if (m.lang < 20) melde("leer", `${akt}: Bereich praktisch leer (${m.lang} Zeichen)`);
       if (w < 700 && m.klein > 12) melde("touchziele", `${akt}: ${m.klein} Bedienelemente kleiner als 40 px`);
+      if (await p.locator('[aria-modal="true"]').count()) { melde("dialog-offen", `${akt}: beim Öffnen der Ansicht steht ein Dialog offen (${(await p.locator('[aria-modal="true"]').first().getAttribute("aria-label")) || "ohne Titel"})`); await p.keyboard.press("Escape"); await p.waitForTimeout(300); }
       if (BILDER) await p.screenshot({ path: path.join(BILDER, `${rolle}-${w}-${thema}-${akt0.split(" ").slice(1).join("_").replace(/[^a-z0-9_]+/gi, "")}.png`) }).catch(() => {});
     };
-    const texte = async (sel) => p.evaluate((q) => [...document.querySelectorAll(q)].filter((e) => e.offsetParent).map((e) => (e.innerText || "").trim().split(String.fromCharCode(10))[0]), sel);
+    const texte = async (sel) => p.evaluate((q) => [...document.querySelectorAll(q)].filter((e) => e.offsetParent).map((e) => (e.innerText || "").trim().split(String.fromCharCode(10)).filter(Boolean).reverse().join(" ")), sel);
     try {
       const gruppen = await texte(".bpille");
       if (!gruppen.length) {
@@ -130,7 +134,7 @@ try {
         const leiste = await texte(sel);
         if (!leiste.length) melde("keine-navigation", `${marke}: weder Bereichspillen noch untere Leiste sichtbar`);
         for (let ti = 0; ti < leiste.length; ti++) {
-          if (/^(Post|Krank)$/.test(leiste[ti])) continue;   // öffnen Dialoge, eigener Test
+          if (/(Post|Krank)/.test(leiste[ti])) continue;   // öffnen Dialoge, eigener Test
           await p.locator(sel + ":visible").nth(ti).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} ${leiste[ti]}: Klick scheitert`));
           await p.waitForTimeout(1300);
           await messen(`${marke} ${leiste[ti]}`);
@@ -138,7 +142,7 @@ try {
         /* Schublade: alle Ansichten der Seitenleiste */
         const anzahlSl = await p.evaluate(() => document.querySelectorAll(".seitenleiste .slink").length);
         for (let si = 0; si < anzahlSl; si++) {
-          if (!(await p.locator(".seitenleiste.offen").count())) await p.locator("header button").first().click({ timeout: 3000 }).catch(() => melde("klick", `${marke} Menüknopf: Klick scheitert`));
+          if (!(await p.locator(".seitenleiste.offen").count())) await p.locator("header button").first().click({ timeout: 3000 }).catch((x) => melde("klick", `${marke} Menüknopf: Klick scheitert (${String(x).split(String.fromCharCode(10)).filter((l) => /intercepts|outside|not visible|detached/.test(l)).join(" ").slice(0, 200)})`));
           await p.waitForTimeout(400);
           const name = await p.evaluate((i) => ((document.querySelectorAll(".seitenleiste .slink")[i] || {}).innerText || "").trim().split(String.fromCharCode(10))[0], si);
           if (si === 0) await messen(`${marke} Schublade offen`);

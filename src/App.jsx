@@ -316,7 +316,7 @@ body{margin:0;}
   border-radius:0 3px 3px 0; background:${C.accentOrig};}
 .slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;
   background:rgba(255,255,255,.14); ${'' /* Zähler */}}
-.slink .zahl.warn{background:${C.danger}; color:#fff;}
+.slink .zahl.warn{background:${C.danger}; color:${_dunkel ? C.bg : "#fff"};}
 .sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
   color:rgba(255,255,255,.55);}
 
@@ -551,6 +551,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
    sind, und alles daneben wird ruhiger statt gedrängter. */
 @media (max-width: 560px){
   .pille{max-width:100%; white-space:normal; text-align:left;}
+  .btn{white-space:normal; max-width:100%; padding-top:8px; padding-bottom:8px; text-align:center;}
   main.bereich{padding:12px 10px 88px;}
   /* Die Kopfleiste schob das Dokument auf 769px auf einem 390px breiten
      Gerät — gemessen, nicht geschätzt. Die Werkzeuge rechts sind auf dem
@@ -5214,7 +5215,7 @@ const Card = ({ children, style, hover, glanz, still, className = "", ...p }) =>
   <div {...p} className={`${still ? "karte-still" : "karte"} ${hover ? "karte-hover" : ""} ${className}`}
     style={style}>{children}</div>);
 const CardHead = ({ children, right }) => (
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
     padding: "18px 24px", borderBottom: `1px solid ${C.lineSoft}` }}>
     <div style={{ fontSize: 15.5, fontWeight: 620, letterSpacing: "-.015em" }}>{children}</div>{right}
   </div>);
@@ -12893,7 +12894,7 @@ function Dienstbuch({ sitz, akt }) {
         <Card style={{ marginBottom: 20 }}>
           <CardHead>Eintrag für {fLang(datum)}</CardHead>
           <div style={{ padding: 22, display: "grid", gap: 13 }}>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {arten.map(([id, l]) => (
                 <button key={id} onClick={() => setArt(id)} className="btn btn-sm" aria-pressed={art === id}
                   style={{ background: art === id ? C.accentLight : C.flaeche,
@@ -17866,7 +17867,11 @@ function TourLeiste({ sitz, akt, gehZu }) {
     if (n.ziel) gehZu(n.ziel);
   };
 
-  const eingeklappt = !!(p.tour || {}).eingeklappt;
+  /* Auf dem Telefon beginnt die Tour eingeklappt: aufgeklappt deckt sie bis zu 85 % der Fläche
+     (Browserprobe 320 px). Wer sie ausdrücklich aufklappt, behält sie aufgeklappt. */
+  const schmalerSchirm = typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia("(max-width: 560px)").matches;
+  const eingeklappt = (p.tour || {}).eingeklappt === undefined ? schmalerSchirm : !!(p.tour || {}).eingeklappt;
 
   /* Gemeinsamer Rahmen beider Größen: eine schwebende Karte über dem
      Inhalt, nicht die volle Breite des Fensters. */
@@ -25827,7 +25832,7 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
           {!istBetreiber && <button onClick={() => setPostfach(true)}>
             <span className="glyph" style={{ position: "relative", display: "flex" }}><Icon n="brief" size={20} />
               {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
-                borderRadius: 8, background: C.danger, color: "#fff", fontSize: 9.5, fontWeight: 700,
+                borderRadius: 8, background: C.danger, color: _dunkel ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{ungelesen}</span>}
             </span>Post</button>}
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
