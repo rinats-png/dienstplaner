@@ -200,7 +200,7 @@ export const Field = ({ label, hint, children, style }) => {
 export const Seg = ({ value, onChange, options }) => (
   <div className="seg" role="tablist">
     {options.map((o) => (
-      <button key={o.id} role="tab" aria-selected={value === o.id}
+      <button key={o.id} type="button" role="tab" aria-selected={value === o.id}
         className={value === o.id ? "on" : ""} onClick={() => onChange(o.id)}>{o.label}</button>))}
   </div>);
 

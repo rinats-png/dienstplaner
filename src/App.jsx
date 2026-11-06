@@ -118,6 +118,7 @@ class Fehlerauffang extends Component {
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Leer, klickbar, Card, CardHead, Lab, Rubrik, Schalter, Filterleiste, Planzelle, Avatar, Btn, Inp, Sel, Field, Seg, H1, Kpi, KpiRow, Abschnitt, Pill } from "./ui/bausteine.jsx";
 import { istDunkel, dunkelSetzen, lesbar, NUM } from "./ui/thema.js";
+import { useDialogFokus } from "./ui/dialogfokus.js";
 import { DOW, MON, heute, fLang, fKurz, fDatum } from "./lib/datum.js";
 import { n1, n2, sgn, n1Ist, sgnIst, eur, zahl, uid } from "./lib/format.js";
 import { Icon } from "./gestalt/icons.jsx";
@@ -3448,7 +3449,7 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
   if (!offen) return null;
   const SYM = { ansicht: "pfeil-rechts", person: "person", datum: "kalender", aktion: "stift", satz: "pfeil-rechts", unklar: "info" };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 95, padding: "12vh 20px 20px",
+    <div onClick={onClose} role="dialog" aria-modal="true" aria-label="Schnellsuche" style={{ position: "fixed", inset: 0, zIndex: 95, padding: "12vh 20px 20px",
       background: "var(--c-ueberlagerung)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)" }}>
       <div onClick={(e) => e.stopPropagation()} className="blatt"
         style={{ maxWidth: 620, margin: "0 auto", padding: 0, overflow: "hidden" }}>
@@ -7892,10 +7893,13 @@ const MTitel = ({ children, rubrik, rechts }) => (
 
 /** Blatt, das von unten hereinfährt — auf dem Telefon die übliche Form. */
 const MBlatt = ({ offen, onClose, titel, children }) => {
+  /* WP-40: Fokus hinein, Tab bleibt darin, Escape schließt, Fokus zurück. */
+  const blattRef = useRef(null);
+  useDialogFokus(blattRef, offen, onClose);
   if (!offen) return null;
   return (
     <div onClick={onClose} className="m-blattrahmen" role="dialog" aria-modal="true" aria-label={titel || "Blatt"}>
-      <div onClick={(e) => e.stopPropagation()} className="m-blatt">
+      <div ref={blattRef} tabIndex={-1} style={{ outline: "none" }} onClick={(e) => e.stopPropagation()} className="m-blatt">
         <div className="m-griff" aria-hidden="true" />
         {titel && <div className="m-blatttitel">{titel}</div>}
         {children}
@@ -8381,7 +8385,7 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
 
       <MKarte style={{ padding: "4px 18px" }}>
         <MZeile links="Feldmodus" unten="Größere Schrift, maximaler Kontrast"
-          rechts={<Schalter an={!!p.kontrastmodus} onChange={() => akt.setzeKontrastmodus(!p.kontrastmodus)} />} />
+          rechts={<Schalter an={!!p.kontrastmodus} label="Feldmodus" onChange={() => akt.setzeKontrastmodus(!p.kontrastmodus)} />} />
         {/* Erscheinungsbild: Hell, Dunkel oder dem Gerät folgen — die Wahl bleibt gespeichert. */}
         <div style={{ padding: "15px 4px", borderBottom: `1px solid ${C.lineSoft}` }}>
           <div style={{ fontSize: 15.5, fontWeight: 500 }}>Erscheinungsbild</div>

@@ -289,3 +289,30 @@ describe("Dienstfarben als Schrift und Kante im Dunkelmodus", () => {
     expect(g).toBeGreaterThan(r);
   });
 });
+
+/* --------------------------------------------------------------------------
+   Eingabefelder als Bedienelement (WP-40, 1.4.11)
+
+   Der Rahmen eines Eingabefeldes sagt, wo man schreiben kann. Die Grundregel
+   trägt `line` (1,44–1,60:1) und wäre damit zu leise; die Oberfläche setzt
+   deshalb in v4/app-stil.js den Rahmen auf `steuer`. Diese Prüfung liest genau
+   diese Regel aus dem Quelltext und rechnet die Farbe nach — für beide
+   Erscheinungsbilder.
+   -------------------------------------------------------------------------- */
+describe("Eingabefelder: Rahmen mindestens 3:1 (1.4.11)", () => {
+  const stil = readFileSync(new URL("../src/v4/app-stil.js", import.meta.url), "utf8");
+  const regel = stil.match(/html\[data-v4-app\] \.inp,[\s\S]*?border:1px solid var\(--v4-(\w+)\)/);
+  const token = { steuer: "steuer", line: "line" };
+
+  it("die Regel für .inp, .sel und textarea.inp ist lesbar", () => {
+    expect(regel, "Regel für .inp nicht gefunden").not.toBeNull();
+  });
+  for (const [name, P] of [["Hell", C_HELL], ["Dunkel", C_DUNKEL]]) {
+    it(`${name}: der Rahmen des Eingabefeldes erreicht 3:1 auf der Feldfläche`, () => {
+      const schluessel = regel ? token[regel[1]] : undefined;
+      expect(schluessel, `Rahmenfarbe nicht als Palette-Token bekannt: ${regel && regel[1]}`).toBeTruthy();
+      const v = verhaeltnis(P[schluessel], P.flaeche);
+      expect(v, `${P[schluessel]} auf ${P.flaeche} = ${v}:1`).toBeGreaterThanOrEqual(3);
+    });
+  }
+});
