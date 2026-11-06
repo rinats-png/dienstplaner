@@ -20,3 +20,15 @@ Aus WP-I13 / WP-I15 (Attrappe-Stand). Nichts davon ist im Code „entschieden“
 | 14 | **Namensbenennung der Nachweise**: Auftrag nennt `wpI<nn>-nachweis.md`, die Konvention im Repo ist `wp-i11-nachweis.md`. | Es gilt die Repo-Konvention (`wp-i13-…`, `wp-i15-…`). | Orchestrator |
 
 Voraussetzungen für einen späteren Anbieteranschluss (WP-I18) stehen in `wp-i11-nachweis.md` und `wp-i13-nachweis.md` — **Betreiberfreigabe erforderlich**, nichts davon ist hier vorweggenommen.
+
+## Nachtrag 2026-11-06 (Review, I14, I15-Rest)
+
+| # | Frage | Was im Code gilt | Wer |
+|---|---|---|---|
+| 15 | **Alias-Kontext bei Ergebnis-Speicher**: stabile Alias für gleiche Anfragen (Voraussetzung für Treffer) bedeuten, dass derselbe Mensch innerhalb Raum/Betrieb/Schlüssel in gleichen Anfragen denselben Alias trägt. Datenschutzrechtlich akzeptabel? | Nur aktiv, wenn `ergebnisSpeicher` übergeben wird; sonst zufälliger Kontext je Vorgang. | Datenschutz |
+| 16 | **Fristen** Ergebnis 30 / Kontext 90 Tage und Speicherort `centric-ki-lauf` (Klasse C) | Spezifikationswerte, der Betreiber kann nur kürzen. | Betreiber/Recht |
+| 17 | **Wer führt Löschlauf und Raumlöschung aus?** | `aufraeumen()`/`raumLoeschen()` existieren; nicht in `datenschutzlauf.mjs`/`raumloeschung.mjs` eingehängt. | Technik |
+| 18 | **`schutz.mjs`-Eintrag `ki`/`ki-raum`** (Werte im Nachweis wp-i15) | Nur Vorschlag. | Technik |
+| 19 | **Zeitzone der Tagesgrenzen / Monatswechsel** der Zähler | UTC. | Produkt |
+| 20 | **Zahlen in anderen Sprachen** im Modelltext (z. B. französische Zahlwörter in lateinischer Schrift) | Nicht erkannt; die Antwortsprache ist per Anfrageschema „de“, der Prüfer kennt Deutsch und Englisch. | Review |
+| 21 | **Haltezeit eines Adapters, der nie endet** (`haltenMaxMs`) | 5 Minuten, danach gilt der Platz als frei. | Betreiber |

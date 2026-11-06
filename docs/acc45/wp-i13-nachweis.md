@@ -8,8 +8,8 @@ Zusammen mit [`wp-i15-nachweis.md`](wp-i15-nachweis.md) (Limits, Kontingent, Sch
 | Stufe | Stand | Beleg |
 |---|---|---|
 | implementiert | **teilweise** (Kern, Attrappe, Router, Prüfer, Live-Stumpf); Rest siehe „Nicht enthalten“ | `server/lib/intelligence/gateway/*` |
-| lokal getestet | **ja** — 174 Tests in 5 Dateien grün, dazu alle `pruefungen/intelligence-*` (380/380) | Abschnitt „Tests“ |
-| reviewt | **nein** — unabhängige Sicherheitsprüfung (R3) steht aus | Invarianten unten sind die Prüfgrundlage |
+| lokal getestet | **ja** — 255 Gateway-Tests in 8 Dateien grün (anbieter 20, limits 29, pruefer 66, kern 52, grenzen 14, review 25, ergebnis 30, zaehler 19), dazu alle `pruefungen/intelligence-*` und `doku.test.js` | Abschnitt „Tests“ |
+| reviewt | **teilweise** — unabhängiges Opus-Review von 4d002e1 liegt vor, alle 12 Befunde behoben (Abschnitt „Review-Befunde“); Nachprüfung des Stands danach steht aus | Invarianten unten sind die Prüfgrundlage |
 | integriert / Staging / produktiv | **nein** | kein PR, kein Merge, keine Route, kein Deployment |
 | Modellaufruf | **keiner** — kein Netz, kein Anbieter, kein Schlüssel, keine Route | statische Tests `intelligence-gateway-grenzen` |
 
@@ -99,3 +99,31 @@ Zählung: anbieter 20 · limits 29 · pruefer 59 · kern 52 · grenzen 13 = **17
 ## Offene Punkte / Bedingungen vor einem Anbieteranschluss
 
 Die Bedingungen aus `wp-i11-nachweis.md` („Bedingungen vor einem Anbieteranschluss“) gelten unverändert; erfüllt ist hier: `modellOrt` nur aus Konfiguration, Rückübersetzung nur nach Prüfung, Ausgabe durch Leck-Prüfung. **Offen:** getrennte Schlüssel mit Rotation (WP-I18), Namenspolitik vor Freitext-Funktionen, Restrisiken-Freigabe, Betreiberfreigabe.
+
+## Review-Befunde (Opus-Review von 4d002e1) und Fixes
+
+Jeder Fix hat einen Test in `intelligence-gateway-review.test.js`, der gegen den Stand 4d002e1 rot war (20 von 25 Fällen rot; Gegenprobe mit `git stash` der Quellen ausgeführt).
+
+| # | Befund | Fix | Neue/erweiterte Invariante |
+|---|---|---|---|
+| 1 | Prototype Pollution schaltet an (`env[NAME]` ohne Eigentumsprüfung) | `Object.hasOwn(env, NAME)` in `schalter.mjs` und `anbieter-live.mjs` | L5: Umgebungswerte werden nur als eigene Eigenschaft gelesen |
+| 2 | Notschalter/Pause nur einmal am Anfang geprüft | `weiterDarf()` (Schalter + `betriebAktiv`) nach dem Faktenpaket, vor jeder Stufe, vor jedem Anbieterversuch (`vorVersuch`), vor der Rückgabe; `KI_AUS`/`KI_PAUSIERT` bricht ab | **G12** |
+| 3 | Zahlwörter (einhundert, einundzwanzig, siebzehn, dritte, dreifach, Million, five hundred …) | Zerlegung in Zahlstämme und Kleber (`istZahlwort`), Mengenwörter, Ordnungszahlen, englische Liste, römische Ziffern | P5 erweitert |
+| 4 | `1.000` wird zu 1 | Tausendertrenner-Muster wird abgelehnt | P5 |
+| 5 | Vorzeichen und Einheit (`-660` bei +660, `660 %`) | Zahl wird mit Vorzeichen und folgendem Einheitenwort gelesen; Einheit muss zur Faktenart (`einheit`) passen | P5 |
+| 6 | Links ohne Schema (`boese.co/x`) | generische Domain-Erkennung (ausgenommen Feldnamen des Katalogs) | P-05 erweitert |
+| 7 | Kosten werden bei Timeout/Fehler zurückgebucht | `verbraucht = true` im Hook `vorVersuch`, d. h. ab dem ersten tatsächlichen Anbieteraufruf | **B7** (siehe wp-i15) |
+| 8 | Adapter ohne Abbruch laufen weiter, `laufend` sinkt trotzdem | `ausstehend`-Verfolgung (`anbieter.mjs`), `limits.abschliessen(..., { spaeter })` hält den Platz bis zum echten Ende, höchstens `haltenMaxMs` | **A5 / G13 / B8** |
+| 9 | Pflichtprotokoll ohne Pflichtfeldprüfung | `audit.pflicht` prüft Pflichtfelder nach der Weißliste; fehlt eines → `KI_AUDIT`, kein Anbieteraufruf | **U4** |
+| 10 | Fingerprint hängt von Schlüsselreihenfolge ab | `kanonisch()` (sortiert) in `kanonisch.mjs` | G14 |
+| 11 | `zufallId()` nach `reservieren`, vor `try` → Belegleck | `zufallId`, Betriebskennung vor der Reservierung | G7 verschärft |
+| 12 | Testlücken | siehe Review-Datei; statischer Grenztest erkennt `globalThis['fe'+'tch']`, `Function(...)`, `process[...]`, `.constructor`, `window/self/global[...]` | – |
+
+Zusätzlich aus dem Probelauf des Reviews: Proxy/Getter-Momentaufnahme (**P6**: die Ausgabe wird einmal zu JSON gemacht), NFKC-Normalisierung und Entfernen unsichtbarer Zeichen vor jeder Prüfung sowie Ablehnung fremder Schriften (**P7**), HTML-Entitäten, Ziffer direkt hinter Buchstabe (`m2`, `V2`).
+Weitere Prüferlücken (Auftrag der Koordination): `halb`, `Dutzend`, `Viertel`, `Paar`, `Hälfte`, `-fach`, `einmal`, römische Ziffern, Bruchschreibweise (`1/2`), Ziffern anderer Schriften, Bruch-/Hochzeichen (`½`, `²`), Exponent/Einheit an der Ziffer (`1e3`, `5k`, `3x`) — je mit Test in `pruefer`. Verbleibende Lücke: Zahlen, die als Wort in anderen Sprachen als Deutsch/Englisch stehen (die Fremdschrift-Sperre fängt nur andere Schriften, nicht z. B. französische Zahlwörter in lateinischer Schrift).
+
+### Neue Invarianten (Ergänzung der obigen Liste)
+- **G12** Notschalter und Betriebspause gelten während des ganzen Vorgangs (vor jeder Stufe, jedem Versuch, vor der Rückgabe).
+- **G13** Ein Adapter, der Frist/Abbruch überlebt, wird verfolgt; sein Betriebsplatz bleibt belegt, bis er wirklich endet (Obergrenze `haltenMaxMs`).
+- **G14** Wiederholungsschutz und Fingerprint arbeiten auf kanonisch sortierter Serialisierung.
+- **A5** (siehe G13), **U4** Pflichtprotokoll mit Pflichtfeldern, **P6** Momentaufnahme der Ausgabe, **P7** NFKC/unsichtbare Zeichen/fremde Schrift, **L5** Eigentumsprüfung an Umgebungswerten.
