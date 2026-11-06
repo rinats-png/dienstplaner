@@ -46,7 +46,8 @@ describe("Registry und Katalog", () => {
   });
   it("beide Felder stehen im Positivkatalog, fail-closed", () => {
     expect(BETRIEB.funktionsbereiche).toEqual(["weg", "weg"]);
-    expect(BETRIEB.funktionsPlan).toEqual(["weg", "weg"]);
+    expect(BETRIEB.funktionsPlan[1]).toBe("weg");
+    expect(BETRIEB.funktionsPlan[0].art).toBe("reduziert");
   });
   it("Datenschutzgate: Berichtigung nur über bekannte Bereiche; ohne Schema kein Statuswechsel", () => {
     const abgenommen = { ...modulVon("funktionsdienst"), status: "vorlaeufig", abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/x.md" } };

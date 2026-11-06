@@ -163,6 +163,20 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
   const bereichszuordnungen = Object.entries(m.bereichsPlan || {}).filter(([k]) => eigenerSchluessel(pid)(k))
     .map(([k, v]) => ({ datum: String(k).split("|")[1], bereich: v }))
     .sort((a, b) => a.datum.localeCompare(b.datum));
+  /* Branchenmodule Wachbuch, Bereitschaftsdienst, Funktionsdienst, Rotation (WP-19): nur die eigenen Einträge.
+     Wachbuch: ohne den Text (Rechte Dritter, Art. 15 Abs. 4 DSGVO) — vorläufig, Betreiberentscheidung nötig. */
+  const modulEintraege = (w) => (w && typeof w === "object" && !Array.isArray(w) ? Object.values(w) : []).filter((x) => x && typeof x === "object");
+  const wachbucheintraege = modulEintraege(m.wachbuch).filter((x) => gleich(x.vonId, pid))
+    .map((x) => felder(x, ["id", "datum", "uhrzeit", "objektId", "art", "einheitId", "erfasst", "nachtragZu"]))
+    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)) || String(a.uhrzeit).localeCompare(String(b.uhrzeit)) || String(a.id).localeCompare(String(b.id)));
+  const bereitschaftsdienste = Object.entries(m.bereitschaft || {}).filter(([k]) => eigenerSchluessel(pid)(k))
+    .map(([k, v]) => ({ datum: String(k).split("|")[1], eintrag: v }))
+    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+  const funktionszuordnungen = Object.entries(m.funktionsPlan || {}).filter(([k]) => eigenerSchluessel(pid)(k))
+    .map(([k, v]) => ({ datum: String(k).split("|")[1], funktion: v }))
+    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+  const rotationen = modulEintraege(m.rotationen).filter((x) => gleich(x.personId, pid))
+    .sort((a, b) => String(a.von).localeCompare(String(b.von)) || String(a.id).localeCompare(String(b.id)));
   /* Modulprotokoll (WP-19.0): was die Person selbst an Branchenmodulen geschaltet, bestätigt oder
      als Regelwert gesetzt hat (Leitung, Kundenrolle) — nach Positivkatalog: ohne Grund und Aktenzeichen
      des Ausnahmewegs (ein Altstand mit Freitext könnte eine andere Person nennen; zweiter Opus-Review M4). */
@@ -230,6 +244,10 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     planabweichungen: abweichungen,
     ...(postenzuordnungen.length ? { postenzuordnungen } : {}),
     ...(bereichszuordnungen.length ? { bereichszuordnungen } : {}),
+    ...(wachbucheintraege.length ? { wachbucheintraege, wachbuchHinweis: "Der Text der Wachbucheinträge ist nicht enthalten, weil er Angaben zu Dritten tragen kann (Art. 15 Abs. 4 DSGVO); die Leitung gibt ihn nach Prüfung heraus." } : {}),
+    ...(bereitschaftsdienste.length ? { bereitschaftsdienste } : {}),
+    ...(funktionszuordnungen.length ? { funktionszuordnungen } : {}),
+    ...(rotationen.length ? { rotationen } : {}),
     ...(modulhandlungen.length ? { modulhandlungen } : {}),
     plan,
     abwesenheiten: eigene(m.abwesenheiten, pid),

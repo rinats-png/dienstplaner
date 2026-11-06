@@ -43,7 +43,8 @@ describe("Registry, Katalog und Felder", () => {
   });
   it("beide Felder stehen im Positivkatalog, fail-closed", () => {
     expect(BETRIEB.bereitschaftStufen).toEqual(["weg", "weg"]);
-    expect(BETRIEB.bereitschaft).toEqual(["weg", "weg"]);
+    expect(BETRIEB.bereitschaft[1]).toBe("weg");                    // Betriebsrat nie
+    expect(BETRIEB.bereitschaft[0].art).toBe("reduziert");        // Beschäftigte nur Eigenes (modul-rechte-wp19.test.js)
   });
   it("Datenschutzgate: mit Personenfeld, Sachfeld, Ausnahmeweg und Schema verlässt das Modul „geplant“ ohne Befund", () => {
     const abgenommen = { ...modulVon("bereitschaftsdienst"), status: "vorlaeufig", abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/x.md" } };

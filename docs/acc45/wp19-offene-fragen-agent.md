@@ -5,8 +5,8 @@ Keine rechtliche oder tarifliche Aussage ist hier getroffen; alle Zahlen und Fri
 
 Gilt für alle sechs Module: Der Status bleibt `geplant`. Ein Wechsel auf `vorlaeufig` braucht
 `abnahme: { datum, nachweis }` (WP-19.13, G8). Diese Angabe setzt der Nutzer, nicht der Agent.
-Die Schreibwege (`*Zusammen`) sind als Prüfverträge gebaut und nicht in `rechte.mjs` oder
-`MODUL_SCHREIBWEGE` eingehängt (wie bei `posten`). Bis dahin kann kein Modul Daten schreiben.
+Die Schreibwege sind seit dem Rechte-Schritt in `MODUL_SCHREIBWEGE` eingehängt (`server/lib/modulwege-wp19.mjs`),
+Sicht, RECHTEMATRIX-Zeilen und Auskunft stehen; die Rechte sind **vorläufig** (Abschnitt „Rechte“ unten).
 
 ## Wachbuch (`modul-wachbuch.mjs`)
 
@@ -70,8 +70,26 @@ Die Schreibwege (`*Zusammen`) sind als Prüfverträge gebaut und nicht in `recht
 
 | # | Frage / Punkt | Wer |
 |---|---|---|
-| G-1 | `kern.jsx` (BranchenModule, Basiskontext) muss liefern: `wachbuchZugriff` (Rolle → Stufe), `person`, `berichtZugriff`, `qualGueltig`, `personen` (Kennung → Name), `dienstzeit` (Datum, Dienst → Kennungen im Dienst oder null). Ohne diese Werte zeigen die Ansichten fail-closed nichts bzw. „ungeklärt“. | Orchestrator (App.jsx/kern.jsx), nicht Teil dieses Auftrags. |
-| G-2 | `RECHTEMATRIX.md`-Zeilen für `wachbuch`, `funktionsbereiche`/`funktionsPlan`, `bereitschaftStufen`/`bereitschaft`, `rotationen`, `pflegeNiveaus` (Positivkatalog `sicht.mjs` steht fail-closed). Der Test `rechtematrix-zeilen` prüft neue Zeilen streng. | Fachliche Rechte-Entscheidung je Rolle. |
-| G-3 | Schreibwege einhängen (`MODUL_SCHREIBWEGE` oder eigene Zeile in `rechte.mjs`), wie für `posten` offen. | Konfliktzone `rechte.mjs`. |
-| G-4 | Auskunft (Art. 15) und Löschvermerke: `auskunft.mjs` kennt die neuen Personenfelder `wachbuch`, `bereitschaft`, `funktionsPlan`, `rotationen` noch nicht. | Datenschutz-Abnahme (G3, WP-26). |
+| G-1 | (Rechte-Schritt: umgesetzt, vorläufig — siehe Abschnitt „Rechte“; Rest unten) `kern.jsx` (BranchenModule, Basiskontext) muss liefern: `wachbuchZugriff` (Rolle → Stufe), `person`, `berichtZugriff`, `qualGueltig`, `personen` (Kennung → Name), `dienstzeit` (Datum, Dienst → Kennungen im Dienst oder null). Ohne diese Werte zeigen die Ansichten fail-closed nichts bzw. „ungeklärt“. | Orchestrator (App.jsx/kern.jsx), nicht Teil dieses Auftrags. |
+| G-2 | (Rechte-Schritt: umgesetzt, vorläufig — siehe Abschnitt „Rechte“; Rest unten) `RECHTEMATRIX.md`-Zeilen für `wachbuch`, `funktionsbereiche`/`funktionsPlan`, `bereitschaftStufen`/`bereitschaft`, `rotationen`, `pflegeNiveaus` (Positivkatalog `sicht.mjs` steht fail-closed). Der Test `rechtematrix-zeilen` prüft neue Zeilen streng. | Fachliche Rechte-Entscheidung je Rolle. |
+| G-3 | (Rechte-Schritt: umgesetzt, vorläufig — siehe Abschnitt „Rechte“; Rest unten) Schreibwege einhängen (`MODUL_SCHREIBWEGE` oder eigene Zeile in `rechte.mjs`), wie für `posten` offen. | Konfliktzone `rechte.mjs`. |
+| G-4 | (Rechte-Schritt: umgesetzt, vorläufig — siehe Abschnitt „Rechte“; Rest unten) Auskunft (Art. 15) und Löschvermerke: `auskunft.mjs` kennt die neuen Personenfelder `wachbuch`, `bereitschaft`, `funktionsPlan`, `rotationen` noch nicht. | Datenschutz-Abnahme (G3, WP-26). |
 | G-5 | Statuswechsel auf `vorlaeufig`/`freigegeben` mit `abnahme` nur durch den Nutzer. | G8 / WP-19.13. |
+
+## Rechte (vorläufig, Betreiberentscheidung nötig)
+
+Umgesetzt in `server/lib/modulwege-wp19.mjs`, `sicht.mjs`, `auskunft.mjs`, `src/module/zugriff.js`, RECHTEMATRIX.md (sieben Zeilen,
+Einordnung B) und geprüft in `pruefungen/modul-rechte-wp19.test.js`. Wo keine Entscheidung steht, gilt der strengste Stand; jeder Punkt
+unten ist durch einen Test festgehalten und muss vom Betreiber bestätigt oder gelockert werden.
+
+| # | Vorgabe (streng, vorläufig) | Offen |
+|---|---|---|
+| R-1 | **Schreiben:** Beschäftigte, Schichtverantwortung, Betriebsrat schreiben keines der Module. Planung und Leitung: `bereitschaft`, `funktionsPlan`. Nur `org.edit` (Leitung, Kundenrolle): `bereitschaftStufen`, `funktionsbereiche`, `pflegeNiveaus`, `rotationen`. | Wer plant Bereitschaft/Funktionsdienst, wer pflegt Stufen/Bereiche/Niveaus; Rotation als Versetzung (X2, § 99 BetrVG) nur Leitung. |
+| R-2 | **Wachbuch schreiben:** nur anhängen (W2 a). Eintragen darf nur, wer am Tag im Postenplan auf einem Posten des Objekts steht. Planung und Leitung tragen nur dann ein, sonst nicht; Beschäftigte haben keinen Schreibweg, das Eintragen bleibt also geschlossen. | Eigener Endpunkt für Wachleute (WB-1); ob Planung/Leitung ohne Einteilung eintragen dürfen. |
+| R-3 | **Lesen:** Wachbuch Beschäftigte nur selbst Verfasstes, Schichtverantwortung nur die eigene Einheit (nie Pool, nie Einträge ohne Einheit), Betriebsrat nichts (W4). Bereitschaft und Rotation: Beschäftigte und Schichtverantwortung nur die eigene Person (die Entscheidung nennt sie nicht). Funktionsplan wie `bereichsPlan` (Plan: „Sicht wie bereichsPlan“). Stufen, Funktionsbereiche, Pflegeniveaus (Sachfelder): nur Planung und Leitung. | Ob Beschäftigte die Bereiche/Niveaus/Stufen zur Anzeige brauchen (dann Sachfeld-Zeilen lockern); Sicht der Schichtverantwortung auf Bereitschaft und Rotation im Bereich (RO-3). |
+| R-4 | **Kundenrolle:** Serverseitig gilt sie wie die Leitung (Datenraum, `darf` = alle Rechte), sieht und schreibt also alles. In den Ansichten (`wachbuchZugriffFuer`, `berichtZugriffFuer`) gilt sie gemäß `WACHBUCH_ZUGRIFF` als „Kunde“ = keiner. Die Tabelle meint womöglich einen externen Auftraggeber; der hat keinen Zugang. | Bedeutung von „Kunde“ in W4; ob die Serverrolle `kunde` Wachbuchdaten lesen darf. |
+| R-5 | **Objektbericht:** `berichtZugriff` ist „voll“ nur für Planung und Leitung; Schichtverantwortung nein (Plan: „Vorschlag: nein“). Ohne `dienstzeit`-Quelle in `kontext` bleibt jede Zeit „ungeklärt“ (null), nie die Planzeit (OB-2). Es gibt kein Betriebsfeld und keinen Endpunkt. | Anbindung `kontext.dienstzeit` an die bestätigte Ist-Zeit (WP-16) in `App.jsx`; ob die Schichtverantwortung ihre Objekte sehen darf. |
+| R-6 | **Auskunft (G-4):** `wachbucheintraege` (ohne Text, mit Hinweis auf Art. 15 Abs. 4 DSGVO), `bereitschaftsdienste`, `funktionszuordnungen`, `rotationen` — nur eigene Einträge. | Ob der Wachbuchtext herausgegeben wird (Rechte Dritter, Art. 9-Gehalt); Fassung der Auskunft (`AUSKUNFT_FASSUNG`) bleibt 2. |
+| R-7 | **Löschung (G-4):** Der Ausnahmeweg (Art. 17) und die Löschvermerke arbeiten schon über `datenfelder` für alle Felder und sind für die vier Personenfelder getestet; Berichtigung gibt es für Wachbuch, Bereitschaft und Rotation nicht (nur Löschung). Der Löschlauf löscht Personenfelder nur nach Datum und nur mit geprüfter Regel `MODULDATEN_AUFBEWAHRUNG`; ungeprüft wird nichts gelöscht, die Vorschau zählt „zurückgehalten“ (getestet). | Aufbewahrungsfrist je Dokumentationsart (WB-3, BD-5/6, RO-1, PQ-1); Wachbuch und Rotation haben als Schlüssel „Eintragskennung|Tag“ statt „Person|Tag“ — die Anonymisierung ausgeschiedener Personen erreicht diese Einträge nicht (WB-5), nur die Tagesfrist und der Ausnahmeweg. |
+| R-8 | **Mandanten:** Lesen und Schreiben gelten nur für den Betrieb der Sitzung; ein zweiter übermittelter Betrieb wird abgewiesen (getestet). | – |
+| R-9 | **Aktivität:** Die Schreibwege prüfen Form und Berechtigung wie `posten`, nicht den Schalter; solange die Module `geplant` sind, wirken sie nicht (kein Befund, keine Oberfläche), die Daten sind aber schreibbar. | Ob Schreiben erst mit aktivem Modul erlaubt sein soll (strenger, blockiert die Erfassung bis zur Abnahme). |

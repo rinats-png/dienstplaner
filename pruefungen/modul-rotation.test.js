@@ -38,7 +38,8 @@ describe("Registry, Katalog und Felder", () => {
     expect(REGELN_BRANCHEN.find((r) => r.id === "ROTATION-UEBERSCHNEIDUNG-01")).toMatchObject({ modul: "rotation", hoechsteStufe: "hinweis" });
   });
   it("Feld im Positivkatalog, fail-closed; Datenschutzgate verlangt Ausnahmeweg und Schema", () => {
-    expect(BETRIEB.rotationen).toEqual(["weg", "weg"]);
+    expect(BETRIEB.rotationen[1]).toBe("weg");
+    expect(BETRIEB.rotationen[0].art).toBe("reduziert");
     const abgenommen = { ...modulVon("rotation"), status: "vorlaeufig", abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/x.md" } };
     expect(pruefeModulStatus([abgenommen])).toEqual([]);
     expect(pruefeModulStatus([{ ...abgenommen, berichtigungsWerte: undefined }]).join()).toMatch(/Wertschema/);

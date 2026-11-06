@@ -35,7 +35,8 @@ describe("Registry und Katalog", () => {
     expect(pruefeModulSchreibwege(MODUL_SCHREIBWEGE, BRANCHENMODULE)).toEqual([]);
   });
   it("das Feld steht im Positivkatalog, fail-closed (nichts geht hinaus)", () => {
-    expect(BETRIEB.wachbuch).toEqual([WEG, WEG]);
+    expect(BETRIEB.wachbuch[1]).toBe(WEG);
+    expect(BETRIEB.wachbuch[0].art).toBe("reduziert");
   });
   it("Datenschutzgate: mit Personenfeld, Ausnahmeweg-Oberfläche und Berichtigungsschema verlässt das Modul „geplant“ ohne Befund", () => {
     const abgenommen = { ...modulVon("wachbuch"), status: "vorlaeufig", abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/x.md" } };

@@ -53,6 +53,7 @@
    Löschvermerke (wie codes.mjs/zweifaktor.mjs; ohne ihn ungeschlüsselt, F4).
    ========================================================================== */
 import { createHash, createHmac, hkdfSync } from "node:crypto";
+import { MODULWEGE_WP19 } from "./modulwege-wp19.mjs";
 import { BRANCHENMODULE, modulVon, modulNurLesen, AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER } from "./branchenmodule.mjs";
 
 export { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER };
@@ -72,7 +73,7 @@ const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  * WP-19.1 ff. — mit eigener Prüfung in pruefungen/modul-<id>.test.js.
  * @type {readonly ModulSchreibweg[]}
  */
-export const MODUL_SCHREIBWEGE = Object.freeze([]);
+export const MODUL_SCHREIBWEGE = Object.freeze([...MODULWEGE_WP19]);
 
 /**
  * Vertrag der Liste: bekanntes Modul, nur dessen Datenfelder, eine Funktion.
