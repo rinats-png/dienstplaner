@@ -41,6 +41,8 @@ export default [
          „nie benutzt": no-unused-vars kennt JSX nicht. Rund neun von zehn
          Warnungen waren dieses Missverständnis und verdeckten die echten. */
       "react/jsx-uses-vars": "warn",
+      /* Nach Extraktionen (WP-39) blieben fehlende Komponenten-Imports unentdeckt bis zum Render-Test */
+      "react/jsx-no-undef": "error",
       "react/prop-types": "off",
       /* Ungenutzte Argumente sind oft Absicht (Signaturen), ungenutzte
          Variablen selten. */
