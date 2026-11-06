@@ -35,6 +35,7 @@ import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
 import { addMonate } from "./regelbaukasten.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 import { csvFeld, csvText } from "./csvfeld.js";
+import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -18018,8 +18019,8 @@ function Einstellungen({ sitz, akt, gehZu }) {
             options={[{ id: "komfortabel", label: "Komfortabel" }, { id: "kompakt", label: "Kompakt" }]} />
         </Zeile>
         <Zeile titel="Farbstimmung"
-          text={"Hell ist die Vorgabe. Dunkel schont die Augen im Nachtdienst — wer will, kann auch der Einstellung des Geräts folgen."}>
-          <Seg value={p.thema || "hell"}
+          text={"Vorgabe ist die Einstellung des Geräts. Dunkel schont die Augen im Nachtdienst — wer will, legt Hell oder Dunkel fest."}>
+          <Seg value={p.thema || "auto"}
             onChange={(v) => { akt.setzeMeineEinstellung("thema", v);
               melde(v === "dunkel" ? "Dunkle Ansicht." : v === "hell" ? "Helle Ansicht."
                 : "Folgt dem Gerät."); }}
@@ -23247,31 +23248,24 @@ function AppInnen() {
 
   const [themaZaehler, setThemaZaehler] = useState(0);
 
-  /* Hell ist die Vorgabe, nicht das Systemthema.
-
-     Der erste Entwurf folgte dem Gerät. Das war falsch: Ein Betriebsprogramm
-     soll bei jedem gleich aussehen — wer eine Bildschirmaufnahme weitergibt
-     oder jemandem über die Schulter schaut, erwartet dasselbe Bild. Und die
-     helle Palette ist die Marke, nicht eine von zwei gleichwertigen Fassungen.
-
-     Wer "dem Gerät folgen" will, wählt es ausdrücklich. Dann und nur dann
-     reagiert die Anwendung auf eine Umstellung am Gerät. */
+  /* Vorrang: ausdrückliche Wahl (Hell/Dunkel der Person, sonst die auf diesem
+     Gerät gemerkte) vor der Systemeinstellung. Ohne Wahl — oder bei "Wie das
+     Gerät" — folgt die Anwendung dem System und späteren Änderungen daran.
+     Dieselbe Regel gilt im Einstieg (v4/thema.js); die Wahl wird pro Gerät
+     gemerkt, damit beide übereinstimmen. */
   useEffect(() => {
     const p = sitz && sitz.person;
-    const wahl = p ? p.thema : null;
-    if (wahl === "auto") {
-      themaSetzen(themaVomSystem());
+    const eigene = p ? p.thema : null;
+    v4ThemaMerken(eigene);
+    const wahl = eigene === "hell" || eigene === "dunkel" ? eigene : (eigene === "auto" ? null : v4ThemaGemerkt());
+    if (wahl === "hell" || wahl === "dunkel") {
+      themaSetzen(wahl === "dunkel");
       setThemaZaehler((n) => n + 1);
-      try {
-        const mq = window.matchMedia("(prefers-color-scheme: dark)");
-        const auf = (e) => { themaSetzen(e.matches); setThemaZaehler((n) => n + 1); };
-        mq.addEventListener("change", auf);
-        return () => mq.removeEventListener("change", auf);
-      } catch { /* alte Browser */ }
-      return;
+      return undefined;
     }
-    themaSetzen(wahl === "dunkel");
+    themaSetzen(themaVomSystem());
     setThemaZaehler((n) => n + 1);
+    return v4SystemthemaBeobachten((e) => { themaSetzen(e.matches); setThemaZaehler((n) => n + 1); });
   }, [sitz && sitz.person && sitz.person.thema]);
 
 
