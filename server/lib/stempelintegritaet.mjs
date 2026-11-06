@@ -204,6 +204,31 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
     }
   }
 
+  /* WP-15 (Review 6): Der Teil `selbstauskunft` einer Ist-Erfassung ist ein Antrag mit Vier-Augen-Freigabe.
+     Er entsteht nur über /api/zeit-bestaetigen, sein Status ändert sich nur über /api/selbstauskunft-entscheiden;
+     über das Speichern lässt sich weder ein Antrag anlegen, noch Status/Entscheidung setzen, noch ein offener
+     Antrag zu Ist machen (bestaetigt) oder der Antrag-Teil entfernen. Eine ältere Kopie mit Status „offen“ ist
+     kein Verstoß (der Serverstand bleibt). */
+  if ("erfassung" in neuM && objekt(neuM.erfassung)) {
+    const saFest = (x) => (objekt(x) ? { id: x.id, von: x.von, gestellt: x.gestellt, vorschlag: x.vorschlag, grund: x.grund,
+      wieGeplant: x.wieGeplant, abweichung: x.abweichung } : null);
+    const SA_NEIN = "Selbstauskünfte (Anträge auf Ist-Zeit) entstehen nur über die Zeitbestätigung und werden nur über die Freigabe entschieden — nicht über das Speichern.";
+    for (const [k, e] of Object.entries(neuM.erfassung)) {
+      const a = altE[k];
+      const asa = objekt(a) ? a.selbstauskunft : undefined, esa = objekt(e) ? e.selbstauskunft : undefined;
+      if (esa === undefined && asa === undefined) continue;
+      if (esa !== undefined) {
+        if (!objekt(esa) || !objekt(asa) || !gleich(saFest(esa), saFest(asa))) return nein(SA_NEIN, k);
+        if (esa.status !== asa.status && esa.status !== "offen") return nein(SA_NEIN, k);
+        if (esa.status !== "offen" && !gleich(esa.entschieden, asa.entschieden)) return nein(SA_NEIN, k);
+        if (esa.status === "offen" && esa.entschieden !== null && esa.entschieden !== undefined) return nein(SA_NEIN, k);
+        if (esa.status !== "genehmigt" && objekt(e) && e.bestaetigt === true) return nein(SA_NEIN, k);
+      } else if (objekt(asa) && !(objekt(e) ? false : (abgelaufen(k) || verfallen(k))) && o.vollSicht && weggelassenErkennbar(k)) {
+        return nein(SA_NEIN, k);
+      }
+    }
+  }
+
   /* Ist-Zeit eines gestempelten Tages: nur über die Stempelkorrektur. */
   if ("erfassung" in neuM && objekt(neuM.erfassung)) {
     for (const [k, e] of Object.entries(neuM.erfassung)) {

@@ -931,6 +931,20 @@ export async function korrekturEntscheiden(personId, datum, antragId, entscheidu
 }
 
 /**
+ * Eine Selbstauskunft (Antrag, WP-15) entscheiden: "genehmigt" oder "abgelehnt" (Leitung, Planung; Ablehnung
+ * mit Begründung) oder "zurueckgezogen" (die Person selbst). Antwort: antrag, eintrag (neuer Stand von
+ * erfassung[Person|Tag]) und bei der Freigabe die Regelhinweise.
+ */
+export async function selbstauskunftEntscheiden(personId, datum, antragId, entscheidung, begruendung) {
+  const a = await fetch("/api/selbstauskunft-entscheiden", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, antragId, entscheidung, begruendung: begruendung || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Entscheidung ließ sich nicht speichern.");
+  return d;
+}
+
+/**
  * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
  * Codes ließen sich anlegen, aber nie wieder abschalten.
  *

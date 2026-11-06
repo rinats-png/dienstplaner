@@ -75,6 +75,7 @@
    ========================================================================== */
 
 import { createHash, createHmac } from "node:crypto";
+import { istProduktion } from "./umgebung.mjs";
 import { sendeMail, anwendungsAdresse } from "./post.mjs";
 import { sendePush } from "./webpush.mjs";
 import { ZUSTELLARTEN, istNotruf } from "./mitteilungen.mjs";
@@ -184,7 +185,7 @@ const sperrWert = (adresse) => {
   const a = String(adresse).toLowerCase();
   const pfeffer = process.env.CENTRIC_PFEFFER;
   if (pfeffer) return createHmac("sha256", pfeffer).update(`unzustellbar:${a}`).digest("hex").slice(0, 32);
-  return process.env.NODE_ENV === "production" ? null : h(a);
+  return istProduktion() ? null : h(a);
 };
 /** Gilt diese Sperre für diese Adresse? Nur mit Ursache „empfaenger“ (B2). */
 const sperreGilt = (sperre, an) => {

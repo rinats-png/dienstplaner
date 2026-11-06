@@ -17,6 +17,8 @@
    so läuft die Anwendung heute.
    ========================================================================== */
 
+import { istProduktion } from "./umgebung.mjs";
+
 /** Frist für eine Anfrage an den Mailanbieter (Nachtrag 2, F2). Gilt für
     jeden Anbieter-Weg dieser Datei; ein späterer Adapter übernimmt sie. */
 export const MAIL_FRIST_MS = 15_000;
@@ -147,6 +149,6 @@ export const anwendungsAdresse = () =>
  * Produktionsumgebung soll kein Geheimnis in eine Antwort schreiben.
  */
 export const pruefLinkErlaubt = () =>
-  process.env.NODE_ENV !== "production"
+  !istProduktion()
   && !process.env.RESEND_API_KEY
   && process.env.CENTRIC_PRUEFLINK === "ja";

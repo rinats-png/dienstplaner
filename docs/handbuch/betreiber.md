@@ -17,8 +17,7 @@ Betreiberkonsole; Sitzung zwei Stunden ([Übersicht](README.md)). Den Dienst sel
 
 **Verwalterschlüssel** (`/einrichten`, für Skripte: Codes anlegen, Übersicht, Bindung) sind getrennt von der Konsole.
 Ist für einen Verwalterschlüssel ein zweiter Faktor eingerichtet, gilt er für alle (Pflicht); Anlegen und Sperren von
-Schlüsseln nur mit frischem Code. Optional macht `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` den zweiten Faktor auch für
-Betreibercodes zur Pflicht (Einführungsreihenfolge: [wp32b-nachweis.md](../acc45/wp32b-nachweis.md) §4).
+Schlüsseln nur mit frischem Code. In der Auslieferung (`NODE_ENV=production`) ist der zweite Faktor für Betreibercodes Pflicht und nicht abschaltbar (WP-32d); außerhalb davon schaltet ihn `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` ein. Authenticator und Wiederherstellungscodes verloren: [wp32d-nachweis.md](../acc45/wp32d-nachweis.md).
 
 ## Was Sie sehen — und was nicht
 

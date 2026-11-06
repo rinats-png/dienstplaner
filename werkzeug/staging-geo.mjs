@@ -17,6 +17,8 @@
    2: falscher Aufruf · 3: Altlasten, nichts geschrieben.
    ========================================================================== */
 
+/* WP-32d: Betreibercodes und Verwalterschlüssel brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
+import "./betreiber-faktor-vorlauf.mjs";
 import { getStore } from "../server/lib/ablage.mjs";
 import { raumBelegt } from "../server/lib/bestand.mjs";
 import { heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../server/lib/zeiterfassung.mjs";

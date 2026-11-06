@@ -237,12 +237,18 @@ describe("Ausstempeln mit Pause", { timeout: 120000 }, () => {
 describe("Selbstauskunft mit Pause", { timeout: 120000 }, () => {
   it("abweichende Zeit mit Pause: gespeichert, Hinweis bei zu kurzer Pause; ungültige Pause 422", async () => {
     zeitAuf("2026-11-10T09:00:00Z");
-    await raum("p-selbst", [person("a1")], { abweichungen: { "a1|2026-11-08": "F", "a1|2026-11-09": "F" } });
+    await raum("p-selbst", [person("a1"), person("l1", "leitung")], { abweichungen: { "a1|2026-11-08": "F", "a1|2026-11-09": "F" } });
     const t = await token("p-selbst", "a1");
     const r = await anfrage("zeit-bestaetigen", { token: t, rumpf: { datum: "2026-11-09", start: "06:00", ende: "16:00", pause: 30, grund: "länger geblieben" } });
     expect(r.status, r.roh).toBe(200);
-    expect(r.eintrag).toMatchObject({ start: "06:00", ende: "16:00", pause: 30, bestaetigt: true });
-    expect(r.hinweise).toEqual(expect.arrayContaining([expect.objectContaining({ code: "PAUSE" })]));
+    /* WP-15: die Selbstauskunft ist ein Antrag; erst die Freigabe macht sie zum Ist (mit den Hinweisen). */
+    expect(r.antrag).toMatchObject({ status: "offen", vorschlag: { start: "06:00", ende: "16:00", pause: 30 } });
+    expect(r.eintrag).toMatchObject({ bestaetigt: false });
+    const frei = await anfrage("selbstauskunft-entscheiden", { token: await token("p-selbst", "l1", "leitung"),
+      rumpf: { personId: "a1", datum: "2026-11-09", antragId: r.antrag.id, entscheidung: "genehmigt" } });
+    expect(frei.status, frei.roh).toBe(200);
+    expect(frei.eintrag).toMatchObject({ start: "06:00", ende: "16:00", pause: 30, bestaetigt: true });
+    expect(frei.hinweise).toEqual(expect.arrayContaining([expect.objectContaining({ code: "PAUSE" })]));
     const f = await anfrage("zeit-bestaetigen", { token: t, rumpf: { datum: "2026-11-08", start: "06:00", ende: "14:00", pause: 999 } });
     expect(f.status, f.roh).toBe(422);
     expect((await mandant("p-selbst")).erfassung["a1|2026-11-08"]).toBeUndefined();
@@ -261,6 +267,6 @@ describe("Selbstauskunft mit Pause", { timeout: 120000 }, () => {
     expect(m.erfassung["a1|2026-11-09"]).toBeUndefined();
     const knapp = await anfrage("zeit-bestaetigen", { token: t, rumpf: { datum: "2026-11-07", start: "06:00", ende: "08:00", pause: 119, grund: "früher gegangen" } });
     expect(knapp.status, knapp.roh).toBe(200);
-    expect(knapp.eintrag).toMatchObject({ start: "06:00", ende: "08:00", pause: 119 });
+    expect(knapp.antrag).toMatchObject({ status: "offen", vorschlag: { start: "06:00", ende: "08:00", pause: 119 } });   // WP-15: Antrag, Ist erst nach der Freigabe
   });
 });

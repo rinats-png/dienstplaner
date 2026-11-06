@@ -35,6 +35,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
 import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
+import { betreiberSitzungenOhneFaktorBeenden } from "./server/lib/betreiber-zweifaktor.mjs";
 import { schreibstopp, alleFrei } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
 import { datenschutzLauf, modusAusUmgebung } from "./server/lib/datenschutzlauf.mjs";
@@ -387,6 +388,12 @@ if (!ablagesperre.ok) {
 }
 if (ablagesperre.uebernommen) console.log("Ablagesperre: veraltete Sperre eines beendeten Prozesses übernommen");
 process.on("exit", () => ablagesperre.freigebenSofort());
+
+/* WP-32d: Betreibersitzungen ohne zweiten Faktor enden beim Start der Auslieferung. */
+try {
+  const r = await betreiberSitzungenOhneFaktorBeenden(getStore({ name: "centric", consistency: "strong" }));
+  if (r.beendet || r.fehler) console.log(`Betreibersitzungen ohne zweiten Faktor: ${r.beendet} beendet, ${r.fehler} Fehler`);
+} catch (e) { console.error("Betreibersitzungen ohne zweiten Faktor ließen sich nicht prüfen:", e && e.message); }
 
 const routen = await funktionenLaden();
 console.log("Funktionen: " + routen.map((r) => `${r.name} ${r.muster}`).join(", "));

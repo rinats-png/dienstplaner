@@ -21,6 +21,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+/* WP-32d: Betreibercodes brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
+import "../werkzeug/betreiber-faktor-vorlauf.mjs";
 
 const ausfuehren = promisify(execFile);
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,7 +39,7 @@ async function lauf(nr) {
   try {
     const { stdout, stderr } = await ausfuehren("bash", [SKRIPT], {
       cwd: arbeit,
-      env: { ...process.env, SITE: B, CENTRIC_ADMIN: ADMIN, RAUM, AUSGABE: datei },
+      env: { ...process.env, SITE: B, CENTRIC_ADMIN: ADMIN, RAUM, AUSGABE: datei, ...nachweisEnv() },
     });
     return { status: 0, stdout, stderr, datei };
   } catch (e) {
@@ -45,6 +47,9 @@ async function lauf(nr) {
   }
 }
 
+/* WP-32d: In production verlangt /einrichten für den Verwalterschlüssel den zweiten Faktor. Der Vorlauf richtet ihn bei
+   der ersten Anfrage ein; das Skript bekommt den Nachweis (CENTRIC_ZWEIFAKTOR_NACHWEIS). */
+const nachweisEnv = () => { const n = globalThis.__verwalterNachweis && globalThis.__verwalterNachweis(ADMIN); return n ? { CENTRIC_ZWEIFAKTOR_NACHWEIS: n } : {}; };
 const uebersicht = async () => (await fetch(`${B}/einrichten/uebersicht?bestand=${RAUM}`,
   { headers: { authorization: `Bearer ${ADMIN}` } })).json();
 const demos = async () => ((await (await fetch(`${B}/api/demos`)).json()).demos || []);
@@ -64,6 +69,7 @@ beforeAll(async () => {
       CENTRIC_SELBSTSTART: "true", CENTRIC_DEMO: "true", NODE_ENV: "production" } });
   ({ kind, port: PORT, basis: B } = st);
   ausgabe = st.log;
+  await uebersicht();                 // richtet den zweiten Faktor des Verwalterschlüssels ein (Vorlauf)
 }, 60000);
 
 afterAll(async () => {
@@ -155,7 +161,7 @@ describe("Bereitstellungsskript", () => {
   it("überschreibt die Ausgabe des ersten Laufs nicht", async () => {
     expect(await readFile(erster.datei, "utf8")).toBe(ersteDatei);
     const nochmal = await ausfuehren("bash", [SKRIPT], { cwd: arbeit,
-      env: { ...process.env, SITE: B, CENTRIC_ADMIN: ADMIN, RAUM, AUSGABE: erster.datei } })
+      env: { ...process.env, SITE: B, CENTRIC_ADMIN: ADMIN, RAUM, AUSGABE: erster.datei, ...nachweisEnv() } })
       .then(() => ({ status: 0 }), (e) => ({ status: e.code ?? 1, stderr: e.stderr || "" }));
     expect(nochmal.status).not.toBe(0);
     expect(nochmal.stderr).toContain("gibt es schon");

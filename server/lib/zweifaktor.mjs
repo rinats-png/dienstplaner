@@ -253,16 +253,25 @@ async function unterSperre(id, arbeit) {
   finally { frei(); if (sperren.get(id) === kette) sperren.delete(id); }
 }
 
+/** Eine begonnene, nicht bestätigte Einrichtung gilt höchstens so lange (Review WP-32d, 3). */
+export const EINRICHTUNG_FRIST_MS = 15 * 60 * 1000;
+/** Ist das eine ausstehende Einrichtung, die noch bestätigt werden darf? Ohne lesbaren Beginn: nein (fail-closed). */
+const ausstehendGueltig = (e, ms) => !!(e && e.stand === "ausstehend" && Number.isFinite(Date.parse(e.begonnen))
+  && Date.parse(e.begonnen) + EINRICHTUNG_FRIST_MS > ms);
+
 /**
  * Wie steht es um den zweiten Faktor? Wirft bei einem Lesefehler der
  * Ablage — der Aufrufer muss dann abweisen, nicht durchlassen.
  * @returns {Promise<{aktiv: boolean, ausstehend: boolean, wiederherstellungUebrig: number}>}
  */
-export async function zweifaktorStand(store, id) {
+export async function zweifaktorStand(store, id, ms = Date.now()) {
   const e = await store.get(SCHLUESSEL(id), { type: "json" });
   return {
     aktiv: !!(e && e.stand === "aktiv"),
-    ausstehend: !!(e && e.stand === "ausstehend"),
+    ausstehend: ausstehendGueltig(e, ms),
+    /** Minuten seit Beginn der (auch abgelaufenen) ausstehenden Einrichtung, sonst null. */
+    ausstehendSeitMin: e && e.stand === "ausstehend" && Number.isFinite(Date.parse(e.begonnen))
+      ? Math.max(0, Math.round((ms - Date.parse(e.begonnen)) / 60000)) : null,
     wiederherstellungUebrig: e && Array.isArray(e.wiederherstellung)
       ? e.wiederherstellung.filter(Boolean).length : 0,
   };
@@ -294,7 +303,7 @@ export async function zweifaktorBeginnen(store, id, konto) {
  */
 export async function zweifaktorBestaetigenVorpruefen(store, id, code, ms = Date.now()) {
   const e = await store.get(SCHLUESSEL(id), { type: "json" });
-  if (!e || e.stand !== "ausstehend") return { ok: false, fehler: "nichts-ausstehend" };
+  if (!ausstehendGueltig(e, ms)) return { ok: false, fehler: "nichts-ausstehend" };
   const roh = entschluesseln(e.geheimnis, id);
   if (!roh) return { ok: false, fehler: "pfeffer" };
   return codePruefen(roh, code, ms, e.letzterSchritt ?? -1).ok ? { ok: true } : { ok: false, fehler: "code" };
@@ -308,7 +317,7 @@ export async function zweifaktorBestaetigenVorpruefen(store, id, code, ms = Date
 export async function zweifaktorBestaetigen(store, id, code, ms = Date.now()) {
   return unterSperre(id, async () => {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
-    if (!e || e.stand !== "ausstehend") return { fehler: "nichts-ausstehend" };
+    if (!ausstehendGueltig(e, ms)) return { fehler: "nichts-ausstehend" };
     const roh = entschluesseln(e.geheimnis, id);
     if (!roh) return { fehler: "pfeffer" };
     const p = codePruefen(roh, code, ms, e.letzterSchritt ?? -1);

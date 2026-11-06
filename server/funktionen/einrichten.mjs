@@ -1,5 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { istProduktion } from "../lib/umgebung.mjs";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
@@ -100,7 +101,9 @@ export default async (req) => {
   const zfNachweis = req.headers.get("x-centric-zweifaktor-nachweis") || null;
   const zfAktion = pfad === "zweifaktor" && req.method === "POST" ? String(body.aktion || "") : "";
   const zfAbschalten = pfad === "zweifaktor" && req.method === "DELETE";
-  const zfPflichtUmgebung = (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  /* WP-32d (Review 1): In der Auslieferung ist der zweite Faktor auch für Verwalterschlüssel Pflicht — sonst legte
+     der Schlüssel allein einen Betreibercode an und richtete dessen Faktor selbst ein. */
+  const zfPflichtUmgebung = istProduktion() || (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
   const zfVerwalterAenderung = pfad === "verwalter" && (req.method === "POST" || req.method === "DELETE");
   const zfKennungen = [`v:${wer.zweifaktorId.slice(0, 16)}`, k];
   /** Bremse für Code-Versuche: je Schlüssel und je Herkunft, fail-closed. */
@@ -324,7 +327,7 @@ export default async (req) => {
         pushPrivat: gesetzt("VAPID_PRIVATE"),
         bremseAtomar: gesetzt("REDIS_REST_URL") && gesetzt("REDIS_REST_TOKEN"),
         vertrauteProxys: gesetzt("CENTRIC_VERTRAUTE_PROXYS"),
-        zweifaktorPflicht: (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1",
+        zweifaktorPflicht: istProduktion() || (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1",
       },
       verwalterkonten: await verwalterAktiv(s0),
       warnungen,
