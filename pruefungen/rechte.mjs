@@ -360,7 +360,8 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
     raumBasis.mandanten[0].erfassung = Object.fromEntries(Object.entries(vorher.erfassung || {})
       .filter(([k]) => k in (vorher.einstempeln || {})));
   }
-  const w = await schreib(tS1, raumBasis, null);
+  /* B-9-1: ohne ETag wird auf vorhandenem Bestand nicht geschrieben. */
+  const w = await schreib(tS1, raumBasis, (await lies(tS1)).etag);
   pruef("Ein Bestand lässt sich zerlegt schreiben", w.status === 200, `Status ${w.status}`);
 
   const gelesen = await lies(tS1);

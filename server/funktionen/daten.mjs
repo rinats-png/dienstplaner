@@ -1031,6 +1031,18 @@ export default async (req, context) => {
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
         const jetzt = await bestandLesenStreng(store, s.bestand);
 
+        /* B-9-1: Ein Schreibvorgang ohne ETag überschrieb auf einem vorhandenen Bestand still
+           jede fremde Änderung. Jetzt: Ohne ETag wird nur geschrieben, wenn es noch keinen
+           Bestand gibt (Erstanlage). Sonst 409 mit dem aktuellen Stand zum Neuladen. Gilt nur für
+           diesen Endpunkt; interne Lese-Ändern-Schreiben-Abläufe halten ihre Sperre selbst. */
+        if ((etag === null || etag === undefined || etag === "") && jetzt && jetzt.bestand) {
+          await protokoll("schreiben", ks, "konflikt", "ohne ETag auf vorhandenem Bestand", wer);
+          return antwort({ fehler: "konflikt",
+            text: "Der Stand ist ohne Versionsangabe nicht überschreibbar. Bitte neu laden.",
+            bestand: bestandFuerRolle(personenAngleichen(jetzt.bestand), s), etag: jetzt.stand,
+            durch: jetzt.durch, zeit: jetzt.zeit }, 409);
+        }
+
         /* Stempel-Integrität (WP-06, lib/stempelintegritaet.mjs): Ein
            gestempelter Wert ändert sich über diesen Weg nie — für keine
            Rolle. Geprüft wird die Übermittlung selbst, vor jeder
