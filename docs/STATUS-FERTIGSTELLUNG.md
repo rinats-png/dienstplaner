@@ -34,3 +34,19 @@ Basis: `integration/centric-complete` (= RC `265d575`) plus V4 Phase 1 (#91) plu
 
 ## Noch notwendige Release-Gates
 Staging-Probe Punkt 7/9 ausgeführt und aufgeräumt; Backup-Wiederherstellung belegt; Rollback vorbereitet (`ruecksprung.sh` auf `0b192927…`); V4 integriert und im Browser abgenommen; Eintrag in `FREIGEGEBENE-IMAGES.md`; ausdrückliche Produktionsfreigabe.
+
+## Gesamtumfang und Prognose (Stand 2026-11-06, ersetzt die frühere Angabe „66 %“)
+Die frühere Zahl „66 %“ bezog sich nur auf **Release-Kandidat plus V4**. Für den ursprünglichen Gesamtumfang gilt (Quellen: `docs/acc45/MACHBARKEIT-2026-12-24.md`, `docs/acc45/GESAMTPLAN.md`, `docs/acc45/work-packages.json` mit 155 Paketen, Stand 04.11., seither nicht nachgeführt):
+
+| Größe | Wert | Beleg |
+|---|---|---|
+| Restaufwand optimistisch / realistisch / pessimistisch | 424 / ≈ 650 / ≈ 970 PT | MACHBARKEIT Z. 18, 134: 573 PT Mitte, ×1,14 bzw. ×1,35 für Nacharbeit; Nacharbeitsquote 35 % = 16 von 46 Merges (Z. 94) |
+| Pflichtpakete (SSOT) | 155: 37 erledigt/integriert (36 Entwicklung, 1 extern), 7 in Arbeit/Review, 111 offen, davon 80 `BLOCKED` | work-packages.json; Status seit 04.11. veraltet (WP-16/30/48/19.0b dort noch alt) |
+| Fortschritt Gesamtumfang | ≈ 22 % nach PT, ≈ 24 % nach Paketen | Teilumfänge nicht angerechnet |
+| größter offener Block | Intelligence/KI: 37 Pakete, ≈ 69 % des Restaufwands, im Code nur Faktenpaket WP-I11, kein Gateway, kein Anbieteraufruf | `git log --all -S anthropic`: 0 Treffer |
+| Branchenmodule WP-19 | 6 von 12 mit Code, 6 nur im Katalog | `src/module/*`, `server/lib/modul-*` |
+| extern | 34 von 35 Nachweisen offen (Kanzlei, Pentest, Verträge, Gerätetests, Pilotabnahmen) | acc45 E-1…E-32 |
+| Kapazität | dokumentiert 3 Agenten × 6 PT/Tag = 90 PT/Woche; gemessen nur 2 Tage lang (KW45), seither 0 SSOT-Pakete; Konfliktzone `App.jsx` 47 % des Restaufwands | MACHBARKEIT Z. 15, 56, 72, 213–215 |
+| Termine (Produktionsreife Gesamtumfang) | optimistisch 21.01.2027, realistisch 17.03.2027, pessimistisch 07.06.2027 | GESAMTPLAN §7.3 Variante C; kritischer Pfad ist extern (Pilot → Intelligence-Pilot E-24i → Kanzlei/Pentest), nicht der Entwicklungsdurchsatz |
+
+Die Prognose „6 bis 7 Arbeitstage“ betrifft nur RC plus V4 (rund 10 % des Gesamtumfangs). Der Termin März 2027 ist damit weder überholt noch erreicht: Der Fortschritt seit dem 04.11. lag ausschließlich in RC, V4 und ETag-Fix, nicht in den SSOT-Paketen. Es gibt keine dokumentierte Entscheidung, Intelligence, die 6 fehlenden Module, WP-16c, WP-18, WP-21 oder WP-39 aus dem Pflichtumfang zu nehmen. Nicht einzeln geprüft: G9 N-A…N-F und die 50 WP-19-Entscheidungen.

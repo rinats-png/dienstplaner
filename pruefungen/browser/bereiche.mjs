@@ -111,7 +111,10 @@ try {
         }
         return { quer: dok.scrollWidth - vw, lang: txt.length, laedt: /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test(txt), klein, schwach, beispiele };
       });
-      if (m.quer > 1) melde("querscroll", `${akt}: Seite ${m.quer}px breiter als Fenster`);
+      if (m.quer > 1) {
+        const taeter = await p.evaluate(() => { const vw = window.innerWidth; const o = []; for (const e of document.querySelectorAll("body *")) { const r = e.getBoundingClientRect(); if (r.width > 0 && r.right > vw + 1) o.push({ r: Math.round(r.right), t: e.tagName + "." + String(e.className || "").slice(0, 24) + "[" + (e.innerText || "").trim().slice(0, 18).split(String.fromCharCode(10))[0] + "] pos=" + getComputedStyle(e).position }); } return o.sort((x, y) => y.r - x.r).slice(0, 3).map((x) => x.r + " " + x.t).join(" ; "); });
+        melde("querscroll", `${akt}: Seite ${m.quer}px breiter als Fenster — ${taeter}`);
+      }
       if (m.laedt) { await p.waitForTimeout(3000); const noch = await p.evaluate(() => /(Lädt|Wird geladen)\s*(\.\.\.|…)/.test((document.querySelector("main") || document.body).innerText)); if (noch) melde("haengt-in-laden", `${akt}: „Lädt …“ nach 4 s noch sichtbar`); }
       if (m.schwach > 0) melde("kontrast", `${akt}: ${m.schwach} Textstellen unter WCAG-Kontrast (z. B. ${m.beispiele.join("; ")})`);
       if (m.lang < 20) melde("leer", `${akt}: Bereich praktisch leer (${m.lang} Zeichen)`);
