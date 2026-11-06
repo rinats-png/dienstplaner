@@ -21,6 +21,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+/* WP-32d: Betreibercodes brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
+import "../werkzeug/betreiber-faktor-vorlauf.mjs";
 
 const ausfuehren = promisify(execFile);
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

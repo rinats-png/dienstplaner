@@ -17961,7 +17961,7 @@ function AppInnen() {
           const erg = await SP.zeitBestaetigen(d, start, ende, grund);
           upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
             : { ...m, erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: erg.eintrag } }) }));
-          melde("Zeit bestätigt.");
+          melde("Zeit beantragt — sie zählt nach der Freigabe durch die Leitung (WP-15).");
         } catch (e) {
           melde(e.message || "Die Zeit ließ sich nicht bestätigen.");
         }

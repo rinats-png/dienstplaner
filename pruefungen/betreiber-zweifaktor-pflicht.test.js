@@ -280,7 +280,7 @@ describe("Offline-Wiederherstellung", () => {
   it("Werkzeug: ohne --ja, ohne Pfeffer, ohne Code, mit falschem Code, mit belegter Ablage -> Ausgang 1; sonst 0 mit Geheimnis", async () => {
     const Y = "REC0-WERK-ZEUG";
     await einrichten(Y);
-    const skript = path.join(WURZEL_REPO, "werkzeug", "sicherheit", "betreiber-2fa-zuruecksetzen.mjs");
+    const skript = path.join(WURZEL_REPO, "werkzeug", "betreiber-2fa-zuruecksetzen.mjs");
     const lauf = (args, eingabe, env = {}) => spawnSync(process.execPath, [skript, ...args], { input: eingabe,
       encoding: "utf8", env: { PATH: process.env.PATH, CENTRIC_DATEN: wurzel, CENTRIC_ABLAGE: "dateien",
         CENTRIC_PFEFFER: PFEFFER, ...env } });
@@ -305,6 +305,41 @@ describe("Offline-Wiederherstellung", () => {
     const fest = await anmelden({ zugangscode: Y, zweifaktorAktion: "bestaetigen", zweifaktor: code(geh[1]) });
     expect(fest.status, fest.roh).toBe(200);
     expect((await readdir(wurzel)).includes(".prozess")).toBe(false);
+  });
+});
+
+describe("Vorlauf für Prüfläufe (werkzeug/betreiber-faktor-vorlauf.mjs)", () => {
+  it("richtet den Faktor über die API ein, meldet an, merkt den Token je Code, verwirft ihn beim Abmelden — greift nur bei 403 einrichten", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const echt = globalThis.fetch;
+    const rufe = (url, opts) => daten(new Request(url, { ...opts, headers: { ...(opts && opts.headers), host: WIRT,
+      origin: `http://${WIRT}` } }), {});
+    globalThis.fetch = rufe;
+    delete globalThis.__betreiberFaktorVorlauf;
+    try {
+      await import("../werkzeug/betreiber-faktor-vorlauf.mjs?probe");
+      const V = "VORL-AUF0-CODE";
+      await konto(V, "betreiber");
+      const kopf = { "content-type": "application/json", "x-forwarded-for": "10.99.0.1" };
+      const login = () => globalThis.fetch(`http://${WIRT}/api/anmelden`, { method: "POST", headers: kopf, body: JSON.stringify({ zugangscode: V }) });
+      const a = await login();
+      expect(a.status).toBe(200);
+      const d = await a.json();
+      expect(d.token).toBeTruthy();
+      expect(await (await login()).json()).toMatchObject({ token: d.token });            // aus dem Gedächtnis
+      /* Der Server verlangt den Faktor weiterhin: ein Aufruf an der Vorlauf-Kappe vorbei bekommt 401. */
+      const roh = await rufe(`http://${WIRT}/api/anmelden`, { method: "POST", headers: kopf, body: JSON.stringify({ zugangscode: V }) });
+      expect(roh.status).toBe(401);
+      await globalThis.fetch(`http://${WIRT}/api/abmelden`, { method: "POST", headers: { ...kopf, authorization: `Bearer ${d.token}` }, body: "{}" });
+      const neu = await login();                                                        // Gedächtnis verworfen → Server verlangt den Code
+      expect(neu.status).toBe(401);
+      /* Ein Fremdcode und ein Nicht-Betreiber werden nicht angefasst. */
+      const falsch = await globalThis.fetch(`http://${WIRT}/api/anmelden`, { method: "POST", headers: kopf, body: JSON.stringify({ zugangscode: "NICH-TDA-CODE" }) });
+      expect(falsch.status).toBe(401);
+      await konto("VORL-LEIT-UNG1", "leitung");
+      const l = await globalThis.fetch(`http://${WIRT}/api/anmelden`, { method: "POST", headers: kopf, body: JSON.stringify({ zugangscode: "VORL-LEIT-UNG1" }) });
+      expect(l.status).toBe(200);
+    } finally { globalThis.fetch = echt; delete globalThis.__betreiberFaktorVorlauf; vi.unstubAllEnvs(); }
   });
 });
 

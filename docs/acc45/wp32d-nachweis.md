@@ -41,10 +41,10 @@ werden** (409 `ausstehend`, Protokollzeile) — vorher durfte `beginnen` eine au
 Authenticator **und** Wiederherstellungscodes verloren (oder Einrichtung abgebrochen und Geheimnis weg):
 
 ```
-docker compose stop app                     # die Ablage gehört immer nur einem Prozess
+docker compose -f deploy/compose.yml stop centric-dp-web    # die Ablage gehört immer nur einem Prozess
 printf '%s\n' 'BETREIBER-CODE' | CENTRIC_DATEN=<Datenordner> CENTRIC_PFEFFER=<wie im Betrieb> \
-  node werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs --ja
-docker compose start app
+  node werkzeug/betreiber-2fa-zuruecksetzen.mjs --ja
+docker compose -f deploy/compose.yml start centric-dp-web
 ```
 
 Voraussetzungen, alle nötig: Zugriff auf den Server (Datenordner), der Pfeffer des Betriebs **und** der Betreibercode
@@ -58,9 +58,29 @@ verändert. Protokoll: `zweifaktor/offline/warnung`.
 Wer weder Serverzugriff noch Pfeffer hat, kommt nicht hinein — gewollt. Wer den Pfeffer verliert, verliert ohnehin alle
 Schlüssel (siehe Betriebshandbuch).
 
+## Folgen für Prüfläufe und Auslieferung
+
+- Fast alle HTTP-Prüfläufe starten den Server mit `NODE_ENV=production` und melden sich mit einem frisch angelegten
+  Betreibercode an — dort gilt jetzt die Pflicht. `werkzeug/betreiber-faktor-vorlauf.mjs` (mit `node --import`
+  durch `pruefungen/serverlauf.mjs`, per `import` in `staging-proben.mjs`, `staging-smoke.mjs`,
+  `zugaenge-anlegen.test.js`) umhüllt nur im Prüfprozess `fetch`: bei 403 `einrichten` richtet er den Faktor über
+  die öffentliche API ein (beginnen, bestätigen) und meldet mit dem nächsten Code an; den Token merkt er je Code
+  (Abmelden verwirft ihn). Der Server wird dafür **nicht** gelockert. Getestet im Pflicht-Test („Vorlauf“).
+- Der Vorlauf und `werkzeug/betreiber-2fa-zuruecksetzen.mjs` liegen flach in `werkzeug/` und kommen per eigener
+  `COPY`-Zeile ins Image (`auslieferung.test.js` erlaubt nur flache `werkzeug/*.mjs`-Kopien). Das Werkzeug liegt damit
+  auch im Container (`/app/werkzeug/betreiber-2fa-zuruecksetzen.mjs`); es läuft nur bei gestopptem Dienst (sonst
+  belegt der Server die Ablage) und braucht denselben Datenmount und Pfeffer — das genaue `docker run`-Kommando
+  ist ein Betriebsschritt (Betriebshandbuch), nicht getestet.
+- `serverlauf` (rechte, zeiterfassung, betreiber-sicht, betreiberfelder, demozugang, erstbefuellung, mandanten,
+  schichtverantwortung, session-kanal, sicherungen, sicht-planung-leitung, verwalter, verwaltungswege, vollausgabe,
+  zustellung-rechte, kalender-rechte, geo, bremse) lief mit dem Vorlauf grün.
+- Ohne Befund geblieben, aber lokal nicht lauffähig (Windows): `zugaenge-anlegen.test.js` (braucht `jq`),
+  `server.test.js` „SIGTERM“.
+- Außerdem: Das Pflicht-403 zählt nicht mehr als Fehlversuch der Anmeldebremse (der Code war richtig).
+
 ## Tests
 
-`pruefungen/betreiber-zweifaktor-pflicht.test.js` (17): Schalter (production an, Option 1 an, sonst aus, kein
+`pruefungen/betreiber-zweifaktor-pflicht.test.js` (18): Schalter (production an, Option 1 an, sonst aus, kein
 Abschalter in production, Dockerfile setzt NODE_ENV); Pflicht an/aus über den echten Handler (fehlende Einrichtung →
 403 ohne Token; andere Rollen unberührt; Einrichten und Bestätigen; falscher Code 401; Wiederholung desselben Codes
 401; Bremse über viele Herkünfte → 429 auch für den richtigen Code; Überschreibschutz 409; ohne Pfeffer 503/403; Zustand

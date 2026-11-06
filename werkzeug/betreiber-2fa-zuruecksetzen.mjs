@@ -13,11 +13,11 @@
    Aufruf (der Server ist vorher zu stoppen — die Ablage gehört immer nur
    einem Prozess; läuft er noch, bricht das Werkzeug ab):
 
-     docker compose stop app
+     docker compose -f deploy/compose.yml stop centric-dp-web
      printf '%s\n' 'BETREIBER-CODE' | \
        CENTRIC_DATEN=/pfad/zu/data CENTRIC_PFEFFER=... \
-       node werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs --ja
-     docker compose start app
+       node werkzeug/betreiber-2fa-zuruecksetzen.mjs --ja
+     docker compose -f deploy/compose.yml start centric-dp-web
 
    (Den Code per Pipe/Eingabe geben, nicht als Argument — Argumente stehen in
    der Prozessliste. Ohne Pipe fragt das Werkzeug nicht nach, sondern bricht ab.)
@@ -36,7 +36,7 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const imp = (p) => import(pathToFileURL(path.join(WURZEL, p)).href);
 const ab = (text) => { process.stderr.write(`FEHLER: ${text}\n`); process.exit(1); };
 

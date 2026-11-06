@@ -101,13 +101,21 @@ const w0 = await alsA((m) => { m.erfassung[`a1|${tag(-1)}`] = { start: null, end
 pruef("Neue Selbstauskunft im PUT: wirkungslos", w0.status === 200 && !(await erfassungL())[`a1|${tag(-1)}`], `Status ${w0.status}`);
 
 /* --- Legitim über den Endpunkt: Wie geplant, Abweichend --- */
+/* WP-15: Die Selbstauskunft ist ein Antrag; Ist wird sie erst durch die Freigabe der Leitung. */
 const w1 = await bestaetigen(tA, { datum: tag(-1), start: null, ende: null, grund: "" });
-pruef("„Wie geplant\": 200", w1.status === 200 && w1.eintrag && w1.eintrag.bestaetigt === true, `Status ${w1.status} ${w1.fehler || ""}`);
-pruef("… nach dem Neuladen vorhanden", !!(await erfassungL())[`a1|${tag(-1)}`]);
+pruef("„Wie geplant\": 200, Antrag offen, noch kein Ist", w1.status === 200 && w1.antrag && w1.antrag.status === "offen"
+  && w1.eintrag && w1.eintrag.bestaetigt === false, `Status ${w1.status} ${w1.fehler || ""}`);
+pruef("… nach dem Neuladen als Antrag vorhanden", (await erfassungL())[`a1|${tag(-1)}`]?.bestaetigt === false);
 const ABWEICHEND = { start: "06:00", ende: "15:15", bestaetigt: true, grund: "Übergabe verlängert" };
 const w2 = await bestaetigen(tA, { datum: tag(-2), start: "06:00", ende: "15:15", grund: "Übergabe verlängert" });
-pruef("„Abweichend\": 200", w2.status === 200, `Status ${w2.status} ${w2.fehler || ""}`);
-pruef("… nach dem Neuladen vorhanden", JSON.stringify((await erfassungL())[`a1|${tag(-2)}`]) === JSON.stringify(ABWEICHEND));
+pruef("„Abweichend\": 200, Abweichung markiert", w2.status === 200 && w2.antrag?.abweichung?.abweichend === true, `Status ${w2.status} ${w2.fehler || ""}`);
+const freiA = await rufe(tA, "selbstauskunft-entscheiden", "POST", { personId: "a1", datum: tag(-2), antragId: w2.antrag?.id, entscheidung: "genehmigt" });
+pruef("Die Beschäftigte gibt nicht frei: 403", freiA.status === 403, `Status ${freiA.status}`);
+const freiL = await rufe(tL, "selbstauskunft-entscheiden", "POST", { personId: "a1", datum: tag(-2), antragId: w2.antrag?.id, entscheidung: "genehmigt" });
+pruef("Die Leitung gibt frei: 200, jetzt Ist", freiL.status === 200, `Status ${freiL.status} ${freiL.fehler || ""}`);
+const istA = (await erfassungL())[`a1|${tag(-2)}`] || {};
+pruef("… nach dem Neuladen als Ist vorhanden", JSON.stringify({ start: istA.start, ende: istA.ende, bestaetigt: istA.bestaetigt, grund: istA.grund })
+  === JSON.stringify(ABWEICHEND));
 const wS = await bestaetigen(tS, { datum: tag(-1), start: null, ende: null, grund: "" });
 pruef("Schichtverantwortung, eigene Zeit: 200", wS.status === 200, `Status ${wS.status} ${wS.fehler || ""}`);
 

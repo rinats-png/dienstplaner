@@ -83,6 +83,10 @@ COPY werkzeug/ablage-pruefen.mjs werkzeug/journal-pruefen.mjs ./werkzeug/
 # sprechen fest http://127.0.0.1:3000 an. Genau diese drei Dateien.
 COPY werkzeug/staging-smoke.mjs werkzeug/staging-geo.mjs werkzeug/staging-aufraeumen.mjs ./werkzeug/
 
+# WP-32d: Betreiber-2FA. Die Wiederherstellung am Server (Datenordner, Pfeffer und Betreibercode noetig; docs/acc45/wp32d-nachweis.md)
+# und der Vorlauf, mit dem die Gate-Proben den zweiten Faktor ueber die API einrichten (nur die Proben laden ihn).
+COPY werkzeug/betreiber-2fa-zuruecksetzen.mjs werkzeug/betreiber-faktor-vorlauf.mjs ./werkzeug/
+
 # Datenverzeichnis gehört dem unprivilegierten Benutzer `node` (uid 1000).
 # Im Betrieb wird es durch einen Bind-Mount ersetzt (./data:/data).
 #

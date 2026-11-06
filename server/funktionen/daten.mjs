@@ -19,7 +19,7 @@ import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRa
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
+import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
   offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
@@ -29,6 +29,7 @@ import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
+import { selbstauskunftStellen, selbstauskunftEntscheiden } from "../lib/selbstauskunft.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, abgewiesenVermerken, letzteWiederoeffnung,
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.mjs";
@@ -1925,39 +1926,78 @@ export default async (req, context) => {
         const personZ = (mZ.personen || []).find((x) => String(x.id) === String(s.person));
         if (!personZ) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-        const kTag = `${personZ.id}|${datum}`;
         /* Monatsabschluss (WP-16): zuerst — ein abgeschlossener Monat nimmt keine Selbstauskunft an. */
         const sperreZ = abschlussSperre(mZ, String(datum ?? ""));
         if (sperreZ) {
           await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: Monat abgeschlossen ${sperreZ.monat}`, wer);
           return antwort({ fehler: sperreZ.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreZ.monat }, 409);
         }
-        if ((mZ.erfassung || {})[kTag]) {
-          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: schon erfasst`, { ...wer, tag: datum });
-          return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
+        /* WP-15: Die Selbstauskunft ist ein ANTRAG (lib/selbstauskunft.mjs): Abweichung und Stempelabgleich
+           rechnet der Server; Ist wird sie erst durch die Freigabe (POST /api/selbstauskunft-entscheiden). */
+        const rZ = selbstauskunftStellen(mZ, personZ, { personId: personZ.id, name: s.name || null, rolle: s.rolle }, String(datum),
+          { start, ende, grund, ...(pause === undefined || pause === null || pause === "" ? {} : { pause }) },
+          new Date(), `sa-${randomBytes(6).toString("hex")}`);
+        if ("status" in rZ) {
+          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: ${rZ.art ? rZ.art : rZ.status === 409 ? "schon erfasst" : spurGrund(rZ.grund)}`, { ...wer, tag: datum });
+          return antwort({ fehler: rZ.grund, ...(rZ.art ? { code: rZ.art } : {}) }, rZ.status);
         }
-        const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund,
-          ...(pause === undefined || pause === null || pause === "" ? {} : { pause }) });
-        if (urteilZ.grund) {
-          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: ${urteilZ.grund}`, { ...wer, tag: datum });
-          return antwort({ fehler: urteilZ.grund }, 422);
-        }
-        const neuerM = { ...mZ, erfassung: { ...(mZ.erfassung || {}), [kTag]: urteilZ.eintrag } };
         const ergZ = await bestandSchreiben(store, s.bestand,
-          { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? neuerM : x)) },
+          { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? rZ.mandant : x)) },
           { erwarteterStand: mitZ.stand, durch: s.name || "Selbstauskunft" });
         if (!ergZ.ok) {
           await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen`, { ...wer, tag: datum });
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
+        /* Spur ohne Zeiten und ohne Abweichungsangaben (Betreiber liest sie, WP-14b M1). */
         await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten`, { ...wer, tag: datum });
-        /* Hinweise zur Ist-Zeit (Pause § 4 ArbZG / § 11 JArbSchG u. a., WP-16) — keine Absage. */
-        const daZ = (mZ.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(mZ, personZ, String(datum))));
-        const eZ = urteilZ.eintrag;
-        const istZ = { start: eZ.start || (daZ && daZ.start), ende: eZ.ende || (daZ && daZ.ende),
-          pause: eZ.pause !== undefined ? eZ.pause : (daZ && Number(daZ.pause)) || 0 };
-        return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null,
-          hinweise: regelHinweise(mZ, personZ.id, String(datum), istZ) });
+        return antwort({ ok: true, datum, antrag: rZ.antrag, eintrag: rZ.eintrag, etag: ergZ.stand || null });
+      });
+    }
+
+    /* ------------- Selbstauskunft entscheiden (WP-15) -------------
+       Leitung und Planung (staff.edit) geben frei oder lehnen ab; die Person zieht
+       zurück. Freigabe = Ist (mit Regelhinweisen), nie die eigene, nie durch die
+       Schichtverantwortung oder den Betriebsrat. */
+    if (pfad === "selbstauskunft-entscheiden" && req.method === "POST") {
+      const kS = kennung(req, s);
+      const entscheidungS = rumpf && rumpf.entscheidung;
+      if (entscheidungS !== "zurueckgezogen" && (schreibumfang(s.rolle) === SCHREIBEN_NEIN || !darf(s.rolle, "staff.edit"))) {
+        await protokoll("schreiben", kS, "abgewiesen", `Selbstauskunft entscheiden · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: "Selbstauskünfte entscheiden Leitung und Planung." }, 403);
+      }
+      if (entscheidungS === "zurueckgezogen" && schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
+        await protokoll("schreiben", kS, "abgewiesen", `Selbstauskunft zurückziehen · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: absageText(s.rolle) }, 403);
+      }
+      const bS = await bremse("schreiben", kS);
+      if (!bS.frei) return zuVielAntwort(bS.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitS = await bestandLesenStreng(store, s.bestand);
+        if (!mitS) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mS = eigenerMandant(mitS.bestand, s);
+        if (!mS) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const sperreS = abschlussSperre(mS, String((rumpf && rumpf.datum) || ""));
+        if (sperreS) {
+          await protokoll("schreiben", kS, "abgewiesen", `Selbstauskunft entscheiden: Monat abgeschlossen ${sperreS.monat}`, wer);
+          return antwort({ fehler: sperreS.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreS.monat }, 409);
+        }
+        const r = selbstauskunftEntscheiden(mS, rumpf || {}, { personId: s.person, name: s.name || null, rolle: s.rolle }, new Date());
+        if ("status" in r) {
+          await protokoll("schreiben", kS, "abgewiesen", `Selbstauskunft entscheiden: ${spurGrund(r.grund)}`, wer);
+          return antwort({ fehler: r.grund, ...(r.art ? { code: r.art } : {}) }, r.status);
+        }
+        const ergS = await bestandSchreiben(store, s.bestand,
+          { ...mitS.bestand, mandanten: mitS.bestand.mandanten.map((x) => (x === mS ? r.mandant : x)) },
+          { erwarteterStand: mitS.stand, durch: s.name || "Selbstauskunft" });
+        if (!ergS.ok) {
+          await protokoll("schreiben", kS, "konflikt", "Selbstauskunft entscheiden", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        /* Wie beim Korrekturantrag (WP-14b M1): keine Person, kein Tag, keine Zeiten, keine Hinweiskennungen. */
+        await protokoll("schreiben", kS, "erfolg", `Selbstauskunft ${r.antrag.id}: ${r.antrag.status}${spurHinweise(r.hinweise)}`, wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, hinweise: r.hinweise || [], etag: ergS.stand || null });
       });
     }
 

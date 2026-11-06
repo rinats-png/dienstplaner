@@ -1794,7 +1794,9 @@ export const offeneErfassung = (m, p, bis) => {
     if (monatAbgeschlossen(m, d)) continue;
     const t = personTag(m, p, d);
     if (!t.dienstId) continue;
-    if (m.erfassung && m.erfassung[`${p.id}|${d}`]) continue;
+    /* WP-15: Ein abgelehnter oder zurückgezogener Antrag lässt sich neu stellen; offen/freigegeben/erfasst nicht. */
+    const erf = m.erfassung && m.erfassung[`${p.id}|${d}`];
+    if (erf && !(erf.selbstauskunft && ["abgelehnt", "zurueckgezogen"].includes(erf.selbstauskunft.status))) continue;
     out.push(d);
   }
   return out;

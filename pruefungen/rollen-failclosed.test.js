@@ -139,7 +139,7 @@ describe("Sitzung mit unbekannter Rolle", () => {
       for (const [pfad, methode, rumpf] of [["/api/bestand", "PUT", { bestand: l.bestand, etag: l.etag }],
         ["/api/vollausgabe", "GET"], ["/api/sicherung", "POST", {}], ["/api/sicherungen", "GET"],
         ["/api/stempeln", "POST", { art: "start" }], ["/api/zeit-bestaetigen", "POST", {}],
-        ["/api/stempel-korrektur", "POST", {}], ["/api/korrektur-antrag", "POST", {}], ["/api/korrektur-entscheiden", "POST", {}],
+        ["/api/stempel-korrektur", "POST", {}], ["/api/korrektur-antrag", "POST", {}], ["/api/korrektur-entscheiden", "POST", {}], ["/api/selbstauskunft-entscheiden", "POST", {}],
         ["/api/monatsabschluss", "POST", { aktion: "abschliessen", monat: "2026-01" }],
         ["/api/monatsabschluss", "POST", { aktion: "wiederoeffnen", monat: "2026-01", grund: "Sonde unbekannte Rolle" }]]) {
         const x = await anfrage(daten, pfad, { methode, token: T[name], rumpf });

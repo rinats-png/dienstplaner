@@ -24,6 +24,8 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+/* WP-32d: Betreibercodes brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
+import "../werkzeug/betreiber-faktor-vorlauf.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASIS = "http://127.0.0.1:3000";

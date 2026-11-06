@@ -34,7 +34,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ADMIN = process.env.CENTRIC_ADMIN || "testgeheim";
@@ -117,7 +117,8 @@ try {
     console.error(`Server kam nicht hoch:\n${serverLog}`);
   } else {
     console.log(`→ ${path.relative(WURZEL, pruefung)} gegen frischen Server ${basis}, Ablage ${daten}`);
-    status = await laufen(process.execPath, [pruefung], {
+    /* WP-32d: Betreibercodes brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
+    status = await laufen(process.execPath, ["--import", pathToFileURL(path.join(WURZEL, "werkzeug", "betreiber-faktor-vorlauf.mjs")).href, pruefung], {
       ...process.env, CENTRIC_BASIS: basis, CENTRIC_ADMIN: ADMIN,
     });
     if (status !== 0) console.error(`Serverprotokoll:\n${serverLog}`);

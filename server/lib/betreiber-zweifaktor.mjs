@@ -149,7 +149,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
          überschreiben — sonst könnte ein Dieb des Codes die Einrichtung des
          Betreibers durch seine eigene ersetzen. Eine abgebrochene Einrichtung
          setzt der Serverbetreiber offline zurück
-         (werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs). */
+         (werkzeug/betreiber-2fa-zuruecksetzen.mjs). */
       await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Überschreiben unter Pflicht verweigert");
       return { antwort: json({ fehler: "Eine Einrichtung ist bereits begonnen. Bitte mit dem Geheimnis "
         + "bestätigen oder durch den Serverbetreiber zurücksetzen lassen.", zweifaktor: "ausstehend" }, 409) };
@@ -232,6 +232,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
   /* Gewöhnliche Anmeldung. */
   if (stand.aktiv) { const r = await pruefen(); if (r) return { antwort: r }; }
   else if (pflicht) {
+    await codeRichtig();      // der Code war richtig; die Einrichtung ist der nächste Schritt, kein Rateversuch
     await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Pflicht, nicht eingerichtet");
     return { antwort: json({ fehler: "Für Betreiberzugänge ist ein zweiter Faktor Pflicht. Bitte zuerst "
       + "einrichten (zweifaktorAktion: beginnen, dann bestaetigen).", zweifaktor: "einrichten" }, 403) };
@@ -242,7 +243,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
 /**
  * Offline-Wiederherstellung (WP-32d): Der Betreiber hat Authenticator UND
  * Wiederherstellungscodes verloren. Läuft nur auf dem Server selbst, durch
- * werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs — es gibt keinen
+ * werkzeug/betreiber-2fa-zuruecksetzen.mjs — es gibt keinen
  * Netzweg dorthin und keine Vorgabe, die man erraten könnte.
  *
  * Voraussetzungen (alle fail-closed):
