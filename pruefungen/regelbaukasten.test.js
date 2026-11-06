@@ -428,6 +428,11 @@ describe("Dispatcher", () => {
     for (const r of REGELN.filter((x) => x.pruefstatus === "legacy_verified"))
       expect(() => pruefeRegel(r, {}), r.id).toThrow(/Bestandsregel/);
   });
+  it("Grenzregel mit Grenze aus Betriebsvorgabe (grenzeAus) ohne Eintrag ist offen, nie grün und kein Fehler", () => {
+    const r = pruefeRegel(REGELN.find((x) => x.id === "BEREIT-HOECHST-01"), { wert: 99 });
+    expect(r.status).toBe("offen");
+    expect(r.offen).toBe(true);
+  });
   it("die neuen Registerregeln der gerechneten Arten sind auswertbar", () => {
     for (const r of REGELN.filter((x) => x.pruefstatus !== "legacy_verified" && REGELARTEN_GERECHNET.includes(x.typ)))
       expect(() => pruefeRegel(r, {}), r.id).not.toThrow();

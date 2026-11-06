@@ -218,6 +218,9 @@ export function grenzregel(regelOderId, { wert, datum } = {}) {
   if (nein) return nein;
   const p = r.parameter || {};
   const hat = (x) => x !== undefined && x !== null;
+  /* Die Grenze trägt der Betrieb (`grenzeAus`, z. B. Höchstarbeitszeit Bereitschaft): ohne Eintrag keine Prüfung —
+     nicht bewertbar, kein Fehler. Eine Regel ganz ohne Grenzangabe bleibt ein Aufbaufehler. */
+  if (!hat(p.hoechstens) && !hat(p.mindestens) && p.grenzeAus) return offen(r, `Die Grenze (${p.grenzeAus}) ist vom Betrieb nicht eingetragen.`, null);
   if (!hat(p.hoechstens) && !hat(p.mindestens)) throw new Error(`Regelbaukasten: ${r.id} hat keine Grenze.`);
   if (typeof wert !== "number" || !Number.isFinite(wert)) return offen(r, `Der Wert „${p.groesse || "?"}" ist nicht bekannt.`, null);
   const fakten = { wert, groesse: p.groesse || null, hoechstens: hat(p.hoechstens) ? p.hoechstens : null, mindestens: hat(p.mindestens) ? p.mindestens : null };
