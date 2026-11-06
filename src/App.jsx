@@ -17,7 +17,7 @@ import { useSchutzkonflikte as useSchutzkonflikteBasis, vergissSchutzkonflikte }
 import { verknuepfungsZiel, verknuepfungAnwenden, ohneVerknuepfung } from "./verknuepfung.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
-  pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
+  pad, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, dauerAm, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
@@ -136,6 +136,8 @@ class Fehlerauffang extends Component {
    ========================================================================== */
 
 import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
+import { DOW, DOW_LANG, MON, heute, fLang, fKurz, fDatum } from "./lib/datum.js";
+import { n1, n2, sgn, n1Ist, sgnIst, eur, eur0, zahl, uid } from "./lib/format.js";
 import { Icon } from "./gestalt/icons.jsx";
 import { aufhellenBis } from "./gestalt/lesbar.js";
 import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
@@ -600,37 +602,10 @@ const GEMEINDE_FEIERTAGE = {
   TH: "In Thüringen gilt Fronleichnam nur in bestimmten Gemeinden.",
 };
 const gemeindeHinweis = (land) => GEMEINDE_FEIERTAGE[land] || null;
-const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-/* Ausgeschrieben für die Tagesliste auf dem Telefon — dort ist Platz,
-   und „Donnerstag" liest sich im Dienst schneller als „Do". */
-const DOW_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
-const MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-const heute = () => iso(new Date());
-const fLang = (s) => { const d = pISO(s); return `${DOW[dow(s)]}, ${d.getDate()}. ${MON[d.getMonth()]} ${d.getFullYear()}`; };
-const fKurz = (s) => (s ? `${pad(pISO(s).getDate())}.${pad(pISO(s).getMonth() + 1)}.` : "—");
-const fDatum = (s) => (s ? s.split("-").reverse().join(".") : "—");
-/* Zahlenformate fallen bei fehlendem Wert auf „–" zurück statt mit einem
-   TypeError die ganze Ansicht abzureißen (Browserprobe: „Anliegen" in der
-   Mobilansicht). Zahlen als Text werden gewandelt; null/undefined/NaN bleiben leer. */
-const zahlOder = (v, f) => {
-  const x = typeof v === "number" ? v : (v === null || v === undefined || v === "" ? NaN : Number(v));
-  return Number.isFinite(x) ? f(x) : "–";
-};
-const n1 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-const n2 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const sgn = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? (v >= 0 ? "+" : "−") + n1(Math.abs(v)) : "–");
-/* Ist-Stunden, Stundenkonto und Nachtstunden dürfen aus Datenschutzgründen
-   fehlen (E1, src/istdaten.js): null wird „–", nie 0 und nie ein Absturz. */
-const n1Ist = (v) => stundenText(v, n1);
-const sgnIst = (v) => stundenText(v, sgn);
-const eur = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }));
-const eur0 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }));
-const zahl = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE"));
 /* Ein Bestand, der nicht aus dem Demo-Aufbau stammt (leerer Betrieb, Neuinstallation),
    hat keinen Betreiberblock: die Betreiberkonsole stürzte darauf mit
    „Cannot read properties of undefined (reading 'steuersatz')" ab. */
 const BETREIBER_LEER = { firma: "", anschrift: "", ustId: "", iban: "", steuersatz: 19, zahlungsziel: 14 };
-const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 
 /* ------------------------ Feiertage aller Bundesländer -------------------- */
 const LAENDER = [["BW","Baden-Württemberg"],["BY","Bayern"],["BE","Berlin"],["BB","Brandenburg"],["HB","Bremen"],
