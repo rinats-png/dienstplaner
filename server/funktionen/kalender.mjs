@@ -343,7 +343,7 @@ export default async (req) => {
       const geheim = pfad.slice(5).replace(/\.ics$/, "");
       if (!geheim || geheim.length < 20) return new Response("Nicht gefunden", { status: 404 });
 
-      const b = await bremse("lesen", `f:${hash(geheim).slice(0, 16)}`);
+      const b = await bremse("feed", `f:${hash(geheim).slice(0, 16)}`);
       if (!b.frei) return zuVielAntwort(b.wartet);
 
       const eintrag = await store().get(`feed:${hash(geheim)}`, { type: "json" });

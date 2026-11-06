@@ -231,3 +231,11 @@ Review (Agent F): integrierbar mit Auflagen, keine Befunde im Werkzeug- oder Wor
 3. **Nicht nachgemessen nach WP-47:** S2 (PUT-Kontingent getrennt) und S5 (Mischlast mit Sicherung). Nachlauf als Backlog-Punkt; kein Blocker, da WP-47 die Dateizugriffe je Stempel nur verringert.
 4. **Folgepunkte aus den Laptop-Befunden 6 und 7** (nicht Teil dieses Pakets): `ENOENT` in der Sicherung; bei einem 500 mit gespeichertem Stempel darf der Client nicht blind wiederholen (Doppelstempel-Schutz über `clientEventId` aus WP-07 vorhanden, Verhalten prüfen).
 5. Kosmetik: Der Kommentar in `werkzeug/last/lauf.mjs` (Schreibbremse 120/min je Raum) beschreibt den Stand vor WP-47; die Eingabebeschreibung „voll ≈ 35 min“ weicht vom gemessenen ≈ 24 min ab.
+
+## WP-28b Nachtrag: Befund 6 behoben, S2/S5 noch nicht ausgewertet
+
+- **Befund 6 (ENOENT bei `sichern`)** ist mit WP-28b behoben: Eine Datei, die zwischen `readdir` und `stat`
+  verschwindet, gilt als Veränderung der Quelle und wird in der Wiederholungsschleife (3 Versuche) neu versucht.
+  Tests: `pruefungen/wp28b-sicherung-enoent.test.js`, Nachweis `docs/acc45/wp28b-nachweis.md`.
+- **Nachlauf S2/S5 (E-20):** Noch keine neuen Rohdaten. Der Lauf ist ein Handstart durch den Betreiber und
+  wurde im Paket nicht ausgeführt. Die Auswertung folgt, sobald die Rohdaten vorliegen.

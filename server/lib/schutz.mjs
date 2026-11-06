@@ -266,6 +266,23 @@ export const GRENZEN = {
   einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
+  /* Abrufe eines Kalender-Feeds je GEHEIMNIS (WP-47b). Eigene Art, damit ein
+     Kalender-Abruf nicht das Lesen der Anwendung bremst und umgekehrt. 30 je
+     Minute liegt am oberen Ende der Spanne 12–30; ein Kalenderprogramm fragt
+     alle paar Minuten. Fail closed: Ein Plattenfehler am Sperreintrag sperrt
+     das Geheimnis, statt es ungezählt durchzulassen (offene Frage: docs/acc45/
+     wp-kleinpakete-fragen.md, Feed-Grenze 12 oder 30). */
+  feed:       { versuche: 30,  fenster: 60,   sperre: 60, failClosed: true },
+  /* Bestandsabrufe je PERSON (WP-47b, Review 1): ein Gerät, das bei jedem Start
+     und jeder Stempelquittung liest, sperrt nur sich selbst. */
+  bestandlesen: { versuche: 300, fenster: 60, sperre: 60 },
+  /* Bytegrenze je RAUM für Bestandsabrufe (Review 1): kurze Sperre, fail closed.
+     Ein Plattenfehler am Sperreintrag sperrt den Raum kurz, nie stumm frei. */
+  "lesen-raum": { versuche: 300, fenster: 60, sperre: 15, failClosed: true },
+  /* Eigene Arten (Review 2): Vollausgabe mit Sicherungsschlüssel und die
+     Betriebsrat-Auswertung dürfen nicht über dieselbe Sperre wie der Bestand laufen. */
+  vollausgabe: { versuche: 300, fenster: 60, sperre: 60 },
+  auswertung:  { versuche: 300, fenster: 60, sperre: 60 },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
   /* Stempeln (WP-47). Eigene Arten, damit eine Stempelspitze weder die
      Planung (schreiben) blockiert noch von ihr gebremst wird.
@@ -351,6 +368,31 @@ export const GRENZEN = {
   zweifaktor: { versuche: 5, fenster: 300, sperre: 900, steigend: true, max: 86400,
     failClosed: true },
 };
+
+/* Raum-Bytegrenze für Bestandsabrufe (WP-47b, WP-28 Befund 5). Gemessen: ein
+   Kern schafft bei 4,6-MB-Beständen rund 200 Antworten je Minute. Die Grenze
+   ist eine Bytemenge je Minute, geteilt durch die Größe der letzten Antwort.
+   Gewählt: 1,2 GB/min = 240 Antworten bei 5 MB, 260 bei 4,6 MB. Damit passt ein
+   realistischer Schichtwechsel (200 Beschäftigte × 2 Abrufe in 2 Minuten, 5 MB)
+   hindurch. ACHTUNG: Das liegt über der einzelnen Messung (≈ 200/min bei
+   4,6 MB) — die Grenze schützt also nicht sicher vor Kernsättigung. Offen,
+   siehe docs/acc45/wp-kleinpakete-fragen.md, Frage 2. Die Grenze wirkt nur als
+   kurze Sperre (15 s) je Raum; Aussperren über längere Zeit gibt es nicht. */
+export const LESEN_BYTES_JE_MINUTE = 1_200_000_000;
+/** Angenommene Größe, solange die Größe eines Raums nicht bekannt ist: streng. */
+export const LESEN_GROESSE_UNBEKANNT = 10_000_000;
+
+/**
+ * Wie viele Bestandsabrufe je Minute ein Raum mit dieser Antwortgröße (Bytes)
+ * bekommt. Fail closed: unbekannte, leere oder ungültige Größe zählt wie
+ * LESEN_GROESSE_UNBEKANNT. Nie unter 1.
+ * @param {number} [bytes]
+ * @returns {number}
+ */
+export function lesenGrenze(bytes) {
+  const b = Number.isFinite(bytes) && bytes > 0 ? bytes : LESEN_GROESSE_UNBEKANNT;
+  return Math.max(1, Math.min(GRENZEN.lesen.versuche, Math.floor(LESEN_BYTES_JE_MINUTE / b)));
+}
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
 export const WEITERE = {
@@ -731,9 +773,17 @@ export function herkunftStreng(req) {
  * und ein unlesbarer Sperreintrag gilt als Sperre. `fehler` im Ergebnis
  * meldet den Ausfall an den Aufrufer.
  */
-export async function bremse(art, kennung, ziel) {
-  const g = GRENZEN[art];
-  if (!g) return { frei: true };
+export async function bremse(art, kennung, ziel, optionen = {}) {
+  const basisG = GRENZEN[art];
+  if (!basisG) return { frei: true };
+  /* Eigene Grenze dieses Aufrufs (WP-47b: Lesebremse nach Bestandsgröße).
+     Alles andere — Fenster, Sperre, failClosed — bleibt die der Art. */
+  /* Erst abrunden, dann mindestens 1: eine Grenze von 0 würde jeden Aufruf sperren,
+     0,5 darf nicht zu 0 werden. Eine angegebene, aber nicht endliche Grenze zählt
+     wie der Vorgabewert. */
+  const g = Number.isFinite(optionen?.versuche)
+    ? { ...basisG, versuche: Math.max(1, Math.floor(optionen.versuche)) }
+    : basisG;
   /** Die Vermerke, die dieser Aufruf für Ziel und Gesamt angelegt hat — nach
       einer gelungenen Anmeldung werden genau sie zurückgenommen (anmeldungGelungen). */
   const zurueck = [];

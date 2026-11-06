@@ -1,7 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
-  protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
+  protokoll, notbremse, notentlasten, lesenGrenze } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
@@ -9,7 +9,7 @@ import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaet
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
-import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
+import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -65,11 +65,6 @@ import { sitzungsSpeicher as sitzungen,
 const laden = () => getStore({ name: "centric", consistency: "strong" });
 
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
-const gleich = (a, b) => {
-  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
-  return x.length === y.length && timingSafeEqual(x, y);
-};
-
 const antwort = (daten, status = 200, kopf = {}) =>
   new Response(JSON.stringify(daten), {
     status,
@@ -122,6 +117,23 @@ function groesseMerken(raum, bestand) {
       raumGroesse.set(String(raum), n);
     }
   } catch { /* nur eine Schätzung */ }
+}
+
+/* Antwortgröße je Raum in Bytes, zwischengespeichert je Stand (WP-47b): Die
+   Lesebremse richtet ihre Grenze nach der Größe der letzten Antwort. Ein neuer
+   Stand ersetzt den Eintrag (Standwechsel widerruft ihn). Gespeichert wird nur
+   die Zahl, nie der Bestand. Nach einem Neustart gilt die strenge Vorgabe. */
+const raumBytes = new Map();
+function bytesMerken(raum, mit) {
+  try {
+    const alt = raumBytes.get(String(raum));
+    /* Stand allein reicht nicht: der Stand „alt“ wechselt nie (Altformat) — deshalb auch die Zeit. */
+    if (alt && alt.stand === mit.stand && alt.zeit === mit.zeit) return alt.bytes;
+    const bytes = Buffer.byteLength(JSON.stringify(mit.bestand), "utf8");
+    if (raumBytes.size > 5000) raumBytes.clear();
+    raumBytes.set(String(raum), { stand: mit.stand, zeit: mit.zeit, bytes });
+    return bytes;
+  } catch { return null; }
 }
 
 async function rumpfLesen(req) {
@@ -947,10 +959,16 @@ export default async (req, context) => {
        aber nicht die Anschriften und Krankheitsgründe ihrer Kolleginnen —
        siehe lib/rechte.mjs. */
     if (pfad === "bestand" && req.method === "GET") {
-      const bl = await bremse("lesen", kennung(req, s));
-      if (!bl.frei) return zuVielAntwort(bl.wartet);
+      /* Lesen je Person (WP-47b, Review 1): ein Gerät sperrt nur sich selbst. */
+      const bp = await bremse("bestandlesen", kennungPerson(s));
+      if (!bp.frei) return zuVielAntwort(bp.wartet);
+      /* Zusätzlich die Bytegrenze je Raum: unbekannte Größe zählt streng. Kurze Sperre. */
+      const bg = await bremse("lesen-raum", kennungRaum(s.bestand), undefined,
+        { versuche: lesenGrenze(raumBytes.get(String(s.bestand))?.bytes) });
+      if (!bg.frei) return zuVielAntwort(bg.wartet);
       const mit = await bestandJetzt();
       if (mit) groesseMerken(s.bestand, mit.bestand);
+      if (mit) bytesMerken(s.bestand, mit);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s) });
@@ -969,7 +987,7 @@ export default async (req, context) => {
        Prozess blockiert nie. export.data steuert nur die Schaltfläche der
        Oberfläche: Der CSV-Export enthält genau diese Zahlen, nichts darüber hinaus. */
     if (pfad === "br-auswertung" && req.method === "GET") {
-      const bl = await bremse("lesen", kennung(req, s));
+      const bl = await bremse("auswertung", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
       if (s.rolle !== "betriebsrat" || !darf(s.rolle, "audit.view")) {
         await protokoll("lesen", kennung(req, s), "abgewiesen", `Auswertung Betriebsrat, Rolle ${s.rolle}`, wer);
@@ -2054,7 +2072,7 @@ export default async (req, context) => {
       if (s.rolle !== "leitung" && !s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung darf den ganzen Bestand ausgeben.",
           text: absageText(s.rolle) }, 403);
-      const bv = await bremse("lesen", kennung(req, s));
+      const bv = await bremse("vollausgabe", kennung(req, s));
       if (!bv.frei) return zuVielAntwort(bv.wartet);
       const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);

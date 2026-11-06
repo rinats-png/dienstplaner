@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
@@ -27,7 +27,6 @@ import { TESTTAGE } from "../lib/aufraeumen.mjs";
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
-const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
 const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -153,7 +152,7 @@ export default async (req) => {
 
     return antwort({ ok: true, raum, zugaenge, branche: br,
       laeuftAb, testtage: TESTTAGE });
-  } catch (e) {
+  } catch {
     return antwort({ fehler: "Das hat nicht geklappt. Versuch es noch einmal." }, 500);
   }
 };
