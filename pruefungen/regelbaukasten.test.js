@@ -418,7 +418,8 @@ describe("Dispatcher", () => {
     expect(() => pruefeRegel("GIBT-ES-NICHT-01", {})).toThrow(/nicht im Register/);
   });
   it("eine nicht gerechnete Regelart wirft, statt still zu bestehen", () => {
-    expect(() => pruefeRegel(R({ typ: "musterregel" }), {})).toThrow(/noch nicht gerechnet/);
+    /* WP-I3: Musterregel ist jetzt gerechnet; ein Platzhalter-Typ zeigt weiter, dass Unbekanntes nie still besteht. */
+    expect(() => pruefeRegel(R({ typ: "zauberregel" }), {})).toThrow(/noch nicht gerechnet/);
   });
   it("eine Regel falscher Art wirft", () => {
     expect(() => zaehlregel("BESCH-WERKSTUDENT-01", {})).toThrow(/keine zaehlregel/);
