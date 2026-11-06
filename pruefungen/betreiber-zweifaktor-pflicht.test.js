@@ -343,6 +343,113 @@ describe("Vorlauf für Prüfläufe (werkzeug/betreiber-faktor-vorlauf.mjs)", () 
   });
 });
 
+describe("Review-Nachträge WP-32d", () => {
+  it("1. Verwalterschlüssel: in production ohne Flag Pflicht — /einrichten (Anlegen eines Betreibercodes) verlangt zuerst den Faktor; /einrichten/zweifaktor bleibt offen", async () => {
+    const einrichten = (await import("../server/funktionen/einrichten.mjs")).default;
+    process.env.CENTRIC_ADMIN = "pruef-admin-schluessel";
+    delete process.env.CENTRIC_ZWEIFAKTOR_PFLICHT;
+    const post = (pfad, rumpf) => einrichten(new Request(`http://${WIRT}/einrichten${pfad}`, { method: "POST",
+      headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json", "x-forwarded-for": `10.55.${nr++ % 250}.1` },
+      body: JSON.stringify({ verwaltung: "pruef-admin-schluessel", ...rumpf }) }));
+    const neuerCode = { name: "Konsole", bestand: "r-verwalter", rolle: "betreiber", person: null, betrieb: 0 };
+    try {
+      vi.stubEnv("NODE_ENV", "test");
+      const test = await post("", neuerCode);
+      expect(test.status).not.toBe(403);                         // Entwicklung: wie bisher
+      vi.stubEnv("NODE_ENV", "production");
+      const prod = await post("", neuerCode);
+      expect(prod.status).toBe(403);
+      expect((await prod.json()).zweifaktor).toBe("einrichten");
+      const b = await (await post("/zweifaktor", { aktion: "beginnen" })).json();
+      expect(b.geheimnis).toBeTruthy();
+    } finally { delete process.env.CENTRIC_ADMIN; vi.unstubAllEnvs(); }
+  });
+
+  it("2. Abschalten unter Pflicht: 409, der Faktor bleibt, auch mit gültigem Code", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const AB = "REV2-ABSC-HALT";
+      const f = await einrichten(AB);
+      uhr(jetzt + 30_000);
+      const r = await anmelden({ zugangscode: AB, zweifaktorAktion: "abschalten", zweifaktor: code(f.geheimnis) });
+      expect(r.status).toBe(409);
+      expect(r.zweifaktor).toBe("pflicht");
+      expect((await anmelden({ zugangscode: AB })).status).toBe(401);       // Faktor gilt weiter
+      uhr(jetzt + 30_000);
+      expect((await anmelden({ zugangscode: AB, zweifaktor: code(f.geheimnis) })).status).toBe(200);
+      /* Ohne Pflicht (Entwicklung) bleibt Abschalten möglich. */
+      vi.stubEnv("NODE_ENV", "test");
+      uhr(jetzt + 30_000);
+      const ab2 = await anmelden({ zugangscode: AB, zweifaktorAktion: "abschalten", zweifaktor: code(f.geheimnis) });
+      expect(ab2.status, ab2.roh).toBe(200);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("3. Eine begonnene Einrichtung verfällt nach 15 Minuten; vorher 409, danach neu beginnen", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const EV = "REV3-VERF-ALL";
+      await konto(EV, "betreiber");
+      const b1 = await anmelden({ zugangscode: EV, zweifaktorAktion: "beginnen" });
+      expect(b1.geheimnis).toBeTruthy();
+      uhr(jetzt + 14 * 60_000);
+      expect((await anmelden({ zugangscode: EV, zweifaktorAktion: "beginnen" })).status).toBe(409);
+      uhr(jetzt + 2 * 60_000);                                                // 16 Minuten nach dem Beginn
+      const spaet = await anmelden({ zugangscode: EV, zweifaktorAktion: "bestaetigen", zweifaktor: code(b1.geheimnis) });
+      expect(spaet.status).toBe(409);                                         // keine Einrichtung mehr offen
+      expect(spaet.wiederherstellung).toBeUndefined();
+      const b2 = await anmelden({ zugangscode: EV, zweifaktorAktion: "beginnen" });
+      expect(b2.status, b2.roh).toBe(200);
+      expect(b2.geheimnis).not.toBe(b1.geheimnis);
+      const alle = async (d) => { let t = ""; for (const e of await readdir(d, { withFileTypes: true })) { const p = path.join(d, e.name); t += e.isDirectory() ? await alle(p) : await readFile(p, "utf8"); } return t; };
+      const spur = await alle(wurzel);
+      expect(spur).toMatch(/Überschreiben einer begonnenen Einrichtung verweigert/);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("4. Start in production beendet Betreibersitzungen ohne Faktor, nicht die mit Faktor und nicht andere Rollen", async () => {
+    const E = "REV4-MIT-FAKTOR";
+    const f = await einrichten(E);
+    expect(f.geheimnis).toBeTruthy();
+    const ohneCode = "REV4-OHNE-FAKT";
+    await konto(ohneCode, "betreiber");
+    const sitz = (konto_, rolle) => S.sitzungAnlegen({ bestand: "betreiber-probe", name: "x", rolle, person: null, betrieb: 0,
+      mandantId: null, konto: konto_ }, 3600_000);
+    const mit = await sitz(C.ablageSchluessel(E), "betreiber");
+    const ohne = await sitz(C.ablageSchluessel(ohneCode), "betreiber");
+    const leit = await sitz(C.ablageSchluessel("REV4-LEIT-UNG"), "leitung");
+    const vorhanden = async (t) => !!(await S.sitzungsSpeicher().get(S.sitzungsSchluessel(t.token), { type: "json" }));
+    expect((await Z.betreiberSitzungenOhneFaktorBeenden(laden(), { NODE_ENV: "test" })).beendet).toBe(0);   // keine Pflicht: nichts
+    expect(await vorhanden(ohne)).toBe(true);
+    const r = await Z.betreiberSitzungenOhneFaktorBeenden(laden(), { NODE_ENV: "production" });
+    expect(r.beendet).toBeGreaterThanOrEqual(1);
+    expect(await vorhanden(ohne)).toBe(false);
+    expect(await vorhanden(mit)).toBe(true);
+    expect(await vorhanden(leit)).toBe(true);
+  });
+
+  it("5. Eine Prüfung für „Auslieferung“: normalisiert, in allen Stellen dieselbe", async () => {
+    const { istProduktion } = await import("../server/lib/umgebung.mjs");
+    for (const w of ["production", " Production ", "PRODUCTION"]) expect(istProduktion({ NODE_ENV: w }), w).toBe(true);
+    for (const w of ["", "test", "prod", undefined]) expect(istProduktion({ NODE_ENV: w }), String(w)).toBe(false);
+    const { pruefLinkErlaubt } = await import("../server/lib/post.mjs");
+    const alt = { r: process.env.RESEND_API_KEY, l: process.env.CENTRIC_PRUEFLINK };
+    delete process.env.RESEND_API_KEY; process.env.CENTRIC_PRUEFLINK = "ja";
+    try {
+      vi.stubEnv("NODE_ENV", "test");
+      expect(pruefLinkErlaubt()).toBe(true);
+      vi.stubEnv("NODE_ENV", " Production ");
+      expect(pruefLinkErlaubt()).toBe(false);                    // früher: „ Production “ !== „production“ → erlaubt
+    } finally { vi.unstubAllEnvs(); if (alt.r !== undefined) process.env.RESEND_API_KEY = alt.r; if (alt.l === undefined) delete process.env.CENTRIC_PRUEFLINK; else process.env.CENTRIC_PRUEFLINK = alt.l; }
+    const { pushEndpunktErlaubt } = await import("../server/lib/pushziel.mjs");
+    vi.stubEnv("NODE_ENV", " Production ");
+    try { expect(pushEndpunktErlaubt("https://probe.example/push/abc")).toBe(false); } finally { vi.unstubAllEnvs(); }
+    const q = (await readFile(path.join(WURZEL_REPO, "server/lib/versand.mjs"), "utf8")) + (await readFile(path.join(WURZEL_REPO, "server/lib/pushziel.mjs"), "utf8"))
+      + (await readFile(path.join(WURZEL_REPO, "server/lib/post.mjs"), "utf8"));
+    expect(q).not.toMatch(/NODE_ENVs*[!=]==/);
+  });
+});
+
 describe("Quelltext-Invarianten", () => {
   it("Sitzungen entstehen nur in daten.mjs und betriebsauswahl.mjs; Betreiber nur über /api/anmelden mit der Prüfung davor", async () => {
     const dateien = [];

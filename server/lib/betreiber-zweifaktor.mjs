@@ -29,6 +29,7 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
+import { istProduktion } from "./umgebung.mjs";
 import { ablageSchluessel, altHash } from "./codes.mjs";
 import { kontoLesen } from "./konten.mjs";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
@@ -49,7 +50,7 @@ import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorB
  * @param {Record<string, string|undefined>} [env]
  */
 export function betreiberPflicht(env = process.env) {
-  if (String(env.NODE_ENV || "").trim().toLowerCase() === "production") return true;
+  if (istProduktion(env)) return true;
   return String(env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
 }
 
@@ -150,7 +151,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
          Betreibers durch seine eigene ersetzen. Eine abgebrochene Einrichtung
          setzt der Serverbetreiber offline zurück
          (werkzeug/betreiber-2fa-zuruecksetzen.mjs). */
-      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Überschreiben unter Pflicht verweigert");
+      await protokoll("zweifaktor", k, "warnung", `Betreiber · Überschreiben einer begonnenen Einrichtung verweigert (seit ${stand.ausstehendSeitMin} min)`);
       return { antwort: json({ fehler: "Eine Einrichtung ist bereits begonnen. Bitte mit dem Geheimnis "
         + "bestätigen oder durch den Serverbetreiber zurücksetzen lassen.", zweifaktor: "ausstehend" }, 409) };
     }
@@ -209,6 +210,14 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
 
   if (aktion === "abschalten") {
     if (!stand.aktiv) return { antwort: json({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409) };
+    /* WP-32d (Review 2): Unter Pflicht gibt es kein Abschalten über den Netzweg. Wer Code und einen abgefangenen
+       Code der App hat, würde sonst abschalten, ein eigenes Gerät einrichten und den Betreiber aussperren.
+       Gerätewechsel und Verlust: offline (werkzeug/betreiber-2fa-zuruecksetzen.mjs). */
+    if (pflicht) {
+      await protokoll("zweifaktor", k, "warnung", "Betreiber · Abschalten unter Pflicht verweigert");
+      return { antwort: json({ fehler: "Unter Pflicht lässt sich der zweite Faktor nicht über das Netz abschalten. "
+        + "Gerätewechsel oder Verlust: der Serverbetreiber setzt ihn offline zurück.", zweifaktor: "pflicht" }, 409) };
+    }
     const r = await pruefen(); if (r) return { antwort: r };
     /* B-M2: erst Sitzungen beenden; scheitert das, bleibt der Faktor. */
     const vorher = await sitzungenBeenden();
@@ -286,4 +295,31 @@ export async function betreiberZweifaktorZuruecksetzen({ store, code }) {
   await protokoll("zweifaktor", "offline", "warnung",
     `Betreiber · offline zurückgesetzt · ${sit.beendet + nach.beendet} Sitzungen beendet`);
   return { ok: true, geheimnis: erg.geheimnis, otpauth: erg.otpauth, sitzungenBeendet: sit.beendet + nach.beendet };
+}
+
+/**
+ * Beim Start in der Auslieferung (Review 4): Betreibersitzungen, deren Code keinen aktiven zweiten Faktor hat,
+ * stammen aus der Zeit vor der Pflicht (oder aus einem Umweg) und enden — sonst liefen sie bis zu zwei Stunden
+ * weiter. Außerhalb der Pflicht geschieht nichts. Ein Lesefehler beendet die Sitzung (fail-closed).
+ * Die Faktor-Kennung folgt dem Schlüssel des Codes in der Sitzung (`konto`); trägt sie noch den alten
+ * Schlüssel, endet die Sitzung ebenfalls — der Betreiber meldet sich dann einmal neu an.
+ * @returns {Promise<{geprueft: number, beendet: number, fehler: number}>}
+ */
+export async function betreiberSitzungenOhneFaktorBeenden(store, env = process.env) {
+  if (!betreiberPflicht(env)) return { geprueft: 0, beendet: 0, fehler: 0 };
+  const konten = new Set();
+  let geprueft = 0;
+  const l = await sitzungenBeendenWenn((sit) => {
+    if (sit && sit.rolle === "betreiber") { geprueft += 1; konten.add(String(sit.konto || "")); }
+    return false;
+  });
+  const ohne = new Set();
+  for (const konto of konten) {
+    let aktiv = false;
+    try { aktiv = konto !== "" && (await zweifaktorStand(store, betreiberZweifaktorId(konto))).aktiv; } catch { aktiv = false; }
+    if (!aktiv) ohne.add(konto);
+  }
+  if (!ohne.size) return { geprueft, beendet: 0, fehler: l.fehler };
+  const r = await sitzungenBeendenWenn((sit) => !!sit && sit.rolle === "betreiber" && ohne.has(String(sit.konto || "")));
+  return { geprueft, beendet: r.beendet, fehler: l.fehler + r.fehler };
 }

@@ -259,6 +259,9 @@ describe("Monatsabschluss und Reine Funktionen", () => {
     const abgelehnt = { ...synth, erfassung: { ...synth.erfassung, [k]: { ...synth.erfassung[k],
       selbstauskunft: { ...synth.erfassung[k].selbstauskunft, status: "abgelehnt" } } } };
     expect(offenePunkte(abgelehnt, monat).antraege).toBe(ohne.antraege);
+    expect(offenePunkte(abgelehnt, monat).zurPruefung).toBe(ohne.zurPruefung);            // Review 8: kein Prüffall
+    const zurueck = { ...abgelehnt, erfassung: { ...abgelehnt.erfassung, [k]: { ...abgelehnt.erfassung[k], selbstauskunft: { ...abgelehnt.erfassung[k].selbstauskunft, status: "zurueckgezogen" } } } };
+    expect(offenePunkte(zurueck, monat).zurPruefung).toBe(ohne.zurPruefung);
   });
 
   it("selbstauskunftEntscheiden verändert den übergebenen Betrieb nicht (rein)", async () => {
@@ -274,6 +277,81 @@ describe("Monatsabschluss und Reine Funktionen", () => {
     expect(e.eintrag.bestaetigt).toBe(true);
     expect(abweichungVomPlan(m, p, tag(-10), { start: null, ende: null }).abweichend).toBe(false);
     expect(abweichungVomPlan(m, p, tag(-4000), { start: null, ende: null })).toBe(null);
+  });
+});
+
+describe("Review-Nachträge WP-15", () => {
+  const rufe = async (methode, pfad, tok, rumpf) => {
+    nr += 1;
+    const a = await daten(new Request(`http://${WIRT}/api/${pfad}`, { method: methode, headers: { host: WIRT, origin: `http://${WIRT}`,
+      "content-type": "application/json", authorization: `Bearer ${tok}`, "x-forwarded-for": `10.16.${Math.floor(nr / 250) % 250}.${nr % 250}` },
+      ...(rumpf ? { body: JSON.stringify(rumpf) } : {}) }), {});
+    const text = await a.text(); let d = {}; try { d = JSON.parse(text); } catch { /* leer */ }
+    return { status: a.status, roh: text, ...d };
+  };
+
+  it("6. Vier-Augen nicht über PUT /api/bestand umgehbar: Planerin setzt den eigenen Antrag auf genehmigt / bestätigt / entfernt den Antrag-Teil → 403, Serverstand bleibt", async () => {
+    const tp = await token("p1");
+    const t = tag(-8);
+    expect((await anfrage("zeit-bestaetigen", { token: tp, rumpf: sa(t, { start: "05:00", ende: "15:00", grund: "eigene Behauptung" }) })).status).toBe(200);
+    const k = `p1|${t}`;
+    const vorher = JSON.stringify((await antragVon("p1", t)));
+    const versuche = {
+      status_genehmigt: (e) => ({ ...e, start: "05:00", ende: "15:00", bestaetigt: true,
+        selbstauskunft: { ...e.selbstauskunft, status: "genehmigt", entschieden: { durch: { personId: "l1" }, wann: "2026-11-05T08:00:00Z" } } }),
+      nur_bestaetigt: (e) => ({ ...e, start: "05:00", ende: "15:00", bestaetigt: true }),
+      antrag_entfernt: (e) => ({ start: "05:00", ende: "15:00", bestaetigt: true, grund: "" }),
+      entschieden_gefaelscht: (e) => ({ ...e, selbstauskunft: { ...e.selbstauskunft, entschieden: { durch: { personId: "l1" } } } }),
+      vorschlag_geaendert: (e) => ({ ...e, selbstauskunft: { ...e.selbstauskunft, vorschlag: { start: "01:00", ende: "23:00" } } }),
+    };
+    for (const [name, f] of Object.entries(versuche)) {
+      const g = await rufe("GET", "bestand", tp);
+      expect(g.status, g.roh).toBe(200);
+      const bestand = JSON.parse(JSON.stringify(g.bestand));
+      bestand.mandanten[0].erfassung[k] = f(bestand.mandanten[0].erfassung[k]);
+      const p = await rufe("PUT", "bestand", tp, { bestand, etag: g.etag });
+      expect(p.status, `${name}: ${p.roh.slice(0, 200)}`).toBe(403);
+      expect(JSON.stringify(await antragVon("p1", t)), name).toBe(vorher);
+    }
+    /* Neuer, erfundener Antrag über das Speichern. */
+    const g2 = await rufe("GET", "bestand", tp);
+    const b2 = JSON.parse(JSON.stringify(g2.bestand));
+    b2.mandanten[0].erfassung[`p1|${tag(-9)}`] = { start: null, ende: null, bestaetigt: false, selbstauskunft: { id: "sa-fake", status: "offen", von: { personId: "p1" },
+      gestellt: "2026-11-05T08:00:00Z", vorschlag: { start: null, ende: null }, grund: "", wieGeplant: true, abweichung: null, stempel: "keiner", entschieden: null } };
+    const p2 = await rufe("PUT", "bestand", tp, { bestand: b2, etag: g2.etag });
+    expect(p2.status).toBe(403);
+    expect((await mandant()).erfassung[`p1|${tag(-9)}`]).toBeUndefined();
+  });
+
+  it("7. „wie geplant“: Hat sich der Plan seit dem Antrag geändert (Dienstzeiten), ist die Freigabe verweigert (409 PLAN_GEAENDERT)", async () => {
+    const m = await mandant();
+    const p = m.personen.find((x) => x.id === "a1");
+    const r = selbstauskunftStellen(m, p, { personId: "a1" }, tag(-11), { start: null, ende: null, grund: "" }, new Date(), "sa-plan");
+    expect(r.status, r.grund).toBeUndefined();
+    expect(r.antrag.wieGeplant).toBe(true);
+    const gleich = selbstauskunftEntscheiden(r.mandant, { personId: "a1", datum: tag(-11), antragId: "sa-plan", entscheidung: "genehmigt" }, { personId: "l1" }, new Date());
+    expect(gleich.status, gleich.grund).toBeUndefined();
+    const anders = { ...r.mandant, dienstarten: r.mandant.dienstarten.map((d) => (d.id === "F" ? { ...d, start: "07:00", ende: "15:00" } : d)) };
+    const e = selbstauskunftEntscheiden(anders, { personId: "a1", datum: tag(-11), antragId: "sa-plan", entscheidung: "genehmigt" }, { personId: "l1" }, new Date());
+    expect(e.status).toBe(409);
+    expect(e.art).toBe("PLAN_GEAENDERT");
+    const pause = { ...r.mandant, dienstarten: r.mandant.dienstarten.map((d) => (d.id === "F" ? { ...d, pause: 45 } : d)) };
+    expect(selbstauskunftEntscheiden(pause, { personId: "a1", datum: tag(-11), antragId: "sa-plan", entscheidung: "genehmigt" }, { personId: "l1" }, new Date()).art).toBe("PLAN_GEAENDERT");
+  });
+
+  it("10. Stempelabgleich: ein abgeschlossener Nachtdienst vom Vortag, der in den Tag hineinreicht, blockiert", () => {
+    const m = { einstempeln: { [`a1|${tag(-5)}`]: { start: "22:00", ende: "06:00", endeDatum: tag(-4) } } };
+    expect(stempelAbgleich(m, "a1", tag(-4))).toMatchObject({ ok: false, art: "VORTAG_REICHT_HINEIN" });
+    expect(stempelAbgleich(m, "a1", tag(-3))).toEqual({ ok: true });
+    const kurz = { einstempeln: { [`a1|${tag(-5)}`]: { start: "06:00", ende: "14:00" } } };
+    expect(stempelAbgleich(kurz, "a1", tag(-4))).toEqual({ ok: true });
+  });
+
+  it("9. (offen, dokumentiert) Ein Zugang ohne Person bekommt 400 — kein Antrag, keine Entscheidung", async () => {
+    const tok = (await sitzungAnlegen({ bestand: RAUM, name: "Leitung ohne Person", rolle: "leitung", person: null, betrieb: 0, mandantId: "m1", einheit: null }, 3600_000)).token;
+    const r = await anfrage("selbstauskunft-entscheiden", { token: tok, rumpf: { personId: "a1", datum: tag(-1), antragId: "x", entscheidung: "genehmigt" } });
+    expect(r.status).toBe(400);
+    expect((await anfrage("zeit-bestaetigen", { token: tok, rumpf: sa(tag(-1)) })).status).toBe(400);
   });
 });
 

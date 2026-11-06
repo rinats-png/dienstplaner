@@ -55,6 +55,14 @@ if [ -z "${CENTRIC_ADMIN:-}" ]; then
   exit 1
 fi
 
+# WP-32d: In der Auslieferung ist der zweite Faktor auch für den Verwalterschlüssel Pflicht. Einen Nachweis (15 Minuten,
+# nur für diesen Schlüssel) stellt POST /einrichten/zweifaktor {"aktion":"nachweis","zweifaktor":"<Code>"} aus; er geht
+# als Kopf mit. Ohne CENTRIC_ZWEIFAKTOR_NACHWEIS wird nichts mitgeschickt.
+ZF_KOPF=()
+if [ -n "${CENTRIC_ZWEIFAKTOR_NACHWEIS:-}" ]; then
+  ZF_KOPF=(-H "x-centric-zweifaktor-nachweis: ${CENTRIC_ZWEIFAKTOR_NACHWEIS}")
+fi
+
 for werkzeug in curl jq; do
   if ! command -v "$werkzeug" >/dev/null 2>&1; then
     echo "$werkzeug fehlt. Bitte installieren (apt install $werkzeug)." >&2
@@ -70,7 +78,7 @@ fi
 
 # Ein Aufruf gegen /einrichten. Gibt die rohe Antwort aus.
 einrichten() {
-  curl -sS -X POST "$SITE/einrichten" \
+  curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} -X POST "$SITE/einrichten" \
     -H "content-type: application/json" \
     -H "authorization: Bearer $CENTRIC_ADMIN" \
     -d "$1"
@@ -96,7 +104,7 @@ code_aus() {
 # Selbststarts. Ohne Codes, ohne Prüfsummen — nur das, was zum Vergleich
 # nötig ist.
 # --------------------------------------------------------------------------
-UEBERSICHT=$(curl -sS "$SITE/einrichten/uebersicht?bestand=$RAUM" \
+UEBERSICHT=$(curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} "$SITE/einrichten/uebersicht?bestand=$RAUM" \
   -H "authorization: Bearer $CENTRIC_ADMIN")
 if ! printf '%s' "$UEBERSICHT" | jq -e '.zugaenge' >/dev/null 2>&1; then
   echo "FEHLGESCHLAGEN: Übersicht von $SITE nicht lesbar." >&2
@@ -202,7 +210,7 @@ demo() {                       # index  name  gruppe  hinweis
 # dieser Reihenfolge). Vorher entstanden die Codes hier, und der erste
 # Browser, der hineinkam, schrieb den Bestand.
 AUSSTEHEND=0
-RAUMSTATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$SITE/einrichten/bindung?bestand=$RAUM" \
+RAUMSTATUS=$(curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} -o /dev/null -w "%{http_code}" "$SITE/einrichten/bindung?bestand=$RAUM" \
   -H "authorization: Bearer $CENTRIC_ADMIN")
 if [ "$RAUMSTATUS" = "409" ]; then
   AUSSTEHEND=1
@@ -247,7 +255,7 @@ if [ -n "$VORHANDEN" ]; then
     echo
   } >> "$AUSGABE"
 else
-  START=$(curl -sS -X POST "$SITE/starten" \
+  START=$(curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} -X POST "$SITE/starten" \
     -H "content-type: application/json" \
     -d "$(jq -cn --arg n "$TESTBETRIEB" '{name: $n, branche: "sonstige", land: "HE", rollen: ["mitarbeiter"]}')")
 

@@ -321,7 +321,10 @@ export function offenePunkte(m, monat) {
   for (const [k, e] of Object.entries(erf)) {
     if (!imMonat(k, monat) || !objekt(e)) continue;
     /* WP-15: Eine offene Selbstauskunft ist ein Antrag und sperrt den Abschluss wie ein Korrekturantrag. */
-    if (objekt(e.selbstauskunft) && e.selbstauskunft.status === "offen") { antraege++; continue; }
+    if (objekt(e.selbstauskunft)) {
+      if (e.selbstauskunft.status === "offen") antraege++;
+      if (e.bestaetigt !== true) continue;        // offen: Antrag; abgelehnt/zurückgezogen: kein Prüffall
+    }
     if (e.bestaetigt !== true) zurPruefung++;
   }
   return { antraege, offeneStempel, zurPruefung };

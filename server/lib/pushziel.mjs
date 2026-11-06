@@ -39,6 +39,7 @@
    ========================================================================== */
 
 import { parse as altParse } from "node:url";
+import { istProduktion } from "./umgebung.mjs";
 
 /** Hosts der Push-Dienste (Chrome/Edge/Opera über FCM, Firefox,
  *  Safari/iOS, Windows). „*.“ am Anfang gilt nur für Unterdomänen. */
@@ -63,7 +64,7 @@ const passt = (host, muster) => (muster.startsWith("*.")
 function hostErlaubt(host) {
   const eigene = String(process.env.CENTRIC_PUSH_HOSTS || "").split(",")
     .map((x) => x.trim().toLowerCase()).filter(Boolean);
-  if (process.env.NODE_ENV !== "production" && host.endsWith(".example")) return true;
+  if (!istProduktion() && host.endsWith(".example")) return true;
   return [...PUSH_DIENSTE, ...eigene].some((m) => passt(host, m));
 }
 

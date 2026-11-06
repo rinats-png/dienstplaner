@@ -120,6 +120,8 @@ try {
     /* WP-32d: Betreibercodes brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
     status = await laufen(process.execPath, ["--import", pathToFileURL(path.join(WURZEL, "werkzeug", "betreiber-faktor-vorlauf.mjs")).href, pruefung], {
       ...process.env, CENTRIC_BASIS: basis, CENTRIC_ADMIN: ADMIN,
+      /* Für den Vorlauf (werkzeug/betreiber-faktor-vorlauf.mjs): derselbe Datenordner und Pfeffer wie der Server. */
+      CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_PFEFFER: PFEFFER,
     });
     if (status !== 0) console.error(`Serverprotokoll:\n${serverLog}`);
   }

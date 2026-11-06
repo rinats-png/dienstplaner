@@ -58,6 +58,16 @@ verändert. Protokoll: `zweifaktor/offline/warnung`.
 Wer weder Serverzugriff noch Pfeffer hat, kommt nicht hinein — gewollt. Wer den Pfeffer verliert, verliert ohnehin alle
 Schlüssel (siehe Betriebshandbuch).
 
+## Review-Nachträge (Opus-Review)
+
+Umgesetzt und je mit rotem Test auf dem Stand `42f1db6` (`betreiber-zweifaktor-pflicht.test.js`, Gruppe „Review-Nachträge WP-32d“):
+(1) Verwalterschlüssel unter production Pflicht (`/einrichten`), (2) Abschalten unter Pflicht 409, (3) Einrichtung verfällt nach 15 min,
+Protokoll `warnung` mit Alter, (4) Start beendet Betreibersitzungen ohne Faktor, (5) `server/lib/umgebung.mjs` `istProduktion()`
+für post/versand/pushziel/Pflicht/einrichten. Einzelheiten und Betreiber-Anleitung: `wp15-wp32d-fragen.md`.
+Folge für die Prüfstrecken: Der Vorlauf richtet auch den Verwalterschlüssel ein (in `serverlauf` direkt in der Ablage, weil
+`/einrichten` insgesamt auf 20 Aufrufe je 10 Minuten begrenzt ist; auf entfernten Servern über die API) und liefert für
+Verwalterkonten frische Codes.
+
 ## Folgen für Prüfläufe und Auslieferung
 
 - Fast alle HTTP-Prüfläufe starten den Server mit `NODE_ENV=production` und melden sich mit einem frisch angelegten

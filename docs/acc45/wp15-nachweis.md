@@ -65,6 +65,10 @@ einen Antrag überschreiben. Ein später eingehender echter Stempel überschreib
   Ist mit Hinweisen), `rollen-failclosed.test.js` und `routen-inventar.test.js` (neuer Weg, Sonde, Matrixzeile in
   `RECHTEMATRIX.md`).
 
+## Review-Nachträge (Opus-Review)
+
+(6) Vier-Augen-Umgehung über `PUT /api/bestand` geschlossen (`stempelWiderspruch`: Teil `selbstauskunft` unveränderlich, Status nur über den Endpunkt; Test über den HTTP-Handler, fünf Fälschungsvarianten + erfundener Antrag); (7) Freigabe vergleicht den Plan am Antrag mit dem heutigen; (8) abgelehnte/zurückgezogene Anträge sind kein Prüffall; (9) Zugang ohne Person bleibt 400 (Frage F15-10); (10) Nachtdienst vom Vortag, der in den Tag hineinreicht, blockiert den Stempelabgleich (`VORTAG_REICHT_HINEIN`). Rot auf `42f1db6`: Tests 6, 7, 8, 10.
+
 ## Einbau in `src/App.jsx` (nur Schnipsel; App.jsx ist Konfliktzone — bewusst nicht mehr angefasst)
 
 Bereits geändert (eine Zeile): `bestaetigeZeit` meldet „Zeit beantragt — sie zählt nach der Freigabe durch die

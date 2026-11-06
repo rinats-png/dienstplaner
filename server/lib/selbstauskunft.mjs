@@ -70,6 +70,9 @@ export function stempelAbgleich(m, personId, datum) {
   const vor = st[`${personId}|${tagePlus(datum, -1)}`];
   if (objekt(vor) && vor.start && !vor.ende)
     return { ok: false, art: "VORTAG_OFFEN", grund: "Vom Vortag läuft noch ein offener Stempel in diesen Tag. Bitte zuerst den Vortag klären." };
+  /* Ein abgeschlossener Nachtdienst vom Vortag, der in diesen Tag hineinreicht (Ende am Folgetag; Review 10). */
+  if (objekt(vor) && vor.ende && vor.endeDatum === datum)
+    return { ok: false, art: "VORTAG_REICHT_HINEIN", grund: "Ein Nachtdienst vom Vortag reicht in diesen Tag hinein (gestempelt bis in den Tag). Dafür gibt es schon einen Stempel." };
   return { ok: true };
 }
 
@@ -191,6 +194,11 @@ export function selbstauskunftEntscheiden(m, r, durch, jetzt) {
   const u = selbstauskunftPruefen(m, person, String(datum), { start: v.start ?? null, ende: v.ende ?? null, bestaetigt: true,
     grund: sa.grund || "", ...(v.pause !== undefined ? { pause: v.pause } : {}) }, berlinTag(sa.gestellt));
   if (u.grund) return { status: 409, grund: `Der Antrag passt nicht mehr zum Plan: ${u.grund}`, art: "PLAN_GEAENDERT" };
+  /* Der Plan, an dem die Abweichung markiert wurde, muss noch derselbe sein — auch bei „wie geplant“, wo sonst
+     still der heutige Plan übernommen würde (Review 7). */
+  const planJetzt = abweichungVomPlan(m, person, String(datum), u.eintrag);
+  if (!sa.abweichung || !planJetzt || JSON.stringify(sa.abweichung.plan) !== JSON.stringify(planJetzt.plan))
+    return { status: 409, grund: "Der Antrag passt nicht mehr zum Plan: Der Plan dieses Tages hat sich seit dem Antrag geändert.", art: "PLAN_GEAENDERT" };
   const e = u.eintrag;
   const ist = { ...e, selbstauskunft: neuSa };
   const da = (m.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(m, person, String(datum))));
