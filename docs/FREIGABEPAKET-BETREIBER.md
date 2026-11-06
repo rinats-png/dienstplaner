@@ -25,3 +25,6 @@ Fasst zusammen, was nur der Betreiber entscheiden oder veranlassen kann. Keine F
 3. Aufbewahrungsfristen und Löschung (Wachbuch WB-3; Aufbewahrungslauf bleibt im Vorschau-Modus), Rechtetabellen der neuen Module (WB-2, RO-3), Ruhezeit/Opt-out (BD-5, BD-6), Versetzungsregel (RO-1), Besetzungswerte Pflege (PQ-1).
 4. Spezifikationslücken Intelligence (14 Punkte in `wpI-offene-fragen.md`), u. a. Limit für Beschäftigte, Satzbausteinkatalog, Liste verbotener Merkmale.
 5. Pilotstart (E-24) und Pilotbetriebe.
+
+## D. Befund aus dem unabhängigen Review (Betreiberentscheidung, fachlich erheblich)
+Die Serverrolle `kunde` besitzt alle Rechte (`server/lib/rechte.mjs:61`, Schreiben `:132`) und liest und schreibt damit auch Wachbuch, Posten-Plan, Erfassung u. a. Das besteht schon im Release-Kandidaten, nicht erst in den neuen Modulen. Zugänge ohne ausdrückliche Rolle werden zu `kunde`. Die Oberfläche sieht für „Kunde (Auftraggeber)“ nichts vor; der Server tut es. Entscheidung nötig: Serverrolle `kunde` auf das Nötige beschneiden oder die neuen Felder für `kunde` aus der Sicht nehmen. Bis dahin ändere ich bestehende Berechtigungen nicht.
