@@ -32,3 +32,7 @@ Voraussetzungen für einen späteren Anbieteranschluss (WP-I18) stehen in `wp-i1
 | 19 | **Zeitzone der Tagesgrenzen / Monatswechsel** der Zähler | UTC. | Produkt |
 | 20 | **Zahlen in anderen Sprachen** im Modelltext (z. B. französische Zahlwörter in lateinischer Schrift) | Nicht erkannt; die Antwortsprache ist per Anfrageschema „de“, der Prüfer kennt Deutsch und Englisch. | Review |
 | 21 | **Haltezeit eines Adapters, der nie endet** (`haltenMaxMs`) | 5 Minuten, danach gilt der Platz als frei. | Betreiber |
+
+| 22 | **Texte der Intelligence-Oberfläche** (Kennzeichnung "KI-Entwurf", Rückfall-, Pausen-, Fehlertexte) | Entwurfstexte in src/ansichten/intelligence/texte.js; Wortlaut der Pausenmeldung ohne "Ab [Uhrzeit]" (Wiederfreigabezeit kennt der Client nicht). Produkt und Mitbestimmung nicht abgestimmt. | Produkt/Mitbestimmung |
+| 23 | **Serverpfade des Clients** (/ki/anfrage, /ki/auftrag/<id>) | Entwurf; Plan I13 nennt nur "/ki, /ki/*" mit 202 + Abfrage. | Technik |
+| 24 | **Thinking Orb** (CI 5.4) | nicht gebaut; Fremdpaket, Prüfung/Pin nötig. | Technik |
