@@ -36,6 +36,7 @@ import { addMonate } from "./regelbaukasten.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 import { csvFeld, csvText } from "./csvfeld.js";
 import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
+import { v4AppStil } from "./v4/app-stil.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -212,8 +213,12 @@ function themaSetzen(dunkel) {
     const wurzel = document.documentElement;
     wurzel.style.colorScheme = dunkel ? "dark" : "light";
     wurzel.setAttribute("data-thema", dunkel ? "dunkel" : "hell");
+    wurzel.setAttribute("data-v4-app", "");
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.bg : C_HELL.bg);
+    /* Der Einstieg setzt den Körper inline (v4/thema.js); nach der Anmeldung muss er dem
+       gewählten Erscheinungsbild folgen, sonst bleibt hinter der Anwendung die Farbe des Einstiegs. */
+    document.body.style.background = dunkel ? C_DUNKEL.bg : C_HELL.bg;
   }
 }
 
@@ -571,6 +576,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
 }
 ${gestaltStil()}
+${v4AppStil()}
 `;
 
 /* --------------------------------- Datum --------------------------------- */
@@ -5709,7 +5715,7 @@ function Anmeldung({ db, onLogin }) {
           <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }}
             {...klickbar(() => onLogin({ rolle: "betreiber" }), "Zur Betreiberkonsole")}>
             <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: "#fff",
+              <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: C.aufAkzent,
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>BE</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 17, fontWeight: 600 }}>Zur Betreiberkonsole</div>
@@ -5973,7 +5979,7 @@ function LinienDiagramm({ daten, hoehe = 168, wert = "y", label = "label", nulll
       </div>
       {aktiv !== null && (
         <div style={{ position: "absolute", top: -6, left: `${(aktiv / (daten.length - 1)) * 100}%`,
-          transform: "translateX(-50%)", background: C.accentDeep, color: "#fff", padding: "5px 10px",
+          transform: "translateX(-50%)", background: C.accentDeep, color: C.aufAkzent, padding: "5px 10px",
           borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", pointerEvents: "none", ...NUM }}>
           {f(daten[aktiv][wert])}
         </div>)}
@@ -6009,7 +6015,7 @@ function BalkenDiagramm({ daten, hoehe = 150, wert = "y", label = "label", einhe
                 cursor: klick ? "pointer" : "default", position: "relative", minWidth: 4 }}>
               {aktiv === i && (
                 <div style={{ position: "absolute", bottom: "calc(100% + 7px)", left: "50%",
-                  transform: "translateX(-50%)", background: C.accentDeep, color: "#fff", padding: "5px 10px",
+                  transform: "translateX(-50%)", background: C.accentDeep, color: C.aufAkzent, padding: "5px 10px",
                   borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", zIndex: 5, ...NUM }}>
                   {d[label]} · {n1(d[wert])}{einheit}
                 </div>)}
@@ -8076,7 +8082,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
     <div>
       <Btn size="sm" kind="quiet" onClick={zurueck} style={{ marginBottom: 16 }}><Icon n="chevron-links" size={14} /> Alle Mandanten</Btn>
       <H1 sub={`${(BRANCHEN.find((b) => b[0] === s.branche) || [])[1]} · Tarif ${p.t.name} · ${stat(s.status).label}`}
-        right={<div style={{ display: "flex", gap: 9 }}>
+        right={<div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
           <Btn kind="primary" onClick={() => akt.rechnungStellen(m.id)}>Rechnung erzeugen</Btn>
           <Btn kind="danger" onClick={() => akt.loescheMandant(m.id)}>Löschen</Btn></div>}>{s.name}</H1>
 
@@ -8251,7 +8257,7 @@ function BetreiberRechnungen({ db, akt }) {
   return (
     <div>
       <H1 sub="Die Rechnung entsteht aus dem Zugangsbestand zum Zeitpunkt der Erstellung. Ausgabe als PDF oder als Word-Dokument."
-        right={<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Inp type="month" value={monat} onChange={(e) => setMonat(e.target.value)} style={{ width: 168 }} />
           <Btn kind="primary" onClick={() => akt.rechnungslauf(monat)}>Rechnungslauf starten</Btn>
         </div>}>Rechnungen</H1>
@@ -9778,6 +9784,8 @@ function Antraege({ sitz, akt }) {
 function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, setStandortId = () => {} }) {
   const m = sitz.mandant;
   const [q, setQ] = useState(""), [such, setSuch] = useState(""), [filter, setFilter] = useState("alle"), [neu, setNeu] = useState(false);
+  /* Fehlermeldung des Dialogs „Person hinzufügen“: nie stumm abweisen. */
+  const [neuFehler, setNeuFehler] = useState(null);
   useEffect(() => { const t = setTimeout(() => setSuch(q), 200); return () => clearTimeout(t); }, [q]);
   const jahr = Number(ym.slice(0, 4)), d0 = heute();
   const zeigt = darf(sitz, "account.view.all");
@@ -9937,12 +9945,13 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
           <Btn kind="primary" onClick={() => setNeu(true)}>Person hinzufügen</Btn>
         </Fussleiste>)}
 
-      <Sheet open={neu} onClose={() => setNeu(false)} titel="Person hinzufügen" width={580}>
+      <Sheet open={neu} onClose={() => { setNeu(false); setNeuFehler(null); }} titel="Person hinzufügen" width={580}>
         <div style={{ display: "grid", gap: 15 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
-            <Field label="Vorname"><Inp value={f.vorname} onChange={(e) => setF({ ...f, vorname: e.target.value })} /></Field>
-            <Field label="Nachname"><Inp value={f.nachname} onChange={(e) => setF({ ...f, nachname: e.target.value })} /></Field>
+            <Field label="Vorname"><Inp id="neu-person-vorname" value={f.vorname} aria-invalid={neuFehler && !f.vorname ? "true" : undefined} aria-describedby={neuFehler ? "neu-person-fehler" : undefined} onChange={(e) => { setF({ ...f, vorname: e.target.value }); setNeuFehler(null); }} /></Field>
+            <Field label="Nachname"><Inp id="neu-person-nachname" value={f.nachname} aria-invalid={neuFehler && !f.nachname ? "true" : undefined} aria-describedby={neuFehler ? "neu-person-fehler" : undefined} onChange={(e) => { setF({ ...f, nachname: e.target.value }); setNeuFehler(null); }} /></Field>
           </div>
+          {neuFehler && <div id="neu-person-fehler" role="alert" style={{ color: C.danger, fontSize: 13, fontWeight: 600 }}>{neuFehler}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Funktion"><Sel value={f.funktion} onChange={(e) => setF({ ...f, funktion: e.target.value })}>
               {["Schichtleitung", "Stellvertretung", "Fachkraft", "Hilfskraft", "Auszubildende"].map((x) => <option key={x}>{x}</option>)}</Sel></Field>
@@ -9959,7 +9968,16 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
               {ROLLEN.filter((x) => !x.extern).map((x) => <option key={x.id} value={x.id}>{rollenName(m, x.id)}</option>)}</Sel></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={() => setNeu(false)}>Abbrechen</Btn>
-            <Btn kind="primary" onClick={() => { if (f.vorname && f.nachname) { akt.neuePerson(f); setNeu(false); setF({ ...f, vorname: "", nachname: "" }); } }}>Hinzufügen</Btn>
+            <Btn kind="primary" onClick={() => {
+              if (!f.vorname.trim() || !f.nachname.trim()) {
+                setNeuFehler("Bitte Vor- und Nachnamen angeben.");
+                /* Fokus auf das erste ungültige Feld (Tastatur, Screenreader). */
+                const feld = document.getElementById(!f.vorname.trim() ? "neu-person-vorname" : "neu-person-nachname");
+                if (feld) feld.focus();
+                return;
+              }
+              akt.neuePerson(f); setNeu(false); setNeuFehler(null); setF({ ...f, vorname: "", nachname: "" });
+            }}>Hinzufügen</Btn>
           </div>
         </div>
       </Sheet>
@@ -16839,7 +16857,7 @@ function Handbuch({ sitz, akt, gehZu }) {
     <div>
       <H1 rubrik="Hilfe"
         sub="Ein durchgehender Weg von der leeren Anwendung bis zum laufenden Betrieb — und danach ein Nachschlagewerk. Jeder Schritt nennt, woran du merkst, dass es geklappt hat."
-        right={<div style={{ display: "flex", gap: 10 }}>
+        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Btn onClick={akt.druckeHandbuch}>Als PDF drucken</Btn>
         </div>}>
         Handbuch</H1>
@@ -20241,7 +20259,7 @@ function Selbststarts({ db, akt }) {
     <div>
       <H1 rubrik="Betreiber"
         sub="Wer sich selbst einen Testbetrieb angelegt hat. Die Liste, die man abends durchgeht — wer hat angefangen, bei wem lohnt ein Anruf."
-        right={<div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={String(tage)} onChange={(v) => setTage(Number(v))}
             options={[{ id: "7", label: "7 Tage" }, { id: "30", label: "30 Tage" },
               { id: "90", label: "90 Tage" }]} />
@@ -20830,7 +20848,7 @@ function MPlan({ sitz, akt, oeffnen }) {
           <button key={id} onClick={() => setSchnell(id)} className="btn btn-sm"
             style={{ background: schnell === id ? C.accent : C.flaeche,
               borderColor: schnell === id ? C.accent : C.line,
-              color: schnell === id ? "#fff" : C.dim, fontWeight: schnell === id ? 650 : 500 }}>
+              color: schnell === id ? C.aufAkzent : C.dim, fontWeight: schnell === id ? 650 : 500 }}>
             {l}</button>))}
       </div>
 
@@ -21120,8 +21138,8 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
       <MTitel rubrik={e ? e.name : ""}>{p.vorname} {p.nachname}</MTitel>
 
       <MKarte style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-        {[["Auslastung", `${ausl.pct} %`], ["Wochenstunden", `${n1(p.wochenstunden)} h`],
-          ["Urlaub übrig", `${urlaubskonto(m, p, new Date().getFullYear()).rest} Tage`]].map(([l, v]) => (
+        {[["Auslastung", ausl.pct == null ? "–" : `${ausl.pct} %`], ["Wochenstunden", `${n1(p.wochenstunden)} h`],
+          ["Urlaub übrig", (() => { const r = urlaubskonto(m, p, new Date().getFullYear()).rest; return r == null ? "–" : `${r} Tage`; })()]].map(([l, v]) => (
           <div key={l} style={{ flex: "1 1 90px" }}>
             <div style={{ fontSize: 11.5, color: C.dimmer }}>{l}</div>
             <div style={{ fontSize: 19, fontWeight: 650, marginTop: 3, ...NUM }}>{v}</div>
@@ -21174,6 +21192,15 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
       <MKarte style={{ padding: "4px 18px" }}>
         <MZeile links="Feldmodus" unten="Größere Schrift, maximaler Kontrast"
           rechts={<Schalter an={!!p.kontrastmodus} onChange={() => akt.setzeKontrastmodus(!p.kontrastmodus)} />} />
+        {/* Erscheinungsbild: Hell, Dunkel oder dem Gerät folgen — die Wahl bleibt gespeichert. */}
+        <div style={{ padding: "15px 4px", borderBottom: `1px solid ${C.lineSoft}` }}>
+          <div style={{ fontSize: 15.5, fontWeight: 500 }}>Erscheinungsbild</div>
+          <div style={{ fontSize: 13, color: C.dimmer, marginTop: 3, lineHeight: 1.4 }}>„Wie das Gerät“ folgt der Systemeinstellung, auch wenn sie sich später ändert.</div>
+          <div style={{ marginTop: 10 }}>
+            <Seg value={p.thema || "auto"} onChange={(v) => akt.setzeMeineEinstellung("thema", v)}
+              options={[{ id: "hell", label: "Hell" }, { id: "dunkel", label: "Dunkel" }, { id: "auto", label: "Wie das Gerät" }]} />
+          </div>
+        </div>
         <MZeile links="Rundgang wiederholen" unten="Wie CENTRIC funktioniert, in fünf Schritten"
           onClick={akt.starteEinfuehrung} />
         <MZeile links="Rechneransicht" unten="Alle Tabellen und Auswertungen"
@@ -21529,7 +21556,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
                         ? ` · ${(a.bewerbungen || []).length} haben sich schon gemeldet` : ""}</div>
                     <button onClick={() => akt.bewirbDich(a.id, "")}
                       style={{ marginTop: 14, width: "100%", padding: "14px", borderRadius: 12,
-                        border: "none", background: C.accent, color: "#fff", fontFamily: "inherit",
+                        border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
                         fontSize: 15.5, fontWeight: 600, cursor: "pointer", minHeight: 48 }}>
                       Ich übernehme das</button>
                   </MKarte>);
@@ -21567,7 +21594,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
                 <button onClick={() => akt.pushUmschalten(!SP.pushErlaubt())}
                   style={{ marginTop: 12, padding: "11px 18px", borderRadius: 12, border: "none",
                     background: SP.pushErlaubt() ? C.flaecheStill : C.accent,
-                    color: SP.pushErlaubt() ? C.text : "#fff", fontFamily: "inherit",
+                    color: SP.pushErlaubt() ? C.text : C.aufAkzent, fontFamily: "inherit",
                     fontSize: 14.5, fontWeight: 600, cursor: "pointer", minHeight: 48 }}>
                   {SP.pushErlaubt() ? "Ausschalten" : "Einschalten"}</button>)}
             </div>
@@ -23180,6 +23207,11 @@ function AppInnen() {
     return { rolle: "kunde", db, mandant: m, person: p };
   }, [db]);
 
+  /* Dichte: Die Einstellung der Person ist die Quelle — in den Einstellungen wie im Kopfmenü.
+     Vorher speicherte die Einstellung nur p.dichte, und nichts las sie: die Umschaltung blieb wirkungslos. */
+  const dichtePerson = sitz && sitz.person ? sitz.person.dichte : undefined;
+  useEffect(() => { if (dichtePerson === "kompakt" || dichtePerson === "komfortabel") setDicht(dichtePerson === "kompakt"); }, [dichtePerson]);
+
   /* Beim ersten Anmelden startet die Tour von selbst — außer sie wurde
      abgeschlossen oder abgeschaltet.
 
@@ -23247,6 +23279,9 @@ function AppInnen() {
 
 
   const [themaZaehler, setThemaZaehler] = useState(0);
+  /* Betreiber haben keine Person, an der die Wahl hängt: Ihre Wahl gilt für dieses Gerät
+     (derselbe Speicher wie im Einstieg, v4/thema.js). */
+  const [betreiberThema, setBetreiberThema] = useState(() => v4ThemaGemerkt() || "auto");
 
   /* Vorrang: ausdrückliche Wahl (Hell/Dunkel der Person, sonst die auf diesem
      Gerät gemerkte) vor der Systemeinstellung. Ohne Wahl — oder bei "Wie das
@@ -23255,7 +23290,7 @@ function AppInnen() {
      gemerkt, damit beide übereinstimmen. */
   useEffect(() => {
     const p = sitz && sitz.person;
-    const eigene = p ? p.thema : null;
+    const eigene = p ? p.thema : betreiberThema;
     v4ThemaMerken(eigene);
     const wahl = eigene === "hell" || eigene === "dunkel" ? eigene : (eigene === "auto" ? null : v4ThemaGemerkt());
     if (wahl === "hell" || wahl === "dunkel") {
@@ -23266,7 +23301,7 @@ function AppInnen() {
     themaSetzen(themaVomSystem());
     setThemaZaehler((n) => n + 1);
     return v4SystemthemaBeobachten((e) => { themaSetzen(e.matches); setThemaZaehler((n) => n + 1); });
-  }, [sitz && sitz.person && sitz.person.thema]);
+  }, [sitz && sitz.person && sitz.person.thema, sitz && !sitz.person ? betreiberThema : null]);
 
 
   const akt = useMemo(() => {
@@ -25386,8 +25421,10 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
       <div className="sw-root"><div style={{ minHeight: "100vh", display: "flex",
         alignItems: "center", justifyContent: "center", padding: "5vh 20px" }}>
         <Card style={{ padding: 30, maxWidth: 520 }}>
-          <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
-          <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
+          <div role="alert">
+            <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
+            <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
+          </div>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
             {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
             {f.demoAnlegen && <Btn kind="primary" onClick={async () => {
@@ -25558,11 +25595,12 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
               kurz: istBetreiber ? "BE" : (((sitz.person.vorname || " ")[0] + (sitz.person.nachname || " ")[0]).toUpperCase().trim() || r.kurz),
               rolle: r.label }}
             ungelesen={ungelesen}
-            dicht={dicht} onDicht={setDicht} fokus={fokus} onFokus={setFokus}
+            dicht={dicht} fokus={fokus} onFokus={setFokus}
+            onDicht={(an) => { setDicht(an); if (!istBetreiber) akt.setzeMeineEinstellung("dichte", an ? "kompakt" : "komfortabel"); }}
             feldmodus={!istBetreiber && !!sitz.person.kontrastmodus}
             onFeldmodus={istBetreiber ? undefined : (an) => akt.setzeKontrastmodus(an)}
-            thema={istBetreiber ? undefined : sitz.person.thema}
-            onThema={istBetreiber ? undefined : (v) => akt.setzeMeineEinstellung("thema", v)}
+            thema={istBetreiber ? betreiberThema : sitz.person.thema}
+            onThema={istBetreiber ? setBetreiberThema : (v) => akt.setzeMeineEinstellung("thema", v)}
             onAnsicht={(id) => { setView(id); setDetail(null); setSeiteOffen(false); }}
             onSuche={() => setKmd(true)} onZurueck={akt.zurueck} onPostfach={() => setPostfach(true)}
             onDrawer={() => setSeiteOffen(!seiteOffen)} drawerOffen={seiteOffen}
