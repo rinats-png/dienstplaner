@@ -26,6 +26,7 @@ import { kompetenzStand } from "../../server/lib/regelwerk.mjs";
 import { PostenUebersicht } from "./posten.jsx";
 import { WachbuchTages } from "./wachbuch.jsx";
 import { ObjektberichtVorschau } from "./objektbericht.jsx";
+import { BereitschaftsUebersicht } from "./bereitschaftsdienst.jsx";
 import { BereichsUebersicht } from "./bereichsplan.jsx";
 import { AbschnittsAnzeige } from "./geteilterdienst.jsx";
 import { AnlagenUebersicht } from "./anlagen.jsx";
@@ -49,6 +50,8 @@ export const MODUL_OBERFLAECHEN = Object.freeze([
     ansicht: (k) => h(WachbuchTages, { m: k.m, datum: k.datum, zugriff: k.wachbuchZugriff || "keiner", person: k.person || null, eigeneEinheit: k.einheitId || null }) },
   { modul: "objektbericht", ort: "betrieb", titel: "Objektbericht (Vorschau)",
     ansicht: (k) => h(ObjektberichtVorschau, { m: k.m, von: k.heute, bis: k.heute, zugriff: k.berichtZugriff || "keiner" }) },
+  { modul: "bereitschaftsdienst", ort: "tag", titel: "Bereitschaft",
+    ansicht: (k) => h(BereitschaftsUebersicht, { m: k.m, datum: k.datum, personen: Object.fromEntries((k.personenImDienst || []).map((p) => [p.id, `${p.vorname || ""} ${p.nachname || ""}`.trim()])) }) },
   { modul: "bereichsplan", ort: "tag", titel: "Bereiche",
     ansicht: (k) => h(BereichsUebersicht, { m: k.m, einheitId: k.einheitId, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
   { modul: "anlagen", ort: "tag", titel: "Anlagen",

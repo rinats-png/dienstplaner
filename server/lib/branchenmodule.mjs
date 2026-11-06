@@ -172,7 +172,16 @@ export const BRANCHENMODULE = Object.freeze([
   /* Klinik */
   modul({ id: "bereitschaftsdienst", merkmal: "bereitschaftsdienst", name: "Bereitschaftsdienst und Rufbereitschaft mit Anrechnung",
     pakete: ["klinik"],
-    beschreibung: "Bereitschaftsstufen mit Anrechnungsfaktor, Inanspruchnahme, Anrechnung auf Höchstarbeitszeit." }),
+    beschreibung: "Bereitschaftsstufen mit Anrechnungsfaktor, Inanspruchnahme, Anrechnung auf Höchstarbeitszeit.",
+    /* server/lib/modul-bereitschaftsdienst.mjs: Stufen (Sachfeld, R1 a) und Dienste je Person und Tag (Personenfeld,
+       Verfasser- und Zeitbezug; Berichtigung gibt es nicht, nur Löschung). Keine Opt-out-Daten (R3 offen). */
+    datenfelder: ["bereitschaftStufen", "bereitschaft"], sachfelder: ["bereitschaftStufen"], personenfelder: ["bereitschaft"],
+    ausnahmeUi: true, berichtigungsWerte: Object.freeze({ bereitschaft: () => false }),
+    regelIds: ["BEREIT-HOECHST-01"],
+    parameter: {
+      hoechstArbeitszeitStunden: { typ: "zahl", standard: 0, min: 0, max: 168, ganzzahl: false, vorlaeufig: true,
+        text: "Höchstarbeitszeit je Woche einschließlich Bereitschaft, gegen die der Hinweis prüft; 0 = keine Prüfung (Vorgabe des Betriebs, R4 offen)." },
+    } }),
   modul({ id: "geteilterdienst", merkmal: "geteilterdienst", name: "Geteilte Dienste", pakete: ["klinik"],
     beschreibung: "Dienste mit zwei Abschnitten: Bearbeitung, Dauer, Ruhezeit und Besetzung je Abschnitt.",
     /* server/lib/modul-geteilterdienst.mjs: Feld zweiterAbschnitt der Dienstart (Bestand) — keine neuen Betriebsfelder. */

@@ -115,6 +115,12 @@ export const REGELN_BRANCHEN = Object.freeze([
     scope: { branche: ["klinik", "pflege", "rettung", "gastronomie", "handel", "reinigung", "sonstiges"] },
     parameter: { groesse: "Spanne in Stunden", hoechstens: 24, grenzeAus: "modulParameter.hoechstSpanneStunden" },
     pruefhinweis: "Die Grenze trägt der Betrieb nach Tarif oder Betriebsvereinbarung ein; ohne Eintrag gilt keine. Keine Rechtsvorschrift mit fester Zahl bekannt (zu prüfen)." }),
+  /* Klinik — bereitschaftsdienst (Matrix R4 a). Die Grenze trägt der Betrieb; im Code steht keine Zahl. */
+  branchenregel({ id: "BEREIT-HOECHST-01", modul: "bereitschaftsdienst", typ: "grenzregel",
+    bezeichnung: "Höchstarbeitszeit je Woche einschließlich Bereitschaft", ebene: "betrieb",
+    scope: { branche: ["klinik", "pflege", "rettung"] },
+    parameter: { groesse: "Arbeitszeit je Woche in Stunden", grenzeAus: "modulParameter.hoechstArbeitszeitStunden" },
+    pruefhinweis: "Die Höchstarbeitszeit (ArbZG § 3, Ausgleichszeitraum) ist an der Primärquelle zu prüfen; der Betrieb trägt die Grenze ein, ohne Eintrag keine Prüfung. Bereitschaft wird als Arbeitszeit gezählt (R2 c), Rufbereitschaft nur mit Inanspruchnahme." }),
   /* Sicherheit — posten (Matrix P3 a). Die Instanzen tragen Soll und Qualifikation des Postens (modul-posten.mjs). */
   branchenregel({ id: "POSTEN-BESETZUNG-01", modul: "posten", typ: "besetzungsregel",
     bezeichnung: "Sollbesetzung eines Postens", ebene: "betrieb", scope: { branche: ["sicherheit", "reinigung"] },

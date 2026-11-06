@@ -595,6 +595,10 @@ export const BETRIEB = {
   bereichsPlan: [R(eigenOhneEntwurf), WEG],
   /* Wachbuch (WP-19, modul-wachbuch.mjs): bis die Zeile in RECHTEMATRIX.md entschieden ist (W4), fail-closed — nichts geht hinaus. */
   wachbuch: [WEG, WEG],
+  /* Bereitschaftsdienst (WP-19, modul-bereitschaftsdienst.mjs): Stufen (Sachfeld) und Dienste je Person und Tag
+     (Personenfeld). Fail-closed, bis die Zeilen in RECHTEMATRIX.md entschieden sind. */
+  bereitschaftStufen: [WEG, WEG],
+  bereitschaft: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
