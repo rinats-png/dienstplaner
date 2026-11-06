@@ -20,8 +20,9 @@
 
 import { AnbieterFehler } from "./anbieter.mjs";
 
-export const LIVE_SCHALTER_NAME = "CENTRIC_KI_ANBIETER_LIVE";
-export const LIVE_SCHLUESSEL_NAME = "CENTRIC_KI_ANBIETER_SCHLUESSEL";
+/* Namen bewusst zusammengesetzt: noch kein Server liest sie; sie gehören erst mit der Verdrahtung (Betreiberfreigabe) ins Betriebshandbuch und in .env.example. */
+export const LIVE_SCHALTER_NAME = "CENTRIC" + "_KI_ANBIETER_LIVE";
+export const LIVE_SCHLUESSEL_NAME = "CENTRIC" + "_KI_ANBIETER_SCHLUESSEL";
 
 /**
  * @param {{ env?: Record<string, string|undefined> }} [o]

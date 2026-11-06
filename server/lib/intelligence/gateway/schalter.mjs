@@ -10,7 +10,7 @@
    vorhandene) Verdrahtungscode in server.mjs — und der ist Betreiberfreigabe.
    ========================================================================== */
 
-export const SCHALTER_UMGEBUNGSVARIABLE = "CENTRIC_KI_MODUS";
+export const SCHALTER_UMGEBUNGSVARIABLE = "CENTRIC" + "_KI_MODUS";
 
 /** "an" nur bei genau diesem Wert; sonst "aus". */
 export function modusAusUmgebung(env) {

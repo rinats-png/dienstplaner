@@ -104,6 +104,11 @@ describe("P-02 Zahlen, Zeiten, Daten, Kennungen müssen aus dem Paket stammen", 
     for (const t of ["Die Ruhezeit beträgt 99999 Minuten.", "Saldo 3,6 Stunden.", "Es sind 12 Personen.", "Wert 660,5.", "Schritt 1: prüfen.", "Etwa 11 Stunden."])
       expect(codes(text(t)), t).toContain("P-02");
   });
+  it("Zahlen in Worten (zwei … tausend, auch zusammengesetzt) zählen wie Ziffern; ein/eine bleibt erlaubt; achtung ist keine Zahl", () => {
+    for (const t of ["Die Ruhezeit beträgt elf Stunden.", "Es fehlen zwei Personen.", "Zweiundzwanzig Tage.", "Etwa hundert Minuten.", "dreimal", "Nur null Treffer.", "Sechzig Minuten"])
+      expect(codes(text(t)), t).toContain("P-02");
+    expect(ok(text("Eine Person fehlt. Stufe achtung."))).toBe(true);
+  });
   it("fremde Uhrzeit und fremdes Datum", () => {
     for (const t of ["Beginn 07:00.", "Am 2026-12-24 frei.", "Ende 24:00.", "Am 2026-11-05 frei."]) expect(codes(text(t)), t).toContain("P-02");
   });

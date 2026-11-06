@@ -54,6 +54,9 @@ const DATUM = /\b\d{4}-\d{2}-\d{2}\b/g;
 const ZEIT = /\b\d{1,2}:\d{2}\b/g;
 const ZAHL = /\d+(?:[.,]\d+)?/g;
 const BEZEICHNER_CAMEL = /\b[a-zäöüß]+[A-ZÄÖÜ][A-Za-zäöüß0-9]*\b/g;
+/* Zahlwörter (zwei … tausend): „ein/eine“ bleibt erlaubt; Beugungen und Zusammensetzungen (zweiundzwanzig) werden mitgefangen.
+   Bekannte Lücke: „halb“, „Dutzend“, „Viertel“ (wpI-offene-fragen.md). */
+const ZAHLWORT = /\b(?:null|zwei|drei|vier|f(?:ü|ue)nf|sechs|sieben|acht|neun|zehn|elf|zw(?:ö|oe)lf|zwanzig|drei(?:ß|ss)ig|vierzig|f(?:ü|ue)nfzig|sechzig|siebzig|achtzig|neunzig|hundert|tausend)(?:zehn|zig|ßig|hundert|tausend|und[a-zäöüß]{3,})?(?:mal|e|er|en|es|em)?\b/i;
 const BEZEICHNER_UNTERSTRICH = /\b[A-Za-zäöüß0-9]+(?:[_:][A-Za-zäöüß0-9]+)+\b/g;
 
 const normZahl = (s) => {
@@ -218,6 +221,7 @@ function textPruefen(text, erlaubt, codes) {
   for (const m of rest.matchAll(ZEIT)) if (!erlaubt.zeiten.has(normZeit(m[0]))) codes.add("P-02");
   rest = rest.replace(ZEIT, " ");
   for (const m of rest.matchAll(ZAHL)) { const z = normZahl(m[0]); if (z === null || !erlaubt.zahlen.has(z)) codes.add("P-02"); }
+  if (ZAHLWORT.test(rest)) codes.add("P-02");
   for (const re of [BEZEICHNER_CAMEL, BEZEICHNER_UNTERSTRICH]) {
     for (const m of rest.matchAll(re)) {
       if (!erlaubt.kennungen.has(m[0]) && !FELDNAMEN.includes(m[0]) && !istAlias(m[0])) codes.add("P-02");
