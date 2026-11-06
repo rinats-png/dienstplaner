@@ -51,3 +51,27 @@ das Signal; vorbestehend, nicht Teil dieses Pakets).
   Rechnung und Tests belegt, nicht durch eine Messung. Nachmessung mit `werkzeug/last` bleibt beim Betreiber (E-20).
 - **Zwischenspeicher der Antwort** ist nicht umgesetzt (nur die Größe). Frage 4 in `wp-kleinpakete-fragen.md`.
 - Vollausgabe und Auswertung für den Betriebsrat bleiben bei der allgemeinen Lesegrenze (Frage 5).
+
+## Review-Runde (Opus-Review zu fb79daa)
+
+Die Zahlen oben in den Abschnitten „Was“ und „Tests“ gelten für den ersten Stand (87071b3) und sind hier **überholt**:
+das Budget ist jetzt 1,2 GB/min (nicht 600 MB), und das Lesen je Raum ist aufgeteilt.
+
+1. **Lesen je Person (Review 1).** Bestandsabrufe zählen je Person (`bestandlesen`, Schlüssel `kennungPerson`, 300/min,
+   60 s Sperre). Die Bytegrenze gilt nur als zusätzliche Raumgrenze `lesen-raum` mit **15 s Sperre**, fail closed.
+   Ein Mitarbeiter mit vielen Abrufen sperrt den Raum damit nicht mehr 60 s lang.
+2. **Eigene Arten (Review 2).** `vollausgabe` und `auswertung` haben eigene Arten; die Bestandssperre blockiert den
+   Sicherungslauf (Vollausgabe mit Sicherungsschlüssel) nicht mehr.
+3. **Zwischenspeicher (Review 4).** Die gemerkte Größe gilt nur für denselben Stand **und** dieselbe Änderungszeit
+   (`stand` + `zeit`); der Altformat-Stand `alt` wechselt nie.
+4. **Abrunden (Review 6).** `bremse()` rundet `versuche` erst ab und setzt dann mindestens 1 (0,5 → 1, nie 0).
+5. **Budget (Review 1, Zielkonflikt).** `LESEN_BYTES_JE_MINUTE` = 1,2 GB/min: 240 Antworten bei 5 MB, 260 bei 4,6 MB.
+   Damit geht ein realistischer Schichtwechsel (200 × 2 Abrufe in 2 Min. bei 5 MB) durch. Das liegt **über** der
+   einzelnen Messung (≈ 200/min bei 4,6 MB), die Grenze schützt also nicht sicher vor Kernsättigung. Offen:
+   `docs/acc45/wp-kleinpakete-fragen.md`, Frage 2.
+6. **Feed (Review 3).** Unbekannte Geheimnisse ohne Begrenzung je Herkunft: offen, Frage 11.
+
+**Tests (Review-Runde):** 23 Tests in `wp47b-lesebremse.test.js` (vorher 8 davon rot, u. a. Personengrenze,
+Vollausgabe, Raumgrenze mit kurzer Sperre, Plattenfehler der Raumgrenze, Verdrahtung, Zwischenspeicher).
+Der Schichtwechsel-Test prüft die Raumgrenze mit 400 Abrufen über 2 Minuten bei gefälschter Uhr; die Personengrenze
+ist im Personentest mit kleiner Grenze (3) geprüft, weil jede Ablage-Operation auf diesem Rechner ≈ 150 ms dauert.

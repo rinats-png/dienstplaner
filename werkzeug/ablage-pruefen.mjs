@@ -304,9 +304,12 @@ export async function befund(store, { raeume = [], journalPruefen, referenz = nu
 export async function sicherbarkeit(wurzel) {
   const { quelleAnsehen, umschlagPruefen } = await import("./ablage-sicherung.mjs");
   let dateien;
-  try { ({ dateien } = await quelleAnsehen(wurzel)); }
+  let ansicht;
+  try { ansicht = await quelleAnsehen(wurzel); dateien = ansicht.dateien; }
   catch (e) { return [{ datei: "(Ablage)", grund: fehlerText(e) }]; }
+  /* Wurde die Ablage während des Ansehens verändert, ist die Liste nicht verlässlich — das ist ein Befund. */
   const aus = [];
+  if (ansicht.veraendert) aus.push({ datei: "(Ablage)", grund: "während der Prüfung verändert — bitte erneut prüfen" });
   for (const d of dateien) {
     let schluessel = null;
     try { schluessel = decodeURIComponent(d.name.slice(0, -5)); } catch { /* unten gemeldet */ }

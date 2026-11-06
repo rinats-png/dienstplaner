@@ -171,6 +171,9 @@ export async function quelleAnsehen(quelle) {
     const dir = path.join(quelle, e.name);
     stores[e.name] = { klasse: regel.klasse, dateien: 0, bytes: 0 };
     for (const d of await readdir(dir, { withFileTypes: true })) {
+      /* Ein Link (auch kaputt) ist kein Schlüssel-Datei: abbrechen, nie als „verändert“ melden. */
+      if (d.isSymbolicLink())
+        throw new SicherungsFehler(`Symbolischer Link ${e.name}/${d.name}. Sicherung abgebrochen — bitte von Hand ansehen.`, 2);
       if (d.isDirectory())
         throw new SicherungsFehler(`Unerwartetes Verzeichnis ${e.name}/${d.name}. Sicherung abgebrochen.`, 2);
       if (d.name.endsWith(".tmp")) { merke(e.name, "unfertige Zwischendatei (.tmp)"); continue; }

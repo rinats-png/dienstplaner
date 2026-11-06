@@ -67,10 +67,10 @@ beforeEach(async () => {
 const neuerKey = (was) => `wp47b-${was}-${++zaehler}-${Date.now()}`;
 
 describe("Lesebremse nach Bestandsgröße (lesenGrenze)", () => {
-  it("ein 4,6-MB-Bestand bleibt unter der gemessenen Sättigung (≈ 200 Antworten/min)", () => {
-    const n = SCH.lesenGrenze(4_600_000);
-    expect(n).toBeLessThanOrEqual(150);
-    expect(n).toBeGreaterThanOrEqual(100);
+  it("Budget 1,2 GB/min: 4,6 MB ergibt 260 Abrufe je Minute, 5 MB ergibt 240 (Schichtwechsel-Ziel)", () => {
+    expect(SCH.LESEN_BYTES_JE_MINUTE).toBe(1_200_000_000);
+    expect(SCH.lesenGrenze(4_600_000)).toBe(260);
+    expect(SCH.lesenGrenze(5_000_000)).toBe(240);
   });
 
   it("kleine Bestände bekommen die volle Grenze des Lesens", () => {
@@ -177,13 +177,100 @@ describe("Quelltext: die Bremsen sind verdrahtet", () => {
   it("daten.mjs setzt die Grenze des Bestandsabrufs nach Größe", async () => {
     const fs = await import("node:fs/promises");
     const quelle = await fs.readFile(new URL("../server/funktionen/daten.mjs", import.meta.url), "utf8");
-    expect(quelle).toMatch(/bremse\("lesen", kennung\(req, s\), undefined,\s*\{ versuche: lesenGrenze\(/);
+    expect(quelle).toMatch(/bremse\("lesen-raum", kennungRaum\(s\.bestand\), undefined,\s*\{ versuche: lesenGrenze\(/);
   });
 
   it("die Größe je Raum ist je Stand zwischengespeichert: ein neuer Stand widerruft den Eintrag", async () => {
     const fs = await import("node:fs/promises");
     const quelle = await fs.readFile(new URL("../server/funktionen/daten.mjs", import.meta.url), "utf8");
     expect(quelle).toMatch(/alt\.stand === mit\.stand/);
-    expect(quelle).toMatch(/raumBytes\.set\(String\(raum\), \{ stand: mit\.stand, bytes \}\)/);
+    expect(quelle).toMatch(/raumBytes\.set\(String\(raum\), \{ stand: mit\.stand, zeit: mit\.zeit, bytes \}\)/);
+  });
+});
+
+/* --------------------------------------------------------------------------
+   Opus-Review (Fix-Runde): Lesen je Person statt je Raum, Raum-Bytegrenze
+   nur mit kurzer Sperre, eigene Arten für Bestand, Auswertung, Vollausgabe.
+   -------------------------------------------------------------------------- */
+
+describe("Review: Lesen je Person, Raum nur über die Bytegrenze mit kurzer Sperre", () => {
+  it("bremse: versuche 0,5 wird erst abgerundet, dann auf mindestens 1 gesetzt (nie 0)", async () => {
+    const k = neuerKey("klein");
+    const a = await SCH.bremse("lesen", k, undefined, { versuche: 0.5 });
+    const b = await SCH.bremse("lesen", k, undefined, { versuche: 0.5 });
+    expect(a.frei).toBe(true);
+    expect(b.frei).toBe(false);
+  });
+
+  it("Bestandslesen zählt je Person: wer seine Grenze erreicht, sperrt nicht die anderen im Raum", async () => {
+    const raum = neuerKey("raum");
+    const p1 = `s:${raum}:p1`, p2 = `s:${raum}:p2`;
+    const klein = { versuche: 3 };   // gleiche Mechanik, kleine Grenze: Ablage ist langsam
+    for (let i = 0; i < 3; i++) await SCH.bremse("bestandlesen", p1, undefined, klein);
+    expect((await SCH.bremse("bestandlesen", p1, undefined, klein)).frei).toBe(false);
+    expect((await SCH.bremse("bestandlesen", p2, undefined, klein)).frei).toBe(true);
+    expect(SCH.GRENZEN.bestandlesen, "GRENZEN.bestandlesen fehlt").toBeTruthy();
+  }, LIMIT);
+
+  it("Vollausgabe (Sicherungsschlüssel) wird von der Bestandsgrenze nicht blockiert", async () => {
+    const k = neuerKey("ausgabe");
+    const klein = { versuche: 3 };
+    for (let i = 0; i < 3; i++) await SCH.bremse("bestandlesen", k, undefined, klein);
+    expect((await SCH.bremse("bestandlesen", k, undefined, klein)).frei).toBe(false);
+    expect((await SCH.bremse("vollausgabe", k)).frei).toBe(true);
+  }, LIMIT);
+
+  it("die Raum-Bytegrenze hat nur eine kurze Sperre (höchstens 15 s) und ist fail closed", () => {
+    const g = SCH.GRENZEN["lesen-raum"];
+    expect(g, "GRENZEN[lesen-raum] fehlt").toBeTruthy();
+    expect(g.sperre).toBeLessThanOrEqual(15);
+    expect(g.failClosed).toBe(true);
+  });
+
+  it("Plattenfehler am Sperreintrag der Raum-Bytegrenze sperrt kurz, nie stumm frei", async () => {
+    const k = neuerKey("raum-platte");
+    stoerung.wirft = (methode, key) => methode === "get" && key.startsWith("sperre:");
+    const b = await SCH.bremse("lesen-raum", k, undefined, { versuche: 240 });
+    expect(b.frei).toBe(false);
+    expect(typeof b.fehler).toBe("string");
+  });
+
+  it("Schichtwechsel: 200 Beschäftigte lesen je 2-mal in 2 Minuten bei 5 MB — der Raum wird nicht blockiert", async () => {
+    /* Raumgrenze mit gefälschter Uhr: 400 Abrufe über 2 Minuten. Je Person sind es nur 2 Abrufe —
+       weit unter der Personengrenze (300/min), deshalb hier nur der Raum geprüft (Laufzeit der Ablage). */
+    const start = Date.parse("2026-11-06T06:00:00Z");
+    let jetzt = start;
+    vi.spyOn(Date, "now").mockImplementation(() => jetzt);
+    try {
+      const raum = neuerKey("wechsel");
+      expect(SCH.GRENZEN["lesen-raum"], "GRENZEN.lesen-raum fehlt").toBeTruthy();
+      const grenze = SCH.lesenGrenze(5_000_000);
+      let blockiert = 0;
+      for (let i = 0; i < 400; i++) {
+        jetzt = start + Math.round(i * (120000 / 400));
+        const b = await SCH.bremse("lesen-raum", `b:${raum}`, undefined, { versuche: grenze });
+        if (!b.frei) blockiert++;
+      }
+      expect(blockiert).toBe(0);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 240000);
+
+  it("Quelltext: Bestand liest je Person und Raum-Bytegrenze; Auswertung und Vollausgabe eigene Arten", async () => {
+    const fs = await import("node:fs/promises");
+    const q = await fs.readFile(new URL("../server/funktionen/daten.mjs", import.meta.url), "utf8");
+    expect(q).toMatch(/bremse\("bestandlesen", kennungPerson\(s\)\)/);
+    expect(q).toMatch(/bremse\("lesen-raum", kennungRaum\(s\.bestand\)/);
+    expect(q).toMatch(/bremse\("auswertung", kennung\(req, s\)\)/);
+    expect(q).toMatch(/bremse\("vollausgabe", kennung\(req, s\)\)/);
+    expect(q).not.toMatch(/bremse\("lesen", kennung\(req, s\)/);
+  });
+
+  it("Quelltext: die Größe je Raum gilt nur für denselben Stand UND dieselbe Änderungszeit", async () => {
+    const fs = await import("node:fs/promises");
+    const q = await fs.readFile(new URL("../server/funktionen/daten.mjs", import.meta.url), "utf8");
+    expect(q).toMatch(/alt\.stand === mit\.stand && alt\.zeit === mit\.zeit/);
+    expect(q).toMatch(/raumBytes\.set\(String\(raum\), \{ stand: mit\.stand, zeit: mit\.zeit, bytes \}\)/);
   });
 });

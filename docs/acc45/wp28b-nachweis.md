@@ -43,3 +43,13 @@ bisherigen Läufe. Die Auswertung wird nachgetragen, sobald E-20 Rohdaten liefer
 
 - `werkzeug/last/` (Lasttest-Werkzeug) nicht ausgeführt; kein Lauf im Paket.
 - Befund 7 (500 mit gespeichertem Stempel) gehört zu WP-07b, nicht hierher.
+
+## Review-Runde (Opus-Review zu fb79daa)
+
+- **Kaputter Symlink (Review 5).** `quelleAnsehen` bricht bei einem symbolischen Link im Store mit Code 2 ab,
+  statt ihn als Veränderung (Exit 3) zu melden. Test: fake Dirent über den `fs`-Mock, weil Symlinks auf diesem Rechner
+  nicht anlegbar sind (EPERM).
+- **Prüfung meldet Veränderung (Review 5).** `werkzeug/ablage-pruefen.mjs` `sicherbarkeit()` meldet eine während des
+  Ansehens veränderte Ablage als Befund („verändert“), statt sie still durchzulassen. Test vorher rot.
+- Gezielt: `wp28b-sicherung-enoent` (4), `sicherung-ablage` (14), `sicherungen` (33), `ablage-pruefen` (8),
+  `ablage-pruefen-matrix` (140), `-matrix2` (54), `-rueckweg` (23 + 1 übersprungen).

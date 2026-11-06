@@ -15,12 +15,18 @@ import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const steuer = vi.hoisted(() => ({ ziel: null, verbleibend: 0, treffer: 0 }));
+const steuer = vi.hoisted(() => ({ ziel: null, verbleibend: 0, treffer: 0, linkIn: null, linkName: null }));
 
 vi.mock("node:fs/promises", async (orig) => {
   const m = await orig();
   return {
     ...m,
+    readdir: async (p, ...rest) => {
+      const r = await m.readdir(p, ...rest);
+      if (steuer.linkIn && String(p) === steuer.linkIn)
+        return [...r, { name: steuer.linkName, isDirectory: () => false, isFile: () => false, isSymbolicLink: () => true }];
+      return r;
+    },
     stat: async (p, ...rest) => {
       if (steuer.ziel && String(p) === steuer.ziel && steuer.verbleibend > 0) {
         steuer.verbleibend -= 1;
@@ -93,5 +99,34 @@ describe("WP-28b: Sichern wiederholt bei ENOENT zwischen readdir und stat", () =
     expect(fehler).toMatchObject({ code: 3 });
     expect(steuer.treffer).toBe(3);
     expect((await readdir(z)).filter((n) => !n.startsWith("."))).toEqual([]);
+  });
+});
+
+describe("Review: ein kaputter Symlink in der Quelle bricht mit Code 2 ab, nicht als Veränderung", () => {
+  it("sichern: ein (kaputter) symbolischer Link im Store ist ein Abbruch mit Code 2, nichts entsteht", async () => {
+    const q = await quelle();
+    steuer.linkIn = path.join(q, "centric");
+    steuer.linkName = "kaputt.json";
+    const z = await ziel();
+    let fehler;
+    try { await G.sichern({ quelle: q, ziel: z, pause: 0, versuche: 3 }); }
+    catch (e) { fehler = e; }
+    steuer.linkIn = null;
+    expect(fehler).toMatchObject({ code: 2 });
+    expect(String(fehler.message)).toMatch(/Symbolischer Link|Link/);
+    expect((await readdir(z)).filter((n) => !n.startsWith("."))).toEqual([]);
+  });
+});
+
+describe("Review: die Prüfung meldet eine während des Ansehens veränderte Ablage", () => {
+  it("sicherbarkeit: eine Datei, die zwischen Liste und stat verschwindet, ist ein Befund (nicht still gut)", async () => {
+    const P = await import("../werkzeug/ablage-pruefen.mjs");
+    const q = await quelle();
+    steuer.ziel = path.join(q, "centric", "b.json");
+    steuer.verbleibend = 99;
+    const aus = await P.sicherbarkeit(q);
+    steuer.ziel = null;
+    steuer.verbleibend = 0;
+    expect(aus.some((a) => /verändert/.test(a.grund))).toBe(true);
   });
 });

@@ -9,18 +9,26 @@ liegt bei der Produktleitung bzw. der Fachperson.
 1. **Feed-Grenze: 12 oder 30 Abrufe je Minute je Geheimnis?** Die Vorgabe nennt „12–30/min je Geheimnis“. Umgesetzt:
    30 je Minute (oberes Ende; Kalenderprogramme fragen alle paar Minuten). Mit 12 wäre der Schutz strenger, bei
    mehreren Kalenderapps hinter einem Geheimnis aber knapp.
-2. **Budget der Lesebremse nach Größe.** Gemessen (WP-28 Befund 5): ein Kern schafft bei 4,6 MB rund 200 Antworten je
-   Minute. Umgesetzt: 600 MB Antwortbytes je Minute und Raum, also rund 130 Antworten je Minute bei 4,6 MB, und die
-   volle Lesegrenze (300) bei kleinen Beständen. Das ist eine Annahme aus einer einzigen Messung, keine Lastprobe. Eine
-   Nachmessung (werkzeug/last, E-20) sollte den Wert bestätigen.
+2. **Budget der Raum-Bytegrenze (Zielkonflikt, Review-Runde).** Gemessen (WP-28 Befund 5): ein Kern schafft bei 4,6 MB
+   rund 200 Antworten je Minute. Ein realistischer Schichtwechsel (200 Beschäftigte × 2 Abrufe in 2 Minuten bei 5 MB,
+   also 200 je Minute) darf nicht blockiert werden. Beides zugleich geht mit diesem Budget nicht sicher. Umgesetzt:
+   1,2 GB je Minute (240 Antworten bei 5 MB), damit der Schichtwechsel durchgeht. Das liegt über der Messung, die
+   Grenze schützt also nicht sicher vor Kernsättigung. Kurze Sperre 15 s, keine Langzeitsperre. Zu entscheiden:
+   Budget, Fenster, oder ob Schichtwechsel durch Zwischenspeicher im Client statt Serverlimit gelöst wird. Nachmessung
+   (werkzeug/last, E-20) nötig.
+   Dazu: Die Lesegrenze je Person (300/min) ist davon getrennt und sperrt nur das eigene Gerät.
 3. **Unbekannte Größe** (nach einem Neustart, bis zum ersten Abruf): umgesetzt als 10 MB angenommen (streng, rund
    60 je Minute). Fachlich vertretbar; alternativ die volle Grenze.
 4. **Zwischenspeicher „je Raum/Stand“.** Umgesetzt wird nur die Antwortgröße je Raum, zwischengespeichert je Stand; ein
    neuer Stand ersetzt den Eintrag. Nicht gespeichert wird der Bestandsinhalt. Offen ist, ob ein Zwischenspeicher der
    Antwort selbst gewünscht ist. Das würde Widerruf bei Sperre und Entzug (WP-24) berühren und ist deshalb nicht
    umgesetzt.
-5. **Vollausgabe und Auswertung für den Betriebsrat** nutzen weiterhin die allgemeine Lesegrenze, nicht die
-   größenabhängige. Ob sie ebenfalls umgestellt werden sollen, ist offen.
+5. **Vollausgabe und Auswertung für den Betriebsrat** haben seit der Review-Runde eigene Arten (`vollausgabe`,
+   `auswertung`), damit eine Bestandssperre den Sicherungslauf nicht blockiert. Ob sie größenabhängig begrenzt werden
+   sollen, ist offen.
+11. **Kalender-Feed für unbekannte Geheimnisse.** Die Feed-Bremse zählt je Geheimnis; ein Abruf mit einem unbekannten
+    Geheimnis wächst nicht in der Ablage, der Zähler aber schon (je Geheimnis, nicht je Herkunft). Offen: eine Begrenzung
+    je Herkunft (IP) für unbekannte Geheimnisse, um Plattenwachstum zu begrenzen. Nicht umgesetzt.
 
 ## WP-27c: Betriebsrat-Auswertung Nachtrag
 
