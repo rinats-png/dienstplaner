@@ -99,6 +99,9 @@ const STEMPEL_WIEDERHOLUNGEN = 3;
    Abmelden oder Benutzerwechsel am selben Gerät kein Stempel der einen
    Person unter der Sitzung einer anderen hinaus. Der Betrieb zählt mit
    seiner Kennung (mandantId), nicht mit seiner Position (Review L5). */
+/** Die Felder des Rumpfs von POST /api/monatsabschluss, die die Funktionen in lib/monatsabschluss.mjs lesen dürfen. */
+const MONATSABSCHLUSS_RUMPF = Object.freeze(["monat", "grund", "anlass", "trotzPrueffaellen", "abdruck", "zeilen", "stand", "revision",
+  "trotzVormonat", "vormonatKategorie", "vormonatGrund", "differenz"]);
 const stempelInhaber = (s) => (s.person === null || s.person === undefined) ? null : createHash("sha256")
   .update(`centric-stempel|${s.bestand}|${s.mandantId ?? s.betrieb}|${s.person}`).digest("hex").slice(0, 32);
 
@@ -1749,7 +1752,10 @@ export default async (req, context) => {
           await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: Monat abgeschlossen ${sperreK.monat}`, wer);
           return antwort({ fehler: sperreK.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreK.monat }, 409);
         }
-        const r = korrekturAnhaengen(mK, rumpf || {}, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
+        /* WP-14c/Review: Die Ausnahme von der Zeitumstellungs-Sperre (zeitumstellungAusnahme) gilt nur für die Leitung (org.edit). */
+        const rumpfK = { ...(rumpf || {}) };
+        if (!darf(s.rolle, "org.edit")) delete rumpfK.zeitumstellungAusnahme;
+        const r = korrekturAnhaengen(mK, rumpfK, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
           new Date(), `k-${randomBytes(6).toString("hex")}`, { nachWiederoeffnung: letzteWiederoeffnung(mK, String((rumpf && rumpf.datum) || "")) });
         if ("status" in r) {
           await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${spurGrund(r.grund)}`, wer);
@@ -1766,7 +1772,7 @@ export default async (req, context) => {
            Tag, keine Ist-Zeiten und keine Schutzkennungen (Art. 9) — nur die Kennung des Ereignisses und die Zahl der
            Hinweise. Was geändert wurde, steht am Stempel (Ereignis mit vorher/nachher, Hinweisen, wer, wann). */
         await protokoll("schreiben", kK, "erfolg",
-          `Stempelkorrektur ${r.ereignis.id}${r.ereignis.selbstfreigabe ? " · Selbstfreigabe" : ""}${spurHinweise(r.hinweise)}`, wer);
+          `Stempelkorrektur ${r.ereignis.id}${r.ereignis.selbstfreigabe ? " · Selbstfreigabe" : ""}${r.ereignis.zeitumstellungAusnahme ? " · Zeitumstellung bestätigt" : ""}${spurHinweise(r.hinweise)}`, wer);
         return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, hinweise: r.hinweise, etag: ergK.stand || null });
       });
     }
@@ -1894,13 +1900,17 @@ export default async (req, context) => {
         const mM = eigenerMandant(mitM.bestand, s);
         if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
         const werM = { personId: s.person ?? null, name: s.name || null, rolle: s.rolle };
+        /* Positivliste (WP-16c, Review): nur diese Felder des Rumpfes erreichen die Monatsabschluss-Funktionen; interne Schalter
+           (etwa die Vorschau der Freigabe) lassen sich von außen nicht setzen. */
+        const rumpfM = {};
+        for (const f of MONATSABSCHLUSS_RUMPF) if (rumpf && Object.prototype.hasOwnProperty.call(rumpf, f)) rumpfM[f] = rumpf[f];
         const idM = `ma-${randomBytes(6).toString("hex")}`;
         const r = aktionM === "abschliessen"
-          ? abschliessen(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
-          : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpf || {}, werM, new Date(), idM)
-            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(mM, rumpf || {}, werM, new Date(), idM)
-              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
-                : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
+          ? abschliessen(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
+          : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpfM, werM, new Date(), idM)
+            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(mM, rumpfM, werM, new Date(), idM)
+              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
+                : wiederoeffnen(mM, rumpfM, werM, new Date(), idM);
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),

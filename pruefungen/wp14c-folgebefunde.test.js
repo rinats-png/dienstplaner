@@ -178,3 +178,37 @@ describe("F8: Selbstauskunft — Mitternacht und Tagesdatum der Pausenprüfung",
     expect(t("2026-03-31", { start: "08:00", ende: "08:00" }).eintrag).toBeTruthy();
   });
 });
+
+describe("F4 (Review): Ausnahme von der Zeitumstellungs-Sperre durch die Leitung mit Pflichtgrund", { timeout: 120000 }, () => {
+  const fall = (datum, startAm, endeAm, start, ende) => ({
+    einstempeln: { [`a1|${datum}`]: { start, startAm, ende, endeAm, markierungen: ["ZEITUMSTELLUNG"] } },
+    erfassung: { [`a1|${datum}`]: { start, ende, bestaetigt: false, grund: "ZEITUMSTELLUNG: gemessen" } } });
+  for (const [name, raum, datum, startAm, endeAm, start, ende, wahr] of [
+    ["Herbstnacht", "f4-herbst", "2026-10-24", "2026-10-24T20:00:00.000Z", "2026-10-25T04:00:00.000Z", "22:00", "06:30", ["22:00", "06:00"]],
+    ["Frühjahrsnacht", "f4-fruehjahr", "2026-03-28", "2026-03-28T21:00:00.000Z", "2026-03-29T05:00:00.000Z", "22:00", "07:30", ["22:00", "06:00"]],
+  ]) {
+    it(`${name}: verschobene Zeiten ⇒ 422; Planung mit Ausnahme ⇒ 422 (ignoriert); Leitung mit Ausnahme und Grund ⇒ 200, im Ereignis und in der Spur vermerkt`, async () => {
+      await h.raum(raum, [h.person("a1"), h.person("l1", "leitung"), h.person("p1", "planer")], fall(datum, startAm, endeAm, start, ende));
+      h.zeitAuf("2026-11-10T09:00:00Z");
+      const rumpf = { personId: "a1", datum, start: wahr[0], ende: wahr[1], pause: 0, grund: "Nachtdienst über die Zeitumstellung geprüft" };
+      const lt = await h.token(raum, "l1", "leitung"), pt = await h.token(raum, "p1", "planer");
+      const nein = await h.anfrage("stempel-korrektur", { token: lt, rumpf });
+      expect([nein.status, /zeitumstellungAusnahme/.test(nein.roh)]).toEqual([422, true]);
+      expect((await h.anfrage("stempel-korrektur", { token: pt, rumpf: { ...rumpf, zeitumstellungAusnahme: true } })).status).toBe(422);
+      expect((await h.mandant(raum)).erfassung[`a1|${datum}`].bestaetigt).toBe(false);
+      const ja = await h.anfrage("stempel-korrektur", { token: lt, rumpf: { ...rumpf, zeitumstellungAusnahme: true } });
+      expect(ja.status, ja.roh).toBe(200);
+      expect(ja.ereignis.zeitumstellungAusnahme).toBe(true);
+      expect(ja.ereignis.grund).toMatch(/Zeitumstellung geprüft/);
+      expect((await h.mandant(raum)).erfassung[`a1|${datum}`]).toMatchObject({ bestaetigt: true, start: wahr[0], ende: wahr[1] });
+      const spur = (await h.spur("2026-11-10")).filter((x) => /Zeitumstellung bestätigt/.test(x.zusatz || ""));
+      expect(spur.length).toBeGreaterThanOrEqual(1);
+      for (const z of spur) expect(z.zusatz).not.toMatch(/\d{4}-\d{2}-\d{2}|\d\d:\d\d/);
+    });
+  }
+  it("dieselben Uhrzeiten bleiben auch mit Ausnahme gesperrt (sie ergäben die falsche Dauer)", () => {
+    const f = { start: "02:30", ende: "02:20", bestaetigt: false, grund: "ZEITUMSTELLUNG: x" };
+    const s = zeitumstellungSperre(f, "02:30", "02:20", { startAm: "2026-10-25T00:30:00.000Z", endeAm: "2026-10-25T01:20:00.000Z" }, "2026-10-25");
+    expect(s && s.ausnahmeMoeglich).toBeFalsy();
+  });
+});

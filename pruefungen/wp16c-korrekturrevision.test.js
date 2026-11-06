@@ -49,7 +49,7 @@ afterAll(async () => {
 });
 
 /* ------------------------------ Betrieb ------------------------------ */
-const ROLLEN = { l1: "leitung", l2: "leitung", p1: "planer", br1: "betriebsrat", a1: "mitarbeiter", a2: "mitarbeiter" };
+const ROLLEN = { l1: "leitung", l2: "leitung", p1: "planer", br1: "betriebsrat", a1: "mitarbeiter", a2: "mitarbeiter", l3: "leitung" };
 function betrieb() {
   const m = A.leererMandant("Revision", "pflege");
   const e1 = m.einheiten[0].id;
@@ -260,7 +260,7 @@ describe("Regeln und Grenzen", () => {
     const kaputt = beginnen({ ...m, istEingefroren: istOhne });
     expect([kaputt.status, kaputt.code]).toEqual([409, KORREKTUR_BASIS_FEHLT]);
   });
-  it("Basis weicht ab (heute andere Zeilen als bestätigt, z. B. nach Anonymisierung): nur ausdrücklich, im Verlauf vermerkt", () => {
+  it("Basis weicht ab (heute andere Zeilen als bestätigt, z. B. nach Anonymisierung): immer 409, auch mit eingeschmuggeltem basisAbweichung", () => {
     const m = exportiert(zu(betrieb()));
     const k = Object.keys(m.istEingefroren).find((x) => x === "a1|2026-10" && m.istEingefroren[x].nm);
     const verfaelscht = { ...m, istEingefroren: { ...m.istEingefroren, [k]: { ...m.istEingefroren[k], nm: ["P1X", "Neu", "Name"] } } };
@@ -271,9 +271,8 @@ describe("Regeln und Grenzen", () => {
     const neuE = { ...e, lohnexport: { ...e.lohnexport, zeilen: "f".repeat(32) } };
     const abw = beginnen({ ...m, monatsabschluss: { [OKT]: neuE } });
     expect([abw.status, abw.code]).toEqual([409, KORREKTUR_BASIS_ABWEICHEND]);
-    const ok = beginnen({ ...m, monatsabschluss: { [OKT]: neuE } }, { basisAbweichung: true });
-    expect("status" in ok, JSON.stringify(ok)).toBe(false);
-    expect(ok.ereignis.basisAbweichung).toBe(true);
+    const noch = beginnen({ ...m, monatsabschluss: { [OKT]: neuE } }, { basisAbweichung: true });
+    expect([noch.status, noch.code]).toEqual([409, KORREKTUR_BASIS_ABWEICHEND]);
   });
   it("Vertrags-/Tarifparameter: eine geänderte Lohnart zwischen Export und Korrektur taucht in der Differenz auf und braucht die zweite Person (nie still)", () => {
     const m = exportiert(zu(betrieb()));
@@ -377,8 +376,14 @@ describe("HTTP: der ganze Weg mit Rechten, Rennen und späten Stempeln", { timeo
     const b = JSON.parse(JSON.stringify(g.bestand));
     delete b.mandanten[0].abweichungen["a1|2026-10-31"];
     delete b.mandanten[0].erfassung["a1|2026-10-31"];
-    const put = await anfrage("bestand", { methode: "PUT", token: tL1, rumpf: { bestand: b, etag: g.etag } });
+    const tBeginner = beginner === "l1" ? tL1 : tL2;
+    const gB = await anfrage("bestand", { methode: "GET", token: tBeginner });
+    const bB = JSON.parse(JSON.stringify(gB.bestand));
+    delete bB.mandanten[0].abweichungen["a1|2026-10-31"];
+    delete bB.mandanten[0].erfassung["a1|2026-10-31"];
+    const put = await anfrage("bestand", { methode: "PUT", token: tBeginner, rumpf: { bestand: bB, etag: gB.etag } });
     expect(put.status, put.roh).toBe(200);
+    void b; void g;
     /* offener Stempel von a2 (nur Beginn) sperrt den Abschluss, bis er geklärt ist; hier ausdrücklich */
     const tPlan = tP;
     const ohneFreigabe = await abschlussPost(tPlan, { aktion: "abschliessen", trotzPrueffaellen: true });
@@ -434,5 +439,82 @@ describe("HTTP: der ganze Weg mit Rechten, Rennen und späten Stempeln", { timeo
     const kor = zeilen.filter((z) => z.ausgang === "erfolg" && /Korrektur (begonnen|freigegeben)/.test(z.zusatz || ""));
     expect(kor.length).toBe(2);
     for (const z of kor) expect(z.zusatz).not.toMatch(/Samstagsdienst|\d{4}-\d{2}-\d{2}/);
+  });
+});
+
+describe("Review-Befunde 1–3, 5, 6: Umgehung, Person, Autoren, Differenzzeilen, Basis", { timeout: 180000 }, () => {
+  it("1 (kritisch): vorschau im Rumpf schließt die Revision nicht — Planung, Leitung allein und Leitung mit vorschau bleiben bei 409; interne Schalter sind nicht von außen setzbar", async () => {
+    const raum = "wp16c-bypass";
+    await B.bestandSchreiben(laden(), raum, { version: VERSION, mandanten: [betrieb()] }, { durch: "Pruefung" });
+    const [tL1, tP] = [await token("l1", raum), await token("p1", raum)];
+    expect((await abschlussPost(tL1, { aktion: "abschliessen" })).status).toBe(200);
+    const sicht = (await anfrage("bestand", { methode: "GET", token: tL1 })).bestand.mandanten[0];
+    expect((await abschlussPost(tL1, { aktion: "lohnexport", ...FL.lohnexportStand(sicht, OKT), ...TROTZ })).status).toBe(200);
+    expect((await abschlussPost(tL1, { aktion: "korrektur-beginnen", anlass: "fehler", grund: "Samstagsdienst war nicht geleistet" })).status).toBe(200);
+    const g = await anfrage("bestand", { methode: "GET", token: tL1 });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    delete b.mandanten[0].abweichungen["a1|2026-10-31"];
+    delete b.mandanten[0].erfassung["a1|2026-10-31"];
+    expect((await anfrage("bestand", { methode: "PUT", token: tL1, rumpf: { bestand: b, etag: g.etag } })).status).toBe(200);
+    for (const [t, extra] of [[tP, { vorschau: true }], [tL1, {}], [tL1, { vorschau: true }], [tP, { vorschau: "true", opt: { vorschau: true }, freigabe: { differenz: "x" } }]]) {
+      const z = await abschlussPost(t, { aktion: "abschliessen", trotzPrueffaellen: true, ...extra });
+      expect([z.status, z.code]).toEqual([409, KORREKTUR_FREIGABE_ERFORDERLICH]);
+      expect(z.differenz.zeilen).toBeUndefined();                              // der Abschluss liefert nur Zahlen
+    }
+    expect((await mandant(raum)).monatsabschluss[OKT]).toMatchObject({ abgeschlossen: false, revision: 2 });
+  });
+  it("2: Beginn ohne Personenkennung (Leitungs-Code ohne Person) wird abgewiesen; mit Person geht es", async () => {
+    const raum = "wp16c-ohneperson";
+    await B.bestandSchreiben(laden(), raum, { version: VERSION, mandanten: [exportiert(zu(betrieb()))] }, { durch: "Pruefung" });
+    const tOhne = (await sitzungAnlegen({ bestand: raum, name: "Code", rolle: "leitung", person: null, betrieb: 0, mandantId: "m1", einheit: null }, 3600000)).token;
+    const r = await abschlussPost(tOhne, { aktion: "korrektur-beginnen", anlass: "fehler", grund: "Samstagsdienst war nicht geleistet" });
+    expect([r.status, r.code]).toEqual([403, "KORREKTUR_PERSON_NOETIG"]);
+    expect((await mandant(raum)).monatsabschluss[OKT].abgeschlossen).toBe(true);
+    const m = exportiert(zu(betrieb()));
+    expect(beginnen(m, {}, { personId: null, rolle: "leitung" }).code).toBe("KORREKTUR_PERSON_NOETIG");
+    expect(beginnen(m, {}, { rolle: "leitung" }).status).toBe(403);
+  });
+  it("3: wer die Änderungen gemacht hat (PUT oder Stempelkorrektur), gibt sie nicht frei; eine dritte Person darf", async () => {
+    const raum = "wp16c-autoren";
+    await B.bestandSchreiben(laden(), raum, { version: VERSION, mandanten: [betrieb()] }, { durch: "Pruefung" });
+    const [tL1, tL2, tL3] = [await token("l1", raum), await token("l2", raum), await token("l3", raum)];
+    expect((await abschlussPost(tL1, { aktion: "abschliessen" })).status).toBe(200);
+    const sicht = (await anfrage("bestand", { methode: "GET", token: tL1 })).bestand.mandanten[0];
+    expect((await abschlussPost(tL1, { aktion: "lohnexport", ...FL.lohnexportStand(sicht, OKT), ...TROTZ })).status).toBe(200);
+    expect((await abschlussPost(tL1, { aktion: "korrektur-beginnen", anlass: "fehler", grund: "Samstagsdienst war nicht geleistet" })).status).toBe(200);
+    /* L2 ändert die Zeiten selbst … */
+    const g = await anfrage("bestand", { methode: "GET", token: tL2 });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    delete b.mandanten[0].abweichungen["a1|2026-10-31"];
+    delete b.mandanten[0].erfassung["a1|2026-10-31"];
+    expect((await anfrage("bestand", { methode: "PUT", token: tL2, rumpf: { bestand: b, etag: g.etag } })).status).toBe(200);
+    expect((await mandant(raum)).monatsabschluss[OKT].korrektur.autoren).toEqual(["l2"]);
+    /* … und gibt die eigene Änderung nicht frei */
+    const frei = (t, extra = {}) => abschlussPost(t, { aktion: "korrektur-freigeben", ...extra });
+    const eigene = await frei(tL2);
+    expect([eigene.status, eigene.code]).toEqual([403, "KORREKTUR_ZWEITE_PERSON"]);
+    expect((await frei(tL1)).status).toBe(403);                                    // Beginner
+    const vorschau = await frei(tL3);
+    expect([vorschau.status, vorschau.code]).toEqual([409, KORREKTUR_DIFFERENZ_FEHLT]);
+    /* 5: die Freigabe sieht die Differenzzeilen */
+    expect(vorschau.differenz.zeilen.length).toBe(vorschau.differenz.n);
+    expect(vorschau.differenz.zeilen[0]).toMatchObject({ personalnummer: "P5", stunden: -8 });
+    expect(vorschau.differenz.zeilen[0].bezeichnung).toMatch(/^Korrektur R2 zu R1/);
+    expect((await frei(await token("a1", raum))).status).toBe(403);               // andere Rollen sehen sie nie
+    expect((await frei(await token("p1", raum))).status).toBe(403);
+    const ok = await frei(tL3, { differenz: vorschau.differenz.abdruck });
+    expect(ok.status, ok.roh).toBe(200);
+    expect(ok.differenz.zeilen.length).toBe(ok.differenz.n);
+    expect((await mandant(raum)).monatsabschluss[OKT].korrektur.freigabe).not.toHaveProperty("zeilen");
+  });
+  it("3 (Stempelkorrektur): Autor eines Korrekturereignisses seit Beginn gibt nicht frei (Bibliothek)", () => {
+    const m = exportiert(zu(betrieb()));
+    let g = mitKorrektur(beginnen(m).mandant);
+    const e = g.monatsabschluss[OKT];
+    g = { ...g, einstempeln: { "a1|2026-10-05": { start: "06:00", ende: "14:00", korrekturen: [{ id: "k1", wann: new Date(Date.parse(JETZT) + 1000).toISOString(), wer: { personId: "l2" } }] } } };
+    void e;
+    const r = korrekturFreigeben(g, { monat: OKT }, WER_L2, new Date(JETZT), "kf", "2026-11-05");
+    expect([r.status, r.code]).toEqual([403, "KORREKTUR_ZWEITE_PERSON"]);
+    expect(korrekturFreigeben(g, { monat: OKT }, { personId: "l3", rolle: "leitung" }, new Date(JETZT), "kf", "2026-11-05").code).toBe(KORREKTUR_DIFFERENZ_FEHLT);
   });
 });

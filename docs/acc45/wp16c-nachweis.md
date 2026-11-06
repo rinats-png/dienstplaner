@@ -25,6 +25,15 @@ Basis 46dd93b, Branch `feature/wp16c-stempelkette`. Ersetzt den Verweis „Korre
    Erstexport (`korrekturZu` im Ereignis); danach wieder gegen einfaches Wiederöffnen gesperrt; weitere Korrektur = Revision 3 gegen die volle Revision 2.
 7. **Keine Frist.** Maßgeblich ist der Exportstatus (Test: 500 Tage später).
 
+## Nachtrag Opus-Review (3513451 → Folgecommit)
+- **Kritisch behoben:** `vorschau` war aus dem Rumpf setzbar (Umgehung der zweiten Person). Jetzt interner Parameter (`abschliessen(…, opt)`), im Handler Positivliste `MONATSABSCHLUSS_RUMPF`; HTTP-Test mit Planung, Leitung allein, Leitung+`vorschau` (Mutant „Rumpf-Feld wieder gelesen“ ⇒ rot).
+- **Beginn ohne Personenkennung** ⇒ 403 `KORREKTUR_PERSON_NOETIG`.
+- **Autoren:** Mitwirkende (PUT-Speicherer `korrektur.autoren` via `korrekturAutorVermerken` in `rechte.mjs`, Stempelkorrekturen, Antragsentscheidungen) geben nicht frei.
+- **Zeitumstellung:** Ausnahme durch die Leitung mit Pflichtgrund statt harter Sperre (Herbst- und Frühjahrsnacht getestet), Spur-/Ereignisvermerk.
+- **Freigabe sieht die Differenzzeilen** (nur `org.edit`); `monatskorrektur.jsx` zeigt sie.
+- **Basisabweichung:** immer abgewiesen (`basisAbweichung` entfernt).
+- Offen dokumentiert: Folgemonate, Zugänge ohne Person (`wp16c-fragen.md`).
+
 ## Dateien
 `server/lib/monatsabschluss.mjs` (Kern), `server/lib/rechte.mjs` (`abschlussRecht`), `server/funktionen/daten.mjs` (Handler, Spur ohne Freitext/Tag),
 `server/lib/aufbewahrung.mjs` (abgelegte Lohnzeilen nach Plandatenfrist gelöscht), `src/lib/fachlogik.js` (`datevSaetze`, Dateiname), `src/speicher.js`

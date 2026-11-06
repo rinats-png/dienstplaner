@@ -16,7 +16,7 @@
 
 import { GEO_MODUS_TEXT } from "./geo.mjs";
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
-import { abschlussAusGespeichert } from "./monatsabschluss.mjs";
+import { abschlussAusGespeichert, korrekturAutorVermerken } from "./monatsabschluss.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
@@ -1325,6 +1325,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       /* Monatsabschluss (WP-16): abgeschlossen und wiedergeöffnet wird nur über POST /api/monatsabschluss —
          mitgeschickt ist er wirkungslos (auch eine veraltete Kopie überschreibt ihn nicht). */
       geschickt = abschlussAusGespeichert(ort.betrieb, geschickt);
+      /* Korrekturrevision (WP-16c): Wer den Bestand speichert, während eine Korrektur offen ist, gibt die Differenz nicht frei. */
+      geschickt = korrekturAutorVermerken(geschickt, sitzung && sitzung.person);
       /* Geo-Prüfung beim Stempeln (E7): schalten darf nur die Leitung. */
       const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (schalter.grund) return { verweigert: schalter.grund };

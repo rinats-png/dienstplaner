@@ -900,7 +900,7 @@ export async function korrekturAntrag(datum, start, ende, pause, grund) {
  * trotzVormonat: { kategorie, grund } — die ausdrückliche Überstimmung offener oder geänderter Vormonate.
  */
 export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false, exportStand = null, trotzVormonat = null,
-  anlass = "", differenz = null, basisAbweichung = false } = {}) {
+  anlass = "", differenz = null } = {}) {
   /* Lohnexport bestätigen (WP-16, Nachtrag dritter Review H-2): der Stand der ausgegebenen Datei. */
   const stand = exportStand && typeof exportStand === "object"
     ? { abdruck: exportStand.abdruck, stand: exportStand.stand, revision: exportStand.revision, zeilen: exportStand.zeilen } : {};
@@ -908,8 +908,8 @@ export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffae
     ? { trotzVormonat: true, vormonatKategorie: trotzVormonat.kategorie, vormonatGrund: trotzVormonat.grund } : {};
   const a = await fetch("/api/monatsabschluss", { method: "POST", headers: kopf(),
     body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}), ...stand, ...trotz,
-      /* Korrekturrevision (WP-16c): Anlass, die gesehene Differenz (Prüfsumme) und die ausdrückliche Basisabweichung. */
-      ...(anlass ? { anlass } : {}), ...(differenz ? { differenz } : {}), ...(basisAbweichung ? { basisAbweichung: true } : {}) }) });
+      /* Korrekturrevision (WP-16c): Anlass und die gesehene Differenz (Prüfsumme). */
+      ...(anlass ? { anlass } : {}), ...(differenz ? { differenz } : {}) }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) {

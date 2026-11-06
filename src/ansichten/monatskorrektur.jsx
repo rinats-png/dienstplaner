@@ -44,8 +44,17 @@ export function MonatsKorrektur({ sitz, ym, akt }) {
       </div>
       {laeuft && kor.freigabe && <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
         Freigegeben von {kor.freigabe.wer && kor.freigabe.wer.name ? kor.freigabe.wer.name : "einer zweiten Person"} ({kor.freigabe.n} Lohnzeilen) — gilt nur für den jetzigen Stand.</div>}
-      {differenz && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
-        Die Korrektur ändert {differenz.n} Lohnzeilen (Summe {differenz.summe} h). Zweite Person: bitte prüfen und „Differenz freigeben“.</div>}
+      {differenz && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 12.5, color: C.warn }}>
+            Die Korrektur ändert {differenz.n} Lohnzeilen (Summe {differenz.summe} h). Zweite Person: bitte prüfen und „Differenz freigeben“.</div>
+          {/* Die Freigabe sieht, was sie freigibt: Personalnummer, Lohnart, Stunden (nur für org.edit). */}
+          <table style={{ fontSize: 12.5, marginTop: 4, borderCollapse: "collapse", ...NUM }}>
+            <tbody>{(Array.isArray(differenz.zeilen) ? differenz.zeilen : []).map((z, i) => (
+              <tr key={i}><td style={{ padding: "1px 10px 1px 0" }}>{z.personalnummer}</td><td style={{ padding: "1px 10px 1px 0" }}>{z.lohnart}</td>
+                <td style={{ padding: "1px 10px 1px 0" }}>{z.bezeichnung}</td><td style={{ textAlign: "right" }}>{z.stunden > 0 ? "+" : ""}{z.stunden} h</td></tr>))}</tbody>
+          </table>
+        </div>)}
       {offen && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
           <Sel value={anlass} aria-label="Anlass der Korrektur" onChange={(x) => setAnlass(x.target.value)}>

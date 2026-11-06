@@ -370,14 +370,15 @@ const werForm = (w) => ({ personId: w && w.personId !== undefined ? w.personId :
 /**
  * Einen vergangenen Monat abschließen.
  * @param {any} m gespeicherter Betrieb
- * @param {{monat?: string, grund?: string, trotzPrueffaellen?: boolean, vorschau?: boolean}} r
+ * @param {{monat?: string, grund?: string, trotzPrueffaellen?: boolean}} r
+ * @param {{vorschau?: boolean}} [opt]  NUR intern (korrekturFreigeben) — nie aus dem Rumpf einer Anfrage
  * @param {{personId: any, name?: string|null, rolle?: string|null}} wer
  * @param {Date} jetzt
  * @param {string} id Kennung des Verlaufseintrags
  * @param {string} heute "JJJJ-MM-TT" (Berlin)
- * @returns {{status: number, grund: string, code?: string, offen?: object, differenz?: object} | {mandant: object, eintrag: object, ereignis: object, differenz?: {abdruck: string, n: number, summe: number}}}
+ * @returns {{status: number, grund: string, code?: string, offen?: object, differenz?: object} | {mandant: object, eintrag: object, ereignis: object, differenz?: {abdruck: string, n: number, summe: number}, differenzZeilen?: any[]}}
  */
-export function abschliessen(m, r, wer, jetzt, id, heute) {
+export function abschliessen(m, r, wer, jetzt, id, heute, opt = {}) {
   const monat = r && r.monat;
   if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
   if (!(String(monat) < String(heute).slice(0, 7)))
@@ -423,7 +424,7 @@ export function abschliessen(m, r, wer, jetzt, id, heute) {
   if (kor) {
     const ex = exportZeilenFuer(mandantNeu, monat);
     const differenz = differenzKurz(ex.zeilen);
-    const vorschau = r && r.vorschau === true;
+    const vorschau = !!opt && opt.vorschau === true;
     if (!vorschau && differenz.n > 0) {
       const f = kor.freigabe;
       if (!objekt(f) || f.differenz !== differenz.abdruck || f.abdruck !== abdruck)
@@ -434,7 +435,7 @@ export function abschliessen(m, r, wer, jetzt, id, heute) {
     ereignis.differenz = differenz;
     eintrag.korrektur = { ...kor, offen: false, geschlossenAm: ereignis.am, differenz,
       ...(differenz.n > 0 && !vorschau ? { freigabe: kor.freigabe } : {}) };
-    return { ereignis, eintrag, differenz, mandant: mandantNeu };
+    return { ereignis, eintrag, differenz, mandant: mandantNeu, ...(vorschau ? { differenzZeilen: ex.zeilen } : {}) };
   }
   return { ereignis, eintrag, mandant: mandantNeu };
 }
@@ -636,7 +637,7 @@ const differenzKurz = (zeilen) => ({ abdruck: datevZeilenAbdruck(zeilen), n: zei
  * Legt die exportierte Revision unverändert ab, verwirft das Freeze (wie beim Wiederöffnen) und öffnet den Monat für
  * Korrekturen. Es gibt keine Frist: maßgeblich ist der Exportstatus.
  * @param {any} m
- * @param {{monat?: string, grund?: string, anlass?: string, basisAbweichung?: boolean}} r
+ * @param {{monat?: string, grund?: string, anlass?: string}} r
  * @returns {{status: number, grund: string, code?: string} | {mandant: object, eintrag: object, ereignis: object}}
  */
 export function korrekturBeginnen(m, r, wer, jetzt, id) {
@@ -648,6 +649,9 @@ export function korrekturBeginnen(m, r, wer, jetzt, id) {
   const anlass = typeof (r && r.anlass) === "string" ? r.anlass : "";
   if (!Object.prototype.hasOwnProperty.call(KORREKTUR_ANLAESSE, anlass))
     return { status: 422, grund: `Bitte einen Anlass wählen (${Object.keys(KORREKTUR_ANLAESSE).join(", ")}).` };
+  /* Fail-closed wie bei der Freigabe: Wer beginnt, muss als Person erkennbar sein (sonst ließe sich die Zweitperson-Regel umgehen). */
+  if (!wer || wer.personId === undefined || wer.personId === null || String(wer.personId) === "")
+    return { status: 403, code: "KORREKTUR_PERSON_NOETIG", grund: "Eine Korrektur nach dem Lohnexport beginnt eine erkennbare Person — dieser Zugang ist keiner Person zugeordnet." };
   const alt = abschlussEintrag(m, monat);
   if (!alt || alt.abgeschlossen !== true)
     return { status: 409, grund: alt && objekt(alt.korrektur) && alt.korrektur.offen === true
@@ -670,9 +674,11 @@ export function korrekturBeginnen(m, r, wer, jetzt, id) {
       grund: `Die Ist-Daten für ${monatText(monat)} weichen von der Prüfsumme des Abschlusses ab. Eine Korrektur lässt sich so nicht beginnen.` };
   const vergleich = lohnexportVergleich(m, monat);
   const basisAbweicht = !vergleich || vergleich.status !== "gleich";
-  if (basisAbweicht && !(r && r.basisAbweichung === true))
+  /* Restriktiv: weicht die heutige Lohnausgabe von der bestätigten ab, ist die abgelegte Revision nicht die exportierte —
+     keine Korrektur (kein Umgehen mit einem Rumpf-Feld). Klärung mit dem Betreiber. */
+  if (basisAbweicht)
     return { status: 409, code: KORREKTUR_BASIS_ABWEICHEND,
-      grund: `Die heute erzeugten Lohnzeilen für ${monatText(monat)} weichen von den bestätigten ab (zum Beispiel nach einer Anonymisierung). Die Differenz zum bestätigten Export ist dann nicht verlässlich — nur ausdrücklich (basisAbweichung) fortfahren.` };
+      grund: `Die heute erzeugten Lohnzeilen für ${monatText(monat)} weichen von den bestätigten ab (zum Beispiel nach einer Anonymisierung). Die Differenz zum bestätigten Export wäre nicht verlässlich — bitte mit dem Betreiber klären.` };
   const ex = exportZeilenFuer(m, monat);
   const voll = datevAusFreeze(m, monat) || [];
   const snap = { revision, stand: alt.stand ?? null, abdruck: alt.abdruck, am: alt.am ?? null, wer: alt.wer ?? null,
@@ -682,7 +688,7 @@ export function korrekturBeginnen(m, r, wer, jetzt, id) {
      dem Abschluss geändert) — ohne Personen; die Differenz der Lohnzeilen zeigt es beim Abschluss. */
   const istNeu = istAbweichungen(m, monat);
   const ereignis = { id, art: "korrektur-beginn", am: jetzt.toISOString(), wer: werForm(wer), grund, anlass, revision: revision + 1,
-    vonRevision: revision, abdruck: alt.abdruck, istNeu, ...(basisAbweicht ? { basisAbweichung: true } : {}) };
+    vonRevision: revision, abdruck: alt.abdruck, istNeu };
   const { abdruck: _a, stand: _s, lohnexport: _l, ...rest } = alt;
   void _a; void _s; void _l;
   const eintrag = { ...rest, abgeschlossen: false, am: ereignis.am, wer: ereignis.wer, revision: revision + 1,
@@ -712,13 +718,20 @@ export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
   if (ich === null || (beginn !== null && ich === beginn))
     return { status: 403, code: "KORREKTUR_ZWEITE_PERSON",
       grund: "Die Freigabe gibt eine zweite Person — nicht die, die die Korrektur begonnen hat." };
+  /* Wer die Änderungen dieser Revision gemacht hat, gibt sie nicht frei: Autoren der Stempelkorrekturen seit Beginn und alle,
+     die den Bestand seit Beginn gespeichert haben (korrekturAutorVermerken). */
+  if (korrekturAutoren(m, monat, kor).has(ich))
+    return { status: 403, code: "KORREKTUR_ZWEITE_PERSON",
+      grund: "Die Freigabe gibt eine Person, die an dieser Korrektur nicht selbst mitgewirkt hat." };
   const verlauf = Array.isArray(alt.verlauf) ? alt.verlauf : [];
   if (verlauf.length >= ABSCHLUSS_VERLAUF_MAX)
     return { status: 409, grund: "Dieser Monat wurde so oft geändert, dass der Server keinen weiteren Schritt annimmt. Bitte mit der Betriebsleitung klären." };
   /* Vorschau: genau so, wie der Abschluss rechnen würde (ohne Freigabeprüfung). */
-  const vor = abschliessen(m, { monat, trotzPrueffaellen: true, vorschau: true }, wer, jetzt, id, heute);
+  const vor = abschliessen(m, { monat, trotzPrueffaellen: true }, wer, jetzt, id, heute, { vorschau: true });
   if ("status" in vor) return vor;
-  const differenz = vor.differenz;
+  /* Die Freigabe sieht, was sie freigibt: die Differenzzeilen (nur hier, an org.edit — nie in der Antwort des Abschlusses). */
+  const differenz = vor.differenz ? { ...vor.differenz, zeilen: (vor.differenzZeilen || []).map((z) => ({
+    personalnummer: z.personalnummer, nachname: z.nachname ?? null, vorname: z.vorname ?? null, lohnart: z.lohnart, bezeichnung: z.bezeichnung, stunden: z.stunden })) } : null;
   if (!differenz || differenz.n === 0)
     return { status: 409, code: "KORREKTUR_KEINE_DIFFERENZ", grund: "Die Korrektur ändert keine Lohnzeile — eine Freigabe ist nicht nötig." };
   if (typeof (r && r.differenz) !== "string")
@@ -732,6 +745,39 @@ export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
     revision: alt.revision };
   const eintrag = { ...alt, korrektur: { ...kor, freigabe }, verlauf: [...verlauf, ereignis] };
   return { ereignis, eintrag, differenz, mandant: { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
+}
+
+/** Personen, die an der offenen Korrekturrevision mitgewirkt haben (Beginn, Stempelkorrekturen seit Beginn, Speichern des Bestands). */
+function korrekturAutoren(m, monat, kor) {
+  const aus = new Set();
+  const add = (p) => { if (p !== undefined && p !== null && String(p) !== "") aus.add(String(p)); };
+  const seit = String(kor && kor.am);
+  if (kor && kor.wer) add(kor.wer.personId);
+  for (const p of Array.isArray(kor && kor.autoren) ? kor.autoren : []) add(p);
+  for (const [k, e] of Object.entries(objekt(m && m.einstempeln) ? m.einstempeln : {})) {
+    if (!imMonat(k, monat) || !objekt(e)) continue;
+    for (const x of Array.isArray(e.korrekturen) ? e.korrekturen : []) if (objekt(x) && String(x.wann) >= seit) add(x.wer && x.wer.personId);
+    for (const a of Array.isArray(e.antraege) ? e.antraege : []) if (objekt(a) && objekt(a.entschieden) && String(a.entschieden.wann) >= seit) add(a.entschieden.durch && a.entschieden.durch.personId);
+  }
+  return aus;
+}
+
+/**
+ * Hat eine Person den Bestand gespeichert, während eine Korrekturrevision offen ist, wird sie als Mitwirkende vermerkt
+ * (PUT /api/bestand, Vollschreibrecht) — sie gibt die Differenz dann nicht frei. Fail-closed: auch ein Speichern ohne
+ * Änderung zählt.
+ */
+export function korrekturAutorVermerken(m, personId) {
+  if (!objekt(m) || !objekt(m[ABSCHLUSS_FELD]) || personId === undefined || personId === null || String(personId) === "") return m;
+  let neu = null;
+  for (const [mon, e] of Object.entries(m[ABSCHLUSS_FELD])) {
+    if (!objekt(e) || !objekt(e.korrektur) || e.korrektur.offen !== true) continue;
+    const a = Array.isArray(e.korrektur.autoren) ? e.korrektur.autoren : [];
+    if (a.includes(String(personId)) || a.length >= 20) continue;
+    neu = neu || { ...m[ABSCHLUSS_FELD] };
+    neu[mon] = { ...e, korrektur: { ...e.korrektur, autoren: [...a, String(personId)] } };
+  }
+  return neu ? { ...m, [ABSCHLUSS_FELD]: neu } : m;
 }
 
 /** Die letzte Wiederöffnung eines (jetzt offenen) Monats — für den Vermerk an Korrekturen. */
