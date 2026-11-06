@@ -149,13 +149,11 @@ import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
-import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
-  PAKETE, paketVon, preisFuer, paketBuchbar, paketZustand, PAKET_ZUSTAENDE, paketAnzeige, pilotAktiv, merkmalNutzbar,
-  leistungenAnzeige } from "./stufen.js";
-import { kannMerkmal, mandantPaketkosten, paketAufpreisSumme, paketPositionen, paketSchalten, pilotSetzen,
-  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, folgemonatsanfang, paketTag, vertragsstandUebernehmen } from "./paketlogik.js";
-import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
+  paketVon, paketBuchbar, paketAnzeige, leistungenAnzeige } from "./stufen.js";
+import { kannMerkmal, mandantPaketkosten, paketPositionen, paketSchalten, pilotSetzen,
+  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, paketTag, vertragsstandUebernehmen } from "./paketlogik.js";
+import { hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../server/lib/rollenvergabe.mjs";
@@ -199,6 +197,12 @@ import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung,
   from "./sicherungen-ui.js";
 /* WP-19.0: Branchenmodule — Aktivierung, Regelwerte und alle Moduloberflächen über einen Einhängepunkt (src/module/index.js). */
 import { BranchenModule } from "./module/kern.jsx";
+import { Mandantenrechner } from "./ansichten/mandantenrechner.jsx";
+import { BetreiberTarife } from "./ansichten/betreiber-tarife.jsx";
+import { Pakete } from "./ansichten/pakete.jsx";
+import { Hilfe } from "./ansichten/hilfe.jsx";
+import { OfflineSchalter } from "./ansichten/offline-schalter.jsx";
+import { Adressaenderungen } from "./ansichten/adressaenderungen.jsx";
 import { JugendschutzSchalter } from "./ansichten/jugendschutz-schalter.jsx";
 import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
@@ -4192,12 +4196,6 @@ function antragUmsetzen(m, a) {
 
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
 const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
-/** Welche Pakete schlägt eine Branche vor? */
-const paketeFuerBranche = (b) => ({
-  sicherheit: ["sicherheit"], pflege: ["pflege"], klinik: ["klinik"],
-  produktion: ["industrie"], logistik: ["industrie"], rettung: ["klinik"],
-}[b] || []);
-
 /* ------------------------ Branchenbegriffe ------------------------------- */
 /**
  * Dieselbe Sache heißt je Branche anders. Die Begriffe stecken an einer Stelle,
@@ -6950,162 +6948,6 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
    in dem der Betreiber eine Größe durchspielt, bevor es sie gibt, und
    für den öffentlichen Rechner vor der Anmeldung. */
 
-/* ------------------------------- Die Ansicht -----------------------------
-   Die vorige Fassung ließ Beschäftigte und Einheiten eingeben und rechnete
-   daraus einen Preis je Standort mit Mengenstaffel. Im neuen Modell ist
-   das keine Vereinfachung mehr, sondern eine falsche Grundannahme: Die
-   Zahl der Beschäftigten bestimmt den Preis nicht. Was ihn bestimmt, ist
-   eine Organisationsentscheidung — wie viele Planer-Zugänge, wie viele
-   große Standorte — und genau die lässt sich hier durchspielen. */
-function Mandantenrechner({ db }) {
-  const [stufeId, setStufeId] = useState("pro");
-  const [planer, setPlaner] = useState(1);
-  const [standorte, setStandorte] = useState([25]);
-
-  const stufe = stufeVon(stufeId);
-  const p = useMemo(() => preisFuer(stufe, planer, standorte), [stufeId, planer, standorte]);
-  const alle = useMemo(() => db.tarife.map((t) => preisFuer(t, planer, standorte)), [db, planer, standorte]);
-
-  const aendereStandort = (i, wert) => setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
-
-  /* Die beiden Standort-Ringe fassen die Liste zu ihren zwei Kennzahlen
-     zusammen: wie viele, und wie groß. Ungleiche Standorte bleiben in der
-     Liste darunter möglich — sie ändern den Preis, weil jeder Standort
-     über dem Kontingent nach seiner eigenen Größe eingestuft wird. */
-  const gleichGross = standorte.every((n) => n === standorte[0]);
-  const leitgroesse = standorte.length ? Math.max(...standorte) : 25;
-  const setzeAnzahl = (n) => setStandorte((s) => (n <= s.length
-    ? s.slice(0, n)
-    : [...s, ...Array(n - s.length).fill(s.length ? s[s.length - 1] : 25)]));
-  const setzeGroesse = (g) => setStandorte((s) => s.map(() => g));
-
-  return (
-    <div>
-      <H1 rubrik="Betreiber"
-        sub="Wie viele Planer-Zugänge braucht der Betrieb, und wie groß sind seine einzelnen Standorte? Das allein bestimmt den Preis — die Zahl der Beschäftigten nicht mehr."
-        >Mandantenrechner</H1>
-
-      {/* Eingaben */}
-      <Card style={{ padding: 26, marginBottom: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 26 }}>
-          <div>
-            <Lab style={{ marginBottom: 9 }}>Stufe</Lab>
-            <Seg value={stufeId} onChange={setStufeId}
-              options={STUFEN.map((s) => ({ id: s.id, label: s.name }))} />
-            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>
-              {zahl(stufe.planerInklusive)} Planer-Zugang{stufe.planerInklusive === 1 ? "" : "e"} und
-              {" "}{zahl(stufe.standorteInklusive)} Standort{stufe.standorteInklusive === 1 ? "" : "e"} beliebiger
-              Größe sind enthalten.
-            </div>
-          </div>
-          {/* Ringe statt Zählwerk und Zahlenfeldern — dieselbe Darstellung
-              wie im Preisrechner der Website. Der Ring zeigt Wert und Skala
-              in einem Bild, und jede Raste ist einzeln antippbar. */}
-          <Ringregler
-            beschriftung="Planer-Zugänge" einheit="Zugänge" groesse={190}
-            min={0} max={20} schritt={1} wert={planer} onChange={setPlaner}
-            hinweis="Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei." />
-          <Ringregler
-            beschriftung="Standorte" einheit="Standorte" groesse={190}
-            min={1} max={30} schritt={1} wert={standorte.length} onChange={setzeAnzahl}
-            hinweis="Eigenständige Einsatzorte. Nur was über dem Kontingent der Stufe liegt, kostet einen Zuschlag." />
-          <Ringregler
-            beschriftung="Personen je Standort" einheit="Personen" groesse={190}
-            min={5} max={300} schritt={5} wert={leitgroesse} onChange={setzeGroesse}
-            hinweis={gleichGross
-              ? "Nur für die Einstufung der zuschlagspflichtigen Standorte — die Zahl der Beschäftigten selbst kostet nichts."
-              : "Die Standorte unten sind unterschiedlich groß; der Ring zeigt den größten. Wer ihn bewegt, setzt alle auf dieselbe Größe."} />
-        </div>
-
-        <details style={{ marginTop: 22 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, color: C.dimmer, padding: "6px 0" }}>
-            Standorte einzeln angeben</summary>
-          <div style={{ display: "grid", gap: 8, marginTop: 12, maxWidth: 420 }}>
-            {standorte.map((n, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Inp type="number" min={0} value={n} style={{ width: 90 }}
-                  aria-label={`Personen an Standort ${i + 1}`}
-                  onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
-                <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
-                <span style={{ flex: 1 }} />
-                {standorte.length > 1 && (
-                  <Btn size="sm" kind="quiet"
-                    onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
-              </div>))}
-            {standorte.length < 30 && (
-              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>)}
-          </div>
-        </details>
-      </Card>
-
-      {p.kontaktEmpfohlen && (
-        <Card style={{ padding: 22, marginBottom: 16, background: C.warnLight }}>
-          <div style={{ fontSize: 15.5, fontWeight: 650, color: C.warn, marginBottom: 8 }}>
-            Sprich uns an</div>
-          <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.6, maxWidth: 720 }}>
-            Mit {zahl(p.planerGesamt)} Planer-Zugängen und {zahl(p.zuschlaege.posten.length)} zuschlagspflichtigen
-            Standorten liegt dieser Betrieb über der Größe, für die eine automatische Formel noch die
-            richtige Antwort ist. Die Zahl unten ist eine <b>Hochrechnung</b> — ein Betrieb dieser Größe
-            bekommt ein eigenes Angebot mit verhandelter Grundgebühr.
-          </div>
-        </Card>)}
-
-      <Lab style={{ marginBottom: 12 }}>Was es monatlich kostet</Lab>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
-        {alle.map((a) => {
-          const best = a.stufe.id === stufe.id;
-          return (
-            <Card key={a.stufe.id} glanz={best}
-              style={{ padding: 24, outline: best ? `2px solid ${C.accent}` : "none" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <Rubrik>{a.stufe.name}</Rubrik>
-                {a.kontaktEmpfohlen && <Pill size="sm" tone="warn">Sprich uns an</Pill>}
-              </div>
-              <div style={{ fontSize: 34, fontWeight: 300, letterSpacing: "-.04em", ...NUM }}>
-                {a.kontaktEmpfohlen ? "—" : eur0(a.gesamt)}</div>
-              <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>je Monat, netto</div>
-              <div style={{ marginTop: 18, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}`,
-                display: "grid", gap: 7, fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>Grundgebühr</span>
-                  <span style={NUM}>{eur(a.stufe.grund)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>{zahl(a.zusatzPlaner)} zusätzliche{a.zusatzPlaner === 1 ? "r" : ""} Planer</span>
-                  <span style={NUM}>{eur(a.summePlaner)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>{zahl(a.zuschlaege.posten.length)} zuschlagspflichtige Standorte</span>
-                  <span style={NUM}>{eur(a.zuschlaege.summe)}</span></div>
-              </div>
-              <div style={{ fontSize: 12, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
-                {leistungenAnzeige(a.stufe.leistungen).slice(0, 3).join(" · ")}
-              </div>
-            </Card>);
-        })}
-      </div>
-
-      <Card style={{ marginTop: 20, padding: 22 }}>
-        <Lab style={{ marginBottom: 11 }}>Wie sich der Preis zusammensetzt</Lab>
-        <Haken punkte={[
-          "Die Grundgebühr enthält eine Zahl Planer-Zugänge und eine Zahl Standorte beliebiger Größe — je nach Stufe.",
-          "Ein weiterer Planer-Zugang kostet eine feste Pauschale, unabhängig von der Betriebsgröße.",
-          "Ein weiterer Standort kostet nur, wenn er über das Kontingent hinausgeht — und dann nach seiner eigenen Größe, nicht nach der des ganzen Betriebs.",
-          "Mitarbeiter, Sub-Planer, Betriebsrat und Organisationsleitung sind in jeder Stufe unbegrenzt und kostenfrei.",
-        ]} />
-        <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14, lineHeight: 1.55 }}>
-          Zuzüglich Umsatzsteuer. Die Bänder für Standortzuschläge stehen in
-          {" "}<code>src/standorte.js</code>, die Stufen in <code>STUFEN</code> hier.
-        </div>
-      </Card>
-    </div>);
-}
-
-/* ==========================================================================
-   ANTRÄGE — GETEILTE ANSICHT
-   Links die Liste mit Auswahl und Sammelaktionen, rechts die Kapazität der
-   nächsten acht Wochen. Wer einen Antrag auswählt, sieht sofort, welche
-   Wochen dadurch kippen. Vollständig über die Tastatur bedienbar.
-   ========================================================================== */
-
 /** Kapazität einer Woche mit und ohne die ausgewählten Anträge. */
 function wochenKapazitaet(m, wochen, probeAnfragen) {
   const start = montag(heute());
@@ -7915,57 +7757,6 @@ function BetreiberRechnungen({ db, akt }) {
             onChange={(e) => akt.setzeBetreiber("zahlungsziel", Number(e.target.value))} /></Field>
           <Field label="Anschrift"><textarea className="inp" rows={3} value={(db.betreiber || BETREIBER_LEER).anschrift}
             onChange={(e) => akt.setzeBetreiber("anschrift", e.target.value)} /></Field>
-        </div>
-      </Card>
-    </div>);
-}
-
-function BetreiberTarife({ db, akt }) {
-  return (
-    <div>
-      <H1 sub="Grundgebühr, enthaltenes Kontingent und Funktionstiefe je Stufe. Zusatz-Planer und der Standortzuschlag gelten stufenübergreifend — sie stehen unten.">Tarife</H1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 18 }}>
-        {db.tarife.map((t) => (
-          <Card key={t.id} hover>
-            <CardHead>{t.name}</CardHead>
-            <div style={{ padding: 22, display: "grid", gap: 13 }}>
-              <Field label="Grundgebühr je Monat"
-                hint="Enthält das Kontingent unten. Mitarbeiter, Sub-Planer und Betriebsrat sind unbegrenzt und stets kostenfrei.">
-                <Inp type="number" step="1" value={t.grund}
-                  onChange={(e) => akt.setzeTarifFeld(t.id, "grund", Number(e.target.value))} /></Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field label="Planer inklusive">
-                  <Inp type="number" min={0} value={t.planerInklusive}
-                    onChange={(e) => akt.setzeTarifFeld(t.id, "planerInklusive", Number(e.target.value))} /></Field>
-                <Field label="Standorte inklusive" hint="Die größten zählen automatisch dazu.">
-                  <Inp type="number" min={0} value={t.standorteInklusive}
-                    onChange={(e) => akt.setzeTarifFeld(t.id, "standorteInklusive", Number(e.target.value))} /></Field>
-              </div>
-              <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
-                <Lab style={{ marginBottom: 8 }}>Enthalten</Lab>
-                {leistungenAnzeige(t.leistungen).map((f) => <div key={f} style={{ fontSize: 13, color: C.dim, marginBottom: 5 }}>
-                  <span style={{ color: C.ok, marginRight: 8, display: "inline-flex", verticalAlign: "-2px" }}><Icon n="haken" size={14} strokeWidth={2.2} /></span>{f}</div>)}
-              </div>
-            </div>
-          </Card>))}
-      </div>
-      <Card style={{ marginTop: 18 }}>
-        <CardHead>Zusatz-Planer und Standortzuschlag</CardHead>
-        <div style={{ padding: 22, display: "flex", gap: 24, flexWrap: "wrap" }}>
-          <div className="karte" style={{ padding: "14px 18px", minWidth: 170 }}>
-            <div style={{ fontSize: 12, color: C.dimmer }}>je zusätzlichem Planer</div>
-            <div style={{ fontSize: 21, fontWeight: 650, ...NUM }}>{eur(ZUSATZ_PLANER)}</div>
-          </div>
-          {STANDORT_BAENDER.filter((b) => b.zuschlag > 0).map((b) => (
-            <div key={b.label} className="karte" style={{ padding: "14px 18px", minWidth: 170 }}>
-              <div style={{ fontSize: 12, color: C.dimmer, ...NUM }}>Standort, {b.label}</div>
-              <div style={{ fontSize: 21, fontWeight: 650, ...NUM }}>{eur(b.zuschlag)}</div>
-            </div>))}
-        </div>
-        <div style={{ padding: "0 22px 22px", fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-          Gilt nur für Standorte über dem Kontingent einer Stufe — die größten zählen
-          immer zum Kontingent, unabhängig von ihrer Größe. Werte stehen in
-          {" "}<code>src/standorte.js</code> und <code>ZUSATZ_PLANER</code> in App.jsx.
         </div>
       </Card>
     </div>);
@@ -9924,96 +9715,6 @@ function Testablauf({ mandant, darfEinrichten }) {
               betrieb: m.name, zusatz: `Der Testzeitraum endet am ${tag}. Wir möchten verlängern.` });
           }}>Verlängern</Btn>
         </div>)}
-    </div>);
-}
-
-/* ==========================================================================
-   HILFE UND KONTAKT
-
-   Bis hierher endete jede Frage, die das Handbuch nicht beantwortet, im
-   Nichts: keine Adresse, keine Nummer, kein Hinweis, wohin man sich wendet.
-   Für eine Software, die nachts im Schichtdienst läuft, ist das die
-   auffälligste Lücke — dort ist niemand, den man kurz fragen kann.
-
-   Der Verweis nimmt Betrieb, Rolle und Ansicht mit. Das spart die erste
-   Rückfrage, die sonst immer aus denselben vier Fragen besteht.
-   ========================================================================== */
-function Hilfe({ sitz, gehZu }) {
-  const m = sitz.mandant || {};
-  const rollenName = sitz.rolle === "betreiber"
-    ? "Betreiber" : (rolle(sitz.person.rolle) || {}).label || sitz.person.rolle;
-
-  /* Eine Zeile: Symbol (nur bei den Wegen im Haus), Titel, Satz, Knopf. */
-  const Weg = ({ titel, text, knopf, aufKlick, href, symbol }) => (
-    <div className="wegzeile">
-      {symbol && <span className="wegsymbol" aria-hidden="true"><Icon n={symbol} size={20} /></span>}
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>{titel}</div>
-        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>{text}</div>
-      </div>
-      {href
-        ? <a href={href} style={{ textDecoration: "none" }}>
-            <Btn size="sm" kind="primary">{knopf}</Btn></a>
-        : <Btn size="sm" onClick={aufKlick}>{knopf}</Btn>}
-    </div>);
-
-  return (
-    <div>
-      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns."
-        right={<Btn kind="primary" onClick={() => gehZu("handbuch")}>Handbuch öffnen</Btn>}>
-        Hilfe</H1>
-
-      {KONTAKT_UNGESETZT && (
-        <Hinweisband ton="warn">
-          <strong style={{ fontWeight: 640, color: C.text }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
-          Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige
-          Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL — siehe
-          rechtliches/PLATZHALTER.md.
-        </Hinweisband>)}
-
-      <Leitraster seiteBreite={1}
-        haupt={<>
-          <Card>
-            <CardHead>Selbst nachsehen</CardHead>
-            <div className="wegliste">
-              <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")} symbol="buch"
-                text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
-              <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")} symbol="pruefliste"
-                text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
-              <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")} symbol="schild"
-                text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
-            </div>
-          </Card>
-
-          <Card>
-            <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
-            <div className="wegliste">
-              <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
-                href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
-                  rolle: rollenName, ansicht: "Hilfe",
-                  zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
-                text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
-              <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
-                href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
-                  zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
-                text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
-              <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
-                href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
-                text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
-              <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
-                href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
-                  zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
-                text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
-
-              <div style={{ marginTop: 6, padding: "14px var(--pad-x) 2px", borderTop: `1px solid ${C.lineSoft}`,
-                fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
-                E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
-                {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
-                  style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
-              </div>
-            </div>
-          </Card>
-        </>} />
     </div>);
 }
 
@@ -15431,126 +15132,6 @@ function Schichtuebergabe({ sitz, akt }) {
 }
 
 /* ==========================================================================
-   PAKETVERWALTUNG (Betreiber)
-   ========================================================================== */
-function Pakete({ db, akt }) {
-  const [gewaehlt, setGewaehlt] = useState(db.mandanten[0] ? db.mandanten[0].id : null);
-  const m = db.mandanten.find((x) => x.id === gewaehlt);
-
-  return (
-    <div>
-      <H1 rubrik="Betreiber"
-        sub="Ein Kern, mehrere Branchen. Was ein Betrieb braucht, wird als Paket freigeschaltet — der Rechenkern bleibt für alle derselbe.">
-        Branchenpakete</H1>
-
-      <div className="zweispaltig" style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: 18, alignItems: "start" }}>
-        <Card>
-          <CardHead>Betriebe</CardHead>
-          {db.mandanten.map((x) => (
-            <div key={x.id} aria-pressed={x.id === gewaehlt} {...klickbar(() => setGewaehlt(x.id), x.name)}
-              style={{ padding: "12px 16px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}`,
-                background: x.id === gewaehlt ? C.accentLight : "transparent",
-                borderLeft: x.id === gewaehlt ? `3px solid ${C.accent}` : "3px solid transparent" }}>
-              <div style={{ fontSize: 13.5, fontWeight: 550 }}>{x.name}</div>
-              <div style={{ fontSize: 11.5, color: C.dim, marginTop: 3 }}>
-                {(x.pakete || []).length ? (x.pakete || []).map((p) => paketVon(p).name).join(", ") : "nur Kern"}
-              </div>
-            </div>))}
-        </Card>
-
-        {m && (
-          <div style={{ display: "grid", gap: 14 }}>
-            {PAKETE.map((p) => {
-              const an = p.pflicht || (m.pakete || []).includes(p.id);
-              /* G9: nur Zustand 5 (buchbar und abrechenbar) wird empfohlen, gebucht
-                 und berechnet. */
-              const zustand = p.pflicht ? 5 : paketZustand(p.id);
-              const nutzbar = zustand === 5;
-              const pilot = pilotAktiv(m);
-              const empfohlen = nutzbar && paketeFuerBranche(m.branche).includes(p.id);
-              return (
-                <Card key={p.id} style={{ padding: 20, borderColor: an ? C.accent : C.line }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
-                    alignItems: "flex-start" }}>
-                    <div style={{ flex: 1, minWidth: 240 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 16, fontWeight: 650 }}>{p.name}</span>
-                        {p.pflicht && <Pill size="sm">immer enthalten</Pill>}
-                        {empfohlen && !an && <Pill size="sm" tone="accent">für diese Branche empfohlen</Pill>}
-                      </div>
-                      <div style={{ fontSize: 13.5, color: C.dim, marginTop: 7, lineHeight: 1.55 }}>
-                        {p.beschreibung}</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 11 }}>
-                        {p.merkmale.map((x) => <Pill key={x} size="sm">
-                          {merkmalNutzbar(x) ? x : `${x} (in Vorbereitung)`}</Pill>)}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right", minWidth: 130 }}>
-                      {!nutzbar
-                        ? <div style={{ fontSize: 13, color: C.dim }}>In Vorbereitung – Zustand {zustand}:
-                            {" "}{PAKET_ZUSTAENDE[zustand]}. Nicht buchbar, wird nicht berechnet.
-                            {an && pilot && <div>{paketAnzeige(p.id, { pilot: true })}</div>}</div>
-                        : p.aufpreis
-                        ? <div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>+{eur0(p.aufpreis)}
-                            <span style={{ fontSize: 12, color: C.dim, fontWeight: 400 }}> /Monat</span></div>
-                        : <div style={{ fontSize: 13, color: C.dim }}>im Grundpreis</div>}
-                      {/* Unter Zustand 5 lässt sich ein Paket nur im Pilot zubuchen („freigeschaltet, nicht berechnet");
-                          ein gebuchtes lässt sich immer abschalten (der Bestand bleibt). */}
-                      {!p.pflicht && (nutzbar || an || pilot) && (
-                        <div style={{ marginTop: 12 }}>
-                          <Schalter an={an} label={`Paket ${p.name}`}
-                            onChange={() => akt.setzePaket(m.id, p.id, !an)} />
-                        </div>)}
-                      {/* Zustand 5, gebucht, aber ohne Abrechnungsgrund: nicht berechnet, bis der Kunde
-                          ausdrücklich zugestimmt hat oder eine vertragliche Grundlage dokumentiert ist. */}
-                      {!p.pflicht && an && nutzbar && !pilot && mandantPaketkosten(m, 0, undefined, undefined, folgemonatsanfang(paketTag())).ohneGrund.some((x) => x.id === p.id) && (
-                        <div style={{ marginTop: 10, fontSize: 12.5, color: C.dim }}>
-                          Zustimmung erforderlich – nicht berechnet.
-                          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
-                            <Btn size="sm" onClick={() => akt.erfasseZustimmung(m.id, p.id)}>Zustimmung festhalten</Btn>
-                            <Btn size="sm" onClick={() => akt.setzeGrundlage(m.id, p.id)}>Vertragsgrundlage festhalten</Btn>
-                          </div>
-                        </div>)}
-                    </div>
-                  </div>
-                </Card>);
-            })}
-
-            <Card style={{ padding: 20 }}>
-              <Rubrik style={{ marginBottom: 10 }}>Monatlicher Aufpreis</Rubrik>
-              <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM }}>
-                {eur0(paketAufpreisSumme(m))}
-              </div>
-              <div style={{ fontSize: 12.5, color: C.dim, marginTop: 8, lineHeight: 1.55 }}>
-                Zusätzlich zur Grundgebühr und den Zugängen. Pakete lassen sich jederzeit zu- und
-                abschalten — abgerechnet wird tagesgenau. Pakete unter Zustand 5 werden nie berechnet.
-              </div>
-            </Card>
-
-            {/* Pilot: kostenlos, eingeschränkter Umfang; nur der Betreiber setzt ihn (Protokoll),
-                keine Rechnungspositionen, kein Anschein des vollen Funktionsumfangs. */}
-            <Card style={{ padding: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}>
-                <div>
-                  <Rubrik style={{ marginBottom: 6 }}>Pilotbetrieb</Rubrik>
-                  <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
-                    Branchenpakete werden im Pilot nicht berechnet; alle übrigen Positionen laufen laut
-                    Vertrag weiter (Grundgebühr, Planer, Standorte — außer Status, Sonderpreis oder
-                    Aussetzung greifen). Gebuchte Pakete erscheinen als „Pilot – freigeschaltet, nicht
-                    berechnet“ mit nutzbaren und noch nicht nutzbaren Funktionen; im Pilot darf der
-                    Betreiber Pakete auch unter Zustand 5 zubuchen.
-                    {pilotAktiv(m) && ` Aktiv seit ${m.preisgestaltung.pilot.seit}.`}
-                  </div>
-                </div>
-                <Schalter an={pilotAktiv(m)} label="Pilotbetrieb" onChange={() => akt.setzePilot(m.id, !pilotAktiv(m))} />
-              </div>
-            </Card>
-          </div>)}
-      </div>
-    </div>);
-}
-
-/* ==========================================================================
    GESPEICHERTE ANSICHTEN
    Wer täglich denselben Ausschnitt braucht, soll ihn nicht täglich neu bauen.
    ========================================================================== */
@@ -18162,20 +17743,6 @@ function zugangsUebersicht(m) {
   }));
 }
 
-/** Adressänderungen aller Betriebe, neueste zuerst. */
-function adressAenderungen(db, tage) {
-  const grenze = addDays(heute(), -(tage || 90));
-  const out = [];
-  for (const m of db.mandanten)
-    for (const a of (m.adressAenderungen || [])) {
-      if (a.zeit.slice(0, 10) < grenze) continue;
-      const p = m.personen.find((x) => x.id === a.personId);
-      out.push({ ...a, mandant: m.name, mandantId: m.id,
-        rolle: p ? (ROLLEN.find((r) => r.id === p.rolle)?.label || p.rolle) : "unbekannt" });
-    }
-  return out.sort((a, b) => b.zeit.localeCompare(a.zeit));
-}
-
 /* ==========================================================================
    MANDANT ANLEGEN — Betreiberansicht
    Ein Formular, ein Knopf, danach die Zugangscodes. Sie erscheinen genau
@@ -18332,56 +17899,6 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
       </div>
     </div>);
 }
-
-/* ==========================================================================
-   ADRESSÄNDERUNGEN
-   Wenn jemand seine Anmeldeadresse ändert, erscheint das hier. So merkst du,
-   wenn ein Zugang den Besitzer wechselt — etwa weil die Planung neu besetzt
-   wurde und niemand Bescheid gesagt hat.
-   ========================================================================== */
-function Adressaenderungen({ db }) {
-  const liste = useMemo(() => adressAenderungen(db, 90), [db]);
-  if (!liste.length) return (
-    <Card><Leer titel="Keine Änderungen"
-      text="Wenn jemand seine Anmeldeadresse ändert, erscheint das hier mit Datum und Rolle." /></Card>);
-  return (
-    <Card>
-      <CardHead right={<Lab>letzte 90 Tage</Lab>}>Geänderte Anmeldeadressen</CardHead>
-      {liste.slice(0, 40).map((a, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 16,
-          padding: "14px var(--pad-x)",
-          borderBottom: i < Math.min(39, liste.length - 1) ? `1px solid ${C.lineSoft}` : "none" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 550 }}>{a.mandant}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>
-              {a.rolle} · {fLang(a.zeit.slice(0, 10))}</div>
-          </div>
-          <div style={{ fontSize: 13, textAlign: "right", minWidth: 0 }}>
-            {a.von && <div style={{ color: C.dim, textDecoration: "line-through" }}>{a.von}</div>}
-            <div style={{ fontWeight: 550 }}>{a.nach || "entfernt"}</div>
-          </div>
-        </div>))}
-    </Card>);
-}
-
-/* ==========================================================================
-   KALENDER, WECKZEITEN, VERFÜGBARKEIT
-
-   Drei Dinge, die eine Belegschaft spürbar mehr wertschätzt als jede
-   Auswertung: der Plan im eigenen Kalender, ein Weckruf, der zur Schicht
-   passt, und die Möglichkeit, der Familie zu zeigen, wann man da ist.
-
-   Alles drei nutzt aus, dass CENTRIC den Plan rechnet: Niemand muss etwas
-   abtippen, und die Angaben stimmen auch zwölf Monate voraus.
-   ========================================================================== */
-
-/* Die Termine des Kalender-Feeds rechnet seit WP-24 der Server bei jedem Abruf (server/lib/kalenderfeed.mjs). */
-
-/* --------------------------------------------------------------------------
-   WECKZEITEN
-   Aus dem Dienst den Weckruf ableiten. Wer den Plan hat, muss ihn nicht
-   abtippen — das ist der ganze Trick.
-   -------------------------------------------------------------------------- */
 
 /** Voreinstellung: 75 Minuten vor Dienstbeginn plus Anfahrt. */
 const WECK_STD = { vorlauf: 75, anfahrt: 20, aktiv: false, nurWerktags: false };
@@ -21473,63 +20990,6 @@ function Tarifwerk({ sitz, akt }) {
               <a href={t.quelle} target="_blank" rel="noreferrer"
                 style={{ fontSize: 13, color: C.accent }}>Fundstelle ansehen</a>
             </div>
-          </div>)}
-      </div>
-    </Card>);
-}
-
-/* ==========================================================================
-   STANDORTE
-
-   Ein Standort war einmal eine Preisposition: Die Grundgebühr fiel je
-   Standort an, wer einen anlegte, änderte den Vertrag — und musste dafür,
-   je nach Rolle, entweder selbst bestätigen oder einen Antrag stellen,
-   den die Leitung entschied.
-
-   Das galt für einen mobilen Pflegedienst mit vielen kleinen Einsatzorten
-   genauso wie für eine Zentrale mit einer großen Filiale — und traf damit
-   den falschen Betrieb. Ein Standort kostet jetzt nichts, solange er zum
-   Kontingent der gebuchten Stufe gehört; die größten zählen automatisch
-   dazu. Anlegen ist deshalb keine Vertragsänderung mehr, sondern eine
-   Frage der Struktur — offen für jeden, der die Seite erreicht.
-
-   Was einen Zuschlag auslösen kann, ist nicht das Anlegen, sondern das
-   Wachsen: ein Standort jenseits des Kontingents, der über die Schwelle
-   in `standorte.js` hinauswächst. Das zeigt diese Seite an, ohne
-   irgendetwas zu blockieren — es gibt nichts mehr zu bestätigen.
-   ========================================================================== */
-/**
- * Standortprüfung beim Stempeln ein- und ausschalten (Geo-Spezifikation E7).
- * Vorgabe: aus. Einschalten nur mit der ausdrücklichen Bestätigung; die
- * Arbeitszeit wird in jedem Fall erfasst.
- */
-/**
- * Offline-Stempeln vertrauen (WP-07, Review-Auflage A1). Vorgabe: aus — eine
- * offline erfasste Zeit, die 15 Minuten oder später ankommt, steht zur
- * Prüfung. Schalten nur mit org.edit; wann und von wem, setzt der Server.
- */
-function OfflineSchalter({ sitz, akt }) {
-  const e = sitz.mandant.einstellungen || {};
-  const an = e.offlineStempelVertrauen === true;
-  const darfSchalten = darf(sitz, "org.edit");
-  const durch = e.offlineStempelVertrauenVon
-    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.offlineStempelVertrauenVon)) || {}) : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={an ? "warn" : "ok"}>{an ? "gelockert" : "streng"}</Pill>}>
-        Stempeln ohne Netz</CardHead>
-      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-        Ohne Netz gestempelt zählt die Uhrzeit des Geräts. Sie lässt sich mit Flugmodus und verstellter Uhr fälschen.
-        Deshalb steht eine Ist-Zeit zur Prüfung, wenn ein offline erfasster Beginn oder ein offline erfasstes Ende
-        15 Minuten oder später beim Server ankommt — bis die Leitung sie in den Stempelbefunden bestätigt.
-        {" "}Gelockert gilt sie dann als bestätigt; eine abweichende Geräteuhr und Stempel über 48 Stunden bleiben zur Prüfung.
-        {e.offlineStempelVertrauenAm && (
-          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.offlineStempelVertrauenAm).slice(0, 10))}
-            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        {darfSchalten && (
-          <div style={{ marginTop: 14 }}>
-            {an ? <Btn onClick={() => akt.setzeOfflineVertrauen(false)}>Wieder streng prüfen</Btn>
-              : <Btn onClick={() => akt.setzeOfflineVertrauen(true)}>Lockern</Btn>}
           </div>)}
       </div>
     </Card>);

@@ -16,6 +16,7 @@
    ========================================================================== */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
+import { appQuelle } from "./app-quelle.js";
 import { kannMerkmal, mandantPaketkosten, paketAufpreisSumme, paketSchalten, pilotSetzen, zustimmungErfassen,
   grundlageErfassen, grundEntziehen, monatsanfang, folgemonatsanfang } from "../src/paketlogik.js";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
@@ -390,7 +391,7 @@ describe("N4: ein Stichtag (Monatsanfang), ein Datumsformat", () => {
   });
 
   it("App.jsx: Paketdaten und Stichtag über paketTag/monatsanfang; preis() ohne Monat rechnet ab Monatsanfang", () => {
-    const app = quelle("../src/App.jsx");
+    const app = appQuelle();
     expect(app).toMatch(/const paketkosten_ = mandantPaketkosten\(m, gewaehlt\.paketeFrei \|\| 0, undefined, undefined, ym \? `\$\{ym\}-01` : monatsanfang\(paketTag\(\)\)\);/);
     expect(app).toMatch(/const pilot = paketkosten_\.pilot;/);
     expect(app).toMatch(/pilotSetzen\(m, an, paketTag\(\), grund\)/);
@@ -416,7 +417,7 @@ describe("N5/N6: Texte und Nachweis", () => {
     const d = quelle("../docs/acc45/wp19-0b-nachweis.md");
     expect(d).not.toMatch(/die einzigen zwei `kann`-Aufrufer/);
     expect(d).toMatch(/fünf `kann`-Aufrufer/);
-    const app = quelle("../src/App.jsx");
+    const app = appQuelle();
     expect((app.match(/\bkann\(/g) || []).length).toBe(5);
   });
 });

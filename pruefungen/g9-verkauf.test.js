@@ -16,6 +16,7 @@
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { appQuelle } from "./app-quelle.js";
 import { STUFEN, stufeVon, PAKETE, paketkosten, preisFuer, paketeAngebot, buchbareAuswahl,
   paketNutzbar, merkmalNutzbar, paketZustand, paketBuchbar, paketAnzeige, pilotAktiv } from "../src/stufen.js";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
@@ -260,7 +261,7 @@ describe("G10: Bestand bleibt erhalten", () => {
   });
 
   it("Merkmalsprüfung `kann` ist die der Paketlogik (Verhalten: pruefungen/g9-nachtrag.test.js)", () => {
-    expect(quelle("../src/App.jsx")).toMatch(/const kann = kannMerkmal;/);
+    expect(appQuelle()).toMatch(/const kann = kannMerkmal;/);
     expect(quelle("../src/pruefung.jsx")).toMatch(/const kann = kannMerkmal;/);
   });
 
@@ -270,7 +271,7 @@ describe("G10: Bestand bleibt erhalten", () => {
 });
 
 describe("Pfadliste: jede Stelle prüft den Zustand (Quelltext)", () => {
-  const app = quelle("../src/App.jsx");
+  const app = appQuelle();
   const main = quelle("../src/main.jsx");
   const pruef = quelle("../src/pruefung.jsx");
   const leer = quelle("../server/lib/leerbetrieb.mjs");

@@ -15,6 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { appQuelle } from "./app-quelle.js";
 
 const quelle = async () => (await readFile(path.join(__dirname, "..", "src", "App.jsx"), "utf8")).replace(/\r\n/g, "\n");
 const block = (q, start) => {
@@ -39,6 +40,6 @@ describe("Standorte", () => {
     expect(s.match(/eur\(/g) || []).toHaveLength(2);
   });
   it("die Rollenrechte der Oberfläche: Planung ohne billing.view", async () => {
-    expect(await quelle()).toMatch(/planer: ALLE_RECHTE\.filter\(\(r\) => !\[[^\]]*"billing\.view"[^\]]*\]\.includes\(r\)\)/);
+    expect(appQuelle()).toMatch(/planer: ALLE_RECHTE\.filter\(\(r\) => !\[[^\]]*"billing\.view"[^\]]*\]\.includes\(r\)\)/);
   });
 });

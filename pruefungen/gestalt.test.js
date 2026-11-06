@@ -12,6 +12,7 @@
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { appQuelle } from "./app-quelle.js";
 import { join, relative } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
@@ -141,7 +142,7 @@ describe("Ansichten der Arbeitsebene und der Formulare", () => {
     "Einarbeitung", "Betriebsmittel", "MeineSchichten", "Betrieb", "Tarifwerk", "Standorte", "Dienstarten",
     "Einstellungen", "Datenmitnahme", "SicherungAusserHaus", "Datenschutz", "Handbuch", "Hilfe",
     "Ablaufansicht", "Ablaufdiagramm", "Schichtuebergabe"];
-  const quelle = lies(join(WURZEL, "src", "App.jsx"));
+  const quelle = appQuelle();
   const koerper = (name) => {
     const a = quelle.search(new RegExp(`^function ${name}\\(`, "m"));
     if (a < 0) return null;
@@ -225,7 +226,7 @@ describe("Textzeichen als Symbole (nach P7 überall ersetzt)", () => {
     expect(funde).toEqual([]);
   });
   it("kein Knopf trägt nur ein × als Beschriftung", () => {
-    const t = lies(join(WURZEL, "src", "App.jsx"));
+    const t = appQuelle();
     expect(t.match(/>×<\/(Btn|button)>/g) || []).toEqual([]);
   });
 });
