@@ -68,8 +68,10 @@ try {
   const senden = M.pg.getByRole("button", { name: /Antrag stellen/ }).locator("visible=true").last();
   await senden.click().catch(() => {});
   await M.pg.waitForTimeout(2500);
+  /* Speichern läuft verzögert und unter Last langsamer: bis zu 20 s auf den Server warten */
+  const warten = async (pruefung, ms = 20000) => { const t0 = Date.now(); for (;;) { const r = await pruefung(); if (r || Date.now() - t0 > ms) return r; await new Promise((x) => setTimeout(x, 500)); } };
+  const meinAntrag = await warten(async () => (await lesL()).find((a) => !vorherIds.has(a.id) && a.personId === mP.id));
   const antraege = await lesL();
-  const meinAntrag = antraege.find((a) => !vorherIds.has(a.id) && a.personId === mP.id);
   ok("neuer Antrag der Beschäftigten liegt serverseitig (offen)", meinAntrag && meinAntrag.status === "offen", `neu: ${antraege.filter((a) => !vorherIds.has(a.id)).length}, gesamt ${antraege.length}`);
 
   /* 2. Leitung entscheidet */
@@ -85,7 +87,7 @@ try {
   ok("Leitung sieht den Antrag der Person mit Entscheidungsknopf", await genehmigen.count() > 0);
   if (!(await genehmigen.count())) console.log("ANTRAEGE-SEITE:", (await L.pg.evaluate(() => document.querySelector("main").innerText)).replace(/s+/g, " ").slice(0, 600), "| gesucht:", mPL.nachname + ", " + mPL.vorname);
   await genehmigen.click().catch(() => {}); await L.pg.waitForTimeout(2000);
-  const a2 = (await lesL()).find((a) => meinAntrag && a.id === meinAntrag.id);
+  const a2 = await warten(async () => { const x = (await lesL()).find((a) => meinAntrag && a.id === meinAntrag.id); return x && x.status !== "offen" ? x : null; }) || (await lesL()).find((a) => meinAntrag && a.id === meinAntrag.id);
   ok("Antrag nach Entscheid nicht mehr offen", a2 && a2.status !== "offen", JSON.stringify(a2 || {}).slice(0, 160));
 
   /* 3. Beschäftigte sieht den Entscheid */
