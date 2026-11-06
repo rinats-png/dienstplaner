@@ -15,7 +15,7 @@ Einziger Arbeits- und Statusstand. Stand 2026-11-06. Bestehende Nachweise bleibe
 | Datenformat Produktion zu RC | Bestandsversion unverändert (9); Schlüsselräume `kern:`/`scherbe:`/`stand:` existieren schon in `274bfa0`; neue Schlüssel (`verwalter:`, `zweifaktor:`, `zustell*`, `feedperson:`, `brist:`) sind additiv |
 
 ## Offen (Reihenfolge nach Abhängigkeit)
-1. **V4 Phase 2** (PR #92, Branch `feature/v4-phase2-app`): Stand: App-Schicht, Dark/Light je Person, vier Oberflächen. Offen: `pruefung.jsx` mit eigener Stilkopie (94 Hex-Werte), Sheet-Dialog-Fokus beim Tippen, Ladezustände, restliche Oberflächen aus dem Inventar. Kein Merge vor Staging-Abnahme.
+1. **V4 Phase 2** (PR #92, Branch `feature/v4-phase2-app`): Stand: App-Schicht, Dark/Light je Person, vier Oberflächen. Sheet-Dialog „Person hinzufügen“ per Zeichen getippt (1280 px, Umlaute): kein Fokuswechsel, kein Fehler (375 px nicht angesteuert). Offen: `pruefung.jsx` mit eigener Stilkopie (94 Hex-Werte), Ladezustände, restliche Oberflächen aus dem Inventar. Kein Merge vor Staging-Abnahme.
 2. **B-9-1** (Speichern ohne ETag überschreibt): Entscheidung Betreiber, dann kleines Arbeitspaket.
 3. **PR #96** (Bestätigungsprotokoll im Aufbewahrungslauf): Draft, nach Staging.
 4. **A25** „Alle Kalender-Verweise widerrufen": nach RC.
