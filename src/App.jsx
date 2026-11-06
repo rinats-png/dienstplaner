@@ -1,4 +1,4 @@
-import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
+import { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung,
@@ -7,8 +7,7 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText,
   positionsUebernahme, koordinatenFelder, koordMitGrund } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
-import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE, EINSATZORT_ARTEN, standortBundesland, GEO_MODUS_TEXT,
-  GEO_DATENSCHUTZ_TEXT, GEO_SPOOFING_TEXT } from "../server/lib/geo.mjs";
+import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE, EINSATZORT_ARTEN, standortBundesland, GEO_DATENSCHUTZ_TEXT, GEO_SPOOFING_TEXT } from "../server/lib/geo.mjs";
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
@@ -17,11 +16,11 @@ import { useSchutzkonflikte as useSchutzkonflikteBasis, vergissSchutzkonflikte }
 import { verknuepfungsZiel, verknuepfungAnwenden, ohneVerknuepfung } from "./verknuepfung.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
-  pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
+  pad, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, dauerAm, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzEinsatz, jugendMehrschichtig, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
+  schutzEinsatz, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
   alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
@@ -135,10 +134,13 @@ class Fehlerauffang extends Component {
    Branchenneutral für jeden Betrieb im durchgehenden Schichtbetrieb.
    ========================================================================== */
 
-import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
+import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
+import { Leer, Laden, klickbar, Card, CardHead, Lab, Rubrik, Schalter, Haken, Fussleiste, Filterleiste, Planzelle, Avatar, Btn, Inp, Sel, Field, Seg, H1, Kpi, KpiRow, Abschnitt, Pill } from "./ui/bausteine.jsx";
+import { istDunkel, dunkelSetzen, lesbar, NUM } from "./ui/thema.js";
+import { DOW, DOW_LANG, MON, heute, fLang, fKurz, fDatum } from "./lib/datum.js";
+import { n1, n2, sgn, n1Ist, sgnIst, eur, eur0, zahl, uid } from "./lib/format.js";
 import { Icon } from "./gestalt/icons.jsx";
-import { aufhellenBis } from "./gestalt/lesbar.js";
-import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
+import { Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
 import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
   Abschnittskopf, Punkt, Grosszahl, Zeitwahl, Statuszeile, Fehlerband } from "./gestalt/ansichten.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
@@ -147,13 +149,11 @@ import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
-import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
-  PAKETE, paketVon, preisFuer, paketBuchbar, paketZustand, PAKET_ZUSTAENDE, paketAnzeige, pilotAktiv, merkmalNutzbar,
-  leistungenAnzeige } from "./stufen.js";
-import { kannMerkmal, mandantPaketkosten, paketAufpreisSumme, paketPositionen, paketSchalten, pilotSetzen,
-  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, folgemonatsanfang, paketTag, vertragsstandUebernehmen } from "./paketlogik.js";
-import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
+  paketVon, paketBuchbar, paketAnzeige, leistungenAnzeige } from "./stufen.js";
+import { kannMerkmal, mandantPaketkosten, paketPositionen, paketSchalten, pilotSetzen,
+  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, paketTag, vertragsstandUebernehmen } from "./paketlogik.js";
+import { hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../server/lib/rollenvergabe.mjs";
@@ -197,8 +197,17 @@ import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung,
   from "./sicherungen-ui.js";
 /* WP-19.0: Branchenmodule — Aktivierung, Regelwerte und alle Moduloberflächen über einen Einhängepunkt (src/module/index.js). */
 import { BranchenModule } from "./module/kern.jsx";
-let _dunkel = false;
-const istDunkel = () => _dunkel;
+import { Mandantenrechner } from "./ansichten/mandantenrechner.jsx";
+import { BetreiberTarife } from "./ansichten/betreiber-tarife.jsx";
+import { Pakete } from "./ansichten/pakete.jsx";
+import { Hilfe } from "./ansichten/hilfe.jsx";
+import { OfflineSchalter } from "./ansichten/offline-schalter.jsx";
+import { Adressaenderungen } from "./ansichten/adressaenderungen.jsx";
+import { JugendschutzSchalter } from "./ansichten/jugendschutz-schalter.jsx";
+import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
+import { darf } from "./lib/berechtigung.js";
+import { ROLLEN, rolle, anzahlWort, mehrzahl, ROLLENBEZEICHNUNG, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, MATRIX_STD } from "./lib/rollen.js";
+import { Einwilligungen } from "./ansichten/einwilligungen.jsx";
 
 /* Die Palette zusätzlich als CSS-Variablen ausgeben.
    Zwei Gründe: Erstens erreichen Variablen Stellen, an die ein
@@ -207,7 +216,7 @@ const istDunkel = () => _dunkel;
    Neuaufbau der Oberfläche; eine memoisierte Komponente behält sonst die
    Farben des alten Themas. */
 function themaSetzen(dunkel) {
-  _dunkel = !!dunkel;
+  dunkelSetzen(dunkel);
   Object.assign(C, dunkel ? C_DUNKEL : C_HELL);
   if (typeof document !== "undefined") {
     const wurzel = document.documentElement;
@@ -228,21 +237,7 @@ function themaVomSystem() {
   catch { return false; }
 }
 
-/* Dienstarten: entsättigte Tönungen mit dünner Akzentlinie — keine Farbflächen. */
-const TON = (farbe, staerke = 1) => ({
-  background: `${farbe}${staerke > 1 ? "1F" : "12"}`,
-  borderLeft: `2.5px solid ${lesbar(farbe, 3)}`,
-});
-
-/** Farben von Dienstarten und Einheiten sind Daten, gewählt für hellen Grund. Als Schrift
- *  oder Kante auf dem dunklen Kartengrund werden sie aufgehellt (nur Darstellung, siehe
- *  gestalt/lesbar.js). Im hellen Erscheinungsbild bleibt die Farbe, wie sie ist. */
-/* Gegen beide Kartenflächen geprüft: auf `flaecheStill` (karte-still) ist der Grund heller als auf `flaeche`. */
-const lesbar = (farbe, mindest = 4.5) => (_dunkel
-  ? aufhellenBis(aufhellenBis(farbe, C.flaeche, mindest), C.flaecheStill || C.flaeche, mindest) : farbe);
-
 const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif";
-const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" };
 
 /** Globale Gestaltung. Hover- und Glaseffekte brauchen echtes CSS. */
 const bauStyles = () => `
@@ -316,7 +311,7 @@ body{margin:0;}
   border-radius:0 3px 3px 0; background:${C.accentOrig};}
 .slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;
   background:rgba(255,255,255,.14); ${'' /* Zähler */}}
-.slink .zahl.warn{background:${C.danger}; color:${_dunkel ? C.bg : "#fff"};}
+.slink .zahl.warn{background:${C.danger}; color:${istDunkel() ? C.bg : "#fff"};}
 .sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
   color:rgba(255,255,255,.55);}
 
@@ -600,37 +595,10 @@ const GEMEINDE_FEIERTAGE = {
   TH: "In Thüringen gilt Fronleichnam nur in bestimmten Gemeinden.",
 };
 const gemeindeHinweis = (land) => GEMEINDE_FEIERTAGE[land] || null;
-const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-/* Ausgeschrieben für die Tagesliste auf dem Telefon — dort ist Platz,
-   und „Donnerstag" liest sich im Dienst schneller als „Do". */
-const DOW_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
-const MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-const heute = () => iso(new Date());
-const fLang = (s) => { const d = pISO(s); return `${DOW[dow(s)]}, ${d.getDate()}. ${MON[d.getMonth()]} ${d.getFullYear()}`; };
-const fKurz = (s) => (s ? `${pad(pISO(s).getDate())}.${pad(pISO(s).getMonth() + 1)}.` : "—");
-const fDatum = (s) => (s ? s.split("-").reverse().join(".") : "—");
-/* Zahlenformate fallen bei fehlendem Wert auf „–" zurück statt mit einem
-   TypeError die ganze Ansicht abzureißen (Browserprobe: „Anliegen" in der
-   Mobilansicht). Zahlen als Text werden gewandelt; null/undefined/NaN bleiben leer. */
-const zahlOder = (v, f) => {
-  const x = typeof v === "number" ? v : (v === null || v === undefined || v === "" ? NaN : Number(v));
-  return Number.isFinite(x) ? f(x) : "–";
-};
-const n1 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
-const n2 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const sgn = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? (v >= 0 ? "+" : "−") + n1(Math.abs(v)) : "–");
-/* Ist-Stunden, Stundenkonto und Nachtstunden dürfen aus Datenschutzgründen
-   fehlen (E1, src/istdaten.js): null wird „–", nie 0 und nie ein Absturz. */
-const n1Ist = (v) => stundenText(v, n1);
-const sgnIst = (v) => stundenText(v, sgn);
-const eur = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }));
-const eur0 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }));
-const zahl = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE"));
 /* Ein Bestand, der nicht aus dem Demo-Aufbau stammt (leerer Betrieb, Neuinstallation),
    hat keinen Betreiberblock: die Betreiberkonsole stürzte darauf mit
    „Cannot read properties of undefined (reading 'steuersatz')" ab. */
 const BETREIBER_LEER = { firma: "", anschrift: "", ustId: "", iban: "", steuersatz: 19, zahlungsziel: 14 };
-const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 
 /* ------------------------ Feiertage aller Bundesländer -------------------- */
 const LAENDER = [["BW","Baden-Württemberg"],["BY","Bayern"],["BE","Berlin"],["BB","Brandenburg"],["HB","Bremen"],
@@ -667,100 +635,6 @@ const LAENDER = [["BW","Baden-Württemberg"],["BY","Bayern"],["BE","Berlin"],["B
  */
 /* nachtAnteilAm steht seit WP-16 (Nachtrag M-neu-2) in server/lib/isteinfrieren.mjs — der Monatsabschluss
    friert mit derselben Fassung ein. */
-
-/* ------------------------------- Rollenwerk ------------------------------- */
-const ROLLEN = [
-  { id: "betreiber", label: "Betreiber", kurz: "BE", farbe: "#1B1E23", berechnet: false, extern: true,
-    text: "Verwaltet Mandanten, Tarife und Rechnungen. Sieht ausschließlich Zahlen, niemals Namen." },
-  { id: "leitung", label: "Organisationsleitung", kurz: "OL", farbe: "#2B3440", berechnet: true,
-    text: "Richtet Betrieb, Einheiten, Dienstarten und Zugänge ein. Sieht alles im eigenen Betrieb." },
-  { id: "planer", label: "Planer", kurz: "PL", farbe: "#35506B", berechnet: true,
-    text: "Plant, ändert Schichtfolgen und Dienstarten, genehmigt Anträge." },
-  { id: "subplaner", label: "Sub-Planer", kurz: "SP", farbe: "#4C4668", berechnet: true,
-    text: "Ändert Einsätze nur in der eigenen Einheit und genehmigt dort Anträge." },
-  { id: "mitarbeiter", label: "Mitarbeiter", kurz: "MA", farbe: "#3C5A48", berechnet: true,
-    text: "Sieht den eigenen Plan, stellt Urlaubsanträge und Tauschanfragen." },
-  { id: "betriebsrat", label: "Betriebsrat", kurz: "BR", farbe: "#6B4E23", berechnet: false,
-    text: "Rein lesender Prüfzugang auf Pläne und Protokoll. Kostenfrei." },
-];
-const rolle = (id) => ROLLEN.find((r) => r.id === id) || ROLLEN[4];
-
-/**
- * Mehrzahl der Einheitsbezeichnung.
- *
- * Vorher stand an elf Stellen `${mehrzahl(m.einheitLabel)}`. Für „Schichtgruppe"
- * ergibt das „Schichtgruppen" und stimmt — für „Wohnbereich" kommt
- * „Wohnbereichn" heraus, und für „Station" „Stationn". Die deutsche
- * Mehrzahl hängt am Wortende, nicht an einem angehängten n.
- */
-/**
- * Ein- oder Mehrzahl, je nach Anzahl. Seit die Ansichten nach Standort
- * gefiltert werden, steht häufig eine Eins davor — und „1 Wohnbereiche"
- * liest sich wie ein Fehler, weil es einer ist.
- */
-const anzahlWort = (n, wort) => `${zahl(n)} ${n === 1 ? wort : mehrzahl(wort)}`;
-
-function mehrzahl(wort) {
-  const w = String(wort || "").trim();
-  if (!w) return "";
-  if (/e$/.test(w)) return `${w}n`;        // Schichtgruppe → Schichtgruppen
-  if (/(ich|eich|bereich)$/.test(w)) return `${w}e`;  // Wohnbereich → Wohnbereiche
-  if (/(ion|tion)$/.test(w)) return `${w}en`;         // Station → Stationen
-  if (/(er|el|en)$/.test(w)) return w;     // Revier → Revier (unverändert häufig)
-  return `${w}e`;                          // Trupp → Truppe, Team → Teame … zumindest lesbar
-}
-
-/* Für den Namen der ersten Person eines frisch angelegten Betriebs. Kein
-   erfundener Name — eine Funktionsbezeichnung, die man überschreibt. */
-const ROLLENBEZEICHNUNG = {
-  leitung: "Organisationsleitung", planer: "Planung",
-  subplaner: "Schichtverantwortung", mitarbeiter: "Beschäftigte",
-  betriebsrat: "Betriebsrat",
-};
-
-/* Die Vorgabenamen, wie sie in der Rollenliste stehen — Grundlage für die
-   eigenen Bezeichnungen eines Betriebs. */
-const ROLLEN_VORGABE = Object.fromEntries(ROLLEN.filter((r) => !r.extern)
-  .map((r) => [r.id, r.label]));
-
-/**
- * Wie heißt diese Rolle in diesem Betrieb?
- *
- * „Sub-Planer" heißt in der Klinik Stationsleitung, im Wachdienst
- * Objektleiter, in der Pflege Wohnbereichsleitung. Die Rolle bleibt
- * dieselbe, ihr Name nicht — und ein Haus, das seine eigenen Begriffe
- * nicht wiederfindet, misstraut der Rechteverteilung, die daran hängt.
- *
- * Umbenannt wird ausschließlich die Anzeige. Die Kennung `subplaner` und
- * alles, was daran hängt — Rechtematrix, Vergaberang, Preisberechnung —
- * rührt sich nicht.
- */
-function rollenName(m, id) {
-  const eigen = ((m && m.rollennamen) || {})[id];
-  const s = String(eigen || "").trim();
-  return s || ROLLEN_VORGABE[id] || rolle(id).label;
-}
-
-const RECHTE_GRUPPEN = [
-  ["Planung", [["plan.view.own","Eigenen Plan sehen"],["plan.view.unit","Plan der eigenen Einheit sehen"],
-    ["plan.view.all","Pläne aller Einheiten sehen"],["plan.edit.unit","Einsätze der eigenen Einheit ändern"],
-    ["plan.edit.all","Einsätze aller Einheiten ändern"],["pattern.edit","Schichtfolge bearbeiten"],
-    ["shift.edit","Dienstarten anlegen und ändern"]]],
-  ["Anträge", [["req.create","Anträge und Tauschanfragen stellen"],["req.approve.unit","Anträge der eigenen Einheit entscheiden"],
-    ["req.approve.all","Anträge aller Einheiten entscheiden"]]],
-  ["Personal", [["staff.view","Personalliste sehen"],["staff.edit","Personal anlegen und bearbeiten"],
-    ["account.view.own","Eigene Konten sehen"],["account.view.all","Konten aller Personen sehen"]]],
-  ["Betrieb", [["org.edit","Einheiten und Betriebsdaten verwalten"],["roles.assign","Zugänge und Rollen vergeben"],
-    ["billing.view","Kosten des Betriebs sehen"],["audit.view","Protokoll einsehen"],["export.data","Daten exportieren"]]],
-];
-const ALLE_RECHTE = RECHTE_GRUPPEN.flatMap(([, i]) => i.map((x) => x[0]));
-const MATRIX_STD = {
-  leitung: [...ALLE_RECHTE],
-  planer: ALLE_RECHTE.filter((r) => !["org.edit", "roles.assign", "billing.view"].includes(r)),
-  subplaner: ["plan.view.own","plan.view.unit","plan.edit.unit","req.create","req.approve.unit","staff.view","account.view.own","account.view.all"],
-  mitarbeiter: ["plan.view.own","plan.view.unit","req.create","account.view.own"],
-  betriebsrat: ["plan.view.own","plan.view.unit","plan.view.all","staff.view","audit.view","export.data"],
-};
 
 /* --------------------------------- Tarife --------------------------------- */
 const STATUS = [
@@ -2155,16 +2029,6 @@ function simulation(m) {
   });
 }
 
-/* ------------------------------ Berechtigung ------------------------------ */
-function darf(sitz, recht, einheitId) {
-  if (!sitz || sitz.rolle === "betreiber") return false;
-  const rechte = (sitz.mandant.matrix || MATRIX_STD)[sitz.person.rolle] || [];
-  if (!rechte.includes(recht)) return false;
-  if (sitz.person.rolle === "betriebsrat" && /\.(edit|approve|assign)/.test(recht)) return false;
-  if (!einheitId) return true;
-  if (sitz.person.bereich === "ALLE") return true;
-  return sitz.person.bereich === einheitId;
-}
 const darfEinheit = (s, eid) => darf(s, "plan.edit.all") || darf(s, "plan.edit.unit", eid);
 /* Mitteilungen an Personen außerhalb des eigenen Bereichs nimmt der Server
    von der Schichtverantwortung nicht an (rechte.mjs, einheitZusammen) —
@@ -4332,12 +4196,6 @@ function antragUmsetzen(m, a) {
 
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
 const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
-/** Welche Pakete schlägt eine Branche vor? */
-const paketeFuerBranche = (b) => ({
-  sicherheit: ["sicherheit"], pflege: ["pflege"], klinik: ["klinik"],
-  produktion: ["industrie"], logistik: ["industrie"], rettung: ["klinik"],
-}[b] || []);
-
 /* ------------------------ Branchenbegriffe ------------------------------- */
 /**
  * Dieselbe Sache heißt je Branche anders. Die Begriffe stecken an einer Stelle,
@@ -5134,275 +4992,6 @@ function tabelleCSV(zeilen) {
   return "\uFEFF" + [spalten.map(csvText).join(";"),
     ...zeilen.map((z) => spalten.map((s) => feld(z[s])).join(";"))].join("\r\n");
 }
-/** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
-const Leer = ({ titel, text, symbol = "kreis-leer", aktion }) => (
-  <div style={{ padding: "56px 28px", textAlign: "center" }}>
-    <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 16px", display: "flex",
-      alignItems: "center", justifyContent: "center", background: C.flaecheStill, color: C.dim }}>
-      <Icon n={symbol} size={22} /></div>
-    <div style={{ fontSize: 15.5, fontWeight: 620, marginBottom: 7 }}>{titel}</div>
-    {text && <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, maxWidth: 380,
-      margin: "0 auto" }}>{text}</div>}
-    {aktion && <div style={{ marginTop: 20 }}>{aktion}</div>}
-  </div>);
-
-/** Ladezustand als Platzhalterstreifen — ruhiger als ein Kreisel. */
-const Laden = ({ zeilen = 5, text }) => (
-  <div style={{ padding: 20 }} aria-busy="true" aria-live="polite">
-    {text && <div style={{ fontSize: 13, color: C.dim, marginBottom: 14 }}>{text}</div>}
-    {Array.from({ length: zeilen }, (_, i) => (
-      <div key={i} style={{ height: 14, borderRadius: 5, marginBottom: 10,
-        width: `${100 - (i % 3) * 14}%`, background: C.bg,
-        animation: "pulsieren 1.4s ease-in-out infinite", animationDelay: `${i * .08}s` }} />))}
-  </div>);
-
-/** Fehlerhinweis am Feld statt irgendwo im Formular. */
-const Feldfehler = ({ text }) => text ? (
-  <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 7, marginTop: 6,
-    fontSize: 12.5, color: C.danger, lineHeight: 1.45 }}>
-    <span aria-hidden="true" style={{ fontWeight: 700 }}>!</span><span>{text}</span>
-  </div>) : null;
-
-/* ==========================================================================
-   UI-BAUSTEINE
-   ========================================================================== */
-
-/**
- * Ein Element, das keine Schaltfläche ist, aber wie eine funktioniert.
- *
- * Die Anwendung hat rund vierzig davon: Planzellen, Zeilen einer Liste,
- * Karten der Telefonansicht. Mit der Maus einwandfrei — mit der Tastatur
- * unerreichbar, und für eine Vorlesesoftware unsichtbar, weil ein `div`
- * nichts darüber sagt, dass man es drücken kann.
- *
- * Ein echtes `<button>` wäre der saubere Weg, scheitert aber an der
- * Gestaltung: Die Zellen tragen Raster, Seitenverhältnisse und
- * Verschachtelungen, die ein Knopf nicht mitmacht. Deshalb die
- * Ersatzteile, die dieselbe Wirkung haben: Rolle, Fokus, Leer- und
- * Eingabetaste.
- *
- * @param {Function} onClick was beim Drücken geschieht
- * @param {string} [label] Beschriftung für Vorlesesoftware, wenn der
- *   sichtbare Inhalt allein nicht trägt (etwa eine Zahl in einer Zelle)
- */
-function klickbar(onClick, label) {
-  if (!onClick) return {};
-  return {
-    onClick,
-    role: "button",
-    tabIndex: 0,
-    ...(label ? { "aria-label": label } : {}),
-    onKeyDown: (e) => {
-      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
-      /* Manche dieser Flächen tragen ein eigenes Bedienelement in sich — ein
-         Kästchen in der Antragsliste, eine Schaltfläche auf einer Karte.
-         Tastendrücke steigen auf: Ohne diese Abfrage schluckte die Zeile die
-         Leertaste, und das Kästchen ließe sich nicht mehr mit der Tastatur
-         setzen. Wer das nächstgelegene bedienbare Element ist, entscheidet. */
-      const eigen = e.target.closest
-        && e.target.closest("button, a[href], input, select, textarea, [tabindex]");
-      if (eigen && eigen !== e.currentTarget) return;
-      /* Die Leertaste rollt sonst die Seite weiter, während man drückt. */
-      e.preventDefault();
-      e.stopPropagation();
-      onClick(e);
-    },
-  };
-}
-
-/** `still`: eingelassene Fläche (E1) statt Karte — Hinweiskasten, Einsatzfläche. */
-const Card = ({ children, style, hover, glanz, still, className = "", ...p }) => (
-  <div {...p} className={`${still ? "karte-still" : "karte"} ${hover ? "karte-hover" : ""} ${className}`}
-    style={style}>{children}</div>);
-const CardHead = ({ children, right }) => (
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
-    padding: "18px 24px", borderBottom: `1px solid ${C.lineSoft}` }}>
-    <div style={{ fontSize: 15.5, fontWeight: 620, letterSpacing: "-.015em" }}>{children}</div>{right}
-  </div>);
-const Lab = ({ children, style }) => (<div style={{ fontSize: 12, fontWeight: 500, color: C.dim, ...style }}>{children}</div>);
-const Rubrik = ({ children, style }) => (<div className="rubrik" style={style}>{children}</div>);
-const Schalter = ({ an, onChange, label }) => (
-  <button type="button" className={`schalter${an ? " on" : ""}`} onClick={() => onChange(!an)}
-    role="switch" aria-checked={!!an} aria-label={label}><i /></button>);
-const Haken = ({ punkte }) => (
-  <ul className="hakenliste">{punkte.map((p, i) => <li key={i}>{p}</li>)}</ul>);
-const Fussleiste = ({ children }) => <div className="fussleiste noprint">{children}</div>;
-/**
- * Filterleiste sitzt unmittelbar über der Tabelle, nicht in der Kopfzeile —
- * dort wird gesucht, und dort erwartet man die Bedienelemente.
- */
-const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", label, children, rechts }) => (
-  <div className="filterleiste noprint">
-    {setSuche && (
-      <div className="suchfeld">
-        <span className="lupe"><Icon n="suche" size={16} /></span>
-        {/* Ein Platzhalter verschwindet, sobald etwas im Feld steht — er
-            ist deshalb keine Beschriftung (WCAG 3.3.2). Beides zu setzen
-            kostet nichts und trägt auch dann noch. */}
-        <input className="inp" value={suche} placeholder={platzhalter} aria-label={label || platzhalter}
-          onChange={(e) => setSuche(e.target.value)} />
-      </div>)}
-    {children}
-    {rechts && <div style={{ marginLeft: "auto", display: "flex", gap: 9, alignItems: "center",
-      flexWrap: "wrap" }}>{rechts}</div>}
-  </div>);
-/** Verdichtete Planzelle: Dienst und Person in einem Block statt zwei Zeilen. */
-const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
-  /* Die leere Zelle trägt keinen Text. Ohne eigene Beschriftung meldet eine
-     Vorlesesoftware nur „Schaltfläche" und lässt offen, wofür. */
-  if (!da) return (
-    <div {...klickbar(onClick, title || "Freie Zelle besetzen")} title={title} className="planzelle"
-      style={{ background: C.bg, cursor: onClick ? "pointer" : "default", minHeight: 34 }} />);
-  return (
-    <div {...klickbar(onClick, title || `${da.name}${unten ? ` · ${unten}` : ""}`)}
-      title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
-      style={{ background: `${da.farbe}1C`, color: lesbar(da.farbe, 5.4), cursor: onClick ? "pointer" : "default",
-        minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
-        textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
-      <div className="oben">{da.kurz}</div>
-      {unten && <div className="unten">{unten}</div>}
-    </div>);
-};
-/**
- * Namenszeichen statt Foto. Echte Bilder hätten wir nicht, und ein grauer
- * Platzhalterkopf für jede Person sieht nach unfertiger Software aus.
- * Die Farbe leitet sich vom Namen ab — dieselbe Person bekommt immer
- * dieselbe, ohne dass etwas gespeichert werden muss.
- */
-const Avatar = ({ person, size, style }) => {
-  const n = `${person.vorname || ""} ${person.nachname || ""}`.trim();
-  const kuerzel = ((person.vorname || " ")[0] + (person.nachname || " ")[0]).toUpperCase();
-  let summe = 0; for (let i = 0; i < n.length; i++) summe = (summe * 31 + n.charCodeAt(i)) % 997;
-  const toene = avatarToene();
-  const [flaeche, farbe] = toene[summe % toene.length];
-  return (
-    <span className={`avatar${size === "sm" ? " avatar-sm" : ""}`} aria-hidden="true"
-      style={{ background: flaeche, color: farbe, ...style }}>{kuerzel}</span>);
-};
-
-const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, className = "", ...rest }) => (
-  <button type="button" onClick={onClick} disabled={disabled} title={title} {...rest}
-    className={`btn btn-${kind}${size === "sm" ? " btn-sm" : ""} ${className}`} style={style}>
-    {children}</button>);
-
-const Inp = (p) => <input {...p} className={`inp ${p.className || ""}`} />;
-const Sel = ({ children, ...p }) => <select {...p} className={`sel ${p.className || ""}`}>{children}</select>;
-
-/**
- * Beschriftetes Eingabefeld.
- *
- * Das umschließende label verknüpfte Beschriftung und Feld bereits — daran
- * war nichts falsch. Zwei Dinge fehlten trotzdem:
- *
- * Der Hinweistext stand nur daneben, ohne Verbindung zum Feld. Ein
- * Bildschirmleser las ihn nicht mit, obwohl er oft die eigentliche
- * Erklärung trägt.
- *
- * Und die Verknüpfung war nur mittelbar. Sobald ein Feld in einer
- * Überlagerung landet oder mehrere Bedienelemente in einer Beschriftung
- * stehen, trägt sie nicht mehr. Die ausdrückliche Zuordnung über id hält
- * in beiden Fällen.
- */
-const Field = ({ label, hint, children, style }) => {
-  const eigen = useId();
-  const istElement = React.isValidElement(children);
-  const feldId = istElement ? (children.props.id || eigen) : undefined;
-  const hinweisId = hint ? `${eigen}-hinweis` : undefined;
-  const feld = istElement
-    ? React.cloneElement(children, {
-      id: feldId,
-      "aria-describedby": [children.props["aria-describedby"], hinweisId]
-        .filter(Boolean).join(" ") || undefined,
-    })
-    : children;
-  return (
-    <div style={{ display: "block", ...style }}>
-      <label htmlFor={feldId} style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-        color: C.dim, marginBottom: 6 }}>{label}</label>
-      {feld}
-      {hint && <span id={hinweisId} style={{ display: "block", fontSize: 12, color: C.dim,
-        marginTop: 5, lineHeight: 1.45 }}>{hint}</span>}
-    </div>);
-};
-
-const Seg = ({ value, onChange, options }) => (
-  <div className="seg" role="tablist">
-    {options.map((o) => (
-      <button key={o.id} role="tab" aria-selected={value === o.id}
-        className={value === o.id ? "on" : ""} onClick={() => onChange(o.id)}>{o.label}</button>))}
-  </div>);
-
-const H1 = ({ children, rubrik, sub, right, style }) => (
-  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between",
-    gap: 24, flexWrap: "wrap", marginBottom: 32, ...style }}>
-    {/* `flex: 1` mit minWidth 0 klang richtig und war es nicht: Die Knöpfe
-        rechts tragen flexShrink 0, also gaben sie nicht nach — bei 390
-        Pixeln blieb für die Überschrift ein Streifen von sechzig Pixeln, und
-        der Untertitel brach Wort für Wort um. Mit einer Mindestbreite als
-        Basis rutscht die rechte Gruppe stattdessen in die nächste Zeile. */}
-    <div style={{ minWidth: 0, flex: "1 1 300px" }}>
-      {rubrik && <Rubrik style={{ marginBottom: 10 }}>{rubrik}</Rubrik>}
-      <h1 className="titel">{children}</h1>
-      {sub && <p className="untertitel">{sub}</p>}
-    </div>
-    {/* maxWidth: Die Gruppe schrumpft nicht (flexShrink 0), durfte aber
-        bisher breiter werden als die Seite — eine Knopfzeile mit fünf
-        Aktionen schob „Meine Schichten" bei 390 px auf 528 bis 822 px.
-        Jetzt endet sie am Rand, und was darin umbricht, bricht um. */}
-    {right && <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
-      flexShrink: 0, maxWidth: "100%", minWidth: 0 }}>{right}</div>}
-  </div>)
-
-/**
- * Kennzahl. `trend` und `bild` sind optional; ohne sie bleibt die Karte, wie
- * sie war.
- *
- * @param {{text:string, ton?:string, richtung?:"auf"|"ab"|"gleich"}} [trend]
- *   Trendpille — nur übergeben, wenn beide Zeiträume vorliegen. Fehlt der
- *   Vergleich, steht dort nichts (kein Strich, kein Platzhalter).
- * @param {React.ReactNode} [bild] Mikro-Diagramm (Sparkline) unter der Zahl;
- *   die Zahl daneben bleibt die Aussage.
- */
-function Kpi({ label, value, unit, tone = "text", sub, trend, bild }) {
-  const col = { ok: C.ok, warn: C.warn, danger: C.danger, accent: C.accent, text: C.text }[tone];
-  return (<div style={{ padding: "calc(var(--pad-y) + 8px) calc(var(--pad-x) + 4px)" }}>
-    <Lab style={{ color: C.aus }}>{label}</Lab>
-    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 31, fontWeight: 650, letterSpacing: "-.035em", color: col, ...NUM }}>{value}</span>
-      {unit && <span style={{ fontSize: 14, color: C.aus, fontWeight: 500 }}>{unit}</span>}
-      {trend && trend.text && <Trend ton={trend.ton} richtung={trend.richtung}>{trend.text}</Trend>}
-    </div>
-    {sub && <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 6, lineHeight: 1.4 }}>{sub}</div>}
-    {bild && <div style={{ marginTop: 14 }}>{bild}</div>}
-  </div>);
-}
-const KpiRow = ({ children, min = 190 }) => (
-  <Card style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit,minmax(${min}px,1fr))`, overflow: "hidden" }}>{children}</Card>);
-
-/**
- * Zwischenüberschrift für lange Verwaltungsseiten.
- *
- * Die Betriebsseite reihte ein Dutzend gleich gewichteter weißer Karten
- * aneinander — Tarifwerk, Standorte, Stammdaten, Einheiten, Regelwerk,
- * Rechte, Protokoll. Wer sie kennt, findet sich zurecht; wer sie zum
- * ersten Mal sieht, hat keinen Einstieg, weil nichts sagt, was
- * zusammengehört und wo man anfängt.
- *
- * Die Überschrift trennt nicht nur optisch: Sie benennt den Zweck einer
- * Gruppe, damit man ganze Abschnitte überspringen kann, statt jede Karte
- * einzeln zu lesen.
- */
-const Abschnitt = ({ children, sub, erste }) => (
-  <div style={{ marginTop: erste ? 0 : 38, marginBottom: 16 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".09em",
-        textTransform: "uppercase", color: C.dim, margin: 0, flexShrink: 0 }}>{children}</h2>
-      <span style={{ flex: 1, height: 1, background: C.lineSoft }} />
-    </div>
-    {sub && <p style={{ fontSize: 13, color: C.dimmer, lineHeight: 1.5,
-      margin: "7px 0 0", maxWidth: 680 }}>{sub}</p>}
-  </div>);
-
 /* --------------------------------------------------------------------------
    STANDORTWAHL
 
@@ -5523,7 +5112,6 @@ function Sprung({ vorher, nachher, differenz, ton = "neutral", einheit, gross = 
 }
 
 /* Die Pille selbst steht in gestalt/bausteine.jsx; hier der bisherige Name. */
-const Pill = Pille;
 function Zelle({ da, abw, size = 28, blass }) {
   if (abw) { const m = abwArt(abw.art);
     return <div title={m.label}  style={{ width: size, height: size, borderRadius: Math.round(size * .3),
@@ -7360,162 +6948,6 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
    in dem der Betreiber eine Größe durchspielt, bevor es sie gibt, und
    für den öffentlichen Rechner vor der Anmeldung. */
 
-/* ------------------------------- Die Ansicht -----------------------------
-   Die vorige Fassung ließ Beschäftigte und Einheiten eingeben und rechnete
-   daraus einen Preis je Standort mit Mengenstaffel. Im neuen Modell ist
-   das keine Vereinfachung mehr, sondern eine falsche Grundannahme: Die
-   Zahl der Beschäftigten bestimmt den Preis nicht. Was ihn bestimmt, ist
-   eine Organisationsentscheidung — wie viele Planer-Zugänge, wie viele
-   große Standorte — und genau die lässt sich hier durchspielen. */
-function Mandantenrechner({ db }) {
-  const [stufeId, setStufeId] = useState("pro");
-  const [planer, setPlaner] = useState(1);
-  const [standorte, setStandorte] = useState([25]);
-
-  const stufe = stufeVon(stufeId);
-  const p = useMemo(() => preisFuer(stufe, planer, standorte), [stufeId, planer, standorte]);
-  const alle = useMemo(() => db.tarife.map((t) => preisFuer(t, planer, standorte)), [db, planer, standorte]);
-
-  const aendereStandort = (i, wert) => setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
-
-  /* Die beiden Standort-Ringe fassen die Liste zu ihren zwei Kennzahlen
-     zusammen: wie viele, und wie groß. Ungleiche Standorte bleiben in der
-     Liste darunter möglich — sie ändern den Preis, weil jeder Standort
-     über dem Kontingent nach seiner eigenen Größe eingestuft wird. */
-  const gleichGross = standorte.every((n) => n === standorte[0]);
-  const leitgroesse = standorte.length ? Math.max(...standorte) : 25;
-  const setzeAnzahl = (n) => setStandorte((s) => (n <= s.length
-    ? s.slice(0, n)
-    : [...s, ...Array(n - s.length).fill(s.length ? s[s.length - 1] : 25)]));
-  const setzeGroesse = (g) => setStandorte((s) => s.map(() => g));
-
-  return (
-    <div>
-      <H1 rubrik="Betreiber"
-        sub="Wie viele Planer-Zugänge braucht der Betrieb, und wie groß sind seine einzelnen Standorte? Das allein bestimmt den Preis — die Zahl der Beschäftigten nicht mehr."
-        >Mandantenrechner</H1>
-
-      {/* Eingaben */}
-      <Card style={{ padding: 26, marginBottom: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 26 }}>
-          <div>
-            <Lab style={{ marginBottom: 9 }}>Stufe</Lab>
-            <Seg value={stufeId} onChange={setStufeId}
-              options={STUFEN.map((s) => ({ id: s.id, label: s.name }))} />
-            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>
-              {zahl(stufe.planerInklusive)} Planer-Zugang{stufe.planerInklusive === 1 ? "" : "e"} und
-              {" "}{zahl(stufe.standorteInklusive)} Standort{stufe.standorteInklusive === 1 ? "" : "e"} beliebiger
-              Größe sind enthalten.
-            </div>
-          </div>
-          {/* Ringe statt Zählwerk und Zahlenfeldern — dieselbe Darstellung
-              wie im Preisrechner der Website. Der Ring zeigt Wert und Skala
-              in einem Bild, und jede Raste ist einzeln antippbar. */}
-          <Ringregler
-            beschriftung="Planer-Zugänge" einheit="Zugänge" groesse={190}
-            min={0} max={20} schritt={1} wert={planer} onChange={setPlaner}
-            hinweis="Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei." />
-          <Ringregler
-            beschriftung="Standorte" einheit="Standorte" groesse={190}
-            min={1} max={30} schritt={1} wert={standorte.length} onChange={setzeAnzahl}
-            hinweis="Eigenständige Einsatzorte. Nur was über dem Kontingent der Stufe liegt, kostet einen Zuschlag." />
-          <Ringregler
-            beschriftung="Personen je Standort" einheit="Personen" groesse={190}
-            min={5} max={300} schritt={5} wert={leitgroesse} onChange={setzeGroesse}
-            hinweis={gleichGross
-              ? "Nur für die Einstufung der zuschlagspflichtigen Standorte — die Zahl der Beschäftigten selbst kostet nichts."
-              : "Die Standorte unten sind unterschiedlich groß; der Ring zeigt den größten. Wer ihn bewegt, setzt alle auf dieselbe Größe."} />
-        </div>
-
-        <details style={{ marginTop: 22 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13, color: C.dimmer, padding: "6px 0" }}>
-            Standorte einzeln angeben</summary>
-          <div style={{ display: "grid", gap: 8, marginTop: 12, maxWidth: 420 }}>
-            {standorte.map((n, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Inp type="number" min={0} value={n} style={{ width: 90 }}
-                  aria-label={`Personen an Standort ${i + 1}`}
-                  onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
-                <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
-                <span style={{ flex: 1 }} />
-                {standorte.length > 1 && (
-                  <Btn size="sm" kind="quiet"
-                    onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
-              </div>))}
-            {standorte.length < 30 && (
-              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>)}
-          </div>
-        </details>
-      </Card>
-
-      {p.kontaktEmpfohlen && (
-        <Card style={{ padding: 22, marginBottom: 16, background: C.warnLight }}>
-          <div style={{ fontSize: 15.5, fontWeight: 650, color: C.warn, marginBottom: 8 }}>
-            Sprich uns an</div>
-          <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.6, maxWidth: 720 }}>
-            Mit {zahl(p.planerGesamt)} Planer-Zugängen und {zahl(p.zuschlaege.posten.length)} zuschlagspflichtigen
-            Standorten liegt dieser Betrieb über der Größe, für die eine automatische Formel noch die
-            richtige Antwort ist. Die Zahl unten ist eine <b>Hochrechnung</b> — ein Betrieb dieser Größe
-            bekommt ein eigenes Angebot mit verhandelter Grundgebühr.
-          </div>
-        </Card>)}
-
-      <Lab style={{ marginBottom: 12 }}>Was es monatlich kostet</Lab>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
-        {alle.map((a) => {
-          const best = a.stufe.id === stufe.id;
-          return (
-            <Card key={a.stufe.id} glanz={best}
-              style={{ padding: 24, outline: best ? `2px solid ${C.accent}` : "none" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <Rubrik>{a.stufe.name}</Rubrik>
-                {a.kontaktEmpfohlen && <Pill size="sm" tone="warn">Sprich uns an</Pill>}
-              </div>
-              <div style={{ fontSize: 34, fontWeight: 300, letterSpacing: "-.04em", ...NUM }}>
-                {a.kontaktEmpfohlen ? "—" : eur0(a.gesamt)}</div>
-              <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>je Monat, netto</div>
-              <div style={{ marginTop: 18, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}`,
-                display: "grid", gap: 7, fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>Grundgebühr</span>
-                  <span style={NUM}>{eur(a.stufe.grund)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>{zahl(a.zusatzPlaner)} zusätzliche{a.zusatzPlaner === 1 ? "r" : ""} Planer</span>
-                  <span style={NUM}>{eur(a.summePlaner)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>{zahl(a.zuschlaege.posten.length)} zuschlagspflichtige Standorte</span>
-                  <span style={NUM}>{eur(a.zuschlaege.summe)}</span></div>
-              </div>
-              <div style={{ fontSize: 12, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
-                {leistungenAnzeige(a.stufe.leistungen).slice(0, 3).join(" · ")}
-              </div>
-            </Card>);
-        })}
-      </div>
-
-      <Card style={{ marginTop: 20, padding: 22 }}>
-        <Lab style={{ marginBottom: 11 }}>Wie sich der Preis zusammensetzt</Lab>
-        <Haken punkte={[
-          "Die Grundgebühr enthält eine Zahl Planer-Zugänge und eine Zahl Standorte beliebiger Größe — je nach Stufe.",
-          "Ein weiterer Planer-Zugang kostet eine feste Pauschale, unabhängig von der Betriebsgröße.",
-          "Ein weiterer Standort kostet nur, wenn er über das Kontingent hinausgeht — und dann nach seiner eigenen Größe, nicht nach der des ganzen Betriebs.",
-          "Mitarbeiter, Sub-Planer, Betriebsrat und Organisationsleitung sind in jeder Stufe unbegrenzt und kostenfrei.",
-        ]} />
-        <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14, lineHeight: 1.55 }}>
-          Zuzüglich Umsatzsteuer. Die Bänder für Standortzuschläge stehen in
-          {" "}<code>src/standorte.js</code>, die Stufen in <code>STUFEN</code> hier.
-        </div>
-      </Card>
-    </div>);
-}
-
-/* ==========================================================================
-   ANTRÄGE — GETEILTE ANSICHT
-   Links die Liste mit Auswahl und Sammelaktionen, rechts die Kapazität der
-   nächsten acht Wochen. Wer einen Antrag auswählt, sieht sofort, welche
-   Wochen dadurch kippen. Vollständig über die Tastatur bedienbar.
-   ========================================================================== */
-
 /** Kapazität einer Woche mit und ohne die ausgewählten Anträge. */
 function wochenKapazitaet(m, wochen, probeAnfragen) {
   const start = montag(heute());
@@ -8325,57 +7757,6 @@ function BetreiberRechnungen({ db, akt }) {
             onChange={(e) => akt.setzeBetreiber("zahlungsziel", Number(e.target.value))} /></Field>
           <Field label="Anschrift"><textarea className="inp" rows={3} value={(db.betreiber || BETREIBER_LEER).anschrift}
             onChange={(e) => akt.setzeBetreiber("anschrift", e.target.value)} /></Field>
-        </div>
-      </Card>
-    </div>);
-}
-
-function BetreiberTarife({ db, akt }) {
-  return (
-    <div>
-      <H1 sub="Grundgebühr, enthaltenes Kontingent und Funktionstiefe je Stufe. Zusatz-Planer und der Standortzuschlag gelten stufenübergreifend — sie stehen unten.">Tarife</H1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 18 }}>
-        {db.tarife.map((t) => (
-          <Card key={t.id} hover>
-            <CardHead>{t.name}</CardHead>
-            <div style={{ padding: 22, display: "grid", gap: 13 }}>
-              <Field label="Grundgebühr je Monat"
-                hint="Enthält das Kontingent unten. Mitarbeiter, Sub-Planer und Betriebsrat sind unbegrenzt und stets kostenfrei.">
-                <Inp type="number" step="1" value={t.grund}
-                  onChange={(e) => akt.setzeTarifFeld(t.id, "grund", Number(e.target.value))} /></Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field label="Planer inklusive">
-                  <Inp type="number" min={0} value={t.planerInklusive}
-                    onChange={(e) => akt.setzeTarifFeld(t.id, "planerInklusive", Number(e.target.value))} /></Field>
-                <Field label="Standorte inklusive" hint="Die größten zählen automatisch dazu.">
-                  <Inp type="number" min={0} value={t.standorteInklusive}
-                    onChange={(e) => akt.setzeTarifFeld(t.id, "standorteInklusive", Number(e.target.value))} /></Field>
-              </div>
-              <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
-                <Lab style={{ marginBottom: 8 }}>Enthalten</Lab>
-                {leistungenAnzeige(t.leistungen).map((f) => <div key={f} style={{ fontSize: 13, color: C.dim, marginBottom: 5 }}>
-                  <span style={{ color: C.ok, marginRight: 8, display: "inline-flex", verticalAlign: "-2px" }}><Icon n="haken" size={14} strokeWidth={2.2} /></span>{f}</div>)}
-              </div>
-            </div>
-          </Card>))}
-      </div>
-      <Card style={{ marginTop: 18 }}>
-        <CardHead>Zusatz-Planer und Standortzuschlag</CardHead>
-        <div style={{ padding: 22, display: "flex", gap: 24, flexWrap: "wrap" }}>
-          <div className="karte" style={{ padding: "14px 18px", minWidth: 170 }}>
-            <div style={{ fontSize: 12, color: C.dimmer }}>je zusätzlichem Planer</div>
-            <div style={{ fontSize: 21, fontWeight: 650, ...NUM }}>{eur(ZUSATZ_PLANER)}</div>
-          </div>
-          {STANDORT_BAENDER.filter((b) => b.zuschlag > 0).map((b) => (
-            <div key={b.label} className="karte" style={{ padding: "14px 18px", minWidth: 170 }}>
-              <div style={{ fontSize: 12, color: C.dimmer, ...NUM }}>Standort, {b.label}</div>
-              <div style={{ fontSize: 21, fontWeight: 650, ...NUM }}>{eur(b.zuschlag)}</div>
-            </div>))}
-        </div>
-        <div style={{ padding: "0 22px 22px", fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-          Gilt nur für Standorte über dem Kontingent einer Stufe — die größten zählen
-          immer zum Kontingent, unabhängig von ihrer Größe. Werte stehen in
-          {" "}<code>src/standorte.js</code> und <code>ZUSATZ_PLANER</code> in App.jsx.
         </div>
       </Card>
     </div>);
@@ -9474,53 +8855,6 @@ function Schichtfolge({ sitz, akt }) {
     </div>);
 }
 
-/**
- * Einwilligungen nach dem Mutterschutzgesetz (Nutzerentscheidung, WP-11):
- * § 5 Abs. 2 (Arbeit 20–22 Uhr) und § 6 Abs. 1 (Sonn- und Feiertag), je mit
- * Zeitraum und dem Vermerk, dass die behördliche Genehmigung (§ 28) vorliegt.
- * Im Zeitraum meldet die Prüfung nur einen Hinweis; nach 22 Uhr bleibt
- * Nachtarbeit gesperrt. Wann und von wem geändert, setzt der Server.
- */
-function Einwilligungen({ p, akt }) {
-  const gespeichert = Array.isArray(p.mutterschutzEinwilligungen) ? p.mutterschutzEinwilligungen : [];
-  /* Ein Entwurf, der erst gespeichert wird, wenn er vollständig ist (Review N1):
-     Art, Beginn und Ende sind Pflicht, das Ende nicht vor dem Beginn. */
-  const [entwurf, setEntwurf] = useState(null);
-  const liste = entwurf || gespeichert;
-  const fehler = liste.map((e) => (!e.ab || !e.bis ? "Beginn und Ende angeben." : e.bis < e.ab ? "Das Ende liegt vor dem Beginn." : null));
-  const aendere = (i, k, v) => setEntwurf(liste.map((e, j) => (j === i ? { art: e.art, ab: e.ab, bis: e.bis || null,
-    ...(e.genehmigung ? { genehmigung: true } : {}), [k]: v } : e)));
-  const speichern = () => { akt.setzePerson(p.id, "mutterschutzEinwilligungen", liste); setEntwurf(null); };
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <Lab>Einwilligungen (Mutterschutz)</Lab>
-      {liste.map((e, i) => (
-        <div key={i} style={{ display: "grid", gap: 4 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Sel value={e.art} style={{ width: 190 }} onChange={(x) => aendere(i, "art", x.target.value)}>
-              <option value="nacht">20–22 Uhr (§ 5 Abs. 2)</option>
-              <option value="sonntag">Sonntag (§ 6 Abs. 1)</option></Sel>
-            <Inp type="date" value={e.ab || ""} style={{ width: 150 }} aria-label="gültig ab" onChange={(x) => aendere(i, "ab", x.target.value)} />
-            <Inp type="date" value={e.bis || ""} style={{ width: 150 }} aria-label="gültig bis" onChange={(x) => aendere(i, "bis", x.target.value || null)} />
-            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
-              <input type="checkbox" checked={!!e.genehmigung} onChange={(x) => aendere(i, "genehmigung", x.target.checked)} />
-              behördliche Genehmigung liegt vor</label>
-            <Btn size="sm" kind="danger" onClick={() => setEntwurf(liste.filter((_, j) => j !== i))}>Entfernen</Btn>
-          </div>
-          {fehler[i] && <div role="alert" style={{ fontSize: 12, color: C.danger }}>{fehler[i]}</div>}
-        </div>))}
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn size="sm" onClick={() => setEntwurf([...liste, { art: "nacht", ab: heute(), bis: null }])}>Einwilligung erfassen</Btn>
-        {entwurf && <Btn size="sm" kind="primary" disabled={fehler.some(Boolean)} onClick={speichern}>Speichern</Btn>}
-        {entwurf && <Btn size="sm" kind="quiet" onClick={() => setEntwurf(null)}>Verwerfen</Btn>}
-      </div>
-      <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
-        Im Zeitraum meldet die Prüfung nur einen Hinweis. Arbeit nach 22 Uhr bleibt gesperrt. Feiertage prüft CENTRIC
-        nicht gesondert. Ob ärztliche Unbedenklichkeit und behördliche Genehmigung vorliegen, verantwortet der Betrieb.
-        Stehen bestehende Einteilungen einer Änderung entgegen, bitte erst umplanen.</div>
-    </div>);
-}
-
 /* ========================= DIENSTARTEN — frei gestaltbar ================== */
 function Dienstarten({ sitz, akt }) {
   const m = sitz.mandant;
@@ -10381,96 +9715,6 @@ function Testablauf({ mandant, darfEinrichten }) {
               betrieb: m.name, zusatz: `Der Testzeitraum endet am ${tag}. Wir möchten verlängern.` });
           }}>Verlängern</Btn>
         </div>)}
-    </div>);
-}
-
-/* ==========================================================================
-   HILFE UND KONTAKT
-
-   Bis hierher endete jede Frage, die das Handbuch nicht beantwortet, im
-   Nichts: keine Adresse, keine Nummer, kein Hinweis, wohin man sich wendet.
-   Für eine Software, die nachts im Schichtdienst läuft, ist das die
-   auffälligste Lücke — dort ist niemand, den man kurz fragen kann.
-
-   Der Verweis nimmt Betrieb, Rolle und Ansicht mit. Das spart die erste
-   Rückfrage, die sonst immer aus denselben vier Fragen besteht.
-   ========================================================================== */
-function Hilfe({ sitz, gehZu }) {
-  const m = sitz.mandant || {};
-  const rollenName = sitz.rolle === "betreiber"
-    ? "Betreiber" : (rolle(sitz.person.rolle) || {}).label || sitz.person.rolle;
-
-  /* Eine Zeile: Symbol (nur bei den Wegen im Haus), Titel, Satz, Knopf. */
-  const Weg = ({ titel, text, knopf, aufKlick, href, symbol }) => (
-    <div className="wegzeile">
-      {symbol && <span className="wegsymbol" aria-hidden="true"><Icon n={symbol} size={20} /></span>}
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>{titel}</div>
-        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>{text}</div>
-      </div>
-      {href
-        ? <a href={href} style={{ textDecoration: "none" }}>
-            <Btn size="sm" kind="primary">{knopf}</Btn></a>
-        : <Btn size="sm" onClick={aufKlick}>{knopf}</Btn>}
-    </div>);
-
-  return (
-    <div>
-      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns."
-        right={<Btn kind="primary" onClick={() => gehZu("handbuch")}>Handbuch öffnen</Btn>}>
-        Hilfe</H1>
-
-      {KONTAKT_UNGESETZT && (
-        <Hinweisband ton="warn">
-          <strong style={{ fontWeight: 640, color: C.text }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
-          Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige
-          Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL — siehe
-          rechtliches/PLATZHALTER.md.
-        </Hinweisband>)}
-
-      <Leitraster seiteBreite={1}
-        haupt={<>
-          <Card>
-            <CardHead>Selbst nachsehen</CardHead>
-            <div className="wegliste">
-              <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")} symbol="buch"
-                text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
-              <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")} symbol="pruefliste"
-                text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
-              <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")} symbol="schild"
-                text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
-            </div>
-          </Card>
-
-          <Card>
-            <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
-            <div className="wegliste">
-              <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
-                href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
-                  rolle: rollenName, ansicht: "Hilfe",
-                  zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
-                text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
-              <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
-                href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
-                  zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
-                text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
-              <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
-                href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
-                text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
-              <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
-                href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
-                  zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
-                text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
-
-              <div style={{ marginTop: 6, padding: "14px var(--pad-x) 2px", borderTop: `1px solid ${C.lineSoft}`,
-                fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
-                E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
-                {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
-                  style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
-              </div>
-            </div>
-          </Card>
-        </>} />
     </div>);
 }
 
@@ -15888,126 +15132,6 @@ function Schichtuebergabe({ sitz, akt }) {
 }
 
 /* ==========================================================================
-   PAKETVERWALTUNG (Betreiber)
-   ========================================================================== */
-function Pakete({ db, akt }) {
-  const [gewaehlt, setGewaehlt] = useState(db.mandanten[0] ? db.mandanten[0].id : null);
-  const m = db.mandanten.find((x) => x.id === gewaehlt);
-
-  return (
-    <div>
-      <H1 rubrik="Betreiber"
-        sub="Ein Kern, mehrere Branchen. Was ein Betrieb braucht, wird als Paket freigeschaltet — der Rechenkern bleibt für alle derselbe.">
-        Branchenpakete</H1>
-
-      <div className="zweispaltig" style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: 18, alignItems: "start" }}>
-        <Card>
-          <CardHead>Betriebe</CardHead>
-          {db.mandanten.map((x) => (
-            <div key={x.id} aria-pressed={x.id === gewaehlt} {...klickbar(() => setGewaehlt(x.id), x.name)}
-              style={{ padding: "12px 16px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}`,
-                background: x.id === gewaehlt ? C.accentLight : "transparent",
-                borderLeft: x.id === gewaehlt ? `3px solid ${C.accent}` : "3px solid transparent" }}>
-              <div style={{ fontSize: 13.5, fontWeight: 550 }}>{x.name}</div>
-              <div style={{ fontSize: 11.5, color: C.dim, marginTop: 3 }}>
-                {(x.pakete || []).length ? (x.pakete || []).map((p) => paketVon(p).name).join(", ") : "nur Kern"}
-              </div>
-            </div>))}
-        </Card>
-
-        {m && (
-          <div style={{ display: "grid", gap: 14 }}>
-            {PAKETE.map((p) => {
-              const an = p.pflicht || (m.pakete || []).includes(p.id);
-              /* G9: nur Zustand 5 (buchbar und abrechenbar) wird empfohlen, gebucht
-                 und berechnet. */
-              const zustand = p.pflicht ? 5 : paketZustand(p.id);
-              const nutzbar = zustand === 5;
-              const pilot = pilotAktiv(m);
-              const empfohlen = nutzbar && paketeFuerBranche(m.branche).includes(p.id);
-              return (
-                <Card key={p.id} style={{ padding: 20, borderColor: an ? C.accent : C.line }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
-                    alignItems: "flex-start" }}>
-                    <div style={{ flex: 1, minWidth: 240 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 16, fontWeight: 650 }}>{p.name}</span>
-                        {p.pflicht && <Pill size="sm">immer enthalten</Pill>}
-                        {empfohlen && !an && <Pill size="sm" tone="accent">für diese Branche empfohlen</Pill>}
-                      </div>
-                      <div style={{ fontSize: 13.5, color: C.dim, marginTop: 7, lineHeight: 1.55 }}>
-                        {p.beschreibung}</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 11 }}>
-                        {p.merkmale.map((x) => <Pill key={x} size="sm">
-                          {merkmalNutzbar(x) ? x : `${x} (in Vorbereitung)`}</Pill>)}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right", minWidth: 130 }}>
-                      {!nutzbar
-                        ? <div style={{ fontSize: 13, color: C.dim }}>In Vorbereitung – Zustand {zustand}:
-                            {" "}{PAKET_ZUSTAENDE[zustand]}. Nicht buchbar, wird nicht berechnet.
-                            {an && pilot && <div>{paketAnzeige(p.id, { pilot: true })}</div>}</div>
-                        : p.aufpreis
-                        ? <div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>+{eur0(p.aufpreis)}
-                            <span style={{ fontSize: 12, color: C.dim, fontWeight: 400 }}> /Monat</span></div>
-                        : <div style={{ fontSize: 13, color: C.dim }}>im Grundpreis</div>}
-                      {/* Unter Zustand 5 lässt sich ein Paket nur im Pilot zubuchen („freigeschaltet, nicht berechnet");
-                          ein gebuchtes lässt sich immer abschalten (der Bestand bleibt). */}
-                      {!p.pflicht && (nutzbar || an || pilot) && (
-                        <div style={{ marginTop: 12 }}>
-                          <Schalter an={an} label={`Paket ${p.name}`}
-                            onChange={() => akt.setzePaket(m.id, p.id, !an)} />
-                        </div>)}
-                      {/* Zustand 5, gebucht, aber ohne Abrechnungsgrund: nicht berechnet, bis der Kunde
-                          ausdrücklich zugestimmt hat oder eine vertragliche Grundlage dokumentiert ist. */}
-                      {!p.pflicht && an && nutzbar && !pilot && mandantPaketkosten(m, 0, undefined, undefined, folgemonatsanfang(paketTag())).ohneGrund.some((x) => x.id === p.id) && (
-                        <div style={{ marginTop: 10, fontSize: 12.5, color: C.dim }}>
-                          Zustimmung erforderlich – nicht berechnet.
-                          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
-                            <Btn size="sm" onClick={() => akt.erfasseZustimmung(m.id, p.id)}>Zustimmung festhalten</Btn>
-                            <Btn size="sm" onClick={() => akt.setzeGrundlage(m.id, p.id)}>Vertragsgrundlage festhalten</Btn>
-                          </div>
-                        </div>)}
-                    </div>
-                  </div>
-                </Card>);
-            })}
-
-            <Card style={{ padding: 20 }}>
-              <Rubrik style={{ marginBottom: 10 }}>Monatlicher Aufpreis</Rubrik>
-              <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM }}>
-                {eur0(paketAufpreisSumme(m))}
-              </div>
-              <div style={{ fontSize: 12.5, color: C.dim, marginTop: 8, lineHeight: 1.55 }}>
-                Zusätzlich zur Grundgebühr und den Zugängen. Pakete lassen sich jederzeit zu- und
-                abschalten — abgerechnet wird tagesgenau. Pakete unter Zustand 5 werden nie berechnet.
-              </div>
-            </Card>
-
-            {/* Pilot: kostenlos, eingeschränkter Umfang; nur der Betreiber setzt ihn (Protokoll),
-                keine Rechnungspositionen, kein Anschein des vollen Funktionsumfangs. */}
-            <Card style={{ padding: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}>
-                <div>
-                  <Rubrik style={{ marginBottom: 6 }}>Pilotbetrieb</Rubrik>
-                  <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
-                    Branchenpakete werden im Pilot nicht berechnet; alle übrigen Positionen laufen laut
-                    Vertrag weiter (Grundgebühr, Planer, Standorte — außer Status, Sonderpreis oder
-                    Aussetzung greifen). Gebuchte Pakete erscheinen als „Pilot – freigeschaltet, nicht
-                    berechnet“ mit nutzbaren und noch nicht nutzbaren Funktionen; im Pilot darf der
-                    Betreiber Pakete auch unter Zustand 5 zubuchen.
-                    {pilotAktiv(m) && ` Aktiv seit ${m.preisgestaltung.pilot.seit}.`}
-                  </div>
-                </div>
-                <Schalter an={pilotAktiv(m)} label="Pilotbetrieb" onChange={() => akt.setzePilot(m.id, !pilotAktiv(m))} />
-              </div>
-            </Card>
-          </div>)}
-      </div>
-    </div>);
-}
-
-/* ==========================================================================
    GESPEICHERTE ANSICHTEN
    Wer täglich denselben Ausschnitt braucht, soll ihn nicht täglich neu bauen.
    ========================================================================== */
@@ -18619,20 +17743,6 @@ function zugangsUebersicht(m) {
   }));
 }
 
-/** Adressänderungen aller Betriebe, neueste zuerst. */
-function adressAenderungen(db, tage) {
-  const grenze = addDays(heute(), -(tage || 90));
-  const out = [];
-  for (const m of db.mandanten)
-    for (const a of (m.adressAenderungen || [])) {
-      if (a.zeit.slice(0, 10) < grenze) continue;
-      const p = m.personen.find((x) => x.id === a.personId);
-      out.push({ ...a, mandant: m.name, mandantId: m.id,
-        rolle: p ? (ROLLEN.find((r) => r.id === p.rolle)?.label || p.rolle) : "unbekannt" });
-    }
-  return out.sort((a, b) => b.zeit.localeCompare(a.zeit));
-}
-
 /* ==========================================================================
    MANDANT ANLEGEN — Betreiberansicht
    Ein Formular, ein Knopf, danach die Zugangscodes. Sie erscheinen genau
@@ -18789,56 +17899,6 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
       </div>
     </div>);
 }
-
-/* ==========================================================================
-   ADRESSÄNDERUNGEN
-   Wenn jemand seine Anmeldeadresse ändert, erscheint das hier. So merkst du,
-   wenn ein Zugang den Besitzer wechselt — etwa weil die Planung neu besetzt
-   wurde und niemand Bescheid gesagt hat.
-   ========================================================================== */
-function Adressaenderungen({ db }) {
-  const liste = useMemo(() => adressAenderungen(db, 90), [db]);
-  if (!liste.length) return (
-    <Card><Leer titel="Keine Änderungen"
-      text="Wenn jemand seine Anmeldeadresse ändert, erscheint das hier mit Datum und Rolle." /></Card>);
-  return (
-    <Card>
-      <CardHead right={<Lab>letzte 90 Tage</Lab>}>Geänderte Anmeldeadressen</CardHead>
-      {liste.slice(0, 40).map((a, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 16,
-          padding: "14px var(--pad-x)",
-          borderBottom: i < Math.min(39, liste.length - 1) ? `1px solid ${C.lineSoft}` : "none" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 550 }}>{a.mandant}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>
-              {a.rolle} · {fLang(a.zeit.slice(0, 10))}</div>
-          </div>
-          <div style={{ fontSize: 13, textAlign: "right", minWidth: 0 }}>
-            {a.von && <div style={{ color: C.dim, textDecoration: "line-through" }}>{a.von}</div>}
-            <div style={{ fontWeight: 550 }}>{a.nach || "entfernt"}</div>
-          </div>
-        </div>))}
-    </Card>);
-}
-
-/* ==========================================================================
-   KALENDER, WECKZEITEN, VERFÜGBARKEIT
-
-   Drei Dinge, die eine Belegschaft spürbar mehr wertschätzt als jede
-   Auswertung: der Plan im eigenen Kalender, ein Weckruf, der zur Schicht
-   passt, und die Möglichkeit, der Familie zu zeigen, wann man da ist.
-
-   Alles drei nutzt aus, dass CENTRIC den Plan rechnet: Niemand muss etwas
-   abtippen, und die Angaben stimmen auch zwölf Monate voraus.
-   ========================================================================== */
-
-/* Die Termine des Kalender-Feeds rechnet seit WP-24 der Server bei jedem Abruf (server/lib/kalenderfeed.mjs). */
-
-/* --------------------------------------------------------------------------
-   WECKZEITEN
-   Aus dem Dienst den Weckruf ableiten. Wer den Plan hat, muss ihn nicht
-   abtippen — das ist der ganze Trick.
-   -------------------------------------------------------------------------- */
 
 /** Voreinstellung: 75 Minuten vor Dienstbeginn plus Anfahrt. */
 const WECK_STD = { vorlauf: 75, anfahrt: 20, aktiv: false, nurWerktags: false };
@@ -21935,115 +20995,6 @@ function Tarifwerk({ sitz, akt }) {
     </Card>);
 }
 
-/* ==========================================================================
-   STANDORTE
-
-   Ein Standort war einmal eine Preisposition: Die Grundgebühr fiel je
-   Standort an, wer einen anlegte, änderte den Vertrag — und musste dafür,
-   je nach Rolle, entweder selbst bestätigen oder einen Antrag stellen,
-   den die Leitung entschied.
-
-   Das galt für einen mobilen Pflegedienst mit vielen kleinen Einsatzorten
-   genauso wie für eine Zentrale mit einer großen Filiale — und traf damit
-   den falschen Betrieb. Ein Standort kostet jetzt nichts, solange er zum
-   Kontingent der gebuchten Stufe gehört; die größten zählen automatisch
-   dazu. Anlegen ist deshalb keine Vertragsänderung mehr, sondern eine
-   Frage der Struktur — offen für jeden, der die Seite erreicht.
-
-   Was einen Zuschlag auslösen kann, ist nicht das Anlegen, sondern das
-   Wachsen: ein Standort jenseits des Kontingents, der über die Schwelle
-   in `standorte.js` hinauswächst. Das zeigt diese Seite an, ohne
-   irgendetwas zu blockieren — es gibt nichts mehr zu bestätigen.
-   ========================================================================== */
-/**
- * Standortprüfung beim Stempeln ein- und ausschalten (Geo-Spezifikation E7).
- * Vorgabe: aus. Einschalten nur mit der ausdrücklichen Bestätigung; die
- * Arbeitszeit wird in jedem Fall erfasst.
- */
-/**
- * Offline-Stempeln vertrauen (WP-07, Review-Auflage A1). Vorgabe: aus — eine
- * offline erfasste Zeit, die 15 Minuten oder später ankommt, steht zur
- * Prüfung. Schalten nur mit org.edit; wann und von wem, setzt der Server.
- */
-function OfflineSchalter({ sitz, akt }) {
-  const e = sitz.mandant.einstellungen || {};
-  const an = e.offlineStempelVertrauen === true;
-  const darfSchalten = darf(sitz, "org.edit");
-  const durch = e.offlineStempelVertrauenVon
-    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.offlineStempelVertrauenVon)) || {}) : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={an ? "warn" : "ok"}>{an ? "gelockert" : "streng"}</Pill>}>
-        Stempeln ohne Netz</CardHead>
-      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-        Ohne Netz gestempelt zählt die Uhrzeit des Geräts. Sie lässt sich mit Flugmodus und verstellter Uhr fälschen.
-        Deshalb steht eine Ist-Zeit zur Prüfung, wenn ein offline erfasster Beginn oder ein offline erfasstes Ende
-        15 Minuten oder später beim Server ankommt — bis die Leitung sie in den Stempelbefunden bestätigt.
-        {" "}Gelockert gilt sie dann als bestätigt; eine abweichende Geräteuhr und Stempel über 48 Stunden bleiben zur Prüfung.
-        {e.offlineStempelVertrauenAm && (
-          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.offlineStempelVertrauenAm).slice(0, 10))}
-            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        {darfSchalten && (
-          <div style={{ marginTop: 14 }}>
-            {an ? <Btn onClick={() => akt.setzeOfflineVertrauen(false)}>Wieder streng prüfen</Btn>
-              : <Btn onClick={() => akt.setzeOfflineVertrauen(true)}>Lockern</Btn>}
-          </div>)}
-      </div>
-    </Card>);
-}
-
-function GeoSchalter({ sitz, akt }) {
-  const e = sitz.mandant.einstellungen || {};
-  const an = e.geoPruefung === true;
-  const pflicht = an && e.geoModus === "pflicht";
-  const [geprueft, setGeprueft] = useState(false);
-  const [modusGeprueft, setModusGeprueft] = useState(false);
-  const durch = e.geoPruefungAktiviertVon
-    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.geoPruefungAktiviertVon)) || {}) : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={an ? "ok" : undefined}>{an ? "eingeschaltet" : "aus"}</Pill>}>
-        Standortprüfung beim Stempeln</CardHead>
-      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-        Ist sie eingeschaltet, prüft der Server beim Ein- und Ausstempeln einmalig, ob die Person am Standort
-        ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet, die Messgenauigkeit und
-        der Prüfort (Standort oder Einsatzort) — keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst,
-        auch ohne Position oder außerhalb des Umkreises.
-        <div style={{ marginTop: 10 }}>{GEO_SPOOFING_TEXT}</div>
-        {an && (
-          <div style={{ marginTop: 14, color: C.text }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Prüfmodus: {pflicht ? "verpflichtend" : "Hinweis"}</div>
-            <div style={{ color: C.dim }}>
-              {pflicht
-                ? "Ein Stempel, dessen Ort nicht bestätigt ist (außerhalb, ohne Position, nicht bewertbar), bekommt die Markierung „Ort nicht bestätigt“ und geht in die Klärung der Leitung. Die Arbeitszeit wird trotzdem erfasst."
-                : "Das Ergebnis wird gespeichert und angezeigt; es entsteht keine Markierung."}
-              {" "}Beim Außendienst gibt es keinen festen Ort — dort wird nichts gemessen.
-            </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              {pflicht ? <Btn onClick={() => akt.setzeGeoModus("hinweis")}>Auf Hinweis zurückstellen</Btn> : (<>
-                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", maxWidth: 560 }}>
-                  <input type="checkbox" checked={modusGeprueft} onChange={(x) => setModusGeprueft(x.target.checked)} />
-                  <span>{GEO_MODUS_TEXT}</span>
-                </label>
-                <Btn disabled={!modusGeprueft} onClick={() => { akt.setzeGeoModus("pflicht"); setModusGeprueft(false); }}>Verpflichtend stellen</Btn></>)}
-            </div>
-          </div>)}
-        {an && e.geoPruefungAktiviertAm && (
-          <div style={{ marginTop: 10, ...NUM }}>Eingeschaltet am {fDatum(String(e.geoPruefungAktiviertAm).slice(0, 10))}
-            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          {an ? <Btn onClick={() => akt.setzeGeoPruefung(false)}>Ausschalten</Btn> : (<>
-            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", color: C.text, maxWidth: 560 }}>
-              <input type="checkbox" checked={geprueft} onChange={(x) => setGeprueft(x.target.checked)} />
-              <span>Datenschutz und gegebenenfalls Mitbestimmung für diese Funktion wurden betrieblich geprüft.</span>
-            </label>
-            <Btn kind="primary" disabled={!geprueft} onClick={() => { akt.setzeGeoPruefung(true); setGeprueft(false); }}>
-              Einschalten</Btn></>)}
-        </div>
-      </div>
-    </Card>);
-}
-
 const QUELLE_TEXT = { adresse: "Adresse", geraet: "Gerät", karte: "Karte", manuell: "von Hand" };
 const ART_TEXT = { kunde: "Kunde", objekt: "Objekt", patient: "Patient/in", baustelle: "Baustelle", sonstiger: "Sonstiger" };
 
@@ -22113,40 +21064,6 @@ function Einsatzorte({ sitz, akt }) {
           <Field label="Neuer Einsatzort" style={{ flex: "1 1 220px" }}>
             <Inp value={name} placeholder="Baustelle Hafenstraße" onChange={(e) => setName(e.target.value)} /></Field>
           <Btn kind="primary" disabled={name.trim().length < 2} onClick={() => { akt.einsatzortAnlegen(name.trim()); setName(""); }}>Anlegen</Btn>
-        </div>
-      </div>
-    </Card>);
-}
-
-/**
- * Jugendarbeitsschutz: mehrschichtiger Betrieb (§ 14 Abs. 2 Nr. 2 JArbSchG,
- * Nachprüfung WP-11). Eingeschaltet dürfen Jugendliche ab 16 Jahren bis 23 Uhr
- * eingeteilt werden — die Prüfung meldet dann nur einen Hinweis. Aus: Einsätze
- * 20–23 Uhr sind „Achtung" und brauchen eine Bestätigung. Unter 16 Jahren und
- * 23–6 Uhr sperrt die Prüfung in jedem Fall. Schalten darf, wer org.edit oder pattern.edit
- * hat; wann und von wem, setzt der Server.
- */
-function JugendschutzSchalter({ sitz, akt }) {
-  const e = sitz.mandant.einstellungen || {};
-  const an = jugendMehrschichtig(e);
-  const j = e.jugendschutz || {};
-  const durch = j.geaendertVon ? (sitz.mandant.personen.find((x) => String(x.id) === String(j.geaendertVon)) || {}) : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={an ? "ok" : undefined}>{an ? "mehrschichtig" : "nicht hinterlegt"}</Pill>}>
-        Jugendarbeitsschutz: mehrschichtiger Betrieb</CardHead>
-      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-        In mehrschichtigen Betrieben dürfen Jugendliche ab 16 Jahren bis 23 Uhr beschäftigt werden
-        (§ 14 Abs. 2 Nr. 2 JArbSchG). Ist das hinterlegt, meldet die Prüfung einen Einsatz bis 23 Uhr nur als
-        Hinweis; sonst ist er „Achtung" und braucht eine Bestätigung. Unter 16 Jahren und zwischen 23 und 6 Uhr
-        bleibt jeder Einsatz gesperrt. Weitere Branchenausnahmen (Gaststätten, Bäckereien, Landwirtschaft) kennt
-        die Prüfung nicht.
-        {j.geaendertAm && (
-          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(j.geaendertAm).slice(0, 10))}
-            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        <div style={{ marginTop: 14 }}>
-          <Btn kind={an ? undefined : "primary"} onClick={() => akt.setzeJugendMehrschichtig(!an)}>
-            {an ? "Nicht mehr als mehrschichtig führen" : "Als mehrschichtigen Betrieb hinterlegen"}</Btn>
         </div>
       </div>
     </Card>);
@@ -25832,7 +24749,7 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
           {!istBetreiber && <button onClick={() => setPostfach(true)}>
             <span className="glyph" style={{ position: "relative", display: "flex" }}><Icon n="brief" size={20} />
               {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
-                borderRadius: 8, background: C.danger, color: _dunkel ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
+                borderRadius: 8, background: C.danger, color: istDunkel() ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{ungelesen}</span>}
             </span>Post</button>}
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>

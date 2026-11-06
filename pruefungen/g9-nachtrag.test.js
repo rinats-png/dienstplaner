@@ -11,6 +11,7 @@
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { appQuelle } from "./app-quelle.js";
 import { STUFEN, PAKETE, paketeAngebot, buchbareAuswahl, paketkosten, preisFuer, stufeVon, branchenpaketeZeile, branchenpaketeHinweis,
   leistungenAnzeige, paketZustand } from "../src/stufen.js";
 import { kannMerkmal, mandantPaketkosten, paketAufpreisSumme, paketPositionen, paketSchalten, pilotSetzen }
@@ -112,7 +113,7 @@ describe("F1: kann() — nutzbar bei gebuchtem Paket, geplant nie", () => {
   });
 
   it("App.jsx und die Prüfanzeige benutzen genau diese Funktion", () => {
-    expect(quelle("../src/App.jsx")).toMatch(/const kann = kannMerkmal;/);
+    expect(appQuelle()).toMatch(/const kann = kannMerkmal;/);
     expect(quelle("../src/pruefung.jsx")).toMatch(/const kann = kannMerkmal;/);
   });
 });
@@ -356,7 +357,7 @@ describe("F2: Werbung folgt dem Zustand — kein „enthalten“ unter Zustand 5
 
   it("die Oberflächen rendern die Zeile über die Anzeigefunktion; kein fester „enthalten“-Text mehr in main.jsx/App.jsx", () => {
     const main = quelle("../src/main.jsx");
-    const app = quelle("../src/App.jsx");
+    const app = appQuelle();
     expect(main).not.toMatch(/In Enterprise sind zwei/);
     expect(main).toMatch(/branchenpaketeHinweis\(\)/);
     expect(main).toMatch(/leistungenAnzeige\(a\.stufe\.leistungen\)/);
@@ -393,7 +394,7 @@ describe("F4: Prüfanzeige (pruefung.jsx) — dieselbe Logik", () => {
 /* ------------------------------ F6 ------------------------------------- */
 describe("F6: Pilot-Wortlaut — Pilot ist ein Paket-Nullsatz, keine Gesamtkostenlosigkeit", () => {
   it("die Konsole sagt, dass übrige Positionen laut Vertrag weiterlaufen; kein „Kostenlos, mit eingeschränktem Umfang“", () => {
-    const app = quelle("../src/App.jsx").replace(/\s+/g, " ");
+    const app = appQuelle().replace(/\s+/g, " ");
     expect(app).not.toMatch(/Kostenlos, mit eingeschränktem Umfang/);
     expect(app).toMatch(/Branchenpakete werden im Pilot nicht berechnet; alle übrigen Positionen laufen laut Vertrag weiter/);
     expect(app).toMatch(/Grundgebühr, Planer, Standorte/);
@@ -535,7 +536,7 @@ describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Ver
   });
 
   it("Rechnungslogik: nirgends wird ein Paket ohne den gemeinsamen Weg berechnet (Quelltext)", () => {
-    const app = quelle("../src/App.jsx");
+    const app = appQuelle();
     expect(app).not.toMatch(/\bpaketkosten\(/);
     expect(app).not.toMatch(/paketBuchbar\(p\.id\)\)\s*\.reduce/);
     expect(quelle("../src/pruefung.jsx")).not.toMatch(/\bpaketkosten\(/);
@@ -552,7 +553,7 @@ describe("Pilot: gesonderte Betreiberentscheidung je Betrieb mit Pflichtgrund", 
     }
     for (const f of ["../src/migration.js", "../server/lib/leerbetrieb.mjs", "../server/lib/erstbefuellung.mjs"])
       expect(quelle(f), f).not.toMatch(/pilot/i);
-    const app = quelle("../src/App.jsx");
+    const app = appQuelle();
     expect(app).toMatch(/Grund für den Pilotbetrieb \(Pflicht, wird protokolliert\)/);
     expect(app).toMatch(/Ohne Grund kein Pilotbetrieb/);
   });
@@ -578,8 +579,8 @@ describe("Eine verbindliche Freigabequelle für alle Pfade (PAKET_FREIGABEN, ser
     expect(quelle("../server/lib/leerbetrieb.mjs")).toMatch(/paketFuerNeubuchung/);
     expect(quelle("../src/stufen.js")).toMatch(/from "\.\.\/server\/lib\/paketstand\.mjs"/);
     expect(quelle("../src/paketlogik.js")).toMatch(/from "\.\.\/server\/lib\/paketstand\.mjs"/);
-    expect(quelle("../src/App.jsx")).toMatch(/from "\.\/stufen\.js"/);
-    expect(quelle("../src/App.jsx")).toMatch(/from "\.\/paketlogik\.js"/);
+    expect(appQuelle()).toMatch(/from "\.\/stufen\.js"/);
+    expect(appQuelle()).toMatch(/from "\.\/paketlogik\.js"/);
     expect(quelle("../src/main.jsx")).toMatch(/paketeAngebot[\s\S]*from "\.\/stufen\.js"/);
     expect(quelle("../src/pruefung.jsx")).toMatch(/from "\.\/paketlogik\.js"/);
   });
