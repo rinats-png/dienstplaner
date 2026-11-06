@@ -266,6 +266,13 @@ export const GRENZEN = {
   einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
+  /* Abrufe eines Kalender-Feeds je GEHEIMNIS (WP-47b). Eigene Art, damit ein
+     Kalender-Abruf nicht das Lesen der Anwendung bremst und umgekehrt. 30 je
+     Minute liegt am oberen Ende der Spanne 12–30; ein Kalenderprogramm fragt
+     alle paar Minuten. Fail closed: Ein Plattenfehler am Sperreintrag sperrt
+     das Geheimnis, statt es ungezählt durchzulassen (offene Frage: docs/acc45/
+     wp-kleinpakete-fragen.md, Feed-Grenze 12 oder 30). */
+  feed:       { versuche: 30,  fenster: 60,   sperre: 60, failClosed: true },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
   /* Stempeln (WP-47). Eigene Arten, damit eine Stempelspitze weder die
      Planung (schreiben) blockiert noch von ihr gebremst wird.
@@ -351,6 +358,27 @@ export const GRENZEN = {
   zweifaktor: { versuche: 5, fenster: 300, sperre: 900, steigend: true, max: 86400,
     failClosed: true },
 };
+
+/* Lesebremse nach Bestandsgröße (WP-47b, WP-28 Befund 5). Gemessen: ein Kern
+   schafft bei 4,6-MB-Beständen rund 200 Antworten je Minute. Die Grenze je
+   Raum ist daher eine Bytemenge je Minute, geteilt durch die Größe der letzten
+   Antwort — mit Abstand unter der Messung (600 MB/min ≈ 130 Antworten je
+   Minute bei 4,6 MB). Kleine Bestände bekommen die volle Lesegrenze. */
+export const LESEN_BYTES_JE_MINUTE = 600_000_000;
+/** Angenommene Größe, solange die Größe eines Raums nicht bekannt ist: streng. */
+export const LESEN_GROESSE_UNBEKANNT = 10_000_000;
+
+/**
+ * Wie viele Bestandsabrufe je Minute ein Raum mit dieser Antwortgröße (Bytes)
+ * bekommt. Fail closed: unbekannte, leere oder ungültige Größe zählt wie
+ * LESEN_GROESSE_UNBEKANNT. Nie unter 1.
+ * @param {number} [bytes]
+ * @returns {number}
+ */
+export function lesenGrenze(bytes) {
+  const b = Number.isFinite(bytes) && bytes > 0 ? bytes : LESEN_GROESSE_UNBEKANNT;
+  return Math.max(1, Math.min(GRENZEN.lesen.versuche, Math.floor(LESEN_BYTES_JE_MINUTE / b)));
+}
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
 export const WEITERE = {
@@ -731,9 +759,14 @@ export function herkunftStreng(req) {
  * und ein unlesbarer Sperreintrag gilt als Sperre. `fehler` im Ergebnis
  * meldet den Ausfall an den Aufrufer.
  */
-export async function bremse(art, kennung, ziel) {
-  const g = GRENZEN[art];
-  if (!g) return { frei: true };
+export async function bremse(art, kennung, ziel, optionen = {}) {
+  const basisG = GRENZEN[art];
+  if (!basisG) return { frei: true };
+  /* Eigene Grenze dieses Aufrufs (WP-47b: Lesebremse nach Bestandsgröße).
+     Alles andere — Fenster, Sperre, failClosed — bleibt die der Art. */
+  const g = Number.isFinite(optionen?.versuche) && optionen.versuche > 0
+    ? { ...basisG, versuche: Math.floor(optionen.versuche) }
+    : basisG;
   /** Die Vermerke, die dieser Aufruf für Ziel und Gesamt angelegt hat — nach
       einer gelungenen Anmeldung werden genau sie zurückgenommen (anmeldungGelungen). */
   const zurueck = [];

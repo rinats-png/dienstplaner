@@ -1,7 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
-  protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
+  protokoll, notbremse, notentlasten, lesenGrenze } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
@@ -69,7 +69,6 @@ const gleich = (a, b) => {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
   return x.length === y.length && timingSafeEqual(x, y);
 };
-
 const antwort = (daten, status = 200, kopf = {}) =>
   new Response(JSON.stringify(daten), {
     status,
@@ -122,6 +121,22 @@ function groesseMerken(raum, bestand) {
       raumGroesse.set(String(raum), n);
     }
   } catch { /* nur eine Schätzung */ }
+}
+
+/* Antwortgröße je Raum in Bytes, zwischengespeichert je Stand (WP-47b): Die
+   Lesebremse richtet ihre Grenze nach der Größe der letzten Antwort. Ein neuer
+   Stand ersetzt den Eintrag (Standwechsel widerruft ihn). Gespeichert wird nur
+   die Zahl, nie der Bestand. Nach einem Neustart gilt die strenge Vorgabe. */
+const raumBytes = new Map();
+function bytesMerken(raum, mit) {
+  try {
+    const alt = raumBytes.get(String(raum));
+    if (alt && alt.stand === mit.stand) return alt.bytes;
+    const bytes = Buffer.byteLength(JSON.stringify(mit.bestand), "utf8");
+    if (raumBytes.size > 5000) raumBytes.clear();
+    raumBytes.set(String(raum), { stand: mit.stand, bytes });
+    return bytes;
+  } catch { return null; }
 }
 
 async function rumpfLesen(req) {
@@ -947,10 +962,13 @@ export default async (req, context) => {
        aber nicht die Anschriften und Krankheitsgründe ihrer Kolleginnen —
        siehe lib/rechte.mjs. */
     if (pfad === "bestand" && req.method === "GET") {
-      const bl = await bremse("lesen", kennung(req, s));
+      /* Lesebremse nach Größe (WP-47b): unbekannte Größe zählt streng. */
+      const bl = await bremse("lesen", kennung(req, s), undefined,
+        { versuche: lesenGrenze(raumBytes.get(String(s.bestand))?.bytes) });
       if (!bl.frei) return zuVielAntwort(bl.wartet);
       const mit = await bestandJetzt();
       if (mit) groesseMerken(s.bestand, mit.bestand);
+      if (mit) bytesMerken(s.bestand, mit);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s) });
