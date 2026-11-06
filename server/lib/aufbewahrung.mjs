@@ -261,7 +261,7 @@ const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
  * und — mit `grundStichtag` (Frist der Gründe) — alle,
  * deren Tag davor liegt. Unverändert: dasselbe Objekt.
  * @param {any} w  m.monatsabschluss
- * @param {{personen?: any[], grundStichtag?: string|null}} o
+ * @param {{personen?: any[], grundStichtag?: string|null, planStichtag?: string|null}} o
  * @returns {{wert: any, entfernt: number}}
  */
 export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null, planStichtag = null } = {}) {
