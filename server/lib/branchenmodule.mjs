@@ -171,7 +171,10 @@ export const BRANCHENMODULE = Object.freeze([
     datenfelder: ["bereichsPlan"], personenfelder: ["bereichsPlan"], regelIds: ["BEREICH-BESETZUNG-01"],
     berichtigungsWerte: Object.freeze({ bereichsPlan: bekannterBereich }) }),
   modul({ id: "pflegequal", merkmal: "pflegequal", name: "Pflegequalifikationen", pakete: ["pflege"],
-    beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst." }),
+    beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst.",
+    /* server/lib/modul-pflegequal.mjs: Niveaus als Sachfeld (Konfiguration, keine Personendaten). Betreuung wird getrennt
+       gezählt (Q2 a). Keine Registerregel: die Besetzungswerte sind offen (Q3 b). */
+    datenfelder: ["pflegeNiveaus"], sachfelder: ["pflegeNiveaus"], ausnahmeUi: true }),
   /* Klinik */
   modul({ id: "bereitschaftsdienst", merkmal: "bereitschaftsdienst", name: "Bereitschaftsdienst und Rufbereitschaft mit Anrechnung",
     pakete: ["klinik"],

@@ -604,6 +604,8 @@ export const BETRIEB = {
   funktionsPlan: [WEG, WEG],
   /* Rotation (WP-19, modul-rotation.mjs): Einsätze und Zugehörigkeitswechsel je Person, Form „Kennung|von“. Fail-closed. */
   rotationen: [WEG, WEG],
+  /* Pflegequalifikation (WP-19, modul-pflegequal.mjs): Niveaus je Betrieb (Konfiguration, keine Personendaten). Fail-closed. */
+  pflegeNiveaus: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],

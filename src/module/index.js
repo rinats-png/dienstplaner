@@ -29,6 +29,7 @@ import { ObjektberichtVorschau } from "./objektbericht.jsx";
 import { BereitschaftsUebersicht } from "./bereitschaftsdienst.jsx";
 import { FunktionsUebersicht } from "./funktionsdienst.jsx";
 import { RotationUebersicht } from "./rotation.jsx";
+import { PflegeVerteilung } from "./pflegequal.jsx";
 import { BereichsUebersicht } from "./bereichsplan.jsx";
 import { AbschnittsAnzeige } from "./geteilterdienst.jsx";
 import { AnlagenUebersicht } from "./anlagen.jsx";
@@ -58,6 +59,8 @@ export const MODUL_OBERFLAECHEN = Object.freeze([
     ansicht: (k) => h(FunktionsUebersicht, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst || null }) },
   { modul: "rotation", ort: "betrieb", titel: "Rotation",
     ansicht: (k) => h(RotationUebersicht, { m: k.m, datum: k.heute, heute: k.heute, personen: Object.fromEntries((k.personen || []).map((x) => [x.id, `${x.vorname || ""} ${x.nachname || ""}`.trim()])) }) },
+  { modul: "pflegequal", ort: "tag", titel: "Pflegeniveaus im Dienst",
+    ansicht: (k) => h(PflegeVerteilung, { m: k.m, personenImDienst: k.personenImDienst || [], qualGueltig: k.qualGueltig, heute: k.heute }) },
   { modul: "bereichsplan", ort: "tag", titel: "Bereiche",
     ansicht: (k) => h(BereichsUebersicht, { m: k.m, einheitId: k.einheitId, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
   { modul: "anlagen", ort: "tag", titel: "Anlagen",
