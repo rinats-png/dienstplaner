@@ -528,21 +528,22 @@ function SelbstStarten({ onZurueck, onFertig }) {
 
       <div style={{ ...KARTE, padding: 26, display: "grid", gap: 20 }}>
         <div>
-          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+          <label htmlFor="betrieb-name" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
             color: C.dim, marginBottom: 7 }}>Wie heißt dein Betrieb?</label>
-          <input value={name} autoFocus onChange={(e) => setName(e.target.value)}
+          <input id="betrieb-name" value={name} autoFocus onChange={(e) => setName(e.target.value)}
             placeholder="z. B. Nordwacht Sicherheitsdienste"
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
-              border: `1px solid ${C.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text }} />
         </div>
 
         <div>
-          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: C.dim, marginBottom: 9 }}>Was für ein Betrieb ist das?</label>
-          <div style={{ display: "grid", gap: 9 }}>
+          <div id="branche-titel" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+            color: C.dim, marginBottom: 9 }}>Was für ein Betrieb ist das?</div>
+          {/* Gruppe mit Titel; die gewählte Branche steht als aria-pressed, nicht nur in der Farbe (WCAG 1.4.1). */}
+          <div role="group" aria-labelledby="branche-titel" style={{ display: "grid", gap: 9 }}>
             {BRANCHEN.map(([id, label, text]) => (
-              <button key={id} onClick={() => setBranche(id)}
+              <button key={id} type="button" aria-pressed={branche === id} onClick={() => setBranche(id)}
                 style={{ display: "block", width: "100%", textAlign: "left", cursor: "pointer",
                   padding: "13px 16px", borderRadius: 11, fontFamily: "inherit",
                   border: `1px solid ${branche === id ? C.accent : C.line}`,
@@ -578,12 +579,12 @@ function SelbstStarten({ onZurueck, onFertig }) {
         </div>
 
         <div>
-          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+          <label htmlFor="betrieb-email" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
             color: C.dim, marginBottom: 7 }}>E-Mail (freiwillig)</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          <input id="betrieb-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="damit wir dich erreichen können"
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
-              border: `1px solid ${C.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text }} />
         </div>
 

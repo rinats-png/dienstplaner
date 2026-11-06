@@ -82,3 +82,26 @@ describe("Bausteine", () => {
     for (const k of knoepfe) expect(k).toContain('type="button"');
   });
 });
+
+/* --- Einrichtung (main.jsx) und Telefon-Konto: Namen und Zustände -------- */
+describe("Einrichtung und Konto", () => {
+  const main = SRC("main.jsx");
+  it("Betriebsname: Beschriftung und Feld sind über id verbunden", () => {
+    expect(main).toContain('<label htmlFor="betrieb-name"');
+    expect(main).toContain('<input id="betrieb-name"');
+  });
+  it("E-Mail der Einrichtung: Beschriftung und Feld sind über id verbunden", () => {
+    expect(main).toContain('<label htmlFor="betrieb-email"');
+    expect(main).toContain('<input id="betrieb-email"');
+  });
+  it("die gewählte Branche steht als aria-pressed, nicht nur in der Farbe", () => {
+    expect(main).toMatch(/role="group" aria-labelledby="branche-titel"/);
+    expect(main).toMatch(/<button key=\{id\} type="button" aria-pressed=\{branche === id\}/);
+  });
+  it("Eingabefelder der Einrichtung tragen den Bedienelement-Rahmen (steuer, nicht line)", () => {
+    expect(main).not.toMatch(/border: `1px solid \$\{C\.line\}`, fontFamily: "inherit", boxSizing: "border-box",\n\s+background: C\.bg, color: C\.text \}\} \/>/);
+  });
+  it("die E-Mail-Adresse im Telefon-Konto hat einen Namen", () => {
+    expect(quelle).toContain('<input type="email" aria-label="E-Mail-Adresse"');
+  });
+});

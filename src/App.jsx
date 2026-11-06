@@ -8802,10 +8802,10 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
             {p.email ? "Entscheidungen zu deinen Anträgen gehen hierhin."
               : "Ohne Adresse bekommst du keine E-Mails. Das ist in Ordnung — im Postfach steht alles."}
           </div>
-          <input type="email" defaultValue={p.email || ""} placeholder="name@betrieb.de"
+          <input type="email" aria-label="E-Mail-Adresse" defaultValue={p.email || ""} placeholder="name@betrieb.de"
             onBlur={(e) => akt.setzeEmail(p.id, e.target.value.trim())}
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
-              border: `1px solid ${C.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text, minHeight: 48 }} />
         </MKarte>
 
