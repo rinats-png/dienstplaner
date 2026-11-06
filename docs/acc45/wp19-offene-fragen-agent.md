@@ -5,7 +5,7 @@ Keine rechtliche oder tarifliche Aussage ist hier getroffen; alle Zahlen und Fri
 
 Gilt für alle sechs Module: Der Status bleibt `geplant`. Ein Wechsel auf `vorlaeufig` braucht
 `abnahme: { datum, nachweis }` (WP-19.13, G8). Diese Angabe setzt der Nutzer, nicht der Agent.
-Die Schreibwege sind seit dem Rechte-Schritt in `MODUL_SCHREIBWEGE` eingehängt (`server/lib/modulwege-wp19.mjs`),
+Die Schreibwege sind seit dem Rechte-Schritt in `MODUL_SCHREIBWEGE` eingehängt (`server/lib/modul-wege.mjs`),
 Sicht, RECHTEMATRIX-Zeilen und Auskunft stehen; die Rechte sind **vorläufig** (Abschnitt „Rechte“ unten).
 
 ## Wachbuch (`modul-wachbuch.mjs`)
@@ -78,7 +78,7 @@ Sicht, RECHTEMATRIX-Zeilen und Auskunft stehen; die Rechte sind **vorläufig** (
 
 ## Rechte (vorläufig, Betreiberentscheidung nötig)
 
-Umgesetzt in `server/lib/modulwege-wp19.mjs`, `sicht.mjs`, `auskunft.mjs`, `src/module/zugriff.js`, RECHTEMATRIX.md (sieben Zeilen,
+Umgesetzt in `server/lib/modul-wege.mjs`, `sicht.mjs`, `auskunft.mjs`, `src/module/zugriff.js`, RECHTEMATRIX.md (sieben Zeilen,
 Einordnung B) und geprüft in `pruefungen/modul-rechte-wp19.test.js`. Wo keine Entscheidung steht, gilt der strengste Stand; jeder Punkt
 unten ist durch einen Test festgehalten und muss vom Betreiber bestätigt oder gelockert werden.
 
@@ -92,4 +92,7 @@ unten ist durch einen Test festgehalten und muss vom Betreiber bestätigt oder g
 | R-6 | **Auskunft (G-4):** `wachbucheintraege` (ohne Text, mit Hinweis auf Art. 15 Abs. 4 DSGVO), `bereitschaftsdienste`, `funktionszuordnungen`, `rotationen` — nur eigene Einträge. | Ob der Wachbuchtext herausgegeben wird (Rechte Dritter, Art. 9-Gehalt); Fassung der Auskunft (`AUSKUNFT_FASSUNG`) bleibt 2. |
 | R-7 | **Löschung (G-4):** Der Ausnahmeweg (Art. 17) und die Löschvermerke arbeiten schon über `datenfelder` für alle Felder und sind für die vier Personenfelder getestet; Berichtigung gibt es für Wachbuch, Bereitschaft und Rotation nicht (nur Löschung). Der Löschlauf löscht Personenfelder nur nach Datum und nur mit geprüfter Regel `MODULDATEN_AUFBEWAHRUNG`; ungeprüft wird nichts gelöscht, die Vorschau zählt „zurückgehalten“ (getestet). | Aufbewahrungsfrist je Dokumentationsart (WB-3, BD-5/6, RO-1, PQ-1); Wachbuch und Rotation haben als Schlüssel „Eintragskennung|Tag“ statt „Person|Tag“ — die Anonymisierung ausgeschiedener Personen erreicht diese Einträge nicht (WB-5), nur die Tagesfrist und der Ausnahmeweg. |
 | R-8 | **Mandanten:** Lesen und Schreiben gelten nur für den Betrieb der Sitzung; ein zweiter übermittelter Betrieb wird abgewiesen (getestet). | – |
-| R-9 | **Aktivität:** Die Schreibwege prüfen Form und Berechtigung wie `posten`, nicht den Schalter; solange die Module `geplant` sind, wirken sie nicht (kein Befund, keine Oberfläche), die Daten sind aber schreibbar. | Ob Schreiben erst mit aktivem Modul erlaubt sein soll (strenger, blockiert die Erfassung bis zur Abnahme). |
+| R-9 | **Aktivität:** Jede Änderung der Moduldaten wird abgewiesen, solange das Modul nicht wirkt (nicht gebucht, aus, Status `geplant`, Mitbestimmung unbestätigt). Solange alle sechs `geplant` sind, ist das Schreiben also geschlossen. Einzige Ausnahme: die geprüfte Löschung des Ausnahmewegs (Art. 17; nur Leitung mit Grund, nur Löschung, nur das Benannte), auch bei eingeschaltetem Modul. | Statuswechsel mit Abnahme (G8) öffnet das Schreiben. |
+| R-10 | **Wachbuch eintragen:** maßgeblich ist der gespeicherte Postenplan (nicht der im selben Speichern übermittelte); die Einheit eines Eintrags muss eine Einheit des Betriebs sein. Bereitschaft, Funktionsplan und Rotation verweisen nur auf Personen des Betriebs, der Funktionsplan nur auf Funktionsbereiche, Bereitschaft nur ±2 Jahre. | Ob die Einheit statt dessen serverseitig aus der Zugehörigkeit abzuleiten ist. |
+| R-11 | **Löschlauf Rotation:** maßgeblich ist das Ende (`bis`); offene Zugehörigkeiten und Ziele (ohne Ende) werden nie gelöscht, auch nicht mit geprüfter Regel. Neu angelegte Betriebe (Betreiberweg) behalten keine Moduldaten. CSV-Formelschutz auch nach Leerraum. Auskunft und Sicht nutzen dieselbe Auswahl (`wachbuchEigene`); die Auskunft lässt zusätzlich den Text weg (restriktiver). Rolle der Oberflächen: Sitzungsrolle. | Aufbewahrungsfrist für Ziele; Text in der Auskunft. |
+| R-12 | **Nicht geändert, nur dokumentiert:** Die Serverrolle `kunde` hat `ALLE_RECHTE` (besteht vor diesem Branch; Änderung braucht Betreiberentscheidung, siehe R-4). Die Anonymisierung ausgeschiedener Personen erreicht Wachbuch und Rotation nicht (WB-5, siehe R-7). | Betreiberentscheidung. |

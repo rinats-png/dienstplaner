@@ -88,7 +88,10 @@ export function pruefeWachbuchEintrag(e, { objekte = [], liste = [] } = {}) {
  * für das Objekt steht.
  * @param {any} altM
  * @param {any} neuM
- * @param {{ person: string, jetzt: string, darfEintragen: (objektId: string, datum: string, person: string) => boolean }} ktx
+ * @param {{ person: string, jetzt: string, darfEintragen: (objektId: string, datum: string, person: string) => boolean,
+ *   geloescht?: readonly string[], einheiten?: any[] }} ktx
+ *   geloescht: Schlüssel, die der geprüfte Ausnahmeweg (Art. 17) entfernt hat — nur sie dürfen fehlen.
+ *   einheiten: Einheiten des Betriebs; ein Eintrag nennt nur eine davon.
  * @returns {{ mandant: any } | { grund: string }}
  */
 export function wachbuchZusammen(altM, neuM, ktx) {
@@ -99,7 +102,9 @@ export function wachbuchZusammen(altM, neuM, ktx) {
   const schluessel = Object.keys(neu);
   if (schluessel.length > WACHBUCH_GRENZEN.eintraege) return { grund: `Wachbuch: höchstens ${WACHBUCH_GRENZEN.eintraege} Einträge.` };
   const alt = istObjekt(altM && altM.wachbuch) ? altM.wachbuch : {};
+  const geloescht = new Set(Array.isArray(ktx.geloescht) ? ktx.geloescht : []);
   for (const k of Object.keys(alt)) {
+    if (geloescht.has(k) && !Object.prototype.hasOwnProperty.call(neu, k)) continue;
     if (!Object.prototype.hasOwnProperty.call(neu, k) || JSON.stringify(neu[k]) !== JSON.stringify(alt[k]))
       return { grund: "Wachbuch: ein gespeicherter Eintrag wird nicht geändert oder entfernt — Korrektur über einen Nachtrag (W2 a)." };
   }
@@ -114,6 +119,8 @@ export function wachbuchZusammen(altM, neuM, ktx) {
     if (k !== `${mit.id}|${mit.datum}`) return { grund: "Wachbuch: der Schlüssel passt nicht zu Kennung und Datum." };
     const f = pruefeWachbuchEintrag(mit, { objekte, liste });
     if (f) return { grund: f };
+    if (Array.isArray(ktx.einheiten) && mit.einheitId !== undefined && mit.einheitId !== null
+      && !ktx.einheiten.some((x) => istObjekt(x) && x.id === mit.einheitId)) return { grund: `Wachbuch ${String(mit.id).slice(0, 20)}: Einheit unbekannt.` };
     if (!ktx.darfEintragen(mit.objektId, mit.datum, ktx.person))
       return { grund: "Wachbuch: eintragen kann nur, wer an diesem Tag im Dienst für das Objekt steht." };
     ausgabe[k] = mit;

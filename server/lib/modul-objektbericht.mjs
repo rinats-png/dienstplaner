@@ -79,7 +79,7 @@ export function objektberichtDaten(m, { objektId, von, bis, zugriff, dienstzeit 
 /** CSV-Zelle: Semikolon, Anführungszeichen bei Sonderzeichen, Formelangriffe entschärft. */
 function zelle(v) {
   let s = v === null || v === undefined ? "" : String(v);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  if (/^[\s=+\-@]/.test(s)) s = `'${s}`;
   return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

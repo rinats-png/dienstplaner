@@ -178,5 +178,17 @@ export function funktionsZusammen(neuM, altM) {
     if (f) return { grund: f };
   }
   const f2 = pruefeFunktionsPlan(neuM.funktionsPlan, altM && altM.funktionsPlan);
-  return f2 ? { grund: f2 } : {};
+  if (f2) return { grund: f2 };
+  /* Verweise: der Bereich gehört zum Betrieb, die Person ebenso (nur neue oder geänderte Einträge). */
+  if (istObjekt(neuM.funktionsPlan)) {
+    const bereiche = new Set((Array.isArray(neuM.funktionsbereiche) ? neuM.funktionsbereiche : []).filter(istObjekt).map((b) => b.id));
+    const personen = Array.isArray(neuM.personen) ? new Set(neuM.personen.filter(istObjekt).map((p) => String(p.id))) : null;
+    const vorher = istObjekt(altM && altM.funktionsPlan) ? altM.funktionsPlan : {};
+    for (const [k, v] of Object.entries(neuM.funktionsPlan)) {
+      if (hat(vorher, k) && vorher[k] === v) continue;
+      if (!bereiche.has(v)) return { grund: "Funktionsplan: der Bereich ist unbekannt." };
+      if (personen && !personen.has(k.slice(0, k.lastIndexOf("|")))) return { grund: "Funktionsplan: die Person gehört nicht zum Betrieb." };
+    }
+  }
+  return {};
 }

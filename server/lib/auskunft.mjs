@@ -37,7 +37,7 @@
 import { fristen } from "./aufbewahrung.mjs";
 import { geplanterDienst, tagePlus } from "./zeiterfassung.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
-import { BESTAETIGUNG_FELDER } from "./sicht.mjs";
+import { BESTAETIGUNG_FELDER, wachbuchEigene } from "./sicht.mjs";
 import { modulprotokollPositiv } from "./branchenmodule.mjs";
 /* Eingefrorenes Ist mit aufgelöster Dienstart (Schema 2 verweist auf das Verzeichnis des Monats, WP-16 Nachtrag). */
 import { eingefrorenFuerPerson } from "./isteinfrieren.mjs";
@@ -166,7 +166,9 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
   /* Branchenmodule Wachbuch, Bereitschaftsdienst, Funktionsdienst, Rotation (WP-19): nur die eigenen Einträge.
      Wachbuch: ohne den Text (Rechte Dritter, Art. 15 Abs. 4 DSGVO) — vorläufig, Betreiberentscheidung nötig. */
   const modulEintraege = (w) => (w && typeof w === "object" && !Array.isArray(w) ? Object.values(w) : []).filter((x) => x && typeof x === "object");
-  const wachbucheintraege = modulEintraege(m.wachbuch).filter((x) => gleich(x.vonId, pid))
+  /* Dieselbe Auswahl wie die Sicht der Beschäftigten (sicht.mjs, wachbuchEigene): die Auskunft nennt nie andere Einträge
+     als die, die die Person selbst sieht; sie lässt nur den Text weg (restriktiver). */
+  const wachbucheintraege = modulEintraege(wachbuchEigene(m.wachbuch, { ich: pid }))
     .map((x) => felder(x, ["id", "datum", "uhrzeit", "objektId", "art", "einheitId", "erfasst", "nachtragZu"]))
     .sort((a, b) => String(a.datum).localeCompare(String(b.datum)) || String(a.uhrzeit).localeCompare(String(b.uhrzeit)) || String(a.id).localeCompare(String(b.id)));
   const bereitschaftsdienste = Object.entries(m.bereitschaft || {}).filter(([k]) => eigenerSchluessel(pid)(k))

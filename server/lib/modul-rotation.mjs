@@ -77,6 +77,7 @@ export function rotationZusammen(neuM) {
     const e = w[k];
     const f = pruefeRotationEintrag(e, { einheiten: neuM.einheiten });
     if (f) return { grund: f };
+    if (Array.isArray(neuM.personen) && !neuM.personen.some((p) => istObjekt(p) && String(p.id) === e.personId)) return { grund: "Rotation: die Person gehört nicht zum Betrieb." };
     if (k !== `${e.id}|${e.von}`) return { grund: "Rotation: der Schlüssel passt nicht zu Kennung und Beginn." };
   }
   return {};

@@ -615,9 +615,12 @@ export function moduleinstellungenVerwerfen(m) {
   if (!istObjekt(m)) return m;
   const angabe = hat(m, "moduldatenAusnahme");
   const felder = istObjekt(m.einstellungen) && MODULEINSTELLUNGEN_FELDER.some((f) => hat(m.einstellungen, f));
-  if (!angabe && !felder) return m;
+  /* Ein neu angelegter Betrieb hat keine Moduldaten (Wachbuch, Rotationen, Bereitschaft …): sie entstehen erst über die Schreibwege. */
+  const daten = BRANCHENMODULE.flatMap((x) => x.datenfelder).filter((f) => hat(m, f));
+  if (!angabe && !felder && !daten.length) return m;
   const aus = felder ? { ...m, einstellungen: ohne(m.einstellungen, MODULEINSTELLUNGEN_FELDER) } : { ...m };
   delete aus.moduldatenAusnahme;
+  for (const f of daten) delete aus[f];
   return aus;
 }
 

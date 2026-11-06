@@ -37,7 +37,8 @@ export function berichtZugriffFuer(rolle) {
  */
 export function modulKontext({ sitz, kontext } = {}) {
   const person = sitz && istObjekt(sitz.person) ? sitz.person : null;
-  const rolle = sitz && sitz.rolle !== "betreiber" && person ? person.rolle : null;
+  /* Die Rolle der Sitzung (wie der Server), nicht die Rollenangabe der Person: Betreiber und Unbekanntes ergeben „keiner“. */
+  const rolle = sitz && typeof sitz.rolle === "string" ? sitz.rolle : null;
   const eigene = person && typeof person.bereich === "string" && person.bereich && person.bereich !== "ALLE" ? person.bereich : null;
   const m = sitz && istObjekt(sitz.mandant) ? sitz.mandant : null;
   const k = istObjekt(kontext) ? kontext : {};

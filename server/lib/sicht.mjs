@@ -510,7 +510,7 @@ function objekteEigene(w, ctx) {
 }
 
 /* Wachbuch (modul-wachbuch.mjs): Einträge der Form { "Kennung|Tag": Eintrag } nach Verfasser. */
-const wachbuchEigene = (w, ctx) => objektFilter(w, (k, v) => (istObj(v) && gleich(v.vonId, ctx.ich) ? v : undefined));
+export const wachbuchEigene = (w, ctx) => objektFilter(w, (k, v) => (istObj(v) && gleich(v.vonId, ctx.ich) ? v : undefined));
 /* Rotation (modul-rotation.mjs): Einträge { "Kennung|von": Eintrag } der eigenen Person. */
 const rotationEigene = (w, ctx) => objektFilter(w, (k, v) => (istObj(v) && gleich(v.personId, ctx.ich) ? v : undefined));
 

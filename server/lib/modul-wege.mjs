@@ -29,6 +29,7 @@ import { bereitschaftZusammen } from "./modul-bereitschaftsdienst.mjs";
 import { funktionsZusammen } from "./modul-funktionsdienst.mjs";
 import { rotationZusammen } from "./modul-rotation.mjs";
 import { pflegeZusammen } from "./modul-pflegequal.mjs";
+import { BRANCHENMODULE, modulAktiv } from "./branchenmodule.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -56,20 +57,32 @@ function weg(modul, rechte, pruefen) {
       if (!istObjekt(neuM)) return { mandant: neuM };
       const feld = Object.keys(rechte).filter((f) => geaendert(altM, neuM, f));
       if (!feld.length) return { mandant: neuM };
+      /* Eine Änderung braucht ein wirkendes Modul (gebucht, eingeschaltet, nicht „geplant“, Mitbestimmung bestätigt). Einzige Ausnahme:
+         die vom Ausnahmeweg geprüfte Löschung (Art. 17), die der Leitung auch nach dem Abschalten bleibt. */
+      const loesch = loeschung(ktx, modul);
+      if (!loesch && !modulAktiv({ ...neuM, pakete: istObjekt(altM) ? altM.pakete : undefined }, modul, ktx.liste || BRANCHENMODULE))
+        return { grund: `Branchenmodul ${modul} wirkt in diesem Betrieb nicht (nicht gebucht, aus, in Vorbereitung oder ohne Mitbestimmungsbestätigung) — seine Daten sind nicht änderbar.` };
       for (const f of feld) {
         if (rechte[f] === "leitung" ? !leitung(ktx) : !planung(ktx))
           return { grund: text(rechte[f] === "leitung" ? NUR_LEITUNG : NUR_PLANUNG, f) };
       }
-      const r = pruefen(altM, neuM, ktx);
+      const r = pruefen(altM, neuM, { ...ktx, geloescht: loesch ? (loesch.eintraege[feld[0]] || []) : [] });
       return r && r.grund ? { grund: r.grund } : { mandant: r && r.mandant !== undefined ? r.mandant : neuM };
     },
   });
 }
 
-/** Wer an dem Tag auf einem Posten des Objekts eingeteilt ist (Postenplan „Person|Tag“ → Posten-Kennung). */
-function darfEintragen(neuM) {
-  const plan = istObjekt(neuM.postenPlan) ? neuM.postenPlan : {};
-  const objekte = Array.isArray(neuM.objekte) ? neuM.objekte : [];
+/** Die Löschung des Ausnahmewegs für dieses Modul (schon von moduldatenZusammen geprüft) oder null. */
+function loeschung(ktx, modul) {
+  const a = ktx && ktx.ausnahme;
+  return istObjekt(a) && a.modul === modul && a.art === "loeschung" && istObjekt(a.eintraege) ? a : null;
+}
+
+/** Wer an dem Tag auf einem Posten des Objekts eingeteilt ist (Postenplan „Person|Tag“ → Posten-Kennung).
+    Maßgeblich ist der GESPEICHERTE Stand: Wer Posten und Eintrag im selben Speichern setzt, trägt nichts ein. */
+function darfEintragen(altM) {
+  const plan = istObjekt(altM && altM.postenPlan) ? altM.postenPlan : {};
+  const objekte = Array.isArray(altM && altM.objekte) ? altM.objekte : [];
   return (objektId, datum, person) => {
     const posten = plan[`${person}|${datum}`];
     const o = objekte.find((x) => istObjekt(x) && x.id === objektId);
@@ -82,12 +95,13 @@ const wachbuchWeg = weg("wachbuch", { wachbuch: "planung" }, (altM, neuM, ktx) =
   if (person === undefined || person === null || person === "") return { grund: "Wachbuch: ohne angemeldete Person kein Eintrag." };
   /* Ein gespeicherter Eintrag wird nie entfernt: Fehlt das Feld in der Übermittlung, gilt es als leer (→ Abweisung). */
   const vorlage = neuM.wachbuch === undefined && !leer(altM && altM.wachbuch) ? { ...neuM, wachbuch: {} } : neuM;
-  const r = wachbuchZusammen(altM, vorlage, { person: String(person), jetzt: new Date().toISOString(), darfEintragen: darfEintragen(vorlage) });
+  const r = wachbuchZusammen(altM, vorlage, { person: String(person), jetzt: new Date().toISOString(), darfEintragen: darfEintragen(altM),
+    geloescht: ktx.geloescht, einheiten: Array.isArray(vorlage.einheiten) ? vorlage.einheiten : [] });
   return r.grund ? { grund: r.grund } : { mandant: r.mandant === vorlage ? neuM : r.mandant };
 });
 
 const bereitschaftWeg = weg("bereitschaftsdienst", { bereitschaftStufen: "leitung", bereitschaft: "planung" },
-  (_altM, neuM) => bereitschaftZusammen(neuM));
+  (altM, neuM) => bereitschaftZusammen(neuM, altM));
 
 const funktionsWeg = weg("funktionsdienst", { funktionsbereiche: "leitung", funktionsPlan: "planung" },
   (altM, neuM) => funktionsZusammen(neuM, altM));

@@ -150,9 +150,10 @@ export function bereitschaftHoechstBefunde(m, { module } = {}) {
 /**
  * Schreibweg-Vertrag der Stufen und Einträge (Prüfung, keine Ablage).
  * @param {any} neuM
+ * @param {any} [altM] gespeicherter Stand: Mit ihm werden nur neue oder geänderte Einträge gegen Person und Zwei-Jahres-Fenster geprüft.
  * @returns {{ grund?: string }}
  */
-export function bereitschaftZusammen(neuM) {
+export function bereitschaftZusammen(neuM, altM) {
   if (!neuM || typeof neuM !== "object") return {};
   if (neuM.bereitschaftStufen !== undefined) {
     if (!Array.isArray(neuM.bereitschaftStufen) || neuM.bereitschaftStufen.length > BEREITSCHAFT_GRENZEN.stufen) return { grund: "Stufen: Liste erwartet, höchstens " + BEREITSCHAFT_GRENZEN.stufen + "." };
@@ -168,6 +169,11 @@ export function bereitschaftZusammen(neuM) {
       if (i < 1 || !echterTag(k.slice(i + 1))) return { grund: "Bereitschaft: Schlüssel haben die Form „Person|JJJJ-MM-TT“." };
       const f = pruefeBereitschaftEintrag(neuM.bereitschaft[k], stufen);
       if (f) return { grund: f };
+      const vorher = istObjekt(altM && altM.bereitschaft) ? altM.bereitschaft : {};
+      if (altM !== undefined && Object.prototype.hasOwnProperty.call(vorher, k) && JSON.stringify(vorher[k]) === JSON.stringify(neuM.bereitschaft[k])) continue;
+      if (Array.isArray(neuM.personen) && !neuM.personen.some((p) => istObjekt(p) && String(p.id) === k.slice(0, i))) return { grund: "Bereitschaft: die Person gehört nicht zum Betrieb." };
+      if (Math.abs(new Date(`${k.slice(i + 1)}T12:00:00Z`).getTime() - Date.now()) > 731 * 86400000 + 43200000)
+        return { grund: "Bereitschaft: der Tag liegt mehr als zwei Jahre von heute entfernt." };
     }
   }
   return {};

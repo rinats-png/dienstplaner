@@ -466,7 +466,7 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
   und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.
 - *Wachbuch, Bereitschaftsdienst, Funktionsdienst, Rotation, Pflegequalifikation, Objektbericht* (WP-19, Rechte, **alle vorläufig,
-  Betreiberentscheidung nötig**; `server/lib/modulwege-wp19.mjs`, Sicht in `sicht.mjs`, Auskunft in `auskunft.mjs`, geprüft in
+  Betreiberentscheidung nötig**; `server/lib/modul-wege.mjs`, Sicht in `sicht.mjs`, Auskunft in `auskunft.mjs`, geprüft in
   `pruefungen/modul-rechte-wp19.test.js`). *Lesen:* Planung, Leitung und Kundenrolle alles; Betriebsrat und Betreiber nichts.
   Beschäftigte: Wachbuch nur selbst verfasste Einträge (Entscheidung W4 b: keine Namen Dritter), Bereitschaft, Funktionsplan und
   Rotation nur die eigenen Einträge (Funktionsplan wie `bereichsPlan`). Schichtverantwortung: Wachbuch nur Einträge der eigenen
