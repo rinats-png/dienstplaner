@@ -157,7 +157,9 @@ try {
         await p.waitForTimeout(500);
         const tabs = await texte(".utab");
         for (let ti = 0; ti < tabs.length; ti++) {
-          await p.locator(".utab:visible").nth(ti).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} ${gruppen[gi]}/${tabs[ti]}: Klick scheitert`));
+          const t0 = Date.now();
+          await p.locator(".utab:visible").nth(ti).click({ timeout: 15000 }).catch(() => melde("klick", `${marke} ${gruppen[gi]}/${tabs[ti]}: Klick scheitert`));
+          const dauer = Date.now() - t0; if (dauer > 3500) melde("langsam", `${marke} ${gruppen[gi]}/${tabs[ti]}: Klick bis bedienbar ${dauer} ms`);
           await p.waitForTimeout(1300);
           await messen(`${marke} ${gruppen[gi]}/${tabs[ti]}`);
         }
