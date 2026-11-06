@@ -29,11 +29,29 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
+import { ablageSchluessel, altHash } from "./codes.mjs";
+import { kontoLesen } from "./konten.mjs";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
   zweifaktorPruefen,
-  zweifaktorAbschalten } from "./zweifaktor.mjs";
+  zweifaktorAbschalten, zweifaktorMoeglich } from "./zweifaktor.mjs";
+
+/**
+ * Ist der zweite Faktor für Betreibercodes Pflicht? (WP-32d)
+ *
+ * Ja, sobald der Server in der Auslieferung läuft (NODE_ENV=production, im
+ * Docker-Image gesetzt) ODER CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1 gesetzt ist.
+ * Es gibt bewusst KEINEN Schalter, der die Pflicht in der Auslieferung
+ * abstellt: „0“, „aus“, leer — nichts davon ändert dort etwas (fail-closed).
+ * Wer ohne Pflicht arbeiten will (Entwicklung, Prüfungen), startet nicht als
+ * production. Wird bei jedem Aufruf gelesen, nicht beim Laden des Moduls.
+ * @param {Record<string, string|undefined>} [env]
+ */
+export function betreiberPflicht(env = process.env) {
+  if (String(env.NODE_ENV || "").trim().toLowerCase() === "production") return true;
+  return String(env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+}
 
 /** Die id, unter der der zweite Faktor eines Betreibercodes liegt. */
 export const betreiberZweifaktorId = (codeSchluessel) =>
@@ -76,7 +94,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     + `alle beenden — ${wann}. Bitte erneut versuchen.`, zweifaktor: "sitzungen" }, 503);
   /* Option: Pflicht für alle Betreibercodes (Vorgabe aus). Ohne
      eingerichteten zweiten Faktor gibt es dann nur die Aktionen, keine Sitzung. */
-  const pflicht = (process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  const pflicht = betreiberPflicht();
   const aktion = String((rumpf && rumpf.zweifaktorAktion) || "");
   const code = rumpf && rumpf.zweifaktor ? String(rumpf.zweifaktor) : "";
   const kennungen = [`b:${id.slice(0, 16)}`, k];
@@ -126,6 +144,16 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     /* Eine laufende Einrichtung zu überschreiben ist ein Eingriff in fremde
        Absicht (jemand anderes mit dem Code richtet gerade ein): gebremst
        und protokolliert (B-N2). */
+    if (stand.ausstehend && pflicht) {
+      /* WP-32d: Unter Pflicht darf der Code allein eine begonnene Einrichtung nicht
+         überschreiben — sonst könnte ein Dieb des Codes die Einrichtung des
+         Betreibers durch seine eigene ersetzen. Eine abgebrochene Einrichtung
+         setzt der Serverbetreiber offline zurück
+         (werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs). */
+      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Überschreiben unter Pflicht verweigert");
+      return { antwort: json({ fehler: "Eine Einrichtung ist bereits begonnen. Bitte mit dem Geheimnis "
+        + "bestätigen oder durch den Serverbetreiber zurücksetzen lassen.", zweifaktor: "ausstehend" }, 409) };
+    }
     if (stand.ausstehend) {
       const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
       await protokoll("zweifaktor", k, "warnung", "Betreiber · laufende Einrichtung überschrieben");
@@ -209,4 +237,52 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
       + "einrichten (zweifaktorAktion: beginnen, dann bestaetigen).", zweifaktor: "einrichten" }, 403) };
   }
   return { aktiv: stand.aktiv };
+}
+
+/**
+ * Offline-Wiederherstellung (WP-32d): Der Betreiber hat Authenticator UND
+ * Wiederherstellungscodes verloren. Läuft nur auf dem Server selbst, durch
+ * werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs — es gibt keinen
+ * Netzweg dorthin und keine Vorgabe, die man erraten könnte.
+ *
+ * Voraussetzungen (alle fail-closed):
+ *  - der Betreibercode selbst (der erste Faktor), kein Ersatz dafür;
+ *  - der Code gehört zu einem Konto der Rolle „betreiber";
+ *  - CENTRIC_PFEFFER ist gesetzt (sonst lässt sich nichts neu einrichten).
+ * Wirkung: alle Sitzungen des Codes enden, der alte Faktor samt Nachweisen und
+ * Wiederherstellungscodes wird gelöscht, und es beginnt SOFORT eine neue
+ * Einrichtung, deren Geheimnis nur hier zurückgegeben wird. Damit steht der
+ * Code nie in einem Zustand „kein Faktor, Einrichtung frei“, in dem ein
+ * Dieb des Codes sein eigenes Gerät einrichten könnte (unter Pflicht ist das
+ * Überschreiben einer ausstehenden Einrichtung verweigert). Es entsteht kein
+ * neues Geheimnis außer dem frisch gewürfelten TOTP-Geheimnis.
+ *
+ * @param {{store: any, code: string}} a
+ * @returns {Promise<{ok: true, geheimnis: string, otpauth: string, sitzungenBeendet: number}
+ *   | {ok: false, grund: string}>}
+ */
+export async function betreiberZweifaktorZuruecksetzen({ store, code }) {
+  const c = String(code || "").trim();
+  if (!c) return { ok: false, grund: "Betreibercode fehlt" };
+  if (!zweifaktorMoeglich()) return { ok: false, grund: "CENTRIC_PFEFFER ist nicht gesetzt" };
+  const neuS = ablageSchluessel(c);
+  const altS = altHash(c);
+  let eintrag = null, fundS = null;
+  try {
+    eintrag = await kontoLesen(store, neuS); if (eintrag) fundS = neuS;
+    if (!eintrag && altS !== neuS) { eintrag = await kontoLesen(store, altS); if (eintrag) fundS = altS; }
+  } catch { return { ok: false, grund: "Konten nicht lesbar" }; }
+  if (!eintrag || eintrag.gesperrt) return { ok: false, grund: "Kein gültiger Betreibercode" };
+  if (eintrag.rolle !== "betreiber") return { ok: false, grund: "Kein gültiger Betreibercode" };
+  const id = betreiberZweifaktorId(neuS);
+  const schluessel = new Set([neuS, fundS, altS].filter(Boolean));
+  const sit = await sitzungenBeendenWenn((s) => schluessel.has(s.konto));
+  if (sit.fehler) return { ok: false, grund: "Bisherige Sitzungen ließen sich nicht alle beenden" };
+  await zweifaktorAbschalten(store, id);
+  const erg = await zweifaktorBeginnen(store, id, eintrag.name || "Betreiber");
+  if (erg.fehler) return { ok: false, grund: "Einrichtung ließ sich nicht beginnen" };
+  const nach = await sitzungenBeendenWenn((s) => schluessel.has(s.konto));
+  await protokoll("zweifaktor", "offline", "warnung",
+    `Betreiber · offline zurückgesetzt · ${sit.beendet + nach.beendet} Sitzungen beendet`);
+  return { ok: true, geheimnis: erg.geheimnis, otpauth: erg.otpauth, sitzungenBeendet: sit.beendet + nach.beendet };
 }

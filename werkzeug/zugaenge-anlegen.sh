@@ -151,6 +151,10 @@ else
     echo "  Code:  $BETREIBER"
     echo "  Raum:  $RAUM"
     echo "  Weg:   $SITE → Code eingeben"
+    echo "  2FA:   In der Auslieferung (NODE_ENV=production) ist der zweite Faktor Pflicht (WP-32d)."
+    echo "         Vor der ersten Anmeldung einrichten: Anmeldemaske → Code → Zwei-Faktor einrichten"
+    echo "         (oder zweifaktorAktion beginnen/bestaetigen an /api/anmelden), Wiederherstellungscodes sichern."
+    echo "         Verloren? werkzeug/sicherheit/betreiber-2fa-zuruecksetzen.mjs (docs/acc45/wp32d-nachweis.md)."
     echo
   } >> "$AUSGABE"
 fi
