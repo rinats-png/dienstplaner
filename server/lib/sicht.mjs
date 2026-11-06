@@ -599,6 +599,9 @@ export const BETRIEB = {
      (Personenfeld). Fail-closed, bis die Zeilen in RECHTEMATRIX.md entschieden sind. */
   bereitschaftStufen: [WEG, WEG],
   bereitschaft: [WEG, WEG],
+  /* Funktionsdienst (WP-19, modul-funktionsdienst.mjs): Bereiche (Sachfeld) und Einteilung je Person und Tag (Personenfeld). Fail-closed. */
+  funktionsbereiche: [WEG, WEG],
+  funktionsPlan: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],

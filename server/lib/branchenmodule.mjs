@@ -118,6 +118,9 @@ const kennungenVon = (liste, unter) => new Set((Array.isArray(liste) ? liste : [
 const bekannterPosten = (w, m) => typeof w === "string" && kennungenVon(m && m.objekte, "posten").has(w);
 /** Berichtigung bereichsPlan: ein Bereich, den es im Betrieb gibt (einheiten[].bereiche[].id). */
 const bekannterBereich = (w, m) => typeof w === "string" && kennungenVon(m && m.einheiten, "bereiche").has(w);
+/** Berichtigung funktionsPlan: ein Funktionsbereich, den es im Betrieb gibt (funktionsbereiche[].id). */
+const bekannterFunktionsbereich = (w, m) => typeof w === "string" && Array.isArray(m && m.funktionsbereiche)
+  && m.funktionsbereiche.some((b) => b && b.id === w);
 
 /**
  * Die gespeicherte Einstellung eines Moduls am Betrieb
@@ -191,7 +194,11 @@ export const BRANCHENMODULE = Object.freeze([
         text: "Höchstspanne vom Beginn des ersten bis zum Ende des zweiten Abschnitts; 0 = keine Grenze (Matrix T2 b)." },
     } }),
   modul({ id: "funktionsdienst", merkmal: "funktionsdienst", name: "Funktionsdienste", pakete: ["klinik"],
-    beschreibung: "Funktionsbereiche (etwa OP, Anästhesie, Endoskopie) mit eigener Besetzung und Qualifikation." }),
+    beschreibung: "Funktionsbereiche (etwa OP, Anästhesie, Endoskopie) mit eigener Besetzung und Qualifikation.",
+    /* server/lib/modul-funktionsdienst.mjs: Bereiche (Sachfeld, F1 a) und Einteilung je Person und Tag (Personenfeld). */
+    datenfelder: ["funktionsbereiche", "funktionsPlan"], sachfelder: ["funktionsbereiche"], personenfelder: ["funktionsPlan"],
+    ausnahmeUi: true, berichtigungsWerte: Object.freeze({ funktionsPlan: bekannterFunktionsbereich }),
+    regelIds: ["FUNKTION-BESETZUNG-01", "FUNKTION-QUAL-01"] }),
   modul({ id: "rotation", merkmal: "rotation", name: "Rotationen", pakete: ["klinik"],
     beschreibung: "Geplante Wechsel von Personen zwischen Einheiten über Zeiträume (Einsatzrotation)." }),
   /* Industrie */

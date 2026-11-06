@@ -115,6 +115,15 @@ export const REGELN_BRANCHEN = Object.freeze([
     scope: { branche: ["klinik", "pflege", "rettung", "gastronomie", "handel", "reinigung", "sonstiges"] },
     parameter: { groesse: "Spanne in Stunden", hoechstens: 24, grenzeAus: "modulParameter.hoechstSpanneStunden" },
     pruefhinweis: "Die Grenze trägt der Betrieb nach Tarif oder Betriebsvereinbarung ein; ohne Eintrag gilt keine. Keine Rechtsvorschrift mit fester Zahl bekannt (zu prüfen)." }),
+  /* Klinik — funktionsdienst (Matrix F2 a). Hinweise, nie Sperren; die Sollbesetzung trägt der Betrieb. */
+  branchenregel({ id: "FUNKTION-BESETZUNG-01", modul: "funktionsdienst", typ: "besetzungsregel",
+    bezeichnung: "Sollbesetzung eines Funktionsbereichs", ebene: "betrieb", scope: { branche: ["klinik"] },
+    parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "funktionsbereiche.soll" },
+    pruefhinweis: "Die Sollbesetzung je Funktionsbereich legt der Betrieb fest; keine Rechtsvorschrift mit festen Zahlen bekannt (zu prüfen). Stufe nach Nutzerentscheidung F2." }),
+  branchenregel({ id: "FUNKTION-QUAL-01", modul: "funktionsdienst", typ: "besetzungsregel",
+    bezeichnung: "Qualifikation für einen Funktionsbereich", ebene: "betrieb", scope: { branche: ["klinik"] },
+    parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "qual", min: 1 }], bedarfAus: "funktionsbereiche.qualifikationen" },
+    pruefhinweis: "Welche Qualifikation ein Funktionsbereich verlangt, trägt der Betrieb ein und belegt sie (Fortbildung, Einweisung); verbindlich erst mit geprüfter, versionierter Regelgrundlage (F2 a). Stufe nach Nutzerentscheidung." }),
   /* Klinik — bereitschaftsdienst (Matrix R4 a). Die Grenze trägt der Betrieb; im Code steht keine Zahl. */
   branchenregel({ id: "BEREIT-HOECHST-01", modul: "bereitschaftsdienst", typ: "grenzregel",
     bezeichnung: "Höchstarbeitszeit je Woche einschließlich Bereitschaft", ebene: "betrieb",

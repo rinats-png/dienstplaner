@@ -30,7 +30,7 @@ const HIER = path.dirname(fileURLToPath(import.meta.url));
 const lies = (datei) => readFileSync(path.join(HIER, "..", datei), "utf8");
 const APP = lies("src/App.jsx");
 const ZWOELF = BRANCHENMODULE.map((x) => x.id);
-const JSX_MODULE = ["posten", "wachbuch", "objektbericht", "bereitschaftsdienst", "bereichsplan", "geteilterdienst", "anlagen", "maschinenqual", "kontimodelle"];
+const JSX_MODULE = ["posten", "wachbuch", "objektbericht", "bereitschaftsdienst", "funktionsdienst", "bereichsplan", "geteilterdienst", "anlagen", "maschinenqual", "kontimodelle"];
 
 /* Neue Dateien des Kerns — fehlen sie, ist jeder Fall damit rot, nicht die ganze Datei. */
 const IDX = await import("../src/module/index.js").catch(() => ({}));
