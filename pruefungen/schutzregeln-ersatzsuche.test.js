@@ -20,6 +20,7 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
@@ -166,7 +167,7 @@ describe("Wochenstundengrenze: weich, auf beiden Sichten gleich", () => {
 });
 
 describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
-  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
+  const app = appQuelle().replace(/\r\n/g, "\n");
   /* Seit WP-10 (Warnen statt sperren, Kette A) liefert hindernisBefunde die
      Befunde mit Stufe; hindernisse() ist nur noch ihr Wortlaut. Harte
      Schutzbefunde und der Alleindienst tragen sperrt: true — der Warndialog

@@ -8,6 +8,7 @@
    Aufruf: npx vitest run pruefungen/warnen.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, RUHEZEIT_GESETZ,
@@ -195,7 +196,7 @@ describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
    Planungsaktion prüft sie selbst noch einmal. Gelesen wird der Quelltext —
    App.jsx exportiert diese Teile nicht. */
 describe("Warnen statt sperren — außer bei harten Schutzbefunden (Kette B)", () => {
-  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
+  const app = appQuelle().replace(/\r\n/g, "\n");
   const funktion = (kopf) => { const a = app.indexOf(kopf); expect(a, kopf).toBeGreaterThan(0); return app.slice(a, app.indexOf("\n}\n", a)); };
   it("der Warndialog gibt „dennoch“ bei sperrt: true nicht frei", () => {
     const w = funktion("function Warndialog({ sitz, vorgang, onClose }) {");

@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -182,7 +183,7 @@ describe("Rundweg", () => {
 
 describe("Leerer Betrieb: uebergaben ist eine Liste", () => {
   it("leererMandant legt uebergaben als Liste an", async () => {
-    const app = (await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8")).replace(/\r\n/g, "\n");
+    const app = (appQuelle()).replace(/\r\n/g, "\n");
     const start = app.indexOf("function leererMandant(");
     const ende = app.indexOf("\n}\n", start);
     expect(start > 0 && ende > start && ende - start < 5000).toBe(true);

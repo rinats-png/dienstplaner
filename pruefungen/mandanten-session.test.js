@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -142,7 +143,7 @@ describe("Schreiben: zusammenfuehren", () => {
 
 describe("Oberfläche", () => {
   it("bewirbDich und ziehBewerbungZurueck lesen die Person nur aus der Sitzung", async () => {
-    const quelle = (await readFile(path.join(__dirname, "..", "src", "App.jsx"), "utf8")).replace(/\r\n/g, "\n");
+    const quelle = (appQuelle()).replace(/\r\n/g, "\n");
     expect(quelle).not.toMatch(/\bm\.session\b/);
     for (const name of ["bewirbDich", "ziehBewerbungZurueck"]) {
       const ab = quelle.indexOf(`      ${name}: `);

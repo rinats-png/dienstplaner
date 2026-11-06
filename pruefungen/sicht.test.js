@@ -15,6 +15,7 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -26,7 +27,7 @@ import { leitungsperson } from "../server/lib/provisionierung.mjs";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const lies = (datei) => readFileSync(path.join(HIER, "..", datei), "utf8");
-const APP = lies("src/App.jsx");
+const APP = appQuelle();
 const MIGRATION = lies("src/migration.js");
 
 /* --------------------------------------------------------------------------

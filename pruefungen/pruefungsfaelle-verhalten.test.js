@@ -10,6 +10,7 @@
    - A4  Bestätigen nur für Leitung/Planung und nie für die eigene Zeit.
    ========================================================================== */
 import { describe, it, expect, beforeAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFile } from "node:fs/promises";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -72,7 +73,7 @@ describe("A1: Exporte fragen nach", () => {
     expect(exportWarnung(betrieb({}), MONAT)).toBeNull();
   });
   it("Lohnausgabe-CSV und Zuschläge-Export rufen sie auf, bevor die Datei entsteht", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     const z = app.slice(app.indexOf("exportZuschlaege: (ym2) => {"), app.indexOf("/* --- Ausgaben --- */"));
     expect(z.indexOf("exportWarnung(m, ym2)")).toBeGreaterThan(-1);
     expect(z.indexOf("window.confirm(warnung)")).toBeLessThan(z.indexOf("lade("));

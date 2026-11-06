@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -294,7 +295,7 @@ describe("Nachtrag B7: Rollen-Sonde für /zustellung/status und /zustellung/schl
 describe("Nachtrag B6: die Oberfläche setzt den Tag an Dienständerungen (Entwurfsregel greift an der Quelle)", () => {
   it("baueMitteilung nimmt den Tag an; Dienständerung und Ersatzeinteilung übergeben ihn", async () => {
     const { readFile } = await import("node:fs/promises");
-    const quelle = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const quelle = appQuelle();
     const i = quelle.indexOf("function baueMitteilung(");
     expect(i).toBeGreaterThan(0);
     const fn = quelle.slice(i, quelle.indexOf("\n}\n", i));

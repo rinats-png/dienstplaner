@@ -12,6 +12,7 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFile } from "node:fs/promises";
 import { stempelVorgang, stempelSchluessel, MARKIERUNG_TEXT } from "../src/stempelvorgang.js";
 import { istZeitFuer, erfassungenZurPruefung, zurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT } from "../src/istdaten.js";
@@ -37,7 +38,7 @@ describe("W3: „Dienstende stempeln“ für einen Nachtdienst ohne Einstempeln"
     expect(stempelVorgang(betrieb(), person, HEUTE, new Date("2026-11-03T05:30:00Z")).nachtEnde).toBeUndefined();
   });
   it("Stempeluhr und mobile Stempelfläche bieten es an", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect((app.match(/nachtEnde/g) || []).length).toBeGreaterThanOrEqual(4);
     expect((app.match(/Dienstende stempeln/g) || []).length).toBeGreaterThanOrEqual(2);
   });
@@ -49,7 +50,7 @@ describe("W2: Schlüssel der lokalen Kopie", () => {
     expect(stempelSchluessel("a1", {}, "2026-11-03")).toBe("a1|2026-11-03");
   });
   it("App.jsx spiegelt mit stempelSchluessel", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/const k = stempelSchluessel\(pid, erg, datum\);/);
     expect(app).not.toMatch(/const spiegeln = \(s2\) => \{[\s\S]{0,200}const k = `\$\{pid\}\|\$\{datum\}`/);
   });
@@ -70,7 +71,7 @@ describe("W1: langer Dienst zur Prüfung — nicht still", () => {
     expect(erfassungenZurPruefung(m, "2026-10")).toEqual([]);
   });
   it("Stempelbefunde: Liste zur Prüfung mit „Bestätigen“ (Leitung/Planung), Vermerk im Protokoll", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/erfassungenZurPruefung\(m, ym\)/);
     expect(app).toMatch(/akt\.langerDienstBestaetigen\(personId, datum\)/);
     /* Seit WP-06 als Korrekturereignis über den Server (Vermerk: Ereignis am
@@ -102,7 +103,7 @@ describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", ()
     expect(ZUR_PRUEFUNG_TEXT).toBe("zur Prüfung, Planzeit vorläufig");
   });
   it("App: istStunden zählt, Lohnblatt kennzeichnet je Tag, CSV warnt vor dem Download, Band in Abrechnung und Konto", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     const ist = app.slice(app.indexOf("function istStunden("), app.indexOf("§ 3 ArbZG"));
     expect(ist).toMatch(/if \(idn\.zurPruefung\) pruefFaelle\+\+;/);
     expect(ist).toMatch(/zurPruefung: pruefFaelle, ungeplant: ungeplantTage \}/);
@@ -121,7 +122,7 @@ describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", ()
     expect(app).toMatch(/status: zurPruefung\(v\) \? pruefFallText/);  // Gesamtexport
   });
   it("Bestätigen: nur staff.edit (nicht Schichtverantwortung), nie die eigene Zeit", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     const sb = app.slice(app.indexOf("function StempelBefunde("), app.indexOf("function Abrechnungsdaten("));
     expect(sb.length).toBeGreaterThan(100);
     expect(sb).toMatch(/const darfBestaetigen = darf\(sitz, "staff\.edit"\);/);

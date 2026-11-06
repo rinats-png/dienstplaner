@@ -9,6 +9,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -217,7 +218,7 @@ describe("Oberfläche: Position, offener Vorgang, Befund", () => {
     expect(geoAnzeige({ start: "06:00" }, "Ende")).toBeNull();
   });
   it("Quelltext: keine eigene Ortsprüfung mehr im Client, keine erfundenen Koordinaten bei der Anlage", async () => {
-    const app = (await readFile(path.join(__dirname, "..", "src", "App.jsx"), "utf8")).replace(/\r\n/g, "\n");
+    const app = (appQuelle()).replace(/\r\n/g, "\n");
     expect(app).not.toMatch(/function stempelPruefen\(|function abstandMeter\(/);
     const block = (start) => { const i = app.indexOf(start); expect(i, start).toBeGreaterThan(0); return app.slice(i, app.indexOf("\n}\n", i)); };
     for (const name of ["function baueAusAnlage(", "function leererMandant("]) {

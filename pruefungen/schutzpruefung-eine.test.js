@@ -15,6 +15,7 @@
    Aufruf: npx vitest run pruefungen/schutzpruefung-eine.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -42,7 +43,7 @@ describe("genau eine Schutzprüfung im Code", () => {
       expect(wo(new RegExp(`(?<!function )\\b${f}\\(`)), f).toEqual(["server/lib/schutzpruefung.mjs"]);
   });
   it("Oberfläche und Server lesen schutzEinsatz", () => {
-    const app = alle.find(([p]) => p === "src/App.jsx")[1];
+    const app = appQuelle();
     const fn = (kopf) => app.slice(app.indexOf(kopf), app.indexOf("\n}\n", app.indexOf(kopf)));
     /* WP-22: hindernisBefunde → einteilungsBefunde (server/lib/fachpruefung.mjs) → schutzEinsatz. */
     expect(fn("function hindernisBefunde(")).toContain("einteilungsBefunde(m, p, da, d, {");

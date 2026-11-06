@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -220,7 +221,7 @@ describe("SI-01 Push-Endpunkt nur bei bekannten Push-Diensten", () => {
 /* ---------------------------------------------------------------- SI-02 */
 describe("SI-02 CSV-Exporte gegen Formel-Injection", () => {
   let app;
-  beforeAll(async () => { app = await quelle("src/App.jsx"); });
+  beforeAll(async () => { app = appQuelle(); });
   const block = (anfang, laenge = 1600) => { const i = app.indexOf(anfang); expect(i, anfang).toBeGreaterThan(-1); return app.slice(i, i + laenge); };
 
   it("Zuschlags-Export: Namen, Personalnummer und Regelnamen über csvText", () => {
@@ -269,7 +270,7 @@ describe("SI-02 CSV-Exporte gegen Formel-Injection", () => {
 /* ---------------------------------------------------------------- SI-03 */
 describe("SI-03 Aushangplan-Druck maskiert Daten aus dem Bestand", () => {
   it("Betrieb, Einheit, Dienstart und Farbe gehen maskiert/geprüft ins HTML", async () => {
-    const app = await quelle("src/App.jsx");
+    const app = appQuelle();
     const i = app.indexOf("<title>Dienstplan ${MON[mo - 1]} ${y}</title>");
     expect(i).toBeGreaterThan(-1);
     const b = app.slice(i - 200, i + 3600);
@@ -350,7 +351,7 @@ describe("SI-07 Offline-Bestand ohne Sitzung wird beim Start geräumt", () => {
 /* ---------------------------------------------------------------- SI-05 */
 describe("SI-05 Fremdseiten ohne Zugriff auf das öffnende Fenster", () => {
   it("Dienstanfrage über WhatsApp/SMS/Mail öffnet mit noopener", async () => {
-    const app = await quelle("src/App.jsx");
+    const app = appQuelle();
     expect(app).toMatch(/window\.open\(url, "_blank", "noopener,noreferrer"\)/);
     expect(app).not.toMatch(/window\.open\(url, "_blank"\);/);
   });

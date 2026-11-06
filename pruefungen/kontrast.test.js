@@ -15,6 +15,7 @@
    allein über Farbe getroffen wird. Das steht in der Zugänglichkeitsprüfung.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { C_HELL, C_DUNKEL, AVATAR_HELL, AVATAR_DUNKEL } from "../src/farben.js";
 
 /* --- Die Rechnung nach WCAG 2.1, Abschnitt „relative luminance" --------- */
@@ -264,7 +265,7 @@ import { aufhellenBis, kontrastVon } from "../src/gestalt/lesbar.js";
 describe("Dienstfarben als Schrift und Kante im Dunkelmodus", () => {
   const DIENST = ["#017070", "#316C81", "#023441", "#4C4668", "#955410", "#2E6B4F", "#B3261E", "#35506B",
     "#0369A1", "#8A5A00", "#878C93"];
-  const quelle = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const quelle = appQuelle();
   const bloc = quelle.slice(quelle.indexOf("const PALETTE = ["), quelle.indexOf("const PALETTE_NAMEN"));
   const PALETTE = bloc.match(/#[0-9A-Fa-f]{6}/g) || [];
   const grund = C_DUNKEL.flaeche;

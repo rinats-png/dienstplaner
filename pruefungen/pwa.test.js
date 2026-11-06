@@ -9,6 +9,7 @@
       des Servers (Einrichten, Kalender, Zustellung) landen nie darin.
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFile, mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,7 +39,7 @@ describe("Verknüpfungen des Manifests", () => {
       expect(verknuepfungsZiel(s), s).toBeNull();
   });
   it("die Oberfläche wertet die Verknüpfung aus", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/verknuepfungsZiel\(window\.location\.search\)/);
     expect(app).toMatch(/verknuepfungFuer\(sitz, ziel\)/);
   });
@@ -48,7 +49,7 @@ describe("Verknüpfungen des Manifests", () => {
     expect(ohneVerknuepfung("https://beispiel.invalid/pfad?a=1&ansicht=meine&b=2#x")).toBe("/pfad?a=1&b=2#x");
   });
   it("Quelltext: die Bereinigung wird tatsächlich aufgerufen", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/history\.replaceState\(null, "", ohneVerknuepfung\(window\.location\.href\)\)/);
   });
 });
@@ -88,7 +89,7 @@ describe("Verknüpfung je Rolle (Navigation samt Rechten)", () => {
       expect(A.verknuepfungFuer(s, krank), s.person.rolle).toEqual({ art: "krank", personId: "p" });
   });
   it("die Mobilschale bekommt den Start-Reiter", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/<MobilSchale [^>]*startTab=\{mobilStart\}/);
     expect(app).toMatch(/useState\(startTab \|\| "heute"\)/);
     /* die Mobilschale ist beim Eintreffen der Verknüpfung schon gezeichnet: der Reiter muss nachziehen */

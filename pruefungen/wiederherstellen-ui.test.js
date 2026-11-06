@@ -16,6 +16,7 @@
       speicher.js schickt den ETag mit und übernimmt den neuen.
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
@@ -214,7 +215,7 @@ describe("Verdrahtung: echte Einstellungen, echte Aktionen", () => {
   });
 
   it("das Aktionsobjekt der App setzt die Fabrik ein (die einzige Quelltext-Prüfung: das Objekt entsteht in App() und ist nicht aufrufbar)", async () => {
-    const quelle = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "App.jsx"), "utf8");
+    const quelle = appQuelle();
     expect(quelle.match(/\.\.\.sicherungenAktionen\(SP\)/g)).toHaveLength(1);
     expect(quelle).toContain("laden={akt.sicherungenLaden}");
     expect(quelle).toContain("zurueckspielen={akt.zurueckspielen}");

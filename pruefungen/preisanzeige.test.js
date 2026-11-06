@@ -17,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { appQuelle } from "./app-quelle.js";
 
-const quelle = async () => (await readFile(path.join(__dirname, "..", "src", "App.jsx"), "utf8")).replace(/\r\n/g, "\n");
+const quelle = async () => (appQuelle()).replace(/\r\n/g, "\n");
 const block = (q, start) => {
   const ab = q.indexOf(start);
   expect(ab, start).toBeGreaterThan(0);

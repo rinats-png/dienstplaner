@@ -12,11 +12,12 @@
    Aufruf: npm run pruefung:konsistenz
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { schutzBefunde, schutzEinsatz, aufgabeGedeckt, aufgabeSchwere } from "../src/regelwerk.js";
 import { regelIdFuerBefund } from "../src/regelregister.js";
 
-const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+const app = appQuelle();
 const funktion = (name) => {
   const von = app.indexOf(`function ${name}(`);
   expect(von, name).toBeGreaterThan(0);

@@ -11,6 +11,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 
 let SP;
 beforeAll(async () => {
@@ -83,7 +84,7 @@ describe("speicher.stempeln bei 429", () => {
 
   it("Auflage N1: der Stempelknopf bleibt gesperrt, bis das Stempeln samt Wiederholungen fertig ist (Stempeluhr und mobile Fläche)", async () => {
     const { readFile } = await import("node:fs/promises");
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     /* Früher: akt.stempeln(...) ohne Warten, sofort setLaeuft(false) — während der
        Wiederholungen nach 429 (bis ≈ 36 s) war der Knopf wieder frei. */
     expect(app).not.toMatch(/akt\.stempeln\([^)]*\);\s*setLaeuft\(false\)/);

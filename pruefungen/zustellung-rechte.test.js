@@ -21,6 +21,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -495,7 +496,7 @@ describe("Schichtverantwortung stößt nur im eigenen Bereich an", () => {
 
 describe("Zustellarten: Server und Oberfläche gleich (Drift)", () => {
   it("ZUSTELLARTEN in src/App.jsx und server/lib/mitteilungen.mjs", async () => {
-    const app = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     const block = app.slice(app.indexOf("const ZUSTELLARTEN = {"), app.indexOf("\n};", app.indexOf("const ZUSTELLARTEN = {")));
     const client = {};
     for (const z of block.matchAll(/^\s{2}(\w+): \{ titel: "[^"]*", mail: (true|false), push: (true|false), dringend: (true|false)/gm))
@@ -504,7 +505,7 @@ describe("Zustellarten: Server und Oberfläche gleich (Drift)", () => {
     expect(client).toEqual(M.ZUSTELLARTEN);
   });
   it("NOTRUF_ARTEN in src/App.jsx und server/lib/mitteilungen.mjs", async () => {
-    const app = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     const block = app.slice(app.indexOf("const NOTRUF_ARTEN = {"), app.indexOf("\n};", app.indexOf("const NOTRUF_ARTEN = {")));
     const client = {};
     for (const z of block.matchAll(/^\s{2}(\w+): \{ label: "([^"]*)"/gm)) client[z[1]] = z[2];

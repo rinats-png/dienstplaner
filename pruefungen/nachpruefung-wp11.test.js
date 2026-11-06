@@ -23,6 +23,7 @@
    Aufruf: npx vitest run pruefungen/nachpruefung-wp11.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -356,7 +357,7 @@ describe("Nachprüfung 948a4ba (A2, Empfehlung): Schutzkonflikte bleiben sichtba
     expect(meldungen(e).some((n) => n.id.includes(fern))).toBe(true);
   });
   it("die Oberfläche markiert offene Konflikte im Plan und zeigt sie auf der Startseite (Quelltext)", () => {
-    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     expect(app).toContain("useSchutzkonflikteBasis(sitz, aktiv, schutzkonfliktPlan, heute)");   // Nachtrag WP-22b: entprellt, in Häppchen (Haken: src/schutzkonflikte-hook.js)
     expect(app).toContain("schutzkonflikte.has(`${p.id}|${d}`)");
     expect(app).toMatch(/id: "schutzkonflikt"[\s\S]*knopf: "Umplanen"/);

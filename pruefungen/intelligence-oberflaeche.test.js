@@ -7,6 +7,7 @@
    Kennzeichnungsprüfung im Client, keine Anbieter-/Token-/Modellangaben, keine console-Ausgabe.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync, readdirSync } from "node:fs";
@@ -260,7 +261,7 @@ describe("Quelltext der Oberfläche (statisch)", () => {
     for (const f of dateien) expect(ohneKommentare(quelle(f)), f).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
   });
   it("App.jsx hängt die Oberfläche (noch) nicht ein", () => {
-    expect(readFileSync(path.join(WURZEL, "src/App.jsx"), "utf8")).not.toMatch(/ansichten\/intelligence/);
+    expect(appQuelle()).not.toMatch(/ansichten\/intelligence/);
   });
   it("keine Texte mit Preis, Token oder Modellbezug", () => {
     const alles = JSON.stringify([KI_TEXTE, KI_FEHLERTEXTE]);
