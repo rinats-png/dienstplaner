@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { istProduktion } from "../lib/umgebung.mjs";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
