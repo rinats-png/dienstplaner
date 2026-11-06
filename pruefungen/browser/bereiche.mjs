@@ -71,7 +71,7 @@ try {
         const txt = (haupt.innerText || "").trim();
         const klein = [...document.querySelectorAll("button, a[href], input, select, [role=button]")]
           .filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect())
-          .filter((r) => r.width > 0 && r.height > 0 && r.top < innerHeight && (r.height < 40 || r.width < 40)).length;
+          .filter((r) => r.width > 0 && r.height > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth && (r.height < 40 || r.width < 40)).length;
         /* Kontrast: Text gegen den ersten deckenden Hintergrund darüber (Verläufe/Bilder werden übersprungen) */
         const rgb = (c) => { const m2 = /rgba?\(([^)]+)\)/.exec(c); if (!m2) return null; const t = m2[1].split(",").map((x) => parseFloat(x)); return { r: t[0], g: t[1], b: t[2], a: t.length > 3 ? t[3] : 1 }; };
         const lum = (c) => { const k = [c.r, c.g, c.b].map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * k[0] + 0.7152 * k[1] + 0.0722 * k[2]; };
@@ -109,6 +109,17 @@ try {
           await p.locator(sel + ":visible").nth(ti).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} ${leiste[ti]}: Klick scheitert`));
           await p.waitForTimeout(1300);
           await messen(`${marke} ${leiste[ti]}`);
+        }
+        /* Schublade: alle Ansichten der Seitenleiste */
+        const anzahlSl = await p.evaluate(() => document.querySelectorAll(".seitenleiste .slink").length);
+        for (let si = 0; si < anzahlSl; si++) {
+          await p.locator("header button").first().click({ timeout: 3000 }).catch(() => melde("klick", `${marke} Menüknopf: Klick scheitert`));
+          await p.waitForTimeout(400);
+          const name = await p.evaluate((i) => ((document.querySelectorAll(".seitenleiste .slink")[i] || {}).innerText || "").trim().split(String.fromCharCode(10))[0], si);
+          if (si === 0) await messen(`${marke} Schublade offen`);
+          await p.locator(".seitenleiste .slink").nth(si).click({ timeout: 3000 }).catch(() => melde("klick", `${marke} Schublade/${name}: Klick scheitert`));
+          await p.waitForTimeout(1200);
+          await messen(`${marke} Schublade/${name}`);
         }
       }
       for (let gi = 0; gi < gruppen.length; gi++) {

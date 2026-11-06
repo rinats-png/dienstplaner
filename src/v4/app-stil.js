@@ -32,7 +32,7 @@ html[data-v4-app] .inhalt{min-width:0; max-width:100%;}
 html[data-v4-app] .seitenleiste{background:var(--v4-sidebar); border-right:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink{min-height:var(--v4-ziel); border-radius:var(--v4-r-mittel);}
 html[data-v4-app] .slink:hover{background:var(--v4-glas);}
-html[data-v4-app] .slink.on{background:var(--v4-glas); color:var(--v4-text);
+html[data-v4-app] .slink.on{background:var(--v4-glas);
   border:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink.on::before{background:var(--v4-akzent-auf-dunkel);}
 

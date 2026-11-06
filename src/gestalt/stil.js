@@ -183,6 +183,7 @@ export const gestaltStil = () => `
    „Schichten" scheiterte). Hoch genug bleibt sie scrollbar statt den Inhalt
    zu verdrängen. */
 @media (max-width: 1024px){
+  .tourleiste button{min-height:36px;}
   .tourleiste{bottom:calc(76px + env(safe-area-inset-bottom)) !important;
     max-height:calc(100dvh - 76px - 72px - env(safe-area-inset-bottom)); overflow-y:auto !important;}
 }

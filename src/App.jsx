@@ -622,6 +622,10 @@ const sgnIst = (v) => stundenText(v, sgn);
 const eur = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }));
 const eur0 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }));
 const zahl = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE"));
+/* Ein Bestand, der nicht aus dem Demo-Aufbau stammt (leerer Betrieb, Neuinstallation),
+   hat keinen Betreiberblock: die Betreiberkonsole stürzte darauf mit
+   „Cannot read properties of undefined (reading 'steuersatz')" ab. */
+const BETREIBER_LEER = { firma: "", anschrift: "", ustId: "", iban: "", steuersatz: 19, zahlungsziel: 14 };
 const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 
 /* ------------------------ Feiertage aller Bundesländer -------------------- */
@@ -2461,11 +2465,11 @@ function baueRechnung(db, m, monatISO) {
       einzel: "", betrag: "" });
 
   const netto = p.gesamt;
-  const steuer = Math.round(netto * db.betreiber.steuersatz) / 100;
-  return { nummer: nr, datum: heute(), faellig: addDays(heute(), db.betreiber.zahlungsziel),
+  const steuer = Math.round(netto * (db.betreiber || BETREIBER_LEER).steuersatz) / 100;
+  return { nummer: nr, datum: heute(), faellig: addDays(heute(), (db.betreiber || BETREIBER_LEER).zahlungsziel),
     zeitraum: `${MON[Number(monatISO.slice(5, 7)) - 1]} ${monatISO.slice(0, 4)}`,
-    mandantId: m.id, mandant: m.name, anschrift: m.anschrift, betreiber: db.betreiber,
-    positionen, netto, rabattBetrag: 0, rabattText: "", steuersatz: db.betreiber.steuersatz,
+    mandantId: m.id, mandant: m.name, anschrift: m.anschrift, betreiber: db.betreiber || BETREIBER_LEER,
+    positionen, netto, rabattBetrag: 0, rabattText: "", steuersatz: (db.betreiber || BETREIBER_LEER).steuersatz,
     steuer, brutto: Math.round((netto + steuer) * 100) / 100,
     standorte: p.standorte, personen: p.personen, tarif: p.t.name };
 }
@@ -8275,7 +8279,7 @@ function BetreiberRechnungen({ db, akt }) {
         <Kpi label="Erzeugte Rechnungen" value={db.rechnungen.length} />
         <Kpi label="Gesamtbetrag brutto" value={eur0(summe)} tone="accent" />
         <Kpi label="Abzurechnende Mandanten" value={offen.length} sub="Status aktiv oder gekündigt" />
-        <Kpi label="Umsatzsteuer" value={`${db.betreiber.steuersatz} %`} sub={`Zahlungsziel ${db.betreiber.zahlungsziel} Tage`} />
+        <Kpi label="Umsatzsteuer" value={`${(db.betreiber || BETREIBER_LEER).steuersatz} %`} sub={`Zahlungsziel ${(db.betreiber || BETREIBER_LEER).zahlungsziel} Tage`} />
       </KpiRow>
 
       <Card style={{ marginTop: 20 }}>
@@ -8308,14 +8312,14 @@ function BetreiberRechnungen({ db, akt }) {
       <Card style={{ marginTop: 18 }}>
         <CardHead>Angaben auf der Rechnung</CardHead>
         <div style={{ padding: 22, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 15 }}>
-          <Field label="Firma"><Inp value={db.betreiber.firma} onChange={(e) => akt.setzeBetreiber("firma", e.target.value)} /></Field>
-          <Field label="Umsatzsteuer-Identifikationsnummer"><Inp value={db.betreiber.ustId} onChange={(e) => akt.setzeBetreiber("ustId", e.target.value)} /></Field>
-          <Field label="IBAN"><Inp value={db.betreiber.iban} onChange={(e) => akt.setzeBetreiber("iban", e.target.value)} /></Field>
-          <Field label="Umsatzsteuersatz in Prozent"><Inp type="number" value={db.betreiber.steuersatz}
+          <Field label="Firma"><Inp value={(db.betreiber || BETREIBER_LEER).firma} onChange={(e) => akt.setzeBetreiber("firma", e.target.value)} /></Field>
+          <Field label="Umsatzsteuer-Identifikationsnummer"><Inp value={(db.betreiber || BETREIBER_LEER).ustId} onChange={(e) => akt.setzeBetreiber("ustId", e.target.value)} /></Field>
+          <Field label="IBAN"><Inp value={(db.betreiber || BETREIBER_LEER).iban} onChange={(e) => akt.setzeBetreiber("iban", e.target.value)} /></Field>
+          <Field label="Umsatzsteuersatz in Prozent"><Inp type="number" value={(db.betreiber || BETREIBER_LEER).steuersatz}
             onChange={(e) => akt.setzeBetreiber("steuersatz", Number(e.target.value))} /></Field>
-          <Field label="Zahlungsziel in Tagen"><Inp type="number" value={db.betreiber.zahlungsziel}
+          <Field label="Zahlungsziel in Tagen"><Inp type="number" value={(db.betreiber || BETREIBER_LEER).zahlungsziel}
             onChange={(e) => akt.setzeBetreiber("zahlungsziel", Number(e.target.value))} /></Field>
-          <Field label="Anschrift"><textarea className="inp" rows={3} value={db.betreiber.anschrift}
+          <Field label="Anschrift"><textarea className="inp" rows={3} value={(db.betreiber || BETREIBER_LEER).anschrift}
             onChange={(e) => akt.setzeBetreiber("anschrift", e.target.value)} /></Field>
         </div>
       </Card>
@@ -9903,7 +9907,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                     <div style={{ fontSize: 12, color: C.dimmer }}>{p.funktion}{p.austritt ? ` · ausgetreten ${fKurz(p.austritt)}` : ""}</div>
                   </div>
                 </div></td>
-              <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, color: e ? e.farbe : C.dimmer }}>{e ? e.name : "—"}</td>
+              <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, color: e ? lesbar(e.farbe) : C.dimmer }}>{e ? e.name : "—"}</td>
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
                 {/* Angeboten wird nur, was diese Rolle auch vergeben darf —
                     und nur an Personen, deren jetzige Rolle im eigenen
@@ -11479,7 +11483,7 @@ function Verteilung({ sitz, ym }) {
             return (<tr key={z.person.id} className="row">
               <td style={{ padding: "12px 20px", borderBottom: `1px solid ${C.lineSoft}` }}>
                 <div style={{ fontSize: 13.5 }}>{z.person.nachname}, {z.person.vorname}</div>
-                <div style={{ fontSize: 11.5, color: e ? e.farbe : C.dimmer }}>{e ? e.name : "—"}</div></td>
+                <div style={{ fontSize: 11.5, color: e ? lesbar(e.farbe) : C.dimmer }}>{e ? e.name : "—"}</div></td>
               {spalten.map(([f]) => {
                 const a = z.abw[f];
                 const auf = Math.abs(a) >= 2;
@@ -11717,7 +11721,7 @@ function Urlaubsrunde({ sitz, akt }) {
               const e = m.einheiten.find((x) => x.id === k.einheitId);
               return (<div key={i} style={{ display: "flex", gap: 14, padding: "10px 22px", borderBottom: `1px solid ${C.lineSoft}` }}>
                 <span style={{ fontSize: 13, color: C.dim, minWidth: 90, ...NUM }}>{fDatum(k.datum)}</span>
-                <span style={{ fontSize: 13, color: e ? e.farbe : C.dim, minWidth: 130 }}>{e ? e.name : k.einheitId}</span>
+                <span style={{ fontSize: 13, color: e ? lesbar(e.farbe) : C.dim, minWidth: 130 }}>{e ? e.name : k.einheitId}</span>
                 <span style={{ fontSize: 13, color: C.danger, ...NUM }}>{k.anzahl} Wünsche bei {k.grenze} Plätzen</span>
                 <span style={{ fontSize: 12.5, color: C.dimmer, flex: 1 }}>
                   {k.wuensche.map((x) => (m.personen.find((p) => p.id === x.personId) || {}).nachname).join(", ")}</span>
@@ -11743,7 +11747,7 @@ function Urlaubsrunde({ sitz, akt }) {
                   <div style={{ flex: 1, minWidth: 190 }}>
                     <div style={{ fontSize: 13.5 }}>{p ? `${p.nachname}, ${p.vorname}` : "?"}
                       {zurueck && <Pill size="sm" tone="accent" style={{ marginLeft: 8 }}>Vorrang</Pill>}</div>
-                    <div style={{ fontSize: 11.5, color: e ? e.farbe : C.dimmer }}>{e ? e.name : "—"}</div>
+                    <div style={{ fontSize: 11.5, color: e ? lesbar(e.farbe) : C.dimmer }}>{e ? e.name : "—"}</div>
                   </div>
                   <span style={{ fontSize: 13, color: C.dim, ...NUM }}>{fDatum(x.von)} – {fDatum(x.bis)}</span>
                   <Pill size="sm">Prio {x.prio}</Pill>
@@ -15728,7 +15732,7 @@ function Mehrfach({ sitz, akt, onClose }) {
               <input type="checkbox" checked={an} onChange={() => setF({ ...f,
                 personen: an ? f.personen.filter((x) => x !== p.id) : [...f.personen, p.id] })} />
               <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
-              <span style={{ fontSize: 12, color: e ? e.farbe : C.dimmer }}>{e ? e.name : ""}</span>
+              <span style={{ fontSize: 12, color: e ? lesbar(e.farbe) : C.dimmer }}>{e ? e.name : ""}</span>
             </label>);
         })}
       </div>
@@ -18649,7 +18653,7 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
       /* Erst der Raum, dann die Zugänge. Andersherum gäbe es Codes, die
          ins Leere führen. */
       await SP.bestandAnlegen(raum, { version: 5, mandanten: [m], session: null,
-        tarife: db.tarife, betreiber: db.betreiber, stand: 1 });
+        tarife: db.tarife, betreiber: db.betreiber || BETREIBER_LEER, stand: 1 });
       const codes = await SP.zugaengeErzeugen(raum,
         m.personen.map((p) => ({ rolle: p.rolle, personId: p.id, name: m.name })));
       setErgebnis({ mandant: m, raum, codes: codes.map((c) => ({ ...c,
@@ -25619,7 +25623,7 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
               </div>
               <button onClick={akt.abmelden} title="Abmelden" aria-label="Abmelden"
                 style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.55)",
-                  cursor: "pointer", padding: 4, display: "flex" }}><Icon n="abmelden" size={18} /></button>
+                  cursor: "pointer", padding: 11, margin: -7, display: "flex" }}><Icon n="abmelden" size={18} /></button>
             </div>
           </div>
         </aside>
