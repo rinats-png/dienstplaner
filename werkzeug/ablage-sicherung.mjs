@@ -149,6 +149,7 @@ export async function quelleAnsehen(quelle) {
 
   /** @type {{store: string, name: string, pfad: string, bytes: number, mtimeMs: number}[]} */
   const dateien = [];
+  let veraendert = false;
   /** @type {Record<string, {klasse: string, dateien: number, bytes: number}>} */
   const stores = {};
   /** @type {Record<string, Record<string, number>>} */
@@ -184,7 +185,13 @@ export async function quelleAnsehen(quelle) {
       }
       const vom = (regel.ohne || []).find((/** @type {string} */ p) => schluessel.startsWith(p));
       if (vom) { merke(e.name, `flüchtig (${vom})`); continue; }
-      const st = await stat(path.join(dir, d.name));
+      let st;
+      try { st = await stat(path.join(dir, d.name)); }
+      catch (e) {
+        // Zwischen readdir und stat ersetzt oder entfernt: Veränderung der Quelle, kein Fehler.
+        if (/** @type {any} */ (e).code === "ENOENT") { veraendert = true; continue; }
+        throw e;
+      }
       dateien.push({ store: e.name, name: d.name, pfad: path.join(dir, d.name),
         bytes: st.size, mtimeMs: st.mtimeMs });
       stores[e.name].dateien += 1;
@@ -192,7 +199,7 @@ export async function quelleAnsehen(quelle) {
     }
   }
   dateien.sort((a, b) => (a.store + "/" + a.name).localeCompare(b.store + "/" + b.name));
-  return { dateien, stores, ausgelassen };
+  return { dateien, stores, ausgelassen, veraendert };
 }
 
 const fingerabdruck = (/** @type {{store:string,name:string,bytes:number,mtimeMs:number}[]} */ l) =>
@@ -227,6 +234,12 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
   for (let versuch = 1; versuch <= versuche; versuch++) {
     await rm(werkstatt, { recursive: true, force: true });
     const vorher = await quelleAnsehen(quelle);
+    if (vorher.veraendert) {
+      letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
+      meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
+      if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
+      continue;
+    }
     await mkdir(path.join(werkstatt, "daten"), { recursive: true, mode: 0o700 });
     for (const s of Object.keys(vorher.stores))
       await mkdir(path.join(werkstatt, "daten", s), { recursive: true, mode: 0o700 });
@@ -246,7 +259,7 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
       liste.push({ pfad: `${d.store}/${d.name}`, bytes: inhalt.length, sha256: sha256(inhalt) });
     }
     const nachher = verschwunden ? null : await quelleAnsehen(quelle);
-    if (verschwunden || !nachher || fingerabdruck(nachher.dateien) !== fingerabdruck(vorher.dateien)) {
+    if (verschwunden || !nachher || nachher.veraendert || fingerabdruck(nachher.dateien) !== fingerabdruck(vorher.dateien)) {
       letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
       meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
       await rm(werkstatt, { recursive: true, force: true });
