@@ -550,6 +550,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
    retten. Es bekommt stattdessen Tippflächen, die mit dem Daumen zu treffen
    sind, und alles daneben wird ruhiger statt gedrängter. */
 @media (max-width: 560px){
+  .pille{max-width:100%; white-space:normal; text-align:left;}
   main.bereich{padding:12px 10px 88px;}
   /* Die Kopfleiste schob das Dokument auf 769px auf einem 390px breiten
      Gerät — gemessen, nicht geschätzt. Die Werkzeuge rechts sind auf dem
@@ -15898,7 +15899,7 @@ function Pakete({ db, akt }) {
         sub="Ein Kern, mehrere Branchen. Was ein Betrieb braucht, wird als Paket freigeschaltet — der Rechenkern bleibt für alle derselbe.">
         Branchenpakete</H1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: 18, alignItems: "start" }}>
+      <div className="zweispaltig" style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: 18, alignItems: "start" }}>
         <Card>
           <CardHead>Betriebe</CardHead>
           {db.mandanten.map((x) => (

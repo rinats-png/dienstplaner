@@ -27,6 +27,9 @@ html[data-v4-app] :focus-visible{
 /* Inhalt: auf schmalen Breiten ohne Überlauf (Innenabstand zählt zur Breite) */
 html[data-v4-app] main.bereich{box-sizing:border-box; max-width:100%; min-width:0;}
 html[data-v4-app] .inhalt{min-width:0; max-width:100%;}
+/* Raster ohne eigene Spaltenvorgabe: Kinder dürfen schmaler werden als ihr Inhalt (Formularfelder
+   mit Platzhaltertext weiteten sonst die Spalte über das Fenster, belegt in der Betreiberkonsole „Neuer Mandant“) */
+html[data-v4-app] main.bereich [style*="display: grid"]:not([style*="grid-template-columns"]) > *{min-width:0;}
 
 /* Navigation: dunkle Seitenleiste; aktiver Eintrag als Glasfläche mit Akzentkante */
 html[data-v4-app] .seitenleiste{background:var(--v4-sidebar); border-right:1px solid var(--v4-glas-rand);}
@@ -37,7 +40,7 @@ html[data-v4-app] .slink.on{background:var(--v4-glas);
 html[data-v4-app] .slink.on::before{background:var(--v4-akzent-auf-dunkel);}
 
 /* Karten im Raster: Rasterspalte darf schmaler werden als der Inhalt (kein Überlauf) */
-html[data-v4-app] .karte, html[data-v4-app] .karte-hover{min-width:0; max-width:100%; box-sizing:border-box;}
+html[data-v4-app] .karte, html[data-v4-app] .karte-hover, html[data-v4-app] .karte-still{min-width:0; max-width:100%; box-sizing:border-box;}
 /* Auswahlleisten und Behälter im Inhalt: nicht breiter als die Spalte (Personal, 320 px) */
 html[data-v4-app] .noprint, html[data-v4-app] .seg{min-width:0; max-width:100%; box-sizing:border-box;}
 
