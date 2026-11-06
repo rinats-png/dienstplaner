@@ -200,7 +200,12 @@ export const BRANCHENMODULE = Object.freeze([
     ausnahmeUi: true, berichtigungsWerte: Object.freeze({ funktionsPlan: bekannterFunktionsbereich }),
     regelIds: ["FUNKTION-BESETZUNG-01", "FUNKTION-QUAL-01"] }),
   modul({ id: "rotation", merkmal: "rotation", name: "Rotationen", pakete: ["klinik"],
-    beschreibung: "Geplante Wechsel von Personen zwischen Einheiten über Zeiträume (Einsatzrotation)." }),
+    beschreibung: "Geplante Wechsel von Personen zwischen Einheiten über Zeiträume (Einsatzrotation).",
+    /* server/lib/modul-rotation.mjs: Einsätze und Zugehörigkeitswechsel, Form „Kennung|von“ (X2 a). Personenfeld;
+       Berichtigung gibt es nicht (nur Löschung). Ein Dienstplaneintrag ändert die Zugehörigkeit nie (X2). */
+    datenfelder: ["rotationen"], personenfelder: ["rotationen"], ausnahmeUi: true,
+    berichtigungsWerte: Object.freeze({ rotationen: () => false }),
+    regelIds: ["ROTATION-UEBERSCHNEIDUNG-01"] }),
   /* Industrie */
   modul({ id: "anlagen", merkmal: "anlagen", name: "Anlagenbindung", pakete: ["industrie"],
     beschreibung: "Anlagen als Einsatzort mit Mindestbesetzung und Laufzeitkalender.",

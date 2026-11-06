@@ -602,6 +602,8 @@ export const BETRIEB = {
   /* Funktionsdienst (WP-19, modul-funktionsdienst.mjs): Bereiche (Sachfeld) und Einteilung je Person und Tag (Personenfeld). Fail-closed. */
   funktionsbereiche: [WEG, WEG],
   funktionsPlan: [WEG, WEG],
+  /* Rotation (WP-19, modul-rotation.mjs): Einsätze und Zugehörigkeitswechsel je Person, Form „Kennung|von“. Fail-closed. */
+  rotationen: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],

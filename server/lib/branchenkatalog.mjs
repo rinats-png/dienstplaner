@@ -124,6 +124,12 @@ export const REGELN_BRANCHEN = Object.freeze([
     bezeichnung: "Qualifikation für einen Funktionsbereich", ebene: "betrieb", scope: { branche: ["klinik"] },
     parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "qual", min: 1 }], bedarfAus: "funktionsbereiche.qualifikationen" },
     pruefhinweis: "Welche Qualifikation ein Funktionsbereich verlangt, trägt der Betrieb ein und belegt sie (Fortbildung, Einweisung); verbindlich erst mit geprüfter, versionierter Regelgrundlage (F2 a). Stufe nach Nutzerentscheidung." }),
+  /* Klinik — rotation (Matrix X2 a). Eine Person ist höchstens in einer Einheit eingesetzt; Überschneidung ist ein Hinweis. */
+  branchenregel({ id: "ROTATION-UEBERSCHNEIDUNG-01", modul: "rotation", typ: "grenzregel",
+    bezeichnung: "Gleichzeitige Einsätze einer Person in verschiedenen Einheiten", ebene: "betrieb",
+    scope: { branche: ["klinik", "pflege", "rettung"] },
+    parameter: { groesse: "Einsätze gleichzeitig je Person", hoechstens: 1 },
+    pruefhinweis: "Eine Person kann an einem Tag nur in einer Einheit eingesetzt sein; die Überschneidung wird als Hinweis gemeldet. Keine Rechtsvorschrift mit Zahl; Stufe nach Nutzerentscheidung X2." }),
   /* Klinik — bereitschaftsdienst (Matrix R4 a). Die Grenze trägt der Betrieb; im Code steht keine Zahl. */
   branchenregel({ id: "BEREIT-HOECHST-01", modul: "bereitschaftsdienst", typ: "grenzregel",
     bezeichnung: "Höchstarbeitszeit je Woche einschließlich Bereitschaft", ebene: "betrieb",
