@@ -7,6 +7,8 @@ import { zahl, eur0, eur } from "../lib/format.js";
 import Ringregler from "../ringregler.jsx";
 import { NUM } from "../ui/thema.js";
 
+
+
 /* ------------------------------- Die Ansicht -----------------------------
    Die vorige Fassung ließ Beschäftigte und Einheiten eingeben und rechnete
    daraus einen Preis je Standort mit Mengenstaffel. Im neuen Modell ist

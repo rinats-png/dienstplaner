@@ -7,6 +7,8 @@ import { NUM } from "../ui/thema.js";
 import { eur } from "../lib/format.js";
 import { STANDORT_BAENDER } from "../standorte.js";
 
+
+
 export function BetreiberTarife({ db, akt }) {
   return (
     <div>

@@ -34,3 +34,13 @@ Views, die noch von in App.jsx verbliebenen Fachfunktionen abhaengen (z. B. vors
 
 Quelltextpruefungen: Alle Tests, die App.jsx als Text lesen (jetzt ~35 Dateien), lesen ueber `pruefungen/app-quelle.js` (Reihenfolge lib, ui, App.jsx, ansichten; `export ` am Zeilenanfang entfernt). Die Behauptungen sind unveraendert.
 Pruefsatz nach (e): Build gruen, ESLint 0 Fehler (96 Warnungen, Basis 105), alle App.jsx-lesenden Tests plus oberflaeche-render, v4-app-stil, v4-tokens: nur die 4 Basis-Fehler (selbsttest, wiederherstellen-ui).
+
+## Schritt 3 (nach Merge von origin/integration/release-v4, bda8b68)
+
+| Schritt | Verschoben | App.jsx Zeilen |
+|---|---|---|
+| f | 65 Ansichten einzeln nach src/ansichten/<name>.jsx (u. a. MandantAnlegen, BetreiberMandanten/-Detail/-Rechnungen, MeineSchichten, Lagebild, Wochenliste, Einsatzplan, Tagesdetail, Schichtfolge, Antraege, Personal, Personalakte, Pruefung, Ersatzliste, Krankmeldung, Verteilung, Assistent, Kapazitaetsvorschau, Urlaubsrunde, Monatsabschluss, Abrechnungsdaten, Lohnausgabe, Jahresansicht, Tauschboerse, Tagesstart, Zeitachse, Planstand, Lenkzeiten, Wunschdienste, Belastbarkeit, Datenmitnahme, Selbststarts, Demozugaenge, Tarifwerk, Standorte u. a.); dazu die Abhaengigkeiten: Cluster Korrekturen/StempelBefunde (korrekturen.jsx), Stempeluhr (stempeluhr.jsx), Einsatzorte/GeoZahl/KoordinatenStatus (einsatzorte.jsx), Preisgestaltung, SicherungAusserHaus, EinsatzregelListe, BestaetigungsText, EinheitWahl, Notizen; `lade` nach src/lib/download.js. src/lib/fachlogik.js nur ueber Imports beruehrt (nicht veraendert). | 19884 -> 12538 |
+
+Tooling-Hinweis: JSX-Komponentenverweise prueft ESLint hier nicht (kein jsx-no-undef); fehlende Imports wurden deshalb zusaetzlich per Textanalyse gesucht und durch Render-Tests (oberflaeche-render, wiederherstellen-ui, modul-kern-oberflaeche) bestaetigt.
+Tests: Build gruen, ESLint 0 Fehler; alle App.jsx-lesenden Tests plus oberflaeche-render/v4-*: nur Basis-Fehler (selbsttest, wiederherstellen-ui 3); server-nahe Dateien (mail-push-handler, zustellung-rechte, dsgvo-server, geo) sind unter Volllast zeitweise rot, einzeln gruen. Quelltextpruefungen: beschaeftigung (Importpfad ./ oder ../), stempel-oberflaeche (Ausschnitt bis Funktionsende), geo-spezifikation (appQuelle) angepasst, Behauptungen unveraendert.
+Noch in App.jsx: Monatsplan, Dienstarten, Betrieb, Einstellungen, Handbuch, OffeneSchichten, TourLeiste, Selbstplanung, Notrufe, Auftraggeberbericht, Belastung, Sondereinsaetze, Mobilansichten (MHeute ... MobilSchale), Prioritaeten, Kompetenzen, Untergrenzen, Therapieminuten, Anmeldung, AppInnen (haengen an lokalen Helfern in App.jsx).

@@ -138,7 +138,7 @@ describe("Abwesenheitsarten", () => {
   });
   it("App.jsx hängt die weiteren Arten an ABW", () => {
     expect(app).toContain("...ABW_WEITERE");
-    expect(app).toContain('from "./abwesenheitsarten.js"');
+    expect(app).toMatch(/from "\.\.?\/abwesenheitsarten\.js"/);
   });
   it("Anträge der Beschäftigten bieten nur Arten an, die sie selbst beantragen dürfen", () => {
     expect(app.match(/a\.selbst !== false/g).length).toBeGreaterThanOrEqual(2);

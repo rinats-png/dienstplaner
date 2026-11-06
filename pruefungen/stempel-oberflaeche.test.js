@@ -123,7 +123,8 @@ describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", ()
   });
   it("Bestätigen: nur staff.edit (nicht Schichtverantwortung), nie die eigene Zeit", async () => {
     const app = appQuelle();
-    const sb = app.slice(app.indexOf("function StempelBefunde("), app.indexOf("function Abrechnungsdaten("));
+    const sbStart = app.indexOf("function StempelBefunde(");
+    const sb = app.slice(sbStart, app.indexOf("\n}\n", sbStart));
     expect(sb.length).toBeGreaterThan(100);
     expect(sb).toMatch(/const darfBestaetigen = darf\(sitz, "staff\.edit"\);/);
     expect(sb).not.toMatch(/plan\.edit\.unit/);
