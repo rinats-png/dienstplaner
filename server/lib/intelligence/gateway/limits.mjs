@@ -255,7 +255,12 @@ export class Limits {
     if (!this.k.senke || ie === 0) return;
     beleg.folge = (beleg.folge || 0) + 1;      // laufende Folgenummer je Beleg: Buchung vor Rückbuchung auch bei gleichem t
     const e = { t: this.letzteZeit, b: beleg.bKey, tag: beleg.tag, monat: beleg.monat, ie, n: beleg.folge };
-    const p = Promise.resolve().then(() => this.k.senke(e)).then(() => true, () => false);
+    /* Z9: Eine Rückbuchung wird nur geschrieben, wenn ALLE früheren Ereignisse des Belegs dauerhaft sind — sonst stünde
+       eine Rückbuchung ohne Buchung im Rollup (negativer Drift). Ist eine Buchung verloren, bleibt die Verbrauchsspur
+       stehen (zu viel gezählt statt zu wenig; fail closed). */
+    const vorher = [...beleg.dauer];
+    const schreiben = () => Promise.resolve().then(() => this.k.senke(e)).then(() => true);
+    const p = (ie < 0 ? Promise.all(vorher).then((a) => (a.every(Boolean) ? schreiben() : true)) : schreiben()).catch(() => false);
     beleg.dauer.push(p);
   }
 

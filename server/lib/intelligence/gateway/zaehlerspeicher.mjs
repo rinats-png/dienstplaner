@@ -22,6 +22,7 @@
        gefalteten Ereignisse behielte); beschädigte Ereignisse werden übersprungen und entfernt, nie mitgezählt.
    Z5  Lesefehler oder beschädigter Rollup: werfen, nichts schreiben, nichts löschen (nur ein fehlender Rollup beginnt leer).
    Z6  E/A-Fehler beim Lesen eines Ereignisses brechen ab; gelöscht wird nur Gelesenes, das ungültig ist.
+   Z8  Strenge Rollup-Prüfung (bekannte Schlüssel, Datumsmuster, ganze Zahlen in Grenzen); sonst gilt er als beschädigt.
    Z7  Summen sind unabhängig von der Reihenfolge (Buchung/Rückbuchung); Kappen auf 0 erst beim Laden.
    Z4  Ein Zähler- oder Speicherfehler wird dem Gateway gemeldet (Rückgabe false); Klasse A läuft dann im Speicher
        weiter, alle anderen werden abgelehnt (fail closed nur für Nicht-A, Plan I15).
@@ -35,10 +36,19 @@ export const SPERR_RAUM = "@ki-zaehler";
 const MUSTER_B = /^[0-9a-f]{16}$/;
 const MUSTER_TAG = /^\d{4}-\d{2}-\d{2}$/;
 const MUSTER_MONAT = /^\d{4}-\d{2}$/;
+/* Z8: Der Rollup ist streng geprüft — nur bekannte Schlüssel, Datums-/Monatsmuster, ganze Zahlen in vernünftigen Grenzen,
+   Betriebsschlüssel als 16 Hexzeichen. Alles andere gilt als beschädigt (Z5: werfen, nichts ändern). */
+const GRENZE_IE = 1e7;
+const ganzIE = (n) => Number.isInteger(n) && n >= -GRENZE_IE && n <= GRENZE_IE;
+const nurSchluessel = (o, erlaubt) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((k) => erlaubt.includes(k));
 function rollupGueltig(r) {
-  return r && typeof r === "object" && r.v === 1 && r.betriebe && typeof r.betriebe === "object" && !Array.isArray(r.betriebe) && Array.isArray(r.gefaltet)
-    && r.gefaltet.every((k) => typeof k === "string") && r.gesamt && typeof r.gesamt === "object" && typeof r.gesamt.tag === "string" && Number.isFinite(r.gesamt.ie)
-    && Object.values(r.betriebe).every((b) => b && typeof b.monat === "string" && typeof b.tag === "string" && Number.isFinite(b.ieMonat) && Number.isFinite(b.ieTag));
+  if (!nurSchluessel(r, ["v", "betriebe", "gesamt", "gefaltet"]) || r.v !== 1) return false;
+  if (!r.betriebe || typeof r.betriebe !== "object" || Array.isArray(r.betriebe) || Object.keys(r.betriebe).length > 20000) return false;
+  if (!Array.isArray(r.gefaltet) || r.gefaltet.length > 100000 || !r.gefaltet.every((k) => typeof k === "string" && k.startsWith(EV) && k.length < 200)) return false;
+  const g = r.gesamt;
+  if (!nurSchluessel(g, ["tag", "ie"]) || !(g.tag === "" || MUSTER_TAG.test(g.tag)) || !ganzIE(g.ie)) return false;
+  return Object.entries(r.betriebe).every(([k, b]) => MUSTER_B.test(k) && nurSchluessel(b, ["monat", "tag", "ieMonat", "ieTag"])
+    && MUSTER_MONAT.test(b.monat) && MUSTER_TAG.test(b.tag) && b.tag.startsWith(b.monat) && ganzIE(b.ieMonat) && ganzIE(b.ieTag));
 }
 const leer = () => ({ v: 1, betriebe: {}, gesamt: { tag: "", ie: 0 }, gefaltet: [] });
 

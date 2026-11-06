@@ -41,6 +41,8 @@
    G9  Jede Anbieter-Ausnahme wird zu einer Fehlerklasse; ihr Text verlässt das Gateway nie.
    G15 Notschalter und Pause werden während laufender Anbieteraufrufe alle schalterTaktMs (Vorgabe 250 ms) geprüft;
        „aus“ bricht den Aufruf über AbortSignal ab, der Vorgang endet mit KI_AUS/KI_PAUSIERT.
+   G16 Die zyklische Schalterprüfung überlappt sich nicht und hat eine eigene Frist (schalterFristMs); ein hängendes
+       betriebAktiv zählt als „pausiert“.
    G10 Alle Zähler/Schalter/Prüfungen sind fail closed.
    ========================================================================== */
 
@@ -66,7 +68,7 @@ import { alarmeBerechnen } from "./alarme.mjs";
 export { kanonisch };
 
 const ROLLEN = new Set(["leitung", "planer", "mitarbeiter", "betriebsrat", "betreiber", "subplaner"]);
-const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000, zaehlerMs: 2_000, schalterTaktMs: 250 });
+const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000, zaehlerMs: 2_000, schalterTaktMs: 250, schalterFristMs: 1_000 });
 const schlafenVorgabe = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
 const zufallIdVorgabe = () => randomBytes(12).toString("base64url");
 
@@ -170,7 +172,12 @@ export function erzeugeGateway(o) {
     /* 5 — Pausierung (Betriebsrat-Frage, Mitbestimmung): Haken für WP-I16, Vorgabe: gesperrt. */
     const betriebPruefen = async () => {
       let aktiv = false;
-      try { aktiv = (await betriebAktiv(sitzung)) === true; } catch { aktiv = false; }
+      let frist;
+      /* Auch die Betriebsprüfung hat eine Frist: antwortet sie nicht, gilt der Betrieb als pausiert (fail closed). */
+      try {
+        aktiv = await Promise.race([Promise.resolve(betriebAktiv(sitzung)).then((v) => v === true),
+          new Promise((r) => { frist = setTimeout(() => r(false), Math.max(10, zeiten.schalterFristMs)); if (frist.unref) frist.unref(); })]);
+      } catch { aktiv = false; } finally { clearTimeout(frist); }
       if (!aktiv) throw new GatewayFehler("KI_PAUSIERT", "Intelligence ist für diesen Betrieb nicht freigegeben.");
     };
     /* G12: Notschalter und Pausierung gelten auch WÄHREND eines Vorgangs — vor jeder Stufe, jedem
@@ -263,10 +270,18 @@ export function erzeugeGateway(o) {
 
       /* 10/11 — Stufenkette (entfällt bei Treffer). */
       const deadline = t0 + zeiten.deadlineMs;
+      let prueft = false;      // G16: Prüfungen überlappen sich nicht (ein langsames betriebAktiv staut keine Aufrufe)
       takt = setInterval(async () => {
+        if (prueft || stopp.signal.aborted) return;
+        prueft = true;
+        let frist;
         try {
-          if (!gatewayAn(schalter) || (await betriebAktiv(sitzung)) !== true) stopp.abort();
-        } catch { stopp.abort(); }
+          if (!gatewayAn(schalter)) { stopp.abort(); return; }
+          /* eigene Frist: antwortet betriebAktiv nicht rechtzeitig, gilt der Betrieb als pausiert (fail closed) */
+          const ok = await Promise.race([Promise.resolve(betriebAktiv(sitzung)).then((v) => v === true),
+            new Promise((r) => { frist = setTimeout(() => r(false), Math.max(10, zeiten.schalterFristMs)); if (frist.unref) frist.unref(); })]);
+          if (!ok) stopp.abort();
+        } catch { stopp.abort(); } finally { clearTimeout(frist); prueft = false; }
       }, Math.max(10, zeiten.schalterTaktMs));
       if (takt.unref) takt.unref();
       let letzterCode = "KI_ANBIETER";

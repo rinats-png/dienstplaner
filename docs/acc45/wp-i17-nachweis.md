@@ -66,3 +66,5 @@ function BefundErklaerer({ rolle, datum, personId, aufloesen }) {   // z. B. Pan
 - **Bausteintexte**: die Komponente zeigt Bausteine nur, wenn der Aufrufer `bausteinText` liefert — der Baustein-Katalog ist fachlich offen (wpI-offene-fragen.md Nr. 3).
 - **Texte** sind Entwurf, nicht mit Produkt/Mitbestimmung abgestimmt (Nr. 22).
 - Pro Funktion eigene Eingabemasken (F1/F2/F5/F9 …) gehören zu WP-I22ff. und brauchen WP-I12.
+
+- O1 verschärft (Runde 3): `KiEntwurf` bekommt `funktion`; Beschäftigte sehen nur `F9`. **C5/C6**: Auftragskennung wird geprüft, `kiClient` sendet einen gültigen Bearer-Kopf aus `kopf()` (Einhängepunkt: `kopf` aus `src/speicher.js`, dort modulprivat; Vorschlag `export { kopf as authKopf }`). Server-Invariante für die Route `/ki`: siehe `wp-i13-nachweis.md` (Runde 3).

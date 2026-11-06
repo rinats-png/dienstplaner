@@ -40,3 +40,7 @@ Voraussetzungen für einen späteren Anbieteranschluss (WP-I18) stehen in `wp-i1
 | 26 | **Aufbewahrung der ki:\*-Schlüssel** (Ergebnis 30 / Kontext 90 Tage): Vorgabe „an“ (Löschung durchgesetzt) statt „vorschau“ | Entscheidung des Agenten nach Review, Betreiber bestätigt oder ändert; das Gateway startet nur mit „an“. | Betreiber |
 | 27 | **Vorzeichen und Richtungswörter** im Modelltext (Defizit, Überschuss, im Minus, negativ …) | Abgelehnt; nur „minus/plus“ unmittelbar vor einer Zahl werden gegen das Vorzeichen im Paket geprüft. Fachlich vielleicht zu streng (Erklärtexte zu Konten). | Produkt |
 | 28 | **Eine Zahl mit Einheit steht nie nackt** (nur mit Einheitenwort oder hinter dem Feldnamen) | Streng umgesetzt (P8). Der Baustein-Katalog (Nr. 3) soll das später ersetzen. | Produkt |
+
+| 29 | **Lease für Mehrprozessbetrieb** (Idee in wp-i13-nachweis, Runde 3, Befund 6) | nicht gebaut; Single-Instance bleibt Voraussetzung. | Technik |
+| 30 | **Zu strenge Prüferregeln?** Richtungswörter (fehlen, Überstunden, über/unter Soll) werden in Texten mit Zahl immer abgelehnt; nackte Zahlen mit Einheit im Paket ebenso | im Zweifel ablehnen (Rückfall-Antwort ist zulässig); der Baustein-Katalog (Nr. 3) soll sie später ablösen. | Produkt |
+| 31 | **`kopf()` aus `src/speicher.js`** exportieren (`authKopf`) für den Client-Einhängepunkt | nur Vorschlag, Datei unverändert. | Technik |

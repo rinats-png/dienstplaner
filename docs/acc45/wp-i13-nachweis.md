@@ -8,7 +8,7 @@ Zusammen mit [`wp-i15-nachweis.md`](wp-i15-nachweis.md) (Limits, Kontingent, Sch
 | Stufe | Stand | Beleg |
 |---|---|---|
 | implementiert | **teilweise** (Kern, Attrappe, Router, Prüfer, Live-Stumpf); Rest siehe „Nicht enthalten“ | `server/lib/intelligence/gateway/*` |
-| lokal getestet | **ja** — Stand nach beiden Reviews: 513 Tests in 18 Dateien `pruefungen/intelligence-*` grün, darunter die Gateway-Dateien anbieter, limits, pruefer, kern, grenzen, review (25), review2 (18), ergebnis (31), zaehler (19), oberfläche (28), dazu alle `pruefungen/intelligence-*` und `doku.test.js` | Abschnitt „Tests“ |
+| lokal getestet | **ja** — Stand nach drei Reviews: 526 Tests in 19 Dateien `pruefungen/intelligence-*` grün, darunter die Gateway-Dateien anbieter, limits, pruefer, kern, grenzen, review (25), review2 (18), ergebnis (31), zaehler (19), oberfläche (28), dazu alle `pruefungen/intelligence-*` und `doku.test.js` | Abschnitt „Tests“ |
 | reviewt | **teilweise** — unabhängiges Opus-Review von 4d002e1 liegt vor, alle 12 Befunde behoben (Abschnitt „Review-Befunde“); Nachprüfung des Stands danach steht aus | Invarianten unten sind die Prüfgrundlage |
 | integriert / Staging / produktiv | **nein** | kein PR, kein Merge, keine Route, kein Deployment |
 | Modellaufruf | **keiner** — kein Netz, kein Anbieter, kein Schlüssel, keine Route | statische Tests `intelligence-gateway-grenzen` |
@@ -142,3 +142,23 @@ Tests: `intelligence-gateway-review2.test.js` (18). Gegen 6354ff5 waren 15 von 1
 | 12 | `zeitraum: null` | im Fingerprint zulässig (wie `bezug`) — F4/F5/F9 haben keinen Zeitraum; sonst gäbe es dort nie einen Treffer |
 
 Bekannte Restlücken des Prüfers: weitere Sprachen als Deutsch/Englisch; umgangssprachliche Mengen („ein paar“, „viele“) sind keine Zahlen und werden nicht bewertet; „Quartett/Duo/Trio“ bleiben zulässig.
+
+## Runde 3 des Reviews (e6d1fc5) — Befunde und Fixes
+
+Tests: `intelligence-gateway-review3.test.js` (12; gegen e6d1fc5 waren 7 rot, die übrigen Kontrollfälle) und angepasste `oberflaeche`/`ergebnis`-Tests.
+
+| # | Befund | Fix / Invariante |
+|---|---|---|
+| 1 | Negativer Paketwert (`konto.saldo = -3,5`) durchgelassen als „3,5 Stunden …Überstunden/unter Soll/fehlen“ | **P9** Vorzeichenregel: negativer Paketwert nur mit `-`/`minus`, positiver nie damit; Richtungswörter (Überstunden, Mehrarbeit, über/unter Soll, fehlen, zu wenig/viel, rote Zahlen, unter-/überschritten …) in Texten mit Zahl abgelehnt. Im Zweifel ablehnen — die Rückfall-Antwort ist zulässig, daher bewusst kein Wortlisten-Wettrennen |
+| 2 | Einheit hinter Klammer, Bindestrich, Gedankenstrich, Schrägstrich, `pro`/`je` unerkannt | **P8** erweitert: erstes Wort nach der Zahl wird nach Überspringen von Satzzeichen/Klammern/Bindestrichen/Schrägstrich bestimmt (Satzende und nächste Ziffer begrenzen); `pro`/`je` sind keine Funktionswörter mehr; Ordnungszahl mit Punkt vor Zeit-/Dienstwort („die 4. Woche“), `Mio/Mrd/Tsd` ohne Punkt, Dekade/Handvoll/Gros/Schock/Trio/Duo/Quartett |
+| 3 | Löschlauf löschte bei Lese-E/A-Fehler | **E9**: nur erfolgreich Gelesenes, das abgelaufen/beschädigt ist, wird gelöscht; Lesefehler zählt als `fehler` |
+| 4 | Rückbuchung ohne gespeicherte Buchung (negativer Drift) | **Z9**: eine Rückbuchung wird nur geschrieben, wenn alle früheren Ereignisse des Belegs dauerhaft sind; sonst bleibt die Verbrauchsspur stehen (lieber zu viel gezählt) |
+| 5 | `rollupGueltig` zu schwach | **Z8**: bekannte Schlüssel, Datums-/Monatsmuster, Tag gehört zum Monat, ganze Zahlen in Grenzen (±1e7), Betriebsschlüssel 16 Hex, Fundstellen unter `ki:zaehler:ev:`; Abweichung = beschädigt (werfen, nichts ändern) |
+| 6 | Single-Instance | Betriebsvoraussetzung + offene Frage Nr. 25. **Lease-Idee** für einen späteren Mehrprozessbetrieb: ein Schlüssel `ki:zaehler:lease` mit Prozesskennung und Ablaufzeit (Verlängerung alle 10 s unter der Raumsperre); nur der Halter darf Nicht-A-Buchungen annehmen, die anderen antworten `KI_LIMIT`. Nicht gebaut |
+| 7 | Schalter-Takt überlappt, `betriebAktiv` ohne Frist | **G16**: nicht überlappend, eigene Frist (`schalterFristMs`, Vorgabe 1 s) für die Takt-Prüfung **und** für jede Betriebsprüfung im Ablauf; ein hängendes `betriebAktiv` gilt als pausiert (`KI_PAUSIERT`) |
+| 8 | Löschlauf nur nach `schreiben`; `this` | läuft jetzt auch nach `kontextSchreiben`; Closure statt `this` (Funktionen sind aus dem Objekt herausnehmbar) |
+| 9 | Client ohne Anmeldekopf; Auftragskennung | **C5/C6**: `kiClient({ fetchFn, kopf })`, übernommen wird ausschließlich ein gültiger `authorization: Bearer …`-Kopf; Auftragskennung gegen `^[A-Za-z0-9_-]{8,64}$` vor dem Pfadbau. Der Einhängepunkt reicht den Kopf aus `src/speicher.js` durch (dort ist `kopf()` modulprivat — Vorschlag: `export { kopf as authKopf }`, nicht umgesetzt, weil die Datei dem Aufrufer gehört) |
+| 10 | Beschäftigte nur F9 | **O1** verschärft: `KiEntwurf` bekommt `funktion`; Beschäftigte sehen nur `F9`, Leitung/Planung alle, alle anderen nichts |
+
+### Invariante für die spätere Route `/ki` (aus Befund 10)
+Die Oberfläche ist nur ein Anzeigefilter. **Der Server muss durchsetzen**: Rolle `mitarbeiter` darf ausschließlich Funktion `F9` auslösen (so schon in `positivliste.mjs`: `rolleDarf`), Betriebsrat/Betreiber/Schichtverantwortung/Kunde nie; Rolle, Raum und Betrieb stammen aus der Sitzung, nie aus dem Rumpf; der Antwort-Abruf (`/ki/auftrag/<id>`) liefert fremde Kennungen als `KI_NICHT_GEFUNDEN`.

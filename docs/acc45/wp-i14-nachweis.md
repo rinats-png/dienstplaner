@@ -52,3 +52,5 @@ Fristen sind Entwurfswerte (vom Betreiber zu bestätigen). Der Store `centric-ki
 - **E8 Kontext an Betrieb und Rolle gebunden (Befund 7)**: `kontextSchreiben` verlangt `betriebId` und `rolle` und speichert nur den Betriebs-Hash; `kontextLesen` verlangt beides und liefert sonst `null`. Test mit zwei Betrieben im selben Raum.
 - **Fingerprint mit `zeitraum: null` (Befund 12)**: zulässig wie `bezug`; die Gateway-Probe mit F5 (ohne Zeitraum) liefert beim zweiten Aufruf einen Treffer.
 - Tests: `intelligence-gateway-ergebnis.test.js` (31, Erwartungen auf den neuen Vorgabe-Modus angepasst) und `review2`.
+
+- Runde 3 (e6d1fc5): **E9** Der Löschlauf löscht nur erfolgreich Gelesenes, das abgelaufen oder beschädigt ist; ein Lese-E/A-Fehler zählt nur (`fehler`). Das Aufräumen läuft auch nach `kontextSchreiben`, per Closure statt `this`.

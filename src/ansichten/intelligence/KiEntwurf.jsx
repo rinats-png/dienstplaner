@@ -6,7 +6,7 @@
    von fünf Zuständen: leer, laedt, fertig, rueckfall, fehler.
 
    INVARIANTEN
-   O1  Rollensicht: Nur Leitung, Planung und Beschäftigte (für F9) sehen Intelligence-
+   O1  Rollensicht: Leitung und Planung sowie Beschäftigte NUR für F9 (Prop funktion) sehen Intelligence-
        Oberflächen. Betriebsrat, Betreiber, Schichtverantwortung, Kunde und jede unbekannte
        Rolle bekommen NICHTS gerendert (kein Platzhalter, kein Hinweis auf die Funktion).
    O2  Jede fertige Antwort trägt sichtbar die Kennzeichnung „KI-Entwurf“ und „Nicht
@@ -25,6 +25,8 @@ import { KI_TEXTE, kiFehlerText } from "./texte.js";
 import { antwortLesen } from "./ki-client.js";
 
 export const KI_ROLLEN = Object.freeze(["leitung", "planer", "mitarbeiter"]);
+/** O1: Leitung und Planung sehen jede Intelligence-Oberfläche, Beschäftigte NUR die des Hilfe-Assistenten (F9). */
+export const rolleSieht = (rolle, funktion) => rolle === "leitung" || rolle === "planer" || (rolle === "mitarbeiter" && funktion === "F9");
 const PLATZHALTER = /\{\{(person|einheit|objekt|dienst):([A-Za-z0-9_.:-]{1,64})\}\}/g;
 
 const kasten = { border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere", maxWidth: "100%" };
@@ -47,6 +49,7 @@ export function textTeile(text, aufloesen) {
 /**
  * @param {{
  *   rolle: string,
+ *   funktion?: string,        // Beschäftigte sehen nur "F9"; Leitung/Planung jede
  *   zustand?: "leer"|"laedt"|"fertig"|"rueckfall"|"fehler",
  *   antwort?: any,
  *   fehlercode?: string|null,
@@ -55,8 +58,8 @@ export function textTeile(text, aufloesen) {
  *   titel?: string,
  * }} props
  */
-export function KiEntwurf({ rolle, zustand = "leer", antwort, fehlercode = null, aufloesen, bausteinText, titel }) {
-  if (!KI_ROLLEN.includes(rolle)) return null;
+export function KiEntwurf({ rolle, funktion, zustand = "leer", antwort, fehlercode = null, aufloesen, bausteinText, titel }) {
+  if (!rolleSieht(rolle, funktion)) return null;
   const kopf = titel ? <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>{titel}</h3> : null;
 
   if (zustand === "laedt")

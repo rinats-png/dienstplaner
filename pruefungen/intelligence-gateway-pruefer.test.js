@@ -33,7 +33,7 @@ const codes = (r) => (r.ok ? [] : r.codes);
 
 describe("zulässige Antworten", () => {
   it("Text mit Zahlen, Zeiten, Daten, Alias und Kennungen aus dem Paket", () => {
-    const r = text("P_BCDFGHJK hatte am 2026-11-04 eine Ruhezeit von 660 Minuten; Beginn 06:00, Saldo 3,5 Stunden, Regel ruhezeitGesetz (§ 5), Stufe achtung.");
+    const r = text("P_BCDFGHJK hatte am 2026-11-04 eine Ruhezeit von 660 Minuten; Beginn 06:00, Saldo -3,5 Stunden, Regel ruhezeitGesetz (§ 5), Stufe achtung.");
     expect(r).toMatchObject({ ok: true });
     expect(r.ergebnis.text).toContain("660");
   });
@@ -130,7 +130,7 @@ describe("P-02 Zahlen, Zeiten, Daten, Kennungen müssen aus dem Paket stammen", 
       expect(codes(text(t)), JSON.stringify(t)).toContain("P-02");
   });
   it("Zahlen, die im Paket stehen, bleiben in den erlaubten Schreibweisen zulässig", () => {
-    for (const t of ["ruhezeit.ist 660.", "Ruhezeit 660 Minuten.", "konto.saldo 3,5 und 3.5 Stunden.", "Beginn 06:00 Uhr.", "Regel ruhezeitGesetz, § 5, Stufe achtung."]) expect(ok(text(t)), t).toBe(true);
+    for (const t of ["ruhezeit.ist 660.", "Ruhezeit 660 Minuten.", "konto.saldo -3,5 Stunden.", "Beginn 06:00 Uhr.", "Regel ruhezeitGesetz, § 5, Stufe achtung."]) expect(ok(text(t)), t).toBe(true);
     /* P8: eine Zahl mit Einheit im Paket steht nie nackt */
     for (const t of ["Ruhezeit 660.", "Alter 660.", "Saldo 3,5 und 3.5."]) expect(codes(text(t)), t).toContain("P-02");
   });

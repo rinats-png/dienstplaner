@@ -14,12 +14,18 @@
        Kennzeichnung geprüft: ohne kiGestuetzt/entwurf/nicht veröffentlicht/geprüft
        wird sie nicht als Ergebnis behandelt (Zustand „fehler“).
    C3  Der Client schreibt nichts in console.*; Fakten und Antworten bleiben im Zustand.
+   C5  Die Auftragskennung wird gegen ^[A-Za-z0-9_-]{8,64}$ geprüft, bevor sie in einen Pfad kommt.
+   C6  Der Bearer-Kopf der Sitzung wird mitgesendet (Einhängepunkt reicht kopf aus src/speicher.js durch); sonst nichts.
    C4  Abfragen sind zeitlich begrenzt (Gesamtfrist 130 s > Deadline 120 s des Servers).
    ========================================================================== */
 import { pruefeAntwort } from "../../../server/lib/intelligence/schemas.mjs";
 
 export const KI_BASIS = "/ki";
-export const KI_PFADE = Object.freeze({ anfrage: `${KI_BASIS}/anfrage`, auftrag: (id) => `${KI_BASIS}/auftrag/${encodeURIComponent(id)}` });
+export const AUFTRAG_ID_MUSTER = /^[A-Za-z0-9_-]{8,64}$/;
+export const KI_PFADE = Object.freeze({ anfrage: `${KI_BASIS}/anfrage`, auftrag: (id) => {
+  if (typeof id !== "string" || !AUFTRAG_ID_MUSTER.test(id)) throw new Error("kiClient: Auftragskennung ungültig");   // C5: keine Pfadspiele
+  return `${KI_BASIS}/auftrag/${id}`;
+} });
 export const ABFRAGE_FRIST_MS = 130_000;
 export const ABFRAGE_TAKT_MS = 1_500;
 
@@ -43,13 +49,17 @@ export function antwortLesen(json) {
 
 /**
  * @param {{ fetchFn: (url: string, init?: any) => Promise<{ status: number, json: () => Promise<any> }>,
+ *   kopf?: () => Record<string, string>,        // Anmeldekopf wie src/speicher.js (authorization: Bearer …); nur dieser Schlüssel wird übernommen
  *   schlafen?: (ms: number) => Promise<void>, jetzt?: () => number }} o
  */
-export function kiClient({ fetchFn, schlafen = (ms) => new Promise((r) => setTimeout(r, ms)), jetzt = () => Date.now() }) {
+export function kiClient({ fetchFn, kopf = () => ({}), schlafen = (ms) => new Promise((r) => setTimeout(r, ms)), jetzt = () => Date.now() }) {
   if (typeof fetchFn !== "function") throw new Error("kiClient: fetchFn fehlt");
   const rufen = async (pfad, init) => {
     if (typeof pfad !== "string" || !pfad.startsWith(`${KI_BASIS}/`)) throw new Error("kiClient: Pfad außerhalb von /ki");
-    return fetchFn(pfad, { credentials: "same-origin", ...init });
+    /* C6: die Anfrage trägt den Bearer-Kopf der Sitzung (wie /api/*); übernommen wird ausschließlich "authorization". */
+    let k = {};
+    try { const roh = kopf() || {}; if (typeof roh.authorization === "string" && /^Bearer [A-Za-z0-9._~+/=-]{8,512}$/.test(roh.authorization)) k = { authorization: roh.authorization }; } catch { k = {}; }
+    return fetchFn(pfad, { credentials: "same-origin", ...init, headers: { ...(init && init.headers), ...k } });
   };
   const lesen = async (res) => { try { return await res.json(); } catch { return null; } };
 

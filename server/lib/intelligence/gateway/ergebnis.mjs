@@ -32,6 +32,7 @@
    E7  Aufbewahrung wird durchgesetzt: Vorgabe-Modus „an“ nur für ki:erg/ki:ktx; beim Schreiben läuft höchstens stündlich ein
        Löschlauf nebenbei. Das Gateway verweigert den Start mit einem Modus ungleich „an“.
    E8  Der Decision Context ist an Raum, Betrieb (Hash) und Rolle gebunden; beim Lesen müssen alle passen.
+   E9  Der Löschlauf löscht nur erfolgreich Gelesenes, das abgelaufen oder beschädigt ist; ein E/A-Fehler zählt, löscht nie.
    E5  Speicherfehler brechen nie einen Vorgang: Lesefehler = Fehlschlag, Schreibfehler werden verschluckt.
    ========================================================================== */
 
@@ -113,6 +114,36 @@ export function erzeugeErgebnisSpeicher(o) {
     try { return await store.get(schluessel, { type: "json" }); } catch { return null; }
   };
 
+  /**
+   * Löschlauf (E4). Vorschau-Modus: meldet nur. Gelöscht wird NUR, was erfolgreich gelesen wurde und abgelaufen oder
+   * beschädigt ist (E9); ein E/A-Fehler beim Lesen wird gezählt und löscht nichts.
+   * @returns {Promise<{ modus: string, geprueft: number, faellig: number, geloescht: number, fehler: number }>}
+   */
+  async function aufraeumenLauf() {
+    const bericht = { modus, geprueft: 0, faellig: 0, geloescht: 0, fehler: 0 };
+    if (modus === "aus") return bericht;
+    for (const prefix of ["ki:erg:", "ki:ktx:"]) {
+      let liste;
+      try { liste = await store.list({ prefix }); } catch { bericht.fehler++; continue; }
+      for (const b of (liste && liste.blobs) || []) {
+        bericht.geprueft++;
+        let e;
+        try { e = await store.get(b.key, { type: "json" }); } catch { bericht.fehler++; continue; }
+        if (e === null || e === undefined) continue;                                   // verschwunden: nichts zu tun
+        const faellig = typeof e !== "object" || !Number.isFinite(e.ablauf) || e.ablauf <= jetzt();
+        if (!faellig) continue;
+        bericht.faellig++;
+        if (modus !== "an") continue;
+        try { await store.delete(b.key); bericht.geloescht++; } catch { bericht.fehler++; }
+      }
+    }
+    return bericht;
+  }
+  /** E7: Fristen ohne Planer — höchstens einmal je Stunde wird nebenbei aufgeräumt (nur ki:erg/ki:ktx), nach JEDEM Schreiben. */
+  const nebenbei = (t) => {
+    if (modus === "an" && t - letzterLauf > 3600_000) { letzterLauf = t; aufraeumenLauf().catch(() => {}); }
+  };
+
   return Object.freeze({
     fristen: Object.freeze({ ergebnisTage: tage.ergebnis, kontextTage: tage.kontext }),
     modus,
@@ -136,7 +167,7 @@ export function erzeugeErgebnisSpeicher(o) {
         await store.setJSON(ergebnisSchluessel(raum, fingerprint), { v: ERGEBNIS_VERSION, art: "erg", raum, fingerprint,
           funktion: String(funktion), erzeugt: t, ablauf: t + tage.ergebnis * TAG_MS, ergebnis: structuredClone(ergebnis) });
         /* E7: Fristen ohne Planer — höchstens einmal je Stunde wird beim Schreiben nebenbei aufgeräumt (nur ki:erg/ki:ktx). */
-        if (modus === "an" && t - letzterLauf > 3600_000) { letzterLauf = t; this.aufraeumen().catch(() => {}); }
+        nebenbei(t);
         return true;
       } catch { return false; }
     },
@@ -158,6 +189,7 @@ export function erzeugeErgebnisSpeicher(o) {
           fingerprint: String(fingerprint), versionen: structuredClone(versionen || {}), stufen: (stufen || []).filter(Number.isInteger).slice(0, 3),
           pruefCodes: (pruefCodes || []).filter((c) => /^P-\d{2}$/.test(String(c))).slice(0, 12), treffer: treffer === true,
           ...ev, erzeugt: t, ablauf: t + tage.kontext * TAG_MS });
+        nebenbei(t);
         return ctxId;
       } catch { return null; }
     },
@@ -172,28 +204,7 @@ export function erzeugeErgebnisSpeicher(o) {
       return e;
     },
 
-    /**
-     * Löschlauf (E4). Vorschau-Modus: meldet nur. Beschädigte oder abgelaufene Einträge sind fällig.
-     * @returns {Promise<{ modus: string, geprueft: number, faellig: number, geloescht: number, fehler: number }>}
-     */
-    async aufraeumen() {
-      const bericht = { modus, geprueft: 0, faellig: 0, geloescht: 0, fehler: 0 };
-      if (modus === "aus") return bericht;
-      for (const prefix of ["ki:erg:", "ki:ktx:"]) {
-        let liste;
-        try { liste = await store.list({ prefix }); } catch { bericht.fehler++; continue; }
-        for (const b of (liste && liste.blobs) || []) {
-          bericht.geprueft++;
-          const e = await lesenRoh(b.key);
-          const faellig = !e || typeof e !== "object" || !Number.isFinite(e.ablauf) || e.ablauf <= jetzt();
-          if (!faellig) continue;
-          bericht.faellig++;
-          if (modus !== "an") continue;
-          try { await store.delete(b.key); bericht.geloescht++; } catch { bericht.fehler++; }
-        }
-      }
-      return bericht;
-    },
+    aufraeumen: () => aufraeumenLauf(),
 
     /** Raumlöschung (Art. 17): alle ki:*-Einträge dieses Raums. Unabhängig vom Modus, weil ausdrücklich verlangt. */
     async raumLoeschen(raum) {

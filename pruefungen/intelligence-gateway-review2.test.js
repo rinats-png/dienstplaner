@@ -141,7 +141,7 @@ describe("Befunde 4–6: Prüfer", () => {
   it("5 unbekannte Einheiten und nackte Zahlen: Sekunden, Wochen, Euro, Jahre, „Alter 660“ werden abgelehnt", () => {
     REJ(["660 Sekunden", "660 Wochen", "660 Euro", "660 Jahre", "660 Monate", "Alter 660", "Tel 660 3,5", "P_BCDFGHJK ist 3,5 Jahre alt", "660 Dienste", "Ruhezeit 660.",
       "660 Tage", "3,5 Minuten", "3,5 Personen", "ein Jahr", "eine Woche", "eine Stunde", "einen Tag", "Mrd.", "Tsd.", "Mio."]);
-    OK(["660 Minuten", "ruhezeit.ist 660", "Saldo 3,5 Stunden", "konto.saldo 3,5 und ruhezeit.ist 660", "Ruhezeit von 660 Minuten. Saldo 3,5 Stunden pro Tag"], -3.5);
+    OK(["660 Minuten", "ruhezeit.ist 660", "Saldo -3,5 Stunden", "konto.saldo -3,5 und ruhezeit.ist 660", "Ruhezeit von 660 Minuten. Saldo -3,5 Stunden"], -3.5);
   });
   it("6 Zahlverkleidungen: zweieinhalb, anderthalb, zwanzigjährig, Zwanzigern, zweistellig, 3,5-fach, 660-mal, 3,5 x, × 3,5, kleine römische Ziffern", () => {
     REJ(["zweieinhalb Stunden", "anderthalb Stunden", "eineinhalb Stunden", "dritthalb Stunden", "zwanzigjährig", "in den Zwanzigern", "Zwanzigerjahre", "zweistellig",

@@ -81,10 +81,13 @@ describe("fünf Zustände", () => {
 });
 
 describe("O1 Rollensicht", () => {
-  it("nur Leitung, Planung, Beschäftigte sehen etwas", async () => {
+  it("Leitung und Planung sehen jede Funktion, Beschäftigte nur F9, alle anderen nichts", async () => {
     expect(KI_ROLLEN).toEqual(["leitung", "planer", "mitarbeiter"]);
     const r = await echteAntwort();
-    for (const rolle of KI_ROLLEN) expect(html({ rolle, zustand: "fertig", antwort: r })).toContain("KI-Entwurf");
+    for (const rolle of ["leitung", "planer"]) for (const funktion of [undefined, "F1", "F2", "F9"]) expect(html({ rolle, funktion, zustand: "fertig", antwort: r })).toContain("KI-Entwurf");
+    expect(html({ rolle: "mitarbeiter", funktion: "F9", zustand: "fertig", antwort: r })).toContain("KI-Entwurf");
+    for (const funktion of [undefined, "F1", "F2", "F3", "F5", "F4", "f9", "F9 ", 9, null]) for (const zustand of ["leer", "laedt", "fertig", "rueckfall", "fehler"])
+      expect(html({ rolle: "mitarbeiter", funktion, zustand, antwort: r, fehlercode: "KI_AUS" }), `mitarbeiter/${funktion}/${zustand}`).toBe("");
     for (const rolle of ["betriebsrat", "betreiber", "subplaner", "kunde", "admin", "", undefined, null, 5, "__proto__"])
       for (const zustand of ["leer", "laedt", "fertig", "rueckfall", "fehler"])
         expect(html({ rolle, zustand, antwort: r, fehlercode: "KI_AUS" }), `${rolle}/${zustand}`).toBe("");
@@ -163,8 +166,9 @@ describe("Client: nur /ki, Antwort wird geprüft", () => {
 
   it("C1 alle Aufrufe gehen an Pfade unter /ki, same-origin, ohne absolute Adresse", async () => {
     const log = [];
-    const c = kiClient({ fetchFn: fetchMit([{ status: 200, body: await antwortJson("ok") }], log) });
+    const c = kiClient({ fetchFn: fetchMit([{ status: 200, body: await antwortJson("ok") }], log), kopf: () => ({ authorization: "Bearer abcdef0123456789", "x-fremd": "1" }) });
     const r = await c.anfragen(anf);
+    expect(log[0].init.headers).toEqual({ "content-type": "application/json", authorization: "Bearer abcdef0123456789" });   // C6, nur dieser Kopf
     expect(r.zustand).toBe("fertig");
     expect(log.map((l) => l.url)).toEqual([KI_PFADE.anfrage]);
     expect(log[0].url.startsWith("/ki/")).toBe(true);
@@ -177,7 +181,7 @@ describe("Client: nur /ki, Antwort wird geprüft", () => {
     const c = kiClient({ fetchFn: fetchMit([{ status: 202, body: wartet }, { status: 200, body: { ...wartet, status: "laeuft" } }, { status: 200, body: fertig }], log), schlafen: async () => {} });
     expect((await c.anfragen(anf)).zustand).toBe("fertig");
     expect(log.map((l) => l.url)).toEqual([KI_PFADE.anfrage, KI_PFADE.auftrag("abcdef_12345"), KI_PFADE.auftrag("abcdef_12345")]);
-    expect(KI_PFADE.auftrag("a/b c")).toBe("/ki/auftrag/a%2Fb%20c");
+    expect(() => KI_PFADE.auftrag("a/b c")).toThrow();
   });
   it("C4 Gesamtfrist: bleibt der Auftrag liegen, endet die Abfrage mit fehler", async () => {
     const fertig = await antwortJson("ok"); let t = 0;
@@ -199,6 +203,21 @@ describe("Client: nur /ki, Antwort wird geprüft", () => {
       { ...r, kennzeichnung: undefined }, { ...r, status: "dienstplan" }, { plan: {} }, null, "x", 5])
       expect((await kiClient({ fetchFn: fetchMit([{ status: 200, body: b }]) }).anfragen(anf)).zustand, JSON.stringify(b)).toBe("fehler");
     expect(antwortLesen(r).zustand).toBe("fertig");
+  });
+  it("C6 ungültiger Anmeldekopf wird nicht gesendet; C5 ungültige Auftragskennung erzeugt keinen Pfad", async () => {
+    for (const k of [() => ({ authorization: "Basic abc" }), () => ({ authorization: "Bearer x" }), () => ({ authorization: "Bearer a b c d e f g h" }), () => { throw new Error("x"); }, () => null]) {
+      const log = [];
+      await kiClient({ fetchFn: fetchMit([{ status: 200, body: await antwortJson("ok") }], log), kopf: k }).anfragen(anf);
+      expect(log[0].init.headers.authorization).toBeUndefined();
+    }
+    for (const id of ["../etc", "a/b", "kurz", "x".repeat(65), "abc def12", "%2e%2e%2f%2e%2e", 5, null, undefined]) expect(() => KI_PFADE.auftrag(id), String(id)).toThrow();
+    expect(KI_PFADE.auftrag("abcdef_12345")).toBe("/ki/auftrag/abcdef_12345");
+    /* eine Antwort mit gefährlicher auftragId kommt schon am Antwortschema nicht vorbei (fehler statt Pfad) */
+    const fertig = await antwortJson("ok");
+    const boese = { status: "wartet", auftragId: "../../api/x", kennzeichnung: fertig.kennzeichnung };
+    const log = [];
+    expect((await kiClient({ fetchFn: fetchMit([{ status: 202, body: boese }], log), schlafen: async () => {} }).anfragen(anf)).zustand).toBe("fehler");
+    expect(log.length).toBe(1);
   });
   it("ohne fetchFn kein Client; ein Pfad außerhalb /ki kann nicht aufgerufen werden", () => {
     expect(() => kiClient({})).toThrow();
