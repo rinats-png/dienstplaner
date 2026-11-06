@@ -14,7 +14,7 @@ export const SCHALTER_UMGEBUNGSVARIABLE = "CENTRIC" + "_KI_MODUS";
 
 /** "an" nur bei genau diesem Wert; sonst "aus". */
 export function modusAusUmgebung(env) {
-  return env && typeof env === "object" && env[SCHALTER_UMGEBUNGSVARIABLE] === "an" ? "an" : "aus";
+  return env && typeof env === "object" && Object.hasOwn(env, SCHALTER_UMGEBUNGSVARIABLE) && env[SCHALTER_UMGEBUNGSVARIABLE] === "an" ? "an" : "aus";
 }
 
 /** Liest einen Schalter streng: nur der String "an" zählt. */

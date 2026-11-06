@@ -29,8 +29,9 @@ export const LIVE_SCHLUESSEL_NAME = "CENTRIC" + "_KI_ANBIETER_SCHLUESSEL";
  */
 export function erzeugeLiveAnbieter(o = {}) {
   const env = o.env && typeof o.env === "object" ? o.env : {};
-  const schlussDa = typeof env[LIVE_SCHLUESSEL_NAME] === "string" && env[LIVE_SCHLUESSEL_NAME].length >= 20;
-  const schalterAn = env[LIVE_SCHALTER_NAME] === "ja";
+  const eigen = (n) => (Object.hasOwn(env, n) ? env[n] : undefined);   // nie über die Prototypkette (Prototype Pollution)
+  const schlussDa = typeof eigen(LIVE_SCHLUESSEL_NAME) === "string" && eigen(LIVE_SCHLUESSEL_NAME).length >= 20;
+  const schalterAn = eigen(LIVE_SCHALTER_NAME) === "ja";
   const freigabeGesetzt = schlussDa && schalterAn;
   return Object.freeze({
     id: "live-stumpf",

@@ -27,6 +27,8 @@
        Alias-Karte — nur Paket und bereinigten, gekapselten Fremdtext.
    A3  Fehlertexte eines Adapters werden NIE weitergereicht (sie könnten
        Eingabedaten oder Schlüssel enthalten); das Gateway kennt nur die Klasse.
+   A5  Ein Adapter, der Frist/Abbruch überlebt, wird weiter verfolgt (ausstehend); sein Platz im Betrieb
+       wird erst frei, wenn er wirklich endet (limits.abschliessen mit spaeter).
    A4  Jeder Aufruf hat eine Frist und ein AbortSignal; ein Adapter, der das
        Signal ignoriert, blockiert das Gateway trotzdem nicht (Promise.race).
    ========================================================================== */
@@ -71,7 +73,7 @@ export function nutzungBereinigen(n) {
   return { eingabeToken: zahlOderNull(o.eingabeToken), ausgabeToken: zahlOderNull(o.ausgabeToken) };
 }
 
-function einmal(anbieter, eingabe, ms) {
+function einmal(anbieter, eingabe, ms, ausstehend) {
   const ctrl = new AbortController();
   let timer;
   const frist = new Promise((_, nein) => {
@@ -84,6 +86,12 @@ function einmal(anbieter, eingabe, ms) {
   } catch (e) {
     lauf = Promise.reject(e);
   }
+  /* A5: auch nach Frist/Abbruch merken, ob der Adapter wirklich noch läuft. */
+  if (Array.isArray(ausstehend)) {
+    const x = { fertig: false, p: null };
+    x.p = lauf.then(() => { x.fertig = true; }, () => { x.fertig = true; });
+    ausstehend.push(x);
+  }
   return Promise.race([lauf, frist]).finally(() => clearTimeout(timer));
 }
 
@@ -92,7 +100,8 @@ function einmal(anbieter, eingabe, ms) {
  * Wiederholt wird nur bei `begrenzt`/`nicht_verfuegbar`, höchstens
  * `maxWiederholungen` Mal und nur, wenn bis zur Deadline noch `minRestMs` bleiben.
  * @param {{ anbieter: any, eingabe: object, zeitJeVersuchMs: number, maxWiederholungen: number, deadline: number,
- *   minRestMs?: number, jetzt: () => number, schlafen: (ms: number) => Promise<void> }} o
+ *   minRestMs?: number, jetzt: () => number, schlafen: (ms: number) => Promise<void>,
+ *   vorVersuch?: () => Promise<void>|void, ausstehend?: { fertig: boolean, p: Promise<void> }[] }} o
  * @returns {Promise<{ ausgabe: unknown, nutzung: { eingabeToken: number|null, ausgabeToken: number|null }, versuche: number }>}
  */
 export async function aufrufen(o) {
@@ -104,8 +113,10 @@ export async function aufrufen(o) {
     versuch++;
     const rest = deadline - jetzt();
     if (rest <= 0) throw new AnbieterFehler("zeit", "Frist");
+    /* Vor JEDEM Versuch (nicht nur dem ersten): der Aufrufer prüft Schalter/Pause; seine Ausnahme geht unverändert nach oben. */
+    if (typeof o.vorVersuch === "function") await o.vorVersuch();
     try {
-      const r = await einmal(anbieter, kopie, Math.min(zeitJeVersuchMs, rest));
+      const r = await einmal(anbieter, kopie, Math.min(zeitJeVersuchMs, rest), o.ausstehend);
       if (!r || typeof r !== "object") throw new AnbieterFehler("ungueltig", "leer");
       return { ausgabe: r.ausgabe, nutzung: nutzungBereinigen(r.nutzung), versuche: versuch };
     } catch (e) {

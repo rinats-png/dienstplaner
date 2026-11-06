@@ -16,6 +16,8 @@
    U1  Weißliste, kein Durchreichen: das Ergebnis ist ein neues, eingefrorenes Objekt.
    U2  Das START-Ereignis ist Pflicht: schlägt seine Aufzeichnung fehl, findet KEIN
        Anbieteraufruf statt (kein unprotokollierter Aufruf).
+   U4  Das Pflichtereignis muss alle Pflichtfelder tragen (art, funktion, rolle, auftrag, betrieb, anbieter);
+       fehlt eines nach der Weißliste, gilt es als nicht aufgezeichnet (KI_AUDIT, kein Anbieteraufruf).
    U3  Spätere Ereignisse stören den Vorgang nie (Fehler der Senke werden verschluckt
        und gezählt).
    ========================================================================== */
@@ -51,6 +53,9 @@ const FELDER = {
   codes: (v) => Array.isArray(v) && v.length <= 12 && v.every(muster(/^P-\d{2}$/)),
 };
 
+/** Pflichtfelder je Pflichtereignis (U4). */
+const PFLICHTFELDER = { "ki.start": ["art", "funktion", "rolle", "auftrag", "betrieb", "anbieter"] };
+
 /** Opaker Betriebsbezeichner fürs Protokoll (kein Raum, keine Betriebskennung im Klartext). */
 export const betriebKennung = (raum, betriebId) =>
   createHash("sha256").update(`centric-ki-audit|${raum}|${betriebId}`).digest("hex").slice(0, 12);
@@ -79,7 +84,12 @@ export function erzeugeAudit(o = {}) {
     /** Pflichtereignis (U2): wirft KI_AUDIT, wenn nicht aufgezeichnet. */
     pflicht(e) {
       if (typeof senke !== "function") throw new GatewayFehler("KI_AUDIT", "Kein Protokoll.");
-      try { senke(ereignisBereinigen(e, jetzt())); } catch { senkenFehler++; throw new GatewayFehler("KI_AUDIT", "Protokoll nicht verfügbar."); }
+      const b = ereignisBereinigen(e, jetzt());
+      /* U4: ein Pflichtereignis ohne seine Pflichtfelder (verworfen wegen ungültigem Wert) zählt als nicht aufgezeichnet. */
+      const pflichtfelder = PFLICHTFELDER[b.art];
+      if (!pflichtfelder || !pflichtfelder.every((k) => Object.prototype.hasOwnProperty.call(b, k)))
+        throw new GatewayFehler("KI_AUDIT", "Protokollereignis unvollständig.");
+      try { senke(b); } catch { senkenFehler++; throw new GatewayFehler("KI_AUDIT", "Protokoll nicht verfügbar."); }
     },
     /** Hinweisereignis (U3): stört nie. */
     melden(e) {

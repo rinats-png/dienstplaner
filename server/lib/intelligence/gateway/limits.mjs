@@ -27,6 +27,10 @@
        (Notbremse bei Zählfehler).
    B5  Zähler je Person liegen nur im Speicher, ohne Klarnamen (Schlüssel = Hash),
        und werden nicht ausgegeben (kein Personenreport).
+   B7  Ab dem ersten tatsächlichen Anbieteraufruf gilt die Aktion als verbraucht (auch bei Zeitüberschreitung/
+       Fehler): keine Rückbuchung, auch nicht beim harten Tagesdach. Zurück gehen die IE nur, wenn nie ein
+       Aufruf stattfand (Abbruch vor dem Anbieter).
+   B8  Ein Adapter, der Frist/Abbruch überlebt, hält seinen Platz (laufend), bis er wirklich endet, höchstens haltenMaxMs.
    B6  Zeitfehler (NaN, rückwärtslaufende Uhr) sperren (fail closed).
    ========================================================================== */
 
@@ -67,6 +71,7 @@ export class Limits {
    *   tageslimitAnteil?: number,
    *   parallelJeBetrieb?: number,
    *   gleicheAnfrageJe10Min?: number,
+   *   haltenMaxMs?: number,
    * }} k
    */
   constructor(k) {
@@ -86,6 +91,7 @@ export class Limits {
       tageslimitAnteil: k.tageslimitAnteil ?? 0.25,
       parallelJeBetrieb: k.parallelJeBetrieb ?? 2,
       gleicheAnfrageJe10Min: k.gleicheAnfrageJe10Min ?? 5,
+      haltenMaxMs: k.haltenMaxMs ?? 300_000,
     };
     this.person = new Map();
     this.gleich = new Map();
@@ -215,12 +221,21 @@ export class Limits {
   }
 
   /** Vorgang beendet. `verbraucht=false`: der Anbieter hat nichts geliefert → die IE gehen zurück. */
-  abschliessen(beleg, { verbraucht }) {
+  abschliessen(beleg, { verbraucht, spaeter }) {
     if (!beleg || beleg.offen !== true) return;
     beleg.offen = false;
     const s = this.betrieb.get(beleg.bKey);
     if (!s) return;
-    s.laufend = Math.max(0, s.laufend - 1);
+    /* B8: Läuft ein Adapter nach Frist/Abbruch noch (spaeter), bleibt sein Platz belegt, bis er wirklich
+       endet — höchstens haltenMaxMs (danach gilt er als verloren, sonst blockierte er den Betrieb für immer). */
+    const freigeben = () => { s.laufend = Math.max(0, s.laufend - 1); };
+    if (spaeter && typeof spaeter.then === "function") {
+      let frei = false;
+      const einmalFrei = () => { if (!frei) { frei = true; freigeben(); } };
+      spaeter.then(einmalFrei, einmalFrei);
+      const t = setTimeout(einmalFrei, this.k.haltenMaxMs);
+      if (t.unref) t.unref();
+    } else freigeben();
     if (!verbraucht) {
       if (s.monat === beleg.monat) s.ieMonat = Math.max(0, s.ieMonat - beleg.ie);
       if (s.tag === beleg.tag) {

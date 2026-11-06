@@ -109,6 +109,29 @@ describe("P-02 Zahlen, Zeiten, Daten, Kennungen müssen aus dem Paket stammen", 
       expect(codes(text(t)), t).toContain("P-02");
     expect(ok(text("Eine Person fehlt. Stufe achtung."))).toBe(true);
   });
+  it("Mengenwörter: halb, Dutzend, Viertel, Paar, Hälfte, -fach, Bruchteile", () => {
+    for (const t of ["Nach einer halben Stunde.", "Ein halbes Dutzend Dienste.", "Ein Viertel der Schichten fehlt.", "Drei Viertel fehlen.", "Ein paar Tage.",
+      "Die Hälfte fehlt.", "Eine Dreiviertelstunde.", "Doppelt besetzt.", "Verdoppelt sich.", "Mehrfach verletzt.", "Zweifach besetzt.", "Dutzende Meldungen.",
+      "Ein Drittel.", "Einmal pro Woche.", "Mehrere Personen.", "Tausende.", "Eins."])
+      expect(codes(text(t)), t).toContain("P-02");
+  });
+  it("Ordnungszahlen: zweite, dritte, vierte … (der dritte Tag)", () => {
+    for (const t of ["Am dritten Tag.", "Die zweite Schicht.", "Zum vierten Mal.", "Der fünfte Dienst.", "Im zwölften Monat."]) expect(codes(text(t)), t).toContain("P-02");
+  });
+  it("römische Ziffern (auch als Aufzählung)", () => {
+    for (const t of ["Schicht II beginnt.", "Block IV.", "Stufe XII.", "Phase MMXXVI.", "Abschnitt VIII", "Teil CD"]) expect(codes(text(t)), t).toContain("P-02");
+  });
+  it("Bruchschreibweise, Tausendertrenner, Exponent und Einheit direkt an der Ziffer", () => {
+    for (const t of ["1/2 Stunde.", "3 / 4 der Schichten.", "Dauer 660/60.", "1.000 Minuten.", "1,000 Minuten.", "12.345,6", "Wert 1e3.", "5k Minuten", "3x besetzt", "660min", "50%"])
+      expect(codes(text(t)), t).toContain("P-02");
+  });
+  it("Ziffern anderer Schriften, Bruch- und Hochzahlzeichen", () => {
+    for (const t of ["Wert １２.", "Wert ٣.", "Wert ६६०.", "½ Stunde.", "¾ der Zeit.", "m².", "Ⅻ Uhr.", "① Schritt", "⑳ Stufen", "Wert 660⁵"])
+      expect(codes(text(t)), JSON.stringify(t)).toContain("P-02");
+  });
+  it("Zahlen, die im Paket stehen, bleiben in den erlaubten Schreibweisen zulässig", () => {
+    for (const t of ["Ruhezeit 660.", "Ruhezeit 660 Minuten.", "Saldo 3,5 und 3.5.", "Beginn 06:00 Uhr.", "Regel ruhezeitGesetz, § 5, Stufe achtung."]) expect(ok(text(t)), t).toBe(true);
+  });
   it("fremde Uhrzeit und fremdes Datum", () => {
     for (const t of ["Beginn 07:00.", "Am 2026-12-24 frei.", "Ende 24:00.", "Am 2026-11-05 frei."]) expect(codes(text(t)), t).toContain("P-02");
   });

@@ -209,7 +209,7 @@ describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzba
     expect(t.anbieter.aufrufe.length).toBe(3 * 3); // F2: Stufen 1,2,3 × (1 + 2 Wiederholungen)
     expect(JSON.stringify(r)).not.toMatch(/Weberknecht|Anna/);
     expect(JSON.stringify(t.ereignisse)).not.toMatch(/Weberknecht|Anna|simuliert/);
-    expect(t.limits.stand("raum-a|0").ieMonat).toBe(0);   // nichts geliefert → nichts berechnet
+    expect(t.limits.stand("raum-a|0").ieMonat).toBe(1);   // B7: ab dem ersten Anbieteraufruf verbraucht, keine Rückbuchung
     expect(t.limits.stand("raum-a|0").laufend).toBe(0);
   });
   it("429 wird wie Netzfehler behandelt", async () => {

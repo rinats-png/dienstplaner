@@ -18,6 +18,17 @@ const INTEL = path.join(WURZEL, "server/lib/intelligence");
 const ohneKommentare = (q) => q.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/([^:\\])\/\/.*$/gm, "$1");
 const lies = (p) => ohneKommentare(readFileSync(p, "utf8"));
 const gwDateien = readdirSync(GW).filter((f) => f.endsWith(".mjs"));
+/* Netz, Kindprozess, Dateizugriff, dynamischer Code — auch verschleiert: kein Zugriff über globalThis/window/self/global
+   mit Klammern oder .fetch, kein Function(…), kein „fe“ + „tch“, kein process[…]/binding/dlopen. */
+const NETZ_UND_AUSBRUCH = new RegExp([
+  String.raw`\bfetch\s*\(`, "node:https?", "node:http2", String.raw`node:net\b`, "node:tls", "node:dgram", "node:dns", "node:child_process",
+  "node:worker_threads", "node:fs", "node:vm", "XMLHttpRequest", "WebSocket", "EventSource", String.raw`\bnew\s+Worker\b`, String.raw`\bimport\s*\(`,
+  String.raw`\brequire\s*\(`, String.raw`\beval\s*\(`, String.raw`\bnew\s+Function\b`, String.raw`(?<![.\w])Function\s*\(`,
+  String.raw`\b(?:globalThis|window|self|global)\s*(?:\[|\.\s*(?:fetch|process|require|XMLHttpRequest|WebSocket))`,
+  String.raw`\b(?:globalThis|window|self|global)\b\s*[,;)]`, String.raw`Reflect\.\w+\s*\(\s*(?:globalThis|window|self|global)`,
+  String.raw`["']fe["']\s*\+`, String.raw`\+\s*["']tch["']`, String.raw`["']fetch["']`, String.raw`process\s*\[`, String.raw`process\.(?:binding|dlopen|mainModule)`,
+  String.raw`navigator\.sendBeacon`, String.raw`\.constructor\b`,
+].join("|"));
 
 describe("Gateway-Dateien", () => {
   it("die erwarteten Dateien sind da", () => {
@@ -27,8 +38,15 @@ describe("Gateway-Dateien", () => {
   it("kein Netz, kein Kindprozess, kein Dateizugriff, keine Netzbibliothek (auch nicht im Live-Stumpf)", () => {
     for (const f of gwDateien) {
       const q = lies(path.join(GW, f));
-      expect(q, f).not.toMatch(/\bfetch\s*\(|node:https?|node:http2|node:net\b|node:tls|node:dgram|node:dns|node:child_process|node:worker_threads|node:fs|node:vm|XMLHttpRequest|WebSocket|EventSource|\bimport\s*\(|\brequire\s*\(|\beval\s*\(|new\s+Function/);
+      expect(q, f).not.toMatch(NETZ_UND_AUSBRUCH);
     }
+  });
+  it("die Erkennung greift auch bei verschleierten Zugriffen (globalThis['fe'+'tch'], Function(...), process[...])", () => {
+    for (const probe of ["globalThis['fe'+'tch']('x')", "globalThis [ 'fetch' ]", "const g = globalThis; g['fe' + 'tch']", "window['fetch']", "self[\"fetch\"]",
+      "global['fetch']", "Reflect.get(globalThis, 'fetch')", "Function('return fetch')()", "const f = 'fe' + 'tch'", "x + 'tch'", "process['binding']('tcp_wrap')",
+      "process.binding('x')", "process.dlopen(m)", "new Function('x')", "fetch ('x')", "import('node:net')", "require('net')", "Object.getOwnPropertyDescriptor(globalThis, 'fetch')",
+      "globalThis.fetch", "navigator.sendBeacon('x')", "new Worker('x')", "new EventSource('x')", "structuredClone.constructor"])
+      expect(NETZ_UND_AUSBRUCH.test(probe), probe).toBe(true);
   });
   it("keine Umgebungsvariable (L3): Umgebung kommt nur als Argument von außen", () => {
     for (const f of gwDateien) expect(lies(path.join(GW, f)), f).not.toMatch(/process\.env|process\s*\[\s*["']env|import\.meta\.env|Deno\.env/);

@@ -63,8 +63,14 @@ const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, max
 const schlafenVorgabe = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
 const zufallIdVorgabe = () => randomBytes(12).toString("base64url");
 
+/** Kanonische Serialisierung: Schlüssel sortiert, damit dieselbe Anfrage immer denselben Text ergibt. */
+export function kanonisch(w) {
+  if (Array.isArray(w)) return `[${w.map(kanonisch).join(",")}]`;
+  if (w && typeof w === "object") return `{${Object.keys(w).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(w[k])}`).join(",")}}`;
+  return JSON.stringify(w) ?? "null";
+}
 /** Kanonische Anfrage-Prüfsumme (nur für die Wiederholungssperre; nie protokolliert). */
-const fingerprint = (a) => createHash("sha256").update(JSON.stringify([a.funktion, a.eingabe, a.bezug ?? null])).digest("hex");
+const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.eingabe, a.bezug ?? null])).digest("hex");
 
 /**
  * @param {{
@@ -142,11 +148,23 @@ export function erzeugeGateway(o) {
     }
 
     /* 5 — Pausierung (Betriebsrat-Frage, Mitbestimmung): Haken für WP-I16, Vorgabe: gesperrt. */
-    let aktiv = false;
-    try { aktiv = (await betriebAktiv(sitzung)) === true; } catch { aktiv = false; }
-    if (!aktiv) { abgelehnt(sitzung, anfrage.funktion, "KI_PAUSIERT", "betrieb"); throw new GatewayFehler("KI_PAUSIERT", "Intelligence ist für diesen Betrieb nicht freigegeben."); }
+    const betriebPruefen = async () => {
+      let aktiv = false;
+      try { aktiv = (await betriebAktiv(sitzung)) === true; } catch { aktiv = false; }
+      if (!aktiv) throw new GatewayFehler("KI_PAUSIERT", "Intelligence ist für diesen Betrieb nicht freigegeben.");
+    };
+    /* G12: Notschalter und Pausierung gelten auch WÄHREND eines Vorgangs — vor jeder Stufe, jedem
+       Anbieterversuch und vor der Rückgabe wird neu geprüft; „aus“ bricht mit KI_AUS/KI_PAUSIERT ab. */
+    const weiterDarf = async () => {
+      if (!gatewayAn(schalter)) throw new GatewayFehler("KI_AUS", "Intelligence ist ausgeschaltet.");
+      await betriebPruefen();
+      if (!gatewayAn(schalter)) throw new GatewayFehler("KI_AUS", "Intelligence ist ausgeschaltet.");
+    };
+    try { await betriebPruefen(); } catch (e) { abgelehnt(sitzung, anfrage.funktion, "KI_PAUSIERT", "betrieb"); throw e; }
 
-    /* 6 — Limits (reservieren, bevor Daten gelesen werden). */
+    /* 6 — Limits (reservieren, bevor Daten gelesen werden). Alles, was werfen kann, vorher (G7). */
+    const auftragId = zufallId();
+    const betriebId = betriebKennung(sitzung.bestand, String(sitzung.betrieb ?? ""));
     const betriebKey = `${sitzung.bestand}|${String(sitzung.betrieb ?? "")}`;
     const res = limits.reservieren({ betrieb: betriebKey, person: sitzung.person, rolle: sitzung.rolle, klasse: eintrag.klasse, tokens: 0,
       fingerprint: fingerprint(anfrage) });
@@ -157,8 +175,8 @@ export function erzeugeGateway(o) {
     const beleg = res.beleg;
     let verbraucht = false;
     let gemeldet = false;
-    const auftragId = zufallId();
-    const betriebId = betriebKennung(sitzung.bestand, String(sitzung.betrieb ?? ""));
+    /** Adapteraufrufe, die nach Frist/Abbruch noch laufen können (G13). */
+    const ausstehend = [];
     try {
       /* 7 — Faktenpaket (eine Bestandsmomentaufnahme für Paket, Sperrliste und Rückübersetzung). */
       let momentaufnahme;
@@ -201,6 +219,7 @@ export function erzeugeGateway(o) {
       let tokensAus = null;
       for (const stufe of kette) {
         stufeErreicht = stufe;
+        await weiterDarf();
         const rest = deadline - jetzt();
         if (rest <= 0) { letzterCode = "KI_ZEIT"; break; }
         const sStart = jetzt();
@@ -210,8 +229,11 @@ export function erzeugeGateway(o) {
         try {
           antwort = await aufrufen({ anbieter, eingabe, zeitJeVersuchMs: zeiten.stufeMs,
             maxWiederholungen: zeiten.maxWiederholungen, deadline: Math.min(deadline, sStart + zeiten.stufeMs),
-            minRestMs: zeiten.minRestMs, jetzt, schlafen });
+            minRestMs: zeiten.minRestMs, jetzt, schlafen, ausstehend,
+            /* Vor JEDEM Versuch neu prüfen; ab dem ersten tatsächlichen Versuch gilt die Aktion als verbraucht (B2/B7). */
+            vorVersuch: async () => { await weiterDarf(); verbraucht = true; } });
         } catch (e) {
+          if (e instanceof GatewayFehler) throw e;
           const f = e instanceof AnbieterFehler ? e : alsAnbieterFehler(e);
           letzterCode = f.klasse === "zeit" ? "KI_ZEIT" : f.klasse === "nicht_freigegeben" ? "KI_NICHT_FREIGEGEBEN" : "KI_ANBIETER";
           audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: letzterCode,
@@ -219,7 +241,6 @@ export function erzeugeGateway(o) {
           if (f.klasse === "nicht_freigegeben") break;
           continue;
         }
-        verbraucht = true;
         versucheGesamt += antwort.versuche;
         tokensAus = antwort.nutzung.ausgabeToken;
         const p = ausgabePruefen({ ausgabe: antwort.ausgabe, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste });
@@ -228,6 +249,9 @@ export function erzeugeGateway(o) {
         if (p.ok) { ergebnis = p.ergebnis; neutralisiert = p.neutralisiert; break; }
         letzterCode = "KI_PRUEFER";
       }
+
+      /* Schalter/Pause können sich während des Aufrufs geändert haben: dann wird nichts mehr herausgegeben. */
+      await weiterDarf();
 
       /* Rückfall: kein Fehler nach außen, Kernanwendung bleibt nutzbar. */
       const kennzeichnung = (geprueft) => ({ kiGestuetzt: true, entwurf: true, veroeffentlicht: false, geprueft });
@@ -264,7 +288,9 @@ export function erzeugeGateway(o) {
       if (!gemeldet) abgelehnt(sitzung, anfrage.funktion, e && typeof e.code === "string" ? e.code : "KI_INTERN", "ausnahme");
       throw e;
     } finally {
-      limits.abschliessen(beleg, { verbraucht });
+      /* G13: ein Adapter, der Frist/Abbruch überlebt, hält seinen Platz, bis er wirklich endet. */
+      const offen = ausstehend.filter((x) => !x.fertig).map((x) => x.p);
+      limits.abschliessen(beleg, { verbraucht, spaeter: offen.length ? Promise.allSettled(offen) : undefined });
     }
   }
 
