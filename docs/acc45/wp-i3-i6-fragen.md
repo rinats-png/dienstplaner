@@ -1,0 +1,19 @@
+# WP-I3 / WP-I6 — offene Fragen, Stand 2026-11-06
+
+Nichts davon ist im Code entschieden. Wo eine Annahme nötig war, ist sie ein Parameter oder steht hier.
+
+| # | Frage | Was im Code gilt bis zur Entscheidung | Wer |
+|---|---|---|---|
+| 1 | Plan 5.3, Frage 1 und 2: Wochenend-Rotation je Kalendermonat oder je Rotation; Monat mit fünf Wochenenden | Das Fenster ist ein Parameter der Zählregel (`kalendermonat` oder rollierend). Eine Regel für „genau 2 freie" ist `mindestens 2` plus `höchstens 2`. Was im fünften Wochenende gilt, entscheidet keine Zeile Code. | Produkt, Betriebe |
+| 2 | Plan 5.3, Frage 3: Zählt Nachtdienst Freitag auf Samstag schon zum Wochenende? | `wochenendEreignisse` entscheidet allein nach der Klasse an Samstag und Sonntag. Die Freitagsnacht kommt nur an, wenn der Aufrufer sie als Samstagsklasse meldet. | Produkt |
+| 3 | Plan 5.3, Frage 4: Gleiche Dienstart an beiden Tagen oder reicht Tagdienst (Früh/Spät)? | Parameter `gruppen` der Blockregel (`{F:"tag", S:"tag"}`); ohne `gruppen` zählt die genaue Klasse. | Produkt |
+| 4 | Plan 5.3, Frage 5: Teilzeit anteilig / auf ganze Wochenenden gerundet | Nicht gebaut. Die Verteilungsregel vergleicht Rohwerte; ein Aufrufer, der anteilig rechnen will, normiert die Werte vorher. Keine Rundungsvorschrift erfunden. | Produkt |
+| 5 | Plan 5.3, Frage 6: Urlaub/Krankheit am Wochenende (zählt als frei, erfüllt oder fällt heraus?) | Der Aufrufer legt die Klasse fest, die er für Abwesenheit meldet (z. B. „frei" oder „abwesend"); ein Tag ohne Klasse ist unbekannt und macht das Ergebnis offen. Es gibt keine Regel „Abwesenheit zählt als …". | Produkt, Betriebsrat |
+| 6 | Randwochenenden (Monat beginnt am Sonntag, endet am Samstag) | Nicht bewertet, in `fakten.randbloecke` / `rand` ausgewiesen; sind nur Randblöcke da, ist das Ergebnis offen. Wer sie mitzählen will, gibt Vor-/Nachlauf mit. | Produkt |
+| 7 | Verbotsliste in Regelparametern (`krank`, `gesund`, `fehlzeit`, `leistung`, `zuverl`, `verhalten`, `diagnos`, `schwanger`, `behinder`, `disziplin`) | Startliste, die Plan 6.3 („keine Personenbewertung") technisch absichert; Vollständigkeit und Rechtsprüfung offen. Gleicher Punkt wie Nr. 5 in `wpI-offene-fragen.md`. | Datenschutz/Recht |
+| 8 | Priorität von Wünschen: Skala 1–5, 1 = wichtigste | Annahme des Codes; der Plan nennt „Prioritäten", keine Skala. | Produkt |
+| 9 | Zeitraum-Obergrenze 800 Tage je Auswertung | Schutzgrenze gegen unsinnige Aufrufe, keine Fachvorgabe. | Technik |
+| 10 | WP-I6: Was heißt „Qualifikationen und Einsatzeinschränkungen" fehlen? | Mindestens eine Qualifikation je Person wird verlangt, wenn der Betrieb Dienstarten mit Qualifikationsanforderung führt; sonst nicht verlangt. Einsatzeinschränkungen sind optional (fehlen heißt: keine). | Produkt |
+| 11 | WP-I6: Vorlauf „Planungszeitraum offen und ohne freigegebenen Plan" | Ein Zeitraum gilt als nicht offen, wenn der Aufrufer `freigegeben: true` meldet. Wie lange vorher geplant werden darf, wird nicht geprüft. | Produkt |
+| 12 | WP-I6: Mindestzahl Personen/Dienstarten, ab der geplant werden kann | Mindestens eine Person und eine Dienstart; keine fachliche Mindestgröße erfunden. | Produkt |
+| 13 | WP-I6: Schichtsystem/Schichtfolge sind „falls genutzt" | Nur wenn der Aufrufer `schichtsystemGenutzt: true` meldet, wird es verlangt. | Produkt |

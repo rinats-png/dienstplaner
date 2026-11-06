@@ -23,8 +23,10 @@
      paarregel         A nur zusammen mit B
                        „elektrotechnisch Unterwiesene nur mit Elektrofachkraft"
 
-   Geplant, noch nicht hier: Musterregel, Blockregel, Verteilungsregel,
-   Wunschregel. Die Bestandsprüfungen in regelwerk.js und der Planprüfung
+   Musterregel, Blockregel, Verteilungsregel und Wunschregel (WP-I3) stehen in
+   server/lib/regelbaukasten-erweitert.mjs, das die Bausteine unten
+   (BAUSTEINE) mitbenutzt; dessen pruefeRegel rechnet alle acht Arten.
+   Die Bestandsprüfungen in regelwerk.js und der Planprüfung
    bleiben, wo sie sind; sie werden hier nicht noch einmal gerechnet.
 
    ---------------------------------------------------------------------------
@@ -368,3 +370,6 @@ export function pruefeRegel(regelOderId, kontext = {}) {
       throw new Error(`Regelbaukasten: Die Regelart „${r.typ}" wird hier noch nicht gerechnet (${r.id}).`);
   }
 }
+
+/** Bausteine für server/lib/regelbaukasten-erweitert.mjs (WP-I3): dieselben Ergebnisformen, dieselbe Stufenbegrenzung. */
+export const BAUSTEINE = { istTag, befund, erfuellt, nichtAnwendbar, offen, anwendung, holeRegel, verletzt };
