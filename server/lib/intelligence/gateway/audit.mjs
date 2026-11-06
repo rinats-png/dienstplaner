@@ -49,6 +49,7 @@ const FELDER = {
   fakten: ganz(10000),
   verworfenAusgabe: ganz(1000),
   ueberKontingent: (v) => v === true,
+  treffer: (v) => v === true,
   kategorien: (v) => Array.isArray(v) && v.length <= 12 && v.every(muster(/^[A-Z][A-Z_0-9-]{1,30}$/)),
   codes: (v) => Array.isArray(v) && v.length <= 12 && v.every(muster(/^P-\d{2}$/)),
 };

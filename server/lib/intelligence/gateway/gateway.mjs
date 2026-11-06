@@ -57,18 +57,17 @@ import { betriebKennung } from "./audit.mjs";
 import { ausgabePruefen } from "./pruefer.mjs";
 import { stufenKette } from "./router.mjs";
 import { GatewayFehler, RUECKFALL_TEXTE } from "./codes.mjs";
+import { kanonisch } from "./kanonisch.mjs";
+import { fingerprintBilden, paketHash } from "./ergebnis.mjs";
+import { alarmeBerechnen } from "./alarme.mjs";
+
+export { kanonisch };
 
 const ROLLEN = new Set(["leitung", "planer", "mitarbeiter", "betriebsrat", "betreiber", "subplaner"]);
 const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000 });
 const schlafenVorgabe = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
 const zufallIdVorgabe = () => randomBytes(12).toString("base64url");
 
-/** Kanonische Serialisierung: Schlüssel sortiert, damit dieselbe Anfrage immer denselben Text ergibt. */
-export function kanonisch(w) {
-  if (Array.isArray(w)) return `[${w.map(kanonisch).join(",")}]`;
-  if (w && typeof w === "object") return `{${Object.keys(w).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(w[k])}`).join(",")}}`;
-  return JSON.stringify(w) ?? "null";
-}
 /** Kanonische Anfrage-Prüfsumme (nur für die Wiederholungssperre; nie protokolliert). */
 const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.eingabe, a.bezug ?? null])).digest("hex");
 
@@ -90,6 +89,9 @@ const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.
  *   jetzt?: () => number,
  *   schlafen?: (ms: number) => Promise<void>,
  *   zufallId?: () => string,
+ *   ergebnisSpeicher?: ReturnType<typeof import("./ergebnis.mjs").erzeugeErgebnisSpeicher>,
+ *   kiVersionen?: { prompt: string, pruefer: string, bausteinKatalog: string, routerRegistry: string },
+ *   alarmHaken?: (alarme: { ebene: string, code: string, stufe: string }[]) => void,
  * }} o
  */
 export function erzeugeGateway(o) {
@@ -110,6 +112,20 @@ export function erzeugeGateway(o) {
   const jetzt = o.jetzt || (() => Date.now());
   const schlafen = o.schlafen || schlafenVorgabe;
   const zufallId = o.zufallId || zufallIdVorgabe;
+  const speicher = o.ergebnisSpeicher || null;
+  if (speicher) {
+    const v = o.kiVersionen;
+    if (!v || !["prompt", "pruefer", "bausteinKatalog", "routerRegistry"].every((k) => typeof v[k] === "string" && v[k])) throw new KiFehler("KI_INTERN", "Ergebnis-Speicher ohne Versionen.");
+  }
+  const alarmieren = (sitzungBetriebKey) => {
+    if (typeof o.alarmHaken !== "function") return;
+    try {
+      const k = limits.konfig();
+      const st = limits.stand(sitzungBetriebKey);
+      const alarme = alarmeBerechnen({ betrieb: { ieMonat: st.ieMonat, kontingentIE: k.kontingentIE }, gesamt: { ieTag: limits.gesamtStand().ieTag, tagesIE: k.tagesIE, hartTagesIE: k.hartTagesIE } });
+      if (alarme.length) o.alarmHaken(alarme);
+    } catch { /* ein Alarmhaken stört nie */ }
+  };
 
   const abgelehnt = (sitzung, funktion, code, grund) => {
     audit.melden({ art: "ki.abgelehnt", funktion, rolle: sitzung && ROLLEN.has(sitzung.rolle) ? sitzung.rolle : undefined, ergebnis: code,
@@ -182,7 +198,7 @@ export function erzeugeGateway(o) {
       let momentaufnahme;
       const lade = async (raum) => { if (momentaufnahme === undefined) momentaufnahme = await o.ladeBestand(raum); return momentaufnahme; };
       const { paket, aliasKarte } = await faktenpaketBilden({
-        sitzung, ladeBestand: lade, funktion: anfrage.funktion, eingabe: anfrage.eingabe, bezug: anfrage.bezug, kontext: auftragId,
+        sitzung, ladeBestand: lade, funktion: anfrage.funktion, eingabe: anfrage.eingabe, bezug: anfrage.bezug, kontext: speicher ? `k${createHash("sha256").update(kanonisch([anfrage.funktion, anfrage.eingabe, anfrage.bezug ?? null])).digest("hex").slice(0, 40)}` : auftragId,
         aliasSchluessel: o.aliasSchluessel(), versionen: o.versionen, faktenquelle: o.faktenquelle, modellOrt: anbieter.modellOrt,
         audit: (e) => { if (e && e.art === "ki.faktenpaket.verworfen") { gemeldet = true; audit.melden({ art: "ki.abgelehnt",
           funktion: anfrage.funktion, rolle: sitzung.rolle, ergebnis: "KI_LECK", kategorien: e.kategorien, betrieb: betriebId }); } },
@@ -197,6 +213,13 @@ export function erzeugeGateway(o) {
         throw new GatewayFehler(erw.code, "Limit erreicht.");
       }
 
+      /* I15: die Buchung muss dauerhaft sein, bevor ein Aufruf möglich ist. Fehler: Klasse A läuft im Speicher weiter,
+         alle anderen werden abgelehnt (fail closed, Plan I15). */
+      if (!(await limits.dauerhaft(beleg))) {
+        if (eintrag.klasse !== "A") { gemeldet = true; abgelehnt(sitzung, anfrage.funktion, "KI_LIMIT", "zaehler_speicher"); throw new GatewayFehler("KI_LIMIT", "Zähler nicht verfügbar."); }
+        audit.melden({ art: "ki.abgelehnt", funktion: anfrage.funktion, rolle: sitzung.rolle, ergebnis: "KI_LIMIT", grund: "zaehler_speicher_a", betrieb: betriebId });
+      }
+
       /* 9 — Pflichtprotokoll: kein Aufruf ohne Spur. */
       audit.pflicht({ art: "ki.start", funktion: anfrage.funktion, rolle: sitzung.rolle, auftrag: auftragId, betrieb: betriebId,
         anbieter: anbieter.id, fakten: paket.fakten.length, tokensEin: tokens, ie: beleg.ie,
@@ -209,15 +232,35 @@ export function erzeugeGateway(o) {
       const sperrliste = sperrlisteBilden(bestand.mandanten[idx], { raum: sitzung.bestand });
       const kapsel = paket.fremdtext ? kapselnFuerPrompt(paket.fremdtext) : null;
 
-      /* 10/11 — Stufenkette. */
-      const deadline = t0 + zeiten.deadlineMs;
-      let letzterCode = "KI_ANBIETER";
+      /* I14: Decision Fingerprint und Ergebnis-Speicher. Ein Treffer ersetzt den Anbieteraufruf, wird aber nochmals
+         vom Prüfer geprüft (Sperrliste und Alias können sich geändert haben); fällt er durch, wird er verworfen. */
+      let fp = null;
+      let treffer = false;
+      if (speicher) {
+        try {
+          fp = fingerprintBilden({ raum: sitzung.bestand, betriebId: String(bestand.mandanten[idx].id), funktion: anfrage.funktion, paketHash: paketHash(paket),
+            regelwerk: `${o.versionen.regelstand}|${o.versionen.tarifstand}`, engine: o.versionen.engine, prompt: o.kiVersionen.prompt, schema: SCHEMA_VERSION,
+            pruefer: o.kiVersionen.pruefer, bausteinKatalog: o.kiVersionen.bausteinKatalog, routerRegistry: o.kiVersionen.routerRegistry,
+            zeitraum: paket.zeitraum ?? null, bezug: paket.bezug ?? null, rolle: sitzung.rolle, sprache: anfrage.sprache ?? "de" });
+        } catch { fp = null; }
+      }
       let ergebnis = null;
       let neutralisiert = false;
+      if (fp) {
+        const gespeichert = await speicher.lesen({ raum: sitzung.bestand, fingerprint: fp });
+        if (gespeichert) {
+          const p0 = ausgabePruefen({ ausgabe: gespeichert, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste });
+          if (p0.ok) { ergebnis = p0.ergebnis; neutralisiert = p0.neutralisiert; treffer = true; } else await speicher.verwerfen({ raum: sitzung.bestand, fingerprint: fp });
+        }
+      }
+
+      /* 10/11 — Stufenkette (entfällt bei Treffer). */
+      const deadline = t0 + zeiten.deadlineMs;
+      let letzterCode = "KI_ANBIETER";
       let stufeErreicht = 0;
       let versucheGesamt = 0;
       let tokensAus = null;
-      for (const stufe of kette) {
+      for (const stufe of treffer ? [] : kette) {
         stufeErreicht = stufe;
         await weiterDarf();
         const rest = deadline - jetzt();
@@ -253,12 +296,20 @@ export function erzeugeGateway(o) {
       /* Schalter/Pause können sich während des Aufrufs geändert haben: dann wird nichts mehr herausgegeben. */
       await weiterDarf();
 
+      /* I14: geprüfte Antwort speichern (zweite Schranke: Leck-Prüfung beim Schreiben) und Decision Context anlegen. */
+      let ctxId = null;
+      if (ergebnis && speicher && fp) {
+        if (!treffer) await speicher.schreiben({ raum: sitzung.bestand, fingerprint: fp, funktion: anfrage.funktion, ergebnis, sperrliste });
+        ctxId = await speicher.kontextSchreiben({ raum: sitzung.bestand, funktion: anfrage.funktion, fingerprint: fp,
+          versionen: { ...o.versionen, ...o.kiVersionen, schema: SCHEMA_VERSION }, stufen: treffer || !stufeErreicht ? [] : [stufeErreicht], pruefCodes: [], treffer, paket });
+      }
+
       /* Rückfall: kein Fehler nach außen, Kernanwendung bleibt nutzbar. */
       const kennzeichnung = (geprueft) => ({ kiGestuetzt: true, entwurf: true, veroeffentlicht: false, geprueft });
       const ende = (code) => audit.melden({ art: "ki.ende", funktion: anfrage.funktion, rolle: sitzung.rolle, auftrag: auftragId,
         betrieb: betriebId, ergebnis: code, stufe: stufeErreicht || undefined, versuche: versucheGesamt || undefined,
         dauerMs: Math.max(0, jetzt() - t0), tokensAus: tokensAus ?? undefined, ie: verbraucht ? beleg.ie : 0,
-        verworfenAusgabe: neutralisiert ? 1 : undefined });
+        verworfenAusgabe: neutralisiert ? 1 : undefined, treffer: treffer ? true : undefined });
       if (!ergebnis) {
         const code = RUECKFALL_TEXTE[letzterCode] ? letzterCode : "KI_ANBIETER";
         ende(code);
@@ -275,7 +326,7 @@ export function erzeugeGateway(o) {
         return antwortPruefen({ status: "rueckfall", auftragId, kennzeichnung: kennzeichnung(false),
           rueckfall: { code: "KI_PRUEFER", text: RUECKFALL_TEXTE.KI_PRUEFER } });
       }
-      const fertig = { status: "fertig", auftragId, kennzeichnung: kennzeichnung(true), ergebnis: uebersetzt };
+      const fertig = { status: "fertig", auftragId, kennzeichnung: kennzeichnung(true), ergebnis: uebersetzt, ...(ctxId ? { ctxId } : {}) };
       const v = pruefeAntwort(fertig);
       if (!v.ok) {
         ende("KI_PRUEFER");
@@ -291,6 +342,7 @@ export function erzeugeGateway(o) {
       /* G13: ein Adapter, der Frist/Abbruch überlebt, hält seinen Platz, bis er wirklich endet. */
       const offen = ausstehend.filter((x) => !x.fertig).map((x) => x.p);
       limits.abschliessen(beleg, { verbraucht, spaeter: offen.length ? Promise.allSettled(offen) : undefined });
+      alarmieren(betriebKey);
     }
   }
 

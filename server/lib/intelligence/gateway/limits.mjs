@@ -72,6 +72,7 @@ export class Limits {
    *   parallelJeBetrieb?: number,
    *   gleicheAnfrageJe10Min?: number,
    *   haltenMaxMs?: number,
+   *   senke?: (e: { t: number, b: string, tag: string, monat: string, ie: number }) => Promise<void>|void,
    * }} k
    */
   constructor(k) {
@@ -92,6 +93,7 @@ export class Limits {
       parallelJeBetrieb: k.parallelJeBetrieb ?? 2,
       gleicheAnfrageJe10Min: k.gleicheAnfrageJe10Min ?? 5,
       haltenMaxMs: k.haltenMaxMs ?? 300_000,
+      senke: typeof k.senke === "function" ? k.senke : null,
     };
     this.person = new Map();
     this.gleich = new Map();
@@ -177,8 +179,9 @@ export class Limits {
     pz.zeiten.push(t); this.person.set(pKey, pz);
     gz.push(t); this.gleich.set(gKey, gz);
     bs.laufend++; bs.ieMonat += ie; bs.ieTag += ie; this.gesamt.ie += ie;
-    return { ok: true, ueberKontingent: ueber,
-      beleg: { bKey: h("b", a.betrieb), ie, klasse: a.klasse, offen: true, tag: bs.tag, monat: bs.monat } };
+    const beleg = { bKey: h("b", a.betrieb), ie, klasse: a.klasse, offen: true, tag: bs.tag, monat: bs.monat, dauer: [] };
+    this._ereignis(beleg, ie);
+    return { ok: true, ueberKontingent: ueber, beleg };
   }
 
   /** Geschäftslimits für `ie` zusätzliche Einheiten (B4). */
@@ -212,6 +215,7 @@ export class Limits {
     const g = this._geschaeft(bs, beleg.klasse, delta);
     if (!g.ok) return g;
     bs.ieMonat += delta; bs.ieTag += delta; this.gesamt.ie += delta; beleg.ie = neu;
+    this._ereignis(beleg, delta);
     return { ok: true };
   }
 
@@ -242,8 +246,38 @@ export class Limits {
         s.ieTag = Math.max(0, s.ieTag - beleg.ie);
         if (this.gesamt.tag === beleg.tag) this.gesamt.ie = Math.max(0, this.gesamt.ie - beleg.ie);
       }
+      this._ereignis(beleg, -beleg.ie);
     }
   }
+
+  /** I15 Persistenz: jede Änderung als Ereignis an die Senke (append-only, zaehlerspeicher.mjs). Z4: das Ergebnis wird im Beleg gesammelt. */
+  _ereignis(beleg, ie) {
+    if (!this.k.senke || ie === 0) return;
+    const e = { t: this.letzteZeit, b: beleg.bKey, tag: beleg.tag, monat: beleg.monat, ie };
+    const p = Promise.resolve().then(() => this.k.senke(e)).then(() => true, () => false);
+    beleg.dauer.push(p);
+  }
+
+  /** Alle Ereignisse dieses Belegs dauerhaft geschrieben? (false bei Speicherfehler.) */
+  async dauerhaft(beleg) {
+    if (!beleg || !Array.isArray(beleg.dauer)) return true;
+    return (await Promise.all(beleg.dauer)).every(Boolean);
+  }
+
+  /** Stand aus dem Rollup laden (nach einem Neustart, vor dem ersten Gebrauch). */
+  ladeStand(stand) {
+    if (this.betrieb.size || this.gesamt.ie) throw new GatewayFehler("KI_LIMIT", "Zähler schon in Gebrauch.");
+    const ok = (v) => Number.isFinite(v) && v >= 0 && v <= 1e9;
+    for (const [key, b] of Object.entries((stand && stand.betriebe) || {})) {
+      if (!/^[0-9a-f]{16}$/.test(key) || !b || !ok(b.ieMonat) || !ok(b.ieTag) || typeof b.monat !== "string" || typeof b.tag !== "string") continue;
+      this.betrieb.set(key, { monat: b.monat, tag: b.tag, ieMonat: b.ieMonat, ieTag: b.ieTag, laufend: 0 });
+    }
+    const g = stand && stand.gesamt;
+    if (g && typeof g.tag === "string" && ok(g.ie)) this.gesamt = { tag: g.tag, ie: g.ie };
+  }
+
+  /** Für Alarme (alarme.mjs): Kontingent und Tagesbudgets als Zahlen. */
+  konfig() { return { kontingentIE: this.k.betriebKontingentIE, tagesIE: this.k.gesamtTagesIE, hartTagesIE: this.k.gesamtHartTagesIE }; }
 
   /** Nur Summen je Betrieb, nie je Person (B5). */
   stand(betrieb) {

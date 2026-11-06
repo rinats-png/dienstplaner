@@ -55,7 +55,7 @@ const ZAUN = /```|~~~|<<|>>|\[\[|\]\]|DATEN_[0-9A-Fa-f]{4,}/;
 const KODIERT = /[A-Za-z0-9+/]{40,}={0,2}/;
 const KLAMMER = /[{}]/;
 const FREMDE_SCHRIFT = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
-const MERKMAL = /krank|erkrank|gesundheit|diagnos|schwanger|mutterschutz|jugendschutz|schwerbehind|behinder|beschäftigungsverbot|beschaeftigungsverbot|stillzeit|psych|burn.?out|medikament|attest|\bkur\b|\breha|leistungs(?:schwach|stark|bewert|minder)|unzuverl|zuverlässig|zuverlaessig|fehlzeit|\bfaul|schlechte[rn]? mitarbeiter/i;
+const MERKMAL = /krank|erkrank|gesundheit|diagnos|schwanger|mutterschutz|jugendschutz|schwerbehind|behinder|beschäftigungsverbot|beschaeftigungsverbot|stillzeit|psych|burn.?out|medikament|attest|\bkur\b|\breha|leistungs(?:schwach|stark|bewert|minder)|unzuverl|zuverlässig|zuverlaessig|fehlzeit|schmerz|\barzt|grippe|infekt|erkält|erkaelt|\bfaul|schlechte[rn]? mitarbeiter/i;
 
 const ALIAS_KANDIDAT = /\b[A-Z]_[A-Za-z0-9]{3,}\b/g;
 const DATUM = /\b\d{4}-\d{2}-\d{2}\b/g;

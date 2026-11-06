@@ -67,8 +67,20 @@ describe("Gateway-Dateien", () => {
       }
     }
   });
-  it("Schreibwege in den Bestand gibt es nicht", () => {
-    for (const f of gwDateien) expect(lies(path.join(GW, f)), f).not.toMatch(/bestandSchreiben|zusammenfuehren|setJSON|\.set\(\s*["'`]ki:|writeFile|appendFile/);
+  it("Schreibwege in den Bestand gibt es nicht; geschrieben wird nur über injizierte Stores (Ergebnis-Speicher, Zähler) im Schlüsselraum ki:*", () => {
+    const STORE_SCHREIBER = new Set(["ergebnis.mjs", "zaehlerspeicher.mjs"]);
+    for (const f of gwDateien) {
+      const q = lies(path.join(GW, f));
+      expect(q, f).not.toMatch(/bestandSchreiben|zusammenfuehren|writeFile|appendFile|\.set\(\s*["'`]ki:/);
+      if (!STORE_SCHREIBER.has(f)) expect(q, f).not.toMatch(/setJSON|store\.delete/);
+    }
+    for (const f of STORE_SCHREIBER) {
+      const q = lies(path.join(GW, f));
+      /* Jeder Schreibschlüssel kommt aus einer der ki:-Schlüsselfunktionen bzw. -Konstanten. */
+      for (const m of q.matchAll(/setJSON\(\s*([^,)]+)/g)) expect(m[1], f).toMatch(/Schluessel\(|SCHLUESSEL|\$\{EV\}|`ki:/);
+      /* Die Ablage und die Raumsperre werden nie importiert — Store und Sperre kommen von außen. */
+      expect(q, f).not.toMatch(/ablage\.mjs|getStore|raumsperre\.mjs/);
+    }
   });
   it("die Umgebungsvariablen-Namen stehen nur dort, wo sie hingehören", () => {
     for (const f of gwDateien) {
