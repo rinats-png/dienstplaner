@@ -1079,8 +1079,10 @@ export default async (req, context) => {
         for (const [id, gesendet] of gesendetNachId) {
           const w = stempelWiderspruch(altNachId.get(id) || null, gesendet, stempelO);
           if (w) {
-            await protokoll("schreiben", ks, "abgewiesen",
-              `Stempel-Integrität${w.schluessel ? ` ${w.schluessel}` : ""}: ${w.grund}`, wer);
+            /* WP-16b: Der Schlüssel (Person|Tag) steht nicht im Text der Spur; der Tag steht im eigenen Feld (nur
+               Auskunft nach Art. 15), die Betreiber-Lage zeigt ihn nicht (spurFuerBetreiber). */
+            const tagS = typeof w.schluessel === "string" ? (w.schluessel.split("|")[1] || "") : "";
+            await protokoll("schreiben", ks, "abgewiesen", `Stempel-Integrität: ${w.grund}`, { ...wer, tag: tagS });
             return antwort({ fehler: "Keine Schreibberechtigung.", code: "STEMPEL_UNVERAENDERLICH",
               text: w.grund }, 403);
           }
