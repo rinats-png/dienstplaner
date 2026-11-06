@@ -7511,7 +7511,7 @@ function selbsttest() {
   /* Hell ist die Vorgabe — nicht das Systemthema. Ein Betriebsprogramm soll
      bei jedem gleich aussehen. */
   ok("C traegt die hellen Werte", C_HELL.bg, C.bg);
-  ok("Die helle Grundflaeche ist Sea Salt", "#D9E4E8", C_HELL.bg);
+  ok("Die helle Grundflaeche ist die V4-Grundflaeche", "#f0f3ed", C_HELL.bg);
   ok("Hell und Dunkel sind verschieden", true, C_HELL.bg !== C_DUNKEL.bg);
   ok("Die helle Flaeche ist wirklich hell", true, kon(C_HELL.bg, "#000000") > 10);
   ok("Die dunkle Flaeche ist wirklich dunkel", true, kon(C_DUNKEL.bg, "#FFFFFF") > 10);
