@@ -50,3 +50,18 @@ Die frühere Zahl „66 %“ bezog sich nur auf **Release-Kandidat plus V4**. F�
 | Termine (Produktionsreife Gesamtumfang) | optimistisch 21.01.2027, realistisch 17.03.2027, pessimistisch 07.06.2027 | GESAMTPLAN §7.3 Variante C; kritischer Pfad ist extern (Pilot → Intelligence-Pilot E-24i → Kanzlei/Pentest), nicht der Entwicklungsdurchsatz |
 
 Die Prognose „6 bis 7 Arbeitstage“ betrifft nur RC plus V4 (rund 10 % des Gesamtumfangs). Der Termin März 2027 ist damit weder überholt noch erreicht: Der Fortschritt seit dem 04.11. lag ausschließlich in RC, V4 und ETag-Fix, nicht in den SSOT-Paketen. Es gibt keine dokumentierte Entscheidung, Intelligence, die 6 fehlenden Module, WP-16c, WP-18, WP-21 oder WP-39 aus dem Pflichtumfang zu nehmen. Nicht einzeln geprüft: G9 N-A…N-F und die 50 WP-19-Entscheidungen.
+
+### Prognose unter der Beschleunigungsstrategie (2026-11-06, bedingt, nicht gemessen)
+Korrektur: Der Plan (591 PT / 92 Arbeitstage bis 17.03.2027) impliziert ≈ 32 PT/Woche, nicht 60. Die zuvor genannten 60 PT/Woche waren eine Annahme.
+
+| | konservativ | realistisch | ambitioniert |
+|---|---|---|---|
+| Durchsatz PT/Woche (Annahme) | 40 | 65 | 90 |
+| Nacharbeitsquote | 35 % | 25–30 % | ≈ 20 % |
+| Entwicklungsdauer | ≈ 16 Wo | ≈ 10 Wo | ≈ 6 Wo |
+| Termin 100 % | um 10.03.2027 | Ende Feb. bis Anfang März 2027 | Mitte Feb. 2027 |
+| Gewinn gegenüber 17.03. | ≈ 1 Wo | 2–3 Wo | 4–5 Wo |
+
+Ende Januar 2027 unwahrscheinlich, Ende Februar möglich. Der kritische Pfad ist extern (Pilot A ab 24.12. → Intelligence-Pilot E-24i, Kanzlei, Pentest, Betreiber-Gates B1/B2/B4/B5). Die Untergrenze von ≈ 6 Wochen nach Pilotstart ist eine Schätzung, nicht belegt.
+
+Laufende Agenten (Worktrees, je eigener Branch, nur Push auf den eigenen Branch): `feature/intelligence-gateway` (Sonnet, nur Mock-Anbieter, kein Netz), `feature/branchenmodule-wp19` (Haiku, 6 fehlende Module). Routing ist manuell je Agentenauftrag; Dauerleistung, Rate-Limits und Kosten sind nicht nachgewiesen. Der Qualitätsvergleich Haiku/Sonnet/Opus entsteht aus diesen Aufträgen.
