@@ -29,6 +29,7 @@
        Eingabedaten oder Schlüssel enthalten); das Gateway kennt nur die Klasse.
    A5  Ein Adapter, der Frist/Abbruch überlebt, wird weiter verfolgt (ausstehend); sein Platz im Betrieb
        wird erst frei, wenn er wirklich endet (limits.abschliessen mit spaeter).
+   A6  Ein äußeres Abbruchsignal (o.signal) bricht laufende Aufrufe sofort ab (Notschalter/Pause während des Aufrufs).
    A4  Jeder Aufruf hat eine Frist und ein AbortSignal; ein Adapter, der das
        Signal ignoriert, blockiert das Gateway trotzdem nicht (Promise.race).
    ========================================================================== */
@@ -73,13 +74,20 @@ export function nutzungBereinigen(n) {
   return { eingabeToken: zahlOderNull(o.eingabeToken), ausgabeToken: zahlOderNull(o.ausgabeToken) };
 }
 
-function einmal(anbieter, eingabe, ms, ausstehend) {
+function einmal(anbieter, eingabe, ms, ausstehend, aussen) {
   const ctrl = new AbortController();
   let timer;
+  let hoeren;
   const frist = new Promise((_, nein) => {
     timer = setTimeout(() => { ctrl.abort(); nein(new AnbieterFehler("zeit", "Frist")); }, Math.max(1, ms));
     if (timer && typeof timer.unref === "function") timer.unref();
+    /* A6: Ein äußeres Abbruchsignal (Notschalter, Pause) bricht den laufenden Aufruf sofort ab. */
+    if (aussen) {
+      const ab = () => { ctrl.abort(); nein(new AnbieterFehler("zeit", "abgebrochen")); };
+      if (aussen.aborted) ab(); else { aussen.addEventListener("abort", ab, { once: true }); hoeren = () => aussen.removeEventListener("abort", ab); }
+    }
   });
+  if (aussen && aussen.aborted) { clearTimeout(timer); return frist; }
   let lauf;
   try {
     lauf = Promise.resolve(anbieter.erzeuge({ ...eingabe, signal: ctrl.signal }));
@@ -92,7 +100,7 @@ function einmal(anbieter, eingabe, ms, ausstehend) {
     x.p = lauf.then(() => { x.fertig = true; }, () => { x.fertig = true; });
     ausstehend.push(x);
   }
-  return Promise.race([lauf, frist]).finally(() => clearTimeout(timer));
+  return Promise.race([lauf, frist]).finally(() => { clearTimeout(timer); if (hoeren) hoeren(); });
 }
 
 /**
@@ -101,7 +109,7 @@ function einmal(anbieter, eingabe, ms, ausstehend) {
  * `maxWiederholungen` Mal und nur, wenn bis zur Deadline noch `minRestMs` bleiben.
  * @param {{ anbieter: any, eingabe: object, zeitJeVersuchMs: number, maxWiederholungen: number, deadline: number,
  *   minRestMs?: number, jetzt: () => number, schlafen: (ms: number) => Promise<void>,
- *   vorVersuch?: () => Promise<void>|void, ausstehend?: { fertig: boolean, p: Promise<void> }[] }} o
+ *   vorVersuch?: () => Promise<void>|void, signal?: AbortSignal, ausstehend?: { fertig: boolean, p: Promise<void> }[] }} o
  * @returns {Promise<{ ausgabe: unknown, nutzung: { eingabeToken: number|null, ausgabeToken: number|null }, versuche: number }>}
  */
 export async function aufrufen(o) {
@@ -116,7 +124,7 @@ export async function aufrufen(o) {
     /* Vor JEDEM Versuch (nicht nur dem ersten): der Aufrufer prüft Schalter/Pause; seine Ausnahme geht unverändert nach oben. */
     if (typeof o.vorVersuch === "function") await o.vorVersuch();
     try {
-      const r = await einmal(anbieter, kopie, Math.min(zeitJeVersuchMs, rest), o.ausstehend);
+      const r = await einmal(anbieter, kopie, Math.min(zeitJeVersuchMs, rest), o.ausstehend, o.signal);
       if (!r || typeof r !== "object") throw new AnbieterFehler("ungueltig", "leer");
       return { ausgabe: r.ausgabe, nutzung: nutzungBereinigen(r.nutzung), versuche: versuch };
     } catch (e) {

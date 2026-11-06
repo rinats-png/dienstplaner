@@ -98,12 +98,14 @@ describe("Zähler-Speicher: append-only + Rollup", () => {
     expect(r.betriebe[B].ieMonat).toBe(2);
     expect([...store.m.keys()]).toEqual([ROLLUP_SCHLUESSEL]);
   });
-  it("beschädigter Rollup → neu beginnen (kein Absturz)", async () => {
+  it("beschädigter Rollup → wirft und bleibt unangetastet (fail closed, Z5); die Ereignisse werden nicht gelöscht", async () => {
     const store = speicherStore();
     const z = erzeugeZaehlerSpeicher({ store, unterSperre: ohneSperre });
     store.m.set(ROLLUP_SCHLUESSEL, { v: 9, betriebe: 5 });
     await z.senke(ev({ ie: 2 }));
-    expect((await z.zusammenfassen()).betriebe[B].ieMonat).toBe(2);
+    await expect(z.zusammenfassen()).rejects.toThrow();
+    expect(store.m.get(ROLLUP_SCHLUESSEL)).toEqual({ v: 9, betriebe: 5 });
+    expect([...store.m.keys()].filter((k) => k.includes(":ev:")).length).toBe(1);
   });
   it("Konstruktor verlangt Store und Sperre", () => {
     expect(() => erzeugeZaehlerSpeicher({ store: speicherStore() })).toThrow();

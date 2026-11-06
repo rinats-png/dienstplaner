@@ -8,7 +8,7 @@ Zusammen mit [`wp-i15-nachweis.md`](wp-i15-nachweis.md) (Limits, Kontingent, Sch
 | Stufe | Stand | Beleg |
 |---|---|---|
 | implementiert | **teilweise** (Kern, Attrappe, Router, Prüfer, Live-Stumpf); Rest siehe „Nicht enthalten“ | `server/lib/intelligence/gateway/*` |
-| lokal getestet | **ja** — 255 Gateway-Tests in 8 Dateien grün (anbieter 20, limits 29, pruefer 66, kern 52, grenzen 14, review 25, ergebnis 30, zaehler 19), dazu alle `pruefungen/intelligence-*` und `doku.test.js` | Abschnitt „Tests“ |
+| lokal getestet | **ja** — Stand nach beiden Reviews: 513 Tests in 18 Dateien `pruefungen/intelligence-*` grün, darunter die Gateway-Dateien anbieter, limits, pruefer, kern, grenzen, review (25), review2 (18), ergebnis (31), zaehler (19), oberfläche (28), dazu alle `pruefungen/intelligence-*` und `doku.test.js` | Abschnitt „Tests“ |
 | reviewt | **teilweise** — unabhängiges Opus-Review von 4d002e1 liegt vor, alle 12 Befunde behoben (Abschnitt „Review-Befunde“); Nachprüfung des Stands danach steht aus | Invarianten unten sind die Prüfgrundlage |
 | integriert / Staging / produktiv | **nein** | kein PR, kein Merge, keine Route, kein Deployment |
 | Modellaufruf | **keiner** — kein Netz, kein Anbieter, kein Schlüssel, keine Route | statische Tests `intelligence-gateway-grenzen` |
@@ -127,3 +127,18 @@ Weitere Prüferlücken (Auftrag der Koordination): `halb`, `Dutzend`, `Viertel`,
 - **G13** Ein Adapter, der Frist/Abbruch überlebt, wird verfolgt; sein Betriebsplatz bleibt belegt, bis er wirklich endet (Obergrenze `haltenMaxMs`).
 - **G14** Wiederholungsschutz und Fingerprint arbeiten auf kanonisch sortierter Serialisierung.
 - **A5** (siehe G13), **U4** Pflichtprotokoll mit Pflichtfeldern, **P6** Momentaufnahme der Ausgabe, **P7** NFKC/unsichtbare Zeichen/fremde Schrift, **L5** Eigentumsprüfung an Umgebungswerten.
+
+## Delta-Review von 6354ff5 — Befunde und Fixes (Prüfer, Gateway)
+
+Tests: `intelligence-gateway-review2.test.js` (18). Gegen 6354ff5 waren 15 von 18 Fällen rot (Gegenprobe mit zurückgestellten Quellen); die drei übrigen sind Kontrollfälle (gültiger Erstfall, Unveränderlichkeit).
+
+| # | Befund | Fix |
+|---|---|---|
+| 4 | Vorzeichenwörter (minus, Defizit, Überschuss, im Minus, Plus …) | „minus/plus“ unmittelbar vor einer Zahl werden wie `-`/`+` gegen das Vorzeichen im Paket geprüft; Defizit, Überschuss, negativ, positiv, Guthaben, Fehlbetrag, Rückstand und freistehendes minus/plus werden abgelehnt |
+| 5 | Unbekannte Einheiten (Sekunden, Wochen, Euro, Jahre, „Alter 660“) | **P8**: nach einer Zahl nur bekanntes Einheitenwort (Minuten, Stunden, Tage, Personen, Prozent, %) oder Funktionswort; eine Zahl mit Einheit im Paket steht mit dieser Einheit oder direkt hinter ihrem Feldnamen, nie nackt. Fundstellen („§ 5 ArbZG“) ausgenommen. „ein Jahr/eine Stunde/einen Tag“ und „Mrd./Tsd./Mio.“ werden abgelehnt |
+| 6 | Zahlverkleidungen (zweieinhalb, anderthalb, zwanzigjährig, Zwanzigern, zweistellig, 3,5-fach, 660-mal, 3,5 x, × 3,5, kleine römische Ziffern) | Verkleidungs-Muster (`einhalb`, `anderthalb`, `-jährig/-stellig/-stündig …`), Mal-/Faktorform an der Ziffer und vor der Ziffer, Zahlwort-Kleber `n/ern/ver/t/jahr(e)/schaft`, römische Ziffern jetzt groß **und** klein (Mindestlänge 2, `Di`/`Mi` ausgenommen) sowie einzelne freistehende `x v l c d m`, `beide(r/n/s)` |
+| 9 | Hängender Zählerspeicher | `limits.dauerhaft(beleg, fristMs)` mit Frist (`zeiten.zaehlerMs`, Vorgabe 2 s): Ablauf = „nicht dauerhaft“ → Nicht-A läuft nicht (`KI_LIMIT`), A läuft im Speicher weiter |
+| 10 | Notschalter bricht laufende Aufrufe nicht ab | **G15/A6**: alle `zeiten.schalterTaktMs` (Vorgabe 250 ms) werden Schalter und `betriebAktiv` geprüft; „aus“ löst ein AbortSignal aus, `aufrufen` bricht den laufenden Aufruf sofort ab, der Vorgang endet mit `KI_AUS`/`KI_PAUSIERT`; der Zeitgeber wird in `finally` beendet |
+| 12 | `zeitraum: null` | im Fingerprint zulässig (wie `bezug`) — F4/F5/F9 haben keinen Zeitraum; sonst gäbe es dort nie einen Treffer |
+
+Bekannte Restlücken des Prüfers: weitere Sprachen als Deutsch/Englisch; umgangssprachliche Mengen („ein paar“, „viele“) sind keine Zahlen und werden nicht bewertet; „Quartett/Duo/Trio“ bleiben zulässig.

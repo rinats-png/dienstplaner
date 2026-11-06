@@ -45,3 +45,10 @@ Treffer nur bei identischem Fingerprint · Invalidierung je Bestandteil (15 Teil
 ## Offen
 
 Fristen sind Entwurfswerte (vom Betreiber zu bestätigen). Der Store `centric-ki-lauf` gilt im Plan I10 für Alias-Karten; hier liegt auch der Ergebnis-Speicher darin (Klasse C, nicht gesichert — ein Verlust kostet nur Treffer). `sprache` ist heute immer „de“. Der Fingerprint kennt keine Modellkennung (die Registry-Version ersetzt sie, Spez. 5.2).
+
+## Delta-Review von 6354ff5 — Ergebnis-Speicher (Befunde 7, 8, 12)
+
+- **E7 Aufbewahrung wird durchgesetzt (Befund 8)**: Der Vorgabe-Modus des Speichers ist jetzt „an“ — wirksam **nur für die Schlüssel `ki:erg:*` und `ki:ktx:*`** (eigener Schalter, unabhängig vom Datenschutzlauf des Betriebsbestands). Beim Schreiben läuft höchstens einmal je Stunde nebenbei ein Löschlauf; abgelaufene Einträge sind außerdem beim Lesen unerreichbar. Das **Gateway startet nicht** mit einem Speicher im Modus „vorschau“ oder „aus“ (`KI_INTERN`). Entscheidung als Betreiberfrage dokumentiert: wpI-offene-fragen.md Nr. 26 (die Vorschau-Vorgabe von `aufbewahrung.mjs` gilt für Betriebsdaten, nicht für diese neuen Schlüssel).
+- **E8 Kontext an Betrieb und Rolle gebunden (Befund 7)**: `kontextSchreiben` verlangt `betriebId` und `rolle` und speichert nur den Betriebs-Hash; `kontextLesen` verlangt beides und liefert sonst `null`. Test mit zwei Betrieben im selben Raum.
+- **Fingerprint mit `zeitraum: null` (Befund 12)**: zulässig wie `bezug`; die Gateway-Probe mit F5 (ohne Zeitraum) liefert beim zweiten Aufruf einen Treffer.
+- Tests: `intelligence-gateway-ergebnis.test.js` (31, Erwartungen auf den neuen Vorgabe-Modus angepasst) und `review2`.

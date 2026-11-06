@@ -130,7 +130,9 @@ describe("P-02 Zahlen, Zeiten, Daten, Kennungen müssen aus dem Paket stammen", 
       expect(codes(text(t)), JSON.stringify(t)).toContain("P-02");
   });
   it("Zahlen, die im Paket stehen, bleiben in den erlaubten Schreibweisen zulässig", () => {
-    for (const t of ["Ruhezeit 660.", "Ruhezeit 660 Minuten.", "Saldo 3,5 und 3.5.", "Beginn 06:00 Uhr.", "Regel ruhezeitGesetz, § 5, Stufe achtung."]) expect(ok(text(t)), t).toBe(true);
+    for (const t of ["ruhezeit.ist 660.", "Ruhezeit 660 Minuten.", "konto.saldo 3,5 und 3.5 Stunden.", "Beginn 06:00 Uhr.", "Regel ruhezeitGesetz, § 5, Stufe achtung."]) expect(ok(text(t)), t).toBe(true);
+    /* P8: eine Zahl mit Einheit im Paket steht nie nackt */
+    for (const t of ["Ruhezeit 660.", "Alter 660.", "Saldo 3,5 und 3.5."]) expect(codes(text(t)), t).toContain("P-02");
   });
   it("fremde Uhrzeit und fremdes Datum", () => {
     for (const t of ["Beginn 07:00.", "Am 2026-12-24 frei.", "Ende 24:00.", "Am 2026-11-05 frei."]) expect(codes(text(t)), t).toContain("P-02");

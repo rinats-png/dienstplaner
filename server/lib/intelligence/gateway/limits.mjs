@@ -253,15 +253,19 @@ export class Limits {
   /** I15 Persistenz: jede Änderung als Ereignis an die Senke (append-only, zaehlerspeicher.mjs). Z4: das Ergebnis wird im Beleg gesammelt. */
   _ereignis(beleg, ie) {
     if (!this.k.senke || ie === 0) return;
-    const e = { t: this.letzteZeit, b: beleg.bKey, tag: beleg.tag, monat: beleg.monat, ie };
+    beleg.folge = (beleg.folge || 0) + 1;      // laufende Folgenummer je Beleg: Buchung vor Rückbuchung auch bei gleichem t
+    const e = { t: this.letzteZeit, b: beleg.bKey, tag: beleg.tag, monat: beleg.monat, ie, n: beleg.folge };
     const p = Promise.resolve().then(() => this.k.senke(e)).then(() => true, () => false);
     beleg.dauer.push(p);
   }
 
   /** Alle Ereignisse dieses Belegs dauerhaft geschrieben? (false bei Speicherfehler.) */
-  async dauerhaft(beleg) {
+  async dauerhaft(beleg, fristMs = 2000) {
     if (!beleg || !Array.isArray(beleg.dauer)) return true;
-    return (await Promise.all(beleg.dauer)).every(Boolean);
+    /* Ein hängender Zählerspeicher darf den Vorgang nicht ewig aufhalten: nach der Frist gilt „nicht dauerhaft“. */
+    let uhr;
+    const frist = new Promise((r) => { uhr = setTimeout(() => r(false), Math.max(1, fristMs)); if (uhr.unref) uhr.unref(); });
+    try { return await Promise.race([Promise.all(beleg.dauer).then((a) => a.every(Boolean)), frist]); } finally { clearTimeout(uhr); }
   }
 
   /** Stand aus dem Rollup laden (nach einem Neustart, vor dem ersten Gebrauch). */

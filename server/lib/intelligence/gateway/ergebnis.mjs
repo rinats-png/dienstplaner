@@ -29,6 +29,9 @@
    E4  Aufbewahrung: Ergebnis 30 Tage, Kontext 90 Tage (Spez. 7.7/D-17; Betreiber kann ändern, nie über
        Obergrenzen). Löschlauf im Vorschau-Modus (Vorgabe) meldet nur und löscht nichts; „an“ löscht;
        „aus“ tut nichts — dieselben Stufen wie aufbewahrung.mjs `datenschutzModus`.
+   E7  Aufbewahrung wird durchgesetzt: Vorgabe-Modus „an“ nur für ki:erg/ki:ktx; beim Schreiben läuft höchstens stündlich ein
+       Löschlauf nebenbei. Das Gateway verweigert den Start mit einem Modus ungleich „an“.
+   E8  Der Decision Context ist an Raum, Betrieb (Hash) und Rolle gebunden; beim Lesen müssen alle passen.
    E5  Speicherfehler brechen nie einen Vorgang: Lesefehler = Fehlschlag, Schreibfehler werden verschluckt.
    ========================================================================== */
 
@@ -47,6 +50,7 @@ const ID_MUSTER = /^[A-Za-z0-9_-]{8,64}$/;
 const FP_MUSTER = /^[0-9a-f]{64}$/;
 
 export const paketHash = (paket) => createHash("sha256").update(kanonisch(paket)).digest("hex");
+const betriebHash = (raum, betriebId) => createHash("sha256").update(`centric-ki-ktx|${raum}|${String(betriebId)}`).digest("hex").slice(0, 24);
 const raumTeil = (raum) => encodeURIComponent(String(raum));
 export const ergebnisSchluessel = (raum, fp) => `ki:erg:${raumTeil(raum)}:${fp}`;
 export const kontextSchluessel = (raum, ctxId) => `ki:ktx:${raumTeil(raum)}:${ctxId}`;
@@ -59,7 +63,7 @@ export function fingerprintBilden(t) {
   if (!t || typeof t !== "object") throw new Error("Fingerprint: Teile fehlen");
   for (const k of FINGERPRINT_TEILE) {
     if (!Object.prototype.hasOwnProperty.call(t, k) || t[k] === undefined) throw new Error(`Fingerprint: ${k} fehlt`);
-    if (k !== "bezug" && (t[k] === null || t[k] === "")) throw new Error(`Fingerprint: ${k} leer`);
+    if (k !== "bezug" && k !== "zeitraum" && (t[k] === null || t[k] === "")) throw new Error(`Fingerprint: ${k} leer`);
   }
   const roh = {}; for (const k of FINGERPRINT_TEILE) roh[k] = t[k];
   return createHash("sha256").update(`centric-ki-fp/v${ERGEBNIS_VERSION}|${kanonisch(roh)}`).digest("hex");
@@ -99,7 +103,10 @@ export function erzeugeErgebnisSpeicher(o) {
     ergebnis: frist(o.fristenTage && o.fristenTage.ergebnisTage, FRISTEN_VORGABE.ergebnisTage, FRISTEN_OBERGRENZE.ergebnisTage),
     kontext: frist(o.fristenTage && o.fristenTage.kontextTage, FRISTEN_VORGABE.kontextTage, FRISTEN_OBERGRENZE.kontextTage),
   };
-  const modus = SPEICHER_MODI.includes(o.modus) ? o.modus : "vorschau";
+  /* E7: Vorgabe „an“ — für die Schlüssel ki:erg/ki:ktx (und nur für sie) wird die Frist wirklich durchgesetzt (eigener Schalter,
+     unabhängig vom Datenschutzlauf des Betriebsbestands). „vorschau“/„aus“ sind möglich, aber das Gateway startet damit nicht. */
+  const modus = SPEICHER_MODI.includes(o.modus) ? o.modus : "an";
+  let letzterLauf = 0;
   const zufallId = o.zufallId || (() => randomBytes(12).toString("base64url"));
 
   const lesenRoh = async (schluessel) => {
@@ -128,6 +135,8 @@ export function erzeugeErgebnisSpeicher(o) {
         const t = jetzt();
         await store.setJSON(ergebnisSchluessel(raum, fingerprint), { v: ERGEBNIS_VERSION, art: "erg", raum, fingerprint,
           funktion: String(funktion), erzeugt: t, ablauf: t + tage.ergebnis * TAG_MS, ergebnis: structuredClone(ergebnis) });
+        /* E7: Fristen ohne Planer — höchstens einmal je Stunde wird beim Schreiben nebenbei aufgeräumt (nur ki:erg/ki:ktx). */
+        if (modus === "an" && t - letzterLauf > 3600_000) { letzterLauf = t; this.aufraeumen().catch(() => {}); }
         return true;
       } catch { return false; }
     },
@@ -138,13 +147,14 @@ export function erzeugeErgebnisSpeicher(o) {
     },
 
     /** E3: Decision Context. @returns {Promise<string|null>} ctxId */
-    async kontextSchreiben({ raum, funktion, fingerprint, versionen, stufen, pruefCodes, treffer, paket }) {
+    async kontextSchreiben({ raum, betriebId, rolle, funktion, fingerprint, versionen, stufen, pruefCodes, treffer, paket }) {
       try {
         const ctxId = zufallId();
-        if (!ID_MUSTER.test(ctxId) || typeof raum !== "string" || !raum) return null;
+        /* E8: Der Kontext gehört zu Raum, BETRIEB und ROLLE (mehrere Betriebe je Raum): beides wird gespeichert und beim Lesen verlangt. */
+        if (!ID_MUSTER.test(ctxId) || typeof raum !== "string" || !raum || !betriebId || typeof rolle !== "string" || !rolle) return null;
         const t = jetzt();
         const ev = kontextAusPaket(paket);
-        await store.setJSON(kontextSchluessel(raum, ctxId), { v: ERGEBNIS_VERSION, art: "ktx", raum, ctxId, funktion: String(funktion),
+        await store.setJSON(kontextSchluessel(raum, ctxId), { v: ERGEBNIS_VERSION, art: "ktx", raum, betrieb: betriebHash(raum, betriebId), rolle, ctxId, funktion: String(funktion),
           fingerprint: String(fingerprint), versionen: structuredClone(versionen || {}), stufen: (stufen || []).filter(Number.isInteger).slice(0, 3),
           pruefCodes: (pruefCodes || []).filter((c) => /^P-\d{2}$/.test(String(c))).slice(0, 12), treffer: treffer === true,
           ...ev, erzeugt: t, ablauf: t + tage.kontext * TAG_MS });
@@ -153,10 +163,11 @@ export function erzeugeErgebnisSpeicher(o) {
     },
 
     /** Fremde Kennung oder anderer Raum → null (der Aufrufer macht KI_NICHT_GEFUNDEN daraus, nicht „verboten“). */
-    async kontextLesen({ raum, ctxId }) {
-      if (typeof raum !== "string" || !raum || !ID_MUSTER.test(String(ctxId))) return null;
+    async kontextLesen({ raum, betriebId, rolle, ctxId }) {
+      if (typeof raum !== "string" || !raum || !betriebId || typeof rolle !== "string" || !rolle || !ID_MUSTER.test(String(ctxId))) return null;
       const e = await lesenRoh(kontextSchluessel(raum, ctxId));
       if (!e || e.v !== ERGEBNIS_VERSION || e.art !== "ktx" || e.raum !== raum || e.ctxId !== ctxId) return null;
+      if (e.betrieb !== betriebHash(raum, betriebId) || e.rolle !== rolle) return null;
       if (!Number.isFinite(e.ablauf) || e.ablauf <= jetzt()) return null;
       return e;
     },

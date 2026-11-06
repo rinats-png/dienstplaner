@@ -80,3 +80,13 @@ Statusstufe „implementiert“: **teilweise** — Persistenz und Alarm-Funktion
 ### Weiter offen
 
 Euro-Tagesbudget und Preise (ungeklärt), Anbieter-Deckel, Lasttest „nicht auf dem Event-Loop“, Kontingent je Tarif/Zusatzplaner/Einführungsfenster, Zeitzone der Tagesgrenzen (UTC), Tageswerte der letzten sieben Tage für `KOSTEN_DREIFACH` (der Aufrufer muss sie liefern).
+
+## Delta-Review von 6354ff5 — Zähler-Persistenz (Befunde 1–3, 9, 11)
+
+Tests: `intelligence-gateway-review2.test.js` (Zähler-Teil) und die korrigierten `zaehler`-Tests.
+
+- **Z5 (kritisch, fail open behoben)** Lesefehler am Rollup oder beschädigter/fremder Rollup: `zusammenfassen()`/`laden()` **werfen**, schreiben nichts und löschen nichts. Nur ein wirklich fehlender Rollup (`null`) beginnt leer. Zuvor: ein einziger Lesefehler setzte alle Kostenzähler auf 0, nachdem die Ereignisse schon gelöscht waren. Der Test, der „beschädigter Rollup → neu beginnen“ festschrieb, prüft jetzt das sichere Verhalten (Rollup unverändert, Ereignis bleibt).
+- **Z6** E/A-Fehler beim Lesen eines Ereignisses brechen ab (nichts geändert, Ereignis bleibt liegen). Gelöscht wird nur, was erfolgreich gelesen wurde und ungültig ist; ein verschwundener Schlüssel wird übersprungen.
+- **Z7** Buchung und Rückbuchung mit gleichem Zeitstempel: jedes Ereignis trägt eine laufende Folgenummer je Beleg (`…-<n6>-<zufall>`), und die Summen werden **nicht** zwischendurch gekappt (kommutativ); gekappt wird erst beim Laden. Test: 200 Läufe ohne aufgeblähten Zähler; Rückbuchung vor Buchung wird später ausgeglichen.
+- **B9** `dauerhaft()` hat eine Frist; ein hängender Zählerspeicher blockiert keinen Vorgang (Nicht-A: abgelehnt).
+- **Betriebsvoraussetzung Single-Instance (Befund 11)**: Die Zähler im Prozessspeicher sind pro Prozess maßgeblich; der persistierte Stand wird nur beim Start geladen (`ladeStand`). **Mehrere gleichzeitige Prozesse/Instanzen dürften jeweils das volle Kontingent verbrauchen** und sind deshalb nicht zulässig (das Produktionsbild ist ein Node-Prozess in einem Container). Wer das ändert, muss vor jeder Nicht-A-Buchung den persistierten Stand einbeziehen (Rollup lesen und Ereignisse addieren, unter der Raumsperre) — das ist bewusst nicht gebaut, weil es die Buchung auf den Ablagezugriff serialisiert; siehe `wpI-offene-fragen.md` Nr. 25.

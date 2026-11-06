@@ -34,6 +34,9 @@
        eine Gegenrechnung durch den Rechenkern (WP-I12) kommt zusätzlich und ersetzt das nicht.
    P6  Die Ausgabe wird EINMAL zu JSON gemacht und nur diese Momentaufnahme wird geprüft und
        verwendet (Getter/Proxy können zwischen Prüfung und Verwendung nichts mehr ändern).
+   P8  Nach einer Zahl steht nur ein bekanntes Einheitenwort oder ein Funktionswort; eine Zahl mit Einheit im Paket steht
+       mit dieser Einheit oder direkt hinter ihrem Feldnamen (nie nackt, nie mit fremder Einheit); „minus/plus“ vor einer
+       Zahl sind Vorzeichen, alle anderen Vorzeichenwörter (Defizit, Überschuss, im Minus …) werden abgelehnt.
    P7  Geprüft wird auf dem NFKC-normalisierten Text ohne unsichtbare Zeichen (Vollbreite,
        Null-Breite); fremde Schriften (kyrillisch, griechisch, arabisch …) werden abgelehnt.
    ========================================================================== */
@@ -64,14 +67,23 @@ const ZAHL = /\d+(?:[.,]\d+)?/g;
 const ZAHL_MIT_VORZEICHEN = /(?<![\p{L}\d.,])([-−–+]?)(\d+(?:[.,]\d+)?)(?:\s*(%|‰|\p{L}+))?/gu;
 const BEZEICHNER_CAMEL = /\b[a-zäöüß]+[A-ZÄÖÜ][A-Za-zäöüß0-9]*\b/g;
 const BEZEICHNER_UNTERSTRICH = /\b[A-Za-zäöüß0-9]+(?:[_:][A-Za-zäöüß0-9]+)+\b/g;
-const ROEMISCH = /\b(?=[MDCLXVI]+\b)M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\b/;
+/* Römische Ziffern, groß und klein (ⅳ → iv durch NFKC), mindestens zwei Zeichen; Wochentagskürzel Di/Mi sind ausgenommen.
+   Ein einzelnes freistehendes x oder v (ⅹ, ⅴ) zählt ebenfalls. */
+const ROEMISCH = /\b(?!(?:di|mi)\b)(?=[MDCLXVI]{2,}\b)M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})\b/i;
+const ROEMISCH_EINZELN = /(?<![\w.])[xvlcdm](?![\w.])/i;
+/* „ein Jahr“, „eine Woche“ … sind Mengenangaben mit Einheit, die das Paket nie hat. */
+const EIN_EINHEIT = /\b(?:ein|eine|einen|einem|einer)\s+(?:jahr|jahre|monat|monate|woche|wochen|sekunde|sekunden|minute|minuten|stunde|stunden|tag|tage|quartal|euro|cent)\b/i;
+const ABKUERZUNG_MENGE = /\b(?:mrd|tsd|mio|mill)\./i;
+/* Verkleidungen: halb/eineinhalb/anderthalb, -jährig/-stellig/-stündig …, Mal- und Faktorform an der Ziffer. */
+const MENGEN_ZUSAMMENSETZUNG = /\b\w*(?:einhalb|anderthalb|dritthalb|vierthalb|jährig|jaehrig|stellig|stündig|stuendig|minütig|minuetig|tägig|taegig|wöchig|woechig|monatig)\w*\b/i;
+const MAL_AN_ZIFFER = /\d\s*[-–]?\s*(?:fach|mal|x|×)(?![A-Za-zäöüß])|(?<![\w])[x×]\s*\d/i;
 const BRUCH = /\d\s*\/\s*\d/;
 const TAUSENDER = /\d{1,3}(?:[.,]\d{3})+(?!\d)/;
 const ZIFFER_BUCHSTABE = /\d[A-Za-zµ]/;
 const FREMDE_ZIFFER = /(?![0-9])[\p{Nd}\p{No}\p{Nl}]/u;
 
 /* Mengenwörter, die keine Zahlwort-Bausteine sind. */
-const MENGENWORT = /\b(?:halb(?:e|er|en|es|em|jahr\w*|stündig\w*)?|h(?:ä|ae)lfte|\w*dutzend\w*|paar(?:e|en)?|\w*(?:drittel|viertel|f(?:ü|ue)nftel|sechstel|siebtel|achtel|zehntel)\w*|doppel\w*|verdoppel\w*|halbier\w*|mehrfach\w*|mehrere|einige|zahlreiche)\b/i;
+const MENGENWORT = /\b(?:beide[rns]?|beiden|halb(?:e|er|en|es|em|jahr\w*|stündig\w*)?|h(?:ä|ae)lfte|\w*dutzend\w*|paar(?:e|en)?|\w*(?:drittel|viertel|f(?:ü|ue)nftel|sechstel|siebtel|achtel|zehntel)\w*|doppel\w*|verdoppel\w*|halbier\w*|mehrfach\w*|mehrere|einige|zahlreiche)\b/i;
 /* Englische Zahl- und Mengenwörter. */
 const ENGLISCH = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|(?:thir|four|fif|six|seven|eigh|nine)teen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|half|quarter|dozen|first|second|third|fourth|fifth|twice|thrice|double|triple)s?\b/i;
 
@@ -83,7 +95,7 @@ const STAEMME = ["null", "eins", "einmal", "zwei", "zwo", "drei", "vier", "fuenf
   "achtzig", "neunzig", "zig", "ssig", "ßig", "hundert", "tausend", "million", "millionen", "milliarde", "milliarden", "dritt", "viert",
   "fuenft", "fünft", "sechst", "siebt", "neunt", "zehnt", "elft", "zwoelft", "zwölft", "zweit", "erst", "zwanzigst", "hundertst",
   "tausendst"];
-const KLEBER = ["ein", "und", "e", "er", "en", "es", "em", "s", "te", "ten", "ter", "tes", "tem", "ste", "sten", "ster", "stes", "stem",
+const KLEBER = ["ein", "und", "e", "er", "en", "es", "em", "s", "n", "ern", "ver", "t", "jahr", "jahre", "jahren", "schaft", "te", "ten", "ter", "tes", "tem", "ste", "sten", "ster", "stes", "stem",
   "el", "tel", "mal", "mals", "fach", "fache", "facher", "fachen", "ig", "ige", "iger", "igen", "iges"];
 const STAMMSET = new Set(STAEMME);
 const BAUSTEINE = [...STAEMME, ...KLEBER].sort((a, b) => b.length - a.length);
@@ -131,6 +143,8 @@ const ohneUnsichtbare = (s) => [...s].filter((c) => !unsichtbar(c)).join("");
 export function erlaubtAusPaket(paket) {
   const zahlen = new Set(); const zahlenExakt = new Set(); const zeiten = new Set(); const daten = new Set(); const alias = new Set();
   const kennungen = new Set(ZUSTAENDE);
+  const feldZahlen = new Map();      // Betrag → Feldnamen (klein) der Fakten MIT Einheit (min/h/tage/personen/prozent)
+  const ohneEinheit = new Set();      // Beträge von Fakten ohne Einheit oder mit „anzahl“
   const einheiten = { min: new Set(), h: new Set(), tage: new Set(), personen: new Set(), prozent: new Set(), anzahl: new Set() };
   const sammleZahlen = (text) => { for (const m of String(text).matchAll(ZAHL)) { const z = normZahl(m[0]); if (z !== null) zahlen.add(z); } };
   const datum = (d) => { if (typeof d === "string") daten.add(d); };
@@ -149,6 +163,10 @@ export function erlaubtAusPaket(paket) {
       if (z !== null) {
         zahlen.add(z);
         if (f.einheit && einheiten[f.einheit]) einheiten[f.einheit].add(z);
+        if (f.einheit && f.einheit !== "anzahl" && einheiten[f.einheit]) {
+          if (!feldZahlen.has(z)) feldZahlen.set(z, new Set());
+          feldZahlen.get(z).add(String(f.feld).toLowerCase());
+        } else ohneEinheit.add(z);
       }
       zahlenExakt.add(String(f.wert));
     } else if (f.art === "zeit") zeiten.add(normZeit(f.wert));
@@ -161,7 +179,7 @@ export function erlaubtAusPaket(paket) {
       if (typeof f.regel.fundstelle === "string") sammleZahlen(f.regel.fundstelle);
     }
   }
-  return { zahlen, zahlenExakt, zeiten, daten, alias, kennungen, einheiten };
+  return { zahlen, zahlenExakt, zeiten, daten, alias, kennungen, einheiten, feldZahlen, ohneEinheit };
 }
 
 /**
@@ -269,16 +287,35 @@ export function ausgabePruefen(o) {
   }
 }
 
-/** Zahlen im Text: Wert, Vorzeichen und Einheit müssen zum Paket passen. */
+/* Wörter, die nach einer Zahl stehen dürfen, ohne eine Einheit zu sein. */
+const FUNKTIONSWORT = new Set(["und", "oder", "bis", "sowie", "zu", "von", "am", "im", "um", "nach", "vor", "auf", "ab", "in", "laut", "pro", "je", "bei", "ist", "war", "sind", "beträgt", "betraegt"]);
+const VORZEICHENWORT = /(?<![\p{L}])(?:defizit\p{L}*|[üu]e?berschuss\p{L}*|negativ\p{L}*|positiv\p{L}*|guthaben|fehlbetrag|r[üu]e?ckstand|schulden)(?![\p{L}])/iu;
+
+/** Zahlen im Text: Wert, Vorzeichen und Einheit müssen zum Paket passen (P5). */
 function zahlenPruefen(rest, erlaubt, codes) {
-  for (const m of rest.matchAll(ZAHL_MIT_VORZEICHEN)) {
+  /* „minus 3,5“ / „plus 3,5“ vor einer Zahl sind Vorzeichen und werden wie „-3,5“ / „+3,5“ geprüft; alle anderen
+     Vorzeichenwörter (Defizit, Überschuss, im Minus, negativ …) sind zweideutig und werden abgelehnt. */
+  const mitVz = rest.replace(/\bminus\s+(?=\d)/gi, "-").replace(/\bplus\s+(?=\d)/gi, "+");
+  if (/\b(?:minus|plus)\b/i.test(mitVz) || VORZEICHENWORT.test(mitVz)) codes.add("P-02");
+  for (const m of mitVz.matchAll(ZAHL_MIT_VORZEICHEN)) {
     const [, vz, ziffern, einheitWort] = m;
     const z = normZahl(ziffern);
     if (z === null || !erlaubt.zahlen.has(z)) { codes.add("P-02"); continue; }
     if (vz && /[-−–]/.test(vz) && !erlaubt.zahlenExakt.has(`-${z}`)) codes.add("P-02");
     if (vz === "+" && !erlaubt.zahlenExakt.has(z)) codes.add("P-02");
     const code = einheitWort ? einheitCode(einheitWort) : null;
-    if (code && !erlaubt.einheiten[code].has(z)) codes.add("P-02");
+    if (code) { if (!erlaubt.einheiten[code].has(z)) codes.add("P-02"); continue; }
+    /* Fundstelle („§ 5 ArbZG“, „Art. 9“): die Zahl stammt aus regel.fundstelle des Pakets, danach folgt der Gesetzesname. */
+    if (/(?:§|Art\.?)\s*$/i.test(mitVz.slice(0, m.index))) continue;
+    /* P8: Nach einer Zahl folgt nur ein bekanntes Einheitenwort oder ein Funktionswort — sonst (Sekunden, Wochen,
+       Euro, Jahre, Dienste …) ist die Einheit unbekannt. */
+    if (einheitWort && !FUNKTIONSWORT.has(einheitWort.toLowerCase())) { codes.add("P-02"); continue; }
+    /* Eine Zahl, die im Paket eine Einheit hat, steht entweder mit dieser Einheit oder direkt hinter dem Feldnamen
+       („ruhezeit.ist 660“) — nie nackt („Alter 660“). */
+    if (erlaubt.feldZahlen.has(z) && !erlaubt.ohneEinheit.has(z)) {
+      const davor = (mitVz.slice(0, m.index).match(/(\S+)\s*$/) || ["", ""])[1].replace(/[:,;]+$/, "").toLowerCase();
+      if (!erlaubt.feldZahlen.get(z).has(davor)) codes.add("P-02");
+    }
   }
 }
 
@@ -319,8 +356,8 @@ function textPruefen(text, erlaubt, codes) {
      gebeugt), Mengen-/Bruchwörter (halb, Dutzend, Viertel, Paar, -fach), Ordnungszahlen, englische
      Zahlwörter, römische Ziffern, Brüche (1/2), Tausendertrenner (1.000 ist 1000, nicht 1), Ziffern mit
      Einheit/Exponent (1e3, 5k, 3x), Ziffern anderer Schriften und Bruch-/Hochzeichen. */
-  if (zahlwoerterIn(rest) || MENGENWORT.test(rest) || ENGLISCH.test(rest) || ROEMISCH.test(rest) || BRUCH.test(rest)
-    || TAUSENDER.test(rest) || ZIFFER_BUCHSTABE.test(rest)) codes.add("P-02");
+  if (zahlwoerterIn(rest) || MENGENWORT.test(rest) || ENGLISCH.test(rest) || ROEMISCH.test(rest) || ROEMISCH_EINZELN.test(rest) || BRUCH.test(rest)
+    || TAUSENDER.test(rest) || ZIFFER_BUCHSTABE.test(rest) || MENGEN_ZUSAMMENSETZUNG.test(rest) || EIN_EINHEIT.test(rest) || ABKUERZUNG_MENGE.test(rest) || MAL_AN_ZIFFER.test(rest)) codes.add("P-02");
   /* Ziffer direkt hinter einem Buchstaben (m2, H2O, V2): nur als Teil einer Kennung des Pakets zulässig. */
   let ohneKennungen = rest;
   for (const k of erlaubt.kennungen) if (/\d/.test(k)) ohneKennungen = ohneKennungen.split(k).join(" ");

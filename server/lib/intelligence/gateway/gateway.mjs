@@ -39,6 +39,8 @@
    G7  Jeder Vorgang gibt seinen Limit-Beleg genau einmal zurück (finally).
    G8  Protokoll ohne Personendaten (audit.mjs, Weißliste); Pflicht-Startereignis.
    G9  Jede Anbieter-Ausnahme wird zu einer Fehlerklasse; ihr Text verlässt das Gateway nie.
+   G15 Notschalter und Pause werden während laufender Anbieteraufrufe alle schalterTaktMs (Vorgabe 250 ms) geprüft;
+       „aus“ bricht den Aufruf über AbortSignal ab, der Vorgang endet mit KI_AUS/KI_PAUSIERT.
    G10 Alle Zähler/Schalter/Prüfungen sind fail closed.
    ========================================================================== */
 
@@ -64,7 +66,7 @@ import { alarmeBerechnen } from "./alarme.mjs";
 export { kanonisch };
 
 const ROLLEN = new Set(["leitung", "planer", "mitarbeiter", "betriebsrat", "betreiber", "subplaner"]);
-const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000 });
+const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000, zaehlerMs: 2_000, schalterTaktMs: 250 });
 const schlafenVorgabe = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
 const zufallIdVorgabe = () => randomBytes(12).toString("base64url");
 
@@ -114,6 +116,8 @@ export function erzeugeGateway(o) {
   const zufallId = o.zufallId || zufallIdVorgabe;
   const speicher = o.ergebnisSpeicher || null;
   if (speicher) {
+    /* E7: Ohne durchgesetzte Aufbewahrung (Modus „an“) startet das Gateway nicht. */
+    if (speicher.modus !== "an") throw new KiFehler("KI_INTERN", "Ergebnis-Speicher ohne durchgesetzte Aufbewahrung.");
     const v = o.kiVersionen;
     if (!v || !["prompt", "pruefer", "bausteinKatalog", "routerRegistry"].every((k) => typeof v[k] === "string" && v[k])) throw new KiFehler("KI_INTERN", "Ergebnis-Speicher ohne Versionen.");
   }
@@ -193,6 +197,9 @@ export function erzeugeGateway(o) {
     let gemeldet = false;
     /** Adapteraufrufe, die nach Frist/Abbruch noch laufen können (G13). */
     const ausstehend = [];
+    /** G15: Notschalter/Pause werden während der Aufrufe zyklisch geprüft und brechen sie ab. */
+    const stopp = new AbortController();
+    let takt = null;
     try {
       /* 7 — Faktenpaket (eine Bestandsmomentaufnahme für Paket, Sperrliste und Rückübersetzung). */
       let momentaufnahme;
@@ -215,7 +222,7 @@ export function erzeugeGateway(o) {
 
       /* I15: die Buchung muss dauerhaft sein, bevor ein Aufruf möglich ist. Fehler: Klasse A läuft im Speicher weiter,
          alle anderen werden abgelehnt (fail closed, Plan I15). */
-      if (!(await limits.dauerhaft(beleg))) {
+      if (!(await limits.dauerhaft(beleg, zeiten.zaehlerMs))) {
         if (eintrag.klasse !== "A") { gemeldet = true; abgelehnt(sitzung, anfrage.funktion, "KI_LIMIT", "zaehler_speicher"); throw new GatewayFehler("KI_LIMIT", "Zähler nicht verfügbar."); }
         audit.melden({ art: "ki.abgelehnt", funktion: anfrage.funktion, rolle: sitzung.rolle, ergebnis: "KI_LIMIT", grund: "zaehler_speicher_a", betrieb: betriebId });
       }
@@ -256,6 +263,12 @@ export function erzeugeGateway(o) {
 
       /* 10/11 — Stufenkette (entfällt bei Treffer). */
       const deadline = t0 + zeiten.deadlineMs;
+      takt = setInterval(async () => {
+        try {
+          if (!gatewayAn(schalter) || (await betriebAktiv(sitzung)) !== true) stopp.abort();
+        } catch { stopp.abort(); }
+      }, Math.max(10, zeiten.schalterTaktMs));
+      if (takt.unref) takt.unref();
       let letzterCode = "KI_ANBIETER";
       let stufeErreicht = 0;
       let versucheGesamt = 0;
@@ -272,7 +285,7 @@ export function erzeugeGateway(o) {
         try {
           antwort = await aufrufen({ anbieter, eingabe, zeitJeVersuchMs: zeiten.stufeMs,
             maxWiederholungen: zeiten.maxWiederholungen, deadline: Math.min(deadline, sStart + zeiten.stufeMs),
-            minRestMs: zeiten.minRestMs, jetzt, schlafen, ausstehend,
+            minRestMs: zeiten.minRestMs, jetzt, schlafen, ausstehend, signal: stopp.signal,
             /* Vor JEDEM Versuch neu prüfen; ab dem ersten tatsächlichen Versuch gilt die Aktion als verbraucht (B2/B7). */
             vorVersuch: async () => { await weiterDarf(); verbraucht = true; } });
         } catch (e) {
@@ -300,7 +313,7 @@ export function erzeugeGateway(o) {
       let ctxId = null;
       if (ergebnis && speicher && fp) {
         if (!treffer) await speicher.schreiben({ raum: sitzung.bestand, fingerprint: fp, funktion: anfrage.funktion, ergebnis, sperrliste });
-        ctxId = await speicher.kontextSchreiben({ raum: sitzung.bestand, funktion: anfrage.funktion, fingerprint: fp,
+        ctxId = await speicher.kontextSchreiben({ raum: sitzung.bestand, betriebId: String(bestand.mandanten[idx].id), rolle: sitzung.rolle, funktion: anfrage.funktion, fingerprint: fp,
           versionen: { ...o.versionen, ...o.kiVersionen, schema: SCHEMA_VERSION }, stufen: treffer || !stufeErreicht ? [] : [stufeErreicht], pruefCodes: [], treffer, paket });
       }
 
@@ -339,6 +352,7 @@ export function erzeugeGateway(o) {
       if (!gemeldet) abgelehnt(sitzung, anfrage.funktion, e && typeof e.code === "string" ? e.code : "KI_INTERN", "ausnahme");
       throw e;
     } finally {
+      if (takt) clearInterval(takt);
       /* G13: ein Adapter, der Frist/Abbruch überlebt, hält seinen Platz, bis er wirklich endet. */
       const offen = ausstehend.filter((x) => !x.fertig).map((x) => x.p);
       limits.abschliessen(beleg, { verbraucht, spaeter: offen.length ? Promise.allSettled(offen) : undefined });

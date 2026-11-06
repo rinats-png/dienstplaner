@@ -57,10 +57,15 @@ describe("Fingerprint", () => {
     for (const k of FINGERPRINT_TEILE) {
       const t = { ...TEILE }; delete t[k];
       expect(() => fingerprintBilden(t), k).toThrow();
-      if (k !== "bezug") expect(() => fingerprintBilden({ ...TEILE, [k]: "" }), `${k} leer`).toThrow();
-      if (k !== "bezug") expect(() => fingerprintBilden({ ...TEILE, [k]: null }), `${k} null`).toThrow();
+      if (k !== "bezug" && k !== "zeitraum") expect(() => fingerprintBilden({ ...TEILE, [k]: "" }), `${k} leer`).toThrow();
+      if (k !== "bezug" && k !== "zeitraum") expect(() => fingerprintBilden({ ...TEILE, [k]: null }), `${k} null`).toThrow();
     }
     expect(() => fingerprintBilden(null)).toThrow();
+  });
+  it("Review 12: zeitraum darf null sein (wie bezug) — F4/F5/F9 haben keinen Zeitraum — und ändert den Fingerprint", () => {
+    const a = fingerprintBilden({ ...TEILE, zeitraum: null });
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).not.toBe(fingerprintBilden(TEILE));
   });
   it("Schlüssel: Raum URL-kodiert — das Präfix eines Raums trifft nie einen anderen (a gegen a:b)", () => {
     const fp = "c".repeat(64);
@@ -112,7 +117,7 @@ describe("Ergebnis-Speicher", () => {
     store.ausfall = true;
     expect(await sp.lesen({ raum: "raum-a", fingerprint: fp })).toBeNull();
     expect(await sp.schreiben({ raum: "raum-a", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: SPERR })).toBe(false);
-    expect(await sp.kontextSchreiben({ raum: "raum-a", funktion: "F2", fingerprint: fp, paket: { fakten: [] } })).toBeNull();
+    expect(await sp.kontextSchreiben({ raum: "raum-a", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: fp, paket: { fakten: [] } })).toBeNull();
     await expect(sp.verwerfen({ raum: "raum-a", fingerprint: fp })).resolves.toBeUndefined();
   });
   it("E2 zweite Schranke beim Schreiben: Klarname, Kontakt, Gesundheit, fremde Felder, fehlende Sperrliste → nichts gespeichert", async () => {
@@ -145,9 +150,9 @@ describe("Decision Context", () => {
   ] };
   it("E3 nur Zahlen, Regelkennungen, Versionen, Stufen, Codes — keine Alias, keine Texte; 90 Tage", async () => {
     const { store, sp } = neu();
-    const id = await sp.kontextSchreiben({ raum: "raum-a", funktion: "F2", fingerprint: "e".repeat(64), versionen: { engine: "0.0.0", prompt: "p1" }, stufen: [1, 2], pruefCodes: ["P-02", "x", "Anna"], treffer: false, paket: PAKET });
+    const id = await sp.kontextSchreiben({ raum: "raum-a", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: "e".repeat(64), versionen: { engine: "0.0.0", prompt: "p1" }, stufen: [1, 2], pruefCodes: ["P-02", "x", "Anna"], treffer: false, paket: PAKET });
     expect(id).toBe("ctx-00000001");
-    const e = await sp.kontextLesen({ raum: "raum-a", ctxId: id });
+    const e = await sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "leitung", ctxId: id });
     expect(e).toMatchObject({ funktion: "F2", stufen: [1, 2], pruefCodes: ["P-02"], regelIds: ["ruhezeitGesetz"], zahlen: [660], faktenAnzahl: 2, treffer: false });
     expect(e.ablauf - e.erzeugt).toBe(90 * TAG);
     expect(JSON.stringify(store.m.get(kontextSchluessel("raum-a", id)))).not.toMatch(/P_BCDFGHJK|text|Anna/);
@@ -155,11 +160,11 @@ describe("Decision Context", () => {
   });
   it("fremde Kennung, anderer Raum, abgelaufen, ungültiges Format → null (nicht „verboten“)", async () => {
     const { uhr, sp } = neu();
-    const id = await sp.kontextSchreiben({ raum: "raum-a", funktion: "F2", fingerprint: "e".repeat(64), paket: PAKET });
-    expect(await sp.kontextLesen({ raum: "raum-b", ctxId: id })).toBeNull();
-    for (const x of ["nicht-da-123", "", "../x", null, undefined, 5]) expect(await sp.kontextLesen({ raum: "raum-a", ctxId: x })).toBeNull();
+    const id = await sp.kontextSchreiben({ raum: "raum-a", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: "e".repeat(64), paket: PAKET });
+    expect(await sp.kontextLesen({ raum: "raum-b", betriebId: "m1", rolle: "leitung", ctxId: id })).toBeNull();
+    for (const x of ["nicht-da-123", "", "../x", null, undefined, 5]) expect(await sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "leitung", ctxId: x })).toBeNull();
     uhr.t += 90 * TAG;
-    expect(await sp.kontextLesen({ raum: "raum-a", ctxId: id })).toBeNull();
+    expect(await sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "leitung", ctxId: id })).toBeNull();
   });
 });
 
@@ -169,11 +174,11 @@ describe("Aufbewahrung und Löschung", () => {
     const store = speicherStore(); const uhr = { t: T0 };
     const sp = erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t, modus, zufallId: () => "ctx-abcdefgh" });
     await sp.schreiben({ raum: "raum-a", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: SPERR });
-    await sp.kontextSchreiben({ raum: "raum-a", funktion: "F2", fingerprint: fp, paket: { fakten: [] } });
+    await sp.kontextSchreiben({ raum: "raum-a", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: fp, paket: { fakten: [] } });
     return { store, uhr, sp };
   }
-  it("Vorschau (Vorgabe): meldet Fälliges, löscht NICHTS", async () => {
-    const { store, uhr, sp } = await vorbereiten(undefined);
+  it("Vorschau (ausdrücklich gewählt): meldet Fälliges, löscht NICHTS", async () => {
+    const { store, uhr, sp } = await vorbereiten("vorschau");
     expect(sp.modus).toBe("vorschau");
     uhr.t += 31 * TAG;
     expect(await sp.aufraeumen()).toEqual({ modus: "vorschau", geprueft: 2, faellig: 1, geloescht: 0, fehler: 0 });
@@ -182,7 +187,7 @@ describe("Aufbewahrung und Löschung", () => {
     expect((await sp.aufraeumen()).faellig).toBe(2);
     expect(store.m.size).toBe(2);
   });
-  it("an: löscht fällige (30 Tage Ergebnis, 90 Tage Kontext), auch Beschädigtes; aus: tut nichts; ungültiger Modus → Vorschau", async () => {
+  it("an: löscht fällige (30 Tage Ergebnis, 90 Tage Kontext), auch Beschädigtes; aus: tut nichts; ungültiger Modus → an (E7)", async () => {
     const { store, uhr, sp } = await vorbereiten("an");
     uhr.t += 31 * TAG;
     expect((await sp.aufraeumen()).geloescht).toBe(1);
@@ -195,7 +200,7 @@ describe("Aufbewahrung und Löschung", () => {
     aus.uhr.t += 999 * TAG;
     expect(await aus.sp.aufraeumen()).toMatchObject({ modus: "aus", geprueft: 0, geloescht: 0 });
     expect(aus.store.m.size).toBe(2);
-    expect((await vorbereiten("kaputt")).sp.modus).toBe("vorschau");
+    expect((await vorbereiten("kaputt")).sp.modus).toBe("an");
   });
   it("Löschlauf übersteht Speicherfehler (zählt Fehler, wirft nicht)", async () => {
     const { store, uhr, sp } = await vorbereiten("an");
@@ -206,7 +211,7 @@ describe("Aufbewahrung und Löschung", () => {
     expect(b.geloescht).toBe(0);
   });
   it("Raumlöschung (Art. 17) entfernt alle ki:*-Einträge dieses Raums und nur dieses Raums", async () => {
-    const { store, sp } = await vorbereiten("vorschau");
+    const { store, sp } = await vorbereiten("an");
     await sp.schreiben({ raum: "raum-b", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: sperrlisteBilden(bestand().mandanten[0], { raum: "raum-b" }) });
     await sp.schreiben({ raum: "raum-a:x", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: SPERR });
     expect(await sp.raumLoeschen("raum-a")).toBe(2);
@@ -243,7 +248,7 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
     expect(a.ctxId).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
     expect(b.ctxId).not.toBe(a.ctxId);
     expect(t.ereignisse.find((e) => e.art === "ki.ende" && e.treffer === true)).toBeTruthy();
-    const ktx = await t.sp.kontextLesen({ raum: "raum-a", ctxId: b.ctxId });
+    const ktx = await t.sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "leitung", ctxId: b.ctxId });
     expect(ktx).toMatchObject({ treffer: true, funktion: "F2" });
   });
   it("Invalidierung: anderer Zeitraum, geänderte Fakten, andere Prompt-/Prüfer-/Katalog-/Registry-Version, andere Engine, anderer Raum → kein Treffer", async () => {
@@ -359,8 +364,8 @@ describe("Echte Dateiablage (server/lib/ablage.mjs)", () => {
       expect(await sp.schreiben({ raum: "raum:a/b", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: SPERR })).toBe(true);
       expect(await sp.lesen({ raum: "raum:a/b", fingerprint: fp })).toEqual(ERG);
       expect(await sp.lesen({ raum: "raum", fingerprint: fp })).toBeNull();
-      const id = await sp.kontextSchreiben({ raum: "raum:a/b", funktion: "F2", fingerprint: fp, paket: { fakten: [] } });
-      expect(await sp.kontextLesen({ raum: "raum:a/b", ctxId: id })).toMatchObject({ funktion: "F2" });
+      const id = await sp.kontextSchreiben({ raum: "raum:a/b", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: fp, paket: { fakten: [] } });
+      expect(await sp.kontextLesen({ raum: "raum:a/b", betriebId: "m1", rolle: "leitung", ctxId: id })).toMatchObject({ funktion: "F2" });
       uhr.t += 31 * TAG;
       expect(await sp.aufraeumen()).toMatchObject({ faellig: 1, geloescht: 1 });
       expect(await sp.raumLoeschen("raum:a/b")).toBe(1);
