@@ -1,4 +1,4 @@
-/* global document, window */
+/* global document, window, innerHeight, innerWidth, getComputedStyle */
 /* Bereichs-Sweep (lokal, Wegwerfdaten): geht je Rolle alle Navigationsziele durch
    und prüft je Breite (1280/768/375/320) und Thema (hell/dunkel):
    Seitenfehler, Konsolenfehler, Querscroll, dauerhaftes „Lädt …", leere Bereiche,
