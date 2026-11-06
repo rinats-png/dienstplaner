@@ -5254,7 +5254,7 @@ const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
   return (
     <div {...klickbar(onClick, title || `${da.name}${unten ? ` · ${unten}` : ""}`)}
       title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
-      style={{ background: `${da.farbe}1C`, color: lesbar(da.farbe), cursor: onClick ? "pointer" : "default",
+      style={{ background: `${da.farbe}1C`, color: lesbar(da.farbe, 5.4), cursor: onClick ? "pointer" : "default",
         minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
         textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
       <div className="oben">{da.kurz}</div>
@@ -5532,7 +5532,7 @@ function Zelle({ da, abw, size = 28, blass }) {
     color: C.dimmer, fontSize: 13 }}>·</div>;
   return <div title={`${da.name} ${da.start}–${da.ende}`} 
     style={{ width: size, height: size, borderRadius: Math.round(size * .3), display: "flex", alignItems: "center",
-      justifyContent: "center", background: blass ? `${da.farbe}18` : `${da.farbe}22`, color: lesbar(da.farbe),
+      justifyContent: "center", background: blass ? `${da.farbe}18` : `${da.farbe}22`, color: lesbar(da.farbe, 5.4),
       fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{da.kurz}</div>;
 }
 function Balken({ ist, soll, tone }) {

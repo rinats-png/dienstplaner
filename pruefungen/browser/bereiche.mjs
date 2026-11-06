@@ -24,7 +24,7 @@ if (BILDER) await mkdir(BILDER, { recursive: true });
 const daten = await mkdtemp(path.join(tmpdir(), "centric-sweep-"));
 const srv = spawn(process.execPath, ["server.mjs"], { cwd: WT, stdio: "ignore",
   env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: WT + "/dist", CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
-    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production" } });
+    CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "lokal-pfeffer", CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production", ...(process.env.DEMO ? { CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true" } : {}) } });
 let xz = 0;
 const j = async (p, b, t) => { const a = await fetch(BASE + p, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": `10.8.0.${++xz}`, ...(t ? { authorization: "Bearer " + t } : {}) }, body: JSON.stringify(b) }); return { s: a.status, d: await a.json().catch(() => ({})) }; };
 for (let i = 0; i < 50; i++) { try { if ((await fetch(BASE + "/gesund")).ok) break; } catch { /* warten */ } await new Promise((r) => setTimeout(r, 200)); }
@@ -36,6 +36,28 @@ try {
   const e = await j("/einrichten", { verwaltung: ADMIN, name: "Betreiber", bestand: RAUM, rolle: "betreiber", person: null, betrieb: 0 });
   const betreiberCode = e.d.zugangscode;
   const bt = (await j("/api/anmelden", { zugangscode: betreiberCode })).d.token;
+  let codes;
+  const b = await chromium.launch({ channel: "msedge" });
+  if (process.env.DEMO) {
+    /* Gefüllter Betrieb: Der Betreiber legt über die Oberfläche den Demo-Bestand an (wie im Betrieb). */
+    const cx = await b.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "block" });
+    const pg = await cx.newPage();
+    await pg.goto(BASE + "/", { waitUntil: "networkidle" });
+    await pg.locator("input").first().fill(betreiberCode);
+    await pg.getByRole("button", { name: /anmelden/i }).first().click();
+    await pg.getByRole("button", { name: /Demo-Bestand anlegen/ }).click({ timeout: 15000 });
+    await pg.waitForTimeout(4000);
+    await cx.close();
+    const g = await fetch(BASE + "/api/bestand", { headers: { authorization: "Bearer " + bt, "x-forwarded-for": "10.8.1.1" } }).then((r) => r.json());
+    const mm = ((g.bestand || {}).mandanten || [])[0];
+    if (!mm) { console.log("ABBRUCH: Demo-Bestand nicht angelegt", JSON.stringify(g).slice(0, 200)); process.exit(3); }
+    const von = (r) => (mm.personen.find((x) => x.rolle === r && x.status !== "inaktiv") || {}).id;
+    const zz = await j("/api/zugaenge", { bestand: RAUM, eintraege: [
+      { rolle: "leitung", personId: von("leitung"), name: "L" }, { rolle: "planer", personId: von("planer") || von("leitung"), name: "P" },
+      { rolle: "mitarbeiter", personId: von("mitarbeiter"), name: "M" }] }, bt);
+    if (!zz.d.zugaenge) { console.log("ABBRUCH: Zugänge", JSON.stringify(zz.d).slice(0, 200)); process.exit(3); }
+    codes = { leitung: zz.d.zugaenge[0].code, planer: zz.d.zugaenge[1].code, mitarbeiter: zz.d.zugaenge[2].code, betreiber: betreiberCode };
+  } else {
   const person = (id, r, vn) => ({ id, vorname: vn, nachname: "Sweep", rolle: r, bereich: "ALLE", status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
   const { baueLeerenBetrieb } = await import("file:///" + WT + "/server/lib/leerbetrieb.mjs");
   const voll = baueLeerenBetrieb({ name: "Sweep Betrieb", branche: "pflege", email: null, land: "DE", raum: RAUM, laeuftAb: null });
@@ -43,9 +65,9 @@ try {
   await j("/api/bestand-anlegen", { inhalt: voll }, bt);
   const z = await j("/api/zugaenge", { bestand: RAUM, eintraege: [
     { rolle: "leitung", personId: "l", name: "Lena" }, { rolle: "planer", personId: "p", name: "Paul" }, { rolle: "mitarbeiter", personId: "m1", name: "Mia" }] }, bt);
-  const codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code, betreiber: betreiberCode };
+  codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code, betreiber: betreiberCode };
 
-  const b = await chromium.launch({ channel: "msedge" });
+  }
   for (const rolle of ROLLEN) for (const w of BREITEN) for (const thema of THEMEN) {
     const ctx = await b.newContext({ viewport: { width: w, height: 850 }, serviceWorkers: "block", colorScheme: thema, hasTouch: w < 700 });
     const p = await ctx.newPage();
@@ -123,7 +145,8 @@ try {
         }
       }
       for (let gi = 0; gi < gruppen.length; gi++) {
-        await p.locator(".bpille:visible").nth(gi).click({ timeout: 4000 }).catch(() => melde("klick", `${marke} Gruppe ${gruppen[gi]}: Klick scheitert`));
+        if (gi === 0) { const r1 = await p.locator(".bpille:visible").nth(0).boundingBox(); await p.waitForTimeout(300); const r2 = await p.locator(".bpille:visible").nth(0).boundingBox(); if (r1 && r2 && (Math.abs(r1.x - r2.x) > 0.5 || Math.abs(r1.y - r2.y) > 0.5 || Math.abs(r1.width - r2.width) > 0.5)) melde("layout-unruhig", `${marke}: Bereichspille wandert (${JSON.stringify(r1)} -> ${JSON.stringify(r2)})`); }
+        await p.locator(".bpille:visible").nth(gi).click({ timeout: 4000 }).catch((x) => melde("klick", `${marke} Gruppe ${gruppen[gi]}: Klick scheitert (${String(x).split(String.fromCharCode(10)).filter((l) => /intercepts|outside|not visible/.test(l)).join(" ").slice(0, 160)})`));
         await p.waitForTimeout(500);
         const tabs = await texte(".utab");
         for (let ti = 0; ti < tabs.length; ti++) {
