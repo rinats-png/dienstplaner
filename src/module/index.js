@@ -24,6 +24,7 @@ import { createElement as h } from "react";
 import { BRANCHENMODULE, modulVon, modulAktiv, modulNurLesen, modulParameter } from "../../server/lib/branchenmodule.mjs";
 import { kompetenzStand } from "../../server/lib/regelwerk.mjs";
 import { PostenUebersicht } from "./posten.jsx";
+import { WachbuchTages } from "./wachbuch.jsx";
 import { BereichsUebersicht } from "./bereichsplan.jsx";
 import { AbschnittsAnzeige } from "./geteilterdienst.jsx";
 import { AnlagenUebersicht } from "./anlagen.jsx";
@@ -43,6 +44,8 @@ const dienstzeiten = (m) => Object.fromEntries((Array.isArray(m && m.dienstarten
 export const MODUL_OBERFLAECHEN = Object.freeze([
   { modul: "posten", ort: "tag", titel: "Posten je Objekt",
     ansicht: (k) => h(PostenUebersicht, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
+  { modul: "wachbuch", ort: "tag", titel: "Wachbuch",
+    ansicht: (k) => h(WachbuchTages, { m: k.m, datum: k.datum, zugriff: k.wachbuchZugriff || "keiner", person: k.person || null, eigeneEinheit: k.einheitId || null }) },
   { modul: "bereichsplan", ort: "tag", titel: "Bereiche",
     ansicht: (k) => h(BereichsUebersicht, { m: k.m, einheitId: k.einheitId, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
   { modul: "anlagen", ort: "tag", titel: "Anlagen",

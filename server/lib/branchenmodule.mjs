@@ -148,7 +148,15 @@ export const BRANCHENMODULE = Object.freeze([
     datenfelder: ["objekte", "postenPlan"], personenfelder: ["postenPlan"], sachfelder: ["objekte"], regelIds: ["POSTEN-BESETZUNG-01", "POSTEN-QUAL-01"],
     berichtigungsWerte: Object.freeze({ postenPlan: bekannterPosten }) }),
   modul({ id: "wachbuch", merkmal: "wachbuch", name: "Wachbuch", pakete: ["sicherheit"], mitbestimmung: true,
-    beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung." }),
+    beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung.",
+    /* server/lib/modul-wachbuch.mjs: eigenes Betriebsfeld `wachbuch`, Form „Kennung|Tag“ (W1 a); der Verfasser je
+       Eintrag macht es zum Personenfeld. Berichtigung über den Ausnahmeweg gibt es nicht (W2 a): nur Löschung. */
+    datenfelder: ["wachbuch"], personenfelder: ["wachbuch"], ausnahmeUi: true,
+    berichtigungsWerte: Object.freeze({ wachbuch: () => false }),
+    parameter: {
+      kontrollIntervallMinuten: { typ: "zahl", standard: 0, min: 0, max: 1440, ganzzahl: true, vorlaeufig: true,
+        text: "Längste erlaubte Zeit zwischen zwei Kontrollgängen; 0 = keine Meldung (Matrix W5 b, standardmäßig aus)." },
+    } }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,
     abhaengigVon: ["posten"],
     beschreibung: "Bericht je Objekt und Zeitraum für den Auftraggeber: Soll- und Ist-Besetzung der Posten, optional Wachbuchauszug." }),

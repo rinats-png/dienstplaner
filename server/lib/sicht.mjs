@@ -593,6 +593,8 @@ export const BETRIEB = {
   postenPlan: [R(eigenOhneEntwurf), WEG],
   /* Bereichsplan (WP-19, modul-bereichsplan.mjs): wie postenPlan. Die Bereiche selbst stehen an der Einheit (einheiten). */
   bereichsPlan: [R(eigenOhneEntwurf), WEG],
+  /* Wachbuch (WP-19, modul-wachbuch.mjs): bis die Zeile in RECHTEMATRIX.md entschieden ist (W4), fail-closed — nichts geht hinaus. */
+  wachbuch: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
