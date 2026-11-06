@@ -15,6 +15,7 @@
    - Spoofing-Hinweis B14: Standortangabe ist ein Hinweis, kein Beweis
    ========================================================================== */
 import { describe, it, expect, beforeAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -113,7 +114,7 @@ describe("Gerät: Grund der fehlenden Position (B4, B16 „Geo Gerät“)", () =
     expect(koordMitGrund(null, "timeout")).toEqual({ grund: "timeout" });
     expect([koordMitGrund(null), koordMitGrund(null, ""), koordMitGrund(null, 5)]).toEqual([null, null, null]);
     /* Beide Aufrufstellen (Stempeluhr, mobile Fläche) reichen den Grund weiter. */
-    const app = lies("src/App.jsx");
+    const app = appQuelle();
     expect(app.match(/positionHolen\(geoAn, \((?:k|koord), grund\) => \{ const ort = koordMitGrund\(/g) || []).toHaveLength(2);
   });
   it("speicher.stempeln sendet den Grund, aber nie zusammen mit einer Koordinate", async () => {

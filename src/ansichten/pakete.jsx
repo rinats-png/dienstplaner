@@ -7,6 +7,8 @@ import { NUM } from "../ui/thema.js";
 import { eur0 } from "../lib/format.js";
 import { mandantPaketkosten, folgemonatsanfang, paketTag, paketAufpreisSumme } from "../paketlogik.js";
 
+
+
 /** Welche Pakete schlägt eine Branche vor? */
 const paketeFuerBranche = (b) => ({
   sicherheit: ["sicherheit"], pflege: ["pflege"], klinik: ["klinik"],
