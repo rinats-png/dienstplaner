@@ -1,10 +1,11 @@
 /* Die geführte Tour darf Dialoge nicht verdecken (Befund V4 Phase 2):
    sie blendet sich aus, solange ein aria-modal-Dialog offen ist. */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const app = readFileSync(join(import.meta.dirname, "..", "src", "App.jsx"), "utf8");
+const app = appQuelle();
 
 describe("Tour und Dialoge", () => {
   it("TourLeiste beobachtet offene Dialoge und blendet sich aus, ohne sich abzubauen", () => {

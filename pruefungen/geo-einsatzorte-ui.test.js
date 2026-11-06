@@ -7,6 +7,7 @@
    Markierung „Ort nicht bestätigt").
    ========================================================================== */
 import { describe, it, expect, beforeAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { geoAnzeige, MARKIERUNG_TEXT } from "../src/stempelvorgang.js";
@@ -134,7 +135,7 @@ describe("A1 (Client): STEMPEL_UNVERAENDERLICH wird nicht als Rollenproblem oder
   });
   it("Oberfläche: die Lage hat eine eigene, verständliche Meldung mit „neu laden“", async () => {
     const { readFile } = await import("node:fs/promises");
-    const quelle = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const quelle = appQuelle();
     const block = quelle.match(/stempelStand: \{[\s\S]*?\n  \},/);
     expect(block, "SPEICHERLAGE.stempelStand fehlt").toBeTruthy();
     expect(block[0]).toMatch(/veraltet/);

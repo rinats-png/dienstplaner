@@ -14,6 +14,7 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -156,7 +157,7 @@ describe("Sicht des Betreibers", () => {
 
 describe("Kennzahlen: aus dem Gerüst dasselbe wie aus dem vollen Bestand", () => {
   /* Die Funktionen der Oberfläche selbst, aus App.jsx geladen. */
-  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
+  const app = appQuelle().replace(/\r\n/g, "\n");
   const quelle = (name) => {
     const i = app.indexOf(`function ${name}(`);
     const j = app.indexOf("\n}\n", i);

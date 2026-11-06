@@ -9,10 +9,11 @@
    (Effekt auf sitz.person.dichte), und das Kopfmenü schreibt sie zurück.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const app = readFileSync(join(import.meta.dirname, "..", "src/App.jsx"), "utf8");
+const app = appQuelle();
 
 describe("Dichte", () => {
   it("die Einstellung schreibt p.dichte (Einstellungen)", () => {

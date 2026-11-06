@@ -9,13 +9,14 @@
    Aufruf: npm run pruefung:beschaeftigung
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { BESCHAEFTIGUNGSMODELLE, beschaeftigungsmodell, modellVon, modellHinterlegt } from "../src/beschaeftigung.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "../src/abwesenheitsarten.js";
 import { regelnFuer, REGELN } from "../src/regelregister.js";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 
-const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+const app = appQuelle();
 const arten = readFileSync(new URL("../src/abwesenheitsarten.js", import.meta.url), "utf8");
 const rechte = readFileSync(new URL("../server/lib/rechte.mjs", import.meta.url), "utf8");
 

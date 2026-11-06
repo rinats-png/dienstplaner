@@ -23,6 +23,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -202,7 +203,7 @@ describe("A-2: Rückfrage nennt die Vormonate, Oberfläche überträgt die Über
     expect(A.VORMONAT_KATEGORIEN.map((k) => k.id).sort()).toEqual(Object.keys(MA.VORMONAT_KATEGORIEN).sort());
   });
   it("Oberfläche: Bestätigen schickt die Überstimmung; speicher.js überträgt sie; Fehler tragen die Vormonate", async () => {
-    const app = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/SP\.monatsabschluss\("lohnexport", monat, \{ exportStand, trotzVormonat \}\)/);
     const sp = await readFile(path.join(process.cwd(), "src/speicher.js"), "utf8");
     expect(sp).toMatch(/trotzVormonat: true, vormonatKategorie: trotzVormonat\.kategorie, vormonatGrund: trotzVormonat\.grund/);

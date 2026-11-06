@@ -22,3 +22,15 @@ Theme: `themaSetzen` in App.jsx ruft `dunkelSetzen()`; alle Bausteine lesen `ist
 
 ## Nicht herausloesbar ohne mehr als Imports
 Views, die noch von in App.jsx verbliebenen Fachfunktionen abhaengen (z. B. vorschau, pruefen, memo, Sheet, Zelle, Standorte/Betrieb-Verflechtung): Kapazitaetsvorschau, Urlaubsrunde, Planstand, Tarifwerk, Wunschdienste, Einarbeitung u. a. Naechster Schritt: Fachlogik (Zeilen ca. 1300-4400) nach src/lib/ ziehen, dann Sheet/Zelle nach src/ui.
+
+## Schritt 2 (nach Merge von origin/integration/release-v4)
+
+| Schritt | Verschobene Symbole | Neue Datei(en) | App.jsx Zeilen |
+|---|---|---|---|
+| d | gesamte reine Fachlogik und Stammdaten (GEMEINDE_FEIERTAGE bis tabelleCSV, 205 Namen: Planrechnung, pruefen, preis, Lohn/DATEV, Import, Befehle u. a., einschliesslich Standorthelfer ALLE_STANDORTE/einheitenAmStandort/personAmStandort; zeitpunktText nach lib/datum.js). Farbwahl, Farbpunkt, EinheitWahl (JSX) bleiben in App.jsx | src/lib/fachlogik.js (4423 Zeilen) | 24844 -> 20435 |
+| e | Standortwahl, Standortleiste, Sprung, Zelle, Balken, Sheet (+blattStapel) | src/ui/leisten.jsx | |
+| e | ZiehKontext, ZiehAnbieter, Ziehbar, Ablage, ZiehHinweis | src/ui/ziehen.jsx | |
+| e | LinienDiagramm, BalkenDiagramm, AbweichungsDiagramm, AnteilBalken, StapelBalken, Schritte, ModellVorschau | src/ui/diagramme.jsx | 20435 -> 19884 |
+
+Quelltextpruefungen: Alle Tests, die App.jsx als Text lesen (jetzt ~35 Dateien), lesen ueber `pruefungen/app-quelle.js` (Reihenfolge lib, ui, App.jsx, ansichten; `export ` am Zeilenanfang entfernt). Die Behauptungen sind unveraendert.
+Pruefsatz nach (e): Build gruen, ESLint 0 Fehler (96 Warnungen, Basis 105), alle App.jsx-lesenden Tests plus oberflaeche-render, v4-app-stil, v4-tokens: nur die 4 Basis-Fehler (selbsttest, wiederherstellen-ui).

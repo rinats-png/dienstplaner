@@ -15,12 +15,13 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
-const APP = readFileSync(path.join(HIER, "..", "src", "App.jsx"), "utf8").replace(/\r\n/g, "\n");
+const APP = appQuelle().replace(/\r\n/g, "\n");
 
 /** Der Quelltext einer Aktion `name: (…) => mUpd(…)` bis zur nächsten Aktion. */
 function aktion(name) {

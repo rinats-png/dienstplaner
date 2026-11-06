@@ -6,6 +6,7 @@
    Aufruf: npx vitest run pruefungen/review-wp11.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -181,7 +182,7 @@ describe("Füllstand: ab 80 % sieht die Leitung eine Warnung", () => {
     expect(zweimal.mandanten[0].nachrichten.filter((x) => /^n-protokoll80-/.test(x.id))).toHaveLength(1);
   });
   it("die Prüfansicht zeigt Planung und Leitung den Füllstand", () => {
-    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     expect(app).toContain("const f = protokollFuellstand((m.bestaetigungen || []).length);");
   });
 });

@@ -8,6 +8,7 @@
    Aufruf: npx vitest run pruefungen/review-wp10.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -16,7 +17,7 @@ import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
 const kopie = (x) => JSON.parse(JSON.stringify(x));
-const APP = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
+const APP = appQuelle().replace(/\r\n/g, "\n");
 const funktionAb = (kopf) => { const a = APP.indexOf(kopf); expect(a, kopf).toBeGreaterThan(0); return APP.slice(a, APP.indexOf("\n}\n", a)); };
 const aktion = (kopf) => { const a = APP.indexOf(kopf); expect(a, kopf).toBeGreaterThan(0); return APP.slice(a, APP.indexOf("\n      }, \"", a)); };
 

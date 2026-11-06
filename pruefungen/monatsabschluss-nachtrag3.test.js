@@ -23,6 +23,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -230,7 +231,7 @@ describe("H-2: Lohnexport bestätigen ist an die ausgegebene Datei gebunden", { 
     expect(A.datevCSV(m, OKT).split("\r\n")[0]).toBe("﻿Personalnummer;Nachname;Vorname;Lohnart;Bezeichnung;Stunden;Monat;Jahr");
   });
   it("Oberfläche: Ausgabe merkt den Stand, Bestätigen schickt ihn mit (nicht mehr {}), speicher.js überträgt ihn", async () => {
-    const app = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     expect(app).not.toMatch(/SP\.monatsabschluss\("lohnexport", monat, \{\}\)/);
     /* Seit dem vierten Review (A-2) zusätzlich die Überstimmung offener/geänderter Vormonate — der Stand bleibt Pflicht. */
     expect(app).toMatch(/SP\.monatsabschluss\("lohnexport", monat, \{ exportStand, trotzVormonat \}\)/);

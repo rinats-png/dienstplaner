@@ -19,6 +19,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -403,7 +404,7 @@ describe("Review-Auflagen der Nachprüfung (N-1 bis N-4, M5-Rest)", () => {
       .toMatchObject({ plandatenMonate: A.VORGABE.plandatenMonate, gruendeMonate: 4 });
     expect([A.fristWert(1.5), A.fristWert(0), A.fristWert(-3), A.fristWert(1e9), A.fristWert("x"), A.fristWert("36")])
       .toEqual([2, 1, 1, 600, 1, 36]);
-    const app = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "App.jsx"), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/\[k\]: fristWert\(v\)/);
     expect(app).toMatch(/min=\{FRIST_GRENZEN\.min\} max=\{FRIST_GRENZEN\.max\} step="1"/);
     expect(app).not.toMatch(/Math\.max\(1, Number\(v\) \|\| 1\)/);

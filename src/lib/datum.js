@@ -10,3 +10,5 @@ export const heute = () => iso(new Date());
 export const fLang = (s) => { const d = pISO(s); return `${DOW[dow(s)]}, ${d.getDate()}. ${MON[d.getMonth()]} ${d.getFullYear()}`; };
 export const fKurz = (s) => (s ? `${pad(pISO(s).getDate())}.${pad(pISO(s).getMonth() + 1)}.` : "—");
 export const fDatum = (s) => (s ? s.split("-").reverse().join(".") : "—");
+export const zeitpunktText = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime())
+  ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"; };

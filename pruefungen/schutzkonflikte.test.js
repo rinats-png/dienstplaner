@@ -11,6 +11,7 @@
    Aufruf: npx vitest run pruefungen/schutzkonflikte.test.js
    ========================================================================== */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { useSchutzkonflikte, schutzkonfliktSchluessel, merkeSchutzkonflikte, gemerkteSchutzkonflikte, vergissSchutzkonflikte } from "../src/schutzkonflikte-hook.js";
@@ -213,7 +214,7 @@ describe("Review MITTEL 4 / Reste: der Haken useSchutzkonflikte als Verhalten (r
     }
   }, 60000);                                                       // App.jsx kalt zu laden dauert
   it("Verdrahtung: Abmelden leert, die Startseite rechnet nur für Planung und Leitung, der Monatsplan immer", () => {
-    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     /* Seit WP-07 laufen alle Abmeldewege über abmeldenMitHinweis (Rückfrage bei wartenden Stempeln);
        dort wird vor SP.abmelden() geleert — Verhalten geprüft im nächsten Fall. */
     expect(app).toContain("abmelden: abmeldenMitHinweis,");

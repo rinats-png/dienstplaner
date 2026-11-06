@@ -22,6 +22,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
@@ -333,7 +334,7 @@ describe("Oberfläche: der gestempelte Dienst ohne Plan (UI)", () => {
       .toBe("Langer Dienst geprüft und bestätigt");
   });
   it("C2: langerDienstBestaetigen übergibt diesen Grund an den Server-Weg", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/return akt\.stempelKorrigieren\(pid, d, e\.start, e\.ende, bestaetigungsGrund\(e\)\);/);
   });
   it("kein Hinweis an einem Tag ohne ungeplanten Dienst", () => {
@@ -341,7 +342,7 @@ describe("Oberfläche: der gestempelte Dienst ohne Plan (UI)", () => {
     expect(t).not.toContain("Ungeplanter Dienst");
   });
   it("Stempelbefunde: der Prüffall hat seinen eigenen Text und „Bestätigen“ für die Leitung", async () => {
-    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const app = appQuelle();
     expect(app).toMatch(/istUngeplant\(erfassung\) \? MARKIERUNG_TEXT\.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT\.LANGER_DIENST/);
     expect(app).toMatch(/const da = t\.dienstId \? m\.dienstarten\.find\(\(x\) => x\.id === t\.dienstId\) : ungeplantAm\(m, p, d\);/);
   });

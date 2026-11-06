@@ -11,6 +11,7 @@
    Aufruf: npx vitest run pruefungen/br-auswertung.test.js
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren, MATRIX } from "../server/lib/rechte.mjs";
@@ -620,7 +621,7 @@ describe("Nachtrag WP-27b B6: Betrieb ohne Kennung, CSV, Doku", () => {
     expect(csvFeld("a;b")).toBe('"a;b"');
   });
   it("CSV der Auswertung: Einheitsnamen über csvText, Zellen über csvFeld", () => {
-    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const app = appQuelle();
     const f = app.slice(app.indexOf("function BetriebsratAuswertung"), app.indexOf("/* ================================ ANWENDUNG"));
     expect(f).toContain("csvText(einheit(z.einheitId))");
     expect(f).toMatch(/SPALTEN\.map\(\(\[k\]\) => csvFeld\(zelle\(z, k\)\)\)/);
@@ -804,7 +805,7 @@ describe("GET /api/br-auswertung je Rolle (F4)", () => {
 });
 
 describe("Oberfläche: Auswertung für den Betriebsrat, falsche Ansichten gesperrt (Quelltext)", () => {
-  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const app = appQuelle();
   it("audit.view öffnet die Auswertung, export.data den CSV-Export — nur Aggregate", () => {
     expect(app).toContain('["brauswertung", "Auswertung (Betriebsrat)", "BR:audit.view"]');
     expect(app).toMatch(/darf\(sitz, "export\.data"\) && <Btn onClick=\{csv\}>/);

@@ -10,13 +10,14 @@
    Aufruf: npm run pruefung:istdaten
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "../src/istdaten.js";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
-const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+const app = appQuelle();
 const funktion = (name) => {
   const von = app.search(new RegExp(`(function ${name}\\(|const ${name} = )`));
   expect(von, name).toBeGreaterThan(0);
