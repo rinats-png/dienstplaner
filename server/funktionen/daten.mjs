@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten, lesenGrenze } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
@@ -9,7 +9,7 @@ import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaet
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
-import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
+import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -65,10 +65,6 @@ import { sitzungsSpeicher as sitzungen,
 const laden = () => getStore({ name: "centric", consistency: "strong" });
 
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
-const gleich = (a, b) => {
-  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
-  return x.length === y.length && timingSafeEqual(x, y);
-};
 const antwort = (daten, status = 200, kopf = {}) =>
   new Response(JSON.stringify(daten), {
     status,

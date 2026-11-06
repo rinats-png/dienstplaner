@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
@@ -25,7 +25,6 @@ import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorP
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
-const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
   { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
