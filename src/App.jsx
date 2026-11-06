@@ -17798,9 +17798,27 @@ const tourStartet = (person, rolleId) => {
    eine Zeile: Kapitel, Fortschritt, Weiter. Der Faden bleibt sichtbar,
    der Platz bleibt beim Inhalt.
    ========================================================================== */
+/* Ist gerade ein Dialog offen (aria-modal)? Die Tour liegt als feste Karte
+   über allem und verdeckte sonst Schaltflächen im Dialog (belegt:
+   „Hinzufügen" in „Person hinzufügen"). Beobachtet wird das Dokument statt
+   jedes Dialogs einzeln — so gilt es für alle Blatt- und Bestätigungsarten. */
+function useModalOffen() {
+  const [offen, setOffen] = useState(false);
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof MutationObserver === "undefined") return undefined;
+    const pruefe = () => setOffen(!!document.querySelector('[aria-modal="true"]'));
+    pruefe();
+    const mo = new MutationObserver(pruefe);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
+  return offen;
+}
+
 function TourLeiste({ sitz, akt, gehZu }) {
   const p = sitz.person;
   const rolleId = sitz.rolle === "betreiber" ? "betreiber" : (p.rolle || "mitarbeiter");
+  const dialogOffen = useModalOffen();
   /* Die Leiste erscheint erst, wenn der Inhalt da ist. Ein leerer Streifen
      am unteren Rand wäre schlimmer als eine halbe Sekunde ohne ihn. */
   const tour = useTour(true);
@@ -17840,6 +17858,9 @@ function TourLeiste({ sitz, akt, gehZu }) {
     maxWidth: eingeklappt ? 560 : 940, margin: "0 auto",
     background: C.flaeche, border: `1px solid ${C.lineStark}`, borderRadius: "var(--r-gross)",
     overflow: "hidden", boxShadow: "var(--schatten-blatt)",
+    /* Nur ausgeblendet, nicht abgebaut: Schritt und Zustand bleiben, die Tour
+       erscheint nach dem Schließen des Dialogs an derselben Stelle. */
+    display: dialogOffen ? "none" : undefined,
   };
 
   /* ---------------------------- Eingeklappt ---------------------------
