@@ -31,7 +31,7 @@ import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/s
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, abgewiesenVermerken, letzteWiederoeffnung,
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
-import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.mjs";
+import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -1603,8 +1603,15 @@ export default async (req, context) => {
           }
           if (pauseMin !== undefined) neu.pause = pauseMin;
           const planDa = (m.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(m, person, String(datum))));
+          /* WP-14c (F2): Die wirksame Pause (angegeben, sonst die der Dienstart) erreicht die Anwesenheit — 06:00–06:40
+             mit 60 min Pause zählte 0 h und galt als bestätigt. Jetzt ein Prüffall (nie automatisch bestätigt); die
+             Leitung trägt die Zeiten samt Pause über die Korrektur ein. */
+          const wirksamePauseSt = pauseMin !== undefined ? pauseMin : (planDa && Number(planDa.pause)) || 0;
+          const pauseZuLangSt = mitErfassung && !dauerNull && !uhrAbweichend && !!alt.start && wirksamePauseSt > 0
+            && pauseZuLang(alt.start, zeit, wirksamePauseSt, String(datum));
+          if (pauseZuLangSt) markieren("PAUSE_ZU_LANG");
           /* Keine Hinweise aus Uhrzeiten, die die Dauer nicht wiedergeben (Dauer 0, Herbstnacht — WP-14b M2). */
-          const hinweise = mitErfassung && !dauerNull && !uhrAbweichend && alt.start
+          const hinweise = mitErfassung && !dauerNull && !uhrAbweichend && !pauseZuLangSt && alt.start
             ? regelHinweise(m, person.id, String(datum), { start: alt.start, ende: zeit,
               pause: pauseMin !== undefined ? pauseMin : (planDa && Number(planDa.pause)) || 0 }) : [];
           if (pauseMin !== undefined && hinweise.some((x) => x.code === "PAUSE")) markieren("PAUSE_ZU_KURZ");
@@ -1656,6 +1663,9 @@ export default async (req, context) => {
                 : uhrAbweichend
                 ? { start: neu.start, ende: zeit, bestaetigt: false, ...(ungeplant ? { ungeplant: true } : {}),
                   grund: `ZEITUMSTELLUNG: ${Math.round(dauerMin / 6) / 10} Stunden gemessen, die Uhrzeiten ergeben eine andere Dauer — Zeiten bitte über die Korrektur eintragen` }
+                : pauseZuLangSt
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ...(ungeplant ? { ungeplant: true } : {}),
+                  grund: `PAUSE_ZU_LANG: Pause ${wirksamePauseSt} min bei ${Math.round(dauerMin)} min Anwesenheit — Zeiten und Pause bitte über die Korrektur eintragen` }
                 : ungeplant
                 ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
                   grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }

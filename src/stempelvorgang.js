@@ -164,6 +164,7 @@ export const MARKIERUNG_TEXT = Object.freeze({
   OFFLINE_PRUEFEN: "offline gestempelt — Ist-Zeit zur Prüfung",
   DAUER_NULL: "Beginn gleich Ende — Zeiten über die Korrektur eintragen",
   ZEITUMSTELLUNG: "Nacht der Zeitumstellung — Uhrzeiten passen nicht zur Dauer, Zeiten über die Korrektur eintragen",
+  PAUSE_ZU_LANG: "Pause so lang wie die Anwesenheit — Zeiten und Pause über die Korrektur eintragen",
   ORT_PRUEFEN: "Ort nicht bestätigt — bitte klären",
   UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
   PAUSE_ZU_KURZ: "Pause kürzer als gesetzlich nötig (§ 4 ArbZG / § 11 JArbSchG) — Hinweis",

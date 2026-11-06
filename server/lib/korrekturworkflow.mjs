@@ -28,6 +28,7 @@
 import { pauseZuLang } from "./zeitregeln.mjs";
 import { korrekturAnhaengen, pauseFuerKorrektur, geplant24Stunden, zeitumstellungSperre, BEGINN_GLEICH_ENDE, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
 import { berlinZeitpunkt } from "./zeiterfassung.mjs";
+import { istStand } from "./istdaten.mjs";
 
 export const ANTRAG_RUECKBLICK_TAGE = 62;
 export const ANTRAEGE_JE_STEMPEL_MAX = 20;
@@ -37,10 +38,6 @@ const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const UHR = /^([01]\d|2[0-3]):[0-5]\d$/;
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const tagPlus = (t, n) => new Date(Date.parse(`${t}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
-/** Der vergleichbare Teil einer Ist-Zeit (M5): Beginn, Ende, bestätigt, Pause — null ohne Ist-Zeit. */
-const istStand = (e) => (objekt(e)
-  ? JSON.stringify([e.start || null, e.ende || null, !!e.bestaetigt, e.pause !== undefined && e.pause !== null ? Number(e.pause) : null])
-  : "null");
 const wer = (w) => ({ personId: w && w.personId !== undefined ? w.personId : null, name: (w && w.name) || null, rolle: (w && w.rolle) || null });
 
 /**
@@ -91,7 +88,7 @@ export function antragStellen(m, von, rumpf, jetzt, id, heute) {
   if (bisher.length >= ANTRAEGE_JE_STEMPEL_MAX)
     return { status: 409, grund: "Für diesen Stempel gibt es schon sehr viele Anträge — bitte die Leitung ansprechen." };
   const ist = (m.erfassung || {})[schluessel];
-  const umstellung = zeitumstellungSperre(ist, start, ende);   // F3 (WP-14b): dieselbe Sperre wie die Genehmigung
+  const umstellung = zeitumstellungSperre(ist, start, ende, stempel, datum);   // F3 (WP-14b): dieselbe Sperre wie die Genehmigung
   if (umstellung) return umstellung;
   if (objekt(ist) && ist.bestaetigt === true && ist.start === start && ist.ende === ende && (!pauseGegeben || ist.pause === pause))
     return { status: 409, grund: "Diese Zeit gilt schon so — nichts zu korrigieren." };

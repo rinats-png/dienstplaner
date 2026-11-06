@@ -6,6 +6,7 @@ import { C } from "../farben.js";
 import { NUM } from "../ui/thema.js";
 import { fKurz } from "../lib/datum.js";
 import { Btn, Inp } from "../ui/bausteine.jsx";
+import { antragUeberholt } from "../istdaten.js";
 
 /**
  * Offene Korrekturanträge für Leitung und Planung (WP-14): Original, bisherige Ist-Zeit und Vorschlag
@@ -29,15 +30,22 @@ export function KorrekturAntraege({ sitz, akt }) {
     <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
       <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
         {liste.length === 1 ? "1 Korrekturantrag" : `${liste.length} Korrekturanträge`}</div>
-      {liste.map(({ pid, datum, a }) => (
+      {liste.map(({ pid, datum, a }) => {
+        /* WP-14c (F7): Hat sich die Ist-Zeit seit dem Antrag geändert, ist er überholt (der Server weist die Genehmigung ab):
+           „gilt bisher“ zeigt die aktuelle Ist-Zeit, Genehmigen ist gesperrt, Ablehnen bleibt möglich. */
+        const aktuell = (m.erfassung || {})[`${pid}|${datum}`];
+        const ueberholt = antragUeberholt(a, aktuell);
+        return (
         <div key={a.id} style={{ padding: "6px 0", borderTop: `1px solid ${C.lineSoft}` }}>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ minWidth: 200, ...NUM }}>{name(pid)} · {fKurz(datum)}</span>
             <span style={{ ...NUM }}>Original {a.original.start || "–"}–{a.original.ende || "–"}</span>
-            {a.ist && <span style={{ color: C.dim, ...NUM }}>gilt bisher {a.ist.start || "–"}–{a.ist.ende || "–"}</span>}
+            {(ueberholt ? aktuell : a.ist) && <span style={{ color: C.dim, ...NUM }}>gilt bisher {(ueberholt ? aktuell : a.ist).start || "–"}–{(ueberholt ? aktuell : a.ist).ende || "–"}</span>}
+            {ueberholt && <span style={{ color: C.warn, fontWeight: 600 }}>überholt — die Ist-Zeit wurde nach dem Antrag geändert</span>}
             <b style={{ ...NUM }}>beantragt {a.vorschlag.start}–{a.vorschlag.ende}{a.vorschlag.pause !== undefined ? ` · Pause ${a.vorschlag.pause} min` : ""}</b>
             {darfEntscheiden && akt && <>
-              <Btn size="sm" kind="ok" onClick={() => akt.korrekturEntscheiden(pid, datum, a.id, "genehmigt")}>Genehmigen</Btn>
+              <Btn size="sm" kind="ok" disabled={ueberholt} title={ueberholt ? "Überholt: bitte ablehnen und einen neuen Antrag stellen lassen" : undefined}
+                onClick={() => akt.korrekturEntscheiden(pid, datum, a.id, "genehmigt")}>Genehmigen</Btn>
               <Btn size="sm" kind="danger" onClick={() => { setAblehnen(a.id); setText(""); }}>Ablehnen</Btn></>}
           </div>
           <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>Grund: {a.grund}</div>
@@ -48,6 +56,7 @@ export function KorrekturAntraege({ sitz, akt }) {
                 onClick={async () => { if (await akt.korrekturEntscheiden(pid, datum, a.id, "abgelehnt", text)) setAblehnen(null); }}>Ablehnung speichern</Btn>
               <Btn size="sm" onClick={() => setAblehnen(null)}>Abbrechen</Btn>
             </div>)}
-        </div>))}
+        </div>);
+      })}
     </div>);
 }

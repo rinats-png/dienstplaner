@@ -58,7 +58,8 @@ const antragFest = (x) => (objekt(x) ? { id: x.id, von: x.von, gestellt: x.geste
 
 import { stichtage, aufbewahrungFehler, STANDORT_FELDER } from "./aufbewahrung.mjs";
 import { geplanterDienst, BEGINN_GLEICH_ENDE } from "./zeiterfassung.mjs";
-import { regelHinweise, pauseZuLang } from "./zeitregeln.mjs";
+import { regelHinweise, pauseZuLang, uhrDauerAbweichend } from "./zeitregeln.mjs";
+import { gemesseneDauerMin, dauerMinText } from "./istdaten.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -349,11 +350,18 @@ export function pauseFuerKorrektur(m, personId, datum, genannt) {
  * @param {any} alt  aktuelle Erfassung des Tages
  * @returns {{status: number, grund: string} | null}
  */
-export function zeitumstellungSperre(alt, start, ende) {
-  if (objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG")
-      && alt.start === start && alt.ende === ende)
-    return { status: 422, grund: "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
-      + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben." };
+export function zeitumstellungSperre(alt, start, ende, stempel, datum) {
+  if (!(objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG"))) return null;
+  const grund = "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
+    + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben.";
+  if (alt.start === start && alt.ende === ende) return { status: 422, grund };
+  /* WP-14c (F4): Auch eine um wenige Minuten verschobene Eingabe (02:30–02:21 zählte 23:51 h) löst den Fall nicht:
+     Die Uhrzeiten müssen zur gemessenen Dauer des Stempels passen (Abweichung höchstens UHR_ABWEICHUNG_MINUTEN).
+     Fehlen die eindeutigen Zeitpunkte (Altstempel), lässt sich nichts messen — dann gilt nur die Sperre gegen
+     dieselben Uhrzeiten (sonst gäbe es für solche Fälle keinen Ausweg). */
+  const gemessen = gemesseneDauerMin(stempel);
+  if (gemessen !== null && TAG.test(String(datum || "")) && uhrDauerAbweichend(datum, start, ende, gemessen))
+    return { status: 422, grund: `${grund} Gestempelt wurden ${dauerMinText(gemessen)}.` };
   return null;
 }
 
@@ -405,7 +413,7 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     return { status: 409, grund: "Diese Zeit ist schon so bestätigt — nichts zu korrigieren." };
   /* WP-14b (M2): Ein Stempel aus der Herbstnacht, dessen Uhrzeiten nicht zur gemessenen Dauer passen, lässt
      sich nicht „wie gestempelt" bestätigen — dieselben Uhrzeiten ergäben wieder die falsche Dauer. */
-  const umstellung = zeitumstellungSperre(alt, start, ende);
+  const umstellung = zeitumstellungSperre(alt, start, ende, stempel, datum);
   if (umstellung) return umstellung;
 
   /** @type {any} */

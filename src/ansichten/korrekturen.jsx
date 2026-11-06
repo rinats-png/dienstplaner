@@ -7,7 +7,7 @@ import { heute, fKurz } from "../lib/datum.js";
 import { addDays } from "../regelwerk.js";
 import { endeFehlt, MARKIERUNG_TEXT, geoAnzeige } from "../stempelvorgang.js";
 import { NUM } from "../ui/thema.js";
-import { erfassungenZurPruefung, istUngeplant, UNGEPLANT_ABWESEND_TEXT } from "../istdaten.js";
+import { erfassungenZurPruefung, istUngeplant, UNGEPLANT_ABWESEND_TEXT, nurKorrekturGrund, gemesseneDauerMin, dauerMinText } from "../istdaten.js";
 import { darf } from "../lib/berechtigung.js";
 import { Icon } from "../gestalt/icons.jsx";
 import { GEO_SPOOFING_TEXT } from "../../server/lib/geo.mjs";
@@ -156,13 +156,17 @@ export function StempelBefunde({ sitz, ym, akt }) {
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
               <Pill size="sm" tone="warn">{String(erfassung.grund || "").startsWith("DAUER_NULL") ? MARKIERUNG_TEXT.DAUER_NULL
                 : String(erfassung.grund || "").startsWith("ZEITUMSTELLUNG") ? MARKIERUNG_TEXT.ZEITUMSTELLUNG
+                : String(erfassung.grund || "").startsWith("PAUSE_ZU_LANG") ? MARKIERUNG_TEXT.PAUSE_ZU_LANG
                 : String(erfassung.grund || "").startsWith("OFFLINE_PRUEFEN") ? MARKIERUNG_TEXT.OFFLINE_PRUEFEN
                 : istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
               {istUngeplant(erfassung) && abwesenheitAm(m, personId, datum) && (
                 <Pill size="sm" tone="danger">Abwesenheit an diesem Tag — {UNGEPLANT_ABWESEND_TEXT}, auch nach der Bestätigung</Pill>)}
               {/* Dauer 0 (Nachprüfung B1): nicht „wie gestempelt" bestätigen — 06:00–06:00 zählte als 24 Stunden;
                   die Zeiten trägt die Leitung über die Korrektur ein. */}
-              {darfBestaetigen && akt && String(personId) !== eigene && (/^(DAUER_NULL|ZEITUMSTELLUNG)/.test(String(erfassung.grund || ""))
+              {/* WP-14c (F5): die gemessene Dauer (zwischen den eindeutigen Zeitpunkten) neben den Uhrzeiten. */}
+              {gemesseneDauerMin((m.einstempeln || {})[`${personId}|${datum}`]) !== null && (
+                <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>gestempelt {dauerMinText(gemesseneDauerMin((m.einstempeln || {})[`${personId}|${datum}`]))}</span>)}
+              {darfBestaetigen && akt && String(personId) !== eigene && (nurKorrekturGrund(erfassung.grund)
                 ? <span style={{ fontSize: 12.5, color: C.dim }}>Zeiten über „Korrigieren“ eintragen</span>
                 : <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
