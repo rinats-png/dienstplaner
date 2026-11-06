@@ -126,6 +126,8 @@ function reicherBestand() {
       { id: "n2", an: "b1", von: "p1", text: "Hallo b", zeit: "2026-01-01" }],
     notrufe: [], erfassung: ist, einstempeln: stempel, fahrzeiten: {}, checks: {}, ansichten: {},
     kompetenzen: [], einarbeitung: [], objekte: [], postenPlan: {}, bereichsPlan: {}, betriebsmittel: [],
+    /* WP-19-Module (Positivkatalog sicht.mjs): im Prüfbestand belegt, damit ein neues Katalogfeld auffällt */
+    wachbuch: {}, bereitschaftStufen: [], bereitschaft: {}, funktionsbereiche: [], funktionsPlan: {}, rotationen: {}, pflegeNiveaus: [],
     sondereinsaetze: [], aenderungen: [], bestaetigungen: [], dienstbuch: [], uebergaben: [], protokoll: [],
     notizen: {}, tagesnotizen: {}, adressAenderungen: [],
     tarif: "basis", seit: "2026-01-01", bis: null, testTage: 0, selbstAngelegt: false, preisgestaltung: {},
