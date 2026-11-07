@@ -48,8 +48,12 @@ function ankerMontag(jetzt) {
  * @param {string} [o.land]    Bundesland-Kürzel für die Feiertage
  * @param {string} [o.raum]    Raumname, wird zur Betriebskennung
  * @param {string} [o.laeuftAb] Ende des Testzeitraums
+ * @param {boolean} [o.selbstAngelegt] nur der Selbstanlegeweg (/starten,
+ *   Registrierung: provisionierung.mjs testbetriebAnlegen) setzt true. Betreiber-
+ *   Vorlagen „leer“/„test“ nicht — sonst gälte ein Pilotbetrieb als Testraum
+ *   und bekäme keine Mail (SI-P3, lib/testraum.mjs).
  */
-export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }) {
+export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb, selbstAngelegt = false }) {
   const jetzt = new Date();
   const profil = brancheVon(branche);
   const br = profil.id;
@@ -169,7 +173,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       zuletztGeraeumt: null,
     },
 
-    selbstAngelegt: true,
+    selbstAngelegt: selbstAngelegt === true,
     laeuftAb: laeuftAb || null,
   };
 
