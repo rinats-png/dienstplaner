@@ -392,7 +392,10 @@ describe("Sicherung unter Last mit Schreib-Halt", () => {
     const fehler = await G.sichern({ quelle: process.env.CENTRIC_DATEN, ziel: path.join(basis, "fremd"), pause: 0, versuche: 1, runden: 2, ruhe: 0,
       schreibhalt: { anfordern: async () => {
         const h = await H.haltAnfordern(v, { warteMs: 3000 });
-        if (h.gehalten) await writeFile(path.join(v, H.ANFRAGE), JSON.stringify({ fassung: 1, token: "d".repeat(32), fristMs: 1000, erstellt: new Date().toISOString() }));
+        if (h.gehalten) {
+          await writeFile(path.join(v, H.ANFRAGE), JSON.stringify({ fassung: 1, token: "d".repeat(32), fristMs: 1000, erstellt: new Date().toISOString() }));
+          await warte(60);                             // der Server soll die fremde Anfrage sehen (Takt 10 ms)
+        }
         return h;
       } } }).catch((e) => e);
     expect(fehler.code).toBe(3);
