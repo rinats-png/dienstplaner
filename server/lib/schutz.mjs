@@ -1,6 +1,6 @@
 import { getStore } from "./ablage.mjs";
 import { ereignis } from "./gesund-zaehler.mjs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { BlockList, isIP } from "node:net";
 
 /* ==========================================================================
@@ -21,6 +21,60 @@ const takt = () => getStore({ name: "centric-takt", consistency: "strong" });
 const spur = () => getStore({ name: "centric-spur" });
 
 const kurz = (s) => createHash("sha256").update(String(s)).digest("hex").slice(0, 16);
+
+/* --------------------------------------------------------------------------
+   DAS KÜRZEL EINER ADRESSE (T-04, Zusatzbefund Z-01)
+
+   Bisher war das Kürzel einer IP-Adresse ein ungesalzener SHA-256, auf 64 Bit
+   gekürzt. Bei IPv4 (2^32 Adressen) lässt sich das in Minuten durchprobieren —
+   das Kürzel war damit praktisch die Adresse. Jetzt: HMAC-SHA256 mit einem
+   Schlüssel, der per HKDF aus dem vorhandenen Servergeheimnis CENTRIC_PFEFFER
+   abgeleitet wird (eigener Zweck „centric-ip-kuerzel“, Domänentrennung wie
+   zweifaktor.mjs/modulschreibwege.mjs) — kein neues Geheimnis, keine neue
+   Umgebungsvariable. Ohne den Pfeffer ist das Kürzel nicht nachrechenbar.
+
+   Gleiche Adresse → gleiches Kürzel (solange der Pfeffer gleich bleibt): Die
+   Bremse zählt weiter je Herkunft. Umstellung/Pfefferwechsel: Bestehende
+   Zähler, Sperren und Stufen in centric-takt laufen unter den alten Schlüsseln
+   aus (Fenster bzw. Sperrdauer) und treffen keine neue Anfrage — niemand wird
+   dadurch ausgesperrt, die Zählung beginnt einmalig neu. Alte Spurzeilen
+   (centric-spur) behalten ihr altes Kürzel, bis die Spur nach ihrer Frist
+   gelöscht wird (Datenschutzlauf; im Modus „vorschau“ noch nicht);
+   verglichen wird dort nichts Sicherheitsrelevantes (nur die Lage zählt
+   gleiche Kennungen).
+
+   Ohne Pfeffer (Entwicklung/Prüfungen) bleibt es beim bisherigen SHA-256:
+   fail-safe für die Bremse (sie zählt weiter, nichts fällt offen), aber das
+   Kürzel ist dann nur pseudonym und für IPv4 rückführbar. In der Auslieferung
+   ist der Pfeffer Pflicht (BEREITSTELLUNG, Einrichtungswarnung) — hier wird
+   nichts abgeschwächt: mit Pfeffer immer HMAC, nie ein Rückfall.
+   Nur Adressen laufen hierüber; Sitzungs-, Raum- und Codekennungen
+   (kurz von Zufallswerten bzw. schon gepfefferten Prüfwerten) bleiben
+   unverändert, weil sie teils persistent verglichen werden (raumKennung).
+   -------------------------------------------------------------------------- */
+
+/** @type {{ pfeffer: string, schluessel: Buffer } | null} */
+let ipSchluesselMerk = null;
+
+/** Der Schlüssel der Adresskürzel aus CENTRIC_PFEFFER, oder null ohne Pfeffer.
+    @returns {Buffer | null} */
+function ipSchluessel() {
+  const p = process.env.CENTRIC_PFEFFER;
+  if (!p) return null;
+  if (ipSchluesselMerk && ipSchluesselMerk.pfeffer === p) return ipSchluesselMerk.schluessel;
+  const schluessel = Buffer.from(hkdfSync("sha256", Buffer.from(p), Buffer.from("centric-ip-kuerzel"),
+    Buffer.from("ip-kuerzel-v1"), 32));
+  ipSchluesselMerk = { pfeffer: p, schluessel };
+  return schluessel;
+}
+
+/** Das Kürzel einer Adresse (16 Hex): mit Pfeffer HMAC, sonst der alte Hash.
+    @param {string} adresse */
+export function adressKuerzel(adresse) {
+  const k = ipSchluessel();
+  if (!k) return kurz(adresse);
+  return createHmac("sha256", k).update(String(adresse)).digest("hex").slice(0, 16);
+}
 
 /* --------------------------------------------------------------------------
    MEHRDIMENSIONAL ZÄHLEN
@@ -423,7 +477,7 @@ export const WEITERE = {
  */
 export function kennung(req, sitzung) {
   if (sitzung && sitzung.bestand) return `s:${kurz(sitzung.bestand)}`;
-  return `a:${kurz(herkunft(req))}`;
+  return `a:${adressKuerzel(herkunft(req))}`;
 }
 
 /**
@@ -1062,7 +1116,7 @@ export async function protokoll(art, kennung, ausgang, zusatz, wer) {
          der richtigen Person zuordnen (Auskunft nach Art. 15). */
       ...(wer && wer.mandantId ? { mandantId: String(wer.mandantId).slice(0, 80) } : {}),
       ...(wer && wer.verfahren ? { verfahren: wer.verfahren } : {}),
-      ...(wer && wer.herkunft ? { herkunft: kurz(wer.herkunft) } : {}) };
+      ...(wer && wer.herkunft ? { herkunft: adressKuerzel(wer.herkunft) } : {}) };
     /* Eine Datei je Tag und Art — das hält die Einträge klein und macht
        das Aufräumen zu einem Löschvorgang statt einer Suche. */
     /* Ein Blob je Eintrag statt eines Arrays je Tag.
