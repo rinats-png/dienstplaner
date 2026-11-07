@@ -11,6 +11,7 @@ import net from "node:net";
 import {
   smtpKonfig, smtpStatus, sendeSmtp, tlsOptionen, kodiereKopfzeile, kodiereQp, punktPolsterung,
 } from "../server/lib/post-smtp.mjs";
+import { smtpGewaehlt, baueNachricht, PUFFER_MAX, SMTP_PARALLEL_MAX } from "../server/lib/post-smtp.mjs";
 import { sendeMail, pruefLinkErlaubt } from "../server/lib/post.mjs";
 
 const PW = "geheim-Pa$$w0rt-XYZ";
@@ -21,10 +22,15 @@ const SMTP_ENV = {
 };
 
 /** Fake-SMTP-Server. `ver` überschreibt Antworten je Befehlsanfang. */
-function fakeServer(ver = {}, { starttls = false, auth = "PLAIN LOGIN", schweigen = false } = {}) {
-  const log = { befehle: [], daten: "" };
+function fakeServer(ver = {}, { starttls = false, auth = "PLAIN LOGIN", schweigen = false, ...opt } = {}) {
+  const log = { befehle: [], daten: "", offen: 0, max: 0 };
   const server = net.createServer((s) => {
+    log.offen += 1; log.max = Math.max(log.max, log.offen);
+    s.on("close", () => { log.offen -= 1; });
     let inDaten = false; let puffer = ""; let login = 0;
+    s.on("error", () => {});
+    if (opt.flut === "puffer") { s.write("220 " + "x".repeat(200_000)); return; }
+    if (opt.flut === "zeilen") { s.write("220-" + "y\r\n220-".repeat(5000) + "z\r\n"); return; }
     s.write("220 fake ESMTP\r\n");
     s.on("data", (d) => {
       puffer += d.toString("utf8");
@@ -44,7 +50,8 @@ function fakeServer(ver = {}, { starttls = false, auth = "PLAIN LOGIN", schweige
         log.befehle.push(z);
         if (schweigen && z.startsWith("EHLO")) continue;
         const k = z.split(" ")[0].toUpperCase();
-        if (ver[k]) { s.write(ver[k]); continue; }
+        if (ver[k]) { s.write(typeof ver[k] === "function" ? ver[k](z) : ver[k]); continue; }
+        if (k === "EHLO" && opt.verzoegerung) { setTimeout(() => s.write("250-fake\r\n250 AUTH PLAIN\r\n"), opt.verzoegerung); continue; }
         if (k === "EHLO") s.write(`250-fake\r\n${starttls ? "250-STARTTLS\r\n" : ""}${auth ? `250-AUTH ${auth}\r\n` : ""}250 8BITMIME\r\n`);
         else if (k === "STARTTLS") s.write("220 go ahead\r\n");
         else if (login === 1) { login = 2; s.write("334 UGFzc3dvcmQ6\r\n"); }
@@ -230,5 +237,79 @@ describe("Versand gegen Fake-Server", () => {
     expect(JSON.stringify(r)).not.toContain(PW);
     expect(JSON.stringify(smtpStatus(SMTP_ENV))).not.toContain(PW);
     expect(JSON.stringify(smtpKonfig({ ...SMTP_ENV, CENTRIC_SMTP_HOST: "" }))).not.toContain(PW);
+  });
+});
+
+describe("Nachbesserung nach Review", () => {
+  const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  it("späte Verbindung nach Fristablauf sendet nichts mehr", async () => {
+    srv = await fakeServer();
+    const f = fabrik(srv.port);
+    const r = await senden({ frist: 100, verbinden: async (a) => { await warte(300); return f.verbinden(a); } });
+    expect(r).toMatchObject({ ok: false, klasse: "temporaer" });
+    await warte(500);
+    expect(srv.log.befehle).toEqual([]);
+    expect(srv.log.offen).toBe(0);
+  });
+  it("Flutung ohne Zeilenende und mit tausenden Zeilen: Abbruch als temporaer", async () => {
+    for (const flut of ["puffer", "zeilen"]) {
+      srv = await fakeServer({}, { flut });
+      const t0 = Date.now();
+      const r = await senden();
+      expect(r).toMatchObject({ ok: false, klasse: "temporaer" });
+      expect(Date.now() - t0).toBeLessThan(1500);
+      await srv.close(); srv = null;
+    }
+    expect(PUFFER_MAX).toBe(65536);
+  });
+  it("Server, der den AUTH-Befehl zurückspiegelt: weder Passwort noch Base64-Block in der Ausgabe", async () => {
+    srv = await fakeServer({ AUTH: (z) => `535 5.7.8 ${z}\r\n` });
+    const r = await senden();
+    expect(r).toMatchObject({ ok: false, klasse: "konfiguration" });
+    const plain = Buffer.from(`\0dienst@beispiel.test\0${PW}`).toString("base64");
+    const aus = JSON.stringify(r);
+    for (const g of [PW, plain, Buffer.from(PW).toString("base64"), "AUTH PLAIN"]) expect(aus).not.toContain(g);
+  });
+  it("Zertifikatsfehler der Verbindung ist Konfiguration, kein Wiederholen", async () => {
+    const e = Object.assign(new Error("self signed"), { code: "DEPTH_ZERO_SELF_SIGNED_CERT" });
+    const r = await sendeSmtp("a@beispiel.test", "B", "T", {}, { env: SMTP_ENV, verbinden: async () => { throw e; } });
+    expect(r).toMatchObject({ ok: false, klasse: "konfiguration" });
+  });
+  it("Tippfehler im Weg zählt als gewählt: Konfigurationsfehler, nie Prüflink", async () => {
+    process.env.CENTRIC_MAIL_WEG = "smpt";
+    process.env.CENTRIC_PRUEFLINK = "ja";
+    expect(smtpGewaehlt()).toBe(true);
+    expect(pruefLinkErlaubt()).toBe(false);
+    expect(await sendeMail("a@beispiel.test", "B", "T")).toMatchObject({ ok: false, klasse: "konfiguration" });
+    process.env.CENTRIC_MAIL_WEG = "resend";
+    expect(smtpGewaehlt()).toBe(false);
+  });
+  it("554 5.7.x bei DATA ist Konfiguration", async () => {
+    srv = await fakeServer({ ENDE: "554 5.7.1 Message rejected as spam\r\n" });
+    const r = await senden();
+    expect(r).toMatchObject({ ok: false, klasse: "konfiguration" });
+    expect(r.ursache).toBeUndefined();
+  });
+  it("Anzeigename mit Sonderzeichen wird gequotet; sehr langer Betreff wird gefaltet", () => {
+    const n = baueNachricht({ von: "Dienst, Plan <dienst@beispiel.test>", an: "a@beispiel.test", betreff: "x".repeat(1500), text: "t" });
+    expect(n.daten).toContain('From: "Dienst, Plan" <dienst@beispiel.test>');
+    const kopfBlock = n.daten.split("\r\n\r\n")[0];
+    for (const z of kopfBlock.split("\r\n")) expect(z.length).toBeLessThanOrEqual(78);
+    const subj = kopfBlock.replace(/\r\n /g, " ").split("\r\n").find((z) => z.startsWith("Subject: ")).slice(9);
+    const text = [...subj.matchAll(/=\?UTF-8\?B\?([^?]+)\?=/g)].map((m) => Buffer.from(m[1], "base64").toString()).join("");
+    expect(text).toBe("x".repeat(1500));
+  });
+  it("höchstens zwei Verbindungen zugleich, keine Mail geht verloren", async () => {
+    srv = await fakeServer({}, { verzoegerung: 40 });
+    const f = fabrik(srv.port);
+    let drin = 0; let max = 0;
+    const verbinden = (a) => { drin += 1; max = Math.max(max, drin); return f.verbinden(a); };
+    const rs = await Promise.all(Array.from({ length: 6 }, (_, i) =>
+      senden({ verbinden }, `u${i}@beispiel.test`).finally(() => { drin -= 1; })));
+    expect(rs.every((r) => r.ok)).toBe(true);
+    expect(max).toBeLessThanOrEqual(SMTP_PARALLEL_MAX);
+    expect(max).toBeGreaterThan(0);
+    expect(srv.log.befehle.filter((b) => b.startsWith("RCPT TO:")).length).toBe(6);
   });
 });
