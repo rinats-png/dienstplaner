@@ -72,8 +72,9 @@ describe("Halt im Prozess", () => {
     const h = H.halten(2000);
     expect(await h.bereit).toBe(true);
     const reihenfolge = [];
-    const a = store.setJSON("ordnung-a", { gen: 1 }).then(() => reihenfolge.push("a"));
-    const b = R.unterRaumsperre("raum-o", () => store.setJSON("ordnung-b", { gen: 1 })).then(() => reihenfolge.push("b"));
+    /* Reihenfolge des Beginns (das Ende hängt an der Platte). */
+    const a = H.vorgang(() => { reihenfolge.push("a"); return store.setJSON("ordnung-a", { gen: 1 }); });
+    const b = R.unterRaumsperre("raum-o", () => { reihenfolge.push("b"); return store.setJSON("ordnung-b", { gen: 1 }); });
     await warte(60);
     expect(reihenfolge).toEqual([]);
     expect(await lies("ordnung-a")).toBe(null);
@@ -81,6 +82,7 @@ describe("Halt im Prozess", () => {
     expect(H.freigeben(h)).toBe(true);
     await Promise.all([a, b]);
     expect(reihenfolge).toEqual(["a", "b"]);
+    expect([await lies("ordnung-a"), await lies("ordnung-b")]).toEqual([1, 1]);
   });
 
   it("Lesen und Flüchtiges (Sitzungen, Bremse, Token) werden nie gehalten", async () => {
