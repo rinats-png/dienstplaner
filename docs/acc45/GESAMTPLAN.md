@@ -42,7 +42,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **439,2–748,
 - gemeinsam: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 - ohne Intelligence: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
 - ACC45: WP-16 → WP-48 = **16,5–27,5 PT**
-- Folgepakete: WP-28b → WP-28c = **3,5–6 PT**
+- Folgepakete: WP-S1 → WP-PILOT = **3–6 PT**
 - WP-19: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **20,8–32,2 PT**
 - Intelligence: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 <!-- AUTO:END kennzahlen -->
