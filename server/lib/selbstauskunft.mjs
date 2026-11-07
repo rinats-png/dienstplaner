@@ -61,7 +61,8 @@ const berlinTag = (iso) => heuteBerlin(new Date(iso));
 
 /**
  * Stempelabgleich (WP-15): Gibt es zu diesem Tag schon ein Original?
- * @returns {{ok: true} | {ok: false, art: "STEMPEL_VORHANDEN"|"VORTAG_OFFEN", grund: string}}
+ * @returns {{ok: true, art?: undefined, grund?: undefined}
+ *   | {ok: false, art: "STEMPEL_VORHANDEN"|"VORTAG_OFFEN"|"VORTAG_REICHT_HINEIN", grund: string}}
  */
 export function stempelAbgleich(m, personId, datum) {
   const st = m && objekt(m.einstempeln) ? m.einstempeln : {};

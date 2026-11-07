@@ -12,6 +12,10 @@ werkzeug/*
 !werkzeug/staging-smoke.mjs
 !werkzeug/staging-geo.mjs
 !werkzeug/staging-aufraeumen.mjs
+# WP-32d: Betreiber-2FA. Das Dockerfile kopiert beide ins Laufzeitbild; ohne diese
+# Freigaben scheiterte der Bau mit „not found" (pruefungen/docker-kontext.test.js).
+!werkzeug/betreiber-2fa-zuruecksetzen.mjs
+!werkzeug/betreiber-faktor-vorlauf.mjs
 # Der Bau setzt die Fassung des Dienstarbeiters (vite.config.js, WP-37).
 !werkzeug/sw-fassung.mjs
 pruefungen

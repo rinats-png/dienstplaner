@@ -63,8 +63,11 @@ server.stderr.on("data", (d) => { serverLog += d; });
 function probe(datei, argumente = [], mehrEnv = {}) {
   return new Promise((erfuellt) => {
     let aus = "";
+    /* WP-32d: Der Vorlauf dieses Prozesses hat den zweiten Faktor des Verwalterschlüssels eingerichtet; die Proben
+       sind eigene Prozesse und bekommen den Nachweis (15 Minuten) durchgereicht. */
+    const nachweis = globalThis.__verwalterNachweis && globalThis.__verwalterNachweis(ADMIN);
     const k = spawn(process.execPath, [path.join("werkzeug", datei), ...argumente],
-      { cwd: WURZEL, env: { ...env, ...mehrEnv }, stdio: ["ignore", "pipe", "pipe"] });
+      { cwd: WURZEL, env: { ...env, ...(nachweis ? { CENTRIC_ZWEIFAKTOR_NACHWEIS: nachweis } : {}), ...mehrEnv }, stdio: ["ignore", "pipe", "pipe"] });
     k.stdout.on("data", (d) => { aus += d; process.stdout.write(d); });
     k.stderr.on("data", (d) => { aus += d; process.stderr.write(d); });
     k.on("exit", (code) => erfuellt({ code, aus }));

@@ -91,6 +91,11 @@ if (echtes && !globalThis.__betreiberFaktorVorlauf) {
       /* Gleich zu Beginn einrichten (kein Probeaufruf): /einrichten ist insgesamt auf 20 Aufrufe je 10 Minuten
          begrenzt, und die Prüfläufe brauchen davon fast alle. */
       /* Nur der Verwalterschlüssel der Prüfung (CENTRIC_ADMIN, wenn bekannt) — ein Betreiber-Token als Bearer ist keiner. */
+      /* Hat ein übergeordneter Prozess den Faktor schon eingerichtet (staging-proben.mjs startet die Proben als
+         eigene Prozesse), kennt dieser Prozess das Geheimnis nicht und kann ihn nicht noch einmal einrichten.
+         Er bekommt den Nachweis durchgereicht (CENTRIC_ZWEIFAKTOR_NACHWEIS, wie bei zugaenge-anlegen.sh). */
+      if (!verwalter.has(schluessel) && istVerwalterSchluessel(schluessel) && process.env.CENTRIC_ZWEIFAKTOR_NACHWEIS)
+        verwalter.set(schluessel, { geheimnis: null, nachweis: process.env.CENTRIC_ZWEIFAKTOR_NACHWEIS, letzter: schrittZu(Date.now()) });
       if (!verwalter.has(schluessel) && istVerwalterSchluessel(schluessel)) {
         verwalter.set(schluessel, null);
         await einrichtenVerwalter(adresse, opts, schluessel);
@@ -99,7 +104,7 @@ if (echtes && !globalThis.__betreiberFaktorVorlauf) {
       /* Verwalterkonten anlegen/sperren verlangt einen frischen Code (kein Nachweis): nächster ungenutzter Schritt
          im erlaubten Fenster; ist keiner frei, bis zum nächsten Schritt warten (höchstens 30 s). */
       const methode = String((opts && opts.method) || "GET").toUpperCase();
-      if (bekannt && pfadTeil === "/einrichten/verwalter" && (methode === "POST" || methode === "DELETE") && typeof opts.body === "string") {
+      if (bekannt && bekannt.geheimnis && pfadTeil === "/einrichten/verwalter" && (methode === "POST" || methode === "DELETE") && typeof opts.body === "string") {
         let schritt = Math.max(bekannt.letzter + 1, schrittZu(Date.now()) - 1);
         while (schritt > schrittZu(Date.now()) + 1) await new Promise((r) => setTimeout(r, 1000));
         bekannt.letzter = schritt;

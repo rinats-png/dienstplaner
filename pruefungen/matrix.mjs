@@ -1,7 +1,7 @@
 /* ==========================================================================
    RECHTETABELLEN VERGLEICHEN
 
-   Die Tabelle steht doppelt: MATRIX_STD in src/App.jsx steuert, was die
+   Die Tabelle steht doppelt: MATRIX_STD in src/lib/rollen.js steuert, was die
    Oberfläche anbietet, MATRIX in server/lib/rechte.mjs entscheidet, was der
    Server zulässt. Die Doppelung ist Absicht — was im Browser läuft, gehört
    dem Browser.
@@ -22,7 +22,9 @@ import { dirname, join } from "node:path";
 import { MATRIX } from "../server/lib/rechte.mjs";
 
 const hier = dirname(fileURLToPath(import.meta.url));
-const quelle = readFileSync(join(hier, "..", "src", "App.jsx"), "utf8");
+/* Seit WP-39 (a2) steht die Rechtematrix der Oberfläche in src/lib/rollen.js, nicht mehr in App.jsx. */
+const QUELLE = join("src", "lib", "rollen.js");
+const quelle = readFileSync(join(hier, "..", QUELLE), "utf8");
 
 const ergebnisse = [];
 const pruef = (name, bedingung, detail) => {
@@ -31,11 +33,11 @@ const pruef = (name, bedingung, detail) => {
 };
 
 /* MATRIX_STD aus der Oberfläche herauslesen. Bewusst über einen Ausschnitt
-   des Quelltextes statt über einen Import: App.jsx zieht React und die halbe
+   des Quelltextes statt über einen Import: die Oberfläche zieht React und die halbe
    Anwendung mit, und diese Prüfung soll in Sekunden laufen. */
 function leseMatrixStd() {
   const anfang = quelle.indexOf("const MATRIX_STD = {");
-  if (anfang < 0) throw new Error("MATRIX_STD nicht gefunden — wurde sie umbenannt?");
+  if (anfang < 0) throw new Error(`MATRIX_STD nicht gefunden in ${QUELLE} — wurde sie umbenannt oder verschoben?`);
   const ende = quelle.indexOf("\n};", anfang);
   const block = quelle.slice(anfang, ende + 3);
 
