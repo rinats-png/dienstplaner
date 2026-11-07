@@ -120,7 +120,7 @@ beforeAll(async () => {
   /* Altsitzungen mit erfundener Rolle. */
   T.gast = await altsitzung("gast", null);
   T.irgendwas = await altsitzung("irgendwas", null);
-  T.gross = await altsitzung("Leitung", "gibt-es-nicht");
+  T.gross = await altsitzung("Leitung", null);
   T.gastMitPerson = await altsitzung("gast", "am");
   T.leitung = await sitzung("ROL4-LEIT-0004", "leitung", "al");
   T.mitarbeiter = await sitzung("ROL5-MITA-0005", "mitarbeiter", "am");
