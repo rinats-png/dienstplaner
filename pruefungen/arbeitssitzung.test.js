@@ -679,7 +679,7 @@ describe("Sitzungen aus Zugangscodes bleiben unberührt", () => {
       const { token } = await legacySitzung();
       const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (beobachtet),
         await satz(token), { bestandLader: async () => ({
-          personen: [person("p_1", "Alt", "Zugang", "leitung")] }) });
+          bestand: { mandanten: [{ id: "m1", personen: [person("p_1", "Alt", "Zugang", "leitung")] }] } }) });
       expect(e).toEqual({ ok: true, art: "legacy" });
       /* Seit SI-P2 liest die Prüfung einer personengebundenen Code-Sitzung
          den Zugang (gesperrt?) und den Bestand (Person noch gültig?; hier über den
@@ -691,6 +691,13 @@ describe("Sitzungen aus Zugangscodes bleiben unberührt", () => {
         expect(gesehen.filter((g) => g.includes(praefix)), praefix).toEqual([]);
       }
     }, LIMIT);
+
+  it("derselbe Lader ohne die Person beendet die Sitzung (die Personenprüfung läuft wirklich)", async () => {
+    const { token } = await legacySitzung();
+    const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (laden()), await satz(token),
+      { bestandLader: async () => ({ bestand: { mandanten: [{ id: "m1", personen: [] }] } }) });
+    expect(e).toEqual({ ok: false, grund: "person-fort" });
+  }, LIMIT);
 
   it("führt eine Zugangscode-Sitzung unverändert durch die Pfade", async () => {
     /* Ein vollständiger Betrieb, eine Sitzung der alten Art — und keine

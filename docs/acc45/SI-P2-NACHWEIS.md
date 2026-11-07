@@ -41,7 +41,7 @@ hatte die richtige Regel bereits (`feedPersonGilt`), die Sitzung nicht.
 
 ## Tests
 
-- `pruefungen/code-sitzung-person.test.js` (29 Tests): sechs Ursachen je mit und ohne `mandantId`, Austrittstag,
+- `pruefungen/code-sitzung-person.test.js` (34 Tests): sechs Ursachen je mit und ohne `mandantId`, Austrittstag,
   Rückkehr, Leitung mit Person, unberührte Fälle (Code ohne Person, mehrere Betriebe, Konto, Betreiber), gesperrter
   Zugang inkl. Lesefehler, Gleichheit von Feed- und Sitzungsregel.
 - Angepasste Fixtures (nur Testdaten, keine Prüfung abgeschwächt): `arbeitssitzung.test.js`, `dsgvo-server.test.js`,
@@ -53,9 +53,30 @@ hatte die richtige Regel bereits (`feedPersonGilt`), die Sitzung nicht.
 - eslint auf den geänderten Dateien sauber; `tsc -p jsconfig.json`: dieselben 20 vorbestehenden Fehler, keiner in
   den geänderten Dateien.
 
-## Review
+## Review (unabhängig, Opus; Befunde 1–9, keiner kritisch oder hoch)
 
-Siehe Abschnitt unten.
+Behoben:
+1. **Sperre bei umgeschlüsseltem Code (mittel):** `zugangGesperrt` folgt jetzt der Kette `ersetztDurch` (Tiefe 5,
+   Kreisschutz) wie der Kalenderfeed; fehlender Nachfolger ist keine Absage. Tests: Kette, fehlender Nachfolger, Kreis.
+2. **Lesefehler führte im Browser zum Abmelden (mittel):** Statt `zugang-fehler` (→ 401, der Browser meldet bei 401 ab)
+   wird der Lesefehler als vorübergehend (`BESTAND_UNLESBAR`, → 503) weitergereicht, wie beim Bestandsweg. Test prüft den
+   geworfenen Fehler; die Sitzungsdatei bleibt.
+4. **Person `""` (niedrig):** wird wie `null` behandelt (nicht personengebunden); Test ergänzt.
+5. **Lader im Lesezugriff-Test falsch geformt (niedrig):** korrigiert; neuer Gegenfall mit fehlender Person ergibt
+   `person-fort`.
+6. **Unnötige Fixture-Änderungen (niedrig):** `dsgvo-server.test.js` N-1/N-3/N-4 sind auf `l1` zurückgestellt; nur H3
+   (Person nicht im Bestand) bleibt auf `null`.
+7. **Mutationslücken (niedrig):** Sammelblob-Rückgriff, Stichtag über `jetzt` (jetzt durchgereicht an
+   `sitzungPersonGilt`) und Kettenfolge sind nun durch Tests abgedeckt. Die Tiefenbegrenzung der Kette ist durch den
+   Kreisschutz redundant abgesichert und daher nicht einzeln testbar.
+8. Veraltete Kopfkommentare zu „null zusätzlichen Lesevorgängen“ angepasst.
+
+Nicht in diesem Paket (bewusst):
+3. **Sicherungsschlüssel einer ausscheidenden Leitung (mittel, Restlücke):** wird in SI-P1 (PR #105) gelöst
+   (Ersteller-Bindung, Widerruf bei Sperre/Entfernung). SI-P2 nimmt `nurSicherung` weiterhin aus.
+9. **Vorbestehend, keine Regression:** `eigenerMandant` fällt bei Index außerhalb des Bereichs auf `mandanten[0]` zurück;
+   `laeuftAb` von Testraum-Codes prüft nur der Feed (Überhang höchstens die Sitzungsdauer); ein ISO-Zeitstempel als
+   Austritt würde einen Tag zu früh greifen (Client schreibt reine Daten).
 
 ## Offene Punkte
 

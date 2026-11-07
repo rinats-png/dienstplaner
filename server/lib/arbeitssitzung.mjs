@@ -6,7 +6,7 @@ import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
 import { aktivePerson } from "./personengueltig.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
-import { bestandLesen, voruebergehend } from "./bestand.mjs";
+import { BESTAND_UNLESBAR, bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
@@ -74,7 +74,7 @@ import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from ".
    Drei Fälle, und der dritte ist der, an dem man sich schneidet:
 
      kein `herkunft`-Feld          eine Arbeitssitzung der alten Art.
-                                   Gültig, ohne einen einzigen Zugriff auf
+                                   Gültig, ohne Zugriff auf
                                    Account oder Mitgliedschaft.
      gültiger Account-Anker        vollständige Prüfung, siehe unten.
      `herkunft` vorhanden, aber
@@ -129,7 +129,8 @@ import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from ".
    Kein Zwischenspeicher, und zwar mit Absicht: Eine Frist von auch nur
    wenigen Sekunden hieße, dass „sofort widerrufen" nicht mehr stimmt.
 
-   Eine Sitzung der alten Art verursacht null zusätzliche Lesevorgänge.
+   Eine Sitzung der alten Art ohne Person und ohne Zugang verursacht null zusätzliche Lesevorgänge; mit Zugang liest sie
+   diesen (Sperre), mit Person zusätzlich den Bestand (SI-P2).
    ========================================================================== */
 
 /** Die einzige Art, die dieser Anker haben darf. */
@@ -250,9 +251,32 @@ export function sitzungPersonGilt(bestand, sitzung, heute = heuteBerlin()) {
  * @returns {Promise<boolean>}
  */
 async function zugangGesperrt(store, schluessel) {
-  const einzeln = await store.get(`konto:${schluessel}`, { type: "json" });
-  const z = einzeln || ((await store.get("konten", { type: "json" })) || {})[schluessel] || null;
-  return !!(z && z.gesperrt);
+  /* Dem Vermerk `ersetztDurch` (Umschlüsselung beim Einführen des Pfeffers) wird gefolgt wie im Kalenderfeed
+     (feedherkunft.mjs): Die Sitzung trägt den alten Schlüssel, gesperrt wird aber der neue. Gesperrt an irgendeiner
+     Stelle der Kette heißt gesperrt; ein fehlender Nachfolger ist keine Absage. Tiefe und Kreise sind begrenzt. */
+  const gesehen = new Set();
+  let blob;
+  for (let tiefe = 0; typeof schluessel === "string" && schluessel && tiefe < 5 && !gesehen.has(schluessel); tiefe++) {
+    gesehen.add(schluessel);
+    let z;
+    try {
+      z = await store.get(`konto:${schluessel}`, { type: "json" });
+      if (!z) {
+        blob = blob || ((await store.get("konten", { type: "json" })) || {});
+        z = blob[schluessel] || null;
+      }
+    } catch (e) {
+      /* Ein Lesefehler ist vorübergehend (→ 503, die Sitzung bleibt), keine Absage und kein 401 (der Browser
+         würde bei 401 abmelden). */
+      const f = /** @type {Error & {code?: string}} */ (new Error(`Zugang nicht lesbar (${String(e && e.message || e)})`));
+      f.code = BESTAND_UNLESBAR;
+      throw f;
+    }
+    if (!z) return false;
+    if (z.gesperrt) return true;
+    schluessel = z.ersetztDurch;
+  }
+  return false;
 }
 
 /**
@@ -312,11 +336,11 @@ export async function arbeitssitzungPruefen(store, sitzung,
     /* SI-P2: Ein gesperrter Zugangscode gilt auch dann nicht, wenn seine Sitzung die Sperre überlebt hat
        (das Beenden der Sitzungen beim Sperren ist bestenfalls; zugang-sperren fängt Fehler dort ab). Nur
        ausdrücklich gesperrt zählt: einen Zugang, den es nicht mehr gibt, kennt diese Prüfung nicht. Ein Lesefehler
-       ist keine Absage (die Sitzung bleibt), lässt die Anfrage aber nicht durch. Sicherungsschlüssel haben keinen
+       ist keine Absage (die Sitzung bleibt) und wird als vorübergehend weitergereicht (→ 503). Sicherungsschlüssel haben keinen
        Zugang. */
     if (!sitzung.nurSicherung && typeof sitzung.konto === "string" && sitzung.konto) {
       let gesperrt;
-      try { gesperrt = await zugangGesperrt(store, sitzung.konto); } catch { return { ok: false, grund: "zugang-fehler" }; }
+      gesperrt = await zugangGesperrt(store, sitzung.konto);
       if (gesperrt) {
         if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
         return { ok: false, grund: "zugang-gesperrt" };
@@ -327,7 +351,7 @@ export async function arbeitssitzungPruefen(store, sitzung,
        entfernten Person auf die Rolle des Codes zurück, und die Sitzung lebte weiter. Betreiber und Codes ohne
        Person haben keine; Sicherungsschlüssel auch nicht. */
     const personGebunden = !sitzung.nurSicherung && sitzung.rolle !== "betreiber"
-      && sitzung.person !== null && sitzung.person !== undefined;
+      && sitzung.person !== null && sitzung.person !== undefined && sitzung.person !== "";
     /* Seit Oktober 2026 trägt ein Zugangscode die Kennung seines Betriebs,
        und die Sitzung mit ihm. Zeigt die Position nicht mehr auf genau
        diesen Betrieb, gilt sie nicht — dieselbe Prüfung wie unten in
@@ -350,7 +374,7 @@ export async function arbeitssitzungPruefen(store, sitzung,
         return { ok: false, grund };
       }
       /* Ohne gelesenen Bestand (Raum noch nicht angelegt) gibt es keine Personalliste, die etwas widerriefe. */
-      if (bestand && personGebunden && !sitzungPersonGilt(bestand, sitzung)) {
+      if (bestand && personGebunden && !sitzungPersonGilt(bestand, sitzung, heuteBerlin(new Date(jetzt())))) {
         if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
         return { ok: false, grund: "person-fort" };
       }

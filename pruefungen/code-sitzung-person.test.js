@@ -144,6 +144,20 @@ describe("SI-P2: was unberührt bleibt", () => {
     expect(e).toEqual({ ok: true, art: "legacy" });
   }, LIMIT);
 
+  it("der Stichtag folgt der Uhr der Prüfung (jetzt): Austritt morgen gilt heute noch, übermorgen nicht mehr", async () => {
+    const c = await codeSitzung({});
+    await bestandAendern(c.raum, (n) => { person(n, "p_2").austritt = tag(1); });
+    const s = await Z.S.sitzungLesen(new Request("http://x/", { headers: { authorization: `Bearer ${c.token}` } }));
+    expect((await AS.arbeitssitzungPruefen(Z.laden(), s, { merkmal: null })).ok, "heute").toBe(true);
+    const e = await AS.arbeitssitzungPruefen(Z.laden(), s, { merkmal: null, jetzt: () => Date.now() + 2 * 86400000 });
+    expect(e).toEqual({ ok: false, grund: "person-fort" });
+  }, LIMIT);
+
+  it("eine leere Personenkennung bindet nicht an eine Person (wie null)", async () => {
+    const c = await codeSitzung({ person: "", rolle: "leitung" });
+    expect((await lesen(c.token)).status).toBe(200);
+  }, LIMIT);
+
   it("Sitzungen aus einem Konto sind von dieser Änderung nicht berührt (eigene Anker)", async () => {
     const b = await Z.arbeitsbereich("cp-konto");
     expect((await lesen(b.token)).status).toBe(200);
@@ -176,6 +190,35 @@ describe("SI-P2: gesperrter Zugangscode", () => {
     expect((await lesen(c.token)).status).toBe(200);
   }, LIMIT);
 
+  it("die Sperre folgt der Umschlüsselung: gesperrt ist der neue Schlüssel, die Sitzung trägt den alten (ersetztDurch)", async () => {
+    const c = await codeSitzung({});
+    const alt = await Z.K.kontoLesen(Z.laden(), c.konto);
+    const neu = `${c.konto}-neu`;
+    await Z.K.kontoSchreiben(Z.laden(), neu, { ...alt, gesperrt: false });
+    await Z.K.kontoSchreiben(Z.laden(), c.konto, { ...alt, ersetztDurch: neu });
+    expect((await lesen(c.token)).status, "vorher").toBe(200);
+    await sperren(neu);
+    expect((await lesen(c.token)).status).toBe(401);
+  }, LIMIT);
+
+  it("ein fehlender Nachfolger in der Kette ist keine Absage; ein Kreis hängt nicht", async () => {
+    const c = await codeSitzung({});
+    const alt = await Z.K.kontoLesen(Z.laden(), c.konto);
+    await Z.K.kontoSchreiben(Z.laden(), c.konto, { ...alt, ersetztDurch: "gibt-es-nicht" });
+    expect((await lesen(c.token)).status).toBe(200);
+    await Z.K.kontoSchreiben(Z.laden(), c.konto, { ...alt, ersetztDurch: c.konto });
+    expect((await lesen(c.token)).status).toBe(200);
+  }, LIMIT);
+
+  it("ein Zugang nur im Sammelblob (älter) und gesperrt beendet die Sitzung ebenfalls", async () => {
+    const c = await codeSitzung({});
+    const alt = await Z.K.kontoLesen(Z.laden(), c.konto);
+    await Z.laden().delete(`konto:${c.konto}`);
+    const blob = (await Z.laden().get("konten", { type: "json" })) || {};
+    await Z.laden().setJSON("konten", { ...blob, [c.konto]: { ...alt, gesperrt: true } });
+    expect((await lesen(c.token)).status).toBe(401);
+  }, LIMIT);
+
   it("ein Lesefehler am Zugang ist keine Absage: die Sitzung bleibt bestehen, wird aber nicht durchgelassen", async () => {
     const c = await codeSitzung({});
     const wirft = new Proxy(Z.laden(), { get(ziel, name) {
@@ -185,8 +228,8 @@ describe("SI-P2: gesperrter Zugangscode", () => {
         ? Promise.reject(Object.assign(new Error("EIO: gestört"), { code: "EIO" })) : w.apply(ziel, a));
     } });
     const s = await Z.S.sitzungLesen(new Request("http://x/", { headers: { authorization: `Bearer ${c.token}` } }));
-    const e = await AS.arbeitssitzungPruefen(wirft, s, { merkmal: c.token });
-    expect(e.ok).toBe(false);
+    /* Vorübergehend: wird geworfen (die Pfade antworten mit 503, nicht mit 401 — bei 401 meldet der Browser ab). */
+    await expect(AS.arbeitssitzungPruefen(wirft, s, { merkmal: c.token })).rejects.toMatchObject({ code: "BESTAND_UNLESBAR" });
     expect(await sitzungDa(c.token), "nicht beendet").toBe(true);
     expect((await lesen(c.token)).status, "ohne Störung wieder gültig").toBe(200);
   }, LIMIT);
