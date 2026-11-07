@@ -777,11 +777,18 @@ export const pushErlaubt = () =>
    Betreiber-Sitzung; der Server prüft das noch einmal.
    -------------------------------------------------------------------------- */
 
-export async function zugaengeErzeugen(bestand, eintraege) {
+/* `zweifaktor`: der aktuelle Code aus der Authenticator-App (SI-P6). Der Server verlangt ihn, sobald für den
+   Betreibercode ein zweiter Faktor eingerichtet ist (in der Auslieferung immer); ein Code gilt nur einmal. */
+export async function zugaengeErzeugen(bestand, eintraege, zweifaktor = "") {
   const a = await fetch("/api/zugaenge", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ bestand, eintraege }) });
+    body: JSON.stringify({ bestand, eintraege, ...(zweifaktor ? { zweifaktor } : {}) }) });
   const d = await a.json();
-  if (!a.ok) throw new Error(d.fehler || "Zugänge konnten nicht erzeugt werden.");
+  if (!a.ok) {
+    const e = new Error(d.fehler || "Zugänge konnten nicht erzeugt werden.");
+    if (d.zweifaktor) e.zweifaktor = d.zweifaktor;
+    if (d.grund) e.grund = d.grund;
+    throw e;
+  }
   return d.zugaenge;
 }
 

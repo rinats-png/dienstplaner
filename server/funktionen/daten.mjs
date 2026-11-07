@@ -10,7 +10,8 @@ import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letz
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
-import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { betreiberZweifaktor, betreiberFaktorFrisch } from "../lib/betreiber-zweifaktor.mjs";
+import { leitungImRaum } from "../lib/leitungsschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
@@ -263,12 +264,14 @@ export default async (req, context) => {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "keine Betreibersitzung");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
+      /* SI-P6: Dauerhafte Zugangscodes entstehen nur mit frischer Anmeldung UND frischem zweiten Faktor (unten). */
+      if (!frisch(sB)) return neuAnmelden();
       const kZ = kennung(req, sB);
       const bZ = await bremse("zugaenge", kZ);
       if (!bZ.frei) { await protokoll("zugaenge", kZ, "gebremst", bZ.grund);
         return zuVielAntwort(bZ.wartet); }
       const { bestand: ziel, eintraege } = rumpf;
-      if (!ziel || !Array.isArray(eintraege) || !eintraege.length)
+      if (!ziel || typeof ziel !== "string" || !Array.isArray(eintraege) || !eintraege.length)
         return antwort({ fehler: "Unvollständig." }, 400);
       if (eintraege.length > 20) return antwort({ fehler: "Zu viele auf einmal." }, 400);
       /* Nur bekannte Rollen, nie „betreiber“ (SI-06, interne Prüfung 2026-11):
@@ -285,6 +288,30 @@ export default async (req, context) => {
         && (e.personId === null || e.personId === undefined || e.personId === ""));
       if (ohnePerson)
         return antwort({ fehler: `Ein Zugang der Rolle „${ohnePerson.rolle}" braucht eine Person.` }, 400);
+
+      /* SI-P6 (1/2): frischer zweiter Faktor. Mit eingerichtetem Faktor gehört ein Code aus der App in den Rumpf
+         (`zweifaktor`); in der Auslieferung ist der Faktor Pflicht. Erst danach wird irgendetwas über den Raum
+         preisgegeben oder geschrieben. */
+      const faktorFrisch = await betreiberFaktorFrisch({ store, k: kZ, sitzung: sB, code: rumpf.zweifaktor });
+      if (faktorFrisch.antwort) return faktorFrisch.antwort;
+
+      /* SI-P6 (2/2): Ein Leitung-Code gehört zur Erstanlage eines Betriebs. Gibt es im Raum schon einen wirksamen
+         Leitungszugang, ist ein weiterer Zugriff an der Leitung vorbei nicht Sache dieses Weges (AV §3).
+         Kann das nicht geprüft werden, entsteht nichts. */
+      if (eintraege.some((e) => e.rolle === "leitung")) {
+        let leitung;
+        try { leitung = await leitungImRaum(store, ziel); }
+        catch {
+          await protokoll("zugaenge", kZ, "fehler", "Leitung im Raum nicht prüfbar");
+          return antwort({ fehler: "Der Raum lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
+        }
+        if (leitung.vorhanden) {
+          await protokoll("zugaenge", kZ, "abgewiesen", `Leitung-Code für bestehenden Raum (${leitung.quelle})`);
+          return antwort({ fehler: "In diesem Betrieb gibt es schon einen Leitungszugang. Ein weiterer Leitung-Code "
+            + "lässt sich hier nicht anlegen; das entscheidet die Organisationsleitung des Betriebs.",
+          grund: "leitung_vorhanden" }, 409);
+        }
+      }
 
       /* Codes gibt es nur für einen eingerichteten Raum, gebunden an die
          Kennung seines Betriebs (erstbefuellung.mjs). */

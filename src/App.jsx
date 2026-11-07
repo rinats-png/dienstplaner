@@ -6317,6 +6317,9 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState(null);
   const [ergebnis, setErgebnis] = useState(null);
+  /* SI-P6: Code des zweiten Faktors; und: steht der Raum schon, fehlen nur noch die Zugänge (kein zweites Anlegen). */
+  const [faktor, setFaktor] = useState("");
+  const [angelegt, setAngelegt] = useState(null);
 
   const raum = name.trim().toLowerCase()
     .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
@@ -6326,17 +6329,22 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
     if (!name.trim() || laeuft) return;
     setLaeuft(true); setFehler(null);
     try {
-      const m = mandantAnlegen({ name: name.trim(), branche, anschrift, kontakt,
+      const m = angelegt ? angelegt.m : mandantAnlegen({ name: name.trim(), branche, anschrift, kontakt,
         zusatzRollen: extra });
+      const zielRaum = angelegt ? angelegt.raum : raum;
       /* Erst der Raum, dann die Zugänge. Andersherum gäbe es Codes, die
          ins Leere führen. */
-      await SP.bestandAnlegen(raum, { version: 5, mandanten: [m], session: null,
-        tarife: db.tarife, betreiber: db.betreiber || BETREIBER_LEER, stand: 1 });
-      const codes = await SP.zugaengeErzeugen(raum,
-        m.personen.map((p) => ({ rolle: p.rolle, personId: p.id, name: m.name })));
-      setErgebnis({ mandant: m, raum, codes: codes.map((c) => ({ ...c,
+      if (!angelegt) {
+        await SP.bestandAnlegen(raum, { version: 5, mandanten: [m], session: null,
+          tarife: db.tarife, betreiber: db.betreiber || BETREIBER_LEER, stand: 1 });
+        setAngelegt({ m, raum });
+      }
+      const codes = await SP.zugaengeErzeugen(zielRaum,
+        m.personen.map((p) => ({ rolle: p.rolle, personId: p.id, name: m.name })), faktor.trim());
+      setFaktor("");
+      setErgebnis({ mandant: m, raum: zielRaum, codes: codes.map((c) => ({ ...c,
         label: ROLLEN.find((r) => r.id === c.rolle)?.label || c.rolle })) });
-      akt.mandantVermerken({ id: m.id, name: m.name, branche, raum,
+      akt.mandantVermerken({ id: m.id, name: m.name, branche, raum: zielRaum,
         angelegt: new Date().toISOString(), zugaenge: codes.length });
     } catch (e) { setFehler(e.message); }
     finally { setLaeuft(false); }
@@ -6445,6 +6453,13 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
             </label>))}
         </div>
       </div>
+
+      <Field label="Code aus der Authenticator-App (zweiter Faktor)"
+        hint={angelegt
+          ? "Der Betrieb steht schon. Es fehlen nur die Zugänge: bitte den nächsten Code abwarten und eingeben."
+          : "Pflicht, sobald für deinen Betreibercode ein zweiter Faktor eingerichtet ist. Jeder Code gilt nur einmal."}>
+        <Inp value={faktor} inputMode="numeric" autoComplete="one-time-code" maxLength={16}
+          onChange={(e) => setFaktor(e.target.value)} placeholder="6-stelliger Code" /></Field>
 
       {fehler && (
         <div role="alert" style={{ padding: "13px 16px", borderRadius: 10,
