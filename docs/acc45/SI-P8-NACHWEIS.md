@@ -64,14 +64,21 @@ und jede lokal referenzierte Composite-Action (`./pfad/action.yml`). Die Regeln:
 - Erlaubt sind nur Referenzen der Form `owner/repo[/pfad]@<40 hex>` mit dem Kommentar `# vX.Y.Z`.
 - `./…` ist erlaubt, `docker://…` nur mit `@sha256:<64 hex>`.
 - Verboten sind Tags, Branches, Kurz-SHAs, großgeschriebene SHAs, `#` ohne Leerzeichen sowie Ausdrücke `${{ … }}` im `uses:`.
-- Fail-closed: Jede andere YAML-Schreibweise eines `uses`-Schlüssels gilt als Befund, etwa ein Flow-Mapping `{ uses: … }`, `[{"uses": …}]`, ein quotierter Schlüssel oder ein Block-Skalar als Wert.
+- Fail-closed: Jede andere YAML-Schreibweise eines `uses`-Schlüssels gilt als Befund, etwa ein Flow-Mapping `{ uses: … }`, `[{"uses": …}]`, ein quotierter Schlüssel, ein Block-Skalar als Wert, ein Anker oder Tag vor einem Flow-Wert (`&a [ … ]`, `!!seq [ … ]`), `- - uses:` oder ein expliziter Schlüssel `? uses`.
+- Ebenfalls fail-closed: mehrzeilige Strings in Anführungszeichen. Ihre Folgezeilen könnten sonst einen Block-Skalar vortäuschen und echte `uses:`-Zeilen verstecken (Nach-Review).
 - Text in `run: |`-Blöcken und in einfachen Skalarwerten zählt nicht.
 - CR, CRLF und LF werden erkannt, ebenso eine BOM.
 - Derselbe SHA einer Action mit verschiedenen Versionskommentaren gilt als Befund.
 
-Bewusst ohne YAML-Parser: Das Paket hat keinen direkten YAML-Parser, und die
-Prüfung soll im Job `muster` ohne `npm ci` laufen. Die Lücke, die ein
-Zeilenscanner hätte, schließt die Fail-closed-Regel.
+Das Werkzeug kommt bewusst ohne YAML-Parser aus: Das Paket hat keinen direkten
+YAML-Parser, und die Prüfung soll im Job `muster` ohne `npm ci` laufen. Die
+Lücke, die ein Zeilenscanner hätte, schließt die Fail-closed-Regel. Zusätzlich
+gibt es eine Gegenprobe mit einem echten Parser im Test
+(`sicherheit.yml/interne-pruefung`, nach `npm ci`). Sie liest jeden Workflow mit
+`js-yaml`, das über eslint ins Lockfile kommt, und verlangt zweierlei: Jeder
+`uses`-Wert, den der Parser sieht, ist gepinnt, und der Zeilenscanner findet je
+Datei genau so viele Referenzen. Fällt `js-yaml` einmal aus dem Lockfile,
+schlägt der Test fehl, nicht still.
 
 ## Ausgeführte Tests
 
@@ -80,7 +87,7 @@ Zeilenscanner hätte, schließt die Fail-closed-Regel.
 | `node werkzeug/sicherheit/actions-pins.mjs` auf dem Ausgangsstand `087fbe9` | **rot**, 23 Befunde, genau die 23 geänderten Zeilen |
 | dieselbe Prüfung auf dem Branch | grün: 7 Dateien, 32 externe Referenzen (8 verschiedene), 2 lokale |
 | `… --online` | 8/8 ok |
-| `npx vitest run pruefungen/actions-pins.test.js` | 10/10 grün |
+| `npx vitest run pruefungen/actions-pins.test.js` | 12/12 grün, einschließlich der Gegenprobe mit js-yaml |
 | `npm run pruefung:sicherheit-intern` | 3 Dateien grün (sicherheit-intern, routen-inventar, actions-pins) |
 | `npx eslint .` | 0 Fehler (nur die schon vorhandenen Warnungen) |
 | `actionlint` 1.7.7 (Release-Binary, SHA-256 gegen die offizielle checksums.txt geprüft) über alle Workflows | 0 Befunde, vorher und nachher |
@@ -108,7 +115,14 @@ Vorgabe des Ergebnisses.
   - **niedrig:** `@<sha>#v4` (ohne Leerzeichen) galt als gepinnt. Behoben. Getestet.
   - **info:** Versionskommentare wie `# v4` waren zu ungenau. Jetzt ist nur `vX.Y.Z` erlaubt.
   - **info:** Composite-Actions außerhalb von `.github/actions` wurden nicht geprüft. Behoben: Referenzierte lokale Actions werden mitgeprüft.
-- Nach-Review der Korrekturen: siehe Pull-Request-Beschreibung.
+- Nach-Review der Korrekturen:
+  - **mittel:** Ein vorgetäuschter Block-Skalar in einem mehrzeiligen String in Anführungszeichen versteckte echte `uses:`-Zeilen. Gegengeprüft mit js-yaml und PyYAML.
+  - **niedrig:** Anker oder Tag vor einem Flow-Wert sowie `? uses` blieben ohne Befund.
+  - **info:** `- - uses` blieb ohne Befund.
+  - Alles behoben (fail-closed) und getestet. Dazu kommt die Gegenprobe mit dem Parser.
+  - Alle 25 + 17 + 1 Proben des Reviewers erneut ausgeführt: Jede Umgehung ergibt einen Befund. Ohne Befund bleiben nur legitime Fälle (Text in `run: |`, `docker://…@sha256`) und ungültiges YAML.
+- Restbefund des Nach-Reviews, **niedrig:** Ein Flow-Wert, der `uses:` als Text in Anführungszeichen enthält, z. B. `with: { args: "uses: x" }`, wird fälschlich gemeldet. Das ist fail-closed, und der Fall kommt nicht vor.
+- Ebenfalls offen (**info**): In lokalen `action.yml` werden `runs.image`, `container:`- und `services:`-Images nicht auf einen Digest geprüft. Heute gibt es keine lokalen Actions.
 
 ## Offene Risiken (nicht Teil von SI-P8, nicht geändert)
 

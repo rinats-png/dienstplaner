@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-const USES = /^\s*(?:-\s+)?uses\s*:\s*(.*)$/;
+const USES = /^\s*(?:-\s+)*uses\s*:\s*(.*)$/;
 const SHA40 = /^[0-9a-f]{40}$/;
 const VERSION = /^v\d+\.\d+\.\d+$/;
 const DOCKER_DIGEST = /^docker:\/\/[^@\s]+@sha256:[0-9a-f]{64}$/;
@@ -45,6 +45,11 @@ const USES_IRGENDWO = /(?:^|[\s{,[-])["']?uses["']?\s*:/;
 // Einfache Block-Mapping-Zeile `schluessel: wert` (unquotierter Schlüssel).
 const SKALAR_ZEILE = /^\s*(?:-\s+)*[A-Za-z0-9_.-]+\s*:\s+(\S.*)$/;
 // Zeile, die einen Block-Skalar eröffnet (`key: |`, `- run: >-` …).
+// Wert einer Zeile (nach `- ` und optionalem `schluessel: `), für die Prüfung
+// auf offene Strings in Anführungszeichen und Flow-Werte.
+const ZEILENWERT = /^\s*(?:-\s+)*(?:[A-Za-z0-9_.-]+\s*:\s+)?(.*)$/;
+const ANKER_TAG = /^(?:[&!]\S*\s+)*/;
+const GESCHLOSSEN = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')/;
 const BLOCK_START = /^(\s*(?:-\s+)*)[^\s#][^:]*:\s*[|>][+-]?\d*[+-]?\s*(?:#.*)?$/;
 const ACTION = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)((?:\/[A-Za-z0-9_.\-/]+)?)@(.+)$/;
 
@@ -60,6 +65,20 @@ function zerlege(rest) {
     wert = rest.trim();
   }
   return { wert, kommentar };
+}
+
+/**
+ * Prüft nur den Wert einer Referenz (ohne Kommentar) – für den Abgleich mit
+ * einem echten YAML-Parser im Test. Liefert null oder einen Befundtext.
+ */
+export function wertPruefen(wert) {
+  if (typeof wert !== "string" || !wert) return "leer oder kein Text";
+  if (wert.includes("${{")) return "Ausdruck";
+  if (wert.startsWith("./")) return null;
+  if (wert.startsWith("docker://")) return DOCKER_DIGEST.test(wert) ? null : "Container ohne Digest";
+  const a = ACTION.exec(wert);
+  if (!a) return "unbekannte Form";
+  return SHA40.test(a[4]) ? null : "nicht auf Commit-SHA gepinnt";
 }
 
 /**
@@ -82,12 +101,25 @@ export function actionsPruefen(text, datei = "<text>") {
     if (b) blockSpalte = b[1].length;
     if (/^\s*#/.test(zeile)) return;
     const ort = `${datei}:${i + 1}`;
+    // Fail-closed gegen Formen, die einen Zeilenscanner täuschen können:
+    // explizite Schlüssel (`? uses`) und mehrzeilige Strings in Anführungs-
+    // zeichen (deren Folgezeilen könnten `k: |` vortäuschen, Review SI-P8).
+    if (/^\s*(?:-\s+)*\?(?:\s|$)/.test(zeile)) {
+      befunde.push(`${ort}: expliziter YAML-Schlüssel (?) nicht unterstützt`);
+      return;
+    }
+    const zw = ZEILENWERT.exec(zeile)[1].replace(ANKER_TAG, "");
+    if (/^["']/.test(zw) && !GESCHLOSSEN.test(zw)) {
+      befunde.push(`${ort}: mehrzeiliger String in Anführungszeichen nicht unterstützt – bitte \`|\`-Block verwenden`);
+      blockSpalte = -1;
+      return;
+    }
     const m = USES.exec(zeile);
     if (!m) {
       // `schluessel: wert` mit einfachem Skalar als Wert kann keinen uses-Schlüssel
       // enthalten (z. B. `run: echo "uses: …"`); Flow-Werte ({ … } / [ … ]) schon.
       const skalar = SKALAR_ZEILE.exec(zeile);
-      if (skalar && !/^[{[]/.test(skalar[1])) return;
+      if (skalar && !/^[{[]/.test(skalar[1].replace(ANKER_TAG, ""))) return;
       if (USES_IRGENDWO.test(zeile.replace(/\s#.*$/, ""))) {
         befunde.push(`${ort}: uses in nicht unterstützter Schreibweise (Flow-Mapping oder quotierter Schlüssel) – bitte als \`uses: owner/repo@<sha> # vX.Y.Z\``);
       }

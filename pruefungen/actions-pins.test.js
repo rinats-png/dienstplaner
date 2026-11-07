@@ -2,7 +2,9 @@
 // Versionskommentar. Prüft die Regel selbst (rote und grüne Proben) und den
 // aktuellen Stand aller Workflows im Repository.
 import { describe, it, expect } from "vitest";
-import { actionsPruefen, kommentareAbgleichen, repositoryPruefen } from "../werkzeug/sicherheit/actions-pins.mjs";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { actionsPruefen, kommentareAbgleichen, repositoryPruefen, wertPruefen } from "../werkzeug/sicherheit/actions-pins.mjs";
 
 const SHA = "11d5960a326750d5838078e36cf38b85af677262";
 const befunde = (zeile) => actionsPruefen(zeile, "t.yml").befunde;
@@ -65,6 +67,33 @@ describe("SI-P8 Regel", () => {
     expect(befunde("      - {\n          uses: actions/checkout@v4 }").length).toBeGreaterThan(0);
   });
 
+  it("Nach-Review: vorgetäuschter Block-Skalar, Anker/Tags, explizite Schlüssel", () => {
+    const versteckt = [
+      "    steps:",
+      "      - name: x",
+      "        env:",
+      '          A: "x',
+      "     k: |",
+      '           "',
+      "      - uses: actions/checkout@v4",
+    ].join("\n");
+    expect(befunde(versteckt).length).toBeGreaterThan(0);
+    for (const z of [
+      '      - name: "x',
+      "      - name: 'x",
+      "    steps: &s [{uses: actions/checkout@v4}]",
+      "    steps: !!seq [{uses: actions/checkout@v4}]",
+      "    x: &st {uses: actions/checkout@v4}",
+      "      - ? uses",
+      "      - - uses: actions/checkout@v4",
+    ]) {
+      expect(befunde(z).length, z).toBeGreaterThan(0);
+    }
+    // Gegenproben: geschlossene Strings bleiben erlaubt.
+    expect(befunde(`      - name: "Bild \\"bauen\\""`)).toEqual([]);
+    expect(befunde("      - name: 'it''s'")).toEqual([]);
+  });
+
   it("erkennt CR-, CRLF- und LF-Zeilenenden sowie BOM", () => {
     for (const nl of ["\r", "\r\n", "\n"]) {
       const t = `\uFEFFjobs:${nl}  a:${nl}    steps:${nl}      - uses: actions/checkout@v4${nl}`;
@@ -97,6 +126,30 @@ describe("SI-P8 Regel", () => {
 });
 
 describe("SI-P8 Repository", () => {
+  // Gegenprobe mit einem echten YAML-Parser (js-yaml, kommt über eslint ins
+  // Lockfile): Jeder uses-Wert, den der Parser sieht, muss gepinnt sein, und
+  // der Zeilenscanner muss genau so viele Referenzen finden wie der Parser.
+  it("Zeilenscanner und YAML-Parser stimmen überein", async () => {
+    const yaml = createRequire(import.meta.url)("js-yaml");
+    const { dateien, referenzen } = await repositoryPruefen();
+    for (const d of dateien) {
+      const werte = [];
+      const gehe = (k) => {
+        if (Array.isArray(k)) k.forEach(gehe);
+        else if (k && typeof k === "object") {
+          for (const [s, w] of Object.entries(k)) {
+            if (s === "uses") werte.push(w);
+            gehe(w);
+          }
+        }
+      };
+      yaml.loadAll(readFileSync(new URL(`../${d}`, import.meta.url), "utf8"), gehe);
+      for (const w of werte) expect(wertPruefen(w), `${d}: ${w}`).toBeNull();
+      expect(referenzen.filter((r) => r.ort.startsWith(`${d}:`)).length, d).toBe(werte.length);
+    }
+  });
+
+
   it("alle fremden Actions in .github sind per Commit-SHA gepinnt", async () => {
     const { dateien, referenzen, befunde: b } = await repositoryPruefen();
     expect(dateien.length).toBeGreaterThan(0);
