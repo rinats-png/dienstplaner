@@ -273,7 +273,7 @@ const vorlaeufig = (e) => ({
 const REGELN_VORLAEUFIG = [
   /* T-14 (Rechtsabgleich 2026-11-07): § 6 Abs. 2 ArbZG, Wortlaut am 2026-11-07 gegen
      gesetze-im-internet.de geprüft. Nur Hinweis; keine Aussage über Tarifabweichung (§ 7). */
-  vorlaeufig({ id: "AZ-NACHT-AUSGLEICH-01", typ: "zaehlregel",
+  vorlaeufig({ id: "AZ-NACHT-AUSGLEICH-01", typ: "bestandsregel", /* Hinweis aus nachtAusgleichHinweis (regelwerk.mjs), nicht aus dem Baukasten: die Parameter sind Beschreibung, kein zaehlregel-Schema */
     bezeichnung: "Nachtarbeitnehmer: Ausgleich auf acht Stunden binnen Kalendermonat oder vier Wochen",
     ebene: "bund", quelle: "ArbZG", fundstelle: "§ 6 Abs. 2",
     quellenURL: "https://www.gesetze-im-internet.de/arbzg/__6.html",

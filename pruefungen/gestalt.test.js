@@ -52,7 +52,9 @@ describe("Keine externen Ressourcen", () => {
     const ERLAUBT_DATEI = ["src/kontakt.js", "src/tarifwerke.js", "src/rechtstexte.jsx",
       "src/handbuch-inhalt.js", "src/tour-inhalt.js",
       /* Regelmodule nennen ihre Rechtsquellen im Kopfkommentar */
-      "src/fahrzeit.js", "src/ppprl.js", "src/ppugv.js"];
+      "src/fahrzeit.js", "src/ppprl.js", "src/ppugv.js",
+      /* Regelregister: `quellenURL` je Regel (amtliche Fundstelle, reine Datenangabe, wird nie geladen) */
+      "src/regelregister.js"];
     const funde = [];
     for (const p of QUELLEN) {
       if (ERLAUBT_DATEI.includes(rel(p))) continue;
