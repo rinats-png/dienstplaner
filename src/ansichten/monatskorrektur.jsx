@@ -27,7 +27,7 @@ export function MonatsKorrektur({ sitz, ym, akt }) {
   const laeuft = !!kor && kor.offen === true;
   if (!exportiert && !laeuft && !revisionen.length) return null;
   const revision = Number.isInteger(e.revision) ? e.revision : 1;
-  const beginnen = async () => { if (await akt.monatKorrektur("korrektur-beginnen", ym, { anlass, grund })) { setOffen(false); setGrund(""); setAnlass(""); } };
+  const beginnen = async () => { const r = await akt.monatKorrektur("korrektur-beginnen", ym, { anlass, grund }); if (r && r.ok) { setOffen(false); setGrund(""); setAnlass(""); } };
   const freigeben = async () => {
     /* Erst die Differenz ansehen (der Server liefert sie mit 409), dann mit ihrer Prüfsumme freigeben. */
     const erg = await akt.monatKorrektur("korrektur-freigeben", ym, differenz ? { differenz: differenz.abdruck } : {});
