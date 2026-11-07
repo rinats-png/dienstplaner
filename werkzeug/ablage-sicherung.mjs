@@ -90,7 +90,7 @@ const FORMAT = 1;
  */
 export const STORES = {
   "centric":                  { klasse: "A", ohne: ["token:", "tokencode:", "zweifaktor-nachweis:"] },
-  "centric-sitzungen":        { klasse: "B", nur: ["sk:"] },
+  "centric-sitzungen":        { klasse: "B", nur: ["sk:", "skw:", "skraum:"] },
   "centric-spur":             { klasse: "B" },
   "centric-accountsitzungen": { klasse: "C" },
   "centric-takt":             { klasse: "C" },

@@ -635,9 +635,10 @@ export async function testbetriebOeffnen(store, accountId) {
     Fehler dabei lässt die Sperre selbst nicht scheitern. */
 export async function accountSperren(store, accountId) {
   const erg = await accountAendern(store, accountId, { status: "gesperrt" });
+  let sk = null;
   if (erg && erg.ok) {
     /* SI-P1: Die Sperre beendet die Sicherungsschlüssel dieses Kontos dauerhaft; eine spätere Entsperrung belebt sie nicht. */
-    erg.sicherungsschluessel = await schluesselDesKontosWiderrufen(accountId, "konto-gesperrt");
+    sk = await schluesselDesKontosWiderrufen(accountId, "konto-gesperrt");
     try {
       const bindungen = (await mitgliedschaftenDesAccounts(store, accountId))
         .filter((m) => m && m.person !== null && m.person !== undefined && typeof m.mandantId === "string")
@@ -645,7 +646,7 @@ export async function accountSperren(store, accountId) {
       await herkunftsloseFeedsWiderrufen(store, bindungen);
     } catch { /* die Sperre gilt; der Altfeed bleibt bis zur Prüfung der Person */ }
   }
-  return erg;
+  return sk ? { ...erg, sicherungsschluessel: sk } : erg;
 }
 
 /** Zeitpunkt der letzten Anmeldung. */

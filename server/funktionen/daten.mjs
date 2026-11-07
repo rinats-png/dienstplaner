@@ -24,7 +24,7 @@ import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenb
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen, sicherungsschluesselErsteller, sicherungsschluesselPruefen } from "../lib/arbeitssitzung.mjs";
-import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung,
+import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung, raumIndex,
   schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
 import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
@@ -255,24 +255,45 @@ async function ungueltigesMerkmal(req, lese) {
 async function sicherungsschluesselAbgleichen(store, raum) {
   if (!raum) return;
   try {
-    const { blobs } = await sitzungen().list({ prefix: "sk:" });
+    /* Über den Raumindex, nicht über alle Schlüssel aller Räume. */
+    const { blobs } = await sitzungen().list({ prefix: `skraum:${raum}:` });
     if (!blobs.length) return;
     let gelesen = null;
-    for (const b of blobs) {
-      const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
-      if (!k || k.bestand !== raum || k.ersteller === undefined || k.ersteller === null) continue;
+    for (const ib of blobs) {
+      const h = ib.key.slice(`skraum:${raum}:`.length);
+      const k = await sitzungen().get(`sk:${h}`, { type: "json" }).catch(() => null);
+      if (!k) { await sitzungen().delete(ib.key).catch(() => {}); continue; }   // verwaister Indexeintrag
+      if (k.bestand !== raum || k.ersteller === undefined || k.ersteller === null) continue;
+      /* Ein Vermerk steht schon, der Datensatz ist aber noch da (Löschen misslang): erneut löschen. */
+      const vermerkt = await sitzungen().get(`skw:${h}`, { type: "json" }).catch(() => null);
+      if (vermerkt) { await schluesselWiderrufen(`sk:${h}`, k, vermerkt.grund, { ablage: sitzungen() }); continue; }
       if (!gelesen) gelesen = await bestandLesen(store, raum);
       const pr = await sicherungsschluesselPruefen(store, k, { bestandLader: async () => gelesen });
-      if (!pr.ok && pr.endgueltig) await schluesselWiderrufen(b.key, k, grundAusPruefung(pr.grund), { ablage: sitzungen() });
+      if (!pr.ok && pr.endgueltig) await schluesselWiderrufen(`sk:${h}`, k, grundAusPruefung(pr.grund), { ablage: sitzungen() });
     }
-  } catch { /* zweite Linie: die Prüfung beim Gebrauch widerruft ohnehin */ }
+  } catch {
+    /* Zweite Linie: die Prüfung beim Gebrauch widerruft ohnehin. Der Fehler wird sichtbar gemacht (Protokoll). */
+    await protokoll("sicherungsschluessel", "system", "fehler", "abgleich misslungen", { weg: "abgleich" }).catch(() => {});
+  }
 }
+
+/** Wege, die Personal, Rollen oder den Bestand im Ganzen ändern können: immer abgleichen. Alle anderen höchstens alle
+    zehn Sekunden je Raum, damit häufige Schreibvorgänge (Stempeln) nicht jedes Mal zahlen. */
+const SK_IMMER_ABGLEICHEN = new Set(["bestand", "wiederherstellen"]);
+const skZuletzt = new Map();
+const SK_ABSTAND = 10000;
 
 export default async (req, context) => {
   const ctx = { raum: null };
   const a = await behandeln(req, context, ctx);
-  if (ctx.raum && req.method !== "GET" && req.method !== "HEAD" && a && a.status < 400)
-    await sicherungsschluesselAbgleichen(laden(), ctx.raum);
+  if (ctx.raum && req.method !== "GET" && req.method !== "HEAD" && a && a.status < 400) {
+    const pfad = new URL(req.url).pathname.replace(/^\/api\/?/, "");
+    const jetzt = Date.now();
+    if (SK_IMMER_ABGLEICHEN.has(pfad) || jetzt - (skZuletzt.get(ctx.raum) || 0) >= SK_ABSTAND) {
+      skZuletzt.set(ctx.raum, jetzt);
+      await sicherungsschluesselAbgleichen(laden(), ctx.raum);
+    }
+  }
   return a;
 };
 
@@ -2296,6 +2317,11 @@ async function behandeln(req, context, ctx) {
         for (const sb of skAlle) {
           const k = await sitzungen().get(sb.key, { type: "json" }).catch(() => null);
           if (!skGehoert(k) || !(Number(k.bis) >= Date.now())) continue;
+          /* Mit Vermerk ist er widerrufen (nur das Löschen misslang): erneut löschen, nicht zählen. */
+          if (await sitzungen().get(`skw:${sb.key.slice(3)}`, { type: "json" }).catch(() => null)) {
+            await schluesselWiderrufen(sb.key, k, "ersteller-berechtigung", { ablage: sitzungen() });
+            continue;
+          }
           let zaehlt = true;
           try {
             const pr = await sicherungsschluesselPruefen(store, k, { bestandLader: async () => skMit });
@@ -2334,7 +2360,14 @@ async function behandeln(req, context, ctx) {
         return antwort({ fehler: "Mit diesem Zugang lässt sich kein Sicherungsschlüssel anlegen.",
           text: "Ein Sicherungsschlüssel gilt nur für den Zugang einer Leitung dieses Betriebs." }, 403);
       }
-      await sitzungen().setJSON(`sk:${hash(roh)}`, skSatz);
+      /* Erst der Raumindex, dann der Schlüssel: Misslingt der Index, entsteht kein Schlüssel, den der Abgleich nicht fände. */
+      try {
+        await sitzungen().setJSON(raumIndex(s.bestand, hash(roh)), { bestand: s.bestand });
+        await sitzungen().setJSON(`sk:${hash(roh)}`, skSatz);
+      } catch {
+        await sitzungen().delete(raumIndex(s.bestand, hash(roh))).catch(() => {});
+        return antwort({ fehler: "Der Schlüssel konnte nicht angelegt werden.", text: "Bitte versuche es gleich noch einmal." }, 503);
+      }
       await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`, wer);
       return antwort({ ok: true, schluessel: roh, gueltigBis: new Date(bis).toISOString(),
         tage: gueltig, standardTage: SK_STANDARD_TAGE, hoechstTage: SK_HOECHST_TAGE,
@@ -2367,6 +2400,10 @@ async function behandeln(req, context, ctx) {
       for (const b of blobs) {
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
         if (!gehoert(k)) continue;
+        if (await sitzungen().get(`skw:${b.key.slice(3)}`, { type: "json" }).catch(() => null)) {
+          await schluesselWiderrufen(b.key, k, "ersteller-berechtigung", { ablage: sitzungen() });
+          continue;                      // steht unten unter den widerrufenen
+        }
         /* SI-P1: Wer hat ihn angelegt, und gilt der Ersteller noch? „verwaist" heißt: Der Schlüssel funktioniert
            nicht mehr (Ersteller gesperrt, ausgetreten, herabgestuft) oder hat gar keinen Ersteller (Altschlüssel). */
         let verwaist = true;

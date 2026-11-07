@@ -325,11 +325,49 @@ describe("Review-Nachträge", () => {
     expect((await vollausgabe(sk)).status).toBe(401);
   }, LIMIT);
 
-  it("Befund 1: ein anderer Raum wird vom Abgleich nicht berührt", async () => {
-    const a = await kontoMitSchluessel("n-raum-a");
-    const c = await kontoMitSchluessel("n-raum-c");
-    await bestandPut(a, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
-    expect((await vollausgabe(c.sk)).status).toBe(200);
+  it("Befund 1/5: der Abgleich trifft nur den Raum der Änderung; der Schlüssel eines anderen Raums bleibt", async () => {
+    const a = await Z.arbeitsbereich("n-raum-a");
+    const c = await Z.arbeitsbereich("n-raum-c");
+    const la = await codeLeitung(a.raum);
+    const skA = (await anlegen(a.token)).daten.schluessel;
+    const skC = (await anlegen(c.token)).daten.schluessel;
+    // Beide Ersteller werden herabgestuft, aber nur im Raum A folgt ein Schreibvorgang über den Server.
+    await bestandAendernLib(a.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
+    await bestandAendernLib(c.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
+    const g = await Z.bearer(Z.daten, "/api/bestand", la.token);
+    const neu = JSON.parse(JSON.stringify(g.daten.bestand));
+    neu.mandanten[0].name = `${neu.mandanten[0].name} `;
+    const e = await Z.bearer(Z.daten, "/api/bestand", la.token, { methode: "PUT", rumpf: { bestand: neu, etag: g.daten.etag } });
+    expect(e.status, JSON.stringify(e.daten).slice(0, 160)).toBeLessThan(300);
+    expect(await vermerk(skA), "Raum A abgeglichen").not.toBeNull();
+    expect(await vermerk(skC), "Raum C nicht angefasst (kein Schreibvorgang dort)").toBeNull();
+    expect(await satz(skC)).not.toBeNull();
+  }, LIMIT);
+
+  it("Befund 1 (Last): der Raumindex entsteht beim Anlegen und verschwindet beim Widerruf und bei der Raumlöschung", async () => {
+    const b = await kontoMitSchluessel("n-index");
+    const idx = `skraum:${b.raum}:${hash(b.sk)}`;
+    expect(await Z.ablageArbeit().get(idx, { type: "json" })).toMatchObject({ bestand: b.raum });
+    await Z.A.epocheErhoehen(Z.laden(), b.k.id);
+    expect(await Z.ablageArbeit().get(idx, { type: "json" })).toBeNull();
+    const c = await kontoMitSchluessel("n-index-2");
+    const idx2 = `skraum:${c.raum}:${hash(c.sk)}`;
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    await raumLoeschen(Z.laden(), Z.ablageArbeit(), c.raum);
+    expect(await Z.ablageArbeit().get(idx2, { type: "json" })).toBeNull();
+  }, LIMIT);
+
+  it("Befund 7: steht der Vermerk, aber der Datensatz ist noch da (Löschen misslang), zählt er nicht und wird beim Auflisten gelöscht", async () => {
+    const b = await kontoMitSchluessel("n-halb");
+    const rohSatz = await satz(b.sk);
+    await Z.A.epocheErhoehen(Z.laden(), b.k.id);
+    await Z.ablageArbeit().setJSON(`sk:${hash(b.sk)}`, rohSatz);            // Datensatz wieder da, Vermerk steht
+    const l = await codeLeitung(b.raum);
+    const li = await liste(l.token);
+    expect(li.daten.schluessel).toHaveLength(0);
+    expect(li.daten.aktiv).toBe(0);
+    expect(li.daten.widerrufen).toHaveLength(1);
+    expect(await satz(b.sk), "aufgeräumt").toBeNull();
   }, LIMIT);
 
   it("DELETE: der von der Leitung widerrufene Schlüssel bekommt die erkennbare 401, und der Fehlerfall wird nicht als Erfolg gemeldet", async () => {
@@ -459,5 +497,12 @@ describe("Review-Nachträge: Fehlerpfade des Widerrufs (gestörte Ablage)", () =
     const a = ablage({ loeschWirft: true });
     expect(await SK.schluesselWiderrufen("sk:abc", a.daten.get("sk:abc"), "x", { ablage: a })).toBe("voll");
     expect(a.daten.has("skw:abc")).toBe(true);
+  });
+});
+
+describe("Sicherung der Ablage und Widerrufsvermerke", () => {
+  it("die Ablage-Sicherung nimmt Widerrufsvermerke und Raumindex zusammen mit den Schlüsseln auf (kein Schlüssel ohne seinen Vermerk zurück)", async () => {
+    const { STORES } = await import("../werkzeug/ablage-sicherung.mjs");
+    expect(STORES["centric-sitzungen"].nur).toEqual(expect.arrayContaining(["sk:", "skw:", "skraum:"]));
   });
 });

@@ -34,6 +34,10 @@ const VERMERK_ZUSCHLAG = 24 * 3600 * 1000;
 
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
+/** Der Raumindex: Welche Schlüssel gehören zu einem Raum? Damit sucht der Abgleich nach einer Änderung nicht in allen
+    Räumen (`sk:` ist global). Der Wert trägt den Raum, damit die Raumlöschung ihn mitnimmt. */
+export const raumIndex = (raum, hashHex) => `skraum:${raum}:${hashHex}`;
+
 /** Die verständliche Warnung, die vor einer Passwortänderung oder einem Sicherheitsreset erscheinen muss. */
 export const SK_WARNUNG_PASSWORT =
   "Wenn du dein Passwort änderst oder die Sicherheit deines Kontos zurücksetzt, enden alle Sicherungsschlüssel, "
@@ -92,6 +96,7 @@ export async function schluesselWiderrufen(schluessel, sk, grund, { ablage = nul
   /* Gelöscht wird auch ohne Vermerk: Schon das Löschen schützt vor dem Hauptweg der Wiederbelebung (zurückgespielter
      Zustand ohne den Schlüsseldatensatz). Fehlt der Vermerk, wird das als Fehler gemeldet. */
   const weg = await a.delete(schluessel).then(() => true, () => false);
+  if (sk && typeof sk.bestand === "string") await a.delete(raumIndex(sk.bestand, schluessel.slice(3))).catch(() => {});
   if (!weg && !vermerkt) return false;
   return vermerkt ? "voll" : "ohne-vermerk";
 }
