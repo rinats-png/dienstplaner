@@ -70,6 +70,10 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_ZWEIFAKTOR_PFLICHT` | `1`: Verwalterschlüssel ohne zweiten Faktor nur zur Einrichtung (ab dem ersten eingerichteten Faktor ohnehin) | aus | ja (auskommentiert) |
 | `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT` | `1`: Betreibercode ohne zweiten Faktor bekommt keine Sitzung. **Unter `NODE_ENV=production` (Docker-Image) immer Pflicht und nicht abschaltbar (WP-32d)**; Wiederherstellung offline: `werkzeug/betreiber-2fa-zuruecksetzen.mjs` | nur außerhalb production aus | ja (auskommentiert) |
 | `RESEND_API_KEY`, `CENTRIC_ABSENDER` | E-Mail-Versand (ohne: Trockenlauf) | aus | ja |
+| `CENTRIC_MAIL_WEG` | `smtp` schaltet den IONOS-SMTP-Weg ein (gebaut, ausgeschaltet; docs/MAIL-SMTP-IONOS.md) | aus | nein |
+| `CENTRIC_SMTP_HOST`, `CENTRIC_SMTP_BENUTZER`, `CENTRIC_SMTP_ABSENDER` | Server, Anmeldename und Absender des SMTP-Wegs | – | ja |
+| `CENTRIC_SMTP_PASSWORT` | Postfach-Passwort des SMTP-Wegs (nur Produktions-`.env`) | – | ja |
+| `CENTRIC_SMTP_PORT`, `CENTRIC_SMTP_SICHER` | Port (465/587) und `tls`/`starttls` | 465, tls | nein |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_KONTAKT` | Web-Push (beide Hälften nötig) | aus | ja |
 | `CENTRIC_ZUSTELL_BACKOFF` | Mail/Push (WP-30): Wartezeiten in Sekunden vor Wiederholung 2, 3, …, Komma-getrennt; Anzahl + 1 = höchste Versuchszahl | `60,300,1800,7200` | ja (auskommentiert) |
 | `CENTRIC_ZUSTELL_PERSON_MAIL`, `CENTRIC_ZUSTELL_PERSON_PUSH` | Tageskontingent je Person und Kanal (dringende Arten ausgenommen); `0` sperrt den Kanal | 10 / 30 | ja (auskommentiert) |
