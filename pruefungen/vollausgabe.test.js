@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import { vollausgabeBetrieb, exportBetrieb, EXPORT_PERSON, EXPORT_GEHEIMNISSE } from "../server/lib/sicherungen.mjs";
+import { VOLL_BETRIEB } from "../server/lib/sicht.mjs";
 
 const GEHEIM = "darf-nicht-raus";
 const person = (id, rolle) => ({ id, vorname: "V", nachname: `N${id}`, rolle, email: `${id}@x.de`, telefon: `0151-${id}`,
@@ -99,5 +100,46 @@ describe("Unterschied: Personaldaten des Kunden", () => {
     vollausgabeBetrieb(g, SCHLUESSEL);
     expect(JSON.stringify(g)).toBe(vorher);
     expect(g.mandanten[0].personen[1].kalenderGeheim).toBe("kal-geheim-a1");
+  });
+});
+
+/* ------------------------------------------------------------------------
+   T-09 (Rechtsabgleich 2026-11-07): Die Vollausgabe enthält jedes Betriebsfeld
+   des Katalogs VOLL_BETRIEB — auch die Moduldaten — und jedes Personenfeld des
+   Umfangs. Ein neues Katalogfeld, das nicht ausgegeben wird, macht diesen Test rot.
+   ------------------------------------------------------------------------ */
+describe("Vollständigkeit: alle Felder aus VOLL_BETRIEB", () => {
+  const MODULFELDER = ["objekte", "postenPlan", "bereichsPlan", "wachbuch", "bereitschaftStufen", "bereitschaft",
+    "funktionsbereiche", "funktionsPlan", "rotationen", "pflegeNiveaus", "betriebsmittel", "sondereinsaetze"];
+  const marke = (f) => ({ marke: `wert-${f}` });
+  const mandant = () => {
+    const m = Object.fromEntries(VOLL_BETRIEB.map((f) => [f, marke(f)]));
+    m.id = "m1"; m.personen = [Object.fromEntries(EXPORT_PERSON.sicherung.map((f) => [f, marke(f)]))];
+    return m;
+  };
+
+  it("der Katalog enthält die Moduldaten", () => {
+    for (const f of MODULFELDER) expect(VOLL_BETRIEB, f).toContain(f);
+  });
+
+  for (const modus of ["leitung", "sicherung"]) {
+    it(`Umfang ${modus}: jedes Feld aus VOLL_BETRIEB ist in der Ausgabe, unverändert`, () => {
+      const roh = mandant();
+      const aus = exportBetrieb(roh, { modus });
+      for (const f of VOLL_BETRIEB.filter((x) => x !== "personen")) expect(aus[f], f).toEqual(roh[f]);   // personen: eigener Test
+      expect(Object.keys(aus).sort()).toEqual([...VOLL_BETRIEB].sort());
+    });
+
+    it(`Umfang ${modus}: jedes Personenfeld des Umfangs ist in der Ausgabe`, () => {
+      const p = exportBetrieb(mandant(), { modus }).personen[0];
+      for (const f of EXPORT_PERSON[modus]) expect(p[f], f).toEqual(marke(f));
+      expect(Object.keys(p).sort()).toEqual([...EXPORT_PERSON[modus]].sort());
+    });
+  }
+
+  it("Moduldaten gehen über vollausgabeBetrieb hinaus", () => {
+    const g = { mandanten: [mandant()] };
+    const b = vollausgabeBetrieb(g, SCHLUESSEL).betrieb;
+    for (const f of MODULFELDER) expect(b[f], f).toEqual(marke(f));
   });
 });
