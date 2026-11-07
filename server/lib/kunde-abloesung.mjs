@@ -6,10 +6,13 @@
    „eigener Probierraum") wird nicht mehr vergeben. Demo ist das Merkmal
    `demo: true` am Konto, die Rechte kommen aus einer ausdrücklichen Rolle.
 
-   „kunde" und „leitung" haben dieselben Rechte (MATRIX), denselben
-   Schreibumfang, dieselben Sicherungs- und Auskunftsrechte und dieselbe
-   Vergabehöhe (rollenwechselErlaubt behandelt kunde als leitung). Die
-   Umstellung eines Demozugangs kunde → leitung ändert also keine Wirkung.
+   „kunde" und „leitung" haben dieselbe MATRIX und denselben Schreibumfang,
+   NICHT aber dieselben Wege: Zugänge sperren, Vollausgabe, Sicherungs-
+   schlüssel und Wiederherstellen prüfen hart auf „leitung". Damit eine
+   öffentliche Demo-Sitzung (/api/demo, ohne Code) dadurch nichts gewinnt,
+   verweigern diese Wege seit 2026-11-07 jede Sitzung mit demo:true
+   (daten.mjs). Der Client behandelt „kunde" anders als „leitung"
+   (Rollenwähler statt fester Person, App.jsx) — siehe Freigabepaket D.2.
 
    Dieses Modul schreibt selbst nichts: Es bekommt die Konten (Hash → Konto)
    und liefert (a) eine lesende Auswertung und (b) gezielte Änderungen; das
@@ -63,11 +66,24 @@ export function auswerten(konten) {
  */
 export function umstellungPlan(konten) {
   const aus = [];
+  /* Ein Demozugang je Betrieb und Rolle (einrichten.mjs): Gibt es dort schon
+     einen aktiven leitung-Demozugang, bliebe die Umstellung eine Doppelung —
+     dann wird sie übersprungen und im Bericht als Kollision gemeldet. */
+  const schluessel = (k) => `${k.bestand}|${k.betrieb ?? 0}`;
+  const belegt = new Set(Object.values(konten || {}).filter((k) => istObjekt(k) && k.demo && !k.gesperrt && k.rolle === ZIEL_ROLLE).map(schluessel));
   for (const [hash, k] of Object.entries(konten || {})) {
     if (!istObjekt(k) || k.rolle !== "kunde" || !k.demo || k.gesperrt) continue;
+    if (belegt.has(schluessel(k))) continue;
+    belegt.add(schluessel(k));
     aus.push({ hash, vorher: k, nachher: { ...k, rolle: ZIEL_ROLLE, rolleVorher: "kunde" } });
   }
   return aus;
+}
+
+/** Aktive Demo-kunde-Zugänge, die wegen eines vorhandenen leitung-Demozugangs im selben Betrieb NICHT umgestellt werden. */
+export function kollisionen(konten) {
+  const plan = new Set(umstellungPlan(konten).map((p) => p.hash));
+  return Object.entries(konten || {}).filter(([h, k]) => istObjekt(k) && k.rolle === "kunde" && k.demo && !k.gesperrt && !plan.has(h)).map(([h, k]) => zeile(h, k));
 }
 
 /**

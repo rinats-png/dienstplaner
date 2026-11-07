@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const imp = (p) => import(pathToFileURL(path.join(WURZEL, p)).href);
-const ab = (t) => { process.stderr.write(`FEHLER: ${t}\n`); process.exit(1); };
+const ab = (t) => { throw new Error(t); }; // wirft, damit finally die Sperre freigibt
 
 async function main() {
   const daten = process.env.CENTRIC_DATEN;
@@ -34,9 +34,11 @@ async function main() {
   try {
     const { getStore } = await imp("server/lib/ablage.mjs");
     const { alleKonten, kontoSchreiben } = await imp("server/lib/konten.mjs");
-    const { auswerten, umstellen } = await imp("server/lib/kunde-abloesung.mjs");
+    const { auswerten, umstellen, kollisionen } = await imp("server/lib/kunde-abloesung.mjs");
     const store = getStore({ name: "centric", consistency: "strong" });
     const konten = await alleKonten(store);
+    const betreiberRoh = (k) => JSON.stringify(Object.entries(k).filter(([, x]) => x && x.rolle === "betreiber").sort(([x], [y]) => (x < y ? -1 : 1)));
+    const betreiberVorher = betreiberRoh(konten);
     const a = auswerten(konten);
     const p = (s) => process.stdout.write(s + "\n");
     p(`Zugänge gesamt: ${a.gesamt}`);
@@ -45,13 +47,14 @@ async function main() {
     p(`Aktive Demo mit Rolle „kunde“ (${a.kundeDemo.length}, würden auf „leitung“ umgestellt): ${JSON.stringify(a.kundeDemo)}`);
     p(`„kunde“ ohne aktive Demo (${a.kundeSonst.length}, NICHT angefasst): ${JSON.stringify(a.kundeSonst)}`);
     p(`Ohne Rolle (${a.ohneRolle.length}, ohne Zugriff, NICHT angefasst): ${JSON.stringify(a.ohneRolle)}`);
+    const kol = kollisionen(konten);
+    if (kol.length) p(`Kollision (${kol.length}, werden NICHT umgestellt — im Betrieb gibt es schon einen aktiven leitung-Demozugang): ${JSON.stringify(kol)}`);
     if (!a.betreiber.length) p("HINWEIS: Kein Betreiberzugang in dieser Ablage gefunden.");
     const r = await umstellen(konten, { ausfuehren, schreiben: (h, k) => kontoSchreiben(store, h, k) });
     if (!r.ausgefuehrt) { p(`Trockenlauf: ${r.geplant} würden umgestellt. Mit --ausfuehren anwenden.`); return; }
-    const danach = auswerten(await alleKonten(store));
-    if (JSON.stringify(danach.betreiber) !== JSON.stringify(a.betreiber))
+    if (betreiberRoh(await alleKonten(store)) !== betreiberVorher)
       ab("Betreiberzugang nach dem Lauf verändert — Sicherung zurückspielen!");
     p(`UMGESTELLT: ${r.geplant} (${r.kennungen.join(", ")}). Betreiberzugang unverändert.`);
   } finally { await sperre.freigeben(); }
 }
-main().catch((e) => ab(String(e && e.message || e)));
+main().catch((e) => { process.stderr.write(`FEHLER: ${String((e && e.message) || e)}\n`); process.exit(1); });

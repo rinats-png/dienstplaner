@@ -407,7 +407,8 @@ export default async (req, context) => {
       const aB = await ungueltigesMerkmal(req, lB);
       if (aB) return aB;
       const sB = lB.sitzung;
-      const darfSperren = sB && (sB.rolle === "betreiber" || sB.rolle === "leitung");
+      /* Eine Sitzung aus /api/demo (öffentlich, ohne Code) sperrt nichts: Sonst könnte jeder Besucher die übrigen Demozugänge zurückziehen. */
+      const darfSperren = sB && !sB.demo && (sB.rolle === "betreiber" || sB.rolle === "leitung");
       if (!darfSperren) {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Sperrung ohne Recht");
         return antwort({ fehler: "Nur die Organisationsleitung darf Zugänge zurückziehen." }, 403);
@@ -2148,7 +2149,7 @@ export default async (req, context) => {
        Zwei Wege hinein: eine angemeldete Sitzung der Organisationsleitung —
        oder ein Sicherungsschlüssel, der nur das hier darf.               */
     if (pfad === "vollausgabe" && req.method === "GET") {
-      if (s.rolle !== "leitung" && !s.nurSicherung)
+      if ((s.rolle !== "leitung" && !s.nurSicherung) || s.demo)
         return antwort({ fehler: "Nur die Organisationsleitung darf den ganzen Bestand ausgeben.",
           text: absageText(s.rolle) }, 403);
       const bv = await bremse("vollausgabe", kennung(req, s));
@@ -2185,7 +2186,7 @@ export default async (req, context) => {
        Er wird genau einmal gezeigt. Gespeichert ist nur der Hashwert —
        genau wie bei den Zugangscodes.                                  */
     if (pfad === "sicherungsschluessel" && req.method === "POST") {
-      if (s.rolle !== "leitung" || s.nurSicherung)
+      if (s.rolle !== "leitung" || s.nurSicherung || s.demo)
         return antwort({ fehler: "Nur die Organisationsleitung darf Sicherungsschlüssel anlegen." }, 403);
       if (!frisch(s)) return neuAnmelden();
       const { tage } = rumpf;
@@ -2224,7 +2225,7 @@ export default async (req, context) => {
     };
 
     if (pfad === "sicherungsschluessel" && req.method === "GET") {
-      if (s.rolle !== "leitung" || s.nurSicherung)
+      if (s.rolle !== "leitung" || s.nurSicherung || s.demo)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
       const gehoert = await schluesselImBetrieb();
       const { blobs } = await sitzungen().list({ prefix: "sk:" }).catch(() => ({ blobs: [] }));
@@ -2239,7 +2240,7 @@ export default async (req, context) => {
     }
 
     if (pfad === "sicherungsschluessel" && req.method === "DELETE") {
-      if (s.rolle !== "leitung" || s.nurSicherung)
+      if (s.rolle !== "leitung" || s.nurSicherung || s.demo)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
       const { kennung: kz } = rumpf;
       /* Genau die achtstellige Kennung aus der Liste — keine Präfixsuche. */
@@ -2323,7 +2324,7 @@ export default async (req, context) => {
          Gespeichertes. Jetzt: nur die Leitung, nur der eigene Betrieb an
          seiner Stelle, mit Rollen- und Vertragsschutz (lib/sicherungen.mjs)
          und nur auf den Stand, den sie zuletzt gesehen hat. */
-      if (!WIEDERHERSTELLEN_ROLLEN.includes(s.rolle))
+      if (!WIEDERHERSTELLEN_ROLLEN.includes(s.rolle) || s.demo)
         return antwort({ fehler: "Wiederherstellen darf nur die Leitung.",
           text: absageText(s.rolle) }, 403);
       if (!frisch(s)) return neuAnmelden();

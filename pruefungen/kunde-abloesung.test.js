@@ -32,7 +32,7 @@ const konten = () => ({
   "h-kundegesp-00000004": { name: "Demo gesperrt", bestand: "demo-schau", rolle: "kunde", demo: true, gesperrt: true },
   "h-kundereal-00000005": { name: "Kein Demo", bestand: "x", rolle: "kunde", demo: false },
   "h-ohnerolle-00000006": { name: "Ohne", bestand: "x", demo: false },
-  "h-leitung-000000007": { name: "Leitung", bestand: "demo-schau", rolle: "leitung", person: "l1", demo: true, id: "d00000007" },
+  "h-leitung-000000007": { name: "Leitung", bestand: "demo-schau", rolle: "leitung", person: "l1", betrieb: 2, demo: true, id: "d00000007" },
 });
 
 describe("Rollenvergabe ohne Vorgabe", () => {
@@ -48,7 +48,7 @@ describe("Rollenvergabe ohne Vorgabe", () => {
     expect(sitzungsRolleBekannt("kunde")).toBe(true);
     expect(sitzungsRolleBekannt(undefined)).toBe(false);
   });
-  it("kunde und leitung sind rechtegleich — die Umstellung ändert keine Wirkung", () => {
+  it("kunde und leitung haben dieselbe MATRIX und denselben Schreibumfang (Wege mit hartem leitung-Check: HTTP-Test in sicherheit-intern)", () => {
     expect([...MATRIX.kunde].sort()).toEqual([...MATRIX.leitung].sort());
     expect(schreibumfang("kunde")).toBe(schreibumfang("leitung"));
   });
@@ -71,6 +71,12 @@ describe("Auswertung und gezielte Umstellung", () => {
     const p = umstellungPlan(konten());
     expect(p.map((x) => x.hash).sort()).toEqual(["h-kundedemo-00000002", "h-kundedemo-00000003"]);
     for (const x of p) { expect(x.nachher.rolle).toBe("leitung"); expect(x.nachher.demo).toBe(true); expect(x.nachher.rolleVorher).toBe("kunde"); expect(x.nachher.bestand).toBe(x.vorher.bestand); expect(x.nachher.mandantId).toBe(x.vorher.mandantId); expect(x.nachher.betrieb).toBe(x.vorher.betrieb); }
+  });
+  it("Kollision: gibt es im Betrieb schon einen aktiven leitung-Demozugang, wird nicht doppelt umgestellt, sondern gemeldet", async () => {
+    const k = { ...konten(), "h-dopp-00000009": { name: "Demo A neu", bestand: "demo-schau", rolle: "leitung", betrieb: 0, demo: true } };
+    expect(umstellungPlan(k).map((x) => x.hash)).toEqual(["h-kundedemo-00000003"]);
+    const { kollisionen } = await import("../server/lib/kunde-abloesung.mjs");
+    expect(kollisionen(k).map((z) => z.kennung)).toEqual(["00000002"]);
   });
   it("Trockenlauf schreibt nichts; Ausführen schreibt genau die Demozugänge", async () => {
     const k = konten();

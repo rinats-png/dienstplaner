@@ -12,7 +12,7 @@ Regel: **Kein Zugriff ohne nachgewiesene Rolle.** Eine Sitzung oder ein Zugangsc
 | Anmeldung mit Zugangscode ohne Rolle (`/api/anmelden`) | Sitzung mit Rolle `kunde` | 403 „Dieser Zugang ist nicht nutzbar.“ und keine Sitzung |
 | Demozugang ohne Rolle | Sitzung ohne Rolle | 403 „Dieser Zugang steht nicht als Demo bereit.“ |
 | Betriebsmitgliedschaft ohne Rolle (`betriebsauswahl`) | zählte als `kunde` | Absage „rolle“ |
-| Zugang **anlegen** ohne Rolle (`/einrichten`, Zugangsanlage) | Rolle `kunde` wird ausdrücklich gespeichert | unverändert: Vorgabe `kunde` bleibt |
+| Zugang **anlegen** ohne Rolle (`/einrichten`, Zugangsanlage) | Rolle `kunde` wird ausdrücklich gespeichert | seit 2026-11-07 geändert: keine Vorgabe mehr, 400 „Eine Rolle ist nötig.“; `kunde` wird nicht mehr vergeben |
 
 ## 2. Wer ist betroffen
 
@@ -22,7 +22,7 @@ Nur Datensätze, die **keine** Rolle tragen:
 2. **Zugangscodes ohne Rolle** (Altcodes aus der Zeit vor der Rollenvergabe). Sie lassen sich nicht mehr anmelden. Die Organisationsleitung oder der Betreiber muss den Code mit einer Rolle neu ausstellen.
 3. **Mitgliedschaften ohne Rolle** in der Betriebswahl: Betrieb lässt sich nicht wählen, bis die Rolle gesetzt ist.
 
-**Nicht betroffen:** Codes mit ausdrücklicher Rolle (auch `kunde`), alle über `/einrichten` oder die Zugangsanlage neu angelegten Zugänge (sie schreiben `kunde`, wenn keine Rolle angegeben ist), Betreiber, Beschäftigte, Planung, Leitung.
+**Nicht betroffen:** Codes mit ausdrücklicher Rolle (auch `kunde`), Betreiber, Beschäftigte, Planung, Leitung.
 
 ## 3. Vor der Auslieferung prüfen (nur lesend)
 

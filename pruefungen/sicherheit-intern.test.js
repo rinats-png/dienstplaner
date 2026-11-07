@@ -211,6 +211,26 @@ describe("SI-01 Push-Endpunkt nur bei bekannten Push-Diensten", () => {
       expect(ok.zugaenge.map((z) => z.rolle)).toEqual(["leitung"]);
     });
 
+    /* kunde-Ablösung (2026-11-07): Eine öffentliche Demo-Sitzung (/api/demo, demo:true) trägt die Rolle leitung,
+       darf aber weder Zugänge zurückziehen noch Vollausgabe, Sicherungsschlüssel oder Wiederherstellen. */
+    it("Demo-Sitzung mit Rolle leitung: Sperren, Vollausgabe, Sicherungsschlüssel, Wiederherstellen → 403; ohne demo nicht", async () => {
+      const { sitzungAnlegen } = await import("../server/lib/sitzungen.mjs");
+      const mk = async (demo) => (await sitzungAnlegen({ bestand: "sich", name: "d", rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m-a", ...(demo ? { demo: true } : {}) }, 600000)).token;
+      const tDemo = await mk(true), tEcht = await mk(false);
+      const rufe = (tok, mitSperren = true) => [...(mitSperren ? [["/api/zugang-sperren", "POST", { bestand: "sich", alleDesBetriebs: true }]] : []), ["/api/sicherungsschluessel", "POST", { tage: 7 }],
+        ["/api/sicherungsschluessel", "GET"], ["/api/vollausgabe", "GET"], ["/api/wiederherstellen", "POST", {}]]
+        .map(async ([p, m, r]) => {
+          const kopf = { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json", "x-forwarded-for": "10.9.8.8", authorization: `Bearer ${tok}` };
+          const x = await daten(new Request(`http://${WIRT}${p}`, { method: m, headers: kopf, ...(r ? { body: JSON.stringify(r) } : {}) }), {});
+          return [p + " " + m, x.status];
+        });
+      for (const [n, s] of await Promise.all(rufe(tDemo))) expect(s, n).toBe(403);
+      // Gegenprobe: dieselben Wege lehnen die echte Leitung nicht mit 403 ab (mind. einer führt durch) — die Sperre hängt am Merkmal demo
+      /* ohne Sperren: Das echte Sperren aller Zugänge würde die gemeinsame Testsitzung beenden. */
+      const echt = await Promise.all(rufe(tEcht, false));
+      expect(echt.filter(([, s]) => s !== 403).length).toBeGreaterThan(0);
+    });
+
     it("ein bekannter Push-Dienst wird angenommen", async () => {
       const r = await anfrage(zustellung, "/zustellung/anmelden",
         { anmeldung: { endpoint: "https://fcm.googleapis.com/fcm/send/xyz", keys: {} } }, token);
