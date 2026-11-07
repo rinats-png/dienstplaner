@@ -134,6 +134,16 @@ describe("SI-P2: was unberührt bleibt", () => {
     expect((await lesen(s.token)).status).toBe(401);
   }, LIMIT);
 
+  it("eine Betreiber-Sitzung hat keine Person im Betrieb und wird von der Personenprüfung nicht berührt", async () => {
+    const raum = Z.raum("cp-betreiber");
+    await Z.betriebAnlegen(raum);
+    const konto = await Z.zugangskonto(raum, { rolle: "mitarbeiter", person: null });
+    const s = await Z.S.sitzungAnlegen({ bestand: raum, rolle: "betreiber", person: "p_gibt-es-nicht", betrieb: 0, konto, name: "Betreiber" });
+    const satz = await Z.ablageArbeit().get(tSchluessel(s.token), { type: "json" });
+    const e = await AS.arbeitssitzungPruefen(Z.laden(), satz, { merkmal: null });
+    expect(e).toEqual({ ok: true, art: "legacy" });
+  }, LIMIT);
+
   it("Sitzungen aus einem Konto sind von dieser Änderung nicht berührt (eigene Anker)", async () => {
     const b = await Z.arbeitsbereich("cp-konto");
     expect((await lesen(b.token)).status).toBe(200);
