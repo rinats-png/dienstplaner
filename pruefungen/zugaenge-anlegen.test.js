@@ -35,6 +35,10 @@ let kind, statik, daten, arbeit, ausgabe = () => "";
 
 /** Das Skript einmal laufen lassen; gibt Ausgabe, Fehlerausgabe und Status zurück. */
 async function lauf(nr) {
+  /* Die Bremse für /einrichten (5 Versuche je 10 Minuten und Adresse) zählt jeden Aufruf. Vier Läufe in einer Sekunde
+     von einer Adresse überschreiten sie zwangsläufig; geprüft wird das Skript, nicht die Bremse (die hat eigene Tests).
+     Nur die Zähler des Testservers werden geleert, keine Daten. */
+  await rm(path.join(daten, "centric-takt"), { recursive: true, force: true });
   const datei = path.join(arbeit, `zugaenge-${nr}.txt`);
   try {
     const { stdout, stderr } = await ausfuehren("bash", [SKRIPT], {
