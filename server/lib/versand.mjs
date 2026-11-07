@@ -84,6 +84,7 @@ import { bestandLesenStreng as bestandLesen } from "./bestand.mjs";
 import { hinweis, pushZiel, betrifftEntwurf, backoffPlan, versucheMax, naechsterVersuch,
   kontingente, kontingentTag, naechsterKontingentTag, kanalAus, einzeilig } from "./zustellregeln.mjs";
 import { zustellEreignis } from "./zustellzaehler.mjs";
+import { istTestOderDemoraum, testraumMailFrei, testraumMailTagMax } from "./testraum.mjs";
 
 export const KANAELE = ["mail", "push"];
 const ENDGUELTIG = ["gesendet", "uebersprungen", "gescheitert"];
@@ -269,8 +270,11 @@ const quelleVon = (n) => (istObjekt(n.quelle) && n.quelle.von !== undefined && n
  *   nächsten Tag zurückgestellt, nicht verworfen).
  * - Geht der Versuch nicht hinaus, werden die schon belegten Plätze wieder
  *   freigegeben (F6).
+ * - SI-P3: Mail aus einem Test- oder Demoraum (lib/testraum.mjs) — nur mit
+ *   Freigabe, dann zuerst ein Platz der Tagesobergrenze je Raum (über alle
+ *   Betriebe des Raums); darüber „testraum“ (endgültig nicht gesendet).
  * Wirft, wenn die Ablage nicht antwortet (der Aufrufer stellt zurück).
- * @returns {Promise<"frei"|"person"|"zurueck">}
+ * @returns {Promise<"frei"|"person"|"zurueck"|"testraum">}
  */
 async function kontingentPruefen(store, { raum, m, n, p, kanal, jetzt }) {
   const tag = kontingentTag(jetzt);
@@ -290,6 +294,11 @@ async function kontingentPruefen(store, { raum, m, n, p, kanal, jetzt }) {
     return !!pl;
   };
   const nein = async (/** @type {"person"|"zurueck"} */ ergebnis) => { await plaetzeFreigeben(store, belegt); return ergebnis; };
+  if (mail && istTestOderDemoraum(raum, m)) {
+    const pl = await platzBeanspruchen(store, `zustellquote:${raum}:raum:${tag}:mail:testraum:`, testraumMailTagMax());
+    if (!pl) return "testraum";
+    belegt.push(pl);
+  }
   if (istNotruf(n)) {
     const q = quelleVon(n) ?? "ohne";
     if (!(await nimm(`p-${h(p.id)}:d-${h(q)}`, paar))) return nein("zurueck");
@@ -417,6 +426,10 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr
   if (kanal === "mail") {
     an = mailAdresse(p);
     if (!an) return status("uebersprungen", { grund: "keinWeg" });
+    /* SI-P3: Aus Test- und Demoräumen keine Mail ohne Freigabe des Betreibers —
+       sonst ließen sich frei gesetzte Adressen über unseren Absender
+       anschreiben (Relay, Phishing). Push bleibt (lib/testraum.mjs). */
+    if (istTestOderDemoraum(raum, m) && !testraumMailFrei()) return status("uebersprungen", { grund: "testraum" });
     const sperre = await store.get(sperrSchluessel(raum, m.id, p.id), { type: "json" }).catch(() => null);
     if (sperreGilt(sperre, an)) return status("uebersprungen", { grund: "unzustellbar" });
   } else {
@@ -432,6 +445,7 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr
     return fehlschlag({ klasse: "temporaer" }, "kontingent-unlesbar");
   }
   if (bremse === "person") return status("uebersprungen", { grund: "kontingent" });
+  if (bremse === "testraum") return status("uebersprungen", { grund: "testraum-grenze" });
   if (bremse === "zurueck") {
     /* B1: Die Betriebsgrenze ist erreicht (oder, Nachtrag 2 F5, eine
        Flut-Grenze eines Notrufs) — zurückstellen bis zum nächsten
