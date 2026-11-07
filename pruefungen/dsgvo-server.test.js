@@ -277,7 +277,7 @@ describe("Löschlauf nach Aufbewahrungsfristen auf dem Server", () => {
     await laden().setJSON(`sicherung:${R}:${marke}`, (await B.bestandLesen(laden(), R)).bestand,
       { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Leitung" } });
     await D.datenschutzLauf(laden(), { jetzt: new Date(), spur: false, modus: "an" });
-    const t = await sitzung(R, "l1", "leitung", "m1");
+    const t = await sitzung(R, null, "leitung", "m1");
     const g = await anfrage("/api/bestand", { token: t });
     expect(g.status).toBe(200);
     /* Seit N-3 löscht das Zurückspielen nur, wenn der Lauf auf „an" steht. */
@@ -356,6 +356,26 @@ describe("In-App-Sicherungen nach festem Plan (F-26)", () => {
     await D.datenschutzLauf(laden(), { jetzt: JETZT, spur: false, modus: "an" });
     expect(await laden().get(`sicherung:${R}:${alt}`, { type: "json" })).toBeNull();
   }, 30000);                 // zwei Läufe über alle Räume dieser Ablage, unter Windows-Last über 5 s
+  it("T-15: der Plan zählt Sicherungen über 90 Tage — auch die, die als neueste behalten werden", () => {
+    const liste = [...Array.from({ length: 22 }, (_, i) => e(100 + i, 0)), e(3, 0)];
+    const p = D.sicherungsPlan(liste, JETZT);
+    expect(p.aelterAlsHoechstalter).toHaveLength(22);
+    expect(p.behaltenTrotzAlter).toHaveLength(19);              // 20 neueste: e(3) und 19 über 90 Tage
+    expect(p.weg).toHaveLength(3);
+    for (const k of p.weg) expect(p.aelterAlsHoechstalter).toContain(k);
+    expect(D.sicherungsPlan([e(10, 0)], JETZT).aelterAlsHoechstalter).toEqual([]);
+  });
+  it("T-15: die Vorschau weist die Zahl im Vermerk aus und löscht nichts", async () => {
+    const R = "dsgvo-alter90";
+    await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1", [person("p1")])] }, { durch: "Pruefung" });
+    const alt = "2026-05-01-10-00-00-0001";
+    await laden().setJSON(`sicherung:${R}:${alt}`, { x: 1 }, { metadata: { zeit: "2026-05-01T10:00:00.000Z", mandantId: "m-alt90" } });
+    const v = await D.datenschutzLauf(laden(), { jetzt: JETZT, spur: false, modus: "vorschau" });
+    expect(v.sicherungenAelterHoechstalter).toBeGreaterThanOrEqual(1);
+    expect(v.sicherungenAelterHoechstalterBehalten).toBeGreaterThanOrEqual(1);   // einzige ihres Kontingents
+    expect(v.sicherungenGeloescht).toBe(0);
+    expect(await laden().get(`sicherung:${R}:${alt}`, { type: "json" })).toEqual({ x: 1 });
+  }, 30000);
 });
 
 describe("Spur und Zeitsteuerung", () => {

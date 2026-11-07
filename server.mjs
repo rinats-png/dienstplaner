@@ -43,6 +43,7 @@ import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./serv
 import { nachfassen, zustellungAufraeumen } from "./server/lib/versand.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
+import { bindungErneuern, zustandPruefen } from "./server/lib/schluesselepoche.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -475,6 +476,23 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`CENTRIC läuft auf Port ${PORT}, Daten: ${process.env.CENTRIC_DATEN || "/data"}`);
 });
 
+/* Wiederherstellungsschutz der Sicherungsschlüssel (server/lib/schluesselepoche.mjs): Beim Start, jede Minute und beim
+   Beenden wird die Bindung zwischen Ablage und Zustandsverzeichnis erneuert. Eine Kopie der Ablage, die älter ist als
+   die letzte Erneuerung, passt danach nicht mehr: Es beginnt eine neue Epoche, und alle früheren Schlüssel werden sofort
+   widerrufen. Nur wenn es schon eine Epoche oder Bindung gibt. Ein Fehler betrifft allein die Sicherungsschlüssel
+   (sie gelten dann nicht), nie den übrigen Betrieb. */
+let bindungFehlerGemeldet = false;
+const bindungTakt = () => bindungErneuern({ nurWennVorhanden: true }).then(() => { bindungFehlerGemeldet = false; }, (e) => {
+  if (!bindungFehlerGemeldet) console.error("Sicherungsschlüssel: Schlüsselepoche nicht prüfbar, Schlüssel gelten nicht:", e && e.message ? e.message : e);
+  bindungFehlerGemeldet = true;
+});
+zustandPruefen().then((z) => {
+  if (z.stufe !== "ok") console.error(`WARNUNG Sicherungsschlüssel: ${z.text} (CENTRIC_ZUSTAND). Bis zur Behebung gilt kein Sicherungsschlüssel; alles andere läuft.`);
+  else console.log(`Sicherungsschlüssel: Zustandsverzeichnis nutzbar${z.text ? ` (${z.text})` : ""}`);
+}, () => {});
+bindungTakt();
+setInterval(bindungTakt, 60_000).unref();
+
 /* Regelmäßige Zustandsprüfung mit Alarm (WP-05). Vorgabe: prüfen und im Log
    vermerken; ein Alarmkanal erst mit CENTRIC_ALARM_WEBHOOK. */
 if ((process.env.CENTRIC_UEBERWACHUNG || "an").trim().toLowerCase() !== "aus") ueberwachungStarten();
@@ -517,6 +535,8 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
       if (d.uebersprungen) console.log(`Datenschutzlauf: ${modus === "aus" ? "abgeschaltet" : "übersprungen, ein anderer läuft noch"}`);
       else console.log(`Datenschutzlauf (${modus}): ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
         + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, `
+        + `${d.sicherungenFaellig} Sicherungen fällig (Vorschau), ${d.sicherungenAelterHoechstalter} Sicherungen älter als 90 Tage `
+        + `(${d.sicherungenAelterHoechstalterBehalten} davon behalten), `
         + `${d.feeddatenGeloescht} alte Kalender-Termine entfernt (${d.feeddatenFaellig} fällig), ${d.fehler.length} Fehler`);
     } catch (e) {
       console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);
@@ -574,7 +594,11 @@ function beenden(signal) {
   if (beendet) return;
   beendet = true;
   console.log(`${signal}: Server wird beendet`);
-  server.close(() => process.exit(0));
+  /* Wiederherstellungsschutz: Bindung noch einmal erneuern, damit eine Kopie aus diesem Lauf nach dem Zurückspielen
+     erkannt wird. Bei SIGKILL oder Absturz fehlt dieser Schritt; dann bleibt der Minutentakt. */
+  const bindungFertig = bindungErneuern({ nurWennVorhanden: true }).catch((e) =>
+    console.error("Sicherungsschlüssel: Bindung beim Beenden nicht erneuert:", e && e.message ? e.message : e));
+  server.close(() => { bindungFertig.finally(() => process.exit(0)); });
   if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
   setTimeout(() => { console.warn("Beenden erzwungen"); process.exit(0); }, 8_000).unref();
 }

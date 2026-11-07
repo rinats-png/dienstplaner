@@ -1,3 +1,4 @@
+import { smtpStatus } from "../lib/post-smtp.mjs";
 import { getStore } from "../lib/ablage.mjs";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
@@ -82,7 +83,7 @@ export default async (req) => {
        angemeldet. Ob Mail eingerichtet ist, bleibt ein Ja/Nein. */
     if (pfad === "schluessel" && req.method === "GET")
       return antwort({ vapid: process.env.VAPID_PUBLIC || null,
-        mail: !!process.env.RESEND_API_KEY });
+        mail: !!process.env.RESEND_API_KEY || smtpStatus() === "konfiguriert" });
 
     /* --------------------------- Zustellen ---------------------------- */
     if (pfad === "senden" && req.method === "POST") {

@@ -562,3 +562,5 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Wortlaut „Alle Daten dieses Betriebs, jederzeit vollständig" in der Ansicht Datenmitnahme | UX-Text |
 | Ein eigener HR-/DSGVO-Export für eine berechtigte Leitung, Trennung `/api/datenexport` / `/api/externes-backup` | eigener Schritt |
 | Weg des Betreibers zu Sicherungsschlüsseln | bei Bedarf |
+| Änderungsprotokoll `aenderungen` für den Betriebsrat (Legal-Revision 2026-11-07): nur noch die Standardfelder, die jeder Schreibweg setzt (Person, Tag, von/nach, Zeit, Vorlauf, Regelstand); frühere VOLL-Ausgabe mit beliebigen Zusatzfeldern entfällt. Test: `pruefungen/art9-katalog.test.js` | erledigt, hier dokumentiert |
+| Schichtverantwortung sieht im eigenen Bereich über `planungsregeln` bei Mutterschutz die Kombination (keine Nacht, Sonntag nur mit Freigabe, über 8 h nur nach Absprache) und bei Wiedereingliederung von/bis der Stundengrenze; Planungs-Freitext `ausschreibungen[].hinweis` geht an alle Rollen; Art.-17-Löschung und Raum-/Mandantenlöschung prüfen keinen BewachV-Fristtyp (`docs/legal/TECHNISCHE-FOLGEAUFGABEN.md` T-18 bis T-20) | Betreiberentscheidung |

@@ -45,7 +45,7 @@
    Dieses Modul importiert nichts aus der Oberfläche und nichts aus dem
    Server. Es ist reine Daten- und Hilfsfunktionen-Schicht.
    ========================================================================== */
-import { REGELSTAND, HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, NACHT_TAGE_SCHWELLE,
+import { REGELSTAND, NACHT_AUSGLEICH_WOCHEN, HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, NACHT_TAGE_SCHWELLE,
   VORSORGE_MONATE, VORSORGE_MONATE_AB_50, FREIE_SONNTAGE_MIN, ERSATZ_TAGE_SONNTAG,
   ERSATZ_TAGE_FEIERTAG } from "./regelwerk.js";
 import { RUHEZEIT_GESETZ } from "./warnstufen.js";
@@ -193,6 +193,12 @@ const REGELN_BESTAND = [
     ebene: "bund", quelle: "MPBetreibV, BetrSichV", fundstelle: "§ 4 MPBetreibV; § 12 BetrSichV" }),
   bestand({ id: "BES-FACHKRAFT-01", art: "fachkraft", typ: "besetzungsregel", bezeichnung: "Fachkraftquote",
     ebene: "land", quelle: "Landesheimpersonalverordnung", fundstelle: null,
+    /* T-13 (Rechtsabgleich 2026-11-07): Es gibt keine eindeutige Fundstelle im Bestand — die
+       Quote ist je Bundesland verschieden und die Vorgabe betrieblich. Ohne Fundstelle darf die
+       Regel nicht als geprüft gelten; das Verhalten der Planprüfung bleibt unverändert. */
+    pruefstatus: "provisional", geprueftAm: null, regelstand: null,
+    hoechsteStufe: "hinweis", parameter: { landesrechtlich: true },
+    pruefhinweis: "Fundstelle je Bundesland fehlt (Landesheimpersonalverordnung bzw. entsprechende Landesvorschrift). Der hinterlegte Wert ist die betriebliche Vorgabe, keine geprüfte Landesnorm. Vor Einstufung als geprüft: Bundesland, Norm und Paragraf je Land benennen.",
     anzeige: { norm: "Landesheimpersonalverordnung",
       satz: "Die Fachkraftquote richtet sich nach Landesrecht und ist je Bundesland verschieden; der hinterlegte Wert ist die betriebliche Vorgabe." } }),
   bestand({ id: "BES-MINDEST-01", art: "besetzung", typ: "besetzungsregel", bezeichnung: "Mindestbesetzung (betrieblich)",
@@ -265,6 +271,16 @@ const vorlaeufig = (e) => ({
 });
 
 const REGELN_VORLAEUFIG = [
+  /* T-14 (Rechtsabgleich 2026-11-07): § 6 Abs. 2 ArbZG, Wortlaut am 2026-11-07 gegen
+     gesetze-im-internet.de geprüft. Nur Hinweis; keine Aussage über Tarifabweichung (§ 7). */
+  vorlaeufig({ id: "AZ-NACHT-AUSGLEICH-01", typ: "bestandsregel", /* Hinweis aus nachtAusgleichHinweis (regelwerk.mjs), nicht aus dem Baukasten: die Parameter sind Beschreibung, kein zaehlregel-Schema */
+    bezeichnung: "Nachtarbeitnehmer: Ausgleich auf acht Stunden binnen Kalendermonat oder vier Wochen",
+    ebene: "bund", quelle: "ArbZG", fundstelle: "§ 6 Abs. 2",
+    quellenURL: "https://www.gesetze-im-internet.de/arbzg/__6.html",
+    testIDs: ["FACH-10"], reviewDatum: "2026-11-07",
+    hoechsteStufe: "hinweis",
+    parameter: { fensterWochen: NACHT_AUSGLEICH_WOCHEN, alternativFenster: "kalendermonat", durchschnittStunden: DURCHSCHNITT_TAG },
+    pruefhinweis: "Hinweis, wenn weder im Kalendermonat noch in vier Wochen der Durchschnitt von acht Stunden werktäglich gehalten wird (nachtAusgleichHinweis). Offen: Einordnung als Nachtarbeitnehmer (§ 2 Abs. 5), tarifliche Abweichung (§ 7), Anbindung an die Planprüfung (bisher nur Funktion und Register)." }),
   /* Neu (Oktober 2026): fehlendes Geburtsdatum bei einem Dienst, den Jugendliche nicht leisten dürften.
      Ein Hinweis „nicht bewertbar", kein Verstoß — deshalb vorläufig und nicht im Regelstand. */
   vorlaeufig({ id: "JARBSCHG-DATEN-01", regeltext: "JArbSchG (Geburtsdatum)", typ: "bestandsregel",
@@ -354,7 +370,19 @@ const REGELN_MODULE = [
 /** Alle Regeln. Die Reihenfolge ist die der Anzeige und der Prüfung. */
 /* Branchenregeln (WP-19): Erweiterungspunkt in server/lib/branchenkatalog.mjs —
    dieselbe Liste, nur aus einem Modul, das auch der Server lesen kann. */
-export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG, ...REGELN_MODULE, ...REGELN_BRANCHEN];
+/* T-13: Quell-URL und Testverweis für die ArbZG-Bestandsregeln, deren Paragraf feststeht.
+   Weitere Regeln folgen mit der Fachprüfung; fehlende Felder sind kein Fehler, aber im Test
+   als Lücke sichtbar (pruefungen/regelregister.test.js). */
+const ARBZG = (n) => `https://www.gesetze-im-internet.de/arbzg/__${n}.html`;
+const BELEG = {
+  "AZ-RUHE-01": ARBZG(5), "AZ-PAUSE-01": ARBZG(4), "AZ-TAG-01": ARBZG(3), "AZ-AUSGLEICH-01": ARBZG(3),
+  "AZ-SONNTAG-01": ARBZG(11), "AZ-ERSATZRUHE-01": ARBZG(11), "AZ-VORSORGE-01": ARBZG(6),
+};
+const mitBeleg = (r) => (BELEG[r.id]
+  ? { ...r, quellenURL: BELEG[r.id], testIDs: ["pruefungen/regelwerk.test.js"], reviewDatum: REGELSTAND.stand }
+  : r);
+
+export const REGELN = [...REGELN_BESTAND.map(mitBeleg), ...REGELN_VORLAEUFIG, ...REGELN_MODULE, ...REGELN_BRANCHEN];
 
 /* --------------------------------------------------------------------------
    Nachschlagen
@@ -473,6 +501,12 @@ export function pruefeRegister(liste = REGELN) {
     if (!PRUEFSTATUS[r.pruefstatus]) m.push(`${wo}: Prüfstatus „${r.pruefstatus}" unbekannt`);
     if (!["bund", "land", "tarif", "betrieb"].includes(r.ebene)) m.push(`${wo}: Ebene „${r.ebene}" unbekannt`);
     if (r.ebene !== "betrieb" && (!r.quelle)) m.push(`${wo}: Quelle fehlt (Ebene ${r.ebene})`);
+    /* T-13: eine Regel auf Bundes-, Landes- oder Tarifebene gilt nur als geprüft, wenn sie ihre Fundstelle nennt. */
+    if (r.ebene !== "betrieb" && ["verified", "legacy_verified"].includes(r.pruefstatus) && !String(r.fundstelle || "").trim())
+      m.push(`${wo}: geprüft ohne Fundstelle (Ebene ${r.ebene}, Status ${r.pruefstatus})`);
+    if (r.quellenURL != null && !/^https:\/\/\S+$/.test(r.quellenURL)) m.push(`${wo}: quellenURL ist keine https-Adresse`);
+    if (r.testIDs != null && (!Array.isArray(r.testIDs) || !r.testIDs.length || r.testIDs.some((t) => !t))) m.push(`${wo}: testIDs leer oder ungültig`);
+    if (r.reviewDatum != null && !/^\d{4}-\d{2}-\d{2}$/.test(r.reviewDatum)) m.push(`${wo}: reviewDatum ist kein ISO-Datum`);
     if (r.hoechsteStufe && !["hinweis", "achtung", "recht"].includes(r.hoechsteStufe))
       m.push(`${wo}: Stufe „${r.hoechsteStufe}" unbekannt`);
     if (r.folge && !FOLGEN.includes(r.folge)) m.push(`${wo}: Folge „${r.folge}" unbekannt`);

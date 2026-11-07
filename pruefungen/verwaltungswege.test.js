@@ -150,7 +150,7 @@ describe("D2 Zugang sperren", () => {
     const a1 = await code("VWMA-AAAA-0005", "zwei", "mitarbeiter", 0, "m-a", "x");
     const alt = await code("VWMA-ALTA-0006", "zwei", "mitarbeiter", 0, null, "y");      // Altcode Betrieb 0
     const altB = await code("VWMA-ALTB-0007", "zwei", "mitarbeiter", 1, null, "z");     // Altcode Betrieb 1
-    const b1 = await code("VWMA-BBBB-0008", "zwei", "mitarbeiter", 1, "m-b", "w");
+    const b1 = await code("VWMA-BBBB-0008", "zwei", "mitarbeiter", 1, "m-b", null);
     const tB1 = await anmelden("VWMA-BBBB-0008");
     const a = await anfrage("/api/zugang-sperren", { token: tA, rumpf: { alleDesBetriebs: true } });
     expect(a.gesperrt).toBe(2);

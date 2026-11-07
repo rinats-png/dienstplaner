@@ -371,7 +371,7 @@ export function wochenendEreignisse(tage, von, bis, opt = {}) {
  */
 export function wochenendZaehlregel(regelOderId, art, kontext) {
   if (!["frei", "tag", "nacht", "gemischt"].includes(art)) throw new Error(`Regelbaukasten: Wochenendart „${art}" unbekannt.`);
-  const k = kontext || {};
+  const k = /** @type {typeof kontext} */ (kontext || {});
   const e = wochenendEreignisse(k.tage, k.von, k.bis, k);
   const z = zaehlregel(regelOderId, { ereignisse: e[art], stichtag: k.stichtag });
   if (e.offen.length && (z.status === "erfuellt" || z.status === "verletzt")) {

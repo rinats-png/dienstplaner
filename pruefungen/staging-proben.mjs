@@ -59,12 +59,17 @@ const server = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL,
 server.stdout.on("data", (d) => { serverLog += d; });
 server.stderr.on("data", (d) => { serverLog += d; });
 
+/** Der Faktor des Verwalterschlüssels ist nach der ersten Anlage (einrichten) eingerichtet und lässt sich nicht noch
+    einmal einrichten: Die Proben als eigene Prozesse bekommen den Nachweis, den der Vorlauf dabei ausgestellt hat
+    (wie ein Betreiber ihn als CENTRIC_ZWEIFAKTOR_NACHWEIS mitgäbe). */
+const nachweisEnv = () => { const n = globalThis.__verwalterNachweis && globalThis.__verwalterNachweis(ADMIN); return n ? { CENTRIC_ZWEIFAKTOR_NACHWEIS: n } : {}; };
+
 /** Eine Probe laufen lassen; Ausgabe durchreichen, Status zurück. */
 function probe(datei, argumente = [], mehrEnv = {}) {
   return new Promise((erfuellt) => {
     let aus = "";
     const k = spawn(process.execPath, [path.join("werkzeug", datei), ...argumente],
-      { cwd: WURZEL, env: { ...env, ...mehrEnv }, stdio: ["ignore", "pipe", "pipe"] });
+      { cwd: WURZEL, env: { ...env, ...nachweisEnv(), ...mehrEnv }, stdio: ["ignore", "pipe", "pipe"] });
     k.stdout.on("data", (d) => { aus += d; process.stdout.write(d); });
     k.stderr.on("data", (d) => { aus += d; process.stderr.write(d); });
     k.on("exit", (code) => erfuellt({ code, aus }));
