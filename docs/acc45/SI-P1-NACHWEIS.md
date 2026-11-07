@@ -79,12 +79,24 @@ damit ein vorübergehender Plattenfehler keinen gültigen Schlüssel vernichtet.
    `ersteller: null`.
 2. **Der Schlüssel hängt nicht an der Anmeldung des Erstellers.** Sonst wäre er für Sicherungsskripte unbrauchbar
    (Abmelden beendete ihn). Er hängt an Konto, Mitgliedschaft, Zugang und Rolle. Getestet: Das Abmelden beendet ihn nicht.
-3. **Ein Passwortwechsel (Epoche) beendet die Schlüssel des Kontos.** Das folgt dem Befund („wie den Kontoanker
-   prüfen“) und ist sicherheitlich richtig (Passwort zurückgesetzt, weil es kompromittiert war). Nebenwirkung: Ein
-   Skript, das mit einem Schlüssel einer Leitung läuft, bricht nach deren Passwortwechsel. **Offen für den Betreiber:**
-   Soll ein routinemäßiger Passwortwechsel die Schlüssel beenden? Die Prüfung der Epoche ist eine Zeile in
-   `sicherungsschluesselPruefen` (`sk-epoche`).
-4. **Die Höchstdauer (365 Tage) ist unverändert.** Der Befund schlägt vor, sie zu senken; das ist eine Betreiberentscheidung.
+3. **Passwortänderung und Sicherheitsreset (Betreiberentscheidung 2026-11-07: ja).** Beides widerruft die Schlüssel des
+   Kontos sofort und dauerhaft (Widerrufsvermerk, siehe unten). Der Haken sitzt in `accounts.mjs`
+   (`passwortSetzen` bei bereits vorhandenem Passwort, `epocheErhoehen`), nicht an einem Endpunkt. **Hinweis:** Zum
+   Stand dieser Änderung gibt es im Server keinen Ablauf, der ein bestehendes Passwort ändert oder zurücksetzt
+   (`passwortSetzen` wird nur für das erste Passwort aufgerufen, `epocheErhoehen` hat keinen Aufrufer). Die Wirkung ist
+   auf Kontoebene getestet; ein künftiger Ablauf erbt sie. **Auflage an diesen Ablauf:** Er muss vor dem Bestätigen
+   `SK_WARNUNG_PASSWORT` anzeigen (Text in `sicherungsschluessel.mjs`; `schluesselDesKontosZaehlen(accountId)` liefert
+   Zahl und Text), und nach dem Ändern auf `ergebnis.sicherungsschluessel.fehler` achten. Heute steht die Warnung in
+   der Sicherungsansicht und in jeder Antwort beim Anlegen und Auflisten. Ein Ersatzschlüssel entsteht kontrolliert
+   über das normale Anlegen (frische Anmeldung der Leitung), alte Schlüssel werden nie wieder gültig.
+4. **Laufzeit (Betreiberentscheidung): Standard 90 Tage, Höchstdauer 365 Tage.** Ohne Angabe gelten 90 Tage; eine
+   längere Laufzeit wird ausdrücklich gewählt. Bestehende Schlüssel werden nicht verkürzt. Ungültige Eingaben (Text, 0,
+   negativ) werden nicht abgelehnt, sondern auf Standard (90) bzw. Grenze (1/365) gesetzt; die Antwort nennt `tage`.
+4a. **Obergrenze (Betreiberentscheidung): höchstens fünf gleichzeitig aktive Schlüssel je Betrieb.** Widerrufene und
+   abgelaufene zählen nicht; ein Altschlüssel ohne Ersteller zählt nicht (er gilt nie). Beim sechsten antwortet der
+   Server mit 409 und löscht nichts. Zählen und Anlegen laufen je Betrieb nacheinander (`skReihe`, im Prozess;
+   `prozesssperre.mjs` erzwingt einen Prozess je Ablage). Eine Leitung kann die Grenze füllen, aber jede Leitung kann
+   per DELETE wieder Platz schaffen.
 5. **Widerruf beim Lesen statt beim Sperren.** Der Schlüssel eines ausgeschiedenen Erstellers wird beim ersten
    Gebrauch nach der Absage entfernt (siehe Widerruf); bis dahin steht er in der Liste als `verwaist`.
 
@@ -142,17 +154,33 @@ für Konto-Sperre und Herabstufung ohne Zwischenzugriff bleibt und steht unter �
 Fail-open-Pfade, keine Änderung für andere Pfade (der neue Block läuft nur bei `nurSicherung`). Ein Lesefehler löscht
 keinen Schlüssel.
 
+## Betreiberentscheidungen vom 2026-11-07: Umsetzung
+
+| Anforderung | Umsetzung |
+|---|---|
+| Widerruf dauerhaft, keine Wiederaktivierung | Widerrufsvermerk `skw:<hash>` (Grund, Zeit, Ablauf + 1 Tag, nie der Schlüssel). `sitzungLesen` weist einen Schlüssel mit Vermerk ab, auch wenn sein Datensatz zurückgespielt wird. Lesefehler am Vermerk ist keine Erlaubnis. |
+| Ersteller verliert Berechtigung oder Zugang gesperrt | sofort: `accountSperren`, `mitgliedschaftEntziehen`, `passwortSetzen` (Änderung), `epocheErhoehen`, `zugang-sperren` (auch über die Kette `ersetztDurch`). Außerdem nach jedem erfolgreichen schreibenden Aufruf im Raum und nach `wiederherstellen` ein Abgleich aller Schlüssel des Raums (`sicherungsschluesselAbgleichen` in `daten.mjs`). Zweite Linie: die Prüfung bei jedem Gebrauch. |
+| Restfenster Sperrung und Wiederherstellung eines früheren Standes | geschlossen für Konto-Ereignisse und Zugangssperre (sofort widerrufen, Vermerk) und für jede Änderung über `daten.mjs` (Abgleich). **Rest:** Eine Herabstufung auf einem Weg außerhalb von `daten.mjs` (Werkzeug, Migration) wird erst beim nächsten Schreibvorgang im Raum, beim Auflisten oder beim ersten Gebrauch erkannt. Wird der alte Stand vorher zurückgespielt, gilt der Schlüssel bis dahin. |
+| keine Geheimnisse in Logs | Protokoll: Zahlen und Gründe. Vermerk und Liste: Hash-Präfix (8 Zeichen) wie bisher, nie der Schlüssel. Getestet. |
+| Automatisierung fällt nicht stumm aus | Widerrufener Schlüssel bekommt 401 mit `widerrufen: true`, Grund, Zeit und Hinweis auf einen neuen Schlüssel; unbekannte Schlüssel weiter nur „Nicht angemeldet“. Liste zeigt widerrufene Schlüssel mit Grund. Oberfläche und curl-Befehl (`-f`, Exit-Code) angepasst. DELETE antwortet 503, wenn der Widerruf nicht gespeichert werden konnte. |
+| Ersatzschlüssel | normales Anlegen; Zähler „x von 5 aktiv“ in der Oberfläche. |
+
+Tests: `pruefungen/sicherungsschluessel-betreiberentscheid.test.js` (36 Tests) und angepasste Erwartungen in
+`sicherungsschluessel-ersteller.test.js` (die Liste zeigt widerrufene Schlüssel jetzt unter `widerrufen`). Mutationen
+der neuen Logik (Vermerkprüfung, Obergrenze, Serialisierung, Hooks, Standardlaufzeit, Abgleich, Raumfilter, Kette) färben
+Tests rot; der Fehlerpfad „DELETE 503“ ist nur über die Bibliothek (gestörte Ablage) getestet, nicht über HTTP.
+
+### Unabhängiges Review der Betreiberentscheidungen (Opus, nur lesend)
+
+15 Befunde (1 hoch, 3 mittel, 11 niedrig), keiner kritisch. Behoben: 1 (Abgleich nach Schreibvorgängen und Wiederherstellung),
+3 (DELETE-503, Oberfläche), 4 (curl `-f`), 5 (löschen auch ohne Vermerk), 6/7/8 (Zählregel, keine Doppelanzeige, Altschlüssel
+nicht automatisch gelöscht), 9 (Kette bei Sperre), 10 (Ergebnis der Haken in der Antwort), 12 (Kommentar). Nicht geändert:
+2 (kein Produktivaufrufer für Passwortänderung; siehe Entscheidung 3, Auflage dokumentiert), 11 (Rennen beim Anlegen: der
+Schlüssel stirbt beim ersten Gebrauch), 13 (Grund in der 401 ist durch die Entscheidung gedeckt), 14 (Eingaben werden korrigiert,
+nicht abgelehnt), 15 (ein Lesezugriff mehr je unbekanntem Merkmal, gleichförmig, kein Zeitkanal). Nachprüfung der Korrekturen siehe PR.
+
 ## Offene Punkte (nicht Teil von SI-P1)
 
-- Die Oberfläche (`src/speicher.js`, Datenmitnahme) zeigt `ersteller` und `verwaist` noch nicht. Sie toleriert die
-  zusätzlichen Felder. Die Anzeige gehört in die UI-Integration.
-- Betreiberentscheidungen: Höchstdauer, Verhalten bei Passwortwechsel (Entscheidung 3).
-- **Restfenster beim Widerruf:** Wird ein Konto gesperrt (`accountSperren`) oder eine Person herabgestuft und der alte Zustand
-  wiederhergestellt, **bevor** der Schlüssel benutzt oder die Liste geöffnet wurde, gilt der Schlüssel wieder. Aktiv beim
-  Ereignis lässt es sich nur für Zugangscodes lösen (`zugang-sperren`); für Konten (`accountSperren`,
-  `mitgliedschaftEntziehen`, `epocheErhoehen`) gibt es im Server keinen Aufrufer, an den ich es hängen könnte, und die
-  Herabstufung ist eine Änderung des Bestands. Ein Entzug der Mitgliedschaft und ein Epochenwechsel sind ohnehin
-  unumkehrbar (Generation, Epoche zählen nur hoch). Eine Abhilfe wäre ein Aufräumlauf über `sk:` oder ein Index
-  `Ersteller → Schlüssel`; beides habe ich nicht gebaut.
-- Eine Obergrenze für die Zahl der Schlüssel je Betrieb (etwa 50) gibt es nicht und gab es vorher nicht. Sie wäre eine eigene, kleine Änderung.
+- Die Oberfläche zeigt `ersteller` in der Liste weiterhin nicht; sie zeigt Zähler, Warnung und widerrufene Schlüssel.
+- Ein künftiger Ablauf für Passwortänderung oder Rücksetzen muss die Warnung vor dem Bestätigen zeigen (Entscheidung 3).
 - `accountLesenPerId` und `mitgliedschaftLesen` machen aus einem Lesefehler ein `null` (auch die Arbeitssitzung wertet das als Absage und räumt die Sitzung weg). Für SI-P1 ist das abgefangen (kein Entfernen bei `null`); die Bibliotheken habe ich nicht angefasst.
