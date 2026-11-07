@@ -54,6 +54,9 @@ const AKTIV = BRANCHENMODULE.map((x) => (["wachbuch", "bereichsplan", "posten"].
 /* Zweiter Opus-Review / A3: gelöscht wird nur nach geprüfter Aufbewahrungsregel — für die Löschlauf-Fälle eine geprüfte Fassung. */
 const GEPRUEFT = (r) => ({ ...r, pruefstatus: "geprueft", geprueftAm: "2026-11-01T00:00:00.000Z", gueltigAb: "2026-01-01" });
 const REGELN = { moduldaten: GEPRUEFT(BM.MODULDATEN_AUFBEWAHRUNG), modulprotokoll: GEPRUEFT(BM.MODULPROTOKOLL_FRIST) };
+/* T-08: Wachbuch-/Objektberichtsfelder löscht der Lauf zusätzlich nur mit BewachV-Fristtyp in der Regel. */
+const REGELN_BEWACHV = { ...REGELN, moduldaten: { ...REGELN.moduldaten, bewachvFristtyp: "ereignis" } };
+const BEWACHV_FELDER = new Set(BRANCHENMODULE.filter((x) => x.bewachvFrist).flatMap((x) => x.personenfelder || []));
 
 const betrieb = (bm, extra = {}) => ({ ...branchenbestand({ pakete: ["sicherheit", "pflege"], branchenmodule: bm }).mandanten[0], ...extra });
 const mitE = (m, e) => ({ ...m, einstellungen: { ...m.einstellungen, ...e } });
@@ -239,7 +242,11 @@ describe("N2b — Löschlauf räumt Moduldaten mit ab (WP-26) — seit dem zweit
     expect(felder).toEqual(expect.arrayContaining(["postenPlan", "bereichsPlan"]));
     for (const f of felder) {
       const m = { id: "m", personen: [{ id: "x", anonym: true }, { id: "y" }], [f]: { "x|2023-10-01": "1", "y|2026-10-01": "1" } };
-      expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
+      if (BEWACHV_FELDER.has(f)) {
+        /* ohne BewachV-Fristtyp bleibt es liegen, mit ihm erreicht der Lauf das Feld */
+        expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual(m[f]);
+        expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN_BEWACHV }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
+      } else expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
       /* ungeprüfte Regel (Vorgabe): nichts gelöscht */
       expect(AUF.raeumen(m, HEUTE, { module: LISTE }).mandant[f], f).toEqual(m[f]);
     }
@@ -324,7 +331,7 @@ describe("N2d — Statusvertrag: kein Modul mit Daten verlässt „geplant\" ohn
         const r = MS.moduldatenZusammen(alt, neu, AKTIV, { darfOrgEdit: true, sitzung: SITZ,
           ausnahme: { modul: mod.id, art: "loeschung", grund: "art17", eintraege: { [f]: [istListe ? "k1" : "x|2023-10-01"] } } });
         expect(r.grund, `${mod.id}.${f}`).toBeUndefined();
-        if (!istListe) expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV, regeln: REGELN }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
+        if (!istListe) expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV, regeln: BEWACHV_FELDER.has(f) ? REGELN_BEWACHV : REGELN }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
       }
     }
   });

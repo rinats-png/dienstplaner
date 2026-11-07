@@ -61,7 +61,8 @@
 
 /* Branchenmodule (WP-19.0, Nachtrag G3): Personenfelder der Module („personId|Tag")
    und das Modulprotokoll hängen am selben Lauf — siehe moduldatenFaellig unten. */
-import { BRANCHENMODULE, modulprotokollFaellig, MODULPROTOKOLL_FRIST, MODULDATEN_AUFBEWAHRUNG } from "./branchenmodule.mjs";
+import { BRANCHENMODULE, modulprotokollFaellig, MODULPROTOKOLL_FRIST, MODULDATEN_AUFBEWAHRUNG,
+  BEWACHV_FRISTTYPEN_BERECHENBAR } from "./branchenmodule.mjs";
 import { regelGeprueft } from "./regelstatus.mjs";
 
 /** Voreinstellungen, falls ein Betrieb sie noch nicht hat. */
@@ -229,7 +230,12 @@ export function stichtage(m, heuteIso) {
  * oder zurückgezogen, wird nichts gelöscht — die Vorschau zählt es als
  * „zurückgehalten" und verlangt Prüfung/Freigabe. Die Frist ist nie kürzer
  * als die Plandatenfrist (PLANDATEN_MINDEST). Gilt unabhängig vom Schalter.
- * @returns {{ anzahl: number, zurueckgehalten: number, felder: Record<string, Set<string>> }}
+ *
+ * Bewachungsgewerbe (T-08, L-10): Personenfelder von Modulen mit `bewachvFrist` (Wachbuch, Objektbericht)
+ * bleiben auch bei geprüfter Regel liegen, solange die Regel keinen berechenbaren BewachV-Fristtyp nennt
+ * (`bewachvFristtyp`, BEWACHV_FRISTTYPEN in branchenmodule.mjs). Sie zählen dann als zurückgehalten
+ * (`bewachvZurueckgehalten`). Andere Moduldaten sind davon nicht berührt.
+ * @returns {{ anzahl: number, zurueckgehalten: number, bewachvZurueckgehalten: number, felder: Record<string, Set<string>> }}
  */
 function moduldatenFaellig(m, heuteIso, module, regel) {
   const felder = [...new Set((module || []).flatMap((x) => (x && Array.isArray(x.personenfelder) ? x.personenfelder : [])))];
@@ -237,9 +243,12 @@ function moduldatenFaellig(m, heuteIso, module, regel) {
     PLANDATEN_MINDEST, fristen(m).plandatenMonate);
   const stichtag = minusMonate(heuteIso, monate);
   const geprueft = regelGeprueft(regel, { heute: String(heuteIso).slice(0, 10) });
+  const bewachvFelder = new Set((module || []).flatMap((x) => (x && x.bewachvFrist === true && Array.isArray(x.personenfelder) ? x.personenfelder : [])));
+  const bewachvLoeschbar = !!regel && BEWACHV_FRISTTYPEN_BERECHENBAR.includes(regel.bewachvFristtyp);
   /** @type {Record<string, Set<string>>} */
   const raus = {};
   let anzahl = 0;
+  let bewachvZurueck = 0;
   for (const f of felder) {
     const inhalt = m[f];
     if (!inhalt || typeof inhalt !== "object" || Array.isArray(inhalt)) continue;
@@ -249,16 +258,22 @@ function moduldatenFaellig(m, heuteIso, module, regel) {
       const wert = inhalt[k];
       const tag = f === "rotationen" && istObjekt(wert) ? (typeof wert.bis === "string" ? wert.bis.slice(0, 10) : null) : tagVon(k);
       if (!tag || tag >= stichtag) continue;                    // unerwartete Form oder in der Frist: bleibt liegen
+      if (bewachvFelder.has(f) && !bewachvLoeschbar) { bewachvZurueck++; continue; } // ohne BewachV-Fristtyp: bleibt (T-08)
       (raus[f] = raus[f] || new Set()).add(k);
       anzahl++;
     }
   }
-  return geprueft ? { anzahl, zurueckgehalten: 0, felder: raus } : { anzahl: 0, zurueckgehalten: anzahl, felder: {} };
+  return geprueft ? { anzahl, zurueckgehalten: bewachvZurueck, bewachvZurueckgehalten: bewachvZurueck, felder: raus }
+    /* Ungeprüfte Regel: alles zurückgehalten — der Grund ist dann die Regel, nicht der Fristtyp. */
+    : { anzahl: 0, zurueckgehalten: anzahl + bewachvZurueck, bewachvZurueckgehalten: 0, felder: {} };
 }
 
 /** Hinweis, wenn eine Aufbewahrungsregel ungeprüft ist und deshalb nichts gelöscht wurde. */
 const PRUEFHINWEIS = "Prüfung/Freigabe erforderlich: Die Aufbewahrungsregel für Branchenmodul-Daten bzw. das Modulprotokoll "
   + "ist nicht geprüft (FN-32). Bis dahin wird daraus nichts gelöscht.";
+/** Hinweis, wenn Wachbuch-/Objektberichtsfelder mangels BewachV-Fristtyp zurückgehalten sind (T-08). */
+const BEWACHV_HINWEIS = "Prüfung/Freigabe erforderlich: Für Wachbuch- und Objektberichtsdaten ist kein BewachV-Fristtyp "
+  + "(Anknüpfung an Ereignis, Vertrags- oder Beschäftigungsende) hinterlegt. Bis dahin wird daraus nichts gelöscht.";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 
@@ -325,6 +340,7 @@ export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null, pl
  * moduldaten Einträge in Modul-Personenfeldern hinter der Frist (nur mit geprüfter Regel)
  * modulprotokoll  Einträge im Modulprotokoll nach dessen Frist (nur mit geprüfter Regel)
  * moduldatenZurueckgehalten, modulprotokollZurueckgehalten  wären fällig, Regel ungeprüft — nicht gelöscht
+ * bewachvZurueckgehalten  davon Wachbuch-/Objektberichtsfelder ohne BewachV-Fristtyp (T-08)
  * pruefhinweis  „Prüfung/Freigabe erforderlich", wenn etwas zurückgehalten ist
  * gesamt     Summe aller Eingriffe
  *
@@ -334,7 +350,7 @@ export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null, pl
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
  *   planSumme: number, aenderungen: number, gruende: number, standort: number, abgewiesen: number,
  *   moduldaten: number, modulprotokoll: number, moduldatenZurueckgehalten: number,
- *   modulprotokollZurueckgehalten: number, pruefhinweis: (string|null), gesamt: number,
+ *   modulprotokollZurueckgehalten: number, bewachvZurueckgehalten: number, pruefhinweis: (string|null), gesamt: number,
  *   warnung: (string|null)}}
  */
 export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = {}) {
@@ -413,7 +429,9 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     modulprotokoll,
     moduldatenZurueckgehalten: md.zurueckgehalten,
     modulprotokollZurueckgehalten: mp.zurueckgehalten,
-    pruefhinweis: md.zurueckgehalten || mp.zurueckgehalten ? PRUEFHINWEIS : null,
+    bewachvZurueckgehalten: md.bewachvZurueckgehalten,
+    pruefhinweis: [(md.zurueckgehalten > md.bewachvZurueckgehalten) || mp.zurueckgehalten ? PRUEFHINWEIS : null,
+      md.bewachvZurueckgehalten ? BEWACHV_HINWEIS : null].filter(Boolean).join(" ") || null,
     gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + md.anzahl + modulprotokoll,
     warnung,
   };

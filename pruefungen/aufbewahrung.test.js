@@ -14,6 +14,7 @@ import {
   minusMonate, fristen, stichtage, vorschau, raeumen, anonymisiere,
   berichtstext, VORGABE, PLANDATEN_MINDEST,
 } from "../src/aufbewahrung.js";
+import { BRANCHENMODULE, MODULDATEN_AUFBEWAHRUNG, BEWACHV_FRISTTYPEN } from "../server/lib/branchenmodule.mjs";
 
 const HEUTE = "2026-08-14";
 
@@ -248,5 +249,56 @@ describe("raeumen", () => {
     expect(berichtstext(bericht)).toMatch(/1 Abwesenheitsgrund entfernt/);
     expect(berichtstext({ gesamt: 2, personen: [1, 2], planSumme: 0,
       aenderungen: 0, gruende: 0 })).toMatch(/2 Personen anonymisiert/);
+  });
+});
+
+/* ------------------------------------------------------------------------
+   T-08 (L-10, FACH-06, RET-002): Wachbuch-/Objektberichtsfelder ohne
+   BewachV-Fristtyp werden auch bei geprüfter Regel nicht gelöscht.
+   ------------------------------------------------------------------------ */
+describe("T-08: BewachV-Fristtyp vor Löschung von Wachbuch-/Objektberichtsdaten", () => {
+  const HEUTE_T8 = "2026-11-03";
+  const GEPRUEFT = { ...MODULDATEN_AUFBEWAHRUNG, pruefstatus: "geprueft", geprueftAm: "2026-11-01T00:00:00.000Z",
+    geprueftVon: "fach", gueltigAb: "2026-01-01" };
+  const m0 = () => ({ id: "m1", aufbewahrung: {}, personen: [{ id: "a1", nachname: "A" }],
+    wachbuch: { "w1|2023-05-01": { id: "w1", text: "Kontrollgang" }, "w2|2026-10-01": { id: "w2", text: "Übergabe" } },
+    postenPlan: { "a1|2023-05-01": "po1", "a1|2026-10-01": "po1" } });
+
+  it("die Sicherheitsmodule sind als BewachV-gebunden markiert, andere nicht", () => {
+    const markiert = BRANCHENMODULE.filter((x) => x.bewachvFrist).map((x) => x.id).sort();
+    expect(markiert).toEqual(["objektbericht", "wachbuch"]);
+    expect(BEWACHV_FRISTTYPEN).toEqual(["ereignis", "vertragsende", "beschaeftigungsende"]);
+  });
+  it("RET-002: geprüfte Regel ohne Fristtyp löscht das Wachbuch nicht, zählt es als zurückgehalten", () => {
+    const regeln = { moduldaten: GEPRUEFT };
+    const v = vorschau(m0(), HEUTE_T8, { regeln });
+    expect(v.bewachvZurueckgehalten).toBe(1);
+    expect(v.moduldatenZurueckgehalten).toBe(1);
+    expect(v.pruefhinweis).toMatch(/BewachV-Fristtyp/);
+    const r = raeumen(m0(), HEUTE_T8, { regeln });
+    expect(r.mandant.wachbuch).toEqual(m0().wachbuch);
+  });
+  it("Gegenprobe: andere Moduldaten (postenPlan) werden unverändert nach Datum gelöscht", () => {
+    const r = raeumen(m0(), HEUTE_T8, { regeln: { moduldaten: GEPRUEFT } });
+    expect(r.mandant.postenPlan).toEqual({ "a1|2026-10-01": "po1" });
+    expect(vorschau(m0(), HEUTE_T8, { regeln: { moduldaten: GEPRUEFT } }).moduldaten).toBe(1);
+  });
+  it("nicht berechenbare Fristtypen (Vertrags-/Beschäftigungsende) und unbekannte Werte halten ebenfalls zurück", () => {
+    for (const typ of ["vertragsende", "beschaeftigungsende", "irgendwas", "", null]) {
+      const r = raeumen(m0(), HEUTE_T8, { regeln: { moduldaten: { ...GEPRUEFT, bewachvFristtyp: typ } } });
+      expect(r.mandant.wachbuch, String(typ)).toEqual(m0().wachbuch);
+    }
+  });
+  it("mit Fristtyp „ereignis“ greift die Datumsfrist der Regel (keine erfundene Frist)", () => {
+    const r = raeumen(m0(), HEUTE_T8, { regeln: { moduldaten: { ...GEPRUEFT, bewachvFristtyp: "ereignis" } } });
+    expect(Object.keys(r.mandant.wachbuch)).toEqual(["w2|2026-10-01"]);
+  });
+  it("ungeprüfte Regel (Vorgabe): nichts gelöscht, allgemeiner Prüfhinweis", () => {
+    const v = vorschau(m0(), HEUTE_T8);
+    expect(v.moduldaten).toBe(0);
+    expect(v.moduldatenZurueckgehalten).toBe(2);
+    expect(v.bewachvZurueckgehalten).toBe(0);
+    expect(v.pruefhinweis).toMatch(/nicht geprüft/);
+    expect(raeumen(m0(), HEUTE_T8).mandant.wachbuch).toEqual(m0().wachbuch);
   });
 });
