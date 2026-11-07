@@ -12,7 +12,14 @@
      (`# v1.2.3`), damit Dependabot und Menschen die Version erkennen,
    - ein Ausdruck (`${{ … }}`) im `uses:` ist verboten,
    - derselbe SHA einer Action darf nicht mit verschiedenen Versions-
-     kommentaren auftreten (falsch beschrifteter Pin).
+     kommentaren auftreten (falsch beschrifteter Pin),
+   - fail-closed: Jede andere Schreibweise eines `uses`-Schlüssels (Flow-
+     Mapping `{ uses: … }`, quotierter Schlüssel `"uses":`) gilt als Befund,
+     weil die Prüfung bewusst ohne YAML-Parser auskommt (keine Abhängigkeit,
+     läuft vor `npm ci`). Inhalte von Block-Skalaren (`run: |`) werden
+     übersprungen, damit Text in Skripten nicht zählt.
+
+   Lokale Actions (`./pfad` mit action.yml) werden mitgeprüft.
 
    Mit --online wird zusätzlich je Action über `git ls-remote` geprüft, dass
    das Tag im Kommentar im offiziellen Repository auf genau diesen Commit
@@ -31,15 +38,21 @@ const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", 
 
 const USES = /^\s*(?:-\s+)?uses\s*:\s*(.*)$/;
 const SHA40 = /^[0-9a-f]{40}$/;
-const VERSION = /^v\d+(?:\.\d+){0,2}$/;
+const VERSION = /^v\d+\.\d+\.\d+$/;
 const DOCKER_DIGEST = /^docker:\/\/[^@\s]+@sha256:[0-9a-f]{64}$/;
+// Irgendein `uses`-Schlüssel, auch quotiert oder in einem Flow-Mapping.
+const USES_IRGENDWO = /(?:^|[\s{,[-])["']?uses["']?\s*:/;
+// Einfache Block-Mapping-Zeile `schluessel: wert` (unquotierter Schlüssel).
+const SKALAR_ZEILE = /^\s*(?:-\s+)*[A-Za-z0-9_.-]+\s*:\s+(\S.*)$/;
+// Zeile, die einen Block-Skalar eröffnet (`key: |`, `- run: >-` …).
+const BLOCK_START = /^(\s*(?:-\s+)*)[^\s#][^:]*:\s*[|>][+-]?\d*[+-]?\s*(?:#.*)?$/;
 const ACTION = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)((?:\/[A-Za-z0-9_.\-/]+)?)@(.+)$/;
 
 /** Wert und Kommentar einer `uses:`-Zeile trennen; Anführungszeichen ab. */
 function zerlege(rest) {
   let wert = rest;
   let kommentar = "";
-  const m = /^(?:"([^"]*)"|'([^']*)'|([^\s#]+))\s*(?:#\s*(.*))?$/.exec(rest.trim());
+  const m = /^(?:"([^"]*)"|'([^']*)'|(\S+?))(?:\s+#\s*(.*))?$/.exec(rest.trim());
   if (m) {
     wert = m[1] ?? m[2] ?? m[3] ?? "";
     kommentar = (m[4] || "").trim();
@@ -56,12 +69,30 @@ function zerlege(rest) {
 export function actionsPruefen(text, datei = "<text>") {
   const referenzen = [];
   const befunde = [];
-  const zeilen = String(text).split(/\r?\n/);
+  // YAML kennt CRLF, LF und CR als Zeilenende.
+  const zeilen = String(text).replace(/^\uFEFF/, "").split(/\r\n|\r|\n/);
+  let blockSpalte = -1; // > -1: innerhalb eines Block-Skalars, Spalte des Schlüssels
   zeilen.forEach((zeile, i) => {
+    const einrueckung = /^[ \t]*/.exec(zeile)[0].length;
+    if (blockSpalte > -1) {
+      if (zeile.trim() === "" || einrueckung > blockSpalte) return;
+      blockSpalte = -1;
+    }
+    const b = BLOCK_START.exec(zeile);
+    if (b) blockSpalte = b[1].length;
     if (/^\s*#/.test(zeile)) return;
-    const m = USES.exec(zeile);
-    if (!m) return;
     const ort = `${datei}:${i + 1}`;
+    const m = USES.exec(zeile);
+    if (!m) {
+      // `schluessel: wert` mit einfachem Skalar als Wert kann keinen uses-Schlüssel
+      // enthalten (z. B. `run: echo "uses: …"`); Flow-Werte ({ … } / [ … ]) schon.
+      const skalar = SKALAR_ZEILE.exec(zeile);
+      if (skalar && !/^[{[]/.test(skalar[1])) return;
+      if (USES_IRGENDWO.test(zeile.replace(/\s#.*$/, ""))) {
+        befunde.push(`${ort}: uses in nicht unterstützter Schreibweise (Flow-Mapping oder quotierter Schlüssel) – bitte als \`uses: owner/repo@<sha> # vX.Y.Z\``);
+      }
+      return;
+    }
     const { wert, kommentar } = zerlege(m[1]);
     if (!wert) {
       befunde.push(`${ort}: leeres uses:`);
@@ -142,6 +173,23 @@ export async function repositoryPruefen() {
     const r = actionsPruefen(await readFile(d, "utf8"), rel);
     referenzen.push(...r.referenzen);
     befunde.push(...r.befunde);
+  }
+  // Lokale Actions außerhalb von .github/actions (./pfad mit action.yml) mitprüfen.
+  const gesehen = new Set(dateien);
+  for (let i = 0; i < referenzen.length; i++) {
+    const r = referenzen[i];
+    if (r.art !== "lokal" || /\.ya?ml$/.test(r.wert)) continue;
+    for (const n of ["action.yml", "action.yaml"]) {
+      const d = path.join(WURZEL, r.wert, n);
+      if (gesehen.has(d)) continue;
+      const inhalt = await readFile(d, "utf8").catch(() => null);
+      if (inhalt === null) continue;
+      gesehen.add(d);
+      dateien.push(d);
+      const e = actionsPruefen(inhalt, path.relative(WURZEL, d));
+      referenzen.push(...e.referenzen);
+      befunde.push(...e.befunde);
+    }
   }
   befunde.push(...kommentareAbgleichen(referenzen));
   return { dateien: dateien.map((d) => path.relative(WURZEL, d)), referenzen, befunde };
