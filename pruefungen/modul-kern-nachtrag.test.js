@@ -491,3 +491,24 @@ describe("N7 — G10 statisch: auch Server-Dateien und indirekte Abfragen", () =
     expect(/branchenmodule\s*(\.|\[\s*["'`])posten\b/.test(probe)).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------------ */
+describe("bekannteLuecke N2 (Opus-Review T-08): Löschwege außer dem Löschlauf prüfen den BewachV-Fristtyp nicht", () => {
+  /* Fachentscheid offen; Eintrag in docs/legal/TECHNISCHE-FOLGEAUFGABEN.md. Geprüft wird das heutige Verhalten,
+     damit eine Änderung auffällt — nicht als „neutral“ bestanden. */
+  it("bekannteLuecke N2-art17: Art.-17-Löschung über den Ausnahmeweg entfernt Wachbucheinträge ohne Fristtyp", () => {
+    const mod = AKTIV.find((x) => x.id === "wachbuch");
+    expect(mod.bewachvFrist).toBe(true);
+    const alt = { id: "m", pakete: mod.pakete, personen: [{ id: "x" }],
+      einstellungen: { branchenmodule: { wachbuch: { an: false, eingeschaltetAm: EIN } } },
+      wachbuch: { "x|2026-10-01": "1", "y|2026-10-02": "1" } };
+    const neu = { ...kopie(alt), wachbuch: { "y|2026-10-02": "1" } };
+    const r = MS.moduldatenZusammen(alt, neu, AKTIV, { darfOrgEdit: true, sitzung: SITZ,
+      ausnahme: { modul: "wachbuch", art: "loeschung", grund: "art17", eintraege: { wachbuch: ["x|2026-10-01"] } } });
+    expect(r.grund).toBeUndefined();
+  });
+  it("bekannteLuecke N2-raum: Raum- und Mandantenlöschung kennen keinen BewachV-Fristtyp", () => {
+    for (const datei of ["server/lib/raumloeschung.mjs", "server/funktionen/daten.mjs"])
+      expect(lies(datei), datei).not.toMatch(/bewachv/i);
+  });
+});
