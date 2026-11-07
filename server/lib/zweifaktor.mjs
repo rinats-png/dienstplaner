@@ -39,6 +39,7 @@
 
 import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync,
   randomBytes, timingSafeEqual } from "node:crypto";
+import { vorgang } from "./schreibhalt.mjs";
 
 export const SCHRITT = 30;
 export const STELLEN = 6;
@@ -241,7 +242,11 @@ const NACHWEIS = (h) => `zweifaktor-nachweis:${h}`;
    ein atomares Vergleichen-und-Setzen der Ablage. */
 /** @type {Map<string, Promise<any>>} */
 const sperren = new Map();
-async function unterSperre(id, arbeit) {
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
+function unterSperre(id, arbeit) {
+  return vorgang(() => unterSperreInReihe(id, arbeit));
+}
+async function unterSperreInReihe(id, arbeit) {
   const vorher = sperren.get(id) || Promise.resolve();
   /** @type {(v?: any) => void} */
   let frei = () => {};

@@ -86,6 +86,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { mailNormieren } from "./adressen.mjs";
+import { vorgang } from "./schreibhalt.mjs";
 
 const PRAEFIX = "token:";
 const CODE_PRAEFIX = "tokencode:";
@@ -188,7 +189,12 @@ export function naechsteLaufnummer(nummern, zweck) {
    -------------------------------------------------------------------------- */
 const reihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function nacheinander(schluessel, arbeit) {
+  return vorgang(() => nacheinanderInReihe(schluessel, arbeit));
+}
+
+function nacheinanderInReihe(schluessel, arbeit) {
   const davor = reihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   /* Auch ein Fehlschlag darf die Reihe nicht abreißen lassen. */

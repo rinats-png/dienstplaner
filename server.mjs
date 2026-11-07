@@ -43,7 +43,8 @@ import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./serv
 import { nachfassen, zustellungAufraeumen } from "./server/lib/versand.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
-import { bindungErneuern, zustandPruefen } from "./server/lib/schluesselepoche.mjs";
+import { bindungErneuern, zustandPruefen, zustandsVerzeichnis } from "./server/lib/schluesselepoche.mjs";
+import { kanalStarten, haltObergrenze, HALT_ORDNER } from "./server/lib/schreibhalt.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -389,6 +390,17 @@ if (!ablagesperre.ok) {
 }
 if (ablagesperre.uebernommen) console.log("Ablagesperre: veraltete Sperre eines beendeten Prozesses übernommen");
 process.on("exit", () => ablagesperre.freigebenSofort());
+
+/* Schreib-Halt für die Sicherung unter Last (server/lib/schreibhalt.mjs, WP-28c): ein kleiner Dateikanal im
+   Zustandsverzeichnis (außerhalb der Ablage, kein Netz). Erst nach der Ablagesperre: nur der Prozess, der die Ablage
+   hält, darf halten. Ohne Kanal läuft alles wie bisher; die Sicherung fällt dann auf ihre Ruhezeit zurück. */
+try {
+  const k = await kanalStarten({ verzeichnis: path.join(zustandsVerzeichnis(), HALT_ORDNER) });
+  if (k.ok) console.log(`Schreibhalt: Kanal bereit (höchstens ${haltObergrenze()} ms je Halt)`);
+  else console.log(`Schreibhalt: kein Kanal — ${k.grund}. Sicherung unter Last nur mit Ruhezeit.`);
+} catch (e) {
+  console.error("Schreibhalt: kein Kanal —", e && e.message ? e.message : e, "Sicherung unter Last nur mit Ruhezeit.");
+}
 
 /* WP-32d: Betreibersitzungen ohne zweiten Faktor enden beim Start der Auslieferung. */
 try {

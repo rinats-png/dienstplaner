@@ -454,21 +454,25 @@ async function s5(t, daten, leitungFuer) {
   const e = { get: [], put: [] };
   const sicherungZiel = await mkdtemp(path.join(tmpdir(), "centric-last-sich-"));
   let sicherung = null, sicherungRuhig = null;
-  const sichern = async () => {
+  /* WP-28c: In der Last mit Schreib-Halt (Kanal im Zustandsverzeichnis des Servers, Vorgabe <daten>-zustand). */
+  const haltOrdner = path.join(`${daten}-zustand`, "schreibhalt");
+  const sichern = async (mitHalt = false) => {
     const t0 = Date.now();
     const r = await new Promise((fertig) => {
-      const k = spawn(process.execPath, ["werkzeug/ablage-sicherung.mjs", "sichern", "--quelle", daten, "--ziel", sicherungZiel],
+      const k = spawn(process.execPath, ["werkzeug/ablage-sicherung.mjs", "sichern", "--quelle", daten, "--ziel", sicherungZiel,
+        ...(mitHalt ? ["--schreibhalt", haltOrdner] : [])],
         { cwd: WURZEL, env: { ...process.env, CENTRIC_PFEFFER: PFEFFER }, stdio: ["ignore", "pipe", "pipe"] });
       let o = ""; k.stdout.on("data", (d) => { o += d; }); k.stderr.on("data", (d) => { o += d; });
       k.on("close", (code) => fertig({ code, o }));
     });
     return { exit: r.code, sekunden: Math.round((Date.now() - t0) / 100) / 10,
       versuche: (r.o.match(/Versuch \d+\/\d+: /g) || []).length + (r.code === 3 ? 0 : 1),   // verworfene Versuche (nicht die Rundenmeldungen); bei Code 3 sind alle Versuche verworfen, kein weiterer erfolgreicher
+      konsistenz: (r.o.match(/^Konsistenz: (.*)$/m) || [])[1] || null,
       anfang: r.o.trim().split("\n").slice(0, 3).join(" | ").slice(0, 300),
       letzteZeile: r.o.trim().split("\n").slice(-2).join(" | ").slice(0, 200) };
   };
   /* Einmal mitten in der Last, einmal danach im Ruhezustand (derselbe Datenbestand). */
-  const sicherungLauf = (async () => { await warte(15000); sicherung = await sichern(); })();
+  const sicherungLauf = (async () => { await warte(15000); sicherung = await sichern(true); })();
   const [stempel] = await Promise.all([
     stempelLast({ "stempel-a": t.stempel["stempel-a"], "stempel-b": t.stempel["stempel-b"] }, 100, P.s5Min, "ende"),
     planerLauf(t, P.s5Min, e),

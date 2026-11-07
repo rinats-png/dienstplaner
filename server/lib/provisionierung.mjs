@@ -73,6 +73,7 @@ import {
   profilPruefen, mitgliedschaftAnlegen, mitgliedschaftLesen,
   raummitgliedSchluessel,
 } from "./accounts.mjs";
+import { vorgang } from "./schreibhalt.mjs";
 
 const TAG_MS = 86400000;
 
@@ -235,7 +236,12 @@ export function leitungsperson(profil, einheitId) {
    -------------------------------------------------------------------------- */
 const reihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function nacheinander(schluessel, arbeit) {
+  return vorgang(() => nacheinanderInReihe(schluessel, arbeit));
+}
+
+function nacheinanderInReihe(schluessel, arbeit) {
   const davor = reihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   const warten = lauf.then(() => {}, () => {});

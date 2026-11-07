@@ -45,6 +45,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { ablageWurzel } from "./ablage.mjs";
 import { sitzungsSpeicher } from "./sitzungen.mjs";
+import { vorgang } from "./schreibhalt.mjs";
 
 export const EPOCHE_DATEI = "schluessel-epoche.json";
 export const BINDUNG_SCHLUESSEL = "skbindung";
@@ -165,9 +166,12 @@ export async function epocheDateiErneuern(verz, grund) {
 let reihe = Promise.resolve();
 /** @template T @param {() => Promise<T>} fn @returns {Promise<T>} */
 function nacheinander(fn) {
-  const r = reihe.then(fn, fn);
-  reihe = r.catch(() => {});
-  return r;
+  /* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
+  return vorgang(() => {
+    const r = reihe.then(fn, fn);
+    reihe = r.catch(() => {});
+    return r;
+  });
 }
 
 async function bindungLesen(a) {

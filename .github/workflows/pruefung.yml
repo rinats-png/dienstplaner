@@ -293,6 +293,12 @@ jobs:
         run: npm run pruefung:datenintegritaet
       - name: Prozesssperre der Ablage
         run: npm run pruefung:prozesssperre
+      # WP-28c: Schreib-Halt für die Sicherung unter Last (Drain, Frist,
+      # Wiedereintritt, Dateikanal), Mess-Skript in Kurzfassung (0 Schnitte
+      # mitten in einer Transaktion, 100 % Erfolg, >= 50 Schreibvorgänge/s)
+      # und die Sicherung unter parallelen Schreibvorgängen (WP-28b).
+      - name: Schreib-Halt und Sicherung unter Last
+        run: npm run pruefung:schreibhalt
       # ACC45-Werkzeuge: Backlog-Unterbefehle, Vorprüfung, test-kurz (Exit-Code).
       # Die Vorprüfung legt dafür ein Wegwerf-Git-Repo an.
       - name: ACC45-Werkzeuge
