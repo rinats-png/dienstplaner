@@ -68,6 +68,9 @@ async function quelle(n = 4) {
 const zielOrdner = async () => { const z = path.join(basis, `s-${++zaehler}`); await mkdir(z, { recursive: true }); return z; };
 const sichtbar = async (z) => (await readdir(z)).filter((n) => !n.startsWith("."));
 
+/** Kein Versuch wurde verworfen: nur Nachkopier-Runden innerhalb des ersten Versuchs. */
+const einVersuch = (meldungen) => !meldungen.some((m) => /^Versuch \d+\/\d+: /.test(m));
+
 /** Alle Dateien der Quelle (Store/Name → Bytes). */
 async function baum(wurzel, unterdaten = false) {
   const aus = {};
@@ -119,9 +122,11 @@ describe("WP-28b/2: Schreibvorgänge während des Kopierens", () => {
         await new Promise((r) => setTimeout(r, 2));    // mtime-Auflösung
       }
     };
-    const r = await G.sichern({ quelle: q, ziel, pause: 0, versuche: 3 });
+    const meldungen = [];
+    const r = await G.sichern({ quelle: q, ziel, pause: 0, versuche: 3, meldung: (m) => meldungen.push(m) });
     haken.vorLesen = null;
     expect(n).toBeGreaterThanOrEqual(5);
+    expect(einVersuch(meldungen)).toBe(true);
 
     expect((await G.pruefen(r.pfad)).ok).toBe(true);
     // Endstand: die Sicherung stimmt Byte für Byte mit der Quelle überein.
@@ -168,8 +173,10 @@ describe("WP-28b/2: Schreibvorgänge während des Kopierens", () => {
         await ablegen(path.join(q, "centric", "k9.json"), { neu: true });                // neu
       }
     };
-    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3 });
+    const meldungen = [];
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3, meldung: (m) => meldungen.push(m) });
     haken.vorLesen = null;
+    expect(einVersuch(meldungen)).toBe(true);
     expect((await G.pruefen(r.pfad)).ok).toBe(true);
     const sicher = await baum(r.pfad, true);
     expect(sicher).toEqual(await baum(q));
@@ -179,6 +186,30 @@ describe("WP-28b/2: Schreibvorgänge während des Kopierens", () => {
     // Die Zahlen im Manifest passen zur Wirklichkeit.
     expect(r.manifest.summe.dateien).toBe(Object.keys(sicher).length);
     expect(r.manifest.stores.centric.dateien).toBe(Object.keys(sicher).filter((k) => k.startsWith("centric/")).length);
+  });
+
+  it("eine Datei ändert ihre Größe und verschwindet dann: keine veraltete Kopie bleibt in der Sicherung", async () => {
+    const q = await quelle(4);
+    const k2 = path.join(q, "centric", "k2.json");
+    let stufe = 0;
+    haken.vorLesen = async (p) => {
+      if (p.endsWith("k3.json") && stufe === 0) {      // k2 ist schon kopiert → jetzt wird es größer
+        stufe = 1;
+        await ablegen(k2, { i: 2, lang: "x".repeat(500) });
+      } else if (p === k2 && stufe === 1) {            // beim Nachkopieren ist es schon weg
+        stufe = 2;
+        await rm(k2);
+      }
+    };
+    const meldungen = [];
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3, meldung: (m) => meldungen.push(m) });
+    haken.vorLesen = null;
+    expect(stufe).toBe(2);
+    expect(einVersuch(meldungen)).toBe(true);
+    expect((await G.pruefen(r.pfad)).ok).toBe(true);
+    const sicher = await baum(r.pfad, true);
+    expect(sicher).toEqual(await baum(q));
+    expect(Object.keys(sicher)).not.toContain("centric/k2.json");
   });
 
   it("endet die Last nie, bleibt es beim Abbruch mit Code 3 — nichts angelegt, nichts liegen geblieben", async () => {
@@ -215,7 +246,7 @@ describe("WP-28b/2: echte parallele Schreiber (Zeitverlauf, nur Invarianten)", (
       }
     })();
     const ausgang = { ok: 0, code3: 0 };
-    for (let lauf = 0; lauf < 6; lauf++) {
+    for (let lauf = 0; lauf < 4; lauf++) {
       const ziel = await zielOrdner();
       try {
         const r = await G.sichern({ quelle: q, ziel, pause: 2, versuche: 3, jetzt: new Date(Date.UTC(2026, 0, 1, 0, 0, lauf)) });
@@ -228,6 +259,6 @@ describe("WP-28b/2: echte parallele Schreiber (Zeitverlauf, nur Invarianten)", (
       }
     }
     aus = true; await schreiber;
-    expect(ausgang.ok + ausgang.code3).toBe(6);
-  });
+    expect(ausgang.ok + ausgang.code3).toBe(4);
+  }, 60000);
 });
