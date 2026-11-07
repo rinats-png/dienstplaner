@@ -152,7 +152,7 @@ describe("Lesen nach Zugriffsstufe (W4 a+b)", () => {
   });
   it("Betriebsrat und Kunde sehen nichts; unbekannte Rollen auch nicht", () => {
     expect(WACHBUCH_ZUGRIFF.BR).toBe("keiner");
-    expect(WACHBUCH_ZUGRIFF.Kunde).toBe("keiner");
+    expect(WACHBUCH_ZUGRIFF.Auftraggeber).toBe("keiner");
     expect(wachbuchSicht(W, { zugriff: WACHBUCH_ZUGRIFF.BR, person: "p1", eigeneEinheit: "e1" })).toEqual([]);
     expect(wachbuchSicht(W, { zugriff: WACHBUCH_ZUGRIFF.XY ?? "unbekannt" })).toEqual([]);
   });

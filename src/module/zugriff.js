@@ -8,15 +8,17 @@
    Maßgeblich bleibt der Server (sicht.mjs liefert der Rolle nur ihre Daten);
    diese Stufen steuern nur, was die Ansicht aus dem Gelieferten zeigt.
 
-   Die Serverrolle „kunde“ (eigener Datenraum) hat serverseitig die Rechte der
-   Leitung; in den Ansichten der Branchenmodule gilt sie bis zur Entscheidung
-   als „Kunde“ (keiner), wie in WACHBUCH_ZUGRIFF (WB-2). Vorläufig.
+   „Auftraggeber“ ist der externe Auftraggeber im Wachbuch (WACHBUCH_ZUGRIFF,
+   WB-2) und keine Betriebsrolle; er hat keinen Zugang zur Anwendung. Die
+   frühere Serverrolle „kunde“ (Betreiberentscheidung 2026-11-07: abgelöst,
+   wird nicht mehr vergeben) ist hier nicht abgebildet — eine solche Sitzung
+   erhält in den Modulansichten „keiner“ (fail-closed, wie bisher).
    ========================================================================== */
 import { WACHBUCH_ZUGRIFF } from "../../server/lib/modul-wachbuch.mjs";
 import { qualGueltig } from "../../server/lib/fachpruefung.mjs";
 
 /** Serverrolle → Kürzel der Zugriffstabellen. */
-export const ROLLE_KUERZEL = Object.freeze({ leitung: "LT", planer: "PL", subplaner: "SV", mitarbeiter: "MA", betriebsrat: "BR", kunde: "Kunde" });
+export const ROLLE_KUERZEL = Object.freeze({ leitung: "LT", planer: "PL", subplaner: "SV", mitarbeiter: "MA", betriebsrat: "BR" });
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 

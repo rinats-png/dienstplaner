@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten, lesenGrenze } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
-import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt, sitzungsRolleBekannt,
+import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
@@ -274,7 +274,7 @@ export default async (req, context) => {
       /* Nur bekannte Rollen, nie „betreiber“ (SI-06, interne Prüfung 2026-11):
          Sonst prägte eine einzige Betreibersitzung dauerhafte Betreiber-Codes. */
       const rolleUngueltig = eintraege.find((e) => !e || typeof e !== "object"
-        || (e.rolle !== undefined && typeof e.rolle !== "string") || e.rolle === "betreiber" || !rolleBekannt(e.rolle));
+        || e.rolle === "betreiber" || !rolleVergebbar(e.rolle));
       if (rolleUngueltig !== undefined) {
         await protokoll("zugaenge", kZ, "abgewiesen", "Rolle nicht vergebbar");
         return antwort({ fehler: "Diese Rolle kann hier nicht vergeben werden." }, 400);
@@ -301,14 +301,14 @@ export default async (req, context) => {
            einander nicht mehr, und kein ausgelieferter Code geht verloren. */
         await kontoSchreiben(store, ablageSchluessel(code), {
           name: e.name || ziel, bestand: ziel,
-          rolle: e.rolle || "kunde", person: e.personId || null,
+          rolle: e.rolle, person: e.personId || null,
           betrieb: bindungZ.betrieb, mandantId: bindungZ.mandantId,
           demo: false, gruppe: null, hinweis: null,
           angelegt: new Date().toISOString() });
         erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
       }
       await protokoll("einrichten", kennung(req, sB), "erfolg",
-        `${erzeugt.length} Zugänge für ${ziel} (${erzeugt.map((z) => z.rolle || "kunde").join(", ")})`);
+        `${erzeugt.length} Zugänge für ${ziel} (${erzeugt.map((z) => z.rolle).join(", ")})`);
       return antwort({ ok: true, zugaenge: erzeugt });
     }
 

@@ -39,8 +39,8 @@ describe("sitzungsRolleBekannt: nur eine nachgewiesene Rolle gilt", () => {
     for (const r of [undefined, null, "", "Leitung", "gast", 0, false, {}, [], ["leitung"]])
       expect(sitzungsRolleBekannt(r), JSON.stringify(r)).toBe(false);
   });
-  it("Gegenstück: die Eingabe-Vorgabe bleibt für Anlagen erhalten", () => {
-    expect(rolleBekannt(undefined)).toBe(true);
+  it("Gegenstück: auch für Anlagen gibt es keine Vorgabe mehr (2026-11-07)", () => {
+    expect(rolleBekannt(undefined)).toBe(false);
   });
 });
 

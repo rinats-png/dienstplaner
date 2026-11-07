@@ -62,8 +62,12 @@ const demo = () => ({ version: 9, stand: 1, session: null, mandanten: [
   betrieb("m-steinbach", "Steinbach", [person("c-l", "leitung")]),
 ] });
 
+/* --- 0. „kunde“ wird nicht mehr vergeben (2026-11-07), auch nicht ohne Rollenangabe --- */
+{ const e = await einrichten("erst-leer", "kunde", null, 0);
+  pruef("Rolle kunde wird nicht vergeben (400)", e.status === 400, `Status ${e.status} · ${e.fehler || ""}`); }
+
 /* --- 1. Leerer Raum: keine Codes für Kundenrollen --- */
-for (const [rolle, p] of [["leitung", null], ["planer", null], ["kunde", null],
+for (const [rolle, p] of [["leitung", null], ["planer", null],
   ["subplaner", "p1"], ["mitarbeiter", "p1"], ["betriebsrat", "p1"]]) {
   const e = await einrichten("erst-leer", rolle, p, 0);
   pruef(`Leerer Raum: kein Code für ${rolle} (409)`, e.status === 409 && /nicht eingerichtet/.test(e.fehler || ""),

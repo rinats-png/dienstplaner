@@ -394,7 +394,7 @@ describe("Zugriff der Oberflächen (kern.jsx-Kontext)", () => {
     const erwartet = { leitung: "voll", planer: "voll", subplaner: "einheit", mitarbeiter: "eigene", betriebsrat: "keiner", kunde: "keiner" };
     for (const [r, st] of Object.entries(erwartet)) expect(wachbuchZugriffFuer(r), r).toBe(st);
     for (const r of [undefined, null, "", "betreiber", "admin", "__proto__", "constructor", 7]) expect(wachbuchZugriffFuer(r), String(r)).toBe("keiner");
-    expect(Object.keys(WACHBUCH_ZUGRIFF).sort()).toEqual(["BR", "Kunde", "LT", "MA", "PL", "SV"]);
+    expect(Object.keys(WACHBUCH_ZUGRIFF).sort()).toEqual(["Auftraggeber", "BR", "LT", "MA", "PL", "SV"]);
   });
   it("Objektbericht: voll nur für Planung und Leitung", () => {
     for (const r of ["leitung", "planer"]) expect(berichtZugriffFuer(r), r).toBe("voll");

@@ -13,7 +13,7 @@
            gibt es nicht); Löschung nur über den Ausnahmeweg oder den Löschlauf.
      W4 a+b Lesen nach Zugriffsstufe: Planung/Leitung alle, Schichtverantwortung
            nur die eigene Einheit, Beschäftigte nur eigene Einträge, Betriebsrat
-           und Kunde nichts. Die Zuordnung Rolle → Stufe steht in
+           und Auftraggeber (extern, keine Betriebsrolle) nichts. Die Zuordnung Rolle → Stufe steht in
            WACHBUCH_ZUGRIFF; die Zeile in RECHTEMATRIX.md ist offen.
      W5 b  Kontrollgang-Lücken werden nur mit gesetztem Intervall gemeldet
            (Vorgabe 0 = aus). Kein Intervall ist eine Vorgabe des Betriebs,
@@ -38,7 +38,7 @@ export const WACHBUCH_FELDER = Object.freeze(["id", "datum", "uhrzeit", "objektI
  * Zugriffsstufe je Rolle (Entscheidung W4 a+b). Unbekannte Rollen: keiner.
  * voll = alle Einträge · einheit = Einträge der eigenen Einheit · eigene = nur die eigenen · keiner.
  */
-export const WACHBUCH_ZUGRIFF = Object.freeze({ PL: "voll", LT: "voll", SV: "einheit", MA: "eigene", BR: "keiner", Kunde: "keiner" });
+export const WACHBUCH_ZUGRIFF = Object.freeze({ PL: "voll", LT: "voll", SV: "einheit", MA: "eigene", BR: "keiner", Auftraggeber: "keiner" });
 
 /**
  * Die Einträge als Liste, aus der Form { "<Kennung>|Tag": Eintrag }.

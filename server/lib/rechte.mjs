@@ -114,12 +114,24 @@ export function wirksameRolle(sitzung, bestand) {
    Sitzung ohne Rolle gilt weiterhin als „kunde". Alles andere ist keine
    Rolle: kein Bestand, keine Sicht, kein Rückfall. */
 export const BEKANNTE_ROLLEN = Object.freeze([...Object.keys(RANG), "kunde"]);
-export const rolleBekannt = (rolle) => BEKANNTE_ROLLEN.includes(rolle === undefined || rolle === null ? "kunde" : rolle);
+export const rolleBekannt = (rolle) => typeof rolle === "string" && BEKANNTE_ROLLEN.includes(rolle);
+
+/* Rollen, die ein NEUER Zugang tragen darf (Betreiberentscheidung 2026-11-07).
+   „kunde" gehört nicht dazu: Die Rolle war ein Rückfall für Codes ohne
+   Rollenangabe und zugleich der „eigene Probierraum". Beides ist abgelöst —
+   ein Zugang trägt immer eine ausdrückliche Rolle, und Demo ist das Merkmal
+   `demo: true` am Konto (eine Demo mit Leitungsrechten ist rolle „leitung" +
+   demo), keine eigene Rolle. Bestehende „kunde"-Konten werden weiter
+   gelesen (kein Aussperren vor der gezielten Umstellung,
+   werkzeug/kunde-abloesen.mjs); angelegt wird keines mehr.
+   Eine fehlende Angabe ist hier immer ein Nein — es gibt keinen Rückfall. */
+export const ROLLEN_VERGEBBAR = Object.freeze(Object.keys(RANG));
+export const rolleVergebbar = (rolle) => typeof rolle === "string" && ROLLEN_VERGEBBAR.includes(rolle);
 
 /* P0 (PR #17-Prüfung): Für eine SITZUNG gilt kein Rückfall. Ohne eine Rolle,
    die als Zeichenkette in der Rangliste steht, gibt es keinen Zugriff —
-   kein Bestand, kein Schreiben, keine Sicht. Die Eingabe-Vorgabe „kunde“
-   (rolleBekannt) bleibt für Anlagen unverändert. */
+   kein Bestand, kein Schreiben, keine Sicht. Auch Anlagen haben seit
+   2026-11-07 keine Vorgabe „kunde" mehr (rolleVergebbar). */
 export const sitzungsRolleBekannt = (rolle) => typeof rolle === "string" && BEKANNTE_ROLLEN.includes(rolle);
 
 export const SCHREIBEN_VOLL = "voll";

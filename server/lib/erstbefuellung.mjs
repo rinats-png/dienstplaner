@@ -121,7 +121,7 @@ export function bindungsVorschau(bestand, zugaenge) {
   return zugaenge.map((z) => {
     const i = Number(z.betrieb ?? 0);
     const m = Number.isInteger(i) && i >= 0 && i < liste.length ? liste[i] : null;
-    return { kennung: z.kennung, name: z.name || null, rolle: z.rolle || "kunde",
+    return { kennung: z.kennung, name: z.name || null, rolle: z.rolle || null,
       betrieb: z.betrieb ?? 0, mandantId: z.mandantId || null, gesperrt: !!z.gesperrt,
       aktuell: m ? { id: m.id || null, name: m.name || null } : null,
       passt: z.mandantId ? !!m && m.id === z.mandantId : null };

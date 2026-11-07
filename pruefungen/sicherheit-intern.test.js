@@ -200,7 +200,8 @@ describe("SI-01 Push-Endpunkt nur bei bekannten Push-Diensten", () => {
         person: null, betrieb: 0, angelegt: "2026-01-01T00:00:00.000Z" });
       const tB = (await anfrage(daten, "/api/anmelden", { zugangscode: "SICH-BTRB-0002" })).token;
       expect(tB).toBeTruthy();
-      for (const rolle of ["betreiber", "gott", "__proto__"]) {
+      /* undefined = Angabe fehlt (JSON lässt den Schlüssel weg); „kunde“ wird seit 2026-11-07 nicht mehr vergeben. */
+      for (const rolle of ["betreiber", "gott", "__proto__", "kunde", undefined]) {
         const r = await anfrage(daten, "/api/zugaenge", { bestand: "sich", eintraege: [{ rolle }] }, tB);
         expect(r.status, rolle).toBe(400);
         expect(r.zugaenge).toBeUndefined();

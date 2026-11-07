@@ -102,7 +102,7 @@ export async function raumUebersicht(store, raum, { eigen = null } = {}) {
   const zugaenge = Object.entries(konten)
     .filter(([, k]) => k && k.bestand === raum)
     .map(([h, k]) => ({
-      kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
+      kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || null,
       betrieb: k.betrieb ?? 0, mandantId: k.mandantId || null, person: k.person ?? null, demo: !!k.demo,
       gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
       selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,

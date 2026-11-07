@@ -6,7 +6,7 @@ import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
-import { BEKANNTE_ROLLEN, rolleBekannt } from "../lib/rechte.mjs";
+import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
   verwalterZweifaktorIrgendwo }
@@ -231,11 +231,15 @@ export default async (req) => {
      Schlüssels laufen. */
   /* Nur Rollen, die es gibt (Commit D1d). Bis hierher nahm diese Stelle
      jede Bezeichnung an; eine Sitzung mit erfundener Rolle fiel beim Lesen
-     auf den Rohbestand des eigenen Betriebs durch. Ohne Angabe bleibt es
-     bei „kunde" wie bisher. */
-  if (req.method === "POST" && !pfad && rolle !== undefined && rolle !== null && !rolleBekannt(rolle))
-    return antwort({ fehler: "Diese Rolle gibt es nicht.",
-      text: `Erlaubt sind: ${BEKANNTE_ROLLEN.join(", ")}.` }, 400);
+     auf den Rohbestand des eigenen Betriebs durch. Seit 2026-11-07 gibt es
+     auch keine Vorgabe „kunde" mehr: Ohne ausdrückliche Rolle entsteht kein
+     Zugang, und „kunde" selbst wird nicht mehr vergeben. Eine Demo ist
+     `demo: true` mit einer echten Rolle (z. B. „leitung"). */
+  if (req.method === "POST" && !pfad && !rolleVergebbar(rolle))
+    return antwort({ fehler: rolle === undefined || rolle === null || rolle === ""
+      ? "Eine Rolle ist nötig."
+      : (rolle === "kunde" ? "Die Rolle „kunde“ wird nicht mehr vergeben." : "Diese Rolle gibt es nicht."),
+      text: `Erlaubt sind: ${ROLLEN_VERGEBBAR.join(", ")}. Ein Demozugang ist demo: true mit einer dieser Rollen.` }, 400);
 
   if (req.method === "POST" && !pfad && (rolle === "mitarbeiter" || rolle === "subplaner")
       && (person === null || person === undefined || person === ""))
@@ -406,7 +410,7 @@ export default async (req) => {
      befüllte ihn. Den leeren Raum richtet jetzt der Betreiber ein
      (/api/bestand-anlegen); sein eigener Code darf deshalb vorher entstehen. */
   let bindungE = { betrieb: betrieb ?? 0, mandantId: null };
-  if ((rolle || "kunde") !== "betreiber") {
+  if (rolle !== "betreiber") {
     const gelesenE = await bestandLesen(s0, bestand);
     const b2 = betriebFuerNeuenCode(gelesenE && gelesenE.bestand, betrieb);
     if (b2.grund) {
@@ -424,10 +428,10 @@ export default async (req) => {
      angelegt werden. */
   if (demo) {
     const konten = await alleKonten(s0);
-    const gleicheRolle = rolle || "kunde", gleicherBetrieb = betrieb ?? 0;
+    const gleicheRolle = rolle, gleicherBetrieb = betrieb ?? 0;
     const vorhanden = Object.values(konten).find((k) => k && k.demo && !k.gesperrt
       && k.bestand === bestand && (k.betrieb ?? 0) === gleicherBetrieb
-      && (k.rolle || "kunde") === gleicheRolle);
+      && k.rolle === gleicheRolle);
     if (vorhanden) {
       await protokoll("einrichten", k, "abgewiesen", `Demozugang doppelt · ${bestand}`);
       return antwort({ fehler: "Für diesen Betrieb und diese Rolle gibt es bereits einen "
@@ -445,7 +449,7 @@ export default async (req) => {
 
   const s = s0;
   const konto = { name, bestand,
-    rolle: rolle || "kunde",       // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
+    rolle,                         // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
     betrieb: bindungE.betrieb,     // Index des Betriebs im Bestand
     mandantId: bindungE.mandantId, // und seine Kennung — beides muss zusammenpassen
@@ -462,7 +466,7 @@ export default async (req) => {
   /* Wer es war, steht jetzt im Protokoll — nicht mehr nur ein Hashwert
      der Netzadresse. */
   await protokoll("einrichten", k, "erfolg",
-    `${rolle || "kunde"} · ${bestand} · durch ${wer.name}`);
+    `${rolle} · ${bestand} · durch ${wer.name}`);
   return antwort({ ok: true, zugangscode: code, name, bestand,
     hinweis: "Diesen Code sicher weitergeben. Er wird nur als Prüfsumme gespeichert "
       + "und lässt sich nicht wiederherstellen." });

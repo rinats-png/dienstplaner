@@ -38,11 +38,11 @@ const UNBEKANNT = ["gast", "irgendwas", "", "Leitung", "LEITUNG", " leitung", "t
 const sitz = (rolle) => ({ rolle, person: "am", betrieb: 0, mandantId: "m-a" });
 
 describe("rolleBekannt", () => {
-  it("genau die Rangliste und kunde; ohne Rolle gilt kunde", () => {
+  it("genau die Rangliste und (nur lesend, Altbestand) kunde; ohne Rolle gilt nichts", () => {
     expect([...BEKANNTE_ROLLEN].sort()).toEqual(["betreiber", "betriebsrat", "kunde", "leitung", "mitarbeiter", "planer", "subplaner"]);
     for (const r of BEKANNTE_ROLLEN) expect(rolleBekannt(r), r).toBe(true);
-    expect(rolleBekannt(undefined)).toBe(true);
-    expect(rolleBekannt(null)).toBe(true);
+    expect(rolleBekannt(undefined)).toBe(false);
+    expect(rolleBekannt(null)).toBe(false);
     for (const r of UNBEKANNT) expect(rolleBekannt(r), JSON.stringify(r)).toBe(false);
   });
 });
@@ -212,11 +212,28 @@ describe("/einrichten", () => {
     }
     expect(Object.keys(await alleKonten(laden())).length).toBe(vorher);
   });
-  it("bekannte Rolle und fehlende Angabe (kunde): angelegt wie bisher", async () => {
-    for (const r of ["mitarbeiter", "leitung", "betriebsrat", undefined]) {
+  it("ausdrückliche Rolle: angelegt", async () => {
+    for (const r of ["mitarbeiter", "leitung", "betriebsrat"]) {
       const a = await anlegen(r, r === "mitarbeiter" ? {} : { person: r === "leitung" ? "al" : "ar" });
       expect(a.status, `${String(r)} ${a.roh}`).toBe(200);
       expect(a.zugangscode).toBeTruthy();
     }
+  });
+  it("fehlende Rolle und die Rolle kunde: 400, kein Konto (Betreiberentscheidung 2026-11-07)", async () => {
+    const vorher = Object.keys(await alleKonten(laden())).length;
+    for (const r of [undefined, null, "kunde"]) {
+      const a = await anlegen(r, { person: "al" });
+      expect(a.status, `${String(r)} ${a.roh}`).toBe(400);
+      expect(a.zugangscode).toBeUndefined();
+    }
+    expect(Object.keys(await alleKonten(laden())).length).toBe(vorher);
+  });
+  it("Demozugang ohne Rolle oder mit kunde: 400; mit Rolle leitung und demo: angelegt", async () => {
+    for (const r of [undefined, "kunde"]) {
+      const a = await anlegen(r, { demo: true, person: "al", gruppe: "x" });
+      expect(a.status, `${String(r)} ${a.roh}`).toBe(400);
+    }
+    const ok = await anlegen("leitung", { demo: true, person: "al", gruppe: "x" });
+    expect(ok.status, ok.roh).toBe(200);
   });
 });
