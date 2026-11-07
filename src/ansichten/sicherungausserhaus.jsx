@@ -31,6 +31,8 @@ import { lade } from "../lib/download.js";
    ========================================================================== */
 export function SicherungAusserHaus({ sitz, melde }) {
   const [schluessel, setSchluessel] = useState([]);
+  const [widerrufen, setWiderrufen] = useState([]);
+  const [info, setInfo] = useState({ aktiv: 0, grenze: 5, standardTage: 90, warnung: "" });
   const [neu, setNeu] = useState(null);
   const [tage, setTage] = useState(90);
   const [laeuft, setLaeuft] = useState(false);
@@ -38,7 +40,10 @@ export function SicherungAusserHaus({ sitz, melde }) {
 
   const laden = useCallback(() => {
     if (!darfEs) return;
-    SP.schluesselListe().then(setSchluessel).catch(() => {});
+    SP.schluesselUebersicht().then((u) => {
+      setSchluessel(u.schluessel); setWiderrufen(u.widerrufen);
+      setInfo({ aktiv: u.aktiv, grenze: u.grenze, standardTage: u.standardTage, warnung: u.warnung });
+    }).catch(() => {});
   }, [darfEs]);
   useEffect(() => { laden(); }, [laden]);
 
@@ -65,13 +70,13 @@ export function SicherungAusserHaus({ sitz, melde }) {
     finally { setLaeuft(false); }
   };
 
-  const befehl = (k) => `curl -sS -H "Authorization: Bearer ${k}" \\\n  `
+  const befehl = (k) => `curl -fsS -H "Authorization: Bearer ${k}" \\\n  `
     + `${window.location.origin}/api/vollausgabe \\\n  `
     + `-o centric-$(date +%F).json`;
 
   return (
     <Card>
-      <CardHead right={<Lab>{schluessel.filter((k) => !k.abgelaufen).length} gültig</Lab>}>
+      <CardHead right={<Lab>{info.aktiv} von {info.grenze} aktiv</Lab>}>
         Sicherung außer Haus</CardHead>
       <div style={{ padding: 22 }}>
         <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px", maxWidth: "72ch" }}>
@@ -106,17 +111,37 @@ export function SicherungAusserHaus({ sitz, melde }) {
               <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 8,
                 background: C.flaecheStill, color: C.text, border: `1px solid ${C.lineSoft}`, fontSize: 12,
                 overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
+            <div style={{ fontSize: 12.5, color: C.dim, margin: "6px 0 10px", lineHeight: 1.5 }}>
+              Wichtig: <code>-f</code> lässt curl bei einem Fehler (zum Beispiel 401, Schlüssel widerrufen) mit einem Fehlercode
+              enden und keine Datei schreiben. Werte den Exit-Code in deinem Skript aus und lass dich warnen, wenn er nicht 0 ist.</div>
               <div style={{ marginTop: 10 }}>
                 <Btn size="sm" onClick={() => setNeu(null)}>Verstanden, ausblenden</Btn></div>
             </div>)}
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
             marginBottom: 16 }}>
-            <Field label="Gültig für Tage" hint="Höchstens ein Jahr.">
+            <Field label="Gültig für Tage" hint={`Standard ${info.standardTage} Tage. Eine längere Laufzeit (bis ein Jahr) wählst du hier bewusst.`}>
               <Inp type="number" min={1} max={365} value={tage} style={{ width: 110 }}
                 onChange={(e) => setTage(Number(e.target.value))} /></Field>
-            <Btn disabled={laeuft} onClick={anlegen}>Schlüssel anlegen</Btn>
+            <Btn disabled={laeuft || info.aktiv >= info.grenze} onClick={anlegen}>Schlüssel anlegen</Btn>
           </div>
+          {info.aktiv >= info.grenze && (
+            <div role="status" style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>
+              Es gibt schon {info.grenze} aktive Schlüssel. Widerrufe einen, den du nicht mehr brauchst; es wird nichts automatisch gelöscht.</div>)}
+          {info.warnung && (
+            <div role="note" style={{ fontSize: 12.5, color: C.dim, marginBottom: 12, lineHeight: 1.5 }}>{info.warnung}</div>)}
+          {widerrufen.length > 0 && (
+            <div role="alert" style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                Widerrufene Schlüssel — Sicherungen mit diesen Schlüsseln laufen nicht mehr. Lege einen neuen Schlüssel an und trage ihn in der Sicherung ein.</div>
+              {widerrufen.map((k) => (
+                <div key={k.kennung} className="karte-still" style={{ display: "flex", gap: 12, alignItems: "center",
+                  padding: "8px 13px", marginBottom: 6, flexWrap: "wrap", borderRadius: "var(--r)" }}>
+                  <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}>{k.kennung}…</code>
+                  <span style={{ fontSize: 12.5, color: C.dim, flex: 1, minWidth: 160 }}>{k.text}</span>
+                  <Pill size="sm" tone="danger">widerrufen</Pill>
+                </div>))}
+            </div>)}
 
           {schluessel.length > 0 && (<div>
             {schluessel.map((k) => (
