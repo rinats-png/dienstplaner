@@ -124,6 +124,41 @@ Vorgabe des Ergebnisses.
 - Restbefund des Nach-Reviews, **niedrig:** Ein Flow-Wert, der `uses:` als Text in Anführungszeichen enthält, z. B. `with: { args: "uses: x" }`, wird fälschlich gemeldet. Das ist fail-closed, und der Fall kommt nicht vor.
 - Ebenfalls offen (**info**): In lokalen `action.yml` werden `runs.image`, `container:`- und `services:`-Images nicht auf einen Digest geprüft. Heute gibt es keine lokalen Actions.
 
+## GitHub-CI des Pull Requests (Stand 2026-11-07)
+
+Die CI des PR #98 (Läufe auf dem Merge von `a587df8` in `087fbe9`) meldet fünf
+rote Jobs. **Keiner davon wird durch SI-P8 verursacht.** Alle fünf bestehen
+unverändert auf dem Ausgangscommit `087fbe9`. Dort sind Sicherheit (Lauf
+42345831536), Prüfung (42345831562) und Lieferkette (42345831520) schon rot.
+Eine Korrektur gehört in ein eigenes Paket des Hauptorchestrators. Hier wurde
+nichts davon geändert, abgeschwächt oder übersprungen. Die Befunde 1 und 2 haben
+dieselbe Ursache (ein Kommentar in einer Datei der UI-/Intelligence-Stränge).
+Welche Korrektur passt, entscheidet der Orchestrator, etwa den Kommentar
+umformulieren oder die Begründung in der Ausnahmeliste der statischen Prüfung
+nachtragen. SI-P8 fasst dafür weder diese Datei noch die Prüfwerkzeuge an.
+
+| # | Job und Schritt | Fehler | Ursache | Auf `087fbe9` | Beleg |
+|---|---|---|---|---|---|
+| 1 | Sicherheit / `muster` / „Verbotene Muster“ | Treffer in `src/ansichten/intelligence/KiEntwurf.jsx:16` | Ein **Kommentar** nennt das Wort `dangerouslySetInnerHTML`; die Mustersuche trifft auch Kommentare. Die Datei ist nicht Teil des PR. | rot, gleicher Treffer | Mustersuche über `src server`: gleiche Prüfsumme der Ausgabe auf Basis und PR-Stand |
+| 2 | Sicherheit / `interne-pruefung` / „Statische Prüfung“ | „1 unbegründeter harter Treffer“: `[hart] dangerouslySetInnerHTML: 1` bei `src/ansichten/intelligence/KiEntwurf.jsx:16` | **Dieselbe Kommentarzeile wie bei 1.** Die Kategorie `[hart]` hat dort keine Begründung hinterlegt (anders als die zwei `document.write` in `App.jsx`). Die Listen `[sichten]` darunter, auch `prozesssperre.mjs`, sind nur Hinweise und halten nicht auf. | rot, gleicher Befund | `statik.mjs`: Ausgabe byte-identisch auf Basis und PR-Stand |
+| 3 | Prüfung / `pruefen` / „Typen“ | 20 `tsc`-Fehler in `server/lib/*.mjs` (u. a. `betreiber-zweifaktor`, `isteinfrieren`, `modul-wachbuch`, `modul-wege`, `modulschreibwege`, `regelbaukasten-erweitert`, `selbstauskunft`, `zweifaktor`) | Typfehler im Servercode aus WP-15/WP-32d. Der PR berührt kein `.mjs` unter `server/`. | rot, gleiche 20 Fehler | `tsc -p jsconfig.json`: sortierte Fehlerliste byte-identisch auf Basis und PR-Stand |
+| 4 | Lieferkette / `bild-scan` / „Bild bauen (lokal)“ | `COPY werkzeug/betreiber-2fa-zuruecksetzen.mjs werkzeug/betreiber-faktor-vorlauf.mjs` (Dockerfile:88): `"/werkzeug/betreiber-faktor-vorlauf.mjs": not found` | `.dockerignore` schließt `werkzeug/*` aus und gibt die zwei Dateien nicht frei. Sie liegen im Repository, kommen aber nicht in den Build-Kontext. | rot, gleicher Fehler | `Dockerfile` und `.dockerignore` sind unverändert zur Basis (`cmp`); Basis-Lauf 42345831520 |
+| 5 | Betrieb Sicherung / `sicherung` / „Bild bauen“ | derselbe `COPY`-Fehler wie 4 | wie 4 | Kein Lauf auf der Basis (der Workflow startet nur auf bestimmten Branches und Pfaden). Dasselbe `Dockerfile` und dieselbe `.dockerignore` brechen aber in Lieferkette. | wie 4 |
+
+Ergänzend gilt:
+
+- Der Zielbranch ist inzwischen auf `7eae3d2` weitergelaufen. Dort sind Sicherheit, Prüfung und Lieferkette weiterhin rot (Läufe 42354516992, 42354517030, 42354516982). Die Befunde 1 bis 5 sind dort nicht behoben (`.dockerignore`, `Dockerfile` und `KiEntwurf.jsx` sind gegenüber `087fbe9` unverändert).
+- Der PR ist mit `7eae3d2` konfliktfrei zusammenführbar (`git merge-tree`).
+- Docker läuft in dieser Umgebung nicht. Der Befund 4/5 stützt sich deshalb auf den CI-Log, auf `Dockerfile`, `.dockerignore` und `git ls-tree`, nicht auf einen lokalen Bauversuch.
+
+**Was die CI von SI-P8 tatsächlich belegt:**
+
+- Grün auf dem PR-Stand: Sicherheit/`geheimnisse` (gitleaks-action, gepinnt), Sicherheit/`abhaengigkeiten` (checkout und setup-node, gepinnt), Betrieb: Deploy-Skripte, Lieferkette/`caddy-vorlage`.
+- Der neue Schritt „Actions per Commit-SHA gepinnt“ im Job `muster` läuft durch („Actions-Pins: 7 Dateien, 32 externe Referenzen (8 verschiedene), 2 lokale“). Der Job scheitert erst danach am Befund 1.
+- Der neue Test `actions-pins.test.js` läuft im Schritt „Regressionstests und Routen-Inventar“ (`interne-pruefung`) grün. Der Job scheitert erst danach am Befund 2.
+- In `bild-scan` und `sicherung` laufen die gepinnten `checkout`, `setup-buildx-action` und `build-push-action` erfolgreich bis zum Dockerfile-Fehler.
+- **Nicht von der CI belegt**, weil ein früherer Schritt fehlschlägt und die späteren übersprungen werden: In `pruefung.yml` laufen `setup-buildx-action` (Zeile 615) und `build-push-action` (Zeile 618) wegen des Fehlers 3 nie. Es sind dieselben SHAs wie in Lieferkette und Betrieb Sicherung, die dort laufen. `docker/login-action` und `docker/metadata-action` stehen nur in `deploy.yml` (nur `main` bzw. manuell). Ihre SHAs sind upstream verifiziert, laufen aber auf diesem PR nicht.
+
 ## Offene Risiken (nicht Teil von SI-P8, nicht geändert)
 
 Sie hängen mit der Lieferkette zusammen. Ihre Behebung würde aber
@@ -136,5 +171,5 @@ Betreiber:
 4. **niedrig – setup-buildx-action lädt Buildx und das BuildKit-Image** (`moby/buildkit:buildx-stable-1`) ohne `version:` bzw. ohne Digest.
 5. **niedrig – `apt-get install shellcheck`** in `betrieb-sicherung.yml` ohne festgelegte Version (aus dem Ubuntu-Archiv).
 6. **info – Versionskommentar und SHA werden in der CI nur offline geprüft.** Ob der Kommentar zum SHA passt, prüft nur `--online`. Ein falscher Kommentar beim ersten Vorkommen fiele erst Dependabot oder im Review auf.
-7. **info – Fremdbefund:** `npm run sicherheit:statik` meldet schon auf dem Ausgangsstand „1 unbegründete harte Treffer“ (`server/lib/prozesssperre.mjs`). Das hat mit SI-P8 nichts zu tun und ist nicht geändert.
+7. **info – Fremdbefund (Details im Abschnitt „GitHub-CI“):** Die CI-Befunde 1 bis 5 bestehen schon auf dem Ausgangsstand und sind nicht von SI-P8 verursacht. Dazu gehört `npm run sicherheit:statik` mit „1 unbegründeter harter Treffer“, der auf dem Kommentar in `KiEntwurf.jsx:16` beruht. Eine frühere Fassung dieses Nachweises nannte hier fälschlich `server/lib/prozesssperre.mjs`; das ist korrigiert.
 8. **info – Fehlmeldung möglich:** Eine Zeile, die nicht mit einem einfachen `schluessel:` beginnt und ` uses:` als Text enthält, würde fail-closed als Befund gemeldet. Heute gibt es keinen solchen Fall.
