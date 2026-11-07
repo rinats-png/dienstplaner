@@ -63,8 +63,8 @@ const hat = (o, k) => istObjekt(o) && Object.prototype.hasOwnProperty.call(o, k)
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * @typedef {{ sitzung?: any, rolle?: string, umfang?: string, darfOrgEdit?: boolean, ausnahme?: any }} SchreibKontext
- * @typedef {{ modul: string, felder: string[],
+ * @typedef {{ sitzung?: any, rolle?: string, umfang?: string, darfOrgEdit?: boolean, ausnahme?: any, liste?: readonly any[] }} SchreibKontext
+ * @typedef {{ modul: string, felder: readonly string[],
  *   zusammen: (altM: any, neuM: any, ktx: SchreibKontext) => ({ mandant: any, grund?: undefined } | { grund: string, mandant?: undefined }) }} ModulSchreibweg
  */
 

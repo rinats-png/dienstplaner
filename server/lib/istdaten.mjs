@@ -233,6 +233,8 @@ export function exportWarnung(m, ym) {
 /**
  * Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante.
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
+ * @returns {{ std: number | null, erfasst: boolean, abweichung: number, nichtVerfuegbar?: boolean,
+ *   zurPruefung?: boolean, pauseUeberAnwesenheit?: boolean }}
  */
 export function istZeitFuer(m, p, d, da) {
   if (!istVerfuegbar(m, p, d)) return { std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true };

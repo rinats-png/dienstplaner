@@ -262,7 +262,7 @@ const ausstehendGueltig = (e, ms) => !!(e && e.stand === "ausstehend" && Number.
 /**
  * Wie steht es um den zweiten Faktor? Wirft bei einem Lesefehler der
  * Ablage — der Aufrufer muss dann abweisen, nicht durchlassen.
- * @returns {Promise<{aktiv: boolean, ausstehend: boolean, wiederherstellungUebrig: number}>}
+ * @returns {Promise<{aktiv: boolean, ausstehend: boolean, ausstehendSeitMin: number | null, wiederherstellungUebrig: number}>}
  */
 export async function zweifaktorStand(store, id, ms = Date.now()) {
   const e = await store.get(SCHLUESSEL(id), { type: "json" });
