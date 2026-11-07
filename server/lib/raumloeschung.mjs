@@ -176,8 +176,8 @@ export async function raumLoeschen(store, sitzungen, raum) {
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein
         Sicherungsschlüssel eines gelöschten Raums las danach ins Leere,
-        aber er existierte noch. */
-  for (const praefix of ["t:", "sk:"]) {
+        aber er existierte noch. Ebenso die Widerrufsvermerke (skw:, SI-P1): Sie tragen Raum und Namen des Erstellers. */
+  for (const praefix of ["t:", "sk:", "skw:"]) {
     let blobs;
     try { ({ blobs } = await sitzungen.list({ prefix: praefix })); }
     catch (e) { fehler.push({ schluessel: `sitzungen ${praefix}*`, grund: grundVon(e) }); continue; }

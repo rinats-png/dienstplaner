@@ -160,6 +160,15 @@ describe("Erkennbarer Fehler statt stillem Ausfall", () => {
     expect(JSON.stringify(v.daten), "nie der Schlüssel selbst").not.toContain(b.sk);
   }, LIMIT);
 
+  it("die Raumlöschung nimmt auch den Widerrufsvermerk mit (er trägt Raum und Namen des Erstellers)", async () => {
+    const b = await kontoMitSchluessel("fehler-raumloeschung");
+    await Z.A.epocheErhoehen(Z.laden(), b.k.id);
+    expect(await vermerk(b.sk)).not.toBeNull();
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    await raumLoeschen(Z.laden(), Z.ablageArbeit(), b.raum);
+    expect(await vermerk(b.sk)).toBeNull();
+  }, LIMIT);
+
   it("ein unbekannter Schlüssel bekommt weiter nur „Nicht angemeldet“ (der Vermerk verrät Außenstehenden nichts)", async () => {
     const v = await vollausgabe("gibt-es-nicht-0123456789abcdef0123456789");
     expect(v.status).toBe(401);
