@@ -288,7 +288,7 @@ describe("WP-14b M2/M3: Stempeln an den Umstellungstagen und Dauer 0 ohne Plan",
     const m = await mandant("sd-fruehjahr");
     const ist = istZeitFuer(m, m.personen[0], "2026-03-29", m.dienstarten[0]);
     expect(ist.zurPruefung).toBe(true);
-    expect(ist.std).toBeGreaterThanOrEqual(0);
+    expect(ist.std).toBe(7);                                           // bis zur Prüfung zählt die Planzeit (22:00–06:00, Pause 60 min = 7 h), nicht 0 und nicht negativ
   });
   it("M3: Beginn und Ende in derselben Minute ohne Plan — DAUER_NULL mit Marke ungeplant, im Hinweis „ungeplant“", async () => {
     await raumAnlegen("sd-null", ["a1"]);

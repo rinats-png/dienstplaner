@@ -38,7 +38,7 @@ import { ereignis } from "./gesund-zaehler.mjs";
 import { unterRaumsperre, sperreGehalten, sperrKontext, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { schreibKontext } from "./schreibkontext.mjs";
-import { korrekturAutorVermerken, hatOffeneKorrektur } from "./monatsabschluss.mjs";
+import { korrekturFingerabdruck, korrekturMitwirkendeEintragen, hatLaufendeKorrektur, laufendeKorrekturMonate } from "./monatsabschluss.mjs";
 
 /* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
    (Stempeln, PUT, Wiederherstellen …): dieselbe Sperre, dieselbe Reihe. */
@@ -502,16 +502,8 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   /* Korrekturrevision (WP-16c): Für JEDEN Schreibweg — hat der Schreibvorgang in einem Monat mit offener Korrektur etwas
      Lohnrelevantes geändert, wird die handelnde Person (Schreibkontext) als Mitwirkende vermerkt. Nur mit Kontext (Anfrage)
      und nur, wenn eine offene Korrektur existiert; sonst kein zusätzliches Lesen. */
-  const kontext = schreibKontext.getStore();
-  if (kontext && neuerBestand && Array.isArray(neuerBestand.mandanten) && neuerBestand.mandanten.some(hatOffeneKorrektur)) {
-    const alt = await streng("Bestand für die Mitwirkenden", () => bestandLesenStreng(store, raum));
-    const altM = new Map(((alt && alt.bestand && alt.bestand.mandanten) || []).map((x) => [x && x.id, x]));
-    neuerBestand = { ...neuerBestand, mandanten: neuerBestand.mandanten.map((x) => (x && hatOffeneKorrektur(x)
-      ? korrekturAutorVermerken(altM.get(x.id) || null, x, kontext.person) : x)) };
-  }
-
-  const zNeu = zerlegen(neuerBestand);
-  const abdNeu = abdruecke(zNeu);
+  let zNeu = zerlegen(neuerBestand);
+  let abdNeu = abdruecke(zNeu);
 
   /* --- Erster Schreibvorgang oder Übernahme eines unzerlegten Betriebs --- */
   if (!kernMeta) {
@@ -571,6 +563,50 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
       { abdruecke: abdAktuell, zeit, durch: "Wiederanlauf nach Abbruch" });
     await store.setJSON(STAND_ZEIGER(raum), { nr: aktuellerStand, zeit, epoche });
     console.warn(`Bestand ${raum}: Stand nach Abbruch angeglichen (Kern ${kernStand}, Zeiger ${zeiger} → ${aktuellerStand})`);
+  }
+
+  /* --- Mitwirkende an einer laufenden Korrekturrevision (WP-16c) ---
+     Für JEDEN Schreibweg. Schnellpfad: ohne Anfragekontext oder ohne laufende Korrektur geschieht nichts (kein Lesen, kein
+     Rechnen). Sonst nur, wenn sich eine Scherbe des Jahres bis zum Korrekturmonat oder der Kern gegenüber der Grundlage
+     des Schreibers geändert hat (Hash-Vergleich); bei aktuellem Stand zusätzlich der Eingabe-Fingerabdruck (dieselbe
+     Rechnung wie die Differenz) — nur was die Differenz verändert, macht zum Mitwirkenden. Bei veraltetem Stand ist die
+     Grundlage die Basis des Schreibers (nur seine Änderungen zählen), verglichen auf Hash-Ebene. */
+  const kontext = schreibKontext.getStore();
+  if (kontext && neuerBestand && Array.isArray(neuerBestand.mandanten) && neuerBestand.mandanten.some(hatLaufendeKorrektur)) {
+    const veraltet = !(erwarteterStand === null || erwarteterStand === undefined || String(erwarteterStand) === String(aktuellerStand));
+    const abdBasisV = veraltet
+      ? (Number.isFinite(Number(erwarteterStand))
+        ? vermerkAbdruecke(await streng(`Vermerk ${erwarteterStand}`, () => store.get(STAND(raum, Number(erwarteterStand)), { type: "json" }))) : null)
+      : abdAktuell;
+    if (abdBasisV) {
+      const geaendert = new Set(abweichende(abdBasisV, abdNeu));
+      let alt = null;
+      const eintragen = new Map();
+      for (const x of neuerBestand.mandanten) {
+        if (!x || !hatLaufendeKorrektur(x)) continue;
+        const monate = [];
+        for (const mon of laufendeKorrekturMonate(x)) {
+          const jahr = mon.slice(0, 4);
+          const beruehrt = geaendert.has("kern") || [...geaendert].some((id) => id.startsWith(`${x.id}::`) && id.slice(String(x.id).length + 2).slice(0, 4) === jahr
+            && id.slice(String(x.id).length + 2) <= mon);
+          if (!beruehrt) continue;
+          if (veraltet) { monate.push(mon); continue; }
+          alt = alt || await streng("Bestand für die Mitwirkenden", () => bestandLesenStreng(store, raum));
+          const altX = ((alt && alt.bestand && alt.bestand.mandanten) || []).find((y) => y && y.id === x.id);
+          /* Der Übergang selbst (Beginn der Korrektur) ist keine Mitwirkung: war die Korrektur vorher nicht im Gang, nichts eintragen. */
+          if (altX && !laufendeKorrekturMonate(altX).includes(mon)) continue;
+          const a = altX ? korrekturFingerabdruck(altX, mon) : null, b = korrekturFingerabdruck(x, mon);
+          if (a === null || b === null || a !== b) monate.push(mon);
+        }
+        if (monate.length) eintragen.set(x, monate);
+      }
+      if (eintragen.size) {
+        neuerBestand = { ...neuerBestand, mandanten: neuerBestand.mandanten.map((x) => (eintragen.has(x)
+          ? korrekturMitwirkendeEintragen(x, kontext.person, eintragen.get(x)) : x)) };
+        zNeu = zerlegen(neuerBestand);
+        abdNeu = abdruecke(zNeu);
+      }
+    }
   }
 
   /* --- Kein Stand mitgeschickt: schreiben ohne Abgleich --- */

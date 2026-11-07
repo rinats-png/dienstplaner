@@ -30,7 +30,7 @@ import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { schreibKontext } from "../lib/schreibkontext.mjs";
-import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, abgewiesenVermerken, letzteWiederoeffnung,
+import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, korrekturVerwerfen, abgewiesenVermerken, letzteWiederoeffnung,
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
@@ -1883,8 +1883,8 @@ export default async (req, context) => {
     if (pfad === "monatsabschluss" && req.method === "POST") {
       const kM = kennung(req, s);
       const aktionM = rumpf && rumpf.aktion;
-      if (!["abschliessen", "wiederoeffnen", "lohnexport", "korrektur-beginnen", "korrektur-freigeben"].includes(aktionM))
-        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen, lohnexport, korrektur-beginnen oder korrektur-freigeben." }, 400);
+      if (!["abschliessen", "wiederoeffnen", "lohnexport", "korrektur-beginnen", "korrektur-freigeben", "korrektur-verwerfen"].includes(aktionM))
+        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen, lohnexport, korrektur-beginnen, korrektur-freigeben oder korrektur-verwerfen." }, 400);
       /* Nur ein gültiger Monat JJJJ-MM kommt in die Spur (WP-16, Nachtrag N2) — nie Freitext aus dem Rumpf. */
       const monatM = (rumpf && typeof rumpf.monat === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(rumpf.monat)) ? rumpf.monat : "ungültig";
       if (!abschlussRecht(s.rolle, aktionM)) {
@@ -1913,6 +1913,7 @@ export default async (req, context) => {
           : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpfM, werM, new Date(), idM)
             : aktionM === "korrektur-beginnen" ? korrekturBeginnen(mM, rumpfM, werM, new Date(), idM)
               : aktionM === "korrektur-freigeben" ? korrekturFreigeben(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
+                : aktionM === "korrektur-verwerfen" ? korrekturVerwerfen(mM, rumpfM, werM, new Date(), idM)
                 : wiederoeffnen(mM, rumpfM, werM, new Date(), idM);
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
@@ -1935,6 +1936,7 @@ export default async (req, context) => {
             + (r.ereignis.trotzVormonat ? ` · trotz Vormonat (${r.ereignis.trotzVormonat.kategorie})` : "")
             : aktionM === "korrektur-beginnen" ? `Monatsabschluss ${monatM} Korrektur begonnen ${r.ereignis.id} · Revision ${r.ereignis.revision} · Grund im Verlauf`
               : aktionM === "korrektur-freigeben" ? `Monatsabschluss ${monatM} Korrektur freigegeben ${r.ereignis.id} · ${r.ereignis.n} Zeilen`
+                : aktionM === "korrektur-verwerfen" ? `Monatsabschluss ${monatM} Korrektur verworfen ${r.ereignis.id} · Grund im Verlauf`
                 : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
         return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null,
           ...(r.differenz ? { differenz: r.differenz } : {}) });

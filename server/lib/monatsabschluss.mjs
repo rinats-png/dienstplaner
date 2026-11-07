@@ -155,8 +155,9 @@ export const KORREKTUR_ANLAESSE = Object.freeze({
 });
 /** Höchstens so viele abgelegte Revisionen je Monat (Größe des Bestands). */
 export const REVISIONEN_MAX = 50;
-/** Höchstens so viele Mitwirkende je Korrekturrevision werden einzeln vermerkt; darüber ist die Freigabe gesperrt (autorenVoll). */
-export const AUTOREN_MAX = 20;
+/** Speicherschutz: höchstens so viele Mitwirkende je Korrekturrevision werden einzeln vermerkt. Darüber (autorenVoll) können die
+    gelisteten Mitwirkenden nicht freigeben — jede nicht gelistete Person mit org.edit schon. */
+export const AUTOREN_MAX = 200;
 export const WIEDEROEFFNEN_GRUND_MIN = 10;
 export const ABSCHLUSS_GRUND_MAX = 500;
 export const ABSCHLUSS_VERLAUF_MAX = 200;
@@ -174,6 +175,8 @@ export const ABGEWIESEN_ALT_MS = 48 * 60 * 60 * 1000;
 export const IST_FELDER = Object.freeze(["einstempeln", "erfassung", IST_EINGEFROREN]);
 
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+/** Läuft die Korrekturrevision (in Arbeit oder verworfen, aber noch nicht neu abgeschlossen)? Dann gilt weiter die Differenzprüfung. */
+const laeuft = (k) => objekt(k) && (k.offen === true || k.verworfen === true);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /* Wie `gleich` (JSON-Gleichheit, Reihenfolge der Schlüssel zählt), aber ohne Zeichenketten zu bauen —
    abschlussWiderspruch vergleicht je PUT alle Ist-Einträge abgeschlossener Monate (WP-16, Nachtrag M-neu-1). */
@@ -422,7 +425,7 @@ export function abschliessen(m, r, wer, jetzt, id, heute, opt = {}) {
   const mandantNeu = { ...mitIst, [ABSCHLUSS_FELD]: { ...(objekt(m[ABSCHLUSS_FELD]) ? m[ABSCHLUSS_FELD] : {}), [monat]: eintrag } };
   /* Korrekturrevision (WP-16c): Differenz der Lohnzeilen zur exportierten Revision. Lohnrelevant (nicht leer) ⇒ der Abschluss
      braucht die Freigabe einer zweiten Person für genau diese Differenz und diesen Ist-Stand; ohne sie wird nichts geschlossen. */
-  const kor = alt && objekt(alt.korrektur) && alt.korrektur.offen === true ? alt.korrektur : null;
+  const kor = alt && laeuft(alt.korrektur) ? alt.korrektur : null;
   if (kor) {
     const ex = exportZeilenFuer(mandantNeu, monat);
     const differenz = differenzKurz(ex.zeilen);
@@ -435,7 +438,7 @@ export function abschliessen(m, r, wer, jetzt, id, heute, opt = {}) {
     }
     ereignis.revision = eintrag.revision;
     ereignis.differenz = differenz;
-    eintrag.korrektur = { ...kor, offen: false, geschlossenAm: ereignis.am, differenz,
+    eintrag.korrektur = { ...kor, offen: false, verworfen: false, geschlossenAm: ereignis.am, differenz,
       ...(differenz.n > 0 && !vorschau ? { freigabe: kor.freigabe } : {}) };
     return { ereignis, eintrag, differenz, mandant: mandantNeu, ...(vorschau ? { differenzZeilen: ex.zeilen } : {}) };
   }
@@ -656,7 +659,7 @@ export function korrekturBeginnen(m, r, wer, jetzt, id) {
     return { status: 403, code: "KORREKTUR_PERSON_NOETIG", grund: "Eine Korrektur nach dem Lohnexport beginnt eine erkennbare Person — dieser Zugang ist keiner Person zugeordnet." };
   const alt = abschlussEintrag(m, monat);
   if (!alt || alt.abgeschlossen !== true)
-    return { status: 409, grund: alt && objekt(alt.korrektur) && alt.korrektur.offen === true
+    return { status: 409, grund: alt && laeuft(alt.korrektur)
       ? `Für ${monatText(monat)} läuft schon eine Korrekturrevision.` : `Der Monat ${monatText(monat)} ist nicht abgeschlossen.` };
   if (!objekt(alt.lohnexport))
     return { status: 409, code: "KORREKTUR_NICHT_NOETIG",
@@ -712,7 +715,7 @@ export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
   const monat = r && r.monat;
   if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
   const alt = abschlussEintrag(m, monat);
-  const kor = alt && objekt(alt.korrektur) && alt.korrektur.offen === true ? alt.korrektur : null;
+  const kor = alt && laeuft(alt.korrektur) ? alt.korrektur : null;
   if (!alt || alt.abgeschlossen === true || !kor)
     return { status: 409, grund: `Für ${monatText(monat)} läuft keine offene Korrekturrevision.` };
   const ich = wer && wer.personId !== undefined && wer.personId !== null ? String(wer.personId) : null;
@@ -722,10 +725,13 @@ export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
       grund: "Die Freigabe gibt eine zweite Person — nicht die, die die Korrektur begonnen hat." };
   /* Wer die Änderungen dieser Revision gemacht hat, gibt sie nicht frei: Autoren der Stempelkorrekturen seit Beginn und alle,
      die den Bestand seit Beginn gespeichert haben (korrekturAutorVermerken). */
-  if (kor.autorenVoll === true)
-    return { status: 403, code: "KORREKTUR_AUTOREN_VOLL",
-      grund: "An dieser Korrektur haben so viele Personen mitgewirkt, dass sich die Mitwirkenden nicht mehr eindeutig erfassen lassen — eine Freigabe ist nicht möglich. Bitte mit der Betriebsleitung klären." };
-  if (korrekturAutoren(m, monat, kor).has(ich))
+  /* Hat ein Zugang ohne erkennbare Person (Code, Betreiber) Änderungen gemacht ("?"), ist nicht auszuschließen, dass dieselbe
+     Person nun persönlich freigibt — fail-closed: keine Freigabe, bis die Korrektur verworfen und neu begonnen wird. */
+  const autorenMenge = korrekturAutoren(m, monat, kor);
+  if (autorenMenge.has("?"))
+    return { status: 403, code: "KORREKTUR_AUTOR_UNBEKANNT",
+      grund: "An dieser Korrektur hat ein Zugang ohne erkennbare Person mitgewirkt — eine Freigabe ist nicht möglich. Die Leitung kann die Korrektur verwerfen und neu beginnen." };
+  if (autorenMenge.has(ich))
     return { status: 403, code: "KORREKTUR_ZWEITE_PERSON",
       grund: "Die Freigabe gibt eine Person, die an dieser Korrektur nicht selbst mitgewirkt hat." };
   const verlauf = Array.isArray(alt.verlauf) ? alt.verlauf : [];
@@ -772,14 +778,7 @@ function korrekturAutoren(m, monat, kor) {
   return aus;
 }
 
-/** Die lohnrelevanten Felder eines Betriebs für den Monat (Ist, Stempel mit Korrekturen, Plan, Abwesenheiten, Parameter). */
-function lohnrelevantDesMonats(m, monat) {
-  const keyed = (f) => JSON.stringify(Object.entries(objekt(m && m[f]) ? m[f] : {}).filter(([k]) => imMonat(k, monat)).sort(([a], [b]) => (a < b ? -1 : 1)));
-  return JSON.stringify([keyed("erfassung"), keyed("einstempeln"), keyed("abweichungen"),
-    (m && m.abwesenheiten) ?? null, (m && m.zuschlaege) ?? null, (m && m.lohnarten) ?? null, (m && m.dienstarten) ?? null]);
-}
-
-/** Läuft für diesen Tag/Monat eine offene Korrekturrevision? */
+/** Läuft für diesen Tag/Monat eine offene Korrekturrevision? (Sperre für Selbstauskunft und Wiederherstellen.) */
 export function korrekturOffen(m, tagOderMonat) {
   const mon = monatVon(tagOderMonat);
   const e = mon ? abschlussEintrag(m, mon) : null;
@@ -789,30 +788,86 @@ export function korrekturOffen(m, tagOderMonat) {
 export function hatOffeneKorrektur(m) {
   return objekt(m) && objekt(m[ABSCHLUSS_FELD]) && Object.values(m[ABSCHLUSS_FELD]).some((e) => objekt(e) && objekt(e.korrektur) && e.korrektur.offen === true);
 }
+/** Gibt es eine laufende Korrektur (in Arbeit oder verworfen, noch nicht neu abgeschlossen)? Dann werden Mitwirkende erfasst. */
+export function hatLaufendeKorrektur(m) {
+  return objekt(m) && objekt(m[ABSCHLUSS_FELD]) && Object.values(m[ABSCHLUSS_FELD]).some((e) => objekt(e) && laeuft(e.korrektur));
+}
+/** Die Monate mit laufender Korrektur. */
+export function laufendeKorrekturMonate(m) {
+  return objekt(m) && objekt(m[ABSCHLUSS_FELD]) ? Object.entries(m[ABSCHLUSS_FELD]).filter(([, e]) => objekt(e) && laeuft(e.korrektur)).map(([mon]) => mon) : [];
+}
 
 /**
- * Zentral (bestand.mjs, bestandSchreiben — jeder Schreibweg): Ändert ein Schreibvorgang in einem Monat mit offener
- * Korrekturrevision etwas Lohnrelevantes (Vorher/Nachher-Vergleich je Monat), wird die handelnde Person als Mitwirkende
- * vermerkt — sie gibt die Differenz dann nicht frei. Ohne Änderung kein Vermerk. Unbekannter Handelnder (Zugang ohne
- * Person) ⇒ "?" (fail-closed: keine Freigabe möglich). Mehr als AUTOREN_MAX Mitwirkende ⇒ `autorenVoll` (Freigabe gesperrt).
- * @param {any} altM  gespeicherter Betrieb
- * @param {any} neuM  zu schreibender Betrieb
- * @returns {any} neuM, ggf. mit ergänzten Mitwirkenden
+ * Der Eingabe-Fingerabdruck eines Korrekturmonats: Prüfsumme des Ist-Standes, wie der Abschluss ihn einfrieren würde
+ * (istEinfrieren — dieselbe Rechnung, aus der auch die Differenz entsteht), und Prüfsumme der daraus folgenden Lohnzeilen
+ * (exportZeilenFuer). Ändert ein Schreibvorgang diesen Fingerabdruck, hat er die Differenz verändert. null = nicht berechenbar
+ * (dann gilt die Änderung als wirksam, fail-closed).
  */
-export function korrekturAutorVermerken(altM, neuM, personId) {
-  if (!objekt(neuM) || !hatOffeneKorrektur(neuM)) return neuM;
+export function korrekturFingerabdruck(m, monat) {
+  try {
+    const alt = abschlussEintrag(m, monat);
+    if (!alt) return null;
+    const mitIst = { ...m, [IST_EINGEFROREN]: { ...ohneMonat(m[IST_EINGEFROREN], monat), ...istEinfrieren(m, monat) } };
+    const abdruck = istAbdruck(mitIst, monat);
+    const eintrag = { ...alt, abgeschlossen: true, abdruck, stand: "fingerabdruck", schema: FREEZE_SCHEMA, revision: Number.isInteger(alt.revision) ? alt.revision : 1 };
+    const mandantNeu = { ...mitIst, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } };
+    return `${abdruck}:${datevZeilenAbdruck(exportZeilenFuer(mandantNeu, monat).zeilen)}`;
+  } catch { return null; }
+}
+
+/**
+ * Trägt die handelnde Person als Mitwirkende der laufenden Korrektur dieser Monate ein (zentral, bestand.mjs). Unbekannter
+ * Handelnder (Zugang ohne Person) ⇒ "?" (fail-closed, siehe korrekturFreigeben). Über AUTOREN_MAX hinaus wird nur noch
+ * `autorenVoll` gesetzt.
+ */
+export function korrekturMitwirkendeEintragen(neuM, personId, monate) {
+  if (!objekt(neuM) || !objekt(neuM[ABSCHLUSS_FELD]) || !monate.length) return neuM;
   const wer = personId === undefined || personId === null || String(personId) === "" ? "?" : String(personId);
   let neu = null;
-  for (const [mon, e] of Object.entries(neuM[ABSCHLUSS_FELD])) {
-    if (!objekt(e) || !objekt(e.korrektur) || e.korrektur.offen !== true) continue;
-    if (objekt(altM) && lohnrelevantDesMonats(altM, mon) === lohnrelevantDesMonats(neuM, mon)) continue;
+  for (const mon of monate) {
+    const e = neuM[ABSCHLUSS_FELD][mon];
+    if (!objekt(e) || !laeuft(e.korrektur)) continue;
     const a = Array.isArray(e.korrektur.autoren) ? e.korrektur.autoren : [];
     if (a.includes(wer)) continue;
     neu = neu || { ...neuM[ABSCHLUSS_FELD] };
-    neu[mon] = { ...e, korrektur: a.length >= AUTOREN_MAX ? { ...e.korrektur, autorenVoll: true }
-      : { ...e.korrektur, autoren: [...a, wer] } };
+    neu[mon] = { ...e, korrektur: a.length >= AUTOREN_MAX ? { ...e.korrektur, autorenVoll: true } : { ...e.korrektur, autoren: [...a, wer] } };
   }
   return neu ? { ...neuM, [ABSCHLUSS_FELD]: neu } : neuM;
+}
+
+/**
+ * Inhaltlicher Vergleich (Bibliothek/Tests): Hat der Wechsel altM → neuM den Fingerabdruck eines Monats mit laufender
+ * Korrektur verändert, wird die Person eingetragen.
+ */
+export function korrekturAutorVermerken(altM, neuM, personId) {
+  const monate = laufendeKorrekturMonate(neuM).filter((mon) => {
+    const a = objekt(altM) ? korrekturFingerabdruck(altM, mon) : null, b = korrekturFingerabdruck(neuM, mon);
+    return a === null || b === null || a !== b;
+  });
+  return korrekturMitwirkendeEintragen(neuM, personId, monate);
+}
+
+/**
+ * Eine Korrekturrevision verwerfen („hängende“ Korrektur, kein Ausweg sonst): nur Leitung (org.edit), mit Grund, ohne zweite
+ * Person. Die Sperren (Selbstauskunft, Wiederherstellen) fallen weg; die Freigabe ist ungültig; die Revision N bleibt abgelegt.
+ * Die Änderungen am Ist bleiben stehen (es gibt keinen Schnappschuss des Ist) — der Monat bleibt offen, und der nächste
+ * Abschluss prüft die Differenz zur exportierten Revision weiter (Freigabe durch eine unbeteiligte Person nötig).
+ */
+export function korrekturVerwerfen(m, r, wer, jetzt, id) {
+  const monat = r && r.monat;
+  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
+  if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
+    return { status: 422, grund: `Das Verwerfen braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };
+  const alt = abschlussEintrag(m, monat);
+  if (!alt || !objekt(alt.korrektur) || alt.korrektur.offen !== true || alt.abgeschlossen === true)
+    return { status: 409, grund: `Für ${monatText(monat)} läuft keine offene Korrekturrevision.` };
+  const verlauf = Array.isArray(alt.verlauf) ? alt.verlauf : [];
+  if (verlauf.length >= ABSCHLUSS_VERLAUF_MAX)
+    return { status: 409, grund: "Dieser Monat wurde so oft geändert, dass der Server keinen weiteren Schritt annimmt. Bitte mit der Betriebsleitung klären." };
+  const ereignis = { id, art: "korrektur-verwerfen", am: jetzt.toISOString(), wer: werForm(wer), grund, revision: alt.revision };
+  const eintrag = { ...alt, korrektur: { ...alt.korrektur, offen: false, verworfen: true, freigabe: null, verworfenAm: ereignis.am }, verlauf: [...verlauf, ereignis] };
+  return { ereignis, eintrag, mandant: { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
 }
 
 /** Die letzte Wiederöffnung eines (jetzt offenen) Monats — für den Vermerk an Korrekturen. */

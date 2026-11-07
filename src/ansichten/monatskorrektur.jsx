@@ -33,6 +33,11 @@ export function MonatsKorrektur({ sitz, ym, akt }) {
     const erg = await akt.monatKorrektur("korrektur-freigeben", ym, differenz ? { differenz: differenz.abdruck } : {});
     if (erg && erg.differenz && !erg.ok) setDifferenz(erg.differenz); else if (erg && erg.ok) setDifferenz(null);
   };
+  /* Ausweg bei hängender Korrektur (nur Leitung, Grund Pflicht, keine zweite Person): Sperren fallen, Revision N bleibt. */
+  const verwerfen = async () => {
+    const g = typeof window !== "undefined" ? window.prompt("Grund für das Verwerfen der Korrektur (mindestens 10 Zeichen)") : null;
+    if (g && g.trim().length >= 10) await akt.monatKorrektur("korrektur-verwerfen", ym, { grund: g.trim() });
+  };
   return (
     <div style={{ padding: "10px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -40,6 +45,7 @@ export function MonatsKorrektur({ sitz, ym, akt }) {
         <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>Revision {revision}{revisionen.length ? ` · ${revisionen.length} abgelegt` : ""}</span>
         {exportiert && !offen && <Btn size="sm" onClick={() => setOffen(true)}>Korrektur beginnen</Btn>}
         {laeuft && <span style={{ fontSize: 12.5, color: C.warn }}>Korrektur läuft seit {zeitpunktText(kor.am)} — {KORREKTUR_ANLAESSE[kor.anlass] || kor.anlass}</span>}
+        {laeuft && <Btn size="sm" onClick={verwerfen}>Korrektur verwerfen</Btn>}
         {laeuft && <Btn size="sm" onClick={freigeben}>{differenz ? "Differenz freigeben" : "Differenz ansehen / freigeben"}</Btn>}
       </div>
       {laeuft && kor.freigabe && <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
