@@ -800,7 +800,14 @@ Kopie), führt danach bei gestopptem Dienst aus:
 **Pflichtschritt nach JEDEM Rollback außerhalb des Werkzeugs** — Snapshot der VM, des
 Volumes oder des Dateisystems, `data/` umbenennen oder kopieren, der Rückweg „Geht etwas
 schief" oben: bei gestopptem Dienst `schluessel-erneuern` wie oben, erst danach `up -d`.
-Das Werkzeug bricht ab, solange ein Server antwortet.
+Vorher mit `docker compose ps` prüfen, dass der Dienst gestoppt ist: Im eigenen Container
+von `docker compose run` sieht die Serverprobe des Werkzeugs nur ihren eigenen Loopback und
+findet den laufenden Dienst nicht.
+
+**Gewollt:** Fehlt nur die Epochendatei bei vorhandener Bindung (Mount `zustand/` fehlt,
+`CENTRIC_ZUSTAND` geändert, Datei gelöscht) oder ist sie beschädigt, beginnt der Server eine
+neue Epoche und widerruft sofort und endgültig alle Sicherungsschlüssel. Eine Leitung legt
+danach neue an.
 
 **Lücke, ehrlich benannt:** Bringt ein Snapshot `data/` **und** `zustand/` gemeinsam zurück
 (VM- oder Volume-Snapshot über beide), passen Epoche und Bindung zueinander; das ist technisch

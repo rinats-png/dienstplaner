@@ -246,7 +246,9 @@ elif [[ ! -d "$ZUSTAND_PFAD" ]]; then
     chown 1000:1000 "$ZUSTAND_PFAD" || abbruch 4 "Zustandsverzeichnis $ZUSTAND_PFAD lässt sich nicht uid 1000 übergeben"
   fi
 fi
-if [[ -d "$ZUSTAND_PFAD" && ! -w "$ZUSTAND_PFAD" ]]; then
+if [[ -d "$ZUSTAND_PFAD" && "$(id -u)" -eq 0 && "$(stat -c %u "$ZUSTAND_PFAD" 2>/dev/null)" != "1000" ]]; then
+  echo "WARNUNG: Zustandsverzeichnis $ZUSTAND_PFAD gehört nicht uid 1000 — der Dienst kann es nicht schreiben, Sicherungsschlüssel gelten nicht (chown 1000:1000)." >&2
+elif [[ -d "$ZUSTAND_PFAD" && ! -w "$ZUSTAND_PFAD" ]]; then
   echo "WARNUNG: Zustandsverzeichnis $ZUSTAND_PFAD nicht schreibbar — Sicherungsschlüssel gelten nicht (uid 1000 braucht Schreibrecht)." >&2
 fi
 frei_bytes="$(df -P -B1 "$SICHERUNGEN" 2>/dev/null | awk 'NR == 2 { print $4 }')" || frei_bytes=""

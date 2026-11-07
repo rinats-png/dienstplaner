@@ -331,11 +331,16 @@ describe("W2: Bindung beim Beenden und im Minutentakt", () => {
     expect(s).toMatch(/setInterval\(bindungTakt, 60_000\)/);
   });
 
-  it.skipIf(process.platform === "win32")("Kopie im laufenden Betrieb, Server mit SIGTERM beendet, Kopie zurück: alter Schlüssel gilt nie", async () => {
+  /* Ablauf wie im Betrieb: Server läuft (seine Start-Erneuerung ist schon geschehen), DANN die heiße Kopie, dann
+     Beenden, dann Zurückspielen. Mit SIGTERM erneuert beenden() die Bindung → Kopie veraltet → 401. Gegenprobe SIGKILL
+     (kein beenden()): Kopie passt → 200. So belegt der Test den Beenden-Pfad, nicht die Erneuerung beim Start.
+     Nur unter Linux/macOS: Unter Windows beendet kill() jeden Prozess hart, auch mit „SIGTERM". */
+  async function heisseKopieUndBeenden(was, signal) {
     const { spawn } = await import("node:child_process");
-    const b = await leitungMitSchluessel("w2-sigterm");
-    const kopie = path.join(ablagen, `heiss${++nr}`);
-    await cp(Z.wurzel, kopie, { recursive: true });
+    const b = await leitungMitSchluessel(was);
+    const bindung = async () => (await Z.ablageArbeit().get("skbindung", { type: "json" }))?.bindung;
+    const vorStart = await bindung();
+    expect(vorStart, "Bindung besteht schon (Schlüssel angelegt)").toBeTruthy();
     const statik = await mkdtemp(path.join(tmpdir(), "centric-skwieder-statik-"));
     await writeFile(path.join(statik, "index.html"), "<!doctype html><title>x</title>");
     const port = 20000 + Math.floor(Math.random() * 20000);
@@ -343,19 +348,34 @@ describe("W2: Bindung beim Beenden und im Minutentakt", () => {
       env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: Z.wurzel,
         CENTRIC_ADMIN: "testgeheim", CENTRIC_AUFRAEUMEN: "aus", CENTRIC_UEBERWACHUNG: "aus", CENTRIC_ZUSTELL_TAKT: "aus" },
       stdio: "ignore" });
-    const ende = new Promise((r) => kind.once("exit", r));
-    let bereit = false;
-    for (let i = 0; i < 100 && !bereit; i++) {
-      bereit = await fetch(`http://127.0.0.1:${port}/gesund`).then((r) => r.status > 0, () => false);
-      if (!bereit) await new Promise((r) => setTimeout(r, 100));
+    const beendet = new Promise((r) => kind.once("exit", r));
+    try {
+      let bereit = false;
+      for (let i = 0; i < 150 && !bereit; i++) {
+        const antwortet = await fetch(`http://127.0.0.1:${port}/gesund`).then((r) => r.status > 0, () => false);
+        bereit = antwortet && (await bindung()) !== vorStart;          // Server oben UND Start-Erneuerung erfolgt
+        if (!bereit) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(bereit, "Server kam hoch und hat die Bindung beim Start erneuert").toBe(true);
+      const kopie = path.join(ablagen, `heiss${++nr}`);
+      await cp(Z.wurzel, kopie, { recursive: true });                  // heiße Kopie NACH dem Start
+      kind.kill(signal);
+      await beendet;
+      for (const n of await readdir(Z.wurzel)) await rm(path.join(Z.wurzel, n), { recursive: true, force: true });
+      await cp(kopie, Z.wurzel, { recursive: true });
+      return (await vollausgabe(b.sk)).status;
+    } finally {
+      if (kind.exitCode === null && kind.signalCode === null) kind.kill("SIGKILL");
+      await rm(statik, { recursive: true, force: true });
     }
-    expect(bereit, "Server kam hoch").toBe(true);
-    kind.kill("SIGTERM");
-    await ende;
-    await rm(statik, { recursive: true, force: true });
-    for (const n of await readdir(Z.wurzel)) await rm(path.join(Z.wurzel, n), { recursive: true, force: true });
-    await cp(kopie, Z.wurzel, { recursive: true });
-    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }
+
+  it.skipIf(process.platform === "win32")("heiße Kopie nach dem Start, SIGTERM, Kopie zurück: alter Schlüssel gilt nie", async () => {
+    expect(await heisseKopieUndBeenden("w2-sigterm", "SIGTERM")).toBe(401);
+  }, LIMIT);
+
+  it.skipIf(process.platform === "win32")("Gegenprobe SIGKILL (kein beenden()): dieselbe Kopie passt noch — Restrisiko, dokumentiert", async () => {
+    expect(await heisseKopieUndBeenden("w2-sigkill", "SIGKILL")).toBe(200);
   }, LIMIT);
 });
 

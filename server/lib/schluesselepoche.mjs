@@ -139,6 +139,9 @@ async function epocheDateiSchreiben(verz, inhalt) {
     const fh = await open(tmp, "wx", 0o600);
     try { await fh.writeFile(JSON.stringify(inhalt)); await fh.sync(); } finally { await fh.close(); }
     try { await rename(tmp, ziel); } catch (e) { await rm(tmp, { force: true }); throw e; }
+    /* Das Umbenennen selbst auf die Platte (wie ablage.mjs): sonst könnte nach einem Stromausfall die alte Epoche
+       zurückkehren. Nicht jedes Dateisystem erlaubt das Öffnen eines Verzeichnisses (Windows): dann ohne. */
+    try { const dh = await open(verz, "r"); try { await dh.sync(); } finally { await dh.close(); } } catch { /* s. o. */ }
   } catch (e) {
     throw new EpochenFehler(`Schlüsselepoche nicht schreibbar (${/** @type {any} */ (e).code || e}).`);
   }
