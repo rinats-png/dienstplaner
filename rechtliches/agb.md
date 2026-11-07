@@ -66,7 +66,7 @@
 
 ## § 6 Verfügbarkeit, Wartung, Wiederherstellung
 
-(1) Eine Verfügbarkeitszusage gilt nur, wenn sie im gebuchten Leistungsblatt oder in einer gesonderten Service-Level-Vereinbarung festgelegt ist. [ZU_KLAEREN: Soll es eine Zusage geben (bisher 99 %)? Falls ja, müssen Messpunkt, Messperiode (z. B. Kalendermonat), Berechnung, Wartungsfenster, Ausnahmen, Rechtsfolgen und ein Monitoring-Nachweis festgelegt werden. Die frühere Formulierung „99 % im Monatsmittel, gemessen am Betriebsjahr“ ist in sich widersprüchlich und wird nicht übernommen.]
+(1) Der Anbieter betreibt den Dienst nach dem Stand der Technik. Eine bestimmte Verfügbarkeit wird nicht garantiert. Der Kunde kann Störungen melden; der Anbieter bemüht sich in angemessener Weise um Behebung. [ZU_KLAEREN: AGB-rechtliche Prüfung dieser Klausel (Transparenz, Angemessenheit, Verhältnis zu Haftung und Gewährleistung). Betreiberentscheidung 2026-11-07: vorläufig keine vertraglich garantierte Verfügbarkeit; ob später eine Zusage mit Messpunkt, Messperiode, Wartungsfenster, Ausnahmen und Rechtsfolgen vereinbart werden soll, ist offen.]
 
 (2) Bei Störungen informiert der Anbieter im Rahmen seines Störungsverfahrens. Wartungsarbeiten werden mit angemessener Vorlaufzeit angekündigt, soweit kein dringender Sicherheitsanlass vorliegt. [ZU_KLAEREN: Wartungsfenster und Vorlauf.]
 

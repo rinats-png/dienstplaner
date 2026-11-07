@@ -133,3 +133,15 @@ describe("Entwurfsstatus bleibt", () => {
     }
   });
 });
+
+describe("SLA: keine garantierte Verfügbarkeit (Betreiberentscheidung 2026-11-07)", () => {
+  it("kein „99 %“-Verfügbarkeitsversprechen in rechtliches/; AGB § 6 (1) nennt keine garantierte Verfügbarkeit", () => {
+    for (const [name, t] of Object.entries(texte)) {
+      expect(t, name).not.toMatch(/99\s*(?:,\d+\s*)?(?:%|\s?Prozent)/);
+    }
+    const agb = texte["agb.md"];
+    const abs = agb.slice(agb.indexOf("## § 6"), agb.indexOf("## § 7"));
+    expect(abs).toMatch(/Eine bestimmte Verfügbarkeit wird nicht garantiert/);
+    expect(abs).toContain("[ZU_KLAEREN");
+  });
+});
