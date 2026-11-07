@@ -672,8 +672,19 @@ jobs:
         run: "$RUNNER_TEMP/container-neu.sh"
       - name: Gate-Proben im Bild (docker exec)
         run: |
-          docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs
-          docker exec centric-pruefung node /app/werkzeug/staging-geo.mjs
+          # WP-32d: Der Verwalterschlüssel braucht in production den zweiten Faktor. Wie ein Betreiber richtet
+          # der Vorlauf ihn über die API ein (genau einmal je Server) und stellt den Nachweis aus; den reichen
+          # wir jeder Probe als CENTRIC_ZWEIFAKTOR_NACHWEIS mit (ein zweites Einrichten gäbe es nicht).
+          NACHWEIS="$(docker exec centric-pruefung node --input-type=module -e '
+            import "/app/werkzeug/betreiber-faktor-vorlauf.mjs";
+            const a = await fetch("http://127.0.0.1:3000/einrichten/uebersicht?bestand=ppg-gate-a", { headers: { authorization: "Bearer " + process.env.CENTRIC_ADMIN } });
+            if (a.status !== 200) { console.error("uebersicht " + a.status); process.exit(1); }
+            const n = globalThis.__verwalterNachweis(process.env.CENTRIC_ADMIN);
+            if (!n) { console.error("kein Nachweis"); process.exit(1); }
+            console.log(n);' | tail -n 1)"
+          echo "::add-mask::$NACHWEIS"
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS="$NACHWEIS" centric-pruefung node /app/werkzeug/staging-smoke.mjs
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS="$NACHWEIS" centric-pruefung node /app/werkzeug/staging-geo.mjs
           docker exec centric-pruefung node /app/werkzeug/staging-aufraeumen.mjs
           # Kein untergeschobenes Ziel; im Bild nur die drei Proben aus werkzeug/.
           if docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs http://192.0.2.1:3000; then

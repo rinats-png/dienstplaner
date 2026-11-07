@@ -93,13 +93,18 @@ if (echtes && !globalThis.__betreiberFaktorVorlauf) {
       /* Nur der Verwalterschlüssel der Prüfung (CENTRIC_ADMIN, wenn bekannt) — ein Betreiber-Token als Bearer ist keiner. */
       if (!verwalter.has(schluessel) && istVerwalterSchluessel(schluessel)) {
         verwalter.set(schluessel, null);
-        await einrichtenVerwalter(adresse, opts, schluessel);
+        /* Ein bereits ausgestellter Nachweis (CENTRIC_ZWEIFAKTOR_NACHWEIS, wie bei zugaenge-anlegen.sh) hat Vorrang:
+           Ist der Faktor des Schlüssels schon eingerichtet (zweite Probe am selben Server), lässt er sich nicht noch
+           einmal einrichten — man weist ihn mit dem Nachweis vor. */
+        const vorgelegt = process.env.CENTRIC_ZWEIFAKTOR_NACHWEIS;
+        if (vorgelegt) verwalter.set(schluessel, { geheimnis: null, nachweis: vorgelegt, letzter: 0 });
+        else await einrichtenVerwalter(adresse, opts, schluessel);
       }
       const bekannt = verwalter.get(schluessel);
       /* Verwalterkonten anlegen/sperren verlangt einen frischen Code (kein Nachweis): nächster ungenutzter Schritt
          im erlaubten Fenster; ist keiner frei, bis zum nächsten Schritt warten (höchstens 30 s). */
       const methode = String((opts && opts.method) || "GET").toUpperCase();
-      if (bekannt && pfadTeil === "/einrichten/verwalter" && (methode === "POST" || methode === "DELETE") && typeof opts.body === "string") {
+      if (bekannt && bekannt.geheimnis && pfadTeil === "/einrichten/verwalter" && (methode === "POST" || methode === "DELETE") && typeof opts.body === "string") {
         let schritt = Math.max(bekannt.letzter + 1, schrittZu(Date.now()) - 1);
         while (schritt > schrittZu(Date.now()) + 1) await new Promise((r) => setTimeout(r, 1000));
         bekannt.letzter = schritt;
