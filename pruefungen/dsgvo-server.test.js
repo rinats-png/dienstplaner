@@ -277,7 +277,7 @@ describe("Löschlauf nach Aufbewahrungsfristen auf dem Server", () => {
     await laden().setJSON(`sicherung:${R}:${marke}`, (await B.bestandLesen(laden(), R)).bestand,
       { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Leitung" } });
     await D.datenschutzLauf(laden(), { jetzt: new Date(), spur: false, modus: "an" });
-    const t = await sitzung(R, "l1", "leitung", "m1");
+    const t = await sitzung(R, null, "leitung", "m1");
     const g = await anfrage("/api/bestand", { token: t });
     expect(g.status).toBe(200);
     /* Seit N-3 löscht das Zurückspielen nur, wenn der Lauf auf „an" steht. */

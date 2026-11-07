@@ -128,6 +128,7 @@ try {
 } finally {
   await beenden(server);
   await rm(daten, { recursive: true, force: true });
+  await rm(`${daten}-zustand`, { recursive: true, force: true });   // Schlüsselepoche (schluesselepoche.mjs)
   await rm(statik, { recursive: true, force: true });
 }
 process.exit(status);

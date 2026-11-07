@@ -81,6 +81,8 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     expect(ohneZusatz(dateienMit(/centric-sitzungen|sitzungsSpeicher/))).toEqual([
       "server.mjs",                              // Verdrahtung des Löschlaufs
       "server/funktionen/daten.mjs",             // sk:-Schlüssel und das Beenden gesperrter Sitzungen
+      "server/lib/schluesselepoche.mjs",         // Bindung skbindung (Wiederherstellungsschutz der sk:)
+      "server/lib/sicherungsschluessel.mjs",     // Widerruf der sk:-Schlüssel mit Vermerk (SI-P1)
       "server/lib/sitzungen.mjs",                // die Primitive
     ]);
   });
@@ -99,9 +101,9 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     const as = ohneZusatz(dateienMit(/[`"']as:/));
     /* t: — Primitive und Raumlöschung; nie in einem Endpunkt. */
     expect(t, "t:").toEqual(["server/lib/raumloeschung.mjs", "server/lib/sitzungen.mjs"]);
-    /* sk: — Primitive, daten.mjs (Sicherungsschlüssel verwalten), Raumlöschung. */
+    /* sk: — Primitive, daten.mjs (Sicherungsschlüssel verwalten), Raumlöschung, Widerruf (SI-P1). */
     expect(sk, "sk:").toEqual(["server/funktionen/daten.mjs", "server/lib/raumloeschung.mjs",
-      "server/lib/sitzungen.mjs"]);
+      "server/lib/sicherungsschluessel.mjs", "server/lib/sitzungen.mjs"]);
     expect(as, "as:").toEqual(["server/lib/accountsitzungen.mjs"]);
   });
 });

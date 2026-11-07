@@ -5,6 +5,7 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesen, bestandLesenStreng, voruebergehend } from "../lib/bestand.mjs";
 import { eigenerMandant, sitzungsRolleBekannt, rolleBekannt } from "../lib/rechte.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
+import { aktivePerson } from "../lib/personengueltig.mjs";
 import { feedTermine } from "../lib/kalenderfeed.mjs";
 import { feedHerkunftAus, feedHerkunftGilt } from "../lib/feedherkunft.mjs";
 
@@ -123,12 +124,9 @@ export function feedPersonGilt(bestand, eintrag, heute = heuteBerlin()) {
   if (!bestand || !Array.isArray(bestand.mandanten) || !eintrag || !eintrag.mandantId) return false;
   const m = bestand.mandanten.filter((x) => x && x.id === eintrag.mandantId);
   if (m.length !== 1 || !Array.isArray(m[0].personen)) return false;
-  const p = m[0].personen.filter((x) => x && String(x.id) === String(eintrag.personId));
-  if (p.length !== 1) return false;
-  const person = p[0];
-  if (person.anonym) return false;
-  if (person.status !== undefined && person.status !== null && person.status !== "aktiv") return false;
-  if (person.austritt && String(person.austritt) < heute) return false;
+  /* Die Regel „gilt die Person im Betrieb noch" steht in lib/personengueltig.mjs (SI-P2): Feed und Sitzung fragen dieselbe. */
+  const person = aktivePerson(m[0], eintrag.personId, heute);
+  if (!person) return false;
   const rolle = person.rolle ?? "mitarbeiter";
   return typeof rolle === "string" && rolleBekannt(rolle) && rolle !== "betreiber" && rolle !== "kunde";
 }

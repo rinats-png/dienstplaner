@@ -53,6 +53,7 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `PORT` | Port im Container | `3000` | ja |
 | `CENTRIC_DATEN` | Wurzel der Ablage | `/data` | ja |
 | `CENTRIC_ABLAGE` | nur `dateien` zulässig | `dateien` | ja |
+| `CENTRIC_ZUSTAND` | Schlüsselepoche der Sicherungsschlüssel (Wiederherstellungsschutz), AUSSERHALB von `CENTRIC_DATEN`, nie sichern oder zurückspielen; nicht nutzbar → keine Sicherungsschlüssel (BEREITSTELLUNG 5.4) | `<CENTRIC_DATEN>-zustand` (compose: `/zustand`) | ja |
 | `CENTRIC_BASIS` | öffentliche Adresse; Herkunftsprüfung, Links in Mails, Cookie | Adresse der Anwendung | ja |
 | `CENTRIC_PFEFFER` | Pfeffer für Code- und Konten-Prüfsummen, Schlüssel für Zwei-Faktor-Geheimnisse; **nie ändern** | — (Pflicht) | ja |
 | `CENTRIC_VERTRAUTE_PROXYS` | wem X-Forwarded-For geglaubt wird: **nur Caddys feste Adresse** (das Subnetz ist nicht empfohlen); leer = niemandem, und `deploy.sh` liefert nicht aus; ungültig = kein Start | leer | ja |
@@ -173,7 +174,7 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
 | `CENTRIC_ADMIN` | nur vorübergehend in der `.env` | nach dem ersten Verwalterkonto entfernen |
 | Betreibercodes, Zugangscodes | erscheinen genau einmal bei der Anlage | zurückziehen in der Konsole bzw. per Leitung; Sitzungen enden mit |
 | Zwei-Faktor-Wiederherstellungscodes | offline bei der Person | jeder gilt einmal |
-| Sicherungsschlüssel der Leitung (Vollausgabe) | bei der Leitung | Widerruf über die vollständige Kennung |
+| Sicherungsschlüssel der Leitung (Vollausgabe) | bei der Leitung | Widerruf über die vollständige Kennung; endet endgültig (Widerrufsvermerk `skw:`, kein Wiederaufleben), wenn die Person, die ihn angelegt hat, gesperrt wird, ausscheidet, herabgestuft wird, ihr Passwort ändert oder die Kontosicherheit zurückgesetzt wird (SI-P1; das Skript sieht 401 mit Grund, bei `curl -f` einen Fehlercode). Standard 90 Tage, höchstens 365; höchstens fünf aktive je Betrieb. Schlüssel aus der Zeit davor tragen keinen Ersteller und gelten nicht mehr: neu anlegen |
 | SSH-Schlüssel der Auslieferung, Alarm-Webhook | GitHub-Umgebung bzw. `.env` | [DEPLOY-AUTOMATISIERUNG.md](DEPLOY-AUTOMATISIERUNG.md) §3 |
 
 Der Verlust eines Codes ist kein Notfall: zurückziehen, neu anlegen. Der Verlust des Pfeffers ist einer:

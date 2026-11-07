@@ -77,7 +77,7 @@ export async function aufbauen(name) {
   Z.ablageKonto = () => getStore({ name: "centric-accountsitzungen", consistency: "strong" });
   Z.ablageTakt = () => getStore({ name: "centric-takt", consistency: "strong" });
   Z.ablageSpur = () => getStore({ name: "centric-spur" });
-  Z.abbauen = () => rm(wurzel, { recursive: true, force: true });
+  Z.abbauen = async () => { await rm(wurzel, { recursive: true, force: true }); await rm(`${wurzel}-zustand`, { recursive: true, force: true }); };
 
   /** Die Bremse lebt in der Ablage und im Prozessspeicher: leeren. */
   Z.taktLeeren = async () => {

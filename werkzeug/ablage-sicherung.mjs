@@ -9,7 +9,8 @@
 
      node werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sicherungen
      node werkzeug/ablage-sicherung.mjs pruefen --sicherung /sicherungen/centric-sicherung-…
-     node werkzeug/ablage-sicherung.mjs wiederherstellen --sicherung … --ziel /data [--ersetzen]
+     node werkzeug/ablage-sicherung.mjs wiederherstellen --sicherung … --ziel /data [--ersetzen] [--zustand <Ordner>]
+     node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner>
 
    ---------------------------------------------------------------------------
    Was gesichert wird — und was nicht
@@ -84,16 +85,30 @@
    Wer sicher gehen will, stoppt den Server vorher — dann gibt es nie einen
    zweiten Anlauf.
 
+   Sicherungsschlüssel nach einer Wiederherstellung (Betreiberentscheidung
+   2026-11-07): Nach jeder vollständigen Wiederherstellung gilt KEIN früherer
+   Sicherungsschlüssel mehr. Die Autorität dafür liegt außerhalb der Ablage
+   (server/lib/schluesselepoche.mjs): die Schlüsselepoche im Zustandsverzeichnis
+   (CENTRIC_ZUSTAND) und ihr Gegenstück `skbindung` in centric-sitzungen, das
+   NIE in eine Sicherung kommt. Fehlt es nach dem Zurückspielen, beginnt der
+   Server eine neue Epoche. Kennt dieses Werkzeug das Zustandsverzeichnis
+   (--zustand oder CENTRIC_ZUSTAND), erneuert es die Epoche zusätzlich selbst,
+   BEVOR es die Daten tauscht; misslingt das, wird nichts angefasst. Eine
+   Sicherung, die `skbindung` oder sonst etwas Flüchtiges enthält, wird
+   abgelehnt. Wer ein altes /data per Verzeichniskopie zurückspielt (ohne
+   dieses Werkzeug), ruft danach `schluessel-erneuern` auf.
+
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
    mit --ersetzen angefasst, und auch dann nichts gelöscht: Der alte Inhalt
    wandert nach `.vor-wiederherstellung-<UTC>/` im Ziel.
    ========================================================================== */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { BINDUNG_SCHLUESSEL, epocheDateiErneuern, ueberlappen } from "../server/lib/schluesselepoche.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -106,7 +121,7 @@ const FORMAT = 1;
  */
 export const STORES = {
   "centric":                  { klasse: "A", ohne: ["token:", "tokencode:", "zweifaktor-nachweis:"] },
-  "centric-sitzungen":        { klasse: "B", nur: ["sk:"] },
+  "centric-sitzungen":        { klasse: "B", nur: ["sk:", "skw:", "skraum:"] },
   "centric-spur":             { klasse: "B" },
   "centric-accountsitzungen": { klasse: "C" },
   "centric-takt":             { klasse: "C" },
@@ -499,17 +514,70 @@ export async function wiederherstellVermerkeLesen(wurzel) {
 }
 
 /**
+ * Gehört diese Datei der Sicherung nach STORES überhaupt hinein? Sonst ist die Sicherung fremd oder manipuliert.
+ * Diese Prüfung ist nur so streng wie STORES: Die Positivliste von centric-sitzungen darf nie Flüchtiges aufnehmen
+ * (t:, ta:, skbindung) — sonst nähme auch das Zurückspielen es an (Test: sicherungsschluessel-wiederherstellung).
+ * STORES darf nur strenger werden; wird es strenger, bleiben ältere Sicherungen wegen des nicht geprüften
+ * `ohne` (unten) zurückspielbar.
+ */
+export function gehoertInSicherung(/** @type {string} */ pfad) {
+  const [store, datei] = pfad.split("/");
+  const regel = /** @type {Record<string, any>} */ (STORES)[store];
+  if (!regel || regel.klasse === "C") return false;
+  let schluessel;
+  try { schluessel = decodeURIComponent(datei.slice(0, -5)); } catch { return false; }
+  if (store === "centric-sitzungen" && schluessel === BINDUNG_SCHLUESSEL) return false;
+  /* `ohne` wird hier nicht geprüft: Ältere Sicherungen enthielten Präfixe, die erst später ausgeschlossen wurden
+     (z. B. zweifaktor-nachweis:), und sollen sich weiter zurückspielen lassen. Die Sitzungsablage dagegen nur mit
+     ihrer festen Positivliste. */
+  return !regel.nur || regel.nur.some((/** @type {string} */ p) => schluessel.startsWith(p));
+}
+
+/** Das Zustandsverzeichnis darf nicht in der Ablage liegen (es würde sonst mit ihr gesichert und zurückgespielt).
+    Verglichen werden die echten Pfade (Links und Junctions aufgelöst). */
+function zustandOrtPruefen(/** @type {string} */ zustand, /** @type {string} */ ziel) {
+  const z = path.resolve(zustand);
+  if (ueberlappen(z, ziel))
+    throw new SicherungsFehler(`Das Zustandsverzeichnis ${z} liegt in der Ablage ${ziel} oder umgekehrt. Nichts wurde angefasst.`, 2);
+  return z;
+}
+
+/**
+ * Nach dem Zurückspielen eines alten /data ohne dieses Werkzeug (Verzeichniskopie): neue Schlüsselepoche, damit kein
+ * früherer Sicherungsschlüssel mehr gilt.
+ * Wie beim Wiederherstellen muss der Server stehen: Ein laufender Server schriebe sofort eine Bindung zur alten Ablage.
+ * @param {{zustand: string, daten?: string, serverUrl?: string, serverPruefen?: boolean}} o
+ */
+export async function schluesselErneuern({ zustand, daten, serverUrl, serverPruefen = true }) {
+  const z = zustandOrtPruefen(zustand, path.resolve(daten || process.env.CENTRIC_DATEN || "/data"));
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url))
+      throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen, dann die Schlüsselepoche erneuern. Nichts wurde angefasst.`);
+  }
+  try { return await epocheDateiErneuern(z, "von-hand-nach-wiederherstellung"); }
+  catch (e) { throw new SicherungsFehler(`Schlüsselepoche nicht erneuert: ${/** @type {Error} */ (e).message}`); }
+}
+
+/**
  * @param {{sicherung: string, ziel: string, ersetzen?: boolean, serverUrl?: string,
- *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void}} o
+ *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void, zustand?: (string|null)}} o
+ *   `zustand`: Zustandsverzeichnis (CENTRIC_ZUSTAND) — dann wird die Schlüsselepoche vor dem Tausch erneuert.
  */
 export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serverUrl,
-  serverPruefen = true, jetzt = new Date(), meldung = () => {} }) {
+  serverPruefen = true, jetzt = new Date(), meldung = () => {}, zustand = null }) {
   sicherung = path.resolve(sicherung); ziel = path.resolve(ziel);
+  const zustandsVerz = zustand ? zustandOrtPruefen(zustand, ziel) : null;
 
   const probe = await pruefen(sicherung);
   if (!probe.ok)
     throw new SicherungsFehler(`Die Sicherung ist nicht in Ordnung, nichts wurde angefasst:\n  ${probe.fehler.join("\n  ")}`);
   const manifest = probe.manifest;
+  /* Nichts Flüchtiges zurückspielen, vor allem nicht die Schlüsselbindung: Sie ist das, woran der Server eine
+     Wiederherstellung erkennt. */
+  const fremd = manifest.dateien.map((/** @type {any} */ d) => d.pfad).filter((/** @type {string} */ p) => !gehoertInSicherung(p));
+  if (fremd.length)
+    throw new SicherungsFehler(`Die Sicherung enthält Dateien, die nie gesichert werden (${fremd.slice(0, 3).join(", ")}). Nichts wurde angefasst.`);
 
   if (manifest.pfefferPruefwert) {
     const jetztWert = pfefferPruefwert(process.env.CENTRIC_PFEFFER);
@@ -535,10 +603,14 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
      bricht ab, bevor etwas angefasst ist (fail-closed). */
   const fruehere = await wiederherstellVermerkeLesen(ziel);
 
+  /* Eindeutige Namen für Stufe und Beiseite-Ordner: Zeit plus Zufall. Vorher nur die Sekunde — zwei Wiederherstellungen
+     derselben Wurzel in derselben Sekunde benannten in einen schon gefüllten Beiseite-Ordner um (Linux: ENOTEMPTY,
+     halb verschoben). Angelegt wird ohne `recursive`: Gibt es den Namen schon, bricht es ab, statt etwas zu überschreiben. */
+  const kennung = `${stempel(jetzt)}-${randomBytes(4).toString("hex")}`;
+
   // 1. neben dem Ziel aufbauen und nachprüfen — noch ist nichts angefasst
-  const stufe = path.join(ziel, `.wiederherstellung-${stempel(jetzt)}`);
-  await rm(stufe, { recursive: true, force: true });
-  await mkdir(stufe, { recursive: true, mode: 0o700 });
+  const stufe = path.join(ziel, `.wiederherstellung-${kennung}`);
+  await mkdir(stufe, { mode: 0o700 });
   try {
     for (const s of Object.keys(manifest.stores))
       await mkdir(path.join(stufe, s), { recursive: true, mode: 0o700 });
@@ -556,14 +628,42 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
     throw e;
   }
 
+  /* 1b. Schlüsselepoche erneuern, BEVOR die alten Daten an ihren Platz kommen: Misslingt das, bleibt alles, wie es war.
+     Ohne Zustandsverzeichnis erkennt der Server die Wiederherstellung selbst (skbindung fehlt in jeder Sicherung). */
+  if (zustandsVerz) {
+    try { await epocheDateiErneuern(zustandsVerz, "wiederherstellung"); }
+    catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw new SicherungsFehler(`Schlüsselepoche nicht erneuert (${/** @type {Error} */ (e).message}). Nichts wurde angefasst.`);
+    }
+    meldung("Schlüsselepoche erneuert: Kein früherer Sicherungsschlüssel gilt mehr.");
+  } else {
+    meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Der Server beginnt beim ersten Gebrauch eines Schlüssels eine neue Epoche.");
+  }
+
   // 2. alten Inhalt beiseite, neuen an seinen Platz — Umbenennen, nichts löschen
   let beiseite = null;
-  if (vorhanden.length) {
-    beiseite = path.join(ziel, `.vor-wiederherstellung-${stempel(jetzt)}`);
-    await mkdir(beiseite, { recursive: true, mode: 0o700 });
-    for (const n of vorhanden) await rename(path.join(ziel, n), path.join(beiseite, n));
+  /** @type {string[]} */ const verschoben = [];
+  /** @type {string[]} */ const eingesetzt = [];
+  try {
+    if (vorhanden.length) {
+      beiseite = path.join(ziel, `.vor-wiederherstellung-${kennung}`);
+      await mkdir(beiseite, { mode: 0o700 });                        // neu und leer, nie ein vorhandener
+      for (const n of vorhanden) { await rename(path.join(ziel, n), path.join(beiseite, n)); verschoben.push(n); }
+    }
+    for (const s of Object.keys(manifest.stores)) { await rename(path.join(stufe, s), path.join(ziel, s)); eingesetzt.push(s); }
+  } catch (e) {
+    /* Zurückrollen: Die Ablage soll aussehen wie vorher. (Eine schon erneuerte Schlüsselepoche bleibt — sichere Richtung.) */
+    const rest = [];
+    for (const s of eingesetzt.reverse()) await rename(path.join(ziel, s), path.join(stufe, s)).catch(() => rest.push(s));
+    for (const n of verschoben.reverse())
+      await rename(path.join(/** @type {string} */ (beiseite), n), path.join(ziel, n)).catch(() => rest.push(n));
+    await rm(stufe, { recursive: true, force: true }).catch(() => {});
+    if (beiseite && !rest.length) await rm(beiseite, { recursive: true, force: true }).catch(() => {});
+    throw new SicherungsFehler(rest.length
+      ? `Tausch misslungen (${/** @type {Error} */ (e).message}); NICHT vollständig zurückgerollt: ${rest.join(", ")} — von Hand prüfen (${beiseite}).`
+      : `Tausch misslungen (${/** @type {Error} */ (e).message}); zurückgerollt, die Ablage ist unverändert.`);
   }
-  for (const s of Object.keys(manifest.stores)) await rename(path.join(stufe, s), path.join(ziel, s));
   await rm(stufe, { recursive: true, force: true });
   /* Vermerk der Wiederherstellung (WP-45b): Ab hier zählen die Standnummern
      ab dem Stand dieser Sicherung neu. Sicherungen, die NACH dieser, aber VOR
@@ -605,7 +705,8 @@ const HILFE = `Aufruf:
   ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner> [--ruhe <ms, Vorgabe 1000>]
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
-                                        [--server-url <URL>] [--ohne-serverpruefung]`;
+                                        [--server-url <URL>] [--ohne-serverpruefung] [--zustand <Ordner>]
+  ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]`;
 
 export async function main(/** @type {string[]} */ argv) {
   const [befehl, ...rest] = argv;
@@ -642,10 +743,20 @@ export async function main(/** @type {string[]} */ argv) {
       const r = await wiederherstellen({ sicherung: String(o.sicherung),
         ziel: String(o.ziel || process.env.CENTRIC_DATEN || "/data"), ersetzen: !!o.ersetzen,
         serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined,
-        serverPruefen: !o["ohne-serverpruefung"], meldung: say });
+        serverPruefen: !o["ohne-serverpruefung"], meldung: say,
+        zustand: typeof o.zustand === "string" ? o.zustand : (process.env.CENTRIC_ZUSTAND || null) });
       console.log(`Wiederhergestellt: ${r.dateien} Dateien nach ${r.ziel}`);
+      console.log("Sicherungsschlüssel: Alle früheren sind ungültig. Eine Leitung legt in der App neue an; Automatisierungen danach kontrolliert umstellen.");
       if (r.beiseite) console.log(`Alter Inhalt liegt in ${r.beiseite} — nach erfolgreichem Start prüfen und dann von Hand entfernen.`);
       console.log("Server jetzt starten und die Anmeldung ausprobieren.");
+      return 0;
+    }
+    if (befehl === "schluessel-erneuern") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      await schluesselErneuern({ zustand, daten: typeof o.daten === "string" ? o.daten : undefined,
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log("Schlüsselepoche erneuert: Kein früherer Sicherungsschlüssel gilt mehr. Eine Leitung legt in der App neue an.");
       return 0;
     }
     throw new SicherungsFehler(HILFE, 2);

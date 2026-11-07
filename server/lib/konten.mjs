@@ -34,6 +34,20 @@ export async function kontoLesen(store, schluessel) {
   } catch { return null; }
 }
 
+/**
+ * Wie kontoLesen, aber ein Lesefehler wird weitergereicht statt als „gibt es nicht" oder als Rückfall auf
+ * den Sammelblob gewertet. Für Prüfungen, die bei Zweifel Nein sagen müssen (SI-P1): Ein Zugang, der einzeln
+ * gesperrt wurde, aber noch ungesperrt im Sammelblob steht, darf bei einem Lesefehler nicht wieder gelten.
+ * @throws wenn die Ablage nicht lesbar ist
+ */
+export async function kontoLesenStreng(store, schluessel) {
+  if (!schluessel) return null;
+  const einzeln = await store.get(PRAEFIX + schluessel, { type: "json" });
+  if (einzeln) return einzeln;
+  const sammel = (await store.get(SAMMEL, { type: "json" })) || {};
+  return sammel[schluessel] || null;
+}
+
 /** Ein Konto schreiben — immer einzeln. */
 export async function kontoSchreiben(store, schluessel, konto) {
   await store.setJSON(PRAEFIX + schluessel, konto);
