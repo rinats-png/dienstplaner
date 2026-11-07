@@ -43,6 +43,7 @@ import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./serv
 import { nachfassen, zustellungAufraeumen } from "./server/lib/versand.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
+import { bindungErneuern } from "./server/lib/schluesselepoche.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -474,6 +475,14 @@ server.keepAliveTimeout = 65_000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`CENTRIC läuft auf Port ${PORT}, Daten: ${process.env.CENTRIC_DATEN || "/data"}`);
 });
+
+/* Wiederherstellungsschutz der Sicherungsschlüssel (server/lib/schluesselepoche.mjs): Beim Start wird die Bindung
+   zwischen Ablage und Zustandsverzeichnis erneuert. Passt sie schon jetzt nicht (Ablage zurückgespielt), beginnt dabei
+   eine neue Epoche, und kein früherer Schlüssel gilt. Nur wenn es schon eine Epoche gibt; ein Fehler betrifft allein
+   die Sicherungsschlüssel (sie gelten dann nicht), nie den übrigen Betrieb. */
+bindungErneuern({ nurWennVorhanden: true }).then((r) => {
+  if (r.neueEpoche) console.warn("Sicherungsschlüssel: Ablage passt nicht zur Schlüsselepoche — neue Epoche, alle früheren Schlüssel ungültig.");
+}, (e) => console.error("Sicherungsschlüssel: Schlüsselepoche nicht prüfbar, Schlüssel gelten nicht:", e && e.message ? e.message : e));
 
 /* Regelmäßige Zustandsprüfung mit Alarm (WP-05). Vorgabe: prüfen und im Log
    vermerken; ein Alarmkanal erst mit CENTRIC_ALARM_WEBHOOK. */

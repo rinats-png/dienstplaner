@@ -36,6 +36,12 @@ services:
       PORT: "3000"
       CENTRIC_DATEN: /data
       CENTRIC_ABLAGE: dateien
+      # Wiederherstellungsschutz der Sicherungsschlüssel (server/lib/schluesselepoche.mjs):
+      # Schlüsselepoche AUSSERHALB von /data, nie mitsichern, nie zurückspielen.
+      # Vor dem ersten Start: install -d -m 700 -o 1000 -g 1000 zustand
+      # Fehlt das Verzeichnis oder ist es nicht schreibbar, gelten keine
+      # Sicherungsschlüssel (fail-closed); alles andere läuft weiter.
+      CENTRIC_ZUSTAND: /zustand
       # CENTRIC_SELBSTSTART (öffentlicher Selbststart /starten) steht bewusst
       # NICHT hier: Vorgabe ist AUS. Einschalten nur über .env mit genau "true"
       # (docs/SELBSTSTART-SCHALTER.md).
@@ -51,6 +57,7 @@ services:
 
     volumes:
       - ./data:/data                          # persistent, überlebt Neuerstellung
+      - ./zustand:/zustand                    # Schlüsselepoche, NICHT in Sicherung/restic
       # - /home/admin/sicherung:/sicherung-status:ro   # WP-05, nur lesen (STATUS_VERZEICHNIS)
 
     # --- Härtung ---

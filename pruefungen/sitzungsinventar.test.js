@@ -81,6 +81,7 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     expect(ohneZusatz(dateienMit(/centric-sitzungen|sitzungsSpeicher/))).toEqual([
       "server.mjs",                              // Verdrahtung des Löschlaufs
       "server/funktionen/daten.mjs",             // sk:-Schlüssel und das Beenden gesperrter Sitzungen
+      "server/lib/schluesselepoche.mjs",         // Bindung skbindung (Wiederherstellungsschutz der sk:)
       "server/lib/sicherungsschluessel.mjs",     // Widerruf der sk:-Schlüssel mit Vermerk (SI-P1)
       "server/lib/sitzungen.mjs",                // die Primitive
     ]);

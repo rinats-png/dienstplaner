@@ -480,6 +480,19 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
    ein Beschäftigten-Token konnte die Zeiterfassung jeder anderen Person
    überschreiben und fremde Anträge mit Status „genehmigt" anlegen. */
 {
+  /* M1 hat den Betrieb mit p1/p2 neu geschrieben; Person 0 und 1 stehen seitdem nicht mehr darin. Seit SI-P2 gilt
+     die Sitzung eines Codes nur, solange seine Person im Betrieb steht (personengueltig.mjs) — die Leitung trägt
+     beide deshalb wieder ein, damit dieser Block prüft, was er prüfen soll (eigene vs. fremde Einträge). */
+  {
+    const rP = await lies(tL);
+    const bP = JSON.parse(JSON.stringify(rP.bestand));
+    const ids = new Set(bP.mandanten[0].personen.map((p) => String(p.id)));
+    for (const [id, nachname] of [[0, "Kern"], [1, "Vogt"]])
+      if (!ids.has(String(id))) bP.mandanten[0].personen.push({ id, nachname, rolle: "mitarbeiter",
+        zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
+    const wP = await schreib(tL, bP, rP.etag);
+    pruef("Vorbereitung S5: Person 0 und 1 wieder im Betrieb", wP.status === 200, `Status ${wP.status}`);
+  }
   const tM0 = await anmelden(await zugang("mitarbeiter", 0));
   const r = await lies(tM0);
   const b = JSON.parse(JSON.stringify(r.bestand));

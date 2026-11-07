@@ -783,6 +783,24 @@ oder ein Betriebsmerkmal, die erst nach der Sicherung entstanden sind, gibt es
 danach nicht, und ihre Merkmale sind wertlos. Der Rückweg zu den Sitzungen ist die
 neue Anmeldung.
 
+**Sicherungsschlüssel nach einer Wiederherstellung (Betreiberentscheidung 2026-11-07).**
+Nach jeder vollständigen Wiederherstellung gilt KEIN früherer Sicherungsschlüssel mehr,
+auch keiner, der im zurückgespielten Stand noch nicht widerrufen war. Die Autorität
+dafür liegt außerhalb von `data/`: die Schlüsselepoche in `zustand/` (`CENTRIC_ZUSTAND`,
+compose.yml). `zustand/` wird nie gesichert und nie zurückgespielt — auch nicht bei
+einer Kopie des ganzen App-Verzeichnisses. Der Server erkennt eine zurückgespielte
+Ablage selbst (die Bindung `skbindung` ist in keiner Sicherung) und beginnt eine neue
+Epoche; bei Weg 2 erneuert das Werkzeug sie zusätzlich vor dem Tausch (es sieht
+`CENTRIC_ZUSTAND`). Wer ein altes `data/` **ohne** das Werkzeug zurückholt (Umbenennen,
+Kopie), führt danach bei gestopptem Dienst aus:
+
+    docker compose run -T --rm --no-deps centric-dp-web       node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand /zustand --daten /data
+
+Danach legt eine Leitung in der App neue Schlüssel an (Sicherung außer Haus →
+Sicherungsschlüssel); Automatisierungen werden kontrolliert umgestellt: neuen Schlüssel
+eintragen, einen Lauf von Hand prüfen, erst dann den alten Eintrag löschen. Ein alter
+Schlüssel bekommt 401 mit `grund: "ablage-wiederhergestellt"`.
+
 **Restore-Test.** Eine Sicherung, die nie zurückgespielt wurde, ist keine. Mindestens
 vierteljährlich, und nach jeder Änderung an Ablage oder Konten: in einen leeren
 Ordner zurückspielen (nicht in `data/`) und dort ansehen.

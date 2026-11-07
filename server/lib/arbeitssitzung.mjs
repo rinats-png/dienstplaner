@@ -12,6 +12,7 @@ import { kontoLesenStreng } from "./konten.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsSchluessel } from "./sitzungen.mjs";
 import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sicherungsschluessel.mjs";
+import { schluesselEpoche } from "./schluesselepoche.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -333,6 +334,13 @@ export async function sicherungsschluesselPruefen(store, sk, { bestandLader = nu
   if (!nichtLeer(raum)) return nein("sk-kein-raum");
   /* Der Betrieb, für den der Schlüssel angelegt wurde: seine Kennung ist Pflicht. */
   if (!nichtLeer(sk.mandantId) || !Number.isInteger(sk.betrieb)) return nein("sk-ohne-betrieb");
+  /* Wiederherstellungsschutz (schluesselepoche.mjs): Ein Schlüssel gilt nur in der Epoche, in der er angelegt wurde.
+     Nach einer vollständigen Wiederherstellung der Ablage gibt es eine neue, und jeder frühere Schlüssel ist endgültig
+     ungültig. Lässt sich die Epoche nicht feststellen, gilt keiner (nicht beurteilbar: abgewiesen, nicht entfernt). */
+  if (!nichtLeer(sk.epoche)) return nein("sk-ohne-epoche");
+  let epoche;
+  try { ({ epoche } = await schluesselEpoche()); } catch { return unklar("sk-epoche-fehler"); }
+  if (sk.epoche !== epoche) return nein("sk-wiederherstellung");
 
   if (e.art === "konto") {
     let konto;

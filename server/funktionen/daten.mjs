@@ -24,6 +24,7 @@ import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenb
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen, sicherungsschluesselErsteller, sicherungsschluesselPruefen } from "../lib/arbeitssitzung.mjs";
+import { schluesselEpoche } from "../lib/schluesselepoche.mjs";
 import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung, raumIndex,
   schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
@@ -2343,13 +2344,22 @@ async function behandeln(req, context, ctx) {
         return antwort({ fehler: "Es gibt schon fünf aktive Sicherungsschlüssel.", grenze: SK_HOECHSTZAHL, aktiv,
           text: "Mehr als fünf gleichzeitig sind nicht möglich. Widerrufe einen Schlüssel, den du nicht mehr brauchst, und lege dann einen neuen an. Es wird nichts automatisch gelöscht." }, 409);
       }
+      /* Wiederherstellungsschutz: Der Schlüssel trägt die Epoche, die außerhalb der Ablage liegt (schluesselepoche.mjs).
+         Lässt sie sich nicht feststellen, wird keiner angelegt (fail-closed). */
+      let skEpoche;
+      try { ({ epoche: skEpoche } = await schluesselEpoche()); } catch (fehlerE) {
+        console.error("Sicherungsschlüssel: Epoche nicht feststellbar:", fehlerE && fehlerE.message ? fehlerE.message : fehlerE);
+        await protokoll("sicherungsschluessel", kennung(req, s), "fehler", "anlegen: epoche", wer);
+        return antwort({ fehler: "Sicherungsschlüssel lassen sich gerade nicht anlegen.",
+          text: "Der Wiederherstellungsschutz ist nicht bereit (Betreiber: CENTRIC_ZUSTAND prüfen)." }, 503);
+      }
       const roh = randomBytes(24).toString("base64url");
       const bis = Date.now() + gueltig * 86400000;
       const skSatz = {
         bestand: s.bestand, rolle: "leitung", nurSicherung: true,
         betrieb: skOrt.index, mandantId: skOrt.betrieb.id,
         name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
-        ersteller: skErsteller,
+        ersteller: skErsteller, epoche: skEpoche,
         angelegt: new Date().toISOString(), bis,
       };
       /* Derselbe Maßstab wie beim Lesen, schon jetzt: Ein Schlüssel, der von Anfang an nicht gälte (etwa ein

@@ -25,6 +25,7 @@
 
 import { createHash } from "node:crypto";
 import { sitzungsSpeicher } from "./sitzungen.mjs";
+import { bindungErneuern } from "./schluesselepoche.mjs";
 
 export const SK_STANDARD_TAGE = 90;
 export const SK_HOECHST_TAGE = 365;
@@ -52,6 +53,9 @@ const GRUND_TEXT = {
   "zugang-gesperrt": "Der Zugang des Erstellers wurde gesperrt.",
   "von-der-leitung-widerrufen": "Die Leitung hat den Schlüssel widerrufen.",
   "ersteller-berechtigung": "Der Ersteller ist nicht mehr Leitung dieses Betriebs.",
+  "ablage-wiederhergestellt": "Die Daten wurden aus einer Sicherung wiederhergestellt. Danach gilt kein früherer "
+    + "Sicherungsschlüssel mehr; eine Leitung muss einen neuen anlegen.",
+  "ohne-epoche": "Der Schlüssel stammt aus der Zeit vor dem Wiederherstellungsschutz und muss neu angelegt werden.",
 };
 export const widerrufText = (grund) =>
   GRUND_TEXT[String(grund)] || "Der Ersteller darf den Schlüssel nicht mehr haben.";
@@ -62,6 +66,8 @@ export function grundAusPruefung(g) {
   if (s === "sk-epoche") return "passwort-geaendert";
   if (s === "sk-account-status") return "konto-gesperrt";
   if (s === "sk-zugang-gesperrt") return "zugang-gesperrt";
+  if (s === "sk-wiederherstellung") return "ablage-wiederhergestellt";
+  if (s === "sk-ohne-epoche") return "ohne-epoche";
   return "ersteller-berechtigung";
 }
 
@@ -72,7 +78,7 @@ export function grundAusPruefung(g) {
  * @param {any} sk  der Datensatz
  * @param {string} grund
  * @param {{ablage?: any, jetzt?: () => number}} [o]
- * @returns {Promise<false|"voll"|"ohne-vermerk">}  `"voll"`: Vermerk steht (und der Schlüssel ist gelöscht oder durch den Vermerk gesperrt);
+ * @returns {Promise<false|"voll"|"ohne-vermerk"|"ohne-bindung">}  `"voll"`: Vermerk steht (und der Schlüssel ist gelöscht oder durch den Vermerk gesperrt);
  *   `"ohne-vermerk"`: gelöscht, aber der Vermerk konnte nicht geschrieben werden; `false`: weder noch
  */
 export async function schluesselWiderrufen(schluessel, sk, grund, { ablage = null, jetzt = Date.now } = {}) {
@@ -89,6 +95,12 @@ export async function schluesselWiderrufen(schluessel, sk, grund, { ablage = nul
     /* Bis dahin ist der Vermerk nötig; danach wäre auch ein wieder aufgetauchter Schlüssel abgelaufen. */
     bis: Number.isFinite(bis) ? bis + VERMERK_ZUSCHLAG : jetzt() + (SK_HOECHST_TAGE + 1) * 86400000,
   };
+  /* Zuerst die Bindung außerhalb der Ablage erneuern (schluesselepoche.mjs): Eine Kopie der Ablage von vor diesem
+     Widerruf passt danach nicht mehr und wird als Wiederherstellung erkannt, samt neuer Epoche. Ohne das brächte das
+     Zurückspielen einer solchen Kopie den Schlüssel und das Fehlen seines Vermerks zurück. Gibt es noch keine Epoche,
+     gilt ohnehin kein Schlüssel. Misslingt es, wird trotzdem widerrufen, aber nicht als vollständig gemeldet. */
+  let gebunden = true;
+  try { await bindungErneuern({ ablage: a, nurWennVorhanden: true }); } catch { gebunden = false; }
   let vermerkt = true;
   try {
     await a.setJSON(`skw:${schluessel.slice(3)}`, vermerk);
@@ -98,7 +110,8 @@ export async function schluesselWiderrufen(schluessel, sk, grund, { ablage = nul
   const weg = await a.delete(schluessel).then(() => true, () => false);
   if (sk && typeof sk.bestand === "string") await a.delete(raumIndex(sk.bestand, schluessel.slice(3))).catch(() => {});
   if (!weg && !vermerkt) return false;
-  return vermerkt ? "voll" : "ohne-vermerk";
+  if (!vermerkt) return "ohne-vermerk";
+  return gebunden ? "voll" : "ohne-bindung";
 }
 
 /**
