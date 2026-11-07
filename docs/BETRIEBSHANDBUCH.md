@@ -116,6 +116,18 @@ Einrichtung Schritt für Schritt (DNS, Anbieter, VAPID, Zustelltest, Fehlersuche
 | `CENTRIC_ALARM_ENTPRELLUNG_S` | Entprellung des Alarms | 120 | ja (auskommentiert) |
 | `CENTRIC_ALARM_WIEDERHOLUNG_S` | Erinnerung bei anhaltender Störung | 21600 | ja (auskommentiert) |
 
+### Anmeldesperre (SI-P7)
+
+Die Anmeldung mit Zugangscode zählt Fehlversuche je Herkunft: acht in fünf Minuten, dann Sperre (verdoppelt sich bis zwei Stunden).
+Eine Herkunft ist bei IPv4 die Adresse, bei IPv6 das /64 (Geräte wechseln ihre Adresse darin frei); IPv4-gemappte Adressen und NAT64
+zählen wie die eingebettete IPv4-Adresse. **Ein gültiger Zugangscode (kein Betreibercode) wird von der Sperre der Herkunft und von
+den Grenzen je Betrieb und für den Dienst nicht abgewiesen** — hinter einem Stations-NAT sperrt ein Tippfehler die anderen nicht mehr aus.
+Gültige Anmeldungen zählen nicht und nehmen auch keine Fehlversuche zurück. Wer während einer Sperre weiter rät (mehr als 24 abgewiesene
+Versuche je 5 Minuten), verliert die Durchlässigkeit für seine Herkunft; bei mehr als 1200 abgewiesenen Versuchen je 5 Minuten im ganzen
+Dienst gilt sie für niemanden mehr, bis das Fenster endet (verteiltes Raten). Betreibercodes behalten die volle Bremse. Die Last je Code
+(20 Anmeldungen in fünf Minuten) und je Betrieb bleibt begrenzt. Die Zähler der Sperrversuche liegen im Prozessspeicher (ein Prozess je
+Container). Hinter dem Proxy muss `CENTRIC_VERTRAUTE_PROXYS` stimmen, sonst teilen sich alle Nutzer eine Herkunft ([CADDY-UND-XFF.md](CADDY-UND-XFF.md)).
+
 ### Nur für Prüfungen und Werkzeuge (nicht in die Produktions-.env)
 
 | Variable | Zweck |

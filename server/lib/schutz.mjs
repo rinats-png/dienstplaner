@@ -477,7 +477,7 @@ export const WEITERE = {
  */
 export function kennung(req, sitzung) {
   if (sitzung && sitzung.bestand) return `s:${kurz(sitzung.bestand)}`;
-  return `a:${adressKuerzel(herkunft(req))}`;
+  return `a:${adressKuerzel(herkunftGruppe(herkunft(req)))}`;
 }
 
 /**
@@ -577,6 +577,61 @@ export function adresseNormieren(a) {
   const p = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(s);
   if (p) return p[1];
   return s.toLowerCase();
+}
+
+/* --------------------------------------------------------------------------
+   HERKUNFT FÜR DIE BREMSE: IPv6 NACH /64 (SI-P7)
+
+   Ein Anschluss bekommt bei IPv6 üblicherweise ein ganzes /64: 2^64 Adressen,
+   die ein Gerät frei wechseln darf (Datenschutzadressen tun es von selbst).
+   Zählte die Bremse je Adresse, hätte jede Adresse einen frischen Zähler: Die
+   Sperre je Herkunft wäre wirkungslos, und der Dienst-Zähler liefe mit
+   Fehlversuchen voll (der Dienst bremst dann alle).
+
+   Deshalb zählt die Bremse bei IPv6 je /64 (die ersten vier Glieder). IPv4
+   bleibt, wie es war. Adressen, die nur IPv4 einbetten, zählen wie diese
+   IPv4-Adresse: IPv4-gemappt (::ffff:a.b.c.d, auch in der Hex-Schreibweise) und
+   NAT64 (64:ff9b::/96); sonst teilten sich alle Nutzer eines NAT64-Übergangs
+   ein einziges /64 und sperrten einander aus. Was keine Adresse ist
+   („unbekannt“), bleibt unverändert.
+   -------------------------------------------------------------------------- */
+
+/** Die acht 16-Bit-Glieder einer (normierten) IPv6-Adresse, sonst `null`.
+    @param {string} s */
+function ipv6Glieder(s) {
+  if (isIP(s) !== 6) return null;
+  let t = s;
+  const m = /^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(t);   // eingebettete IPv4 am Ende
+  if (m) {
+    const o = m[2].split(".").map(Number);
+    t = `${m[1]}${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
+  }
+  let teile;
+  if (t.includes("::")) {
+    const [links, rechts] = t.split("::");
+    const l = links ? links.split(":") : [];
+    const r = rechts ? rechts.split(":") : [];
+    teile = [...l, ...Array(Math.max(0, 8 - l.length - r.length)).fill("0"), ...r];
+  } else teile = t.split(":");
+  if (teile.length !== 8) return null;
+  const glieder = teile.map((h) => parseInt(h, 16));
+  return glieder.every((g) => Number.isInteger(g) && g >= 0 && g <= 0xffff) ? glieder : null;
+}
+
+/**
+ * Die Adresse, unter der die Bremse zählt: IPv4 wie bisher, IPv6 als /64.
+ * @param {string} adresse  roh oder schon normiert
+ * @returns {string}
+ */
+export function herkunftGruppe(adresse) {
+  const a = adresseNormieren(adresse);
+  const g = ipv6Glieder(a);
+  if (!g) return a;
+  const v4 = (hoch, tief) => `${hoch >> 8}.${hoch & 255}.${tief >> 8}.${tief & 255}`;
+  /* IPv4-gemappt (::ffff:0:0/96) und NAT64 (64:ff9b::/96): zählt wie die eingebettete IPv4-Adresse. */
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return v4(g[6], g[7]);
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return v4(g[6], g[7]);
+  return `${g.slice(0, 4).map((x) => x.toString(16)).join(":")}::/64`;
 }
 
 /**
@@ -1331,6 +1386,91 @@ export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
     if (notLesen(`${k}:${f}`) > 0) notZaehlen(`${k}:${f}`, bis, -1);
     else notZaehlen(`${k}:${f - 1}`, bis, -1);
   }
+}
+
+/* --------------------------------------------------------------------------
+   GÜLTIGE CODES TROTZ SPERRE — UND WAS DAS KOSTEN DARF (SI-P7)
+
+   Die Bremse beim Anmelden zählt jeden Versuch VOR der Codeprüfung. Hinter einem
+   Stations-NAT (eine Adresse für alle) reichte deshalb eine Person mit
+   Tippfehlern, um die Herkunft zu sperren, und danach wurde auch der GÜLTIGE
+   Code abgewiesen. Ebenso füllten Fehlversuche aus vielen Adressen die Grenze
+   des ganzen Dienstes, und dann kam niemand mehr hinein.
+
+   Jetzt (daten.mjs, anmelden): Ein nutzbarer Zugangscode — gefunden, nicht
+   gesperrt, nicht abgelaufen, bekannte Rolle, KEIN Betreibercode — läuft an
+   Sperre, Betriebsgrenze und Dienstgrenze vorbei und zählt dort nicht mit.
+   Gezählt werden nur Fehlversuche. Eine gelungene Anmeldung nimmt Fehlversuche
+   ausdrücklich NICHT zurück: Wer sonst Fehlversuche mit einer eigenen gültigen
+   Anmeldung abwechselte, setzte den Zähler jedes Mal zurück und riete ohne Ende.
+
+   Was dabei nicht verloren gehen darf: Während einer Sperre gibt es für
+   Fehlversuche keine Zählung mehr (sie werden sofort abgewiesen). Ein Treffer
+   würde jetzt aber durchkommen — die Sperre allein bremst das Raten also nicht
+   mehr. Darum zählt jede abgewiesene Anfrage weiter (Sperrversuch):
+
+     je Herkunft   mehr als SPERRVERSUCHE.herkunft.versuche in einem Fenster →
+                   diese Herkunft bleibt bis zum Ende ihrer Sperre hart gesperrt,
+                   auch für gültige Codes.
+     im ganzen     mehr als SPERRVERSUCHE.gesamt.versuche → die Durchlässigkeit
+     Dienst        gilt für niemanden mehr, bis das Fenster endet (der Dienst
+                   steht unter verteiltem Raten; dann gilt wieder das alte Bild).
+
+   Betreibercodes sind ausgenommen: Sie tragen den zweiten Faktor, und dessen
+   Fehlversuche bremst genau diese Bremse.
+
+   Prozessspeicher, wie die Notbremse (ein Prozess je Container, siehe oben);
+   kein Fremddienst nötig, kein Eintrag in der Ablage.
+   -------------------------------------------------------------------------- */
+
+export const SPERRVERSUCHE = {
+  herkunft: { versuche: 24, fenster: 300 },
+  gesamt: { versuche: 1200, fenster: 300 },
+};
+
+/** Kennung → Ende (ms) der harten Sperre. */
+const hartBis = new Map();
+let hartGesamtBis = 0;
+
+/**
+ * Eine abgewiesene Anfrage (Sperre, Betriebs- oder Dienstgrenze) weiterzählen.
+ * @param {string} kennung  die Kennung der Herkunft (kennung(req, null))
+ * @param {number} [wartet]  wie lange die Sperre noch läuft (Sekunden)
+ * @returns {{hart: boolean, gesamtHart: boolean}}
+ */
+export function sperrversuchZaehlen(kennung, wartet = 300) {
+  const ms = Date.now();
+  const he = SPERRVERSUCHE.herkunft, ge = SPERRVERSUCHE.gesamt;
+  const hl = fensterLage(ms, he.fenster);
+  const eigene = gewichtet(notZaehlen(`sperrv:${kennung}:${hl.index}`, hl.ende + he.fenster * 1000),
+    notLesen(`sperrv:${kennung}:${hl.index - 1}`), hl.anteil);
+  if (eigene > he.versuche) {
+    hartBis.set(kennung, Math.max(hartBis.get(kennung) || 0, ms + Math.max(1, Math.floor(wartet)) * 1000));
+    if (hartBis.size > 500) for (const [k, v] of hartBis) if (v < ms) hartBis.delete(k);
+  }
+  const gl = fensterLage(ms, ge.fenster);
+  const alle = gewichtet(notZaehlen(`sperrv:gesamt:${gl.index}`, gl.ende + ge.fenster * 1000),
+    notLesen(`sperrv:gesamt:${gl.index - 1}`), gl.anteil);
+  if (alle > ge.versuche) hartGesamtBis = Math.max(hartGesamtBis, gl.ende);
+  return { hart: (hartBis.get(kennung) || 0) > ms, gesamtHart: hartGesamtBis > ms };
+}
+
+/**
+ * Darf ein nutzbarer Zugangscode von dieser Herkunft an den Grenzen vorbei? Ohne Wirkung, zählt nichts.
+ * @param {string} kennung
+ * @returns {boolean}
+ */
+export function gueltigeDurchlassen(kennung) {
+  const ms = Date.now();
+  if (hartGesamtBis > ms) return false;
+  return !((hartBis.get(kennung) || 0) > ms);
+}
+
+/** Nur für Prüfungen: Zähler und harte Sperren der Sperrversuche leeren. */
+export function sperrversuchZuruecksetzen() {
+  hartBis.clear();
+  hartGesamtBis = 0;
+  for (const k of [...not.keys()]) if (k.startsWith("sperrv:")) not.delete(k);
 }
 
 /* --------------------------------------------------------------------------

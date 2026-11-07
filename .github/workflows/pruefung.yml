@@ -179,6 +179,11 @@ jobs:
       - name: Bremsen im Echtbetrieb (WP-47)
         run: npm run pruefung:bremse-wp47
 
+      # SI-P7: Anmeldesperre. Gültige Codes kommen trotz gesperrter Herkunft durch, Fehlversuche
+      # bleiben begrenzt (auch bei Code-Rotation), IPv6 zählt je /64, parallele Anfragen.
+      - name: Anmeldesperre (SI-P7)
+        run: npm run pruefung:anmeldesperre
+
       # Der eigene Server: Ausliefern, Rückfall, Routing,
       # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
       - name: Server

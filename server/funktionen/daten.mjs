@@ -1,7 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
-  protokoll, notbremse, notentlasten, lesenGrenze } from "../lib/schutz.mjs";
+  protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
@@ -811,19 +811,38 @@ async function behandeln(req, context, ctx) {
       const fund = { eintrag: eintragV, schluessel: fundSchluessel,
         umschluesseln: mussUmschluesseln };
       const zielRaum = eintragV ? eintragV.bestand : null;
-      const b = await bremse("anmelden", k, zielRaum);
-      /* Ein Ausfall der Zählerablage bleibt nicht stumm (WP-46). */
-      if (b.fehler) await protokoll("anmelden", k, "bremse-ausfall", b.fehler);
-      if (!b.frei) { await protokoll("anmelden", k, "gebremst",
-        `${b.grund}${b.dimension ? ` (${b.dimension})` : ""}`);
-        return zuVielAntwort(b.wartet); }
-      /* Die zweite Grenze im Prozessspeicher, wie bei anmelden-konto: Sie
-         kann nicht ausfallen und deckelt auch das Gesamtaufkommen, wenn die
-         Hauptbremse degradiert nur noch je Herkunft zählt. */
-      const nb = notbremse("anmelden", k);
-      if (!nb.frei) {
-        await protokoll("anmelden", k, "notbremse", nb.dimension || null);
-        return zuVielAntwort(nb.wartet);
+      /* SI-P7: Ein nutzbarer Zugangscode (gefunden, nicht gesperrt, nicht abgelaufen, bekannte Rolle, kein Betreiber)
+         ist kein Fehlversuch. Er läuft an der Sperre der Herkunft, der Betriebsgrenze und der Dienstgrenze vorbei und
+         zählt dort nicht mit — sonst reichte hinter einem Stations-NAT eine Person mit Tippfehlern, um alle auszusperren.
+         Er nimmt aber auch keine Fehlversuche zurück (entlasten unten entfällt): Fehlversuche im Wechsel mit gültigen
+         Anmeldungen bleiben begrenzt. Während der Sperre zählen abgewiesene Fehlversuche weiter (schutz.mjs,
+         sperrversuchZaehlen); ist dieser Deckel gerissen, gilt die Durchlässigkeit nicht mehr. Betreibercodes tragen den
+         zweiten Faktor und behalten die volle Bremse. Die Last je Code und je Betrieb begrenzt weiter lastbremse unten. */
+      const nutzbar = !!eintragV && typeof zugangscode === "string" && zugangscode.length >= 6
+        && eintragV.rolle !== "betreiber" && !eintragV.gesperrt
+        && !(eintragV.laeuftAb && new Date(eintragV.laeuftAb).getTime() < Date.now())
+        && sitzungsRolleBekannt(eintragV.rolle);
+      const durchlassen = nutzbar && gueltigeDurchlassen(k);
+      /** @type {any} */
+      let b = { frei: true };
+      if (!durchlassen) {
+        b = await bremse("anmelden", k, zielRaum);
+        /* Ein Ausfall der Zählerablage bleibt nicht stumm (WP-46). */
+        if (b.fehler) await protokoll("anmelden", k, "bremse-ausfall", b.fehler);
+        if (!b.frei) {
+          sperrversuchZaehlen(k, b.wartet);
+          await protokoll("anmelden", k, "gebremst", `${b.grund}${b.dimension ? ` (${b.dimension})` : ""}`);
+          return zuVielAntwort(b.wartet);
+        }
+        /* Die zweite Grenze im Prozessspeicher, wie bei anmelden-konto: Sie
+           kann nicht ausfallen und deckelt auch das Gesamtaufkommen, wenn die
+           Hauptbremse degradiert nur noch je Herkunft zählt. */
+        const nb = notbremse("anmelden", k);
+        if (!nb.frei) {
+          sperrversuchZaehlen(k, nb.wartet);
+          await protokoll("anmelden", k, "notbremse", nb.dimension || null);
+          return zuVielAntwort(nb.wartet);
+        }
       }
       if (!zugangscode || String(zugangscode).length < 6)
         return antwort({ fehler: "Zugangscode fehlt oder ist zu kurz." }, 400);
@@ -889,8 +908,10 @@ async function behandeln(req, context, ctx) {
          Abweisung, die eine Sperre setzt (`neu`); /gesund zählt jede. */
       if (eintrag.rolle !== "betreiber") {
         const lastAbweisung = async (bl, text) => {
-          await vermerkeZuruecknehmen(b);
-          notentlasten("anmelden", k, { nurGesamt: true });
+          if (!durchlassen) {
+            await vermerkeZuruecknehmen(b);
+            notentlasten("anmelden", k, { nurGesamt: true });
+          }
           ereignis("429-last");
           if (bl.neu) await protokoll("anmelden", k, "gebremst", text);
           return zuVielAntwort(bl.wartet);
@@ -957,8 +978,12 @@ async function behandeln(req, context, ctx) {
         }
       } catch { /* darf keine Anmeldung scheitern lassen */ }
 
-      await entlasten("anmelden", k, b);
-      notentlasten("anmelden", k);
+      /* Nach einer gelungenen Anmeldung nur die EIGENEN Vermerke zurücknehmen — und nur, wenn dieser Versuch gezählt
+         wurde. Ein durchgelassener Code hat nichts gezählt und löscht nichts (SI-P7): keine Fehlversuche, keine Sperre. */
+      if (!durchlassen) {
+        await entlasten("anmelden", k, b);
+        notentlasten("anmelden", k);
+      }
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,

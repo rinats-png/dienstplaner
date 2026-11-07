@@ -82,6 +82,7 @@ beforeAll(async () => {
 }, LIMIT);
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
 beforeEach(async () => {
+  SCH.sperrversuchZuruecksetzen();
   const s = (await import("../server/lib/ablage.mjs")).getStore({ name: "centric-takt", consistency: "strong" });
   const { blobs } = await s.list({});
   for (const b of blobs) await s.delete(b.key).catch(() => {});
@@ -149,12 +150,14 @@ describe("I2/I3: Fehlversuche bleiben begrenzt, auch bei Code-Rotation", () => {
 
   it("Fehlversuche im Wechsel mit gültigen Anmeldungen: höchstens acht Fehlversuche je Fenster", async () => {
     const ip = ipv4();
-    const c = await frischerCode();
+    /* Drei Codes im Wechsel: Das (bestehende) Lastlimit je Code liegt bei 20 Anmeldungen in fünf Minuten. */
+    const codes = [await frischerCode(), await frischerCode(), await frischerCode()];
     let fehlversuche = 0;
-    for (let i = 0; i < 40; i++) {
+    /* 28 Runden: acht freie Fehlversuche plus weniger als 24 abgewiesene — darüber greift der harte Deckel (I4). */
+    for (let i = 0; i < 28; i++) {
       const f = await anmelden(ip, unbekannt());
       if (f.status === 401) fehlversuche++;
-      expect((await anmelden(ip, c)).status, `gültig in Runde ${i}`).toBe(200);
+      expect((await anmelden(ip, codes[i % 3])).status, `gültig in Runde ${i}`).toBe(200);
     }
     expect(fehlversuche).toBeLessThanOrEqual(8);
   }, 120000);
@@ -254,8 +257,12 @@ describe("I6: IPv6 zählt je /64", () => {
     expect(k("203.0.113.7:5000")).toBe(k("203.0.113.7"));
   });
 
-  it("eine Adresse mit eingebetteter IPv4 (NAT64) wird nach /64 gruppiert", () => {
-    expect(k("64:ff9b::203.0.113.7")).toBe(k("64:ff9b::198.51.100.1"));
+  it("IPv4-gemappte Adressen in Hex-Schreibweise und NAT64 zählen wie die eingebettete IPv4 (sonst teilten sich alle ein /64)", () => {
+    expect(k("::ffff:cb00:7107"), "203.0.113.7 in Hex").toBe(k("203.0.113.7"));
+    expect(k("::ffff:cb00:7108")).not.toBe(k("::ffff:cb00:7107"));
+    expect(k("64:ff9b::203.0.113.7")).toBe(k("203.0.113.7"));
+    expect(k("64:ff9b::cb00:7107")).toBe(k("203.0.113.7"));
+    expect(k("64:ff9b::203.0.113.7")).not.toBe(k("64:ff9b::198.51.100.1"));
   });
 
   it("unbrauchbare Angaben fallen nicht zusammen und bleiben, wie sie waren", () => {
