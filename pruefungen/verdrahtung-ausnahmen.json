@@ -1,0 +1,10 @@
+[
+  {
+    "datei": "bildersatz.mjs",
+    "grund": "Browser-Werkzeug (Playwright, laufender Dev-Server), erzeugt Bilder und prüft nichts; im Kopf der Datei steht ausdrücklich: läuft nicht in CI."
+  },
+  {
+    "datei": "g9-nachtrag.test.js",
+    "grund": "Bereits rot (Stand integration/release-v4): Quelltextscan 'kein Pilot in leerbetrieb.mjs' schlägt an einem Kommentar in server/lib/leerbetrieb.mjs Z. 53 an; 49 weitere Fälle grün. Test oder Kommentar muss der Eigentümer klären, danach Ausnahme entfernen."
+  }
+]
