@@ -312,6 +312,69 @@ describe("WP-28b/2: Review-Befunde", () => {
   });
 });
 
+describe("WP-28b/2: Transaktions-Schnitt (zwei zusammengehörige Dateien, zweite Datei folgt später)", () => {
+  /** Quelle mit Konto + Mitgliedschaft auf Generation 1. */
+  async function paarQuelle() {
+    const q = await quelle(2);
+    await ablegen(path.join(q, "centric", "konto.json"), { gen: 1 });
+    await ablegen(path.join(q, "centric", "mitglied.json"), { gen: 1 });
+    return q;
+  }
+  const gen = async (r, n) => JSON.parse(await readFile(path.join(r.pfad, "daten", "centric", n), "utf8")).daten.gen;
+
+  it("Ruhezeit: eine Transaktion, deren zweite Datei erst nach der Lücke kommt, wird nicht mittendrin gesichert", async () => {
+    const q = await paarQuelle();
+    let angefangen = false;
+    // Beginn der Transaktion: Konto wird neu geschrieben, die Mitgliedschaft folgt 150 ms später.
+    haken.vorLesen = async (p) => {
+      if (!angefangen && p.startsWith(q)) {
+        angefangen = true;
+        await ablegen(path.join(q, "centric", "konto.json"), { gen: 2 });
+        setTimeout(() => { ablegen(path.join(q, "centric", "mitglied.json"), { gen: 2 }).catch(() => {}); }, 150);
+      }
+    };
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3, ruhe: 600 });
+    haken.vorLesen = null;
+    await new Promise((res) => setTimeout(res, 200));        // sicher abwarten, dass die Transaktion zu Ende ist
+    expect(await gen(r, "konto.json")).toBe(await gen(r, "mitglied.json"));
+    expect(await baum(r.pfad, true)).toEqual(await baum(q));
+  });
+
+  it("Ruhezeit 0 (Bibliotheksvorgabe) wartet nicht: derselbe Ablauf wird so schnell gesichert, dass die Lücke überrannt wird (Gegenprobe, zeigt die Wirkung der Option)", async () => {
+    const q = await paarQuelle();
+    let angefangen = false;
+    haken.vorLesen = async (p) => {
+      if (!angefangen && p.startsWith(q)) {
+        angefangen = true;
+        await ablegen(path.join(q, "centric", "konto.json"), { gen: 2 });
+        setTimeout(() => { ablegen(path.join(q, "centric", "mitglied.json"), { gen: 2 }).catch(() => {}); }, 150);
+      }
+    };
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3, ruhe: 0 });
+    haken.vorLesen = null;
+    await new Promise((res) => setTimeout(res, 250));
+    // Ohne Ruhezeit ist der Schnitt mitten in der Transaktion möglich und hier die Regel.
+    expect(await gen(r, "konto.json")).toBe(2);
+    expect(await gen(r, "mitglied.json")).toBe(1);
+  });
+
+  it("Kommandozeile: --ruhe wird geprüft; ohne Angabe gilt 1000 ms", async () => {
+    const q = await quelle(2);
+    const z = await zielOrdner();
+    const still = vi.spyOn(console, "error").mockImplementation(() => {});
+    const aus = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(await G.main(["sichern", "--quelle", q, "--ziel", z, "--ruhe", "abc"])).toBe(2);
+      expect(await readdir(z)).toEqual([]);
+      expect(await G.main(["sichern", "--quelle", q, "--ziel", z, "--ruhe", "0"])).toBe(0);
+      const t0 = Date.now();
+      const z2 = await zielOrdner();
+      expect(await G.main(["sichern", "--quelle", q, "--ziel", z2])).toBe(0);
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
+    } finally { still.mockRestore(); aus.mockRestore(); }
+  }, 20000);
+});
+
 describe("WP-28b/2: echte parallele Schreiber (Zeitverlauf, nur Invarianten)", () => {
   it("jeder Lauf endet entweder mit einer vollständigen, prüfbaren Sicherung des Endstands oder mit Code 3 — nie anders", async () => {
     const q = await quelle(30);
