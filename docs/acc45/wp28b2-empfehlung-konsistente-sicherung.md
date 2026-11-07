@@ -8,8 +8,8 @@ Quellen: Messungen in `docs/acc45/wp28b2-nachweis.md`; Code-Recherche (lesend, `
 `werkzeug/ablage-sicherung.mjs` kopiert den Dateibaum, während der Server schreibt. Das Werkzeug sieht nur Dateien, nicht
 Anwendungsvorgänge. Es kann deshalb nur *feststellen*, dass sich zwischen Lesen und Prüfdurchlauf nichts verändert hat
 (Größe, mtime, Inode, Dateimenge, dazu die Ruhezeit `--ruhe`). Bei etwa 17 Schreibvorgängen/s auf 3000 Dateien gelang nur
-1 von 14 Läufen; bei Transaktionen über zwei Dateien mit kurzer Lücke liegt ein Schnitt ohne Ruhezeit in einigen Prozent der
-Fälle mitten in der Transaktion (Messung in §3 des Nachweises). Beides lässt sich **im Werkzeug nicht beheben**:
+1 von 14 Läufen (ohne Ruhezeit; mit der Vorgabe-Ruhezeit 1 s schon bei 8/s keiner von 5); bei Transaktionen über zwei Dateien mit kurzer Lücke liegt ein Schnitt ohne Ruhezeit in einigen Prozent der
+Fälle mitten in der Transaktion (Messung in §8 des Nachweises). Beides lässt sich **im Werkzeug nicht beheben**:
 Dauerlast ohne Ruhe gibt dem Werkzeug keinen Moment, in dem die Quelle still steht.
 
 ## 2. Was der Bestand schon bietet — und was nicht (belegt)

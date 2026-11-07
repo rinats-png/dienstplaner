@@ -463,7 +463,7 @@ async function s5(t, daten, leitungFuer) {
       k.on("close", (code) => fertig({ code, o }));
     });
     return { exit: r.code, sekunden: Math.round((Date.now() - t0) / 100) / 10,
-      versuche: (r.o.match(/Versuch \d+\//g) || []).length + 1,
+      versuche: (r.o.match(/Versuch \d+\/\d+: /g) || []).length + 1,   // nur verworfene Versuche, nicht die Rundenmeldungen
       anfang: r.o.trim().split("\n").slice(0, 3).join(" | ").slice(0, 300),
       letzteZeile: r.o.trim().split("\n").slice(-2).join(" | ").slice(0, 200) };
   };

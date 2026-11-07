@@ -67,8 +67,10 @@
    geändert, ist eine dazugekommen oder weggefallen, werden NUR diese
    Dateien neu kopiert und die Quelle erneut angesehen (bis zu zwölf Runden
    je Versuch). Gilt erst, wenn ein vollständiger Durchlauf jede Kopie
-   unverändert bestätigt: dann stimmen alle Kopien mit dem Stand der Quelle
-   zu einem gemeinsamen Zeitpunkt überein. Gelingt das nicht, wird der
+   unverändert bestätigt: dann hat sich seit dem Lesen nichts verändert, das
+   sich an Größe, Änderungszeit, Inode oder Dateimenge zeigt (kein Beweis eines
+   je bestehenden Zustands: Dateien, die nur zwischen zwei Listen existieren
+   oder zwischen Stores wandern, sieht dieses Verfahren nicht). Gelingt das nicht, wird der
    Versuch verworfen und neu begonnen (dreimal), danach mit Fehler
    abgebrochen (Code 3, nichts angelegt).
 
@@ -612,8 +614,9 @@ export async function main(/** @type {string[]} */ argv) {
     const o = argumente(rest);
     if (befehl === "sichern") {
       if (!o.ziel) throw new SicherungsFehler(HILFE, 2);
-      const ruhe = o.ruhe === undefined ? 1000 : Number(o.ruhe);
-      if (!Number.isInteger(ruhe) || ruhe < 0 || ruhe > 600000)
+      // Nur reine Dezimalzahlen: Number("") ist 0 und würde die Bestätigung still abschalten (z. B. --ruhe "$LEER").
+      const ruhe = o.ruhe === undefined ? 1000 : (/^\d{1,6}$/.test(String(o.ruhe)) ? Number(o.ruhe) : NaN);
+      if (!Number.isInteger(ruhe) || ruhe > 600000)
         throw new SicherungsFehler("--ruhe: ganze Zahl in Millisekunden, 0 bis 600000", 2);
       const r = await sichern({ quelle: String(o.quelle || process.env.CENTRIC_DATEN || "/data"),
         ziel: String(o.ziel), ruhe, meldung: say });

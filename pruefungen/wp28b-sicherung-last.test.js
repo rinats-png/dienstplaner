@@ -347,12 +347,12 @@ describe("WP-28b/2: Transaktions-Schnitt (zwei zusammengehörige Dateien, zweite
       if (!angefangen && p.startsWith(q)) {
         angefangen = true;
         await ablegen(path.join(q, "centric", "konto.json"), { gen: 2 });
-        setTimeout(() => { ablegen(path.join(q, "centric", "mitglied.json"), { gen: 2 }).catch(() => {}); }, 150);
+        setTimeout(() => { ablegen(path.join(q, "centric", "mitglied.json"), { gen: 2 }).catch(() => {}); }, 600);
       }
     };
     const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3, ruhe: 0 });
     haken.vorLesen = null;
-    await new Promise((res) => setTimeout(res, 250));
+    await new Promise((res) => setTimeout(res, 800));
     // Ohne Ruhezeit ist der Schnitt mitten in der Transaktion möglich und hier die Regel.
     expect(await gen(r, "konto.json")).toBe(2);
     expect(await gen(r, "mitglied.json")).toBe(1);
@@ -364,7 +364,9 @@ describe("WP-28b/2: Transaktions-Schnitt (zwei zusammengehörige Dateien, zweite
     const still = vi.spyOn(console, "error").mockImplementation(() => {});
     const aus = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      expect(await G.main(["sichern", "--quelle", q, "--ziel", z, "--ruhe", "abc"])).toBe(2);
+      // Review (Opus) Befund 3: nur reine Dezimalzahlen, nichts, was Number() „gut meint“ (leer, 0x10, 1e3, -1, zu groß).
+      for (const schlecht of ["abc", "", " ", "0x10", "1e3", "-1", "1.5", "600001", "+5"])
+        expect(await G.main(["sichern", "--quelle", q, "--ziel", z, "--ruhe", schlecht]), `--ruhe "${schlecht}"`).toBe(2);
       expect(await readdir(z)).toEqual([]);
       expect(await G.main(["sichern", "--quelle", q, "--ziel", z, "--ruhe", "0"])).toBe(0);
       const t0 = Date.now();

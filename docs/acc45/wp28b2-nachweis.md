@@ -9,6 +9,8 @@ Nur Wegwerf-Daten in Temp-Verzeichnissen; kein Zugriff auf Produktion, VPS, Stag
 > - **Nicht gelöst: eine zuverlässig abgeschlossene Sicherung unter Dauerlast.** Bei etwa 17 Schreibvorgängen pro
 >   Sekunde auf 3000 Dateien gelang nur **1 von 14** Sicherungen (alle übrigen Code 3 + Fail-Ping, nie eine halbe
 >   Sicherung). Dazu und zur Konsistenz über mehrere Dateien: §6 und §8.
+> - Mit der Vorgabe-Ruhezeit (1 s) liegt die Grenze deutlich tiefer: gemessen (Opus-Review, 300 Dateien) bei 2
+>   Schreibvorgängen/s 5 von 5, bei 4/s 4 von 5, bei 8/s **0 von 5**; ein Fehlschlag dauert dann 30–40 s.
 > - Folgeaufgabe: konsistente Sicherung über einen kurzen koordinierten Schreib-Halt im Server, siehe
 >   `docs/acc45/wp28b2-empfehlung-konsistente-sicherung.md`.
 
@@ -117,8 +119,12 @@ Konsistenz nicht statistisch; sie stützt sich auf die deterministischen Tests (
   Beleg für Dauerlast an der Produktionsgröße. Das Ergebnis ist dann Code 3 + Fail-Ping, nie eine halbe Sicherung;
   dasselbe Verhalten wie bisher, nur seltener nötig. Abhilfe unverändert: ruhiges Fenster (02:30) oder Server
   vorher stoppen. Echte Abhilfe: kurzer Schreib-Halt im Server (Empfehlung, nicht umgesetzt).
+- **Lastgrenze bei Vorgabe-Ruhezeit (Review-Messung, 300 Dateien, echte `ablage.mjs`, zufällig verteilte Schreibvorgänge):**
+  2/s: 5 von 5 (5–11 s je Lauf); 4/s: 4 von 5 (ein Fehlschlag nach 39 s); 8/s: 0 von 5 (31–34 s je Fehlschlag). Die
+  Schwelle „≈ 15 Schreibvorgänge/s“ gilt nur ohne Ruhezeit.
 - **Ruhezeit kostet Zeit.** Eine erfolgreiche Sicherung braucht mindestens `ruhe` länger (gemessen ~3,3 s je Lauf bei
-  kleinem Bestand); ein Fehlschlag unter Dauerlast ~18 s je Aufruf (bis zu 3 Versuche × 12 Runden × Ruhezeit).
+  kleinem Bestand); ein Fehlschlag unter Last 18 s (dichte Transaktionen, eigene Messung) bis 39 s (mäßige Last, Review-Messung); Höchstwert
+  rund 3 × 12 × 1 s plus Pausen.
 - **Lücken länger als die Ruhezeit bleiben möglich** (z. B. wenn eine Transaktion auf die Raumsperre wartet, Grenze
   15 s). Ein Schnitt mitten in einer Anwendungstransaktion ist absturzgleich: die Anwendung fängt ihn fail-closed
   ab (Konto ohne Mitgliedschaft öffnet nicht, bis neu eingeladen wird; `accounts.mjs:732-762`).
@@ -182,8 +188,13 @@ Befunde:
 3. Mit Ruhezeit schließt sich das für Lücken kürzer als `ruhe` **by construction** (die erste Datei muss vor dem ersten,
    die zweite darf nicht nach dem zweiten Durchlauf geschrieben sein) und in der Messung (0 von 150 gegenüber 11 von 300).
    Gemessen an der Wirkung stark, am Beweis: nur für Lücken < `ruhe`.
-4. Rest: Lücken ≥ `ruhe`, Dateiuhr-Auflösung/Inode-Wiederverwendung (§6) und alles, was ohne Halt im Server nicht
-   ausschließbar ist.
+4. Rest: Lücken ≥ `ruhe` (die Schranke ist sogar etwas höher: `ruhe` + Dauer eines Durchlaufs), Dateiuhr-Auflösung/
+   Inode-Wiederverwendung (§6) und alles, was ohne Halt im Server nicht ausschließbar ist. Ebenfalls nicht erfasst
+   (Opus-Review, mit `ruhe` 0 reproduziert): Dateien, die **nur zwischen zwei Listen existieren**, und Datensätze, die
+   zwischen Stores wandern (ein Datensatz verschwindet in Store B nach dem `readdir` von A und taucht in A auf, nachdem
+   A gelistet wurde: der stabile Stand enthält dann weder alte noch neue Stelle, einen Zustand, den es nie gab). Mit
+   `ruhe` 300 wurde das im Bestätigungsdurchlauf gesehen. Die Anwendung verschiebt keine Datensätze zwischen Stores; das
+   ist eine Randbedingung des Verfahrens, nicht ein bekannter Ablauf.
 
 Umsetzung der Korrektur: Option `ruhe`/`--ruhe` (§3 Punkt 3). Tests: `pruefungen/wp28b-sicherung-last.test.js`,
 Gruppe „Transaktions-Schnitt“ (vorher rot: Konto 2 / Mitgliedschaft 1; Kommandozeile kannte `--ruhe` nicht).
@@ -215,3 +226,31 @@ Folgen und Vorbehalt:
   und `betreiber-faktor-vorlauf.mjs` freigeben) belastbar. **Vorschlag an den Besitzer von `.dockerignore`/Dockerfile**,
   nicht Teil dieses PR (fremder Bereich, anderes Paket).
 - Der PR-Zweig steht zwei Commits hinter dem Zielbranch (`7cee8ea`, `7eae3d2`); der CI-Merge war konfliktfrei.
+
+## 10. Zweiter unabhängiger Review (Opus) auf dem Kopf `8ef4a94` und Umgang mit den Befunden
+
+Votum des Reviewers: **„als sicherer fail-closed Teilfix integrierbar: ja mit Auflagen“.** Er fand keinen Weg, auf dem
+mit der Vorgabe `--ruhe 1000` eine beschädigte, nicht wiederherstellbare oder halbe Sicherung entsteht; alle Abbrüche
+räumen die Werkstatt weg (Fehlerpfade geprüft: Fremddatei/Symlink während der Ruhezeit Code 2, ENOSPC beim Manifest
+Code 1, `rename` scheitert Code 1, Store verschwindet endgültig: Manifest und `daten/` stimmen). Wiederherstellbarkeit:
+120 Läufe (echte Schreiber mit Löschungen, `sk:`/`t:`/Klasse-C-Schlüssel, kurz weggeschobenes Store-Verzeichnis,
+`ruhe` 0 und 150): jede Sicherung besteht `pruefen`, Manifest passt, `wiederherstellen` in ein leeres Ziel ergibt Byte
+für Byte denselben Baum. Letzte Testläufe: 5× normal, 6× unter 8 Busy-Loops, 5× unter 16 Busy-Loops + fsync-Last, jedes
+Mal 15 von 15.
+
+| Befund | Schwere | Behandlung |
+|---|---|---|
+| 1 Doku unterschätzt, wann es mit Vorgabe-Ruhezeit scheitert (Schwelle 15/s galt ohne Ruhezeit) | mittel | **behoben**: Betriebsdoku, Banner, §6 mit Review-Messung (2/s 5 von 5, 4/s 4 von 5, 8/s 0 von 5; Fehlschlag 30–40 s) |
+| 2 Kopfkommentar „gemeinsamer Zeitpunkt“ zu stark; Zustand „nur zwischen zwei Listen“/Store-Wanderung nicht erfasst | niedrig–mittel | **behoben**: Kopfkommentar abgeschwächt, §8 Punkt 4 ergänzt |
+| 3 `--ruhe ""`, `" "` schalten die Bestätigung still ab; `0x10`, `1e3` werden angenommen | niedrig | **behoben**: nur `^\d{1,6}$` bis 600000, Test mit 9 Fehlformen (vorher rot) |
+| 4 überlebende Mutanten (`gleich` ignoriert `veraendert`, `unruhig` ignoriert, Längenvergleich nach dem Lesen, ENOENT beim Lesen, `veraendert` der Prüfliste; weggefallener Store als leeres Verzeichnis; ENOENT beim Store-`readdir` in Teilfällen) | niedrig | **bewusst nicht behoben**: Sicherheitsnetze, deren Wirkung durch den späteren Mengen-/Fingerabdruckvergleich aufgefangen wird; ein Test bräuchte Dateien, die nur zwischen zwei Listen existieren. Als Folgeaufgabe notiert |
+| 5 zeitabhängiger Test (Ruhezeit-0-Gegenprobe, 150 ms) kann auf langsamem CI flackern | niedrig | **behoben**: Abstand 600 ms statt 150 ms, Wartezeit 800 ms |
+| 6 Inode: `?? ""` toter Code; ext4 vergibt Inodes oft neu (20 000 Ersetzungen: 3–6 Nummern), exakter Rückfall in 40 000 Schreibvorgängen nie beobachtet | info | Restrisiko in §6 benannt; Härtung (Lesen über Dateihandle mit `fstat`, `bigint`-`stat` für exakte mtime und Inodes > 2^53) als Folgeaufgabe |
+| 7 `werkzeug/last/lauf.mjs:466` zählte Rundenmeldungen als Versuche | niedrig | **behoben**: Muster `Versuch n/m: ` (nur verworfene Versuche) |
+| 8 Werkstatt bei zwei gleichzeitigen Läufen in derselben Sekunde und nach `SIGKILL` (vorbestehend) | niedrig | Folgeaufgabe; durch die längere Laufzeit etwas wahrscheinlicher, dokumentiert |
+| Randnotiz: Verweis in der Empfehlung auf „§3“ statt §8 | – | **behoben** |
+
+Offene Folgeaufgaben (nicht in diesem PR): Schreib-Halt im Server (`wp28b2-empfehlung-konsistente-sicherung.md`);
+Lesen über Dateihandle + `bigint`-`stat`; Werkstatt-Name mit Prozesskennung und Aufräumen verwaister `.unfertig-…`;
+Tests für Dateien, die nur zwischen zwei Listen existieren; Windows (`EPERM/EBUSY/EACCES`); Bildfehler `.dockerignore`;
+Nachlauf S2/S5 (E-20).
