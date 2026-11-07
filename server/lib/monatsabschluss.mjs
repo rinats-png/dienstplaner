@@ -155,6 +155,8 @@ export const KORREKTUR_ANLAESSE = Object.freeze({
 });
 /** Höchstens so viele abgelegte Revisionen je Monat (Größe des Bestands). */
 export const REVISIONEN_MAX = 50;
+/** Höchstens so viele Mitwirkende je Korrekturrevision werden einzeln vermerkt; darüber ist die Freigabe gesperrt (autorenVoll). */
+export const AUTOREN_MAX = 20;
 export const WIEDEROEFFNEN_GRUND_MIN = 10;
 export const ABSCHLUSS_GRUND_MAX = 500;
 export const ABSCHLUSS_VERLAUF_MAX = 200;
@@ -720,6 +722,9 @@ export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
       grund: "Die Freigabe gibt eine zweite Person — nicht die, die die Korrektur begonnen hat." };
   /* Wer die Änderungen dieser Revision gemacht hat, gibt sie nicht frei: Autoren der Stempelkorrekturen seit Beginn und alle,
      die den Bestand seit Beginn gespeichert haben (korrekturAutorVermerken). */
+  if (kor.autorenVoll === true)
+    return { status: 403, code: "KORREKTUR_AUTOREN_VOLL",
+      grund: "An dieser Korrektur haben so viele Personen mitgewirkt, dass sich die Mitwirkenden nicht mehr eindeutig erfassen lassen — eine Freigabe ist nicht möglich. Bitte mit der Betriebsleitung klären." };
   if (korrekturAutoren(m, monat, kor).has(ich))
     return { status: 403, code: "KORREKTUR_ZWEITE_PERSON",
       grund: "Die Freigabe gibt eine Person, die an dieser Korrektur nicht selbst mitgewirkt hat." };
@@ -730,8 +735,13 @@ export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
   const vor = abschliessen(m, { monat, trotzPrueffaellen: true }, wer, jetzt, id, heute, { vorschau: true });
   if ("status" in vor) return vor;
   /* Die Freigabe sieht, was sie freigibt: die Differenzzeilen (nur hier, an org.edit — nie in der Antwort des Abschlusses). */
+  /* Nur Personalnummer, Lohnart, Bezeichnung, Stunden — keine Namen (Datensparsamkeit; die Nummer genügt der Prüfung). */
   const differenz = vor.differenz ? { ...vor.differenz, zeilen: (vor.differenzZeilen || []).map((z) => ({
-    personalnummer: z.personalnummer, nachname: z.nachname ?? null, vorname: z.vorname ?? null, lohnart: z.lohnart, bezeichnung: z.bezeichnung, stunden: z.stunden })) } : null;
+    personalnummer: z.personalnummer, lohnart: z.lohnart, bezeichnung: z.bezeichnung, stunden: z.stunden })) } : null;
+  /* Wessen Lohnzeilen die Korrektur ändert, gibt sie nicht frei. */
+  const eigenePnr = (() => { const p = (Array.isArray(m.personen) ? m.personen : []).find((x) => x && String(x.id) === ich); return p ? String(p.personalnummer || p.id) : ich; })();
+  if (differenz && differenz.zeilen.some((z) => String(z.personalnummer) === eigenePnr))
+    return { status: 403, code: "KORREKTUR_ZWEITE_PERSON", grund: "Die Korrektur ändert eigene Lohnzeilen — die Freigabe gibt eine andere Person." };
   if (!differenz || differenz.n === 0)
     return { status: 409, code: "KORREKTUR_KEINE_DIFFERENZ", grund: "Die Korrektur ändert keine Lohnzeile — eine Freigabe ist nicht nötig." };
   if (typeof (r && r.differenz) !== "string")
@@ -762,22 +772,47 @@ function korrekturAutoren(m, monat, kor) {
   return aus;
 }
 
+/** Die lohnrelevanten Felder eines Betriebs für den Monat (Ist, Stempel mit Korrekturen, Plan, Abwesenheiten, Parameter). */
+function lohnrelevantDesMonats(m, monat) {
+  const keyed = (f) => JSON.stringify(Object.entries(objekt(m && m[f]) ? m[f] : {}).filter(([k]) => imMonat(k, monat)).sort(([a], [b]) => (a < b ? -1 : 1)));
+  return JSON.stringify([keyed("erfassung"), keyed("einstempeln"), keyed("abweichungen"),
+    (m && m.abwesenheiten) ?? null, (m && m.zuschlaege) ?? null, (m && m.lohnarten) ?? null, (m && m.dienstarten) ?? null]);
+}
+
+/** Läuft für diesen Tag/Monat eine offene Korrekturrevision? */
+export function korrekturOffen(m, tagOderMonat) {
+  const mon = monatVon(tagOderMonat);
+  const e = mon ? abschlussEintrag(m, mon) : null;
+  return !!e && objekt(e.korrektur) && e.korrektur.offen === true;
+}
+/** Gibt es im Betrieb irgendeine offene Korrekturrevision? */
+export function hatOffeneKorrektur(m) {
+  return objekt(m) && objekt(m[ABSCHLUSS_FELD]) && Object.values(m[ABSCHLUSS_FELD]).some((e) => objekt(e) && objekt(e.korrektur) && e.korrektur.offen === true);
+}
+
 /**
- * Hat eine Person den Bestand gespeichert, während eine Korrekturrevision offen ist, wird sie als Mitwirkende vermerkt
- * (PUT /api/bestand, Vollschreibrecht) — sie gibt die Differenz dann nicht frei. Fail-closed: auch ein Speichern ohne
- * Änderung zählt.
+ * Zentral (bestand.mjs, bestandSchreiben — jeder Schreibweg): Ändert ein Schreibvorgang in einem Monat mit offener
+ * Korrekturrevision etwas Lohnrelevantes (Vorher/Nachher-Vergleich je Monat), wird die handelnde Person als Mitwirkende
+ * vermerkt — sie gibt die Differenz dann nicht frei. Ohne Änderung kein Vermerk. Unbekannter Handelnder (Zugang ohne
+ * Person) ⇒ "?" (fail-closed: keine Freigabe möglich). Mehr als AUTOREN_MAX Mitwirkende ⇒ `autorenVoll` (Freigabe gesperrt).
+ * @param {any} altM  gespeicherter Betrieb
+ * @param {any} neuM  zu schreibender Betrieb
+ * @returns {any} neuM, ggf. mit ergänzten Mitwirkenden
  */
-export function korrekturAutorVermerken(m, personId) {
-  if (!objekt(m) || !objekt(m[ABSCHLUSS_FELD]) || personId === undefined || personId === null || String(personId) === "") return m;
+export function korrekturAutorVermerken(altM, neuM, personId) {
+  if (!objekt(neuM) || !hatOffeneKorrektur(neuM)) return neuM;
+  const wer = personId === undefined || personId === null || String(personId) === "" ? "?" : String(personId);
   let neu = null;
-  for (const [mon, e] of Object.entries(m[ABSCHLUSS_FELD])) {
+  for (const [mon, e] of Object.entries(neuM[ABSCHLUSS_FELD])) {
     if (!objekt(e) || !objekt(e.korrektur) || e.korrektur.offen !== true) continue;
+    if (objekt(altM) && lohnrelevantDesMonats(altM, mon) === lohnrelevantDesMonats(neuM, mon)) continue;
     const a = Array.isArray(e.korrektur.autoren) ? e.korrektur.autoren : [];
-    if (a.includes(String(personId)) || a.length >= 20) continue;
-    neu = neu || { ...m[ABSCHLUSS_FELD] };
-    neu[mon] = { ...e, korrektur: { ...e.korrektur, autoren: [...a, String(personId)] } };
+    if (a.includes(wer)) continue;
+    neu = neu || { ...neuM[ABSCHLUSS_FELD] };
+    neu[mon] = { ...e, korrektur: a.length >= AUTOREN_MAX ? { ...e.korrektur, autorenVoll: true }
+      : { ...e.korrektur, autoren: [...a, wer] } };
   }
-  return neu ? { ...m, [ABSCHLUSS_FELD]: neu } : m;
+  return neu ? { ...neuM, [ABSCHLUSS_FELD]: neu } : neuM;
 }
 
 /** Die letzte Wiederöffnung eines (jetzt offenen) Monats — für den Vermerk an Korrekturen. */

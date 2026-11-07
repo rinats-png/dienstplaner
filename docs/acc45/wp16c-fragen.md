@@ -40,3 +40,15 @@ Alte Spur-Zeilen werden beim Lesen (Betreiber-Lage) geschwärzt, nicht in der Ab
 | R5 | Blinde Freigabe | Die Antwort von `korrektur-freigeben` (Vorschau und Erfolg) enthält die Differenzzeilen; der Abschluss (Planung) liefert nur Zahlen. |
 | R7 | Folgemonate | Offen/nicht umgesetzt: Eine Korrektur eines Monats ändert den Übertrag/das Konto folgender, bereits exportierter Monate (`vs`/`ue` im Freeze). Keine Markierung der Folgemonate; Klärung nötig, ob sie als „Konto veraltet“ gekennzeichnet werden sollen. |
 | R8 | Probierraum | Siehe R2. |
+
+## Nachtrag zum Re-Review von 383a710
+
+| # | Punkt | Festgelegtes Verhalten / offen |
+|---|---|---|
+| RR1 | Mitwirkende zentral | Statt je Endpunkt: `bestandSchreiben` (bestand.mjs) vergleicht bei jedem Schreibvorgang mit offener Korrektur je Monat Vorher/Nachher (`erfassung`, `einstempeln` samt Korrekturen, `abweichungen`, `abwesenheiten`, `zuschlaege`, `lohnarten`, `dienstarten`) und vermerkt die handelnde Person (Schreibkontext, `schreibkontext.mjs`) — nur bei echter Änderung. Ohne Anfragekontext (Löschlauf, Sicherung) kein Vermerk. Bei veraltetem ETag wird gegen den heute gespeicherten Stand verglichen (kann zu viel zuordnen: fail-closed). Zugang ohne Person ⇒ "?" ⇒ Freigabe nur durch eine Person, die nicht "?" ist — der Eintrag selbst blockiert keine konkrete Person; wer die Freigabe darf, entscheidet weiterhin die Mitwirkenden-Liste. |
+| RR2 | Selbstauskunft und Wiederherstellen | In einem Monat mit offener Korrektur: 409 `KORREKTUR_OFFEN` (nichts wird still geändert). Wiederherstellen ist für den ganzen Betrieb gesperrt, solange irgendeine Korrektur offen ist. |
+| RR3 | Eigene Lohnzeilen | Wessen Personalnummer in der Differenz steht, gibt nicht frei (403). |
+| RR5 | Grenze der Mitwirkenden | Ab 20 vermerkten Personen `autorenVoll`: Freigabe 403 `KORREKTUR_AUTOREN_VOLL` (Klärung mit der Betriebsleitung). |
+| RR6 | Namen in der Freigabe-Antwort | Entfernt: nur Personalnummer, Lohnart, Bezeichnung, Stunden. |
+| RR7 | Zeitumstellungs-Ausnahme | Eigener Pflichtgrund `zeitumstellungGrund` (10–Maximallänge Zeichen), im Ereignis gespeichert; nie für die eigene Zeit (422). |
+| RR8 | Gleiche Uhrzeiten | Bleiben auch mit Ausnahme gesperrt (sie ergäben die falsche Dauer). |

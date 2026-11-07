@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { VERSION } from "../src/migration.js";
 import { abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, exportZeilenFuer,
-  KORREKTUR_ERFORDERLICH, KORREKTUR_FREIGABE_ERFORDERLICH, KORREKTUR_BASIS_FEHLT, KORREKTUR_BASIS_ABWEICHEND, KORREKTUR_DIFFERENZ_FEHLT,
+  korrekturAutorVermerken, KORREKTUR_ERFORDERLICH, KORREKTUR_FREIGABE_ERFORDERLICH, KORREKTUR_BASIS_FEHLT, KORREKTUR_BASIS_ABWEICHEND, KORREKTUR_DIFFERENZ_FEHLT,
   datevZeilenAbdruck, abschlussStatus, monatAbgeschlossen } from "../server/lib/monatsabschluss.mjs";
 import { abschlussRecht } from "../server/lib/rechte.mjs";
 import { abschlussPersonenRaeumen } from "../server/lib/aufbewahrung.mjs";
@@ -516,5 +516,96 @@ describe("Review-Befunde 1–3, 5, 6: Umgehung, Person, Autoren, Differenzzeilen
     const r = korrekturFreigeben(g, { monat: OKT }, WER_L2, new Date(JETZT), "kf", "2026-11-05");
     expect([r.status, r.code]).toEqual([403, "KORREKTUR_ZWEITE_PERSON"]);
     expect(korrekturFreigeben(g, { monat: OKT }, { personId: "l3", rolle: "leitung" }, new Date(JETZT), "kf", "2026-11-05").code).toBe(KORREKTUR_DIFFERENZ_FEHLT);
+  });
+});
+
+describe("Re-Review: zentrale Mitwirkenden-Erfassung, offene Korrektur sperrt stille Wege, Personalnummer, Grenze", { timeout: 180000 }, () => {
+  /** Betrieb mit Stempel für a1 am 5.10. und Samstagsdienst für l3 am 31.10.; exportiert; Korrektur von l1 begonnen. */
+  async function aufbau(raum) {
+    const m = betrieb();
+    m.einstempeln["a1|2026-10-05"] = { start: "06:00", startAm: "2026-10-05T04:00:00.000Z", ende: "14:00", endeAm: "2026-10-05T12:00:00.000Z" };
+    m.abweichungen["l3|2026-10-31"] = "F";
+    m.erfassung["l3|2026-10-31"] = { start: null, ende: null, bestaetigt: true, grund: "" };
+    await B.bestandSchreiben(laden(), raum, { version: VERSION, mandanten: [m] }, { durch: "Pruefung" });
+    const t = { l1: await token("l1", raum), l2: await token("l2", raum), l3: await token("l3", raum), a1: await token("a1", raum), p1: await token("p1", raum) };
+    expect((await abschlussPost(t.l1, { aktion: "abschliessen" })).status).toBe(200);
+    const sicht = (await anfrage("bestand", { methode: "GET", token: t.l1 })).bestand.mandanten[0];
+    expect((await abschlussPost(t.l1, { aktion: "lohnexport", ...FL.lohnexportStand(sicht, OKT), ...TROTZ })).status).toBe(200);
+    expect((await abschlussPost(t.l1, { aktion: "korrektur-beginnen", anlass: "fehler", grund: "Samstagsdienst war nicht geleistet" })).status).toBe(200);
+    return t;
+  }
+  const putAendern = async (raum, token, aenderung) => {
+    const g = await anfrage("bestand", { methode: "GET", token });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    aenderung(b.mandanten[0]);
+    return anfrage("bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag } });
+  };
+  const frei = (t, extra = {}) => abschlussPost(t, { aktion: "korrektur-freigeben", ...extra });
+
+  it("PUT ohne Änderung blockiert die Freigabe NICHT; ein PUT mit Änderung (andere Person) schon", async () => {
+    const raum = "wp16c-rr1";
+    const t = await aufbau(raum);
+    expect((await putAendern(raum, t.l1, (m) => { delete m.abweichungen["a1|2026-10-31"]; delete m.erfassung["a1|2026-10-31"]; })).status).toBe(200);
+    expect((await putAendern(raum, t.l2, () => {})).status).toBe(200);                       // unverändert gespeichert
+    expect((await mandant(raum)).monatsabschluss[OKT].korrektur.autoren).toEqual(["l1"]);
+    const v = await frei(t.l2);
+    expect([v.status, v.code]).toEqual([409, KORREKTUR_DIFFERENZ_FEHLT]);                     // nicht 403: l2 ist kein Mitwirkender
+    expect(v.differenz.zeilen.every((z) => !("nachname" in z) && !("vorname" in z))).toBe(true);   // keine Namen
+    expect((await frei(t.l2, { differenz: v.differenz.abdruck })).status).toBe(200);
+  });
+  it("Selbstauskunft (zeit-bestätigen) und Wiederherstellen im Monat mit offener Korrektur ⇒ 409 KORREKTUR_OFFEN (nichts still geändert)", async () => {
+    const raum = "wp16c-rr2";
+    const t = await aufbau(raum);
+    const vorher = JSON.stringify((await mandant(raum)).erfassung);
+    const z = await anfrage("zeit-bestaetigen", { token: t.a1, rumpf: { datum: "2026-10-30", start: null, ende: null } });
+    expect([z.status, z.code]).toEqual([409, "KORREKTUR_OFFEN"]);
+    const s = await anfrage("sicherung", { token: t.l1, rumpf: {} });
+    expect(s.status, s.roh).toBe(200);
+    const g = await anfrage("bestand", { methode: "GET", token: t.l2 });
+    const w = await anfrage("wiederherstellen", { token: t.l2, rumpf: { marke: s.marke, etag: g.etag } });
+    expect([w.status, w.code]).toEqual([409, "KORREKTUR_OFFEN"]);
+    expect(JSON.stringify((await mandant(raum)).erfassung)).toBe(vorher);
+    expect((await mandant(raum)).monatsabschluss[OKT].korrektur.autoren).toBeUndefined();
+  });
+  it("Stempelkorrektur durch eine zweite Leitung macht sie zur Mitwirkenden (zentral, nicht je Endpunkt)", async () => {
+    const raum = "wp16c-rr3";
+    const t = await aufbau(raum);
+    const k = await anfrage("stempel-korrektur", { token: t.l2, rumpf: { personId: "a1", datum: "2026-10-05", start: "06:00", ende: "15:00", pause: 30, grund: "Dienst ging eine Stunde länger" } });
+    expect(k.status, k.roh).toBe(200);
+    expect((await mandant(raum)).monatsabschluss[OKT].korrektur.autoren).toEqual(["l2"]);
+    expect((await frei(t.l2)).status).toBe(403);
+    expect((await putAendern(raum, t.l1, (m) => { delete m.abweichungen["a1|2026-10-31"]; delete m.erfassung["a1|2026-10-31"]; })).status).toBe(200);
+    expect([(await frei(t.l3)).status]).toEqual([409]);                                      // dritte Person darf (Differenz fehlt noch)
+  });
+  it("Personalnummer: wessen Lohnzeilen sich ändern, der gibt nicht frei", async () => {
+    const raum = "wp16c-rr4";
+    const t = await aufbau(raum);
+    expect((await putAendern(raum, t.l1, (m) => { delete m.abweichungen["l3|2026-10-31"]; delete m.erfassung["l3|2026-10-31"]; })).status).toBe(200);
+    const eigene = await frei(t.l3);
+    expect([eigene.status, eigene.code, /eigene Lohnzeilen/.test(eigene.roh)]).toEqual([403, "KORREKTUR_ZWEITE_PERSON", true]);
+    const v = await frei(t.l2);
+    expect(v.differenz.zeilen.some((z) => z.personalnummer === "P7")).toBe(true);
+    expect((await frei(t.l2, { differenz: v.differenz.abdruck })).status).toBe(200);
+  });
+  it("Grenze: bei mehr als AUTOREN_MAX Mitwirkenden wird die Freigabe gesperrt (kein stilles Aufhören)", () => {
+    const m = exportiert(zu(betrieb()));
+    let g = beginnen(m).mandant;
+    const alt = (p) => ({ ...g, erfassung: { ...g.erfassung, [`a1|2026-10-31`]: { start: null, ende: null, bestaetigt: true, grund: p } } });
+    for (let i = 0; i < 21; i++) {
+      const neu = alt(`x${i}`);
+      g = korrekturAutorVermerken(g, neu, `u${i}`);
+      g = { ...neu, monatsabschluss: g.monatsabschluss };
+    }
+    expect(g.monatsabschluss[OKT].korrektur.autoren.length).toBe(20);
+    expect(g.monatsabschluss[OKT].korrektur.autorenVoll).toBe(true);
+    const r = korrekturFreigeben(g, { monat: OKT }, WER_L2, new Date(JETZT), "kf", "2026-11-05");
+    expect([r.status, r.code]).toEqual([403, "KORREKTUR_AUTOREN_VOLL"]);
+  });
+  it("kein Vermerk ohne lohnrelevante Änderung; unbekannter Handelnder ⇒ \"?\" (fail-closed)", () => {
+    const m = exportiert(zu(betrieb()));
+    const g = beginnen(m).mandant;
+    expect(korrekturAutorVermerken(g, g, "l2")).toBe(g);
+    const geaendert = { ...g, erfassung: { ...g.erfassung, "a1|2026-10-05": { start: "06:00", ende: "15:00", bestaetigt: true, grund: "" } } };
+    expect(korrekturAutorVermerken(g, geaendert, null).monatsabschluss[OKT].korrektur.autoren).toEqual(["?"]);
   });
 });

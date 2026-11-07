@@ -29,8 +29,9 @@ import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
+import { schreibKontext } from "../lib/schreibkontext.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, abgewiesenVermerken, letzteWiederoeffnung,
-  monatAbgeschlossen, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
+  monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
@@ -922,6 +923,8 @@ export default async (req, context) => {
 
     /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
        beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */
+    /* Wer schreibt? Für den gemeinsamen Schreibpunkt (bestand.mjs): Mitwirkende an einer offenen Korrekturrevision (WP-16c). */
+    schreibKontext.enterWith({ person: s.person ?? null });
     const wer = { rolle: s.rolle, person: s.person, weg: pfad,
       verfahren: req.method, herkunft: herkunft(req), mandantId: s.mandantId || null };
 
@@ -1979,6 +1982,11 @@ export default async (req, context) => {
           await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: Monat abgeschlossen ${sperreZ.monat}`, wer);
           return antwort({ fehler: sperreZ.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreZ.monat }, 409);
         }
+        /* Offene Korrekturrevision (WP-16c): keine Selbstauskunft, die still Ist ändert — erst nach der Korrektur. */
+        if (korrekturOffen(mZ, String(datum ?? ""))) {
+          await protokoll("schreiben", kZ, "abgewiesen", "Zeit bestätigen: Korrektur offen", wer);
+          return antwort({ fehler: "Für diesen Monat läuft eine Korrektur nach dem Lohnexport. Zeiten bestätigt jetzt die Leitung.", code: "KORREKTUR_OFFEN" }, 409);
+        }
         if ((mZ.erfassung || {})[kTag]) {
           await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: schon erfasst`, { ...wer, tag: datum });
           return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
@@ -2301,6 +2309,11 @@ export default async (req, context) => {
             text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
             etag: jetztGelesen.stand }, 409);
 
+        /* Offene Korrekturrevision (WP-16c): kein Zurückspielen, das Ist und Abschlüsse still verändert. */
+        if ((jetztGelesen.bestand.mandanten || []).some(hatOffeneKorrektur)) {
+          await protokoll("schreiben", kW, "abgewiesen", "Wiederherstellen: Korrektur offen", wer);
+          return antwort({ fehler: "Es läuft eine Korrektur nach dem Lohnexport. Wiederherstellen ist erst nach ihrem Abschluss möglich.", code: "KORREKTUR_OFFEN" }, 409);
+        }
         const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
         if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
         const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);

@@ -37,6 +37,8 @@ import { zerlegen, zusammensetzen, abdruck, kernAbdruck, abdruckNormal, monatVon
 import { ereignis } from "./gesund-zaehler.mjs";
 import { unterRaumsperre, sperreGehalten, sperrKontext, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
+import { schreibKontext } from "./schreibkontext.mjs";
+import { korrekturAutorVermerken, hatOffeneKorrektur } from "./monatsabschluss.mjs";
 
 /* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
    (Stempeln, PUT, Wiederherstellen …): dieselbe Sperre, dieselbe Reihe. */
@@ -476,7 +478,7 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
      (PUT, Anlegen, Wiederherstellen, Stempeln …) läuft hier durch — hier
      wird sie verworfen; ein Altinhalt verschwindet beim nächsten Schreiben.
      Ebenso session am Betrieb (Commit D1c). */
-  const neuerBestand = ohneSitzung(neuerBestandRoh);
+  let neuerBestand = ohneSitzung(neuerBestandRoh);
 
   /* Alles, was hier über den gespeicherten Stand gelesen wird, wird streng
      gelesen: Ein unlesbarer Zeiger, Kern oder Vermerk bricht ab, statt als
@@ -496,6 +498,17 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   const kernMeta = await streng("Kern", () => store.getMetadata(kernSchluessel(raum)));
   const kernStand = kernMeta && Number.isFinite(Number(kernMeta.metadata?.stand))
     ? Number(kernMeta.metadata.stand) : null;
+
+  /* Korrekturrevision (WP-16c): Für JEDEN Schreibweg — hat der Schreibvorgang in einem Monat mit offener Korrektur etwas
+     Lohnrelevantes geändert, wird die handelnde Person (Schreibkontext) als Mitwirkende vermerkt. Nur mit Kontext (Anfrage)
+     und nur, wenn eine offene Korrektur existiert; sonst kein zusätzliches Lesen. */
+  const kontext = schreibKontext.getStore();
+  if (kontext && neuerBestand && Array.isArray(neuerBestand.mandanten) && neuerBestand.mandanten.some(hatOffeneKorrektur)) {
+    const alt = await streng("Bestand für die Mitwirkenden", () => bestandLesenStreng(store, raum));
+    const altM = new Map(((alt && alt.bestand && alt.bestand.mandanten) || []).map((x) => [x && x.id, x]));
+    neuerBestand = { ...neuerBestand, mandanten: neuerBestand.mandanten.map((x) => (x && hatOffeneKorrektur(x)
+      ? korrekturAutorVermerken(altM.get(x.id) || null, x, kontext.person) : x)) };
+  }
 
   const zNeu = zerlegen(neuerBestand);
   const abdNeu = abdruecke(zNeu);

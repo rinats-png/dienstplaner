@@ -77,3 +77,8 @@ Vertrags-/Tarifparameter (Lohnart geändert ⇒ Differenz ⇒ Freigabe), PUT kan
 Stempel unveränderlich (der normale Speicherpfad bleibt gesperrt solange der Monat zu ist; während der Korrektur gilt die Korrekturereignis-Regel), Betriebsrat/Mitarbeiter sehen keine fremden Ist-Zeiten
 und keine Revisionen (`abschlussStatus` unverändert), Spur append-only und ohne Personenbezug/Freitext, Drei-Wege-Merge und ETag-Pflicht unberührt (PUT mit ETag), alle Schritte unter der Raumsperre am
 frischen Stand.
+
+## Nachtrag Re-Review (Folgecommit)
+Zentral statt je Endpunkt: `schreibkontext.mjs` (AsyncLocalStorage, im Handler einmal gesetzt) + Vorher/Nachher-Vergleich in `bestandSchreiben` (`korrekturAutorVermerken(altM, neuM, person)`): jeder Schreibweg (PUT, Stempeln, Korrektur, Antragsentscheidung …) vermerkt Mitwirkende — nur bei echter Änderung; ein PUT ohne Änderung blockiert nichts.
+`zeit-bestaetigen` und `wiederherstellen` im Monat mit offener Korrektur: 409 `KORREKTUR_OFFEN`. Freigabe: nie bei eigener Personalnummer in der Differenz, nie bei `autorenVoll`, ohne Namen in der Antwort. Zeitumstellungs-Ausnahme: eigener Pflichtgrund, nie für die eigene Zeit.
+Tests: `wp16c` 26 (HTTP: PUT ohne Änderung, Selbstauskunft, Wiederherstellen, Stempelkorrektur, Personalnummer; Bibliothek: Grenze, kein Vermerk ohne Änderung), `wp14c` 18. Mutanten (zentraler Vermerk entfernt 3 rot, Vermerk ohne Änderung 5 rot, Personalnummer-Sperre 1, Wiederherstellen-Sperre 1, Selbstauskunft-Sperre 1, autorenVoll 1).

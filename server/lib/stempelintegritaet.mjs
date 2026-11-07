@@ -371,7 +371,7 @@ export function zeitumstellungSperre(alt, start, ende, stempel, datum) {
 /**
  * Eine Korrektur prüfen und als Ereignis anhängen.
  * @param {object} m  gespeicherter Betrieb
- * @param {{personId: string, datum: string, start: string, ende: string, grund: string, pause?: number, zeitumstellungAusnahme?: boolean}} k
+ * @param {{personId: string, datum: string, start: string, ende: string, grund: string, pause?: number, zeitumstellungAusnahme?: boolean, zeitumstellungGrund?: string}} k
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
  * @param {string} id
@@ -419,6 +419,14 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
   const umstellung = zeitumstellungSperre(alt, start, ende, stempel, datum);
   const umstellungAusnahme = !!umstellung && umstellung.ausnahmeMoeglich === true && !!k && k.zeitumstellungAusnahme === true;
   if (umstellung && !umstellungAusnahme) return umstellung;
+  if (umstellungAusnahme) {
+    /* Die Ausnahme braucht einen eigenen Grund und gilt nie für die eigene Zeit (Vier-Augen). */
+    const zg = typeof k.zeitumstellungGrund === "string" ? k.zeitumstellungGrund.trim() : "";
+    if (zg.length < 10 || zg.length > KORREKTUR_GRUND_MAX)
+      return { status: 422, grund: "Die Ausnahme in der Nacht der Zeitumstellung braucht einen eigenen Grund (zeitumstellungGrund, mindestens 10 Zeichen)." };
+    if (wer && wer.personId !== undefined && wer.personId !== null && String(wer.personId) === String(personId))
+      return { status: 422, grund: "Die Ausnahme von der Zeitumstellungs-Sperre gilt nicht für die eigene Zeit — das bestätigt eine andere Person der Leitung." };
+  }
 
   /** @type {any} */
   const ereignis = {
@@ -436,7 +444,7 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     /* N2 (WP-14b): Die handelnde Person korrigiert bzw. genehmigt die eigene Zeit. Nur ein Kennzeichen —
        ob das ohne zweite Person zulässig ist (Vier-Augen), ist eine offene Entscheidung; das Recht bleibt. */
     ...(wer && wer.personId !== undefined && wer.personId !== null && String(wer.personId) === String(personId) ? { selbstfreigabe: true } : {}),
-    ...(umstellungAusnahme ? { zeitumstellungAusnahme: true } : {}),
+    ...(umstellungAusnahme ? { zeitumstellungAusnahme: true, zeitumstellungGrund: String(k.zeitumstellungGrund).trim() } : {}),
   };
   /* Die gültige Pause: die genannte, sonst die zuletzt erfasste, sonst die der geplanten Dienstart. */
   const gueltigePause = pauseFuerKorrektur(m, personId, datum, pauseGegeben ? pause : undefined);

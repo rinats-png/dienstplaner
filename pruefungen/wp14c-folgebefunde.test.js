@@ -191,14 +191,19 @@ describe("F4 (Review): Ausnahme von der Zeitumstellungs-Sperre durch die Leitung
       await h.raum(raum, [h.person("a1"), h.person("l1", "leitung"), h.person("p1", "planer")], fall(datum, startAm, endeAm, start, ende));
       h.zeitAuf("2026-11-10T09:00:00Z");
       const rumpf = { personId: "a1", datum, start: wahr[0], ende: wahr[1], pause: 0, grund: "Nachtdienst über die Zeitumstellung geprüft" };
+      const ausn = { zeitumstellungAusnahme: true, zeitumstellungGrund: "Arbeitszeit laut Dienstbuch bestätigt" };
       const lt = await h.token(raum, "l1", "leitung"), pt = await h.token(raum, "p1", "planer");
       const nein = await h.anfrage("stempel-korrektur", { token: lt, rumpf });
       expect([nein.status, /zeitumstellungAusnahme/.test(nein.roh)]).toEqual([422, true]);
-      expect((await h.anfrage("stempel-korrektur", { token: pt, rumpf: { ...rumpf, zeitumstellungAusnahme: true } })).status).toBe(422);
+      expect((await h.anfrage("stempel-korrektur", { token: pt, rumpf: { ...rumpf, ...ausn } })).status).toBe(422);
       expect((await h.mandant(raum)).erfassung[`a1|${datum}`].bestaetigt).toBe(false);
-      const ja = await h.anfrage("stempel-korrektur", { token: lt, rumpf: { ...rumpf, zeitumstellungAusnahme: true } });
+      /* eigener Pflichtgrund */
+      const ohneGrund = await h.anfrage("stempel-korrektur", { token: lt, rumpf: { ...rumpf, zeitumstellungAusnahme: true } });
+      expect([ohneGrund.status, /zeitumstellungGrund/.test(ohneGrund.roh)]).toEqual([422, true]);
+      expect((await h.anfrage("stempel-korrektur", { token: lt, rumpf: { ...rumpf, zeitumstellungAusnahme: true, zeitumstellungGrund: "kurz" } })).status).toBe(422);
+      const ja = await h.anfrage("stempel-korrektur", { token: lt, rumpf: { ...rumpf, ...ausn } });
       expect(ja.status, ja.roh).toBe(200);
-      expect(ja.ereignis.zeitumstellungAusnahme).toBe(true);
+      expect(ja.ereignis).toMatchObject({ zeitumstellungAusnahme: true, zeitumstellungGrund: ausn.zeitumstellungGrund });
       expect(ja.ereignis.grund).toMatch(/Zeitumstellung geprüft/);
       expect((await h.mandant(raum)).erfassung[`a1|${datum}`]).toMatchObject({ bestaetigt: true, start: wahr[0], ende: wahr[1] });
       const spur = (await h.spur("2026-11-10")).filter((x) => /Zeitumstellung bestätigt/.test(x.zusatz || ""));
@@ -210,5 +215,18 @@ describe("F4 (Review): Ausnahme von der Zeitumstellungs-Sperre durch die Leitung
     const f = { start: "02:30", ende: "02:20", bestaetigt: false, grund: "ZEITUMSTELLUNG: x" };
     const s = zeitumstellungSperre(f, "02:30", "02:20", { startAm: "2026-10-25T00:30:00.000Z", endeAm: "2026-10-25T01:20:00.000Z" }, "2026-10-25");
     expect(s && s.ausnahmeMoeglich).toBeFalsy();
+  });
+});
+
+describe("F4 (Re-Review): die Ausnahme gilt nicht für die eigene Zeit", { timeout: 120000 }, () => {
+  it("Leitung korrigiert ihre eigene Nachtzeit mit Ausnahme ⇒ 422 (Selbstfreigabe gesperrt)", async () => {
+    const datum = "2026-10-24";
+    await h.raum("f4-selbst", [h.person("l1", "leitung")], {
+      einstempeln: { [`l1|${datum}`]: { start: "22:00", startAm: "2026-10-24T20:00:00.000Z", ende: "06:30", endeAm: "2026-10-25T04:00:00.000Z", markierungen: ["ZEITUMSTELLUNG"] } },
+      erfassung: { [`l1|${datum}`]: { start: "22:00", ende: "06:30", bestaetigt: false, grund: "ZEITUMSTELLUNG: gemessen" } } });
+    h.zeitAuf("2026-11-10T09:00:00Z");
+    const r = await h.anfrage("stempel-korrektur", { token: await h.token("f4-selbst", "l1", "leitung"), rumpf: { personId: "l1", datum, start: "22:00", ende: "06:00", pause: 0,
+      grund: "Eigene Nachtzeit geprüft", zeitumstellungAusnahme: true, zeitumstellungGrund: "Arbeitszeit laut Dienstbuch bestätigt" } });
+    expect([r.status, /eigene Zeit/.test(r.roh)]).toEqual([422, true]);
   });
 });
