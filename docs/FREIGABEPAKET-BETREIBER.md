@@ -460,3 +460,10 @@ Betreiberentscheidung: **Nach jeder vollständigen Wiederherstellung der Ablage 
 4. **Restrisiko:** Eine Verzeichniskopie aus den letzten 60 Sekunden vor einem harten Absturz (SIGKILL) kann beim Zurückspielen nicht erkannt werden; bei SIGTERM wird die Bindung beim Beenden erneuert. Annahme dieses Restrisikos ist eine Betreiberentscheidung.
 5. **Fehlt nur die Epochendatei bei vorhandener Bindung** (Mount fehlt, `CENTRIC_ZUSTAND` geändert, Datei beschädigt), werden alle Sicherungsschlüssel sofort und endgültig widerrufen (gewollt, fail-closed).
 6. **Passwortwechsel-Warnung:** bleibt verpflichtend für einen späteren echten Passwortwechsel-/Reset-Ablauf; dieser existiert noch nicht und gilt deshalb nicht als geprüft.
+
+### G.2 Betreiberentscheidung SI-P6 (2026-11-07): Leitungscodes für Kundenräume und Betreiber-2FA-Gate
+1. **Verbot:** Der Betreiber darf für **bestehende Kundenräume** ohne nachweisbare Kundenzustimmung keine neuen Leitungscodes erzeugen — auf **allen** API-Wegen, ausdrücklich auch `/einrichten`. Frische Anmeldung und 2FA ersetzen keine Kundenzustimmung.
+2. **Erlaubt bleibt** die kontrollierte Ersteinrichtung eines **neuen** Betriebs (frische Authentifizierung, 2FA, enge Berechtigungsprüfung, Protokollierung).
+3. **Separates Paket SI-P6b** (BLOCKED, braucht Spezifikation): Kundenzustimmung bzw. Notfall-Wiederherstellung — keine Betreiber-Hintertür.
+4. **Betreiber-2FA als Release-/Deployment-Gate** (`CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT`) ist **genehmigt**, aber **nicht produktiv aktiviert**: Voraussetzungen sind erfolgreiche Staging-Tests, eingerichteter zweiter Faktor und geprüfte Wiederherstellungsmöglichkeiten. Produktive Aktivierung und Deployment nur nach gesonderter Freigabe.
+5. **Reihenfolge:** SI-P7 vor SI-P6 (beide `daten.mjs`, Cloud-Agent 2, nacheinander).

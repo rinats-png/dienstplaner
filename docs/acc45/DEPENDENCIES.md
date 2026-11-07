@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 439,2–748,5 PT in 88 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 440,7–751,5 PT in 89 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -39,6 +39,7 @@ flowchart LR
     SI_P6["SI-P6<br/>READY"]
     SI_P7["SI-P7<br/>READY"]
     SI_P8["SI-P8<br/>READY"]
+    SI_P6b["SI-P6b<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -358,6 +359,7 @@ flowchart LR
   WP_S1 --> WP_PILOT
   WP_19_0 --> WP_PILOT
   E_19 --> WP_PILOT
+  SI_P6 --> SI_P6b
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -518,3 +520,4 @@ flowchart LR
 | SI-P6 | acc45 | P0 | 1,5–3 | 1,5–3 | – | daten.mjs | opus | READY |
 | SI-P7 | acc45 | P2 | 1,5–2,5 | 1,5–2,5 | – | daten.mjs | opus | READY |
 | SI-P8 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
