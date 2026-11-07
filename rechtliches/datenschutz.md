@@ -1,164 +1,102 @@
 # Datenschutzerklärung
 
-Stand: August 2026
+**Status: ENTWURF — nicht veröffentlichen.** Revision R2, Stand 2026-11-07. Arbeitsentwurf: keine Rechtsberatung, kein Kanzleigutachten, keine Rechtsfreigabe. Aussagen über den laufenden Betrieb sind nur dann wahr, wenn der Betreiber sie bestätigt; wo das nicht belegt ist, steht `[ZU_KLAEREN: …]`. Der Text beschreibt den Stand des Quelltexts (Branch `integration/release-v4`), nicht eine geprüfte Produktivumgebung.
 
-Diese Erklärung beschreibt, was mit personenbezogenen Daten geschieht, wenn
-du CENTRIC benutzt. Sie ist bewusst in normalem Deutsch geschrieben — eine
-Erklärung, die niemand versteht, erfüllt Artikel 12 DSGVO nicht.
+Diese Erklärung ist bewusst in normalem Deutsch geschrieben (Art. 12 DSGVO: verständlich und leicht zugänglich).
 
-## Wer verantwortlich ist
+## 1. Wer verantwortlich ist
 
-[BEISPIEL-FIRMA] [BEISPIEL-RECHTSFORM]
-[BEISPIEL-STRASSE]
-[BEISPIEL-PLZ-ORT]
-E-Mail: [BEISPIEL-EMAIL]
-Telefon: [BEISPIEL-TELEFON]
+    [ZU_KLAEREN: vollständige Firmierung, Rechtsform, Anschrift]
+    E-Mail: [ZU_KLAEREN]
 
-Datenschutzbeauftragte Person: [BEISPIEL-DSB]
+Datenschutzbeauftragte Person: [ZU_KLAEREN: Benennungspflicht nach Art. 37 DSGVO und § 38 BDSG prüfen; wenn nicht bestellt, diesen Absatz sachlich streichen und nur die Kontaktstelle nennen]
 
-## Zwei Rollen, die auseinanderzuhalten sind
+Zuständige Datenschutzaufsicht: [ZU_KLAEREN: Behörde des Landes, in dem der Anbieter seinen Sitz hat]
 
-Das ist der wichtigste Absatz dieser Erklärung.
+## 2. Zwei Rollen, die auseinanderzuhalten sind
 
-**Für die Website und den Testzugang** sind wir Verantwortlicher im Sinne
-des Artikels 4 Nr. 7 DSGVO. Was hier steht, gilt für diese Daten.
+**Eigene Verantwortung.** Für die Website, Anfragen, Testzugänge, Vertrags- und Rechnungsdaten und unsere eigenen Sicherheitsprotokolle sind wir Verantwortlicher (Art. 4 Nr. 7 DSGVO). Dafür gilt diese Erklärung.
 
-**Für die Dienstplandaten eines Betriebs** sind wir es nicht. Wer einen
-Dienstplan mit Personal führt, entscheidet selbst über Zweck und Mittel —
-und ist damit Verantwortlicher. Wir verarbeiten diese Daten ausschließlich
-im Auftrag, auf Grundlage eines Vertrags nach Artikel 28 DSGVO.
+**Verarbeitung im Auftrag.** Dienstpläne, Arbeitszeiten, Abwesenheiten, Qualifikationen, Anträge und Mitteilungen eines Betriebs verarbeiten wir grundsätzlich im Auftrag des Betriebs auf Grundlage eines Vertrags nach Art. 28 DSGVO (`auftragsverarbeitung.md`). Der Betrieb legt Zwecke und Mittel fest und ist dafür Verantwortlicher. Die Einordnung folgt dem einzelnen Datenfluss, nicht der Datenbank als Ganzes.
 
-Wenn du Beschäftigte oder Beschäftigter eines Betriebs bist, der CENTRIC
-einsetzt: Deine Auskunfts- und Löschansprüche richtest du an deinen
-Arbeitgeber, nicht an uns. Wir leiten sie ohnehin dorthin weiter.
+Wenn Sie bei einem Betrieb beschäftigt sind, der CENTRIC einsetzt: Auskunfts-, Berichtigungs- und Löschanträge richten Sie an Ihren Arbeitgeber. Anträge, die bei uns eingehen, leiten wir an ihn weiter und unterstützen ihn nach dem Vertrag.
 
-## Beim Aufruf der Website
+## 3. Aufruf der Website und der Anwendung
 
-Beim Aufruf werden Daten verarbeitet, die dein Browser übermittelt:
-IP-Adresse, Zeitpunkt, aufgerufene Adresse, übertragene Datenmenge, Browser
-und Betriebssystem.
+Beim Aufruf verarbeitet der Server Daten, die Ihr Gerät übermittelt: IP-Adresse, Zeitpunkt, aufgerufene Adresse, Statuscode, Datenmenge, Browser- und Betriebssystemkennung.
 
-Rechtsgrundlage ist Artikel 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse
-liegt darin, den Dienst überhaupt ausliefern und Angriffe erkennen zu
-können. Diese Daten stehen in den Protokollen unseres Hosters und werden
-dort nach dessen Fristen gelöscht.
+Zweck: Auslieferung, Stabilität, Fehlererkennung, Abwehr von Angriffen. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einem sicheren Betrieb; Interessenabwägung ist zu dokumentieren).
 
-**Keine Zählpixel, keine Reichweitenmessung, keine Werbenetzwerke.** Die
-Anwendung setzt keine Cookies zu diesen Zwecken; deshalb gibt es auch kein
-Einwilligungsfenster.
+Die Anwendung selbst rechnet mit der Herkunftsadresse nur über eine Prüfsumme (Hash), um Anmeldeversuche zu bremsen. Eine Prüfsumme einer IP-Adresse ist eine Pseudonymisierung und bleibt personenbezogen, solange sie sich zuordnen lässt; sie ist nicht automatisch anonym.
 
-**Schriften** liegen auf unserem eigenen Server. Es wird keine Verbindung zu
-Google Fonts oder einem vergleichbaren Dienst aufgebaut, und damit auch
-keine IP-Adresse dorthin übermittelt.
+Ob der Reverse-Proxy (Caddy), der Container oder der Hoster daneben Zugriffsprotokolle mit der Roh-IP führen, ist aus dem Quelltext nicht belegt: [ZU_KLAEREN: tatsächlich protokollierte Felder je Ebene (Caddy, Container, Hoster) und Aufbewahrungsdauer je Protokoll]. Die Aussage „IP nur als Hash“ gilt ausdrücklich nur für das Anwendungsprotokoll.
 
-## Beim Anmelden
+## 4. Anmeldung und Sitzung
 
-Die Anmeldung geschieht über einen Zugangscode ohne Benutzernamen. Verarbeitet
-werden:
+Die Anmeldung erfolgt je nach Zugang mit einem Zugangscode oder mit persönlichem Konto (E-Mail-Adresse und Passwort; Passwörter liegen nur als gesalzener scrypt-Hash). Verarbeitet werden Prüfwerte, Sitzungsbezug und Rolle, Zeitpunkte und Missbrauchserkennungsdaten (Hash der Herkunft, Fehlversuche).
 
-- eine Prüfsumme des Codes, nie der Code selbst
-- der Zeitpunkt der Anmeldung
-- eine gekürzte Prüfsumme deiner IP-Adresse, um Angriffe zu bremsen
+Rechtsgrundlagen je Zweck: Durchführung des Vertrags oder vorvertraglicher Maßnahmen bei natürlichen Vertragspartnern (Art. 6 Abs. 1 lit. b), sonst berechtigtes Interesse an Zugangssicherheit und Missbrauchsabwehr (lit. f); Art. 32 DSGVO ist die Sicherheitspflicht, keine eigene Rechtsgrundlage für Daten von Nutzerinnen und Nutzern.
 
-Die gekürzte Prüfsumme lässt sich nicht in eine Adresse zurückrechnen. Sie
-wird nach dreißig Tagen gelöscht.
+Sitzungen enden nach dem Quelltext nach 12 Stunden (Betreiberzugänge nach 2 Stunden) und bei 30 Minuten Untätigkeit. [ZU_KLAEREN: Werte gegen die laufende Version bestätigen.]
 
-Rechtsgrundlage: Artikel 6 Abs. 1 lit. b DSGVO für die Durchführung des
-Vertrags, Artikel 6 Abs. 1 lit. f DSGVO für den Schutz vor Missbrauch.
+Für Betreiberzugänge des Anbieters ist ein zweiter Faktor (TOTP) verpflichtend, sobald der Server als Produktion läuft; für den Verwalterschlüssel (Einrichtungsweg) ist er ab dem ersten eingerichteten Faktor Pflicht. Für Zugänge der Kundenbetriebe (Leitung, Planung, Beschäftigte, Betriebsrat) gibt es nach dem Quelltext keinen zweiten Faktor. [ZU_KLAEREN: Produktivstand von WP-32d und Einrichtung durch den Betreiber bestätigen.]
 
-## Beim Selbststart eines Testzugangs
+## 5. Endgeräte: Cookie, lokaler Speicher, Service Worker
 
-Wer sich einen Testbetrieb anlegt, gibt einen Betriebsnamen, eine Branche
-und wahlweise eine E-Mail-Adresse an. Diese Daten nutzen wir, um den Zugang
-bereitzustellen und bei Fragen erreichbar zu sein.
+Nach dem Quelltext können folgende Speicherungen auf Ihrem Gerät entstehen:
 
-Ein selbst angelegter Testbetrieb kann dreißig Tage genutzt werden. Nach
-Ablauf des Testzeitraums ist keine Anmeldung mehr möglich; die Daten bleiben
-weitere neunzig Tage gespeichert, damit ein Vertragsschluss oder eine
-Rückfrage noch möglich ist. Kommt kein Vertrag zustande, werden Testbetrieb
-und Inhalt anschließend im automatischen täglichen Bereinigungslauf
-vollständig gelöscht — also im ersten Lauf, nachdem die neunzig Tage
-erreicht sind.
+- ein Sitzungs-Cookie bei Anmeldung mit persönlichem Konto,
+- ein Sitzungsschlüssel im Browser-Speicher (nur für die Dauer des Reiters; dauerhaft nur, wenn die Option „merken“ gewählt wird),
+- ein Gerätepuffer für Stempelereignisse (IndexedDB oder lokaler Speicher), damit Stempeln ohne Netz nicht verloren geht,
+- Service Worker und Cache der Web-App sowie, bei Einschalten, die Push-Anmeldung,
+- Darstellungseinstellungen (z. B. hell/dunkel).
 
-## E-Mail-Versand
+Ob diese Zugriffe nach § 25 Abs. 2 TDDDG unbedingt erforderlich sind oder eine Einwilligung nach § 25 Abs. 1 TDDDG brauchen, ist anhand einer vollständigen Speicherinventur zu dokumentieren. [ZU_KLAEREN: Inventur für Anwendung und Marketingwebsite; Drittdienste (Analyse, Einbettungen, Schriften, Chat) auf der Marketingwebsite.] Eine Aussage wie „kein Cookie-Hinweis nötig“ wird erst nach dieser Prüfung getroffen. Im Quelltext der Anwendung sind keine Werbe- oder Reichweitenmessdienste und keine Schriften von Drittanbietern gefunden worden; das gilt nicht automatisch für die Marketingwebsite.
 
-Der serverseitige E-Mail-Versand ist **derzeit nicht aktiviert**. Es werden
-aktuell keine Mitteilungen aus der Anwendung per E-Mail versendet; Zugangscodes
-aus dem Selbststart erscheinen auf dem Bildschirm.
+## 6. Testzugang, Demo, Selbststart
 
-Wird der Versand aktiviert, läuft er über den Dienst Resend. Empfänger sind
-dann ausschließlich Adressen, die im jeweiligen Betrieb hinterlegt sind —
-der Server nimmt keine frei übergebenen Adressen entgegen. Resend, Inc. hat
-seinen Sitz in den Vereinigten Staaten; vor einer Aktivierung werden die
-Voraussetzungen für eine Übermittlung in ein Drittland (Art. 44 ff. DSGVO)
-geprüft und diese Erklärung ergänzt.
+Selbststart, öffentliche Selbstregistrierung und öffentlicher Demozugang sind im Quelltext per Voreinstellung ausgeschaltet. [ZU_KLAEREN: welche dieser Funktionen in der Produktion tatsächlich eingeschaltet sind; nicht benötigte Abschnitte streichen.]
 
-## Mitteilungen auf dem Gerät
+Falls ein Testbetrieb angelegt wird, verarbeiten wir Betriebsname, Branche, Bundesland, optional E-Mail-Adresse, Zeitpunkte und Status. Zweck: Bereitstellung des Zugangs und Beantwortung vorvertraglicher Anfragen; Rechtsgrundlage Art. 6 Abs. 1 lit. b DSGVO bei natürlichen Personen, bei Ansprechpersonen eines Unternehmens regelmäßig lit. f (nach dokumentierter Abwägung).
 
-Push-Mitteilungen sind **derzeit nicht aktiviert**. Sobald sie angeboten
-werden, gilt: Wer Push-Mitteilungen einschaltet, erzeugt beim Browserhersteller eine
-Anmeldung. Wir speichern deren Kennung, um Mitteilungen zusteilen zu können.
-Der Inhalt ist auf dem Weg verschlüsselt. Die Anmeldung lässt sich in der
-Anwendung jederzeit abschalten; sie wird dann bei uns gelöscht.
+Produktregel im Quelltext: 30 Tage Nutzung, danach 90 Tage Aufbewahrung, danach Löschung im täglichen Bereinigungslauf, soweit der Lauf eingeschaltet ist (Voreinstellung im Quelltext: an). Das ist eine Produktentscheidung, keine gesetzliche Frist. [ZU_KLAEREN: Erforderlichkeit der 90 Tage begründen; Betriebszustand des Bereinigungslaufs belegen; Wirkung auf Sicherungskopien.] Echte Beschäftigtendaten sollen im Test nicht eingegeben werden, bevor ein Vertrag nach Art. 28 DSGVO besteht; das ist ein Hinweis, keine technische Sperre.
 
-## Zeiterfassung mit Standortprüfung
+## 7. Vertrag, Abrechnung, Anfragen
 
-Nutzt ein Betrieb die Stempeluhr mit Standortprüfung, übermittelt das Gerät
-beim Stempeln einmalig Koordinaten. Der Server berechnet daraus den Abstand
-zum hinterlegten Einsatzort.
+Firma, Rechnungsanschrift, Ansprechpersonen, Tarif, Laufzeit, Rechnungs- und Zahlungsdaten. Rechtsgrundlagen je Vorgang: Art. 6 Abs. 1 lit. b (Vertrag mit natürlichen Personen), lit. c i. V. m. steuer- und handelsrechtlichen Aufbewahrungspflichten, lit. f (Vertrag mit Unternehmen, Ansprechpersonen). Empfänger: [ZU_KLAEREN: Steuerberatung, Rechnungsdienstleister, Zahlungsdienst]. Aufbewahrungsfristen nach Belegart: [ZU_KLAEREN: durch Steuerberatung bestätigen; siehe `loeschkonzept.md`].
 
-**Gespeichert wird nur das Ergebnis** — ob jemand am Einsatzort war, wie
-weit entfernt (grob gerundet), die Messgenauigkeit und der Prüfort (Standort
-oder Einsatzort mit Bezeichnung). Fehlt die Position, wird nur der Grund als
-Code vermerkt (keine_freigabe, timeout, nicht_verfuegbar). Die Koordinate
-selbst wird nicht abgelegt und nicht weitergegeben — keine Koordinate. Es
-entsteht kein Bewegungsprofil.
+## 8. Beschäftigtendaten im Auftrag
 
-Für diesen Einsatz ist der Betrieb verantwortlich. In Betrieben mit
-Betriebsrat ist er nach § 87 Abs. 1 Nr. 6 BetrVG mitbestimmungspflichtig.
+Dienstplan, Schichten, Zeiterfassung, Stempelzeiten, Abwesenheiten, Qualifikationen, Anträge, Mitteilungen, Schutzangaben und modulbezogene Fachdaten werden im Auftrag des Betriebs verarbeitet. Der Betrieb bestimmt berechtigte Personen, Rechtsgrundlagen (z. B. § 26 BDSG, Art. 88 DSGVO, gesetzliche Pflichten, Betriebsvereinbarung — je nach Fall) und Fristen. Abwesenheitsgründe und Schutzangaben können Gesundheitsdaten nach Art. 9 DSGVO sein. Die Anwendung sieht kein Diagnosefeld vor; Freitextgründe sind trotzdem möglich und werden nach kurzer Frist entfernt (siehe `loeschkonzept.md`).
 
-## Wo die Daten liegen
+## 9. Standortprüfung beim Stempeln
 
-CENTRIC läuft auf einem virtuellen Server (VPS), den wir bei der IONOS SE
-mieten. Anwendung, Serverfunktionen und der gesamte Datenbestand liegen auf
-diesem Server; das Rechenzentrum steht in Spanien, einem Mitgliedstaat der
-Europäischen Union. Mit IONOS besteht ein Auftragsverarbeitungsvertrag, nach
-dem die Verarbeitung in einem Mitgliedstaat der EU oder des EWR stattfindet.
-Den Betrieb der VPS-Plattform erbringt für IONOS die Arsys Internet S.L.U.,
-Logroño (Spanien).
+Die Prüfung ist im Betrieb per Voreinstellung aus und nur nach Einschalten durch den Betrieb aktiv. Wenn aktiv, übermittelt das Gerät beim Stempeln einmalig eine Position; der Server vergleicht sie mit dem hinterlegten Einsatzort. Nach dem Quelltext werden Ergebnis (innerhalb, außerhalb, nicht bewertbar), gerundete Entfernung, Messgenauigkeit und Referenzort gespeichert, nicht die Rohkoordinate. Auch diese Ergebnisse sind Kontrollinformationen über Beschäftigte. Die Prüfung ist nie Voraussetzung für die Arbeitszeitbuchung.
 
-Es gibt keine Datenbank bei einem weiteren Anbieter: Die Daten liegen als
-Dateien auf dem Server, geschützt durch Dateirechte und einen gehärteten
-Container ohne offenen Port nach außen. Die Anwendung verschlüsselt die
-ruhenden Daten nicht zusätzlich.
+Der Betrieb muss Erforderlichkeit, Mitbestimmung (§ 87 Abs. 1 Nr. 6 BetrVG) und gegebenenfalls eine Datenschutz-Folgenabschätzung prüfen (`dsfa-screening.md`). [ZU_KLAEREN: Nachweis durch Netzwerk-, Server- und Fehlerlogprüfung, dass keine Rohkoordinate persistiert wird; bis dahin nur als Quelltext-Angabe führen.]
 
-Für die Speicherung der Daten findet damit keine Übermittlung in ein
-Drittland statt. Optionale Dienste, die eine solche Übermittlung bedeuten
-könnten, sind derzeit nicht aktiviert (siehe „E-Mail-Versand" und
-„Mitteilungen auf dem Gerät").
+## 10. Dienstleister, Speicherort, Drittländer
 
-## Wie lange gespeichert wird
+Hosting: Der Quelltext und die Betreiberunterlagen gehen von einem virtuellen Server bei der IONOS SE aus; als Rechenzentrumsstandort ist Spanien dokumentiert, als Plattformbetreiber (Unterauftrag) Arsys Internet S.L.U. [ZU_KLAEREN: Standort, Vertragsstand und Unterauftragnehmer anhand des IONOS-Kontos und der aktuellen Vertragsanlagen belegen.] Die Daten liegen als Dateien auf diesem Server; die Anwendung verschlüsselt ruhende Daten nicht zusätzlich, eine Datenträgerverschlüsselung durch den Hoster ist nicht belegt.
 
-| Was | Wie lange |
-|---|---|
-| Zugriffsprotokolle des Hosters | nach Fristen des Hosters |
-| Anmeldeprotokoll mit gekürzter Prüfsumme | 30 Tage |
-| Sitzungen | längstens 12 Stunden, bei Untätigkeit 30 Minuten |
-| Dienstplandaten eines Betriebs | nach Weisung des Betriebs, siehe AV-Vertrag |
-| Testbetriebe ohne Vertragsschluss | 30 Tage Testlaufzeit, danach 90 Tage Aufbewahrung, anschließend Löschung im täglichen Bereinigungslauf |
+E-Mail: Der Versandcode spricht die API des Dienstes Resend an, wenn ein Schlüssel konfiguriert ist; ohne Schlüssel läuft ein Trockenlauf ohne Versand. [ZU_KLAEREN: ob in der Produktion ein Schlüssel gesetzt ist; falls ja Vertrag, Region, Drittlandgrundlage; geplanter Wechsel auf anderen Anbieter.] Mails enthalten nur einen Hinweis mit Link; der Betriebsname steht in Betreff und Fußzeile und geht damit an den Anbieter.
 
-## Deine Rechte
+Push: Bei Einschalten durch die Person entsteht eine Anmeldung beim Push-Dienst des Browserherstellers (je nach Browser z. B. Google, Mozilla, Apple, Microsoft); die Inhalte sind auf eine Verweismitteilung ohne Namen und Zeiten begrenzt. [ZU_KLAEREN: ob Push in der Produktion aktiv ist (VAPID-Schlüssel gesetzt) und Drittlandbewertung.]
 
-Du hast das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung
-(Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit
-(Art. 20) und Widerspruch (Art. 21).
+Künstliche Intelligenz: Der Quelltext enthält Vorbereitungen (Gateway, Attrappe, Live-Stumpf), aber keine freigegebene Live-Anbindung. Es werden derzeit keine personenbezogenen Daten an einen KI-Anbieter übermittelt. [ZU_KLAEREN: Betreiberbestätigung; vor Aktivierung Anbieter, Region, Vertrag, Drittlandgrundlage und diese Erklärung ergänzen.]
 
-Bei Daten, die wir im Auftrag eines Betriebs verarbeiten, wende dich bitte
-an diesen Betrieb — er entscheidet, wir führen aus.
+Weitere Empfänger (Sicherung außer Haus, Überwachung und Alarm, Support): [ZU_KLAEREN: nach Betreiberliste]. Übermittlungen in Drittländer erfolgen nur mit tauglicher Grundlage nach Art. 44 ff. DSGVO.
 
-Beschwerderecht bei der Aufsichtsbehörde: [BEISPIEL-AUFSICHT]
+## 11. Speicherdauer
 
-## Änderungen
+Konkrete Fristen und ihre Grundlagen stehen im Entwurf `loeschkonzept.md` und sind noch nicht freigegeben. Zur Ehrlichkeit des Ist-Stands: Der automatische Datenschutzlauf steht im Quelltext standardmäßig auf „vorschau“ (rechnet, berichtet, löscht nicht). Eine automatische produktive Löschung nach Fristen wird erst zugesagt, wenn der Betreiber den Modus „an“ belegt. [ZU_KLAEREN: Betriebsmodus.] Das 30-Tage-Anwendungsprotokoll wird im Quelltext regulär nur im Modus „an“ bereinigt.
 
-Wir passen diese Erklärung an, wenn sich die Verarbeitung ändert. Die
-jeweils geltende Fassung steht unter „Rechtliches" in der Anwendung.
+Orientierung (Quelltext-Voreinstellungen, keine geprüften Rechtsfristen): Plan-, Zeit- und Stempeldaten mindestens 24 Monate Untergrenze; Stammdaten ausgeschiedener Personen 6 Monate, danach Anonymisierung; Abwesenheitsgründe 3 Monate; Anwendungsprotokoll 30 Tage; In-App-Sicherungen höchstens 90 Tage.
+
+## 12. Ihre Rechte
+
+Sie haben nach Maßgabe der Art. 15 bis 22 DSGVO Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch sowie, soweit eine Einwilligung vorliegt, auf deren Widerruf. Bei Datenverarbeitung im Auftrag eines Betriebs wenden Sie sich an diesen. Eigene Anliegen an uns: [ZU_KLAEREN: Kontaktstelle]. Sie können sich bei einer Datenschutzaufsichtsbehörde beschweren (Art. 77 DSGVO).
+
+## 13. Änderungen
+
+Diese Erklärung wird angepasst, wenn sich Funktionen, Dienstleister, Orte, Datenkategorien oder Rechtsgrundlagen ändern. Jede Fassung erhält Datum und Revisionsnummer. [ZU_KLAEREN: Ablage früherer Fassungen.]
