@@ -175,6 +175,37 @@ describe("Halt im Prozess", () => {
     await haengt;
   });
 
+  it("Drain-Grenze: hängt ein Vorgang, endet der Halt nach einem Viertel der Frist, nicht erst mit ihr", async () => {
+    let los = () => {};
+    const haengt = R.unterRaumsperre("raum-dg", () => new Promise((r) => { los = r; }));
+    const h = H.halten(2000);
+    expect(await h.bereit).toBe(false);
+    expect(h.ende).toBe("abgelaufen");
+    expect(h.dauerMs).toBeLessThan(1500);
+    los();
+    await haengt;
+  });
+
+  it("Token- und Zwei-Faktor-Reihen werden im Halt nur verzögert: nach Freigabe bzw. Frist laufen sie durch", async () => {
+    const T = await import("../server/lib/token.mjs");
+    const Z = await import("../server/lib/zweifaktor.mjs");
+    process.env.CENTRIC_PFEFFER = process.env.CENTRIC_PFEFFER || "pruef-pfeffer-nur-fuer-tests-0123456789";
+    let h = H.halten(2000);
+    await h.bereit;
+    let fertig = false;
+    const t = T.tokenEinloesen(store, "x".repeat(40), { zweck: "einladung" }).then((r) => { fertig = true; return r; });
+    await warte(60);
+    expect(fertig).toBe(false);                        // verzögert, nicht abgewiesen
+    H.freigeben(h);
+    expect((await t).eintrag).toBe(null);
+    H._zuruecksetzen();
+    h = H.halten(150);                                 // diesmal ohne Freigabe: die Frist löst
+    await h.bereit;
+    const z = await Z.zweifaktorBeginnen(store, "konto-halt", "halt@example.invalid");
+    expect(h.ende).toBe("abgelaufen");
+    expect(z && !z.fehler).toBe(true);
+  });
+
   it("Obergrenze: höchstens CENTRIC_SCHREIBHALT_MAX_MS, nie über 10 s; 0 schaltet ab; Pause nach jedem Halt", async () => {
     let h = H.halten(600_000);
     expect(h.fristMs).toBe(H.HALT_VORGABE_MS);
@@ -234,6 +265,34 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     expect(h.gehalten).toBe(true);
     await warte(200);
     await store.setJSON("kanal-2", { gen: 1 });
+    expect(await h.freigeben()).toBe(false);
+  });
+
+  it("fremde Anfrage während des Halts: abgelehnt, Halt läuft weiter, die Freigabe gilt NICHT als bewiesen", async () => {
+    await H.kanalStarten({ verzeichnis: verz(), taktMs: 10, protokoll: () => {} });
+    const h = await H.haltAnfordern(verz(), { warteMs: 2000 });
+    expect(h.gehalten).toBe(true);
+    const fremd = "c".repeat(32);
+    await writeFile(path.join(verz(), H.ANFRAGE), JSON.stringify({ fassung: 1, token: fremd, fristMs: 1000, erstellt: new Date().toISOString() }));
+    await warte(80);
+    expect(H.haltZustand().gehalten).toBe(true);                               // nicht freigegeben
+    const antwort = JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8"));
+    expect([antwort.token, antwort.stand]).toEqual([fremd, "abgelehnt"]);
+    expect(await h.freigeben()).toBe(false);                                   // löscht und bekommt „ersetzt“
+    expect(H.haltZustand().gehalten).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("Anfrage nicht lesbar (Link, ELOOP): kein Freigeben, danach nicht bewiesen", async () => {
+    const { symlink } = await import("node:fs/promises");
+    await H.kanalStarten({ verzeichnis: verz(), taktMs: 10, protokoll: () => {} });
+    const h = await H.haltAnfordern(verz(), { warteMs: 2000 });
+    expect(h.gehalten).toBe(true);
+    const ziel = path.join(basis, "link-ziel.json");
+    await writeFile(ziel, "{}");
+    await rm(path.join(verz(), H.ANFRAGE), { force: true });
+    await symlink(ziel, path.join(verz(), H.ANFRAGE));
+    await warte(80);
+    expect(H.haltZustand().gehalten).toBe(true);
     expect(await h.freigeben()).toBe(false);
   });
 
@@ -326,6 +385,18 @@ describe("Sicherung unter Last mit Schreib-Halt", () => {
     expect(ergebnisse.length).toBe(runden * paare);
     expect(ergebnisse.every(Boolean)).toBe(true);
   }, 180_000);
+
+  it("fremde Anfrage in jedem Halt: kein Manifest mit konsistenz \"schreibhalt\" — Code 3", async () => {
+    await H.kanalStarten({ verzeichnis: path.join(process.env.CENTRIC_ZUSTAND, H.HALT_ORDNER), taktMs: 10, protokoll: () => {} });
+    const v = path.join(process.env.CENTRIC_ZUSTAND, H.HALT_ORDNER);
+    const fehler = await G.sichern({ quelle: process.env.CENTRIC_DATEN, ziel: path.join(basis, "fremd"), pause: 0, versuche: 1, runden: 2, ruhe: 0,
+      schreibhalt: { anfordern: async () => {
+        const h = await H.haltAnfordern(v, { warteMs: 3000 });
+        if (h.gehalten) await writeFile(path.join(v, H.ANFRAGE), JSON.stringify({ fassung: 1, token: "d".repeat(32), fristMs: 1000, erstellt: new Date().toISOString() }));
+        return h;
+      } } }).catch((e) => e);
+    expect(fehler.code).toBe(3);
+  }, 30_000);
 
   it("Halt läuft vor dem Abschluss ab: kein Erfolg gemeldet — Code 3, nichts angelegt", async () => {
     const ziel = path.join(basis, "abgelaufen");

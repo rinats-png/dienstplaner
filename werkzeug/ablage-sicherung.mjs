@@ -300,6 +300,8 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
   }
   /** Ohne Server (keine Antwort) für den Rest des Laufs ohne Halt: nicht in jeder Runde warten. */
   let haltAus = !haltKanal;
+  /** Unbestätigte Halte (Drain-Grenze, abgelehnt): nach dem zweiten für diesen Lauf ohne Halt weiter. */
+  let haltUnbestaetigt = 0;
   if (ziel === quelle || ziel.startsWith(quelle + path.sep))
     throw new SicherungsFehler("Das Ziel darf nicht innerhalb der Quelle liegen — die Sicherung würde sich selbst sichern.", 2);
   await mkdir(ziel, { recursive: true, mode: 0o700 });
@@ -403,7 +405,10 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
             haltAus = true;
             meldung(`Schreib-Halt nicht verfügbar (${h.grund}) — weiter mit Ruhezeit, ohne Halt.`);
           } else {
-            meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Schreib-Halt nicht bestätigt (${h.grund}) — diese Runde mit Ruhezeit.`);
+            haltUnbestaetigt += 1;
+            if (haltUnbestaetigt >= 2) haltAus = true;
+            meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Schreib-Halt nicht bestätigt (${h.grund}) — ${haltAus
+              ? "für den Rest des Laufs ohne Halt, mit Ruhezeit" : "diese Runde mit Ruhezeit"}.`);
           }
         }
         let jetztListe = await quelleAnsehen(quelle);

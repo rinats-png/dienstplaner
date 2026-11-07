@@ -109,6 +109,14 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
       "server/lib/schreibhalt.mjs", "server/lib/sicherungsschluessel.mjs", "server/lib/sitzungen.mjs"]);
     expect(as, "as:").toEqual(["server/lib/accountsitzungen.mjs"]);
   });
+  it("schreibhalt.mjs nennt die Sitzungsspeicher nur zur Einordnung: kein getStore, kein Import der Ablage", () => {
+    const q = quellen.get("server/lib/schreibhalt.mjs");
+    expect(q).toBeTruthy();
+    /* getStore( mit Argument = Ablage; AsyncLocalStorage#getStore() hat keines. */
+    expect(q).not.toMatch(/getStore\(\s*[^)\s]|sitzungsSpeicher|accountSitzungsSpeicher/);
+    expect(q).not.toMatch(/from\s+["']\.\/(ablage|sitzungen|accountsitzungen)\.mjs["']/);
+    expect(q).not.toMatch(/import\(\s*["']\.\/(ablage|sitzungen|accountsitzungen)\.mjs["']\s*\)/);
+  });
 });
 
 describe("Der Aufräumlauf", () => {

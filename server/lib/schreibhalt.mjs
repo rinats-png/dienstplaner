@@ -42,11 +42,14 @@
    hängende Arbeit), verhindert nur die Bestätigung — die Frist löst den
    Halt in jedem Fall.
 
-   Frei bleiben: Lesen (nie gehalten), Anmelden und Sitzungen, Bremszähler,
-   Einmal-Token — alles, was nie in eine Sicherung kommt (wirdGesichert,
+   Nie gehalten: Lesen, Sitzungen, Bremszähler, Einmal-Token-Einträge,
+   skbindung — alles, was nie in eine Sicherung kommt (wirdGesichert,
    gleiche Einordnung wie STORES in werkzeug/ablage-sicherung.mjs; ein Test
-   hält beide gleich). /gesund, der Prozesspuls und die Raumsperre sind
-   unberührt; der Halt ist kein Schreibstopp.
+   hält beide gleich). Kurz verzögert (nie abgewiesen): was gesicherte Daten
+   schreibt oder eine Reihe betritt — auch Token-Einlösung, Zwei-Faktor
+   (auch beim Betreiber-Login) und Protokolleinträge. /gesund, der
+   Prozesspuls und die Raumsperre sind unberührt; der Halt ist kein
+   Schreibstopp.
 
    Kanal zur Sicherung: zwei kleine Dateien im Unterordner `schreibhalt`
    des Zustandsverzeichnisses (CENTRIC_ZUSTAND, außerhalb der Ablage, wie
@@ -58,10 +61,21 @@
                    Löschen = Freigabe.
      antwort.json  vom Server    { fassung: 1, token, stand, … }
                    stand: gehalten | freigegeben | abgelaufen | abgelehnt
+                   grund bei „freigegeben“: geloescht (nur das zählt als Erfolg)
+                   ersetzt (die Anfrage wurde während des Halts überschrieben)
+                   oder unsicher (sie war zwischendurch nicht lesbar) — dann
+                   ist nichts bewiesen
+
+   Freigegeben wird NUR, wenn die Anfrage nachweislich gelöscht ist (ENOENT).
+   Ein Lesefehler (EIO, EMFILE …) oder eine fremde Anfrage beendet den Halt
+   nicht — er läuft dann bis zur Frist und gilt als nicht bewiesen.
+   Drain-Grenze: Ist nach einem Viertel der Frist noch etwas in Arbeit, endet
+   der Halt sofort (unbestätigt), statt die volle Frist zu halten.
    ========================================================================== */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { constants as FS } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
@@ -205,8 +219,8 @@ function beenden(h, grund) {
 }
 
 /**
- * Beginnt einen Halt. `bereit` erfüllt sich mit true, sobald nichts mehr in Arbeit ist, mit false, wenn die Frist
- * vorher abläuft. null, wenn schon ein Halt gilt, die Pause nach dem letzten noch läuft oder fristMs ungültig ist.
+ * Beginnt einen Halt. `bereit` erfüllt sich mit true, sobald nichts mehr in Arbeit ist, mit false, wenn das nicht
+ * binnen eines Viertels der Frist gelingt (Drain-Grenze; der Halt endet dann sofort). null, wenn schon ein Halt gilt, die Pause nach dem letzten noch läuft oder fristMs ungültig ist.
  * @param {number} fristMs  wird auf haltObergrenze() (höchstens HALT_HART_MS) gekürzt
  * @param {{ token?: string, beiEnde?: (h: Halt) => void, obergrenze?: number }} [o]
  * @returns {Halt|null}
@@ -225,6 +239,9 @@ export function halten(fristMs, { token = randomBytes(16).toString("hex"), beiEn
   halt = h;
   h._uhr = setTimeout(() => beenden(h, "abgelaufen"), frist);
   if (h._uhr && typeof h._uhr.unref === "function") h._uhr.unref();
+  /* Drain-Grenze: höchstens ein Viertel der Frist auf laufende Vorgänge warten, sonst sofort aufgeben. */
+  const drain = setTimeout(() => { if (halt === h && !h.bestaetigt) beenden(h, "abgelaufen"); }, Math.max(1, Math.floor(frist / 4)));
+  if (typeof drain.unref === "function") drain.unref();
   if (laufend === 0) bestaetigen(h);
   return h;
 }
@@ -251,19 +268,35 @@ export function _zuruecksetzen() {
    Dateien des Kanals
    --------------------------------------------------------------------------- */
 
-/** Kleine Datei lesen (höchstens GROESSE_MAX Bytes, folgt keinem Link ins Unendliche). null: fehlt/unbrauchbar. */
-async function kleinLesen(/** @type {string} */ datei) {
+/* Kein Link folgen, nie an einer FIFO hängen bleiben (unter Windows gibt es die Schalter nicht: dann 0). */
+const OEFFNEN = FS.O_RDONLY | (FS.O_NOFOLLOW || 0) | (FS.O_NONBLOCK || 0);
+
+/**
+ * Kleine Datei lesen: nur eine gewöhnliche Datei, höchstens GROESSE_MAX Bytes, kein Link, keine FIFO.
+ * @returns {Promise<{ fehlt: true } | { fehler: string } | { wert: any }>}  wert null: Inhalt unbrauchbar
+ */
+async function lesen(/** @type {string} */ datei) {
   let fh;
-  try { fh = await open(datei, "r"); }
-  catch { return null; }
+  try { fh = await open(datei, OEFFNEN); }
+  catch (e) {
+    const code = /** @type {any} */ (e).code;
+    return code === "ENOENT" ? { fehlt: true } : { fehler: String(code || e) };
+  }
   try {
+    if (!(await fh.stat()).isFile()) return { wert: null };
     const puffer = Buffer.alloc(GROESSE_MAX + 1);
     const { bytesRead } = await fh.read(puffer, 0, puffer.length, 0);
-    if (bytesRead > GROESSE_MAX) return null;
-    try { const o = JSON.parse(puffer.subarray(0, bytesRead).toString("utf8")); return o && typeof o === "object" ? o : null; }
-    catch { return null; }
-  } catch { return null; }
+    if (bytesRead > GROESSE_MAX) return { wert: null };
+    try { const o = JSON.parse(puffer.subarray(0, bytesRead).toString("utf8")); return { wert: o && typeof o === "object" ? o : null }; }
+    catch { return { wert: null }; }
+  } catch (e) { return { fehler: String(/** @type {any} */ (e).code || e) }; }
   finally { await fh.close().catch(() => {}); }
+}
+
+/** Kurzform: der Inhalt oder null (fehlt, Fehler, unbrauchbar). */
+async function kleinLesen(/** @type {string} */ datei) {
+  const r = await lesen(datei);
+  return "wert" in r ? r.wert : null;
 }
 
 /** Atomar schreiben: Zwischendatei, fsync, Umbenennen. */
@@ -311,6 +344,12 @@ export async function kanalStarten({ verzeichnis, taktMs = 50, protokoll = (s) =
   if (haltObergrenze() < 1) return { ok: false, grund: "abgeschaltet (CENTRIC_SCHREIBHALT_MAX_MS=0)" };
   try {
     await mkdir(verzeichnis, { recursive: true, mode: 0o700 });
+    /* Nur ein echter Ordner (kein Link), unter POSIX im Besitz dieses Prozesses und für niemand sonst schreibbar. */
+    const st = await lstat(verzeichnis);
+    if (!st.isDirectory()) return { ok: false, grund: `${verzeichnis} ist kein Ordner (Link?)` };
+    if (process.platform !== "win32" && typeof process.getuid === "function"
+      && (st.uid !== process.getuid() || (st.mode & 0o022) !== 0))
+      return { ok: false, grund: `${verzeichnis}: falscher Besitzer oder für andere schreibbar` };
     await aufraeumen(verzeichnis);
   } catch (e) {
     return { ok: false, grund: `Ordner ${verzeichnis} nicht nutzbar (${/** @type {any} */ (e).code || e})` };
@@ -327,6 +366,11 @@ export async function kanalStarten({ verzeichnis, taktMs = 50, protokoll = (s) =
   /** @type {null | Halt} */
   let aktiv = null;
   let zuletzt = "";
+  let zuletztAbgelehnt = "";
+  /** Wurde die Anfrage des laufenden Halts überschrieben? */
+  let ersetzt = false;
+  /** Gab es während des laufenden Halts einen Lesefehler an der Anfrage? */
+  let unsicher = false;
   let beschaeftigt = false;
   let gestoppt = false;
 
@@ -334,19 +378,34 @@ export async function kanalStarten({ verzeichnis, taktMs = 50, protokoll = (s) =
     if (beschaeftigt || gestoppt) return;
     beschaeftigt = true;
     try {
-      const a = await kleinLesen(anfrageDatei);
+      const r = await lesen(anfrageDatei);
       if (aktiv) {
-        /* Anfrage weg oder eine andere: Freigabe. */
-        if (!a || a.token !== aktiv.token) {
+        /* Freigabe NUR, wenn die Anfrage wirklich gelöscht ist. Lesefehler: weiter halten (die Frist begrenzt).
+           Eine fremde oder kaputte Anfrage: weiter halten, ablehnen, und die spätere Freigabe gilt als „ersetzt“. */
+        if ("fehlt" in r) {
           const h = aktiv;
           aktiv = null;
+          const grund = ersetzt ? "ersetzt" : unsicher ? "unsicher" : "geloescht";
           if (freigeben(h)) {
-            protokoll(`Schreibhalt: freigegeben nach ${Math.round(h.dauerMs)} ms`);
-            await antworte({ token: h.token, stand: "freigegeben", dauerMs: Math.round(h.dauerMs) });
+            protokoll(`Schreibhalt: freigegeben nach ${Math.round(h.dauerMs)} ms (${grund})`);
+            await antworte({ token: h.token, stand: "freigegeben", grund, dauerMs: Math.round(h.dauerMs) });
+          }
+        } else if ("fehler" in r) {
+          /* Nicht lesbar: nicht freigeben (die Frist begrenzt). Was danach kommt, ist nicht mehr bewiesen. */
+          if (!unsicher) protokoll(`Schreibhalt: Anfrage nicht lesbar (${r.fehler}) — Halt läuft bis zur Frist oder Löschung, gilt aber nicht als bewiesen`);
+          unsicher = true;
+        } else if ("wert" in r && (!r.wert || r.wert.token !== aktiv.token)) {
+          if (!ersetzt) protokoll("Schreibhalt: Anfrage während des Halts ersetzt — dieser Halt beweist nichts mehr");
+          ersetzt = true;
+          const fremd = r.wert && typeof r.wert.token === "string" && TOKEN.test(r.wert.token) ? r.wert.token : "";
+          if (fremd && fremd !== zuletztAbgelehnt) {
+            zuletztAbgelehnt = fremd;
+            await antworte({ token: fremd, stand: "abgelehnt", grund: "ein anderer Halt läuft" });
           }
         }
         return;
       }
+      const a = "wert" in r ? r.wert : null;
       if (!a || typeof a.token !== "string" || a.token === zuletzt) return;
       if (jetzt() < pauseBis || halt) return;       // später, nach der Pause
       zuletzt = a.token;
@@ -362,6 +421,8 @@ export async function kanalStarten({ verzeichnis, taktMs = 50, protokoll = (s) =
       } });
       if (!h) { await antworte({ token: a.token, stand: "abgelehnt", grund: "Halt nicht möglich" }); return; }
       aktiv = h;
+      ersetzt = false;
+      unsicher = false;
       h.bereit.then((ok) => { if (ok && halt === h) antworte({ token: h.token, stand: "gehalten", fristMs: h.fristMs }); });
     } catch (e) {
       protokoll(`Schreibhalt: Kanal-Fehler (${e && /** @type {any} */ (e).message || e})`);
@@ -393,7 +454,8 @@ export async function kanalStoppen() { if (kanal) await kanal.stoppen(); }
 /**
  * Fordert über den Kanal einen Halt an und wartet auf die Bestätigung.
  * Ergebnis: { gehalten: true, freigeben(): Promise<boolean> } oder { gehalten: false, grund, keinServer }.
- * `freigeben()` ist nur true, wenn der Server bestätigt, dass der Halt bis zur Freigabe ununterbrochen galt.
+ * `freigeben()` ist nur true, wenn der Server bestätigt, dass der Halt bis zur Freigabe ununterbrochen galt UND die
+ * Freigabe vom Löschen genau dieser Anfrage kam (grund „geloescht“, nicht „ersetzt“).
  * @param {string} verz
  * @param {{ fristMs?: number, warteMs?: number, taktMs?: number }} [o]
  */
@@ -436,7 +498,7 @@ export async function haltAnfordern(verz, { fristMs = 2000, warteMs = HALT_HART_
     freigeben: async () => {
       await rm(anfrageDatei, { force: true }).catch(() => {});
       const e = await warten(["freigegeben", "abgelaufen"], gewaehrt + 2000);
-      return !!e && e.stand === "freigegeben";
+      return !!e && e.stand === "freigegeben" && e.grund === "geloescht";
     },
   };
 }

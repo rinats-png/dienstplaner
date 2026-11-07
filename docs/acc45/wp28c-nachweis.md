@@ -19,8 +19,20 @@ Kleinster robuster Weg nach der Empfehlung §3: **Zähler + Frist, keine neue Sp
 - **Wiedereintritt** über `AsyncLocalStorage` (Muster `raumsperre.mjs`): Wer zugelassen ist, läuft durch, auch durch
   weitere Eintritte; die Marke erlischt mit dem Ende des Vorgangs.
 - **Nur, was gesichert wird:** `wirdGesichert(store, schlüssel)` = Einordnung von `STORES` im Werkzeug (Test hält
-  beide gleich). Sitzungen, Bremszähler, Einmal-Token, `skbindung` werden nie gehalten → Anmelden und
-  Betreiberzugang bleiben frei, Lesen sowieso.
+  beide gleich). Nie gehalten: Lesen, Sitzungen, Bremszähler, Einmal-Token-Einträge, `skbindung`; die Reihe der
+  Schlüsselepoche ist kein Vorgang (schreibt nur Ungesichertes). **Kurz verzögert, nie abgewiesen** (bis Freigabe,
+  höchstens Frist): Stempel/Speichern, Token-Einlösung (`token.mjs`), Zwei-Faktor-Einrichtung und -Anmeldung auch
+  der Betreiber (`zweifaktor.mjs`), Protokolleinträge (`centric-spur`). Test: Token- und Zwei-Faktor-Reihe laufen
+  nach Freigabe bzw. Frist durch.
+- **Freigabe-Beweis (Review W1):** Der Server gibt nur frei, wenn `anfrage.json` nachweislich gelöscht ist (ENOENT).
+  Lesefehler oder eine fremde/kaputte Anfrage beenden den Halt nicht (Frist begrenzt), die fremde wird abgelehnt, und
+  die spätere Freigabe trägt `grund: ersetzt|unsicher`. Das Werkzeug wertet nur `grund: geloescht` als Erfolg.
+  Lesen ohne Link-Folgen (O_NOFOLLOW), ohne FIFO-Hänger (O_NONBLOCK, `fstat().isFile()`); der Ordner muss ein echter
+  Ordner sein, unter POSIX im Besitz des Dienstes und für andere nicht schreibbar.
+- **Drain-Grenze (Review W3):** nach einem Viertel der Frist ohne Bestätigung endet der Halt sofort; das Werkzeug
+  hört nach zwei unbestätigten Halten für den Lauf damit auf (Ruhezeit).
+- **Release-Hinweis (Betreiberfreigabe nötig):** Der Halt ist nach der Auslieferung sofort aktiv (Vorgabe 3000 ms,
+  abschaltbar mit `CENTRIC_SCHREIBHALT_MAX_MS=0`). Stempel-Latenz steigt während eines Halts bis höchstens zur Frist.
 - **Kein Verklemmen:** Wer in einer Reihe steht oder eine Sperre hält, ist zugelassen; Gehaltene stehen in keiner
   Reihe. Was trotzdem nicht fertig wird, verhindert nur die Bestätigung — die Frist löst jeden Halt.
 - **Frist:** `CENTRIC_SCHREIBHALT_MAX_MS` (Vorgabe 3000, harte Obergrenze 10 000 < Raumsperren-Zeitgrenze 15 s;

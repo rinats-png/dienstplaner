@@ -25,4 +25,12 @@ describe("Schreibhalt-Messung (Kurzfassung)", () => {
     expect(b.schreiber.proSekunde).toBeGreaterThanOrEqual(50);
     expect(r.stderr).toMatch(/ABNAHME ERFÜLLT/);
   }, 260_000);
+
+  it("Gegenprobe ohne Halt (2 Sicherungen): keine wird als „unter Schreib-Halt“ ausgewiesen", () => {
+    const r = spawnSync(process.execPath, [SKRIPT, "--sicherungen", "2", "--ohne-halt", "--json"], { encoding: "utf8", timeout: 240_000 });
+    expect(r.status, r.stderr).toBe(0);
+    const b = JSON.parse(r.stdout.trim().split("\n").pop());
+    expect(b.mitHaltAbgeschlossen).toBe(0);
+    expect(b.erfolg + b.fehlschlag).toBe(2);
+  }, 260_000);
 });
