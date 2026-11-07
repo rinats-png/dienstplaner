@@ -146,6 +146,15 @@ describe("vorschau", () => {
     expect(kurz.warnung).toMatch(/16 Abs. 2/);
     expect(PLANDATEN_MINDEST).toBe(24);
   });
+  it("nennt § 16 Abs. 2 als Mindestfrist für Mehrarbeitsnachweise, nicht für alle Plandaten (T-06)", () => {
+    const kurz = vorschau(betrieb({ aufbewahrung: { plandatenMonate: 12 } }), HEUTE);
+    expect(kurz.warnung).toMatch(/Mindestaufbewahrung/);
+    expect(kurz.warnung).toMatch(/über acht Stunden werktäglich/);
+    expect(kurz.warnung).toMatch(/Mehrarbeitsnachweise/);
+    expect(kurz.warnung).toMatch(/nicht für alle Plandaten/);
+    /* Kein pauschales Rechtsurteil im Warntext. */
+    expect(kurz.warnung).not.toMatch(/rechtswidrig/i);
+  });
 });
 
 describe("anonymisiere", () => {

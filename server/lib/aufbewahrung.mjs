@@ -19,10 +19,14 @@
 
    Plandaten (24 Monate). Schichtzuweisungen, erfasste Zeiten, Stempelungen
    und die Änderungshistorie. Sie verschwinden vollständig. Die Untergrenze
-   ergibt sich aus § 16 Abs. 2 ArbZG: Die Aufzeichnungen über die über acht
-   Stunden hinausgehende Arbeitszeit sind mindestens zwei Jahre
-   aufzubewahren. Wer kürzer einstellt, verstößt gegen eine
-   Aufbewahrungspflicht — deshalb warnt die Vorschau davor.
+   ist eine Produktentscheidung, angelehnt an § 16 Abs. 2 ArbZG: Dort sind
+   (nur) die Aufzeichnungen über die über acht Stunden werktäglich
+   hinausgehende Arbeitszeit mindestens zwei Jahre aufzubewahren — eine
+   Mindestfrist für Mehrarbeitsnachweise, keine Frist für alle Plandaten
+   (T-06, L-08). Weil die Anwendung diese Stunden nicht getrennt ablegt,
+   gilt die Untergrenze einheitlich für Plan-, Zeit- und Stempeldaten; in
+   den Branchen des § 2a SchwarzArbG trägt zusätzlich § 17 Abs. 1 MiLoG
+   (siehe unten). Eine kürzere Einstellung warnt die Vorschau.
 
    Stammdaten (6 Monate nach Austritt). Ausgeschiedene Personen werden
    *anonymisiert*, nicht entfernt. Würde die Person verschwinden, zerfiele
@@ -67,8 +71,11 @@ export const VORGABE = {
   gruendeMonate: 3,
 };
 
-/* § 16 Abs. 2 ArbZG. Unterhalb dieser Grenze ist die Einstellung nicht nur
-   ungewöhnlich, sondern rechtswidrig. */
+/* Untergrenze der Plandatenfrist in Monaten (T-06, L-08). Angelehnt an § 16 Abs. 2 ArbZG — das ist eine
+   Mindestfrist für die Nachweise der über acht Stunden werktäglich hinausgehenden Arbeitszeit, nicht für
+   alle Plandaten — und, wo einschlägig, § 17 Abs. 1 MiLoG. Weil Mehrarbeitsnachweise nicht getrennt
+   vorliegen, gilt sie in der Anwendung einheitlich; darunter löscht der Lauf nie (stichtage). Ob eine
+   kürzere Einstellung im Einzelfall unzulässig wäre, hängt vom Betrieb ab und wird hier nicht beurteilt. */
 export const PLANDATEN_MINDEST = 24;
 
 const ZWEI = (n) => String(n).padStart(2, "0");
@@ -382,8 +389,11 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
 
   const warnung = st.fristen.plandatenMonate < PLANDATEN_MINDEST
     ? `Die Frist für Plandaten steht auf ${st.fristen.plandatenMonate} Monaten. `
-      + "§ 16 Abs. 2 Arbeitszeitgesetz verlangt mindestens zwei Jahre für die "
-      + "Aufzeichnung der über acht Stunden hinausgehenden Arbeitszeit. "
+      + "§ 16 Abs. 2 Arbeitszeitgesetz verlangt eine Mindestaufbewahrung von zwei Jahren "
+      + "für die Aufzeichnungen der über acht Stunden werktäglich hinausgehenden Arbeitszeit "
+      + "(Mehrarbeitsnachweise) — nicht für alle Plandaten. Weil diese Nachweise in der "
+      + "Anwendung nicht getrennt vorliegen, löscht der Lauf Plan-, Zeit- und Stempeldaten "
+      + "trotzdem nie vor 24 Monaten. "
       + "In den Branchen des § 2a Schwarzarbeitsbekämpfungsgesetz — darunter "
       + "das Bewachungsgewerbe — kommt § 17 Abs. 1 Mindestlohngesetz hinzu: "
       + "dort sind Beginn, Ende und Dauer der gesamten täglichen Arbeitszeit "
