@@ -277,7 +277,7 @@ describe("Löschlauf nach Aufbewahrungsfristen auf dem Server", () => {
     await laden().setJSON(`sicherung:${R}:${marke}`, (await B.bestandLesen(laden(), R)).bestand,
       { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Leitung" } });
     await D.datenschutzLauf(laden(), { jetzt: new Date(), spur: false, modus: "an" });
-    const t = await sitzung(R, "l1", "leitung", "m1");
+    const t = await sitzung(R, null, "leitung", "m1");
     const g = await anfrage("/api/bestand", { token: t });
     expect(g.status).toBe(200);
     /* Seit N-3 löscht das Zurückspielen nur, wenn der Lauf auf „an" steht. */
@@ -382,7 +382,7 @@ describe("Review-Auflagen der Nachprüfung (N-1 bis N-4, M5-Rest)", () => {
     const R = "dsgvo-n1";
     await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1", [person("l1", "leitung")]),
       betrieb("m2", [person("x1")], { aufbewahrung: { plandatenMonate: 1.5 } })] }, { durch: "Pruefung" });
-    const t = await sitzung(R, "l1", "leitung", "m1");
+    const t = await sitzung(R, null, "leitung", "m1");
     const g = await anfrage("/api/bestand", { token: t });
     const b = JSON.parse(JSON.stringify(g.bestand));
     b.mandanten[0].name = "Betrieb m1 neu";
@@ -426,7 +426,7 @@ describe("Review-Auflagen der Nachprüfung (N-1 bis N-4, M5-Rest)", () => {
     expect(s.bestaetigungen[0].durchId).toBeUndefined();
     expect(JSON.stringify(s)).not.toContain("Lea Leitung");
     expect(s.hinweis).toMatch(/Betriebsrat enthalten keine Einzeldaten/);
-    const l = await anfrage("/api/auskunft?person=a1", { token: await sitzung(R, "l1", "leitung", "m1") });
+    const l = await anfrage("/api/auskunft?person=a1", { token: await sitzung(R, null, "leitung", "m1") });
     expect(l.bestaetigungen.map((x) => x.id)).toEqual(["bs1"]);
   });
 
@@ -450,7 +450,7 @@ describe("Review-Auflagen der Nachprüfung (N-1 bis N-4, M5-Rest)", () => {
     const marke = markeNeu(new Date("2026-10-01T08:00:00Z"));
     await laden().setJSON(`sicherung:${R}:${marke}`, (await B.bestandLesen(laden(), R)).bestand,
       { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Leitung" } });
-    const t = await sitzung(R, "l1", "leitung", "m1");
+    const t = await sitzung(R, null, "leitung", "m1");
     const g = await anfrage("/api/bestand", { token: t });
     process.env.CENTRIC_DATENSCHUTZLAUF = "vorschau";
     let w;

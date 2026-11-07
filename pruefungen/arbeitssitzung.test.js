@@ -678,9 +678,14 @@ describe("Sitzungen aus Zugangscodes bleiben unberührt", () => {
       };
       const { token } = await legacySitzung();
       const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (beobachtet),
-        await satz(token));
+        await satz(token), { bestandLader: async () => ({
+          personen: [person("p_1", "Alt", "Zugang", "leitung")] }) });
       expect(e).toEqual({ ok: true, art: "legacy" });
-      expect(gesehen).toEqual([]);
+      /* Seit SI-P2 liest die Prüfung einer personengebundenen Code-Sitzung
+         den Zugang (gesperrt?) und den Bestand (Person noch gültig?; hier über den
+         Lader) — sonst
+         nichts. Account, Mitgliedschaft und Lauf bleiben tabu. */
+      expect(gesehen.every((g) => g.startsWith("konto:") || g === "konten")).toBe(true);
       for (const praefix of ["account:", "kontoId:", "mitglied:", "mitgliedlauf:",
         "kern:", "raummitglied:"]) {
         expect(gesehen.filter((g) => g.includes(praefix)), praefix).toEqual([]);

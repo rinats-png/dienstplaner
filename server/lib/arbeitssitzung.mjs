@@ -4,6 +4,8 @@ import {
 import { getStore } from "./ablage.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
+import { aktivePerson } from "./personengueltig.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
 import { bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
@@ -220,6 +222,40 @@ function ankerBrauchbar(h) {
 }
 
 /**
+ * Steht die Person dieser Sitzung noch im Betrieb (SI-P2)? Der Betrieb ist über die Kennung gewählt, die die Sitzung
+ * trägt (genau einer), sonst über ihre Position wie überall (`eigenerMandant`).
+ * @param {any} bestand  der Bestand selbst (nicht die Hülle von bestandLesen)
+ * @param {{mandantId?: string, betrieb?: number, person?: any}} sitzung
+ * @param {string} [heute]
+ */
+export function sitzungPersonGilt(bestand, sitzung, heute = heuteBerlin()) {
+  if (!bestand || !Array.isArray(bestand.mandanten) || !sitzung) return false;
+  let mandant;
+  if (typeof sitzung.mandantId === "string" && sitzung.mandantId) {
+    const m = bestand.mandanten.filter((x) => x && x.id === sitzung.mandantId);
+    if (m.length !== 1) return false;
+    mandant = m[0];
+  } else {
+    mandant = eigenerMandant(bestand, { betrieb: sitzung.betrieb });
+  }
+  return !!aktivePerson(mandant, sitzung.person, heute);
+}
+
+/**
+ * Ist der Zugangscode hinter dieser Sitzung ausdrücklich gesperrt? Streng gelesen: Ein Lesefehler wird
+ * weitergereicht (kontoLesen machte daraus „gibt es nicht" und fiel auf den Sammelblob zurück). Der Zugang liegt
+ * einzeln unter `konto:<Prüfsumme>`, ältere im Sammelblob `konten`.
+ * @param {object} store  Ablage „centric"
+ * @param {string} schluessel  die Prüfsumme des Zugangs (`sitzung.konto`)
+ * @returns {Promise<boolean>}
+ */
+async function zugangGesperrt(store, schluessel) {
+  const einzeln = await store.get(`konto:${schluessel}`, { type: "json" });
+  const z = einzeln || ((await store.get("konten", { type: "json" })) || {})[schluessel] || null;
+  return !!(z && z.gesperrt);
+}
+
+/**
  * Beendet die Arbeitssitzungen, die an einer Account-Sitzung hängen — der Rest
  * des Logouts. Die Account-Sitzung ist zu diesem Zeitpunkt schon gelöscht, und
  * das ist der Widerruf: Jede Arbeitssitzung dazu ist bereits ungültig, weil sie
@@ -273,12 +309,31 @@ export async function arbeitssitzungPruefen(store, sitzung,
      Sicherungsschlüssel. Hier endet die Prüfung, ohne einen Account
      anzufassen. */
   if (!hatHerkunft(sitzung)) {
+    /* SI-P2: Ein gesperrter Zugangscode gilt auch dann nicht, wenn seine Sitzung die Sperre überlebt hat
+       (das Beenden der Sitzungen beim Sperren ist bestenfalls; zugang-sperren fängt Fehler dort ab). Nur
+       ausdrücklich gesperrt zählt: einen Zugang, den es nicht mehr gibt, kennt diese Prüfung nicht. Ein Lesefehler
+       ist keine Absage (die Sitzung bleibt), lässt die Anfrage aber nicht durch. Sicherungsschlüssel haben keinen
+       Zugang. */
+    if (!sitzung.nurSicherung && typeof sitzung.konto === "string" && sitzung.konto) {
+      let gesperrt;
+      try { gesperrt = await zugangGesperrt(store, sitzung.konto); } catch { return { ok: false, grund: "zugang-fehler" }; }
+      if (gesperrt) {
+        if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
+        return { ok: false, grund: "zugang-gesperrt" };
+      }
+    }
+    /* SI-P2: Eine Sitzung, die an eine Person gebunden ist, gilt nur, solange die Person im Betrieb steht
+       (lib/personengueltig.mjs, dieselbe Regel wie beim Kalenderfeed). Vorher fiel `wirksameRolle` bei einer
+       entfernten Person auf die Rolle des Codes zurück, und die Sitzung lebte weiter. Betreiber und Codes ohne
+       Person haben keine; Sicherungsschlüssel auch nicht. */
+    const personGebunden = !sitzung.nurSicherung && sitzung.rolle !== "betreiber"
+      && sitzung.person !== null && sitzung.person !== undefined;
     /* Seit Oktober 2026 trägt ein Zugangscode die Kennung seines Betriebs,
        und die Sitzung mit ihm. Zeigt die Position nicht mehr auf genau
        diesen Betrieb, gilt sie nicht — dieselbe Prüfung wie unten in
        Schritt 5 für Sitzungen aus einem Konto. Codes ohne Kennung bleiben
        wie bisher (erstbefuellung.mjs, codeBindung). */
-    if (typeof sitzung.mandantId === "string" && sitzung.mandantId) {
+    if ((typeof sitzung.mandantId === "string" && sitzung.mandantId) || personGebunden) {
       let gelesen;
       try {
         gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, sitzung.bestand);
@@ -288,10 +343,16 @@ export async function arbeitssitzungPruefen(store, sitzung,
         return { ok: false, grund: "bestand-fehler" };
       }
       const bestand = gelesen && gelesen.bestand;
-      const grund = bestand ? mandantPruefen(bestand, sitzung.betrieb, sitzung.mandantId) : null;
+      const grund = bestand && typeof sitzung.mandantId === "string" && sitzung.mandantId
+        ? mandantPruefen(bestand, sitzung.betrieb, sitzung.mandantId) : null;
       if (grund) {
         if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
         return { ok: false, grund };
+      }
+      /* Ohne gelesenen Bestand (Raum noch nicht angelegt) gibt es keine Personalliste, die etwas widerriefe. */
+      if (bestand && personGebunden && !sitzungPersonGilt(bestand, sitzung)) {
+        if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
+        return { ok: false, grund: "person-fort" };
       }
     }
     return { ok: true, art: "legacy" };
