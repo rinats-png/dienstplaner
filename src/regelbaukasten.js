@@ -1,7 +1,9 @@
 /* ==========================================================================
    REGELBAUKASTEN — Weiterleitung
 
-   Der Regelbaukasten (zaehlregel, grenzregel, besetzungsregel, paarregel)
+   Der Regelbaukasten (acht Arten: zaehlregel, grenzregel, besetzungsregel,
+   paarregel; seit WP-I3 auch musterregel, blockregel, verteilungsregel,
+   wunschregel aus server/lib/regelbaukasten-erweitert.mjs)
    steht seit WP-19 (Andockpunkt A3) in server/lib/regelbaukasten.mjs, damit
    der Server Branchenregeln mit derselben Rechnung bewertet wie die
    Oberfläche — eine Fassung, keine zweite Maschine (wie regelwerk.mjs in

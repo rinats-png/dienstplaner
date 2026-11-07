@@ -60,11 +60,41 @@ Eigener „Server“-Prozess (echte Ablage, Raumsperre, Kanal) mit 8 Schleifen Z
 Raumsperre (Konto, Lücke 5 ms, Mitgliedschaft, gleiche Generation); der Hauptprozess sichert fortlaufend und prüft
 jedes Paar in jeder Sicherung.
 
-MESSERGEBNIS
+Lauf `node werkzeug/schreibhalt-messung.mjs --sicherungen 1000` (Windows 11, lokal, nebenher andere Prüfungen):
+
+| Größe | Ergebnis |
+|---|---|
+| Sicherungen | **1000**, davon erfolgreich **1000 (100 %)**, alle unter Halt abgeschlossen (`konsistenz: schreibhalt`) |
+| Schnitte mitten in einer Transaktion | **0** (8 Paare × 1000 Sicherungen geprüft) |
+| Schreiblast | 142 010 Schreibvorgänge in 1353 s = **105/s**, 0 Schreibfehler |
+| Dauer einer Sicherung | p50 0,9 s, p95 2,5 s, max 12,4 s |
+| Laufzeit einer Transaktion ohne Sicherung | p50 63 ms, p95 94 ms |
+| … während ununterbrochen gesichert wird | p50 90 ms, p95 385 ms, max 7,0 s |
+
+Vergleich ohne Halt (`--ohne-halt`, Ruhezeit 0, 5 Sicherungen unter derselben Last): **0 von 5** gelungen (alle Code 3) —
+der Stand von PR #100 unter Dauerlast. Kurzfassung in der CI (`pruefungen/schreibhalt-messung.test.js`, 30 Sicherungen,
+Linux): Abnahme erfüllt.
+
+Einordnung der Latenz: Die Messung hält im Dauerbetrieb (eine Sicherung nach der anderen); Schreiber warten je Halt
+dessen Dauer (typisch 0,1–0,2 s, unter Windows-Plattenlast länger). Der Höchstwert 7 s fiel in eine Phase mit
+paralleler Testlast auf demselben Rechner; die Frist (≤ 3 s Vorgabe) begrenzt jeden einzelnen Halt.
 
 ## 3. Tests
 
-TESTERGEBNIS
+- `pruefungen/schreibhalt.test.js` (16): Einordnung = STORES, Halt/Freigabe/Reihenfolge, Lesen und Flüchtiges frei,
+  Drain einer Zwei-Datei-Transaktion, Wiedereintritt (Raumsperre, verschachtelt, Reihe, Ablage), Hintergrundvorgang,
+  Frist/Ablauf (auch hängende Arbeit), Obergrenze/Abschalten/Pause, `/gesund` unberührt, Dateikanal (Freigabe,
+  Ablauf, veraltet/kaputt, Aufräumen beim Start, ohne Server), 10 Sicherungen unter ≥ 50/s mit Wiederherstellung
+  byte-gleich, abgelaufener Halt → Code 3, Rückfall ohne Server, Kommandozeile.
+- `pruefungen/schreibhalt-messung.test.js`: Mess-Skript, 30 Sicherungen.
+- `pruefung:schreibhalt` (neu, in `package.json` und `.github/workflows/pruefung.yml`) bündelt beide mit
+  `wp28b-sicherung-last` und `wp28b-sicherung-enoent`, die bisher in keiner CI liefen.
+- `sitzungsinventar.test.js`: `schreibhalt.mjs` bewusst eingetragen (nennt die Sitzungs-Stores/`sk:` nur zur
+  Einordnung „nie halten“, kein Zugriff).
+- S5 (`werkzeug/last/lauf.mjs`): die Sicherung in der Last läuft jetzt mit `--schreibhalt`, Ergebnisfeld `konsistenz`.
+- Lokal unter Windows rot und unabhängig von diesem Paket (auch ohne die Änderung): `ablage.test.js` (3, EPERM/Rechte),
+  `sicherung-ablage` „Quelle ändert sich“ (Zeitgrenze), einzelne Zeitgrenzen in `wp28b-sicherung-last` unter
+  paralleler Last. Maßgeblich ist die Linux-CI.
 
 ## 4. Offene Risiken
 
