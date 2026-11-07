@@ -18,6 +18,7 @@
    ========================================================================== */
 
 import { istProduktion } from "./umgebung.mjs";
+import { smtpKonfig, smtpGewaehlt, sendeSmtp } from "./post-smtp.mjs";
 
 /** Frist für eine Anfrage an den Mailanbieter (Nachtrag 2, F2). Gilt für
     jeden Anbieter-Weg dieser Datei; ein späterer Adapter übernimmt sie. */
@@ -45,6 +46,13 @@ export const MAIL_FRIST_MS = 15_000;
  *                    klasse?: string, ursache?: string, status?: number, an?: string, betreff?: string}>}
  */
 export async function sendeMail(an, betreff, text, opt = {}) {
+  /* Zweiter Weg (SMTP/IONOS, docs/MAIL-SMTP-IONOS.md): nur bei ausdrücklichem
+     CENTRIC_MAIL_WEG=smtp. Ohne diesen Schalter bleibt alles wie bisher. Ein
+     Konfigurationsfehler (z. B. zugleich RESEND_API_KEY) ist eine Antwort der
+     Klasse `konfiguration` — kein stilles Umschalten, keine Empfängersperre. */
+  const smtp = smtpKonfig();
+  if (smtp.zustand === "fehler") return { ok: false, fehler: smtp.fehler, klasse: "konfiguration" };
+  if (smtp.zustand === "smtp") return sendeSmtp(an, betreff, text, opt, { konfig: smtp, frist: MAIL_FRIST_MS });
   const schluessel = process.env.RESEND_API_KEY;
   const absender = process.env.CENTRIC_ABSENDER || "CENTRIC <kein-absender@example.invalid>";
   if (!schluessel) {
@@ -151,4 +159,5 @@ export const anwendungsAdresse = () =>
 export const pruefLinkErlaubt = () =>
   !istProduktion()
   && !process.env.RESEND_API_KEY
+  && !smtpGewaehlt() /* ein gewählter echter Versandweg schließt den Prüflink aus, auch fehlerhaft */
   && process.env.CENTRIC_PRUEFLINK === "ja";
