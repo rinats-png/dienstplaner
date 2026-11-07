@@ -357,6 +357,11 @@ jobs:
       - name: Mail und Push (WP-30)
         run: npm run pruefung:mail-push-produktion && npm run pruefung:mail-push-anbieter && npm run pruefung:mail-push-handler
 
+      # SI-P3: keine Mail aus Test- und Demoräumen ohne Freigabe (CENTRIC_TESTRAUM_MAIL),
+      # mit Freigabe Tagesobergrenze je Raum; HTTP-Sonde über /zustellung/senden. Gegen Attrappen.
+      - name: Mail aus Testräumen (SI-P3)
+        run: npm run pruefung:testraum-mail
+
       # Ausschreibungen: verantwortende Einheit, Bewerbungen nur bei eigener Einheit (C1).
       - name: Bereich Ausschreibungen
         run: npm run pruefung:bereich-ausschreibungen

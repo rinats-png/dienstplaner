@@ -149,7 +149,7 @@ export async function testbetriebAnlegen(store, { name, branche, email, land,
   const leer = baueLeerenBetrieb({
     name: /** @type {string} */ (name), branche,
     email: /** @type {string} */ (email), land,
-    raum: kennung, laeuftAb: laeuftAb.toISOString(),
+    raum: kennung, laeuftAb: laeuftAb.toISOString(), selbstAngelegt: true,
   });
   const personen = personenBauen ? personenBauen(leer.mandanten[0]) : null;
   if (personen && personen.length) leer.mandanten[0].personen = personen;
