@@ -1,3 +1,4 @@
+import { smtpStatus } from "../lib/post-smtp.mjs";
 import { getStore } from "../lib/ablage.mjs";
 import { randomBytes } from "node:crypto";
 import { istProduktion } from "../lib/umgebung.mjs";
@@ -304,9 +305,12 @@ export default async (req) => {
     if (gesetzt("CENTRIC_ADMIN"))
       warnungen.push("CENTRIC_ADMIN ist noch gesetzt. Nach dem Anlegen des ersten "
         + "benannten Verwalterkontos gehört der Ursprungsschlüssel gelöscht.");
-    if (!gesetzt("RESEND_API_KEY"))
+    const smtp = smtpStatus();
+    if (smtp === "fehlerhaft")
+      warnungen.push("Der SMTP-Weg ist gewählt, aber fehlerhaft eingerichtet (docs/MAIL-SMTP-IONOS.md). Es geht keine E-Mail hinaus.");
+    else if (!gesetzt("RESEND_API_KEY") && smtp !== "konfiguriert")
       warnungen.push("RESEND_API_KEY fehlt. Es geht keine E-Mail hinaus.");
-    else if (sandbox || !absender)
+    else if (smtp === "aus" && (sandbox || !absender))
       warnungen.push("CENTRIC_ABSENDER steht auf der Sandbox-Adresse von Resend. "
         + "Nachrichten erreichen nur den Kontoinhaber, alle übrigen verschwinden "
         + "ohne Fehlermeldung.");
@@ -324,7 +328,8 @@ export default async (req) => {
       umgebung: {
         pfeffer: gesetzt("CENTRIC_PFEFFER"),
         ursprungsschluessel: gesetzt("CENTRIC_ADMIN"),
-        mailversand: gesetzt("RESEND_API_KEY"),
+        mailversand: gesetzt("RESEND_API_KEY") || smtp === "konfiguriert",
+        smtp, /* nur „konfiguriert“, „fehlerhaft“ oder „aus“ — nie ein Wert */
         absender: absender || null,
         absenderIstSandbox: sandbox,
         pushOeffentlich: gesetzt("VAPID_PUBLIC"),

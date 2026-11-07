@@ -21,6 +21,8 @@ lit. c, Art. 32 DSGVO). Wer Inhalte sehen will, öffnet die Anwendung — dort g
 
 ## 1. E-Mail über Resend
 
+> Alternative nach Betreiberentscheidung: Versand über das IONOS-Postfach per SMTP — gebaut, aber ausgeschaltet; siehe `docs/MAIL-SMTP-IONOS.md`. Beide Wege gleichzeitig sind ein Konfigurationsfehler.
+
 1. Konto anlegen, Region/AVV nach Entscheidung (Abschnitt 0).
 2. **Absender-Domain** im Dashboard hinzufügen, z. B. eine Subdomain nur für Versand: `<MAIL-SUBDOMAIN>.<DEINE-DOMAIN>`.
    Eine eigene Subdomain trennt den Ruf des Versands von der Hauptdomain.

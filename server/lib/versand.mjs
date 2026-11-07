@@ -77,6 +77,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { istProduktion } from "./umgebung.mjs";
 import { sendeMail, anwendungsAdresse } from "./post.mjs";
+import { smtpStatus } from "./post-smtp.mjs";
 import { sendePush } from "./webpush.mjs";
 import { ZUSTELLARTEN, istNotruf } from "./mitteilungen.mjs";
 import { bestandLesenStreng as bestandLesen } from "./bestand.mjs";
@@ -631,7 +632,8 @@ export async function zustellStatusEigene(store, raum, m, personId) {
 export function zustellKonfiguration() {
   const gesetzt = (x) => !!(process.env[x] || "").trim();
   return {
-    mail: gesetzt("RESEND_API_KEY") && gesetzt("CENTRIC_ABSENDER") && !/@resend\.dev\b/i.test(process.env.CENTRIC_ABSENDER || ""),
+    mail: (gesetzt("RESEND_API_KEY") && gesetzt("CENTRIC_ABSENDER") && !/@resend\.dev\b/i.test(process.env.CENTRIC_ABSENDER || ""))
+      || smtpStatus() === "konfiguriert",
     push: gesetzt("VAPID_PUBLIC") && gesetzt("VAPID_PRIVATE"),
   };
 }
