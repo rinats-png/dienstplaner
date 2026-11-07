@@ -104,7 +104,7 @@
    wandert nach `.vor-wiederherstellung-<UTC>/` im Ziel.
    ========================================================================== */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -603,10 +603,14 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
      bricht ab, bevor etwas angefasst ist (fail-closed). */
   const fruehere = await wiederherstellVermerkeLesen(ziel);
 
+  /* Eindeutige Namen für Stufe und Beiseite-Ordner: Zeit plus Zufall. Vorher nur die Sekunde — zwei Wiederherstellungen
+     derselben Wurzel in derselben Sekunde benannten in einen schon gefüllten Beiseite-Ordner um (Linux: ENOTEMPTY,
+     halb verschoben). Angelegt wird ohne `recursive`: Gibt es den Namen schon, bricht es ab, statt etwas zu überschreiben. */
+  const kennung = `${stempel(jetzt)}-${randomBytes(4).toString("hex")}`;
+
   // 1. neben dem Ziel aufbauen und nachprüfen — noch ist nichts angefasst
-  const stufe = path.join(ziel, `.wiederherstellung-${stempel(jetzt)}`);
-  await rm(stufe, { recursive: true, force: true });
-  await mkdir(stufe, { recursive: true, mode: 0o700 });
+  const stufe = path.join(ziel, `.wiederherstellung-${kennung}`);
+  await mkdir(stufe, { mode: 0o700 });
   try {
     for (const s of Object.keys(manifest.stores))
       await mkdir(path.join(stufe, s), { recursive: true, mode: 0o700 });
@@ -639,12 +643,27 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
 
   // 2. alten Inhalt beiseite, neuen an seinen Platz — Umbenennen, nichts löschen
   let beiseite = null;
-  if (vorhanden.length) {
-    beiseite = path.join(ziel, `.vor-wiederherstellung-${stempel(jetzt)}`);
-    await mkdir(beiseite, { recursive: true, mode: 0o700 });
-    for (const n of vorhanden) await rename(path.join(ziel, n), path.join(beiseite, n));
+  /** @type {string[]} */ const verschoben = [];
+  /** @type {string[]} */ const eingesetzt = [];
+  try {
+    if (vorhanden.length) {
+      beiseite = path.join(ziel, `.vor-wiederherstellung-${kennung}`);
+      await mkdir(beiseite, { mode: 0o700 });                        // neu und leer, nie ein vorhandener
+      for (const n of vorhanden) { await rename(path.join(ziel, n), path.join(beiseite, n)); verschoben.push(n); }
+    }
+    for (const s of Object.keys(manifest.stores)) { await rename(path.join(stufe, s), path.join(ziel, s)); eingesetzt.push(s); }
+  } catch (e) {
+    /* Zurückrollen: Die Ablage soll aussehen wie vorher. (Eine schon erneuerte Schlüsselepoche bleibt — sichere Richtung.) */
+    const rest = [];
+    for (const s of eingesetzt.reverse()) await rename(path.join(ziel, s), path.join(stufe, s)).catch(() => rest.push(s));
+    for (const n of verschoben.reverse())
+      await rename(path.join(/** @type {string} */ (beiseite), n), path.join(ziel, n)).catch(() => rest.push(n));
+    await rm(stufe, { recursive: true, force: true }).catch(() => {});
+    if (beiseite && !rest.length) await rm(beiseite, { recursive: true, force: true }).catch(() => {});
+    throw new SicherungsFehler(rest.length
+      ? `Tausch misslungen (${/** @type {Error} */ (e).message}); NICHT vollständig zurückgerollt: ${rest.join(", ")} — von Hand prüfen (${beiseite}).`
+      : `Tausch misslungen (${/** @type {Error} */ (e).message}); zurückgerollt, die Ablage ist unverändert.`);
   }
-  for (const s of Object.keys(manifest.stores)) await rename(path.join(stufe, s), path.join(ziel, s));
   await rm(stufe, { recursive: true, force: true });
   /* Vermerk der Wiederherstellung (WP-45b): Ab hier zählen die Standnummern
      ab dem Stand dieser Sicherung neu. Sicherungen, die NACH dieser, aber VOR

@@ -124,6 +124,22 @@ describe("Weg 1: Ablage-Werkzeug (auch der Weg nach restic restore)", () => {
   }, LIMIT);
 });
 
+describe("Werkzeug: zwei Wiederherstellungen derselben Wurzel in derselben Sekunde", () => {
+  it("beide gelingen, jede legt ihren eigenen, eindeutigen Beiseite-Ordner an (nie in einen gefüllten)", async () => {
+    await leitungMitSchluessel("w1-doppelt");
+    const sicherung = await sichern();
+    const jetzt = new Date();
+    const a = await W.wiederherstellen({ sicherung, ziel: Z.wurzel, ersetzen: true, serverPruefen: false, jetzt });
+    const b = await W.wiederherstellen({ sicherung, ziel: Z.wurzel, ersetzen: true, serverPruefen: false, jetzt });
+    expect(a.beiseite).toBeTruthy();
+    expect(b.beiseite).toBeTruthy();
+    expect(b.beiseite, "eindeutig trotz gleicher Zeit").not.toBe(a.beiseite);
+    expect((await readdir(a.beiseite)).sort(), "erster Altinhalt vollständig").toContain("centric");
+    expect((await readdir(b.beiseite)).sort(), "zweiter Altinhalt vollständig").toContain("centric");
+    expect((await readdir(Z.wurzel)).some((n) => n.startsWith(".wiederherstellung-")), "keine Stufe liegen geblieben").toBe(false);
+  }, LIMIT);
+});
+
 describe("Weg 2: Verzeichniskopie eines alten Datenbestands (ohne Werkzeug)", () => {
   /** Kopie des ganzen Datenverzeichnisses, wie `cp -a /data /data.alt`. */
   const kopieren = async () => {
