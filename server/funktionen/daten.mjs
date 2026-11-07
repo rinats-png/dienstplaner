@@ -694,7 +694,7 @@ export default async (req, context) => {
       }, 1000 * 60 * 60 * 12);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
-        gueltigBis });
+        demo: true, gueltigBis });
     }
 
     /* ---------------------------- Anmelden --------------------------- */
@@ -842,6 +842,8 @@ export default async (req, context) => {
         konto: fund.schluessel,
         /* Für die einheitsgenaue Schreibprüfung der Schichtverantwortung. */
         einheit: eintrag.einheit ?? eintrag.gruppe ?? null,
+        /* Ein Demozugang bleibt auch mit Code ein Demozugang: keine Verwaltungswege (Betreiberentscheidung D.2). */
+        ...(eintrag.demo === true ? { demo: true } : {}),
       }, dauerFuer(eintrag.rolle));
       /* Über den alten Schlüssel gefunden und ein Pfeffer ist da: still
          umschlüsseln. So wandert der Bestand ohne Sammelvorgang hinüber —
@@ -869,6 +871,7 @@ export default async (req, context) => {
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         hinweis: eintrag.hinweis || null, gueltigBis,
+        ...(eintrag.demo === true ? { demo: true } : {}),
         ...(zfAktiv === null ? {} : { zweifaktor: zfAktiv }) });
     }
 
@@ -979,12 +982,12 @@ export default async (req, context) => {
       if (mit) bytesMerken(s.bestand, mit);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s) });
+        einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s) });
       /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
          nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
       return antwort({ bestand: bestandFuerRolle(personenAngleichen(mit.bestand), s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
+        einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         geaendert: mit.zeit, durch: mit.durch });
     }
 

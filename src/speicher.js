@@ -98,7 +98,7 @@ export async function anmelden(zugangscode, merken, zweifaktor) {
   }
   await offlineCacheLeeren();   // Rollenwechsel: nichts von der vorherigen Person bleibt liegen (WP-37)
   token = d.token; name = d.name;
-  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis };
+  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis, demo: d.demo === true };
   tokenAblegen(token, merken);
   return d;
 }
@@ -120,7 +120,7 @@ export async function demoOeffnen(id, merken) {
   if (!a.ok) throw new Error(d.fehler || "Demozugang nicht verfügbar.");
   await offlineCacheLeeren();   // Rollenwechsel (WP-37)
   token = d.token; name = d.name;
-  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name };
+  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, demo: true };
   /* Eine Betreibersitzung wird nie über das Schließen des Browsers hinaus
      gemerkt. Wer Datenräume anlegen und Zugänge sperren kann, soll das
      Häkchen gar nicht erst wirksam setzen können — ein liegen gelassener
@@ -167,7 +167,7 @@ export async function lies() {
   /* schreiben: "voll" | "eigenes" | "nein" — der Server sagt, was diese
      Rolle darf. Die Oberfläche darf weniger anbieten, niemals mehr. */
   zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb,
-    name: daten.name, schreiben: daten.schreiben || "voll",
+    name: daten.name, demo: daten.demo === true, schreiben: daten.schreiben || "voll",
     /* WP-07: wem die Offline-Warteschlange gehört (Raum, Betrieb, Person der
        Sitzung als Prüfsumme). Auch aus dem Speicher des Dienstarbeiters — der
        gehört immer der aktuellen Anmeldung, denn Abmelden löscht ihn. */

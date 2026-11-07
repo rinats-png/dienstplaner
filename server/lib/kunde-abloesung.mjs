@@ -29,6 +29,8 @@
      (nur die letzten acht Zeichen als Kennung).
    ========================================================================== */
 
+import { rolleBekannt } from "./rechte.mjs";
+
 export const ZIEL_ROLLE = "leitung";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -39,6 +41,13 @@ function zeile(hash, k) {
     demo: !!k.demo, gesperrt: !!k.gesperrt, bestand: k.bestand || null, betrieb: k.betrieb ?? 0,
     person: k.person ?? null, laeuftAb: k.laeuftAb || null,
   };
+}
+
+/** Nachweis für den Betreiberzugang: Rolle bekannt, nicht gesperrt, nicht abgelaufen (die Anmeldung prüft genau das). */
+export function betreiberAnmeldbar(k, jetzt = Date.now()) {
+  if (!istObjekt(k) || k.rolle !== "betreiber" || !rolleBekannt(k.rolle) || k.gesperrt) return false;
+  if (k.laeuftAb) { const t = Date.parse(k.laeuftAb); if (Number.isFinite(t) && t <= jetzt) return false; }
+  return true;
 }
 
 /**
@@ -53,7 +62,7 @@ export function auswerten(konten) {
     const z = zeile(h, k);
     const r = z.rolle === null ? "(ohne)" : z.rolle;
     proRolle[r] = (proRolle[r] || 0) + 1;
-    if (k.rolle === "betreiber") betreiber.push(z);
+    if (k.rolle === "betreiber") betreiber.push({ ...z, anmeldbar: betreiberAnmeldbar(k) });
     else if (k.rolle === "kunde") (k.demo && !k.gesperrt ? kundeDemo : kundeSonst).push(z);
     else if (z.rolle === null) ohneRolle.push(z);
   }

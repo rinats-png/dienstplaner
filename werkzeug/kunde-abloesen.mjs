@@ -50,6 +50,7 @@ async function main() {
     const kol = kollisionen(konten);
     if (kol.length) p(`Kollision (${kol.length}, werden NICHT umgestellt — im Betrieb gibt es schon einen aktiven leitung-Demozugang): ${JSON.stringify(kol)}`);
     if (!a.betreiber.length) p("HINWEIS: Kein Betreiberzugang in dieser Ablage gefunden.");
+    else p(`Betreiberzugang-Nachweis: ${a.betreiber.every((b) => b.anmeldbar) ? "alle anmeldbar (Rolle bekannt, nicht gesperrt, nicht abgelaufen); Plan berührt keinen" : "ACHTUNG: mindestens einer NICHT anmeldbar"}.`);
     const r = await umstellen(konten, { ausfuehren, schreiben: (h, k) => kontoSchreiben(store, h, k) });
     if (!r.ausgefuehrt) { p(`Trockenlauf: ${r.geplant} würden umgestellt. Mit --ausfuehren anwenden.`); return; }
     if (betreiberRoh(await alleKonten(store)) !== betreiberVorher)

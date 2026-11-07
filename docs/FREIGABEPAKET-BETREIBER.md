@@ -78,5 +78,24 @@ Die Serverrolle `kunde` besitzt alle Rechte (`server/lib/rechte.mjs:61`, Schreib
 2. Sicherung des Datenordners, dann mit `--ausfuehren` (kurze Wartung, Server gestoppt). Gehört zum Produktionsrelease und bleibt an Ihre gesonderte Freigabe gebunden; vorher ändere ich keine produktiven Daten.
 3. Entscheiden, ob `kunde` danach ganz aus `BEKANNTE_ROLLEN` entfernt wird (Empfehlung: ja, nach Schritt 2).
 
+### D.3 Betreiberentscheidungen zu D.2 (2026-11-07): Rollenwähler, Migration, Entfernung von `kunde`
+**Entschieden:** Rollenwähler der öffentlichen Demo bleibt, gesteuert über `demo: true`; keine zusätzlichen Verwaltungsrechte für Demo-Besucher; Migration vollständig vorbereiten (nur Bericht auf isolierter Kopie); Betreiberzugang vollständig erhalten und vor jeder produktiven Migration nachweisen; `kunde` nach erfolgreicher Migration vollständig entfernen.
+
+**Umgesetzt (`integration/release-v4`):**
+- Server meldet `demo: true` in `/api/demo`, in `/api/anmelden` (Code eines Demokontos) und `/api/bestand`. Eine Anmeldung mit dem Code eines Demokontos erzeugt jetzt ebenfalls eine Demo-Sitzung (`demo:true`) und hat damit dieselben Sperren wie die öffentliche Demo (Zugänge sperren, Vollausgabe, Sicherungsschlüssel, Wiederherstellen → 403). Folge: Ein Demokonto mit Code kann keine Zugänge mehr sperren; das dafür nötige Recht hat nur noch ein echtes Leitungs-/Betreiberkonto.
+- Client (`App.jsx`, `speicher.js`): Der Rollenwähler öffnet bei `zugang.demo`; die Auswahl ändert nur die Ansicht. Rechte und Daten bestimmt weiter die Rolle des Tokens (serverseitig, `bestandFuerRolle`, Schreibumfang). Die Demo-Besucherin kann sich in der Ansicht „Leitung“ wählen, bekommt dadurch aber keinen Verwaltungsweg.
+- Werkzeug `werkzeug/kunde-abloesen.mjs`: neue Zeile „Betreiberzugang-Nachweis“ (Rolle bekannt, nicht gesperrt, nicht abgelaufen); Prüfung nach `--ausfuehren` unverändert.
+- Tests: `pruefungen/demo-rollenwaehler.test.js` (Client/Server-Durchreichung von `demo`, Betreiber-Nachweis, Bericht auf isolierter Kopie lässt Kopie und Original byteweise unverändert), `pruefungen/demozugang.mjs` erweitert (demo-Merkmal, vier Verwaltungswege 403 aus Demo-Sitzung, Code-Anmeldung eines Demokontos, übrige Fälle über den Betreiber).
+
+**Migration (Ablauf, ausführbar erst mit Ihrer Freigabe):**
+1. Datenordner kopieren (isoliert, z. B. `cp -r data data-kopie`), Server der Kopie nicht starten.
+2. `CENTRIC_DATEN=data-kopie node werkzeug/kunde-abloesen.mjs` → erwartet: „Betreiberzugänge (1)“, „Betreiberzugang-Nachweis: alle anmeldbar“, Zahl der `kunde`-Demozugänge, Kollisionen, Zugänge ohne Rolle.
+3. Je betroffenem Demobetrieb vorher prüfen, ob eine Person mit Rolle Leitung existiert (sonst gibt es nach Umstellung keinen festen Einstieg; mit dem neuen Rollenwähler über `demo` ist das unkritisch).
+4. Nach Freigabe: Sicherung, Server stoppen, `--ausfuehren`, Server starten, Betreiberanmeldung prüfen (inkl. 2FA, WP-32d).
+5. Danach Entfernung von `kunde` (siehe Inventar). Erst nach Schritt 4 sicher, weil sonst ein nicht umgestellter Altzugang mit 403 ausgesperrt wäre.
+
+**Inventar für die Entfernung von `kunde` (nach Migration, ein kleiner Schritt):** `server/lib/rechte.mjs` (`BEKANNTE_ROLLEN`, Schreibumfang Zeile ≈144, Wirkrolle ≈1185), `server/funktionen/zustellung.mjs` (`VOLL`), `server/lib/auskunft.mjs` (`AUSKUNFT_FUER_ANDERE`), `server/lib/sicherungen.mjs` (`SICHERUNG_ROLLEN`), `server/lib/zustellregeln.mjs` (`SIEHT_ENTWUERFE`), `server/funktionen/kalender.mjs` (Zeile ≈133), `src/ansichten/personal.jsx` (≈139), `src/sicherungen-ui.js` (`SICHERUNG_SEHEN`), Hinweistexte in `einrichten.mjs`, Werkzeug und Testdateien. **Nicht** betroffen: die clientlokale Sitzungsmarke `rolle: "kunde"` für die Offline-Probierumgebung (`App.jsx` 791/9775/9873, `pruefung.jsx`) — sie ist keine Serverrolle; Umbenennung wäre ein eigener, rein kosmetischer Schritt.
+
+
 ## E. Neu im Integrationsstand: Pflicht-2FA für den Betreiber (WP-32d)
 Mit `NODE_ENV=production` (Produktion und Staging) verlangt der Server für jeden Betreibercode und für `/einrichten` (Verwalterschlüssel) einen zweiten Faktor, ohne Abschalter. **Vor dem ersten Start dieses Stands auf Staging oder Produktion muss der Betreiber den Faktor einrichten** (Reihenfolge und Wiederherstellung offline: `docs/acc45/wp15-wp32d-fragen.md`, Abschnitt „vor dem ersten produktiven Start unter Pflicht-2FA“). Verlust des Geräts heißt: nur mit Serverzugang, Pfeffer und Betreibercode über `werkzeug/betreiber-2fa-zuruecksetzen.mjs` (im Image). Beim Start werden Betreibersitzungen ohne Faktor beendet. Restrisiko: Wer nur den Verwalterschlüssel hat, kann dessen Faktor selbst einrichten, solange noch keiner existiert; die Pflicht schützt erst alles danach. Entscheidung/Handlung des Betreibers (E-10): Faktor einrichten, Gerät und Notfallweg festlegen.

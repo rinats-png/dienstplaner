@@ -9700,7 +9700,8 @@ function AppInnen() {
          auf diesem Weg nicht mehr erreichbar.
 
          Der Code in der Hand entscheidet, nicht der Rückstand im Speicher. */
-      if (zugang && zugang.rolle && zugang.rolle !== "kunde") {
+      /* Demo (Betreiberentscheidung D.2): Der Rollenwähler hängt am Merkmal demo des Zugangs, nicht an der Rolle „kunde“. Er ändert nur die Ansicht; Rechte und Daten bestimmt weiter die Rolle des Tokens, und Verwaltungswege sind für Demo-Sitzungen serverseitig gesperrt. „kunde“ bleibt als Altbestand gleich behandelt, bis die Umstellung gelaufen ist. */
+      if (zugang && zugang.rolle && zugang.rolle !== "kunde" && zugang.demo !== true) {
         if (zugang.rolle === "betreiber") b = { ...b, session: { rolle: "betreiber" } };
         else {
           const mand = b.mandanten[zugang.betrieb || 0] || b.mandanten[0];
