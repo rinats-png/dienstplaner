@@ -7,6 +7,7 @@ import { einheitAm, nachtAnteil, imDienst } from "../../server/lib/fachpruefung.
 import { H1, Btn, Card, CardHead, Pill, Lab, Field, Inp, Sel } from "../ui/bausteine.jsx";
 import { rolle } from "../lib/rollen.js";
 import { darf } from "../lib/berechtigung.js";
+import { SelbstauskunftStatus } from "./selbstauskunft.jsx";
 import { Kennzahlen, Fehlerband } from "../gestalt/ansichten.jsx";
 import { n1Ist, n1, sgn, sgnIst } from "../lib/format.js";
 import { ISTDATEN_TEXT, pruefHinweis, pruefFallText, vormonateMitPruefung } from "../istdaten.js";
@@ -116,6 +117,8 @@ export function MeineSchichten({ sitz, akt, ym }) {
           </div>
         </div>
       </Card>
+
+      {akt && <SelbstauskunftStatus m={m} ich={ich} onErgebnis={akt.uebernehmeSelbstauskunft} melde={akt.melde} />}
 
       {offen.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
