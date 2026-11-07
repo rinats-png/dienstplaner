@@ -27,9 +27,11 @@ Erstellers ließen ihn bestehen: Wer als Leitung ausschied, konnte ein Jahr lang
 
 | Datei | Änderung |
 |---|---|
-| `server/lib/arbeitssitzung.mjs` | `sicherungsschluesselErsteller(sitzung)` bildet den Ersteller aus der anlegenden Sitzung. `sicherungsschluesselPruefen(store, sk, {bestandLader})` prüft ihn bei jedem Lesen. `arbeitssitzungLesen` ruft die Prüfung für Sicherungsschlüssel auf, nach der bisherigen Prüfung. Das ist der eine Prüfpunkt, über den allein `daten.mjs` Schlüssel annimmt. |
-| `server/funktionen/daten.mjs` | Anlegen speichert `ersteller` im Datensatz. Eine Sitzung, die weder Konto noch Zugang erkennen lässt, legt keinen Schlüssel an (403 „Bitte neu anmelden“). Die Liste zeigt `ersteller` (Name) und `verwaist`. |
-| `pruefungen/sicherungsschluessel-ersteller.test.js` | neu, 21 Tests (zuerst geschrieben, vorher 17 rot) |
+| `server/lib/arbeitssitzung.mjs` | `sicherungsschluesselErsteller(sitzung)` bildet den Ersteller aus der anlegenden Sitzung. `sicherungsschluesselPruefen(store, sk, {bestandLader})` prüft ihn bei jedem Lesen. `arbeitssitzungLesen` ruft die Prüfung für Sicherungsschlüssel auf, nach der bisherigen Prüfung, und entfernt den Schlüssel bei einer eindeutigen Absage. Das ist der eine Prüfpunkt, über den allein `daten.mjs` Schlüssel annimmt. |
+| `server/funktionen/daten.mjs` | Anlegen speichert `ersteller` im Datensatz und prüft den neuen Datensatz mit demselben Maßstab wie beim Lesen (403, wenn er von Anfang an nicht gälte). Eine Sitzung, die weder Konto noch Zugang erkennen lässt, legt keinen Schlüssel an (403 „Bitte neu anmelden“). Die Liste zeigt `ersteller` (Name) und `verwaist`, schreibt aber nichts. |
+| `server/lib/konten.mjs` | neu: `kontoLesenStreng` (ein Lesefehler wird weitergereicht statt auf den Sammelblob zurückzufallen) |
+| `server/lib/sitzungen.mjs` | neu: `sicherungsschluesselEntfernen` |
+| `pruefungen/sicherungsschluessel-ersteller.test.js` | neu, 41 Tests (die ersten 21 vor der Umsetzung geschrieben, davon 17 rot; der Rest aus dem Review) |
 | `pruefungen/sitzungsbindung.test.js` | Fixture eines von Hand angelegten Schlüssels trägt jetzt einen Ersteller und die Betriebsangaben; der Zweck des Tests ist unverändert |
 | `docs/handbuch/leitung.md`, `docs/BETRIEBSHANDBUCH.md` | je ein Satz zum neuen Verhalten |
 | `docs/acc45/SI-P1-NACHWEIS.md` | dieser Nachweis |
@@ -54,12 +56,20 @@ Der Ersteller muss noch das sein, was er beim Anlegen war: die Leitung dieses Be
 
 Fehler beim Prüfen schließen die Tür (lieber ein Export zu wenig als einer zu viel). Nur ein vorübergehend
 nicht lesbarer Bestand wird weitergereicht (→ 503, der Schlüssel bleibt), wie bei den übrigen Sitzungen.
+Zusätzlich beim Zugang: nicht abgelaufen (`laeuftAb`), kein Demozugang, die Kette der Ersetzungen (`ersetztDurch`,
+höchstens fünf Glieder, gegen Zyklen gesichert) enthält keinen gesperrten Zugang, und ein Zugang ohne Betriebskennung
+bleibt an seinen Betriebsindex gebunden.
 
 ### Widerruf
 
-Er braucht keine Liste und kein aktives Löschen: Sperrt jemand den Zugang, entzieht die Mitgliedschaft, setzt
-das Passwort zurück (Epoche) oder stuft die Person herab, endet der Schlüssel mit der nächsten Anfrage. Der
-Widerruf per `DELETE /api/sicherungsschluessel` bleibt unverändert.
+Er braucht keine Liste: Sperrt jemand den Zugang, entzieht die Mitgliedschaft, setzt das Passwort (Epoche) oder stuft
+die Person herab, endet der Schlüssel mit der nächsten Anfrage. **Eine eindeutige Absage ist endgültig**: Der
+Datensatz wird entfernt. Sonst lebte der Schlüssel wieder auf, wenn das Konto entsperrt, die Personalliste
+zurückgespielt oder die Person erneut eingetragen würde (Review-Befund 1). Nicht entfernt wird bei einem
+Lesefehler und dort, wo die Bibliothek „fehlt“ nicht von „nicht lesbar“ trennt (`accountLesenPerId`,
+`mitgliedschaftLesen` machen aus einem Lesefehler ein `null`): Der Schlüssel wird abgewiesen, bleibt aber liegen,
+damit ein vorübergehender Plattenfehler keinen gültigen Schlüssel vernichtet. Der Widerruf per
+`DELETE /api/sicherungsschluessel` bleibt unverändert.
 
 ## Entscheidungen, die ich getroffen habe (bitte gegenlesen)
 
@@ -75,16 +85,17 @@ Widerruf per `DELETE /api/sicherungsschluessel` bleibt unverändert.
    Soll ein routinemäßiger Passwortwechsel die Schlüssel beenden? Die Prüfung der Epoche ist eine Zeile in
    `sicherungsschluesselPruefen` (`sk-epoche`).
 4. **Die Höchstdauer (365 Tage) ist unverändert.** Der Befund schlägt vor, sie zu senken; das ist eine Betreiberentscheidung.
-5. **Widerruf beim Lesen statt beim Sperren.** Ein Schlüssel eines ausgeschiedenen Erstellers bleibt als Datensatz
-   liegen (bis zum Ablauf), zählt aber nicht mehr. Die Liste zeigt ihn als `verwaist`; die Leitung kann ihn löschen.
+5. **Widerruf beim Lesen statt beim Sperren.** Der Schlüssel eines ausgeschiedenen Erstellers wird beim ersten
+   Gebrauch nach der Absage entfernt (siehe Widerruf); bis dahin steht er in der Liste als `verwaist`.
 
 ## Tests
 
 | Prüfung | Ergebnis |
 |---|---|
-| `pruefungen/sicherungsschluessel-ersteller.test.js` auf dem Stand vor der Änderung | **17 von 21 rot** (die vier grünen sind Schutzfälle: Abmelden, fremder Zugang, Betreiber, DELETE) |
-| dieselbe Datei nach der Änderung | 21/21 grün |
-| `sitzungsbindung`, `arbeitssitzung`, `sitzungen`, `verwaltungswege`, `vollausgabe`, `sicherheit-intern`, `routen-inventar` | 203/203 grün |
+| `pruefungen/sicherungsschluessel-ersteller.test.js`, erste Fassung (21 Tests) vor der Umsetzung | **17 von 21 rot** (die vier grünen sind Schutzfälle: Abmelden, fremder Zugang, Betreiber, DELETE) |
+| dieselbe Datei nach Umsetzung und Review-Nachträgen (41 Tests) | 41/41 grün |
+| Mutationsproben (14 Mutanten in `arbeitssitzung.mjs` und `daten.mjs`, je eine Prüfung ausgebaut) | alle werden von mindestens einem Test erkannt (zwei erst nach Nachtrag: Person und Betrieb der Mitgliedschaft) |
+| `sitzungsbindung`, `arbeitssitzung`, `sitzungen`, `verwaltungswege`, `vollausgabe`, `sicherheit-intern`, `routen-inventar` | grün |
 | gesamte Suite (`npx vitest run`) | siehe Abschnitt „Gesamtlauf“ |
 | `npx eslint .` | 0 Fehler |
 | `npx tsc -p jsconfig.json` | gleiche 20 vorbestehenden Fehler wie auf dem Ausgangsstand, kein neuer |
@@ -94,8 +105,38 @@ mehrere Schlüssel, fremdes Konto unberührt, Abmelden bricht nicht), Code-Erste
 Rolle herabgesetzt, Person herabgestuft, fremder Zugang unberührt), Altschlüssel und neun unbrauchbare
 Ersteller-Formen, Betreiber, Sitzung ohne erkennbaren Ersteller, Liste (`ersteller`, `verwaist`, keine Klartextwerte), DELETE.
 
+## Gesamtlauf
+
+`npx vitest run` auf dem Stand dieses Branchs: 7040 Tests grün, 8 rot in 4 Dateien. Es sind exakt die 8, die schon auf
+`integration/release-v4` (`8be0420`) rot sind und die nichts mit SI-P1 zu tun haben: `gesund.test.js` (3) und
+`server.test.js` (1) hängen am freien Plattenplatz des Hosts, `wiederherstellen-ui.test.js` (3) erwartet den alten
+Ladetext, `zugaenge-anlegen.test.js` (1) scheitert an der Bremse von `/einrichten`. Die Behebung liegt beim
+Hauptorchestrator (`fix/ci-baseline`); die Ursachen der vier letzten Dateien stehen in PR #104 (nur Referenz).
+`npx tsc -p jsconfig.json`: dieselben 20 vorbestehenden Fehler, kein neuer. `npx eslint .`: 0 Fehler.
+
+## Unabhängiger Review (Sicherheit, nur lesend, eigener Agent)
+
+Der Reviewer hat aktiv versucht, die Prüfung zu umgehen (u. a. Ketten umgeschlüsselter Zugänge, verschobene Betriebe,
+Zahl/Text-Verwechslungen, Planungs- und Demozugänge, ein Schlüssel legt einen Schlüssel an), 34 Mutanten gebaut und
+die Tests laufen lassen. **Ergebnis: kein Weg zu einem 200 auf `/api/vollausgabe`, solange der Ersteller gesperrt,
+ausgetreten, entzogen oder herabgestuft ist.** Befunde und Behandlung:
+
+| # | Befund | Schwere | Behandlung |
+|---|---|---|---|
+| 1 | Der Widerruf war umkehrbar: Konto entsperrt, Person zurückgestuft oder erneut eingetragen (etwa durch eine zurückgespielte Sicherung) ließ den Schlüssel wieder leben | mittel–niedrig | **behoben**: eindeutige Absage entfernt den Datensatz; Lesefehler und „fehlt = nicht lesbar“ nicht. Tests für alle drei Wege und die Grenzfälle. |
+| 2 | Abgelaufener Testzeitraum (`laeuftAb`) und Demozugang wurden nicht geprüft | niedrig | **behoben** (wie bei der Anmeldung), Tests |
+| 3 | `ersetztDurch`: nur ein Glied der Kette verfolgt | niedrig | **behoben**: Kette bis fünf Glieder, Zyklenschutz, fehlendes Glied gilt als gesperrt; Tests |
+| 4 | `kontoLesen` fiel bei einem Lesefehler auf den Sammelblob zurück (fail-open, Altbestand) | niedrig | **behoben**: `kontoLesenStreng`; Test mit gestörter Ablage |
+| 5 | Betriebsindex eines Zugangs ohne Betriebskennung nicht verglichen | info | **behoben**, Test |
+| 6 | Ein Planungszugang, dessen Person Leitung ist, bekam einen von Anfang an toten Schlüssel | niedrig | **behoben**: Prüfung schon beim Anlegen (403), Test |
+| 7 | Handbuch: Passwortwechsel und Wiederbelebung fehlten, 401 ohne Hinweis | niedrig | **behoben** (Handbuch und Betriebshandbuch) |
+| – | überlebende Mutanten (Konto mit anderer Person, Lauf, Konto gelöscht, Zugang in anderen Raum/Betrieb/an andere Person, Bestand weg, Betrieb verschoben) | – | Tests ergänzt; danach alle 14 selbst gebauten Mutanten erkannt |
+| – | Obergrenze für die Zahl der Schlüssel je Betrieb (die Liste prüft jeden mit 4–5 Lesevorgängen; 101 Schlüssel ≈ 90 ms) | info | **nicht umgesetzt**, siehe offene Punkte |
+
 ## Offene Punkte (nicht Teil von SI-P1)
 
 - Die Oberfläche (`src/speicher.js`, Datenmitnahme) zeigt `ersteller` und `verwaist` noch nicht. Sie toleriert die
   zusätzlichen Felder. Die Anzeige gehört in die UI-Integration.
-- Betreiberentscheidungen: Höchstdauer, Verhalten bei Passwortwechsel (Punkt 3).
+- Betreiberentscheidungen: Höchstdauer, Verhalten bei Passwortwechsel (Entscheidung 3).
+- Eine Obergrenze für die Zahl der Schlüssel je Betrieb (etwa 50) gibt es nicht und gab es vorher nicht. Sie wäre eine eigene, kleine Änderung.
+- `accountLesenPerId` und `mitgliedschaftLesen` machen aus einem Lesefehler ein `null` (auch die Arbeitssitzung wertet das als Absage und räumt die Sitzung weg). Für SI-P1 ist das abgefangen (kein Entfernen bei `null`); die Bibliotheken habe ich nicht angefasst.

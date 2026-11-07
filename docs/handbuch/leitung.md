@@ -24,8 +24,10 @@ Mitteilungen über bestätigte Rechtsverstöße erzeugt der Server an die Leitun
 - **Vollausgabe der Leitung:** eigener Betrieb nach Exportkatalog — ohne Notfallkontakt, Bank-, Steuer- und Lohnangaben.
   **Mit Sicherungsschlüssel** enthält sie diese zusätzlich (für die Sicherung außer Haus) — Schlüssel entsprechend
   verwahren. Ein Sicherungsschlüssel gilt nur, solange die Person, die ihn angelegt hat, Leitung dieses Betriebs ist:
-  Wird ihr Zugang gesperrt, scheidet sie aus oder wird sie herabgestuft, endet der Schlüssel mit der nächsten Anfrage.
-  Dann legt eine andere Leitung einen neuen an. Das Abmelden der Person beendet ihn nicht.
+  Wird ihr Zugang gesperrt, scheidet sie aus, wird sie herabgestuft oder ändert sie ihr Passwort, endet der Schlüssel
+  mit der nächsten Anfrage, und zwar endgültig (auch eine spätere Entsperrung bringt ihn nicht zurück). Ein Skript
+  sieht dann nur „Nicht angemeldet“ (401). Eine Leitung legt einen neuen Schlüssel an. Das Abmelden der Person beendet
+  ihn nicht. In der Datenmitnahme steht beim Schlüssel, wer ihn angelegt hat; „verwaist“ heißt: er gilt nicht mehr.
 - **Nicht:** übriger Vertrag und Rechnungen (Betreiber), andere Betriebe.
 
 Einzelheiten: [RECHTEMATRIX.md](../../RECHTEMATRIX.md), Spalten LT, VA-LT, VA-SK und Abschnitt 2.

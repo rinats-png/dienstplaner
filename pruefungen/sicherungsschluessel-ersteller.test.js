@@ -21,10 +21,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { aufbauen, hash } from "./hilfen/szenario.mjs";
 
+let AS;
+
 const LIMIT = 60000;
 let Z;
 
-beforeAll(async () => { Z = await aufbauen("skersteller"); }, LIMIT);
+beforeAll(async () => {
+  Z = await aufbauen("skersteller");
+  AS = await import("../server/lib/arbeitssitzung.mjs");
+}, LIMIT);
 afterAll(async () => { await Z.abbauen(); });
 beforeEach(async () => { await Z.taktLeeren(); });
 
@@ -222,6 +227,268 @@ describe("SI-P1: Liste", () => {
     const d = await Z.bearer(Z.daten, "/api/sicherungsschluessel", b.token, { methode: "DELETE", rumpf: { kennung } });
     expect(d.status).toBe(200);
     expect(d.daten.widerrufen).toBe(1);
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   Nachtrag aus dem unabhängigen Review (Befunde 1–6 und überlebende Mutanten)
+   ========================================================================== */
+
+/** Die Ablage mit gezielten Störungen: "wirft" (Lesefehler) oder "leer" (gibt es nicht). */
+const mitStoerung = (regel) => new Proxy(Z.laden(), {
+  get(ziel, name) {
+    const wert = ziel[name];
+    if (typeof wert !== "function") return wert;
+    return (...a) => {
+      const r = regel(String(name), String(a[0]));
+      if (r === "wirft") return Promise.reject(Object.assign(new Error("EIO: gestört"), { code: "EIO" }));
+      if (r === "leer") return Promise.resolve(null);
+      return wert.apply(ziel, a);
+    };
+  },
+});
+const satz = (roh) => Z.ablageArbeit().get(`sk:${hash(roh)}`, { type: "json" });
+
+describe("Review-Befund 1: ein widerrufener Schlüssel lebt nicht wieder auf", () => {
+  it("Konto gesperrt, später wieder aktiviert: der Schlüssel bleibt tot und der Datensatz ist entfernt", async () => {
+    const b = await kontoMitSchluessel("sk-wieder-konto");
+    await Z.A.accountSperren(Z.laden(), b.k.id);
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+    expect(await satz(b.sk), "Datensatz nach der eindeutigen Absage entfernt").toBeNull();
+    await Z.A.accountAendern(Z.laden(), b.k.id, { status: "aktiv" });
+    expect((await vollausgabe(b.sk)).status, "nach der Entsperrung").toBe(401);
+  }, LIMIT);
+
+  it("Person herabgestuft und wieder zur Leitung gemacht (etwa durch eine zurückgespielte Sicherung): der Schlüssel bleibt tot", async () => {
+    const b = await kontoMitSchluessel("sk-wieder-rolle");
+    await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+    await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "leitung"; });
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+
+  it("Person entfernt und mit derselben Kennung wieder eingetragen: der Schlüssel bleibt tot", async () => {
+    const b = await kontoMitSchluessel("sk-wieder-person");
+    let alt;
+    await bestandAendern(b.raum, (n) => { alt = n.mandanten[0].personen.find((p) => p.id === "p_1"); n.mandanten[0].personen = n.mandanten[0].personen.filter((p) => p.id !== "p_1"); });
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+    await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.push(alt); });
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+
+  it("Zugang gesperrt und wieder entsperrt: der Schlüssel bleibt tot", async () => {
+    const b = await Z.arbeitsbereich("sk-wieder-code");
+    const c = await codeLeitung(b.raum);
+    const sk = (await anlegen(c.token)).daten.schluessel;
+    const k = await Z.K.kontoLesen(Z.laden(), c.konto);
+    await Z.K.kontoSchreiben(Z.laden(), c.konto, { ...k, gesperrt: new Date().toISOString() });
+    expect((await vollausgabe(sk)).status).toBe(401);
+    await Z.K.kontoSchreiben(Z.laden(), c.konto, { ...k });
+    expect((await vollausgabe(sk)).status).toBe(401);
+  }, LIMIT);
+
+  it("ein Lesefehler ist keine Absage: der Schlüssel bleibt liegen und gilt wieder, sobald die Ablage antwortet", async () => {
+    const b = await kontoMitSchluessel("sk-lesefehler");
+    const sk = await satz(b.sk);
+    const kaputt = await AS.sicherungsschluesselPruefen(mitStoerung((m, k) => (k.startsWith("mitglied:") ? "wirft" : null)), sk);
+    expect(kaputt.ok).toBe(false);
+    expect(kaputt.endgueltig, "Lesefehler: nicht endgültig").toBe(false);
+    const lauf = await AS.sicherungsschluesselPruefen(mitStoerung((m, k) => (k.startsWith("mitgliedlauf:") ? "wirft" : null)), sk);
+    expect(lauf.ok).toBe(false);
+    expect(lauf.endgueltig).toBe(false);
+    expect((await vollausgabe(b.sk)).status, "ohne Störung").toBe(200);
+  }, LIMIT);
+
+  it("ein fehlender Mitgliedslauf ist eine endgültige Absage; ein fehlendes Konto oder eine fehlende Mitgliedschaft nicht (von einem Lesefehler nicht zu trennen)", async () => {
+    const b = await kontoMitSchluessel("sk-lauf-fehlt");
+    const sk = await satz(b.sk);
+    const ohneLauf = await AS.sicherungsschluesselPruefen(mitStoerung((m, k) => (k.startsWith("mitgliedlauf:") ? "leer" : null)), sk);
+    expect(ohneLauf).toMatchObject({ ok: false, endgueltig: true, grund: "sk-lauf" });
+    const ohneKonto = await AS.sicherungsschluesselPruefen(mitStoerung((m, k) => (/^(account|kontoId):/.test(k) ? "leer" : null)), sk);
+    expect(ohneKonto).toMatchObject({ ok: false, endgueltig: false, grund: "sk-account-fehlt" });
+    const ohneMitglied = await AS.sicherungsschluesselPruefen(mitStoerung((m, k) => (k.startsWith("mitglied:") ? "leer" : null)), sk);
+    expect(ohneMitglied).toMatchObject({ ok: false, endgueltig: false, grund: "sk-mitglied-fehlt" });
+  }, LIMIT);
+
+  it("die Liste schreibt nichts: ein verwaister Schlüssel bleibt dort sichtbar, bis er benutzt oder gelöscht wird", async () => {
+    const b = await kontoMitSchluessel("sk-liste-liest");
+    const c = await codeLeitung(b.raum);
+    await Z.A.mitgliedschaftEntziehen(Z.laden(), b.k.id, b.raum);
+    expect((await liste(c.token)).daten.schluessel[0].verwaist).toBe(true);
+    expect(await satz(b.sk), "Liste hat nichts entfernt").not.toBeNull();
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+    expect(await satz(b.sk), "Benutzen entfernt ihn").toBeNull();
+  }, LIMIT);
+});
+
+describe("Review-Befunde 2–6", () => {
+  async function codeMitSchluessel(was, eintragAendern = null) {
+    const b = await Z.arbeitsbereich(was);
+    const c = await codeLeitung(b.raum);
+    const sk = (await anlegen(c.token)).daten.schluessel;
+    return { ...b, code: c, sk };
+  }
+  const zugangAendern = async (schluessel, aendern) => {
+    const k = await Z.K.kontoLesen(Z.laden(), schluessel);
+    await Z.K.kontoSchreiben(Z.laden(), schluessel, aendern(k));
+  };
+
+  it("Befund 2: ein abgelaufener Testzeitraum des Zugangs beendet den Schlüssel", async () => {
+    const b = await codeMitSchluessel("skc-ablauf");
+    await zugangAendern(b.code.konto, (k) => ({ ...k, laeuftAb: new Date(Date.now() - 86400000).toISOString() }));
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+
+  it("Befund 2: ein noch laufender Testzeitraum stört nicht", async () => {
+    const b = await codeMitSchluessel("skc-ablauf-ok");
+    await zugangAendern(b.code.konto, (k) => ({ ...k, laeuftAb: new Date(Date.now() + 86400000).toISOString() }));
+    expect((await vollausgabe(b.sk)).status).toBe(200);
+  }, LIMIT);
+
+  it("ein Demozugang ist keine Leitung für Schlüssel", async () => {
+    const b = await codeMitSchluessel("skc-demo");
+    await zugangAendern(b.code.konto, (k) => ({ ...k, demo: true }));
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+
+  it("Befund 3: die Kette der Ersetzungen wird verfolgt (A → B → C, nur C gesperrt)", async () => {
+    const b = await codeMitSchluessel("skc-kette");
+    const B = await Z.zugangskonto(b.raum, { rolle: "leitung", person: null });
+    const C = await Z.zugangskonto(b.raum, { rolle: "leitung", person: null });
+    await zugangAendern(b.code.konto, (k) => ({ ...k, ersetztDurch: B }));
+    await zugangAendern(B, (k) => ({ ...k, ersetztDurch: C }));
+    expect((await vollausgabe(b.sk)).status, "Kette ungesperrt").toBe(200);
+    await zugangAendern(C, (k) => ({ ...k, gesperrt: new Date().toISOString() }));
+    expect((await vollausgabe(b.sk)).status, "Ende der Kette gesperrt").toBe(401);
+  }, LIMIT);
+
+  it("Befund 3: ein Zyklus hängt nicht und sperrt nicht; ein fehlendes Kettenglied gilt als gesperrt; zu lange Ketten gelten nicht", async () => {
+    const b = await codeMitSchluessel("skc-zyklus");
+    await zugangAendern(b.code.konto, (k) => ({ ...k, ersetztDurch: b.code.konto }));
+    expect((await vollausgabe(b.sk)).status, "Selbstverweis").toBe(200);
+    await zugangAendern(b.code.konto, (k) => ({ ...k, ersetztDurch: "gibt-es-nicht-0123456789" }));
+    expect((await vollausgabe(b.sk)).status, "Kettenglied fehlt").toBe(401);
+
+    const b2 = await codeMitSchluessel("skc-lang");
+    let vorher = b2.code.konto;
+    for (let i = 0; i < 7; i++) {
+      const naechster = await Z.zugangskonto(b2.raum, { rolle: "leitung", person: null });
+      await zugangAendern(vorher, (k) => ({ ...k, ersetztDurch: naechster }));
+      vorher = naechster;
+    }
+    expect((await vollausgabe(b2.sk)).status, "Kette länger als fünf").toBe(401);
+  }, LIMIT);
+
+  it("Befund 4: bei einem Lesefehler am Einzelkonto gilt der ungesperrte Sammelblob nicht als Ersatz", async () => {
+    const b = await codeMitSchluessel("skc-sammel");
+    const sk = await satz(b.sk);
+    const k = await Z.K.kontoLesen(Z.laden(), b.code.konto);
+    // Einzelkonto gesperrt; im Sammelblob steht noch die ungesperrte Fassung (Altbestand).
+    await Z.K.kontoSchreiben(Z.laden(), b.code.konto, { ...k, gesperrt: new Date().toISOString() });
+    await Z.laden().setJSON("konten", { [b.code.konto]: { ...k } });
+    const normal = await AS.sicherungsschluesselPruefen(Z.laden(), sk);
+    expect(normal).toMatchObject({ ok: false, grund: "sk-zugang-gesperrt" });
+    const gestoert = await AS.sicherungsschluesselPruefen(mitStoerung((m, key) => (key === `konto:${b.code.konto}` ? "wirft" : null)), sk);
+    expect(gestoert.ok, "fail-open bei Lesefehler").toBe(false);
+    expect(gestoert.endgueltig).toBe(false);
+    await Z.laden().delete("konten");
+  }, LIMIT);
+
+  it("Befund 5: ein Zugang ohne Betriebskennung bleibt an seinen Betriebsindex gebunden", async () => {
+    const raum = Z.raum("skc-index");
+    const e = await Z.B.bestandSchreiben(Z.laden(), raum, { version: 5, mandanten: [
+      { id: "m1", name: "Haus Eins", einheiten: [{ id: "e1", name: "WB" }], personen: [] },
+      { id: "m2", name: "Haus Zwei", einheiten: [{ id: "e2", name: "WB" }], personen: [] }] }, { durch: "Pruefung" });
+    expect(e.ok, JSON.stringify(e)).toBe(true);
+    const konto = await Z.zugangskonto(raum, { rolle: "leitung", person: null });
+    await zugangAendern(konto, (k) => ({ ...k, betrieb: 1 }));
+    const s = await Z.S.sitzungAnlegen({ bestand: raum, rolle: "leitung", person: null, betrieb: 1, konto, name: "Leitung Haus Zwei" });
+    const a = await anlegen(s.token);
+    expect(a.status, JSON.stringify(a.daten)).toBe(200);
+    expect((await vollausgabe(a.daten.schluessel)).daten.mandantId).toBe("m2");
+    await zugangAendern(konto, (k) => ({ ...k, betrieb: 0 }));
+    expect((await vollausgabe(a.daten.schluessel)).status).toBe(401);
+  }, LIMIT);
+
+  it("Befund 6: ein Planungszugang, dessen Person im Betrieb Leitung ist, bekommt gar keinen Schlüssel", async () => {
+    const b = await Z.arbeitsbereich("skc-planer");
+    const konto = await Z.zugangskonto(b.raum, { rolle: "planer", person: "p_1" });
+    const s = await Z.legacySitzung(b.raum, { rolle: "planer", person: "p_1", konto });
+    const a = await anlegen(s.token);
+    expect(a.status, JSON.stringify(a.daten)).toBe(403);
+    expect(a.daten.schluessel).toBeFalsy();
+    const { blobs } = await Z.ablageArbeit().list({ prefix: "sk:" });
+    for (const k of blobs) {
+      const roh = await Z.ablageArbeit().get(k.key, { type: "json" });
+      expect(roh.ersteller && roh.ersteller.konto, "kein Datensatz für diesen Zugang").not.toBe(konto);
+    }
+  }, LIMIT);
+
+  it("ein Passwortwechsel des Kontos beendet seine Schlüssel (Epoche; bewusst, siehe Nachweis)", async () => {
+    const b = await kontoMitSchluessel("sk-passwort");
+    const g = await Z.A.passwortSetzen(Z.laden(), b.k.id, await Z.P.passwortAblegen("Ein ganz neues Passwort 2026"));
+    expect(g.ok).toBe(true);
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+});
+
+describe("Überlebende Mutanten: weitere Ersteller und Verschiebungen", () => {
+  it("ein Konto mit einer anderen Person als p_1: Herabstufung dieser Person beendet nur ihre Schlüssel", async () => {
+    const a = await kontoMitSchluessel("sk-p3");
+    await bestandAendern(a.raum, (n) => {
+      const kopie = JSON.parse(JSON.stringify(n.mandanten[0].personen.find((p) => p.id === "p_1")));
+      n.mandanten[0].personen.push({ ...kopie, id: "p_3", vorname: "Mia", nachname: "Koch" });
+    });
+    const k2 = await Z.kontoAnlegen(`zweite-${Date.now()}@example.org`);
+    await Z.mitgliedAnlegen(k2.id, a.raum, "leitung", "p_3");
+    const an = await Z.anmelden(k2.email);
+    const w = await Z.betriebOeffnen(an.keks, a.raum);
+    const sk3 = (await anlegen(w.token)).daten.schluessel;
+    expect((await vollausgabe(sk3)).status, "Schlüssel von p_3").toBe(200);
+    expect((await satz(sk3)).ersteller.person).toBe("p_3");
+    await bestandAendern(a.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_3").rolle = "mitarbeiter"; });
+    expect((await vollausgabe(sk3)).status, "p_3 herabgestuft").toBe(401);
+    expect((await vollausgabe(a.sk)).status, "Schlüssel von p_1 unberührt").toBe(200);
+  }, LIMIT);
+
+  it("Zugang in einen anderen Raum, Betrieb oder an eine andere Person gelegt: der Schlüssel gilt nicht", async () => {
+    const b = await Z.arbeitsbereich("skc-verlegt");
+    for (const [was, aendern] of [
+      ["Raum", (k) => ({ ...k, bestand: "ein-anderer-raum" })],
+      ["Betrieb", (k) => ({ ...k, mandantId: "m-fremd" })],
+      ["Person", (k) => ({ ...k, person: "p_2" })],
+    ]) {
+      const c = await codeLeitung(b.raum, { person: "p_1" });
+      const sk = (await anlegen(c.token)).daten.schluessel;
+      expect((await vollausgabe(sk)).status, `${was}: vorher`).toBe(200);
+      const k = await Z.K.kontoLesen(Z.laden(), c.konto);
+      await Z.K.kontoSchreiben(Z.laden(), c.konto, aendern(k));
+      expect((await vollausgabe(sk)).status, `${was}: nachher`).toBe(401);
+    }
+  }, LIMIT);
+
+  it("die Mitgliedschaft zeigt auf eine andere Person oder einen anderen Betrieb: der Schlüssel gilt nicht", async () => {
+    for (const [was, feld, wert] of [["Person", "person", "p_2"], ["Betrieb", "mandantId", "m-andere"]]) {
+      const b = await kontoMitSchluessel("sk-mitglied");
+      expect((await vollausgabe(b.sk)).status, `${was}: vorher`).toBe(200);
+      const { blobs } = await Z.laden().list({ prefix: "mitglied:" });
+      let geaendert = 0;
+      for (const bl of blobs) {
+        const m = await Z.laden().get(bl.key, { type: "json" });
+        if (m && m.accountId === b.k.id && m.raum === b.raum) { await Z.laden().setJSON(bl.key, { ...m, [feld]: wert }); geaendert++; }
+      }
+      expect(geaendert, `${was}: Mitgliedschaft gefunden`).toBe(1);
+      expect((await vollausgabe(b.sk)).status, `${was}: nachher`).toBe(401);
+    }
+  }, LIMIT);
+
+  it("der Bestand ist weg oder der Betrieb wurde verschoben: der Schlüssel gilt nicht", async () => {
+    const b = await kontoMitSchluessel("sk-bestand");
+    const sk = await satz(b.sk);
+    const ohneBestand = await AS.sicherungsschluesselPruefen(Z.laden(), sk, { bestandLader: async () => ({ bestand: null }) });
+    expect(ohneBestand).toMatchObject({ ok: false, grund: "sk-bestand-fehlt" });
+    await bestandAendern(b.raum, (n) => { n.mandanten.unshift({ id: "m0", name: "Neues Haus", einheiten: [], personen: [] }); });
     expect((await vollausgabe(b.sk)).status).toBe(401);
   }, LIMIT);
 });

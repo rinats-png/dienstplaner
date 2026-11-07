@@ -2208,13 +2208,22 @@ export default async (req, context) => {
         neuAnmelden: true }, 403);
       const roh = randomBytes(24).toString("base64url");
       const bis = Date.now() + gueltig * 86400000;
-      await sitzungen().setJSON(`sk:${hash(roh)}`, {
+      const skSatz = {
         bestand: s.bestand, rolle: "leitung", nurSicherung: true,
         betrieb: skOrt.index, mandantId: skOrt.betrieb.id,
         name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
         ersteller: skErsteller,
         angelegt: new Date().toISOString(), bis,
-      });
+      };
+      /* Derselbe Maßstab wie beim Lesen, schon jetzt: Ein Schlüssel, der von Anfang an nicht gälte (etwa ein
+         Planungszugang, dessen Person im Betrieb Leitung ist), wird gar nicht erst ausgegeben. */
+      const skProbe = await sicherungsschluesselPruefen(store, skSatz, { bestandLader: async () => skMit });
+      if (!skProbe.ok) {
+        await protokoll("sicherungsschluessel", kennung(req, s), "abgewiesen", `anlegen: ${String(skProbe.grund).slice(0, 32)}`, wer);
+        return antwort({ fehler: "Mit diesem Zugang lässt sich kein Sicherungsschlüssel anlegen.",
+          text: "Ein Sicherungsschlüssel gilt nur für den Zugang einer Leitung dieses Betriebs." }, 403);
+      }
+      await sitzungen().setJSON(`sk:${hash(roh)}`, skSatz);
       await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`, wer);
       return antwort({ ok: true, schluessel: roh, gueltigBis: new Date(bis).toISOString(),
         tage: gueltig,

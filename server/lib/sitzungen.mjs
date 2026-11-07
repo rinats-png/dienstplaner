@@ -177,6 +177,12 @@ export async function sitzungBeenden(token) {
   } catch { return false; }
 }
 
+/** Einen Sicherungsschlüssel endgültig entfernen (SI-P1: sein Ersteller gilt nicht mehr). Fehler stören nicht. */
+export async function sicherungsschluesselEntfernen(token) {
+  if (!token) return false;
+  try { await sitzungsSpeicher().delete(`sk:${hash(token)}`); return true; } catch { return false; }
+}
+
 /** Autorität zuerst, dann Aktivität; Fehler stören den Aufrufer nicht. */
 async function sitzungWeg(speicher, id) {
   try { await speicher.delete(`t:${id}`); } catch { /* bleibt liegen, läuft ab */ }

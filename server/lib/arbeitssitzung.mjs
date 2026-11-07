@@ -6,9 +6,9 @@ import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
 import { bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant, wirksameRolle } from "./rechte.mjs";
-import { kontoLesen } from "./konten.mjs";
+import { kontoLesenStreng } from "./konten.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
-import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
+import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsschluesselEntfernen } from "./sitzungen.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -203,7 +203,13 @@ export async function arbeitssitzungLesen(req,
   if (s0.nurSicherung) {
     const e = await sicherungsschluesselPruefen(ablage, s0,
       { bestandLader: bestandLader ? () => bestandLader(s0) : null });
-    if (!e.ok) return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund };
+    if (!e.ok) {
+      /* Eine eindeutige Absage ist endgültig: Der Schlüssel wird entfernt und lebt nicht wieder auf, wenn der Zugang
+         entsperrt, die Personalliste zurückgespielt oder die Person erneut eingetragen wird. Bei einem Lesefehler
+         (nicht beurteilbar) bleibt er liegen. */
+      if (e.endgueltig && merkmal) await sicherungsschluesselEntfernen(merkmal);
+      return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund };
+    }
   }
   return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };
 }
@@ -285,10 +291,14 @@ function erstellerBrauchbar(e) {
  * @param {object} store  Ablage „centric"
  * @param {any} sk  der Datensatz des Schlüssels
  * @param {{bestandLader?: (() => Promise<object|null>)|null}} [o]
- * @returns {Promise<{ok: true, grund?: undefined}|{ok: false, grund: string}>}
+ * @returns {Promise<{ok: true, grund?: undefined, endgueltig?: undefined}|{ok: false, grund: string, endgueltig: boolean}>}
  */
 export async function sicherungsschluesselPruefen(store, sk, { bestandLader = null } = {}) {
-  const nein = (grund) => ({ ok: false, grund });
+  /* `endgueltig`: Die Absage hängt an einem Zustand der Welt (gesperrt, ausgetreten, herabgestuft, kein Ersteller),
+     nicht an einem Lesefehler. Nur solche Schlüssel werden entfernt. */
+  /** @type {(grund: string, endgueltig?: boolean) => {ok: false, grund: string, endgueltig: boolean}} */
+  const nein = (grund, endgueltig = true) => ({ ok: false, grund, endgueltig });
+  const unklar = (grund) => nein(grund, false);
   if (!sk || typeof sk !== "object") return nein("sk-keine-sitzung");
   const e = sk.ersteller;
   if (e === undefined || e === null) return nein("sk-ersteller-fehlt");
@@ -300,35 +310,49 @@ export async function sicherungsschluesselPruefen(store, sk, { bestandLader = nu
 
   if (e.art === "konto") {
     let konto;
-    try { konto = await accountLesenPerId(store, e.accountId); } catch { return nein("sk-account-fehler"); }
-    if (!konto) return nein("sk-account-fehlt");
+    try { konto = await accountLesenPerId(store, e.accountId); } catch { return unklar("sk-account-fehler"); }
+    /* accountLesenPerId und mitgliedschaftLesen machen aus einem Lesefehler ein null: „fehlt" und „nicht lesbar"
+       lassen sich nicht trennen. Der Schlüssel wird deshalb abgewiesen, aber nicht entfernt. */
+    if (!konto) return unklar("sk-account-fehlt");
     if (konto.status !== "aktiv") return nein("sk-account-status");
     if ((Number(konto.epoche) || 0) !== e.epoche) return nein("sk-epoche");
     let m;
-    try { m = await mitgliedschaftLesen(store, e.accountId, raum); } catch { return nein("sk-mitglied-fehler"); }
-    if (!m) return nein("sk-mitglied-fehlt");
+    try { m = await mitgliedschaftLesen(store, e.accountId, raum); } catch { return unklar("sk-mitglied-fehler"); }
+    if (!m) return unklar("sk-mitglied-fehlt");
     if (m.status !== "aktiv") return nein("sk-mitglied-status");
     const lauf = await mitgliedlaufLesen(store, e.accountId, raum);
-    if (!lauf.ok) return nein("sk-lauf");
+    if (!lauf.ok) return /** @type {any} */ (lauf).grund === "fehler" ? unklar("sk-lauf") : nein("sk-lauf");
     if (!generationStimmt(m, lauf.generation)) return nein("sk-generation-mitglied");
     if (e.generation !== lauf.generation) return nein("sk-generation");
     if (String(m.person || "") !== String(e.person)) return nein("sk-person-gewechselt");
     if (m.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
   } else {
     let z;
-    try { z = await kontoLesen(store, e.konto); } catch { return nein("sk-zugang-fehler"); }
+    try { z = await kontoLesenStreng(store, e.konto); } catch { return unklar("sk-zugang-fehler"); }
     if (!z) return nein("sk-zugang-fehlt");
-    /* Ein umgeschlüsselter Zugang steht unter zwei Schlüsseln; die Sperre trifft beide, aber nicht
-       zwingend im selben Augenblick. Gilt einer als gesperrt, gilt der Zugang als gesperrt. */
-    if (z.gesperrt) return nein("sk-zugang-gesperrt");
-    if (nichtLeer(z.ersetztDurch)) {
-      let n;
-      try { n = await kontoLesen(store, z.ersetztDurch); } catch { return nein("sk-zugang-fehler"); }
-      if (!n || n.gesperrt) return nein("sk-zugang-gesperrt");
+    /* Ein umgeschlüsselter Zugang steht unter mehreren Schlüsseln (A → B → …); die Sperre trifft sie, aber nicht
+       zwingend im selben Augenblick. Gilt einer der Kette als gesperrt, gilt der Zugang als gesperrt. Die Kette wird
+       begrenzt und gegen Zyklen gesichert. */
+    const gesehen = new Set([e.konto]);
+    for (let zeiger = z, tiefe = 0; ; tiefe++) {
+      if (zeiger.gesperrt) return nein("sk-zugang-gesperrt");
+      if (!nichtLeer(zeiger.ersetztDurch) || gesehen.has(zeiger.ersetztDurch)) break;
+      if (tiefe >= 5) return nein("sk-zugang-kette");
+      gesehen.add(zeiger.ersetztDurch);
+      try { zeiger = await kontoLesenStreng(store, zeiger.ersetztDurch); } catch { return unklar("sk-zugang-fehler"); }
+      if (!zeiger) return nein("sk-zugang-gesperrt");
     }
+    /* Wie bei der Anmeldung: ein Demozugang und ein abgelaufener Testzeitraum sind keine Leitung. */
+    if (z.demo === true) return nein("sk-zugang-demo");
+    if (z.laeuftAb && !(new Date(z.laeuftAb).getTime() >= Date.now())) return nein("sk-zugang-abgelaufen");
     if (z.rolle !== "leitung") return nein("sk-zugang-rolle");
     if (z.bestand !== raum) return nein("sk-zugang-raum");
-    if (nichtLeer(z.mandantId) && z.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
+    if (nichtLeer(z.mandantId)) {
+      if (z.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
+    } else if (Number(z.betrieb ?? 0) !== sk.betrieb) {
+      /* Ein Zugang ohne Betriebskennung ist über den Index gebunden. */
+      return nein("sk-betrieb-gewechselt");
+    }
     const zPerson = z.person === undefined || z.person === null ? null : String(z.person);
     if (zPerson !== e.person) return nein("sk-person-gewechselt");
   }
@@ -338,7 +362,7 @@ export async function sicherungsschluesselPruefen(store, sk, { bestandLader = nu
     gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, raum);
   } catch (err) {
     if (voruebergehend(err)) throw err;
-    return nein("sk-bestand-fehler");
+    return unklar("sk-bestand-fehler");
   }
   const bestand = gelesen && gelesen.bestand;
   if (!bestand) return nein("sk-bestand-fehlt");
