@@ -84,6 +84,7 @@ export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswah
  *   personenfelder?: string[],
  *   sachfelder?: string[],
  *   ausnahmeUi?: boolean,
+ *   bewachvFrist?: boolean,
  *   berichtigungsWerte?: Record<string, (wert: any, mandant: any) => boolean>,
  *   beschreibung?: string,
  *   abnahme?: { datum: string, nachweis: string },
@@ -100,6 +101,9 @@ export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswah
  * personenfelder Datenfelder mit Personenbezug in der Form { "personId|JJJJ-MM-TT": … } —
  *               der Löschlauf (server/lib/aufbewahrung.mjs) räumt sie ab: Zuordnungen
  *               anonymisierter Personen und Einträge hinter der Plandatenfrist (G3, WP-26)
+ * bewachvFrist  Aufzeichnungen des Bewachungsgewerbes (Wachbuch, Objektbericht): Ihre Personenfelder
+ *               löscht der Lauf auch bei geprüfter Regel nur, wenn die Regel einen BewachV-Fristtyp
+ *               nennt (T-08, BEWACHV_FRISTTYPEN) — die Frist knüpft dort nicht am Eintragstag an.
  * sachfelder    Datenfelder ohne Personenbezug (Liste von Datensätzen mit `id`)
  *               Jedes Datenfeld steht in genau einer der beiden Listen, bevor das Modul
  *               „geplant" verlässt (pruefeModulStatus).
@@ -154,14 +158,14 @@ export const BRANCHENMODULE = Object.freeze([
     beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung.",
     /* server/lib/modul-wachbuch.mjs: eigenes Betriebsfeld `wachbuch`, Form „Kennung|Tag“ (W1 a); der Verfasser je
        Eintrag macht es zum Personenfeld. Berichtigung über den Ausnahmeweg gibt es nicht (W2 a): nur Löschung. */
-    datenfelder: ["wachbuch"], personenfelder: ["wachbuch"], ausnahmeUi: true,
+    datenfelder: ["wachbuch"], personenfelder: ["wachbuch"], ausnahmeUi: true, bewachvFrist: true,
     berichtigungsWerte: Object.freeze({ wachbuch: () => false }),
     parameter: {
       kontrollIntervallMinuten: { typ: "zahl", standard: 0, min: 0, max: 1440, ganzzahl: true, vorlaeufig: true,
         text: "Längste erlaubte Zeit zwischen zwei Kontrollgängen; 0 = keine Meldung (Matrix W5 b, standardmäßig aus)." },
     } }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,
-    abhaengigVon: ["posten"],
+    abhaengigVon: ["posten"], bewachvFrist: true,
     /* server/lib/modul-objektbericht.mjs: nur Ausgabe (CSV), keine eigenen Betriebsfelder. */
     beschreibung: "Bericht je Objekt und Zeitraum für den Auftraggeber: Soll- und Ist-Besetzung der Posten, optional Wachbuchauszug." }),
   /* Pflege */
@@ -541,6 +545,22 @@ export const MODULDATEN_AUFBEWAHRUNG = Object.freeze({ regelId: "AUFB-MODULDATEN
   quelle: "§ 16 Abs. 2 ArbZG, § 17 Abs. 1 MiLoG (Plandatenfrist, entsprechend); § 21 BewachV (Bewachungsgewerbe) fachlich zu klären",
   fundstelle: "Frist je Modul und Dokumentationsart fachlich offen (FN-32)", fassung: "Entwurf 2026-11-03",
   stand: "Entwurfswert, zu bestätigen (FN-32)" });
+
+/**
+ * BewachV-Fristtypen (T-08, L-10, FACH-06). Die Aufbewahrung der Aufzeichnungen im Bewachungsgewerbe
+ * knüpft nicht schlicht am Eintragstag an, sondern je Unterlage an ein Ereignis (z. B. Ende eines
+ * Folgejahres), an das Vertragsende oder an das Ende der Beschäftigung — welcher Typ für welche Unterlage
+ * gilt, ist fachlich/rechtlich offen (WB-3). Hier stehen nur die Typen, keine Fristen. Ohne einen dieser
+ * Typen in `AUFB-MODULDATEN-01` (Feld `bewachvFristtyp`) löscht der Lauf Wachbuch-/Objektberichtsfelder
+ * nicht, auch nicht bei `pruefstatus: "geprueft"`. Heute ist KEIN Typ berechenbar
+ * (BEWACHV_FRISTTYPEN_BERECHENBAR leer, Opus-Review M1): § 21 BewachV knüpft am Schluss des Kalenderjahres
+ * an, nicht am Eintragstag — eine Rechnung „Eintragstag minus Monate“ löschte bis zu elf Monate zu früh.
+ * Vertrags- und Beschäftigungsende liegen im Bestand nicht je Eintrag vor. Die Berechnung kommt erst nach
+ * fachlicher Festlegung des Stichtags (Jahresende + N) und rechtlicher Prüfung; bis dahin bleibt alles liegen.
+ */
+export const BEWACHV_FRISTTYPEN = Object.freeze(["ereignis", "vertragsende", "beschaeftigungsende"]);
+/** Fristtypen, die der Lauf berechnen kann — vorerst keiner (M1): nichts berechenbar, nichts gelöscht. */
+export const BEWACHV_FRISTTYPEN_BERECHENBAR = Object.freeze([]);
 
 /** Die Frist des Modulprotokolls in Monaten — die Regel, keine Übersteuerung je Betrieb (M1). */
 export function modulprotokollMonate(_m, regel = MODULPROTOKOLL_FRIST) {

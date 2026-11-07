@@ -43,7 +43,8 @@ export const RECHTSTEXTE = [
 ];
 
 /** Enthält ein Text noch Beispieldaten? Dann muss das oben stehen. */
-const hatPlatzhalter = (t) => /\[BEISPIEL-/.test(t);
+export const hatPlatzhalter = (t) => /\[BEISPIEL-|\[ZU_KLAEREN|Status:\s*ENTWURF/i.test(String(t || ""));
+/* Legal-Revision 2026-11-07: offene Betreiberangaben ([ZU_KLAEREN …]) und der Entwurfsstatus zählen mit, sonst erschiene ein Entwurf ohne Warnhinweis. */
 
 /* --------------------------------------------------------------------------
    Markdown, so weit diese Texte reichen
@@ -222,10 +223,11 @@ export function Rechtstext({ id }) {
         <div role="note" style={{ padding: "12px 16px", borderRadius: "var(--r, 12px)", marginBottom: 24,
           background: C.warnLight, border: `1px solid ${C.warn}44`, borderLeft: `3px solid ${C.warn}`,
           fontSize: 13.5, lineHeight: 1.6, color: C.text }}>
-          <strong style={{ fontWeight: 640 }}>Entwurf mit Beispieldaten.</strong>{" "}
-          Angaben zu Firmensitz, Registernummer und Umsatzsteuer-Identifikationsnummer
+          <strong style={{ fontWeight: 640 }}>Entwurf — nicht veröffentlicht, nicht rechtlich geprüft.</strong>{" "}
+          Offene Betreiberangaben (Firma, Anschrift, Register, Verträge, Fristen u. a.)
           stehen als Platzhalter in eckigen Klammern. Vor der Veröffentlichung sind
-          sie zu ersetzen und der Text ist anwaltlich zu prüfen.
+          sie zu ersetzen, der Text ist auf den tatsächlichen Produktivstand abzugleichen
+          und rechtlich zu prüfen. Er ist keine Rechtsberatung.
         </div>)}
       {markdown(eintrag.text)}
     </div>);

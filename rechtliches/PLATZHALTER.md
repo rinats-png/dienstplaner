@@ -1,101 +1,76 @@
-# Platzhalter in den Rechtstexten
+# Offene Betreiberangaben in den Rechtstexten
 
-Alle Dateien in diesem Ordner sind **Entwürfe mit Beispieldaten**. Sie sind
-inhaltlich vollständig aufgebaut, aber an keiner Stelle rechtlich geprüft.
+**Status: ENTWURF — nicht veröffentlichen.** Revision R2, Stand 2026-11-07. Keine Rechtsberatung, kein Kanzleigutachten.
 
-## Was vor der Veröffentlichung ersetzt werden muss
+Alle Dateien in diesem Ordner sind Arbeitsentwürfe. Seit Revision R2 gilt: Offene Punkte stehen als `[ZU_KLAEREN: …]` (früher `[BEISPIEL-…]`). Ein Platzhalter heißt: Die Tatsache ist nicht belegt; sie wird nicht erfunden und nicht aus dem Quelltext geraten. Suchen mit:
 
-Jeder Platzhalter steht in eckigen Klammern und beginnt mit `BEISPIEL`.
-Suchen mit:
+    grep -rn "ZU_KLAEREN" rechtliches/
 
-    grep -rn "\[BEISPIEL" rechtliches/
+Bloßes Ersetzen der Platzhalter genügt nicht: Der Text muss danach gegen den tatsächlichen Produktivstand geprüft werden (die Texte beschreiben den Zustand, nicht das Vorhaben).
 
-| Platzhalter | Was einzutragen ist |
-|---|---|
-| `[BEISPIEL-FIRMA]` | Vollständige Firmierung laut Handelsregister |
-| `[BEISPIEL-RECHTSFORM]` | GmbH, UG (haftungsbeschränkt), Einzelunternehmen … |
-| `[BEISPIEL-STRASSE]` | Straße und Hausnummer des Sitzes |
-| `[BEISPIEL-PLZ-ORT]` | Postleitzahl und Ort |
-| `[BEISPIEL-VERTRETER]` | Geschäftsführung oder Inhaber, vollständiger Name |
-| `[BEISPIEL-REGISTERGERICHT]` | Zuständiges Amtsgericht |
-| `[BEISPIEL-HRB]` | Handelsregisternummer, etwa HRB 12345 |
-| `[BEISPIEL-USTID]` | Umsatzsteuer-Identifikationsnummer nach § 27a UStG |
-| `[BEISPIEL-TELEFON]` | Telefonnummer, unter der jemand erreichbar ist |
-| `[BEISPIEL-EMAIL]` | Kontaktadresse, tatsächlich gelesen |
-| `[BEISPIEL-DSB]` | Datenschutzbeauftragte Person, falls bestellt |
-| `[BEISPIEL-AUFSICHT]` | Zuständige Datenschutzaufsicht des Bundeslands |
-| `[BEISPIEL-STAND]` | Datum der jeweils gültigen Fassung der AGB |
-| `[BEISPIEL-ZAHLUNGSZIEL]` | Zahlungsziel in Tagen, üblich sind 14 |
-| `[BEISPIEL-GERICHTSSTAND]` | Gerichtsstand, in der Regel der Sitz |
-| `[BEISPIEL-KUNDE-FIRMA]` | Firma des Kunden im AV-Vertrag |
-| `[BEISPIEL-KUNDE-ANSCHRIFT]` | Anschrift des Kunden im AV-Vertrag |
-| `[BEISPIEL-STEUERBERATUNG]` | Steuerbüro, das die Buchführung übernimmt |
-| `[BEISPIEL-KUNDENLISTE]` | Ablage der Kundenliste zum Verarbeitungsverzeichnis |
-| `[BEISPIEL-AVV-IONOS]` | Ablage des Auftragsverarbeitungsvertrags mit der IONOS SE (liegt vor; Bestandteil der IONOS-AGB, mit Anhang 1 „Server Produkte" und Anhang 2 Subunternehmer, Version 4.5, Stand 04/2026) |
-| `[BEISPIEL-AVV-RESEND]` | Ablage der Unterlagen zu Resend — nur nötig, wenn der serverseitige E-Mail-Versand aktiviert wird (derzeit nicht) |
+## Betreiberangaben, ohne die die Texte nicht fertig werden
+
+| Nr. | Angabe | Betrifft |
+|---|---|---|
+| O-01 | Anbieter: Inhaber oder Firma, Rechtsform, Vertretung | Impressum, AGB, AVV, Datenschutz |
+| O-02 | ladungsfähige Anschrift, gelesene E-Mail, zweiter Kommunikationsweg | Impressum |
+| O-03 | Registergericht und Nummer, USt-ID oder W-ID, Steuerstatus | Impressum, AGB |
+| O-04 | Datenschutzbeauftragte Person (falls Pflicht), zuständige Aufsichtsbehörde | Datenschutz, VVT |
+| O-05 | Produktivstand: Image-Digest, 2FA-Stand, Domains, Rollenmigration | Datenschutz, AVV, TOM |
+| O-06 | IONOS-Konto: Rechenzentrumsregion, aktueller AV-Vertrag, Unterauftragnehmer, Sicherheitsnachweise | AVV Anlage 2, Datenschutz |
+| O-07 | Schalterstand der Umgebung (nur ja/nein, keine Werte): Resend-Schlüssel, Push (VAPID), KI, Löschlauf-Modus, Selbststart, Registrierung, Demo, Überwachung | Datenschutz, AVV, VVT |
+| O-08 | Marketingwebsite: Cookies, Analyse, Einbettungen, Formulare | Datenschutz |
+| O-09 | Sicherung außer Haus: Ziel, Region, Aufbewahrung, Wiederherstellungsprobe | AVV, TOM |
+| O-10 | Verfügbarkeitszusage (ja/nein, Messung, Wartung, Rechtsfolgen) | AGB § 6 |
+| O-11 | Preise, Tarife, Zahlungsziel, Kündigung, automatische Hochstufung | AGB |
+| O-12 | Verträge und Regionen für Mail-, Push- und KI-Dienstleister | AVV Anlage 2 |
+| O-13 | Branchen- und Tarifverträge, Bundesländer, Betriebsvereinbarungen der Pilotkunden | `branchen-arbeitszeitrecht.md` |
+| O-14 | gewünschte Nutzung von Gesundheitsfeldern und Standortprüfung | `dsfa-screening.md` |
+| O-15 | Export- und Wechselprozess, technische Grenzen | `data-act-wechsel-export.md` |
+| O-16 | Dienstleister: Steuerberatung, Support, Monitoring, Alarm | VVT |
+| O-17 | Gerichtsstand, Haftungsmodell | AGB |
+| O-18 | Löschfristen je Datenart, Wachbuch-Fristtyp, Protokollfristen | `loeschkonzept.md` |
+
+Bisherige Einzelplatzhalter (`[BEISPIEL-FIRMA]`, `-STRASSE`, `-PLZ-ORT`, `-VERTRETER`, `-REGISTERGERICHT`, `-HRB`, `-USTID`, `-TELEFON`, `-EMAIL`, `-DSB`, `-AUFSICHT`, `-STAND`, `-ZAHLUNGSZIEL`, `-GERICHTSSTAND`, `-KUNDE-FIRMA`, `-KUNDE-ANSCHRIFT`, `-STEUERBERATUNG`, `-KUNDENLISTE`, `-AVV-IONOS`, `-AVV-RESEND`) sind in den Dateien als `[ZU_KLAEREN: …]` aufgegangen. Verträge und Kundenlisten gehören nicht in das öffentliche Repository.
 
 ## Was in welcher Datei steht
 
 | Datei | Inhalt |
 |---|---|
-| `impressum.md` | Anbieterkennzeichnung nach § 5 DDG und § 18 MStV |
-| `datenschutz.md` | Information nach Artikel 13 DSGVO |
-| `agb.md` | Vertragsbedingungen, ausgelegt auf Unternehmerkunden |
-| `auftragsverarbeitung.md` | Vertrag nach Artikel 28 DSGVO, Anlage 1 mit den technischen und organisatorischen Maßnahmen, Anlage 2 mit den Unterauftragsverarbeitern |
-| `verarbeitungsverzeichnis.md` | Verzeichnis nach Artikel 30 DSGVO, getrennt nach eigener Verantwortung und Auftragsverarbeitung — dazu ein Muster für Kunden |
+| `README.md` | Index, Status, Revisionsnummer |
+| `impressum.md` | Anbieterkennzeichnung nach § 5 DDG |
+| `datenschutz.md` | Information nach Art. 13 und 14 DSGVO |
+| `agb.md` | Vertragsbedingungen für Unternehmerkunden |
+| `auftragsverarbeitung.md` | Vertrag nach Art. 28 DSGVO mit Anlagen (TOM, Unterauftragsverarbeiter, Module) |
+| `verarbeitungsverzeichnis.md` | Verzeichnis nach Art. 30 DSGVO (Teil A, Teil B, Kundenmuster) |
+| `tom-register.md` | Maßnahmen nach Art. 32 mit Ist, Soll, Nachweis |
+| `loeschkonzept.md` | Löschmatrix als Vorschlag, Löschlauf, Sicherungen |
+| `dsfa-screening.md` | Schwellenprüfung nach Art. 35 |
+| `ki-verordnung-intelligence.md` | Einordnung der KI-Funktionen nach der KI-Verordnung |
+| `branchen-arbeitszeitrecht.md` | Arbeitszeit- und Branchenmatrix, Fachtests |
+| `data-act-wechsel-export.md` | Export, Anbieterwechsel, Lücken |
+| `rechtsquellen.md` | Normen, Fundstellen, Prüfstatus |
 
-Alle fünf Texte erscheinen in der Anwendung unter **Verwaltung → Rechtliches**
-und über die Fußzeile der Anmeldeseite. Die Markdown-Dateien sind die Quelle:
-Wer hier etwas ändert, ändert die Seite.
+## Wo die Texte in der Anwendung erscheinen
 
-## Was ein Anwalt ansehen sollte
+Fünf Dateien werden zur Bauzeit in die Anwendung eingebunden (`src/rechtstexte.jsx`, Import mit `?raw`): `impressum.md`, `datenschutz.md`, `agb.md`, `auftragsverarbeitung.md`, `verarbeitungsverzeichnis.md`. Wer sie ändert, ändert die Seite „Rechtliches“. Folgen für Autoren: Die Darstellung kennt nur Überschriften, Absätze, Listen, Tabellen, Trennlinien, Fett, Kursiv und Code; Zitate, verschachtelte Listen und Verweise werden nicht als solche dargestellt. Die Warnung „enthält noch Beispieldaten“ in der Anwendung prüft auf die alte Kennung `[BEISPIEL-`; sie erkennt `[ZU_KLAEREN` nicht. **Die Anwendung muss vor einer Veröffentlichung angepasst werden, sonst erscheinen Entwürfe ohne Warnbanner.** Die übrigen Dateien dieses Ordners werden nicht ausgespielt.
 
-Nicht alles hier ist Formsache. Diese Punkte hängen an Entscheidungen, die
-niemand außerhalb des Unternehmens treffen kann:
+## Was ein Anwalt ansehen muss
 
-**Kleinunternehmerregelung.** Ohne Umsatzsteuer-Identifikationsnummer
-entfällt der entsprechende Abschnitt im Impressum, und die Preisangaben in
-der Anwendung dürfen keine Umsatzsteuer ausweisen.
-
-**Rechtsform und Vertretung.** Bei einer GmbH gehört die Geschäftsführung ins
-Impressum, bei einem Einzelunternehmen der Inhaber. Ein fehlender Vertreter
-ist ein häufiger Abmahngrund.
-
-**Auftragsverarbeitung.** Die Anlagen zum AV-Vertrag beschreiben die
-technischen und organisatorischen Maßnahmen. Was dort steht, muss stimmen —
-eine Beschreibung, die den tatsächlichen Zustand übertrifft, ist schlimmer
-als gar keine.
-
-**Unterauftragsverarbeiter und Speicherort.** Anwendung und Datenbestand
-liegen auf einem virtuellen Server der IONOS SE in Spanien (EU); der
-Auftragsverarbeitungsvertrag mit IONOS liegt vor (`[BEISPIEL-AVV-IONOS]`).
-Für das Produkt vServer nennt IONOS als Subunternehmer die Arsys Internet
-S.L.U., Spanien — nur dieser ist in Anlage 2 des AV-Vertrags aufgeführt, nicht
-die gesamte produktübergreifende Liste. Resend (E-Mail-Versand, USA) ist
-derzeit nicht aktiviert; wird der Versand eingeschaltet, sind vorher die
-Voraussetzungen für eine Drittlandübermittlung zu schaffen und alle drei
-Texte nachzuführen.
-
-Wichtig dabei: Die Texte beschreiben durchgehend den Zustand, nicht das
-Vorhaben. Ändert sich Hoster, Standort oder ein aktivierter Dienst, werden
-sie am Tag der Änderung nachgeführt — nicht davor.
-
-**Widerrufsrecht.** Die AGB gehen davon aus, dass ausschließlich an
-Unternehmer verkauft wird. Sobald ein Verbraucher Kunde werden kann, kommt
-eine Widerrufsbelehrung hinzu, und die Haftungsklauseln sind zu prüfen.
+- **AGB gesamt**, besonders Haftung (§ 8), Änderungsklausel und Zustimmungsfiktion (§ 10), automatische Hochstufung (§ 4 Abs. 3), Freistellung (§ 7 Abs. 7).
+- **Rolle des Anbieters** je Datenfluss (Verantwortlicher oder Auftragsverarbeiter) und Rechtsgrundlagen je Prozess.
+- **AVV** mit Anlagen, Drittlandbewertung, Auditrecht, Meldefrist.
+- **Arbeitnehmerdatenschutz** (Standortprüfung, Gesundheitsdaten, Betriebsvereinbarung) und **KI-Verordnung**.
+- **Steuerstatus** (Kleinunternehmer) und Rechnungsangaben.
 
 ## Umgebungsvariablen
 
-Die Kontaktangaben gehören nicht in den Quelltext, weil sie sich ändern
-können, ohne dass jemand den Quelltext anfasst. Sie werden beim Bauen des
-Container-Bilds gesetzt — als Repository-Variablen in GitHub Actions
-(`VITE_…`, siehe `BEREITSTELLUNG.md`, Schritt 1 und 2):
+Kontaktangaben gehören nicht in den Quelltext. Sie werden beim Bauen des Container-Bilds gesetzt (Repository-Variablen in GitHub Actions, `VITE_…`, siehe `BEREITSTELLUNG.md`):
 
 | Variable | Wirkung |
 |---|---|
-| `VITE_KONTAKT_MAIL` | Adresse im Hilfebereich, im Hinweis zum Testablauf und in Fehlermeldungen. Ohne sie zeigt die Anwendung `kontakt@example.org` und weist im Hilfebereich sichtbar darauf hin. |
-| `VITE_KONTAKT_TELEFON` | Optional. Ohne Wert erscheint die Telefonzeile gar nicht. |
+| `VITE_KONTAKT_MAIL` | Adresse im Hilfebereich, im Hinweis zum Testablauf und in Fehlermeldungen. Ohne sie zeigt die Anwendung `kontakt@example.org`. |
+| `VITE_KONTAKT_TELEFON` | Optional. Ohne Wert erscheint keine Telefonzeile. |
 | `VITE_KONTAKT_ZEITEN` | Optional. Erreichbarkeit als Klartext. |
 
-Die Adresse sollte dieselbe sein wie `[BEISPIEL-EMAIL]` im Impressum —
-sonst steht im Impressum eine andere Anlaufstelle als in der Anwendung.
+Die Adresse sollte mit der E-Mail-Adresse im Impressum übereinstimmen.

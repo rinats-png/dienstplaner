@@ -84,12 +84,20 @@ function zeitVon(e) {
  * lange keine Sicherung angelegt hat, soll nicht ohne jede dastehen.
  * Ohne erkennbares Alter bleibt eine Sicherung ebenfalls liegen (und wird
  * gemeldet) — lieber behalten als raten.
- * @returns {{ weg: string[], ohneAlter: string[] }}
+ *
+ * T-15 (Z-03): `aelterAlsHoechstalter` nennt jede Sicherung, die älter als
+ * `hoechstalterTage` ist — ob der Plan sie wegnimmt oder als eine der neuesten
+ * ihres Kontingents behält (`behaltenTrotzAlter`). Nur zur Anzeige: In der
+ * Vorschau wird gezählt und berichtet, gelöscht wird weiter nur `weg` und nur
+ * im Modus „an“.
+ * @returns {{ weg: string[], ohneAlter: string[], aelterAlsHoechstalter: string[], behaltenTrotzAlter: string[] }}
  */
 export function sicherungsPlan(eintraege, jetzt = new Date(), plan = SICHERUNGS_PLAN) {
   const t = jetzt.getTime();
   const weg = [];
   const ohneAlter = [];
+  const aelterAlsHoechstalter = [];
+  const behaltenTrotzAlter = [];
   const nachKontingent = new Map();
   for (const e of eintraege) {
     const zeit = zeitVon(e);
@@ -103,8 +111,9 @@ export function sicherungsPlan(eintraege, jetzt = new Date(), plan = SICHERUNGS_
     const tage = new Set();
     const wochen = new Set();
     liste.forEach((e, i) => {
-      if (i < plan.neuesteBehalten) return;
       const alterTage = (t - e.zeit) / TAG_MS;
+      if (alterTage > plan.hoechstalterTage) aelterAlsHoechstalter.push(e.key);
+      if (i < plan.neuesteBehalten) { if (alterTage > plan.hoechstalterTage) behaltenTrotzAlter.push(e.key); return; }
       if (alterTage > plan.hoechstalterTage) { weg.push(e.key); return; }
       if (alterTage <= plan.taeglichTage) {
         const tag = new Date(e.zeit).toISOString().slice(0, 10);
@@ -119,7 +128,7 @@ export function sicherungsPlan(eintraege, jetzt = new Date(), plan = SICHERUNGS_
       weg.push(e.key);
     });
   }
-  return { weg, ohneAlter };
+  return { weg, ohneAlter, aelterAlsHoechstalter, behaltenTrotzAlter };
 }
 
 let laeuft = false;
@@ -132,6 +141,9 @@ let laeuft = false;
 export async function datenschutzLauf(store, { jetzt = new Date(), spur = true, modus = modusAusUmgebung() } = {}) {
   const vermerk = { zeit: jetzt.toISOString(), modus, uebersprungen: false, raeume: 0, geaendert: [],
     faellig: [], sicherungenGeloescht: 0, sicherungenFaellig: 0, sicherungenOhneAlter: 0,
+    /* T-15: In-App-Sicherungen älter als SICHERUNGS_PLAN.hoechstalterTage (90) — gezählt in jedem Modus;
+       davon behalten, weil sie zu den neuesten ihres Kontingents gehören. Nur Anzeige. */
+    sicherungenAelterHoechstalter: 0, sicherungenAelterHoechstalterBehalten: 0,
     feeddatenGeloescht: 0, feeddatenFaellig: 0, fehler: [] };
   if (modus === "aus") return { ...vermerk, uebersprungen: true };
   if (laeuft) return { ...vermerk, uebersprungen: true };
@@ -206,6 +218,12 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
         }
         const plan = sicherungsPlan(eintraege, jetzt);
         vermerk.sicherungenOhneAlter += plan.ohneAlter.length;
+        vermerk.sicherungenAelterHoechstalter += plan.aelterAlsHoechstalter.length;
+        vermerk.sicherungenAelterHoechstalterBehalten += plan.behaltenTrotzAlter.length;
+        if (!loeschen && plan.aelterAlsHoechstalter.length)
+          await protokoll("loeschlauf", "system", "vorschau",
+            `${raum}: ${plan.aelterAlsHoechstalter.length} In-App-Sicherung(en) älter als ${SICHERUNGS_PLAN.hoechstalterTage} Tage`
+            + ` (davon ${plan.behaltenTrotzAlter.length} als neueste ihres Kontingents behalten)`);
         if (!loeschen) { vermerk.sicherungenFaellig += plan.weg.length; return; }
         for (const key of plan.weg) { await store.delete(key); vermerk.sicherungenGeloescht += 1; }
         if (plan.weg.length)

@@ -143,6 +143,67 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
   "neuerZugang", "anonymSeit", "schutz", "sichtbereich"])];
 
 /* ------------------------------------------------------------------------
+   KATALOG DER ART.-9-NAHEN FELDER (T-11, L-16, R-03)
+
+   Nur ein Verzeichnis — es entscheidet nichts. Die Sicht entscheiden die
+   Positivlisten oben und unten; pruefungen/art9-katalog.test.js prüft gegen
+   diesen Katalog, dass keines der Felder einer FREMDEN Person bei
+   Beschäftigten, Betriebsrat, Betreiber oder Schichtverantwortung (ohne
+   Bereich) ankommt. Die eigene Person sieht ihre eigenen Angaben (Art. 15).
+
+   kategorie: gesundheit | schwangerschaft | freitext (kann alles enthalten)
+   ------------------------------------------------------------------------ */
+export const ART9_FELDER = Object.freeze({
+  /** Felder an der Person; Punkt = Unterfeld. */
+  person: Object.freeze([
+    Object.freeze({ feld: "mutterschutz", kategorie: "schwangerschaft" }),
+    Object.freeze({ feld: "mutterschutzEinwilligungen", kategorie: "schwangerschaft" }),
+    Object.freeze({ feld: "schwerbehindert", kategorie: "gesundheit" }),
+    Object.freeze({ feld: "nachtvorsorge", kategorie: "gesundheit" }),
+    Object.freeze({ feld: "einschraenkungen.wiedereingliederung", kategorie: "gesundheit" }),
+    /* „keine Nacht“ kann eine Erkrankung verraten; hinaus geht es nur als neutrale Einsatzregel. */
+    Object.freeze({ feld: "einschraenkungen.keineNacht", kategorie: "gesundheit" }),
+    Object.freeze({ feld: "notiz", kategorie: "freitext" }),
+    Object.freeze({ feld: "notizen", kategorie: "freitext" }),
+  ]),
+  /** Felder einer Abwesenheit (Freitexte und Nachweise). */
+  abwesenheit: Object.freeze([
+    Object.freeze({ feld: "notiz", kategorie: "freitext" }),
+    Object.freeze({ feld: "grund", kategorie: "freitext" }),
+    Object.freeze({ feld: "anmerkung", kategorie: "freitext" }),
+    Object.freeze({ feld: "nachweis", kategorie: "gesundheit" }),
+  ]),
+  /** Nachweise nach § 20 IfSG (Masernschutz): Qualifikationen mit `nurStatus` (branchen.mjs, MASERN) — als
+      Eintrag in `qualNachweise` und `qualifikationen` einer Person. Fremd: gar nicht (nachweiseFremd). */
+  nurStatusNachweise: Object.freeze([
+    Object.freeze({ feld: "qualNachweise[nurStatus]", kategorie: "gesundheit", grundlage: "§ 20 IfSG" }),
+    Object.freeze({ feld: "qualifikationen[nurStatus]", kategorie: "gesundheit", grundlage: "§ 20 IfSG" }),
+  ]),
+  /** Freitext-Wege im Betrieb, die nicht an einer Person hängen, aber Art.-9-Angaben tragen können. */
+  freitextWege: Object.freeze([
+    /* Hinweis einer Ausschreibung: schreibt die Planung für alle — geht an Beschäftigte und Betriebsrat. */
+    Object.freeze({ feld: "ausschreibungen[].hinweis", kategorie: "freitext" }),
+    /* Planänderungen: Zusatzfelder außerhalb von AENDERUNG gehen an niemanden außer Planung/Leitung. */
+    Object.freeze({ feld: "aenderungen[]", kategorie: "freitext" }),
+  ]),
+  /** Abwesenheitsarten, deren bloße Art eine Gesundheits- oder Schwangerschaftsangabe ist. */
+  abwesenheitsarten: Object.freeze([
+    Object.freeze({ art: "krank", kategorie: "gesundheit" }),
+    Object.freeze({ art: "mutterschutz", kategorie: "schwangerschaft" }),
+    /* Pflege- und Verhinderungsarten verraten die Gesundheit Angehöriger. */
+    Object.freeze({ art: "pflegezeit", kategorie: "gesundheit" }),
+    Object.freeze({ art: "familienpflegezeit", kategorie: "gesundheit" }),
+    Object.freeze({ art: "arbeitsverhinderung", kategorie: "gesundheit" }),
+  ]),
+  /** Bewusste, dokumentierte Ausnahme (RECHTEMATRIX ⁴, ABWESENHEITSARTEN_SV): Die Schichtverantwortung sieht
+      im EIGENEN Bereich die Kategorie „krank“ (ohne Anmerkung) — für die Ersatzsuche. Sonst nichts davon. */
+  ausnahmeSchichtBereich: Object.freeze(["krank"]),
+  /** Zweite dokumentierte Ausnahme: Im EIGENEN Bereich sieht die Schichtverantwortung an Nur-Status-Nachweisen
+      (Masernschutz) nur `qualId`, `ablauf` und `vorhanden` — für das Einsatz-Gate (nachweiseBereich). */
+  ausnahmeSchichtBereichNachweis: Object.freeze(["qualId", "ablauf", "vorhanden"]),
+});
+
+/* ------------------------------------------------------------------------
    PERSONEN IN DER SICHT DER SCHICHTVERANTWORTUNG
 
    Bis Oktober 2026 bekam die Schichtverantwortung jede Person des Betriebs
@@ -618,8 +679,10 @@ export const BETRIEB = {
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
   sondereinsaetze: [R(sondereinsaetzeEigen), WEG],
-  /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. */
-  aenderungen: [WEG, VOLL],
+  /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. Betriebsrat: nur die Felder, die jeder
+     Schreiber setzt (AENDERUNG, wie die Schichtverantwortung) — Zusatzfelder (Freitexte) gingen vorher VOLL hinaus
+     (T-11, Opus-Review N1). */
+  aenderungen: [WEG, R((w) => liste(w).map((e) => (e && typeof e === "object" ? nimm(e, AENDERUNG) : e)))],
   /* Bestätigungsprotokoll (WP-10 d.1): Beschäftigte nicht, Betriebsrat ohne Namen. */
   bestaetigungen: [WEG, R(bestaetigungenBetriebsrat)],
 

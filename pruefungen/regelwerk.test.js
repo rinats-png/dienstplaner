@@ -8,6 +8,7 @@
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
+import { regel, wirkung } from "../src/regelregister.js";
 import {
   dauer, brutto, pausePflicht, pauseGenuegt,
   ruhezeitStunden, ruhezeitVerletzt,
@@ -23,6 +24,7 @@ import {
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
   fehlendeKompetenzen, aufgabeGedeckt, AUFGABEN_PFLBG,
+  nachtAusgleichHinweis, NACHT_AUSGLEICH_WOCHEN,
 } from "../src/regelwerk.js";
 
 const F = { start: "06:00", ende: "14:00", pause: 30 };   //  7,5 h
@@ -790,5 +792,62 @@ describe("Vorbehaltene Aufgaben", () => {
       expect(a.grundlage).toContain("§ 4 Abs. 2");
       expect(a.vorbehalten).toBe(true);
     }
+  });
+});
+
+/* Benannte Fachtestfälle aus docs/legal/ABNAHMEMATRIX.md (T-17, T-14). Reine Rechenfälle;
+   die Fachabnahme durch eine fachkundige Person steht aus. */
+describe("Fachtestfälle FACH-01 bis FACH-05 und FACH-10", () => {
+  it("FACH-01: zehn Stunden ohne Pause sind nicht konform (§ 4, § 3 ArbZG)", () => {
+    const zehnOhnePause = { start: "06:00", ende: "16:00", pause: 0 };
+    expect(brutto(zehnOhnePause)).toBe(10);
+    expect(pauseGenuegt(zehnOhnePause)).toBe(false);
+    expect(pausePflicht(dauer(zehnOhnePause))).toBeGreaterThan(0);
+  });
+
+  it("FACH-02: Durchschnitt über acht Stunden im Ausgleichszeitraum ist nicht eingehalten (§ 3 ArbZG)", () => {
+    const erg = ausgleichszeitraum((d) => (dow(d) < 6 ? 9 : 0), "2026-08-29", { wochen: 24 });
+    expect(erg.eingehalten).toBe(false);
+    expect(erg.durchschnitt).toBe(9);
+    expect(erg.ueberhang).toBeGreaterThan(0);
+  });
+
+  it("FACH-03: elf Stunden Ruhezeit sind erfüllt", () => {
+    const spaet = { start: "14:00", ende: "22:00", pause: 30 };
+    const frueh = { start: "09:00", ende: "17:00", pause: 30 };
+    expect(ruhezeitStunden("2026-08-03", spaet, frueh)).toBe(11);
+    expect(ruhezeitVerletzt({ ruhezeit: 11 }, "2026-08-03", spaet, frueh)).toBe(false);
+  });
+
+  it("FACH-04: neun Stunden Ruhezeit in der Pflege ohne Tarifnachweis sind ein Befund; die Tarifvorlage wirkt nur als Hinweis", () => {
+    const spaet = { start: "14:00", ende: "21:00", pause: 30 };
+    expect(ruhezeitStunden("2026-08-03", spaet, F)).toBe(9);
+    expect(ruhezeitVerletzt({}, "2026-08-03", spaet, F)).toBe(true);
+    expect(regel("TARIF-TVOED-P-01").pruefstatus).toBe("provisional");
+    expect(wirkung(regel("TARIF-TVOED-P-01"))).toBe("hinweis");
+  });
+
+  it("FACH-05: Rufbereitschaft über Tageswechsel ist offen (Betreiberentscheidung BD-5/6): nur eine vorläufige Regel", () => {
+    expect(regel("BEREIT-HOECHST-01").pruefstatus).toBe("provisional");
+  });
+
+  it("FACH-10: Nachtarbeitnehmer mit Zehn-Stunden-Diensten, Ausgleich nur im 24-Wochen-Fenster, ergibt einen Hinweis (§ 6 Abs. 2 ArbZG)", () => {
+    expect(NACHT_AUSGLEICH_WOCHEN).toBe(4);
+    const stunden = (d) => (d >= "2026-08-03" && dow(d) < 6 ? 10 : 0);
+    const bis = "2026-08-30";
+    expect(ausgleichszeitraum(stunden, bis, { wochen: 24 }).eingehalten).toBe(true);
+    const erg = nachtAusgleichHinweis(stunden, bis);
+    expect(erg.vierWochen.eingehalten).toBe(false);
+    expect(erg.kalendermonat.eingehalten).toBe(false);
+    expect(erg.hinweis).toBe(true);
+  });
+
+  it("FACH-10: Ausgleich innerhalb von vier Wochen erzeugt keinen Hinweis; die Regel ist vorläufig und höchstens ein Hinweis", () => {
+    const stunden = (d) => (dow(d) < 6 ? (d < "2026-08-17" ? 10 : 6) : 0);
+    expect(nachtAusgleichHinweis(stunden, "2026-08-30").hinweis).toBe(false);
+    const r = regel("AZ-NACHT-AUSGLEICH-01");
+    expect(r.pruefstatus).toBe("provisional");
+    expect(r.hoechsteStufe).toBe("hinweis");
+    expect(r.fundstelle).toBe("§ 6 Abs. 2");
   });
 });
