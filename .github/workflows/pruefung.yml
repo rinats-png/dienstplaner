@@ -234,6 +234,11 @@ jobs:
       - name: Sicherungen in der Oberfläche
         run: npm run pruefung:wiederherstellen-ui
 
+      # SI-P1/P2: Sicherungsschlüssel überleben weder Ersteller noch Wiederherstellung;
+      # Code-Sitzung endet mit dem Betrieb. Enthält den SIGTERM-Test (nur Linux).
+      - name: Sicherungsschlüssel und Code-Sitzung
+        run: npm run pruefung:sicherungsschluessel
+
       # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
       # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
       # Lesen nur in der Antwort angeglichen (gestalt.mjs).
