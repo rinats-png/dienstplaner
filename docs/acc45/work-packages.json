@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 156,
+  "anzahl": 157,
   "statusZaehlung": {
-    "BLOCKED": 81,
+    "BLOCKED": 82,
     "READY": 34,
     "IN_PROGRESS": 4,
     "REVIEW": 4,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 59,
-      "offen": 28,
+      "pakete": 60,
+      "offen": 29,
       "restPT": {
-        "min": 75,
-        "max": 120
+        "min": 76.5,
+        "max": 123
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 439.20000000000005,
-    "max": 748.5
+    "min": 440.70000000000005,
+    "max": 751.5
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -4487,7 +4487,7 @@
       "akzeptanz": "POST /api/zugaenge durch den Betreiber verlangt frisch() und einen frischen 2FA-Code; Leitung-Codes für bestehende Kundenräume nur mit Zustimmung des Kunden oder über /einrichten; CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT im Deploy erzwungen (Freigabe Betreiber)",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/funktionen/daten.mjs (zugaenge), deploy/",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Betreiberentscheidung 2026-11-07: keine neuen Leitungscodes fuer bestehende Kundenraeume ohne nachweisbare Kundenzustimmung auf allen API-Wegen inkl. /einrichten; kontrollierte Ersteinrichtung neuer Betriebe bleibt (frische Auth, 2FA, Protokoll); Betreiber-2FA-Pflicht als Release-/Deployment-Gate (nicht produktiv aktiviert); Reihenfolge: SI-P7 vor SI-P6."
     },
     {
       "id": "SI-P7",
@@ -4544,6 +4544,34 @@
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": ".github/workflows/*.yml",
       "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P6b",
+      "titel": "Kundenzustimmung und Notfall-Wiederherstellung für Leitungszugänge bestehender Kundenräume (Folge zu SI-P6; Betreiberentscheidung 2026-11-07)",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":1.5,"max":3},
+      "abhaengigkeiten": ["SI-P6"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/sicherheit/si-p6b",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "Nachweisbare Zustimmung des Kunden (oder eng definierter, protokollierter Notfall-Wiederherstellungsprozess mit Vier-Augen/Wartefrist und Benachrichtigung des Kunden) als einzige Möglichkeit, für einen bestehenden Kundenraum einen neuen Leitungscode zu erzeugen; keine heimliche Betreiber-Hintertür; sämtliche API-Wege inkl. /einrichten bleiben ohne Zustimmung gesperrt; negative Sicherheitstests; Spezifikation und Betreiberentscheidung vor Umsetzung nötig.",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": "server/funktionen/daten.mjs, server/lib/leitungsschutz.mjs (nach SI-P6), docs/",
+      "notiz": "Angelegt auf Betreiberentscheidung SI-P6 (2026-11-07), Punkt 3: Zustimmungs- bzw. Notfall-Wiederherstellungsprozess separates Paket. BLOCKED bis Spezifikation (Zustimmungsform, Notfallablauf, rechtliche Einordnung AV) vorliegt; nichts bauen ohne Betreiberfreigabe der Spezifikation."
     }
   ]
 }
