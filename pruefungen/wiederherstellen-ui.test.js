@@ -24,6 +24,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/* Der Ladezustand der Sicherungsliste (src/ansichten/sicherungenverwalten.jsx, <Laden text=…>); bis fb05da2 stand dort „Lädt …“. */
+const LADETEXT = "Sicherungen werden geladen";
+
 vi.setConfig({ testTimeout: 60000 });
 
 const WIRT = "127.0.0.1:3000";
@@ -129,13 +132,13 @@ describe("Oberfläche gerendert", () => {
   it("fehlt eine Aktion, steht ein Fehler da — kein ewiges „Lädt …“", () => {
     const ohne = text(h(App.SicherungenVerwalten, { rolle: "leitung" }));
     expect(ohne).toContain("nicht angeschlossen");
-    expect(ohne).not.toContain("Lädt");
+    expect(ohne).not.toContain(LADETEXT);
     const nurLaden = text(h(App.SicherungenVerwalten, { rolle: "leitung", laden: () => Promise.resolve([]) }));
     expect(nurLaden).toContain("nicht angeschlossen");                       // Leitung braucht auch „zurückspielen“
     const kundeOk = text(h(App.SicherungenVerwalten, { rolle: "kunde", laden: () => Promise.resolve([]) }));
     expect(kundeOk).not.toContain("nicht angeschlossen");                   // die Kundenrolle braucht nur die Liste
     const ok = text(h(App.SicherungenVerwalten, { rolle: "leitung", laden: () => Promise.resolve([]), zurueckspielen: () => {} }));
-    expect(ok).toContain("Lädt");
+    expect(ok).toContain(LADETEXT);
   });
 
   it("der Bestätigungsdialog: gesamter Text, was bleibt und was zurückgeht", () => {
@@ -184,7 +187,7 @@ describe("Verdrahtung: echte Einstellungen, echte Aktionen", () => {
     const { akt, gelesen } = aufzeichnend();
     const t = text(h(App.Einstellungen, { sitz, akt, gehZu: () => {} }));
     expect(t).toContain("Sicherungen");
-    expect(t).toContain("Lädt");
+    expect(t).toContain(LADETEXT);
     expect(gelesen.has("sicherungenLaden")).toBe(true);
     expect(gelesen.has("zurueckspielen")).toBe(true);
   });
@@ -194,7 +197,7 @@ describe("Verdrahtung: echte Einstellungen, echte Aktionen", () => {
     expect(Object.keys(aktionen).sort()).toEqual(["sicherungenLaden", "zurueckspielen"]);
     for (const k of Object.keys(aktionen)) expect(typeof aktionen[k], k).toBe("function");
     const mit = text(h(App.Einstellungen, { sitz, akt: { ...aktionen, sicherungAnlegen: () => {} }, gehZu: () => {} }));
-    expect(mit).toContain("Lädt");
+    expect(mit).toContain(LADETEXT);
     expect(mit).not.toContain("nicht angeschlossen");
     /* Ohne sie (der Stand der ersten Fassung) steht der Fehler da. */
     const ohne = text(h(App.Einstellungen, { sitz, akt: { sicherungAnlegen: () => {} }, gehZu: () => {} }));
