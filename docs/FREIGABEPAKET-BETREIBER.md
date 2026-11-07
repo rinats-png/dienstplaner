@@ -181,13 +181,24 @@ Mit `NODE_ENV=production` (Produktion und Staging) verlangt der Server für jede
 
 **Schutz vor Selbstaussperrung.** (1) Neuer Betreibercode erst im Passwortmanager, dann Test-Anmeldung, dann Sperre des alten. (2) Betreibersitzungen enden nach höchstens zwei Stunden (`docs/legal/ABGLEICH-DOSSIER.md`, `sitzungen.mjs`); Testanmeldung also in frischem Browserfenster. (3) Das laufende Produktionsbild `274bfa0` enthält weder `zweifaktor.mjs` noch `betreiber-zweifaktor.mjs` (per `git ls-tree` geprüft): heute gibt es dort keinen zweiten Faktor. Mit dem nächsten Release wird er Pflicht (F.6); den neuen Code bis dahin nicht weitergeben.
 
+**Betreiberentscheidung 2026-11-07: vorbereiten, aber noch nichts ausführen.** Rotation (diese Seite) und Betreiber-2FA (F.6) werden erst umgesetzt, wenn der Betreiberzugang gesichert ist. Verbindliche Gesamtreihenfolge:
+
+| Stufe | Inhalt | Bedingung zum Weitergehen | Abbruch- und Rückfallpunkt |
+|---|---|---|---|
+| 1. Zugang sichern | Passwortmanager mit Papierkopie bereit; Serverzugang (SSH-Schlüssel, zweiter Zugangsweg zum IONOS-Konto, Notfall-Computer) und `CENTRIC_PFEFFER` an zwei getrennten Orten belegt; IONOS-Konto-Anmeldung funktioniert | Du hast jeden Punkt einmal real geprüft (nicht nur notiert) | Nichts am System geändert; kein Rückfall nötig. Fehlt ein Punkt: hier stehen bleiben. |
+| 2. Backup | Kopie des Datenordners (E-13-Vorschlag) und, soweit vorhanden, In-App-Sicherung; Lesbarkeitsprüfung der Kopie. Außer-Haus-Backup (F.3) ist dafür nicht Voraussetzung, aber: ohne irgendeine geprüfte Kopie nicht fortfahren | Kopie vorhanden und geöffnet/gelesen | Datenordner unverändert; ohne gelesene Kopie Abbruch. |
+| 3. Rotation | Z1 bis Z6 wie oben, in der Reihenfolge „neu anlegen, ablegen, anmelden, erst dann alt sperren“; Z7 (Klartextdateien) zuletzt und nur nach grünem Z5/Z6 | Neuer Betreibercode funktioniert in frischem Browserfenster | Bis vor dem Sperren des alten Codes: alter Code bleibt aktiv, Abbruch folgenlos. Nach dem Sperren: Reaktivierung eines gesperrten Zugangs ist für den Betreibercode unbelegt, deshalb Sperren des alten Betreibercodes erst nach erfolgreicher Anmeldung mit dem neuen. Z7 ist nicht umkehrbar. |
+| 4. 2FA | F.6: erst Staging üben, dann Produktion, erst wenn der 2FA-fähige Stand läuft | Rotation abgeschlossen, Wiederherstellungscodes gesichert | Ohne Einrichtung gibt es im neuen Stand keine Betreibersitzung; Notfall-Reset nur am Computer mit Serverzugang und Pfeffer (F.6, Schritt 5). Der Stand wird deshalb nicht ausgerollt, bevor Stufe 1 bis 3 stehen. |
+
+Ausdrücklich: Agenten führen nichts davon aus. Z1 und die Vorlagen werden nur vorbereitet.
+
 - **Bereits nachgewiesen:** nichts. Ablauf und Abnahmekriterium sind beschrieben (EAU E-15), ein Durchlauf ist nicht belegt; WP-44 steht auf BLOCKED (BAW).
 - **Ohne dich vorbereitbar (Agent):** Z1/Z5-Nachweisvorlage ohne Codes, Befehlsfolge für den Wegwerf-Container (BAW E-15 „Unterlage vorab“). Das Ablaufdokument A9 liegt nur im Hauptrepo.
 - **Nur du:** Z2-Entscheidungen, alle Anmeldungen, Sperren und das Löschen der Klartextdateien (Z7).
 - **Am Smartphone:** Z2, Test der neuen Anmeldung, Z4 (vermutlich), Optionstest in Z5, Notizen zu Z6.
 - **Computer/VPS nötig:** Z1, Anlegen des neuen Betreiberzugangs (Z3), Z5-Tabelle, Prüfsummen in Z6, Z7.
 - **Kosten:** keine (BAW).
-- **Dringlichkeit:** sofort. Begründung: P0-Sicherheitsrisiko besteht heute; spätester Start laut BAW 2026-11-04 (Varianten A und B); blockiert WP-44, WP-42 und E-23.
+- **Dringlichkeit:** Vorbereitung (Stufe 1 und 2) sofort. Ausführung der Rotation erst nach Stufe 1 und 2 (Entscheidung 2026-11-07). Begründung der Dringlichkeit: P0-Sicherheitsrisiko besteht heute (Klartextdateien); spätester Start laut BAW 2026-11-04 (Varianten A und B, überfällig); blockiert WP-44, WP-42 und E-23. Das Risiko läuft bis zur Ausführung weiter; die Verschiebung ist bewusst und im Betreiberrisiko zu führen.
 
 ### F.3 Backup außer Haus und Wiederherstellung (E-7, WP-04)
 
@@ -202,7 +213,7 @@ Mit `NODE_ENV=production` (Produktion und Staging) verlangt der Server für jede
 2. Verwahrung des restic-Passworts: Passwortmanager plus versiegelte Papierkopie außerhalb von Büro und Server. Ohne Passwort ist jede Sicherung wertlos. Im Ernstfall nötig: Passwort, `CENTRIC_PFEFFER`, Zugang zum Speicherziel (BS §2.4).
 3. Alarmdienst (Totmannschalter, EU-Standort; hängt mit E-8 zusammen).
 4. AV-Vertrag und Drittlandprüfung mit dem Anbieter des Ziels (E-32).
-5. **Aufbewahrung gegen AVV-Zusage (neu, `docs/legal/ABGLEICH-DOSSIER.md` Z-02, T-16 P0):** Der Skriptwert bewahrt bis zu 12 Monatsstände auf; AVV/AGB (Altbestand) versprechen Löschung einschließlich Sicherungskopien binnen 60 Tagen nach Vertragsende. Optionen: (a) Aufbewahrung kürzen (Änderung im Skript nötig, Wert ist fest eingebaut), (b) Zusage im AVV auf die tatsächliche Rotation anpassen, (c) beides nicht zusagen, bis entschieden ist. Die Entscheidung ist offen; Textentwurf in `legal/compliance-v1` sagt „zusagen nur, wenn belegt“.
+5. **Aufbewahrung gegen AVV-Zusage (`docs/legal/ABGLEICH-DOSSIER.md` Z-02, T-16 P0):** Betreiberentscheidung 2026-11-07: Die Aufbewahrungstechnik (restic 7/4/12) bleibt vorläufig unverändert. Offen bleibt, welche Aussage die Rechtstexte dazu machen. Entscheidungsvorlage mit Ist-Wegen, Optionen A bis C und Empfehlung: `docs/legal/BACKUP-AUFBEWAHRUNG-ENTSCHEIDUNG.md`. Der Textentwurf in `legal/compliance-v1` sagt „zusagen nur, wenn belegt“.
 
 **Wiederherstellungsprüfung (RESTORE-ABNAHME-PLAN §2, alles auf dem VPS).** 1 restic gepinnt installieren, Prüfsumme prüfen · 2 Speicherziel anlegen, zuerst Test-Repository · 3 Passwort erzeugen, verwahren, Verwahrung durch zweite Person oder Papierkopie bestätigen · 4 Repository anlegen, Probelauf, Wiederherstellungsprobe · 5 Fehlalarm-Probe (falsche Passwortdatei): Alarm muss kommen · 6 erst dann produktives Repository und Cron · 7 echter Restore in einen leeren Container, Abgleich „abweichend 0“, passender Pfeffer · 8 Aufbewahrung prüfen · 9 Sicherungsalter im Alarmweg prüfen (E-8). Abnahme: bytegleich, Totmannschalter schlägt an, Verwahrung bestätigt; Restore muss vor dem Produktiv-Deploy (E-23) bewiesen sein.
 
@@ -217,33 +228,31 @@ Mit `NODE_ENV=production` (Produktion und Staging) verlangt der Server für jede
 ### F.4 Mail und Push (E-9, WP-30)
 
 **Was der Code real kann.**
-- Mail: genau ein Versandweg, die Resend-API (`server/lib/post.mjs`, `fetch` an `api.resend.com`). Ohne `RESEND_API_KEY` Trockenlauf: Erfolg wird gemeldet, nichts geht hinaus. Es gibt keinen SMTP- oder IONOS-Code (Suche in `server/` ohne Treffer, `docs/legal/ABGLEICH-DOSSIER.md` L-05). Ein IONOS-SMTP-Adapter ist als eigenes, noch nicht gebautes Paket vorgemerkt (`docs/acc45/wp30-nachweis.md`, Abschnitt 11).
+- Mail: heute (Code im Repository) genau ein Versandweg, die Resend-API (`server/lib/post.mjs`, `fetch` an `api.resend.com`); ohne `RESEND_API_KEY` Trockenlauf: Erfolg wird gemeldet, nichts geht hinaus. Es gibt in diesem Branch keinen SMTP- oder IONOS-Code (Suche in `server/` ohne Treffer, `docs/legal/ABGLEICH-DOSSIER.md` L-05); der IONOS-SMTP-Adapter ist beauftragt (Stand unbelegt, `docs/acc45/wp30-nachweis.md`, Abschnitt 11).
 - Push: Web Push mit VAPID (`server/lib/webpush.mjs`, Abhängigkeit `web-push`). Gesendet wird nur an Dienste von Google, Mozilla, Apple, Microsoft (`server/lib/pushziel.mjs`); einen Vertrag kann der Betreiber dort nicht schließen, die Datenschutztexte müssen sie aber nennen (R-12, T-03).
 - Der Code für Zustellung (Warteschlange, Wiederholung, Bremsen) ist gebaut; offen sind nur Konto, DNS, Schlüssel und der echte Zustelltest (MPE, Kopf).
 
-**Entscheidung Mailweg (nur du entscheidest).**
+**Mailweg: entschieden am 2026-11-07.** Es wird das vorhandene IONOS-Postfach genutzt (SMTP). Der SMTP-Adapter wird von einem anderen Agenten hinter einem Schalter vorbereitet, standardmäßig deaktiviert; Stand der Umsetzung hier unbelegt. Keine zusätzlichen Mailanbieter; Resend ist keine Option mehr (der vorhandene Resend-Code bleibt unbenutzt, solange `RESEND_API_KEY` fehlt). Mail und Push sind laut Betreiberentscheidung 2026-11-03 Pflicht der Produktionsfreigabe (EAU, E-9). Offen bleibt, ob dein IONOS-Postfach oder Mailpaket SMTP-Versand zulässt und welche Sendegrenzen gelten (in keiner Repo-Quelle belegt; Annahme: begrenzt, über `CENTRIC_ZUSTELL_BETRIEB_MAIL` zu deckeln).
 
-| | A: Resend-Konto | B: IONOS-Mailpostfach/SMTP |
+**Voraussetzungen (keine produktive Aktivierung).**
+
+| Voraussetzung | Am Smartphone | Am Computer |
 |---|---|---|
-| Code | heute vorhanden | Code-Arbeit: Adapter in `post.mjs` hinter einem Schalter, Standard aus. Der Agent kann das mit Attrappen und Tests vorbereiten, ohne etwas zu aktivieren. |
-| Anbieter | neuer Anbieter (US-Unternehmen, Drittland, AV-Vertrag nötig; MPE §0) | bestehender Anbieter; ob du ein IONOS-Postfach oder Mailpaket hast, ist unbelegt |
-| Kosten | Dienstentgelt je Mailvolumen (Hypothese BAW) | unbelegt; Sendegrenzen von Postfächern sind in keiner Quelle beschrieben (Annahme: begrenzt, über `CENTRIC_ZUSTELL_BETRIEB_MAIL` zu deckeln) |
-| DNS | SPF, DKIM, DMARC für eine Versand-Subdomain (MPE §1) | von IONOS vorgegeben, Einzelheiten unbelegt |
-| Rechtstexte | Resend in AVV/Datenschutz nötig, derzeit „nicht aktiviert“ (`docs/IST-STAND.md`) | IONOS ist schon Unterauftragsverarbeiter genannt |
-
-Ehrlich: „Bestehende IONOS-Infrastruktur bevorzugen“ geht bei Mail nur mit neuem Code. Bis dahin ist Resend der einzige lauffähige Weg. Mail und Push sind laut Betreiberentscheidung 2026-11-03 Pflicht der Produktionsfreigabe (EAU, E-9).
-
-**Schritte (Resend-Weg, nach MPE §1).** Konto, Region und AVV nach Entscheidung → Versand-Subdomain hinzufügen → DNS-Einträge setzen (Werte zeigt das Dashboard) → warten bis „verified“ → API-Schlüssel mit kleinster Berechtigung → `RESEND_API_KEY`, `CENTRIC_ABSENDER`, `CENTRIC_BASIS` nur in die Produktions-`.env` → Zustelltest zuerst auf Staging.
+| Postfach vorhanden, das App-Mails senden darf (Absenderadresse, gelesene Antwortadresse) | IONOS-Konto öffnen, Postfach/Mailpaket und Tarif ansehen, Absenderadresse festlegen; ob SMTP-Versand inklusive ist, in der Produktbeschreibung nachsehen (Menüführung unbelegt) | – |
+| Zugangsdaten (SMTP-Benutzer, Passwort, Server, Port) | Im Passwortmanager ablegen; **nicht** per Chat/Mail an Agenten und nicht ins Repository | Nur in die `.env` auf dem VPS (kein Repo, keine Compose-Datei, kein Log); Namen der Variablen legt der Adapter-Agent fest (unbelegt) |
+| SPF/DKIM (DMARC) für die Absenderdomain | Den DNS-Verwalter beauftragen und die von IONOS angezeigten Einträge weiterreichen; Werte dem Postfach-Dashboard entnehmen, nie erfinden (Einzelheiten unbelegt) | Prüfung der Einträge mit `nslookup`/`dig` (optional) |
+| Keine produktive Aktivierung | Schalter bleibt aus; kein Zugangsdatum in der Produktions-`.env` bis zur Freigabe | Zustelltest zuerst auf Staging (Testadresse), dann erst Produktion nach Release-Entscheidung |
+| Rechtstexte | Unterauftragsverarbeiter IONOS ist bereits genannt; Mail-Inhalte und Absender in der Datenschutzerklärung prüfen lassen (E-18) | – |
 
 **Schritte Push (nach MPE §2).** Schlüsselpaar erzeugen mit `npx web-push generate-vapid-keys` (Node/npm, kein Fremddienst, keine Kosten) → `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_KONTAKT=mailto:<gelesenes Postfach>` in die `.env` → Paar später nicht tauschen (alle Geräte müssten neu anmelden) → iPhone: nur mit App auf dem Startbildschirm (iOS 16.4 oder neuer, am Gerät zu prüfen, nicht belegt).
 
 - **Bereits nachgewiesen:** Zustellkette im Server mit Tests (`wp30-nachweis.md`); die Checkliste `docs/acc45/extern/MAIL-PUSH-KONFIGURATION-CHECKLISTE.md` (2026-11-04) nennt WP-30 noch „nicht umgesetzt“ und ist insoweit veraltet. Echte Zustelltests (A7) sind offen.
-- **Ohne dich vorbereitbar (Agent):** IONOS-SMTP-Adapter hinter Schalter (Variante B) mit Attrappentests; Anpassung der Rechtstexte je Entscheidung; Prüfliste für den Zustelltest.
-- **Nur du:** Anbieterentscheidung, Konto, Vertrag/AVV, Schlüsselerzeugung und Ablage, DNS (oder Auftrag an deinen DNS-Verwalter).
-- **Am Smartphone:** Entscheidung, IONOS-Konto auf Postfach und Mailpaket prüfen, Resend-Konto im Browser anlegen und verifizieren (Menüführung unbelegt), Testmail im Postfach ansehen (Header SPF/DKIM „pass“), Push-Test auf Android und iPhone.
+- **Ohne dich vorbereitbar (Agent):** IONOS-SMTP-Adapter hinter Schalter (läuft bei einem anderen Agenten) mit Attrappentests; Anpassung der Rechtstexte je Entscheidung; Prüfliste für den Zustelltest.
+- **Nur du:** Postfach-/Tarifklärung bei IONOS, Zugangsdaten und deren Ablage, Schlüsselerzeugung und Ablage, DNS (oder Auftrag an deinen DNS-Verwalter).
+- **Am Smartphone:** Entscheidung, IONOS-Konto auf Postfach und Mailpaket prüfen (SMTP-Versand inklusive?), Absenderadresse festlegen, später Testmail im Postfach ansehen (Header SPF/DKIM „pass“), Push-Test auf Android und iPhone.
 - **Computer/VPS nötig:** VAPID-Erzeugung (`npx`), Eintrag in die Produktions-`.env`, Container neu erstellen. DNS-Einträge wahrscheinlich auch per Weboberfläche am Smartphone möglich (unbelegt).
-- **Kosten:** Mailweg A ja (Dienstentgelt, Hypothese), Weg B unbelegt; Push ohne Anbieterentgelt (BAW E-9); Code-Arbeit für B nur Agentenzeit.
-- **Dringlichkeit:** Anbieterentscheidung sofort: spätester Start laut BAW 2026-10-23 (überfällig), blockiert WP-30-Abnahme, WP-18, WP-05 (Mailweg) und WP-42. VAPID erzeugen und eintragen kann bis zur Server-Umgebung des Release-Kandidaten warten (nicht einzeln dringend), sollte dann aber nie mehr getauscht werden.
+- **Kosten:** Mail über das vorhandene Postfach: zusätzliche Kosten unbelegt (abhängig vom Tarif); Push ohne Anbieterentgelt (BAW E-9); Adapter nur Agentenzeit.
+- **Dringlichkeit:** Die Anbieterentscheidung ist gefallen. Jetzt sofort: Postfach/Tarif und Absenderadresse klären, DNS-Verwalter für SPF/DKIM beauftragen (spätester Start laut BAW 2026-10-23, überfällig); blockiert WP-30-Abnahme, WP-18, WP-05 (Mailweg) und WP-42. VAPID erzeugen und eintragen kann bis zur Server-Umgebung des Release-Kandidaten warten (nicht einzeln dringend), sollte dann aber nie mehr getauscht werden.
 
 ### F.5 Staging-Gates B1, B2, B4, B5 (`docs/FREIGABEPAKET-BETREIBER.md`, Abschnitt B)
 
@@ -254,12 +263,30 @@ Ehrlich: „Bestehende IONOS-Infrastruktur bevorzugen“ geht bei Mail nur mit n
 
 | Gate | Was | Ergebnis heute |
 |---|---|---|
-| B1 | Caddy-Basic-Auth weist `Authorization: Bearer` der App ab; eingeloggte Browsertests, auch am Handy, gehen nicht | offen, nur auf dem VPS lösbar |
+| B1 | Caddy-Basic-Auth weist `Authorization: Bearer` der App ab; eingeloggte Browsertests gehen nicht | Entscheidung 2026-11-07: SSH-Tunnel (siehe unten); Tunnel nicht erprobt; Smartphone-Test so nicht möglich |
 | B2 | Staging-Probe Punkt 7/9 mit `deploy/abnahme-7-9-staging.mjs`, schreibt nur den Raum `ppg-gate-a`, danach Aufräumen | offen |
 | B4 | Datenisolation Staging/Produktion belegen | offen |
 | B5 | Backup-Wiederherstellung auf dem VPS belegen | offen, siehe F.3 |
 
-**B1 bei bleibender Staging-Basic-Auth.** Beide nutzen den Kopf `Authorization`. Lösungen laut Quelle: IP-Freigabe statt Basic Auth oder `/api/*` ausnehmen. Bewertung (Annahme, nicht belegt): Eine IP-Freigabe passt schlecht zum Smartphone, weil Mobilfunk-Adressen wechseln; `/api/*` auszunehmen lässt die Seite selbst hinter Basic Auth, die Schnittstelle schützt dann nur die App-Anmeldung, auf Staging liegen nur Testdaten. Die Entscheidung ist deine, die Umsetzung eine Änderung der Caddy-Konfiguration auf dem VPS.
+**B1: angemeldete Browsertests auf Staging. Entscheidung 2026-11-07: bevorzugt abgesicherter SSH-Tunnel.** Keine öffentliche Freigabe der API (`/api/*` bleibt hinter Basic Auth), keine IP-Freigabe (Mobilfunk-Adressen wechseln). Basic Auth bleibt für den öffentlichen Zugang bestehen. Der Tunnel läuft am Caddy vorbei und ist nur auf deinem Computer erreichbar; er ersetzt die Basic Auth nicht, sondern umgeht sie für dich lokal. Der Tunnel braucht einen Computer; am Smartphone ist nur die Vorbereitung möglich.
+
+**Was das Repository über den Port sagt (Fakten).**
+- Die Produktions-`compose.yml` veröffentlicht keinen Port (`deploy/compose.yml`, Kopfkommentar; `docs/CADDY-UND-XFF.md`: „Aus dem Internet direkt auf Port 3000: Nein“). Die App lauscht im Container auf `PORT=3000`, der Container hängt im Docker-Netz `proxy`.
+- Staging: `BEREITSTELLUNG.md` §5.5 beschreibt es als Mitglied von `proxy` ohne Port-Bindung, „nur aus dem Netz proxy oder per docker exec“. `docs/acc45/STAGING-ABNAHME-CHECKLISTE.md` und `EXTERNE-ABNAHMEN-UEBERGABE.md`: Browserzugang braucht einen SSH-Tunnel mit eigener Freigabe des Betreibers. `docs/PHASE-A1-STAGING-REPORT.md`: Die Oberfläche wurde schon über einen SSH-Tunnel geprüft, gebunden nur an `127.0.0.1` des Prüfrechners. Das genaue Tunnelkommando steht in keiner Repo-Datei (unbelegt).
+- Daraus folgt: Weil der Staging-Container keinen Port auf dem Host veröffentlicht, gibt es auf dem Server kein `127.0.0.1:3000`, auf das ein einfaches `-L` zeigen könnte. Das Tunnelziel ist die Adresse des Containers im Docker-Netz `proxy` (Annahme, aus der Netzstruktur geschlossen, nicht im Repo erprobt). Verzeichnis und Containername laut §5.5: `/opt/apps/centric-staging`, `centric-staging-web`; ob das heute noch so ist, bestätigt nur der Server.
+- Ohne Caddy fehlt `X-Forwarded-For`: Die App setzt ihn dann auf die Socket-Adresse (`docs/CADDY-UND-XFF.md`); die Bremsen sehen die Adresse des Docker-Netzes statt deiner. Für Browsertests unkritisch (Annahme).
+- Ob die Anmeldung über unverschlüsseltes `http://127.0.0.1` im Browser vollständig funktioniert (Cookies, Service Worker), ist nicht belegt; `localhost`-Adressen gelten Browsern meist als sichere Kontexte (Annahme, am Gerät zu prüfen).
+
+**Voraussetzungen.** (1) Ein Computer mit OpenSSH-Client (am Smartphone nicht vorgesehen). (2) SSH-Zugang zum Staging-Server, bevorzugt mit Schlüssel (Betreiberangabe, unbelegt). (3) Deine eigene Freigabe für den Tunnel (laut Übergabeunterlagen Betreiberentscheidung; mit der Entscheidung vom 2026-11-07 grundsätzlich erteilt, Umsetzung durch dich). (4) Auf dem Server ein Benutzer, der `docker inspect` ausführen darf (Annahme). (5) Aktueller Staging-Stand läuft, `healthy`.
+
+**Schritte (nur Platzhalter; echte Host- und Benutzerangaben nirgends im Repository ablegen).**
+1. Auf dem Computer: `ssh ${STAGING_SSH_BENUTZER}@${STAGING_VPS_HOST}`. Dort die Containeradresse im Netz `proxy` lesen: `docker inspect centric-staging-web --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'` (Name laut §5.5, Annahme) und notieren (`<CONTAINER_IP>`). Sitzung beenden.
+2. Tunnel öffnen, nur lokal gebunden: `ssh -N -L 127.0.0.1:3001:<CONTAINER_IP>:3000 ${STAGING_SSH_BENUTZER}@${STAGING_VPS_HOST}`. Das Terminal bleibt offen. Port 3001 ist frei gewählt; bei Belegung einen anderen nehmen. Die Bindung an `127.0.0.1` verhindert, dass andere im Netzwerk mitnutzen.
+3. Im Browser des Computers `http://127.0.0.1:3001` öffnen und mit dem Testcode je Rolle anmelden.
+4. Browsertests (`pruefungen/browser/*.mjs` oder von Hand) gegen `http://127.0.0.1:3001`. Die Gate-Skripte B2 brechen ab, wenn `CENTRIC_BASIS` nicht mit `https://staging.` beginnt (`docs/RC-2026-11-05-ABNAHME-7-9.md` §2); sie laufen deshalb weiter auf dem Server per `docker exec`, nicht durch den Tunnel.
+5. Ende: Tunnel mit Strg+C schließen. Nach einer Neuerstellung des Containers kann sich seine Adresse ändern (Annahme); dann Schritt 1 wiederholen.
+
+**Am Smartphone nur Vorbereitung:** Testcodes im Passwortmanager bereithalten, Zugangsdaten und SSH-Schlüssel kennen, einen Termin am Computer festlegen. Angemeldete Smartphone-Tests der Oberfläche sind mit diesem Weg nicht möglich (ein Tunnel vom Smartphone ist hier nicht vorgesehen und unbelegt); sie brauchen später eine eigene Entscheidung.
 
 **Sichere Testzugänge.** Je Rolle eigene Testperson (Leitung, Planung, Schichtverantwortung, Mitarbeiter, Betriebsrat, Betreiber), Codes nur im Passwortmanager, nach dem Test sperren oder rotieren (`docs/acc45/extern/GERAETETESTPLAN-MOBIL.md` §2, `PENTEST-SCOPE.md` §5). Nur Testpersonen und Testbetriebe, keine Echtdaten (EAU, Hinweise). Die Gate-Skripte schreiben nur Räume `ppg-gate-*` und räumen nur diese; sie brechen ab, wenn `CENTRIC_BASIS` nicht mit `https://staging.` beginnt (`docs/RC-2026-11-05-ABNAHME-7-9.md` §2).
 
@@ -267,9 +294,9 @@ Ehrlich: „Bestehende IONOS-Infrastruktur bevorzugen“ geht bei Mail nur mit n
 
 - **Bereits nachgewiesen:** Smoke 51/51, Aufräumen 18/18, Punkte 5 und 6 im Smoke, Punkte 7 und 9 lokal 50/51 (SF; `docs/RC-2026-11-05-ABNAHME-7-9.md`). Nicht nachgewiesen: B1, B2, B4, B5, Geräte, Browser angemeldet auf Staging.
 - **Ohne dich vorbereitbar (Agent):** Probe-Skripte (liegen vor), Checkliste `docs/acc45/STAGING-ABNAHME-CHECKLISTE.md`, Auswertung der Ausgaben, Befehlsliste für B4-Prüfung; Browserproben lokal (`pruefungen/browser/*.mjs`).
-- **Nur du:** B1-Entscheidung und Eingriff in Caddy, Ausführen von B2/B4/B5 auf dem VPS (kein Agentenzugriff auf Staging oder Produktion).
-- **Am Smartphone:** Basic-Auth-Zugang zu Staging öffnen, Oberfläche ansehen; angemeldete Tests erst nach B1.
-- **Computer/VPS nötig:** B1, B2, B4, B5 vollständig (SSH, `docker exec`, Caddy-Datei).
+- **Nur du:** Öffnen des Tunnels (B1), Ausführen von B2/B4/B5 auf dem VPS (kein Agentenzugriff auf Staging oder Produktion).
+- **Am Smartphone:** Basic-Auth-Zugang zu Staging öffnen, Oberfläche ansehen; angemeldete Tests nur am Computer über den Tunnel.
+- **Computer/VPS nötig:** B1 (Tunnel), B2, B4, B5 vollständig (SSH, `docker exec`); eine Caddy-Änderung entfällt.
 - **Kosten:** keine.
 - **Dringlichkeit:** B1 und B2 sofort, sobald ein neuer Staging-Stand ansteht: E-1 hat laut BAW den spätesten Start 2026-11-11, und der Pentest braucht einen eingefrorenen, geprüften Stand. B4/B5 laufen mit E-7 (F.3).
 
@@ -282,6 +309,12 @@ Ehrlich: „Bestehende IONOS-Infrastruktur bevorzugen“ geht bei Mail nur mit n
 - Verfahren: TOTP (sechs Stellen, 30 Sekunden), zehn Wiederherstellungscodes, einmal angezeigt (`server/lib/zweifaktor.mjs`). Ohne `CENTRIC_PFEFFER` lässt sich kein Faktor einrichten; den Pfeffer nie ändern, sonst werden alle Faktoren und Codes ungültig.
 
 **Was daraus fürs Smartphone folgt.** Nach dem Release kommst du in Produktion nur mit Betreibercode plus Code aus der Authenticator-App hinein. Das geht am selben Handy, die Oberfläche zeigt das Geheimnis und die `otpauth`-Adresse als Text (`src/betreiber-2fa.jsx`); EAU E-10 spricht vom Scannen eines QR-Codes, den die Oberfläche laut Code nicht zeigt (Widerspruch, Handhabung: Geheimnis in die App eintippen). Ob die Oberfläche auf dem Handy bequem bedienbar ist, ist unbelegt.
+
+**Betreiberentscheidung 2026-11-07: vorbereiten, nichts ausführen, bis der Betreiberzugang gesichert ist.** Verbindliche Gesamtreihenfolge (Tabelle in F.2): **Zugang sichern → Backup → Rotation → 2FA.** Die 2FA ist die letzte Stufe. Abbruch- und Rückfallpunkte:
+- Vor Stufe 4: Rotation (F.2) abgeschlossen oder bewusst ausgesetzt; Wiederherstellungscodes-Ablage festgelegt; Notfall-Computer mit Serverzugang und `CENTRIC_PFEFFER` bereit. Fehlt etwas: nicht einrichten, nichts ausrollen.
+- Auf Staging üben ist Abbruchpunkt 1: Gelingt Einrichtung, Abmelden und Neuanmeldung dort nicht, bleibt Produktion unverändert.
+- In Produktion: Misslingt Schritt (c) oder (e) unten, gibt es für den Betreibercode keine Sitzung. Rückfall: Container auf das vorherige Bild (`./ruecksprung.sh`) oder Reset mit `werkzeug/betreiber-2fa-zuruecksetzen.mjs --ja` am Computer.
+- Ein Ausrollen des 2FA-pflichtigen Stands vor Stufe 1 bis 3 findet nicht statt.
 
 **Reihenfolge, damit du dich nicht aussperrst.**
 1. Jetzt vorbereiten (Handy): Authenticator-App installieren; Papier oder Tresor für die Wiederherstellungscodes festlegen, nicht im selben Passwortmanager wie der Betreibercode (`wp15-wp32d-fragen.md`); Pfeffer und Serverzugang im Passwortmanager prüfen; einen Computer für den Notfall organisieren (Reset geht nur dort). Empfehlung (Annahme): Geheimnis in zwei Authenticator-Instanzen eintragen.
@@ -334,6 +367,26 @@ Ehrlich: „Bestehende IONOS-Infrastruktur bevorzugen“ geht bei Mail nur mit n
 | Fachnachweise FN-01…FN-34 (WP-19) | B | `WP19-OFFENE-FACHNACHWEISE.md` | Branchenmodule bleiben ohne Nachweis `geplant` |
 | Sonn-/Feiertag-Regeln, Fachtests ohne Rechtswirkung | C | Regelwerkstests | – |
 
+**Betreiberentscheidung 2026-11-07: Externe kostenpflichtige Prüfungen (Pentest, Kanzlei) werden vorläufig nicht beauftragt.** Das ist eine Entscheidung über die Prüfmethode (Klasse B), keine Erledigung. Die Projekt-Freigabegates (E-17/E-18/E-22/E-32 und die Release-Gates in der Statusliste) bleiben **nicht erledigt**; was sie verlangen, wird durch diese Entscheidung weder erfüllt noch aufgehoben. Ohne externe Prüfung gilt für jeden Punkt: Eigenprüfung mindert, belegt aber nicht dasselbe wie eine unabhängige Prüfung.
+
+**Verbleibende Risiken ohne externe Prüfung.**
+
+| Risiko | Klasse | Mindernde Eigenprüfung | Was offen bleibt |
+|---|---|---|---|
+| Schwachstellen im aktuellen Stand, die nur ein unabhängiger Angriffstest findet (Rechte, Sitzungen, Bremsen, Dateien) | B (Prüfmethode zu Art. 32 DSGVO) | interne Sicherheitsprüfung `docs/acc45/SICHERHEIT-INTERN-2026-11.md`, Gate-Proben, Regressions- und Rollenläufe, Browserproben lokal | kein unabhängiger Test des aktuellen Stands (nur `PENTEST.md` 2026-09-10, veraltet); blinde Flecken der eigenen Prüfung; keine Prüfung durch Dritte mit Angreifersicht; mittlere Funde P1 bis P8 teils offen |
+| Rechtstexte (Impressum, Datenschutz, AGB, AVV, VVT) rechtlich fehlerhaft oder unvollständig | A (Inhalt), B (Prüfmethode) | Abgleich Dossier gegen Code (`ABGLEICH-DOSSIER.md`), Abnahmematrix, Platzhalterliste, Entwurfstests in `pruefungen/rechtstexte*.test.js` | Texte bleiben Entwurf und `[ZU_KLAEREN]`; keine Rechtsfreigabe (E-18); AGB-Klauseln (Haftung, Verfügbarkeit, Zustimmungsfiktion) nicht auf Wirksamkeit geprüft; Abmahn- und Bußgeldrisiko beim Einsatz mit echten Beschäftigtendaten nicht ausgeschlossen |
+| DSFA-Erforderlichkeit und Datenschutzbeauftragten-Pflicht falsch eingeschätzt | B | Gliederung `DSFA-GLIEDERUNG.md`, Screening `dsfa-screening.md` | keine rechtliche Bewertung der Erforderlichkeit (E-26/E-30); Pilot mit echten Nutzern (Form II) ohne diese Klärung nicht vertretbar (Projektgate, nicht als gesetzliche Pflicht behauptet) |
+| Drittland und Dienstleister (Push-Dienste, Mailweg, Hosting) und Verträge | A (vor Aktivierung) | F.4, Anbieterliste `KI-VO-UND-ANBIETER-PRUEFLISTE.md`, IONOS-Postfach statt neuem Mailanbieter | AV-Verträge und Drittlandprüfung nicht belegt (E-32); Push-Dienste von Google, Mozilla, Apple, Microsoft ohne Vertrag; Angaben nur aus Betreiberbehauptung |
+| KI-Funktionen (F13/F18) | A (vor Aktivierung) | Gateway ist Attrappe, Funktion nicht aktiviert, Prüfliste | KI-VO-Einordnung nicht geprüft (E-25 bis E-28); bleibt deshalb ausgeschaltet |
+| Betriebsvereinbarung/Mitbestimmung beim Kunden | B | `BETRIEBSVEREINBARUNG-THEMENLISTE.md` | Kundensache; kein Kanzlei-Muster (E-19, E-28); Piloten dürfen das nicht stillschweigend voraussetzen |
+| Branchen- und Fachregeln (Arbeitszeit, Pflege, Sicherheit) in Berechnungen | B | Regelwerkstests, Fachnachweise FN-01…FN-34 (`WP19-OFFENE-FACHNACHWEISE.md`) | Fachnachweise E-22 offen; Branchenmodule bleiben ohne Nachweis `geplant`; keine Rechtswirkung zusagen |
+| Wiederherstellung und Verfügbarkeit | B | Skripte und CI-Lauf mit lokalem restic, F.3 | kein Restore auf dem VPS nachgewiesen; Außer-Haus-Backup nicht belegt; vertraglich keine garantierte Verfügbarkeit (Entscheidung 2026-11-07), das mindert das Haftungsrisiko, aber nicht das Betriebsrisiko |
+| Zugang und Geheimnisse (Klartextcodes, Betreiber ohne 2FA im laufenden Stand) | A (Sicherheitsmaßnahme), B (Prüfmethode) | Rotation und 2FA vorbereitet (F.2, F.6), interne Prüfung | noch nicht ausgeführt; bis dahin besteht das Risiko im Produktivstand; Reihenfolge Zugang → Backup → Rotation → 2FA |
+| IP-Kürzel ungesalzen und rückführbar (Z-01, T-04), Art.-9-Feldkatalog (T-11), Gerätespeicher (R-14) | A/B | Abgleich, Entwurf | Status in `legal/compliance-v1` prüfen; nicht als erledigt belegt |
+| Gerätetests und Geo auf echter Hardware | C | Browserproben lokal, Gerätetestplan | keine Prüfung am echten Gerät (E-3, E-4); Smartphone-Verhalten unbelegt |
+
+Klasse A bedeutet hier nur, dass die Maßnahme selbst gesetzlich oder vertraglich geboten ist; Externe Prüfung ist dafür nicht automatisch vorgeschrieben. Bei der Entscheidung gegen externe Prüfung trägst du das Restrisiko in den Zeilen oben selbst; sie sollte im Pilotvertrag (Form I, synthetische Daten) nicht verdeckt werden.
+
 **Eigenprüfungen, die schon vorliegen oder vorbereitet sind.** Abnahmematrix Recht gegen Code (R-01 bis R-30, AZ, FACH; `docs/legal/ABNAHMEMATRIX.md`, Stand 2026-11-07); Abgleich Dossier gegen Repository (19 Befunde bestätigt, 7 teilweise, `ABGLEICH-DOSSIER.md`); interne Sicherheitsprüfung (keine kritischen Funde, drei hohe behoben, sieben mittlere als Paketvorschläge offen; Stand 2026-11-03 auf älterer Basis); Gerüste PENTEST-SCOPE, DSFA-GLIEDERUNG, KI-VO-Prüfliste, BV-Themenliste.
 
 **Risiken, die offen bleiben.**
@@ -345,44 +398,47 @@ Ehrlich: „Bestehende IONOS-Infrastruktur bevorzugen“ geht bei Mail nur mit n
 
 - **Bereits nachgewiesen:** Matrix, Abgleich, interne Sicherheitsprüfung und Gerüste (Dateien oben); keine Rechtsfreigabe, keine Konformitätsaussage, kein externer Test (`ABNAHMEMATRIX.md`: „Nicht als erledigt gewertet“).
 - **Ohne dich vorbereitbar (Agent):** Scope-Dokument ausfüllen bis auf deine Felder, Rollen- und Testkonten-Konzept, Prüfstand-Digest nach Freeze, DSFA-Material, Fragenlisten je Fachgebiet, Aktualisierung der Matrix nach jeder Änderung, weitere interne Prüfungen.
-- **Nur du:** Wahl der Prüfmethode je Klasse-B-Punkt, Anbieterwahl, Beauftragung, Budgetrahmen, ausgeschlossene Systeme, Vertraulichkeitsvereinbarung.
-- **Am Smartphone:** Angebote anfordern (Anfrage per Mail; Kostenfreiheit der Angebotsphase unbelegt), Angebote lesen, Entscheidung treffen.
+- **Nur du:** Wahl der Prüfmethode je Klasse-B-Punkt (für Pentest und Kanzlei vorläufig entschieden: nicht beauftragen), spätere Wiedervorlage, Hinnahme der Restrisiken in der Tabelle.
+- **Am Smartphone:** nichts zu beauftragen; nur Wiedervorlage festlegen.
 - **Computer/VPS nötig:** Bereitstellung des eingefrorenen Prüfstands auf Staging und Übergabe von Testzugängen über einen sicheren Kanal (nie im Klartext per Mail).
-- **Kosten:** ja. Hypothese BAW: Pentest je nach Umfang vier- bis niedrig fünfstellig Euro; Kanzleistunden je Textsatz und Fachgebiet; alles nur über eingeholte Angebote belastbar.
-- **Dringlichkeit:** Entscheidung über die Methode und Angebotsanfragen sofort. Begründung: E-17a, E-22, E-30 sind laut BAW in Variante A bereits überfällig; die Kette hat lange Durchlaufzeiten (Annahme 56 Tage Pentest-Kette) und der Pentest braucht einen eingefrorenen Stand. Die Durchführung wartet auf den Freeze und die Staging-Abnahme (E-1).
+- **Kosten:** vorläufig keine. Hypothese BAW für später: Pentest je nach Umfang vier- bis niedrig fünfstellig Euro; Kanzleistunden je Textsatz und Fachgebiet; nur über eingeholte Angebote belastbar.
+- **Dringlichkeit:** Entschieden ist die vorläufige Nichtbeauftragung. Die Gates E-17a, E-22, E-30 bleiben laut BAW überfällig und offen; ein späterer Beginn verlängert den Weg (Annahme 56 Tage Pentest-Kette) und braucht einen eingefrorenen Stand nach E-1. Wiedervorlage vor jedem Pilot mit echten Beschäftigtendaten und vor E-23.
 
 ### F.9 Zusammenfassung (nur offene Handlungen)
 
+Entschieden am 2026-11-07 und hier nicht mehr offen: Verfügbarkeitszusage (vorläufig keine, AGB § 6 im Branch `legal/compliance-v1`), Mailweg (vorhandenes IONOS-Postfach, keine weiteren Mailanbieter), B1-Weg (SSH-Tunnel), Backup-Aufbewahrungstechnik (unverändert), externe Prüfungen (vorläufig nicht beauftragt).
+
 **Heute am Smartphone erledigbar (priorisiert)**
-1. E-15: Z2 entscheiden (welche der Konten rotieren oder sperren) und Passwortmanager mit Papierkopie vorbereiten; danach Z3/Z5-Tests (Anlegen braucht den Computer).
-2. F.1: Angaben zu O-01 bis O-04 heraussuchen und senden (Firma, Anschrift, gelesene Adresse, Register, Steuerstatus, Aufsichtsbehörde, DSB-Frage).
-3. IONOS-Konto lesen: VPS-Region, AV-Vertrag, ob Snapshot/Backup, Objektspeicher oder Mailpostfach vorhanden sind (für F.1 O-06, F.3, F.4).
-4. Entscheidungen treffen: Backup-Ziel und Aufbewahrung gegen die AVV-Zusage; Mailweg (Resend oder IONOS-SMTP-Adapter); SLA ja/nein; B1-Variante; Prüfmethode je Klasse-B-Punkt.
+1. E-15 Stufe 1 (F.2): Zugang sichern. Passwortmanager mit Papierkopie, Zugangswege zum IONOS-Konto und zum Server, Ablageorte für `CENTRIC_PFEFFER` prüfen. Danach Z2 entscheiden. Nichts ausführen.
+2. F.1: Angaben zu O-01 bis O-04 heraussuchen und senden (Firma, Anschrift, gelesene Adresse, Register, Steuerstatus, Aufsichtsbehörde, DSB-Frage). Zu O-10 nur noch bestätigen, dass vorläufig keine Verfügbarkeitszusage gilt.
+3. IONOS-Konto lesen: VPS-Region, AV-Vertrag, ob Snapshot/Backup, Objektspeicher oder Mailpostfach mit SMTP-Versand vorhanden sind (für F.1 O-06, F.3, F.4); Absenderadresse für App-Mails festlegen.
+4. Entscheiden: Backup-Ziel (F.3) und, mit der Vorlage `docs/legal/BACKUP-AUFBEWAHRUNG-ENTSCHEIDUNG.md`, die Aussage zur Aufbewahrung in den Rechtstexten (Option A, B oder C).
 5. Authenticator-App installieren, Ablageort für Wiederherstellungscodes festlegen, Notfall-Computer organisieren (F.6, Schritt 1).
 6. iPhone und Tablet leihen; Pilotbetriebe ansprechen (F.7).
-7. Angebote anfragen: Pentest, Kanzlei/DSB, Speicherziel (nur Anfrage, keine Beauftragung).
-8. O-11, O-16: Preisblatt und Dienstleisternamen nennen.
+7. O-11, O-16: Preisblatt und Dienstleisternamen nennen.
+8. DNS-Verwalter für SPF/DKIM der Absenderdomain beauftragen (F.4).
+9. Termin am Computer für den Staging-Tunnel (F.5) festlegen; Testcodes im Passwortmanager bereithalten.
 
 **Braucht Computer/VPS**
-- E-15 Z1, Z3 (Anlegen), Z5, Z6 (Prüfsummen), Z7.
+- E-15 Z1, Z3 (Anlegen), Z5, Z6 (Prüfsummen), Z7 erst nach Stufe 1 und 2.
 - E-7: restic, Speicherziel, Cron, Fehlalarm-Probe, Restore; B4/B5.
-- B1 (Caddy), B2 (Staging-Probe).
-- VAPID erzeugen, `.env` für Mail/Push, Container neu erstellen.
+- B1: SSH-Tunnel (Computer, Container-Adresse lesen); B2 (Staging-Probe per `docker exec`).
+- VAPID erzeugen, `.env` für Mail/Push (SMTP-Zugangsdaten nur dort), Container neu erstellen.
 - O-05 und O-07: Digest, Schalterstand.
 - Notfall-Reset der 2FA.
 
 **Nur mit Kosten oder Dritten**
-- Pentest E-17a, Kanzlei E-18/E-22/E-30, DSFA E-26, Betriebsvereinbarung E-19/E-28.
 - Speicherziel und Alarmdienst (E-7, E-8, E-32).
-- Mailanbieter bzw. IONOS-Postfach (E-9), DNS-Verwalter.
+- DNS-Verwalter für SPF/DKIM (E-9).
 - Pilotvertrag E-31, Steuerberatung (O-03, O-16).
+- Zurückgestellt (nicht beauftragt): Pentest E-17a, Kanzlei E-18/E-22/E-30, DSFA E-26, Betriebsvereinbarung E-19/E-28. Wiedervorlage vor jedem Pilot mit echten Beschäftigtendaten und vor E-23.
 
 **Wartet**
-- 2FA-Einrichtung (F.6) bis zum Release-Stand, zuerst auf Staging.
-- Gerätetests Runde 1 und 2, Geo E-4: bis B1 gelöst ist und ein Teststand läuft.
-- Produktions-Deploy E-23 samt E-11 bis E-14 (nicht Gegenstand von F.1 bis F.8) und Pilot E-24: nach allen Blockern.
+- 2FA-Einrichtung (F.6) bis zum Release-Stand und bis Stufe 1 bis 3 (Zugang, Backup, Rotation) stehen; zuerst auf Staging.
+- Gerätetests Runde 1 und 2, Geo E-4: bis der Tunnel läuft und ein Teststand läuft; Smartphone-Tests angemeldet nicht über den Tunnel möglich.
+- Produktions-Deploy E-23 samt E-11 bis E-14 (nicht Gegenstand von F.1 bis F.8) und Pilot E-24: nach allen Blockern. Die Freigabegates E-17/E-18/E-22/E-32 sind nicht erledigt.
 - Intelligence (E-25 bis E-28): bis zur Anbieterentscheidung; Gateway ist Attrappe.
-- Mail/Push-Zustelltests: nach Konto und DNS.
+- Mail/Push-Zustelltests: nach IONOS-Postfach-Klärung, SMTP-Adapter und DNS.
 
 **Quellenabweichungen und veraltete Stellen**
 1. Platzhalterformat: `[BEISPIEL-…]` auf diesem Branch, `[ZU_KLAEREN: …]` im Branch `legal/compliance-v1`.
