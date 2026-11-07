@@ -215,7 +215,8 @@ describe("SI-P1: Liste", () => {
     expect(vorher.daten.schluessel[0].verwaist).toBe(false);
     expect(JSON.stringify(vorher.daten), "kein Klartext, kein Hashwert in der Liste").not.toContain(b.sk);
 
-    await Z.A.mitgliedschaftEntziehen(Z.laden(), b.k.id, b.raum);
+    /* Herabstufung: kein Widerrufsereignis des Kontos, also der Weg über die Prüfung (lazy). */
+    await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
     const nachher = await liste(c.token);
     expect(nachher.daten.schluessel[0].verwaist, "Ersteller nicht mehr gültig").toBe(true);
   }, LIMIT);
@@ -314,7 +315,7 @@ describe("Review-Befund 1: ein widerrufener Schlüssel lebt nicht wieder auf", (
   it("die Liste zeigt einen eindeutig verwaisten Schlüssel ein letztes Mal und räumt ihn dann ab", async () => {
     const b = await kontoMitSchluessel("sk-liste-raeumt");
     const c = await codeLeitung(b.raum);
-    await Z.A.mitgliedschaftEntziehen(Z.laden(), b.k.id, b.raum);
+    await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
     const erst = await liste(c.token);
     expect(erst.daten.schluessel).toHaveLength(1);
     expect(erst.daten.schluessel[0].verwaist).toBe(true);
@@ -339,7 +340,11 @@ describe("Review-Befund 1: ein widerrufener Schlüssel lebt nicht wieder auf", (
     const b = await kontoMitSchluessel("sk-liste-wieder");
     const c = await codeLeitung(b.raum);
     await Z.A.accountSperren(Z.laden(), b.k.id);
-    expect((await liste(c.token)).daten.schluessel[0].verwaist).toBe(true);
+    /* Die Sperre widerruft sofort (Widerrufsvermerk): Die Liste führt ihn unter den widerrufenen, nicht unter den aktiven. */
+    const l = await liste(c.token);
+    expect(l.daten.schluessel).toHaveLength(0);
+    expect(l.daten.widerrufen).toHaveLength(1);
+    expect(l.daten.widerrufen[0].grund).toBe("konto-gesperrt");
     await Z.A.accountAendern(Z.laden(), b.k.id, { status: "aktiv" });
     expect((await vollausgabe(b.sk)).status).toBe(401);
   }, LIMIT);

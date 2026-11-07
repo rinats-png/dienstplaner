@@ -57,6 +57,16 @@ import { mailNormieren, mailBrauchbar } from "./adressen.mjs";
 import { neuHash, altHash } from "./codes.mjs";
 import { RANG } from "./rollenvergabe.mjs";
 import { herkunftsloseFeedsWiderrufen } from "./feedwiderruf.mjs";
+import { schluesselDesKontos, schluesselWiderrufenWenn } from "./sicherungsschluessel.mjs";
+
+/** Sicherungsschlüssel eines Kontos endgültig widerrufen (SI-P1). Ein Fehler lässt den Anlass nicht scheitern: Die
+    Prüfung beim Gebrauch widerruft ohnehin. Das Ergebnis steht in der Antwort, damit ein Fehler nicht unsichtbar bleibt. */
+async function schluesselDesKontosWiderrufen(accountId, grund, raum = null) {
+  try {
+    const kontoGleich = schluesselDesKontos(accountId);
+    return await schluesselWiderrufenWenn((sk) => kontoGleich(sk) && (raum === null || sk.bestand === raum), grund);
+  } catch { return { widerrufen: 0, fehler: 1 }; }
+}
 
 /* --------------------------------------------------------------------------
    SCHLÜSSEL
@@ -521,12 +531,20 @@ export async function accountAendern(store, accountId, felder) {
 export async function passwortSetzen(store, accountId, prueftext) {
   const a = await accountLesenPerId(store, accountId);
   if (!a) return { ok: false, grund: "unbekannt" };
-  return accountAendern(store, accountId, {
+  const erg = await accountAendern(store, accountId, {
     passwort: prueftext,
     passwortGeaendert: jetztISO(),
     epoche: (Number(a.epoche) || 1) + 1,
     ...(a.status === "eingeladen" ? { status: "aktiv" } : {}),
   });
+  /* SI-P1: Eine ÄNDERUNG des Passworts (es gab schon eins) beendet die Sicherungsschlüssel des Kontos dauerhaft.
+     Das erste Passwort ändert nichts: Es gibt noch keine Schlüssel. Vor der Änderung muss die Warnung erscheinen
+     (sicherungsschluessel.mjs, SK_WARNUNG_PASSWORT, schluesselDesKontosZaehlen). */
+  if (erg && erg.ok && a.passwort) {
+    const sk = await schluesselDesKontosWiderrufen(accountId, "passwort-geaendert");
+    return { ...erg, sicherungsschluessel: sk };
+  }
+  return erg;
 }
 
 /** Die Adresse ist als erreichbar bestätigt. */
@@ -541,7 +559,10 @@ export async function emailBestaetigen(store, accountId) {
 export async function epocheErhoehen(store, accountId) {
   const a = await accountLesenPerId(store, accountId);
   if (!a) return { ok: false, grund: "unbekannt" };
-  return accountAendern(store, accountId, { epoche: (Number(a.epoche) || 1) + 1 });
+  const erg = await accountAendern(store, accountId, { epoche: (Number(a.epoche) || 1) + 1 });
+  /* SI-P1: Ein Sicherheitsreset beendet die Sicherungsschlüssel des Kontos dauerhaft (wie eine Passwortänderung). */
+  if (erg && erg.ok) return { ...erg, sicherungsschluessel: await schluesselDesKontosWiderrufen(accountId, "sicherheitsreset") };
+  return erg;
 }
 
 /**
@@ -615,6 +636,8 @@ export async function testbetriebOeffnen(store, accountId) {
 export async function accountSperren(store, accountId) {
   const erg = await accountAendern(store, accountId, { status: "gesperrt" });
   if (erg && erg.ok) {
+    /* SI-P1: Die Sperre beendet die Sicherungsschlüssel dieses Kontos dauerhaft; eine spätere Entsperrung belebt sie nicht. */
+    await schluesselDesKontosWiderrufen(accountId, "konto-gesperrt");
     try {
       const bindungen = (await mitgliedschaftenDesAccounts(store, accountId))
         .filter((m) => m && m.person !== null && m.person !== undefined && typeof m.mandantId === "string")
@@ -1061,6 +1084,10 @@ export const mitgliedschaftAktivieren = (store, accountId, raum) =>
   statusSetzen(store, accountId, raum, "aktiv", { aktiviertAm: jetztISO() });
 
 /** Eingeladen oder aktiv → entzogen. Der Datensatz bleibt. */
-export const mitgliedschaftEntziehen = (store, accountId, raum) =>
-  statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
+export const mitgliedschaftEntziehen = async (store, accountId, raum) => {
+  const erg = await statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
     { laufWeiterZaehlen: true });
+  /* SI-P1: Mit der Mitgliedschaft enden die Sicherungsschlüssel, die dieses Konto für diesen Raum angelegt hat. */
+  if (erg && erg.ok) await schluesselDesKontosWiderrufen(accountId, "ersteller-berechtigung", raum);
+  return erg;
+};

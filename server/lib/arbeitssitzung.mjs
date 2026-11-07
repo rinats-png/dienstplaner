@@ -8,7 +8,8 @@ import { bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant, wirksameRolle } from "./rechte.mjs";
 import { kontoLesenStreng } from "./konten.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
-import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsschluesselEntfernen } from "./sitzungen.mjs";
+import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsSchluessel } from "./sitzungen.mjs";
+import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sicherungsschluessel.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -180,7 +181,8 @@ export const HERKUNFT_KONTO = "account";
  *   gelesene Sitzung und gibt einen schon gelesenen Bestand zurück, damit er
  *   nicht zweimal gelesen wird.
  * @returns {Promise<{sitzung: any, abgewiesen: boolean, grund: (string|null),
- *   mitMerkmal: boolean}>}
+ *   mitMerkmal: boolean, widerruf?: {grund: string, am: string, text: string}}>}
+ *   `widerruf` nur bei einem widerrufenen Sicherungsschlüssel (SI-P1), für die erkennbare Absage.
  */
 export async function arbeitssitzungLesen(req,
   { store = null, sicherungsschluessel = false, bestandLader = null } = {}) {
@@ -189,7 +191,16 @@ export async function arbeitssitzungLesen(req,
   if (!merkmal) return keine();
 
   const s0 = await sitzungLesen(req);
-  if (!s0) return keine();
+  if (!s0) {
+    /* SI-P1: Ein widerrufener Sicherungsschlüssel bekommt eine erkennbare Absage statt des stummen „unbekannt",
+       damit eine Sicherungsautomatisierung nicht ohne Fehlermeldung ausfällt. Gefunden wird der Vermerk nur über den
+       richtigen Schlüssel; einem Außenstehenden verrät das nichts. Nur auf dem Pfad, der Schlüssel annimmt. */
+    if (sicherungsschluessel) {
+      const v = await widerrufsVermerk(merkmal).catch(() => null);
+      if (v) return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: "sk-widerrufen", widerruf: v };
+    }
+    return keine();
+  }
   if (s0.nurSicherung && !sicherungsschluessel) return keine();
 
   const ablage = store || getStore({ name: "centric", consistency: "strong" });
@@ -198,10 +209,14 @@ export async function arbeitssitzungLesen(req,
   if (!fachlich.ok) {
     /* Ein Sicherungsschlüssel, dessen Betrieb nicht mehr stimmt (verschoben, Kennung weg), ist ebenfalls endgültig
        abgewiesen. Ein Lesefehler am Bestand (`bestand-fehler`) ist es nicht. */
-    if (s0.nurSicherung && merkmal && "grund" in fachlich && fachlich.grund !== "bestand-fehler")
-      await sicherungsschluesselEntfernen(merkmal);
+    let widerruf = null;
+    if (s0.nurSicherung && merkmal && "grund" in fachlich && fachlich.grund !== "bestand-fehler") {
+      const g = grundAusPruefung(fachlich.grund);
+      await schluesselWiderrufen(sicherungsSchluessel(merkmal), s0, g);
+      widerruf = await widerrufsVermerk(merkmal).catch(() => null);
+    }
     return { sitzung: null, abgewiesen: true, mitMerkmal: true,
-      grund: "grund" in fachlich ? fachlich.grund : "unbekannt" };
+      grund: "grund" in fachlich ? fachlich.grund : "unbekannt", ...(widerruf ? { widerruf } : {}) };
   }
   /* SI-P1: Ein Sicherungsschlüssel gilt nur, solange sein Ersteller noch die Leitung dieses Betriebs ist. */
   if (s0.nurSicherung) {
@@ -211,8 +226,12 @@ export async function arbeitssitzungLesen(req,
       /* Eine eindeutige Absage ist endgültig: Der Schlüssel wird entfernt und lebt nicht wieder auf, wenn der Zugang
          entsperrt, die Personalliste zurückgespielt oder die Person erneut eingetragen wird. Bei einem Lesefehler
          (nicht beurteilbar) bleibt er liegen. */
-      if (e.endgueltig && merkmal) await sicherungsschluesselEntfernen(merkmal);
-      return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund };
+      let widerruf = null;
+      if (e.endgueltig && merkmal) {
+        await schluesselWiderrufen(sicherungsSchluessel(merkmal), s0, grundAusPruefung(e.grund));
+        widerruf = await widerrufsVermerk(merkmal).catch(() => null);
+      }
+      return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund, ...(widerruf ? { widerruf } : {}) };
     }
   }
   return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };

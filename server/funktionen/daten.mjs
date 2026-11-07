@@ -24,6 +24,8 @@ import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenb
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen, sicherungsschluesselErsteller, sicherungsschluesselPruefen } from "../lib/arbeitssitzung.mjs";
+import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung,
+  schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
 import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
@@ -169,6 +171,17 @@ async function rumpfLesen(req) {
    neu an; wer ihn nicht hat, kommt hier nicht weiter. */
 const FRISCH = 20 * 60 * 1000;
 const frisch = (s) => !!(s && s.seit && Date.now() - s.seit < FRISCH);
+
+/** Aufträge gleichen Schlüssels laufen nacheinander (Sicherungsschlüssel: Zählen und Anlegen je Betrieb, SI-P1). */
+const skKetten = new Map();
+function skReihe(schluessel, auftrag) {
+  const vorher = skKetten.get(schluessel) || Promise.resolve();
+  const lauf = vorher.then(auftrag, auftrag);
+  const ende = lauf.catch(() => {});
+  skKetten.set(schluessel, ende);
+  ende.then(() => { if (skKetten.get(schluessel) === ende) skKetten.delete(schluessel); });
+  return lauf;
+}
 const neuAnmelden = () => antwort({ fehler: "Bitte neu anmelden.",
   text: "Für diesen Schritt muss die Anmeldung jünger als zwanzig Minuten sein.",
   neuAnmelden: true }, 403);
@@ -539,13 +552,8 @@ export default async (req, context) => {
          lebten sie wieder auf, wenn der Zugang entsperrt wird, bevor ein Schlüssel benutzt wurde. */
       let schluesselBeendet = 0;
       try {
-        const { blobs: skBlobs } = await sitzungen().list({ prefix: "sk:" });
-        for (const sb of skBlobs) {
-          const sk = await sitzungen().get(sb.key, { type: "json" }).catch(() => null);
-          if (sk && sk.ersteller && sk.ersteller.art === "code" && gesperrteHashes.has(sk.ersteller.konto)) {
-            await sitzungen().delete(sb.key); schluesselBeendet++;
-          }
-        }
+        schluesselBeendet = (await schluesselWiderrufenWenn(schluesselDerZugaenge(gesperrteHashes), "zugang-gesperrt",
+          { ablage: sitzungen() })).widerrufen;
       } catch { /* sie enden ohnehin beim nächsten Gebrauch (arbeitssitzungLesen) */ }
 
       await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen, ${schluesselBeendet} Sicherungsschlüssel beendet`);
@@ -931,6 +939,13 @@ export default async (req, context) => {
       if (lese.abgewiesen) {
         await protokoll("schreiben", kennung(req, null), "abgewiesen",
           `sitzung: ${String(lese.grund).slice(0, 24)}`);
+      }
+      /* SI-P1: Ein widerrufener Sicherungsschlüssel bekommt eine erkennbare Absage mit Grund, damit eine
+         Sicherungsautomatisierung nicht stumm ausfällt. Der Grund steht nie im Protokoll mit dem Schlüssel. */
+      if (lese.widerruf) {
+        return antwort({ fehler: "Sicherungsschlüssel widerrufen.", widerrufen: true,
+          grund: lese.widerruf.grund, seit: lese.widerruf.am,
+          text: `${lese.widerruf.text} Dieser Schlüssel gilt nie wieder. Bitte lege in der App einen neuen Sicherungsschlüssel an und trage ihn in der Sicherung ein.` }, 401);
       }
       return antwort({ fehler: "Nicht angemeldet." }, 401);
     }
@@ -2207,8 +2222,9 @@ export default async (req, context) => {
       if (!frisch(s)) return neuAnmelden();
       const { tage } = rumpf;
       /* Ein Schlüssel ohne Ablauf ist ein Schlüssel, der irgendwann in
-         einem alten Skript vergessen wird. Höchstens ein Jahr. */
-      const gueltig = Math.min(365, Math.max(1, Number(tage) || 90));
+         einem alten Skript vergessen wird. Standard 90 Tage; eine längere Laufzeit muss ausdrücklich gewählt werden
+         (`tage`), höchstens ein Jahr (Betreiberentscheidung 2026-11-07). Bestehende Schlüssel bleiben, wie sie sind. */
+      const gueltig = Math.min(SK_HOECHST_TAGE, Math.max(1, Math.floor(Number(tage)) || SK_STANDARD_TAGE));
       /* Seit Oktober 2026 an den Betrieb gebunden, nicht nur an den Raum. */
       const skMit = await bestandJetzt();
       const skOrt = skMit ? eigenerBetrieb(skMit.bestand, s) : null;
@@ -2219,6 +2235,35 @@ export default async (req, context) => {
       if (!skErsteller) return antwort({ fehler: "Bitte neu anmelden.",
         text: "Diese Anmeldung lässt sich keinem Zugang zuordnen. Mit einer neuen Anmeldung geht es.",
         neuAnmelden: true }, 403);
+      /* Höchstens SK_HOECHSTZAHL gleichzeitig aktive Schlüssel je Betrieb. Widerrufene und abgelaufene zählen nicht.
+         Bei Erreichen wird abgelehnt; es wird nichts automatisch gelöscht. Die Zählung und das Anlegen laufen je Betrieb
+         nacheinander, damit zwei gleichzeitige Anfragen die Grenze nicht gemeinsam überschreiten. */
+      return skReihe(`${s.bestand}|${skOrt.betrieb.id}`, async () => {
+      const skGehoert = (k) => !!k && k.bestand === s.bestand && k.mandantId === skOrt.betrieb.id;
+      let aktiv = 0;
+      try {
+        const { blobs: skAlle } = await sitzungen().list({ prefix: "sk:" });
+        for (const sb of skAlle) {
+          const k = await sitzungen().get(sb.key, { type: "json" }).catch(() => null);
+          if (!skGehoert(k) || !(Number(k.bis) >= Date.now())) continue;
+          let zaehlt = true;
+          try {
+            const pr = await sicherungsschluesselPruefen(store, k, { bestandLader: async () => skMit });
+            if (!pr.ok && pr.endgueltig) {
+              await schluesselWiderrufen(sb.key, k, grundAusPruefung(pr.grund), { ablage: sitzungen() });
+              zaehlt = false;
+            }
+          } catch { /* nicht beurteilbar: zählt mit (die Grenze gilt im Zweifel) */ }
+          if (zaehlt) aktiv++;
+        }
+      } catch {
+        return antwort({ fehler: "Die Schlüssel lassen sich gerade nicht zählen.", text: "Bitte versuche es gleich noch einmal." }, 503);
+      }
+      if (aktiv >= SK_HOECHSTZAHL) {
+        await protokoll("sicherungsschluessel", kennung(req, s), "abgewiesen", `anlegen: grenze ${SK_HOECHSTZAHL}`, wer);
+        return antwort({ fehler: "Es gibt schon fünf aktive Sicherungsschlüssel.", grenze: SK_HOECHSTZAHL, aktiv,
+          text: "Mehr als fünf gleichzeitig sind nicht möglich. Widerrufe einen Schlüssel, den du nicht mehr brauchst, und lege dann einen neuen an. Es wird nichts automatisch gelöscht." }, 409);
+      }
       const roh = randomBytes(24).toString("base64url");
       const bis = Date.now() + gueltig * 86400000;
       const skSatz = {
@@ -2239,8 +2284,10 @@ export default async (req, context) => {
       await sitzungen().setJSON(`sk:${hash(roh)}`, skSatz);
       await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`, wer);
       return antwort({ ok: true, schluessel: roh, gueltigBis: new Date(bis).toISOString(),
-        tage: gueltig,
-        hinweis: "Dieser Schlüssel erscheint genau einmal. Er darf ausschließlich lesen." });
+        tage: gueltig, standardTage: SK_STANDARD_TAGE, hoechstTage: SK_HOECHST_TAGE,
+        hinweis: "Dieser Schlüssel erscheint genau einmal. Er darf ausschließlich lesen.",
+        warnung: SK_WARNUNG_PASSWORT });
+      });
     }
 
     /* Auflisten und Widerrufen nur für den eigenen Betrieb. Bis Oktober 2026
@@ -2277,14 +2324,32 @@ export default async (req, context) => {
              zurückgespielt wird, bevor ihn jemand benutzt. Nur Schlüssel MIT Ersteller: Ein Altschlüssel ohne
              Ersteller kann nie wieder gelten, bei ihm gibt es nichts, was wieder aufleben könnte; er bleibt in der
              Liste, bis die Leitung ihn löscht oder er abläuft. */
-          if (!probe.ok && probe.endgueltig && k.ersteller !== undefined) await sitzungen().delete(b.key).catch(() => {});
+          if (!probe.ok && probe.endgueltig && k.ersteller !== undefined)
+            await schluesselWiderrufen(b.key, k, grundAusPruefung(probe.grund), { ablage: sitzungen() });
         } catch { verwaist = true; }
         liste.push({ kennung: b.key.slice(3, 11), angelegt: k.angelegt,
           ersteller: (k.ersteller && typeof k.ersteller.name === "string") ? k.ersteller.name : null,
           verwaist,
           gueltigBis: new Date(k.bis).toISOString(), abgelaufen: k.bis < Date.now() });
       }
-      return antwort({ schluessel: liste.sort((a, b) => (a.angelegt < b.angelegt ? 1 : -1)) });
+      /* Widerrufene Schlüssel bleiben bis zu ihrem ursprünglichen Ablauf in der Liste, mit Grund: Wer eine Sicherung
+         betreut, soll sehen, warum sie nicht mehr läuft. */
+      const widerrufen = [];
+      try {
+        const { blobs: vBlobs } = await sitzungen().list({ prefix: "skw:" });
+        for (const vb of vBlobs) {
+          const v = await sitzungen().get(vb.key, { type: "json" }).catch(() => null);
+          if (!v || v.bestand !== s.bestand || !gehoert({ bestand: v.bestand, mandantId: v.mandantId })) continue;
+          if (Number.isFinite(v.bis) && v.bis < Date.now()) { await sitzungen().delete(vb.key).catch(() => {}); continue; }
+          widerrufen.push({ kennung: vb.key.slice(4, 12), angelegt: v.angelegt, am: v.am,
+            ersteller: v.ersteller, grund: v.grund, text: widerrufText(v.grund) });
+        }
+      } catch { /* die Liste der aktiven Schlüssel gilt trotzdem */ }
+      const aktivZahl = liste.filter((e) => !e.verwaist && !e.abgelaufen).length;
+      return antwort({ schluessel: liste.sort((a, b) => (a.angelegt < b.angelegt ? 1 : -1)),
+        widerrufen: widerrufen.sort((a, b) => (String(a.am) < String(b.am) ? 1 : -1)),
+        aktiv: aktivZahl, grenze: SK_HOECHSTZAHL, standardTage: SK_STANDARD_TAGE, hoechstTage: SK_HOECHST_TAGE,
+        warnung: SK_WARNUNG_PASSWORT });
     }
 
     if (pfad === "sicherungsschluessel" && req.method === "DELETE") {
@@ -2301,7 +2366,8 @@ export default async (req, context) => {
         if (b.key.slice(3, 11) !== kz) continue;
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
         if (!gehoert(k)) continue;           // fremd: wie nicht gefunden
-        await sitzungen().delete(b.key); weg++;
+        /* Mit Vermerk: Die Sicherung, die ihn noch benutzt, bekommt eine erkennbare Absage, und er lebt nicht wieder auf. */
+        if (await schluesselWiderrufen(b.key, k, "von-der-leitung-widerrufen", { ablage: sitzungen() })) weg++;
       }
       await protokoll("sicherungsschluessel", kennung(req, s), "widerrufen", String(weg), wer);
       return antwort({ ok: true, widerrufen: weg });
