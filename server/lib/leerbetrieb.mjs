@@ -50,7 +50,7 @@ function ankerMontag(jetzt) {
  * @param {string} [o.laeuftAb] Ende des Testzeitraums
  * @param {boolean} [o.selbstAngelegt] nur der Selbstanlegeweg (/starten,
  *   Registrierung: provisionierung.mjs testbetriebAnlegen) setzt true. Betreiber-
- *   Vorlagen „leer“/„test“ nicht — sonst gälte ein Pilotbetrieb als Testraum
+ *   Vorlagen „leer“/„test“ nicht — sonst gälte ein vom Betreiber eingerichteter Kundenbetrieb als Testraum
  *   und bekäme keine Mail (SI-P3, lib/testraum.mjs).
  */
 export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb, selbstAngelegt = false }) {
