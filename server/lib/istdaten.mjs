@@ -104,7 +104,7 @@ export function zeitraumJahr(jahr) {
  */
 export const zurPruefung = (e) => !!e && e.bestaetigt === false
   && ((typeof e.grund === "string" && (e.grund.startsWith("LANGER_DIENST") || e.grund.startsWith("OFFLINE_PRUEFEN")
-    || e.grund.startsWith("DAUER_NULL") || e.grund.startsWith("ZEITUMSTELLUNG")))
+    || e.grund.startsWith("DAUER_NULL") || e.grund.startsWith("ZEITUMSTELLUNG") || e.grund.startsWith("PAUSE_ZU_LANG")))
     || e.ungeplant === true);
 
 /** Ein Dienst, der gestempelt wurde, ohne dass an diesem Tag einer geplant war (WP-13). */
@@ -160,7 +160,9 @@ export const bestaetigungsGrund = (e) => (istUngeplant(e)
   : e && typeof e.grund === "string" && e.grund.startsWith("OFFLINE_PRUEFEN")
     ? "Offline-Stempel geprüft und bestätigt"
     : e && typeof e.grund === "string" && e.grund.startsWith("ZEITUMSTELLUNG")
-      ? "Dienst in der Nacht der Zeitumstellung geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
+      ? "Dienst in der Nacht der Zeitumstellung geprüft und bestätigt"
+      : e && typeof e.grund === "string" && e.grund.startsWith("PAUSE_ZU_LANG")
+        ? "Dienst mit zu langer Pause geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
 
 /** Text zu einem bestätigten ungeplanten Dienst an einem Tag mit Abwesenheit (C1): er zählt dort nicht. */
 export const UNGEPLANT_ABWESEND_TEXT = "zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto";
@@ -248,7 +250,10 @@ export function istZeitFuer(m, p, d, da) {
   /* Nie negativ (WP-14b, M2): Altdaten mit einer Pause über der wirklichen Anwesenheit (Frühjahrsnacht)
      zählen 0 — eine negative Ist-Zeit zöge Konto, Zuschläge und Lohn ins Minus. */
   const std = Math.max(0, dauerAm(d, roh));
-  return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100 };
+  /* WP-14c (F2): Eine Pause über der Anwesenheit (negatives Ist, Altdaten) bleibt bei 0 h — aber nicht still:
+     Sie ist ein Prüffall (`zurPruefung`), Konto und Auswertung weisen darauf hin. */
+  return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100,
+    ...(dauerAm(d, roh) < 0 ? { zurPruefung: true, pauseUeberAnwesenheit: true } : {}) };
 }
 
 /**
@@ -275,3 +280,46 @@ export const IST_NICHT_VERFUEGBAR = Object.freeze({
 
 /** Anzeige einer Stundenzahl, die fehlen darf: null → „–" statt „0". */
 export const stundenText = (wert, format) => (wert === null || wert === undefined ? "–" : format(wert));
+
+/* --------------------------------------------------------------------------
+   WP-14c (F5, F7): gemessene Dauer und „überholter“ Antrag — eine Rechnung für Server und Oberfläche.
+   -------------------------------------------------------------------------- */
+
+/**
+ * Die gemessene Dauer eines Stempels in Minuten: Zeit zwischen den eindeutigen Zeitpunkten (startAm, endeAm).
+ * null, wenn einer fehlt oder das Ende vor dem Beginn liegt.
+ * @param {any} stempel  Eintrag aus m.einstempeln
+ * @returns {number|null}
+ */
+export function gemesseneDauerMin(stempel) {
+  if (!stempel || typeof stempel !== "object") return null;
+  const a = Date.parse(String(stempel.startAm)), b = Date.parse(String(stempel.endeAm));
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  return Math.round((b - a) / 60000);
+}
+
+/** „7:32 h“ — für die Stempelbefunde. */
+export function dauerMinText(min) {
+  if (!Number.isFinite(min) || min === null) return "";
+  return `${Math.floor(min / 60)}:${String(Math.round(min % 60)).padStart(2, "0")} h`;
+}
+
+/** Der vergleichbare Teil einer Ist-Zeit (WP-14b M5): Beginn, Ende, bestätigt, Pause — "null" ohne Ist-Zeit. */
+export const istStand = (e) => (e && typeof e === "object" && !Array.isArray(e)
+  ? JSON.stringify([e.start || null, e.ende || null, !!e.bestaetigt, e.pause !== undefined && e.pause !== null ? Number(e.pause) : null])
+  : "null");
+
+/**
+ * Ist ein Korrekturantrag überholt? Die Ist-Zeit hat sich seit dem Antrag geändert (direkte Korrektur,
+ * nachgereichtes Ende) — die Genehmigung würde diese Änderung überschreiben und der Server weist sie ab (409).
+ * @param {any} antrag
+ * @param {any} aktuelleErfassung  m.erfassung[Person|Tag]
+ */
+export const antragUeberholt = (antrag, aktuelleErfassung) => !!antrag && antrag.status === "offen"
+  && istStand(antrag.ist) !== istStand(aktuelleErfassung);
+
+/**
+ * Prüffälle, die sich nicht „wie gestempelt“ bestätigen lassen — die Leitung trägt die Zeiten über die Korrektur ein
+ * (Dauer 0, Zeitumstellung, Pause so lang wie die Anwesenheit).
+ */
+export const nurKorrekturGrund = (grund) => /^(DAUER_NULL|ZEITUMSTELLUNG|PAUSE_ZU_LANG)/.test(String(grund || ""));

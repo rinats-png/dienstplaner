@@ -1,6 +1,6 @@
 import { Component, Fragment, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import * as SP from "./speicher.js";
-import { ISTDATEN_TEXT, exportWarnung, istUngeplant, bestaetigungsGrund } from "./istdaten.js";
+import { ISTDATEN_TEXT, exportWarnung, istUngeplant, bestaetigungsGrund, nurKorrekturGrund } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, MARKIERUNG_TEXT, stempelSchluessel, koordMitGrund } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE } from "../server/lib/geo.mjs";
@@ -10601,7 +10601,7 @@ function AppInnen() {
       langerDienstBestaetigen: (pid, d) => {
         const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
         /* Dauer 0 nie unverändert bestätigen (Nachprüfung B1). */
-        if (!e || /^(DAUER_NULL|ZEITUMSTELLUNG)/.test(String(e.grund || ""))) return;      // WP-14b: Herbstnacht ebenso
+        if (!e || nurKorrekturGrund(e.grund)) return;      // WP-14b: Herbstnacht ebenso
         return akt.stempelKorrigieren(pid, d, e.start, e.ende, bestaetigungsGrund(e));
       },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {

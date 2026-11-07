@@ -58,7 +58,8 @@ const antragFest = (x) => (objekt(x) ? { id: x.id, von: x.von, gestellt: x.geste
 
 import { stichtage, aufbewahrungFehler, STANDORT_FELDER } from "./aufbewahrung.mjs";
 import { geplanterDienst, BEGINN_GLEICH_ENDE } from "./zeiterfassung.mjs";
-import { regelHinweise, pauseZuLang } from "./zeitregeln.mjs";
+import { regelHinweise, pauseZuLang, uhrDauerAbweichend } from "./zeitregeln.mjs";
+import { gemesseneDauerMin, dauerMinText } from "./istdaten.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -372,20 +373,30 @@ export function pauseFuerKorrektur(m, personId, datum, genannt) {
  * F3 (WP-14b): Ein ZEITUMSTELLUNG-Prüffall lässt sich nicht mit denselben Uhrzeiten bestätigen — gilt für
  * Direktkorrektur, Genehmigung und schon für den Antrag (sonst bliebe er hängen).
  * @param {any} alt  aktuelle Erfassung des Tages
- * @returns {{status: number, grund: string} | null}
+ * @returns {{status: number, grund: string, ausnahmeMoeglich?: boolean} | null}
  */
-export function zeitumstellungSperre(alt, start, ende) {
-  if (objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG")
-      && alt.start === start && alt.ende === ende)
-    return { status: 422, grund: "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
-      + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben." };
+export function zeitumstellungSperre(alt, start, ende, stempel, datum) {
+  if (!(objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG"))) return null;
+  const grund = "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
+    + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben.";
+  if (alt.start === start && alt.ende === ende) return { status: 422, grund };
+  /* WP-14c (F4): Auch eine um wenige Minuten verschobene Eingabe (02:30–02:21 zählte 23:51 h) löst den Fall nicht:
+     Die Uhrzeiten müssen zur gemessenen Dauer des Stempels passen (Abweichung höchstens UHR_ABWEICHUNG_MINUTEN).
+     Fehlen die eindeutigen Zeitpunkte (Altstempel), lässt sich nichts messen — dann gilt nur die Sperre gegen
+     dieselben Uhrzeiten (sonst gäbe es für solche Fälle keinen Ausweg). */
+  const gemessen = gemesseneDauerMin(stempel);
+  /* Review: Die Sperre darf eine berechtigte Korrektur nicht unmöglich machen (Nachtdienst über die Umstellung: die wahre Zeit
+     passt nicht zur Uhrzeit-Dauer). Darum nur Hinweis mit Ausnahme: die Leitung (org.edit) bestätigt ausdrücklich
+     (zeitumstellungAusnahme) — der Grund ist ohnehin Pflicht, das Ereignis und die Spur tragen den Vermerk. */
+  if (gemessen !== null && TAG.test(String(datum || "")) && uhrDauerAbweichend(datum, start, ende, gemessen))
+    return { status: 422, ausnahmeMoeglich: true, grund: `${grund} Gestempelt wurden ${dauerMinText(gemessen)}. Entspricht die Eingabe wirklich der Arbeitszeit, bestätigt die Leitung die Ausnahme ausdrücklich (zeitumstellungAusnahme).` };
   return null;
 }
 
 /**
  * Eine Korrektur prüfen und als Ereignis anhängen.
  * @param {object} m  gespeicherter Betrieb
- * @param {{personId: string, datum: string, start: string, ende: string, grund: string, pause?: number}} k
+ * @param {{personId: string, datum: string, start: string, ende: string, grund: string, pause?: number, zeitumstellungAusnahme?: boolean, zeitumstellungGrund?: string}} k
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
  * @param {string} id
@@ -430,8 +441,17 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     return { status: 409, grund: "Diese Zeit ist schon so bestätigt — nichts zu korrigieren." };
   /* WP-14b (M2): Ein Stempel aus der Herbstnacht, dessen Uhrzeiten nicht zur gemessenen Dauer passen, lässt
      sich nicht „wie gestempelt" bestätigen — dieselben Uhrzeiten ergäben wieder die falsche Dauer. */
-  const umstellung = zeitumstellungSperre(alt, start, ende);
-  if (umstellung) return umstellung;
+  const umstellung = zeitumstellungSperre(alt, start, ende, stempel, datum);
+  const umstellungAusnahme = !!umstellung && umstellung.ausnahmeMoeglich === true && !!k && k.zeitumstellungAusnahme === true;
+  if (umstellung && !umstellungAusnahme) return umstellung;
+  if (umstellungAusnahme) {
+    /* Die Ausnahme braucht einen eigenen Grund und gilt nie für die eigene Zeit (Vier-Augen). */
+    const zg = typeof k.zeitumstellungGrund === "string" ? k.zeitumstellungGrund.trim() : "";
+    if (zg.length < 10 || zg.length > KORREKTUR_GRUND_MAX)
+      return { status: 422, grund: "Die Ausnahme in der Nacht der Zeitumstellung braucht einen eigenen Grund (zeitumstellungGrund, mindestens 10 Zeichen)." };
+    if (wer && wer.personId !== undefined && wer.personId !== null && String(wer.personId) === String(personId))
+      return { status: 422, grund: "Die Ausnahme von der Zeitumstellungs-Sperre gilt nicht für die eigene Zeit — das bestätigt eine andere Person der Leitung." };
+  }
 
   /** @type {any} */
   const ereignis = {
@@ -449,6 +469,7 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     /* N2 (WP-14b): Die handelnde Person korrigiert bzw. genehmigt die eigene Zeit. Nur ein Kennzeichen —
        ob das ohne zweite Person zulässig ist (Vier-Augen), ist eine offene Entscheidung; das Recht bleibt. */
     ...(wer && wer.personId !== undefined && wer.personId !== null && String(wer.personId) === String(personId) ? { selbstfreigabe: true } : {}),
+    ...(umstellungAusnahme ? { zeitumstellungAusnahme: true, zeitumstellungGrund: String(k.zeitumstellungGrund).trim() } : {}),
   };
   /* Die gültige Pause: die genannte, sonst die zuletzt erfasste, sonst die der geplanten Dienstart. */
   const gueltigePause = pauseFuerKorrektur(m, personId, datum, pauseGegeben ? pause : undefined);

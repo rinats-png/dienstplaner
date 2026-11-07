@@ -163,6 +163,9 @@ export function abschlussRecht(rolle, aktion) {
   if (aktion === "wiederoeffnen") return darf(rolle, "org.edit");
   /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): wie das Wiederöffnen — org.edit. */
   if (aktion === "lohnexport") return darf(rolle, "org.edit");
+  /* Korrekturrevision nach bestätigtem Lohnexport (WP-16c): beginnen und (als zweite Person) freigeben nur Leitung und
+     Probierraum (org.edit); den Abschluss der Revision macht wie bisher staff.edit. */
+  if (aktion === "korrektur-beginnen" || aktion === "korrektur-freigeben" || aktion === "korrektur-verwerfen") return darf(rolle, "org.edit");
   return false;
 }
 

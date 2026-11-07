@@ -30,9 +30,10 @@ import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { selbstauskunftStellen, selbstauskunftEntscheiden } from "../lib/selbstauskunft.mjs";
-import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, abgewiesenVermerken, letzteWiederoeffnung,
-  monatAbgeschlossen, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
-import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.mjs";
+import { schreibKontext } from "../lib/schreibkontext.mjs";
+import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, korrekturVerwerfen, abgewiesenVermerken, letzteWiederoeffnung,
+  monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur } from "../lib/monatsabschluss.mjs";
+import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -100,6 +101,9 @@ const STEMPEL_WIEDERHOLUNGEN = 3;
    Abmelden oder Benutzerwechsel am selben Gerät kein Stempel der einen
    Person unter der Sitzung einer anderen hinaus. Der Betrieb zählt mit
    seiner Kennung (mandantId), nicht mit seiner Position (Review L5). */
+/** Die Felder des Rumpfs von POST /api/monatsabschluss, die die Funktionen in lib/monatsabschluss.mjs lesen dürfen. */
+const MONATSABSCHLUSS_RUMPF = Object.freeze(["monat", "grund", "anlass", "trotzPrueffaellen", "abdruck", "zeilen", "stand", "revision",
+  "trotzVormonat", "vormonatKategorie", "vormonatGrund", "differenz"]);
 const stempelInhaber = (s) => (s.person === null || s.person === undefined) ? null : createHash("sha256")
   .update(`centric-stempel|${s.bestand}|${s.mandantId ?? s.betrieb}|${s.person}`).digest("hex").slice(0, 32);
 
@@ -920,6 +924,8 @@ export default async (req, context) => {
 
     /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
        beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */
+    /* Wer schreibt? Für den gemeinsamen Schreibpunkt (bestand.mjs): Mitwirkende an einer offenen Korrekturrevision (WP-16c). */
+    schreibKontext.enterWith({ person: s.person ?? null });
     const wer = { rolle: s.rolle, person: s.person, weg: pfad,
       verfahren: req.method, herkunft: herkunft(req), mandantId: s.mandantId || null };
 
@@ -1080,8 +1086,10 @@ export default async (req, context) => {
         for (const [id, gesendet] of gesendetNachId) {
           const w = stempelWiderspruch(altNachId.get(id) || null, gesendet, stempelO);
           if (w) {
-            await protokoll("schreiben", ks, "abgewiesen",
-              `Stempel-Integrität${w.schluessel ? ` ${w.schluessel}` : ""}: ${w.grund}`, wer);
+            /* WP-16b: Der Schlüssel (Person|Tag) steht nicht im Text der Spur; der Tag steht im eigenen Feld (nur
+               Auskunft nach Art. 15), die Betreiber-Lage zeigt ihn nicht (spurFuerBetreiber). */
+            const tagS = typeof w.schluessel === "string" ? (w.schluessel.split("|")[1] || "") : "";
+            await protokoll("schreiben", ks, "abgewiesen", `Stempel-Integrität: ${w.grund}`, { ...wer, tag: tagS });
             return antwort({ fehler: "Keine Schreibberechtigung.", code: "STEMPEL_UNVERAENDERLICH",
               text: w.grund }, 403);
           }
@@ -1602,8 +1610,15 @@ export default async (req, context) => {
           }
           if (pauseMin !== undefined) neu.pause = pauseMin;
           const planDa = (m.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(m, person, String(datum))));
+          /* WP-14c (F2): Die wirksame Pause (angegeben, sonst die der Dienstart) erreicht die Anwesenheit — 06:00–06:40
+             mit 60 min Pause zählte 0 h und galt als bestätigt. Jetzt ein Prüffall (nie automatisch bestätigt); die
+             Leitung trägt die Zeiten samt Pause über die Korrektur ein. */
+          const wirksamePauseSt = pauseMin !== undefined ? pauseMin : (planDa && Number(planDa.pause)) || 0;
+          const pauseZuLangSt = mitErfassung && !dauerNull && !uhrAbweichend && !!alt.start && wirksamePauseSt > 0
+            && pauseZuLang(alt.start, zeit, wirksamePauseSt, String(datum));
+          if (pauseZuLangSt) markieren("PAUSE_ZU_LANG");
           /* Keine Hinweise aus Uhrzeiten, die die Dauer nicht wiedergeben (Dauer 0, Herbstnacht — WP-14b M2). */
-          const hinweise = mitErfassung && !dauerNull && !uhrAbweichend && alt.start
+          const hinweise = mitErfassung && !dauerNull && !uhrAbweichend && !pauseZuLangSt && alt.start
             ? regelHinweise(m, person.id, String(datum), { start: alt.start, ende: zeit,
               pause: pauseMin !== undefined ? pauseMin : (planDa && Number(planDa.pause)) || 0 }) : [];
           if (pauseMin !== undefined && hinweise.some((x) => x.code === "PAUSE")) markieren("PAUSE_ZU_KURZ");
@@ -1655,6 +1670,9 @@ export default async (req, context) => {
                 : uhrAbweichend
                 ? { start: neu.start, ende: zeit, bestaetigt: false, ...(ungeplant ? { ungeplant: true } : {}),
                   grund: `ZEITUMSTELLUNG: ${Math.round(dauerMin / 6) / 10} Stunden gemessen, die Uhrzeiten ergeben eine andere Dauer — Zeiten bitte über die Korrektur eintragen` }
+                : pauseZuLangSt
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ...(ungeplant ? { ungeplant: true } : {}),
+                  grund: `PAUSE_ZU_LANG: Pause ${wirksamePauseSt} min bei ${Math.round(dauerMin)} min Anwesenheit — Zeiten und Pause bitte über die Korrektur eintragen` }
                 : ungeplant
                 ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
                   grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }
@@ -1738,7 +1756,10 @@ export default async (req, context) => {
           await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: Monat abgeschlossen ${sperreK.monat}`, wer);
           return antwort({ fehler: sperreK.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreK.monat }, 409);
         }
-        const r = korrekturAnhaengen(mK, rumpf || {}, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
+        /* WP-14c/Review: Die Ausnahme von der Zeitumstellungs-Sperre (zeitumstellungAusnahme) gilt nur für die Leitung (org.edit). */
+        const rumpfK = { ...(rumpf || {}) };
+        if (!darf(s.rolle, "org.edit")) delete rumpfK.zeitumstellungAusnahme;
+        const r = korrekturAnhaengen(mK, rumpfK, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
           new Date(), `k-${randomBytes(6).toString("hex")}`, { nachWiederoeffnung: letzteWiederoeffnung(mK, String((rumpf && rumpf.datum) || "")) });
         if ("status" in r) {
           await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${spurGrund(r.grund)}`, wer);
@@ -1755,7 +1776,7 @@ export default async (req, context) => {
            Tag, keine Ist-Zeiten und keine Schutzkennungen (Art. 9) — nur die Kennung des Ereignisses und die Zahl der
            Hinweise. Was geändert wurde, steht am Stempel (Ereignis mit vorher/nachher, Hinweisen, wer, wann). */
         await protokoll("schreiben", kK, "erfolg",
-          `Stempelkorrektur ${r.ereignis.id}${r.ereignis.selbstfreigabe ? " · Selbstfreigabe" : ""}${spurHinweise(r.hinweise)}`, wer);
+          `Stempelkorrektur ${r.ereignis.id}${r.ereignis.selbstfreigabe ? " · Selbstfreigabe" : ""}${r.ereignis.zeitumstellungAusnahme ? " · Zeitumstellung bestätigt" : ""}${spurHinweise(r.hinweise)}`, wer);
         return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, hinweise: r.hinweise, etag: ergK.stand || null });
       });
     }
@@ -1863,15 +1884,17 @@ export default async (req, context) => {
     if (pfad === "monatsabschluss" && req.method === "POST") {
       const kM = kennung(req, s);
       const aktionM = rumpf && rumpf.aktion;
-      if (aktionM !== "abschliessen" && aktionM !== "wiederoeffnen" && aktionM !== "lohnexport")
-        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen oder lohnexport." }, 400);
+      if (!["abschliessen", "wiederoeffnen", "lohnexport", "korrektur-beginnen", "korrektur-freigeben", "korrektur-verwerfen"].includes(aktionM))
+        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen, lohnexport, korrektur-beginnen, korrektur-freigeben oder korrektur-verwerfen." }, 400);
       /* Nur ein gültiger Monat JJJJ-MM kommt in die Spur (WP-16, Nachtrag N2) — nie Freitext aus dem Rumpf. */
       const monatM = (rumpf && typeof rumpf.monat === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(rumpf.monat)) ? rumpf.monat : "ungültig";
       if (!abschlussRecht(s.rolle, aktionM)) {
         await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM} · Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionM === "abschliessen"
           ? "Monate schließen Leitung und Planung ab."
-          : aktionM === "lohnexport" ? "Den Lohnexport bestätigt nur die Leitung." : "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." }, 403);
+          : aktionM === "lohnexport" ? "Den Lohnexport bestätigt nur die Leitung."
+            : aktionM.startsWith("korrektur-") ? "Eine Korrektur nach dem Lohnexport beginnt und gibt nur die Leitung frei."
+              : "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." }, 403);
       }
       const bM = await bremse("schreiben", kM);
       if (!bM.frei) return zuVielAntwort(bM.wartet);
@@ -1881,15 +1904,22 @@ export default async (req, context) => {
         const mM = eigenerMandant(mitM.bestand, s);
         if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
         const werM = { personId: s.person ?? null, name: s.name || null, rolle: s.rolle };
+        /* Positivliste (WP-16c, Review): nur diese Felder des Rumpfes erreichen die Monatsabschluss-Funktionen; interne Schalter
+           (etwa die Vorschau der Freigabe) lassen sich von außen nicht setzen. */
+        const rumpfM = {};
+        for (const f of MONATSABSCHLUSS_RUMPF) if (rumpf && Object.prototype.hasOwnProperty.call(rumpf, f)) rumpfM[f] = rumpf[f];
         const idM = `ma-${randomBytes(6).toString("hex")}`;
         const r = aktionM === "abschliessen"
-          ? abschliessen(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
-          : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpf || {}, werM, new Date(), idM)
-            : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
+          ? abschliessen(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
+          : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpfM, werM, new Date(), idM)
+            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(mM, rumpfM, werM, new Date(), idM)
+              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
+                : aktionM === "korrektur-verwerfen" ? korrekturVerwerfen(mM, rumpfM, werM, new Date(), idM)
+                : wiederoeffnen(mM, rumpfM, werM, new Date(), idM);
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),
-            ...(r.vormonate ? { vormonate: r.vormonate } : {}) }, r.status);
+            ...(r.vormonate ? { vormonate: r.vormonate } : {}), ...(r.differenz ? { differenz: r.differenz } : {}) }, r.status);
         }
         const ergM = await bestandSchreiben(store, s.bestand,
           { ...mitM.bestand, mandanten: mitM.bestand.mandanten.map((x) => (x === mM ? r.mandant : x)) },
@@ -1901,12 +1931,16 @@ export default async (req, context) => {
         /* WP-14b (M1): Die Spur liest der Betreiber — nur Monat, Ausgang, Kennung und Zahlen; der Grund (Freitext)
            steht im Verlauf am Monat, nicht in der Spur. */
         await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
-          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
+          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.revision > 1 ? ` · Revision ${r.ereignis.revision}` : ""}${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
           : aktionM === "lohnexport" ? `Monatsabschluss ${monatM} Lohnexport bestätigt ${r.ereignis.id} · Revision ${r.ereignis.revision}`
             /* Überstimmung offener/geänderter Vormonate (WP-16, Nachtrag vierter Review A-1): nur die Kategorie aus der festen Liste. */
             + (r.ereignis.trotzVormonat ? ` · trotz Vormonat (${r.ereignis.trotzVormonat.kategorie})` : "")
-            : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
-        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null });
+            : aktionM === "korrektur-beginnen" ? `Monatsabschluss ${monatM} Korrektur begonnen ${r.ereignis.id} · Revision ${r.ereignis.revision} · Grund im Verlauf`
+              : aktionM === "korrektur-freigeben" ? `Monatsabschluss ${monatM} Korrektur freigegeben ${r.ereignis.id} · ${r.ereignis.n} Zeilen`
+                : aktionM === "korrektur-verwerfen" ? `Monatsabschluss ${monatM} Korrektur verworfen ${r.ereignis.id} · Grund im Verlauf`
+                : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
+        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null,
+          ...(r.differenz ? { differenz: r.differenz } : {}) });
       });
     }
 
@@ -1949,6 +1983,11 @@ export default async (req, context) => {
         if (sperreZ) {
           await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: Monat abgeschlossen ${sperreZ.monat}`, wer);
           return antwort({ fehler: sperreZ.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreZ.monat }, 409);
+        }
+        /* Offene Korrekturrevision (WP-16c): keine Selbstauskunft, die still Ist ändert — erst nach der Korrektur. */
+        if (korrekturOffen(mZ, String(datum ?? ""))) {
+          await protokoll("schreiben", kZ, "abgewiesen", "Zeit bestätigen: Korrektur offen", wer);
+          return antwort({ fehler: "Für diesen Monat läuft eine Korrektur nach dem Lohnexport. Zeiten bestätigt jetzt die Leitung.", code: "KORREKTUR_OFFEN" }, 409);
         }
         /* WP-15: Die Selbstauskunft ist ein ANTRAG (lib/selbstauskunft.mjs): Abweichung und Stempelabgleich
            rechnet der Server; Ist wird sie erst durch die Freigabe (POST /api/selbstauskunft-entscheiden). */
@@ -2312,6 +2351,11 @@ export default async (req, context) => {
             text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
             etag: jetztGelesen.stand }, 409);
 
+        /* Offene Korrekturrevision (WP-16c): kein Zurückspielen, das Ist und Abschlüsse still verändert. */
+        if ((jetztGelesen.bestand.mandanten || []).some(hatOffeneKorrektur)) {
+          await protokoll("schreiben", kW, "abgewiesen", "Wiederherstellen: Korrektur offen", wer);
+          return antwort({ fehler: "Es läuft eine Korrektur nach dem Lohnexport. Wiederherstellen ist erst nach ihrem Abschluss möglich.", code: "KORREKTUR_OFFEN" }, 409);
+        }
         const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
         if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
         const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);

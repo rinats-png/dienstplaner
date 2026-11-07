@@ -261,11 +261,25 @@ const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
  * und — mit `grundStichtag` (Frist der Gründe) — alle,
  * deren Tag davor liegt. Unverändert: dasselbe Objekt.
  * @param {any} w  m.monatsabschluss
- * @param {{personen?: any[], grundStichtag?: string|null}} o
+ * @param {{personen?: any[], grundStichtag?: string|null, planStichtag?: string|null}} o
  * @returns {{wert: any, entfernt: number}}
  */
-export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null } = {}) {
+export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null, planStichtag = null } = {}) {
   if (!istObjekt(w)) return { wert: w, entfernt: 0 };
+  /* Abgelegte Revisionen (WP-16c) tragen die ausgegebenen Lohnzeilen je Personalnummer — personenbezogene Stunden.
+     Sie gehen mit dem eingefrorenen Ist des Monats (Plandatenfrist); Kennung, Prüfsumme, Zeitpunkt und Berechtigte bleiben. */
+  let revisionenGeraeumt = 0;
+  if (planStichtag) {
+    const neu = {};
+    for (const [mon, e] of Object.entries(w)) {
+      const abgelaufen = /^\d{4}-(0[1-9]|1[0-2])$/.test(mon) && `${mon}-31` < planStichtag;
+      if (!abgelaufen || !istObjekt(e) || !Array.isArray(e.revisionen) || !e.revisionen.some((r) => istObjekt(r) && Array.isArray(r.zeilen))) { neu[mon] = e; continue; }
+      revisionenGeraeumt += e.revisionen.filter((r) => istObjekt(r) && Array.isArray(r.zeilen)).length;
+      neu[mon] = { ...e, revisionen: e.revisionen.map((r) => { if (!istObjekt(r) || !Array.isArray(r.zeilen)) return r;
+        const { zeilen: _z, bez: _b, ...rest } = r; void _z; void _b; return { ...rest, zeilenGeloescht: true }; }) };
+    }
+    if (revisionenGeraeumt) { const inner = abschlussPersonenRaeumen(neu, { personen, grundStichtag }); return { wert: inner.wert, entfernt: inner.entfernt + revisionenGeraeumt }; }
+  }
   const aktiv = Array.isArray(personen)
     ? new Set(personen.filter((p) => p && typeof p === "object" && p.anonym !== true).map((p) => String(p.id))) : null;
   const bleibt = (pid) => !aktiv || aktiv.has(String(pid));
@@ -364,7 +378,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
   }).length;
 
   /* Abgewiesene Stempel am Monatsabschluss (WP-16, Review M2): Person, Tag, Uhrzeit — mit der Frist der Gründe. */
-  const abgewiesen = abschlussPersonenRaeumen(m.monatsabschluss, { grundStichtag: st.grund }).entfernt;
+  const abgewiesen = abschlussPersonenRaeumen(m.monatsabschluss, { grundStichtag: st.grund, planStichtag: st.plan }).entfernt;
 
   const warnung = st.fristen.plandatenMonate < PLANDATEN_MINDEST
     ? `Die Frist für Plandaten steht auf ${st.fristen.plandatenMonate} Monaten. `
@@ -486,7 +500,7 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
   }
   /* Abgewiesene Stempel (WP-16, Review M2): nach der Frist der Gründe und mit der Anonymisierung der Person. */
   if (istObjekt(m.monatsabschluss))
-    gekuerzt.monatsabschluss = abschlussPersonenRaeumen(m.monatsabschluss, { personen: personenNeu, grundStichtag: st.grund }).wert;
+    gekuerzt.monatsabschluss = abschlussPersonenRaeumen(m.monatsabschluss, { personen: personenNeu, grundStichtag: st.grund, planStichtag: st.plan }).wert;
 
   return {
     mandant: {

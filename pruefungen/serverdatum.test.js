@@ -274,7 +274,7 @@ describe("WP-14b M2/M3: Stempeln an den Umstellungstagen und Dauer 0 ohne Plan",
     expect(e.erfassung).toMatchObject({ start: "02:30", ende: "02:20", bestaetigt: false, pause: 0 });
     expect(e.hinweise || []).toEqual([]);
   });
-  it("Frühjahr 29.03.: 01:30 MEZ bis 03:10 MESZ (40 min) mit Dienstart-Pause 60 — bestätigt, Ist 0 statt negativ", async () => {
+  it("Frühjahr 29.03.: 01:30 MEZ bis 03:10 MESZ (40 min) mit Dienstart-Pause 60 — Prüffall PAUSE_ZU_LANG (WP-14c F2), nie negativ und nicht still als bestätigte 0 h", async () => {
     await raumAnlegen("sd-fruehjahr", ["a1"], { abweichungen: { "a1|2026-03-29": "N2" },
       dienstarten: [{ id: "N2", name: "Nacht", start: "22:00", ende: "06:00", pause: 60 }] });
     zeitAuf("2026-03-29T00:30:00Z");                                   // 01:30 MEZ
@@ -282,11 +282,13 @@ describe("WP-14b M2/M3: Stempeln an den Umstellungstagen und Dauer 0 ohne Plan",
     zeitAuf("2026-03-29T01:10:00Z");                                   // 03:10 MESZ
     const e = await stempeln("sd-fruehjahr", "a1", { art: "ende" });
     expect(e.status, JSON.stringify(e)).toBe(200);
-    expect(e.erfassung).toMatchObject({ start: "01:30", ende: "03:10", bestaetigt: true });
+    /* WP-14c (F2): Die Pause (60 min) erreicht die Anwesenheit (40 min) — bisher bestätigt mit Ist 0, jetzt ein Prüffall. */
+    expect(e.erfassung).toMatchObject({ start: "01:30", ende: "03:10", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^PAUSE_ZU_LANG/);
     const m = await mandant("sd-fruehjahr");
     const ist = istZeitFuer(m, m.personen[0], "2026-03-29", m.dienstarten[0]);
-    expect(ist.erfasst).toBe(true);
-    expect(ist.std).toBe(0);
+    expect(ist.zurPruefung).toBe(true);
+    expect(ist.std).toBe(7);                                           // bis zur Prüfung zählt die Planzeit (22:00–06:00, Pause 60 min = 7 h), nicht 0 und nicht negativ
   });
   it("M3: Beginn und Ende in derselben Minute ohne Plan — DAUER_NULL mit Marke ungeplant, im Hinweis „ungeplant“", async () => {
     await raumAnlegen("sd-null", ["a1"]);

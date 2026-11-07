@@ -1124,6 +1124,9 @@ export function spurFuerBetreiber(z) {
       .replace(/\s*·\s*Hinweise:\s*[A-Z_,]+/g, " · Hinweise")
       .replace(/\b(MUTTERSCHUTZ|JUGENDSCHUTZ)\b/g, "Schutzhinweis")
       .replace(/[^\s|:]+\|\d{4}-\d{2}-\d{2}/g, "…")
+      /* WP-16b: Altzeilen nannten den Tag im Text (`stempeln start 2026-11-02: …`) — ein bloßer Tag wird beim
+         Lesen geschwärzt; ein Monat (JJJJ-MM) bleibt. */
+      .replace(/\d{4}-\d{2}-\d{2}/g, "…")
       .replace(/\b([01]?\d|2[0-3]):[0-5]\d\b/g, "…");
   }
   return rest;
