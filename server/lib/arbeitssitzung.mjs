@@ -4,10 +4,15 @@ import {
 import { getStore } from "./ablage.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
-import { bestandLesen, voruebergehend } from "./bestand.mjs";
-import { eigenerMandant } from "./rechte.mjs";
+import { aktivePerson } from "./personengueltig.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
+import { BESTAND_UNLESBAR, bestandLesen, voruebergehend } from "./bestand.mjs";
+import { eigenerMandant, wirksameRolle } from "./rechte.mjs";
+import { kontoLesenStreng } from "./konten.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
-import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
+import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsSchluessel } from "./sitzungen.mjs";
+import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sicherungsschluessel.mjs";
+import { schluesselEpoche } from "./schluesselepoche.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -72,7 +77,7 @@ import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from ".
    Drei Fälle, und der dritte ist der, an dem man sich schneidet:
 
      kein `herkunft`-Feld          eine Arbeitssitzung der alten Art.
-                                   Gültig, ohne einen einzigen Zugriff auf
+                                   Gültig, ohne Zugriff auf
                                    Account oder Mitgliedschaft.
      gültiger Account-Anker        vollständige Prüfung, siehe unten.
      `herkunft` vorhanden, aber
@@ -127,7 +132,8 @@ import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from ".
    Kein Zwischenspeicher, und zwar mit Absicht: Eine Frist von auch nur
    wenigen Sekunden hieße, dass „sofort widerrufen" nicht mehr stimmt.
 
-   Eine Sitzung der alten Art verursacht null zusätzliche Lesevorgänge.
+   Eine Sitzung der alten Art ohne Person und ohne Zugang verursacht null zusätzliche Lesevorgänge; mit Zugang liest sie
+   diesen (Sperre), mit Person zusätzlich den Bestand (SI-P2).
    ========================================================================== */
 
 /** Die einzige Art, die dieser Anker haben darf. */
@@ -179,7 +185,8 @@ export const HERKUNFT_KONTO = "account";
  *   gelesene Sitzung und gibt einen schon gelesenen Bestand zurück, damit er
  *   nicht zweimal gelesen wird.
  * @returns {Promise<{sitzung: any, abgewiesen: boolean, grund: (string|null),
- *   mitMerkmal: boolean}>}
+ *   mitMerkmal: boolean, widerruf?: {grund: string, am: string, text: string}}>}
+ *   `widerruf` nur bei einem widerrufenen Sicherungsschlüssel (SI-P1), für die erkennbare Absage.
  */
 export async function arbeitssitzungLesen(req,
   { store = null, sicherungsschluessel = false, bestandLader = null } = {}) {
@@ -188,17 +195,223 @@ export async function arbeitssitzungLesen(req,
   if (!merkmal) return keine();
 
   const s0 = await sitzungLesen(req);
-  if (!s0) return keine();
+  if (!s0) {
+    /* SI-P1: Ein widerrufener Sicherungsschlüssel bekommt eine erkennbare Absage statt des stummen „unbekannt",
+       damit eine Sicherungsautomatisierung nicht ohne Fehlermeldung ausfällt. Gefunden wird der Vermerk nur über den
+       richtigen Schlüssel; einem Außenstehenden verrät das nichts. Nur auf dem Pfad, der Schlüssel annimmt. */
+    if (sicherungsschluessel) {
+      const v = await widerrufsVermerk(merkmal).catch(() => null);
+      if (v) return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: "sk-widerrufen", widerruf: v };
+    }
+    return keine();
+  }
   if (s0.nurSicherung && !sicherungsschluessel) return keine();
 
   const ablage = store || getStore({ name: "centric", consistency: "strong" });
   const fachlich = await arbeitssitzungPruefen(ablage, s0,
     { merkmal, bestandLader: bestandLader ? () => bestandLader(s0) : null });
   if (!fachlich.ok) {
+    /* Ein Sicherungsschlüssel, dessen Betrieb nicht mehr stimmt (verschoben, Kennung weg), ist ebenfalls endgültig
+       abgewiesen. Ein Lesefehler am Bestand (`bestand-fehler`) ist es nicht. */
+    let widerruf = null;
+    if (s0.nurSicherung && merkmal && "grund" in fachlich && fachlich.grund !== "bestand-fehler") {
+      const g = grundAusPruefung(fachlich.grund);
+      await schluesselWiderrufen(sicherungsSchluessel(merkmal), s0, g);
+      widerruf = await widerrufsVermerk(merkmal).catch(() => null);
+    }
     return { sitzung: null, abgewiesen: true, mitMerkmal: true,
-      grund: "grund" in fachlich ? fachlich.grund : "unbekannt" };
+      grund: "grund" in fachlich ? fachlich.grund : "unbekannt", ...(widerruf ? { widerruf } : {}) };
+  }
+  /* SI-P1: Ein Sicherungsschlüssel gilt nur, solange sein Ersteller noch die Leitung dieses Betriebs ist. */
+  if (s0.nurSicherung) {
+    const e = await sicherungsschluesselPruefen(ablage, s0,
+      { bestandLader: bestandLader ? () => bestandLader(s0) : null });
+    if (!e.ok) {
+      /* Eine eindeutige Absage ist endgültig: Der Schlüssel wird entfernt und lebt nicht wieder auf, wenn der Zugang
+         entsperrt, die Personalliste zurückgespielt oder die Person erneut eingetragen wird. Bei einem Lesefehler
+         (nicht beurteilbar) bleibt er liegen. */
+      let widerruf = null;
+      if (e.endgueltig && merkmal) {
+        await schluesselWiderrufen(sicherungsSchluessel(merkmal), s0, grundAusPruefung(e.grund));
+        widerruf = await widerrufsVermerk(merkmal).catch(() => null);
+      }
+      return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund, ...(widerruf ? { widerruf } : {}) };
+    }
   }
   return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };
+}
+
+/* ==========================================================================
+   SICHERUNGSSCHLÜSSEL UND IHR ERSTELLER (SI-P1)
+
+   Ein Schlüssel `sk:` gilt bis zu 365 Tage für die Vollausgabe eines ganzen
+   Betriebs. Er war nur an den Betrieb gebunden: Sperre, Entzug der
+   Mitgliedschaft und Herabstufung seines Erstellers ließen ihn bestehen. Wer
+   als Leitung ausschied, konnte ein Jahr lang weiter exportieren.
+
+   Jetzt trägt der Datensatz seinen Ersteller, und bei jedem Lesen wird
+   gefragt, ob der noch ist, was er beim Anlegen war: die Leitung dieses
+   Betriebs. Widerrufen wird dadurch ohne Zutun und ohne Liste: Sperrt jemand
+   den Zugang, entzieht die Mitgliedschaft oder stuft die Person herab, endet
+   der Schlüssel mit der nächsten Anfrage. Ein Schlüssel ohne Ersteller (aus der
+   Zeit davor) ist nicht prüfbar und gilt nicht.
+
+   Nicht gebunden wird an die ANMELDUNG des Erstellers. Der Schlüssel soll
+   gerade ohne ihn weiterlaufen, etwa in einem Sicherungsskript; das Abmelden
+   beendet ihn nicht.
+
+   Zwei Arten von Erstellern, wie es zwei Arten von Sitzungen gibt:
+
+     konto   eine Sitzung aus einem Konto. Geprüft werden dieselben Anker wie
+             bei der Arbeitssitzung, nur ohne die Anmeldung selbst: Konto
+             aktiv, Epoche, Mitgliedschaft aktiv, Generation, Person.
+     code    eine Sitzung aus einem Zugangscode. Geprüft wird der Zugang
+             (`konto:<Prüfsumme>`): vorhanden, nicht gesperrt, weiterhin
+             Leitung, derselbe Raum und Betrieb, dieselbe Person.
+
+   Beide zusätzlich: Die Person steht noch im Betrieb, und ihre wirksame Rolle
+   (`wirksameRolle`, aus der Personalliste) ist weiterhin „leitung".
+   ========================================================================== */
+
+const nichtLeer = (x) => typeof x === "string" && x.length > 0;
+
+/**
+ * Der Ersteller, wie er im Schlüssel steht, aus der Sitzung der Leitung, die ihn anlegt.
+ * `null`, wenn die Sitzung weder Konto noch Zugang erkennen lässt — dann wird kein
+ * Schlüssel angelegt, den später niemand prüfen könnte.
+ * @param {any} sitzung
+ * @returns {object|null}
+ */
+export function sicherungsschluesselErsteller(sitzung) {
+  if (!sitzung || typeof sitzung !== "object") return null;
+  const name = nichtLeer(sitzung.name) ? sitzung.name.slice(0, 80) : "Leitung";
+  const person = sitzung.person === undefined || sitzung.person === null ? null : String(sitzung.person);
+  let e = null;
+  if (hatHerkunft(sitzung) && ankerBrauchbar(sitzung.herkunft)) {
+    const h = sitzung.herkunft;
+    e = { art: "konto", accountId: h.accountId, epoche: h.epoche, generation: h.generation, person, name };
+  } else if (!hatHerkunft(sitzung) && nichtLeer(sitzung.konto)) {
+    e = { art: "code", konto: sitzung.konto, person, name };
+  }
+  return e && erstellerBrauchbar(e) ? e : null;
+}
+
+/** Ist das ein Ersteller der unterstützten Form? Alles andere ist kaputt, nicht alt. */
+function erstellerBrauchbar(e) {
+  if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+  if (e.person !== null && !nichtLeer(e.person)) return false;
+  if (e.art === "konto") {
+    return nichtLeer(e.accountId) && Number.isInteger(e.epoche) && e.epoche >= 1
+      && Number.isInteger(e.generation) && e.generation >= 1 && nichtLeer(e.person);
+  }
+  if (e.art === "code") return nichtLeer(e.konto);
+  return false;
+}
+
+/**
+ * Gilt der Ersteller dieses Sicherungsschlüssels noch als Leitung seines Betriebs?
+ *
+ * Wirft nur bei einem vorübergehend nicht lesbaren Bestand (→ 503, der Schlüssel
+ * bleibt). Jeder andere Fehler beim Prüfen schließt die Tür: lieber ein Export
+ * zu wenig als einer zu viel.
+ *
+ * @param {object} store  Ablage „centric"
+ * @param {any} sk  der Datensatz des Schlüssels
+ * @param {{bestandLader?: (() => Promise<object|null>)|null}} [o]
+ * @returns {Promise<{ok: true, grund?: undefined, endgueltig?: undefined}|{ok: false, grund: string, endgueltig: boolean}>}
+ */
+export async function sicherungsschluesselPruefen(store, sk, { bestandLader = null } = {}) {
+  /* `endgueltig`: Die Absage hängt an einem Zustand der Welt (gesperrt, ausgetreten, herabgestuft, kein Ersteller),
+     nicht an einem Lesefehler. Nur solche Schlüssel werden entfernt. */
+  /** @type {(grund: string, endgueltig?: boolean) => {ok: false, grund: string, endgueltig: boolean}} */
+  const nein = (grund, endgueltig = true) => ({ ok: false, grund, endgueltig });
+  const unklar = (grund) => nein(grund, false);
+  if (!sk || typeof sk !== "object") return nein("sk-keine-sitzung");
+  const e = sk.ersteller;
+  if (e === undefined || e === null) return nein("sk-ersteller-fehlt");
+  if (!erstellerBrauchbar(e)) return nein("sk-ersteller-form");
+  const raum = sk.bestand;
+  if (!nichtLeer(raum)) return nein("sk-kein-raum");
+  /* Der Betrieb, für den der Schlüssel angelegt wurde: seine Kennung ist Pflicht. */
+  if (!nichtLeer(sk.mandantId) || !Number.isInteger(sk.betrieb)) return nein("sk-ohne-betrieb");
+  /* Wiederherstellungsschutz (schluesselepoche.mjs): Ein Schlüssel gilt nur in der Epoche, in der er angelegt wurde.
+     Nach einer vollständigen Wiederherstellung der Ablage gibt es eine neue, und jeder frühere Schlüssel ist endgültig
+     ungültig. Lässt sich die Epoche nicht feststellen, gilt keiner (nicht beurteilbar: abgewiesen, nicht entfernt). */
+  if (!nichtLeer(sk.epoche)) return nein("sk-ohne-epoche");
+  let epoche;
+  try { ({ epoche } = await schluesselEpoche()); } catch { return unklar("sk-epoche-fehler"); }
+  if (sk.epoche !== epoche) return nein("sk-wiederherstellung");
+
+  if (e.art === "konto") {
+    let konto;
+    try { konto = await accountLesenPerId(store, e.accountId); } catch { return unklar("sk-account-fehler"); }
+    /* accountLesenPerId und mitgliedschaftLesen machen aus einem Lesefehler ein null: „fehlt" und „nicht lesbar"
+       lassen sich nicht trennen. Der Schlüssel wird deshalb abgewiesen, aber nicht entfernt. */
+    if (!konto) return unklar("sk-account-fehlt");
+    if (konto.status !== "aktiv") return nein("sk-account-status");
+    if ((Number(konto.epoche) || 0) !== e.epoche) return nein("sk-epoche");
+    let m;
+    try { m = await mitgliedschaftLesen(store, e.accountId, raum); } catch { return unklar("sk-mitglied-fehler"); }
+    if (!m) return unklar("sk-mitglied-fehlt");
+    if (m.status !== "aktiv") return nein("sk-mitglied-status");
+    const lauf = await mitgliedlaufLesen(store, e.accountId, raum);
+    if (!lauf.ok) return /** @type {any} */ (lauf).grund === "fehler" ? unklar("sk-lauf") : nein("sk-lauf");
+    if (!generationStimmt(m, lauf.generation)) return nein("sk-generation-mitglied");
+    if (e.generation !== lauf.generation) return nein("sk-generation");
+    if (String(m.person || "") !== String(e.person)) return nein("sk-person-gewechselt");
+    if (m.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
+  } else {
+    let z;
+    try { z = await kontoLesenStreng(store, e.konto); } catch { return unklar("sk-zugang-fehler"); }
+    if (!z) return nein("sk-zugang-fehlt");
+    /* Ein umgeschlüsselter Zugang steht unter mehreren Schlüsseln (A → B → …); die Sperre trifft sie, aber nicht
+       zwingend im selben Augenblick. Gilt einer der Kette als gesperrt, gilt der Zugang als gesperrt. Die Kette wird
+       begrenzt und gegen Zyklen gesichert. */
+    const gesehen = new Set([e.konto]);
+    for (let zeiger = z, tiefe = 0; ; tiefe++) {
+      if (zeiger.gesperrt) return nein("sk-zugang-gesperrt");
+      if (!nichtLeer(zeiger.ersetztDurch) || gesehen.has(zeiger.ersetztDurch)) break;
+      if (tiefe >= 5) return nein("sk-zugang-kette");
+      gesehen.add(zeiger.ersetztDurch);
+      try { zeiger = await kontoLesenStreng(store, zeiger.ersetztDurch); } catch { return unklar("sk-zugang-fehler"); }
+      if (!zeiger) return nein("sk-zugang-gesperrt");
+    }
+    /* Wie bei der Anmeldung: ein Demozugang und ein abgelaufener Testzeitraum sind keine Leitung. */
+    if (z.demo === true) return nein("sk-zugang-demo");
+    if (z.laeuftAb && !(new Date(z.laeuftAb).getTime() >= Date.now())) return nein("sk-zugang-abgelaufen");
+    if (z.rolle !== "leitung") return nein("sk-zugang-rolle");
+    if (z.bestand !== raum) return nein("sk-zugang-raum");
+    if (nichtLeer(z.mandantId)) {
+      if (z.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
+    } else if (Number(z.betrieb ?? 0) !== sk.betrieb) {
+      /* Ein Zugang ohne Betriebskennung ist über den Index gebunden. */
+      return nein("sk-betrieb-gewechselt");
+    }
+    const zPerson = z.person === undefined || z.person === null ? null : String(z.person);
+    if (zPerson !== e.person) return nein("sk-person-gewechselt");
+  }
+
+  let gelesen;
+  try {
+    gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, raum);
+  } catch (err) {
+    if (voruebergehend(err)) throw err;
+    return unklar("sk-bestand-fehler");
+  }
+  const bestand = gelesen && gelesen.bestand;
+  if (!bestand) return nein("sk-bestand-fehlt");
+  const grundM = mandantPruefen(bestand, sk.betrieb, sk.mandantId);
+  if (grundM) return nein(`sk-${grundM}`);
+  if (e.person !== null) {
+    /* Dieselbe strenge Regel wie bei der Code-Sitzung (SI-P2, personengueltig.mjs): genau einmal im Betrieb, nicht
+       anonymisiert, aktiv, nicht ausgetreten. Ein Schlüssel einer ausgetretenen Leitung macht keine Vollausgabe. */
+    const mandant = eigenerMandant(bestand, { betrieb: sk.betrieb });
+    if (!aktivePerson(mandant, e.person, heuteBerlin())) return nein("sk-person-fehlt");
+  }
+  /* Die wirksame Rolle des Erstellers, aus der Personalliste abgeleitet wie bei jeder Anfrage. */
+  const rolle = wirksameRolle({ rolle: "leitung", person: e.person, betrieb: sk.betrieb, mandantId: sk.mandantId }, bestand);
+  if (rolle !== "leitung") return nein("sk-rolle");
+  return { ok: true };
 }
 
 /** Trägt dieser Datensatz überhaupt einen Herkunftsanker? */
@@ -217,6 +430,63 @@ function ankerBrauchbar(h) {
   if (!Number.isInteger(h.epoche) || h.epoche < 1) return false;
   if (!Number.isInteger(h.generation) || h.generation < 1) return false;
   return true;
+}
+
+/**
+ * Steht die Person dieser Sitzung noch im Betrieb (SI-P2)? Der Betrieb ist über die Kennung gewählt, die die Sitzung
+ * trägt (genau einer), sonst über ihre Position wie überall (`eigenerMandant`).
+ * @param {any} bestand  der Bestand selbst (nicht die Hülle von bestandLesen)
+ * @param {{mandantId?: string, betrieb?: number, person?: any}} sitzung
+ * @param {string} [heute]
+ */
+export function sitzungPersonGilt(bestand, sitzung, heute = heuteBerlin()) {
+  if (!bestand || !Array.isArray(bestand.mandanten) || !sitzung) return false;
+  let mandant;
+  if (typeof sitzung.mandantId === "string" && sitzung.mandantId) {
+    const m = bestand.mandanten.filter((x) => x && x.id === sitzung.mandantId);
+    if (m.length !== 1) return false;
+    mandant = m[0];
+  } else {
+    mandant = eigenerMandant(bestand, { betrieb: sitzung.betrieb });
+  }
+  return !!aktivePerson(mandant, sitzung.person, heute);
+}
+
+/**
+ * Ist der Zugangscode hinter dieser Sitzung ausdrücklich gesperrt? Streng gelesen: Ein Lesefehler wird
+ * weitergereicht (kontoLesen machte daraus „gibt es nicht" und fiel auf den Sammelblob zurück). Der Zugang liegt
+ * einzeln unter `konto:<Prüfsumme>`, ältere im Sammelblob `konten`.
+ * @param {object} store  Ablage „centric"
+ * @param {string} schluessel  die Prüfsumme des Zugangs (`sitzung.konto`)
+ * @returns {Promise<boolean>}
+ */
+async function zugangGesperrt(store, schluessel) {
+  /* Dem Vermerk `ersetztDurch` (Umschlüsselung beim Einführen des Pfeffers) wird gefolgt wie im Kalenderfeed
+     (feedherkunft.mjs): Die Sitzung trägt den alten Schlüssel, gesperrt wird aber der neue. Gesperrt an irgendeiner
+     Stelle der Kette heißt gesperrt; ein fehlender Nachfolger ist keine Absage. Tiefe und Kreise sind begrenzt. */
+  const gesehen = new Set();
+  let blob;
+  for (let tiefe = 0; typeof schluessel === "string" && schluessel && tiefe < 5 && !gesehen.has(schluessel); tiefe++) {
+    gesehen.add(schluessel);
+    let z;
+    try {
+      z = await store.get(`konto:${schluessel}`, { type: "json" });
+      if (!z) {
+        blob = blob || ((await store.get("konten", { type: "json" })) || {});
+        z = blob[schluessel] || null;
+      }
+    } catch (e) {
+      /* Ein Lesefehler ist vorübergehend (→ 503, die Sitzung bleibt), keine Absage und kein 401 (der Browser
+         würde bei 401 abmelden). */
+      const f = /** @type {Error & {code?: string}} */ (new Error(`Zugang nicht lesbar (${String(e && e.message || e)})`));
+      f.code = BESTAND_UNLESBAR;
+      throw f;
+    }
+    if (!z) return false;
+    if (z.gesperrt) return true;
+    schluessel = z.ersetztDurch;
+  }
+  return false;
 }
 
 /**
@@ -273,12 +543,31 @@ export async function arbeitssitzungPruefen(store, sitzung,
      Sicherungsschlüssel. Hier endet die Prüfung, ohne einen Account
      anzufassen. */
   if (!hatHerkunft(sitzung)) {
+    /* SI-P2: Ein gesperrter Zugangscode gilt auch dann nicht, wenn seine Sitzung die Sperre überlebt hat
+       (das Beenden der Sitzungen beim Sperren ist bestenfalls; zugang-sperren fängt Fehler dort ab). Nur
+       ausdrücklich gesperrt zählt: einen Zugang, den es nicht mehr gibt, kennt diese Prüfung nicht. Ein Lesefehler
+       ist keine Absage (die Sitzung bleibt) und wird als vorübergehend weitergereicht (→ 503). Sicherungsschlüssel haben keinen
+       Zugang. */
+    if (!sitzung.nurSicherung && typeof sitzung.konto === "string" && sitzung.konto) {
+      let gesperrt;
+      gesperrt = await zugangGesperrt(store, sitzung.konto);
+      if (gesperrt) {
+        if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
+        return { ok: false, grund: "zugang-gesperrt" };
+      }
+    }
+    /* SI-P2: Eine Sitzung, die an eine Person gebunden ist, gilt nur, solange die Person im Betrieb steht
+       (lib/personengueltig.mjs, dieselbe Regel wie beim Kalenderfeed). Vorher fiel `wirksameRolle` bei einer
+       entfernten Person auf die Rolle des Codes zurück, und die Sitzung lebte weiter. Betreiber und Codes ohne
+       Person haben keine; Sicherungsschlüssel auch nicht. */
+    const personGebunden = !sitzung.nurSicherung && sitzung.rolle !== "betreiber"
+      && sitzung.person !== null && sitzung.person !== undefined && sitzung.person !== "";
     /* Seit Oktober 2026 trägt ein Zugangscode die Kennung seines Betriebs,
        und die Sitzung mit ihm. Zeigt die Position nicht mehr auf genau
        diesen Betrieb, gilt sie nicht — dieselbe Prüfung wie unten in
        Schritt 5 für Sitzungen aus einem Konto. Codes ohne Kennung bleiben
        wie bisher (erstbefuellung.mjs, codeBindung). */
-    if (typeof sitzung.mandantId === "string" && sitzung.mandantId) {
+    if ((typeof sitzung.mandantId === "string" && sitzung.mandantId) || personGebunden) {
       let gelesen;
       try {
         gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, sitzung.bestand);
@@ -288,10 +577,16 @@ export async function arbeitssitzungPruefen(store, sitzung,
         return { ok: false, grund: "bestand-fehler" };
       }
       const bestand = gelesen && gelesen.bestand;
-      const grund = bestand ? mandantPruefen(bestand, sitzung.betrieb, sitzung.mandantId) : null;
+      const grund = bestand && typeof sitzung.mandantId === "string" && sitzung.mandantId
+        ? mandantPruefen(bestand, sitzung.betrieb, sitzung.mandantId) : null;
       if (grund) {
         if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
         return { ok: false, grund };
+      }
+      /* Ohne gelesenen Bestand (Raum noch nicht angelegt) gibt es keine Personalliste, die etwas widerriefe. */
+      if (bestand && personGebunden && !sitzungPersonGilt(bestand, sitzung, heuteBerlin(new Date(jetzt())))) {
+        if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
+        return { ok: false, grund: "person-fort" };
       }
     }
     return { ok: true, art: "legacy" };

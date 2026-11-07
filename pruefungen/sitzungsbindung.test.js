@@ -356,9 +356,14 @@ describe("Sicherungsschlüssel (sk:)", () => {
     const raum = Z.raum("sk");
     await Z.betriebAnlegen(raum);
     const roh = `sicherungsschluessel-fuer-die-pruefung-${raum}`;
+    /* Seit SI-P1 trägt ein Schlüssel seinen Ersteller (hier: ein Zugang „leitung" dieses Betriebs); ohne ihn gilt er nicht.
+       Seit dem Wiederherstellungsschutz auch die gültige Schlüsselepoche (schluesselepoche.mjs). */
+    const ersteller = await Z.zugangskonto(raum, { rolle: "leitung", person: "p_1" });
+    const { epoche } = await (await import("../server/lib/schluesselepoche.mjs")).schluesselEpoche();
     await Z.ablageArbeit().setJSON(Z.S.sicherungsSchluessel(roh), {
-      bestand: raum, rolle: "leitung", nurSicherung: true,
+      bestand: raum, rolle: "leitung", nurSicherung: true, betrieb: 0, mandantId: "m1",
       name: "Sicherungsschlüssel (Leitung)", angelegt: new Date().toISOString(),
+      ersteller: { art: "code", konto: ersteller, person: "p_1", name: "Leitung" }, epoche,
       bis: Date.now() + 24 * 3600 * 1000,
     });
     for (const p of [Z.HAUPTPFADE[1], Z.HAUPTPFADE[2], Z.HAUPTPFADE[3], ...Z.VORABPFADE(raum)]) {

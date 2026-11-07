@@ -434,7 +434,9 @@ describe("Dispatcher", () => {
     expect(r.offen).toBe(true);
   });
   it("die neuen Registerregeln der gerechneten Arten sind auswertbar", () => {
-    for (const r of REGELN.filter((x) => x.pruefstatus !== "legacy_verified" && REGELARTEN_GERECHNET.includes(x.typ)))
+    /* BES-FACHKRAFT-01 wurde im Rechtsabgleich 2026-11-07 mangels Fundstelle von legacy_verified auf provisional herabgestuft; sie bleibt eine Bestandsregel (Landesrecht, betriebliche Vorgabe), die die Planprüfung selbst auswertet, nicht der Baukasten (keine Anforderungen). */
+    const BESTAND_HERABGESTUFT = ["BES-FACHKRAFT-01"];
+    for (const r of REGELN.filter((x) => x.pruefstatus !== "legacy_verified" && REGELARTEN_GERECHNET.includes(x.typ) && !BESTAND_HERABGESTUFT.includes(x.id)))
       expect(() => pruefeRegel(r, {}), r.id).not.toThrow();
   });
 });

@@ -576,8 +576,17 @@ export async function vollausgabe() {
 export async function schluesselAnlegen(tage) {
   const { status, daten } = await ruf("sicherungsschluessel",
     { method: "POST", body: JSON.stringify({ tage }) });
-  if (status !== 200) throw new Error(daten?.fehler || "Anlegen fehlgeschlagen.");
+  if (status !== 200) throw new Error([daten?.fehler, daten?.text].filter(Boolean).join(" ") || "Anlegen fehlgeschlagen.");
   return daten;
+}
+
+/** Alles zur Übersicht der Sicherungsschlüssel: aktive, widerrufene (mit Grund), Zahl, Grenze und die Warnung zum Passwort. */
+export async function schluesselUebersicht() {
+  const { status, daten } = await ruf("sicherungsschluessel");
+  if (status !== 200) throw new Error(daten?.fehler || "Abruf fehlgeschlagen.");
+  return { schluessel: daten.schluessel || [], widerrufen: daten.widerrufen || [],
+    aktiv: Number(daten.aktiv) || 0, grenze: Number(daten.grenze) || 5,
+    standardTage: Number(daten.standardTage) || 90, warnung: String(daten.warnung || "") };
 }
 
 export async function schluesselListe() {

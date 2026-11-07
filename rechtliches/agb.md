@@ -1,251 +1,145 @@
 # Allgemeine Geschäftsbedingungen
 
-Stand: [BEISPIEL-STAND]. Entwurf mit Beispieldaten — vor der Verwendung
-anwaltlich prüfen lassen. Siehe `PLATZHALTER.md`.
+**Status: ENTWURF — nicht veröffentlichen.** Revision R2, Stand 2026-11-07. Arbeitsentwurf: keine Rechtsberatung, kein Kanzleigutachten, keine Rechtsfreigabe. Vor Verwendung ist eine anwaltliche AGB-Prüfung (§§ 305 ff. BGB, Unternehmerverkehr) erforderlich. Mit „AGB-rechtlich zu prüfen“ gekennzeichnete Klauseln sind ausdrücklich nicht als wirksam anzusehen. Die Paragrafenzählung entspricht dem Altbestand, weil der Quelltext (`server/lib/paketstand.mjs`) auf § 4 Abs. 4 verweist.
 
 ## § 1 Geltungsbereich und Vertragspartner
 
-(1) Diese Bedingungen gelten für die Überlassung der Software CENTRIC zur
-Nutzung über das Internet (Software as a Service) durch
+(1) Diese Bedingungen gelten für die Überlassung der Software CENTRIC zur Nutzung über das Internet (Software as a Service) durch
 
-    [BEISPIEL-FIRMA] [BEISPIEL-RECHTSFORM]
-    [BEISPIEL-STRASSE], [BEISPIEL-PLZ-ORT]
+    [ZU_KLAEREN: vollständige Firma, Rechtsform, Anschrift des Anbieters]
 
-— nachfolgend „Anbieter" — an den Kunden.
+— nachfolgend „Anbieter“ — an den Kunden.
 
-(2) Das Angebot richtet sich ausschließlich an Unternehmer im Sinne des
-§ 14 BGB, an juristische Personen des öffentlichen Rechts und an
-öffentlich-rechtliche Sondervermögen. Es richtet sich nicht an Verbraucher.
+(2) Das Angebot richtet sich ausschließlich an Unternehmer im Sinne des § 14 BGB, juristische Personen des öffentlichen Rechts und öffentlich-rechtliche Sondervermögen. Verbraucher sind keine Kunden. [ZU_KLAEREN: Der Bestellprozess muss die Unternehmereigenschaft tatsächlich abfragen und dokumentieren; sonst gelten Verbraucherpflichten (u. a. Widerrufsbelehrung).]
 
-(3) Abweichende Bedingungen des Kunden werden nicht Vertragsbestandteil,
-auch wenn ihnen nicht ausdrücklich widersprochen wird.
+(3) Abweichende Bedingungen des Kunden werden nicht Vertragsbestandteil, auch wenn ihnen nicht ausdrücklich widersprochen wird. Individualvereinbarungen und das gebuchte Leistungsblatt gehen diesen Bedingungen vor.
 
 ## § 2 Gegenstand des Vertrags
 
-(1) Der Anbieter stellt dem Kunden CENTRIC über das Internet zur Nutzung
-bereit. Die Software dient der Planung von Schichtdiensten, der Verwaltung
-von Abwesenheiten und Qualifikationen, der Zeiterfassung und der Auswertung
-von Arbeitszeiten.
+(1) Der Anbieter stellt dem Kunden CENTRIC über das Internet zur Nutzung bereit: Planung von Schichtdiensten, Verwaltung von Abwesenheiten und Qualifikationen, Zeiterfassung und Auswertung von Arbeitszeiten sowie ausdrücklich gebuchte Branchenmodule.
 
-(2) Der Leistungsumfang ergibt sich aus der bei Vertragsschluss gültigen
-Leistungsbeschreibung des gebuchten Tarifs. Änderungen des Leistungsumfangs
-richten sich nach § 10.
+(2) Der Leistungsumfang ergibt sich aus der bei Vertragsschluss gültigen Leistungsbeschreibung des gebuchten Tarifs. Änderungen richten sich nach § 10.
 
-(3) Die Software wird nicht überlassen, sondern zugänglich gemacht. Ein
-Anspruch auf Herausgabe des Quellcodes besteht nicht.
+(3) Die Software wird nicht überlassen, sondern zugänglich gemacht. Ein Anspruch auf Herausgabe des Quellcodes besteht nicht.
 
-(4) **Kein Rechtsrat.** CENTRIC enthält Prüfungen, die auf Vorschriften des
-Arbeitszeitgesetzes, des Jugendarbeitsschutzgesetzes, des
-Mutterschutzgesetzes und des Sozialgesetzbuchs IX Bezug nehmen. Diese
-Prüfungen sind Hinweise. Sie ersetzen weder eine rechtliche noch eine
-betriebsärztliche Beurteilung. Der Kunde bleibt für die Einhaltung des
-Arbeitszeitrechts allein verantwortlich, auch wenn die Software keinen
-Befund anzeigt. Tarifverträge, Betriebsvereinbarungen und behördliche
-Bewilligungen nach § 7 ArbZG kennt die Software nur, soweit der Kunde sie
-selbst hinterlegt.
+(4) **Keine Rechtsberatung, Verantwortung des Kunden.** CENTRIC enthält Prüfungen, die auf arbeitszeit-, jugendarbeitsschutz-, mutterschutz- und schwerbehindertenrechtliche Vorschriften Bezug nehmen. Sie sind Hinweise und ersetzen weder eine rechtliche noch eine betriebsärztliche Beurteilung. Die rechtliche und organisatorische Verantwortung für Beschäftigungsverhältnisse, Dienstplanung und Einhaltung des Arbeitszeitrechts liegt beim Kunden als Arbeitgeber; ein fehlender Befund der Software ist keine Gewähr für rechtmäßige Dienstpläne. Tarifverträge, Betriebsvereinbarungen und behördliche Bewilligungen kennt die Software nur, soweit der Kunde sie hinterlegt. Der Anbieter schuldet die vertragsgemäße Funktion der ausdrücklich zugesagten Prüfungen; eine darüber hinausgehende Haftung richtet sich nach § 8.
+
+(5) **KI-Funktionen.** Eine KI-gestützte Funktion ist nur Vertragsbestandteil, wenn sie aktiviert, vom Anbieter freigegeben und in der Leistungsbeschreibung aufgeführt ist. Vorschläge werden als solche gekennzeichnet und ersetzen keine menschliche Entscheidung. [ZU_KLAEREN: Derzeit ist keine Live-KI freigegeben; siehe `ki-verordnung-intelligence.md`.]
 
 ## § 3 Vertragsschluss, Testphase
 
-(1) Der Kunde kann einen Testzugang einrichten. Dieser läuft **30 Tage**
-nach Einrichtung ab und geht nicht automatisch in ein kostenpflichtiges
-Vertragsverhältnis über.
+(1) Der Kunde kann, soweit angeboten, einen Testzugang einrichten. Dieser läuft 30 Tage nach Einrichtung ab und geht nicht automatisch in ein kostenpflichtiges Verhältnis über.
 
-(2) Ein kostenpflichtiger Vertrag kommt erst durch ausdrückliche Bestellung
-des Kunden und deren Bestätigung durch den Anbieter zustande.
+(2) Ein kostenpflichtiger Vertrag kommt erst durch ausdrückliche Bestellung des Kunden und Bestätigung des Anbieters zustande. Die bei Abschluss gültige Fassung dieser Bedingungen wird dem Kunden speicherbar bereitgestellt.
 
-(3) Während der Testphase besteht kein Anspruch auf Verfügbarkeit nach § 6
-und keine Haftung für Datenverlust über § 8 hinaus. Der Anbieter empfiehlt,
-in der Testphase **keine echten Personaldaten** einzugeben, solange kein
-Vertrag zur Auftragsverarbeitung nach Artikel 28 DSGVO geschlossen ist.
+(3) Während der Testphase besteht kein Anspruch auf Verfügbarkeit nach § 6. Echte Beschäftigtendaten sollen erst eingegeben werden, wenn ein Vertrag zur Auftragsverarbeitung nach Art. 28 DSGVO geschlossen ist.
 
-(4) Daten aus abgelaufenen Testzugängen werden **90 Tage** nach Ablauf
-gelöscht. Innerhalb dieser Frist kann der Kunde die Übernahme in einen
-kostenpflichtigen Vertrag verlangen; danach ist der Bestand endgültig
-gelöscht.
+(4) Daten aus abgelaufenen Testzugängen werden nach Ablauf einer Aufbewahrungsfrist gelöscht; der Quelltext sieht 90 Tage vor. In dieser Zeit kann der Kunde die Übernahme in einen kostenpflichtigen Vertrag verlangen. [ZU_KLAEREN: Erforderlichkeit der 90 Tage begründen; Zusage nur, soweit der Löschlauf belegt eingeschaltet ist; Wirkung auf Sicherungskopien.]
 
 ## § 4 Preise und Zahlung
 
-(1) Abgerechnet wird je Standort und Monat nach dem gebuchten Tarif. Alle
-Preise verstehen sich netto zuzüglich der gesetzlichen Umsatzsteuer.
+(1) Abgerechnet wird [ZU_KLAEREN: Abrechnungseinheit, bisher je Standort und Monat] nach dem gebuchten Tarif. Alle Preise verstehen sich netto zuzüglich gesetzlicher Umsatzsteuer. [ZU_KLAEREN: Preisblatt, Tarife, Umsatzsteuer- bzw. Kleinunternehmerstatus; keine pauschale Aussage.]
 
-(2) Zugänge sind im Standortpreis enthalten. Die Zahl der Zugänge wirkt
-nicht auf den Preis. Zugänge für Organisationsleitung und Betriebsrat sind
-in jedem Tarif enthalten.
+(2) Zugänge sind im Standortpreis enthalten; die Zahl der Zugänge wirkt nicht auf den Preis. [ZU_KLAEREN: bestätigen, ob dies vertraglich so gewollt ist.]
 
-(3) Überschreitet ein Standort dauerhaft die Grenzen des gebuchten Tarifs
-(Zahl der Einheiten oder der Personen), steigt dieser Standort mit dem
-folgenden Abrechnungsmonat in den nächsthöheren Tarif. Der Anbieter
-informiert den Kunden vorher in Textform.
+(3) Überschreitet ein Standort dauerhaft die Grenzen des gebuchten Tarifs, steigt er nach dem Altbestand mit dem folgenden Abrechnungsmonat in den nächsthöheren Tarif, nachdem der Anbieter in Textform informiert hat. **AGB-rechtlich zu prüfen** (einseitige Preisanpassung); die Klausel darf nur stehen, wenn die Software genau so arbeitet und der Kunde der Hochstufung wirksam zugestimmt hat.
 
-(4) Branchenpakete werden zusätzlich berechnet, soweit sie nicht im Tarif
-enthalten sind.
+(4) Branchenpakete werden zusätzlich berechnet, soweit sie nicht im Tarif enthalten sind. [ZU_KLAEREN: Preise der Pakete.]
 
-(5) Kommt ein Standort während eines laufenden Monats hinzu oder entfällt
-er, wird taggenau anteilig abgerechnet.
+(5) Kommt ein Standort im laufenden Monat hinzu oder entfällt er, wird taggenau anteilig abgerechnet.
 
-(6) Die Rechnung ist innerhalb von [BEISPIEL-ZAHLUNGSZIEL] Tagen nach
-Zugang ohne Abzug fällig. Bei Zahlungsverzug gelten die gesetzlichen
-Regelungen; § 288 Abs. 2 und 5 BGB bleiben unberührt.
+(6) Rechnungen sind innerhalb von [ZU_KLAEREN: Zahlungsziel in Tagen] ab Zugang ohne Abzug fällig. Bei Verzug gelten die gesetzlichen Regelungen.
 
-(7) Der Anbieter kann den Zugang sperren, wenn der Kunde mit mehr als zwei
-Monatsbeträgen in Verzug ist und eine Frist von 14 Tagen unter Androhung der
-Sperrung fruchtlos verstrichen ist. Der Bestand bleibt während der Sperrung
-erhalten; die Löschfristen des § 11 gelten erst ab Vertragsende.
+(7) Ein Sperrungsrecht besteht nur nach Fristsetzung und Androhung in Textform bei erheblichem Zahlungsverzug und unter Wahrung der Verhältnismäßigkeit. [ZU_KLAEREN: Schwelle (Altbestand: mehr als zwei Monatsbeträge, 14 Tage Frist) bestätigen.] Der Bestand bleibt während der Sperrung erhalten; ein Datenexport nach § 11 bleibt möglich.
 
 ## § 5 Laufzeit und Kündigung
 
-(1) Der Vertrag läuft auf unbestimmte Zeit, sofern nichts anderes vereinbart
-ist.
+(1) Der Vertrag läuft auf unbestimmte Zeit, sofern nichts anderes vereinbart ist.
 
-(2) Beide Seiten können mit einer Frist von einem Monat zum Monatsende
-kündigen. Eine abweichende Mindestlaufzeit bedarf ausdrücklicher
-Vereinbarung.
+(2) [ZU_KLAEREN: Kündigungsfrist und Mindestlaufzeit; Altbestand: ein Monat zum Monatsende.]
 
-(3) Das Recht zur außerordentlichen Kündigung aus wichtigem Grund bleibt
-unberührt.
+(3) Das Recht zur außerordentlichen Kündigung aus wichtigem Grund bleibt unberührt.
 
-(4) Kündigungen bedürfen der Textform. Eine E-Mail genügt.
+(4) Kündigungen bedürfen der Textform; E-Mail genügt.
 
-## § 6 Verfügbarkeit
+(5) Zwingende Wechsel- und Beendigungsrechte bleiben unberührt, insbesondere soweit Kapitel VI der Verordnung (EU) 2023/2854 (Data Act) auf diesen Dienst anwendbar ist.
 
-(1) Der Anbieter schuldet eine Verfügbarkeit von **99 % im Monatsmittel**,
-gemessen am Betriebsjahr und bezogen auf die Erreichbarkeit der Anwendung
-über das Internet.
+## § 6 Verfügbarkeit, Wartung, Wiederherstellung
 
-(2) Nicht als Ausfall gelten: angekündigte Wartungsfenster, Störungen
-außerhalb des Verantwortungsbereichs des Anbieters (insbesondere im Netz
-des Kunden oder bei dessen Zugangsanbieter) sowie Ereignisse höherer Gewalt.
+(1) Der Anbieter betreibt den Dienst nach dem Stand der Technik. Eine bestimmte Verfügbarkeit wird nicht garantiert. Der Kunde kann Störungen melden; der Anbieter bemüht sich in angemessener Weise um Behebung. [ZU_KLAEREN: AGB-rechtliche Prüfung dieser Klausel (Transparenz, Angemessenheit, Verhältnis zu Haftung und Gewährleistung). Betreiberentscheidung 2026-11-07: vorläufig keine vertraglich garantierte Verfügbarkeit; ob später eine Zusage mit Messpunkt, Messperiode, Wartungsfenster, Ausnahmen und Rechtsfolgen vereinbart werden soll, ist offen.]
 
-(3) Wartungsarbeiten werden nach Möglichkeit außerhalb der Zeit von 6 bis
-22 Uhr durchgeführt und mindestens 48 Stunden vorher angekündigt.
-Sicherheitsrelevante Eingriffe dürfen ohne Vorankündigung erfolgen.
+(2) Bei Störungen informiert der Anbieter im Rahmen seines Störungsverfahrens. Wartungsarbeiten werden mit angemessener Vorlaufzeit angekündigt, soweit kein dringender Sicherheitsanlass vorliegt. [ZU_KLAEREN: Wartungsfenster und Vorlauf.]
 
-(4) **Hinweis zur Zeiterfassung.** Ist die Anwendung nicht erreichbar,
-können Beschäftigte nicht stempeln. Der Kunde hat für diesen Fall ein
-Ersatzverfahren vorzusehen. Die Aufzeichnungspflicht nach § 16 Abs. 2 ArbZG
-trifft den Kunden, nicht den Anbieter.
+(3) **Hinweis zur Zeiterfassung.** Ist die Anwendung nicht erreichbar, können Beschäftigte unter Umständen nicht online stempeln; die Anwendung puffert Stempelereignisse auf dem Gerät, ohne dass dies eine Gewähr für Vollständigkeit ist. Der Kunde hat ein Ersatzverfahren vorzuhalten. Die Pflicht zur Erfassung der Arbeitszeit trifft den Kunden als Arbeitgeber, nicht den Anbieter. Sie folgt nach dem Beschluss des Bundesarbeitsgerichts vom 13.09.2022 (1 ABR 22/21) aus § 3 Abs. 2 Nr. 1 des Arbeitsschutzgesetzes (Pflicht, für eine geeignete Organisation zu sorgen und die erforderlichen Mittel bereitzustellen); § 16 Abs. 2 des Arbeitszeitgesetzes regelt daneben nur die Aufzeichnung der über die werktägliche Arbeitszeit hinausgehenden Arbeitszeit und das Verzeichnis nach § 7 Abs. 7 mit einer Aufbewahrung von mindestens zwei Jahren.
+
+(4) Sicherung und Wiederherstellung sind nur im ausdrücklich zugesagten Umfang Vertragsinhalt. [ZU_KLAEREN: zugesagtes Wiederherstellungsziel (RPO/RTO), Sicherung außer Haus (Einrichtungsstand nicht belegt), Wiederherstellungsprobe.]
 
 ## § 7 Pflichten des Kunden
 
-(1) Der Kunde benennt eine verantwortliche Person, die Zugänge vergibt und
-entzieht.
+(1) Der Kunde benennt eine verantwortliche Person, die Zugänge vergibt und entzieht.
 
-(2) Zugangscodes sind vertraulich zu behandeln. Der Kunde stellt sicher,
-dass Zugänge ausscheidender Personen unverzüglich gesperrt werden. Die
-Anwendung stellt dafür eine Sperrfunktion bereit.
+(2) Zugangsdaten sind vertraulich zu behandeln. Der Kunde sperrt Zugänge ausscheidender Personen unverzüglich; die Anwendung stellt dafür eine Sperrfunktion bereit.
 
-(3) Der Kunde ist für die Richtigkeit der eingegebenen Daten verantwortlich,
-insbesondere für Arbeitszeitmodelle, Urlaubsansprüche, Qualifikationen und
-Schutzangaben nach Jugendarbeitsschutz-, Mutterschutz- und
-Schwerbehindertenrecht. Falsche Angaben führen zu falschen Prüfergebnissen.
+(3) Der Kunde ist für die Richtigkeit seiner Eingaben verantwortlich, insbesondere zu Arbeitszeitmodellen, Urlaubsansprüchen, Qualifikationen, Tarif- und Betriebsvereinbarungen und Schutzangaben. Falsche Angaben führen zu falschen Prüfergebnissen.
 
-(4) **Mitbestimmung.** Die Einführung und Anwendung einer technischen
-Einrichtung, die geeignet ist, Verhalten oder Leistung der Beschäftigten zu
-überwachen, unterliegt der Mitbestimmung des Betriebs- oder Personalrats
-(§ 87 Abs. 1 Nr. 6 BetrVG, entsprechende Vorschriften der
-Personalvertretungsgesetze). Das gilt insbesondere für die Zeiterfassung und
-die Standortprüfung beim Stempeln. Der Kunde ist für die Beteiligung der
-Arbeitnehmervertretung allein verantwortlich.
+(4) **Mitbestimmung und Information.** Einführung und Anwendung von Zeiterfassung, Standortprüfung und anderen technischen Einrichtungen, die zur Verhaltens- oder Leistungsüberwachung geeignet sind, unterliegen der Mitbestimmung (§ 87 Abs. 1 Nr. 2, 3 und 6 BetrVG, entsprechende Personalvertretungsgesetze). Der Kunde ist für Beteiligung der Arbeitnehmervertretung und für die Information der Beschäftigten (Art. 13 DSGVO) verantwortlich.
 
-(5) Der Kunde darf die Software nicht dazu nutzen, Beschäftigte über den zur
-Dienstplanung erforderlichen Umfang hinaus zu überwachen.
+(5) Der Kunde nutzt die Software nicht zur Überwachung über den zur Dienstplanung erforderlichen Umfang hinaus.
 
-(6) Der Kunde stellt den Anbieter von Ansprüchen Dritter frei, die auf einer
-vertragswidrigen Nutzung durch den Kunden beruhen.
+(6) Meldungen über Sicherheitsvorfälle erfolgen an [ZU_KLAEREN: erreichbarer Meldeweg].
+
+(7) Der Kunde stellt den Anbieter von Ansprüchen Dritter frei, die auf einer vertragswidrigen Nutzung beruhen. **AGB-rechtlich zu prüfen.**
 
 ## § 8 Haftung
 
-(1) Der Anbieter haftet unbeschränkt bei Vorsatz und grober Fahrlässigkeit,
-bei Verletzung von Leben, Körper oder Gesundheit, nach dem
-Produkthaftungsgesetz und im Umfang einer übernommenen Garantie.
+**AGB-rechtlich zu prüfen; nicht vertragsreif.** Der folgende Text ist ein Platzhalter für die anwaltlich zu erarbeitende Fassung.
 
-(2) Bei leicht fahrlässiger Verletzung einer wesentlichen Vertragspflicht
-— einer Pflicht, deren Erfüllung die ordnungsgemäße Durchführung des
-Vertrags erst ermöglicht und auf deren Einhaltung der Kunde vertrauen darf
-— haftet der Anbieter der Höhe nach begrenzt auf den vertragstypischen,
-vorhersehbaren Schaden, höchstens jedoch auf das **Zwölffache des
-monatlichen Entgelts**, das im Zeitpunkt des schädigenden Ereignisses
-geschuldet war.
+(1) Die Haftung bei Vorsatz und grober Fahrlässigkeit, bei Verletzung von Leben, Körper oder Gesundheit, nach dem Produkthaftungsgesetz, bei übernommener Garantie und nach zwingenden Vorschriften (auch des Datenschutzrechts) bleibt unberührt.
 
-(3) Im Übrigen ist die Haftung ausgeschlossen.
+(2) [ZU_KLAEREN: Haftung bei einfacher Fahrlässigkeit, insbesondere Haftungsdeckel. Der Altbestand nannte das Zwölffache des Monatsentgelts, den Ausschluss der verschuldensunabhängigen Haftung für anfängliche Mängel nach § 536a Abs. 1 BGB und eine Beschränkung der Haftung für Datenverlust. Alle drei Klauseln sind im Unternehmerverkehr kontrollfähig, insbesondere bei Kardinalpflichten, und werden hier nicht ungeprüft übernommen.]
 
-(4) Die verschuldensunabhängige Haftung für anfängliche Mängel nach § 536a
-Abs. 1 Alt. 1 BGB ist ausgeschlossen.
-
-(5) Für den Verlust von Daten haftet der Anbieter nur in dem Umfang, der bei
-ordnungsgemäßer Datensicherung durch den Kunden zur Wiederherstellung
-erforderlich gewesen wäre. Der Kunde kann seinen Bestand jederzeit über die
-Ausgabefunktion sichern.
+(3) Die Parteien wirken an der Schadensminderung mit; der Kunde kann seinen Bestand jederzeit über die Ausgabefunktion sichern. Diese Klausel schränkt zwingende Ansprüche nicht ein.
 
 ## § 9 Datenschutz
 
-(1) Soweit der Anbieter im Auftrag des Kunden personenbezogene Daten
-verarbeitet, gilt der Vertrag zur Auftragsverarbeitung nach Artikel 28
-DSGVO (`auftragsverarbeitung.md`). Er ist Bestandteil dieses Vertrags und
-geht diesen Bedingungen im Konfliktfall vor.
+(1) Soweit der Anbieter im Auftrag des Kunden personenbezogene Daten verarbeitet, gilt die Vereinbarung zur Auftragsverarbeitung nach Art. 28 DSGVO (`auftragsverarbeitung.md`). Sie ist Bestandteil des Vertrags und geht bei Widerspruch hinsichtlich der Auftragsverarbeitung vor.
 
-(2) Der Kunde ist Verantwortlicher im Sinne des Artikels 4 Nr. 7 DSGVO für
-die in der Anwendung verarbeiteten Beschäftigtendaten.
+(2) Der Kunde ist Verantwortlicher für die in der Anwendung verarbeiteten Beschäftigtendaten.
 
-(3) Ohne geschlossenen Vertrag zur Auftragsverarbeitung dürfen keine echten
-Personaldaten eingegeben werden.
+(3) Ohne geschlossene Vereinbarung zur Auftragsverarbeitung dürfen keine echten Beschäftigtendaten eingegeben werden.
 
-## § 10 Änderungen der Leistung und dieser Bedingungen
+## § 10 Änderungen der Leistung und der Bedingungen
 
-(1) Der Anbieter darf die Software weiterentwickeln. Änderungen, die den
-vereinbarten Leistungsumfang nicht wesentlich einschränken, sind zulässig.
+(1) Der Anbieter darf die Software weiterentwickeln. Änderungen, die den vereinbarten Leistungsumfang nicht wesentlich einschränken, sind zulässig.
 
-(2) Wesentliche Einschränkungen des Leistungsumfangs sowie Änderungen dieser
-Bedingungen teilt der Anbieter mindestens **sechs Wochen** vorher in
-Textform mit. Widerspricht der Kunde nicht innerhalb von sechs Wochen nach
-Zugang, gilt die Änderung als angenommen; auf diese Wirkung weist der
-Anbieter in der Mitteilung gesondert hin. Widerspricht der Kunde, kann jede
-Seite zum Wirksamwerden der Änderung kündigen.
+(2) Wesentliche Einschränkungen des Leistungsumfangs und Änderungen dieser Bedingungen teilt der Anbieter mindestens sechs Wochen vorher in Textform mit. **AGB-rechtlich zu prüfen:** Eine Zustimmungsfiktion durch Schweigen („gilt als angenommen“) ist wegen der Rechtsprechung zu Änderungsklauseln in AGB nicht ohne Prüfung zu verwenden. Bis zur Prüfung gilt: Für wesentliche neue Pflichten, geänderte Hauptleistungen und Entgelte wird die ausdrückliche Zustimmung des Kunden eingeholt; der Kunde kann zum Wirksamwerden kündigen.
 
-(3) Preisänderungen werden mit einer Frist von drei Monaten zum
-Monatsende angekündigt. Der Kunde kann bis zum Wirksamwerden zum
-Änderungszeitpunkt kündigen.
+(3) Preisänderungen: [ZU_KLAEREN: Mechanismus, Ankündigungsfrist (Altbestand: drei Monate zum Monatsende), Sonderkündigungsrecht; AGB-rechtlich zu prüfen].
 
-## § 11 Daten nach Vertragsende
+## § 11 Datenexport, Anbieterwechsel, Daten nach Vertragsende
 
-(1) Der Kunde kann seinen vollständigen Bestand während der Vertragslaufzeit
-und bis **30 Tage** nach Vertragsende in einem strukturierten,
-maschinenlesbaren Format ausgeben lassen.
+(1) Der Kunde kann seine Betriebsdaten in einem strukturierten, maschinenlesbaren Format ausgeben lassen (Vollausgabe als JSON, Datenmitnahme als CSV; Umfang siehe `data-act-wechsel-export.md`). Nicht von der Ausgabe erfasste Bestandteile werden vor Vertragsschluss beschrieben. [ZU_KLAEREN: Exportumfang bestätigen.]
 
-(2) Nach Ablauf dieser 30 Tage löscht der Anbieter alle Daten des Kunden
-einschließlich der Sicherungskopien innerhalb von weiteren **60 Tagen**. Die
-Löschung wird auf Verlangen in Textform bestätigt.
+(2) Soweit Kapitel VI der Verordnung (EU) 2023/2854 anwendbar ist, richten sich Wechsel, Fristen, Unterstützung und anschließende Löschung nach diesen zwingenden Vorgaben; abweichende Regelungen beschneiden diese Rechte nicht. [ZU_KLAEREN: Anwendbarkeit auf CENTRIC und Ausnahmen prüfen.]
 
-(3) Gesetzliche Aufbewahrungspflichten des Anbieters — insbesondere für
-Rechnungsdaten nach § 147 AO und § 257 HGB — bleiben unberührt. Betroffen
-sind ausschließlich Vertrags- und Abrechnungsdaten, keine
-Beschäftigtendaten.
+(3) Nach Vertragsende werden die Kundendaten nach Weisung des Kunden zurückgegeben oder gelöscht. Der Altbestand sah 30 Tage Abrufzeit und weitere 60 Tage bis zur Löschung einschließlich Sicherungskopien vor. Die Zusage „Sicherungskopien binnen 60 Tagen“ wird nicht gegeben: Die Aufbewahrung der Sicherung außer Haus beträgt nach Betriebsanleitung bis zu 12 monatliche Stände. [ZU_KLAEREN: Fristen entscheiden; sie sind mit Datenschutzrecht, Weisung und gegebenenfalls Data Act zu vereinbaren und nur zuzusagen, wenn der Löschweg belegt ist.]
+
+(4) Gesetzliche Aufbewahrungspflichten des Anbieters (Rechnungs- und Vertragsunterlagen) bleiben unberührt und betreffen keine Beschäftigtendaten des Kunden.
 
 ## § 12 Nutzungsrechte
 
-(1) Der Kunde erhält für die Dauer des Vertrags das nicht ausschließliche,
-nicht übertragbare Recht, die Software bestimmungsgemäß zu nutzen.
+(1) Der Kunde erhält für die Vertragsdauer das nicht ausschließliche, nicht übertragbare Recht zur bestimmungsgemäßen Nutzung.
 
-(2) Die vom Kunden eingegebenen Daten bleiben ausschließlich seine. Der
-Anbieter erwirbt daran keine Rechte und nutzt sie nicht für eigene Zwecke.
+(2) Die eingegebenen Daten bleiben ausschließlich beim Kunden; der Anbieter erwirbt daran keine Rechte und nutzt sie nicht zu eigenen Zwecken.
 
-(3) Der Anbieter darf **anonymisierte, nicht auf einen Kunden oder eine
-Person rückführbare** Kennzahlen zur Verbesserung der Software auswerten.
-Eine Verarbeitung, die sich einem einzelnen Betrieb oder einer einzelnen
-Person zuordnen lässt, ist ausgeschlossen.
+(3) Die Auswertung aggregierter Kennzahlen zur Verbesserung der Software ist nur zulässig, wenn die Kennzahlen nach angemessener Anonymisierung weder einem Kunden noch einer Person zuordenbar sind und Erzeugung und Verarbeitung rechtlich zulässig und vertraglich transparent geregelt sind. [ZU_KLAEREN: Ob eine solche Auswertung überhaupt stattfindet; sonst Absatz streichen.] Pseudonyme Beschäftigtendaten dürfen dafür nicht verwendet werden.
 
 ## § 13 Schlussbestimmungen
 
-(1) Es gilt das Recht der Bundesrepublik Deutschland unter Ausschluss des
-UN-Kaufrechts.
+(1) Es gilt deutsches Recht unter Ausschluss des UN-Kaufrechts.
 
-(2) Ausschließlicher Gerichtsstand für alle Streitigkeiten aus diesem
-Vertrag ist [BEISPIEL-GERICHTSSTAND], sofern der Kunde Kaufmann, juristische
-Person des öffentlichen Rechts oder öffentlich-rechtliches Sondervermögen
-ist.
+(2) Gerichtsstand ist im gesetzlich zulässigen Umfang (§ 38 ZPO) [ZU_KLAEREN: Ort].
 
-(3) Änderungen und Ergänzungen bedürfen der Textform. Das gilt auch für die
-Aufhebung dieser Formklausel.
+(3) Änderungen und Ergänzungen bedürfen der Textform. [ZU_KLAEREN: Wirksamkeit der doppelten Schriftformklausel in AGB prüfen.]
 
-(4) Ist eine Bestimmung unwirksam, bleibt der Vertrag im Übrigen wirksam.
-An die Stelle der unwirksamen Bestimmung tritt die gesetzliche Regelung.
+(4) Ist eine Bestimmung unwirksam, bleibt der Vertrag im Übrigen wirksam; es gelten die gesetzlichen Vorschriften.

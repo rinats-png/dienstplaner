@@ -78,3 +78,34 @@ Laufende Agenten (Worktrees, je eigener Branch, nur Push auf den eigenen Branch)
 - **Intelligence-Gateway** (`feature/intelligence-gateway`, noch nicht gemergt): nur Attrappe, nirgends verdrahtet, Live-Anbindung wirft immer. WP-I13/I14/I15/I17 mit Nachweisen; drei unabhängige Opus-Review-Runden (Runde 2: 12 Befunde, 3 davon fail-open, behoben; Runde 3: 1 hoch, 9 mittel/niedrig in Behebung). Merge in den Integrationsbranch nach der Behebung.
 - **WP-39** (`feature/wp39-app-aufteilung`): läuft; Nachweis folgt in `docs/acc45/wp39-nachweis.md`.
 - Mobil/V4: Querscroll-, Kontrast- und Tour-Befunde bis auf „Verteilung 320 px (26 px)“ behoben.
+
+### Integrationsstand 2026-11-07 (kein Merge nach `main`, kein Deployment)
+- **CI-Basis repariert (PR #102):** `.dockerignore` blockierte zwei 2FA-Werkzeuge für den Docker-COPY, tsc-Fehler in neun Dateien, ein Kommentar traf das Verbotsmuster, `matrix.mjs` las `MATRIX_STD` noch aus `App.jsx` (liegt in `src/lib/rollen.js`), `wiederherstellen-ui.test` erwartete den alten Ladetext, die Gate-Proben und HTTP-Suiten lieferten den WP-32d-Nachweis nicht. 2FA-Pflicht unverändert. Suite `verwalter` läuft in der CI über `serverlauf` statt gegen das Bild (Bremse 20 Aufrufe je 10 Min. unverändert). Der Docker-Pfad der Gate-Proben ist erst durch die GitHub-CI belegt.
+- **Legal-Strang (PR #103):** Rechtstexte bleiben ENTWURF; HMAC-IP-Kürzel, Wachbuch-Löschsperre, Art.-9-Katalog, Regelregister-Fundstellen. Keine Konformitätsbehauptung.
+- **IONOS-SMTP-Adapter (PR #101):** gebaut, ausgeschaltet (`CENTRIC_MAIL_WEG=smtp` nötig); keine Aktivierung, kein Live-Test, Tarif-SMTP-Freigabe unbelegt.
+- **Betreiberleitfaden (PR #99)** integriert.
+- **SI-P1/SI-P2 (PR #105/#106 → #107):** Sicherungsschlüssel überleben weder ihren Ersteller (inkl. ausgetreten/inaktiv/anonym) noch eine vollständige Wiederherstellung (Epoche außerhalb der Ablage in `CENTRIC_ZUSTAND`, Bindung, fail-closed, sofortiges Widerrufen bei neuer Epoche); Code-Sitzung endet bei Betriebsverlassen/Sperre. Zwei Opus-Reviews (Voll- und Delta-Review), Linux-CI inkl. SIGTERM/SIGKILL-Test grün. **Nicht Ende-zu-Ende geprüft:** die Passwortwechsel-Warnung (es gibt noch keinen Passwortwechsel-/Reset-Ablauf; bleibt Pflicht dafür).
+- **WP-28c** (Schreib-Halt): Abhängigkeit korrigiert (wartet nicht auf WP-28b, Voraussetzung ist Teilfix PR #100); in Arbeit (Opus, eigener Worktree), noch nicht integriert. WP-28b bleibt offen.
+- Integrationsregel: Nur der Hauptorchestrator integriert nach `integration/release-v4`; Cloud-Agenten liefern geprüfte PRs.
+
+### Parallelität und Integrationsdurchsatz (Betreiberanweisung 2026-11-07, vorübergehend)
+Ziel ist nicht die Zahl aktiver Agenten, sondern die Zahl vollständig integrierter und geprüfter Pflichtpakete je Woche.
+- **Regeln:** höchstens ein zusätzlicher Cloud-Agent entwickelt Neues; der andere pausiert nach sauberer Sicherung und Übergabe; weitgehend fertige PRs werden nicht unterbrochen; nur der Hauptorchestrator integriert nach `integration/release-v4`; keine neuen parallelen Aufgaben an denselben zentralen Dateien; erst Integrationsrückstand abbauen, dann Kapazität wieder freigeben. Sicherheitsarbeit läuft unverändert weiter.
+- **Entscheidung nach Arbeitsstand:** Cloud-Agent 2 (SI-P6 ist auf `acc45/sicherheit/si-p6` weit fortgeschritten und bereits intern Opus-geprüft, danach SI-P7) entwickelt weiter. Cloud-Agent 1 (WP-28b/Teilfix integriert, WP-28c läuft lokal als PR #110) pausiert neue Implementierungen. Die lokalen Schreib-Agenten sind auf zwei begrenzt (WP-28c, Verdrahtungsprüfung; Letztere wird erst nach den Sicherheitspaketen integriert).
+- **Dateizuständigkeit `server/funktionen/daten.mjs`:** nur Cloud-Agent 2, nacheinander (SI-P6, dann SI-P7). PR #110 (WP-28c) fasst `daten.mjs` nicht an. Integrationsreihenfolge: SI-P6, PR #110, SI-P7, danach das Verdrahtungswerkzeug; jeweils Vollregression auf dem kombinierten Stand.
+- **Rekonstruierte Kennzahlen (GitHub, PR #98–#110, nur belastbar soweit aus Commits und Läufen ableitbar; Näherungen):**
+
+| PR | Inhalt | Commits | Dateien | PR→Merge (h) | Commits nach PR-Öffnung | davon CI-Korrektur | davon Review-Nachtrag |
+|---|---|---|---|---|---|---|---|
+| 98 | Actions per SHA (SI-P8) | 6 | 9 | 1,4 | 2 | 2 | 0 |
+| 100 | WP-28b/2 Teilfix | 11 | 12 | 2,7 | 7 | 0 | 1 |
+| 101 | IONOS-SMTP | 6 | 10 | 4,4 | 3 | 1 | 0 |
+| 102 | CI-Basis | 9 | 17 | 3,5 | 6 | 5 | 0 |
+| 103 | Legal | 22 | 45 | 3,5 | 1 | 0 | 0 |
+| 105 | SI-P1 | 9 | 17 | 3,8 | 6 | 3 | 3 |
+| 106 | SI-P2 | 4 | 9 | 3,3 | 1 | 0 | 0 |
+| 107 | SI-P1/P2 + Wiederherstellung | 24 | 41 | 1,5 | 8 | 4 | 2 |
+| 108 | WP-I3 | 1 | 2 | 0,2 | 0 | 0 | 0 |
+| 109 | SI-P3 | 2 | 10 | 0,7 | 1 | 0 | 1 |
+
+  Befund: Die Hauptkosten waren nicht das Schreiben, sondern (1) verdeckte CI-Basisfehler (PR #102 allein: 5 CI-Korrekturen, 6 Nachträge, alle anderen PRs liefen bis dahin gegen eine rote Basis), (2) Review-Nachträge bei Sicherheits-PRs (SI-P1: drei Nachträge, #107: zwei Opus-Runden), (3) nicht verdrahtete Tests (erst im Linux-Lauf entdeckt, ENOTEMPTY-Fehler), (4) Doku-/Konfigurationsfolgen neuer Umgebungsvariablen (`doku.test`, dreimal). Grenzen der Zahlen: CI-Läufe je Branch enthalten mehrere Workflows je Push und die rote Basis; die reine Entwicklungszeit je Paket ist aus Commit-Zeiten nicht belastbar ableitbar (Mehrfach-Sitzungen, Wartezeiten). Die Erfassung wird für die nächsten 5–10 Pakete (WP-28c, SI-P6, SI-P7, Verdrahtungswerkzeug, …) fortgeführt.
