@@ -40,6 +40,7 @@
 import { link, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import path from "node:path";
+import { schreibvorgang } from "./schreibhalt.mjs";
 
 const STORE_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const FASSUNG = 1;
@@ -286,7 +287,19 @@ function dateiStore(name) {
    * @param {{metadata?: object}|undefined} opts
    * @param {(ziel: string, inhalt: string) => Promise<any>} [art]
    */
-  const schreiben = async (schluessel, typ, daten, opts, art = atomarSchreiben) => {
+  const schreiben = (schluessel, typ, daten, opts, art = atomarSchreiben) =>
+    /* Jeder Schreibvorgang, der in die Sicherung gehört, ist ein Vorgang des Schreib-Halts (schreibhalt.mjs, WP-28c):
+       Während eines Halts beginnt er erst danach, innerhalb eines zugelassenen Vorgangs sofort. */
+    schreibvorgang(name, schluessel, () => schreibenJetzt(schluessel, typ, daten, opts, art));
+
+  /**
+   * @param {string} schluessel
+   * @param {"json"|"text"} typ
+   * @param {any} daten
+   * @param {{metadata?: object}|undefined} opts
+   * @param {(ziel: string, inhalt: string) => Promise<any>} art
+   */
+  const schreibenJetzt = async (schluessel, typ, daten, opts, art) => {
     await sicherstellen(verzeichnis);
     const metadata = opts && opts.metadata && typeof opts.metadata === "object" ? opts.metadata : {};
     const serialisiert = typ === "json" ? JSON.stringify(daten) : String(daten);
@@ -371,11 +384,13 @@ function dateiStore(name) {
 
     /** @param {string} schluessel */
     async delete(schluessel) {
-      try {
-        await unlink(pfad(schluessel));
-      } catch (e) {
-        if (!e || e.code !== "ENOENT") throw e;
-      }
+      await schreibvorgang(name, schluessel, async () => {
+        try {
+          await unlink(pfad(schluessel));
+        } catch (e) {
+          if (!e || e.code !== "ENOENT") throw e;
+        }
+      });
     },
 
     /**
