@@ -89,6 +89,7 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_PUSH_JE_BETRIEB_MAX` | höchste Zahl angemeldeter Geräte je Betrieb | 5000 | ja (auskommentiert) |
 | `CENTRIC_TESTRAUM_MAIL` | `ja`: Mail auch aus Test- und Demoräumen (Raum `t-…`/`demo-…` oder selbst angelegter Betrieb) — nur mit Freigabe des Betreibers; sonst gehen von dort keine Mails hinaus (Grund „testraum“), Push bleibt (SI-P3) | aus | ja (auskommentiert) |
 | `CENTRIC_TESTRAUM_MAIL_TAG_MAX` | bei Freigabe: höchstens so viele Mails je Test-/Demoraum und Tag (1–1000; darüber „testraum-grenze“) | 20 | ja (auskommentiert) |
+| `CENTRIC_TESTRAUM_MAIL_GESAMT_MAX` | bei Freigabe: höchstens so viele Mails je Tag über alle Test-/Demoräume zusammen (1–100000) | 200 | ja (auskommentiert) |
 | `CENTRIC_ZUSTELL_TAKT` | `aus` stellt den Takt der Zustell-Warteschlange ab (nur Wartung) | an | ja (auskommentiert) |
 | `CENTRIC_GESUND_ZUSTELLUNG_WARNUNG` | Warnung, wenn so viele Zustellungen je Kanal in einer Stunde endgültig fehlschlagen und mehr als gelingen | 3 | ja (auskommentiert) |
 

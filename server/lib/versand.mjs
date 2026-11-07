@@ -84,7 +84,7 @@ import { bestandLesenStreng as bestandLesen } from "./bestand.mjs";
 import { hinweis, pushZiel, betrifftEntwurf, backoffPlan, versucheMax, naechsterVersuch,
   kontingente, kontingentTag, naechsterKontingentTag, kanalAus, einzeilig } from "./zustellregeln.mjs";
 import { zustellEreignis } from "./zustellzaehler.mjs";
-import { istTestOderDemoraum, testraumMailFrei, testraumMailTagMax } from "./testraum.mjs";
+import { istTestOderDemoraum, testraumMailFrei, testraumMailTagMax, testraumMailGesamtMax } from "./testraum.mjs";
 
 export const KANAELE = ["mail", "push"];
 const ENDGUELTIG = ["gesendet", "uebersprungen", "gescheitert"];
@@ -272,7 +272,8 @@ const quelleVon = (n) => (istObjekt(n.quelle) && n.quelle.von !== undefined && n
  *   freigegeben (F6).
  * - SI-P3: Mail aus einem Test- oder Demoraum (lib/testraum.mjs) — nur mit
  *   Freigabe, dann zuerst ein Platz der Tagesobergrenze je Raum (über alle
- *   Betriebe des Raums); darüber „testraum“ (endgültig nicht gesendet).
+ *   Betriebe des Raums), dann ein Platz der Gesamtgrenze über alle Test-/
+ *   Demoräume; darüber „testraum“ (endgültig nicht gesendet).
  * Wirft, wenn die Ablage nicht antwortet (der Aufrufer stellt zurück).
  * @returns {Promise<"frei"|"person"|"zurueck"|"testraum">}
  */
@@ -298,6 +299,9 @@ async function kontingentPruefen(store, { raum, m, n, p, kanal, jetzt }) {
     const pl = await platzBeanspruchen(store, `zustellquote:${raum}:raum:${tag}:mail:testraum:`, testraumMailTagMax());
     if (!pl) return "testraum";
     belegt.push(pl);
+    const gesamt = await platzBeanspruchen(store, `zustellquote:_testraeume:alle:${tag}:mail:testraum:`, testraumMailGesamtMax());
+    if (!gesamt) { await plaetzeFreigeben(store, belegt); return "testraum"; }
+    belegt.push(gesamt);
   }
   if (istNotruf(n)) {
     const q = quelleVon(n) ?? "ohne";

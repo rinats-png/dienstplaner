@@ -169,6 +169,65 @@ describe("Mit Freigabe: Tagesobergrenze je Raum", { timeout: 30000 }, () => {
     await V.zustellen(store, { raum: r, bestand: { version: 1, mandanten: [m2] }, m: m2, ids: ["n5"], jetzt: JETZT + 86400000 });
     expect(await status(r, "m-a", "n5", "mail")).toMatchObject({ status: "gesendet" });
   });
+  it("Raumplatz wird freigegeben, wenn die Betriebsgrenze zurückstellt (kein Verbrauch ohne Versand)", async () => {
+    process.env.CENTRIC_TESTRAUM_MAIL = "ja";
+    process.env.CENTRIC_TESTRAUM_MAIL_TAG_MAX = "2";
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "1";
+    try {
+      const tag = JETZT + 20 * 86400000;
+      const mit = (id, an) => ({ ...mitteilung(id, an), erstellt: new Date(tag).toISOString() });
+      const ma = betrieb("m-a", [mit("n1", "a1"), mit("n2", "a2")]);
+      const mb = betrieb("m-b", [mit("n3", "a1")]);
+      const { r, bestand } = await raum("t-p3z-", [ma, mb]);
+      await V.zustellen(store, { raum: r, bestand, m: ma, ids: ["n1", "n2"], jetzt: tag });
+      expect(await status(r, "m-a", "n2", "mail")).toMatchObject({ status: "fehler", grund: "kontingent" });
+      await V.zustellen(store, { raum: r, bestand, m: mb, ids: ["n3"], jetzt: tag });
+      expect(await status(r, "m-b", "n3", "mail")).toMatchObject({ status: "gesendet" });
+      expect(post.mails).toHaveLength(2);
+    } finally { delete process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL; }
+  });
+  it("Gesamtgrenze über alle Test-/Demoräume (CENTRIC_TESTRAUM_MAIL_GESAMT_MAX)", async () => {
+    process.env.CENTRIC_TESTRAUM_MAIL = "ja";
+    process.env.CENTRIC_TESTRAUM_MAIL_GESAMT_MAX = "2";
+    try {
+      const tag = JETZT + 30 * 86400000;
+      const mit = (id, an) => ({ ...mitteilung(id, an), erstellt: new Date(tag).toISOString() });
+      const ergebnisse = [];
+      for (const praefix of ["t-p3g-", "demo-p3g-", "t-p3g-"]) {
+        const m = betrieb("m-a", [mit("n1", "a1")]);
+        const { r, bestand } = await raum(praefix, [m]);
+        await V.zustellen(store, { raum: r, bestand, m, ids: ["n1"], jetzt: tag });
+        ergebnisse.push(await status(r, "m-a", "n1", "mail"));
+      }
+      expect(post.mails).toHaveLength(2);
+      expect(ergebnisse[2]).toMatchObject({ status: "uebersprungen", grund: "testraum-grenze" });
+      expect(T.testraumMailGesamtMax()).toBe(2);
+      process.env.CENTRIC_TESTRAUM_MAIL_GESAMT_MAX = "0"; expect(T.testraumMailGesamtMax()).toBe(200);
+    } finally { delete process.env.CENTRIC_TESTRAUM_MAIL_GESAMT_MAX; }
+  });
+});
+
+describe("Betreiber-Vorlagen sind keine Testräume (Review WICHTIG 1)", { timeout: 30000 }, () => {
+  it("Vorlage „leer“ und „test“: selbstAngelegt false, Mail geht; Selbstanlegeweg setzt true", async () => {
+    const { vorlageBestand } = await import("../server/lib/erstbefuellung.mjs");
+    const { baueLeerenBetrieb } = await import("../server/lib/leerbetrieb.mjs");
+    expect(baueLeerenBetrieb({ name: "X", branche: "pflege", raum: "kunde-x" }).mandanten[0].selbstAngelegt).toBe(false);
+    expect(baueLeerenBetrieb({ name: "X", branche: "pflege", raum: "t-x", selbstAngelegt: true }).mandanten[0].selbstAngelegt).toBe(true);
+    for (const vorlage of ["leer", "test"]) {
+      post.mails.length = 0;
+      lauf += 1;
+      const r = `pilot-p3v-${vorlage}-${lauf}`;
+      const b = vorlageBestand(vorlage, { raum: r, name: "Pilot" });
+      const m = b.mandanten[0];
+      expect(m.selbstAngelegt).toBe(false);
+      expect(m.status).toBe("test");
+      m.personen = [person("a1")];
+      m.nachrichten = [mitteilung("n1", "a1")];
+      await B.bestandSchreiben(store, r, b, { durch: "Pruefung" });
+      await V.zustellen(store, { raum: r, bestand: b, m, ids: ["n1"], jetzt: JETZT });
+      expect(post.mails.map((x) => x.an), vorlage).toEqual(["opfer-a1@fremd.example"]);
+    }
+  });
 });
 
 describe("HTTP-Sonde: /zustellung/senden aus einem Testraum", { timeout: 30000 }, () => {
@@ -204,6 +263,24 @@ describe("HTTP-Sonde: /zustellung/senden aus einem Testraum", { timeout: 30000 }
     expect(a.ergebnis).toEqual([{ id: "n-h1", stand: "erledigt" }]);
     expect(post.mails).toEqual([]);
     expect(await status(r, "m-a", "n-h1", "mail")).toMatchObject({ status: "uebersprungen", grund: "testraum" });
+  });
+  it("Client-PUT kann selbstAngelegt weder setzen noch löschen", async () => {
+    for (const [praefix, code, vorher] of [["kunde-p3s-", "P3SA-LLLL-0003", true], ["kunde-p3s-", "P3SB-LLLL-0004", false]]) {
+      const m = betrieb("m-a", [], { selbstAngelegt: vorher, status: "test" });
+      m.personen.push({ id: "l1", vorname: "L", nachname: "L", rolle: "leitung", bereich: "ALLE", email: "l@fremd.example" });
+      const { r } = await raum(praefix, [m]);
+      const token = await sitzung(r, code, "leitung", "l1");
+      const g = await anfrage(daten, "/api/bestand", { methode: "GET", token });
+      expect(g.status, g.text).toBe(200);
+      const b = JSON.parse(JSON.stringify(g.bestand));
+      b.mandanten[0].selbstAngelegt = !vorher;
+      b.mandanten[0].name = `geändert-${code}`;
+      const p = await anfrage(daten, "/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Test" } });
+      expect(p.status, p.text).toBe(200);
+      const nachher = (await B.bestandLesen(store, r)).bestand.mandanten[0];
+      expect(nachher.name).toBe(`geändert-${code}`);
+      expect(nachher.selbstAngelegt).toBe(vorher);
+    }
   });
   it("Gegenprobe gewöhnlicher Raum: derselbe Anstoß verschickt die Mail", async () => {
     const { token } = await aufbauen("kunde-p3h-", "P3HB-KKKK-0002");
