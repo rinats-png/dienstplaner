@@ -58,5 +58,23 @@ Die Serverrolle `kunde` besitzt alle Rechte (`server/lib/rechte.mjs:61`, Schreib
 3. Für die neuen Module `kunde` ausdrücklich wie `leitung` behandeln (konsistent mit dem Server) oder serverseitig ausschließen; „Kunde: keiner“ in `WACHBUCH_ZUGRIFF` in „Auftraggeber (kein Zugang vorgesehen)“ umbenennen.
 **Entscheidung Betreiber:** `kunde` als dokumentiertes Leitung-Äquivalent behalten oder für neue Codes abschaffen (Empfehlung: nach Zählung abschaffen, Altcodes unberührt lassen).
 
+### D.2 Entscheidung des Betreibers 2026-11-07: Rolle `kunde` abgelöst (umgesetzt auf `integration/release-v4`, noch nicht in Produktion)
+**Neue Information:** Alle bestehenden Zugänge sind Demozugänge; Ausnahme ist allein der persönliche Betreiberzugang, der erhalten bleiben muss. D.1 (Empfehlung „Altcodes unberührt lassen“) ist damit ersetzt.
+
+**Umgesetzt (Code, getestet, Review siehe STATUS):**
+- Kein Rückfall mehr auf `kunde`: `/einrichten` und `/api/zugaenge` verlangen eine ausdrückliche, vergebbare Rolle (`rolleVergebbar`, `rechte.mjs`); fehlende Rolle und `kunde` ergeben 400, es entsteht kein Konto. Anzeigen (`konten.mjs`, `erstbefuellung.mjs`) erfinden keine Rolle mehr.
+- Demo-Modus braucht keine neue Rolle: Die Architektur kennt ihn bereits als Konto-Merkmal `demo: true` (Karte auf der Startseite, Zugang ohne Code, ein Demozugang je Betrieb und Rolle, Raum `demo-…`). Ein Demozugang mit Leitungsrechten ist `rolle: "leitung"` + `demo: true` (so legt `werkzeug/zugaenge-anlegen.sh` sie ohnehin an).
+- Gezielte Ablösung: `werkzeug/kunde-abloesen.mjs` (Server vorher stoppen, `CENTRIC_DATEN=…`). Ohne Schalter nur Bericht (Zahl je Rolle, Betreiberzugang mit Rolle/Sperre/Ablauf, Demo-`kunde`-Zugänge, übrige `kunde`-/rollenlose Zugänge; keine Codes, nur die letzten acht Zeichen der Kennung). Mit `--ausfuehren` werden ausschließlich aktive Demozugänge mit Rolle `kunde` auf `leitung` gestellt (`demo`, Raum, Betrieb, Mandant bleiben; `rolleVorher` wird vermerkt). Nichts wird gelöscht; der Betreiberzugang wird nach dem Lauf nachgelesen und verglichen. Übrige `kunde`-Konten und rollenlose Konten werden nur gemeldet.
+- Altbestand mit `rolle: "kunde"` wird vorerst weiter gelesen, damit vor der Umstellung niemand ausgesperrt wird. Nach der Umstellung auf Produktion kann `kunde` aus `BEKANNTE_ROLLEN` genommen werden (eigener kleiner Schritt).
+- Wachbuch: „Kunde“ heißt dort jetzt `Auftraggeber` (extern, kein Zugang, Stufe „keiner“); keine Serverrolle führt darauf. Eine Altsitzung `kunde` bleibt in den Modulansichten „keiner“.
+- Tests: `pruefungen/kunde-abloesung.test.js` (Rollenvergabe, Auswertung/Plan, Werkzeug auf echter Ablage, Betreiber unberührt, Auftraggeber), angepasst `rollen-failclosed`, `sitzung-ohne-rolle`, `sicherheit-intern` (SI-06), `erstbefuellung`.
+
+**Einzige Rechteänderung durch die Umstellung `kunde` → `leitung`:** Die Vollausgabe (`daten.mjs`, nur exakt `leitung`) steht dann auch diesen Demozugängen offen (Testdaten, derselbe Betrieb). Sonst sind Rechte, Schreibumfang, Sicherungen, Auskunft und Vergabehöhe gleich (Test: `kunde-abloesung.test.js`).
+
+**Ihre Schritte (nicht von mir ausführbar, kein Zugriff auf Produktion):**
+1. Bericht lesend auf einer Kopie oder nach Server-Stopp laufen lassen (ohne `--ausfuehren`) und prüfen: „Betreiberzugänge (1)“ mit Ihrer Rolle `betreiber`, nicht gesperrt.
+2. Sicherung des Datenordners, dann mit `--ausfuehren` (kurze Wartung, Server gestoppt). Gehört zum Produktionsrelease und bleibt an Ihre gesonderte Freigabe gebunden; vorher ändere ich keine produktiven Daten.
+3. Entscheiden, ob `kunde` danach ganz aus `BEKANNTE_ROLLEN` entfernt wird (Empfehlung: ja, nach Schritt 2).
+
 ## E. Neu im Integrationsstand: Pflicht-2FA für den Betreiber (WP-32d)
 Mit `NODE_ENV=production` (Produktion und Staging) verlangt der Server für jeden Betreibercode und für `/einrichten` (Verwalterschlüssel) einen zweiten Faktor, ohne Abschalter. **Vor dem ersten Start dieses Stands auf Staging oder Produktion muss der Betreiber den Faktor einrichten** (Reihenfolge und Wiederherstellung offline: `docs/acc45/wp15-wp32d-fragen.md`, Abschnitt „vor dem ersten produktiven Start unter Pflicht-2FA“). Verlust des Geräts heißt: nur mit Serverzugang, Pfeffer und Betreibercode über `werkzeug/betreiber-2fa-zuruecksetzen.mjs` (im Image). Beim Start werden Betreibersitzungen ohne Faktor beendet. Restrisiko: Wer nur den Verwalterschlüssel hat, kann dessen Faktor selbst einrichten, solange noch keiner existiert; die Pflicht schützt erst alles danach. Entscheidung/Handlung des Betreibers (E-10): Faktor einrichten, Gerät und Notfallweg festlegen.
