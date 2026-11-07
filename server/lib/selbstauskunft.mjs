@@ -61,7 +61,7 @@ const berlinTag = (iso) => heuteBerlin(new Date(iso));
 
 /**
  * Stempelabgleich (WP-15): Gibt es zu diesem Tag schon ein Original?
- * @returns {{ok: true} | {ok: false, art: "STEMPEL_VORHANDEN"|"VORTAG_OFFEN", grund: string}}
+ * @returns {{ok: true} | {ok: false, art: "STEMPEL_VORHANDEN"|"VORTAG_OFFEN"|"VORTAG_REICHT_HINEIN", grund: string}}
  */
 export function stempelAbgleich(m, personId, datum) {
   const st = m && objekt(m.einstempeln) ? m.einstempeln : {};
@@ -128,7 +128,7 @@ export function selbstauskunftStellen(m, person, von, datum, wert, jetzt, id, he
     verlauf = [...(Array.isArray(frueher) ? frueher : []), ohne].slice(-SA_VERLAUF_MAX);
   }
   const abgleich = stempelAbgleich(m, person.id, String(datum));
-  if (!abgleich.ok) return { status: 409, grund: abgleich.grund, art: abgleich.art };
+  if (abgleich.ok === false) return { status: 409, grund: abgleich.grund, art: abgleich.art };
   const e = u.eintrag;
   const vorschlag = { start: e.start, ende: e.ende, ...(e.pause !== undefined ? { pause: e.pause } : {}) };
   const antrag = {
@@ -185,7 +185,7 @@ export function selbstauskunftEntscheiden(m, r, durch, jetzt) {
 
   /* Genehmigen: derselbe Abgleich wie beim Stellen, gegen den Stand von jetzt. */
   const abgleich = stempelAbgleich(m, personId, String(datum));
-  if (!abgleich.ok)
+  if (abgleich.ok === false)
     return { status: 409, grund: `${abgleich.grund} Der Antrag lässt sich nur noch ablehnen oder zurückziehen.`, art: abgleich.art };
   const person = (m.personen || []).find((x) => x && String(x.id) === String(personId));
   if (!person) return { status: 404, grund: "Person nicht gefunden." };
