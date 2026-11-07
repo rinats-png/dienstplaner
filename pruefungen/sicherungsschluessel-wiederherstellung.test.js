@@ -158,7 +158,9 @@ describe("Weg 2: Verzeichniskopie eines alten Datenbestands (ohne Werkzeug)", ()
     const b = await leitungMitSchluessel("w2-hand");
     const kopie = await kopieren();
     await zurueckspielen(kopie);
-    expect(await W.main(["schluessel-erneuern", "--zustand", zustand(), "--daten", Z.wurzel])).toBe(0);
+    /* Server steht (wie im Ablauf verlangt); geprüft wird eine Adresse, unter der sicher niemand antwortet. */
+    expect(await W.main(["schluessel-erneuern", "--zustand", zustand(), "--daten", Z.wurzel,
+      "--server-url", "http://127.0.0.1:9/gesund"])).toBe(0);
     expect((await vollausgabe(b.sk)).status).toBe(401);
     await neuerSchluesselGeht(b);
   }, LIMIT);
@@ -248,4 +250,173 @@ describe("Fail-closed", () => {
       .rejects.toThrow(/nie gesichert werden/);
     expect(await stat(path.join(Z.wurzel, "centric")).then(() => true), "Ablage noch da").toBe(true);
   }, LIMIT);
+});
+
+/* ==========================================================================
+   Nachträge aus dem Review von PR #107 (W1–W5 und Hinweise)
+   ========================================================================== */
+
+async function bestandAendern(raum, aendern) {
+  const g = await Z.B.bestandLesen(Z.laden(), raum);
+  const neu = JSON.parse(JSON.stringify(g.bestand));
+  aendern(neu);
+  const e = await Z.B.bestandSchreiben(Z.laden(), raum, neu, { durch: "Pruefung" });
+  expect(e.ok, JSON.stringify(e)).toBe(true);
+}
+
+describe("W1: Ersteller nach der strengen Personenregel (aktivePerson, wie SI-P2)", () => {
+  const gestern = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+  for (const [fall, aendern] of [
+    ["ausgetreten", (p) => ({ ...p, austritt: gestern })],
+    ["inaktiv", (p) => ({ ...p, status: "inaktiv" })],
+    ["anonymisiert", (p) => ({ ...p, anonym: true })],
+  ]) {
+    it(`Leitung ${fall}: keine Vollausgabe, Grund sk-person-fehlt`, async () => {
+      const b = await leitungMitSchluessel(`w1p-${fall}`);
+      await bestandAendern(b.raum, (n) => {
+        n.mandanten[0].personen = n.mandanten[0].personen.map((p) => (p.id === "p_1" ? aendern(p) : p));
+      });
+      const AS = await import("../server/lib/arbeitssitzung.mjs");
+      const pr = await AS.sicherungsschluesselPruefen(Z.laden(), await satz(b.sk));
+      expect(pr).toMatchObject({ ok: false, grund: "sk-person-fehlt", endgueltig: true });
+      const v = await vollausgabe(b.sk);
+      expect(v.status).toBe(401);
+      expect(v.daten.betrieb).toBeUndefined();
+    }, LIMIT);
+  }
+  it("Gegenprobe: aktive Leitung mit Austritt in der Zukunft behält den Schlüssel", async () => {
+    const b = await leitungMitSchluessel("w1p-zukunft");
+    await bestandAendern(b.raum, (n) => {
+      n.mandanten[0].personen = n.mandanten[0].personen.map((p) => (p.id === "p_1" ? { ...p, austritt: "2099-12-31" } : p));
+    });
+    expect((await vollausgabe(b.sk)).status).toBe(200);
+  }, LIMIT);
+});
+
+describe("W4: neue Epoche räumt sofort alle früheren Schlüssel auf (nicht erst beim Gebrauch)", () => {
+  it("nach dem Zurückspielen genügt der Serverstart: Schlüssel gelöscht, Vermerk geschrieben, Daten unberührt", async () => {
+    const b = await leitungMitSchluessel("w4-start");
+    const sicherung = await sichern();
+    await W.wiederherstellen({ sicherung, ziel: Z.wurzel, ersetzen: true, serverPruefen: false });
+    expect(await satz(b.sk), "vor dem Start zurückgespielt").not.toBeNull();
+    const r = await E.bindungErneuern({ nurWennVorhanden: true });     // was server.mjs beim Start tut
+    expect(r.neueEpoche).toBe(true);
+    expect(await satz(b.sk), "sofort gelöscht").toBeNull();
+    expect(await vermerk(b.sk)).toMatchObject({ grund: "ablage-wiederhergestellt" });
+    const { blobs } = await Z.ablageArbeit().list({ prefix: "sk:" });
+    expect(blobs.length, "kein früherer Schlüssel übrig").toBe(0);
+    expect((await Z.B.bestandLesen(Z.laden(), b.raum)).bestand.mandanten[0].personen.length, "Personaldaten da").toBe(2);
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+    await neuerSchluesselGeht(b);
+  }, LIMIT);
+
+  it("auch beim ersten Gebrauch irgendeines Schlüssels werden alle anderen mit aufgeräumt", async () => {
+    const b1 = await leitungMitSchluessel("w4-a");
+    const b2 = await leitungMitSchluessel("w4-b");
+    const sicherung = await sichern();
+    await W.wiederherstellen({ sicherung, ziel: Z.wurzel, ersetzen: true, serverPruefen: false });
+    expect((await vollausgabe(b1.sk)).status).toBe(401);
+    expect(await satz(b2.sk), "der andere ist schon weg").toBeNull();
+    expect(await vermerk(b2.sk)).toMatchObject({ grund: "ablage-wiederhergestellt" });
+  }, LIMIT);
+});
+
+describe("W2: Bindung beim Beenden und im Minutentakt", () => {
+  const quelle = () => readFileSync(path.join(import.meta.dirname, "..", "server.mjs"), "utf8");
+  it("server.mjs erneuert die Bindung in beenden() vor dem Prozessende und jede Minute", () => {
+    const s = quelle();
+    const beenden = s.slice(s.indexOf("function beenden("), s.indexOf('process.on("SIGTERM"'));
+    expect(beenden).toMatch(/bindungErneuern\(\{ nurWennVorhanden: true \}\)/);
+    expect(beenden).toMatch(/bindungFertig\.finally\(\(\) => process\.exit\(0\)\)/);
+    expect(s).toMatch(/setInterval\(bindungTakt, 60_000\)/);
+  });
+
+  it.skipIf(process.platform === "win32")("Kopie im laufenden Betrieb, Server mit SIGTERM beendet, Kopie zurück: alter Schlüssel gilt nie", async () => {
+    const { spawn } = await import("node:child_process");
+    const b = await leitungMitSchluessel("w2-sigterm");
+    const kopie = path.join(ablagen, `heiss${++nr}`);
+    await cp(Z.wurzel, kopie, { recursive: true });
+    const statik = await mkdtemp(path.join(tmpdir(), "centric-skwieder-statik-"));
+    await writeFile(path.join(statik, "index.html"), "<!doctype html><title>x</title>");
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    const kind = spawn(process.execPath, ["server.mjs"], { cwd: path.join(import.meta.dirname, ".."),
+      env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: Z.wurzel,
+        CENTRIC_ADMIN: "testgeheim", CENTRIC_AUFRAEUMEN: "aus", CENTRIC_UEBERWACHUNG: "aus", CENTRIC_ZUSTELL_TAKT: "aus" },
+      stdio: "ignore" });
+    const ende = new Promise((r) => kind.once("exit", r));
+    let bereit = false;
+    for (let i = 0; i < 100 && !bereit; i++) {
+      bereit = await fetch(`http://127.0.0.1:${port}/gesund`).then((r) => r.status > 0, () => false);
+      if (!bereit) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(bereit, "Server kam hoch").toBe(true);
+    kind.kill("SIGTERM");
+    await ende;
+    await rm(statik, { recursive: true, force: true });
+    for (const n of await readdir(Z.wurzel)) await rm(path.join(Z.wurzel, n), { recursive: true, force: true });
+    await cp(kopie, Z.wurzel, { recursive: true });
+    expect((await vollausgabe(b.sk)).status).toBe(401);
+  }, LIMIT);
+});
+
+describe("Hinweise: Werkzeug, Pfade, /gesund, STORES", () => {
+  it("schluessel-erneuern bricht ab, solange ein Server antwortet; die Epoche bleibt", async () => {
+    await leitungMitSchluessel("h-server");
+    const { createServer } = await import("node:http");
+    const srv = createServer((q, a) => { a.end("ok"); });
+    await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${srv.address().port}/gesund`;
+    const vorher = await E.epocheDateiLesen(zustand());
+    try {
+      expect(await W.main(["schluessel-erneuern", "--zustand", zustand(), "--daten", Z.wurzel, "--server-url", url])).not.toBe(0);
+    } finally { await new Promise((r) => srv.close(r)); }
+    expect((await E.epocheDateiLesen(zustand())).epoche).toBe(vorher.epoche);
+  }, LIMIT);
+
+  it("Zustandsverzeichnis über einen Link in die Ablage: erkannt (echte Pfade), Server und Werkzeug lehnen ab", async () => {
+    const { symlinkSync } = await import("node:fs");
+    const innen = path.join(Z.wurzel, "versteckt");
+    await mkdir(innen, { recursive: true });
+    const link = path.join(ablagen, `link${++nr}`);
+    symlinkSync(innen, link, process.platform === "win32" ? "junction" : "dir");
+    try {
+      expect(E.ueberlappen(link, Z.wurzel)).toBe(true);
+      expect(E.ueberlappen(path.join(link, "neu", "tiefer"), Z.wurzel), "auch noch nicht vorhandene Unterordner").toBe(true);
+      expect(E.ueberlappen(zustand(), Z.wurzel), "Gegenprobe: Geschwister").toBe(false);
+      process.env.CENTRIC_ZUSTAND = link;
+      expect(() => E.zustandsVerzeichnis()).toThrow(/in der Ablage/);
+      expect((await E.zustandPruefen()).stufe).toBe("warnung");
+      await expect(W.schluesselErneuern({ zustand: link, daten: Z.wurzel, serverPruefen: false })).rejects.toThrow(/in der Ablage/);
+    } finally {
+      delete process.env.CENTRIC_ZUSTAND;
+      await rm(link, { recursive: true, force: true }).catch(() => {});
+      await rm(innen, { recursive: true, force: true });
+    }
+  }, LIMIT);
+
+  it("/gesund meldet den Zustand: ok im Normalfall, Warnung bei beschädigter Epochendatei (ohne Werte)", async () => {
+    await leitungMitSchluessel("h-gesund");
+    expect((await E.zustandPruefen()).stufe).toBe("ok");
+    const G = await import("../server/lib/gesund.mjs");
+    expect((await G.zustand({ frisch: true })).pruefungen.schluessel.stufe).toBe("ok");
+    await writeFile(path.join(zustand(), E.EPOCHE_DATEI), "{kaputt");
+    const z = await E.zustandPruefen();
+    expect(z).toEqual({ stufe: "warnung", text: "Epochendatei beschädigt" });
+    const g = await G.zustand({ frisch: true });
+    expect(g.pruefungen.schluessel.stufe).toBe("warnung");
+    expect(G.oeffentlich(g).status, "kein 503: der Dienst ist nicht gestört").toBe(200);
+  }, LIMIT);
+
+  it("STORES/gehoertInSicherung: nur sk:/skw:/skraum: aus der Sitzungsablage, nie t:/ta:/skbindung", () => {
+    const enc = (k) => `centric-sitzungen/${[...Buffer.from(k, "utf8")].map((b) => {
+      const z = String.fromCharCode(b);
+      return /[A-Za-z0-9_-]/.test(z) ? z : "%" + b.toString(16).toUpperCase().padStart(2, "0");
+    }).join("")}.json`;
+    for (const k of ["sk:abc", "skw:abc", "skraum:r:abc"]) expect(W.gehoertInSicherung(enc(k)), k).toBe(true);
+    for (const k of ["t:abc", "ta:abc", "skbindung"]) expect(W.gehoertInSicherung(enc(k)), k).toBe(false);
+    expect(W.gehoertInSicherung("centric-accountsitzungen/x.json")).toBe(false);
+    expect(W.gehoertInSicherung("centric-takt/x.json")).toBe(false);
+    for (const p of W.STORES["centric-sitzungen"].nur)
+      for (const k of ["t:", "ta:", "skbindung"]) expect(k.startsWith(p), `${p} würde ${k} sichern`).toBe(false);
+  });
 });

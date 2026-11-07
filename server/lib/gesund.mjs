@@ -40,6 +40,7 @@
    ========================================================================== */
 
 import { statfs, readFile, writeFile, mkdir, unlink, open, readdir, stat } from "node:fs/promises";
+import { zustandPruefen } from "./schluesselepoche.mjs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
@@ -258,6 +259,9 @@ async function pruefenAlle(g, jetzt) {
     loeschlauf: await loeschlaufPruefen(g, jetzt),
     fehler: fehlerPruefen(g, jetzt),
     zustellung: zustellungPruefen(g, jetzt),
+    /* Wiederherstellungsschutz der Sicherungsschlüssel: Warnung (nicht kritisch), wenn CENTRIC_ZUSTAND nicht nutzbar
+       ist; dann gilt kein Sicherungsschlüssel, der übrige Dienst ist nicht gestört. */
+    schluessel: await zustandPruefen().catch(() => ({ stufe: "warnung", text: "nicht prüfbar" })),
   };
   const stufe = Object.values(pruefungen).reduce((a, p) => schlimmer(a, p.stufe), "ok");
   const ergebnis = { stufe, pruefungen, zeit: new Date(jetzt).toISOString() };

@@ -403,10 +403,10 @@ export async function sicherungsschluesselPruefen(store, sk, { bestandLader = nu
   const grundM = mandantPruefen(bestand, sk.betrieb, sk.mandantId);
   if (grundM) return nein(`sk-${grundM}`);
   if (e.person !== null) {
+    /* Dieselbe strenge Regel wie bei der Code-Sitzung (SI-P2, personengueltig.mjs): genau einmal im Betrieb, nicht
+       anonymisiert, aktiv, nicht ausgetreten. Ein Schlüssel einer ausgetretenen Leitung macht keine Vollausgabe. */
     const mandant = eigenerMandant(bestand, { betrieb: sk.betrieb });
-    const dabei = (mandant && Array.isArray(mandant.personen) ? mandant.personen : [])
-      .some((p) => p && String(p.id) === e.person);
-    if (!dabei) return nein("sk-person-fehlt");
+    if (!aktivePerson(mandant, e.person, heuteBerlin())) return nein("sk-person-fehlt");
   }
   /* Die wirksame Rolle des Erstellers, aus der Personalliste abgeleitet wie bei jeder Anfrage. */
   const rolle = wirksameRolle({ rolle: "leitung", person: e.person, betrieb: sk.betrieb, mandantId: sk.mandantId }, bestand);

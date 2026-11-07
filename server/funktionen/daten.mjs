@@ -2365,6 +2365,11 @@ async function behandeln(req, context, ctx) {
       /* Derselbe Maßstab wie beim Lesen, schon jetzt: Ein Schlüssel, der von Anfang an nicht gälte (etwa ein
          Planungszugang, dessen Person im Betrieb Leitung ist), wird gar nicht erst ausgegeben. */
       const skProbe = await sicherungsschluesselPruefen(store, skSatz, { bestandLader: async () => skMit });
+      if (!skProbe.ok && skProbe.grund === "sk-epoche-fehler") {
+        await protokoll("sicherungsschluessel", kennung(req, s), "fehler", "anlegen: epoche", wer);
+        return antwort({ fehler: "Sicherungsschlüssel lassen sich gerade nicht anlegen.",
+          text: "Der Wiederherstellungsschutz ist nicht bereit (Betreiber: CENTRIC_ZUSTAND prüfen)." }, 503);
+      }
       if (!skProbe.ok) {
         await protokoll("sicherungsschluessel", kennung(req, s), "abgewiesen", `anlegen: ${String(skProbe.grund).slice(0, 32)}`, wer);
         return antwort({ fehler: "Mit diesem Zugang lässt sich kein Sicherungsschlüssel anlegen.",

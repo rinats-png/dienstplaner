@@ -56,6 +56,7 @@
 #    CENTRIC_PROTOKOLL     wie freigabe-lib.sh
 #    CENTRIC_DATEN_PFAD    ($CENTRIC_VERZ/data)
 #    CENTRIC_DEPLOY_SICHERUNGEN  ($CENTRIC_VERZ/deploy-sicherungen)
+#    CENTRIC_ZUSTAND_PFAD  ($CENTRIC_VERZ/zustand) Schlüsselepoche, nie sichern
 #    CENTRIC_WARTEZEIT     (150, mindestens 90)   CENTRIC_TAKT (2)
 #    CENTRIC_DEPLOY_BEHALTEN  (5) vollständige Sicherungen, die bleiben
 #
@@ -73,6 +74,7 @@ WARTEZEIT="${CENTRIC_WARTEZEIT:-150}"
 TAKT="${CENTRIC_TAKT:-2}"
 DATEN_PFAD="${CENTRIC_DATEN_PFAD:-$CENTRIC_VERZ/data}"
 SICHERUNGEN="${CENTRIC_DEPLOY_SICHERUNGEN:-$CENTRIC_VERZ/deploy-sicherungen}"
+ZUSTAND_PFAD="${CENTRIC_ZUSTAND_PFAD:-$CENTRIC_VERZ/zustand}"
 SMOKE="$FREIGABE_SKRIPT_VERZ/deploy-smoke.mjs"
 ABGLEICH="$FREIGABE_SKRIPT_VERZ/deploy-abgleich.mjs"
 XFF_WARNUNG="WARNUNG: Anfrage mit X-Forwarded-For"
@@ -233,6 +235,20 @@ bisher_startbar() {
 # verlangt wird das Doppelte, damit danach noch etwas übrig ist.
 daten_bytes="$(du -sb "$DATEN_PFAD" 2>/dev/null | cut -f1)" || daten_bytes=""
 mkdir -p "$SICHERUNGEN" 2>/dev/null || abbruch 4 "Sicherungsverzeichnis $SICHERUNGEN lässt sich nicht anlegen"
+# Zustandsverzeichnis der Sicherungsschlüssel (compose: ./zustand:/zustand), dem Benutzer
+# des Containers (uid 1000). Ohne es gelten keine Sicherungsschlüssel; der Dienst läuft.
+if ((trocken)); then
+  [[ -d "$ZUSTAND_PFAD" ]] || echo "Trockenlauf: Zustandsverzeichnis $ZUSTAND_PFAD fehlt und würde angelegt." >&2
+elif [[ ! -d "$ZUSTAND_PFAD" ]]; then
+  mkdir -p "$ZUSTAND_PFAD" 2>/dev/null || abbruch 4 "Zustandsverzeichnis $ZUSTAND_PFAD lässt sich nicht anlegen"
+  chmod 700 "$ZUSTAND_PFAD" 2>/dev/null || echo "WARNUNG: Rechte von $ZUSTAND_PFAD nicht auf 700 gesetzt." >&2
+  if [[ "$(id -u)" -eq 0 ]]; then
+    chown 1000:1000 "$ZUSTAND_PFAD" || abbruch 4 "Zustandsverzeichnis $ZUSTAND_PFAD lässt sich nicht uid 1000 übergeben"
+  fi
+fi
+if [[ -d "$ZUSTAND_PFAD" && ! -w "$ZUSTAND_PFAD" ]]; then
+  echo "WARNUNG: Zustandsverzeichnis $ZUSTAND_PFAD nicht schreibbar — Sicherungsschlüssel gelten nicht (uid 1000 braucht Schreibrecht)." >&2
+fi
 frei_bytes="$(df -P -B1 "$SICHERUNGEN" 2>/dev/null | awk 'NR == 2 { print $4 }')" || frei_bytes=""
 if [[ ! "$daten_bytes" =~ ^[0-9]+$ || ! "$frei_bytes" =~ ^[0-9]+$ ]]; then
   abbruch 4 "Platzbedarf nicht ermittelbar (du/df)"

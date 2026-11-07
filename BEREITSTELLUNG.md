@@ -753,7 +753,8 @@ Dazu:
   Werkzeugprüfung die Regel „für `ablage-pruefen --aus-sicherung` nur Sicherungen nach
   der letzten Wiederherstellung verwenden“ (BETRIEB-SICHERUNG §4a).
 - Geht etwas schief: `docker compose stop`, das neue `data/` in `data.fehlgeschlagen-<Zeit>`
-  umbenennen, die Sicherheitskopie zurück nach `data/` benennen, `up -d`.
+  umbenennen, die Sicherheitskopie zurück nach `data/` benennen, **`schluessel-erneuern`
+  ausführen** (unten, Pflicht), `up -d`.
 - Nach dem Start läuft der tägliche Löschlauf erstmals eine Minute später und danach
   alle 24 Stunden **ab diesem Start**. Seine Uhrzeit wandert also mit jedem
   Neuerzeugen des Containers. Er schreibt den Vermerk `aufraeumen:letzter` neu — das
@@ -795,6 +796,19 @@ Epoche; bei Weg 2 erneuert das Werkzeug sie zusätzlich vor dem Tausch (es sieht
 Kopie), führt danach bei gestopptem Dienst aus:
 
     docker compose run -T --rm --no-deps centric-dp-web       node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand /zustand --daten /data
+
+**Pflichtschritt nach JEDEM Rollback außerhalb des Werkzeugs** — Snapshot der VM, des
+Volumes oder des Dateisystems, `data/` umbenennen oder kopieren, der Rückweg „Geht etwas
+schief" oben: bei gestopptem Dienst `schluessel-erneuern` wie oben, erst danach `up -d`.
+Das Werkzeug bricht ab, solange ein Server antwortet.
+
+**Lücke, ehrlich benannt:** Bringt ein Snapshot `data/` **und** `zustand/` gemeinsam zurück
+(VM- oder Volume-Snapshot über beide), passen Epoche und Bindung zueinander; das ist technisch
+nicht von einem unveränderten Betrieb zu unterscheiden. Dann schützt nur der Pflichtschritt.
+`zustand/` deshalb auf einem Datenträger halten, der nicht mit `data/` zurückgerollt wird, wo
+das geht. Ohne Snapshot erkennt der Server eine Kopie, die älter ist als die letzte Erneuerung
+der Bindung (beim Start, jede Minute, beim Beenden und vor jedem Widerruf), selbst. Nicht
+erkannt wird eine Kopie aus der letzten Minute vor einem Absturz oder SIGKILL.
 
 Danach legt eine Leitung in der App neue Schlüssel an (Sicherung außer Haus →
 Sicherungsschlüssel); Automatisierungen werden kontrolliert umgestellt: neuen Schlüssel
