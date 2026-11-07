@@ -92,7 +92,7 @@ export function pruefeWachbuchEintrag(e, { objekte = [], liste = [] } = {}) {
  *   geloescht?: readonly string[], einheiten?: any[] }} ktx
  *   geloescht: Schlüssel, die der geprüfte Ausnahmeweg (Art. 17) entfernt hat — nur sie dürfen fehlen.
  *   einheiten: Einheiten des Betriebs; ein Eintrag nennt nur eine davon.
- * @returns {{ mandant: any } | { grund: string }}
+ * @returns {{ mandant: any, grund?: undefined } | { grund: string, mandant?: undefined }}
  */
 export function wachbuchZusammen(altM, neuM, ktx) {
   if (!neuM || typeof neuM !== "object") return { mandant: neuM };
@@ -153,7 +153,7 @@ export function wachbuchSicht(w, { zugriff, person = null, eigeneEinheit = null 
 export function wachbuchAusgabe(w, o) {
   if (!echterTag(o.von) || !echterTag(o.bis)) return { grund: "Zeitraum: Datum im Format JJJJ-MM-TT erwartet." };
   if (o.von > o.bis) return { grund: "Zeitraum: der Anfang liegt nach dem Ende." };
-  const tage = (new Date(`${o.bis}T12:00:00Z`) - new Date(`${o.von}T12:00:00Z`)) / 86400000 + 1;
+  const tage = (new Date(`${o.bis}T12:00:00Z`).getTime() - new Date(`${o.von}T12:00:00Z`).getTime()) / 86400000 + 1;
   if (tage > WACHBUCH_GRENZEN.spanneTage) return { grund: `Zeitraum: höchstens ${WACHBUCH_GRENZEN.spanneTage} Tage.` };
   const sichtbar = wachbuchSicht(w, o);
   const ids = new Set(sichtbar.map((x) => x.id));
