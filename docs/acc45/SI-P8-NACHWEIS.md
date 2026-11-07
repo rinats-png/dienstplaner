@@ -151,6 +151,14 @@ Ergänzend gilt:
 - Der PR ist mit `7eae3d2` konfliktfrei zusammenführbar (`git merge-tree`).
 - Docker läuft in dieser Umgebung nicht. Der Befund 4/5 stützt sich deshalb auf den CI-Log, auf `Dockerfile`, `.dockerignore` und `git ls-tree`, nicht auf einen lokalen Bauversuch.
 
+**Unabhängige Gegenprüfung der Zuordnung** (eigener Agent, nur lesend, ohne Vorgabe des Ergebnisses): Alle fünf Punkte sind bestätigt.
+
+- Muster, statische Prüfung und `tsc` sind auf einer frischen Kopie von `087fbe9` und auf dem PR-Stand zeilenweise identisch.
+- Der PR berührt weder `Dockerfile` noch `.dockerignore` (Diff 0 Zeilen).
+- Beide Dateien aus Dockerfile:88 fehlen in `.dockerignore`. Der Basis-Lauf der Lieferkette meldet `betreiber-2fa-zuruecksetzen.mjs: not found`, der PR-Lauf `betreiber-faktor-vorlauf.mjs: not found`. BuildKit nennt je Lauf die zuerst geprüfte der beiden. Die Ursache ist dieselbe. Weitere COPY-Zeilen, die danach brechen würden, gibt es nicht. Zur Behebung braucht es je eine `!werkzeug/…`-Zeile für beide Dateien.
+- Der PR führt keinen neuen Fehler ein und verdeckt keinen.
+- Einschränkung: Für Betrieb Sicherung gibt es auf der Basis keinen Lauf, der Beleg dort ist logisch (gleiche Dateien, gleicher Fehler).
+
 **Was die CI von SI-P8 tatsächlich belegt:**
 
 - Grün auf dem PR-Stand: Sicherheit/`geheimnisse` (gitleaks-action, gepinnt), Sicherheit/`abhaengigkeiten` (checkout und setup-node, gepinnt), Betrieb: Deploy-Skripte, Lieferkette/`caddy-vorlage`.
@@ -160,6 +168,8 @@ Ergänzend gilt:
 - **Nicht von der CI belegt**, weil ein früherer Schritt fehlschlägt und die späteren übersprungen werden: In `pruefung.yml` laufen `setup-buildx-action` (Zeile 615) und `build-push-action` (Zeile 618) wegen des Fehlers 3 nie. Es sind dieselben SHAs wie in Lieferkette und Betrieb Sicherung, die dort laufen. `docker/login-action` und `docker/metadata-action` stehen nur in `deploy.yml` (nur `main` bzw. manuell). Ihre SHAs sind upstream verifiziert, laufen aber auf diesem PR nicht.
 
 ## Offene Risiken (nicht Teil von SI-P8, nicht geändert)
+
+0. **Wichtig für die Übergabe: ungeprüfte Folgeschritte.** Weil „Typen“ in `pruefung.yml` und „Statische Prüfung“ in `sicherheit.yml` früh abbrechen, laufen rund 170 Schritte der Prüfung und drei Schritte der Sicherheit (Geheimnisse in der Historie, Lockfile, Wiederherstellungsübung) weder auf der Basis noch auf dem PR. Dort können weitere vorbestehende Fehler liegen. Eine grüne CI ist erst nach der Behebung der Befunde 1 bis 5 aussagekräftig. Danach sollte der Orchestrator die Läufe des PR (oder der Zusammenführung) einmal ansehen. Ungeprüft bleiben bis dahin auch die Pins in `deploy.yml` und `betrieb-deploy.yml` (nur `main` bzw. manuell) sowie `buildx` und `build-push` in `pruefung.yml`.
 
 Sie hängen mit der Lieferkette zusammen. Ihre Behebung würde aber
 Workflow-Verhalten ändern und gehört deshalb in eigene Pakete bzw. vor den
