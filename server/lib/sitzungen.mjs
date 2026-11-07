@@ -97,6 +97,11 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
   const sk = await sitzungen.get(`sk:${hash(token)}`, { type: "json" }).catch(() => null);
   if (sk) {
     if (sk.bis < jetzt()) { await sitzungen.delete(`sk:${hash(token)}`); return null; }
+    /* SI-P1: Für einen widerrufenen Schlüssel besteht ein Vermerk (skw:), der ihn endgültig ausschließt, auch wenn
+       sein Datensatz wieder da ist (zurückgespieltes Konto, nicht gelöschter Rest). Ein Lesefehler am Vermerk ist
+       keine Erlaubnis: im Zweifel nicht anmelden. */
+    const vermerkt = await sitzungen.get(`skw:${hash(token)}`, { type: "json" }).then((v) => !!v, () => true);
+    if (vermerkt) return null;
     return { ...sk, nurSicherung: true };
   }
 
@@ -175,6 +180,12 @@ export async function sitzungBeenden(token) {
     await sitzungsSpeicher().delete(`ta:${hash(token)}`).catch(() => {});
     return true;
   } catch { return false; }
+}
+
+/** Einen Sicherungsschlüssel endgültig entfernen (SI-P1: sein Ersteller gilt nicht mehr). Fehler stören nicht. */
+export async function sicherungsschluesselEntfernen(token) {
+  if (!token) return false;
+  try { await sitzungsSpeicher().delete(`sk:${hash(token)}`); return true; } catch { return false; }
 }
 
 /** Autorität zuerst, dann Aktivität; Fehler stören den Aufrufer nicht. */
