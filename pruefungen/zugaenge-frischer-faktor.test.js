@@ -1,0 +1,305 @@
+/* ==========================================================================
+   SI-P6 (Befund P6, HOCH) — Betreiber-Leitungscodes nur mit frischer
+   Anmeldung und frischem zweiten Faktor
+
+   Vorher: POST /api/zugaenge verlangte nur eine Betreibersitzung (bis zu
+   zwei Stunden alt). Eine einzige abgegriffene Sitzung prägte damit
+   dauerhafte Leitung-Codes für beliebige Kundenräume — voller Zugriff auf
+   deren Personendaten, entgegen der Zusage in AV §3.
+
+   Jetzt:
+     1. Die Anmeldung ist jünger als 20 Minuten (frisch).
+     2. Ist für den Betreibercode ein zweiter Faktor eingerichtet, gehört ein
+        FRISCHER Code aus der App in den Rumpf (`zweifaktor`) — nie ein
+        Nachweis, nie ein schon verbrauchter Code. Unter Pflicht (Auslieferung)
+        ohne eingerichteten Faktor: 403, nichts entsteht.
+     3. Ein Leitung-Code für einen Raum, in dem es schon einen wirksamen
+        Leitungszugang gibt (Code oder Mitgliedschaft), wird abgewiesen (409).
+        Die Erstanlage eines neuen Betriebs bleibt möglich.
+
+   Rot auf altem Stand: jede der Prüfungen unten außer dem Gegenstück
+   „Erstanlage" und „ohne Pflicht, ohne Faktor".
+   ========================================================================== */
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { hotp, base32Dekodieren, schrittZu } from "../server/lib/zweifaktor.mjs";
+
+const WIRT = "127.0.0.1:3000";
+const T0 = Date.UTC(2026, 10, 7, 9, 0, 15);
+const OP_MIT = "P6OP-MITF-0001";        // Betreibercode MIT zweitem Faktor
+const OP_OHNE = "P6OP-OHNE-0002";       // Betreibercode OHNE zweiten Faktor
+let wurzel, laden, daten, schutz, konten, accounts, ablageSchluesselFn;
+let jetzt = T0;
+let nr = 0;
+const uhr = (ms) => { jetzt = ms; vi.setSystemTime(ms); };
+const code = (b32, d = 0) => hotp(base32Dekodieren(b32), schrittZu(jetzt) + d);
+
+const rufen = async (pfad, rumpf, token) => {
+  nr += 1;
+  const kopf = { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+    "x-forwarded-for": `10.61.${Math.floor(nr / 250)}.${nr % 250}` };
+  if (token) kopf.authorization = `Bearer ${token}`;
+  const a = await daten(new Request(`http://${WIRT}${pfad}`, { method: "POST", headers: kopf,
+    body: JSON.stringify(rumpf) }), {});
+  const text = await a.text(); let d = {}; try { d = JSON.parse(text); } catch { /* leer */ }
+  return { status: a.status, text, ...d };
+};
+const zugaenge = (token, rumpf) => rufen("/api/zugaenge", rumpf, token);
+const anzahlKonten = async (raum) => (await konten.raumUebersicht(laden(), raum)).zugaenge.length;
+const bestandFuer = (id) => ({ version: 9, mandanten: [{ id, name: id, einheiten: [{ id: "e1" }],
+  personen: [{ id: "p1", vorname: "V", nachname: "N", rolle: "leitung", bereich: "ALLE",
+    zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] }], nachrichten: [], notrufe: [], anfragen: [] }] });
+
+async function raumAnlegen(raum) {
+  const B = await import("../server/lib/bestand.mjs");
+  await B.bestandSchreiben(laden(), raum, bestandFuer(`m-${raum}`), { durch: "Pruefung" });
+}
+async function kontoAnlegen(raum, rolle, extra = {}) {
+  const c = `P6${rolle.slice(0, 3).toUpperCase()}-${raum.toUpperCase().slice(0, 4)}-${String(++nr).padStart(4, "0")}`;
+  await konten.kontoSchreiben(laden(), ablageSchluesselFn(c), { name: `${rolle} ${raum}`, bestand: raum, rolle,
+    person: "p1", betrieb: 0, mandantId: `m-${raum}`, angelegt: "2026-01-01T00:00:00.000Z", ...extra });
+  return c;
+}
+
+let tokenMit, geheimnis;      // frische Betreibersitzung mit Faktor
+beforeAll(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  uhr(T0);
+  wurzel = await mkdtemp(path.join(tmpdir(), "centric-p6-"));
+  process.env.CENTRIC_DATEN = wurzel;
+  process.env.CENTRIC_ABLAGE = "dateien";
+  process.env.CENTRIC_PFEFFER = "pfeffer-nur-zum-pruefen-p6-0123456789";
+  delete process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT;
+  const { getStore } = await import("../server/lib/ablage.mjs");
+  laden = () => getStore({ name: "centric", consistency: "strong" });
+  schutz = await import("../server/lib/schutz.mjs");
+  schutz.GRENZEN.anmelden = { ...schutz.GRENZEN.anmelden, versuche: 100000 };
+  schutz.WEITERE.anmelden = { ziel: { versuche: 100000, fenster: 300 }, gesamt: { versuche: 100000, fenster: 300 } };
+  schutz.NOTGRENZEN.anmelden = { versuche: 100000, fenster: 300, gesamt: 100000 };
+  /* Die Bremse der Zugangsanlage ist nicht Gegenstand — die Zwei-Faktor-Bremse schon. */
+  schutz.GRENZEN.zugaenge = { ...schutz.GRENZEN.zugaenge, versuche: 100000 };
+  schutz.WEITERE.zugaenge = { gesamt: { versuche: 100000, fenster: 600 } };
+  daten = (await import("../server/funktionen/daten.mjs")).default;
+  konten = await import("../server/lib/konten.mjs");
+  accounts = await import("../server/lib/accounts.mjs");
+  ablageSchluesselFn = (await import("../server/lib/codes.mjs")).ablageSchluessel;
+  for (const c of [OP_MIT, OP_OHNE])
+    await konten.kontoSchreiben(laden(), ablageSchluesselFn(c), { name: "Betreiber P6", bestand: "p6-betreiber",
+      rolle: "betreiber", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
+  for (const r of ["p6-neu", "p6-alt", "p6-gesperrt", "p6-demo", "p6-mitglied", "p6-abgelaufen", "p6-ohne-faktor"])
+    await raumAnlegen(r);
+
+  /* Faktor für OP_MIT einrichten, wie es ein Betreiber täte: beginnen, bestätigen, anmelden. */
+  const b = await rufen("/api/anmelden", { zugangscode: OP_MIT, zweifaktorAktion: "beginnen" });
+  geheimnis = b.geheimnis;
+  expect(geheimnis).toBeTruthy();
+  const f = await rufen("/api/anmelden", { zugangscode: OP_MIT, zweifaktorAktion: "bestaetigen", zweifaktor: code(geheimnis) });
+  expect(f.status).toBe(200);
+  const l = await rufen("/api/anmelden", { zugangscode: OP_MIT, zweifaktor: code(geheimnis, 1) });
+  expect(l.token).toBeTruthy();
+  tokenMit = l.token;
+  uhr(jetzt + 60_000);          // frische Schritte für die Prüfungen unten
+}, 120000);
+afterAll(async () => { vi.useRealTimers(); await rm(wurzel, { recursive: true, force: true }); });
+beforeEach(async () => {
+  delete process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT;
+  /* Die Zwei-Faktor-Bremse ist in einem eigenen Test Gegenstand, sonst nicht. */
+  const { createHash } = await import("node:crypto");
+  const id = createHash("sha256").update(`betreiber-code:${ablageSchluesselFn(OP_MIT)}`).digest("hex");
+  await schutz.entlasten("zweifaktor", `b:${id.slice(0, 16)}`);
+  for (let i = 0; i < 4; i++) await schutz.entlasten("zweifaktor", `10.61.${Math.floor(nr / 250)}.${nr % 250}`);
+});
+
+describe("SI-P6 frische Anmeldung", () => {
+  it("eine Betreibersitzung, die älter als 20 Minuten ist, bekommt „Bitte neu anmelden“ — es entsteht kein Code", async () => {
+    const l = await rufen("/api/anmelden", { zugangscode: OP_OHNE });
+    expect(l.token).toBeTruthy();
+    const vorher = await anzahlKonten("p6-neu");
+    uhr(jetzt + 21 * 60_000);
+    const r = await zugaenge(l.token, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }] });
+    expect(r.status).toBe(403);
+    expect(r.neuAnmelden).toBe(true);
+    expect(await anzahlKonten("p6-neu")).toBe(vorher);
+  });
+
+  it("Gegenprobe: dieselbe Sitzung, frisch, ohne eingerichteten Faktor und ohne Pflicht (Entwicklung) → 200", async () => {
+    const l = await rufen("/api/anmelden", { zugangscode: OP_OHNE });
+    const r = await zugaenge(l.token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }] });
+    expect(r.status).toBe(200);
+    expect(r.zugaenge).toHaveLength(1);
+  });
+});
+
+describe("SI-P6 frischer zweiter Faktor", () => {
+  it("mit eingerichtetem Faktor: ohne Code → 401 „erforderlich“, es entsteht nichts", async () => {
+    const vorher = await anzahlKonten("p6-neu");
+    const r = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }] });
+    expect(r.status).toBe(401);
+    expect(r.zweifaktor).toBe("erforderlich");
+    expect(await anzahlKonten("p6-neu")).toBe(vorher);
+  });
+
+  it("ein falscher Code → 401 „falsch“; ein Code aus einem fernen Schritt zählt nicht", async () => {
+    const vorher = await anzahlKonten("p6-neu");
+    for (const falsch of ["000000", "abcdef", code(geheimnis, 10), 123456, ["1", "2"], { a: 1 }]) {
+      const r = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: falsch });
+      expect(r.status, JSON.stringify(falsch)).toBe(401);
+      expect(r.zugaenge).toBeUndefined();
+    }
+    expect(await anzahlKonten("p6-neu")).toBe(vorher);
+  });
+
+  it("ein Nachweis oder der Code der Anmeldung genügt nicht: der Code der Anmeldung ist verbraucht", async () => {
+    const vorher = await anzahlKonten("p6-neu");
+    /* Der Schritt, der bei der Anmeldung verbraucht wurde (T0-Schritt + 1). */
+    const r = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }],
+      zweifaktor: hotp(base32Dekodieren(geheimnis), schrittZu(T0) + 1) });
+    expect(r.status).toBe(401);
+    expect(await anzahlKonten("p6-neu")).toBe(vorher);
+  });
+
+  it("ein frischer Code → 200; derselbe Code ein zweites Mal → 401 „schon verwendet“", async () => {
+    const c = code(geheimnis);
+    const ok = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: c });
+    expect(ok.status).toBe(200);
+    expect(ok.zugaenge[0].code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    const nochmal = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: c });
+    expect(nochmal.status).toBe(401);
+    expect(String(nochmal.fehler)).toMatch(/schon verwendet/);
+  });
+
+  it("die Antwort nennt weder Geheimnis noch Code des Betreibers", async () => {
+    uhr(jetzt + 31_000);
+    const r = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: code(geheimnis) });
+    expect(r.status).toBe(200);
+    expect(r.text).not.toContain(geheimnis);
+    expect(r.text).not.toContain(OP_MIT);
+  });
+
+  it("Pflicht (Auslieferung) ohne eingerichteten Faktor → 403 „einrichten“, nichts entsteht", async () => {
+    const l = await rufen("/api/anmelden", { zugangscode: OP_OHNE });   // Sitzung entstand vor der Pflicht
+    expect(l.token).toBeTruthy();
+    process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT = "1";
+    const vorher = await anzahlKonten("p6-ohne-faktor");
+    const r = await zugaenge(l.token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }] });
+    expect(r.status).toBe(403);
+    expect(r.zweifaktor).toBe("einrichten");
+    expect(await anzahlKonten("p6-ohne-faktor")).toBe(vorher);
+  });
+
+  it("zu viele falsche Codes werden gebremst (429), danach auch der richtige Code nicht sofort", async () => {
+    let letzter;
+    for (let i = 0; i < 8; i++) {
+      letzter = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: "000000" });
+      if (letzter.status === 429) break;
+    }
+    expect(letzter.status).toBe(429);
+    uhr(jetzt + 31_000);
+    const r = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: code(geheimnis) });
+    expect(r.status).toBe(429);
+  });
+});
+
+describe("SI-P6 Leitung-Codes für bestehende Kundenräume", () => {
+  /* Dev-Modus ohne Faktor (OP_OHNE): hier geht es nur um die Raumregel. */
+  let tok;
+  beforeAll(async () => { tok = (await rufen("/api/anmelden", { zugangscode: OP_OHNE })).token; });
+
+  it("Erstanlage: ein neuer Betrieb bekommt Leitung und weitere Rollen in einem Zug", async () => {
+    const r = await zugaenge(tok, { bestand: "p6-neu", eintraege: [{ rolle: "leitung" }, { rolle: "planer" }] });
+    expect(r.status).toBe(200);
+    expect(r.zugaenge.map((z) => z.rolle)).toEqual(["leitung", "planer"]);
+  });
+
+  it("Raum mit wirksamem Leitung-Code: weiterer Leitung-Code → 409, nichts entsteht", async () => {
+    await kontoAnlegen("p6-alt", "leitung");
+    const vorher = await anzahlKonten("p6-alt");
+    const r = await zugaenge(tok, { bestand: "p6-alt", eintraege: [{ rolle: "leitung" }] });
+    expect(r.status).toBe(409);
+    expect(r.grund).toBe("leitung_vorhanden");
+    expect(await anzahlKonten("p6-alt")).toBe(vorher);
+  });
+
+  it("gemischte Anfrage: ein Leitung-Eintrag lässt die ganze Anfrage scheitern (kein Teilergebnis)", async () => {
+    const vorher = await anzahlKonten("p6-alt");
+    const r = await zugaenge(tok, { bestand: "p6-alt", eintraege: [{ rolle: "planer" }, { rolle: "leitung" }] });
+    expect(r.status).toBe(409);
+    expect(await anzahlKonten("p6-alt")).toBe(vorher);
+  });
+
+  it("andere Rollen sind im bestehenden Raum weiter möglich", async () => {
+    const r = await zugaenge(tok, { bestand: "p6-alt", eintraege: [{ rolle: "planer" }] });
+    expect(r.status).toBe(200);
+  });
+
+  it("gesperrter Leitung-Code zählt nicht (Leitung ist verloren, die Sperre ist der Beleg)", async () => {
+    await kontoAnlegen("p6-gesperrt", "leitung", { gesperrt: true });
+    const r = await zugaenge(tok, { bestand: "p6-gesperrt", eintraege: [{ rolle: "leitung" }] });
+    expect(r.status).toBe(200);
+  });
+
+  it("Demo-Leitung und abgelaufener Selbststart-Leitung zählen nicht", async () => {
+    await kontoAnlegen("p6-demo", "leitung", { demo: true });
+    expect((await zugaenge(tok, { bestand: "p6-demo", eintraege: [{ rolle: "leitung" }] })).status).toBe(200);
+    await kontoAnlegen("p6-abgelaufen", "leitung", { selbstAngelegt: true, laeuftAb: "2026-01-02T00:00:00.000Z" });
+    expect((await zugaenge(tok, { bestand: "p6-abgelaufen", eintraege: [{ rolle: "leitung" }] })).status).toBe(200);
+  });
+
+  it("ein nicht auswertbares Ablaufdatum gilt als wirksam (fail-closed)", async () => {
+    await raumAnlegen("p6-kaputt");
+    await kontoAnlegen("p6-kaputt", "leitung", { selbstAngelegt: true, laeuftAb: "kein-datum" });
+    const r = await zugaenge(tok, { bestand: "p6-kaputt", eintraege: [{ rolle: "leitung" }] });
+    expect(r.status).toBe(409);
+  });
+
+  it("wirksame Mitgliedschaft (aktiv oder eingeladen) mit Rolle leitung → 409; entzogen zählt nicht", async () => {
+    const a = await accounts.accountAnlegen(laden(), { email: "leitung@p6-mitglied.example", status: "aktiv" });
+    expect(a.ok).toBe(true);
+    const m = await accounts.mitgliedschaftAnlegen(laden(), { accountId: a.account.id, raum: "p6-mitglied", betrieb: 0,
+      mandantId: "m-p6-mitglied", rolle: "leitung", status: "aktiv" });
+    expect(m.ok).toBe(true);
+    const r = await zugaenge(tok, { bestand: "p6-mitglied", eintraege: [{ rolle: "leitung" }] });
+    expect(r.status).toBe(409);
+    expect(r.grund).toBe("leitung_vorhanden");
+    await accounts.mitgliedschaftEntziehen(laden(), a.account.id, "p6-mitglied");
+    expect((await zugaenge(tok, { bestand: "p6-mitglied", eintraege: [{ rolle: "leitung" }] })).status).toBe(200);
+  });
+
+  it("unlesbarer Konto-Eintrag beim Prüfen → 503, kein Code (fail-closed, nicht „keine Leitung“)", async () => {
+    await raumAnlegen("p6-lesefehler");
+    const datei = path.join(wurzel, "centric", "konto%3Azzz-kaputt.json");
+    await writeFile(datei, "{ das ist kein json");
+    try {
+      const r = await zugaenge(tok, { bestand: "p6-lesefehler", eintraege: [{ rolle: "leitung" }] });
+      expect(r.status).toBe(503);
+      expect(r.zugaenge).toBeUndefined();
+    } finally { await rm(datei, { force: true }); }
+    expect(await anzahlKonten("p6-lesefehler")).toBe(0);
+  });
+});
+
+describe("SI-P6 Pflicht im Deploy und Oberfläche (Quelltext-Belege)", () => {
+  it("die Auslieferung läuft mit NODE_ENV=production, und production erzwingt den Faktor ohne Abschalter", async () => {
+    const { betreiberPflicht } = await import("../server/lib/betreiber-zweifaktor.mjs");
+    expect(betreiberPflicht({ NODE_ENV: "production" })).toBe(true);
+    for (const aus of ["0", "aus", "", "false"])
+      expect(betreiberPflicht({ NODE_ENV: "production", CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: aus }), aus).toBe(true);
+    const docker = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
+    expect(docker).toMatch(/NODE_ENV=production/);
+    const compose = await readFile(new URL("../deploy/compose.yml", import.meta.url), "utf8");
+    expect(compose).toMatch(/NODE_ENV:\s*production/);
+  });
+
+  it("die Oberfläche schickt den Code mit: speicher.js sendet `zweifaktor`, die Mandanten-Anlage fragt ihn ab", async () => {
+    const sp = await readFile(new URL("../src/speicher.js", import.meta.url), "utf8");
+    expect(sp).toMatch(/zugaengeErzeugen\(bestand, eintraege, zweifaktor/);
+    expect(sp).toMatch(/JSON\.stringify\(\{ bestand, eintraege(, zweifaktor)? \}\)|zweifaktor/);
+    const { appQuelle } = await import("./app-quelle.js");
+    const app = appQuelle();
+    expect(app).toMatch(/zugaengeErzeugen\(raum,[\s\S]{0,200}faktor/);
+    expect(app).toMatch(/Code aus der Authenticator-App|zweiten Faktor/);
+  });
+});
