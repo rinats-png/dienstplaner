@@ -50,15 +50,19 @@ In keinem Lauf trat ein anderer Fehler als Code 3 auf; kein rohes `ENOENT`.
 1. `quelleAnsehen`: `ENOENT` beim `readdir` eines Store-Verzeichnisses = Veränderung (`veraendert: true`), wie schon
    beim `stat`. Andere Fehler werden weiter geworfen. Die `stat`-Aufrufe laufen in Blöcken zu 64 gleichzeitig
    (5000 Dateien: ~220 ms → ~120 ms; kürzere Liste = kürzeres Fenster für Störungen). Ergebnis und Fehlerverhalten
-   unverändert.
+   unverändert, bis auf die Rangfolge, wenn zugleich ein `stat`-Fehler (außer ENOENT) und ein Symlink/eine Fremddatei
+   in einem späteren Store auftreten (früher der erste in Listenreihenfolge, jetzt zuerst Code 2). Review B7.
 2. `sichern`: Nachkopieren statt Verwerfen. Je Versuch bis zu `runden` (Vorgabe 12) Runden:
-   - Eine Datei gilt als gesichert, wenn ihre Kopie zum Fingerabdruck (Größe, mtime) aus der Liste **vor** dem Lesen
+   - Eine Datei gilt als gesichert, wenn ihre Kopie zum Fingerabdruck (Größe, mtime, Inode) aus der Liste **vor** dem Lesen
      gehört. Veraltete Kopien (Datei geändert, gelöscht, verschoben) werden sofort samt Datei in der Werkstatt
      verworfen.
    - Danach wird die Quelle erneut angesehen. **Stabil** ist ein Stand erst, wenn dieser Durchlauf keine
-     Veränderung meldet, dieselbe Dateimenge liefert und jede Datei zum Fingerabdruck ihrer Kopie passt. Dann
-     entspricht die Sicherung dem Stand der Quelle zum Beginn dieses Prüfdurchlaufs — für alle Dateien zugleich
-     (derselbe Maßstab wie bisher, nur dass nicht mehr alles neu kopiert werden muss).
+     Veränderung meldet, dieselbe Dateimenge liefert und jede Datei zum Fingerabdruck ihrer Kopie passt. Dann hat
+     sich zwischen Lesen und Prüfdurchlauf nichts verändert, das sich an Größe, mtime, Inode oder Dateimenge
+     zeigt — für alle Dateien zugleich (derselbe Maßstab wie bisher, nur dass nicht mehr alles neu kopiert werden
+     muss; auch bisher kein Beweis eines je existierenden Zustands bei zyklisch wandernden Dateien).
+   - Jeder Abbruch im Lauf (auch Code 1/2) räumt die Werkstatt `.unfertig-…` im Ziel weg (Review B6, war
+     vorbestehend).
    - Sonst werden nur die abweichenden Dateien in der nächsten Runde neu gelesen. Nach `runden` Runden ohne Ruhe:
      Versuch verwerfen, Werkstatt löschen, Pause, nächster Versuch; nach `versuche` (3) Abbruch mit **Code 3**.
    - Manifest (`stores`, `ausgelassen`, `summe`) stammt aus der Liste des stabilen Durchlaufs.
@@ -70,7 +74,7 @@ selben Zeitstempel-Takt übersehen = stiller Konsistenzfehler); Änderung von `v
 
 ## 4. Tests nach der Korrektur
 
-- `npx vitest run pruefungen/wp28b-sicherung-last.test.js` → 7 von 7 grün (mehrfach wiederholt, stabil).
+- `npx vitest run pruefungen/wp28b-sicherung-last.test.js` → 12 von 12 grün (mehrfach wiederholt, stabil).
 - Mutationsproben (jeweils Test rot): kein Fingerabdruck-Vergleich im Prüfdurchlauf (6 rot), gelöschte Kopien nicht
   verwerfen (1), geänderte Dateien nicht neu kopieren (2), `verwerfen` löscht die Datei nicht (6), `ENOENT` beim
   Store-`readdir` wieder roh (1). Eine erste Fassung der Mutation „gelöschte Kopien nicht verwerfen“ blieb grün und
@@ -86,20 +90,23 @@ Im Test „Schreibwelle“: Sicherung unter Last → `pruefen` ok → Byte-Vergl
 und „Größe ändert sich, dann weg“: Sicherung = Endstand, gelöschte Datei nicht enthalten, neue enthalten,
 Manifest-Zahlen stimmen mit der Wirklichkeit.
 Maßstab-Test (`~3000` Dateien à 3 kB, ~17 Schreibvorgänge/s, Konto/Mitgliedschaft in fester Reihenfolge
-geschrieben): 8 Läufe, davon 1 erfolgreich (alle übrigen Code 3, keine anderen Fehler). Die eine entstandene Sicherung
+geschrieben): zwei Reihen mit 8 und 6 Läufen, davon 1 erfolgreich (alle übrigen Code 3, keine anderen Fehler). Die eine entstandene Sicherung
 bestand `pruefen` und zeigte keine zerrissene Konto-Mitgliedschafts-Kombination. Eine Stichprobe von 1 belegt die
 Konsistenz nicht statistisch; sie stützt sich auf die deterministischen Tests (Abschnitt 4).
 
 ## 6. Verbleibende Risiken
 
 - **Hohe Dauer-Schreibrate bleibt ein Problem.** Der Stand muss einmal für die Dauer eines Prüfdurchlaufs ruhen
-  (5000 Dateien ≈ 120 ms). Im Maßstab-Test (~3000 Dateien, ~17 Schreibvorgänge/s) gelang 1 von 8 Läufen (vorher 0).
+  (5000 Dateien ≈ 120 ms). Im Maßstab-Test (~3000 Dateien, ~17 Schreibvorgänge/s) gelang 1 von 14 Läufen (vorher 0): **bei dieser Last ist die
+  Sicherung weiterhin nicht zuverlässig**. Bei ~19–25 Schreibvorgängen/s auf wenige Dutzend Dateien dagegen 70/70
+  (vorher 0/80).
   Ergebnis dann Code 3 + Fail-Ping, nie eine halbe Sicherung. Abhilfe unverändert: ruhiges Fenster (02:30) oder
   Server vorher stoppen. Ein echter Fortschritt wäre ein kurzer Schreib-Halt im Server (Raumsperre), nicht im Werkzeug.
-- **Zeitstempel-Auflösung.** Zwei Schreibvorgänge derselben Datei mit gleicher Größe im selben mtime-Takt zwischen
-  Lesen und Prüfdurchlauf blieben unbemerkt (wie bisher). Die Ablage schreibt per neuer Datei + `rename`; die
-  Inode-Nummer in den Fingerabdruck aufzunehmen wäre eine zusätzliche Härtung (nicht gemacht: Verhalten auf Windows-
-  und Netzlaufwerken nicht geprüft).
+- **Zeitstempel-Auflösung / Austausch (Review B1).** Auf ext4 (Kernel 6.18) bekamen 100 000 atomare Schreibvorgänge
+  nur 50 012 verschiedene mtimes: Größe + mtime allein reichen nicht. Der Fingerabdruck enthält deshalb jetzt die
+  Inode (jeder atomare Schreibvorgang der Ablage erzeugt eine neue). Restrisiko: Inode-Wiederverwendung bei drei
+  Schreibvorgängen im selben mtime-Takt; zyklisches Wandern von Dateien. Auf Dateisystemen mit instabiler Inode
+  (manche FUSE/Netzlaufwerke) würde der Lauf nie stabil → Code 3 (fail-closed, keine falsche Sicherung).
 - **Windows.** Die ursprüngliche Beobachtung (Befund 6) stammt von Windows; transiente `EPERM/EBUSY/EACCES` beim
   `readFile`/`stat` während eines Ersetzens wurden hier **nicht** untersucht (kein Windows verfügbar) und bleiben
   ein rohes Fehlerbild (Rückgabe 1).
@@ -107,3 +114,20 @@ Konsistenz nicht statistisch; sie stützt sich auf die deterministischen Tests (
 - **S2/S5-Nachlauf (E-20)** bleibt Handstart des Betreibers; hier wurde nichts gegen Staging/VPS gefahren.
 - `pruefungen/gesund.test.js` ist in dieser Sandbox bereits ohne diese Änderung rot (freier Plattenplatz 11,8 %
   → Stufe „warnung“); nicht Teil dieses Pakets.
+
+## 7. Unabhängiger Review und Umgang mit den Befunden
+
+Fresh-Agent-Review (nur lesend, Mutationen in einer Kopie; ~30 Experimente, u. a. 1817 Fuzz-Läufe mit heißem
+Konto/Mitglied-Schreiber: 0 zerrissene Sicherungen, 0 sonstige Fehler). Befunde und Behandlung:
+
+| Befund | Schwere | Behandlung |
+|---|---|---|
+| B1 Größe+mtime nicht eindeutig; veraltete Kopie kann als stabil durchgehen (vorbestehend, reproduziert mit erzwungener gleicher mtime) | mittel | **behoben**: Inode im Fingerabdruck; Test B1 vorher rot, Mutation „ohne Inode“ rot |
+| B2 reine Löschung nach letzter Kopie ungetestet (Mutation `length`-Vergleich überlebte) | niedrig | Test B2; Mutation rot |
+| B3 kein Test über Blockgröße 64 (Mutationen `STAT_BLOCK±1` überlebten) | niedrig | Test B3 (150 Dateien); beide Mutationen rot |
+| B4 Test „echte Schreiber“ lief praktisch nur im Fehlerzweig | niedrig | Schreiber mit 25 ms Pause; verlangt ≥ 1 Erfolg von 4 |
+| B5 leerer Store ungetestet (Mutation überlebte) | niedrig | Test B5 inkl. Wiederherstellung; Mutation rot |
+| B6 Abbruch mit Code 1/2 hinterließ `.unfertig-…` (vorbestehend) | niedrig | **behoben** (try/catch um die Versuchsschleife); Test vorher rot |
+| B7 Fehlerrangfolge bei parallelen `stat` minimal anders | niedrig | in Abschnitt 3 dokumentiert |
+| B8 Nicht-ENOENT-Fehler (Windows EBUSY/EPERM, ENOTDIR) roh | offen | unverändert, Abschnitt 6 |
+| Vorbehalt „gemeinsamer Zeitpunkt“ im Kommentar zu stark | – | Kommentar und Doku abgeschwächt |
