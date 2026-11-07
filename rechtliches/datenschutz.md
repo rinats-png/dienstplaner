@@ -27,9 +27,9 @@ Beim Aufruf verarbeitet der Server Daten, die Ihr Gerät übermittelt: IP-Adress
 
 Zweck: Auslieferung, Stabilität, Fehlererkennung, Abwehr von Angriffen. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einem sicheren Betrieb; Interessenabwägung ist zu dokumentieren).
 
-Die Anwendung selbst rechnet mit der Herkunftsadresse nur über eine Prüfsumme (Hash), um Anmeldeversuche zu bremsen. Eine Prüfsumme einer IP-Adresse ist eine Pseudonymisierung und bleibt personenbezogen, solange sie sich zuordnen lässt; sie ist nicht automatisch anonym.
+Die Anwendung selbst rechnet mit der Herkunftsadresse nur über ein pseudonymisiertes Kürzel, um Anmeldeversuche zu bremsen. Ein solches Kürzel einer IP-Adresse ist eine Pseudonymisierung und bleibt personenbezogen; es ist nicht anonym. [ZU_KLAEREN: Berechnungsverfahren (geschlüsselter Hash) im Produktionsbild bestätigen.]
 
-Ob der Reverse-Proxy (Caddy), der Container oder der Hoster daneben Zugriffsprotokolle mit der Roh-IP führen, ist aus dem Quelltext nicht belegt: [ZU_KLAEREN: tatsächlich protokollierte Felder je Ebene (Caddy, Container, Hoster) und Aufbewahrungsdauer je Protokoll]. Die Aussage „IP nur als Hash“ gilt ausdrücklich nur für das Anwendungsprotokoll.
+Ob der Reverse-Proxy (Caddy), der Container oder der Hoster daneben Zugriffsprotokolle mit der Roh-IP führen, ist aus dem Quelltext nicht belegt: [ZU_KLAEREN: tatsächlich protokollierte Felder je Ebene (Caddy, Container, Hoster) und Aufbewahrungsdauer je Protokoll]. Die Aussage „IP nur als pseudonymisiertes Kürzel“ gilt ausdrücklich nur für das Anwendungsprotokoll, nicht für Zugriffsprotokolle von Caddy, Container oder Hoster, die die Roh-IP enthalten können. [ZU_KLAEREN]
 
 ## 4. Anmeldung und Sitzung
 
@@ -79,9 +79,9 @@ Der Betrieb muss Erforderlichkeit, Mitbestimmung (§ 87 Abs. 1 Nr. 6 BetrVG) und
 
 Hosting: Der Quelltext und die Betreiberunterlagen gehen von einem virtuellen Server bei der IONOS SE aus; als Rechenzentrumsstandort ist Spanien dokumentiert, als Plattformbetreiber (Unterauftrag) Arsys Internet S.L.U. [ZU_KLAEREN: Standort, Vertragsstand und Unterauftragnehmer anhand des IONOS-Kontos und der aktuellen Vertragsanlagen belegen.] Die Daten liegen als Dateien auf diesem Server; die Anwendung verschlüsselt ruhende Daten nicht zusätzlich, eine Datenträgerverschlüsselung durch den Hoster ist nicht belegt.
 
-E-Mail: Der Versandcode spricht die API des Dienstes Resend an, wenn ein Schlüssel konfiguriert ist; ohne Schlüssel läuft ein Trockenlauf ohne Versand. [ZU_KLAEREN: ob in der Produktion ein Schlüssel gesetzt ist; falls ja Vertrag, Region, Drittlandgrundlage; geplanter Wechsel auf anderen Anbieter.] Mails enthalten nur einen Hinweis mit Link; der Betriebsname steht in Betreff und Fußzeile und geht damit an den Anbieter.
+E-Mail: Der Versandcode spricht die API des Dienstes Resend an, wenn ein Schlüssel konfiguriert ist; ohne Schlüssel läuft ein Trockenlauf ohne Versand. [ZU_KLAEREN: ob in der Produktion ein Schlüssel gesetzt ist; falls ja Vertrag, Region, Drittlandgrundlage; geplanter Wechsel auf anderen Anbieter.] Resend ist der einzige im Quelltext implementierte Versandweg; ein Versand über den SMTP-Dienst des Hosters ist nicht implementiert. Mails enthalten nur einen Hinweis mit Link; der Betriebsname steht in Betreff und Fußzeile und geht damit an den Anbieter.
 
-Push: Bei Einschalten durch die Person entsteht eine Anmeldung beim Push-Dienst des Browserherstellers (je nach Browser z. B. Google, Mozilla, Apple, Microsoft); die Inhalte sind auf eine Verweismitteilung ohne Namen und Zeiten begrenzt. [ZU_KLAEREN: ob Push in der Produktion aktiv ist (VAPID-Schlüssel gesetzt) und Drittlandbewertung.]
+Push: Bei Einschalten durch die Person entsteht eine Anmeldung beim Push-Dienst des Browserherstellers (je nach Browser Google/FCM, Mozilla, Apple oder Microsoft; die im Quelltext vorgesehenen Hosts stehen in Anlage 2 des Auftragsverarbeitungsvertrags, bei Aktivierung); die Inhalte sind auf eine Verweismitteilung ohne Namen und Zeiten begrenzt. [ZU_KLAEREN: ob Push in der Produktion aktiv ist (VAPID-Schlüssel gesetzt) und Drittlandbewertung.]
 
 Künstliche Intelligenz: Der Quelltext enthält Vorbereitungen (Gateway, Attrappe, Live-Stumpf), aber keine freigegebene Live-Anbindung. Es werden derzeit keine personenbezogenen Daten an einen KI-Anbieter übermittelt. [ZU_KLAEREN: Betreiberbestätigung; vor Aktivierung Anbieter, Region, Vertrag, Drittlandgrundlage und diese Erklärung ergänzen.]
 

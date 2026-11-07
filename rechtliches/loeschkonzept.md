@@ -12,7 +12,7 @@ Quelle: `server/lib/aufbewahrung.mjs`, `server/lib/datenschutzlauf.mjs`, `server
 - Das 30-Tage-Anwendungsprotokoll wird regulär nur im Modus `an` bereinigt (daneben gelegentlich beim Ansehen der Betreiberlage). In `vorschau` bleibt es länger liegen.
 - Testbetriebe: Bereinigungslauf `CENTRIC_AUFRAEUMEN` (Voreinstellung an) löscht ausschließlich selbst angelegte Testbetriebe nach 30 Tagen Test plus 90 Tage Aufbewahrung, ohne Vertragsschluss. Selbststart, Registrierung und Demo sind standardmäßig aus.
 - Wiederherstellung: Das Zurückspielen einer Sicherung schickt den Betrieb im Modus `an` erneut durch den Löschlauf. Ist der Modus nicht `an`, bringt eine ältere Sicherung bereits gelöschte Angaben zurück (im Quelltext als bewusste Grenze dokumentiert).
-- Sicherung außer Haus: restic-Aufbewahrung 7 tägliche, 4 wöchentliche, 12 monatliche Stände laut Anleitung; Einrichtung nicht belegt.
+- Sicherung außer Haus: restic-Aufbewahrung 7 tägliche, 4 wöchentliche, 12 monatliche Stände laut Anleitung (`docs/BETRIEB-SICHERUNG.md`, `deploy/sicherung/sicherung-ausser-haus.sh`); Einrichtung nicht belegt. **Abweichung:** Die frühere Zusage „Sicherungskopien binnen 60 Tagen“ (AVV § 8, AGB § 11) und diese Aufbewahrung (bis rund 12 Monate) stimmen nicht überein. Die Betriebsanleitung wurde nicht geändert; entweder wird die Retention verkürzt oder die Zusage angepasst. [ZU_KLAEREN: Betreiberentscheidung; bis dahin keine Zusage.]
 - Branchenmodul Wachbuch: Aufbewahrungsfrist nicht festgelegt, das Modul löscht nichts; Einträge werden nie geändert, Korrektur nur per Nachtrag.
 - Zustellprotokoll (Mail/Push): 30 Tage laut Betriebsdokumentation (`CENTRIC_ZUSTELLPROTOKOLL_TAGE`), wirksam im Datenschutzlauf.
 

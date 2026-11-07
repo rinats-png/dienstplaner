@@ -122,7 +122,7 @@
 
 (2) Soweit Kapitel VI der Verordnung (EU) 2023/2854 anwendbar ist, richten sich Wechsel, Fristen, Unterstützung und anschließende Löschung nach diesen zwingenden Vorgaben; abweichende Regelungen beschneiden diese Rechte nicht. [ZU_KLAEREN: Anwendbarkeit auf CENTRIC und Ausnahmen prüfen.]
 
-(3) Nach Vertragsende werden die Kundendaten nach Weisung des Kunden zurückgegeben oder gelöscht. Der Altbestand sah 30 Tage Abrufzeit und weitere 60 Tage bis zur Löschung einschließlich Sicherungskopien vor. [ZU_KLAEREN: Fristen entscheiden; sie sind mit Datenschutzrecht, Weisung und gegebenenfalls Data Act zu vereinbaren und nur zuzusagen, wenn der Löschweg belegt ist.]
+(3) Nach Vertragsende werden die Kundendaten nach Weisung des Kunden zurückgegeben oder gelöscht. Der Altbestand sah 30 Tage Abrufzeit und weitere 60 Tage bis zur Löschung einschließlich Sicherungskopien vor. Die Zusage „Sicherungskopien binnen 60 Tagen“ wird nicht gegeben: Die Aufbewahrung der Sicherung außer Haus beträgt nach Betriebsanleitung bis zu 12 monatliche Stände. [ZU_KLAEREN: Fristen entscheiden; sie sind mit Datenschutzrecht, Weisung und gegebenenfalls Data Act zu vereinbaren und nur zuzusagen, wenn der Löschweg belegt ist.]
 
 (4) Gesetzliche Aufbewahrungspflichten des Anbieters (Rechnungs- und Vertragsunterlagen) bleiben unberührt und betreffen keine Beschäftigtendaten des Kunden.
 

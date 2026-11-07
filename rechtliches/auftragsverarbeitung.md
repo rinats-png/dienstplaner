@@ -43,7 +43,7 @@ Hauptvertrag: [ZU_KLAEREN: Datum, Version, Leistungsblatt]
 | Schutzangaben | Minderjährigkeit (Geburtsdatum), Mutterschutz, Schwerbehinderung, Nachtarbeitsbeschränkung |
 | Standortprüfung (nur wenn im Betrieb eingeschaltet) | Ergebnis, gerundete Entfernung, Messgenauigkeit, Referenzort |
 | Kommunikationsdaten | Mitteilungen in der Anwendung, E-Mail-Adresse |
-| Protokolldaten | Zeitstempel, Rolle, Vorgang, Hash der Herkunftsadresse |
+| Protokolldaten | Zeitstempel, Rolle, Vorgang, pseudonymisiertes Kürzel der Herkunftsadresse |
 | Branchenmodule (je aktiviertem Modul) | z. B. Wachbuch- und Objektberichtseinträge, Pflege- und Bereitschaftsangaben |
 
 (2) **Besondere Kategorien (Art. 9 DSGVO).** Abwesenheitsgründe, Mutterschutz- und Schwerbehinderungsangaben können Gesundheitsdaten sein. Der Verantwortliche entscheidet, ob und in welchem Umfang er sie erfasst. Die Anwendung sieht kein Diagnosefeld vor; Freitext ist technisch möglich. Nicht jede Schutzangabe ist im Einzelfall ein Gesundheitsdatum — die Einordnung trifft der Verantwortliche.
@@ -114,7 +114,7 @@ Mit der Verarbeitung befasste Personen sind zur Vertraulichkeit verpflichtet ode
 
 (1) Nach Abschluss der Verarbeitung gibt der Auftragsverarbeiter die Daten nach Wahl des Verantwortlichen heraus oder löscht sie, soweit keine Rechtspflicht zur Speicherung besteht (Art. 28 Abs. 3 lit. g DSGVO).
 
-(2) Herausgabe- und Löschfristen: [ZU_KLAEREN: Fristen entscheiden. Der Altbestand sah 30 Tage Herausgabe und 60 Tage bis zur Löschung einschließlich Sicherungskopien vor; zusagen nur, wenn die Löschung technisch belegt ist (`loeschkonzept.md`). Wechselrechte nach Data Act sind zu beachten.]
+(2) Herausgabe- und Löschfristen: [ZU_KLAEREN: Fristen entscheiden. Der Altbestand sah 30 Tage Herausgabe und 60 Tage bis zur Löschung einschließlich Sicherungskopien vor; zusagen nur, wenn die Löschung technisch belegt ist (`loeschkonzept.md`). Wechselrechte nach Data Act sind zu beachten. Eine Zusage „Sicherungskopien binnen 60 Tagen“ ist mit der Aufbewahrung der Sicherung außer Haus (bis zu 12 monatliche Stände) nicht vereinbar und wird deshalb nicht gegeben, solange Technik und Zusage nicht übereinstimmen.]
 
 (3) Sicherungskopien folgen dem dokumentierten Lebenszyklus. Das Zurückspielen einer Sicherung kann bereits gelöschte Angaben wiederherstellen, solange der automatische Löschlauf nicht eingeschaltet ist (bekannte, im Quelltext dokumentierte Grenze); der Auftragsverarbeiter weist darauf hin und stellt bei eingeschaltetem Lauf die Löschung nach Wiederherstellung wieder her.
 
@@ -134,7 +134,7 @@ Beschrieben ist der Stand des Quelltexts (Branch `integration/release-v4`) und d
 
 - Übertragung über TLS; HSTS ist in der Caddy-Vorlage gesetzt. [ZU_KLAEREN: externer TLS- und Header-Test der Produktivdomains.]
 - Zugangscodes liegen nur als HMAC-SHA-256 mit serverseitigem Pfeffer vor, Vergleich zeitkonstant; Sitzungsschlüssel nur als SHA-256-Hash; Passwörter persönlicher Konten als scrypt-Hash.
-- Die Herkunftsadresse wird in der Anwendung nur als Prüfsumme verarbeitet. Das gilt nicht für Protokolle des Reverse-Proxys, des Containers oder des Hosters. [ZU_KLAEREN: Roh-IP-Inventar.]
+- Die Herkunftsadresse wird in der Anwendung nur als pseudonymisiertes Kürzel verarbeitet; das Kürzel bleibt personenbezogen und ist nicht anonym. [ZU_KLAEREN: Berechnungsverfahren (geschlüsselter Hash) im Produktionsbild bestätigen, solange die Umstellung nicht ausgeliefert ist.] Das gilt nicht für Zugriffsprotokolle des Reverse-Proxys (Caddy), des Containers oder des Hosters; ob dort die Roh-IP protokolliert wird und wie lange, ist nicht belegt. [ZU_KLAEREN: Roh-IP-Inventar je Ebene mit Feldern und Aufbewahrung.]
 - Standortprüfung (nur bei Aktivierung im Betrieb): laut Quelltext werden nur Ergebnis, gerundete Entfernung, Genauigkeit und Referenzort gespeichert, keine Rohkoordinate. [ZU_KLAEREN: Nachweis durch Netzwerk-, Fehlerlog- und Sicherungsprüfung.]
 - Ruhende Daten: Dateien auf dem Server mit restriktiven Dateirechten und gehärtetem Container; die Anwendung verschlüsselt sie nicht zusätzlich. Eine Datenträgerverschlüsselung durch den Hoster ist nicht belegt. [ZU_KLAEREN]
 
@@ -143,7 +143,7 @@ Beschrieben ist der Stand des Quelltexts (Branch `integration/release-v4`) und d
 - Zutritt: keine eigenen Serverräume; Betrieb auf Infrastruktur des Unterauftragsverarbeiters. Dessen Maßnahmen und Zertifizierungen sind nicht Zertifizierungen des Auftragsverarbeiters. [ZU_KLAEREN: aktuelle Nachweise von IONOS anfordern und ablegen.]
 - Zugang: Zugangscode oder persönliches Konto (E-Mail und Passwort); Sitzungen enden laut Quelltext nach 12 Stunden (Betreiber: 2 Stunden) und bei 30 Minuten Untätigkeit; Fehlversuche werden gezählt und gebremst; Zugänge sind einzeln widerrufbar und befristbar.
 - Zweiter Faktor (TOTP): Pflicht für Betreiberzugänge des Auftragsverarbeiters, sobald der Server als Produktion läuft (WP-32d, ohne Abschalter), und für den Verwalterschlüssel ab dem ersten eingerichteten Faktor. **Für Zugänge der Kunden (Leitung, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat) gibt es keinen zweiten Faktor.** [ZU_KLAEREN: Produktivstand von WP-32d und Einrichtung durch den Betreiber bestätigen.]
-- Zugriff: Rollenmodell (Leitung, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat; Betreiberrollen des Auftragsverarbeiters). Die Prüfung erfolgt serverseitig; der Server liefert je Rolle nur zulässige Felder aus. Beschäftigte sehen für andere Personen nur das für den Plan Erforderliche; die Schichtverantwortung sieht Ist-Zeiten anderer nur eingeschränkt; der Betriebsrat erhält keine Stempel- und Zeiterfassungsereignisse einzelner Personen. Die Rolle „kunde“ ist nicht mehr vergebbar; Demo ist ein Konto-Merkmal (`demo: true`) mit eingeschränkten Verwaltungswegen. [ZU_KLAEREN: Migrationsstand bestehender „kunde“-Altkonten in der Produktion.]
+- Zugriff: Rollenmodell mit sechs vergebbaren Rollen (Betreiber des Auftragsverarbeiters, Leitung, Planer, Subplaner [Schichtverantwortung], Mitarbeiter [Beschäftigte], Betriebsrat). Die Prüfung erfolgt serverseitig; der Server liefert je Rolle nur zulässige Felder aus. Beschäftigte sehen für andere Personen nur das für den Plan Erforderliche; die Schichtverantwortung sieht Ist-Zeiten anderer nur eingeschränkt; der Betriebsrat erhält keine Stempel- und Zeiterfassungsereignisse einzelner Personen. Die Rolle „kunde“ ist nicht mehr vergebbar; Demo ist ein Konto-Merkmal (`demo: true`) mit eingeschränkten Verwaltungswegen. [ZU_KLAEREN: Migrationsstand bestehender „kunde“-Altkonten in der Produktion.]
 - Trennung: je Betrieb eigener Ablagebereich; Testbetriebe an eigenem Präfix erkennbar; Demo-Sitzungen können keine Vollausgabe, Sicherungsschlüssel oder Zugangssperren auslösen. [ZU_KLAEREN: Cross-Tenant-Nachweistests im Produktionsstand.]
 
 ## 3. Integrität (Art. 32 Abs. 1 lit. b)
@@ -155,7 +155,7 @@ Beschrieben ist der Stand des Quelltexts (Branch `integration/release-v4`) und d
 
 - In-App-Sicherungen vor kritischen Vorgängen; Ausdünnung nach festem Plan (20 neueste, danach tägliche und wöchentliche Stände, höchstens 90 Tage), wirksam im Datenschutzlauf-Modus „an“.
 - Vollausgabe des Betriebsbestands als eine Datei, auch über einen reinen Lese-Sicherungsschlüssel.
-- Sicherung außer Haus: Skripte (restic, Wiederherstellungsprobe) und Betriebsanleitung liegen im Quelltext; Speicherziel, Passwortverwahrung und Alarm waren laut Betriebsanleitung (Stand 2026-11-02) Betreiberentscheidungen und nicht eingerichtet. [ZU_KLAEREN: Einrichtungsstand, Ziel und Region, Aufbewahrung, letzter erfolgreicher Wiederherstellungstest.]
+- Sicherung außer Haus: Die Aufbewahrung nach Betriebsanleitung und Skript beträgt 7 tägliche, 4 wöchentliche und 12 monatliche Stände (restic, bis zu rund 12 Monate); gelöschte Daten können in diesen Kopien bis zum Ablauf dieser Aufbewahrung enthalten sein. Skripte (restic, Wiederherstellungsprobe) und Betriebsanleitung liegen im Quelltext; Speicherziel, Passwortverwahrung und Alarm waren laut Betriebsanleitung (Stand 2026-11-02) Betreiberentscheidungen und nicht eingerichtet. [ZU_KLAEREN: Einrichtungsstand, Ziel und Region, Aufbewahrung, letzter erfolgreicher Wiederherstellungstest.]
 - Wiederanlauf: RPO und RTO nicht festgelegt. [ZU_KLAEREN]
 
 ## 5. Überprüfung und Bewertung (Art. 32 Abs. 1 lit. d)
@@ -165,7 +165,7 @@ Beschrieben ist der Stand des Quelltexts (Branch `integration/release-v4`) und d
 
 ## 6. Löschung (Art. 5 Abs. 1 lit. e, Art. 17)
 
-Voreinstellungen im Quelltext je Betrieb einstellbar (Orientierung, keine geprüften Rechtsfristen; Details und offene Punkte in `loeschkonzept.md`): Plan-, Zeit- und Stempeldaten 24 Monate als Untergrenze; Stammdaten ausgeschiedener Personen 6 Monate, dann Anonymisierung; Abwesenheitsgründe und Standortangaben 3 Monate; Anwendungsprotokoll 30 Tage; Testbetriebe 30 Tage Test plus 90 Tage; In-App-Sicherungen höchstens 90 Tage.
+Die folgenden Fristen sind Voreinstellungen im Quelltext und wirken nur bei aktiviertem Datenschutzlauf (Modus „an“); die Vorgabe ist „vorschau“ und löscht nichts. Sie sind je Betrieb einstellbar (Orientierung, keine geprüften Rechtsfristen; Details und offene Punkte in `loeschkonzept.md`): Plan-, Zeit- und Stempeldaten 24 Monate als Untergrenze; Stammdaten ausgeschiedener Personen 6 Monate, dann Anonymisierung; Abwesenheitsgründe und Standortangaben 3 Monate; Anwendungsprotokoll 30 Tage; Testbetriebe 30 Tage Test plus 90 Tage; In-App-Sicherungen höchstens 90 Tage.
 
 **Ist-Stand:** Der automatische Datenschutzlauf steht im Quelltext standardmäßig auf „vorschau“ und löscht dann nichts. Eine Löschzusage gilt erst, wenn der Betreiber den Modus „an“ belegt. Die Anonymisierung ausgeschiedener Personen ist Pseudonymisierung, solange Rückbezüge über andere Daten möglich sind. Branchenmodule (z. B. Wachbuch) haben keine festgelegte Aufbewahrung und löschen nichts. [ZU_KLAEREN: Betriebsmodus des Laufs.]
 
@@ -191,8 +191,8 @@ Optionale Dienste — nur genehmigt, wenn belegt aktiv:
 
 | Unternehmen | Leistung | Stand |
 |---|---|---|
-| Resend, Inc. (USA) | Versand von Systemmails; übermittelt werden Empfängeradresse, Betreff (enthält Betriebsnamen) und Inhalt der Hinweismail | Der Quelltext sendet nur mit gesetztem Schlüssel, sonst Trockenlauf. [ZU_KLAEREN: Produktivstand, Vertrag, Region, Drittlandgrundlage] — bis dahin nicht genehmigt |
-| Push-Dienste der Browserhersteller | Zustellung von Push-Hinweisen ohne Namen und Zeiten | [ZU_KLAEREN: Produktivstand, Bewertung] — bis dahin nicht genehmigt |
+| Resend, Inc. (USA) | Versand von Systemmails; übermittelt werden Empfängeradresse, Betreff (enthält Betriebsnamen) und Inhalt der Hinweismail | Der Quelltext sendet nur mit gesetztem Schlüssel, sonst Trockenlauf; Resend ist der einzige im Quelltext implementierte Versandweg (ein Versand über den SMTP-Dienst des Hosters ist nicht implementiert). [ZU_KLAEREN: Produktivstand, Vertrag, Region, Drittlandgrundlage] — bis dahin nicht genehmigt |
+| Push-Dienste der Browserhersteller (Google/FCM: `fcm.googleapis.com`, `android.googleapis.com`; Mozilla: `updates.push.services.mozilla.com`, `*.push.services.mozilla.com`; Apple: `web.push.apple.com`, `*.push.apple.com`; Microsoft: `*.notify.windows.com`, `*.wns.windows.com`) | Zustellung von Push-Hinweisen ohne Namen und Zeiten; der Dienst richtet sich nach dem Browser der Person | bei Aktivierung (nur wenn die Person Push einschaltet und der Betreiber Push-Schlüssel gesetzt hat); Drittlandbezug möglich. [ZU_KLAEREN: Produktivstand, Unternehmen und Sitz je Dienst, Drittlandgrundlage, Bewertung] — bis dahin nicht genehmigt |
 | KI-Anbieter (Anthropic direkt oder über Cloud-Plattform) | keine Live-Anbindung freigegeben | nicht aktiv, nicht genehmigt; vor Aktivierung `ki-verordnung-intelligence.md` |
 | Speicherziel Sicherung außer Haus | verschlüsselte Sicherungen | [ZU_KLAEREN: Anbieter, Region, Vertrag] — bis dahin nicht genehmigt |
 | Überwachung und Alarm (Webhook, Totmannschalter) | Betriebsmeldungen ohne Beschäftigtendaten | [ZU_KLAEREN: Anbieter und Datenumfang] |
