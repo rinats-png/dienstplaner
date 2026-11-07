@@ -39,8 +39,8 @@ auf 8–60 Schlüssel, zusätzlich Verschieben ganzer Store-Verzeichnisse, 40 `s
 
 | | vorher | nachher |
 |---|---|---|
-| Schreiber auf Dateien | 0/40 erfolgreich (alle Code 3) | **40/40**, jede besteht `pruefen` |
-| Schreiber + verschobene Verzeichnisse | 0/40 | **40/40**, jede besteht `pruefen` |
+| Schreiber auf Dateien | 0/40 erfolgreich (alle Code 3) | **40/40** (Wiederholung nach Review: 30/30), jede besteht `pruefen` |
+| Schreiber + verschobene Verzeichnisse | 0/40 | **40/40** (Wiederholung nach Review: 30/30), jede besteht `pruefen` |
 | Volllast (> 1 Mio. Schreibvorgänge, Schreiber ohne Pause) | 30/30 Code 3 | (nicht erneut gefahren; Verhalten bleibt fail-closed, Test „Dauerlast“) |
 
 In keinem Lauf trat ein anderer Fehler als Code 3 auf; kein rohes `ENOENT`.
@@ -98,7 +98,7 @@ Konsistenz nicht statistisch; sie stützt sich auf die deterministischen Tests (
 
 - **Hohe Dauer-Schreibrate bleibt ein Problem.** Der Stand muss einmal für die Dauer eines Prüfdurchlaufs ruhen
   (5000 Dateien ≈ 120 ms). Im Maßstab-Test (~3000 Dateien, ~17 Schreibvorgänge/s) gelang 1 von 14 Läufen (vorher 0): **bei dieser Last ist die
-  Sicherung weiterhin nicht zuverlässig**. Bei ~19–25 Schreibvorgängen/s auf wenige Dutzend Dateien dagegen 70/70
+  Sicherung weiterhin nicht zuverlässig**. Bei ~19–25 Schreibvorgängen/s auf wenige Dutzend Dateien dagegen 140/140
   (vorher 0/80).
   Ergebnis dann Code 3 + Fail-Ping, nie eine halbe Sicherung. Abhilfe unverändert: ruhiges Fenster (02:30) oder
   Server vorher stoppen. Ein echter Fortschritt wäre ein kurzer Schreib-Halt im Server (Raumsperre), nicht im Werkzeug.
