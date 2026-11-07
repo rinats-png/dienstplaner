@@ -5,7 +5,8 @@ import { getStore } from "./ablage.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
 import { bestandLesen, voruebergehend } from "./bestand.mjs";
-import { eigenerMandant } from "./rechte.mjs";
+import { eigenerMandant, wirksameRolle } from "./rechte.mjs";
+import { kontoLesen } from "./konten.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
 
@@ -198,7 +199,161 @@ export async function arbeitssitzungLesen(req,
     return { sitzung: null, abgewiesen: true, mitMerkmal: true,
       grund: "grund" in fachlich ? fachlich.grund : "unbekannt" };
   }
+  /* SI-P1: Ein Sicherungsschlüssel gilt nur, solange sein Ersteller noch die Leitung dieses Betriebs ist. */
+  if (s0.nurSicherung) {
+    const e = await sicherungsschluesselPruefen(ablage, s0,
+      { bestandLader: bestandLader ? () => bestandLader(s0) : null });
+    if (!e.ok) return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund };
+  }
   return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };
+}
+
+/* ==========================================================================
+   SICHERUNGSSCHLÜSSEL UND IHR ERSTELLER (SI-P1)
+
+   Ein Schlüssel `sk:` gilt bis zu 365 Tage für die Vollausgabe eines ganzen
+   Betriebs. Er war nur an den Betrieb gebunden: Sperre, Entzug der
+   Mitgliedschaft und Herabstufung seines Erstellers ließen ihn bestehen. Wer
+   als Leitung ausschied, konnte ein Jahr lang weiter exportieren.
+
+   Jetzt trägt der Datensatz seinen Ersteller, und bei jedem Lesen wird
+   gefragt, ob der noch ist, was er beim Anlegen war: die Leitung dieses
+   Betriebs. Widerrufen wird dadurch ohne Zutun und ohne Liste: Sperrt jemand
+   den Zugang, entzieht die Mitgliedschaft oder stuft die Person herab, endet
+   der Schlüssel mit der nächsten Anfrage. Ein Schlüssel ohne Ersteller (aus der
+   Zeit davor) ist nicht prüfbar und gilt nicht.
+
+   Nicht gebunden wird an die ANMELDUNG des Erstellers. Der Schlüssel soll
+   gerade ohne ihn weiterlaufen, etwa in einem Sicherungsskript; das Abmelden
+   beendet ihn nicht.
+
+   Zwei Arten von Erstellern, wie es zwei Arten von Sitzungen gibt:
+
+     konto   eine Sitzung aus einem Konto. Geprüft werden dieselben Anker wie
+             bei der Arbeitssitzung, nur ohne die Anmeldung selbst: Konto
+             aktiv, Epoche, Mitgliedschaft aktiv, Generation, Person.
+     code    eine Sitzung aus einem Zugangscode. Geprüft wird der Zugang
+             (`konto:<Prüfsumme>`): vorhanden, nicht gesperrt, weiterhin
+             Leitung, derselbe Raum und Betrieb, dieselbe Person.
+
+   Beide zusätzlich: Die Person steht noch im Betrieb, und ihre wirksame Rolle
+   (`wirksameRolle`, aus der Personalliste) ist weiterhin „leitung".
+   ========================================================================== */
+
+const nichtLeer = (x) => typeof x === "string" && x.length > 0;
+
+/**
+ * Der Ersteller, wie er im Schlüssel steht, aus der Sitzung der Leitung, die ihn anlegt.
+ * `null`, wenn die Sitzung weder Konto noch Zugang erkennen lässt — dann wird kein
+ * Schlüssel angelegt, den später niemand prüfen könnte.
+ * @param {any} sitzung
+ * @returns {object|null}
+ */
+export function sicherungsschluesselErsteller(sitzung) {
+  if (!sitzung || typeof sitzung !== "object") return null;
+  const name = nichtLeer(sitzung.name) ? sitzung.name.slice(0, 80) : "Leitung";
+  const person = sitzung.person === undefined || sitzung.person === null ? null : String(sitzung.person);
+  let e = null;
+  if (hatHerkunft(sitzung) && ankerBrauchbar(sitzung.herkunft)) {
+    const h = sitzung.herkunft;
+    e = { art: "konto", accountId: h.accountId, epoche: h.epoche, generation: h.generation, person, name };
+  } else if (!hatHerkunft(sitzung) && nichtLeer(sitzung.konto)) {
+    e = { art: "code", konto: sitzung.konto, person, name };
+  }
+  return e && erstellerBrauchbar(e) ? e : null;
+}
+
+/** Ist das ein Ersteller der unterstützten Form? Alles andere ist kaputt, nicht alt. */
+function erstellerBrauchbar(e) {
+  if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+  if (e.person !== null && !nichtLeer(e.person)) return false;
+  if (e.art === "konto") {
+    return nichtLeer(e.accountId) && Number.isInteger(e.epoche) && e.epoche >= 1
+      && Number.isInteger(e.generation) && e.generation >= 1 && nichtLeer(e.person);
+  }
+  if (e.art === "code") return nichtLeer(e.konto);
+  return false;
+}
+
+/**
+ * Gilt der Ersteller dieses Sicherungsschlüssels noch als Leitung seines Betriebs?
+ *
+ * Wirft nur bei einem vorübergehend nicht lesbaren Bestand (→ 503, der Schlüssel
+ * bleibt). Jeder andere Fehler beim Prüfen schließt die Tür: lieber ein Export
+ * zu wenig als einer zu viel.
+ *
+ * @param {object} store  Ablage „centric"
+ * @param {any} sk  der Datensatz des Schlüssels
+ * @param {{bestandLader?: (() => Promise<object|null>)|null}} [o]
+ * @returns {Promise<{ok: true, grund?: undefined}|{ok: false, grund: string}>}
+ */
+export async function sicherungsschluesselPruefen(store, sk, { bestandLader = null } = {}) {
+  const nein = (grund) => ({ ok: false, grund });
+  if (!sk || typeof sk !== "object") return nein("sk-keine-sitzung");
+  const e = sk.ersteller;
+  if (e === undefined || e === null) return nein("sk-ersteller-fehlt");
+  if (!erstellerBrauchbar(e)) return nein("sk-ersteller-form");
+  const raum = sk.bestand;
+  if (!nichtLeer(raum)) return nein("sk-kein-raum");
+  /* Der Betrieb, für den der Schlüssel angelegt wurde: seine Kennung ist Pflicht. */
+  if (!nichtLeer(sk.mandantId) || !Number.isInteger(sk.betrieb)) return nein("sk-ohne-betrieb");
+
+  if (e.art === "konto") {
+    let konto;
+    try { konto = await accountLesenPerId(store, e.accountId); } catch { return nein("sk-account-fehler"); }
+    if (!konto) return nein("sk-account-fehlt");
+    if (konto.status !== "aktiv") return nein("sk-account-status");
+    if ((Number(konto.epoche) || 0) !== e.epoche) return nein("sk-epoche");
+    let m;
+    try { m = await mitgliedschaftLesen(store, e.accountId, raum); } catch { return nein("sk-mitglied-fehler"); }
+    if (!m) return nein("sk-mitglied-fehlt");
+    if (m.status !== "aktiv") return nein("sk-mitglied-status");
+    const lauf = await mitgliedlaufLesen(store, e.accountId, raum);
+    if (!lauf.ok) return nein("sk-lauf");
+    if (!generationStimmt(m, lauf.generation)) return nein("sk-generation-mitglied");
+    if (e.generation !== lauf.generation) return nein("sk-generation");
+    if (String(m.person || "") !== String(e.person)) return nein("sk-person-gewechselt");
+    if (m.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
+  } else {
+    let z;
+    try { z = await kontoLesen(store, e.konto); } catch { return nein("sk-zugang-fehler"); }
+    if (!z) return nein("sk-zugang-fehlt");
+    /* Ein umgeschlüsselter Zugang steht unter zwei Schlüsseln; die Sperre trifft beide, aber nicht
+       zwingend im selben Augenblick. Gilt einer als gesperrt, gilt der Zugang als gesperrt. */
+    if (z.gesperrt) return nein("sk-zugang-gesperrt");
+    if (nichtLeer(z.ersetztDurch)) {
+      let n;
+      try { n = await kontoLesen(store, z.ersetztDurch); } catch { return nein("sk-zugang-fehler"); }
+      if (!n || n.gesperrt) return nein("sk-zugang-gesperrt");
+    }
+    if (z.rolle !== "leitung") return nein("sk-zugang-rolle");
+    if (z.bestand !== raum) return nein("sk-zugang-raum");
+    if (nichtLeer(z.mandantId) && z.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
+    const zPerson = z.person === undefined || z.person === null ? null : String(z.person);
+    if (zPerson !== e.person) return nein("sk-person-gewechselt");
+  }
+
+  let gelesen;
+  try {
+    gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, raum);
+  } catch (err) {
+    if (voruebergehend(err)) throw err;
+    return nein("sk-bestand-fehler");
+  }
+  const bestand = gelesen && gelesen.bestand;
+  if (!bestand) return nein("sk-bestand-fehlt");
+  const grundM = mandantPruefen(bestand, sk.betrieb, sk.mandantId);
+  if (grundM) return nein(`sk-${grundM}`);
+  if (e.person !== null) {
+    const mandant = eigenerMandant(bestand, { betrieb: sk.betrieb });
+    const dabei = (mandant && Array.isArray(mandant.personen) ? mandant.personen : [])
+      .some((p) => p && String(p.id) === e.person);
+    if (!dabei) return nein("sk-person-fehlt");
+  }
+  /* Die wirksame Rolle des Erstellers, aus der Personalliste abgeleitet wie bei jeder Anfrage. */
+  const rolle = wirksameRolle({ rolle: "leitung", person: e.person, betrieb: sk.betrieb, mandantId: sk.mandantId }, bestand);
+  if (rolle !== "leitung") return nein("sk-rolle");
+  return { ok: true };
 }
 
 /** Trägt dieser Datensatz überhaupt einen Herkunftsanker? */

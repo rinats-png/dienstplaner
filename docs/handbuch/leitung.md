@@ -23,7 +23,9 @@ Mitteilungen über bestätigte Rechtsverstöße erzeugt der Server an die Leitun
 - Wie Planung den ganzen eigenen Betrieb, dazu die Preisgrundlage (Tarif, Preisgestaltung) zur Kostenanzeige.
 - **Vollausgabe der Leitung:** eigener Betrieb nach Exportkatalog — ohne Notfallkontakt, Bank-, Steuer- und Lohnangaben.
   **Mit Sicherungsschlüssel** enthält sie diese zusätzlich (für die Sicherung außer Haus) — Schlüssel entsprechend
-  verwahren.
+  verwahren. Ein Sicherungsschlüssel gilt nur, solange die Person, die ihn angelegt hat, Leitung dieses Betriebs ist:
+  Wird ihr Zugang gesperrt, scheidet sie aus oder wird sie herabgestuft, endet der Schlüssel mit der nächsten Anfrage.
+  Dann legt eine andere Leitung einen neuen an. Das Abmelden der Person beendet ihn nicht.
 - **Nicht:** übriger Vertrag und Rechnungen (Betreiber), andere Betriebe.
 
 Einzelheiten: [RECHTEMATRIX.md](../../RECHTEMATRIX.md), Spalten LT, VA-LT, VA-SK und Abschnitt 2.

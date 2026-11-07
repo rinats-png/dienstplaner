@@ -23,7 +23,7 @@ import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenb
   offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
-import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { arbeitssitzungLesen, sicherungsschluesselErsteller, sicherungsschluesselPruefen } from "../lib/arbeitssitzung.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
 import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
@@ -2200,12 +2200,19 @@ export default async (req, context) => {
       const skMit = await bestandJetzt();
       const skOrt = skMit ? eigenerBetrieb(skMit.bestand, s) : null;
       if (!skOrt) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      /* SI-P1: Der Schlüssel gilt nur, solange sein Ersteller die Leitung dieses Betriebs ist. Eine Sitzung, die weder
+         ein Konto noch einen Zugang erkennen lässt (sehr alt), legt keinen an, den später niemand prüfen könnte. */
+      const skErsteller = sicherungsschluesselErsteller(s);
+      if (!skErsteller) return antwort({ fehler: "Bitte neu anmelden.",
+        text: "Diese Anmeldung lässt sich keinem Zugang zuordnen. Mit einer neuen Anmeldung geht es.",
+        neuAnmelden: true }, 403);
       const roh = randomBytes(24).toString("base64url");
       const bis = Date.now() + gueltig * 86400000;
       await sitzungen().setJSON(`sk:${hash(roh)}`, {
         bestand: s.bestand, rolle: "leitung", nurSicherung: true,
         betrieb: skOrt.index, mandantId: skOrt.betrieb.id,
         name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
+        ersteller: skErsteller,
         angelegt: new Date().toISOString(), bis,
       });
       await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`, wer);
@@ -2233,10 +2240,18 @@ export default async (req, context) => {
       const gehoert = await schluesselImBetrieb();
       const { blobs } = await sitzungen().list({ prefix: "sk:" }).catch(() => ({ blobs: [] }));
       const liste = [];
+      const bestandFuerListe = await bestandJetzt();
       for (const b of blobs) {
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
         if (!gehoert(k)) continue;
+        /* SI-P1: Wer hat ihn angelegt, und gilt der Ersteller noch? „verwaist" heißt: Der Schlüssel funktioniert
+           nicht mehr (Ersteller gesperrt, ausgetreten, herabgestuft) oder hat gar keinen Ersteller (Altschlüssel). */
+        let verwaist = true;
+        try { verwaist = !(await sicherungsschluesselPruefen(store, k, { bestandLader: async () => bestandFuerListe })).ok; }
+        catch { verwaist = true; }
         liste.push({ kennung: b.key.slice(3, 11), angelegt: k.angelegt,
+          ersteller: (k.ersteller && typeof k.ersteller.name === "string") ? k.ersteller.name : null,
+          verwaist,
           gueltigBis: new Date(k.bis).toISOString(), abgelaufen: k.bis < Date.now() });
       }
       return antwort({ schluessel: liste.sort((a, b) => (a.angelegt < b.angelegt ? 1 : -1)) });
