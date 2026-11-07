@@ -143,6 +143,51 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
   "neuerZugang", "anonymSeit", "schutz", "sichtbereich"])];
 
 /* ------------------------------------------------------------------------
+   KATALOG DER ART.-9-NAHEN FELDER (T-11, L-16, R-03)
+
+   Nur ein Verzeichnis — es entscheidet nichts. Die Sicht entscheiden die
+   Positivlisten oben und unten; pruefungen/art9-katalog.test.js prüft gegen
+   diesen Katalog, dass keines der Felder einer FREMDEN Person bei
+   Beschäftigten, Betriebsrat, Betreiber oder Schichtverantwortung (ohne
+   Bereich) ankommt. Die eigene Person sieht ihre eigenen Angaben (Art. 15).
+
+   kategorie: gesundheit | schwangerschaft | freitext (kann alles enthalten)
+   ------------------------------------------------------------------------ */
+export const ART9_FELDER = Object.freeze({
+  /** Felder an der Person; Punkt = Unterfeld. */
+  person: Object.freeze([
+    Object.freeze({ feld: "mutterschutz", kategorie: "schwangerschaft" }),
+    Object.freeze({ feld: "mutterschutzEinwilligungen", kategorie: "schwangerschaft" }),
+    Object.freeze({ feld: "schwerbehindert", kategorie: "gesundheit" }),
+    Object.freeze({ feld: "nachtvorsorge", kategorie: "gesundheit" }),
+    Object.freeze({ feld: "einschraenkungen.wiedereingliederung", kategorie: "gesundheit" }),
+    /* „keine Nacht“ kann eine Erkrankung verraten; hinaus geht es nur als neutrale Einsatzregel. */
+    Object.freeze({ feld: "einschraenkungen.keineNacht", kategorie: "gesundheit" }),
+    Object.freeze({ feld: "notiz", kategorie: "freitext" }),
+    Object.freeze({ feld: "notizen", kategorie: "freitext" }),
+  ]),
+  /** Felder einer Abwesenheit (Freitexte und Nachweise). */
+  abwesenheit: Object.freeze([
+    Object.freeze({ feld: "notiz", kategorie: "freitext" }),
+    Object.freeze({ feld: "grund", kategorie: "freitext" }),
+    Object.freeze({ feld: "anmerkung", kategorie: "freitext" }),
+    Object.freeze({ feld: "nachweis", kategorie: "gesundheit" }),
+  ]),
+  /** Abwesenheitsarten, deren bloße Art eine Gesundheits- oder Schwangerschaftsangabe ist. */
+  abwesenheitsarten: Object.freeze([
+    Object.freeze({ art: "krank", kategorie: "gesundheit" }),
+    Object.freeze({ art: "mutterschutz", kategorie: "schwangerschaft" }),
+    /* Pflege- und Verhinderungsarten verraten die Gesundheit Angehöriger. */
+    Object.freeze({ art: "pflegezeit", kategorie: "gesundheit" }),
+    Object.freeze({ art: "familienpflegezeit", kategorie: "gesundheit" }),
+    Object.freeze({ art: "arbeitsverhinderung", kategorie: "gesundheit" }),
+  ]),
+  /** Bewusste, dokumentierte Ausnahme (RECHTEMATRIX ⁴, ABWESENHEITSARTEN_SV): Die Schichtverantwortung sieht
+      im EIGENEN Bereich die Kategorie „krank“ (ohne Anmerkung) — für die Ersatzsuche. Sonst nichts davon. */
+  ausnahmeSchichtBereich: Object.freeze(["krank"]),
+});
+
+/* ------------------------------------------------------------------------
    PERSONEN IN DER SICHT DER SCHICHTVERANTWORTUNG
 
    Bis Oktober 2026 bekam die Schichtverantwortung jede Person des Betriebs
