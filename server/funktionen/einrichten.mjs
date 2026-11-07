@@ -76,7 +76,9 @@ export default async (req) => {
         + "benannte Konto anlegen." }, 500);
     return antwort({ fehler: "Verwaltungsschlüssel stimmt nicht." }, 401);
   }
-  await entlasten("einrichten", k);
+  /* Mit den Vermerken dieser Anfrage (b): Ein gültiger Schlüssel zählt nicht als Versuch, auch nicht
+     im Gesamtaufkommen aller Herkünfte. Fehlversuche bleiben gezählt (pruefungen/einrichten-bremse.test.js). */
+  await entlasten("einrichten", k, b);
 
   /* ---------------------------- Zweiter Faktor (WP-32) ---------------
      Ist für diesen Schlüssel ein zweiter Faktor eingerichtet, gilt er für
