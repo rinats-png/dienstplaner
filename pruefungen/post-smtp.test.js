@@ -29,6 +29,7 @@ function fakeServer(ver = {}, { starttls = false, auth = "PLAIN LOGIN", schweige
     s.on("close", () => { log.offen -= 1; });
     let inDaten = false; let puffer = ""; let login = 0;
     s.on("error", () => {});
+    if (opt.flut === "kurz") { s.write("220 hi\r\n" + "250 x\r\n".repeat(500)); return; }
     if (opt.flut === "puffer") { s.write("220 " + "x".repeat(200_000)); return; }
     if (opt.flut === "zeilen") { s.write("220-" + "y\r\n220-".repeat(5000) + "z\r\n"); return; }
     s.write("220 fake ESMTP\r\n");
@@ -51,6 +52,12 @@ function fakeServer(ver = {}, { starttls = false, auth = "PLAIN LOGIN", schweige
         if (schweigen && z.startsWith("EHLO")) continue;
         const k = z.split(" ")[0].toUpperCase();
         if (ver[k]) { s.write(typeof ver[k] === "function" ? ver[k](z) : ver[k]); continue; }
+        if (k === "EHLO" && opt.langeZeile) {
+          const zeile = "250-" + "a".repeat(996);
+          s.write(zeile + "\r");
+          setTimeout(() => s.write("\n250 AUTH PLAIN\r\n"), 30);
+          continue;
+        }
         if (k === "EHLO" && opt.verzoegerung) { setTimeout(() => s.write("250-fake\r\n250 AUTH PLAIN\r\n"), opt.verzoegerung); continue; }
         if (k === "EHLO") s.write(`250-fake\r\n${starttls ? "250-STARTTLS\r\n" : ""}${auth ? `250-AUTH ${auth}\r\n` : ""}250 8BITMIME\r\n`);
         else if (k === "STARTTLS") s.write("220 go ahead\r\n");
@@ -295,7 +302,7 @@ describe("Nachbesserung nach Review", () => {
     const n = baueNachricht({ von: "Dienst, Plan <dienst@beispiel.test>", an: "a@beispiel.test", betreff: "x".repeat(1500), text: "t" });
     expect(n.daten).toContain('From: "Dienst, Plan" <dienst@beispiel.test>');
     const kopfBlock = n.daten.split("\r\n\r\n")[0];
-    for (const z of kopfBlock.split("\r\n")) expect(z.length).toBeLessThanOrEqual(78);
+    for (const z of kopfBlock.split("\r\n")) expect(z.length).toBeLessThanOrEqual(76);
     const subj = kopfBlock.replace(/\r\n /g, " ").split("\r\n").find((z) => z.startsWith("Subject: ")).slice(9);
     const text = [...subj.matchAll(/=\?UTF-8\?B\?([^?]+)\?=/g)].map((m) => Buffer.from(m[1], "base64").toString()).join("");
     expect(text).toBe("x".repeat(1500));
@@ -311,5 +318,38 @@ describe("Nachbesserung nach Review", () => {
     expect(max).toBeLessThanOrEqual(SMTP_PARALLEL_MAX);
     expect(max).toBeGreaterThan(0);
     expect(srv.log.befehle.filter((b) => b.startsWith("RCPT TO:")).length).toBe(6);
+  });
+
+  it("hängender Server, 6 Mails: Wartezeit zählt zur Frist, alle enden temporaer", async () => {
+    srv = await fakeServer({}, { schweigen: true });
+    const t0 = Date.now();
+    const rs = await Promise.all(Array.from({ length: 6 }, (_, i) => senden({ frist: 400 }, `h${i}@beispiel.test`)));
+    expect(rs.every((r) => r.ok === false && r.klasse === "temporaer")).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+  it("Notruf (dringend) wird in der Warteschlange vorgezogen", async () => {
+    srv = await fakeServer({}, { verzoegerung: 150 });
+    const f = fabrik(srv.port);
+    const lauf = (an, dringend) => sendeSmtp(an, "B", "T", { dringend }, { env: SMTP_ENV, frist: 5000, ...f });
+    const alle = [lauf("n0@beispiel.test"), lauf("n1@beispiel.test"), lauf("n2@beispiel.test"),
+      lauf("n3@beispiel.test"), lauf("not@beispiel.test", true)];
+    const rs = await Promise.all(alle);
+    expect(rs.every((r) => r.ok)).toBe(true);
+    const reihe = srv.log.befehle.filter((b) => b.startsWith("RCPT TO:")).map((b) => b.slice(9, -1));
+    expect(reihe.indexOf("not@beispiel.test")).toBeLessThanOrEqual(3);
+  });
+  it("viele kurze Antworten ohne Anfrage: Abbruch als temporaer", async () => {
+    srv = await fakeServer({}, { flut: "kurz" });
+    expect(await senden()).toMatchObject({ ok: false, klasse: "temporaer" });
+  });
+  it("Zeile von genau 1000 Zeichen, CRLF getrennt geliefert, wird nicht verworfen", async () => {
+    srv = await fakeServer({}, { langeZeile: true });
+    expect((await senden()).ok).toBe(true);
+  });
+  it("Zertifikats-Muster: Handshake-Timeout ist temporaer, falsche TLS-Version ist Konfiguration", async () => {
+    const mit = (code) => sendeSmtp("a@beispiel.test", "B", "T", {}, { env: SMTP_ENV,
+      verbinden: async () => { throw Object.assign(new Error("x"), { code }); } });
+    expect(await mit("ERR_TLS_HANDSHAKE_TIMEOUT")).toMatchObject({ ok: false, klasse: "temporaer" });
+    expect(await mit("ERR_SSL_WRONG_VERSION_NUMBER")).toMatchObject({ ok: false, klasse: "konfiguration" });
   });
 });

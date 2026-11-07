@@ -449,7 +449,7 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr
   const opt = `${h(n.id)}-${kanal}-${idemVersuch}`;
   if (kanal === "mail") {
     const { betreff, text } = mailInhalt(m, n);
-    const r = /** @type {any} */ (await sendeMail(an, betreff, text, { idempotenz: opt })
+    const r = /** @type {any} */ (await sendeMail(an, betreff, text, { idempotenz: opt, dringend: istNotruf(n) || !!(ZUSTELLARTEN[n.art] || {}).dringend })
       .catch((e) => ({ ok: false, fehler: String(e), klasse: "temporaer" })));
     if (r.ok) {
       if (!r.trocken) zustellEreignis("mail", "zugestellt");

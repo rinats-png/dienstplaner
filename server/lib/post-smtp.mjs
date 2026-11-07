@@ -106,11 +106,11 @@ const b64 = (s) => Buffer.from(s, "utf8").toString("base64");
 
 /** RFC 2047: Betreff (oder Anzeigename) als encoded-words, wenn nötig. */
 export function kodiereKopfzeile(text) {
-  if (/^[\x20-\x7e]*$/.test(text) && text.length <= 70) return text;
+  if (/^[\x20-\x7e]*$/.test(text) && text.length <= 60) return text;
   const worte = [];
   let aktuell = "";
   for (const zeichen of text) {
-    if (Buffer.byteLength(aktuell + zeichen, "utf8") > 42) { worte.push(aktuell); aktuell = ""; }
+    if (Buffer.byteLength(aktuell + zeichen, "utf8") > 39) { worte.push(aktuell); aktuell = ""; }
     aktuell += zeichen;
   }
   if (aktuell) worte.push(aktuell);
@@ -173,7 +173,8 @@ export function baueNachricht({ von, an, betreff, text, jetzt = new Date(), id =
 /** TLS-Optionen — Zertifikatsprüfung ist fest an. */
 export const tlsOptionen = (host) => ({ servername: host, rejectUnauthorized: true, minVersion: /** @type {"TLSv1.2"} */ ("TLSv1.2") });
 
-const zertFehler = (e) => /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS_|HOSTNAME_MISMATCH|ALTNAME/i.test(String(e && e.code || e && e.message || ""));
+/* ERR_TLS_HANDSHAKE_TIMEOUT ist ein Netzproblem (temporaer); ERR_SSL_WRONG_VERSION_NUMBER meint meist falschen Port/Modus (Konfiguration). */
+const zertFehler = (e) => /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|HOSTNAME_MISMATCH|ALTNAME|ERR_SSL_WRONG_VERSION_NUMBER/i.test(String(e && e.code || e && e.message || ""));
 
 /** Netz-/TLS-Fehler → SmtpFehler: Zertifikatsfehler sind Konfiguration (kein endloses Wiederholen). */
 const netzFehler = (e) => zertFehler(e)
@@ -217,14 +218,14 @@ function leser() {
   let defekt = null;
   const liefere = () => {
     if (!wartet) return;
-    if (fertig.length) { const w = wartet; wartet = null; w.ok(fertig.shift()); }
-    else if (defekt) { const w = wartet; wartet = null; w.nein(defekt); }
+    if (defekt) { const w = wartet; wartet = null; w.nein(defekt); }
+    else if (fertig.length) { const w = wartet; wartet = null; w.ok(fertig.shift()); }
   };
   const verarbeite = () => {
     for (;;) {
       const i = puffer.indexOf("\r\n");
       if (i < 0) {
-        if (puffer.length > ZEILE_MAX) defekt = defekt || new SmtpFehler("Antwortzeile des Mailservers zu lang.", "temporaer");
+        if (puffer.length > ZEILE_MAX + 1) defekt = defekt || new SmtpFehler("Antwortzeile des Mailservers zu lang.", "temporaer");
         break;
       }
       const z = puffer.slice(0, i);
@@ -234,6 +235,8 @@ function leser() {
       if (/^\d{3}( |$)/.test(z)) {
         fertig.push({ code: Number(akku[0].slice(0, 3)), zeilen: akku.map((x) => x.slice(4)) });
         akku = [];
+        // Wir fragen Schritt für Schritt: mehr als zwei unabgeholte Antworten sind unaufgefordert (Flutung).
+        if (fertig.length > 2) { defekt = defekt || new SmtpFehler("Unaufgeforderte Antworten des Mailservers.", "temporaer"); break; }
       }
     }
     liefere();
@@ -243,6 +246,7 @@ function leser() {
     if (s === socket) return;
     if (socket && datenHoerer) socket.removeListener("data", datenHoerer);
     socket = s;
+    puffer = ""; akku = []; fertig.length = 0;
     datenHoerer = (d) => {
       if (defekt) return;
       puffer += d.toString("utf8");
@@ -281,13 +285,25 @@ const geheimnisListe = (k) => {
 export const SMTP_PARALLEL_MAX = 2;
 let aktiv = 0;
 const warteschlange = [];
-const platzNehmen = async () => {
+/* Wartezeit zählt zur Frist; dringende Mails (Notruf) rücken vor die normalen vor. */
+const platzNehmen = async (dringend, frist) => {
   if (aktiv < SMTP_PARALLEL_MAX) { aktiv += 1; return; }
-  await new Promise((r) => warteschlange.push(r));
+  await new Promise((ok, nein) => {
+    const e = { dringend: !!dringend, ok: () => { clearTimeout(t); ok(undefined); } };
+    const t = setTimeout(() => {
+      const i = warteschlange.indexOf(e);
+      if (i >= 0) warteschlange.splice(i, 1);
+      nein(new SmtpFehler("Zeitüberschreitung beim Warten auf eine freie Verbindung.", "temporaer"));
+    }, frist);
+    if (e.dringend) {
+      const i = warteschlange.findIndex((x) => !x.dringend);
+      if (i < 0) warteschlange.push(e); else warteschlange.splice(i, 0, e);
+    } else warteschlange.push(e);
+  });
 };
 const platzGeben = () => {
   const n = warteschlange.shift();
-  if (n) n(); else aktiv -= 1;
+  if (n) n.ok(); else aktiv -= 1;
 };
 
 /**
@@ -295,24 +311,28 @@ const platzGeben = () => {
  * @param {string} an
  * @param {string} betreff
  * @param {string} text
- * @param {{idempotenz?: string}} [_opt]
+ * @param {{idempotenz?: string, dringend?: boolean}} [opt]
  * @param {{konfig?: any, frist?: number, verbinden?: Function, aufruesten?: Function, env?: any}} [ctx]
  */
-export async function sendeSmtp(an, betreff, text, _opt = {}, ctx = {}) {
+export async function sendeSmtp(an, betreff, text, opt = {}, ctx = {}) {
   const konfig = ctx.konfig || smtpKonfig(ctx.env || process.env);
   if (konfig.zustand !== "smtp")
     return { ok: false, fehler: konfig.fehler || "SMTP nicht aktiv.", klasse: "konfiguration" };
   const geheimnisse = geheimnisListe(konfig);
-  await platzNehmen();
+  const frist = ctx.frist ?? VORGABE_FRIST_MS;
+  const start = Date.now();
+  let platz = false;
   try {
-    return await versende(an, betreff, text, konfig, ctx, geheimnisse);
+    await platzNehmen(opt && opt.dringend, frist);
+    platz = true;
+    return await versende(an, betreff, text, konfig, { ...ctx, frist: Math.max(1, frist - (Date.now() - start)) }, geheimnisse);
   } catch (e) {
     const klasse = e instanceof SmtpFehler ? e.klasse : "temporaer";
     const meldung = e instanceof SmtpFehler ? e.message : "Unerwarteter Fehler beim SMTP-Versand.";
     return { ok: false, fehler: schwaerze(meldung, geheimnisse).slice(0, 200), klasse,
       ...(e instanceof SmtpFehler && e.ursache ? { ursache: e.ursache } : {}) };
   } finally {
-    platzGeben();
+    if (platz) platzGeben();
   }
 }
 

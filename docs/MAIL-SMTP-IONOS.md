@@ -71,6 +71,14 @@ Welche Einträge IONOS konkret verlangt, steht im IONOS-Kundenbereich; hier sind
 - [ ] Variablen in die Produktions-`.env`, `CENTRIC_MAIL_WEG=smtp` zuletzt, Neustart, Statusanzeige zeigt `smtp: konfiguriert`.
 - [ ] Erste echte Zustellung mit eigener Adresse kontrolliert.
 
+## 5a. Bekannte Eigenheit: Doppelzustellung
+
+SMTP kennt keinen Idempotenzschlüssel (anders als die Resend-API). Läuft die Frist ab, nachdem der Server die Nachricht
+nach dem Schlusspunkt der Daten (`.`) schon angenommen hat, aber bevor die Antwort ankommt, meldet der Versand `temporaer`
+und die Zustellkette wiederholt — die Person kann die Mail dann doppelt erhalten. Das ist bei SMTP typisch und nicht
+vollständig vermeidbar; die Frist (`MAIL_FRIST_MS`) und höchstens zwei gleichzeitige Verbindungen halten das Fenster klein.
+Wartezeit auf eine freie Verbindung zählt zur Frist; Notrufe und dringende Mitteilungen werden in der Warteschlange vorgezogen.
+
 ## 6. Rückfall
 
 `CENTRIC_MAIL_WEG` entfernen (oder leer setzen) und neu starten: Der Versand kehrt zum bisherigen Weg zurück
