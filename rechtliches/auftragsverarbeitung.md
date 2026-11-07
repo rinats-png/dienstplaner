@@ -1,397 +1,212 @@
 # Vertrag zur Auftragsverarbeitung nach Artikel 28 DSGVO
 
-Entwurf mit Beispieldaten — vor der Verwendung anwaltlich prüfen lassen.
-Siehe `PLATZHALTER.md`.
+**Status: ENTWURF — nicht veröffentlichen und nicht unterzeichnen.** Revision R2, Stand 2026-11-07. Arbeitsentwurf: keine Rechtsberatung, kein Kanzleigutachten, keine Rechtsfreigabe. Maßnahmen und Dienstleister sind nur so beschrieben, wie sie im Quelltext oder in Betreiberunterlagen belegt sind; alles andere steht als `[ZU_KLAEREN: …]`. Die TOM-Anlage ist die Kurzfassung von `tom-register.md`.
 
 Zwischen
 
-    [BEISPIEL-KUNDE-FIRMA]
-    [BEISPIEL-KUNDE-ANSCHRIFT]
+    [ZU_KLAEREN: Firma, Rechtsform, Anschrift und vertretungsberechtigte Person des Kunden]
 
 — nachfolgend **Verantwortlicher** —
 
 und
 
-    [BEISPIEL-FIRMA] [BEISPIEL-RECHTSFORM]
-    [BEISPIEL-STRASSE], [BEISPIEL-PLZ-ORT]
+    [ZU_KLAEREN: Firma, Rechtsform, Anschrift und Vertretung des Anbieters]
 
 — nachfolgend **Auftragsverarbeiter** —
 
+Hauptvertrag: [ZU_KLAEREN: Datum, Version, Leistungsblatt]
+
 ## § 1 Gegenstand, Dauer, Art und Zweck
 
-(1) Gegenstand ist die Verarbeitung personenbezogener Daten, die der
-Auftragsverarbeiter im Rahmen der Bereitstellung der Software CENTRIC für
-den Verantwortlichen durchführt.
+(1) Gegenstand ist die Verarbeitung personenbezogener Daten, die der Auftragsverarbeiter bei Bereitstellung der Software CENTRIC für den Verantwortlichen durchführt, ausschließlich für die im Hauptvertrag vereinbarten und in Anlage 3 als aktiv ausgewiesenen Module.
 
-(2) Die Dauer entspricht der Laufzeit des Hauptvertrags. Er endet mit
-diesem.
+(2) Die Dauer entspricht der Laufzeit des Hauptvertrags zuzüglich notwendiger Rückgabe- und Löschphasen nach § 11.
 
-(3) **Art der Verarbeitung:** Erheben, Erfassen, Organisieren, Speichern,
-Anpassen, Auslesen, Abfragen, Verwenden, Übermitteln an vom
-Verantwortlichen bestimmte Empfänger, Einschränken, Löschen und Vernichten.
+(3) Art der Verarbeitung: Erheben (im Auftrag), Erfassen, Organisieren, Speichern, Anpassen, Auslesen, Abfragen, Verwenden, Übermitteln an vom Verantwortlichen bestimmte Empfänger, Einschränken, Löschen, Vernichten.
 
-(4) **Zweck:** Planung und Dokumentation von Schichtdiensten, Verwaltung von
-Abwesenheiten und Qualifikationen, Erfassung von Arbeitszeiten, Prüfung
-arbeitszeitrechtlicher Grenzen und Auswertung — jeweils ausschließlich zu
-den Zwecken des Verantwortlichen.
+(4) Zweck: Planung und Dokumentation von Schichtdiensten, Verwaltung von Abwesenheiten und Qualifikationen, Erfassung von Arbeitszeiten, Prüfung arbeitszeitrechtlicher Grenzen und Auswertung — jeweils nur zu den Zwecken des Verantwortlichen.
 
-(5) Eine Verarbeitung zu eigenen Zwecken des Auftragsverarbeiters findet
-nicht statt. Ausgenommen sind vollständig anonymisierte Kennzahlen ohne
-Bezug zu einem Betrieb oder einer Person.
+(5) Eine Verarbeitung zu eigenen Zwecken des Auftragsverarbeiters, zum Training von Modellen oder zu Marketingzwecken findet nicht statt. [ZU_KLAEREN: Bestätigung, dass auch keine aggregierten Kennzahlen aus Kundendaten erzeugt werden; sonst Zulässigkeit und Anonymisierung eigenständig regeln.]
 
-## § 2 Art der Daten und Kreis der Betroffenen
+## § 2 Datenarten und Betroffene
 
-(1) **Kategorien personenbezogener Daten**
+(1) Kategorien (konkrete Felder und aktive Module in Anlage 3):
 
-| Kategorie | Beispiele aus der Anwendung |
+| Kategorie | Beispiele |
 |---|---|
 | Stammdaten | Name, Personalnummer, Eintritt, Austritt, Einheit, Standort |
 | Vertragsdaten | Wochenstunden, Urlaubsanspruch, Rolle, Zugangsart |
 | Planungsdaten | Schichtzuweisungen, Wünsche, Anträge, Tauschvorgänge |
-| Zeitdaten | Kommen- und Gehen-Zeiten, Pausen, Stundenkonten, Zuschläge |
+| Zeitdaten | Kommen- und Gehen-Zeiten, Pausen, Stempelereignisse, Stundenkonten, Zuschläge |
 | Qualifikationen | Nachweise mit Ablaufdatum, Fachkraftstatus |
 | Abwesenheiten | Art und Zeitraum; Freitextgrund, sofern erfasst |
 | Schutzangaben | Minderjährigkeit (Geburtsdatum), Mutterschutz, Schwerbehinderung, Nachtarbeitsbeschränkung |
-| Kommunikationsdaten | Nachrichten in der Anwendung, dienstliche E-Mail-Adresse |
-| Protokolldaten | Zeitstempel, Rolle, Vorgang; IP-Adresse ausschließlich als Hashwert |
+| Standortprüfung (nur wenn im Betrieb eingeschaltet) | Ergebnis, gerundete Entfernung, Messgenauigkeit, Referenzort |
+| Kommunikationsdaten | Mitteilungen in der Anwendung, E-Mail-Adresse |
+| Protokolldaten | Zeitstempel, Rolle, Vorgang, pseudonymisiertes Kürzel der Herkunftsadresse |
+| Branchenmodule (je aktiviertem Modul) | z. B. Wachbuch- und Objektberichtseinträge, Pflege- und Bereitschaftsangaben |
 
-(2) **Besondere Kategorien nach Artikel 9 DSGVO.** Abwesenheitsgründe,
-Angaben zum Mutterschutz und zur Schwerbehinderung sind Gesundheitsdaten.
-Der Verantwortliche entscheidet, ob und in welchem Umfang er sie erfasst.
-Die Anwendung verlangt keine Diagnose und sieht kein Feld dafür vor.
+(2) **Besondere Kategorien (Art. 9 DSGVO).** Abwesenheitsgründe, Mutterschutz- und Schwerbehinderungsangaben können Gesundheitsdaten sein. Der Verantwortliche entscheidet, ob und in welchem Umfang er sie erfasst. Die Anwendung sieht kein Diagnosefeld vor; Freitext ist technisch möglich. Nicht jede Schutzangabe ist im Einzelfall ein Gesundheitsdatum — die Einordnung trifft der Verantwortliche.
 
-(3) **Kreis der Betroffenen:** Beschäftigte des Verantwortlichen
-einschließlich Auszubildender, Leiharbeitnehmer und Aushilfen; Mitglieder
-der Arbeitnehmervertretung, soweit sie einen Zugang erhalten; benannte
-Ansprechpartner des Verantwortlichen.
+(3) Betroffene: Beschäftigte des Verantwortlichen einschließlich Auszubildender, Leiharbeitnehmer und Aushilfen; Mitglieder der Arbeitnehmervertretung mit Zugang; Ansprechpersonen des Verantwortlichen; in Branchenmodulen genannte Dritte (z. B. Personen in Wachbucheinträgen). Der Auftraggeber eines Sicherheitsdienstes ist keine Betriebsrolle der Anwendung und hat keinen Zugang.
 
-## § 3 Weisungsrecht
+## § 3 Weisungen
 
-(1) Der Auftragsverarbeiter verarbeitet personenbezogene Daten
-ausschließlich auf dokumentierte Weisung des Verantwortlichen. Als Weisung
-gilt auch die Bedienung der Anwendung durch Nutzer des Verantwortlichen.
+(1) Verarbeitung nur auf dokumentierte Weisung des Verantwortlichen, außer bei gesetzlicher Verpflichtung. Die Bedienung der Anwendung durch berechtigte Nutzer des Verantwortlichen gilt als Weisung.
 
-(2) Weisungen außerhalb der Anwendung ergehen in Textform an
-[BEISPIEL-EMAIL]. Mündliche Weisungen sind unverzüglich in Textform zu
-bestätigen.
+(2) Weitere Weisungen ergehen in Textform an [ZU_KLAEREN: nachweisbar erreichbarer Datenschutzkontakt]; mündliche Weisungen sind unverzüglich in Textform zu bestätigen.
 
-(3) Hält der Auftragsverarbeiter eine Weisung für rechtswidrig, teilt er dies
-unverzüglich mit und darf ihre Ausführung bis zur Bestätigung aussetzen.
+(3) Hält der Auftragsverarbeiter eine Weisung für rechtswidrig, informiert er den Verantwortlichen unverzüglich und darf die Ausführung bis zur Klärung aussetzen.
 
-(4) Ist der Auftragsverarbeiter nach Unionsrecht oder dem Recht eines
-Mitgliedstaats zur Verarbeitung verpflichtet, unterrichtet er den
-Verantwortlichen vorher, sofern das Recht dies nicht verbietet.
+(4) Verpflichtet ihn Unions- oder Mitgliedstaatenrecht zu einer Verarbeitung, teilt er dies vorab mit, sofern das Recht es nicht verbietet.
 
 ## § 4 Vertraulichkeit
 
-(1) Der Auftragsverarbeiter verpflichtet alle mit der Verarbeitung befassten
-Personen auf Vertraulichkeit (Artikel 28 Abs. 3 lit. b DSGVO) und
-unterweist sie in den datenschutzrechtlichen Anforderungen.
-
-(2) Die Verpflichtung besteht über das Ende der Tätigkeit hinaus fort.
+Mit der Verarbeitung befasste Personen sind zur Vertraulichkeit verpflichtet oder unterliegen einer gesetzlichen Verschwiegenheitspflicht (Art. 28 Abs. 3 lit. b DSGVO); Zugriffe werden nach Erforderlichkeit vergeben und beendet. [ZU_KLAEREN: schriftliche Verpflichtung der tatsächlich zugriffsberechtigten Personen belegen.]
 
 ## § 5 Technische und organisatorische Maßnahmen
 
-(1) Der Auftragsverarbeiter trifft die in **Anlage 1** beschriebenen
-Maßnahmen nach Artikel 32 DSGVO.
+(1) Der Auftragsverarbeiter trifft die Maßnahmen nach Art. 32 DSGVO gemäß **Anlage 1**.
 
-(2) Er darf sie fortentwickeln, solange das Schutzniveau nicht unterschritten
-wird. Wesentliche Änderungen werden dokumentiert und auf Verlangen
-mitgeteilt.
+(2) Er darf sie fortentwickeln, solange das Schutzniveau nicht unterschritten wird; wesentliche Änderungen werden dokumentiert und auf Verlangen mitgeteilt.
+
+(3) Maßnahmen, die in Anlage 1 als „nicht belegt“ oder „nicht vorhanden“ ausgewiesen sind, sind keine zugesagte Eigenschaft.
 
 ## § 6 Unterauftragsverarbeiter
 
-(1) Der Verantwortliche stimmt der Beauftragung der in **Anlage 2**
-genannten Unterauftragsverarbeiter zu.
+(1) Der Verantwortliche genehmigt die in **Anlage 2** namentlich genannten Unterauftragsverarbeiter, soweit dort als „genehmigt“ geführt.
 
-(2) Weitere Unterauftragsverarbeiter teilt der Auftragsverarbeiter
-mindestens **vier Wochen** vorher in Textform mit. Der Verantwortliche kann
-innerhalb dieser Frist aus einem wichtigen datenschutzrechtlichen Grund
-widersprechen. Widerspricht er, kann jede Seite den Hauptvertrag zum
-geplanten Wechsel kündigen.
+(2) Neue oder ersetzte Unterauftragsverarbeiter kündigt der Auftragsverarbeiter in Textform mit angemessener Frist [ZU_KLAEREN: Vorschlag vier Wochen] unter Angabe von Zweck, Land, Datenarten und Transfergrundlage an. Bei begründetem Widerspruch suchen die Parteien eine zumutbare Lösung; gelingt sie nicht, kann jede Seite den betroffenen Teil des Hauptvertrags kündigen.
 
-(3) Der Auftragsverarbeiter schließt mit jedem Unterauftragsverarbeiter
-Verpflichtungen, die denen dieses Vertrags entsprechen, und haftet für deren
-Einhaltung wie für eigenes Verhalten.
+(3) Der Auftragsverarbeiter verpflichtet jeden Unterauftragsverarbeiter vertraglich auf dieselben Datenschutzpflichten und haftet für dessen Pflichterfüllung.
 
-## § 7 Ort der Verarbeitung und Drittlandübermittlung
+## § 7 Ort der Verarbeitung und Drittländer
 
-(1) Die Verarbeitung der Beschäftigtendaten — Auslieferung der Anwendung,
-Ausführung der Serverfunktionen und Speicherung des gesamten Datenbestands —
-erfolgt auf einem virtuellen Server, den der Auftragsverarbeiter bei dem in
-Anlage 2 genannten Unterauftragsverarbeiter IONOS SE betreibt. Das
-Rechenzentrum steht in Spanien, einem Mitgliedstaat der Europäischen Union.
-Nach dem Auftragsverarbeitungsvertrag mit IONOS findet die vereinbarte
-Datenverarbeitung in einem Mitgliedstaat der EU oder einem anderen
-Vertragsstaat des EWR statt.
+(1) Nach den Betreiberunterlagen liegen Anwendung und Datenbestand auf einem virtuellen Server der IONOS SE; als Standort ist Spanien dokumentiert. [ZU_KLAEREN: tatsächlichen Rechenzentrumsstandort und den Verarbeitungsort nach dem IONOS-Auftragsverarbeitungsvertrag (Version, Datum) anhand des IONOS-Kontos belegen.]
 
-(2) Für die Speicherung und Verarbeitung des Bestands findet damit keine
-Übermittlung in ein Drittland statt.
+(2) Eine Übermittlung in Drittländer oder an internationale Organisationen erfolgt nur auf dokumentierte Weisung und bei Einhaltung von Art. 44 ff. DSGVO. Der Hinweis „Server in Spanien“ belegt nicht das Fehlen jedes Zugriffs aus Drittländern (z. B. Support, Konzernzugriffe); diese Fragen sind mit IONOS zu klären. [ZU_KLAEREN]
 
-(3) Optionale Dienste, die eine Übermittlung in ein Drittland bedeuten
-könnten — der serverseitige Versand von Systemnachrichten per E-Mail und
-Push-Mitteilungen — sind **derzeit nicht aktiviert**. Vor einer Aktivierung
-stellt der Auftragsverarbeiter die Voraussetzungen der Artikel 44 ff. DSGVO
-sicher, führt Anlage 2 nach und teilt dies dem Verantwortlichen nach § 6
-Abs. 2 mit.
+(3) Optionale Dienste mit möglichem Drittlandbezug (E-Mail-Versand über Resend, Browser-Push-Dienste, KI-Anbieter, externe Sicherungsziele) sind nur genehmigt, wenn und soweit Anlage 2 sie als aktiv aufführt. Vor Aktivierung wird Anlage 2 ergänzt und § 6 Abs. 2 angewandt.
 
-## § 8 Unterstützung des Verantwortlichen
+## § 8 Unterstützung
 
-(1) Der Auftragsverarbeiter unterstützt den Verantwortlichen bei der
-Beantwortung von Anträgen betroffener Personen nach den Artikeln 15 bis 22
-DSGVO, soweit dieser sie nicht selbst über die Anwendung beantworten kann.
+(1) Der Auftragsverarbeiter unterstützt den Verantwortlichen angemessen bei Anträgen betroffener Personen (Art. 15 bis 22 DSGVO) und bei Pflichten nach Art. 32 bis 36 DSGVO, einschließlich Datenschutz-Folgenabschätzung (Art. 28 Abs. 3 lit. e und f). Die Anwendung stellt dafür eine Auskunftsausgabe je Person, eine Vollausgabe des Betriebsbestands und Sperr-, Korrektur- und Löschwege bereit (`data-act-wechsel-export.md`).
 
-(2) Wendet sich eine betroffene Person unmittelbar an den
-Auftragsverarbeiter, leitet er den Antrag unverzüglich weiter und beantwortet
-ihn nicht selbst.
+(2) Anträge, die unmittelbar bei ihm eingehen, leitet der Auftragsverarbeiter unverzüglich an den Verantwortlichen weiter und beantwortet sie nicht selbst, soweit er nicht selbst verantwortlich ist.
 
-(3) Er unterstützt bei der Einhaltung der Artikel 32 bis 36 DSGVO,
-insbesondere bei einer Datenschutz-Folgenabschätzung.
+## § 9 Verletzungen des Schutzes personenbezogener Daten
 
-## § 9 Verletzung des Schutzes personenbezogener Daten
+(1) Der Auftragsverarbeiter meldet dem Verantwortlichen eine ihm bekannt gewordene Verletzung ohne unangemessene Verzögerung (Art. 33 Abs. 2 DSGVO) mit den bekannten Angaben; Meldeweg: [ZU_KLAEREN].
 
-(1) Der Auftragsverarbeiter meldet dem Verantwortlichen jede ihm bekannt
-gewordene Verletzung **unverzüglich, spätestens innerhalb von 24 Stunden**
-nach Kenntnis.
+(2) Als vertragliches Ziel gilt eine Erstinformation innerhalb von 24 Stunden nach Kenntnis. [ZU_KLAEREN: nur zusagen, wenn das Verfahren (Rufbereitschaft, Meldeweg, Übung) belegt ist; siehe `tom-register.md` T-17.]
 
-(2) Die Meldung enthält, soweit bekannt: Art der Verletzung, betroffene
-Kategorien und ungefähre Zahl der Betroffenen und Datensätze, wahrscheinliche
-Folgen sowie ergriffene und vorgeschlagene Maßnahmen.
+(3) Die Meldung an Aufsichtsbehörde und Betroffene liegt beim Verantwortlichen; die Unterstützungspflicht bleibt.
 
-(3) Die Meldung an die Aufsichtsbehörde nach Artikel 33 DSGVO obliegt dem
-Verantwortlichen.
+## § 10 Nachweise und Kontrollen
 
-## § 10 Nachweis und Kontrolle
+(1) Der Auftragsverarbeiter stellt alle erforderlichen Informationen zum Nachweis der Pflichten aus Art. 28 DSGVO bereit und ermöglicht Überprüfungen einschließlich Inspektionen durch den Verantwortlichen oder einen beauftragten Prüfer und trägt dazu bei (Art. 28 Abs. 3 lit. h DSGVO).
 
-(1) Der Auftragsverarbeiter weist die Einhaltung dieses Vertrags auf
-Verlangen nach — durch Selbstauskunft, die Beschreibung nach Anlage 1 oder
-Zertifikate und Prüfberichte seiner Unterauftragsverarbeiter.
+(2) Regelprüfungen werden mit angemessener Frist [ZU_KLAEREN: Vorschlag vier Wochen] abgestimmt. Bei konkretem Anlass — insbesondere einer Verletzung des Schutzes personenbezogener Daten, einer Aufsichtsanordnung oder einem begründeten Verdacht auf Verstoß — sind Prüfungen kurzfristig zu ermöglichen; Fristen und Häufigkeitsgrenzen gelten dafür nicht. Prüfer dürfen nicht Wettbewerber des Auftragsverarbeiters sein und sind zur Verschwiegenheit zu verpflichten.
 
-(2) Der Verantwortliche kann nach vorheriger Anmeldung mit einer Frist von
-vier Wochen während der üblichen Geschäftszeiten Kontrollen durchführen oder
-durch einen zur Verschwiegenheit verpflichteten Prüfer durchführen lassen.
-Der Prüfer darf kein Wettbewerber sein.
+(3) Prüfungen sind verhältnismäßig, wahren die Vertraulichkeit anderer Kunden und Geschäftsgeheimnisse (Einsicht in geeigneter Form, z. B. Berichte, Auszüge, begleitete Einsicht) und stören den Betrieb nicht unangemessen. Vorgelegte Prüfberichte und Zertifikate Dritter können zunächst genügen, ersetzen das gesetzliche Kontrollrecht aber nicht.
 
-(3) Kontrollen erfolgen so, dass der Betriebsablauf und die Rechte anderer
-Kunden nicht beeinträchtigt werden. Mehr als eine Kontrolle im Jahr ist nur
-aus besonderem Anlass zulässig.
+## § 11 Rückgabe und Löschung
 
-## § 11 Löschung und Rückgabe
+(1) Nach Abschluss der Verarbeitung gibt der Auftragsverarbeiter die Daten nach Wahl des Verantwortlichen heraus oder löscht sie, soweit keine Rechtspflicht zur Speicherung besteht (Art. 28 Abs. 3 lit. g DSGVO).
 
-(1) Nach Ende des Hauptvertrags gibt der Auftragsverarbeiter alle Daten in
-einem strukturierten, maschinenlesbaren Format heraus oder löscht sie — nach
-Wahl des Verantwortlichen.
+(2) Herausgabe- und Löschfristen: [ZU_KLAEREN: Fristen entscheiden. Der Altbestand sah 30 Tage Herausgabe und 60 Tage bis zur Löschung einschließlich Sicherungskopien vor; zusagen nur, wenn die Löschung technisch belegt ist (`loeschkonzept.md`). Wechselrechte nach Data Act sind zu beachten. Eine Zusage „Sicherungskopien binnen 60 Tagen“ ist mit der Aufbewahrung der Sicherung außer Haus (bis zu 12 monatliche Stände) nicht vereinbar und wird deshalb nicht gegeben, solange Technik und Zusage nicht übereinstimmen.]
 
-(2) Ohne abweichende Weisung gilt: Herausgabefrist **30 Tage**, danach
-Löschung einschließlich der Sicherungskopien innerhalb von **60 Tagen**.
+(3) Sicherungskopien folgen dem dokumentierten Lebenszyklus. Das Zurückspielen einer Sicherung kann bereits gelöschte Angaben wiederherstellen, solange der automatische Löschlauf nicht eingeschaltet ist (bekannte, im Quelltext dokumentierte Grenze); der Auftragsverarbeiter weist darauf hin und stellt bei eingeschaltetem Lauf die Löschung nach Wiederherstellung wieder her.
 
-(3) Die Löschung wird auf Verlangen in Textform bestätigt.
+(4) Auf Anfrage bestätigt der Auftragsverarbeiter durchgeführte Löschungen in Textform und nennt begründete Ausnahmen.
 
-(4) Gesetzliche Aufbewahrungspflichten bleiben unberührt; betroffen sind
-ausschließlich Vertrags- und Abrechnungsdaten des Auftragsverarbeiters.
+## § 12 Haftung, Rangfolge, Schluss
 
-## § 12 Haftung und Schlussbestimmungen
-
-(1) Artikel 82 DSGVO bleibt unberührt.
-
-(2) Dieser Vertrag geht dem Hauptvertrag im Konfliktfall vor, soweit es die
-Verarbeitung personenbezogener Daten betrifft.
-
-(3) Es gilt deutsches Recht.
+Art. 82 DSGVO bleibt unberührt. [ZU_KLAEREN: Haftungsregelung im Verhältnis zu AGB § 8 anwaltlich abstimmen.] Bei Widerspruch geht dieser Vertrag dem Hauptvertrag hinsichtlich der Auftragsverarbeitung vor. Es gilt deutsches Recht, soweit zulässig. Abschluss und Vertretungsbefugnis: [ZU_KLAEREN].
 
 ---
 
-# Anlage 1 — Technische und organisatorische Maßnahmen
+# Anlage 1 — Technische und organisatorische Maßnahmen (Kurzfassung)
 
-Beschrieben wird der **tatsächliche** Zustand. Was hier nicht steht, gibt es
-nicht. Offene Punkte stehen am Ende und sind bewusst nicht beschönigt.
+Beschrieben ist der Stand des Quelltexts (Branch `integration/release-v4`) und der Betreiberdokumentation, nicht eine geprüfte Produktivumgebung. Nachweise, Statusstufen und offene Punkte je Maßnahme: `tom-register.md`. Zertifizierungen des Auftragsverarbeiters selbst werden nicht behauptet.
 
 ## 1. Pseudonymisierung und Verschlüsselung (Art. 32 Abs. 1 lit. a)
 
-- Übertragung ausschließlich über TLS. HSTS ist gesetzt, ein Aufruf über
-  HTTP wird auf HTTPS umgeleitet.
-- Zugangscodes werden nie im Klartext gespeichert, sondern als
-  HMAC-SHA-256 mit einem serverseitigen Geheimnis (Pfeffer), das nicht im
-  Datenbestand liegt. Der Vergleich läuft zeitkonstant.
-- Sitzungsschlüssel liegen ausschließlich als SHA-256-Hashwert vor.
-- IP-Adressen werden ausschließlich als Hashwert verarbeitet, nie im
-  Klartext gespeichert.
-- Die Standortprüfung beim Stempeln speichert nur das Ergebnis
-  („innerhalb" oder „abweichend" mit grob gerundeter Entfernung), die
-  Messgenauigkeit und den Prüfort; fehlt die Position, nur den Grund als Code
-  (keine_freigabe, timeout, nicht_verfuegbar) — keine Koordinate.
-- Der Datenbestand liegt als Dateien auf dem virtuellen Server, zugänglich
-  nur für den Prozess der Anwendung (Dateirechte 700 für Verzeichnisse und
-  600 für Dateien, eigener unprivilegierter Benutzer, schreibgeschützter
-  Container ohne Port nach außen). Eine zusätzliche Verschlüsselung der
-  ruhenden Daten durch die Anwendung erfolgt nicht; siehe Abschnitt 7.
+- Übertragung über TLS; HSTS ist in der Caddy-Vorlage gesetzt. [ZU_KLAEREN: externer TLS- und Header-Test der Produktivdomains.]
+- Zugangscodes liegen nur als HMAC-SHA-256 mit serverseitigem Pfeffer vor, Vergleich zeitkonstant; Sitzungsschlüssel nur als SHA-256-Hash; Passwörter persönlicher Konten als scrypt-Hash.
+- Die Herkunftsadresse wird in der Anwendung nur als pseudonymisiertes Kürzel verarbeitet; das Kürzel bleibt personenbezogen und ist nicht anonym. [ZU_KLAEREN: Berechnungsverfahren (geschlüsselter Hash) im Produktionsbild bestätigen, solange die Umstellung nicht ausgeliefert ist.] Das gilt nicht für Zugriffsprotokolle des Reverse-Proxys (Caddy), des Containers oder des Hosters; ob dort die Roh-IP protokolliert wird und wie lange, ist nicht belegt. [ZU_KLAEREN: Roh-IP-Inventar je Ebene mit Feldern und Aufbewahrung.]
+- Standortprüfung (nur bei Aktivierung im Betrieb): Die Standortprüfung beim Stempeln speichert laut Quelltext nur das Ergebnis, die grob gerundete Entfernung, die Messgenauigkeit und den Prüfort; fehlt die Position, nur den Grund als Code (keine_freigabe, timeout, nicht_verfuegbar) — keine Koordinate, keine Rohkoordinate. [ZU_KLAEREN: Nachweis durch Netzwerk-, Fehlerlog- und Sicherungsprüfung.]
+- Ruhende Daten: Dateien auf dem Server mit restriktiven Dateirechten und gehärtetem Container; die Anwendung verschlüsselt sie nicht zusätzlich. Eine Datenträgerverschlüsselung durch den Hoster ist nicht belegt. [ZU_KLAEREN]
 
 ## 2. Vertraulichkeit (Art. 32 Abs. 1 lit. b)
 
-**Zutritt.** Eigene Serverräume bestehen nicht. Der Betrieb erfolgt auf
-einem virtuellen Server im Rechenzentrum des in Anlage 2 genannten
-Unterauftragsverarbeiters; für Zutritt und Betrieb der Infrastruktur gelten
-dessen technische und organisatorische Maßnahmen, deren Einhaltung IONOS
-nach seinem Auftragsverarbeitungsvertrag mit einer Zertifizierung nach
-ISO 27001 nachweist.
-
-**Zugang.**
-- Zugang nur über einen zwölfstelligen Zugangscode je Person.
-- Eine Sitzung endet nach **12 Stunden** fest und nach **30 Minuten**
-  Untätigkeit.
-- Fehlversuche werden je Code und je Netzadresse gezählt und mit
-  ansteigender Sperrdauer gebremst.
-- Jeder Zugang ist einzeln und sofort widerrufbar; ein widerrufener Code
-  beendet auch laufende Sitzungen.
-- Zugänge lassen sich befristen; abgelaufene Zugänge werden abgewiesen.
-
-**Zugriff.**
-- Ein Rollenmodell mit acht Rollen bestimmt, welche Bereiche eine Person
-  sieht und was sie ändern darf.
-- Die Prüfung erfolgt **serverseitig**. Der Server liefert je Rolle nur die
-  zulässigen Felder aus und führt eine Schreibanfrage nur in dem Umfang aus,
-  den die Rolle trägt. Eine manipulierte Oberfläche erweitert keine Rechte.
-- Beschäftigte ohne Planungsrolle erhalten die Daten anderer Personen nur
-  in dem Umfang, der für den Dienstplan erforderlich ist.
-- Betriebsratszugänge sind auf Lesen beschränkt.
-- Verwaltungszugänge des Anbieters sind benannte Konten mit eigenem
-  Schlüssel, einzeln widerrufbar; jede Handlung steht mit Namen im
-  Protokoll. Gesperrte Konten bleiben als Beleg erhalten.
-- Betreiberdaten (Tarife, Rechnungen, Protokoll) werden Kundenrollen
-  serverseitig gar nicht erst übermittelt.
-
-**Trennung.**
-- Je Betrieb ein eigener Ablagebereich mit eigenem Schlüsselraum.
-- Testbetriebe sind an einem eigenen Präfix erkennbar und von echten
-  Beständen getrennt.
+- Zutritt: keine eigenen Serverräume; Betrieb auf Infrastruktur des Unterauftragsverarbeiters. Dessen Maßnahmen und Zertifizierungen sind nicht Zertifizierungen des Auftragsverarbeiters. [ZU_KLAEREN: aktuelle Nachweise von IONOS anfordern und ablegen.]
+- Zugang: Zugangscode oder persönliches Konto (E-Mail und Passwort); Sitzungen enden laut Quelltext nach 12 Stunden (Betreiber: 2 Stunden) und bei 30 Minuten Untätigkeit; Fehlversuche werden gezählt und gebremst; Zugänge sind einzeln widerrufbar und befristbar.
+- Zweiter Faktor (TOTP): Pflicht für Betreiberzugänge des Auftragsverarbeiters, sobald der Server als Produktion läuft (WP-32d, ohne Abschalter), und für den Verwalterschlüssel ab dem ersten eingerichteten Faktor. **Für Zugänge der Kunden (Leitung, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat) gibt es keinen zweiten Faktor.** [ZU_KLAEREN: Produktivstand von WP-32d und Einrichtung durch den Betreiber bestätigen.]
+- Zugriff: Rollenmodell mit sechs vergebbaren Rollen (Betreiber des Auftragsverarbeiters, Leitung, Planer, Subplaner [Schichtverantwortung], Mitarbeiter [Beschäftigte], Betriebsrat). Die Prüfung erfolgt serverseitig; der Server liefert je Rolle nur zulässige Felder aus. Beschäftigte sehen für andere Personen nur das für den Plan Erforderliche; die Schichtverantwortung sieht Ist-Zeiten anderer nur eingeschränkt; der Betriebsrat erhält keine Stempel- und Zeiterfassungsereignisse einzelner Personen. Die Rolle „kunde“ ist nicht mehr vergebbar; Demo ist ein Konto-Merkmal (`demo: true`) mit eingeschränkten Verwaltungswegen. [ZU_KLAEREN: Migrationsstand bestehender „kunde“-Altkonten in der Produktion.]
+- Trennung: je Betrieb eigener Ablagebereich; Testbetriebe an eigenem Präfix erkennbar; Demo-Sitzungen können keine Vollausgabe, Sicherungsschlüssel oder Zugangssperren auslösen. [ZU_KLAEREN: Cross-Tenant-Nachweistests im Produktionsstand.]
 
 ## 3. Integrität (Art. 32 Abs. 1 lit. b)
 
-- Jede Schreibanfrage prüft den Stand, von dem der Client ausging. Bei
-  gleichzeitiger Bearbeitung werden getrennte Monate zusammengeführt, echte
-  Überschneidungen abgewiesen und benannt.
-- Vor jedem Schreiben wird die Form des Bestands geprüft. Schrumpft er um
-  mehr als ein Drittel, wird zunächst eine Sicherung angelegt.
-- Ein Änderungsprotokoll hält fest, wer wann was geändert hat.
-- Die Zeiterfassung nimmt die Uhrzeit vom Server, nicht vom Gerät. Die
-  Standortprüfung erfolgt serverseitig; eine vom Gerät behauptete
-  Übereinstimmung wird ignoriert.
+- Schreibzugriffe prüfen den Ausgangsstand (Konfliktbehandlung); der Bestand wird vor dem Schreiben auf Form geprüft; bei auffälligem Schrumpfen entsteht vorab eine Sicherung; Änderungsprotokoll.
+- Stempelzeit kommt vom Server; Standortprüfung läuft serverseitig.
 
 ## 4. Verfügbarkeit und Belastbarkeit (Art. 32 Abs. 1 lit. b und c)
 
-- Sicherungen werden vor gefährlichen Vorgängen automatisch angelegt und
-  lassen sich jederzeit manuell anlegen.
-- Der vollständige Bestand lässt sich als eine Datei ausgeben — über die
-  Oberfläche oder über einen Sicherungsschlüssel, der ausschließlich lesen
-  darf, ablaufen kann und einzeln widerrufbar ist. Damit ist eine Sicherung
-  außerhalb der Anwendung ohne Zutun des Anbieters möglich.
-- Vorgehalten werden die zwanzig jüngsten Sicherungen sowie je Tag die
-  jüngste der älteren.
-- Wiederherstellung aus einer Sicherung ist ohne Zutun des Anbieters
-  möglich.
-- Der Verantwortliche kann seinen Bestand jederzeit vollständig ausgeben
-  lassen.
+- In-App-Sicherungen vor kritischen Vorgängen; Ausdünnung nach festem Plan (20 neueste, danach tägliche und wöchentliche Stände, höchstens 90 Tage), wirksam im Datenschutzlauf-Modus „an“.
+- Vollausgabe des Betriebsbestands als eine Datei, auch über einen reinen Lese-Sicherungsschlüssel.
+- Sicherung außer Haus: Die Aufbewahrung nach Betriebsanleitung und Skript beträgt 7 tägliche, 4 wöchentliche und 12 monatliche Stände (restic, bis zu rund 12 Monate); gelöschte Daten können in diesen Kopien bis zum Ablauf dieser Aufbewahrung enthalten sein. Skripte (restic, Wiederherstellungsprobe) und Betriebsanleitung liegen im Quelltext; Speicherziel, Passwortverwahrung und Alarm waren laut Betriebsanleitung (Stand 2026-11-02) Betreiberentscheidungen und nicht eingerichtet. [ZU_KLAEREN: Einrichtungsstand, Ziel und Region, Aufbewahrung, letzter erfolgreicher Wiederherstellungstest.]
+- Wiederanlauf: RPO und RTO nicht festgelegt. [ZU_KLAEREN]
 
-## 5. Verfahren zur Überprüfung (Art. 32 Abs. 1 lit. d)
+## 5. Überprüfung und Bewertung (Art. 32 Abs. 1 lit. d)
 
-- Rollen- und Rechtelogik, Zugangscodes, Ablagelogik und die
-  Fehlversuchsbremse sind durch automatisierte Tests abgedeckt, die bei
-  jeder Änderung laufen.
-- Änderungen werden versioniert und sind nachvollziehbar.
-- Datenschutz durch Voreinstellung: keine Cookies für Werbung oder
-  Reichweitenmessung, keine Einbindung fremder Dienste im Auslieferungspfad,
-  Schriftarten werden selbst ausgeliefert.
-- Eine Inhaltssicherheitsrichtlinie (Content-Security-Policy) begrenzt, was
-  die Seite nachladen darf.
+- Automatisierte Tests für Rollen, Zugangsprüfung, Ablage und Bremse; Versionierung; Review-Verfahren; Geheimnis- und Abhängigkeitsprüfungen in der CI laut Dokumentation. [ZU_KLAEREN: letzte CI-Ergebnisse und Ausnahmebegründungen.]
+- Ein unabhängiger Penetrationstest oder eine Zertifizierung des Auftragsverarbeiters liegt nicht vor. [ZU_KLAEREN: Planung]
 
 ## 6. Löschung (Art. 5 Abs. 1 lit. e, Art. 17)
 
-Je Betrieb einstellbar, Voreinstellung:
+Die folgenden Fristen sind Voreinstellungen im Quelltext und wirken nur bei aktiviertem Datenschutzlauf (Modus „an“); die Vorgabe ist „vorschau“ und löscht nichts. Sie sind je Betrieb einstellbar (Orientierung, keine geprüften Rechtsfristen; Details und offene Punkte in `loeschkonzept.md`): Plan-, Zeit- und Stempeldaten 24 Monate als Untergrenze; Stammdaten ausgeschiedener Personen 6 Monate, dann Anonymisierung; Abwesenheitsgründe und Standortangaben 3 Monate; Anwendungsprotokoll 30 Tage; Testbetriebe 30 Tage Test plus 90 Tage; In-App-Sicherungen höchstens 90 Tage.
 
-| Datenart | Frist |
-|---|---|
-| Plan- und Zeitdaten | 24 Monate (§ 16 Abs. 2 ArbZG: mindestens 2 Jahre) |
-| Stammdaten nach Austritt | 6 Monate, danach Anonymisierung statt Löschung |
-| Abwesenheitsgründe (Freitext) | 3 Monate |
-| Protokolldaten mit IP-Hash | 30 Tage |
-| Selbst angelegte Testbetriebe ohne Vertragsschluss | 30 Tage Testlaufzeit; nach Ablauf 90 Tage Aufbewahrung; anschließend automatische Löschung im täglichen Bereinigungslauf |
-
-Ausgeschiedene Personen werden anonymisiert, nicht entfernt — sonst zerfällt
-die Dokumentation vergangener Dienstpläne, die nach § 16 Abs. 2 ArbZG
-aufzubewahren ist.
-
-Die Regel für selbst angelegte Testbetriebe ist eine eigenständige Frist für
-Interessenten, die keinen Vertrag geschlossen haben; sie ist von § 11
-(Herausgabe und Löschung nach Ende eines Hauptvertrags) unabhängig. Der
-Bereinigungslauf erfasst ausschließlich selbst angelegte Testbetriebe —
-Kundenbetriebe und Vorführbetriebe nie — und löscht den gesamten Datenraum:
-Bestand, Monatsscherben, Standvermerke, Sicherungen, Zugangscodes,
-Sitzungen einschließlich Sicherungsschlüsseln und Kalender-Feeds. Er läuft
-täglich und nach jedem Neustart des Servers; die Löschung erfolgt daher im
-ersten Lauf, nachdem die Aufbewahrungsfrist erreicht ist. Kann ein Raum nicht
-vollständig gelöscht werden, wird der Fehler protokolliert und der Raum im
-nächsten Lauf erneut bearbeitet.
+**Ist-Stand:** Der automatische Datenschutzlauf steht im Quelltext standardmäßig auf „vorschau“ und löscht dann nichts. Eine Löschzusage gilt erst, wenn der Betreiber den Modus „an“ belegt. Die Anonymisierung ausgeschiedener Personen ist Pseudonymisierung, solange Rückbezüge über andere Daten möglich sind. Branchenmodule (z. B. Wachbuch) haben keine festgelegte Aufbewahrung und löschen nichts. [ZU_KLAEREN: Betriebsmodus des Laufs.]
 
 ## 7. Offene Punkte
 
-Ehrlich benannt, damit der Verantwortliche sie kennt:
-
-- **Keine Verschlüsselung ruhender Daten durch die Anwendung.** Der
-  Bestand liegt als Dateien auf dem virtuellen Server, geschützt durch
-  Dateirechte, Container-Härtung und den Zugang zum Server. Ob der
-  Datenträger des Servers durch den Anbieter verschlüsselt ist, ist nicht
-  belegt und wird hier nicht behauptet.
-- **Keine Zwei-Faktor-Authentisierung.** Der Zugang beruht auf einem Code.
-- **Keine zertifizierte Prüfung** (ISO 27001, TISAX oder vergleichbar) des
-  Auftragsverarbeiters selbst; der Unterauftragsverarbeiter IONOS weist eine
-  Zertifizierung nach ISO 27001 nach.
-- **Kein automatisierter Auslagerungsort.** Die Vollausgabe macht eine
-  Sicherung außer Haus möglich; sie einzurichten und zu überwachen bleibt
-  Sache des Verantwortlichen.
-- **Zwei-Faktor-Authentisierung fehlt weiterhin**, auch für die benannten
-  Verwalterkonten.
+- Keine Verschlüsselung ruhender Daten durch die Anwendung; Hoster-Verschlüsselung nicht belegt.
+- Kein zweiter Faktor für Kundenzugänge.
+- Keine Zertifizierung und kein unabhängiger Penetrationstest des Auftragsverarbeiters.
+- Sicherung außer Haus: Einrichtungs- und Wirksamkeitsnachweis fehlt.
+- Löschlauf: Produktivmodus nicht belegt.
+- Protokolle von Proxy und Hoster: Inhalt und Fristen nicht belegt.
 
 ---
 
 # Anlage 2 — Unterauftragsverarbeiter
 
-| Unternehmen | Leistung | Ort der Verarbeitung | Grundlage |
+| Unternehmen | Leistung | Ort | Stand |
 |---|---|---|---|
-| IONOS SE | Bereitstellung und Betrieb der Serverinfrastruktur (virtueller Server, Produktgruppe „Server Produkte"): Auslieferung der Anwendung, Ausführung der Serverfunktionen, Speicherung des Datenbestands | Spanien (Mitgliedstaat der EU) | Auftragsverarbeitungsvertrag mit IONOS SE nach Art. 28 DSGVO (Bestandteil der IONOS-AGB); Verarbeitung nach dessen § 4.3 in einem Mitgliedstaat der EU oder des EWR |
+| IONOS SE | virtueller Server, Betrieb der Serverinfrastruktur | Spanien laut Betreiberunterlagen [ZU_KLAEREN: Standort und Vertragsstand belegen] | Auftragsverarbeitungsvertrag mit IONOS: [ZU_KLAEREN: Version und Datum; Altbestand nennt Version 4.5, Stand 04/2026] |
+| Arsys Internet S.L.U., Logroño (Spanien) | Plattformbetrieb VPS laut Unterauftragnehmerliste von IONOS | Spanien | [ZU_KLAEREN: aktuelle Liste von IONOS bestätigen] |
 
-**Von IONOS eingesetzter Subunternehmer, soweit für das Produkt vServer (VPS)
-relevant** (IONOS-Anhang 2, Version 4.5, Stand 04/2026, Nr. 24):
+Optionale Dienste — nur genehmigt, wenn belegt aktiv:
 
-| Unternehmen | Leistung | Ort | Garantie |
-|---|---|---|---|
-| Arsys Internet S.L.U., C/Madre de Dios No. 21, 26004 Logroño (La Rioja), Spanien | Kundensupport und Betrieb der Plattformen vServer (VPS), Cloud Server, Private Cloud und Dedicated Server | Spanien | Mitgliedstaat der EU |
+| Unternehmen | Leistung | Stand |
+|---|---|---|
+| Resend, Inc. (USA) | Versand von Systemmails; übermittelt werden Empfängeradresse, Betreff (enthält Betriebsnamen) und Inhalt der Hinweismail | Der Quelltext sendet nur mit gesetztem Schlüssel, sonst Trockenlauf; Resend ist der einzige im Quelltext implementierte Versandweg (ein Versand über den SMTP-Dienst des Hosters ist nicht implementiert). [ZU_KLAEREN: Produktivstand, Vertrag, Region, Drittlandgrundlage] — bis dahin nicht genehmigt |
+| Push-Dienste der Browserhersteller (Google/FCM: `fcm.googleapis.com`, `android.googleapis.com`; Mozilla: `updates.push.services.mozilla.com`, `*.push.services.mozilla.com`; Apple: `web.push.apple.com`, `*.push.apple.com`; Microsoft: `*.notify.windows.com`, `*.wns.windows.com`) | Zustellung von Push-Hinweisen ohne Namen und Zeiten; der Dienst richtet sich nach dem Browser der Person | bei Aktivierung (nur wenn die Person Push einschaltet und der Betreiber Push-Schlüssel gesetzt hat); Drittlandbezug möglich. [ZU_KLAEREN: Produktivstand, Unternehmen und Sitz je Dienst, Drittlandgrundlage, Bewertung] — bis dahin nicht genehmigt |
+| KI-Anbieter (Anthropic direkt oder über Cloud-Plattform) | keine Live-Anbindung freigegeben | nicht aktiv, nicht genehmigt; vor Aktivierung `ki-verordnung-intelligence.md` |
+| Speicherziel Sicherung außer Haus | verschlüsselte Sicherungen | [ZU_KLAEREN: Anbieter, Region, Vertrag] — bis dahin nicht genehmigt |
+| Überwachung und Alarm (Webhook, Totmannschalter) | Betriebsmeldungen ohne Beschäftigtendaten | [ZU_KLAEREN: Anbieter und Datenumfang] |
 
-Die Subunternehmerliste von IONOS ist produktbezogen. Aufgeführt ist hier
-nur der für das eingesetzte Produkt genannte Subunternehmer; die übrigen dort
-genannten Unternehmen erhalten keine Daten aus CENTRIC.
+---
 
-**Übermittelte Daten je Empfänger**
+# Anlage 3 — Aktive Module und Datenfelder
 
-*IONOS SE:* sämtliche in § 2 genannten Kategorien, da der Bestand auf dem
-bei IONOS gemieteten Server liegt. Die Verarbeitung auf dem Server selbst
-erfolgt durch den Auftragsverarbeiter; IONOS stellt die Infrastruktur bereit.
-
-**Optionale Dienste — derzeit nicht aktiviert**
-
-| Unternehmen | Leistung | Ort der Verarbeitung | Stand |
-|---|---|---|---|
-| Resend, Inc., USA | Versand von Systemnachrichten per E-Mail (Zugangscodes, Hinweise) — nur bei Aktivierung des serverseitigen E-Mail-Versands | USA | **nicht aktiviert**; es werden keine Daten übermittelt |
-
-*Resend, bei Aktivierung:* Empfängeradresse, Betreff und Inhalt der
-jeweiligen Nachricht. Der Versand erfolgt nur an Adressen, die im
-betroffenen Betrieb hinterlegt sind; ein Versand an beliebige Adressen ist
-serverseitig unterbunden.
-
-**Vor einer Aktivierung des E-Mail-Versands zu erledigen**
-
-1. Voraussetzungen für die Übermittlung in ein Drittland nach Art. 44 ff.
-   DSGVO schaffen und dokumentieren (`[BEISPIEL-AVV-RESEND]`), einschließlich
-   der dafür erforderlichen Bewertung.
-2. Diese Anlage 2, das Verarbeitungsverzeichnis und die
-   Datenschutzerklärung nachführen.
-3. Mitteilung an den Verantwortlichen nach § 6 Abs. 2.
+| Modul | Besonderheit | Freigabestatus |
+|---|---|---|
+| Kernplanung | Person, Dienst, Plan, Qualifikation | [ZU_KLAEREN: je Kunde] |
+| Zeiterfassung und Stempeluhr | Stempelereignisse; Standortprüfung nur wenn eingeschaltet | [ZU_KLAEREN: je Kunde; Mitbestimmung und DSFA-Screening] |
+| Abwesenheiten | Art 9 möglich, Freitext minimieren | [ZU_KLAEREN] |
+| Wachbuch und Objektberichte | Drittpersonen möglich; Aufbewahrung nicht festgelegt | Modulstatus und Fachabnahme offen |
+| Pflege, Bereitschaft und weitere Fachmodule | Fachattribute, Schutzdaten | Fachabnahme offen |
+| Mitteilungen per E-Mail und Push | externe Dienstleister | nur nach Anlage 2 |
+| Intelligence (KI) | derzeit keine Live-Verarbeitung | nicht aktiv |
