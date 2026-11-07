@@ -90,7 +90,7 @@ export function smtpStatus(env = process.env) {
 
 const ADRESSE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$/;
 
-/** Reine Adresse prüfen: ASCII, ein @, keine Steuer-/Trennzeichen. */
+/** Reine Adresse prüfen: ASCII, genau ein At-Zeichen, keine Steuer-/Trennzeichen. */
 export const adresseGueltig = (a) => typeof a === "string" && a.length <= 254 && ADRESSE.test(a);
 
 /** „Name <adresse>“ oder „adresse“ zerlegen. */

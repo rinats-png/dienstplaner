@@ -41,7 +41,7 @@ export const MAIL_FRIST_MS = 15_000;
  * @param {string} an
  * @param {string} betreff
  * @param {string} text
- * @param {{idempotenz?: string}} [opt]
+ * @param {{idempotenz?: string, dringend?: boolean}} [opt]
  * @returns {Promise<{ok: boolean, trocken?: boolean, id?: string, fehler?: string,
  *                    klasse?: string, ursache?: string, status?: number, an?: string, betreff?: string}>}
  */
