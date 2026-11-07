@@ -3,6 +3,15 @@
 Branch `claude/wp-28b-datensicherung-last-1yiwh0`, Basis `integration/release-v4` (`087fbe9`).
 Nur Wegwerf-Daten in Temp-Verzeichnissen; kein Zugriff auf Produktion, VPS, Staging oder echte Sicherungen.
 
+> **Status: sicherer, fail-closed arbeitender Teilfix — keine vollständige Lösung.**
+> - Behoben: rohes `ENOENT` beim Store-Verzeichnis; Nachkopieren statt Verwerfen; veraltete Kopie bei gleicher Größe und
+>   mtime (Inode); Werkstatt im Fehlerpfad.
+> - **Nicht gelöst: eine zuverlässig abgeschlossene Sicherung unter Dauerlast.** Bei etwa 17 Schreibvorgängen pro
+>   Sekunde auf 3000 Dateien gelang nur **1 von 14** Sicherungen (alle übrigen Code 3 + Fail-Ping, nie eine halbe
+>   Sicherung). Dazu und zur Konsistenz über mehrere Dateien: §6 und §8.
+> - Folgeaufgabe: konsistente Sicherung über einen kurzen koordinierten Schreib-Halt im Server, siehe
+>   `docs/acc45/wp28b2-empfehlung-konsistente-sicherung.md`.
+
 ## 1. Ausgangslage
 
 WP-28b (Teil 1, `docs/acc45/wp28b-nachweis.md`) hat `ENOENT` zwischen `readdir` und `stat` sowie beim `readFile`
@@ -68,13 +77,17 @@ In keinem Lauf trat ein anderer Fehler als Code 3 auf; kein rohes `ENOENT`.
    - Manifest (`stores`, `ausgelassen`, `summe`) stammt aus der Liste des stabilen Durchlaufs.
    - Weiterhin: Gegenprobe `pruefen(werkstatt)` vor dem Umbenennen, `FERTIG` zuletzt, nie eine Sicherung ohne
      Gegenprobe.
+3. **Ruhezeit `--ruhe <ms>`** (Kommandozeile Vorgabe 1000, Bibliotheksaufruf `ruhe` Vorgabe 0): Ist ein Stand stabil,
+   wartet das Werkzeug `ruhe` ms (Monotonzeit) und prüft in einem zweiten vollständigen Durchlauf erneut; nur wenn
+   auch dieser unverändert ist, gilt die Sicherung. Grund und Messung: §8. Eingeführt nach der Rückfrage, ob ein
+   erfolgreicher dateiweiser Vergleich einen Gesamtzustand über zusammengehörige Dateien garantiert.
 
 Bewusst **nicht** gemacht: ein Schnellverfahren über Verzeichnis-Zeitstempel (würde zwei Schreibvorgänge im
 selben Zeitstempel-Takt übersehen = stiller Konsistenzfehler); Änderung von `versuche`; Änderung bestehender Tests.
 
 ## 4. Tests nach der Korrektur
 
-- `npx vitest run pruefungen/wp28b-sicherung-last.test.js` → 12 von 12 grün (mehrfach wiederholt, stabil).
+- `npx vitest run pruefungen/wp28b-sicherung-last.test.js` → 15 von 15 grün (mehrfach wiederholt, stabil).
 - Mutationsproben (jeweils Test rot): kein Fingerabdruck-Vergleich im Prüfdurchlauf (6 rot), gelöschte Kopien nicht
   verwerfen (1), geänderte Dateien nicht neu kopieren (2), `verwerfen` löscht die Datei nicht (6), `ENOENT` beim
   Store-`readdir` wieder roh (1). Eine erste Fassung der Mutation „gelöschte Kopien nicht verwerfen“ blieb grün und
@@ -96,12 +109,19 @@ Konsistenz nicht statistisch; sie stützt sich auf die deterministischen Tests (
 
 ## 6. Verbleibende Risiken
 
-- **Hohe Dauer-Schreibrate bleibt ein Problem.** Der Stand muss einmal für die Dauer eines Prüfdurchlaufs ruhen
-  (5000 Dateien ≈ 120 ms). Im Maßstab-Test (~3000 Dateien, ~17 Schreibvorgänge/s) gelang 1 von 14 Läufen (vorher 0): **bei dieser Last ist die
-  Sicherung weiterhin nicht zuverlässig**. Bei ~19–25 Schreibvorgängen/s auf wenige Dutzend Dateien dagegen 140/140
-  (vorher 0/80).
-  Ergebnis dann Code 3 + Fail-Ping, nie eine halbe Sicherung. Abhilfe unverändert: ruhiges Fenster (02:30) oder
-  Server vorher stoppen. Ein echter Fortschritt wäre ein kurzer Schreib-Halt im Server (Raumsperre), nicht im Werkzeug.
+- **Unter Dauerlast gibt es keine zuverlässig abgeschlossene Sicherung.** Der Stand muss einmal für die Dauer eines
+  Prüfdurchlaufs (5000 Dateien ≈ 120 ms) **und** der Ruhezeit (Vorgabe 1 s) still stehen. Gemessen (Maßstab-Test,
+  ~3000 Dateien à 3 kB, ~17 Schreibvorgänge/s, ohne Ruhezeit): **1 von 14** Sicherungen gelang (vorher 0 von 14);
+  mit Ruhezeit 1 s bei Transaktionen alle 100 ms **0 von 5**. Bei ~19–25 Schreibvorgängen/s auf wenige Dutzend
+  Dateien (ohne Ruhezeit) 140/140 (vorher 0/80) — das zeigt den Gewinn durch Nachkopieren, ist aber **kein**
+  Beleg für Dauerlast an der Produktionsgröße. Das Ergebnis ist dann Code 3 + Fail-Ping, nie eine halbe Sicherung;
+  dasselbe Verhalten wie bisher, nur seltener nötig. Abhilfe unverändert: ruhiges Fenster (02:30) oder Server
+  vorher stoppen. Echte Abhilfe: kurzer Schreib-Halt im Server (Empfehlung, nicht umgesetzt).
+- **Ruhezeit kostet Zeit.** Eine erfolgreiche Sicherung braucht mindestens `ruhe` länger (gemessen ~3,3 s je Lauf bei
+  kleinem Bestand); ein Fehlschlag unter Dauerlast ~18 s je Aufruf (bis zu 3 Versuche × 12 Runden × Ruhezeit).
+- **Lücken länger als die Ruhezeit bleiben möglich** (z. B. wenn eine Transaktion auf die Raumsperre wartet, Grenze
+  15 s). Ein Schnitt mitten in einer Anwendungstransaktion ist absturzgleich: die Anwendung fängt ihn fail-closed
+  ab (Konto ohne Mitgliedschaft öffnet nicht, bis neu eingeladen wird; `accounts.mjs:732-762`).
 - **Zeitstempel-Auflösung / Austausch (Review B1).** Auf ext4 (Kernel 6.18) bekamen 100 000 atomare Schreibvorgänge
   nur 50 012 verschiedene mtimes: Größe + mtime allein reichen nicht. Der Fingerabdruck enthält deshalb jetzt die
   Inode (jeder atomare Schreibvorgang der Ablage erzeugt eine neue). Restrisiko: Inode-Wiederverwendung bei drei
@@ -131,3 +151,67 @@ Konto/Mitglied-Schreiber: 0 zerrissene Sicherungen, 0 sonstige Fehler). Befunde 
 | B7 Fehlerrangfolge bei parallelen `stat` minimal anders | niedrig | in Abschnitt 3 dokumentiert |
 | B8 Nicht-ENOENT-Fehler (Windows EBUSY/EPERM, ENOTDIR) roh | offen | unverändert, Abschnitt 6 |
 | Vorbehalt „gemeinsamer Zeitpunkt“ im Kommentar zu stark | – | Kommentar und Doku abgeschwächt |
+
+## 8. Konsistenz über mehrere zusammengehörige Dateien (Rückfrage; gezielt gemessen)
+
+**Aussage, die zu prüfen war:** Ein erfolgreicher dateiweiser Vergleich (Größe, mtime, Inode, Dateimenge) garantiert
+nicht automatisch einen atomaren Gesamtzustand über zusammengehörige Dateien. **Das stimmt.** Der Vergleich beweist nur,
+dass sich zwischen Lesen und Prüfdurchlauf nichts verändert hat. Schreibt die Anwendung Konto und danach Mitgliedschaft
+(`accounts.mjs`, mehrere `await` dazwischen), kann der Schnitt in die Lücke fallen: Konto neu, Mitgliedschaft alt.
+Dieser Stand ist dateisystemseitig echt, anwendungsseitig aber eine halbe Transaktion.
+
+**Messung** (`paar.mjs`, Wegwerf-Ablage über die echte `server/lib/ablage.mjs`; ein Schreiber ändert Konto→Mitgliedschaft
+mit Lücke *L* und Periode *P*; je erfolgreiche Sicherung wird `konto.gen − mitglied.gen` gelesen, 1 = Schnitt mitten in
+der Transaktion):
+
+| Szenario | Fassung | Läufe | gelungen | Schnitt mitten in der Transaktion |
+|---|---|---|---|---|
+| L 5 ms, P 100 ms (+ Rauschen alle 40 ms) | alt (`087fbe9`) | 400 | 4 | 0 |
+| | neu, ohne Ruhezeit | 400 | 400 | **18 (4,5 %)** |
+| | neu, `ruhe` 1000 | 5 | 0 (alle Code 3, 18 s je Lauf) | – |
+| L 60 ms, P 1500 ms, kein Rauschen | alt (`087fbe9`) | 300 | 300 | **4 (1,3 %)** |
+| | neu, ohne Ruhezeit | 300 | 300 | **11 (3,7 %)** |
+| | neu, `ruhe` 1000 | 150 | 150 | **0** |
+| L 5 ms, P 1500 ms (+ Rauschen alle 800 ms) | alt / neu ohne Ruhezeit | je 150 | 150 / 150 | 0 / 0 |
+
+Befunde:
+1. Die erste Fassung dieses PR (Nachkopieren ohne Ruhezeit) hat Verfügbarkeit gegen Konsistenz getauscht: Bei dichten
+   Transaktionen lag fast jede 22. Sicherung mitten in einer Transaktion (alt: praktisch nie, weil sie kaum gelang).
+2. Auch die **alte** Fassung war nicht immun: Ist die Lücke länger als das Prüffenster (hier 60 ms), lag 1,3 % mitten
+   in der Transaktion.
+3. Mit Ruhezeit schließt sich das für Lücken kürzer als `ruhe` **by construction** (die erste Datei muss vor dem ersten,
+   die zweite darf nicht nach dem zweiten Durchlauf geschrieben sein) und in der Messung (0 von 150 gegenüber 11 von 300).
+   Gemessen an der Wirkung stark, am Beweis: nur für Lücken < `ruhe`.
+4. Rest: Lücken ≥ `ruhe`, Dateiuhr-Auflösung/Inode-Wiederverwendung (§6) und alles, was ohne Halt im Server nicht
+   ausschließbar ist.
+
+Umsetzung der Korrektur: Option `ruhe`/`--ruhe` (§3 Punkt 3). Tests: `pruefungen/wp28b-sicherung-last.test.js`,
+Gruppe „Transaktions-Schnitt“ (vorher rot: Konto 2 / Mitgliedschaft 1; Kommandozeile kannte `--ruhe` nicht).
+
+## 9. GitHub-Actions-Auswertung zu PR #100 (Kopf `c6fcce1`)
+
+Die PR-Läufe testen den Merge in den damaligen Zielbranch (`7eae3d2`). Vergleich mit den Läufen des **unveränderten**
+Zielbranchs (Runs 42354517030, 42354516992, 42354516982) und lokal reproduziert:
+
+| Job (Workflow) | PR | Zielbranch `7eae3d2` | Ursache | Von diesem PR? |
+|---|---|---|---|---|
+| `pruefen` (Prüfung), Schritt „Typen“ | rot | rot | 20 TypeScript-Fehler in `modulschreibwege`, `regelbaukasten-erweitert`, `selbstauskunft`, `zweifaktor` (alle `server/lib/*.mjs`); lokal `npm run pruefung:typen`: **identische 20 Fehler** auf Zielbranch und PR-Kopf, keiner in einer von mir geänderten Datei | nein, Bestand |
+| `muster` (Sicherheit) | rot | rot | Wort `dangerouslySetInnerHTML` in einem Kommentar von `src/ansichten/intelligence/KiEntwurf.jsx:16` | nein, Bestand (Intelligence-Bereich) |
+| `interne-pruefung` (Sicherheit), Schritt „Statische Prüfung“ | rot | rot | `[hart] dangerouslySetInnerHTML: 1` (dieselbe Zeile); lokal `npm run sicherheit:statik` identisch auf beiden Ständen, Exit 1 | nein, Bestand |
+| `bild-scan` (Lieferkette), Schritt „Bild bauen“ | rot | rot | `Dockerfile:88` kopiert `werkzeug/betreiber-faktor-vorlauf.mjs` (und `…2fa-zuruecksetzen.mjs`), `.dockerignore` gibt sie nicht frei (`werkzeug/*` ausgeschlossen, nur sechs Dateien ausgenommen) → „not found“ | nein, Bestand |
+| `sicherung` (Betrieb Sicherung) | rot | (läuft nur bei Änderungen an `werkzeug/ablage-sicherung.mjs` o. ä.; daher nicht im Vergleich) | scheitert im **gleichen** Schritt „Bild bauen“ wie `bild-scan` (gleiche Ursache); der Ende-zu-Ende-Nachweis wurde dadurch **übersprungen** | Ursache nein; **Nachweis fehlt** |
+| übrige (`shellcheck`, `skripte`, `compose`, `caddy-vorlage`, `abhaengigkeiten`, `geheimnisse`) | grün | grün | – | – |
+
+Folgen und Vorbehalt:
+- **PR-verursachte Fehler: keine gefunden.** Es wurde nichts an Bestandsfehlern „repariert“: Sie liegen in fremden
+  Bereichen (Typen/Server, Intelligence, Docker-Kontext) und gehören dem Hauptorchestrator.
+- **Das CI hat die Fachprüfungen dieses PR nie ausgeführt**: In `pruefung.yml` bricht der Schritt „Typen“ ab, alle
+  folgenden Schritte (u. a. „Ablage“, „Sicherungen“, „Sicherung und Wiederherstellung“, „Gate-Proben“) sind
+  *skipped*. Grün ist der PR deshalb nicht belegt; belegt ist er lokal (Testfamilie `ablage-pruefen*`, `sicherung-ablage`, `sicherungen`, `wp28b-*`, `deploy-automatik`,
+  `zweifaktor`, `ablage`, `doku`: 12 Dateien, **389 bestanden, 3 übersprungen, 0 fehlgeschlagen**; Wiederherstellungsübung
+  `npm run sicherheit:wiederherstellung`: 12 von 12 Schritten bestanden).
+- **Ende-zu-Ende-Nachweis (`deploy/sicherung/ci/ende-zu-ende.sh`) nicht ausgeführt**: In der Sandbox gibt es weder
+  Docker-Daemon noch `restic`. Er wird erst nach Behebung des Bildfehlers (`.dockerignore`: `betreiber-2fa-zuruecksetzen.mjs`
+  und `betreiber-faktor-vorlauf.mjs` freigeben) belastbar. **Vorschlag an den Besitzer von `.dockerignore`/Dockerfile**,
+  nicht Teil dieses PR (fremder Bereich, anderes Paket).
+- Der PR-Zweig steht zwei Commits hinter dem Zielbranch (`7cee8ea`, `7eae3d2`); der CI-Merge war konfliktfrei.

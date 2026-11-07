@@ -70,8 +70,17 @@
    unverändert bestätigt: dann stimmen alle Kopien mit dem Stand der Quelle
    zu einem gemeinsamen Zeitpunkt überein. Gelingt das nicht, wird der
    Versuch verworfen und neu begonnen (dreimal), danach mit Fehler
-   abgebrochen (Code 3, nichts angelegt). Wer sicher gehen will, stoppt den
-   Server vorher — dann gibt es nie einen zweiten Anlauf.
+   abgebrochen (Code 3, nichts angelegt).
+
+   Grenzen dieser Zusicherung (WP-28b/2): Sie gilt für das Dateisystem, nicht
+   für Anwendungsvorgänge. Schreibt die Anwendung zwei zusammengehörige Dateien
+   nacheinander, kann ein Schnitt zwischen ihnen liegen. Deshalb muss nach der
+   Ruhezeit `--ruhe` (Vorgabe 1000 ms) ein zweiter Durchlauf dasselbe zeigen;
+   so sind Lücken unter dieser Zeit ausgeschlossen, längere nicht. Unter
+   Dauerlast gelingt das nicht (Code 3). Eine Zusicherung für beliebige
+   Dauerlast gibt es nur mit Schreib-Halt im Server, nicht in diesem Werkzeug.
+   Wer sicher gehen will, stoppt den Server vorher — dann gibt es nie einen
+   zweiten Anlauf.
 
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
@@ -241,11 +250,13 @@ const idVon = (/** @type {{store:string,name:string}} */ d) => `${d.store}/${d.n
 
 /**
  * @param {{quelle: string, ziel: string, jetzt?: Date, versuche?: number, runden?: number,
- *          pause?: number, meldung?: (s: string) => void}} o
+ *          pause?: number, ruhe?: number, meldung?: (s: string) => void}} o
+ *   `ruhe` (ms): Bestätigungspause vor dem Abschluss, siehe unten. Als Bibliotheksaufruf 0 (Tests, kurze Läufe);
+ *   die Kommandozeile setzt 1000, wenn nichts anderes verlangt wird (`--ruhe`).
  * @returns {Promise<{pfad: string, manifest: any}>}
  */
 export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, runden = 12, pause = 1000,
-  meldung = () => {} }) {
+  ruhe = 0, meldung = () => {} }) {
   quelle = path.resolve(quelle); ziel = path.resolve(ziel);
   if (ziel === quelle || ziel.startsWith(quelle + path.sep))
     throw new SicherungsFehler("Das Ziel darf nicht innerhalb der Quelle liegen — die Sicherung würde sich selbst sichern.", 2);
@@ -313,10 +324,22 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
           await schreibenFest(path.join(werkstatt, "daten", d.store, d.name), inhalt);
           kopien.set(id, { fp: fp(d), bytes: inhalt.length, sha256: sha256(inhalt) });
         }
-        const jetztListe = await quelleAnsehen(quelle);
+        /** Stimmt die Liste mit den Kopien überein (Menge und Fingerabdrücke)? */
+        const gleich = (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ l) => !l.veraendert
+          && l.dateien.length === kopien.size && l.dateien.every((d) => kopien.get(idVon(d))?.fp === fp(d));
+        let jetztListe = await quelleAnsehen(quelle);
         if (jetztListe.veraendert) unruhig = true;
-        stabil = !unruhig && jetztListe.dateien.length === kopien.size
-          && jetztListe.dateien.every((d) => kopien.get(idVon(d))?.fp === fp(d));
+        stabil = !unruhig && gleich(jetztListe);
+        /* Ruhezeit: Eine Transaktion über mehrere Dateien (Konto, dann Mitgliedschaft) kann zwischen zwei
+           Schreibvorgängen im Schnitt liegen. Nach `ruhe` ms (Monotonzeit, unabhängig von der Dateiuhr) muss ein
+           zweiter vollständiger Durchlauf dasselbe zeigen: Dann war die erste Datei schon vor dem ersten und
+           die zweite noch nicht nach dem zweiten Durchlauf geschrieben — Lücken kürzer als `ruhe` sind
+           ausgeschlossen. Längere Lücken (z. B. Warten auf eine Raumsperre) bleiben möglich. */
+        if (stabil && ruhe > 0) {
+          await new Promise((r) => setTimeout(r, ruhe));
+          jetztListe = await quelleAnsehen(quelle);
+          stabil = gleich(jetztListe);
+        }
         ansicht = jetztListe;
         if (!stabil && runde < runden) meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Ablage hat sich verändert — geänderte Dateien werden nachkopiert.`);
       }
@@ -577,7 +600,7 @@ function argumente(/** @type {string[]} */ a) {
 }
 
 const HILFE = `Aufruf:
-  ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner>
+  ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner> [--ruhe <ms, Vorgabe 1000>]
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
                                         [--server-url <URL>] [--ohne-serverpruefung]`;
@@ -589,8 +612,11 @@ export async function main(/** @type {string[]} */ argv) {
     const o = argumente(rest);
     if (befehl === "sichern") {
       if (!o.ziel) throw new SicherungsFehler(HILFE, 2);
+      const ruhe = o.ruhe === undefined ? 1000 : Number(o.ruhe);
+      if (!Number.isInteger(ruhe) || ruhe < 0 || ruhe > 600000)
+        throw new SicherungsFehler("--ruhe: ganze Zahl in Millisekunden, 0 bis 600000", 2);
       const r = await sichern({ quelle: String(o.quelle || process.env.CENTRIC_DATEN || "/data"),
-        ziel: String(o.ziel), meldung: say });
+        ziel: String(o.ziel), ruhe, meldung: say });
       const m = r.manifest;
       console.log(`Sicherung vollständig: ${r.pfad}`);
       console.log(`  ${m.summe.dateien} Dateien, ${m.summe.bytes} Bytes`);
