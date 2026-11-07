@@ -71,7 +71,7 @@ Dienstplan, Schichten, Zeiterfassung, Stempelzeiten, Abwesenheiten, Qualifikatio
 
 ## 9. Standortprüfung beim Stempeln
 
-Die Prüfung ist im Betrieb per Voreinstellung aus und nur nach Einschalten durch den Betrieb aktiv. Wenn aktiv, übermittelt das Gerät beim Stempeln einmalig eine Position; der Server vergleicht sie mit dem hinterlegten Einsatzort. Nach dem Quelltext werden Ergebnis (innerhalb, außerhalb, nicht bewertbar), gerundete Entfernung, Messgenauigkeit und Referenzort gespeichert, nicht die Rohkoordinate. Auch diese Ergebnisse sind Kontrollinformationen über Beschäftigte. Die Prüfung ist nie Voraussetzung für die Arbeitszeitbuchung.
+Die Prüfung ist im Betrieb per Voreinstellung aus und nur nach Einschalten durch den Betrieb aktiv. Wenn aktiv, übermittelt das Gerät beim Stempeln einmalig eine Position; der Server vergleicht sie mit dem hinterlegten Einsatzort. Gespeichert wird nur das Ergebnis (innerhalb, außerhalb, nicht bewertbar), die grob gerundete Entfernung, die Messgenauigkeit und der Prüfort (Standort oder Einsatzort mit Bezeichnung). Fehlt die Position, wird nur der Grund als Code vermerkt (keine_freigabe, timeout, nicht_verfuegbar). Die Koordinate selbst wird nicht abgelegt und nicht weitergegeben — keine Koordinate, kein Verlauf (so beschreibt es der Quelltext, `server/lib/geo.mjs`). Auch diese Ergebnisse sind Kontrollinformationen über Beschäftigte. Die Prüfung ist nie Voraussetzung für die Arbeitszeitbuchung.
 
 Der Betrieb muss Erforderlichkeit, Mitbestimmung (§ 87 Abs. 1 Nr. 6 BetrVG) und gegebenenfalls eine Datenschutz-Folgenabschätzung prüfen (`dsfa-screening.md`). [ZU_KLAEREN: Nachweis durch Netzwerk-, Server- und Fehlerlogprüfung, dass keine Rohkoordinate persistiert wird; bis dahin nur als Quelltext-Angabe führen.]
 
