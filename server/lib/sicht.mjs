@@ -173,6 +173,19 @@ export const ART9_FELDER = Object.freeze({
     Object.freeze({ feld: "anmerkung", kategorie: "freitext" }),
     Object.freeze({ feld: "nachweis", kategorie: "gesundheit" }),
   ]),
+  /** Nachweise nach § 20 IfSG (Masernschutz): Qualifikationen mit `nurStatus` (branchen.mjs, MASERN) — als
+      Eintrag in `qualNachweise` und `qualifikationen` einer Person. Fremd: gar nicht (nachweiseFremd). */
+  nurStatusNachweise: Object.freeze([
+    Object.freeze({ feld: "qualNachweise[nurStatus]", kategorie: "gesundheit", grundlage: "§ 20 IfSG" }),
+    Object.freeze({ feld: "qualifikationen[nurStatus]", kategorie: "gesundheit", grundlage: "§ 20 IfSG" }),
+  ]),
+  /** Freitext-Wege im Betrieb, die nicht an einer Person hängen, aber Art.-9-Angaben tragen können. */
+  freitextWege: Object.freeze([
+    /* Hinweis einer Ausschreibung: schreibt die Planung für alle — geht an Beschäftigte und Betriebsrat. */
+    Object.freeze({ feld: "ausschreibungen[].hinweis", kategorie: "freitext" }),
+    /* Planänderungen: Zusatzfelder außerhalb von AENDERUNG gehen an niemanden außer Planung/Leitung. */
+    Object.freeze({ feld: "aenderungen[]", kategorie: "freitext" }),
+  ]),
   /** Abwesenheitsarten, deren bloße Art eine Gesundheits- oder Schwangerschaftsangabe ist. */
   abwesenheitsarten: Object.freeze([
     Object.freeze({ art: "krank", kategorie: "gesundheit" }),
@@ -185,6 +198,9 @@ export const ART9_FELDER = Object.freeze({
   /** Bewusste, dokumentierte Ausnahme (RECHTEMATRIX ⁴, ABWESENHEITSARTEN_SV): Die Schichtverantwortung sieht
       im EIGENEN Bereich die Kategorie „krank“ (ohne Anmerkung) — für die Ersatzsuche. Sonst nichts davon. */
   ausnahmeSchichtBereich: Object.freeze(["krank"]),
+  /** Zweite dokumentierte Ausnahme: Im EIGENEN Bereich sieht die Schichtverantwortung an Nur-Status-Nachweisen
+      (Masernschutz) nur `qualId`, `ablauf` und `vorhanden` — für das Einsatz-Gate (nachweiseBereich). */
+  ausnahmeSchichtBereichNachweis: Object.freeze(["qualId", "ablauf", "vorhanden"]),
 });
 
 /* ------------------------------------------------------------------------
@@ -663,8 +679,10 @@ export const BETRIEB = {
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
   sondereinsaetze: [R(sondereinsaetzeEigen), WEG],
-  /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. */
-  aenderungen: [WEG, VOLL],
+  /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. Betriebsrat: nur die Felder, die jeder
+     Schreiber setzt (AENDERUNG, wie die Schichtverantwortung) — Zusatzfelder (Freitexte) gingen vorher VOLL hinaus
+     (T-11, Opus-Review N1). */
+  aenderungen: [WEG, R((w) => liste(w).map((e) => (e && typeof e === "object" ? nimm(e, AENDERUNG) : e)))],
   /* Bestätigungsprotokoll (WP-10 d.1): Beschäftigte nicht, Betriebsrat ohne Namen. */
   bestaetigungen: [WEG, R(bestaetigungenBetriebsrat)],
 
