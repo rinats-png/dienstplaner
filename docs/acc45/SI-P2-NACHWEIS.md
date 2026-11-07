@@ -84,3 +84,17 @@ Nicht in diesem Paket (bewusst):
   ein eigenes Paket.
 - Die bekannten roten CI-Checks (muster, Statische Prüfung, Typen, bild-scan, sicherung) sind vorbestehend und
   liegen beim Orchestrator.
+
+## Folgepakete (Stand 2026-11-07): keines konfliktfrei verfügbar
+
+Geprüft gegen die offenen PRs auf `integration/release-v4`; nicht begonnen, um nichts doppelt oder kollidierend zu bauen:
+
+| Paket | Grund |
+|---|---|
+| SI-P3 Mailversand aus Testräumen | Dateien `server/lib/versand.mjs`, `server/funktionen/zustellung.mjs` werden in PR #101 (IONOS-SMTP-Adapter) geändert |
+| SI-P4 2FA für Leitung/Planung/Kunde, SI-P6 Betreiber-Leitungscodes | 2FA-Bereich des Orchestrators |
+| SI-P5 Matrix-/Sondenlücken | `RECHTEMATRIX.md` wird in PR #103 (Legal) geändert |
+| SI-P7 Herkunftssperre/IPv6 | `server/lib/schutz.mjs` wird in PR #103 geändert |
+| WP-27c | wartet auf Betreiberfragen |
+
+Sobald #101 bzw. #103 integriert sind, sind SI-P3, SI-P5 und SI-P7 ohne Konflikt machbar.
