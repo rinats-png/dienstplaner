@@ -196,6 +196,10 @@ export async function arbeitssitzungLesen(req,
   const fachlich = await arbeitssitzungPruefen(ablage, s0,
     { merkmal, bestandLader: bestandLader ? () => bestandLader(s0) : null });
   if (!fachlich.ok) {
+    /* Ein Sicherungsschlüssel, dessen Betrieb nicht mehr stimmt (verschoben, Kennung weg), ist ebenfalls endgültig
+       abgewiesen. Ein Lesefehler am Bestand (`bestand-fehler`) ist es nicht. */
+    if (s0.nurSicherung && merkmal && "grund" in fachlich && fachlich.grund !== "bestand-fehler")
+      await sicherungsschluesselEntfernen(merkmal);
     return { sitzung: null, abgewiesen: true, mitMerkmal: true,
       grund: "grund" in fachlich ? fachlich.grund : "unbekannt" };
   }

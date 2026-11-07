@@ -535,8 +535,21 @@ export default async (req, context) => {
         })).beendet;
       } catch { /* Sitzungen laufen ohnehin nach spätestens zwölf Stunden ab */ }
 
-      await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen beendet`);
-      return antwort({ ok: true, gesperrt, sitzungenBeendet: beendet });
+      /* SI-P1: Auch die Sicherungsschlüssel, die ein gesperrter Zugang angelegt hat, enden jetzt und endgültig. Sonst
+         lebten sie wieder auf, wenn der Zugang entsperrt wird, bevor ein Schlüssel benutzt wurde. */
+      let schluesselBeendet = 0;
+      try {
+        const { blobs: skBlobs } = await sitzungen().list({ prefix: "sk:" });
+        for (const sb of skBlobs) {
+          const sk = await sitzungen().get(sb.key, { type: "json" }).catch(() => null);
+          if (sk && sk.ersteller && sk.ersteller.art === "code" && gesperrteHashes.has(sk.ersteller.konto)) {
+            await sitzungen().delete(sb.key); schluesselBeendet++;
+          }
+        }
+      } catch { /* sie enden ohnehin beim nächsten Gebrauch (arbeitssitzungLesen) */ }
+
+      await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen, ${schluesselBeendet} Sicherungsschlüssel beendet`);
+      return antwort({ ok: true, gesperrt, sitzungenBeendet: beendet, schluesselBeendet });
     }
 
     /* --------------- Bestand für einen anderen Raum schreiben --------- */
@@ -2256,8 +2269,16 @@ export default async (req, context) => {
         /* SI-P1: Wer hat ihn angelegt, und gilt der Ersteller noch? „verwaist" heißt: Der Schlüssel funktioniert
            nicht mehr (Ersteller gesperrt, ausgetreten, herabgestuft) oder hat gar keinen Ersteller (Altschlüssel). */
         let verwaist = true;
-        try { verwaist = !(await sicherungsschluesselPruefen(store, k, { bestandLader: async () => bestandFuerListe })).ok; }
-        catch { verwaist = true; }
+        try {
+          const probe = await sicherungsschluesselPruefen(store, k, { bestandLader: async () => bestandFuerListe });
+          verwaist = !probe.ok;
+          /* Eine eindeutige Absage wird hier festgehalten, wie beim Gebrauch des Schlüssels: Die Leitung sieht ihn
+             ein letztes Mal. Ohne das lebte er wieder auf, wenn das Konto entsperrt oder die Personalliste
+             zurückgespielt wird, bevor ihn jemand benutzt. Nur Schlüssel MIT Ersteller: Ein Altschlüssel ohne
+             Ersteller kann nie wieder gelten, bei ihm gibt es nichts, was wieder aufleben könnte; er bleibt in der
+             Liste, bis die Leitung ihn löscht oder er abläuft. */
+          if (!probe.ok && probe.endgueltig && k.ersteller !== undefined) await sitzungen().delete(b.key).catch(() => {});
+        } catch { verwaist = true; }
         liste.push({ kennung: b.key.slice(3, 11), angelegt: k.angelegt,
           ersteller: (k.ersteller && typeof k.ersteller.name === "string") ? k.ersteller.name : null,
           verwaist,

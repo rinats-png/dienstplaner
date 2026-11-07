@@ -311,14 +311,66 @@ describe("Review-Befund 1: ein widerrufener Schlüssel lebt nicht wieder auf", (
     expect(ohneMitglied).toMatchObject({ ok: false, endgueltig: false, grund: "sk-mitglied-fehlt" });
   }, LIMIT);
 
-  it("die Liste schreibt nichts: ein verwaister Schlüssel bleibt dort sichtbar, bis er benutzt oder gelöscht wird", async () => {
-    const b = await kontoMitSchluessel("sk-liste-liest");
+  it("die Liste zeigt einen eindeutig verwaisten Schlüssel ein letztes Mal und räumt ihn dann ab", async () => {
+    const b = await kontoMitSchluessel("sk-liste-raeumt");
     const c = await codeLeitung(b.raum);
     await Z.A.mitgliedschaftEntziehen(Z.laden(), b.k.id, b.raum);
+    const erst = await liste(c.token);
+    expect(erst.daten.schluessel).toHaveLength(1);
+    expect(erst.daten.schluessel[0].verwaist).toBe(true);
+    expect(await satz(b.sk), "Liste hat ihn festgehalten (entfernt)").toBeNull();
+    expect((await liste(c.token)).daten.schluessel, "beim zweiten Mal nicht mehr da").toHaveLength(0);
+  }, LIMIT);
+
+  it("ein Altschlüssel ohne Ersteller bleibt in der Liste (verwaist), bis die Leitung ihn löscht: er kann nie wieder gelten", async () => {
+    const b = await Z.arbeitsbereich("sk-liste-alt");
+    const roh = "alt-ohne-ersteller-fuer-die-liste-0123456789";
+    await Z.ablageArbeit().setJSON(`sk:${hash(roh)}`, { bestand: b.raum, rolle: "leitung", nurSicherung: true, betrieb: 0,
+      mandantId: "m1", name: "Sicherungsschlüssel (Leitung)", angelegt: new Date().toISOString(), bis: Date.now() + 86400000 });
+    const l = await liste(b.token);
+    expect(l.daten.schluessel).toHaveLength(1);
+    expect(l.daten.schluessel[0]).toMatchObject({ verwaist: true, ersteller: null });
+    expect(await satz(roh), "Altschlüssel bleibt liegen").not.toBeNull();
+    const d = await Z.bearer(Z.daten, "/api/sicherungsschluessel", b.token, { methode: "DELETE", rumpf: { kennung: l.daten.schluessel[0].kennung } });
+    expect(d.daten.widerrufen).toBe(1);
+  }, LIMIT);
+
+  it("Konto gesperrt, Liste geöffnet, Konto wieder aktiviert: der Schlüssel bleibt tot (Wiederbelebung zwischen Sperre und erstem Gebrauch)", async () => {
+    const b = await kontoMitSchluessel("sk-liste-wieder");
+    const c = await codeLeitung(b.raum);
+    await Z.A.accountSperren(Z.laden(), b.k.id);
     expect((await liste(c.token)).daten.schluessel[0].verwaist).toBe(true);
-    expect(await satz(b.sk), "Liste hat nichts entfernt").not.toBeNull();
+    await Z.A.accountAendern(Z.laden(), b.k.id, { status: "aktiv" });
     expect((await vollausgabe(b.sk)).status).toBe(401);
-    expect(await satz(b.sk), "Benutzen entfernt ihn").toBeNull();
+  }, LIMIT);
+
+  it("ein Lesefehler in der Liste entfernt nichts", async () => {
+    const b = await kontoMitSchluessel("sk-liste-fehler");
+    const sk = await satz(b.sk);
+    const probe = await AS.sicherungsschluesselPruefen(mitStoerung((m, k) => (k.startsWith("mitglied:") ? "wirft" : null)), sk);
+    expect(probe.endgueltig).toBe(false);
+    expect(await satz(b.sk)).not.toBeNull();
+  }, LIMIT);
+
+  it("zugang-sperren beendet die Schlüssel des gesperrten Zugangs sofort und endgültig; andere bleiben", async () => {
+    const b = await Z.arbeitsbereich("skc-sperre-api");
+    const a = await codeLeitung(b.raum);                 // Ersteller, wird gesperrt
+    const stehen = await codeLeitung(b.raum);            // zweiter Ersteller, bleibt
+    const l = await codeLeitung(b.raum);                 // sperrende Leitung
+    const skA = (await anlegen(a.token)).daten.schluessel;
+    const skB = (await anlegen(stehen.token)).daten.schluessel;
+    expect((await vollausgabe(skA)).status).toBe(200);
+    const s = await Z.bearer(Z.daten, "/api/zugang-sperren", l.token, { methode: "POST", rumpf: { pruefsumme: a.konto } });
+    expect(s.status, JSON.stringify(s.daten)).toBe(200);
+    expect(s.daten.gesperrt).toBe(1);
+    expect(s.daten.schluesselBeendet, "Schlüssel des gesperrten Zugangs beendet").toBe(1);
+    expect(await satz(skA)).toBeNull();
+    // Entsperren bringt ihn nicht zurück.
+    const k = await Z.K.kontoLesen(Z.laden(), a.konto);
+    const { gesperrt, gesperrtAm, gesperrtDurch, ...frei } = k;
+    await Z.K.kontoSchreiben(Z.laden(), a.konto, frei);
+    expect((await vollausgabe(skA)).status).toBe(401);
+    expect((await vollausgabe(skB)).status, "Schlüssel eines anderen Zugangs").toBe(200);
   }, LIMIT);
 });
 
@@ -490,5 +542,6 @@ describe("Überlebende Mutanten: weitere Ersteller und Verschiebungen", () => {
     expect(ohneBestand).toMatchObject({ ok: false, grund: "sk-bestand-fehlt" });
     await bestandAendern(b.raum, (n) => { n.mandanten.unshift({ id: "m0", name: "Neues Haus", einheiten: [], personen: [] }); });
     expect((await vollausgabe(b.sk)).status).toBe(401);
+    expect(await satz(b.sk), "auch diese Absage ist endgültig").toBeNull();
   }, LIMIT);
 });

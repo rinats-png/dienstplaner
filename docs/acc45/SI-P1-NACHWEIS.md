@@ -28,10 +28,10 @@ Erstellers ließen ihn bestehen: Wer als Leitung ausschied, konnte ein Jahr lang
 | Datei | Änderung |
 |---|---|
 | `server/lib/arbeitssitzung.mjs` | `sicherungsschluesselErsteller(sitzung)` bildet den Ersteller aus der anlegenden Sitzung. `sicherungsschluesselPruefen(store, sk, {bestandLader})` prüft ihn bei jedem Lesen. `arbeitssitzungLesen` ruft die Prüfung für Sicherungsschlüssel auf, nach der bisherigen Prüfung, und entfernt den Schlüssel bei einer eindeutigen Absage. Das ist der eine Prüfpunkt, über den allein `daten.mjs` Schlüssel annimmt. |
-| `server/funktionen/daten.mjs` | Anlegen speichert `ersteller` im Datensatz und prüft den neuen Datensatz mit demselben Maßstab wie beim Lesen (403, wenn er von Anfang an nicht gälte). Eine Sitzung, die weder Konto noch Zugang erkennen lässt, legt keinen Schlüssel an (403 „Bitte neu anmelden“). Die Liste zeigt `ersteller` (Name) und `verwaist`, schreibt aber nichts. |
+| `server/funktionen/daten.mjs` | Anlegen speichert `ersteller` im Datensatz und prüft den neuen Datensatz mit demselben Maßstab wie beim Lesen (403, wenn er von Anfang an nicht gälte). Eine Sitzung, die weder Konto noch Zugang erkennen lässt, legt keinen Schlüssel an (403 „Bitte neu anmelden“). Die Liste zeigt `ersteller` (Name) und `verwaist` und entfernt eindeutig verwaiste Schlüssel mit Ersteller nach der Anzeige (Altschlüssel ohne Ersteller bleiben bis zum Löschen sichtbar: sie können nie wieder gelten). `zugang-sperren` beendet die Schlüssel des gesperrten Zugangs sofort (`schluesselBeendet` in der Antwort). |
 | `server/lib/konten.mjs` | neu: `kontoLesenStreng` (ein Lesefehler wird weitergereicht statt auf den Sammelblob zurückzufallen) |
 | `server/lib/sitzungen.mjs` | neu: `sicherungsschluesselEntfernen` |
-| `pruefungen/sicherungsschluessel-ersteller.test.js` | neu, 41 Tests (die ersten 21 vor der Umsetzung geschrieben, davon 17 rot; der Rest aus dem Review) |
+| `pruefungen/sicherungsschluessel-ersteller.test.js` | neu, 45 Tests (die ersten 21 vor der Umsetzung geschrieben, davon 17 rot; der Rest aus dem Review) |
 | `pruefungen/sitzungsbindung.test.js` | Fixture eines von Hand angelegten Schlüssels trägt jetzt einen Ersteller und die Betriebsangaben; der Zweck des Tests ist unverändert |
 | `docs/handbuch/leitung.md`, `docs/BETRIEBSHANDBUCH.md` | je ein Satz zum neuen Verhalten |
 | `docs/acc45/SI-P1-NACHWEIS.md` | dieser Nachweis |
@@ -93,8 +93,8 @@ damit ein vorübergehender Plattenfehler keinen gültigen Schlüssel vernichtet.
 | Prüfung | Ergebnis |
 |---|---|
 | `pruefungen/sicherungsschluessel-ersteller.test.js`, erste Fassung (21 Tests) vor der Umsetzung | **17 von 21 rot** (die vier grünen sind Schutzfälle: Abmelden, fremder Zugang, Betreiber, DELETE) |
-| dieselbe Datei nach Umsetzung und Review-Nachträgen (41 Tests) | 41/41 grün |
-| Mutationsproben (14 Mutanten in `arbeitssitzung.mjs` und `daten.mjs`, je eine Prüfung ausgebaut) | alle werden von mindestens einem Test erkannt (zwei erst nach Nachtrag: Person und Betrieb der Mitgliedschaft) |
+| dieselbe Datei nach Umsetzung und Review-Nachträgen (45 Tests) | 45/45 grün |
+| Mutationsproben (17 Mutanten in `arbeitssitzung.mjs` und `daten.mjs`, je eine Prüfung ausgebaut) | alle werden von mindestens einem Test erkannt (fünf erst nach Nachträgen) |
 | `sitzungsbindung`, `arbeitssitzung`, `sitzungen`, `verwaltungswege`, `vollausgabe`, `sicherheit-intern`, `routen-inventar` | grün |
 | gesamte Suite (`npx vitest run`) | siehe Abschnitt „Gesamtlauf“ |
 | `npx eslint .` | 0 Fehler |
@@ -123,7 +123,7 @@ ausgetreten, entzogen oder herabgestuft ist.** Befunde und Behandlung:
 
 | # | Befund | Schwere | Behandlung |
 |---|---|---|---|
-| 1 | Der Widerruf war umkehrbar: Konto entsperrt, Person zurückgestuft oder erneut eingetragen (etwa durch eine zurückgespielte Sicherung) ließ den Schlüssel wieder leben | mittel–niedrig | **behoben**: eindeutige Absage entfernt den Datensatz; Lesefehler und „fehlt = nicht lesbar“ nicht. Tests für alle drei Wege und die Grenzfälle. |
+| 1 | Der Widerruf war umkehrbar: Konto entsperrt, Person zurückgestuft oder erneut eingetragen (etwa durch eine zurückgespielte Sicherung) ließ den Schlüssel wieder leben | mittel–niedrig | **weitgehend behoben, ein Restfenster bleibt** (siehe unten): Eine eindeutige Absage entfernt den Datensatz beim ersten Gebrauch, beim Öffnen der Liste und (für Zugangscodes) beim Sperren sofort; Lesefehler und „fehlt = nicht lesbar“ nicht. Auch die Absage „Betrieb verschoben“ ist endgültig. Der Re-Review hatte die erste Fassung (nur beim Gebrauch) als halb behoben bewertet. |
 | 2 | Abgelaufener Testzeitraum (`laeuftAb`) und Demozugang wurden nicht geprüft | niedrig | **behoben** (wie bei der Anmeldung), Tests |
 | 3 | `ersetztDurch`: nur ein Glied der Kette verfolgt | niedrig | **behoben**: Kette bis fünf Glieder, Zyklenschutz, fehlendes Glied gilt als gesperrt; Tests |
 | 4 | `kontoLesen` fiel bei einem Lesefehler auf den Sammelblob zurück (fail-open, Altbestand) | niedrig | **behoben**: `kontoLesenStreng`; Test mit gestörter Ablage |
@@ -133,10 +133,26 @@ ausgetreten, entzogen oder herabgestuft ist.** Befunde und Behandlung:
 | – | überlebende Mutanten (Konto mit anderer Person, Lauf, Konto gelöscht, Zugang in anderen Raum/Betrieb/an andere Person, Bestand weg, Betrieb verschoben) | – | Tests ergänzt; danach alle 14 selbst gebauten Mutanten erkannt |
 | – | Obergrenze für die Zahl der Schlüssel je Betrieb (die Liste prüft jeden mit 4–5 Lesevorgängen; 101 Schlüssel ≈ 90 ms) | info | **nicht umgesetzt**, siehe offene Punkte |
 
+### Nachprüfung der Korrekturen (derselbe Reviewer, Stand `60aa1e0`)
+
+Befunde 2 bis 7 bestätigt behoben. Befund 1 „nur halb“: Der Datensatz wurde erst beim Gebrauch entfernt; ein Konto, das
+gesperrt und ohne Zwischenanfrage wieder aktiviert wird, ließ den Schlüssel wieder leben, und die Absage „Betrieb
+verschoben“ entfernte nichts. Beides ist nachgebessert (Liste, `zugang-sperren`, Absage des Betriebs); das Restfenster
+für Konto-Sperre und Herabstufung ohne Zwischenzugriff bleibt und steht unter „Offene Punkte“. Keine neuen
+Fail-open-Pfade, keine Änderung für andere Pfade (der neue Block läuft nur bei `nurSicherung`). Ein Lesefehler löscht
+keinen Schlüssel.
+
 ## Offene Punkte (nicht Teil von SI-P1)
 
 - Die Oberfläche (`src/speicher.js`, Datenmitnahme) zeigt `ersteller` und `verwaist` noch nicht. Sie toleriert die
   zusätzlichen Felder. Die Anzeige gehört in die UI-Integration.
 - Betreiberentscheidungen: Höchstdauer, Verhalten bei Passwortwechsel (Entscheidung 3).
+- **Restfenster beim Widerruf:** Wird ein Konto gesperrt (`accountSperren`) oder eine Person herabgestuft und der alte Zustand
+  wiederhergestellt, **bevor** der Schlüssel benutzt oder die Liste geöffnet wurde, gilt der Schlüssel wieder. Aktiv beim
+  Ereignis lässt es sich nur für Zugangscodes lösen (`zugang-sperren`); für Konten (`accountSperren`,
+  `mitgliedschaftEntziehen`, `epocheErhoehen`) gibt es im Server keinen Aufrufer, an den ich es hängen könnte, und die
+  Herabstufung ist eine Änderung des Bestands. Ein Entzug der Mitgliedschaft und ein Epochenwechsel sind ohnehin
+  unumkehrbar (Generation, Epoche zählen nur hoch). Eine Abhilfe wäre ein Aufräumlauf über `sk:` oder ein Index
+  `Ersteller → Schlüssel`; beides habe ich nicht gebaut.
 - Eine Obergrenze für die Zahl der Schlüssel je Betrieb (etwa 50) gibt es nicht und gab es vorher nicht. Sie wäre eine eigene, kleine Änderung.
 - `accountLesenPerId` und `mitgliedschaftLesen` machen aus einem Lesefehler ein `null` (auch die Arbeitssitzung wertet das als Absage und räumt die Sitzung weg). Für SI-P1 ist das abgefangen (kein Entfernen bei `null`); die Bibliotheken habe ich nicht angefasst.

@@ -25,8 +25,11 @@ Mitteilungen über bestätigte Rechtsverstöße erzeugt der Server an die Leitun
   **Mit Sicherungsschlüssel** enthält sie diese zusätzlich (für die Sicherung außer Haus) — Schlüssel entsprechend
   verwahren. Ein Sicherungsschlüssel gilt nur, solange die Person, die ihn angelegt hat, Leitung dieses Betriebs ist:
   Wird ihr Zugang gesperrt, scheidet sie aus, wird sie herabgestuft oder ändert sie ihr Passwort, endet der Schlüssel
-  mit der nächsten Anfrage, und zwar endgültig (auch eine spätere Entsperrung bringt ihn nicht zurück). Ein Skript
-  sieht dann nur „Nicht angemeldet“ (401). Eine Leitung legt einen neuen Schlüssel an. Das Abmelden der Person beendet
+  mit der nächsten Anfrage, und zwar endgültig (auch eine spätere Entsperrung bringt ihn nicht zurück). „Endgültig“
+  gilt ab dem Augenblick, in dem die Absage einmal festgestellt wurde: beim ersten Gebrauch des Schlüssels, beim Öffnen
+  der Schlüsselliste, und beim Sperren eines Zugangscodes sofort. Wird ein gesperrtes Konto oder die Personalliste
+  vorher wieder auf den alten Stand gebracht, ruht der Schlüssel nur und gilt wieder. Ein Skript sieht sonst nur
+  „Nicht angemeldet“ (401). Eine Leitung legt einen neuen Schlüssel an. Das Abmelden der Person beendet
   ihn nicht. In der Datenmitnahme steht beim Schlüssel, wer ihn angelegt hat; „verwaist“ heißt: er gilt nicht mehr.
 - **Nicht:** übriger Vertrag und Rechnungen (Betreiber), andere Betriebe.
 
