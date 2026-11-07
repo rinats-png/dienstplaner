@@ -10590,7 +10590,7 @@ function AppInnen() {
         }
       },
       /* WP-15: neuer Stand einer Selbstauskunft (Antrag) in erfassung übernehmen. */
-      uebernehmeSelbstauskunft: (pid, d, erg) => upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) =>
+      uebernehmeSelbstauskunft: (pid, d, erg) => serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) =>
         m.id !== (s2.session || {}).mandantId ? m
           : { ...m, erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: erg.eintrag } }) })),
       korrekturBeantragen: async (datum, start, ende, pause, grund) => {
