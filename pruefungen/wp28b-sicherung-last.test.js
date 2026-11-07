@@ -16,7 +16,7 @@
    ========================================================================== */
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
-import { mkdtemp, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -232,6 +232,86 @@ describe("WP-28b/2: Schreibvorgänge während des Kopierens", () => {
   });
 });
 
+describe("WP-28b/2: Review-Befunde", () => {
+  it("B1: gleiche Größe UND gleiche mtime nach atomarem Ersetzen wird erkannt (Inode im Fingerabdruck)", async () => {
+    const q = await quelle(3);
+    const k0 = path.join(q, "centric", "k0.json");
+    const T = new Date(Math.floor(Date.now() / 1000) * 1000 - 60000);   // volle Sekunde: verlustfrei setzbar
+    await utimes(k0, T, T);
+    const alt = await stat(k0);
+    let einmal = true;
+    haken.vorLesen = async (p) => {
+      if (einmal && p.endsWith("k2.json")) {          // k0 ist schon kopiert
+        einmal = false;
+        await ablegen(k0, { i: 9, v: 0 });             // gleiche Länge wie { i: 0, v: 0 }
+        await utimes(k0, T, T);                        // und dieselbe mtime wie zuvor
+        expect((await stat(k0)).size).toBe(alt.size);
+        expect((await stat(k0)).mtimeMs).toBe(alt.mtimeMs);
+      }
+    };
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3 });
+    haken.vorLesen = null;
+    expect(await baum(r.pfad, true)).toEqual(await baum(q));
+  });
+
+  it("B2: eine reine Löschung nach der letzten Kopie wird bemerkt (kein Stand ohne die Datei als „stabil“ mit Altlast)", async () => {
+    const q = await quelle(3);
+    let einmal = true;
+    haken.vorLesen = async (p) => {
+      if (einmal && p.endsWith("k2.json")) { einmal = false; await rm(path.join(q, "centric", "k0.json")); }
+    };
+    const meldungen = [];
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0, versuche: 3, meldung: (m) => meldungen.push(m) });
+    haken.vorLesen = null;
+    expect(einVersuch(meldungen)).toBe(true);
+    expect((await G.pruefen(r.pfad)).ok).toBe(true);
+    const sicher = await baum(r.pfad, true);
+    expect(sicher).toEqual(await baum(q));
+    expect(Object.keys(sicher)).not.toContain("centric/k0.json");
+  });
+
+  it("B3: mehr Dateien als ein stat-Block (64): Liste und Sicherung vollständig, ohne Doppelte", async () => {
+    const q = await quelle(150);
+    const ansicht = await G.quelleAnsehen(q);
+    expect(ansicht.dateien.length).toBe(151);          // 150 + spur/s0
+    expect(new Set(ansicht.dateien.map((d) => `${d.store}/${d.name}`)).size).toBe(151);
+    expect(ansicht.stores.centric.dateien).toBe(150);
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0 });
+    expect(r.manifest.summe.dateien).toBe(151);
+    expect(await baum(r.pfad, true)).toEqual(await baum(q));
+  });
+
+  it("B5: ein Store ohne Dateien erscheint als Verzeichnis in der Sicherung und wird wiederhergestellt", async () => {
+    const q = await quelle(2);
+    await rm(path.join(q, "centric-spur", "s0.json"));
+    const r = await G.sichern({ quelle: q, ziel: await zielOrdner(), pause: 0 });
+    expect(r.manifest.stores["centric-spur"].dateien).toBe(0);
+    expect(await readdir(path.join(r.pfad, "daten", "centric-spur"))).toEqual([]);
+    const wieder = path.join(basis, `w-${++zaehler}`);
+    await mkdir(wieder, { recursive: true });
+    await G.wiederherstellen({ sicherung: r.pfad, ziel: wieder, serverPruefen: false });
+    expect(await readdir(path.join(wieder, "centric-spur"))).toEqual([]);
+  });
+
+  it("B6: bricht der Lauf mit einem Fehler ab (hier: beschädigte Datei beim Nachkopieren), bleibt keine Werkstatt im Ziel", async () => {
+    const q = await quelle(3);
+    let einmal = true;
+    haken.vorLesen = async (p) => {
+      if (einmal && p.endsWith("k2.json")) {
+        einmal = false;
+        await writeFile(path.join(q, "centric", "k0.json"), "kein json");   // gleich beim Nachkopieren bemerkt
+      }
+    };
+    const ziel = await zielOrdner();
+    let fehler;
+    try { await G.sichern({ quelle: q, ziel, pause: 0, versuche: 3 }); } catch (e) { fehler = e; }
+    haken.vorLesen = null;
+    expect(fehler).toBeDefined();
+    expect(fehler.code).not.toBe(3);
+    expect(await readdir(ziel)).toEqual([]);
+  });
+});
+
 describe("WP-28b/2: echte parallele Schreiber (Zeitverlauf, nur Invarianten)", () => {
   it("jeder Lauf endet entweder mit einer vollständigen, prüfbaren Sicherung des Endstands oder mit Code 3 — nie anders", async () => {
     const q = await quelle(30);
@@ -242,7 +322,7 @@ describe("WP-28b/2: echte parallele Schreiber (Zeitverlauf, nur Invarianten)", (
         await ablegen(path.join(q, "centric", `k${i % 30}.json`), { w: i });
         if (i % 7 === 0) await rm(path.join(q, "centric", `k${(i + 3) % 30}.json`), { force: true });
         i += 1;
-        await new Promise((r) => setTimeout(r, 1));
+        await new Promise((r) => setTimeout(r, 25));
       }
     })();
     const ausgang = { ok: 0, code3: 0 };
@@ -260,5 +340,6 @@ describe("WP-28b/2: echte parallele Schreiber (Zeitverlauf, nur Invarianten)", (
     }
     aus = true; await schreiber;
     expect(ausgang.ok + ausgang.code3).toBe(4);
+    expect(ausgang.ok).toBeGreaterThanOrEqual(1);   // der Erfolgszweig läuft wirklich (mit alter Fassung: 4/24)
   }, 60000);
 });
