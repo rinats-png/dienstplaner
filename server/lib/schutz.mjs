@@ -315,7 +315,7 @@ export const GRENZEN = {
        Anlegen oder Versand geht. Alle anderen zählen dann degradiert im
        Speicher weiter, damit ein Fehler im Zählerstore nicht die ganze
        Anwendung lahmlegt (bremse()). */
-  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true },
+  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true, stufeVerfall: 3600 },
   demo:       { versuche: 20,  fenster: 300,  sperre: 300,  failClosed: true },
   einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
@@ -1020,7 +1020,11 @@ export async function bremse(art, kennung, ziel, optionen = {}) {
          ändert sich nichts — für einen Angreifer wird jeder weitere Anlauf
          teurer als der vorige. */
       const bisher = (await s.get(`stufe:${art}:${kennung}`, { type: "json" })) || { n: 0 };
-      const stufe = g.steigend ? bisher.n : 0;
+      /* Die Stufe verfällt (SI-P7): Eine Stufe je `stufeVerfall` Sekunden seit der letzten Sperre. Ohne das stiege sie hinter
+         einem Stations-NAT mit gelegentlichen Tippfehlern über Tage auf die längste Sperre, weil gelungene Anmeldungen sie
+         nicht mehr zurücksetzen. Ein Angreifer, der ohne Pause weiter anrennt, steigt weiter. */
+      const abgebaut = g.stufeVerfall && bisher.zuletzt ? Math.floor((jetzt - bisher.zuletzt) / g.stufeVerfall) : 0;
+      const stufe = g.steigend ? Math.max(0, bisher.n - abgebaut) : 0;
       const dauer = g.steigend
         ? Math.min(g.max || 86400, g.sperre * Math.pow(2, stufe))
         : g.sperre;
@@ -1409,11 +1413,12 @@ export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
    würde jetzt aber durchkommen — die Sperre allein bremst das Raten also nicht
    mehr. Darum zählt jede abgewiesene Anfrage weiter (Sperrversuch):
 
-     je Herkunft   mehr als SPERRVERSUCHE.herkunft.versuche in einem Fenster →
-                   diese Herkunft bleibt bis zum Ende ihrer Sperre hart gesperrt,
-                   auch für gültige Codes.
-     im ganzen     mehr als SPERRVERSUCHE.gesamt.versuche → die Durchlässigkeit
-     Dienst        gilt für niemanden mehr, bis das Fenster endet (der Dienst
+     je Herkunft   mehr als SPERRVERSUCHE.herkunft.versuche abgewiesene Anfragen
+                   in EINER Sperre → diese Herkunft bleibt bis zum Ende dieser
+                   Sperre hart gesperrt, auch für gültige Codes.
+     im ganzen     mehr als SPERRVERSUCHE.gesamt.versuche in einem Fenster (jede
+     Dienst        Herkunft trägt höchstens versuche + 1 bei) → die Durchlässigkeit
+                   gilt für niemanden mehr, bis das Fenster endet (der Dienst
                    steht unter verteiltem Raten; dann gilt wieder das alte Bild).
 
    Betreibercodes sind ausgenommen: Sie tragen den zweiten Faktor, und dessen
@@ -1424,16 +1429,23 @@ export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
    -------------------------------------------------------------------------- */
 
 export const SPERRVERSUCHE = {
-  herkunft: { versuche: 24, fenster: 300 },
+  /* Je SPERRE (nicht je Zeitfenster): mehr abgewiesene Anfragen als hier, und die Herkunft ist bis zum Ende dieser Sperre
+     hart gesperrt. Zusammen mit den acht freien Fehlversuchen vor der Sperre ergibt das höchstens 16 Rateversuche je Sperre
+     (früher acht). */
+  herkunft: { versuche: 8 },
+  /* Im ganzen Dienst je Fenster. Jede Herkunft trägt höchstens herkunft.versuche + 1 dazu: Eine einzelne Quelle kann den
+     Deckel nicht reißen, erst viele verschiedene (verteiltes Raten). */
   gesamt: { versuche: 1200, fenster: 300 },
 };
 
 /** Kennung → Ende (ms) der harten Sperre. */
 const hartBis = new Map();
+/** Kennung → { n: abgewiesene Anfragen in der laufenden Sperre, bis: Ende dieser Sperre (ms) }. */
+const sperrStand = new Map();
 let hartGesamtBis = 0;
 
 /**
- * Eine abgewiesene Anfrage (Sperre, Betriebs- oder Dienstgrenze) weiterzählen.
+ * Eine abgewiesene Anfrage (Sperre, Betriebs-, Dienst- oder Notgrenze) weiterzählen.
  * @param {string} kennung  die Kennung der Herkunft (kennung(req, null))
  * @param {number} [wartet]  wie lange die Sperre noch läuft (Sekunden)
  * @returns {{hart: boolean, gesamtHart: boolean}}
@@ -1441,17 +1453,23 @@ let hartGesamtBis = 0;
 export function sperrversuchZaehlen(kennung, wartet = 300) {
   const ms = Date.now();
   const he = SPERRVERSUCHE.herkunft, ge = SPERRVERSUCHE.gesamt;
-  const hl = fensterLage(ms, he.fenster);
-  const eigene = gewichtet(notZaehlen(`sperrv:${kennung}:${hl.index}`, hl.ende + he.fenster * 1000),
-    notLesen(`sperrv:${kennung}:${hl.index - 1}`), hl.anteil);
-  if (eigene > he.versuche) {
-    hartBis.set(kennung, Math.max(hartBis.get(kennung) || 0, ms + Math.max(1, Math.floor(wartet)) * 1000));
+  const bis = ms + Math.max(1, Math.floor(wartet)) * 1000;
+  /* Dieselbe Sperre erkennt man am (fast) gleichen Ende; eine neue Sperre beginnt bei null. */
+  let st = sperrStand.get(kennung);
+  if (!st || st.bis < ms || Math.abs(bis - st.bis) > 2000) { st = { n: 0, bis }; sperrStand.set(kennung, st); }
+  st.n++;
+  if (sperrStand.size > 500) for (const [k, v] of sperrStand) if (v.bis < ms) sperrStand.delete(k);
+  if (st.n > he.versuche) {
+    hartBis.set(kennung, Math.max(hartBis.get(kennung) || 0, st.bis));
     if (hartBis.size > 500) for (const [k, v] of hartBis) if (v < ms) hartBis.delete(k);
   }
-  const gl = fensterLage(ms, ge.fenster);
-  const alle = gewichtet(notZaehlen(`sperrv:gesamt:${gl.index}`, gl.ende + ge.fenster * 1000),
-    notLesen(`sperrv:gesamt:${gl.index - 1}`), gl.anteil);
-  if (alle > ge.versuche) hartGesamtBis = Math.max(hartGesamtBis, gl.ende);
+  /* Der Dienst-Zähler nimmt von jeder Herkunft nur die ersten herkunft.versuche + 1 Versuche je Sperre. */
+  if (st.n <= he.versuche + 1) {
+    const gl = fensterLage(ms, ge.fenster);
+    const alle = gewichtet(notZaehlen(`sperrv:gesamt:${gl.index}`, gl.ende + ge.fenster * 1000),
+      notLesen(`sperrv:gesamt:${gl.index - 1}`), gl.anteil);
+    if (alle > ge.versuche) hartGesamtBis = Math.max(hartGesamtBis, gl.ende);
+  }
   return { hart: (hartBis.get(kennung) || 0) > ms, gesamtHart: hartGesamtBis > ms };
 }
 
@@ -1469,6 +1487,7 @@ export function gueltigeDurchlassen(kennung) {
 /** Nur für Prüfungen: Zähler und harte Sperren der Sperrversuche leeren. */
 export function sperrversuchZuruecksetzen() {
   hartBis.clear();
+  sperrStand.clear();
   hartGesamtBis = 0;
   for (const k of [...not.keys()]) if (k.startsWith("sperrv:")) not.delete(k);
 }

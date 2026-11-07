@@ -981,8 +981,12 @@ async function behandeln(req, context, ctx) {
       /* Nach einer gelungenen Anmeldung nur die EIGENEN Vermerke zurücknehmen — und nur, wenn dieser Versuch gezählt
          wurde. Ein durchgelassener Code hat nichts gezählt und löscht nichts (SI-P7): keine Fehlversuche, keine Sperre. */
       if (!durchlassen) {
-        await entlasten("anmelden", k, b);
-        notentlasten("anmelden", k);
+        if (nutzbar) {
+          /* Ein nutzbarer Code, der nicht durchgelassen wurde (harte Sperre, Dienst-Deckel): nur die eigenen Vermerke
+             zurück, nie Zähler, Sperre oder Stufe der Herkunft löschen (SI-P7, Review 5). */
+          await vermerkeZuruecknehmen(b);
+          notentlasten("anmelden", k);
+        } else await entlasten("anmelden", k, b);
       }
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,

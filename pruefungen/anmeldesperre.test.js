@@ -28,7 +28,7 @@
    Aufruf: npx vitest run pruefungen/anmeldesperre.test.js
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -81,6 +81,7 @@ beforeAll(async () => {
     { id: "m1", name: "Haus", einheiten: [{ id: "e1" }], personen: [{ id: "l", rolle: "leitung", bereich: "ALLE" }] }] }, { durch: "Pruefung" });
 }, LIMIT);
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); });
 beforeEach(async () => {
   SCH.sperrversuchZuruecksetzen();
   const s = (await import("../server/lib/ablage.mjs")).getStore({ name: "centric-takt", consistency: "strong" });
@@ -153,8 +154,8 @@ describe("I2/I3: Fehlversuche bleiben begrenzt, auch bei Code-Rotation", () => {
     /* Drei Codes im Wechsel: Das (bestehende) Lastlimit je Code liegt bei 20 Anmeldungen in fünf Minuten. */
     const codes = [await frischerCode(), await frischerCode(), await frischerCode()];
     let fehlversuche = 0;
-    /* 28 Runden: acht freie Fehlversuche plus weniger als 24 abgewiesene — darüber greift der harte Deckel (I4). */
-    for (let i = 0; i < 28; i++) {
+    /* 15 Runden: acht freie Fehlversuche plus weniger als neun abgewiesene — darüber greift der harte Deckel (I4). */
+    for (let i = 0; i < 15; i++) {
       const f = await anmelden(ip, unbekannt());
       if (f.status === 401) fehlversuche++;
       expect((await anmelden(ip, codes[i % 3])).status, `gültig in Runde ${i}`).toBe(200);
@@ -165,7 +166,7 @@ describe("I2/I3: Fehlversuche bleiben begrenzt, auch bei Code-Rotation", () => {
   it("verschiedene gültige Codes im Wechsel mit Fehlversuchen: ebenfalls höchstens acht", async () => {
     const ip = ipv4();
     let fehlversuche = 0;
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 15; i++) {
       if ((await anmelden(ip, unbekannt())).status === 401) fehlversuche++;
       expect((await anmelden(ip, await frischerCode())).status).toBe(200);
     }
@@ -179,27 +180,95 @@ describe("I2/I3: Fehlversuche bleiben begrenzt, auch bei Code-Rotation", () => {
 });
 
 describe("I4: wer während der Sperre weiter rät, verliert die Durchlässigkeit", () => {
-  it("nach 24 weiteren abgewiesenen Fehlversuchen gilt auch der gültige Code von dort nicht mehr; andere Herkünfte bleiben frei", async () => {
+  it("nach mehr als acht abgewiesenen Fehlversuchen in EINER Sperre gilt auch der gültige Code von dort nicht mehr; andere Herkünfte bleiben frei", async () => {
     const ip = ipv4();
-    await sperren(ip);
+    await sperren(ip);                    // acht Fehlversuche + der erste abgewiesene (zählt als Sperrversuch Nr. 1)
     const c = await frischerCode();
     expect((await anmelden(ip, c)).status, "noch durchlässig").toBe(200);
-    for (let i = 0; i < 26; i++) expect((await anmelden(ip, unbekannt())).status).toBe(429);
+    for (let i = 0; i < 7; i++) expect((await anmelden(ip, unbekannt())).status).toBe(429);       // Sperrversuche 2–8
+    expect((await anmelden(ip, c)).status, "genau an der Grenze (8): noch durchlässig").toBe(200);
+    expect((await anmelden(ip, unbekannt())).status).toBe(429);                                   // Sperrversuch 9 → hart
     expect((await anmelden(ip, c)).status, "harter Deckel gerissen").toBe(429);
     expect((await anmelden(ipv4(), c)).status, "andere Herkunft").toBe(200);
   }, 120000);
 
-  it("Dienst-Deckel: reißt die Zahl abgewiesener Fehlversuche des ganzen Dienstes, ist die Durchlässigkeit für alle aus", async () => {
-    expect(SCH.gueltigeDurchlassen("a:irgendwer")).toBe(true);
-    for (let i = 0; i < 1300; i++) SCH.sperrversuchZaehlen(`a:botnetz-${i}`, 300);
-    expect(SCH.gueltigeDurchlassen("a:irgendwer"), "Dienst-Deckel gerissen").toBe(false);
-  }, LIMIT);
-
-  it("Hartsperre und Dienst-Deckel enden mit dem Fenster (rein im Speicher, ohne Wirkung auf andere Kennungen)", () => {
-    for (let i = 0; i < 30; i++) SCH.sperrversuchZaehlen("a:einzelner", 120);
-    expect(SCH.gueltigeDurchlassen("a:einzelner")).toBe(false);
-    expect(SCH.gueltigeDurchlassen("a:unbeteiligt")).toBe(true);
+  it("Grenzwerte exakt: acht Sperrversuche je Sperre sind frei, der neunte macht hart (Einheit)", () => {
+    for (let i = 1; i <= 8; i++) expect(SCH.sperrversuchZaehlen("a:grenze", 300).hart, `Versuch ${i}`).toBe(false);
+    expect(SCH.sperrversuchZaehlen("a:grenze", 300).hart, "Versuch 9").toBe(true);
+    expect(SCH.gueltigeDurchlassen("a:grenze")).toBe(false);
   });
+
+  it("die harte Sperre endet mit der Sperre (gefälschte Uhr), und eine neue Sperre beginnt bei null", () => {
+    const t0 = Date.now();
+    const uhr = vi.spyOn(Date, "now").mockReturnValue(t0);
+    for (let i = 0; i < 12; i++) SCH.sperrversuchZaehlen("a:ende", 120);
+    expect(SCH.gueltigeDurchlassen("a:ende")).toBe(false);
+    uhr.mockReturnValue(t0 + 119 * 1000);
+    expect(SCH.gueltigeDurchlassen("a:ende"), "kurz vor dem Ende").toBe(false);
+    uhr.mockReturnValue(t0 + 121 * 1000);
+    expect(SCH.gueltigeDurchlassen("a:ende"), "nach dem Ende").toBe(true);
+    // Eine neue Sperre zählt von vorn: acht Sperrversuche machen noch nicht hart.
+    for (let i = 0; i < 8; i++) SCH.sperrversuchZaehlen("a:ende", 600);
+    expect(SCH.gueltigeDurchlassen("a:ende")).toBe(true);
+    SCH.sperrversuchZaehlen("a:ende", 600);          // der neunte der NEUEN Sperre
+    expect(SCH.gueltigeDurchlassen("a:ende"), "neue Sperre, neun Versuche: hart").toBe(false);
+  });
+
+  it("eine einzelne Herkunft kann den Dienst-Deckel nicht reißen (Review 2)", () => {
+    for (let i = 0; i < 2000; i++) SCH.sperrversuchZaehlen("a:einsamer-angreifer", 300);
+    expect(SCH.gueltigeDurchlassen("a:einsamer-angreifer")).toBe(false);
+    expect(SCH.gueltigeDurchlassen("a:unbeteiligt"), "andere Herkünfte bleiben durchlässig").toBe(true);
+  });
+
+  it("Dienst-Deckel exakt: erst viele verschiedene Herkünfte reißen ihn (1200 / 1201), und er endet mit dem Fenster", () => {
+    const fenster = SCH.SPERRVERSUCHE.gesamt.fenster * 1000;
+    const t0 = Math.floor(Date.now() / fenster) * fenster + 1000;
+    const uhr = vi.spyOn(Date, "now").mockReturnValue(t0);
+    // 133 Herkünfte × 9 Beiträge = 1197
+    for (let q = 0; q < 133; q++) for (let i = 0; i < 12; i++) SCH.sperrversuchZaehlen(`a:q-${q}`, 300);
+    expect(SCH.gueltigeDurchlassen("a:irgendwer"), "1197").toBe(true);
+    for (let i = 0; i < 3; i++) SCH.sperrversuchZaehlen("a:q-133", 300);
+    expect(SCH.gueltigeDurchlassen("a:irgendwer"), "1200: noch nicht über der Grenze").toBe(true);
+    SCH.sperrversuchZaehlen("a:q-133", 300);
+    expect(SCH.gueltigeDurchlassen("a:irgendwer"), "1201: Deckel gerissen").toBe(false);
+    uhr.mockReturnValue(t0 + fenster);
+    expect(SCH.gueltigeDurchlassen("a:irgendwer"), "im nächsten Fenster").toBe(true);
+  });
+
+  it("Ausnahmezustand (Dienst-Deckel gerissen): Fehlversuche im Wechsel mit gültigen Anmeldungen bleiben begrenzt — die gültige Anmeldung löscht keine Fehlversuche (Review 5)", async () => {
+    for (let q = 0; q < 140; q++) for (let i = 0; i < 12; i++) SCH.sperrversuchZaehlen(`a:botnetz-${q}`, 300);
+    expect(SCH.gueltigeDurchlassen("a:egal")).toBe(false);
+    const ip = ipv4();
+    const c = await frischerCode();
+    let fehl = 0;
+    for (let i = 0; i < 12; i++) {
+      if ((await anmelden(ip, unbekannt())).status === 401) fehl++;
+      const a = await anmelden(ip, c);
+      expect([200, 429], `gültig in Runde ${i}`).toContain(a.status);
+    }
+    expect(fehl).toBeLessThanOrEqual(8);
+  }, 120000);
+});
+
+describe("Steigerungsstufe verfällt (Review 3)", () => {
+  it("nach Stunden ohne Sperre ist die Stufe wieder abgebaut; bei Dauerbeschuss steigt sie weiter", async () => {
+    const t0 = Date.now();
+    const uhr = vi.spyOn(Date, "now").mockReturnValue(t0);
+    const k = `a:stufe-${++zaehler}`;
+    const sperre = async () => { let r; for (let i = 0; i < 9; i++) r = await SCH.bremse("anmelden", k); return r; };
+    const erste = await sperre();
+    expect(erste.frei).toBe(false);
+    expect(erste.wartet).toBe(300);
+    expect(erste.stufe).toBe(0);
+    uhr.mockReturnValue(t0 + 700 * 1000);                    // Sperre vorbei, kurz darauf wieder angerannt
+    const zweite = await sperre();
+    expect(zweite.stufe, "ohne Pause steigt die Stufe").toBe(1);
+    expect(zweite.wartet).toBe(600);
+    uhr.mockReturnValue(t0 + (700 + 5 * 3600) * 1000);       // fünf Stunden Ruhe
+    const dritte = await sperre();
+    expect(dritte.stufe, "nach fünf Stunden abgebaut").toBe(0);
+    expect(dritte.wartet).toBe(300);
+  }, 120000);
 });
 
 describe("I5: Betreibercodes behalten die volle Bremse", () => {
