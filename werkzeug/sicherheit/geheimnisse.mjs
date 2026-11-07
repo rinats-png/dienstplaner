@@ -45,6 +45,7 @@ const PLATZHALTER = /beispiel|example|xxxx|changeme|dummy|platzhalter|nur[-_]zum
 export const FREIGABEN = [
   { datei: "pruefungen/intelligence-leck.test.js", regel: "privater Schlüssel (PEM)", grund: "nur die Kopfzeile als Prüfmuster eines Leck-Tests, kein Schlüsselmaterial" },
   { datei: "pruefungen/werkzeuge-im-bild.sh", regel: "Zuweisung Geheimnis-Variable", grund: "fester CI-Prüfwert, kein Betriebsgeheimnis" },
+  { datei: "pruefungen/ip-kuerzel.test.js", regel: "Zuweisung Geheimnis-Variable", grund: "feste Testwerte fuer CENTRIC_PFEFFER im Unit-Test, kein Betriebsgeheimnis (Pruefung 2026-11-07)" },
   { datei: ".github/workflows/deploy.yml", regel: "Zuweisung Geheimnis-Variable", grund: "fester CI-Prüfwert, kein Betriebsgeheimnis" },
   { datei: ".github/workflows/pruefung.yml", regel: "Zuweisung Geheimnis-Variable", grund: "fester CI-Prüfwert, kein Betriebsgeheimnis" },
 ];

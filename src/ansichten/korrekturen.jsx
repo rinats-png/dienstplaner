@@ -14,6 +14,8 @@ import { GEO_SPOOFING_TEXT } from "../../server/lib/geo.mjs";
 import { abwesenheitAm } from "../lib/fachlogik.js";
 import { Monatsabschluss } from "./monatsabschluss.jsx";
 import { KorrekturAntraege } from "./korrekturantraege.jsx";
+import { MonatsKorrektur } from "./monatskorrektur.jsx";
+import { SelbstauskunftFreigabe } from "./selbstauskunft.jsx";
 import { KorrekturOffene } from "./korrekturoffene.jsx";
 
 /* Die Befundkennung aus geoAnzeige (stempelvorgang.js) ist Daten; das
@@ -172,6 +174,9 @@ export function StempelBefunde({ sitz, ym, akt }) {
             </div>))}
         </div>)}
       <Monatsabschluss sitz={sitz} ym={ym} akt={akt} />
+      <MonatsKorrektur sitz={sitz} ym={ym} akt={akt} />
+      {akt && darf(sitz, "staff.edit") && <SelbstauskunftFreigabe m={m} ichId={sitz.person && sitz.person.id}
+        onErgebnis={akt.uebernehmeSelbstauskunft} melde={akt.melde} />}
       <KorrekturAntraege sitz={sitz} akt={akt} />
       <KorrekturOffene sitz={sitz} ym={ym} akt={akt} />
       {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (

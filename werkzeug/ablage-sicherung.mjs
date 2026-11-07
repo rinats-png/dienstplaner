@@ -63,10 +63,26 @@
    Konsistenz: Der Server darf laufen. Jede einzelne Datei ist durch die
    Ablage atomar, aber zwei zusammengehörige (Konto und Mitgliedschaft)
    können beim Kopieren auseinanderlaufen. Deshalb wird die Quelle nach dem
-   Kopieren noch einmal angesehen; hat sich in dieser Zeit eine gesicherte
-   Datei geändert oder ist eine dazugekommen, wird verworfen und neu
-   begonnen (dreimal), danach mit Fehler abgebrochen. Wer sicher gehen will,
-   stoppt den Server vorher — dann gibt es nie einen zweiten Anlauf.
+   Kopieren noch einmal angesehen. Hat sich dabei eine gesicherte Datei
+   geändert, ist eine dazugekommen oder weggefallen, werden NUR diese
+   Dateien neu kopiert und die Quelle erneut angesehen (bis zu zwölf Runden
+   je Versuch). Gilt erst, wenn ein vollständiger Durchlauf jede Kopie
+   unverändert bestätigt: dann hat sich seit dem Lesen nichts verändert, das
+   sich an Größe, Änderungszeit, Inode oder Dateimenge zeigt (kein Beweis eines
+   je bestehenden Zustands: Dateien, die nur zwischen zwei Listen existieren
+   oder zwischen Stores wandern, sieht dieses Verfahren nicht). Gelingt das nicht, wird der
+   Versuch verworfen und neu begonnen (dreimal), danach mit Fehler
+   abgebrochen (Code 3, nichts angelegt).
+
+   Grenzen dieser Zusicherung (WP-28b/2): Sie gilt für das Dateisystem, nicht
+   für Anwendungsvorgänge. Schreibt die Anwendung zwei zusammengehörige Dateien
+   nacheinander, kann ein Schnitt zwischen ihnen liegen. Deshalb muss nach der
+   Ruhezeit `--ruhe` (Vorgabe 1000 ms) ein zweiter Durchlauf dasselbe zeigen;
+   so sind Lücken unter dieser Zeit ausgeschlossen, längere nicht. Unter
+   Dauerlast gelingt das nicht (Code 3). Eine Zusicherung für beliebige
+   Dauerlast gibt es nur mit Schreib-Halt im Server, nicht in diesem Werkzeug.
+   Wer sicher gehen will, stoppt den Server vorher — dann gibt es nie einen
+   zweiten Anlauf.
 
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
@@ -95,6 +111,9 @@ export const STORES = {
   "centric-accountsitzungen": { klasse: "C" },
   "centric-takt":             { klasse: "C" },
 };
+
+/** Wie viele Dateien quelleAnsehen gleichzeitig mit stat ansieht. */
+const STAT_BLOCK = 64;
 
 const sha256 = (/** @type {Buffer|string} */ b) => createHash("sha256").update(b).digest("hex");
 
@@ -149,6 +168,8 @@ export async function quelleAnsehen(quelle) {
 
   /** @type {{store: string, name: string, pfad: string, bytes: number, mtimeMs: number}[]} */
   const dateien = [];
+  /** @type {{store: string, name: string, pfad: string}[]} */
+  const kandidaten = [];
   let veraendert = false;
   /** @type {Record<string, {klasse: string, dateien: number, bytes: number}>} */
   const stores = {};
@@ -170,7 +191,14 @@ export async function quelleAnsehen(quelle) {
         + "Sicherung abgebrochen — sonst fehlte er unbemerkt.", 2);
     const dir = path.join(quelle, e.name);
     stores[e.name] = { klasse: regel.klasse, dateien: 0, bytes: 0 };
-    for (const d of await readdir(dir, { withFileTypes: true })) {
+    let inhaltDir;
+    try { inhaltDir = await readdir(dir, { withFileTypes: true }); }
+    catch (fehler) {
+      // Das Verzeichnis ist zwischen der Wurzelliste und hier verschwunden (verschoben, ersetzt): Veränderung.
+      if (/** @type {any} */ (fehler).code === "ENOENT") { veraendert = true; delete stores[e.name]; continue; }
+      throw fehler;
+    }
+    for (const d of inhaltDir) {
       /* Ein Link (auch kaputt) ist kein Schlüssel-Datei: abbrechen, nie als „verändert“ melden. */
       if (d.isSymbolicLink())
         throw new SicherungsFehler(`Symbolischer Link ${e.name}/${d.name}. Sicherung abgebrochen — bitte von Hand ansehen.`, 2);
@@ -188,37 +216,49 @@ export async function quelleAnsehen(quelle) {
       }
       const vom = (regel.ohne || []).find((/** @type {string} */ p) => schluessel.startsWith(p));
       if (vom) { merke(e.name, `flüchtig (${vom})`); continue; }
-      let st;
-      try { st = await stat(path.join(dir, d.name)); }
-      catch (e) {
-        // Zwischen readdir und stat ersetzt oder entfernt: Veränderung der Quelle, kein Fehler.
-        if (/** @type {any} */ (e).code === "ENOENT") { veraendert = true; continue; }
-        throw e;
-      }
-      dateien.push({ store: e.name, name: d.name, pfad: path.join(dir, d.name),
-        bytes: st.size, mtimeMs: st.mtimeMs });
-      stores[e.name].dateien += 1;
-      stores[e.name].bytes += st.size;
+      kandidaten.push({ store: e.name, name: d.name, pfad: path.join(dir, d.name) });
     }
+  }
+  /* stat in Blöcken gleichzeitig: Die Liste ist zugleich die Gegenprobe der Sicherung, und je kürzer sie
+     dauert, desto kleiner ist das Fenster, in dem eine Änderung sie stört (5000 Dateien: sonst ~220 ms). */
+  for (let i = 0; i < kandidaten.length; i += STAT_BLOCK) {
+    const block = kandidaten.slice(i, i + STAT_BLOCK);
+    const ergebnisse = await Promise.all(block.map((k) => stat(k.pfad).then((st) => ({ st }), (err) => ({ err }))));
+    ergebnisse.forEach((r, j) => {
+      const k = block[j];
+      if ("err" in r) {
+        // Zwischen readdir und stat ersetzt oder entfernt: Veränderung der Quelle, kein Fehler.
+        if (/** @type {any} */ (r.err).code === "ENOENT") { veraendert = true; return; }
+        throw r.err;
+      }
+      dateien.push({ ...k, bytes: r.st.size, mtimeMs: r.st.mtimeMs, ino: r.st.ino });
+      stores[k.store].dateien += 1;
+      stores[k.store].bytes += r.st.size;
+    });
   }
   dateien.sort((a, b) => (a.store + "/" + a.name).localeCompare(b.store + "/" + b.name));
   return { dateien, stores, ausgelassen, veraendert };
 }
 
-const fingerabdruck = (/** @type {{store:string,name:string,bytes:number,mtimeMs:number}[]} */ l) =>
-  l.map((d) => `${d.store}/${d.name}|${d.bytes}|${d.mtimeMs}`).join("\n");
+/** Fingerabdruck einer Datei aus der Liste: Größe, Änderungszeit und Inode. Die Ablage ersetzt eine Datei immer
+    durch eine neue (Zwischendatei + rename = neue Inode); so fällt auch ein Austausch auf, der Größe und mtime
+    zufällig gleich lässt (mtime-Takt). Ein Fehlalarm kostet nur ein Nachkopieren. */
+const fp = (/** @type {{bytes:number,mtimeMs:number,ino?:number}} */ d) => `${d.bytes}|${d.mtimeMs}|${d.ino ?? ""}`;
+const idVon = (/** @type {{store:string,name:string}} */ d) => `${d.store}/${d.name}`;
 
 /* ---------------------------------------------------------------------------
    Sichern
    --------------------------------------------------------------------------- */
 
 /**
- * @param {{quelle: string, ziel: string, jetzt?: Date, versuche?: number,
- *          pause?: number, meldung?: (s: string) => void}} o
+ * @param {{quelle: string, ziel: string, jetzt?: Date, versuche?: number, runden?: number,
+ *          pause?: number, ruhe?: number, meldung?: (s: string) => void}} o
+ *   `ruhe` (ms): Bestätigungspause vor dem Abschluss, siehe unten. Als Bibliotheksaufruf 0 (Tests, kurze Läufe);
+ *   die Kommandozeile setzt 1000, wenn nichts anderes verlangt wird (`--ruhe`).
  * @returns {Promise<{pfad: string, manifest: any}>}
  */
-export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, pause = 1000,
-  meldung = () => {} }) {
+export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, runden = 12, pause = 1000,
+  ruhe = 0, meldung = () => {} }) {
   quelle = path.resolve(quelle); ziel = path.resolve(ziel);
   if (ziel === quelle || ziel.startsWith(quelle + path.sep))
     throw new SicherungsFehler("Das Ziel darf nicht innerhalb der Quelle liegen — die Sicherung würde sich selbst sichern.", 2);
@@ -234,64 +274,123 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
   if (!pruefwert) meldung("Warnung: CENTRIC_PFEFFER ist nicht gesetzt — die Sicherung kann den Pfeffer nicht gegenprüfen.");
 
   let letzterGrund = "";
-  for (let versuch = 1; versuch <= versuche; versuch++) {
-    await rm(werkstatt, { recursive: true, force: true });
-    const vorher = await quelleAnsehen(quelle);
-    if (vorher.veraendert) {
-      letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
-      meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
-      if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
-      continue;
-    }
-    await mkdir(path.join(werkstatt, "daten"), { recursive: true, mode: 0o700 });
-    for (const s of Object.keys(vorher.stores))
-      await mkdir(path.join(werkstatt, "daten", s), { recursive: true, mode: 0o700 });
-
-    const liste = [];
-    let verschwunden = false;
-    for (const d of vorher.dateien) {
-      let inhalt;
-      try { inhalt = await readFile(d.pfad); }
-      catch (e) {
-        if (/** @type {any} */ (e).code === "ENOENT") { verschwunden = true; break; }
-        throw e;
+  try {
+    for (let versuch = 1; versuch <= versuche; versuch++) {
+      await rm(werkstatt, { recursive: true, force: true });
+      let ansicht = await quelleAnsehen(quelle);
+      if (ansicht.veraendert) {
+        letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
+        meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
+        if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
+        continue;
       }
-      if (inhalt.length !== d.bytes) { verschwunden = true; break; }   // zwischen Listen und Lesen geändert
-      umschlagPruefen(`${d.store}/${d.name}`, inhalt);
-      await schreibenFest(path.join(werkstatt, "daten", d.store, d.name), inhalt);
-      liste.push({ pfad: `${d.store}/${d.name}`, bytes: inhalt.length, sha256: sha256(inhalt) });
-    }
-    const nachher = verschwunden ? null : await quelleAnsehen(quelle);
-    if (verschwunden || !nachher || nachher.veraendert || fingerabdruck(nachher.dateien) !== fingerabdruck(vorher.dateien)) {
-      letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
-      meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
-      await rm(werkstatt, { recursive: true, force: true });
-      if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
-      continue;
-    }
+      await mkdir(path.join(werkstatt, "daten"), { recursive: true, mode: 0o700 });
 
-    const summe = { dateien: liste.length, bytes: liste.reduce((a, d) => a + d.bytes, 0) };
-    const manifest = {
-      format: FORMAT, werkzeug: "ablage-sicherung", erstellt: jetzt.toISOString(),
-      pfefferPruefwert: pruefwert, stores: vorher.stores, ausgelassen: vorher.ausgelassen,
-      summe, dateien: liste,
-    };
-    const text = JSON.stringify(manifest, null, 2) + "\n";
-    await schreibenFest(path.join(werkstatt, "MANIFEST.json"), text);
-    await schreibenFest(path.join(werkstatt, "MANIFEST.sha256"), sha256(text) + "\n");
-    // Erst jetzt gilt die Sicherung als vollständig.
-    await schreibenFest(path.join(werkstatt, "FERTIG"), `FERTIG ${sha256(text)}\n`);
-    await ordnerFest(werkstatt);
+      /* Kopieren in Runden. Eine Datei gilt als gesichert, wenn ihre Kopie zu dem Fingerabdruck gehört, den die
+         Liste VOR dem Lesen hatte. Danach wird die Quelle neu angesehen: stimmt jede Datei der neuen Liste mit
+         ihrer Kopie überein (und nichts fehlt oder ist dazugekommen), hat sich zwischen Lesen und Prüfdurchlauf
+         nichts verändert, das sich an Größe, Änderungszeit, Inode oder Dateimenge zeigt — gemeinsam für alle
+         Dateien, nicht nur je Datei. (Kein Beweis eines je existierenden Zustands bei Dateien, die zyklisch
+         hin- und herwandern; dasselbe galt für den Vorher/Nachher-Vergleich zuvor.)
+         Sonst werden nur die abweichenden Dateien in der nächsten Runde neu gelesen. */
+      /** @type {Map<string, {fp: string, bytes: number, sha256: string}>} */
+      const kopien = new Map();
+      const storeAngelegt = new Set();
+      /* Eine Kopie, die nicht mehr zum Stand der Quelle gehört, wird sofort samt Datei verworfen:
+         in der Werkstatt liegt nie etwas, das nicht in `kopien` steht (pruefen() wacht darüber). */
+      const verwerfen = async (/** @type {string} */ id) => {
+        kopien.delete(id);
+        await rm(path.join(werkstatt, "daten", id), { force: true });
+      };
+      let stabil = false;
+      for (let runde = 1; runde <= runden && !stabil; runde++) {
+        let unruhig = false;
+        const aktuell = new Set(ansicht.dateien.map(idVon));
+        for (const id of [...kopien.keys()]) if (!aktuell.has(id)) await verwerfen(id);   // gelöscht oder verschoben
+        for (const d of ansicht.dateien) {
+          const id = idVon(d);
+          if (kopien.get(id)?.fp === fp(d)) continue;                       // Kopie gehört schon zu diesem Stand
+          await verwerfen(id);
+          let inhalt;
+          try { inhalt = await readFile(d.pfad); }
+          catch (e) {
+            if (/** @type {any} */ (e).code === "ENOENT") { unruhig = true; continue; }
+            throw e;
+          }
+          if (inhalt.length !== d.bytes) { unruhig = true; continue; }     // zwischen Listen und Lesen geändert
+          umschlagPruefen(id, inhalt);
+          if (!storeAngelegt.has(d.store)) {
+            await mkdir(path.join(werkstatt, "daten", d.store), { recursive: true, mode: 0o700 });
+            storeAngelegt.add(d.store);
+          }
+          await schreibenFest(path.join(werkstatt, "daten", d.store, d.name), inhalt);
+          kopien.set(id, { fp: fp(d), bytes: inhalt.length, sha256: sha256(inhalt) });
+        }
+        /** Stimmt die Liste mit den Kopien überein (Menge und Fingerabdrücke)? */
+        const gleich = (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ l) => !l.veraendert
+          && l.dateien.length === kopien.size && l.dateien.every((d) => kopien.get(idVon(d))?.fp === fp(d));
+        let jetztListe = await quelleAnsehen(quelle);
+        if (jetztListe.veraendert) unruhig = true;
+        stabil = !unruhig && gleich(jetztListe);
+        /* Ruhezeit: Eine Transaktion über mehrere Dateien (Konto, dann Mitgliedschaft) kann zwischen zwei
+           Schreibvorgängen im Schnitt liegen. Nach `ruhe` ms (Monotonzeit, unabhängig von der Dateiuhr) muss ein
+           zweiter vollständiger Durchlauf dasselbe zeigen: Dann war die erste Datei schon vor dem ersten und
+           die zweite noch nicht nach dem zweiten Durchlauf geschrieben — Lücken kürzer als `ruhe` sind
+           ausgeschlossen. Längere Lücken (z. B. Warten auf eine Raumsperre) bleiben möglich. */
+        if (stabil && ruhe > 0) {
+          await new Promise((r) => setTimeout(r, ruhe));
+          jetztListe = await quelleAnsehen(quelle);
+          stabil = gleich(jetztListe);
+        }
+        ansicht = jetztListe;
+        if (!stabil && runde < runden) meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Ablage hat sich verändert — geänderte Dateien werden nachkopiert.`);
+      }
+      if (!stabil) {
+        letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
+        meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
+        await rm(werkstatt, { recursive: true, force: true });
+        if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
+        continue;
+      }
 
-    // Gegenprobe, bevor sie ihren Namen bekommt: das, was auf der Platte liegt.
-    const probe = await pruefen(werkstatt);
-    if (!probe.ok) {
-      await rm(werkstatt, { recursive: true, force: true });
-      throw new SicherungsFehler(`Die frisch geschriebene Sicherung besteht die Prüfung nicht:\n  ${probe.fehler.join("\n  ")}`);
+      /* Stores im Endstand bekommen ihr Verzeichnis auch ohne Dateien (die Wiederherstellung braucht es);
+         ein Store, der zwischendurch ganz weggefallen ist, bleibt nicht als leeres Verzeichnis zurück. */
+      for (const sName of Object.keys(ansicht.stores))
+        await mkdir(path.join(werkstatt, "daten", sName), { recursive: true, mode: 0o700 });
+      for (const sName of await readdir(path.join(werkstatt, "daten")))
+        if (!Object.hasOwn(ansicht.stores, sName)) await rm(path.join(werkstatt, "daten", sName), { recursive: true, force: true });
+      const liste = ansicht.dateien.map((d) => {
+        const k = /** @type {{bytes: number, sha256: string}} */ (kopien.get(idVon(d)));
+        return { pfad: idVon(d), bytes: k.bytes, sha256: k.sha256 };
+      });
+
+      const summe = { dateien: liste.length, bytes: liste.reduce((a, d) => a + d.bytes, 0) };
+      const manifest = {
+        format: FORMAT, werkzeug: "ablage-sicherung", erstellt: jetzt.toISOString(),
+        pfefferPruefwert: pruefwert, stores: ansicht.stores, ausgelassen: ansicht.ausgelassen,
+        summe, dateien: liste,
+      };
+      const text = JSON.stringify(manifest, null, 2) + "\n";
+      await schreibenFest(path.join(werkstatt, "MANIFEST.json"), text);
+      await schreibenFest(path.join(werkstatt, "MANIFEST.sha256"), sha256(text) + "\n");
+      // Erst jetzt gilt die Sicherung als vollständig.
+      await schreibenFest(path.join(werkstatt, "FERTIG"), `FERTIG ${sha256(text)}\n`);
+      await ordnerFest(werkstatt);
+
+      // Gegenprobe, bevor sie ihren Namen bekommt: das, was auf der Platte liegt.
+      const probe = await pruefen(werkstatt);
+      if (!probe.ok) {
+        await rm(werkstatt, { recursive: true, force: true });
+        throw new SicherungsFehler(`Die frisch geschriebene Sicherung besteht die Prüfung nicht:\n  ${probe.fehler.join("\n  ")}`);
+      }
+      await rename(werkstatt, endgueltig);
+      await ordnerFest(ziel);
+      return { pfad: endgueltig, manifest };
     }
-    await rename(werkstatt, endgueltig);
-    await ordnerFest(ziel);
-    return { pfad: endgueltig, manifest };
+  } catch (e) {
+    // Jeder Abbruch (auch Code 1/2) hinterlässt nichts Halbes im Ziel.
+    await rm(werkstatt, { recursive: true, force: true }).catch(() => {});
+    throw e;
   }
   throw new SicherungsFehler(
     `${letzterGrund} Nach ${versuche} Versuchen aufgegeben, keine Sicherung angelegt. `
@@ -503,7 +602,7 @@ function argumente(/** @type {string[]} */ a) {
 }
 
 const HILFE = `Aufruf:
-  ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner>
+  ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner> [--ruhe <ms, Vorgabe 1000>]
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
                                         [--server-url <URL>] [--ohne-serverpruefung]`;
@@ -515,8 +614,12 @@ export async function main(/** @type {string[]} */ argv) {
     const o = argumente(rest);
     if (befehl === "sichern") {
       if (!o.ziel) throw new SicherungsFehler(HILFE, 2);
+      // Nur reine Dezimalzahlen: Number("") ist 0 und würde die Bestätigung still abschalten (z. B. --ruhe "$LEER").
+      const ruhe = o.ruhe === undefined ? 1000 : (/^\d{1,6}$/.test(String(o.ruhe)) ? Number(o.ruhe) : NaN);
+      if (!Number.isInteger(ruhe) || ruhe > 600000)
+        throw new SicherungsFehler("--ruhe: ganze Zahl in Millisekunden, 0 bis 600000", 2);
       const r = await sichern({ quelle: String(o.quelle || process.env.CENTRIC_DATEN || "/data"),
-        ziel: String(o.ziel), meldung: say });
+        ziel: String(o.ziel), ruhe, meldung: say });
       const m = r.manifest;
       console.log(`Sicherung vollständig: ${r.pfad}`);
       console.log(`  ${m.summe.dateien} Dateien, ${m.summe.bytes} Bytes`);
