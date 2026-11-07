@@ -294,3 +294,170 @@ describe("Entscheidung 3: höchstens fünf aktive Schlüssel je Betrieb", () => 
     expect((await liste(b.token)).daten.schluessel).toHaveLength(5);
   }, LIMIT);
 });
+
+describe("Review-Nachträge", () => {
+  /* Wege, die über den Server laufen (PUT /api/bestand), damit der Abgleich nach dem Schreiben greift. */
+  const bestandPut = async (b, aendern) => {
+    const g = await Z.bearer(Z.daten, "/api/bestand", b.token);
+    const neu = JSON.parse(JSON.stringify(g.daten.bestand));
+    aendern(neu);
+    const e = await Z.bearer(Z.daten, "/api/bestand", b.token, { methode: "PUT", rumpf: { bestand: neu, etag: g.daten.etag } });
+    return e;
+  };
+
+  it("Befund 1: Herabstufung ohne Gebrauch dazwischen; der nächste Schreibvorgang im Raum widerruft, ein Zurückspielen belebt nichts", async () => {
+    const b = await Z.arbeitsbereich("n-herab");
+    const l = await codeLeitung(b.raum);                       // zweite Leitung, die irgendetwas im Raum ändert
+    const sk = (await anlegen(b.token)).daten.schluessel;       // Schlüssel des Kontos (Person p_1), nie benutzt
+    const alt = JSON.parse(JSON.stringify((await Z.B.bestandLesen(Z.laden(), b.raum)).bestand));
+    // Herabstufung auf einem Weg, der den Abgleich nicht auslöst (Bibliothek, Werkzeug, Migration).
+    await bestandAendernLib(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
+    expect(await vermerk(sk), "noch nicht bemerkt").toBeNull();
+    // Irgendein erfolgreicher Schreibvorgang über den Server im selben Raum gleicht ab.
+    const g = await Z.bearer(Z.daten, "/api/bestand", l.token);
+    const neu = JSON.parse(JSON.stringify(g.daten.bestand));
+    neu.mandanten[0].name = `${neu.mandanten[0].name} `;
+    const e = await Z.bearer(Z.daten, "/api/bestand", l.token, { methode: "PUT", rumpf: { bestand: neu, etag: g.daten.etag } });
+    expect(e.status, JSON.stringify(e.daten).slice(0, 200)).toBeLessThan(300);
+    expect(await vermerk(sk), "jetzt widerrufen, ohne Gebrauch dazwischen").toMatchObject({ grund: "ersteller-berechtigung" });
+    // Zurückspielen des alten Standes (etwa einer Sicherung): der Schlüssel lebt nicht auf.
+    await Z.B.bestandSchreiben(Z.laden(), b.raum, alt, { durch: "Pruefung" });
+    expect((await vollausgabe(sk)).status).toBe(401);
+  }, LIMIT);
+
+  it("Befund 1: ein anderer Raum wird vom Abgleich nicht berührt", async () => {
+    const a = await kontoMitSchluessel("n-raum-a");
+    const c = await kontoMitSchluessel("n-raum-c");
+    await bestandPut(a, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
+    expect((await vollausgabe(c.sk)).status).toBe(200);
+  }, LIMIT);
+
+  it("DELETE: der von der Leitung widerrufene Schlüssel bekommt die erkennbare 401, und der Fehlerfall wird nicht als Erfolg gemeldet", async () => {
+    const b = await kontoMitSchluessel("n-delete");
+    const l = await liste(b.token);
+    const kennung = l.daten.schluessel[0].kennung;
+    const d = await Z.bearer(Z.daten, "/api/sicherungsschluessel", b.token, { methode: "DELETE", rumpf: { kennung } });
+    expect(d.daten.widerrufen).toBe(1);
+    const v = await vollausgabe(b.sk);
+    expect(v.status).toBe(401);
+    expect(v.daten).toMatchObject({ widerrufen: true, grund: "von-der-leitung-widerrufen" });
+  }, LIMIT);
+
+  it("Befund 6/7: Altschlüssel ohne Ersteller werden beim Anlegen nicht gelöscht und zählen nicht; GET und POST zählen gleich", async () => {
+    const b = await Z.arbeitsbereich("n-zaehlen");
+    for (let i = 0; i < 3; i++) {
+      await Z.ablageArbeit().setJSON(`sk:${hash(`alt-ohne-ersteller-${i}-0123456789abcdef`)}`, { bestand: b.raum, rolle: "leitung",
+        nurSicherung: true, betrieb: 0, mandantId: "m1", name: "alt", angelegt: new Date().toISOString(), bis: Date.now() + TAG });
+    }
+    for (let i = 0; i < 4; i++) expect((await anlegen(b.token, 30)).status).toBe(200);
+    const l = await liste(b.token);
+    expect(l.daten.aktiv, "Altschlüssel zählen nicht").toBe(4);
+    expect((await anlegen(b.token, 30)).status).toBe(200);
+    expect((await anlegen(b.token, 30)).status).toBe(409);
+    expect((await liste(b.token)).daten.aktiv).toBe(5);
+    expect(await satz("alt-ohne-ersteller-0-0123456789abcdef"), "nicht automatisch gelöscht").not.toBeNull();
+  }, LIMIT);
+
+  it("Befund 8: ein beim Auflisten widerrufener Schlüssel steht nur unter den widerrufenen", async () => {
+    const b = await Z.arbeitsbereich("n-doppelt");
+    const l = await codeLeitung(b.raum);
+    await anlegen(b.token, 30);
+    await bestandAendernLib(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
+    const li = await liste(l.token);
+    expect(li.daten.schluessel).toHaveLength(0);
+    expect(li.daten.widerrufen).toHaveLength(1);
+  }, LIMIT);
+
+  it("Befund 9: wird der NEUE Schlüssel eines umgeschlüsselten Zugangs gesperrt, endet auch der Schlüssel unter dem alten sofort", async () => {
+    const b = await Z.arbeitsbereich("n-kette");
+    const a = await codeLeitung(b.raum);
+    const sk = (await anlegen(a.token)).daten.schluessel;
+    const alt = await Z.K.kontoLesen(Z.laden(), a.konto);
+    const neuK = `${a.konto}-neu`;
+    await Z.K.kontoSchreiben(Z.laden(), neuK, { ...alt });
+    await Z.K.kontoSchreiben(Z.laden(), a.konto, { ...alt, ersetztDurch: neuK });
+    const sperr = await codeLeitung(b.raum);
+    const s = await Z.bearer(Z.daten, "/api/zugang-sperren", sperr.token, { methode: "POST", rumpf: { pruefsumme: neuK } });
+    expect(s.status, JSON.stringify(s.daten)).toBe(200);
+    expect(s.daten.schluesselBeendet).toBe(1);
+    expect(await vermerk(sk)).toMatchObject({ grund: "zugang-gesperrt" });
+  }, LIMIT);
+
+  it("Befund 10: die Haken melden ihr Ergebnis in der Antwort (Sperre, Entzug)", async () => {
+    const a = await kontoMitSchluessel("n-hook-a");
+    const g = await Z.A.accountSperren(Z.laden(), a.k.id);
+    expect(g.sicherungsschluessel).toMatchObject({ widerrufen: 1, fehler: 0 });
+    const b = await kontoMitSchluessel("n-hook-b");
+    const m = await Z.A.mitgliedschaftEntziehen(Z.laden(), b.k.id, b.raum);
+    expect(m.sicherungsschluessel).toMatchObject({ widerrufen: 1, fehler: 0 });
+  }, LIMIT);
+
+  it("Befund 8 (M8): der Entzug einer Mitgliedschaft widerruft nur die Schlüssel dieses Raums", async () => {
+    const x = await kontoMitSchluessel("n-raumfilter");
+    const andererRaum = Z.raum("n-raumfilter-zwei");
+    // Ein zweiter Schlüssel desselben Kontos, aber für einen anderen Raum (Datensatz von Hand angelegt).
+    const roh = "zweiter-raum-0123456789abcdef0123456789";
+    const satzX = await satz(x.sk);
+    await Z.ablageArbeit().setJSON(`sk:${hash(roh)}`, { ...satzX, bestand: andererRaum });
+    await Z.A.mitgliedschaftEntziehen(Z.laden(), x.k.id, x.raum);
+    expect(await satz(x.sk)).toBeNull();
+    expect(await satz(roh), "Schlüssel des anderen Raums bleibt").not.toBeNull();
+  }, LIMIT);
+
+  it("M13: eine Dezimalzahl wird abgerundet, 0 und Text gelten als nicht angegeben (Standard)", async () => {
+    const b = await Z.arbeitsbereich("n-tage");
+    expect((await anlegen(b.token, 45.9)).daten.tage).toBe(45);
+    expect((await anlegen(b.token, 0)).daten.tage).toBe(90);
+  }, LIMIT);
+});
+
+async function bestandAendernLib(raum, aendern) {
+  const g = await Z.B.bestandLesen(Z.laden(), raum);
+  const neu = JSON.parse(JSON.stringify(g.bestand));
+  aendern(neu);
+  const e = await Z.B.bestandSchreiben(Z.laden(), raum, neu, { durch: "Pruefung" });
+  expect(e.ok, JSON.stringify(e)).toBe(true);
+}
+
+describe("Review-Nachträge: Fehlerpfade des Widerrufs (gestörte Ablage)", () => {
+  const ablage = ({ setWirft = false, loeschWirft = false } = {}) => {
+    const daten = new Map([["sk:abc", { bestand: "r", mandantId: "m1", bis: Date.now() + TAG, ersteller: { art: "konto", name: "L" } }]]);
+    return {
+      daten,
+      get: async (k) => daten.get(k) ?? null,
+      setJSON: async (k, v) => { if (setWirft) throw new Error("EIO"); daten.set(k, v); },
+      delete: async (k) => { if (loeschWirft) throw new Error("EIO"); daten.delete(k); },
+      list: async ({ prefix }) => ({ blobs: [...daten.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }),
+    };
+  };
+
+  it("Vermerk und Löschen gelingen: voll", async () => {
+    const a = ablage();
+    expect(await SK.schluesselWiderrufen("sk:abc", a.daten.get("sk:abc"), "sicherheitsreset", { ablage: a })).toBe("voll");
+    expect(a.daten.has("sk:abc")).toBe(false);
+    expect(a.daten.get("skw:abc")).toMatchObject({ grund: "sicherheitsreset" });
+  });
+
+  it("der Vermerk misslingt: der Schlüssel wird trotzdem gelöscht, und das wird als Fehler gemeldet", async () => {
+    const a = ablage({ setWirft: true });
+    expect(await SK.schluesselWiderrufen("sk:abc", a.daten.get("sk:abc"), "sicherheitsreset", { ablage: a })).toBe("ohne-vermerk");
+    expect(a.daten.has("sk:abc")).toBe(false);
+    const b = ablage({ setWirft: true });
+    const r = await SK.schluesselWiderrufenWenn(() => true, "sicherheitsreset", { ablage: b });
+    expect(r).toEqual({ widerrufen: 1, fehler: 1 });
+  });
+
+  it("weder Vermerk noch Löschen gelingt: false (der Schlüssel gilt weiter, der Aufrufer muss es melden)", async () => {
+    const a = ablage({ setWirft: true, loeschWirft: true });
+    expect(await SK.schluesselWiderrufen("sk:abc", a.daten.get("sk:abc"), "x", { ablage: a })).toBe(false);
+    expect(a.daten.has("sk:abc")).toBe(true);
+    const r = await SK.schluesselWiderrufenWenn(() => true, "x", { ablage: a });
+    expect(r).toEqual({ widerrufen: 0, fehler: 1 });
+  });
+
+  it("der Vermerk misslingt, das Löschen gelingt nicht, aber der Vermerk steht: voll (er sperrt den Schlüssel)", async () => {
+    const a = ablage({ loeschWirft: true });
+    expect(await SK.schluesselWiderrufen("sk:abc", a.daten.get("sk:abc"), "x", { ablage: a })).toBe("voll");
+    expect(a.daten.has("skw:abc")).toBe(true);
+  });
+});

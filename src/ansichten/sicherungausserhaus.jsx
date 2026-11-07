@@ -70,7 +70,7 @@ export function SicherungAusserHaus({ sitz, melde }) {
     finally { setLaeuft(false); }
   };
 
-  const befehl = (k) => `curl -sS -H "Authorization: Bearer ${k}" \\\n  `
+  const befehl = (k) => `curl -fsS -H "Authorization: Bearer ${k}" \\\n  `
     + `${window.location.origin}/api/vollausgabe \\\n  `
     + `-o centric-$(date +%F).json`;
 
@@ -111,6 +111,9 @@ export function SicherungAusserHaus({ sitz, melde }) {
               <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 8,
                 background: C.flaecheStill, color: C.text, border: `1px solid ${C.lineSoft}`, fontSize: 12,
                 overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
+            <div style={{ fontSize: 12.5, color: C.dim, margin: "6px 0 10px", lineHeight: 1.5 }}>
+              Wichtig: <code>-f</code> lässt curl bei einem Fehler (zum Beispiel 401, Schlüssel widerrufen) mit einem Fehlercode
+              enden und keine Datei schreiben. Werte den Exit-Code in deinem Skript aus und lass dich warnen, wenn er nicht 0 ist.</div>
               <div style={{ marginTop: 10 }}>
                 <Btn size="sm" onClick={() => setNeu(null)}>Verstanden, ausblenden</Btn></div>
             </div>)}

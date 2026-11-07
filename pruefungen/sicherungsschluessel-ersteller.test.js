@@ -218,7 +218,11 @@ describe("SI-P1: Liste", () => {
     /* Herabstufung: kein Widerrufsereignis des Kontos, also der Weg über die Prüfung (lazy). */
     await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
     const nachher = await liste(c.token);
-    expect(nachher.daten.schluessel[0].verwaist, "Ersteller nicht mehr gültig").toBe(true);
+    /* Nach der Herabstufung gleicht der Server die Schlüssel des Raums sofort ab: Der Schlüssel ist widerrufen und steht
+       unter den widerrufenen, nicht mehr unter den aktiven. */
+    expect(nachher.daten.schluessel, "nicht mehr aktiv").toHaveLength(0);
+    expect(nachher.daten.widerrufen).toHaveLength(1);
+    expect(nachher.daten.widerrufen[0].grund).toBe("ersteller-berechtigung");
   }, LIMIT);
 
   it("der Widerruf per DELETE funktioniert weiter", async () => {
@@ -312,15 +316,15 @@ describe("Review-Befund 1: ein widerrufener Schlüssel lebt nicht wieder auf", (
     expect(ohneMitglied).toMatchObject({ ok: false, endgueltig: false, grund: "sk-mitglied-fehlt" });
   }, LIMIT);
 
-  it("die Liste zeigt einen eindeutig verwaisten Schlüssel ein letztes Mal und räumt ihn dann ab", async () => {
+  it("die Liste widerruft einen eindeutig verwaisten Schlüssel (mit Vermerk) und führt ihn unter den widerrufenen", async () => {
     const b = await kontoMitSchluessel("sk-liste-raeumt");
     const c = await codeLeitung(b.raum);
     await bestandAendern(b.raum, (n) => { n.mandanten[0].personen.find((p) => p.id === "p_1").rolle = "mitarbeiter"; });
     const erst = await liste(c.token);
-    expect(erst.daten.schluessel).toHaveLength(1);
-    expect(erst.daten.schluessel[0].verwaist).toBe(true);
+    expect(erst.daten.schluessel, "nicht doppelt unter den aktiven").toHaveLength(0);
+    expect(erst.daten.widerrufen).toHaveLength(1);
     expect(await satz(b.sk), "Liste hat ihn festgehalten (entfernt)").toBeNull();
-    expect((await liste(c.token)).daten.schluessel, "beim zweiten Mal nicht mehr da").toHaveLength(0);
+    expect((await liste(c.token)).daten.widerrufen, "beim zweiten Mal weiter sichtbar, nicht doppelt").toHaveLength(1);
   }, LIMIT);
 
   it("ein Altschlüssel ohne Ersteller bleibt in der Liste (verwaist), bis die Leitung ihn löscht: er kann nie wieder gelten", async () => {

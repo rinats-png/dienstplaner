@@ -68,7 +68,8 @@ export function grundAusPruefung(g) {
  * @param {any} sk  der Datensatz
  * @param {string} grund
  * @param {{ablage?: any, jetzt?: () => number}} [o]
- * @returns {Promise<boolean>}  true, wenn der Vermerk steht
+ * @returns {Promise<false|"voll"|"ohne-vermerk">}  `"voll"`: Vermerk steht (und der Schlüssel ist gelöscht oder durch den Vermerk gesperrt);
+ *   `"ohne-vermerk"`: gelöscht, aber der Vermerk konnte nicht geschrieben werden; `false`: weder noch
  */
 export async function schluesselWiderrufen(schluessel, sk, grund, { ablage = null, jetzt = Date.now } = {}) {
   if (typeof schluessel !== "string" || !schluessel.startsWith("sk:")) return false;
@@ -84,11 +85,15 @@ export async function schluesselWiderrufen(schluessel, sk, grund, { ablage = nul
     /* Bis dahin ist der Vermerk nötig; danach wäre auch ein wieder aufgetauchter Schlüssel abgelaufen. */
     bis: Number.isFinite(bis) ? bis + VERMERK_ZUSCHLAG : jetzt() + (SK_HOECHST_TAGE + 1) * 86400000,
   };
+  let vermerkt = true;
   try {
     await a.setJSON(`skw:${schluessel.slice(3)}`, vermerk);
-  } catch { return false; }
-  await a.delete(schluessel).catch(() => {});
-  return true;
+  } catch { vermerkt = false; }
+  /* Gelöscht wird auch ohne Vermerk: Schon das Löschen schützt vor dem Hauptweg der Wiederbelebung (zurückgespielter
+     Zustand ohne den Schlüsseldatensatz). Fehlt der Vermerk, wird das als Fehler gemeldet. */
+  const weg = await a.delete(schluessel).then(() => true, () => false);
+  if (!weg && !vermerkt) return false;
+  return vermerkt ? "voll" : "ohne-vermerk";
 }
 
 /**
@@ -110,7 +115,7 @@ export async function widerrufsVermerk(roh, { ablage = null, jetzt = Date.now } 
 /**
  * Alle Schlüssel widerrufen, auf die das Prädikat passt. Findet sie über die Liste `sk:` (die Schlüssel sind wenige).
  * Fehler stören den Aufrufer nicht (die Prüfung beim Gebrauch widerruft ohnehin), werden aber gezählt.
- * @param {(sk: any) => boolean} passt
+ * @param {(sk: any) => (boolean|Promise<boolean>)} passt
  * @param {string} grund
  * @param {{ablage?: any, jetzt?: () => number}} [o]
  * @returns {Promise<{widerrufen: number, fehler: number}>}
@@ -126,8 +131,10 @@ export async function schluesselWiderrufenWenn(passt, grund, { ablage = null, je
   for (const b of blobs) {
     try {
       const sk = await a.get(b.key, { type: "json" });
-      if (!sk || !passt(sk)) continue;
-      if (await schluesselWiderrufen(b.key, sk, grund, { ablage: a, jetzt })) widerrufen++; else fehler++;
+      if (!sk || !(await passt(sk))) continue;
+      const r = await schluesselWiderrufen(b.key, sk, grund, { ablage: a, jetzt });
+      if (r) widerrufen++;
+      if (r !== "voll") fehler++;
     } catch { fehler++; }
   }
   return { widerrufen, fehler };

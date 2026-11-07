@@ -637,7 +637,7 @@ export async function accountSperren(store, accountId) {
   const erg = await accountAendern(store, accountId, { status: "gesperrt" });
   if (erg && erg.ok) {
     /* SI-P1: Die Sperre beendet die Sicherungsschlüssel dieses Kontos dauerhaft; eine spätere Entsperrung belebt sie nicht. */
-    await schluesselDesKontosWiderrufen(accountId, "konto-gesperrt");
+    erg.sicherungsschluessel = await schluesselDesKontosWiderrufen(accountId, "konto-gesperrt");
     try {
       const bindungen = (await mitgliedschaftenDesAccounts(store, accountId))
         .filter((m) => m && m.person !== null && m.person !== undefined && typeof m.mandantId === "string")
@@ -1088,6 +1088,6 @@ export const mitgliedschaftEntziehen = async (store, accountId, raum) => {
   const erg = await statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
     { laufWeiterZaehlen: true });
   /* SI-P1: Mit der Mitgliedschaft enden die Sicherungsschlüssel, die dieses Konto für diesen Raum angelegt hat. */
-  if (erg && erg.ok) await schluesselDesKontosWiderrufen(accountId, "ersteller-berechtigung", raum);
+  if (erg && erg.ok) return { ...erg, sicherungsschluessel: await schluesselDesKontosWiderrufen(accountId, "ersteller-berechtigung", raum) };
   return erg;
 };
