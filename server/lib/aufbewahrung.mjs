@@ -232,7 +232,8 @@ export function stichtage(m, heuteIso) {
  * als die Plandatenfrist (PLANDATEN_MINDEST). Gilt unabhängig vom Schalter.
  *
  * Bewachungsgewerbe (T-08, L-10): Personenfelder von Modulen mit `bewachvFrist` (Wachbuch, Objektbericht)
- * bleiben auch bei geprüfter Regel liegen, solange die Regel keinen berechenbaren BewachV-Fristtyp nennt
+ * bleiben auch bei geprüfter Regel liegen, solange die Regel keinen berechenbaren BewachV-Fristtyp nennt — heute
+ * ist keiner berechenbar (M1: § 21 BewachV knüpft am Kalenderjahresschluss an, nicht am Eintragstag)
  * (`bewachvFristtyp`, BEWACHV_FRISTTYPEN in branchenmodule.mjs). Sie zählen dann als zurückgehalten
  * (`bewachvZurueckgehalten`). Andere Moduldaten sind davon nicht berührt.
  * @returns {{ anzahl: number, zurueckgehalten: number, bewachvZurueckgehalten: number, felder: Record<string, Set<string>> }}
@@ -244,6 +245,7 @@ function moduldatenFaellig(m, heuteIso, module, regel) {
   const stichtag = minusMonate(heuteIso, monate);
   const geprueft = regelGeprueft(regel, { heute: String(heuteIso).slice(0, 10) });
   const bewachvFelder = new Set((module || []).flatMap((x) => (x && x.bewachvFrist === true && Array.isArray(x.personenfelder) ? x.personenfelder : [])));
+  /* Vorerst nie wahr (BEWACHV_FRISTTYPEN_BERECHENBAR leer, M1): Stichtag Jahresende + N erst nach fachlicher Festlegung. */
   const bewachvLoeschbar = !!regel && BEWACHV_FRISTTYPEN_BERECHENBAR.includes(regel.bewachvFristtyp);
   /** @type {Record<string, Set<string>>} */
   const raus = {};

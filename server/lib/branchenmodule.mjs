@@ -552,13 +552,15 @@ export const MODULDATEN_AUFBEWAHRUNG = Object.freeze({ regelId: "AUFB-MODULDATEN
  * Folgejahres), an das Vertragsende oder an das Ende der Beschäftigung — welcher Typ für welche Unterlage
  * gilt, ist fachlich/rechtlich offen (WB-3). Hier stehen nur die Typen, keine Fristen. Ohne einen dieser
  * Typen in `AUFB-MODULDATEN-01` (Feld `bewachvFristtyp`) löscht der Lauf Wachbuch-/Objektberichtsfelder
- * nicht, auch nicht bei `pruefstatus: "geprueft"`. Berechnen lässt sich heute nur „ereignis" (Anknüpfung
- * am Tag des Eintrags, Monate aus der Regel); Vertrags- und Beschäftigungsende liegen im Bestand nicht je
- * Eintrag vor — dann bleibt ebenfalls alles liegen.
+ * nicht, auch nicht bei `pruefstatus: "geprueft"`. Heute ist KEIN Typ berechenbar
+ * (BEWACHV_FRISTTYPEN_BERECHENBAR leer, Opus-Review M1): § 21 BewachV knüpft am Schluss des Kalenderjahres
+ * an, nicht am Eintragstag — eine Rechnung „Eintragstag minus Monate“ löschte bis zu elf Monate zu früh.
+ * Vertrags- und Beschäftigungsende liegen im Bestand nicht je Eintrag vor. Die Berechnung kommt erst nach
+ * fachlicher Festlegung des Stichtags (Jahresende + N) und rechtlicher Prüfung; bis dahin bleibt alles liegen.
  */
 export const BEWACHV_FRISTTYPEN = Object.freeze(["ereignis", "vertragsende", "beschaeftigungsende"]);
-/** Fristtypen, die der Lauf heute berechnen kann (Anknüpfung am Tag im Schlüssel). */
-export const BEWACHV_FRISTTYPEN_BERECHENBAR = Object.freeze(["ereignis"]);
+/** Fristtypen, die der Lauf berechnen kann — vorerst keiner (M1): nichts berechenbar, nichts gelöscht. */
+export const BEWACHV_FRISTTYPEN_BERECHENBAR = Object.freeze([]);
 
 /** Die Frist des Modulprotokolls in Monaten — die Regel, keine Übersteuerung je Betrieb (M1). */
 export function modulprotokollMonate(_m, regel = MODULPROTOKOLL_FRIST) {

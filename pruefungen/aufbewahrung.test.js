@@ -14,7 +14,7 @@ import {
   minusMonate, fristen, stichtage, vorschau, raeumen, anonymisiere,
   berichtstext, VORGABE, PLANDATEN_MINDEST,
 } from "../src/aufbewahrung.js";
-import { BRANCHENMODULE, MODULDATEN_AUFBEWAHRUNG, BEWACHV_FRISTTYPEN } from "../server/lib/branchenmodule.mjs";
+import { BRANCHENMODULE, MODULDATEN_AUFBEWAHRUNG, BEWACHV_FRISTTYPEN, BEWACHV_FRISTTYPEN_BERECHENBAR } from "../server/lib/branchenmodule.mjs";
 
 const HEUTE = "2026-08-14";
 
@@ -289,9 +289,22 @@ describe("T-08: BewachV-Fristtyp vor Löschung von Wachbuch-/Objektberichtsdaten
       expect(r.mandant.wachbuch, String(typ)).toEqual(m0().wachbuch);
     }
   });
-  it("mit Fristtyp „ereignis“ greift die Datumsfrist der Regel (keine erfundene Frist)", () => {
-    const r = raeumen(m0(), HEUTE_T8, { regeln: { moduldaten: { ...GEPRUEFT, bewachvFristtyp: "ereignis" } } });
-    expect(Object.keys(r.mandant.wachbuch)).toEqual(["w2|2026-10-01"]);
+  it("M1: auch mit Fristtyp „ereignis“ und geprüfter Regel bleibt das Wachbuch liegen — kein Typ ist berechenbar", () => {
+    expect(BEWACHV_FRISTTYPEN_BERECHENBAR).toEqual([]);
+    const regeln = { moduldaten: { ...GEPRUEFT, bewachvFristtyp: "ereignis" } };
+    const r = raeumen(m0(), HEUTE_T8, { regeln });
+    expect(r.mandant.wachbuch).toEqual(m0().wachbuch);
+    expect(vorschau(m0(), HEUTE_T8, { regeln }).bewachvZurueckgehalten).toBe(1);
+  });
+  it("M1, Januar-Fall: ein Eintrag vom Januar, nach Eintragstag längst fällig, bleibt liegen (Anknüpfung Jahresschluss)", () => {
+    /* Eintrag 15.01.2024, heute 03.11.2026, Regel 24 Monate: Eintragstag + 24 Monate = 15.01.2026 (überschritten);
+       eine Anknüpfung am Jahresschluss 31.12.2024 + N ist fachlich offen — gelöscht werden darf nichts. */
+    const m = { ...m0(), wachbuch: { "w9|2024-01-15": { id: "w9", text: "Januar" } } };
+    const regeln = { moduldaten: { ...GEPRUEFT, bewachvFristtyp: "ereignis" } };
+    expect(raeumen(m, HEUTE_T8, { regeln }).mandant.wachbuch).toEqual(m.wachbuch);
+    /* Gegenprobe: ohne BewachV-Markierung nähme die reine Datumsrechnung ihn mit. */
+    const ohne = BRANCHENMODULE.map((x) => (x.bewachvFrist ? { ...x, bewachvFrist: false } : x));
+    expect(raeumen(m, HEUTE_T8, { regeln, module: ohne }).mandant.wachbuch).toEqual({});
   });
   it("ungeprüfte Regel (Vorgabe): nichts gelöscht, allgemeiner Prüfhinweis", () => {
     const v = vorschau(m0(), HEUTE_T8);
