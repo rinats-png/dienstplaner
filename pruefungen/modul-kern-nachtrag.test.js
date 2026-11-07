@@ -54,6 +54,11 @@ const AKTIV = BRANCHENMODULE.map((x) => (["wachbuch", "bereichsplan", "posten"].
 /* Zweiter Opus-Review / A3: gelöscht wird nur nach geprüfter Aufbewahrungsregel — für die Löschlauf-Fälle eine geprüfte Fassung. */
 const GEPRUEFT = (r) => ({ ...r, pruefstatus: "geprueft", geprueftAm: "2026-11-01T00:00:00.000Z", gueltigAb: "2026-01-01" });
 const REGELN = { moduldaten: GEPRUEFT(BM.MODULDATEN_AUFBEWAHRUNG), modulprotokoll: GEPRUEFT(BM.MODULPROTOKOLL_FRIST) };
+/* T-08/M1: Wachbuch-/Objektberichtsfelder löscht der Lauf nur mit berechenbarem BewachV-Fristtyp — heute keiner,
+   auch „ereignis“ nicht. Erreichbarkeit des Felds belegt LISTE_OHNE_BEWACHV (dasselbe Modul ohne Markierung). */
+const REGELN_BEWACHV = { ...REGELN, moduldaten: { ...REGELN.moduldaten, bewachvFristtyp: "ereignis" } };
+const BEWACHV_FELDER = new Set(BRANCHENMODULE.filter((x) => x.bewachvFrist).flatMap((x) => x.personenfelder || []));
+const ohneBewachv = (liste) => liste.map((x) => (x.bewachvFrist ? { ...x, bewachvFrist: false } : x));
 
 const betrieb = (bm, extra = {}) => ({ ...branchenbestand({ pakete: ["sicherheit", "pflege"], branchenmodule: bm }).mandanten[0], ...extra });
 const mitE = (m, e) => ({ ...m, einstellungen: { ...m.einstellungen, ...e } });
@@ -239,7 +244,12 @@ describe("N2b — Löschlauf räumt Moduldaten mit ab (WP-26) — seit dem zweit
     expect(felder).toEqual(expect.arrayContaining(["postenPlan", "bereichsPlan"]));
     for (const f of felder) {
       const m = { id: "m", personen: [{ id: "x", anonym: true }, { id: "y" }], [f]: { "x|2023-10-01": "1", "y|2026-10-01": "1" } };
-      expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
+      if (BEWACHV_FELDER.has(f)) {
+        /* ohne und mit Fristtyp „ereignis“ bleibt es liegen (M1); ohne Markierung erreicht der Lauf das Feld */
+        expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual(m[f]);
+        expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN_BEWACHV }).mandant[f], f).toEqual(m[f]);
+        expect(AUF.raeumen(m, HEUTE, { module: ohneBewachv(LISTE), regeln: REGELN }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
+      } else expect(AUF.raeumen(m, HEUTE, { module: LISTE, regeln: REGELN }).mandant[f], f).toEqual({ "y|2026-10-01": "1" });
       /* ungeprüfte Regel (Vorgabe): nichts gelöscht */
       expect(AUF.raeumen(m, HEUTE, { module: LISTE }).mandant[f], f).toEqual(m[f]);
     }
@@ -324,7 +334,10 @@ describe("N2d — Statusvertrag: kein Modul mit Daten verlässt „geplant\" ohn
         const r = MS.moduldatenZusammen(alt, neu, AKTIV, { darfOrgEdit: true, sitzung: SITZ,
           ausnahme: { modul: mod.id, art: "loeschung", grund: "art17", eintraege: { [f]: [istListe ? "k1" : "x|2023-10-01"] } } });
         expect(r.grund, `${mod.id}.${f}`).toBeUndefined();
-        if (!istListe) expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV, regeln: REGELN }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
+        if (!istListe && BEWACHV_FELDER.has(f)) {
+          expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV, regeln: REGELN_BEWACHV }).mandant[f], `${mod.id}.${f}`).toEqual(alt[f]);
+          expect(AUF.raeumen(alt, "2026-11-03", { module: ohneBewachv(AKTIV), regeln: REGELN }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
+        } else if (!istListe) expect(AUF.raeumen(alt, "2026-11-03", { module: AKTIV, regeln: REGELN }).mandant[f], `${mod.id}.${f}`).toEqual({ "y|2026-10-01": "1" });
       }
     }
   });
@@ -476,5 +489,26 @@ describe("N7 — G10 statisch: auch Server-Dateien und indirekte Abfragen", () =
     expect(/\bkann\([^)]*["'`]posten["'`]/.test(probe)).toBe(true);
     expect(/\bmodulAktiv\s*\(/.test(probe)).toBe(true);
     expect(/branchenmodule\s*(\.|\[\s*["'`])posten\b/.test(probe)).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+describe("bekannteLuecke N2 (Opus-Review T-08): Löschwege außer dem Löschlauf prüfen den BewachV-Fristtyp nicht", () => {
+  /* Fachentscheid offen; Eintrag in docs/legal/TECHNISCHE-FOLGEAUFGABEN.md. Geprüft wird das heutige Verhalten,
+     damit eine Änderung auffällt — nicht als „neutral“ bestanden. */
+  it("bekannteLuecke N2-art17: Art.-17-Löschung über den Ausnahmeweg entfernt Wachbucheinträge ohne Fristtyp", () => {
+    const mod = AKTIV.find((x) => x.id === "wachbuch");
+    expect(mod.bewachvFrist).toBe(true);
+    const alt = { id: "m", pakete: mod.pakete, personen: [{ id: "x" }],
+      einstellungen: { branchenmodule: { wachbuch: { an: false, eingeschaltetAm: EIN } } },
+      wachbuch: { "x|2026-10-01": "1", "y|2026-10-02": "1" } };
+    const neu = { ...kopie(alt), wachbuch: { "y|2026-10-02": "1" } };
+    const r = MS.moduldatenZusammen(alt, neu, AKTIV, { darfOrgEdit: true, sitzung: SITZ,
+      ausnahme: { modul: "wachbuch", art: "loeschung", grund: "art17", eintraege: { wachbuch: ["x|2026-10-01"] } } });
+    expect(r.grund).toBeUndefined();
+  });
+  it("bekannteLuecke N2-raum: Raum- und Mandantenlöschung kennen keinen BewachV-Fristtyp", () => {
+    for (const datei of ["server/lib/raumloeschung.mjs", "server/funktionen/daten.mjs"])
+      expect(lies(datei), datei).not.toMatch(/bewachv/i);
   });
 });

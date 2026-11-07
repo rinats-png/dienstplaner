@@ -1,74 +1,63 @@
 # Impressum
 
-Angaben nach § 5 Digitale-Dienste-Gesetz (DDG, seit Mai 2024 an der Stelle
-des § 5 TMG) und § 18 Medienstaatsvertrag.
+**Status: ENTWURF — nicht veröffentlichen.** Revision R2, Stand 2026-11-07. Arbeitsentwurf: keine Rechtsberatung, kein Kanzleigutachten, keine Rechtsfreigabe. Jede Angabe in `[ZU_KLAEREN: …]` ist ein offener Betreiberpunkt und darf nicht erfunden werden. Solange solche Platzhalter stehen, ist der Text nicht veröffentlichungsfähig.
 
-## Anbieter
+Angaben nach § 5 Digitale-Dienste-Gesetz (DDG; Norm am 2026-11-07 über gesetze-im-internet.de gegengeprüft, siehe `rechtsquellen.md`).
 
-    [BEISPIEL-FIRMA] [BEISPIEL-RECHTSFORM]
-    [BEISPIEL-STRASSE]
-    [BEISPIEL-PLZ-ORT]
-    Deutschland
+## Diensteanbieter
 
-## Vertreten durch
+    [ZU_KLAEREN: vollständiger bürgerlicher Name oder vollständige Firmierung laut Register]
+    [ZU_KLAEREN: Rechtsform, z. B. Einzelunternehmen / UG (haftungsbeschränkt) / GmbH]
+    [ZU_KLAEREN: ladungsfähige Anschrift (Straße, Hausnummer, PLZ, Ort, Land), kein reines Postfach]
 
-[BEISPIEL-VERTRETER]
+## Vertretungsberechtigte
+
+[ZU_KLAEREN: bei juristischer Person die vertretungsberechtigten Personen mit vollständigem Namen; bei Einzelunternehmen entfällt der Abschnitt nach Prüfung]
 
 ## Kontakt
 
-    Telefon: [BEISPIEL-TELEFON]
-    E-Mail:  [BEISPIEL-EMAIL]
+    E-Mail: [ZU_KLAEREN: tatsächlich und regelmäßig gelesene Adresse]
+    Weiterer Kommunikationsweg: [ZU_KLAEREN: Telefon oder anderer unmittelbarer Weg]
 
-## Registereintrag
+[ZU_KLAEREN: § 5 DDG verlangt eine schnelle elektronische Kontaktaufnahme und unmittelbare Kommunikation. Ob eine E-Mail-Adresse allein genügt, ist juristisch zu bestätigen.] Die Adresse muss mit der in der Anwendung angezeigten Kontaktadresse (Umgebungsvariable `VITE_KONTAKT_MAIL`, siehe `PLATZHALTER.md`) übereinstimmen.
 
-    Eintragung im Handelsregister
-    Registergericht: [BEISPIEL-REGISTERGERICHT]
-    Registernummer:  [BEISPIEL-HRB]
+## Register und Steuer
 
-## Umsatzsteuer
+Registereintrag: [ZU_KLAEREN: nur falls eingetragen — Registergericht, Registerart, vollständige Nummer; sonst Abschnitt streichen]
 
-Umsatzsteuer-Identifikationsnummer nach § 27a Umsatzsteuergesetz:
-[BEISPIEL-USTID]
+Umsatzsteuer-Identifikationsnummer oder Wirtschafts-Identifikationsnummer: [ZU_KLAEREN: nur falls vorhanden. Steuerstatus (z. B. Kleinunternehmer) mit der Steuerberatung klären, keine pauschale Aussage]
 
-## Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV
+## Aufsichtsbehörde
 
-    [BEISPIEL-VERTRETER]
-    [BEISPIEL-STRASSE]
-    [BEISPIEL-PLZ-ORT]
+[ZU_KLAEREN: nur falls die angebotene Tätigkeit einer behördlichen Zulassung bedarf; sonst Abschnitt streichen]
+
+## Inhaltlich Verantwortliche nach § 18 Abs. 2 MStV
+
+[ZU_KLAEREN: nur falls das Angebot journalistisch-redaktionell gestaltete Inhalte enthält (nicht automatisch bei einer Produkt- oder Anmeldeseite). Dann: volljährige verantwortliche Person mit Anschrift. Sonst Abschnitt streichen. Normfassung über die zuständige Landesmedienanstalt prüfen — nicht gegengeprüft.]
+
+## Datenschutz
+
+Informationen zur Verarbeitung personenbezogener Daten stehen in der Datenschutzerklärung: [ZU_KLAEREN: dauerhaft erreichbarer Link für Website und Anwendung].
 
 ## Streitbeilegung
 
-Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung
-bereit: https://ec.europa.eu/consumers/odr
+Dieses Angebot richtet sich nach dem AGB-Entwurf ausschließlich an Unternehmer. Ein Link auf die EU-Plattform zur Online-Streitbeilegung wird nicht gesetzt: Die Plattform ist seit dem 20. Juli 2025 eingestellt (Verordnung (EU) 2024/3228; Mitteilung der EU-Kommission am 2026-11-07 abgerufen).
 
-Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren
-vor einer Verbraucherschlichtungsstelle teilzunehmen.
+[ZU_KLAEREN: Ob Hinweispflichten nach dem Verbraucherstreitbeilegungsgesetz bestehen, hängt davon ab, ob tatsächlich auch Verbraucher beliefert werden. Ohne Verbraucher keinen Hinweis erfinden; sobald Verbraucher Kunden werden können, neu prüfen.]
 
-## Haftung für Inhalte
+## Haftung für Inhalte und Links, Urheberrecht
 
-Als Diensteanbieter sind wir nach § 7 Abs. 1 DDG für eigene Inhalte auf
-diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach den §§ 8
-bis 10 DDG sind wir als Diensteanbieter jedoch nicht verpflichtet,
-übermittelte oder gespeicherte fremde Informationen zu überwachen oder nach
-Umständen zu forschen, die auf eine rechtswidrige Tätigkeit hinweisen.
+[ZU_KLAEREN: Die folgenden Standardabschnitte stammen aus dem Altbestand; Normverweise (§§ 7 bis 10 DDG) und Notwendigkeit juristisch bestätigen lassen.]
 
-Verpflichtungen zur Entfernung oder Sperrung der Nutzung von Informationen
-nach den allgemeinen Gesetzen bleiben davon unberührt. Eine diesbezügliche
-Haftung ist jedoch erst ab dem Zeitpunkt der Kenntnis einer konkreten
-Rechtsverletzung möglich. Bei Bekanntwerden entsprechender Rechtsverletzungen
-entfernen wir diese Inhalte umgehend.
+Als Diensteanbieter sind wir für eigene Inhalte nach den allgemeinen Gesetzen verantwortlich. Für übermittelte oder gespeicherte fremde Informationen gelten die Haftungsregeln der §§ 7 bis 10 DDG. Verpflichtungen zur Entfernung oder Sperrung nach den allgemeinen Gesetzen bleiben unberührt; bei Kenntnis einer konkreten Rechtsverletzung entfernen wir die Inhalte umgehend.
 
-## Haftung für Links
+Unser Angebot kann Links auf externe Seiten Dritter enthalten, auf deren Inhalte wir keinen Einfluss haben. Für diese Inhalte ist der jeweilige Anbieter verantwortlich.
 
-Unser Angebot enthält Links zu externen Websites Dritter, auf deren Inhalte
-wir keinen Einfluss haben. Deshalb können wir für diese fremden Inhalte auch
-keine Gewähr übernehmen. Für die Inhalte der verlinkten Seiten ist stets der
-jeweilige Anbieter oder Betreiber verantwortlich.
+Die von uns erstellten Inhalte und Werke unterliegen dem deutschen Urheberrecht. Vervielfältigung, Bearbeitung und Verbreitung außerhalb der gesetzlichen Grenzen bedürfen der Zustimmung des jeweiligen Urhebers.
 
-## Urheberrecht
+## Prüfliste vor Veröffentlichung
 
-Die durch die Betreiber erstellten Inhalte und Werke auf diesen Seiten
-unterliegen dem deutschen Urheberrecht. Die Vervielfältigung, Bearbeitung,
-Verbreitung und jede Art der Verwertung außerhalb der Grenzen des
-Urheberrechts bedürfen der schriftlichen Zustimmung des jeweiligen Autors
-beziehungsweise Erstellers.
+- Firma, Rechtsform, Anschrift und Vertretung gegen Register oder Gewerbeanmeldung abgleichen.
+- Erreichbarkeit von E-Mail und zweitem Kommunikationsweg tatsächlich testen.
+- Alle `[ZU_KLAEREN`-Platzhalter entfernen oder mit belegten Fakten füllen.
+- Impressum auf der Marketingwebsite und in der Anwendung getrennt prüfen: beide Flächen brauchen es leicht erkennbar und ständig verfügbar.

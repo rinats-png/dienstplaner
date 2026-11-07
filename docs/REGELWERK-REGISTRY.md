@@ -68,11 +68,14 @@ Jeder Eintrag in `REGELN`:
 | `gueltigAb`, `gueltigBis` | Gültigkeit; `null` = offen. Ohne Datum gilt eine Regel mit Grenzen **nicht** (fail-closed). |
 | `pruefstatus` | siehe 5 |
 | `geprueftAm`, `regelstand` | wann zuletzt geprüft; zu welchem `REGELSTAND` sie gehört (`null` bei vorläufigen) |
+| `quellenURL`, `testIDs`, `reviewDatum` | optional (T-13): https-Adresse der Primärquelle, Kennungen der Tests/Fachtestfälle (`FACH-10` oder Testdatei), ISO-Datum der letzten Quellenprüfung. Ihre Form prüft `pruefeRegister`; gefüllt sind sie bisher für die ArbZG-Regeln mit festem Paragrafen und `AZ-NACHT-AUSGLEICH-01` — für die übrigen ist das eine offene Lücke, keine Prüfaussage |
 | `scope` | `branche`, `bundesland`, `beschaeftigungsmodell` (je `null` = gilt für alle) |
 | `hoechsteStufe` | Obergrenze der Bewertung dieser Regel (`null` bei Bestand: der Bestandscode entscheidet) |
 | `folge` | getrennt von der Bewertung (siehe 4) |
 | `parameter` | die Zahlen und Zeiträume der Regel |
 | `anzeige` | nur Bestand: der bisherige Wortlaut der Rechtsquellen-Tabelle (`RECHTSQUELLE`) — wird aus dem Register erzeugt, ein Test beweist, dass er unverändert ist |
+
+**Fundstellenpflicht (T-13).** Eine Regel der Ebene `bund`, `land` oder `tarif` mit Status `verified` oder `legacy_verified` muss eine `fundstelle` nennen; `pruefeRegister` meldet sonst „geprüft ohne Fundstelle“. Stand 2026-11-07 tragen 23 Regeln keine Fundstelle (`regelregister.test.js`, Ausnahmeliste mit Begründung): sechs betriebliche Bestandsregeln, zehn vorläufige betriebliche/Branchenregeln, sechs vorläufige Regeln mit genannter Quelle ohne Stelle (PPP-RL, DGUV V3, vier Tarifvorlagen) und `BES-FACHKRAFT-01`. Letztere wurde von `legacy_verified` auf `provisional` herabgestuft (Landesnorm je Bundesland nicht benannt); sie fällt damit aus dem Regelstand 2026.09, die Planprüfung selbst ist unverändert. Fundstellen werden nicht aus Vermutung ergänzt.
 
 Die Bestandseinträge tragen als Parameter die **vorhandenen Konstanten** (`RUHEZEIT_GESETZ`, `HOECHST_TAG`, `FREIE_SONNTAGE_MIN` …), nicht neue Zahlen daneben.
 

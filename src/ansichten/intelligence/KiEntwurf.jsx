@@ -13,7 +13,7 @@
        veröffentlicht“ — fehlt sie in der Antwort oder ist sie anders, wird nichts angezeigt
        (Zustand fehler). Es gibt keine Schaltfläche „Veröffentlichen“; Übernahme ist Sache des
        aufrufenden Orts (normaler Rechte- und Auditpfad).
-   O3  Antworttext wird nur als Text gerendert (React-Escaping; kein dangerouslySetInnerHTML,
+   O3  Antworttext wird nur als Text gerendert (React-Escaping; kein Roh-HTML,
        keine Links). Platzhalter {{person:<kennung>}} werden über `aufloesen` aus der Sicht des
        Aufrufers ersetzt, nie aus Antwortdaten; ohne Auflösung steht ein neutraler Text.
    O4  Fehler zeigen einen festen Text je Code, nie Code, Anbieter-, Token- oder Modellangaben.

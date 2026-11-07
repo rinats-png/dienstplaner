@@ -535,6 +535,8 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
       if (d.uebersprungen) console.log(`Datenschutzlauf: ${modus === "aus" ? "abgeschaltet" : "übersprungen, ein anderer läuft noch"}`);
       else console.log(`Datenschutzlauf (${modus}): ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
         + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, `
+        + `${d.sicherungenFaellig} Sicherungen fällig (Vorschau), ${d.sicherungenAelterHoechstalter} Sicherungen älter als 90 Tage `
+        + `(${d.sicherungenAelterHoechstalterBehalten} davon behalten), `
         + `${d.feeddatenGeloescht} alte Kalender-Termine entfernt (${d.feeddatenFaellig} fällig), ${d.fehler.length} Fehler`);
     } catch (e) {
       console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);

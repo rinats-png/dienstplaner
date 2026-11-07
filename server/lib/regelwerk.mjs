@@ -375,6 +375,32 @@ export function folgenUeberGrenze(hatDienst, von, bis, grenze) {
 
 export const NACHT_AUSGLEICH_WOCHEN = 4;
 
+/**
+ * Hinweis nach § 6 Abs. 2 ArbZG (Register: AZ-NACHT-AUSGLEICH-01, vorläufig).
+ *
+ * Gilt nur für Nachtarbeitnehmer (§ 2 Abs. 5). Die werktägliche Arbeitszeit
+ * darf acht Stunden nur überschreiten, wenn innerhalb eines Kalendermonats
+ * ODER innerhalb von vier Wochen im Durchschnitt acht Stunden werktäglich
+ * nicht überschritten werden. Ein Hinweis entsteht deshalb nur, wenn beide
+ * Zeiträume über der Grenze liegen. Das ist ein Hinweis, keine Feststellung
+ * eines Verstoßes: Tarifliche Abweichungen (§ 7) und die Einordnung als
+ * Nachtarbeitnehmer prüft diese Funktion nicht; in die Planprüfung ist sie
+ * noch nicht eingehängt.
+ *
+ * @param {(datum: string) => number} stundenAmTag
+ * @param {string} bis  letzter betrachteter Tag
+ */
+export function nachtAusgleichHinweis(stundenAmTag, bis) {
+  const vierWochen = ausgleichszeitraum(stundenAmTag, bis, { wochen: NACHT_AUSGLEICH_WOCHEN });
+  const monatErster = bis.slice(0, 8) + "01";
+  let stunden = 0;
+  for (let d = monatErster; d <= bis; d = addDays(d, 1)) stunden += Number(stundenAmTag(d)) || 0;
+  const tage = werktage(monatErster, bis);
+  const kalendermonat = { von: monatErster, bis, werktage: tage,
+    stunden: Math.round(stunden * 100) / 100, eingehalten: stunden <= tage * DURCHSCHNITT_TAG };
+  return { hinweis: !vierWochen.eingehalten && !kalendermonat.eingehalten, vierWochen, kalendermonat };
+}
+
 /* --------------------------------------------------------------------------
    WOHER EINE ANFORDERUNG KOMMT — UND WOFÜR SIE GILT
 

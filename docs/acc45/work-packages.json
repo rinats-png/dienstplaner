@@ -1743,7 +1743,7 @@
       "strang": "folge",
       "prio": "P2",
       "aufwandPT": {"min":3,"max":5},
-      "abhaengigkeiten": ["WP-28b"],
+      "abhaengigkeiten": [],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1763,7 +1763,7 @@
       "akzeptanz": "Sicherung unter Dauerlast gelingt und liegt nachweislich nie mitten in einer Mehrdatei-Transaktion (Mess-Skript mit Zwei-Datei-Transaktionen, >= 50 Schreibvorgänge/s: 0 Schnitte in >= 1000 Sicherungen, 100 % Erfolg); Frist läuft ab; Reentranz; Wiederherstellung und /gesund unverändert; Stempel-p95 und 503-Anteil nicht schlechter; Hintergrundschreiber respektieren den Halt",
       "tests": "neu: Schreibhalt-Tests, Mess-Skript, werkzeug/last (S5), wp28b-sicherung-last, ablage-sicherung",
       "dateien": "server/lib/raumsperre.mjs, server/lib/ablage.mjs, Ketten in accounts/token/provisionierung/registrierung, server.mjs, werkzeug/ablage-sicherung.mjs, deploy/sicherung",
-      "notiz": "SCHÄTZUNG. BLOCKED bis zur Konfliktprüfung: Einhängepunkte überschneiden sich mit offenen PRs #103 (server.mjs, schutz.mjs, datenschutzlauf.mjs) und #101 (versand.mjs); Besitz laut AGENTS.md: bestand.mjs, daten.mjs, server.mjs (Agent A), deploy/sicherung (Agent B). Keine neue Sperrarchitektur: Zähler + Frist, nimmt keine bestehende Sperre; nicht über schreibstopp() (terminal, /gesund kritisch). Offene Fragen an den Betreiber in der Empfehlung (Haltezeit, Dateisystem des VPS, Rückfall)."
+      "notiz": "Abhaengigkeit korrigiert (Betreiberanweisung 2026-11-07): WP-28c wartet NICHT auf den Abschluss von WP-28b, es schliesst gerade die verbleibende Konsistenzluecke. Voraussetzung ist der integrierte Teilfix aus PR #100 (Merge 74abb11). Bleibt BLOCKED bis zur Konfliktpruefung mit laufenden Arbeiten (daten.mjs, PR #101/#103 integriert); danach autonome Vergabe. Nur der Hauptorchestrator integriert nach integration/release-v4."
     },
     {
       "id": "WP-07b",

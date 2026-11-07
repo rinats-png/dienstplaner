@@ -192,7 +192,8 @@ describe("REGELSTAND und Einzelregeln", () => {
        nicht an einer Befundart der Planung. MiLoG § 17: Aufbewahrung der
        Arbeitszeitaufzeichnung (src/aufbewahrung.js), kein Planbefund.
        Kommt eine Quelle dazu, die keine Regel hat, schlägt dieser Test an. */
-    expect(regelstandAbdeckung().ohneRegel).toEqual(["GewO", "MiLoG"]);
+    /* Landesheimpersonalverordnung: BES-FACHKRAFT-01 ist seit T-13 provisional (keine Fundstelle) und zählt nicht mehr zum Regelstand. */
+    expect(regelstandAbdeckung().ohneRegel).toEqual(["GewO", "Landesheimpersonalverordnung", "MiLoG"]);
   });
 
   it("vorläufige Regeln und Watchlist zählen nicht in den Regelstand", () => {
@@ -354,5 +355,72 @@ describe("Fahrzeit, PPP-RL und Tarifvorlagen: Zuordnung ohne zweite Berechnung",
   it("die Rechner bleiben, wo sie sind: das Register enthält keine Berechnung", () => {
     const quelltext = readFileSync(new URL("../src/regelregister.js", import.meta.url), "utf8");
     expect(quelltext).not.toMatch(/pruefeTag|pruefeWoche|anwenden\(/);
+  });
+});
+
+describe("T-13: Fundstelle und Belegfelder", () => {
+  it("pruefeRegister weist eine geprüfte Regel der Ebene bund/land/tarif ohne Fundstelle ab", () => {
+    for (const ebene of ["bund", "land", "tarif"])
+      for (const pruefstatus of ["verified", "legacy_verified"])
+        expect(pruefeRegister([fixture({ ebene, pruefstatus, fundstelle: null })]).join(), `${ebene}/${pruefstatus}`)
+          .toContain("ohne Fundstelle");
+    expect(pruefeRegister([fixture({ ebene: "bund", pruefstatus: "legacy_verified", fundstelle: "  " })]).join()).toContain("ohne Fundstelle");
+    expect(pruefeRegister([fixture({ pruefstatus: "provisional", pruefhinweis: "x", regelstand: null, fundstelle: null })]).join())
+      .not.toContain("ohne Fundstelle");
+    expect(pruefeRegister([fixture({ ebene: "betrieb", quelle: null, fundstelle: null })]).join()).not.toContain("ohne Fundstelle");
+  });
+
+  it("prüft Form von quellenURL, testIDs und reviewDatum", () => {
+    expect(pruefeRegister([fixture({ quellenURL: "http://x" })]).join()).toContain("quellenURL");
+    expect(pruefeRegister([fixture({ testIDs: [] })]).join()).toContain("testIDs");
+    expect(pruefeRegister([fixture({ reviewDatum: "07.11.2026" })]).join()).toContain("reviewDatum");
+    expect(pruefeRegister([fixture({ quellenURL: "https://www.gesetze-im-internet.de/arbzg/__5.html", testIDs: ["a"], reviewDatum: "2026-11-07" })]))
+      .toEqual([]);
+  });
+
+  /* Die 23 Regeln, die (Stand 2026-11-07) keine Fundstelle tragen. Keine davon gilt auf Bundes-,
+     Landes- oder Tarifebene als geprüft: betriebliche Festlegungen behaupten keine Rechtsquelle,
+     alles andere ist provisional. Eine neue Regel ohne Fundstelle fällt hier auf. */
+  const OHNE_FUNDSTELLE = {
+    "AZ-FOLGE-01": "betrieblich", "AZ-NACHTFOLGE-01": "betrieblich", "URLAUB-GRENZE-01": "betrieblich",
+    "QUAL-SPERRE-01": "betrieblich", "BES-MINDEST-01": "betrieblich", "KONF-REGELSATZ-01": "betrieblich",
+    "BES-FACHKRAFT-01": "herabgestuft auf provisional: Landesnorm je Bundesland nicht benannt",
+    "KOPPLUNG-EUP-EFK-01": "provisional: Verbindlichkeit von DGUV V3/VDE ungeklärt",
+    "PPPRL-01": "provisional: Fundstelle in der PPP-RL nicht eingetragen",
+    "TARIF-TVOED-P-01": "provisional: Tarifvorlage", "TARIF-TVOED-K-01": "provisional: Tarifvorlage",
+    "TARIF-AVR-CARITAS-01": "provisional: Tarifvorlage", "TARIF-GESETZLICH-01": "provisional: Tarifvorlage",
+    "ANLAGEN-BESETZUNG-01": "provisional, betrieblich", "MASCHQUAL-BESETZUNG-01": "provisional, betrieblich",
+    "GETEILT-SPANNE-01": "provisional, betrieblich", "FUNKTION-BESETZUNG-01": "provisional, betrieblich",
+    "FUNKTION-QUAL-01": "provisional, betrieblich", "ROTATION-UEBERSCHNEIDUNG-01": "provisional, betrieblich",
+    "BEREIT-HOECHST-01": "provisional, betrieblich", "POSTEN-BESETZUNG-01": "provisional, betrieblich",
+    "POSTEN-QUAL-01": "provisional, betrieblich", "BEREICH-BESETZUNG-01": "provisional, betrieblich",
+  };
+
+  it("die Ausnahmeliste ohne Fundstelle ist vollständig, nichts davon ist stillschweigend als geprüft markiert", () => {
+    const ohne = REGELN.filter((r) => !String(r.fundstelle || "").trim());
+    expect(ohne.map((r) => r.id).sort()).toEqual(Object.keys(OHNE_FUNDSTELLE).sort());
+    for (const r of ohne) {
+      const geprueft = ["verified", "legacy_verified"].includes(r.pruefstatus);
+      expect(geprueft && r.ebene !== "betrieb", r.id).toBe(false);
+    }
+  });
+
+  it("BES-FACHKRAFT-01 ist nicht legacy_verified und wirkt in der Registerbewertung höchstens als Hinweis", () => {
+    const r = regel("BES-FACHKRAFT-01");
+    expect(r.pruefstatus).toBe("provisional");
+    expect(wirkung(r)).toBe("hinweis");
+    expect(r.regelstand).toBeNull();
+  });
+
+  it("AZ-NACHT-AUSGLEICH-01 nennt Fundstelle, URL, Testkennung und Prüfdatum", () => {
+    const r = regel("AZ-NACHT-AUSGLEICH-01");
+    expect([r.fundstelle, r.quellenURL, r.testIDs, r.reviewDatum])
+      .toEqual(["§ 6 Abs. 2", "https://www.gesetze-im-internet.de/arbzg/__6.html", ["FACH-10"], "2026-11-07"]);
+    expect(r.parameter.fensterWochen).toBe(4);
+  });
+
+  it("die ArbZG-Bestandsregeln tragen eine Quell-URL auf gesetze-im-internet.de", () => {
+    for (const id of ["AZ-RUHE-01", "AZ-PAUSE-01", "AZ-TAG-01", "AZ-AUSGLEICH-01", "AZ-SONNTAG-01", "AZ-ERSATZRUHE-01", "AZ-VORSORGE-01"])
+      expect(regel(id).quellenURL, id).toMatch(/^https:\/\/www\.gesetze-im-internet\.de\/arbzg\/__\d+\.html$/);
   });
 });

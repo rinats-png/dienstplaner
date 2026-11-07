@@ -199,7 +199,6 @@ flowchart LR
   WP_16 --> WP_14c
   WP_16 --> WP_16b
   E_21 --> WP_24b
-  WP_28b --> WP_28c
   WP_16 --> WP_07b
   WP_19_0 --> WP_19_1
   WP_19_0 --> WP_19_2
@@ -420,7 +419,7 @@ flowchart LR
 | WP-16b | folge | P2 | 0,5–1,5 | 0,5–1,5 | WP-16 | daten.mjs | opus | BLOCKED |
 | WP-24b | folge | P2 | 1,5–3 | 1,5–3 | WP-24, E-21 | – | opus | BLOCKED |
 | WP-28b | folge | P2 | 1,5–3 | 0,5–1 | WP-28, WP-47 | – | sonnet | IN_PROGRESS |
-| WP-28c | folge | P2 | 3–5 | 3–5 | WP-28b | daten.mjs | opus | BLOCKED |
+| WP-28c | folge | P2 | 3–5 | 3–5 | – | daten.mjs | opus | BLOCKED |
 | WP-07b | folge | P1 | 2–4 | 2–4 | WP-07, WP-16 | daten.mjs, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-S1 | folge | P1 | 1–2 | 1–2 | WP-12 | – | sonnet | READY |
 | WP-19.0 | wp19 | P1 | 4–6 | 0,8–1,2 | WP-11, WP-22 | App.jsx, rechte.mjs, sicht.mjs | opus | REVIEW |
