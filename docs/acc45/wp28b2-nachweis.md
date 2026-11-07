@@ -7,7 +7,7 @@ Nur Wegwerf-Daten in Temp-Verzeichnissen; kein Zugriff auf Produktion, VPS, Stag
 > - Behoben: rohes `ENOENT` beim Store-Verzeichnis; Nachkopieren statt Verwerfen; veraltete Kopie bei gleicher Größe und
 >   mtime (Inode); Werkstatt im Fehlerpfad.
 > - **Nicht gelöst: eine zuverlässig abgeschlossene Sicherung unter Dauerlast.** Bei etwa 17 Schreibvorgängen pro
->   Sekunde auf 3000 Dateien gelang nur **1 von 14** Sicherungen (alle übrigen Code 3 + Fail-Ping, nie eine halbe
+>   Sekunde auf 3000 Dateien gelang nur **1 von 14** Sicherungen (ohne Ruhezeit; alle übrigen Code 3 + Fail-Ping, nie eine halbe
 >   Sicherung). Dazu und zur Konsistenz über mehrere Dateien: §6 und §8.
 > - Mit der Vorgabe-Ruhezeit (1 s) liegt die Grenze deutlich tiefer: gemessen (Opus-Review, 300 Dateien) bei 2
 >   Schreibvorgängen/s 5 von 5, bei 4/s 4 von 5, bei 8/s **0 von 5**; ein Fehlschlag dauert dann 30–40 s.
@@ -219,7 +219,7 @@ Folgen und Vorbehalt:
 - **Das CI hat die Fachprüfungen dieses PR nie ausgeführt**: In `pruefung.yml` bricht der Schritt „Typen“ ab, alle
   folgenden Schritte (u. a. „Ablage“, „Sicherungen“, „Sicherung und Wiederherstellung“, „Gate-Proben“) sind
   *skipped*. Grün ist der PR deshalb nicht belegt; belegt ist er lokal (Testfamilie `ablage-pruefen*`, `sicherung-ablage`, `sicherungen`, `wp28b-*`, `deploy-automatik`,
-  `zweifaktor`, `ablage`, `doku`: 12 Dateien, **389 bestanden, 3 übersprungen, 0 fehlgeschlagen**; Wiederherstellungsübung
+  `zweifaktor`, `ablage`, `doku`: 12 Dateien, **389 bestanden, 3 übersprungen, 0 fehlgeschlagen** (umgebungsabhängig: die unabhängige Gegenprüfung mit anderem Git-Stand und als root maß 391/1 bei derselben Gesamtzahl 392; übersprungen sind rechteabhängige und `ALT_DEPLOY`-Tests); Wiederherstellungsübung
   `npm run sicherheit:wiederherstellung`: 12 von 12 Schritten bestanden).
 - **Ende-zu-Ende-Nachweis (`deploy/sicherung/ci/ende-zu-ende.sh`) nicht ausgeführt**: In der Sandbox gibt es weder
   Docker-Daemon noch `restic`. Er wird erst nach Behebung des Bildfehlers (`.dockerignore`: `betreiber-2fa-zuruecksetzen.mjs`
@@ -254,3 +254,27 @@ Offene Folgeaufgaben (nicht in diesem PR): Schreib-Halt im Server (`wp28b2-empfe
 Lesen über Dateihandle + `bigint`-`stat`; Werkstatt-Name mit Prozesskennung und Aufräumen verwaister `.unfertig-…`;
 Tests für Dateien, die nur zwischen zwei Listen existieren; Windows (`EPERM/EBUSY/EACCES`); Bildfehler `.dockerignore`;
 Nachlauf S2/S5 (E-20).
+
+## 11. Gegenprüfung des letzten Commits `de038a3` (Opus, unabhängig) und Übernahme
+
+Votum: **„Gegenprüfung bestanden: ja mit Auflagen“**, keine Befunde mit hohem oder mittlerem Schweregrad. Geprüft und in
+Ordnung: `--ruhe`-Validierung (Randfälle `0`, `00`, `600000`, `600001`, leer, `" "`, `+5`, `-1`, `1.5`, `1e3`, `0x10`,
+`"5\n"`, Nicht-ASCII-Ziffern, fehlender Wert; jede Ablehnung lässt das Ziel leer), Test gegen den alten Code rot,
+Teständerungen nicht abgeschwächt, Docs nicht zu stark, PR berührt keine STATUS/SSOT-Dateien (zum Zeitpunkt der
+Prüfung), Gesamtblick auf `sichern()`/`quelleAnsehen()`/`main()` ohne Pfad zu einer unvollständigen oder beschädigten
+Sicherung, die als Erfolg gemeldet wird oder eine Werkstatt zurücklässt.
+
+| Befund | Schwere | Behandlung |
+|---|---|---|
+| N1 `lauf.mjs` zählt bei Code 3 einen Versuch zu viel | niedrig | **behoben** (bei Code 3 kein `+1`) |
+| N2 mehrfach angegebenes `--ruhe`: der letzte Wert gilt; vertippte Option wird still ignoriert (vorbestehendes Verhalten von `argumente()`, sichere Richtung) | niedrig/Info | nicht geändert |
+| N3 Banner nannte „ohne Ruhezeit“ nicht | Info | **behoben** |
+| Testzahl 389/3 umgebungsabhängig (391/1 bei 392) | – | vermerkt (§4 des Berichts) |
+
+**Stand nach CI-Reparatur (lokal, Wegwerf-Worktree: Zielbranch `8be0420` + PR #100 + `fix/ci-baseline`):**
+Typen 0 Fehler; `sicherheit:statik` Exit 0; `lint` 0 Fehler; 16 Testdateien (Sicherungsfamilie plus
+`dockerignore-copy`, `actions-pins`, `acc45-status`, `acc45-werkzeuge`) 474 bestanden, 2 übersprungen, 0 fehlgeschlagen;
+Wiederherstellungsübung 12 von 12. **Nicht nachgeholt, weil in der Sandbox weder Docker-Daemon noch `restic`
+vorhanden sind:** Docker-Bildbau, `Betrieb Sicherung` Ende-zu-Ende (`deploy/sicherung/ci/ende-zu-ende.sh`) und
+`werkzeuge-im-bild.sh`. Sie sind erst im CI nach dem Merge von PR #102 (`fix/ci-baseline`) belastbar und bleiben als
+offener Punkt geführt.
