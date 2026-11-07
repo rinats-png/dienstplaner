@@ -651,6 +651,22 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:3000/gesund
+          # WP-32d: In production ist der zweite Faktor auch für den Verwalterschlüssel Pflicht. Wie ein Betreiber
+          # richtet der Vorlauf ihn ein — hier direkt in der Ablage des Containers (docker exec: Datenordner, Pfeffer
+          # und Schlüssel sind dort gesetzt), ohne die Bremse von /einrichten zu belasten — und stellt den Nachweis
+          # aus. Ihn tragen alle folgenden Schritte als CENTRIC_ZWEIFAKTOR_NACHWEIS (gilt 15 Minuten, nur für
+          # diesen Schlüssel, nur für diesen Container; der nächste frische Container überschreibt ihn).
+          NACHWEIS="$(docker exec centric-pruefung node --input-type=module -e '
+            import "/app/werkzeug/betreiber-faktor-vorlauf.mjs";
+            const n = await globalThis.__verwalterEinrichten(process.env.CENTRIC_ADMIN);
+            if (!n) { console.error("kein Nachweis"); process.exit(1); }
+            console.log(n.nachweis + " " + n.geheimnis);' | tail -n 1)"
+          test -n "$NACHWEIS"
+          GEHEIMNIS="${NACHWEIS#* }"; NACHWEIS="${NACHWEIS%% *}"
+          echo "::add-mask::$NACHWEIS"; echo "::add-mask::$GEHEIMNIS"
+          echo "CENTRIC_ZWEIFAKTOR_NACHWEIS=$NACHWEIS" >> "$GITHUB_ENV"
+          # Das Geheimnis braucht nur die Prüfung der Verwalterkonten (Konten anlegen verlangt einen frischen Code).
+          echo "CENTRIC_ZWEIFAKTOR_GEHEIMNIS=$GEHEIMNIS" >> "$GITHUB_ENV"
           SKRIPT
           chmod +x "$RUNNER_TEMP/container-neu.sh"
 
@@ -672,19 +688,9 @@ jobs:
         run: "$RUNNER_TEMP/container-neu.sh"
       - name: Gate-Proben im Bild (docker exec)
         run: |
-          # WP-32d: Der Verwalterschlüssel braucht in production den zweiten Faktor. Wie ein Betreiber richtet
-          # der Vorlauf ihn über die API ein (genau einmal je Server) und stellt den Nachweis aus; den reichen
-          # wir jeder Probe als CENTRIC_ZWEIFAKTOR_NACHWEIS mit (ein zweites Einrichten gäbe es nicht).
-          NACHWEIS="$(docker exec centric-pruefung node --input-type=module -e '
-            import "/app/werkzeug/betreiber-faktor-vorlauf.mjs";
-            const a = await fetch("http://127.0.0.1:3000/einrichten/uebersicht?bestand=ppg-gate-a", { headers: { authorization: "Bearer " + process.env.CENTRIC_ADMIN } });
-            if (a.status !== 200) { console.error("uebersicht " + a.status); process.exit(1); }
-            const n = globalThis.__verwalterNachweis(process.env.CENTRIC_ADMIN);
-            if (!n) { console.error("kein Nachweis"); process.exit(1); }
-            console.log(n);' | tail -n 1)"
-          echo "::add-mask::$NACHWEIS"
-          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS="$NACHWEIS" centric-pruefung node /app/werkzeug/staging-smoke.mjs
-          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS="$NACHWEIS" centric-pruefung node /app/werkzeug/staging-geo.mjs
+          # Der Nachweis kommt aus dem Start des Containers (CENTRIC_ZWEIFAKTOR_NACHWEIS in der Umgebung dieses Schritts).
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS centric-pruefung node /app/werkzeug/staging-smoke.mjs
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS centric-pruefung node /app/werkzeug/staging-geo.mjs
           docker exec centric-pruefung node /app/werkzeug/staging-aufraeumen.mjs
           # Kein untergeschobenes Ziel; im Bild nur die drei Proben aus werkzeug/.
           if docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs http://192.0.2.1:3000; then
@@ -910,12 +916,19 @@ jobs:
       # Benannte Verwalterkonten statt eines Geheimnisses für alle.
       - name: Container frisch starten
         run: "$RUNNER_TEMP/container-neu.sh"
+      # Die Verwalterprüfung legt ein benanntes Konto an, dessen zweiten Faktor der Vorlauf einrichten muss; das
+      # allein sprengte über die API die Gesamtgrenze von /einrichten (20 je 10 Minuten, die Prüfung braucht 18).
+      # Deshalb läuft sie über serverlauf.mjs: frischer Server (NODE_ENV=production, eigene Wegwerfablage), der Vorlauf
+      # richtet den Faktor direkt in dieser Ablage ein. Die Bremse bleibt unverändert; der Container-Nachweis der
+      # vorigen Schritte gehört nicht hierher.
       - name: Verwalterkonten
-        run: npm run pruefung:verwalter
+        run: node pruefungen/serverlauf.mjs verwalter
         env:
-          CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
+          CENTRIC_PFEFFER: ci-pfeffer-nur-zum-pruefen
           CENTRIC_HERKUNFT: 10.9.8.8
+          CENTRIC_ZWEIFAKTOR_NACHWEIS: ""
+          CENTRIC_ZWEIFAKTOR_GEHEIMNIS: ""
 
       # Ein Demozugang steht ohne Code offen. Das Zurückziehen muss deshalb
       # sofort wirken — es wirkte nicht: Die Sperre stand im Datensatz und
