@@ -78,3 +78,12 @@ Laufende Agenten (Worktrees, je eigener Branch, nur Push auf den eigenen Branch)
 - **Intelligence-Gateway** (`feature/intelligence-gateway`, noch nicht gemergt): nur Attrappe, nirgends verdrahtet, Live-Anbindung wirft immer. WP-I13/I14/I15/I17 mit Nachweisen; drei unabhängige Opus-Review-Runden (Runde 2: 12 Befunde, 3 davon fail-open, behoben; Runde 3: 1 hoch, 9 mittel/niedrig in Behebung). Merge in den Integrationsbranch nach der Behebung.
 - **WP-39** (`feature/wp39-app-aufteilung`): läuft; Nachweis folgt in `docs/acc45/wp39-nachweis.md`.
 - Mobil/V4: Querscroll-, Kontrast- und Tour-Befunde bis auf „Verteilung 320 px (26 px)“ behoben.
+
+### Integrationsstand 2026-11-07 (kein Merge nach `main`, kein Deployment)
+- **CI-Basis repariert (PR #102):** `.dockerignore` blockierte zwei 2FA-Werkzeuge für den Docker-COPY, tsc-Fehler in neun Dateien, ein Kommentar traf das Verbotsmuster, `matrix.mjs` las `MATRIX_STD` noch aus `App.jsx` (liegt in `src/lib/rollen.js`), `wiederherstellen-ui.test` erwartete den alten Ladetext, die Gate-Proben und HTTP-Suiten lieferten den WP-32d-Nachweis nicht. 2FA-Pflicht unverändert. Suite `verwalter` läuft in der CI über `serverlauf` statt gegen das Bild (Bremse 20 Aufrufe je 10 Min. unverändert). Der Docker-Pfad der Gate-Proben ist erst durch die GitHub-CI belegt.
+- **Legal-Strang (PR #103):** Rechtstexte bleiben ENTWURF; HMAC-IP-Kürzel, Wachbuch-Löschsperre, Art.-9-Katalog, Regelregister-Fundstellen. Keine Konformitätsbehauptung.
+- **IONOS-SMTP-Adapter (PR #101):** gebaut, ausgeschaltet (`CENTRIC_MAIL_WEG=smtp` nötig); keine Aktivierung, kein Live-Test, Tarif-SMTP-Freigabe unbelegt.
+- **Betreiberleitfaden (PR #99)** integriert.
+- **SI-P1/SI-P2 (PR #105/#106 → #107):** Sicherungsschlüssel überleben weder ihren Ersteller (inkl. ausgetreten/inaktiv/anonym) noch eine vollständige Wiederherstellung (Epoche außerhalb der Ablage in `CENTRIC_ZUSTAND`, Bindung, fail-closed, sofortiges Widerrufen bei neuer Epoche); Code-Sitzung endet bei Betriebsverlassen/Sperre. Zwei Opus-Reviews (Voll- und Delta-Review), Linux-CI inkl. SIGTERM/SIGKILL-Test grün. **Nicht Ende-zu-Ende geprüft:** die Passwortwechsel-Warnung (es gibt noch keinen Passwortwechsel-/Reset-Ablauf; bleibt Pflicht dafür).
+- **WP-28c** (Schreib-Halt): Abhängigkeit korrigiert (wartet nicht auf WP-28b, Voraussetzung ist Teilfix PR #100); in Arbeit (Opus, eigener Worktree), noch nicht integriert. WP-28b bleibt offen.
+- Integrationsregel: Nur der Hauptorchestrator integriert nach `integration/release-v4`; Cloud-Agenten liefern geprüfte PRs.

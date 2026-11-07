@@ -448,3 +448,14 @@ Entschieden am 2026-11-07 und hier nicht mehr offen: Verfügbarkeitszusage (vorl
 5. `docs/A9-ZUGANGSCODES-ROTATION.md` ist in diesem Branch nicht vorhanden; Z1 bis Z7 hier nur aus EAU.
 6. `docs/RC-2026-11-05-ABNAHME-7-9.md` enthält Host- und Benutzerangaben des Staging-Servers im Klartext, obwohl das Repository öffentlich ist und BAW „keine Hosts“ verlangt; hier bewusst nicht wiederholt, Bereinigung ist ein eigener Schritt.
 7. BS nennt als Beispiel-Ziel Hetzner; du bevorzugst vorhandene IONOS-Infrastruktur. Die Technik (restic mit sftp oder S3) ist anbieterneutral, die IONOS-Eignung ist unbelegt (F.3).
+
+## G. Neu seit 2026-11-07: Betreiberpflichten aus SI-P1/SI-P2 (Sicherungsschlüssel und Wiederherstellung)
+
+Betreiberentscheidung: **Nach jeder vollständigen Wiederherstellung der Ablage sind alle zuvor bestehenden Sicherungsschlüssel ungültig.** Umgesetzt in `integration/release-v4` (noch nicht in Produktion).
+
+1. **Verzeichnis `zustand/` anlegen** (Besitzer uid 1000, Modus 700) vor dem ersten Start mit dieser Version; `deploy/deploy.sh` legt es an, `/gesund` warnt, wenn es fehlt. Ohne es gelten keine Sicherungsschlüssel (Anlegen: 503); Anmeldung und Daten sind nicht betroffen. `zustand/` darf **nicht** zusammen mit `data/` gesichert oder zurückgespielt werden.
+2. **Nach der Einführung** einmal alle Sicherungsschlüssel neu anlegen (Schlüssel aus der Zeit davor gelten nicht mehr). Bestehende Automatisierungen müssen ihren Schlüssel kontrolliert austauschen; die Neuanlage erfolgt ausdrücklich durch eine berechtigte Leitung.
+3. **Nach jedem Snapshot-, VM- oder Volume-Rollback** (bringt `data/` und `zustand/` gemeinsam zurück, technisch nicht erkennbar): `ablage-sicherung.mjs schluessel-erneuern` ausführen, solange der Dienst gestoppt ist (`docker compose ps`). Das ist die verbleibende, offen benannte Lücke.
+4. **Restrisiko:** Eine Verzeichniskopie aus den letzten 60 Sekunden vor einem harten Absturz (SIGKILL) kann beim Zurückspielen nicht erkannt werden; bei SIGTERM wird die Bindung beim Beenden erneuert. Annahme dieses Restrisikos ist eine Betreiberentscheidung.
+5. **Fehlt nur die Epochendatei bei vorhandener Bindung** (Mount fehlt, `CENTRIC_ZUSTAND` geändert, Datei beschädigt), werden alle Sicherungsschlüssel sofort und endgültig widerrufen (gewollt, fail-closed).
+6. **Passwortwechsel-Warnung:** bleibt verpflichtend für einen späteren echten Passwortwechsel-/Reset-Ablauf; dieser existiert noch nicht und gilt deshalb nicht als geprüft.
