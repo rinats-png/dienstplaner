@@ -295,10 +295,20 @@ export default async (req, context) => {
       const faktorFrisch = await betreiberFaktorFrisch({ store, k: kZ, sitzung: sB, code: rumpf.zweifaktor });
       if (faktorFrisch.antwort) return faktorFrisch.antwort;
 
+      /* Codes gibt es nur für einen eingerichteten Raum, gebunden an die
+         Kennung seines Betriebs (erstbefuellung.mjs). */
+      const zielGelesen = await bestandLesen(store, ziel);
+      const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
+      if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
       /* SI-P6 (2/2): Ein Leitung-Code gehört zur Erstanlage eines Betriebs. Gibt es im Raum schon einen wirksamen
          Leitungszugang, ist ein weiterer Zugriff an der Leitung vorbei nicht Sache dieses Weges (AV §3).
+         „Leitung" ist, was der Server als Rolle der Sitzung ergäbe: Ein Code, der an die Person einer Leitung im
+         Bestand gebunden ist, trägt deren Rolle (wirksameRolle), gleich welche Rolle im Code steht (Review B1).
          Kann das nicht geprüft werden, entsteht nichts. */
-      if (eintraege.some((e) => e.rolle === "leitung")) {
+      const wirksamLeitung = (e) => e.rolle === "leitung" || wirksameRolle({ rolle: e.rolle, person: e.personId ?? null,
+        betrieb: bindungZ.betrieb ?? 0, mandantId: bindungZ.mandantId, bestand: ziel },
+      zielGelesen && zielGelesen.bestand) === "leitung";
+      if (eintraege.some(wirksamLeitung)) {
         let leitung;
         try { leitung = await leitungImRaum(store, ziel); }
         catch {
@@ -312,12 +322,6 @@ export default async (req, context) => {
           grund: "leitung_vorhanden" }, 409);
         }
       }
-
-      /* Codes gibt es nur für einen eingerichteten Raum, gebunden an die
-         Kennung seines Betriebs (erstbefuellung.mjs). */
-      const zielGelesen = await bestandLesen(store, ziel);
-      const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
-      if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
         .map((b) => alphabet[b % alphabet.length]).join("");
@@ -577,6 +581,9 @@ export default async (req, context) => {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
+      /* SI-P6 (Review B4): Wie die Zugangsanlage danach nur mit frischer Anmeldung — sonst entstünde ein Raum, für den
+         sich keine Codes mehr holen lassen, weil die Anmeldung dazwischen abläuft. */
+      if (!frisch(sB)) return neuAnmelden();
       /* Der einzige Weg, einen leeren Raum einzurichten (erstbefuellung.mjs).
          Ohne Angabe der eigene Raum der Betreibersitzung. „leer" und „test"
          baut der Server selbst; „demo" und ein eigener Inhalt werden

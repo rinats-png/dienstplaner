@@ -110,6 +110,8 @@ beforeEach(async () => {
   const { createHash } = await import("node:crypto");
   const id = createHash("sha256").update(`betreiber-code:${ablageSchluesselFn(OP_MIT)}`).digest("hex");
   await schutz.entlasten("zweifaktor", `b:${id.slice(0, 16)}`);
+  await schutz.entlasten("zweifaktor", `bf:${id.slice(0, 16)}`);
+  await schutz.entlasten("zweifaktor", schutz.kennung(null, { bestand: "p6-betreiber" }));   // gemeinsame Herkunftskennung der Betreibersitzungen
   for (let i = 0; i < 4; i++) await schutz.entlasten("zweifaktor", `10.61.${Math.floor(nr / 250)}.${nr % 250}`);
 });
 
@@ -281,6 +283,111 @@ describe("SI-P6 Leitung-Codes für bestehende Kundenräume", () => {
       expect(r.zugaenge).toBeUndefined();
     } finally { await rm(datei, { force: true }); }
     expect(await anzahlKonten("p6-lesefehler")).toBe(0);
+  });
+});
+
+describe("SI-P6 Review (Opus): Personenbindung, Altschlüssel, Bremse, Reihenfolge, Raumanlage", () => {
+  let tok;
+  beforeAll(async () => { tok = (await rufen("/api/anmelden", { zugangscode: OP_OHNE })).token; });
+
+  it("B1: ein Code anderer Rolle, gebunden an die Leitungs-PERSON des Raums, ist eine Leitung → 409 (wirksameRolle folgt der Person)", async () => {
+    await raumAnlegen("p6-person");
+    await kontoAnlegen("p6-person", "leitung");              // bestehende Leitung (Person p1 ist im Bestand leitung)
+    const vorher = await anzahlKonten("p6-person");
+    for (const rolle of ["mitarbeiter", "planer", "subplaner", "betriebsrat"]) {
+      const r = await zugaenge(tok, { bestand: "p6-person", eintraege: [{ rolle, personId: "p1" }] });
+      expect(r.status, rolle).toBe(409);
+      expect(r.grund).toBe("leitung_vorhanden");
+    }
+    expect(await anzahlKonten("p6-person")).toBe(vorher);
+  });
+
+  it("B1 Gegenprobe: dieselbe Rolle ohne Bindung an die Leitungs-Person bleibt möglich; unbekannte Person ändert nichts", async () => {
+    const a = await zugaenge(tok, { bestand: "p6-person", eintraege: [{ rolle: "planer" }] });
+    expect(a.status).toBe(200);
+    const b = await zugaenge(tok, { bestand: "p6-person", eintraege: [{ rolle: "mitarbeiter", personId: "gibt-es-nicht" }] });
+    expect(b.status).toBe(200);
+  });
+
+  it("Sammelblob „konten“: eine Leitung im Altbestand zählt", async () => {
+    await raumAnlegen("p6-sammel");
+    const s = laden();
+    const alt = (await s.get("konten", { type: "json" })) || {};
+    alt["p6-alt-sammel-schluessel"] = { name: "alt", bestand: "p6-sammel", rolle: "leitung", person: "p1", betrieb: 0, mandantId: "m-p6-sammel" };
+    await s.setJSON("konten", alt);
+    try {
+      expect((await zugaenge(tok, { bestand: "p6-sammel", eintraege: [{ rolle: "leitung" }] })).status).toBe(409);
+    } finally { delete alt["p6-alt-sammel-schluessel"]; await s.setJSON("konten", alt); }
+  });
+
+  it("eingeladene Mitgliedschaft mit Rolle leitung zählt", async () => {
+    await raumAnlegen("p6-eingeladen");
+    const a = await accounts.accountAnlegen(laden(), { email: "eingeladen@p6.example", status: "eingeladen" });
+    expect(a.ok).toBe(true);
+    const m = await accounts.mitgliedschaftAnlegen(laden(), { accountId: a.account.id, raum: "p6-eingeladen", betrieb: 0,
+      mandantId: "m-p6-eingeladen", rolle: "leitung", status: "eingeladen" });
+    expect(m.ok).toBe(true);
+    expect((await zugaenge(tok, { bestand: "p6-eingeladen", eintraege: [{ rolle: "leitung" }] })).status).toBe(409);
+  });
+
+  it("Reihenfolge: mit eingerichtetem Faktor erfährt man ohne Code NICHTS über den Raum (401 statt 409)", async () => {
+    const r = await zugaenge(tokenMit, { bestand: "p6-alt", eintraege: [{ rolle: "leitung" }] });
+    expect(r.status).toBe(401);
+    expect(r.grund).toBeUndefined();
+  });
+
+  it("eine Sitzung ohne Kontoschlüssel bekommt nie Codes (403)", async () => {
+    const { sitzungAnlegen } = await import("../server/lib/sitzungen.mjs");
+    const { token } = await sitzungAnlegen({ bestand: "p6-betreiber", name: "ohne konto", rolle: "betreiber", person: null,
+      betrieb: 0, mandantId: null }, 600000);
+    const r = await zugaenge(token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }] });
+    expect(r.status).toBe(403);
+    expect(r.zugaenge).toBeUndefined();
+  });
+
+  it("B2: Sitzung über den ALTEN Schlüssel (Konto trägt `ersetztDurch`): der Faktor des neuen Schlüssels gilt", async () => {
+    const { altHash } = await import("../server/lib/codes.mjs");
+    const altS = altHash("P6-ALTCODE-0001");
+    const neuS = ablageSchluesselFn(OP_MIT);
+    await konten.kontoSchreiben(laden(), altS, { name: "Betreiber alt", bestand: "p6-betreiber", rolle: "betreiber", person: null,
+      betrieb: 0, mandantId: null, ersetztDurch: neuS, angelegt: "2026-01-01T00:00:00.000Z" });
+    const { sitzungAnlegen } = await import("../server/lib/sitzungen.mjs");
+    const { token } = await sitzungAnlegen({ bestand: "p6-betreiber", name: "alt", rolle: "betreiber", person: null, betrieb: 0,
+      mandantId: null, konto: altS }, 600000);
+    const ohne = await zugaenge(token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }] });
+    expect(ohne.status).toBe(401);
+    expect(ohne.zweifaktor).toBe("erforderlich");
+    uhr(jetzt + 31_000);
+    const mit = await zugaenge(token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }], zweifaktor: code(geheimnis) });
+    expect(mit.status).toBe(200);
+  });
+
+  it("B3: falsche Codes bei der Zugangsanlage verbrauchen NICHT das Budget der Anmeldung (eigener Zähler)", async () => {
+    const { createHash } = await import("node:crypto");
+    const id16 = createHash("sha256").update(`betreiber-code:${ablageSchluesselFn(OP_MIT)}`).digest("hex").slice(0, 16);
+    let letzter;
+    for (let i = 0; i < 8; i++) {
+      letzter = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: "000000" });
+      if (letzter.status === 429) break;
+    }
+    expect(letzter.status).toBe(429);
+    /* Der Zähler, den die Anmeldung dieses Betreibercodes benutzt, ist unberührt (die Abfrage selbst zählt einen Versuch). */
+    const anmeldeZaehler = await schutz.bremse("zweifaktor", `b:${id16}`);
+    expect(anmeldeZaehler.frei).toBe(true);
+    await schutz.entlasten("zweifaktor", `b:${id16}`);
+  });
+
+  it("B4: bestand-anlegen verlangt ebenfalls eine frische Anmeldung — es entsteht kein Raum ohne die Möglichkeit, Codes zu holen", async () => {
+    const l = await rufen("/api/anmelden", { zugangscode: OP_OHNE });
+    const davor = jetzt;
+    uhr(jetzt + 21 * 60_000);
+    try {
+      const r = await rufen("/api/bestand-anlegen", { bestand: "p6-spaeter", art: "leer" }, l.token);
+      expect(r.status).toBe(403);
+      expect(r.neuAnmelden).toBe(true);
+    } finally { uhr(davor); }
+    const { bestandLesen } = await import("../server/lib/bestand.mjs");
+    expect(await bestandLesen(laden(), "p6-spaeter")).toBeFalsy();
   });
 });
 

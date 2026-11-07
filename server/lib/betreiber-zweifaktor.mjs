@@ -274,9 +274,29 @@ export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
     await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Sitzung ohne Kontoschlüssel");
     return { antwort: json({ fehler: "Bitte neu anmelden.", neuAnmelden: true }, 403) };
   }
-  const id = betreiberZweifaktorId(konto);
-  let stand;
-  try { stand = await zweifaktorStand(store, id); } catch { return { antwort: nichtPruefbar() }; }
+  /* Der Faktor liegt unter der Kennung des NEUEN Schlüssels. Trägt die Sitzung noch den alten (Anmeldung vor der
+     Umschlüsselung), verweist das Altkonto mit `ersetztDurch` auf den neuen: dieser Kette folgen (höchstens vier
+     Schritte, ohne Schleife), sonst hielte die Prüfung einen eingerichteten Faktor für „keinen“. Ist ein Konto in der
+     Kette nicht lesbar, ist das keine Entscheidung für „kein Faktor“ (503). */
+  const kette = [konto];
+  try {
+    let akt = konto;
+    for (let i = 0; i < 4; i++) {
+      const e = await kontoLesen(store, akt);
+      if (!e || typeof e.ersetztDurch !== "string" || !e.ersetztDurch || kette.includes(e.ersetztDurch)) break;
+      akt = e.ersetztDurch; kette.push(akt);
+    }
+  } catch { return { antwort: nichtPruefbar() }; }
+  let id = betreiberZweifaktorId(konto);
+  let stand = null;
+  try {
+    for (const schl of kette) {
+      const kid = betreiberZweifaktorId(schl);
+      const st = await zweifaktorStand(store, kid);
+      if (stand === null || st.aktiv) { stand = st; id = kid; }
+      if (st.aktiv) break;
+    }
+  } catch { return { antwort: nichtPruefbar() }; }
   if (!stand.aktiv) {
     if (betreiberPflicht()) {
       await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Pflicht, nicht eingerichtet (frischer Code)");
@@ -290,7 +310,9 @@ export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
     await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · frischer Code fehlt");
     return { antwort: json({ fehler: "Dafür ist ein frischer Code aus der App nötig.", zweifaktor: "erforderlich" }, 401) };
   }
-  const kennungen = [`b:${id.slice(0, 16)}`, k];
+  /* Eigener Zähler (`bf:`), nicht der der Anmeldung (`b:`): Wer nur eine abgegriffene Sitzung hat, kann sonst durch
+     falsche Codes die Anmeldung des echten Betreibers sperren. */
+  const kennungen = [`bf:${id.slice(0, 16)}`, k];
   for (const kk of kennungen) {
     const b = await bremse("zweifaktor", kk);
     if (!b.frei) { await protokoll("zweifaktor", k, "gebremst", b.grund); return { antwort: zuVielAntwort(b.wartet) }; }
