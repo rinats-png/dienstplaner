@@ -1,11 +1,11 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 155,
+  "anzahl": 156,
   "statusZaehlung": {
-    "BLOCKED": 80,
-    "READY": 35,
-    "IN_PROGRESS": 3,
+    "BLOCKED": 81,
+    "READY": 34,
+    "IN_PROGRESS": 4,
     "REVIEW": 4,
     "INTEGRATED": 30,
     "DONE": 3
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 9,
-      "offen": 9,
+      "pakete": 10,
+      "offen": 10,
       "restPT": {
-        "min": 15,
-        "max": 29.5
+        "min": 17,
+        "max": 32.5
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 437.20000000000005,
-    "max": 745.5
+    "min": 439.20000000000005,
+    "max": 748.5
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -1714,8 +1714,37 @@
       "strang": "folge",
       "prio": "P2",
       "aufwandPT": {"min":1.5,"max":3},
+      "restPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["WP-28","WP-47"],
-      "status": "READY",
+      "status": "IN_PROGRESS",
+      "stufen": {
+        "implementiert": {"wert":"teilweise","beleg":"Teil 1 e88d1c1/5094749 (ENOENT zwischen readdir/stat/readFile); Teil 2 PR #100 (ENOENT beim Store-Verzeichnis, Nachkopieren, Inode, Ruhezeit --ruhe). Kein Erfolg unter Dauerlast: docs/acc45/wp28b2-nachweis.md §6, §8"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"wp28b-sicherung-enoent, wp28b-sicherung-last (15), Testfamilie 389 grün, Wiederherstellungsübung 12/12; Ende-zu-Ende (Docker, restic) und Lasttest S2/S5 nicht gelaufen"},
+        "reviewt": {"wert":"teilweise","beleg":"Review Teil 1 (Opus), zwei unabhängige Reviews und eine Gegenprüfung zu PR #100 (docs/acc45/wp28b2-nachweis.md §7, §10)"},
+        "integriert": {"wert":"teilweise","beleg":"Teilfix: Teil 1 in integration/release-v4, Teil 2 mit Merge von PR #100. Paket bleibt offen (Dauerlast, E-20)"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/infra/wp28b-nachlauf",
+      "agent": "Agent B – Infrastructure & Reliability",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#100"],
+      "nachweis": "docs/acc45/wp28b-nachweis.md, docs/acc45/wp28b2-nachweis.md, docs/acc45/wp28-nachweis.md",
+      "akzeptanz": "ablage-sicherung wiederholt bei ENOENT zwischen readdir und stat; Nachlauf S2/S5 (E-20) ausgewertet und in wp28-nachweis.md nachgetragen",
+      "tests": "werkzeug/last (CI-Profil voll), ablage-sicherung, wp28b-sicherung-last",
+      "dateien": "werkzeug/last, werkzeug/ablage-sicherung.mjs",
+      "notiz": "NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt)."
+    },
+    {
+      "id": "WP-28c",
+      "titel": "Konsistente Sicherung unter Dauerlast: kurzer, befristeter, koordinierter Schreib-Halt im Server (Folge zu WP-28b/2)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":3,"max":5},
+      "abhaengigkeiten": [],
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -1725,16 +1754,16 @@
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "acc45/infra/wp28b-nachlauf",
+      "branch": "acc45/infra/wp28c-schreibhalt",
       "agent": "Agent B – Infrastructure & Reliability",
-      "modell": "sonnet",
-      "konfliktzonen": [],
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs"],
       "pr": [],
-      "nachweis": "docs/acc45/wp28-nachweis.md",
-      "akzeptanz": "ablage-sicherung wiederholt bei ENOENT zwischen readdir und stat; Nachlauf S2/S5 (E-20) ausgewertet und in wp28-nachweis.md nachgetragen",
-      "tests": "werkzeug/last (CI-Profil voll), ablage-sicherung",
-      "dateien": "werkzeug/last, werkzeug/ablage-sicherung.mjs",
-      "notiz": "SCHÄTZUNG. Der Lauf selbst ist E-20 (Handstart durch den Betreiber)."
+      "nachweis": "docs/acc45/wp28b2-empfehlung-konsistente-sicherung.md",
+      "akzeptanz": "Sicherung unter Dauerlast gelingt und liegt nachweislich nie mitten in einer Mehrdatei-Transaktion (Mess-Skript mit Zwei-Datei-Transaktionen, >= 50 Schreibvorgänge/s: 0 Schnitte in >= 1000 Sicherungen, 100 % Erfolg); Frist läuft ab; Reentranz; Wiederherstellung und /gesund unverändert; Stempel-p95 und 503-Anteil nicht schlechter; Hintergrundschreiber respektieren den Halt",
+      "tests": "neu: Schreibhalt-Tests, Mess-Skript, werkzeug/last (S5), wp28b-sicherung-last, ablage-sicherung",
+      "dateien": "server/lib/raumsperre.mjs, server/lib/ablage.mjs, Ketten in accounts/token/provisionierung/registrierung, server.mjs, werkzeug/ablage-sicherung.mjs, deploy/sicherung",
+      "notiz": "Abhaengigkeit korrigiert (Betreiberanweisung 2026-11-07): WP-28c wartet NICHT auf den Abschluss von WP-28b, es schliesst gerade die verbleibende Konsistenzluecke. Voraussetzung ist der integrierte Teilfix aus PR #100 (Merge 74abb11). Bleibt BLOCKED bis zur Konfliktpruefung mit laufenden Arbeiten (daten.mjs, PR #101/#103 integriert); danach autonome Vergabe. Nur der Hauptorchestrator integriert nach integration/release-v4."
     },
     {
       "id": "WP-07b",

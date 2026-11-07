@@ -161,6 +161,7 @@ import { darfSicherungenSehen, sicherungenAktionen } from "./sicherungen-ui.js";
 /* WP-19.0: Branchenmodule — Aktivierung, Regelwerte und alle Moduloberflächen über einen Einhängepunkt (src/module/index.js). */
 import { BranchenModule } from "./module/kern.jsx";
 import { Notizen } from "./ansichten/notizen.jsx";
+import { SelbstauskunftStatus } from "./ansichten/selbstauskunft.jsx";
 import { lade } from "./lib/download.js";
 import { EinheitWahl } from "./ansichten/einheitwahl.jsx";
 
@@ -8118,6 +8119,9 @@ function MPlan({ sitz, akt, oeffnen }) {
             {l}</button>))}
       </div>
 
+      {/* WP-15: eigene Zeiten-Anträge (Selbstauskunft) — auch in der Smartphone-Ansicht. */}
+      <SelbstauskunftStatus m={m} ich={ich} onErgebnis={akt.uebernehmeSelbstauskunft} melde={akt.melde} />
+
       {offen.length > 0 && (
         <MKarte ton="warn" onClick={() => oeffnen("zeiten")}>
           <MZeile ton="warn" links={`${offen.length} Zeiten bestätigen`}
@@ -10559,7 +10563,7 @@ function AppInnen() {
         try {
           const erg = await SP.monatsabschluss("lohnexport", monat, { exportStand, trotzVormonat });
           EXPORT_STAND.delete(schluessel);
-          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+          await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
             : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
           melde("Lohnexport bestätigt.");
           return true;
@@ -10569,6 +10573,26 @@ function AppInnen() {
           return false;
         }
       },
+      /* WP-16c: Korrekturrevision nach bestätigtem Lohnexport (der Server entscheidet; die Differenz kommt mit dem Fehler). */
+      monatKorrektur: async (aktion, monat, extra = {}) => {
+        try {
+          const erg = await SP.monatsabschluss(aktion, monat, extra);
+          /* Wie Abschließen/Wiederöffnen: den Serverstand nachladen, sonst läuft ein PUT mit altem ETag hinterher (Konfliktdialog). */
+          await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+          melde(aktion === "korrektur-beginnen" ? "Korrektur begonnen — der exportierte Stand ist als Revision abgelegt."
+            : aktion === "korrektur-verwerfen" ? "Korrektur verworfen." : "Freigabe gespeichert.");
+          return { ok: true, ...erg };
+        } catch (e) {
+          if (e && e.code === "KORREKTUR_DIFFERENZ_FEHLT" && e.differenz) return { ok: false, differenz: e.differenz };
+          melde((e && e.message) || "Der Schritt ließ sich nicht ausführen.");
+          return { ok: false };
+        }
+      },
+      /* WP-15: neuer Stand einer Selbstauskunft (Antrag) in erfassung übernehmen. */
+      uebernehmeSelbstauskunft: (pid, d, erg) => serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) =>
+        m.id !== (s2.session || {}).mandantId ? m
+          : { ...m, erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: erg.eintrag } }) })),
       korrekturBeantragen: async (datum, start, ende, pause, grund) => {
         try {
           const erg = await SP.korrekturAntrag(datum, start, ende, pause, grund);
