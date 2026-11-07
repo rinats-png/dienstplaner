@@ -53,6 +53,7 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `PORT` | Port im Container | `3000` | ja |
 | `CENTRIC_DATEN` | Wurzel der Ablage | `/data` | ja |
 | `CENTRIC_ABLAGE` | nur `dateien` zulässig | `dateien` | ja |
+| `CENTRIC_ZUSTAND` | Schlüsselepoche der Sicherungsschlüssel (Wiederherstellungsschutz), AUSSERHALB von `CENTRIC_DATEN`, nie sichern oder zurückspielen; nicht nutzbar → keine Sicherungsschlüssel (BEREITSTELLUNG 5.4) | `<CENTRIC_DATEN>-zustand` (compose: `/zustand`) | ja |
 | `CENTRIC_BASIS` | öffentliche Adresse; Herkunftsprüfung, Links in Mails, Cookie | Adresse der Anwendung | ja |
 | `CENTRIC_PFEFFER` | Pfeffer für Code- und Konten-Prüfsummen, Schlüssel für Zwei-Faktor-Geheimnisse; **nie ändern** | — (Pflicht) | ja |
 | `CENTRIC_VERTRAUTE_PROXYS` | wem X-Forwarded-For geglaubt wird: **nur Caddys feste Adresse** (das Subnetz ist nicht empfohlen); leer = niemandem, und `deploy.sh` liefert nicht aus; ungültig = kein Start | leer | ja |
