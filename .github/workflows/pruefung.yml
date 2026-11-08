@@ -239,6 +239,12 @@ jobs:
       - name: Sicherungsschlüssel und Code-Sitzung
         run: npm run pruefung:sicherungsschluessel
 
+      # SI-P6: POST /api/zugaenge nur mit frischer Anmeldung und frischem zweiten Faktor;
+      # Leitung-Code nicht in Räumen mit wirksamer Leitung. Enthält den Lauf gegen einen
+      # echten Server im Produktionsmodus (Vorlauf).
+      - name: Zugangsanlage mit frischem Faktor und Kundenraumschutz
+        run: npm run pruefung:zugaenge-faktor
+
       # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
       # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
       # Lesen nur in der Antwort angeglichen (gestalt.mjs).
