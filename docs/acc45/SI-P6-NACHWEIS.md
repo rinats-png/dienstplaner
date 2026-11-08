@@ -35,25 +35,42 @@ Ein Raum steht in genau einer **Lage**; jede Antwort 409 `kundenraum_gesperrt` l
 
 | Lage | Bedingung | Neue Zugänge |
 |---|---|---|
-| `neu` | kein Zugang (Betreibercodes zählen nicht), keine Mitgliedschaft, kein Vermerk | erlaubt; der erste Vorgang vermerkt ein **Fenster von 15 Minuten** (`ersteinrichtung:<raum>`), bevor irgendein Code entsteht |
-| `fenster` | Vermerk offen, keine Mitgliedschaft | erlaubt (weitere Codes der Einrichtung: `/einrichten` legt je Aufruf nur einen an) |
-| `demo` | mindestens ein Zugang, **alle** Demozugänge (auch gesperrte), Vermerk nicht offen | nur weitere Demozugänge (`/einrichten` mit `demo:true`); `/api/zugaenge` legt nie Demozugänge an |
-| `kundenraum` | alles andere: jeder Zugang (auch gesperrt, abgelaufen, Selbststart, Sammelblob „konten“), jede Mitgliedschaft (auch entzogen), abgelaufener Vermerk | **gesperrt, jede Rolle** |
+| `neu` | kein Zugang (Betreibercodes zählen nicht), keine Mitgliedschaft, kein Vermerk, keine Löschmarke, kein Selbststart-/Demoraum (siehe Vorrang unten) | erlaubt; der erste Vorgang vermerkt ein **Fenster von 15 Minuten** (`ersteinrichtung:<raum>`), bevor irgendein Code entsteht |
+| `fenster` | Vermerk offen, keine Mitgliedschaft, keine Sitzung aus einem Kundenzugang des Raums | erlaubt (weitere Codes der Einrichtung: `/einrichten` legt je Aufruf nur einen an) |
+| `demo` | Raumkennung `demo-…` ohne Zugang ohne `demo`; oder: mindestens ein Zugang, **alle** Demozugänge (auch gesperrte), Vermerk nicht offen | nur weitere Demozugänge (`/einrichten` mit `demo:true`); `/api/zugaenge` legt nie Demozugänge an |
+| `kundenraum` | alles andere: jeder Zugang (auch gesperrt, abgelaufen, Selbststart, Sammelblob „konten“), jede Mitgliedschaft (auch entzogen, auch ohne Raumindex), abgelaufener Vermerk, begonnene Löschung, Selbststart-Raum, Kundensitzung im Fenster | **gesperrt, jede Rolle** |
+
+**Vorrang (Review-Nachtrag, Befunde 1, 3, 4, 5)** — vor der Tabelle geprüft, jeweils `kundenraum`:
+- **Begonnene Löschung** (`loeschung:<raum>`). `raumLoeschen` setzt die Marke jetzt selbst als ersten Schritt (für jeden
+  Aufrufer: Betreiberkonsole, Löschlauf, Rückbau der Provisionierung; lässt sie sich nicht setzen, wird nichts gelöscht) und
+  entfernt sie erst ganz am Ende. Der Vermerk `ersteinrichtung:<raum>` geht erst **nach** dem Kern. Ein Teilabbruch (Konten,
+  Mitgliedschaften schon weg, Kern und Personal noch da) macht den Raum damit nicht mehr „neu“.
+- **Selbststart-Raum**: Raumkennung `t-…`, ein Betrieb mit `selbstAngelegt` im Kern oder ein Eintrag in `selbststarts`.
+  Schließt das Rennfenster der Provisionierung (Kern vor Mitgliedschaft). Verträglich: Selbststart-Räume bekommen ihre
+  Zugänge nur aus der Provisionierung selbst, nie über `/einrichten` oder `/api/zugaenge`.
+- **Mitgliedschaft** über den Raumindex `raummitglied:<raum>:*` **und** über `mitglied:<account>:<raum>` (eine
+  Mitgliedschaft, deren Index fehlt, zählt ebenso).
+- **Demoraum** `demo-…`: nie `neu`, nur Demozugänge, und nur solange dort kein Zugang ohne `demo` existiert. Verträglich
+  mit dem Bereitstellungsskript (`zugaenge-anlegen.sh`: Betreibercode plus Demozugänge in `demo-schau`) und
+  `pruefungen/demozugang.mjs` (nur Demozugänge in `demo-pruefung`).
+- **Kundensitzung im Fenster**: Gibt es für den Raum eine Sitzung aus einem Kundenzugang (nicht Betreiber, nicht Demo; auch
+  eine abgelaufene, die noch nicht aufgeräumt ist), ist das Fenster sofort zu. Gelesen wird die Sitzungsablage nur, solange
+  ein Fenster offen ist; Lesefehler → 503.
 
 Eigenschaften: Ein abgelaufenes Fenster öffnet sich nie wieder. Ein fehlender, gesperrter oder abgelaufener Leitungszugang
 ändert nichts (Punkt 2). Weil die Rolle einer Sitzung der **Person** im Bestand folgt (`wirksameRolle`), wäre jede
 Rollenunterscheidung umgehbar; deshalb gilt das Verbot für alle Rollen. Lesefehler (unlesbarer Konto-Eintrag, unlesbarer
 oder unverständlicher Vermerk): 503, nichts entsteht (die allgemeinen Sammelleser schlucken Fehler und ergäben fälschlich
 „neu“). Betreibercodes sind kein Kundenzugang und bleiben außerhalb (das Bereitstellungsskript legt seinen Betreibercode im
-Raumnamen des Demoraums an). Beim Löschen eines Raums wird sein Vermerk mitgelöscht (`raumloeschung.mjs`), damit ein neuer
-Betrieb gleichen Namens nicht dauerhaft gesperrt bleibt.
+Raumnamen des Demoraums an). Beim vollständigen Löschen eines Raums werden Vermerk und Löschmarke zuletzt mitgelöscht
+(`raumloeschung.mjs`), damit ein neuer Betrieb gleichen Namens nicht dauerhaft gesperrt bleibt.
 
 ### Alle Wege, die Zugänge anlegen (Bestandsaufnahme)
 
 | Weg | Wer | Behandlung |
 |---|---|---|
 | `POST /api/zugaenge` | Betreibersitzung | frisch + Faktor + Kundenraumschutz |
-| `POST /einrichten` (Code anlegen) | Verwalterschlüssel (+ Faktor, Pflicht in der Auslieferung) | Kundenraumschutz (neu); Rolle `betreiber` ausgenommen |
+| `POST /einrichten` (Code anlegen) | Verwalterschlüssel (+ Faktor, Pflicht in der Auslieferung) | Kundenraumschutz (neu); Rolle `betreiber` ausgenommen (**Betreiber-Freigabepunkt**, siehe §6) |
 | `POST /einrichten/bindung` | Verwalterschlüssel | ändert nur `mandantId` bestehender Codes ohne Bindung; legt keinen Zugang an, ändert keine Rolle |
 | `server/funktionen/starten.mjs` (Selbststart) | die Kundin/der Kunde für den **eigenen neuen** Raum | nicht betroffen (kein Betreiberweg) |
 | `provisionierung.mjs` / `registrierung.mjs` (Account + Mitgliedschaft) | Kundin/Kunde bzw. Einladung durch die Leitung | nicht betroffen |
@@ -62,7 +79,10 @@ Betrieb gleichen Namens nicht dauerhaft gesperrt bleibt.
 
 ## 3. Tests
 
-- `pruefungen/kundenraumschutz.test.js` (19; die roten Stände stehen im Commit `8646daa`): **negative Berechtigungstests**
+- `pruefungen/kundenraumschutz.test.js` (27; die roten Stände der ersten 19 stehen im Commit `8646daa`; die 8 Prüfungen des
+  Review-Nachtrags sind ohne die Korrektur in `kundenraumschutz.mjs`/`raumloeschung.mjs` alle rot, mit Stash gemessen —
+  Teilabbruch der Löschung mit und ohne Vermerk, Marke des Löschlaufs und unlesbare Marke, Mitgliedschaft ohne Raumindex,
+  `t-…`, `selbstAngelegt`/`selbststarts`, `demo-…`, Kundenanmeldung im Fenster): **negative Berechtigungstests**
   für beide Wege — jede Rolle (`leitung`, `planer`, `subplaner`, `mitarbeiter`, `betriebsrat`, auch an die Leitungs-Person
   gebunden) im Altbestand → 409; nur Beschäftigte / gesperrte Leitung / abgelaufener Selbststart → 409; Sammelblob → 409;
   Mitgliedschaft aktiv / eingeladen / entzogen → 409; Demoraum über `/api/zugaenge` → 409, über `/einrichten` nur
@@ -87,17 +107,44 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
 - Opus auf `ce687f1` (Faktor-Teil, vor dem Kundenraumschutz): „integrierbar mit Auflagen“; Befunde B1–B6, B1–B4 behoben
   (Altschlüssel-Kette, eigener Zähler, `frisch` bei `bestand-anlegen`; B1 — Personenbindung — ist durch das Verbot für alle
   Rollen gegenstandslos).
-- Opus auf dem Kundenraumschutz (alle Zugangswege): siehe PR-Beschreibung.
+- Opus auf dem Kundenraumschutz (alle Zugangswege, Stand `bf2cece`): keine kritischen/hohen Befunde; MITTEL 1 (abgebrochene
+  Löschung macht den Raum „neu“) und NIEDRIG 3, 4, 5 im Code behoben (siehe Vorrang oben), MITTEL 2 in §6 korrigiert,
+  NIEDRIG 6 und 7 als Betreiber-Freigabepunkte in §6, NIEDRIG 8 (`ziel` in `/api/zugaenge` ohne Muster) gehört in
+  `daten.mjs` (SI-P7) und ist dort als Patch vorgeschlagen.
 
 ## 6. Verbleibende Risiken und offene Entscheidungen
 
-- **Kundenzustimmung / Notfall-Wiederherstellung (SI-P6b, BLOCKED).** Ohne diesen Prozess kann der Betreiber für einen
-  bestehenden Kundenraum **gar keinen** Zugang mehr über diese Wege anlegen — auch nicht, wenn die Leitung ihren Code
-  verloren hat, und auch nicht weitere Beschäftigte. Kundinnen und Kunden holen weitere Zugänge über Einladungen und Konten
-  (nicht Betreiberweg). Wo das nicht reicht, steht der Betreiber ohne Notfallweg da — Absicht laut G.2.
+- **Kundenzustimmung / Notfall-Wiederherstellung (SI-P6b, BLOCKED) — betrieblich dringend.** Ohne diesen Prozess kann der
+  Betreiber für einen bestehenden Kundenraum **gar keinen** Zugang mehr über diese Wege anlegen — auch nicht, wenn die
+  Leitung ihren Code verloren hat, und auch nicht für weitere Beschäftigte. **Einen Kundenweg dafür gibt es im Code nicht:**
+  Weder Einladungen noch Konten legen heute in einem bestehenden Raum neue Zugänge an (`mitgliedschaftAnlegen` wird nur in
+  `provisionierung.mjs` für den neuen Testbetrieb eines Selbststarts aufgerufen). Folge: **Bestehende Pilot- und
+  Kundenräume können bis SI-P6b keine neuen Beschäftigten aufnehmen** — gewollt nach G.2 (fail-closed, keine Hintertür),
+  aber für jeden laufenden Piloten mit Personalwechsel ein Betriebshindernis. SI-P6b ist damit vor der Aufnahme weiterer
+  Beschäftigter in Pilotbetrieben nötig. **Offen: ausdrückliche Bestätigung des Betreibers**, dass diese Folge bis SI-P6b
+  hingenommen wird (Hinweis in `docs/FREIGABEPAKET-BETREIBER.md` G.2).
 - **Fenster der Ersteinrichtung (15 Minuten).** Innerhalb des Fensters darf der Betreiber in einem soeben neu angelegten
-  Raum weitere Codes anlegen. Hat die Kundin oder der Kunde in diesen Minuten schon Daten erfasst, gäbe es dort eine
-  Lücke von höchstens dieser Länge. Das Fenster ist bewusst kurz, wird einmalig je Raum gesetzt und nie verlängert.
+  Raum weitere Codes anlegen. Das Fenster schließt sich jetzt zusätzlich mit der ersten Sitzung aus einem Kundenzugang des
+  Raums und mit jeder Mitgliedschaft. Restrisiko: Erfasst eine Kundin oder ein Kunde Daten, ohne dass eine solche Sitzung
+  besteht, bleibt die Lücke höchstens 15 Minuten. Das Fenster wird einmalig je Raum gesetzt und nie verlängert. Die
+  Sitzungsablage wird nur bei offenem Fenster vollständig gelesen (Aufwand linear in der Zahl der Sitzungen, nur während
+  einer Ersteinrichtung).
+- **Raumlöschung und Löschmarke.** Bleibt eine Löschung liegen, bleibt der Raumname gesperrt, bis die Löschung zu Ende
+  geführt ist (Betreiberkonsole erneut; für `t-…`-Räume der Löschlauf). Weil `raumLoeschen` die Marke jetzt für jeden
+  Aufrufer setzt, gilt ein über die Konsole halb gelöschter `t-…`-Raum für den Löschlauf als bestätigt (`aufraeumen.mjs`;
+  weiterhin nur mit Testkern und abgelaufener Aufbewahrung) — gewollt, die Löschung war beauftragt.
+- **Betreiber-Freigabepunkt: Rolle `betreiber` in `/einrichten` ausgenommen** (`einrichten.mjs`, `rolle !== "betreiber"`).
+  Ein Betreibercode gibt kein Kundendatenrecht im Sinne der Zugangsregel, wird aber mit dem Raumnamen eines Kundenraums
+  angelegt und ist ein Betreiberzugang. Bewusst nicht geändert (Bereitstellungsskript, Prüfläufe brauchen ihn); der Betreiber
+  bestätigt diese Ausnahme ausdrücklich.
+- **Vor-Deploy-Prüfung: Betreiber-2FA in der Auslieferung.** `betreiberPflicht` (`server/lib/betreiber-zweifaktor.mjs`) ist
+  bei `NODE_ENV=production` immer wahr (Altbestand WP-32d, ohne Abschalter). Ohne eingerichteten zweiten Faktor antworten
+  `/api/zugaenge` und `/api/bestand-anlegen` (Mandantenanlage) mit 403. Vor jedem Produktionseinsatz eines Betreibercodes
+  muss sein Faktor eingerichtet sein (`werkzeug/betreiber-faktor-vorlauf.mjs` zeigt den Ablauf); sonst ist die
+  Ersteinrichtung neuer Betriebe in Produktion nicht möglich. Code hier nicht geändert.
+- **`ziel` in `/api/zugaenge` ohne Muster** (`daten.mjs`, SI-P7 zuständig): Ohne bestehenden Raum entsteht dort ohnehin
+  nichts (`betriebFuerNeuenCode`); die Prüfung wie bei `bestand-anlegen` (`/^[a-z0-9][a-z0-9_-]{2,79}$/i`) ist als Patch
+  vorgeschlagen.
 - **Demoräume.** Ein Raum, der nur Demozugänge hat, nimmt weitere Demozugänge über `/einrichten` auf. Das Bereitstellungsskript
   braucht das. Ein Kundenraum wird so nicht „demo“: Er hat mindestens einen Zugang ohne `demo`.
 - **Betreibercodes.** Die Rolle `betreiber` ist ausgenommen (Betreiber-Codes enthalten kein Kundendatenrecht, SI-06 schließt sie

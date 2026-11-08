@@ -324,3 +324,141 @@ describe("beide Wege teilen den Vermerk der Ersteinrichtung", () => {
     expect((await viaEinrichten("kr-beide-b", "planer", null)).status).toBe(409);
   });
 });
+
+/* ==========================================================================
+   Review SI-P6 (unabhängiger Opus-Review): Lücken, durch die ein bestehender
+   Kundenraum wieder als „neu“ erschien. Jede Prüfung war vor der Korrektur rot.
+   ========================================================================== */
+
+/** Sitzungsablage, deren Auflistung scheitert: Die Raumlöschung bricht nach Konten, Mitgliedschaften und Vermerk ab. */
+const klemmendeSitzungen = (echt) => new Proxy(echt, { get(ziel, name) {
+  if (name === "list") return async () => { throw new Error("Sitzungsablage klemmt"); };
+  return Reflect.get(ziel, name);
+} });
+
+describe("Befund 1: abgebrochene Raumlöschung macht den Kundenraum nicht wieder „neu“", () => {
+  it("Teilabbruch nach Konten und Mitgliedschaften (Raum mit Vermerk): Kern und Personal bleiben → 409 auf beiden Wegen; nach vollständiger Löschung wieder neu", async () => {
+    const raum = "kr-teil-a";
+    await raumAnlegen(raum);
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(200);
+    uhr(jetzt + 20 * 60_000);
+    const a = await accounts.accountAnlegen(laden(), { email: `${raum}@kundenraum.example`, status: "aktiv" });
+    expect((await accounts.mitgliedschaftAnlegen(laden(), { accountId: a.account.id, raum, betrieb: 0,
+      mandantId: `m-${raum}`, rolle: "planer", status: "aktiv" })).ok).toBe(true);
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    const { sitzungsSpeicher } = await import("../server/lib/sitzungen.mjs");
+    const erg = await raumLoeschen(laden(), klemmendeSitzungen(sitzungsSpeicher()), raum);
+    expect(erg.vollstaendig).toBe(false);
+    expect(await laden().get(`kern:${raum}`, { type: "json" })).not.toBeNull();       // Kundendaten noch da
+    expect(await anzahlKonten(raum)).toBe(0);                                          // Zugänge schon weg
+    expect((await laden().list({ prefix: accounts.raummitgliedSchluessel(raum, "") })).blobs).toEqual([]);
+    for (const e of ALLE_ROLLEN) {
+      const r = await viaZugaenge(raum, [e]);
+      expect(r.status, `zugaenge ${e.rolle} ${r.text}`).toBe(409);
+      expect(r.grund).toBe("kundenraum_gesperrt");
+    }
+    for (const [rolle, personId] of ROLLEN)
+      expect((await viaEinrichten(raum, rolle, personId)).status, `einrichten ${rolle}`).toBe(409);
+    expect(await anzahlKonten(raum)).toBe(0);
+    /* Zu Ende gelöscht: Marke und Vermerk sind weg, ein neuer Betrieb gleichen Namens ist wieder neu. */
+    const fertig = await raumLoeschen(laden(), sitzungsSpeicher(), raum);
+    expect(fertig.fehler, JSON.stringify(fertig)).toEqual([]);
+    expect(await laden().get(`loeschung:${raum}`, { type: "json" })).toBeNull();
+    expect(await laden().get(`ersteinrichtung:${raum}`, { type: "json" })).toBeNull();
+    await raumAnlegen(raum);
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(200);
+  });
+
+  it("Teilabbruch bei einem Altbestand ohne Vermerk: die Löschmarke allein hält den Raum gesperrt", async () => {
+    const raum = "kr-teil-b";
+    await raumAnlegen(raum);
+    await altKonto(raum, "leitung");
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    const { sitzungsSpeicher } = await import("../server/lib/sitzungen.mjs");
+    const erg = await raumLoeschen(laden(), klemmendeSitzungen(sitzungsSpeicher()), raum);
+    expect(erg.vollstaendig).toBe(false);
+    expect(await anzahlKonten(raum)).toBe(0);
+    expect(await laden().get(`loeschung:${raum}`, { type: "json" })).not.toBeNull();
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(409);
+    expect((await viaEinrichten(raum, "leitung", "p1")).status).toBe(409);
+    expect(await anzahlKonten(raum)).toBe(0);
+    await raumLoeschen(laden(), sitzungsSpeicher(), raum);
+  });
+
+  it("die Marke des Löschlaufs (aufraeumen.mjs) sperrt ebenso; eine unlesbare Marke → 503", async () => {
+    await raumAnlegen("kr-marke");
+    await laden().setJSON("loeschung:kr-marke", { begonnen: new Date(jetzt).toISOString() });
+    try { expect((await viaZugaenge("kr-marke", [{ rolle: "leitung" }])).status).toBe(409); }
+    finally { await laden().delete("loeschung:kr-marke"); }
+    const datei = path.join(wurzel, "centric", "loeschung%3Akr-marke.json");
+    await writeFile(datei, "{ kein json");
+    try { expect((await viaEinrichten("kr-marke", "leitung", "p1")).status).toBe(503); }
+    finally { await rm(datei, { force: true }); }
+    expect(await anzahlKonten("kr-marke")).toBe(0);
+  });
+});
+
+describe("Befund 3: eine Mitgliedschaft ohne Raumindex zählt", () => {
+  it("mitglied:<account>:<raum> ohne raummitglied:-Eintrag → 409 auf beiden Wegen", async () => {
+    const raum = "kr-ohne-index";
+    await raumAnlegen(raum);
+    const a = await accounts.accountAnlegen(laden(), { email: `${raum}@kundenraum.example`, status: "aktiv" });
+    expect((await accounts.mitgliedschaftAnlegen(laden(), { accountId: a.account.id, raum, betrieb: 0,
+      mandantId: `m-${raum}`, rolle: "planer", status: "aktiv" })).ok).toBe(true);
+    await laden().delete(accounts.raummitgliedSchluessel(raum, a.account.id));
+    expect((await laden().list({ prefix: accounts.raummitgliedSchluessel(raum, "") })).blobs).toEqual([]);
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(409);
+    expect((await viaEinrichten(raum, "leitung", "p1")).status).toBe(409);
+    expect(await anzahlKonten(raum)).toBe(0);
+  });
+});
+
+describe("Befund 4: Selbststart-Räume sind nie „neu“ für einen Betreibercode; Demoräume nur für Demozugänge", () => {
+  it("Raumkennung t-… (Rennfenster der Provisionierung) → 409 auf beiden Wegen, auch ohne jeden Zugang", async () => {
+    await raumAnlegen("t-kr-selbst");
+    expect((await viaZugaenge("t-kr-selbst", [{ rolle: "leitung" }])).status).toBe(409);
+    expect((await viaEinrichten("t-kr-selbst", "leitung", "p1")).status).toBe(409);
+    expect((await viaEinrichten("t-kr-selbst", "leitung", "p1", true)).status).toBe(409);
+    expect(await anzahlKonten("t-kr-selbst")).toBe(0);
+  });
+
+  it("Betrieb mit selbstAngelegt im Kern oder Eintrag in „selbststarts“ → 409", async () => {
+    const B = await import("../server/lib/bestand.mjs");
+    const selbst = bestandFuer("m-kr-selbst-kern");
+    selbst.mandanten[0].selbstAngelegt = true;
+    await B.bestandSchreiben(laden(), "kr-selbst-kern", selbst, { durch: "Pruefung" });
+    expect((await laden().get("kern:kr-selbst-kern", { type: "json" })).mandanten[0].selbstAngelegt).toBe(true);
+    expect((await viaZugaenge("kr-selbst-kern", [{ rolle: "leitung" }])).status).toBe(409);
+    await raumAnlegen("kr-selbst-liste");
+    const alt = (await laden().get("selbststarts", { type: "json" })) || [];
+    await laden().setJSON("selbststarts", [...alt, { raum: "kr-selbst-liste", angelegt: new Date(jetzt).toISOString() }]);
+    try { expect((await viaEinrichten("kr-selbst-liste", "leitung", "p1")).status).toBe(409); }
+    finally { await laden().setJSON("selbststarts", alt); }
+    expect(await anzahlKonten("kr-selbst-kern") + await anzahlKonten("kr-selbst-liste")).toBe(0);
+  });
+
+  it("Demoraum demo-…: die Bereitstellung (Betreibercode, Demozugänge) bleibt möglich, ein Kundenzugang nie", async () => {
+    await raumAnlegen("demo-kr-schau");
+    expect((await viaZugaenge("demo-kr-schau", [{ rolle: "leitung" }])).status).toBe(409);
+    expect((await viaEinrichten("demo-kr-schau", "leitung", "p1")).status).toBe(409);
+    expect((await viaEinrichten("demo-kr-schau", "betreiber", null)).status).toBe(200);
+    expect((await viaEinrichten("demo-kr-schau", "leitung", "p1", true)).status).toBe(200);
+    expect((await viaEinrichten("demo-kr-schau", "planer", null, true)).status).toBe(200);
+    expect((await viaEinrichten("demo-kr-schau", "planer", null, false)).status).toBe(409);
+  });
+});
+
+describe("Befund 5: das Fenster schließt sich mit der ersten Kundenanmeldung", () => {
+  it("nach der Anmeldung mit einem Code des Raums → 409 auf beiden Wegen, obwohl das Fenster noch offen wäre", async () => {
+    await raumAnlegen("kr-angemeldet");
+    const erster = await viaZugaenge("kr-angemeldet", [{ rolle: "leitung" }]);
+    expect(erster.status, erster.text).toBe(200);
+    expect((await viaZugaenge("kr-angemeldet", [{ rolle: "planer" }])).status).toBe(200);   // Fenster offen, niemand angemeldet
+    const an = await rufen(daten, "/api/anmelden", { zugangscode: erster.zugaenge[0].code });
+    expect(an.status, an.text).toBe(200);
+    const vorher = await anzahlKonten("kr-angemeldet");
+    expect((await viaZugaenge("kr-angemeldet", [{ rolle: "planer" }])).status).toBe(409);
+    expect((await viaEinrichten("kr-angemeldet", "planer", null)).status).toBe(409);
+    expect(await anzahlKonten("kr-angemeldet")).toBe(vorher);
+  });
+});
