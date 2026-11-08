@@ -24,6 +24,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+/* Viele Tests starten Server-Handler mit echter Ablage und brauchen 3–4 s; die Standardgrenze von 5 s ließ die Datei in der CI sporadisch rot werden. */
+vi.setConfig({ testTimeout: 60000 });
+
 const WIRT = "127.0.0.1:3000";
 const T0 = Date.UTC(2026, 10, 7, 9, 0, 15);
 const ADMIN = "kundenraum-verwaltung-0123456789";

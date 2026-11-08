@@ -342,7 +342,7 @@ async function behandeln(req, context, ctx) {
       const { bestand: ziel, eintraege } = rumpf;
       if (!ziel || typeof ziel !== "string" || !Array.isArray(eintraege) || !eintraege.length)
         return antwort({ fehler: "Unvollständig." }, 400);
-      /* SI-P6: Raumname wie bei bestand-anlegen prüfen (Review-Befund 8: Schreibweisen-Varianten wie „Kunde“ vs. „kunde“). */
+      /* SI-P6: Raumname wie bei bestand-anlegen prüfen (Review-Befund 8: Format- und Zeichenprüfung; Groß-/Kleinschreibung deckt sie NICHT ab — in Produktion (Linux) hat „KR-ALT“ keinen eigenen Kern und endet in 409). */
       if (!/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(ziel)) return antwort({ fehler: "Kein gültiger Raumname." }, 400);
       if (eintraege.length > 20) return antwort({ fehler: "Zu viele auf einmal." }, 400);
       /* Nur bekannte Rollen, nie „betreiber“ (SI-06, interne Prüfung 2026-11):
