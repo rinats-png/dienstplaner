@@ -315,7 +315,7 @@ export const GRENZEN = {
        Anlegen oder Versand geht. Alle anderen zählen dann degradiert im
        Speicher weiter, damit ein Fehler im Zählerstore nicht die ganze
        Anwendung lahmlegt (bremse()). */
-  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true },
+  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true, stufeVerfall: 3600 },
   demo:       { versuche: 20,  fenster: 300,  sperre: 300,  failClosed: true },
   einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
@@ -477,7 +477,7 @@ export const WEITERE = {
  */
 export function kennung(req, sitzung) {
   if (sitzung && sitzung.bestand) return `s:${kurz(sitzung.bestand)}`;
-  return `a:${adressKuerzel(herkunft(req))}`;
+  return `a:${adressKuerzel(herkunftGruppe(herkunft(req)))}`;
 }
 
 /**
@@ -577,6 +577,61 @@ export function adresseNormieren(a) {
   const p = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(s);
   if (p) return p[1];
   return s.toLowerCase();
+}
+
+/* --------------------------------------------------------------------------
+   HERKUNFT FÜR DIE BREMSE: IPv6 NACH /64 (SI-P7)
+
+   Ein Anschluss bekommt bei IPv6 üblicherweise ein ganzes /64: 2^64 Adressen,
+   die ein Gerät frei wechseln darf (Datenschutzadressen tun es von selbst).
+   Zählte die Bremse je Adresse, hätte jede Adresse einen frischen Zähler: Die
+   Sperre je Herkunft wäre wirkungslos, und der Dienst-Zähler liefe mit
+   Fehlversuchen voll (der Dienst bremst dann alle).
+
+   Deshalb zählt die Bremse bei IPv6 je /64 (die ersten vier Glieder). IPv4
+   bleibt, wie es war. Adressen, die nur IPv4 einbetten, zählen wie diese
+   IPv4-Adresse: IPv4-gemappt (::ffff:a.b.c.d, auch in der Hex-Schreibweise) und
+   NAT64 (64:ff9b::/96); sonst teilten sich alle Nutzer eines NAT64-Übergangs
+   ein einziges /64 und sperrten einander aus. Was keine Adresse ist
+   („unbekannt“), bleibt unverändert.
+   -------------------------------------------------------------------------- */
+
+/** Die acht 16-Bit-Glieder einer (normierten) IPv6-Adresse, sonst `null`.
+    @param {string} s */
+function ipv6Glieder(s) {
+  if (isIP(s) !== 6) return null;
+  let t = s;
+  const m = /^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(t);   // eingebettete IPv4 am Ende
+  if (m) {
+    const o = m[2].split(".").map(Number);
+    t = `${m[1]}${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
+  }
+  let teile;
+  if (t.includes("::")) {
+    const [links, rechts] = t.split("::");
+    const l = links ? links.split(":") : [];
+    const r = rechts ? rechts.split(":") : [];
+    teile = [...l, ...Array(Math.max(0, 8 - l.length - r.length)).fill("0"), ...r];
+  } else teile = t.split(":");
+  if (teile.length !== 8) return null;
+  const glieder = teile.map((h) => parseInt(h, 16));
+  return glieder.every((g) => Number.isInteger(g) && g >= 0 && g <= 0xffff) ? glieder : null;
+}
+
+/**
+ * Die Adresse, unter der die Bremse zählt: IPv4 wie bisher, IPv6 als /64.
+ * @param {string} adresse  roh oder schon normiert
+ * @returns {string}
+ */
+export function herkunftGruppe(adresse) {
+  const a = adresseNormieren(adresse);
+  const g = ipv6Glieder(a);
+  if (!g) return a;
+  const v4 = (hoch, tief) => `${hoch >> 8}.${hoch & 255}.${tief >> 8}.${tief & 255}`;
+  /* IPv4-gemappt (::ffff:0:0/96) und NAT64 (64:ff9b::/96): zählt wie die eingebettete IPv4-Adresse. */
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return v4(g[6], g[7]);
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return v4(g[6], g[7]);
+  return `${g.slice(0, 4).map((x) => x.toString(16)).join(":")}::/64`;
 }
 
 /**
@@ -965,13 +1020,21 @@ export async function bremse(art, kennung, ziel, optionen = {}) {
          ändert sich nichts — für einen Angreifer wird jeder weitere Anlauf
          teurer als der vorige. */
       const bisher = (await s.get(`stufe:${art}:${kennung}`, { type: "json" })) || { n: 0 };
-      const stufe = g.steigend ? bisher.n : 0;
+      /* Die Stufe verfällt (SI-P7): Eine Stufe je `stufeVerfall` Sekunden seit dem ENDE der letzten Sperre. Ohne das stiege
+         sie hinter einem Stations-NAT mit gelegentlichen Tippfehlern über Tage auf die längste Sperre, weil gelungene
+         Anmeldungen sie nicht mehr zurücksetzen. Ein Angreifer, der ohne Pause weiter anrennt, steigt weiter bis `max`.
+         Gemessen wird ab dem Ende (`ende`), nicht ab dem Setzen (`zuletzt`, Review SI-P7): Sonst verfiel eine Sperre von
+         4800 s schon während sie lief um eine Stufe, und die Höchstdauer wurde nie erreicht. Alte Einträge ohne `ende`
+         rechnen wie bisher ab `zuletzt`. */
+      const seitEnde = bisher.ende ?? bisher.zuletzt;
+      const abgebaut = g.stufeVerfall && seitEnde ? Math.max(0, Math.floor((jetzt - seitEnde) / g.stufeVerfall)) : 0;
+      const stufe = g.steigend ? Math.max(0, bisher.n - abgebaut) : 0;
       const dauer = g.steigend
         ? Math.min(g.max || 86400, g.sperre * Math.pow(2, stufe))
         : g.sperre;
       await s.setJSON(sperreSchluessel, { bis: jetzt + dauer, seit: jetzt, stufe });
       if (g.steigend) await s.setJSON(`stufe:${art}:${kennung}`,
-        { n: Math.min(stufe + 1, 12), zuletzt: jetzt });
+        { n: Math.min(stufe + 1, 12), zuletzt: jetzt, ende: jetzt + dauer });
       /* Die Strafe tragen Sperre und Stufe. Der Zählstand wird geleert —
          sonst zählte das vorige Fenster nach Ablauf der Sperre gleitend
          weiter, und wer Retry-After befolgt, wäre mit dem ersten Versuch
@@ -1331,6 +1394,216 @@ export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
     if (notLesen(`${k}:${f}`) > 0) notZaehlen(`${k}:${f}`, bis, -1);
     else notZaehlen(`${k}:${f - 1}`, bis, -1);
   }
+}
+
+/* --------------------------------------------------------------------------
+   GÜLTIGE CODES TROTZ SPERRE — UND WAS DAS KOSTEN DARF (SI-P7)
+
+   Die Bremse beim Anmelden zählt jeden Versuch VOR der Codeprüfung. Hinter einem
+   Stations-NAT (eine Adresse für alle) reichte deshalb eine Person mit
+   Tippfehlern, um die Herkunft zu sperren, und danach wurde auch der GÜLTIGE
+   Code abgewiesen. Ebenso füllten Fehlversuche aus vielen Adressen die Grenze
+   des ganzen Dienstes, und dann kam niemand mehr hinein.
+
+   Jetzt (daten.mjs, anmelden): Ein nutzbarer Zugangscode — gefunden, nicht
+   gesperrt, nicht abgelaufen, bekannte Rolle, KEIN Betreibercode — läuft an
+   Sperre, Betriebsgrenze und Dienstgrenze vorbei und zählt dort nicht mit.
+   Gezählt werden nur Fehlversuche. Eine gelungene Anmeldung nimmt Fehlversuche
+   ausdrücklich NICHT zurück: Wer sonst Fehlversuche mit einer eigenen gültigen
+   Anmeldung abwechselte, setzte den Zähler jedes Mal zurück und riete ohne Ende.
+
+   Was dabei nicht verloren gehen darf: Während einer Sperre gibt es für
+   Fehlversuche keine Zählung mehr (sie werden sofort abgewiesen). Ein Treffer
+   würde jetzt aber durchkommen — die Sperre allein bremst das Raten also nicht
+   mehr. Darum zählt jede abgewiesene Anfrage weiter (Sperrversuch):
+
+     je Herkunft   mehr als SPERRVERSUCHE.herkunft.versuche abgewiesene Anfragen
+                   in EINER Sperre → diese Herkunft bleibt bis zum Ende dieser
+                   Sperre hart gesperrt, auch für gültige Codes.
+     im ganzen     mehr als SPERRVERSUCHE.gesamt.versuche in einem Fenster (jede
+     Dienst        Herkunft trägt höchstens versuche + 1 bei) → die Durchlässigkeit
+                   gilt für niemanden mehr, bis das Fenster endet (der Dienst
+                   steht unter verteiltem Raten; dann gilt wieder das alte Bild).
+
+   Betreibercodes sind ausgenommen: Sie tragen den zweiten Faktor, und dessen
+   Fehlversuche bremst genau diese Bremse.
+
+   Gleichzeitige Anfragen (Review SI-P7, HOCH): Ein Fehlversuch wird erst gezählt,
+   NACHDEM bremse() geantwortet hat — eine Platte später. Ein Bündel aus 200
+   unbekannten Codes und einem Treffer wurde so vollständig ausgewertet, bevor
+   die harte Sperre stand, und der Treffer kam durch. Deshalb meldet jede Anfrage,
+   die den Weg über die Bremse nimmt, ihre Auswertung SYNCHRON an
+   (sperrAuswertungBeginnen: nach dem Nachschlagen des Codes, aber ohne await
+   zwischen ihrer Entscheidung und der Anmeldung — die Reihenfolge der Antworten
+   legt der Zeitpunkt der Entscheidung fest, das Nachschlagen verrät nichts),
+   und ein nutzbarer Code
+   wartet, bis alle vorher angemeldeten Auswertungen derselben Herkunft gezählt
+   sind (sperrAuswertungenAbwarten), bevor gueltigeDurchlassen entscheidet. Damit
+   gilt auch unter Last: Ein Treffer kommt nur durch, wenn bei seiner
+   Entscheidung jeder früher entschiedene Fehlversuch dieser Herkunft gezählt ist
+   und die Grenze nicht gerissen hat. Gültige Anmeldungen zählen dabei weiter
+   nicht; sie warten nur auf die Fehlversuche VOR ihnen (keine Aushungerung durch
+   nachfolgende).
+
+   Prozessspeicher, wie die Notbremse (ein Prozess je Container, siehe oben);
+   kein Fremddienst nötig, kein Eintrag in der Ablage.
+   -------------------------------------------------------------------------- */
+
+export const SPERRVERSUCHE = {
+  /* Je SPERRE (nicht je Zeitfenster): mehr abgewiesene Anfragen als hier, und die Herkunft ist bis zum Ende dieser Sperre
+     hart gesperrt. Zusammen mit den acht freien Fehlversuchen vor der Sperre ergibt das höchstens 16 Rateversuche je Sperre
+     (früher acht). */
+  herkunft: { versuche: 8 },
+  /* Im ganzen Dienst je Fenster. Jede Herkunft trägt höchstens herkunft.versuche + 1 dazu: Eine einzelne Quelle kann den
+     Deckel nicht reißen, erst viele verschiedene (verteiltes Raten). */
+  gesamt: { versuche: 1200, fenster: 300 },
+  /* Höchstens so viele Herkünfte mit laufender Sperrzählung im Speicher (Review SI-P7, NIEDRIG). Darüber steht der Dienst unter
+     verteiltem Raten aus sehr vielen Herkünften (/64): Die Durchlässigkeit gilt dann für niemanden mehr bis zum Ende des
+     Fensters (fail-closed, wie der Dienst-Deckel) — statt die Karte ohne Grenze wachsen zu lassen. */
+  speicher: 100000,
+  /* So lange wartet ein nutzbarer Code höchstens auf die Zählung der Fehlversuche vor ihm; danach nimmt er den Weg über die
+     Bremse wie jeder Fehlversuch (gleiche Antwort, gezählt). */
+  warteGrenzeMs: 10000,
+};
+
+/** Kennung → Ende (ms) der harten Sperre. */
+const hartBis = new Map();
+/** Kennung → { n: abgewiesene Anfragen in der laufenden Sperre, bis: Ende dieser Sperre (ms) }. */
+const sperrStand = new Map();
+let hartGesamtBis = 0;
+/* Aufräumen erst, wenn die Karte über diese Marke wächst; danach liegt die Marke beim Doppelten des Rests. So kostet das
+   Aufräumen im Mittel O(1) je Aufruf, auch wenn viele Einträge noch laufen (vorher O(n) bei JEDEM Aufruf über 500). */
+let raeumenAb = 500;
+/** Zeitpunkt (ms) des letzten Aufräumens — begrenzt das Aufräumen einer vollen Karte auf einmal je Sekunde. */
+let zuletztGeraeumt = 0;
+
+/**
+ * Eine abgewiesene Anfrage (Sperre, Betriebs-, Dienst- oder Notgrenze) weiterzählen.
+ * @param {string} kennung  die Kennung der Herkunft (kennung(req, null))
+ * @param {number} [wartet]  wie lange die Sperre noch läuft (Sekunden)
+ * @returns {{hart: boolean, gesamtHart: boolean}}
+ */
+export function sperrversuchZaehlen(kennung, wartet = 300) {
+  const ms = Date.now();
+  const he = SPERRVERSUCHE.herkunft, ge = SPERRVERSUCHE.gesamt;
+  const bis = ms + Math.max(1, Math.floor(wartet)) * 1000;
+  const gl = fensterLage(ms, ge.fenster);
+  /* Dieselbe Sperre: solange die gezählte noch läuft. Ihr Ende steht fest und wandert nicht mit (Review SI-P7, MITTEL): Bei
+     ausgefallener Zählerablage meldet bremse() je Anfrage „noch g.sperre Sekunden“ — ein Ende, das mit jeder Anfrage
+     weiterrückt. Früher erkannte man dieselbe Sperre am Ende ±2 s; der Zähler begann dann alle zwei Sekunden neu, die Sperre
+     wurde nie hart, und eine Herkunft konnte dauerhaft raten und allein den Dienst-Deckel füllen. Erst nach dem Ende der
+     gezählten Sperre beginnt eine neue bei null. */
+  let st = sperrStand.get(kennung);
+  if (!st || st.bis < ms) {
+    /* Aufräumen (Review 3): unterhalb der Obergrenze an der wachsenden Marke; ist die Karte voll, vor JEDER Überlaufprüfung —
+       höchstens einmal je Sekunde, damit eine volle Karte mit lauter laufenden Einträgen nicht jeden Aufruf O(n) kostet. Vorher
+       stieg die Marke über die Obergrenze, der Überlaufzweig kehrte vorher zurück, und Abgelaufenes wurde nie mehr entfernt:
+       Die Durchlässigkeit blieb bis zum Neustart aus statt bis zum Fensterende. */
+    const voll = sperrStand.size >= SPERRVERSUCHE.speicher;
+    if ((!voll && sperrStand.size >= raeumenAb) || (voll && ms - zuletztGeraeumt >= 1000)) {
+      for (const [k, v] of sperrStand) if (v.bis < ms) sperrStand.delete(k);
+      for (const [k, v] of hartBis) if (v < ms) hartBis.delete(k);
+      zuletztGeraeumt = ms;
+      raeumenAb = Math.min(SPERRVERSUCHE.speicher, Math.max(500, 2 * sperrStand.size));
+    }
+    if (!sperrStand.has(kennung) && sperrStand.size >= SPERRVERSUCHE.speicher) {
+      /* Überlauf: nicht vergessen (fail-open), sondern die Durchlässigkeit für alle bis zum Fensterende abschalten. */
+      hartGesamtBis = Math.max(hartGesamtBis, gl.ende);
+      return { hart: true, gesamtHart: true };
+    }
+    st = { n: 0, bis };
+    sperrStand.set(kennung, st);
+  }
+  st.n++;
+  if (st.n > he.versuche) hartBis.set(kennung, Math.max(hartBis.get(kennung) || 0, st.bis));
+  /* Der Dienst-Zähler nimmt von jeder Herkunft nur die ersten herkunft.versuche + 1 Versuche je Sperre. */
+  if (st.n <= he.versuche + 1) {
+    const alle = gewichtet(notZaehlen(`sperrv:gesamt:${gl.index}`, gl.ende + ge.fenster * 1000),
+      notLesen(`sperrv:gesamt:${gl.index - 1}`), gl.anteil);
+    if (alle > ge.versuche) hartGesamtBis = Math.max(hartGesamtBis, gl.ende);
+  }
+  return { hart: (hartBis.get(kennung) || 0) > ms, gesamtHart: hartGesamtBis > ms };
+}
+
+/**
+ * Darf ein nutzbarer Zugangscode von dieser Herkunft an den Grenzen vorbei? Ohne Wirkung, zählt nichts.
+ * Vorher sperrAuswertungenAbwarten(kennung) — sonst fehlen die Fehlversuche, die gerade noch in bremse() stecken.
+ * @param {string} kennung
+ * @returns {boolean}
+ */
+export function gueltigeDurchlassen(kennung) {
+  const ms = Date.now();
+  if (hartGesamtBis > ms) return false;
+  return !((hartBis.get(kennung) || 0) > ms);
+}
+
+/** Kennung → Promise, das sich erfüllt, wenn alle bisher angemeldeten Auswertungen dieser Herkunft gezählt sind. */
+const auswertungen = new Map();
+/** Kennung → Zahl der angemeldeten, noch nicht gezählten Auswertungen (Diagnose und Prüfungen). */
+const offen = new Map();
+
+/**
+ * Eine Auswertung über die Bremse anmelden — synchron zwischen der Entscheidung der Anfrage und ihrem nächsten await.
+ * Die zurückgegebene Funktion meldet sie als gezählt (nach sperrversuchZaehlen bzw. nach einer freien Bremse);
+ * mehrfacher Aufruf schadet nicht.
+ * @param {string} kennung
+ * @returns {() => void}
+ */
+export function sperrAuswertungBeginnen(kennung) {
+  /** @type {(v?: any) => void} */
+  let fertig = () => {};
+  const eigene = new Promise((r) => { fertig = r; });
+  const vorher = auswertungen.get(kennung);
+  const kette = vorher ? Promise.all([vorher, eigene]) : eigene;
+  auswertungen.set(kennung, kette);
+  offen.set(kennung, (offen.get(kennung) || 0) + 1);
+  kette.then(() => { if (auswertungen.get(kennung) === kette) auswertungen.delete(kennung); });
+  let erledigt = false;
+  return () => {
+    if (erledigt) return;
+    erledigt = true;
+    const n = (offen.get(kennung) || 1) - 1;
+    if (n > 0) offen.set(kennung, n); else offen.delete(kennung);
+    fertig();
+  };
+}
+
+/**
+ * Wie viele Auswertungen dieser Herkunft angemeldet, aber noch nicht gezählt sind.
+ * @param {string} kennung
+ * @returns {number}
+ */
+export function sperrAuswertungenOffen(kennung) {
+  return offen.get(kennung) || 0;
+}
+
+/**
+ * Warten, bis alle VOR diesem Aufruf angemeldeten Auswertungen der Herkunft gezählt sind. Spätere zählen nicht dazu.
+ * @param {string} kennung
+ * @param {number} [grenzeMs]  danach false (fail-closed: der Aufrufer lässt dann nicht durch, sondern bremst wie üblich)
+ * @returns {Promise<boolean>}
+ */
+export async function sperrAuswertungenAbwarten(kennung, grenzeMs = SPERRVERSUCHE.warteGrenzeMs) {
+  const kette = auswertungen.get(kennung);
+  if (!kette) return true;
+  /** @type {any} */
+  let uhr;
+  const zeit = new Promise((r) => { uhr = setTimeout(() => r(false), grenzeMs); });
+  try {
+    return await Promise.race([kette.then(() => true), zeit]);
+  } finally {
+    clearTimeout(uhr);
+  }
+}
+
+/** Nur für Prüfungen: Zähler und harte Sperren der Sperrversuche leeren. */
+export function sperrversuchZuruecksetzen() {
+  hartBis.clear();
+  sperrStand.clear();
+  hartGesamtBis = 0;
+  raeumenAb = 500;
+  zuletztGeraeumt = 0;
+  for (const k of [...not.keys()]) if (k.startsWith("sperrv:")) not.delete(k);
 }
 
 /* --------------------------------------------------------------------------
