@@ -195,3 +195,9 @@ Die Cloud-Sitzung hatte vier offene Befunde dokumentiert (Commit d996bab). Stand
 | B4 | niedrig-mittel | Behoben (45312df): Mitgliedschaft auch ueber `mitglied:*:<raum>`. |
 
 B1 wurde in den eigenen Reviews der Zentralisierung zunaechst nur als niedriger Freigabepunkt gefuehrt ("Rolle betreiber ausgenommen") und erst durch den Befund der Cloud-Sitzung als hoch erkannt: ein Betreibercode, gebunden an einen Kundenraum, liest und schreibt dessen Bestand. Damit ist die Betreiberentscheidung G.2 (alle API-Pfade, alle privilegierten Rollen) auch fuer `/einrichten` erfuellt.
+
+### 9.1 Restlücke M1 (mittel, Betreiberentscheidung offen)
+
+Ein Betreibercode, der in einem neuen Raum oder im Fenster der Ersteinrichtung angelegt wird, bleibt gültig, wenn der Raum danach Kundenraum wird (die Bereitstellungsskripte legen den Betreibercode bewusst zuerst an). `raumLage` zählt Betreibercodes nicht; die Betreibersitzung liest `bestandSichtBetreiber` (Personen-ID, Rolle, Eintritt/Austritt, adressAenderungen, Kontakt, Anschrift) und schreibt die kaufmaennischen Felder. Gleiches gilt fuer vor B1 angelegte Betreibercodes in Kundenraeumen (weder erkannt noch gesperrt). Taeter kann nur der Verwalter (Schluessel + 2FA) sein. Der Wortlaut der Entscheidung (keine neuen Codes fuer bestehende Kundenraeume) ist erfuellt, das Schutzziel nicht vollstaendig.
+
+Optionen (Entscheidung des Betreibers, Empfehlung A): **A** lesender Kundenraumschutz: Betreibersitzung auf einem Raum mit raumLage = kundenraum erhaelt kein /api/bestand (GET/PUT), deckt Altcodes ab; **B** Anlage von Kundencodes sperrt/blockiert aktive Betreibercodes desselben Raums (Staging-Skripte muessten auf einen eigenen Betreiberraum umgestellt werden); **Mindestens vor Produktiveinsatz:** Inventar der Betreibercodes mit bestand = Kundenraum.

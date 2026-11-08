@@ -314,6 +314,16 @@ describe("Kundenraumschutz über POST /einrichten (Verwalterschlüssel)", () => 
     expect((await viaEinrichten("kre-b1-fenster", "betreiber", null)).status).toBe(409);
   });
 
+  it("B1 (N2): Betreibercode im reinen Demoraum → 200; im Fenster neben einem Kundencode ebenfalls (dokumentierte Restlücke M1, Betreiberentscheidung offen)", async () => {
+    expect((await viaEinrichten("demo-kr-b1", "betreiber", null)).status).toBe(200);
+    await raumAnlegen("kre-b1-rest");
+    expect((await viaEinrichten("kre-b1-rest", "leitung", "p1")).status).toBe(200);
+    /* Restlücke M1 (SI-P6-NACHWEIS §9): Im Fenster der Ersteinrichtung ist ein Betreibercode noch erlaubt; die Betreiber-LESEsicht auf
+       einen Kundenraum ist (noch) nicht gesperrt — Entscheidung des Betreibers, siehe FREIGABEPAKET G.2. Schlägt dieser Test später
+       fehl, weil die Lesesperre kam, ist er bewusst auf 409 umzustellen. */
+    expect((await viaEinrichten("kre-b1-rest", "betreiber", null)).status).toBe(200);
+  });
+
   it("B1: Lesefehler beim Betreibercode → 503, kein Code", async () => {
     await raumAnlegen("kre-b1-lese");
     const datei = path.join(wurzel, "centric", "konto%3Azzz-kaputt3.json");
