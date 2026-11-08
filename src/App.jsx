@@ -10263,17 +10263,22 @@ function AppInnen() {
         const m = s.mandanten.find((x) => x.id === id);
         if (window.prompt(`Löscht Mandant, Einheiten, Personal und Pläne unwiderruflich.\nZur Bestätigung den Namen eingeben:\n\n${m.name}`) !== m.name) {
           melde("Löschung abgebrochen."); return s; }
-        melde(`${m.name} gelöscht.`); setDetail(null);
         /* Der Datenraum auf dem Server geht mit — Bestand, Monatsscherben,
            Sicherungen, Zugangscodes und offene Sitzungen. Vorher verschwand
            der Betrieb nur aus der Konsole; die Daten lagen weiter im
            Speicher, ohne dass jemand sie je wieder erreicht hätte. Das
-           Löschkonzept verlangt, dass „gelöscht" auch gelöscht heißt. */
-        if (m.raum) SP.raumLoeschen(m.raum)
-          .then((r) => melde(`Datenraum „${m.raum}" gelöscht (${r.geloescht} Einträge).`))
-          .catch((e) => melde(`Datenraum nicht gelöscht: ${e.message}`));
-        return bLog({ ...s, mandanten: s.mandanten.filter((x) => x.id !== id),
-          rechnungen: s.rechnungen.filter((r) => r.mandantId !== id) }, `Mandant „${m.name}" gelöscht`);
+           Löschkonzept verlangt, dass „gelöscht" auch gelöscht heißt.
+           SI-P6 (Review M1): Aus der Liste geht der Mandant erst, wenn der
+           Server die Löschung als vollständig meldet. Sonst bleibt er stehen,
+           damit dieselbe Löschung erneut ausgeführt werden kann — ein halb
+           gelöschter Raum ist bis dahin für neue Zugänge gesperrt. */
+        const entfernen = (st) => bLog({ ...st, mandanten: st.mandanten.filter((x) => x.id !== id),
+          rechnungen: st.rechnungen.filter((r) => r.mandantId !== id) }, `Mandant „${m.name}" gelöscht`);
+        if (!m.raum) { melde(`${m.name} gelöscht.`); setDetail(null); return entfernen(s); }
+        SP.raumLoeschen(m.raum)
+          .then((r) => { melde(`${m.name} gelöscht — Datenraum „${m.raum}" (${r.geloescht} Einträge).`); setDetail(null); upd(entfernen); })
+          .catch((e) => melde(`Löschung unvollständig – erneut ausführen. ${e.message}`));
+        return s;
       }),
       rechnungStellen: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);

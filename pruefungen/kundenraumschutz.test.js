@@ -462,3 +462,76 @@ describe("Befund 5: das Fenster schließt sich mit der ersten Kundenanmeldung", 
     expect(await anzahlKonten("kr-angemeldet")).toBe(vorher);
   });
 });
+
+/* ==========================================================================
+   Zweiter Review (45312df): N5 — Lesefehler der Sitzungsablage im Fenster,
+   Marke ohne Kern und die Reihenfolge am Ende der Raumlöschung.
+   ========================================================================== */
+
+describe("Review 2, N5: Sitzungsablage im offenen Fenster nicht lesbar", () => {
+  it("unlesbare Sitzung im offenen Fenster → 503 auf beiden Wegen, nichts entsteht", async () => {
+    const raum = "kr-sitzung-kaputt";
+    await raumAnlegen(raum);
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(200);      // Fenster offen
+    const vorher = await anzahlKonten(raum);
+    const datei = path.join(wurzel, "centric-sitzungen", "t%3Azzz-kaputt.json");
+    await writeFile(datei, "{ keine sitzung");
+    try {
+      const r = await viaZugaenge(raum, [{ rolle: "planer" }]);
+      expect(r.status, r.text).toBe(503);
+      expect(r.zugaenge).toBeUndefined();
+      const e = await viaEinrichten(raum, "planer", null);
+      expect(e.status, e.text).toBe(503);
+      expect(e.zugangscode).toBeUndefined();
+    } finally { await rm(datei, { force: true }); }
+    expect(await anzahlKonten(raum)).toBe(vorher);
+  });
+});
+
+describe("Review 2, M1/N5: Ende der Raumlöschung", () => {
+  /** Ablage, in der genau ein Schlüssel nicht gelöscht werden kann. */
+  const klemmt = (echt, schluessel) => new Proxy(echt, { get(ziel, name) {
+    if (name === "delete") return async (key) => {
+      if (key === schluessel) throw new Error("klemmt");
+      return ziel.delete(key);
+    };
+    return Reflect.get(ziel, name);
+  } });
+
+  it("scheitert der Vermerk der Ersteinrichtung, bleibt der Kern stehen (der nächste Lauf findet den Raum) und der Raum gesperrt", async () => {
+    const raum = "kr-ende-vermerk";
+    await raumAnlegen(raum);
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(200);
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    const { sitzungsSpeicher } = await import("../server/lib/sitzungen.mjs");
+    const erg = await raumLoeschen(klemmt(laden(), `ersteinrichtung:${raum}`), sitzungsSpeicher(), raum);
+    expect(erg.vollstaendig).toBe(false);
+    expect(await laden().get(`kern:${raum}`, { type: "json" })).not.toBeNull();
+    expect(await laden().get(`loeschung:${raum}`, { type: "json" })).not.toBeNull();
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(409);
+    const fertig = await raumLoeschen(laden(), sitzungsSpeicher(), raum);
+    expect(fertig.fehler).toEqual([]);
+  });
+
+  it("Marke ohne Kern: ein erneuter Aufruf von /api/raum-loeschen räumt sie ab und gibt den Raumnamen wieder frei", async () => {
+    const raum = "kr-ende-marke";
+    await raumAnlegen(raum);
+    await altKonto(raum, "leitung");
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    const { sitzungsSpeicher } = await import("../server/lib/sitzungen.mjs");
+    const erg = await raumLoeschen(klemmt(laden(), `loeschung:${raum}`), sitzungsSpeicher(), raum);
+    expect(erg.vollstaendig).toBe(false);
+    expect(await laden().get(`kern:${raum}`, { type: "json" })).toBeNull();
+    expect(await laden().get(`loeschung:${raum}`, { type: "json" })).not.toBeNull();
+    await raumAnlegen(raum);                                                // neuer Betrieb, gleicher Name: noch gesperrt
+    const gesperrt = await viaZugaenge(raum, [{ rolle: "leitung" }]);
+    expect(gesperrt.status).toBe(409);
+    /* Wiederholung über die Betreiberkonsole (idempotent, auch ohne Kern). */
+    const l = await rufen(daten, "/api/anmelden", { zugangscode: OP });
+    const w = await rufen(daten, "/api/raum-loeschen", { bestand: raum, bestaetigung: raum }, l.token);
+    expect(w.status, w.text).toBe(200);
+    expect(await laden().get(`loeschung:${raum}`, { type: "json" })).toBeNull();
+    await raumAnlegen(raum);
+    expect((await viaZugaenge(raum, [{ rolle: "leitung" }])).status).toBe(200);
+  });
+});

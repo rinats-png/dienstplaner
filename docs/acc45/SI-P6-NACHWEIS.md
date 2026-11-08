@@ -43,7 +43,9 @@ Ein Raum steht in genau einer **Lage**; jede Antwort 409 `kundenraum_gesperrt` l
 **Vorrang (Review-Nachtrag, Befunde 1, 3, 4, 5)** — vor der Tabelle geprüft, jeweils `kundenraum`:
 - **Begonnene Löschung** (`loeschung:<raum>`). `raumLoeschen` setzt die Marke jetzt selbst als ersten Schritt (für jeden
   Aufrufer: Betreiberkonsole, Löschlauf, Rückbau der Provisionierung; lässt sie sich nicht setzen, wird nichts gelöscht) und
-  entfernt sie erst ganz am Ende. Der Vermerk `ersteinrichtung:<raum>` geht erst **nach** dem Kern. Ein Teilabbruch (Konten,
+  entfernt sie erst ganz am Ende. Der Vermerk `ersteinrichtung:<raum>` geht als letzter Eintrag **vor** dem Kern (Review 2:
+  scheitert er, steht der Kern noch und der Löschlauf bzw. die Konsole findet den Raum wieder; nach dem Kern bleibt nur die
+  Marke). Ein Teilabbruch (Konten,
   Mitgliedschaften schon weg, Kern und Personal noch da) macht den Raum damit nicht mehr „neu“.
 - **Selbststart-Raum**: Raumkennung `t-…`, ein Betrieb mit `selbstAngelegt` im Kern oder ein Eintrag in `selbststarts`.
   Schließt das Rennfenster der Provisionierung (Kern vor Mitgliedschaft). Verträglich: Selbststart-Räume bekommen ihre
@@ -79,7 +81,8 @@ Raumnamen des Demoraums an). Beim vollständigen Löschen eines Raums werden Ver
 
 ## 3. Tests
 
-- `pruefungen/kundenraumschutz.test.js` (27; die roten Stände der ersten 19 stehen im Commit `8646daa`; die 8 Prüfungen des
+- `pruefungen/kundenraumschutz.test.js` (30; Review 2: 3 weitere, gegen `bf2cece` alle rot, die Reihenfolgeprüfung auch
+  gegen `45312df` rot; die roten Stände der ersten 19 stehen im Commit `8646daa`; die 8 Prüfungen des
   Review-Nachtrags sind ohne die Korrektur in `kundenraumschutz.mjs`/`raumloeschung.mjs` alle rot, mit Stash gemessen —
   Teilabbruch der Löschung mit und ohne Vermerk, Marke des Löschlaufs und unlesbare Marke, Mitgliedschaft ohne Raumindex,
   `t-…`, `selbstAngelegt`/`selbststarts`, `demo-…`, Kundenanmeldung im Fenster): **negative Berechtigungstests**
@@ -111,6 +114,10 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
   Löschung macht den Raum „neu“) und NIEDRIG 3, 4, 5 im Code behoben (siehe Vorrang oben), MITTEL 2 in §6 korrigiert,
   NIEDRIG 6 und 7 als Betreiber-Freigabepunkte in §6, NIEDRIG 8 (`ziel` in `/api/zugaenge` ohne Muster) gehört in
   `daten.mjs` (SI-P7) und ist dort als Patch vorgeschlagen.
+- Opus auf `45312df`: keine kritischen/hohen. M1 (Konsole entfernte den Mandanten auch bei unvollständiger Löschung; Marke
+  ohne Kern ohne Wiederholweg): Konsole korrigiert, Reihenfolge Vermerk vor Kern, Wiederholbarkeit belegt; Fremdraum-
+  Lesefehler bewusst nicht ausgenommen (§6). N5: Tests für unlesbare Sitzung im Fenster (503) und Marke ohne Kern
+  (Wiederholung über `/api/raum-loeschen`) ergänzt.
 
 ## 6. Verbleibende Risiken und offene Entscheidungen
 
@@ -130,7 +137,16 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
   Sitzungsablage wird nur bei offenem Fenster vollständig gelesen (Aufwand linear in der Zahl der Sitzungen, nur während
   einer Ersteinrichtung).
 - **Raumlöschung und Löschmarke.** Bleibt eine Löschung liegen, bleibt der Raumname gesperrt, bis die Löschung zu Ende
-  geführt ist (Betreiberkonsole erneut; für `t-…`-Räume der Löschlauf). Weil `raumLoeschen` die Marke jetzt für jeden
+  geführt ist (Betreiberkonsole erneut; für `t-…`-Räume mit Kern der Löschlauf). **Wiederholung:** `/api/raum-loeschen` ist
+  idempotent und wiederholbar, auch wenn der Kern schon weg ist und nur die Marke blieb (geprüft). Die Konsole
+  (`src/App.jsx`, `loescheMandant`) nimmt den Mandanten seit Review 2 erst nach vollständigem Erfolg aus der Liste; sonst
+  meldet sie „Löschung unvollständig – erneut ausführen“ und bietet dieselbe Löschung weiter an (vorher verschwand er auch
+  bei 500, und ein zweiter Versuch über die Oberfläche war unmöglich). Eine Marke ohne Kern findet der Löschlauf
+  (`aufraeumen.mjs`, nur `kern:t-*`) nicht; dann hilft nur die Wiederholung über Konsole/API (Betriebshandbuch §3).
+  **Lesefehler fremder Einträge** (unlesbares `konto:*`, `feed:*`, eine Sitzung) zählen weiter gegen die Vollständigkeit:
+  Ein unlesbarer Eintrag kann zu diesem Raum gehören (etwa ein verbliebener Zugangscode), sie auszunehmen hieße „nicht
+  lesbar“ als „nicht da“ zu werten. Bewusst nicht geändert; betriebliche Folge: Ein einziger beschädigter Eintrag irgendwo
+  hält jede Raumlöschung offen, bis er repariert ist (`werkzeug/ablage-pruefen.mjs`). Weil `raumLoeschen` die Marke jetzt für jeden
   Aufrufer setzt, gilt ein über die Konsole halb gelöschter `t-…`-Raum für den Löschlauf als bestätigt (`aufraeumen.mjs`;
   weiterhin nur mit Testkern und abgelaufener Aufbewahrung) — gewollt, die Löschung war beauftragt.
 - **Betreiber-Freigabepunkt: Rolle `betreiber` in `/einrichten` ausgenommen** (`einrichten.mjs`, `rolle !== "betreiber"`).
