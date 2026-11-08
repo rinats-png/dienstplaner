@@ -75,9 +75,13 @@ const anl = await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: { versio
   anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [], einstempeln: { [`v1|${VOR24.tag}`]: { start: VOR24.zeit }, [`v2|${VOR1.tag}`]: { start: VOR1.zeit } }, erfassung: {},
 }] } });
 pruef("Raum mit Standort angelegt", anl.status === 200, `Status ${anl.status} ${anl.text}`);
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const CODES = { l1: await zugang("leitung", "l1", 0) };
+for (const id of [...IDS, "v1", "v2"]) CODES[id] = await zugang("mitarbeiter", id, 0);
 const T = {};
-T.l1 = await anmelden(await zugang("leitung", "l1", 0));
-for (const id of [...IDS, "v1", "v2"]) T[id] = await anmelden(await zugang("mitarbeiter", id, 0));
+T.l1 = await anmelden(CODES.l1);
+for (const id of [...IDS, "v1", "v2"]) T[id] = await anmelden(CODES[id]);
 
 const stempeln = (t, rumpf) => rufe(t, "/api/stempeln", "POST", { datum: HEUTE, ...rumpf });
 const antworten = [];

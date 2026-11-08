@@ -56,10 +56,16 @@ const betrieb = (id) => ({ id, name: id, einheiten: [{ id: "e1" }],
 const tBetr = await anmelden(await zugang("Betreiber", "betreiber", null, 0));
 pruef("Raum mit zwei Betrieben eingerichtet", (await rufe(tBetr, "bestand-anlegen", "POST",
   { inhalt: { version: 9, stand: 1, session: null, mandanten: [betrieb("m-a"), betrieb("m-b")] } })).status === 200);
-const tA = await anmelden(await zugang("Leitung A", "leitung", "l", 0));
-const tB = await anmelden(await zugang("Leitung B", "leitung", "l", 1));
-const tMA = await anmelden(await zugang("Beschäftigte A", "mitarbeiter", "x", 0));
-const tMB = await anmelden(await zugang("Beschäftigte B", "mitarbeiter", "x", 1));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTA = await zugang("Leitung A", "leitung", "l", 0);
+const codeTB = await zugang("Leitung B", "leitung", "l", 1);
+const codeTMA = await zugang("Beschäftigte A", "mitarbeiter", "x", 0);
+const codeTMB = await zugang("Beschäftigte B", "mitarbeiter", "x", 1);
+const tA = await anmelden(codeTA);
+const tB = await anmelden(codeTB);
+const tMA = await anmelden(codeTMA);
+const tMB = await anmelden(codeTMB);
 const lesbar = async (t) => (await rufe(t, "bestand")).status === 200;
 
 /* --- D1 --- */

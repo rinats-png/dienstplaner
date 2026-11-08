@@ -11,7 +11,8 @@ import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letz
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
-import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { betreiberZweifaktor, betreiberFaktorFrisch } from "../lib/betreiber-zweifaktor.mjs";
+import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
@@ -332,13 +333,17 @@ async function behandeln(req, context, ctx) {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "keine Betreibersitzung");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
+      /* SI-P6: Dauerhafte Zugangscodes entstehen nur mit frischer Anmeldung UND frischem zweiten Faktor (unten). */
+      if (!frisch(sB)) return neuAnmelden();
       const kZ = kennung(req, sB);
       const bZ = await bremse("zugaenge", kZ);
       if (!bZ.frei) { await protokoll("zugaenge", kZ, "gebremst", bZ.grund);
         return zuVielAntwort(bZ.wartet); }
       const { bestand: ziel, eintraege } = rumpf;
-      if (!ziel || !Array.isArray(eintraege) || !eintraege.length)
+      if (!ziel || typeof ziel !== "string" || !Array.isArray(eintraege) || !eintraege.length)
         return antwort({ fehler: "Unvollständig." }, 400);
+      /* SI-P6: Raumname wie bei bestand-anlegen prüfen (Review-Befund 8: Format- und Zeichenprüfung; Groß-/Kleinschreibung deckt sie NICHT ab — in Produktion (Linux) hat „KR-ALT“ keinen eigenen Kern und endet in 409). */
+      if (!/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(ziel)) return antwort({ fehler: "Kein gültiger Raumname." }, 400);
       if (eintraege.length > 20) return antwort({ fehler: "Zu viele auf einmal." }, 400);
       /* Nur bekannte Rollen, nie „betreiber“ (SI-06, interne Prüfung 2026-11):
          Sonst prägte eine einzige Betreibersitzung dauerhafte Betreiber-Codes. */
@@ -355,11 +360,38 @@ async function behandeln(req, context, ctx) {
       if (ohnePerson)
         return antwort({ fehler: `Ein Zugang der Rolle „${ohnePerson.rolle}" braucht eine Person.` }, 400);
 
+      /* SI-P6 (1/2): frischer zweiter Faktor. Mit eingerichtetem Faktor gehört ein Code aus der App in den Rumpf
+         (`zweifaktor`); in der Auslieferung ist der Faktor Pflicht. Erst danach wird irgendetwas über den Raum
+         preisgegeben oder geschrieben. */
+      const faktorFrisch = await betreiberFaktorFrisch({ store, k: kZ, sitzung: sB, code: rumpf.zweifaktor });
+      if (faktorFrisch.antwort) return faktorFrisch.antwort;
+
       /* Codes gibt es nur für einen eingerichteten Raum, gebunden an die
          Kennung seines Betriebs (erstbefuellung.mjs). */
       const zielGelesen = await bestandLesen(store, ziel);
       const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
       if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
+      /* SI-P6 (2/2), Betreiberentscheidung G.2: Für einen BESTEHENDEN Kundenraum legt der Betreiber ohne nachweisbare
+         Kundenzustimmung keine neuen Zugänge an — gleich welche Rolle, gleich ob eine Leitung fehlt. Erlaubt ist die
+         Ersteinrichtung eines neuen Betriebs (lib/kundenraumschutz.mjs). Dieser Weg legt nie Demozugänge an.
+         Kann das nicht geprüft werden, entsteht nichts. */
+      let lage;
+      try { lage = await raumLage(store, ziel); }
+      catch {
+        await protokoll("zugaenge", kZ, "fehler", "Raum nicht prüfbar (Kundenraumschutz)");
+        return antwort({ fehler: "Der Raum lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
+      }
+      if (!neueZugaengeErlaubt(lage, false)) {
+        await protokoll("zugaenge", kZ, "abgewiesen", `Kundenraum: neue Zugänge gesperrt (${lage.art}${lage.grund ? ` · ${lage.grund}` : ""})`);
+        return antwort({ fehler: KUNDENRAUM_TEXT, grund: "kundenraum_gesperrt" }, 409);
+      }
+      if (lage.art === "neu") {
+        try { await ersteinrichtungVermerken(store, ziel); }
+        catch {
+          await protokoll("zugaenge", kZ, "fehler", "Ersteinrichtung nicht vermerkbar");
+          return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
+        }
+      }
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
         .map((b) => alphabet[b % alphabet.length]).join("");
@@ -643,6 +675,9 @@ async function behandeln(req, context, ctx) {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
+      /* SI-P6 (Review B4): Wie die Zugangsanlage danach nur mit frischer Anmeldung — sonst entstünde ein Raum, für den
+         sich keine Codes mehr holen lassen, weil die Anmeldung dazwischen abläuft. */
+      if (!frisch(sB)) return neuAnmelden();
       /* Der einzige Weg, einen leeren Raum einzurichten (erstbefuellung.mjs).
          Ohne Angabe der eigene Raum der Betreibersitzung. „leer" und „test"
          baut der Server selbst; „demo" und ein eigener Inhalt werden

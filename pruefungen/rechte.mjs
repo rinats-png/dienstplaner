@@ -23,7 +23,7 @@ const HERKUNFT = process.env.CENTRIC_HERKUNFT || null;
 const herkunft = () => (HERKUNFT ? { "x-forwarded-for": HERKUNFT } : {});
 
 /** Legt einen Zugang an und gibt den Code zurück. */
-async function zugang(rolle, person) {
+async function zugangAnlegen(rolle, person) {
   const a = await fetch(`${BASIS}/einrichten`, { method: "POST",
     headers: { "content-type": "application/json", ...herkunft() },
     body: JSON.stringify({ verwaltung: GEHEIM, name: "Probebetrieb", bestand: RAUM,
@@ -39,7 +39,40 @@ async function zugang(rolle, person) {
    eingerichteten Raum, und einrichten darf ihn nur der Betreiber
    (/api/bestand-anlegen). Sein Code entsteht deshalb zuerst; die übrigen
    unten, sobald der Raum steht. */
-const CODE_BETREIBER = await zugang("betreiber", null);
+const CODE_BETREIBER = await zugangAnlegen("betreiber", null);
+
+/* SI-P6 (Kundenraumschutz): Für einen bestehenden Kundenraum legt der Betreiber keine neuen Codes an. Erlaubt ist
+   nur die Ersteinrichtung — das Fenster schließt, sobald sich eine Kundin oder ein Kunde im Raum anmeldet. Alle
+   Kundencodes für „probe2“ entstehen deshalb gleich nach dem Einrichten des Raums als Vorrat, in der Reihenfolge
+   ihres Gebrauchs; zugang() gibt sie danach aus. Jeder Block bekommt weiterhin einen eigenen, frischen Code. Wer
+   hier einen Block mit neuem Code ergänzt, trägt ihn in VORRAT_BEDARF nach (sonst bricht zugang() mit Hinweis ab). */
+const VORRAT_BEDARF = [
+  ["leitung", null], ["betriebsrat", 2], ["mitarbeiter", 0],   // Grundcodes (CODES)
+  ["mitarbeiter", 0],                                           // S1 Stempeluhr
+  ["leitung", null],                                            // M1 Monatsscherben
+  ["subplaner", "p1"],                                          // S4
+  ["mitarbeiter", 0],                                           // S5
+  ["leitung", "p2"],                                            // S6
+  ["mitarbeiter", 0],                                           // S8
+  ["mitarbeiter", "p2"],                                        // S10
+  ["mitarbeiter", "p3"],                                        // S11
+];
+const vorrat = new Map();
+const vorratSchluessel = (rolle, person) => `${rolle}|${person === null ? "" : String(person)}`;
+async function vorratAnlegen() {
+  for (const [rolle, person] of VORRAT_BEDARF) {
+    const k = vorratSchluessel(rolle, person);
+    if (!vorrat.has(k)) vorrat.set(k, []);
+    vorrat.get(k).push(await zugangAnlegen(rolle, person));
+  }
+}
+/** Ein Kundencode für „probe2“ aus dem Vorrat (siehe oben). */
+async function zugang(rolle, person) {
+  const liste = vorrat.get(vorratSchluessel(rolle, person));
+  if (!liste || !liste.length)
+    throw new Error(`Kein Code „${rolle}“/${person} im Vorrat — VORRAT_BEDARF ergänzen (SI-P6: nach der ersten Kundenanmeldung legt der Betreiber keine neuen an).`);
+  return liste.shift();
+}
 
 const anmelden = async (code) => {
   const a = await fetch(`${BASIS}/api/anmelden`, { method: "POST",
@@ -108,6 +141,7 @@ const wAnlegen = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
   headers: { authorization: `Bearer ${tBetreiberStart}`, "content-type": "application/json" },
   body: JSON.stringify({ bestand: RAUM, inhalt: start }) });
 pruef("Betreiber richtet den Raum ein", wAnlegen.status === 200, `Status ${wAnlegen.status}`);
+await vorratAnlegen();
 const CODES = {
   leitung: await zugang("leitung", null),
   betriebsrat: await zugang("betriebsrat", 2),

@@ -212,9 +212,18 @@ describe("/einrichten", () => {
     }
     expect(Object.keys(await alleKonten(laden())).length).toBe(vorher);
   });
-  it("ausdrückliche Rolle: angelegt", async () => {
+  /* SI-P6 (Betreiberentscheidung G.2): In einem BESTEHENDEN Kundenraum (hier RAUM, der durch frühere Tests Zugänge hat)
+     legt /einrichten nichts mehr an (pruefungen/kundenraumschutz.test.js). Die Anlage mit ausdrücklicher Rolle gilt der
+     Ersteinrichtung eines neuen Betriebs und wird dort geprüft. */
+  const neuerBetrieb = async (raum) => {
+    const B = await import("../server/lib/bestand.mjs");
+    await B.bestandSchreiben(laden(), raum, bestand(), { durch: "Pruefung" });
+    return { bestand: raum };
+  };
+  it("ausdrückliche Rolle: angelegt (in einem neuen Betrieb)", async () => {
+    const neu = await neuerBetrieb("rollen-erst-a");
     for (const r of ["mitarbeiter", "leitung", "betriebsrat"]) {
-      const a = await anlegen(r, r === "mitarbeiter" ? {} : { person: r === "leitung" ? "al" : "ar" });
+      const a = await anlegen(r, { ...neu, ...(r === "mitarbeiter" ? {} : { person: r === "leitung" ? "al" : "ar" }) });
       expect(a.status, `${String(r)} ${a.roh}`).toBe(200);
       expect(a.zugangscode).toBeTruthy();
     }
@@ -233,7 +242,8 @@ describe("/einrichten", () => {
       const a = await anlegen(r, { demo: true, person: "al", gruppe: "x" });
       expect(a.status, `${String(r)} ${a.roh}`).toBe(400);
     }
-    const ok = await anlegen("leitung", { demo: true, person: "al", gruppe: "x" });
+    const neu = await neuerBetrieb("rollen-erst-b");
+    const ok = await anlegen("leitung", { ...neu, demo: true, person: "al", gruppe: "x" });
     expect(ok.status, ok.roh).toBe(200);
   });
 });

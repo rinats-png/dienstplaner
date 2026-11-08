@@ -75,11 +75,18 @@ pruef("Raum mit zwei Betrieben eingerichtet", (await rufe(tBetr, "/api/bestand-a
     anfragen: [{ id: "t-a2", personId: "a2", typ: "tausch", art: "tausch", status: "offen", von: "2026-12-01", bis: "2026-12-01", interessenten: [] }] },
     { id: "m-b", name: "B", einheiten: [{ id: "e1" }], personen: [person("b1", "mitarbeiter")], abweichungen: {}, anfragen: [], notrufe: [],
       nachrichten: [mitteilung("n-b1", "b1")] }] } })).status === 200);
-const tA1 = await anmelden(await zugang("mitarbeiter", "a1", 0));
-const tP1 = await anmelden(await zugang("planer", "p1", 0));
-const tL1 = await anmelden(await zugang("leitung", "l1", 0));
-const tR1 = await anmelden(await zugang("betriebsrat", "r1", 0));
-const tS1 = await anmelden(await zugang("subplaner", "s1", 0));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTA1 = await zugang("mitarbeiter", "a1", 0);
+const codeTP1 = await zugang("planer", "p1", 0);
+const codeTL1 = await zugang("leitung", "l1", 0);
+const codeTR1 = await zugang("betriebsrat", "r1", 0);
+const codeTS1 = await zugang("subplaner", "s1", 0);
+const tA1 = await anmelden(codeTA1);
+const tP1 = await anmelden(codeTP1);
+const tL1 = await anmelden(codeTL1);
+const tR1 = await anmelden(codeTR1);
+const tS1 = await anmelden(codeTS1);
 
 /* Z1 */
 const alt = await senden(tP1, { auftraege: [{ id: "x", personId: "a2", betreff: "frei", text: "frei", titel: "frei" }] });

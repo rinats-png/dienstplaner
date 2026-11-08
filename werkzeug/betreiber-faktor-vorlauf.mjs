@@ -118,6 +118,25 @@ if (echtes && !globalThis.__betreiberFaktorVorlauf) {
       }
       return echtes(url, bekannt ? mit(bekannt) : opts);
     }
+    /* SI-P6: POST /api/zugaenge verlangt einen FRISCHEN Code im Rumpf (nie einen schon verbrauchten Schritt).
+       Für Betreibertoken, die dieser Vorlauf selbst angemeldet hat: nächster ungenutzter Schritt im erlaubten
+       Fenster; ist keiner frei, bis zum nächsten Schritt warten (höchstens 30 s). Fremde Token bleiben unberührt. */
+    if (/\/api\/zugaenge(\?|$)/.test(adresse) && opts && typeof opts.body === "string"
+      && String(opts.method || "GET").toUpperCase() === "POST" && opts.headers) {
+      const kopf = kopfMit(opts, {});
+      const token = String(kopf.authorization || kopf.Authorization || "").replace(/^Bearer\s+/i, "");
+      let eintrag = null;
+      for (const a of gemerkt.values()) { try { if (a.geheimnis && JSON.parse(a.antwort.text).token === token) eintrag = a; } catch { /* weiter */ } }
+      let rumpf = null;
+      try { rumpf = JSON.parse(opts.body); } catch { /* kein JSON */ }
+      if (eintrag && rumpf && typeof rumpf === "object" && rumpf.zweifaktor === undefined) {
+        let schritt = Math.max(eintrag.letzter + 1, schrittZu(Date.now()) - 1);
+        while (schritt > schrittZu(Date.now()) + 1) await new Promise((r) => setTimeout(r, 1000));
+        eintrag.letzter = schritt;
+        return echtes(url, { ...opts, body: JSON.stringify({ ...rumpf, zweifaktor: hotp(base32Dekodieren(eintrag.geheimnis), schritt) }) });
+      }
+      return echtes(url, opts);
+    }
     if (/\/api\/abmelden(\?|$)/.test(adresse) && opts && opts.headers) {
       const kopf = opts.headers;
       const auth = (typeof kopf.get === "function" ? kopf.get("authorization") : kopf.authorization || kopf.Authorization) || "";
@@ -145,7 +164,9 @@ if (echtes && !globalThis.__betreiberFaktorVorlauf) {
     /* Der Bestätigungsschritt ist verbraucht; der nächste Schritt liegt im erlaubten Fenster. */
     const l = await post(url, opts, { zugangscode: rumpf.zugangscode, zweifaktor: code(b.geheimnis, 1) });
     const antwort = { status: l.status, text: await l.text(), kopf: { "content-type": "application/json; charset=utf-8" } };
-    if (l.status === 200) gemerkt.set(rumpf.zugangscode, { antwort });
+    /* Geheimnis und letzter verbrauchter Schritt bleiben für Aktionen, die einen frischen Code verlangen
+       (POST /api/zugaenge, SI-P6): Bestätigung und Anmeldung haben s und s+1 verbraucht. */
+    if (l.status === 200) gemerkt.set(rumpf.zugangscode, { antwort, geheimnis: b.geheimnis, letzter: schrittZu(Date.now()) + 1 });
     return antwortAus(antwort);
   };
 }

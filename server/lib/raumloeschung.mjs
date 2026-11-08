@@ -69,6 +69,22 @@ export async function raumLoeschen(store, sitzungen, raum) {
     return blobs;
   };
 
+  /* 0. Die Marke der begonnenen Löschung (loeschung:<raum>) — vor allem anderen, für jeden Aufrufer (Betreiberkonsole,
+        Löschlauf, Rückbau der Provisionierung). Der Löschlauf (aufraeumen.mjs) setzt sie schon selbst; dann bleibt
+        seine stehen. Sie geht erst ganz am Ende, wenn nichts liegen blieb. Solange sie steht, ist der Raum für den
+        Kundenraumschutz (kundenraumschutz.mjs) kein „neuer“ Raum: Ein Teilabbruch nimmt Konten, Mitgliedschaften und
+        Vermerk womöglich schon mit, Kern und Personal bleiben — der Betreiber dürfte sonst für die verbliebenen
+        Kundendaten neue Leitungscodes erzeugen (Review SI-P6, Befund 1). Lässt sie sich nicht setzen, wird nichts
+        gelöscht: lieber gar nicht als halb und unmarkiert. */
+  const marke = `loeschung:${raum}`;
+  try {
+    const inhalt = { begonnen: new Date().toISOString(), durch: "raumloeschung" };
+    if (typeof store.setJSONWennNeu === "function") await store.setJSONWennNeu(marke, inhalt);
+    else if ((await store.get(marke, { type: "json" })) == null) await store.setJSON(marke, inhalt);
+  } catch (e) {
+    return { raum, geloescht: 0, vollstaendig: false, fehler: [{ schluessel: marke, grund: grundVon(e) }] };
+  }
+
   /* 1. Ein liegengebliebenes Schreibjournal zuerst (bestand.mjs). Bliebe es
         stehen, legte jeder Leser es über das, was noch da ist — und der
         Kern des gelöschten Raums erschiene wieder. Dann Scherben, Stände,
@@ -228,11 +244,18 @@ export async function raumLoeschen(store, sitzungen, raum) {
         wenn bis dahin nichts liegen geblieben ist. Der Kern ist der Marker:
         Solange er steht, findet der nächste Lauf den Raum und räumt nach. */
   if (fehler.length === 0) await weg(`bestand:${raum}`);
+  /* SI-P6: Der Vermerk der Ersteinrichtung (kundenraumschutz.mjs) gehört zum Raum. Bliebe er liegen, wäre ein später
+     unter demselben Namen neu angelegter Betrieb dauerhaft als „Fenster abgelaufen“ gesperrt. Er geht erst, wenn alles
+     andere weg ist, aber VOR dem Kern: Scheitert er, steht der Kern noch, und der nächste Lauf (Löschlauf über kern:t-*,
+     Konsole) findet den Raum wieder. Gesperrt bleibt der Raum bis dahin ohnehin durch die Marke (Schritt 0). Nach dem
+     Kern bleibt nur noch die Marke — scheitert allein sie, räumt ein erneuter Aufruf (Konsole, /api/raum-loeschen,
+     auch ohne Kern) sie ab. */
+  if (fehler.length === 0) await weg(`ersteinrichtung:${raum}`);
   if (fehler.length === 0) await weg(`kern:${raum}`);
-  /* 7. Die Marke des Löschlaufs (aufraeumen.mjs) — erst, wenn der Kern weg
-        ist; bis dahin sagt sie dem nächsten Lauf, dass hier eine begonnene
-        Löschung zu Ende zu bringen ist. */
-  if (fehler.length === 0) await weg(`loeschung:${raum}`);
+  /* 7. Die Marke der begonnenen Löschung (Schritt 0, aufraeumen.mjs) — erst, wenn der Kern weg ist; bis dahin sagt
+        sie dem nächsten Lauf, dass hier eine begonnene Löschung zu Ende zu bringen ist, und dem Kundenraumschutz,
+        dass der Raum nicht neu ist. */
+  if (fehler.length === 0) await weg(marke);
 
   return { raum, geloescht, vollstaendig: fehler.length === 0, fehler };
 }

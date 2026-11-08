@@ -81,6 +81,7 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     expect(ohneZusatz(dateienMit(/centric-sitzungen|sitzungsSpeicher/))).toEqual([
       "server.mjs",                              // Verdrahtung des Löschlaufs
       "server/funktionen/daten.mjs",             // sk:-Schlüssel und das Beenden gesperrter Sitzungen
+      "server/lib/kundenraumschutz.mjs",         // SI-P6: nur LESEN — Kundensitzung im offenen Fenster der Ersteinrichtung schließt das Fenster
       "server/lib/schluesselepoche.mjs",         // Bindung skbindung (Wiederherstellungsschutz der sk:)
       "server/lib/schreibhalt.mjs",              // WP-28c: nur der Name, zur Einordnung „nie halten“ (kein Zugriff)
       "server/lib/sicherungsschluessel.mjs",     // Widerruf der sk:-Schlüssel mit Vermerk (SI-P1)
@@ -101,8 +102,8 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     const t = ohneZusatz(dateienMit(/[`"']t:/));
     const sk = dateienMit(/[`"']sk:/);
     const as = ohneZusatz(dateienMit(/[`"']as:/));
-    /* t: — Primitive und Raumlöschung; nie in einem Endpunkt. */
-    expect(t, "t:").toEqual(["server/lib/raumloeschung.mjs", "server/lib/sitzungen.mjs"]);
+    /* t: — Primitive, Raumlöschung und (SI-P6, nur lesend) der Kundenraumschutz; nie in einem Endpunkt. */
+    expect(t, "t:").toEqual(["server/lib/kundenraumschutz.mjs", "server/lib/raumloeschung.mjs", "server/lib/sitzungen.mjs"]);
     /* sk: — Primitive, daten.mjs (Sicherungsschlüssel verwalten), Raumlöschung, Widerruf (SI-P1). */
     /* schreibhalt.mjs (WP-28c): nur als Präfix der Einordnung, was gehalten wird — kein Zugriff auf die Ablage. */
     expect(sk, "sk:").toEqual(["server/funktionen/daten.mjs", "server/lib/raumloeschung.mjs",

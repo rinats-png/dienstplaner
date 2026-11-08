@@ -66,11 +66,18 @@ const tBetr = await anmelden(await zugang("betreiber", null, 0));
 const anl = await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: SESSION(), mandanten: [betrieb("m-a", "a"), betrieb("m-b", "b")] } });
 pruef("Raum mit zwei Betrieben angelegt (Anlegen mit session im Inhalt)", anl.status === 200, `Status ${anl.status} ${anl.text}`);
-const tAL = await anmelden(await zugang("leitung", "al", 0));
-const tAP = await anmelden(await zugang("planer", "ap", 0));
-const tAM = await anmelden(await zugang("mitarbeiter", "am", 0));
-const tBL = await anmelden(await zugang("leitung", "bl", 1));
-const tBM = await anmelden(await zugang("mitarbeiter", "bm", 1));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTAL = await zugang("leitung", "al", 0);
+const codeTAP = await zugang("planer", "ap", 0);
+const codeTAM = await zugang("mitarbeiter", "am", 0);
+const codeTBL = await zugang("leitung", "bl", 1);
+const codeTBM = await zugang("mitarbeiter", "bm", 1);
+const tAL = await anmelden(codeTAL);
+const tAP = await anmelden(codeTAP);
+const tAM = await anmelden(codeTAM);
+const tBL = await anmelden(codeTBL);
+const tBM = await anmelden(codeTBM);
 
 {
   const r = await rufe(tAL, "/api/bestand", "GET");

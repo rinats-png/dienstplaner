@@ -250,6 +250,89 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
 }
 
 /**
+ * Frischer zweiter Faktor für eine sicherheitskritische Betreiberaktion (SI-P6).
+ *
+ * Gedacht für Aktionen mit einer BESTEHENDEN Betreibersitzung, die nicht wiederholbar sein dürfen, nur weil jemand
+ * das Sitzungsmerkmal abgegriffen hat (z. B. dauerhafte Zugangscodes prägen). Verlangt wird der Code aus der App
+ * (oder ein Wiederherstellungscode) im Rumpf der Aktion — nie ein Nachweis, nie ein Code, der schon verbraucht ist
+ * (die Anmeldung selbst verbraucht ihren Schritt). Der Faktor liegt unter der Kennung des Betreibercodes, den die
+ * Sitzung trägt (`konto`), also derselben wie bei der Anmeldung.
+ *
+ * - Faktor eingerichtet: Code Pflicht, gebremst je Code und je Herkunft (GRENZEN.zweifaktor, fail-closed).
+ * - Kein Faktor, Pflicht (Auslieferung): 403, nichts darf geschehen. Eine solche Sitzung dürfte es nicht geben
+ *   (sie endet beim Start und bei der Einrichtung); wer sie trotzdem hat, richtet zuerst den Faktor ein.
+ * - Kein Faktor, keine Pflicht (Entwicklung, Prüfungen): die Aktion läuft ohne Code, wie die Anmeldung auch.
+ * - Sitzung ohne Kontoschlüssel oder Ablage nicht lesbar: kein Ja (403 bzw. 503).
+ *
+ * @param {{store: any, k: string, sitzung: any, code?: unknown}} a
+ * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
+ *   `antwort` gesetzt: genau diese zurückgeben, nichts ausführen.
+ */
+export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
+  const konto = String((sitzung && sitzung.konto) || "");
+  if (!konto) {
+    await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Sitzung ohne Kontoschlüssel");
+    return { antwort: json({ fehler: "Bitte neu anmelden.", neuAnmelden: true }, 403) };
+  }
+  /* Der Faktor liegt unter der Kennung des NEUEN Schlüssels. Trägt die Sitzung noch den alten (Anmeldung vor der
+     Umschlüsselung), verweist das Altkonto mit `ersetztDurch` auf den neuen: dieser Kette folgen (höchstens vier
+     Schritte, ohne Schleife), sonst hielte die Prüfung einen eingerichteten Faktor für „keinen“. Ist ein Konto in der
+     Kette nicht lesbar, ist das keine Entscheidung für „kein Faktor“ (503). */
+  const kette = [konto];
+  try {
+    let akt = konto;
+    for (let i = 0; i < 4; i++) {
+      const e = await kontoLesen(store, akt);
+      if (!e || typeof e.ersetztDurch !== "string" || !e.ersetztDurch || kette.includes(e.ersetztDurch)) break;
+      akt = e.ersetztDurch; kette.push(akt);
+    }
+  } catch { return { antwort: nichtPruefbar() }; }
+  let id = betreiberZweifaktorId(konto);
+  let stand = null;
+  try {
+    for (const schl of kette) {
+      const kid = betreiberZweifaktorId(schl);
+      const st = await zweifaktorStand(store, kid);
+      if (stand === null || st.aktiv) { stand = st; id = kid; }
+      if (st.aktiv) break;
+    }
+  } catch { return { antwort: nichtPruefbar() }; }
+  if (!stand.aktiv) {
+    if (betreiberPflicht()) {
+      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Pflicht, nicht eingerichtet (frischer Code)");
+      return { antwort: json({ fehler: "Für Betreiberzugänge ist ein zweiter Faktor Pflicht. Bitte zuerst "
+        + "einrichten (Anmeldung mit zweifaktorAktion: beginnen, dann bestaetigen).", zweifaktor: "einrichten" }, 403) };
+    }
+    return { aktiv: false };
+  }
+  const eingabe = typeof code === "string" ? code.trim() : "";
+  if (!eingabe) {
+    await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · frischer Code fehlt");
+    return { antwort: json({ fehler: "Dafür ist ein frischer Code aus der App nötig.", zweifaktor: "erforderlich" }, 401) };
+  }
+  /* Eigener Zähler (`bf:`), nicht der der Anmeldung (`b:`): Wer nur eine abgegriffene Sitzung hat, kann sonst durch
+     falsche Codes die Anmeldung des echten Betreibers sperren. */
+  const kennungen = [`bf:${id.slice(0, 16)}`, k];
+  for (const kk of kennungen) {
+    const b = await bremse("zweifaktor", kk);
+    if (!b.frei) { await protokoll("zweifaktor", k, "gebremst", b.grund); return { antwort: zuVielAntwort(b.wartet) }; }
+    if (b.fehler && GRENZEN.zweifaktor.failClosed) return { antwort: nichtPruefbar() };
+  }
+  const p = await zweifaktorPruefen(store, id, { code: eingabe, nachweisErlaubt: false });
+  if (!p.ok) {
+    await new Promise((r) => setTimeout(r, 400));
+    await protokoll("zweifaktor", k, "abgewiesen", `Betreiber · frischer Code · ${p.grund}`);
+    return { antwort: json({ fehler: p.grund === "wiederholt"
+      ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+      : "Der zweite Faktor stimmt nicht.", zweifaktor: "falsch" }, 401) };
+  }
+  for (const kk of kennungen) await entlasten("zweifaktor", kk);
+  if (p.art === "wiederherstellung")
+    await protokoll("zweifaktor", k, "erfolg", "Betreiber · Wiederherstellungscode verbraucht (frischer Code)");
+  return { aktiv: true };
+}
+
+/**
  * Offline-Wiederherstellung (WP-32d): Der Betreiber hat Authenticator UND
  * Wiederherstellungscodes verloren. Läuft nur auf dem Server selbst, durch
  * werkzeug/betreiber-2fa-zuruecksetzen.mjs — es gibt keinen

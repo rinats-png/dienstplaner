@@ -81,11 +81,18 @@ const start = { version: 9, stand: 1, session: null, mandanten: [{
 
 const tBetr = await anmelden(await zugang("betreiber", null));
 pruef("Raum eingerichtet", (await rufe(tBetr, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
-const tA = await anmelden(await zugang("mitarbeiter", "a1"));
-const tN = await anmelden(await zugang("mitarbeiter", "n1"));
-const tH = await anmelden(await zugang("mitarbeiter", "h1"));
-const tL = await anmelden(await zugang("leitung", "l1"));
-const tS = await anmelden(await zugang("subplaner", "s1"));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTA = await zugang("mitarbeiter", "a1");
+const codeTN = await zugang("mitarbeiter", "n1");
+const codeTH = await zugang("mitarbeiter", "h1");
+const codeTL = await zugang("leitung", "l1");
+const codeTS = await zugang("subplaner", "s1");
+const tA = await anmelden(codeTA);
+const tN = await anmelden(codeTN);
+const tH = await anmelden(codeTH);
+const tL = await anmelden(codeTL);
+const tS = await anmelden(codeTS);
 const bestaetigen = (t, rumpf) => rufe(t, "zeit-bestaetigen", "POST", rumpf);
 
 async function alsA(aendern) {
