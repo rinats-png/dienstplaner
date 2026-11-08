@@ -85,6 +85,18 @@
    Wer sicher gehen will, stoppt den Server vorher — dann gibt es nie einen
    zweiten Anlauf.
 
+   Schreib-Halt (WP-28c, --schreibhalt <Ordner>, server/lib/schreibhalt.mjs):
+   Kopiert wird zuerst ohne Halt. Für den letzten Durchgang bittet das
+   Werkzeug den laufenden Server über den Ordner `schreibhalt` seines
+   Zustandsverzeichnisses um einen kurzen, befristeten Halt: Der Server lässt
+   keine neuen Vorgänge mehr beginnen und bestätigt, sobald die laufenden
+   fertig sind. Dann werden die geänderten Dateien nachkopiert und die Quelle
+   geprüft — sie steht still, und keine Transaktion ist halb. Gilt nur, wenn
+   der Server danach bestätigt, dass der Halt bis zur Freigabe galt; läuft
+   die Frist vorher ab, zählt der Durchgang nicht (nächste Runde, am Ende
+   Code 3). Antwortet kein Server, gilt der Weg mit Ruhezeit oben. Das
+   Manifest vermerkt den Weg (`konsistenz`: "schreibhalt" | "ruhezeit").
+
    Sicherungsschlüssel nach einer Wiederherstellung (Betreiberentscheidung
    2026-11-07): Nach jeder vollständigen Wiederherstellung gilt KEIN früherer
    Sicherungsschlüssel mehr. Die Autorität dafür liegt außerhalb der Ablage
@@ -109,6 +121,7 @@ import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promis
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BINDUNG_SCHLUESSEL, epocheDateiErneuern, ueberlappen } from "../server/lib/schluesselepoche.mjs";
+import { haltAnfordern } from "../server/lib/schreibhalt.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -267,14 +280,28 @@ const idVon = (/** @type {{store:string,name:string}} */ d) => `${d.store}/${d.n
 
 /**
  * @param {{quelle: string, ziel: string, jetzt?: Date, versuche?: number, runden?: number,
- *          pause?: number, ruhe?: number, meldung?: (s: string) => void}} o
+ *          pause?: number, ruhe?: number, meldung?: (s: string) => void,
+ *          schreibhalt?: (null|string|{anfordern: () => Promise<any>})}} o
  *   `ruhe` (ms): Bestätigungspause vor dem Abschluss, siehe unten. Als Bibliotheksaufruf 0 (Tests, kurze Läufe);
  *   die Kommandozeile setzt 1000, wenn nichts anderes verlangt wird (`--ruhe`).
+ *   `schreibhalt`: Ordner des Halte-Kanals (oder ein Objekt mit `anfordern()` wie haltAnfordern) — siehe Kopf.
  * @returns {Promise<{pfad: string, manifest: any}>}
  */
 export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, runden = 12, pause = 1000,
-  ruhe = 0, meldung = () => {} }) {
+  ruhe = 0, meldung = () => {}, schreibhalt = null }) {
   quelle = path.resolve(quelle); ziel = path.resolve(ziel);
+  const haltKanal = typeof schreibhalt === "string"
+    ? { anfordern: () => haltAnfordern(/** @type {string} */ (schreibhalt)) } : schreibhalt;
+  if (typeof schreibhalt === "string") {
+    if (ueberlappen(schreibhalt, quelle))
+      throw new SicherungsFehler(`Der Halte-Ordner ${schreibhalt} liegt in der Quelle oder umgekehrt.`, 2);
+    if (!(await stat(schreibhalt).then((st) => st.isDirectory(), () => false)))
+      throw new SicherungsFehler(`Halte-Ordner ${schreibhalt} fehlt (er entsteht beim Serverstart im Zustandsverzeichnis).`, 2);
+  }
+  /** Ohne Server (keine Antwort) für den Rest des Laufs ohne Halt: nicht in jeder Runde warten. */
+  let haltAus = !haltKanal;
+  /** Unbestätigte Halte (Drain-Grenze, abgelehnt): nach dem zweiten für diesen Lauf ohne Halt weiter. */
+  let haltUnbestaetigt = 0;
   if (ziel === quelle || ziel.startsWith(quelle + path.sep))
     throw new SicherungsFehler("Das Ziel darf nicht innerhalb der Quelle liegen — die Sicherung würde sich selbst sichern.", 2);
   await mkdir(ziel, { recursive: true, mode: 0o700 });
@@ -289,6 +316,8 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
   if (!pruefwert) meldung("Warnung: CENTRIC_PFEFFER ist nicht gesetzt — die Sicherung kann den Pfeffer nicht gegenprüfen.");
 
   let letzterGrund = "";
+  /** @type {"schreibhalt"|"ruhezeit"|null} */
+  let konsistenz = null;
   try {
     for (let versuch = 1; versuch <= versuche; versuch++) {
       await rm(werkstatt, { recursive: true, force: true });
@@ -317,12 +346,12 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
         kopien.delete(id);
         await rm(path.join(werkstatt, "daten", id), { force: true });
       };
-      let stabil = false;
-      for (let runde = 1; runde <= runden && !stabil; runde++) {
+      /** Bringt die Kopien auf den Stand der Liste. true: unterwegs Unruhe gesehen. */
+      const kopieren = async (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ liste) => {
         let unruhig = false;
-        const aktuell = new Set(ansicht.dateien.map(idVon));
+        const aktuell = new Set(liste.dateien.map(idVon));
         for (const id of [...kopien.keys()]) if (!aktuell.has(id)) await verwerfen(id);   // gelöscht oder verschoben
-        for (const d of ansicht.dateien) {
+        for (const d of liste.dateien) {
           const id = idVon(d);
           if (kopien.get(id)?.fp === fp(d)) continue;                       // Kopie gehört schon zu diesem Stand
           await verwerfen(id);
@@ -341,9 +370,47 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
           await schreibenFest(path.join(werkstatt, "daten", d.store, d.name), inhalt);
           kopien.set(id, { fp: fp(d), bytes: inhalt.length, sha256: sha256(inhalt) });
         }
-        /** Stimmt die Liste mit den Kopien überein (Menge und Fingerabdrücke)? */
-        const gleich = (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ l) => !l.veraendert
-          && l.dateien.length === kopien.size && l.dateien.every((d) => kopien.get(idVon(d))?.fp === fp(d));
+        return unruhig;
+      };
+      /** Stimmt die Liste mit den Kopien überein (Menge und Fingerabdrücke)? */
+      const gleich = (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ l) => !l.veraendert
+        && l.dateien.length === kopien.size && l.dateien.every((d) => kopien.get(idVon(d))?.fp === fp(d));
+      let stabil = false;
+      for (let runde = 1; runde <= runden && !stabil; runde++) {
+        let unruhig = await kopieren(ansicht);
+        if (!haltAus) {
+          /* Letzter Durchgang unter Schreib-Halt (siehe Kopf). */
+          const h = await /** @type {{anfordern: () => Promise<any>}} */ (haltKanal).anfordern();
+          if (h.gehalten) {
+            let ok = false;
+            let gehaltenBisZuletzt = false;
+            /** @type {Awaited<ReturnType<typeof quelleAnsehen>>|null} */
+            let unterHalt = null;
+            try {
+              const vorher = await quelleAnsehen(quelle);
+              const u = vorher.veraendert || await kopieren(vorher);
+              unterHalt = await quelleAnsehen(quelle);
+              ok = !u && gleich(unterHalt);
+            } finally {
+              gehaltenBisZuletzt = await h.freigeben();
+            }
+            ansicht = unterHalt || await quelleAnsehen(quelle);
+            if (ok && gehaltenBisZuletzt) { stabil = true; konsistenz = "schreibhalt"; break; }
+            meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: ${gehaltenBisZuletzt
+              ? "Ablage hat sich unter dem Schreib-Halt verändert (Schreiber außerhalb des Servers?)"
+              : "Schreib-Halt vor dem Abschluss abgelaufen — dieser Durchgang zählt nicht"}.`);
+            continue;
+          }
+          if (h.keinServer) {
+            haltAus = true;
+            meldung(`Schreib-Halt nicht verfügbar (${h.grund}) — weiter mit Ruhezeit, ohne Halt.`);
+          } else {
+            haltUnbestaetigt += 1;
+            if (haltUnbestaetigt >= 2) haltAus = true;
+            meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Schreib-Halt nicht bestätigt (${h.grund}) — ${haltAus
+              ? "für den Rest des Laufs ohne Halt, mit Ruhezeit" : "diese Runde mit Ruhezeit"}.`);
+          }
+        }
         let jetztListe = await quelleAnsehen(quelle);
         if (jetztListe.veraendert) unruhig = true;
         stabil = !unruhig && gleich(jetztListe);
@@ -357,6 +424,7 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
           jetztListe = await quelleAnsehen(quelle);
           stabil = gleich(jetztListe);
         }
+        if (stabil) konsistenz = "ruhezeit";
         ansicht = jetztListe;
         if (!stabil && runde < runden) meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Ablage hat sich verändert — geänderte Dateien werden nachkopiert.`);
       }
@@ -383,7 +451,7 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
       const manifest = {
         format: FORMAT, werkzeug: "ablage-sicherung", erstellt: jetzt.toISOString(),
         pfefferPruefwert: pruefwert, stores: ansicht.stores, ausgelassen: ansicht.ausgelassen,
-        summe, dateien: liste,
+        konsistenz, summe, dateien: liste,
       };
       const text = JSON.stringify(manifest, null, 2) + "\n";
       await schreibenFest(path.join(werkstatt, "MANIFEST.json"), text);
@@ -703,6 +771,7 @@ function argumente(/** @type {string[]} */ a) {
 
 const HILFE = `Aufruf:
   ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner> [--ruhe <ms, Vorgabe 1000>]
+                                        [--schreibhalt <Zustandsverzeichnis>/schreibhalt]
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
                                         [--server-url <URL>] [--ohne-serverpruefung] [--zustand <Ordner>]
@@ -720,8 +789,11 @@ export async function main(/** @type {string[]} */ argv) {
       if (!Number.isInteger(ruhe) || ruhe > 600000)
         throw new SicherungsFehler("--ruhe: ganze Zahl in Millisekunden, 0 bis 600000", 2);
       const r = await sichern({ quelle: String(o.quelle || process.env.CENTRIC_DATEN || "/data"),
-        ziel: String(o.ziel), ruhe, meldung: say });
+        ziel: String(o.ziel), ruhe, meldung: say,
+        schreibhalt: typeof o.schreibhalt === "string" ? o.schreibhalt : null });
       const m = r.manifest;
+      say(m.konsistenz === "schreibhalt" ? "Konsistenz: unter Schreib-Halt des Servers abgeschlossen."
+        : "Konsistenz: ohne Schreib-Halt (Ruhezeit).");
       console.log(`Sicherung vollständig: ${r.pfad}`);
       console.log(`  ${m.summe.dateien} Dateien, ${m.summe.bytes} Bytes`);
       for (const [s, v] of Object.entries(m.stores))

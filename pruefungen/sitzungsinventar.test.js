@@ -82,6 +82,7 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
       "server.mjs",                              // Verdrahtung des Löschlaufs
       "server/funktionen/daten.mjs",             // sk:-Schlüssel und das Beenden gesperrter Sitzungen
       "server/lib/schluesselepoche.mjs",         // Bindung skbindung (Wiederherstellungsschutz der sk:)
+      "server/lib/schreibhalt.mjs",              // WP-28c: nur der Name, zur Einordnung „nie halten“ (kein Zugriff)
       "server/lib/sicherungsschluessel.mjs",     // Widerruf der sk:-Schlüssel mit Vermerk (SI-P1)
       "server/lib/sitzungen.mjs",                // die Primitive
     ]);
@@ -90,6 +91,7 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
   it("centric-accountsitzungen: nur die Account-Sitzungen selbst (und das Aufräumen)", () => {
     const erlaubt = [
       "server/lib/accountsitzungen.mjs",
+      "server/lib/schreibhalt.mjs",   // WP-28c: nur der Name, zur Einordnung „nie halten“ (kein Zugriff)
     ];
     const gefunden = ohneZusatz(dateienMit(/centric-accountsitzungen|accountSitzungsSpeicher/));
     expect(gefunden).toEqual(erlaubt);
@@ -102,9 +104,18 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     /* t: — Primitive und Raumlöschung; nie in einem Endpunkt. */
     expect(t, "t:").toEqual(["server/lib/raumloeschung.mjs", "server/lib/sitzungen.mjs"]);
     /* sk: — Primitive, daten.mjs (Sicherungsschlüssel verwalten), Raumlöschung, Widerruf (SI-P1). */
+    /* schreibhalt.mjs (WP-28c): nur als Präfix der Einordnung, was gehalten wird — kein Zugriff auf die Ablage. */
     expect(sk, "sk:").toEqual(["server/funktionen/daten.mjs", "server/lib/raumloeschung.mjs",
-      "server/lib/sicherungsschluessel.mjs", "server/lib/sitzungen.mjs"]);
+      "server/lib/schreibhalt.mjs", "server/lib/sicherungsschluessel.mjs", "server/lib/sitzungen.mjs"]);
     expect(as, "as:").toEqual(["server/lib/accountsitzungen.mjs"]);
+  });
+  it("schreibhalt.mjs nennt die Sitzungsspeicher nur zur Einordnung: kein getStore, kein Import der Ablage", () => {
+    const q = quellen.get("server/lib/schreibhalt.mjs");
+    expect(q).toBeTruthy();
+    /* getStore( mit Argument = Ablage; AsyncLocalStorage#getStore() hat keines. */
+    expect(q).not.toMatch(/getStore\(\s*[^)\s]|sitzungsSpeicher|accountSitzungsSpeicher/);
+    expect(q).not.toMatch(/from\s+["']\.\/(ablage|sitzungen|accountsitzungen)\.mjs["']/);
+    expect(q).not.toMatch(/import\(\s*["']\.\/(ablage|sitzungen|accountsitzungen)\.mjs["']\s*\)/);
   });
 });
 
