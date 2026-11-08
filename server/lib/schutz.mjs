@@ -1433,7 +1433,10 @@ export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
    unbekannten Codes und einem Treffer wurde so vollständig ausgewertet, bevor
    die harte Sperre stand, und der Treffer kam durch. Deshalb meldet jede Anfrage,
    die den Weg über die Bremse nimmt, ihre Auswertung SYNCHRON an
-   (sperrAuswertungBeginnen, noch vor dem ersten await), und ein nutzbarer Code
+   (sperrAuswertungBeginnen: nach dem Nachschlagen des Codes, aber ohne await
+   zwischen ihrer Entscheidung und der Anmeldung — die Reihenfolge der Antworten
+   legt der Zeitpunkt der Entscheidung fest, das Nachschlagen verrät nichts),
+   und ein nutzbarer Code
    wartet, bis alle vorher angemeldeten Auswertungen derselben Herkunft gezählt
    sind (sperrAuswertungenAbwarten), bevor gueltigeDurchlassen entscheidet. Damit
    gilt auch unter Last: Ein Treffer kommt nur durch, wenn bei seiner
@@ -1458,6 +1461,9 @@ export const SPERRVERSUCHE = {
      verteiltem Raten aus sehr vielen Herkünften (/64): Die Durchlässigkeit gilt dann für niemanden mehr bis zum Ende des
      Fensters (fail-closed, wie der Dienst-Deckel) — statt die Karte ohne Grenze wachsen zu lassen. */
   speicher: 100000,
+  /* So lange wartet ein nutzbarer Code höchstens auf die Zählung der Fehlversuche vor ihm; danach nimmt er den Weg über die
+     Bremse wie jeder Fehlversuch (gleiche Antwort, gezählt). */
+  warteGrenzeMs: 10000,
 };
 
 /** Kennung → Ende (ms) der harten Sperre. */
@@ -1468,6 +1474,8 @@ let hartGesamtBis = 0;
 /* Aufräumen erst, wenn die Karte über diese Marke wächst; danach liegt die Marke beim Doppelten des Rests. So kostet das
    Aufräumen im Mittel O(1) je Aufruf, auch wenn viele Einträge noch laufen (vorher O(n) bei JEDEM Aufruf über 500). */
 let raeumenAb = 500;
+/** Zeitpunkt (ms) des letzten Aufräumens — begrenzt das Aufräumen einer vollen Karte auf einmal je Sekunde. */
+let zuletztGeraeumt = 0;
 
 /**
  * Eine abgewiesene Anfrage (Sperre, Betriebs-, Dienst- oder Notgrenze) weiterzählen.
@@ -1487,10 +1495,16 @@ export function sperrversuchZaehlen(kennung, wartet = 300) {
      gezählten Sperre beginnt eine neue bei null. */
   let st = sperrStand.get(kennung);
   if (!st || st.bis < ms) {
-    if (sperrStand.size >= raeumenAb) {
+    /* Aufräumen (Review 3): unterhalb der Obergrenze an der wachsenden Marke; ist die Karte voll, vor JEDER Überlaufprüfung —
+       höchstens einmal je Sekunde, damit eine volle Karte mit lauter laufenden Einträgen nicht jeden Aufruf O(n) kostet. Vorher
+       stieg die Marke über die Obergrenze, der Überlaufzweig kehrte vorher zurück, und Abgelaufenes wurde nie mehr entfernt:
+       Die Durchlässigkeit blieb bis zum Neustart aus statt bis zum Fensterende. */
+    const voll = sperrStand.size >= SPERRVERSUCHE.speicher;
+    if ((!voll && sperrStand.size >= raeumenAb) || (voll && ms - zuletztGeraeumt >= 1000)) {
       for (const [k, v] of sperrStand) if (v.bis < ms) sperrStand.delete(k);
       for (const [k, v] of hartBis) if (v < ms) hartBis.delete(k);
-      raeumenAb = Math.max(500, 2 * sperrStand.size);
+      zuletztGeraeumt = ms;
+      raeumenAb = Math.min(SPERRVERSUCHE.speicher, Math.max(500, 2 * sperrStand.size));
     }
     if (!sperrStand.has(kennung) && sperrStand.size >= SPERRVERSUCHE.speicher) {
       /* Überlauf: nicht vergessen (fail-open), sondern die Durchlässigkeit für alle bis zum Fensterende abschalten. */
@@ -1525,10 +1539,13 @@ export function gueltigeDurchlassen(kennung) {
 
 /** Kennung → Promise, das sich erfüllt, wenn alle bisher angemeldeten Auswertungen dieser Herkunft gezählt sind. */
 const auswertungen = new Map();
+/** Kennung → Zahl der angemeldeten, noch nicht gezählten Auswertungen (Diagnose und Prüfungen). */
+const offen = new Map();
 
 /**
- * Eine Auswertung über die Bremse anmelden — SYNCHRON, bevor die Anfrage zum ersten Mal wartet. Die zurückgegebene Funktion
- * meldet sie als gezählt (nach sperrversuchZaehlen bzw. nach einer freien Bremse); mehrfacher Aufruf schadet nicht.
+ * Eine Auswertung über die Bremse anmelden — synchron zwischen der Entscheidung der Anfrage und ihrem nächsten await.
+ * Die zurückgegebene Funktion meldet sie als gezählt (nach sperrversuchZaehlen bzw. nach einer freien Bremse);
+ * mehrfacher Aufruf schadet nicht.
  * @param {string} kennung
  * @returns {() => void}
  */
@@ -1539,17 +1556,34 @@ export function sperrAuswertungBeginnen(kennung) {
   const vorher = auswertungen.get(kennung);
   const kette = vorher ? Promise.all([vorher, eigene]) : eigene;
   auswertungen.set(kennung, kette);
+  offen.set(kennung, (offen.get(kennung) || 0) + 1);
   kette.then(() => { if (auswertungen.get(kennung) === kette) auswertungen.delete(kennung); });
-  return () => fertig();
+  let erledigt = false;
+  return () => {
+    if (erledigt) return;
+    erledigt = true;
+    const n = (offen.get(kennung) || 1) - 1;
+    if (n > 0) offen.set(kennung, n); else offen.delete(kennung);
+    fertig();
+  };
+}
+
+/**
+ * Wie viele Auswertungen dieser Herkunft angemeldet, aber noch nicht gezählt sind.
+ * @param {string} kennung
+ * @returns {number}
+ */
+export function sperrAuswertungenOffen(kennung) {
+  return offen.get(kennung) || 0;
 }
 
 /**
  * Warten, bis alle VOR diesem Aufruf angemeldeten Auswertungen der Herkunft gezählt sind. Spätere zählen nicht dazu.
  * @param {string} kennung
- * @param {number} [grenzeMs]  danach false (fail-closed: der Aufrufer lässt dann nicht durch)
+ * @param {number} [grenzeMs]  danach false (fail-closed: der Aufrufer lässt dann nicht durch, sondern bremst wie üblich)
  * @returns {Promise<boolean>}
  */
-export async function sperrAuswertungenAbwarten(kennung, grenzeMs = 10000) {
+export async function sperrAuswertungenAbwarten(kennung, grenzeMs = SPERRVERSUCHE.warteGrenzeMs) {
   const kette = auswertungen.get(kennung);
   if (!kette) return true;
   /** @type {any} */
@@ -1568,6 +1602,7 @@ export function sperrversuchZuruecksetzen() {
   sperrStand.clear();
   hartGesamtBis = 0;
   raeumenAb = 500;
+  zuletztGeraeumt = 0;
   for (const k of [...not.keys()]) if (k.startsWith("sperrv:")) not.delete(k);
 }
 

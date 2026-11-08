@@ -50,14 +50,18 @@ vi.mock("../server/lib/ablage.mjs", async (original) => {
           return (...args) => {
             const key = typeof args[0] === "string" ? args[0]
               : args[0] && args[0].prefix !== undefined ? args[0].prefix : "";
-            if (stoerung.wirft && stoerung.wirft(String(name), key, ablage)) {
-              const e = new Error(`EIO: gestört (${String(name)} ${key})`);
-              /** @type {any} */ (e).code = "EIO";
-              return Promise.reject(e);
-            }
+            /* Erst aufhalten, dann (wenn verlangt) scheitern — wie eine Platte, die hängt und dann EIO meldet. */
             const ms = stoerung.verzoegert ? stoerung.verzoegert(String(name), key, ablage) : 0;
-            if (ms > 0) return new Promise((r) => setTimeout(r, ms)).then(() => wert.apply(ziel, args));
-            return wert.apply(ziel, args);
+            const weiter = () => {
+              if (stoerung.wirft && stoerung.wirft(String(name), key, ablage)) {
+                const e = new Error(`EIO: gestört (${String(name)} ${key})`);
+                /** @type {any} */ (e).code = "EIO";
+                return Promise.reject(e);
+              }
+              return wert.apply(ziel, args);
+            };
+            if (ms > 0) return new Promise((r) => setTimeout(r, ms)).then(weiter);
+            return weiter();
           };
         },
       });
@@ -78,6 +82,13 @@ async function anmelden(ip, code) {
     body: JSON.stringify({ zugangscode: code }) }), {});
   let d = {}; try { d = await a.json(); } catch { /* leer */ }
   return { status: a.status, ...d };
+}
+/** Wie anmelden(), aber mit Retry-After und dem Rumpf als Text — für den Vergleich zweier Antworten. */
+async function anmeldenRoh(ip, code) {
+  const a = await daten(new Request(`http://${WIRT}/api/anmelden`, { method: "POST",
+    headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json", "x-forwarded-for": ip },
+    body: JSON.stringify({ zugangscode: code }) }), {});
+  return { status: a.status, retryAfter: a.headers.get("retry-after"), rumpf: await a.text() };
 }
 
 let zaehler = 0;
@@ -427,8 +438,9 @@ describe("I7: parallele Anfragen", () => {
 
 /* Review SI-P7, HOCH: Ein Fehlversuch wurde erst gezählt, nachdem bremse() geantwortet hatte. Ein Bündel aus Fehlversuchen
    und einem Treffer war vollständig ausgewertet, bevor die harte Sperre stand — der Treffer kam durch. Damit das Fenster
-   in der Prüfung sicher offen steht, hält die Ablage das Lesen des Sperreintrags 1,5 s auf; die Fehlversuche stecken dann
-   nachweislich in bremse(), wenn der Treffer entschieden wird.
+   in der Prüfung sicher offen steht, hält die Ablage das Lesen des Sperreintrags 5 s auf, und der Treffer wird erst
+   abgeschickt, wenn alle Fehlversuche nachweislich angemeldet sind (sperrAuswertungenOffen) — kein festes Warten, das auf
+   einer langsamen Maschine zu kurz wäre.
    Verhalten nach Entwurf: Ein Treffer kommt nur durch, wenn bei seiner Entscheidung alle VOR ihm entschiedenen Fehlversuche
    dieser Herkunft gezählt sind und die Grenze (8 Sperrversuche je Sperre) nicht gerissen ist. Er wartet dafür auf sie;
    reißen sie die Grenze, bekommt er 429 wie jeder andere Versuch dieser Herkunft. */
@@ -436,8 +448,15 @@ describe("I7b: Bündel während der Sperre mit einem Treffer (Review HOCH)", () 
   const warten = (ms) => new Promise((r) => setTimeout(r, ms));
   const sperreLangsam = () => {
     stoerung.verzoegert = (name, key, ablage) =>
-      ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:") ? 1500 : 0;
+      ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:") ? 5000 : 0;
   };
+  const kennungVon = (ip) => SCH.kennung(new Request("http://x/", { headers: { "x-forwarded-for": ip } }), null);
+  /** Warten, bis `n` Auswertungen dieser Herkunft angemeldet sind (sie stecken dann in bremse()). */
+  async function bisAngemeldet(ip, n) {
+    const k = kennungVon(ip);
+    for (let i = 0; i < 4000 && SCH.sperrAuswertungenOffen(k) < n; i++) await warten(5);
+    expect(SCH.sperrAuswertungenOffen(k), "Fehlversuche angemeldet").toBeGreaterThanOrEqual(n);
+  }
 
   it("acht Sperrversuche gezählt, dann 30 Fehlversuche gleichzeitig und ein Treffer: der Treffer wird abgewiesen, die Herkunft ist danach hart gesperrt", async () => {
     const ip = ipv4();
@@ -446,14 +465,13 @@ describe("I7b: Bündel während der Sperre mit einem Treffer (Review HOCH)", () 
     const c = await frischerCode();
     sperreLangsam();
     const fehl = Array.from({ length: 30 }, () => anmelden(ip, unbekannt()));
-    await warten(400);                                                             // die Fehlversuche stecken in bremse()
+    await bisAngemeldet(ip, 30);                                                   // die Fehlversuche stecken in bremse()
     const treffer = await anmelden(ip, c);
     const fehlErg = await Promise.all(fehl);
     stoerung.verzoegert = null;
     expect(treffer.status, `Treffer im Bündel: ${JSON.stringify(treffer)}`).toBe(429);
     expect(fehlErg.map((e) => e.status)).toEqual(Array(30).fill(429));
-    expect(SCH.gueltigeDurchlassen(SCH.kennung(new Request("http://x/", { headers: { "x-forwarded-for": ip } }), null)),
-      "hart gesperrt").toBe(false);
+    expect(SCH.gueltigeDurchlassen(kennungVon(ip)), "hart gesperrt").toBe(false);
     expect((await anmelden(ip, c)).status, "danach einzeln: hart").toBe(429);
     expect((await anmelden(ipv4(), c)).status, "andere Herkunft unberührt").toBe(200);
   }, 120000);
@@ -464,7 +482,7 @@ describe("I7b: Bündel während der Sperre mit einem Treffer (Review HOCH)", () 
     const c = await frischerCode();
     sperreLangsam();
     const fehl = Array.from({ length: 50 }, () => anmelden(ip, unbekannt()));
-    await warten(400);
+    await bisAngemeldet(ip, 50);
     const treffer = await anmelden(ip, c);
     await Promise.all(fehl);
     stoerung.verzoegert = null;
@@ -485,12 +503,34 @@ describe("I7b: Bündel während der Sperre mit einem Treffer (Review HOCH)", () 
     await sperren(ip);                                                             // Sperrversuch 1
     sperreLangsam();
     const fehl = Array.from({ length: 3 }, () => anmelden(ip, unbekannt()));      // Sperrversuche 2–4
-    await warten(400);
+    await bisAngemeldet(ip, 3);
     const treffer = await anmelden(ip, await frischerCode());
     const fehlErg = await Promise.all(fehl);
     stoerung.verzoegert = null;
     expect(fehlErg.map((e) => e.status)).toEqual([429, 429, 429]);
     expect(treffer.status, JSON.stringify(treffer)).toBe(200);
+  }, 120000);
+
+  it("Zeitgrenze beim Warten (Review 3, Orakel): der Treffer nimmt den Weg eines Fehlversuchs — gleiche Antwort, gleiches Retry-After", async () => {
+    /* Langsame und dann ausgefallene Ablage: Der Fehlversuch hängt 2 s in bremse() und bekommt dann fail-closed 429 / 300 s.
+       Der Treffer wartet nur 300 ms auf ihn. Früher antwortete er dann mit 429 / 5 s — an Retry-After erkennbar. */
+    const alt = SCH.SPERRVERSUCHE.warteGrenzeMs;
+    SCH.SPERRVERSUCHE.warteGrenzeMs = 300;
+    try {
+      stoerung.verzoegert = (name, key, ablage) =>
+        ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:") ? 2000 : 0;
+      stoerung.wirft = (name, key, ablage) => ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:");
+      const ip = ipv4();
+      const c = await frischerCode();
+      const fehl = anmeldenRoh(ip, unbekannt());
+      await bisAngemeldet(ip, 1);
+      const treffer = await anmeldenRoh(ip, c);
+      const f = await fehl;
+      expect(f.status).toBe(429);
+      expect(treffer, "Treffer und Fehlversuch sind nicht zu unterscheiden").toEqual(f);
+    } finally {
+      SCH.SPERRVERSUCHE.warteGrenzeMs = alt;
+    }
   }, 120000);
 });
 
@@ -528,6 +568,30 @@ describe("Speichergrenze der Sperrzählung (Review NIEDRIG 2)", () => {
       expect(SCH.gueltigeDurchlassen("a:irgendwer"), "50 Herkünfte: noch im Speicher").toBe(true);
       expect(SCH.sperrversuchZaehlen("a:viele-50", 300).gesamtHart, "die 51. passt nicht mehr").toBe(true);
       expect(SCH.gueltigeDurchlassen("a:irgendwer")).toBe(false);
+    } finally {
+      SCH.SPERRVERSUCHE.speicher = alt;
+    }
+  });
+
+  it("volle Karte aus lauter abgelaufenen Einträgen: eine neue Herkunft wird normal behandelt, und ein Überlauf endet mit dem Fenster (Review 3)", () => {
+    const alt = SCH.SPERRVERSUCHE.speicher;
+    SCH.SPERRVERSUCHE.speicher = 50;
+    const fenster = SCH.SPERRVERSUCHE.gesamt.fenster * 1000;
+    let t = Math.floor(Date.now() / fenster) * fenster + 1000;
+    vi.spyOn(Date, "now").mockImplementation(() => t);
+    try {
+      for (let q = 0; q < 50; q++) SCH.sperrversuchZaehlen(`a:alt-${q}`, 10);
+      t += 20 * 1000;                                                          // alle 50 Sperren sind vorbei
+      expect(SCH.sperrversuchZaehlen("a:neu-1", 300).gesamtHart, "Abgelaufenes wird vor der Überlaufprüfung entfernt").toBe(false);
+      expect(SCH.gueltigeDurchlassen("a:irgendwer")).toBe(true);
+      // Jetzt echt voll mit laufenden Einträgen → Überlauf; nach deren Ende und dem Fensterende wieder normal.
+      for (let q = 0; q < 49; q++) SCH.sperrversuchZaehlen(`a:lauf-${q}`, 30);
+      expect(SCH.sperrversuchZaehlen("a:zuviel", 30).gesamtHart, "Überlauf").toBe(true);
+      expect(SCH.gueltigeDurchlassen("a:irgendwer")).toBe(false);
+      t += fenster + 2000;
+      expect(SCH.gueltigeDurchlassen("a:irgendwer"), "Fensterende").toBe(true);
+      expect(SCH.sperrversuchZaehlen("a:danach", 300).gesamtHart, "Karte geräumt, keine Dauerabschaltung").toBe(false);
+      expect(SCH.gueltigeDurchlassen("a:irgendwer")).toBe(true);
     } finally {
       SCH.SPERRVERSUCHE.speicher = alt;
     }

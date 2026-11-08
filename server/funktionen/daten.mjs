@@ -825,16 +825,16 @@ async function behandeln(req, context, ctx) {
         && sitzungsRolleBekannt(eintragV.rolle);
       /* Gleichzeitige Anfragen (Review SI-P7, HOCH): Ein Fehlversuch wird erst nach bremse() gezählt. Ein nutzbarer Code
          wartet deshalb, bis alle VOR ihm entschiedenen Auswertungen dieser Herkunft gezählt sind, und entscheidet erst dann
-         (schutz.mjs, sperrAuswertungenAbwarten). Ein Fehlversuch meldet seine Auswertung unten synchron an, vor dem ersten
-         await. Bleibt die Zählung aus (Zeitgrenze), wird nicht durchgelassen und nichts gezählt. */
+         (schutz.mjs, sperrAuswertungenAbwarten). Ein Fehlversuch meldet seine Auswertung unten an — nach dem Nachschlagen
+         des Codes (kontoLesen), aber synchron zwischen seiner Entscheidung und dem ersten await danach. Das genügt: Das
+         Nachschlagen verrät nichts, verraten wird erst die Antwort, und deren Reihenfolge legt der Zeitpunkt der
+         Entscheidung fest. Ein Fehlversuch, der beim Nachschlagen noch wartet, ist ein späterer Versuch und wird vor jedem
+         noch späteren Treffer gezählt.
+         Bleibt die Zählung aus (Zeitgrenze, Review 3): kein eigener Antwortweg (er wäre an Retry-After erkennbar und
+         prüfte weder harte Sperre noch Dienst-Deckel), sondern derselbe Weg wie jeder Fehlversuch — über die Bremse,
+         gezählt, mit derselben Antwort. */
       let durchlassen = false;
-      if (nutzbar) {
-        if (!(await sperrAuswertungenAbwarten(k))) {
-          await protokoll("anmelden", k, "gebremst", "Auswertung ausstehend");
-          return zuVielAntwort(5);
-        }
-        durchlassen = gueltigeDurchlassen(k);
-      }
+      if (nutzbar && (await sperrAuswertungenAbwarten(k))) durchlassen = gueltigeDurchlassen(k);
       /** @type {any} */
       let b = { frei: true };
       if (!durchlassen) {
