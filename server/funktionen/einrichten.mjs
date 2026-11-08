@@ -441,6 +441,22 @@ export default async (req) => {
         `${bestand}: Kundenraum, neue Zugänge gesperrt (${lageE.art}${lageE.grund ? ` · ${lageE.grund}` : ""}) · ${rolle}${demo ? " demo" : ""}`);
       return antwort({ fehler: KUNDENRAUM_TEXT, grund: "kundenraum_gesperrt" }, 409);
     }
+  } else {
+    /* SI-P6, Review-Befund B1 (hoch): Auch ein Betreibercode ist kein Freibrief. Gebunden an einen BESTEHENDEN Kundenraum
+       liest und schreibt er dessen Bestand (Personenkennungen, Rollen, Adressen). Der Betreiber legt ihn deshalb nur für einen
+       neuen Raum, einen Raum im Fenster der Ersteinrichtung oder einen reinen Demoraum an (sein eigener Raum zählt als „neu“,
+       weil Betreibercodes kein Kundenzugang sind). Kein Vermerk der Ersteinrichtung, keine Fensteröffnung. Nicht prüfbar: nichts. */
+    let lageB;
+    try { lageB = await raumLage(s0, bestand); }
+    catch {
+      await protokoll("einrichten", k, "fehler", `${bestand}: Raum nicht prüfbar (Kundenraumschutz, Betreibercode)`);
+      return antwort({ fehler: "Der Raum lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
+    }
+    if (!["neu", "fenster", "demo"].includes(lageB.art)) {
+      await protokoll("einrichten", k, "abgewiesen",
+        `${bestand}: Kundenraum, Betreibercode gesperrt (${lageB.art}${lageB.grund ? ` · ${lageB.grund}` : ""})`);
+      return antwort({ fehler: KUNDENRAUM_TEXT, grund: "kundenraum_gesperrt" }, 409);
+    }
   }
 
   /* Ein Demozugang je Betrieb und Rolle. Die Startseite zeigt jeden

@@ -72,7 +72,7 @@ Raumnamen des Demoraums an). Beim vollständigen Löschen eines Raums werden Ver
 | Weg | Wer | Behandlung |
 |---|---|---|
 | `POST /api/zugaenge` | Betreibersitzung | frisch + Faktor + Kundenraumschutz |
-| `POST /einrichten` (Code anlegen) | Verwalterschlüssel (+ Faktor, Pflicht in der Auslieferung) | Kundenraumschutz (neu); Rolle `betreiber` ausgenommen (**Betreiber-Freigabepunkt**, siehe §6) |
+| `POST /einrichten` (Code anlegen) | Verwalterschlüssel (+ Faktor, Pflicht in der Auslieferung) | Kundenraumschutz (neu), **auch für die Rolle `betreiber`** (Review-Befund B1, §9): Betreibercode nur für neue Räume, Räume im Fenster und reine Demoräume |
 | `POST /einrichten/bindung` | Verwalterschlüssel | ändert nur `mandantId` bestehender Codes ohne Bindung; legt keinen Zugang an, ändert keine Rolle |
 | `server/funktionen/starten.mjs` (Selbststart) | die Kundin/der Kunde für den **eigenen neuen** Raum | nicht betroffen (kein Betreiberweg) |
 | `provisionierung.mjs` / `registrierung.mjs` (Account + Mitgliedschaft) | Kundin/Kunde bzw. Einladung durch die Leitung | nicht betroffen |
@@ -149,7 +149,7 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
   hält jede Raumlöschung offen, bis er repariert ist (`werkzeug/ablage-pruefen.mjs`). Weil `raumLoeschen` die Marke jetzt für jeden
   Aufrufer setzt, gilt ein über die Konsole halb gelöschter `t-…`-Raum für den Löschlauf als bestätigt (`aufraeumen.mjs`;
   weiterhin nur mit Testkern und abgelaufener Aufbewahrung) — gewollt, die Löschung war beauftragt.
-- **Betreiber-Freigabepunkt: Rolle `betreiber` in `/einrichten` ausgenommen** (`einrichten.mjs`, `rolle !== "betreiber"`).
+- **(überholt — durch B1 geschlossen, siehe §9) Rolle `betreiber` in `/einrichten` war ausgenommen** (`einrichten.mjs`, `rolle !== "betreiber"`).
   Ein Betreibercode gibt kein Kundendatenrecht im Sinne der Zugangsregel, wird aber mit dem Raumnamen eines Kundenraums
   angelegt und ist ein Betreiberzugang. Bewusst nicht geändert (Bereitstellungsskript, Prüfläufe brauchen ihn); der Betreiber
   bestätigt diese Ausnahme ausdrücklich.
@@ -163,7 +163,7 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
   vorgeschlagen.
 - **Demoräume.** Ein Raum, der nur Demozugänge hat, nimmt weitere Demozugänge über `/einrichten` auf. Das Bereitstellungsskript
   braucht das. Ein Kundenraum wird so nicht „demo“: Er hat mindestens einen Zugang ohne `demo`.
-- **Betreibercodes.** Die Rolle `betreiber` ist ausgenommen (Betreiber-Codes enthalten kein Kundendatenrecht, SI-06 schließt sie
+- **Betreibercodes (überholt durch B1, §9: der Kundenraumschutz gilt seither auch für Betreibercodes in `/einrichten`).** Früher: Die Rolle `betreiber` ist ausgenommen (Betreiber-Codes enthalten kein Kundendatenrecht, SI-06 schließt sie
   im `/api`-Weg ohnehin aus; `/einrichten` verlangt Verwalterschlüssel und Faktor).
 - **`zugang-sperren` ist unverändert** (nur `frisch`, kein Faktor). Es legt nichts an; Sperren plus Neuanlage ist durch das
   Verbot jetzt wirkungslos. Härtung bleibt ein Folgepaket.
@@ -182,3 +182,16 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
 **Restrisiko N1 (Review, niedrig):** Pruefung (raumLage) und Schreiben der Codes laufen in /api/zugaenge und /einrichten ohne Raumsperre. Ein Wettlauf des Betreibers mit sich selbst (Raum im Fenster wird zwischen Pruefung und Schreiben vollstaendig geloescht) kann einen verwaisten Code ohne Kern erzeugen; ein Kundenraum ist nicht betroffen. Nicht geaendert, um keine neue Sperrreihenfolge (Deadlock-Risiko mit raumLoeschen) einzufuehren.
 
 **Raumname (Review-Befund 8):** /api/zugaenge prueft den Raumnamen jetzt wie bestand-anlegen (Regex), Test in kundenraumschutz.test.js.
+
+## 9. Unabhaengiges Review der Cloud-Sitzung (B1-B4) - Stand Zentralisierung
+
+Die Cloud-Sitzung hatte vier offene Befunde dokumentiert (Commit d996bab). Stand nach Uebernahme:
+
+| Nr. | Schwere | Status |
+|---|---|---|
+| B1 | hoch | **Behoben.** `POST /einrichten` mit `rolle:"betreiber"` und Kundenraum als `bestand` -> 409 `kundenraum_gesperrt`; Lesefehler -> 503. Erlaubt bleiben neue Raeume, Raeume im Fenster und reine Demoraeume (Bereitstellungsskript, Pruefklaeufe). Tests: `kundenraumschutz.test.js` (3 neue, ohne Fix rot: 200 statt 409/503). |
+| B2 | mittel | Behoben (45312df, 35a67be): Loeschmarke `loeschung:<raum>` zuerst, Vermerk vor Kern, Marke zuletzt. |
+| B3 | mittel | Behoben (45312df): Kundenanmeldung im Fenster schliesst es. |
+| B4 | niedrig-mittel | Behoben (45312df): Mitgliedschaft auch ueber `mitglied:*:<raum>`. |
+
+B1 wurde in den eigenen Reviews der Zentralisierung zunaechst nur als niedriger Freigabepunkt gefuehrt ("Rolle betreiber ausgenommen") und erst durch den Befund der Cloud-Sitzung als hoch erkannt: ein Betreibercode, gebunden an einen Kundenraum, liest und schreibt dessen Bestand. Damit ist die Betreiberentscheidung G.2 (alle API-Pfade, alle privilegierten Rollen) auch fuer `/einrichten` erfuellt.

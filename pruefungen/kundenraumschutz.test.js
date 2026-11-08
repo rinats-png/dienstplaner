@@ -292,6 +292,39 @@ describe("Kundenraumschutz über POST /einrichten (Verwalterschlüssel)", () => 
     expect((await viaEinrichten("kre-skript", "planer", null, true)).status).toBe(200);
   });
 
+  it("Review-Befund B1 (hoch): ein Betreibercode für einen BESTEHENDEN Kundenraum entsteht nicht — jede Kundenrolle als Bestand, 409, kein Konto", async () => {
+    for (const rolle of ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"]) {
+      const raum = `kre-b1-${rolle}`;
+      await raumAnlegen(raum);
+      await altKonto(raum, rolle);
+      const vorher = await anzahlKonten(raum);
+      const r = await viaEinrichten(raum, "betreiber", null);
+      expect(r.status, rolle).toBe(409);
+      expect(r.grund, rolle).toBe("kundenraum_gesperrt");
+      expect(r.code, rolle).toBeUndefined();
+      expect(await anzahlKonten(raum), rolle).toBe(vorher);
+    }
+  });
+
+  it("B1: ein Betreibercode für einen Raum nach der Ersteinrichtung (Kunde angelegt, Fenster vorbei) → 409; vorher und im eigenen Raum → 200", async () => {
+    await raumAnlegen("kre-b1-fenster");
+    expect((await viaEinrichten("kre-b1-fenster", "betreiber", null)).status).toBe(200);
+    expect((await viaEinrichten("kre-b1-fenster", "leitung", "p1")).status).toBe(200);
+    uhr(jetzt + 20 * 60_000);
+    expect((await viaEinrichten("kre-b1-fenster", "betreiber", null)).status).toBe(409);
+  });
+
+  it("B1: Lesefehler beim Betreibercode → 503, kein Code", async () => {
+    await raumAnlegen("kre-b1-lese");
+    const datei = path.join(wurzel, "centric", "konto%3Azzz-kaputt3.json");
+    await writeFile(datei, "{ kein json");
+    try {
+      const r = await viaEinrichten("kre-b1-lese", "betreiber", null);
+      expect(r.status).toBe(503);
+      expect(r.code).toBeUndefined();
+    } finally { await rm(datei, { force: true }); }
+  });
+
   it("Lesefehler → 503, kein Code", async () => {
     await raumAnlegen("kre-lesefehler");
     const datei = path.join(wurzel, "centric", "konto%3Azzz-kaputt2.json");
