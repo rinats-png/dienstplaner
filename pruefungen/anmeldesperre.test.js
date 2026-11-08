@@ -250,6 +250,85 @@ describe("I4: wer während der Sperre weiter rät, verliert die Durchlässigkeit
   }, 120000);
 });
 
+describe("Review v2: Bündel gleichzeitiger Anfragen, Ausfall der Zählerablage, Stufe, Speichergröße", () => {
+  it("HOCH: Bündel während der Sperre mit einem gültigen Code dabei — der Treffer kommt nicht durch, die Fehlversuche werden ausgewertet wie gezählt", async () => {
+    let treffer200 = 0, fehl401 = 0;
+    for (let lauf = 0; lauf < 3; lauf++) {
+      const ip = ipv4();
+      await sperren(ip);                                              // Herkunft gesperrt (acht Fehlversuche + ein abgewiesener)
+      const c = await frischerCode();
+      const aufgaben = Array.from({ length: 200 }, () => anmelden(ip, unbekannt()));
+      aufgaben.push(anmelden(ip, c));                                 // der Treffer liegt zwischen den Fehlversuchen, zuletzt gestartet
+      const erg = await Promise.all(aufgaben);
+      fehl401 += erg.slice(0, 200).filter((e) => e.status === 401).length;
+      treffer200 += erg[200].status === 200 ? 1 : 0;
+      expect(SCH.gueltigeDurchlassen(SCH.kennung(new Request("http://x/", { headers: { "x-forwarded-for": ip } }), null)),
+        "danach hart gesperrt").toBe(false);
+    }
+    expect(fehl401, "keiner der 600 Fehlversuche kommt als „unbekannt“ (401) durch").toBe(0);
+    expect(treffer200, "der Treffer im Bündel kommt nicht durch").toBe(0);
+  }, 180000);
+
+  it("HOCH (Einheit): die Vormerkung ist synchron — nach 16 Fehlversuchen ist hart, ohne dass irgendetwas dazwischen laufen müsste", () => {
+    for (let i = 1; i <= 16; i++) {
+      SCH.fehlversuchVormerken("a:sync");
+      expect(SCH.gueltigeDurchlassen("a:sync"), `Fehlversuch ${i}`).toBe(true);
+    }
+    SCH.fehlversuchVormerken("a:sync");                                // der 17.
+    expect(SCH.gueltigeDurchlassen("a:sync")).toBe(false);
+    expect(SCH.gueltigeDurchlassen("a:andere")).toBe(true);
+  });
+
+  it("HOCH (Einheit): ein Bündel von 500 Fehlversuchen in einem Takt macht hart, bevor der nächste Treffer entschieden wird", () => {
+    for (let i = 0; i < 500; i++) SCH.fehlversuchVormerken("a:buendel");
+    expect(SCH.gueltigeDurchlassen("a:buendel")).toBe(false);
+  });
+
+  it("MITTEL: fällt die Zählerablage aus, meldet die Bremse bei jeder Anfrage „jetzt + Sperrdauer“ — die Sperre bleibt dieselbe und wird hart", () => {
+    const t0 = Date.now();
+    const uhr = vi.spyOn(Date, "now").mockReturnValue(t0);
+    let r;
+    // Etwa vier Anfragen je Sekunde, die Wartezeit ist jedes Mal die volle Sperrdauer (Ausfallpfad der Bremse).
+    for (let i = 0; i < 40; i++) { uhr.mockReturnValue(t0 + i * 250); r = SCH.sperrversuchZaehlen("a:ausfall", 300); }
+    expect(r.hart, "nach vielen Anfragen innerhalb derselben Sperre hart").toBe(true);
+    expect(SCH.gueltigeDurchlassen("a:ausfall")).toBe(false);
+  });
+
+  it("MITTEL: eine Herkunft allein reißt den Dienst-Deckel auch bei ausgefallener Ablage nicht (Dauerbeschuss mit vier Anfragen je Sekunde)", () => {
+    const t0 = Date.now();
+    const uhr = vi.spyOn(Date, "now").mockReturnValue(t0);
+    for (let i = 0; i < 4000; i++) { uhr.mockReturnValue(t0 + i * 250); SCH.sperrversuchZaehlen("a:dauerbeschuss", 300); }
+    expect(SCH.gueltigeDurchlassen("a:unbeteiligt"), "andere Herkünfte bleiben durchlässig").toBe(true);
+  });
+
+  it("NIEDRIG: die Stufe erreicht die längste Sperre (7200 s), wenn jemand sofort nach jeder Sperre weiter anrennt", async () => {
+    const t0 = Date.now();
+    const uhr = vi.spyOn(Date, "now").mockReturnValue(t0);
+    const k = `a:stufe-max-${++zaehler}`;
+    let jetzt = t0, wartet = [];
+    for (let runde = 0; runde < 8; runde++) {
+      uhr.mockReturnValue(jetzt);
+      let r;
+      for (let i = 0; i < 9; i++) r = await SCH.bremse("anmelden", k);
+      expect(r.frei).toBe(false);
+      wartet.push(r.wartet);
+      jetzt += (r.wartet + 1) * 1000;                          // gleich nach dem Sperrende wieder los
+    }
+    expect(wartet[0]).toBe(300);
+    expect(Math.max(...wartet), "die längste Sperre wird erreicht").toBe(7200);
+  }, 120000);
+
+  it("NIEDRIG: die Karten der Sperrversuche wachsen nicht über die Grenze und das Aufräumen bleibt billig", () => {
+    const t = Date.now();
+    for (let i = 0; i < 12000; i++) SCH.sperrversuchZaehlen(`a:viele-${i}`, 300);
+    for (let i = 0; i < 12000; i++) for (let j = 0; j < 20; j++) if (j === 0) SCH.fehlversuchVormerken(`a:vielev-${i}`);
+    const g = SCH.sperrversuchGroessen();
+    expect(g.stand).toBeLessThanOrEqual(g.max);
+    expect(g.hart).toBeLessThanOrEqual(g.max);
+    expect(Date.now() - t, "kein O(n)-Aufwand je Anfrage").toBeLessThan(5000);
+  });
+});
+
 describe("Steigerungsstufe verfällt (Review 3)", () => {
   it("nach Stunden ohne Sperre ist die Stufe wieder abgebaut; bei Dauerbeschuss steigt sie weiter", async () => {
     const t0 = Date.now();

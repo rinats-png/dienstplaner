@@ -1,7 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
-  protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen } from "../lib/schutz.mjs";
+  protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen, fehlversuchVormerken } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
@@ -822,6 +822,9 @@ async function behandeln(req, context, ctx) {
         && eintragV.rolle !== "betreiber" && !eintragV.gesperrt
         && !(eintragV.laeuftAb && new Date(eintragV.laeuftAb).getTime() < Date.now())
         && sitzungsRolleBekannt(eintragV.rolle);
+      /* Jede Anfrage, die kein nutzbarer Code ist, wird HIER und SOFORT gezählt, vor dem ersten await unten: Ein Bündel
+         gleichzeitiger Anfragen hat sonst alle Codes ausgewertet, bevor die harte Sperre steht (SI-P7, Review). */
+      if (!nutzbar) fehlversuchVormerken(k);
       const durchlassen = nutzbar && gueltigeDurchlassen(k);
       /** @type {any} */
       let b = { frei: true };

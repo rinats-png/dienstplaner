@@ -75,3 +75,21 @@ Die Korrekturen sind nicht erneut unabhängig geprüft; sie sind durch die obige
 - Ein Angreifer im selben NAT oder /64 kann mit mehr als 8 abgewiesenen Anfragen je Sperre die Durchlässigkeit für diese Herkunft abschalten (Rückfall auf das alte Bild, nicht schlechter als vorher);
   einen Dienst-weiten Effekt brauchen mindestens 134 verschiedene Herkünfte.
 - Eine Sperre, die durch IPv6-Gruppierung mehr Geräte trifft (Konto-Anmeldung, Registrierung): dokumentiert.
+
+
+## 9. Nachprüfung durch den Orchestrator (Opus-Review v2) und Übergabe
+
+Stand dieses Abschnitts: Die Cloud-Agenten werden eingestellt; der Orchestrator übernimmt #113 (SI-P7) und #111 (SI-P6) zentral. Die folgenden Korrekturen liegen **nicht** auf dem Branch von PR #113 (dort wurde nichts mehr gepusht), sondern auf dem Übergabe-Branch `acc45/sicherheit/si-p7-uebergabe` (ohne PR) und sind **nicht** erneut unabhängig geprüft, nicht mit dem aktuellen `integration/release-v4` (42e83da, enthält #110) zusammengeführt und nicht in der CI gelaufen.
+
+| Befund | Schwere | Korrektur (Übergabe-Branch) |
+|---|---|---|
+| Harte Sperre per parallelen Anfragen umgehbar: `gueltigeDurchlassen` entscheidet sofort, gezählt wurde erst nach `await bremse` | **hoch** | `fehlversuchVormerken(k)` zählt jede Anfrage, die kein nutzbarer Code ist, **synchron** direkt nach dem Lesen des Codes (vor jedem `await`); ab mehr als 16 je Fenster (acht freie plus acht abgewiesene) ist die Herkunft hart gesperrt. Tests: Bündel von 200 Fehlversuchen plus Treffer (HTTP, 3 Läufe), Einheit mit 17 und 500 synchronen Vormerkungen |
+| Zählerablage ausgefallen: feste Wartezeit der Bremse verschiebt das Sperrende je Anfrage, die Sperre wird nie hart, eine Herkunft reißt allein den Dienst-Deckel | mittel | Dieselbe Sperre gilt, solange die zuletzt gesehene läuft; das Ende wird nur nach hinten verschoben. Zusätzlich greift die synchrone Vormerkung unabhängig von Ablage und Wartezeit. Tests: 40 Anfragen mit 250 ms Abstand und konstanter Wartezeit → hart; 4000 Anfragen einer Herkunft reißen den Dienst-Deckel nicht |
+| Stufenverfall: `zuletzt` = Setzzeitpunkt, die längste Sperre (7200 s) wird nie erreicht | niedrig | `zuletzt` = Sperrende; Kommentar korrigiert. Test: Dauerbeschuss unmittelbar nach jedem Sperrende erreicht 7200 s |
+| Aufräumen der Karten O(n) je Aufruf bei mehr als 500 Einträgen, Wachstum durch viele /64 | niedrig | Karten auf 5000 Einträge begrenzt (ältester Eintrag wird verdrängt), Aufräumen nur alle 256 Einfügungen. Test: 12 000 Kennungen, Größe begrenzt, Laufzeit < 5 s |
+
+Die Aussage zu I7 in Abschnitt 3 ist damit ergänzt: Parallele Anfragen werden jetzt auch **während einer Sperre mit einem Treffer im Bündel** begrenzt (Test oben). Verbleibend: Im Bündel kann ein Treffer durchkommen, dessen Auswertung unter den ersten 16 liegt (die Grenze gilt je Fenster, nicht je Anfrage); die Auswertung der übrigen Fehlversuche (das Lesen des Codes) findet weiterhin statt, ihr Ergebnis führt aber nie zu einer Anmeldung. Die Karten sind auf 5000 Einträge begrenzt; wer die Verdrängung gezielt auslösen will, braucht 5000 verschiedene Herkünfte.
+
+Lokal geprüft auf dem Übergabe-Branch: `anmeldesperre.test.js` (35 Tests, Mutationen der neuen Logik färben Tests rot), `bremse-wp47`, `bremse-lokal`, `herkunft-xff`, `sicherheit-intern`, `betreiber-zweifaktor*`, `ip-kuerzel`, `doku` = 168 grün, eslint sauber. Volle Regression und CI stehen aus.
+
+**Für die Integration:** Zusammenführung mit `integration/release-v4` (42e83da): Konflikt in `package.json` in der Zeile `"pruefung"` — beide Schritte behalten (`npm run pruefung:schreibhalt` und `npm run pruefung:anmeldesperre`), ebenso beide Schritte in `.github/workflows/pruefung.yml`.
