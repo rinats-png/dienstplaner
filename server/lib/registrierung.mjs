@@ -129,6 +129,7 @@ import {
   accountAnlegen, accountLesenPerMail, accountLesenPerId,
   emailBestaetigen, tokenNrErhoehen, passwortSetzen, profilPruefen,
 } from "./accounts.mjs";
+import { vorgang } from "./schreibhalt.mjs";
 
 /**
  * Der Absagegrund eines Ergebnisses — oder eine leere Zeichenkette.
@@ -455,7 +456,12 @@ export async function emailVerifizieren(store, { token, jetzt = Date.now } = {})
    -------------------------------------------------------------------------- */
 const kontoReihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function jeKonto(schluessel, arbeit) {
+  return vorgang(() => jeKontoInReihe(schluessel, arbeit));
+}
+
+function jeKontoInReihe(schluessel, arbeit) {
   const davor = kontoReihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   const warten = lauf.then(() => {}, () => {});

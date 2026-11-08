@@ -53,6 +53,7 @@
    ========================================================================== */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { imVorgang, vorgang } from "./schreibhalt.mjs";
 
 /* Fünfzehn Sekunden. Ein Schreibvorgang dauert auf der Dateiablage wenige
    Millisekunden bis eine Zehntelsekunde; selbst fünfzig gleichzeitige Stempel
@@ -164,6 +165,11 @@ export function unterRaumsperre(raum, arbeit, { zeitgrenzeMs = SPERRE_ZEITGRENZE
 
   if (gestoppt)
     return Promise.reject(fehler(`Raumsperre: ${gestoppt} — keine neuen Schreibvorgänge`, SPERRE_GESTOPPT));
+
+  /* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird VOR dem Eintritt in die Reihe, nie darin. Wer in der Reihe
+     steht, ist zugelassen und läuft durch — so wartet keine zugelassene Arbeit auf eine gehaltene. Die Wartezeit am
+     Halt zählt nicht zur Zeitgrenze der Raumsperre (höchstens die Frist des Halts, ≤ 10 s). */
+  if (!imVorgang()) return vorgang(() => unterRaumsperre(raum, arbeit, { zeitgrenzeMs, waechterMs }));
 
   const davor = reihe.get(schluessel) || Promise.resolve();
   /** @type {(wert?: any) => void} */

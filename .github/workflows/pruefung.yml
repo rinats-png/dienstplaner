@@ -198,6 +198,11 @@ jobs:
       - name: Bremsen im Echtbetrieb (WP-47)
         run: npm run pruefung:bremse-wp47
 
+      # SI-P7: Anmeldesperre. Gültige Codes kommen trotz gesperrter Herkunft durch, Fehlversuche
+      # bleiben begrenzt (auch bei Code-Rotation), IPv6 zählt je /64, parallele Anfragen.
+      - name: Anmeldesperre (SI-P7)
+        run: npm run pruefung:anmeldesperre
+
       # Der eigene Server: Ausliefern, Rückfall, Routing,
       # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
       - name: Server
@@ -312,6 +317,12 @@ jobs:
         run: npm run pruefung:datenintegritaet
       - name: Prozesssperre der Ablage
         run: npm run pruefung:prozesssperre
+      # WP-28c: Schreib-Halt für die Sicherung unter Last (Drain, Frist,
+      # Wiedereintritt, Dateikanal), Mess-Skript in Kurzfassung (0 Schnitte
+      # mitten in einer Transaktion, 100 % Erfolg, >= 50 Schreibvorgänge/s)
+      # und die Sicherung unter parallelen Schreibvorgängen (WP-28b).
+      - name: Schreib-Halt und Sicherung unter Last
+        run: npm run pruefung:schreibhalt
       # ACC45-Werkzeuge: Backlog-Unterbefehle, Vorprüfung, test-kurz (Exit-Code).
       # Die Vorprüfung legt dafür ein Wegwerf-Git-Repo an.
       - name: ACC45-Werkzeuge

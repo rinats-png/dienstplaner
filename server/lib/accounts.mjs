@@ -58,6 +58,7 @@ import { neuHash, altHash } from "./codes.mjs";
 import { RANG } from "./rollenvergabe.mjs";
 import { herkunftsloseFeedsWiderrufen } from "./feedwiderruf.mjs";
 import { schluesselDesKontos, schluesselWiderrufenWenn } from "./sicherungsschluessel.mjs";
+import { vorgang } from "./schreibhalt.mjs";
 
 /** Sicherungsschlüssel eines Kontos endgültig widerrufen (SI-P1). Ein Fehler lässt den Anlass nicht scheitern: Die
     Prüfung beim Gebrauch widerruft ohnehin. Das Ergebnis steht in der Antwort, damit ein Fehler nicht unsichtbar bleibt. */
@@ -121,7 +122,12 @@ export const mitgliedlaufSchluessel = (accountId, raum) =>
    -------------------------------------------------------------------------- */
 const reihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function nacheinander(schluessel, arbeit) {
+  return vorgang(() => nacheinanderInReihe(schluessel, arbeit));
+}
+
+function nacheinanderInReihe(schluessel, arbeit) {
   const davor = reihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   const warten = lauf.then(() => {}, () => {});

@@ -54,6 +54,7 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_DATEN` | Wurzel der Ablage | `/data` | ja |
 | `CENTRIC_ABLAGE` | nur `dateien` zulässig | `dateien` | ja |
 | `CENTRIC_ZUSTAND` | Schlüsselepoche der Sicherungsschlüssel (Wiederherstellungsschutz), AUSSERHALB von `CENTRIC_DATEN`, nie sichern oder zurückspielen; nicht nutzbar → keine Sicherungsschlüssel (BEREITSTELLUNG 5.4) | `<CENTRIC_DATEN>-zustand` (compose: `/zustand`) | ja |
+| `CENTRIC_SCHREIBHALT_MAX_MS` | längster Schreib-Halt für die Sicherung unter Last (WP-28c, `server/lib/schreibhalt.mjs`): Die nächtliche Sicherung bittet über `<CENTRIC_ZUSTAND>/schreibhalt` (Dateikanal, kein Netz) um einen kurzen Halt neuer Schreibvorgänge; danach läuft immer alles weiter. Ganze Millisekunden, höchstens `10000`; `0` schaltet den Kanal ab (Sicherung dann nur mit Ruhezeit); Unlesbares → Vorgabe. Nie gehalten: Lesen, Sitzungs- und Bremsdaten, Einmal-Token-Einträge selbst, Schlüsselepoche/`skbindung`. Kurz verzögert (bis zur Freigabe, höchstens bis zur Frist), nie abgewiesen: alles, was gesicherte Daten schreibt oder eine der Reihen betritt — u. a. Stempel, Speichern, Einlösen von Einladungs-/Rücksetz-Token (token.mjs), Zwei-Faktor-Einrichtung und -Anmeldung auch der Betreiber (zweifaktor.mjs), Protokolleinträge (`centric-spur`). **Release-Hinweis (Betreiberfreigabe):** nach der Auslieferung sofort aktiv; während eines Halts (typisch 0,1–0,5 s, höchstens die Frist) dauern Stempel und Speichern entsprechend länger (BETRIEB-SICHERUNG §5) | `3000` | ja |
 | `CENTRIC_BASIS` | öffentliche Adresse; Herkunftsprüfung, Links in Mails, Cookie | Adresse der Anwendung | ja |
 | `CENTRIC_PFEFFER` | Pfeffer für Code- und Konten-Prüfsummen, Schlüssel für Zwei-Faktor-Geheimnisse; **nie ändern** | — (Pflicht) | ja |
 | `CENTRIC_VERTRAUTE_PROXYS` | wem X-Forwarded-For geglaubt wird: **nur Caddys feste Adresse** (das Subnetz ist nicht empfohlen); leer = niemandem, und `deploy.sh` liefert nicht aus; ungültig = kein Start | leer | ja |
@@ -115,6 +116,32 @@ Einrichtung Schritt für Schritt (DNS, Anbieter, VAPID, Zustelltest, Fehlersuche
 | `CENTRIC_GESUND_ZEITGRENZE_MS` | Zeitgrenze einer Zustandsprüfung (danach „Ablage kritisch: Zeitgrenze“) | 15000 | ja (auskommentiert) |
 | `CENTRIC_ALARM_ENTPRELLUNG_S` | Entprellung des Alarms | 120 | ja (auskommentiert) |
 | `CENTRIC_ALARM_WIEDERHOLUNG_S` | Erinnerung bei anhaltender Störung | 21600 | ja (auskommentiert) |
+
+### Anmeldesperre (SI-P7)
+
+Die Anmeldung mit Zugangscode zählt Fehlversuche je Herkunft: acht in fünf Minuten, dann Sperre (verdoppelt sich je Wiederholung bis zwei
+Stunden; die Stufe baut sich um eine je Stunde ohne Sperre ab). **Ein gültiger Zugangscode (kein Betreibercode) wird von der Sperre der
+Herkunft und von den Grenzen je Betrieb und für den Dienst nicht abgewiesen** — hinter einem Stations-NAT sperrt ein Tippfehler die anderen
+nicht mehr aus. Gültige Anmeldungen zählen nicht und nehmen auch keine Fehlversuche zurück.
+
+Wer während einer Sperre weiter rät, wird weiter gezählt: mehr als acht abgewiesene Anfragen in derselben Sperre, und diese Herkunft ist bis
+zum Ende der Sperre auch für gültige Codes gesperrt (höchstens 16 Rateversuche je Sperre, früher acht). Bei mehr als 1200 abgewiesenen
+Anfragen je fünf Minuten im ganzen Dienst (jede Herkunft trägt höchstens neun bei, eine einzelne kann das also nicht auslösen) gilt die
+Durchlässigkeit für niemanden mehr, bis das Fenster endet: Der Dienst steht dann unter verteiltem Raten. Betreibercodes behalten die volle
+Bremse. Die Last je Code (20 Anmeldungen in fünf Minuten) und je Betrieb bleibt begrenzt. Die Zähler der Sperrversuche liegen im
+Prozessspeicher (ein Prozess je Container). Gleichzeitige Anfragen ändern daran nichts: Ein gültiger Code wartet, bis die Fehlversuche, die
+vor ihm von derselben Herkunft kamen, gezählt sind (höchstens 10 s; danach geht er den Weg eines Fehlversuchs über die Bremse, mit gleicher Antwort — nicht gleicher Antwortzeit, Restrisiko siehe SI-P7-NACHWEIS), und entscheidet erst dann. Fällt die
+Zählerablage aus, weist die Bremse jeden Fehlversuch ab (fail-closed); die Sperrzählung läuft dann in festen Abschnitten von 300 s
+(höchstens acht Sperrversuche je Abschnitt, danach bis zu dessen Ende auch für gültige Codes gesperrt). Mehr als 100 000 Herkünfte mit
+laufender Zählung (verteiltes Raten über sehr viele /64) schalten die Durchlässigkeit bis zum Ende des Fensters für alle ab. Die
+Steigerungsstufe baut sich ab dem Ende einer Sperre ab; wer ohne Pause anrennt, erreicht die zwei Stunden.
+
+**IPv6 zählt je /64** (Geräte wechseln ihre Adresse darin frei). Das gilt für ALLE Bremsen, die je Herkunft zählen — Zugangscode, Konto-Anmeldung,
+Registrierung, Einrichten, Demo und der zweite Faktor —, nicht nur für die Anmeldung mit Zugangscode: Ein /64 ist wie eine IPv4-Adresse hinter
+einem NAT ein Anschluss. Folge: In einem IPv6-Netz, in dem viele Geräte ein /64 teilen, zählen deren Fehlversuche gemeinsam; die Spur zeigt
+das Kürzel des /64, nicht der Einzeladresse. IPv4-gemappte Adressen (auch in Hex-Schreibweise) und NAT64 (64:ff9b::/96) zählen wie die
+eingebettete IPv4-Adresse. Hinter dem Proxy muss `CENTRIC_VERTRAUTE_PROXYS` stimmen, sonst teilen sich alle Nutzer eine Herkunft
+([CADDY-UND-XFF.md](CADDY-UND-XFF.md)).
 
 ### Nur für Prüfungen und Werkzeuge (nicht in die Produktions-.env)
 

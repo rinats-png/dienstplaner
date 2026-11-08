@@ -95,8 +95,22 @@ log "restic-Repository erreichbar, Passwort passt"
 SCHRITT="sichern"
 pfeffer_env_anlegen
 WERKZEUG_FEHLER="$(mktemp "$STATUS_VERZEICHNIS/.werkzeug-XXXXXX")"
-AUSGABE="$(im_bild -v "$CENTRIC_DATEN_PFAD:/data:ro" -v "$LOKAL_ZIEL:/sicherungen" -- \
-  werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sicherungen 2>"$WERKZEUG_FEHLER")" ||
+# Schreib-Halt (WP-28c): Den Halte-Ordner legt der laufende Server in seinem
+# Zustandsverzeichnis an. Nur dieser Ordner wird beschreibbar eingebunden
+# (nicht die Schlüsselepoche daneben). Fehlt er, sichert das Werkzeug wie
+# bisher mit Ruhezeit.
+HALT_OPTS=()
+HALT_ARGS=()
+HALT_PFAD="${CENTRIC_SCHREIBHALT_PFAD:-$(dirname "$CENTRIC_DATEN_PFAD")/zustand/schreibhalt}"
+if [[ -d "$HALT_PFAD" ]]; then
+  HALT_OPTS=(-v "$HALT_PFAD:/schreibhalt")
+  HALT_ARGS=(--schreibhalt /schreibhalt)
+  log "Schreib-Halt: Kanal $HALT_PFAD"
+else
+  log "Schreib-Halt: kein Kanal ($HALT_PFAD fehlt) — Sicherung mit Ruhezeit"
+fi
+AUSGABE="$(im_bild -v "$CENTRIC_DATEN_PFAD:/data:ro" -v "$LOKAL_ZIEL:/sicherungen" ${HALT_OPTS[@]+"${HALT_OPTS[@]}"} -- \
+  werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sicherungen ${HALT_ARGS[@]+"${HALT_ARGS[@]}"} 2>"$WERKZEUG_FEHLER")" ||
   { cat "$WERKZEUG_FEHLER" >&2; exit 1; }
 cat "$WERKZEUG_FEHLER" >&2
 printf '%s\n' "$AUSGABE"
