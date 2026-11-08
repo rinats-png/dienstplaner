@@ -23,21 +23,30 @@ const TOKEN_AUSNAHMEN = {
 
 const SCHREIBRECHTE = ["write", "write-all"];
 
+// Benannte Schreibrechte, die bewusst gewährt sind. Schlüssel: Datei/Job.
+// Jede weitere Ausnahme braucht einen Eintrag mit Begründung.
+const SCHREIBRECHT_AUSNAHMEN = {
+  "deploy.yml/bild": {
+    packages: "Job bild veröffentlicht das Image nach GHCR (einziger Job mit Paket-Schreibrecht)",
+  },
+};
+
 // Prüft eine Berechtigungsvorgabe (Workflow oder Job). Leer heißt: bestanden.
-function berechtigungPruefen(perm, ort) {
+function berechtigungPruefen(perm, ort, erlaubt = {}) {
   if (perm === undefined || perm === null) return [];
   if (perm === "write-all") return [`${ort}: permissions: write-all`];
   if (typeof perm === "object") {
     return Object.entries(perm)
-      .filter(([, wert]) => SCHREIBRECHTE.includes(wert))
+      .filter(([scope, wert]) => SCHREIBRECHTE.includes(wert) && erlaubt[scope] === undefined)
       .map(([scope, wert]) => `${ort}: Schreibrecht ${scope}: ${wert}`);
   }
   return [];
 }
 
 // Liefert Befunde für einen geparsten Workflow. Leer heißt: bestanden.
-// Parameter `token`: false prüft die Token-Regel nicht (Deploy-Ausnahmen).
-export function haertungPruefen(workflow, { token = true } = {}) {
+// `datei` schaltet benannte Schreibrecht-Ausnahmen frei. Parameter `token`:
+// false prüft die Token-Regel nicht (Deploy-Ausnahmen).
+export function haertungPruefen(workflow, { token = true, datei = "" } = {}) {
   const befunde = [];
   if (workflow.permissions === undefined || workflow.permissions === null) {
     befunde.push("keine Berechtigungsvorgabe auf Workflow-Ebene");
@@ -46,7 +55,8 @@ export function haertungPruefen(workflow, { token = true } = {}) {
   }
   for (const [jobName, job] of Object.entries(workflow.jobs || {})) {
     if (!job || typeof job !== "object") continue;
-    befunde.push(...berechtigungPruefen(job.permissions, `Job ${jobName}`));
+    const erlaubt = SCHREIBRECHT_AUSNAHMEN[`${datei}/${jobName}`] || {};
+    befunde.push(...berechtigungPruefen(job.permissions, `Job ${jobName}`, erlaubt));
     if (!token) continue;
     for (const schritt of job.steps || []) {
       if (typeof schritt?.uses !== "string") continue;
@@ -126,7 +136,7 @@ describe("SI-P9 Stand im Repository", () => {
     const fehler = {};
     for (const f of alleWorkflows()) {
       const token = !(f in TOKEN_AUSNAHMEN);
-      const b = haertungPruefen(yaml.load(readFileSync(path.join(ORDNER, f), "utf8")), { token });
+      const b = haertungPruefen(yaml.load(readFileSync(path.join(ORDNER, f), "utf8")), { token, datei: f });
       if (b.length) fehler[f] = b;
     }
     expect(fehler).toEqual({});
