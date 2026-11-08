@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 440,7–751,5 PT in 89 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 431,2–734 PT in 83 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -31,13 +31,8 @@ flowchart LR
     WP_32d["WP-32d<br/>READY"]
     WP_42a["WP-42a<br/>BLOCKED"]
     WP_48["WP-48<br/>BLOCKED"]
-    SI_P1["SI-P1<br/>READY"]
-    SI_P2["SI-P2<br/>READY"]
-    SI_P3["SI-P3<br/>READY"]
     SI_P4["SI-P4<br/>READY"]
     SI_P5["SI-P5<br/>READY"]
-    SI_P6["SI-P6<br/>READY"]
-    SI_P7["SI-P7<br/>READY"]
     SI_P8["SI-P8<br/>READY"]
     SI_P6b["SI-P6b<br/>BLOCKED"]
   end
@@ -102,7 +97,6 @@ flowchart LR
     WP_16b["WP-16b<br/>BLOCKED"]
     WP_24b["WP-24b<br/>BLOCKED"]
     WP_28b["WP-28b<br/>IN_PROGRESS"]
-    WP_28c["WP-28c<br/>BLOCKED"]
     WP_07b["WP-07b<br/>BLOCKED"]
     WP_S1["WP-S1<br/>READY"]
     WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
@@ -359,7 +353,6 @@ flowchart LR
   WP_S1 --> WP_PILOT
   WP_19_0 --> WP_PILOT
   E_19 --> WP_PILOT
-  SI_P6 --> SI_P6b
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -421,7 +414,7 @@ flowchart LR
 | WP-16b | folge | P2 | 0,5–1,5 | 0,5–1,5 | WP-16 | daten.mjs | opus | BLOCKED |
 | WP-24b | folge | P2 | 1,5–3 | 1,5–3 | WP-24, E-21 | – | opus | BLOCKED |
 | WP-28b | folge | P2 | 1,5–3 | 0,5–1 | WP-28, WP-47 | – | sonnet | IN_PROGRESS |
-| WP-28c | folge | P2 | 3–5 | 3–5 | – | daten.mjs | opus | BLOCKED |
+| WP-28c | folge | P2 | 3–5 | 0 | – | daten.mjs | opus | INTEGRATED |
 | WP-07b | folge | P1 | 2–4 | 2–4 | WP-07, WP-16 | daten.mjs, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-S1 | folge | P1 | 1–2 | 1–2 | WP-12 | – | sonnet | READY |
 | WP-19.0 | wp19 | P1 | 4–6 | 0,8–1,2 | WP-11, WP-22 | App.jsx, rechte.mjs, sicht.mjs | opus | REVIEW |
@@ -512,12 +505,12 @@ flowchart LR
 | E-32 | extern | P1 | 0,5–1,5 | 0,5–1,5 | – | – | – | READY |
 | WP-19.R | wp19 | P1 | 7–11 | 7–11 | WP-19.0, WP-19.4 | – | sonnet + opus-review | BLOCKED |
 | WP-PILOT | folge | P2 | 4–8 | 2–4 | WP-S1, WP-19.0, E-19 | – | sonnet | IN_PROGRESS |
-| SI-P1 | acc45 | P1 | 1,5–3 | 1,5–3 | – | daten.mjs | opus | READY |
-| SI-P2 | acc45 | P1 | 1–2 | 1–2 | – | rechte.mjs | opus | READY |
-| SI-P3 | acc45 | P2 | 1–2 | 1–2 | – | – | opus | READY |
+| SI-P1 | acc45 | P1 | 1,5–3 | 0 | – | daten.mjs | opus | INTEGRATED |
+| SI-P2 | acc45 | P1 | 1–2 | 0 | – | rechte.mjs | opus | INTEGRATED |
+| SI-P3 | acc45 | P2 | 1–2 | 0 | – | – | opus | INTEGRATED |
 | SI-P4 | acc45 | P1 | 3–5 | 3–5 | – | App.jsx, daten.mjs | opus | READY |
 | SI-P5 | acc45 | P3 | 1–2 | 1–2 | – | – | opus | READY |
-| SI-P6 | acc45 | P0 | 1,5–3 | 1,5–3 | – | daten.mjs | opus | READY |
-| SI-P7 | acc45 | P2 | 1,5–2,5 | 1,5–2,5 | – | daten.mjs | opus | READY |
+| SI-P6 | acc45 | P0 | 1,5–3 | 0 | – | daten.mjs | opus | INTEGRATED |
+| SI-P7 | acc45 | P2 | 1,5–2,5 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P8 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | READY |
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |

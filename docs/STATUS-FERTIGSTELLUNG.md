@@ -109,3 +109,18 @@ Ziel ist nicht die Zahl aktiver Agenten, sondern die Zahl vollständig integrier
 | 109 | SI-P3 | 2 | 10 | 0,7 | 1 | 0 | 1 |
 
   Befund: Die Hauptkosten waren nicht das Schreiben, sondern (1) verdeckte CI-Basisfehler (PR #102 allein: 5 CI-Korrekturen, 6 Nachträge, alle anderen PRs liefen bis dahin gegen eine rote Basis), (2) Review-Nachträge bei Sicherheits-PRs (SI-P1: drei Nachträge, #107: zwei Opus-Runden), (3) nicht verdrahtete Tests (erst im Linux-Lauf entdeckt, ENOTEMPTY-Fehler), (4) Doku-/Konfigurationsfolgen neuer Umgebungsvariablen (`doku.test`, dreimal). Grenzen der Zahlen: CI-Läufe je Branch enthalten mehrere Workflows je Push und die rote Basis; die reine Entwicklungszeit je Paket ist aus Commit-Zeiten nicht belastbar ableitbar (Mehrfach-Sitzungen, Wartezeiten). Die Erfassung wird für die nächsten 5–10 Pakete (WP-28c, SI-P6, SI-P7, Verdrahtungswerkzeug, …) fortgeführt.
+
+## Integrationsstand 2026-11-08 (Zentralisierung)
+
+**Entscheidung des Betreibers:** Die beiden Cloud-Sitzungen sind eingestellt; Integration, Sicherheitsfreigaben und Backlog liegen allein beim Orchestrator, lokale Subagenten entwickeln parallel nur mit getrennten Dateizuständigkeiten. Kein Merge nach `main`, kein Deployment ohne ausdrückliche Freigabe.
+
+**Seit 2026-11-07 integriert (integration/release-v4):** #107 SI-P1/P2 (Restore invalidiert Sicherungsschlüssel), #108, #109 SI-P3 (Testraum-Mail), #110 WP-28c (Schreib-Halt), #113 SI-P7 (Anmeldesperre, Merge 8678cf6), #111 SI-P6 (Kundenraumschutz, Merge e4a75e4). Jedes sicherheitskritische Paket durchlief mindestens zwei unabhängige Opus-Reviews; CI-Grün wurde nie als Ersatz gewertet.
+
+**Gelernt (Durchsatz/Qualität):**
+- Der hohe Race-Befund bei SI-P7 (parallele Anfragen umgingen die harte Sperre) und der hohe Befund B1 bei SI-P6 (Betreibercode in `/einrichten` an einen Kundenraum gebunden) wurden erst durch unabhängige Reviews bzw. den Review der Cloud-Sitzung gefunden — beide waren bei grüner CI vorhanden. B1 hatte ich in meinen eigenen Reviews zunächst nur als niedrigen Freigabepunkt geführt.
+- Eine Schutzverschärfung (Kundenanmeldung schließt das Fenster der Ersteinrichtung) brach 19 von 25 HTTP-Prüfgruppen, weil sie nach der ersten Anmeldung weitere Codes im selben Raum anlegten. Die Gruppen laufen nun lokal vor jedem Push (`npm run pruefung:serverlauf`); künftig vor dem Push ausführen.
+- Externe Störungen (restic-Download 504) sind von Codefehlern zu trennen: Neustart des Jobs erst nach erfolgreichem Testdownload.
+
+**Offene Entscheidungen des Betreibers (FREIGABEPAKET):** Punkt 7 / SI-P6 M1 (Betreibercodes behalten Lesezugriff, wenn ihr Raum später Kundenraum wird: Empfehlung A = Betreibersitzung ohne /api/bestand auf Kundenräumen); SI-P6b (Zustimmung/Notfall-Wiederherstellung, dringend: bestehende Kundenräume können bis dahin keine neuen Beschäftigten aufnehmen); Betreiber-2FA ist in Produktion schon Pflicht (vor Deploy Faktor einrichten).
+
+**Offene Aufräumpunkte:** `bildersatz.mjs`, `vergleich.mjs`, `pentest.mjs` legen Räume ohne `bestand-anlegen` an (unabhängig von SI-P6 defekt, nicht in CI); PR #112 (Verdrahtungsprüfung) in CI; 29 INTEGRATED/DONE-Pakete mit offenen Remote-Branches.

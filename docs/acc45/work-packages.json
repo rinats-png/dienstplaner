@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 157,
   "statusZaehlung": {
-    "BLOCKED": 82,
-    "READY": 34,
+    "BLOCKED": 81,
+    "READY": 29,
     "IN_PROGRESS": 4,
     "REVIEW": 4,
-    "INTEGRATED": 30,
+    "INTEGRATED": 36,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 60,
-      "offen": 29,
+      "offen": 24,
       "restPT": {
-        "min": 76.5,
-        "max": 123
+        "min": 70,
+        "max": 110.5
       }
     },
     "wp19": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 10,
-      "offen": 10,
+      "offen": 9,
       "restPT": {
-        "min": 17,
-        "max": 32.5
+        "min": 14,
+        "max": 27.5
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 440.70000000000005,
-    "max": 751.5
+    "min": 431.20000000000005,
+    "max": 734
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -1744,12 +1744,12 @@
       "prio": "P2",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": [],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"#110 (346d785)"},
+        "lokalGetestet": {"wert":true,"beleg":"schreibhalt, schreibhalt-messung, sitzungsinventar; CI 21/21"},
+        "reviewt": {"wert":true,"beleg":"Opus-Review, Befunde behoben"},
+        "integriert": {"wert":true,"beleg":"#110 (42e83da) in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1758,8 +1758,8 @@
       "agent": "Agent B – Infrastructure & Reliability",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
-      "nachweis": "docs/acc45/wp28b2-empfehlung-konsistente-sicherung.md",
+      "pr": ["#110"],
+      "nachweis": "docs/acc45/wp28c-nachweis.md",
       "akzeptanz": "Sicherung unter Dauerlast gelingt und liegt nachweislich nie mitten in einer Mehrdatei-Transaktion (Mess-Skript mit Zwei-Datei-Transaktionen, >= 50 Schreibvorgänge/s: 0 Schnitte in >= 1000 Sicherungen, 100 % Erfolg); Frist läuft ab; Reentranz; Wiederherstellung und /gesund unverändert; Stempel-p95 und 503-Anteil nicht schlechter; Hintergrundschreiber respektieren den Halt",
       "tests": "neu: Schreibhalt-Tests, Mess-Skript, werkzeug/last (S5), wp28b-sicherung-last, ablage-sicherung",
       "dateien": "server/lib/raumsperre.mjs, server/lib/ablage.mjs, Ketten in accounts/token/provisionierung/registrierung, server.mjs, werkzeug/ablage-sicherung.mjs, deploy/sicherung",
@@ -4328,12 +4328,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1.5,"max":3},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"#107 (e5ada4e)"},
+        "lokalGetestet": {"wert":true,"beleg":"sicherungsschluessel-wiederherstellung/-ersteller/-betreiberentscheid, code-sitzung-person; Vollregression grün bis auf bekannte Windows-Umgebungsfälle"},
+        "reviewt": {"wert":true,"beleg":"Zwei unabhängige Opus-Reviews (SI-P1/P2), Befunde behoben"},
+        "integriert": {"wert":true,"beleg":"#107 (e5ada4e) in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4342,12 +4342,12 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#105","#107"],
       "nachweis": null,
       "akzeptanz": "sk: speichert Ersteller (Konto bzw. Code) und prüft ihn beim Lesen wie den Kontoanker; zugang-sperren und Entzug der Mitgliedschaft widerrufen; Ersteller in der Liste sichtbar; Höchstdauer gesenkt; Negativtest: ausgeschiedene Leitung → 401/403 auf /api/vollausgabe",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/funktionen/daten.mjs (sicherungsschluessel), server/lib/sicherung*.mjs",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Betreiberentscheidung 2026-11-07: nach jedem vollständigen Restore alle Sicherungsschlüssel ungültig (fail-closed), Pflicht-Hinweis bei Passwortwechsel noch nicht Ende-zu-Ende getestet."
     },
     {
       "id": "SI-P2",
@@ -4356,12 +4356,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"#107 (e5ada4e)"},
+        "lokalGetestet": {"wert":true,"beleg":"code-sitzung-person, arbeitssitzung; Vollregression"},
+        "reviewt": {"wert":true,"beleg":"Zwei unabhängige Opus-Reviews (SI-P1/P2)"},
+        "integriert": {"wert":true,"beleg":"#107 (e5ada4e) in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4370,7 +4370,7 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["rechte.mjs"],
-      "pr": [],
+      "pr": ["#106","#107"],
       "nachweis": null,
       "akzeptanz": "Person nicht mehr im Betrieb, anonymisiert oder ausgetreten → Sitzung abgewiesen und beendet; gesperrt des Codes geprüft; kein Rückfall von wirksameRolle auf die Code-Rolle",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
@@ -4384,12 +4384,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"#109 (e58f163)"},
+        "lokalGetestet": {"wert":true,"beleg":"testraum-Tests, Vollregression"},
+        "reviewt": {"wert":true,"beleg":"Opus-Review, Regression (Betreibervorlagen als selbstAngelegt) behoben"},
+        "integriert": {"wert":true,"beleg":"#109 (e58f163) in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4398,7 +4398,7 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#109"],
       "nachweis": null,
       "akzeptanz": "kein Mailversand aus Test-/Demoräumen ohne Freigabe oder Tagesobergrenze je Raum oder nur an bestätigte Kontoadressen (Produktentscheidung vorlegen)",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
@@ -4468,12 +4468,12 @@
       "prio": "P0",
       "aufwandPT": {"min":1.5,"max":3},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"#111 (e4a75e4)"},
+        "lokalGetestet": {"wert":true,"beleg":"kundenraumschutz.test.js (34), zugaenge-frischer-faktor, 19 HTTP-Prüfgruppen angepasst; Vollregression 7421 grün"},
+        "reviewt": {"wert":true,"beleg":"Vier unabhängige Opus-Reviews (inkl. Befund B1 hoch: Betreibercode in /einrichten, behoben)"},
+        "integriert": {"wert":true,"beleg":"#111 (e4a75e4) in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4482,12 +4482,12 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
-      "nachweis": null,
+      "pr": ["#111"],
+      "nachweis": "docs/acc45/SI-P6-NACHWEIS.md",
       "akzeptanz": "POST /api/zugaenge durch den Betreiber verlangt frisch() und einen frischen 2FA-Code; Leitung-Codes für bestehende Kundenräume nur mit Zustimmung des Kunden oder über /einrichten; CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT im Deploy erzwungen (Freigabe Betreiber)",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/funktionen/daten.mjs (zugaenge), deploy/",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Betreiberentscheidung 2026-11-07: keine neuen Leitungscodes fuer bestehende Kundenraeume ohne nachweisbare Kundenzustimmung auf allen API-Wegen inkl. /einrichten; kontrollierte Ersteinrichtung neuer Betriebe bleibt (frische Auth, 2FA, Protokoll); Betreiber-2FA-Pflicht als Release-/Deployment-Gate (nicht produktiv aktiviert); Reihenfolge: SI-P7 vor SI-P6."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Betreiberentscheidung 2026-11-07: keine neuen Leitungscodes fuer bestehende Kundenraeume ohne nachweisbare Kundenzustimmung auf allen API-Wegen inkl. /einrichten; kontrollierte Ersteinrichtung neuer Betriebe bleibt (frische Auth, 2FA, Protokoll); Betreiber-2FA-Pflicht als Release-/Deployment-Gate (nicht produktiv aktiviert); Reihenfolge: SI-P7 vor SI-P6. OFFEN M1 (mittel, Betreiberentscheidung): Betreibercodes in Neu-/Fensterräumen oder Altbestand behalten Lesezugriff, wenn der Raum Kundenraum wird; siehe FREIGABEPAKET Punkt 7. Neue Beschäftigte in bestehenden Kundenräumen bis SI-P6b nicht möglich."
     },
     {
       "id": "SI-P7",
@@ -4496,12 +4496,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1.5,"max":2.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"#113 (8678cf6)"},
+        "lokalGetestet": {"wert":true,"beleg":"anmeldesperre.test.js (38), bremse-wp47, Vollregression 7368 grün/17 bekannte Umgebungsfälle"},
+        "reviewt": {"wert":true,"beleg":"Drei unabhängige Opus-Reviews; hoher Race-Befund (parallele Anfragen), mittlere Befunde (Zählerausfall, Antwort-Orakel, Kartenüberlauf) behoben"},
+        "integriert": {"wert":true,"beleg":"#113 (8678cf6) in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4510,12 +4510,12 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
-      "nachweis": null,
+      "pr": ["#113"],
+      "nachweis": "docs/acc45/SI-P7-NACHWEIS.md",
       "akzeptanz": "nur Fehlversuche zählen; gültige Codes trotz gesperrter Herkunft (Code+IP als Kennung); IPv6 nach /64 gruppiert; Tests für Stations-NAT",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/funktionen/daten.mjs (anmelden), server/lib/schutz.mjs",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Restrisiken: prozesslokale Zähler, /64-Gruppierung, Antwortzeit nicht bitgleich, Überlauf bei sehr vielen /64."
     },
     {
       "id": "SI-P8",
