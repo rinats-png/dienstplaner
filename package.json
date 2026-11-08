@@ -163,7 +163,7 @@
     "pruefung:gestalt": "vitest run pruefungen/gestalt.test.js",
     "pruefung:v4-tokens": "vitest run pruefungen/v4-tokens.test.js",
     "pruefung:pentest": "node pruefungen/pentest.mjs",
-    "pruefung:sicherheit-intern": "vitest run pruefungen/sicherheit-intern.test.js pruefungen/routen-inventar.test.js pruefungen/actions-pins.test.js",
+    "pruefung:sicherheit-intern": "vitest run pruefungen/sicherheit-intern.test.js pruefungen/routen-inventar.test.js pruefungen/actions-pins.test.js pruefungen/workflow-haertung.test.js",
     "sicherheit:statik": "node werkzeug/sicherheit/statik.mjs",
     "sicherheit:actions-pins": "node werkzeug/sicherheit/actions-pins.mjs",
     "sicherheit:abhaengigkeiten": "node werkzeug/sicherheit/abhaengigkeiten.mjs",
