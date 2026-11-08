@@ -35,3 +35,13 @@ Nicht lokal ausführbar: die echten GitHub-Läufe. Sie laufen beim Push.
 
 - `deploy.yml` und `betrieb-deploy.yml`: Härtung erst nach Betreiberfreigabe der Deploy-Pipeline (Akzeptanz SI-P8).
 - Restbefunde 3 bis 5 aus SI-P8 (gitleaks-Binary ohne Version, buildx ohne `version:`, `apt-get install shellcheck` ohne Version): eigene Pakete, weil sie das Verhalten der Pipeline ändern.
+
+## Nebenbefund: instabiler Test „Protokoll ohne Personendaten“
+
+- Ort: `pruefungen/intelligence-gateway-kern.test.js` (Leck-Prüfung, Weißliste).
+- Beobachtung: ein CI-Lauf auf Commit b931940 rot (Run 42488299224), Wiederholung grün. Das CI-Log war nicht mehr abrufbar, der konkrete Treffer ist daher nicht belegt.
+- Ursache (per Reproduktion belegt): der Test ließ die Auftrags-ID zufällig erzeugen (`randomBytes(12)`, base64url, 16 Zeichen). Diese ID steht in jedem Protokollereignis (`auftrag`). Enthält sie zufällig die Teilfolge „l1“, schlägt die Prüfung `not.toMatch(/…|l1|…/)` an. Reproduziert durch eine feste ID „Xl1ZZZZ…“: Test rot.
+- Wahrscheinlichkeit: pro ID rund 15/4096 ≈ 0,4 %, pro Lauf mit zwei Anfragen rund 0,7 %.
+- Fix: `bauen()` vergibt deterministische Auftrags-IDs (`Testauftrag000001`, …). Die Blacklist bleibt unverändert, nichts abgeschwächt. Der Zähler sorgt weiter für unterschiedliche IDs (Test „auftragId unterschiedlich“).
+- Nachweis: `intelligence-gateway-kern.test.js` 52/52 (dreimal hintereinander), `pruefungen/intelligence*` 20 Dateien, 635/635.
+- Restrisiko: zwei Zeitmessungen (`Date.now()`, Schwellen 1200 ms und 900 ms) im selben Testfile können auf langsamen Runnern flackern. Nicht Ursache dieses Vorfalls, nicht geändert.

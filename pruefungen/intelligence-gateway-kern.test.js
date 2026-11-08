@@ -22,6 +22,8 @@ const KEIN_WARTEN = () => Promise.resolve();
 const code = async (p) => { try { await p; return "ok"; } catch (e) { return e.code || String(e); } };
 const anfrage = (funktion = "F2", extra = {}) => ({ funktion, eingabe: { zeitraum: ZR }, ...extra });
 
+let auftragZaehler = 0;
+
 /** Ein Gateway mit allem Nötigen; jeder Teil überschreibbar. */
 function bauen(o = {}) {
   const ereignisse = [];
@@ -35,7 +37,9 @@ function bauen(o = {}) {
     funktionenFreigegeben: o.freigegeben || ["F1", "F2", "F3", "F5", "F6"], faktenquelle: o.faktenquelle || vollQuelle,
     bausteinKatalog: o.katalog, hoechsteStufe: o.hoechste,
     zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 2, minRestMs: 0, ...(o.zeiten || {}) }, schlafen: KEIN_WARTEN,
-    zufallId: o.zufallId,
+    // Deterministische Auftrags-IDs: Zufallswerte (base64url) enthielten gelegentlich
+    // Teilfolgen wie „l1“, die die Leck-Prüfung auf Personendaten fälschlich trafen.
+    zufallId: o.zufallId || (() => `Testauftrag${String(++auftragZaehler).padStart(6, "0")}`),
   });
   return { gw, anbieter, limits, audit, ereignisse, uhr };
 }
