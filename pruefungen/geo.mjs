@@ -55,6 +55,9 @@ const pruef = (name, bedingung, detail) => {
 const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
 const REF = { lat: 50, lon: 8 };
 const nord = (m) => REF.lat + m / ((2 * Math.PI * 6371000) / 360);
+/* Ungültige Breite mit Nachkommastellen. Ohne Nachkommastellen wäre der Sentinel „410“ und träfe
+   zufällig Zeitstempel wie „…:49.410Z“ (Falsch-Positiv bei der Rohkoordinaten-Prüfung). */
+const UNGUELTIG_LAT = REF.lat + 360.123456;
 const IDS = ["a1", "a2", "a3", "a4", "a5", "a6"];
 /* Offene Beginne relativ zur Serverzeit: v1 vor 24 Stunden (vergessen), v2 vor einer Stunde. */
 const BERLIN = (d) => ({ tag: new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d),
@@ -121,7 +124,7 @@ const ungenau = merke(await stempeln(T.a5, { art: "start", lat: nord(0), lon: RE
 pruef("Genauigkeit über 1000 m: zwingend NICHT_BEWERTBAR, Warnung", ungenau.status === 200
   && ungenau.eintrag.geoStart.status === "NICHT_BEWERTBAR" && ungenau.eintrag.geoStart.genauigkeitWarnung === true,
   JSON.stringify(ungenau.eintrag && ungenau.eintrag.geoStart));
-const ungueltig = merke(await stempeln(T.a6, { art: "start", lat: REF.lat + 360, lon: REF.lon, accuracy: 5 }));
+const ungueltig = merke(await stempeln(T.a6, { art: "start", lat: UNGUELTIG_LAT, lon: REF.lon, accuracy: 5 }));
 pruef("ungültige Koordinate (lat + 360°): nie INNERHALB, Zeit gespeichert", ungueltig.status === 200
   && ungueltig.eintrag.geoStart.status === "NICHT_BEWERTBAR" && ungueltig.innerhalb !== true && !!ungueltig.eintrag.start,
   JSON.stringify(ungueltig.eintrag && ungueltig.eintrag.geoStart));
@@ -160,7 +163,7 @@ pruef("Beginn vor 1 h: zugeordnet, bestätigte Erfassung", frisch.status === 200
 /* Datenschutz */
 const gespeichert = (await rufe(T.l1, "/api/bestand", "GET")).roh;
 const alle = [...antworten, gespeichert].join("\n");
-const roh = [nord(43), nord(2137), nord(251), REF.lat + 360].map((x) => String(x).slice(0, 9));
+const roh = [nord(43), nord(2137), nord(251), UNGUELTIG_LAT].map((x) => String(x).slice(0, 9));
 pruef("keine Rohkoordinate in Antworten und gespeichertem Stand", roh.every((x) => !alle.includes(x)), roh.filter((x) => alle.includes(x)).join(", "));
 pruef("keine exakte Meterzahl: nur gerundete Entfernung", !/\(\d+ m\)/.test(alle) && !alle.includes("2137") && !alle.includes("\"43\"")
   && aussen.eintrag.geoStart.entfernungGerundet === "2100" && innen.eintrag.geoStart.entfernungGerundet === "50",
