@@ -102,6 +102,13 @@ afterAll(async () => { vi.useRealTimers(); await rm(wurzel, { recursive: true, f
 const ALLE_ROLLEN = ROLLEN.map(([rolle, personId]) => ({ rolle, ...(personId ? { personId } : {}) }));
 
 describe("Kundenraumschutz über POST /api/zugaenge", () => {
+  it("Raumname wird wie bei bestand-anlegen geprüft (Review-Befund 8): ungültige Namen → 400, nichts entsteht", async () => {
+    for (const ziel of ["ab", "Kunde Eins", "../kr-alt", "kr alt", "-kr-alt", "x".repeat(81), "kr:alt"]) {
+      const r = await viaZugaenge(ziel, [{ rolle: "leitung" }]);
+      expect(r.status, ziel).toBe(400);
+      expect(r.zugaenge, ziel).toBeUndefined();
+    }
+  });
   it("bestehender Kundenraum (Altbestand, Zugang ohne Vermerk): JEDE Rolle → 409, nichts entsteht", async () => {
     await raumAnlegen("kr-alt");
     await altKonto("kr-alt", "leitung");

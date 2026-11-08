@@ -178,3 +178,7 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
   `zugaenge-anlegen.test.js` „legt nach einem Zurückziehen genau das Fehlende neu an“, `g9-nachtrag.test.js` „kein Standard-
   und kein Migrationspfad setzt einen Pilot“: alle ohne diese Änderung identisch rot (mit Stash gemessen).
 - `pruefungen/staging-proben.mjs` (Gate-Proben im Produktionsmodus) ist in dieser Umgebung auf dem Zielbranch identisch rot.
+
+**Restrisiko N1 (Review, niedrig):** Pruefung (raumLage) und Schreiben der Codes laufen in /api/zugaenge und /einrichten ohne Raumsperre. Ein Wettlauf des Betreibers mit sich selbst (Raum im Fenster wird zwischen Pruefung und Schreiben vollstaendig geloescht) kann einen verwaisten Code ohne Kern erzeugen; ein Kundenraum ist nicht betroffen. Nicht geaendert, um keine neue Sperrreihenfolge (Deadlock-Risiko mit raumLoeschen) einzufuehren.
+
+**Raumname (Review-Befund 8):** /api/zugaenge prueft den Raumnamen jetzt wie bestand-anlegen (Regex), Test in kundenraumschutz.test.js.
