@@ -10,7 +10,7 @@ Restbefunde 1 und 2 aus `docs/acc45/SI-P8-NACHWEIS.md` (Abschnitt „Offene Risi
 | `sicherheit.yml` | 3 von 4 | ja |
 | `pruefung.yml` | 1 | **nein** |
 | `lieferkette.yml`, `lasttest.yml` | 0 (schon gehärtet) | ja |
-| `deploy.yml`, `betrieb-deploy.yml` | nicht geändert (Betreiberfreigabe Deploy-Pipeline) | ja / nein |
+| `deploy.yml`, `betrieb-deploy.yml` | nicht geändert (Betreiberfreigabe Deploy-Pipeline) | ja / ja |
 
 ## Änderung
 
