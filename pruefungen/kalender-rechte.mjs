@@ -63,11 +63,18 @@ pruef("Raum mit zwei Betrieben eingerichtet", (await rufe(tBetr, "/api/bestand-a
     { id: "m-a", name: "A", einheiten: [{ id: "e1" }], personen: [person("a1", "mitarbeiter"), person("a2", "mitarbeiter"),
       person("s1", "subplaner"), { ...person("l1", "leitung"), bereich: "ALLE" }], abweichungen: {}, anfragen: [], nachrichten: [] },
     { id: "m-b", name: "B", einheiten: [{ id: "e1" }], personen: [person("b1", "mitarbeiter")], abweichungen: {}, anfragen: [], nachrichten: [] }] } })).status === 200);
-const tA1 = await anmelden(await zugang("mitarbeiter", "a1", 0));
-const tA2 = await anmelden(await zugang("mitarbeiter", "a2", 0));
-const tB1 = await anmelden(await zugang("mitarbeiter", "b1", 1));
-const tS1 = await anmelden(await zugang("subplaner", "s1", 0));
-const tL1 = await anmelden(await zugang("leitung", "l1", 0));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTA1 = await zugang("mitarbeiter", "a1", 0);
+const codeTA2 = await zugang("mitarbeiter", "a2", 0);
+const codeTB1 = await zugang("mitarbeiter", "b1", 1);
+const codeTS1 = await zugang("subplaner", "s1", 0);
+const codeTL1 = await zugang("leitung", "l1", 0);
+const tA1 = await anmelden(codeTA1);
+const tA2 = await anmelden(codeTA2);
+const tB1 = await anmelden(codeTB1);
+const tS1 = await anmelden(codeTS1);
+const tL1 = await anmelden(codeTL1);
 
 /* Fremde Kalender zum Angreifen */
 const gA2 = (await einrichten(tA2)).geheim; await datenSenden(tA2, gA2, "A2-Original");

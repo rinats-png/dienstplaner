@@ -63,9 +63,14 @@ const start = { version: 9, stand: 1, session: null,
 
 const tB = await anmelden(await zugang("betreiber", null));
 pruef("Raum über den Betreiber eingerichtet", (await rufe(tB, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
-const tL = await anmelden(await zugang("leitung", "l1"));
-const tP = await anmelden(await zugang("planer", "p1"));
-const tS = await anmelden(await zugang("subplaner", "s1"));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTL = await zugang("leitung", "l1");
+const codeTP = await zugang("planer", "p1");
+const codeTS = await zugang("subplaner", "s1");
+const tL = await anmelden(codeTL);
+const tP = await anmelden(codeTP);
+const tS = await anmelden(codeTS);
 const OBEN = ["betreiber", "tarife", "rechnungen", "protokoll", "selbststarts"];
 const IM_BETRIEB = ["preisgestaltung", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum", "lohnarten"];
 const vorher = (await lies(tB)).bestand;

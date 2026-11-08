@@ -66,11 +66,15 @@ const start = { version: 9, stand: 1, session: null, betreiber: { firma: "CENTRI
 const tB = await anmelden(await zugang("betreiber", null));
 pruef("Raum über den Betreiber eingerichtet", (await rufe(tB, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
 const vorher = JSON.stringify((await rufe(tB, "bestand")).bestand);
-const tL = await anmelden(await zugang("leitung", "l1"));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTL = await zugang("leitung", "l1");
+const codeTA1 = await zugang("mitarbeiter", "a1");
+const tL = await anmelden(codeTL);
 /* Seit Commit D1 sieht der Betreiber nur einen Ausschnitt; was sonst
    gespeichert ist, prüfen Leitung und die Person selbst nach. */
 const vorherL = JSON.stringify((await rufe(tL, "bestand")).bestand);
-const tA1 = await anmelden(await zugang("mitarbeiter", "a1"));
+const tA1 = await anmelden(codeTA1);
 
 const NIE = ["kal-geheim-", "https://kal/", "push-", "interne Betreibernotiz", "Kundenweg", "DE123", "BETREIBER-IBAN",
   "raum-intern", "darf-nicht-raus", "f1@x.de", "Haus Zwei", "rg-eigen"];

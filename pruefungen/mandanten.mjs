@@ -79,10 +79,16 @@ const w0 = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
   headers: { authorization: `Bearer ${tBetreiber}`, "content-type": "application/json" },
   body: JSON.stringify({ inhalt: start, vorlage: "demo" }) });
 pruef("Raum mit drei Betrieben über den Betreiber angelegt (Demo-Gestalt)", w0.status === 200, `Status ${w0.status}`);
-const tA = await anmelden(await zugang("leitung", "a-l", 0));
-const tB = await anmelden(await zugang("leitung", "b-l", 1));
-const tC = await anmelden(await zugang("leitung", "c-l", 2));
-const tS = await anmelden(await zugang("subplaner", "b-s", 1));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTA = await zugang("leitung", "a-l", 0);
+const codeTB = await zugang("leitung", "b-l", 1);
+const codeTC = await zugang("leitung", "c-l", 2);
+const codeTS = await zugang("subplaner", "b-s", 1);
+const tA = await anmelden(codeTA);
+const tB = await anmelden(codeTB);
+const tC = await anmelden(codeTC);
+const tS = await anmelden(codeTS);
 
 const name = async (t) => (await lies(t)).bestand.mandanten.map((m) => m.name).join(",");
 

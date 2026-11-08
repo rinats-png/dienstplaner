@@ -73,8 +73,12 @@ const start = { version: 9, stand: 1, session: null, mandanten: [{
 const tBetr = await anmelden(await zugang("betreiber", null));
 const ein = await rufe(tBetr, "bestand-anlegen", "POST", { inhalt: start });
 pruef("Raum mit zwei Bereichen über den Betreiber eingerichtet", ein.status === 200, `Status ${ein.status}`);
-const tL = await anmelden(await zugang("leitung", "l1"));
-const tS = await anmelden(await zugang("subplaner", "s1"));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTL = await zugang("leitung", "l1");
+const codeTS = await zugang("subplaner", "s1");
+const tL = await anmelden(codeTL);
+const tS = await anmelden(codeTS);
 const vorher = (await lies(tL)).bestand.mandanten[0];
 
 /* Ein Schritt: lesen, ändern, schreiben — als Schichtverantwortung. */

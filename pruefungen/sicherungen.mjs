@@ -72,14 +72,25 @@ const w0 = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
   headers: { authorization: `Bearer ${tBetreiber}`, "content-type": "application/json" },
   body: JSON.stringify({ inhalt: start, vorlage: "demo" }) });
 pruef("Raum mit drei Betrieben über den Betreiber angelegt (Demo-Gestalt)", w0.status === 200, `Status ${w0.status}`);
-const tA = await anmelden(await zugang("leitung", "a-l", 0));
-const tB = await anmelden(await zugang("leitung", "b-l", 1));
-const tC = await anmelden(await zugang("leitung", "c-l", 2));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTA = await zugang("leitung", "a-l", 0);
+const codeTB = await zugang("leitung", "b-l", 1);
+const codeTC = await zugang("leitung", "c-l", 2);
+const codesOhne = {
+  planer: await zugang("planer", "b-p", 1),
+  subplaner: await zugang("subplaner", "b-s", 1),
+  mitarbeiter: await zugang("mitarbeiter", "b-x", 1),
+  betriebsrat: await zugang("betriebsrat", "b-r", 1),
+};
+const tA = await anmelden(codeTA);
+const tB = await anmelden(codeTB);
+const tC = await anmelden(codeTC);
 const ohne = {
-  planer: await anmelden(await zugang("planer", "b-p", 1)),
-  subplaner: await anmelden(await zugang("subplaner", "b-s", 1)),
-  mitarbeiter: await anmelden(await zugang("mitarbeiter", "b-x", 1)),
-  betriebsrat: await anmelden(await zugang("betriebsrat", "b-r", 1)),
+  planer: await anmelden(codesOhne.planer),
+  subplaner: await anmelden(codesOhne.subplaner),
+  mitarbeiter: await anmelden(codesOhne.mitarbeiter),
+  betriebsrat: await anmelden(codesOhne.betriebsrat),
 };
 const name = async (t) => (await lies(t)).bestand.mandanten.map((m) => m.name).join(",");
 

@@ -71,9 +71,14 @@ const tB = await anmelden(await zugang("betreiber", null));
 pruef("Raum mit zwei Betrieben über den Betreiber eingerichtet",
   (await rufe(tB, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
 const vorher = (await lies(tB)).bestand;
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const FAELLE = [["Planung", "planer", "p1"], ["Leitung", "leitung", "l1"]];
+const CODES = {};
+for (const [name, rolle, ich] of FAELLE) CODES[name] = await zugang(rolle, ich);
 
-for (const [name, rolle, ich] of [["Planung", "planer", "p1"], ["Leitung", "leitung", "l1"]]) {
-  const t = await anmelden(await zugang(rolle, ich));
+for (const [name, , ich] of FAELLE) {
+  const t = await anmelden(CODES[name]);
   const r = await lies(t);
   const text = JSON.stringify(r);
   const a = r.bestand.mandanten[0].personen.find((x) => x.id === "a1");
