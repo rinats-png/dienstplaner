@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 157,
+  "anzahl": 158,
   "statusZaehlung": {
     "BLOCKED": 81,
-    "READY": 29,
+    "READY": 28,
     "IN_PROGRESS": 4,
-    "REVIEW": 4,
-    "INTEGRATED": 36,
+    "REVIEW": 5,
+    "INTEGRATED": 37,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 60,
+      "pakete": 61,
       "offen": 24,
       "restPT": {
-        "min": 70,
-        "max": 110.5
+        "min": 69.6,
+        "max": 109.7
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 431.20000000000005,
-    "max": 734
+    "min": 430.80000000000007,
+    "max": 733.2
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -4524,26 +4524,54 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"4f1654b, 6733b47, a587df8 (Pin-Prüfung, 8 Actions gepinnt)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/actions-pins.test.js 12/12 grün inkl. js-yaml-Gegenprobe; Pin-SHAs je Tag gegen Upstream geprüft (--online 8/8)"},
+        "reviewt": {"wert":true,"beleg":"Unabhängiger Review plus Nach-Review, alle Befunde (mittel und niedrig) behoben und getestet"},
+        "integriert": {"wert":true,"beleg":"PR #98 (Merge-Beleg), Commits 4f1654b, 6733b47, a587df8 in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "ccr-21ca89fe-sjftsr",
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#98"],
+      "nachweis": "docs/acc45/SI-P8-NACHWEIS.md",
+      "akzeptanz": "deploy.yml, sicherheit.yml, pruefung.yml ohne Tag-Referenzen auf fremde Actions; deploy.yml zuerst (Freigabe Betreiber für Deploy-Pipeline)",
+      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
+      "dateien": ".github/workflows/*.yml",
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+    },
+    {
+      "id": "SI-P9",
+      "titel": "Workflow-Härtung: Checkout-Token nicht speichern, Berechtigungen nur lesend (Befund P8-Restpunkte 1+2, mittel)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": ["SI-P8"],
+      "status": "REVIEW",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"Branch acc45/sicherheit/si-p9 (sicherheit.yml, pruefung.yml, betrieb-sicherung.yml)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/workflow-haertung.test.js 7/7 grün; sicherheit-intern 55/55; Verdrahtung ok"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "acc45/sicherheit/si-p8",
-      "agent": "Agent Sicherheit",
+      "branch": "acc45/sicherheit/si-p9",
+      "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "deploy.yml, sicherheit.yml, pruefung.yml ohne Tag-Referenzen auf fremde Actions; deploy.yml zuerst (Freigabe Betreiber für Deploy-Pipeline)",
-      "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
-      "dateien": ".github/workflows/*.yml",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+      "nachweis": "docs/acc45/SI-P9-NACHWEIS.md",
+      "akzeptanz": "Jeder checkout-Schritt in den Workflows außer der Deploy-Pipeline setzt persist-credentials: false; jeder Workflow hat eine Berechtigungsvorgabe nur mit Lesen; deploy.yml und betrieb-deploy.yml bleiben bis zur Betreiberfreigabe unverändert",
+      "tests": "pruefungen/workflow-haertung.test.js (Regel mit roten und grünen Proben, Stand im Repository)",
+      "dateien": ".github/workflows/sicherheit.yml, .github/workflows/pruefung.yml, .github/workflows/betrieb-sicherung.yml, pruefungen/workflow-haertung.test.js, package.json",
+      "notiz": "Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe."
     },
     {
       "id": "SI-P6b",

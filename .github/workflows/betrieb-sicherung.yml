@@ -46,6 +46,8 @@ jobs:
       RESTIC_SHA256: "680838f19d67151adba227e1570cdd8af12c19cf1735783ed1ba928bc41f363d"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Werkzeuge (shellcheck, jq, flock)
         run: |
