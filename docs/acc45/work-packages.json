@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 158,
+  "anzahl": 160,
   "statusZaehlung": {
-    "BLOCKED": 81,
+    "BLOCKED": 79,
     "READY": 28,
     "IN_PROGRESS": 4,
-    "REVIEW": 5,
+    "REVIEW": 9,
     "INTEGRATED": 37,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 61,
-      "offen": 24,
+      "pakete": 63,
+      "offen": 26,
       "restPT": {
-        "min": 69.6,
-        "max": 109.7
+        "min": 64.80000000000001,
+        "max": 101.7
       }
     },
     "wp19": {
@@ -39,8 +39,8 @@
       "pakete": 10,
       "offen": 9,
       "restPT": {
-        "min": 14,
-        "max": 27.5
+        "min": 9.6,
+        "max": 19.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 430.80000000000007,
-    "max": 733.2
+    "min": 421.6,
+    "max": 716.8000000000001
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -571,7 +571,7 @@
         "implementiert": {"wert":true,"beleg":"acc45/time/wp16-pausen-und-monatsabschluss 1e1aac1"},
         "lokalGetestet": {"wert":true,"beleg":"wp16-nachweis.md (Branch)"},
         "reviewt": {"wert":"teilweise","beleg":"Opus-Review „integrierbar mit Auflagen“, Auflagen umgesetzt; Opus-Delta-Review nach Merge mit 14b/27b/23b läuft"},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -621,7 +621,7 @@
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":6,"max":8.5},
-      "abhaengigkeiten": ["WP-30","WP-09"],
+      "abhaengigkeiten": ["SI-P4"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -641,7 +641,7 @@
       "akzeptanz": "Leitung lädt Testperson ein → Anmeldung → richtige Rolle; ein Code = eine Person",
       "tests": "HTTP, E2E",
       "dateien": "server/funktionen, src",
-      "notiz": null
+      "notiz": "R1-Schnitt (Entscheidung 2026-11-09): Einladung ohne Mailversand (manuelle Uebergabe), Abhaengigkeit WP-30 und WP-09 entfaellt fuer R1; SI-P4 wegen Login-Dateien vorgezogen."
     },
     {
       "id": "WP-19",
@@ -1463,12 +1463,12 @@
       "prio": "P0",
       "aufwandPT": {"min":6,"max":10},
       "abhaengigkeiten": ["WP-16"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1538,7 +1538,7 @@
       "akzeptanz": "Vollregression CI grün, Testplan Abschnitt 5 intern vollständig, Rollout-/Rücksprungplan, Freigabeliste der externen Abnahmen",
       "tests": "alle CI-Gates",
       "dateien": "–",
-      "notiz": "Neu (2026-11-03): technischer Release-Kandidat (eingefrorener Stand für E-1/E-17), getrennt von den externen Abnahmen. Enthält die P0-Blocker WP-16c und WP-32d sowie WP-30 (Mail/Push Pflicht). Nicht enthalten: WP-18, WP-34 (nach main), WP-36 (läuft über E-18)."
+      "notiz": "Neu (2026-11-03): technischer Release-Kandidat (eingefrorener Stand für E-1/E-17), getrennt von den externen Abnahmen. Enthält die P0-Blocker WP-16c und WP-32d sowie WP-30 (Mail/Push Pflicht). Nicht enthalten: WP-18, WP-34 (nach main), WP-36 (läuft über E-18). Aufgeteilt 2026-11-09: R1-Gate = WP-42R1, R2-Gate = WP-42R2, WP-42a bleibt R3-Umbrella (docs/acc45/RELEASE-GATES-R1-R2-R3.md)."
     },
     {
       "id": "WP-48",
@@ -1575,12 +1575,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["WP-14","WP-16"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1659,12 +1659,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1.5},
       "abhaengigkeiten": ["WP-16"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1772,12 +1772,12 @@
       "prio": "P1",
       "aufwandPT": {"min":2,"max":4},
       "abhaengigkeiten": ["WP-07","WP-16"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4600,6 +4600,62 @@
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/funktionen/daten.mjs, server/lib/leitungsschutz.mjs (nach SI-P6), docs/",
       "notiz": "Angelegt auf Betreiberentscheidung SI-P6 (2026-11-07), Punkt 3: Zustimmungs- bzw. Notfall-Wiederherstellungsprozess separates Paket. BLOCKED bis Spezifikation (Zustimmungsform, Notfallablauf, rechtliche Einordnung AV) vorliegt; nichts bauen ohne Betreiberfreigabe der Spezifikation."
+    },
+    {
+      "id": "WP-42R1",
+      "titel": "Release-Gate R1: interner Testbetrieb auf isolierter Staging-Umgebung, nur kuenstliche Daten (Genehmigung 2026-11-09)",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":0,"max":0},
+      "abhaengigkeiten": ["WP-16","WP-16c","WP-07b","WP-S1","WP-18","WP-33","WP-44","SI-P4"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/RELEASE-GATES-R1-R2-R3.md",
+      "akzeptanz": "Alle R1-Abhaengigkeiten integriert oder begruendet zurueckgestellt; Vollregression CI gruen; Staging-Abnahme durch Betreiber (E-1, extern); keine echten Daten",
+      "tests": "siehe Gate-Dokument",
+      "dateien": "docs/acc45/",
+      "notiz": "Neu 2026-11-09. R1 ohne WP-19, WP-21, WP-30, WP-40, WP-09 (Livegang-Reihenfolge). E-10 bedingt zurueckgestellt (ohne produktiven Betreiberzugang)."
+    },
+    {
+      "id": "WP-42R2",
+      "titel": "Release-Gate R2: begrenzter Pilot mit echten Nutzern (nach Datenschutz-, Sicherheits- und Betreiberfreigaben)",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":0,"max":0},
+      "abhaengigkeiten": ["WP-42R1","WP-19.R","WP-21","WP-15","WP-30","SI-P6b","SI-P5","WP-32d","WP-40","WP-14c","WP-16b","WP-24b","WP-27c","WP-47b"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/RELEASE-GATES-R1-R2-R3.md",
+      "akzeptanz": "Pilotgrenzen definiert; E-9/E-10 eingerichtet vor echtem Betreiberzugang; Monitoring und Wiederherstellung geprueft",
+      "tests": "siehe Gate-Dokument",
+      "dateien": "docs/acc45/",
+      "notiz": "Neu 2026-11-09. Enthaelt Pakete, die fuer echte personenbezogene Daten noetig sind."
     }
   ]
 }
