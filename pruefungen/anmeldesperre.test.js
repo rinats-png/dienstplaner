@@ -33,6 +33,38 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+/* Gezielte Störungen der Ablage (wie bremse-lokal.test.js): `wirft` lässt einen Aufruf wie einen Plattenfehler (EIO)
+   scheitern, `verzoegert` hält ihn so viele Millisekunden auf. Ohne Angabe läuft alles unverändert durch. */
+const { stoerung } = vi.hoisted(() => ({ stoerung: { wirft: null, verzoegert: null } }));
+vi.mock("../server/lib/ablage.mjs", async (original) => {
+  const echt = await original();
+  return {
+    ...echt,
+    getStore: (angabe) => {
+      const s = echt.getStore(angabe);
+      const ablage = typeof angabe === "string" ? angabe : angabe && angabe.name;
+      return new Proxy(s, {
+        get(ziel, name) {
+          const wert = ziel[name];
+          if (typeof wert !== "function") return wert;
+          return (...args) => {
+            const key = typeof args[0] === "string" ? args[0]
+              : args[0] && args[0].prefix !== undefined ? args[0].prefix : "";
+            if (stoerung.wirft && stoerung.wirft(String(name), key, ablage)) {
+              const e = new Error(`EIO: gestört (${String(name)} ${key})`);
+              /** @type {any} */ (e).code = "EIO";
+              return Promise.reject(e);
+            }
+            const ms = stoerung.verzoegert ? stoerung.verzoegert(String(name), key, ablage) : 0;
+            if (ms > 0) return new Promise((r) => setTimeout(r, ms)).then(() => wert.apply(ziel, args));
+            return wert.apply(ziel, args);
+          };
+        },
+      });
+    },
+  };
+});
+
 const WIRT = "127.0.0.1:3000";
 const LIMIT = 60000;
 let wurzel, laden, daten, kontoSchreiben, ablageSchluessel, B, SCH;
@@ -81,7 +113,7 @@ beforeAll(async () => {
     { id: "m1", name: "Haus", einheiten: [{ id: "e1" }], personen: [{ id: "l", rolle: "leitung", bereich: "ALLE" }] }] }, { durch: "Pruefung" });
 }, LIMIT);
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); stoerung.wirft = null; stoerung.verzoegert = null; });
 beforeEach(async () => {
   SCH.sperrversuchZuruecksetzen();
   const s = (await import("../server/lib/ablage.mjs")).getStore({ name: "centric-takt", consistency: "strong" });
@@ -269,6 +301,21 @@ describe("Steigerungsstufe verfällt (Review 3)", () => {
     expect(dritte.stufe, "nach fünf Stunden abgebaut").toBe(0);
     expect(dritte.wartet).toBe(300);
   }, 120000);
+
+  it("wer ohne Pause anrennt, erreicht die Höchstdauer von 7200 s (Verfall zählt ab dem Ende der Sperre, Review NIEDRIG 1)", async () => {
+    let t = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => t);
+    const k = `a:dauer-${++zaehler}`;
+    const dauern = [];
+    for (let runde = 0; runde < 7; runde++) {
+      let r;
+      for (let i = 0; i < 9; i++) r = await SCH.bremse("anmelden", k);
+      expect(r.frei).toBe(false);
+      dauern.push(r.wartet);
+      t += (r.wartet + 1) * 1000;                             // genau nach dem Ende der Sperre wieder anrennen
+    }
+    expect(dauern).toEqual([300, 600, 1200, 2400, 4800, 7200, 7200]);
+  }, 120000);
 });
 
 describe("I5: Betreibercodes behalten die volle Bremse", () => {
@@ -376,4 +423,113 @@ describe("I7: parallele Anfragen", () => {
     const fehl = erg.filter((e, i) => i % 2 === 0 && e.status === 401).length;
     expect(fehl).toBeLessThanOrEqual(10);
   }, 120000);
+});
+
+/* Review SI-P7, HOCH: Ein Fehlversuch wurde erst gezählt, nachdem bremse() geantwortet hatte. Ein Bündel aus Fehlversuchen
+   und einem Treffer war vollständig ausgewertet, bevor die harte Sperre stand — der Treffer kam durch. Damit das Fenster
+   in der Prüfung sicher offen steht, hält die Ablage das Lesen des Sperreintrags 1,5 s auf; die Fehlversuche stecken dann
+   nachweislich in bremse(), wenn der Treffer entschieden wird.
+   Verhalten nach Entwurf: Ein Treffer kommt nur durch, wenn bei seiner Entscheidung alle VOR ihm entschiedenen Fehlversuche
+   dieser Herkunft gezählt sind und die Grenze (8 Sperrversuche je Sperre) nicht gerissen ist. Er wartet dafür auf sie;
+   reißen sie die Grenze, bekommt er 429 wie jeder andere Versuch dieser Herkunft. */
+describe("I7b: Bündel während der Sperre mit einem Treffer (Review HOCH)", () => {
+  const warten = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sperreLangsam = () => {
+    stoerung.verzoegert = (name, key, ablage) =>
+      ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:") ? 1500 : 0;
+  };
+
+  it("acht Sperrversuche gezählt, dann 30 Fehlversuche gleichzeitig und ein Treffer: der Treffer wird abgewiesen, die Herkunft ist danach hart gesperrt", async () => {
+    const ip = ipv4();
+    await sperren(ip);                                                             // Sperrversuch 1
+    for (let i = 0; i < 7; i++) expect((await anmelden(ip, unbekannt())).status).toBe(429);   // Sperrversuche 2–8
+    const c = await frischerCode();
+    sperreLangsam();
+    const fehl = Array.from({ length: 30 }, () => anmelden(ip, unbekannt()));
+    await warten(400);                                                             // die Fehlversuche stecken in bremse()
+    const treffer = await anmelden(ip, c);
+    const fehlErg = await Promise.all(fehl);
+    stoerung.verzoegert = null;
+    expect(treffer.status, `Treffer im Bündel: ${JSON.stringify(treffer)}`).toBe(429);
+    expect(fehlErg.map((e) => e.status)).toEqual(Array(30).fill(429));
+    expect(SCH.gueltigeDurchlassen(SCH.kennung(new Request("http://x/", { headers: { "x-forwarded-for": ip } }), null)),
+      "hart gesperrt").toBe(false);
+    expect((await anmelden(ip, c)).status, "danach einzeln: hart").toBe(429);
+    expect((await anmelden(ipv4(), c)).status, "andere Herkunft unberührt").toBe(200);
+  }, 120000);
+
+  it("dasselbe Bündel gleich nach Beginn der Sperre: höchstens die Grenze wird ausgewertet, der Treffer danach nicht mehr", async () => {
+    const ip = ipv4();
+    await sperren(ip);
+    const c = await frischerCode();
+    sperreLangsam();
+    const fehl = Array.from({ length: 50 }, () => anmelden(ip, unbekannt()));
+    await warten(400);
+    const treffer = await anmelden(ip, c);
+    await Promise.all(fehl);
+    stoerung.verzoegert = null;
+    expect(treffer.status).toBe(429);
+  }, 120000);
+
+  it("ein einzelner gültiger Code hinter der Sperre kommt weiter durch — auch genau an der Grenze und während die Ablage langsam ist", async () => {
+    const ip = ipv4();
+    await sperren(ip);
+    for (let i = 0; i < 7; i++) await anmelden(ip, unbekannt());                  // Sperrversuche 2–8
+    sperreLangsam();
+    const a = await anmelden(ip, await frischerCode());
+    expect(a.status, JSON.stringify(a)).toBe(200);
+  }, 120000);
+
+  it("wenige gleichzeitige Fehlversuche unter der Grenze: der Treffer wartet auf ihre Zählung und kommt dann durch", async () => {
+    const ip = ipv4();
+    await sperren(ip);                                                             // Sperrversuch 1
+    sperreLangsam();
+    const fehl = Array.from({ length: 3 }, () => anmelden(ip, unbekannt()));      // Sperrversuche 2–4
+    await warten(400);
+    const treffer = await anmelden(ip, await frischerCode());
+    const fehlErg = await Promise.all(fehl);
+    stoerung.verzoegert = null;
+    expect(fehlErg.map((e) => e.status)).toEqual([429, 429, 429]);
+    expect(treffer.status, JSON.stringify(treffer)).toBe(200);
+  }, 120000);
+});
+
+/* Review SI-P7, MITTEL: Bei ausgefallener Zählerablage meldet bremse() fail-closed je Anfrage „noch 300 s“ — ein Ende, das
+   mitwandert. Die Sperrzählung erkannte dieselbe Sperre am Ende ±2 s, begann also neu, und die Herkunft wurde nie hart. */
+describe("Sperrzählung bei ausgefallener Zählerablage (Review MITTEL)", () => {
+  it("Einheit: wanderndes Sperrende (alle 3 s eine Anfrage, je „noch 300 s“) zählt als dieselbe Sperre", () => {
+    let t = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => t);
+    for (let i = 1; i <= 8; i++) { expect(SCH.sperrversuchZaehlen("a:wandert", 300).hart, `Versuch ${i}`).toBe(false); t += 3000; }
+    expect(SCH.sperrversuchZaehlen("a:wandert", 300).hart, "Versuch 9").toBe(true);
+    t += 250 * 1000;
+    expect(SCH.gueltigeDurchlassen("a:wandert"), "bis zum festen Ende der ersten Sperre").toBe(false);
+  });
+
+  it("über HTTP: Sperreintrag unlesbar (EIO) — gültige Codes kommen anfangs durch, nach mehr als acht Fehlversuchen nicht mehr", async () => {
+    stoerung.wirft = (name, key, ablage) => ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:");
+    let t = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => t);
+    const ip = ipv4();
+    const c = await frischerCode();
+    for (let i = 0; i < 3; i++) { expect((await anmelden(ip, unbekannt())).status).toBe(429); t += 3000; }
+    expect((await anmelden(ip, c)).status, "gültig trotz Ausfall").toBe(200);
+    for (let i = 0; i < 6; i++) { expect((await anmelden(ip, unbekannt())).status).toBe(429); t += 3000; }
+    expect((await anmelden(ip, c)).status, "neun Fehlversuche in derselben (ausgefallenen) Sperre: hart").toBe(429);
+  }, 120000);
+});
+
+describe("Speichergrenze der Sperrzählung (Review NIEDRIG 2)", () => {
+  it("mehr Herkünfte als `speicher` mit laufender Zählung: fail-closed — die Durchlässigkeit gilt für niemanden mehr", () => {
+    const alt = SCH.SPERRVERSUCHE.speicher;
+    SCH.SPERRVERSUCHE.speicher = 50;
+    try {
+      for (let q = 0; q < 50; q++) SCH.sperrversuchZaehlen(`a:viele-${q}`, 300);
+      expect(SCH.gueltigeDurchlassen("a:irgendwer"), "50 Herkünfte: noch im Speicher").toBe(true);
+      expect(SCH.sperrversuchZaehlen("a:viele-50", 300).gesamtHart, "die 51. passt nicht mehr").toBe(true);
+      expect(SCH.gueltigeDurchlassen("a:irgendwer")).toBe(false);
+    } finally {
+      SCH.SPERRVERSUCHE.speicher = alt;
+    }
+  });
 });

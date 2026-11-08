@@ -129,7 +129,12 @@ zum Ende der Sperre auch für gültige Codes gesperrt (höchstens 16 Rateversuch
 Anfragen je fünf Minuten im ganzen Dienst (jede Herkunft trägt höchstens neun bei, eine einzelne kann das also nicht auslösen) gilt die
 Durchlässigkeit für niemanden mehr, bis das Fenster endet: Der Dienst steht dann unter verteiltem Raten. Betreibercodes behalten die volle
 Bremse. Die Last je Code (20 Anmeldungen in fünf Minuten) und je Betrieb bleibt begrenzt. Die Zähler der Sperrversuche liegen im
-Prozessspeicher (ein Prozess je Container).
+Prozessspeicher (ein Prozess je Container). Gleichzeitige Anfragen ändern daran nichts: Ein gültiger Code wartet, bis die Fehlversuche, die
+vor ihm von derselben Herkunft kamen, gezählt sind (höchstens 10 s, sonst 429 ohne Zählung), und entscheidet erst dann. Fällt die
+Zählerablage aus, weist die Bremse jeden Fehlversuch ab (fail-closed); die Sperrzählung läuft dann in festen Abschnitten von 300 s
+(höchstens acht Sperrversuche je Abschnitt, danach bis zu dessen Ende auch für gültige Codes gesperrt). Mehr als 100 000 Herkünfte mit
+laufender Zählung (verteiltes Raten über sehr viele /64) schalten die Durchlässigkeit bis zum Ende des Fensters für alle ab. Die
+Steigerungsstufe baut sich ab dem Ende einer Sperre ab; wer ohne Pause anrennt, erreicht die zwei Stunden.
 
 **IPv6 zählt je /64** (Geräte wechseln ihre Adresse darin frei). Das gilt für ALLE Bremsen, die je Herkunft zählen — Zugangscode, Konto-Anmeldung,
 Registrierung, Einrichten, Demo und der zweite Faktor —, nicht nur für die Anmeldung mit Zugangscode: Ein /64 ist wie eine IPv4-Adresse hinter

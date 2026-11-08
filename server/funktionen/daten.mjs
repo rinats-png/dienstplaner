@@ -1,7 +1,8 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
-  protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen } from "../lib/schutz.mjs";
+  protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen,
+  sperrAuswertungBeginnen, sperrAuswertungenAbwarten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
@@ -822,26 +823,44 @@ async function behandeln(req, context, ctx) {
         && eintragV.rolle !== "betreiber" && !eintragV.gesperrt
         && !(eintragV.laeuftAb && new Date(eintragV.laeuftAb).getTime() < Date.now())
         && sitzungsRolleBekannt(eintragV.rolle);
-      const durchlassen = nutzbar && gueltigeDurchlassen(k);
+      /* Gleichzeitige Anfragen (Review SI-P7, HOCH): Ein Fehlversuch wird erst nach bremse() gezählt. Ein nutzbarer Code
+         wartet deshalb, bis alle VOR ihm entschiedenen Auswertungen dieser Herkunft gezählt sind, und entscheidet erst dann
+         (schutz.mjs, sperrAuswertungenAbwarten). Ein Fehlversuch meldet seine Auswertung unten synchron an, vor dem ersten
+         await. Bleibt die Zählung aus (Zeitgrenze), wird nicht durchgelassen und nichts gezählt. */
+      let durchlassen = false;
+      if (nutzbar) {
+        if (!(await sperrAuswertungenAbwarten(k))) {
+          await protokoll("anmelden", k, "gebremst", "Auswertung ausstehend");
+          return zuVielAntwort(5);
+        }
+        durchlassen = gueltigeDurchlassen(k);
+      }
       /** @type {any} */
       let b = { frei: true };
       if (!durchlassen) {
-        b = await bremse("anmelden", k, zielRaum);
-        /* Ein Ausfall der Zählerablage bleibt nicht stumm (WP-46). */
-        if (b.fehler) await protokoll("anmelden", k, "bremse-ausfall", b.fehler);
-        if (!b.frei) {
-          sperrversuchZaehlen(k, b.wartet);
-          await protokoll("anmelden", k, "gebremst", `${b.grund}${b.dimension ? ` (${b.dimension})` : ""}`);
-          return zuVielAntwort(b.wartet);
-        }
-        /* Die zweite Grenze im Prozessspeicher, wie bei anmelden-konto: Sie
-           kann nicht ausfallen und deckelt auch das Gesamtaufkommen, wenn die
-           Hauptbremse degradiert nur noch je Herkunft zählt. */
-        const nb = notbremse("anmelden", k);
-        if (!nb.frei) {
-          sperrversuchZaehlen(k, nb.wartet);
-          await protokoll("anmelden", k, "notbremse", nb.dimension || null);
-          return zuVielAntwort(nb.wartet);
+        const gezaehlt = sperrAuswertungBeginnen(k);
+        try {
+          b = await bremse("anmelden", k, zielRaum);
+          /* Ein Ausfall der Zählerablage bleibt nicht stumm (WP-46). */
+          if (b.fehler) await protokoll("anmelden", k, "bremse-ausfall", b.fehler);
+          if (!b.frei) {
+            sperrversuchZaehlen(k, b.wartet);
+            gezaehlt();
+            await protokoll("anmelden", k, "gebremst", `${b.grund}${b.dimension ? ` (${b.dimension})` : ""}`);
+            return zuVielAntwort(b.wartet);
+          }
+          /* Die zweite Grenze im Prozessspeicher, wie bei anmelden-konto: Sie
+             kann nicht ausfallen und deckelt auch das Gesamtaufkommen, wenn die
+             Hauptbremse degradiert nur noch je Herkunft zählt. */
+          const nb = notbremse("anmelden", k);
+          if (!nb.frei) {
+            sperrversuchZaehlen(k, nb.wartet);
+            gezaehlt();
+            await protokoll("anmelden", k, "notbremse", nb.dimension || null);
+            return zuVielAntwort(nb.wartet);
+          }
+        } finally {
+          gezaehlt();
         }
       }
       if (!zugangscode || String(zugangscode).length < 6)

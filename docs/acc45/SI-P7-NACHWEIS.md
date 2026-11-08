@@ -29,7 +29,7 @@ Bremse zählt (`betreiber-zweifaktor.mjs`).
 | I4 | Wer während einer Sperre weiter rät, verliert die Durchlässigkeit (je Sperre 8, je Dienst 1200/Fenster, je Herkunft höchstens 9 Beiträge) | exakte Grenzen, Ende mit der Sperre (gefälschte Uhr), einzelne Herkunft kann den Dienst nicht abschalten |
 | I5 | Betreibercodes behalten die volle Bremse | „Betreibercode wird weiter gebremst“ |
 | I6 | IPv6 je /64; IPv4 unverändert; Schreibweisen, gemappt/NAT64 | Schreibweisen, `::`, Hex-gemappt, NAT64, unbrauchbare Angaben, Rotation im /64 über HTTP |
-| I7 | Parallele Anfragen überschreiten die Grenzen nicht | 40 parallele Fehlversuche; 12 parallele gültige hinter gesperrter Herkunft; gemischt |
+| I7 | Parallele Anfragen überschreiten die Grenzen nicht. **Korrektur nach Review 2 (Abschnitt 9):** Die erste Fassung hielt das nur für Fehlversuche untereinander; ein Treffer in einem gleichzeitigen Bündel wurde entschieden, bevor die Fehlversuche desselben Bündels gezählt waren (8 Sperrversuche, dann 200 Fehlversuche + 1 Treffer gleichzeitig: Treffer 200). Jetzt: Ein Treffer kommt nur durch, wenn alle VOR ihm entschiedenen Fehlversuche dieser Herkunft gezählt sind und die Grenze nicht gerissen haben; er wartet auf sie (höchstens 10 s, sonst 429 ohne Zählung) | 40 parallele Fehlversuche; 12 parallele gültige hinter gesperrter Herkunft; gemischt; I7b: Bündel aus 30 bzw. 50 Fehlversuchen + Treffer während der Sperre (Ablage künstlich verzögert) → Treffer 429, Herkunft danach hart; einzelner Treffer genau an der Grenze → 200; drei Fehlversuche unter der Grenze → Treffer wartet auf ihre Zählung, dann 200 |
 
 Zusätzlich: Die Steigerungsstufe verfällt (eine je Stunde ohne Sperre), sonst stiege sie hinter einem NAT über Tage auf die längste Sperre.
 
@@ -75,3 +75,21 @@ Die Korrekturen sind nicht erneut unabhängig geprüft; sie sind durch die obige
 - Ein Angreifer im selben NAT oder /64 kann mit mehr als 8 abgewiesenen Anfragen je Sperre die Durchlässigkeit für diese Herkunft abschalten (Rückfall auf das alte Bild, nicht schlechter als vorher);
   einen Dienst-weiten Effekt brauchen mindestens 134 verschiedene Herkünfte.
 - Eine Sperre, die durch IPv6-Gruppierung mehr Geräte trifft (Konto-Anmeldung, Registrierung): dokumentiert.
+
+## 9. Zweites unabhängiges Review (Opus) und Korrekturen
+
+| Befund | Schwere | Korrektur | Test |
+|---|---|---|---|
+| Harte Sperre per gleichzeitiger Anfragen umgehbar: `gueltigeDurchlassen` entschied sofort, gezählt wurde ein Fehlversuch erst nach `await bremse(...)`. Probe: 8 Sperrversuche, dann 200 unbekannte Codes + 1 gültiger gleichzeitig → gültiger 200 | hoch | Jede Anfrage über die Bremse meldet ihre Auswertung synchron vor dem ersten `await` an (`sperrAuswertungBeginnen`); ein nutzbarer Code wartet auf alle vorher angemeldeten derselben Herkunft (`sperrAuswertungenAbwarten`, Zeitgrenze 10 s → 429 ohne Zählung) und entscheidet erst dann. Gültige Anmeldungen zählen weiter nicht; sie warten nur auf Fehlversuche **vor** ihnen (keine Aushungerung durch nachfolgende) | I7b (4 Tests); Reviewerprobe danach: Treffer 429, alle 200 Fehlversuche 429, danach hart |
+| Zählerablage ausgefallen: `bremse` meldet fail-closed je Anfrage „noch 300 s“, `sperrversuchZaehlen` erkannte dieselbe Sperre am Ende ±2 s → Zähler begann neu, nie hart; eine Herkunft riet dauerhaft (~4/s) und füllte allein den Dienst-Deckel | mittel | Dieselbe Sperre gilt, solange die gezählte läuft; ihr Ende steht fest und wandert nicht mit. Erst danach beginnt eine neue bei null | Einheit (wanderndes Ende) und HTTP mit EIO auf dem Sperreintrag |
+| Stufenverfall ab dem Setzzeitpunkt: eine Sperre von 4800 s verfiel schon während sie lief, 7200 s wurden nie erreicht | niedrig | Verfall ab dem **Ende** der Sperre (`ende` im Stufeneintrag; alte Einträge rechnen ab `zuletzt`) — strenger, nicht schwächer | Dauerangriff: 300 → 600 → 1200 → 2400 → 4800 → 7200 → 7200 |
+| Aufräumen der Karten O(n) je Aufruf über 500 Einträge; unbegrenztes Wachstum über viele /64 | niedrig | Aufräumen nur beim Überschreiten einer Marke (danach doppelte Restgröße, im Mittel O(1)); Obergrenze `SPERRVERSUCHE.speicher` = 100 000 Herkünfte, darüber fail-closed: Durchlässigkeit für alle aus bis Fensterende | Speichergrenze (Einheit) |
+
+Nachweis rot → grün: Mit den neuen Tests, aber ohne die Änderungen an `schutz.mjs`/`daten.mjs`, schlagen 6 der 36 Tests fehl (Bündel ×2, wanderndes Ende ×2,
+Höchstdauer, Speichergrenze); mit den Änderungen 36/36. Die zwei Verfügbarkeitstests (einzelner Treffer an der Grenze, Treffer hinter wenigen Fehlversuchen)
+sind in beiden Fassungen grün — sie sichern, dass die Korrektur gültige Codes nicht aussperrt.
+
+Restrisiken (zusätzlich zu Abschnitt 8): Ein Treffer hinter gleichzeitigen Fehlversuchen derselben Herkunft ist um deren Bremsdauer verzögert (bei gestörter
+Ablage höchstens 10 s, dann 429). Die Reihenfolge „vorher/nachher“ gilt je Prozess, wie alle Sperrzähler im Prozessspeicher. Bei ausgefallener Ablage weist
+die Bremse jeden Fehlversuch ab; die Sperrzählung läuft in festen Abschnitten von 300 s ohne Steigerung (höchstens 8 Sperrversuche je Abschnitt). Die
+Korrekturen sind nicht erneut unabhängig geprüft.
