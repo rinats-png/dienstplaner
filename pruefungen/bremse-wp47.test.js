@@ -447,7 +447,7 @@ describe("WP-47 · Anmelden über HTTP", () => {
     } finally { r1(); r2(); }
   }, 120000);
 
-  it("Auflage M1: die Abweisung je Code entlastet die Herkunft NICHT — acht Versuche aus einer Adresse, dann bremst die Herkunftsgrenze", async () => {
+  it("Auflage M1 (seit SI-P7): die Abweisung je Code entlastet die Herkunft NICHT und belastet sie auch nicht — vorhandene Fehlversuche bleiben stehen", async () => {
     imFrischenFenster(11);
     const r1 = aendern(S.GRENZEN["anmelden-code"], { versuche: 1 });
     try {
@@ -457,13 +457,20 @@ describe("WP-47 · Anmelden über HTTP", () => {
         person: "p1", betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
       expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47H-HERK-UNFT" } })).status).toBe(200);
       const xff = "10.47.251.7";
+      /* Drei Fehlversuche aus dieser Herkunft … */
+      for (let i = 0; i < 3; i++)
+        expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: `W47H-FEHL-000${i}` }, xff })).status).toBe(401);
+      /* … dann acht Versuche mit dem GÜLTIGEN Code, die die Lastgrenze je Code abweist. */
       const stati = [];
       for (let i = 0; i < S.GRENZEN.anmelden.versuche; i++)
         stati.push((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47H-HERK-UNFT" }, xff })).status);
       expect(stati).toEqual(Array(S.GRENZEN.anmelden.versuche).fill(429));
+      /* Gültige Versuche zählen nicht gegen die Herkunft (SI-P7: nur Fehlversuche zählen) … */
       const k = S.kennung(new Request(`http://${WIRT}/api/anmelden`, { headers: { host: WIRT, "x-forwarded-for": xff } }), null);
       const b = await S.bremse("anmelden", k);
-      expect(b.frei, "die Versuche dieser Herkunft stehen noch").toBe(false);
+      expect(b.frei, "die Herkunft ist nicht gesperrt").toBe(true);
+      /* … und die drei Fehlversuche stehen noch (drei + dieser Prüfaufruf = vier gezählt). */
+      expect(b.uebrig, "Fehlversuche bleiben erhalten").toBe(S.GRENZEN.anmelden.versuche - 4);
     } finally { r1(); }
   }, 120000);
 
