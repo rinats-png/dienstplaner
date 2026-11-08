@@ -12,7 +12,7 @@ Betreiberkonsole; Sitzung zwei Stunden ([Übersicht](README.md)). Den Dienst sel
 | Selbststarts und Demozugänge verwalten | „Selbststarts“, „Demozugänge“ |
 | Rechnungen, Tarife, Preisrechner, Branchenpakete | „Rechnungen“, „Tarife“, „Rechner“, „Pakete“ |
 | Adressänderungen der Anmeldeadressen beobachten (Kontoübernahmen erkennen) | „Adressänderungen“ |
-| Zugänge raumweit zurückziehen; Datenräume anlegen und löschen | Konsole, `/api/zugaenge`, `/api/raum-loeschen` |
+| Zugänge raumweit zurückziehen; Datenräume anlegen und löschen. Neue Zugänge nur beim erstmaligen Einrichten eines **neuen** Betriebs (frische Anmeldung und Code des zweiten Faktors nötig); in bestehenden Kundenräumen legt der Betreiber ohne Kundenzustimmung keine Zugänge an (Meldung „kundenraum_gesperrt“) | Konsole, `/api/zugaenge`, `/api/raum-loeschen` |
 | Zwei-Faktor für den eigenen Betreibercode und für Verwalterschlüssel einrichten und abschalten | „Zwei-Faktor“ |
 
 **Verwalterschlüssel** (`/einrichten`, für Skripte: Codes anlegen, Übersicht, Bindung) sind getrennt von der Konsole.
