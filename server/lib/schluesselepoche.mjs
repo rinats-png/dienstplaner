@@ -165,6 +165,8 @@ export async function epocheDateiErneuern(verz, grund) {
 let reihe = Promise.resolve();
 /** @template T @param {() => Promise<T>} fn @returns {Promise<T>} */
 function nacheinander(fn) {
+  /* Kein Vorgang des Schreib-Halts (WP-28c): Diese Reihe schreibt nur das Zustandsverzeichnis und skbindung, beides
+     nie in einer Sicherung — sie bleibt im Halt frei (die Prüfung eines Sicherungsschlüssels wartet nicht). */
   const r = reihe.then(fn, fn);
   reihe = r.catch(() => {});
   return r;

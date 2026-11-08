@@ -58,6 +58,7 @@
     "pruefung:wiederherstellen-ui": "vitest run pruefungen/wiederherstellen-ui.test.js",
     "pruefung:sicherungsschluessel": "vitest run pruefungen/sicherungsschluessel-ersteller.test.js pruefungen/sicherungsschluessel-betreiberentscheid.test.js pruefungen/sicherungsschluessel-wiederherstellung.test.js pruefungen/code-sitzung-person.test.js",
     "pruefung:prozesssperre": "vitest run pruefungen/prozesssperre.test.js",
+    "pruefung:schreibhalt": "vitest run pruefungen/schreibhalt.test.js pruefungen/schreibhalt-messung.test.js pruefungen/wp28b-sicherung-last.test.js pruefungen/wp28b-sicherung-enoent.test.js",
     "pruefung:last-stempeln": "node pruefungen/last-stempeln.mjs",
     "pruefung:zeiterfassung-http": "node --import ./werkzeug/betreiber-faktor-vorlauf.mjs pruefungen/zeiterfassung.mjs",
     "pruefung:sicht-schicht": "vitest run pruefungen/sicht-schichtverantwortung.test.js",
