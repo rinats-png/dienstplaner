@@ -11,7 +11,7 @@ import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letz
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
-import { betreiberZweifaktor, betreiberFaktorFrisch } from "../lib/betreiber-zweifaktor.mjs";
+import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt } from "../lib/betreiber-zweifaktor.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -984,15 +984,27 @@ async function behandeln(req, context, ctx) {
       }
       /* Zweiter Faktor für Betreibercodes (WP-32b, lib/betreiber-zweifaktor.mjs):
          Einrichten, Abschalten und — wenn eingerichtet — Pflicht beim Anmelden.
-         Andere Rollen kennen keine Aktion. */
+         SI-P4: derselbe Weg für Leitung, Planung und Kunde. Maßgeblich ist die
+         Rolle des Codes ODER die wirksame Rolle seiner Person im Betrieb — ein
+         Mitarbeitercode, dessen Person Leitung ist, hat Leitungsrechte und
+         bekommt deshalb auch den zweiten Faktor (fail-closed). Andere Rollen
+         kennen keine Aktion. */
       let zfAktiv = null;
+      const rolleWirksamC = eintrag.rolle === "betreiber" ? "betreiber"
+        : wirksameRolle({ rolle: eintrag.rolle, person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+          mandantId: bindungC.mandantId }, gelesenC && gelesenC.bestand);
       if (eintrag.rolle === "betreiber") {
         const zf = await betreiberZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
           kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
+      } else if (zweifaktorRolle(eintrag.rolle) || zweifaktorRolle(rolleWirksamC)) {
+        const zf = await rollenZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
+          kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name });
+        if (zf.antwort) return zf.antwort;
+        zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {
-        return antwort({ fehler: "Einen zweiten Faktor gibt es nur für Betreiberzugänge." }, 400);
+        return antwort({ fehler: "Einen zweiten Faktor gibt es nur für Betreiber-, Leitungs-, Planungs- und Kundenzugänge." }, 400);
       }
       if (bindungC.migrieren) {
         try {
@@ -1011,6 +1023,8 @@ async function behandeln(req, context, ctx) {
         einheit: eintrag.einheit ?? eintrag.gruppe ?? null,
         /* Ein Demozugang bleibt auch mit Code ein Demozugang: keine Verwaltungswege (Betreiberentscheidung D.2). */
         ...(eintrag.demo === true ? { demo: true } : {}),
+        /* SI-P4: Die Sitzung entstand mit bestandenem zweitem Faktor — Grundlage für „Zugang merken“. */
+        ...(zfAktiv === true ? { zweifaktor: true } : {}),
       }, dauerFuer(eintrag.rolle));
       /* Über den alten Schlüssel gefunden und ein Pfeffer ist da: still
          umschlüsseln. So wandert der Bestand ohne Sammelvorgang hinüber —
@@ -1047,7 +1061,10 @@ async function behandeln(req, context, ctx) {
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         hinweis: eintrag.hinweis || null, gueltigBis,
         ...(eintrag.demo === true ? { demo: true } : {}),
-        ...(zfAktiv === null ? {} : { zweifaktor: zfAktiv }) });
+        ...(zfAktiv === null ? {} : { zweifaktor: zfAktiv }),
+        /* SI-P4: Darf die Oberfläche den Zugang auf dem Gerät merken? Leitung, Planung, Kunde nur mit aktivem
+           zweitem Faktor, Betreiber nie. Fehlt die Angabe, merkt die Oberfläche nicht (src/speicher.js). */
+        merkenErlaubt: merkenErlaubt([eintrag.rolle, rolleWirksamC], zfAktiv === true) });
     }
 
     /* ------------------------- Ab hier angemeldet -------------------- */
@@ -1165,12 +1182,15 @@ async function behandeln(req, context, ctx) {
       if (mit) bytesMerken(s.bestand, mit);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s) });
+        einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
+        merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true) });
       /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
          nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
       return antwort({ bestand: bestandFuerRolle(personenAngleichen(mit.bestand), s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
+        /* SI-P4: Gilt der gemerkte Zugang noch? Die wirksame Rolle kann sich seit der Anmeldung geändert haben. */
+        merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true),
         geaendert: mit.zeit, durch: mit.durch });
     }
 

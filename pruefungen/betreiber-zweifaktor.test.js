@@ -20,6 +20,7 @@ const WIRT = "127.0.0.1:3000";
 const T0 = Date.UTC(2026, 10, 3, 9, 0, 15);
 const CODE = "BTR2-FAKT-OR01";
 const CODE_LEITUNG = "LEI2-FAKT-OR02";
+const CODE_MITARBEITER = "MIT2-FAKT-OR03";
 let wurzel, laden, daten, schutz;
 let nr = 0;
 let jetzt = T0;
@@ -76,6 +77,8 @@ beforeAll(async () => {
     rolle: "betreiber", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
   await kontoSchreiben(laden(), ablageSchluessel(CODE_LEITUNG), { name: "Leitung Probe", bestand: "betreiber-probe",
     rolle: "leitung", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
+  await kontoSchreiben(laden(), ablageSchluessel(CODE_MITARBEITER), { name: "Mitarbeiter Probe", bestand: "betreiber-probe",
+    rolle: "mitarbeiter", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
 });
 afterAll(async () => {
   vi.useRealTimers();
@@ -99,11 +102,18 @@ describe("Betreibercode mit zweitem Faktor über /api/anmelden", () => {
     expect(a.geheimnis).toBeUndefined();
   });
 
+  /* SI-P4: Leitung, Planung und Kunde haben seitdem einen eigenen zweiten Faktor
+     (pruefungen/rollen-zweifaktor.test.js). „Andere Rollen“ sind hier deshalb
+     Rollen ohne Faktor (Mitarbeiter); die Leitung meldet sich ohne eingerichteten
+     Faktor weiterhin an, ihre Antwort sagt jetzt zweifaktor: false. */
   it("andere Rollen kennen keine Zwei-Faktor-Aktion und melden sich unverändert an", async () => {
-    expect((await anmelden({ zugangscode: CODE_LEITUNG, zweifaktorAktion: "beginnen" })).status).toBe(400);
-    const a = await anmelden({ zugangscode: CODE_LEITUNG });
+    expect((await anmelden({ zugangscode: CODE_MITARBEITER, zweifaktorAktion: "beginnen" })).status).toBe(400);
+    const a = await anmelden({ zugangscode: CODE_MITARBEITER });
     expect(a.status, a.roh).toBe(200);
     expect(a.zweifaktor).toBeUndefined();
+    const l = await anmelden({ zugangscode: CODE_LEITUNG });
+    expect(l.status, l.roh).toBe(200);
+    expect(l.zweifaktor).toBe(false);
   });
 
   it("Einrichten: Geheimnis einmal, keine Sitzung", async () => {

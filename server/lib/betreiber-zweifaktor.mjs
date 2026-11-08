@@ -58,6 +58,71 @@ export function betreiberPflicht(env = process.env) {
 export const betreiberZweifaktorId = (codeSchluessel) =>
   createHash("sha256").update(`betreiber-code:${codeSchluessel}`).digest("hex");
 
+/* --------------------------------------------------------------------------
+   SI-P4: Zweiter Faktor auch für Leitung, Planung und Kunde
+
+   Leitung, Planung (planer, subplaner) und Kunde sehen Gesundheits-, Bank-
+   und Lohndaten. Ihr Zugangscode bekommt denselben Weg wie ein Betreibercode:
+   einrichten, bestätigen, abschalten über /api/anmelden, und — einmal
+   eingerichtet — ohne gültigen Code aus der App keine Sitzung. Es gibt
+   keinen Umweg: Ist der Faktor aktiv, verlangt jede Anmeldung mit diesem
+   Code ihn (auch wenn die Pflicht aus ist).
+
+   Gespeichert unter einer eigenen id je Code (Vorsatz „rollen-code:“),
+   getrennt von Betreibercodes und Verwalterschlüsseln; eigener Bremszähler
+   (`r:`). Verliert jemand Gerät und Wiederherstellungscodes, ist der Rückweg
+   ein neuer Zugangscode (Leitung oder Betreiber sperrt den alten) — dessen
+   Faktor beginnt neu.
+
+   Pflicht für alle diese Codes: CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1. Die
+   Vorgabe ist aus, auch in der Auslieferung — ob und ab wann die Pflicht im
+   Pilot gilt, ist eine Betreiberentscheidung (docs/acc45/SI-P4-NACHWEIS.md).
+   Unabhängig davon gilt fail-closed: Ohne aktiven zweiten Faktor darf ein
+   solcher Zugang auf dem Gerät nicht gemerkt werden (merkenErlaubt).
+   -------------------------------------------------------------------------- */
+
+/** Rollen, deren Zugangscode einen zweiten Faktor bekommt (SI-P4). */
+export const ZWEIFAKTOR_ROLLEN = Object.freeze(["leitung", "planer", "subplaner", "kunde"]);
+/** @param {unknown} rolle */
+export const zweifaktorRolle = (rolle) => typeof rolle === "string" && ZWEIFAKTOR_ROLLEN.includes(rolle);
+
+/**
+ * Ist der zweite Faktor für Codes der ZWEIFAKTOR_ROLLEN Pflicht? Nur mit
+ * CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1. Wird bei jedem Aufruf gelesen.
+ * @param {Record<string, string|undefined>} [env]
+ */
+export function rollenPflicht(env = process.env) {
+  return String(env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+}
+
+/** Die id, unter der der zweite Faktor eines Leitungs-, Planungs- oder Kundencodes liegt. */
+export const rollenZweifaktorId = (codeSchluessel) =>
+  createHash("sha256").update(`rollen-code:${codeSchluessel}`).digest("hex");
+
+/**
+ * Darf dieser Zugang auf dem Gerät gemerkt werden („Zugang merken“)?
+ * Betreiber: nie. Leitung, Planung, Kunde: nur mit aktivem zweiten Faktor.
+ * Alle übergebenen Rollen zählen (Rolle des Codes UND wirksame Rolle der
+ * Person) — eine davon genügt zum Nein. Keine Rolle: Nein.
+ * @param {Array<unknown>} rollen
+ * @param {boolean} zweifaktorAktiv
+ */
+export function merkenErlaubt(rollen, zweifaktorAktiv) {
+  const r = (Array.isArray(rollen) ? rollen : []).filter((x) => x !== null && x !== undefined && x !== "");
+  if (!r.length) return false;
+  if (r.some((x) => x === "betreiber")) return false;
+  if (r.some((x) => zweifaktorRolle(x))) return zweifaktorAktiv === true;
+  return true;
+}
+
+/** Die beiden Arten von Zugangscode mit zweitem Faktor. */
+const ART = {
+  betreiber: { id: betreiberZweifaktorId, kurz: "b", etikett: "Betreiber", pflicht: betreiberPflicht,
+    pflichtText: "Für Betreiberzugänge ist ein zweiter Faktor Pflicht." },
+  rolle: { id: rollenZweifaktorId, kurz: "r", etikett: "Zugang", pflicht: rollenPflicht,
+    pflichtText: "Für diesen Zugang ist ein zweiter Faktor Pflicht." },
+};
+
 const json = (d, status = 200) => new Response(JSON.stringify(d), { status,
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 const nichtPruefbar = () => json({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
@@ -78,8 +143,25 @@ const nichtPruefbar = () => json({ fehler: "Der zweite Faktor lässt sich gerade
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  *   `antwort` gesetzt: genau diese zurückgeben, keine Sitzung anlegen.
  */
-export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name }) {
-  const id = betreiberZweifaktorId(codeSchluessel);
+export const betreiberZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.betreiber });
+
+/**
+ * Dasselbe für einen bereits als gültig erkannten Code der Rolle Leitung,
+ * Planung oder Kunde (SI-P4). Parameter und Rückgabe wie betreiberZweifaktor.
+ * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
+ *   altSchluessel?: string, name: string}} a
+ * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
+ */
+export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
+
+/**
+ * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
+ *   altSchluessel?: string, name: string, art: typeof ART.betreiber}} a
+ * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
+ */
+async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art }) {
+  const id = art.id(codeSchluessel);
+  const E = art.etikett;
   /* B2: Wechselt der zweite Faktor (eingerichtet oder abgeschaltet), enden
      alle Sitzungen dieses Codes. Eine Sitzung, die vorher mit dem Code
      allein entstand — vielleicht auf einem fremden Gerät —, überlebt die
@@ -88,17 +170,17 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
   /** Sitzungen dieses Codes beenden. { beendet, fehler } — fehler > 0 heißt: nicht alle. */
   const sitzungenBeenden = async () => {
     const r = await sitzungenBeendenWenn((sit) => schluessel.has(sit.konto));
-    if (r.fehler) await protokoll("zweifaktor", k, "fehler", `Betreiber · ${r.fehler} Sitzungen nicht beendet`);
+    if (r.fehler) await protokoll("zweifaktor", k, "fehler", `${E} · ${r.fehler} Sitzungen nicht beendet`);
     return r;
   };
   const nichtAlleBeendet = (wann) => json({ fehler: `Bisherige Sitzungen dieses Zugangs ließen sich nicht `
     + `alle beenden — ${wann}. Bitte erneut versuchen.`, zweifaktor: "sitzungen" }, 503);
   /* Option: Pflicht für alle Betreibercodes (Vorgabe aus). Ohne
      eingerichteten zweiten Faktor gibt es dann nur die Aktionen, keine Sitzung. */
-  const pflicht = betreiberPflicht();
+  const pflicht = art.pflicht();
   const aktion = String((rumpf && rumpf.zweifaktorAktion) || "");
   const code = rumpf && rumpf.zweifaktor ? String(rumpf.zweifaktor) : "";
-  const kennungen = [`b:${id.slice(0, 16)}`, k];
+  const kennungen = [`${art.kurz}:${id.slice(0, 16)}`, k];
 
   let stand;
   try { stand = await zweifaktorStand(store, id); } catch { return { antwort: nichtPruefbar() }; }
@@ -120,7 +202,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
   /** Code prüfen (TOTP oder Wiederherstellungscode, nie Nachweis). null = bestanden. */
   const pruefen = async () => {
     if (!code) {
-      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · fehlt");
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · fehlt`);
       return json({ fehler: "Für diesen Zugang ist ein zweiter Faktor eingerichtet. "
         + "Bitte den Code aus der App eingeben.", zweifaktor: "erforderlich" }, 401);
     }
@@ -128,14 +210,14 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     const p = await zweifaktorPruefen(store, id, { code, nachweisErlaubt: false });
     if (!p.ok) {
       await new Promise((r) => setTimeout(r, 400));
-      await protokoll("zweifaktor", k, "abgewiesen", `Betreiber · ${p.grund}`);
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · ${p.grund}`);
       return json({ fehler: p.grund === "wiederholt"
         ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
         : "Der zweite Faktor stimmt nicht.", zweifaktor: "falsch" }, 401);
     }
     await entlastenAlle();
     if (p.art === "wiederherstellung")
-      await protokoll("zweifaktor", k, "erfolg", "Betreiber · Wiederherstellungscode verbraucht");
+      await protokoll("zweifaktor", k, "erfolg", `${E} · Wiederherstellungscode verbraucht`);
     return null;
   };
 
@@ -151,20 +233,20 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
          Betreibers durch seine eigene ersetzen. Eine abgebrochene Einrichtung
          setzt der Serverbetreiber offline zurück
          (werkzeug/betreiber-2fa-zuruecksetzen.mjs). */
-      await protokoll("zweifaktor", k, "warnung", `Betreiber · Überschreiben einer begonnenen Einrichtung verweigert (seit ${stand.ausstehendSeitMin} min)`);
+      await protokoll("zweifaktor", k, "warnung", `${E} · Überschreiben einer begonnenen Einrichtung verweigert (seit ${stand.ausstehendSeitMin} min)`);
       return { antwort: json({ fehler: "Eine Einrichtung ist bereits begonnen. Bitte mit dem Geheimnis "
         + "bestätigen oder durch den Serverbetreiber zurücksetzen lassen.", zweifaktor: "ausstehend" }, 409) };
     }
     if (stand.ausstehend) {
       const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
-      await protokoll("zweifaktor", k, "warnung", "Betreiber · laufende Einrichtung überschrieben");
+      await protokoll("zweifaktor", k, "warnung", `${E} · laufende Einrichtung überschrieben`);
     }
-    const erg = await zweifaktorBeginnen(store, id, name || "Betreiber");
+    const erg = await zweifaktorBeginnen(store, id, name || E);
     if (erg.fehler === "pfeffer") return { antwort: json({ fehler: "Der zweite Faktor lässt sich auf "
       + "diesem Server nicht einrichten (CENTRIC_PFEFFER fehlt)." }, 503) };
     if (erg.fehler) return { antwort: json({ fehler: "Der zweite Faktor ist schon eingerichtet." }, 409) };
     await codeRichtig();
-    await protokoll("zweifaktor", k, "erfolg", "Betreiber · Einrichtung begonnen");
+    await protokoll("zweifaktor", k, "erfolg", `${E} · Einrichtung begonnen`);
     return { antwort: json({ ok: true, geheimnis: erg.geheimnis, otpauth: erg.otpauth,
       hinweis: "Geheimnis und Adresse erscheinen genau einmal. In der App erfassen und mit dem "
         + "ersten Code bestätigen." }) };
@@ -183,7 +265,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     if (vor.fehler === "pfeffer") return { antwort: nichtPruefbar() };
     if (!vor.ok) {
       await new Promise((r) => setTimeout(r, 400));
-      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Bestätigung");
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · Bestätigung`);
       return { antwort: json({ fehler: "Der Code stimmt nicht.", zweifaktor: "falsch" }, 401) };
     }
     const vorher = await sitzungenBeenden();
@@ -192,7 +274,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     if (erg.fehler === "pfeffer") return { antwort: nichtPruefbar() };
     if (erg.fehler) {
       await new Promise((r) => setTimeout(r, 400));
-      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Bestätigung");
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · Bestätigung`);
       return { antwort: json({ fehler: "Der Code stimmt nicht.", zweifaktor: "falsch" }, 401) };
     }
     await entlastenAlle();
@@ -201,7 +283,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
        Aktivierung mit dem Code allein entstand. */
     const danach = await sitzungenBeenden();
     const beendet = vorher.beendet + danach.beendet;
-    await protokoll("zweifaktor", k, "erfolg", `Betreiber · eingerichtet · ${beendet} Sitzungen beendet`);
+    await protokoll("zweifaktor", k, "erfolg", `${E} · eingerichtet · ${beendet} Sitzungen beendet`);
     return { antwort: json({ ok: true, aktiv: true, sitzungenBeendet: beendet,
       ...(danach.fehler ? { warnung: "Eine eben entstandene Sitzung ließ sich nicht beenden; sie endet spätestens nach zwei Stunden." } : {}),
       wiederherstellung: erg.wiederherstellung,
@@ -214,7 +296,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
        Code der App hat, würde sonst abschalten, ein eigenes Gerät einrichten und den Betreiber aussperren.
        Gerätewechsel und Verlust: offline (werkzeug/betreiber-2fa-zuruecksetzen.mjs). */
     if (pflicht) {
-      await protokoll("zweifaktor", k, "warnung", "Betreiber · Abschalten unter Pflicht verweigert");
+      await protokoll("zweifaktor", k, "warnung", `${E} · Abschalten unter Pflicht verweigert`);
       return { antwort: json({ fehler: "Unter Pflicht lässt sich der zweite Faktor nicht über das Netz abschalten. "
         + "Gerätewechsel oder Verlust: der Serverbetreiber setzt ihn offline zurück.", zweifaktor: "pflicht" }, 409) };
     }
@@ -225,7 +307,7 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     try { await zweifaktorAbschalten(store, id); }
     catch { return { antwort: nichtPruefbar() }; }
     await codeRichtig();
-    await protokoll("zweifaktor", k, "erfolg", `Betreiber · abgeschaltet · ${vorher.beendet} Sitzungen beendet`);
+    await protokoll("zweifaktor", k, "erfolg", `${E} · abgeschaltet · ${vorher.beendet} Sitzungen beendet`);
     return { antwort: json({ ok: true, aktiv: false, sitzungenBeendet: vorher.beendet }) };
   }
 
@@ -242,8 +324,8 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
   if (stand.aktiv) { const r = await pruefen(); if (r) return { antwort: r }; }
   else if (pflicht) {
     await codeRichtig();      // der Code war richtig; die Einrichtung ist der nächste Schritt, kein Rateversuch
-    await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Pflicht, nicht eingerichtet");
-    return { antwort: json({ fehler: "Für Betreiberzugänge ist ein zweiter Faktor Pflicht. Bitte zuerst "
+    await protokoll("zweifaktor", k, "abgewiesen", `${E} · Pflicht, nicht eingerichtet`);
+    return { antwort: json({ fehler: `${art.pflichtText} Bitte zuerst `
       + "einrichten (zweifaktorAktion: beginnen, dann bestaetigen).", zweifaktor: "einrichten" }, 403) };
   }
   return { aktiv: stand.aktiv };
