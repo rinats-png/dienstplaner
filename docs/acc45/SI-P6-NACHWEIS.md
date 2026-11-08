@@ -87,7 +87,7 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
 - Opus auf `ce687f1` (Faktor-Teil, vor dem Kundenraumschutz): „integrierbar mit Auflagen“; Befunde B1–B6, B1–B4 behoben
   (Altschlüssel-Kette, eigener Zähler, `frisch` bei `bestand-anlegen`; B1 — Personenbindung — ist durch das Verbot für alle
   Rollen gegenstandslos).
-- Opus auf dem Kundenraumschutz (alle Zugangswege): siehe PR-Beschreibung.
+- Opus auf dem Kundenraumschutz (alle Zugangswege, Stand `59ec2c1`): „integrierbar mit Auflagen“, **vier Befunde offen (B1–B4, siehe §8)**; Mutationstest 14/14 Mutanten durch die Tests getötet; nicht erneut geprüft nach Behebung.
 
 ## 6. Verbleibende Risiken und offene Entscheidungen
 
@@ -115,3 +115,16 @@ Siehe PR-Beschreibung (Zahlen der Läufe).
   `zugaenge-anlegen.test.js` „legt nach einem Zurückziehen genau das Fehlende neu an“, `g9-nachtrag.test.js` „kein Standard-
   und kein Migrationspfad setzt einen Pilot“: alle ohne diese Änderung identisch rot (mit Stash gemessen).
 - `pruefungen/staging-proben.mjs` (Gate-Proben im Produktionsmodus) ist in dieser Umgebung auf dem Zielbranch identisch rot.
+
+## 8. Offene Befunde des unabhängigen Reviews (Stand Übergabe, NICHT behoben)
+
+**SI-P6 ist erst nach Schließung von B1 integrierbar.** B2–B4 sind Auflagen. Zu B1–B4 gibt es noch keine Tests.
+
+| Nr. | Schwere | Befund | Stelle | Fixvorschlag |
+|---|---|---|---|---|
+| B1 | **hoch** | `POST /einrichten` mit `rolle:"betreiber"` und `bestand:<Kundenraum>` umgeht den Schutz: 200 mit Code, Betreibersitzung an den Kundenraum gebunden; sie liest Bestand (Personenkennungen, Rollen, `adressAenderungen` mit E-Mail-Adressen) und schreibt ihn (`PUT /api/bestand` 200, Betrieb auf „gekuendigt“, fremder Betrieb übernommen). Die Aussage in §2/§6, Betreibercodes hätten „kein Kundendatenrecht“, ist damit widerlegt. | `server/funktionen/einrichten.mjs:420` | `raumLage` auch für `rolle:"betreiber"`; bei `kundenraum` 409. Betreibercodes nur für `neu`/`fenster`/`demo`. Negativtest „Betreibercode an Kundenraum → 409“. |
+| B2 | mittel | Teilweise misslungenes Raumlöschen: Der Vermerk wird immer gelöscht, `kern:`/`bestand:` nur ohne Fehler; `raumLage` meldet dann „neu“, obwohl Daten bleiben. Probe: kaputter `feed:`-Eintrag, `raumLoeschen` → `vollstaendig:false`, danach `/api/zugaenge` 200 und der neue Leitungscode liest die Personaldaten. | `raumloeschung.mjs:220/235`, `kundenraumschutz.mjs:77` | Vermerk schon bei `bestand-anlegen` setzen; fehlt er, gilt `kundenraum` (fail-closed). Mindestens: Vermerk erst zusammen mit `kern:` löschen. |
+| B3 | mittel | Das 15-Minuten-Fenster schließt nur durch eine Mitgliedschaft. Meldet sich der Kunde per Code an und schreibt, bleibt das Fenster offen. | `kundenraumschutz.mjs:71-72` | Fenster bei der ersten Anmeldung/dem ersten Schreiben ohne Betreiberrolle schließen (`vermerk.geschlossen`). |
+| B4 | niedrig–mittel | Mitgliedschaften werden nur über den Raumindex `raummitglied:<raum>:` gezählt; Zugriff gewährt aber `mitglied:<acc>:<raum>`. Läuft der Index auseinander (räumt `raumloeschung.mjs` 2b selbst ein), gilt der Raum als „neu“. | `kundenraumschutz.mjs:66-67` | Zusätzlich `mitglied:` durchsuchen (wie `raumloeschung.mjs`), auf den Raum filtern, Fehler werfen. |
+
+Ausdrücklich als sicher geprüft (Review): Schreibweisen/Unicode/Pfadtricks im Raumnamen (409), parallele Erstaufrufe (genau ein Vermerk), Demo-Flag-Spoofing, Lesefehler (503), Faktor-Replay und Altschlüssel-Kette, `rolle:"betreiber"` auf `/api/zugaenge` (400), `starten.mjs`, `provisionierung.mjs`, `registrierung.mjs`, `zugang-sperren`, `/einrichten/bindung`, Wiederherstellung, Werkzeuge.
