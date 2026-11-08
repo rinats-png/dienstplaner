@@ -74,9 +74,14 @@ pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { 
     abweichungen: {}, aenderungen: [], nachrichten: [], anfragen: [], notrufe: [],
     dienstbuch: [db("db-A", "eA"), db("db-B", "eB"), db("db-P", "ePool"), db("db-N", null), db("db-L", undefined)],
     uebergaben: [ue("u-A", "F", "eA"), ue("u-B", "F", "eB"), ue("u-P", "F", "ePool"), ue("u-N", "F", null), ue("u-L", "S", undefined)] }] } })).status === 200);
-const tS = await anmelden(await zugang("subplaner", "s1", 0));
-const tP = await anmelden(await zugang("planer", "pl", 0));
-const tL = await anmelden(await zugang("leitung", "l1", 0));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTS = await zugang("subplaner", "s1", 0);
+const codeTP = await zugang("planer", "pl", 0);
+const codeTL = await zugang("leitung", "l1", 0);
+const tS = await anmelden(codeTS);
+const tP = await anmelden(codeTP);
+const tL = await anmelden(codeTL);
 const vorher = await betriebVon(tP);
 
 const mS = await betriebVon(tS);

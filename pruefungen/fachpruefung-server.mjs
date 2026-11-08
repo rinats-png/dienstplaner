@@ -80,9 +80,14 @@ pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { 
       person("mu", "mitarbeiter", "e1", { mutterschutz: true, qualifikationen: ["qG", "qB"] }),
       person("s1", "subplaner", "e1"), person("pl", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
     abweichungen: {}, aenderungen: [], nachrichten: [], anfragen: [], notrufe: [], bestaetigungen: [] }] } })).status === 200);
-const tP = await anmelden(await zugang("planer", "pl", 0));
-const tL = await anmelden(await zugang("leitung", "l1", 0));
-const tS = await anmelden(await zugang("subplaner", "s1", 0));
+/* SI-P6: Alle Kundencodes entstehen im Fenster der Ersteinrichtung, bevor sich jemand anmeldet —
+   nach der ersten Kundenanmeldung legt der Betreiber für diesen Raum keine neuen Codes mehr an. */
+const codeTP = await zugang("planer", "pl", 0);
+const codeTL = await zugang("leitung", "l1", 0);
+const codeTS = await zugang("subplaner", "s1", 0);
+const tP = await anmelden(codeTP);
+const tL = await anmelden(codeTL);
+const tS = await anmelden(codeTS);
 
 /* Dienstarten: Leitung und Planung (org.edit oder pattern.edit), Schichtverantwortung nicht */
 const plDa = await schreibe(tP, (m) => { m.dienstarten[0].name = "Früh neu"; });
