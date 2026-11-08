@@ -130,7 +130,7 @@ Anfragen je fünf Minuten im ganzen Dienst (jede Herkunft trägt höchstens neun
 Durchlässigkeit für niemanden mehr, bis das Fenster endet: Der Dienst steht dann unter verteiltem Raten. Betreibercodes behalten die volle
 Bremse. Die Last je Code (20 Anmeldungen in fünf Minuten) und je Betrieb bleibt begrenzt. Die Zähler der Sperrversuche liegen im
 Prozessspeicher (ein Prozess je Container). Gleichzeitige Anfragen ändern daran nichts: Ein gültiger Code wartet, bis die Fehlversuche, die
-vor ihm von derselben Herkunft kamen, gezählt sind (höchstens 10 s; danach geht er den Weg eines Fehlversuchs über die Bremse, mit derselben Antwort), und entscheidet erst dann. Fällt die
+vor ihm von derselben Herkunft kamen, gezählt sind (höchstens 10 s; danach geht er den Weg eines Fehlversuchs über die Bremse, mit gleicher Antwort — nicht gleicher Antwortzeit, Restrisiko siehe SI-P7-NACHWEIS), und entscheidet erst dann. Fällt die
 Zählerablage aus, weist die Bremse jeden Fehlversuch ab (fail-closed); die Sperrzählung läuft dann in festen Abschnitten von 300 s
 (höchstens acht Sperrversuche je Abschnitt, danach bis zu dessen Ende auch für gültige Codes gesperrt). Mehr als 100 000 Herkünfte mit
 laufender Zählung (verteiltes Raten über sehr viele /64) schalten die Durchlässigkeit bis zum Ende des Fensters für alle ab. Die

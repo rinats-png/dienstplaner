@@ -512,13 +512,13 @@ describe("I7b: Bündel während der Sperre mit einem Treffer (Review HOCH)", () 
   }, 120000);
 
   it("Zeitgrenze beim Warten (Review 3, Orakel): der Treffer nimmt den Weg eines Fehlversuchs — gleiche Antwort, gleiches Retry-After", async () => {
-    /* Langsame und dann ausgefallene Ablage: Der Fehlversuch hängt 2 s in bremse() und bekommt dann fail-closed 429 / 300 s.
+    /* Langsame und dann ausgefallene Ablage: Der Fehlversuch hängt 5 s in bremse() und bekommt dann fail-closed 429 / 300 s.
        Der Treffer wartet nur 300 ms auf ihn. Früher antwortete er dann mit 429 / 5 s — an Retry-After erkennbar. */
     const alt = SCH.SPERRVERSUCHE.warteGrenzeMs;
     SCH.SPERRVERSUCHE.warteGrenzeMs = 300;
     try {
       stoerung.verzoegert = (name, key, ablage) =>
-        ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:") ? 2000 : 0;
+        ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:") ? 5000 : 0;
       stoerung.wirft = (name, key, ablage) => ablage === "centric-takt" && name === "get" && key.startsWith("sperre:anmelden:");
       const ip = ipv4();
       const c = await frischerCode();

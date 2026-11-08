@@ -105,4 +105,6 @@ Korrekturen sind nicht erneut unabhängig geprüft.
 Nachweis rot → grün: Mit den neuen Tests und der alten Logik (Zeitgrenzen-Antwort `zuVielAntwort(5)`, Aufräumen nur an der unbegrenzten Marke) schlagen
 genau die zwei neuen Tests fehl (Retry-After 5 statt 300; neue Herkunft fälschlich im Überlauf); mit der Korrektur 38/38.
 
+Restrisiko Antwortzeit (Review Runde 4, niedrig): Status, Retry-After und Rumpf sind gleich, die Antwortzeit nicht — nur ein nutzbarer Code wartet auf vorher angemeldete Auswertungen derselben Herkunft, ein unbekannter Code geht sofort in die Bremse. Bei normaler Ablage-Latenz Millisekunden; verwertbar wäre das nur mit sehr vielen Messungen je Kandidat. Ob vor der Anwendung eine Ratengrenze für 429-Antworten liegt, ist im Repo nicht belegt.
+
 Restrisiko neu: Läuft die Zeitgrenze ab, zählt der gültige Code als Versuch der Bremse (er geht ihren Weg) — nur bei einer Ablage, die länger als 10 s hängt.
