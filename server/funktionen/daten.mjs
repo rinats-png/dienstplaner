@@ -11,7 +11,7 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch } from "../lib/betreiber-zweifaktor.mjs";
-import { leitungImRaum } from "../lib/leitungsschutz.mjs";
+import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
@@ -368,26 +368,25 @@ async function behandeln(req, context, ctx) {
       const zielGelesen = await bestandLesen(store, ziel);
       const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
       if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
-      /* SI-P6 (2/2): Ein Leitung-Code gehört zur Erstanlage eines Betriebs. Gibt es im Raum schon einen wirksamen
-         Leitungszugang, ist ein weiterer Zugriff an der Leitung vorbei nicht Sache dieses Weges (AV §3).
-         „Leitung" ist, was der Server als Rolle der Sitzung ergäbe: Ein Code, der an die Person einer Leitung im
-         Bestand gebunden ist, trägt deren Rolle (wirksameRolle), gleich welche Rolle im Code steht (Review B1).
+      /* SI-P6 (2/2), Betreiberentscheidung G.2: Für einen BESTEHENDEN Kundenraum legt der Betreiber ohne nachweisbare
+         Kundenzustimmung keine neuen Zugänge an — gleich welche Rolle, gleich ob eine Leitung fehlt. Erlaubt ist die
+         Ersteinrichtung eines neuen Betriebs (lib/kundenraumschutz.mjs). Dieser Weg legt nie Demozugänge an.
          Kann das nicht geprüft werden, entsteht nichts. */
-      const wirksamLeitung = (e) => e.rolle === "leitung" || wirksameRolle({ rolle: e.rolle, person: e.personId ?? null,
-        betrieb: bindungZ.betrieb ?? 0, mandantId: bindungZ.mandantId, bestand: ziel },
-      zielGelesen && zielGelesen.bestand) === "leitung";
-      if (eintraege.some(wirksamLeitung)) {
-        let leitung;
-        try { leitung = await leitungImRaum(store, ziel); }
+      let lage;
+      try { lage = await raumLage(store, ziel); }
+      catch {
+        await protokoll("zugaenge", kZ, "fehler", "Raum nicht prüfbar (Kundenraumschutz)");
+        return antwort({ fehler: "Der Raum lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
+      }
+      if (!neueZugaengeErlaubt(lage, false)) {
+        await protokoll("zugaenge", kZ, "abgewiesen", `Kundenraum: neue Zugänge gesperrt (${lage.art}${lage.grund ? ` · ${lage.grund}` : ""})`);
+        return antwort({ fehler: KUNDENRAUM_TEXT, grund: "kundenraum_gesperrt" }, 409);
+      }
+      if (lage.art === "neu") {
+        try { await ersteinrichtungVermerken(store, ziel); }
         catch {
-          await protokoll("zugaenge", kZ, "fehler", "Leitung im Raum nicht prüfbar");
-          return antwort({ fehler: "Der Raum lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
-        }
-        if (leitung.vorhanden) {
-          await protokoll("zugaenge", kZ, "abgewiesen", `Leitung-Code für bestehenden Raum (${leitung.quelle})`);
-          return antwort({ fehler: "In diesem Betrieb gibt es schon einen Leitungszugang. Ein weiterer Leitung-Code "
-            + "lässt sich hier nicht anlegen; das entscheidet die Organisationsleitung des Betriebs.",
-          grund: "leitung_vorhanden" }, 409);
+          await protokoll("zugaenge", kZ, "fehler", "Ersteinrichtung nicht vermerkbar");
+          return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
         }
       }
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";

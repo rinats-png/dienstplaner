@@ -295,6 +295,22 @@ describe("Kundenraumschutz über POST /einrichten (Verwalterschlüssel)", () => 
   });
 });
 
+describe("Löschen und Neuanlage unter demselben Namen", () => {
+  it("ein gelöschter Raum nimmt Zugänge und Vermerk mit; ein neu angelegter Betrieb gleichen Namens ist wieder neu (und der alte bleibt gesperrt, solange er besteht)", async () => {
+    await raumAnlegen("kr-loeschen");
+    expect((await viaZugaenge("kr-loeschen", [{ rolle: "leitung" }])).status).toBe(200);
+    uhr(jetzt + 20 * 60_000);
+    expect((await viaZugaenge("kr-loeschen", [{ rolle: "planer" }])).status).toBe(409);       // besteht: gesperrt
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    const { sitzungsSpeicher } = await import("../server/lib/sitzungen.mjs");
+    const erg = await raumLoeschen(laden(), sitzungsSpeicher(), "kr-loeschen");
+    expect(erg.fehler ?? [], JSON.stringify(erg)).toEqual([]);
+    expect(await anzahlKonten("kr-loeschen")).toBe(0);
+    await raumAnlegen("kr-loeschen");                                                          // neuer Betrieb, gleicher Name
+    expect((await viaZugaenge("kr-loeschen", [{ rolle: "leitung" }])).status).toBe(200);
+  });
+});
+
 describe("beide Wege teilen den Vermerk der Ersteinrichtung", () => {
   it("ein Raum, der über /einrichten eingerichtet wurde, ist nach dem Fenster auch für /api/zugaenge Kundenraum — und umgekehrt", async () => {
     await raumAnlegen("kr-beide-a");

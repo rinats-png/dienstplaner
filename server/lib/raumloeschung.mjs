@@ -215,6 +215,10 @@ export async function raumLoeschen(store, sitzungen, raum) {
   /* WP-27: Das eingefrorene Ist der Betriebsrat-Auswertung (brist:<raum>:…) gehört zum Raum. */
   await praefixWeg(`brist:${encodeURIComponent(raum)}:`);
 
+  /* SI-P6: Der Vermerk der Ersteinrichtung (kundenraumschutz.mjs) gehört zum Raum. Bliebe er liegen, wäre ein später
+     unter demselben Namen neu angelegter Betrieb dauerhaft als „Fenster abgelaufen“ gesperrt. */
+  await weg(`ersteinrichtung:${raum}`);
+
   /* 5. Der Vermerk in der Nachfassliste */
   try {
     const liste = await store.get("selbststarts", { type: "json" });

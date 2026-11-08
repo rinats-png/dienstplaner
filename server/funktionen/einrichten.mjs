@@ -9,6 +9,7 @@ import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
+import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
   verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
@@ -415,6 +416,7 @@ export default async (req) => {
      befüllte ihn. Den leeren Raum richtet jetzt der Betreiber ein
      (/api/bestand-anlegen); sein eigener Code darf deshalb vorher entstehen. */
   let bindungE = { betrieb: betrieb ?? 0, mandantId: null };
+  let lageE = null;
   if (rolle !== "betreiber") {
     const gelesenE = await bestandLesen(s0, bestand);
     const b2 = betriebFuerNeuenCode(gelesenE && gelesenE.bestand, betrieb);
@@ -423,6 +425,22 @@ export default async (req) => {
       return antwort({ fehler: b2.grund }, 409);
     }
     bindungE = b2;
+
+    /* SI-P6, Betreiberentscheidung G.2: Auch hier legt niemand ohne nachweisbare Kundenzustimmung neue Zugänge für
+       einen BESTEHENDEN Kundenraum an — für jede Rolle, Demozugang eingeschlossen, gleich ob eine Leitung fehlt.
+       Der Verwalterschlüssel (mit zweitem Faktor) ersetzt keine Zustimmung. Erlaubt: die Ersteinrichtung eines neuen
+       Betriebs (lib/kundenraumschutz.mjs); in einem Raum, der nur Demozugänge hat, nur weitere Demozugänge.
+       Betreibercodes sind kein Kundenzugang und bleiben außerhalb. Lässt sich der Raum nicht lesen: nichts. */
+    try { lageE = await raumLage(s0, bestand); }
+    catch {
+      await protokoll("einrichten", k, "fehler", `${bestand}: Raum nicht prüfbar (Kundenraumschutz)`);
+      return antwort({ fehler: "Der Raum lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
+    }
+    if (!neueZugaengeErlaubt(lageE, !!demo)) {
+      await protokoll("einrichten", k, "abgewiesen",
+        `${bestand}: Kundenraum, neue Zugänge gesperrt (${lageE.art}${lageE.grund ? ` · ${lageE.grund}` : ""}) · ${rolle}${demo ? " demo" : ""}`);
+      return antwort({ fehler: KUNDENRAUM_TEXT, grund: "kundenraum_gesperrt" }, 409);
+    }
   }
 
   /* Ein Demozugang je Betrieb und Rolle. Die Startseite zeigt jeden
@@ -466,6 +484,14 @@ export default async (req) => {
        unter Nebenläufigkeit nicht eindeutig. */
     id: demo ? `d${ablageSchluessel(code).slice(-8)}` : null,
     angelegt: new Date().toISOString() };
+  /* Erster Vorgang der Ersteinrichtung: das Fenster vermerken, BEVOR ein Code entsteht (SI-P6). */
+  if (lageE && lageE.art === "neu") {
+    try { await ersteinrichtungVermerken(s, bestand); }
+    catch {
+      await protokoll("einrichten", k, "fehler", `${bestand}: Ersteinrichtung nicht vermerkbar`);
+      return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
+    }
+  }
   await kontoSchreiben(s, ablageSchluessel(code), konto);
 
   /* Wer es war, steht jetzt im Protokoll — nicht mehr nur ein Hashwert

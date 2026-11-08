@@ -206,9 +206,16 @@ describe("SI-01 Push-Endpunkt nur bei bekannten Push-Diensten", () => {
         expect(r.status, rolle).toBe(400);
         expect(r.zugaenge).toBeUndefined();
       }
-      /* SI-P6: Im Raum „sich“ gibt es schon eine Leitung (SICH-LLLL-0001); ein weiterer Leitung-Code wird dort
-         abgewiesen (pruefungen/zugaenge-frischer-faktor.test.js). Eine andere bekannte Rolle geht weiter. */
-      const ok = await anfrage(daten, "/api/zugaenge", { bestand: "sich", eintraege: [{ rolle: "planer" }] }, tB);
+      /* SI-P6 (Betreiberentscheidung G.2): Im Raum „sich“ gibt es schon Zugänge, also einen bestehenden Kundenraum: der
+         Betreiber legt dort für keine Rolle neue Zugänge an (pruefungen/kundenraumschutz.test.js). Die Gegenprobe
+         „eine bekannte Rolle geht“ läuft in einem neuen Betrieb. */
+      const bestehend = await anfrage(daten, "/api/zugaenge", { bestand: "sich", eintraege: [{ rolle: "planer" }] }, tB);
+      expect(bestehend.status).toBe(409);
+      expect(bestehend.zugaenge).toBeUndefined();
+      const B = await import("../server/lib/bestand.mjs");
+      await B.bestandSchreiben(laden(), "sich-neu", { version: 9, mandanten: [{ id: "m-neu", name: "Neu", einheiten: [{ id: "e1" }],
+        personen: [], nachrichten: [], notrufe: [], anfragen: [] }] }, { durch: "Pruefung" });
+      const ok = await anfrage(daten, "/api/zugaenge", { bestand: "sich-neu", eintraege: [{ rolle: "planer" }] }, tB);
       expect(ok.status).toBe(200);
       expect(ok.zugaenge.map((z) => z.rolle)).toEqual(["planer"]);
     });

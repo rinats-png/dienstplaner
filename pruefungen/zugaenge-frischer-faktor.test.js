@@ -13,9 +13,8 @@
         FRISCHER Code aus der App in den Rumpf (`zweifaktor`) — nie ein
         Nachweis, nie ein schon verbrauchter Code. Unter Pflicht (Auslieferung)
         ohne eingerichteten Faktor: 403, nichts entsteht.
-     3. Ein Leitung-Code für einen Raum, in dem es schon einen wirksamen
-        Leitungszugang gibt (Code oder Mitgliedschaft), wird abgewiesen (409).
-        Die Erstanlage eines neuen Betriebs bleibt möglich.
+     3. Neue Zugänge für bestehende Kundenräume: siehe kundenraumschutz.test.js
+        (Betreiberentscheidung G.2; löst die frühere Leitung-Regel ab).
 
    Rot auf altem Stand: jede der Prüfungen unten außer dem Gegenstück
    „Erstanlage" und „ohne Pflicht, ohne Faktor".
@@ -208,127 +207,9 @@ describe("SI-P6 frischer zweiter Faktor", () => {
   });
 });
 
-describe("SI-P6 Leitung-Codes für bestehende Kundenräume", () => {
-  /* Dev-Modus ohne Faktor (OP_OHNE): hier geht es nur um die Raumregel. */
+describe("SI-P6 Review (Opus): Altschlüssel, Bremse, Reihenfolge, Raumanlage", () => {
   let tok;
   beforeAll(async () => { tok = (await rufen("/api/anmelden", { zugangscode: OP_OHNE })).token; });
-
-  it("Erstanlage: ein neuer Betrieb bekommt Leitung und weitere Rollen in einem Zug", async () => {
-    const r = await zugaenge(tok, { bestand: "p6-neu", eintraege: [{ rolle: "leitung" }, { rolle: "planer" }] });
-    expect(r.status).toBe(200);
-    expect(r.zugaenge.map((z) => z.rolle)).toEqual(["leitung", "planer"]);
-  });
-
-  it("Raum mit wirksamem Leitung-Code: weiterer Leitung-Code → 409, nichts entsteht", async () => {
-    await kontoAnlegen("p6-alt", "leitung");
-    const vorher = await anzahlKonten("p6-alt");
-    const r = await zugaenge(tok, { bestand: "p6-alt", eintraege: [{ rolle: "leitung" }] });
-    expect(r.status).toBe(409);
-    expect(r.grund).toBe("leitung_vorhanden");
-    expect(await anzahlKonten("p6-alt")).toBe(vorher);
-  });
-
-  it("gemischte Anfrage: ein Leitung-Eintrag lässt die ganze Anfrage scheitern (kein Teilergebnis)", async () => {
-    const vorher = await anzahlKonten("p6-alt");
-    const r = await zugaenge(tok, { bestand: "p6-alt", eintraege: [{ rolle: "planer" }, { rolle: "leitung" }] });
-    expect(r.status).toBe(409);
-    expect(await anzahlKonten("p6-alt")).toBe(vorher);
-  });
-
-  it("andere Rollen sind im bestehenden Raum weiter möglich", async () => {
-    const r = await zugaenge(tok, { bestand: "p6-alt", eintraege: [{ rolle: "planer" }] });
-    expect(r.status).toBe(200);
-  });
-
-  it("gesperrter Leitung-Code zählt nicht (Leitung ist verloren, die Sperre ist der Beleg)", async () => {
-    await kontoAnlegen("p6-gesperrt", "leitung", { gesperrt: true });
-    const r = await zugaenge(tok, { bestand: "p6-gesperrt", eintraege: [{ rolle: "leitung" }] });
-    expect(r.status).toBe(200);
-  });
-
-  it("Demo-Leitung und abgelaufener Selbststart-Leitung zählen nicht", async () => {
-    await kontoAnlegen("p6-demo", "leitung", { demo: true });
-    expect((await zugaenge(tok, { bestand: "p6-demo", eintraege: [{ rolle: "leitung" }] })).status).toBe(200);
-    await kontoAnlegen("p6-abgelaufen", "leitung", { selbstAngelegt: true, laeuftAb: "2026-01-02T00:00:00.000Z" });
-    expect((await zugaenge(tok, { bestand: "p6-abgelaufen", eintraege: [{ rolle: "leitung" }] })).status).toBe(200);
-  });
-
-  it("ein nicht auswertbares Ablaufdatum gilt als wirksam (fail-closed)", async () => {
-    await raumAnlegen("p6-kaputt");
-    await kontoAnlegen("p6-kaputt", "leitung", { selbstAngelegt: true, laeuftAb: "kein-datum" });
-    const r = await zugaenge(tok, { bestand: "p6-kaputt", eintraege: [{ rolle: "leitung" }] });
-    expect(r.status).toBe(409);
-  });
-
-  it("wirksame Mitgliedschaft (aktiv oder eingeladen) mit Rolle leitung → 409; entzogen zählt nicht", async () => {
-    const a = await accounts.accountAnlegen(laden(), { email: "leitung@p6-mitglied.example", status: "aktiv" });
-    expect(a.ok).toBe(true);
-    const m = await accounts.mitgliedschaftAnlegen(laden(), { accountId: a.account.id, raum: "p6-mitglied", betrieb: 0,
-      mandantId: "m-p6-mitglied", rolle: "leitung", status: "aktiv" });
-    expect(m.ok).toBe(true);
-    const r = await zugaenge(tok, { bestand: "p6-mitglied", eintraege: [{ rolle: "leitung" }] });
-    expect(r.status).toBe(409);
-    expect(r.grund).toBe("leitung_vorhanden");
-    await accounts.mitgliedschaftEntziehen(laden(), a.account.id, "p6-mitglied");
-    expect((await zugaenge(tok, { bestand: "p6-mitglied", eintraege: [{ rolle: "leitung" }] })).status).toBe(200);
-  });
-
-  it("unlesbarer Konto-Eintrag beim Prüfen → 503, kein Code (fail-closed, nicht „keine Leitung“)", async () => {
-    await raumAnlegen("p6-lesefehler");
-    const datei = path.join(wurzel, "centric", "konto%3Azzz-kaputt.json");
-    await writeFile(datei, "{ das ist kein json");
-    try {
-      const r = await zugaenge(tok, { bestand: "p6-lesefehler", eintraege: [{ rolle: "leitung" }] });
-      expect(r.status).toBe(503);
-      expect(r.zugaenge).toBeUndefined();
-    } finally { await rm(datei, { force: true }); }
-    expect(await anzahlKonten("p6-lesefehler")).toBe(0);
-  });
-});
-
-describe("SI-P6 Review (Opus): Personenbindung, Altschlüssel, Bremse, Reihenfolge, Raumanlage", () => {
-  let tok;
-  beforeAll(async () => { tok = (await rufen("/api/anmelden", { zugangscode: OP_OHNE })).token; });
-
-  it("B1: ein Code anderer Rolle, gebunden an die Leitungs-PERSON des Raums, ist eine Leitung → 409 (wirksameRolle folgt der Person)", async () => {
-    await raumAnlegen("p6-person");
-    await kontoAnlegen("p6-person", "leitung");              // bestehende Leitung (Person p1 ist im Bestand leitung)
-    const vorher = await anzahlKonten("p6-person");
-    for (const rolle of ["mitarbeiter", "planer", "subplaner", "betriebsrat"]) {
-      const r = await zugaenge(tok, { bestand: "p6-person", eintraege: [{ rolle, personId: "p1" }] });
-      expect(r.status, rolle).toBe(409);
-      expect(r.grund).toBe("leitung_vorhanden");
-    }
-    expect(await anzahlKonten("p6-person")).toBe(vorher);
-  });
-
-  it("B1 Gegenprobe: dieselbe Rolle ohne Bindung an die Leitungs-Person bleibt möglich; unbekannte Person ändert nichts", async () => {
-    const a = await zugaenge(tok, { bestand: "p6-person", eintraege: [{ rolle: "planer" }] });
-    expect(a.status).toBe(200);
-    const b = await zugaenge(tok, { bestand: "p6-person", eintraege: [{ rolle: "mitarbeiter", personId: "gibt-es-nicht" }] });
-    expect(b.status).toBe(200);
-  });
-
-  it("Sammelblob „konten“: eine Leitung im Altbestand zählt", async () => {
-    await raumAnlegen("p6-sammel");
-    const s = laden();
-    const alt = (await s.get("konten", { type: "json" })) || {};
-    alt["p6-alt-sammel-schluessel"] = { name: "alt", bestand: "p6-sammel", rolle: "leitung", person: "p1", betrieb: 0, mandantId: "m-p6-sammel" };
-    await s.setJSON("konten", alt);
-    try {
-      expect((await zugaenge(tok, { bestand: "p6-sammel", eintraege: [{ rolle: "leitung" }] })).status).toBe(409);
-    } finally { delete alt["p6-alt-sammel-schluessel"]; await s.setJSON("konten", alt); }
-  });
-
-  it("eingeladene Mitgliedschaft mit Rolle leitung zählt", async () => {
-    await raumAnlegen("p6-eingeladen");
-    const a = await accounts.accountAnlegen(laden(), { email: "eingeladen@p6.example", status: "eingeladen" });
-    expect(a.ok).toBe(true);
-    const m = await accounts.mitgliedschaftAnlegen(laden(), { accountId: a.account.id, raum: "p6-eingeladen", betrieb: 0,
-      mandantId: "m-p6-eingeladen", rolle: "leitung", status: "eingeladen" });
-    expect(m.ok).toBe(true);
-    expect((await zugaenge(tok, { bestand: "p6-eingeladen", eintraege: [{ rolle: "leitung" }] })).status).toBe(409);
-  });
 
   it("Reihenfolge: mit eingerichtetem Faktor erfährt man ohne Code NICHTS über den Raum (401 statt 409)", async () => {
     const r = await zugaenge(tokenMit, { bestand: "p6-alt", eintraege: [{ rolle: "leitung" }] });
