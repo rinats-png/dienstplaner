@@ -4529,7 +4529,7 @@
         "implementiert": {"wert":true,"beleg":"4f1654b, 6733b47, a587df8 (Pin-Prüfung, 8 Actions gepinnt)"},
         "lokalGetestet": {"wert":true,"beleg":"pruefungen/actions-pins.test.js 12/12 grün inkl. js-yaml-Gegenprobe; Pin-SHAs je Tag gegen Upstream geprüft (--online 8/8)"},
         "reviewt": {"wert":true,"beleg":"Unabhängiger Review plus Nach-Review, alle Befunde (mittel und niedrig) behoben und getestet"},
-        "integriert": {"wert":true,"beleg":"4f1654b, 6733b47, a587df8 in integration/release-v4 (Stand b7201a3)"},
+        "integriert": {"wert":true,"beleg":"PR #98 (Merge-Beleg), Commits 4f1654b, 6733b47, a587df8 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
