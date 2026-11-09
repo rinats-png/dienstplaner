@@ -1477,5 +1477,33 @@ describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-A
     expect(q).not.toMatch(/\bexec(Sync|File|FileSync)?\s*\(|spawnSync|fork\s*\(|shell:\s*true/);
     expect(q).not.toMatch(/node:(http|https|net|dns|tls|fs)|\bfetch\s*\(|writeFile|createWriteStream/);
     expect(q).toMatch(/spawn\(programm, argumente, \{[^}]*shell: false/);
+    /* Nachreview (Befund 6): wie die bestehende Prüfung der übrigen Parser-Dateien kein eval / new Function */
+    expect(q).not.toMatch(/\beval\s*\(|new Function/);
+  });
+  it("H1 Nachreview (Befund 2): CENTRIC_IMPORT_ADRESSRAUM_KB = 0 oder über 4 GB wird gemeldet (Warnung) und nicht still aufgehoben", async () => {
+    const { adressraumKb, ADRESSRAUM_KB_STANDARD, ADRESSRAUM_KB_MAX } = await prozess();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(ADRESSRAUM_KB_MAX).toBe(4 * 1024 * 1024);
+      expect(adressraumKb("linux", {})).toBe(ADRESSRAUM_KB_STANDARD);
+      expect(adressraumKb("linux", { CENTRIC_IMPORT_ADRESSRAUM_KB: "1500000" })).toBe(1500000);
+      expect(warn).not.toHaveBeenCalled();
+      /* 0 = aus bleibt möglich (bewusste Entscheidung des Betreibers), aber nie still */
+      expect(adressraumKb("linux", { CENTRIC_IMPORT_ADRESSRAUM_KB: "0" })).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toMatch(/CENTRIC_IMPORT_ADRESSRAUM_KB.*ohne Adressraum-Limit/);
+      /* unplausibel groß → auf 4 GB geklemmt, mit Warnung */
+      expect(adressraumKb("linux", { CENTRIC_IMPORT_ADRESSRAUM_KB: "999999999" })).toBe(ADRESSRAUM_KB_MAX);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(String(warn.mock.calls[1][0])).toMatch(/geklemmt/);
+      /* ungültig → Standard, mit Warnung */
+      expect(adressraumKb("linux", { CENTRIC_IMPORT_ADRESSRAUM_KB: "viel" })).toBe(ADRESSRAUM_KB_STANDARD);
+      expect(warn).toHaveBeenCalledTimes(3);
+      /* andere Systeme: ohne Limit (Entwicklung), ohne Warnung je Aufruf */
+      expect(adressraumKb("win32", { CENTRIC_IMPORT_ADRESSRAUM_KB: "0" })).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(3);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
