@@ -4,15 +4,17 @@ import zlib from "node:zlib";
 import * as XLSX from "../vendor/sheetjs/xlsx.mjs";
 
 /** Arbeitsmappe aus { Blattname: [[...], ...] } als Buffer im Format bookType. */
-export function mappe(blaetter, bookType = "xlsx", optionen = {}) {
+export function mappe(blaetter, bookType = "xlsx", optionen = {}, wbProps = null) {
   const wb = XLSX.utils.book_new();
   for (const [name, zeilen] of Object.entries(blaetter)) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(zeilen, optionen), name);
   }
+  if (wbProps) wb.Workbook = { ...(wb.Workbook || {}), WBProps: { ...wbProps } };
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType }));
 }
 
-/** Minimaler ZIP-Schreiber. eintraege: [{ name, daten: Buffer, methode?: "store"|"deflate", erklaert?: number }] */
+/** Minimaler ZIP-Schreiber. eintraege: [{ name, daten: Buffer, methode?: "store"|"deflate", erklaert?: number,
+    crc?: number, extra?: Buffer (lokal und zentral), methodeLokal?: "store"|"deflate" }] */
 export function zip(eintraege) {
   const teile = [];
   const zentral = [];
@@ -22,21 +24,23 @@ export function zip(eintraege) {
     const roh = Buffer.from(e.daten);
     const deflate = e.methode === "deflate";
     const kompr = deflate ? zlib.deflateRawSync(roh) : roh;
-    const crc = zlib.crc32(roh);
+    const crc = e.crc ?? zlib.crc32(roh);
     const erklaert = e.erklaert ?? roh.length;
+    const extra = e.extra ? Buffer.from(e.extra) : Buffer.alloc(0);
+    const mLokal = e.methodeLokal ? (e.methodeLokal === "deflate" ? 8 : 0) : (deflate ? 8 : 0);
     const lokal = Buffer.alloc(30);
     lokal.writeUInt32LE(0x04034b50, 0); lokal.writeUInt16LE(20, 4); lokal.writeUInt16LE(0, 6);
-    lokal.writeUInt16LE(deflate ? 8 : 0, 8); lokal.writeUInt32LE(0, 10);
+    lokal.writeUInt16LE(mLokal, 8); lokal.writeUInt32LE(0, 10);
     lokal.writeUInt32LE(crc, 14); lokal.writeUInt32LE(kompr.length, 18); lokal.writeUInt32LE(erklaert, 22);
-    lokal.writeUInt16LE(name.length, 26); lokal.writeUInt16LE(0, 28);
-    teile.push(lokal, name, kompr);
+    lokal.writeUInt16LE(name.length, 26); lokal.writeUInt16LE(extra.length, 28);
+    teile.push(lokal, name, extra, kompr);
     const z = Buffer.alloc(46);
     z.writeUInt32LE(0x02014b50, 0); z.writeUInt16LE(20, 4); z.writeUInt16LE(20, 6); z.writeUInt16LE(0, 8);
     z.writeUInt16LE(deflate ? 8 : 0, 10); z.writeUInt32LE(0, 12);
     z.writeUInt32LE(crc, 16); z.writeUInt32LE(kompr.length, 20); z.writeUInt32LE(erklaert, 24);
-    z.writeUInt16LE(name.length, 28); z.writeUInt32LE(versatz, 42);
-    zentral.push(z, name);
-    versatz += lokal.length + name.length + kompr.length;
+    z.writeUInt16LE(name.length, 28); z.writeUInt16LE(extra.length, 30); z.writeUInt32LE(versatz, 42);
+    zentral.push(z, name, extra);
+    versatz += lokal.length + name.length + extra.length + kompr.length;
   }
   const zb = Buffer.concat(zentral);
   const ende = Buffer.alloc(22);

@@ -4,10 +4,14 @@
    Kein Netzzugriff. SheetJS wird hier nur zum Erzeugen von Testdateien
    geschrieben, der Parser selbst liest nur.
    ========================================================================== */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import zlib from "node:zlib";
 import { parseDatei, STANDARD_GRENZEN } from "../server/lib/import/parser.mjs";
+import * as kern from "../server/lib/import/parser-kern.mjs";
 import { mappe, zip, zipEintraege } from "./import-parser-hilfen.mjs";
+
+/* Review PR #123, Befund 5: explizites Zeitlimit je Test (Schwellen in den Tests bleiben unverändert). */
+vi.setConfig({ testTimeout: 60000 });
 
 const B = (s) => Buffer.from(s, "utf8");
 const hat = (r, code) => (r.hinweise || []).some((h) => h.code === code);
@@ -397,5 +401,216 @@ describe("IMP-2 ZIP-Bombe und Sicherheit", () => {
       expect(q, f).not.toMatch(/XLSX\.(write|writeFile|writeXLSX|set_fs)|writeFile|createWriteStream/);
       expect(q, f).not.toMatch(/\beval\s*\(|new Function/);
     }
+  });
+});
+
+/* ==========================================================================
+   Befunde aus dem Review von PR #123 (IMP-2). Jede Prüfung war vor der
+   Korrektur rot (Nachweis: docs/acc45/IMP-2-NACHWEIS.md).
+   ========================================================================== */
+const EOCD = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+const eocdPos = (b) => b.lastIndexOf(EOCD);
+/** Synthetische xlsx-Einträge (deflate), optional mit Zusatzeinträgen. */
+const xlsxEintraege = (zusatz = []) => [...zipEintraege(mappe({ S: [["a"], [1]] })), ...zusatz].map((e) => ({ methode: "deflate", ...e }));
+/** Blatt-XML einer synthetischen xlsx umbauen und neu packen. */
+function mitBlatt(buf, fn) {
+  const eintraege = zipEintraege(buf);
+  const blatt = eintraege.find((e) => e.name === "xl/worksheets/sheet1.xml");
+  blatt.daten = B(fn(blatt.daten.toString("utf8")));
+  return zip(eintraege.map((e) => ({ ...e, methode: "deflate" })));
+}
+
+describe("Review PR #123 Befund 1: strikte ZIP-Prüfung vor SheetJS", () => {
+  it("B1-PoC: Eintragszahl Offset 8 ungleich Offset 10 wird abgewiesen, bevor SheetJS läuft", async () => {
+    const z = zip(xlsxEintraege([{ name: "docProps/versteckt.bin", daten: B("VERSTECKT") }]));
+    const e = eocdPos(z);
+    const n = z.readUInt16LE(e + 10);
+    z.writeUInt16LE(n - 1, e + 10); /* Gesamtzahl verschweigt den letzten Eintrag, Disk-Zahl (Offset 8) nicht */
+    expect(typeof kern.pruefeZip).toBe("function");
+    expect(() => kern.pruefeZip(z, STANDARD_GRENZEN)).toThrow(/Eintragszahl/);
+    const r = await parseDatei({ buffer: z, name: "poc.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.nachricht).toMatch(/Eintragszahl/);
+    expect(r.blaetter).toBeUndefined();
+    /* umgekehrt: Offset 8 kleiner als Offset 10 */
+    const z2 = zip(xlsxEintraege([{ name: "docProps/versteckt.bin", daten: B("x") }]));
+    z2.writeUInt16LE(z2.readUInt16LE(eocdPos(z2) + 8) - 1, eocdPos(z2) + 8);
+    expect((await parseDatei({ buffer: z2, name: "poc.xlsx" })).ok).toBe(false);
+  });
+  it("B1-PoC: versteckter Eintrag mit 300 MB Entpackgröße führt nicht zu ok:true", async () => {
+    const z = zip(xlsxEintraege([{ name: "docProps/bombe.bin", daten: Buffer.alloc(300 * 1024 * 1024) }]));
+    expect(z.length).toBeLessThan(2 * 1024 * 1024);
+    const e = eocdPos(z);
+    z.writeUInt16LE(z.readUInt16LE(e + 10) - 1, e + 10);
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: z, name: "bombe.xlsx" });
+    expect(r.ok).toBe(false);
+    expect(r.blaetter).toBeUndefined();
+    expect(Date.now() - t0).toBeLessThan(10000);
+  });
+  it("B1: EOCD nicht am Dateiende (angehängte Bytes / falsche Kommentarlänge) wird abgewiesen", async () => {
+    const z = zip(xlsxEintraege());
+    const r = await parseDatei({ buffer: Buffer.concat([z, B("ANHANG")]), name: "a.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const k = Buffer.from(z); k.writeUInt16LE(5, eocdPos(k) + 20); /* Kommentar angekündigt, fehlt */
+    expect((await parseDatei({ buffer: k, name: "a.xlsx" })).ok).toBe(false);
+  });
+  it("B1: zweite EOCD-Signatur (im Kommentar) wird abgewiesen", async () => {
+    const z = zip(xlsxEintraege());
+    const e = eocdPos(z);
+    const falsch = Buffer.from(z.subarray(e, e + 22));
+    const mitKommentar = Buffer.concat([z, falsch]);
+    mitKommentar.writeUInt16LE(22, e + 20);
+    expect(eocdPos(mitKommentar)).toBeGreaterThan(e);
+    const r = await parseDatei({ buffer: mitKommentar, name: "k.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    /* Kommentar enthält eine EOCD-Signatur, die nicht als vollständiger Block taugt */
+    const m2 = Buffer.concat([z, EOCD, B("xxxx")]);
+    m2.writeUInt16LE(8, e + 20);
+    expect((await parseDatei({ buffer: m2, name: "k.xlsx" })).ok).toBe(false);
+  });
+  it("B1: Zentralverzeichnis endet nicht exakt am EOCD (Lücke) wird abgewiesen", async () => {
+    const z = zip(xlsxEintraege());
+    const e = eocdPos(z);
+    const luecke = Buffer.concat([z.subarray(0, e), Buffer.alloc(8), z.subarray(e)]);
+    const r = await parseDatei({ buffer: luecke, name: "l.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("B1: ZIP64-Extrafeld 0x0001 in einem Eintrag wird abgewiesen", async () => {
+    const zip64 = Buffer.alloc(20); zip64.writeUInt16LE(0x0001, 0); zip64.writeUInt16LE(16, 2);
+    zip64.writeUInt32LE(300 * 1024 * 1024, 4); zip64.writeUInt32LE(10, 12);
+    const eintraege = xlsxEintraege();
+    eintraege.find((x) => x.name === "xl/worksheets/sheet1.xml").extra = zip64;
+    const r = await parseDatei({ buffer: zip(eintraege), name: "z64.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(r.nachricht).toMatch(/ZIP64/);
+  });
+  it("B1: falsche CRC und abweichende Methode im lokalen Kopf werden abgewiesen", async () => {
+    const a = xlsxEintraege();
+    a.find((x) => x.name === "xl/workbook.xml").crc = 0x12345678;
+    expect(await parseDatei({ buffer: zip(a), name: "c.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const b = xlsxEintraege();
+    b.find((x) => x.name === "xl/workbook.xml").methodeLokal = "store";
+    expect(await parseDatei({ buffer: zip(b), name: "m.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("B1: doppelte Eintragsnamen werden abgewiesen", async () => {
+    const a = xlsxEintraege();
+    a.push({ ...a.find((x) => x.name === "xl/worksheets/sheet1.xml") });
+    expect(await parseDatei({ buffer: zip(a), name: "d.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("B1: SheetJS erhält ein neu aufgebautes, sauberes Archiv aus geprüften Einträgen", async () => {
+    const roh = zip(xlsxEintraege());
+    const p = kern.pruefeZip(roh, STANDARD_GRENZEN);
+    expect(Buffer.isBuffer(p.sauber)).toBe(true);
+    expect(p.sauber.equals(roh)).toBe(false);
+    expect(p.entpackt).toBeGreaterThan(0);
+    expect(p.entpackt).toBeLessThanOrEqual(STANDARD_GRENZEN.entpacktBytes);
+    /* das saubere Archiv besteht die eigene strenge Prüfung (Einträge unkomprimiert, CRC stimmt) */
+    expect(kern.pruefeZip(p.sauber, STANDARD_GRENZEN).namen).toEqual(p.namen);
+    const r = await parseDatei({ buffer: roh, name: "s.xlsx" });
+    expect(r.ok).toBe(true);
+    expect(r.blaetter[0].zeilen).toEqual([["a"], [1]]);
+  });
+  it("B1: Gesamtbudget entpackter Bytes über alle Einträge bricht ab", () => {
+    /* zwei Einträge, je 3 MB echt entpackt; Budget 5 MB: Abbruch beim zweiten Eintrag */
+    const drei = Buffer.alloc(3 * 1024 * 1024, 0x61);
+    const z = zip(xlsxEintraege([{ name: "docProps/a.bin", daten: drei }, { name: "docProps/b.bin", daten: drei }]));
+    expect(() => kern.pruefeZip(z, { ...STANDARD_GRENZEN, entpacktBytes: 5 * 1024 * 1024, kompressionsverhaeltnis: 1e9 }))
+      .toThrow(/MB/);
+  });
+});
+
+describe("Review PR #123 Befund 2: kein stilles Abschneiden über sheetRows", () => {
+  const g = { zeilen: 5 }; /* Lesegrenze = 5 + 1 + 10000 = 10006 Zeilenpositionen */
+  const fern = (r) => `<row r="${r}"><c r="A${r}"><v>7</v></c></row></sheetData>`;
+  const ohneDim = (x) => x.replace(/<dimension[^>]*\/>/, "");
+  it("B2: xlsx ohne <dimension> mit Daten jenseits der Lesegrenze → ZU_VIELE_ZEILEN", async () => {
+    const buf = mitBlatt(mappe({ S: [["h"], [1], [2]] }), (x) => ohneDim(x).replace("</sheetData>", fern(10010)));
+    const r = await parseDatei({ buffer: buf, name: "z.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("B2: xlsx mit gefälschtem ref (<dimension ref=\"A1:A3\">) → ZU_VIELE_ZEILEN", async () => {
+    const buf = mitBlatt(mappe({ S: [["h"], [1], [2]] }), (x) => x.replace(/<dimension[^>]*\/>/, '<dimension ref="A1:A3"/>').replace("</sheetData>", fern(10010)));
+    const r = await parseDatei({ buffer: buf, name: "z.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+  });
+  it("B2: xlsx Zeilen ohne r-Attribut (implizit fortlaufend) über die Lesegrenze → ZU_VIELE_ZEILEN", async () => {
+    const leer = Array.from({ length: 10010 }, () => "<row></row>").join("");
+    const buf = mitBlatt(mappe({ S: [["h"], [1]] }), (x) => ohneDim(x).replace("</sheetData>", `${leer}<row><c><v>9</v></c></row></sheetData>`));
+    const r = await parseDatei({ buffer: buf, name: "z.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+  });
+  it("B2: Grenze exakt: Daten an Zeilenposition 10006 ok, an 10007 abgelehnt (xlsx)", async () => {
+    const ok = await parseDatei({ buffer: mitBlatt(mappe({ S: [["h"], [1]] }), (x) => ohneDim(x).replace("</sheetData>", fern(10006))), name: "z.xlsx", grenzen: g });
+    expect(ok.ok, JSON.stringify(ok).slice(0, 300)).toBe(true);
+    expect(ok.blaetter[0].zeilen).toEqual([["h"], [1], [7]]);
+    const zu = await parseDatei({ buffer: mitBlatt(mappe({ S: [["h"], [1]] }), (x) => ohneDim(x).replace("</sheetData>", fern(10007))), name: "z.xlsx", grenzen: g });
+    expect(zu).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+  });
+  it("B2: xls und ods mit Daten jenseits der Lesegrenze → ZU_VIELE_ZEILEN (kein Teilergebnis)", async () => {
+    const zeilen = [["h"], [1], [2]];
+    for (let i = 0; i < 10006; i++) zeilen.push([]);
+    zeilen.push([7]);
+    for (const fmt of ["xls", "ods"]) {
+      const r = await parseDatei({ buffer: mappe({ S: zeilen }, fmt), name: `z.${fmt}`, grenzen: g });
+      expect(r, fmt).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+      expect(r.blaetter, fmt).toBeUndefined();
+    }
+  });
+});
+
+describe("Review PR #123 Befund 3: Datumssystem 1900/1904", () => {
+  const geburt = new Date(1985, 2, 17), eintritt = new Date(2020, 1, 1), stichtag = new Date(2024, 0, 15);
+  const inhalt = { P: [["Name", "Geburtsdatum", "Eintritt", "Stunden", "PersNr", "Notiz"],
+    ["Anna", geburt, eintritt, 38.5, 1234, "01.02.2020"], ["Bert", stichtag, stichtag, 1462, 0, "x"]] };
+  for (const fmt of ["xlsx", "xls", "ods"]) {
+    it(`B3: ${fmt}: gleicher Kalendertag in 1900- und 1904-Mappe liefert gleiches Ergebnis`, async () => {
+      const a = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }), name: `p.${fmt}` });
+      const b = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }, { date1904: true }), name: `p.${fmt}` });
+      expect(a.ok && b.ok, JSON.stringify([a, b]).slice(0, 400)).toBe(true);
+      expect(a.datumssystem).toBe("1900");
+      expect(b.datumssystem).toBe("1904");
+      expect(hat(a, "DATUMSSYSTEM_1904")).toBe(false);
+      expect(hat(b, "DATUMSSYSTEM_1904")).toBe(true);
+      expect(b.blaetter).toEqual(a.blaetter);
+      const z = b.blaetter[0].zeilen;
+      expect(z[1][1]).toMatchObject({ typ: "datum", roh: 31123 }); /* Geburtsdatum 17.03.1985 im 1900-System */
+      expect(z[1][2]).toMatchObject({ typ: "datum", roh: 43862 }); /* Eintritt 01.02.2020 */
+      expect(z[2][1]).toMatchObject({ typ: "datum", roh: 45306 }); /* 15.01.2024 */
+      /* gewöhnliche Zahlen und Text werden nicht umgerechnet */
+      expect(z[1].slice(3)).toEqual([38.5, 1234, "01.02.2020"]);
+      expect(z[2].slice(3)).toEqual([1462, 0, "x"]);
+    });
+  }
+  it("B3: 1904-Testmappe speichert tatsächlich den um 1462 Tage kleineren Rohwert", () => {
+    const blatt = zipEintraege(mappe(inhalt, "xlsx", { cellDates: true }, { date1904: true }))
+      .find((e) => e.name === "xl/worksheets/sheet1.xml").daten.toString("utf8");
+    expect(blatt).toContain("<v>43844</v>");
+    expect(blatt).not.toContain("<v>45306</v>");
+  });
+  it("B3: CSV hat kein Datumssystem (Vertragsform unverändert)", async () => {
+    const r = await parseDatei({ buffer: B("a;b\n1;2\n"), name: "x.csv" });
+    expect(r.datumssystem).toBeUndefined();
+  });
+});
+
+describe("Review PR #123 Befund 4: Makro-Erkennung ohne Fehlalarm", () => {
+  it("B4: normale 1-Blatt-xlsx (SheetJS-Standard-Content-Types) ohne Hinweis MAKROS_VERWORFEN", async () => {
+    const buf = mappe({ S: [["a"], [1]] });
+    const ct = zipEintraege(buf).find((e) => e.name === "[Content_Types].xml").daten.toString("utf8");
+    expect(ct).toMatch(/macroEnabled/); /* Voraussetzung des Befunds: Default Extension="bin" */
+    const r = await parseDatei({ buffer: buf, name: "n.xlsx" });
+    expect(r.ok).toBe(true);
+    expect(hat(r, "MAKROS_VERWORFEN")).toBe(false);
+  });
+  it("B4: Content-Type application/vnd.ms-office.vbaProject allein genügt für den Hinweis", async () => {
+    const eintraege = zipEintraege(mappe({ S: [["a"], [1]] }));
+    const ct = eintraege.find((e) => e.name === "[Content_Types].xml");
+    ct.daten = B(ct.daten.toString("utf8").replace("</Types>",
+      '<Override PartName="/xl/makro.bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>'));
+    const r = await parseDatei({ buffer: zip(eintraege.map((e) => ({ ...e, methode: "deflate" }))), name: "m.xlsx" });
+    expect(r.ok).toBe(true);
+    expect(hat(r, "MAKROS_VERWORFEN")).toBe(true);
   });
 });
