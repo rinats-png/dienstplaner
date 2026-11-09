@@ -48,7 +48,9 @@ export function gemergteUndPrs(datei) {
 export function abgleich(ssot, prs) {
   const zeilen = [];
   for (const p of ssot.pakete) {
-    const treffer = prs.filter((pr) => paketeFuerPr([p.id], pr).length > 0);
+    /* PR-Nummern aus der SSOT zählen, wenn der PR gemergt in die Integration ist. */
+    const ssotNummern = new Set((p.pr || []).map((x) => String(x).match(/\d+/)?.[0]).filter(Boolean));
+    const treffer = prs.filter((pr) => ssotNummern.has(String(pr.number)) || paketeFuerPr([p.id], pr).length > 0);
     const erledigt = ERLEDIGT.includes(p.status);
     const prNummern = treffer.map((pr) => `#${pr.number}`);
     let klasse;

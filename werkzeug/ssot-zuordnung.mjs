@@ -42,14 +42,14 @@ export const ERLEDIGT = Object.freeze(["INTEGRATED", "VERIFIED", "DONE"]);
 
 /**
  * Betrifft ein gemergter PR das Paket als Gegenstand? Nur dann, wenn die
- * Paket-ID als Tokenfolge im Titel oder am Anfang der letzten Branch-Ebene steht.
+ * Paket-ID am Anfang des Titels oder der letzten Branch-Ebene steht (nicht bloß irgendwo im Titel).
  * SSOT-Pflege-PRs ("SSOT: …") zählen nie als Umsetzung eines Pakets.
  */
 export function betrifft(id, pr) {
   const titel = String(pr.title ?? "");
   if (/^\s*ssot\b/i.test(titel)) return false;
   const m = tokens(id);
-  if (enthaelt(tokens(titel), m)) return true;
+  if (enthaelt(tokens(titel).slice(0, m.length), m)) return true;
   const letzte = String(pr.headRefName ?? "").split("/").pop();
   return enthaelt(tokens(letzte).slice(0, m.length), m);
 }
@@ -62,4 +62,28 @@ export function paketeFuerPr(ids, pr) {
 /** Braucht ein erledigtes Paket einen PR-Beleg? Betreiberentscheidungen (E-…) und extern nicht. */
 export function brauchtPrBeleg(paket) {
   return !/^E-/.test(paket.id) && paket.strang !== "extern";
+}
+
+/** Kompakte Form einer Paket-ID: "WP-I12b" -> "wpi12b", "IMP-3" -> "imp3". */
+export function kompakt(id) {
+  return tokens(id).join("");
+}
+
+/**
+ * Trifft ein Text (Commit-Betreff, Dateiname, PR-Titel) die Paket-ID?
+ * Zusammenhängende Tokenfolgen (1 bis 4 Tokens) zählen, deren Verkettung
+ * genau der kompakten ID entspricht. "wp-i12-…" trifft WP-I12, nicht WP-I12b.
+ */
+export function trifftText(id, text) {
+  const ziel = kompakt(id);
+  const tt = tokens(text);
+  for (let i = 0; i < tt.length; i++) {
+    let verkettet = "";
+    for (let j = i; j < tt.length && j < i + 4; j++) {
+      verkettet += tt[j];
+      if (verkettet === ziel) return true;
+      if (verkettet.length > ziel.length) break;
+    }
+  }
+  return false;
 }
