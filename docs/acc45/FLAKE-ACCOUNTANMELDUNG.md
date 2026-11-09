@@ -103,3 +103,60 @@ Läufe: `accountanmeldung.test.js` 53/53; `sitzungsrennen`, `arbeitssitzung`, `s
   mehr), schließt es aber nicht aus; die Prüfung in Zeile 517 kann dadurch unter extremer fsync-Latenz
   weiter selten fallen.
 - Zeitlimit 30 s des Tests unter starker Last (Windows) — eigenes Thema, nicht Teil dieses Befunds.
+
+## Auflagen aus dem Review
+
+Stand: 2026-11-09 · Branch `acc45/sitzung/flake-auflagen` (Basis `fix/accountanmeldung-flake` @ 445d60b, PR #126)
+
+### (a) Kein `az:` ohne `as:` — blockierend für die Integration
+
+Vorher löschten `weg()`, `accountSitzungBeenden` und `accountSitzungenBeenden` sofort; ein noch laufender
+oder wartender Schreibvorgang der Kette legte `az:` danach wieder an (Restflake `accountanmeldung.test.js`
+„endet nach zwölf Stunden“, `az:` nach Ablauf nicht `null`).
+
+Jetzt (`server/lib/accountsitzungen.mjs`):
+
+- `fortschreibenAbschliessen(id)`: setzt `hoechst = Infinity` (kein neuer Schreibvorgang startet, ein
+  wartender überholter entfällt), wartet die Kette ab und hält den Eintrag, bis das Löschen durch ist
+  (Freigabe im `finally`). Gerufen von `weg()`, `accountSitzungBeenden` und `accountSitzungenBeenden`
+  (je beendeter Sitzung) vor dem ersten `delete`.
+- Im Kettenglied wird unmittelbar vor `setJSON` die Autorität `as:` gelesen; fehlt sie, entfällt der
+  Schreibvorgang. Das schließt den Fall, dass eine Anfrage `as:` noch vor dem Löschen gelesen hat und ihr
+  Fortschreiben erst nach der Freigabe anstößt.
+- Folge für den Restflake: Beim Ablauf in „endet nach zwölf Stunden“ wartet `weg()` alle Schreibvorgänge
+  aus den Wiederholungszugriffen ab, bevor `as:`/`az:` gelöscht werden; danach findet keiner mehr `as:`.
+  Die Prüfung `az: === null` hängt nicht mehr an der fsync-Latenz.
+
+### (b) Zeitgrenze je Schreibvorgang — umgesetzt
+
+`SCHREIB_ZEITGRENZE = 5000` ms je Kettenglied (Lesen von `as:` + `setJSON`). Läuft sie ab, wird der
+Schreibvorgang verworfen, die Kette frei, und `console.warn("Account-Sitzung: Fortschreiben der Aktivität
+nach Zeitgrenze verworfen")` protokolliert — ohne Merkmal, Kennung, Account oder Adresse. Ein Abmelden wartet
+damit höchstens bis zur Zeitgrenze. Der Zeitgeber ist für Prüfungen austauschbar
+(`_zeitgeberFuerPruefung`), damit die Prüfung die Grenze ohne Wanduhr auslöst.
+
+### Prüfungen (neu, `describe("Die Schreibkette der Aktivität")`)
+
+Jede erzwingt die Reihenfolge selbst (festgehaltener bzw. nie zurückkehrender `az:`-Schreibvorgang);
+gewartet wird nur auf Zustände.
+
+| Prüfung | Basis 445d60b | mit Auflagen |
+|---|---|---|
+| Abmelden während eines wartenden Schreibvorgangs hinterlässt kein az: | rot (`az:` = Minute 10) | grün |
+| Ablauf (`weg()`) während eines wartenden Schreibvorgangs hinterlässt kein az: | rot | grün |
+| „Überall abmelden“ während eines wartenden Schreibvorgangs hinterlässt kein az: | rot | grün |
+| gibt die Kette nach der Zeitgrenze frei, wenn ein Schreibvorgang hängt | rot (kein Zeitgeber) | grün |
+| lässt einen Zeitpunkt aus, der nicht neuer ist als der schon angestoßene (`nun <= hoechst`) | grün | grün |
+| lässt einen überholten, noch wartenden Schreibvorgang aus | grün | grün |
+
+Die letzten beiden decken Zweige ab, die 445d60b schon enthält (Review-Befund Abdeckung); sie wären auf
+dem Stand vor 445d60b rot. Keine bestehende Assertion geändert oder entfernt (einzige Änderung an
+Bestehendem: `vi` im Import).
+
+### Restpunkte
+
+- Ein nach der Zeitgrenze verworfener Schreibvorgang kann, wenn die Ablage ihn später doch ausführt, noch
+  ankommen (älterer Wert oder Waise). Die Ablage kennt kein Abbrechen; harmlos für die Autorität
+  (`az:` ohne `as:` erlaubt nichts, der Aufräumlauf entfernt Waisen).
+- Abmelden kann bis zu `SCHREIB_ZEITGRENZE` warten, wenn gerade ein Schreibvorgang hängt.
+- Linux-/CI-Lauf steht aus (lokal Windows 11).

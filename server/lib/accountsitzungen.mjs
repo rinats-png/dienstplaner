@@ -277,8 +277,55 @@ async function sitzungPerId(speicher, id, nun) {
 }
 
 /* Laufende Fortschreibungen je Sitzungskennung: der höchste angestoßene
-   Zeitpunkt und das Ende der Kette. */
+   Zeitpunkt, das Ende der Kette und — solange eine Sitzung gerade beendet
+   wird — die Zahl der Halter (siehe `fortschreibenAbschliessen`). */
 const fortschreibungen = new Map();
+
+/** Zeitgrenze je Fortschreiben der Aktivität (Lesen der Autorität und
+    Schreiben zusammen). Hängt die Ablage länger, wird der Schreibvorgang
+    verworfen und die Kette freigegeben — sonst blockierte ein einziges
+    hängendes fsync die Sitzung, und mit ihr jedes Abmelden, für immer. */
+export const SCHREIB_ZEITGRENZE = 5000;
+
+const standardZeitgeber = (ms) => {
+  /** @type {ReturnType<typeof setTimeout>|undefined} */
+  let t;
+  const ablauf = new Promise((r) => {
+    t = setTimeout(r, ms);
+    if (t && typeof t.unref === "function") t.unref();
+  });
+  return { ablauf, aus: () => clearTimeout(t) };
+};
+let zeitgeber = standardZeitgeber;
+
+/**
+ * Nur für Prüfungen: ersetzt den Zeitgeber der Zeitgrenze, damit eine Prüfung
+ * sie auslösen kann, ohne auf die Wanduhr zu warten. `null` stellt den
+ * Standard wieder her. Gibt den bisherigen Zeitgeber zurück.
+ *
+ * @param {((ms: number) => {ablauf: Promise<unknown>, aus: () => void})|null} neu
+ */
+export function _zeitgeberFuerPruefung(neu) {
+  const alt = zeitgeber;
+  zeitgeber = neu || standardZeitgeber;
+  return alt;
+}
+
+const ZEIT_UM = Symbol("zeitgrenze");
+
+/** Wartet auf `arbeit`, höchstens bis zur Zeitgrenze. Danach ist die Arbeit
+    verworfen: Ihr Ergebnis — auch ein späterer Fehler — zählt nicht mehr. */
+async function begrenzt(arbeit) {
+  const z = zeitgeber(SCHREIB_ZEITGRENZE);
+  try {
+    const r = await Promise.race([arbeit, z.ablauf.then(() => ZEIT_UM)]);
+    if (r === ZEIT_UM) {
+      /* Keine Kennung, kein Merkmal, kein Account: Die Meldung sagt nur,
+         dass es geschah. */
+      console.warn("Account-Sitzung: Fortschreiben der Aktivität nach Zeitgrenze verworfen");
+    }
+  } finally { z.aus(); }
+}
 
 /**
  * Schreibt `zuletzt` fort — je Sitzung der Reihe nach und nie rückwärts.
@@ -296,7 +343,12 @@ const fortschreibungen = new Map();
  *
  * Weiterhin ohne await für den Aufrufer, weiterhin ohne Fehler nach außen:
  * Misslingt das Schreiben, ist die Kette danach leer, und die nächste
- * Anfrage versucht es neu.
+ * Anfrage versucht es neu. Hängt es, gibt die Zeitgrenze die Kette frei.
+ *
+ * Kein `az:` ohne `as:`: Unmittelbar vor dem Schreiben wird die Autorität
+ * gelesen; fehlt sie, entfällt der Schreibvorgang. Wer eine Sitzung beendet,
+ * schließt vorher die Kette (`fortschreibenAbschliessen`) — damit kann kein
+ * Schreibvorgang, der schon unterwegs war, nach dem Löschen ankommen.
  *
  * @param {object} speicher
  * @param {string} id
@@ -305,29 +357,71 @@ const fortschreibungen = new Map();
 function aktivitaetFortschreiben(speicher, id, nun) {
   let lauf = fortschreibungen.get(id);
   if (!lauf) {
-    lauf = { hoechst: 0, kette: Promise.resolve() };
+    lauf = { hoechst: 0, kette: Promise.resolve(), halter: 0 };
     fortschreibungen.set(id, lauf);
   }
+  /* Nicht neuer als der schon angestoßene — oder die Sitzung wird gerade
+     beendet (hoechst = Infinity): nichts zu tun. */
   if (nun <= lauf.hoechst) return;
   lauf.hoechst = nun;
   const eintrag = lauf;
   const kette = eintrag.kette
-    .then(() => (eintrag.hoechst === nun
-      ? speicher.setJSON(AKTIVITAET + id, { zuletzt: nun })
-      : undefined))
+    .then(() => {
+      if (eintrag.hoechst !== nun) return undefined; // überholt oder beendet
+      return begrenzt((async () => {
+        const autoritaet = await speicher.get(PRAEFIX + id, { type: "json" });
+        if (!autoritaet || eintrag.hoechst !== nun) return;
+        await speicher.setJSON(AKTIVITAET + id, { zuletzt: nun });
+      })());
+    })
     .catch(() => {});
   eintrag.kette = kette;
   kette.then(() => {
-    if (eintrag.kette === kette && fortschreibungen.get(id) === eintrag)
+    if (eintrag.kette === kette && !eintrag.halter && fortschreibungen.get(id) === eintrag)
       fortschreibungen.delete(id);
   });
 }
 
+/**
+ * Schließt die Fortschreibung einer Sitzung, bevor sie gelöscht wird: Ab jetzt
+ * startet kein neuer Schreibvorgang (hoechst = Infinity, auch ein wartender
+ * entfällt), und der laufende wird abgewartet — höchstens bis zur Zeitgrenze.
+ * Der Eintrag bleibt stehen, bis die zurückgegebene Freigabe gerufen ist, also
+ * bis das Löschen durch ist. Erst dann darf eine Anfrage wieder eine Kette
+ * anlegen — und findet keine Autorität mehr vor.
+ *
+ * @param {string} id
+ * @returns {Promise<() => void>} Freigabe, nach dem Löschen zu rufen
+ */
+async function fortschreibenAbschliessen(id) {
+  let lauf = fortschreibungen.get(id);
+  if (!lauf) {
+    lauf = { hoechst: Infinity, kette: Promise.resolve(), halter: 0 };
+    fortschreibungen.set(id, lauf);
+  }
+  lauf.hoechst = Infinity;
+  lauf.halter++;
+  const eintrag = lauf;
+  await eintrag.kette;
+  let frei = false;
+  return () => {
+    if (frei) return;
+    frei = true;
+    eintrag.halter--;
+    if (eintrag.halter === 0 && fortschreibungen.get(id) === eintrag) fortschreibungen.delete(id);
+  };
+}
+
 /** Löschen, ohne dass ein Fehler dabei den Aufrufer stört. Die Autorität
-    zuerst — sie ist der Widerruf —, dann die Aktivität. */
+    zuerst — sie ist der Widerruf —, dann die Aktivität. Vorher die
+    Fortschreibung schließen, sonst legte ein verspäteter Schreibvorgang
+    `az:` nach dem Löschen wieder an. */
 async function weg(speicher, id) {
-  try { await speicher.delete(PRAEFIX + id); } catch { /* bleibt liegen, läuft ab */ }
-  try { await speicher.delete(AKTIVITAET + id); } catch { /* Waise, harmlos */ }
+  const freigeben = await fortschreibenAbschliessen(id);
+  try {
+    try { await speicher.delete(PRAEFIX + id); } catch { /* bleibt liegen, läuft ab */ }
+    try { await speicher.delete(AKTIVITAET + id); } catch { /* Waise, harmlos */ }
+  } finally { freigeben(); }
 }
 
 /* ==========================================================================
@@ -453,6 +547,15 @@ export async function accountSitzungBeenden(token, { ablage = null } = {}) {
   if (!merkmalBrauchbar(token)) return true;
   const speicher = ablage || accountSitzungsSpeicher();
   const schluessel = accountSitzungsSchluessel(token);
+  /* Erst die Fortschreibung schließen, dann löschen — sonst legte ein noch
+     laufender Schreibvorgang `az:` nach dem Abmelden wieder an. */
+  const freigeben = await fortschreibenAbschliessen(hash(token));
+  try { return await beenden(speicher, schluessel, token); }
+  finally { freigeben(); }
+}
+
+/** Der Kern von `accountSitzungBeenden`, bei geschlossener Fortschreibung. */
+async function beenden(speicher, schluessel, token) {
   try {
     await speicher.delete(schluessel);
     /* Die Autorität ist weg — das ist der Widerruf. Die Aktivität räumt der
@@ -507,13 +610,16 @@ export async function accountSitzungenBeenden(accountId, { ablage = null } = {})
     try { s = await speicher.get(b.key, { type: "json" }); }
     catch { fehler++; continue; }
     if (!s || s.art !== ART || s.accountId !== accountId) continue;
+    const id = b.key.slice(PRAEFIX.length);
+    const freigeben = await fortschreibenAbschliessen(id);
     try {
       await speicher.delete(b.key);
       beendet++;
-      ids.push(b.key.slice(PRAEFIX.length));
-      await speicher.delete(AKTIVITAET + b.key.slice(PRAEFIX.length)).catch(() => {});
+      ids.push(id);
+      await speicher.delete(AKTIVITAET + id).catch(() => {});
     }
     catch { fehler++; }
+    finally { freigeben(); }
   }
   return { beendet, fehler, ids };
 }

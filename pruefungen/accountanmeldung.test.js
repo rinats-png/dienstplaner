@@ -16,7 +16,7 @@
    kürzeste Weg in einen fremden Betrieb.
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1060,6 +1060,231 @@ describe("Gleichzeitigkeit", () => {
     expect(p.ok, `Sitzung nach 25 Minuten Ruhe (grund: ${"grund" in p ? p.grund : "-"})`)
       .toBe(true);
     expect(Number((await az()).zuletzt)).toBeGreaterThanOrEqual(t2);
+  }, LIMIT);
+});
+
+/* --------------------------------------------------------------------------
+   DIE SCHREIBKETTE DER AKTIVITÄT (Auflagen aus dem Review von PR #126)
+
+   Jede Prüfung hier erzwingt die Reihenfolge selbst: Ein Schreibvorgang auf
+   `az:` wird festgehalten, bis die Prüfung ihn loslässt, oder er hängt für
+   immer. Gewartet wird nur auf Zustände, nie auf eine Wanduhr — die Schleife
+   in `bis` ist eine Obergrenze, keine Bedingung des Ergebnisses.
+   -------------------------------------------------------------------------- */
+
+describe("Die Schreibkette der Aktivität", () => {
+  /* Eine echte Ablage, deren `az:`-Schreibvorgänge sich festhalten oder
+     aufhängen lassen. `versuche` nennt jeden angestoßenen `az:`-Zeitpunkt. */
+  const steuerbar = () => {
+    const echt = sitzungsAblage();
+    /** @type {number[]} */
+    const versuche = [];
+    /** @type {Array<() => Promise<void>>} */
+    const festgehalten = [];
+    let halten = 0, haengen = 0;
+    const ablage = {
+      get: (...a) => echt.get(...a),
+      list: (...a) => echt.list(...a),
+      delete: (...a) => echt.delete(...a),
+      setJSON: (schluessel, daten, opts) => {
+        if (String(schluessel).startsWith("az:")) {
+          versuche.push(Number(daten && daten.zuletzt));
+          if (haengen > 0) { haengen--; return new Promise(() => {}); }
+          if (halten > 0) {
+            halten--;
+            return new Promise((fertig, fehler) => {
+              festgehalten.push(() => echt.setJSON(schluessel, daten, opts).then(fertig, fehler));
+            });
+          }
+        }
+        return echt.setJSON(schluessel, daten, opts);
+      },
+    };
+    return {
+      ablage, versuche, festgehalten,
+      halte: () => { halten++; },
+      haenge: () => { haengen++; },
+      loslassen: async () => { for (const los of festgehalten.splice(0)) await los(); },
+    };
+  };
+  /* Wartet, bis `bedingung` gilt — höchstens rund fünf Sekunden. */
+  const bis = async (bedingung, was) => {
+    for (let i = 0; i < 1000; i++) {
+      if (await bedingung()) return;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    throw new Error(`nicht erreicht: ${was}`);
+  };
+  const vorbereiten = async (was) => {
+    const s = laden();
+    const u = uhr();
+    const st = steuerbar();
+    const mit = { jetzt: u.jetzt, sitzungsAblage: /** @type {any} */ (st.ablage) };
+    const k = await konto(s, adresse(was));
+    const e = await AN.anmelden(s, { email: k.email, passwort: GUT, ...mit });
+    if (!e.ok) throw new Error("Anmeldung gescheitert");
+    const echt = sitzungsAblage();
+    const as = () => echt.get(`as:${hash(e.token)}`, { type: "json" });
+    const az = () => echt.get(`az:${hash(e.token)}`, { type: "json" });
+    return { s, u, st, mit, k, e, as, az };
+  };
+
+  it("Abmelden während eines wartenden Schreibvorgangs hinterlässt kein az:", async () => {
+    const { s, u, st, mit, e, as, az } = await vorbereiten("ab-waehrend");
+    /* Minute 10: Schreibvorgang festgehalten. Minute 12: der nächste wartet. */
+    u.vor(10 * MINUTE);
+    st.halte();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await bis(() => st.festgehalten.length === 1, "erster Schreibvorgang unterwegs");
+    const t1 = u.stand();
+    u.vor(2 * MINUTE);
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+
+    /* Abmelden, solange der erste noch hängt — und erst danach loslassen. */
+    const ab = AN.abmelden(e.token, { sitzungsAblage: mit.sitzungsAblage });
+    await new Promise((r) => setTimeout(r, 20));
+    await st.loslassen();
+    expect((await ab).ok).toBe(true);
+
+    expect(await as()).toBe(null);
+    expect(await az()).toBe(null);
+    /* Auch nachdem die Kette ganz abgelaufen ist: Der wartende zweite
+       Schreibvorgang (Minute 12) startet nicht mehr. */
+    await st.loslassen();
+    await new Promise((r) => setTimeout(r, 40));
+    expect(await az()).toBe(null);
+    expect(st.versuche).toEqual([t1]);
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(false);
+    expect(await az()).toBe(null);
+  }, LIMIT);
+
+  it("Ablauf während eines wartenden Schreibvorgangs hinterlässt kein az:", async () => {
+    /* Der Weg über `weg()`: Die Sitzung endet an Untätigkeit, während ihr
+       letzter Schreibvorgang noch hängt. */
+    const { s, u, st, mit, e, as, az } = await vorbereiten("weg-waehrend");
+    u.vor(10 * MINUTE);
+    st.halte();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await bis(() => st.festgehalten.length === 1, "Schreibvorgang unterwegs");
+
+    /* Der festgehaltene Schreibvorgang ist nicht angekommen; gezählt wird ab
+       der Anmeldung — nach 41 Minuten ist die Sitzung untätig. */
+    u.vor(AS.RUHE + MINUTE);
+    const p = AN.sitzungPruefen(s, e.token, mit);
+    await new Promise((r) => setTimeout(r, 20));
+    await st.loslassen();
+    const nach = await p;
+    expect(nach.ok).toBe(false);
+    if (!nach.ok) expect(nach.grund).toBe("untaetig");
+
+    await new Promise((r) => setTimeout(r, 40));
+    expect(await as()).toBe(null);
+    expect(await az()).toBe(null);
+  }, LIMIT);
+
+  it("„Überall abmelden“ während eines wartenden Schreibvorgangs hinterlässt kein az:", async () => {
+    const { s, u, st, mit, k, e, as, az } = await vorbereiten("ueberall-waehrend");
+    u.vor(10 * MINUTE);
+    st.halte();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await bis(() => st.festgehalten.length === 1, "Schreibvorgang unterwegs");
+
+    const ab = AN.ueberallAbmelden(k.id, { sitzungsAblage: mit.sitzungsAblage });
+    await new Promise((r) => setTimeout(r, 20));
+    await st.loslassen();
+    await ab;
+
+    await new Promise((r) => setTimeout(r, 40));
+    expect(await as()).toBe(null);
+    expect(await az()).toBe(null);
+  }, LIMIT);
+
+  it("gibt die Kette nach der Zeitgrenze frei, wenn ein Schreibvorgang hängt", async () => {
+    const { s, u, st, mit, e, az } = await vorbereiten("haengt");
+    /* Die Zeitgrenze löst die Prüfung selbst aus — keine Wanduhr. */
+    /** @type {Array<() => void>} */
+    const ausloeser = [];
+    const vorher = AS._zeitgeberFuerPruefung(() => {
+      /** @type {() => void} */
+      let los = () => {};
+      const ablauf = new Promise((r) => { los = () => r(undefined); });
+      ausloeser.push(los);
+      return { ablauf, aus: () => {} };
+    });
+    const warnung = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      /* Minute 10: setJSON kehrt nie zurück. Minute 12: wartet dahinter. */
+      u.vor(10 * MINUTE);
+      st.haenge();
+      expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+      await bis(() => st.versuche.length === 1, "hängender Schreibvorgang");
+      const t1 = u.stand();
+      u.vor(2 * MINUTE);
+      const t2 = u.stand();
+      expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+      await new Promise((r) => setTimeout(r, 20));
+      /* Ohne Zeitgrenze stünde die Kette hier für immer. */
+      expect(st.versuche).toEqual([t1]);
+      expect(await az()).toBe(null);
+
+      ausloeser[0]();
+      await bis(async () => Number((await az())?.zuletzt) === t2, "zweiter Schreibvorgang");
+      expect(st.versuche).toEqual([t1, t2]);
+
+      /* Protokolliert — ohne Merkmal, Kennung oder Account. */
+      expect(warnung).toHaveBeenCalledTimes(1);
+      const text = warnung.mock.calls.flat().map(String).join(" ");
+      expect(text).toMatch(/Zeitgrenze/);
+      for (const geheim of [e.token, hash(e.token), e.accountId || "", "@"]) {
+        if (geheim) expect(text.includes(geheim)).toBe(false);
+      }
+
+      /* Und die nächste Anfrage schreibt wieder. */
+      u.vor(2 * MINUTE);
+      const t3 = u.stand();
+      expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+      await bis(async () => Number((await az())?.zuletzt) === t3, "dritter Schreibvorgang");
+    } finally {
+      AS._zeitgeberFuerPruefung(vorher);
+      warnung.mockRestore();
+    }
+  }, LIMIT);
+
+  it("lässt einen Zeitpunkt aus, der nicht neuer ist als der schon angestoßene", async () => {
+    const { s, u, st, mit, e, az } = await vorbereiten("nicht-neuer");
+    u.vor(10 * MINUTE);
+    const t1 = u.stand();
+    st.halte();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await bis(() => st.festgehalten.length === 1, "Schreibvorgang unterwegs");
+    /* Derselbe Zeitpunkt noch einmal: `az:` steht noch nicht, also ist das
+       Verlängern fällig — und entfällt trotzdem, weil t1 schon unterwegs ist. */
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(st.versuche).toEqual([t1]);
+    await st.loslassen();
+    await bis(async () => Number((await az())?.zuletzt) === t1, "t1 angekommen");
+    expect(st.versuche).toEqual([t1]);
+  }, LIMIT);
+
+  it("lässt einen überholten, noch wartenden Schreibvorgang aus", async () => {
+    const { s, u, st, mit, e, az } = await vorbereiten("ueberholt");
+    u.vor(10 * MINUTE);
+    const t1 = u.stand();
+    st.halte();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await bis(() => st.festgehalten.length === 1, "erster Schreibvorgang unterwegs");
+    /* Minute 12 und 14 reihen sich hinter Minute 10 ein. */
+    u.vor(2 * MINUTE);
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    u.vor(2 * MINUTE);
+    const t3 = u.stand();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await st.loslassen();
+    await bis(async () => Number((await az())?.zuletzt) === t3, "t3 angekommen");
+    /* Minute 12 wurde überholt, bevor sie an der Reihe war: nie geschrieben. */
+    expect(st.versuche).toEqual([t1, t3]);
   }, LIMIT);
 });
 
