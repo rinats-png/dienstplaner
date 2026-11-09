@@ -101,7 +101,7 @@ describe("Repo-Stand: Quelle gültig, alle erzeugten Zahlen passen", () => {
     const g = lauf("prognose");
     expect(g.status).toBe(0);
     expect(g.stdout).toMatch(/^C: /m);
-  });
+  }, 60000); // vier Prozesse hintereinander; der Standard von 5 s ist unter Last zu knapp
 });
 
 describe("Abweichungen werden erkannt (Kopie, nie im Repo)", () => {
