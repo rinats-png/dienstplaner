@@ -36,13 +36,29 @@ const SPEICHER_RE = /heap out of memory|Reached heap limit|Allocation failed|out
 const aktiv = new Set();
 export const aktiveKinder = () => [...aktiv].map((k) => k.pid);
 
-/** Adressraum-Limit in KB (nur Linux), 0 = aus. */
-export function adressraumKb() {
-  if (process.platform !== "linux") return 0;
-  const roh = process.env.CENTRIC_IMPORT_ADRESSRAUM_KB;
+/* Nachreview 6319586, Befund 2: Obergrenze 4 GB. Größere Werte heben das Limit praktisch auf; sie werden
+   auf 4 GB geklemmt. 0 (= aus) bleibt als bewusste Betreiberentscheidung möglich, wird aber gemeldet. Nie still. */
+export const ADRESSRAUM_KB_MAX = 4 * 1024 * 1024;
+
+/** Adressraum-Limit in KB (nur Linux), 0 = aus. Auffällige Werte werden mit console.warn gemeldet. */
+export function adressraumKb(plattform = process.platform, env = process.env) {
+  if (plattform !== "linux") return 0;
+  const roh = env.CENTRIC_IMPORT_ADRESSRAUM_KB;
   if (roh === undefined || roh === "") return ADRESSRAUM_KB_STANDARD;
   const n = Number(roh);
-  return Number.isInteger(n) && n >= 0 ? n : ADRESSRAUM_KB_STANDARD;
+  if (!Number.isInteger(n) || n < 0) {
+    console.warn(`Import-Parser: CENTRIC_IMPORT_ADRESSRAUM_KB="${String(roh).slice(0, 20)}" ist ungültig; es gilt der Standard ${ADRESSRAUM_KB_STANDARD} KB.`);
+    return ADRESSRAUM_KB_STANDARD;
+  }
+  if (n === 0) {
+    console.warn("Import-Parser: CENTRIC_IMPORT_ADRESSRAUM_KB=0 – Kindprozesse laufen ohne Adressraum-Limit (nur Heap- und Zeitgrenze).");
+    return 0;
+  }
+  if (n > ADRESSRAUM_KB_MAX) {
+    console.warn(`Import-Parser: CENTRIC_IMPORT_ADRESSRAUM_KB=${n} ist unplausibel groß; auf ${ADRESSRAUM_KB_MAX} KB (4 GB) geklemmt.`);
+    return ADRESSRAUM_KB_MAX;
+  }
+  return n;
 }
 
 /** Programm und Argumente des Kindes (fest; keine Teile der Eingabe). */

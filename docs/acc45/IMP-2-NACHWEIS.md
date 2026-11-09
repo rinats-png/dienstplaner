@@ -461,6 +461,21 @@ Budget 4 × n lässt also etwa Faktor 2 Reserve.
 - `node werkzeug/verdrahtung-pruefen.mjs`: „Verdrahtung ok: 284 Prüfdateien geprüft.“ (das Testdouble liegt unter `pruefungen/hilfen/`).
 - `vendor/sheetjs/xlsx.mjs` SHA-256 `1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db` (unverändert).
 
+### Nachreview 6319586 (Befunde 2 und 6)
+
+- **Befund 2 – `CENTRIC_IMPORT_ADRESSRAUM_KB`.** Vorher hob `0` das Adressraum-Limit still auf, und beliebig große Werte wurden übernommen.
+  Ein Limit über dem tatsächlichen Speicher wirkt nicht mehr. Jetzt gilt:
+  - Werte über `ADRESSRAUM_KB_MAX` = 4 GB (4.194.304 KB) werden auf 4 GB geklemmt, mit `console.warn`. Begründung: Mehr als das 16-Fache des
+    Kind-Heaps (256 MB) braucht keine Personaldatei, und darüber schützt das Limit den Rechner praktisch nicht mehr.
+  - `0` bleibt als bewusste Betreiberentscheidung möglich (z. B. wenn Node unter dem Limit nicht startet), wird aber bei jedem Start eines
+    Kindes gemeldet.
+  - Ungültige Werte führen zum Standard (1.500.000 KB), mit Warnung.
+  - Test `H1 Nachreview (Befund 2): …`: vorher **rot** (731f585: `ADRESSRAUM_KB_MAX` fehlte, keine Warnung), nachher grün. Die Funktion nimmt
+    Plattform und Umgebung als Parameter, damit der Linux-Zweig auch unter Windows geprüft wird.
+- **Befund 6 – `eval` / `new Function`.** Die Quelltextprüfung des Prozessmoduls (`H1: Quelltext des Prozessmoduls …`) prüft jetzt dasselbe
+  Muster wie die bestehende Prüfung der übrigen Parser-Dateien. Vorher grün: das Modul enthielt nie `eval` oder `new Function`. Die Prüfung ist
+  eine Absicherung, kein Fehlerfund. Die bestehende Prüfung über die drei Dateien bleibt unverändert, weil sie `node:child_process` verbietet.
+
 ### Offen (ausdrücklich)
 
 1. **Echte Excel- und LibreOffice-XLS fehlen im Repo.** Alle Gegenproben nutzen von SheetJS erzeugte bzw. gezielt umgebaute Dateien. Ob echte
