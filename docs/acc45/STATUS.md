@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 171 · BLOCKED 89 · READY 27 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 38 · DONE 3
+**Pakete gesamt:** 184 · BLOCKED 102 · READY 27 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 38 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 74 | 24 | 6 | 2 | 5 | 35 | 2 | 84,9–135,7 |
+| ACC45 | 87 | 37 | 6 | 2 | 5 | 35 | 2 | 101,9–157,7 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
 | Intelligence | 37 | 32 | 3 | 0 | 1 | 1 | 0 | 280,4–491,8 |
 | Folgepakete | 10 | 1 | 2 | 2 | 3 | 2 | 0 | 8,6–17,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **440,7–748,8 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **457,7–770,8 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -55,7 +55,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **440,7–748,
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). |
 | WP-I10 Architekturabgleich Spezifikation auf heutigen Stack | REVIEW | `intelligence/wp-i10-architekturabgleich` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
-| SI-P4 Zweiter Faktor für Leitung, Planung und Kunde (Befund P4, mittel) | REVIEW | `acc45/sicherheit/si-p4` | Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. |
+| SI-P4 Zweiter Faktor für Leitung, Planung und Kunde (Befund P4, mittel) | REVIEW | `acc45/sicherheit/si-p4` | Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Entscheidung 2026-11-09: Option 1 (Ersteinrichtung Neubetriebe) genehmigt, Option 2 (nachträglich, Zweitfreigabe) genehmigt, Option 3 (Offline-Ausnahme) ABGELEHNT, Option 4 (TOTP für Konten) genehmigt und priorisiert, Option 5 (Testbetriebe ausnehmen) ABGELEHNT. Quelle: SI-P4-NACHWEIS.md, Abschnitt Delta-Review. PR #120 durch #124 ersetzt. |
 | SI-P9 Workflow-Härtung: Checkout-Token nicht speichern, Berechtigungen nur lesend (Befund P8-Restpunkte 1+2, mittel) | REVIEW | `acc45/sicherheit/si-p9` | Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe. |
 
 ### Bereit zum Start (13)
@@ -109,7 +109,7 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-83 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+96 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
