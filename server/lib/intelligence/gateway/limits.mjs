@@ -31,6 +31,8 @@
        Fehler): keine Rückbuchung, auch nicht beim harten Tagesdach. Zurück gehen die IE nur, wenn nie ein
        Aufruf stattfand (Abbruch vor dem Anbieter).
    B8  Ein Adapter, der Frist/Abbruch überlebt, hält seinen Platz (laufend), bis er wirklich endet, höchstens haltenMaxMs.
+   B10 (I15) Optional `betriebJeStundeIE`: Obergrenze je Betrieb und gleitender Stunde (nur Nicht-A; Zeit unlesbar → gesperrt).
+       Nicht persistent (nach Neustart leer); Monatskontingent und Tagesdach bleiben die dauerhaften Deckel.
    B6  Zeitfehler (NaN, rückwärtslaufende Uhr) sperren (fail closed).
    ========================================================================== */
 
@@ -72,6 +74,7 @@ export class Limits {
    *   parallelJeBetrieb?: number,
    *   gleicheAnfrageJe10Min?: number,
    *   haltenMaxMs?: number,
+   *   betriebJeStundeIE?: number,
    *   senke?: (e: { t: number, b: string, tag: string, monat: string, ie: number }) => Promise<void>|void,
    * }} k
    */
@@ -79,6 +82,8 @@ export class Limits {
     if (!k || !pos(k.betriebKontingentIE) || !pos(k.gesamtTagesIE) || !pos(k.gesamtHartTagesIE)
       || k.gesamtHartTagesIE < k.gesamtTagesIE)
       throw new GatewayFehler("KI_KONTINGENT", "Limits ohne gültigen Kostendeckel.");
+    if (k.betriebJeStundeIE !== undefined && !pos(k.betriebJeStundeIE))
+      throw new GatewayFehler("KI_KONTINGENT", "Ungültige Stundenobergrenze je Betrieb.");
     this.k = {
       jetzt: k.jetzt || (() => Date.now()),
       betriebKontingentIE: k.betriebKontingentIE,
@@ -93,6 +98,8 @@ export class Limits {
       parallelJeBetrieb: k.parallelJeBetrieb ?? 2,
       gleicheAnfrageJe10Min: k.gleicheAnfrageJe10Min ?? 5,
       haltenMaxMs: k.haltenMaxMs ?? 300_000,
+      /* I15: optionale Obergrenze je Betrieb und gleitender Stunde in IE (nur Nicht-A, B4). undefined = nicht begrenzt. */
+      betriebJeStundeIE: k.betriebJeStundeIE,
       senke: typeof k.senke === "function" ? k.senke : null,
     };
     this.person = new Map();
@@ -116,7 +123,7 @@ export class Limits {
     let s = this.betrieb.get(key);
     if (!s) {
       if (this.betrieb.size >= MAX_SCHLUESSEL) throw new GatewayFehler("KI_LIMIT", "Zu viele Betriebe im Zähler.");
-      s = { monat, tag, ieMonat: 0, ieTag: 0, laufend: 0 };
+      s = { monat, tag, ieMonat: 0, ieTag: 0, laufend: 0, stunde: [] };
       this.betrieb.set(key, s);
     }
     if (s.monat !== monat) { s.monat = monat; s.ieMonat = 0; }
@@ -166,7 +173,7 @@ export class Limits {
     if (Limits._zaehle(gz, t - ZEHN_MIN) >= this.k.gleicheAnfrageJe10Min) return nein("KI_LIMIT", "gleiche_anfrage");
 
     /* Geschäftslimits — Klasse A bleibt (B4). */
-    const g = this._geschaeft(bs, a.klasse, ie);
+    const g = this._geschaeft(bs, a.klasse, ie, t);
     if (!g.ok) return nein(g.code, g.grund);
     const ueber = g.ueber;
 
@@ -179,13 +186,14 @@ export class Limits {
     pz.zeiten.push(t); this.person.set(pKey, pz);
     gz.push(t); this.gleich.set(gKey, gz);
     bs.laufend++; bs.ieMonat += ie; bs.ieTag += ie; this.gesamt.ie += ie;
-    const beleg = { bKey: h("b", a.betrieb), ie, klasse: a.klasse, offen: true, tag: bs.tag, monat: bs.monat, dauer: [] };
+    const std = { t, ie }; bs.stunde.push(std);
+    const beleg = { std, bKey: h("b", a.betrieb), ie, klasse: a.klasse, offen: true, tag: bs.tag, monat: bs.monat, dauer: [] };
     this._ereignis(beleg, ie);
     return { ok: true, ueberKontingent: ueber, beleg };
   }
 
   /** Geschäftslimits für `ie` zusätzliche Einheiten (B4). */
-  _geschaeft(bs, klasse, ie) {
+  _geschaeft(bs, klasse, ie, t) {
     const kont = this.k.betriebKontingentIE;
     const gesamtNach = this.gesamt.ie + ie;
     if (gesamtNach > this.k.gesamtHartTagesIE) return { ok: false, code: "KI_KONTINGENT", grund: "gesamt_hart" };
@@ -194,6 +202,12 @@ export class Limits {
     if (monatNach > kont * 1.1) return { ok: false, code: "KI_KONTINGENT", grund: "betrieb_pause" };
     if (monatNach > kont && klasse === "D") return { ok: false, code: "KI_KONTINGENT", grund: "betrieb_reserve" };
     if (bs.ieTag + ie > kont * this.k.tageslimitAnteil) return { ok: false, code: "KI_KONTINGENT", grund: "betrieb_tag" };
+    if (this.k.betriebJeStundeIE !== undefined) {
+      if (!Number.isFinite(t)) return { ok: false, code: "KI_LIMIT", grund: "zeit" };   // fail closed
+      while (bs.stunde.length && bs.stunde[0].t <= t - STUNDE) bs.stunde.shift();
+      const imFenster = bs.stunde.reduce((summe, e) => summe + e.ie, 0);
+      if (imFenster + ie > this.k.betriebJeStundeIE) return { ok: false, code: "KI_KONTINGENT", grund: "betrieb_stunde" };
+    }
     if (gesamtNach > this.k.gesamtTagesIE) return { ok: false, code: "KI_KONTINGENT", grund: "gesamt_tag" };
     return { ok: true, ueber: false };
   }
@@ -212,9 +226,10 @@ export class Limits {
     const bs = this.betrieb.get(beleg.bKey);
     if (!bs || bs.monat !== beleg.monat || bs.tag !== beleg.tag) return { ok: false, code: "KI_LIMIT", grund: "zaehler" };
     const delta = neu - beleg.ie;
-    const g = this._geschaeft(bs, beleg.klasse, delta);
+    const g = this._geschaeft(bs, beleg.klasse, delta, this.letzteZeit);
     if (!g.ok) return g;
     bs.ieMonat += delta; bs.ieTag += delta; this.gesamt.ie += delta; beleg.ie = neu;
+    if (beleg.std) beleg.std.ie = neu;
     this._ereignis(beleg, delta);
     return { ok: true };
   }
@@ -241,6 +256,7 @@ export class Limits {
       if (t.unref) t.unref();
     } else freigeben();
     if (!verbraucht) {
+      if (beleg.std) beleg.std.ie = 0;
       if (s.monat === beleg.monat) s.ieMonat = Math.max(0, s.ieMonat - beleg.ie);
       if (s.tag === beleg.tag) {
         s.ieTag = Math.max(0, s.ieTag - beleg.ie);
@@ -279,7 +295,7 @@ export class Limits {
     const ok = (v) => Number.isFinite(v) && v >= 0 && v <= 1e9;
     for (const [key, b] of Object.entries((stand && stand.betriebe) || {})) {
       if (!/^[0-9a-f]{16}$/.test(key) || !b || !ok(b.ieMonat) || !ok(b.ieTag) || typeof b.monat !== "string" || typeof b.tag !== "string") continue;
-      this.betrieb.set(key, { monat: b.monat, tag: b.tag, ieMonat: b.ieMonat, ieTag: b.ieTag, laufend: 0 });
+      this.betrieb.set(key, { monat: b.monat, tag: b.tag, ieMonat: b.ieMonat, ieTag: b.ieTag, laufend: 0, stunde: [] });
     }
     const g = stand && stand.gesamt;
     if (g && typeof g.tag === "string" && ok(g.ie)) this.gesamt = { tag: g.tag, ie: g.ie };
