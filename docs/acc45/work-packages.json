@@ -4,19 +4,19 @@
   "anzahl": 187,
   "statusZaehlung": {
     "BLOCKED": 101,
-    "READY": 30,
+    "READY": 28,
     "IN_PROGRESS": 4,
     "REVIEW": 9,
-    "INTEGRATED": 40,
+    "INTEGRATED": 42,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 87,
-      "offen": 50,
+      "offen": 48,
       "restPT": {
-        "min": 101.9,
-        "max": 157.7
+        "min": 97.9,
+        "max": 151.2
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 448.80000000000007,
-    "max": 757
+    "min": 444.80000000000007,
+    "max": 750.5
   },
   "kritischerPfad": {
     "summe": 86.5,
@@ -538,12 +538,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":4.5},
       "abhaengigkeiten": ["WP-14"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"3c492f3, 7cee8ea (Einbindung), in integration/release-v4 über Merge 1c1a27e"},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"3c492f3, 7cee8ea (Einbindung), in integration/release-v4 über Merge 1c1a27e"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -557,7 +557,7 @@
       "akzeptanz": "Selbstauskunft wird Antrag; Abweichung markiert; erst nach Freigabe Ist",
       "tests": "Unit, E2E",
       "dateien": "server, src",
-      "notiz": "Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt."
+      "notiz": "Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Status auf INTEGRATED korrigiert (war READY, Stand im Integrationsbranch)."
     },
     {
       "id": "WP-16",
@@ -1492,12 +1492,12 @@
       "prio": "P0",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["WP-32"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"3c492f3, in integration/release-v4 über Merge 1c1a27e (Opus-Review)"},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"3c492f3, in integration/release-v4 über Merge 1c1a27e (Opus-Review)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1511,7 +1511,7 @@
       "akzeptanz": "Echter Betreiberzugriff in Produktion ohne eingerichteten zweiten Faktor nicht möglich (fail-closed); Einrichtungsweg und Wiederherstellung getestet; Werkzeuge (zugaenge-anlegen.sh) mit 2FA nutzbar",
       "tests": "betreiber-zweifaktor.test.js, HTTP",
       "dateien": "server/lib/zweifaktor*.mjs, server/funktionen/betreiber*.mjs, werkzeug/zugaenge-anlegen.sh",
-      "notiz": "Neu (Betreiberentscheidung 2026-11-03): Pflichtbestandteil der Produktionsfreigabe; Einrichtung durch den Betreiber: E-10. SCHÄTZUNG."
+      "notiz": "Neu (Betreiberentscheidung 2026-11-03): Pflichtbestandteil der Produktionsfreigabe; Einrichtung durch den Betreiber: E-10. SCHÄTZUNG. Stand 2026-11-09: Status auf INTEGRATED korrigiert (war READY, Stand im Integrationsbranch)."
     },
     {
       "id": "WP-42a",
