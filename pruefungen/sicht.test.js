@@ -163,7 +163,9 @@ describe("Katalogzwang", () => {
       ...rueckgabe(APP, "zugangsPerson"),
       ...nachAnker(APP, "personen.push({"),
       ...nachAnker(APP, "neuePerson: (f) => mUpd((m) => ({ ...m, personen: [...m.personen, {"),
-      ...nachAnker(APP, "return { id: uid(\"p\"), vorname: z.vorname"),
+      /* Der Anker endet auf „{“: nachAnker sucht ab dessen Ende die nächste „{“ und läse sonst ein
+         verschachteltes Literal (früher zufällig ein Vorlagen-Ausdruck, jetzt die Zugehörigkeit). */
+      ...nachAnker(APP, "return {", APP.indexOf("return { id: uid(\"p\"), vorname: z.vorname")),
     ]);
     /* Einzelne Felder, die die Anwendung an einer Person setzt. */
     for (const t of APP.matchAll(/setzePerson\([^,()]+,\s*"([A-Za-z]+)"/g)) gefunden.add(t[1]);
