@@ -42,3 +42,35 @@ Gezielt grün: `wp38-toter-code` (1), `starten` (31), `wp47b-lesebremse` (15): *
 Die Suche nach exportiertem, ungenutztem Code (Node-Skript über alle `export`-Namen in `server` und `src`) fand
 keinen Kandidaten: Jeder Export wird irgendwo benutzt, meist in den Prüfungen. Das ist kein Beleg dafür, dass
 kein Code tot ist, sondern dass ungenutzte Exporte mit den Prüfungen mitgeschleppt werden.
+
+## Teil 2: eine Planrechnung (Server)
+
+Bestand vor der Änderung: `server/lib/zeiterfassung.mjs` trug eine eigene Kopie von `einheitAm`, `imDienst`,
+`versatzTageVon`, `zyklusLaenge`, `einheitDienst`, `idStreu`, `teilzeitDienst` und die Abwesenheitsprüfung —
+Zeichen für Zeichen dieselbe Regel wie in `server/lib/fachpruefung.mjs` (`dienstAm` und Helfer). Der Client
+(`personTag`, `server/lib/engine/plan.mjs`) nutzt die Helfer aus `fachpruefung.mjs` bereits.
+
+Änderung: `geplanterDienst` prüft nur noch die Eingabe (Betrieb, Person, Tag im Format JJJJ-MM-TT) und ruft
+`dienstAm`; `imDienst` wird aus `fachpruefung.mjs` weitergereicht (Export bleibt). Entfernt: rund 60 Zeilen
+Kopie samt `zwischen` und `wochentag`; der Hinweis „technische Schuld, zwei Planrechnungen“ ist erledigt.
+
+Verhaltensgleichheit: Vor dem Entfernen wurde die alte Fassung (aus `HEAD`) gegen die neue auf dem Demobestand
+verglichen: je Person fünf Fälle (unverändert, Teilzeit nach Quote, Teilzeit nach Wochentagen, Springer, ohne
+Eintritt) mal 400 Tage, alle Antworten gleich. Dauerhaft festgehalten in `pruefungen/wp38-toter-code.test.js`
+(jetzt 4 Tests: Lint inkl. `zeiterfassung.mjs`, keine Kopie im Quelltext, Gleichheit mit `dienstAm`, ungültige Eingaben).
+
+Unterschied nur bei kaputten Rohdaten (nicht als Verhalten gedacht): Einträge in `zugehoerigkeit`, die keine
+Objekte sind, überspringt `fachpruefung.mjs`; die alte Kopie wertete sie als Einheit `undefined`.
+
+Tests: 44 Prüfdateien, die `zeiterfassung.mjs` oder `fachpruefung.mjs` laden, vorher 1788 grün und 6 Zeitüberschreitungen
+(Last auf dem Rechner, 5 s Grenze bei Server-Tests), nachher alle 1859 Tests in 45 Dateien grün.
+
+## Weiterhin offen (nicht gelöscht, Begründung)
+
+- `Tagesstart` (`src/ansichten/tagesstart.jsx`): wird nirgends gerendert, aber `oberflaeche-render.test.js` und
+  `ungeplante-dienste.test.js` rendern ihn und prüfen dieselbe Aussage wie `MHeute`. Entfernen hieße diese Prüfungen
+  streichen; nach der Regel „keine Prüfung abschwächen“ nicht umgesetzt. Entscheidung nötig (Frage 10).
+- `src/pruefung.jsx` (Selbsttest, 7771 Zeilen): trägt eigene Kopien von `einheitAm`, `imDienst`, `einheitDienst`,
+  `teilzeitDienst`; `person-eintritt.test.js` (A1-3) prüft den Quelltext dieser Kopie. Nicht angefasst.
+- `personTag` (Client, mit Posten und Entwurf) und `dienstAm` (Server, ohne Posten) bleiben zwei Funktionen mit
+  derselben Grundrechnung; die Grundrechnung liegt nur noch einmal vor.

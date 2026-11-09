@@ -2,10 +2,11 @@
    RECHENKERN — BEFUNDE (WP-I12)
 
    Die Planprüfung (pruefen) mit Fachkraftquote und Einschränkungsbewertung, aus src/lib/fachlogik.js
-   unverändert herausgelöst. Die Frage „ist dieses Merkmal gebucht und nutzbar?“ (Pakete) steht im Client
-   (src/paketlogik.js); der Rechenkern bekommt sie als Haken (merkmalPruefungSetzen / mitMerkmalen).
+   unverändert herausgelöst. Die Frage „ist dieses Merkmal gebucht und nutzbar?“ (Pakete) steht in server/lib/paketliste.mjs; der
+   Rechenkern nutzt sie als Vorgabe und lässt sie über einen Haken ersetzen (merkmalPruefungSetzen / mitMerkmalen).
    ========================================================================== */
 import { addDays, aufgabeGedeckt, aufgabeSchwere, ersatzruhetage, fenster, uhrversatz, alterAm, pauseGenuegt, tagesgrenzeVerletzt, bruttoAm, pausePflicht, HOECHST_TAG, dow, freieSonntage, FREIE_SONNTAGE_MIN, vorsorgeFaellig, stundengrenzeAusRegeln, dauer, montag, schutzEinsatz, regelMaengel } from "../regelwerk.mjs";
+import { kannMerkmal } from "../paketliste.mjs";
 import { addMonate } from "../regelbaukasten.mjs";
 import { n1 } from "./textformat.mjs";
 import { fKurz } from "./textformat.mjs";
@@ -15,11 +16,11 @@ import { pruefZeitFuer, ISTDATEN_TEXT } from "../istdaten.mjs";
 import { sperrtBefund as sperrtArt } from "../bestaetigungen.mjs";
 import { memo, besetzung, qualGueltig, istStunden, absIdx, personTag, abwesenheitAm, abwArt, istTag, istDauer, nachtTageImJahr, nachweisStand, aktive } from "./plan.mjs";
 
-/* Merkmalsprüfung (Pakete): Ist ein Merkmal für diesen Betrieb gebucht und nutzbar? Die Paketliste steht im
-   Client (src/paketlogik.js, src/stufen.js); der Client setzt den Haken beim Laden von src/lib/fachlogik.js.
-   Ohne Haken (Server) gilt jedes Merkmal als NICHT nutzbar — die Fachkraftquote bleibt dann aus; siehe
-   docs/acc45/wp-i12-fragen.md (Frage 1). Der Haken wird nie auf den Mandanten geschrieben. */
-let merkmalHaken = () => false;
+/* Merkmalsprüfung (Pakete): Ist ein Merkmal für diesen Betrieb gebucht und nutzbar? Die Paketliste und die
+   Prüfung stehen seit WP-I12b in server/lib/paketliste.mjs (gemeinsame Quelle mit dem Client); Vorgabe ist
+   diese Prüfung. Der Haken bleibt für Aufrufer, die die Merkmale vorgeben (rechnen: o.merkmale). Er wird nie
+   auf den Mandanten geschrieben. */
+let merkmalHaken = kannMerkmal;
 export function merkmalPruefungSetzen(f) {
   if (typeof f !== "function") throw new TypeError("Merkmalsprüfung muss eine Funktion sein.");
   merkmalHaken = f;
