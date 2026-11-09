@@ -4,10 +4,10 @@
   "anzahl": 187,
   "statusZaehlung": {
     "BLOCKED": 98,
-    "READY": 21,
+    "READY": 20,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 51,
+    "INTEGRATED": 52,
     "DONE": 3
   },
   "jeStrang": {
@@ -29,10 +29,10 @@
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 35,
+      "offen": 34,
       "restPT": {
-        "min": 256.3,
-        "max": 451.8
+        "min": 248.3,
+        "max": 437.8
       }
     },
     "folge": {
@@ -53,15 +53,14 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 408.6,
-    "max": 691.7
+    "min": 400.6,
+    "max": 677.7
   },
   "kritischerPfad": {
-    "summe": 86.5,
-    "min": 62,
-    "max": 111,
+    "summe": 75.5,
+    "min": 54,
+    "max": 97,
     "kette": [
-      "WP-I3",
       "WP-I4",
       "WP-I5",
       "WP-I7",
@@ -2277,12 +2276,12 @@
       "prio": "P2",
       "aufwandPT": {"min":8,"max":14},
       "abhaengigkeiten": ["WP-11","E-21i"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #108 in integration/release-v4 (gemergt 2026-11-07)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #108 in integration/release-v4 (gemergt 2026-11-07)"},
+        "reviewt": {"wert":true,"beleg":"PR #108 in integration/release-v4 (gemergt 2026-11-07)"},
+        "integriert": {"wert":true,"beleg":"PR #108 in integration/release-v4 (gemergt 2026-11-07)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2291,12 +2290,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#108"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand 2026-11-09: INTEGRATED nach PR #108 (war fälschlich READY; Abnahmenachweis PR #153)."
     },
     {
       "id": "WP-I4",
