@@ -226,7 +226,7 @@ export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
 
 /**
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
- *   altSchluessel?: string, name: string, art: typeof ART.betreiber}} a
+ *   altSchluessel?: string, name: string, art: typeof ART.betreiber, faktorVermerkt?: boolean}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art,
