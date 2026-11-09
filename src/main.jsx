@@ -12,7 +12,7 @@ import Ringregler from "./ringregler.jsx";
 import { Icon } from "./gestalt/icons.jsx";
 import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe, branchenpaketeHinweis, leistungenAnzeige } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
-import { ZweifaktorFeld } from "./betreiber-2fa.jsx";
+import { ZweifaktorFeld, ZugangZweifaktor } from "./betreiber-2fa.jsx";
 import { v4EinstiegAnwenden, v4EinstiegVerlassen, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 
 /* ==========================================================================
@@ -644,6 +644,8 @@ function Einstieg() {
   /* WP-32b: Betreibercode mit zweitem Faktor — erst nach Rückfrage des Servers sichtbar. */
   const [zfNoetig, setZfNoetig] = useState(false);
   const [zfCode, setZfCode] = useState("");
+  /* SI-P4: Einrichtung des zweiten Faktors für den eigenen Zugangscode. */
+  const [zfVerwalten, setZfVerwalten] = useState(false);
   /* § 5 DDG verlangt „leicht erkennbar, unmittelbar erreichbar und
      ständig verfügbar". Das gilt für die öffentliche Seite zuerst — hier
      steht jemand, der die Anwendung noch gar nicht betreten hat. */
@@ -855,7 +857,8 @@ function Einstieg() {
                     Zugang auf diesem Gerät merken</span>
                   <span style={{ display: "block", marginTop: 2 }}>
                     Nur auf einem Gerät, das niemand sonst benutzt. Ohne Häkchen musst du
-                    dich nach dem Schließen erneut anmelden.</span>
+                    dich nach dem Schließen erneut anmelden. Leitung, Planung und Kunde
+                    werden nur mit eingerichtetem zweitem Faktor gemerkt.</span>
                 </span>
               </label>
 
@@ -865,6 +868,15 @@ function Einstieg() {
                     fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
                     padding: "16px 0 0", display: "block" }}>
                   Zurück zu den Testzugängen</button>)}
+
+              {/* SI-P4: zweiter Faktor für den eigenen Zugangscode (Leitung, Planung, Kunde). */}
+              {!betreiber && (
+                <button onClick={() => setZfVerwalten((v) => !v)}
+                  style={{ border: "none", background: "transparent", color: C.accent,
+                    fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                    padding: "16px 0 0", display: "block" }}>
+                  {zfVerwalten ? "Zwei-Faktor-Einrichtung schließen" : "Zweiten Faktor einrichten oder verwalten"}</button>)}
+              {!betreiber && zfVerwalten && <ZugangZweifaktor F={C} />}
             </div>
           </>)}
         </>)}
