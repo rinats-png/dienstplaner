@@ -57,3 +57,21 @@ Vorgabe (verbindlich): keine Zusammenführung nur über Namen, keine automatisch
 **Regression:** `konsistenz`, `personendaten`, `verdrahtung` grün; `selbsttest` nur „Erster Aufbau unter 500 ms" rot (Lastbedingung, unverändert zum Vorstand, alle Import-Fälle grün). Lint: 0 Fehler, 153 Warnungen (Bestand).
 
 **Offen:** Die Oberfläche (App.jsx, WP-39) muss `vorgabe` und `aktualisierungAbgelehnt` anzeigen und „Aktualisieren" nur bei `dublette.grund === "personalnummer"` anbieten.
+
+## Auflagen aus dem Datenreview (PR #122)
+
+Umgesetzt in `src/lib/fachlogik.js` (Kopie `src/pruefung.jsx` gleichlautend), Tests im Block "IMP-1 Auflagen aus dem Datenreview (PR #122)" in `pruefungen/import-bestand-imp1.test.js`. `importPruefen` hat einen sechsten Parameter `optionen` (`{ vergeber }`, Vorgabe `"planer"`).
+
+| Punkt | Status | Test |
+|---|---|---|
+| A "neu" bei exaktem Personalnummer-Treffer nicht wählbar, Vorgabe klaeren | erledigt (`neuAbgelehnt`, Aktion wird zu klaeren) | AUF-A |
+| B Aktualisierung über den Import nie übernehmbar, auch bestätigt; Rückmeldung "vorhanden, nicht über den Import änderbar" (`hinweis`, `fehler`) | erledigt; keine Aktualisierungsoberfläche | AUF-B, D4, A6, A7 |
+| C Leeres Eintrittsdatum gleich null (nicht heute), ungültig gleich Fehler; `eintrittPruefen` aus acc45/person/eintritt (4414084) übernommen, Zeilenfeld `eintrittLeer` | erledigt in der Logik; Speicherpfad offen (siehe unten) | AUF-C1, AUF-C2, AUF-C3, T-* |
+| D Rolle, die der Anwender nicht vergeben darf, ist Fehler "Rolle ... nicht vergebbar" (Konstante `IMPORT_VERGEBBAR`, Spiegel von `server/lib/rollenvergabe.mjs`; der Server prüft trotzdem) | erledigt | AUF-D |
+| E Doppelte Zeilen in der Datei: alle beteiligten Zeilen klaeren, Nummernvergleich mit `nrLose`, kein stiller Vorrang | erledigt; D6 umgeschrieben (altes Verhalten: erste Zeile blieb ok) | D6, AUF-E1, AUF-E2, A8 |
+| F Namensvarianten (Umlaute, ß, Doppelleerzeichen, Bindestrich, Groß-/Kleinschreibung), vertauschter Vor-/Nachname gleich möglicher Treffer, immer klaeren | erledigt | AUF-F1, AUF-F2, A1-A3 |
+| G P4711 und p4711 gleich, Treffer klaeren | erledigt | AUF-G |
+| H Test E4/N3 sucht über `appQuelle()` statt nur in App.jsx, Vorbedingung `i >= 0` | erledigt | E4, N3 |
+| I Keine Assertion entfernt; angepasst nur D6 (Erwartung des alten Verhaltens). "neu bei Treffer" war vorher nicht getestet. | erledigt | - |
+
+Offen für den Rebase auf WP-39: (1) E-Mail-Erfindung `neuePerson` in `src/app/aktionen/stammdaten.js`/`plan.js`; (2) Speicherpfad für `eintritt === null` (`zugehoerigkeit.ab`, `rolleSeit` nicht schreiben/anzeigen) und App-Aufruf mit `{ vergeber: <Rolle des Anwenders> }`; (3) Oberfläche: Auswahl "neu" bei Personalnummer-Treffer ausblenden, `hinweis` anzeigen.

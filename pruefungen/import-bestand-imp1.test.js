@@ -11,7 +11,7 @@
    Aufruf: npx vitest run pruefungen/import-bestand-imp1.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { appQuelle } from "./app-quelle.js";
 import { demobestand, importParsen, importZuordnen, importPruefen } from "../src/lib/fachlogik.js";
 
 const m0 = demobestand().mandanten[0];
@@ -23,9 +23,12 @@ const lauf = (text, mandant = m0, entscheidungen) => {
 };
 const KOPF = "Nachname;Vorname;Personalnummer;E-Mail;Einheit;Eintritt";
 const mitNr = { ...m0, personen: [{ ...m0.personen[0], personalnummer: "P4711", nachname: "Altmann", vorname: "Gerda" }, ...m0.personen.slice(1)] };
+/* Auflage H: Der Importpfad steht nach WP-39 nicht mehr nur in src/App.jsx; gesucht wird in der gesamten
+   Oberfläche (appQuelle). Die Vorbedingung verhindert einen leeren, grünen Test. */
 const appImportQuelle = () => {
-  const q = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const q = appQuelle();
   const i = q.indexOf("importieren: (zeilen, anlegen)");
+  expect(i).toBeGreaterThanOrEqual(0);
   return q.slice(i, i + 2500);
 };
 
@@ -65,11 +68,15 @@ describe("IMP-1 Fehler 1: Dubletten", () => {
     expect(lauf(t, m0, { 1: "ueberspringen" }).zeilen[0].ok).toBe(false);
     expect(lauf(t, m0, { 1: "klaeren" }).zeilen[0].ok).toBe(false);
   });
-  it("D6 Doppelte Personalnummer innerhalb der Datei wird erkannt", () => {
+  it("D6 Doppelte Personalnummer innerhalb der Datei: BEIDE Zeilen klären, kein stiller Vorrang", () => {
+    /* Auflage E: Angepasst. Früher blieb die erste Zeile ok (stiller Vorrang). */
     const r = lauf(`${KOPF}\nAaa;Bea;P9;;${einheit};01.03.2024\nCcc;Dora;P9;;${einheit};01.03.2024`);
-    expect(r.zeilen[0].ok).toBe(true);
-    expect(r.zeilen[1].dublette.grund).toBe("personalnummer");
-    expect(r.zeilen[1].ok).toBe(false);
+    for (const z of r.zeilen) {
+      expect(z.dublette.grund).toBe("personalnummer");
+      expect(z.dublette.inDatei).toBe(true);
+      expect(z.vorgabe).toBe("klaeren");
+      expect(z.ok).toBe(false);
+    }
   });
   it("D7 Gleiche Nummer, die im Mandanten nicht vorkommt, stört nicht (mandantenintern)", () => {
     const r = lauf(`${KOPF}\nNeumann;Ida;P4711;;${einheit};01.03.2024`);
@@ -187,5 +194,96 @@ describe("IMP-1 Fehler 4: ungültiges Datum", () => {
   it("T-gültig: deutsches und ISO-Datum werden gelesen", () => {
     expect(lauf(`${KOPF}\nA;B;P1;;${einheit};29.02.2024`).zeilen[0].eintritt).toBe("2024-02-29");
     expect(lauf(`${KOPF}\nA;B;P1;;${einheit};2024-03-01`).zeilen[0].ok).toBe(true);
+  });
+});
+
+describe("IMP-1 Auflagen aus dem Datenreview (PR #122)", () => {
+  const p = m0.personen[0];
+  const AKT = { aktion: "aktualisieren", bestaetigt: true };
+  const person = (nr) => ({ ...m0, personen: [{ ...p, personalnummer: nr }, ...m0.personen.slice(1)] });
+  const zeile = (nr, name = "Fremd;Name", eintritt = "01.03.2024", rolle = "") =>
+    `Nachname;Vorname;Personalnummer;E-Mail;Einheit;Eintritt;Rolle\n${name};${nr};;${einheit};${eintritt};${rolle}`;
+  const mitName = (nach, vor) => ({ ...m0, personen: [{ ...p, nachname: nach, vorname: vor, personalnummer: "" }, ...m0.personen.slice(1)] });
+
+  it("AUF-A neu bei exaktem Personalnummer-Treffer ist nicht wählbar, Vorgabe klaeren", () => {
+    const m = person("P4711");
+    const v = lauf(zeile("P4711"), m).zeilen[0];
+    expect(v.vorgabe).toBe("klaeren");
+    expect(v.ok).toBe(false);
+    const n = lauf(zeile("P4711"), m, { 1: "neu" }).zeilen[0];
+    expect(n.ok).toBe(false);
+    expect(n.neuAbgelehnt).toBe(true);
+    expect(n.aktion).toBe("klaeren");
+  });
+  it("AUF-B Personalnummer-Treffer ist über den Import nie übernehmbar, auch bestätigt; Rückmeldung nennt den Grund", () => {
+    const m = person("P4711");
+    for (const e of [undefined, { 1: AKT }, { 1: "neu" }]) {
+      const z = lauf(zeile("P4711"), m, e).zeilen[0];
+      expect(z.ok).toBe(false);
+      expect(z.hinweis).toMatch(/vorhanden, nicht über den Import änderbar/);
+      expect(z.fehler.join(" ")).toMatch(/nicht über den Import änderbar/);
+    }
+  });
+  it("AUF-C1 leeres Eintrittsdatum wird null, nicht heute", () => {
+    const z = lauf(zeile("P1", "A;B", ""), m0).zeilen[0];
+    expect(z.eintritt).toBe(null);
+    expect(z.eintrittLeer).toBe(true);
+    expect(z.ok).toBe(true);
+  });
+  it("AUF-C2 gültiges Eintrittsdatum wird übernommen", () => {
+    const z = lauf(zeile("P1", "A;B", "29.02.2024"), m0).zeilen[0];
+    expect(z.eintritt).toBe("2024-02-29");
+    expect(z.eintrittLeer).toBe(false);
+  });
+  it("AUF-C3 31.02. ist ein Fehler", () => {
+    const z = lauf(zeile("P1", "A;B", "31.02.2024"), m0).zeilen[0];
+    expect(z.ok).toBe(false);
+    expect(z.eintritt).toBe(null);
+    expect(z.fehler.join(" ")).toMatch(/Eintritt/);
+  });
+  it("AUF-D Planer importiert Rolle leitung: Fehler Rolle nicht vergebbar; mitarbeiter/subplaner ok", () => {
+    const { kopf, daten } = importParsen(zeile("P1", "A;B", "01.03.2024", "leitung"));
+    const { zu } = importZuordnen(kopf, daten);
+    const r = importPruefen(m0, kopf, daten, zu, {}, { vergeber: "planer" });
+    expect(r.zeilen[0].ok).toBe(false);
+    expect(r.zeilen[0].fehler.join(" ")).toMatch(/Rolle .* nicht vergebbar/);
+    expect(lauf(zeile("P1", "A;B", "01.03.2024", "subplaner")).zeilen[0].ok).toBe(true);
+    expect(lauf(zeile("P1", "A;B", "01.03.2024", "mitarbeiter")).zeilen[0].ok).toBe(true);
+    expect(lauf(zeile("P1", "A;B", "01.03.2024", "planer")).zeilen[0].ok).toBe(false);
+    const l = importPruefen(m0, kopf, daten, zu, {}, { vergeber: "betreiber" });
+    expect(l.zeilen[0].ok).toBe(true);
+  });
+  it("AUF-E1 Doppelte Zeilen: Nummern mit führenden Nullen (0009 / 9), beide Zeilen klären", () => {
+    const r = lauf(`${KOPF}\nAaa;Bea;0009;;${einheit};01.03.2024\nCcc;Dora;9;;${einheit};01.03.2024`);
+    expect(r.zeilen.map((z) => z.vorgabe)).toEqual(["klaeren", "klaeren"]);
+    expect(r.zeilen.map((z) => z.ok)).toEqual([false, false]);
+    expect(r.gut).toBe(0);
+  });
+  it("AUF-E2 Namensdoppel ohne Nummer in der Datei: beide klären", () => {
+    const r = lauf(`${KOPF}\nAaa;Bea;;;${einheit};01.03.2024\nAaa;Bea;;;${einheit};01.03.2024`);
+    expect(r.zeilen.every((z) => z.doppelt && z.vorgabe === "klaeren" && !z.ok)).toBe(true);
+  });
+  it("AUF-F1 vertauschter Vor-/Nachname gilt als möglicher Treffer (klaeren)", () => {
+    const z = lauf(`${KOPF}\nGerda;Altmann;;;${einheit};01.03.2024`, mitName("Altmann", "Gerda")).zeilen[0];
+    expect(z.dublette.grund).toBe("name");
+    expect(z.dublette.vertauscht).toBe(true);
+    expect(z.vorgabe).toBe("klaeren");
+    expect(z.ok).toBe(false);
+  });
+  it("AUF-F2 Umlaut, Doppelleerzeichen, Bindestrich, Schreibweise", () => {
+    const pruef = (nach, vor, bestand) => lauf(`${KOPF}\n${nach};${vor};;;${einheit};01.03.2024`, bestand).zeilen[0];
+    expect(pruef("Mueller", "Jörg", mitName("Müller", "Joerg")).doppelt).toBe(true);
+    expect(pruef("Strauss", "Anna", mitName("Strauß", "Anna")).doppelt).toBe(true);
+    expect(pruef("Meyer  Lang", "Anna", mitName("Meyer Lang", "Anna")).doppelt).toBe(true);
+    expect(pruef("Meyer-Lang", "Anna", mitName("Meyer Lang", "Anna")).doppelt).toBe(true);
+    expect(pruef("MEYER", "ANNA", mitName("meyer", "anna")).doppelt).toBe(true);
+    expect(pruef("Meyer", "Anna", mitName("Maier", "Anna")).doppelt).toBe(false);
+  });
+  it("AUF-G P4711 und p4711 gelten als gleich; Treffer bleibt klaeren, nie automatisch", () => {
+    const z = lauf(zeile("p4711"), person("P4711")).zeilen[0];
+    expect(z.dublette.grund).toBe("personalnummer");
+    expect(z.vorgabe).toBe("klaeren");
+    expect(z.ok).toBe(false);
+    expect(lauf(zeile("p4711"), person("P4711"), { 1: AKT }).zeilen[0].ok).toBe(false);
   });
 });
