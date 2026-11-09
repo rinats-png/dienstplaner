@@ -827,3 +827,326 @@ describe("Review 1da3ceb M2: Archivnamen wie SheetJS normalisiert", () => {
     expect(r.blaetter[0].zeilen).toEqual([["a"], [1]]);
   });
 });
+
+/* ==========================================================================
+   Befunde aus dem Sicherheitsreview von 8725dc5 (PR #123), umgesetzt über die
+   Entscheidungen E1–E7 (Nachweis: docs/acc45/IMP-2-NACHWEIS.md, Abschnitt 9).
+   Jede Sicherheitsprüfung war vor der Korrektur rot; Absicherungen sind benannt.
+   ========================================================================== */
+const ODS_MELDUNG = /OpenDocument-Tabellen \(ODS\) werden derzeit nicht unterstützt/;
+const CT_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+const eintrag = (e, name) => e.find((x) => x.name === name);
+const textVon = (e, name) => eintrag(e, name).daten.toString("utf8");
+const setze = (e, name, d) => {
+  const daten = Buffer.isBuffer(d) ? d : B(d);
+  const x = eintrag(e, name);
+  if (x) x.daten = daten; else e.push({ name, daten });
+};
+const umbenennen = (e, alt, neu) => { eintrag(e, alt).name = neu; };
+/** Datei umbauen: fn erhält die Eintragsliste und ändert sie. */
+function umbau(buf, fn) {
+  const e = zipEintraege(buf);
+  fn(e);
+  return neuPacken(e);
+}
+function zufall(n) {
+  const abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let s = 987654321; const t = new Array(n);
+  for (let i = 0; i < n; i++) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; t[i] = abc[s >>> 26]; }
+  return t.join("");
+}
+
+describe("Review 8725dc5 E1: ODS wird derzeit nicht unterstützt", () => {
+  it("E1-PoC: getarnte ODS (xlsx-Teile plus META-INF/manifest.xml und content.xml) → NICHT_UNTERSTUETZT, nicht als ODS gelesen", async () => {
+    const odsTeile = zipEintraege(mappe({ S: [["odsgeheim"], [1]] }, "ods")).filter((x) => x.name !== "mimetype");
+    const xl = zipEintraege(mappe({ S: [["a"], [1]] }));
+    const buf = neuPacken([...xl, ...odsTeile]);
+    const r = await parseDatei({ buffer: buf, name: "tarn.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(r.nachricht).toMatch(ODS_MELDUNG);
+    expect(JSON.stringify(r)).not.toContain("odsgeheim");
+    /* UOC-Variante: objectdata.xml genügt SheetJS ebenfalls für den ODS-Leser */
+    const uoc = neuPacken([...xl, { name: "objectdata.xml", daten: eintrag(odsTeile, "content.xml").daten }]);
+    expect(await parseDatei({ buffer: uoc, name: "tarn.xlsx" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+  });
+  it("E1: echte ODS-Datei (auch mit Endung .xlsx oder .xls) → NICHT_UNTERSTUETZT mit verständlicher Meldung", async () => {
+    const ods = mappe({ S: [["a"], [1]] }, "ods");
+    for (const name of ["d.ods", "d.xlsx", "d.xls"]) {
+      const r = await parseDatei({ buffer: ods, name });
+      expect(r, name).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+      expect(r.nachricht, name).toMatch(ODS_MELDUNG);
+      expect(r.nachricht, name).toMatch(/bitte als XLSX oder CSV speichern/);
+      expect(r.blaetter, name).toBeUndefined();
+    }
+  });
+  it("E1-PoC null-date/Unicode: ODS mit null-date (1904, auch mit Unicode-Präfix nach der Tabelle) → NICHT_UNTERSTUETZT", async () => {
+    const ods = mappe({ S: [["Datum"], [new Date(2024, 0, 15)]] }, "ods", { cellDates: true }, { date1904: true });
+    expect(await parseDatei({ buffer: ods, name: "n.ods" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    const unicode = gleicheTextErsetzung(ods, "content.xml", (x) => {
+      const block = /<table:calculation-settings[\s\S]*?<\/table:calculation-settings>/.exec(x)[0];
+      const umbenannt = block.replace(/table:null-date/g, "täble:null-date").replace(/table:date-value/g, "täble:date-value");
+      return x.replace(block, "").replace("</office:spreadsheet>", `${umbenannt}</office:spreadsheet>`);
+    });
+    const r = await parseDatei({ buffer: unicode, name: "n.ods" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("E1-PoC Tabellen-Alias: ODS mit Tabellen-Element unter anderem Präfix → NICHT_UNTERSTUETZT", async () => {
+    const ods = mappe({ S: [["a"], [1]] }, "ods");
+    const alias = gleicheTextErsetzung(ods, "content.xml", (x) => x
+      .replace(/<table:table /g, '<t:table xmlns:t="urn:oasis:names:tc:opendocument:xmlns:table:1.0" ')
+      .replace(/<\/table:table>/g, "</t:table>"));
+    const r = await parseDatei({ buffer: alias, name: "a.ods" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(r.nachricht).toMatch(ODS_MELDUNG);
+  });
+});
+
+describe("Review 8725dc5 E3/E4: Format wie SheetJS bestimmen, strikte Paketprüfung xlsx", () => {
+  it("E3-PoC: getarnte xlsb (wb.bin in [Content_Types].xml, leere xl/workbook.xml) → NICHT_UNTERSTUETZT", async () => {
+    const tarn = umbau(mappe({ S: [["xlsbgeheim"], [1]] }, "xlsb"), (e) => {
+      umbenennen(e, "xl/workbook.bin", "xl/wb.bin");
+      umbenennen(e, "xl/_rels/workbook.bin.rels", "xl/_rels/wb.bin.rels");
+      setze(e, "[Content_Types].xml", textVon(e, "[Content_Types].xml").replace("/xl/workbook.bin", "/xl/wb.bin"));
+      setze(e, "_rels/.rels", textVon(e, "_rels/.rels").replace("xl/workbook.bin", "xl/wb.bin"));
+      setze(e, "xl/workbook.xml", "");
+    });
+    const r = await parseDatei({ buffer: tarn, name: "tarn.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(JSON.stringify(r)).not.toContain("xlsbgeheim");
+    /* Variante: xlsx-Inhaltstyp, aber Arbeitsmappe mit Endung .bin (SheetJS liest dann binär) */
+    const tarn2 = umbau(tarn, (e) => {
+      setze(e, "[Content_Types].xml", textVon(e, "[Content_Types].xml")
+        .replace('PartName="/xl/wb.bin" ContentType="application/vnd.ms-excel.sheet.binary.macroEnabled.main"', `PartName="/xl/wb.bin" ContentType="${CT_XLSX}"`));
+    });
+    expect(textVon(zipEintraege(tarn2), "[Content_Types].xml")).toContain(`PartName="/xl/wb.bin" ContentType="${CT_XLSX}"`);
+    const r2 = await parseDatei({ buffer: tarn2, name: "tarn.xlsx" });
+    expect(r2).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(JSON.stringify(r2)).not.toContain("xlsbgeheim");
+  });
+  it("E4: Arbeitsmappen-Inhaltstyp: Vorlage, Add-in oder fehlend → NICHT_UNTERSTUETZT; zwei Arbeitsmappen → BESCHAEDIGT", async () => {
+    const mitCt = (fn) => umbau(mappe({ S: [["a"], [1]] }), (e) => setze(e, "[Content_Types].xml", fn(textVon(e, "[Content_Types].xml"))));
+    const vorlage = mitCt((x) => x.replace(CT_XLSX, "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"));
+    expect(await parseDatei({ buffer: vorlage, name: "v.xltx" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    const addin = mitCt((x) => x.replace(CT_XLSX, "application/vnd.ms-excel.addin.macroEnabled.main+xml"));
+    expect(await parseDatei({ buffer: addin, name: "v.xlam" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    const ohne = mitCt((x) => x.replace(`<Override PartName="/xl/workbook.xml" ContentType="${CT_XLSX}"/>`, ""));
+    expect(textVon(zipEintraege(ohne), "[Content_Types].xml")).not.toContain(CT_XLSX);
+    expect(await parseDatei({ buffer: ohne, name: "v.xlsx" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    const zwei = mitCt((x) => x.replace("</Types>", `<Override PartName="/xl/workbook2.xml" ContentType="${CT_XLSX}"/></Types>`));
+    expect(await parseDatei({ buffer: zwei, name: "v.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("E4: Makro-Arbeitsmappentyp: Makros werden nie gelesen, Hinweis MAKROS_VERWORFEN, nur Tabellendaten", async () => {
+    const xlsm = umbau(mappe({ S: [["a"], [1]] }), (e) => setze(e, "[Content_Types].xml",
+      textVon(e, "[Content_Types].xml").replace(CT_XLSX, "application/vnd.ms-excel.sheet.macroEnabled.main+xml")));
+    const r = await parseDatei({ buffer: xlsm, name: "m.xlsm" });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(r.blaetter[0].zeilen).toEqual([["a"], [1]]);
+    expect(hat(r, "MAKROS_VERWORFEN")).toBe(true);
+  });
+  it("E4-PoC: Blatt mit Endung .dat (oder ohne Endung) und r=\"&#53;\" wird vorab geprüft → BESCHAEDIGT", async () => {
+    for (const ziel of ["sheet1.dat", "blatt"]) {
+      const dat = (zusatz) => umbau(mappe({ S: [["h"], [1]] }), (e) => {
+        umbenennen(e, "xl/worksheets/sheet1.xml", `xl/worksheets/${ziel}`);
+        setze(e, `xl/worksheets/${ziel}`, textVon(e, `xl/worksheets/${ziel}`).replace("</sheetData>", `${zusatz}</sheetData>`));
+        setze(e, "xl/_rels/workbook.xml.rels", textVon(e, "xl/_rels/workbook.xml.rels").replace("worksheets/sheet1.xml", `worksheets/${ziel}`));
+        setze(e, "[Content_Types].xml", textVon(e, "[Content_Types].xml").replace("/xl/worksheets/sheet1.xml", `/xl/worksheets/${ziel}`));
+      });
+      const r = await parseDatei({ buffer: dat('<row r="&#53;"><c><v>7</v></c></row>'), name: "d.xlsx" });
+      expect(r, ziel).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+      expect(r.blaetter, ziel).toBeUndefined();
+      /* Absicherung: dieselbe Datei ohne den Fehler wird gelesen */
+      const ok = await parseDatei({ buffer: dat(""), name: "d.xlsx" });
+      expect(ok.ok, `${ziel} ${JSON.stringify(ok).slice(0, 300)}`).toBe(true);
+      expect(ok.blaetter[0].zeilen, ziel).toEqual([["h"], [1]]);
+    }
+  });
+  it("E3/E4: binäres Blatt (.bin) in einer xlsx wird nicht an SheetJS gegeben → NICHT_UNTERSTUETZT", async () => {
+    const binBlatt = eintrag(zipEintraege(mappe({ S: [["bingeheim"], [1]] }, "xlsb")), "xl/worksheets/sheet1.bin").daten;
+    const buf = umbau(mappe({ S: [["a"], [1]] }), (e) => {
+      setze(e, "xl/worksheets/sheet1.bin", binBlatt);
+      setze(e, "xl/_rels/workbook.xml.rels", textVon(e, "xl/_rels/workbook.xml.rels").replace("worksheets/sheet1.xml", "worksheets/sheet1.bin"));
+    });
+    const r = await parseDatei({ buffer: buf, name: "b.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(JSON.stringify(r)).not.toContain("bingeheim");
+  });
+  it("E3: Numbers-Paket, verschachteltes Index.zip und ZIP ohne [Content_Types].xml → NICHT_UNTERSTUETZT", async () => {
+    const numbers = zip([{ name: "Index/Document.iwa", daten: B("x") }, { name: "[Content_Types].xml", daten: B("<Types/>") }]);
+    expect(await parseDatei({ buffer: numbers, name: "n.xlsx" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    const verschachtelt = zip([{ name: "Index.zip", daten: mappe({ S: [["a"], [1]] }) }]);
+    expect(await parseDatei({ buffer: verschachtelt, name: "n.xlsx" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    const ohneCt = umbau(mappe({ S: [["a"], [1]] }), (e) => e.splice(e.indexOf(eintrag(e, "[Content_Types].xml")), 1));
+    expect(await parseDatei({ buffer: ohneCt, name: "n.xlsx" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+  });
+  it("Nach dem Lesen wird bookType mit dem erkannten Format abgeglichen (Abweichung → BESCHAEDIGT)", () => {
+    expect(typeof kern.buchtypPasst).toBe("function");
+    expect(kern.buchtypPasst("xlsx", "xlsx")).toBe(true);
+    expect(kern.buchtypPasst("xlsx", "xlsb")).toBe(false);
+    expect(kern.buchtypPasst("xlsx", "ods")).toBe(false);
+    expect(kern.buchtypPasst("xlsx", undefined)).toBe(false);
+    expect(kern.buchtypPasst("xls", undefined)).toBe(true);
+    expect(kern.buchtypPasst("xls", "xlsx")).toBe(false);
+  });
+});
+
+describe("Review 8725dc5 E6: Kodierung der XML-Teile (UTF-8 wie SheetJS erwartet)", () => {
+  const mitBlattBytes = (fn) => umbau(mappe({ S: [["a"], [1]] }), (e) => setze(e, "xl/worksheets/sheet1.xml", fn(textVon(e, "xl/worksheets/sheet1.xml"))));
+  it("E6-PoC: UTF-16-Blatt mit BOM (LE und BE) → BESCHAEDIGT", async () => {
+    const le = mitBlattBytes((x) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(x.replace('encoding="UTF-8"', 'encoding="UTF-16"'), "utf16le")]));
+    const r = await parseDatei({ buffer: le, name: "u.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+    const be = mitBlattBytes((x) => Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(x, "utf16le").swap16()]));
+    expect(await parseDatei({ buffer: be, name: "u.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("E6: Blatt in anderer Kodierung (Deklaration ISO-8859-1 oder ungültiges UTF-8) → BESCHAEDIGT; UTF-8 mit BOM bleibt lesbar", async () => {
+    const latin = mitBlattBytes((x) => x.replace('encoding="UTF-8"', 'encoding="ISO-8859-1"'));
+    expect(await parseDatei({ buffer: latin, name: "l.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const kaputt = mitBlattBytes((x) => Buffer.concat([B(x.replace("</sheetData>", "")), Buffer.from([0xf6]), B("</sheetData>")]));
+    expect(await parseDatei({ buffer: kaputt, name: "l.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const bom = mitBlattBytes((x) => Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), B(x)]));
+    const ok = await parseDatei({ buffer: bom, name: "b.xlsx" });
+    expect(ok.ok, JSON.stringify(ok).slice(0, 300)).toBe(true);
+    expect(ok.blaetter[0].zeilen).toEqual([["a"], [1]]);
+  });
+  it("E6: [Content_Types].xml und Arbeitsmappe als UTF-16 → BESCHAEDIGT", async () => {
+    for (const teil of ["[Content_Types].xml", "xl/workbook.xml"]) {
+      const buf = umbau(mappe({ S: [["a"], [1]] }), (e) => setze(e, teil, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(textVon(e, teil), "utf16le")])));
+      expect(await parseDatei({ buffer: buf, name: "c.xlsx" }), teil).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    }
+  });
+});
+
+describe("Review 8725dc5 E5: Blattnamen höchstens 31 Zeichen, Hinweise in der Textmenge", () => {
+  const mitName = (name, zeilen = [["a"], [1]]) => umbau(mappe({ S: zeilen }), (e) =>
+    setze(e, "xl/workbook.xml", textVon(e, "xl/workbook.xml").replace('name="S"', `name="${name}"`)));
+  it("E5-PoC: 8-MB-Blattname → BESCHAEDIGT, Meldung ohne den Namen, kleines Ergebnis", async () => {
+    const lang = zufall(8 * 1024 * 1024);
+    const buf = mitName(lang);
+    expect(buf.length).toBeLessThan(10 * 1024 * 1024);
+    const r = await parseDatei({ buffer: buf, name: "n.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.nachricht).not.toContain(lang.slice(0, 32));
+    expect(JSON.stringify(r).length).toBeLessThan(2000);
+  });
+  it("E5-PoC: Blattname über 31 Zeichen erscheint nicht in Fehlertexten (z. B. ZU_VIELE_ZEILEN)", async () => {
+    const lang = "Langer_Blattname_mit_40_Zeichen_ABCDEFGH";
+    expect(lang).toHaveLength(40);
+    const r = await parseDatei({ buffer: mitName(lang, [["h"], [1], [2], [3]]), name: "n.xlsx", grenzen: { zeilen: 1 } });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.nachricht).not.toContain(lang);
+    expect(r.nachricht).toMatch(/31 Zeichen/);
+  });
+  it("E5: Blattname mit genau 31 Zeichen ist zulässig, mit 32 nicht", async () => {
+    const n31 = "B".repeat(31);
+    const ok = await parseDatei({ buffer: mitName(n31), name: "n.xlsx" });
+    expect(ok.ok).toBe(true);
+    expect(ok.blaetter[0].name).toBe(n31);
+    const zu = await parseDatei({ buffer: mitName("B".repeat(32)), name: "n.xlsx" });
+    expect(zu).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(zu.nachricht).not.toContain("B".repeat(32));
+  });
+  it("E5/H2: Hinweistexte zählen zur Textmenge", async () => {
+    const g = { entpacktBytes: 1000 };
+    const mit = await parseDatei({ buffer: B(`a\n${"x".repeat(980)}\n\n\n`), name: "t.csv", grenzen: g });
+    expect(mit).toMatchObject({ ok: false, code: "TEXT_ZU_GROSS" });
+    expect(mit.blaetter).toBeUndefined();
+    /* Absicherung: ohne die Hinweise passt dieselbe Textmenge */
+    const ohne = await parseDatei({ buffer: B(`a\n${"x".repeat(980)}\n`), name: "t.csv", grenzen: g });
+    expect(ohne.ok, JSON.stringify(ohne).slice(0, 200)).toBe(true);
+  });
+});
+
+describe("Review 8725dc5 E7: Spalten-Fallback (Zelle ohne r) begrenzt", () => {
+  const g = { zeilen: 5 };
+  const anhaengen = (teil) => mitBlatt(mappe({ S: [["h"], [1]] }), (x) => x.replace("</sheetData>", `${teil}</sheetData>`));
+  it("E7-PoC: Zelle ohne r mit fremdem Spaltenkürzel (xr=\"…\" oder r= in einem Kindelement) → BESCHAEDIGT", async () => {
+    for (const zelle of ['<c xr="XFE"><v>7</v></c>', '<c xr="B"><v>7</v></c>', '<c><v>7</v><x r="ZZ9"/></c>', '<c xr="Q" r="C3"><v>7</v></c>']) {
+      const r = await parseDatei({ buffer: anhaengen(`<row r="3">${zelle}</row>`), name: "s.xlsx", grenzen: g });
+      expect(r, zelle).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+      expect(r.blaetter, zelle).toBeUndefined();
+    }
+  });
+  it("E7: fortlaufende Spalte ohne r über XFD hinaus → BESCHAEDIGT; innerhalb normal gelesen", async () => {
+    const leer = "<c/>".repeat(16384);
+    const r = await parseDatei({ buffer: anhaengen(`<row r="3">${leer}<c><v>7</v></c></row>`), name: "s.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const ok = await parseDatei({ buffer: anhaengen('<row r="3"><c><v>7</v></c><c><v>8</v></c></row>'), name: "s.xlsx", grenzen: g });
+    expect(ok.ok, JSON.stringify(ok).slice(0, 300)).toBe(true);
+    expect(ok.blaetter[0].zeilen).toEqual([["h", null], [1, null], [7, 8]]);
+  });
+});
+
+describe("Review 8725dc5 E2: XLS nur mit plausibler CFB-Struktur", () => {
+  /** Ort eines FAT-Eintrags (Sektor s) und eines Verzeichniseintrags (Strom) in einer CFB-Datei. */
+  const cfb = (buf) => {
+    const ssz = 1 << buf.readUInt16LE(0x1e);
+    const fatOrt = (s) => (buf.readInt32LE(0x4c + 4 * Math.floor((s * 4) / ssz)) + 1) * ssz + ((s * 4) % ssz);
+    const eintragOrt = (name) => {
+      const n = Buffer.from(name, "utf16le");
+      for (let p = buf.indexOf(n); p >= 0; p = buf.indexOf(n, p + 1)) if ((p - ssz) % 128 === 0 && buf.readUInt8(p + 66) === 2) return p;
+      return -1;
+    };
+    return { ssz, fatOrt, eintragOrt };
+  };
+  const gross = () => {
+    const z = [["Nr", "Text"]]; for (let i = 0; i < 3000; i++) z.push([i, `t${i}`]);
+    return mappe({ S: z }, "xls");
+  };
+  it("E2-PoC: zyklische Sektorkette im Workbook-Strom → BESCHAEDIGT (statt Endlosschleife bis zum Zeitlimit)", async () => {
+    const buf = gross();
+    const c = cfb(buf);
+    const p = c.eintragOrt("Workbook");
+    expect(p).toBeGreaterThan(0);
+    const s0 = buf.readInt32LE(p + 116);
+    expect(buf.readInt32LE(p + 120)).toBeGreaterThanOrEqual(4096);
+    const kette = [s0];
+    for (let s = buf.readInt32LE(c.fatOrt(s0)); s >= 0; s = buf.readInt32LE(c.fatOrt(s))) kette.push(s);
+    expect(kette.length).toBeGreaterThan(3);
+    buf.writeInt32LE(kette[1], c.fatOrt(kette[kette.length - 1])); /* letzter Sektor zeigt zurück auf den zweiten */
+    buf.writeInt32LE(kette[1], p + 116); /* Strom beginnt mitten in der Kette */
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: buf, name: "z.xls", grenzen: { zeitMs: 8000 } });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(Date.now() - t0).toBeLessThan(5000);
+  });
+  it("E2-PoC: Stromgröße größer als seine Sektorkette (Größenbudget vor dem Lesen) → BESCHAEDIGT", async () => {
+    const buf = gross();
+    const p = cfb(buf).eintragOrt("Workbook");
+    buf.writeInt32LE(0x7ffffff0, p + 120);
+    const r = await parseDatei({ buffer: buf, name: "g.xls" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("E2: OLE-Datei ohne Workbook-/Book-Strom → NICHT_UNTERSTUETZT", async () => {
+    const buf = mappe({ S: [["a"], [1]] }, "xls");
+    const p = cfb(buf).eintragOrt("Workbook");
+    expect(p).toBeGreaterThan(0);
+    Buffer.from("Workbooq", "utf16le").copy(buf, p);
+    const r = await parseDatei({ buffer: buf, name: "o.xls" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+  });
+  it("E2: falsche Sektorgröße oder Mini-Sektorgröße → BESCHAEDIGT; gültige große XLS wird gelesen (Absicherung)", async () => {
+    const a = mappe({ S: [["a"], [1]] }, "xls"); a.writeUInt16LE(10, 0x1e);
+    expect(await parseDatei({ buffer: a, name: "a.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const b = mappe({ S: [["a"], [1]] }, "xls"); b.writeUInt16LE(7, 0x20);
+    expect(await parseDatei({ buffer: b, name: "b.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const ok = await parseDatei({ buffer: gross(), name: "g.xls" });
+    expect(ok.ok).toBe(true);
+    expect(ok.blaetter[0].zeilen).toHaveLength(3001);
+  });
+});
+
+describe("Review 8725dc5: 1904-Mappe, Zeitformat mit echtem Datum (dokumentiertes Verhalten)", () => {
+  it("Wert v ≥ 1 mit reinem Zeitformat (hh:mm) wird in der 1904-Mappe nicht verschoben; mit Datumsteil schon", async () => {
+    const inhalt = { Z: [["Zeit", "DatumZeit"], [{ t: "n", v: 45306.25, z: "hh:mm" }, { t: "n", v: 45306.25, z: "dd.mm.yyyy hh:mm" }]] };
+    for (const fmt of ["xlsx", "xls"]) {
+      const r = await parseDatei({ buffer: mappe(inhalt, fmt, {}, { date1904: true }), name: `z.${fmt}` });
+      expect(r.ok, fmt).toBe(true);
+      expect(r.datumssystemQuelle, fmt).toBe("1904");
+      expect(r.blaetter[0].zeilen[1][0], fmt).toMatchObject({ typ: "datum", roh: 45306.25 });
+      expect(r.blaetter[0].zeilen[1][1], fmt).toMatchObject({ typ: "datum", roh: 45306.25 + 1462 });
+    }
+  });
+});
