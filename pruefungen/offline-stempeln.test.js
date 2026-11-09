@@ -455,6 +455,37 @@ describe("Review A3/L2–L5: Fenster, Uhr vor, Art, Klemmen, Rohwerte, Inhaber",
     expect(a.inhaber).toMatch(/^[0-9a-f]{32}$/);
     expect(b.inhaber).toBe(a.inhaber);
   });
+
+  /* Auflage A3 (Sicherheitsreview 181b4fe): Kennung „1" gegen Position 1 einer Sitzung ohne Kennung. Vorher ergaben
+     beide `centric-stempel|raum|1|person` — derselbe Inhaber für zwei Personen in zwei Betrieben. */
+  it("A3: Kennung „1“ und Position 1 ohne Kennung ergeben verschiedene Inhaber; fremder Stempel 409", async () => {
+    zeitAuf("2026-11-09T07:00:00Z");
+    const { createHash } = await import("node:crypto");
+    const alt = (raum, teil, p) => createHash("sha256").update(`centric-stempel|${raum}|${teil}|${p}`).digest("hex").slice(0, 32);
+    const haus = (id) => ({ id, name: `Haus ${id}`, einheiten: [{ id: "e1", name: "WB 1" }],
+      dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
+      personen: [person("a1")], abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {} });
+    await B.bestandSchreiben(laden(), "rv-a3", { version: 9, mandanten: [haus("1"), haus("m2")] }, { durch: "Pruefung" });
+    const tok = async (felder) => (await sitzungAnlegen({ bestand: "rv-a3", name: "a1", rolle: "mitarbeiter", person: "a1",
+      einheit: null, ...felder }, 24 * 60 * 60 * 1000)).token;
+    const mitKennung = await tok({ betrieb: 0, mandantId: "1" });
+    const ohneKennung = await tok({ betrieb: 1 });
+    const a = await anfrage("/api/bestand", { methode: "GET", token: mitKennung });
+    const b = await anfrage("/api/bestand", { methode: "GET", token: ohneKennung });
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(a.inhaber).toMatch(/^[0-9a-f]{32}$/);
+    expect(b.inhaber).toMatch(/^[0-9a-f]{32}$/);
+    expect(b.inhaber).not.toBe(a.inhaber);
+    /* Gegenprobe: Positionen und gewöhnliche Kennungen behalten ihren bisherigen Inhaber (keine hängende Warteschlange). */
+    expect(b.inhaber).toBe(alt("rv-a3", "1", "a1"));
+    const c = await anfrage("/api/bestand", { methode: "GET", token: await tok({ betrieb: 1, mandantId: "m2" }) });
+    expect(c.inhaber).toBe(alt("rv-a3", "m2", "a1"));
+    /* Der Stempel aus der Warteschlange der Sitzung mit Kennung „1" geht unter der anderen nicht hinaus. */
+    const fremd = await stempeln("rv-a3", "a1", { art: "start", clientEventId: ID(130), inhaber: a.inhaber }, ohneKennung);
+    expect([fremd.status, fremd.code]).toEqual([409, "STEMPEL_FREMDE_SITZUNG"]);
+    const eigen = await stempeln("rv-a3", "a1", { art: "start", clientEventId: ID(131), inhaber: a.inhaber }, mitKennung);
+    expect(eigen.status).toBe(200);
+  });
 });
 
 /* ---------------------- Nachprüfung (Opus) B1: Dauer 0 ---------------------- */

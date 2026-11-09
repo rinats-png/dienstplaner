@@ -110,8 +110,20 @@ const STEMPEL_WIEDERHOLUNGEN = 3;
 /** Die Felder des Rumpfs von POST /api/monatsabschluss, die die Funktionen in lib/monatsabschluss.mjs lesen dürfen. */
 const MONATSABSCHLUSS_RUMPF = Object.freeze(["monat", "grund", "anlass", "trotzPrueffaellen", "abdruck", "zeilen", "stand", "revision",
   "trotzVormonat", "vormonatKategorie", "vormonatGrund", "differenz"]);
+/* Auflage A3 (Sicherheitsreview 181b4fe): Der Betriebsteil war `mandantId ?? betrieb` — eine Kennung „1" und die
+   Position 1 einer Sitzung ohne Kennung ergaben denselben Text (betriebIdGueltig erlaubt Ziffern). Jetzt eindeutig:
+   eine Position ist immer eine Ziffernfolge (sonst „z:"), eine Kennung, die selbst nur aus Ziffern besteht oder ein
+   „:" enthält, bekommt „k:" davor. Alle übrigen Kennungen und alle Positionen ergeben denselben Inhaber wie bisher —
+   keine Warteschlange bleibt deswegen hängen. */
+const betriebsteil = (s) => {
+  if (s.mandantId !== undefined && s.mandantId !== null) {
+    const k = String(s.mandantId);
+    return /^\d+$/.test(k) || k.includes(":") ? `k:${k}` : k;
+  }
+  return Number.isInteger(s.betrieb) && s.betrieb >= 0 ? String(s.betrieb) : `z:${String(s.betrieb)}`;
+};
 const stempelInhaber = (s) => (s.person === null || s.person === undefined) ? null : createHash("sha256")
-  .update(`centric-stempel|${s.bestand}|${s.mandantId ?? s.betrieb}|${s.person}`).digest("hex").slice(0, 32);
+  .update(`centric-stempel|${s.bestand}|${betriebsteil(s)}|${s.person}`).digest("hex").slice(0, 32);
 
 /* Personen je Raum, zuletzt gesehen (WP-47): Der Raumdeckel fürs Stempeln hängt
    an der Betriebsgröße (schutz.mjs, stempelDeckel), und die Bremse läuft VOR

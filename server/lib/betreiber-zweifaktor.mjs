@@ -512,6 +512,88 @@ export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
 }
 
 /**
+ * D-N2 (WP-18, Sicherheitsreview N-2): Ist für den Zugangscode dieser Sitzung ein zweiter Faktor eingerichtet?
+ * Gesucht wird wie in rollenFaktorFrisch (entlang `ersetztDurch`). Zusätzlich zählt der Vermerk `zweiterFaktor: true`
+ * am Zugang (Review-Auflage N2 oben): Er hängt nicht am Pfeffer — wer ihn trägt, gilt als „eingerichtet", auch wenn
+ * der Faktor unter der jetzigen Kennung nicht zu finden ist (fail-closed: dann scheitert die Prüfung des Codes).
+ * Sitzung ohne Zugangscode: false. Ein Lesefehler wirft (der Aufrufer antwortet 503).
+ * @param {{store: any, sitzung: any}} a
+ * @returns {Promise<boolean>}
+ */
+export async function rollenFaktorEingerichtet({ store, sitzung }) {
+  const konto = String((sitzung && sitzung.konto) || "");
+  if (!konto) return false;
+  const kette = [konto];
+  let akt = konto;
+  for (let i = 0; i < 4; i++) {
+    const e = await kontoLesenStreng(store, akt);
+    if (e && e.zweiterFaktor === true) return true;
+    if (!e || typeof e.ersetztDurch !== "string" || !e.ersetztDurch || kette.includes(e.ersetztDurch)) break;
+    akt = e.ersetztDurch; kette.push(akt);
+  }
+  for (const schl of kette) if ((await zweifaktorStand(store, rollenZweifaktorId(schl))).aktiv) return true;
+  return false;
+}
+
+/**
+ * Frischer zweiter Faktor für eine sicherheitskritische Aktion einer Leitungs-, Planungs- oder Kundensitzung
+ * (WP-18: Einladung ausstellen). Dasselbe Verfahren wie betreiberFaktorFrisch, nur für Codes der ZWEIFAKTOR_ROLLEN
+ * (Kennung rollenZweifaktorId) und ohne fertige Antwort: der Aufrufer entscheidet den Status (403 statt 401 —
+ * die Sitzung ist gültig, nur die Bestätigung fehlt).
+ *
+ * - Sitzung ohne Zugangscode (`konto`): kein Faktor prüfbar → nein (403).
+ * - Kein aktiver Faktor unter dem Code (auch entlang `ersetztDurch`): nein (403).
+ * - Code fehlt oder falsch: nein (403), gebremst je Faktor und Herkunft (eigener Zähler `rf:`).
+ * - Ablage nicht lesbar: 503. Nie ein Ja im Zweifel.
+ * Ein Code aus der App gilt höchstens dreißig Sekunden (± ein Schritt) und nur einmal (zweifaktorPruefen) — damit
+ * ist die Bestätigung immer jünger als die fünf Minuten, die WP-18 verlangt.
+ *
+ * @param {{store: any, k: string, sitzung: any, code?: unknown}} a
+ * @returns {Promise<{ok: true}|{ok: false, status: number, fehler: string, grund: string, wartet?: number}>}
+ */
+export async function rollenFaktorFrisch({ store, k, sitzung, code }) {
+  const nein = (status, fehler, grund) => ({ ok: false, status, fehler, grund });
+  const nichtPruefbarT = "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.";
+  const konto = String((sitzung && sitzung.konto) || "");
+  if (!konto) return nein(403, "Für diesen Schritt ist ein Code aus der App nötig; dieser Zugang hat keinen.", "ohne konto");
+  const kette = [konto];
+  try {
+    let akt = konto;
+    for (let i = 0; i < 4; i++) {
+      const e = await kontoLesenStreng(store, akt);
+      if (!e || typeof e.ersetztDurch !== "string" || !e.ersetztDurch || kette.includes(e.ersetztDurch)) break;
+      akt = e.ersetztDurch; kette.push(akt);
+    }
+  } catch { return nein(503, nichtPruefbarT, "konto nicht lesbar"); }
+  let id = null;
+  try {
+    for (const schl of kette) {
+      const kid = rollenZweifaktorId(schl);
+      if ((await zweifaktorStand(store, kid)).aktiv) { id = kid; break; }
+    }
+  } catch { return nein(503, nichtPruefbarT, "faktor nicht lesbar"); }
+  if (!id) return nein(403, "Für diesen Zugang ist kein zweiter Faktor eingerichtet. Bitte zuerst einrichten.", "kein faktor");
+  const eingabe = typeof code === "string" ? code.trim() : "";
+  if (!eingabe) return nein(403, "Bitte den aktuellen Code aus der App eingeben.", "faktor fehlt");
+  for (const kk of [`rf:${id.slice(0, 16)}`, k]) {
+    const b = await bremse("zweifaktor", kk);
+    if (!b.frei) return { ...nein(429, "Zu viele Versuche. Bitte später erneut versuchen.", "gebremst"), wartet: b.wartet };
+    if (b.fehler && GRENZEN.zweifaktor.failClosed) return nein(503, nichtPruefbarT, "bremse nicht lesbar");
+  }
+  const p = await zweifaktorPruefen(store, id, { code: eingabe, nachweisErlaubt: false });
+  if (!p.ok) {
+    await new Promise((r) => setTimeout(r, 400));
+    await protokoll("zweifaktor", k, "abgewiesen", `Zugang · frischer Code · ${p.grund}`);
+    return nein(403, p.grund === "wiederholt" ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+      : "Der zweite Faktor stimmt nicht.", `faktor ${p.grund}`);
+  }
+  for (const kk of [`rf:${id.slice(0, 16)}`, k]) await entlasten("zweifaktor", kk);
+  if (p.art === "wiederherstellung")
+    await protokoll("zweifaktor", k, "erfolg", "Zugang · Wiederherstellungscode verbraucht (frischer Code)");
+  return { ok: true };
+}
+
+/**
  * Offline-Wiederherstellung (WP-32d): Der Betreiber hat Authenticator UND
  * Wiederherstellungscodes verloren. Läuft nur auf dem Server selbst, durch
  * werkzeug/betreiber-2fa-zuruecksetzen.mjs — es gibt keinen
