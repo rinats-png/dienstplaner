@@ -1,0 +1,96 @@
+/* ==========================================================================
+   IMP-3 — Importvorgänge (temporäre Sitzungsobjekte, nur im Arbeitsspeicher)
+
+   Ein Vorgang hält zwischen Upload, Analyse, Vorschau und Übernahme den
+   gelesenen Rohinhalt der Datei (Ergebnis des Parsers, nie die Datei selbst),
+   die Analyse und den zuletzt angezeigten Plan.
+
+   Warum nur im Arbeitsspeicher: Der Inhalt sind Personaldaten. Auf der Platte
+   lägen sie in Sicherungen, Abbildern und gelöschten Blöcken weiter. Es läuft
+   genau ein Prozess je Ablage (prozesssperre.mjs), also sieht jede Anfrage
+   denselben Speicher. Ein Neustart verwirft alle offenen Vorgänge; die Person
+   lädt die Datei dann erneut hoch — es wurde nichts übernommen.
+
+   Fristen (festgelegt in IMP-3, begründet im Nachweis):
+   - 30 Minuten ohne Zugriff: Der Vorgang wird gelöscht. Eine Zuordnung und
+     Vorschau prüft man in Minuten; wer länger weg ist, beginnt neu.
+   - 2 Stunden ab Upload: Höchstdauer, auch bei laufender Nutzung.
+   - Nach der Übernahme: Rohinhalt, Analyse und Plan werden sofort verworfen;
+     bis zum Ablauf der Höchstdauer bleibt nur der Vermerk „übernommen" mit
+     den Zahlen (Wiederholschutz), ohne Personendaten.
+   - Verwerfen durch die Person: sofort gelöscht.
+
+   Zugriff: Ein Vorgang gehört genau einem Raum, einem Betrieb (mandantId)
+   und einer Person bzw. Rolle. Wer etwas anderes ist, bekommt „nicht
+   gefunden" — nicht einmal, dass es den Vorgang gibt.
+   ========================================================================== */
+
+import { randomBytes } from "node:crypto";
+
+export const FRISTEN = Object.freeze({
+  inaktivMs: 30 * 60 * 1000,
+  hoechstMs: 2 * 60 * 60 * 1000,
+});
+/** Höchstzahl gleichzeitig offener Vorgänge: gesamt und je Raum (Arbeitsspeicher). */
+export const HOECHST = Object.freeze({ gesamt: 20, jeRaum: 3 });
+
+/** @type {Map<string, any>} */
+const VORGAENGE = new Map();
+
+const ID = /^[0-9a-f]{32}$/;
+
+/** Wem gehört ein Vorgang? Aus der Sitzung, nie aus dem Rumpf. */
+export function besitzAus(sitzung, mandantId) {
+  return { raum: String(sitzung.bestand), mandantId: String(mandantId),
+    wer: sitzung.person !== null && sitzung.person !== undefined ? `p:${sitzung.person}` : `r:${sitzung.rolle}` };
+}
+const gleicherBesitz = (a, b) => a.raum === b.raum && a.mandantId === b.mandantId && a.wer === b.wer;
+
+/** Abgelaufene Vorgänge löschen. */
+export function aufraeumen(jetzt = Date.now()) {
+  for (const [id, v] of VORGAENGE) {
+    if (jetzt - v.angelegt > FRISTEN.hoechstMs || (v.zustand !== "uebernommen" && jetzt - v.zuletzt > FRISTEN.inaktivMs))
+      VORGAENGE.delete(id);
+  }
+}
+
+/**
+ * @returns {{ ok: true, vorgang: any } | { ok: false, code: string }}
+ */
+export function vorgangAnlegen(besitz, daten, jetzt = Date.now()) {
+  aufraeumen(jetzt);
+  const offen = [...VORGAENGE.values()].filter((v) => v.zustand !== "uebernommen");
+  if (offen.length >= HOECHST.gesamt || offen.filter((v) => v.besitz.raum === besitz.raum).length >= HOECHST.jeRaum)
+    return { ok: false, code: "ZU_VIELE_VORGAENGE" };
+  const id = randomBytes(16).toString("hex");
+  const vorgang = { id, besitz, angelegt: jetzt, zuletzt: jetzt, zustand: "offen", laeuft: false, ...daten };
+  VORGAENGE.set(id, vorgang);
+  return { ok: true, vorgang };
+}
+
+/** Den Vorgang holen — nur für den Besitzer und nur, solange er gilt. Sonst null. */
+export function vorgangHolen(id, besitz, jetzt = Date.now()) {
+  aufraeumen(jetzt);
+  if (typeof id !== "string" || !ID.test(id)) return null;
+  const v = VORGAENGE.get(id);
+  if (!v || !gleicherBesitz(v.besitz, besitz)) return null;
+  v.zuletzt = jetzt;
+  return v;
+}
+
+/** Nach der Übernahme: Inhalte verwerfen, nur den Vermerk behalten. */
+export function alsUebernommen(v, ergebnis) {
+  v.zustand = "uebernommen";
+  v.ergebnis = ergebnis;
+  v.zeilen = null; v.blaetter = null; v.analyse = null; v.plan = null;
+}
+
+export function vorgangEntfernen(id) { VORGAENGE.delete(id); }
+
+/** Für die Prüfung: Zahl der Vorgänge und ob ein Vorgang noch Inhalte hält. */
+export function _anzahl() { return VORGAENGE.size; }
+export function _roh(id) { return VORGAENGE.get(id) || null; }
+export function _zuruecksetzen() { VORGAENGE.clear(); }
+
+/* Alle 60 Sekunden aufräumen, auch ohne Zugriff (unref: hält den Prozess nicht am Leben). */
+setInterval(() => aufraeumen(), 60_000).unref();
