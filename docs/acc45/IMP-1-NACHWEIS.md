@@ -36,3 +36,24 @@ Keine bestehende Assertion wurde entfernt oder abgeschwächt. Keine Bestandserwa
 3. `App.jsx` `neuePerson` (Einzelanlage, ca. 10701) erfindet weiterhin eine E-Mail; außerhalb von IMP-1.
 4. Leere Eintrittszelle bzw. fehlende Spalte nimmt weiterhin `heute()` (bewusst nicht als „ungültig" gewertet; falls das ebenfalls Fehler sein soll, Entscheidung nötig).
 5. Anzeige der Fehlermeldung „E-Mail ungültig" nutzt die vorhandene Fehlerspalte; keine neue UI.
+
+## Auflage aus dem IMP-3-Review
+
+Vorgabe (verbindlich): keine Zusammenführung nur über Namen, keine automatische Überschreibung; Aktualisierung nur über Personalnummer-Treffer und mit ausdrücklicher Bestätigung je Datensatz.
+
+**Ist-Stand (e7b4f22):** `fachlogik.js` (alt Z. 2133) setzte `zielId` bei `aktion === "aktualisieren" && bestaetigt && dublette`, also auch bei `dublette.grund === "name"` (angelegt Z. 2113). Ein bestätigter Namenstreffer führte damit zu einer Aktualisierung. Eine Personalnummer, die sich nur in führenden Nullen oder Trennzeichen unterschied, galt als verschieden.
+
+**Korrektur (`fachlogik.js` 2108-2150, Kopie `pruefung.jsx` gleichlautend):**
+- `darfAktualisieren` nur bei `grund === "personalnummer"` (exakter Treffer, ohne Groß-/Kleinschreibung) und nicht innerhalb der Datei. `zielId` nur dann und nur mit `bestaetigt: true`.
+- Ein Aktualisierungswunsch auf einen anderen Treffer wird zu `aktion: "klaeren"` mit `aktualisierungAbgelehnt: true`; die Zeile bleibt nicht übernehmbar.
+- Neuer Treffergrund `personalnummer_aehnlich`: Nummern, die nach Entfernen von Trennzeichen und führenden Nullen gleich sind (`01001`/`1001`, `P-1001`/`P1001`), sind ein möglicher Treffer zum Klären, nie stillschweigend „verschieden", nie Aktualisierung.
+- Namenstreffer trägt `nummerAbweicht` (Zeilennummer weicht von der des Bestands ab).
+- Neues Feld `vorgabe`: bei jeder Dublette `"klaeren"`, nie `"aktualisieren"`, nie `"neu"`; ohne Dublette `null`.
+
+**Tests (`import-bestand-imp1.test.js`, Block „Auflage aus dem IMP-3-Review", A1-A8):** rot gegen den Ist-Stand 5 (A1-A5), A6-A8 schon grün (Schutz gegen Rückfall). Nach dem Fix 27 von 27 grün.
+
+**Angepasste Erwartung (D4):** prüfte bisher die Aktualisierung über einen reinen Namenstreffer (`zielId` bei `grund "name"`). Das ist das nun verbotene Verhalten; D4 prüft dieselbe Bestätigungsregel jetzt über einen Personalnummer-Treffer. Keine Assertion abgeschwächt; die Namensfälle stehen verschärft in A1-A3.
+
+**Regression:** `konsistenz`, `personendaten`, `verdrahtung` grün; `selbsttest` nur „Erster Aufbau unter 500 ms" rot (Lastbedingung, unverändert zum Vorstand, alle Import-Fälle grün). Lint: 0 Fehler, 153 Warnungen (Bestand).
+
+**Offen:** Die Oberfläche (App.jsx, WP-39) muss `vorgabe` und `aktualisierungAbgelehnt` anzeigen und „Aktualisieren" nur bei `dublette.grund === "personalnummer"` anbieten.

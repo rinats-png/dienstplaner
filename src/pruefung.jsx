@@ -2163,11 +2163,22 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
     const nrNorm = personalnummer.toLowerCase();
     let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").toLowerCase() === nrNorm) : null;
     let dublette = treffer ? { grund: "personalnummer", personId: treffer.id, inDatei: false } : null;
+    /* IMP-1 (Auflage IMP-3-Review): Nur ein exakter Personalnummer-Treffer darf zur Aktualisierung führen.
+       Eine Nummer, die sich nur in führenden Nullen oder Trennzeichen unterscheidet (01001/1001, P-1001/P1001),
+       ist ein möglicher Treffer: Dublette zum Klären, nie stillschweigend "verschieden", nie Aktualisierung. */
+    const nrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
+    if (!dublette && nrNorm && nrLose(nrNorm)) {
+      treffer = m.personen.find((p) => nrLose(p.personalnummer) === nrLose(nrNorm));
+      if (treffer) dublette = { grund: "personalnummer_aehnlich", personId: treffer.id, inDatei: false };
+    }
     if (!dublette && nachname && vorname) {
       treffer = m.personen.find((p) => p.nachname.toLowerCase() === nachname.toLowerCase()
         && p.vorname.toLowerCase() === vorname.toLowerCase());
-      if (treffer) dublette = { grund: "name", personId: treffer.id, inDatei: false };
+      if (treffer) dublette = { grund: "name", personId: treffer.id, inDatei: false,
+        nummerAbweicht: !!nrNorm && nrLose(treffer.personalnummer) !== nrLose(nrNorm) };
     }
+    /* Aktualisieren ist nur bei exaktem Personalnummer-Treffer in den Bestand erlaubt. */
+    const darfAktualisieren = !!dublette && dublette.grund === "personalnummer" && !dublette.inDatei;
     if (!dublette) {
       const frueher = vorigeZeilen.find((v) => (nrNorm && v.nrNorm === nrNorm)
         || (!nrNorm && !v.nrNorm && nachname && vorname && v.name === `${nachname}|${vorname}`.toLowerCase()));
@@ -2176,15 +2187,20 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
     vorigeZeilen.push({ nr: i + 1, nrNorm, name: `${nachname}|${vorname}`.toLowerCase() });
     const doppelt = !!dublette;
     const wahl = dublette ? entscheidungen[i + 1] : null;
-    const aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
+    let aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
     const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
+    /* Vorgabe ist nie "aktualisieren"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
+    const aktualisierungAbgelehnt = aktion === "aktualisieren" && !darfAktualisieren;
+    if (aktualisierungAbgelehnt) aktion = "klaeren";
+    const vorgabe = dublette ? "klaeren" : null;
     const neuGewaehlt = aktion === "neu";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
       qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette,
       personalnummer, email, aktion, aktualisierungBestaetigt: aktion === "aktualisieren" && bestaetigt,
-      zielId: aktion === "aktualisieren" && bestaetigt && dublette ? dublette.personId : null,
+      vorgabe, aktualisierungAbgelehnt,
+      zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
       ok: fehler.length === 0 && (!doppelt || neuGewaehlt) };
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
