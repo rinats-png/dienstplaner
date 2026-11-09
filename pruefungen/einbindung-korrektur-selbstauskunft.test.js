@@ -14,6 +14,7 @@ import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { migriere } from "../src/migration.js";
 import { personenAngleichen } from "../server/lib/gestalt.mjs";
 import { StempelBefunde } from "../src/ansichten/korrekturen.jsx";
+import { appQuelle } from "./app-quelle.js";
 
 const HEUTE = "2026-11-04", MONAT = "2026-11", TAG = "2026-11-03";
 let A;
@@ -83,7 +84,8 @@ describe("Einbindung Selbstauskunft (WP-15)", () => {
     expect(meine("betriebsrat")).not.toContain("Meine Zeiten-Anträge");
   });
   it("App.jsx stellt die Aktionen bereit und meldet Selbstauskunft-Stand in erfassung", () => {
-    const q = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+    /* WP-39: die Aktionen stehen in src/app/aktionen/ — gelesen wird App.jsx samt ausgelagerter Dateien. */
+    const q = appQuelle();
     expect(q).toMatch(/monatKorrektur: async \(aktion, monat, extra = \{\}\)/);
     expect(q).toMatch(/uebernehmeSelbstauskunft: \(pid, d, erg\)/);
     expect(q).toContain('SP.monatsabschluss(aktion, monat, extra)');

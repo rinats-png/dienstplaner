@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { pilotImZeitraum, pilotNachServerregel, pilotAktiv, paketTag, paketAenderungen, vertragsstandVon,
   preisgestaltungFuerKunde, zustimmungenBereinigen } from "../server/lib/paketstand.mjs";
 import { vertragsstandUebernehmen } from "../src/paketlogik.js";
+import { appQuelle } from "./app-quelle.js";
 import { demoOhneVertrag } from "../server/lib/erstbefuellung.mjs";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 
@@ -164,7 +165,7 @@ describe("N-E: Paketänderungen sind protokolliert", () => {
     expect(paketAenderungen(null, neu).join("\n")).toMatch(/Paket klinik zugebucht/);
   });
   it("Quelltext: setzePaket schreibt ins Betreiberprotokoll, der Server protokolliert Änderungen", () => {
-    const app = quelle("../src/App.jsx");
+    const app = appQuelle();   // WP-39: Aktionen in src/app/aktionen/, gelesen samt App.jsx
     const i = app.indexOf("setzePaket: (mid, paket, an)");
     expect(i).toBeGreaterThan(0);
     expect(app.slice(i, i + 900)).toMatch(/bLog\(/);

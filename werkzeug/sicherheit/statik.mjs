@@ -56,12 +56,28 @@ export const MUSTER = [
   { name: "JSON.parse auf Rohtext", re: /JSON\.parse\s*\(/, klasse: "sichten", nur: "server" },
 ];
 
-/* Begründete Ausnahmen: Datei-Endung des Pfads + Mustername. Jede Zeile
-   braucht eine Begründung; neue Fundstellen außerhalb fallen auf. */
+/* Begründete Ausnahmen: Datei-Endung des Pfads + Mustername + erlaubte Anzahl
+   Fundstellen (je Datei ein Eintrag). Jede Zeile braucht eine Begründung; eine
+   weitere Fundstelle über die Anzahl hinaus gilt als unbegründet und fällt auf. */
 export const FREIGABEN = [
-  { datei: "src/App.jsx", muster: "document.write",
-    grund: "zwei Druckfenster (Handbuch, Aushangplan); alle Bestandsdaten maskiert (esc/h, SI-03), CSP vererbt sich an about:blank" },
+  { datei: "src/app/aktionen/begleitung.js", muster: "document.write", anzahl: 1,
+    grund: "schreibt das Ergebnis von handbuchDruck in about:blank derselben Herkunft; einziger Bestandswert ist m.name, im Textinhalt mit esc maskiert (& < >); alle übrigen Texte sind statischer Code aus src/handbuch-inhalt.js; Server-CSP mit script-src 'self' gilt über Vererbung, zusätzlich Meta-CSP im Kopf" },
+  { datei: "src/app/aktionen/assistenz.js", muster: "document.write", anzahl: 1,
+    grund: "Bestandswerte mit h maskiert (& < > \" '); das einzige Attribut (style color) läuft über farbeSicher (^#[0-9a-f]{3,8}$); sonst nur Zahlen und Konstanten; CSP wie oben (HTML-Aufbau in src/lib/aushang.js)" },
 ];
+
+/** Ordnet Freigaben zu: je Datei und Muster sind nur die ersten `anzahl` Fundstellen frei. */
+export function markiereFreigaben(treffer, freigaben = FREIGABEN) {
+  const verbraucht = new Map();
+  return treffer.map((t) => {
+    const f = freigaben.find((x) => t.datei.endsWith(x.datei) && x.muster === t.muster);
+    if (!f) return { ...t, frei: null };
+    const schluessel = f.datei + "|" + f.muster + "|" + t.datei;
+    const n = (verbraucht.get(schluessel) || 0) + 1;
+    verbraucht.set(schluessel, n);
+    return { ...t, frei: n <= (f.anzahl ?? 1) ? f.grund : null };
+  });
+}
 
 async function dateien(ort) {
   const voll = path.join(WURZEL, ort);
@@ -93,13 +109,12 @@ export async function musterSuche() {
         for (const m of MUSTER) {
           if (m.nur && m.nur !== bereich) continue;
           if (!m.re.test(z)) continue;
-          const frei = FREIGABEN.find((f) => r.endsWith(f.datei) && f.muster === m.name);
-          treffer.push({ datei: r, zeile: i + 1, muster: m.name, klasse: m.klasse, frei: frei ? frei.grund : null });
+          treffer.push({ datei: r, zeile: i + 1, muster: m.name, klasse: m.klasse });
         }
       });
     }
   }
-  return treffer;
+  return markiereFreigaben(treffer);
 }
 
 async function eslintLauf() {
