@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 187,
   "statusZaehlung": {
-    "BLOCKED": 98,
-    "READY": 20,
+    "BLOCKED": 96,
+    "READY": 17,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 52,
+    "INTEGRATED": 57,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 87,
-      "offen": 41,
+      "offen": 40,
       "restPT": {
-        "min": 76.9,
-        "max": 118.60000000000001
+        "min": 74.4,
+        "max": 114.60000000000001
       }
     },
     "wp19": {
@@ -29,18 +29,18 @@
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 34,
+      "offen": 32,
       "restPT": {
-        "min": 248.3,
-        "max": 437.8
+        "min": 239.3,
+        "max": 421.8
       }
     },
     "folge": {
       "pakete": 10,
-      "offen": 8,
+      "offen": 6,
       "restPT": {
-        "min": 8.6,
-        "max": 17.1
+        "min": 5.1,
+        "max": 10.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 400.6,
-    "max": 677.7
+    "min": 385.6,
+    "max": 650.7
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -1603,12 +1603,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1.5,"max":3},
       "abhaengigkeiten": ["WP-27"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #150 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #150 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #150 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #150 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1617,12 +1617,12 @@
       "agent": "Agent A – Security & Data Integrity",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#150"],
       "nachweis": "docs/acc45/wp27-nachweis.md (Nachtrag)",
       "akzeptanz": "vier Punkte aus dem Nachtrag mit Test; kein Personenbezug unter Mindestgruppe",
       "tests": "br-auswertung.test.js, istdaten.test.js",
       "dateien": "server/lib/br-auswertung.mjs, src/istdaten.js",
-      "notiz": "SCHÄTZUNG."
+      "notiz": "SCHÄTZUNG. Stand 2026-11-09: INTEGRATED nach PR #150."
     },
     {
       "id": "WP-47b",
@@ -1631,12 +1631,12 @@
       "prio": "P2",
       "aufwandPT": {"min":2,"max":4},
       "abhaengigkeiten": ["WP-47","WP-24"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #151 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #151 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #151 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #151 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1645,12 +1645,12 @@
       "agent": "Agent B – Infrastructure & Reliability",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#151"],
       "nachweis": "docs/acc45/wp47-nachweis.md (Abschnitt 8), wp28-nachweis.md Befund 5, wp24-nachweis.md Befund 4",
       "akzeptanz": "große Bestände (≈ 4,6 MB) unter Last ohne Kernsättigung; Feed 12–30/min je Geheimnis; Zwischenspeicher widerruft bei Standwechsel",
       "tests": "bremse-*, kalender-feed-live, Lastprobe",
       "dateien": "server/lib/schutz.mjs, server/funktionen/kalender.mjs",
-      "notiz": "SCHÄTZUNG; Kenngröße laut WP-28 ist die Dateigröße je Antwort."
+      "notiz": "SCHÄTZUNG; Kenngröße laut WP-28 ist die Dateigröße je Antwort. Stand 2026-11-09: INTEGRATED nach PR #151."
     },
     {
       "id": "WP-16b",
@@ -2248,12 +2248,12 @@
       "prio": "P2",
       "aufwandPT": {"min":3,"max":6},
       "abhaengigkeiten": ["WP-11","E-21i"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #152 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #152 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #152 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #152 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2262,12 +2262,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#152"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand 2026-11-09: INTEGRATED nach PR #152."
     },
     {
       "id": "WP-I3",
@@ -2575,7 +2575,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "Bedingungen aus WP-I11 vor Anbieteranschluss: modellOrt nur aus Serverkonfiguration; getrennte Schluessel mit Rotation; Rueckuebersetzung nur nach Schemapruefung; Ausgabe durch die Leck-Pruefung; F7A gesperrt; Namenspolitik vor Freitext-Funktionen; Restrisiken-Freigabe (docs/acc45/wp-i11-nachweis.md). Stand 2026-11-09: INTEGRATED nach PR #146."
+      "notiz": "Bedingungen aus WP-I11 vor Anbieteranschluss: modellOrt nur aus Serverkonfiguration; getrennte Schluessel mit Rotation; Rueckuebersetzung nur nach Schemapruefung; Ausgabe durch die Leck-Pruefung; F7A gesperrt; Namenspolitik vor Freitext-Funktionen; Restrisiken-Freigabe (docs/acc45/wp-i11-nachweis.md). Stand 2026-11-09: INTEGRATED nach PR #146. Stand 2026-11-09: INTEGRATED nach PR #146."
     },
     {
       "id": "WP-I14",
@@ -2668,12 +2668,12 @@
       "prio": "P3",
       "aufwandPT": {"min":6,"max":10},
       "abhaengigkeiten": ["WP-I13"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #154 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #154 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #154 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #154 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2682,12 +2682,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#154"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand 2026-11-09: INTEGRATED nach PR #154."
     },
     {
       "id": "WP-I18",
@@ -4776,12 +4776,12 @@
       "prio": "P1",
       "aufwandPT": {"min":2.5,"max":4},
       "abhaengigkeiten": ["IMP-1","IMP-3"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #137 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #137 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #137 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #137 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4790,12 +4790,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#137"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Keine automatische Überschreibung; Dublettenvorschlag nur bei fehlender Personalnummer, nie nur über Namen",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "src/ (Importassistent Personal), Tests",
-      "notiz": "Personalnummer ist mandantenintern eindeutig, nicht global."
+      "notiz": "Personalnummer ist mandantenintern eindeutig, nicht global. Stand 2026-11-09: INTEGRATED nach PR #137."
     },
     {
       "id": "IMP-5",

@@ -52,7 +52,7 @@
     "pruefung:datenintegritaet": "vitest run pruefungen/datenintegritaet.test.js pruefungen/lesefehler.test.js pruefungen/loeschsperre.test.js pruefungen/atomar.test.js pruefungen/journal-lesen.test.js pruefungen/ablage-pruefen.test.js pruefungen/ablage-pruefen-rueckweg.test.js pruefungen/ablage-pruefen-matrix.test.js pruefungen/ablage-pruefen-matrix2.test.js pruefungen/wp48-speicherkern.test.js pruefungen/wp48-rundweg.test.js",
     "pruefung:entwuerfe": "vitest run pruefungen/entwuerfe.test.js pruefungen/entwuerfe-oberflaeche.test.js",
     "pruefung:pwa": "vitest run pruefungen/pwa.test.js",
-    "pruefung:acc45-werkzeuge": "vitest run pruefungen/acc45-werkzeuge.test.js",
+    "pruefung:acc45-werkzeuge": "vitest run pruefungen/acc45-werkzeuge.test.js pruefungen/ssot-zuordnung.test.js",
     "pruefung:acc45-status": "vitest run pruefungen/acc45-status.test.js",
     "pruefung:pilot-tagesbericht": "vitest run pruefungen/pilot-tagesbericht.test.js",
     "pruefung:wiederherstellen-ui": "vitest run pruefungen/wiederherstellen-ui.test.js",

@@ -321,7 +321,7 @@ describe("C — Freigabe-Gate des Live-Adapters: ohne ALLE Bedingungen kein Aufr
 
 /* ---------------------------------------------------------------- D ---- */
 describe("D — jede Fehlerklasse des Adapters → fester Rückfall, nie Rohinhalt, nie eine teurere Stufe", () => {
-  const ERWARTET = { zeit: "KI_ZEIT", begrenzt: "KI_ANBIETER", nicht_verfuegbar: "KI_ANBIETER", ungueltig: "KI_ANBIETER", schema: "KI_ANBIETER", zu_gross: "KI_ANBIETER" };
+  const ERWARTET = { zeit: "KI_ZEIT", begrenzt: "KI_ANBIETER", nicht_verfuegbar: "KI_ANBIETER", ungueltig: "KI_ANBIETER", schema: "KI_ANBIETER", zu_gross: "KI_GROESSE" };   // I15 (#158): Überschreitung → KI_GROESSE
   it("Fehlerklasse schema existiert und ist nicht wiederholbar", () => {
     expect(ANB.ANBIETER_FEHLERKLASSEN).toContain("schema");
     expect(new ANB.AnbieterFehler("schema").klasse).toBe("schema");
@@ -368,8 +368,8 @@ describe("D — jede Fehlerklasse des Adapters → fester Rückfall, nie Rohinha
       ["Schema (fremdes Feld)", "KI_ANBIETER", async () => ({ status: 200, daten: { ausgabe: { text: "ok", roh: ROH } } })],
       ["Schema (Ausgabe ist Text)", "KI_ANBIETER", async () => ({ status: 200, daten: { ausgabe: ROH } })],
       ["Schema (text keine Zeichenkette)", "KI_ANBIETER", async () => ({ status: 200, daten: { ausgabe: { text: [ROH] } } })],
-      ["zu groß (Abbruch Länge)", "KI_ANBIETER", async () => ({ status: 200, daten: { ausgabe: { text: ROH }, abbruch: "laenge" } })],
-      ["zu groß (Nutzung über Grenze)", "KI_ANBIETER", async () => ({ status: 200, daten: { ausgabe: { text: "Es liegen keine Fakten vor." }, nutzung: { ausgabeToken: 999999 } } })],
+      ["zu groß (Abbruch Länge)", "KI_GROESSE", async () => ({ status: 200, daten: { ausgabe: { text: ROH }, abbruch: "laenge" } })],
+      ["zu groß (Nutzung über Grenze)", "KI_GROESSE", async () => ({ status: 200, daten: { ausgabe: { text: "Es liegen keine Fakten vor." }, nutzung: { ausgabeToken: 999999 } } })],
     ];
     for (const [name, code, roh] of FAELLE) {
       it(`${name} → Rückfall, nur Modell der Stufe 1, kein Rohinhalt`, async () => {

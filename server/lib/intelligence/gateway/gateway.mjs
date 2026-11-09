@@ -86,7 +86,7 @@ import { schluesselbundPruefen } from "./schluessel.mjs";
 export { kanonisch };
 
 const ROLLEN = new Set(["leitung", "planer", "mitarbeiter", "betriebsrat", "betreiber", "subplaner"]);
-/** Höchstzahl Ausgabetoken je Anbieterantwort (Startwert, Konfiguration; gleicher Name und Wert wie WP-I15). */
+/** Höchstzahl Ausgabetoken je Anbieterantwort (Startwert, Konfiguration; gleicher Name und Wert wie WP-I15; Spez. 7.2 nennt nur Eingabegrenzen). */
 const AUSGABE_TOKEN_VORGABE = 8000;
 const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000, zaehlerMs: 2_000, schalterTaktMs: 250, schalterFristMs: 1_000 });
 const schlafenVorgabe = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
@@ -101,7 +101,7 @@ const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.
  *   ladeBestand: (raum: string) => any | Promise<any>,
  *   schluesselbund: ReturnType<typeof import("./schluessel.mjs").erzeugeSchluesselbund>,   // G21: Pflicht
  *   registry: ReturnType<typeof import("./registry.mjs").erzeugeRegistry>,                 // G19/G20: Pflicht
- *   ausgabeTokenMax?: number,                // G20: Ausgabegrenze je Antwort (Token), an den Adapter als maxAusgabeTokens
+ *   ausgabeTokenMax?: number,                // G20/I15: Ausgabegrenze je Antwort (Token), an den Adapter als maxAusgabeTokens; darüber Rückfall KI_GROESSE, keine Teilausgabe
  *   versionen: { engine: string, regelstand: string, tarifstand: string },
  *   limits: Limits,
  *   audit: ReturnType<typeof import("./audit.mjs").erzeugeAudit>,
@@ -145,9 +145,17 @@ export function erzeugeGateway(o) {
   const hoechsteGewuenscht = o.hoechsteStufe ?? 3;
   const hoechste = Number.isInteger(hoechsteGewuenscht) ? Math.min(hoechsteGewuenscht, registry.hoechsteStufe) : hoechsteGewuenscht;
   const zeiten = { ...ZEITEN_VORGABE, ...(o.zeiten || {}) };
-  /* G20: Ausgabegrenze aus der Konfiguration (ganze Zahl > 0), sonst startet das Gateway nicht. */
+
+  /* I15: Zeitkonfiguration fail closed — NaN, 0, negativ oder Text machten die Deadline wirkungslos. */
+  const posZahl = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  const nichtNeg = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  if (!posZahl(zeiten.deadlineMs) || !posZahl(zeiten.stufeMs) || zeiten.stufeMs > zeiten.deadlineMs || !Number.isInteger(zeiten.maxWiederholungen)
+    || zeiten.maxWiederholungen < 0 || !nichtNeg(zeiten.minRestMs) || !posZahl(zeiten.zaehlerMs) || !posZahl(zeiten.schalterTaktMs) || !posZahl(zeiten.schalterFristMs))
+    throw new GatewayFehler("KI_ZEIT", "Ungültige Zeitkonfiguration.");
+  /* G20/I15: Ausgabegrenze aus der Konfiguration (ganze Zahl 1..1 000 000, strengere Regel aus G20), sonst startet das
+     Gateway nicht. Sie geht als maxAusgabeTokens an den Adapter UND wird an der Antwort nachgeprüft. */
   const ausgabeTokenMax = o.ausgabeTokenMax === undefined ? AUSGABE_TOKEN_VORGABE : o.ausgabeTokenMax;
-  if (!Number.isInteger(ausgabeTokenMax) || ausgabeTokenMax <= 0 || ausgabeTokenMax > 1_000_000) throw new GatewayFehler("KI_GROESSE", "Ungültige Ausgabegrenze.");
+  if (!posZahl(ausgabeTokenMax) || !Number.isInteger(ausgabeTokenMax) || ausgabeTokenMax > 1_000_000) throw new GatewayFehler("KI_GROESSE", "Ungültige Ausgabegrenze.");
   const jetzt = o.jetzt || (() => Date.now());
   const schlafen = o.schlafen || schlafenVorgabe;
   const zufallId = o.zufallId || zufallIdVorgabe;
@@ -354,7 +362,9 @@ export function erzeugeGateway(o) {
         } catch (e) {
           if (e instanceof GatewayFehler) throw e;
           const f = e instanceof AnbieterFehler ? e : alsAnbieterFehler(e);
-          letzterCode = f.klasse === "zeit" ? "KI_ZEIT" : f.klasse === "nicht_freigegeben" ? "KI_NICHT_FREIGEGEBEN" : "KI_ANBIETER";
+          /* I15 (#158): Ausgabe über der Grenze (zu_gross, auch aus der Nachprüfung im Adapter-Rahmen) → KI_GROESSE. */
+          letzterCode = f.klasse === "zeit" ? "KI_ZEIT" : f.klasse === "nicht_freigegeben" ? "KI_NICHT_FREIGEGEBEN"
+            : f.klasse === "zu_gross" ? "KI_GROESSE" : "KI_ANBIETER";
           audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: letzterCode,
             dauerMs: Math.max(0, jetzt() - sStart) });
           /* G22: jede Fehlerklasse des Adapters → fester Rückfall, keine teurere Stufe. */
@@ -362,6 +372,16 @@ export function erzeugeGateway(o) {
         }
         versucheGesamt += antwort.versuche;
         tokensAus = antwort.nutzung.ausgabeToken;
+        /* I15: zu lange Ausgabe wird nie gekürzt oder teilweise ausgegeben — verworfen, Rückfall. Unbekannte Nutzung (null):
+           der Adapter-Rahmen (anbieter.mjs) prüft dann die Antwortlänge nach; die harten Größengrenzen des Prüfers gelten trotzdem. */
+        if (Number.isFinite(tokensAus) && tokensAus > ausgabeTokenMax) {
+          audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: "KI_GROESSE",
+            dauerMs: Math.max(0, jetzt() - sStart), versuche: antwort.versuche });
+          letzterCode = "KI_GROESSE";
+          /* Review I15: endgültig — keine weitere (teurere) Stufe, keine Teilausgabe. Die Grenze geht zusätzlich als
+             maxAusgabeTokens an den Adapter (G20) und wird hier nachgeprüft. */
+          break;
+        }
         /* G22: formal unbrauchbare Antwort (leer, kein Objekt, Liste) ist eine Schema-Verletzung des Adapters — fester
            Rückfall, keine teurere Stufe. Inhaltliche Prüferbefunde an einem Objekt eskalieren weiter (Router). */
         const a = antwort.ausgabe;
@@ -432,7 +452,20 @@ export function erzeugeGateway(o) {
     }
   }
 
-  return Object.freeze({ ausfuehren });
+  /** I15 degradierter Modus: Kosten-/Limit-Ablehnung wird zur Rückfall-Antwort (deterministische Kernfunktion bleibt),
+      keine Ausnahme nach außen. Notschalter, Pausierung und Fehler der Anfrage behalten ihre eigenen Wege (Ausnahme). */
+  const DEGRADIERT = new Set(["KI_LIMIT", "KI_KONTINGENT", "KI_GROESSE"]);
+  async function ausfuehrenDegradiert(sitzung, anfrage) {
+    try {
+      return await ausfuehren(sitzung, anfrage);
+    } catch (e) {
+      if (!(e instanceof GatewayFehler) || !DEGRADIERT.has(e.code) || !RUECKFALL_TEXTE[e.code]) throw e;
+      return antwortPruefen({ status: "rueckfall", auftragId: zufallId(), kennzeichnung: { kiGestuetzt: true, entwurf: true, veroeffentlicht: false, geprueft: false },
+        rueckfall: { code: e.code, text: RUECKFALL_TEXTE[e.code] } });
+    }
+  }
+
+  return Object.freeze({ ausfuehren, ausfuehrenDegradiert });
 }
 
 /** Letzte Absicherung: auch die Rückfall-Antwort besteht das Schema oder es gibt einen internen Fehler. */
