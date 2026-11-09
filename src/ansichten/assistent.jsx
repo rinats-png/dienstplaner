@@ -6,6 +6,8 @@ import { MON, fKurz } from "../lib/datum.js";
 import { C } from "../farben.js";
 import { Field, Inp, Btn, KpiRow, Kpi, Leer, Lab, Pill } from "../ui/bausteine.jsx";
 import { NUM } from "../ui/thema.js";
+import { Planungsreife } from "./planungsreife.jsx";
+import { heute } from "../lib/datum.js";
 
 /* ========================== PLANUNGSASSISTENT ============================ */
 export function Assistent({ sitz, ym, akt, onClose }) {
@@ -30,6 +32,7 @@ export function Assistent({ sitz, ym, akt, onClose }) {
             Belastungsausgleich. Ruhezeiten und Einsatzeinschränkungen werden eingehalten.
             <b> Nichts wird ohne deine Freigabe übernommen.</b>
           </div>
+          <Planungsreife m={m} ym={ym} heute={heute()} />
           <Field label="Höchstzahl zusätzlicher Dienste je Person"
             hint="Verhindert, dass der Assistent die Last auf wenige Schultern legt.">
             <Inp type="number" min={1} max={10} value={max} onChange={(e) => setMax(Number(e.target.value))} /></Field>

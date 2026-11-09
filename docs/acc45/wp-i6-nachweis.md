@@ -41,3 +41,31 @@ const reife = useMemo(
 // Namen zu l.ids löst die Ansicht selbst auf (m.personen.find(p => p.id === id)).
 ```
 Nicht Teil dieses Pakets: der Betriebsmodus-Schalter (Einstellung speichern), das Rechnen des Vorschlags (WP-I7) und der Hinweis „Seit dem Vorschlag hat sich etwas geändert“.
+
+---
+
+## Ergänzung 2026-11-09: Anzeige (Branch `intelligence/wp-i6-planungsreife`, Basis `origin/integration/release-v4`)
+
+Status: Anzeige umgesetzt und lokal getestet; nicht reviewt, nicht integriert.
+
+### Ist-Stand auf der Basis
+`planungsreife` wurde von keiner Ansicht aufgerufen. `src/App.jsx` ist inzwischen modularisiert (WP-39); die Planungsansicht liegt in `src/ansichten/assistent.jsx`. `App.jsx` wurde nicht angefasst.
+
+### Umsetzung
+- `src/ansichten/planungsreife.jsx` (neu): `reifeFuerMonat(m, ym, heute)` (Zeitraum = ganzer angezeigter Monat) und Komponente `Planungsreife` (Urteil, jede Lücke als Text, Kennungen erst hier zu Personennamen aufgelöst, höchstens 8 Namen je Zeile).
+- `src/ansichten/assistent.jsx`: zeigt die Komponente auf der Startseite des Planungsassistenten (zwei Importzeilen, ein Element).
+- Reine Anzeige: „Vorschlag berechnen“ wird nicht gesperrt (offener Punkt 1).
+
+### Tests (Anzeige)
+- Neu: `pruefungen/intelligence-planungsreife-anzeige.test.js`, 8 Tests, läuft im bestehenden `npm run pruefung:intelligence`.
+- Rot gegen den Ist-Stand: Modul `planungsreife.jsx` fehlt, Datei lädt nicht, 0 von 8 lauffähig.
+- Grün nach Umsetzung: 8/8; zusammen mit `intelligence-planungsreife.test.js` 35/35.
+- Nachbarprüfungen grün: `oberflaeche-render`, `kontrast`, `verdrahtung`, `wp39-app-aufbau` zusammen 241/241; `verdrahtung-pruefen` ok; `werkzeug/sicherheit/statik.mjs` ohne unbegründete Treffer; ESLint ohne Befund.
+- Kein bestehender Test geändert, abgeschwächt oder abgeschaltet.
+
+### Offene Punkte
+1. Produktentscheidung: Soll ein nicht planungsreifer Bestand den Vorschlag im Assistenten sperren (`vorschlagErlaubt`)? Heute nur Anzeige, damit das bestehende Verhalten nicht ändert.
+2. Betriebsmodus-Schalter und Hinweis „Seit dem Vorschlag hat sich etwas geändert“ gehören zu WP-I7.
+3. Fachliche Festlegungen Nr. 10 bis 15 in `wp-i3-i6-fragen.md` bleiben Produktentscheidungen.
+4. Keine Browser- oder Smartphone-Prüfung der Anzeige; nur Server-Rendering im Test.
+5. Dateiname: auf dem (case-insensitiven) Windows-Dateisystem fällt `WP-I6-NACHWEIS.md` mit dem bereits versionierten `wp-i6-nachweis.md` zusammen; es gibt bewusst nur diese eine Datei.

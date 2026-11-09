@@ -1,0 +1,9 @@
+# SHA-256 der uebernommenen Dateien (sha256sum-Format, Pruefung: pruefungen/import-parser-vendor.test.js)
+# Quelle: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz, bezogen am 2026-11-09
+# Referenz Herstellerpaket (liegt nicht im Repo):
+8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8  xlsx-0.20.3.tgz
+# Uebernommene Dateien (byte-identisch zu package/<Datei> im Herstellerpaket):
+897b88e9889d75dc6a56b167a9457e71447cc8eabbed2513abef8015db66cccf  CHANGELOG.md
+4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64  LICENSE
+bb9458277a69b41a304a89e45f19173ac0d23f2fc296091db49dba3c8b61c546  package.json
+1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db  xlsx.mjs

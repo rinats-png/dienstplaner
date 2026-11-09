@@ -54,6 +54,7 @@
 
 import { getStore } from "./ablage.mjs";
 import { ablaufUrteil, verlaengernFaellig } from "./lebendigkeit.mjs";
+import { betreiberZweifaktorPflicht } from "./umgebung.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /** Die Ablage der Sitzungen. Auch für die Aufrufer, die `sk:`-Schlüssel
@@ -131,6 +132,14 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
     { streng: false, ruhe: gebunden ? Infinity : RUHE, aktivitaet: aktiv });
   if (urteil.grund === "frist" || urteil.grund === "untaetig") {
     await sitzungWeg(sitzungen, id);
+    return null;
+  }
+  /* WP-32d: Unter Pflicht trägt eine Betreibersitzung nur, wenn sie mit bestandenem zweitem Faktor entstand
+     (`zweifaktor: true`, gesetzt allein von /api/anmelden nach betreiberZweifaktor). Jede andere — aus der Zeit vor
+     der Pflicht, aus einem Lauf als development/test auf derselben Ablage, oder weil die Bereinigung beim Start
+     scheiterte — gilt bei JEDER Anfrage nicht und wird entfernt. Unabhängig vom Endpunkt, fail-closed. */
+  if (s.rolle === "betreiber" && s.zweifaktor !== true && betreiberZweifaktorPflicht()) {
+    await sitzungWeg(sitzungen, id).catch(() => {});
     return null;
   }
   /* Ein Planer klickt sich durch einen Monat — das wären hunderte

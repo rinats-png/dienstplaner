@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 187,
   "statusZaehlung": {
-    "BLOCKED": 104,
-    "READY": 25,
+    "BLOCKED": 101,
+    "READY": 22,
     "IN_PROGRESS": 4,
-    "REVIEW": 12,
-    "INTEGRATED": 39,
+    "REVIEW": 10,
+    "INTEGRATED": 47,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 87,
-      "offen": 50,
+      "offen": 43,
       "restPT": {
-        "min": 98.70000000000002,
-        "max": 152.5
+        "min": 81.9,
+        "max": 126.60000000000001
       }
     },
     "wp19": {
@@ -29,10 +29,10 @@
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 38,
+      "offen": 37,
       "restPT": {
-        "min": 274.3,
-        "max": 482.8
+        "min": 271.3,
+        "max": 477.8
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 448.4000000000001,
-    "max": 756.6000000000001
+    "min": 428.6,
+    "max": 725.7
   },
   "kritischerPfad": {
     "summe": 86.8,
@@ -621,12 +621,12 @@
       "prio": "P1",
       "aufwandPT": {"min":6,"max":8.5},
       "abhaengigkeiten": ["SI-P4"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #131 in integration/release-v4 gemergt"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #131 in integration/release-v4 gemergt (Tests und Auflagen #132)"},
+        "reviewt": {"wert":true,"beleg":"PR #131 in integration/release-v4 gemergt nach Review"},
+        "integriert": {"wert":true,"beleg":"PR #132 in integration/release-v4 gemergt"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -635,12 +635,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","rechte.mjs","daten.mjs"],
-      "pr": [],
+      "pr": ["#131","#132"],
       "nachweis": null,
       "akzeptanz": "Leitung lädt Testperson ein → Anmeldung → richtige Rolle; ein Code = eine Person",
       "tests": "HTTP, E2E",
       "dateien": "server/funktionen, src",
-      "notiz": "R1-Schnitt (Entscheidung 2026-11-09): Einladung ohne Mailversand (manuelle Uebergabe), Abhaengigkeit WP-30 und WP-09 entfaellt fuer R1; SI-P4 wegen Login-Dateien vorgezogen."
+      "notiz": "R1-Schnitt (Entscheidung 2026-11-09): Einladung ohne Mailversand (manuelle Uebergabe), Abhaengigkeit WP-30 und WP-09 entfaellt fuer R1; SI-P4 wegen Login-Dateien vorgezogen. Stand 2026-11-09: #131 (Code) und #132 (Auflagen) gemergt. Offen: Staging-Abnahme, Warteschlangen-Leerung vor Deploy (Betreiber)."
     },
     {
       "id": "WP-19",
@@ -1210,12 +1210,12 @@
       "prio": "P3",
       "aufwandPT": {"min":4,"max":5.5},
       "abhaengigkeiten": ["WP-12"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #128 in integration/release-v4 gemergt"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #128 in integration/release-v4 gemergt"},
+        "reviewt": {"wert":true,"beleg":"PR #128 in integration/release-v4 gemergt"},
+        "integriert": {"wert":true,"beleg":"PR #128 in integration/release-v4 gemergt"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1224,12 +1224,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#128"],
       "nachweis": null,
       "akzeptanz": "Aufteilung ohne Verhaltensänderung; alle Tests grün",
       "tests": "voll + E2E",
       "dateien": "src/",
-      "notiz": "Abhängigkeit WP-12 integriert; Status von BLOCKED auf READY nachgeführt. Konfliktzone App.jsx exklusiv."
+      "notiz": "Abhängigkeit WP-12 integriert; Status von BLOCKED auf READY nachgeführt. Konfliktzone App.jsx exklusiv. Stand 2026-11-09: App-Modularisierung über #128 integriert."
     },
     {
       "id": "WP-40",
@@ -1490,12 +1490,12 @@
       "prio": "P0",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["WP-32"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"3c492f3, in integration/release-v4 über Merge 1c1a27e (Opus-Review)"},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #141 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #141 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #141 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #141 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1504,12 +1504,12 @@
       "agent": "Agent A – Security & Data Integrity",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#141"],
       "nachweis": null,
       "akzeptanz": "Echter Betreiberzugriff in Produktion ohne eingerichteten zweiten Faktor nicht möglich (fail-closed); Einrichtungsweg und Wiederherstellung getestet; Werkzeuge (zugaenge-anlegen.sh) mit 2FA nutzbar",
       "tests": "betreiber-zweifaktor.test.js, HTTP",
       "dateien": "server/lib/zweifaktor*.mjs, server/funktionen/betreiber*.mjs, werkzeug/zugaenge-anlegen.sh",
-      "notiz": "Neu (Betreiberentscheidung 2026-11-03): Pflichtbestandteil der Produktionsfreigabe; Einrichtung durch den Betreiber: E-10. SCHÄTZUNG. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat."
+      "notiz": "Neu (Betreiberentscheidung 2026-11-03): Pflichtbestandteil der Produktionsfreigabe; Einrichtung durch den Betreiber: E-10. SCHÄTZUNG. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. Stand 2026-11-09: INTEGRATED nach #141."
     },
     {
       "id": "WP-42a",
@@ -2359,12 +2359,12 @@
       "prio": "P2",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["E-21i"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #138 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #138 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #138 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #138 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2373,12 +2373,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#138"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand 2026-11-09: INTEGRATED nach #138."
     },
     {
       "id": "WP-I7",
@@ -4411,12 +4411,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": [],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"acc45/sicherheit/si-p4 8adad27"},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":"teilweise","beleg":"Unabhängiges Opus-Review: integrierbar mit Auflagen M1, M2, N2 und Negativtests; Umsetzung auf review/si-p4 in Arbeit"},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #124 in integration/release-v4 gemergt"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #124 in integration/release-v4 gemergt"},
+        "reviewt": {"wert":true,"beleg":"PR #124 in integration/release-v4 gemergt"},
+        "integriert": {"wert":true,"beleg":"PR #124 in integration/release-v4 gemergt"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4430,7 +4430,7 @@
       "akzeptanz": "TOTP für Leitung/Planung/Kunde mindestens im Pilot; bis dahin „Zugang merken“ für Leitung gesperrt; Tests für Anmeldung mit/ohne zweiten Faktor",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/lib/zweifaktor.mjs, server/lib/betreiber-zweifaktor.mjs, src",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Entscheidung 2026-11-09: Option 1 (Ersteinrichtung Neubetriebe) genehmigt, Option 2 (nachträglich, Zweitfreigabe) genehmigt, Option 3 (Offline-Ausnahme) ABGELEHNT, Option 4 (TOTP für Konten) genehmigt und priorisiert, Option 5 (Testbetriebe ausnehmen) ABGELEHNT. Quelle: SI-P4-NACHWEIS.md, Abschnitt Delta-Review. PR #120 durch #124 ersetzt."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Entscheidung 2026-11-09: Option 1 (Ersteinrichtung Neubetriebe) genehmigt, Option 2 (nachträglich, Zweitfreigabe) genehmigt, Option 3 (Offline-Ausnahme) ABGELEHNT, Option 4 (TOTP für Konten) genehmigt und priorisiert, Option 5 (Testbetriebe ausnehmen) ABGELEHNT. Quelle: SI-P4-NACHWEIS.md, Abschnitt Delta-Review. PR #120 durch #124 ersetzt. Stand 2026-11-09: #124 gemergt. Restarbeit in OPT-1/OPT-2/OPT-4 (offen)."
     },
     {
       "id": "SI-P5",
@@ -4439,12 +4439,12 @@
       "prio": "P3",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #136 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #136 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #136 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #136 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4453,12 +4453,12 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#136"],
       "nachweis": null,
       "akzeptanz": "LUECKEN in pruefungen/routen-inventar.test.js leer (Zeilen in RECHTEMATRIX.md §2); Negativ-Sonden für zugaenge-uebersicht, sicherung/sicherungen, sicherungsschluessel GET/DELETE, /lage, korrektur-antrag",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "RECHTEMATRIX.md, pruefungen/",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Stand 2026-11-09: INTEGRATED nach #136."
     },
     {
       "id": "SI-P6",
@@ -4691,12 +4691,12 @@
       "prio": "P0",
       "aufwandPT": {"min":2,"max":3.5},
       "abhaengigkeiten": ["IMP-0"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #130 in integration/release-v4 gemergt"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #130 in integration/release-v4 gemergt"},
+        "reviewt": {"wert":true,"beleg":"Review d6c92e0 plus Nachbesserung, integriert PR #130 in integration/release-v4 gemergt"},
+        "integriert": {"wert":true,"beleg":"PR #130 in integration/release-v4 gemergt"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4705,12 +4705,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#130"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Je Fehler ein Regressionstest, der mit dem Bestandscode rot ist; danach grün",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "src/lib/fachlogik.js (Personalimport), src/pruefung.jsx (Kopie prüfen), Tests",
-      "notiz": "Vorrang vor Upload-Oberfläche (Freigabe Punkt 10)."
+      "notiz": "Vorrang vor Upload-Oberfläche (Freigabe Punkt 10). Stand 2026-11-09: #130 gemergt (sicherung-Check nach restic-504-Rerun grün). Offen: NFKC-Normalisierung (Befund 4), Erstbefüllung ohne serverseitige Personalnummerprüfung (Befund 6), Entscheidung fehlendes Eintrittsfeld."
     },
     {
       "id": "IMP-2",
@@ -4719,12 +4719,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["IMP-0"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #123 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #123 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #123 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #123 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4733,12 +4733,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#123"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "XLSX/XLS/CSV/TSV/ODS über einen Vertrag lesbar; ZIP-Bombe, Makros und Überlänge abgewiesen; kein Netzzugriff zur Laufzeit",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "vendor/sheetjs/, server/lib/import/parser*.mjs, pruefungen/import-parser*.test.js",
-      "notiz": "Nicht xlsx@0.18.5 von npm. Nur Hersteller-Distribution, fest versioniert."
+      "notiz": "Nicht xlsx@0.18.5 von npm. Nur Hersteller-Distribution, fest versioniert. Stand 2026-11-09: child_process-Freigabe Option A (anzahl 1). CI für 2c013fd läuft. Nach grüner CI integrieren. Offen: Linux-Test auf Zielbild, Gegenprobe echter XLS. Stand 2026-11-09: INTEGRATED nach #123."
     },
     {
       "id": "IMP-3",
