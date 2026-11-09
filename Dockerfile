@@ -67,6 +67,8 @@ WORKDIR /app
 COPY --from=laufzeit /app/node_modules ./node_modules
 COPY --from=bauen /app/dist ./dist
 COPY server ./server
+# IMP-3: SheetJS-Parser (server/lib/import/parser-kern.mjs importiert vendor/sheetjs/xlsx.mjs)
+COPY vendor ./vendor
 COPY server.mjs package.json ./
 # Sicherung und Wiederherstellung der Ablage (BEREITSTELLUNG.md, 5.4) — im Bild,
 # damit der VPS kein eigenes Node braucht.

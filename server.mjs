@@ -67,6 +67,10 @@ const FUNKTIONEN = path.join(WURZEL, "server", "funktionen");
    sie schon beim Einlesen durchgesetzt, damit ein zu großer Rumpf gar nicht
    erst im Speicher landet. */
 const RUMPF_MAX = 6 * 1024 * 1024;
+/* IMP-3: Eine Funktion darf mit `config.rumpfMax` eine eigene Grenze nennen, mit `config.rumpfMaxJeWeg`
+   ({ "/pfad": Bytes }) je Weg eine eigene (der Import nimmt nur auf /api/import/upload Dateien bis 10 MB an,
+   server/funktionen/import.mjs; seine JSON-Wege bleiben bei 2 MB). Obergrenze 16 MB; ohne Angabe RUMPF_MAX. */
+const RUMPF_HOECHST = 16 * 1024 * 1024;
 
 /* Die Sicherheitsköpfe der Anwendung. Sie gelten für jede Antwort, die
    nicht selbst einen gleichnamigen Kopf setzt; Caddy ergänzt davor HSTS
@@ -105,7 +109,7 @@ const INHALT = {
    --------------------------------------------------------------------------- */
 
 /**
- * @typedef {{ name: string, muster: string, exakt: string|null, praefix: string|null,
+ * @typedef {{ name: string, muster: string, exakt: string|null, praefix: string|null, rumpfMax: number,
  *             handler: (req: Request, context: object) => Promise<Response>|Response }} Route
  */
 
@@ -129,6 +133,11 @@ async function funktionenLaden() {
         exakt: muster.endsWith("/*") ? null : muster,
         praefix: muster.endsWith("/*") ? muster.slice(0, -1) : null,   // "/api/*" -> "/api/"
         handler: modul.default,
+        rumpfMax: (() => {   // IMP-3: Grenze je Weg, sonst der Wert der Funktion, sonst RUMPF_MAX
+          const je = modul.config.rumpfMaxJeWeg && modul.config.rumpfMaxJeWeg[muster];
+          const g = Number.isInteger(je) && je > 0 ? je : modul.config.rumpfMax;
+          return Number.isInteger(g) && g > 0 ? Math.min(g, RUMPF_HOECHST) : RUMPF_MAX;
+        })(),
       });
     }
   }
@@ -165,13 +174,13 @@ function routeFuer(routen, pfad) {
  * @param {import("node:http").IncomingMessage} req
  * @returns {Promise<Buffer|null>}  null = zu groß
  */
-function rumpfEinlesen(req) {
+function rumpfEinlesen(req, grenze = RUMPF_MAX) {
   return new Promise((erfuellt, verworfen) => {
     const teile = [];
     let groesse = 0;
     const beiDaten = (stueck) => {
       groesse += stueck.length;
-      if (groesse > RUMPF_MAX) {
+      if (groesse > grenze) {
         /* Ab hier wird nichts mehr behalten, aber weiter gelesen und
            verworfen. Nur so bleibt der HTTP-Parser bis zum Ende der
            Nachricht im Takt, und dieselbe Verbindung kann danach die nächste
@@ -440,8 +449,8 @@ const server = createServer(async (req, res) => {
       let rumpf;
       if (req.method !== "GET" && req.method !== "HEAD") {
         const laenge = Number(req.headers["content-length"] || 0);
-        if (laenge > RUMPF_MAX) { zuGross(res); return; }
-        rumpf = await rumpfEinlesen(req);
+        if (laenge > route.rumpfMax) { zuGross(res); return; }
+        rumpf = await rumpfEinlesen(req, route.rumpfMax);
         if (rumpf === null) { zuGross(res); return; }
       }
       const anfrage = webRequest(req, url, rumpf);

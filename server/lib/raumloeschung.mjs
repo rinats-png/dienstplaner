@@ -188,6 +188,7 @@ export async function raumLoeschen(store, sitzungen, raum) {
   await praefixWeg(`zustellwarte:${raum}:`);
   await praefixWeg(`unzustellbar:${raum}:`);
   await praefixWeg(`zustellquote:${raum}:`);
+  await praefixWeg(`importerledigt:${raum}:`);   // IMP-3: Wiederholschutz-Vermerke des Imports (lib/import/uebernahme.mjs)
 
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein
