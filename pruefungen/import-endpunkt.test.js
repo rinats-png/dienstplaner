@@ -481,3 +481,60 @@ describe("IMP-3 Protokoll, Fristen, Gerüst", { timeout: 120000 }, () => {
     expect(config.rumpfMax).toBe(10 * 1024 * 1024);
   });
 });
+
+/* Eintrittsdatum (Entscheidung 2026-11-09): leer und optional -> null; gültig -> übernehmen; ungültig -> Fehler;
+   „heute" nur nach ausdrücklicher Eingabe; keine stille Ersetzung. */
+describe("IMP-3 Eintrittsdatum ohne stille Ersetzung", { timeout: 120000 }, () => {
+  const heuteTag = () => new Date().toISOString().slice(0, 10);
+  async function uebernehmen(t, raum, zeile, entscheidungen) {
+    const up = await hochladen(t.LT, csv([KOPF, zeile]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, ...(entscheidungen || {}) });
+    return { up, an, vs, d: an.datensaetze[0] };
+  }
+  it("neue Person mit leerem Eintritt: null, nicht das heutige Datum, ohne Fehler", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, d, vs } = await uebernehmen(t, raum, ["6001", "Leer", "Lea", "", "Wohnbereich 1", "", "20"]);
+    expect(d.fehler).toEqual([]);
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status, JSON.stringify(ue)).toBe(200);
+    const p = (await betriebVon(raum, "m1")).personen.find((x) => x.personalnummer === "6001");
+    expect(p.eintritt).not.toBe(heuteTag());
+    expect(p.eintritt).toBeNull();
+    expect(d.hinweise.join(" ")).not.toMatch(/heutig/i);
+  });
+  it("gültiger Eintritt (ISO und TT.MM.JJJJ) wird übernommen", async () => {
+    const { raum, t } = await neuerRaum();
+    const a = await uebernehmen(t, raum, ["6002", "Gut", "Gabi", "", "Wohnbereich 1", "2026-03-15", "20"]);
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: a.up.vorgang, bestaetigung: a.vs.bestaetigung });
+    expect(ue.status).toBe(200);
+    expect((await betriebVon(raum, "m1")).personen.find((x) => x.personalnummer === "6002").eintritt).toBe("2026-03-15");
+    const b = await uebernehmen(t, raum, ["6003", "Gut", "Gero", "", "Wohnbereich 1", "5.4.2026", "20"]);
+    expect(b.d.fehler).toEqual([]);
+    const ub = await schritt(t.LT, "uebernahme", { vorgang: b.up.vorgang, bestaetigung: b.vs.bestaetigung });
+    expect(ub.status).toBe(200);
+    expect((await betriebVon(raum, "m1")).personen.find((x) => x.personalnummer === "6003").eintritt).toBe("2026-04-05");
+  });
+  it("31.02. und ungültiges Format sind Fehler, nie Ersatz durch heute", async () => {
+    const { raum, t } = await neuerRaum();
+    for (const roh of ["31.02.2026", "2026-02-30", "morgen", "2026/03/01", "1.2"]) {
+      const { up, d } = await uebernehmen(t, raum, ["6004", "Fehl", "Fritz", "", "Wohnbereich 1", roh, "20"]);
+      expect(d.fehler, roh).toContain("Eintrittsdatum ungültig");
+      expect(d.erlaubt, roh).toEqual(["ueberspringen"]);
+      await schritt(t.LT, "verwerfen", { vorgang: up.vorgang });
+    }
+    expect((await betriebVon(raum, "m1")).personen.some((x) => x.personalnummer === "6004")).toBe(false);
+  });
+  it("Aktualisierung einer bestehenden Person mit leerem Eintritt lässt das bestehende Datum unverändert", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, vs } = await uebernehmen(t, raum, ["1001", "Beispiel", "Erika", "neu@example.test", "Wohnbereich 1", "", "25"],
+      { entscheidungen: { 1: "aktualisieren" }, bestaetigungen: { 1: true } });
+    expect(vs.status).toBe(200);
+    expect(vs.vorschau.aktualisieren[0].aenderungen.map((a) => a.feld)).not.toContain("eintritt");
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status).toBe(200);
+    const x1 = (await betriebVon(raum, "m1")).personen.find((p) => p.id === "x1");
+    expect(x1.eintritt).toBe("2019-03-01");
+    expect(x1.email).toBe("neu@example.test");
+  });
+});

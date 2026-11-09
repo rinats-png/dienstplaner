@@ -82,7 +82,7 @@ Immer die Standardgrenzen des Parser-Vertrags (keine Werte aus der Anfrage): 10 
 
 ## 9. Tests
 
-`pruefungen/import-endpunkt.test.js`: **32 Fälle, 32 grün** (Laufzeit ca. 2 min, davon der 20.001-Zeilen-Fall den größten Teil).
+`pruefungen/import-endpunkt.test.js`: **36 Fälle, 36 grün** (32 + 4 neue zum Eintrittsdatum; Laufzeit ca. 2 min, davon der 20.001-Zeilen-Fall den größten Teil). Eintrittsdatum: gegen bd37c16 war 1 der 4 neuen Fälle rot (neue Person mit leerem Eintritt bekam das heutige Datum); die drei übrigen (gültig, ungültig, Aktualisieren lässt Eintritt stehen) bestätigen bestehendes Verhalten.
 
 | Bereich | Fälle |
 |---|---|
@@ -133,7 +133,7 @@ Markiert in `server/lib/import/personen.mjs`, `analysieren`, Kommentar `IMP-9 AN
 2. **Vorgänge nur im Arbeitsspeicher**: Neustart verwirft offene Importe (gewollt). Bei mehreren Prozessen je Ablage ginge das nicht — ausgeschlossen durch `prozesssperre.mjs`.
 3. **Wiederholschutz-Vermerk nach dem Schreiben**: Bricht der Prozess genau zwischen `bestandSchreiben` und dem Vermerk ab, fehlt der Dateivermerk; ein zweiter Import derselben Datei würde dann an den Personalnummer-Dubletten hängen bleiben (Vorgabe „klären"), aber Datensätze ohne Personalnummer wären nur als Namensvorschlag markiert.
 4. **Gleiche Datei nach 30 Tagen** gilt wieder als neu (Dubletten greifen weiterhin).
-5. **Leeres Eintrittsdatum** = heutiges Datum (wie IMP-1, mit Hinweis je Datensatz); fachliche Entscheidung offen (IMP-1 Punkt 4).
+5. **Leeres Eintrittsdatum** (geschlossen, Entscheidung 2026-11-09): leer und optional -> `null`; gültig -> übernommen (ISO oder TT.MM.JJJJ); ungültig (31.02., fremdes Format) -> Fehler „Eintrittsdatum ungültig", Datensatz nur überspringbar; „heute" nie ohne ausdrückliche Eingabe, kein Hinweis „heutiges Datum angenommen" mehr. Aktualisieren fasst den Eintritt nie an (leere Zelle überschreibt kein bestehendes Datum). Technischer Anker: `zugehoerigkeit[0].ab` und `rolleSeit` einer neuen Person ohne Eintritt tragen den Tag der Übernahme (sie brauchen ein Datum, sind aber kein Eintritt; Serverleser wie `fachpruefung` vergleichen `ab` als Text). Offen bleibt, ob dieser Anker später auf „von Anfang an" umgestellt wird (wie im Client-Zweig `acc45/person/eintritt`, wo die Leser leeres `ab` tolerieren).
 6. **Rolle wird nicht importiert** (neue Personen sind „mitarbeiter"); Rollenvergabe bleibt im Rollendialog (roles.assign). Qualifikationen: IMP-5.
 7. **Betreiberkonsole**: `spurLesen` listet die Art `import` nicht (feste Liste in `schutz.mjs`); die Zeilen liegen in der Spur und sind für die Auskunft auffindbar. Aufnahme in die Liste wäre eine Zeile in einer geteilten Datei — bewusst nicht gemacht.
 8. **Schichtzyklen**: nur Gerüst (`art=schichtzyklus`: Upload, Spaltenliste, Vorschau mit `zyklen: []`, Übernahme 422). Umsetzung IMP-6.
