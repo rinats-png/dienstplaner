@@ -418,7 +418,9 @@ export async function codeEinloesen(store, email, code, { zweck, nummern = null,
         const eintrag = await store.get(zeiger.tokenSchluessel, { type: "json" });
         if (!eintrag) return { eintrag: null, grund: "unbekannt" };
         if (await istGesperrt(store, zeiger.tokenSchluessel)) return { eintrag: null, grund: "gesperrt" };
-        if (!(await verbrauchen(store, zeiger.tokenSchluessel, null)))
+        /* N-3 (Review WP-18): den Eintrag übergeben — sonst stünde der Sperrvermerk mit `bis: 0`, und
+           tokenAufraeumen räumte ihn weg, während das Token selbst noch gilt. */
+        if (!(await verbrauchen(store, zeiger.tokenSchluessel, eintrag)))
           return { eintrag: null, grund: "nicht-entwertet" };
         if (eintrag.bis < jetzt()) return { eintrag: null, grund: "abgelaufen" };
         if (zweck && eintrag.zweck !== zweck) return { eintrag: null, grund: "zweck" };

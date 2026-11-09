@@ -512,6 +512,30 @@ export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
 }
 
 /**
+ * D-N2 (WP-18, Sicherheitsreview N-2): Ist für den Zugangscode dieser Sitzung ein zweiter Faktor eingerichtet?
+ * Gesucht wird wie in rollenFaktorFrisch (entlang `ersetztDurch`). Zusätzlich zählt der Vermerk `zweiterFaktor: true`
+ * am Zugang (Review-Auflage N2 oben): Er hängt nicht am Pfeffer — wer ihn trägt, gilt als „eingerichtet", auch wenn
+ * der Faktor unter der jetzigen Kennung nicht zu finden ist (fail-closed: dann scheitert die Prüfung des Codes).
+ * Sitzung ohne Zugangscode: false. Ein Lesefehler wirft (der Aufrufer antwortet 503).
+ * @param {{store: any, sitzung: any}} a
+ * @returns {Promise<boolean>}
+ */
+export async function rollenFaktorEingerichtet({ store, sitzung }) {
+  const konto = String((sitzung && sitzung.konto) || "");
+  if (!konto) return false;
+  const kette = [konto];
+  let akt = konto;
+  for (let i = 0; i < 4; i++) {
+    const e = await kontoLesenStreng(store, akt);
+    if (e && e.zweiterFaktor === true) return true;
+    if (!e || typeof e.ersetztDurch !== "string" || !e.ersetztDurch || kette.includes(e.ersetztDurch)) break;
+    akt = e.ersetztDurch; kette.push(akt);
+  }
+  for (const schl of kette) if ((await zweifaktorStand(store, rollenZweifaktorId(schl))).aktiv) return true;
+  return false;
+}
+
+/**
  * Frischer zweiter Faktor für eine sicherheitskritische Aktion einer Leitungs-, Planungs- oder Kundensitzung
  * (WP-18: Einladung ausstellen). Dasselbe Verfahren wie betreiberFaktorFrisch, nur für Codes der ZWEIFAKTOR_ROLLEN
  * (Kennung rollenZweifaktorId) und ohne fertige Antwort: der Aufrufer entscheidet den Status (403 statt 401 —

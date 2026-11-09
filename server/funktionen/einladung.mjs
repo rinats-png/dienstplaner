@@ -5,8 +5,8 @@ import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
 import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
-import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWiderrufen, frischeBestaetigung }
-  from "../lib/einladungen.mjs";
+import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWiderrufen, frischeBestaetigung,
+  einladungRechtePruefen } from "../lib/einladungen.mjs";
 
 /* ==========================================================================
    EINLADUNGEN (WP-18)
@@ -111,14 +111,19 @@ export default async (req) => {
 
       /* ------------------------- Einladung ausstellen ------------------------ */
       if (pfad === "/api/einladung") {
-        /* B1: frische Bestätigung — nur, wo die Sitzung überhaupt ausstellen dürfte (sonst sagt die Fachlogik 403). */
-        if (s.rolle !== "betreiber" && s.demo !== true && bestand) {
-          const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
-          if (!f.ok) {
-            await protokoll("einladung", k, "abgewiesen", f.grund, wer);
-            return antwort({ fehler: f.fehler, ...("bestaetigung" in f ? { bestaetigung: f.bestaetigung } : {}) },
-              f.status);
-          }
+        /* N-1 (Sicherheitsreview): zuerst die Rechte. Eine Sitzung ohne Rollenvergabe bekommt immer dieselbe Antwort —
+           ob Passwort oder Zugangscode stimmen, erfährt sie hier nicht (kein Prüforakel, keine Wartezeit als Signal). */
+        const v = einladungRechtePruefen(s, bestand);
+        if (!v.ok) {
+          await protokoll("einladung", k, "abgewiesen", v.grund, wer);
+          return antwort({ fehler: v.fehler }, v.status);
+        }
+        /* B1: frische Bestätigung — erst, wenn die Sitzung überhaupt ausstellen dürfte. */
+        const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
+        if (!f.ok) {
+          await protokoll("einladung", k, "abgewiesen", f.grund, wer);
+          return antwort({ fehler: f.fehler, ...("bestaetigung" in f ? { bestaetigung: f.bestaetigung } : {}) },
+            f.status);
         }
         const e = await einladungAusstellen(ablage, { sitzung: s, bestand,
           personId: rumpf.personId, rolle: rumpf.rolle });

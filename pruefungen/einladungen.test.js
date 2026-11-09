@@ -589,6 +589,127 @@ describe("B2: Einladungsverwaltung — Liste ohne Token, Status, Widerruf", () =
   });
 });
 
+/* ==========================================================================
+   Auflagen aus dem Sicherheitsreview WP-18 (M-1, N-1; N-2 am Dateiende)
+   Vorher-rot auf 13331cf: docs/acc45/WP-18-NACHWEIS.md, „Auflagen aus dem Sicherheitsreview".
+   ========================================================================== */
+
+describe("M-1 (Sicherheitsreview): der Vermerk „fertig“ nach dem Anlegen des Zugangs schlägt nicht stillschweigend fehl", () => {
+  /** Die echte Ablage; nur das Schreiben des Vermerks „fertig“ scheitert die ersten `wieOft` Male. */
+  const vermerkStoer = (echt, wieOft) => {
+    let n = 0;
+    const basis = stoerAblage(echt);
+    return { versuche: () => n, ablage: { ...basis, setJSON: async (k, v, o) => {
+      if (String(k).startsWith("einladungsstatus:") && v && v.fertig === true) {
+        n += 1;
+        if (n <= wieOft) throw Object.assign(new Error("EIO: Ablage gestört (Prüfung)"), { code: "EIO" });
+      }
+      return echt.setJSON(k, v, o);
+    } } };
+  };
+
+  it("Vermerk dauerhaft nicht schreibbar: Code kommt an, Liste zeigt „eingelöst“ (nicht „verbraucht“), neu gezählt", async () => {
+    await personSetzen("mf1", "mitarbeiter");
+    await liste(T.leitung);                       // alles bisher Gesehene gilt als gesehen
+    const echt = laden();
+    const r = await E.einladungAusstellen(echt, { sitzung: leitungSitz(), bestand: await bestandJetzt(), personId: "mf1" });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    const st = vermerkStoer(echt, Infinity);
+    const z = await E.einladungEinloesen(st.ablage, { einladung: r.einladung,
+      bestandLesen: (raum) => B.bestandLesenStreng(echt, raum) });
+    /* Der Einlösende bekommt weiterhin seinen Code, und er meldet an. */
+    expect(z.ok, JSON.stringify(z)).toBe(true);
+    expect(z.zugangscode).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect((await anfrage(daten, "/api/anmelden", { rumpf: { zugangscode: z.zugangscode } })).person).toBe("mf1");
+    expect(await kontenDerPerson("mf1")).toHaveLength(1);
+    /* Der Vermerk blieb halb (fertig: false). */
+    expect((await echt.get(`einladungsstatus:${r.id}`, { type: "json" })).fertig).toBe(false);
+    /* Die Liste leitet „eingelöst“ aus dem Konto mit der Einladungskennung ab. */
+    const l = await liste(T.leitung);
+    expect(l.status, l.roh).toBe(200);
+    const e = l.einladungen.find((x) => x.id === r.id);
+    expect(e.status).not.toBe("verbraucht");
+    expect(e.status).toBe("eingeloest");
+    expect(e.neu).toBe(true);
+    expect(l.neuEingeloest).toBe(1);
+    expect((await liste(T.leitung)).neuEingeloest).toBe(0);
+    /* Beide Schreibversuche (der erste und die Wiederholung) sind gescheitert. */
+    expect(st.versuche()).toBe(2);
+  });
+
+  it("ein gescheiterter Schreibversuch wird wiederholt: danach steht „fertig“", async () => {
+    await personSetzen("mf2", "mitarbeiter");
+    const echt = laden();
+    const r = await E.einladungAusstellen(echt, { sitzung: leitungSitz(), bestand: await bestandJetzt(), personId: "mf2" });
+    const st = vermerkStoer(echt, 1);
+    const z = await E.einladungEinloesen(st.ablage, { einladung: r.einladung,
+      bestandLesen: (raum) => B.bestandLesenStreng(echt, raum) });
+    expect(z.ok, JSON.stringify(z)).toBe(true);
+    expect(st.versuche()).toBe(2);
+    expect(await echt.get(`einladungsstatus:${r.id}`, { type: "json" })).toMatchObject({ status: "eingeloest", fertig: true });
+  });
+});
+
+describe("N-1 (Sicherheitsreview): erst die Rechte, dann die Bestätigung — keine Unterscheidung ohne Rollenvergabe", () => {
+  const ORGA = { fehler: "Einladungen verwaltet die Organisationsleitung." };
+
+  it("Zugangscode-Sitzung ohne roles.assign: ohne, mit falschem, mit richtigem Code und mit TOTP dieselbe Antwort", async () => {
+    await personSetzen("nr1", "mitarbeiter");
+    const t = await sitzung("EINB-PLAN-0011", "planer", "ap");
+    await sitzungAltern(t, 10);                   // älter als fünf Minuten: die Bestätigung würde verlangt
+    const antworten = [];
+    for (const bestaetigung of [undefined, { zugangscode: "FALS-CHER-CODE" }, { zugangscode: "EINB-PLAN-0011" },
+      { zweifaktor: "000000" }]) {
+      const r = await einladen(t, { personId: "nr1", ...(bestaetigung ? { bestaetigung } : {}) });
+      antworten.push({ status: r.status, rumpf: JSON.parse(r.roh) });
+    }
+    for (const a of antworten) expect(a).toEqual({ status: 403, rumpf: ORGA });
+    expect(await kontenDerPerson("nr1")).toHaveLength(0);
+  });
+
+  it("Konto-Sitzung ohne roles.assign: falsches Passwort bekommt dieselbe Antwort wie richtiges (403 keine Rollenvergabe)", async () => {
+    await personSetzen("nr2", "mitarbeiter");
+    const A = await import("../server/lib/accounts.mjs");
+    const { passwortAblegen } = await import("../server/lib/passwoerter.mjs");
+    const AC = await import("../server/lib/accountsitzungen.mjs");
+    const BA = await import("../server/lib/betriebsauswahl.mjs");
+    const RICHTIG = "pruefpasswort-planer-richtig-123";
+    const k = await A.accountAnlegen(laden(), { email: "planer-probe@example.org" });
+    expect(k.ok, JSON.stringify(k)).toBe(true);
+    await A.emailBestaetigen(laden(), k.account.id);
+    const g = await A.passwortSetzen(laden(), k.account.id, await passwortAblegen(RICHTIG));
+    expect(g.ok, JSON.stringify(g)).toBe(true);
+    const m = await A.mitgliedschaftAnlegen(laden(), { accountId: k.account.id, raum: RAUM, betrieb: 0,
+      mandantId: "m-a", person: "ap", rolle: "planer", status: "aktiv" });
+    expect(m.ok, JSON.stringify(m)).toBe(true);
+    const konto = await A.accountLesenPerId(laden(), k.account.id);
+    const as = await AC.accountSitzungAnlegen({ accountId: k.account.id, epoche: konto.epoche });
+    expect(as.ok).toBe(true);
+    const wahl = await BA.betriebWaehlen(laden(), { accountId: k.account.id, raum: RAUM,
+      kontoSitzung: { id: AC.accountSitzungsId(as.token), bis: as.gueltigBis } });
+    expect(wahl.ok, JSON.stringify(wahl)).toBe(true);
+    const dreimal = async () => {
+      const falsch = await einladen(wahl.token, { personId: "nr2", bestaetigung: { passwort: "pruefpasswort-planer-falsch-9" } });
+      const richtig = await einladen(wahl.token, { personId: "nr2", bestaetigung: { passwort: RICHTIG } });
+      const ohne = await einladen(wahl.token, { personId: "nr2" });
+      return [falsch, richtig, ohne].map((r) => ({ status: r.status, rumpf: JSON.parse(r.roh) }));
+    };
+    /* Heute trägt eine Arbeitssitzung aus einem Konto keine Betriebskennung (betriebsauswahl.mjs): Sie scheitert an
+       „Betrieb nicht eindeutig“ — vor dem Fix erfuhr sie trotzdem, ob ihr Passwort stimmt. */
+    const heute = await dreimal();
+    for (const a of heute) expect(a).toEqual(heute[1]);
+    expect(heute[1].status).toBe(403);
+    expect(heute[1].rumpf.bestaetigung).toBeUndefined();
+    /* Mit Betriebskennung (wie eine Sitzung aus einem Zugangscode) bleibt es bei der fehlenden Rollenvergabe. */
+    const { sitzungsSpeicher, sitzungsSchluessel } = await import("../server/lib/sitzungen.mjs");
+    const sp = sitzungsSpeicher();
+    const roh = await sp.get(sitzungsSchluessel(wahl.token), { type: "json" });
+    await sp.setJSON(sitzungsSchluessel(wahl.token), { ...roh, mandantId: "m-a" });
+    for (const a of await dreimal()) expect(a).toEqual({ status: 403, rumpf: ORGA });
+    expect(await kontenDerPerson("nr2")).toHaveLength(0);
+  });
+});
+
 describe("B3: Einmaligkeit über zwei Ablage-Instanzen und zwei Prozesse", () => {
   it("zwei Modul-Instanzen (eigene Reihen, eigene Raumsperren) lösen gleichzeitig ein: je Einladung genau ein Code", async () => {
     vi.resetModules();
@@ -617,33 +738,60 @@ describe("B3: Einmaligkeit über zwei Ablage-Instanzen und zwei Prozesse", () =>
       const B = await import(${JSON.stringify(url("../server/lib/bestand.mjs"))});
       const A = await import(${JSON.stringify(url("../server/lib/ablage.mjs"))});
       const s = A.getStore({ name: "centric", consistency: "strong" });
-      const start = Number(process.env.START);
-      while (Date.now() < start) await new Promise((r) => setTimeout(r, 1));
+      /* N-6 (Sicherheitsreview): Bereitschaftssignal, dann gemeinsamer Start. Der Kindprozess meldet sich erst, wenn
+         Module und Ablage geladen sind, und wartet dann auf das Startsignal des Elternprozesses (eine Zeile auf stdin). */
+      const bereitAm = Date.now();
+      process.stdout.write("BEREIT " + bereitAm + "\\n");
+      await new Promise((r) => process.stdin.once("data", r));
+      const gestartetAm = Date.now();
       /* Wirft das Einlösen (vor dem Verbrauch, etwa weil Windows eine gerade gelöschte Datei kurz sperrt), antwortet
          der Endpunkt 503 — nichts ist verbraucht. Das zählt hier als Nicht-Gewinner. */
       let r;
       try { r = await E.einladungEinloesen(s, { einladung: process.env.EINL, bestandLesen: (raum) => B.bestandLesenStreng(s, raum) }); }
       catch (e) { r = { ok: false, status: "wirft", grund: String(e && e.message) }; }
-      console.log("ERGEBNIS " + JSON.stringify({ ok: r.ok, status: r.status || 200, grund: r.grund || null }));`;
-    const lauf = (einl, start) => new Promise((erfuellt, verworfen) => {
+      console.log("ERGEBNIS " + JSON.stringify({ ok: r.ok, status: r.status || 200, grund: r.grund || null,
+        bereitAm, gestartetAm }));`;
+    /* Startet einen Kindprozess. `bereit` erfüllt sich mit dem Bereitschaftssignal, `ergebnis` mit der Ergebniszeile;
+       `los()` gibt das Startsignal. */
+    const lauf = (einl) => {
       const k = spawn(process.execPath, ["--input-type=module", "-e", skript], {
-        env: { ...process.env, EINL: einl, START: String(start) }, stdio: ["ignore", "pipe", "pipe"] });
-      let aus = "", err = "";
-      k.stdout.on("data", (d) => { aus += d; });
-      k.stderr.on("data", (d) => { err += d; });
-      k.on("error", verworfen);
-      k.on("close", () => {
-        const z = aus.split("\n").find((x) => x.startsWith("ERGEBNIS "));
-        if (!z) verworfen(new Error(`Kindprozess ohne Ergebnis: ${err || aus}`));
-        else erfuellt(JSON.parse(z.slice(9)));
+        env: { ...process.env, EINL: einl }, stdio: ["pipe", "pipe", "pipe"] });
+      let aus = "", err = "", meldeBereit;
+      const bereit = new Promise((r) => { meldeBereit = r; });
+      const ergebnis = new Promise((erfuellt, verworfen) => {
+        k.stdout.on("data", (d) => {
+          aus += d;
+          const b = aus.split("\n").find((x) => x.startsWith("BEREIT "));
+          if (b) meldeBereit(Number(b.slice(7)));
+        });
+        k.stderr.on("data", (d) => { err += d; });
+        k.on("error", verworfen);
+        k.on("close", () => {
+          meldeBereit(NaN);                        // ohne Signal beendet: die Prüfung unten schlägt an
+          const z = aus.split("\n").find((x) => x.startsWith("ERGEBNIS "));
+          if (!z) verworfen(new Error(`Kindprozess ohne Ergebnis: ${err || aus}`));
+          else erfuellt(JSON.parse(z.slice(9)));
+        });
       });
-    });
+      return { bereit, ergebnis, los: () => { k.stdin.write("los\n"); k.stdin.end(); } };
+    };
     for (let i = 0; i < 3; i += 1) {
       const id = `zp${i}`;
       await personSetzen(id, "mitarbeiter");
       const r = await E.einladungAusstellen(laden(), { sitzung: leitungSitz(), bestand: await bestandJetzt(), personId: id });
-      const start = Date.now() + 5000;
-      const z = await Promise.all([lauf(r.einladung, start), lauf(r.einladung, start)]);
+      const kinder = [lauf(r.einladung), lauf(r.einladung)];
+      /* Erst wenn BEIDE gemeldet haben, dass sie bereit sind, geht das Startsignal an beide. */
+      const bereitAm = await Promise.all(kinder.map((k) => k.bereit));
+      expect(bereitAm.every((t) => Number.isFinite(t)), JSON.stringify(bereitAm)).toBe(true);
+      const losAm = Date.now();
+      for (const k of kinder) k.los();
+      const z = await Promise.all(kinder.map((k) => k.ergebnis));
+      /* Nachweis: beide waren vor dem Startzeitpunkt bereit, und keiner hat vor ihm begonnen. */
+      for (const x of z) {
+        expect(x.bereitAm, JSON.stringify(z)).toBeLessThanOrEqual(losAm);
+        expect(x.gestartetAm, JSON.stringify(z)).toBeGreaterThanOrEqual(losAm);
+      }
+      expect(Math.max(...z.map((x) => x.bereitAm))).toBeLessThanOrEqual(Math.min(...z.map((x) => x.gestartetAm)));
       expect(z.filter((x) => x.ok).length, JSON.stringify(z)).toBe(1);
       expect(await kontenDerPerson(id)).toHaveLength(1);
     }
@@ -694,5 +842,62 @@ describe("B1 unter Pflicht: frischer zweiter Faktor (zuletzt — die Uhr wird hi
     expect(r.status, r.roh).toBe(200);
     const noch = await einladen(tok, { personId: "zf3", bestaetigung: { zweifaktor: c } });
     expect(noch.status, noch.roh).toBe(403);
+  });
+});
+
+describe("N-2 / D-N2 (Sicherheitsreview): ein eingerichteter zweiter Faktor wird auch OHNE Pflicht verlangt", () => {
+  let geheimnis, tok, Z;
+  const code = (d = 0) => Z.hotp(Z.base32Dekodieren(geheimnis), Z.schrittZu(Date.now()) + d);
+  const weiter = () => vi.setSystemTime(Date.now() + 30_000);
+  beforeAll(async () => {
+    delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
+    Z = await import("../server/lib/zweifaktor.mjs");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now());
+    for (const id of ["nf1", "nf2", "nf3", "nf4"]) await personSetzen(id, "mitarbeiter");
+    await kontoSchreiben(laden(), ablageSchluessel("EINC-LEIT-0012"), { name: "Test", bestand: RAUM, rolle: "leitung",
+      person: "al", betrieb: 0, mandantId: "m-a", demo: false, angelegt: "2026-01-01T00:00:00.000Z" });
+    const b = await anfrage(daten, "/api/anmelden", { rumpf: { zugangscode: "EINC-LEIT-0012", zweifaktorAktion: "beginnen" } });
+    expect(b.status, b.roh).toBe(200);
+    geheimnis = b.geheimnis;
+    const f = await anfrage(daten, "/api/anmelden", { rumpf: { zugangscode: "EINC-LEIT-0012", zweifaktorAktion: "bestaetigen",
+      zweifaktor: code() } });
+    expect(f.status, f.roh).toBe(200);
+    weiter();
+    const a = await anfrage(daten, "/api/anmelden", { rumpf: { zugangscode: "EINC-LEIT-0012", zweifaktor: code() } });
+    expect(a.status, a.roh).toBe(200);
+    tok = a.token;
+  });
+  afterAll(() => { vi.useRealTimers(); });
+
+  it("frische Anmeldung mit Faktor (höchstens fünf Minuten): 200 ohne weiteren Code", async () => {
+    const r = await einladen(tok, { personId: "nf1" });
+    expect(r.status, r.roh).toBe(200);
+  });
+  it("Pflicht aus, Faktor eingerichtet, Anmeldung älter, nur Zugangscode: 403 (Faktor verlangt), nichts ausgestellt", async () => {
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const vorher = await anzahlMit("token:");
+    const r = await einladen(tok, { personId: "nf2", bestaetigung: { zugangscode: "EINC-LEIT-0012" } });
+    expect(r.status, r.roh).toBe(403);
+    expect(r.bestaetigung).toBe("zweifaktor");
+    expect(r.einladung).toBeUndefined();
+    const ohne = await einladen(tok, { personId: "nf2" });
+    expect(ohne.status, ohne.roh).toBe(403);
+    expect(ohne.bestaetigung).toBe("zweifaktor");
+    expect(await anzahlMit("token:")).toBe(vorher);
+  });
+  it("mit gültigem Code aus der App: 200", async () => {
+    weiter();
+    const r = await einladen(tok, { personId: "nf2", bestaetigung: { zweifaktor: code() } });
+    expect(r.status, r.roh).toBe(200);
+  });
+  it("Zugang OHNE eingerichteten Faktor, Anmeldung höchstens fünf Minuten alt: 200 (unverändert)", async () => {
+    const t = await sitzung("EIND-LEIT-0013", "leitung", "al");
+    await sitzungAltern(t, 4);
+    const r = await einladen(t, { personId: "nf3" });
+    expect(r.status, r.roh).toBe(200);
+    /* … und mit dem eigenen Zugangscode nach mehr als fünf Minuten weiterhin (unverändert). */
+    await sitzungAltern(t, 10);
+    expect((await einladen(t, { personId: "nf4", bestaetigung: { zugangscode: "EIND-LEIT-0013" } })).status).toBe(200);
   });
 });

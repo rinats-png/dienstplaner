@@ -299,3 +299,119 @@ Geänderte Dateien im Ausbau: `server/lib/einladungen.mjs`, `server/funktionen/e
 (eine Zeile: Kopf für `/einladung`), `src/ansichten/einladungen.jsx`, `src/speicher.js`, `RECHTEMATRIX.md`,
 `pruefungen/einladungen.test.js`, `pruefungen/einladungen-oberflaeche.test.js`, `pruefungen/routen-inventar.test.js`.
 `src/App.jsx` und `src/main.jsx` im Ausbau unverändert.
+
+## 7. Auflagen aus dem Sicherheitsreview (Branch `acc45/zugaenge/wp-18-fix`, Basis 13331cf)
+
+Vorher-rot: Die neuen Tests liefen gegen den Servercode von 13331cf (`server/lib/einladungen.mjs`,
+`server/lib/token.mjs`, `server/lib/betreiber-zweifaktor.mjs`, `server/funktionen/einladung.mjs` auf 13331cf
+zurückgesetzt, Tests neu): **6 rot** (5 in `einladungen.test.js`, 1 in `token.test.js`), alle übrigen grün. Mit dem
+Fix: alle grün. Keine bestehende Assertion geändert oder entfernt. Erwartungen, die altes Verhalten festschreiben:
+keine gefunden — die bestehenden B1-Tests nutzen Zugänge ohne Faktor (ohne Pflicht) bzw. laufen unter Pflicht, beide
+Wege sind von D-N2 nicht berührt.
+
+| Auflage | Status | Test (Datei › Block › Fall) | 13331cf | Fix |
+|---|---|---|---|---|
+| M-1 (a) Vermerk „fertig" einmal wiederholen | umgesetzt | einladungen.test.js › M-1 › „ein gescheiterter Schreibversuch wird wiederholt: danach steht „fertig“" | rot (1 Versuch) | grün |
+| M-1 (b) Liste leitet „eingelöst" aus dem Konto ab | umgesetzt | einladungen.test.js › M-1 › „Vermerk dauerhaft nicht schreibbar: Code kommt an, Liste zeigt „eingelöst“ (nicht „verbraucht“), neu gezählt" | rot (`verbraucht`) | grün |
+| N-1 Rechte vor Bestätigung | umgesetzt | einladungen.test.js › N-1 › „Zugangscode-Sitzung ohne roles.assign …" und „Konto-Sitzung ohne roles.assign …" | rot (2) | grün |
+| N-2 / D-N2 eingerichteter Faktor auch ohne Pflicht | umgesetzt | einladungen.test.js › N-2 / D-N2 (4 Fälle, am Dateiende) | rot („nur Zugangscode" → 200) | grün |
+| N-3 Sperrvermerk aus `codeEinloesen` mit Frist | umgesetzt | token.test.js › N-3 › „nach tokenAufraeumen ist ein per Code eingelöstes, nicht löschbares Token weiterhin gesperrt" | rot (Vermerk weggeräumt) | grün |
+| N-6 Zwei-Prozess-Test mit Bereitschaftssignal | umgesetzt (nur Test) | einladungen.test.js › B3 › „zwei Node-Prozesse auf derselben Ablage …" | grün (kein Verhalten geändert) | grün |
+| N-4 Hinweis je Betrieb, kein Mail/Push | dokumentiert (7.6) | — | — | — |
+| N-5 Wiederherstellung hebt Widerrufe auf | dokumentiert als Grenze (7.7) | — | — | — |
+
+Verifikation (lokal, Windows, `--testTimeout=60000`): `einladungen.test.js` (53), `einladungen-oberflaeche.test.js`,
+`routen-inventar.test.js`, `token.test.js` (29), `arbeitssitzung.test.js`, `sitzungsinventar.test.js` — zusammen
+**163/163 grün** (Basis 154; +9 neu: 8 in `einladungen.test.js`, 1 in `token.test.js`). Zusätzlich, weil
+`betreiber-zweifaktor.mjs` berührt ist: `betreiber-zweifaktor.test.js`, `betreiber-zweifaktor-pflicht.test.js`,
+`rollen-zweifaktor.test.js`, `rollen-zweifaktor-merken.test.js`, `zugaenge-frischer-faktor.test.js` 104/104 grün.
+`eslint .` 0 Fehler (geänderte Dateien ohne Warnung), `tsc -p jsconfig.json` ohne Fehler,
+`node werkzeug/verdrahtung-pruefen.mjs` „Verdrahtung ok: 288 Prüfdateien" (nur die bekannten Warnungen zu
+Paketständen).
+
+### 7.1 M-1 — Abschlussvermerk schlägt nicht mehr stillschweigend fehl
+
+`einladungEinloesen`, `abschluss`: Das Schreiben des Vermerks wird einmal wiederholt (zwei Versuche). Scheitern
+beide, bleibt der beim Anlegen geschriebene Vermerk `{status: "eingeloest", fertig: false}` stehen — die Einladung
+bleibt gesperrt. Der Einlösende bekommt seinen Code trotzdem: Der Zugang ist angelegt; ein 503 hinterließe einen
+Zugang, den niemand kennt.
+
+`einladungenListe`, `statusVon`: Hat eine Einladung einen Vermerk, der weder „widerrufen" noch „eingeloest + fertig"
+ist, liest die Liste (nur dann, höchstens einmal je Abruf) die Konten und wertet die Einladung als **eingelöst**,
+sobald ein Konto mit `einladung.id` = Einladungskennung existiert (gleicher Raum, gleiche `mandantId`). Der Hinweis
+„neu eingelöst" zählt dann korrekt (er hängt am Zeitpunkt im Vermerk). Ein Lesefehler an den Konten ist 503, kein
+„verbraucht" (fail-closed). Das gilt auch, wenn ein Fehler nach dem Anlegen „verbraucht" vermerkt hat, das Konto aber
+steht — die Leitung sieht dann den Zugang und kann ihn sperren.
+
+### 7.2 N-1 — Rechteprüfung vor der Bestätigung
+
+`server/funktionen/einladung.mjs`: `POST /api/einladung` ruft zuerst `einladungRechtePruefen` (= `leitungPruefen`)
+und erst danach `frischeBestaetigung`. Eine Sitzung ohne `roles.assign` bekommt ohne, mit falschem und mit richtigem
+Passwort bzw. Zugangscode sowie mit TOTP dieselbe Antwort (403 „Einladungen verwaltet die Organisationsleitung.",
+ohne `bestaetigung`-Feld, ohne die 400-ms-Verzögerung der Fehlbestätigung). Der Endpunkt ist damit kein Prüforakel
+für Passwort oder Zugangscode mehr.
+
+**Befund nebenbei (offen):** Eine Arbeitssitzung aus einem Konto (Betriebsauswahl, `betriebsauswahl.mjs`) trägt keine
+`mandantId`. `leitungPruefen` verlangt sie — eine Kontositzung kann deshalb heute **keine** Einladung ausstellen,
+auch als Leitung nicht (403 „Dieser Zugang ist keinem Betrieb eindeutig zugeordnet."). Der Passwortweg der frischen
+Bestätigung war bis zu diesem Fix nur als Orakel erreichbar. Der Test prüft beide Lagen: heute (ohne `mandantId`:
+drei gleiche Antworten) und mit in der Sitzung nachgetragener `mandantId` (dreimal 403 „keine Rollenvergabe"). Ob
+Kontositzungen künftig `mandantId` tragen sollen, ist eine eigene Entscheidung, nicht Teil dieses Fixes.
+
+### 7.3 N-2 / D-N2 — eingerichteter zweiter Faktor wird auch ohne Pflicht verlangt
+
+Entscheidung D-N2 (Betreiber, verbindlich): Ist für den Zugang ein zweiter Faktor eingerichtet, wird er beim
+Ausstellen auch OHNE 2FA-Pflicht verlangt — ein aktueller Code aus der App, oder eine Anmeldung MIT Faktor, die
+höchstens fünf Minuten alt ist. Ohne eingerichteten Faktor bleibt es beim bisherigen Weg (Anmeldung ≤ 5 min oder der
+eigene Zugangscode).
+
+Begründung: Der Zugangscode ist der erste Faktor. Wer für seinen Zugang einen zweiten eingerichtet hat, hat damit
+festgelegt, dass der erste allein nicht genügt — bei der Anmeldung ist der Faktor Pflicht, sobald er eingerichtet
+ist (`codeZweifaktor`). Die frische Bestätigung vor dem Prägen eines neuen Zugangs darf nicht schwächer sein als die
+Anmeldung selbst: Bisher reichten ein abgegriffenes Sitzungsmerkmal und ein mitgelesener Zugangscode für neue
+Zugänge, obwohl ein Faktor da war. Ohne eingerichteten Faktor gibt es nichts Stärkeres zu verlangen; dort bleibt die
+Anmeldung ≤ 5 min der frische Nachweis.
+
+Umsetzung: `rollenFaktorEingerichtet` (`betreiber-zweifaktor.mjs`) sucht den Faktor wie `rollenFaktorFrisch`
+(entlang `ersetztDurch`) und wertet zusätzlich den Vermerk `zweiterFaktor: true` am Zugang (pfefferunabhängig,
+fail-closed). Lesefehler → 503. In `frischeBestaetigung` steht die Prüfung nach dem TOTP- und dem Pflichtzweig und
+vor dem Zugangscode-Zweig. Kontositzungen (Passwort) sind nicht betroffen — ein Konto kennt keinen zweiten Faktor.
+
+Tests: Faktor eingerichtet, Pflicht aus, Anmeldung > 5 min, nur Zugangscode → 403 (`bestaetigung: "zweifaktor"`),
+nichts ausgestellt; ohne Angabe → 403; gültiger TOTP → 200; frische Anmeldung mit Faktor → 200; Zugang ohne Faktor,
+Anmeldung ≤ 5 min → 200 und eigener Zugangscode nach > 5 min → 200 (unverändert).
+
+### 7.4 N-3 — Sperrvermerk aus dem Codeweg
+
+`token.mjs`, `codeEinloesen`: `verbrauchen(store, schluessel, eintrag)` statt `null`. Scheitert das Löschen, steht der
+Sperrvermerk mit der Frist des Tokens (`bis`), nicht mit `bis: 0`; `tokenAufraeumen` entfernt ihn erst zusammen mit
+dem Token. Der Test bildet den „anderen Prozess" (ohne die prozesslokale Sperre) mit einer frischen Modulinstanz nach
+(`vi.resetModules`). Nebenwirkung: `verbrauchen` versucht den Codezeiger erneut zu löschen — er ist an dieser Stelle
+schon gelöscht, ein Fehler wird wie bisher geschluckt.
+
+### 7.5 N-6 — Zwei-Prozess-Test mit Bereitschaftssignal
+
+Der Test startet beide Kindprozesse, wartet auf deren Zeile `BEREIT <Zeit>` (gesendet nach dem Laden der Module und
+der Ablage) und gibt erst dann beiden das Startsignal (eine Zeile auf stdin). Keine feste Wartezeit mehr (vorher
+Start = jetzt + 5 s). Neu geprüft: beide Bereitschaftszeitpunkte ≤ Startsignal, beide Startzeitpunkte ≥ Startsignal,
+spätestes „bereit" ≤ frühester Start. Die bestehende Erwartung (genau einer gewinnt, ein Konto) bleibt.
+
+### 7.6 N-4 — Hinweis „neu eingelöst" (nur dokumentiert)
+
+Der Zeitpunkt des letzten Blicks (`einladungsblick:<Betrieb>`) gilt **je Betrieb, nicht je Leitung**: Hat eine
+Leitung die Liste geöffnet, sieht eine zweite Leitung desselben Betriebs dieselbe Einlösung nicht mehr als „neu"
+(Status „eingelöst" mit Zeitpunkt steht weiter in der Liste). Eine aktive Benachrichtigung per **Mail oder Push**
+gibt es nicht; die Leitung erfährt die Einlösung nur beim Öffnen der Liste. Beides bleibt offen (siehe 6.6).
+
+### 7.7 N-5 — Wiederherstellung einer Sicherung (Grenze, nur dokumentiert)
+
+Die Einmaligkeit hängt an Vermerken in der Ablage (`einladungsstatus:`, `tokensperre:`, Laufnummer `einladungsnr:`).
+Wird eine Sicherung von vor einem Widerruf (oder vor dem Ersetzen bzw. Einlösen) zurückgespielt, stehen Token und
+Vermerke wieder wie damals — eine inzwischen widerrufene Einladung kann dann wieder einlösbar sein, solange ihre Frist
+(7 Tage) läuft. Das ist das allgemeine Wiederherstellungsthema (jeder Widerruf und jede Sperre nach dem
+Sicherungszeitpunkt geht verloren), nicht spezifisch für WP-18. Handhabung bis zu einer allgemeinen Lösung: nach einer
+Wiederherstellung die offenen Einladungen in der Liste prüfen und gegebenenfalls widerrufen bzw. neu einladen.
+
+Geänderte Dateien (Fix): `server/lib/einladungen.mjs`, `server/funktionen/einladung.mjs`, `server/lib/token.mjs`,
+`server/lib/betreiber-zweifaktor.mjs` (neue Funktion `rollenFaktorEingerichtet`), `pruefungen/einladungen.test.js`,
+`pruefungen/token.test.js`, dieses Dokument.

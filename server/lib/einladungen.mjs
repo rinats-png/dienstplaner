@@ -83,7 +83,7 @@ import { aktivePerson } from "./personengueltig.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { betriebFuerNeuenCode } from "./erstbefuellung.mjs";
 import { unterRaumsperre } from "./raumsperre.mjs";
-import { rollenPflicht, rollenFaktorFrisch } from "./betreiber-zweifaktor.mjs";
+import { rollenPflicht, rollenFaktorFrisch, rollenFaktorEingerichtet } from "./betreiber-zweifaktor.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
 import { passwortPruefen } from "./passwoerter.mjs";
 
@@ -192,6 +192,13 @@ function leitungPruefen(s, bestand) {
   return { ok: true, m, vergeber };
 }
 
+/**
+ * N-1 (Sicherheitsreview): die Rechteprüfung für den Endpunkt — VOR der frischen Bestätigung. Sonst erführe eine
+ * Sitzung ohne Rollenvergabe an der Antwort, ob ihr Passwort bzw. Zugangscode stimmt.
+ * @returns {{ok: true, m: any, vergeber: string}|{ok: false, status: number, fehler: string, grund: string}}
+ */
+export const einladungRechtePruefen = (s, bestand) => leitungPruefen(s, bestand);
+
 /* --------------------------------------------------------------------------
    FRISCHE BESTÄTIGUNG BEIM AUSSTELLEN (B1)
 
@@ -206,6 +213,9 @@ function leitungPruefen(s, bestand) {
        - eine Anmeldung MIT bestandenem zweitem Faktor, die höchstens fünf
          Minuten alt ist.
      Ohne Pflicht:
+       - Zugang MIT eingerichtetem zweitem Faktor (D-N2): wie unter Pflicht —
+         Code aus der App oder Anmeldung mit Faktor ≤ fünf Minuten; der
+         Zugangscode allein genügt nicht;
        - Sitzung aus einem Zugangscode: der eigene Zugangscode im Rumpf
          (`bestaetigung.zugangscode`, muss genau der Code dieser Sitzung
          sein), ein Code aus der App (falls eingerichtet), oder eine
@@ -258,6 +268,17 @@ export async function frischeBestaetigung(store, { sitzung: s, bestaetigung, k =
       return { ...nein(403, "Das Passwort stimmt nicht.", "passwort falsch"), bestaetigung: "passwort" };
     }
     return { ok: true, art: "passwort" };
+  }
+  /* D-N2 (Sicherheitsreview N-2): Ist für diesen Zugang ein zweiter Faktor eingerichtet, wird er auch ohne Pflicht
+     verlangt — wie unter Pflicht: ein Code aus der App (oben) oder eine Anmeldung MIT Faktor, höchstens fünf Minuten
+     alt. Der Zugangscode allein genügt dann nicht: Wer einen Faktor eingerichtet hat, soll nicht mit dem ersten Faktor
+     allein neue Zugänge prägen können. */
+  let mitFaktor;
+  try { mitFaktor = await rollenFaktorEingerichtet({ store, sitzung: s }); }
+  catch { return nein(503, "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.", "faktor nicht lesbar"); }
+  if (mitFaktor) {
+    if (jung && s.zweifaktor === true) return { ok: true, art: "anmeldung-mit-faktor" };
+    return ohneBestaetigung("zweifaktor");
   }
   if (typeof b.zugangscode === "string" && b.zugangscode) {
     const konto = String((s && s.konto) || "");
@@ -356,12 +377,28 @@ async function metaListe(store, raum, mandantId) {
   return aus;
 }
 
-/** Der Status einer Einladung aus Vermerk und Frist. */
-function statusVon(meta, vermerk, nun) {
+/**
+ * Der Status einer Einladung aus Vermerk, Frist und — M-1 — dem Konto, das sie angelegt hat.
+ * `kontoDa`: Es gibt einen Zugang mit dieser Einladungskennung. Dann ist sie eingelöst, auch wenn der Vermerk
+ * „fertig" nicht mehr geschrieben werden konnte (fertig: false) oder ein Fehler nach dem Anlegen „verbraucht" vermerkt hat.
+ */
+function statusVon(meta, vermerk, nun, kontoDa = false) {
   if (vermerk && vermerk.status === "widerrufen") return "widerrufen";
   if (vermerk && vermerk.status === "eingeloest" && vermerk.fertig === true) return "eingeloest";
+  if (vermerk && kontoDa) return "eingeloest";
   if (vermerk) return "verbraucht";          // eingelöst, aber kein Zugang entstanden (Fehler, Rolle geändert …)
   return Number(meta.bis) < nun ? "abgelaufen" : "offen";
+}
+
+/** M-1: Die Einladungskennungen, aus denen in diesem Betrieb ein Zugang entstanden ist. Wirft bei einem Lesefehler. */
+async function eingeloesteKennungen(store, raum, mandantId) {
+  const konten = await alleKontenStreng(store);
+  const ids = new Set();
+  for (const k of Object.values(konten)) {
+    if (!k || k.bestand !== raum || k.mandantId !== mandantId) continue;
+    if (k.einladung && typeof k.einladung.id === "string") ids.add(k.einladung.id);
+  }
+  return ids;
 }
 
 /**
@@ -386,11 +423,22 @@ export async function einladungenListe(store, { sitzung: s, bestand, jetzt = Dat
   const personen = Array.isArray(m.personen) ? m.personen : [];
   const aus = [];
   let neu = 0;
+  /* M-1: Die Konten werden nur gelesen, wenn ein Vermerk nicht „fertig" ist — und dann höchstens einmal. Ein
+     Lesefehler ist 503, kein „verbraucht" (fail-closed wie überall hier). */
+  let kennungen = null;
   for (const e of liste) {
     let vermerk;
     try { vermerk = await store.get(statusSchluessel(e.id), { type: "json" }); }
     catch { return nein(503, NICHT_LESBAR, "status nicht lesbar"); }
-    const status = statusVon(e, vermerk, nun);
+    let kontoDa = false;
+    if (vermerk && vermerk.status !== "widerrufen" && !(vermerk.status === "eingeloest" && vermerk.fertig === true)) {
+      if (!kennungen) {
+        try { kennungen = await eingeloesteKennungen(store, s.bestand, m.id); }
+        catch { return nein(503, NICHT_LESBAR, "konten nicht lesbar"); }
+      }
+      kontoDa = kennungen.has(e.id);
+    }
+    const status = statusVon(e, vermerk, nun, kontoDa);
     const ende = Math.max(Number(e.bis) || 0, vermerk && vermerk.am ? Date.parse(vermerk.am) || 0 : 0);
     if (status !== "offen" && ende + LISTE_NACHLAUF_MS < nun) {
       /* Nachlauf vorbei: Metadaten weg. Der Vermerk bleibt — er hält das Token gesperrt, auch wenn es noch liegt. */
@@ -480,11 +528,18 @@ export async function einladungEinloesen(store, { einladung, bestandLesen, jetzt
   const gewonnen = await store.setJSONWennNeu(statusSchluessel(id), { status: "eingeloest", am, fertig: false });
   if (!gewonnen) return nein(410, EINLADUNG_UNGUELTIG, "schon vermerkt");
 
-  /* Ab hier ist die Einladung verbraucht: Der Vermerk steht und sperrt sie dauerhaft. */
+  /* Ab hier ist die Einladung verbraucht: Der Vermerk steht und sperrt sie dauerhaft.
+     M-1 (Sicherheitsreview): Das Schreiben des Abschlussvermerks wird einmal wiederholt. Scheitert auch das, bleibt der
+     Vermerk auf „eingeloest, fertig: false" stehen — die Einladung bleibt gesperrt, und die Liste leitet „eingelöst"
+     aus dem Konto mit dieser Einladungskennung ab (einladungenListe). Der Einlösende bekommt seinen Code trotzdem: Der
+     Zugang ist angelegt, ein 503 an dieser Stelle hinterließe einen Zugang, den niemand kennt. */
   const abschluss = async (r) => {
     const vermerk = r.ok ? { status: "eingeloest", am, fertig: true }
       : { status: "verbraucht", am, grund: String(r.grund || "fehler").slice(0, 60) };
-    await store.setJSON(statusSchluessel(id), vermerk).catch(() => {});
+    for (let versuch = 0; versuch < 2; versuch += 1) {
+      try { await store.setJSON(statusSchluessel(id), vermerk); break; }
+      catch { /* einmal wiederholen; danach gilt der Vermerk aus dem Anlegen */ }
+    }
     return { ...r, id };
   };
   try {
