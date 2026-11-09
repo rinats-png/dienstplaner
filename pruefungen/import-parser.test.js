@@ -614,3 +614,213 @@ describe("Review PR #123 Befund 4: Makro-Erkennung ohne Fehlalarm", () => {
     expect(hat(r, "MAKROS_VERWORFEN")).toBe(true);
   });
 });
+
+/* ==========================================================================
+   Befunde aus dem Review von 1da3ceb (IMP-2-Korrektur). Jede Gruppe enthält
+   mindestens einen Test, der vor der Korrektur rot war
+   (Nachweis: docs/acc45/IMP-2-NACHWEIS.md, Abschnitt 8).
+   ========================================================================== */
+/** Einträge einer synthetischen Datei neu packen (ODS: mimetype unkomprimiert). */
+const neuPacken = (eintraege) => zip(eintraege.map((e) => ({ ...e, methode: e.name === "mimetype" ? "store" : "deflate" })));
+const gleicheTextErsetzung = (buf, name, fn) => {
+  const eintraege = zipEintraege(buf);
+  const e = eintraege.find((x) => x.name === name);
+  e.daten = B(fn(e.daten.toString("utf8")));
+  return neuPacken(eintraege);
+};
+
+describe("Review 1da3ceb H1: Datum genau an einer Stelle (Parser normiert auf 1900)", () => {
+  const tag = new Date(2024, 0, 15), geburt = new Date(1985, 2, 17);
+  for (const fmt of ["xlsx", "xls", "ods"]) {
+    it(`H1: ${fmt}: gleicher Kalendertag in 1900- und 1904-Mappe liefert gleiche roh-Werte; datumssystem "1900", datumssystemQuelle "1904"`, async () => {
+      const inhalt = { P: [["Geburt", "Stichtag", "Zahl"], [geburt, tag, 1462]] };
+      const a = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }), name: `p.${fmt}` });
+      const b = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }, { date1904: true }), name: `p.${fmt}` });
+      expect(a.ok && b.ok).toBe(true);
+      expect(b.blaetter[0].zeilen[1].map((z) => z && z.roh)).toEqual(a.blaetter[0].zeilen[1].map((z) => z && z.roh));
+      expect(b.blaetter[0].zeilen[1][0]).toMatchObject({ typ: "datum", roh: 31123 });
+      expect(b.blaetter[0].zeilen[1][1]).toMatchObject({ typ: "datum", roh: 45306 });
+      expect(b.blaetter[0].zeilen[1][2]).toBe(1462);
+      /* datumssystem beschreibt das Ergebnis, datumssystemQuelle die Datei */
+      expect(a.datumssystem).toBe("1900");
+      expect(b.datumssystem).toBe("1900");
+      expect(a.datumssystemQuelle).toBeUndefined();
+      expect(b.datumssystemQuelle).toBe("1904");
+    });
+    it(`H1: ${fmt}: Zeitwert 06:00 und Dauer [h]:mm werden in der 1904-Mappe nicht verschoben`, async () => {
+      const zeit = { t: "n", v: 0.25, z: "hh:mm" };
+      const dauer = { t: "n", v: 30.5, z: "[h]:mm" };
+      const inhalt = { Z: [["Zeit", "Dauer", "Datum"], [zeit, dauer, tag]] };
+      const a = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }), name: `z.${fmt}` });
+      const b = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }, { date1904: true }), name: `z.${fmt}` });
+      expect(a.ok && b.ok).toBe(true);
+      const roh = (z) => (z && typeof z === "object" ? z.roh : z);
+      expect(roh(a.blaetter[0].zeilen[1][0])).toBe(0.25);
+      expect(roh(b.blaetter[0].zeilen[1][0])).toBe(0.25);
+      expect(roh(b.blaetter[0].zeilen[1][1])).toBe(roh(a.blaetter[0].zeilen[1][1]));
+      expect(roh(b.blaetter[0].zeilen[1][1])).toBe(30.5);
+      /* das Datum in derselben Zeile wird dagegen normiert */
+      expect(roh(b.blaetter[0].zeilen[1][2])).toBe(45306);
+    });
+  }
+  it("H1: xlsx: Zelle t=\"d\" ohne Datumsformat bleibt unverändert (keine zweite Verschiebung, kein Datumsobjekt)", async () => {
+    const mitD = (wbProps) => mitBlatt(mappe({ S: [["h"], [1]] }, "xlsx", {}, wbProps),
+      (x) => x.replace("</sheetData>", '<row r="3"><c r="A3" t="d"><v>2024-01-15T00:00:00</v></c></row></sheetData>'));
+    const a = await parseDatei({ buffer: mitD(null), name: "d.xlsx" });
+    const b = await parseDatei({ buffer: mitD({ date1904: true }), name: "d.xlsx" });
+    expect(a.ok && b.ok, JSON.stringify([a, b]).slice(0, 300)).toBe(true);
+    /* SheetJS liefert die Zahl im System der Mappe; ohne Datumsformat rechnet der Parser nichts um */
+    expect(a.blaetter[0].zeilen[2]).toEqual([45306]);
+    expect(b.blaetter[0].zeilen[2]).toEqual([45306 - 1462]);
+  });
+  it("H1: ods: null-date nach der Tabelle wird abgelehnt (kein um 1462 Tage falsches Datum)", async () => {
+    const ods = mappe({ S: [["Datum"], [tag]] }, "ods", { cellDates: true }, { date1904: true });
+    const verschoben = gleicheTextErsetzung(ods, "content.xml", (x) => {
+      const block = /<table:calculation-settings[\s\S]*?<\/table:calculation-settings>/.exec(x)[0];
+      return x.replace(block, "").replace("</office:spreadsheet>", `${block}</office:spreadsheet>`);
+    });
+    const r = await parseDatei({ buffer: verschoben, name: "n.ods" });
+    expect(r.ok).toBe(false);
+    expect(["BESCHAEDIGT", "NICHT_UNTERSTUETZT"]).toContain(r.code);
+    expect(r.blaetter).toBeUndefined();
+    /* Gegenprobe: null-date vor der Tabelle (wie geschrieben) wird korrekt normiert */
+    const ok = await parseDatei({ buffer: ods, name: "n.ods" });
+    expect(ok.blaetter[0].zeilen[1][0]).toMatchObject({ typ: "datum", roh: 45306 });
+  });
+});
+
+describe("Review 1da3ceb H2: Textmenge im Ergebnis begrenzt (gemeinsam genutzte Texte)", () => {
+  /** xlsx mit sharedStrings: alle Zellen verweisen auf denselben Eintrag, der durch `text` ersetzt wird. */
+  function mitGeteiltemText(text, verweise, spalten = 50) {
+    const zeilen = [["kopf"]];
+    for (let i = 0; i < Math.ceil(verweise / spalten); i++) {
+      zeilen.push(Array.from({ length: Math.min(spalten, verweise - i * spalten) }, () => "PLATZHALTER"));
+    }
+    const buf = mappe({ S: zeilen }, "xlsx", {}, null, { bookSST: true });
+    return gleicheTextErsetzung(buf, "xl/sharedStrings.xml", (x) => {
+      expect(x).toContain(">PLATZHALTER<");
+      return x.replace(">PLATZHALTER<", `>${text}<`);
+    });
+  }
+  /** pseudozufälliger Text (schlecht komprimierbar), deterministisch */
+  function zufallsText(n) {
+    const abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let s = 12345; const t = new Array(n);
+    for (let i = 0; i < n; i++) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; t[i] = abc[s >>> 26]; }
+    return t.join("");
+  }
+  it("H2-PoC: 1,2-MB-xlsx mit einem großen sharedStrings-Eintrag und vielen Verweisen wird abgelehnt, bevor postMessage kopiert", async () => {
+    const buf = mitGeteiltemText(zufallsText(1500000), 100);
+    expect(buf.length).toBeGreaterThan(1024 * 1024);
+    expect(buf.length).toBeLessThan(1.5 * 1024 * 1024);
+    /* im Kern (Worker-Seite) entsteht bereits das Fehlerergebnis, ohne Blattdaten */
+    const k = kern.parseKern({ buffer: buf, name: "t.xlsx" });
+    expect(k.ok).toBe(false);
+    expect(k.code).toBe("TEXT_ZU_GROSS");
+    expect(k.blaetter).toBeUndefined();
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: buf, name: "t.xlsx" });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("TEXT_ZU_GROSS");
+    expect(r.blaetter).toBeUndefined();
+    expect(JSON.stringify(r).length).toBeLessThan(2000);
+    expect(Date.now() - t0).toBeLessThan(20000);
+  });
+  it("H2: Summe der Zeichen über alle Zellen über dem Entpack-Budget → TEXT_ZU_GROSS (jede Zelle unter 32.767)", async () => {
+    const buf = mitGeteiltemText("x".repeat(30000), 200);
+    const g = { entpacktBytes: 5 * 1024 * 1024 }; /* Budget 5.242.880 Zeichen < 200 × 30.000 */
+    const r = await parseDatei({ buffer: buf, name: "t.xlsx", grenzen: g });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("TEXT_ZU_GROSS");
+    expect(r.blaetter).toBeUndefined();
+    /* knapp darunter (170 × 30.000 = 5,1 Mio.) ist es zulässig */
+    const ok = await parseDatei({ buffer: mitGeteiltemText("x".repeat(30000), 170), name: "t.xlsx", grenzen: g });
+    expect(ok.ok).toBe(true);
+  });
+  it("H2: Höchstlänge je Zelle 32.767 Zeichen: genau am Limit ok, eins darüber abgelehnt (xlsx und CSV)", async () => {
+    const am = await parseDatei({ buffer: mitGeteiltemText("y".repeat(32767), 1), name: "t.xlsx" });
+    expect(am.ok).toBe(true);
+    expect(am.blaetter[0].zeilen[1][0]).toHaveLength(32767);
+    const drueber = await parseDatei({ buffer: mitGeteiltemText("y".repeat(32768), 1), name: "t.xlsx" });
+    expect(drueber).toMatchObject({ ok: false, code: "TEXT_ZU_GROSS" });
+    expect(drueber.nachricht).toMatch(/32\.767/);
+    const csvOk = await parseDatei({ buffer: B(`a;b\n${"z".repeat(32767)};1\n`), name: "t.csv" });
+    expect(csvOk.ok).toBe(true);
+    const csv = await parseDatei({ buffer: B(`a;b\n${"z".repeat(32768)};1\n`), name: "t.csv" });
+    expect(csv).toMatchObject({ ok: false, code: "TEXT_ZU_GROSS" });
+  });
+});
+
+describe("Review 1da3ceb M1: keine still verlorenen Zeilen (strenge r-Attribute, kein sheetRows bei xlsx)", () => {
+  const g = { zeilen: 5 }; /* Lesegrenze = 10006 Zeilenpositionen */
+  const anhaengen = (teil) => mitBlatt(mappe({ S: [["h"], [1]] }), (x) => x.replace("</sheetData>", `${teil}</sheetData>`));
+  it("M1-PoC: <row r=50000> ohne Anführungszeichen → ZU_VIELE_ZEILEN (nicht still verworfen)", async () => {
+    const r = await parseDatei({ buffer: anhaengen("<row r=50000><c r=\"A50000\"><v>7</v></c></row>"), name: "p.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+    expect(r.blaetter).toBeUndefined();
+    const r2 = await parseDatei({ buffer: anhaengen("<row r=50000><c><v>7</v></c></row>"), name: "p.xlsx", grenzen: g });
+    expect(r2).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+  });
+  it("M1: r ohne Anführungszeichen innerhalb der Grenze ist zulässig und wird gelesen", async () => {
+    const r = await parseDatei({ buffer: anhaengen("<row r=3><c r=\"A3\"><v>7</v></c></row><row r='4'><c r='A4'><v>8</v></c></row>"), name: "p.xlsx", grenzen: g });
+    expect(r.ok, JSON.stringify(r).slice(0, 300)).toBe(true);
+    expect(r.blaetter[0].zeilen).toEqual([["h"], [1], [7], [8]]);
+  });
+  it("M1-PoC: r=\"4\" mit x:r=\"50000\" (doppeltes Attribut) → BESCHAEDIGT", async () => {
+    const r = await parseDatei({ buffer: anhaengen("<row r=\"4\" x:r=\"50000\"><c><v>7</v></c></row>"), name: "p.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("M1-PoC: <ext r=\"50000\"> nach der letzten Zeile → BESCHAEDIGT", async () => {
+    const r = await parseDatei({ buffer: anhaengen("<ext r=\"50000\"><c><v>7</v></c></ext>"), name: "p.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("M1-PoC: r=\"&#53;\" (Entität im r-Wert) → BESCHAEDIGT", async () => {
+    const r = await parseDatei({ buffer: anhaengen("<row r=\"&#53;\"><c><v>7</v></c></row>"), name: "p.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("M1: ungültige c-r-Werte und doppelte Zellattribute → BESCHAEDIGT", async () => {
+    for (const zelle of ['<c r="A&#53;"><v>7</v></c>', '<c r="a3"><v>7</v></c>', '<c r="3A"><v>7</v></c>', '<c r="A0"><v>7</v></c>',
+      '<c r="A3" R="A50000"><v>7</v></c>', '<c r="A3" x:r="A50000"><v>7</v></c>', '<c r="A3" s="0" s="1"><v>7</v></c>']) {
+      const r = await parseDatei({ buffer: anhaengen(`<row r="3">${zelle}</row>`), name: "p.xlsx", grenzen: g });
+      expect(r, zelle).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    }
+  });
+  it("M1: ohne Ablehnung im Vorfilter greift die Prüfung der tatsächlich gelesenen Zeilen (kein sheetRows)", async () => {
+    /* Zelle mit gültigem r weit unten in einer niedrig nummerierten Zeile: SheetJS legt sie an Position 50000 ab */
+    const r = await parseDatei({ buffer: anhaengen('<row r="3"><c r="A50000"><v>7</v></c></row>'), name: "p.xlsx", grenzen: g });
+    expect(r).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
+  });
+});
+
+describe("Review 1da3ceb M2: Archivnamen wie SheetJS normalisiert", () => {
+  const mitZusatz = (name, inhalt) => {
+    const e = zipEintraege(mappe({ S: [["a"], [1]] }));
+    e.push({ name, daten: B(inhalt ?? e.find((x) => x.name === "xl/worksheets/sheet1.xml").daten.toString("utf8")) });
+    return neuPacken(e);
+  };
+  it("M2-PoC: xl/worksheets/sheet1.xml und /xl/worksheets/sheet1.xml in einer Datei → BESCHAEDIGT", async () => {
+    const r = await parseDatei({ buffer: mitZusatz("/xl/worksheets/sheet1.xml"), name: "n.xlsx" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+  });
+  it("M2: // wird zu / zusammengefasst (Doppel nach Normalisierung) → BESCHAEDIGT", async () => {
+    expect(await parseDatei({ buffer: mitZusatz("xl//worksheets/sheet1.xml"), name: "n.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(await parseDatei({ buffer: mitZusatz("/XL/Worksheets/Sheet1.xml"), name: "n.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("M2: Steuerzeichen \\u0000–\\u0006 und Backslash im Namen → BESCHAEDIGT", async () => {
+    for (const name of ["xl\\worksheets\\sheet2.xml", "xl/worksheets/sheet\u00002.xml", "xl/work\u0001sheets/x.xml", "docProps/a\u0006.xml"]) {
+      const r = await parseDatei({ buffer: mitZusatz(name, "<x/>"), name: "n.xlsx" });
+      expect(r, JSON.stringify(name)).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    }
+  });
+  it("M2: Archiv mit führendem / in allen Namen wird wie bei SheetJS gelesen", async () => {
+    const e = zipEintraege(mappe({ S: [["a"], [1]] })).map((x) => ({ ...x, name: `/${x.name}` }));
+    const r = await parseDatei({ buffer: neuPacken(e), name: "n.xlsx" });
+    expect(r.ok, JSON.stringify(r).slice(0, 300)).toBe(true);
+    expect(r.format).toBe("xlsx");
+    expect(r.blaetter[0].zeilen).toEqual([["a"], [1]]);
+  });
+});

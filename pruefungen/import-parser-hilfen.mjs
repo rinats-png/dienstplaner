@@ -3,14 +3,15 @@
 import zlib from "node:zlib";
 import * as XLSX from "../vendor/sheetjs/xlsx.mjs";
 
-/** Arbeitsmappe aus { Blattname: [[...], ...] } als Buffer im Format bookType. */
-export function mappe(blaetter, bookType = "xlsx", optionen = {}, wbProps = null) {
+/** Arbeitsmappe aus { Blattname: [[...], ...] } als Buffer im Format bookType.
+    schreib: zusätzliche Schreiboptionen (z. B. { bookSST: true } für eine sharedStrings-Tabelle). */
+export function mappe(blaetter, bookType = "xlsx", optionen = {}, wbProps = null, schreib = {}) {
   const wb = XLSX.utils.book_new();
   for (const [name, zeilen] of Object.entries(blaetter)) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(zeilen, optionen), name);
   }
   if (wbProps) wb.Workbook = { ...(wb.Workbook || {}), WBProps: { ...wbProps } };
-  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType }));
+  return Buffer.from(XLSX.write(wb, { ...schreib, type: "buffer", bookType }));
 }
 
 /** Minimaler ZIP-Schreiber. eintraege: [{ name, daten: Buffer, methode?: "store"|"deflate", erklaert?: number,
