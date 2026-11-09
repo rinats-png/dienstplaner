@@ -492,3 +492,22 @@ Budget 4 × n lässt also etwa Faktor 2 Reserve.
 4. Die Ergebnisgrenze 128 MB (stdout) ist eine Setzung (Heap des Kindes 256 MB); eine legitime Datei nahe `entpacktBytes` Text (100 Mio. Zeichen)
    erreicht vorher das Heap-Limit des Kindes (`SPEICHERLIMIT`) statt `TEXT_ZU_GROSS`. Für Personaldateien unkritisch, aber eine Verhaltensänderung
    gegenüber 768 MB im Worker.
+
+## 12. Entscheidung child_process (PR #123, Fix 7)
+
+**Entscheidung: Option A, eng begrenzte Freigabe.** Option B (Worker-Thread) verwirft den Befund H1 aus dem Review 561dd32: ein Worker-Thread hat kein Adressraumlimit, und ein nativer Absturz reißt den Server-Prozess mit. Der Kindprozess bleibt also.
+
+Die Freigabe in `werkzeug/sicherheit/statik.mjs` gilt nur für `server/lib/import/parser-prozess.mjs`, nur für das Muster `child_process`, mit `anzahl: 1` (die einzige Fundstelle, der Import). Jede weitere Fundstelle fällt als unbegründet auf; `pruefungen/document-write-review.test.js` prüft `anzahl` für alle Freigaben.
+
+| Prüfpunkt | Befund im Code |
+|---|---|
+| Feste ausführbare Ziele | `process.execPath` oder `/bin/sh` mit festem Skript; die Argumente sind fest, Dateiinhalt läuft nur über stdin |
+| Keine Shell-Injection | `shell: false`; das Adressraumlimit geht als positionaler Parameter `"$1"` in `ulimit -v`; `kb` ist eine geprüfte Ganzzahl (`adressraumKb`) |
+| Ressourcenbegrenzung | Heap 256 MB (`--max-old-space-size`), Adressraum 1,5 GB (Linux), `--disallow-code-generation-from-strings` |
+| Prozess-Timeouts | Wandzeit `zeitMs`, danach SIGKILL und `ZEITLIMIT` |
+| Fehlerbehandlung | Ausgang 70 (ulimit nicht setzbar) bricht ab, kein Lauf ohne Limit; Absturz, Speicher- und Ausgabefehler je eigener Ausgang |
+| Dateigröße | `dateiBytes` vor dem Start geprüft (`DATEI_ZU_GROSS`) |
+| ZIP-Bomben | Entpackte Größe `entpacktBytes` im Parser-Kern; Heap- und Ausgabegrenze des Kindes greifen zusätzlich |
+| Parser-Isolation | eigener Prozess, minimale Umgebung (keine Server-Variablen, insb. kein `NODE_OPTIONS`) |
+
+**Ergebnis:** `node werkzeug/sicherheit/statik.mjs` meldet „keine unbegründeten harten Treffer“. `pruefungen/import-parser.test.js`: 137 bestanden, 1 übersprungen (der Linux-Test, siehe Offen 2).
