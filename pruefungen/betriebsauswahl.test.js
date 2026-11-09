@@ -938,3 +938,171 @@ describe("Bremse, Ablagefehler und die alten Zugänge", () => {
       if (!ohne.ok) expect(ohne.grund).toBe("konto-sitzung");
     }, LIMIT);
 });
+
+/* ==========================================================================
+   SI-P4, REVIEW-AUFLAGE M1: KONTO UND BETRIEBSAUSWAHL UNTER PFLICHT
+
+   Ein Konto kennt keinen zweiten Faktor. Unter CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1
+   öffnet die Betriebsauswahl deshalb keinen Betrieb mit den Rechten von Leitung,
+   Planung oder Kunde (Rolle der Mitgliedschaft ODER wirksame Rolle der Person):
+   403, keine Arbeitssitzung. Die Konto-Anmeldung selbst bleibt eine Identität
+   ohne Rolle und ohne Bestand. Ohne Pflicht: unverändert.
+   ========================================================================== */
+
+describe("SI-P4 M1: Betriebsauswahl unter Pflicht", () => {
+  const mitPflicht = async (arbeit) => {
+    process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1";
+    try { return await arbeit(); } finally { delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT; }
+  };
+
+  it("Kunde: über ein Konto gar nicht erreichbar (keine Mitgliedschaft mit dieser Rolle)", async () => {
+    const k = await konto(adresse("m1-kunde"));
+    const raum = raumName("m1-kunde");
+    await betrieb(raum, { personen: [person("p_1", "Rina", "Schmitt", "mitarbeiter")] });
+    const e = await A.mitgliedschaftAnlegen(laden(), { accountId: k.id, raum, betrieb: 0, mandantId: "m1",
+      person: "p_1", rolle: "kunde", einheit: null, status: "aktiv" });
+    expect(e.ok).toBe(false);
+  }, LIMIT);
+
+  for (const rolle of ["leitung", "planer", "subplaner"]) {
+    it(`Mitgliedschaft ${rolle}: Konto-Anmeldung nur Identität, Betriebsauswahl 403, keine Arbeitssitzung`, async () => {
+      const k = await konto(adresse(`m1-${rolle}`));
+      const raum = await arbeitsbereich(k.id, `m1-${rolle}`, { rolle });
+      await mitPflicht(async () => {
+        /* Die Anmeldung gibt nur das Cookie der Identität — kein Merkmal, keine Rolle, keinen Bestand. */
+        const an = await anfrage({ pfad: P_AN, rumpf: { email: k.email, passwort: GUT } });
+        expect(an.status).toBe(200);
+        expect(an.daten).toEqual({ ok: true, angemeldet: true });
+        const keks = keksWert(an.antwort.headers.get("set-cookie"));
+        const vorher = await arbeitssitzungen();
+        const e = await anfrage({ rumpf: { raum }, keks });
+        expect(e.status).toBe(403);
+        expect(e.daten.fehler).toBe("zweifaktor-pflicht");
+        expect(e.daten.token).toBeUndefined();
+        expect(await arbeitssitzungen()).toBe(vorher);
+        /* Ohne Personendaten, ohne Rolle. */
+        for (const wort of ["Rina", "Schmitt", "p_1", rolle, k.id, k.email]) expect(e.text, wort).not.toContain(wort);
+      });
+    }, LIMIT);
+  }
+
+  it("Mitgliedschaft Mitarbeiter, Person im Bestand Leitung (wirksame Rolle): 403", async () => {
+    const k = await konto(adresse("m1-wirksam"));
+    const raum = await arbeitsbereich(k.id, "m1-wirksam", { rolle: "mitarbeiter", personRolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    await mitPflicht(async () => {
+      const e = await anfrage({ rumpf: { raum }, keks });
+      expect(e.status).toBe(403);
+      expect(e.daten.fehler).toBe("zweifaktor-pflicht");
+    });
+  }, LIMIT);
+
+  it("Mitgliedschaft Mitarbeiter: auch unter Pflicht geöffnet", async () => {
+    const k = await konto(adresse("m1-ma"));
+    const raum = await arbeitsbereich(k.id, "m1-ma", { rolle: "mitarbeiter" });
+    const keks = await angemeldet(k.email);
+    await mitPflicht(async () => {
+      const e = await anfrage({ rumpf: { raum }, keks });
+      expect(e.status, e.text).toBe(200);
+      expect(e.daten.rolle).toBe("mitarbeiter");
+    });
+  }, LIMIT);
+
+  it("ohne Pflicht unverändert: Leitung wird geöffnet", async () => {
+    const k = await konto(adresse("m1-ohne"));
+    const raum = await arbeitsbereich(k.id, "m1-ohne", { rolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    const e = await anfrage({ rumpf: { raum }, keks });
+    expect(e.status, e.text).toBe(200);
+    expect(e.daten.rolle).toBe("leitung");
+  }, LIMIT);
+
+  it("Arbeitssitzung Leitung aus der Zeit vor der Pflicht: mit der Pflicht beendet", async () => {
+    const AS = await import("../server/lib/arbeitssitzung.mjs");
+    const k = await konto(adresse("m1-alt"));
+    const raum = await arbeitsbereich(k.id, "m1-alt", { rolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    const e = await anfrage({ rumpf: { raum }, keks });
+    expect(e.status).toBe(200);
+    const req = /** @type {any} */ ({ headers: { get: (n) => (n === "authorization" ? `Bearer ${e.daten.token}` : null) } });
+    expect((await AS.arbeitssitzungLesen(req, { store: laden() })).sitzung).toBeTruthy();
+    await mitPflicht(async () => {
+      const l = await AS.arbeitssitzungLesen(req, { store: laden() });
+      expect(l.sitzung).toBe(null);
+      expect(l.abgewiesen).toBe(true);
+      expect(l.grund).toBe("zweifaktor-pflicht");
+    });
+    /* Beendet, nicht nur abgewiesen. */
+    expect(await arbeitssitzung(e.daten.token)).toBe(null);
+    expect((await AS.arbeitssitzungLesen(req, { store: laden() })).sitzung).toBe(null);
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   SI-P4, DELTA-REVIEW AUFLAGE 2: ÜBER DAS KONTO ANGELEGTE BETRIEBE UNTER PFLICHT
+
+   Festgehaltenes Verhalten, kein Umbau. Ein Testbetrieb aus der Registrierung
+   (lib/provisionierung.mjs) hat als Leitung nur die Konto-Mitgliedschaft
+   `leitung` — und keinen Zugangscode. Unter CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1
+   ist er für seine Leitung deshalb nicht erreichbar: Betriebsauswahl 403
+   `zweifaktor-pflicht` mit Hinweis auf den Zugangscode, keine Arbeitssitzung.
+   Ohne Pflicht geöffnet. Der Rückweg ist eine offene Produktentscheidung
+   (docs/acc45/SI-P4-NACHWEIS.md, Delta-Auflage 2). Ändert sich das Verhalten,
+   muss dieser Test bewusst mitgeändert werden.
+   ========================================================================== */
+
+describe("SI-P4 Delta-Auflage 2: Betrieb aus der Konto-Provisionierung unter Pflicht", () => {
+  const mitPflicht = async (arbeit) => {
+    process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1";
+    try { return await arbeit(); } finally { delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT; }
+  };
+
+  /** Der echte Weg: Registrierung, Bestätigung, Passwort, Provisionierung. */
+  async function provisioniert(was) {
+    const REG = await import("../server/lib/registrierung.mjs");
+    const PROV = await import("../server/lib/provisionierung.mjs");
+    const s = laden();
+    const email = adresse(was);
+    const briefe = [];
+    const start = await REG.registrierungStarten(s, { vorname: "Rina", nachname: "Schmitt",
+      betriebsname: "Wachdienst Nordlicht", email,
+      versand: async (an, betreff, text) => { briefe.push(text); return { ok: true, trocken: true }; } });
+    expect(start.ok, `Start: ${start.grund}`).toBe(true);
+    const token = (/#token=([A-Za-z0-9_-]+)/.exec(String(briefe[briefe.length - 1])) || [])[1];
+    const v = await REG.emailVerifizieren(s, { token });
+    expect(v.ok, `Bestätigung: ${v.grund}`).toBe(true);
+    const p = await REG.registrierungPasswortSetzen(s, { accountId: v.accountId, passwort: GUT });
+    expect(p.ok, `Passwort: ${p.grund}`).toBe(true);
+    const e = await PROV.testbetriebFuerAccountAnlegen(s, arbeitAblage(), { accountId: v.accountId });
+    expect(e.ok, `Provisionierung: ${e.grund}`).toBe(true);
+    const m = await A.mitgliedschaftLesen(s, v.accountId, e.raum);
+    expect(m.rolle).toBe("leitung");
+    return { email, raum: e.raum };
+  }
+
+  it("Leitung über Konto, kein Zugangscode im Raum: unter Pflicht 403 mit Hinweis, keine Arbeitssitzung", async () => {
+    const { email, raum } = await provisioniert("prov-pflicht");
+    /* Es gibt keinen Zugangscode für diesen Raum — also auch keinen Weg mit Faktor. */
+    const { alleKonten } = await import("../server/lib/konten.mjs");
+    const codes = Object.values(await alleKonten(laden())).filter((k) => k && k.bestand === raum);
+    expect(codes).toEqual([]);
+    const keks = await angemeldet(email);
+    await mitPflicht(async () => {
+      const vorher = await arbeitssitzungen();
+      const e = await anfrage({ rumpf: { raum }, keks });
+      expect(e.status).toBe(403);
+      expect(e.daten.fehler).toBe("zweifaktor-pflicht");
+      expect(e.daten.hinweis).toContain("Zugangscode");
+      expect(e.daten.token).toBeUndefined();
+      expect(await arbeitssitzungen()).toBe(vorher);
+    });
+  }, LIMIT);
+
+  it("derselbe Betrieb ohne Pflicht: geöffnet als Leitung", async () => {
+    const { email, raum } = await provisioniert("prov-ohne");
+    const keks = await angemeldet(email);
+    const e = await anfrage({ rumpf: { raum }, keks });
+    expect(e.status, e.text).toBe(200);
+    expect(e.daten.rolle).toBe("leitung");
+  }, LIMIT);
+});

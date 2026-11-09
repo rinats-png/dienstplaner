@@ -73,6 +73,11 @@ describe("Ausliefern", () => {
     expect(r.headers.get("cache-control")).toBe("no-cache");
     expect(r.headers.get("content-security-policy")).toContain("script-src 'self'");
     expect(r.headers.get("content-security-policy")).toContain("object-src 'none'");
+    /* WP-39 Review M2c: Die Druckfenster erben diese CSP; script-src darf kein 'unsafe-inline'/'unsafe-eval' kennen. */
+    const scriptSrc = r.headers.get("content-security-policy").split(";").map((x) => x.trim()).find((x) => x.startsWith("script-src"));
+    expect(scriptSrc).toBeTruthy();
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    expect(scriptSrc).not.toContain("'unsafe-eval'");
     expect(r.headers.get("strict-transport-security")).toBe("max-age=31536000; includeSubDomains");
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
     expect(r.headers.get("x-frame-options")).toBe("SAMEORIGIN");

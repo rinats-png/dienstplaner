@@ -1,7 +1,7 @@
 /* Quelltext der Anwendungsoberfläche für Prüfungen, die den Text durchsuchen.
    WP-39 hat Teile von src/App.jsx in src/lib, src/ui und src/ansichten ausgelagert (Text unverändert).
    Die Prüfungen suchen weiterhin in „der Oberfläche“: die ausgelagerten Dateien und App.jsx zusammen,
-   in der ursprünglichen Reihenfolge (Fachlogik, Bausteine, App.jsx, Ansichten), damit Ausschnitte
+   in der ursprünglichen Reihenfolge (Fachlogik, Bausteine, App-Verdrahtung src/app, App.jsx, Ansichten), damit Ausschnitte
    „von Marke A bis Marke B“ ihre Richtung behalten. Das vorangestellte `export ` entfällt, damit
    Muster wie /^function Name\(/ weiter greifen. */
 import { readFileSync, readdirSync } from "node:fs";
@@ -24,6 +24,6 @@ const kern = () => KERN.map((n) => lies(new URL(`${n}.mjs`, ENGINE)));
 export function appQuelle() {
   const lib = ordner("lib");   // alphabetisch; fachlogik.js ist die Datei, aus der die Planrechnung stammt
   const fi = readdirSync(new URL("lib/", SRC)).filter((f) => /.(jsx|js)$/.test(f)).sort().indexOf("fachlogik.js");
-  const teile = [...lib.slice(0, fi), ...kern(), ...lib.slice(fi), ...ordner("ui"), lies(new URL("App.jsx", SRC)), ...ordner("ansichten")];
+  const teile = [...lib.slice(0, fi), ...kern(), ...lib.slice(fi), ...ordner("ui"), ...ordner("app"), ...ordner("app/aktionen"), lies(new URL("App.jsx", SRC)), ...ordner("ansichten")];
   return teile.join("\n").replace(/^export /gm, "");
 }

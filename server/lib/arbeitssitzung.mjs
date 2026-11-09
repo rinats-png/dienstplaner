@@ -13,6 +13,7 @@ import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsSchluessel } from "./sitzungen.mjs";
 import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sicherungsschluessel.mjs";
 import { schluesselEpoche } from "./schluesselepoche.mjs";
+import { rollenSitzungOhneFaktor } from "./betreiber-zweifaktor.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -237,6 +238,13 @@ export async function arbeitssitzungLesen(req,
       }
       return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: e.grund, ...(widerruf ? { widerruf } : {}) };
     }
+  }
+  /* SI-P4, Review-Auflagen M1/M2: Unter Pflicht gilt eine Sitzung mit der Rolle Leitung, Planung oder Kunde nur, wenn
+     sie mit bestandenem zweitem Faktor entstand — auf JEDEM Pfad, der hier liest (auch Zugang sperren, Kalender,
+     Zustellung). Die wirksame Rolle aus dem Bestand prüft daten.mjs zusätzlich. Die Sitzung endet. */
+  if (rollenSitzungOhneFaktor(s0)) {
+    await sitzungBeenden(merkmal);
+    return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: "zweifaktor-pflicht" };
   }
   return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };
 }

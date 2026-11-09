@@ -19,7 +19,7 @@
    Bausteine der Konsole (H1, Card, Btn …) kommen als `ui` herein.
    ========================================================================== */
 
-import { useState } from "react";
+import { useState, createContext, useContext } from "react";
 
 async function antwortLesen(r) {
   let d = {};
@@ -131,6 +131,53 @@ export default function BetreiberZweifaktor({ ui }) {
       </div>
     </div>
   );
+}
+
+/* --------------------------------------------------------------------------
+   SI-P4: Zweiter Faktor für den eigenen Zugangscode — in der Anmeldemaske
+   (main.jsx), für Leitung, Planung und Kunde (der Server entscheidet, welche
+   Rolle ihn bekommt; andere Codes erhalten 400). Derselbe Weg wie für den
+   Betreibercode: /api/anmelden mit zweifaktorAktion, keine Sitzung.
+   Die Bausteine sind auf Modulebene definiert, damit die Eingabefelder beim
+   Tippen nicht neu entstehen; die Farben kommen über einen Kontext.
+   -------------------------------------------------------------------------- */
+const FarbenKontext = createContext(/** @type {any} */ ({}));
+function ZCard({ children }) {
+  const F = useContext(FarbenKontext);
+  return <div style={{ marginTop: 18, border: `1px solid ${F.line}`, borderRadius: 14, background: F.bg, color: F.text }}>{children}</div>;
+}
+function ZCardHead({ children }) {
+  return <div style={{ padding: "16px 22px 0", fontSize: 15, fontWeight: 600 }}>{children}</div>;
+}
+function ZField({ label, hint, children }) {
+  const F = useContext(FarbenKontext);
+  return (
+    <label style={{ display: "grid", gap: 6, fontSize: 12.5, color: F.dim }}>
+      <span style={{ fontWeight: 600 }}>{label}</span>{children}{hint && <span style={{ lineHeight: 1.45 }}>{hint}</span>}
+    </label>);
+}
+function ZInp(p) {
+  const F = useContext(FarbenKontext);
+  return <input {...p} style={{ padding: "11px 13px", fontSize: 15, borderRadius: 10, border: `1px solid ${F.line}`,
+    background: F.bg, color: F.text, fontFamily: "inherit", boxSizing: "border-box", width: "100%" }} />;
+}
+function ZBtn({ kind, children, ...p }) {
+  const F = useContext(FarbenKontext);
+  const primaer = kind === "primary";
+  return <button {...p} style={{ padding: "9px 16px", fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: "inherit",
+    cursor: p.disabled ? "default" : "pointer", border: primaer ? "none" : `1px solid ${F.line}`,
+    background: primaer ? F.accent : "transparent", color: primaer ? F.aufAkzent : F.text, opacity: p.disabled ? 0.55 : 1 }}>{children}</button>;
+}
+const ZUI = { Card: ZCard, CardHead: ZCardHead, Field: ZField, Inp: ZInp, Btn: ZBtn };
+
+/** Zweiter Faktor für den eigenen Zugangscode (Anmeldemaske, SI-P4). `F`: Farben der Maske. */
+export function ZugangZweifaktor({ F }) {
+  return (
+    <FarbenKontext.Provider value={F}>
+      <Abschnitt ui={ZUI} titel="Zweiter Faktor für deinen Zugangscode" feld="Zugangscode"
+        feldHinweis="Für Leitung, Planung und Kunde. Der Code wird nirgends gespeichert; es entsteht keine Anmeldung."
+        rufen={betreiberRufen} pflichtText=" · Pflicht für diesen Zugang" />
+    </FarbenKontext.Provider>);
 }
 
 /**
