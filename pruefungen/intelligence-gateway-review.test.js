@@ -18,7 +18,7 @@ import { modusAusUmgebung } from "../server/lib/intelligence/gateway/schalter.mj
 import { erzeugeLiveAnbieter } from "../server/lib/intelligence/gateway/anbieter-live.mjs";
 import { ausgabePruefen } from "../server/lib/intelligence/gateway/pruefer.mjs";
 import { sperrlisteBilden } from "../server/lib/intelligence/leckpruefung.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const AN = { prozess: () => "an", laufzeit: () => "an" };
 const code = async (p) => { try { await p; return "ok"; } catch (e) { return e.code || String(e); } };
@@ -36,7 +36,7 @@ function bauen(o = {}) {
   const limits = o.limits || new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, ...(o.limitKonfig || {}) });
   const audit = o.audit || erzeugeAudit({ senke: (e) => ereignisse.push(e), jetzt: () => uhr.t });
   const gw = erzeugeGateway({
-    anbieter, ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits, audit,
+    anbieter, ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits, audit,
     schalter: o.schalter || AN, betriebAktiv: o.betriebAktiv || (() => true), funktionenFreigegeben: ["F2", "F3"], faktenquelle: vollQuelle,
     zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 2, minRestMs: 0, ...(o.zeiten || {}) }, schlafen: () => Promise.resolve(),
     zufallId: o.zufallId,
@@ -93,7 +93,7 @@ describe("Befund 2: Notschalter und Pause gelten auch während des Vorgangs", ()
     let modus = "an";
     const anbieter = erzeugeAttrappe();
     const limits = new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000 });
-    const gw = erzeugeGateway({ anbieter, ladeBestand: async () => { modus = "aus"; return bestand(); }, aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits,
+    const gw = erzeugeGateway({ anbieter, ladeBestand: async () => { modus = "aus"; return bestand(); }, schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits,
       audit: erzeugeAudit({ senke: () => {} }), schalter: { prozess: () => modus, laufzeit: () => "an" }, betriebAktiv: () => true, funktionenFreigegeben: ["F2"] });
     expect(await code(gw.ausfuehren(S.leitung, anfrage()))).toBe("KI_AUS");
     expect(anbieter.aufrufe.length).toBe(0);

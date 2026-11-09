@@ -13,10 +13,10 @@ import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 async function antwort(modus) {
-  const gw = erzeugeGateway({ anbieter: erzeugeAttrappe({ modus }), ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN,
+  const gw = erzeugeGateway({ anbieter: erzeugeAttrappe({ modus }), ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN,
     limits: new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000 }), audit: erzeugeAudit({ senke: () => {} }),
     schalter: { prozess: () => "an", laufzeit: () => "an" }, betriebAktiv: () => true, funktionenFreigegeben: ["F2"], faktenquelle: vollQuelle,
     zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 0, minRestMs: 0 }, schlafen: () => Promise.resolve() });

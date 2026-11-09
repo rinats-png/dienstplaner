@@ -1,5 +1,21 @@
 /* Gemeinsame Prüfdaten für die Gateway-Tests (WP-I13/I15): ein Betrieb voller Personendaten, Rollen-Sitzungen, Faktenquelle. */
+import { randomBytes } from "node:crypto";
+import { erzeugeSchluesselbund, SCHLUESSEL_NAMEN } from "../server/lib/intelligence/gateway/schluessel.mjs";
+import { erzeugeRegistry } from "../server/lib/intelligence/gateway/registry.mjs";
+
 export const SCHLUESSEL = Buffer.from("5b0e9c1d7a3f48e26c1b9d0a4e7f3c2b8a6d1e9f0c3b7a5d2e8f1c4b6a9d0e3f", "hex");
+/** WP-I18: MAC-Schlüssel nur zur Laufzeit erzeugt (kein Schlüssel im Repo), für den ganzen Testlauf fest. */
+export const MAC_LAUFZEIT = randomBytes(32).toString("hex");
+/** WP-I18 (G21): Schlüsselbund aus Platzhaltern — Alias-Schlüssel wie bisher SCHLUESSEL, MAC getrennt. */
+export const schluesselbundTest = ({ alias = SCHLUESSEL, mac = MAC_LAUFZEIT, macVorher } = {}) => {
+  const hex = (x) => (typeof x === "string" ? x : Buffer.from(x).toString("hex"));
+  const env = { [SCHLUESSEL_NAMEN.alias]: hex(alias), [SCHLUESSEL_NAMEN.mac]: hex(mac) };
+  if (macVorher !== undefined) env[SCHLUESSEL_NAMEN.macVorher] = hex(macVorher);
+  return erzeugeSchluesselbund({ env });
+};
+/** WP-I18 (G20): Model Registry mit Platzhalter-Kennungen (kein Anbietername). */
+export const registryTest = (stufen = { 1: "platzhalter-stufe-1", 2: "platzhalter-stufe-2", 3: "platzhalter-stufe-3" }, modellOrt = "extern") =>
+  erzeugeRegistry({ version: "rr-test", modellOrt, stufen });
 export const VERSIONEN = { engine: "0.0.0-attrappe", regelstand: "r-2026-11", tarifstand: "t-2026" };
 export const ZR = { von: "2026-11-01", bis: "2026-11-30" };
 /** Gültige Namenspolitik (WP-I13, G18): ohne sie verweigert das Gateway jede Freitext-Funktion (F5, F6, F7A, F9, F16). */

@@ -15,7 +15,7 @@ import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { pruefeAntwort } from "../server/lib/intelligence/schemas.mjs";
 import { FUNKTIONEN_IDS } from "../server/lib/intelligence/schemas.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, verbotenImPaket, fold, VERBOTEN_IM_PAKET, NAMENSPOLITIK_TEST } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, verbotenImPaket, fold, VERBOTEN_IM_PAKET, NAMENSPOLITIK_TEST, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const AN = { prozess: () => "an", laufzeit: () => "an" };
 const KEIN_WARTEN = () => Promise.resolve();
@@ -32,7 +32,7 @@ function bauen(o = {}) {
   const limits = o.limits || new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, ...(o.limitKonfig || {}) });
   const audit = o.audit || erzeugeAudit({ senke: (e) => ereignisse.push(e), jetzt: () => uhr.t });
   const gw = erzeugeGateway({
-    anbieter, ladeBestand: o.ladeBestand || (() => bestand()), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits, audit,
+    anbieter, ladeBestand: o.ladeBestand || (() => bestand()), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits, audit,
     schalter: "schalter" in o ? o.schalter : AN, betriebAktiv: o.betriebAktiv || (() => true),
     funktionenFreigegeben: o.freigegeben || ["F1", "F2", "F3", "F5", "F6"], faktenquelle: o.faktenquelle || vollQuelle,
     bausteinKatalog: o.katalog, hoechsteStufe: o.hoechste, namenspolitik: NAMENSPOLITIK_TEST,   // WP-I13 G18: F5/F6 brauchen eine Namenspolitik
@@ -53,7 +53,7 @@ describe("Inert: ohne Schalter erreicht nichts den Anbieter", () => {
     // erzeugeGateway ohne Schalter explizit: eigenes Gateway ohne Option
     const anbieter = erzeugeAttrappe();
     const limits = new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000 });
-    const gw = erzeugeGateway({ anbieter, ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits,
+    const gw = erzeugeGateway({ anbieter, ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits,
       audit: erzeugeAudit({ senke: () => {} }), betriebAktiv: () => true, funktionenFreigegeben: ["F2"] });
     expect(await code(gw.ausfuehren(S.leitung, anfrage()))).toBe("KI_AUS");
     expect(anbieter.aufrufe.length).toBe(0);
@@ -85,7 +85,7 @@ describe("Inert: ohne Schalter erreicht nichts den Anbieter", () => {
     for (const betriebAktiv of [undefined, () => false, () => "ja", () => { throw new Error("x"); }, () => Promise.reject(new Error("x"))]) {
       const t = bauen({ betriebAktiv: betriebAktiv || undefined });
       const gw = betriebAktiv === undefined
-        ? erzeugeGateway({ anbieter: t.anbieter, ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits: t.limits,
+        ? erzeugeGateway({ anbieter: t.anbieter, ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits: t.limits,
           audit: t.audit, schalter: AN, funktionenFreigegeben: ["F2"] })
         : t.gw;
       expect(await code(gw.ausfuehren(S.leitung, anfrage()))).toBe("KI_PAUSIERT");
@@ -135,13 +135,15 @@ describe("Rolle und Anfrage werden VOR Kosten und Daten geprüft", () => {
 });
 
 describe("Datenminimierung: der Anbieter sieht nur das Faktenpaket", () => {
-  it("Eingabe des Adapters: nur Funktion, Stufe, Schemaversion, Paket, Fremdtext, Signal — ohne Namen, Kontakte, Gesundheit, Kennungen", async () => {
+  it("Eingabe des Adapters: nur Funktion, Stufe, Schemaversion, Paket, Fremdtext, Modellkennung, Ausgabegrenze, Signal — ohne Namen, Kontakte, Gesundheit, Kennungen", async () => {
     for (const rolle of ["leitung", "planer"]) {
       const t = bauen();
       const r = await t.gw.ausfuehren(S[rolle], anfrage("F2"));
       expect(r.status).toBe("fertig");
       const ein = t.anbieter.aufrufe[0];
-      expect(Object.keys(ein).sort()).toEqual(["fremdtext", "funktion", "paket", "schemaVersion", "signal", "stufe"]);
+      /* WP-I18 (G20): Modellkennung aus der Registry und Ausgabegrenze kommen hinzu — nur Serverkonfiguration, keine Personendaten. */
+      expect(Object.keys(ein).sort()).toEqual(["fremdtext", "funktion", "maxAusgabeTokens", "modellKennung", "paket", "schemaVersion", "signal", "stufe"]);
+      expect(ein.modellKennung).toBe("platzhalter-stufe-1");
       const s = fold(JSON.stringify({ ...ein, signal: undefined }));
       for (const v of VERBOTEN_IM_PAKET) expect(s.includes(fold(v)), `${rolle}: "${v}" im Anbieterinput`).toBe(false);
       expect(verbotenImPaket(ein.paket)).toEqual([]);
@@ -206,11 +208,12 @@ describe("Antwort: Entwurf, gekennzeichnet, nie veröffentlicht", () => {
 });
 
 describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzbar", () => {
-  it("Netzfehler: technische Wiederholungen (höchstens 2), dann nächste Stufe; Fehlertext des Adapters (mit Namen) wird nie weitergegeben", async () => {
+  it("Netzfehler: technische Wiederholungen (höchstens 2) in DERSELBEN Stufe, dann fester Rückfall (WP-I18 G22: keine teurere Stufe); Fehlertext des Adapters (mit Namen) wird nie weitergegeben", async () => {
     const t = bauen({ modus: "fehler" });
     const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
     expect(r).toMatchObject({ status: "rueckfall", rueckfall: { code: "KI_ANBIETER" } });
-    expect(t.anbieter.aufrufe.length).toBe(3 * 3); // F2: Stufen 1,2,3 × (1 + 2 Wiederholungen)
+    expect(t.anbieter.aufrufe.length).toBe(1 * 3); // F2: nur Stufe 1 × (1 + 2 Wiederholungen); vor WP-I18: 3 × 3
+    expect(t.anbieter.aufrufe.map((a) => a.stufe)).toEqual([1, 1, 1]);
     expect(JSON.stringify(r)).not.toMatch(/Weberknecht|Anna/);
     expect(JSON.stringify(t.ereignisse)).not.toMatch(/Weberknecht|Anna|simuliert/);
     expect(t.limits.stand("raum-a|0").ieMonat).toBe(1);   // B7: ab dem ersten Anbieteraufruf verbraucht, keine Rückbuchung
@@ -221,13 +224,14 @@ describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzba
     const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
     expect(r.rueckfall.code).toBe("KI_ANBIETER");
   });
-  it("Zeitüberschreitung: kein Wiederholen, sofort nächste Stufe; Rückfall KI_ZEIT; Abbruchsignal erreicht den Adapter", async () => {
+  it("Zeitüberschreitung: kein Wiederholen, keine weitere Stufe (WP-I18 G22); Rückfall KI_ZEIT; Abbruchsignal erreicht den Adapter", async () => {
     const t = bauen({ modus: "zeitueberschreitung", zeiten: { stufeMs: 40, deadlineMs: 1500 } });
     const t0 = Date.now();
     const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
     expect(Date.now() - t0).toBeLessThan(1200);
     expect(r).toMatchObject({ status: "rueckfall", rueckfall: { code: "KI_ZEIT" } });
-    expect(t.anbieter.aufrufe.length).toBe(3);
+    expect(t.anbieter.aufrufe.length).toBe(1);   // vor WP-I18: 3 (eine je Stufe)
+    expect(t.anbieter.aufrufe[0].stufe).toBe(1);
     expect(t.anbieter.aufrufe.every((a) => a.signal.aborted)).toBe(true);
     expect(t.limits.stand("raum-a|0").laufend).toBe(0);
   });
@@ -275,14 +279,17 @@ describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzba
 
 describe("Prüfer: Einschleusung und fremde Werte werden verworfen, nie angezeigt", () => {
   const SCHLECHT = ["falsche_zahl", "erfundener_alias", "injektion", "fremdes_feld", "zu_gross", "kaputt", "leer", "protoschluessel", "unbekannter_baustein"];
+  /* WP-I18 (G22): formal unbrauchbare Antworten (kein Objekt / leer) sind Schema-Verletzungen → fester Rückfall nach Stufe 1;
+     vor WP-I18 wurden auch sie über drei Stufen eskaliert. Inhaltliche Prüferbefunde eskalieren unverändert. */
+  const OHNE_STRUKTUR = new Set(["kaputt", "leer"]);
   for (const modus of SCHLECHT) {
-    it(`Modus ${modus}: Rückfall KI_PRUEFER, drei Stufen versucht, nichts davon in der Antwort`, async () => {
+    it(`Modus ${modus}: Rückfall KI_PRUEFER, ${OHNE_STRUKTUR.has(modus) ? "nur Stufe 1 (Schema-Verletzung)" : "drei Stufen versucht"}, nichts davon in der Antwort`, async () => {
       const t = bauen({ modus });
       const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
       expect(r).toMatchObject({ status: "rueckfall", rueckfall: { code: "KI_PRUEFER" } });
       expect(r.ergebnis).toBeUndefined();
       expect(JSON.stringify(r)).not.toMatch(/99999|boese|<script|Ignoriere|system:|"plan"|admin/);
-      expect(t.anbieter.aufrufe.map((a) => a.stufe)).toEqual([1, 2, 3]);
+      expect(t.anbieter.aufrufe.map((a) => a.stufe)).toEqual(OHNE_STRUKTUR.has(modus) ? [1] : [1, 2, 3]);
     });
   }
   it("Eskalation hilft: Stufe 1 liefert Unbrauchbares, Stufe 2 Gutes → fertig mit frischem Aufruf, gleiches Paket, einmal gezählt", async () => {
@@ -406,7 +413,7 @@ describe("Kosten- und Ratenschutz je Betrieb", () => {
       expect(() => new Limits(k), JSON.stringify(k)).toThrow();
   });
   it("Gateway ohne Limits oder ohne Protokoll lässt sich nicht bauen", () => {
-    const basis = { anbieter: erzeugeAttrappe(), ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN };
+    const basis = { anbieter: erzeugeAttrappe(), ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN };
     expect(() => erzeugeGateway({ ...basis, audit: erzeugeAudit({ senke: () => {} }) })).toThrow();
     expect(() => erzeugeGateway({ ...basis, limits: new Limits({ betriebKontingentIE: 1, gesamtTagesIE: 1, gesamtHartTagesIE: 1 }) })).toThrow();
     expect(() => erzeugeGateway({ ...basis, anbieter: { id: "x" }, limits: new Limits({ betriebKontingentIE: 1, gesamtTagesIE: 1, gesamtHartTagesIE: 1 }), audit: erzeugeAudit({}) })).toThrow();

@@ -49,6 +49,16 @@
    G18 Freitext-Funktionen (Positivliste fremdtext: true) nur mit gültiger Namenspolitik (namenspolitik.mjs, N1/N2).
    G19 Modell und Modellort kommen aus der Serverkonfiguration: eine Model Registry (registry.mjs) muss zum
        Ort des Adapters passen, sonst startet das Gateway nicht; sie begrenzt die Stufenkette (R1).
+   G20 (WP-I18) Die Registry ist PFLICHT. Je Stufe holt das Gateway die Modellkennung über
+       registry.modellFuer(stufe) und übergibt sie mit der Ausgabegrenze (ausgabeTokenMax, Konfiguration)
+       an den Adapter (modellKennung, maxAusgabeTokens). Keine Kennung für die Stufe → fester Rückfall,
+       kein Aufruf. Fehlt die Registry oder ist sie ungültig → das Gateway startet nicht (KI_INTERN).
+   G21 (WP-I18) Schlüssel nur aus einem Schlüsselbund (erzeugeSchluesselbund): eine lose Schlüsselfunktion
+       (aliasSchluessel) wird abgelehnt; ein Ergebnis-Speicher muss mit demselben Schlüsselbund gebaut sein.
+   G22 (WP-I18) Jede Fehlerklasse des Adapters (zeit, begrenzt, nicht_verfuegbar, ungueltig, schema, zu_gross,
+       nicht_freigegeben) beendet die Stufenkette mit einem FESTEN Rückfall — nie eine teurere Stufe, nie
+       Rohinhalte. Technische Wiederholungen nur innerhalb derselben Stufe. Eskaliert wird nur, wenn eine
+       formal gelieferte Antwort den Prüfer nicht besteht (Router, nur aufwärts).
    ========================================================================== */
 
 import { randomBytes, createHash } from "node:crypto";
@@ -71,11 +81,12 @@ import { fingerprintBilden, paketHash } from "./ergebnis.mjs";
 import { alarmeBerechnen } from "./alarme.mjs";
 import { namenspolitikPruefen } from "./namenspolitik.mjs";
 import { registryPruefen } from "./registry.mjs";
+import { schluesselbundPruefen } from "./schluessel.mjs";
 
 export { kanonisch };
 
 const ROLLEN = new Set(["leitung", "planer", "mitarbeiter", "betriebsrat", "betreiber", "subplaner"]);
-/** Höchstzahl Ausgabetoken je Anbieterantwort (Startwert, Konfiguration; Spez. 7.2 nennt nur Eingabegrenzen). */
+/** Höchstzahl Ausgabetoken je Anbieterantwort (Startwert, Konfiguration; gleicher Name und Wert wie WP-I15; Spez. 7.2 nennt nur Eingabegrenzen). */
 const AUSGABE_TOKEN_VORGABE = 8000;
 const ZEITEN_VORGABE = Object.freeze({ stufeMs: 45_000, deadlineMs: 120_000, maxWiederholungen: 2, minRestMs: 10_000, zaehlerMs: 2_000, schalterTaktMs: 250, schalterFristMs: 1_000 });
 const schlafenVorgabe = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
@@ -88,7 +99,9 @@ const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.
  * @param {{
  *   anbieter: any,
  *   ladeBestand: (raum: string) => any | Promise<any>,
- *   aliasSchluessel: () => Uint8Array,
+ *   schluesselbund: ReturnType<typeof import("./schluessel.mjs").erzeugeSchluesselbund>,   // G21: Pflicht
+ *   registry: ReturnType<typeof import("./registry.mjs").erzeugeRegistry>,                 // G19/G20: Pflicht
+ *   ausgabeTokenMax?: number,                // G20/I15: Ausgabegrenze je Antwort (Token), an den Adapter als maxAusgabeTokens; darüber Rückfall KI_GROESSE, keine Teilausgabe
  *   versionen: { engine: string, regelstand: string, tarifstand: string },
  *   limits: Limits,
  *   audit: ReturnType<typeof import("./audit.mjs").erzeugeAudit>,
@@ -100,9 +113,7 @@ const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.
  *   gegenrechnung?: (a: { ausgabe: any, paket: any }) => { ok: boolean },   // WP-I12: Rechenkern prüft die Zahlen nach (P-10)
  *   hoechsteStufe?: 1|2|3,
  *   namenspolitik?: unknown,                 // G18: ohne gültige Politik keine Freitext-Funktion
- *   registry?: ReturnType<typeof import("./registry.mjs").erzeugeRegistry>,   // G19
  *   zeiten?: Partial<typeof ZEITEN_VORGABE>,
- *   ausgabeTokenMax?: number,                // I15: Ausgabegrenze je Antwort (Token); darüber Rückfall KI_GROESSE, keine Teilausgabe
  *   jetzt?: () => number,
  *   schlafen?: (ms: number) => Promise<void>,
  *   zufallId?: () => string,
@@ -116,8 +127,10 @@ export function erzeugeGateway(o) {
   if (!(o.limits instanceof Limits)) throw new GatewayFehler("KI_LIMIT", "Gateway ohne Limits.");
   if (!o.audit || typeof o.audit.pflicht !== "function" || typeof o.audit.melden !== "function")
     throw new GatewayFehler("KI_AUDIT", "Gateway ohne Protokoll.");
-  if (typeof o.ladeBestand !== "function" || typeof o.aliasSchluessel !== "function")
-    throw new KiFehler("KI_INTERN", "Gateway ohne Bestandszugriff oder Schlüsselquelle.");
+  if (typeof o.ladeBestand !== "function") throw new KiFehler("KI_INTERN", "Gateway ohne Bestandszugriff.");
+  /* G21: Schlüssel nur aus dem Schlüsselbund; eine lose Schlüsselfunktion ist ein Konfigurationsfehler. */
+  if (Object.prototype.hasOwnProperty.call(o, "aliasSchluessel")) throw new KiFehler("KI_INTERN", "Schlüssel nur über den Schlüsselbund.");
+  const bund = schluesselbundPruefen(o.schluesselbund);
   const limits = o.limits;
   const audit = o.audit;
   const schalter = o.schalter || SCHALTER_AUS;
@@ -126,21 +139,23 @@ export function erzeugeGateway(o) {
   const katalog = o.bausteinKatalog || {};
   /* G18: eine übergebene, aber ungültige Namenspolitik ist ein Konfigurationsfehler (N2). */
   const namenspolitik = o.namenspolitik === undefined ? null : namenspolitikPruefen(o.namenspolitik);
-  /* G19: Registry nur aus erzeugeRegistry und nur mit dem Ort des Adapters. */
-  const registry = o.registry === undefined ? null : registryPruefen(o.registry);
-  if (registry && registry.modellOrt !== anbieter.modellOrt) throw new KiFehler("KI_INTERN", "Model Registry passt nicht zum Adapter.");
+  /* G19/G20: Registry ist Pflicht, nur aus erzeugeRegistry und nur mit dem Ort des Adapters. */
+  const registry = registryPruefen(o.registry);
+  if (registry.modellOrt !== anbieter.modellOrt) throw new KiFehler("KI_INTERN", "Model Registry passt nicht zum Adapter.");
   const hoechsteGewuenscht = o.hoechsteStufe ?? 3;
-  const hoechste = registry && Number.isInteger(hoechsteGewuenscht) ? Math.min(hoechsteGewuenscht, registry.hoechsteStufe) : hoechsteGewuenscht;
+  const hoechste = Number.isInteger(hoechsteGewuenscht) ? Math.min(hoechsteGewuenscht, registry.hoechsteStufe) : hoechsteGewuenscht;
   const zeiten = { ...ZEITEN_VORGABE, ...(o.zeiten || {}) };
+
   /* I15: Zeitkonfiguration fail closed — NaN, 0, negativ oder Text machten die Deadline wirkungslos. */
   const posZahl = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
   const nichtNeg = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
   if (!posZahl(zeiten.deadlineMs) || !posZahl(zeiten.stufeMs) || zeiten.stufeMs > zeiten.deadlineMs || !Number.isInteger(zeiten.maxWiederholungen)
     || zeiten.maxWiederholungen < 0 || !nichtNeg(zeiten.minRestMs) || !posZahl(zeiten.zaehlerMs) || !posZahl(zeiten.schalterTaktMs) || !posZahl(zeiten.schalterFristMs))
     throw new GatewayFehler("KI_ZEIT", "Ungültige Zeitkonfiguration.");
-  /* I15: Ausgabegrenze in Token (Vorgabe großzügig über allem Üblichen; die harte Größenprüfung bleibt im Prüfer). */
+  /* G20/I15: Ausgabegrenze aus der Konfiguration (ganze Zahl 1..1 000 000, strengere Regel aus G20), sonst startet das
+     Gateway nicht. Sie geht als maxAusgabeTokens an den Adapter UND wird an der Antwort nachgeprüft. */
   const ausgabeTokenMax = o.ausgabeTokenMax === undefined ? AUSGABE_TOKEN_VORGABE : o.ausgabeTokenMax;
-  if (!posZahl(ausgabeTokenMax)) throw new GatewayFehler("KI_GROESSE", "Ungültige Ausgabegrenze.");
+  if (!posZahl(ausgabeTokenMax) || !Number.isInteger(ausgabeTokenMax) || ausgabeTokenMax > 1_000_000) throw new GatewayFehler("KI_GROESSE", "Ungültige Ausgabegrenze.");
   const jetzt = o.jetzt || (() => Date.now());
   const schlafen = o.schlafen || schlafenVorgabe;
   const zufallId = o.zufallId || zufallIdVorgabe;
@@ -150,6 +165,8 @@ export function erzeugeGateway(o) {
     if (speicher.modus !== "an") throw new KiFehler("KI_INTERN", "Ergebnis-Speicher ohne durchgesetzte Aufbewahrung.");
     const v = o.kiVersionen;
     if (!v || !["prompt", "pruefer", "bausteinKatalog", "routerRegistry"].every((k) => typeof v[k] === "string" && v[k])) throw new KiFehler("KI_INTERN", "Ergebnis-Speicher ohne Versionen.");
+    /* G21: Speicher und Gateway aus demselben Schlüsselbund (gleicher aktiver MAC-Schlüssel). */
+    if (speicher.macKennung !== bund.stand().mac.kennung) throw new KiFehler("KI_INTERN", "Ergebnis-Speicher mit anderem Schlüsselbund.");
   }
   const alarmieren = (sitzungBetriebKey) => {
     if (typeof o.alarmHaken !== "function") return;
@@ -245,7 +262,7 @@ export function erzeugeGateway(o) {
       const lade = async (raum) => { if (momentaufnahme === undefined) momentaufnahme = await o.ladeBestand(raum); return momentaufnahme; };
       const { paket, aliasKarte } = await faktenpaketBilden({
         sitzung, ladeBestand: lade, funktion: anfrage.funktion, eingabe: anfrage.eingabe, bezug: anfrage.bezug, kontext: speicher ? `k${createHash("sha256").update(kanonisch([anfrage.funktion, anfrage.eingabe, anfrage.bezug ?? null])).digest("hex").slice(0, 40)}` : auftragId,
-        aliasSchluessel: o.aliasSchluessel(), versionen: o.versionen, faktenquelle: o.faktenquelle, modellOrt: anbieter.modellOrt,
+        aliasSchluessel: bund.aliasSchluessel(), versionen: o.versionen, faktenquelle: o.faktenquelle, modellOrt: anbieter.modellOrt,
         audit: (e) => { if (e && e.art === "ki.faktenpaket.verworfen") { gemeldet = true; audit.melden({ art: "ki.abgelehnt",
           funktion: anfrage.funktion, rolle: sitzung.rolle, ergebnis: "KI_LECK", kategorien: e.kategorien, betrieb: betriebId }); } },
       });
@@ -326,8 +343,15 @@ export function erzeugeGateway(o) {
         const rest = deadline - jetzt();
         if (rest <= 0) { letzterCode = "KI_ZEIT"; break; }
         const sStart = jetzt();
+        /* G20: Modellkennung je Stufe nur aus der Registry; ohne Kennung kein Aufruf, fester Rückfall. */
+        const modellKennung = registry.modellFuer(stufe);
+        if (typeof modellKennung !== "string" || !modellKennung) {
+          letzterCode = "KI_NICHT_FREIGEGEBEN";
+          audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: letzterCode, dauerMs: 0 });
+          break;
+        }
         const eingabe = { funktion: anfrage.funktion, stufe, schemaVersion: SCHEMA_VERSION, paket,
-          fremdtext: kapsel ? { trenner: kapsel.trenner, text: kapsel.text } : null };
+          fremdtext: kapsel ? { trenner: kapsel.trenner, text: kapsel.text } : null, modellKennung, maxAusgabeTokens: ausgabeTokenMax };
         let antwort;
         try {
           antwort = await aufrufen({ anbieter, eingabe, zeitJeVersuchMs: zeiten.stufeMs,
@@ -338,22 +362,33 @@ export function erzeugeGateway(o) {
         } catch (e) {
           if (e instanceof GatewayFehler) throw e;
           const f = e instanceof AnbieterFehler ? e : alsAnbieterFehler(e);
-          letzterCode = f.klasse === "zeit" ? "KI_ZEIT" : f.klasse === "nicht_freigegeben" ? "KI_NICHT_FREIGEGEBEN" : "KI_ANBIETER";
+          /* I15 (#158): Ausgabe über der Grenze (zu_gross, auch aus der Nachprüfung im Adapter-Rahmen) → KI_GROESSE. */
+          letzterCode = f.klasse === "zeit" ? "KI_ZEIT" : f.klasse === "nicht_freigegeben" ? "KI_NICHT_FREIGEGEBEN"
+            : f.klasse === "zu_gross" ? "KI_GROESSE" : "KI_ANBIETER";
           audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: letzterCode,
             dauerMs: Math.max(0, jetzt() - sStart) });
-          if (f.klasse === "nicht_freigegeben") break;
-          continue;
+          /* G22: jede Fehlerklasse des Adapters → fester Rückfall, keine teurere Stufe. */
+          break;
         }
         versucheGesamt += antwort.versuche;
         tokensAus = antwort.nutzung.ausgabeToken;
         /* I15: zu lange Ausgabe wird nie gekürzt oder teilweise ausgegeben — verworfen, Rückfall. Unbekannte Nutzung (null):
-           die harten Größengrenzen des Prüfers gelten trotzdem. */
+           der Adapter-Rahmen (anbieter.mjs) prüft dann die Antwortlänge nach; die harten Größengrenzen des Prüfers gelten trotzdem. */
         if (Number.isFinite(tokensAus) && tokensAus > ausgabeTokenMax) {
           audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: "KI_GROESSE",
             dauerMs: Math.max(0, jetzt() - sStart), versuche: antwort.versuche });
           letzterCode = "KI_GROESSE";
-          /* Review I15: endgültig — keine weitere (teurere) Stufe, keine Teilausgabe. Hinweis: die Anbieter-Schnittstelle
-             (anbieter.mjs) kennt noch kein max_tokens-Feld; die Grenze wird daher nur nachgeprüft, nicht übergeben. */
+          /* Review I15: endgültig — keine weitere (teurere) Stufe, keine Teilausgabe. Die Grenze geht zusätzlich als
+             maxAusgabeTokens an den Adapter (G20) und wird hier nachgeprüft. */
+          break;
+        }
+        /* G22: formal unbrauchbare Antwort (leer, kein Objekt, Liste) ist eine Schema-Verletzung des Adapters — fester
+           Rückfall, keine teurere Stufe. Inhaltliche Prüferbefunde an einem Objekt eskalieren weiter (Router). */
+        const a = antwort.ausgabe;
+        if (!a || typeof a !== "object" || Array.isArray(a)) {
+          letzterCode = "KI_PRUEFER";
+          audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: letzterCode,
+            dauerMs: Math.max(0, jetzt() - sStart), versuche: antwort.versuche });
           break;
         }
         const p = ausgabePruefen({ ausgabe: antwort.ausgabe, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste, gegenrechnung: o.gegenrechnung });

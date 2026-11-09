@@ -10,7 +10,7 @@ import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { pruefeAntwort } from "../server/lib/intelligence/schemas.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, S, bestand, vollQuelle } from "./intelligence-gateway-fixture.mjs";
+import { VERSIONEN, ZR, S, bestand, vollQuelle, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const T0 = Date.UTC(2026, 10, 15, 10, 0, 0);
 const STD = 3600_000;
@@ -84,7 +84,7 @@ function bauen(o = {}) {
   const limits = new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, ...(o.limitKonfig || {}) });
   const ereignisse = [];
   const gw = erzeugeGateway({
-    anbieter, ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits,
+    anbieter, ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits,   // WP-I18: G19/G20/G21 Pflicht
     audit: erzeugeAudit({ senke: (e) => ereignisse.push(e), jetzt: () => uhr.t }),
     schalter: "schalter" in o ? o.schalter : AN, betriebAktiv: () => true, funktionenFreigegeben: ["F1", "F2"], faktenquelle: vollQuelle,
     zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 0, minRestMs: 0, ...(o.zeiten || {}) }, schlafen: () => Promise.resolve(),
@@ -126,13 +126,14 @@ describe("Ausgabegrenze (Token)", () => {
     expect(t.anbieter.aufrufe.length).toBe(1);
     expect(r.ergebnis).toBeUndefined();
   });
-  /* Review-Befund 2: Die Anbieter-Schnittstelle (anbieter.mjs, Kopf) kennt kein max_tokens-Feld; es wird daher
-     nicht übergeben. Dieser Test hält den Stand fest; die Nachprüfung läuft über den Rückfall. */
-  it("Schnittstelle kennt kein max_tokens: der Adapter erhält das Feld (noch) nicht, die Nachprüfung greift trotzdem", async () => {
+  /* Review-Befund 2 (Stand nach WP-I18, G20): Die Anbieter-Schnittstelle kennt jetzt maxAusgabeTokens; der Adapter
+     erhält genau die konfigurierte Grenze und die Registry-Kennung — und die Nachprüfung greift zusätzlich (oben). */
+  it("Schnittstelle übergibt maxAusgabeTokens = Konfiguration (WP-I18); die Nachprüfung greift trotzdem", async () => {
     const t = bauen({ modus: "skript", skript: mitAusgabe(10), gw: { ausgabeTokenMax: 1000 } });
     await t.gw.ausfuehren(S.leitung, anfrage());
     expect(t.anbieter.aufrufe.length).toBeGreaterThan(0);
-    expect(Object.keys(t.anbieter.aufrufe[0]).sort()).toEqual(["fremdtext", "funktion", "paket", "schemaVersion", "signal", "stufe"]);
+    expect(Object.keys(t.anbieter.aufrufe[0]).sort()).toEqual(["fremdtext", "funktion", "maxAusgabeTokens", "modellKennung", "paket", "schemaVersion", "signal", "stufe"]);
+    expect(t.anbieter.aufrufe[0].maxAusgabeTokens).toBe(1000);
   });
 });
 

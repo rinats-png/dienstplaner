@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
 import { kiRaumBereinigen, kiLoeschungNachholen, kiDatenschutzlauf, VORMERKUNG_PRAEFIX } from "../server/lib/intelligence/gateway/loeschlauf.mjs";
 import { erzeugeErgebnisSpeicher, ergebnisSchluessel, kontextSchluessel } from "../server/lib/intelligence/gateway/ergebnis.mjs";
 import { raumLoeschen } from "../server/lib/raumloeschung.mjs";
+import { schluesselbundTest } from "./intelligence-gateway-fixture.mjs";
 const haken = (ki) => ({ kiBereinigen: (raum) => kiRaumBereinigen(ki, raum) });
 
 const TAG = 86400_000;
@@ -107,7 +108,7 @@ describe("kiDatenschutzlauf", () => {
   it("fällige Einträge weg (Speicher), dann Nachholen; liefert beide Berichte", async () => {
     const st = speicherStore();
     const t = Date.now();
-    const sp = erzeugeErgebnisSpeicher({ store: st, jetzt: () => t });
+    const sp = erzeugeErgebnisSpeicher({ store: st, jetzt: () => t, schluesselbund: schluesselbundTest() });
     st.m.set(ergebnisSchluessel("raum-a", FP("c")), { art: "erg", raum: "raum-a", ablauf: t - 1 });
     st.m.set(ergebnisSchluessel("raum-a", FP("d")), { art: "erg", raum: "raum-a", ablauf: t + TAG });
     const b = await kiDatenschutzlauf(sp, st);
@@ -117,7 +118,7 @@ describe("kiDatenschutzlauf", () => {
   });
   it("wirft nie, auch wenn der Speicher bricht", async () => {
     const st = speicherStore(); st.ausfallList = true;
-    const sp = erzeugeErgebnisSpeicher({ store: st });
+    const sp = erzeugeErgebnisSpeicher({ store: st, schluesselbund: schluesselbundTest() });
     const b = await kiDatenschutzlauf(sp, st);
     expect(b.aufraeumen.fehler).toBeGreaterThan(0);
   });
