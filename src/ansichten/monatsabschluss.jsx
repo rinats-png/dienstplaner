@@ -54,7 +54,13 @@ export function Monatsabschluss({ sitz, ym, akt }) {
       {luecken.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
         {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {abschlussLueckeText(m, ym)}</div>}
       {ohneEintritt.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
-        Prüffall: {OHNE_EINTRITT_TEXT} ({ohneEintritt.map(ohneEintrittFallText).join("; ")}). Die Stempel sind gespeichert; nach dem Setzen des Eintrittsdatums rechnen die Stunden mit.</div>}
+        Prüffall: {OHNE_EINTRITT_TEXT} ({ohneEintritt.map(ohneEintrittFallText).join("; ")}). Die Stempel sind gespeichert; {zu
+          /* Review d6c92e0, Befund 3: Im abgeschlossenen Monat ist das Ist eingefroren — ein später gesetztes
+             Eintrittsdatum ändert dessen Stunden nicht von selbst. */
+          ? (exportiert
+            ? "der Monat ist abgeschlossen und der Lohnexport bestätigt — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über den Korrekturprozess."
+            : "der Monat ist abgeschlossen — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über Wiederöffnen und erneuten Abschluss.")
+          : "nach dem Setzen des Eintrittsdatums rechnen die Stunden mit."}</div>}
       {trotz && zu && !exportiert && (
         <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: 6 }}>
           <div style={{ fontSize: 12.5, color: C.warn, whiteSpace: "pre-line", lineHeight: 1.45 }}>{rueckfrage ? rueckfrage.text : ""}</div>

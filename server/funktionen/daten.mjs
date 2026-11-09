@@ -1454,12 +1454,16 @@ async function behandeln(req, context, ctx) {
         /* Auflage C (Datenreview PR #130): Personalnummer je Betrieb eindeutig — nur NEUE Doppelungen
            (bestehende bleiben unverändert, die eigene unveränderte Nummer ist kein Konflikt; lib/personalnummer.mjs).
            Bewusst minimal und vor jedem Schreiben; der ETag-/Segment-Konfliktschutz unten bleibt unverändert.
-           Im Protokoll weder Nummer noch Person. */
+           Im Protokoll weder Nummer noch Person.
+           Review d6c92e0 (Befund 1): Die Antwort nennt den ETag, den der Client geschickt hat, nicht den aktuellen
+           Stand. Sie bringt keinen Bestand mit; ein neuerer ETag ohne Bestand ließe einen veralteten Client (auch
+           eine ältere, noch zwischengespeicherte Oberfläche) beim nächsten Speichern eine zwischenzeitliche fremde
+           Änderung ohne Konflikt überschreiben. */
         const pnr = personalnummerKonflikt(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (pnr) {
           await protokoll("schreiben", ks, "abgewiesen", "Personalnummer doppelt", wer);
           return antwort({ fehler: "Personalnummer schon vergeben.", code: "PERSONALNUMMER_DOPPELT",
-            text: personalnummerText(pnr), etag: jetzt ? jetzt.stand : null }, 409);
+            text: personalnummerText(pnr), etag: etag ?? null }, 409);
         }
 
         const form = pruefeGestalt(zuSchreiben, { vorher: jetzt ? jetzt.bestand : null });

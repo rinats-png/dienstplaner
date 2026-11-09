@@ -155,3 +155,28 @@ Basis `8a4db41` (acc45/import/imp-1-rebase), Branch `acc45/import/imp-1-auflagen
 1. **Betreiberschritt (lesend, vor Deploy):** Zählung der Personen mit `eintritt` null/leer je Betrieb in Staging und Produktion, dazu je Betrieb die Stempel dieser Personen in offenen Monaten. Nur benannt, nicht ausgeführt.
 2. **Bestehende Doppelungen der Personalnummer** bleiben gespeichert (Entscheidung: keine automatische Bereinigung); eine lesende Zählung je Betrieb wäre ebenfalls ein Betreiberschritt.
 3. Weitere Schreibwege für Personen außerhalb von `PUT /api/bestand` (etwa Betreiber-Erstbefüllung) prüfen die Nummer nicht serverseitig; nicht Teil dieses Auftrags.
+
+## Review d6c92e0 – Nachbesserung
+
+Basis `d6c92e0` (acc45/import/imp-1-auflagen-ac), Branch `acc45/import/imp-1-auflagen-ac-fix1`. Keine Datenmigration, keine Produktionsänderung.
+
+**Befund 1 (hoch, Pflicht): Doppelungs-Absage verschenkte einen neueren ETag.** Die 409 `PERSONALNUMMER_DOPPELT` trug `etag: jetzt.stand` (aktueller Stand, ohne Bestand), und `src/speicher.js` übernahm ihn (`if (daten.etag) etag = daten.etag`). Ablauf: A liest Stand n, B speichert Stand n+1 (`em.vorname = "VonB"`), A schickt eine doppelte Nummer mit ETag n, bekommt 409 mit ETag n+1, korrigiert die Nummer und speichert mit n+1 → 200, B's Änderung verloren.
+
+**Fix (Client und Server, Client ist der eigentliche Fix):**
+- Client (`src/speicher.js`): Bei `PERSONALNUMMER_DOPPELT` wird der ETag aus der Antwort nicht übernommen; der ETag bleibt der Stand, gegen den der Client geschrieben hat. Das nächste Speichern läuft auf veraltetem Stand in den gewöhnlichen Konflikt („Jemand anderes hat inzwischen die Stammdaten geändert.“, mit Bestand, Konfliktfenster). Der Server bleibt dabei korrekt: Die Doppelungsprüfung schreibt nichts, der ETag-/Segmentschutz in `bestandSchreiben` (`erwarteterStand`) ist unverändert die maßgebliche Prüfung (R3).
+- Server (`server/funktionen/daten.mjs`): Die Doppelungs-Absage nennt den vom Client geschickten ETag (`etag ?? null`), nicht `jetzt.stand`. Begründung: Ein neuerer ETag ohne Bestand hat für den Client keinen Nutzen, ist aber genau der Hebel für den Datenverlust; so ist auch eine ältere, noch zwischengespeicherte Oberfläche (PWA), die den ETag weiter übernimmt, geschützt. Beides schwächt den Konfliktschutz nicht: Der Server prüft unverändert gegen den gespeicherten Stand; die Antwort verschenkt nur keinen Stand mehr. Den aktuellen ETag bekommt ein Client wie bisher nur mit dem Bestand (GET oder Konflikt-409).
+
+**Tests (rot vorher → grün nachher):**
+- `pruefungen/bestand-personalnummer.test.js` (echte Handler): R1 echter Client `src/speicher.js` gegen den echten Handler (fetch auf `daten()` umgeleitet), genau der Ablauf oben — rot (zweites PUT mit ETag n+1, 200, „VonB“ verloren) → grün (Konflikt, „VonB“ bleibt, neue Person nicht gespeichert); R2 Handler: Absage auf veraltetem ETag nennt den geschickten ETag, ohne Bestand — rot → grün; R3 Handler: korrigierte Nummer auf veraltetem ETag → gewöhnlicher Stammdaten-Konflikt, nichts überschrieben — Kontrolle, grün vorher wie nachher. Datei: 2 rot / 9 grün → 11/11. Gegenprobe nur mit Client-Fix (Server alt): R1 grün, R2 rot — der Client-Fix allein schließt die Lücke.
+- `pruefungen/speicher-personalnummer.test.js` (neu, Befund 2, Muster wie `modul-kern-nachtrag5-speicher.test.js`): 409 `PERSONALNUMMER_DOPPELT` mit und ohne ETag in der Antwort — Meldung als Fehlerlage mit Servertext (`onFehler`, `ausstehend()`), `fehler.code`, kein `onKonflikt`, kein `onGespeichert`, das nächste PUT geht mit dem unveränderten ETag hinaus. 1 rot / 1 grün → 2/2. Im Skript `pruefung:person-eintritt` ergänzt.
+
+**Befund 3 (empfohlen): Text im abgeschlossenen Monat.** `src/ansichten/monatsabschluss.jsx`: „nach dem Setzen des Eintrittsdatums rechnen die Stunden mit“ nur noch für nicht abgeschlossene Monate. Abgeschlossen: „der Monat ist abgeschlossen — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über Wiederöffnen und erneuten Abschluss.“; nach bestätigtem Lohnexport: „… nachtragen nur über den Korrekturprozess.“ Test in `pruefungen/monatsabschluss-oberflaeche.test.js` (offener vs. abgeschlossener Monat): rot → grün (Datei 6/7 → 7/7).
+
+**Erwartungen, die altes Verhalten festschreiben:** keine geändert oder entfernt. C1 (`w.etag` gleich `g.etag`) gilt weiter — dort ist der geschickte ETag der aktuelle.
+
+**Läufe:** `npm run pruefung:person-eintritt` 61/61 (4 Dateien). `etag-pflicht` + `monatsabschluss*` (8 Dateien) 152/152. eslint auf den geänderten Dateien: 0 Fehler, 0 Warnungen. `node werkzeug/verdrahtung-pruefen.mjs`: ok (291 Prüfdateien; die zwei Warnungen zu Paketständen sind vorbestehend).
+
+**Offen:**
+- Befund 4: Normalisierung der Personalnummer per NFKC (Vollbreiten-/Kompatibilitätszeichen) nicht umgesetzt — Vergleich bleibt `trim` + Kleinschreibung.
+- Befund 6: Betreiber-Erstbefüllung prüft die Personalnummer weiterhin nicht serverseitig (siehe Offene Punkte oben, Punkt 3); nicht geändert.
+- Hinweis am Rand: Die Lohnausgabe-Zeile `ohneEintrittZeilen` (`src/lib/fachlogik.js`) sagt ebenfalls „Eintrittsdatum setzen, dann rechnen die Stunden mit“, auch für abgeschlossene Monate; nicht Teil dieses Auftrags.

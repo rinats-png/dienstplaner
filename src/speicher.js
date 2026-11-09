@@ -542,10 +542,12 @@ async function schreibenAusfuehren(beimSchliessen) {
       else if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
       return;
     }
-    /* Auflage C (Datenreview PR #130): Personalnummer schon vergeben — kein Versionskonflikt (kein Konfliktfenster,
-       der ETag bleibt), sondern eine Absage mit dem Text des Servers. */
+    /* Auflage C (Datenreview PR #130): Personalnummer schon vergeben — kein Versionskonflikt (kein Konfliktfenster),
+       sondern eine Absage mit dem Text des Servers. Der ETag wird NICHT aus der Antwort übernommen
+       (Review d6c92e0, Befund 1): Die Absage bringt keinen Bestand mit. Bliebe ein neuerer Stand hängen, schriebe
+       das nächste Speichern den eigenen veralteten Bestand ohne Konflikt über eine zwischenzeitliche fremde
+       Änderung. Der ETag bleibt der Stand, gegen den dieser Client geschrieben hat. */
     if (status === 409 && daten && daten.code === "PERSONALNUMMER_DOPPELT") {
-      if (daten.etag) etag = daten.etag;
       const f = new Error(String(daten.text || daten.fehler || "Personalnummer schon vergeben."));
       f.code = daten.code;
       throw f;
