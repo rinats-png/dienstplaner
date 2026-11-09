@@ -25,7 +25,7 @@ describe("Auslieferung ohne Entwürfe und Dokumente", () => {
     const bild = d.slice(d.indexOf("AS bild"));
     const kopien = [...bild.matchAll(/^COPY\s+(.+)$/gm)].map((x) => x[1]);
     const erlaubt = [/^--from=laufzeit \/app\/node_modules /, /^--from=bauen \/app\/dist /, /^server \.\/server$/,
-      /^server\.mjs package\.json \.\/$/, /^werkzeug\/[\w.-]+\.mjs( werkzeug\/[\w.-]+\.mjs)* \.\/werkzeug\/$/];
+      /^server\.mjs package\.json \.\/$/, /^vendor \.\/vendor$/, /^werkzeug\/[\w.-]+\.mjs( werkzeug\/[\w.-]+\.mjs)* \.\/werkzeug\/$/];
     for (const k of kopien) expect(erlaubt.some((r) => r.test(k)), k).toBe(true);
     const ohneKommentar = bild.split("\n").filter((z) => !z.trim().startsWith("#")).join("\n");
     expect(ohneKommentar).not.toMatch(/design|marketing|docs|\.docx/);
