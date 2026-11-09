@@ -182,7 +182,7 @@
     "pruefung:verdrahtung": "node werkzeug/verdrahtung-pruefen.mjs && vitest run pruefungen/verdrahtung.test.js",
     "pruefung:app-aufbau": "vitest run pruefungen/wp39-app-aufbau.test.js --testTimeout=60000",
     "pruefung:einladungen": "vitest run pruefungen/einladungen.test.js pruefungen/einladungen-oberflaeche.test.js",
-    "pruefung:import-endpunkt": "vitest run pruefungen/import-endpunkt.test.js"
+    "pruefung:import-endpunkt": "vitest run pruefungen/import-endpunkt.test.js pruefungen/import-rumpfgrenze.test.js pruefungen/import-sonden.test.js"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
