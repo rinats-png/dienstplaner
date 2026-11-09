@@ -14,11 +14,14 @@ import { versatzTageVon } from "../../server/lib/fachpruefung.mjs";
 import { useState } from "react";
 import { darf } from "../lib/berechtigung.js";
 import { dauer } from "../regelwerk.js";
+import { rasterBefunde } from "../lib/rasterpruefung.js";
 
 /* ============================== SCHICHTFOLGE ============================= */
 export function Schichtfolge({ sitz, akt }) {
   const m = sitz.mandant;
   const sim = useMemo(() => simulation(m), [m]);
+  /* WP-I2: dieselbe Planprüfung wie überall (pruefen), laufend auf dem gerade bearbeiteten Raster. */
+  const live = useMemo(() => rasterBefunde(m), [m]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const [pinsel, setPinsel] = useState(m.dienstarten[0].id);
   const editierbar = darf(sitz, "pattern.edit");
@@ -48,6 +51,17 @@ export function Schichtfolge({ sitz, akt }) {
           {sim.konflikte.slice(0, 5).map((k, i) => <div key={i} style={{ color: C.danger, marginBottom: 6 }}>
             Tag {k.tag + 1}: {k.von} → {k.nach} lässt nur {n1(k.ruhe)} h Ruhezeit. Das trifft jede {m.einheitLabel}.</div>)}
         </Hinweisband>)}
+
+      <Hinweisband ton={live.gruppen.some((g) => g.schwere === "danger") ? "danger" : live.gruppen.length ? "warn" : "ok"}
+        titel="Live-Prüfung" role="status">
+        {live.gruppen.length === 0
+          ? "Keine Befunde für dieses Raster."
+          : live.gruppen.map((g) => <div key={g.art} style={{ marginBottom: 6 }}>
+              <b>{g.beispiel.titel.split(" — ")[0]}</b>{g.anzahl > 1 ? ` (${g.anzahl}×)` : ""}: {g.beispiel.text}</div>)}
+        <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6 }}>
+          Die Prüfung läuft beim Ändern mit denselben Regeln wie die Planprüfung (Zeitraum {live.von} bis {live.bis}).
+          Sie ist ein Hinweis, keine Sperre.</div>
+      </Hinweisband>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 16 }}>
         <Card style={{ minWidth: 0 }}>
