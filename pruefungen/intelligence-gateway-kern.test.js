@@ -8,7 +8,7 @@
    Ausnahme, Kosten- und Ratenschutz, Einschleusungsversuche, Zeitgrenzen.
    ========================================================================== */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
@@ -240,10 +240,23 @@ describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzba
     expect(r.rueckfall.code).toBe("KI_ZEIT");
   });
   it("globale Deadline: kein Aufruf mehr nach Ablauf", async () => {
-    const t = bauen({ modus: "zeitueberschreitung", zeiten: { stufeMs: 60, deadlineMs: 100 } });
-    const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
-    expect(r.rueckfall.code).toBe("KI_ZEIT");
-    expect(t.anbieter.aufrufe.length).toBeLessThanOrEqual(2);
+    /* Deterministisch: Date.now und setTimeout laufen auf derselben (falschen) Uhr.
+       Mit echten Zeitgebern wird die Frist von Stufe 2 exakt auf die Restzeit bis zur
+       globalen Deadline gesetzt; der Zeitgeber läuft auf der monotonen Uhr (ms-gekappt),
+       die Deadline-Prüfung auf Date.now (Wanduhr). Feuert er relativ zu Date.now 1 ms früh,
+       ist „rest > 0“ korrekt erfüllt und Stufe 3 startet noch VOR Ablauf mit ~1 ms Budget —
+       das war der Flake (3 statt ≤ 2), kein Aufruf nach Ablauf. */
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      const t = bauen({ modus: "zeitueberschreitung", zeiten: { stufeMs: 60, deadlineMs: 100 } });
+      const lauf = t.gw.ausfuehren(S.leitung, anfrage("F2"));
+      await vi.advanceTimersByTimeAsync(1000);
+      const r = await lauf;
+      expect(r.rueckfall.code).toBe("KI_ZEIT");
+      expect(t.anbieter.aufrufe.length).toBeLessThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("Wiederholung gelingt: erster Aufruf 429, zweiter ok → fertig, in einer Stufe", async () => {
     const t = bauen({ modus: "skript", skript: (nr, ein) => { if (nr === 1) { const e = new Error("429"); e.klasse = "begrenzt"; throw e; } return { text: "Es liegen keine Fakten vor." }; } });
