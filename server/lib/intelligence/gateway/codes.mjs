@@ -28,4 +28,7 @@ export const RUECKFALL_TEXTE = Object.freeze({
   KI_ZEIT: "Der Intelligence-Dienst hat nicht rechtzeitig geantwortet. Die Planung funktioniert unverändert.",
   KI_PRUEFER: "Die Antwort hat die Prüfung nicht bestanden und wird nicht angezeigt. Die Planung funktioniert unverändert.",
   KI_NICHT_FREIGEGEBEN: "Der Intelligence-Dienst ist für diesen Betrieb nicht freigegeben.",
+  KI_LIMIT: "Intelligence-Vorschläge sind gerade nicht verfügbar (Nutzungsgrenze erreicht). Die Planung funktioniert unverändert.",
+  KI_KONTINGENT: "Das Intelligence-Kontingent ist erreicht. Die Planung funktioniert unverändert.",
+  KI_GROESSE: "Die Anfrage oder die Antwort war zu umfangreich und wird nicht angezeigt. Die Planung funktioniert unverändert.",
 });
