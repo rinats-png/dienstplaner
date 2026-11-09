@@ -251,14 +251,58 @@ export async function tokenAusstellen(store, { zweck, nr, inhalt = {}, mitCode =
   return { token, code, bis, schluessel };
 }
 
+/* --------------------------------------------------------------------------
+   NACHWEISBAR ENTWERTET (WP-18, Review-Auflage M2)
+
+   Bis November 2026 schluckte `verbrauchen` einen Löschfehler: Das Token
+   galt als verbraucht, blieb aber in der Ablage liegen — und ließ sich mit
+   dem nächsten Versuch ein zweites Mal einlösen. Jetzt gilt: Eingelöst ist
+   nur, was nachweisbar aus dem Umlauf ist. Scheitert das Löschen,
+     - gibt es kein Ergebnis (`grund: "nicht-entwertet"`, der Aufrufer
+       antwortet 503),
+     - und das Token bleibt gesperrt: ein Sperrvermerk in der Ablage
+       (`tokensperre:<Prüfsumme>`, gilt bis zur Frist des Tokens) und
+       zusätzlich im Speicher dieses Prozesses, falls auch der Vermerk nicht
+       geschrieben werden kann. Jeder weitere Versuch findet die Sperre.
+   Die Grenze: Verweigert die Platte Löschen UND Schreiben, hält nur die
+   prozesslokale Sperre — bis zum Neustart. Für Einladungen gibt es
+   zusätzlich den Zustandsvermerk mit exklusivem Anlegen (einladungen.mjs),
+   der VOR dem Löschen steht und deshalb auch dann hält.
+   -------------------------------------------------------------------------- */
+const SPERRE_PRAEFIX = "tokensperre:";
+const gesperrt = new Set();
+const sperrSchluessel = (schluessel) => SPERRE_PRAEFIX + String(schluessel).slice(PRAEFIX.length);
+
+/** Ist dieser Tokenschlüssel gesperrt (prozesslokal oder per Vermerk)? Ein Lesefehler am Vermerk wirft. */
+async function istGesperrt(store, schluessel) {
+  if (gesperrt.has(schluessel)) return true;
+  return !!(await store.get(sperrSchluessel(schluessel), { type: "json" }));
+}
+
 /**
  * Nimmt einen Eintrag endgültig aus dem Umlauf — den Token und, falls
  * vorhanden, den zugehörigen Code. Gelöscht wird, bevor geurteilt wird.
+ * @returns {Promise<boolean>} true nur, wenn der Token nachweisbar gelöscht ist
  */
 async function verbrauchen(store, schluessel, eintrag) {
-  await store.delete(schluessel).catch(() => {});
+  let ok = true;
+  /* Unter Windows scheitert das Löschen einer Datei, die ein anderer Leser gerade offen hat, vorübergehend
+     (EPERM/EBUSY/EACCES) — wie das Umbenennen in ablage.mjs. Drei kurze Wiederholungen (zusammen rund 30 ms),
+     dann gilt es als gescheitert. */
+  for (let versuch = 0; ; versuch++) {
+    try { await store.delete(schluessel); break; }
+    catch {
+      if (versuch >= 3) { ok = false; break; }
+      await new Promise((r) => setTimeout(r, 5 * (versuch + 1)));
+    }
+  }
+  if (!ok) {
+    gesperrt.add(schluessel);
+    await store.setJSON(sperrSchluessel(schluessel), { bis: Number(eintrag && eintrag.bis) || 0 }).catch(() => {});
+  }
   if (eintrag && eintrag.codeSchluessel)
-    await store.delete(eintrag.codeSchluessel).catch(() => {});
+    await store.delete(eintrag.codeSchluessel).catch(() => {});   // der Zeiger allein öffnet nichts (Token gesperrt)
+  return ok;
 }
 
 /**
@@ -284,11 +328,12 @@ export async function tokenEinloesen(store, token, { zweck, nummern = null,
     try {
       const eintrag = await store.get(schluessel, { type: "json" });
       if (!eintrag) return { eintrag: null, grund: "unbekannt" };
+      if (await istGesperrt(store, schluessel)) return { eintrag: null, grund: "gesperrt" };
       /* Erst verbrauchen, dann urteilen: Auch ein abgelaufenes oder
          zweckfremdes Token ist nach dem ersten Versuch weg. Sonst ließe
          sich an einem liegengebliebenen Link ausprobieren, welcher Zweck
-         er einmal hatte. */
-      await verbrauchen(store, schluessel, eintrag);
+         er einmal hatte. Nicht nachweisbar weg: kein Ergebnis (M2). */
+      if (!(await verbrauchen(store, schluessel, eintrag))) return { eintrag: null, grund: "nicht-entwertet" };
       if (eintrag.bis < jetzt()) return { eintrag: null, grund: "abgelaufen" };
       if (zweck && eintrag.zweck !== zweck) return { eintrag: null, grund: "zweck" };
       if (nummern && laufnummer(nummern, eintrag.zweck) !== (Number(eintrag.nr) || 0))
@@ -326,6 +371,7 @@ export async function tokenAnsehen(store, token, { zweck, nummern = null,
   try {
     const eintrag = await store.get(PRAEFIX + hash(token), { type: "json" });
     if (!eintrag) return { eintrag: null, grund: "unbekannt" };
+    if (await istGesperrt(store, PRAEFIX + hash(token))) return { eintrag: null, grund: "gesperrt" };
     if (eintrag.bis < jetzt()) return { eintrag: null, grund: "abgelaufen" };
     if (zweck && eintrag.zweck !== zweck) return { eintrag: null, grund: "zweck" };
     if (nummern && laufnummer(nummern, eintrag.zweck) !== (Number(eintrag.nr) || 0))
@@ -371,7 +417,11 @@ export async function codeEinloesen(store, email, code, { zweck, nummern = null,
       return nacheinander(zeiger.tokenSchluessel, async () => {
         const eintrag = await store.get(zeiger.tokenSchluessel, { type: "json" });
         if (!eintrag) return { eintrag: null, grund: "unbekannt" };
-        await store.delete(zeiger.tokenSchluessel).catch(() => {});
+        if (await istGesperrt(store, zeiger.tokenSchluessel)) return { eintrag: null, grund: "gesperrt" };
+        /* N-3 (Review WP-18): den Eintrag übergeben — sonst stünde der Sperrvermerk mit `bis: 0`, und
+           tokenAufraeumen räumte ihn weg, während das Token selbst noch gilt. */
+        if (!(await verbrauchen(store, zeiger.tokenSchluessel, eintrag)))
+          return { eintrag: null, grund: "nicht-entwertet" };
         if (eintrag.bis < jetzt()) return { eintrag: null, grund: "abgelaufen" };
         if (zweck && eintrag.zweck !== zweck) return { eintrag: null, grund: "zweck" };
         if (nummern && laufnummer(nummern, eintrag.zweck) !== (Number(eintrag.nr) || 0))
@@ -389,7 +439,7 @@ export async function codeEinloesen(store, email, code, { zweck, nummern = null,
  */
 export async function tokenAufraeumen(store, { jetzt = Date.now } = {}) {
   let weg = 0;
-  for (const praefix of [PRAEFIX, CODE_PRAEFIX]) {
+  for (const praefix of [PRAEFIX, CODE_PRAEFIX, SPERRE_PRAEFIX]) {
     try {
       const { blobs } = await store.list({ prefix: praefix });
       for (const b of blobs) {

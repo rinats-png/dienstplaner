@@ -672,10 +672,20 @@ export async function arbeitssitzungPruefen(store, sitzung,
   if (!bestand) return absage("bestand-fehlt");
   const grundM = mandantPruefen(bestand, sitzung.betrieb, m.mandantId);
   if (grundM) return absage(grundM);
+  /* Trägt die Sitzung eine Betriebskennung (betriebsauswahl.mjs, kennungZulaessig), muss es die der Mitgliedschaft
+     sein. Sitzungen ohne Kennung bleiben, wie sie sind. */
+  if (Object.prototype.hasOwnProperty.call(sitzung, "mandantId") && sitzung.mandantId !== undefined
+    && String(sitzung.mandantId) !== String(m.mandantId)) return absage("mandant-gewechselt");
   const mandant = eigenerMandant(bestand, { betrieb: sitzung.betrieb });
   const dabei = (Array.isArray(mandant.personen) ? mandant.personen : [])
     .some((p) => p && String(p.id) === String(person));
   if (!dabei) return absage("person-fehlt");
+  /* Auflage A1 (Sicherheitsreview 181b4fe): Dabei sein reicht nicht — die Person muss im Betrieb noch gelten, nach
+     derselben Regel wie im Code-Zweig oben (sitzungPersonGilt → aktivePerson: genau einmal, nicht anonymisiert, nicht
+     deaktiviert, nicht ausgetreten). Für jede Kontositzung, nicht nur für eine mit Funktionsrolle oder Kennung. Trägt
+     die Sitzung eine Kennung, ist sie oben schon als die der Mitgliedschaft und der Position bestätigt; beide Wege
+     wählen denselben Betrieb. Die Absage räumt die Sitzung weg und nennt nur den Grund, keine Personendaten. */
+  if (!sitzungPersonGilt(bestand, sitzung, heuteBerlin(new Date(jetzt())))) return absage("person-fort");
 
   return { ok: true, art: HERKUNFT_KONTO };
 }

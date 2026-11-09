@@ -93,6 +93,26 @@ describe("Monatsabschluss in den Stempelbefunden", () => {
   });
 });
 
+describe("Prüffall ohne Eintrittsdatum (Review d6c92e0, Befund 3)", () => {
+  const mitOhneEintritt = () => {
+    const m = betrieb();
+    m.personen.push({ ...m.personen.find((x) => x.id === "mitarbeiter"), id: "ohne", nachname: "Ohne", eintritt: null });
+    m.einstempeln["ohne|2026-10-29"] = { start: "06:00", startAm: "2026-10-29T05:00:00.000Z", ende: "14:00", endeAm: "2026-10-29T13:00:00.000Z" };
+    m.einstempeln["ohne|2026-09-29"] = { start: "06:00", startAm: "2026-09-29T04:00:00.000Z", ende: "14:00", endeAm: "2026-09-29T12:00:00.000Z" };
+    return m;
+  };
+  it("offener Monat: „rechnen die Stunden mit“; abgeschlossener Monat: kein Versprechen, Hinweis auf Wiederöffnen", () => {
+    const offen = text(h(A.Monatsabschluss, { sitz: sitzFuer(mitOhneEintritt(), "leitung"), ym: "2026-09", akt }));
+    expect(offen).toContain("Eintrittsdatum fehlt");
+    expect(offen).toContain("rechnen die Stunden mit");
+    const zu = text(h(A.Monatsabschluss, { sitz: sitzFuer(mitOhneEintritt(), "leitung"), ym: "2026-10", akt }));
+    expect(zu).toContain("Eintrittsdatum fehlt");
+    expect(zu).not.toContain("rechnen die Stunden mit");
+    expect(zu).toContain("ändert die eingefrorenen Stunden nicht");
+    expect(zu).toContain("Wiederöffnen und erneuten Abschluss");
+  });
+});
+
 describe("Beschäftigte: abgeschlossener Monat in „Meine Stempel“", () => {
   it("der Stempel vom 30.10. zeigt „Monat abgeschlossen“ ohne „Korrektur beantragen“; der vom 09.11. bleibt beantragbar", () => {
     const t = text(h(A.KorrekturKarte, { sitz: sitzFuer(betrieb(), "mitarbeiter"), akt }));

@@ -10,7 +10,7 @@
    und ohne die Systemuhr anzufassen.
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -393,5 +393,46 @@ describe("Der Aktivierungscode", () => {
     expect((await T.codeEinloesen(s, "c@example.org", c.code,
       { zweck: "einladung", nummern: { einladung: 2 }, jetzt: u3.jetzt })).grund)
       .toBe("entwertet");
+  });
+});
+
+/* ==========================================================================
+   WP-18, Sicherheitsreview Auflage N-3
+
+   codeEinloesen übergab `verbrauchen` keinen Eintrag. Scheiterte das Löschen,
+   stand der Sperrvermerk mit `bis: 0` — und tokenAufraeumen hielt ihn für
+   abgelaufen und entfernte ihn, obwohl das Token selbst noch galt. In einem
+   anderen Prozess (ohne die prozesslokale Sperre) war das Token danach wieder
+   einlösbar. Der andere Prozess wird hier durch eine frische Modulinstanz
+   nachgebildet (vi.resetModules): Sie kennt die Sperre im Speicher nicht.
+   ========================================================================== */
+
+describe("N-3: der Sperrvermerk aus dem Codeweg übersteht das Aufräumen", () => {
+  it("nach tokenAufraeumen ist ein per Code eingelöstes, nicht löschbares Token weiterhin gesperrt", async () => {
+    const s = laden(), u = uhr(Date.now());
+    const MAIL = "n3-probe@example.org";
+    const { token, code } = await T.tokenAusstellen(s, { zweck: "einladung", nr: 1,
+      inhalt: { probe: "n3" }, mitCode: true, email: MAIL, jetzt: u.jetzt });
+    /* Das Löschen des Tokens scheitert — der Codezeiger lässt sich löschen. */
+    const kaputt = {
+      get: (...a) => s.get(...a), setJSON: (...a) => s.setJSON(...a), list: (...a) => s.list(...a),
+      delete: async (k) => {
+        if (String(k).startsWith("token:")) throw Object.assign(new Error("EIO (Prüfung)"), { code: "EIO" });
+        return s.delete(k);
+      },
+    };
+    const r = await T.codeEinloesen(kaputt, MAIL, code, { zweck: "einladung", jetzt: u.jetzt });
+    expect(r.eintrag).toBe(null);
+    expect(r.grund).toBe("nicht-entwertet");
+    /* Das Token liegt noch; der Sperrvermerk muss bis zur Frist des Tokens gelten. */
+    await T.tokenAufraeumen(s, { jetzt: u.jetzt });
+    expect((await s.list({ prefix: "tokensperre:" })).blobs.length).toBe(1);
+    /* Ein anderer Prozess ohne die Sperre im Speicher. */
+    vi.resetModules();
+    const frisch = await import("../server/lib/token.mjs");
+    expect((await frisch.tokenAnsehen(s, token, { zweck: "einladung", jetzt: u.jetzt })).eintrag).toBe(null);
+    const nochmal = await frisch.tokenEinloesen(s, token, { zweck: "einladung", jetzt: u.jetzt });
+    expect(nochmal.eintrag).toBe(null);
+    expect(nochmal.grund).toBe("gesperrt");
   });
 });

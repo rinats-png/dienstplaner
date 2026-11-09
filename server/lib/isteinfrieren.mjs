@@ -31,7 +31,7 @@
    Sicht wie die Erfassung: Beschäftigte die eigenen, Betriebsrat keine,
    Schichtverantwortung eigene und Bereich (sicht.mjs).
    ========================================================================== */
-import { einheitAm, imDienst, einheitDienst, teilzeitDienst, landFuerEinheit, nachtAnteil, nachtschwelle } from "./fachpruefung.mjs";
+import { einheitAm, imDienst, einheitDienst, teilzeitDienst, landFuerEinheit, nachtAnteil, nachtschwelle, eintrittFehlt } from "./fachpruefung.mjs";
 import { between, dow, addDays, toMin, fenster, uhrversatz, dim_, pad, dauerAm } from "./regelwerk.mjs";
 import { gewertet, abwHoechste, abwBezahlt, LOHNARTEN_STD, RECHEN_STAND } from "./lohnrechnung.mjs";
 import { feiertag } from "./feiertage.mjs";
@@ -538,6 +538,34 @@ export function abschlussLueckeText(m, mon) {
   const st = freezeStatus(m, mon);
   return st && st.grund === "geloescht" ? FREEZE_GELOESCHT_TEXT : ABSCHLUSS_LUECKE_TEXT;
 }
+/* Auflage A (Datenreview PR #130): Eine Person ohne Eintrittsdatum (null/leer) darf stempeln — der Stempel wird
+   gespeichert. Ins Ist geht er nicht ein (imDienst ist an keinem Tag wahr), deshalb auch keine abschlussLuecke und
+   keine Lohnzeile. Damit die Stunden nicht still fehlen, ist das ein eigener PRÜFFALL in Monatsabschluss und
+   Lohnausgabe — mit der Anzahl der Stempel (Tage mit Stempel oder Ist-Eintrag). Der Freeze bleibt unberührt. */
+export const OHNE_EINTRITT_TEXT = "Eintrittsdatum fehlt – Stunden nicht abgerechnet";
+/** Zahl der Tage im Monat mit Stempel oder Ist-Eintrag einer Person ohne Eintritt, sonst 0. */
+export function stempelOhneEintritt(m, p, mon) {
+  if (!m || !p || !eintrittFehlt(p)) return 0;
+  if (!istVerfuegbar(m, p, zeitraumMonat(mon))) return 0;
+  const tage = new Set();
+  for (const feld of ["einstempeln", "erfassung"]) {
+    for (const [k, e] of Object.entries(objekt(m[feld]) ? m[feld] : {})) {
+      if (!objekt(e)) continue;
+      const i = String(k).lastIndexOf("|");
+      if (i < 0 || String(k).slice(0, i) !== String(p.id)) continue;
+      const d = String(k).slice(i + 1);
+      if (d.slice(0, 7) === mon) tage.add(d);
+    }
+  }
+  return tage.size;
+}
+/** Alle Personen ohne Eintritt mit Stempeln im Monat: [{ person, anzahl }]. */
+export function ohneEintrittPrueffaelle(m, mon) {
+  return liste(m && m.personen).map((p) => ({ person: p, anzahl: stempelOhneEintritt(m, p, mon) })).filter((x) => x.anzahl > 0);
+}
+/** Kurztext je Fall: „Nachname, Vorname: n Stempel". */
+export const ohneEintrittFallText = (f) => `${f.person.nachname || "?"}, ${f.person.vorname || "?"}: ${f.anzahl} Stempel`;
+
 /** Markierung eines Tages ohne Freeze im abgeschlossenen Monat. */
 export const LUECKE = Object.freeze({ luecke: true });
 

@@ -158,12 +158,18 @@ describe("Katalogzwang", () => {
 
   it("jedes Feld einer Person hat eine Entscheidung", () => {
     const katalog = new Set(PERSONENFELDER);
+    expect(APP.indexOf("neuePerson: (f) =>")).toBeGreaterThanOrEqual(0);
     const gefunden = new Set([
       ...Object.keys(leitungsperson({ vorname: "A", nachname: "B" }, "e1")),
       ...rueckgabe(APP, "zugangsPerson"),
       ...nachAnker(APP, "personen.push({"),
-      ...nachAnker(APP, "neuePerson: (f) => mUpd((m) => ({ ...m, personen: [...m.personen, {"),
-      ...nachAnker(APP, "return { id: uid(\"p\"), vorname: z.vorname"),
+      /* Datenreview PR #130: neuePerson prüft den Eintritt vor dem Speichern und ruft mUpd erst danach auf;
+         der Anker sucht das Personenliteral deshalb ab „neuePerson: (f) =>“ (nur Fundstelle, keine Erwartung
+         geändert). */
+      ...nachAnker(APP, "personen: [...m.personen, {", APP.indexOf("neuePerson: (f) =>")),
+      /* Der Anker endet auf „{“: nachAnker sucht ab dessen Ende die nächste „{“ und läse sonst ein
+         verschachteltes Literal (früher zufällig ein Vorlagen-Ausdruck, jetzt die Zugehörigkeit). */
+      ...nachAnker(APP, "return {", APP.indexOf("return { id: uid(\"p\"), vorname: z.vorname")),
     ]);
     /* Einzelne Felder, die die Anwendung an einer Person setzt. */
     for (const t of APP.matchAll(/setzePerson\([^,()]+,\s*"([A-Za-z]+)"/g)) gefunden.add(t[1]);

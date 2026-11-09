@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { heute, fKurz } from "../lib/datum.js";
 import { darf } from "../lib/berechtigung.js";
 import { rolle, ROLLEN, rollenName } from "../lib/rollen.js";
-import { imDienst, einheitAm } from "../../server/lib/fachpruefung.mjs";
+import { imDienst, einheitAm, eintrittFehlt } from "../../server/lib/fachpruefung.mjs";
 import { H1, Btn, Card, Rubrik, klickbar, Filterleiste, Seg, Lab, Avatar, Sel, Pill, Fussleiste, Field, Inp } from "../ui/bausteine.jsx";
 import { zahl, eur, sgnIst, n1Ist } from "../lib/format.js";
 import { Standortwahl, Standortleiste, Sheet } from "../ui/leisten.jsx";
@@ -13,6 +13,12 @@ import { lesbar, NUM } from "../ui/thema.js";
 import { vergebbareRollen } from "../../server/lib/rollenvergabe.mjs";
 import { stundenText } from "../istdaten.js";
 import { Icon } from "../gestalt/icons.jsx";
+
+/* Datenreview PR #130 (4): Vorgabe der Einzelanlage. Kein Eintritt „heute“ und keine Funktion „Fachkraft“
+   als stille Vorbelegung (leer; das Datum wird beim Speichern zu null). Wochenstunden und Urlaub sind
+   Betriebsvorgaben (Einstellung Sollwochenstunden, 30 Tage) — sichtbar im Formular und mit Hinweis. */
+export const neuePersonFormular = (m) => ({ vorname: "", nachname: "", funktion: "", einheitId: m.einheiten[0].id,
+  wochenstunden: m.einstellungen.sollWochenstunden, urlaubsanspruch: 30, eintritt: "", rolle: "mitarbeiter" });
 
 /* ================================ PERSONAL =============================== */
 export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, setStandortId = () => {} }) {
@@ -23,8 +29,7 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
   useEffect(() => { const t = setTimeout(() => setSuch(q), 200); return () => clearTimeout(t); }, [q]);
   const jahr = Number(ym.slice(0, 4)), d0 = heute();
   const zeigt = darf(sitz, "account.view.all");
-  const [f, setF] = useState({ vorname: "", nachname: "", funktion: "Fachkraft", einheitId: m.einheiten[0].id,
-    wochenstunden: m.einstellungen.sollWochenstunden, urlaubsanspruch: 30, eintritt: d0, rolle: "mitarbeiter" });
+  const [f, setF] = useState(() => neuePersonFormular(m));
 
   /* Die Einheiten des gewählten Standorts. Sie tragen zweierlei: die
      Auswahlknöpfe darunter und die Frage, wer überhaupt in der Liste steht. */
@@ -36,8 +41,10 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
       setFilter("alle");
   }, [standortId]);
 
+  /* Datenreview PR #130 (1): Ohne Eintritt ist eine Person an keinem Tag im Dienst — sie bleibt trotzdem in
+     der Liste (sonst wäre sie unauffindbar und ihr Eintritt nicht nachzutragen). */
   const zeilen = useMemo(() => m.personen
-    .filter((p) => imDienst(p, d0) || p.austritt)
+    .filter((p) => imDienst(p, d0) || p.austritt || eintrittFehlt(p))
     .filter((p) => personAmStandort(m, p, standortId, d0))
     .filter((p) => filter === "alle" ? true : filter === "aus" ? !!p.austritt : einheitAm(p, d0) === filter)
     .filter((p) => such ? `${p.vorname} ${p.nachname}`.toLowerCase().includes(such.toLowerCase()) : true)
@@ -125,7 +132,7 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 550, opacity: p.austritt ? .5 : 1 }}>
                       {p.nachname}, {p.vorname}</div>
-                    <div style={{ fontSize: 12, color: C.dimmer }}>{p.funktion}{p.austritt ? ` · ausgetreten ${fKurz(p.austritt)}` : ""}</div>
+                    <div style={{ fontSize: 12, color: C.dimmer }}>{p.funktion}{p.austritt ? ` · ausgetreten ${fKurz(p.austritt)}` : ""}{eintrittFehlt(p) ? `${p.funktion ? " · " : ""}Eintritt fehlt` : ""}</div>
                   </div>
                 </div></td>
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, color: e ? lesbar(e.farbe) : C.dimmer }}>{e ? e.name : "—"}</td>
@@ -188,14 +195,15 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
           {neuFehler && <div id="neu-person-fehler" role="alert" style={{ color: C.danger, fontSize: 13, fontWeight: 600 }}>{neuFehler}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Funktion"><Sel value={f.funktion} onChange={(e) => setF({ ...f, funktion: e.target.value })}>
+              <option value="">Nicht angegeben</option>
               {["Schichtleitung", "Stellvertretung", "Fachkraft", "Hilfskraft", "Auszubildende"].map((x) => <option key={x}>{x}</option>)}</Sel></Field>
             <Field label={m.einheitLabel}><Sel value={f.einheitId} onChange={(e) => setF({ ...f, einheitId: e.target.value })}>
               {m.einheiten.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</Sel></Field>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 13 }}>
-            <Field label="Wochenstunden"><Inp type="number" step="0.5" value={f.wochenstunden} onChange={(e) => setF({ ...f, wochenstunden: Number(e.target.value) })} /></Field>
-            <Field label="Urlaubsanspruch"><Inp type="number" value={f.urlaubsanspruch} onChange={(e) => setF({ ...f, urlaubsanspruch: Number(e.target.value) })} /></Field>
-            <Field label="Eintritt"><Inp type="date" value={f.eintritt} onChange={(e) => setF({ ...f, eintritt: e.target.value })} /></Field>
+            <Field label="Wochenstunden" hint="Vorgabe des Betriebs — bitte prüfen."><Inp type="number" step="0.5" value={f.wochenstunden} onChange={(e) => setF({ ...f, wochenstunden: Number(e.target.value) })} /></Field>
+            <Field label="Urlaubsanspruch" hint="Vorgabe 30 Tage — bitte prüfen."><Inp type="number" value={f.urlaubsanspruch} onChange={(e) => setF({ ...f, urlaubsanspruch: Number(e.target.value) })} /></Field>
+            <Field label="Eintritt" hint="Leer lassen, wenn noch offen: Geplant und abgerechnet wird erst ab dem Eintrittsdatum."><Inp type="date" value={f.eintritt} onChange={(e) => setF({ ...f, eintritt: e.target.value })} /></Field>
           </div>
           <Field label="Zugangsart" hint={`${rolle(f.rolle).text} — ${rolle(f.rolle).berechnet && preisWirkung(f.rolle) > 0 ? `kostet ${eur(preisWirkung(f.rolle))} je Monat` : "ohne Zusatzkosten"}.`}>
             <Sel value={f.rolle} onChange={(e) => setF({ ...f, rolle: e.target.value })}>
@@ -210,7 +218,7 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
                 if (feld) feld.focus();
                 return;
               }
-              akt.neuePerson(f); setNeu(false); setNeuFehler(null); setF({ ...f, vorname: "", nachname: "" });
+              akt.neuePerson(f); setNeu(false); setNeuFehler(null); setF({ ...f, vorname: "", nachname: "", funktion: "", eintritt: "" });
             }}>Hinzufügen</Btn>
           </div>
         </div>

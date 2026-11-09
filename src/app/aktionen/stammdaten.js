@@ -2,7 +2,7 @@
    Der Kontext k kommt aus AppInnen (useMemo von akt) und traegt dieselben Werte wie vorher der Abschluss. */
 import { uid } from "../../lib/format.js";
 import { RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE } from "../../../server/lib/geo.mjs";
-import { PALETTE, waehltEinheit, eigeneEinheitVon, uebergabeAm, besetzung, uebergabenVon, tabelleCSV, vollExport, lohnWarnung, datevCSV, datevSaetze, lohnexportStand, EXPORT_STAND, lohnausgabeDateiname, lohnausgabeText } from "../../lib/fachlogik.js";
+import { PALETTE, waehltEinheit, eigeneEinheitVon, uebergabeAm, besetzung, uebergabenVon, tabelleCSV, vollExport, lohnWarnung, datevCSV, datevSaetze, lohnexportStand, EXPORT_STAND, lohnausgabeDateiname, lohnausgabeText, importGegenBestand } from "../../lib/fachlogik.js";
 import { einheitAm } from "../../../server/lib/fachpruefung.mjs";
 import { lade } from "../../lib/download.js";
 import { exportWarnung } from "../../istdaten.js";
@@ -93,18 +93,26 @@ export function aktionenStammdaten(k) {
           for (const q of [...new Set(zeilen.flatMap((z) => z.fehlendeQuals))])
             quals.push({ id: uid("q"), name: q, kurz: q.slice(0, 4).toUpperCase(), farbe: PALETTE[quals.length % PALETTE.length] });
         }
-        const neue = zeilen.map((z) => {
+        /* IMP-1 Review: nur übernehmbare Zeilen (ok true) werden angelegt; zielId wird hier nie gelesen —
+           eine Dublette (ok false) führt zu keinem Schreibpfad, auch nicht zu einer Aktualisierung.
+           Eintritt leer (null): zugehoerigkeit.ab und rolleSeit bleiben bewusst null; die Leser
+           (einheitAm, rolleAm, zugehoerigkeitsAbschnitte) lesen leeres ab als „von Anfang an“. */
+        /* Datenreview PR #130 (3): vor dem Anlegen gegen den aktuellen Bestand (m.personen) — eine vorhandene
+           Personalnummer wird nie angelegt, die Zeile mit Fehler übersprungen. */
+        const { uebernehmen, uebersprungen } = importGegenBestand(m.personen, zeilen.filter((z) => z.ok === true));
+        const neue = uebernehmen.map((z) => {
           const eid = z.einheitId || (einheiten.find((e) => e.name === z.einheitName) || {}).id || einheiten[0].id;
           const zusatz = z.fehlendeQuals.map((q) => (quals.find((x) => x.name === q) || {}).id).filter(Boolean);
           return { id: uid("p"), vorname: z.vorname, nachname: z.nachname, funktion: z.funktion,
-            email: `${z.vorname.toLowerCase()}.${z.nachname.toLowerCase()}@betrieb.de`,
-            zugehoerigkeit: [{ ab: z.eintritt, einheitId: eid }], eintritt: z.eintritt, austritt: null,
+            email: z.email || "", personalnummer: z.personalnummer || "",
+            zugehoerigkeit: [{ ab: z.eintritt || null, einheitId: eid }], eintritt: z.eintritt || null, austritt: null,
             wochenstunden: z.wochenstunden, urlaubsanspruch: z.urlaubsanspruch, urlaubsuebertrag: 0, stundenuebertrag: 0,
             qualifikationen: [...z.qualifikationen, ...zusatz], einschraenkungen: {}, teilzeit: z.teilzeit, springer: false,
             rolle: z.rolle, bereich: ["leitung", "planer", "betriebsrat"].includes(z.rolle) ? "ALLE" : eid,
-            rolleSeit: z.eintritt, status: "aktiv" };
+            rolleSeit: z.eintritt || null, status: "aktiv" };
         });
-        melde(`${neue.length} Personen übernommen.`);
+        melde(`${neue.length} Personen übernommen.`
+          + (uebersprungen.length ? ` Übersprungen: ${uebersprungen.map((u) => u.fehler).join("; ")}.` : ""));
         return { ...m, einheiten, qualifikationen: quals, personen: [...m.personen, ...neue] };
       }, "Personal importiert"),
       dienstbuchEintrag: (datum, art, text, einheitId = null) => mUpd((m) => ({ ...m, dienstbuch: [

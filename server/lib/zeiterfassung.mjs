@@ -144,10 +144,12 @@ export function startZuordenbar(datum, start, jetzt = new Date(), startAm = null
 /* --- Dieselbe Planrechnung wie im Client --- */
 function einheitAm(p, d) {
   let t = null;
-  for (const z of Array.isArray(p.zugehoerigkeit) ? p.zugehoerigkeit : []) if (z && z.ab <= d) t = z;
+  for (const z of Array.isArray(p.zugehoerigkeit) ? p.zugehoerigkeit : []) if (z && (!z.ab || z.ab <= d)) t = z;   // ab leer: von Anfang an (Eintritt unbekannt)
   return t ? t.einheitId : null;
 }
-function imDienst(p, d) {
+/* Eintritt null/leer: an keinem Tag im Dienst (Datenreview PR #130, wie fachpruefung.mjs). */
+export function imDienst(p, d) {
+  if (p.eintritt === null || p.eintritt === "") return false;
   if (p.eintritt && d < p.eintritt) return false;
   if (p.austritt && d > p.austritt) return false;
   return p.status !== "gesperrt";
