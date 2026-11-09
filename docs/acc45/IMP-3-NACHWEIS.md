@@ -209,3 +209,27 @@ Basis `9125b0a` (`acc45/import/imp-3-auflagen`), Branch `acc45/import/imp-3-aufl
 - **Verwerfen während laufender Übernahme** wird nicht abgewiesen: der Vorgang verschwindet, die Übernahme schreibt mit ihrer Momentaufnahme trotzdem zu Ende (ganz oder gar nicht). Kein Datenverlust, aber für die Person überraschend; Vorschlag: `verwerfen` bei `laeuft` ebenfalls 409.
 - `datumssystem`: endgültiger Ort/Wertetyp hängt an IMP-2 (s. o.); der übersprungene Test macht den Anschluss sichtbar.
 - Die Raum-Grenze gilt je Prozess (wie die globale; ein Prozess je Ablage).
+
+## 16. Datum nur über den Parser
+
+Branch `acc45/import/imp-3-datum` (Basis `edba1d7`, plus Merge `8725dc5` = IMP-2). Dieser Abschnitt ersetzt die Punkte 2 und 4 der „Freigaben Betreiber (2026-11-09, zusätzlich)" sowie den offenen Punkt zu `datumssystem`.
+
+**Vertrag:** Der Parser liefert Excel-Datumszellen roh bereits im System 1900 und setzt `datumssystem = "1900"` (bei 1904-Mappen zusätzlich `datumssystemQuelle = "1904"`). IMP-3 rechnet nichts mehr um; die Umrechnung selbst mit Epoche 24107 hätte eine zweite Verschiebung um 1462 Tage ergeben.
+
+**Geändert:**
+- `server/lib/import/personen.mjs`: `datumAusZelle(z)` immer Epoche 25569, `roh >= 1`; Zweig `ist1904 ? 24107 : 25569` und Parameter `datumssystem` entfernt; `datumssystemAus` entfernt; `analysieren({ … })` ohne `datumssystem`.
+- `server/lib/import/uebernahme.mjs`: gibt kein Datumssystem mehr an `analysieren` weiter.
+- `server/funktionen/import.mjs`: `datumssystem` weder gespeichert noch durchgereicht (Analyse, Vorschau, Momentaufnahme der Übernahme). Nur `datumssystemQuelle === "1904"` wird im Vorgang vermerkt und als reine Anzeige `datumHinweis: "Datei im System 1904, Werte umgerechnet"` in den Antworten von Analyse und Vorschau mitgegeben.
+- `pruefungen/import-endpunkt.test.js`: Der Test, der `datumssystem: "1904"` selbst in die Parser-Ausgabe schrieb (`V._roh(...)`), ist ersetzt; der übersprungene „echter Parser-Weg"-Test entfällt (der Anschluss ist jetzt der Normalfall). Hilfsfunktion `vorschauUndUebernahme` ohne Option `system`.
+
+**Tests (Freigabe-Block „Datumswerte in der Vorschau = gespeicherte Werte"):**
+| Test | alt (`f9a02f9`, Server unverändert) | neu |
+|---|---|---|
+| „Datum nur über den Parser: 1900- und 1904-Mappe (gleicher Kalendertag) liefern in Vorschau und Speicherung dasselbe Eintrittsdatum" (echter `parseDatei` + Endpunkt, Vorschau = gespeichert) | rot (kein `datumHinweis`; die Datumswerte selbst waren grün, weil der echte Parser `"1900"` meldet) | grün |
+| „datumAusZelle rechnet nie selbst um: … zweites Argument wird ignoriert" | rot (`datumAusZelle(z, "1904")` lieferte 2030-03-16, Doppelverschiebung) | grün |
+| „ohne Angabe des Datumssystems gilt 1900" (unverändert, 1900-Mappe) | grün | grün |
+| „leeres Eintrittsdatum: null …" (unverändert) | grün | grün |
+
+Hinweis: Geburtsdatum wird von IMP-3 nicht importiert (nur Eintrittsdatum); der Test deckt daher nur das Eintrittsdatum ab.
+
+**Verifikation:** `import-endpunkt.test.js`, `import-parser.test.js`, `import-parser-vendor.test.js` mit `--testTimeout=60000`; eslint ohne Befund; `node werkzeug/verdrahtung-pruefen.mjs` grün.
