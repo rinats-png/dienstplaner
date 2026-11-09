@@ -8,6 +8,11 @@ Freigegeben ist der **technische Weg** (Konzept Punkte 1–4). Nicht freigegeben
 Betreiberkonten, Ausstellung echter Freigaben. Alles, was eine Betreiber-/Organisationsentscheidung braucht, wird
 **gebaut, aber gesperrt** ausgeliefert (fail-closed) und steht in Abschnitt I.
 
+**Nachtrag 2026-11-09:** Entscheidung 1 (normale Mandantenkonten, Vier-Augen durch zwei Mandanten-Administratoren) ist
+getroffen → Abschnitt **J**; sie ersetzt die bisherigen Punkte I.1, I.2 und den Vier-Augen-Teil von I.4. Für das
+alleinige Betreiberkonto gibt es die Entscheidungsvorlage [`BETREIBER-ENTSCHEIDUNG-KONTO.md`](BETREIBER-ENTSCHEIDUNG-KONTO.md);
+dieser Sonderfall bleibt bis zur Entscheidung **gesperrt**. Wo Abschnitte D–F etwas anderes sagen, gilt J.
+
 ---
 
 ## A. Ist-Stand
@@ -106,7 +111,12 @@ Stacktraces, keine Unterscheidung „Code unbekannt / verbraucht / alte Generati
 | D4 | `/api/anmelden` `{zugangscode, zweifaktorAktion:"verlustMelden"}` | Fall eröffnen (Abschnitt E) | 1. Faktor; **nicht** für Rolle `betreiber` | `{ok, fall:"F-XXXX"}`; Sitzungen des Trägers enden |
 | D5 | `/api/anmelden` `{zugangscode, zweifaktorAktion:"verlustEinloesen", freigabe:"…"}` | Freigabe einlösen | 1. Faktor + gültiges Freigabe-Token | neue **ausstehende** Einrichtung (Geheimnis einmal); Bestätigung wie heute → neue Codes |
 | D6 | Offline `werkzeug/zweifaktor-freigabe.mjs` (neu) | Freigabe ausstellen | Serverzugang + Pfeffer + Fallkennung + Prüfvermerk | Token einmal im Terminal |
-| D7 | Netz-Endpunkt Freigabe durch Kundenadmin | – | **gesperrt bis I.1** (liefert 403 `zweifaktor:"gesperrt"`) | – |
+| D7 | `/api/anmelden` `{zugangscode, zweifaktorAktion:"verlustFreigeben"\|"verlustAblehnen", fall, zweifaktor:"123456"}` | Freigabe/Ablehnung durch Mandanten-Administrator (**geändert, J**) | eigene vollständige Anmeldung + frischer TOTP; Regeln J.2 | 1. Freigabe: `{ok, stand:"teilfreigegeben"}`; 2. Freigabe: Token einmal (J.4) |
+| D8 | Betreiberprozess (J.5) | Freigabe, wenn keine zwei geeigneten Administratoren | **gesperrt bis I.5** (403 `zweifaktor:"gesperrt"`) | – |
+
+**Auflösung zu D6 (J):** D6 ist kein Ein-Personen-Weg für normale Mandantenkonten in Produktion. Es bleibt auf Prüf-/
+Staging-Umgebungen mit Testdaten beschränkt; in Produktion darf es nur als technischer Träger des Betreiberprozesses
+(D8) laufen, und erst nach Entscheidung I.5.
 
 **Fehlercodes (einheitlich):** 400 `ungueltig` (Form) · 401 `falsch`/`erforderlich` · 403 `pflicht`, `rolle`
 (z. B. D4 für Betreiber, D7), `gesperrt` · 409 `verlust-offen`, `ausstehend`, `aktiv` · 429 gebremst (`zuVielAntwort`)
@@ -131,9 +141,10 @@ Geheimnis, otpauth. Kein Name im Zusatz (heute steht `wer.name` in `einrichten.m
 
 ## E. Verlust-Prozess (Konzept Punkt 2)
 
-**Organisatorisch offen (I.1–I.4):** berechtigte Stelle, Identitätsprüfung, Revisionsnachweis, Übergabekanal.
-Technisch wird ausschließlich die Schnittstelle gebaut; ohne Entscheidung kann nur der Offline-Weg D6 eine Freigabe
-ausstellen, und auch der nur in Prüf-/Staging-Umgebungen mit Testdaten.
+**Berechtigte Stelle: entschieden 2026-11-09 (J)** – zwei Mandanten-Administratoren (Vier-Augen); ersatzweise
+Betreiberprozess (J.5, gesperrt bis I.5). Offen bleiben Identitätsprüfung, Revisionsinhalt, Übergabekanal und Fristen
+(I.3, I.4). Der Zustand `freigegeben` entsteht nur noch nach **zwei** gültigen Freigaben (J.3); die Zustandsmaschine
+unten gilt mit den Zwischen- und Endzuständen aus J.3.
 
 **Zustandsmaschine je Faktor-Träger (`id`):**
 ```
@@ -180,9 +191,12 @@ Serverübernahme (wer `.env` und `/data` hat, hat ohnehin alles, :224–227), ab
 Betreiber Gerät **und** Codes **und** den Serverzugang (oder ist er verhindert), gibt es keinen sicheren Weg.
 
 **Empfehlung:** Eine sichere Wiederherstellung eines **alleinigen** Betreiberkontos ohne organisatorische Vertrauensinstanz
-ist **nicht gewährleistet**. Empfohlen wird (I.5/I.6): (a) zweiter, personengebundener Betreiberzugang mit eigenem
-Faktor **oder** (b) benannte Vertrauensinstanz (z. B. Steuerberater/Notar) mit versiegeltem Satz Wiederherstellungscodes
-und dokumentiertem Öffnungsprotokoll; der Offline-Weg bleibt als technischer Rückweg mit Revisionsvermerk.
+ist **nicht gewährleistet**. Die Optionen sind ausgearbeitet in
+[`BETREIBER-ENTSCHEIDUNG-KONTO.md`](BETREIBER-ENTSCHEIDUNG-KONTO.md) (Entscheidung I.6). Kurz: zweiter personengebundener
+Betreiberzugang als Vier-Augen-Partner (ersatzweise geteilte Freigabe mit externer Instanz), versiegelte Offline-Codes,
+dokumentierte Identitätsprüfung, Wartezeit mit Benachrichtigung und Abbruch. **Geändert gegenüber Fassung e51a1f9:** Der
+Offline-Weg bleibt **nicht** unverändert als Rückweg; er muss dieselbe Zweitfreigabe verlangen, sonst ist jede Regel über
+den Serverzugang umgehbar (Vorlage Abschnitt 1).
 
 **Bis zur Entscheidung gesperrt:**
 - jede netzseitige Verlust-/Freigabe-Funktion für Betreiber (D4/D5/D7 → 403);
@@ -234,7 +248,7 @@ Routing nach `MODELL-ROUTING.md`: expliziter `model`-Parameter, je Paket frische
 | WR-0 | SI-P4-Delta fertigstellen, reviewen, integrieren | Δ | (laufend) | – | – |
 | WR-1 | Kern: Format w2, Erzeugen ohne Bias, Selektor+scrypt+HMAC/HKDF, Verbrauch mit Zähler, Neugenerierung `wiederherstellungNeu(store,id,totp)`, v1-Lesen | `zweifaktor.mjs` | **Opus** | 1,5 (1–2,5) | – (Merge nach WR-0) |
 | WR-2 | Neugenerierung über D2/D3, `faktorArt` in Sitzung, `merkenErlaubt=false` nach Code-Login, Bremsarten | `betreiber-zweifaktor.mjs`, `daten.mjs`, `einrichten.mjs`, `schutz.mjs` | **Opus** | 1,5 (1–2) | WR-0, WR-1 |
-| WR-3 | Verlust-Schnittstelle: Fall, Sperrzustand, Freigabe-Token, Einlösen, Sperre privilegierter Aktionen; D7 als 403-Stub | `zweifaktor.mjs`, `betreiber-zweifaktor.mjs`, `daten.mjs`, `arbeitssitzung.mjs` | **Opus** | 2,5 (1,5–4) | WR-2, WP-18 (Merge danach) |
+| WR-3 | Verlust-Schnittstelle: Fall, Sperrzustand, Freigabe-Token, Einlösen, Sperre privilegierter Aktionen; D7 Vier-Augen nach J; D8 als 403-Stub | `zweifaktor.mjs`, `betreiber-zweifaktor.mjs`, `daten.mjs`, `arbeitssitzung.mjs` | **Opus** | 2,5 (1,5–4) | WR-2, WP-18 (Merge danach) |
 | WR-4 | Betreiber-Abgrenzung + Offline-Werkzeug `zweifaktor-freigabe.mjs` (Revisionsvermerk, nur Testdaten) | `betreiber-zweifaktor.mjs`, `werkzeug/` | **Opus** | 1 (0,5–1,5) | WR-3, WP-32d (Bestand) |
 | WR-5 | Tests T1–T13 + Regressionsmenge, Rot-vor-grün-/Mutationsnachweis | `pruefungen/wiederherstellung*.test.js` | **Sonnet** | 2 (1,5–3) | je TP parallel ab WR-1 |
 | WR-6 | Oberfläche: Codes einmal anzeigen/herunterladen, Neugenerierung, Restzahl-Warnung (≤3), Verlust-Hinweis | `src/betreiber-2fa.jsx`, Anmeldemaske | **Sonnet** (+Opus-Review) | 1 (0,75–1,5) | WR-2, WR-3 |
@@ -251,27 +265,159 @@ Form der Entscheidung I.1).
 - **WP-18:** BLOCKED nach SI-P4 (`RELEASE-GATES-R1-R2-R3.md:21`, `DEPENDENCIES.md:396`); teilt `daten.mjs`. WR-2 vor
   WP-18, WR-3 nach WP-18; WR-9 erst nach WP-18 und Account-TOTP.
 
-## I. Offene Betreiberentscheidungen
+## I. Offene Betreiberentscheidungen (Stand 2026-11-09, nach Entscheidung 1)
 
-1. **Berechtigte Stelle für Kundenrollen** (Leitung/Planung/Kunde): (a) Betreiber allein, (b) Leitung desselben Mandanten
-   mit aktivem Faktor für Planung/Kunde, Betreiber für Leitung, (c) Vier-Augen (Kundenleitung + Betreiber). Empfehlung (b)
-   mit Pflichtprotokoll; bis dahin D7 gesperrt, nur Offline-Freigabe in Testumgebungen.
-2. **Alleinige Leitung eines Mandanten** verliert alles: Betreiber als berechtigte Stelle? (Empfehlung: ja, mit
-   Identitätsprüfung nach 3.)
+Entschieden und daher entfallen: frühere I.1 (berechtigte Stelle), I.2 (alleinige Leitung), Vier-Augen-Frage aus I.4,
+frühere I.5/I.6 (zusammengeführt in neue I.6). Siehe J.7.
+
+1. **Freigabeberechtigte Rollen (J.2c):** Mindestrolle `leitung` für alle Zielrollen; darf `planer` für `subplaner`
+   freigeben? Darf eine Leitung durch zwei andere Leitungen wiederhergestellt werden, obwohl Leitung heute keine Leitung
+   vergeben darf (`rollenvergabe.mjs:48–54`)? Legacy-Rolle `kunde` als Freigebende? **Empfehlung:** nur `leitung`;
+   Leitung-Ziel durch zwei andere Leitungen ja (Vier-Augen gleicht den fehlenden Rangabstand aus); `kunde` nein.
+2. **Einheitsregel und stellvertretender Antrag (J.2d, J.3):** Zwei Freigebende derselben nicht-leeren Einheit
+   ablehnen? Darf eine Leitung einen Antrag für den Betroffenen eröffnen? **Empfehlung:** Einheitsregel als Muss nur bei
+   gleichem nicht-leerem Einheitswert, betriebsweit (`null`) zählt nicht als gleiche Einheit; stellvertretender Antrag
+   ja, Antragsteller ist dann von der Freigabe ausgeschlossen.
 3. **Identitätsprüfung:** Verfahren (Rückruf an vertraglich hinterlegte Nummer, persönliche Vorsprache, schriftliche
    Bestätigung des Vertragspartners) und **Revisionsinhalt** (Aktenzeichen, Kennung der prüfenden Stelle, Verfahren,
-   Zeitpunkt; keine Ausweiskopie im System).
-4. **Freigabe-Token:** Übergabekanal (persönlich/Telefon, nicht Mail allein), Gültigkeit (Vorschlag 24 h), Vier-Augen ja/nein.
-5. **Alleiniges Betreiberkonto:** Wird der Offline-Weg (Serverzugang + Pfeffer + Betreibercode) als einziger Rückweg
-   akzeptiert, oder wird eine organisatorische Vertrauensinstanz benannt (Empfehlung: ja; Abschnitt F)?
-6. **Zweiter personengebundener Betreiberzugang** als Notfallweg (Empfehlung: ja, mit eigenem Faktor).
+   Zeitpunkt; keine Ausweiskopie im System). **Empfehlung:** mindestens einer der beiden Freigebenden prüft persönlich
+   oder per Rückruf an hinterlegte Nummer; Verfahren als Pflichtfeld der zweiten Freigabe.
+4. **Fristen und Übergabe (J.3, J.4):** F1 bis zur ersten Freigabe, F2 zwischen erster und zweiter Freigabe, F3
+   Token-Gültigkeit, Sperre nach Ablehnung; Übergabekanal des Tokens. **Empfehlung:** F3 = 24 h (Vorschlag aus E);
+   F1/F2/Sperre vom Betreiber zu beziffern (keine belastbare Quelle im Repo); Übergabe persönlich oder telefonisch nach
+   Identitätsprüfung, nie per Mail allein.
+5. **Betreiberprozess bei weniger als zwei geeigneten Administratoren (J.5):** Ablauf und zweite Prüfstelle.
+   **Empfehlung:** Betreiber mit frischem Faktor **plus** schriftliche Bestätigung des vertretungsberechtigten
+   Vertragspartners **plus** dokumentierte Identitätsprüfung; ist ein geeigneter Administrator vorhanden, gibt er die
+   zweite Freigabe. Bis zur Entscheidung D8 gesperrt.
+6. **Alleiniges Betreiberkonto:** Entscheidung über die Vorlage [`BETREIBER-ENTSCHEIDUNG-KONTO.md`](BETREIBER-ENTSCHEIDUNG-KONTO.md)
+   (Unterpunkte 6a–6g). **Empfehlung:** zweiter personengebundener Betreiberzugang als Vier-Augen-Partner, ersatzweise
+   geteilte Freigabe mit externer Instanz; Offline-Werkzeug erhält dieselbe Zweitfreigabe. Bis dahin gesperrt.
 7. **Altformat v1** (HMAC ohne Salz, ≈47 bit): bis zur Neugenerierung gültig lassen oder sofort ungültig (Empfehlung:
    gültig + Aufforderung zur Neugenerierung beim nächsten Login).
 8. **Ablage-Wiederherstellung** lässt verbrauchte Codes wieder aufleben: Codes an Schlüsselepoche binden
    (`arbeitssitzung.mjs:337–343`) – dann nach jeder Vollwiederherstellung Neugenerierung für alle nötig?
+   **Empfehlung:** ja, binden; nach Vollwiederherstellung Neugenerierung beim nächsten Login erzwingen.
 9. **Gerätewechsel per Wiederherstellungscode über das Netz** für Kundenrollen erlauben? (Betreiber: bleibt verweigert.)
-10. **Interimsweg „neuer Zugangscode“** bei Verlust: als Verlustfall mit Revisionsvermerk verpflichtend machen und auf die
-    Stelle aus 1 beschränken?
-11. **Benachrichtigung** des Inhabers bei Verbrauch eines Codes, Neugenerierung, Fall-Eröffnung/Freigabe (Mail/Push,
-    Inhalt ohne Geheimnisse) – Pflicht ab wann?
+   **Empfehlung:** nein; Gerätewechsel nur mit gültigem TOTP, sonst Verlustfall.
+10. **Interimsweg „neuer Zugangscode“ und Neuanlage** (E; auch neue Einladung derselben Person als Account): Beide
+    umgehen heute den Vier-Augen-Weg aus J. **Empfehlung:** Neuanlage für eine Person mit offenem oder abgelehntem
+    Verlustfall sperren, außer über J/J.5; jeder Interimsfall mit Revisionsvermerk.
+11. **Benachrichtigung** des Inhabers und der übrigen Freigabeberechtigten bei Code-Verbrauch, Neugenerierung,
+    Fall-Eröffnung, Freigabe, Ablehnung, Einlösung (Mail/Push, Inhalt ohne Geheimnisse) – Pflicht ab wann?
+    **Empfehlung:** Pflicht ab Aktivierung von D7; Mail nur benachrichtigend, nie freigebend.
 12. **Grenzwerte** der neuen Bremsarten (Abschnitt D) und Sperrdauer im Fall `verlust-offen` bestätigen.
+    **Empfehlung:** Werte aus D übernehmen (Vorschläge dieses Plans, keine externe Quelle); nach Pilotauswertung prüfen.
+
+## J. Freigegeben 2026-11-09 – Entscheidung 1: normale Mandantenkonten
+
+Verbindlich entschieden. Gilt als **fachliche Regel** für die Umsetzung (WR-3, WR-5); produktive Aktivierung bleibt eine
+eigene Freigabe (Kopf dieses Dokuments).
+
+### J.1 Geltungsbereich
+
+- Träger eines Rollenfaktors im Mandanten (Rollen mit Faktorpflicht nach SI-P4: `leitung`, `planer`, `subplaner`,
+  `kunde`; Δ `betreiber-zweifaktor.mjs:85–95`), die **sämtliche** Faktoren verloren haben (kein TOTP, kein gültiger
+  Wiederherstellungscode).
+- **Nicht** erfasst: Rolle `betreiber` (Vorlage BETREIBER-ENTSCHEIDUNG-KONTO.md, gesperrt); Verwalterschlüssel
+  (`einrichten.mjs`); E-Mail/Passwort-Accounts bis WR-9 (dort heute kein zweiter Faktor, A.7).
+
+### J.2 Freigaberegeln (alle serverseitig, fail-closed)
+
+a. **Zwei Freigaben** von zwei **unterschiedlichen** Freigebenden. Unterschiedlich heißt: verschiedene Konto-Kennung
+   **und** verschiedene Person-id. Eine Person kann mehrere Zugangscodes tragen; Konten ohne Person-Bezug
+   (`person` leer, vgl. `rechte.mjs:104`) sind nicht freigabeberechtigt.
+b. **Ausschluss:** Freigebende sind weder der Betroffene (Konto und Person) noch der Antragsteller. Der Antragsteller
+   kann keine Freigabe erteilen, auch nicht über ein zweites Konto derselben Person.
+c. **Ausreichende Berechtigung:** wirksame Rolle (`rechte.mjs:101–110`, aus dem Bestand, nicht aus der Anfrage) im
+   **selben Mandanten** und Raum/Betrieb wie der Fall; Rolle `leitung` (Erweiterung nur nach I.1); Konto nicht gesperrt,
+   nicht abgelaufen; Mitgliedschaft (sofern Account) Status `aktiv` (`accounts.mjs:144`).
+d. **Einheitsregel** (Datenmodell erlaubt sie teilweise): Mitgliedschaften tragen `einheit` (`accounts.mjs:892, :928`),
+   Personen eine datumsbezogene Einheit (`rechte.mjs:1616–1622`). Ein betriebsweiter Wert ist `null`. Vorgabe: zwei
+   Freigebende mit **gleichem nicht-leerem** Einheitswert werden abgelehnt; `null` zählt nicht als gleich. Muss/Soll: I.2.
+e. **Selbst vollständig authentifiziert:** Sitzung mit aktivem eigenem Faktor, nicht über Wiederherstellungscode
+   angemeldet (`faktorArt ≠ "wiederherstellung"`, D1), eigener Faktor nicht in `verlust-offen`; **frischer TOTP** bei
+   jeder Freigabe/Ablehnung (Muster frischer Betreiberfaktor, A.4). E-Mail/Passwort-Accounts ohne Faktor sind bis WR-9
+   nicht freigabeberechtigt.
+f. **Erneute Prüfung bei der zweiten Freigabe:** unter Sperre je Fall werden die Bedingungen a–e für **beide**
+   Freigebenden neu geprüft. Hat der erste Freigebende seine Berechtigung inzwischen verloren, verfällt dessen Freigabe.
+g. **Mandantentrennung:** Fall-Kennungen werden nur im eigenen Mandanten aufgelöst; ein fremder oder unbekannter Fall
+   ergibt dieselbe Antwort (keine Auskunft über Existenz). Keine Liste fremder Fälle, keine Namen in Antworten.
+h. **Betreiber ist hier kein Freigebender.** `betreiber` ist keine Mitgliedschaftsrolle (`accounts.mjs:158`); die
+   Betreiberbeteiligung läuft ausschließlich über J.5.
+
+### J.3 Zustände, Ablehnung, Zeitüberschreitung, Rückzug
+
+```
+verlust-offen ──1. Freigabe──▶ teilfreigegeben ──2. Freigabe──▶ freigegeben ──Einlösen (D5)──▶ ausstehend ──bestätigen──▶ aktiv
+     │                              │                               │
+     ├─ Ablehnung ─▶ abgelehnt ◀────┤                               │
+     ├─ Frist F1 ──▶ abgelaufen ◀─ Frist F2 ─┘          Frist F3 ───┘─▶ abgelaufen
+     └─ Rückzug ───▶ zurückgezogen (aus jedem Zustand vor „eingelöst“)
+```
+
+- **Antrag:** eröffnet der Betroffene mit erstem Faktor (D4); stellvertretend durch eine Leitung nur nach I.2. Jede
+  Eröffnung ist ein neuer Fall; Freigaben sind nie auf einen anderen Fall übertragbar.
+- **Ablehnung:** eine begründete Ablehnung eines Freigabeberechtigten (Grund aus fester Liste) beendet den Fall
+  (`abgelehnt`, Endzustand). Vorhandene Teilfreigabe und Token verfallen. Das Konto bleibt für privilegierte Aktionen
+  gesperrt (der Faktor fehlt weiterhin). Neuer Antrag erst nach der Sperre der Bremsart `verlust` (D, Dauer I.4/I.12).
+  Grund „Identität zweifelhaft“ erzeugt eine Warnung im Protokoll und eine Benachrichtigung der übrigen
+  Freigabeberechtigten (I.11).
+- **Zeitüberschreitung:** F1 (Eröffnung → 1. Freigabe), F2 (1. → 2. Freigabe), F3 (Token-Gültigkeit, Vorschlag 24 h aus
+  E). Ablauf → `abgelaufen` (Endzustand), alle Freigaben und Token ungültig, neuer Antrag nötig. Dauern F1/F2: I.4.
+- **Rückzug:** durch den Betroffenen (erster Faktor) oder den Antragsteller, jederzeit vor dem Einlösen; automatisch bei
+  Anmeldung mit gültigem TOTP (E). Rückzug macht Freigaben und Token ungültig.
+- Endzustände sind unveränderlich; Prüfung „Endzustand“ unter Sperre je Fall vor jeder Wirkung.
+
+### J.4 Token und Übergabe
+
+Erst nach der **zweiten** gültigen Freigabe entsteht das Freigabe-Token (Form wie E: 256 bit, nur Hash gespeichert,
+gebunden an id + Fall + Faktor-Generation, einmalig). Es wird dem zweiten Freigebenden **einmal** angezeigt und nach
+Identitätsprüfung (I.3) persönlich oder telefonisch übergeben, nie per Mail allein (I.4). Einlösen nur durch den
+Betroffenen mit erstem Faktor (D5); Ergebnis immer eine ausstehende Einrichtung, nie „kein Faktor“ (T13).
+
+### J.5 Betreiberprozess bei fehlenden zwei geeigneten Administratoren
+
+- Der Server stellt fest, ob mindestens zwei Freigabeberechtigte nach J.2 existieren (ohne Betroffenen und
+  Antragsteller); die Antwort sagt nur „ausreichend / nicht ausreichend“, keine Namen, keine Zahl.
+- Nicht ausreichend → Fall erhält Kennzeichen `betreiberprozess`. Das öffnet **keinen** Weg von selbst: kein
+  automatischer Übergang, keine Ersatzfreigabe durch Zeitablauf, kein 2FA-Bypass.
+- Der Betreiberprozess (D8; Ausgestaltung I.5) verlangt mindestens: Betreiber mit frischem Faktor, dokumentierte
+  Identitätsprüfung (I.3) mit Aktenzeichen, und eine zweite Prüfstelle (geeigneter Administrator, falls einer existiert,
+  sonst nach I.5). Dieselben Regeln J.2a/b/g, J.3, J.4 und J.6 gelten.
+- **Bis zur Entscheidung I.5 gesperrt** (D8 → 403 `gesperrt`). Ein Fall mit Kennzeichen `betreiberprozess` bleibt bis
+  dahin in `verlust-offen` und läuft nach F1 ab.
+
+### J.6 Revisionsfähige Protokollierung
+
+- Je Zustandswechsel eine Protokollzeile (`schutz.mjs:1164`): Fall-Kennung, Ereignis, Rolle und pseudonyme Kennung der
+  Handelnden (Muster id16), Zeitpunkt, bei Freigabe Verfahren und Aktenzeichen der Identitätsprüfung. Nie Namen, Codes,
+  Token, Geheimnisse (D, T9).
+- Fall-Datensatz (E) erweitert um `antragsteller`, `freigaben: [{kennung, rolle, zeit, faktorGeneration}]`,
+  `ablehnung: {kennung, grund, zeit} | null`, `endzustand`, `betreiberprozess: bool`. Nach Endzustand unveränderlich.
+- Aufbewahrungsdauer der Fälle: nicht Teil dieser Entscheidung; folgt dem Löschkonzept.
+
+### J.7 Aufgelöste Widersprüche zur Fassung `e51a1f9`
+
+| Stelle bisher | bisher | jetzt |
+|---|---|---|
+| I.1 | Empfehlung (b): Leitung allein gibt Planung/Kunde frei, Betreiber gibt Leitung frei | zwei Administratoren für **alle** erfassten Rollen; Betreiber nur über J.5 |
+| I.2 | alleinige Leitung → Betreiber als berechtigte Stelle | Betreiberprozess J.5, gesperrt bis I.5, kein automatischer Übergang |
+| I.4 | Vier-Augen ja/nein offen | ja (J.2a) |
+| D7 | gesperrt bis I.1 | Vier-Augen-Freigabe nach J umsetzbar (WR-3); Aktivierung separat |
+| D6 | Offline-Freigabe durch Serverbetreiber allein | nur Test/Staging; in Produktion nur als Träger von J.5 nach I.5 |
+| E | `freigegeben` nach einer Freigabe | erst nach zwei Freigaben; neue Zustände J.3 |
+| F | Offline-Weg bleibt Rückweg für Betreiber | Offline-Weg braucht Zweitfreigabe (Vorlage, I.6) |
+| I.10 | Interimsweg offen | als Umgehung von J benannt; Empfehlung Sperre (I.10) |
+
+### J.8 Zusätzliche Tests (WR-5)
+
+| # | Testfall | erwartet |
+|---|---|---|
+| T14 | zwei Freigaben desselben Kontos; zwei Konten derselben Person; Konto ohne Person | je zweite Freigabe abgelehnt, kein Token |
+| T15 | Antragsteller oder Betroffener gibt frei | 403 `rolle`, Fall unverändert |
+| T16 | Freigebender aus Mandant B, oder mit Rolle unter `leitung`, oder angemeldet per Wiederherstellungscode, oder ohne frischen TOTP | abgelehnt, keine Auskunft über den Fall |
+| T17 | erster Freigebender verliert Rolle vor der zweiten Freigabe | erste Freigabe verfällt, `teilfreigegeben` bleibt ohne Token |
+| T18 | Ablehnung, Ablauf F1/F2/F3, Rückzug, TOTP-Login | jeweils Endzustand, Token ungültig, neuer Antrag nötig |
+| T19 | weniger als zwei Berechtigte | Kennzeichen `betreiberprozess`, D8 403, nach F1 `abgelaufen`, nie `freigegeben` |
+| T20 | Protokoll eines vollständigen Vier-Augen-Ablaufs | alle Zustandswechsel vorhanden, keine Namen/Codes/Token |
