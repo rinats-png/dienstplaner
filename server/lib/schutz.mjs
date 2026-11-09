@@ -327,6 +327,12 @@ export const GRENZEN = {
      das Geheimnis, statt es ungezählt durchzulassen (offene Frage: docs/acc45/
      wp-kleinpakete-fragen.md, Feed-Grenze 12 oder 30). */
   feed:       { versuche: 30,  fenster: 60,   sperre: 60, failClosed: true },
+  /* Abrufe eines Kalender-Feeds je HERKUNFT (WP-47b, Frage 11): Wer viele
+     verschiedene, auch unbekannte Geheimnisse abruft, legt sonst je Geheimnis
+     einen Zähler an. 120 je Minute trägt hinter einem Firmenanschluss einige
+     hundert Kalender (je einer fragt alle paar Minuten) und deckelt das
+     Wachstum der Ablage. Fail closed wie die Feed-Bremse. */
+  "feed-herkunft": { versuche: 120, fenster: 60, sperre: 60, failClosed: true },
   /* Bestandsabrufe je PERSON (WP-47b, Review 1): ein Gerät, das bei jedem Start
      und jeder Stempelquittung liest, sperrt nur sich selbst. */
   bestandlesen: { versuche: 300, fenster: 60, sperre: 60 },

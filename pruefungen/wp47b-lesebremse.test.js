@@ -150,6 +150,41 @@ describe("Feed-Bremse je Geheimnis", () => {
   });
 });
 
+describe("Feed-Bremse je Herkunft (Frage 11: unbekannte Geheimnisse)", () => {
+  it("eigene Art feed-herkunft: 120 je Minute, 60 s Sperre, fail closed", () => {
+    const g = SCH.GRENZEN["feed-herkunft"];
+    expect(g, "GRENZEN[feed-herkunft] fehlt").toBeTruthy();
+    expect(g.versuche).toBe(120);
+    expect(g.fenster).toBe(60);
+    expect(g.sperre).toBeGreaterThanOrEqual(60);
+    expect(g.failClosed).toBe(true);
+  });
+
+  it("viele verschiedene (unbekannte) Geheimnisse aus einer Herkunft: ab dem 121. Abruf 429, andere Herkunft frei", async () => {
+    const abruf = (g, adresse) => Z.kalender(new Request(`http://${WIRT}/kalender/feed/${g}.ics`,
+      { headers: { host: WIRT, "x-forwarded-for": adresse } }), {});
+    const stati = [];
+    let letzte = null;
+    for (let i = 0; i < 121; i++) {
+      letzte = await abruf(`unbekannt-${neuerKey("herk")}-${"z".repeat(24)}`, "198.51.100.88");
+      stati.push(letzte.status);
+    }
+    expect(stati.slice(0, 120).some((s) => s === 429)).toBe(false);
+    expect(stati[120]).toBe(429);
+    expect(Number(letzte.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await abruf(`unbekannt-${neuerKey("herk2")}-${"z".repeat(24)}`, "198.51.100.89")).status).not.toBe(429);
+  }, 280000);
+
+  it("Quelltext: kalender.mjs bremst je Herkunft vor dem Geheimnis", async () => {
+    const { readFileSync } = await import("node:fs");
+    const q = readFileSync(new URL("../server/funktionen/kalender.mjs", import.meta.url), "utf8");
+    const i = q.indexOf('bremse("feed-herkunft"');
+    const j = q.indexOf('bremse("feed",');
+    expect(i).toBeGreaterThan(-1);
+    expect(i).toBeLessThan(j);
+  });
+});
+
 describe("Kalender-Feed: der 429-Pfad über den echten Handler", () => {
   it("der 31. Abruf eines Geheimnisses bekommt 429 mit Retry-After, ein anderes Geheimnis nicht", async () => {
     const geheim = `geheim-${neuerKey("http")}-${"x".repeat(24)}`;
