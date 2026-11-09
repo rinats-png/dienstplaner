@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 400,6–677,7 PT in 97 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 385,6–650,7 PT in 92 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -32,7 +32,6 @@ flowchart LR
     WP_42R1["WP-42R1<br/>BLOCKED"]
     WP_42R2["WP-42R2<br/>BLOCKED"]
     IMP_0["IMP-0<br/>READY"]
-    IMP_4["IMP-4<br/>BLOCKED"]
     IMP_5["IMP-5<br/>BLOCKED"]
     IMP_6["IMP-6<br/>BLOCKED"]
     IMP_7["IMP-7<br/>BLOCKED"]
@@ -72,7 +71,6 @@ flowchart LR
   end
   subgraph intelligence[Intelligence]
     WP_I1["WP-I1<br/>BLOCKED"]
-    WP_I2["WP-I2<br/>READY"]
     WP_I4["WP-I4<br/>BLOCKED"]
     WP_I5["WP-I5<br/>BLOCKED"]
     WP_I7["WP-I7<br/>BLOCKED"]
@@ -82,7 +80,6 @@ flowchart LR
     WP_I14["WP-I14<br/>BLOCKED"]
     WP_I15["WP-I15<br/>BLOCKED"]
     WP_I16["WP-I16<br/>BLOCKED"]
-    WP_I17["WP-I17<br/>BLOCKED"]
     WP_I18["WP-I18<br/>BLOCKED"]
     WP_I19["WP-I19<br/>BLOCKED"]
     WP_I20["WP-I20<br/>BLOCKED"]
@@ -107,8 +104,6 @@ flowchart LR
   end
   subgraph folge[Folgepakete]
     WP_14c["WP-14c<br/>REVIEW"]
-    WP_27c["WP-27c<br/>READY"]
-    WP_47b["WP-47b<br/>READY"]
     WP_16b["WP-16b<br/>REVIEW"]
     WP_24b["WP-24b<br/>BLOCKED"]
     WP_28b["WP-28b<br/>IN_PROGRESS"]
@@ -188,8 +183,6 @@ flowchart LR
   WP_40 --> WP_42a
   WP_44 --> WP_42a
   WP_14c --> WP_42a
-  WP_27c --> WP_42a
-  WP_47b --> WP_42a
   WP_16b --> WP_42a
   WP_24b --> WP_42a
   WP_28b --> WP_42a
@@ -243,19 +236,14 @@ flowchart LR
   WP_I8 --> WP_I9
   WP_I15 --> WP_I16
   E_25 --> WP_I18
-  WP_I17 --> WP_I19
   WP_I12 --> WP_I19
   WP_I12 --> WP_I20
   WP_I15 --> WP_I20
-  WP_I17 --> WP_I20
   WP_I19 --> WP_I21
   WP_I20 --> WP_I21
   E_24i --> WP_I21
   WP_I12 --> WP_I22
-  WP_I17 --> WP_I22
-  WP_I17 --> WP_I23
   WP_I12 --> WP_I24
-  WP_I17 --> WP_I24
   WP_I4 --> WP_I25
   WP_I8 --> WP_I26
   WP_I19 --> WP_I27
@@ -266,7 +254,6 @@ flowchart LR
   WP_I19 --> WP_I28
   WP_I15 --> WP_I29
   WP_I12 --> WP_I29
-  WP_I17 --> WP_I30
   WP_I12 --> WP_I31
   WP_I28 --> WP_I32
   WP_I28 --> WP_I33
@@ -276,7 +263,6 @@ flowchart LR
   WP_I9 --> WP_I36
   WP_I16 --> WP_I36
   WP_I1 --> WP_I37
-  WP_I2 --> WP_I37
   WP_I4 --> WP_I37
   WP_I5 --> WP_I37
   WP_I7 --> WP_I37
@@ -286,7 +272,6 @@ flowchart LR
   WP_I14 --> WP_I37
   WP_I15 --> WP_I37
   WP_I16 --> WP_I37
-  WP_I17 --> WP_I37
   WP_I18 --> WP_I37
   WP_I19 --> WP_I37
   WP_I20 --> WP_I37
@@ -342,11 +327,8 @@ flowchart LR
   WP_14c --> WP_42R2
   WP_16b --> WP_42R2
   WP_24b --> WP_42R2
-  WP_27c --> WP_42R2
-  WP_47b --> WP_42R2
   IMP_6 --> IMP_7
   IMP_0 --> IMP_9
-  IMP_4 --> IMP_10
   WR_3 --> OPT_2
   WR_1 --> WR_2
   WR_2 --> WR_3
@@ -418,8 +400,8 @@ flowchart LR
 | WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1, WP-16c, WP-32d, WP-30 | – | opus | BLOCKED |
 | WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-14c | folge | P1 | 3–5 | 0,6–1 | WP-14, WP-16 | App.jsx, daten.mjs | opus | REVIEW |
-| WP-27c | folge | P2 | 1,5–3 | 1,5–3 | WP-27 | – | opus | READY |
-| WP-47b | folge | P2 | 2–4 | 2–4 | WP-47, WP-24 | daten.mjs | opus | READY |
+| WP-27c | folge | P2 | 1,5–3 | 0 | WP-27 | – | opus | INTEGRATED |
+| WP-47b | folge | P2 | 2–4 | 0 | WP-47, WP-24 | daten.mjs | opus | INTEGRATED |
 | WP-16b | folge | P2 | 0,5–1,5 | 0,1–0,3 | WP-16 | daten.mjs | opus | REVIEW |
 | WP-24b | folge | P2 | 1,5–3 | 1,5–3 | WP-24, E-21 | – | opus | BLOCKED |
 | WP-28b | folge | P2 | 1,5–3 | 0,5–1 | WP-28, WP-47 | – | sonnet | IN_PROGRESS |
@@ -441,7 +423,7 @@ flowchart LR
 | WP-19.12 | wp19 | P1 | 2–4 | 2–4 | WP-19.0 | App.jsx | sonnet | BLOCKED |
 | WP-19.13 | wp19 | P1 | 3–5 | 3–5 | WP-19.0, WP-19.1, WP-19.2, WP-19.3, WP-19.4, WP-19.5, WP-19.6, WP-19.7, WP-19.8, WP-19.9, WP-19.10, WP-19.11, WP-19.12 | – | opus (Rechte/Daten) / sonnet | BLOCKED |
 | WP-I1 | intelligence | P2 | 2–6 | 2–6 | E-21, WP-22, E-21i | – | sonnet + opus-review | BLOCKED |
-| WP-I2 | intelligence | P2 | 3–6 | 3–6 | WP-11, E-21i | App.jsx | sonnet | READY |
+| WP-I2 | intelligence | P2 | 3–6 | 0 | WP-11, E-21i | App.jsx | sonnet | INTEGRATED |
 | WP-I3 | intelligence | P2 | 8–14 | 0 | WP-11, E-21i | – | sonnet | INTEGRATED |
 | WP-I4 | intelligence | P2 | 8–14 | 8–14 | WP-I3, WP-22 | App.jsx, rechte.mjs | sonnet + opus-review | BLOCKED |
 | WP-I5 | intelligence | P2 | 4–8 | 4–8 | WP-I3, WP-I4 | App.jsx | sonnet | BLOCKED |
@@ -456,7 +438,7 @@ flowchart LR
 | WP-I14 | intelligence | P3 | 5–8 | 5–8 | WP-I13 | – | sonnet + opus-review | BLOCKED |
 | WP-I15 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-05 | – | sonnet + opus-review | BLOCKED |
 | WP-I16 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-I15 | App.jsx, rechte.mjs | opus | BLOCKED |
-| WP-I17 | intelligence | P3 | 6–10 | 6–10 | WP-I13 | App.jsx | sonnet | BLOCKED |
+| WP-I17 | intelligence | P3 | 6–10 | 0 | WP-I13 | App.jsx | sonnet | INTEGRATED |
 | WP-I18 | intelligence | P3 | 2–4 | 2–4 | WP-I13, E-25 | – | sonnet | BLOCKED |
 | WP-I19 | intelligence | P3 | 16–28 | 16–28 | WP-I13, WP-I17, WP-I12 | App.jsx | sonnet + opus-review | BLOCKED |
 | WP-I20 | intelligence | P3 | 16–28 | 16–28 | WP-I12, WP-I13, WP-I15, WP-I17 | App.jsx | sonnet + opus-review | BLOCKED |
@@ -530,7 +512,7 @@ flowchart LR
 | IMP-1 | acc45 | P0 | 2–3,5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-2 | acc45 | P1 | 3–5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-3 | acc45 | P1 | 3–5 | 0 | IMP-0, IMP-2 | – | opus | INTEGRATED |
-| IMP-4 | acc45 | P1 | 2,5–4 | 2,5–4 | IMP-1, IMP-3 | – | sonnet | BLOCKED |
+| IMP-4 | acc45 | P1 | 2,5–4 | 0 | IMP-1, IMP-3 | – | sonnet | INTEGRATED |
 | IMP-5 | acc45 | P2 | 1,5–2,5 | 1,5–2,5 | IMP-3 | – | sonnet | BLOCKED |
 | IMP-6 | acc45 | P2 | 3–5 | 3–5 | IMP-3 | – | sonnet | BLOCKED |
 | IMP-7 | acc45 | P2 | 4–7 | 4–7 | IMP-6 | – | sonnet | BLOCKED |
