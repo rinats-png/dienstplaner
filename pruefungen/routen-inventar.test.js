@@ -47,6 +47,9 @@ export const INVENTAR = {
   "/api/zugang-sperren": ["rechte.mjs", "sitzungsbindung.test.js"],
   "/api/einladung": ["einladungen.test.js"],            // WP-18: Leitung stellt aus; Planung, Beschäftigte, Demo 403
   "/api/einladung/annehmen": ["einladungen.test.js"],   // WP-18: ohne Sitzung, einmalig
+  "/api/einladung/liste": ["einladungen.test.js"],      // WP-18 (B2): nur Metadaten, nie das Token
+  "/api/einladung/widerrufen": ["einladungen.test.js"], // WP-18 (B2): sperrt dauerhaft, Einlösen danach 410
+  "/einladung": ["einladungen-oberflaeche.test.js"],    // WP-18 (B4): Einlöseseite, Referrer-Policy no-referrer
   "/api/bestand-anlegen": ["rechte.mjs"],
   "/api/demos": ["demozugang.mjs"],
   "/api/demo": ["demozugang.mjs", "rollen-eintritt.test.js"],

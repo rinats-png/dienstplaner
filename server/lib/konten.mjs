@@ -76,6 +76,24 @@ export async function alleKonten(store) {
 }
 
 /**
+ * Wie alleKonten, aber ein Lesefehler wird weitergereicht statt als „keine Konten" gewertet (WP-18, Review-Auflage
+ * M2). Für Prüfungen, die bei Zweifel Nein sagen müssen: „Hat diese Person schon einen Zugang?" darf bei einer
+ * unlesbaren Ablage nicht „nein" heißen — sonst entstünde ein zweiter Code für dieselbe Person.
+ * Ein fehlender Sammelblob ist kein Fehler (die Ablage liefert dann null).
+ * @throws wenn die Ablage nicht lesbar ist
+ */
+export async function alleKontenStreng(store) {
+  const aus = {};
+  Object.assign(aus, (await store.get(SAMMEL, { type: "json" })) || {});
+  const { blobs } = await store.list({ prefix: PRAEFIX });
+  for (const b of blobs) {
+    const konto = await store.get(b.key, { type: "json" });
+    if (konto) aus[b.key.slice(PRAEFIX.length)] = konto;
+  }
+  return aus;
+}
+
+/**
  * Ein Konto aus dem Sammelblob auf einen Einzelschlüssel heben.
  * Läuft beiläufig bei der Anmeldung; ein Fehler bleibt folgenlos.
  */

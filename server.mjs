@@ -343,6 +343,10 @@ async function statisch(req, res, pfad) {
     "last-modified": info.mtime.toUTCString(),
     etag,
   };
+  /* WP-18 (B4): Die Einlöseseite einer Einladung gibt ihre Adresse nirgends weiter. Das Token steht im Fragment
+     (nie im Referrer), die Seite wird es sofort los — und ein Referrer wird hier gar nicht erst gesendet. Caddy
+     ergänzt nur fehlende Köpfe (`?Referrer-Policy`), dieser bleibt. */
+  if (pfad === "/einladung") kopf["referrer-policy"] = "no-referrer";
   const gesehen = String(req.headers["if-none-match"] || "").split(",").map((e) => e.trim());
   if (gesehen.includes(etag) || gesehen.includes("*")) { res.writeHead(304, kopf); res.end(); return; }
   kopf["content-length"] = info.size;

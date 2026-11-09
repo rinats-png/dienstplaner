@@ -1062,16 +1062,35 @@ export async function lage(tage) {
 /* WP-18: Einladungen. Die Leitung stellt für eine Person ihres Betriebs eine Einladung aus (mit Sitzung); die Person
    löst sie ohne Sitzung ein und bekommt dabei einmal ihren persönlichen Zugangscode. Geprüft wird serverseitig
    (server/lib/einladungen.mjs). */
-export async function einladungAusstellen(personId) {
-  const a = await fetch("/api/einladung", { method: "POST", headers: kopf(), body: JSON.stringify({ personId }) });
+export async function einladungAusstellen(personId, bestaetigung) {
+  const a = await fetch("/api/einladung", { method: "POST", headers: kopf(), body: JSON.stringify({ personId,
+    ...(bestaetigung ? { bestaetigung } : {}) }) });
   const d = await a.json().catch(() => ({}));
-  if (!a.ok) throw new Error(d.fehler || "Die Einladung konnte nicht ausgestellt werden.");
+  /* B1: 403 mit `bestaetigung` heißt „frische Bestätigung nötig" — die Ansicht fragt danach. */
+  if (!a.ok) throw Object.assign(new Error(d.fehler || "Die Einladung konnte nicht ausgestellt werden."),
+    { status: a.status, bestaetigung: d.bestaetigung || null });
+  return d;
+}
+
+/* WP-18 (B2): Liste der Einladungen des eigenen Betriebs — nur Metadaten, nie das Token. */
+export async function einladungenListe() {
+  const a = await fetch("/api/einladung/liste", { method: "POST", headers: kopf(), body: "{}" });
+  const d = await a.json().catch(() => ({}));
+  if (!a.ok) throw new Error(d.fehler || "Die Einladungen konnten nicht geladen werden.");
+  return d;
+}
+
+export async function einladungWiderrufen(id) {
+  const a = await fetch("/api/einladung/widerrufen", { method: "POST", headers: kopf(), body: JSON.stringify({ id }) });
+  const d = await a.json().catch(() => ({}));
+  if (!a.ok) throw new Error(d.fehler || "Die Einladung konnte nicht widerrufen werden.");
   return d;
 }
 
 export async function einladungAnnehmen(einladung) {
+  /* B4: kein Referrer — die Einlöseseite gibt ihre Adresse nirgends weiter (das Token stand ohnehin nur im Fragment). */
   const a = await fetch("/api/einladung/annehmen", { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ einladung }) });
+    referrerPolicy: "no-referrer", body: JSON.stringify({ einladung }) });
   const d = await a.json().catch(() => ({}));
   if (!a.ok) throw new Error(d.fehler || "Die Einladung konnte nicht eingelöst werden.");
   return d;
