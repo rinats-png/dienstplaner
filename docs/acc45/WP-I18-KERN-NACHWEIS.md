@@ -134,7 +134,8 @@ die Schnittstelle kenne noch kein `max_tokens`-Feld, ist mit `maxAusgabeTokens` 
 2. Der Transport ist anbieterneutral; Anbieterformat, Adresse und Anmeldung entstehen erst mit der Verdrahtung. Seine
    Antwortabbildung (Status, `daten`) ist hier nur gegen Attrappen geprüft.
 3. Das Monatsbudget ist nur eine Bedingung des Gates; die Durchsetzung der Kosten bleibt bei Limits/Kontingent (WP-I15).
-4. Der Anbieterschlüssel wird noch nicht gegen Alias-/MAC-Schlüssel verglichen (Restrisiko 2 aus WP-I13 bleibt).
+4. ~~Der Anbieterschlüssel wird noch nicht gegen Alias-/MAC-Schlüssel verglichen.~~ Erledigt mit Review-Auflage C
+   (siehe „Konfliktauflösung und Auflagen“).
 
 ## Offene Punkte
 
@@ -144,3 +145,75 @@ die Schnittstelle kenne noch kein `max_tokens`-Feld, ist mit `maxAusgabeTokens` 
 - Verdrahtung (Route, Transport mit Anbieterformat, `.env.example`, Betriebshandbuch) — nur nach diesen Freigaben.
 - Merge-Auflösung mit PR 158 (siehe oben); unabhängiges Review (Opus) von G20–G22, K6/K7, E10, Gate.
 - `work-packages.json`/Status nicht geändert (Besitz Koordination).
+
+## Konfliktauflösung und Auflagen
+
+Branch `intelligence/wp-i18-fix` von `origin/intelligence/wp-i18-kern` (bbc8e9b), Merge von
+`origin/integration/release-v4` (enthält PR 158, WP-I15 Kostenschutz). Konflikt nur in
+`server/lib/intelligence/gateway/gateway.mjs`; `codes.mjs` und `limits.mjs` (Stundenpuffer nur bei gesetzter
+`betriebJeStundeIE`, hart auf Grenze + 16 begrenzt) kamen konfliktfrei und unverändert aus PR 158. Regel: beide Seiten
+bleiben, im Zweifel gilt die strengere.
+
+### Auflösung in `gateway.mjs`
+
+| Stelle | PR 162 (WP-I18) | PR 158 (WP-I15) | Ergebnis |
+|---|---|---|---|
+| Konfiguration Ausgabegrenze | ganze Zahl 1 … 1 000 000 | endliche Zahl > 0 | **beides**: endlich, ganze Zahl, 1 … 1 000 000 (strenger), sonst `KI_GROESSE` beim Bau |
+| Zeitkonfiguration | – | fail closed (NaN/0/negativ/Text, Stufenfrist ≤ Deadline) | übernommen |
+| Registry / Schlüsselbund / Freigabe-Gate | Pflicht (G19–G21) | – | übernommen, unverändert |
+| Grenze an den Adapter | `maxAusgabeTokens` | „Schnittstelle kennt kein max_tokens“ | Grenze geht an den Adapter **und** wird nachgeprüft |
+| Antwort über der Grenze | Adapter-Rahmen wirft `zu_gross` → bisher `KI_ANBIETER` | Nachprüfung im Gateway → `KI_GROESSE`, sofort `break` | beide Prüfungen bleiben; `zu_gross` wird im Gateway auf **`KI_GROESSE`** abgebildet; immer `break` (keine teurere Stufe, keine Teilausgabe) |
+| formal unbrauchbare Antwort | G22: fester Rückfall `KI_PRUEFER`, `break` | – | bleibt, läuft nach der Grenzprüfung |
+| Fehlerklassen | jede Klasse → `break` | – | unverändert (`break`, nie `continue`) |
+
+### Angepasste bestehende Tests (keine Erwartung gelockert)
+
+- `intelligence-kostenschutz-i15.test.js`: Aufbau des Gateways um die seit WP-I18 verpflichtenden `schluesselbund`
+  und `registry` ergänzt (statt `aliasSchluessel`). Der Test „Schnittstelle kennt kein max_tokens“ hielt einen Stand
+  fest, den WP-I18 bewusst ändert; er prüft jetzt die genaue Feldliste **mit** `maxAusgabeTokens`/`modellKennung` und
+  zusätzlich, dass `maxAusgabeTokens === 1000` (die Konfiguration) beim Adapter ankommt — strenger als vorher.
+- `intelligence-gateway-i18.test.js` (D): `zu_gross` erwartet jetzt genau `KI_GROESSE` (vorher `KI_ANBIETER`); die
+  Live-Fälle „zu groß“ ebenso. Damit greift dort die exakte Code-Prüfung, die vorher für diese Fälle übersprungen
+  wurde. Nur Stufe 1, kein Rohinhalt — unverändert.
+
+### Auflage A — Ausgabegrenze ohne gemeldete Token (`anbieter.mjs`, `aufrufen`)
+
+Entscheidung: **Nachprüfung der Antwortlänge, sonst Überschreitung.** Meldet der Adapter keinen brauchbaren Zählwert
+(`null`, fehlt, negativ, Text, NaN — `nutzungBereinigen` macht daraus `null`), wird die Ausgabe serialisiert
+(`JSON.stringify`) und in UTF-8-Byte gemessen. Liegt sie bei höchstens `maxAusgabeTokens` Byte, ist sie sicher
+innerhalb der Grenze (Byte-basierte Tokenizer erzeugen höchstens ein Token je Byte). Alles andere — länger oder nicht
+serialisierbar (Zyklus, BigInt) — gilt als Überschreitung: `zu_gross` → im Gateway `KI_GROESSE`, Rückfall nach einer
+Stufe. Begründung: Eine pauschale Ablehnung ohne Zählwert würde kurze, harmlose Antworten unnötig verwerfen; die
+Byte-Schranke ist eine obere Schranke und lässt nie eine Antwort ungeprüft durch (fail closed).
+Rot → grün: 5 neue Tests (fehlender/unbrauchbarer Zählwert, Mehrbyte-Zeichen, kurze Antwort besteht als Kontrolle,
+nicht serialisierbar, Gateway-Rückfall `KI_GROESSE` nach einer Stufe); 4 davon rot vorher, die Kontrolle grün.
+
+### Auflage B — AVV-Datum in der Zukunft (`anbieter-live.mjs`, `freigabeGate`)
+
+`datumGueltig` verlangt zusätzlich: Datum ≤ heutiger Tag (UTC). Die Uhr ist injizierbar
+(`freigabeGate(konfig, jetzt)`, `erzeugeLiveAnbieter({ jetzt })`, Vorgabe `Date.now`); eine unbrauchbare Uhr (NaN,
+Text, wirft) schließt das Gate. Rot → grün: 2 Tests (morgen und in einem Jahr relativ zur Laufzeit; feste Uhr mit
+Folgetag, gleichem Tag, Vortag und kaputter Uhr) — Transport bei geschlossenem Gate nie aufgerufen.
+
+### Auflage C — Anbieterschlüssel (`anbieter-live.mjs`)
+
+Der Schlüssel zählt nach Entfernen jedes Leerraums (`\s`) und muss dann ≥ 20 Zeichen haben; er darf nach derselben
+Normalisierung (ohne Groß-/Kleinschreibung) keinem Wert aus `SCHLUESSEL_NAMEN` (Alias, MAC, MAC vorher) im selben
+`env` gleichen. Sonst bleibt der Live-Pfad gesperrt (`nicht_freigegeben`, `toJSON().freigegeben === false`).
+Rot → grün: 2 Tests (20/40 Leerzeichen, Tabs, Mischungen unter 20 Zeichen; Schlüssel = Alias, = MAC, = MAC vorher,
+mit Leerraum, in Großschreibung; Kontrolle mit eigenem Schlüssel: genau ein Aufruf). Alle Schlüssel sind
+Laufzeit-Platzhalter (`randomBytes`), kein Netz (`fetch` gestubbt, nie aufgerufen).
+
+### Offen vor Verdrahtung
+
+- **Monatsbudget (Review-Auflage zu `anbieter-live.mjs:72`, bewusst nicht umgesetzt):** `monatsbudget` ist bisher nur
+  eine Gate-Bedingung (endliche Zahl > 0). Bevor der Live-Anbieter verdrahtet wird, muss das Budget an die
+  Verbrauchsbuchung (WP-I15, Limits/Kontingent) angebunden werden, damit ein erreichtes Budget den Live-Pfad sperrt.
+  Ohne diese Anbindung keine Verdrahtung.
+
+### Tests
+
+`npx vitest run pruefungen/intelligence-` — 25 Dateien, 758 Tests grün. Verlauf: nach dem Merge 11 rot in
+`intelligence-kostenschutz-i15.test.js` (Pflicht-Registry/Schlüsselbund fehlten im Aufbau; danach 3 rot wegen
+`KI_ANBIETER` statt `KI_GROESSE`); nach dem Merge-Commit 749 grün; mit den neuen Auflagen-Tests (Commit „Tests zuerst“) 8 rot in
+`intelligence-gateway-i18.test.js` (A 4, B 2, C 2); nach der Umsetzung alle grün.

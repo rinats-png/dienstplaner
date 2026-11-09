@@ -23,7 +23,8 @@
      nicht_verfuegbar   Netz / 5xx / unbekannter Fehler — technisch wiederholbar (gleiche Stufe)
      ungueltig          abgebrochen/leer/unbrauchbar  — nicht wiederholen
      schema             Antwort verletzt das Schema   — nicht wiederholen
-     zu_gross           Antwort über der Grenze       — nicht wiederholen (auch: Nutzung > maxAusgabeTokens)
+     zu_gross           Antwort über der Grenze       — nicht wiederholen (auch: Nutzung > maxAusgabeTokens; ohne
+                        gemeldete Nutzung: serialisierte Antwort > maxAusgabeTokens Byte — fail closed, Review-Auflage A)
      nicht_freigegeben  Adapter ist nicht freigegeben — nie wiederholen
 
    INVARIANTEN (Review-Hinweis):
@@ -82,6 +83,18 @@ export function nutzungBereinigen(n) {
   return { eingabeToken: zahlOderNull(o.eingabeToken), ausgabeToken: zahlOderNull(o.ausgabeToken) };
 }
 
+/**
+ * Review-Auflage A (WP-I18): Nachprüfung, wenn der Adapter keine Ausgabetoken meldet. Obere Schranke: Byte-basierte
+ * Tokenizer erzeugen höchstens ein Token je UTF-8-Byte; liegt die serialisierte Ausgabe bei höchstens `max` Byte,
+ * liegt sie sicher innerhalb der Grenze. Alles andere (länger, nicht serialisierbar) → false (fail closed).
+ */
+function ausgabeSicherInnerhalb(ausgabe, max) {
+  let s;
+  try { s = JSON.stringify(ausgabe); } catch { return false; }
+  if (typeof s !== "string") return false;
+  return new TextEncoder().encode(s).length <= max;
+}
+
 function einmal(anbieter, eingabe, ms, ausstehend, aussen) {
   const ctrl = new AbortController();
   let timer;
@@ -137,7 +150,15 @@ export async function aufrufen(o) {
       const nutzung = nutzungBereinigen(r.nutzung);
       /* WP-I18/I15: eine Antwort über der Ausgabegrenze wird verworfen (nie gekürzt, nie eskaliert). */
       const max = kopie.maxAusgabeTokens;
-      if (Number.isInteger(max) && max > 0 && nutzung.ausgabeToken !== null && nutzung.ausgabeToken > max) throw new AnbieterFehler("zu_gross", "Ausgabegrenze");
+      if (Number.isInteger(max) && max > 0) {
+        if (nutzung.ausgabeToken !== null) {
+          if (nutzung.ausgabeToken > max) throw new AnbieterFehler("zu_gross", "Ausgabegrenze");
+        } else if (!ausgabeSicherInnerhalb(r.ausgabe, max)) {
+          /* Review-Auflage A: kein (brauchbarer) Zählwert → Nachprüfung der Antwortlänge; was nicht sicher
+             innerhalb der Grenze liegt, gilt als Überschreitung (fail closed, nie ungeprüft durchlassen). */
+          throw new AnbieterFehler("zu_gross", "Ausgabegrenze");
+        }
+      }
       return { ausgabe: r.ausgabe, nutzung, versuche: versuch };
     } catch (e) {
       const f = alsAnbieterFehler(e);

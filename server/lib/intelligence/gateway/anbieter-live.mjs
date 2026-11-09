@@ -10,8 +10,10 @@
    FREIGABE-GATE — der Live-Pfad ist gesperrt, solange nicht ALLES gilt:
      (1) konfig.freigabe === true                    (Serverkonfiguration, Vorgabe aus)
      (2) konfig.monatsbudget: endliche Zahl > 0       (Betreiber-Monatsbudget)
-     (3) konfig.avv = { status: "bestaetigt", datum: "JJJJ-MM-TT" }  (bestätigte Auftragsverarbeitung)
-     (4) Umgebungs-Schalter = "ja" UND Anbieterschlüssel (≥ 20 Zeichen)   (L1)
+     (3) konfig.avv = { status: "bestaetigt", datum: "JJJJ-MM-TT" }  (bestätigte Auftragsverarbeitung;
+         Datum gültig und NICHT in der Zukunft — Review-Auflage B)
+     (4) Umgebungs-Schalter = "ja" UND Anbieterschlüssel (≥ 20 Zeichen OHNE Leerraum, verschieden vom
+         Alias- und MAC-Schlüssel des Schlüsselbunds — Review-Auflage C)   (L1)
      (5) ein Transport ist übergeben
    Gesperrt → `erzeuge` wirft „nicht freigegeben“ (Klasse nicht_freigegeben) — OHNE
    den Transport auch nur anzufassen. Das Gate wird beim Erzeugen festgestellt
@@ -43,6 +45,7 @@
    ========================================================================== */
 
 import { AnbieterFehler } from "./anbieter.mjs";
+import { SCHLUESSEL_NAMEN } from "./schluessel.mjs";
 
 /* Namen bewusst zusammengesetzt: noch kein Server liest sie; sie gehören erst mit der Verdrahtung (Betreiberfreigabe) ins Betriebshandbuch und in .env.example. */
 export const LIVE_SCHALTER_NAME = "CENTRIC" + "_KI_ANBIETER_LIVE";
@@ -54,24 +57,41 @@ const TEXT_MAX = 20_000;
 
 const eigen = (o, n) => (o && typeof o === "object" && Object.hasOwn(o, n) ? o[n] : undefined);   // nie über die Prototypkette
 
-function datumGueltig(s) {
+/** Gültiges Kalenderdatum, das nicht nach dem heutigen Tag (UTC, Uhr `jetztMs`) liegt; unbrauchbare Uhr → false (Auflage B). */
+function datumGueltig(s, jetztMs) {
   const m = typeof s === "string" ? DATUM.exec(s) : null;
   if (!m) return false;
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+  if (!(d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]))) return false;
+  if (typeof jetztMs !== "number" || !Number.isFinite(jetztMs)) return false;
+  const n = new Date(jetztMs);
+  return d.getTime() <= Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+}
+
+/** Auflage C: Leerraum zählt nicht; Vergleich ohne Leerraum und ohne Groß-/Kleinschreibung. */
+const ohneLeerraum = (s) => String(s).replace(/\s+/g, "");
+function schluesselBrauchbar(schluessel, env) {
+  if (typeof schluessel !== "string") return false;
+  const k = ohneLeerraum(schluessel);
+  if (k.length < 20) return false;
+  const gleich = (v) => typeof v === "string" && ohneLeerraum(v).toLowerCase() === k.toLowerCase();
+  return !Object.values(SCHLUESSEL_NAMEN).some((name) => gleich(eigen(env, name)));
 }
 
 /**
  * Prüft die drei Freigabebedingungen der Serverkonfiguration (ohne Umgebung und Transport).
  * @param {unknown} konfig
+ * @param {() => number} [jetzt]   Uhr (ms); Vorgabe Date.now — ein AVV-Datum in der Zukunft schließt das Gate (Auflage B)
  * @returns {{ freigabe: boolean, budget: boolean, avv: boolean, offen: boolean }}
  */
-export function freigabeGate(konfig) {
+export function freigabeGate(konfig, jetzt = Date.now) {
   const freigabe = eigen(konfig, "freigabe") === true;
   const b = eigen(konfig, "monatsbudget");
   const budget = typeof b === "number" && Number.isFinite(b) && b > 0;
   const avvRoh = eigen(konfig, "avv");
-  const avv = eigen(avvRoh, "status") === "bestaetigt" && datumGueltig(eigen(avvRoh, "datum"));
+  let jetztMs;
+  try { jetztMs = typeof jetzt === "function" ? jetzt() : undefined; } catch { jetztMs = undefined; }
+  const avv = eigen(avvRoh, "status") === "bestaetigt" && datumGueltig(eigen(avvRoh, "datum"), jetztMs);
   return Object.freeze({ freigabe, budget, avv, offen: freigabe && budget && avv });
 }
 
@@ -87,14 +107,14 @@ function ausgabeSchemaOk(a) {
 
 /**
  * @param {{ env?: Record<string, string|undefined>, konfig?: { freigabe?: boolean, monatsbudget?: number,
- *   avv?: { status?: string, datum?: string } }, transport?: Function }} [o]
+ *   avv?: { status?: string, datum?: string } }, transport?: Function, jetzt?: () => number }} [o]
  */
 export function erzeugeLiveAnbieter(o = {}) {
   const env = o && o.env && typeof o.env === "object" ? o.env : {};
   const schluessel = eigen(env, LIVE_SCHLUESSEL_NAME);
-  const schlussDa = typeof schluessel === "string" && schluessel.length >= 20;
+  const schlussDa = schluesselBrauchbar(schluessel, env);
   const schalterAn = eigen(env, LIVE_SCHALTER_NAME) === "ja";
-  const gate = freigabeGate(o && o.konfig);
+  const gate = freigabeGate(o && o.konfig, o && typeof o.jetzt === "function" ? o.jetzt : Date.now);
   const transport = o && typeof o.transport === "function" ? o.transport : null;
   const offen = schlussDa && schalterAn && gate.offen && transport !== null;
 
