@@ -570,7 +570,10 @@ describe("Review PR #123 Befund 3: Datumssystem 1900/1904", () => {
       const b = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }, { date1904: true }), name: `p.${fmt}` });
       expect(a.ok && b.ok, JSON.stringify([a, b]).slice(0, 400)).toBe(true);
       expect(a.datumssystem).toBe("1900");
-      expect(b.datumssystem).toBe("1904");
+      /* Review 1da3ceb H1 (verbindliche Entscheidung): datumssystem beschreibt das Ergebnis (nach
+         Umrechnung immer "1900"); die Herkunft steht in datumssystemQuelle. Einzige geänderte Assertion. */
+      expect(b.datumssystem).toBe("1900");
+      expect(b.datumssystemQuelle).toBe("1904");
       expect(hat(a, "DATUMSSYSTEM_1904")).toBe(false);
       expect(hat(b, "DATUMSSYSTEM_1904")).toBe(true);
       expect(b.blaetter).toEqual(a.blaetter);

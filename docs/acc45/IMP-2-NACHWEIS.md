@@ -38,7 +38,7 @@ Jede Option kommt in `xlsx.mjs` als `opts.<name>` vor. Gesetzt in `parser-kern.m
 | `bookVBA` | false | VBA-Projekt wird nicht gelesen oder übernommen |
 | `bookProps`, `bookFiles`, `bookDeps`, `bookSheets` | false | ausdrücklich ausgeschaltet. Hinweis: `bookProps`/`bookSheets` = true würden nur Metadaten lesen; unser Wert ist der Vorgabewert. |
 | `sheetStubs` | false | keine Platzhalter für leere Zellen |
-| `sheetRows` | xlsx/ods: zeilen + 1 + 10.000 + 1; xls: 0 | begrenzt das Lesen sehr langer Blätter; jede Überschreitung ergibt `ZU_VIELE_ZEILEN` (siehe 7, Befund 2) |
+| `sheetRows` | ods: zeilen + 1 + 10.000 + 1; xlsx, xls: 0 | begrenzt bei ods das Lesen sehr langer Blätter; jede Überschreitung ergibt `ZU_VIELE_ZEILEN` (siehe 7, Befund 2). Bei xlsx seit Review 1da3ceb (M1) aus, weil SheetJS Zeilen jenseits davon still übersprang (siehe 8). |
 | `dense` | true | speicherärmere Zeilenstruktur |
 | `WTF` | false | keine Ausnahmen bei Toleranzfällen; kein `password` |
 
@@ -157,3 +157,79 @@ umgerechnet werden könnten. `text` stammt von SheetJS, das das Datumssystem dab
 **Offene Punkte.** (a) Punkt 6 (Spaltenprüfung vor dem Ausbau) nicht umgesetzt: nicht trivial, weil die Spaltengrenze nach Entfernen leerer
 Spalten zählt; begrenzt durch Zeit-/Speicher-/Entpackgrenzen. (b) Positionsgrenze für Zeilen ist konservativ: Dateien mit mehr als 10.000 Leerzeilen
 vor den letzten Daten werden abgelehnt. (c) Speicher-Spitze ca. 2 × Entpackbudget im Worker.
+
+## 8. Befunde aus dem Review (1da3ceb)
+
+Branch `acc45/import/imp-2-fix2` (Basis `origin/acc45/import/imp-2` @ 1da3ceb). Zwei Commits: zuerst nur die Tests (Rot-Nachweis per Commit),
+danach die Korrektur. Geändert: `server/lib/import/parser-kern.mjs`, `pruefungen/import-parser.test.js`, `pruefungen/import-parser-hilfen.mjs`
+(nur rückwärtsverträglich: `mappe(…, schreib)` für `bookSST`), dieser Nachweis, `IMPORT-VERTRAG.md`. `vendor/sheetjs/` unverändert:
+SHA-256 von `xlsx.mjs` = `1a0fb062…77db`, `LICENSE`, `package.json`, `CHANGELOG.md` wie in Abschnitt 2; `import-parser-vendor.test.js` grün.
+
+**Geänderte bestehende Assertion (eine, bewusst):** `Review PR #123 Befund 3: B3: <fmt>: gleicher Kalendertag …` prüfte
+`expect(b.datumssystem).toBe("1904")`. Die verbindliche Entscheidung H1 legt fest, dass `datumssystem` das Ergebnis beschreibt; die Zeile prüft jetzt
+`"1900"` und zusätzlich `datumssystemQuelle === "1904"`. Beide Anforderungen („keine Assertion ändern“ und H1) ließen sich nicht zugleich erfüllen;
+H1 hat Vorrang. Keine andere Assertion wurde geändert oder entfernt.
+
+**Rot/Grün.** Rot: `import-parser.test.js` mit den neuen Tests gegen den Parser von 1da3ceb (Commit `IMP-2 Review 1da3ceb: Tests …`) →
+**19 von 87 rot** (68 grün: alle 68 bisherigen und neuen Begleit-/Absicherungstests, die schon vorher galten). Grün nach der Korrektur:
+`npx vitest run pruefungen/import-parser.test.js pruefungen/import-parser-vendor.test.js --testTimeout=60000` → **92 von 92** (87 Parser,
+5 Einbindung), ca. 75 s. ESLint auf `server/lib/import` und den drei Prüfdateien: 0 Befunde.
+
+| Befund | Status | Test (Präfix `Review 1da3ceb …:`) | vorher | nachher |
+|---|---|---|---|---|
+| H1 Datum an einer Stelle | behoben | `H1: xlsx: gleicher Kalendertag in 1900- und 1904-Mappe liefert gleiche roh-Werte; datumssystem "1900", datumssystemQuelle "1904"` | rot (`"1904"`) | grün |
+| H1 | | `H1: xls: …` und `H1: ods: …` (derselbe Test) | rot | grün |
+| H1 | | `H1: xlsx: Zeitwert 06:00 und Dauer [h]:mm werden in der 1904-Mappe nicht verschoben` | **rot: roh 1462.25 statt 0.25** | grün |
+| H1 | | `H1: xls: …` und `H1: ods: …` (derselbe Test) | rot (1462.25) | grün |
+| H1 | | `H1: xlsx: Zelle t="d" ohne Datumsformat bleibt unverändert (keine zweite Verschiebung, kein Datumsobjekt)` | grün (Absicherung) | grün |
+| H1 | | `H1: ods: null-date nach der Tabelle wird abgelehnt (kein um 1462 Tage falsches Datum)` | **rot: ok:true, Datum um 4 Jahre verschoben** | grün (BESCHAEDIGT) |
+| H2 Textmenge | behoben | `H2-PoC: 1,2-MB-xlsx mit einem großen sharedStrings-Eintrag und vielen Verweisen wird abgelehnt, bevor postMessage kopiert` | **rot: ok:true** | grün (TEXT_ZU_GROSS, im Kern) |
+| H2 | | `H2: Summe der Zeichen über alle Zellen über dem Entpack-Budget → TEXT_ZU_GROSS (jede Zelle unter 32.767)` | rot (ok:true) | grün |
+| H2 | | `H2: Höchstlänge je Zelle 32.767 Zeichen: genau am Limit ok, eins darüber abgelehnt (xlsx und CSV)` | rot | grün |
+| M1 Zeilen still verloren | behoben | `M1-PoC: <row r=50000> ohne Anführungszeichen → ZU_VIELE_ZEILEN (nicht still verworfen)` | **rot: ok:true, Zeile fehlt** | grün |
+| M1 | | `M1-PoC: r="4" mit x:r="50000" (doppeltes Attribut) → BESCHAEDIGT` | rot (ok:true) | grün |
+| M1 | | `M1-PoC: <ext r="50000"> nach der letzten Zeile → BESCHAEDIGT` | rot (ok:true) | grün |
+| M1 | | `M1-PoC: r="&#53;" (Entität im r-Wert) → BESCHAEDIGT` | rot (ok:true, Zelle fehlt) | grün |
+| M1 | | `M1: ungültige c-r-Werte und doppelte Zellattribute → BESCHAEDIGT` | rot | grün |
+| M1 | | `M1: r ohne Anführungszeichen innerhalb der Grenze ist zulässig und wird gelesen` | grün (Absicherung) | grün |
+| M1 | | `M1: ohne Ablehnung im Vorfilter greift die Prüfung der tatsächlich gelesenen Zeilen (kein sheetRows)` | grün (Absicherung) | grün |
+| M2 Namensnormalisierung | behoben | `M2-PoC: xl/worksheets/sheet1.xml und /xl/worksheets/sheet1.xml in einer Datei → BESCHAEDIGT` | rot (ok:true) | grün |
+| M2 | | `M2: // wird zu / zusammengefasst (Doppel nach Normalisierung) → BESCHAEDIGT` | rot | grün |
+| M2 | | `M2: Steuerzeichen \u0000–\u0006 und Backslash im Namen → BESCHAEDIGT` | rot | grün |
+| M2 | | `M2: Archiv mit führendem / in allen Namen wird wie bei SheetJS gelesen` | rot (NICHT_UNTERSTUETZT) | grün |
+
+**H1 – Umsetzung.** Der Parser ist die einzige umrechnende Stelle. `datumssystem` ist bei Arbeitsmappen immer `"1900"` (Ergebnis),
+`datumssystemQuelle: "1904"` nur bei 1904-Mappen. Verschoben wird nur bei Formaten mit Datumsteil (`hatDatumsteil`, Zerlegung wie SSF
+`fmt_is_date`); Zeit- und Dauerformate nicht, weil ihr Wert ein Tagesbruchteil bzw. eine Dauer ist. ODS: `<table:null-date>` mehrfach oder nach
+der ersten Tabelle → `BESCHAEDIGT` (SheetJS hätte die Zellen davor im System 1900 berechnet und das Ergebnis danach als 1904 gekennzeichnet),
+ungewöhnlicher Wert → `NICHT_UNTERSTUETZT`.
+
+**H2 – Umsetzung.** `pruefeTextmenge` läuft im Kern (also im Worker) als letzter Schritt vor der Rückgabe, die der Worker per `postMessage`
+schickt: je Zelle ≤ `zellZeichen` (32.767), alle Texte zusammen ≤ `entpacktBytes` Zeichen, sonst `TEXT_ZU_GROSS` ohne Teilergebnis.
+Messung mit der PoC-Datei (1,14 MB, ein 1,5-Mio.-Zeichen-Eintrag, 1.000 Verweise): vorher `ok:true`, 1,5 Mrd. Zeichen im Hauptthread,
+Heap +1.415 MB, 5,0 s; nachher `TEXT_ZU_GROSS`, 0 Zeichen, Heap +0 MB, 0,7 s. Mit 100 Verweisen (Testfall) vorher 150 Mio. Zeichen.
+
+**M1 – Umsetzung.** `sheetRows` entfällt bei xlsx (bleibt bei ods). `pruefeBlattXml` ersetzt die alte Vorzählung und folgt dem Lesepfad
+von SheetJS (siehe Vertrag 3): Zeilenelement muss `row` heißen, Attribute einmalig (Schlüssel wie `parsexmltag`, also `x:r`, `R`, `r_x`
+zählen als `r`), `row r` nur Ziffern ≥ 1 (mit/ohne Anführungszeichen), `c r` nur `[A-Z]+` + Ziffern, Zeile ≥ 1, Spalte ≤ XFD. Zellbezüge
+zählen zur höchsten Zeilenposition. Ursache der PoCs: SheetJS liest `r=50000` ohne Anführungszeichen, `x:r` überschreibt `r`, jedes Element
+vor `>` gilt als Zeile, und `&#53;` ergibt NaN (Zelle an Position −1, verloren). UTF-16-Blätter werden wie bei SheetJS (BOM) dekodiert.
+
+**M2 – Umsetzung.** `normiereName`: Bytes 0x00–0x06 und `\` → `BESCHAEDIGT`; führendes `/` entfernt, `//+` → `/`; Doppelprüfung (ohne
+Groß-/Kleinschreibung) auf dem normalisierten Namen; das saubere Archiv für SheetJS trägt die normalisierten Namen.
+
+**Für IMP-3 (eigener Schritt, hier nicht geändert):** IMP-3 darf keine zweite 1904-Verschiebung machen. Stand
+`origin/acc45/import/imp-3-auflagen2` (edba1d7):
+1. `server/lib/import/personen.mjs` `datumAusZelle(z, datumssystem)`: Epoche immer 25569 (System 1900), Untergrenze `roh >= 1`; den Zweig
+   `ist1904 ? 24107 : 25569` und den Parameter `datumssystem` entfernen (bzw. ignorieren). `datumssystemAus` wird für Berechnungen nicht mehr gebraucht.
+2. `analysieren({ …, datumssystem })` und `server/lib/import/uebernahme.mjs` (Zeile ~120): kein Datumssystem mehr durchreichen.
+3. `server/funktionen/import.mjs` (Zeilen ~170–262): `erg.datumssystem`/`blaetter[].datumssystem` nicht mehr für die Umrechnung verwenden;
+   falls angezeigt, nur `datumssystemQuelle` als Information. Ältere Momentaufnahmen mit `datumssystem: 1904` aus Testständen nicht umrechnen.
+4. `pruefungen/import-endpunkt.test.js` (Zeilen ~930–968): Die Nachhilfe, die `datumssystem: "1904"` in die Parser-Ausgabe schreibt, bildet den
+   Vertrag nicht mehr ab; der „echte Parser-Weg“ muss für eine 1904-Mappe dasselbe Datum wie für eine 1900-Mappe ergeben.
+
+**Offene Punkte.** (a) ODS liest weiter mit `sheetRows`; die bestehende Prüfung (`!data.length`, `!fullref`) gilt, eine strenge Vorprüfung des
+ODS-XML (`number-rows-repeated`) wie bei xlsx gibt es nicht. (b) xlsx-Zellen mit Tabulator statt Leerzeichen nach `<c` erkennt SheetJS nicht als
+Zelle (fehlerhaftes XML; kein Grenzthema, nicht abgewiesen). (c) Die IMP-3-Angleichung (oben) steht aus; bis dahin würde IMP-3 auf
+`imp-3-auflagen2` bei 1904-Mappen nichts doppelt verschieben, weil `datumssystem` jetzt `"1900"` ist, die dortigen Tests mit eingespeistem
+`"1904"` prüfen aber ein nicht mehr gültiges Verhalten.
