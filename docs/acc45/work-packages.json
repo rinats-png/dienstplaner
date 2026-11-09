@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 187,
   "statusZaehlung": {
-    "BLOCKED": 101,
-    "READY": 22,
+    "BLOCKED": 98,
+    "READY": 21,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 47,
+    "INTEGRATED": 51,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 87,
-      "offen": 43,
+      "offen": 41,
       "restPT": {
-        "min": 81.9,
-        "max": 126.60000000000001
+        "min": 76.9,
+        "max": 118.60000000000001
       }
     },
     "wp19": {
@@ -29,10 +29,10 @@
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 37,
+      "offen": 35,
       "restPT": {
-        "min": 271.3,
-        "max": 477.8
+        "min": 256.3,
+        "max": 451.8
       }
     },
     "folge": {
@@ -53,19 +53,21 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 428.6,
-    "max": 725.7
+    "min": 408.6,
+    "max": 691.7
   },
   "kritischerPfad": {
-    "summe": 86.8,
-    "min": 63.8,
-    "max": 109.8,
+    "summe": 86.5,
+    "min": 62,
+    "max": 111,
     "kette": [
-      "WP-I12",
-      "WP-I13",
-      "WP-I17",
-      "WP-I19",
-      "WP-I27",
+      "WP-I3",
+      "WP-I4",
+      "WP-I5",
+      "WP-I7",
+      "WP-I8",
+      "WP-I9",
+      "WP-I34",
       "WP-I37"
     ]
   },
@@ -1182,12 +1184,12 @@
       "prio": "P3",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": ["WP-12"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #143 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #143 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #143 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #143 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1196,12 +1198,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#143"],
       "nachweis": null,
       "akzeptanz": "Tagesstart u. a. entfernt/eingebunden; eine Planrechnung",
       "tests": "Unit",
       "dateien": "src, server",
-      "notiz": "Abhängigkeit WP-12 integriert; Status von BLOCKED auf READY nachgeführt. Konfliktzone App.jsx exklusiv."
+      "notiz": "Abhängigkeit WP-12 integriert; Status von BLOCKED auf READY nachgeführt. Konfliktzone App.jsx exklusiv. Stand 2026-11-09: INTEGRATED nach PR #143."
     },
     {
       "id": "WP-39",
@@ -2555,12 +2557,12 @@
       "prio": "P3",
       "aufwandPT": {"min":14,"max":24},
       "abhaengigkeiten": ["WP-I11","WP-I12"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #146 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #146 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #146 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #146 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2569,12 +2571,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#146"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "Bedingungen aus WP-I11 vor Anbieteranschluss: modellOrt nur aus Serverkonfiguration; getrennte Schluessel mit Rotation; Rueckuebersetzung nur nach Schemapruefung; Ausgabe durch die Leck-Pruefung; F7A gesperrt; Namenspolitik vor Freitext-Funktionen; Restrisiken-Freigabe (docs/acc45/wp-i11-nachweis.md)."
+      "notiz": "Bedingungen aus WP-I11 vor Anbieteranschluss: modellOrt nur aus Serverkonfiguration; getrennte Schluessel mit Rotation; Rueckuebersetzung nur nach Schemapruefung; Ausgabe durch die Leck-Pruefung; F7A gesperrt; Namenspolitik vor Freitext-Funktionen; Restrisiken-Freigabe (docs/acc45/wp-i11-nachweis.md). Stand 2026-11-09: INTEGRATED nach PR #146."
     },
     {
       "id": "WP-I14",
@@ -4458,7 +4460,7 @@
       "akzeptanz": "LUECKEN in pruefungen/routen-inventar.test.js leer (Zeilen in RECHTEMATRIX.md §2); Negativ-Sonden für zugaenge-uebersicht, sicherung/sicherungen, sicherungsschluessel GET/DELETE, /lage, korrektur-antrag",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "RECHTEMATRIX.md, pruefungen/",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Stand 2026-11-09: INTEGRATED nach #136."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Stand 2026-11-09: INTEGRATED nach #136. Stand 2026-11-09: INTEGRATED nach PR #136."
     },
     {
       "id": "SI-P6",
@@ -4747,12 +4749,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["IMP-0","IMP-2"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #142 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #142 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #142 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #142 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4761,12 +4763,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#142"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Analyse, Vorschau, bestätigte Übernahme; Fehler lassen keinen Teilbestand zurück; Mandantenisolation Testfall",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/funktionen/import.mjs, server/lib/import/*, Registrierung in der Funktionsliste",
-      "notiz": "Keine Umgehung der Daten- und Zugriffsschicht."
+      "notiz": "Keine Umgehung der Daten- und Zugriffsschicht. Stand 2026-11-09: INTEGRATED nach PR #142."
     },
     {
       "id": "IMP-4",
@@ -5363,12 +5365,12 @@
       "prio": "P3",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["WP-I12"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #140 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #140 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #140 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #140 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5377,12 +5379,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#140"],
       "nachweis": "docs/acc45/wp-i12-fragen.md",
       "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
       "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
       "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
-      "notiz": "SCHÄTZUNG Koordinator. Freigabe Frage 1 und 6 durch Koordinator (technische Entscheidung): PAKETE aus src/stufen.js nach server/lib, Gleichheitstest gegen den Client, damit die Fachkraftquote serverseitig rechnet. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden."
+      "notiz": "SCHÄTZUNG Koordinator. Freigabe Frage 1 und 6 durch Koordinator (technische Entscheidung): PAKETE aus src/stufen.js nach server/lib, Gleichheitstest gegen den Client, damit die Fachkraftquote serverseitig rechnet. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden. Stand 2026-11-09: INTEGRATED nach PR #140."
     },
     {
       "id": "WP-I12c",
