@@ -146,7 +146,7 @@ describe("Abweichungen werden erkannt (Kopie, nie im Repo)", () => {
 
   it("Aufwand in der Quelle geändert, ohne neu zu erzeugen → alle abhängigen Dateien weichen ab", async () => {
     const w = await kopie("aufwand");
-    await jsonAendern(w, (j) => { j.pakete.find((p) => p.id === "WP-39").aufwandPT = { min: 40, max: 50 }; });
+    await jsonAendern(w, (j) => { j.pakete.find((p) => p.id === "WP-47b").aufwandPT = { min: 40, max: 50 }; });
     const f = BL.abweichungen(w);
     for (const d of ["docs/acc45/work-packages.json", "docs/acc45/DEPENDENCIES.md", "docs/acc45/STATUS.md", "docs/acc45/GESAMTPLAN.md",
       "docs/acc45/ROADMAP.md", "docs/ROADMAP.md"]) expect(f, d).toContain(`${d}: weicht von work-packages.json ab`);

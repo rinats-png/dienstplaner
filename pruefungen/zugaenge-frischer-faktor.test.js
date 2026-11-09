@@ -189,9 +189,18 @@ describe("SI-P6 frischer zweiter Faktor", () => {
     process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT = "1";
     const vorher = await anzahlKonten("p6-ohne-faktor");
     const r = await zugaenge(l.token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }] });
-    expect(r.status).toBe(403);
-    expect(r.zweifaktor).toBe("einrichten");
+    /* WP-32d (Nachtrag): Unter Pflicht trägt eine Betreibersitzung ohne bestandenen Faktor gar nicht mehr
+       (sitzungLesen) — strenger als das frühere 403 an dieser Aktion: 401, und die Sitzung ist entfernt. */
+    expect(r.status).toBe(401);
+    expect(r.token).toBeUndefined();
     expect(await anzahlKonten("p6-ohne-faktor")).toBe(vorher);
+    const nochmal = await zugaenge(l.token, { bestand: "p6-ohne-faktor", eintraege: [{ rolle: "planer" }] });
+    expect(nochmal.status).toBe(401);
+    expect(await anzahlKonten("p6-ohne-faktor")).toBe(vorher);
+    /* Die neue Anmeldung führt zur Einrichtung, nicht zu einer Sitzung. */
+    const neu = await rufen("/api/anmelden", { zugangscode: OP_OHNE });
+    expect(neu.token).toBeUndefined();
+    expect(neu.zweifaktor).toBe("einrichten");
   });
 
   it("zu viele falsche Codes werden gebremst (429), danach auch der richtige Code nicht sofort", async () => {

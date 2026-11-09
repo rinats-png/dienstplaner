@@ -64,6 +64,8 @@ export const FREIGABEN = [
     grund: "schreibt das Ergebnis von handbuchDruck in about:blank derselben Herkunft; einziger Bestandswert ist m.name, im Textinhalt mit esc maskiert (& < >); alle übrigen Texte sind statischer Code aus src/handbuch-inhalt.js; Server-CSP mit script-src 'self' gilt über Vererbung, zusätzlich Meta-CSP im Kopf" },
   { datei: "src/app/aktionen/assistenz.js", muster: "document.write", anzahl: 1,
     grund: "Bestandswerte mit h maskiert (& < > \" '); das einzige Attribut (style color) läuft über farbeSicher (^#[0-9a-f]{3,8}$); sonst nur Zahlen und Konstanten; CSP wie oben (HTML-Aufbau in src/lib/aushang.js)" },
+  { datei: "server/lib/import/parser-prozess.mjs", muster: "child_process", anzahl: 1,
+    grund: "IMP-2, Entscheidung E-A (Review 561dd32, H1): einziger Import; Start ausschliesslich ueber spawn mit festem Programm (process.execPath bzw. /bin/sh mit festem Skript), shell:false, Argumente ohne Eingabeanteile (Dateiinhalt nur ueber stdin), minimale Umgebung, Heap-, Adressraum-, Zeit- und Ausgabegrenzen, SIGKILL bei Ueberschreitung; Quelltextpruefung in pruefungen/import-parser.test.js" },
 ];
 
 /** Ordnet Freigaben zu: je Datei und Muster sind nur die ersten `anzahl` Fundstellen frei. */

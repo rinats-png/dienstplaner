@@ -79,13 +79,17 @@ afterAll(async () => {
 });
 
 describe("Schalter betreiberPflicht", () => {
-  it("production = Pflicht, Option 1 = Pflicht, sonst aus", () => {
+  it("production = Pflicht, Option 1 = Pflicht, aus nur unter development/test", () => {
     expect(Z.betreiberPflicht({ NODE_ENV: "production" })).toBe(true);
     expect(Z.betreiberPflicht({ NODE_ENV: " Production " })).toBe(true);
     expect(Z.betreiberPflicht({ CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: "1" })).toBe(true);
+    expect(Z.betreiberPflicht({ NODE_ENV: "test", CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: "1" })).toBe(true);
     expect(Z.betreiberPflicht({ NODE_ENV: "test" })).toBe(false);
-    expect(Z.betreiberPflicht({})).toBe(false);
-    expect(Z.betreiberPflicht({ CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: "0" })).toBe(false);
+    expect(Z.betreiberPflicht({ NODE_ENV: "development" })).toBe(false);
+    expect(Z.betreiberPflicht({ NODE_ENV: "development", CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: "0" })).toBe(false);
+    /* WP-32d (Nachtrag): fehlende, leere oder unbekannte NODE_ENV ist KEINE Entwicklung — Pflicht (fail-closed). */
+    expect(Z.betreiberPflicht({})).toBe(true);
+    expect(Z.betreiberPflicht({ CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: "0" })).toBe(true);
   });
   it("in der Auslieferung lässt sich die Pflicht NICHT abstellen (fail-closed)", () => {
     for (const w of ["0", "aus", "", "false", "nein", "2"])
@@ -470,5 +474,133 @@ describe("Quelltext-Invarianten", () => {
     const d = await readFile(path.join(WURZEL_REPO, "server/funktionen/daten.mjs"), "utf8");
     expect(d.match(/sitzungAnlegen\(/g).length).toBe(2);
     expect(d.indexOf("betreiberZweifaktor({")).toBeLessThan(d.lastIndexOf("sitzungAnlegen("));
+  });
+});
+
+/* --------------------------------------------------------------------------
+   Nachtrag WP-32d (Härtung, acc45/sicherheit/wp-32d)
+   Rot auf dem Stand davor: (a) ohne NODE_ENV bekam ein Betreibercode ohne
+   Faktor eine Sitzung; (b) eine Betreibersitzung ohne bestandenen Faktor
+   (etwa aus einem Lauf als development auf derselben Ablage) trug unter
+   production weiter, wenn die Bereinigung beim Start sie verfehlte.
+   -------------------------------------------------------------------------- */
+describe("Nachtrag WP-32d: Pflicht ohne Ausnahme, keine Abschaltvariable, kein Sitzungsstart ohne Faktor", () => {
+  const ABSCHALTVERSUCHE = ["0", "aus", "", " ", "false", "nein", "off", "no", "2", "-1", "AUS", "disabled"];
+  const NICHT_ENTWICKLUNG = ["production", " Production ", "PRODUCTION", "", " ", undefined, "prod", "staging",
+    "produktion", "live", "dev", "testing", "production\n"];
+
+  it("Pflicht gilt außerhalb von development/test ohne Ausnahme — für jeden Wert des Schalters", async () => {
+    const { betreiberZweifaktorPflicht } = await import("../server/lib/umgebung.mjs");
+    for (const n of NICHT_ENTWICKLUNG) for (const w of [...ABSCHALTVERSUCHE, undefined]) {
+      const env = { NODE_ENV: n, CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT: w };
+      expect(Z.betreiberPflicht(env), `${JSON.stringify(n)}/${JSON.stringify(w)}`).toBe(true);
+      expect(betreiberZweifaktorPflicht(env), `${JSON.stringify(n)}/${JSON.stringify(w)}`).toBe(true);
+    }
+  });
+
+  it("keine Umgebungsvariable hebt die Pflicht unter production auf (auch nicht die der anderen Schalter)", () => {
+    const env = { NODE_ENV: "production" };
+    for (const name of ["CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT", "CENTRIC_ZWEIFAKTOR_PFLICHT", "CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT",
+      "CENTRIC_DEMO", "CENTRIC_SELBSTSTART", "CENTRIC_PRUEFLINK", "CENTRIC_ZWEIFAKTOR", "CENTRIC_BETREIBER_ZWEIFAKTOR",
+      "CENTRIC_BETREIBER_ZWEIFAKTOR_AUS", "CENTRIC_ZWEIFAKTOR_AUS", "CENTRIC_2FA", "CENTRIC_OHNE_ZWEIFAKTOR"])
+      for (const w of ABSCHALTVERSUCHE) env[name] = w;
+    expect(Z.betreiberPflicht(env)).toBe(true);
+  });
+
+  it("Quelltext: der Schalter kann nur einschalten; nur umgebung.mjs liest ihn; der Server liest keine weitere Ausnahme", async () => {
+    const dateien = [];
+    const gehe = async (d) => {
+      for (const e of await readdir(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) await gehe(p); else if (p.endsWith(".mjs")) dateien.push(p);
+      }
+    };
+    await gehe(path.join(WURZEL_REPO, "server"));
+    dateien.push(path.join(WURZEL_REPO, "server.mjs"));
+    const leser = [];
+    for (const p of dateien)
+      if (/\.CENTRIC_BETREIBER_ZWEIFAKTOR|\[\s*["'`]CENTRIC_BETREIBER_ZWEIFAKTOR/.test(await readFile(p, "utf8"))) leser.push(path.relative(WURZEL_REPO, p).replace(/\\/g, "/"));
+    expect(leser).toEqual(["server/lib/umgebung.mjs"]);
+    const u = await readFile(path.join(WURZEL_REPO, "server/lib/umgebung.mjs"), "utf8");
+    const fn = u.slice(u.indexOf("export function betreiberZweifaktorPflicht"));
+    /* Liest genau NODE_ENV und den Schalter, und der Schalter wird nur mit "1" verglichen. */
+    expect([...new Set(fn.match(/env\.[A-Z_]+/g))].sort()).toEqual(["env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT", "env.NODE_ENV"]);
+    expect(fn).toMatch(/CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT \|\| ""\)\.trim\(\) === "1"/);
+    expect(fn).toMatch(/if \(!ENTWICKLUNGSUMGEBUNGEN\.includes\(umgebung\)\) return true;/);
+    expect(u).toMatch(/ENTWICKLUNGSUMGEBUNGEN = Object\.freeze\(\["development", "test"\]\)/);
+  });
+
+  it("ohne NODE_ENV: Betreibercode ohne Faktor bekommt keine Sitzung (403 einrichten)", async () => {
+    const alt = process.env.NODE_ENV;
+    delete process.env.NODE_ENV;
+    try {
+      await konto("OHNE-NODE-ENV1", "betreiber");
+      const a = await anmelden({ zugangscode: "OHNE-NODE-ENV1" });
+      expect(a.status, a.roh).toBe(403);
+      expect(a.zweifaktor).toBe("einrichten");
+      expect(a.token).toBeUndefined();
+      /* Ein Abschaltwert ändert daran nichts. */
+      process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT = "0";
+      const b = await anmelden({ zugangscode: "OHNE-NODE-ENV1" });
+      expect(b.status, b.roh).toBe(403);
+      expect(b.token).toBeUndefined();
+    } finally {
+      delete process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT;
+      if (alt === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = alt;
+    }
+  });
+
+  it("Sitzungsstart unter production: eine Betreibersitzung ohne bestandenen Faktor trägt bei keiner Anfrage", async () => {
+    const BC = "SITZ-OHNE-FAKT";
+    const mitF = "SITZ-MIT-FAKT1";
+    await konto(BC, "betreiber");
+    const f = await einrichten(mitF);
+    expect(f.geheimnis).toBeTruthy();
+    /* Wie aus einem Lauf als development auf derselben Ablage oder aus der Zeit vor der Pflicht: kein `zweifaktor`. */
+    const sitz = (c, extra = {}) => S.sitzungAnlegen({ bestand: "betreiber-probe", name: "x", rolle: "betreiber", person: null,
+      betrieb: 0, mandantId: null, konto: C.ablageSchluessel(c), ...extra }, 3600_000);
+    const holen = (token) => daten(new Request(`http://${WIRT}/api/zugaenge-uebersicht?bestand=betreiber-probe`, {
+      headers: { host: WIRT, origin: `http://${WIRT}`, authorization: `Bearer ${token}`, "x-forwarded-for": "10.77.0.1" } }), {});
+    const lesen = (token) => S.sitzungLesen(new Request(`http://${WIRT}/x`, { headers: { authorization: `Bearer ${token}` } }));
+    const vorhanden = async (t) => !!(await S.sitzungsSpeicher().get(S.sitzungsSchluessel(t), { type: "json" }));
+
+    /* Ohne Pflicht (test): die Sitzung trägt wie bisher. */
+    const ohneTest = await sitz(BC);
+    expect(await lesen(ohneTest.token)).toBeTruthy();
+    expect((await holen(ohneTest.token)).status).not.toBe(401);
+
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const ohne = await sitz(BC);
+      const ohneMitFaktorKonto = await sitz(mitF);                  // Konto mit Faktor, Sitzung aber ohne bestandenen
+      const mit = await sitz(mitF, { zweifaktor: true });
+      const leit = await S.sitzungAnlegen({ bestand: "betreiber-probe", name: "l", rolle: "leitung", person: null,
+        betrieb: 0, mandantId: null, konto: C.ablageSchluessel("SITZ-LEIT-UNG1") }, 3600_000);
+      expect((await holen(ohne.token)).status).toBe(401);
+      expect(await vorhanden(ohne.token)).toBe(false);              // entfernt, nicht nur abgewiesen
+      expect(await lesen(ohneMitFaktorKonto.token)).toBeNull();
+      expect(await lesen(ohneTest.token)).toBeNull();               // die Sitzung aus dem test-Lauf trägt jetzt nicht mehr
+      expect(await lesen(mit.token)).toBeTruthy();                  // mit bestandenem Faktor: unverändert
+      expect((await holen(mit.token)).status).not.toBe(401);
+      expect(await lesen(leit.token)).toBeTruthy();                 // andere Rollen unberührt
+      /* Ein Abschaltwert ändert daran nichts. */
+      vi.stubEnv("CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT", "0");
+      const nochmal = await sitz(BC);
+      expect(await lesen(nochmal.token)).toBeNull();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it("die Anmeldung setzt `zweifaktor: true` an jeder Betreibersitzung unter Pflicht (sonst sperrte sich der Betreiber aus)", async () => {
+    const E = "SITZ-FLAG-PRUE";
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const f = await einrichten(E);
+      uhr(jetzt + 60_000);
+      const a = await anmelden({ zugangscode: E, zweifaktor: code(f.geheimnis) });
+      expect(a.status, a.roh).toBe(200);
+      const s = await S.sitzungLesen(new Request(`http://${WIRT}/x`, { headers: { authorization: `Bearer ${a.token}` } }));
+      expect(s).toBeTruthy();
+      expect(s.zweifaktor).toBe(true);
+    } finally { vi.unstubAllEnvs(); }
   });
 });
