@@ -20,6 +20,7 @@ import {
   V4_BREAKPOINTS, V4_FOKUS, V4_TOKENS_VERSION, v4AlsAltePalette,
 } from "../src/v4/tokens.js";
 import { v4Stil } from "../src/v4/stil.js";
+import { appQuelle } from "./app-quelle.js";
 import { v4ThemaAufloesen } from "../src/v4/thema.js";
 import { V4Karte, V4Knopf, V4Feld, V4Dialog, V4Hinweis } from "../src/v4/komponenten.jsx";
 
@@ -213,7 +214,7 @@ describe("Phase 2: die Anwendung nutzt dieselbe Quelle und dieselbe Themenregel"
     expect(lies("src/farben.js").split("AVATAR_HELL")[0]).not.toMatch(/#[0-9A-Fa-f]{6}\b/);
   });
   it("die Anwendung folgt ohne ausdrückliche Wahl dem System und merkt die Wahl pro Gerät", () => {
-    const app = lies("src/App.jsx");
+    const app = appQuelle();   // WP-39: App.jsx samt ausgelagerter Ansichten (Einstellungen)
     expect(app).toContain("v4ThemaMerken(eigene)");
     expect(app).toContain("v4SystemthemaBeobachten");
     expect(app).toContain('p.thema || "auto"');

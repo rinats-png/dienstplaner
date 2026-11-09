@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { V4_FARBEN, V4_GLAS } from "../src/v4/tokens.js";
 import { v4AppStil, V4_APP_KLASSEN } from "../src/v4/app-stil.js";
 import { v4Variablen } from "../src/v4/stil.js";
+import { appQuelle } from "./app-quelle.js";
 
 const WURZEL = join(import.meta.dirname, "..");
 const lies = (p) => readFileSync(join(WURZEL, p), "utf8");
@@ -30,7 +31,8 @@ const kontrast = (a, b) => {
 };
 
 const schicht = v4AppStil();
-const app = lies("src/App.jsx");
+/* WP-39: App.jsx samt ausgelagerter Oberflaeche (src/lib, src/ui, src/app, src/ansichten). */
+const app = appQuelle();
 
 describe("V4 App-Schicht: keine Farbwerte außerhalb der Tokens", () => {
   it("enthält kein Hex, rgb(), rgba(), hsl() oder hsla()", () => {

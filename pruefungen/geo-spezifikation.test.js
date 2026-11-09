@@ -271,8 +271,9 @@ describe("Position übernehmen: Warnung über 100 m (B3)", () => {
 
 describe("Texte B13 und Spoofing-Hinweis B14", () => {
   it("kein Text sagt mehr „gespeichert wird nur, ob du am Einsatzort warst“", () => {
+    /* WP-39: "src/App.jsx" steht hier fuer die ganze Oberflaeche (App.jsx samt ausgelagerter Dateien). */
     for (const datei of ["src/App.jsx", "src/handbuch-inhalt.js", "src/tour-inhalt.js", "src/pruefung.jsx"]) {
-      const t = lies(datei).replace(/\s+/g, " ");
+      const t = (datei === "src/App.jsx" ? appQuelle() : lies(datei)).replace(/\s+/g, " ");
       for (const alt of [/nur,? ob (du|jemand) (am|beim) (Einsatzort|Stempeln am Einsatzort|Standort) (warst|war)/i, /Gespeichert wird nur, ob du dort warst/i, /Nur ob du beim Stempeln am Einsatzort warst/i,
         /nur festgehalten, ob du am Einsatzort warst/i])
         expect(t, `${datei}: ${alt}`).not.toMatch(alt);

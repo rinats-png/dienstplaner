@@ -21,6 +21,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PAKETE } from "../src/stufen.js";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
+import { appQuelle } from "./app-quelle.js";
 import { berlinZeitpunkt } from "../server/lib/zeiterfassung.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { migriere } from "../src/migration.js";
@@ -94,9 +95,10 @@ describe("G9 — Pakete werben nur mit Nutzbarem; Module „in Vorbereitung“",
 /* ------------------------------------------------------------------------ */
 describe("G10 — bestehende Funktionen hängen an keinem Modul", () => {
   it("keine Ansicht und keine Prüfung in App.jsx fragt eines der zwölf Merkmale ab", () => {
-    for (const id of ZWOELF) {
-      expect(APP, id).not.toMatch(new RegExp(`PAKET:${id}\\b`));
-      expect(APP, id).not.toMatch(new RegExp(`kann\\([^)]*["']${id}["']\\)`));
+    /* WP-39: App.jsx und die ganze Oberflaeche samt ausgelagerter Ansichten. */
+    for (const quelle of [APP, appQuelle()]) for (const id of ZWOELF) {
+      expect(quelle, id).not.toMatch(new RegExp(`PAKET:${id}\\b`));
+      expect(quelle, id).not.toMatch(new RegExp(`kann\\([^)]*["']${id}["']\\)`));
     }
   });
   it("App.jsx bindet die Moduloberflächen nur über den Kern ein — kein direkter Import eines Moduls", () => {
