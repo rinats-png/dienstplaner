@@ -75,6 +75,7 @@ export function handbuchDruck(m, alle) {
   }
 
   return `<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
 <title>CENTRIC — Handbuch · ${esc(m.name)}</title><style>
 @page{size:A4;margin:20mm 18mm}
 *{box-sizing:border-box}

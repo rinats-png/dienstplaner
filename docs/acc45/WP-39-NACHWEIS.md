@@ -118,3 +118,14 @@ Nicht ausgefuehrt: Browserlaeufe (`pruefungen/browser/*.mjs`): Edge startet in d
   wie bisher), Ansicht -> `src/ansichten/<name>.jsx`, Fachfunktion -> `src/lib/<bereich>.js`.
 - Pruefungen, die App.jsx als Text lesen: neue Behauptungen gegen `appQuelle()` schreiben, nicht gegen `src/App.jsx`.
 - Neue Aktionen: in die passende Fabrik; braucht sie einen neuen Kontextwert, diesen in `aktKontext` (AppInnen) ergaenzen.
+
+## 7. document.write-Review
+
+Sicherheitsreview der beiden `document.write`-Ausnahmen (begleitung.js, assistenz.js). Auflagen umgesetzt auf Branch `acc45/app/wp-39-doc`:
+
+- **M1 Freigabe eng gefasst:** `FREIGABEN` in `werkzeug/sicherheit/statik.mjs` tragen `anzahl: 1` (eine erlaubte Fundstelle je Datei). Die Zuordnung steht in der reinen Funktion `markiereFreigaben`; ein zweites `document.write` in derselben Datei wird als unbegruendet gemeldet (ERGEBNIS-Zeile schlaegt an).
+- **M2 Verhaltenstests** (`pruefungen/document-write-review.test.js`, verdrahtet in `pruefung:sicherheit-intern`): (a) `handbuchDruck` mit Betriebsname `<img src=x onerror=alert(1)>"'&` nur maskiert; (b) der HTML-Aufbau des Aushangs ist als reine Funktion `aushangHtml` nach `src/lib/aushang.js` ausgelagert (Verhalten unveraendert); Sonderzeichen in m.name, e.name, fg.stand, fg.zeit, da.kurz/start/ende und Farben `red;background:url(x)` bzw. `#fff" onmouseover=x` erzeugen keine Attributinjektion, `farbeSicher` lehnt sie ab; (c) `pruefungen/server.test.js`: `script-src` der Server-CSP enthaelt weder `'unsafe-inline'` noch `'unsafe-eval'`. SI-03 bleibt unveraendert.
+- **N4 Begruendung praezisiert** in `FREIGABEN` (m.name nur im Textinhalt mit `esc`; Bestandswerte im Aushang mit `h`, einziges Attribut ueber `farbeSicher`; Server-CSP `script-src 'self'` gilt ueber Vererbung).
+- **Meta-CSP** `default-src 'none'; style-src 'unsafe-inline'; img-src data:` im Kopf beider Druckseiten; Test prueft die Meta-CSP im erzeugten Kopf.
+- **Nebenbefund:** `w.print()` im Aushang ist wie im Handbuch in try/catch gefasst.
+- **Folgepaket (Empfehlung, nach dem Pilot):** Druckseiten in ein `iframe sandbox` (ohne `allow-scripts`/`allow-same-origin`) statt `document.write` in ein gleichherkunftiges Fenster.
