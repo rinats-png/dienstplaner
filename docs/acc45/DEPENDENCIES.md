@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 440,7–748,8 PT in 95 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 457,7–770,8 PT in 108 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -48,6 +48,19 @@ flowchart LR
     IMP_8["IMP-8<br/>BLOCKED"]
     IMP_9["IMP-9<br/>BLOCKED"]
     IMP_10["IMP-10<br/>BLOCKED"]
+    OPT_1["OPT-1<br/>BLOCKED"]
+    OPT_2["OPT-2<br/>BLOCKED"]
+    OPT_4["OPT-4<br/>BLOCKED"]
+    WR_1["WR-1<br/>BLOCKED"]
+    WR_2["WR-2<br/>BLOCKED"]
+    WR_3["WR-3<br/>BLOCKED"]
+    WR_4["WR-4<br/>BLOCKED"]
+    WR_5["WR-5<br/>BLOCKED"]
+    WR_6["WR-6<br/>BLOCKED"]
+    WR_7["WR-7<br/>BLOCKED"]
+    WR_8["WR-8<br/>BLOCKED"]
+    WR_9["WR-9<br/>BLOCKED"]
+    WR_BETREIBER["WR-BETREIBER<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -395,6 +408,23 @@ flowchart LR
   IMP_2 --> IMP_8
   IMP_0 --> IMP_9
   IMP_4 --> IMP_10
+  SI_P4 --> OPT_1
+  SI_P4 --> OPT_2
+  WR_3 --> OPT_2
+  SI_P4 --> OPT_4
+  SI_P4 --> WR_1
+  WR_1 --> WR_2
+  WR_2 --> WR_3
+  WR_3 --> WR_4
+  WR_1 --> WR_5
+  WR_2 --> WR_5
+  WR_3 --> WR_5
+  WR_3 --> WR_6
+  WR_5 --> WR_7
+  WR_7 --> WR_8
+  OPT_4 --> WR_9
+  WR_3 --> WR_9
+  WR_4 --> WR_BETREIBER
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -570,3 +600,16 @@ flowchart LR
 | IMP-8 | acc45 | P2 | 2–3 | 2–3 | IMP-2 | – | haiku | BLOCKED |
 | IMP-9 | acc45 | P2 | 0,5–1 | 0,5–1 | IMP-0 | – | sonnet | BLOCKED |
 | IMP-10 | acc45 | P3 | 0,5–1 | 0,5–1 | IMP-4 | – | haiku | BLOCKED |
+| OPT-1 | acc45 | P1 | 1–1,5 | 1–1,5 | SI-P4 | daten.mjs | opus | BLOCKED |
+| OPT-2 | acc45 | P1 | 0,5–1 | 0,5–1 | SI-P4, WR-3 | daten.mjs | opus | BLOCKED |
+| OPT-4 | acc45 | P1 | 3–5 | 3–5 | SI-P4 | daten.mjs | opus | BLOCKED |
+| WR-1 | acc45 | P1 | 1,5 | 1,5 | SI-P4 | daten.mjs | opus | BLOCKED |
+| WR-2 | acc45 | P1 | 1,5 | 1,5 | WR-1 | daten.mjs | opus | BLOCKED |
+| WR-3 | acc45 | P1 | 2,5 | 2,5 | WR-2 | daten.mjs | opus | BLOCKED |
+| WR-4 | acc45 | P1 | 1 | 1 | WR-3 | daten.mjs | opus | BLOCKED |
+| WR-5 | acc45 | P1 | 2 | 2 | WR-1, WR-2, WR-3 | daten.mjs | sonnet | BLOCKED |
+| WR-6 | acc45 | P2 | 1 | 1 | WR-3 | daten.mjs | sonnet | BLOCKED |
+| WR-7 | acc45 | P1 | 0,75 | 0,75 | WR-5 | daten.mjs | opus | BLOCKED |
+| WR-8 | acc45 | P2 | 0,25 | 0,25 | WR-7 | daten.mjs | sonnet | BLOCKED |
+| WR-9 | acc45 | P1 | 2–4 | 2–4 | OPT-4, WR-3 | daten.mjs | opus | BLOCKED |
+| WR-BETREIBER | acc45 | P1 | 0 | 0 | WR-4 | daten.mjs | opus | BLOCKED |
