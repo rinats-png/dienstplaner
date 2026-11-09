@@ -144,7 +144,7 @@ export function startZuordenbar(datum, start, jetzt = new Date(), startAm = null
 /* --- Dieselbe Planrechnung wie im Client --- */
 function einheitAm(p, d) {
   let t = null;
-  for (const z of Array.isArray(p.zugehoerigkeit) ? p.zugehoerigkeit : []) if (z && z.ab <= d) t = z;
+  for (const z of Array.isArray(p.zugehoerigkeit) ? p.zugehoerigkeit : []) if (z && (!z.ab || z.ab <= d)) t = z;   // ab leer: von Anfang an (Eintritt unbekannt)
   return t ? t.einheitId : null;
 }
 function imDienst(p, d) {

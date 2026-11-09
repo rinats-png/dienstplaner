@@ -97,7 +97,7 @@ export function sperreWirkt(m, q, land) {
 /** Welcher Einheit gehört die Person an diesem Tag an? */
 export function einheitAm(p, d) {
   let t = null;
-  if (Array.isArray(p.zugehoerigkeit)) for (const z of p.zugehoerigkeit) if (z && typeof z === "object" && z.ab <= d) t = z;
+  if (Array.isArray(p.zugehoerigkeit)) for (const z of p.zugehoerigkeit) if (z && typeof z === "object" && (!z.ab || z.ab <= d)) t = z;   // ab leer: von Anfang an (Eintritt unbekannt)
   return t ? t.einheitId : null;
 }
 /** Bundesland einer Einheit — Betriebe mit mehreren Standorten rechnen sonst falsch. */

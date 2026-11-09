@@ -726,7 +726,7 @@ function absIdx(m) {
   c.abs = x; return x;
 }
 
-function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (z.ab <= d) t = z; return t ? t.einheitId : null; }
+function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (!z.ab || z.ab <= d) t = z; return t ? t.einheitId : null; }
 function imDienst(p, d) { if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
 const aktive = (m, d) => memo(m, `akt|${d}`, () => m.personen.filter((p) => imDienst(p, d)));
 

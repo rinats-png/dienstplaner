@@ -1171,7 +1171,7 @@ export function baueRechnung(db, m, monatISO) {
 export function rolleAm(p, d) {
   if (!p.rolleVerlauf || !p.rolleVerlauf.length) return (!p.rolleSeit || p.rolleSeit <= d) ? p.rolle : "mitarbeiter";
   let t = null;
-  for (const z of p.rolleVerlauf) if (z.ab <= d) t = z;
+  for (const z of p.rolleVerlauf) if (!z.ab || z.ab <= d) t = z;   // ohne Datum (Eintritt unbekannt): von Anfang an
   return t ? t.rolle : p.rolle;
 }
 export const einschr = (p) => p.einschraenkungen || {};
@@ -2052,6 +2052,40 @@ export function importZuordnen(kopf, zeilen) {
   return { zu, herkunft };
 }
 
+/** Eintrittsdatum prüfen. Gibt nie das heutige Datum zurück — heute gilt nur, wenn es ausdrücklich eingegeben oder
+ *  gewählt wurde.
+ *  leer, optional            -> { ok: true,  wert: null }
+ *  leer, pflicht             -> { ok: false, wert: null, fehler: Aufforderung zur Eingabe }
+ *  gültig (TT.MM.JJJJ, ISO)  -> { ok: true,  wert: "JJJJ-MM-TT" }
+ *  ungültig                  -> { ok: false, wert: null, fehler: Meldung mit dem eingegebenen Wert } */
+export function eintrittPruefen(roh, { pflicht = false } = {}) {
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) {
+    return pflicht
+      ? { ok: false, wert: null, fehler: "Bitte das Eintrittsdatum eingeben." }
+      : { ok: true, wert: null };
+  }
+  let j, mo, tg;
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const de = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (iso) [, j, mo, tg] = iso.map(Number); else if (de) [, tg, mo, j] = de.map(Number);
+  else return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig (erwartet TT.MM.JJJJ oder JJJJ-MM-TT).` };
+  const d = new Date(Date.UTC(j, mo - 1, tg));
+  if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== tg)
+    return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig: Das Datum gibt es nicht.` };
+  return { ok: true, wert: `${j}-${pad(mo)}-${pad(tg)}` };
+}
+/** Eintritt einer vorhandenen Person bearbeiten: Ein leeres Feld lässt das bestehende Datum unverändert
+ *  (keine stille Ersetzung, auch nicht durch null oder heute); ein gültiges Datum ersetzt es; ein ungültiges
+ *  ist ein Fehler und lässt den Bestand stehen. */
+export function eintrittUebernehmen(person, roh) {
+  const bisher = (person && person.eintritt) || null;
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) return { ok: true, wert: bisher };
+  const r = eintrittPruefen(t);
+  return r.ok ? r : { ...r, wert: bisher };
+}
+
 /** Ein Feld ohne Zuordnung, das gebraucht wird? */
 export const importFehlend = (zu) => ["nachname"].filter((f) => zu[f] === undefined);
 /** Baut aus den Rohzeilen Personendatensätze und meldet, was fehlt. */
@@ -2075,19 +2109,11 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
     const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
-    /* IMP-1: Ein nicht lesbares oder unmögliches Datum wird gemeldet, nie durch heute() ersetzt.
-       Nur eine leere Zelle (Spalte fehlt oder nichts eingetragen) nimmt wie bisher den heutigen Tag. */
+    /* Eintritt: leer bleibt leer (null), nie heute(); ein nicht lesbares oder unmögliches Datum wird
+       gemeldet. Im Import ist der Eintritt fachlich optional (pflicht: false). */
     const eintrittRoh = hol("eintritt");
-    const eintritt = (() => {
-      if (!eintrittRoh) return heute();
-      let j, mo, t;
-      const iso = eintrittRoh.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      const de = eintrittRoh.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-      if (iso) [, j, mo, t] = iso.map(Number); else if (de) [, t, mo, j] = de.map(Number); else return null;
-      const d = new Date(Date.UTC(j, mo - 1, t));
-      if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== t) return null;
-      return `${j}-${pad(mo)}-${pad(t)}`;
-    })();
+    const eintrittErgebnis = eintrittPruefen(eintrittRoh);
+    const eintritt = eintrittErgebnis.wert;
     const personalnummer = hol("personalnummer");
     /* IMP-1: Fehlt die E-Mail, bleibt sie leer — es wird keine Adresse erfunden. */
     const email = hol("email");
@@ -2099,7 +2125,7 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
     if (!vorname) fehler.push("Vorname fehlt");
     if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
     if (!einheitName) fehler.push("Einheit fehlt");
-    if (eintritt === null) fehler.push(`Eintrittsdatum „${eintrittRoh}" ungültig`);
+    if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
     /* IMP-1: Dublette zuerst über die Personalnummer (mandantenintern), sonst über den Namen.
        Eine Dublette wird nie ungeprüft übernommen: ohne ausdrückliche Wahl bleibt die Zeile
