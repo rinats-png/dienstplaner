@@ -47,7 +47,9 @@ describe("IMP-2 gültige Formate", () => {
     Personal: [["Name", "Std", "Eintritt"], ["Anna", 38.5, "01.02.2020"], ["Bert", 20, "15.03.2021"]],
     "Stellen & Dienste": [["Kürzel", "Bezeichnung"], ["F", "Frühdienst"], ["S", "Spätdienst"]],
   };
-  for (const fmt of ["xlsx", "xls", "ods"]) {
+  /* Review 8725dc5, E1: ODS wird nicht mehr unterstützt; die ODS-Ausprägung dieses Tests entfällt
+     (Ersatz: „Review 8725dc5 E1: …“ prüft dieselbe Mappe als NICHT_UNTERSTUETZT). */
+  for (const fmt of ["xlsx", "xls"]) {
     it(`${fmt}: mehrere Blätter mit Namen, Zahlen als Zahl, Text als Text`, async () => {
       const r = await parseDatei({ buffer: mappe(inhalt, fmt), name: `daten.${fmt}` });
       expect(r.ok, JSON.stringify(r)).toBe(true);
@@ -128,7 +130,7 @@ describe("IMP-2 Datum, Fehler, Wahrheitswerte als Rohwerte", () => {
   });
   it("Datum in XLS und ODS ebenfalls als Rohzahl plus Text", async () => {
     const d = new Date(Date.UTC(2024, 0, 15));
-    for (const fmt of ["xls", "ods"]) {
+    for (const fmt of ["xls"]) { /* Review 8725dc5, E1: "ods" entfällt */
       const buf = mappe({ S: [["Datum"], [d]] }, fmt, { cellDates: true });
       const r = await parseDatei({ buffer: buf, name: `d.${fmt}` });
       expect(r.ok, fmt).toBe(true);
@@ -203,7 +205,8 @@ describe("IMP-2 Formatprüfung über Inhalt", () => {
     const a = await parseDatei({ buffer: mappe({ S: [["a"], [1]] }, "xls"), name: "x.xlsx" });
     expect(a.ok && a.format).toBe("xls");
     const b = await parseDatei({ buffer: mappe({ S: [["a"], [1]] }, "ods"), name: "x.xls" });
-    expect(b.ok && b.format).toBe("ods");
+    /* Review 8725dc5, E1: ODS wird nach Inhalt erkannt und abgewiesen (vorher: gelesen als "ods") */
+    expect(b).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
   });
   it("Endung passt: kein Abweichungshinweis", async () => {
     const r = await parseDatei({ buffer: mappe({ S: [["a"], [1]] }), name: "ok.XLSX" });
@@ -364,7 +367,10 @@ describe("IMP-2 ZIP-Bombe und Sicherheit", () => {
     const eintraege = zipEintraege(mappe({ S: [["a"], [1]] }));
     eintraege.push({ name: "xl/vbaProject.bin", daten: B("MAKROCODE-NICHT-AUSFUEHREN") });
     const ct = eintraege.find((e) => e.name === "[Content_Types].xml");
-    ct.daten = B(ct.daten.toString("utf8").replace("sheet.main+xml", "sheet.macroEnabled.main+xml"));
+    /* Review 8725dc5, E3/E4: Testeingabe berichtigt. Vorher entstand durch Ersetzen von „sheet.main+xml“ der
+       Phantasietyp „…spreadsheetml.sheet.macroEnabled.main+xml“ (kein Arbeitsmappentyp; jetzt NICHT_UNTERSTUETZT).
+       Der echte xlsm-Typ ist application/vnd.ms-excel.sheet.macroEnabled.main+xml. Assertions unverändert. */
+    ct.daten = B(ct.daten.toString("utf8").replace("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml"));
     const buf = zip(eintraege.map((e) => ({ ...e, methode: "deflate" })));
     const r = await parseDatei({ buffer: buf, name: "m.xlsm" });
     expect(r.ok, JSON.stringify(r)).toBe(true);
@@ -552,7 +558,7 @@ describe("Review PR #123 Befund 2: kein stilles Abschneiden über sheetRows", ()
     const zeilen = [["h"], [1], [2]];
     for (let i = 0; i < 10006; i++) zeilen.push([]);
     zeilen.push([7]);
-    for (const fmt of ["xls", "ods"]) {
+    for (const fmt of ["xls"]) { /* Review 8725dc5, E1: "ods" entfällt */
       const r = await parseDatei({ buffer: mappe({ S: zeilen }, fmt), name: `z.${fmt}`, grenzen: g });
       expect(r, fmt).toMatchObject({ ok: false, code: "ZU_VIELE_ZEILEN" });
       expect(r.blaetter, fmt).toBeUndefined();
@@ -564,7 +570,7 @@ describe("Review PR #123 Befund 3: Datumssystem 1900/1904", () => {
   const geburt = new Date(1985, 2, 17), eintritt = new Date(2020, 1, 1), stichtag = new Date(2024, 0, 15);
   const inhalt = { P: [["Name", "Geburtsdatum", "Eintritt", "Stunden", "PersNr", "Notiz"],
     ["Anna", geburt, eintritt, 38.5, 1234, "01.02.2020"], ["Bert", stichtag, stichtag, 1462, 0, "x"]] };
-  for (const fmt of ["xlsx", "xls", "ods"]) {
+  for (const fmt of ["xlsx", "xls"]) { /* Review 8725dc5, E1: "ods" entfällt */
     it(`B3: ${fmt}: gleicher Kalendertag in 1900- und 1904-Mappe liefert gleiches Ergebnis`, async () => {
       const a = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }), name: `p.${fmt}` });
       const b = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }, { date1904: true }), name: `p.${fmt}` });
@@ -634,7 +640,7 @@ const gleicheTextErsetzung = (buf, name, fn) => {
 
 describe("Review 1da3ceb H1: Datum genau an einer Stelle (Parser normiert auf 1900)", () => {
   const tag = new Date(2024, 0, 15), geburt = new Date(1985, 2, 17);
-  for (const fmt of ["xlsx", "xls", "ods"]) {
+  for (const fmt of ["xlsx", "xls"]) { /* Review 8725dc5, E1: "ods" entfällt (beide Tests dieser Schleife) */
     it(`H1: ${fmt}: gleicher Kalendertag in 1900- und 1904-Mappe liefert gleiche roh-Werte; datumssystem "1900", datumssystemQuelle "1904"`, async () => {
       const inhalt = { P: [["Geburt", "Stichtag", "Zahl"], [geburt, tag, 1462]] };
       const a = await parseDatei({ buffer: mappe(inhalt, fmt, { cellDates: true }), name: `p.${fmt}` });
@@ -686,9 +692,10 @@ describe("Review 1da3ceb H1: Datum genau an einer Stelle (Parser normiert auf 19
     expect(r.ok).toBe(false);
     expect(["BESCHAEDIGT", "NICHT_UNTERSTUETZT"]).toContain(r.code);
     expect(r.blaetter).toBeUndefined();
-    /* Gegenprobe: null-date vor der Tabelle (wie geschrieben) wird korrekt normiert */
+    /* Gegenprobe entfällt (Review 8725dc5, E1): vorher wurde die unveränderte 1904-ODS gelesen und normiert
+       (roh 45306); jetzt wird auch sie als ODS abgewiesen. */
     const ok = await parseDatei({ buffer: ods, name: "n.ods" });
-    expect(ok.blaetter[0].zeilen[1][0]).toMatchObject({ typ: "datum", roh: 45306 });
+    expect(ok).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
   });
 });
 

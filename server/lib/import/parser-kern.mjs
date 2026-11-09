@@ -2,12 +2,17 @@
    IMP-2 — Kern des Import-Parsers (synchron, läuft im Worker-Thread).
    Vertrag: docs/acc45/IMPORT-VERTRAG.md
 
-   - Format wird über den Inhalt erkannt (Magic Bytes, ZIP-Verzeichnis), nicht
-     über die Dateiendung. Die Endung erzeugt höchstens einen Hinweis.
-   - ZIP-Container (xlsx/ods): Verzeichnis lesen, Summe der erklärten
+   - Format wird über den Inhalt erkannt (Magic Bytes, ZIP-Verzeichnis,
+     [Content_Types].xml, CFB-Verzeichnis) und zwar so, wie SheetJS es täte,
+     nicht über die Dateiendung. Die Endung erzeugt höchstens einen Hinweis.
+   - Unterstützt: xlsx (auch xlsm, Makros werden nie gelesen), xls (CFB/BIFF),
+     CSV/TSV. ODS, xlsb, Vorlagen, Add-ins, Numbers und andere Pakete:
+     NICHT_UNTERSTUETZT (Review 8725dc5, E1/E3).
+   - ZIP-Container (xlsx): Verzeichnis lesen, Summe der erklärten
      unkomprimierten Größen und Kompressionsverhältnis prüfen, dann jeden
      Eintrag mit hartem Ausgabelimit probeweise entpacken (lügende Header),
-     erst danach übernimmt SheetJS.
+     Kodierung und Blatt-XML prüfen, erst danach übernimmt SheetJS.
+   - CFB (xls): Kopf, Sektorketten und Stromgrößen werden vor SheetJS geprüft (E2).
    - SheetJS wird nur zum LESEN benutzt. Keine Formelberechnung, keine externen
      Verweise, keine Makros, keine Dokumenteigenschaften, kein Schreiben.
    - CSV/TSV liest ein eigener Leser: alle Werte bleiben Text.
@@ -42,11 +47,15 @@ const abbruch = (code, nachricht) => new Abbruch(code, nachricht);
 const ENDUNGEN = {
   xlsx: ["xlsx", "xlsm"],
   xls: ["xls"],
-  ods: ["ods"],
   csv: ["csv", "tsv", "txt", "tab"],
   tsv: ["csv", "tsv", "txt", "tab"],
 };
-const UNTERSTUETZT = "Unterstützt werden Excel (.xlsx, .xls), OpenDocument-Tabellen (.ods) sowie CSV und TSV (Text).";
+const UNTERSTUETZT = "Unterstützt werden Excel (.xlsx, .xls) sowie CSV und TSV (Text).";
+/* Review 8725dc5, E1: ODS wird derzeit nicht unterstützt (die Prüfung von ODS-Paketen ist nicht zuverlässig genug). */
+const ODS_NICHT = "OpenDocument-Tabellen (ODS) werden derzeit nicht unterstützt; bitte als XLSX oder CSV speichern.";
+const XLSB_NICHT = "Das Binärformat .xlsb wird nicht unterstützt. Bitte in Excel als .xlsx speichern. ";
+/* Review 8725dc5, E5: Excel erlaubt höchstens 31 Zeichen je Blattname. */
+const BLATTNAME_MAX = 31;
 
 /** Dateiendung klein, ohne Pfad. */
 function endung(name) {
@@ -171,10 +180,17 @@ function liesZipVerzeichnis(buf, g) {
      schreibung zählt doppelt): jedes Attribut höchstens einmal;
    - row r: nur Ziffern (mit oder ohne Anführungszeichen), mindestens 1;
    - c r: nur [A-Z]+ gefolgt von Ziffern, Zeile mindestens 1, Spalte höchstens XFD.
-   Entitäten (z. B. &#53;) dekodiert SheetJS in Attributen nicht; sie sind damit keine Ziffern. */
+   Entitäten (z. B. &#53;) dekodiert SheetJS in Attributen nicht; sie sind damit keine Ziffern.
+   Review 8725dc5, E7 (Spalten-Fallback): SheetJS bestimmt die Spalte einer Zelle mit dem
+   ungebundenen Muster r="…" über den GANZEN Zelltext (also auch aus xr="…" oder aus einem
+   Kindelement) und nimmt sie für Zellen ohne r-Attribut. Einfachster sicherer Weg: abweisen.
+   Hat die Zelle ein r-Attribut, muss der erste Treffer des Musters genau dieser Wert sein;
+   ohne r-Attribut darf es keinen Treffer geben, und die fortlaufende Spalte bleibt ≤ XFD. */
 const ATTR_RE = /\s([^"\s?>/]+)\s*=\s*((?:")([^"]*)(?:")|(?:')([^']*)(?:')|([^'">\s]+))/g; /* = attregexg */
 const ZEILENENDE_RE = /<\/(?:\w+:)?row>/;
 const ZELLE_RE = /<(?:\w+:)?c[ />]/;
+const ZELL_R_RE = /r=["']([^"']*)["']/; /* = rregex in parse_ws_xml_data */
+const SPALTEN_MAX = 16384; /* XFD */
 const SHEETDATA_AUF = /<(?:\w+:)?sheetData\b[^<>]*>/g;
 const SHEETDATA_ZU = /<\/(?:\w+:)?sheetData>/g;
 const blattFehler = (detail) => kaputt(`Tabellenblatt: ${detail}`);
@@ -208,26 +224,35 @@ function attribute(tag) {
   return aus;
 }
 
-/** Zeile und Spalte aus einem c-r-Wert („B12“); ungültig → BESCHAEDIGT. */
+/** Zeile und Spalte (1-basiert) aus einem c-r-Wert („B12“); ungültig → BESCHAEDIGT. */
 function zellPosition(r) {
   const m = /^([A-Z]+)([0-9]+)$/.exec(r);
   if (!m) throw blattFehler("ungültiger Zellbezug");
   let spalte = 0;
-  for (const ch of m[1]) { spalte = spalte * 26 + (ch.charCodeAt(0) - 64); if (spalte > 16384) throw blattFehler("Spalte außerhalb von XFD"); }
+  for (const ch of m[1]) { spalte = spalte * 26 + (ch.charCodeAt(0) - 64); if (spalte > SPALTEN_MAX) throw blattFehler("Spalte außerhalb von XFD"); }
   const zeile = parseInt(m[2], 10);
   if (!(zeile >= 1)) throw blattFehler("ungültiger Zellbezug");
-  return zeile;
+  return { zeile, spalte };
 }
 
-/** Text eines XML-Bestandteils so, wie SheetJS ihn liest (cc2str: UTF-16-BOM, sonst Bytes). */
-function xmlText(b) {
-  if (b[0] === 0xff && b[1] === 0xfe) return b.subarray(2).toString("utf16le");
-  if (b[1] === 0xfe && b[2] === 0xff) {
-    const t = Buffer.from(b.subarray(2, 2 + ((b.length - 2) & ~1)));
-    return t.swap16().toString("utf16le");
-  }
-  return b.toString("latin1");
+/* Review 8725dc5, E4/E6: XML-Bestandteile müssen UTF-8 sein, so wie SheetJS sie erwartet.
+   SheetJS (cc2str) dekodiert einen Teil als UTF-16, wenn er mit FF FE beginnt oder an Stelle 1–2
+   FE FF trägt; sonst liest es die Bytes und dekodiert Texte später als UTF-8. Jede BOM außer der
+   UTF-8-BOM, ungültiges UTF-8 und eine XML-Deklaration mit anderer Kodierung → BESCHAEDIGT. */
+const UTF8_STRENG = new TextDecoder("utf-8", { fatal: true });
+function hatUtf16Bom(b) {
+  return (b[0] === 0xff && b[1] === 0xfe) || (b[0] === 0xfe && b[1] === 0xff) || (b[1] === 0xfe && b[2] === 0xff);
 }
+function pruefeUtf8Xml(b) {
+  try { UTF8_STRENG.decode(b); } catch { throw kaputt("Bestandteil nicht UTF-8-kodiert"); }
+  const kopf = b.subarray(0, 256).toString("latin1").replace(/^\xef\xbb\xbf/, "");
+  const dekl = /^\s*<\?xml\b[^>]*?\bencoding\s*=\s*["']([^"']*)["']/i.exec(kopf);
+  if (dekl && !/^utf-?8$/i.test(dekl[1].trim())) throw kaputt("Bestandteil nicht UTF-8-kodiert");
+}
+const istXmlArtig = (b) => /^(?:\xef\xbb\xbf)?\s*</.test(b.subarray(0, 64).toString("latin1"));
+
+/** Text eines (geprüften, UTF-8-kodierten) XML-Bestandteils so, wie SheetJS ihn liest: die Bytes. */
+const xmlText = (b) => b.toString("latin1");
 
 /**
  * Prüft das sheetData eines Blatt-XML streng und liefert die höchste Zeilenposition
@@ -265,53 +290,38 @@ export function pruefeBlattXml(xml) {
     let rs = 0;
     for (; rs < zellen.length; ++rs) if (zellen[rs].trim().charAt(0) !== "<") break;
     zellen = zellen.slice(rs);
+    let tagc = -1;
     for (const roh of zellen) {
       let z = roh.trim();
       if (z.length === 0) continue;
+      const muster = ZELL_R_RE.exec(z);
       z = "<c " + (z.slice(0, 1) === "<" ? ">" : "") + z;
       const ende = z.indexOf(">");
       const ca = attribute(ende < 0 ? z : z.slice(0, ende + 1));
       if (ca.has("r")) {
-        const zr = zellPosition(ca.get("r"));
-        if (zr > max) max = zr;
+        const pos = zellPosition(ca.get("r"));
+        if (!muster || muster[1] !== ca.get("r")) throw blattFehler("mehrdeutiger Zellbezug");
+        if (pos.zeile > max) max = pos.zeile;
+        tagc = pos.spalte - 1;
+      } else {
+        if (muster) throw blattFehler("fremder Spaltenbezug in einer Zelle ohne Zellbezug");
+        if (++tagc >= SPALTEN_MAX) throw blattFehler("Spalte außerhalb von XFD");
       }
     }
   }
   return max;
 }
 
-/* Review 1da3ceb H1: ODS kennt das Datumssystem als <table:null-date> in content.xml.
-   SheetJS wertet es erst aus, wenn es den Tag erreicht; Zellen davor sind schon im
-   System 1900 berechnet. Deshalb: höchstens ein null-date, und nur vor der ersten Tabelle;
-   Werte außer 1899-12-30 (Standard) und 1904-01-01 versteht SheetJS nicht → abgewiesen.
-   Abtastung wie parse_content_xml (xlmlregex, Kommentare entfernt, Suffix „_…“ entfällt). */
-const XLML_RE = /<([/]?)([^\s?><!/:"]*:|)([^\s?<>:/"]+)(?:\s+[^<>=?"'\s]+="[^"]*?")*\s*[/]?>/mg; /* = xlmlregex */
-export function pruefeOdsNullDatum(text) {
-  const t = text.replace(/<!--[\s\S]*?-->/g, "");
-  XLML_RE.lastIndex = 0;
-  let m, tabelle = false, gefunden = 0;
-  while ((m = XLML_RE.exec(t))) {
-    const lokal = m[3].replace(/_[\s\S]*$/, "");
-    if (lokal === "table" && m[1] !== "/") tabelle = true;
-    else if (lokal === "null-date") {
-      if (++gefunden > 1) throw kaputt("Datumssystem mehrfach angegeben");
-      if (tabelle) throw kaputt("Datumssystem erst nach der Tabelle angegeben");
-      const wert = attribute(m[0]).get("date-value");
-      if (wert !== undefined && wert !== "1899-12-30" && wert !== "1904-01-01") {
-        throw abbruch("NICHT_UNTERSTUETZT", `Die Datei verwendet ein ungewöhnliches Datumssystem (Nulldatum ${wert.slice(0, 20)}). ` + UNTERSTUETZT);
-      }
-    }
-  }
-}
-
-/** Prüft und entpackt jeden Eintrag selbst; Ist-Größe, CRC, Gesamtbudget; liefert die geprüften Inhalte. */
+/** Prüft und entpackt jeden Eintrag selbst; Ist-Größe, CRC, Gesamtbudget, Kodierung, Blatt-XML;
+    liefert die geprüften Inhalte. Einträge mit Endung .bin gehen nicht in das saubere Archiv (E3/E4). */
 function pruefeEintraege(buf, verzeichnis, g) {
   const { eintraege, cdVersatz } = verzeichnis;
   const inhalte = new Map();
   const teile = [];
+  const ausgelassen = [];
   let entpackt = 0;
   let zeilenMax = 0;
-  let odsFehler = null;
+  let inhaltsFehler = null, ctFehler = null;
   for (const e of eintraege) {
     if (e.flags & 0x2041) throw abbruch("PASSWORTGESCHUETZT", "Die Datei ist passwortgeschützt. Bitte ohne Passwort speichern und erneut hochladen.");
     const lh = e.lokal;
@@ -355,23 +365,41 @@ function pruefeEintraege(buf, verzeichnis, g) {
     entpackt += aus.length;
     if (entpackt > g.entpacktBytes) throw zipAbbruchEntpackt(g);
     if (zlib.crc32(aus) !== e.crc) throw kaputt("Prüfsumme stimmt nicht");
-    if (e.name === "mimetype" || e.name === "[Content_Types].xml") inhalte.set(e.name, aus.toString("utf8"));
-    /* Befund 2 / Review 1da3ceb M1: Zeilenpositionen der Blätter selbst bestimmen (unabhängig
-       von <dimension>) und r-Attribute streng prüfen. */
-    if (/\.xml$/i.test(e.name)) {
-      const text = xmlText(aus);
-      if (/sheetData/.test(text)) {
-        const z = pruefeBlattXml(text);
-        if (z > zeilenMax) zeilenMax = z;
+    /* SheetJS sucht Bestandteile ohne Beachtung der Groß-/Kleinschreibung (safegetzipfile). */
+    const klein = e.name.toLowerCase();
+    if (klein === "mimetype") inhalte.set("mimetype", aus.toString("utf8"));
+    /* Review 8725dc5, E3/E4: Teile mit Endung .bin liest SheetJS binär (parse_ws_bin, parse_sst_bin, …).
+       Sie werden nicht geprüft und erreichen SheetJS nie (vbaProject.bin, printerSettings*.bin und
+       eingebettete Objekte braucht das Lesen der Tabellendaten nicht). */
+    if (klein.endsWith(".bin")) { ausgelassen.push(e.name); continue; }
+    /* Inhaltsprüfungen (Kodierung, Blatt-XML): der erste Befund wird gemerkt und erst nach der
+       Formatbestimmung gemeldet, damit z. B. eine ODS-Datei immer NICHT_UNTERSTUETZT ergibt. */
+    if (!inhaltsFehler) {
+      try {
+        /* E4/E6: jede Kodierung außer UTF-8 → BESCHAEDIGT, bevor SheetJS den Teil sieht. */
+        if (hatUtf16Bom(aus)) throw kaputt("Bestandteil nicht UTF-8-kodiert");
+        /* Befund 2 / Review 1da3ceb M1 / Review 8725dc5 E4: JEDER Teil mit sheetData-Inhalt wird als Blatt
+           geprüft, unabhängig von seiner Endung (SheetJS liest Blätter über die Beziehungen der Mappe). */
+        const hatBlatt = aus.includes("sheetData", 0, "latin1");
+        if (hatBlatt || istXmlArtig(aus)) pruefeUtf8Xml(aus);
+        if (hatBlatt) {
+          const z = pruefeBlattXml(xmlText(aus));
+          if (z > zeilenMax) zeilenMax = z;
+        }
+      } catch (x) {
+        if (!(x instanceof Abbruch)) throw x;
+        inhaltsFehler = x;
       }
-      /* Gilt nur für ODS; das Format steht erst nach der Prüfung fest, daher wird der Befund gemerkt. */
-      if (e.name.toLowerCase() === "content.xml" && /null-date/.test(text)) {
-        try { pruefeOdsNullDatum(text); } catch (x) { odsFehler = x; }
-      }
+    }
+    if (klein === "[content_types].xml") {
+      inhalte.set("[Content_Types].xml", aus.toString("utf8"));
+      /* Das Inhaltsverzeichnis wird zur Formatbestimmung gelesen; seine Kodierung zählt dafür sofort. */
+      if (hatUtf16Bom(aus)) ctFehler = kaputt("Bestandteil nicht UTF-8-kodiert");
+      else try { pruefeUtf8Xml(aus); } catch (x) { ctFehler = x; }
     }
     teile.push({ nameBytes: e.normBytes, daten: aus, crc: e.crc });
   }
-  return { inhalte, teile, entpackt, zeilenMax, odsFehler };
+  return { inhalte, teile, entpackt, zeilenMax, ausgelassen, inhaltsFehler, ctFehler };
 }
 
 /** Baut aus geprüften Einträgen ein neues, minimales Archiv (unkomprimiert). */
@@ -402,9 +430,11 @@ function baueSauberesZip(teile) {
 }
 
 /**
- * Strikte ZIP-Prüfung (läuft vor SheetJS). Wirft Abbruch bei jedem Widerspruch.
- * Liefert { namen, inhalte, sauber, entpackt, zeilenMax }; `sauber` ist das einzige
- * Archiv, das an SheetJS weitergegeben wird.
+ * Strikte ZIP-Prüfung (läuft vor SheetJS). Wirft Abbruch bei jedem Widerspruch im Archivaufbau.
+ * Liefert { namen, klein, inhalte, sauber, entpackt, zeilenMax, ausgelassen, inhaltsFehler };
+ * `sauber` ist das einzige Archiv, das an SheetJS weitergegeben wird (ohne .bin-Teile).
+ * `inhaltsFehler` ist der erste Befund der Inhaltsprüfung (Kodierung, Blatt-XML); erkenne()
+ * meldet ihn nach der Formatbestimmung.
  */
 export function pruefeZip(buf, grenzen) {
   const g = { ...STANDARD_GRENZEN, ...(grenzen || {}) };
@@ -413,7 +443,202 @@ export function pruefeZip(buf, grenzen) {
   const namen = verzeichnis.eintraege.map((e) => e.name);
   const sauber = baueSauberesZip(geprueft.teile);
   geprueft.teile = null; /* entpackte Einzelpuffer freigeben, nur das neue Archiv bleibt */
-  return { namen, inhalte: geprueft.inhalte, sauber, entpackt: geprueft.entpackt, zeilenMax: geprueft.zeilenMax, odsFehler: geprueft.odsFehler };
+  return {
+    namen, klein: new Set(namen.map((n) => n.toLowerCase())), inhalte: geprueft.inhalte, sauber,
+    entpackt: geprueft.entpackt, zeilenMax: geprueft.zeilenMax, ausgelassen: geprueft.ausgelassen,
+    inhaltsFehler: geprueft.inhaltsFehler, ctFehler: geprueft.ctFehler,
+  };
+}
+
+/* ------------------- Paketprüfung xlsx ([Content_Types].xml) --------------
+   Review 8725dc5, E3/E4: Das Format wird bestimmt wie in SheetJS parse_zip:
+   META-INF/manifest.xml oder objectdata.xml → ODS-Leser; Index/Document.iwa → Numbers;
+   ohne [Content_Types].xml → kein OOXML (Numbers 08/09, verschachteltes Index.zip, …).
+   Danach liest SheetJS die Arbeitsmappe aus dem ERSTEN Override mit Arbeitsmappen-Inhaltstyp
+   (parse_ct) und behandelt sie als xlsb, wenn ihr Pfad auf „bin“ endet. Strikt zugelassen ist
+   hier genau ein solcher Override mit dem xlsx-Typ (oder dem Makro-Typ, siehe unten). */
+const TAG_RE = /<[/?]?[a-zA-Z0-9:_-]+(?:\s+[^"\s?<>/]+\s*=\s*(?:"[^"]*"|'[^']*'|[^'"<>\s=]+))*\s*[/?]?>/mg; /* = tagregex1 */
+const XMLNS_CT = "http://schemas.openxmlformats.org/package/2006/content-types";
+const MAPPEN_TYPEN = {
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml": "xlsx",
+  "application/vnd.ms-excel.sheet.macroEnabled.main+xml": "xlsm",
+  "application/vnd.ms-excel.sheet.binary.macroEnabled.main": "xlsb",
+  "application/vnd.ms-excel.addin.macroEnabled.main+xml": "xlam",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml": "xltx",
+}; /* = alle Arbeitsmappen-Typen in ct2type */
+
+/** Attribute eines Tags genau wie SheetJS parsexmltag (letzter Wert gewinnt, Schlüssel auch klein). */
+function xmlTag(tag) {
+  const z = Object.create(null);
+  let eq = 0;
+  for (; eq !== tag.length; ++eq) { const c = tag.charCodeAt(eq); if (c === 32 || c === 10 || c === 13) break; }
+  z[0] = tag.slice(0, eq);
+  if (eq === tag.length) return z;
+  for (const m of tag.match(ATTR_RE) || []) {
+    const cc = m.slice(1);
+    let c = cc.indexOf("=");
+    let q = cc.slice(0, c).trim();
+    while (cc.charCodeAt(c + 1) === 32) ++c;
+    const quot = cc.charCodeAt(c + 1) === 34 || cc.charCodeAt(c + 1) === 39 ? 1 : 0;
+    const v = cc.slice(c + 1 + quot, cc.length - quot);
+    const j = q.indexOf(":");
+    if (j < 0) {
+      if (q.indexOf("_") > 0) q = q.slice(0, q.indexOf("_"));
+      z[q] = v; z[q.toLowerCase()] = v;
+    } else {
+      const k = (j === 5 && q.slice(0, 5) === "xmlns" ? "xmlns" : "") + q.slice(j + 1);
+      if (z[k] && q.slice(j - 3, j) === "ext") continue;
+      z[k] = v; z[k.toLowerCase()] = v;
+    }
+  }
+  return z;
+}
+
+/** Liest [Content_Types].xml wie parse_ct; liefert { xmlns, mappen: [{ pfad, art }] }. */
+function liesInhaltstypen(text) {
+  let xmlns;
+  const mappen = [];
+  for (const tag of text.match(TAG_RE) || []) {
+    try { attribute(tag); } catch { throw kaputt("Inhaltsverzeichnis des Pakets mit doppeltem Attribut"); }
+    const y = xmlTag(tag);
+    const art = y[0].replace(/<\w*:/, "<");
+    if (art === "<Types") xmlns = y["xmlns" + (y[0].match(/<(\w+):/) || ["", ""])[1]];
+    else if (art === "<Override" && Object.prototype.hasOwnProperty.call(MAPPEN_TYPEN, y.ContentType)) {
+      mappen.push({ pfad: String(y.PartName ?? ""), art: MAPPEN_TYPEN[y.ContentType] });
+    }
+  }
+  return { xmlns, mappen };
+}
+
+/** Bestimmt das Format eines geprüften ZIP-Pakets wie SheetJS und prüft das Paket strikt (E1, E3, E4). */
+function erkennePaket(p) {
+  const hat = (n) => p.klein.has(n.toLowerCase());
+  const mime = p.inhalte.get("mimetype");
+  if (mime !== undefined && mime.trim() !== "application/vnd.oasis.opendocument.spreadsheet") {
+    throw abbruch("NICHT_UNTERSTUETZT", "Dies ist ein OpenDocument-Dokument, aber keine Tabelle. " + UNTERSTUETZT);
+  }
+  if (mime !== undefined || hat("META-INF/manifest.xml") || hat("objectdata.xml")) throw abbruch("NICHT_UNTERSTUETZT", ODS_NICHT);
+  if (hat("Index/Document.iwa")) throw abbruch("NICHT_UNTERSTUETZT", "Apple-Numbers-Dateien werden nicht unterstützt. " + UNTERSTUETZT);
+  const keineTabelle = () => abbruch("NICHT_UNTERSTUETZT", "Der Inhalt der Datei ist keine unterstützte Tabelle (z. B. ein Textdokument oder eine Präsentation). " + UNTERSTUETZT);
+  const ct = p.inhalte.get("[Content_Types].xml");
+  if (ct === undefined) throw keineTabelle();
+  if (p.ctFehler) throw p.ctFehler;
+  const { xmlns, mappen } = liesInhaltstypen(ct);
+  if (mappen.length === 0) throw keineTabelle();
+  if (mappen.length > 1) throw kaputt("mehrere Arbeitsmappen im Paket");
+  const { pfad, art } = mappen[0];
+  if (art === "xlsb") throw abbruch("NICHT_UNTERSTUETZT", XLSB_NICHT + UNTERSTUETZT);
+  if (art === "xlam" || art === "xltx") {
+    throw abbruch("NICHT_UNTERSTUETZT", "Excel-Vorlagen und Add-ins werden nicht unterstützt. Bitte als normale Arbeitsmappe (.xlsx) speichern. " + UNTERSTUETZT);
+  }
+  if (xmlns !== XMLNS_CT) throw kaputt("Inhaltsverzeichnis des Pakets");
+  const datei = pfad.replace(/^\//, "");
+  if (datei.slice(-3).toLowerCase() === "bin") throw abbruch("NICHT_UNTERSTUETZT", XLSB_NICHT + UNTERSTUETZT);
+  if (!hat(datei)) throw kaputt("Arbeitsmappe fehlt");
+  /* Makro-Arbeitsmappe (xlsm): gelesen werden nur die Tabellendaten; Makros nie (bookVBA: false,
+     vbaProject.bin erreicht SheetJS nicht), Hinweis MAKROS_VERWORFEN. */
+  return { format: "xlsx", makroTyp: art === "xlsm" };
+}
+
+/* --------------------------- CFB-Prüfung (xls) ----------------------------
+   Review 8725dc5, E2: XLS bleibt unterstützt, aber nur mit plausibler CFB-Struktur. Geprüft
+   wird vor SheetJS (Aufbau wie CFB.parse in vendor/sheetjs/xlsx.mjs):
+   - Kopf: Signatur, Version 3/4 mit Sektorgröße 512/4096, Mini-Sektor 64, reservierte Bytes 0,
+     Grenze für Mini-Ströme 4096, Zählerfelder im Bereich der Datei;
+   - Sektorketten (Verzeichnis, Mini-FAT, Mini-Strom, jeder Strom ab 4096 Byte) laufen nur über
+     vorhandene Sektoren, ohne Zyklus (SheetJS get_sector_list folgt einer Kette ohne Zykluserkennung)
+     und ohne Sektoren, die schon zu einer anderen Kette gehören;
+   - jede erklärte Stromgröße passt in ihre Kette; die Summe aller Stromgrößen liegt innerhalb
+     von entpacktBytes (Größenbudget vor dem Lesen);
+   - es gibt einen Tabellenstrom „Workbook“ oder „Book“; sonst NICHT_UNTERSTUETZT. */
+const CFB_ENDE = -2;
+function pruefeCfb(buf, g) {
+  const L = buf.length;
+  if (L < 512) throw kaputt("Dateikopf unvollständig");
+  const major = buf.readUInt16LE(0x1a), shift = buf.readUInt16LE(0x1e);
+  if (!((major === 3 && shift === 9) || (major === 4 && shift === 12))) throw kaputt("Sektorgröße");
+  if (buf.readUInt16LE(0x20) !== 6) throw kaputt("Mini-Sektorgröße");
+  for (let i = 0x22; i < 0x28; i++) if (buf[i] !== 0) throw kaputt("Dateikopf");
+  const ssz = 1 << shift;
+  if (L < 2 * ssz) throw kaputt("Dateikopf unvollständig");
+  if (major === 3 && buf.readInt32LE(0x28) !== 0) throw kaputt("Dateikopf");
+  if (buf.readUInt32LE(0x38) !== 4096) throw kaputt("Dateikopf");
+  const nsec = Math.ceil(L / ssz) - 1; /* wie sectorify; der letzte Sektor darf kürzer sein */
+  const anzahlFat = buf.readInt32LE(0x2c), dirStart = buf.readInt32LE(0x30);
+  const miniStart = buf.readInt32LE(0x3c), anzahlMini = buf.readInt32LE(0x40);
+  const difatStart = buf.readInt32LE(0x44), anzahlDifat = buf.readInt32LE(0x48);
+  const imBereich = (s) => Number.isInteger(s) && s >= 0 && s < nsec;
+  if (anzahlFat < 1 || anzahlFat > nsec || anzahlDifat < 0 || anzahlDifat > nsec || anzahlMini < 0 || anzahlMini > nsec) throw kaputt("Dateikopf");
+  if (!imBereich(dirStart)) throw kaputt("Verzeichnis außerhalb der Datei");
+  if (anzahlMini > 0 && miniStart !== CFB_ENDE && !imBereich(miniStart)) throw kaputt("Verzeichnis außerhalb der Datei");
+  const lies = (sektor, versatz) => {
+    const o = (sektor + 1) * ssz + versatz;
+    return o + 4 <= L ? buf.readInt32LE(o) : null;
+  };
+  /* FAT-Sektoren: Kopf (bis zum ersten negativen Wert) und DIFAT-Kette wie sleuth_fat */
+  const fat = [];
+  for (let j = 0; j < 109; j++) { const q = buf.readInt32LE(0x4c + 4 * j); if (q < 0) break; fat.push(q); }
+  const difatGesehen = new Set();
+  for (let idx = difatStart, rest = anzahlDifat; idx !== CFB_ENDE && idx !== -1;) {
+    if (!imBereich(idx) || difatGesehen.has(idx)) throw kaputt("Sektorliste fehlerhaft");
+    difatGesehen.add(idx);
+    for (let i = 0; i < (ssz >>> 2) - 1; i++) { const q = lies(idx, i * 4); if (q === null || q === CFB_ENDE) break; fat.push(q); }
+    if (rest < 1) break;
+    rest -= 1;
+    idx = lies(idx, ssz - 4);
+    if (idx === null) break;
+  }
+  if (fat.length === 0 || !imBereich(fat[0])) throw kaputt("Sektorliste fehlerhaft");
+  const belegt = new Set();
+  /** Folgt einer Sektorkette wie get_sector_list, aber mit Zyklus-, Bereichs- und Doppelprüfung. */
+  const kette = (start) => {
+    let n = 0;
+    for (let j = start; j >= 0;) {
+      if (!imBereich(j)) throw kaputt("Sektorverweis außerhalb der Datei");
+      if (belegt.has(j)) throw kaputt("zyklische oder doppelt genutzte Sektorkette");
+      belegt.add(j); n++;
+      const addr = fat[Math.floor((j * 4) / ssz)];
+      if (!imBereich(addr)) break;
+      const naechster = lies(addr, (j * 4) & (ssz - 1));
+      if (naechster === null) break;
+      j = naechster;
+    }
+    return n;
+  };
+  const dirSektoren = kette(dirStart);
+  if (anzahlMini > 0 && miniStart !== CFB_ENDE) kette(miniStart);
+  const namen = [];
+  let summe = 0;
+  for (let i = 0, s = dirStart; i < dirSektoren; i++) {
+    const basis = (s + 1) * ssz;
+    for (let k = 0; k < ssz; k += 128) {
+      const p = basis + k;
+      if (p + 128 > L) break;
+      const typ = buf[p + 66], start = buf.readInt32LE(p + 116), groesse = buf.readInt32LE(p + 120);
+      const nl = Math.min(buf.readUInt16LE(p + 64), 64);
+      if (i === 0 && k === 0 && typ !== 5) throw kaputt("Stammeintrag fehlt");
+      if (groesse < 0 && start < 0) continue;
+      if (typ === 5) {
+        if (anzahlMini > 0 && start !== CFB_ENDE && groesse > 0) {
+          const n = kette(start);
+          if (n * ssz < groesse) throw kaputt("Stromgröße passt nicht zur Sektorkette");
+        }
+        continue;
+      }
+      if (groesse >= 4096) {
+        const n = kette(start);
+        if (n * ssz < groesse) throw kaputt("Stromgröße passt nicht zur Sektorkette");
+      }
+      if (groesse > 0) {
+        summe += groesse;
+        if (summe > g.entpacktBytes) throw zipAbbruchEntpackt(g);
+      }
+      if (typ === 2) namen.push(buf.toString("utf16le", p, p + nl).replace(/\0+$/, "").toLowerCase());
+    }
+    const addr = fat[Math.floor((s * 4) / ssz)];
+    s = imBereich(addr) ? lies(addr, (s * 4) & (ssz - 1)) : -1;
+  }
+  return namen;
 }
 
 /* ------------------------------ Formaterkennung --------------------------- */
@@ -433,28 +658,18 @@ function istText(buf) {
 
 function erkenne(buf, g) {
   if (buf.length >= 4 && buf.readUInt32LE(0) === 0x04034b50) {
-    const { namen, inhalte, sauber, zeilenMax, odsFehler } = pruefeZip(buf, g);
-    const mime = inhalte.get("mimetype");
-    if (mime !== undefined) {
-      if (mime.trim() === "application/vnd.oasis.opendocument.spreadsheet") {
-        if (odsFehler) throw odsFehler;
-        return { format: "ods", namen, inhalte, sauber, zeilenMax: 0 };
-      }
-      throw abbruch("NICHT_UNTERSTUETZT", "Dies ist ein OpenDocument-Dokument, aber keine Tabelle. " + UNTERSTUETZT);
-    }
-    if (namen.includes("xl/workbook.bin")) {
-      throw abbruch("NICHT_UNTERSTUETZT", "Das Binärformat .xlsb wird nicht unterstützt. Bitte in Excel als .xlsx speichern. " + UNTERSTUETZT);
-    }
-    if (namen.includes("xl/workbook.xml")) return { format: "xlsx", namen, inhalte, sauber, zeilenMax };
-    throw abbruch("NICHT_UNTERSTUETZT", "Der Inhalt der Datei ist keine unterstützte Tabelle (z. B. ein Textdokument oder eine Präsentation). " + UNTERSTUETZT);
+    const p = pruefeZip(buf, g);
+    const { format, makroTyp } = erkennePaket(p);
+    if (p.inhaltsFehler) throw p.inhaltsFehler;
+    return { format, namen: p.namen, inhalte: p.inhalte, sauber: p.sauber, zeilenMax: p.zeilenMax, makroTyp, ausgelassen: p.ausgelassen };
   }
   if (buf.length >= 8 && buf.subarray(0, 8).equals(OLE)) {
     if (buf.includes(U16("EncryptedPackage")) || buf.includes(U16("EncryptionInfo"))) {
       throw abbruch("PASSWORTGESCHUETZT", "Die Datei ist passwortgeschützt (verschlüsselt). Bitte ohne Passwort speichern und erneut hochladen.");
     }
-    const hatTabelle = buf.includes(U16("Workbook")) || buf.includes(U16("Book"));
-    if (!hatTabelle && (buf.includes(U16("WordDocument")) || buf.includes(U16("PowerPoint Document")))) {
-      throw abbruch("NICHT_UNTERSTUETZT", "Der Inhalt der Datei ist keine Tabelle (z. B. ein Textdokument oder eine Präsentation). " + UNTERSTUETZT);
+    const stroeme = pruefeCfb(buf, g);
+    if (!stroeme.includes("workbook") && !stroeme.includes("book")) {
+      throw abbruch("NICHT_UNTERSTUETZT", "Der Inhalt der Datei ist keine Excel-Tabelle (z. B. ein Textdokument oder eine Präsentation). " + UNTERSTUETZT);
     }
     return { format: "xls", namen: [], inhalte: new Map() };
   }
@@ -577,8 +792,9 @@ function bereinige(name, roh, g) {
    (1,1-MB-Datei, 1.000 Verweise: rund 1,4 GB). Deshalb wird vor der Rückgabe aus dem Worker
    die Textmenge des Ergebnisses gezählt: jede Zelle höchstens zellZeichen (32.767 wie Excel),
    alle Texte zusammen (Zellen, Datums-/Fehlertexte, Blattnamen) höchstens entpacktBytes Zeichen.
-   Überschreitung → TEXT_ZU_GROSS ohne Teilergebnis. */
-function pruefeTextmenge(blaetter, g) {
+   Überschreitung → TEXT_ZU_GROSS ohne Teilergebnis.
+   Review 8725dc5, E5: Hinweistexte (nachricht, blatt) zählen mit. */
+function pruefeTextmenge(blaetter, hinweise, g) {
   const max = g.zellZeichen;
   const budget = g.entpacktBytes;
   let summe = 0;
@@ -600,6 +816,17 @@ function pruefeTextmenge(blaetter, g) {
       }
     }
   }
+  for (const h of hinweise) {
+    zaehle(String(h.nachricht), false);
+    if (typeof h.blatt === "string") zaehle(h.blatt, false);
+  }
+}
+
+/** Review 8725dc5: bookType nach dem Lesen muss zum erkannten Format passen (SheetJS setzt bei xls keinen). */
+export function buchtypPasst(format, bookType) {
+  if (format === "xlsx") return bookType === "xlsx";
+  if (format === "xls") return bookType === undefined;
+  return false;
 }
 
 /* Review PR #123, Befund 3: Excel-Seriennummern im 1904-System liegen 1462 Tage
@@ -700,7 +927,7 @@ export function parseKern({ buffer, name, grenzen }) {
       if (erk.namen.length) {
         /* Review PR #123, Befund 4: nur echte Makro-Bestandteile zählen, nicht der
            SheetJS-Standardeintrag Default Extension="bin" (…binary.macroEnabled.main). */
-        if (erk.namen.some((n) => /(^|\/)vbaProject\.bin$/i.test(n) || /^(Scripts|Basic)\//.test(n)) ||
+        if (erk.makroTyp || erk.namen.some((n) => /(^|\/)vbaProject\.bin$/i.test(n) || /^(Scripts|Basic)\//.test(n)) ||
             /ContentType\s*=\s*["']application\/vnd\.ms-office\.vbaProject["']/i.test(erk.inhalte.get("[Content_Types].xml") || "")) {
           hinweise.push(hinweis("MAKROS_VERWORFEN", "Die Datei enthält Makros. Sie wurden nicht ausgeführt und nicht übernommen; nur die Tabellendaten wurden gelesen."));
         }
@@ -737,9 +964,9 @@ export function parseKern({ buffer, name, grenzen }) {
           bookDeps: false,
           bookSheets: false,
           sheetStubs: false,
-          /* Review 1da3ceb M1: bei xlsx kein sheetRows mehr (SheetJS übersprang Zeilen jenseits
-             davon still); dort reichen die strenge Vorzählung und die Prüfung der gelesenen Zeilen. */
-          sheetRows: format === "ods" ? lesegrenze + 1 : 0,
+          /* Review 1da3ceb M1: kein sheetRows (SheetJS übersprang Zeilen jenseits davon still);
+             es reichen die strenge Vorzählung und die Prüfung der gelesenen Zeilen. */
+          sheetRows: 0,
           WTF: false,
         });
         erk.sauber = null;
@@ -749,9 +976,24 @@ export function parseKern({ buffer, name, grenzen }) {
         }
         throw abbruch("BESCHAEDIGT", "Die Datei ist beschädigt oder entspricht nicht dem erwarteten Format und kann nicht gelesen werden.");
       }
-      const namen = wb && wb.SheetNames;
+      /* Review 8725dc5: SheetJS muss im erkannten Format gelesen haben (z. B. nicht xlsb oder ods). */
+      if (!wb || !buchtypPasst(format, wb.bookType)) {
+        throw abbruch("BESCHAEDIGT", "Die Datei ist beschädigt oder entspricht nicht dem erwarteten Format und kann nicht gelesen werden.");
+      }
+      const namen = wb.SheetNames;
       if (!Array.isArray(namen) || namen.length === 0) throw abbruch("BESCHAEDIGT", "Die Datei enthält keine lesbaren Tabellenblätter.");
       if (namen.length > g.blaetter) throw abbruch("ZU_VIELE_BLAETTER", `Die Datei hat zu viele Tabellenblätter (erlaubt sind höchstens ${g.blaetter} Blätter).`);
+      /* Review 8725dc5, E5: Blattnamen höchstens 31 Zeichen (Excel-Regel), geprüft bevor ein Name in
+         einen Hinweis oder Fehlertext gelangt; die Meldung nennt den Namen nicht. */
+      if (namen.some((bn) => typeof bn !== "string" || bn.length > BLATTNAME_MAX)) {
+        throw abbruch("BESCHAEDIGT", `Die Datei ist beschädigt: ein Tabellenblatt hat einen ungültigen Namen (mehr als ${BLATTNAME_MAX} Zeichen).`);
+      }
+      /* Review 8725dc5, E3/E4: ein Blatt, das SheetJS nicht lesen konnte, wird nicht still leer geliefert.
+         Verwies es auf einen ausgelassenen .bin-Teil, ist es ein binäres Blatt (xlsb). */
+      if (format === "xlsx" && namen.some((bn) => !wb.Sheets[bn])) {
+        if (erk.ausgelassen && erk.ausgelassen.length) throw abbruch("NICHT_UNTERSTUETZT", XLSB_NICHT + UNTERSTUETZT);
+        throw abbruch("BESCHAEDIGT", "Die Datei ist beschädigt: ein Tabellenblatt kann nicht gelesen werden.");
+      }
       const sheetInfos = (wb.Workbook && wb.Workbook.Sheets) || [];
       const d1904 = wb.Workbook && wb.Workbook.WBProps ? wb.Workbook.WBProps.date1904 : false;
       const ist1904 = d1904 === true || d1904 === 1 || /^(1|true)$/i.test(String(d1904 ?? "").trim());
@@ -782,11 +1024,7 @@ export function parseKern({ buffer, name, grenzen }) {
           if (zr) for (let c = 0; c < zr.length; c++) zeile.push(zelle(zr[c], versatz));
           roh.push(zeile);
         }
-        /* SheetJS entschlüsselt XML-Zeichen in ODS-Blattnamen nicht (z. B. &amp;); hier nachgeholt. */
-        const anzeige = format === "ods"
-          ? bn.replace(/&(lt|gt|quot|apos|amp);/g, (_, e) => ({ lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" })[e])
-          : bn;
-        blaetter.push({ name: anzeige, roh });
+        blaetter.push({ name: bn, roh });
       });
     }
 
@@ -801,11 +1039,13 @@ export function parseKern({ buffer, name, grenzen }) {
       aus.push({ name: b.name, zeilen });
     }
     if (aus.every((b) => b.zeilen.length === 0)) return fehler("LEER", "Die Datei enthält keine Daten.");
-    pruefeTextmenge(aus, g);
 
     if (ext && !ENDUNGEN[format].includes(ext)) {
-      hinweise.unshift(hinweis("ENDUNG_ABWEICHEND", `Die Dateiendung „.${ext}“ passt nicht zum Inhalt; die Datei wurde als ${format.toUpperCase()} gelesen.`));
+      const zeige = ext.length > 10 ? `${ext.slice(0, 10)}…` : ext;
+      hinweise.unshift(hinweis("ENDUNG_ABWEICHEND", `Die Dateiendung „.${zeige}“ passt nicht zum Inhalt; die Datei wurde als ${format.toUpperCase()} gelesen.`));
     }
+    /* Review 1da3ceb H2 / 8725dc5 E5: Textmenge einschließlich aller Hinweise, als letzter Schritt. */
+    pruefeTextmenge(aus, hinweise, g);
     if (!datumssystem) return { ok: true, format, blaetter: aus, hinweise };
     return datumssystemQuelle
       ? { ok: true, format, datumssystem, datumssystemQuelle, blaetter: aus, hinweise }

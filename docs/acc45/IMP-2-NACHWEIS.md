@@ -38,7 +38,7 @@ Jede Option kommt in `xlsx.mjs` als `opts.<name>` vor. Gesetzt in `parser-kern.m
 | `bookVBA` | false | VBA-Projekt wird nicht gelesen oder übernommen |
 | `bookProps`, `bookFiles`, `bookDeps`, `bookSheets` | false | ausdrücklich ausgeschaltet. Hinweis: `bookProps`/`bookSheets` = true würden nur Metadaten lesen; unser Wert ist der Vorgabewert. |
 | `sheetStubs` | false | keine Platzhalter für leere Zellen |
-| `sheetRows` | ods: zeilen + 1 + 10.000 + 1; xlsx, xls: 0 | begrenzt bei ods das Lesen sehr langer Blätter; jede Überschreitung ergibt `ZU_VIELE_ZEILEN` (siehe 7, Befund 2). Bei xlsx seit Review 1da3ceb (M1) aus, weil SheetJS Zeilen jenseits davon still übersprang (siehe 8). |
+| `sheetRows` | 0 (alle Formate) | aus: SheetJS übersprang Zeilen jenseits davon still (Review 1da3ceb, M1, siehe 8). Früher bei ods gesetzt; ODS wird seit Review 8725dc5 (E1) nicht mehr gelesen (siehe 9). |
 | `dense` | true | speicherärmere Zeilenstruktur |
 | `WTF` | false | keine Ausnahmen bei Toleranzfällen; kein `password` |
 
@@ -233,3 +233,97 @@ ODS-XML (`number-rows-repeated`) wie bei xlsx gibt es nicht. (b) xlsx-Zellen mit
 Zelle (fehlerhaftes XML; kein Grenzthema, nicht abgewiesen). (c) Die IMP-3-Angleichung (oben) steht aus; bis dahin würde IMP-3 auf
 `imp-3-auflagen2` bei 1904-Mappen nichts doppelt verschieben, weil `datumssystem` jetzt `"1900"` ist, die dortigen Tests mit eingespeistem
 `"1904"` prüfen aber ein nicht mehr gültiges Verhalten.
+
+## 9. Befunde aus dem Sicherheitsreview 8725dc5
+
+Branch `acc45/import/imp-2-fix3` (Basis `origin/acc45/import/imp-2` @ 8725dc5). Zwei Commits: zuerst nur die neuen Tests (Rot-Nachweis per
+Commit `IMP-2 Sicherheitsreview 8725dc5: Regressionstests E1-E7 …`), danach die Korrektur. Geändert: `server/lib/import/parser-kern.mjs`,
+`pruefungen/import-parser.test.js`, `IMPORT-VERTRAG.md`, dieser Nachweis. `vendor/sheetjs/` unverändert (SHA-256 `xlsx.mjs` = `1a0fb062…77db`,
+`LICENSE`, `package.json`, `CHANGELOG.md` wie in Abschnitt 2; `import-parser-vendor.test.js` grün).
+
+**Entscheidungen (verbindlich, vorgegeben):** E1 ODS nicht unterstützt; E2 XLS nur mit plausibler CFB-Struktur; E3 xlsb, sonstige Binärformate,
+unbekannter Hauptinhaltstyp → `NICHT_UNTERSTUETZT`; E4 strikte Paketprüfung xlsx; E5 Blattnamen ≤ 31 Zeichen, Hinweise in der Textmenge;
+E6 nur UTF-8; E7 Spalten-Fallback begrenzen oder ablehnen (gewählt: **ablehnen**, siehe unten).
+
+**Rot/Grün.** Rot: die 25 neuen Tests gegen den Parser von 8725dc5 → **23 rot, 2 grün** (die 2 grünen sind ausgewiesene Absicherung bzw.
+Dokumentation). Grün nach der Korrektur, zweimal gelaufen:
+`npx vitest run pruefungen/import-parser.test.js pruefungen/import-parser-vendor.test.js --testTimeout=60000` → **113 von 113** (108 Parser,
+5 Einbindung), 106 s und 107 s. ESLint auf `server/lib/import` und den drei Prüfdateien: 0 Befunde. `node werkzeug/verdrahtung-pruefen.mjs`:
+„Verdrahtung ok: 284 Prüfdateien“ (nur bekannte Warnungen zu anderen Paketen).
+
+| Befund (PoC aus dem Review) | Maßnahme | Test (Präfix `Review 8725dc5 …:`) | vorher | nachher |
+|---|---|---|---|---|
+| Getarnte ODS (xlsx + `META-INF/manifest.xml`) | E1: Formatbestimmung wie SheetJS, ODS-Merkmale → `NICHT_UNTERSTUETZT` | `E1-PoC: getarnte ODS (xlsx-Teile plus META-INF/manifest.xml und content.xml) → NICHT_UNTERSTUETZT, nicht als ODS gelesen` | **rot: ok:true, als „xlsx“ gemeldet, ODS-Inhalt gelesen** | grün |
+| ODS allgemein | E1 | `E1: echte ODS-Datei (auch mit Endung .xlsx oder .xls) → NICHT_UNTERSTUETZT mit verständlicher Meldung` | rot (ok:true) | grün |
+| null-date/Unicode | E1 (ODS-Prüfung entfällt, `pruefeOdsNullDatum` entfernt) | `E1-PoC null-date/Unicode: ODS mit null-date (1904, auch mit Unicode-Präfix nach der Tabelle) → NICHT_UNTERSTUETZT` | rot (ok:true) | grün |
+| Tabellen-Alias | E1 | `E1-PoC Tabellen-Alias: ODS mit Tabellen-Element unter anderem Präfix → NICHT_UNTERSTUETZT` | rot (ok:true) | grün |
+| Getarnte xlsb (`wb.bin` in Content_Types, leere `workbook.xml`) | E3: Arbeitsmappe aus `[Content_Types].xml`; xlsb-Typ oder Pfad auf `bin` → `NICHT_UNTERSTUETZT` | `E3-PoC: getarnte xlsb (wb.bin in [Content_Types].xml, leere xl/workbook.xml) → NICHT_UNTERSTUETZT` | **rot: ok:true, xlsb-Inhalt gelesen** | grün |
+| Arbeitsmappen-Typen | E4: genau ein Override; xlsx- oder xlsm-Typ; Vorlage/Add-in/fehlend → `NICHT_UNTERSTUETZT`; zwei → `BESCHAEDIGT` | `E4: Arbeitsmappen-Inhaltstyp: Vorlage, Add-in oder fehlend → NICHT_UNTERSTUETZT; zwei Arbeitsmappen → BESCHAEDIGT` | rot (ok:true) | grün |
+| Makro-Typ | E4: nie Makros lesen, Hinweis `MAKROS_VERWORFEN` | `E4: Makro-Arbeitsmappentyp: Makros werden nie gelesen, Hinweis MAKROS_VERWORFEN, nur Tabellendaten` | rot (kein Hinweis) | grün |
+| Blatt `.dat` mit `r=&#53;` | E4: jeder Teil mit `sheetData` wird geprüft, unabhängig von der Endung | `E4-PoC: Blatt mit Endung .dat (oder ohne Endung) und r="&#53;" wird vorab geprüft → BESCHAEDIGT` | **rot: ok:true, Zeile still verloren** | grün |
+| Binäres Blatt in xlsx | E3/E4: `.bin`-Teile erreichen SheetJS nicht; nicht lesbares Blatt nie still leer | `E3/E4: binäres Blatt (.bin) in einer xlsx wird nicht an SheetJS gegeben → NICHT_UNTERSTUETZT` | rot (ok:true, `parse_ws_bin`) | grün |
+| Numbers, `Index.zip`, ohne Content_Types | E3 | `E3: Numbers-Paket, verschachteltes Index.zip und ZIP ohne [Content_Types].xml → NICHT_UNTERSTUETZT` | rot (BESCHAEDIGT) | grün |
+| bookType-Abgleich | nach dem Lesen `bookType` gegen Format; Abweichung → `BESCHAEDIGT` | `Nach dem Lesen wird bookType mit dem erkannten Format abgeglichen (Abweichung → BESCHAEDIGT)` | rot (Funktion fehlt) | grün |
+| UTF-16-Blatt mit BOM | E6: UTF-16-BOM (wie `cc2str`) → `BESCHAEDIGT` | `E6-PoC: UTF-16-Blatt mit BOM (LE und BE) → BESCHAEDIGT` | **rot: ok:true** | grün |
+| Andere Kodierung | E6: gültiges UTF-8 und Deklaration UTF-8 Pflicht; UTF-8-BOM zulässig | `E6: Blatt in anderer Kodierung (Deklaration ISO-8859-1 oder ungültiges UTF-8) → BESCHAEDIGT; UTF-8 mit BOM bleibt lesbar` | rot (ok:true) | grün |
+| Content_Types/Arbeitsmappe UTF-16 | E4/E6 | `E6: [Content_Types].xml und Arbeitsmappe als UTF-16 → BESCHAEDIGT` | rot (ok:true) | grün |
+| 8-MB-Blattname | E5: Name > 31 Zeichen → `BESCHAEDIGT` ohne Namen | `E5-PoC: 8-MB-Blattname → BESCHAEDIGT, Meldung ohne den Namen, kleines Ergebnis` | **rot: ok:true, 8 MB Name im Ergebnis und in Hinweisen** | grün |
+| Lange Blattnamen in Fehlertexten | E5: Prüfung vor jedem Hinweis/Fehlertext | `E5-PoC: Blattname über 31 Zeichen erscheint nicht in Fehlertexten (z. B. ZU_VIELE_ZEILEN)` | **rot: ZU_VIELE_ZEILEN mit dem Namen** | grün |
+| Grenze 31 | E5 | `E5: Blattname mit genau 31 Zeichen ist zulässig, mit 32 nicht` | rot (32 ok:true) | grün |
+| Hinweise in der Textmenge | E5/H2: `pruefeTextmenge` zählt `nachricht` und `blatt` aller Hinweise, als letzter Schritt | `E5/H2: Hinweistexte zählen zur Textmenge` | rot (ok:true) | grün |
+| Spalten-Fallback | E7: ablehnen (siehe unten) | `E7-PoC: Zelle ohne r mit fremdem Spaltenkürzel (xr="…" oder r= in einem Kindelement) → BESCHAEDIGT` | **rot: ok:true, Zelle in fremder Spalte** | grün |
+| Fortlaufende Spalte | E7: ≤ XFD | `E7: fortlaufende Spalte ohne r über XFD hinaus → BESCHAEDIGT; innerhalb normal gelesen` | rot (ok:true) | grün |
+| XLS: zyklische Sektorkette | E2: Ketten ohne Zyklus/Doppelnutzung | `E2-PoC: zyklische Sektorkette im Workbook-Strom → BESCHAEDIGT (statt Endlosschleife bis zum Zeitlimit)` | **rot: ZEITLIMIT nach 8 s (Endlosschleife in `get_sector_list`)** | grün (ca. 1 s samt Testdatei-Erzeugung) |
+| XLS: Größenbudget | E2: Stromgröße passt in die Kette, Summe ≤ `entpacktBytes` | `E2-PoC: Stromgröße größer als seine Sektorkette (Größenbudget vor dem Lesen) → BESCHAEDIGT` | rot (ok:true) | grün |
+| XLS ohne Tabellenstrom | E2/E3 | `E2: OLE-Datei ohne Workbook-/Book-Strom → NICHT_UNTERSTUETZT` | rot (BESCHAEDIGT) | grün |
+| XLS-Kopf | E2 | `E2: falsche Sektorgröße oder Mini-Sektorgröße → BESCHAEDIGT; gültige große XLS wird gelesen (Absicherung)` | grün (Absicherung) | grün |
+| Zeitformat mit echtem Datum in 1904-Mappe | dokumentiert (Vertrag 6): `v ≥ 1` mit reinem Zeitformat wird nicht verschoben, mit Datumsteil schon | `Wert v ≥ 1 mit reinem Zeitformat (hh:mm) wird in der 1904-Mappe nicht verschoben; mit Datumsteil schon` | grün (Dokumentation, keine Sicherheitsänderung) | grün |
+
+**Geänderte bestehende Erwartungen (E1, bewusst):** Folgende Erwartungen schrieben ODS als unterstützt fest und widersprechen E1. Sie wurden
+angepasst (Assertions sonst unverändert); Ersatz prüft jeweils `NICHT_UNTERSTUETZT`:
+1. `IMP-2 gültige Formate › ods: mehrere Blätter …` (Schleife `["xlsx","xls","ods"]` → `["xlsx","xls"]`; Ersatz: `E1: echte ODS-Datei …`).
+2. `Datum in XLS und ODS ebenfalls als Rohzahl plus Text` (Schleife ohne `"ods"`).
+3. `XLS mit Endung .xlsx und ODS mit Endung .xls`: `expect(b.ok && b.format).toBe("ods")` → `toMatchObject({ ok:false, code:"NICHT_UNTERSTUETZT" })`.
+4. `B2: xls und ods mit Daten jenseits der Lesegrenze …` (Schleife ohne `"ods"`).
+5. `B3: ods: gleicher Kalendertag …` (Schleife ohne `"ods"`).
+6. `H1: ods: gleicher Kalendertag …` und `H1: ods: Zeitwert 06:00 …` (Schleife ohne `"ods"`).
+7. `H1: ods: null-date nach der Tabelle …`: die Gegenprobe `roh: 45306` für die unveränderte 1904-ODS → `NICHT_UNTERSTUETZT`.
+
+**Berichtigte Testeingabe (keine Assertion geändert):** `Makro-Datei (xlsm mit vbaProject.bin) …` ersetzte bisher „sheet.main+xml“ durch
+„sheet.macroEnabled.main+xml“ und erzeugte so den Phantasietyp `…spreadsheetml.sheet.macroEnabled.main+xml`, den es nicht gibt (SheetJS fiel auf
+`xl/workbook.xml` zurück). Nach E3/E4 ist ein unbekannter Arbeitsmappentyp `NICHT_UNTERSTUETZT`. Die Eingabe verwendet jetzt den echten xlsm-Typ
+`application/vnd.ms-excel.sheet.macroEnabled.main+xml`; alle Assertions (ok:true, Daten, `MAKROS_VERWORFEN`, kein Makrocode) gelten unverändert.
+
+**Umsetzung im Einzelnen.**
+- *Format wie SheetJS* (`erkennePaket`): `mimetype` → ODS bzw. „OpenDocument, keine Tabelle“; `META-INF/manifest.xml`, `objectdata.xml` → ODS;
+  `Index/Document.iwa` → Numbers; ohne `[Content_Types].xml` → keine Tabelle (Numbers 08/09, `Index.zip`) — alles `NICHT_UNTERSTUETZT`.
+  `[Content_Types].xml` wird wie `parse_ct` gelesen (`tagregex1`, Attribute wie `parsexmltag`, doppelte Attribute → `BESCHAEDIGT`). Arbeitsmappe
+  = Override mit einem der fünf Arbeitsmappentypen aus `ct2type`; genau einer; xlsb/xlam/xltx → `NICHT_UNTERSTUETZT`; Namensraum falsch →
+  `BESCHAEDIGT`; Pfad auf `bin` → `NICHT_UNTERSTUETZT`; Pfad fehlt im Archiv → `BESCHAEDIGT`. Namen ohne Groß-/Kleinschreibung (`safegetzipfile`).
+- *Inhaltsprüfung je Teil* (`pruefeEintraege`): `.bin` → nicht ins saubere Archiv; sonst UTF-16-BOM → `BESCHAEDIGT`; XML-artig oder mit `sheetData`
+  → strenges UTF-8 und Deklaration UTF-8; mit `sheetData` → `pruefeBlattXml`. Der erste Befund wird nach der Formatbestimmung gemeldet.
+- *Nach dem Lesen*: `buchtypPasst(format, wb.bookType)`; Blattnamen ≤ 31; bei xlsx jedes Blatt vorhanden (sonst `BESCHAEDIGT`, bzw.
+  `NICHT_UNTERSTUETZT`, wenn `.bin`-Teile ausgelassen wurden). `ENDUNG_ABWEICHEND` zeigt die Endung höchstens mit 10 Zeichen; `pruefeTextmenge`
+  läuft als letzter Schritt mit allen Hinweisen.
+- *E7 – Entscheidung „ablehnen“*: SheetJS nimmt die Spalte aus dem ersten Treffer von `/r=["']([^"']*)["']/` im ganzen Zelltext. Eine Begrenzung
+  hätte die fremde Spalte weiter akzeptiert (Zelle an falscher Stelle, still); Ablehnen ist einfacher und eindeutig: mit `r`-Attribut muss der
+  Treffer gleich dem Attribut sein, ohne `r`-Attribut darf es keinen Treffer geben; fortlaufende Spalte ≤ XFD. Echte Excel-Dateien schreiben `r`
+  immer als erstes Zellattribut; Kindelemente der Zelle (`v`, `f`, `is`) tragen kein `r=`.
+- *E2 – CFB* (`pruefeCfb`): Kopf, DIFAT/FAT wie `sleuth_fat`, Ketten mit Zyklus-/Bereichs-/Doppelprüfung, Stromgröße ≤ Kette, Summe ≤ `entpacktBytes`,
+  Stammeintrag zuerst, Strom `Workbook`/`Book`. Ein letzter, kürzerer Sektor (angehängte Bytes) bleibt zulässig (wie `sectorify`).
+
+**Ausgeschlossene Formate (Stand nach diesem Branch):** ODS/FODS/UOC und andere OpenDocument-Pakete; xlsb (auch getarnt); xltx (Vorlage);
+xlam (Add-in); Apple Numbers (alle Varianten); ZIP-Pakete ohne `[Content_Types].xml` oder ohne/mit unbekanntem Arbeitsmappentyp (Word, PowerPoint
+usw.); OLE2 ohne `Workbook`/`Book`-Strom (Word, PowerPoint, Quattro Pro); verschlüsselte Dateien (`PASSWORTGESCHUETZT`); XML/HTML; ZIP64;
+mehrteilige Archive. Unterstützt: xlsx (inkl. xlsm, ohne Makros), xls (CFB/BIFF), CSV, TSV.
+
+**Für IMP-3 (nur benannt, nicht umgesetzt):** `TEXT_ZU_GROSS` und `ZU_VIEL_GLEICHZEITIG` im Endpunkt-Vertrag führen und anzeigen; die
+Datumsumrechnung in IMP-3 bleibt entfernt (bereits im Branch `acc45/import/imp-3-datum`). IMP-3 muss außerdem damit rechnen, dass ODS jetzt
+`NICHT_UNTERSTUETZT` liefert (Oberflächentext/Hilfetext „ODS“ anpassen).
+
+**Offene Punkte.** (a) XLS: Für Blätter, die SheetJS in einer xls nicht lesen kann, gibt es keine Prüfung „Blatt fehlt“ wie bei xlsx (SheetJS
+liefert dort für Diagrammblätter u. U. kein Blatt; ohne echte Excel-Testdateien nicht sicher abgrenzbar). (b) Die Formel-Zellen-Fälle aus 8 (b)
+bleiben. (c) Die strikte Paketprüfung ist gegen synthetische, von SheetJS geschriebene Dateien getestet; ein Gegenlauf mit echten Excel-/LibreOffice-
+Exporten (xlsx, xlsm, xls) vor dem Pilotbetrieb wird empfohlen (Testdaten-Vorgabe: nur synthetische Dateien im Repo). (d) xlsm wird gelesen
+(Makro-Typ → Hinweis `MAKROS_VERWORFEN`); falls E4 „Makro-Typ … nie Lesen“ als Abweisen der ganzen Datei gemeint ist, wäre das eine Zeile in
+`erkennePaket` plus die Anpassung des bestehenden xlsm-Tests.
