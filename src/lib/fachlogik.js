@@ -1171,7 +1171,7 @@ export function baueRechnung(db, m, monatISO) {
 export function rolleAm(p, d) {
   if (!p.rolleVerlauf || !p.rolleVerlauf.length) return (!p.rolleSeit || p.rolleSeit <= d) ? p.rolle : "mitarbeiter";
   let t = null;
-  for (const z of p.rolleVerlauf) if (z.ab <= d) t = z;
+  for (const z of p.rolleVerlauf) if (!z.ab || z.ab <= d) t = z;   // ohne Datum (Eintritt unbekannt): von Anfang an
   return t ? t.rolle : p.rolle;
 }
 export const einschr = (p) => p.einschraenkungen || {};
@@ -2052,9 +2052,12 @@ export function importZuordnen(kopf, zeilen) {
   return { zu, herkunft };
 }
 
-/** Eintrittsdatum prüfen (Logik aus acc45/person/eintritt, Commit 4414084). Gibt nie das heutige Datum zurück.
- *  leer, optional -> { ok: true, wert: null }; leer, pflicht -> Fehler; gültig (TT.MM.JJJJ, ISO) -> "JJJJ-MM-TT";
- *  ungültig -> { ok: false, wert: null, fehler }. */
+/** Eintrittsdatum prüfen. Gibt nie das heutige Datum zurück — heute gilt nur, wenn es ausdrücklich eingegeben oder
+ *  gewählt wurde.
+ *  leer, optional            -> { ok: true,  wert: null }
+ *  leer, pflicht             -> { ok: false, wert: null, fehler: Aufforderung zur Eingabe }
+ *  gültig (TT.MM.JJJJ, ISO)  -> { ok: true,  wert: "JJJJ-MM-TT" }
+ *  ungültig                  -> { ok: false, wert: null, fehler: Meldung mit dem eingegebenen Wert } */
 export function eintrittPruefen(roh, { pflicht = false } = {}) {
   const t = roh === null || roh === undefined ? "" : String(roh).trim();
   if (!t) {
@@ -2072,6 +2075,17 @@ export function eintrittPruefen(roh, { pflicht = false } = {}) {
     return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig: Das Datum gibt es nicht.` };
   return { ok: true, wert: `${j}-${pad(mo)}-${pad(tg)}` };
 }
+/** Eintritt einer vorhandenen Person bearbeiten: Ein leeres Feld lässt das bestehende Datum unverändert
+ *  (keine stille Ersetzung, auch nicht durch null oder heute); ein gültiges Datum ersetzt es; ein ungültiges
+ *  ist ein Fehler und lässt den Bestand stehen. */
+export function eintrittUebernehmen(person, roh) {
+  const bisher = (person && person.eintritt) || null;
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) return { ok: true, wert: bisher };
+  const r = eintrittPruefen(t);
+  return r.ok ? r : { ...r, wert: bisher };
+}
+
 /* IMP-1 Auflagen C/D/E/F: Hilfen der Importprüfung. */
 /** Rollen, die ein Anwender über den Import vergeben darf. Spiegel von vergebbareRollen() in
  *  server/lib/rollenvergabe.mjs (niemand vergibt die eigene Rolle oder eine darüber). Der Client bindet
@@ -2114,9 +2128,8 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
     const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
-    /* IMP-1: Ein nicht lesbares oder unmögliches Datum wird gemeldet, nie durch heute() ersetzt.
-       Nur eine leere Zelle (Spalte fehlt oder nichts eingetragen) nimmt wie bisher den heutigen Tag. */
-    /* Auflage C: leer bleibt leer (null, nicht heute); ungültig ist ein Fehler. */
+    /* Eintritt: leer bleibt leer (null), nie heute(); ein nicht lesbares oder unmögliches Datum wird
+       gemeldet. Im Import ist der Eintritt fachlich optional (pflicht: false). */
     const eintrittRoh = hol("eintritt");
     const eintrittErgebnis = eintrittPruefen(eintrittRoh);
     const eintritt = eintrittErgebnis.wert;
