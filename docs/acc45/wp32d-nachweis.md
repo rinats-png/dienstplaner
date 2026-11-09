@@ -99,6 +99,43 @@ Dieb kann nicht überschreiben, Bestätigen mit dem Offline-Geheimnis → Anmeld
 Läufe → verschiedene Geheimnisse; Werkzeug als Kindprozess inkl. belegter Ablage); Quelltext-Invariante.
 Unverändert grün: `betreiber-zweifaktor.test.js` (17), `zweifaktor.test.js` (31).
 
+## Nachtrag 2026-11-09: Ist-Prüfung und Härtung (Branch `acc45/sicherheit/wp-32d`)
+
+Ist-Lage auf `origin/integration/release-v4` (`a792f7c`), je Pfad:
+
+| Pfad | Befund vorher |
+|---|---|
+| `/api/anmelden` mit Betreibercode, `NODE_ENV=production` | Pflicht, kein Abschalter (`betreiberPflicht`); ohne Faktor 403 `einrichten` — **gedeckt** |
+| `/api/demo`, Betriebsauswahl (Konto) | Betreiberrolle abgewiesen — **gedeckt** |
+| Abschalten / Überschreiben über das Netz unter Pflicht | 409 — **gedeckt** |
+| `NODE_ENV` fehlt, leer oder unbekannt (`prod`, `staging`; Start ohne Docker-Image) | Pflicht **aus**: Betreibercode allein gab eine Sitzung — **Lücke** |
+| Bestehende Betreibersitzung ohne bestandenen Faktor (Lauf als development auf derselben Ablage, Bereinigung beim Start gescheitert — dort nur `try/catch` mit Log) | trug unter production bei jeder Anfrage weiter, bis zu 2 h — **Lücke** |
+| Offline-Wiederherstellung `werkzeug/betreiber-2fa-zuruecksetzen.mjs` | unverändert, nicht angefasst |
+
+Geschlossen:
+
+1. `server/lib/umgebung.mjs` `betreiberZweifaktorPflicht()`: Ausgenommen sind nur `NODE_ENV=development` und `test`
+   (dort schaltet `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` sie ein). Jede andere Lage, auch eine fehlende Variable, ist
+   Pflicht. Der Schalter wird nur mit „1“ verglichen und kann nur einschalten. `betreiberPflicht()` fragt dort.
+2. `server/lib/sitzungen.mjs` `sitzungLesen()`: Unter Pflicht gilt eine Sitzung der Rolle `betreiber` nur mit
+   `zweifaktor: true` (gesetzt allein von `/api/anmelden` nach bestandenem Faktor); andere werden entfernt, jede
+   Anfrage bekommt „nicht angemeldet“. Gilt für alle Endpunkte, unabhängig von der Bereinigung beim Start.
+
+Tests (`betreiber-zweifaktor-pflicht.test.js`, Gruppe „Nachtrag WP-32d“, 6 neu; 1 Erwartung verschärft:
+`betreiberPflicht({})` jetzt `true`): Pflicht für 13 Nicht-Entwicklungswerte × 13 Schalterwerte; keine von 12
+Abschalt-Variablen hebt production auf; Quelltext-Invariante (nur `umgebung.mjs` liest den Schalter, nur `=== "1"`);
+Anmeldung ohne `NODE_ENV` → 403; gepflanzte Betreibersitzung ohne Faktor unter production → 401 und entfernt (mit Faktor
+und andere Rollen unberührt); die Anmeldung setzt `zweifaktor: true`. Auf dem alten Stand: 5 rot, 24 grün; neu: 29 grün.
+
+`zugaenge-frischer-faktor.test.js` („Pflicht ohne eingerichteten Faktor“): Eine vor der Pflicht entstandene
+Betreibersitzung bekam an `POST /api/zugaenge` 403 `einrichten`; jetzt trägt sie gar nicht mehr (401, Sitzung entfernt).
+Die Erwartung ist verschärft, nicht gelockert: weiterhin „nichts entsteht“, zusätzlich zweiter Aufruf 401 und neue
+Anmeldung 403 `einrichten` ohne Token.
+
+Folge: Ein lokaler Start ohne `NODE_ENV` verlangt für Betreibercodes jetzt den zweiten Faktor; wer ohne arbeiten will,
+setzt `NODE_ENV=development` (die Browserproben tun das bereits). Nicht geändert: Verwalterschlüssel (`/einrichten`)
+bleibt an `istProduktion()` gebunden.
+
 ## Offen (Entscheidung beim Inhaber)
 
 Siehe `wp15-wp32d-fragen.md`: Staging mit `NODE_ENV=production` hat dieselbe Pflicht (bewusst); das Einrichten des
