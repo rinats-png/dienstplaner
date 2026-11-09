@@ -1,4 +1,4 @@
-# WP-I17 (Teilstand) – Nachweis: Intelligence-Oberfläche Grundlage
+﻿# WP-I17 (Teilstand) – Nachweis: Intelligence-Oberfläche Grundlage
 
 Branch `feature/intelligence-gateway` · Agent: Sonnet · Stand 2026-11-06 · **Eigenständige Komponenten, in `App.jsx` NICHT eingehängt, kein Serverweg.** Plan: `INTELLIGENCE-ENTWICKLUNGSPLAN.md` I17.
 
@@ -68,3 +68,30 @@ function BefundErklaerer({ rolle, datum, personId, aufloesen }) {   // z. B. Pan
 - Pro Funktion eigene Eingabemasken (F1/F2/F5/F9 …) gehören zu WP-I22ff. und brauchen WP-I12.
 
 - O1 verschärft (Runde 3): `KiEntwurf` bekommt `funktion`; Beschäftigte sehen nur `F9`. **C5/C6**: Auftragskennung wird geprüft, `kiClient` sendet einen gültigen Bearer-Kopf aus `kopf()` (Einhängepunkt: `kopf` aus `src/speicher.js`, dort modulprivat; Vorschlag `export { kopf as authKopf }`). Server-Invariante für die Route `/ki`: siehe `wp-i13-nachweis.md` (Runde 3).
+
+## Nachtrag 2026-11-09: Anzeige der Gateway-Ergebnisse (Attrappe)
+
+Stand 2026-11-09 · Basis `integration/release-v4` (enthält WP-I13, PR #146). Ergänzt `wp-i17-nachweis.md` (Komponenten, Client, Hook, Texte, bereits integriert).
+
+### Neu
+
+- `src/ansichten/intelligence/anzeige.js`: `anzeigeAus(antwort)` leitet aus einer Gateway-Antwort den Zustand ab (fertig, rueckfall, laedt, fehler). Rein, wirft nie.
+- `src/ansichten/intelligence/KiAntwort.jsx`: zeigt eine Gateway-Antwort direkt an; Rollensicht, Kennzeichnung „KI-Entwurf“, Rückfall-Hinweis kommen aus `KiEntwurf`.
+- `pruefungen/intelligence-oberflaeche-anzeige.test.js`: 7 Tests.
+
+### Tests
+
+| Stand | Ergebnis |
+|---|---|
+| rot (Module fehlen) | 0 von 0 ausführbar, Importfehler |
+| grün | 7 neue Tests; zusammen mit `intelligence-oberflaeche.test.js` 36/36; `gestalt`, `kontrast` unverändert grün (zusammen 262, 1 eigener Kommentar-Treffer in der Quelltextprobe behoben) |
+
+Geprüft: alle 11 Fehler-Modi der Attrappe (Netzfehler, 429, falsche Zahl, erfundener Alias, Injektion, fremdes Feld, zu groß, kaputt, leer, Protoschlüssel, unbekannter Baustein) ergeben den festen Rückfall-Hinweis, keine Kennzeichnung, keinen Code und keinen Rohinhalt im Markup. Eine Antwort mit zusätzlichem Rohfeld wird nicht angezeigt. Keine bestehenden Tests geändert.
+
+### Offen
+
+- Sichtprüfung im Browser: nicht Teil der Tests, offen.
+- Einhängepunkte in `App.jsx` (Konfliktzone), Serverroute `/ki/*`, Thinking Orb (Paket prüfen und pinnen): nicht Teil dieses Nachtrags.
+- WP-I2 (PR #152): `src/ansichten/schichtfolge.jsx` und `src/lib/rasterpruefung.js` nicht berührt, kein Konflikt.
+- SSOT (`work-packages.json`) nicht geändert.
+
