@@ -9,6 +9,7 @@ import zlib from "node:zlib";
 import { parseDatei, STANDARD_GRENZEN } from "../server/lib/import/parser.mjs";
 import * as kern from "../server/lib/import/parser-kern.mjs";
 import { mappe, zip, zipEintraege, cfbDatei, workbookStrom } from "./import-parser-hilfen.mjs";
+import { poc561, cfbAbsteigendeFreieSektoren, cfbEintraege, cfbSetze, cfbIndex, cfbFatOrt } from "./import-parser-hilfen.mjs";
 
 /* Review PR #123, Befund 5: explizites Zeitlimit je Test (Schwellen in den Tests bleiben unverändert). */
 vi.setConfig({ testTimeout: 60000 });
@@ -1236,5 +1237,243 @@ describe("Review bbf64ca (imp-2-fix5): CFB-Verzeichnisbaum und Strom unter der W
     const r = await parseDatei({ buffer: mappe({ S: [["a"], [1]] }, "xls"), name: "n.xls" });
     expect(r.ok).toBe(true);
     expect(r.format).toBe("xls");
+  });
+});
+
+/* ==========================================================================
+   Sicherheitsreview 561dd32 (imp-2-fix6): K1, K2, H2a–d, H1.
+   Nachweis: docs/acc45/IMP-2-NACHWEIS.md, Abschnitt 11.
+   ========================================================================== */
+describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-Auswahl, Kindprozess", () => {
+  const ATTRAPPE = new URL("./hilfen/import-kind-attrappe.mjs", import.meta.url);
+  const prozess = () => import("../server/lib/import/parser-prozess.mjs");
+  const OK_DATEN = [["a", "b"], [1, 2]];
+  /** wartet, bis der Prozess pid nicht mehr existiert (kein Zombie, kein Waisenprozess) */
+  const beendet = async (pid) => {
+    for (let i = 0; i < 50; i++) {
+      try { process.kill(pid, 0); } catch (e) { if (e.code === "ESRCH") return true; }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  };
+  /** RSS-Spitze des Server-(Test-)Prozesses während fn, in MB über dem Ausgangswert */
+  const rssZuwachs = async (fn) => {
+    const vorher = process.memoryUsage().rss;
+    let spitze = vorher;
+    const iv = setInterval(() => { spitze = Math.max(spitze, process.memoryUsage().rss); }, 20);
+    try { return { wert: await fn() }; } finally {
+      clearInterval(iv);
+      spitze = Math.max(spitze, process.memoryUsage().rss);
+      rssZuwachs.letzter = Math.round((spitze - vorher) / 1048576);
+    }
+  };
+  /** XLS mit Workbook und n weiteren Strömen unter der Wurzel sowie einem Unterordner (von SheetJS geschrieben: rechts verkettete Liste). */
+  const vieleStroeme = (n) => {
+    const e = [{ pfad: "/Workbook", daten: workbookStrom(mappe({ S: OK_DATEN }, "xls")) }];
+    for (let i = 0; i < n; i++) e.push({ pfad: `/S${String(i).padStart(3, "0")}`, daten: Buffer.alloc(16, i & 255) });
+    for (let i = 0; i < 10; i++) e.push({ pfad: `/Ordner/T${i}`, daten: Buffer.alloc(16, 1) });
+    return cfbDatei(e);
+  };
+  const wurzelKinder = (buf) => { const E = cfbEintraege(buf); const k = []; for (let i = E[0].C; i !== -1; i = E[i].R) k.push(i); return k; };
+  /** baut den Geschwisterbaum unter der Wurzel neu: "links-absteigend" (entarteter Baum) oder ausgeglichen über die gegebene Reihenfolge */
+  const baumNeu = (buf, kinder, art) => {
+    for (const i of kinder) cfbSetze(buf, i, { L: -1, R: -1 });
+    if (art === "links-absteigend") {
+      const s = [...kinder].sort((a, b) => b - a);
+      cfbSetze(buf, 0, { C: s[0] });
+      for (let k = 0; k + 1 < s.length; k++) cfbSetze(buf, s[k], { L: s[k + 1] });
+    } else {
+      const bau = (a) => { if (!a.length) return -1; const m = a.length >> 1; cfbSetze(buf, a[m], { L: bau(a.slice(0, m)), R: bau(a.slice(m + 1)) }); return a[m]; };
+      cfbSetze(buf, 0, { C: bau(kinder) });
+    }
+    return buf;
+  };
+  const gemischt = (a, saat) => { const b = [...a]; let s = saat; for (let i = b.length - 1; i > 0; i--) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; const j = s % (i + 1); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+
+  /* ---------------------------------- K1 ---------------------------------- */
+  it("K1-PoC a: unbenutzte, nicht erreichbare Einträge lassen die Warteschlange von build_full_paths wachsen → BESCHAEDIGT in unter 2 s", async () => {
+    const buf = poc561.k1Warteschlange();
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: buf, name: "k1a.xls" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(r.blaetter).toBeUndefined();
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+  it("K1-PoC b: Kind-Zeiger unbenutzter Einträge bilden eine Schleife der dad-Kette → BESCHAEDIGT in unter 2 s", async () => {
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: poc561.k1DadSchleife(), name: "k1b.xls" });
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+  it("K1: Zeiger auf nicht vorhandene Einträge werden bei ALLEN Einträgen geprüft (auch unbenutzte) → BESCHAEDIGT in der Vorprüfung", async () => {
+    const buf = poc561.k1ZeigerAusserhalb();
+    expect(() => kern.pruefeCfb(buf, STANDARD_GRENZEN)).toThrow(/Verzeichniszeiger/);
+    expect(() => kern.pruefeCfb(poc561.k1Warteschlange(), STANDARD_GRENZEN)).toThrow(/Verzeichnisbaum/);
+    expect(() => kern.pruefeCfb(poc561.k1DadSchleife(), STANDARD_GRENZEN)).toThrow(/Verzeichnisbaum/);
+    expect(await parseDatei({ buffer: buf, name: "k1c.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("K1 Gegenprobe: von SheetJS erzeugte XLS mit vielen Strömen, entarteter (links absteigender) und ausgeglichener Baum in gemischter Reihenfolge werden gelesen", async () => {
+    const faelle = {
+      sheetjs: vieleStroeme(200),
+      "links-absteigend": (() => { const b = vieleStroeme(200); return baumNeu(b, wurzelKinder(b), "links-absteigend"); })(),
+      ausgeglichen: (() => { const b = vieleStroeme(200); return baumNeu(b, gemischt(wurzelKinder(b), 7), "ausgeglichen"); })(),
+      "ausgeglichen-klein": (() => { const b = vieleStroeme(5); return baumNeu(b, gemischt(wurzelKinder(b), 3), "ausgeglichen"); })(),
+    };
+    for (const [art, buf] of Object.entries(faelle)) {
+      const r = await parseDatei({ buffer: buf, name: `${art}.xls` });
+      expect(r.ok, `${art}: ${JSON.stringify(r)}`).toBe(true);
+      expect(r.blaetter[0].zeilen, art).toEqual(OK_DATEN);
+    }
+  });
+
+  /* ---------------------------------- K2 ---------------------------------- */
+  it("K2-PoC: absteigend verkettete freie Sektoren (1,4-MB-Datei) → BESCHAEDIGT ohne Speicherwachstum", async () => {
+    const buf = cfbAbsteigendeFreieSektoren();
+    expect(buf.length).toBeGreaterThan(1.3 * 1024 * 1024);
+    expect(buf.length).toBeLessThan(1.5 * 1024 * 1024);
+    /* Vorprüfung im Prozess: schnell und ohne nennenswerten Speicher */
+    const m0 = process.memoryUsage();
+    const t0 = Date.now();
+    expect(() => kern.pruefeCfb(buf, STANDARD_GRENZEN)).toThrow(/Sektorketten/);
+    const m1 = process.memoryUsage();
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(m1.arrayBuffers - m0.arrayBuffers).toBeLessThan(32 * 1024 * 1024);
+    /* über die Schnittstelle: Server-Prozess wächst nicht (vorher: ca. 2 GB im Server-Prozess, ok:true nach ca. 10 s) */
+    const t1 = Date.now();
+    const { wert: r } = await rssZuwachs(() => parseDatei({ buffer: buf, name: "k2.xls" }));
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    console.log(`[Messung 561dd32] K2 parseDatei: ${Date.now() - t1} ms, RSS-Zuwachs Server-Prozess ${rssZuwachs.letzter} MB`);
+    expect(Date.now() - t1).toBeLessThan(3000);
+    expect(rssZuwachs.letzter).toBeLessThan(200);
+  });
+  it("K2 Gegenprobe: gültige XLS mit großem Füllstrom und große XLS (3000 Zeilen) sind nicht betroffen", async () => {
+    const pad = cfbDatei([{ pfad: "/Workbook", daten: workbookStrom(mappe({ S: OK_DATEN }, "xls")) }, { pfad: "/Pad", daten: Buffer.alloc(2735 * 512, 1) }]);
+    const r = await parseDatei({ buffer: pad, name: "pad.xls" });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    expect(r.blaetter[0].zeilen).toEqual(OK_DATEN);
+    const z = [["Nr", "Text"]]; for (let i = 0; i < 3000; i++) z.push([i, `t${i}`]);
+    const gross = await parseDatei({ buffer: mappe({ S: z }, "xls"), name: "g.xls" });
+    expect(gross.ok).toBe(true);
+    expect(gross.blaetter[0].zeilen).toHaveLength(3001);
+  });
+  it("K2: einzelne rückwärts verkettete Kette in einer sonst gültigen Datei (Freisektoren) bis 4 × Sektorzahl bleibt lesbar", async () => {
+    /* 40 freie Sektoren absteigend verkettet: 40·41/2 = 820 Schritte < 4 × Sektorzahl */
+    const buf = cfbDatei([{ pfad: "/Workbook", daten: workbookStrom(mappe({ S: OK_DATEN }, "xls")) }, { pfad: "/Pad", daten: Buffer.alloc(400 * 512, 1) }]);
+    const i = cfbIndex(buf, "Pad");
+    const kette = [];
+    for (let s = cfbEintraege(buf)[i].start; s >= 0; s = buf.readInt32LE(cfbFatOrt(buf, s))) kette.push(s);
+    cfbSetze(buf, i, { groesse: 0 });
+    for (const s of kette) buf.writeInt32LE(-1, cfbFatOrt(buf, s));
+    for (let k = 1; k < 40; k++) buf.writeInt32LE(kette[k - 1], cfbFatOrt(buf, kette[k]));
+    const r = await parseDatei({ buffer: buf, name: "frei.xls" });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+  });
+
+  /* --------------------------------- H2a–d -------------------------------- */
+  for (const [titel, art] of [
+    ["H2a-PoC: Workbook mit Kelvin-Zeichen (U+212A) und PerfectOffice_MAIN", "h2Kelvin"],
+    ["H2b-PoC: Workbook mit Namenslänge 128 Byte und PerfectOffice_MAIN", "h2Namenslaenge"],
+    ["H2c-PoC: Workbook mit Größe > 0, aber Start -2 (ohne Inhalt) und PerfectOffice_MAIN", "h2OhneInhalt"],
+    ["H2d-PoC: doppelter Name Workbook (erster ohne Inhalt, zweiter mit Inhalt) und PerfectOffice_MAIN", "h2Doppelt"],
+  ]) {
+    it(`${titel} → NICHT_UNTERSTUETZT oder BESCHAEDIGT, nie ok:true mit format xls`, async () => {
+      const r = await parseDatei({ buffer: poc561[art](), name: `${art}.xls` });
+      expect(r.ok, JSON.stringify(r)).toBe(false);
+      expect(["NICHT_UNTERSTUETZT", "BESCHAEDIGT"]).toContain(r.code);
+      expect(r.blaetter).toBeUndefined();
+    });
+  }
+  it("H2d: doppelter Tabellenstrom wird als BESCHAEDIGT gemeldet (mehrdeutig)", async () => {
+    expect(await parseDatei({ buffer: poc561.h2Doppelt(), name: "d.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("H2 Gegenprobe: Strom „Book“ (ältere Schreibweise) und „WORKBOOK“ in Großbuchstaben werden wie von SheetJS gefunden und gelesen", async () => {
+    for (const pfad of ["/Book", "/WORKBOOK"]) {
+      const r = await parseDatei({ buffer: cfbDatei([{ pfad, daten: workbookStrom(mappe({ S: OK_DATEN }, "xls")) }]), name: "b.xls" });
+      expect(r.ok, `${pfad}: ${JSON.stringify(r)}`).toBe(true);
+      expect(r.blaetter[0].zeilen).toEqual(OK_DATEN);
+    }
+  });
+
+  /* ---------------------------------- H1 ---------------------------------- */
+  it("H1: der Parser läuft in einem eigenen Kindprozess (andere Prozessnummer), danach kein aktives Kind und kein Restprozess", async () => {
+    const { aktiveKinder } = await prozess();
+    const pids = [];
+    const r = await parseDatei({ buffer: B("a;b\n1;2\n"), name: "x.csv" }, { beiStart: (pid) => pids.push(pid) });
+    expect(r.ok).toBe(true);
+    expect(pids).toHaveLength(1);
+    expect(pids[0]).not.toBe(process.pid);
+    expect(await beendet(pids[0])).toBe(true);
+    expect(aktiveKinder()).toEqual([]);
+    const a = await parseDatei({ buffer: B("x"), name: "pid" }, { skript: ATTRAPPE });
+    expect(a.code).toBe("PID");
+    expect(Number(a.nachricht)).not.toBe(process.pid);
+  });
+  it("H1-PoC: Kind stürzt ab (Heap-Überlauf bei 256 MB) → Server antwortet SPEICHERLIMIT, lebt weiter und liest die nächste Datei", async () => {
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: B("x"), name: "heap" }, { skript: ATTRAPPE });
+    console.log(`[Messung 561dd32] H1 Heap-Überlauf im Kind: Antwort nach ${Date.now() - t0} ms`);
+    expect(r).toEqual({ ok: false, code: "SPEICHERLIMIT", nachricht: expect.stringMatching(/Arbeitsspeicher/) });
+    const weiter = await parseDatei({ buffer: B("a;b\n1;2\n"), name: "x.csv" });
+    expect(weiter.ok).toBe(true);
+  });
+  it("H1-PoC: nativer Absturz des Kindes (abort) → VERARBEITUNG_FEHLGESCHLAGEN, Server lebt weiter", async () => {
+    const r = await parseDatei({ buffer: B("x"), name: "abbruch" }, { skript: ATTRAPPE });
+    expect(r).toMatchObject({ ok: false, code: "VERARBEITUNG_FEHLGESCHLAGEN" });
+    expect(r.blaetter).toBeUndefined();
+    expect((await parseDatei({ buffer: B("a;b\n1;2\n"), name: "x.csv" })).ok).toBe(true);
+  });
+  it("H1-PoC: SheetJS selbst stürzt im Kind ab (K1b-Datei ohne Vorprüfung gelesen) → Fehlerantwort, Server-Prozess wächst nicht", async () => {
+    const t0 = Date.now();
+    const { wert: r } = await rssZuwachs(() => parseDatei({ buffer: poc561.k1DadSchleife(), name: "sheetjs" }, { skript: ATTRAPPE }));
+    console.log(`[Messung 561dd32] H1 SheetJS-Absturz im Kind: ${r.code} nach ${Date.now() - t0} ms, RSS-Zuwachs Server-Prozess ${rssZuwachs.letzter} MB`);
+    expect(r.ok).toBe(false);
+    expect(["SPEICHERLIMIT", "ZEITLIMIT"]).toContain(r.code);
+    expect(r.blaetter).toBeUndefined();
+    expect(rssZuwachs.letzter).toBeLessThan(200);
+  });
+  it("H1: Zeitlimit beendet das Kind hart (SIGKILL), Antwort ZEITLIMIT ohne Teilergebnis, kein Restprozess", async () => {
+    const { aktiveKinder } = await prozess();
+    const pids = [];
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: B("x"), name: "haengt", grenzen: { zeitMs: 500 } }, { skript: ATTRAPPE, beiStart: (p) => pids.push(p) });
+    expect(r).toMatchObject({ ok: false, code: "ZEITLIMIT" });
+    expect(r.blaetter).toBeUndefined();
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(await beendet(pids[0])).toBe(true);
+    await new Promise((res) => setTimeout(res, 100));
+    expect(aktiveKinder()).toEqual([]);
+  });
+  it("H1: Standard-Zeitlimit 20 s, Heap des Kindes 256 MB; Ergebnisgröße begrenzt, ungültige Ausgabe und Teilergebnisse werden verworfen", async () => {
+    const { KIND_HEAP_MB, kindBefehl } = await prozess();
+    expect(STANDARD_GRENZEN.zeitMs).toBe(20000);
+    expect(KIND_HEAP_MB).toBe(256);
+    expect(kindBefehl("k.mjs", 256, 0).argumente).toContain("--max-old-space-size=256");
+    const lx = kindBefehl("k.mjs", 256, 1500000);
+    expect(lx.programm).toBe("/bin/sh");
+    expect(lx.argumente.join(" ")).toMatch(/ulimit -v "\$1"/);
+    expect(lx.argumente).toContain("1500000");
+    const gross = await parseDatei({ buffer: B("x"), name: "ausgabe" }, { skript: ATTRAPPE, ausgabeMax: 1024 * 1024 });
+    expect(gross).toMatchObject({ ok: false, code: "TEXT_ZU_GROSS" });
+    expect(await parseDatei({ buffer: B("x"), name: "unsinn" }, { skript: ATTRAPPE })).toMatchObject({ ok: false, code: "VERARBEITUNG_FEHLGESCHLAGEN" });
+    const teil = await parseDatei({ buffer: B("x"), name: "teil" }, { skript: ATTRAPPE });
+    expect(teil).toEqual({ ok: false, code: "BESCHAEDIGT", nachricht: "Die Datei ist beschädigt." });
+    expect(JSON.stringify(teil)).not.toContain("geheim");
+  });
+  it.runIf(process.platform === "linux")("H1 (nur Linux): Adressraum-Limit greift für Speicher außerhalb des JS-Heaps; gültige Dateien laufen unter dem Limit", async () => {
+    const r = await parseDatei({ buffer: B("x"), name: "extern" }, { skript: ATTRAPPE });
+    expect(r.ok).toBe(false);
+    expect(["SPEICHERLIMIT", "VERARBEITUNG_FEHLGESCHLAGEN"]).toContain(r.code);
+    for (const fmt of ["xlsx", "xls"]) {
+      const ok = await parseDatei({ buffer: mappe({ S: OK_DATEN }, fmt), name: `ok.${fmt}` });
+      expect(ok.ok, fmt).toBe(true);
+    }
+  });
+  it("H1: Quelltext des Prozessmoduls: nur spawn mit festem Programm, kein shell:true, kein exec, kein Netz, keine Dateien", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const q = await readFile(new URL("../server/lib/import/parser-prozess.mjs", import.meta.url), "utf8");
+    expect(q).toMatch(/import \{ spawn \} from "node:child_process"/);
+    expect(q).not.toMatch(/\bexec(Sync|File|FileSync)?\s*\(|spawnSync|fork\s*\(|shell:\s*true/);
+    expect(q).not.toMatch(/node:(http|https|net|dns|tls|fs)|\bfetch\s*\(|writeFile|createWriteStream/);
+    expect(q).toMatch(/spawn\(programm, argumente, \{[^}]*shell: false/);
   });
 });
