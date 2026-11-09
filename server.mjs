@@ -67,8 +67,9 @@ const FUNKTIONEN = path.join(WURZEL, "server", "funktionen");
    sie schon beim Einlesen durchgesetzt, damit ein zu großer Rumpf gar nicht
    erst im Speicher landet. */
 const RUMPF_MAX = 6 * 1024 * 1024;
-/* IMP-3: Eine Funktion darf mit `config.rumpfMax` eine eigene Grenze nennen (der Import nimmt
-   Dateien bis 10 MB an, server/funktionen/import.mjs). Obergrenze 16 MB; ohne Angabe RUMPF_MAX. */
+/* IMP-3: Eine Funktion darf mit `config.rumpfMax` eine eigene Grenze nennen, mit `config.rumpfMaxJeWeg`
+   ({ "/pfad": Bytes }) je Weg eine eigene (der Import nimmt nur auf /api/import/upload Dateien bis 10 MB an,
+   server/funktionen/import.mjs; seine JSON-Wege bleiben bei 2 MB). Obergrenze 16 MB; ohne Angabe RUMPF_MAX. */
 const RUMPF_HOECHST = 16 * 1024 * 1024;
 
 /* Die Sicherheitsköpfe der Anwendung. Sie gelten für jede Antwort, die
@@ -132,8 +133,11 @@ async function funktionenLaden() {
         exakt: muster.endsWith("/*") ? null : muster,
         praefix: muster.endsWith("/*") ? muster.slice(0, -1) : null,   // "/api/*" -> "/api/"
         handler: modul.default,
-        rumpfMax: Number.isInteger(modul.config.rumpfMax) && modul.config.rumpfMax > 0
-          ? Math.min(modul.config.rumpfMax, RUMPF_HOECHST) : RUMPF_MAX,   // IMP-3
+        rumpfMax: (() => {   // IMP-3: Grenze je Weg, sonst der Wert der Funktion, sonst RUMPF_MAX
+          const je = modul.config.rumpfMaxJeWeg && modul.config.rumpfMaxJeWeg[muster];
+          const g = Number.isInteger(je) && je > 0 ? je : modul.config.rumpfMax;
+          return Number.isInteger(g) && g > 0 ? Math.min(g, RUMPF_HOECHST) : RUMPF_MAX;
+        })(),
       });
     }
   }

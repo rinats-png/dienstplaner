@@ -97,6 +97,11 @@ export const INVENTAR = {
   "/starten": ["starten.test.js", "si-p5-sonden.test.js"],
   "/starten/neu": ["starten.test.js", "si-p5-sonden.test.js"],
   "/gesund": ["prozesssperre.test.js"],
+  "/api/import/upload": ["import-endpunkt.test.js", "import-sonden.test.js", "import-rumpfgrenze.test.js"],   // IMP-3: Leitung, Planung; Kunde, Betreiber 403; Rumpf bis 10 MB
+  "/api/import/analyse": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],       // IMP-3: fremder Vorgang 404; Rumpf bis 2 MB
+  "/api/import/vorschau": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],      // IMP-3: wie analyse
+  "/api/import/uebernahme": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],    // IMP-3: wie analyse, plus Bestätigungscode
+  "/api/import/verwerfen": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],     // IMP-3: wie analyse
 };
 
 /** Wege ohne eigene Zeile in RECHTEMATRIX.md — bewusst, mit Grund. */

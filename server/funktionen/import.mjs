@@ -14,8 +14,10 @@
 
    Registrierung: Die Pfade stehen unten in `config.path` — server.mjs lädt
    jede Datei aus server/funktionen/ selbst (genaue Pfade vor dem Präfix
-   „/api/*" von daten.mjs). `config.rumpfMax` hebt nur für diese Datei die
-   Rumpfgrenze auf 10 MB (Dateigrenze aus IMPORT-VERTRAG.md §3).
+   „/api/*" von daten.mjs). `config.rumpfMaxJeWeg` hebt die Rumpfgrenze nur für
+   /api/import/upload auf 10 MB (Dateigrenze aus IMPORT-VERTRAG.md §3); analyse, vorschau, uebernahme und
+   verwerfen (JSON) bleiben bei 2 MB. server.mjs liest den Rumpf vor jeder Anmeldeprüfung — die Grenze
+   je Weg begrenzt also, was ein Unangemeldeter pro Anfrage in den Speicher laden kann.
 
    Rollen: Import nur mit staff.edit UND vollem Schreibumfang (Leitung, Planung);
    Betreiber und die alte Rückfallrolle „kunde" nie (Review-Auflage). Neue Einheiten/Standorte zusätzlich nur mit org.edit (Leitung).
@@ -294,5 +296,12 @@ export default async (req) => {
 
 export const config = {
   path: ["/api/import/upload", "/api/import/analyse", "/api/import/vorschau", "/api/import/uebernahme", "/api/import/verwerfen"],
-  rumpfMax: 10 * 1024 * 1024,
+  rumpfMax: 10 * 1024 * 1024,   // Obergrenze der Datei (nur upload)
+  rumpfMaxJeWeg: {
+    "/api/import/upload": 10 * 1024 * 1024,
+    "/api/import/analyse": 2 * 1024 * 1024,
+    "/api/import/vorschau": 2 * 1024 * 1024,
+    "/api/import/uebernahme": 2 * 1024 * 1024,
+    "/api/import/verwerfen": 2 * 1024 * 1024,
+  },
 };
