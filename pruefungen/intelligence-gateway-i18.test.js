@@ -341,6 +341,16 @@ describe("D — jede Fehlerklasse des Adapters → fester Rückfall, nie Rohinha
     });
   }
 
+  it("Antwort ohne Struktur (kein Objekt, leer, Liste) ist eine Schema-Verletzung → fester Rückfall nach Stufe 1, kein Rohinhalt", async () => {
+    for (const o of [{ modus: "kaputt" }, { modus: "leer" }, { modus: "skript", skript: () => ({ ausgabe: [ROH] }) }]) {
+      const t = bauen(o);
+      const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
+      expect(r, JSON.stringify(o.modus)).toMatchObject({ status: "rueckfall" });
+      expect(t.anbieter.aufrufe.map((e) => e.stufe)).toEqual([1]);
+      expect(JSON.stringify(r) + JSON.stringify(t.ereignisse)).not.toMatch(/ROHINHALT|Weberknecht|kein Objekt/);
+    }
+  });
+
   describe("über den Live-Adapter mit gemocktem Transport (Gate offen, Platzhalter)", () => {
     const ENV = { [LIVE.LIVE_SCHALTER_NAME]: "ja", [LIVE.LIVE_SCHLUESSEL_NAME]: "platzhalter-schluessel-" + "x".repeat(24) };
     const KONF = { freigabe: true, monatsbudget: 50, avv: { status: "bestaetigt", datum: "2026-11-01" } };

@@ -16,7 +16,7 @@ import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs
 import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { sperrlisteBilden } from "../server/lib/intelligence/leckpruefung.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, VERBOTEN_IM_PAKET, fold } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, VERBOTEN_IM_PAKET, fold, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const TAG = 86400_000;
 const T0 = Date.UTC(2026, 10, 15, 10, 0, 0);
@@ -76,7 +76,7 @@ describe("Fingerprint", () => {
 });
 
 describe("Ergebnis-Speicher", () => {
-  const neu = (o = {}) => { const store = speicherStore(); const uhr = { t: T0 }; return { store, uhr, sp: erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t, ...o }) }; };
+  const neu = (o = {}) => { const store = speicherStore(); const uhr = { t: T0 }; return { store, uhr, sp: erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t, ...o }) }; };
   const fp = fingerprintBilden(TEILE);
 
   it("schreiben → lesen: gleiche Antwort; Eintrag trägt Raum und Fingerprint; Frist 30 Tage", async () => {
@@ -137,13 +137,13 @@ describe("Ergebnis-Speicher", () => {
     expect(neu({ fristenTage: { ergebnisTage: -1, kontextTage: "x" } }).sp.fristen).toEqual({ ergebnisTage: 30, kontextTage: 90 });
   });
   it("Store ohne get/setJSON/delete/list → Konstruktor wirft", () => {
-    expect(() => erzeugeErgebnisSpeicher({ store: { get() {} } })).toThrow();
+    expect(() => erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store: { get() {} } })).toThrow();
     expect(() => erzeugeErgebnisSpeicher({})).toThrow();
   });
 });
 
 describe("Decision Context", () => {
-  const neu = () => { const store = speicherStore(); const uhr = { t: T0 }; let n = 0; return { store, uhr, sp: erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t, zufallId: () => `ctx-${String(++n).padStart(8, "0")}` }) }; };
+  const neu = () => { const store = speicherStore(); const uhr = { t: T0 }; let n = 0; return { store, uhr, sp: erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t, zufallId: () => `ctx-${String(++n).padStart(8, "0")}` }) }; };
   const PAKET = { fakten: [
     { id: "f.0", feld: "ruhezeit.ist", art: "zahl", wert: 660, alias: "P_BCDFGHJK" },
     { id: "f.1", feld: "befund.regel", art: "kennung", wert: "ruhezeitGesetz", alias: "P_BCDFGHJK", regel: { regelId: "ruhezeitGesetz", pruefstatus: "geprueft", fundstelle: "§ 5 ArbZG" } },
@@ -172,7 +172,7 @@ describe("Aufbewahrung und Löschung", () => {
   const fp = fingerprintBilden(TEILE);
   async function vorbereiten(modus) {
     const store = speicherStore(); const uhr = { t: T0 };
-    const sp = erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t, modus, zufallId: () => "ctx-abcdefgh" });
+    const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t, modus, zufallId: () => "ctx-abcdefgh" });
     await sp.schreiben({ raum: "raum-a", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: SPERR });
     await sp.kontextSchreiben({ raum: "raum-a", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: fp, paket: { fakten: [] } });
     return { store, uhr, sp };
@@ -224,11 +224,11 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
   function bauen(o = {}) {
     const store = o.store || speicherStore();
     const uhr = { t: T0 };
-    const sp = erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t });
+    const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t });
     const anbieter = o.anbieter || erzeugeAttrappe({ modus: o.modus || "ok", skript: o.skript });
     const limits = new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000 });
     const ereignisse = [];
-    const gw = erzeugeGateway({ anbieter, ladeBestand: o.ladeBestand || (() => bestand()), aliasSchluessel: () => o.schluessel || SCHLUESSEL, versionen: o.versionen || VERSIONEN, limits,
+    const gw = erzeugeGateway({ anbieter, ladeBestand: o.ladeBestand || (() => bestand()), schluesselbund: schluesselbundTest({ alias: o.schluessel || SCHLUESSEL }), registry: registryTest(), versionen: o.versionen || VERSIONEN, limits,
       audit: erzeugeAudit({ senke: (e) => ereignisse.push(e) }), schalter: { prozess: () => "an", laufzeit: () => "an" }, betriebAktiv: () => true,
       funktionenFreigegeben: ["F2"], faktenquelle: vollQuelle, ergebnisSpeicher: sp,
       kiVersionen: o.kiVersionen || { prompt: "p1", pruefer: "v1", bausteinKatalog: "k1", routerRegistry: "rr1" },
@@ -340,8 +340,8 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
   });
   it("Speicher ohne Versionsangaben → Gateway lässt sich nicht bauen", () => {
     const store = speicherStore();
-    expect(() => erzeugeGateway({ anbieter: erzeugeAttrappe(), ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN,
-      limits: new Limits({ betriebKontingentIE: 1, gesamtTagesIE: 1, gesamtHartTagesIE: 1 }), audit: erzeugeAudit({}), ergebnisSpeicher: erzeugeErgebnisSpeicher({ store }) })).toThrow();
+    expect(() => erzeugeGateway({ anbieter: erzeugeAttrappe(), ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN,
+      limits: new Limits({ betriebKontingentIE: 1, gesamtTagesIE: 1, gesamtHartTagesIE: 1 }), audit: erzeugeAudit({}), ergebnisSpeicher: erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store }) })).toThrow();
   });
   it("paketHash ist deterministisch und reihenfolgeunabhängig", () => {
     expect(paketHash({ a: 1, b: [1, { c: 2, d: 3 }] })).toBe(paketHash({ b: [1, { d: 3, c: 2 }], a: 1 }));
@@ -359,7 +359,7 @@ describe("Echte Dateiablage (server/lib/ablage.mjs)", () => {
       const { getStore } = await import("../server/lib/ablage.mjs");
       const store = getStore("centric-ki-lauf");
       const uhr = { t: T0 };
-      const sp = erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t, modus: "an" });
+      const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t, modus: "an" });
       const fp = fingerprintBilden(TEILE);
       expect(await sp.schreiben({ raum: "raum:a/b", fingerprint: fp, funktion: "F2", ergebnis: ERG, sperrliste: SPERR })).toBe(true);
       expect(await sp.lesen({ raum: "raum:a/b", fingerprint: fp })).toEqual(ERG);

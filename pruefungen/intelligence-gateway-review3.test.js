@@ -14,7 +14,7 @@ import { erzeugeErgebnisSpeicher } from "../server/lib/intelligence/gateway/erge
 import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 vi.setConfig({ testTimeout: 30000 });
 const B = "0123456789abcdef";
@@ -66,7 +66,7 @@ describe("Prüfer, Runde 3", () => {
 describe("Löschlauf bei E/A-Fehler (3)", () => {
   it("ein Lesefehler löscht NICHTS — weder abgelaufene noch gültige Einträge —, er wird gezählt", async () => {
     const s = mkStore(); const t = { now: Date.UTC(2026, 10, 1) };
-    const sp = erzeugeErgebnisSpeicher({ store: s, jetzt: () => t.now, zufallId: () => "ctx-abcdefgh" });
+    const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store: s, jetzt: () => t.now, zufallId: () => "ctx-abcdefgh" });
     const sl = sperrlisteBilden(bestand().mandanten[0], { raum: "r" });
     await sp.schreiben({ raum: "r", fingerprint: "a".repeat(64), funktion: "F2", ergebnis: { text: "Hallo" }, sperrliste: sl });
     await sp.kontextSchreiben({ raum: "r", betriebId: "b1", rolle: "planer", funktion: "F2", fingerprint: "a".repeat(64), paket: { fakten: [] } });
@@ -83,7 +83,7 @@ describe("Löschlauf bei E/A-Fehler (3)", () => {
   });
   it("das Aufräumen nach kontextSchreiben läuft ebenfalls (Closure statt this)", async () => {
     const s = mkStore(); const t = { now: Date.UTC(2026, 10, 1) };
-    const sp = erzeugeErgebnisSpeicher({ store: s, jetzt: () => t.now, zufallId: (() => { let n = 0; return () => `ctx-${String(++n).padStart(8, "0")}`; })() });
+    const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store: s, jetzt: () => t.now, zufallId: (() => { let n = 0; return () => `ctx-${String(++n).padStart(8, "0")}`; })() });
     await sp.kontextSchreiben({ raum: "r", betriebId: "b1", rolle: "planer", funktion: "F2", fingerprint: "a".repeat(64), paket: { fakten: [] } });
     t.now += 100 * 86400_000;
     await sp.kontextSchreiben({ raum: "r", betriebId: "b1", rolle: "planer", funktion: "F2", fingerprint: "b".repeat(64), paket: { fakten: [] } });
@@ -147,7 +147,7 @@ describe("Notschalter-Takt (7)", () => {
   function bauen(betriebAktiv, zeiten = {}) {
     const anbieter = erzeugeAttrappe({ modus: "zeitueberschreitung" });
     const limits = new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, parallelJeBetrieb: 5 });
-    const gw = erzeugeGateway({ anbieter, ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits, audit: erzeugeAudit({ senke: () => {} }),
+    const gw = erzeugeGateway({ anbieter, ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits, audit: erzeugeAudit({ senke: () => {} }),
       schalter: { prozess: () => "an", laufzeit: () => "an" }, betriebAktiv, funktionenFreigegeben: ["F2"], faktenquelle: vollQuelle,
       zeiten: { stufeMs: 10_000, deadlineMs: 30_000, maxWiederholungen: 0, minRestMs: 0, schalterTaktMs: 15, schalterFristMs: 60, ...zeiten }, schlafen: () => Promise.resolve() });
     return { gw, anbieter, limits };

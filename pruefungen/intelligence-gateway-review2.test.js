@@ -15,7 +15,7 @@ import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { ausgabePruefen } from "../server/lib/intelligence/gateway/pruefer.mjs";
 import { sperrlisteBilden } from "../server/lib/intelligence/leckpruefung.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, betrieb, sitzung, S, vollQuelle, NAMENSPOLITIK_TEST } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, betrieb, sitzung, S, vollQuelle, NAMENSPOLITIK_TEST, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 vi.setConfig({ testTimeout: 30000 });
 
@@ -154,11 +154,11 @@ describe("Befunde 4–6: Prüfer", () => {
 describe("Gateway-Befunde", () => {
   function bauen(o = {}) {
     const store = o.store || mkStore(); const uhr = { t: T0 };
-    const sp = o.speicher || erzeugeErgebnisSpeicher({ store, jetzt: () => uhr.t, modus: o.modus });
+    const sp = o.speicher || erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t, modus: o.modus });
     const anbieter = o.anbieter || erzeugeAttrappe({ modus: o.attrappe || "ok", skript: o.skript });
     const limits = o.limits || new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, parallelJeBetrieb: 5, ...(o.limitKonfig || {}) });
     let schalter = o.schalter || { prozess: () => "an", laufzeit: () => "an" };
-    const gw = erzeugeGateway({ anbieter, ladeBestand: () => (o.bestand ? o.bestand() : bestand()), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits,
+    const gw = erzeugeGateway({ anbieter, ladeBestand: () => (o.bestand ? o.bestand() : bestand()), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits,
       audit: erzeugeAudit({ senke: () => {} }), schalter, betriebAktiv: o.betriebAktiv || (() => true), funktionenFreigegeben: ["F1", "F2", "F5"], faktenquelle: vollQuelle, namenspolitik: NAMENSPOLITIK_TEST,   // WP-I13 G18
       ergebnisSpeicher: o.ohneSpeicher ? undefined : sp, kiVersionen: { prompt: "p1", pruefer: "v1", bausteinKatalog: "k1", routerRegistry: "rr1" },
       zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 0, minRestMs: 0, schalterTaktMs: 15, ...(o.zeiten || {}) }, schlafen: () => Promise.resolve() });
@@ -182,7 +182,7 @@ describe("Gateway-Befunde", () => {
 
   it("8 Aufbewahrung: Vorgabe „an“; das Gateway startet nicht mit „vorschau“/„aus“; Fristen werden beim Schreiben nebenbei durchgesetzt", async () => {
     const store = mkStore();
-    expect(erzeugeErgebnisSpeicher({ store }).modus).toBe("an");
+    expect(erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store }).modus).toBe("an");
     for (const modus of ["vorschau", "aus"])
       expect(() => bauen({ modus }), modus).toThrow();
     const t = bauen({ store });

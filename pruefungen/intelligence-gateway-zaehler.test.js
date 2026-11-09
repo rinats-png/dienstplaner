@@ -20,7 +20,7 @@ import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { unterRaumsperre } from "../server/lib/raumsperre.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const T0 = Date.UTC(2026, 10, 15, 10, 0, 0);
 const B = "0123456789abcdef";
@@ -200,7 +200,7 @@ describe("Limits mit Persistenz", () => {
       const limits = new Limits({ ...konf, jetzt: () => uhr.t, senke: z.senke });
       const anbieter = erzeugeAttrappe();
       const alarme = [];
-      const gw = erzeugeGateway({ anbieter, ladeBestand: () => bestand(), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits,
+      const gw = erzeugeGateway({ anbieter, ladeBestand: () => bestand(), schluesselbund: schluesselbundTest(), registry: registryTest(), versionen: VERSIONEN, limits,
         audit: erzeugeAudit({ senke: () => {} }), schalter: { prozess: () => "an", laufzeit: () => "an" }, betriebAktiv: () => true, funktionenFreigegeben: ["F1", "F2"],
         faktenquelle: vollQuelle, alarmHaken: o.alarmHaken || ((a) => alarme.push(a)), zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 0, minRestMs: 0 } });
       return { gw, anbieter, limits, z, alarme };

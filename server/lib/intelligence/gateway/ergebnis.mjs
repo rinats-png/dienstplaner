@@ -34,11 +34,16 @@
    E8  Der Decision Context ist an Raum, Betrieb (Hash) und Rolle gebunden; beim Lesen müssen alle passen.
    E9  Der Löschlauf löscht nur erfolgreich Gelesenes, das abgelaufen oder beschädigt ist; ein E/A-Fehler zählt, löscht nie.
    E5  Speicherfehler brechen nie einen Vorgang: Lesefehler = Fehlschlag, Schreibfehler werden verschluckt.
+   E10 (WP-I18) Versorgt NUR über einen Schlüsselbund aus erzeugeSchluesselbund (schluessel.mjs, K6). Jeder Eintrag
+       (ki:erg, ki:ktx) trägt eine MAC des AKTIVEN MAC-Schlüssels über seinen kanonischen Inhalt; beim Lesen wird sie
+       geprüft (aktiv, sonst vorheriger Schlüssel — der vorherige nur zum Prüfen bestehender Einträge, K7). Ohne gültige
+       MAC: Fehlschlag (kein Treffer). Neue Einträge immer mit dem aktiven Schlüssel. Kein Schlüssel im Eintrag.
    ========================================================================== */
 
 import { createHash, randomBytes } from "node:crypto";
 import { kanonisch } from "./kanonisch.mjs";
 import { leckPruefen } from "../leckpruefung.mjs";
+import { schluesselbundPruefen } from "./schluessel.mjs";
 
 export const ERGEBNIS_VERSION = 1;
 export const FRISTEN_VORGABE = Object.freeze({ ergebnisTage: 30, kontextTage: 90 });
@@ -98,6 +103,16 @@ export function kontextAusPaket(paket) {
 export function erzeugeErgebnisSpeicher(o) {
   const { store } = o || {};
   for (const m of ["get", "setJSON", "delete", "list"]) if (!store || typeof store[m] !== "function") throw new Error(`Ergebnis-Speicher: store.${m} fehlt`);
+  /* E10: nur über den Schlüsselbund (wirft KI_INTERN ohne ihn). */
+  const bund = schluesselbundPruefen(o.schluesselbund);
+  /** Eintrag ohne MAC kanonisch signieren / prüfen (Zweck trennt Ergebnis und Kontext). */
+  const text = (e) => kanonisch(JSON.parse(JSON.stringify(e)));   // so, wie der Eintrag nach der Ablage aussieht
+  const signiert = (zweck, e) => ({ ...e, mac: bund.signieren(zweck, text(e)) });
+  const echt = (zweck, e) => {
+    if (!e || typeof e !== "object" || Array.isArray(e) || typeof e.mac !== "string") return false;
+    const { mac, ...rest } = e;
+    try { return bund.pruefen(zweck, text(rest), mac).ok === true; } catch { return false; }
+  };
   const jetzt = o.jetzt || (() => Date.now());
   const frist = (v, vorgabe, max) => (Number.isInteger(v) && v > 0 ? Math.min(v, max) : vorgabe);
   const tage = {
@@ -147,6 +162,8 @@ export function erzeugeErgebnisSpeicher(o) {
   return Object.freeze({
     fristen: Object.freeze({ ergebnisTage: tage.ergebnis, kontextTage: tage.kontext }),
     modus,
+    /** E10: Kennung des aktiven MAC-Schlüssels (HMAC-Ableitung) — das Gateway verlangt denselben Schlüsselbund. */
+    macKennung: bund.stand().mac.kennung,
 
     /** E1: gespeicherte, geprüfte Antwort — oder null. */
     async lesen({ raum, fingerprint }) {
@@ -154,6 +171,7 @@ export function erzeugeErgebnisSpeicher(o) {
       const e = await lesenRoh(ergebnisSchluessel(raum, fingerprint));
       if (!e || e.v !== ERGEBNIS_VERSION || e.art !== "erg" || e.raum !== raum || e.fingerprint !== fingerprint) return null;
       if (!Number.isFinite(e.ablauf) || e.ablauf <= jetzt()) return null;
+      if (!echt("erg", e)) return null;                                                  // E10
       return nurErlaubteFelder(e.ergebnis) ? e.ergebnis : null;
     },
 
@@ -164,8 +182,8 @@ export function erzeugeErgebnisSpeicher(o) {
         const leck = leckPruefen(zeichenketten(ergebnis), sperrliste);
         if (!leck || leck.ok !== true) return false;
         const t = jetzt();
-        await store.setJSON(ergebnisSchluessel(raum, fingerprint), { v: ERGEBNIS_VERSION, art: "erg", raum, fingerprint,
-          funktion: String(funktion), erzeugt: t, ablauf: t + tage.ergebnis * TAG_MS, ergebnis: structuredClone(ergebnis) });
+        await store.setJSON(ergebnisSchluessel(raum, fingerprint), signiert("erg", { v: ERGEBNIS_VERSION, art: "erg", raum, fingerprint,
+          funktion: String(funktion), erzeugt: t, ablauf: t + tage.ergebnis * TAG_MS, ergebnis: structuredClone(ergebnis) }));
         /* E7: Fristen ohne Planer — höchstens einmal je Stunde wird beim Schreiben nebenbei aufgeräumt (nur ki:erg/ki:ktx). */
         nebenbei(t);
         return true;
@@ -185,10 +203,10 @@ export function erzeugeErgebnisSpeicher(o) {
         if (!ID_MUSTER.test(ctxId) || typeof raum !== "string" || !raum || !betriebId || typeof rolle !== "string" || !rolle) return null;
         const t = jetzt();
         const ev = kontextAusPaket(paket);
-        await store.setJSON(kontextSchluessel(raum, ctxId), { v: ERGEBNIS_VERSION, art: "ktx", raum, betrieb: betriebHash(raum, betriebId), rolle, ctxId, funktion: String(funktion),
+        await store.setJSON(kontextSchluessel(raum, ctxId), signiert("ktx", { v: ERGEBNIS_VERSION, art: "ktx", raum, betrieb: betriebHash(raum, betriebId), rolle, ctxId, funktion: String(funktion),
           fingerprint: String(fingerprint), versionen: structuredClone(versionen || {}), stufen: (stufen || []).filter(Number.isInteger).slice(0, 3),
           pruefCodes: (pruefCodes || []).filter((c) => /^P-\d{2}$/.test(String(c))).slice(0, 12), treffer: treffer === true,
-          ...ev, erzeugt: t, ablauf: t + tage.kontext * TAG_MS });
+          ...ev, erzeugt: t, ablauf: t + tage.kontext * TAG_MS }));
         nebenbei(t);
         return ctxId;
       } catch { return null; }
@@ -201,7 +219,9 @@ export function erzeugeErgebnisSpeicher(o) {
       if (!e || e.v !== ERGEBNIS_VERSION || e.art !== "ktx" || e.raum !== raum || e.ctxId !== ctxId) return null;
       if (e.betrieb !== betriebHash(raum, betriebId) || e.rolle !== rolle) return null;
       if (!Number.isFinite(e.ablauf) || e.ablauf <= jetzt()) return null;
-      return e;
+      if (!echt("ktx", e)) return null;                                                  // E10
+      const { mac, ...ohneMac } = e; void mac;
+      return ohneMac;
     },
 
     aufraeumen: () => aufraeumenLauf(),

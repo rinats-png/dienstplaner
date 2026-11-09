@@ -8,16 +8,22 @@
      adapter = {
        id:        "attrappe" | …           // Kennung für Protokoll und Verzeichnis (Muster unten)
        modellOrt: "lokal" | "extern",      // aus Serverkonfiguration, nie aus der Anfrage
-       erzeuge:   async ({ funktion, stufe, schemaVersion, paket, fremdtext, signal })
+       erzeuge:   async ({ funktion, stufe, schemaVersion, paket, fremdtext, modellKennung, maxAusgabeTokens, signal })
                     → { ausgabe: object, nutzung?: { eingabeToken, ausgabeToken } }
      }
 
-   Fehlerklassen (AnbieterFehler.klasse):
-     zeit               Zeitüberschreitung            — nicht wiederholen, nächste Stufe
-     begrenzt           429 / Ratenbegrenzung         — technisch wiederholbar
-     nicht_verfuegbar   Netz / 5xx / unbekannter Fehler — technisch wiederholbar
-     ungueltig          abgebrochen/leer/unbrauchbar  — nicht wiederholen, nächste Stufe
-     zu_gross           Antwort über der Grenze       — nicht wiederholen
+   Eingabe (WP-I18): `modellKennung` kommt aus der Model Registry (registry.modellFuer(stufe)) und
+   `maxAusgabeTokens` aus der Gateway-Konfiguration (Ausgabegrenze) — beide setzt NUR das Gateway, nie
+   die Anfrage. Ein Adapter verwendet genau diese Werte (Modell, max. Ausgabelänge) und keine eigenen.
+
+   Fehlerklassen (AnbieterFehler.klasse) — JEDE führt im Gateway zum festen Rückfall, nie zu einer
+   teureren Stufe (WP-I18 D); technische Wiederholungen nur in derselben Stufe:
+     zeit               Zeitüberschreitung            — nicht wiederholen
+     begrenzt           429 / Ratenbegrenzung         — technisch wiederholbar (gleiche Stufe)
+     nicht_verfuegbar   Netz / 5xx / unbekannter Fehler — technisch wiederholbar (gleiche Stufe)
+     ungueltig          abgebrochen/leer/unbrauchbar  — nicht wiederholen
+     schema             Antwort verletzt das Schema   — nicht wiederholen
+     zu_gross           Antwort über der Grenze       — nicht wiederholen (auch: Nutzung > maxAusgabeTokens)
      nicht_freigegeben  Adapter ist nicht freigegeben — nie wiederholen
 
    INVARIANTEN (Review-Hinweis):
@@ -37,8 +43,10 @@
 import { KiFehler } from "../fehler.mjs";
 import { deepFreeze } from "../felder.mjs";
 
-export const ANBIETER_FEHLERKLASSEN = Object.freeze(["zeit", "begrenzt", "nicht_verfuegbar", "ungueltig", "zu_gross",
+export const ANBIETER_FEHLERKLASSEN = Object.freeze(["zeit", "begrenzt", "nicht_verfuegbar", "ungueltig", "schema", "zu_gross",
   "nicht_freigegeben"]);
+/** Felder, die ein Adapter vom Gateway bekommt (WP-I18: inkl. Modellkennung und Ausgabegrenze), ohne `signal`. */
+export const ANBIETER_EINGABE_FELDER = Object.freeze(["funktion", "stufe", "schemaVersion", "paket", "fremdtext", "modellKennung", "maxAusgabeTokens"]);
 const WIEDERHOLBAR = new Set(["begrenzt", "nicht_verfuegbar"]);
 export const ANBIETER_ID_MUSTER = /^[a-z0-9][a-z0-9_.:-]{0,39}$/;
 
@@ -126,7 +134,11 @@ export async function aufrufen(o) {
     try {
       const r = await einmal(anbieter, kopie, Math.min(zeitJeVersuchMs, rest), o.ausstehend, o.signal);
       if (!r || typeof r !== "object") throw new AnbieterFehler("ungueltig", "leer");
-      return { ausgabe: r.ausgabe, nutzung: nutzungBereinigen(r.nutzung), versuche: versuch };
+      const nutzung = nutzungBereinigen(r.nutzung);
+      /* WP-I18/I15: eine Antwort über der Ausgabegrenze wird verworfen (nie gekürzt, nie eskaliert). */
+      const max = kopie.maxAusgabeTokens;
+      if (Number.isInteger(max) && max > 0 && nutzung.ausgabeToken !== null && nutzung.ausgabeToken > max) throw new AnbieterFehler("zu_gross", "Ausgabegrenze");
+      return { ausgabe: r.ausgabe, nutzung, versuche: versuch };
     } catch (e) {
       const f = alsAnbieterFehler(e);
       if (!f.wiederholbar || versuch > maxWiederholungen || deadline - jetzt() < minRest) throw f;

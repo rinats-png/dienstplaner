@@ -23,7 +23,7 @@ import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs
 import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { AliasKarte } from "../server/lib/intelligence/alias.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, fold } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, fold, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const GW = "../server/lib/intelligence/gateway/";
 const laden = (n) => import(`${GW}${n}.mjs`);
@@ -44,9 +44,9 @@ function bauen(o = {}) {
   const limits = new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000 });
   const extra = {};
   if ("namenspolitik" in o) extra.namenspolitik = o.namenspolitik;
-  if ("registry" in o) extra.registry = o.registry;
+  extra.registry = "registry" in o ? o.registry : registryTest();   // WP-I18: Registry Pflicht
   const gw = erzeugeGateway({
-    anbieter, ladeBestand: () => bestand(), aliasSchluessel: o.aliasSchluessel || (() => SCHLUESSEL), versionen: VERSIONEN, limits,
+    anbieter, ladeBestand: () => bestand(), schluesselbund: o.schluesselbund || schluesselbundTest(), versionen: VERSIONEN, limits,
     audit: erzeugeAudit({ senke: (e) => ereignisse.push(e) }), schalter: AN, betriebAktiv: () => true,
     funktionenFreigegeben: o.freigegeben || ["F1", "F2", "F3", "F5", "F6", "F7A", "F9", "F16"], faktenquelle: vollQuelle,
     hoechsteStufe: o.hoechste, zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 0, minRestMs: 0 },
@@ -231,7 +231,7 @@ describe("Bedingung 2: getrennte Schlüssel (Alias, MAC der Karte) mit Rotation"
   it("das Gateway läuft mit dem Alias-Schlüssel aus dem Schlüsselbund (gegen die Attrappe)", async () => {
     const { erzeugeSchluesselbund } = await laden("schluessel");
     const b = erzeugeSchluesselbund({ env: await env({ alias: hex(), mac: hex() }) });
-    const t = bauen({ aliasSchluessel: b.aliasSchluessel });
+    const t = bauen({ schluesselbund: b });
     expect((await t.gw.ausfuehren(S.leitung, anfrage("F2"))).status).toBe("fertig");
   });
 });
