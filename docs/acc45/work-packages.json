@@ -2714,7 +2714,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Auflagen aus dem Opus-Review von PR #146 (WP-I13, 2e2a1ab), vor echtem Anbieter zwingend: (1) Die Modellregistry wird Pflicht, und die Modellkennung kommt aus der Registry an den Adapter; heute entscheidet der Adapter das Modell, modellFuer() wird nirgends aufgerufen (mittel). (2) Gateway und Speicher nur über erzeugeSchluesselbund versorgen; aliasSchluessel wird heute nicht gegen den MAC-Schlüssel getrennt geprüft (niedrig). Restrisiko: Anbieterschlüssel fehlt im Trennungsvergleich."
     },
     {
       "id": "WP-I19",
