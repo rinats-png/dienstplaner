@@ -50,7 +50,7 @@ const grundVon = (e) => String((e && e.message) || e || "unbekannt").slice(0, 16
  * @param {string} raum
  * @returns {Promise<Loeschergebnis>}
  */
-export async function raumLoeschen(store, sitzungen, raum) {
+export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
   const fehler = [];
   let geloescht = 0;
 
@@ -240,6 +240,18 @@ export async function raumLoeschen(store, sitzungen, raum) {
       geloescht++;
     }
   } catch (e) { fehler.push({ schluessel: "selbststarts", grund: grundVon(e) }); }
+
+  /* 5b. WP-I14: Ergebnisse und Decision Contexts der Intelligence (ki:erg:/ki:ktx: im Store centric-ki-lauf). Der Kern
+        importiert nie aus dem Intelligence-Baum (Architekturtest): der Aufrufer übergibt einen Haken `kiBereinigen(raum)`
+        (`kiRaumBereinigen` aus gateway/loeschlauf.mjs). Fehler machen die Löschung unvollständig (Kern bleibt als Marker). */
+  if (opt && typeof opt.kiBereinigen === "function") {
+    try {
+      const k = await opt.kiBereinigen(raum);
+      geloescht += Number(k && k.geloescht) || 0;
+      for (const f of (k && k.fehler) || []) fehler.push(f);
+      if (!k || k.vollstaendig !== true) { if (!((k && k.fehler) || []).length) fehler.push({ schluessel: "ki:*", grund: "unvollständig" }); }
+    } catch (e) { fehler.push({ schluessel: "ki:*", grund: grundVon(e) }); }
+  }
 
   /* 6. Zuletzt der alte Ganzbestand, dann der Kern — jeder Schritt nur,
         wenn bis dahin nichts liegen geblieben ist. Der Kern ist der Marker:
