@@ -39,7 +39,7 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, sitzungsRolleBekannt, darf, schreibumfang, SCHREIBEN_VOLL } from "../lib/rechte.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
 import { parseDatei, STANDARD_GRENZEN } from "../lib/import/parser.mjs";
-import { analysieren, planen, datumssystemAus, datumAnzeige } from "../lib/import/personen.mjs";
+import { analysieren, planen, datumAnzeige } from "../lib/import/personen.mjs";
 import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN,
   parserPlatzBelegen, _pruefhaken as _importPruefhaken } from "../lib/import/vorgaenge.mjs";
 import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
@@ -47,6 +47,8 @@ import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
 const laden = () => getStore({ name: "centric", consistency: "strong" });
 const ARTEN = ["personal", "schichtzyklus"];
 const JSON_MAX = 2 * 1024 * 1024;
+/** Nur Anzeige: Stammt die Datei aus dem Datumssystem 1904, hat der Parser die Werte bereits umgerechnet. */
+const datumHinweis = (v) => v.datumssystemQuelle === "1904" ? { datumHinweis: "Datei im System 1904, Werte umgerechnet" } : {};
 
 const antwort = (daten, status = 200) => new Response(JSON.stringify(daten), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
@@ -167,9 +169,10 @@ export default async (req) => {
         await protokoll("import", k, "abgewiesen", `Datei: ${erg.code}`, wer);
         return fehlerAntwort(erg.code === "DATEI_ZU_GROSS" ? 413 : 422, erg.code, erg.nachricht);
       }
-      /* Datumssystem der Mappe (IMP-2 liefert `datumssystem`; Mappe oder je Blatt). Fehlt die Angabe, gilt 1900. */
+      /* Datum nur über den Parser: IMP-2 liefert die Werte bereits im System 1900. `datumssystemQuelle` (nur bei 1904)
+         dient allein der Anzeige; umgerechnet wird hier nichts. */
       const angelegt = { vorgang: vorgangFuellen(vorgangPlatz, { dateiHash, format: erg.format, blaetter: erg.blaetter,
-        datumssystem: erg.datumssystem ?? null }) };
+        datumssystemQuelle: erg.datumssystemQuelle === "1904" ? "1904" : null }) };
       void erledigteAufraeumen(store, besitz.raum);
       const zeilen = erg.blaetter.reduce((a, bl) => a + Math.max(0, bl.zeilen.length - 1), 0);
       await protokoll("import", k, "hochgeladen", `Format ${erg.format} · ${erg.blaetter.length} Blätter · ${zeilen} Datenzeilen`, wer);
@@ -211,14 +214,13 @@ export default async (req) => {
         return antwort({ art: v.art, unterstuetzt: false, hinweis: "Schichtzyklen werden mit IMP-6 übernommen.",
           spalten: (zeilen[0] || []).map((h, i) => ({ index: i, kopf: h === null ? "" : String(typeof h === "object" ? h.text ?? "" : h) })), zyklen: [] });
       }
-      const blattSystem = v.blaetter[blatt].datumssystem ?? v.datumssystem;
-      const a = analysieren({ mandant: eigener, zeilen, zuordnung: rumpf.zuordnung, heute, datumssystem: blattSystem });
+      const a = analysieren({ mandant: eigener, zeilen, zuordnung: rumpf.zuordnung, heute });
       if (!a.ok) return fehlerAntwort(422, a.code, a.nachricht);
-      v.zeilen = zeilen; v.zuordnung = a.zuordnung; v.analyse = { art: v.art, datumssystem: datumssystemAus(blattSystem) }; v.plan = null;
+      v.zeilen = zeilen; v.zuordnung = a.zuordnung; v.analyse = { art: v.art }; v.plan = null;
       return antwort({ art: v.art, blatt, spalten: a.spalten, zuordnung: a.zuordnung, fehlendePflicht: a.fehlendePflicht,
         datensaetze: a.datensaetze.map((d) => ({ datensatz: d.datensatz, werte: d.werte, fehler: d.fehler, hinweise: d.hinweise,
           konflikte: d.konflikte, dublette: d.dublette, erlaubt: d.erlaubt, vorgabe: d.vorgabe })),
-        zaehler: a.zaehler });
+        zaehler: a.zaehler, ...datumHinweis(v) });
     }
 
     /* ------------------------------- Vorschau ------------------------------ */
@@ -227,7 +229,7 @@ export default async (req) => {
       if (v.art === "schichtzyklus")
         return antwort({ art: v.art, unterstuetzt: false, vorschau: { zyklen: [], zeitraum: null }, bereit: false,
           hinweis: "Schichtzyklen werden mit IMP-6 übernommen." });
-      const a = analysieren({ mandant: eigener, zeilen: v.zeilen, zuordnung: v.zuordnung, heute, datumssystem: v.analyse.datumssystem });
+      const a = analysieren({ mandant: eigener, zeilen: v.zeilen, zuordnung: v.zuordnung, heute });
       if (!a.ok) return fehlerAntwort(422, a.code, a.nachricht);
       if (a.fehlendePflicht.length)
         return fehlerAntwort(422, "PFLICHTSPALTE_FEHLT", "Nicht alle Pflichtspalten sind zugeordnet.", { fehlendePflicht: a.fehlendePflicht });
@@ -242,7 +244,7 @@ export default async (req) => {
       v.entscheidungen = entscheidungen; v.bestaetigungen = bestaetigungen; v.einheitenAnlegen = einheitenAnlegen;
       v.plan = { hash: p.hash, zaehler: p.zaehler };
       return antwort({ art: v.art, vorschau: vorschauAus(p.plan, a), zaehler: p.zaehler,
-        bereit: p.zaehler.neu + p.zaehler.aktualisiert > 0, bestaetigung: p.hash });
+        bereit: p.zaehler.neu + p.zaehler.aktualisiert > 0, bestaetigung: p.hash, ...datumHinweis(v) });
     }
 
     /* ------------------------------ Übernahme ------------------------------ */
@@ -259,7 +261,7 @@ export default async (req) => {
          die Übernahme arbeitet mit einer Momentaufnahme der Entscheidungen und der Bestätigung aus DIESER Anfrage —
          nicht mit dem, was der Vorgang später enthält. */
       v.laeuft = true;
-      const momentaufnahme = { zeilen: v.zeilen, zuordnung: v.zuordnung, dateiHash: v.dateiHash, datumssystem: v.analyse && v.analyse.datumssystem,
+      const momentaufnahme = { zeilen: v.zeilen, zuordnung: v.zuordnung, dateiHash: v.dateiHash,
         entscheidungen: Object.assign(Object.create(null), v.entscheidungen),
         bestaetigungen: Object.assign(Object.create(null), v.bestaetigungen), einheitenAnlegen: v.einheitenAnlegen === true };
       let r;

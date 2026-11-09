@@ -13,6 +13,7 @@ import path from "node:path";
 import { mappe } from "./import-parser-hilfen.mjs";
 import * as XLSX from "../vendor/sheetjs/xlsx.mjs";
 import { parseDatei } from "../server/lib/import/parser.mjs";
+import { datumAusZelle } from "../server/lib/import/personen.mjs";
 
 const WIRT = "127.0.0.1:3000";
 let wurzel, laden, imp, B, sitzungAnlegen, V, U, spurStore;
@@ -924,12 +925,11 @@ function datumsMappe(personalnummer, iso, system) {
 }
 
 describe("Freigabe Betreiber — Datumswerte in der Vorschau = gespeicherte Werte", { timeout: 120000 }, () => {
-  async function vorschauUndUebernahme(t, raum, datei, { system } = {}) {
+  async function vorschauUndUebernahme(t, raum, datei) {
     const up = await hochladen(t.LT, datei, { name: "datum.xlsx" });
     expect(up.status, JSON.stringify(up)).toBe(201);
-    /* Bis IMP-2 `datumssystem` liefert, wird die Angabe hier so gesetzt, wie der Parser sie liefern wird (Feldname
-       laut IMP-2-Freigabe). Liefert der Parser sie bereits, bleibt sein Wert unangetastet. */
-    if (system && V._roh(up.vorgang).datumssystem == null) V._roh(up.vorgang).datumssystem = system;
+    /* Datum nur über den Parser: Nichts wird mehr in den Vorgang hineingeschrieben; die Werte kommen so, wie der echte
+       Parser (IMP-2) sie liefert (1904er-Mappen dort bereits auf 1900 umgerechnet). */
     const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
     const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang });
     expect(vs.status, JSON.stringify(vs).slice(0, 300)).toBe(200);
@@ -939,8 +939,8 @@ describe("Freigabe Betreiber — Datumswerte in der Vorschau = gespeicherte Wert
   }
   it("1900er- und 1904er-Mappe mit gleichem Kalenderdatum: gleiche Vorschau; die Übernahme speichert genau das Vorschau-Datum", async () => {
     const { raum, t } = await neuerRaum();
-    const a = await vorschauUndUebernahme(t, raum, datumsMappe("7190", "2026-03-15", 1900), { system: 1900 });
-    const b = await vorschauUndUebernahme(t, raum, datumsMappe("7194", "2026-03-15", 1904), { system: 1904 });
+    const a = await vorschauUndUebernahme(t, raum, datumsMappe("7190", "2026-03-15", 1900));
+    const b = await vorschauUndUebernahme(t, raum, datumsMappe("7194", "2026-03-15", 1904));
     expect(a.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
     expect(b.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
     expect(a.vs.vorschau.neu[0].eintrittAnzeige).toBe("15.03.2026");
@@ -962,13 +962,35 @@ describe("Freigabe Betreiber — Datumswerte in der Vorschau = gespeicherte Wert
     expect((await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung })).status).toBe(200);
     expect((await betriebVon(raum, "m1")).personen.find((p) => p.personalnummer === "7192").eintritt).toBeNull();
   });
-  it("echter Parser-Weg (sobald IMP-2 `datumssystem` liefert): 1904er-Mappe ohne Nachhilfe", async (ctx) => {
-    const r = await parseDatei({ buffer: datumsMappe("7195", "2026-03-15", 1904), name: "d.xlsx" });
-    expect(r.ok).toBe(true);
-    if (r.datumssystem == null && r.blaetter.every((b) => b.datumssystem == null)) ctx.skip();
+  it("Datum nur über den Parser: 1900- und 1904-Mappe (gleicher Kalendertag) liefern in Vorschau und Speicherung dasselbe Eintrittsdatum", async () => {
+    /* Der echte Parser liefert beide Mappen bereits im System 1900 und meldet die Herkunft nur als Quelle. */
+    const p1900 = await parseDatei({ buffer: datumsMappe("7195", "2026-03-15", 1900), name: "a.xlsx" });
+    const p1904 = await parseDatei({ buffer: datumsMappe("7196", "2026-03-15", 1904), name: "b.xlsx" });
+    expect(p1900.ok && p1904.ok).toBe(true);
+    expect(p1904.datumssystem).toBe("1900");
+    expect(p1904.datumssystemQuelle).toBe("1904");
+    expect(p1900.datumssystemQuelle).toBeUndefined();
     const { raum, t } = await neuerRaum();
-    const b = await vorschauUndUebernahme(t, raum, datumsMappe("7195", "2026-03-15", 1904));
+    const a = await vorschauUndUebernahme(t, raum, datumsMappe("7195", "2026-03-15", 1900));
+    const b = await vorschauUndUebernahme(t, raum, datumsMappe("7196", "2026-03-15", 1904));
+    expect(a.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
     expect(b.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
-    expect((await betriebVon(raum, "m1")).personen.find((p) => p.personalnummer === "7195").eintritt).toBe("2026-03-15");
+    const m1 = await betriebVon(raum, "m1");
+    for (const [nr, x] of [["7195", a], ["7196", b]]) {
+      const pe = m1.personen.find((q) => q.personalnummer === nr);
+      expect(pe.eintritt).toBe(x.vs.vorschau.neu[0].eintritt);
+      expect(pe.eintritt).toBe("2026-03-15");
+    }
+    /* Nur Anzeige: Hinweis bei 1904, keiner bei 1900. */
+    expect(b.vs.datumHinweis).toBe("Datei im System 1904, Werte umgerechnet");
+    expect(b.an.datumHinweis).toBe("Datei im System 1904, Werte umgerechnet");
+    expect(a.vs.datumHinweis).toBeUndefined();
+  });
+  it("datumAusZelle rechnet nie selbst um: Excel-1900-Seriennummer; ein etwaiges zweites Argument wird ignoriert (keine Doppelverschiebung)", () => {
+    const serial = Date.parse("2026-03-15T00:00:00Z") / TAG + 25569;
+    const z = { typ: "datum", roh: serial, text: "" };
+    expect(datumAusZelle(z)).toEqual({ wert: "2026-03-15" });
+    expect(datumAusZelle(z, "1904")).toEqual({ wert: "2026-03-15" });
+    expect(datumAusZelle({ typ: "datum", roh: 0, text: "kein Datum" })).toEqual({ ungueltig: true });
   });
 });

@@ -117,7 +117,7 @@ export function uebernehmen({ store: storeRoh, sitzung, vorgang, bestaetigung, m
         { frueher: { zeit: erl.zeit, zaehler: erl.zaehler } });
 
     /* Der Plan aus dem aktuellen Stand und der Momentaufnahme — muss genau die bestätigte Vorschau sein. */
-    const analyse = analysieren({ mandant: eigener, zeilen: m.zeilen, zuordnung: m.zuordnung, heute, datumssystem: m.datumssystem });
+    const analyse = analysieren({ mandant: eigener, zeilen: m.zeilen, zuordnung: m.zuordnung, heute });
     const p = analyse.ok ? planen({ mandant: eigener, analyse, entscheidungen: m.entscheidungen,
       bestaetigungen: m.bestaetigungen, einheitenAnlegen: m.einheitenAnlegen, orgEdit }) : null;
     if (!p || !p.ok || p.hash !== bestaetigung)

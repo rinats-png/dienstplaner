@@ -90,17 +90,15 @@ function kalenderGueltig(j, mo, t) {
 /**
  * Datum aus einer Zelle: `{ wert }`, `{ leer: true }` oder `{ ungueltig: true }`. Strenge Kalenderprüfung wie IMP-1
  * (31.02. und 2024-02-30 sind ungültig); nie Ersatz durch „heute" bei einem nicht lesbaren Wert.
- * Excel-Datumszellen: Seriennummer im Datumssystem der Mappe (`datumssystem` aus dem Parser, IMP-2): 1900 (Vorgabe)
- * oder 1904 (Mac). Umgerechnet wird nur hier, in der Analyse; Vorschau und Übernahme tragen danach dasselbe
- * ISO-Datum — beim Schreiben wird nichts mehr umgerechnet (Freigabe Betreiber IMP-3).
+ * Excel-Datumszellen: Seriennummer im Datumssystem 1900. Der Parser (IMP-2) rechnet 1904er-Mappen bereits beim Lesen
+ * auf 1900 um; hier wird NICHT mehr umgerechnet (sonst Doppelverschiebung um 1462 Tage). Vorschau und Übernahme
+ * tragen dasselbe ISO-Datum (Freigabe Betreiber IMP-3).
  */
-export function datumAusZelle(z, datumssystem = 1900) {
+export function datumAusZelle(z) {
   if (z && typeof z === "object" && z.typ === "datum") {
-    const ist1904 = datumssystemAus(datumssystem) === 1904;
-    /* 1904er-System: Tag 0 = 01.01.1904, also 1462 Tage später als im 1900er-System (Tag 25569 = 01.01.1970). */
-    const epoche = ist1904 ? 24107 : 25569;
-    if (typeof z.roh === "number" && Number.isFinite(z.roh) && z.roh >= (ist1904 ? 0 : 1) && z.roh < 2958466) {
-      const d = new Date(Math.round((Math.floor(z.roh) - epoche) * 86400000));
+    /* Excel 1900: Tag 25569 = 01.01.1970. */
+    if (typeof z.roh === "number" && Number.isFinite(z.roh) && z.roh >= 1 && z.roh < 2958466) {
+      const d = new Date(Math.round((Math.floor(z.roh) - 25569) * 86400000));
       const w = kalenderGueltig(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
       return w ? { wert: w } : { ungueltig: true };
     }
@@ -115,11 +113,6 @@ export function datumAusZelle(z, datumssystem = 1900) {
   if (iso) w = kalenderGueltig(Number(iso[1]), Number(iso[2]), Number(iso[3]));
   else if (de) w = kalenderGueltig(Number(de[3]), Number(de[2]), Number(de[1]));
   return w ? { wert: w } : { ungueltig: true };
-}
-
-/** Datumssystem aus der Parser-Angabe (`datumssystem`, IMP-2): 1904 nur bei ausdrücklicher Angabe, sonst 1900. */
-export function datumssystemAus(x) {
-  return String(x ?? "").trim() === "1904" ? 1904 : 1900;
 }
 
 /** Datum für die Vorschau: genau der Wert, der gespeichert würde, als TT.MM.JJJJ; leer → „nicht angegeben". */
@@ -183,9 +176,9 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Analyse eines Blatts gegen den eigenen Betrieb: Spalten, Zuordnung, Dubletten, Konflikte.
- * @param {{ mandant: any, zeilen: any[][], zuordnung?: any, heute: string, datumssystem?: any }} e
+ * @param {{ mandant: any, zeilen: any[][], zuordnung?: any, heute: string }} e
  */
-export function analysieren({ mandant, zeilen, zuordnung, heute, datumssystem = 1900 }) {
+export function analysieren({ mandant, zeilen, zuordnung, heute }) {
   const kopf = Array.isArray(zeilen) && zeilen.length ? zeilen[0] : [];
   const daten = Array.isArray(zeilen) ? zeilen.slice(1) : [];
   const vorschlag = spaltenVorschlag(kopf);
@@ -238,7 +231,7 @@ export function analysieren({ mandant, zeilen, zuordnung, heute, datumssystem = 
     if (!werte.einheit) fehler.push("Einheit fehlt");
     if (werte.email && !EMAIL.test(werte.email)) fehler.push("E-Mail ungültig");
     for (const [k, v] of Object.entries(werte)) if (v.length > 200) fehler.push(`${k} zu lang`);
-    const ein = datumAusZelle(hol("eintritt", z), datumssystem);
+    const ein = datumAusZelle(hol("eintritt", z));
     if (ein.ungueltig) fehler.push("Eintrittsdatum ungültig");
     /* Leer und optional -> null; nie „heute" (Entscheidung 2026-11-09). */
     werte.eintritt = ein.wert ?? null;
