@@ -44,6 +44,7 @@ export const IE_JE_GROESSE = Object.freeze({ klein: 1, mittel: 3, gross: 7 });
 export const EINGABE_GRENZEN = Object.freeze({ klein: 20000, mittel: 60000, gross: 150000 });
 
 const STUNDE = 3600_000;
+const STUNDE_RESERVE = 16;   // Puffer des Stundenfensters: Grenze + Reserve (Review I15)
 const TAG = 24 * STUNDE;
 const ZEHN_MIN = 10 * 60_000;
 const MAX_SCHLUESSEL = 5000;
@@ -186,7 +187,14 @@ export class Limits {
     pz.zeiten.push(t); this.person.set(pKey, pz);
     gz.push(t); this.gleich.set(gKey, gz);
     bs.laufend++; bs.ieMonat += ie; bs.ieTag += ie; this.gesamt.ie += ie;
-    const std = { t, ie }; bs.stunde.push(std);
+    const std = { t, ie };
+    /* Review I15: nur füllen, wenn die Stundengrenze gesetzt ist, und hart beschränken (jeder Eintrag zählt >= 1 IE;
+       ältester Eintrag fällt zuerst heraus). */
+    if (this.k.betriebJeStundeIE !== undefined) {
+      bs.stunde.push(std);
+      const maxEintraege = Math.ceil(this.k.betriebJeStundeIE) + STUNDE_RESERVE;
+      while (bs.stunde.length > maxEintraege) bs.stunde.shift();
+    }
     const beleg = { std, bKey: h("b", a.betrieb), ie, klasse: a.klasse, offen: true, tag: bs.tag, monat: bs.monat, dauer: [] };
     this._ereignis(beleg, ie);
     return { ok: true, ueberKontingent: ueber, beleg };

@@ -117,6 +117,38 @@ describe("Ausgabegrenze (Token)", () => {
   it("ungültige Grenze (0, negativ, NaN, Text) → Gateway wird nicht gebaut", () => {
     for (const v of [0, -5, NaN, Infinity, "100"]) expect(() => bauen({ gw: { ausgabeTokenMax: v } }), String(v)).toThrow();
   });
+  /* Review-Befund 1: Überschreitung ist endgültig — keine weitere (teurere) Stufe, keine Teilausgabe. */
+  it("Überschreitung → sofort Rückfall KI_GROESSE: KEIN Aufruf der nächsten Stufe", async () => {
+    const t = bauen({ modus: "skript", skript: mitAusgabe(5000), gw: { ausgabeTokenMax: 1000 } });
+    const r = await t.gw.ausfuehren(S.leitung, anfrage());
+    expect(r.status).toBe("rueckfall");
+    expect(r.rueckfall.code).toBe("KI_GROESSE");
+    expect(t.anbieter.aufrufe.length).toBe(1);
+    expect(r.ergebnis).toBeUndefined();
+  });
+  /* Review-Befund 2: Die Anbieter-Schnittstelle (anbieter.mjs, Kopf) kennt kein max_tokens-Feld; es wird daher
+     nicht übergeben. Dieser Test hält den Stand fest; die Nachprüfung läuft über den Rückfall. */
+  it("Schnittstelle kennt kein max_tokens: der Adapter erhält das Feld (noch) nicht, die Nachprüfung greift trotzdem", async () => {
+    const t = bauen({ modus: "skript", skript: mitAusgabe(10), gw: { ausgabeTokenMax: 1000 } });
+    await t.gw.ausfuehren(S.leitung, anfrage());
+    expect(t.anbieter.aufrufe.length).toBeGreaterThan(0);
+    expect(Object.keys(t.anbieter.aufrufe[0]).sort()).toEqual(["fremdtext", "funktion", "paket", "schemaVersion", "signal", "stufe"]);
+  });
+});
+
+/* Review-Befund 3: Das Stundenfenster wächst nie unbegrenzt. */
+const stundenPuffer = (l) => Math.max(0, ...[...l.betrieb.values()].map((b) => b.stunde.length));
+describe("Stundenfenster ist beschränkt", () => {
+  it("ohne betriebJeStundeIE wächst der Puffer nicht", () => {
+    const { l, uhr } = neu();
+    for (let i = 0; i < 50; i++) { l.reservieren(R({ person: `p${i}` })); uhr.t += 10; }
+    expect(stundenPuffer(l)).toBe(0);
+  });
+  it("mit betriebJeStundeIE bleibt der Puffer hart beschränkt (Grenze + kleine Reserve)", () => {
+    const { l, uhr } = neu({ betriebJeStundeIE: 7 });
+    for (let i = 0; i < 500; i++) { l.reservieren(R({ person: `p${i}`, klasse: "A", tokens: 0 })); uhr.t += 10; }   // Klasse A wird nie gesperrt
+    expect(stundenPuffer(l)).toBeLessThanOrEqual(7 + 16);
+  });
 });
 
 describe("Zeitkonfiguration (Deadline) fail closed", () => {

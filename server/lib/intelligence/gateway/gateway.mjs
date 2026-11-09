@@ -352,7 +352,9 @@ export function erzeugeGateway(o) {
           audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: "KI_GROESSE",
             dauerMs: Math.max(0, jetzt() - sStart), versuche: antwort.versuche });
           letzterCode = "KI_GROESSE";
-          continue;
+          /* Review I15: endgültig — keine weitere (teurere) Stufe, keine Teilausgabe. Hinweis: die Anbieter-Schnittstelle
+             (anbieter.mjs) kennt noch kein max_tokens-Feld; die Grenze wird daher nur nachgeprüft, nicht übergeben. */
+          break;
         }
         const p = ausgabePruefen({ ausgabe: antwort.ausgabe, paket, bausteinKatalog: katalog[anfrage.funktion] || null, sperrliste, gegenrechnung: o.gegenrechnung });
         audit.melden({ art: "ki.stufe", funktion: anfrage.funktion, auftrag: auftragId, stufe, ergebnis: p.ok ? "ok" : "KI_PRUEFER",
