@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 418,2–710,8 PT in 84 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 440,7–748,8 PT in 95 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -37,6 +37,17 @@ flowchart LR
     SI_P6b["SI-P6b<br/>BLOCKED"]
     WP_42R1["WP-42R1<br/>BLOCKED"]
     WP_42R2["WP-42R2<br/>BLOCKED"]
+    IMP_0["IMP-0<br/>READY"]
+    IMP_1["IMP-1<br/>BLOCKED"]
+    IMP_2["IMP-2<br/>BLOCKED"]
+    IMP_3["IMP-3<br/>BLOCKED"]
+    IMP_4["IMP-4<br/>BLOCKED"]
+    IMP_5["IMP-5<br/>BLOCKED"]
+    IMP_6["IMP-6<br/>BLOCKED"]
+    IMP_7["IMP-7<br/>BLOCKED"]
+    IMP_8["IMP-8<br/>BLOCKED"]
+    IMP_9["IMP-9<br/>BLOCKED"]
+    IMP_10["IMP-10<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -372,6 +383,18 @@ flowchart LR
   WP_24b --> WP_42R2
   WP_27c --> WP_42R2
   WP_47b --> WP_42R2
+  IMP_0 --> IMP_1
+  IMP_0 --> IMP_2
+  IMP_0 --> IMP_3
+  IMP_2 --> IMP_3
+  IMP_1 --> IMP_4
+  IMP_3 --> IMP_4
+  IMP_3 --> IMP_5
+  IMP_3 --> IMP_6
+  IMP_6 --> IMP_7
+  IMP_2 --> IMP_8
+  IMP_0 --> IMP_9
+  IMP_4 --> IMP_10
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -536,3 +559,14 @@ flowchart LR
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
 | WP-42R1 | acc45 | P1 | 0 | 0 | WP-16, WP-16c, WP-07b, WP-S1, WP-18, WP-33, WP-44, SI-P4 | – | opus | BLOCKED |
 | WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b | – | opus | BLOCKED |
+| IMP-0 | acc45 | P1 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| IMP-1 | acc45 | P0 | 2–3,5 | 2–3,5 | IMP-0 | – | sonnet | BLOCKED |
+| IMP-2 | acc45 | P1 | 3–5 | 3–5 | IMP-0 | – | sonnet | BLOCKED |
+| IMP-3 | acc45 | P1 | 3–5 | 3–5 | IMP-0, IMP-2 | – | opus | BLOCKED |
+| IMP-4 | acc45 | P1 | 2,5–4 | 2,5–4 | IMP-1, IMP-3 | – | sonnet | BLOCKED |
+| IMP-5 | acc45 | P2 | 1,5–2,5 | 1,5–2,5 | IMP-3 | – | sonnet | BLOCKED |
+| IMP-6 | acc45 | P2 | 3–5 | 3–5 | IMP-3 | – | sonnet | BLOCKED |
+| IMP-7 | acc45 | P2 | 4–7 | 4–7 | IMP-6 | – | sonnet | BLOCKED |
+| IMP-8 | acc45 | P2 | 2–3 | 2–3 | IMP-2 | – | haiku | BLOCKED |
+| IMP-9 | acc45 | P2 | 0,5–1 | 0,5–1 | IMP-0 | – | sonnet | BLOCKED |
+| IMP-10 | acc45 | P3 | 0,5–1 | 0,5–1 | IMP-4 | – | haiku | BLOCKED |

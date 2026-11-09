@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 160 · BLOCKED 79 · READY 26 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 38 · DONE 3
+**Pakete gesamt:** 171 · BLOCKED 89 · READY 27 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 38 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 63 | 14 | 5 | 2 | 5 | 35 | 2 | 62,4–97,7 |
+| ACC45 | 74 | 24 | 6 | 2 | 5 | 35 | 2 | 84,9–135,7 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
 | Intelligence | 37 | 32 | 3 | 0 | 1 | 1 | 0 | 280,4–491,8 |
 | Folgepakete | 10 | 1 | 2 | 2 | 3 | 2 | 0 | 8,6–17,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **418,2–710,8 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **440,7–748,8 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -58,9 +58,9 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **418,2–710,
 | SI-P4 Zweiter Faktor für Leitung, Planung und Kunde (Befund P4, mittel) | REVIEW | `acc45/sicherheit/si-p4` | Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. |
 | SI-P9 Workflow-Härtung: Checkout-Token nicht speichern, Berechtigungen nur lesend (Befund P8-Restpunkte 1+2, mittel) | REVIEW | `acc45/sicherheit/si-p9` | Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe. |
 
-### Bereit zum Start (12)
+### Bereit zum Start (13)
 
-WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT) · WP-39 (acc45, 4–5,5 PT) · WP-32d (acc45, 1–2 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-I2 (intelligence, 3–6 PT) · WP-I3 (intelligence, 8–14 PT) · WP-I6 (intelligence, 3–5 PT) · SI-P5 (acc45, 1–2 PT) · SI-P6b (acc45, 1,5–3 PT)
+WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT) · WP-39 (acc45, 4–5,5 PT) · WP-32d (acc45, 1–2 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-I2 (intelligence, 3–6 PT) · WP-I3 (intelligence, 8–14 PT) · WP-I6 (intelligence, 3–5 PT) · SI-P5 (acc45, 1–2 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-0 (acc45, 0,5–1 PT)
 
 ### Integriert in `integration/centric-complete` (38)
 
@@ -109,7 +109,7 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-72 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+83 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
