@@ -17,6 +17,7 @@ import { kannMerkmal, mandantPaketkosten, paketPositionen } from "./paketlogik.j
 import { verbindlichkeit } from "./regelwerk.js";
 /* Die Ortsprüfung beim Stempeln gibt es nur einmal (server/lib/geo.mjs). */
 import { abstandMeter, geoUrteil } from "../server/lib/geo.mjs";
+import { vergebbareRollen, RANG as ROLLEN_RANG } from "../server/lib/rollenvergabe.mjs";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -727,7 +728,7 @@ function absIdx(m) {
 }
 
 function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (!z.ab || z.ab <= d) t = z; return t ? t.einheitId : null; }
-function imDienst(p, d) { if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
+function imDienst(p, d) { if (p.eintritt === null || p.eintritt === "") return false; if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
 const aktive = (m, d) => memo(m, `akt|${d}`, () => m.personen.filter((p) => imDienst(p, d)));
 
 function abwesenheitAm(m, pid, d) {
@@ -2137,16 +2138,10 @@ function eintrittPruefen(roh, { pflicht = false } = {}) {
   return { ok: true, wert: `${j}-${pad(mo)}-${pad(tg)}` };
 }
 /* IMP-1 Auflagen C/D/E/F: Hilfen der Importprüfung. */
-/** Rollen, die ein Anwender über den Import vergeben darf. Spiegel von vergebbareRollen() in
- *  server/lib/rollenvergabe.mjs (niemand vergibt die eigene Rolle oder eine darüber). Der Client bindet
- *  server/ nicht ein; der Server prüft die Vergabe trotzdem selbst, die Prüfung hier ist nur
- *  Bedienkomfort und frühe Rückmeldung, kein Schutz. */
-const IMPORT_VERGEBBAR = {
-  betreiber: ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"],
-  leitung: ["planer", "subplaner", "mitarbeiter", "betriebsrat"],
-  planer: ["subplaner", "mitarbeiter", "betriebsrat"],
-  subplaner: ["mitarbeiter", "betriebsrat"],
-};
+/** Rollen, die ein Anwender über den Import vergeben darf — abgeleitet aus vergebbareRollen() in
+ *  server/lib/rollenvergabe.mjs (Datenreview PR #130, wie fachlogik.js). */
+const IMPORT_VERGEBBAR = Object.freeze(Object.fromEntries(Object.keys(ROLLEN_RANG)
+  .map((r) => [r, vergebbareRollen(r)]).filter(([, l]) => l.length)));
 /** Personalnummer ohne Groß-/Kleinschreibung, Trennzeichen und führende Nullen. */
 const importNrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
 /** Name normalisiert: Umlaute, ß, Bindestriche, Mehrfach-Leerzeichen, Groß-/Kleinschreibung. */
@@ -2169,8 +2164,9 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
     const einheit = m.einheiten.find((e) => e.name.toLowerCase() === einheitName.toLowerCase());
     const std = parseFloat((hol("wochenstunden") || "").replace(",", ".")) || m.einstellungen.sollWochenstunden;
     const rolleRoh = hol("rolle").toLowerCase();
-    const rolleId = rollen.find((x) => x === rolleRoh)
-      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || "mitarbeiter";
+    const rolleErkannt = rollen.find((x) => x === rolleRoh)
+      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || null;
+    const rolleId = rolleRoh ? rolleErkannt : "mitarbeiter";
     const qualNamen = hol("qualifikationen").split(/[,/|]/).map((x) => x.trim()).filter(Boolean);
     const quals = qualNamen.map((q) => (m.qualifikationen.find((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
@@ -2194,7 +2190,8 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
     /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
        „mitarbeiter“; wer gar keine Rolle vergeben darf (Beschäftigte, abgelöste Rolle „kunde“: in
        IMPORT_VERGEBBAR wie in vergebbareRollen() ohne Eintrag), legt auch so niemanden an. */
-    if (!vergebbar.includes(rolleId))
+    if (!rolleId) fehler.push(`Rolle „${rolleRoh}“ nicht erkannt`);
+    else if (!vergebbar.includes(rolleId))
       fehler.push(rolleRoh ? `Rolle „${rolleRoh}" nicht vergebbar` : "Keine Berechtigung, Zugänge anzulegen");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
     /* Exaktvergleich: beide Seiten getrimmt (Import und Bestand), Schreibweise egal. */
@@ -2257,7 +2254,11 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
         ? `Personalnummer „${personalnummer}" kommt in der Datei mehrfach vor` : null);
     if (hinweis) fehler.push(hinweis);
     const doppelt = !!dublette;
-    const wahl = dublette ? entscheidungen[i + 1] : null;
+    const nrLose = importNrLose(nrNorm);
+    const namensgleich = dublette ? [] : roh.filter((x) => x !== r && importNameGleich(r.nameKey, x.nameKey)
+      && !!nrLose && !!importNrLose(x.nrNorm) && importNrLose(x.nrNorm) !== nrLose);
+    const klaeren = doppelt || namensgleich.length > 0;
+    const wahl = klaeren ? entscheidungen[i + 1] : null;
     let aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
     const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
     /* Vorgabe ist nie "aktualisieren" und nie "neu"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
@@ -2265,11 +2266,13 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
     if (aktualisierungAbgelehnt) aktion = "klaeren";
     const neuAbgelehnt = aktion === "neu" && sicherTreffer;
     if (neuAbgelehnt) aktion = "klaeren";
-    const vorgabe = dublette ? "klaeren" : null;
+    const vorgabe = klaeren ? "klaeren" : null;
     const neuGewaehlt = aktion === "neu";
     /* IMP-1 Review: Grund der Dublette für die Rückmeldung (eine Wahl bietet die Oberfläche erst mit IMP-4).
        Die Personalnummer-Fälle stehen schon als hinweis in fehler. */
-    const dublettenGrund = !dublette || hinweis ? null
+    const dublettenGrund = !dublette && namensgleich.length
+      ? `Namensgleichheit mit abweichender Nummer in der Datei (Zeile ${namensgleich.map((x) => x.i + 1).join(", ")}), bitte klären`
+      : !dublette || hinweis ? null
       : dublette.inDatei ? `Name kommt in der Datei mehrfach vor (Zeile ${dublette.zeilen.join(", ")}), bitte klären`
         : dublette.grund === "personalnummer_aehnlich" ? `Ähnliche Personalnummer bereits vorhanden, bitte klären`
           : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
@@ -2287,7 +2290,8 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
       /* zielId ist nur Rückmeldung (welche Person gemeint wäre). Solche Zeilen sind nie ok; der Speicherpfad
          nimmt nur ok-Zeilen und liest zielId nicht. */
       zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
-      ok: fehler.length === 0 && (!doppelt || neuGewaehlt) };
+      namensgleichheit: namensgleich.map((x) => x.i + 1),
+      ok: fehler.length === 0 && (!klaeren || neuGewaehlt) };
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,

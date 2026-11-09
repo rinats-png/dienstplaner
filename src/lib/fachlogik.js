@@ -6,6 +6,7 @@ import { addDays, montag, toMin, dim_, pad, AUSGLEICH_WOCHEN, ausgleichszeitraum
 import { DOW, heute, fKurz, fDatum, MON, fLang, zeitpunktText } from "./datum.js";
 import { MATRIX_STD, ROLLEN, rollenName, anzahlWort } from "./rollen.js";
 import { planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
+import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenvergabe.mjs";
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
 import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText } from "../../server/lib/isteinfrieren.mjs";
@@ -2087,16 +2088,12 @@ export function eintrittUebernehmen(person, roh) {
 }
 
 /* IMP-1 Auflagen C/D/E/F: Hilfen der Importprüfung. */
-/** Rollen, die ein Anwender über den Import vergeben darf. Spiegel von vergebbareRollen() in
- *  server/lib/rollenvergabe.mjs (niemand vergibt die eigene Rolle oder eine darüber). Der Client bindet
- *  server/ nicht ein; der Server prüft die Vergabe trotzdem selbst, die Prüfung hier ist nur
- *  Bedienkomfort und frühe Rückmeldung, kein Schutz. */
-export const IMPORT_VERGEBBAR = {
-  betreiber: ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"],
-  leitung: ["planer", "subplaner", "mitarbeiter", "betriebsrat"],
-  planer: ["subplaner", "mitarbeiter", "betriebsrat"],
-  subplaner: ["mitarbeiter", "betriebsrat"],
-};
+/** Rollen, die ein Anwender über den Import vergeben darf — abgeleitet aus vergebbareRollen() in
+ *  server/lib/rollenvergabe.mjs (Datenreview PR #130: keine Kopie der Liste mehr; niemand vergibt die eigene
+ *  Rolle oder eine darüber). Nur Rollen, die etwas vergeben dürfen, haben einen Eintrag. Der Server prüft die
+ *  Vergabe trotzdem selbst; die Prüfung hier ist Bedienkomfort und frühe Rückmeldung, kein Schutz. */
+export const IMPORT_VERGEBBAR = Object.freeze(Object.fromEntries(Object.keys(ROLLEN_RANG)
+  .map((r) => [r, vergebbareRollen(r)]).filter(([, l]) => l.length)));
 /** Personalnummer ohne Groß-/Kleinschreibung, Trennzeichen und führende Nullen. */
 const importNrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
 /** Name normalisiert: Umlaute, ß, Bindestriche, Mehrfach-Leerzeichen, Groß-/Kleinschreibung. */
@@ -2121,8 +2118,11 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     const einheit = m.einheiten.find((e) => e.name.toLowerCase() === einheitName.toLowerCase());
     const std = parseFloat((hol("wochenstunden") || "").replace(",", ".")) || m.einstellungen.sollWochenstunden;
     const rolleRoh = hol("rolle").toLowerCase();
-    const rolleId = rollen.find((x) => x === rolleRoh)
-      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || "mitarbeiter";
+    /* Datenreview PR #130: Nur eine leere Rollenangabe heißt „mitarbeiter“; eine unbekannte wird nicht
+       stillschweigend dazu, sondern ist ein Fehler (rolleId null). */
+    const rolleErkannt = rollen.find((x) => x === rolleRoh)
+      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || null;
+    const rolleId = rolleRoh ? rolleErkannt : "mitarbeiter";
     const qualNamen = hol("qualifikationen").split(/[,/|]/).map((x) => x.trim()).filter(Boolean);
     const quals = qualNamen.map((q) => (m.qualifikationen.find((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
@@ -2148,7 +2148,8 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
        „mitarbeiter“; wer gar keine Rolle vergeben darf (Beschäftigte, abgelöste Rolle „kunde“: in
        IMPORT_VERGEBBAR wie in vergebbareRollen() ohne Eintrag), legt auch so niemanden an. */
-    if (!vergebbar.includes(rolleId))
+    if (!rolleId) fehler.push(`Rolle „${rolleRoh}“ nicht erkannt`);
+    else if (!vergebbar.includes(rolleId))
       fehler.push(rolleRoh ? `Rolle „${rolleRoh}" nicht vergebbar` : "Keine Berechtigung, Zugänge anzulegen");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
     /* IMP-1: Dublette zuerst über die Personalnummer (mandantenintern), sonst über den Namen.
@@ -2214,7 +2215,13 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
         ? `Personalnummer „${personalnummer}" kommt in der Datei mehrfach vor` : null);
     if (hinweis) fehler.push(hinweis);
     const doppelt = !!dublette;
-    const wahl = dublette ? entscheidungen[i + 1] : null;
+    /* Datenreview PR #130: Gleicher Name in der Datei mit verschiedenen Nummern ist keine Dublette (die Nummer
+       entscheidet), aber ein Hinweis zum Klären — Vorgabe klaeren, ohne ausdrückliche Wahl nicht übernehmbar. */
+    const nrLose = importNrLose(nrNorm);
+    const namensgleich = dublette ? [] : roh.filter((x) => x !== r && importNameGleich(r.nameKey, x.nameKey)
+      && !!nrLose && !!importNrLose(x.nrNorm) && importNrLose(x.nrNorm) !== nrLose);
+    const klaeren = doppelt || namensgleich.length > 0;
+    const wahl = klaeren ? entscheidungen[i + 1] : null;
     let aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
     const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
     /* Vorgabe ist nie "aktualisieren" und nie "neu"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
@@ -2222,11 +2229,13 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     if (aktualisierungAbgelehnt) aktion = "klaeren";
     const neuAbgelehnt = aktion === "neu" && sicherTreffer;
     if (neuAbgelehnt) aktion = "klaeren";
-    const vorgabe = dublette ? "klaeren" : null;
+    const vorgabe = klaeren ? "klaeren" : null;
     const neuGewaehlt = aktion === "neu";
     /* IMP-1 Review: Grund der Dublette für die Rückmeldung (eine Wahl bietet die Oberfläche erst mit IMP-4).
        Die Personalnummer-Fälle stehen schon als hinweis in fehler. */
-    const dublettenGrund = !dublette || hinweis ? null
+    const dublettenGrund = !dublette && namensgleich.length
+      ? `Namensgleichheit mit abweichender Nummer in der Datei (Zeile ${namensgleich.map((x) => x.i + 1).join(", ")}), bitte klären`
+      : !dublette || hinweis ? null
       : dublette.inDatei ? `Name kommt in der Datei mehrfach vor (Zeile ${dublette.zeilen.join(", ")}), bitte klären`
         : dublette.grund === "personalnummer_aehnlich" ? `Ähnliche Personalnummer bereits vorhanden, bitte klären`
           : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
@@ -2244,7 +2253,8 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
       /* zielId ist nur Rückmeldung (welche Person gemeint wäre). Solche Zeilen sind nie ok; der Speicherpfad
          nimmt nur ok-Zeilen und liest zielId nicht. */
       zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
-      ok: fehler.length === 0 && (!doppelt || neuGewaehlt) };
+      namensgleichheit: namensgleich.map((x) => x.i + 1),
+      ok: fehler.length === 0 && (!klaeren || neuGewaehlt) };
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,
@@ -2255,6 +2265,28 @@ export const IMPORT_BEISPIEL = `Nachname;Vorname;Einheit;Funktion;Wochenstunden;
 Meier;Sabine;Schichtgruppe 1;Fachkraft;41;30;01.03.2021;mitarbeiter;SK,EH;
 Yildiz;Kerem;Schichtgruppe 2;Schichtleitung;41;30;15.08.2019;subplaner;SK,SL;
 Novak;Petra;Schichtgruppe 1;Fachkraft;20,5;30;01.02.2024;mitarbeiter;SK;ja`;
+
+/** Datenreview PR #130 (3): Beim Speichern die Personalnummer erneut gegen den AKTUELLEN Bestand prüfen
+ *  (zwischen Prüfung und Speichern kann sich der Bestand geändert haben). Exakt, getrimmt, ohne Groß-/
+ *  Kleinschreibung. Eine vorhandene Nummer wird nie angelegt; die Zeile wird mit Fehler übersprungen. Auch
+ *  zweimal dieselbe Nummer im selben Speichervorgang wird nur einmal angelegt. Die serverseitige Eindeutigkeit
+ *  ist ein eigener Schritt (docs/acc45/IMP-1-NACHWEIS.md, Restpunkte).
+ *  @returns {{ uebernehmen: object[], uebersprungen: { nr: number, personalnummer: string, fehler: string }[] }} */
+export function importGegenBestand(personen, zeilen) {
+  const vorhanden = new Set((personen || []).map((p) => String((p && p.personalnummer) || "").trim().toLowerCase()).filter(Boolean));
+  const uebernehmen = [], uebersprungen = [];
+  for (const z of zeilen || []) {
+    const roh = String((z && z.personalnummer) || "").trim();
+    const nr = roh.toLowerCase();
+    if (nr && vorhanden.has(nr)) {
+      uebersprungen.push({ nr: z.nr, personalnummer: roh, fehler: `Personalnummer „${roh}“ bereits vorhanden — Zeile ${z.nr} nicht angelegt` });
+      continue;
+    }
+    if (nr) vorhanden.add(nr);
+    uebernehmen.push(z);
+  }
+  return { uebernehmen, uebersprungen };
+}
 
 /* ==========================================================================
    RECHENKERN — FÜNFTE AUSBAUSTUFE

@@ -421,3 +421,126 @@ describe("IMP-1 Rebase auf WP-39 und Review-Punkte", () => {
     expect(b).toBe(a);
   });
 });
+
+/* --------------------------------------------------------------------------
+   Auflagen aus dem Datenreview PR #130 (Entscheidungen 2026-11-09)
+   3  Personalnummer beim Speichern gegen den aktuellen Bestand (m.personen) erneut prüfen.
+   5  vergebbareRollen direkt aus server/lib/rollenvergabe.mjs; Versetzungssortierung null-sicher;
+      Namensgleichheit mit abweichender Nummer in der Datei: Hinweis, Vorgabe klaeren;
+      unbekannte Rollenangabe: Fehler „Rolle … nicht erkannt“.
+   -------------------------------------------------------------------------- */
+describe("IMP-1 Auflagen aus dem Datenreview (PR #130)", () => {
+  const KOPF_A = "Nachname;Vorname;Personalnummer;E-Mail;Einheit;Eintritt;Rolle";
+  const pr = (text, mandant = m0, optionen) => {
+    const { kopf, daten } = importParsen(text);
+    const { zu } = importZuordnen(kopf, daten);
+    return importPruefen(mandant, kopf, daten, zu, {}, optionen);
+  };
+  const lies = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  /** Aktionsfabrik mit einem Mandanten: mUpd wendet die Änderung an, melde sammelt Meldungen. */
+  const mitAktionen = (fabrik, m) => {
+    const st = { m, meldungen: [] };
+    const k = new Proxy({
+      mUpd: (fn) => { st.m = fn(st.m); }, melde: (t) => { st.meldungen.push(t); },
+      setImp: () => {}, setAusgabe: () => {}, sitz: { person: { id: "l1", vorname: "L", nachname: "L", rolle: "leitung" } },
+      ref: { current: null },
+    }, { get: (z, key) => (key in z ? z[key] : () => {}) });
+    return { akt: fabrik(k), st };
+  };
+
+  /* Eine Zeile, die die Prüfung (ohne Bestand mit P4711) für ok hielt — etwa weil der Bestand sich zwischen
+     Prüfung und Speichern geändert hat (zweite Sitzung, Nachladen vom Server). */
+  const gepruefteZeilen = () => pr(`${KOPF_A}\nFremd;Name;P4711;;${einheit};01.03.2024;\nNeu;Anna;P5000;;${einheit};01.03.2024;`).zeilen;
+
+  it("AUF130-3a Vorbedingung: beide Zeilen sind gegen den alten Bestand übernehmbar", () => {
+    expect(gepruefteZeilen().map((z) => z.ok)).toEqual([true, true]);
+  });
+  it("AUF130-3b importieren prüft gegen den aktuellen Bestand: vorhandene Nummer (trim, Groß/Klein) wird nie angelegt", async () => {
+    const { aktionenStammdaten } = await import("../src/app/aktionen/stammdaten.js");
+    for (const vorhanden of ["P4711", " p4711 ", "P4711  "]) {
+      const bestand = { ...m0, personen: [{ ...m0.personen[0], personalnummer: vorhanden }, ...m0.personen.slice(1)] };
+      const { akt, st } = mitAktionen(aktionenStammdaten, bestand);
+      akt.importieren(gepruefteZeilen(), false);
+      const nr = st.m.personen.map((p) => String(p.personalnummer || "").trim().toLowerCase());
+      expect(nr.filter((x) => x === "p4711")).toHaveLength(1);
+      expect(nr).toContain("p5000");
+      expect(st.m.personen).toHaveLength(bestand.personen.length + 1);
+      expect(st.meldungen.join(" ")).toMatch(/P4711.*bereits vorhanden/);
+    }
+  });
+  it("AUF130-3c importGegenBestand: übersprungene Zeile trägt den Fehler, andere bleiben", async () => {
+    const { importGegenBestand } = await import("../src/lib/fachlogik.js");
+    const bestand = [{ id: "x", personalnummer: "p4711" }];
+    const r = importGegenBestand(bestand, gepruefteZeilen());
+    expect(r.uebernehmen.map((z) => z.personalnummer)).toEqual(["P5000"]);
+    expect(r.uebersprungen).toHaveLength(1);
+    expect(r.uebersprungen[0].nr).toBe(1);
+    expect(r.uebersprungen[0].fehler).toMatch(/Personalnummer „P4711“ bereits vorhanden/);
+    /* Ohne Nummer greift die Prüfung nicht (Namensfälle regelt importPruefen). */
+    expect(importGegenBestand(bestand, [{ nr: 1, ok: true, personalnummer: "" }]).uebernehmen).toHaveLength(1);
+    /* Zweimal dieselbe Nummer im selben Speichervorgang: nur die erste. */
+    const doppelt = importGegenBestand([], [{ nr: 1, ok: true, personalnummer: "Q1" }, { nr: 2, ok: true, personalnummer: " q1" }]);
+    expect(doppelt.uebernehmen.map((z) => z.nr)).toEqual([1]);
+    expect(doppelt.uebersprungen.map((z) => z.nr)).toEqual([2]);
+  });
+
+  it("AUF130-5a vergebbareRollen wird direkt aus server/lib/rollenvergabe.mjs bezogen (keine Liste als Kopie)", () => {
+    const q = lies("../src/lib/fachlogik.js");
+    expect(q).toMatch(/import \{[^}]*vergebbareRollen[^}]*\} from "\.\.\/\.\.\/server\/lib\/rollenvergabe\.mjs"/);
+    const i = q.indexOf("export const IMPORT_VERGEBBAR");
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(q.slice(i, i + 400)).not.toMatch(/subplaner: \["mitarbeiter"/);
+    for (const r of ["betreiber", "leitung", "planer", "subplaner"])
+      expect([...IMPORT_VERGEBBAR[r]].sort()).toEqual([...vergebbareRollen(r)].sort());
+  });
+  it("AUF130-5b Versetzung sortiert null-sicher: ab null steht vor jedem Datum, deterministisch", async () => {
+    const { aktionenPlan } = await import("../src/app/aktionen/plan.js");
+    const e = m0.einheiten.map((x) => x.id);
+    const pid = m0.personen[0].id;
+    const start = { ...m0, personen: m0.personen.map((p) => (p.id === pid
+      ? { ...p, zugehoerigkeit: [{ ab: "2025-01-01", einheitId: e[1] }, { ab: null, einheitId: e[0] }] } : p)) };
+    const ergebnisse = new Set();
+    for (let n = 0; n < 3; n++) {
+      const { akt, st } = mitAktionen(aktionenPlan, start);
+      akt.versetze(pid, e[0], "2024-06-01");
+      const z = st.m.personen.find((p) => p.id === pid).zugehoerigkeit;
+      expect(z.map((x) => x.ab)).toEqual([null, "2024-06-01", "2025-01-01"]);
+      ergebnisse.add(JSON.stringify(z));
+    }
+    expect(ergebnisse.size).toBe(1);
+    /* Die Einheit am Tag folgt der Reihenfolge: null = von Anfang an, danach die Daten. */
+    const { akt, st } = mitAktionen(aktionenPlan, start);
+    akt.versetze(pid, e[0], "2024-06-01");
+    const p = st.m.personen.find((x) => x.id === pid);
+    expect(einheitAmServer(p, "2024-01-01")).toBe(e[0]);
+    expect(einheitAmServer(p, "2025-02-01")).toBe(e[1]);
+  });
+  it("AUF130-5c Namensgleichheit mit abweichender Nummer in der Datei: Hinweis, Vorgabe klaeren, nicht übernehmbar", () => {
+    const v = pr(`${KOPF_A}\nOli;Zed;Q8;;${einheit};01.03.2024;\nOli;Zed;Q9;;${einheit};01.03.2024;`);
+    for (const z of v.zeilen) {
+      expect(z.dublettenGrund).toMatch(/Namensgleichheit mit abweichender Nummer in der Datei/);
+      expect(z.vorgabe).toBe("klaeren");
+      expect(z.ok).toBe(false);
+    }
+    /* Ausdrückliche Wahl „neu“ (künftige Oberfläche IMP-4) bleibt möglich. */
+    const { kopf, daten } = importParsen(`${KOPF_A}\nOli;Zed;Q8;;${einheit};01.03.2024;\nOli;Zed;Q9;;${einheit};01.03.2024;`);
+    const { zu } = importZuordnen(kopf, daten);
+    expect(importPruefen(m0, kopf, daten, zu, { 1: "neu", 2: "neu" }).zeilen.map((z) => z.ok)).toEqual([true, true]);
+    /* Verschiedene Namen mit verschiedenen Nummern: kein Hinweis. */
+    const w = pr(`${KOPF_A}\nOli;Zed;Q8;;${einheit};01.03.2024;\nAnders;Ina;Q9;;${einheit};01.03.2024;`);
+    expect(w.zeilen.map((z) => z.ok)).toEqual([true, true]);
+    expect(w.zeilen.map((z) => z.vorgabe)).toEqual([null, null]);
+  });
+  it("AUF130-5d unbekannte Rollenangabe: Fehler „Rolle … nicht erkannt“, nicht stillschweigend mitarbeiter", () => {
+    const z = pr(`${KOPF_A}\nA;B;P1;;${einheit};01.03.2024;Pflegekraft`).zeilen[0];
+    expect(z.ok).toBe(false);
+    expect(z.fehler.join(" ")).toMatch(/Rolle „pflegekraft“ nicht erkannt/i);
+    expect(z.rolle).not.toBe("mitarbeiter");
+    /* Kontrolle: Kennung und Bezeichnung werden erkannt, leere Spalte bleibt mitarbeiter. */
+    expect(pr(`${KOPF_A}\nA;B;P1;;${einheit};01.03.2024;mitarbeiter`).zeilen[0].ok).toBe(true);
+    expect(pr(`${KOPF_A}\nA;B;P1;;${einheit};01.03.2024;Sub-Planer`).zeilen[0].rolle).toBe("subplaner");
+    const leer = pr(`${KOPF_A}\nA;B;P1;;${einheit};01.03.2024;`).zeilen[0];
+    expect(leer.rolle).toBe("mitarbeiter");
+    expect(leer.ok).toBe(true);
+  });
+});

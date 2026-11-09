@@ -163,8 +163,14 @@ export function teilzeitDienst(m, p, datum, plan) {
   const versatz = (idStreu(p.id) % 997) / 997;
   return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
 }
-/** Ist die Person an diesem Tag im Beschäftigungsverhältnis? */
+/** Fehlt der Eintritt ausdrücklich (null oder leer, wie ihn Import und Einzelanlage seit IMP-1 anlegen)?
+ *  Ein Bestand ganz ohne Feld (undefined, Altbestand vor IMP-1) zählt nicht dazu. */
+export const eintrittFehlt = (p) => !!p && (p.eintritt === null || p.eintritt === "");
+/** Ist die Person an diesem Tag im Beschäftigungsverhältnis?
+ *  Datenreview PR #130 (1): Eintritt null/leer ergibt keine rückwirkende Beschäftigung — die Person ist an
+ *  keinem Tag im Dienst (kein Soll, kein Ist, kein Plan, keine Abschlusslücke), bis ein Datum gesetzt ist. */
 export function imDienst(p, d) {
+  if (p.eintritt === null || p.eintritt === "") return false;
   if (p.eintritt && d < p.eintritt) return false;
   if (p.austritt && d > p.austritt) return false;
   return p.status !== "gesperrt";
