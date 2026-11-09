@@ -1,6 +1,25 @@
 # Wiederaufnahmepunkt CENTRIC (Stand 2026-11-09, Nachtübergabe)
 
-Dieses Dokument ist der Einstieg für einen neuen Koordinator. Es ersetzt keine Grundsatzplanung. Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
+## Koordinationsregel (verbindlich)
+- Der ursprüngliche Hauptchat (CENTRIC, lokale CLI-Sitzung) bleibt dauerhaft der primäre Entwicklungskoordinator. Sein autonomer Release-Auftrag bleibt bestehen.
+- Die geplante Cloud-Aufgabe (stündlich, Minute 32) ist ergänzend: Nacht- und Wiederaufnahmekoordination. Sie übernimmt Entwicklung nur vorübergehend bei ausdrücklich dokumentierter Übergabe, und diese Übergabe gilt nur bis der Hauptchat wieder aktiv ist.
+- Der Hauptchat übernimmt nach einem Abgleich des Repository-Zustands wieder die primäre Koordination.
+- Niemals zwei gleichzeitig schreibende Hauptkoordinatoren. Keine doppelte Bearbeitung bereits integrierter Pakete. Kein Verlust laufender Agentenarbeit. Keine Reduzierung des Funktionsumfangs.
+- Kein Merge nach `main`, kein produktives Deployment ohne ausdrückliche Freigabe des Betreibers.
+- Abgleich-Stand dieses Dokuments: Hauptchat wieder aktiv am 2026-11-09 nach 19:50 (Repository-Zustand geprüft: Integrationskopf 744a2f68, #169 Kopf e015368 mit Folgepaket OPT-1-F; kein fremder Schreibvorgang auf #169 nach 18:44).
+
+## Abweichungen zu docs/WIEDERAUFNAHME.md (Cloud-PR #168, nicht von dieser Sitzung geändert)
+Dieses Dokument (`docs/acc45/WIEDERAUFNAHME.md`) ist für den Acc45-Strang maßgeblich. PR #168 enthält eine parallele Übergabe mit folgenden veralteten Aussagen, die NICHT befolgt werden dürfen:
+- „#166 integrieren“: falsch. #166 (OPT-1) bleibt gesperrt, bis ein funktionsfähiger regulärer Anmeldeweg für Leitungskonten belegt ist (Review, Kommentar am PR). Das Folgepaket OPT-1-F ist in der SSOT aufgenommen.
+- „#164 offen“: falsch. #164 ist geschlossen und durch #169 ersetzt.
+- „111 Pflichtpakete, SSOT-Stand 04.11.“: veraltet. Maßgeblich ist `work-packages.json` im Integrationsbranch plus Abgleich über `werkzeug/ssot-belege.mjs`.
+- „Koordinator mit Freigabe-Befugnis“ als Nachtkoordinator: die Freigabe liegt beim Betreiber, nicht bei der Nachtaufgabe.
+Empfehlung an den Betreiber: #168 entweder auf den Stand dieses Dokuments bringen oder schließen. Dieses Dokument wird nicht gegen #168 zusammengeführt, weil #168 nicht von dieser Sitzung stammt.
+
+## Aktueller Hinweis zur Übergabe
+Die Übergabe der Nacht ist beendet. Der Hauptchat ist wieder primär. Vor Schreibvorgängen des Hauptchats prüfen, ob die Cloud-Aufgabe gerade schreibt (offene PRs, Branch-Köpfe).
+
+Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
 - Integration: `integration/release-v4`, Kopf 744a2f68 (nach #167). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
