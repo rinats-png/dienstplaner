@@ -16,19 +16,14 @@
    eine verworfene Angabe nicht melden kann: Die Oberfläche hätte den Tag
    als bestätigt gezeigt, bis zum nächsten Neuladen.
 
-   Ob an einem Tag Dienst geplant ist, rechnet der Server selbst: dieselbe
-   Rechnung wie personTag in src/App.jsx (Schichtfolge der Einheit,
-   Teilzeit, Abweichungen, Abwesenheiten), ohne die Postenvergabe — die
-   ändert nur, welcher Dienst, nicht ob einer (personTag stellt nur im
-   Zweig `ab === undefined && plan` von einer Dienstart auf eine andere
-   um; ohne Plandienst bleibt es bei keinem).
-
-   TECHNISCHE SCHULD — zwei Planrechnungen. personTag im Client und
-   geplanterDienst hier sind zwei unabhängige Umsetzungen derselben Regel.
-   Laufen sie auseinander, verwirft der Server, was die Oberfläche anbietet.
-   Zielbild: eine maßgebliche, reine Planrechnung als gemeinsames Modul
-   (ohne React), aus dem Client und Server ableiten; bis dahin wäre ein
-   Vergleichstest beider Umsetzungen auf denselben Daten der Zwischenschritt.
+   Ob an einem Tag Dienst geplant ist, rechnet der Server selbst — mit der
+   einen Planrechnung dienstAm (fachpruefung.mjs; WP-38): Schichtfolge der
+   Einheit, Teilzeit, Abweichungen, Abwesenheiten, ohne die Postenvergabe —
+   die ändert nur, welcher Dienst, nicht ob einer (personTag in
+   server/lib/engine/plan.mjs stellt nur im Zweig `ab === undefined && plan`
+   von einer Dienstart auf eine andere um; ohne Plandienst bleibt es bei
+   keinem). personTag und dienstAm teilen sich einheitAm, einheitDienst,
+   teilzeitDienst und imDienst aus fachpruefung.mjs.
 
    TECHNISCHE SCHULD — Uhr. „Heute" ist hier heuteBerlin() zum Zeitpunkt
    der Anfrage. Tests rechnen ihr „heute" einmal beim Start; fällt
@@ -39,6 +34,7 @@
    der Parameter `heute` bzw. vi.setSystemTime.
    ========================================================================== */
 import { pauseZuLang } from "./zeitregeln.mjs";
+import { dienstAm, imDienst } from "./fachpruefung.mjs";
 
 const TAG_MS = 86400000;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
@@ -61,8 +57,6 @@ export function pauseAngabe(roh) {
 const utc = (s) => new Date(`${s}T00:00:00Z`);
 const iso = (d) => d.toISOString().slice(0, 10);
 export const tagePlus = (s, n) => iso(new Date(utc(s).getTime() + n * TAG_MS));
-const zwischen = (a, b) => Math.round((utc(b).getTime() - utc(a).getTime()) / TAG_MS);
-const wochentag = (s) => (utc(s).getUTCDay() + 6) % 7;     // Montag = 0, wie dow() im Client
 
 /** Das heutige Datum dort, wo der Betrieb arbeitet. */
 export function heuteBerlin(jetzt = new Date()) {
@@ -141,72 +135,15 @@ export function startZuordenbar(datum, start, jetzt = new Date(), startAm = null
   return min !== null && min >= 0 && min <= OFFEN_MAX_MINUTEN;
 }
 
-/* --- Dieselbe Planrechnung wie im Client --- */
-function einheitAm(p, d) {
-  let t = null;
-  for (const z of Array.isArray(p.zugehoerigkeit) ? p.zugehoerigkeit : []) if (z && (!z.ab || z.ab <= d)) t = z;   // ab leer: von Anfang an (Eintritt unbekannt)
-  return t ? t.einheitId : null;
-}
-/* Eintritt null/leer: an keinem Tag im Dienst (Datenreview PR #130, wie fachpruefung.mjs). */
-export function imDienst(p, d) {
-  if (p.eintritt === null || p.eintritt === "") return false;
-  if (p.eintritt && d < p.eintritt) return false;
-  if (p.austritt && d > p.austritt) return false;
-  return p.status !== "gesperrt";
-}
-const versatzTageVon = (e) => (e.versatzTage !== undefined && e.versatzTage !== null ? e.versatzTage : (e.versatz || 0) * 7);
-const zyklusLaenge = (m) => (m.zyklus && Array.isArray(m.zyklus.tage) ? m.zyklus.tage.length : ((m.zyklus && m.zyklus.wochen) || 0) * 7);
-function einheitDienst(m, eid, d) {
-  const e = (m.einheiten || []).find((x) => x && x.id === eid);
-  if (!e || e.pool) return null;
-  const tage = (m.zyklus && m.zyklus.tage) || null;
-  if (!tage || !tage.length || !m.anker) return null;
-  const len = zyklusLaenge(m);
-  const i = (((zwischen(m.anker, d) + versatzTageVon(e)) % len) + len) % len;
-  const id = tage[i];
-  return id && id !== "-" ? id : null;
-}
-function idStreu(id) {
-  let h = 0;
-  const s = String(id);
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
-}
-function teilzeitDienst(m, p, datum, plan) {
-  const tz = p.teilzeit;
-  if (!tz || !tz.aktiv || !plan) return plan;
-  if (tz.modus === "wochentage") return (tz.wochentage || []).includes(wochentag(datum)) ? plan : null;
-  const soll = (m.einstellungen && m.einstellungen.sollWochenstunden) || 40;
-  const quote = Math.max(0.05, Math.min(1, (p.wochenstunden || soll) / soll));
-  if (quote >= 0.999) return plan;
-  const len = zyklusLaenge(m);
-  const e = (m.einheiten || []).find((x) => x && x.id === einheitAm(p, datum));
-  if (!e || !len) return plan;
-  const tage = zwischen(m.anker, datum) + versatzTageVon(e);
-  const zyklen = Math.floor(tage / len);
-  const rest = ((tage % len) + len) % len;
-  let gesamt = 0;
-  for (const t of m.zyklus.tage) if (t && t !== "-") gesamt++;
-  if (!gesamt) return plan;
-  let vor = 0;
-  for (let i = 0; i < rest; i++) { const t = m.zyklus.tage[i]; if (t && t !== "-") vor++; }
-  const nr = zyklen * gesamt + vor;
-  const versatz = (idStreu(p.id) % 997) / 997;
-  return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
-}
-const abwesendAm = (m, pid, d) => (Array.isArray(m.abwesenheiten) ? m.abwesenheiten : [])
-  .some((a) => a && String(a.personId) === String(pid) && a.von <= d && a.bis >= d);
-
+/* --- Die Planrechnung ---
+   Es gibt genau eine: dienstAm in fachpruefung.mjs (Beschäftigungsverhältnis, Schichtfolge der Einheit, Teilzeit,
+   Abweichung, Abwesenheit; WP-38). Hier steht nur die Absicherung der Eingabe (Betrieb, Person, Tag) davor. */
 /** Welcher Dienst ist für die Person an diesem Tag geplant? null = keiner. */
 export function geplanterDienst(m, p, d) {
-  if (!m || !p || !TAG.test(String(d)) || !imDienst(p, d)) return null;
-  if (abwesendAm(m, p.id, d)) return null;
-  const ab = (m.abweichungen || {})[`${p.id}|${d}`];
-  if (ab !== undefined) return ab && ab !== "-" ? ab : null;
-  const eid = einheitAm(p, d);
-  const roh = (eid && !p.springer && p.imSchichtdienst !== false) ? einheitDienst(m, eid, d) : null;
-  return teilzeitDienst(m, p, d, roh);
+  if (!m || !p || !TAG.test(String(d))) return null;
+  return dienstAm(m, p, d);
 }
+export { imDienst };
 
 /** Läuft die Dienstart über Mitternacht (oder genau 24 Stunden)? */
 export function uebernacht(da) {
