@@ -2,6 +2,8 @@
 export const SCHLUESSEL = Buffer.from("5b0e9c1d7a3f48e26c1b9d0a4e7f3c2b8a6d1e9f0c3b7a5d2e8f1c4b6a9d0e3f", "hex");
 export const VERSIONEN = { engine: "0.0.0-attrappe", regelstand: "r-2026-11", tarifstand: "t-2026" };
 export const ZR = { von: "2026-11-01", bis: "2026-11-30" };
+/** Gültige Namenspolitik (WP-I13, G18): ohne sie verweigert das Gateway jede Freitext-Funktion (F5, F6, F7A, F9, F16). */
+export const NAMENSPOLITIK_TEST = Object.freeze({ version: "np-test", sperrliste: "betrieb", kurznamen: "sperren", doppelgaenger: "sperren", fremdeSchrift: "sperren", freigabe: "produktverantwortung" });
 export const betrieb = (id = "m1", name = "Seniorenheim Sonnenhof") => ({
   id, name, raum: undefined, kontakt: "verwaltung@sonnenhof.example", anschrift: "Am Deich 4, 28199 Bremen",
   einheiten: [{ id: "e1", name: "Wohnbereich Lindenhof" }, { id: "e2", name: "Wohnbereich Ahornweg" }, { id: "pool", name: "Springerpool", pool: true }],
