@@ -30,8 +30,8 @@
 
 import { createHash } from "node:crypto";
 import { istProduktion } from "./umgebung.mjs";
-import { ablageSchluessel, altHash } from "./codes.mjs";
-import { kontoLesen } from "./konten.mjs";
+import { ablageSchluessel, altHash, pfeffrig } from "./codes.mjs";
+import { kontoLesen, kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
@@ -95,9 +95,79 @@ export function rollenPflicht(env = process.env) {
   return String(env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
 }
 
+/**
+ * Review-Auflage N4: Steht im Schalter etwas anderes als „1“ oder nichts (etwa „ja“, „true“, „an“), ist die Pflicht
+ * AUS — vermutlich gegen die Absicht. Für den Umgebungsbericht (/api/einrichten/umgebung) als Warnung.
+ * @param {Record<string, string|undefined>} [env]
+ */
+export function rollenPflichtUnerwartet(env = process.env) {
+  const w = String(env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT || "").trim();
+  return w !== "" && w !== "1";
+}
+
+/**
+ * Eine Sitzung aus /api/demo (öffentlicher Demozugang ohne Code) in einem Demoraum. Für sie gilt die Pflicht nicht
+ * (Review-Auflage, Restrisiko N1): Ein Demoraum enthält nur Beispieldaten, und der Demozugang hat keinen Code, an dem
+ * ein Faktor hängen könnte. Beide Merkmale müssen stimmen — ein `demo`-Kennzeichen allein öffnet keinen echten Raum.
+ * @param {any} s
+ */
+export const demoSitzung = (s) => !!s && s.demo === true && String(s.bestand || "").startsWith("demo-");
+
+/**
+ * Review-Auflagen M1/M2 (SI-P4): Darf diese Sitzung unter aktiver Pflicht weiterarbeiten?
+ *
+ * true heißt: NEIN — die Sitzung trägt Rechte einer Rolle mit zweitem Faktor (Rolle beim Anlegen ODER die jetzt
+ * wirksame Rolle der Person), ist aber nicht mit bestandenem zweitem Faktor entstanden (`zweifaktor: true` fehlt).
+ * Das trifft:
+ *   - die Hochstufung nach der Anmeldung (M2: als Mitarbeiter angemeldet, danach Leitung),
+ *   - Sitzungen aus der Zeit vor dem Einschalten der Pflicht,
+ *   - Arbeitssitzungen aus einem Konto (Betriebsauswahl), die keinen zweiten Faktor kennen (M1).
+ * Ausgenommen: Pflicht aus, Sicherungsschlüssel (eigene Prüfung, SI-P1), Betreiber (eigene Pflicht, WP-32d),
+ * Demositzungen in Demoräumen (N1).
+ * @param {any} s0           die Sitzung, wie sie angelegt wurde
+ * @param {unknown} [rolleJetzt]  die wirksame Rolle dieser Anfrage, falls bekannt
+ * @param {Record<string, string|undefined>} [env]
+ */
+export function rollenSitzungOhneFaktor(s0, rolleJetzt = null, env = process.env) {
+  if (!rollenPflicht(env)) return false;
+  if (!s0 || s0.nurSicherung || s0.rolle === "betreiber" || demoSitzung(s0)) return false;
+  if (!zweifaktorRolle(s0.rolle) && !zweifaktorRolle(rolleJetzt)) return false;
+  return s0.zweifaktor !== true;
+}
+
 /** Die id, unter der der zweite Faktor eines Leitungs-, Planungs- oder Kundencodes liegt. */
 export const rollenZweifaktorId = (codeSchluessel) =>
   createHash("sha256").update(`rollen-code:${codeSchluessel}`).digest("hex");
+
+/**
+ * Review-Auflage N2: Vermerk am Zugang, dass für ihn ein zweiter Faktor eingerichtet ist (`zweiterFaktor: true`).
+ *
+ * Die Kennung des Faktors hängt am gepfefferten Ablageschlüssel des Codes. Fehlt der Pfeffer oder wurde er gewechselt,
+ * zeigt dieselbe Rechnung auf eine andere Kennung — dort liegt kein Faktor, und die Anmeldung liefe ohne ihn durch.
+ * Der Vermerk am Zugang hängt nicht am Pfeffer: Wer ihn trägt, aber dessen Faktor unter der jetzigen Kennung nicht
+ * aktiv ist, bekommt 503 statt einer Sitzung. Gesetzt nach der Bestätigung, entfernt vor dem Abschalten — so führt
+ * ein halber Vorgang nie zu einem Vermerk ohne Faktor.
+ * @param {any} store
+ * @param {Array<string|undefined>} schluessel  alle Ablageschlüssel des Zugangs (neu, gefunden, alt)
+ * @param {boolean} an
+ * @returns {Promise<boolean>} false, wenn ein vorhandener Eintrag nicht geschrieben werden konnte
+ */
+async function faktorVermerken(store, schluessel, an) {
+  let ok = true;
+  for (const s of new Set(schluessel.filter(Boolean))) {
+    try {
+      const e = await kontoLesenStreng(store, s);
+      if (!e) continue;
+      if (an) await kontoSchreiben(store, s, { ...e, zweiterFaktor: true });
+      else if (e.zweiterFaktor !== undefined) {
+        const rest = { ...e };
+        delete rest.zweiterFaktor;
+        await kontoSchreiben(store, s, rest);
+      }
+    } catch { ok = false; }
+  }
+  return ok;
+}
 
 /**
  * Darf dieser Zugang auf dem Gerät gemerkt werden („Zugang merken“)?
@@ -120,7 +190,7 @@ const ART = {
   betreiber: { id: betreiberZweifaktorId, kurz: "b", etikett: "Betreiber", pflicht: betreiberPflicht,
     pflichtText: "Für Betreiberzugänge ist ein zweiter Faktor Pflicht." },
   rolle: { id: rollenZweifaktorId, kurz: "r", etikett: "Zugang", pflicht: rollenPflicht,
-    pflichtText: "Für diesen Zugang ist ein zweiter Faktor Pflicht." },
+    pflichtText: "Für diesen Zugang ist ein zweiter Faktor Pflicht.", vermerk: true },
 };
 
 const json = (d, status = 200) => new Response(JSON.stringify(d), { status,
@@ -159,9 +229,20 @@ export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
  *   altSchluessel?: string, name: string, art: typeof ART.betreiber}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
-async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art }) {
+async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art,
+  faktorVermerkt = false }) {
   const id = art.id(codeSchluessel);
   const E = art.etikett;
+  /* Review-Auflage N2: Ohne Pfeffer liegt der Faktor unter einer anderen Kennung (ungepfefferter Schlüssel) und lässt
+     sich weder einrichten noch prüfen. Nie still mit dem alten Schlüssel weiter: Ist der Faktor für diesen Zugang
+     vermerkt oder Pflicht, gibt es keine Sitzung (503). Ohne Vermerk und ohne Pflicht bleibt es beim Code allein —
+     einen Faktor gibt es dann nicht und kann es nicht geben (Restrisiko, SI-P4-NACHWEIS). */
+  const pfefferFehlt = () => json({ fehler: "Der zweite Faktor lässt sich auf diesem Server gerade nicht prüfen "
+    + "(CENTRIC_PFEFFER fehlt oder wurde geändert). Bitte den Serverbetreiber verständigen.", zweifaktor: "pfeffer" }, 503);
+  if (art.vermerk && !pfeffrig() && (faktorVermerkt || art.pflicht())) {
+    await protokoll("zweifaktor", k, "fehler", `${E} · Pfeffer fehlt`);
+    return { antwort: pfefferFehlt() };
+  }
   /* B2: Wechselt der zweite Faktor (eingerichtet oder abgeschaltet), enden
      alle Sitzungen dieses Codes. Eine Sitzung, die vorher mit dem Code
      allein entstand — vielleicht auf einem fremden Gerät —, überlebt die
@@ -184,6 +265,13 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
 
   let stand;
   try { stand = await zweifaktorStand(store, id); } catch { return { antwort: nichtPruefbar() }; }
+  /* N2: Vermerkt, aber unter der jetzigen Kennung kein aktiver Faktor — der Pfeffer wurde gewechselt (oder die
+     Ablage des Faktors fehlt). Kein Durchlassen und auch kein Neueinrichten mit dem Code allein. Rückweg: neuer
+     Zugangscode (der alte wird gesperrt). */
+  if (art.vermerk && faktorVermerkt && !stand.aktiv) {
+    await protokoll("zweifaktor", k, "fehler", `${E} · vermerkt, aber nicht auffindbar`);
+    return { antwort: pfefferFehlt() };
+  }
 
   /** Bremse für Code-Versuche — je Code und je Herkunft, fail-closed. */
   const bremsen = async () => {
@@ -279,6 +367,10 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     }
     await entlastenAlle();
     await codeRichtig();
+    /* N2: Vermerk am Zugang, erst nach der Aktivierung. Scheitert er, gilt der Faktor trotzdem — es fehlt nur der
+       Schutz gegen einen später fehlenden oder gewechselten Pfeffer; das wird gemeldet und protokolliert. */
+    const vermerkt = art.vermerk ? await faktorVermerken(store, [kontoSchluessel, codeSchluessel, altSchluessel], true) : true;
+    if (!vermerkt) await protokoll("zweifaktor", k, "fehler", `${E} · Vermerk am Zugang nicht geschrieben`);
     /* Zweiter Durchgang: eine Sitzung, die zwischen dem ersten und der
        Aktivierung mit dem Code allein entstand. */
     const danach = await sitzungenBeenden();
@@ -286,6 +378,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     await protokoll("zweifaktor", k, "erfolg", `${E} · eingerichtet · ${beendet} Sitzungen beendet`);
     return { antwort: json({ ok: true, aktiv: true, sitzungenBeendet: beendet,
       ...(danach.fehler ? { warnung: "Eine eben entstandene Sitzung ließ sich nicht beenden; sie endet spätestens nach zwei Stunden." } : {}),
+      ...(vermerkt ? {} : { vermerk: false }),
       wiederherstellung: erg.wiederherstellung,
       hinweis: "Die Wiederherstellungscodes erscheinen genau einmal. Jeder gilt einmal." }) };
   }
@@ -304,6 +397,10 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     /* B-M2: erst Sitzungen beenden; scheitert das, bleibt der Faktor. */
     const vorher = await sitzungenBeenden();
     if (vorher.fehler) return { antwort: nichtAlleBeendet("der zweite Faktor bleibt eingerichtet") };
+    /* N2: Vermerk VOR dem Abschalten entfernen. Scheitert das, bleibt der Faktor (sonst stünde ein Vermerk ohne
+       Faktor da, und der Zugang bekäme nur noch 503). */
+    if (art.vermerk && !(await faktorVermerken(store, [kontoSchluessel, codeSchluessel, altSchluessel], false)))
+      return { antwort: nichtPruefbar() };
     try { await zweifaktorAbschalten(store, id); }
     catch { return { antwort: nichtPruefbar() }; }
     await codeRichtig();

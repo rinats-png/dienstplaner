@@ -246,6 +246,10 @@ export default async (req) => {
    ANMELDEN
    -------------------------------------------------------------------------- */
 
+/* SI-P4 (Review-Auflage M1): Diese Anmeldung legt nur eine Identität an — keine Rolle, keinen Bestand, keine
+   Arbeitssitzung. Die Pflicht zum zweiten Faktor (CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT) greift deshalb dort, wo aus der
+   Identität Rechte werden: bei der Betriebsauswahl (lib/betriebsauswahl.mjs, betriebWaehlen) und bei jeder Anfrage
+   einer bestehenden Arbeitssitzung (lib/arbeitssitzung.mjs). */
 async function anmeldung(req, k) {
   const gelesen = await rumpfLesen(req);
   if (!gelesen.ok) return gelesen.antwort;
@@ -464,6 +468,14 @@ async function betriebOeffnen(req, k) {
     if (e.grund === "speichern") {
       return antwort({ ok: false, fehler: "nicht-moeglich",
         hinweis: HINWEIS_SPEICHERN }, 500);
+    }
+    /* SI-P4, Review-Auflage M1: unter Pflicht kein Betrieb mit Leitungs-, Planungs- oder Kundenrechten über das
+       Konto. Eigene Kennung, damit die Oberfläche auf den Zugangscode verweisen kann; ohne Personendaten, ohne
+       Rolle — wer hier fragt, hat die Mitgliedschaft ohnehin. */
+    if (e.grund === "zweifaktor-pflicht") {
+      return antwort({ ok: false, fehler: "zweifaktor-pflicht",
+        hinweis: "Für diesen Arbeitsbereich ist ein zweiter Faktor Pflicht. Bitte mit dem Zugangscode und dem "
+          + "Code aus der App anmelden." }, 403);
     }
     return antwort(BETRIEB_ABSAGE, 403);
   }

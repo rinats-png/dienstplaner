@@ -116,3 +116,120 @@ auf dem neuen Stand grün. Die CI (Linux) ist maßgeblich.
    App selbst; eine Einrichtung aus den Einstellungen der Leitung (App.jsx) ist nicht gebaut. Browser-/Smartphone-Test
    der Maske steht aus.
 7. Review (Sicherheit) erforderlich; nicht integriert, nicht auf Staging geprüft, nicht deployt.
+
+## Auflagen aus Review
+
+Unabhängiges Sicherheitsreview von PR #120. Branch `acc45/sicherheit/si-p4-auflagen` auf `origin/review/si-p4`
+(f17f417). Punkt 4 und 5 oben sind damit unter Pflicht überholt (siehe M1/M2).
+
+| Auflage | Status | Umsetzung |
+|---|---|---|
+| **M1** (mittel) Konto-Anmeldung und Betriebsauswahl umgehen die Pflicht | erledigt | siehe unten |
+| **M2** (mittel bei Pflicht) Hochstufung nach der Anmeldung | erledigt, Sitzung wird **beendet** | siehe unten |
+| **N2** (niedrig) fehlender/gewechselter `CENTRIC_PFEFFER` | erledigt | siehe unten |
+| Negativtests (rot zuerst) | erledigt | 13 neue Tests rot auf altem Stand, alle grün |
+| **N1, N3, N4** | dokumentiert (N4 zusätzlich als Warnung umgesetzt) | Restrisiken unten |
+
+**M1.** Die Konto-Anmeldung (`/api/account/anmelden`) legt nur eine Identität an: kein Merkmal in der Antwort, keine
+Rolle, kein Bestand. Rechte entstehen erst bei der Betriebsauswahl — dort wird geprüft (`lib/betriebsauswahl.mjs`,
+`betriebWaehlen`): Unter `CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1` und Rolle der Mitgliedschaft **oder** wirksamer Rolle der
+Person aus `ZWEIFAKTOR_ROLLEN` gibt es keine Arbeitssitzung; `/api/account/betrieb` antwortet 403
+`{ fehler: "zweifaktor-pflicht", hinweis }` ohne Personendaten und ohne Rolle. Ohne Pflicht unverändert. Die
+Konto-Anmeldung selbst wird bewusst nicht abgewiesen: Sie kennt zu diesem Zeitpunkt keine Rolle, und ein Konto kann
+zugleich Mitarbeiter-Mitgliedschaften haben, die weiter offen bleiben sollen. Die Rolle `kunde` ist über ein Konto
+gar nicht erreichbar (Mitgliedschaft mit `kunde` wird abgelehnt, `wirksameRolle` liefert nie `kunde` aus der
+Personalliste) — Test dazu. `.env.example` und `docs/BETRIEBSHANDBUCH.md` beschreiben jetzt genau dieses Verhalten.
+
+**M2 — Entscheidung: beenden statt nur abweisen.** Eine Sitzung ohne `zweifaktor: true` ist unter Pflicht für
+Leitungs-, Planungs- oder Kundenrechte nicht tragbar, gleich wie sie entstand: Hochstufung nach der Anmeldung, Sitzung
+aus der Zeit vor dem Einschalten der Pflicht, Arbeitssitzung aus einem Konto. Nur abweisen ließe sie bestehen; nach
+einer Rückstufung (oder bei abgeschalteter Pflicht) arbeitete dasselbe Merkmal weiter, obwohl es nie einen zweiten
+Faktor gesehen hat. Deshalb: `rollenSitzungOhneFaktor(s0, rolleJetzt)` (`lib/betreiber-zweifaktor.mjs`) ist wahr, wenn
+Pflicht aktiv, Rolle beim Anlegen oder jetzt wirksame Rolle eine der `ZWEIFAKTOR_ROLLEN` und `s0.zweifaktor !== true`.
+Die Regel umfasst die geforderte Bedingung `zweifaktorRolle(s.rolle) && !zweifaktorRolle(s0.rolle)` und ist breiter.
+Geprüft an zwei Stellen:
+- `lib/arbeitssitzung.mjs` (`arbeitssitzungLesen`, der eine Prüfpunkt für alle Pfade inkl. Zugang sperren, Kalender,
+  Zustellung): Rolle beim Anlegen; Sitzung wird beendet, `grund: "zweifaktor-pflicht"`.
+- `funktionen/daten.mjs` nach der Berechnung der wirksamen Rolle (eine lokale Prüfung, 9 Zeilen): Hochstufung; Sitzung
+  wird beendet, 401 `{ zweifaktor: "neu-anmelden" }`.
+Ausgenommen: Pflicht aus, Sicherungsschlüssel (`nurSicherung`, eigene Prüfung SI-P1), Betreiber (eigene Pflicht
+WP-32d), Demositzungen (`demo: true` **und** Raum `demo-*`). Wirkung im Betrieb: Mit dem Einschalten der Pflicht
+enden alle Leitungs-/Planungs-/Kundensitzungen ohne Faktor bei ihrer nächsten Anfrage.
+
+**N2.** Der Faktor liegt unter einer Kennung aus dem gepfefferten Ablageschlüssel; ohne oder mit anderem Pfeffer zeigt
+die Rechnung auf eine leere Kennung, und die Anmeldung lief ohne Faktor durch. Jetzt:
+- Nach dem Bestätigen trägt der Zugang den Vermerk `zweiterFaktor: true` (alle Ablageschlüssel des Codes, neu/
+  gefunden/alt); er hängt nicht am Pfeffer. Vor dem Abschalten wird er entfernt (scheitert das: 503, Faktor bleibt).
+- `rollenZweifaktor`: ohne Pfeffer und (Vermerk oder Pflicht) → 503 `zweifaktor: "pfeffer"`; mit Pfeffer, Vermerk, aber
+  unter der jetzigen Kennung kein aktiver Faktor (Pfeffer gewechselt, Eintrag weg) → 503. Kein Durchlassen, kein
+  Neueinrichten mit dem Code allein. Rückweg: neuer Zugangscode.
+- Ein Zugang, der nur unter dem gepfefferten Schlüssel liegt, ist ohne Pfeffer gar nicht auffindbar (401 „Unbekannter
+  Zugangscode“), also ebenfalls keine Sitzung.
+- Betreibercodes unverändert (unter Pflicht ohne Pfeffer weiterhin 403, Test in `betreiber-zweifaktor-pflicht`).
+
+**Negativtests** (`pruefungen/rollen-zweifaktor.test.js`, Abschnitt „Auflagen“, und `pruefungen/betriebsauswahl.test.js`,
+„SI-P4 M1“):
+- Mitarbeitercode, wirksame Rolle Leitung, Faktor eingerichtet: ohne Code 401 (ohne und mit Pflicht; mit eingerichtetem
+  Faktor ist 401 „erforderlich“ die richtige Antwort). Ohne Faktor unter Pflicht 403 „einrichten“.
+- Coderolle Leitung, Person im Bestand Mitarbeiter: Faktor gilt (401 ohne, 200 mit Code).
+- M2: Sitzung als Mitarbeiter, Person danach Leitung, unter Pflicht 401 `neu-anmelden`; danach auch ohne Pflicht und
+  nach Rückstufung 401 (beendet). Ohne Pflicht: unverändert (Rechte aus der Personalliste). Leitungssitzung aus der
+  Zeit vor der Pflicht: beendet.
+- M1: Betriebsauswahl Leitung/Planer/Subplaner unter Pflicht 403, keine Arbeitssitzung, keine Personendaten; Mitglied-
+  schaft Mitarbeiter mit Person Leitung 403; Mitarbeiter 200; ohne Pflicht Leitung 200; Arbeitssitzung aus Konto vor
+  der Pflicht wird beendet; Kunde über Konto nicht anlegbar.
+- `/api/demo` unter Pflicht: **festgelegt als Ausnahme** für Demoräume — Sitzung und Bestand 200, `merkenErlaubt: false`.
+  Ein `demo`-Kennzeichen ohne Raum `demo-*` ist keine Ausnahme (Baustein-Test).
+- Fehler im Faktor-Speicher (unlesbarer Eintrag): 503, keine Sitzung, mit und ohne Pflicht.
+- Pfeffer fehlt / gewechselt bei aktivem Faktor: 503, kein Neueinrichten; unter Pflicht ohne Pfeffer 503; Abschalten
+  entfernt den Vermerk.
+- N4: unerwartete Schalterwerte erkannt.
+
+Angepasste bestehende Tests: keine Assertion entfernt oder abgeschwächt; kein bestehender Test prüfte das alte
+Verhalten unter Pflicht (Pflicht war in allen Konto-/Betriebsauswahl-Tests aus). Einzige Änderung an bestehendem
+Test: „SI-P4 Bremse je Code“ bekommt eine Zeitgrenze von 30 s statt 5 s — er wartet 400 ms je falschem Code und lief im
+belasteten Gesamtlauf schon auf dem Ausgangsstand in die 5-s-Grenze (vorher einzeln grün, parallel rot).
+`rollen-zweifaktor.test.js`: Probebestand in `bestandSetzen()` ausgelagert (zwei Personen ergänzt), Inhalte gleich.
+
+Rot auf altem Stand (Server-Dateien auf f17f417, neue Tests unverändert): `rollen-zweifaktor.test.js` +
+`betriebsauswahl.test.js` 13 von 85 rot (M2 ×3, N2 ×4, N4, M1 ×5). Neuer Stand: 85/85 grün.
+
+Läufe (lokal, Windows, Node 24, vitest 4.1.10):
+
+| Lauf | vorher (f17f417) | nachher |
+|---|---|---|
+| 12 Dateien: `rollen-zweifaktor`, `rollen-zweifaktor-merken`, `betreiber-zweifaktor`, `betreiber-zweifaktor-pflicht`, `betriebsauswahl`, `accountanmeldung`, `anmeldung-http`, `demo-rollenwaehler`, `demo-schalter`, `zweifaktor`, `arbeitssitzung`, `code-sitzung-person` | 362/363 (1 Zeitgrenze, einzeln grün) | 385/385 (mit `--testTimeout=60000`) |
+| dieselben 12 + `sitzungsinventar`, `zugaenge-frischer-faktor`, `doku` (15 Dateien) | – | 420/420 (mit `--testTimeout=60000`) |
+| `rollen-zweifaktor.test.js` einzeln | 22/22 | 36/36 |
+| `betriebsauswahl.test.js` einzeln | – | 49/49 |
+| `eslint` geänderte Dateien / `npm run lint` | – | 0 Fehler (Warnungen nur Altbestand) |
+
+Zeitgrenzen: Der Rechner war während der Läufe stark belastet (parallele Agenten). Mit der Vorgabe 5 s liefen
+`betreiber-zweifaktor` und `zweifaktor` in Zeitgrenzen — **auf dem alten Stand f17f417 genauso** (13 von 18 rot in
+`betreiber-zweifaktor`, Zeitüberschreitungen und Folgefehler); der alte Stand war unter geringerer Last zu Beginn
+grün (Zeile oben), der neue ist mit `--testTimeout=60000` grün. Die CI (Linux) ist
+maßgeblich.
+
+Weitere Änderung: `/api/einrichten/umgebung` meldet `rollenZweifaktorPflicht` und warnt bei unerwartetem Schalterwert
+(N4).
+
+### Restrisiken (dokumentiert, nicht umgebaut)
+
+- **N1 Demozugang.** `/api/demo` (öffentlich, ohne Code) erzeugt in `demo-*`-Räumen auch unter Pflicht Sitzungen mit
+  Leitungsrolle. Tragbar, solange Demoräume nur Beispieldaten enthalten und `CENTRIC_DEMO` im Pilot mit echten Daten aus
+  ist (Vorgabe aus). Demo-**Codes** über `/api/anmelden` unterliegen der Pflicht weiterhin (strenger).
+- **N3 Einrichtung mit gestohlenem Code ohne Pflicht.** Ohne Pflicht kann, wer einen Leitungscode kennt, den Faktor
+  vor dem Eigentümer einrichten und ihn so aussperren. Rückweg: neuer Zugangscode. **Frage an den Betreiber:** Soll es
+  für diese Rollen ein Offline-Zurücksetzen wie `werkzeug/betreiber-2fa-zuruecksetzen.mjs` geben, oder bleibt „neuer
+  Code“ der einzige Rückweg?
+- **N4 Schalter nur „1“.** Andere Werte („ja“, „true“) lassen die Pflicht aus. Umgesetzt als Warnung in
+  `/api/einrichten/umgebung` (nicht in `/gesund`: dessen Stufen lösen Alarme aus; eine Konfigurationswarnung gehört in
+  den Umgebungsbericht).
+- **Ohne Pfeffer, ohne Pflicht, ohne Vermerk:** Anmeldung mit dem Code allein wie bisher (ein Faktor lässt sich dort
+  gar nicht einrichten). Vermerk-Schreiben kann scheitern (Ablagefehler): Der Faktor gilt dann, nur der
+  Pfeffer-Schutz fehlt für diesen Zugang; protokolliert, Antwort trägt `vermerk: false`.
+- **Sicherungsschlüssel** (`nurSicherung`, Rolle Leitung, Vollausgabe lesend) sind von der Pflicht ausgenommen; sie
+  entstehen unter Pflicht ohnehin nur aus einer Sitzung mit Faktor, ältere bleiben gültig (SI-P1-Prüfung).
+- **Betreiber:** N2-Vermerk nicht übernommen (eigene Pflicht in production, Offline-Werkzeug); bei Bedarf eigenes Paket.
+- **Konten mit zweitem Faktor** (TOTP für Accounts) bleiben ein eigenes Paket; bis dahin ist unter Pflicht der
+  Zugangscode der einzige Weg für Leitung/Planung über Arbeitsbereiche.

@@ -8,6 +8,7 @@ import { wirksameRolle, eigenerMandant, sitzungsRolleBekannt } from "./rechte.mj
 import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from "./sitzungen.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
+import { rollenPflicht, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -244,6 +245,14 @@ export async function betriebWaehlen(store,
      eine Oberfläche weiß, was sie anzeigen darf; verbindlich ist sie
      ohnehin erst wieder bei der nächsten Anfrage. */
   const rolle = wirksameRolle(felder, gelesen.bestand) || m.rolle;
+
+  /* SI-P4, Review-Auflage M1: Ein Konto kennt (noch) keinen zweiten Faktor. Unter Pflicht
+     (CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1) öffnet dieser Weg deshalb keinen Betrieb mit den Rechten von Leitung,
+     Planung oder Kunde — maßgeblich sind die Rolle der Mitgliedschaft UND die wirksame Rolle der Person. Abgewiesen
+     wird, statt eine Sitzung ohne zweiten Faktor anzulegen; der Weg in diese Rolle ist der Zugangscode mit Faktor.
+     Ohne Pflicht bleibt es wie bisher. Die Account-Anmeldung selbst ist nur eine Identität ohne Rolle und ohne
+     Bestand (anmeldung.mjs) — die Rechte entstehen erst hier, also wird hier geprüft. */
+  if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle))) return absage("zweifaktor-pflicht");
 
   /* Die Arbeit überlebt ihre Anmeldung nicht: Die Dauer endet spätestens mit
      der Account-Sitzung. */

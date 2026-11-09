@@ -11,7 +11,8 @@ import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letz
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
-import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt } from "../lib/betreiber-zweifaktor.mjs";
+import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
+  rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -1000,7 +1001,8 @@ async function behandeln(req, context, ctx) {
         zfAktiv = !!zf.aktiv;
       } else if (zweifaktorRolle(eintrag.rolle) || zweifaktorRolle(rolleWirksamC)) {
         const zf = await rollenZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
-          kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name });
+          kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name,
+          faktorVermerkt: eintrag.zweiterFaktor === true });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {
@@ -1124,6 +1126,15 @@ async function behandeln(req, context, ctx) {
     const s = (s0.nurSicherung || s0.rolle === "betreiber"
       || s0.person === null || s0.person === undefined) ? s0
       : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };
+    /* SI-P4, Review-Auflage M2: Unter Pflicht trägt eine Sitzung ohne bestandenen zweiten Faktor keine Rechte einer
+       Rolle mit Faktor — auch nicht, wenn die Person erst nach der Anmeldung dazu wurde. Die Sitzung endet (sie würde
+       auch nach einer Herabstufung nicht wieder tragbar), die Anfrage bekommt 401. lib/betreiber-zweifaktor.mjs. */
+    if (rollenSitzungOhneFaktor(s0, s.rolle)) {
+      await sitzungBeenden(merkmalAus(req));
+      await protokoll("zweifaktor", kennung(req, null), "abgewiesen", "Pflicht: Sitzung ohne zweiten Faktor beendet");
+      return antwort({ fehler: "Für diese Rolle ist ein zweiter Faktor Pflicht. Bitte neu anmelden.",
+        zweifaktor: "neu-anmelden" }, 401);
+    }
 
     /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
        beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */

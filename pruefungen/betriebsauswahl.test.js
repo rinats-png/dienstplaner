@@ -938,3 +938,102 @@ describe("Bremse, Ablagefehler und die alten Zugänge", () => {
       if (!ohne.ok) expect(ohne.grund).toBe("konto-sitzung");
     }, LIMIT);
 });
+
+/* ==========================================================================
+   SI-P4, REVIEW-AUFLAGE M1: KONTO UND BETRIEBSAUSWAHL UNTER PFLICHT
+
+   Ein Konto kennt keinen zweiten Faktor. Unter CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1
+   öffnet die Betriebsauswahl deshalb keinen Betrieb mit den Rechten von Leitung,
+   Planung oder Kunde (Rolle der Mitgliedschaft ODER wirksame Rolle der Person):
+   403, keine Arbeitssitzung. Die Konto-Anmeldung selbst bleibt eine Identität
+   ohne Rolle und ohne Bestand. Ohne Pflicht: unverändert.
+   ========================================================================== */
+
+describe("SI-P4 M1: Betriebsauswahl unter Pflicht", () => {
+  const mitPflicht = async (arbeit) => {
+    process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1";
+    try { return await arbeit(); } finally { delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT; }
+  };
+
+  it("Kunde: über ein Konto gar nicht erreichbar (keine Mitgliedschaft mit dieser Rolle)", async () => {
+    const k = await konto(adresse("m1-kunde"));
+    const raum = raumName("m1-kunde");
+    await betrieb(raum, { personen: [person("p_1", "Rina", "Schmitt", "mitarbeiter")] });
+    const e = await A.mitgliedschaftAnlegen(laden(), { accountId: k.id, raum, betrieb: 0, mandantId: "m1",
+      person: "p_1", rolle: "kunde", einheit: null, status: "aktiv" });
+    expect(e.ok).toBe(false);
+  }, LIMIT);
+
+  for (const rolle of ["leitung", "planer", "subplaner"]) {
+    it(`Mitgliedschaft ${rolle}: Konto-Anmeldung nur Identität, Betriebsauswahl 403, keine Arbeitssitzung`, async () => {
+      const k = await konto(adresse(`m1-${rolle}`));
+      const raum = await arbeitsbereich(k.id, `m1-${rolle}`, { rolle });
+      await mitPflicht(async () => {
+        /* Die Anmeldung gibt nur das Cookie der Identität — kein Merkmal, keine Rolle, keinen Bestand. */
+        const an = await anfrage({ pfad: P_AN, rumpf: { email: k.email, passwort: GUT } });
+        expect(an.status).toBe(200);
+        expect(an.daten).toEqual({ ok: true, angemeldet: true });
+        const keks = keksWert(an.antwort.headers.get("set-cookie"));
+        const vorher = await arbeitssitzungen();
+        const e = await anfrage({ rumpf: { raum }, keks });
+        expect(e.status).toBe(403);
+        expect(e.daten.fehler).toBe("zweifaktor-pflicht");
+        expect(e.daten.token).toBeUndefined();
+        expect(await arbeitssitzungen()).toBe(vorher);
+        /* Ohne Personendaten, ohne Rolle. */
+        for (const wort of ["Rina", "Schmitt", "p_1", rolle, k.id, k.email]) expect(e.text, wort).not.toContain(wort);
+      });
+    }, LIMIT);
+  }
+
+  it("Mitgliedschaft Mitarbeiter, Person im Bestand Leitung (wirksame Rolle): 403", async () => {
+    const k = await konto(adresse("m1-wirksam"));
+    const raum = await arbeitsbereich(k.id, "m1-wirksam", { rolle: "mitarbeiter", personRolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    await mitPflicht(async () => {
+      const e = await anfrage({ rumpf: { raum }, keks });
+      expect(e.status).toBe(403);
+      expect(e.daten.fehler).toBe("zweifaktor-pflicht");
+    });
+  }, LIMIT);
+
+  it("Mitgliedschaft Mitarbeiter: auch unter Pflicht geöffnet", async () => {
+    const k = await konto(adresse("m1-ma"));
+    const raum = await arbeitsbereich(k.id, "m1-ma", { rolle: "mitarbeiter" });
+    const keks = await angemeldet(k.email);
+    await mitPflicht(async () => {
+      const e = await anfrage({ rumpf: { raum }, keks });
+      expect(e.status, e.text).toBe(200);
+      expect(e.daten.rolle).toBe("mitarbeiter");
+    });
+  }, LIMIT);
+
+  it("ohne Pflicht unverändert: Leitung wird geöffnet", async () => {
+    const k = await konto(adresse("m1-ohne"));
+    const raum = await arbeitsbereich(k.id, "m1-ohne", { rolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    const e = await anfrage({ rumpf: { raum }, keks });
+    expect(e.status, e.text).toBe(200);
+    expect(e.daten.rolle).toBe("leitung");
+  }, LIMIT);
+
+  it("Arbeitssitzung Leitung aus der Zeit vor der Pflicht: mit der Pflicht beendet", async () => {
+    const AS = await import("../server/lib/arbeitssitzung.mjs");
+    const k = await konto(adresse("m1-alt"));
+    const raum = await arbeitsbereich(k.id, "m1-alt", { rolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    const e = await anfrage({ rumpf: { raum }, keks });
+    expect(e.status).toBe(200);
+    const req = /** @type {any} */ ({ headers: { get: (n) => (n === "authorization" ? `Bearer ${e.daten.token}` : null) } });
+    expect((await AS.arbeitssitzungLesen(req, { store: laden() })).sitzung).toBeTruthy();
+    await mitPflicht(async () => {
+      const l = await AS.arbeitssitzungLesen(req, { store: laden() });
+      expect(l.sitzung).toBe(null);
+      expect(l.abgewiesen).toBe(true);
+      expect(l.grund).toBe("zweifaktor-pflicht");
+    });
+    /* Beendet, nicht nur abgewiesen. */
+    expect(await arbeitssitzung(e.daten.token)).toBe(null);
+    expect((await AS.arbeitssitzungLesen(req, { store: laden() })).sitzung).toBe(null);
+  }, LIMIT);
+});

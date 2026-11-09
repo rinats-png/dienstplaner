@@ -23,7 +23,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hotp, base32Dekodieren, schrittZu } from "../server/lib/zweifaktor.mjs";
@@ -43,8 +43,21 @@ const C = {
   BREMSE: "SIP4-BREM-SE01",
   PFLICHT: "SIP4-PFLI-CHT1",
   BETREIBER: "SIP4-BETR-EIB1",
+  /* Auflagen aus dem Review (PR #120) */
+  MA_LEIT_FAKTOR: "SIP4-AUFL-MLF1",
+  MA_LEIT_OHNE: "SIP4-AUFL-MLO1",
+  LEIT_PERS_MA: "SIP4-AUFL-LPM1",
+  M2_HOCH: "SIP4-AUFL-M2H1",
+  M2_OHNE_PFLICHT: "SIP4-AUFL-M2O1",
+  ALT_SITZUNG: "SIP4-AUFL-ALT1",
+  SPEICHER: "SIP4-AUFL-SPE1",
+  PFEFFER_FEHLT: "SIP4-AUFL-PFF1",
+  PFEFFER_WECHSEL: "SIP4-AUFL-PFW1",
+  PFEFFER_PFLICHT: "SIP4-AUFL-PFP1",
+  NUR_NEU: "SIP4-AUFL-NNE1",
 };
-let wurzel, laden, daten;
+const PFEFFER = "pfeffer-si-p4-0123456789abcdef";
+let wurzel, laden, daten, B, K, CODES, ABLAGE;
 let nr = 0;
 let jetzt = T0;
 const uhr = (ms) => { jetzt = ms; vi.setSystemTime(ms); };
@@ -80,6 +93,19 @@ async function einrichten(zugangscode) {
   return { geheimnis: b.geheimnis, wiederherstellung: f.wiederherstellung };
 }
 
+/** Der Probebestand; `rollen` überschreibt die Rolle einzelner Personen (M2: Hochstufung nach der Anmeldung). */
+async function bestandSetzen(rollen) {
+  const r = (id, vorgabe) => rollen[id] || vorgabe;
+  await B.bestandSchreiben(laden(), RAUM, { version: 9, mandanten: [{
+    id: "m1", name: "Haus", status: "aktiv", einheiten: [{ id: "e1", name: "WB 1", versatzTage: 0 }],
+    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }], qualifikationen: [],
+    einstellungen: { ruhezeit: 11, maxFolge: 6 },
+    personen: [person("m0", r("m0", "mitarbeiter")), person("l9", r("l9", "leitung")),
+      person("m2", r("m2", "mitarbeiter")), person("m3", r("m3", "mitarbeiter"))],
+    abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [], bestaetigungen: [],
+  }] }, { durch: "SI-P4" });
+}
+
 const person = (id, rolle) => ({ id, vorname: "V", nachname: `N${id}`, rolle, bereich: "ALLE", status: "aktiv",
   geburtstag: "1980-01-01", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 
@@ -89,7 +115,7 @@ beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-si-p4-"));
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
-  process.env.CENTRIC_PFEFFER = "pfeffer-si-p4-0123456789abcdef";
+  process.env.CENTRIC_PFEFFER = PFEFFER;
   delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
   delete process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT;
   const { getStore } = await import("../server/lib/ablage.mjs");
@@ -100,16 +126,13 @@ beforeAll(async () => {
   schutz.WEITERE.anmelden = { ziel: { versuche: 100000, fenster: 300 }, gesamt: { versuche: 100000, fenster: 300 } };
   schutz.NOTGRENZEN.anmelden = { versuche: 100000, fenster: 300, gesamt: 100000 };
   daten = (await import("../server/funktionen/daten.mjs")).default;
-  const B = await import("../server/lib/bestand.mjs");
-  await B.bestandSchreiben(laden(), RAUM, { version: 9, mandanten: [{
-    id: "m1", name: "Haus", status: "aktiv", einheiten: [{ id: "e1", name: "WB 1", versatzTage: 0 }],
-    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }], qualifikationen: [],
-    einstellungen: { ruhezeit: 11, maxFolge: 6 },
-    personen: [person("m0", "mitarbeiter"), person("l9", "leitung")],
-    abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [], bestaetigungen: [],
-  }] }, { durch: "SI-P4" });
-  const { kontoSchreiben } = await import("../server/lib/konten.mjs");
-  const { ablageSchluessel } = await import("../server/lib/codes.mjs");
+  B = await import("../server/lib/bestand.mjs");
+  K = await import("../server/lib/konten.mjs");
+  CODES = await import("../server/lib/codes.mjs");
+  ABLAGE = await import("../server/lib/ablage.mjs");
+  await bestandSetzen({});
+  const { kontoSchreiben } = K;
+  const { ablageSchluessel } = CODES;
   const konto = (c, rolle, person = null) => kontoSchreiben(laden(), ablageSchluessel(c), { name: `${rolle} Probe`,
     bestand: rolle === "betreiber" ? "betreiber-si-p4" : RAUM, rolle, person, betrieb: 0,
     mandantId: rolle === "betreiber" ? null : "m1", angelegt: "2026-01-01T00:00:00.000Z" });
@@ -122,6 +145,20 @@ beforeAll(async () => {
   await konto(C.BREMSE, "leitung");
   await konto(C.PFLICHT, "leitung");
   await konto(C.BETREIBER, "betreiber");
+  await konto(C.MA_LEIT_FAKTOR, "mitarbeiter", "l9");
+  await konto(C.MA_LEIT_OHNE, "mitarbeiter", "l9");
+  await konto(C.LEIT_PERS_MA, "leitung", "m0");
+  await konto(C.M2_HOCH, "mitarbeiter", "m2");
+  await konto(C.M2_OHNE_PFLICHT, "mitarbeiter", "m3");
+  await konto(C.ALT_SITZUNG, "leitung");
+  await konto(C.SPEICHER, "leitung");
+  await konto(C.NUR_NEU, "leitung");
+  /* N2: Zugänge aus der Zeit vor dem Pfeffer — unter dem alten, ungepfefferten Schlüssel. */
+  const altKonto = (c) => kontoSchreiben(laden(), CODES.altHash(c), { name: "leitung Probe", bestand: RAUM,
+    rolle: "leitung", person: null, betrieb: 0, mandantId: "m1", angelegt: "2026-01-01T00:00:00.000Z" });
+  await altKonto(C.PFEFFER_FEHLT);
+  await altKonto(C.PFEFFER_WECHSEL);
+  await altKonto(C.PFEFFER_PFLICHT);
 });
 afterAll(async () => {
   vi.useRealTimers();
@@ -301,7 +338,8 @@ describe("SI-P4 Bremse je Code (fail-closed)", () => {
     const r = await anmelden({ zugangscode: C.BREMSE, zweifaktor: code(geheimnis) });
     expect(r.status).toBe(429);
     expect(r.token).toBeUndefined();
-  });
+    /* Zeitgrenze: jeder falsche Code wartet 400 ms; im Gesamtlauf unter Last reichten 5 s nicht immer. */
+  }, 30_000);
 });
 
 describe("SI-P4 weitere Rollen", () => {
@@ -368,5 +406,248 @@ describe("SI-P4 Pflicht (CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1)", () => {
     } finally {
       delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
     }
+  });
+});
+
+/* ==========================================================================
+   AUFLAGEN AUS DEM REVIEW VON PR #120 (M2, N2, N4, Negativtests)
+   M1 (Konto/Betriebsauswahl) steht in betriebsauswahl.test.js.
+   ========================================================================== */
+
+/** Pflicht für die Dauer eines Blocks. */
+async function mitPflicht(arbeit) {
+  process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1";
+  try { return await arbeit(); } finally { delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT; }
+}
+/** Ein anderer Pfeffer (oder keiner) für die Dauer eines Blocks. */
+async function mitPfeffer(wert, arbeit) {
+  if (wert === null) delete process.env.CENTRIC_PFEFFER; else process.env.CENTRIC_PFEFFER = wert;
+  try { return await arbeit(); } finally { process.env.CENTRIC_PFEFFER = PFEFFER; }
+}
+
+describe("SI-P4 Auflagen: Rolle des Codes und wirksame Rolle", () => {
+  it("Mitarbeitercode, wirksame Rolle Leitung, Faktor eingerichtet: ohne Code 401 — mit und ohne Pflicht", async () => {
+    const { geheimnis } = await einrichten(C.MA_LEIT_FAKTOR);
+    const ohne = await anmelden({ zugangscode: C.MA_LEIT_FAKTOR });
+    expect(ohne.status).toBe(401);
+    expect(ohne.zweifaktor).toBe("erforderlich");
+    expect(ohne.token).toBeUndefined();
+    await mitPflicht(async () => {
+      const p = await anmelden({ zugangscode: C.MA_LEIT_FAKTOR });
+      expect(p.status).toBe(401);
+      expect(p.token).toBeUndefined();
+      const mit = await anmelden({ zugangscode: C.MA_LEIT_FAKTOR, zweifaktor: code(geheimnis) });
+      expect(mit.status, mit.roh).toBe(200);
+      /* Die Sitzung trägt den bestandenen Faktor und besteht die Prüfung je Anfrage. */
+      expect((await bestandHolen(mit.token)).status).toBe(200);
+    });
+    weiter();
+  });
+
+  it("Mitarbeitercode, wirksame Rolle Leitung, KEIN Faktor: unter Pflicht 403 (einrichten), ohne Pflicht 200", async () => {
+    await mitPflicht(async () => {
+      const a = await anmelden({ zugangscode: C.MA_LEIT_OHNE });
+      expect(a.status).toBe(403);
+      expect(a.zweifaktor).toBe("einrichten");
+      expect(a.token).toBeUndefined();
+    });
+    const b = await anmelden({ zugangscode: C.MA_LEIT_OHNE });
+    expect(b.status, b.roh).toBe(200);
+    expect(b.merkenErlaubt).toBe(false);
+  });
+
+  it("Coderolle Leitung, Person im Bestand Mitarbeiter: der Faktor gilt trotzdem", async () => {
+    const { geheimnis } = await einrichten(C.LEIT_PERS_MA);
+    const ohne = await anmelden({ zugangscode: C.LEIT_PERS_MA });
+    expect(ohne.status).toBe(401);
+    expect(ohne.token).toBeUndefined();
+    const mit = await anmelden({ zugangscode: C.LEIT_PERS_MA, zweifaktor: code(geheimnis) });
+    expect(mit.status, mit.roh).toBe(200);
+    expect(mit.zweifaktor).toBe(true);
+    weiter();
+  });
+});
+
+describe("SI-P4 Auflage M2: Hochstufung nach der Anmeldung", () => {
+  it("als Mitarbeiter angemeldet, danach Leitung: unter Pflicht 401 und die Sitzung ist beendet", async () => {
+    const a = await anmelden({ zugangscode: C.M2_HOCH });
+    expect(a.status, a.roh).toBe(200);
+    expect(a.zweifaktor).toBeUndefined();
+    expect((await bestandHolen(a.token)).rolle).toBe("mitarbeiter");
+    await bestandSetzen({ m2: "leitung" });
+    try {
+      await mitPflicht(async () => {
+        const b = await bestandHolen(a.token);
+        expect(b.status).toBe(401);
+        expect(b.zweifaktor).toBe("neu-anmelden");
+        expect(b.bestand).toBeUndefined();
+      });
+      /* Beendet, nicht nur abgewiesen: auch ohne Pflicht und nach der Rückstufung gilt die Sitzung nicht mehr. */
+      await bestandSetzen({});
+      expect((await bestandHolen(a.token)).status).toBe(401);
+    } finally { await bestandSetzen({}); }
+  });
+
+  it("ohne Pflicht: Hochstufung wie bisher (Rechte aus der Personalliste, Sitzung bleibt)", async () => {
+    const a = await anmelden({ zugangscode: C.M2_OHNE_PFLICHT });
+    expect(a.status, a.roh).toBe(200);
+    await bestandSetzen({ m3: "leitung" });
+    try {
+      const b = await bestandHolen(a.token);
+      expect(b.status).toBe(200);
+      expect(b.rolle).toBe("leitung");
+      expect(b.merkenErlaubt).toBe(false);
+    } finally { await bestandSetzen({}); }
+  });
+
+  it("Leitungssitzung aus der Zeit vor der Pflicht (ohne Faktor): mit der Pflicht beendet", async () => {
+    const a = await anmelden({ zugangscode: C.ALT_SITZUNG });
+    expect(a.status, a.roh).toBe(200);
+    expect((await bestandHolen(a.token)).status).toBe(200);
+    await mitPflicht(async () => {
+      expect((await bestandHolen(a.token)).status).toBe(401);
+    });
+    expect((await bestandHolen(a.token)).status).toBe(401);
+  });
+
+  it("Baustein rollenSitzungOhneFaktor: Ausnahmen und Grenzen", async () => {
+    const { rollenSitzungOhneFaktor, demoSitzung } = await import("../server/lib/betreiber-zweifaktor.mjs");
+    const P = { CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: "1" };
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung" }, null, {})).toBe(false);          // Pflicht aus
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung" }, null, P)).toBe(true);
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung", zweifaktor: true }, null, P)).toBe(false);
+    expect(rollenSitzungOhneFaktor({ rolle: "mitarbeiter" }, "leitung", P)).toBe(true);    // M2
+    expect(rollenSitzungOhneFaktor({ rolle: "mitarbeiter" }, "mitarbeiter", P)).toBe(false);
+    expect(rollenSitzungOhneFaktor({ rolle: "kunde" }, null, P)).toBe(true);
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung", zweifaktor: "ja" }, null, P)).toBe(true);
+    expect(rollenSitzungOhneFaktor({ rolle: "betreiber" }, null, P)).toBe(false);
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung", nurSicherung: true }, null, P)).toBe(false);
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung", demo: true, bestand: "demo-x" }, null, P)).toBe(false);
+    /* Ein demo-Kennzeichen allein öffnet keinen echten Raum. */
+    expect(rollenSitzungOhneFaktor({ rolle: "leitung", demo: true, bestand: "echt" }, null, P)).toBe(true);
+    expect(demoSitzung({ demo: "true", bestand: "demo-x" })).toBe(false);
+  });
+});
+
+describe("SI-P4 Auflage: /api/demo unter Pflicht (Ausnahme für Demoräume)", () => {
+  const DEMORAUM = "demo-si-p4";
+  beforeAll(async () => {
+    await B.bestandSchreiben(laden(), DEMORAUM, { version: 9, mandanten: [{ id: "m1", name: "Demohaus", status: "aktiv",
+      einheiten: [{ id: "e1", name: "WB 1", versatzTage: 0 }], dienstarten: [], qualifikationen: [],
+      einstellungen: { ruhezeit: 11, maxFolge: 6 }, personen: [],
+      abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [], bestaetigungen: [],
+    }] }, { durch: "SI-P4" });
+    await K.kontoSchreiben(laden(), CODES.ablageSchluessel("SIP4-DEMO-LEIT"), { id: "demo-sip4-leitung",
+      name: "Demo Leitung", bestand: DEMORAUM, rolle: "leitung", person: null, betrieb: 0, mandantId: "m1",
+      demo: true, angelegt: "2026-01-01T00:00:00.000Z" });
+  });
+
+  it("Demozugang Leitung: Sitzung und Bestand auch unter Pflicht (Demoraum, keine echten Daten)", async () => {
+    process.env.CENTRIC_DEMO = "true";
+    try {
+      await mitPflicht(async () => {
+        nr += 1;
+        const a = await daten(new Request(`http://${WIRT}/api/demo`, { method: "POST",
+          headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+            "x-forwarded-for": `10.46.0.${nr % 250}` }, body: JSON.stringify({ id: "demo-sip4-leitung" }) }), {});
+        const d = await a.json();
+        expect(a.status, JSON.stringify(d)).toBe(200);
+        expect(d.token).toBeTruthy();
+        expect(d.rolle).toBe("leitung");
+        const b = await bestandHolen(d.token);
+        expect(b.status).toBe(200);
+        expect(b.demo).toBe(true);
+        /* Nie gemerkt: der Demozugang trägt keinen Faktor. */
+        expect(b.merkenErlaubt).toBe(false);
+      });
+    } finally { delete process.env.CENTRIC_DEMO; }
+  });
+});
+
+describe("SI-P4 Auflage: Fehler im Faktor-Speicher", () => {
+  it("unlesbarer Eintrag des Faktors: 503, keine Sitzung — mit und ohne Pflicht", async () => {
+    const id = rollenZweifaktorId(CODES.ablageSchluessel(C.SPEICHER));
+    const datei = path.join(wurzel, "centric", ABLAGE.dateiname(`zweifaktor:${id}`));
+    await writeFile(datei, "kein gültiger Umschlag");
+    const a = await anmelden({ zugangscode: C.SPEICHER });
+    expect(a.status).toBe(503);
+    expect(a.token).toBeUndefined();
+    await mitPflicht(async () => {
+      const b = await anmelden({ zugangscode: C.SPEICHER });
+      expect(b.status).toBe(503);
+      expect(b.token).toBeUndefined();
+    });
+  });
+});
+
+describe("SI-P4 Auflage N2: fehlender oder gewechselter Pfeffer", () => {
+  it("Faktor eingerichtet, Pfeffer fehlt: 503 — kein stilles Weiterarbeiten mit dem alten Schlüssel", async () => {
+    const { geheimnis } = await einrichten(C.PFEFFER_FEHLT);
+    /* Mit Pfeffer gilt der Faktor (und der Zugang wird dabei umgeschlüsselt). */
+    const mit = await anmelden({ zugangscode: C.PFEFFER_FEHLT, zweifaktor: code(geheimnis) });
+    expect(mit.status, mit.roh).toBe(200);
+    weiter();
+    await mitPfeffer(null, async () => {
+      const a = await anmelden({ zugangscode: C.PFEFFER_FEHLT });
+      expect(a.status, a.roh).toBe(503);
+      expect(a.zweifaktor).toBe("pfeffer");
+      expect(a.token).toBeUndefined();
+      const b = await anmelden({ zugangscode: C.PFEFFER_FEHLT, zweifaktor: code(geheimnis) });
+      expect(b.status).toBe(503);
+      expect(b.token).toBeUndefined();
+      /* Auch kein Neueinrichten mit dem Code allein. */
+      const c = await anmelden({ zugangscode: C.PFEFFER_FEHLT, zweifaktorAktion: "beginnen" });
+      expect(c.status).toBe(503);
+      expect(c.geheimnis).toBeUndefined();
+    });
+  });
+
+  it("Faktor eingerichtet, Pfeffer gewechselt: 503, keine Sitzung, kein Neueinrichten", async () => {
+    const { geheimnis } = await einrichten(C.PFEFFER_WECHSEL);
+    expect((await anmelden({ zugangscode: C.PFEFFER_WECHSEL, zweifaktor: code(geheimnis) })).status).toBe(200);
+    weiter();
+    await mitPfeffer("ein-ganz-anderer-pfeffer-9876543210", async () => {
+      const a = await anmelden({ zugangscode: C.PFEFFER_WECHSEL });
+      expect(a.status, a.roh).toBe(503);
+      expect(a.token).toBeUndefined();
+      const c = await anmelden({ zugangscode: C.PFEFFER_WECHSEL, zweifaktorAktion: "beginnen" });
+      expect(c.status).toBe(503);
+      expect(c.geheimnis).toBeUndefined();
+    });
+    /* Mit dem richtigen Pfeffer ist alles wie vorher. */
+    const zurueck = await anmelden({ zugangscode: C.PFEFFER_WECHSEL, zweifaktor: code(geheimnis) });
+    expect(zurueck.status, zurueck.roh).toBe(200);
+    weiter();
+  });
+
+  it("unter Pflicht ohne Pfeffer: 503 statt Einrichtungsaufforderung (kein Faktor prüf- oder einrichtbar)", async () => {
+    await mitPflicht(() => mitPfeffer(null, async () => {
+      const a = await anmelden({ zugangscode: C.PFEFFER_PFLICHT });
+      expect(a.status, a.roh).toBe(503);
+      expect(a.token).toBeUndefined();
+    }));
+  });
+
+  it("Abschalten entfernt den Vermerk: danach wieder der Code allein", async () => {
+    const { geheimnis } = await einrichten(C.NUR_NEU);
+    const vorher = await K.kontoLesen(laden(), CODES.ablageSchluessel(C.NUR_NEU));
+    expect(vorher.zweiterFaktor).toBe(true);
+    uhr(jetzt + 6 * 60_000);
+    const ab = await anmelden({ zugangscode: C.NUR_NEU, zweifaktorAktion: "abschalten", zweifaktor: code(geheimnis) });
+    expect(ab.status, ab.roh).toBe(200);
+    const nachher = await K.kontoLesen(laden(), CODES.ablageSchluessel(C.NUR_NEU));
+    expect(nachher.zweiterFaktor).toBeUndefined();
+    weiter();
+    const a = await anmelden({ zugangscode: C.NUR_NEU });
+    expect(a.status, a.roh).toBe(200);
+  });
+
+  it("N4: unerwarteter Schalterwert wird erkannt (Warnung im Umgebungsbericht)", async () => {
+    const { rollenPflichtUnerwartet } = await import("../server/lib/betreiber-zweifaktor.mjs");
+    expect(rollenPflichtUnerwartet({})).toBe(false);
+    expect(rollenPflichtUnerwartet({ CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: "1" })).toBe(false);
+    expect(rollenPflichtUnerwartet({ CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: " 1 " })).toBe(false);
+    for (const w of ["ja", "true", "an", "0", "2"])
+      expect(rollenPflichtUnerwartet({ CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: w }), w).toBe(true);
   });
 });
