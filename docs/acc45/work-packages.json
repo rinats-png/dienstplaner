@@ -6,17 +6,17 @@
     "BLOCKED": 79,
     "READY": 26,
     "IN_PROGRESS": 4,
-    "REVIEW": 10,
-    "INTEGRATED": 38,
+    "REVIEW": 9,
+    "INTEGRATED": 39,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 63,
-      "offen": 26,
+      "offen": 25,
       "restPT": {
-        "min": 62.400000000000006,
-        "max": 97.7
+        "min": 62.300000000000004,
+        "max": 97.5
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 418.20000000000005,
-    "max": 710.8000000000001
+    "min": 418.1,
+    "max": 710.6
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -4552,12 +4552,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["SI-P8"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Branch acc45/sicherheit/si-p9 (sicherheit.yml, pruefung.yml, betrieb-sicherung.yml)"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/workflow-haertung.test.js 7/7 grün; sicherheit-intern 55/55; Verdrahtung ok"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/workflow-haertung.test.js 10/10 grün; sicherheit-intern grün; Verdrahtung ok"},
+        "reviewt": {"wert":true,"beleg":"Unabhängiges Review (Opus, lesend): keine kritischen/hohen/mittleren Befunde; niedrige Befunde in d1e58bd, 94c598c behoben; docs/acc45/SI-P9-NACHWEIS.md"},
+        "integriert": {"wert":true,"beleg":"PR #114 gemergt in integration/release-v4, Merge-Commit 18ce941; CI 21/21 grün auf 12fb37a"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4566,7 +4566,7 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#114"],
       "nachweis": "docs/acc45/SI-P9-NACHWEIS.md",
       "akzeptanz": "Jeder checkout-Schritt in den Workflows außer der Deploy-Pipeline setzt persist-credentials: false; jeder Workflow hat eine Berechtigungsvorgabe nur mit Lesen; deploy.yml und betrieb-deploy.yml bleiben bis zur Betreiberfreigabe unverändert",
       "tests": "pruefungen/workflow-haertung.test.js (Regel mit roten und grünen Proben, Stand im Repository)",
