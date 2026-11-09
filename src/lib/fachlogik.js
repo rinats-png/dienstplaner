@@ -2052,16 +2052,55 @@ export function importZuordnen(kopf, zeilen) {
   return { zu, herkunft };
 }
 
+/** Eintrittsdatum prüfen (Logik aus acc45/person/eintritt, Commit 4414084). Gibt nie das heutige Datum zurück.
+ *  leer, optional -> { ok: true, wert: null }; leer, pflicht -> Fehler; gültig (TT.MM.JJJJ, ISO) -> "JJJJ-MM-TT";
+ *  ungültig -> { ok: false, wert: null, fehler }. */
+export function eintrittPruefen(roh, { pflicht = false } = {}) {
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) {
+    return pflicht
+      ? { ok: false, wert: null, fehler: "Bitte das Eintrittsdatum eingeben." }
+      : { ok: true, wert: null };
+  }
+  let j, mo, tg;
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const de = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (iso) [, j, mo, tg] = iso.map(Number); else if (de) [, tg, mo, j] = de.map(Number);
+  else return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig (erwartet TT.MM.JJJJ oder JJJJ-MM-TT).` };
+  const d = new Date(Date.UTC(j, mo - 1, tg));
+  if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== tg)
+    return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig: Das Datum gibt es nicht.` };
+  return { ok: true, wert: `${j}-${pad(mo)}-${pad(tg)}` };
+}
+/* IMP-1 Auflagen C/D/E/F: Hilfen der Importprüfung. */
+/** Rollen, die ein Anwender über den Import vergeben darf. Spiegel von vergebbareRollen() in
+ *  server/lib/rollenvergabe.mjs (niemand vergibt die eigene Rolle oder eine darüber). Der Client bindet
+ *  server/ nicht ein; der Server prüft die Vergabe trotzdem selbst, die Prüfung hier ist nur
+ *  Bedienkomfort und frühe Rückmeldung, kein Schutz. */
+export const IMPORT_VERGEBBAR = {
+  betreiber: ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"],
+  leitung: ["planer", "subplaner", "mitarbeiter", "betriebsrat"],
+  planer: ["subplaner", "mitarbeiter", "betriebsrat"],
+  subplaner: ["mitarbeiter", "betriebsrat"],
+};
+/** Personalnummer ohne Groß-/Kleinschreibung, Trennzeichen und führende Nullen. */
+const importNrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
+/** Name normalisiert: Umlaute, ß, Bindestriche, Mehrfach-Leerzeichen, Groß-/Kleinschreibung. */
+const importNameNorm = (s) => String(s || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+  .replace(/ß/g, "ss").replace(/[-‐‑–]/g, " ").replace(/\s+/g, " ").trim();
+const importNameSchluessel = (nach, vor) => (nach && vor ? [importNameNorm(nach), importNameNorm(vor)] : null);
+const importNameGleich = (a, b) => !!a && !!b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));
 /** Ein Feld ohne Zuordnung, das gebraucht wird? */
 export const importFehlend = (zu) => ["nachname"].filter((f) => zu[f] === undefined);
 /** Baut aus den Rohzeilen Personendatensätze und meldet, was fehlt. */
 /* IMP-1: Vierter Parameter `entscheidungen` — je Zeilennummer die Wahl bei einer Dublette:
    "neu" | "ueberspringen" | "klaeren" | { aktion: "aktualisieren", bestaetigt: true }.
    Ohne Wahl bleibt eine Dublette unübernehmbar (ok: false). */
-export function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
+export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
   const rollen = ROLLEN.filter((r) => !r.extern).map((r) => r.id);
-  const vorigeZeilen = [];
-  const zeilen = daten.map((f, i) => {
+  /* Auflage D: Rolle des Anwenders; ohne Angabe gilt die niedrigste Rolle, die importieren darf (Planung). */
+  const vergebbar = IMPORT_VERGEBBAR[optionen.vergeber || "planer"] || [];
+  const roh = daten.map((f, i) => {
     const hol = (k) => (zu[k] !== undefined ? (f[zu[k]] || "").trim() : "");
     const nachname = hol("nachname"), vorname = hol("vorname");
     const einheitName = hol("einheit");
@@ -2077,17 +2116,10 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
     /* IMP-1: Ein nicht lesbares oder unmögliches Datum wird gemeldet, nie durch heute() ersetzt.
        Nur eine leere Zelle (Spalte fehlt oder nichts eingetragen) nimmt wie bisher den heutigen Tag. */
+    /* Auflage C: leer bleibt leer (null, nicht heute); ungültig ist ein Fehler. */
     const eintrittRoh = hol("eintritt");
-    const eintritt = (() => {
-      if (!eintrittRoh) return heute();
-      let j, mo, t;
-      const iso = eintrittRoh.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      const de = eintrittRoh.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-      if (iso) [, j, mo, t] = iso.map(Number); else if (de) [, t, mo, j] = de.map(Number); else return null;
-      const d = new Date(Date.UTC(j, mo - 1, t));
-      if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== t) return null;
-      return `${j}-${pad(mo)}-${pad(t)}`;
-    })();
+    const eintrittErgebnis = eintrittPruefen(eintrittRoh);
+    const eintritt = eintrittErgebnis.wert;
     const personalnummer = hol("personalnummer");
     /* IMP-1: Fehlt die E-Mail, bleibt sie leer — es wird keine Adresse erfunden. */
     const email = hol("email");
@@ -2099,53 +2131,82 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
     if (!vorname) fehler.push("Vorname fehlt");
     if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
     if (!einheitName) fehler.push("Einheit fehlt");
-    if (eintritt === null) fehler.push(`Eintrittsdatum „${eintrittRoh}" ungültig`);
+    if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
+    /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. */
+    if (rolleRoh && !vergebbar.includes(rolleId)) fehler.push(`Rolle „${rolleRoh}" nicht vergebbar`);
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
     /* IMP-1: Dublette zuerst über die Personalnummer (mandantenintern), sonst über den Namen.
        Eine Dublette wird nie ungeprüft übernommen: ohne ausdrückliche Wahl bleibt die Zeile
        unübernehmbar. Namen allein führen nie zusammen oder überschreiben. */
     const nrNorm = personalnummer.toLowerCase();
+    const nameKey = importNameSchluessel(nachname, vorname);
     let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").toLowerCase() === nrNorm) : null;
     let dublette = treffer ? { grund: "personalnummer", personId: treffer.id, inDatei: false } : null;
-    /* IMP-1 (Auflage IMP-3-Review): Nur ein exakter Personalnummer-Treffer darf zur Aktualisierung führen.
-       Eine Nummer, die sich nur in führenden Nullen oder Trennzeichen unterscheidet (01001/1001, P-1001/P1001),
-       ist ein möglicher Treffer: Dublette zum Klären, nie stillschweigend "verschieden", nie Aktualisierung. */
-    const nrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
-    if (!dublette && nrNorm && nrLose(nrNorm)) {
-      treffer = m.personen.find((p) => nrLose(p.personalnummer) === nrLose(nrNorm));
+    /* Nur ein exakter Personalnummer-Treffer ist ein sicherer Treffer; Nummern, die sich nur in führenden
+       Nullen oder Trennzeichen unterscheiden (01001/1001, P-1001/P1001), sind ein möglicher Treffer. */
+    if (!dublette && nrNorm && importNrLose(nrNorm)) {
+      treffer = m.personen.find((p) => importNrLose(p.personalnummer) === importNrLose(nrNorm));
       if (treffer) dublette = { grund: "personalnummer_aehnlich", personId: treffer.id, inDatei: false };
     }
-    if (!dublette && nachname && vorname) {
-      treffer = m.personen.find((p) => p.nachname.toLowerCase() === nachname.toLowerCase()
-        && p.vorname.toLowerCase() === vorname.toLowerCase());
-      if (treffer) dublette = { grund: "name", personId: treffer.id, inDatei: false,
-        nummerAbweicht: !!nrNorm && nrLose(treffer.personalnummer) !== nrLose(nrNorm) };
+    /* Auflage F: Namensvergleich normalisiert (Umlaute, Leerzeichen, Bindestriche, Schreibweise);
+       vertauschter Vor-/Nachname gilt als möglicher Treffer. Immer "klaeren", nie Aktualisierung. */
+    if (!dublette && nameKey) {
+      treffer = m.personen.find((p) => importNameGleich(nameKey, importNameSchluessel(p.nachname, p.vorname)));
+      if (treffer) {
+        const tk = importNameSchluessel(treffer.nachname, treffer.vorname);
+        dublette = { grund: "name", personId: treffer.id, inDatei: false,
+          vertauscht: !(nameKey[0] === tk[0] && nameKey[1] === tk[1]),
+          nummerAbweicht: !!nrNorm && importNrLose(treffer.personalnummer) !== importNrLose(nrNorm) };
+      }
     }
-    /* Aktualisieren ist nur bei exaktem Personalnummer-Treffer in den Bestand erlaubt. */
-    const darfAktualisieren = !!dublette && dublette.grund === "personalnummer" && !dublette.inDatei;
-    if (!dublette) {
-      const frueher = vorigeZeilen.find((v) => (nrNorm && v.nrNorm === nrNorm)
-        || (!nrNorm && !v.nrNorm && nachname && vorname && v.name === `${nachname}|${vorname}`.toLowerCase()));
-      if (frueher) dublette = { grund: nrNorm ? "personalnummer" : "name", personId: null, inDatei: true, zeile: frueher.nr };
+    return { f, i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, personalnummer,
+      email, teilzeit, fehler, nrNorm, nameKey, dublette, hol };
+  });
+  /* Auflage E: Doppelte Zeilen in der Datei — BEIDE (alle) Zeilen werden zum Klären markiert, kein stiller
+     Vorrang. Nummern über importNrLose (führende Nullen, Trennzeichen, Schreibweise), sonst über den Namen. */
+  const inDateiGruppe = (r) => {
+    const nr = importNrLose(r.nrNorm);
+    if (nr) return roh.filter((x) => x !== r && importNrLose(x.nrNorm) === nr);
+    return roh.filter((x) => x !== r && !importNrLose(x.nrNorm) && importNameGleich(r.nameKey, x.nameKey));
+  };
+  const zeilen = roh.map((r) => {
+    const { i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, personalnummer,
+      email, teilzeit, fehler, nrNorm, hol } = r;
+    let dublette = r.dublette;
+    const andere = inDateiGruppe(r);
+    if (!dublette && andere.length) {
+      dublette = { grund: importNrLose(nrNorm) ? "personalnummer" : "name", personId: null, inDatei: true,
+        zeile: andere[0].i + 1, zeilen: andere.map((x) => x.i + 1) };
     }
-    vorigeZeilen.push({ nr: i + 1, nrNorm, name: `${nachname}|${vorname}`.toLowerCase() });
+    /* Auflage B: Aktualisieren ist über den Import nie möglich. Die Zuordnung bleibt für die Rückmeldung bestehen,
+       die Zeile ist aber nie übernehmbar (ok false). */
+    const sicherTreffer = !!dublette && dublette.grund === "personalnummer";
+    const darfAktualisieren = sicherTreffer && !dublette.inDatei;
+    /* Auflage A/G: Exakter Personalnummer-Treffer (P4711 = p4711): nie "neu", nie übernehmbar. */
+    const hinweis = darfAktualisieren
+      ? `Personalnummer „${personalnummer}" vorhanden, nicht über den Import änderbar`
+      : (dublette && dublette.inDatei && dublette.grund === "personalnummer"
+        ? `Personalnummer „${personalnummer}" kommt in der Datei mehrfach vor` : null);
+    if (hinweis) fehler.push(hinweis);
     const doppelt = !!dublette;
     const wahl = dublette ? entscheidungen[i + 1] : null;
     let aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
     const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
-    /* Vorgabe ist nie "aktualisieren"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
+    /* Vorgabe ist nie "aktualisieren" und nie "neu"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
     const aktualisierungAbgelehnt = aktion === "aktualisieren" && !darfAktualisieren;
     if (aktualisierungAbgelehnt) aktion = "klaeren";
+    const neuAbgelehnt = aktion === "neu" && sicherTreffer;
+    if (neuAbgelehnt) aktion = "klaeren";
     const vorgabe = dublette ? "klaeren" : null;
-    /* Nur "Neu anlegen" macht eine Dublette übernehmbar. Aktualisieren verlangt zusätzlich die
-       ausdrückliche Bestätigung und ist nie eine Neuanlage; Überspringen/Klären nehmen nichts auf. */
     const neuGewaehlt = aktion === "neu";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
+      /* Auflage C: leeres Eintrittsdatum; zugehoerigkeit.ab/rolleSeit setzt der Speicherpfad (App.jsx). */
+      eintrittLeer: eintritt === null,
       qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette,
       personalnummer, email, aktion, aktualisierungBestaetigt: aktion === "aktualisieren" && bestaetigt,
-      vorgabe, aktualisierungAbgelehnt,
+      vorgabe, aktualisierungAbgelehnt, neuAbgelehnt, hinweis,
       zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
       ok: fehler.length === 0 && (!doppelt || neuGewaehlt) };
   });
