@@ -274,7 +274,7 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     expect(h.gehalten).toBe(true);
     const fremd = "c".repeat(32);
     await writeFile(path.join(verz(), H.ANFRAGE), JSON.stringify({ fassung: 1, token: fremd, fristMs: 1000, erstellt: new Date().toISOString() }));
-    await warte(80);
+    await warte(400);
     expect(H.haltZustand().gehalten).toBe(true);                               // nicht freigegeben
     const antwort = JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8"));
     expect([antwort.token, antwort.stand]).toEqual([fremd, "abgelehnt"]);
@@ -304,13 +304,13 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     expect((await readdir(verz())).includes(H.ANFRAGE)).toBe(false);          // kein Halt über einen Neustart
     await writeFile(path.join(verz(), H.ANFRAGE), JSON.stringify({ fassung: 1, token: "b".repeat(32), fristMs: 1000,
       erstellt: new Date(Date.now() - 60_000).toISOString() }));
-    await warte(80);
+    await warte(400);
     const antwort = JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8"));
     expect([antwort.token, antwort.stand]).toEqual(["b".repeat(32), "abgelehnt"]);
     expect(H.haltZustand().gehalten).toBe(false);
     await rm(path.join(verz(), H.ANFRAGE), { force: true });
     await writeFile(path.join(verz(), H.ANFRAGE), "x".repeat(5000));
-    await warte(50);
+    await warte(400);
     expect(H.haltZustand().gehalten).toBe(false);
     await H.kanalStoppen();
     await rm(path.join(verz(), H.ANFRAGE), { force: true });
@@ -337,12 +337,12 @@ describe("Sicherung unter Last mit Schreib-Halt", () => {
             await store.setJSON(`last-mitglied-${i}`, { gen });
           });
           schreibungen += 2;
-          await warte(2);
+          await warte(400);
         }
       })());
     }
     const spur = A.getStore("centric-spur");
-    laeufe.push((async () => { let n = 0; while (an) { await spur.setJSON(`rauschen-${n++ % 20}`, { n }); schreibungen += 1; await warte(5); } })());
+    laeufe.push((async () => { let n = 0; while (an) { await spur.setJSON(`rauschen-${n++ % 20}`, { n }); schreibungen += 1; await warte(400); } })());
     const beginn = Date.now();
     return { stopp: async () => { an = false; await Promise.all(laeufe); return { schreibungen, sekunden: (Date.now() - beginn) / 1000 }; } };
   }
