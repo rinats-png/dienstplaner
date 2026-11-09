@@ -59,8 +59,10 @@ export const MUSTER = [
 /* Begründete Ausnahmen: Datei-Endung des Pfads + Mustername. Jede Zeile
    braucht eine Begründung; neue Fundstellen außerhalb fallen auf. */
 export const FREIGABEN = [
-  { datei: "src/App.jsx", muster: "document.write",
-    grund: "zwei Druckfenster (Handbuch, Aushangplan); alle Bestandsdaten maskiert (esc/h, SI-03), CSP vererbt sich an about:blank" },
+  { datei: "src/app/aktionen/begleitung.js", muster: "document.write",
+    grund: "Druckfenster Handbuch (WP-39: aus src/App.jsx ausgelagert); alle Bestandsdaten maskiert (esc/h, SI-03), CSP vererbt sich an about:blank" },
+  { datei: "src/app/aktionen/assistenz.js", muster: "document.write",
+    grund: "Druckfenster Aushangplan (WP-39: aus src/App.jsx ausgelagert); alle Bestandsdaten maskiert (esc/h, SI-03), CSP vererbt sich an about:blank" },
 ];
 
 async function dateien(ort) {
