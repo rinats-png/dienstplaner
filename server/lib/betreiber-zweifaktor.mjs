@@ -29,6 +29,7 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
+import { ersteinrichtungEinloesen, ersteinrichtungFehlversuch } from "./zugangscode-ersteinrichtung.mjs";
 import { istProduktion, betreiberZweifaktorPflicht } from "./umgebung.mjs";
 import { ablageSchluessel, altHash, pfeffrig } from "./codes.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
@@ -161,13 +162,9 @@ async function faktorVermerken(store, schluessel, an) {
     try {
       const e = await kontoLesenStreng(store, s);
       if (!e) continue;
-      if (an) {
-        /* OPT-1: Die Ersteinrichtung ist mit der Bestätigung verbraucht. Der Vermerk (samt Frist) geht weg, die
-           Pflicht bleibt dauerhaft am Zugang (faktorPflicht) — keine spätere Anmeldung mit dem Code allein. */
-        const { ersteinrichtung, ...rest } = e;
-        await kontoSchreiben(store, s, { ...rest, zweiterFaktor: true,
-          ...(ersteinrichtung !== undefined ? { faktorPflicht: true, ersteinrichtungVerbraucht: new Date().toISOString() } : {}) });
-      } else if (e.zweiterFaktor !== undefined) {
+      /* OPT-1: Den Verbrauch eines Ersteinrichtungscodes schreibt ersteinrichtungEinloesen VOR der Aktivierung. */
+      if (an) await kontoSchreiben(store, s, { ...e, zweiterFaktor: true });
+      else if (e.zweiterFaktor !== undefined) {
         const rest = { ...e };
         delete rest.zweiterFaktor;
         await kontoSchreiben(store, s, rest);
@@ -227,7 +224,7 @@ export const betreiberZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.betrei
  * Dasselbe für einen bereits als gültig erkannten Code der Rolle Leitung,
  * Planung oder Kunde (SI-P4). Parameter und Rückgabe wie betreiberZweifaktor.
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
- *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean}} a
+ *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean, ersteinrichtung?: boolean}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
@@ -237,11 +234,11 @@ export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
 /**
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
  *   altSchluessel?: string, name: string, art: typeof ART.betreiber, faktorVermerkt?: boolean,
- *   pflichtErzwungen?: boolean}} a
+ *   pflichtErzwungen?: boolean, ersteinrichtung?: boolean}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art,
-  faktorVermerkt = false, pflichtErzwungen = false }) {
+  faktorVermerkt = false, pflichtErzwungen = false, ersteinrichtung = false }) {
   const id = art.id(codeSchluessel);
   const E = art.etikett;
   /* Review-Auflage N2: Ohne Pfeffer liegt der Faktor unter einer anderen Kennung (ungepfefferter Schlüssel) und lässt
@@ -287,6 +284,14 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     await protokoll("zweifaktor", k, "fehler", `${E} · vermerkt, aber nicht auffindbar`);
     return { antwort: pfefferFehlt() };
   }
+  /* OPT-1 (H1): Ein offener Ersteinrichtungscode mit schon aktivem Faktor ist eingelöst (etwa eine gleichzeitige
+     Anfrage, die den Zugang vor dem Verbrauch gelesen hat). Er gilt nicht mehr — dieselbe Antwort wie unbekannt. */
+  const unbekannt = () => json({ fehler: "Unbekannter Zugangscode." }, 401);
+  if (art.vermerk && ersteinrichtung && stand.aktiv) {
+    await protokoll("zweifaktor", k, "abgewiesen", `${E} · Ersteinrichtung bereits eingelöst`);
+    return { antwort: unbekannt() };
+  }
+  const zugangSchluessel = [kontoSchluessel, codeSchluessel, altSchluessel];
 
   /** Bremse für Code-Versuche — je Code und je Herkunft, fail-closed. */
   const bremsen = async () => {
@@ -367,13 +372,41 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     const vor = await zweifaktorBestaetigenVorpruefen(store, id, code);
     if (vor.fehler === "pfeffer") return { antwort: nichtPruefbar() };
     if (!vor.ok) {
+      /* OPT-1 (M1): Ein falscher Wert aus der App zählt am Ersteinrichtungscode — in der Ablage, nicht im
+         Arbeitsspeicher. Nach ERSTEINRICHTUNG_FEHLVERSUCHE ist der Code endgültig verbraucht. */
+      if (art.vermerk && ersteinrichtung && vor.fehler === "code") {
+        let fv;
+        try { fv = await ersteinrichtungFehlversuch(store, zugangSchluessel); } catch { return { antwort: nichtPruefbar() }; }
+        if (fv.gesperrt) {
+          await zweifaktorAbschalten(store, id).catch(() => {});   // die begonnene Einrichtung verwerfen
+          await protokoll("zweifaktor", k, "warnung", `${E} · Ersteinrichtung nach ${fv.fehlversuche} Fehlversuchen gesperrt`);
+        }
+      }
       await new Promise((r) => setTimeout(r, 400));
       await protokoll("zweifaktor", k, "abgewiesen", `${E} · Bestätigung`);
       return { antwort: json({ fehler: "Der Code stimmt nicht.", zweifaktor: "falsch" }, 401) };
     }
     const vorher = await sitzungenBeenden();
     if (vorher.fehler) return { antwort: nichtAlleBeendet("der zweite Faktor wurde NICHT aktiviert") };
-    const erg = await zweifaktorBestaetigen(store, id, code);
+    /** @type {any} */
+    let erg;
+    if (art.vermerk && ersteinrichtung) {
+      /* OPT-1 (H1): Verbrauch und Einrichtung als Einheit — erst verbrauchen, dann aktivieren, je Zugang nacheinander.
+         Scheitert der Verbrauch, wird nichts aktiviert; scheitert die Aktivierung, bleibt der Code verbraucht. */
+      const ein = await ersteinrichtungEinloesen(store, zugangSchluessel, async () => {
+        const r = await zweifaktorBestaetigen(store, id, code);
+        return r.fehler ? { ok: false, fehler: r.fehler } : { ...r, ok: true };
+      });
+      if (!ein.ok && ein.grund === "verbraucht") {
+        await protokoll("zweifaktor", k, "abgewiesen", `${E} · Ersteinrichtung bereits eingelöst`);
+        return { antwort: unbekannt() };
+      }
+      if (!ein.ok && ein.grund !== "einrichtung") return { antwort: nichtPruefbar() };
+      erg = ein.ok ? ein.ergebnis : { fehler: (ein.ergebnis && ein.ergebnis.fehler) || "einrichtung" };
+      if (!ein.ok) await protokoll("zweifaktor", k, "fehler", `${E} · Ersteinrichtung verbraucht, Einrichtung gescheitert`);
+    } else {
+      erg = await zweifaktorBestaetigen(store, id, code);
+    }
     if (erg.fehler === "pfeffer") return { antwort: nichtPruefbar() };
     if (erg.fehler) {
       await new Promise((r) => setTimeout(r, 400));

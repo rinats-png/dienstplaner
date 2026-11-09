@@ -18,12 +18,16 @@
        Pflichtschalter: Mit dem Code allein entsteht keine Sitzung, und eine
        begonnene Einrichtung lässt sich mit ihm nicht überschreiben.
 
-   Mit der Bestätigung des Faktors ist die Ersteinrichtung verbraucht
-   (betreiber-zweifaktor.mjs, faktorVermerken): Der Vermerk geht weg, an seine
-   Stelle tritt `faktorPflicht: true`. Ab dann ist der Code ein gewöhnlicher
-   Leitungscode, der nur MIT Faktor eine Sitzung ergibt; Abschalten über das
-   Netz ist verweigert. Eine zweite Einrichtung gibt es nicht. Die Frist galt
-   der Einrichtung, nicht dem Zugang.
+   Einmalig (Review H1): Mit der Bestätigung des Faktors ist der Code
+   verbraucht (ersteinrichtungEinloesen: erst verbrauchen, dann aktivieren, je
+   Zugang nacheinander). Der Vermerk geht weg, an seine Stelle tritt
+   `ersteinrichtungVerbraucht: {am, grund, pruefwert, bis}` — der Prüfwert
+   bleibt für den Nachweis. Danach ist der Code für die Anmeldung dasselbe wie
+   ein unbekannter Code, auch mit Faktor: kein Dauerzugang per Code.
+   Fehlversuche (Review M1): ERSTEINRICHTUNG_FEHLVERSUCHE falsche Werte aus der
+   App beim Bestätigen verbrauchen den Code endgültig (grund „fehlversuche“),
+   gespeichert in der Ablage. Ein falscher Zugangscode selbst trifft keinen
+   Eintrag; ihn begrenzt die Anmeldebremse.
 
    Übergabe: Der Klartext entsteht hier und verlässt dieses Modul genau
    einmal, im Rückgabewert. Er wird nicht verschickt und nicht gespeichert —
@@ -35,6 +39,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { neuHash, pfeffrig, gleich } from "./codes.mjs";
 import { kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
+import { bestandLesenStreng } from "./bestand.mjs";
 
 /** Gültigkeit des Ersteinrichtungscodes in Stunden (nur die Einrichtung, nicht der Zugang). */
 export const ERSTEINRICHTUNG_STUNDEN = 72;
@@ -73,6 +78,119 @@ export function ersteinrichtungOffen(eintrag) {
     && eintrag.ersteinrichtung !== null && eintrag.ersteinrichtung !== undefined && eintrag.ersteinrichtung !== false);
 }
 
+/** Ist der Ersteinrichtungscode verbraucht (eingerichtet oder nach Fehlversuchen gesperrt)? Endgültig. */
+export function ersteinrichtungVerbraucht(eintrag) {
+  return !!(eintrag && typeof eintrag === "object" && "ersteinrichtungVerbraucht" in eintrag
+    && eintrag.ersteinrichtungVerbraucht !== null && eintrag.ersteinrichtungVerbraucht !== undefined
+    && eintrag.ersteinrichtungVerbraucht !== false);
+}
+
+/** Stammt der Zugang aus einer Ersteinrichtung (offen oder verbraucht)? Dann gilt er nur über ersteinrichtungGueltig. */
+export const ersteinrichtungsZugang = (eintrag) => ersteinrichtungOffen(eintrag) || ersteinrichtungVerbraucht(eintrag);
+
+/** Fehlversuche (falscher Wert aus der App beim Bestätigen), nach denen der Code endgültig verbraucht ist (M1). */
+export const ERSTEINRICHTUNG_FEHLVERSUCHE = 5;
+
+/* Ein Einlösen und ein Fehlversuch je Zugang nacheinander, nie gleichzeitig. Der Server läuft als ein Prozess
+   (Prozesssperre in server.mjs); die Reihe genügt, damit zwei gleichzeitige Einlösungen nicht beide verbrauchen. */
+const reihen = new Map();
+function inReihe(schluessel, arbeit) {
+  const vorher = reihen.get(schluessel) || Promise.resolve();
+  const lauf = vorher.catch(() => {}).then(arbeit);
+  const ende = lauf.catch(() => {});
+  reihen.set(schluessel, ende);
+  ende.then(() => { if (reihen.get(schluessel) === ende) reihen.delete(schluessel); });
+  return lauf;
+}
+
+/** Den Zugang als verbraucht schreiben: Vermerk weg, Prüfwert bleibt (Nachweis), nie wieder gültig. */
+async function verbrauchtSchreiben(store, schluessel, eintraege, grund, zusatz = {}) {
+  const am = new Date().toISOString();
+  for (const [s, e] of eintraege) {
+    const { ersteinrichtung, ...rest } = e;
+    const z = ersteinrichtung && typeof ersteinrichtung === "object" ? ersteinrichtung : {};
+    await kontoSchreiben(store, s, { ...rest, ...zusatz, ersteinrichtungVerbraucht: { am, grund,
+      ...(typeof z.pruefwert === "string" ? { pruefwert: z.pruefwert } : {}),
+      ...(typeof z.bis === "string" ? { bis: z.bis } : {}),
+      ...(Number.isInteger(z.fehlversuche) ? { fehlversuche: z.fehlversuche } : {}) } });
+  }
+}
+
+/** Alle vorhandenen, noch offenen Einträge unter den Schlüsseln (streng gelesen; ein Lesefehler wirft). */
+async function offeneEintraege(store, schluessel) {
+  const aus = [];
+  for (const s of new Set(schluessel.filter(Boolean))) {
+    const e = await kontoLesenStreng(store, s);
+    if (e) aus.push([s, e]);
+  }
+  return aus;
+}
+
+const fristOffen = (e, jetzt) => {
+  const z = e && e.ersteinrichtung;
+  const bis = z && typeof z === "object" && typeof z.bis === "string" ? new Date(z.bis).getTime() : NaN;
+  return Number.isFinite(bis) && jetzt < bis;
+};
+
+/**
+ * Den Ersteinrichtungscode einlösen (H1): ERST verbrauchen, DANN einrichten — als Einheit, je Zugang nacheinander.
+ *   - Ist der Zugang nicht mehr offen (verbraucht, Frist vorbei, Vermerk fehlt): nein, `einrichten` läuft nicht.
+ *   - Scheitert das Schreiben des Verbrauchs: nein, `einrichten` läuft nicht (nichts eingerichtet).
+ *   - Scheitert `einrichten` nach dem Verbrauch: nein, der Code bleibt verbraucht, das Konto ohne Faktor.
+ * Nach dem Erfolg tragen die Einträge `zweiterFaktor` und `faktorPflicht`; der Code gilt nie wieder.
+ * @param {any} store
+ * @param {Array<string|undefined>} schluessel  alle Ablageschlüssel des Zugangs
+ * @param {() => Promise<any>} einrichten  liefert `{ok: true, ...}` bei Erfolg
+ * @param {{jetzt?: number}} [o]
+ * @returns {Promise<{ok: boolean, grund?: string, ergebnis?: any}>}
+ */
+export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt = Date.now() } = {}) {
+  const haupt = schluessel.filter(Boolean)[0];
+  if (!haupt) return Promise.resolve({ ok: false, grund: "schluessel" });
+  return inReihe(haupt, async () => {
+    let eintraege;
+    try { eintraege = await offeneEintraege(store, schluessel); } catch { return { ok: false, grund: "lesen" }; }
+    if (!eintraege.length || eintraege.some(([, e]) => ersteinrichtungVerbraucht(e))
+      || !eintraege.some(([, e]) => ersteinrichtungOffen(e) && fristOffen(e, jetzt)))
+      return { ok: false, grund: "verbraucht" };
+    try { await verbrauchtSchreiben(store, schluessel, eintraege, "eingerichtet", { faktorPflicht: true }); }
+    catch { return { ok: false, grund: "verbrauch" }; }
+    /* Den Vermerk `zweiterFaktor` setzt der Aufrufer erst nach gelungener Einrichtung (faktorVermerken). */
+    let ergebnis;
+    try { ergebnis = await einrichten(); } catch { ergebnis = null; }
+    if (!ergebnis || ergebnis.ok !== true) return { ok: false, grund: "einrichtung", ergebnis };
+    return { ok: true, ergebnis };
+  });
+}
+
+/**
+ * Einen Fehlversuch zählen (M1, falscher Wert aus der App beim Bestätigen). Ab ERSTEINRICHTUNG_FEHLVERSUCHE ist der
+ * Code endgültig verbraucht — gespeichert in der Ablage, nicht im Arbeitsspeicher. Wirft bei einem Ablagefehler
+ * (der Aufrufer antwortet 503).
+ * @returns {Promise<{gesperrt: boolean, fehlversuche: number}>}
+ */
+export function ersteinrichtungFehlversuch(store, schluessel) {
+  const haupt = schluessel.filter(Boolean)[0];
+  if (!haupt) return Promise.resolve({ gesperrt: true, fehlversuche: 0 });
+  return inReihe(haupt, async () => {
+    const eintraege = await offeneEintraege(store, schluessel);
+    const offen = eintraege.filter(([, e]) => ersteinrichtungOffen(e));
+    if (!offen.length) return { gesperrt: true, fehlversuche: 0 };
+    const bisher = Math.max(0, ...offen.map(([, e]) => {
+      const n = e.ersteinrichtung && e.ersteinrichtung.fehlversuche;
+      return Number.isInteger(n) && n > 0 ? n : 0;
+    }));
+    const n = bisher + 1;
+    const neu = offen.map(([s, e]) => [s, { ...e, ersteinrichtung: { ...e.ersteinrichtung, fehlversuche: n } }]);
+    if (n >= ERSTEINRICHTUNG_FEHLVERSUCHE) {
+      await verbrauchtSchreiben(store, schluessel, neu, "fehlversuche");
+      return { gesperrt: true, fehlversuche: n };
+    }
+    for (const [s, e] of neu) await kontoSchreiben(store, s, e);
+    return { gesperrt: false, fehlversuche: n };
+  });
+}
+
 /**
  * Ist der Ersteinrichtungscode jetzt gültig? Fail-closed: jeder Zweifel ist Nein.
  * Vergleich des Prüfwerts zeitkonstant (codes.mjs, gleich).
@@ -81,7 +199,7 @@ export function ersteinrichtungOffen(eintrag) {
  * @param {number} [jetzt]
  */
 export function ersteinrichtungGueltig(eintrag, code, jetzt = Date.now()) {
-  if (!ersteinrichtungOffen(eintrag) || !pfeffrig()) return false;
+  if (!ersteinrichtungOffen(eintrag) || ersteinrichtungVerbraucht(eintrag) || !pfeffrig()) return false;
   const z = eintrag.ersteinrichtung;
   if (!z || typeof z !== "object" || typeof z.pruefwert !== "string" || typeof z.bis !== "string") return false;
   if (eintrag.rolle !== "leitung" || !eintrag.bestand) return false;
@@ -108,6 +226,18 @@ export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betr
   if (!mandantId || typeof mandantId !== "string") return { ok: false, grund: "betrieb" };
   if (!person || typeof person !== "string") return { ok: false, grund: "person" };
   if (!Number.isInteger(betrieb) || betrieb < 0) return { ok: false, grund: "betrieb" };
+
+  /* N1 (Review): Die Rolle wird nicht blind gesetzt. Raum, Betrieb und Person müssen im Bestand stehen, und die
+     Person muss dort aktive Leitung sein. Ein Lesefehler ist kein Ja. */
+  let gelesen;
+  try { gelesen = await bestandLesenStreng(store, raum); } catch { return { ok: false, grund: "bestand" }; }
+  const mandanten = gelesen && gelesen.bestand && Array.isArray(gelesen.bestand.mandanten) ? gelesen.bestand.mandanten : null;
+  if (!mandanten) return { ok: false, grund: "raum" };
+  const m = mandanten[betrieb];
+  if (!m || typeof m !== "object" || m.id !== mandantId) return { ok: false, grund: "betrieb" };
+  const p = Array.isArray(m.personen) ? m.personen.find((x) => x && String(x.id) === person) : null;
+  if (!p) return { ok: false, grund: "person" };
+  if (p.rolle !== "leitung" || (p.status !== undefined && p.status !== "aktiv")) return { ok: false, grund: "rolle" };
 
   /* Kollision praktisch ausgeschlossen, trotzdem streng geprüft: Ein Lesefehler ist kein „frei". */
   let code = null;
