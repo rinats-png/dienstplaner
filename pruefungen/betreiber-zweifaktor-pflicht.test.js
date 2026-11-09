@@ -8,7 +8,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { mkdtemp, rm, readdir, readFile, writeFile, unlink } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -51,6 +51,22 @@ async function einrichten(c) {
   const f = await anmelden({ zugangscode: c, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) });
   expect(f.status, f.roh).toBe(200);
   return { geheimnis: b.geheimnis, wiederherstellung: f.wiederherstellung };
+}
+
+/** Alle Dateitexte unter d. Die Ablage räumt beiläufig alte Bremsfenster weg (schutz.mjs, alteFensterRaeumen,
+    ohne Warten, bei 2 % der Aufrufe); ein Eintrag kann zwischen readdir und readFile verschwinden. Das ist
+    kein Fehler der Spur: eine verschwundene Datei trägt keinen Text mehr. Nur ENOENT wird übergangen. */
+async function alleTexte(d) {
+  const fehlt = (e) => e && e.code === "ENOENT";
+  let eintraege;
+  try { eintraege = await readdir(d, { withFileTypes: true }); } catch (e) { if (fehlt(e)) return ""; throw e; }
+  let t = "";
+  for (const e of eintraege) {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) { t += await alleTexte(p); continue; }
+    try { t += await readFile(p, "utf8"); } catch (x) { if (!fehlt(x)) throw x; }
+  }
+  return t;
 }
 
 beforeAll(async () => {
@@ -347,6 +363,23 @@ describe("Vorlauf für Prüfläufe (werkzeug/betreiber-faktor-vorlauf.mjs)", () 
   });
 });
 
+describe("Spurensuche im Datenordner (Race gegen das Wegräumen alter Bremsfenster)", () => {
+  it("alleTexte übersteht Dateien, die zwischen Auflisten und Lesen verschwinden, und liest den Rest", async () => {
+    const d = path.join(wurzel, "spur-probe");
+    await mkdir(d, { recursive: true });
+    const namen = Array.from({ length: 300 }, (_, i) => `v%3Aanmelden%3Aziel%3Aprobe%3A${i}.json`);
+    await Promise.all(namen.map((n) => writeFile(path.join(d, n), "x")));
+    await writeFile(path.join(d, "bleibt.json"), "BLEIBT");
+    const lesen = alleTexte(d);                                           // listet zuerst ...
+    await new Promise((r) => setTimeout(r, 0));
+    const weg = Promise.all(namen.map((n) => unlink(path.join(d, n))));   // ... dann räumt es gleichzeitig weg, wie alteFensterRaeumen
+    const text = await lesen;
+    await weg;
+    expect(text).toContain("BLEIBT");
+    await rm(d, { recursive: true, force: true });
+  });
+});
+
 describe("Review-Nachträge WP-32d", () => {
   it("1. Verwalterschlüssel: in production ohne Flag Pflicht — /einrichten (Anlegen eines Betreibercodes) verlangt zuerst den Faktor; /einrichten/zweifaktor bleibt offen", async () => {
     const einrichten = (await import("../server/funktionen/einrichten.mjs")).default;
@@ -405,8 +438,7 @@ describe("Review-Nachträge WP-32d", () => {
       const b2 = await anmelden({ zugangscode: EV, zweifaktorAktion: "beginnen" });
       expect(b2.status, b2.roh).toBe(200);
       expect(b2.geheimnis).not.toBe(b1.geheimnis);
-      const alle = async (d) => { let t = ""; for (const e of await readdir(d, { withFileTypes: true })) { const p = path.join(d, e.name); t += e.isDirectory() ? await alle(p) : await readFile(p, "utf8"); } return t; };
-      const spur = await alle(wurzel);
+      const spur = await alleTexte(wurzel);
       expect(spur).toMatch(/Überschreiben einer begonnenen Einrichtung verweigert/);
     } finally { vi.unstubAllEnvs(); }
   });
