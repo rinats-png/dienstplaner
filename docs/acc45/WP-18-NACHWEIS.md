@@ -547,18 +547,40 @@ Raum, Betriebsteil und Person; der Betriebsteil ist die Kennung, sonst die Posit
 mit Funktionsrolle (leitung, planer, subplaner, kunde) die Kennung: Ihr Inhaber wechselt mit dem Deploy von
 `H(…|Position|…)` zu `H(…|Kennung|…)`. Stempel, die vorher offline in die Warteschlange kamen, tragen den alten
 Inhaber; der Server weist sie mit **409 `STEMPEL_FREMDE_SITZUNG`** ab, und die Oberfläche lässt sie auf dem Gerät
-liegen — dauerhaft, denn keine neue Sitzung dieser Person bekommt den alten Inhaber zurück. Nicht betroffen: Sitzungen
-aus Zugangscodes (tragen die Kennung seit Oktober 2026), Kontositzungen ohne Funktionsrolle (keine Kennung, Inhaber
-unverändert). Unter 2FA-Pflicht entstehen Kontositzungen mit Funktionsrolle ohnehin nicht (8.5).
+liegen — dauerhaft, denn keine neue Sitzung dieser Person bekommt den alten Inhaber zurück.
+
+*Berichtigung (Delta-Review von ba5f7c5).* Der Satz „Nicht betroffen: Sitzungen aus Zugangscodes …, Kontositzungen ohne
+Funktionsrolle" in der ersten Fassung war zu eng. Betroffen sind nicht nur Kontositzungen mit Funktionsrolle:
+
+- **Rein numerische Raum-ID.** `RAUM_FORM` (`server/lib/accounts.mjs`) erlaubt Räume, die nur aus Ziffern bestehen, und
+  `leerbetrieb.mjs` setzt für den Betrieb eines solchen Raums `mandantId = raum`. Die Kennung ist dann eine reine
+  Ziffernfolge und bekommt jetzt „k:" davor (`betriebsteil`). Das trifft **Code- und Mitarbeitenden-Sitzungen**
+  ebenso wie Konto-Sitzungen mit Funktionsrolle: Der Inhaber wechselt von `H(…|4711|…)` zu `H(…|k:4711|…)`. Test:
+  `pruefungen/offline-stempeln.test.js`, „A3 bewusste Änderung".
+- **Alte Code-Sitzungen mit `betrieb` als Text oder ohne `betrieb`.** Der Betriebsteil war vorher der rohe Wert
+  („undefined" bzw. ein Text wie „1"), jetzt „z:…". Solche Sitzungen stammen aus der Zeit vor der Kennung; ob noch welche bestehen, ist nicht erhoben
+  (Teil der Prüfung vor dem Deploy).
+- Unverändert bleiben: Positionen (auch über 9), gewöhnliche Kennungen (auch mit „-", Leerzeichen, „|") und die
+  Kennung eines Betriebs in einem numerischen Raum, solange die Kennung selbst keine reine Ziffernfolge ist
+  (Gegenproben in `offline-stempeln.test.js`, Vergleich mit dem Algorithmus von 181b4fe).
+
+Unter 2FA-Pflicht entstehen Kontositzungen mit Funktionsrolle ohnehin nicht (8.5); für die numerischen Räume und die
+alten Code-Sitzungen gilt das nicht.
 
 Entscheidung (dieser Branch): **kein übergangsweises Annehmen des alten Hashs.** Stattdessen ein Deploy-Schritt: Vor
-dem Deploy lassen die betroffenen Konten (Funktionsrolle, Anmeldung über Konto, Offline-Stempeln genutzt) ihre
-Warteschlange leeren — einmal online gehen, bis keine Stempel mehr ausstehen. Begründung: Der alte Hash ist
-positionsbasiert (genau das, was Review L5 abgelöst hat) und öffnete für die Übergangszeit die Kollision unten wieder;
-die betroffene Gruppe ist klein (Funktionsrollen über Konto, ohne 2FA-Pflicht), und Funktionsrollen stempeln selten
-offline. Liegt nach dem Deploy doch ein Stempel fest, wird er nachgetragen (Korrektur durch Planung/Leitung). Die
-Entscheidung ist vor dem Prod-Deploy dem Betreiber vorzulegen (Deploy-Checkliste); ein befristetes Annehmen des alten
-Hashs ließe sich nachrüsten (zweiter Vergleich in `/api/stempeln`, nur für Kontositzungen mit Kennung).
+dem Deploy werden die Geräte aller Betroffenen (Funktionsrolle über Konto; jede Sitzung in einem Betrieb mit rein
+numerischer Raum-ID; Geräte mit alten Code-Sitzungen, soweit bekannt), auf denen Offline-Stempeln genutzt wird, in der
+Warteschlange geleert — einmal online gehen, bis keine Stempel mehr ausstehen — oder die Stempel werden nachgetragen.
+Begründung: Der alte Hash ist positionsbasiert (genau das, was Review L5 abgelöst hat) und öffnete für die
+Übergangszeit die Kollision unten wieder; die betroffene Gruppe ist klein, und Funktionsrollen stempeln selten
+offline. Liegt nach dem Deploy doch ein Stempel fest, wird er nachgetragen (Korrektur durch Planung/Leitung). Ein
+befristetes Annehmen des alten Hashs ließe sich nachrüsten (zweiter Vergleich in `/api/stempeln`).
+
+**Deploy-Checkliste.** Der Schritt „Vor Deploy prüfen: Offline-Warteschlangen" steht in `docs/BETRIEBSHANDBUCH.md`,
+Abschnitt 4 („Auslieferung und Rückweg"). **Stand: Die Prüfung ist nicht gelaufen**; welche Betriebe eine rein
+numerische Raum-ID haben und ob dort Offline-Stempel ausstehen, ist nicht erhoben. **Betreiberbestätigung: offen.**
+Empfehlung an den Betreiber: die Warteschlangen der Betroffenen vor dem Deploy **leeren lassen** (statt nachzutragen
+oder den alten Hash übergangsweise zu akzeptieren).
 
 **Kollision Kennung „1" gegen Position 1 — real.** `betriebIdGueltig` (`bestand.mjs`) verlangt nur nichtleeren Text
 ohne „:", Ziffern sind erlaubt; `mitgliedschaftAnlegen` ebenso. Mit dem alten Schlüssel `mandantId ?? betrieb` ergaben
@@ -597,7 +619,20 @@ Test prüft: verschiedene Inhaber, Position und gewöhnliche Kennung behalten de
 
 - `betriebWaehlen` stellt für eine nicht mehr geltende Person noch eine (sofort ungültige) Sitzung aus; eine Absage
   schon dort (`aktivePerson` statt `.find`) wäre sauberer, ändert aber die Antworten der Auswahl — eigener Schritt.
-- Deploy-Schritt „Warteschlange leeren" (9.3) in die Deploy-Checkliste übernehmen; Betreiberbestätigung offen.
+- Deploy-Schritt „Warteschlange leeren" (9.3): in `docs/BETRIEBSHANDBUCH.md` Abschnitt 4 aufgenommen; die Prüfung selbst
+  (Betriebe mit Raum-ID `/^\d+$/` auflisten, Geräte der Betroffenen) ist **nicht gelaufen**; Betreiberbestätigung
+  offen, Empfehlung „leeren lassen".
+- (Delta-Review ba5f7c5, nur benannt, nicht umgesetzt) `betriebWaehlen` sollte auf `aktivePerson` umgestellt werden
+  statt `.find` (siehe erster Punkt; dort würde die Absage schon bei der Auswahl kommen; die Tests nehmen heute beide
+  Wege an, `person-fort`/`person-fehlt`).
+- (Delta-Review, nur benannt) Der Inhaber-Hash sollte die Felder mit Längenpräfix kodieren. Der Hashtext
+  `centric-stempel|raum|teil|person` ist mit „|" in der Kennung nicht eindeutig (z. B. Kennung `a|b` bei Person `c`
+  gegen Kennung `a` bei Person `b|c`); `k:` löst nur den Fall Ziffern gegen Position. Eine Umstellung ändert alle
+  Inhaber und braucht denselben Deploy-Schritt wie 9.3.
+- (Delta-Review, erledigt) Gegenproben zu A1/A3 ergänzt: aktive Mitarbeiterin mit Konto-Sitzung (Stempeln, Auskunft 200),
+  Austrittstag heute bleibt gültig, „gesperrt"/„inaktiv" → 401, Absagegrund im Test „A1 vor der Auswahl", Hashes für
+  Position 12, Kennungen mit „-", Leerzeichen, „|" und numerische Raum-ID unverändert gegenüber 181b4fe. Gegenproben
+  sind gegen den Stand 181b4fe grün (alter Wert belegt); „gesperrt"/„inaktiv" und „k:"-Änderung dort rot.
 
 Geänderte Dateien: `server/lib/arbeitssitzung.mjs`, `server/funktionen/daten.mjs`, `pruefungen/einladungen.test.js`,
-`pruefungen/offline-stempeln.test.js`, dieses Dokument.
+`pruefungen/offline-stempeln.test.js`, dieses Dokument. Nachtrag Delta-Review: `docs/BETRIEBSHANDBUCH.md` (Abschnitt 4), nur Tests und Doku.

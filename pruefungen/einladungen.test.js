@@ -971,7 +971,12 @@ describe("Kontositzung mit Betriebskennung", () => {
     const id = await kontoMitPasswort("a1-vorher@example.org");
     await mitglied(id, RAUM, { person: "a1l4", rolle: "leitung" });
     const w = await waehlen(id, RAUM);
-    if (!w.ok) return; /* eine Absage schon bei der Auswahl wäre ebenso richtig */
+    /* Eine Absage schon bei der Auswahl wäre ebenso richtig — aber nur aus dem Grund, dass die Person nicht mehr gilt.
+       Scheitert die Auswahl aus einem anderen Grund, prüft der Test nichts mehr und muss rot werden. */
+    if (!w.ok) {
+      expect(["person-fort", "person-fehlt"], `Auswahl scheiterte aus einem anderen Grund: ${JSON.stringify(w)}`).toContain(w.grund);
+      return;
+    }
     await erwarteUngueltig(w.token, "a1z4");
   });
 
@@ -1095,6 +1100,58 @@ describe("Kontositzung mit Betriebskennung", () => {
     expect(r.status, r.roh).toBe(200);
     expect(r.rolle).toBe("mitarbeiter");
   });
+
+  /* ------------------------------------------------------------------------
+     Gegenproben zu A1 (Delta-Review von ba5f7c5): Die Personenprüfung darf eine gültige Person nicht abweisen und muss
+     jeden Status außer „aktiv" abweisen. Konto-Mitarbeiterin ohne Kennung, Betrieb A.
+     ------------------------------------------------------------------------ */
+  /** Mitarbeiterin mit Konto, Auswahl Betrieb A, Sitzung ohne Kennung. */
+  async function mitarbeiterinMitKonto(pid, email) {
+    await personSetzen(pid, "mitarbeiter");
+    const id = await kontoMitPasswort(email);
+    await mitglied(id, RAUM, { person: pid, rolle: "mitarbeiter" });
+    const w = await waehlen(id, RAUM);
+    expect(w.ok, JSON.stringify(w)).toBe(true);
+    if (!w.ok) throw new Error("Auswahl gescheitert");
+    return w.token;
+  }
+  const stempelnMit = (token, n) => anfrage(daten, "/api/stempeln", { token,
+    rumpf: { art: "start", clientEventId: `${String(n).padStart(8, "0")}-0000-4000-8000-${String(n).padStart(12, "0")}` } });
+  const auskunftMit = (token) => anfrage(daten, "/api/auskunft", { methode: "GET", token });
+  const heuteBerlinText = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+
+  it("A1 Gegenprobe: aktive Mitarbeiterin mit Konto-Sitzung → POST /api/stempeln 200, Auskunft 200", async () => {
+    const token = await mitarbeiterinMitKonto("g1m1", "g1-aktiv@example.org");
+    expect(await grundVon(token)).toEqual({ ok: true, art: "account" });
+    const s = await stempelnMit(token, 901);
+    expect(s.status, s.roh).toBe(200);
+    const a = await auskunftMit(token);
+    expect(a.status, a.roh).toBe(200);
+    expect(await roh(token)).not.toBe(null);
+  });
+
+  it("A1 Grenzfall: Austrittstag ist heute → Sitzung bleibt gültig (Stempeln und Auskunft 200)", async () => {
+    const token = await mitarbeiterinMitKonto("g1m2", "g1-austrittstag@example.org");
+    await personAendern("g1m2", { austritt: heuteBerlinText() });
+    expect(await grundVon(token)).toEqual({ ok: true, art: "account" });
+    const s = await stempelnMit(token, 902);
+    expect(s.status, s.roh).toBe(200);
+    expect((await auskunftMit(token)).status).toBe(200);
+    expect(await roh(token)).not.toBe(null);
+  });
+
+  for (const [nummer, status] of [[903, "gesperrt"], [904, "inaktiv"]]) {
+    it(`A1: Status „${status}" bei Konto-Sitzung → person-fort, Stempeln und Auskunft 401, Sitzung gelöscht`, async () => {
+      const token = await mitarbeiterinMitKonto(`g1s${nummer}`, `g1-${status}@example.org`);
+      expect((await stempelnMit(token, nummer)).status).toBe(200);
+      await personAendern(`g1s${nummer}`, { status });
+      expect(await grundVon(token)).toEqual({ ok: false, grund: "person-fort" });
+      const s = await stempelnMit(token, nummer + 100);
+      expect(s.status, s.roh).toBe(401);
+      expect((await auskunftMit(token)).status).toBe(401);
+      expect(await roh(token)).toBe(null);
+    });
+  }
 });
 
 describe("B3: Einmaligkeit über zwei Ablage-Instanzen und zwei Prozesse", () => {

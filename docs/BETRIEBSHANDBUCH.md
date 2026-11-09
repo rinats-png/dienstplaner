@@ -189,6 +189,13 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
 - **Weg:** nur freigegebene Digests. Von Hand: [BEREITSTELLUNG.md](../BEREITSTELLUNG.md) Schritt 3; automatisiert:
   `deploy/deploy.sh` mit Freigabe in der GitHub-Umgebung `produktion`
   ([DEPLOY-AUTOMATISIERUNG.md](DEPLOY-AUTOMATISIERUNG.md)). Immer zuerst Trockenlauf.
+- **Vor Deploy prüfen: Offline-Warteschlangen (Stand 181b4fe/ba5f7c5, [WP-18-NACHWEIS.md](acc45/WP-18-NACHWEIS.md) 9.3).**
+  Der Inhaber der Offline-Stempel-Warteschlange ändert sich für Konto-Sitzungen mit Funktionsrolle, für alle Sitzungen in
+  Betrieben mit rein numerischer Raum-ID und für alte Code-Sitzungen ohne Betriebsnummer. Offline erfasste Stempel mit
+  dem alten Inhaber bleiben danach auf dem Gerät liegen (409 `STEMPEL_FREMDE_SITZUNG`). Deshalb: (1) alle Betriebe mit
+  Raum-ID `/^\d+$/` auflisten (nur lesend); (2) die Geräte der Betroffenen online bringen, bis keine Stempel ausstehen
+  (Warteschlange leeren), oder die Stempel nachtragen; (3) erst dann ausliefern. Empfehlung: leeren lassen.
+  **Offen:** Betreiberbestätigung; die Prüfung ist noch nicht gelaufen.
 - **R0 (Standard bei Fehlern):** `./abschalten.sh` — Dienst kontrolliert anhalten. Lieber kein Dienst als ein
   unsicheres Bild.
 - **Rücksprung:** `./ruecksprung.sh` nur auf den Eintrag `vorherig` der Freigabeliste, nie auf ein gesperrtes Bild,

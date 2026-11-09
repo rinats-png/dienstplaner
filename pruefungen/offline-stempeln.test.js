@@ -486,6 +486,73 @@ describe("Review A3/L2–L5: Fenster, Uhr vor, Art, Klemmen, Rohwerte, Inhaber",
     const eigen = await stempeln("rv-a3", "a1", { art: "start", clientEventId: ID(131), inhaber: a.inhaber }, mitKennung);
     expect(eigen.status).toBe(200);
   });
+
+  /* ---- Delta-Review von ba5f7c5: Gegenproben zu A3 (Hashes ohne Kollision bleiben wie vor A3) ----
+     Der Algorithmus vor A3 (181b4fe): `centric-stempel|raum|${mandantId ?? betrieb}|person`. */
+  const hashAlt = async (raum, teil, p) => (await import("node:crypto")).createHash("sha256")
+    .update(`centric-stempel|${raum}|${teil}|${p}`).digest("hex").slice(0, 32);
+  const hausMit = (id) => ({ id, name: `Haus ${id}`, einheiten: [{ id: "e1", name: "WB 1" }],
+    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
+    personen: [person("a1")], abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {} });
+  const inhaberVon = async (felder) => {
+    const t = (await sitzungAnlegen({ name: "a1", rolle: "mitarbeiter", person: "a1", einheit: null, ...felder },
+      24 * 60 * 60 * 1000)).token;
+    const r = await anfrage("/api/bestand", { methode: "GET", token: t });
+    expect(r.status, JSON.stringify(r)).toBe(200);
+    expect(r.inhaber).toMatch(/^[0-9a-f]{32}$/);
+    return r.inhaber;
+  };
+
+  it("A3 Gegenprobe: Position über 9 und Kennungen mit „-“, Leerzeichen, „|“ behalten den Inhaber von vor A3", async () => {
+    zeitAuf("2026-11-09T07:00:00Z");
+    const raum = "rv-a3-sonder";
+    const kennungen = ["haus-7", "Haus Nord", "a|b"];
+    const mandanten = [...Array.from({ length: 13 }, (_, i) => hausMit(`p${i}`)), ...kennungen.map(hausMit)];
+    await B.bestandSchreiben(laden(), raum, { version: 9, mandanten }, { durch: "Pruefung" });
+    const gesehen = new Set();
+    /* Position 12 ohne Kennung: Ziffernfolge, vor A3 und jetzt „12". */
+    const p12 = await inhaberVon({ bestand: raum, betrieb: 12 });
+    expect(p12).toBe(await hashAlt(raum, "12", "a1"));
+    gesehen.add(p12);
+    for (const [i, k] of kennungen.entries()) {
+      const h = await inhaberVon({ bestand: raum, betrieb: 13 + i, mandantId: k });
+      expect(h, `Kennung ${JSON.stringify(k)}`).toBe(await hashAlt(raum, k, "a1"));
+      gesehen.add(h);
+    }
+    /* Nur Fälle ohne Kollision: vier verschiedene Inhaber. */
+    expect(gesehen.size).toBe(1 + kennungen.length);
+  });
+
+  it("A3 Gegenprobe: rein numerische Raum-ID — Inhaber unverändert, solange die Kennung des Betriebs keine reine Ziffernfolge ist", async () => {
+    zeitAuf("2026-11-09T07:00:00Z");
+    const raum = "4711";
+    await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [hausMit("m1")] }, { durch: "Pruefung" });
+    expect(await inhaberVon({ bestand: raum, betrieb: 0, mandantId: "m1" })).toBe(await hashAlt(raum, "m1", "a1"));
+    expect(await inhaberVon({ bestand: raum, betrieb: 0 })).toBe(await hashAlt(raum, "0", "a1"));
+  });
+
+  it("A1 Gegenprobe (Code-Sitzung): aktive Person und Austrittstag heute stempeln mit 200; „gesperrt“ und „inaktiv“ bekommen 401", async () => {
+    zeitAuf("2026-11-09T07:00:00Z");                                       // 08:00 Berlin, 09.11.
+    const raum = "rv-a1-gegenprobe";
+    const mit = (id, extra) => ({ ...person(id), ...extra });
+    await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [{ ...hausMit("m1"), personen: [
+      mit("g-aktiv", { status: "aktiv" }), mit("g-heute", { austritt: "2026-11-09" }),
+      mit("g-gesperrt", { status: "gesperrt" }), mit("g-inaktiv", { status: "inaktiv" })] }] }, { durch: "Pruefung" });
+    const st = async (id, n) => (await stempeln(raum, id, { art: "start", clientEventId: ID(n) })).status;
+    expect(await st("g-aktiv", 140)).toBe(200);
+    expect(await st("g-heute", 141)).toBe(200);
+    expect(await st("g-gesperrt", 142)).toBe(401);
+    expect(await st("g-inaktiv", 143)).toBe(401);
+  });
+
+  it("A3 bewusste Änderung (Nachweis 9.3): Betrieb mit rein numerischer Kennung (leerbetrieb: mandantId = Raum) bekommt „k:“", async () => {
+    zeitAuf("2026-11-09T07:00:00Z");
+    const raum = "4712";
+    await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [hausMit(raum)] }, { durch: "Pruefung" });
+    const neu = await inhaberVon({ bestand: raum, betrieb: 0, mandantId: raum });
+    expect(neu).not.toBe(await hashAlt(raum, raum, "a1"));
+    expect(neu).toBe(await hashAlt(raum, `k:${raum}`, "a1"));
+  });
 });
 
 /* ---------------------- Nachprüfung (Opus) B1: Dauer 0 ---------------------- */
