@@ -71,7 +71,7 @@ export function ssotPrBelege(p) {
     let info;
     try { info = JSON.parse(execFileSync("gh", ["pr", "view", n, "--json", "state,mergeCommit"], { cwd: WURZEL, encoding: "utf8" })); }
     catch { continue; }
-    const hashes = Object.values(p.stufen || {}).map((st) => String(st?.beleg || "")).join(" ").match(/[0-9a-f]{7,40}/g) || [];
+    const hashes = Object.values(p.stufen || {}).map((st) => String(st?.beleg || "")).join(" ").match(/\b[0-9a-f]{7,40}\b/g) || [];
     const ueber = info.mergeCommit?.oid && imBasisstand(info.mergeCommit.oid);
     const belegHash = hashes.some((h) => imBasisstand(h));
     if (info.state === "MERGED" && (ueber || belegHash)) belege.push(`#${n}`);
