@@ -1470,10 +1470,18 @@ describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-A
       expect(ok.ok, fmt).toBe(true);
     }
   });
+  it("H1 (Review fix7): ungültige Adressraumgrenze startet kein Kind ohne Limit (fail-closed)", async () => {
+    const { fuehreKindAus } = await import("../server/lib/import/parser-prozess.mjs");
+    for (const kb of [null, NaN, -1, "abc", 1.5]) {
+      const r = await fuehreKindAus({ skript: new URL("../server/lib/import/parser-worker.mjs", import.meta.url), kopf: {}, daten: Buffer.alloc(1), zeitMs: 5000, kb });
+      expect(r, String(kb)).toEqual({ art: "fehler", detail: "Adressraum" });
+    }
+  });
   it("H1: Quelltext des Prozessmoduls: nur spawn mit festem Programm, kein shell:true, kein exec, kein Netz, keine Dateien", async () => {
     const { readFile } = await import("node:fs/promises");
     const q = await readFile(new URL("../server/lib/import/parser-prozess.mjs", import.meta.url), "utf8");
     expect(q).toMatch(/import \{ spawn \} from "node:child_process"/);
+    expect(q.split("child_process").length - 1, "genau eine Fundstelle (Freigabe anzahl 1)").toBe(1);
     expect(q).not.toMatch(/\bexec(Sync|File|FileSync)?\s*\(|spawnSync|fork\s*\(|shell:\s*true/);
     expect(q).not.toMatch(/node:(http|https|net|dns|tls|fs)|\bfetch\s*\(|writeFile|createWriteStream/);
     expect(q).toMatch(/spawn\(programm, argumente, \{[^}]*shell: false/);

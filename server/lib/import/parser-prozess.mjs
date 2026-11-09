@@ -63,6 +63,8 @@ export function adressraumKb(plattform = process.platform, env = process.env) {
 
 /** Programm und Argumente des Kindes (fest; keine Teile der Eingabe). */
 export function kindBefehl(skriptPfad, heapMb, kb) {
+  /* Review 6e-fix7 (Befund 2): ungültige Grenze nie still ohne Adressraumlimit starten. */
+  if (!Number.isSafeInteger(kb) || kb < 0) throw new TypeError("Adressraumgrenze ist keine nichtnegative Ganzzahl");
   const node = [`--max-old-space-size=${heapMb}`, "--disallow-code-generation-from-strings", skriptPfad];
   if (kb > 0) {
     /* sh -c '…' sh <kb> <node> <args…>: ulimit setzen, danach ersetzt exec die Shell durch Node
@@ -86,6 +88,7 @@ function umgebung() {
  * @returns {Promise<{ art: "ergebnis", wert: any } | { art: "zeitlimit" } | { art: "speicher" } | { art: "ausgabe" } | { art: "fehler", detail?: string }>}
  */
 export function fuehreKindAus({ skript, kopf, daten, zeitMs, ausgabeMax = AUSGABE_MAX_BYTES, heapMb = KIND_HEAP_MB, kb = adressraumKb(), beiStart } = {}) {
+  if (!Number.isSafeInteger(kb) || kb < 0) return Promise.resolve({ art: "fehler", detail: "Adressraum" });
   return new Promise((resolve) => {
     let fertig = false;
     let kind;

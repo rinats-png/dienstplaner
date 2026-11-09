@@ -511,3 +511,5 @@ Die Freigabe in `werkzeug/sicherheit/statik.mjs` gilt nur für `server/lib/impor
 | Parser-Isolation | eigener Prozess, minimale Umgebung (keine Server-Variablen, insb. kein `NODE_OPTIONS`) |
 
 **Ergebnis:** `node werkzeug/sicherheit/statik.mjs` meldet „keine unbegründeten harten Treffer“. `pruefungen/import-parser.test.js`: 137 bestanden, 1 übersprungen (der Linux-Test, siehe Offen 2).
+
+**Nachreview zu §12 (unabhängiges Opus-Review, fail-closed):** Eine ungültige Adressraumgrenze (`null`, `NaN`, negativ, nicht ganzzahlig) startet kein Kind mehr ohne Limit; `fuehreKindAus` liefert `fehler` ohne Start, `kindBefehl` wirft. Test „H1 (Review fix7)“. Die Quelltextprüfung zählt jetzt genau eine Fundstelle von `child_process` (Test „H1“). Restrisiko, bewusst offen: die Statikprüfung zählt Zeilen, nicht Vorkommen, und überspringt Zeilen, die mit `/*` beginnen. Der Schutz gegen weitere Importe liegt deshalb beim Quelltext-Test.
