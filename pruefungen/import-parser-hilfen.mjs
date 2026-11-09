@@ -68,3 +68,15 @@ export function zipEintraege(buf) {
   }
   return aus;
 }
+
+/** Inhalt des Stroms „Workbook“ einer von SheetJS geschriebenen XLS (BIFF-Daten). */
+export function workbookStrom(xls) {
+  return Buffer.from(XLSX.CFB.find(XLSX.CFB.read(xls, { type: "buffer" }), "/Workbook").content);
+}
+
+/** CFB-Container (OLE2) aus [{ pfad: "/Sub/Workbook", daten: Buffer }] (Wurzelname "R"), nur für Prüfdateien. */
+export function cfbDatei(eintraege) {
+  const c = XLSX.CFB.utils.cfb_new({ root: "R" });
+  for (const e of eintraege) XLSX.CFB.utils.cfb_add(c, e.pfad, e.daten);
+  return Buffer.from(XLSX.CFB.write(c, { type: "buffer" }));
+}

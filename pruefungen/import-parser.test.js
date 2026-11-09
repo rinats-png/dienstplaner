@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 import zlib from "node:zlib";
 import { parseDatei, STANDARD_GRENZEN } from "../server/lib/import/parser.mjs";
 import * as kern from "../server/lib/import/parser-kern.mjs";
-import { mappe, zip, zipEintraege } from "./import-parser-hilfen.mjs";
+import { mappe, zip, zipEintraege, cfbDatei, workbookStrom } from "./import-parser-hilfen.mjs";
 
 /* Review PR #123, Befund 5: explizites Zeitlimit je Test (Schwellen in den Tests bleiben unverändert). */
 vi.setConfig({ testTimeout: 60000 });
@@ -1166,5 +1166,75 @@ describe("Review 8725dc5: 1904-Mappe, Zeitformat mit echtem Datum (dokumentierte
       expect(r.blaetter[0].zeilen[1][0], fmt).toMatchObject({ typ: "datum", roh: 45306.25 });
       expect(r.blaetter[0].zeilen[1][1], fmt).toMatchObject({ typ: "datum", roh: 45306.25 + 1462 });
     }
+  });
+});
+
+describe("Review bbf64ca (imp-2-fix5): CFB-Verzeichnisbaum und Strom unter der Wurzel", () => {
+  /** Verzeichnissektor 0 einer XLS; Eintrag i liegt bei dir + 128 * i (Zeiger: links +68, rechts +72, Kind +76). */
+  const verz = (buf) => {
+    const ssz = 1 << buf.readUInt16LE(0x1e);
+    const dir = (buf.readInt32LE(0x30) + 1) * ssz;
+    return { eintrag: (i) => dir + 128 * i };
+  };
+  const gross = () => {
+    const z = [["Nr", "Text"]]; for (let i = 0; i < 3000; i++) z.push([i, `t${i}`]);
+    return mappe({ S: z }, "xls");
+  };
+  it("A1-PoC: gültige XLS, Baumzeiger der Einträge 2 und 3 zeigen aufeinander → BESCHAEDIGT in unter 2 s (statt Zeitlimit)", async () => {
+    const buf = gross();
+    const v = verz(buf);
+    /* Eintrag 3 war unbenutzt: als Strom anlegen und mit Eintrag 2 (Workbook) zu einem Zyklus verbinden. */
+    expect(buf[v.eintrag(2) + 66]).toBe(2);
+    expect(buf[v.eintrag(3) + 66]).toBe(0);
+    buf.writeUInt16LE(4, v.eintrag(3) + 64); buf.write("x", v.eintrag(3), "utf16le");
+    buf[v.eintrag(3) + 66] = 2;
+    buf.writeInt32LE(3, v.eintrag(2) + 72); /* 2.rechts → 3 */
+    buf.writeInt32LE(2, v.eintrag(3) + 68); /* 3.links → 2 */
+    const t0 = Date.now();
+    const r = await parseDatei({ buffer: buf, name: "zyklus.xls" });
+    const dauer = Date.now() - t0;
+    expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    expect(dauer).toBeLessThan(2000);
+  });
+  it("A1: Zeiger außerhalb der Einträge, mehrfach erreichbarer Eintrag und Selbstverweis → BESCHAEDIGT", async () => {
+    const a = gross(); const va = verz(a);
+    a.writeInt32LE(99, va.eintrag(2) + 72);
+    expect(await parseDatei({ buffer: a, name: "a.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const b = gross(); const vb = verz(b);
+    b.writeInt32LE(2, vb.eintrag(0) + 68); /* Wurzel.links → 2, 2 ist auch über Kind 1 erreichbar */
+    expect(await parseDatei({ buffer: b, name: "b.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+    const c = gross(); const vc = verz(c);
+    c.writeInt32LE(2, vc.eintrag(2) + 68);
+    expect(await parseDatei({ buffer: c, name: "c.xls" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
+  });
+  it("A1 Gegenprobe: gültige XLS (mit Verzeichnisbaum) wird weiter gelesen", async () => {
+    const r = await parseDatei({ buffer: gross(), name: "ok.xls" });
+    expect(r.ok).toBe(true);
+    expect(r.blaetter[0].zeilen).toHaveLength(3001);
+  });
+  it("A2-PoC: CFB mit /Sub/Workbook und /PerfectOffice_MAIN (WK3-Daten) → NICHT_UNTERSTUETZT", async () => {
+    /* WK3: Kopfsatz (Version 0x1000), zwei Beschriftungszellen, Ende; SheetJS liest das als Tabelle. */
+    const wk3 = Buffer.from([0, 0, 2, 0, 0, 0x10, 0x0f, 0, 7, 0, 0x27, 0, 0, 0, 0, 0x61, 0, 0x0f, 0, 7, 0, 0x27, 0, 0, 1, 0, 0x62, 0, 0x01, 0, 0, 0]);
+    const buf = cfbDatei([
+      { pfad: "/Sub/Workbook", daten: workbookStrom(mappe({ S: [["a"], [1]] }, "xls")) },
+      { pfad: "/PerfectOffice_MAIN", daten: wk3 },
+    ]);
+    const r = await parseDatei({ buffer: buf, name: "q.xls" });
+    expect(r).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+  });
+  it("A2: Quattro-Pro-/Lotus-Ströme (NativeContent_MAIN, MN0) ohne Workbook/Book unter der Wurzel → NICHT_UNTERSTUETZT", async () => {
+    for (const name of ["NativeContent_MAIN", "MN0"]) {
+      const r = await parseDatei({ buffer: cfbDatei([{ pfad: "/" + name, daten: Buffer.alloc(64, 1) }]), name: "q.xls" });
+      expect(r, name).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    }
+  });
+  it("A2: leerer Workbook-Strom (Größe 0) unter der Wurzel zählt nicht → NICHT_UNTERSTUETZT", async () => {
+    const buf = cfbDatei([{ pfad: "/Workbook", daten: Buffer.alloc(0) }, { pfad: "/MN0", daten: Buffer.alloc(64, 1) }]);
+    expect(await parseDatei({ buffer: buf, name: "q.xls" })).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+  });
+  it("A2 Gegenprobe: normale XLS mit Workbook unter der Wurzel bleibt ok", async () => {
+    const r = await parseDatei({ buffer: mappe({ S: [["a"], [1]] }, "xls"), name: "n.xls" });
+    expect(r.ok).toBe(true);
+    expect(r.format).toBe("xls");
   });
 });
