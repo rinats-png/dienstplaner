@@ -60,3 +60,76 @@ Vor der Korrektur schlugen die neuen Fälle fehl (geprüft durch Zurücksetzen v
 - `Seg` nutzt `role="tab"` ohne `aria-controls` und ohne Pfeiltastennavigation. Die Filter sind Schaltflächen mit Tab-Reihenfolge; `bildersatz.mjs` sucht über die Rolle `tab`. Eine Umstellung auf `aria-pressed` wäre sauberer; Frage 3 in `wp40-fragen.md`.
 - Vorhandene Dialoge in `ui/leisten.jsx`, `ansichten/fenster.jsx`, `v4/komponenten.jsx`, `rechtstexte.jsx` sind bereits geprüft; nicht angefasst.
 - `wiederherstellen-ui.test.js` schlägt im Ausgangszustand bereits fehl (3 Fälle, „Lädt“-Erwartung). Nicht durch dieses Paket verursacht; nicht verändert.
+
+## Review
+
+Stand 2026-11-09. Review des vorhandenen Bestands auf `origin/integration/release-v4` (Commits 5d114abd, a7c2948b, ba0d846b). Kein Produktcode und keine Tests geändert; der obige Text ist unverändert.
+
+### Prüfung
+
+- `npx vitest run pruefungen/wp40-zugaenglichkeit.test.js pruefungen/kontrast.test.js pruefungen/v4-app-stil.test.js`: 3 Dateien, 251 Fälle, alle bestanden. `wp40-zugaenglichkeit.test.js` allein: 28 Fälle bestanden (14 feste Fälle plus ein Fall je `<Schalter>`).
+- Hinweis: `node --test` kann die Datei nicht laden (JSX-Import, `ERR_UNKNOWN_FILE_EXTENSION`); der Lauf geht nur über vitest, wie im Nachweis genannt.
+
+### Abgleich Nachweis und Code
+
+Die Aussagen des Nachweises stimmen im Stichprobenabgleich mit dem Code überein: `useDialogFokus` (Escape, Tab-Falle, Rückkehr), `MBlatt` mit `tabIndex=-1`, Schnellsuche als `role="dialog"` mit `combobox`/`listbox`/`aria-activedescendant`, `label="Feldmodus"`, `Seg` mit `type="button"`, Einrichtung mit `htmlFor`/`id` und `aria-pressed`, `klickbar()`, `Planzelle` mit Durchstreichung, `role="status"`/`role="alert"`/`aria-busy`, `:focus-visible` und `prefers-reduced-motion` in `App.jsx` und `v4/app-stil.js`, keine Viewport-Sperre in `index.html`.
+
+Widersprüche und Abweichungen:
+
+1. Ortsangaben veraltet: Der Nachweis nennt `src/App.jsx` für `MBlatt`, Kommandoleiste und Feldmodus-Schalter. Seit WP-39 stehen sie in `src/ansichten/mobil.jsx`, `src/ansichten/kommandoleiste.jsx` und `src/ansichten/mobil.jsx`. Die Prüfung findet sie weiter, weil `pruefungen/app-quelle.js` die ausgelagerten Dateien zusammenfügt. Inhaltlich kein Fehler, aber die Tabelle verweist auf falsche Dateien.
+2. Fallzahl: Der Nachweis nennt 19 Fälle für `wp40-zugaenglichkeit.test.js`; es sind 28 (19 ist nicht mehr aktuell; je Schalter ein Fall).
+3. Stand-Zeile nennt Branch `feature/wp40-wp35-darstellung` (Basis 46dd93b), nicht den Integrationsbranch.
+4. Tabellenzeile „3.3.? Fehler am Feld“ trägt kein Kriterium. Gemeint ist 3.3.1 (Fehler erkennen) bzw. 1.3.1/4.1.2 (`aria-describedby`, `aria-invalid`); die Zeile ist offen und gehört zu Frage 2.
+5. Die Schalter-Prüfung sucht `<Schalter`; die zweite Variante `<Schalt` (`src/gestalt/rahmen.jsx`, Prefix-Treffer nicht abgedeckt, da `<Schalter` nicht auf `<Schalt ` passt) ist nicht Teil der Prüfung. Stichprobe: Alle `<Schalt `-Stellen tragen `label=`. Die Behauptung „alle Schalter benannt“ ist dort nur per Stichprobe belegt.
+6. Der Nachweis sagt „Seg ... `flex-wrap`“ (1.4.12). `flexWrap` ist in `ui/bausteine.jsx` für Kopf- und Zeitwahl-Container vorhanden; für `Seg` selbst wurde es nicht bestätigt. Belegt ist es nur als Quelltext-Annahme.
+7. Der Nachweis sagt, der Rahmen `steuer` in der Einrichtung sei geprüft. Der Test verneint nur ein Muster mit `C.line` (eine Verneinung eines Textmusters). Er belegt nicht, dass jedes Feld `steuer` nutzt; der Kontrasttest prüft die Regel in `v4/app-stil.js`, nicht die Inline-Stile in `main.jsx`.
+8. Der Nachweis führt `wiederherstellen-ui.test.js` mit 3 Fehlern im Ausgangszustand. Diese Datei wurde in diesem Review nicht ausgeführt; der Zustand auf dem Integrationsbranch ist offen.
+
+### Kriterien: belegt
+
+Belegt heißt: Quelltext- oder Render-Prüfung vorhanden und bestanden. Das ist keine Browser-Abnahme.
+
+| Kriterium | Beleg |
+|---|---|
+| 1.1.1 | Quelltext (`aria-hidden`, `aria-label` an Zeitwahl) |
+| 1.3.1 (Beschriftung/Beziehung) | Test „Einrichtung und Konto“, `Field` |
+| 1.4.1 | Test (`aria-pressed`), `Planzelle` Quelltext |
+| 1.4.3 | `kontrast.test.js` |
+| 1.4.11 | `kontrast.test.js` („Eingabefelder“), `steuer` 3:1 |
+| 2.1.1 | `klickbar()`, Schnellsuche Quelltext |
+| 2.1.2 | Test „Blätter und Dialoge“ (Quelltextmuster) |
+| 2.4.3 | Test (Hook, MBlatt) |
+| 2.4.7 | `v4-app-stil.test.js`, `:focus-visible` |
+| 2.3.3 (AAA, nicht AA) | `prefers-reduced-motion`; kein AA-Kriterium, nur als Zusatz belegt |
+| 3.3.2 | Quelltext, Test E-Mail-Konto |
+| 4.1.2 | Test „Jeder Schalter trägt einen Namen“, `Seg` |
+| 4.1.3 | Quelltext (`role="status"`, `role="alert"`, `aria-busy`) |
+
+13 Zeilen; davon ist 2.3.3 AAA und zählt nicht für AA, also 12 AA-Kriterien belegt auf Quelltextebene. 3.3.1 ist nur teilweise belegt (`role="alert"`, ohne Feldverbindung).
+
+Einschränkung: Fokus-, Tab- und Escape-Verhalten (2.1.2, 2.4.3) ist nur über Textmuster im Hook geprüft, nicht über ein Verhalten (kein DOM-Lauf, kein Browser). Die Prüfung beweist, dass der Code vorhanden ist, nicht dass er funktioniert.
+
+### Kriterien: offen
+
+| Kriterium | Grund |
+|---|---|
+| 1.3.1 Überschriftenstruktur je Ansicht | nicht geprüft; Browser/Vorlesesoftware |
+| 1.4.10 Reflow (320 px, 200 %) | nicht geprüft; Browser |
+| 1.4.12 Textabstand | nicht geprüft; Browser |
+| 2.4.11 Fokus nicht verdeckt (2.2) | nicht geprüft; Browser |
+| 2.5.8 Zielgröße 24 px (2.2) | nicht gemessen; Planzellen 34 px hoch, übrige Ziele nicht gemessen; Frage 1 |
+| 3.3.1 Fehler am Feld | `aria-describedby`/`aria-invalid` fehlen; Frage 2 |
+| axe-core, Tastatur, Vorlesesoftware | Abnahmeliste unter „Nur im Browser prüfbar“ nicht durchgeführt |
+
+Im Nachweis nicht genannt, aber für WCAG 2.2 AA relevant und nicht belegt (nur als Hinweis, keine Prüfung durchgeführt): 2.4.1 Bereiche umgehen, 2.4.2 Seitentitel, 2.4.4/2.4.6, 2.5.7 Ziehbewegungen, 3.2.6, 3.3.7 Redundante Eingabe, 3.3.8 Zugängliche Authentifizierung (Anmeldung/2FA), 1.4.13, 1.3.4 Eingabezweck (`autocomplete`), 1.4.4 Textgröße. Diese stehen nicht im Nachweis und gelten als nicht bewertet.
+
+### Fragen an den Betreiber
+
+1. Die Fragen 1 bis 6 in `wp40-fragen.md` sind weiter offen und unentschieden (Zielgrößen, Fehlertext am Feld, `Seg` als `tab`, Gruppenbeschriftung, Geo-Schalter, Tabellenreflow). Frage 4 ist eine Kleinigkeit (ein `<label>` ohne Steuerelement).
+2. Wer führt die Browser-Abnahme (axe, Tastatur, 320 px, Telefon) durch, und wann? Ohne sie bleibt WP-40 für 1.4.10, 1.4.12, 2.4.11, 2.5.8 ungeprüft.
+3. Sind die nicht genannten Kriterien (3.3.8 Authentifizierung, 1.3.4 Eingabezweck, 2.4.1, 2.4.2, 2.5.7, 3.3.7) im Umfang von WP-40 gewollt? Dann fehlt eine Bestandsaufnahme.
+4. Soll die Zeile „3.3.?“ im Nachweis auf 3.3.1 korrigiert und der Ortshinweis auf die ausgelagerten Dateien angepasst werden (Textänderung am Nachweis, hier bewusst nicht erfolgt)?
+
+### Empfehlung für den SSOT-Status
+
+`BLOCKED` stimmt nicht mehr mit dem Bestand überein: Code und 28 Prüffälle sind vorhanden und bestehen. Empfehlung: Status auf einen Zwischenstand wie „Quelltext-Prüfung bestanden, Browser-Abnahme offen“ setzen (nicht auf erledigt), solange die Browser-Abnahme und die Fragen 1 bis 3 offen sind. Diese Änderung an `work-packages.json` ist hier nicht erfolgt.
