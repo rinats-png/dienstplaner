@@ -55,6 +55,9 @@ const C = {
   PFEFFER_WECHSEL: "SIP4-AUFL-PFW1",
   PFEFFER_PFLICHT: "SIP4-AUFL-PFP1",
   NUR_NEU: "SIP4-AUFL-NNE1",
+  /* Delta-Review: Zustellung mit wirksamer Rolle */
+  ZU_HOCH: "SIP4-ZUST-HOC1",
+  ZU_OHNE: "SIP4-ZUST-OHN1",
 };
 const PFEFFER = "pfeffer-si-p4-0123456789abcdef";
 let wurzel, laden, daten, B, K, CODES, ABLAGE;
@@ -101,7 +104,8 @@ async function bestandSetzen(rollen) {
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }], qualifikationen: [],
     einstellungen: { ruhezeit: 11, maxFolge: 6 },
     personen: [person("m0", r("m0", "mitarbeiter")), person("l9", r("l9", "leitung")),
-      person("m2", r("m2", "mitarbeiter")), person("m3", r("m3", "mitarbeiter"))],
+      person("m2", r("m2", "mitarbeiter")), person("m3", r("m3", "mitarbeiter")),
+      person("m5", r("m5", "mitarbeiter")), person("m6", r("m6", "mitarbeiter"))],
     abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [], bestaetigungen: [],
   }] }, { durch: "SI-P4" });
 }
@@ -153,6 +157,8 @@ beforeAll(async () => {
   await konto(C.ALT_SITZUNG, "leitung");
   await konto(C.SPEICHER, "leitung");
   await konto(C.NUR_NEU, "leitung");
+  await konto(C.ZU_HOCH, "mitarbeiter", "m5");
+  await konto(C.ZU_OHNE, "mitarbeiter", "m6");
   /* N2: Zugänge aus der Zeit vor dem Pfeffer — unter dem alten, ungepfefferten Schlüssel. */
   const altKonto = (c) => kontoSchreiben(laden(), CODES.altHash(c), { name: "leitung Probe", bestand: RAUM,
     rolle: "leitung", person: null, betrieb: 0, mandantId: "m1", angelegt: "2026-01-01T00:00:00.000Z" });
@@ -649,5 +655,103 @@ describe("SI-P4 Auflage N2: fehlender oder gewechselter Pfeffer", () => {
     expect(rollenPflichtUnerwartet({ CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: " 1 " })).toBe(false);
     for (const w of ["ja", "true", "an", "0", "2"])
       expect(rollenPflichtUnerwartet({ CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: w }), w).toBe(true);
+  });
+});
+
+/* ==========================================================================
+   DELTA-REVIEW SI-P4, AUFLAGE 1: ZUSTELLUNG RECHNET MIT DER WIRKSAMEN ROLLE
+
+   /zustellung/senden prüft die Sitzung über arbeitssitzungLesen — dort zählt nur die Rolle beim Anlegen — und
+   gibt Rechte dann über anstossRegel(wirksameRolle(...)). Eine als Mitarbeiter angelegte Sitzung ohne Faktor, deren
+   Person danach Leitung wurde, durfte unter Pflicht so jede Mitteilung des Betriebs anstoßen. Jetzt gilt dieselbe
+   Regel wie in daten.mjs: 401, zweifaktor „neu-anmelden“, Sitzung beendet. Ohne Pflicht und im Demoraum unverändert.
+   Rot auf ac1e06d: der erste Test (200 statt 401).
+   ========================================================================== */
+
+describe("SI-P4 Delta-Auflage 1: Zustellung unter Pflicht mit wirksamer Rolle", () => {
+  let zustellung;
+  const senden = async (token, ids = ["n-gibt-es-nicht"]) => {
+    nr += 1;
+    const a = await zustellung(new Request(`http://${WIRT}/zustellung/senden`, { method: "POST",
+      headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+        authorization: `Bearer ${token}`, "x-forwarded-for": `10.47.${Math.floor(nr / 250)}.${nr % 250}` },
+      body: JSON.stringify({ nachrichten: ids }) }), {});
+    const roh = await a.text();
+    let d = {}; try { d = JSON.parse(roh); } catch { /* leer */ }
+    return { status: a.status, roh, ...d };
+  };
+  beforeAll(async () => {
+    zustellung = (await import("../server/funktionen/zustellung.mjs")).default;
+  });
+
+  it("Mitarbeitersitzung ohne Faktor, danach Leitung: unter Pflicht 401 neu-anmelden, Sitzung beendet", async () => {
+    const a = await anmelden({ zugangscode: C.ZU_HOCH });
+    expect(a.status, a.roh).toBe(200);
+    expect(a.zweifaktor).toBeUndefined();
+    await bestandSetzen({ m5: "leitung" });
+    try {
+      await mitPflicht(async () => {
+        const z = await senden(a.token);
+        expect(z.status, z.roh).toBe(401);
+        expect(z.zweifaktor).toBe("neu-anmelden");
+        expect(z.ergebnis).toBeUndefined();
+      });
+      /* Beendet, nicht nur abgewiesen: auch ohne Pflicht und nach der Rückstufung gilt die Sitzung nicht mehr. */
+      await bestandSetzen({});
+      expect((await senden(a.token)).status).toBe(401);
+      expect((await bestandHolen(a.token)).status).toBe(401);
+    } finally { await bestandSetzen({}); }
+  });
+
+  it("ohne Pflicht unverändert: Hochstufung gibt die Rechte der Leitung, Sitzung bleibt", async () => {
+    const a = await anmelden({ zugangscode: C.ZU_OHNE });
+    expect(a.status, a.roh).toBe(200);
+    await bestandSetzen({ m6: "leitung" });
+    try {
+      const z = await senden(a.token);
+      expect(z.status, z.roh).toBe(200);
+      expect(Array.isArray(z.ergebnis)).toBe(true);
+      expect(z.zweifaktor).toBeUndefined();
+      expect((await bestandHolen(a.token)).status).toBe(200);
+    } finally { await bestandSetzen({}); }
+  });
+
+  it("Mitarbeitersitzung ohne Hochstufung: auch unter Pflicht unverändert", async () => {
+    const a = await anmelden({ zugangscode: C.ZU_OHNE });
+    expect(a.status, a.roh).toBe(200);
+    await mitPflicht(async () => {
+      const z = await senden(a.token);
+      expect(z.status, z.roh).toBe(200);
+      expect(z.zweifaktor).toBeUndefined();
+      expect((await bestandHolen(a.token)).status).toBe(200);
+    });
+  });
+
+  it("Demo-Ausnahme bleibt: Demositzung Leitung im Demoraum stellt auch unter Pflicht zu", async () => {
+    const DEMORAUM = "demo-si-p4-zustellung";
+    await B.bestandSchreiben(laden(), DEMORAUM, { version: 9, mandanten: [{ id: "m1", name: "Demohaus", status: "aktiv",
+      einheiten: [{ id: "e1", name: "WB 1", versatzTage: 0 }], dienstarten: [], qualifikationen: [],
+      einstellungen: { ruhezeit: 11, maxFolge: 6 }, personen: [person("d1", "leitung")],
+      abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [], bestaetigungen: [],
+    }] }, { durch: "SI-P4" });
+    await K.kontoSchreiben(laden(), CODES.ablageSchluessel("SIP4-DEMO-ZUST"), { id: "demo-sip4-zustellung",
+      name: "Demo Leitung", bestand: DEMORAUM, rolle: "leitung", person: "d1", betrieb: 0, mandantId: "m1",
+      demo: true, angelegt: "2026-01-01T00:00:00.000Z" });
+    process.env.CENTRIC_DEMO = "true";
+    try {
+      await mitPflicht(async () => {
+        nr += 1;
+        const a = await daten(new Request(`http://${WIRT}/api/demo`, { method: "POST",
+          headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+            "x-forwarded-for": `10.48.0.${nr % 250}` }, body: JSON.stringify({ id: "demo-sip4-zustellung" }) }), {});
+        const d = await a.json();
+        expect(a.status, JSON.stringify(d)).toBe(200);
+        const z = await senden(d.token);
+        expect(z.status, z.roh).toBe(200);
+        expect(Array.isArray(z.ergebnis)).toBe(true);
+        expect(z.zweifaktor).toBeUndefined();
+        expect((await bestandHolen(d.token)).status).toBe(200);
+      });
+    } finally { delete process.env.CENTRIC_DEMO; }
   });
 });

@@ -147,11 +147,16 @@ einer Rückstufung (oder bei abgeschalteter Pflicht) arbeitete dasselbe Merkmal 
 Faktor gesehen hat. Deshalb: `rollenSitzungOhneFaktor(s0, rolleJetzt)` (`lib/betreiber-zweifaktor.mjs`) ist wahr, wenn
 Pflicht aktiv, Rolle beim Anlegen oder jetzt wirksame Rolle eine der `ZWEIFAKTOR_ROLLEN` und `s0.zweifaktor !== true`.
 Die Regel umfasst die geforderte Bedingung `zweifaktorRolle(s.rolle) && !zweifaktorRolle(s0.rolle)` und ist breiter.
-Geprüft an zwei Stellen:
+Geprüft an drei Stellen (korrigiert im Delta-Review, siehe unten):
 - `lib/arbeitssitzung.mjs` (`arbeitssitzungLesen`, der eine Prüfpunkt für alle Pfade inkl. Zugang sperren, Kalender,
-  Zustellung): Rolle beim Anlegen; Sitzung wird beendet, `grund: "zweifaktor-pflicht"`.
+  Zustellung): **nur die Rolle beim Anlegen** (`s0.rolle`); Sitzung wird beendet, `grund: "zweifaktor-pflicht"`. Eine
+  Hochstufung nach der Anmeldung sieht diese Stelle nicht.
 - `funktionen/daten.mjs` nach der Berechnung der wirksamen Rolle (eine lokale Prüfung, 9 Zeilen): Hochstufung; Sitzung
   wird beendet, 401 `{ zweifaktor: "neu-anmelden" }`.
+- `funktionen/zustellung.mjs`, `POST /zustellung/senden`, nach der Berechnung der wirksamen Rolle und **vor**
+  `anstossRegel`: dieselbe Regel `rollenSitzungOhneFaktor(s, wirksameRolle(s, bestand))`, Sitzung beendet, 401
+  `{ zweifaktor: "neu-anmelden" }` (Delta-Auflage 1). Die übrigen Zustellpfade (`schluessel`, `anmelden`/`abmelden`
+  des eigenen Geräts) geben keine Rollenrechte und bleiben bei der Prüfung in `arbeitssitzungLesen`.
 Ausgenommen: Pflicht aus, Sicherungsschlüssel (`nurSicherung`, eigene Prüfung SI-P1), Betreiber (eigene Pflicht
 WP-32d), Demositzungen (`demo: true` **und** Raum `demo-*`). Wirkung im Betrieb: Mit dem Einschalten der Pflicht
 enden alle Leitungs-/Planungs-/Kundensitzungen ohne Faktor bei ihrer nächsten Anfrage.
@@ -233,3 +238,90 @@ Weitere Änderung: `/api/einrichten/umgebung` meldet `rollenZweifaktorPflicht` u
 - **Betreiber:** N2-Vermerk nicht übernommen (eigene Pflicht in production, Offline-Werkzeug); bei Bedarf eigenes Paket.
 - **Konten mit zweitem Faktor** (TOTP für Accounts) bleiben ein eigenes Paket; bis dahin ist unter Pflicht der
   Zugangscode der einzige Weg für Leitung/Planung über Arbeitsbereiche.
+
+## Auflagen aus dem Delta-Review
+
+Branch `acc45/sicherheit/si-p4-delta` auf `acc45/sicherheit/si-p4-auflagen` (ac1e06d).
+
+| Auflage | Status | Umsetzung |
+|---|---|---|
+| **1** (blockierend) Zustellung rechnet Rechte mit der wirksamen Rolle, prüft Faktor aber nur mit der Anlegerolle | erledigt | `funktionen/zustellung.mjs` |
+| **2** (blockierend, Doku) Über das Konto angelegte Betriebe unter Pflicht für ihre Leitung nicht erreichbar | dokumentiert + Test, nicht umgebaut | Handbuch, Test, offene Entscheidung unten |
+| `vermerk: false` als Ablehnung | **nicht umgesetzt**, Restrisiko | siehe unten |
+| Wettlauf `faktorVermerken` ↔ Zugang sperren | dokumentiert, nicht umgebaut | siehe unten |
+
+**Auflage 1 — Zustellung.** `POST /zustellung/senden` las die Sitzung über `arbeitssitzungLesen` (Prüfung nur gegen
+`s0.rolle`) und gab Rechte über `anstossRegel(wirksameRolle(s, bestand))`. Eine als Mitarbeiter **ohne** Faktor
+angelegte Sitzung, deren Person danach Leitung wurde, konnte unter Pflicht so jede Mitteilung des Betriebs anstoßen
+(`/api/*` wies dieselbe Sitzung schon ab). Jetzt wird vor `anstossRegel` mit `rollenSitzungOhneFaktor(s, rolleWirksam)`
+geprüft — dieselbe Regel wie in `daten.mjs`: Pflicht aktiv, wirksame Rolle (oder Anlegerolle) mit Faktorpflicht,
+`s0.zweifaktor !== true` → Sitzung beenden, protokollieren, 401 `{ fehler, zweifaktor: "neu-anmelden" }`. Ausnahmen
+unverändert über die Funktion (Pflicht aus, Demositzung im `demo-*`-Raum, Sicherungsschlüssel, Betreiber).
+
+Tests (`pruefungen/rollen-zweifaktor.test.js`, „SI-P4 Delta-Auflage 1“), über die echten Handler `/api/anmelden`,
+`/api/demo`, `/api/bestand` und `/zustellung/senden`:
+- Mitarbeitersitzung ohne Faktor, Person danach Leitung, unter Pflicht `POST /zustellung/senden` → 401
+  `neu-anmelden`, kein `ergebnis`; danach (ohne Pflicht, Rückstufung) weder Zustellung noch `/api/bestand` (401,
+  Sitzung beendet). **Rot auf ac1e06d** (200 mit `ergebnis`), grün nach der Änderung.
+- Ohne Pflicht unverändert: Hochstufung gibt die Rechte der Leitung, 200, Sitzung bleibt.
+- Mitarbeitersitzung ohne Hochstufung unter Pflicht: 200, Sitzung bleibt.
+- Demo-Ausnahme: Demositzung Leitung (`/api/demo`, Raum `demo-*`, mit Person) stellt unter Pflicht zu (200), Sitzung
+  bleibt.
+
+**Auflage 2 — über das Konto angelegte Betriebe.** `lib/provisionierung.mjs` (Testbetrieb aus der Registrierung) legt
+die Leitung als Konto-Mitgliedschaft `rolle: "leitung"` an — **ohne Zugangscode**. Unter
+`CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1` öffnet die Betriebsauswahl diesen Betrieb nicht (M1): 403
+`{ fehler: "zweifaktor-pflicht", hinweis: "… mit dem Zugangscode und dem Code aus der App anmelden." }`, keine
+Arbeitssitzung. Den Zugangscode gibt es aber nicht; der Hinweis führt ins Leere. **Folge: Ein solcher Betrieb ist unter
+Pflicht für seine Leitung nicht erreichbar.** Bewusst nicht umgebaut. Festgehalten in
+`pruefungen/betriebsauswahl.test.js`, „SI-P4 Delta-Auflage 2“ (echter Weg: Registrierung, Bestätigung, Passwort,
+Provisionierung, Konto-Anmeldung über HTTP): kein Zugangscode für den Raum; unter Pflicht 403 mit Hinweis, keine
+Arbeitssitzung; ohne Pflicht 200 als Leitung. Ändert sich das Verhalten, muss der Test bewusst mitgeändert werden.
+Im Handbuch (`CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT`) als Warnung vor dem Einschalten vermerkt. Hinweis: Die
+Provisionierung hat derzeit keinen öffentlichen Endpunkt (Test „wird von keinem öffentlichen Endpunkt für den
+Accountweg aufgerufen“); die Lage betrifft also nur Betriebe, die auf diesem Weg tatsächlich entstanden sind oder
+entstehen werden.
+
+**Offene Produktentscheidung: Rückweg für Konto-Betriebe unter Pflicht** (nicht implementiert):
+1. **Zugangscode bei der Provisionierung mit anlegen** (Leitungscode, Faktor bei erster Anmeldung einzurichten) —
+   einfachster Weg in die bestehende Pflichtlogik; Frage: wie wird der Code sicher übergeben (Mail? einmalige Anzeige?).
+2. **Zugangscode nachträglich durch den Betreiber anlegen** (Betreiberoberfläche / Werkzeug) für einen bestehenden
+   Konto-Betrieb — manuell, pro Fall, mit Identitätsprüfung.
+3. **Zurücksetzen durch den Betreiber offline** (analog `werkzeug/betreiber-2fa-zuruecksetzen.mjs`), z. B. Ausnahme
+   je Raum — widerspricht dem Sinn der Pflicht, nur als Notweg.
+4. **Zweiter Faktor für Konten** (TOTP am Account) — fachlich sauber, eigenes Paket (siehe Restrisiken oben).
+5. **Pflicht nur für Räume mit echten Daten** / Konto-Testbetriebe ausnehmen — schwächt die Pflicht, nur wenn
+   Testbetriebe nachweislich keine echten Personendaten tragen.
+Bis zur Entscheidung: Pflicht nur einschalten, wenn keine Konto-Betriebe genutzt werden, oder deren Leitung vorher
+über einen manuell angelegten Zugangscode (Weg 2) versorgen.
+
+**Nicht blockierend — `vermerk: false`** (`lib/betreiber-zweifaktor.mjs`, Bestätigen): Scheitert das Schreiben des
+Vermerks `zweiterFaktor` nach der Aktivierung, gilt der Faktor, die Antwort trägt `vermerk: false`, protokolliert wird
+„Vermerk am Zugang nicht geschrieben“. Eine Ablehnung an dieser Stelle hieße, die schon erfolgte Aktivierung und das
+Beenden der Sitzungen zurückzunehmen (oder einen Faktor ohne Vermerk aktiv zu lassen und trotzdem „Fehler“ zu melden) —
+nicht klein und nicht risikolos, daher **nicht umgesetzt**. Restrisiko: Für diesen einen Zugang fehlt der Schutz gegen
+fehlenden/gewechselten Pfeffer (N2), bis der Faktor neu eingerichtet wird. Der Faktor selbst gilt.
+
+**Nicht blockierend — Wettlauf `faktorVermerken` ↔ Zugang sperren** (nur dokumentiert): `faktorVermerken` liest den
+Zugang (`kontoLesenStreng`) und schreibt ihn mit `{ ...e, zweiterFaktor: true }` (bzw. ohne Vermerk) zurück, ohne
+Sperre oder Versionsprüfung. Sperrt die Leitung denselben Zugang (`/api/zugang-sperren`, `daten.mjs`,
+`kontoSchreiben(… gesperrt: true)`) genau zwischen diesem Lesen und Schreiben, überschreibt `faktorVermerken` die
+Sperre mit dem alten Stand (verlorene Aktualisierung). Laufende Sitzungen beendet die Sperre trotzdem; der Code wäre
+danach aber wieder anmeldefähig (mit Faktor). Fenster: Millisekunden, nur während Bestätigen/Abschalten des Faktors
+für genau diesen Code, und wer bestätigt, kennt Code und Faktor. Abhilfe später: Schreiben unter derselben
+Prozesssperre wie das Sperren, oder bedingtes Schreiben (nur Feld setzen, `gesperrt` neu lesen). Nicht umgebaut.
+
+**Läufe Delta-Review** (lokal, Windows, Node 24, vitest 4.1.10, Rechner stark belastet durch parallele Agenten). Acht
+Dateien: `rollen-zweifaktor`, `rollen-zweifaktor-merken`, `betriebsauswahl`, `arbeitssitzung`, `zustellung-rechte`,
+`betreiber-zweifaktor`, `betreiber-zweifaktor-pflicht`, `provisionierung`.
+
+| Lauf | vorher (ac1e06d) | nachher |
+|---|---|---|
+| Vorgabe-Zeitgrenzen (5 s Test / 10 s Hook) | 213/244 (31 rot: 26 Zeitüberschreitungen + Folgefehler) | 196/250, 12 rot, 42 übersprungen (Hook-Zeitüberschreitung in `zustellung-rechte`, 10 Test-Zeitüberschreitungen + Folgefehler) |
+| `--testTimeout=60000` (vorher ohne, nachher mit `--hookTimeout=60000`) | 201/244, 1 rot (Zeitgrenze 40 s im Test selbst, `betriebsauswahl` Bremse), 42 übersprungen (Hook 10 s in `zustellung-rechte`) | **250/250 grün** |
+| Neue Tests einzeln (`-t "Delta-Auflage 1"` / `"Delta-Auflage 2"`) | Auflage 1: 1 rot, 3 grün | 4/4 + 2/2 grün |
+| `npm run lint` | – | 0 Fehler (153 Warnungen, Altbestand; geänderte Dateien ohne Warnung) |
+
+Fehlschläge mit Vorgabe-Zeitgrenzen sind Zeitüberschreitungen unter Last und deren Folgefehler (ein abgebrochener Test
+hinterlässt Zustand, z. B. Pflicht-Schalter oder halb eingerichteten Faktor; dieselben Tests sind mit
+`--testTimeout=60000` grün); keine Assertion entfernt, kein Test abgeschwächt. Die CI (Linux) ist maßgeblich.
