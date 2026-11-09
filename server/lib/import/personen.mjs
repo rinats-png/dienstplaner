@@ -209,8 +209,8 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     for (const [k, v] of Object.entries(werte)) if (v.length > 200) fehler.push(`${k} zu lang`);
     const ein = datumAusZelle(hol("eintritt", z));
     if (ein.ungueltig) fehler.push("Eintrittsdatum ungültig");
-    else if (ein.leer) hinweise.push("Eintrittsdatum leer: heutiges Datum angenommen");
-    werte.eintritt = ein.wert || (ein.leer ? heute : null);
+    /* Leer und optional -> null; nie „heute" (Entscheidung 2026-11-09). */
+    werte.eintritt = ein.wert ?? null;
     const std = zahlAusZelle(hol("wochenstunden", z), 0, 60);
     if (std.ungueltig) fehler.push("Wochenstunden ungültig");
     werte.wochenstunden = std.wert ?? null;
@@ -378,13 +378,16 @@ export function anwenden(mandant, plan, { neueId, heute, haken = null }) {
   for (const n of plan.neu) {
     const w = n.werte;
     const eid = n.einheitId || einheitNachName.get(vergleich(w.einheit));
-    const eintritt = w.eintritt || heute;
+    /* Der Eintritt bleibt null, wenn er nicht angegeben ist (nie heute). Der Anker von Zugehörigkeit und Rolle
+       braucht ein Datum und ist kein Eintritt: dafür gilt der Tag der Übernahme. */
+    const eintritt = w.eintritt ?? null;
+    const anker = eintritt || heute;
     const p = { id: id("p"), vorname: w.vorname, nachname: w.nachname, funktion: w.funktion || "Fachkraft",
       email: w.email || "", personalnummer: w.personalnummer || "",
-      zugehoerigkeit: [{ ab: eintritt, einheitId: eid }], eintritt, austritt: null,
+      zugehoerigkeit: [{ ab: anker, einheitId: eid }], eintritt, austritt: null,
       wochenstunden: w.wochenstunden ?? soll, urlaubsanspruch: w.urlaubsanspruch ?? 30, urlaubsuebertrag: 0, stundenuebertrag: 0,
       qualifikationen: [], einschraenkungen: {}, teilzeit: null, springer: false,
-      rolle: "mitarbeiter", bereich: eid, rolleSeit: eintritt, status: "aktiv" };
+      rolle: "mitarbeiter", bereich: eid, rolleSeit: anker, status: "aktiv" };
     m.personen.push(p);
     neueIds.push(p.id);
     if (haken) haken(++i);
