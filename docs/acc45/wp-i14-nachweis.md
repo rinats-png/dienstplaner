@@ -72,3 +72,9 @@ Dieser Abschnitt ergänzt die Datei (Windows ist nicht groß-/kleinschreibungsem
 **Tests.** Rot vor der Umsetzung: 0 von 15 lauffähig (Modul fehlte). Grün: 15 von 15; zusammen mit `intelligence-gateway-ergebnis`, `intelligence-vertraege`: 69 von 69. Zusätzlich grün: `aufraeumen`, `loeschsperre`, `kundenraumschutz`. `werkzeug/sicherheit/statik.mjs`: keine unbegründeten harten Treffer.
 
 **Offen.** Der Haken wird noch nirgends übergeben (Aufrufer `daten.mjs`, `aufraeumen.mjs`, `provisionierung.mjs`; Start-Aufruf von `kiDatenschutzlauf`): erst mit der Route `/ki` und dem Store `centric-ki-lauf` verdrahtbar, `daten.mjs` ist fremde Konfliktzone. Fristen sind Entwurfswerte (Betreiber). Review Opus steht aus.
+
+## Schutzgrenze: Warum die Schreibwege in ergebnis.mjs liegen
+
+`pruefungen/intelligence-gateway-grenzen.test.js` erlaubt Store-Schreibzugriffe (`setJSON`, `store.delete`) im Gateway nur in `ergebnis.mjs` und `zaehlerspeicher.mjs` (`STORE_SCHREIBER`). `loeschlauf.mjs` rief den Store direkt auf und machte den Test rot (Test-zuerst-Zustand). Die Regel bleibt unverändert, der Test auch.
+
+**Lösung.** Die Vormerkung (`kiVormerkungSchreiben`, `kiVormerkungEntfernen`) und das Löschen der Raumeinträge (`kiRaumEintraegeLoeschen`, zählt Fehler, stoppt nicht) liegen jetzt in `ergebnis.mjs`; die Schlüssel laufen über `vormerkSchluessel()` und `raumTeil()`. `loeschlauf.mjs` enthält kein `setJSON`, kein `delete`, kein `.set(` mit `ki:` mehr und ruft nur diese Funktionen auf (Store weiter als Parameter, Signaturen und Verhalten unverändert; `VORMERKUNG_PRAEFIX` wird re-exportiert). Alle Tests in `intelligence-loeschlauf.test.js` laufen ohne Änderung.

@@ -11,16 +11,16 @@
          Die Vormerkung enthält nur Raumkennung und Zeitpunkt, keine Personendaten.
      L3  Datenschutzlauf: fällige Einträge (Frist) wegräumen, dann Vorgemerktes nachholen. Wirft nie.
 
-   Ort: gateway/ (neben ergebnis.mjs), weil die Modulgrenzen-Prüfung für intelligence/*.mjs jeden setJSON-Aufruf verbietet.
-   Der Store wird INJIZIERT (im Betrieb getStore("centric-ki-lauf")); kein Netz, keine KI, keine Importe aus der Engine.
+   Ort: gateway/ (neben ergebnis.mjs). Die Schreib- und Löschwege (Vormerkung, Raumeinträge) liegen in ergebnis.mjs (Schutzgrenze);
+   dieses Modul ruft nur deren Funktionen auf. Der Store wird INJIZIERT (im Betrieb getStore("centric-ki-lauf")); kein Netz, keine KI, keine Importe aus der Engine.
    ========================================================================== */
 
-export const VORMERKUNG_PRAEFIX = "ki:loeschung:";
-const raumTeil = (raum) => encodeURIComponent(String(raum));
+import { VORMERKUNG_PRAEFIX, vormerkSchluessel, kiVormerkungSchreiben, kiVormerkungEntfernen, kiRaumEintraegeLoeschen } from "./ergebnis.mjs";
+export { VORMERKUNG_PRAEFIX };
 const grundVon = (e) => String((e && e.message) || e || "unbekannt").slice(0, 160);
 
 /**
- * @param {{ get: Function, setJSON: Function, delete: Function, list: Function }} kiStore
+ * @param {object} kiStore Ablage-Interface (wird nur an ergebnis.mjs durchgereicht)
  * @param {string} raum
  * @returns {Promise<{ raum: string, geloescht: number, vollstaendig: boolean, fehler: Array<{ schluessel: string, grund: string }> }>}
  */
@@ -28,20 +28,14 @@ export async function kiRaumBereinigen(kiStore, raum) {
   const fehler = [];
   let geloescht = 0;
   if (typeof raum !== "string" || !raum) return { raum: String(raum), geloescht, vollstaendig: false, fehler: [{ schluessel: "raum", grund: "ungültig" }] };
-  const marke = VORMERKUNG_PRAEFIX + raumTeil(raum);
-  try { await kiStore.setJSON(marke, { v: 1, raum, vorgemerkt: Date.now() }); }
+  const marke = vormerkSchluessel(raum);
+  try { await kiVormerkungSchreiben(kiStore, raum); }
   catch (e) { return { raum, geloescht, vollstaendig: false, fehler: [{ schluessel: marke, grund: grundVon(e) }] }; }
-  for (const praefix of [`ki:erg:${raumTeil(raum)}:`, `ki:ktx:${raumTeil(raum)}:`]) {
-    let blobs;
-    try { ({ blobs } = await kiStore.list({ prefix: praefix })); }
-    catch (e) { fehler.push({ schluessel: praefix + "*", grund: grundVon(e) }); continue; }
-    for (const b of blobs || []) {
-      try { await kiStore.delete(b.key); geloescht++; }
-      catch (e) { fehler.push({ schluessel: b.key, grund: grundVon(e) }); }
-    }
-  }
+  const lauf = await kiRaumEintraegeLoeschen(kiStore, raum);
+  geloescht = lauf.geloescht;
+  fehler.push(...lauf.fehler);
   if (fehler.length === 0) {
-    try { await kiStore.delete(marke); } catch (e) { fehler.push({ schluessel: marke, grund: grundVon(e) }); }
+    try { await kiVormerkungEntfernen(kiStore, raum); } catch (e) { fehler.push({ schluessel: marke, grund: grundVon(e) }); }
   }
   return { raum, geloescht, vollstaendig: fehler.length === 0, fehler };
 }

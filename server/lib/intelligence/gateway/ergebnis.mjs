@@ -91,6 +91,43 @@ export function kontextAusPaket(paket) {
   return { faktenAnzahl: (paket.fakten || []).length, regelIds: [...regelIds].sort().slice(0, 100), zahlen };
 }
 
+/* WP-I14 Schutzgrenze: Die Schreib- und Löschwege für ki:loeschung:* und die Raumlöschung liegen HIER (neben den übrigen
+   ki:-Schreibern), nicht in loeschlauf.mjs — die Gateway-Grenzenprüfung erlaubt Store-Schreibzugriffe nur in ergebnis.mjs
+   und zaehlerspeicher.mjs. Der Store kommt als Parameter von außen. */
+export const VORMERKUNG_PRAEFIX = "ki:loeschung:";
+export const vormerkSchluessel = (raum) => VORMERKUNG_PRAEFIX + raumTeil(raum);
+const grundVon = (e) => String((e && e.message) || e || "unbekannt").slice(0, 160);
+
+/** Vormerkung ki:loeschung:<raum> schreiben (nur Raumkennung und Zeitpunkt). Wirft bei Speicherfehler. */
+export async function kiVormerkungSchreiben(store, raum) {
+  await store.setJSON(vormerkSchluessel(raum), { v: 1, raum, vorgemerkt: Date.now() });
+  return vormerkSchluessel(raum);
+}
+
+/** Vormerkung entfernen. Wirft bei Speicherfehler. */
+export async function kiVormerkungEntfernen(store, raum) {
+  await store.delete(vormerkSchluessel(raum));
+}
+
+/**
+ * Alle ki:erg:/ki:ktx:-Schlüssel EINES Raums löschen; Fehler werden gezählt, nicht geworfen, und stoppen die übrigen nicht.
+ * @returns {Promise<{ geloescht: number, fehler: Array<{ schluessel: string, grund: string }> }>}
+ */
+export async function kiRaumEintraegeLoeschen(store, raum) {
+  const fehler = [];
+  let geloescht = 0;
+  for (const praefix of [`ki:erg:${raumTeil(raum)}:`, `ki:ktx:${raumTeil(raum)}:`]) {
+    let blobs;
+    try { ({ blobs } = await store.list({ prefix: praefix })); }
+    catch (e) { fehler.push({ schluessel: praefix + "*", grund: grundVon(e) }); continue; }
+    for (const b of blobs || []) {
+      try { await store.delete(b.key); geloescht++; }
+      catch (e) { fehler.push({ schluessel: b.key, grund: grundVon(e) }); }
+    }
+  }
+  return { geloescht, fehler };
+}
+
 /**
  * @param {{ store: any, jetzt?: () => number, fristenTage?: { ergebnisTage?: number, kontextTage?: number },
  *   modus?: "aus"|"vorschau"|"an", zufallId?: () => string }} o
