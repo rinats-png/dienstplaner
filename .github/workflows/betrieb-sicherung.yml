@@ -89,3 +89,6 @@ jobs:
 
       - name: Ende-zu-Ende-Nachweis
         run: deploy/sicherung/ci/ende-zu-ende.sh
+
+      - name: Import am gebauten Bild (IMP-3, SheetJS, Parser, Endpunkt)
+        run: deploy/import/ci/bild-pruefen.sh

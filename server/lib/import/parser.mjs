@@ -49,7 +49,21 @@ function pruefeErgebnis(w) {
  * @param {{ skript?: URL|string, ausgabeMax?: number, beiStart?: (pid: number) => void }} [intern]
  *   nur für Prüfungen (Testdouble des Kindskripts, kleinere Ergebnisgrenze, Prozessnummer); der Server übergibt nichts.
  */
-export async function parseDatei({ buffer, name, grenzen } = {}, intern = {}) {
+/* Globale Grenze gleichzeitiger Parser-Kindprozesse (IMP-3-Auflage 3). Überzählige Aufrufe warten nicht, sondern werden
+   sofort mit ZU_VIEL_GLEICHZEITIG abgewiesen (Endpunkt antwortet 503). Der Kindprozess bleibt (IMP-2, Befund H1). */
+export const PARSER_GLEICHZEITIG_MAX = 2;
+let aktiv = 0;
+export const _parserAktiv = () => aktiv;
+
+export async function parseDatei(eingabe = {}, intern = {}) {
+  if (aktiv >= PARSER_GLEICHZEITIG_MAX) {
+    return fehler("ZU_VIEL_GLEICHZEITIG", "Gerade werden zu viele Dateien gleichzeitig gelesen. Bitte in einigen Sekunden noch einmal versuchen.");
+  }
+  aktiv += 1;
+  try { return await parseDateiKind(eingabe, intern); } finally { aktiv -= 1; }
+}
+
+async function parseDateiKind({ buffer, name, grenzen } = {}, intern = {}) {
   if (!buffer || !(buffer instanceof Uint8Array)) return fehler("EINGABE_UNGUELTIG", "Es wurde keine Datei übergeben.");
   const g = grenzenZusammen(grenzen);
   if (buffer.length === 0) return fehler("LEER", "Die Datei ist leer.");
