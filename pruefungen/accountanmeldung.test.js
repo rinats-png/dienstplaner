@@ -992,6 +992,75 @@ describe("Gleichzeitigkeit", () => {
       }
     }
   }, LIMIT);
+
+  it("dreht die Aktivität nicht zurück, wenn ein älteres Fortschreiben zuletzt ankommt", async () => {
+    /* Das Fortschreiben von `zuletzt` läuft ohne await. Zwei Anfragen kurz
+       hintereinander starten also zwei Schreibvorgänge, und keiner wartet auf
+       den anderen. Kommt der ältere zuletzt auf der Platte an (ein langsames
+       fsync genügt), stünde ein älterer Zeitpunkt in `az:` als vorher — und
+       die Untätigkeit zählte ab dort. Eine Sitzung, an der jemand arbeitet,
+       endete dann vor ihrer Zeit. Hier wird diese Reihenfolge erzwungen: Der
+       erste Schreibvorgang wird festgehalten und erst am Ende losgelassen.
+       (So fiel CI-Lauf 42536210801, „endet nach zwölf Stunden".) */
+    const s = laden();
+    const u = uhr();
+    const echt = sitzungsAblage();
+    /** @type {Array<() => Promise<void>>} */
+    const festgehalten = [];
+    let halten = false;
+    const traege = {
+      get: (...a) => echt.get(...a),
+      list: (...a) => echt.list(...a),
+      delete: (...a) => echt.delete(...a),
+      setJSON: (schluessel, daten, opts) => {
+        if (halten && String(schluessel).startsWith("az:")) {
+          halten = false;
+          return new Promise((fertig, fehler) => {
+            festgehalten.push(() => echt.setJSON(schluessel, daten, opts).then(fertig, fehler));
+          });
+        }
+        return echt.setJSON(schluessel, daten, opts);
+      },
+    };
+    const mit = { jetzt: u.jetzt, sitzungsAblage: /** @type {any} */ (traege) };
+    const k = await konto(s, adresse("spaet"));
+    const e = await AN.anmelden(s, { email: k.email, passwort: GUT, ...mit });
+    if (!e.ok) throw new Error("Anmeldung gescheitert");
+    const az = () => echt.get(`az:${hash(e.token)}`, { type: "json" });
+    /* Wartet, bis `az:` mindestens `ziel` zeigt — höchstens eine Sekunde.
+       Bleibt der Wert darunter, entscheidet die Prüfung danach. */
+    const eingeholt = async (ziel) => {
+      for (let i = 0; i < 200; i++) {
+        const roh = await az();
+        if (roh && Number(roh.zuletzt) >= ziel) return;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+    };
+
+    /* Zugriff bei Minute 10 — sein Schreibvorgang hängt (langsames fsync). */
+    u.vor(10 * MINUTE);
+    halten = true;
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    expect(festgehalten.length).toBe(1);
+    /* Zugriff bei Minute 20 — die nächste Anfrage, ein neuer Schreibvorgang. */
+    u.vor(10 * MINUTE);
+    const t2 = u.stand();
+    expect((await AN.sitzungPruefen(s, e.token, mit)).ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 40));
+    /* Jetzt erst kommt der alte Schreibvorgang von Minute 10 an. */
+    for (const los of festgehalten.splice(0)) await los().catch(() => {});
+    await eingeholt(t2);
+    await new Promise((r) => setTimeout(r, 40));
+
+    /* Der letzte Zugriff war bei Minute 20. Bei Minute 45 sind das 25 Minuten
+       Ruhe — die Sitzung gilt. Mit zurückgedrehtem `zuletzt` (Minute 10)
+       wären es 35, und die Sitzung stürbe an Untätigkeit. */
+    u.vor(25 * MINUTE);
+    const p = await AN.sitzungPruefen(s, e.token, mit);
+    expect(p.ok, `Sitzung nach 25 Minuten Ruhe (grund: ${"grund" in p ? p.grund : "-"})`)
+      .toBe(true);
+    expect(Number((await az()).zuletzt)).toBeGreaterThanOrEqual(t2);
+  }, LIMIT);
 });
 
 describe("Wenn die Ablage streikt", () => {

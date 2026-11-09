@@ -272,10 +272,55 @@ async function sitzungPerId(speicher, id, nun) {
      Anfrage soll nicht auf die Platte warten. Und in den EIGENEN Schlüssel:
      Käme dieser Schreibvorgang nach einem Logout an, legte er höchstens
      ein `az:` an, das nichts erlaubt — nie die Autorität selbst. */
-  if (verlaengernFaellig(s, aktiv, nun)) {
-    speicher.setJSON(AKTIVITAET + id, { zuletzt: nun }).catch(() => {});
-  }
+  if (verlaengernFaellig(s, aktiv, nun)) aktivitaetFortschreiben(speicher, id, nun);
   return { sitzung: s, grund: null };
+}
+
+/* Laufende Fortschreibungen je Sitzungskennung: der höchste angestoßene
+   Zeitpunkt und das Ende der Kette. */
+const fortschreibungen = new Map();
+
+/**
+ * Schreibt `zuletzt` fort — je Sitzung der Reihe nach und nie rückwärts.
+ *
+ * Vorher startete jede Anfrage ihren eigenen, nicht abgewarteten
+ * Schreibvorgang. Zwei davon liefen gleichzeitig, und der zuletzt fertige
+ * gewann — auch wenn er den ÄLTEREN Zeitpunkt trug (ein langsames fsync
+ * genügt). Dann stand in `az:` ein früherer Zugriff als vorher, und die
+ * Untätigkeit zählte ab dort: Eine Sitzung, an der jemand arbeitet, konnte
+ * vor ihrer Zeit enden (CI-Lauf 42536210801). Jetzt wartet jeder
+ * Schreibvorgang auf den vorigen, ein Zeitpunkt, der nicht neuer ist als
+ * der schon angestoßene, entfällt, und ein überholter, noch wartender
+ * Schreibvorgang schreibt nicht mehr. Ein Prozess je Ablage
+ * (prozesssperre.mjs) — die Reihe im Speicher reicht.
+ *
+ * Weiterhin ohne await für den Aufrufer, weiterhin ohne Fehler nach außen:
+ * Misslingt das Schreiben, ist die Kette danach leer, und die nächste
+ * Anfrage versucht es neu.
+ *
+ * @param {object} speicher
+ * @param {string} id
+ * @param {number} nun
+ */
+function aktivitaetFortschreiben(speicher, id, nun) {
+  let lauf = fortschreibungen.get(id);
+  if (!lauf) {
+    lauf = { hoechst: 0, kette: Promise.resolve() };
+    fortschreibungen.set(id, lauf);
+  }
+  if (nun <= lauf.hoechst) return;
+  lauf.hoechst = nun;
+  const eintrag = lauf;
+  const kette = eintrag.kette
+    .then(() => (eintrag.hoechst === nun
+      ? speicher.setJSON(AKTIVITAET + id, { zuletzt: nun })
+      : undefined))
+    .catch(() => {});
+  eintrag.kette = kette;
+  kette.then(() => {
+    if (eintrag.kette === kette && fortschreibungen.get(id) === eintrag)
+      fortschreibungen.delete(id);
+  });
 }
 
 /** Löschen, ohne dass ein Fehler dabei den Aufrufer stört. Die Autorität
