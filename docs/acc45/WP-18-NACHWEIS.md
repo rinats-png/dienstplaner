@@ -489,3 +489,115 @@ Assertion geändert oder entfernt.
 
 Geänderte Dateien: `server/lib/betriebsauswahl.mjs`, `server/lib/arbeitssitzung.mjs`, `pruefungen/einladungen.test.js`,
 dieses Dokument.
+
+## 9. Auflagen A1–A3 aus dem Sicherheitsreview von 181b4fe (Branch `acc45/betriebsauswahl/mandant-a`)
+
+### 9.1 A1 (mittel): Konto-Zweig prüft die Person wie der Code-Zweig
+
+Befund: `arbeitssitzungPruefen`, Kontozweig Schritt 5, prüfte nur, ob die Person in der Personalliste des Betriebs
+steht (`.some(id)`), nicht, ob sie dort noch gilt. Eine Leitung, die in der Personalliste ausgetreten, deaktiviert oder
+anonymisiert war, behielt ihre Kontositzung samt Kennung — und konnte weiter einladen (vorher **200**, siehe 9.2).
+
+Änderung (`server/lib/arbeitssitzung.mjs`, direkt nach der Absage `person-fehlt`): dieselbe Prüfung wie im Code-Zweig,
+`sitzungPersonGilt(bestand, sitzung, heute)` → `aktivePerson` (genau einmal in der Liste, nicht `anonym`, `status`
+fehlt oder „aktiv", `austritt` nicht vor heute, Europe/Berlin). Ungültig → `absage("person-fort")`: Sitzung wird
+weggeräumt, 401; der Grund ist ein fester Text ohne Personendaten (derselbe Weg wie `mandant-gewechselt`). Gilt für
+**jede** Kontositzung, auch für Mitarbeitende ohne Kennung. Trägt die Sitzung eine Kennung, ist sie an dieser Stelle
+schon als die der Mitgliedschaft und der Position bestätigt — Kennung und Position wählen denselben Betrieb.
+
+`betriebWaehlen` selbst ist unverändert (prüft nur „steht in der Liste"): Eine ausgetretene Person bekommt dort noch
+eine Sitzung, die bei der ersten Anfrage mit `person-fort` endet (Test „ausgetreten schon vor der Auswahl"). Siehe 9.5.
+
+### 9.2 A2 (niedrig): Negativtests mit einer Sitzung, die die Kennung schon trägt
+
+Alle in `pruefungen/einladungen.test.js`, Block „Kontositzung mit Betriebskennung" (dort angehängt, gleiche Helfer).
+Jeder Fall prüft den Grund direkt (`arbeitssitzungPruefen` ohne Merkmal, räumt nichts weg) und dann über den echten
+Handler: Einladung **401**, keine Einladung, Sitzungsdatensatz gelöscht.
+
+| Test | Ablauf | Erwartung |
+|---|---|---|
+| A1 ausgetreten | Leitung wählt A (Kennung m-a), danach `status: "ausgetreten"` | `person-fort`, 401, Sitzung weg |
+| A1 Austritt | danach `austritt: "2020-06-30"`, Status bleibt „aktiv" | `person-fort`, 401 |
+| A1 anonymisiert | danach `anonym: true` | `person-fort`, 401 |
+| A1 vor der Auswahl | ausgetreten, dann Auswahl | erste Anfrage 401 (eine Absage schon bei der Auswahl wäre auch richtig) |
+| A1 jede Kontositzung | Mitarbeiterin ohne Kennung: `/api/bestand` erst 200, nach Austritt | `person-fort`, 401 |
+| A1 Gegenprobe | aktive Leitung, `austritt` 2099-12-31 | `{ok: true}`, Einladung 200, Kennung bleibt |
+| A2a | Mitgliedschaft nach der Auswahl entzogen | `mitglied-status`/`generation-mitglied`, 401 |
+| A2b | Betrieb nach der Auswahl verschoben (neuer Betrieb davor) bzw. entfernt (ersetzt), je eigener Raum | `mandant-verschoben`, 401 |
+| A2c | Betrieb bekommt neue Kennung, Mitgliedschaft an ihrem Ablageschlüssel mit ihr neu geschrieben; Sitzungsdatensatz unberührt | `mandant-gewechselt`, 401, Sitzung weg |
+| A2d | Regression zu A1: `status: "ausgeschieden"` + Austritt in der Personenliste | 401 |
+| A2e | Spiegel zu Test 2: Mitarbeiterin in Raum A, Leitung in Raum B | B trägt m-z und lädt ein (200); A ohne Kennung, 403 |
+
+Zu A2c: Eine Funktion, die die Kennung einer bestehenden Mitgliedschaft ändert, gibt es mit Absicht nicht
+(`accounts.mjs`, „Was hier fehlt, fehlt mit Absicht"). Der Test schreibt deshalb den Datensatz an
+`mitgliedSchluessel(accountId, raum)` — denselben, den `mitgliedschaftLesen` liest — und benennt den Betrieb im Bestand
+mit um (ohne Umbenennung griffe schon `mandantPruefen` mit `mandant-verschoben`, A2b). Der ältere Fall „Umbiegen des
+Sitzungsdatensatzes" (8.4) bleibt unverändert bestehen.
+
+**Vorher-rot** (Stand 181b4fe, nur Tests ergänzt): 6 fehlgeschlagen / 67 bestanden in `einladungen.test.js`. Rot: die
+fünf A1-Fälle und A2d. Die drei Fälle nach der Auswahl und „jede Kontositzung" lieferten `{ok: true, art: "account"}`
+statt `person-fort`; „vor der Auswahl" und A2d stellten **mit Status 200 eine Einladung aus** (ausgetretene Leitung
+lädt ein). Schon vorher grün (Regressionstests, keine Verhaltensänderung nötig): A1-Gegenprobe, A2a, A2b, A2c, A2e.
+**Nachher**: 73/73 grün.
+
+### 9.3 A3 (niedrig): Offline-Warteschlange und Inhaber-Hash
+
+**Warteschlange beim Deploy.** Der Inhaber einer Offline-Warteschlange (`daten.mjs`, `stempelInhaber`) ist ein Hash aus
+Raum, Betriebsteil und Person; der Betriebsteil ist die Kennung, sonst die Position. Seit 181b4fe tragen Kontositzungen
+mit Funktionsrolle (leitung, planer, subplaner, kunde) die Kennung: Ihr Inhaber wechselt mit dem Deploy von
+`H(…|Position|…)` zu `H(…|Kennung|…)`. Stempel, die vorher offline in die Warteschlange kamen, tragen den alten
+Inhaber; der Server weist sie mit **409 `STEMPEL_FREMDE_SITZUNG`** ab, und die Oberfläche lässt sie auf dem Gerät
+liegen — dauerhaft, denn keine neue Sitzung dieser Person bekommt den alten Inhaber zurück. Nicht betroffen: Sitzungen
+aus Zugangscodes (tragen die Kennung seit Oktober 2026), Kontositzungen ohne Funktionsrolle (keine Kennung, Inhaber
+unverändert). Unter 2FA-Pflicht entstehen Kontositzungen mit Funktionsrolle ohnehin nicht (8.5).
+
+Entscheidung (dieser Branch): **kein übergangsweises Annehmen des alten Hashs.** Stattdessen ein Deploy-Schritt: Vor
+dem Deploy lassen die betroffenen Konten (Funktionsrolle, Anmeldung über Konto, Offline-Stempeln genutzt) ihre
+Warteschlange leeren — einmal online gehen, bis keine Stempel mehr ausstehen. Begründung: Der alte Hash ist
+positionsbasiert (genau das, was Review L5 abgelöst hat) und öffnete für die Übergangszeit die Kollision unten wieder;
+die betroffene Gruppe ist klein (Funktionsrollen über Konto, ohne 2FA-Pflicht), und Funktionsrollen stempeln selten
+offline. Liegt nach dem Deploy doch ein Stempel fest, wird er nachgetragen (Korrektur durch Planung/Leitung). Die
+Entscheidung ist vor dem Prod-Deploy dem Betreiber vorzulegen (Deploy-Checkliste); ein befristetes Annehmen des alten
+Hashs ließe sich nachrüsten (zweiter Vergleich in `/api/stempeln`, nur für Kontositzungen mit Kennung).
+
+**Kollision Kennung „1" gegen Position 1 — real.** `betriebIdGueltig` (`bestand.mjs`) verlangt nur nichtleeren Text
+ohne „:", Ziffern sind erlaubt; `mitgliedschaftAnlegen` ebenso. Mit dem alten Schlüssel `mandantId ?? betrieb` ergaben
+im selben Raum eine Sitzung mit Kennung „1" und eine Sitzung ohne Kennung an Position 1 bei gleicher Personen-ID
+denselben Inhaber; ein Stempel der einen ging unter der Sitzung der anderen hinaus (auf demselben Gerät). Nachgewiesen
+im neuen Test (`pruefungen/offline-stempeln.test.js`, „A3: Kennung „1" und Position 1 …"), vorher rot: beide Inhaber
+`a4747b46…` (1 fehlgeschlagen / 33 bestanden).
+
+Änderung (`daten.mjs`, neue Hilfsfunktion `betriebsteil`): eindeutige Schreibweise, ohne bestehende Inhaber zu ändern —
+
+- Position (ganze Zahl ≥ 0): wie bisher die Ziffernfolge; jede andere Position (fehlerhafte Sitzung): `z:` davor;
+- Kennung, die nur aus Ziffern besteht oder ein „:" enthält: `k:` davor;
+- jede andere Kennung: wie bisher.
+
+Die Bildmengen (Ziffernfolgen / mit `k:` / mit `z:` / sonstiger Text ohne „:") sind disjunkt, die Zuordnung also
+eindeutig. Anders als ein Präfix für alle ändert das den Inhaber nur bei Kennungen aus Ziffern oder mit „:" — gerade den
+kollidierenden —, und keine bestehende Warteschlange bleibt dadurch zusätzlich hängen (`wp07b-stempel-500` mit dem fest
+gerechneten Inhaber für „m1" bleibt unverändert grün; mit „k:" für alle wäre diese Assertion rot geworden). Der neue
+Test prüft: verschiedene Inhaber, Position und gewöhnliche Kennung behalten den alten Wert, fremder Stempel 409, eigener
+200. Nachher 34/34.
+
+### 9.4 Verifikation
+
+- `einladungen.test.js` 73/73 (einschließlich Zwei-Prozess-Test, in diesem Lauf grün), `offline-stempeln.test.js`
+  34/34, `wp07b-stempel-500.test.js` grün (zusammen 116/116).
+- arbeitssitzung, betriebsauswahl, accountanmeldung, sitzungsinventar, routen-inventar, rechtematrix,
+  rechtematrix-zeilen, sitzungsaufraeumen, lebendigkeit: 1006/1006 (`--testTimeout=60000 --hookTimeout=120000`). Im
+  ersten Lauf ohne längere Hook-Frist fiel `routen-inventar` einmal auf Dateiebene (Hook-Zeitgrenze unter Last) aus;
+  einzeln 10/10 und im Wiederholungslauf grün.
+- eslint ohne Befund auf den geänderten Dateien, `tsc -p jsconfig.json` grün, `werkzeug/verdrahtung-pruefen.mjs` ok.
+- Keine bestehende Assertion geändert oder entfernt. Erwartungen, die altes Verhalten festschrieben: keine gefunden —
+  kein bestehender Test hielt eine ausgetretene Person mit Kontositzung für gültig, und kein Test rechnet einen Inhaber
+  mit einer Ziffernkennung.
+
+### 9.5 Offen
+
+- `betriebWaehlen` stellt für eine nicht mehr geltende Person noch eine (sofort ungültige) Sitzung aus; eine Absage
+  schon dort (`aktivePerson` statt `.find`) wäre sauberer, ändert aber die Antworten der Auswahl — eigener Schritt.
+- Deploy-Schritt „Warteschlange leeren" (9.3) in die Deploy-Checkliste übernehmen; Betreiberbestätigung offen.
+
+Geänderte Dateien: `server/lib/arbeitssitzung.mjs`, `server/funktionen/daten.mjs`, `pruefungen/einladungen.test.js`,
+`pruefungen/offline-stempeln.test.js`, dieses Dokument.

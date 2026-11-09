@@ -901,6 +901,200 @@ describe("Kontositzung mit Betriebskennung", () => {
     expect(Object.keys(w).sort()).toEqual(["betrieb", "gueltigBis", "name", "ok", "person", "raum", "rolle", "token"]);
     expect(JSON.stringify(w)).not.toContain("m-a");
   });
+
+  /* ------------------------------------------------------------------------
+     Auflagen A1/A2 aus dem Sicherheitsreview von 181b4fe (Branch acc45/betriebsauswahl/mandant-a).
+     A1: Der Konto-Zweig von arbeitssitzungPruefen prüft dieselbe Personenregel wie der Code-Zweig (aktivePerson:
+         Status, Austritt, Anonymisierung) — für jede Kontositzung, nicht nur für Funktionsrollen.
+     A2: Negativfälle mit einer Sitzung, die die Kennung schon trägt (nach der Auswahl).
+     Vorher-rot: docs/acc45/WP-18-NACHWEIS.md, Abschnitt „Auflagen A1–A3".
+     ------------------------------------------------------------------------ */
+  const AS = () => import("../server/lib/arbeitssitzung.mjs");
+  /** Felder einer Person in Betrieb A ändern (so, wie die Personalliste es schreibt). */
+  async function personAendern(id, felder, raum = RAUM, idx = 0) {
+    const g = await B.bestandLesen(laden(), raum);
+    const neu = structuredClone(g.bestand);
+    const p = neu.mandanten[idx].personen.find((x) => x.id === id);
+    expect(p, `Person ${id}`).toBeTruthy();
+    Object.assign(p, felder);
+    await B.bestandSchreiben(laden(), raum, neu, { durch: "Pruefung" });
+  }
+  /** Der Grund, aus dem die Sitzung nicht mehr gilt — ohne sie wegzuräumen (kein Merkmal übergeben). */
+  const grundVon = async (token) => (await (await AS()).arbeitssitzungPruefen(laden(), await roh(token)));
+  /** Leitung mit Konto, die Betrieb A gewählt hat und dort einladen darf (Ausgangslage A1). */
+  async function leitungMitKennung(pid, email) {
+    await personSetzen(pid, "leitung");
+    const id = await kontoMitPasswort(email);
+    await mitglied(id, RAUM, { person: pid, rolle: "leitung" });
+    const w = await waehlen(id, RAUM);
+    expect(w.ok, JSON.stringify(w)).toBe(true);
+    if (!w.ok) throw new Error("Auswahl gescheitert");
+    expect((await roh(w.token)).mandantId).toBe("m-a");
+    return { id, token: w.token };
+  }
+  /** Erwartung: Sitzung ungültig — Einladung 401, keine Einladung, Sitzung gelöscht. */
+  async function erwarteUngueltig(token, personId) {
+    const r = await einladen(token, { personId, bestaetigung: { passwort: PW } });
+    expect(r.status, r.roh).toBe(401);
+    expect(r.einladung).toBeUndefined();
+    expect(await roh(token)).toBe(null);
+  }
+
+  it("A1: Leitung mit Konto und Kennung, Person im Bestand „ausgetreten“ → Sitzung ungültig, Einladung 401", async () => {
+    await personSetzen("a1z1", "mitarbeiter");
+    const { token } = await leitungMitKennung("a1l1", "a1-ausgetreten@example.org");
+    await personAendern("a1l1", { status: "ausgetreten" });
+    expect(await grundVon(token)).toEqual({ ok: false, grund: "person-fort" });
+    await erwarteUngueltig(token, "a1z1");
+  });
+
+  it("A1: Austritt in der Vergangenheit (Status noch „aktiv“) → ungültig", async () => {
+    await personSetzen("a1z2", "mitarbeiter");
+    const { token } = await leitungMitKennung("a1l2", "a1-austritt@example.org");
+    await personAendern("a1l2", { austritt: "2020-06-30" });
+    expect(await grundVon(token)).toEqual({ ok: false, grund: "person-fort" });
+    await erwarteUngueltig(token, "a1z2");
+  });
+
+  it("A1: anonymisierte Person → ungültig", async () => {
+    await personSetzen("a1z3", "mitarbeiter");
+    const { token } = await leitungMitKennung("a1l3", "a1-anonym@example.org");
+    await personAendern("a1l3", { anonym: true, vorname: "", nachname: "" });
+    expect(await grundVon(token)).toEqual({ ok: false, grund: "person-fort" });
+    await erwarteUngueltig(token, "a1z3");
+  });
+
+  it("A1: ausgetreten schon vor der Auswahl → die neue Sitzung gilt bei der ersten Anfrage nicht", async () => {
+    await personSetzen("a1z4", "mitarbeiter");
+    await personSetzen("a1l4", "leitung");
+    await personAendern("a1l4", { status: "ausgetreten" });
+    const id = await kontoMitPasswort("a1-vorher@example.org");
+    await mitglied(id, RAUM, { person: "a1l4", rolle: "leitung" });
+    const w = await waehlen(id, RAUM);
+    if (!w.ok) return; /* eine Absage schon bei der Auswahl wäre ebenso richtig */
+    await erwarteUngueltig(w.token, "a1z4");
+  });
+
+  it("A1 gilt für jede Kontositzung: Mitarbeiterin ohne Kennung, ausgetreten → /api/bestand 401", async () => {
+    await personSetzen("a1m5", "mitarbeiter");
+    const id = await kontoMitPasswort("a1-mitarbeiterin@example.org");
+    await mitglied(id, RAUM, { person: "a1m5", rolle: "mitarbeiter" });
+    const w = await waehlen(id, RAUM);
+    expect(w.ok, JSON.stringify(w)).toBe(true);
+    if (!w.ok) return;
+    expect((await roh(w.token)).mandantId).toBe(undefined);
+    expect((await anfrage(daten, "/api/bestand", { methode: "GET", token: w.token })).status).toBe(200);
+    await personAendern("a1m5", { status: "ausgetreten" });
+    expect(await grundVon(w.token)).toEqual({ ok: false, grund: "person-fort" });
+    const g = await anfrage(daten, "/api/bestand", { methode: "GET", token: w.token });
+    expect(g.status, g.roh).toBe(401);
+    expect(await roh(w.token)).toBe(null);
+  });
+
+  it("A1 Gegenprobe: aktive Leitung (Austritt erst in der Zukunft) behält Sitzung und Einladungsrecht", async () => {
+    await personSetzen("a1z6", "mitarbeiter");
+    const { token } = await leitungMitKennung("a1l6", "a1-aktiv@example.org");
+    await personAendern("a1l6", { austritt: "2099-12-31" });
+    expect(await grundVon(token)).toEqual({ ok: true, art: "account" });
+    const r = await einladen(token, { personId: "a1z6", bestaetigung: { passwort: PW } });
+    expect(r.status, r.roh).toBe(200);
+    expect(typeof r.einladung).toBe("string");
+    expect((await roh(token)).mandantId).toBe("m-a");
+  });
+
+  it("A2a: Mitgliedschaft entzogen, NACHDEM die Sitzung mit Kennung besteht → ungültig", async () => {
+    await personSetzen("a2z1", "mitarbeiter");
+    const { id, token } = await leitungMitKennung("a2l1", "a2-entzug@example.org");
+    await A.mitgliedschaftEntziehen(laden(), id, RAUM);
+    const e = await grundVon(token);
+    expect(e.ok).toBe(false);
+    expect(["mitglied-status", "generation-mitglied"]).toContain(e.grund);
+    await erwarteUngueltig(token, "a2z1");
+  });
+
+  it("A2b: Betrieb nach der Auswahl verschoben bzw. entfernt (mandant-verschoben) → ungültig", async () => {
+    for (const [raum, nachher] of [
+      ["einladung-probe-drei", (alt) => [betrieb("m-neu", "Neu davor", [person("nl", "leitung")]), alt]],
+      ["einladung-probe-vier", () => [betrieb("m-x", "Ein anderer", [person("xl", "leitung")])]],
+    ]) {
+      const alt = betrieb("m-c", "Testbetrieb C", [person("cl", "leitung"), person("cm", "mitarbeiter")]);
+      await B.bestandSchreiben(laden(), raum, { version: 9, stand: 1, session: null, mandanten: [alt] }, { durch: "Pruefung" });
+      const id = await kontoMitPasswort(`a2-verschoben-${raum}@example.org`);
+      await mitglied(id, raum, { mandantId: "m-c", person: "cl", rolle: "leitung" });
+      const w = await waehlen(id, raum);
+      expect(w.ok, JSON.stringify(w)).toBe(true);
+      if (!w.ok) continue;
+      expect((await roh(w.token)).mandantId).toBe("m-c");
+      const g = await B.bestandLesen(laden(), raum);
+      await B.bestandSchreiben(laden(), raum, { ...structuredClone(g.bestand), mandanten: nachher(alt) },
+        { durch: "Pruefung" });
+      expect(await grundVon(w.token)).toEqual({ ok: false, grund: "mandant-verschoben" });
+      await erwarteUngueltig(w.token, "cm");
+    }
+  });
+
+  it("A2c: Kennung der Mitgliedschaft nachträglich geändert (Datensatz der Mitgliedschaft neu geschrieben) → mandant-gewechselt, 401, Sitzung gelöscht", async () => {
+    const raum = "einladung-probe-fuenf";
+    await B.bestandSchreiben(laden(), raum, { version: 9, stand: 1, session: null, mandanten: [
+      betrieb("m-d", "Testbetrieb D", [person("dl", "leitung"), person("dm", "mitarbeiter")]),
+    ] }, { durch: "Pruefung" });
+    const id = await kontoMitPasswort("a2-kennung@example.org");
+    await mitglied(id, raum, { mandantId: "m-d", person: "dl", rolle: "leitung" });
+    const w = await waehlen(id, raum);
+    expect(w.ok, JSON.stringify(w)).toBe(true);
+    if (!w.ok) return;
+    expect((await roh(w.token)).mandantId).toBe("m-d");
+    /* Der Betrieb bekommt eine neue Kennung, und die Mitgliedschaft wird mit ihr neu geschrieben — an ihrem
+       Ablageschlüssel, den mitgliedschaftLesen liest (eine Funktion, die die Kennung einer Mitgliedschaft ändert,
+       gibt es mit Absicht nicht, accounts.mjs). Der Sitzungsdatensatz bleibt unberührt. */
+    const g = await B.bestandLesen(laden(), raum);
+    const neu = structuredClone(g.bestand);
+    neu.mandanten[0].id = "m-d2";
+    await B.bestandSchreiben(laden(), raum, neu, { durch: "Pruefung" });
+    const m = await A.mitgliedschaftLesen(laden(), id, raum);
+    await laden().setJSON(A.mitgliedSchluessel(id, raum), { ...m, mandantId: "m-d2" });
+    expect((await A.mitgliedschaftLesen(laden(), id, raum)).mandantId).toBe("m-d2");
+    expect((await roh(w.token)).mandantId).toBe("m-d");
+    expect(await grundVon(w.token)).toEqual({ ok: false, grund: "mandant-gewechselt" });
+    await erwarteUngueltig(w.token, "dm");
+  });
+
+  it("A2d (Regression zu A1): Leitung über die Personenliste ausgeschieden → ungültig", async () => {
+    await personSetzen("a2z4", "mitarbeiter");
+    const { token } = await leitungMitKennung("a2l4", "a2-ausgeschieden@example.org");
+    await personAendern("a2l4", { status: "ausgeschieden", austritt: "2026-01-31" });
+    await erwarteUngueltig(token, "a2z4");
+  });
+
+  it("A2e (Spiegel zu 2.): Mitarbeiterin in Raum A, Leitung in Raum B → nur B trägt die Kennung", async () => {
+    const g = await B.bestandLesen(laden(), RAUM_B);
+    const neu = structuredClone(g.bestand);
+    neu.mandanten[0].personen.push(person("zl2", "leitung"), person("zm2", "mitarbeiter"));
+    await B.bestandSchreiben(laden(), RAUM_B, neu, { durch: "Pruefung" });
+    await personSetzen("a2z5", "mitarbeiter");
+    await personSetzen("a2m5", "mitarbeiter");
+    const id = await kontoMitPasswort("kontowahl-spiegel@example.org");
+    await mitglied(id, RAUM, { person: "a2m5", rolle: "mitarbeiter" });
+    await mitglied(id, RAUM_B, { mandantId: "m-z", person: "zl2", rolle: "leitung" });
+    const b = await waehlen(id, RAUM_B);
+    expect(b.ok, JSON.stringify(b)).toBe(true);
+    if (!b.ok) return;
+    expect(b.rolle).toBe("leitung");
+    expect((await roh(b.token)).mandantId).toBe("m-z");
+    const a = await waehlen(id, RAUM);
+    expect(a.ok, JSON.stringify(a)).toBe(true);
+    if (!a.ok) return;
+    expect(a.rolle).toBe("mitarbeiter");
+    expect(Object.prototype.hasOwnProperty.call(await roh(a.token), "mandantId")).toBe(false);
+    for (const bestaetigung of [undefined, { passwort: PW }]) {
+      const r = await einladen(a.token, { personId: "a2z5", ...(bestaetigung ? { bestaetigung } : {}) });
+      expect(r.status, r.roh).toBe(403);
+      expect(r.einladung).toBeUndefined();
+    }
+    const r = await einladen(b.token, { personId: "zm2", bestaetigung: { passwort: PW } });
+    expect(r.status, r.roh).toBe(200);
+    expect(r.rolle).toBe("mitarbeiter");
+  });
 });
 
 describe("B3: Einmaligkeit über zwei Ablage-Instanzen und zwei Prozesse", () => {
