@@ -56,6 +56,9 @@ const norm = (s) => String(s ?? "").toLowerCase()
   .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
   .replace(/[^a-z0-9]/g, "");
 const vergleich = (s) => String(s ?? "").trim().toLowerCase();
+/** Schlüssel für „gleichwertige" Personalnummern: Trennzeichen und führende Nullen zählen nicht
+    („01001" = „1001", „P-1001" = „P1001", „P01001" = „P1001"). Nur zum Aufspüren möglicher Treffer, nie zum Aktualisieren. */
+const nummerSchluessel = (s) => vergleich(s).replace(/[^a-z0-9]/g, "").replace(/^([a-z]*)0+(?=[0-9])/, "$1");
 const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 /** Eine Zelle als Text (Rohwerte laut Parser-Vertrag §6). */
@@ -184,13 +187,19 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
   const personen = Array.isArray(mandant && mandant.personen) ? mandant.personen.filter((p) => p && typeof p === "object") : [];
   const einheiten = Array.isArray(mandant && mandant.einheiten) ? mandant.einheiten.filter(Boolean) : [];
   const standorte = Array.isArray(mandant && mandant.standorte) ? mandant.standorte.filter(Boolean) : [];
+  /* Alle Personen je Nummer — nie „die erste" still wählen (Auflage 2 aus dem IMP-3-Review): Trägt der Bestand
+     dieselbe Nummer mehrfach, ist der Treffer mehrdeutig und bleibt eine Klärung. */
   const nachNummer = new Map();
+  const nachSchluessel = new Map();
   for (const p of personen) {
     const nr = vergleich(p.personalnummer);
-    if (nr && !nachNummer.has(nr)) nachNummer.set(nr, p);
+    if (!nr) continue;
+    nachNummer.set(nr, [...(nachNummer.get(nr) || []), p]);
+    const sk = nummerSchluessel(nr);
+    if (sk) nachSchluessel.set(sk, [...(nachSchluessel.get(sk) || []), p]);
   }
-  const nummernInDatei = new Map();
-  const namenInDatei = new Map();
+  const nummernInDatei = new Map();   // Schlüssel -> Datensatznummern
+  const namenInDatei = new Map();     // Name -> Datensatznummern
   const hol = (f, z) => (hat(zu, f) ? z[zu[f]] : null);
 
   const datensaetze = daten.map((z, i) => {
@@ -224,40 +233,50 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     const standort = werte.standort ? standorte.find((s) => vergleich(s.name) === vergleich(werte.standort)) : null;
     if (werte.standort && !standort && !einheit) konflikte.push({ art: "standort-unbekannt" });
 
-    /* Dubletten: Personalnummer (mandantenintern) vor Name; Name nur als Vorschlag. */
+    /* Dubletten: Personalnummer (mandantenintern) vor Name; Name und gleichwertige Nummer nur als Vorschlag.
+       Gleicher Name führt bei abweichender oder fehlender Nummer NIE zu „neu", sondern zu „klären". */
     let dublette = null;
     const nrNorm = vergleich(werte.personalnummer);
+    const nrSchl = nummerSchluessel(werte.personalnummer);
     const nameNorm = werte.nachname && werte.vorname ? `${vergleich(werte.nachname)}|${vergleich(werte.vorname)}` : "";
     if (nrNorm) {
-      const p = nachNummer.get(nrNorm);
-      if (p) dublette = { art: "personalnummer", personId: String(p.id) };
-      else if (nummernInDatei.has(nrNorm)) dublette = { art: "personalnummer-datei", datensatz: nummernInDatei.get(nrNorm) };
-      if (!nummernInDatei.has(nrNorm)) nummernInDatei.set(nrNorm, nr);
+      const genau = nachNummer.get(nrNorm) || [];
+      const aehnlich = (nrSchl ? nachSchluessel.get(nrSchl) || [] : []).filter((x) => vergleich(x.personalnummer) !== nrNorm);
+      if (genau.length === 1) dublette = { art: "personalnummer", personId: String(genau[0].id) };
+      else if (genau.length > 1) dublette = { art: "personalnummer-mehrdeutig", personIds: genau.map((x) => String(x.id)) };
+      else if (aehnlich.length) dublette = { art: "personalnummer-aehnlich", personId: String(aehnlich[0].id), personIds: aehnlich.map((x) => String(x.id)) };
+      if (nrSchl) nummernInDatei.set(nrSchl, [...(nummernInDatei.get(nrSchl) || []), nr]);
     }
     if (!dublette && nameNorm) {
-      /* Nur ein Vorschlag: gleicher Name, und die vorhandene Person trägt keine abweichende Personalnummer. */
-      const p = personen.find((x) => `${vergleich(x.nachname)}|${vergleich(x.vorname)}` === nameNorm
-        && !(nrNorm && vergleich(x.personalnummer)));
+      const p = personen.find((x) => `${vergleich(x.nachname)}|${vergleich(x.vorname)}` === nameNorm);
       if (p) dublette = { art: "name", personId: String(p.id) };
-      else if (!nrNorm && namenInDatei.has(nameNorm)) dublette = { art: "name-datei", datensatz: namenInDatei.get(nameNorm) };
     }
-    if (nameNorm && !nrNorm && !namenInDatei.has(nameNorm)) namenInDatei.set(nameNorm, nr);
+    if (nameNorm) namenInDatei.set(nameNorm, [...(namenInDatei.get(nameNorm) || []), nr]);
 
     let erlaubt, vorgabe;
     if (fehler.length) { erlaubt = ["ueberspringen"]; vorgabe = "ueberspringen"; }
     else if (dublette && dublette.art === "personalnummer") { erlaubt = ["aktualisieren", "ueberspringen", "klaeren"]; vorgabe = "klaeren"; }
-    else if (dublette && dublette.art === "personalnummer-datei") { erlaubt = ["ueberspringen", "klaeren"]; vorgabe = "klaeren"; }
+    else if (dublette && (dublette.art === "personalnummer-datei" || dublette.art === "personalnummer-mehrdeutig")) { erlaubt = ["ueberspringen", "klaeren"]; vorgabe = "klaeren"; }
     else if (dublette) { erlaubt = ["neu", "ueberspringen", "klaeren"]; vorgabe = "klaeren"; }
     else { erlaubt = ["neu", "ueberspringen", "klaeren"]; vorgabe = konflikte.length ? "klaeren" : "neu"; }
     return { datensatz: nr, werte, einheitId: einheit ? String(einheit.id) : null, standortId: standort ? String(standort.id) : null,
       fehler, hinweise, konflikte, dublette, erlaubt, vorgabe };
   });
-  /* Eine Personalnummer, die in der Datei mehrfach vorkommt, macht auch den ERSTEN Datensatz unklar. */
-  const doppelt = new Set(datensaetze.filter((d) => d.dublette && d.dublette.art === "personalnummer-datei").map((d) => d.dublette.datensatz));
+  /* Doppelt in der Datei: ALLE betroffenen Zeilen werden markiert, nicht nur die spätere. Eine (gleichwertige)
+     Nummer in der Datei geht einem Treffer im Bestand vor (sonst würde dieselbe Person zweimal aktualisiert).
+     Ein gleicher Name in der Datei ist nur ein Vorschlag und überschreibt keinen anderen Treffer. */
   for (const d of datensaetze) {
-    if (doppelt.has(d.datensatz) && !d.fehler.length && !(d.dublette && d.dublette.art === "personalnummer")) {
-      d.dublette = { art: "personalnummer-datei", datensatz: null };
+    if (d.fehler.length) continue;
+    const nrSchl = nummerSchluessel(d.werte.personalnummer);
+    const nameNorm = d.werte.nachname && d.werte.vorname ? `${vergleich(d.werte.nachname)}|${vergleich(d.werte.vorname)}` : "";
+    const gleicheNr = nrSchl ? (nummernInDatei.get(nrSchl) || []).filter((x) => x !== d.datensatz) : [];
+    const gleicherName = nameNorm ? (namenInDatei.get(nameNorm) || []).filter((x) => x !== d.datensatz) : [];
+    if (gleicheNr.length) {
+      d.dublette = { art: "personalnummer-datei", datensatz: gleicheNr[0] };
       d.erlaubt = ["ueberspringen", "klaeren"]; d.vorgabe = "klaeren";
+    } else if (gleicherName.length && !d.dublette) {
+      d.dublette = { art: "name-datei", datensatz: gleicherName[0] };
+      d.erlaubt = ["neu", "ueberspringen", "klaeren"]; d.vorgabe = "klaeren";
     }
   }
   const zaehler = { gesamt: datensaetze.length,

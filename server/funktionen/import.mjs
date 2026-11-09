@@ -17,9 +17,9 @@
    „/api/*" von daten.mjs). `config.rumpfMax` hebt nur für diese Datei die
    Rumpfgrenze auf 10 MB (Dateigrenze aus IMPORT-VERTRAG.md §3).
 
-   Rollen: Import nur mit staff.edit UND vollem Schreibumfang (Leitung, Planung,
-   Kundenrolle). Neue Einheiten/Standorte zusätzlich nur mit org.edit (Leitung,
-   Kundenrolle). Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber: 403.
+   Rollen: Import nur mit staff.edit UND vollem Schreibumfang (Leitung, Planung);
+   Betreiber und die alte Rückfallrolle „kunde" nie (Review-Auflage). Neue Einheiten/Standorte zusätzlich nur mit org.edit (Leitung).
+   Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber: 403.
    Der Betrieb kommt ausschließlich aus der Sitzung (eigenerMandant); ein
    Vorgang eines anderen Betriebs, Raums oder einer anderen Person ist „nicht
    gefunden" (404), ohne weitere Auskunft.
@@ -40,7 +40,7 @@ import { eigenerMandant, wirksameRolle, sitzungsRolleBekannt, darf, schreibumfan
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
 import { parseDatei, STANDARD_GRENZEN } from "../lib/import/parser.mjs";
 import { analysieren, planen } from "../lib/import/personen.mjs";
-import { besitzAus, vorgangAnlegen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN } from "../lib/import/vorgaenge.mjs";
+import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN } from "../lib/import/vorgaenge.mjs";
 import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
@@ -103,7 +103,9 @@ export default async (req) => {
     k = kennung(req, s);
     const eigener = bestand && s.rolle !== "betreiber" ? eigenerMandant(bestand, s) : null;
     wer = { ...wer, rolle: s.rolle, person: s.person ?? null, mandantId: eigener ? eigener.id : null };
-    if (!sitzungsRolleBekannt(s.rolle) || !darf(s.rolle, "staff.edit") || schreibumfang(s.rolle) !== SCHREIBEN_VOLL) {
+    /* Auflage (IMP-3-Review): Betreiber und die alte Rückfallrolle „kunde" (Zugang ohne Person/Rolle) importieren nie —
+       Personaldaten gehören dem Betrieb und werden nur von Leitung und Planung mit Person übernommen. */
+    if (s.rolle === "betreiber" || s.rolle === "kunde" || !sitzungsRolleBekannt(s.rolle) || !darf(s.rolle, "staff.edit") || schreibumfang(s.rolle) !== SCHREIBEN_VOLL) {
       await protokoll("import", k, "abgewiesen", "Rolle ohne Importrecht", wer);
       return fehlerAntwort(403, "KEINE_BERECHTIGUNG", "Den Import dürfen nur Leitung und Planung verwenden.");
     }
@@ -123,23 +125,36 @@ export default async (req) => {
         return fehlerAntwort(413, "DATEI_ZU_GROSS", "Die Datei ist zu groß (erlaubt sind höchstens 10 MB).");
       const b = await bremse("schreiben", k);
       if (!b.frei) return zuVielAntwort(b.wartet);
-      let buffer = new Uint8Array(await req.arrayBuffer());
-      let name = "";
-      try { name = decodeURIComponent(String(req.headers.get("x-dateiname") || "")).slice(0, 255); } catch { name = ""; }
-      /* Grenzen: immer die Standardgrenzen des Vertrags (10 MB / 100 MB / 20.000 Zeilen / 200 Spalten / 20 Blätter),
-         nie Werte aus der Anfrage. */
-      const erg = await parseDatei({ buffer, name });
-      const dateiHash = createHash("sha256").update(buffer).digest("hex");
-      buffer = null;   // Die Datei wird nicht über die Verarbeitung hinaus gehalten.
-      name = "";
+      /* Auflage 3 (IMP-3-Review): Die Vorgangsgrenze (3 je Raum, 20 gesamt) gilt VOR dem Lesen des Rumpfs und
+         dem Parsen, nicht danach. Der Platz wird jetzt belegt und bei jedem Fehlschlag wieder freigegeben. */
+      const platz = vorgangAnlegen(besitz, { art, dateiHash: null, format: null, blaetter: null,
+        zeilen: null, zuordnung: null, analyse: null, plan: null });
+      if (!platz.ok)
+        return fehlerAntwort(429, platz.code, "Gerade laufen zu viele Importe. Bitte einen offenen Import abschließen oder später erneut versuchen.");
+      const vorgangPlatz = platz.vorgang;
+      let erg, dateiHash;
+      try {
+        let buffer = new Uint8Array(await req.arrayBuffer());
+        let name = "";
+        try { name = decodeURIComponent(String(req.headers.get("x-dateiname") || "")).slice(0, 255); } catch { name = ""; }
+        /* Grenzen: immer die Standardgrenzen des Vertrags (10 MB / 100 MB / 20.000 Zeilen / 200 Spalten / 20 Blätter),
+           nie Werte aus der Anfrage. Gleichzeitige Parser-Worker sind global begrenzt (parser.mjs). */
+        erg = await parseDatei({ buffer, name });
+        dateiHash = createHash("sha256").update(buffer).digest("hex");
+        buffer = null;   // Die Datei wird nicht über die Verarbeitung hinaus gehalten.
+        name = "";
+      } catch (e) { vorgangEntfernen(vorgangPlatz.id); throw e; }
       if (!erg.ok) {
+        vorgangEntfernen(vorgangPlatz.id);
+        if (erg.code === "ZU_VIEL_GLEICHZEITIG") {
+          await protokoll("import", k, "abgewiesen", "Datei: Parser ausgelastet", wer);
+          return new Response(JSON.stringify({ fehler: erg.nachricht, code: erg.code }), { status: 503,
+            headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "retry-after": "5", "x-content-type-options": "nosniff" } });
+        }
         await protokoll("import", k, "abgewiesen", `Datei: ${erg.code}`, wer);
         return fehlerAntwort(erg.code === "DATEI_ZU_GROSS" ? 413 : 422, erg.code, erg.nachricht);
       }
-      const angelegt = vorgangAnlegen(besitz, { art, dateiHash, format: erg.format, blaetter: erg.blaetter,
-        zeilen: null, zuordnung: null, analyse: null, plan: null });
-      if (!angelegt.ok)
-        return fehlerAntwort(429, angelegt.code, "Gerade laufen zu viele Importe. Bitte einen offenen Import abschließen oder später erneut versuchen.");
+      const angelegt = { vorgang: vorgangFuellen(vorgangPlatz, { dateiHash, format: erg.format, blaetter: erg.blaetter }) };
       void erledigteAufraeumen(store, besitz.raum);
       const zeilen = erg.blaetter.reduce((a, bl) => a + Math.max(0, bl.zeilen.length - 1), 0);
       await protokoll("import", k, "hochgeladen", `Format ${erg.format} · ${erg.blaetter.length} Blätter · ${zeilen} Datenzeilen`, wer);

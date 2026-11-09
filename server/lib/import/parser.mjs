@@ -30,6 +30,14 @@ function grenzenZusammen(g) {
   return aus;
 }
 
+/* Globale Grenze gleichzeitiger Parser-Worker (Auflage 3, IMP-3-Review). Jeder Worker darf bis 768 MB Arbeitsspeicher
+   und mehrere Sekunden Rechenzeit belegen; unbegrenzt viele Uploads könnten den Server so lahmlegen. Überzählige
+   Aufrufe warten nicht (das würde Anfragen und Dateipuffer im Speicher aufstauen), sondern werden sofort mit
+   ZU_VIEL_GLEICHZEITIG abgewiesen — der Endpunkt antwortet 503 und die Person versucht es gleich noch einmal. */
+export const PARSER_GLEICHZEITIG_MAX = 2;
+let aktiv = 0;
+export const _parserAktiv = () => aktiv;
+
 export function parseDatei({ buffer, name, grenzen } = {}) {
   if (!buffer || !(buffer instanceof Uint8Array)) {
     return Promise.resolve(fehler("EINGABE_UNGUELTIG", "Es wurde keine Datei übergeben."));
@@ -39,12 +47,16 @@ export function parseDatei({ buffer, name, grenzen } = {}) {
   if (buffer.length > g.dateiBytes) {
     return Promise.resolve(fehler("DATEI_ZU_GROSS", `Die Datei ist zu groß (erlaubt sind höchstens ${Math.round(g.dateiBytes / MB)} MB).`));
   }
+  if (aktiv >= PARSER_GLEICHZEITIG_MAX)
+    return Promise.resolve(fehler("ZU_VIEL_GLEICHZEITIG", "Gerade werden zu viele Dateien gleichzeitig gelesen. Bitte in einigen Sekunden noch einmal versuchen."));
+  aktiv += 1;
   return new Promise((resolve) => {
     let fertig = false;
     let worker;
     const ende = (ergebnis) => {
       if (fertig) return;
       fertig = true;
+      aktiv -= 1;
       clearTimeout(timer);
       if (worker) worker.terminate().catch(() => {});
       resolve(ergebnis);
