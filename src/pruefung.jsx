@@ -2119,8 +2119,10 @@ function importZuordnen(kopf, zeilen) {
 /** Ein Feld ohne Zuordnung, das gebraucht wird? */
 const importFehlend = (zu) => ["nachname"].filter((f) => zu[f] === undefined);
 /** Baut aus den Rohzeilen Personendatensätze und meldet, was fehlt. */
-function importPruefen(m, kopf, daten, zu) {
+/* IMP-1: Kopie von fachlogik.js — dieselbe Korrektur; die Kopie soll entfallen (siehe docs/acc45/IMP-1-NACHWEIS.md). */
+function importPruefen(m, kopf, daten, zu, entscheidungen = {}) {
   const rollen = ROLLEN.filter((r) => !r.extern).map((r) => r.id);
+  const vorigeZeilen = [];
   const zeilen = daten.map((f, i) => {
     const hol = (k) => (zu[k] !== undefined ? (f[zu[k]] || "").trim() : "");
     const nachname = hol("nachname"), vorname = hol("vorname");
@@ -2135,13 +2137,19 @@ function importPruefen(m, kopf, daten, zu) {
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
     const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
+    const eintrittRoh = hol("eintritt");
     const eintritt = (() => {
-      const roh = hol("eintritt");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(roh)) return roh;
-      const de = roh.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-      if (de) return `${de[3]}-${pad(Number(de[2]))}-${pad(Number(de[1]))}`;
-      return heute();
+      if (!eintrittRoh) return heute();
+      let j, mo, t;
+      const iso = eintrittRoh.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const de = eintrittRoh.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      if (iso) [, j, mo, t] = iso.map(Number); else if (de) [, t, mo, j] = de.map(Number); else return null;
+      const d = new Date(Date.UTC(j, mo - 1, t));
+      if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== t) return null;
+      return `${j}-${pad(mo)}-${pad(t)}`;
     })();
+    const personalnummer = hol("personalnummer");
+    const email = hol("email");
     const tzRoh = hol("teilzeit").toLowerCase();
     const teilzeit = (tzRoh === "ja" || tzRoh === "x" || tzRoh === "1" || std < (m.einstellungen.sollWochenstunden || 40) - .1)
       ? { aktiv: true, modus: "quote", wochentage: [0, 1, 2, 3, 4] } : null;
@@ -2150,12 +2158,34 @@ function importPruefen(m, kopf, daten, zu) {
     if (!vorname) fehler.push("Vorname fehlt");
     if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
     if (!einheitName) fehler.push("Einheit fehlt");
-    const doppelt = m.personen.some((p) => p.nachname.toLowerCase() === nachname.toLowerCase()
-      && p.vorname.toLowerCase() === vorname.toLowerCase());
+    if (eintritt === null) fehler.push(`Eintrittsdatum „${eintrittRoh}" ungültig`);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
+    const nrNorm = personalnummer.toLowerCase();
+    let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").toLowerCase() === nrNorm) : null;
+    let dublette = treffer ? { grund: "personalnummer", personId: treffer.id, inDatei: false } : null;
+    if (!dublette && nachname && vorname) {
+      treffer = m.personen.find((p) => p.nachname.toLowerCase() === nachname.toLowerCase()
+        && p.vorname.toLowerCase() === vorname.toLowerCase());
+      if (treffer) dublette = { grund: "name", personId: treffer.id, inDatei: false };
+    }
+    if (!dublette) {
+      const frueher = vorigeZeilen.find((v) => (nrNorm && v.nrNorm === nrNorm)
+        || (!nrNorm && !v.nrNorm && nachname && vorname && v.name === `${nachname}|${vorname}`.toLowerCase()));
+      if (frueher) dublette = { grund: nrNorm ? "personalnummer" : "name", personId: null, inDatei: true, zeile: frueher.nr };
+    }
+    vorigeZeilen.push({ nr: i + 1, nrNorm, name: `${nachname}|${vorname}`.toLowerCase() });
+    const doppelt = !!dublette;
+    const wahl = dublette ? entscheidungen[i + 1] : null;
+    const aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
+    const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
+    const neuGewaehlt = aktion === "neu";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
-      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, ok: fehler.length === 0 };
+      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette,
+      personalnummer, email, aktion, aktualisierungBestaetigt: aktion === "aktualisieren" && bestaetigt,
+      zielId: aktion === "aktualisieren" && bestaetigt && dublette ? dublette.personId : null,
+      ok: fehler.length === 0 && (!doppelt || neuGewaehlt) };
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,

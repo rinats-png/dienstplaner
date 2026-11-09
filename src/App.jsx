@@ -10870,7 +10870,7 @@ function AppInnen() {
           const eid = z.einheitId || (einheiten.find((e) => e.name === z.einheitName) || {}).id || einheiten[0].id;
           const zusatz = z.fehlendeQuals.map((q) => (quals.find((x) => x.name === q) || {}).id).filter(Boolean);
           return { id: uid("p"), vorname: z.vorname, nachname: z.nachname, funktion: z.funktion,
-            email: `${z.vorname.toLowerCase()}.${z.nachname.toLowerCase()}@betrieb.de`,
+            email: z.email || "", personalnummer: z.personalnummer || "",
             zugehoerigkeit: [{ ab: z.eintritt, einheitId: eid }], eintritt: z.eintritt, austritt: null,
             wochenstunden: z.wochenstunden, urlaubsanspruch: z.urlaubsanspruch, urlaubsuebertrag: 0, stundenuebertrag: 0,
             qualifikationen: [...z.qualifikationen, ...zusatz], einschraenkungen: {}, teilzeit: z.teilzeit, springer: false,
