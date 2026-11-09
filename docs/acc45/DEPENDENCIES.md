@@ -2,9 +2,9 @@
 
 Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (nicht von Hand ändern).
 
-**Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I3 → WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **62–111 PT**
+**Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **63,8–109,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 444,8–750,5 PT in 107 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 448,4–756,6 PT in 110 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -12,6 +12,7 @@ WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. D
 flowchart LR
   subgraph acc45[ACC45]
     WP_09["WP-09<br/>IN_PROGRESS"]
+    WP_15["WP-15<br/>REVIEW"]
     WP_16["WP-16<br/>REVIEW"]
     WP_18["WP-18<br/>BLOCKED"]
     WP_19["WP-19<br/>IN_PROGRESS"]
@@ -27,6 +28,7 @@ flowchart LR
     WP_42["WP-42<br/>BLOCKED"]
     WP_44["WP-44<br/>BLOCKED"]
     WP_16c["WP-16c<br/>REVIEW"]
+    WP_32d["WP-32d<br/>REVIEW"]
     WP_42a["WP-42a<br/>BLOCKED"]
     WP_48["WP-48<br/>BLOCKED"]
     SI_P4["SI-P4<br/>REVIEW"]
@@ -87,6 +89,7 @@ flowchart LR
     WP_I7["WP-I7<br/>BLOCKED"]
     WP_I8["WP-I8<br/>BLOCKED"]
     WP_I9["WP-I9<br/>BLOCKED"]
+    WP_I12["WP-I12<br/>REVIEW"]
     WP_I13["WP-I13<br/>BLOCKED"]
     WP_I14["WP-I14<br/>BLOCKED"]
     WP_I15["WP-I15<br/>BLOCKED"]
@@ -111,9 +114,9 @@ flowchart LR
     WP_I34["WP-I34<br/>BLOCKED"]
     WP_I36["WP-I36<br/>BLOCKED"]
     WP_I37["WP-I37<br/>BLOCKED"]
-    WP_I12a["WP-I12a<br/>READY"]
-    WP_I12b["WP-I12b<br/>READY"]
-    WP_I12c["WP-I12c<br/>READY"]
+    WP_I12a["WP-I12a<br/>BLOCKED"]
+    WP_I12b["WP-I12b<br/>BLOCKED"]
+    WP_I12c["WP-I12c<br/>BLOCKED"]
   end
   subgraph folge[Folgepakete]
     WP_14c["WP-14c<br/>REVIEW"]
@@ -193,6 +196,7 @@ flowchart LR
   E_32 --> WP_42
   E_15 --> WP_44
   WP_16 --> WP_16c
+  WP_15 --> WP_42a
   WP_16 --> WP_42a
   WP_19 --> WP_42a
   WP_21 --> WP_42a
@@ -210,6 +214,7 @@ flowchart LR
   WP_28b --> WP_42a
   WP_07b --> WP_42a
   WP_16c --> WP_42a
+  WP_32d --> WP_42a
   WP_30 --> WP_42a
   WP_16 --> WP_48
   WP_16 --> WP_14c
@@ -260,6 +265,7 @@ flowchart LR
   WP_I7 --> WP_I8
   WP_I7 --> WP_I9
   WP_I8 --> WP_I9
+  WP_I12 --> WP_I13
   WP_I13 --> WP_I14
   WP_I13 --> WP_I15
   WP_I13 --> WP_I16
@@ -269,16 +275,20 @@ flowchart LR
   E_25 --> WP_I18
   WP_I13 --> WP_I19
   WP_I17 --> WP_I19
+  WP_I12 --> WP_I19
+  WP_I12 --> WP_I20
   WP_I13 --> WP_I20
   WP_I15 --> WP_I20
   WP_I17 --> WP_I20
   WP_I19 --> WP_I21
   WP_I20 --> WP_I21
   E_24i --> WP_I21
+  WP_I12 --> WP_I22
   WP_I13 --> WP_I22
   WP_I17 --> WP_I22
   WP_I13 --> WP_I23
   WP_I17 --> WP_I23
+  WP_I12 --> WP_I24
   WP_I13 --> WP_I24
   WP_I17 --> WP_I24
   WP_I3 --> WP_I25
@@ -291,12 +301,15 @@ flowchart LR
   WP_I16 --> WP_I27
   E_25 --> WP_I27
   E_26 --> WP_I27
+  WP_I12 --> WP_I28
   WP_I13 --> WP_I28
   WP_I19 --> WP_I28
   WP_I13 --> WP_I29
   WP_I15 --> WP_I29
+  WP_I12 --> WP_I29
   WP_I13 --> WP_I30
   WP_I17 --> WP_I30
+  WP_I12 --> WP_I31
   WP_I13 --> WP_I31
   WP_I28 --> WP_I32
   WP_I28 --> WP_I33
@@ -315,6 +328,7 @@ flowchart LR
   WP_I7 --> WP_I37
   WP_I8 --> WP_I37
   WP_I9 --> WP_I37
+  WP_I12 --> WP_I37
   WP_I13 --> WP_I37
   WP_I14 --> WP_I37
   WP_I15 --> WP_I37
@@ -347,6 +361,7 @@ flowchart LR
   E_1 --> E_4
   E_1 --> E_5
   E_1 --> E_6
+  WP_32d --> E_10
   E_13 --> E_14
   E_1 --> E_17
   E_17a --> E_17
@@ -370,9 +385,11 @@ flowchart LR
   WP_42R1 --> WP_42R2
   WP_19_R --> WP_42R2
   WP_21 --> WP_42R2
+  WP_15 --> WP_42R2
   WP_30 --> WP_42R2
   SI_P6b --> WP_42R2
   SI_P5 --> WP_42R2
+  WP_32d --> WP_42R2
   WP_40 --> WP_42R2
   WP_14c --> WP_42R2
   WP_16b --> WP_42R2
@@ -408,6 +425,9 @@ flowchart LR
   OPT_4 --> WR_9
   WR_3 --> WR_9
   WR_4 --> WR_BETREIBER
+  WP_I12 --> WP_I12a
+  WP_I12 --> WP_I12b
+  WP_I12 --> WP_I12c
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -426,7 +446,7 @@ flowchart LR
 | WP-12 | acc45 | P1 | 2–3 | 0 | WP-11 | – | sonnet | INTEGRATED |
 | WP-13 | acc45 | P1 | 3–4,5 | 0 | WP-06 | – | sonnet | INTEGRATED |
 | WP-14 | acc45 | P1 | 6–8,5 | 0 | WP-06 | – | opus | INTEGRATED |
-| WP-15 | acc45 | P1 | 3–4,5 | 0 | WP-14 | App.jsx, daten.mjs | opus | INTEGRATED |
+| WP-15 | acc45 | P1 | 3–4,5 | 0,6–0,9 | WP-14 | App.jsx, daten.mjs | opus | REVIEW |
 | WP-16 | acc45 | P1 | 5–7 | 0,5–1,5 | WP-06, WP-14 | App.jsx, daten.mjs, stempelintegritaet.mjs, package.json | opus | REVIEW |
 | WP-17 | acc45 | P1 | 2–3 | 0 | WP-02 | – | opus | INTEGRATED |
 | WP-18 | acc45 | P1 | 6–8,5 | 6–8,5 | SI-P4 | App.jsx, rechte.mjs, daten.mjs | opus | BLOCKED |
@@ -460,7 +480,7 @@ flowchart LR
 | WP-47 | acc45 | P0 | 1–1,5 | 0 | WP-46 | – | opus | INTEGRATED |
 | WP-44 | acc45 | P0 | 0,5–1 | 0,5–1 | E-15 | – | opus | BLOCKED |
 | WP-16c | acc45 | P0 | 6–10 | 1,2–2 | WP-16 | App.jsx, daten.mjs, stempelintegritaet.mjs | opus | REVIEW |
-| WP-32d | acc45 | P0 | 1–2 | 0 | WP-32 | – | opus | INTEGRATED |
+| WP-32d | acc45 | P0 | 1–2 | 0,2–0,4 | WP-32 | – | opus | REVIEW |
 | WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1, WP-16c, WP-32d, WP-30 | – | opus | BLOCKED |
 | WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-14c | folge | P1 | 3–5 | 0,6–1 | WP-14, WP-16 | App.jsx, daten.mjs | opus | REVIEW |
@@ -497,7 +517,7 @@ flowchart LR
 | WP-I9 | intelligence | P2 | 7–12 | 7–12 | WP-I7, WP-I8 | App.jsx | sonnet + opus-review | BLOCKED |
 | WP-I10 | intelligence | P3 | 2–4 | 0 | E-21i | – | sonnet | INTEGRATED |
 | WP-I11 | intelligence | P3 | 6–10 | 0 | WP-43, WP-I10 | – | opus | INTEGRATED |
-| WP-I12 | intelligence | P3 | 14–24 | 0 | WP-11, WP-22, WP-I10 | App.jsx | sonnet | INTEGRATED |
+| WP-I12 | intelligence | P3 | 14–24 | 2,8–4,8 | WP-11, WP-22, WP-I10 | App.jsx | sonnet | REVIEW |
 | WP-I13 | intelligence | P3 | 14–24 | 14–24 | WP-I11, WP-I12 | – | sonnet + opus-review | BLOCKED |
 | WP-I14 | intelligence | P3 | 5–8 | 5–8 | WP-I13 | – | sonnet + opus-review | BLOCKED |
 | WP-I15 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-05 | – | sonnet + opus-review | BLOCKED |
@@ -596,6 +616,6 @@ flowchart LR
 | WR-8 | acc45 | P2 | 0,25 | 0,25 | WR-7 | daten.mjs | sonnet | BLOCKED |
 | WR-9 | acc45 | P1 | 2–4 | 2–4 | OPT-4, WR-3 | daten.mjs | opus | BLOCKED |
 | WR-BETREIBER | acc45 | P1 | 0 | 0 | WR-4 | daten.mjs | opus | BLOCKED |
-| WP-I12a | intelligence | P3 | 4–8 | 4–8 | WP-I12 | App.jsx | sonnet | READY |
-| WP-I12b | intelligence | P3 | 1–2 | 1–2 | WP-I12 | App.jsx | sonnet | READY |
-| WP-I12c | intelligence | P3 | 0,5–1 | 0,5–1 | WP-I12 | App.jsx | sonnet | READY |
+| WP-I12a | intelligence | P3 | 4–8 | 4–8 | WP-I12 | App.jsx | sonnet | BLOCKED |
+| WP-I12b | intelligence | P3 | 1–2 | 1–2 | WP-I12 | App.jsx | sonnet | BLOCKED |
+| WP-I12c | intelligence | P3 | 0,5–1 | 0,5–1 | WP-I12 | App.jsx | sonnet | BLOCKED |
