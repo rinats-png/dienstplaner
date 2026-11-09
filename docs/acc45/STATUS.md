@@ -18,26 +18,26 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 187 · BLOCKED 98 · READY 21 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 51 · DONE 3
+**Pakete gesamt:** 187 · BLOCKED 98 · READY 20 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 52 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 87 | 33 | 1 | 2 | 5 | 44 | 2 | 76,9–118,6 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
-| Intelligence | 40 | 32 | 2 | 0 | 1 | 5 | 0 | 256,3–451,8 |
+| Intelligence | 40 | 32 | 1 | 0 | 1 | 6 | 0 | 248,3–437,8 |
 | Folgepakete | 10 | 1 | 2 | 2 | 3 | 2 | 0 | 8,6–17,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **408,6–691,7 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **400,6–677,7 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I3 → WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **62–111 PT**
+- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 - ohne Intelligence: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
 - ACC45: WP-16 → WP-48 = **16,5–27,5 PT**
 - Folgepakete: WP-47b = **2–4 PT**
 - WP-19: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **20,8–32,2 PT**
-- Intelligence: WP-I3 → WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **62–111 PT**
+- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 
 ### In Arbeit / Review
 
@@ -60,9 +60,9 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **408,6–691,
 
 ### Bereit zum Start (20)
 
-WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 PT) · WP-40 (acc45, 3–4,5 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-I2 (intelligence, 3–6 PT) · WP-I3 (intelligence, 8–14 PT) · WP-I14 (intelligence, 5–8 PT) · WP-I15 (intelligence, 8–14 PT) · WP-I17 (intelligence, 6–10 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-0 (acc45, 0,5–1 PT) · IMP-4 (acc45, 2,5–4 PT) · IMP-5 (acc45, 1,5–2,5 PT) · IMP-6 (acc45, 3–5 PT) · IMP-8 (acc45, 2–3 PT) · OPT-1 (acc45, 1–1,5 PT) · OPT-4 (acc45, 3–5 PT) · WR-1 (acc45, 1,5 PT)
+WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 PT) · WP-40 (acc45, 3–4,5 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-I2 (intelligence, 3–6 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I14 (intelligence, 5–8 PT) · WP-I15 (intelligence, 8–14 PT) · WP-I17 (intelligence, 6–10 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-0 (acc45, 0,5–1 PT) · IMP-4 (acc45, 2,5–4 PT) · IMP-5 (acc45, 1,5–2,5 PT) · IMP-6 (acc45, 3–5 PT) · IMP-8 (acc45, 2–3 PT) · OPT-1 (acc45, 1–1,5 PT) · OPT-4 (acc45, 3–5 PT) · WR-1 (acc45, 1,5 PT)
 
-### Integriert in `integration/centric-complete` (51)
+### Integriert in `integration/centric-complete` (52)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -101,6 +101,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 
 | WP-32d Betreiber-2FA verpflichtend vor produktivem Betrieb mit echtem Betreiberzugriff | PR #141 in integration/release-v4 | PR #141 in integration/release-v4 |
 | WP-28c Konsistente Sicherung unter Dauerlast: kurzer, befristeter, koordinierter Schreib-Halt im Server (Folge zu WP-28b/2) | #110 (42e83da) in integration/release-v4 | Opus-Review, Befunde behoben |
 | WP-S1 Staging-Vorbereitung (Agent): Smoke, Testdaten, Abnahme-Checkliste 3.1–3.4 | PR #119 gemergt in integration/release-v4 (CI grün) | – |
+| WP-I3 Regelbaukasten vervollständigen (8 Regelarten) | PR #108 in integration/release-v4 (gemergt 2026-11-07) | PR #108 in integration/release-v4 (gemergt 2026-11-07) |
 | WP-I6 Planungsreife | PR #138 in integration/release-v4 | PR #138 in integration/release-v4 |
 | WP-I10 Architekturabgleich Spezifikation auf heutigen Stack | PR #70 in integration/release-v4 | – |
 | WP-I11 Faktenpaket-Vertrag (Positivliste, Alias) | #86 (intelligence/wp-i11-integration) | Opus-Sicherheitsreview + Delta-Review (2 Runden) |
@@ -122,7 +123,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-86 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+85 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -174,6 +175,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 
 | WP-19.10 | BLOCKED | T | T | T | T | – | – | – |
 | WP-19.11 | BLOCKED | T | T | T | T | – | – | – |
 | WP-19.12 | BLOCKED | T | T | T | T | – | – | – |
+| WP-I3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I6 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I10 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | WP-I11 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
