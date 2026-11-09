@@ -3,11 +3,11 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 187,
   "statusZaehlung": {
-    "BLOCKED": 96,
+    "BLOCKED": 94,
     "READY": 17,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 57,
+    "INTEGRATED": 59,
     "DONE": 3
   },
   "jeStrang": {
@@ -29,10 +29,10 @@
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 32,
+      "offen": 30,
       "restPT": {
-        "min": 239.3,
-        "max": 421.8
+        "min": 226.3,
+        "max": 399.8
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 385.6,
-    "max": 650.7
+    "min": 372.6,
+    "max": 628.7
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -2584,12 +2584,12 @@
       "prio": "P3",
       "aufwandPT": {"min":5,"max":8},
       "abhaengigkeiten": ["WP-I13"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #159 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #159 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #159 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #159 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2598,12 +2598,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#159"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): INTEGRATED nach #159."
     },
     {
       "id": "WP-I15",
@@ -2612,12 +2612,12 @@
       "prio": "P3",
       "aufwandPT": {"min":8,"max":14},
       "abhaengigkeiten": ["WP-I13","WP-05"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #158 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #158 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #158 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #158 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2626,12 +2626,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#158"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): INTEGRATED nach #158."
     },
     {
       "id": "WP-I16",
@@ -2710,12 +2710,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#162","#161"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Auflagen aus dem Opus-Review von PR #146 (WP-I13, 2e2a1ab), vor echtem Anbieter zwingend: (1) Die Modellregistry wird Pflicht, und die Modellkennung kommt aus der Registry an den Adapter; heute entscheidet der Adapter das Modell, modellFuer() wird nirgends aufgerufen (mittel). (2) Gateway und Speicher nur über erzeugeSchluesselbund versorgen; aliasSchluessel wird heute nicht gegen den MAC-Schlüssel getrennt geprüft (niedrig). Restrisiko: Anbieterschlüssel fehlt im Trennungsvergleich."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Auflagen aus dem Opus-Review von PR #146 (WP-I13, 2e2a1ab), vor echtem Anbieter zwingend: (1) Die Modellregistry wird Pflicht, und die Modellkennung kommt aus der Registry an den Adapter; heute entscheidet der Adapter das Modell, modellFuer() wird nirgends aufgerufen (mittel). (2) Gateway und Speicher nur über erzeugeSchluesselbund versorgen; aliasSchluessel wird heute nicht gegen den MAC-Schlüssel getrennt geprüft (niedrig). Restrisiko: Anbieterschlüssel fehlt im Trennungsvergleich. Stand 2026-11-09: Kern technisch integriert (PR #162, Registry, Schlüsseltrennung, Ausgabegrenze, Freigabe-Gate, Rückfall). Status bleibt BLOCKED: Anbieteranschluss nicht verdrahtet, offen E-25 (AVV, Zero-Data-Retention, Drittland, DSFA), Monatsbudget gegen Verbrauch (WP-I15), Löschkonzept-Betreiberpunkte (PR #161)."
     },
     {
       "id": "WP-I19",
