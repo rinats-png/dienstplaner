@@ -29,7 +29,7 @@ parseDatei({ buffer, name, grenzen }) → Promise<
 | `format` | Erkennung (Inhalt, nicht Endung; Reihenfolge wie SheetJS `parse_zip`/`readSync`) |
 |---|---|
 | `xlsx` | ZIP (`PK\x03\x04`) ohne ODS-/Numbers-Merkmale, mit `[Content_Types].xml`, das **genau eine** Arbeitsmappe mit dem Typ `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml` (der xlsm-Typ `application/vnd.ms-excel.sheet.macroEnabled.main+xml` wird abgewiesen, siehe 8) deklariert; Pfad nicht auf `bin` endend und im Archiv vorhanden. Strikte Paketprüfung siehe 5. |
-| `xls` | OLE2/CFB (`D0 CF 11 E0 A1 B1 1A E1`) mit plausibler CFB-Struktur (siehe 5a) und einem Strom `Workbook` oder `Book` |
+| `xls` | OLE2/CFB (`D0 CF 11 E0 A1 B1 1A E1`) mit plausibler CFB-Struktur (siehe 5a) und genau einem Strom `Workbook` oder `Book` (Größe > 0) direkt unter der Wurzel |
 | `csv` / `tsv` | reiner Text (keine NUL-Bytes, < 1 % Steuerzeichen), Trenner `;` `,` Tab automatisch (Tab bei Endung `.tsv`) |
 
 **Nicht unterstützt** (`NICHT_UNTERSTUETZT`, Review 8725dc5, Entscheidungen E1/E3; Begründung in 11):
@@ -40,7 +40,7 @@ parseDatei({ buffer, name, grenzen }) → Promise<
 - **Vorlagen und Add-ins**: Arbeitsmappen-Typ `…spreadsheetml.template.main+xml` (xltx) oder `…addin.macroEnabled.main+xml` (xlam).
 - **Pakete mit unbekanntem Hauptinhaltstyp**: kein Arbeitsmappen-Override in `[Content_Types].xml` (z. B. Word, PowerPoint, Phantasietypen),
   ZIP ohne `[Content_Types].xml` (Numbers 08/09, verschachteltes `Index.zip`), Numbers (`Index/Document.iwa`).
-- **OLE2 ohne Tabellenstrom** (Word, PowerPoint, Quattro Pro), XML/HTML, ZIP64, mehrteilige Archive.
+- **OLE2 ohne Tabellenstrom `Workbook`/`Book` direkt unter der Wurzel** (Word, PowerPoint, Quattro Pro und Lotus mit `PerfectOffice_MAIN`, `NativeContent_MAIN`, `MN0`; ein Strom `Workbook` nur in einem Unterordner zählt nicht), XML/HTML, ZIP64, mehrteilige Archive.
 
 Alles Unbekannte ergibt `UNBEKANNTES_FORMAT`. Weicht die Endung vom erkannten Format ab, wird trotzdem nach Inhalt gelesen und der Hinweis
 `ENDUNG_ABWEICHEND` gesetzt (die Endung erscheint darin höchstens mit 10 Zeichen).
@@ -152,7 +152,12 @@ von `CFB.parse` in `vendor/sheetjs/xlsx.mjs`, alles vor SheetJS:
   anderen Kette beginnt, ohne Zykluserkennung (Endlosschleife bis Zeit-/Speicherlimit).
 - **Größenbudget vor dem Lesen**: jede Stromgröße ab 4096 Byte passt in ihre Kette (Sektoren × Sektorgröße); die Summe aller erklärten
   Stromgrößen ≤ `entpacktBytes` (sonst `ENTPACKT_ZU_GROSS`).
-- Der erste Verzeichniseintrag ist der Stammeintrag; es gibt einen Strom `Workbook` oder `Book` (sonst `NICHT_UNTERSTUETZT`).
+- **Verzeichnisbaum** (imp-2-fix5, A1): die Zeiger links, rechts und Kind jedes benutzten Eintrags zeigen auf einen vorhandenen Eintrag oder sind -1
+  (NOSTREAM); jeder Eintrag ist von der Wurzel aus höchstens einmal erreichbar; Zyklus oder Mehrfachverweis → `BESCHAEDIGT`. Hintergrund: SheetJS
+  (`build_full_paths`) folgt den Zeigern ohne Zykluserkennung.
+- Der erste Verzeichniseintrag ist der Stammeintrag; es gibt genau einen Strom `Workbook` oder `Book` mit Größe > 0 **direkt unter der Wurzel**
+  (imp-2-fix5, A2); sonst `NICHT_UNTERSTUETZT`. Ein gleichnamiger Strom in einem Unterordner zählt nicht (Quattro Pro/Lotus mit `PerfectOffice_MAIN`,
+  `NativeContent_MAIN` oder `MN0` wäre sonst als XLS gelesen worden).
 - Widerspruch → `BESCHAEDIGT`. Verschlüsselte Dateien (`EncryptedPackage`, `EncryptionInfo`) → `PASSWORTGESCHUETZT` (vor der Strukturprüfung).
 
 ## 6. Zellwerte (Rohwerte)

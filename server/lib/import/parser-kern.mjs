@@ -550,7 +550,11 @@ function erkennePaket(p) {
      und ohne Sektoren, die schon zu einer anderen Kette gehören;
    - jede erklärte Stromgröße passt in ihre Kette; die Summe aller Stromgrößen liegt innerhalb
      von entpacktBytes (Größenbudget vor dem Lesen);
-   - es gibt einen Tabellenstrom „Workbook“ oder „Book“; sonst NICHT_UNTERSTUETZT. */
+   - Verzeichnisbaum (links/rechts/Kind): Zeiger auf vorhandene Einträge oder -1, jeder Eintrag von der Wurzel
+     aus höchstens einmal erreichbar (sonst Zyklus → BESCHAEDIGT, A1 imp-2-fix5);
+   - es gibt genau einen Tabellenstrom „Workbook“ oder „Book“ mit Größe > 0 direkt unter der Wurzel; sonst
+     NICHT_UNTERSTUETZT (auch Quattro Pro/Lotus: PerfectOffice_MAIN, NativeContent_MAIN, MN0; A2 imp-2-fix5).
+     Ein Strom gleichen Namens in einem Unterordner zählt nicht. */
 const CFB_ENDE = -2;
 function pruefeCfb(buf, g) {
   const L = buf.length;
@@ -607,7 +611,7 @@ function pruefeCfb(buf, g) {
   };
   const dirSektoren = kette(dirStart);
   if (anzahlMini > 0 && miniStart !== CFB_ENDE) kette(miniStart);
-  const namen = [];
+  const eintraege = []; /* Verzeichniseinträge in Reihenfolge: { typ, links, rechts, kind, name, groesse } */
   let summe = 0;
   for (let i = 0, s = dirStart; i < dirSektoren; i++) {
     const basis = (s + 1) * ssz;
@@ -617,6 +621,10 @@ function pruefeCfb(buf, g) {
       const typ = buf[p + 66], start = buf.readInt32LE(p + 116), groesse = buf.readInt32LE(p + 120);
       const nl = Math.min(buf.readUInt16LE(p + 64), 64);
       if (i === 0 && k === 0 && typ !== 5) throw kaputt("Stammeintrag fehlt");
+      eintraege.push({
+        typ, links: buf.readInt32LE(p + 68), rechts: buf.readInt32LE(p + 72), kind: buf.readInt32LE(p + 76), groesse,
+        name: buf.toString("utf16le", p, p + nl).replace(/\0+$/, "").toLowerCase(),
+      });
       if (groesse < 0 && start < 0) continue;
       if (typ === 5) {
         if (anzahlMini > 0 && start !== CFB_ENDE && groesse > 0) {
@@ -633,10 +641,32 @@ function pruefeCfb(buf, g) {
         summe += groesse;
         if (summe > g.entpacktBytes) throw zipAbbruchEntpackt(g);
       }
-      if (typ === 2) namen.push(buf.toString("utf16le", p, p + nl).replace(/\0+$/, "").toLowerCase());
     }
     const addr = fat[Math.floor((s * 4) / ssz)];
     s = imBereich(addr) ? lies(addr, (s * 4) & (ssz - 1)) : -1;
+  }
+  /* Verzeichnisbaum (imp-2-fix5, A1): SheetJS (build_full_paths) folgt links/rechts/Kind ohne Zykluserkennung.
+     Zeiger: vorhandener Eintrag oder -1 (NOSTREAM); jeder Eintrag ist von der Wurzel aus höchstens einmal erreichbar.
+     Nicht erreichbare, unbenutzte Einträge (Typ 0) bleiben unbeachtet. */
+  const n = eintraege.length;
+  const zeigerOk = (z) => z === -1 || (Number.isInteger(z) && z >= 0 && z < n);
+  for (const e of eintraege) {
+    if (e.typ !== 0 && !(zeigerOk(e.links) && zeigerOk(e.rechts) && zeigerOk(e.kind))) throw kaputt("Verzeichniszeiger außerhalb der Einträge");
+  }
+  /* Strom „Workbook“/„Book“ nur direkt unter der Wurzel (A2): Geschwisterbaum des Wurzelkindes, ohne Unterordner. */
+  const namen = [];
+  const gesehen = new Set();
+  const stapel = [[0, false]];
+  while (stapel.length) {
+    const [idx, direkt] = stapel.pop();
+    if (gesehen.has(idx)) throw kaputt("Verzeichnisbaum zyklisch oder mehrfach erreichbar");
+    gesehen.add(idx);
+    const e = eintraege[idx];
+    if (e.typ === 0) throw kaputt("Verzeichnisbaum verweist auf einen unbenutzten Eintrag");
+    if (direkt && e.typ === 2 && e.groesse > 0) namen.push(e.name);
+    if (e.links !== -1) stapel.push([e.links, direkt]);
+    if (e.rechts !== -1) stapel.push([e.rechts, direkt]);
+    if (e.kind !== -1) stapel.push([e.kind, idx === 0]);
   }
   return namen;
 }
@@ -927,7 +957,7 @@ export function parseKern({ buffer, name, grenzen }) {
       if (erk.namen.length) {
         /* Review PR #123, Befund 4: nur echte Makro-Bestandteile zählen, nicht der
            SheetJS-Standardeintrag Default Extension="bin" (…binary.macroEnabled.main). */
-        if (erk.makroTyp || erk.namen.some((n) => /(^|\/)vbaProject\.bin$/i.test(n) || /^(Scripts|Basic)\//.test(n)) ||
+        if (erk.namen.some((n) => /(^|\/)vbaProject\.bin$/i.test(n) || /^(Scripts|Basic)\//.test(n)) ||
             /ContentType\s*=\s*["']application\/vnd\.ms-office\.vbaProject["']/i.test(erk.inhalte.get("[Content_Types].xml") || "")) {
           hinweise.push(hinweis("MAKROS_VERWORFEN", "Die Datei enthält Makros. Sie wurden nicht ausgeführt und nicht übernommen; nur die Tabellendaten wurden gelesen."));
         }

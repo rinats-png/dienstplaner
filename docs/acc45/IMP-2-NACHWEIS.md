@@ -330,3 +330,38 @@ Exporten (xlsx, xlsm, xls) vor dem Pilotbetrieb wird empfohlen (Testdaten-Vorgab
 und ohne Teilergebnis. Eine Zeile in `erkennePaket`; neuer Test `xlsm wird nicht gelesen` (rot gegen 9e7b2ff: `ok:true`); die beiden bestehenden xlsm-Tests
 (`Makro-Datei (xlsm mit vbaProject.bin)…`, `E4: Makro-Arbeitsmappentyp…`) erwarten jetzt `NICHT_UNTERSTUETZT` statt `ok:true` + Hinweis (Erwartung ersetzt, keine Assertion gelöscht).
 `MAKROS_VERWORFEN` bleibt für vbaProject-Teile in xlsx ohne Makro-Typ und für XLS mit VBA.
+
+## 10. Befunde aus dem Review bbf64ca
+
+Branch `acc45/import/imp-2-fix5` (Basis `origin/acc45/import/imp-2-fix4` @ bbf64ca). Zwei Commits: zuerst nur die Tests (Rot-Nachweis per Commit),
+danach die Korrektur. Geändert: `server/lib/import/parser-kern.mjs` (`pruefeCfb`, Kommentar; `erk.makroTyp` im Makro-Hinweis entfernt, toter Code),
+`pruefungen/import-parser.test.js` (neuer Block `Review bbf64ca (imp-2-fix5): …`, 7 Tests; keine bestehende Assertion geändert oder entfernt),
+`pruefungen/import-parser-hilfen.mjs` (nur ergänzt: `cfbDatei`, `workbookStrom`), `IMPORT-VERTRAG.md` (Abschnitt 2 und 5a), dieser Nachweis.
+`vendor/sheetjs/` unverändert: SHA-256 `xlsx.mjs` = `1a0fb062…77db`.
+
+| Auflage | Status | Test | vorher (bbf64ca) | nachher |
+|---|---|---|---|---|
+| A1 Endlosschleife (Verzeichnisbaum) | behoben | `A1-PoC: gültige XLS, Baumzeiger der Einträge 2 und 3 zeigen aufeinander → BESCHAEDIGT in unter 2 s` | **rot: kein Ergebnis, Prozess bricht nach ca. 19 s mit Heap-Überlauf ab** (vitest-Lauf 18,9 s) | grün, **623 ms**, `BESCHAEDIGT` |
+| A1 | | `A1: Zeiger außerhalb der Einträge, mehrfach erreichbarer Eintrag und Selbstverweis → BESCHAEDIGT` | rot (`ok:true`) | grün |
+| A1 | | `A1 Gegenprobe: gültige XLS (mit Verzeichnisbaum) wird weiter gelesen` | grün | grün |
+| A2 Lotus/Quattro Pro | behoben | `A2-PoC: CFB mit /Sub/Workbook und /PerfectOffice_MAIN (WK3-Daten) → NICHT_UNTERSTUETZT` | **rot: `ok:true`, format `xls`** | grün |
+| A2 | | `A2: leerer Workbook-Strom (Größe 0) unter der Wurzel zählt nicht → NICHT_UNTERSTUETZT` | rot (`ok:true`) | grün |
+| A2 | | `A2: Quattro-Pro-/Lotus-Ströme (NativeContent_MAIN, MN0) ohne Workbook/Book unter der Wurzel → NICHT_UNTERSTUETZT` | grün (Absicherung) | grün |
+| A2 | | `A2 Gegenprobe: normale XLS mit Workbook unter der Wurzel bleibt ok` | grün | grün |
+
+Rot: 4 von 7 neuen Tests (die übrigen drei sichern Gegenproben und Fälle ab, die schon vorher galten).
+
+**A1 – Umsetzung.** `pruefeCfb` liest die Verzeichniseinträge vollständig ein und prüft danach den Baum, bevor SheetJS ihn liest: Zeiger links/rechts/Kind
+jedes benutzten Eintrags (Typ ≠ 0) müssen auf einen vorhandenen Eintrag zeigen oder -1 sein; eine Tiefensuche ab der Wurzel meldet jeden zweiten Besuch
+(Zyklus, Selbstverweis, Mehrfachverweis) als `BESCHAEDIGT`, ebenso einen erreichbaren unbenutzten Eintrag. Unbenutzte, nicht erreichbare Einträge werden nicht
+beurteilt. Messung: gleiche Datei vorher Abbruch nach ca. 19 s (Heap), nachher 623 ms. Die Prüfung ist linear in der Eintragszahl, die durch die Verzeichniskette begrenzt ist.
+
+**A2 – Umsetzung.** `pruefeCfb` liefert nur noch Ströme des Geschwisterbaums direkt unter der Wurzel (Kind der Wurzel; Unterordner werden nicht betreten) mit
+Größe > 0. `erkenne` verlangt `workbook` oder `book` darin; damit sind Lotus/Quattro Pro (`PerfectOffice_MAIN`, `NativeContent_MAIN`, `MN0`) ohne diesen Strom
+`NICHT_UNTERSTUETZT`. Grenze: Eine Datei, die zusätzlich zu einem gültigen Wurzel-`Workbook` einen Quattro-Pro-Strom enthält, wird weiter als XLS gelesen
+(die Auflage betrifft Dateien ohne diesen Strom).
+
+**Vertrag.** Abschnitt 2 (Quattro Pro ausgeschlossen) und 5a präzisiert: „direkt unter der Wurzel“, „Größe > 0“, Verzeichnisbaum-Prüfung.
+
+**Verifikation.** `npx vitest run pruefungen/import-parser.test.js pruefungen/import-parser-vendor.test.js --testTimeout=60000` zweimal: je **121 von 121** grün
+(116 Parser, 5 Einbindung; vorher 114 + 7 neue), ca. 70 und 80 s. ESLint auf `server/lib/import` und den Prüfdateien: 0 Befunde. `node werkzeug/verdrahtung-pruefen.mjs`: grün (284 Prüfdateien).
