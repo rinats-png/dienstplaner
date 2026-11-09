@@ -4,10 +4,10 @@
   "anzahl": 160,
   "statusZaehlung": {
     "BLOCKED": 79,
-    "READY": 28,
+    "READY": 26,
     "IN_PROGRESS": 4,
-    "REVIEW": 9,
-    "INTEGRATED": 37,
+    "REVIEW": 10,
+    "INTEGRATED": 38,
     "DONE": 3
   },
   "jeStrang": {
@@ -15,8 +15,8 @@
       "pakete": 63,
       "offen": 26,
       "restPT": {
-        "min": 64.80000000000001,
-        "max": 101.7
+        "min": 62.400000000000006,
+        "max": 97.7
       }
     },
     "wp19": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 10,
-      "offen": 9,
+      "offen": 8,
       "restPT": {
-        "min": 9.6,
-        "max": 19.1
+        "min": 8.6,
+        "max": 17.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 421.6,
-    "max": 716.8000000000001
+    "min": 418.20000000000005,
+    "max": 710.8000000000001
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -1800,21 +1800,21 @@
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["WP-12"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/staging/wp-s1 (werkzeug/staging-abnahme-3.mjs, Commit c0da856, rebased 17fee22)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/staging-abnahme-3.test.js 4/4; staging-proben 16/16 (Agentenbericht)"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"PR #119 gemergt in integration/release-v4 (CI grün)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "acc45/qa/s1-staging-vorbereitung",
+      "branch": "acc45/staging/wp-s1",
       "agent": "Agent F – QA & Review",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#119"],
       "nachweis": null,
       "akzeptanz": "Staging-Smoke und Proben gegen den aktuellen Integrationsstand, Checkliste für den Betreiber",
       "tests": "staging-smoke, staging-proben",
@@ -4412,11 +4412,11 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"acc45/sicherheit/si-p4 8adad27"},
         "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":"teilweise","beleg":"Unabhängiges Opus-Review: integrierbar mit Auflagen M1, M2, N2 und Negativtests; Umsetzung auf review/si-p4 in Arbeit"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -4426,7 +4426,7 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs"],
-      "pr": [],
+      "pr": ["#120"],
       "nachweis": null,
       "akzeptanz": "TOTP für Leitung/Planung/Kunde mindestens im Pilot; bis dahin „Zugang merken“ für Leitung gesperrt; Tests für Anmeldung mit/ohne zweiten Faktor",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
