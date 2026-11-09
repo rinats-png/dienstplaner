@@ -16,7 +16,7 @@ nur über `erzeugeSchluesselbund`, Alias- gegen MAC-Schlüssel getrennt. Beide s
 | Commit | Inhalt |
 |---|---|
 | 4867e72 | nur Tests: `pruefungen/intelligence-gateway-i18.test.js` (A–D), Fixture-Helfer `schluesselbundTest`/`registryTest` |
-| (folgend) | Umsetzung, Umstellung der Test-Aufbauten, dieser Nachweis |
+| 84c5b40 | Umsetzung, Umstellung der Test-Aufbauten, dieser Nachweis |
 
 ## Rot → Grün
 
