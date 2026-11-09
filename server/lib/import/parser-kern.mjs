@@ -5,7 +5,7 @@
    - Format wird über den Inhalt erkannt (Magic Bytes, ZIP-Verzeichnis,
      [Content_Types].xml, CFB-Verzeichnis) und zwar so, wie SheetJS es täte,
      nicht über die Dateiendung. Die Endung erzeugt höchstens einen Hinweis.
-   - Unterstützt: xlsx (auch xlsm, Makros werden nie gelesen), xls (CFB/BIFF),
+   - Unterstützt: xlsx (xlsm mit Makro-Typ wird abgewiesen), xls (CFB/BIFF),
      CSV/TSV. ODS, xlsb, Vorlagen, Add-ins, Numbers und andere Pakete:
      NICHT_UNTERSTUETZT (Review 8725dc5, E1/E3).
    - ZIP-Container (xlsx): Verzeichnis lesen, Summe der erklärten
@@ -528,6 +528,8 @@ function erkennePaket(p) {
   if (mappen.length > 1) throw kaputt("mehrere Arbeitsmappen im Paket");
   const { pfad, art } = mappen[0];
   if (art === "xlsb") throw abbruch("NICHT_UNTERSTUETZT", XLSB_NICHT + UNTERSTUETZT);
+  /* E4-Entscheidung (imp-2-fix4): Arbeitsmappe mit Makro-Typ (xlsm) wird nie Datenquelle: keine Datenübernahme, kein Teilergebnis. */
+  if (art === "xlsm") throw abbruch("NICHT_UNTERSTUETZT", "Dateien mit Makros (xlsm) werden nicht gelesen. Bitte die Datei als .xlsx speichern (Makros entfernen).");
   if (art === "xlam" || art === "xltx") {
     throw abbruch("NICHT_UNTERSTUETZT", "Excel-Vorlagen und Add-ins werden nicht unterstützt. Bitte als normale Arbeitsmappe (.xlsx) speichern. " + UNTERSTUETZT);
   }
@@ -535,9 +537,7 @@ function erkennePaket(p) {
   const datei = pfad.replace(/^\//, "");
   if (datei.slice(-3).toLowerCase() === "bin") throw abbruch("NICHT_UNTERSTUETZT", XLSB_NICHT + UNTERSTUETZT);
   if (!hat(datei)) throw kaputt("Arbeitsmappe fehlt");
-  /* Makro-Arbeitsmappe (xlsm): gelesen werden nur die Tabellendaten; Makros nie (bookVBA: false,
-     vbaProject.bin erreicht SheetJS nicht), Hinweis MAKROS_VERWORFEN. */
-  return { format: "xlsx", makroTyp: art === "xlsm" };
+  return { format: "xlsx", makroTyp: false };
 }
 
 /* --------------------------- CFB-Prüfung (xls) ----------------------------

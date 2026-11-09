@@ -259,7 +259,8 @@ Dokumentation). Grün nach der Korrektur, zweimal gelaufen:
 | Tabellen-Alias | E1 | `E1-PoC Tabellen-Alias: ODS mit Tabellen-Element unter anderem Präfix → NICHT_UNTERSTUETZT` | rot (ok:true) | grün |
 | Getarnte xlsb (`wb.bin` in Content_Types, leere `workbook.xml`) | E3: Arbeitsmappe aus `[Content_Types].xml`; xlsb-Typ oder Pfad auf `bin` → `NICHT_UNTERSTUETZT` | `E3-PoC: getarnte xlsb (wb.bin in [Content_Types].xml, leere xl/workbook.xml) → NICHT_UNTERSTUETZT` | **rot: ok:true, xlsb-Inhalt gelesen** | grün |
 | Arbeitsmappen-Typen | E4: genau ein Override; xlsx- oder xlsm-Typ; Vorlage/Add-in/fehlend → `NICHT_UNTERSTUETZT`; zwei → `BESCHAEDIGT` | `E4: Arbeitsmappen-Inhaltstyp: Vorlage, Add-in oder fehlend → NICHT_UNTERSTUETZT; zwei Arbeitsmappen → BESCHAEDIGT` | rot (ok:true) | grün |
-| Makro-Typ | E4: nie Makros lesen, Hinweis `MAKROS_VERWORFEN` | `E4: Makro-Arbeitsmappentyp: Makros werden nie gelesen, Hinweis MAKROS_VERWORFEN, nur Tabellendaten` | rot (kein Hinweis) | grün |
+| Makro-Typ | E4: nie Makros lesen, Hinweis `MAKROS_VERWORFEN` | `E4: Makro-Arbeitsmappentyp: Makros werden nie gelesen, Hinweis MAKROS_VERWORFEN, nur Tabellendaten` | rot (kein Hinweis) | grün (überholt durch imp-2-fix4, siehe Offene Punkte (d)) |
+| Makro-Typ abweisen (imp-2-fix4) | E4-Entscheidung: xlsm → `NICHT_UNTERSTUETZT`, keine Datenübernahme | `xlsm wird nicht gelesen: NICHT_UNTERSTUETZT mit Hinweistext, keine Daten, kein Teilergebnis` (+ Erwartung der zwei bestehenden xlsm-Tests ersetzt) | rot (gegen 9e7b2ff: `ok:true`) | grün |
 | Blatt `.dat` mit `r=&#53;` | E4: jeder Teil mit `sheetData` wird geprüft, unabhängig von der Endung | `E4-PoC: Blatt mit Endung .dat (oder ohne Endung) und r="&#53;" wird vorab geprüft → BESCHAEDIGT` | **rot: ok:true, Zeile still verloren** | grün |
 | Binäres Blatt in xlsx | E3/E4: `.bin`-Teile erreichen SheetJS nicht; nicht lesbares Blatt nie still leer | `E3/E4: binäres Blatt (.bin) in einer xlsx wird nicht an SheetJS gegeben → NICHT_UNTERSTUETZT` | rot (ok:true, `parse_ws_bin`) | grün |
 | Numbers, `Index.zip`, ohne Content_Types | E3 | `E3: Numbers-Paket, verschachteltes Index.zip und ZIP ohne [Content_Types].xml → NICHT_UNTERSTUETZT` | rot (BESCHAEDIGT) | grün |
@@ -315,7 +316,7 @@ angepasst (Assertions sonst unverändert); Ersatz prüft jeweils `NICHT_UNTERSTU
 **Ausgeschlossene Formate (Stand nach diesem Branch):** ODS/FODS/UOC und andere OpenDocument-Pakete; xlsb (auch getarnt); xltx (Vorlage);
 xlam (Add-in); Apple Numbers (alle Varianten); ZIP-Pakete ohne `[Content_Types].xml` oder ohne/mit unbekanntem Arbeitsmappentyp (Word, PowerPoint
 usw.); OLE2 ohne `Workbook`/`Book`-Strom (Word, PowerPoint, Quattro Pro); verschlüsselte Dateien (`PASSWORTGESCHUETZT`); XML/HTML; ZIP64;
-mehrteilige Archive. Unterstützt: xlsx (inkl. xlsm, ohne Makros), xls (CFB/BIFF), CSV, TSV.
+mehrteilige Archive. xlsm (Makro-Typ, ab imp-2-fix4). Unterstützt: xlsx (ohne Makro-Typ), xls (CFB/BIFF), CSV, TSV.
 
 **Für IMP-3 (nur benannt, nicht umgesetzt):** `TEXT_ZU_GROSS` und `ZU_VIEL_GLEICHZEITIG` im Endpunkt-Vertrag führen und anzeigen; die
 Datumsumrechnung in IMP-3 bleibt entfernt (bereits im Branch `acc45/import/imp-3-datum`). IMP-3 muss außerdem damit rechnen, dass ODS jetzt
@@ -324,6 +325,8 @@ Datumsumrechnung in IMP-3 bleibt entfernt (bereits im Branch `acc45/import/imp-3
 **Offene Punkte.** (a) XLS: Für Blätter, die SheetJS in einer xls nicht lesen kann, gibt es keine Prüfung „Blatt fehlt“ wie bei xlsx (SheetJS
 liefert dort für Diagrammblätter u. U. kein Blatt; ohne echte Excel-Testdateien nicht sicher abgrenzbar). (b) Die Formel-Zellen-Fälle aus 8 (b)
 bleiben. (c) Die strikte Paketprüfung ist gegen synthetische, von SheetJS geschriebene Dateien getestet; ein Gegenlauf mit echten Excel-/LibreOffice-
-Exporten (xlsx, xlsm, xls) vor dem Pilotbetrieb wird empfohlen (Testdaten-Vorgabe: nur synthetische Dateien im Repo). (d) xlsm wird gelesen
-(Makro-Typ → Hinweis `MAKROS_VERWORFEN`); falls E4 „Makro-Typ … nie Lesen“ als Abweisen der ganzen Datei gemeint ist, wäre das eine Zeile in
-`erkennePaket` plus die Anpassung des bestehenden xlsm-Tests.
+Exporten (xlsx, xlsm, xls) vor dem Pilotbetrieb wird empfohlen (Testdaten-Vorgabe: nur synthetische Dateien im Repo). (d) **Erledigt in imp-2-fix4 (E4-Entscheidung):** xlsm (Makro-Typ) wird mit
+`NICHT_UNTERSTUETZT` abgewiesen („Dateien mit Makros (xlsm) werden nicht gelesen. Bitte die Datei als .xlsx speichern (Makros entfernen).“), ohne Datenübernahme
+und ohne Teilergebnis. Eine Zeile in `erkennePaket`; neuer Test `xlsm wird nicht gelesen` (rot gegen 9e7b2ff: `ok:true`); die beiden bestehenden xlsm-Tests
+(`Makro-Datei (xlsm mit vbaProject.bin)…`, `E4: Makro-Arbeitsmappentyp…`) erwarten jetzt `NICHT_UNTERSTUETZT` statt `ok:true` + Hinweis (Erwartung ersetzt, keine Assertion gelöscht).
+`MAKROS_VERWORFEN` bleibt für vbaProject-Teile in xlsx ohne Makro-Typ und für XLS mit VBA.

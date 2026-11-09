@@ -363,7 +363,7 @@ describe("IMP-2 ZIP-Bombe und Sicherheit", () => {
     expect(r.ok).toBe(true);
     expect(ticks).toBeGreaterThan(0);
   });
-  it("Makro-Datei (xlsm mit vbaProject.bin): Daten gelesen, Makro nicht ausgeführt, Hinweis", async () => {
+  it("Makro-Datei (xlsm mit vbaProject.bin): abgewiesen (NICHT_UNTERSTUETZT), keine Daten, Makro nicht ausgeführt", async () => {
     const eintraege = zipEintraege(mappe({ S: [["a"], [1]] }));
     eintraege.push({ name: "xl/vbaProject.bin", daten: B("MAKROCODE-NICHT-AUSFUEHREN") });
     const ct = eintraege.find((e) => e.name === "[Content_Types].xml");
@@ -373,11 +373,10 @@ describe("IMP-2 ZIP-Bombe und Sicherheit", () => {
     ct.daten = B(ct.daten.toString("utf8").replace("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml"));
     const buf = zip(eintraege.map((e) => ({ ...e, methode: "deflate" })));
     const r = await parseDatei({ buffer: buf, name: "m.xlsm" });
-    expect(r.ok, JSON.stringify(r)).toBe(true);
-    expect(r.blaetter[0].zeilen).toEqual([["a"], [1]]);
-    const h = r.hinweise.find((x) => x.code === "MAKROS_VERWORFEN");
-    expect(h).toBeTruthy();
-    expect(h.nachricht).toMatch(/Makro/);
+    /* imp-2-fix4, E4-Entscheidung: Makro-Typ (xlsm) wird abgewiesen; Erwartung ersetzt (vorher ok:true, Daten, Hinweis). */
+    expect(r, JSON.stringify(r)).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(r.blaetter).toBeUndefined();
+    expect(JSON.stringify(r)).toMatch(/Makro/);
     expect(JSON.stringify(r)).not.toContain("MAKROCODE");
   });
   it("Makro-Datei als .xlsx getarnt wird genauso erkannt; XLS mit VBA-Projekt ebenfalls", async () => {
@@ -943,13 +942,25 @@ describe("Review 8725dc5 E3/E4: Format wie SheetJS bestimmen, strikte Paketprüf
     const zwei = mitCt((x) => x.replace("</Types>", `<Override PartName="/xl/workbook2.xml" ContentType="${CT_XLSX}"/></Types>`));
     expect(await parseDatei({ buffer: zwei, name: "v.xlsx" })).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
   });
-  it("E4: Makro-Arbeitsmappentyp: Makros werden nie gelesen, Hinweis MAKROS_VERWORFEN, nur Tabellendaten", async () => {
+  it("E4: Makro-Arbeitsmappentyp: Datei wird abgewiesen (NICHT_UNTERSTUETZT), keine Datenübernahme", async () => {
     const xlsm = umbau(mappe({ S: [["a"], [1]] }), (e) => setze(e, "[Content_Types].xml",
       textVon(e, "[Content_Types].xml").replace(CT_XLSX, "application/vnd.ms-excel.sheet.macroEnabled.main+xml")));
     const r = await parseDatei({ buffer: xlsm, name: "m.xlsm" });
-    expect(r.ok, JSON.stringify(r)).toBe(true);
-    expect(r.blaetter[0].zeilen).toEqual([["a"], [1]]);
-    expect(hat(r, "MAKROS_VERWORFEN")).toBe(true);
+    /* imp-2-fix4: Erwartung ersetzt (vorher ok:true, Daten, Hinweis MAKROS_VERWORFEN). */
+    expect(r, JSON.stringify(r)).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+    expect(r.blaetter).toBeUndefined();
+    expect(hat(r, "MAKROS_VERWORFEN")).toBe(false);
+  });
+  it("xlsm wird nicht gelesen: NICHT_UNTERSTUETZT mit Hinweistext, keine Daten, kein Teilergebnis", async () => {
+    const xlsm = umbau(mappe({ S: [["a"], [1]] }), (e) => setze(e, "[Content_Types].xml",
+      textVon(e, "[Content_Types].xml").replace(CT_XLSX, "application/vnd.ms-excel.sheet.macroEnabled.main+xml")));
+    for (const name of ["m.xlsm", "m.xlsx"]) {
+      const r = await parseDatei({ buffer: xlsm, name });
+      expect(r, name).toMatchObject({ ok: false, code: "NICHT_UNTERSTUETZT" });
+      expect(r.nachricht ?? r.meldung ?? JSON.stringify(r), name).toContain("Dateien mit Makros (xlsm) werden nicht gelesen. Bitte die Datei als .xlsx speichern (Makros entfernen).");
+      expect(r.blaetter, name).toBeUndefined();
+      expect(r.hinweise?.some((x) => x.code === "MAKROS_VERWORFEN") ?? false, name).toBe(false);
+    }
   });
   it("E4-PoC: Blatt mit Endung .dat (oder ohne Endung) und r=\"&#53;\" wird vorab geprüft → BESCHAEDIGT", async () => {
     for (const ziel of ["sheet1.dat", "blatt"]) {

@@ -28,7 +28,7 @@ parseDatei({ buffer, name, grenzen }) → Promise<
 
 | `format` | Erkennung (Inhalt, nicht Endung; Reihenfolge wie SheetJS `parse_zip`/`readSync`) |
 |---|---|
-| `xlsx` | ZIP (`PK\x03\x04`) ohne ODS-/Numbers-Merkmale, mit `[Content_Types].xml`, das **genau eine** Arbeitsmappe mit dem Typ `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml` (oder dem xlsm-Typ `application/vnd.ms-excel.sheet.macroEnabled.main+xml`, siehe 8) deklariert; Pfad nicht auf `bin` endend und im Archiv vorhanden. Strikte Paketprüfung siehe 5. |
+| `xlsx` | ZIP (`PK\x03\x04`) ohne ODS-/Numbers-Merkmale, mit `[Content_Types].xml`, das **genau eine** Arbeitsmappe mit dem Typ `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml` (der xlsm-Typ `application/vnd.ms-excel.sheet.macroEnabled.main+xml` wird abgewiesen, siehe 8) deklariert; Pfad nicht auf `bin` endend und im Archiv vorhanden. Strikte Paketprüfung siehe 5. |
 | `xls` | OLE2/CFB (`D0 CF 11 E0 A1 B1 1A E1`) mit plausibler CFB-Struktur (siehe 5a) und einem Strom `Workbook` oder `Book` |
 | `csv` / `tsv` | reiner Text (keine NUL-Bytes, < 1 % Steuerzeichen), Trenner `;` `,` Tab automatisch (Tab bei Endung `.tsv`) |
 
@@ -204,8 +204,8 @@ enthält die Datei insgesamt keine Daten → Fehler `LEER`. Vollständig leere Z
 (xlsm/vbaProject.bin, VBA in XLS: nichts wird ausgeführt oder übernommen), `EXTERNE_VERWEISE_IGNORIERT` (`xl/externalLinks`),
 `EINGEBETTETE_OBJEKTE_IGNORIERT`, `AUSGEBLENDETES_BLATT` (Blatt wird trotzdem geliefert), `DATUMSSYSTEM_1904` (Datumswerte auf 1900 normiert, Zusatzfeld `datumssystemQuelle: "1904"`, siehe 6).
 `MAKROS_VERWORFEN` wird nur bei echten Makro-Bestandteilen gesetzt: Eintrag `vbaProject.bin`, oder in `[Content_Types].xml`
-ein `ContentType="application/vnd.ms-office.vbaProject"`, oder die Arbeitsmappe hat den Makro-Typ `application/vnd.ms-excel.sheet.macroEnabled.main+xml`
-(Review 8725dc5, E4: der Makro-Typ führt nie zum Lesen von Makros; gelesen werden nur Tabellendaten, `vbaProject.bin` erreicht SheetJS nicht).
+ein `ContentType="application/vnd.ms-office.vbaProject"`. Die Arbeitsmappe mit Makro-Typ `application/vnd.ms-excel.sheet.macroEnabled.main+xml`
+wird seit imp-2-fix4 nicht mehr mit Hinweis durchgelassen, sondern mit `NICHT_UNTERSTUETZT` abgewiesen (E4-Entscheidung).
 Der allgemeine Standardeintrag `Default Extension="bin"` (`…macroEnabled.main`) zählt nicht.
 
 **Spaltenzahl vor dem Ausbau** (Review PR #123, Punkt 6, nur dokumentiert): die Spaltengrenze wird erst nach dem Aufbau der Zeilen geprüft.
@@ -237,5 +237,5 @@ entfernt (Branch `acc45/import/imp-3-datum`); maßgeblich ist allein `roh` im Sy
   Deshalb: ODS → `NICHT_UNTERSTUETZT` mit der Meldung „OpenDocument-Tabellen (ODS) werden derzeit nicht unterstützt; bitte als XLSX oder CSV
   speichern.“ Die ODS-spezifischen Prüfungen (null-date, Blattnamen-Entitäten, `sheetRows` für ODS) sind aus dem Lesepfad entfernt.
 - **xlsb, Vorlagen, Add-ins, Numbers, unbekannte Hauptinhaltstypen (E3)**: binäre bzw. nicht vorgeprüfte Lesepfade von SheetJS.
-- **Makro-Arbeitsmappen (xlsm)** bleiben lesbar (nur Tabellendaten, Hinweis `MAKROS_VERWORFEN`); siehe 8.
+- **Makro-Arbeitsmappen (xlsm, E4-Entscheidung, imp-2-fix4)** werden abgewiesen: `NICHT_UNTERSTUETZT`, Meldung „Dateien mit Makros (xlsm) werden nicht gelesen. Bitte die Datei als .xlsx speichern (Makros entfernen).“ Keine Datenübernahme, kein Teilergebnis; eine Datei mit Makro-Typ wird nie Datenquelle. Der Hinweis `MAKROS_VERWORFEN` bleibt nur für Makro-Bestandteile in Dateien ohne Makro-Arbeitsmappentyp (siehe 8).
 - **xls (E2)** bleibt unterstützt, nur mit plausibler CFB-Struktur (5a).
