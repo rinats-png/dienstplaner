@@ -58,6 +58,12 @@ jobs:
       - name: Querschnittsprüfungen (bisher nicht verdrahtet)
         run: npm run pruefung:querschnitt
 
+      - name: Personalimport (IMP-1)
+        run: npm run pruefung:import-bestand
+
+      - name: Eintrittsdatum ohne stille Ersetzung
+        run: npm run pruefung:person-eintritt
+
       # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
       # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
       # Folgen hat. App.jsx bleibt außen vor.

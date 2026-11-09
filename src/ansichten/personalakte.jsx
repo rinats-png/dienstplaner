@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { heute, fKurz, MON, DOW } from "../lib/datum.js";
 import { einheitAm } from "../../server/lib/fachpruefung.mjs";
-import { urlaubskonto, istStunden, sollStunden, stundenkonto, nachtJahr, darfEinheit, kontoSichtbar, abwArt, teilzeitProfil, kontoVerlauf, ABW } from "../lib/fachlogik.js";
+import { urlaubskonto, istStunden, sollStunden, stundenkonto, nachtJahr, darfEinheit, kontoSichtbar, abwArt, teilzeitProfil, kontoVerlauf, ABW, eintrittUebernehmen } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
 import { pad, alterAm } from "../regelwerk.js";
 import { Sheet } from "../ui/leisten.jsx";
@@ -28,6 +28,8 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const [form, setForm] = useState({ art: "urlaub", von: heute(), bis: heute() });
   const [vers, setVers] = useState({ einheitId: "", ab: heute() });
   const [fehler, setFehler] = useState(null);
+  const [eintrittRoh, setEintrittRoh] = useState((p && p.eintritt) || "");
+  const [eintrittFehler, setEintrittFehler] = useState(null);
   if (!p) return null;
   const jahr = Number(ym.slice(0, 4)), d0 = heute();
   const e = m.einheiten.find((x) => x.id === einheitAm(p, d0));
@@ -49,7 +51,8 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
   return (
     <Sheet open onClose={onClose} titel={`${p.vorname} ${p.nachname}`} width={800}>
       <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 22, flexWrap: "wrap" }}>
-        <Pill tone="accent">{e ? e.name : "ohne Zuordnung"}</Pill><Pill>{p.funktion}</Pill>
+        <Pill tone="accent">{e ? e.name : "ohne Zuordnung"}</Pill>{p.funktion && <Pill>{p.funktion}</Pill>}
+        {(p.eintritt === null || p.eintritt === "") && <Pill tone="warn">Eintritt fehlt</Pill>}
         {(m.standorte || []).length > 1 && <Pill>{((m.standorte || []).find((x) => x.id === (e || {}).standortId) || {}).name || "—"}</Pill>}
         {p.springer && <Pill tone="violet">Springer</Pill>}
         {p.teilzeit && p.teilzeit.aktiv && <Pill>Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
@@ -112,6 +115,22 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
                 Regeln gebraucht wird — etwa Werkstudent. Nur mit staff.edit:
                 Die Schichtverantwortung bekommt beide Felder nicht
                 (RECHTEMATRIX.md ²³). */}
+            {/* Datenreview PR #130 (2): Eintrittsdatum bearbeiten. Ein leeres Feld überschreibt kein bestehendes
+                Datum, ein gültiges wird übernommen, ein ungültiges ist ein Fehler (eintrittUebernehmen). Ohne
+                Eintritt ist die Person an keinem Tag im Dienst (kein Plan, kein Soll, keine Abrechnung). */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end" }}>
+              <Field label="Eintrittsdatum"
+                hint={p.eintritt ? `Bisher ${fKurz(p.eintritt)}. Leer lassen ändert nichts.`
+                  : "Eintritt fehlt: Die Person wird erst ab dem Eintrittsdatum geplant und abgerechnet."}>
+                <Inp type="date" value={eintrittRoh} aria-invalid={eintrittFehler ? "true" : undefined}
+                  onChange={(e) => { setEintrittRoh(e.target.value); setEintrittFehler(null); }} /></Field>
+              <Btn onClick={() => {
+                const r = eintrittUebernehmen(p, eintrittRoh);
+                if (!r.ok) { setEintrittFehler(r.fehler); return; }
+                akt.setzeEintritt(p.id, eintrittRoh);
+              }}>Übernehmen</Btn>
+            </div>
+            {eintrittFehler && <div role="alert" style={{ color: C.danger, fontSize: 13, fontWeight: 600 }}>{eintrittFehler}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Beschäftigungsmodell"
                 hint={p.beschaeftigungsmodell ? "Regeln, die an dieses Modell gebunden sind, wirken auf diese Person."

@@ -25,7 +25,7 @@
      bereit_mit_hinweisen  alle Pflichtpunkte erfüllt, aber ein Hinweis (z. B. keine Vorgaben)
      bereit                nichts zu beanstanden
 
-   Jeder Punkt: { id, titel, pflicht, status: "ok"|"fehlt"|"hinweis", luecken: [{ text, ids }] }
+   Jeder Punkt: { id, titel, pflicht, status: "ok"|"fehlt"|"hinweis", luecken: [{ text, ids, behebung? }] }
    Die Texte nennen Zahlen und Fachwörter, nie Namen („Bei 3 Personen fehlen
    die Vertragsstunden."); `ids` sind Kennungen (Personen, Dienstarten), die
    die Oberfläche selbst auflöst. Nichts davon gehört in Server-Logs.
@@ -58,8 +58,8 @@ const n = (k, eins, viele) => `${k} ${k === 1 ? eins : viele}`;
 function punkt(id, titel, pflicht) {
   return { id, titel, pflicht, status: "ok", luecken: [] };
 }
-function luecke(p, text, ids = [], hinweis = false) {
-  p.luecken.push({ text, ids: [...ids].sort(), hinweis });
+function luecke(p, text, ids = [], hinweis = false, behebung = null) {
+  p.luecken.push(behebung ? { text, ids: [...ids].sort(), hinweis, behebung } : { text, ids: [...ids].sort(), hinweis });
   if (hinweis) { if (p.status === "ok") p.status = "hinweis"; } else p.status = "fehlt";
 }
 
@@ -110,7 +110,9 @@ export function planungsreife(daten, optionen = {}) {
     const fehlt = punkte.some((x) => x.pflicht && x.status === "fehlt");
     const hinweis = punkte.some((x) => x.status === "hinweis");
     const urteil = fehlt ? "nicht_bereit" : hinweis ? "bereit_mit_hinweisen" : "bereit";
-    const luecken = punkte.flatMap((x) => x.luecken.map((l) => ({ punkt: x.id, text: l.text, ids: l.ids, hinweis: l.hinweis })));
+    const luecken = punkte.flatMap((x) => x.luecken.map((l) => (l.behebung
+      ? { punkt: x.id, text: l.text, ids: l.ids, hinweis: l.hinweis, behebung: l.behebung }
+      : { punkt: x.id, text: l.text, ids: l.ids, hinweis: l.hinweis })));
     return {
       version: PLANUNGSREIFE_VERSION, urteil, bereit: urteil !== "nicht_bereit", zeitraum, punkte,
       luecken, gruende: luecken.map((l) => l.text), zaehler,
@@ -144,18 +146,23 @@ export function planungsreife(daten, optionen = {}) {
   const personenRoh = liste(daten.personen);
   if (!personenRoh) luecke(p.personal, "Die Personenliste fehlt.");
   const alle = (personenRoh || []).filter((x) => x && typeof x === "object");
-  const planbar = alle.filter((x) => {
+  const kandidaten = alle.filter((x) => {
     if (x.status === "gesperrt" || x.imSchichtdienst === false) return false;
     if (istTag(x.austritt) && x.austritt < o.von) return false;
     if (istTag(x.eintritt) && x.eintritt > o.bis) return false;
     if (o.einheitId && einheitDerPerson(x, o.bis) !== o.einheitId && x.bereich !== o.einheitId) return false;
     return true;
   });
+  /* Datenreview PR #130 (1): Eintritt null/leer heißt „an keinem Tag im Dienst“ (imDienst) — die Person wird
+     nicht eingeplant und zählt nicht als einsetzbar. Ein Bestand ohne Feld (Altbestand) bleibt wie bisher. */
+  const planbar = kandidaten.filter((x) => x.eintritt !== null && x.eintritt !== "");
   zaehler.personen = planbar.length;
   if (personenRoh && !planbar.length) luecke(p.personal, "Im Planungszeitraum ist keine Person einsetzbar.");
   const idsOhne = (f) => planbar.filter(f).map((x) => String(x.id ?? "?"));
-  const ohneEintritt = idsOhne((x) => !istTag(x.eintritt));
-  if (ohneEintritt.length) luecke(p.personal, `Bei ${n(ohneEintritt.length, "Person", "Personen")} fehlt der Eintritt.`, ohneEintritt);
+  /* „Eintritt fehlt“ ist eine eigene Lücke, aber ein Hinweis mit Behebung, keine Blockade der Planungsreife. */
+  const ohneEintritt = kandidaten.filter((x) => !istTag(x.eintritt)).map((x) => String(x.id ?? "?"));
+  if (ohneEintritt.length) luecke(p.personal, `Bei ${n(ohneEintritt.length, "Person", "Personen")} fehlt der Eintritt.`, ohneEintritt, true,
+    "Eintrittsdatum in der Personalakte eintragen (Personal → Person → Eintrittsdatum). Bis dahin wird die Person nicht eingeplant und nicht abgerechnet.");
   const ohneEinheit = idsOhne((x) => !einheitDerPerson(x, o.bis) && !x.bereich);
   if (ohneEinheit.length) luecke(p.personal, `Bei ${n(ohneEinheit.length, "Person", "Personen")} fehlt die Einheit.`, ohneEinheit);
 

@@ -6,9 +6,11 @@ import { addDays, montag, toMin, dim_, pad, AUSGLEICH_WOCHEN, ausgleichszeitraum
 import { DOW, heute, fKurz, fDatum, MON, fLang, zeitpunktText } from "./datum.js";
 import { MATRIX_STD, ROLLEN, rollenName, anzahlWort } from "./rollen.js";
 import { planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
+import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenvergabe.mjs";
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
-import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText } from "../../server/lib/isteinfrieren.mjs";
+import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
+  ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT } from "../../server/lib/isteinfrieren.mjs";
 import { istVerfuegbar, zeitraumMonat, zurPruefung, zeitraumJahr, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
@@ -1171,7 +1173,7 @@ export function baueRechnung(db, m, monatISO) {
 export function rolleAm(p, d) {
   if (!p.rolleVerlauf || !p.rolleVerlauf.length) return (!p.rolleSeit || p.rolleSeit <= d) ? p.rolle : "mitarbeiter";
   let t = null;
-  for (const z of p.rolleVerlauf) if (z.ab <= d) t = z;
+  for (const z of p.rolleVerlauf) if (!z.ab || z.ab <= d) t = z;   // ohne Datum (Eintritt unbekannt): von Anfang an
   return t ? t.rolle : p.rolle;
 }
 export const einschr = (p) => p.einschraenkungen || {};
@@ -2052,32 +2054,89 @@ export function importZuordnen(kopf, zeilen) {
   return { zu, herkunft };
 }
 
+/** Eintrittsdatum prüfen. Gibt nie das heutige Datum zurück — heute gilt nur, wenn es ausdrücklich eingegeben oder
+ *  gewählt wurde.
+ *  leer, optional            -> { ok: true,  wert: null }
+ *  leer, pflicht             -> { ok: false, wert: null, fehler: Aufforderung zur Eingabe }
+ *  gültig (TT.MM.JJJJ, ISO)  -> { ok: true,  wert: "JJJJ-MM-TT" }
+ *  ungültig                  -> { ok: false, wert: null, fehler: Meldung mit dem eingegebenen Wert } */
+export function eintrittPruefen(roh, { pflicht = false } = {}) {
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) {
+    return pflicht
+      ? { ok: false, wert: null, fehler: "Bitte das Eintrittsdatum eingeben." }
+      : { ok: true, wert: null };
+  }
+  let j, mo, tg;
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const de = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (iso) [, j, mo, tg] = iso.map(Number); else if (de) [, tg, mo, j] = de.map(Number);
+  else return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig (erwartet TT.MM.JJJJ oder JJJJ-MM-TT).` };
+  const d = new Date(Date.UTC(j, mo - 1, tg));
+  if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== tg)
+    return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig: Das Datum gibt es nicht.` };
+  return { ok: true, wert: `${j}-${pad(mo)}-${pad(tg)}` };
+}
+/** Eintritt einer vorhandenen Person bearbeiten: Ein leeres Feld lässt das bestehende Datum unverändert
+ *  (keine stille Ersetzung, auch nicht durch null oder heute); ein gültiges Datum ersetzt es; ein ungültiges
+ *  ist ein Fehler und lässt den Bestand stehen. */
+export function eintrittUebernehmen(person, roh) {
+  const bisher = (person && person.eintritt) || null;
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) return { ok: true, wert: bisher };
+  const r = eintrittPruefen(t);
+  return r.ok ? r : { ...r, wert: bisher };
+}
+
+/* IMP-1 Auflagen C/D/E/F: Hilfen der Importprüfung. */
+/** Rollen, die ein Anwender über den Import vergeben darf — abgeleitet aus vergebbareRollen() in
+ *  server/lib/rollenvergabe.mjs (Datenreview PR #130: keine Kopie der Liste mehr; niemand vergibt die eigene
+ *  Rolle oder eine darüber). Nur Rollen, die etwas vergeben dürfen, haben einen Eintrag. Der Server prüft die
+ *  Vergabe trotzdem selbst; die Prüfung hier ist Bedienkomfort und frühe Rückmeldung, kein Schutz. */
+export const IMPORT_VERGEBBAR = Object.freeze(Object.fromEntries(Object.keys(ROLLEN_RANG)
+  .map((r) => [r, vergebbareRollen(r)]).filter(([, l]) => l.length)));
+/** Personalnummer ohne Groß-/Kleinschreibung, Trennzeichen und führende Nullen. */
+const importNrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
+/** Name normalisiert: Umlaute, ß, Bindestriche, Mehrfach-Leerzeichen, Groß-/Kleinschreibung. */
+const importNameNorm = (s) => String(s || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+  .replace(/ß/g, "ss").replace(/[-‐‑–]/g, " ").replace(/\s+/g, " ").trim();
+const importNameSchluessel = (nach, vor) => (nach && vor ? [importNameNorm(nach), importNameNorm(vor)] : null);
+const importNameGleich = (a, b) => !!a && !!b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));
 /** Ein Feld ohne Zuordnung, das gebraucht wird? */
 export const importFehlend = (zu) => ["nachname"].filter((f) => zu[f] === undefined);
 /** Baut aus den Rohzeilen Personendatensätze und meldet, was fehlt. */
-export function importPruefen(m, kopf, daten, zu) {
+/* IMP-1: Vierter Parameter `entscheidungen` — je Zeilennummer die Wahl bei einer Dublette:
+   "neu" | "ueberspringen" | "klaeren" | { aktion: "aktualisieren", bestaetigt: true }.
+   Ohne Wahl bleibt eine Dublette unübernehmbar (ok: false). */
+export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
   const rollen = ROLLEN.filter((r) => !r.extern).map((r) => r.id);
-  const zeilen = daten.map((f, i) => {
+  /* Auflage D: Rolle des Anwenders; ohne Angabe gilt die niedrigste Rolle, die importieren darf (Planung). */
+  const vergebbar = IMPORT_VERGEBBAR[optionen.vergeber || "planer"] || [];
+  const roh = daten.map((f, i) => {
     const hol = (k) => (zu[k] !== undefined ? (f[zu[k]] || "").trim() : "");
     const nachname = hol("nachname"), vorname = hol("vorname");
     const einheitName = hol("einheit");
     const einheit = m.einheiten.find((e) => e.name.toLowerCase() === einheitName.toLowerCase());
     const std = parseFloat((hol("wochenstunden") || "").replace(",", ".")) || m.einstellungen.sollWochenstunden;
     const rolleRoh = hol("rolle").toLowerCase();
-    const rolleId = rollen.find((x) => x === rolleRoh)
-      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || "mitarbeiter";
+    /* Datenreview PR #130: Nur eine leere Rollenangabe heißt „mitarbeiter“; eine unbekannte wird nicht
+       stillschweigend dazu, sondern ist ein Fehler (rolleId null). */
+    const rolleErkannt = rollen.find((x) => x === rolleRoh)
+      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || null;
+    const rolleId = rolleRoh ? rolleErkannt : "mitarbeiter";
     const qualNamen = hol("qualifikationen").split(/[,/|]/).map((x) => x.trim()).filter(Boolean);
     const quals = qualNamen.map((q) => (m.qualifikationen.find((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
     const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
-    const eintritt = (() => {
-      const roh = hol("eintritt");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(roh)) return roh;
-      const de = roh.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-      if (de) return `${de[3]}-${pad(Number(de[2]))}-${pad(Number(de[1]))}`;
-      return heute();
-    })();
+    /* Eintritt: leer bleibt leer (null), nie heute(); ein nicht lesbares oder unmögliches Datum wird
+       gemeldet. Im Import ist der Eintritt fachlich optional (pflicht: false). */
+    const eintrittRoh = hol("eintritt");
+    const eintrittErgebnis = eintrittPruefen(eintrittRoh);
+    const eintritt = eintrittErgebnis.wert;
+    const personalnummer = hol("personalnummer");
+    /* IMP-1: Fehlt die E-Mail, bleibt sie leer — es wird keine Adresse erfunden. */
+    const email = hol("email");
     const tzRoh = hol("teilzeit").toLowerCase();
     const teilzeit = (tzRoh === "ja" || tzRoh === "x" || tzRoh === "1" || std < (m.einstellungen.sollWochenstunden || 40) - .1)
       ? { aktiv: true, modus: "quote", wochentage: [0, 1, 2, 3, 4] } : null;
@@ -2086,12 +2145,117 @@ export function importPruefen(m, kopf, daten, zu) {
     if (!vorname) fehler.push("Vorname fehlt");
     if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
     if (!einheitName) fehler.push("Einheit fehlt");
-    const doppelt = m.personen.some((p) => p.nachname.toLowerCase() === nachname.toLowerCase()
-      && p.vorname.toLowerCase() === vorname.toLowerCase());
+    if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
+    /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
+       „mitarbeiter“; wer gar keine Rolle vergeben darf (Beschäftigte, abgelöste Rolle „kunde“: in
+       IMPORT_VERGEBBAR wie in vergebbareRollen() ohne Eintrag), legt auch so niemanden an. */
+    if (!rolleId) fehler.push(`Rolle „${rolleRoh}“ nicht erkannt`);
+    else if (!vergebbar.includes(rolleId))
+      fehler.push(rolleRoh ? `Rolle „${rolleRoh}" nicht vergebbar` : "Keine Berechtigung, Zugänge anzulegen");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
+    /* IMP-1: Dublette zuerst über die Personalnummer (mandantenintern), sonst über den Namen.
+       Eine Dublette wird nie ungeprüft übernommen: ohne ausdrückliche Wahl bleibt die Zeile
+       unübernehmbar. Namen allein führen nie zusammen oder überschreiben. */
+    /* Exaktvergleich: beide Seiten getrimmt (Import und Bestand), Schreibweise egal. */
+    const nrNorm = personalnummer.trim().toLowerCase();
+    const nameKey = importNameSchluessel(nachname, vorname);
+    let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").trim().toLowerCase() === nrNorm) : null;
+    let dublette = treffer ? { grund: "personalnummer", personId: treffer.id, inDatei: false } : null;
+    /* Nur ein exakter Personalnummer-Treffer ist ein sicherer Treffer; Nummern, die sich nur in führenden
+       Nullen oder Trennzeichen unterscheiden (01001/1001, P-1001/P1001), sind ein möglicher Treffer. */
+    if (!dublette && nrNorm && importNrLose(nrNorm)) {
+      treffer = m.personen.find((p) => importNrLose(p.personalnummer) === importNrLose(nrNorm));
+      if (treffer) dublette = { grund: "personalnummer_aehnlich", personId: treffer.id, inDatei: false };
+    }
+    /* Auflage F: Namensvergleich normalisiert (Umlaute, Leerzeichen, Bindestriche, Schreibweise);
+       vertauschter Vor-/Nachname gilt als möglicher Treffer. Immer "klaeren", nie Aktualisierung. */
+    if (!dublette && nameKey) {
+      treffer = m.personen.find((p) => importNameGleich(nameKey, importNameSchluessel(p.nachname, p.vorname)));
+      if (treffer) {
+        const tk = importNameSchluessel(treffer.nachname, treffer.vorname);
+        dublette = { grund: "name", personId: treffer.id, inDatei: false,
+          vertauscht: !(nameKey[0] === tk[0] && nameKey[1] === tk[1]),
+          nummerAbweicht: !!nrNorm && importNrLose(treffer.personalnummer) !== importNrLose(nrNorm) };
+      }
+    }
+    return { f, i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, eintrittRoh,
+      personalnummer, email, teilzeit, fehler, nrNorm, nameKey, dublette, hol };
+  });
+  /* Auflage E: Doppelte Zeilen in der Datei — BEIDE (alle) Zeilen werden zum Klären markiert, kein stiller
+     Vorrang. Nummern über importNrLose (führende Nullen, Trennzeichen, Schreibweise), sonst über den Namen.
+     Tragen beide Zeilen eine Nummer, entscheidet allein die Nummer; hat nur eine (oder keine) eine Nummer,
+     entscheidet der Name (IMP-1 Review: „Zed Oli“ und „Zed Oli Q9“ werden beide gemeldet). */
+  const inDateiGruppe = (r) => {
+    const nr = importNrLose(r.nrNorm);
+    return roh.filter((x) => {
+      if (x === r) return false;
+      const nx = importNrLose(x.nrNorm);
+      if (nr && nx) return nr === nx;
+      return importNameGleich(r.nameKey, x.nameKey);
+    });
+  };
+  const zeilen = roh.map((r) => {
+    const { i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, personalnummer,
+      email, teilzeit, fehler, nrNorm, hol } = r;
+    let dublette = r.dublette;
+    const andere = inDateiGruppe(r);
+    if (!dublette && andere.length) {
+      const nr = importNrLose(nrNorm);
+      const perNummer = !!nr && andere.some((x) => importNrLose(x.nrNorm) === nr);
+      dublette = { grund: perNummer ? "personalnummer" : "name", personId: null, inDatei: true,
+        zeile: andere[0].i + 1, zeilen: andere.map((x) => x.i + 1) };
+    }
+    /* Auflage B: Aktualisieren ist über den Import nie möglich. Die Zuordnung bleibt für die Rückmeldung bestehen,
+       die Zeile ist aber nie übernehmbar (ok false). */
+    const sicherTreffer = !!dublette && dublette.grund === "personalnummer";
+    const darfAktualisieren = sicherTreffer && !dublette.inDatei;
+    /* Auflage A/G: Exakter Personalnummer-Treffer (P4711 = p4711): nie "neu", nie übernehmbar. */
+    const hinweis = darfAktualisieren
+      ? `Personalnummer „${personalnummer}" vorhanden, nicht über den Import änderbar`
+      : (dublette && dublette.inDatei && dublette.grund === "personalnummer"
+        ? `Personalnummer „${personalnummer}" kommt in der Datei mehrfach vor` : null);
+    if (hinweis) fehler.push(hinweis);
+    const doppelt = !!dublette;
+    /* Datenreview PR #130: Gleicher Name in der Datei mit verschiedenen Nummern ist keine Dublette (die Nummer
+       entscheidet), aber ein Hinweis zum Klären — Vorgabe klaeren, ohne ausdrückliche Wahl nicht übernehmbar. */
+    const nrLose = importNrLose(nrNorm);
+    const namensgleich = dublette ? [] : roh.filter((x) => x !== r && importNameGleich(r.nameKey, x.nameKey)
+      && !!nrLose && !!importNrLose(x.nrNorm) && importNrLose(x.nrNorm) !== nrLose);
+    const klaeren = doppelt || namensgleich.length > 0;
+    const wahl = klaeren ? entscheidungen[i + 1] : null;
+    let aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
+    const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
+    /* Vorgabe ist nie "aktualisieren" und nie "neu"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
+    const aktualisierungAbgelehnt = aktion === "aktualisieren" && !darfAktualisieren;
+    if (aktualisierungAbgelehnt) aktion = "klaeren";
+    const neuAbgelehnt = aktion === "neu" && sicherTreffer;
+    if (neuAbgelehnt) aktion = "klaeren";
+    const vorgabe = klaeren ? "klaeren" : null;
+    const neuGewaehlt = aktion === "neu";
+    /* IMP-1 Review: Grund der Dublette für die Rückmeldung (eine Wahl bietet die Oberfläche erst mit IMP-4).
+       Die Personalnummer-Fälle stehen schon als hinweis in fehler. */
+    const dublettenGrund = !dublette && namensgleich.length
+      ? `Namensgleichheit mit abweichender Nummer in der Datei (Zeile ${namensgleich.map((x) => x.i + 1).join(", ")}), bitte klären`
+      : !dublette || hinweis ? null
+      : dublette.inDatei ? `Name kommt in der Datei mehrfach vor (Zeile ${dublette.zeilen.join(", ")}), bitte klären`
+        : dublette.grund === "personalnummer_aehnlich" ? `Ähnliche Personalnummer bereits vorhanden, bitte klären`
+          : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
+            : "Name bereits vorhanden, bitte klären";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
-      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, ok: fehler.length === 0 };
+      /* Auflage C: eintrittLeer heißt „Zelle leer“, nicht „kein gültiges Datum“ (ungültig ist ein Fehler, nicht
+         leer). Der Speicherpfad (importieren in src/app/aktionen/stammdaten.js) legt zugehoerigkeit.ab und
+         rolleSeit dann bewusst als null an; die Leser lesen leeres ab als „von Anfang an“. */
+      eintrittLeer: !r.eintrittRoh,
+      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette, dublettenGrund,
+      personalnummer, email, aktion, aktualisierungBestaetigt: aktion === "aktualisieren" && bestaetigt,
+      vorgabe, aktualisierungAbgelehnt, neuAbgelehnt, hinweis,
+      /* zielId ist nur Rückmeldung (welche Person gemeint wäre). Solche Zeilen sind nie ok; der Speicherpfad
+         nimmt nur ok-Zeilen und liest zielId nicht. */
+      zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
+      namensgleichheit: namensgleich.map((x) => x.i + 1),
+      ok: fehler.length === 0 && (!klaeren || neuGewaehlt) };
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,
@@ -2102,6 +2266,28 @@ export const IMPORT_BEISPIEL = `Nachname;Vorname;Einheit;Funktion;Wochenstunden;
 Meier;Sabine;Schichtgruppe 1;Fachkraft;41;30;01.03.2021;mitarbeiter;SK,EH;
 Yildiz;Kerem;Schichtgruppe 2;Schichtleitung;41;30;15.08.2019;subplaner;SK,SL;
 Novak;Petra;Schichtgruppe 1;Fachkraft;20,5;30;01.02.2024;mitarbeiter;SK;ja`;
+
+/** Datenreview PR #130 (3): Beim Speichern die Personalnummer erneut gegen den AKTUELLEN Bestand prüfen
+ *  (zwischen Prüfung und Speichern kann sich der Bestand geändert haben). Exakt, getrimmt, ohne Groß-/
+ *  Kleinschreibung. Eine vorhandene Nummer wird nie angelegt; die Zeile wird mit Fehler übersprungen. Auch
+ *  zweimal dieselbe Nummer im selben Speichervorgang wird nur einmal angelegt. Die serverseitige Eindeutigkeit
+ *  ist ein eigener Schritt (docs/acc45/IMP-1-NACHWEIS.md, Restpunkte).
+ *  @returns {{ uebernehmen: object[], uebersprungen: { nr: number, personalnummer: string, fehler: string }[] }} */
+export function importGegenBestand(personen, zeilen) {
+  const vorhanden = new Set((personen || []).map((p) => String((p && p.personalnummer) || "").trim().toLowerCase()).filter(Boolean));
+  const uebernehmen = [], uebersprungen = [];
+  for (const z of zeilen || []) {
+    const roh = String((z && z.personalnummer) || "").trim();
+    const nr = roh.toLowerCase();
+    if (nr && vorhanden.has(nr)) {
+      uebersprungen.push({ nr: z.nr, personalnummer: roh, fehler: `Personalnummer „${roh}“ bereits vorhanden — Zeile ${z.nr} nicht angelegt` });
+      continue;
+    }
+    if (nr) vorhanden.add(nr);
+    uebernehmen.push(z);
+  }
+  return { uebernehmen, uebersprungen };
+}
 
 /* ==========================================================================
    RECHENKERN — FÜNFTE AUSBAUSTUFE
@@ -3296,7 +3482,8 @@ export function lohnPruefZeilen(m, ym) {
   const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${abschlussLueckeText(m, ym)}`,
     ...lu.map((p) => `  ${p.nachname}, ${p.vorname}`), ""] : [];
   /* Austritt im Monat (A-5): keine Zeilen — gesagt, nicht still. */
-  const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym)];
+  /* Auflage A (Datenreview PR #130): Stempel ohne Eintrittsdatum — keine Zeilen, aber ein benannter Prüffall. */
+  const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym), ...ohneEintrittZeilen(m, ym)];
   if (!h) return [...luZeilen, ...fz];
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
@@ -3355,10 +3542,31 @@ export function freezeZeilen(m, ym) {
   return aus;
 }
 
+/**
+ * Auflage A (Datenreview PR #130): Personen ohne Eintrittsdatum mit Stempeln im Monat — PRÜFFALL „Eintrittsdatum
+ * fehlt – Stunden nicht abgerechnet" mit Anzahl der Stempel. Ohne solche Fälle leer.
+ */
+export function ohneEintrittZeilen(m, ym) {
+  const f = ohneEintrittPrueffaelle(m, ym);
+  if (!f.length) return [];
+  /* Review d6c92e0, Befund 3: Im abgeschlossenen Monat ist das Ist eingefroren — ein später gesetztes Eintrittsdatum
+     ändert dessen Stunden nicht von selbst (wie src/ansichten/monatsabschluss.jsx). */
+  const e = m && m.monatsabschluss && m.monatsabschluss[ym];
+  const rat = !monatAbgeschlossen(m, ym)
+    ? "Eintrittsdatum setzen, dann rechnen die Stunden mit:"
+    : e && e.lohnexport && typeof e.lohnexport === "object"
+      ? "Der Monat ist abgeschlossen und der Lohnexport bestätigt — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über den Korrekturprozess:"
+      : "Der Monat ist abgeschlossen — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über Wiederöffnen und erneuten Abschluss:";
+  return [`ACHTUNG: ${OHNE_EINTRITT_TEXT} (Prüffall) — ${f.length === 1 ? "1 Person ohne Eintrittsdatum fehlt" : `${f.length} Personen ohne Eintrittsdatum fehlen`} `
+    + `in dieser Ausgabe, ihre Stempel sind gespeichert. ${rat}`,
+  ...f.map((x) => `  ${ohneEintrittFallText(x)}`), ""];
+}
+
 /** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
 export function lohnWarnung(m, ym, w) {
   const l = freezeGeloescht(m, ym) ? 0 : abschlussLuecken(m, ym).length;
-  const fz = freezeZeilen(m, ym).filter((z) => z.startsWith("ACHTUNG")).join("\n");
+  /* Auflage A (Datenreview PR #130): Stempel ohne Eintrittsdatum stehen mit in der Rückfrage. */
+  const fz = [...freezeZeilen(m, ym), ...ohneEintrittZeilen(m, ym)].filter((z) => z.startsWith("ACHTUNG")).join("\n");
   if (!l && !fz) return w;
   const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${abschlussLueckeText(m, ym)} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
   return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;

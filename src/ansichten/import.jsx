@@ -21,19 +21,23 @@ export function Import({ sitz, akt, onClose }) {
   const [text, setText] = useState("");
   const [pruef, setPruef] = useState(null);
   const [anlegen, setAnlegen] = useState(true);
+  /* IMP-1 Review: Die Rollenprüfung rechnet mit der Rolle des Anwenders, nicht mit der Vorgabe „planer“
+     (sonst wäre eine Leitung fälschlich gesperrt). sitz.rolle ist hier stets „kunde“ (Mandantensitzung);
+     maßgeblich ist die Rolle der angemeldeten Person. */
+  const optionen = { vergeber: sitz.person && sitz.person.rolle };
 
   const analysieren = () => {
     const { kopf, daten } = importParsen(text);
     if (!daten.length) return;
     const { zu, herkunft } = importZuordnen(kopf, daten);
-    setPruef({ ...importPruefen(m, kopf, daten, zu), kopf, zu, herkunft, daten });
+    setPruef({ ...importPruefen(m, kopf, daten, zu, {}, optionen), kopf, zu, herkunft, daten });
   };
 
   /* Zuordnung von Hand ändern — die Erkennung ist gut, aber nicht unfehlbar. */
   const setzeSpalte = (feld, idx) => {
     const zu = { ...pruef.zu };
     if (idx === "") delete zu[feld]; else zu[feld] = Number(idx);
-    setPruef({ ...importPruefen(m, pruef.kopf, pruef.daten, zu), kopf: pruef.kopf,
+    setPruef({ ...importPruefen(m, pruef.kopf, pruef.daten, zu, {}, optionen), kopf: pruef.kopf,
       zu, herkunft: { ...pruef.herkunft, [feld]: "hand" }, daten: pruef.daten });
   };
 
@@ -144,7 +148,7 @@ export function Import({ sitz, akt, onClose }) {
                   {z.fehlendeQuals.length > 0 && <span style={{ color: C.warn }}> +{z.fehlendeQuals.join(" ")}</span>}</td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 12,
                   color: z.fehler.length ? C.danger : z.doppelt ? C.warn : C.dimmer }}>
-                  {z.fehler.join(", ") || (z.doppelt ? "Name bereits vorhanden" : "")}</td>
+                  {[...z.fehler, z.dublettenGrund].filter(Boolean).join(", ")}</td>
               </tr>))}</tbody>
           </table>
         </Card>

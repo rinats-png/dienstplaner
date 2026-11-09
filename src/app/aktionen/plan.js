@@ -1,7 +1,7 @@
 /* WP-39: Aktionen aus dem Aktionsobjekt `akt` in src/App.jsx (AppInnen), Text unveraendert.
    Der Kontext k kommt aus AppInnen (useMemo von akt) und traegt dieselben Werte wie vorher der Abschluss. */
 import { einheitAm, einheitDienst, imDienst } from "../../../server/lib/fachpruefung.mjs";
-import { darfEinheit, vorlauf, istFreigegeben, personTag, schutzSperre, abwesenheitAm, bestaetigungVermerken, abwArt, abwesenheitTagAufheben, freigabeStand, planAbbild, EXPORT_STAND, lohnexportRueckfrage, VORLAGEN, genehmigungsStand, antragUmsetzen } from "../../lib/fachlogik.js";
+import { darfEinheit, vorlauf, istFreigegeben, personTag, schutzSperre, abwesenheitAm, bestaetigungVermerken, abwArt, abwesenheitTagAufheben, freigabeStand, planAbbild, EXPORT_STAND, lohnexportRueckfrage, VORLAGEN, genehmigungsStand, antragUmsetzen, eintrittPruefen, eintrittUebernehmen } from "../../lib/fachlogik.js";
 import { uid } from "../../lib/format.js";
 import { REGELSTAND, addDays } from "../../regelwerk.js";
 import { baueMitteilung } from "../../lib/zustellung.js";
@@ -11,6 +11,13 @@ import { korrekturMeldung } from "../../ansichten/korrekturen.jsx";
 import { monatText } from "../../../server/lib/monatsabschluss.mjs";
 import { nurKorrekturGrund, bestaetigungsGrund } from "../../istdaten.js";
 import { rolle } from "../../lib/rollen.js";
+
+/** Datenreview PR #130 (5): Zugehörigkeit null-sicher sortieren — ab null/leer („von Anfang an“) vor jedem
+ *  Datum, gleiche Werte in der bisherigen Reihenfolge (stabile Sortierung, deterministisch). Nicht exportiert:
+ *  jeder Export dieser Datei gilt als Aktionsfabrik (pruefungen/wp39-app-aufbau.test.js). */
+const abSchluessel = (z) => (z && typeof z.ab === "string" ? z.ab : "");
+const zugehoerigkeitSortiert = (liste) => [...liste]
+  .sort((a, b) => (abSchluessel(a) < abSchluessel(b) ? -1 : abSchluessel(a) > abSchluessel(b) ? 1 : 0));
 
 export function aktionenPlan(k) {
   const { jetzt, mUpd, melde, ref, serverstandNachladen, setKrank, setView, setVorbelegung, sitz, upd, wer } = k;
@@ -311,14 +318,30 @@ export function aktionenPlan(k) {
       }, "Dienstart gelöscht"),
 
       /* --- Personal --- */
-      neuePerson: (f) => mUpd((m) => ({ ...m, personen: [...m.personen, {
-        id: uid("p"), vorname: f.vorname, nachname: f.nachname, funktion: f.funktion,
-        email: `${f.vorname.toLowerCase()}.${f.nachname.toLowerCase()}@betrieb.de`,
-        zugehoerigkeit: [{ ab: f.eintritt, einheitId: f.einheitId }], eintritt: f.eintritt, austritt: null,
+      neuePerson: (f) => {
+        /* Datenreview PR #130 (4): ein geleertes Datumsfeld speichert null (nicht ""), ein ungültiges wird
+           abgewiesen — vor dem Speichern, damit kein Protokolleintrag „angelegt“ ohne Person entsteht. */
+        const e = eintrittPruefen(f.eintritt);
+        if (!e.ok) { melde(e.fehler); return; }
+        mUpd((m) => ({ ...m, personen: [...m.personen, {
+        id: uid("p"), vorname: f.vorname, nachname: f.nachname, funktion: f.funktion || "",
+        /* IMP-1 Review: keine erfundene Adresse — ohne Angabe bleibt die E-Mail leer. */
+        email: f.email || "",
+        zugehoerigkeit: [{ ab: e.wert, einheitId: f.einheitId }], eintritt: e.wert, austritt: null,
         wochenstunden: f.wochenstunden, urlaubsanspruch: f.urlaubsanspruch, urlaubsuebertrag: 0, stundenuebertrag: 0,
         qualifikationen: [], einfuehrung: { erledigt: false, schritt: 0 }, rolle: f.rolle,
         bereich: ["leitung", "planer", "betriebsrat"].includes(f.rolle) ? "ALLE" : f.einheitId, status: "aktiv" }] }),
-        `${f.vorname} ${f.nachname} angelegt als ${rolle(f.rolle).label}`),
+        `${f.vorname} ${f.nachname} angelegt als ${rolle(f.rolle).label}`);
+      },
+      /* Datenreview PR #130 (2): Eintritt bearbeiten — leer behält das bestehende Datum, gültig wird übernommen,
+         ungültig ist ein Fehler (eintrittUebernehmen). */
+      setzeEintritt: (pid, roh) => mUpd((m) => {
+        const p = m.personen.find((x) => x.id === pid); if (!p) return m;
+        const r = eintrittUebernehmen(p, roh);
+        if (!r.ok) { melde(r.fehler); return m; }
+        if (r.wert === (p.eintritt === undefined ? null : p.eintritt)) return m;
+        return { ...m, personen: m.personen.map((x) => (x.id === pid ? { ...x, eintritt: r.wert } : x)) };
+      }, "Eintritt geändert"),
       setzeRolle: (pid, r) => mUpd((m) => {
         const p = m.personen.find((x) => x.id === pid);
         const leitungen = m.personen.filter((x) => x.rolle === "leitung" && x.status === "aktiv" && !x.austritt);
@@ -330,7 +353,7 @@ export function aktionenPlan(k) {
           bereich: ["leitung", "planer", "betriebsrat"].includes(r) ? "ALLE" : (x.bereich === "ALLE" ? einheitAm(x, heute()) : x.bereich) } : x) };
       }, "Zugangsart geändert"),
       versetze: (pid, eid, ab) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => p.id === pid
-        ? { ...p, zugehoerigkeit: [...p.zugehoerigkeit.filter((z) => z.ab !== ab), { ab, einheitId: eid }].sort((a, b) => (a.ab < b.ab ? -1 : 1)) } : p) }), "Versetzung eingetragen"),
+        ? { ...p, zugehoerigkeit: zugehoerigkeitSortiert([...p.zugehoerigkeit.filter((z) => z.ab !== ab), { ab, einheitId: eid }]) } : p) }), "Versetzung eingetragen"),
       setzeAustritt: (pid, d) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => p.id === pid ? { ...p, austritt: d } : p) }),
         d ? "Austritt eingetragen" : "Austritt zurückgenommen"),
       toggleQual: (pid, qid) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => p.id === pid

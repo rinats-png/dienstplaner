@@ -21,6 +21,7 @@ import { demoAn } from "../lib/schalter.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
+import { personalnummerKonflikt, personalnummerText } from "../lib/personalnummer.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
   offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
@@ -1460,6 +1461,21 @@ async function behandeln(req, context, ctx) {
         if (standortGrund) {
           await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
           return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
+        }
+
+        /* Auflage C (Datenreview PR #130): Personalnummer je Betrieb eindeutig — nur NEUE Doppelungen
+           (bestehende bleiben unverändert, die eigene unveränderte Nummer ist kein Konflikt; lib/personalnummer.mjs).
+           Bewusst minimal und vor jedem Schreiben; der ETag-/Segment-Konfliktschutz unten bleibt unverändert.
+           Im Protokoll weder Nummer noch Person.
+           Review d6c92e0 (Befund 1): Die Antwort nennt den ETag, den der Client geschickt hat, nicht den aktuellen
+           Stand. Sie bringt keinen Bestand mit; ein neuerer ETag ohne Bestand ließe einen veralteten Client (auch
+           eine ältere, noch zwischengespeicherte Oberfläche) beim nächsten Speichern eine zwischenzeitliche fremde
+           Änderung ohne Konflikt überschreiben. */
+        const pnr = personalnummerKonflikt(jetzt ? jetzt.bestand : null, zuSchreiben);
+        if (pnr) {
+          await protokoll("schreiben", ks, "abgewiesen", "Personalnummer doppelt", wer);
+          return antwort({ fehler: "Personalnummer schon vergeben.", code: "PERSONALNUMMER_DOPPELT",
+            text: personalnummerText(pnr), etag: etag ?? null }, 409);
         }
 
         const form = pruefeGestalt(zuSchreiben, { vorher: jetzt ? jetzt.bestand : null });
