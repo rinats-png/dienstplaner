@@ -54,3 +54,27 @@ Fristen sind Entwurfswerte (vom Betreiber zu bestätigen). Der Store `centric-ki
 - Tests: `intelligence-gateway-ergebnis.test.js` (31, Erwartungen auf den neuen Vorgabe-Modus angepasst) und `review2`.
 
 - Runde 3 (e6d1fc5): **E9** Der Löschlauf löscht nur erfolgreich Gelesenes, das abgelaufen oder beschädigt ist; ein Lese-E/A-Fehler zählt nur (`fehler`). Das Aufräumen läuft auch nach `kontextSchreiben`, per Closure statt `this`.
+
+## Abschluss auf integration/release-v4: Vorprüfung auf Vorhandenes und Lückenschluss
+
+Dieser Abschnitt ergänzt die Datei (Windows ist nicht groß-/kleinschreibungsempfindlich; ein zweiter Nachweis `WP-I14-NACHWEIS.md` wäre kollidiert).
+
+**Vorprüfung.** Fingerprint (15 Pflichtteile), Ergebnis-Speicher mit Zeitpunkt, Decision Context, Fristen 30/90 Tage, Modi, `aufraeumen`, `raumLoeschen` und die Tests dazu (`intelligence-gateway-ergebnis.test.js`, `intelligence-vertraege.test.js`) standen schon im Integrationsbranch (mit WP-I13). Nichts davon neu gebaut.
+
+**Lücke (Plan Abschnitt 5, I14), die der Teilstand oben selbst als offen nennt:** (1) Raumlöschung und Datenschutzlauf räumten die `ki:*`-Schlüssel nicht mit ab; (2) kein Löschlauf mit Nachholen nach Neustart (Muster `aufraeumen.mjs`); `Speicher.raumLoeschen` wirft bei Fehlern, statt zu zählen.
+
+**Neu.**
+- `server/lib/intelligence/gateway/loeschlauf.mjs`: `kiRaumBereinigen` (Vormerkung `ki:loeschung:<raum>` vor dem Löschen, Fehler gezählt, `vollstaendig`), `kiLoeschungNachholen`, `kiDatenschutzlauf` (Fristen plus Nachholen, wirft nie). Die Vormerkung enthält nur Raumkennung und Zeitpunkt.
+- `server/lib/raumloeschung.mjs`: optionaler vierter Parameter `{ kiBereinigen }` (injizierter Haken, Schritt 5b). Fehler machen die Löschung unvollständig, der Kern bleibt als Marker. Ohne Haken unverändert.
+- Test `pruefungen/intelligence-loeschlauf.test.js` (15 Tests).
+- Ort unter `gateway/` statt `intelligence/`, und Haken statt Import: `intelligence-vertraege.test.js` verbietet in `intelligence/*.mjs` jeden `setJSON`-Aufruf und im Kern jeden Import aus dem Intelligence-Baum. Der erste Entwurf scheiterte daran (2 Tests); Entwurf geändert, kein bestehender Test geändert.
+
+**Tests.** Rot vor der Umsetzung: 0 von 15 lauffähig (Modul fehlte). Grün: 15 von 15; zusammen mit `intelligence-gateway-ergebnis`, `intelligence-vertraege`: 69 von 69. Zusätzlich grün: `aufraeumen`, `loeschsperre`, `kundenraumschutz`. `werkzeug/sicherheit/statik.mjs`: keine unbegründeten harten Treffer.
+
+**Offen.** Der Haken wird noch nirgends übergeben (Aufrufer `daten.mjs`, `aufraeumen.mjs`, `provisionierung.mjs`; Start-Aufruf von `kiDatenschutzlauf`): erst mit der Route `/ki` und dem Store `centric-ki-lauf` verdrahtbar, `daten.mjs` ist fremde Konfliktzone. Fristen sind Entwurfswerte (Betreiber). Review Opus steht aus.
+
+## Schutzgrenze: Warum die Schreibwege in ergebnis.mjs liegen
+
+`pruefungen/intelligence-gateway-grenzen.test.js` erlaubt Store-Schreibzugriffe (`setJSON`, `store.delete`) im Gateway nur in `ergebnis.mjs` und `zaehlerspeicher.mjs` (`STORE_SCHREIBER`). `loeschlauf.mjs` rief den Store direkt auf und machte den Test rot (Test-zuerst-Zustand). Die Regel bleibt unverändert, der Test auch.
+
+**Lösung.** Die Vormerkung (`kiVormerkungSchreiben`, `kiVormerkungEntfernen`) und das Löschen der Raumeinträge (`kiRaumEintraegeLoeschen`, zählt Fehler, stoppt nicht) liegen jetzt in `ergebnis.mjs`; die Schlüssel laufen über `vormerkSchluessel()` und `raumTeil()`. `loeschlauf.mjs` enthält kein `setJSON`, kein `delete`, kein `.set(` mit `ki:` mehr und ruft nur diese Funktionen auf (Store weiter als Parameter, Signaturen und Verhalten unverändert; `VORMERKUNG_PRAEFIX` wird re-exportiert). Alle Tests in `intelligence-loeschlauf.test.js` laufen ohne Änderung.
