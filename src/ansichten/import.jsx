@@ -1,5 +1,5 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { C } from "../farben.js";
 import { Card, Lab, Btn, Sel, Kpi, KpiRow, Pill } from "../ui/bausteine.jsx";
 import { NUM } from "../ui/thema.js";
@@ -8,6 +8,9 @@ import { Icon } from "../gestalt/icons.jsx";
 import { Sheet } from "../ui/leisten.jsx";
 import { importParsen, importZuordnen, importPruefen, IMPORT_BEISPIEL } from "../lib/fachlogik.js";
 import { rolle } from "../lib/rollen.js";
+/* IMP-4: Dateiimport über den Import-Endpunkt (IMP-3). Bis IMP-3 integriert ist, bleibt IMPORT_DATEI_AKTIV false. */
+import { IMPORT_DATEI_AKTIV, erzeugeImportSchnittstelle } from "../lib/import-schnittstelle.js";
+import { ImportDatei } from "./import-datei.jsx";
 
 
 /* ===================== ABRECHNUNGSDATEN: ZUSCHLÄGE UND KONTEN ============ */
@@ -21,6 +24,8 @@ export function Import({ sitz, akt, onClose }) {
   const [text, setText] = useState("");
   const [pruef, setPruef] = useState(null);
   const [anlegen, setAnlegen] = useState(true);
+  const [datei, setDatei] = useState(false);
+  const schnittstelle = useMemo(() => (IMPORT_DATEI_AKTIV ? erzeugeImportSchnittstelle() : null), []);
   /* IMP-1 Review: Die Rollenprüfung rechnet mit der Rolle des Anwenders, nicht mit der Vorgabe „planer“
      (sonst wäre eine Leitung fälschlich gesperrt). sitz.rolle ist hier stets „kunde“ (Mandantensitzung);
      maßgeblich ist die Rolle der angemeldeten Person. */
@@ -41,6 +46,9 @@ export function Import({ sitz, akt, onClose }) {
       zu, herkunft: { ...pruef.herkunft, [feld]: "hand" }, daten: pruef.daten });
   };
 
+  if (datei && schnittstelle)
+    return <ImportDatei schnittstelle={schnittstelle} onClose={onClose} nachUebernahme={() => window.location.reload()} />;
+
   return (
     <Sheet open onClose={onClose} titel="Personal importieren" width={860}>
       {!pruef && (
@@ -54,7 +62,10 @@ export function Import({ sitz, akt, onClose }) {
           <textarea className="inp" rows={11} value={text} onChange={(e) => setText(e.target.value)}
             placeholder={IMPORT_BEISPIEL} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }} />
           <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
-            <Btn kind="quiet" onClick={() => setText(IMPORT_BEISPIEL)}>Beispiel einfügen</Btn>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn kind="quiet" onClick={() => setText(IMPORT_BEISPIEL)}>Beispiel einfügen</Btn>
+              {schnittstelle && <Btn kind="quiet" onClick={() => setDatei(true)}>Datei hochladen</Btn>}
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
               <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
               <Btn kind="primary" disabled={!text.trim()} onClick={analysieren}>Prüfen</Btn>
