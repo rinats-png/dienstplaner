@@ -1,13 +1,13 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 184,
+  "anzahl": 187,
   "statusZaehlung": {
     "BLOCKED": 101,
-    "READY": 28,
+    "READY": 30,
     "IN_PROGRESS": 4,
     "REVIEW": 9,
-    "INTEGRATED": 39,
+    "INTEGRATED": 40,
     "DONE": 3
   },
   "jeStrang": {
@@ -28,11 +28,11 @@
       }
     },
     "intelligence": {
-      "pakete": 37,
-      "offen": 35,
+      "pakete": 40,
+      "offen": 37,
       "restPT": {
-        "min": 280,
-        "max": 491
+        "min": 271.5,
+        "max": 478
       }
     },
     "folge": {
@@ -53,19 +53,21 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 457.30000000000007,
-    "max": 770
+    "min": 448.80000000000007,
+    "max": 757
   },
   "kritischerPfad": {
-    "summe": 102,
-    "min": 75,
-    "max": 129,
+    "summe": 86.5,
+    "min": 62,
+    "max": 111,
     "kette": [
-      "WP-I12",
-      "WP-I13",
-      "WP-I17",
-      "WP-I19",
-      "WP-I27",
+      "WP-I3",
+      "WP-I4",
+      "WP-I5",
+      "WP-I7",
+      "WP-I8",
+      "WP-I9",
+      "WP-I34",
       "WP-I37"
     ]
   },
@@ -2527,12 +2529,12 @@
       "prio": "P3",
       "aufwandPT": {"min":14,"max":24},
       "abhaengigkeiten": ["WP-11","WP-22","WP-I10"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"4d55328 Rechenkern nach server/lib/engine/ extrahiert (in integration/release-v4, direkt, ohne PR)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/engine-rechenkern.test.js, 28 Tests, Golden-Fixture (laut docs/acc45/wp-i12-nachweis.md)"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"4d55328 in origin/integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2546,7 +2548,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "Kern extrahiert (26 von 27 Definitionen). Offen als WP-I12a/b/c. Fachfragen 2, 3, 5 (docs/acc45/wp-i12-fragen.md) sind Betreiberentscheidungen. Vorher: Schätzung laut Plan, nicht belegt."
     },
     {
       "id": "WP-I13",
@@ -5327,6 +5329,90 @@
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "docs/acc45/BETREIBER-ENTSCHEIDUNG-KONTO.md",
       "notiz": "Aufwand erst nach Betreiberentscheidung schätzbar. Keine Mastercodes, keine universellen Notfallpasswörter, keine Wiederherstellung nur über E-Mail."
+    },
+    {
+      "id": "WP-I12a",
+      "titel": "Decision Engine Rest: Near-Miss, ersatzVorschlaege, hindernisBefunde (Frage 7; je Teil höchstens 15 Funktionen)",
+      "strang": "intelligence",
+      "prio": "P3",
+      "aufwandPT": {"min":4,"max":8},
+      "abhaengigkeiten": ["WP-I12"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "intelligence/wp-wp-i12a",
+      "agent": "Intelligence (eigener Block)",
+      "modell": "sonnet",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/wp-i12-fragen.md",
+      "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
+      "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
+      "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
+      "notiz": "SCHÄTZUNG Koordinator, nicht belegt. Freigabe Frage 7 durch Koordinator (technische Entscheidung). Erst Schließungsmessung mit werkzeug/engine-schliessung.mjs."
+    },
+    {
+      "id": "WP-I12b",
+      "titel": "Decision Engine: Paketliste und Regelkennung serverseitig (Fragen 1 und 6)",
+      "strang": "intelligence",
+      "prio": "P3",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": ["WP-I12"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "intelligence/wp-wp-i12b",
+      "agent": "Intelligence (eigener Block)",
+      "modell": "sonnet",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/wp-i12-fragen.md",
+      "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
+      "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
+      "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
+      "notiz": "SCHÄTZUNG Koordinator. Freigabe Frage 1 und 6 durch Koordinator (technische Entscheidung): PAKETE aus src/stufen.js nach server/lib, Gleichheitstest gegen den Client, damit die Fachkraftquote serverseitig rechnet."
+    },
+    {
+      "id": "WP-I12c",
+      "titel": "Decision Engine: planKennzahlen-Korrektur (Frage 4)",
+      "strang": "intelligence",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": ["WP-I12"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "intelligence/wp-wp-i12c",
+      "agent": "Intelligence (eigener Block)",
+      "modell": "sonnet",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/wp-i12-fragen.md",
+      "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
+      "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
+      "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
+      "notiz": "SCHÄTZUNG Koordinator. Fehler: planKennzahlen ruft verteilung mit Monat statt von/bis auf; spanne undefined, wochenenden NaN. Rot vor grün; Golden-Umstellung nur mit Begründung im Nachweis."
     }
   ]
 }
