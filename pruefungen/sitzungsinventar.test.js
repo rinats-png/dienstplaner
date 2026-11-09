@@ -137,6 +137,7 @@ describe("Der Aufräumlauf", () => {
 describe("Der gemeinsame Prüfpunkt", () => {
   const BEARER_DATEIEN = [
     "server/funktionen/daten.mjs",
+    "server/funktionen/einladung.mjs",   // WP-18
     "server/funktionen/kalender.mjs",
     "server/funktionen/lage.mjs",
     "server/funktionen/zustellung.mjs",
@@ -173,7 +174,7 @@ describe("Der gemeinsame Prüfpunkt", () => {
   });
 
   it("die Sitzung eines Endpunkts kommt nie aus einem eigenen Speicherzugriff", () => {
-    for (const d of ["server/funktionen/kalender.mjs", "server/funktionen/lage.mjs",
+    for (const d of ["server/funktionen/einladung.mjs", "server/funktionen/kalender.mjs", "server/funktionen/lage.mjs",
       "server/funktionen/zustellung.mjs"]) {
       expect(quellen.get(d), d).not.toMatch(/centric-sitzungen/);
       expect(quellen.get(d), d).not.toMatch(/[`"']t:/);

@@ -1058,3 +1058,21 @@ export async function lage(tage) {
   if (!a.ok) throw new Error(d.fehler || "Die Lage konnte nicht geladen werden.");
   return d;
 }
+
+/* WP-18: Einladungen. Die Leitung stellt für eine Person ihres Betriebs eine Einladung aus (mit Sitzung); die Person
+   löst sie ohne Sitzung ein und bekommt dabei einmal ihren persönlichen Zugangscode. Geprüft wird serverseitig
+   (server/lib/einladungen.mjs). */
+export async function einladungAusstellen(personId) {
+  const a = await fetch("/api/einladung", { method: "POST", headers: kopf(), body: JSON.stringify({ personId }) });
+  const d = await a.json().catch(() => ({}));
+  if (!a.ok) throw new Error(d.fehler || "Die Einladung konnte nicht ausgestellt werden.");
+  return d;
+}
+
+export async function einladungAnnehmen(einladung) {
+  const a = await fetch("/api/einladung/annehmen", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ einladung }) });
+  const d = await a.json().catch(() => ({}));
+  if (!a.ok) throw new Error(d.fehler || "Die Einladung konnte nicht eingelöst werden.");
+  return d;
+}

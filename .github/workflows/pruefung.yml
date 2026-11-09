@@ -220,6 +220,10 @@ jobs:
       - name: Bereitstellungsskript
         run: npm run pruefung:zugaenge
 
+      # WP-18: Leitung lädt ein → Einlösen → Anmeldung mit richtiger Rolle; ein Code = eine Person.
+      - name: Einladungen
+        run: npm run pruefung:einladungen
+
       # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
       - name: Rechtetabellen vergleichen
         run: npm run pruefung:matrix

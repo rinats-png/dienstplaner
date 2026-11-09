@@ -45,6 +45,8 @@ export const INVENTAR = {
   "/api/raum-loeschen": ["pentest.mjs"],
   "/api/zugaenge-uebersicht": ["rechte.mjs", "server.test.js"],
   "/api/zugang-sperren": ["rechte.mjs", "sitzungsbindung.test.js"],
+  "/api/einladung": ["einladungen.test.js"],            // WP-18: Leitung stellt aus; Planung, Beschäftigte, Demo 403
+  "/api/einladung/annehmen": ["einladungen.test.js"],   // WP-18: ohne Sitzung, einmalig
   "/api/bestand-anlegen": ["rechte.mjs"],
   "/api/demos": ["demozugang.mjs"],
   "/api/demo": ["demozugang.mjs", "rollen-eintritt.test.js"],
