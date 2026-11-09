@@ -85,6 +85,17 @@ export const wirdGemerkt = () => {
   try { return localStorage.getItem(GEMERKT) === "ja"; } catch { return false; }
 };
 
+/* SI-P4: Leitung, Planung und Kunde dürfen „Zugang merken“ nur mit aktivem zweiten Faktor, der Betreiber nie.
+   Entscheidend ist die Angabe des Servers (`merkenErlaubt`); fehlt sie, wird nicht gemerkt (fail-closed).
+   Ein schon gemerkter Zugang, für den sie nicht (mehr) gilt, wird beim Laden aus dem dauerhaften Speicher
+   genommen — die Sitzung dieses Reiters bleibt. */
+export const ROLLEN_OHNE_MERKEN = Object.freeze(["betreiber", "leitung", "planer", "subplaner", "kunde"]);
+/** @param {any} antwort  Antwort von /api/anmelden oder /api/bestand */
+export const merkenErlaubtLaut = (antwort) => !!antwort && antwort.merkenErlaubt === true;
+function gemerktZuruecknehmen() {
+  try { localStorage.removeItem(SCHLUESSEL); localStorage.removeItem(GEMERKT); } catch { /* egal */ }
+}
+
 export async function anmelden(zugangscode, merken, zweifaktor) {
   const a = await fetch("/api/anmelden", { method: "POST",
     headers: { "content-type": "application/json" },
@@ -99,7 +110,7 @@ export async function anmelden(zugangscode, merken, zweifaktor) {
   await offlineCacheLeeren();   // Rollenwechsel: nichts von der vorherigen Person bleibt liegen (WP-37)
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis, demo: d.demo === true };
-  tokenAblegen(token, merken);
+  tokenAblegen(token, merken && merkenErlaubtLaut(d));
   return d;
 }
 
@@ -125,7 +136,8 @@ export async function demoOeffnen(id, merken) {
      gemerkt. Wer Datenräume anlegen und Zugänge sperren kann, soll das
      Häkchen gar nicht erst wirksam setzen können — ein liegen gelassener
      Rechner wäre sonst ein offener Betreiberzugang. */
-  tokenAblegen(token, merken && d.rolle !== "betreiber");
+  /* SI-P4: Demozugänge haben keinen zweiten Faktor — Leitung, Planung und Kunde werden auch hier nicht gemerkt. */
+  tokenAblegen(token, merken && !ROLLEN_OHNE_MERKEN.includes(d.rolle));
   return d;
 }
 
@@ -166,6 +178,8 @@ export async function lies() {
   etag = daten.etag;
   /* schreiben: "voll" | "eigenes" | "nein" — der Server sagt, was diese
      Rolle darf. Die Oberfläche darf weniger anbieten, niemals mehr. */
+  /* SI-P4: Nur eine echte Antwort des Servers (nicht aus dem Speicher des Dienstarbeiters) entscheidet. */
+  if (!ausSpeicher && !merkenErlaubtLaut(daten)) gemerktZuruecknehmen();
   zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb,
     name: daten.name, demo: daten.demo === true, schreiben: daten.schreiben || "voll",
     /* WP-07: wem die Offline-Warteschlange gehört (Raum, Betrieb, Person der

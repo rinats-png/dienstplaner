@@ -6,6 +6,8 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, sitzungsRolleBekannt } from "../lib/rechte.mjs";
 import { zustellen, pushAnmelden, pushAbmelden, zustellStatusEigene } from "../lib/versand.mjs";
 import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
+import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -102,7 +104,19 @@ export default async (req) => {
       const gelesen = await bestandLesen(store(), s.bestand);    // nicht lesbar → 503, nie „keine Person"
       const bestand = gelesen && gelesen.bestand;
       const m = bestand && s.person !== null && s.person !== undefined ? eigenerMandant(bestand, s) : null;
-      const regel = m ? anstossRegel(wirksameRolle(s, bestand), m, s.person) : null;
+      const rolleWirksam = wirksameRolle(s, bestand);
+      /* SI-P4, Delta-Review Auflage 1: arbeitssitzungLesen prüft nur die Rolle beim Anlegen. Die Rechte hier kommen
+         aber aus der wirksamen Rolle — eine als Mitarbeiter ohne Faktor angelegte Sitzung, deren Person danach Leitung
+         oder Planung wurde, trägt unter Pflicht keine Rechte dieser Rolle. Dieselbe Regel wie in daten.mjs: Sitzung
+         beenden, 401 „neu-anmelden“. Ausnahmen (Pflicht aus, Demoraum, Sicherungsschlüssel, Betreiber) stecken in
+         rollenSitzungOhneFaktor. */
+      if (rollenSitzungOhneFaktor(s, rolleWirksam)) {
+        await sitzungBeenden(merkmalAus(req));
+        await protokoll("zweifaktor", kz, "abgewiesen", "Pflicht: Sitzung ohne zweiten Faktor beendet (Zustellung)");
+        return antwort({ fehler: "Für diese Rolle ist ein zweiter Faktor Pflicht. Bitte neu anmelden.",
+          zweifaktor: "neu-anmelden" }, 401);
+      }
+      const regel = m ? anstossRegel(rolleWirksam, m, s.person) : null;
       if (!regel) return antwort({ fehler: "Über diesen Zugang wird nichts zugestellt." }, 403);
 
       const r = await zustellen(store(), { raum: s.bestand, bestand, m, ids, erlaubt: regel });

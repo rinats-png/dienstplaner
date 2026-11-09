@@ -2,6 +2,7 @@ import { smtpStatus } from "../lib/post-smtp.mjs";
 import { getStore } from "../lib/ablage.mjs";
 import { randomBytes } from "node:crypto";
 import { istProduktion } from "../lib/umgebung.mjs";
+import { rollenPflicht, rollenPflichtUnerwartet } from "../lib/betreiber-zweifaktor.mjs";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
@@ -324,6 +325,11 @@ export default async (req) => {
         + "(also über einen Proxy). Alle Nutzer zählen unter der Adresse des Proxys — die Bremse "
         + "je Herkunft träfe alle gemeinsam. Netz des Caddy-Containers eintragen.");
 
+    /* SI-P4, Review-Auflage N4: Der Schalter kennt nur „1“. Ein anderer Wert schaltet die Pflicht NICHT ein. */
+    if (rollenPflichtUnerwartet())
+      warnungen.push("CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT hat einen unerwarteten Wert. Nur „1“ schaltet die Pflicht "
+        + "zum zweiten Faktor für Leitung, Planung und Kunde ein — so ist sie AUS.");
+
     return antwort({
       gepr: new Date().toISOString(),
       umgebung: {
@@ -338,6 +344,7 @@ export default async (req) => {
         bremseAtomar: gesetzt("REDIS_REST_URL") && gesetzt("REDIS_REST_TOKEN"),
         vertrauteProxys: gesetzt("CENTRIC_VERTRAUTE_PROXYS"),
         zweifaktorPflicht: istProduktion() || (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1",
+        rollenZweifaktorPflicht: rollenPflicht(),
       },
       verwalterkonten: await verwalterAktiv(s0),
       warnungen,
