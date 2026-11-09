@@ -4,19 +4,19 @@
   "anzahl": 187,
   "statusZaehlung": {
     "BLOCKED": 96,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 4,
-    "REVIEW": 10,
-    "INTEGRATED": 57,
+    "REVIEW": 9,
+    "INTEGRATED": 59,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 87,
-      "offen": 40,
+      "offen": 38,
       "restPT": {
-        "min": 74.4,
-        "max": 114.60000000000001
+        "min": 73.8,
+        "max": 113.4
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 385.6,
-    "max": 650.7
+    "min": 385,
+    "max": 649.5
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -4552,12 +4552,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["SI-P8"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch acc45/sicherheit/si-p9 (sicherheit.yml, pruefung.yml, betrieb-sicherung.yml)"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/workflow-haertung.test.js 7/7 grün; sicherheit-intern 55/55; Verdrahtung ok"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4566,12 +4566,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#114"],
       "nachweis": "docs/acc45/SI-P9-NACHWEIS.md",
       "akzeptanz": "Jeder checkout-Schritt in den Workflows außer der Deploy-Pipeline setzt persist-credentials: false; jeder Workflow hat eine Berechtigungsvorgabe nur mit Lesen; deploy.yml und betrieb-deploy.yml bleiben bis zur Betreiberfreigabe unverändert",
       "tests": "pruefungen/workflow-haertung.test.js (Regel mit roten und grünen Proben, Stand im Repository)",
       "dateien": ".github/workflows/sicherheit.yml, .github/workflows/pruefung.yml, .github/workflows/betrieb-sicherung.yml, pruefungen/workflow-haertung.test.js, package.json",
-      "notiz": "Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe."
+      "notiz": "Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe. Stand 2026-11-09: INTEGRATED nach #114 (Merge in integration/release-v4)."
     },
     {
       "id": "SI-P6b",
@@ -4664,12 +4664,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
+        "reviewt": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
+        "integriert": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4678,12 +4678,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#121"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Vertrag /api/import und Parser-Schnittstelle schriftlich fixiert; Grenzen 10 MB, 100 MB entpackt, 20.000 Zeilen, 200 Spalten, 20 Blätter",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "docs/acc45/IMPORT-PLAN.md, docs/acc45/IMPORT-VERTRAG.md",
-      "notiz": "Freigegeben. Entscheidungen 1–9 aus IMPORT-PLAN.md übernommen."
+      "notiz": "Freigegeben. Entscheidungen 1–9 aus IMPORT-PLAN.md übernommen. Stand 2026-11-09: INTEGRATED nach #121 (Merge in integration/release-v4)."
     },
     {
       "id": "IMP-1",

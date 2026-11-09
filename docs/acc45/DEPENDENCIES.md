@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 385,6–650,7 PT in 92 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 385–649,5 PT in 90 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -27,11 +27,9 @@ flowchart LR
     WP_16c["WP-16c<br/>REVIEW"]
     WP_42a["WP-42a<br/>BLOCKED"]
     WP_48["WP-48<br/>BLOCKED"]
-    SI_P9["SI-P9<br/>REVIEW"]
     SI_P6b["SI-P6b<br/>BLOCKED"]
     WP_42R1["WP-42R1<br/>BLOCKED"]
     WP_42R2["WP-42R2<br/>BLOCKED"]
-    IMP_0["IMP-0<br/>READY"]
     IMP_5["IMP-5<br/>BLOCKED"]
     IMP_6["IMP-6<br/>BLOCKED"]
     IMP_7["IMP-7<br/>BLOCKED"]
@@ -328,7 +326,6 @@ flowchart LR
   WP_16b --> WP_42R2
   WP_24b --> WP_42R2
   IMP_6 --> IMP_7
-  IMP_0 --> IMP_9
   WR_3 --> OPT_2
   WR_1 --> WR_2
   WR_2 --> WR_3
@@ -504,11 +501,11 @@ flowchart LR
 | SI-P6 | acc45 | P0 | 1,5–3 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P7 | acc45 | P2 | 1,5–2,5 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P8 | acc45 | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
-| SI-P9 | acc45 | P2 | 0,5–1 | 0,1–0,2 | SI-P8 | – | opus | REVIEW |
+| SI-P9 | acc45 | P2 | 0,5–1 | 0 | SI-P8 | – | opus | INTEGRATED |
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
 | WP-42R1 | acc45 | P1 | 0 | 0 | WP-16, WP-16c, WP-07b, WP-S1, WP-18, WP-33, WP-44, SI-P4 | – | opus | BLOCKED |
 | WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b | – | opus | BLOCKED |
-| IMP-0 | acc45 | P1 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| IMP-0 | acc45 | P1 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | IMP-1 | acc45 | P0 | 2–3,5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-2 | acc45 | P1 | 3–5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-3 | acc45 | P1 | 3–5 | 0 | IMP-0, IMP-2 | – | opus | INTEGRATED |
