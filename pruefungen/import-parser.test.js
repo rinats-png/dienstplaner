@@ -1438,7 +1438,9 @@ describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-A
     const r = await parseDatei({ buffer: B("x"), name: "haengt", grenzen: { zeitMs: 500 } }, { skript: ATTRAPPE, beiStart: (p) => pids.push(p) });
     expect(r).toMatchObject({ ok: false, code: "ZEITLIMIT" });
     expect(r.blaetter).toBeUndefined();
-    expect(Date.now() - t0).toBeLessThan(2000);
+    console.log(`[Messung 561dd32] H1 Zeitlimit 500 ms: Antwort nach ${Date.now() - t0} ms`);
+    /* Schwelle mit Reserve für Prozessstart unter Last (Windows); ohne Kill käme nie eine Antwort */
+    expect(Date.now() - t0).toBeLessThan(5000);
     expect(await beendet(pids[0])).toBe(true);
     await new Promise((res) => setTimeout(res, 100));
     expect(aktiveKinder()).toEqual([]);

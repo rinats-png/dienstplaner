@@ -1,6 +1,6 @@
 # IMPORT-VERTRAG — Parser-Vertrag (IMP-0, Teil Parser; umgesetzt in IMP-2)
 
-Stand: 2026-11-09. Umsetzung: `server/lib/import/parser.mjs` (Schnittstelle), `parser-kern.mjs`, `parser-worker.mjs`.
+Stand: 2026-11-09. Umsetzung: `server/lib/import/parser.mjs` (Schnittstelle), `parser-kern.mjs`, `parser-prozess.mjs` (Kindprozess), `parser-worker.mjs` (Kindskript).
 Prüfung: `pruefungen/import-parser.test.js`, `pruefungen/import-parser-vendor.test.js`.
 
 Der Parser liest eine hochgeladene Tabellendatei und liefert ihren **Rohinhalt**. Er interpretiert nichts: keine Spaltenbedeutung,
@@ -29,7 +29,7 @@ parseDatei({ buffer, name, grenzen }) → Promise<
 | `format` | Erkennung (Inhalt, nicht Endung; Reihenfolge wie SheetJS `parse_zip`/`readSync`) |
 |---|---|
 | `xlsx` | ZIP (`PK\x03\x04`) ohne ODS-/Numbers-Merkmale, mit `[Content_Types].xml`, das **genau eine** Arbeitsmappe mit dem Typ `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml` (der xlsm-Typ `application/vnd.ms-excel.sheet.macroEnabled.main+xml` wird abgewiesen, siehe 8) deklariert; Pfad nicht auf `bin` endend und im Archiv vorhanden. Strikte Paketprüfung siehe 5. |
-| `xls` | OLE2/CFB (`D0 CF 11 E0 A1 B1 1A E1`) mit plausibler CFB-Struktur (siehe 5a) und genau einem Strom `Workbook` oder `Book` (Größe > 0) direkt unter der Wurzel |
+| `xls` | OLE2/CFB (`D0 CF 11 E0 A1 B1 1A E1`) mit plausibler CFB-Struktur (siehe 5a) und einem Tabellenstrom, den SheetJS selbst wählt: `CFB.find("/Workbook")`, sonst `CFB.find("/Book")` (exakter Pfad direkt unter der Wurzel; Großschreibung und Namenslänge wie SheetJS); genau ein Treffer, Typ Strom, mit Inhalt (Länge > 0). Siehe 5a (Review 561dd32, H2) |
 | `csv` / `tsv` | reiner Text (keine NUL-Bytes, < 1 % Steuerzeichen), Trenner `;` `,` Tab automatisch (Tab bei Endung `.tsv`) |
 
 **Nicht unterstützt** (`NICHT_UNTERSTUETZT`, Review 8725dc5, Entscheidungen E1/E3; Begründung in 11):
@@ -40,7 +40,9 @@ parseDatei({ buffer, name, grenzen }) → Promise<
 - **Vorlagen und Add-ins**: Arbeitsmappen-Typ `…spreadsheetml.template.main+xml` (xltx) oder `…addin.macroEnabled.main+xml` (xlam).
 - **Pakete mit unbekanntem Hauptinhaltstyp**: kein Arbeitsmappen-Override in `[Content_Types].xml` (z. B. Word, PowerPoint, Phantasietypen),
   ZIP ohne `[Content_Types].xml` (Numbers 08/09, verschachteltes `Index.zip`), Numbers (`Index/Document.iwa`).
-- **OLE2 ohne Tabellenstrom `Workbook`/`Book` direkt unter der Wurzel** (Word, PowerPoint, Quattro Pro und Lotus mit `PerfectOffice_MAIN`, `NativeContent_MAIN`, `MN0`; ein Strom `Workbook` nur in einem Unterordner zählt nicht), XML/HTML, ZIP64, mehrteilige Archive.
+- **OLE2 ohne Tabellenstrom `Workbook`/`Book` direkt unter der Wurzel** (Word, PowerPoint, Quattro Pro und Lotus mit `PerfectOffice_MAIN`, `NativeContent_MAIN`, `MN0`; ein Strom `Workbook` nur in einem Unterordner zählt nicht). Maßgeblich ist die Auswahl von SheetJS (`CFB.find`), kein eigener Namensvergleich:
+  ein Name, den SheetJS nicht als `Workbook` findet (z. B. mit Kelvin-Zeichen U+212A oder mit überlanger Namenslänge), und ein gewählter Strom
+  ohne Inhalt ergeben `NICHT_UNTERSTUETZT`; ein doppelter Tabellenstrom `BESCHAEDIGT` (Review 561dd32, H2a–d). XML/HTML, ZIP64, mehrteilige Archive.
 
 Alles Unbekannte ergibt `UNBEKANNTES_FORMAT`. Weicht die Endung vom erkannten Format ab, wird trotzdem nach Inhalt gelesen und der Hinweis
 `ENDUNG_ABWEICHEND` gesetzt (die Endung erscheint darin höchstens mit 10 Zeichen).
@@ -65,9 +67,9 @@ CSV-Anführungszeichen nach RFC 4180 (Trenner und Zeilenumbrüche in Anführungs
 | `zeitMs` | 20.000 | Zeitlimit der Verarbeitung (siehe 4). |
 | `zellZeichen` | 32.767 | Höchstlänge eines Textes je Zelle (wie Excel). Zusammen mit der Textmenge unten → `TEXT_ZU_GROSS`. |
 
-**Textmenge** (Review 1da3ceb, H2): Ein Eintrag der gemeinsamen Textliste (`sharedStrings`) ist im Worker ein einziger String, auf den beliebig
+**Textmenge** (Review 1da3ceb, H2): Ein Eintrag der gemeinsamen Textliste (`sharedStrings`) ist im Parser ein einziger String, auf den beliebig
 viele Zellen verweisen können; `postMessage` kopiert ihn aber je Zelle in den Hauptthread (gemessen: 1,1-MB-Datei mit 1.000 Verweisen auf
-einen 1,5-Mio.-Zeichen-Text → 1,5 Mrd. Zeichen, ca. 1,4 GB im Hauptthread). Deshalb zählt der Worker **vor** `postMessage` die Zeichen des
+einen 1,5-Mio.-Zeichen-Text → 1,5 Mrd. Zeichen, ca. 1,4 GB im Hauptthread; seit Review 561dd32 gilt dasselbe für die JSON-Ausgabe des Kindprozesses). Deshalb zählt das Kindskript **vor** der Ausgabe die Zeichen des
 Ergebnisses: jede Zelle (Text, Datums-/Fehlertext) höchstens `zellZeichen`, alle Texte zusammen (einschließlich Blattnamen **und aller
 Hinweise**: `nachricht` und `blatt`, Review 8725dc5 E5) höchstens `entpacktBytes` Zeichen. Überschreitung → `TEXT_ZU_GROSS`, kein Teil-Ergebnis.
 
@@ -96,12 +98,26 @@ Zeilen dazwischen leer sind. Es wird **nie** still abgeschnitten (Review PR #123
 
 ## 4. Zeit- und Speichergrenzen
 
-Das Entpacken und Lesen ist rechenintensiv und synchron. Liefe es im Hauptthread des Servers, würde eine große oder präparierte Datei alle anderen
-Anfragen blockieren. Deshalb läuft die gesamte Verarbeitung (Formaterkennung, Entpackprüfung, SheetJS, CSV) in einem **eigenen Worker-Thread**:
+Das Entpacken und Lesen ist rechenintensiv und synchron. Liefe es im Server-Prozess, würde eine große oder präparierte Datei alle anderen
+Anfragen blockieren oder den Server-Prozess mit Speicher außerhalb des JS-Heaps (Buffer) überlasten. Deshalb läuft die gesamte Verarbeitung
+(Formaterkennung, Entpackprüfung, CFB-Prüfung, SheetJS, CSV, Textmengen- und Zeilenprüfung) seit Review 561dd32 (H1, Entscheidung E-A) in einem
+**eigenen Kindprozess**: `parser-prozess.mjs` startet `parser-worker.mjs` mit derselben Node-Binärdatei. Vorher lief sie in einem Worker-Thread
+im Server-Prozess; dessen Heap-Grenze erfasste Buffer-Speicher nicht (gemessen: 1,4-MB-Datei → ca. 2 GB im Server-Prozess, siehe Nachweis §11).
 
-- Zeitlimit `zeitMs`: Überschreitung beendet den Worker hart (`terminate`) → Code `ZEITLIMIT`. Der Hauptthread bleibt ansprechbar.
-- Speicherlimit des Workers (`maxOldGenerationSizeMb` 768): Überschreitung beendet nur den Worker → Code `SPEICHERLIMIT`.
-- Vorab im Hauptthread nur billige Prüfungen: Eingabe vorhanden, nicht leer, `dateiBytes`.
+- Start ohne Shell-Option von `spawn`, mit festen Argumenten, ohne die Umgebungsvariablen des Servers (insb. ohne `NODE_OPTIONS`),
+  zusätzlich `--disallow-code-generation-from-strings`.
+- Wandzeit `zeitMs` (Standard 20 s): Überschreitung → das Kind wird hart beendet (`SIGKILL`) → Code `ZEITLIMIT`, kein Teil-Ergebnis.
+- Heap des Kindes `--max-old-space-size=256` (256 MB). Überlauf beendet nur das Kind → Code `SPEICHERLIMIT`.
+- **Linux**: zusätzlich Adressraum-Limit über die Shell (`/bin/sh -c 'ulimit -v …; exec node …'`), Standard 1.500.000 KB, einstellbar über
+  `CENTRIC_IMPORT_ADRESSRAUM_KB` (0 = aus). Lässt sich das Limit nicht setzen, wird die Datei nicht verarbeitet (`VERARBEITUNG_FEHLGESCHLAGEN`,
+  fail closed). **Windows und macOS (nur Entwicklung): ohne Adressraum-Limit.**
+- Übergabe: Eingabe über stdin, Ergebnis über stdout als JSON, höchstens 128 MB (darüber Kill → `TEXT_ZU_GROSS`). Der Server lässt nur die Form
+  dieses Vertrags durch: bei `ok:false` ausschließlich `code` und `nachricht` (kein Teil-Ergebnis), bei `ok:true` ein Objekt mit `format`,
+  `blaetter` und `hinweise`; alles andere → `VERARBEITUNG_FEHLGESCHLAGEN`. stderr dient nur der Einordnung eines Abbruchs und wird verworfen.
+- Absturz des Kindes (Heap-Überlauf, nativer Abbruch, Kill durch das System): der Server-Prozess läuft weiter und antwortet mit `SPEICHERLIMIT`
+  bzw. `VERARBEITUNG_FEHLGESCHLAGEN`. Jedes Kind wird beendet und von Node eingesammelt (kein Zombie).
+- Vorab im Server-Prozess nur billige Prüfungen: Eingabe vorhanden, nicht leer, `dateiBytes`.
+- Kosten: Prozessstart und Laden von SheetJS je Datei ca. 0,3–0,6 s zusätzlich (Messung Windows-Entwicklungsrechner).
 
 ## 5. ZIP-Prüfung (xlsx) vor der Übergabe an SheetJS
 
@@ -125,7 +141,7 @@ erreichen SheetJS nicht mehr.
    CRC-32 = Verzeichnis-CRC, sonst `BESCHAEDIGT`; lügt der Header (tatsächlich mehr) → `ENTPACKT_ZU_GROSS`. Die Summe der **tatsächlich**
    entpackten Bytes wird laufend gegen `entpacktBytes` geprüft; Abbruch sofort bei Überschreitung. Nur „gespeichert“ und „deflate“.
 5. Erst danach wird das saubere Archiv gebaut und an SheetJS gegeben. Spitzenbedarf außerhalb des JS-Heaps: höchstens etwa 2 × `entpacktBytes`
-   (entpackte Einträge und neues Archiv), danach werden die Einzelpuffer freigegeben. Das Ganze läuft im Worker-Thread (siehe 4).
+   (entpackte Einträge und neues Archiv), danach werden die Einzelpuffer freigegeben. Das Ganze läuft im Kindprozess (siehe 4).
 6. **Strikte Paketprüfung** (Review 8725dc5, E3/E4/E6), vor SheetJS:
    - Formatbestimmung wie SheetJS (siehe 2); `[Content_Types].xml` wird wie `parse_ct` gelesen (Namensraum
      `http://schemas.openxmlformats.org/package/2006/content-types`, sonst `BESCHAEDIGT`; doppelte Attribute → `BESCHAEDIGT`).
@@ -150,15 +166,34 @@ von `CFB.parse` in `vendor/sheetjs/xlsx.mjs`, alles vor SheetJS:
 - **Sektorketten** (Verzeichnis, Mini-FAT, Mini-Strom, jeder Strom ab 4096 Byte) laufen nur über vorhandene Sektoren, **ohne Zyklus** und ohne
   Sektoren, die schon zu einer anderen Kette gehören. Hintergrund: SheetJS (`get_sector_list`) folgt der Kette eines Stroms, der mitten in einer
   anderen Kette beginnt, ohne Zykluserkennung (Endlosschleife bis Zeit-/Speicherlimit).
+- **Alle Sektorketten zusammen** (Review 561dd32, K2, Entscheidung E-C): SheetJS (`make_sector_list`) folgt beim Öffnen der FAT-Kette **jedes**
+  Sektors, auch freier und im Verzeichnis nicht genannter Sektoren, und kopiert jede Kette (bricht nur bei einer Schleife innerhalb einer Kette ab,
+  nicht bei bereits gelesenen Sektoren). Die Vorprüfung rechnet diesen Durchlauf genau nach (Reihenfolge ab Verzeichnisbeginn, dieselben
+  Abbruchregeln, Bytes jenseits des Dateiendes als 0 wie `__readInt32LE`): die **Summe aller Kettenlängen ≤ 4 × Sektorzahl**, sonst `BESCHAEDIGT`.
+  Ein Kettenverweis auf einen Sektor außerhalb der Datei → `BESCHAEDIGT` (SheetJS bricht dort ebenfalls ab). Gültige Dateien kommen auf etwa
+  1 × Sektorzahl. Folge: eine einzelne rückwärts verkettete Kette ist nur bis etwa √(6 × Sektorzahl) Sektoren zulässig (Datei mit ca. 430 Sektoren:
+  bis ca. 50 Sektoren rückwärts; geprüft mit 40); ob echte Excel-/LibreOffice-Dateien so etwas enthalten, ist mangels Originaldateien im Repo noch nicht geprüft.
 - **Größenbudget vor dem Lesen**: jede Stromgröße ab 4096 Byte passt in ihre Kette (Sektoren × Sektorgröße); die Summe aller erklärten
   Stromgrößen ≤ `entpacktBytes` (sonst `ENTPACKT_ZU_GROSS`).
-- **Verzeichnisbaum** (imp-2-fix5, A1): die Zeiger links, rechts und Kind jedes benutzten Eintrags zeigen auf einen vorhandenen Eintrag oder sind -1
-  (NOSTREAM); jeder Eintrag ist von der Wurzel aus höchstens einmal erreichbar; Zyklus oder Mehrfachverweis → `BESCHAEDIGT`. Hintergrund: SheetJS
-  (`build_full_paths`) folgt den Zeigern ohne Zykluserkennung.
-- Der erste Verzeichniseintrag ist der Stammeintrag; es gibt genau einen Strom `Workbook` oder `Book` mit Größe > 0 **direkt unter der Wurzel**
-  (imp-2-fix5, A2); sonst `NICHT_UNTERSTUETZT`. Ein gleichnamiger Strom in einem Unterordner zählt nicht (Quattro Pro/Lotus mit `PerfectOffice_MAIN`,
-  `NativeContent_MAIN` oder `MN0` wäre sonst als XLS gelesen worden).
-- Widerspruch → `BESCHAEDIGT`. Verschlüsselte Dateien (`EncryptedPackage`, `EncryptionInfo`) → `PASSWORTGESCHUETZT` (vor der Strukturprüfung).
+- **Verzeichnisbaum** (imp-2-fix5, A1; vervollständigt in Review 561dd32, K1, Entscheidung E-B): SheetJS (`build_full_paths`) durchläuft den Baum
+  über **alle** Einträge (auch unbenutzte, Typ 0, und von der Wurzel aus nicht erreichbare), ohne Zykluserkennung. Deshalb:
+  - die Zeiger links, rechts und Kind **jedes** Eintrags zeigen auf einen vorhandenen Eintrag oder sind -1 (NOSTREAM);
+  - der Durchlauf von `build_full_paths` wird nachgerechnet (Warteschlange, dad-Zuordnung, dad-Ketten; ohne Pfadtexte): Warteschlange
+    länger als 4 × Eintragszahl oder mehr als 4 × Eintragszahl Schritte in den dad-Ketten (Schleife) → `BESCHAEDIGT`. Gemessen: von SheetJS
+    geschriebene Dateien 1,0 ×, entarteter (links absteigender) Baum bis 1,94 ×, ausgeglichene Bäume in gemischter Reihenfolge bis 1,94 ×
+    (Warteschlange); dad-Schritte ≤ 1 × Eintragszahl;
+  - zusätzlich (wie bisher) jeder Eintrag von der Wurzel aus höchstens einmal erreichbar, kein erreichbarer unbenutzter Eintrag.
+  Ein Eintrag mit Größe < 0 und Start < 0 gilt wie in `read_directory` als unbenutzt.
+- **Tabellenstrom** (Review 561dd32, H2, Entscheidung E-D): erst nach bestandener Strukturprüfung liest der Parser den Container mit `CFB.read`
+  (dieselbe Funktion, die `XLSX.read` aufruft) und wählt den Strom genau wie `parse_xlscfb`: `CFB.find(cfb, "/Workbook")`, sonst
+  `CFB.find(cfb, "/Book")`. Der Treffer muss eindeutig sein (alle Einträge, die `CFB.find` für den Pfad treffen könnte, auch über dessen
+  Ersatzregeln für U+0000–U+0006; mehr als einer → `BESCHAEDIGT`), ein Strom (Typ 2) sein und Inhalt haben (Länge > 0; ein Eintrag mit Start -2
+  und Größe > 0 hat keinen Inhalt). Sonst `NICHT_UNTERSTUETZT`. Gegenprobe: die eigene Auswahl muss dasselbe Objekt sein, das `CFB.find` liefert,
+  sonst `BESCHAEDIGT`. Damit gelten Großschreibung (Kelvin-Zeichen U+212A wird nicht zu „K“) und volle Namenslänge wie bei SheetJS; ein Strom
+  gleichen Namens in einem Unterordner zählt weiterhin nicht (Quattro Pro/Lotus mit `PerfectOffice_MAIN`, `NativeContent_MAIN` oder `MN0` wird
+  nicht als XLS gelesen).
+- Widerspruch → `BESCHAEDIGT`. Verschlüsselte Dateien (`EncryptedPackage`, `EncryptionInfo` als Bytes vor der Strukturprüfung; nach `CFB.read`
+  zusätzlich `CFB.find("EncryptedPackage")` bzw. `/encryption`) → `PASSWORTGESCHUETZT`.
 
 ## 6. Zellwerte (Rohwerte)
 

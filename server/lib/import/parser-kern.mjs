@@ -545,18 +545,98 @@ function erkennePaket(p) {
    wird vor SheetJS (Aufbau wie CFB.parse in vendor/sheetjs/xlsx.mjs):
    - Kopf: Signatur, Version 3/4 mit Sektorgröße 512/4096, Mini-Sektor 64, reservierte Bytes 0,
      Grenze für Mini-Ströme 4096, Zählerfelder im Bereich der Datei;
+   - Review 561dd32, K2 (E-C): SheetJS make_sector_list folgt der FAT-Kette JEDES Sektors (auch freier
+     und nicht im Verzeichnis genannter Sektoren) und kopiert jede Kette. Die Summe aller Kettenlängen
+     wird hier genauso nachgerechnet (gleiche Reihenfolge ab dir_start, gleiche Abbruchregeln) und darf
+     4 × Sektorzahl nicht übersteigen, sonst BESCHAEDIGT (absteigend verkettete Freisektoren ergäben
+     quadratisch viele Sektorkopien: 1,4-MB-Datei → ca. 2 GB);
    - Sektorketten (Verzeichnis, Mini-FAT, Mini-Strom, jeder Strom ab 4096 Byte) laufen nur über
      vorhandene Sektoren, ohne Zyklus (SheetJS get_sector_list folgt einer Kette ohne Zykluserkennung)
      und ohne Sektoren, die schon zu einer anderen Kette gehören;
    - jede erklärte Stromgröße passt in ihre Kette; die Summe aller Stromgrößen liegt innerhalb
      von entpacktBytes (Größenbudget vor dem Lesen);
-   - Verzeichnisbaum (links/rechts/Kind): Zeiger auf vorhandene Einträge oder -1, jeder Eintrag von der Wurzel
-     aus höchstens einmal erreichbar (sonst Zyklus → BESCHAEDIGT, A1 imp-2-fix5);
-   - es gibt genau einen Tabellenstrom „Workbook“ oder „Book“ mit Größe > 0 direkt unter der Wurzel; sonst
-     NICHT_UNTERSTUETZT (auch Quattro Pro/Lotus: PerfectOffice_MAIN, NativeContent_MAIN, MN0; A2 imp-2-fix5).
-     Ein Strom gleichen Namens in einem Unterordner zählt nicht. */
+   - Review 561dd32, K1 (E-B): Verzeichnisbaum so, wie SheetJS build_full_paths ihn durchläuft, über ALLE
+     Einträge (auch unbenutzte und von der Wurzel aus nicht erreichbare): Zeiger links/rechts/Kind jedes
+     Eintrags auf einen vorhandenen Eintrag oder -1; die Warteschlange wird nachgerechnet und darf
+     4 × Eintragszahl nicht übersteigen; die dad-Ketten dürfen keine Schleife bilden (Schrittbudget
+     4 × Eintragszahl). Zusätzlich (A1, imp-2-fix5) ist jeder Eintrag von der Wurzel aus höchstens einmal
+     erreichbar und kein erreichbarer Eintrag unbenutzt.
+   Die Auswahl des Tabellenstroms (Workbook/Book) trifft erkenne() danach mit CFB.find wie SheetJS (H2, E-D). */
 const CFB_ENDE = -2;
-function pruefeCfb(buf, g) {
+const CFB_BUDGET = 4;
+
+/** Rechnet make_sector_list nach (nur Längen) und liefert die Verzeichniskette, wie SheetJS sie liest.
+    i32(s, o) liest wie __readInt32LE aus sectors[s] (fehlende Bytes zählen als 0). */
+function pruefeSektorketten(i32, ssz, nsec, fat, dirStart) {
+  const budget = CFB_BUDGET * nsec;
+  const chkd = new Uint8Array(nsec);
+  const marke = new Int32Array(nsec);
+  let schritte = 0, nr = 0, dirKette = null;
+  for (let i = 0; i < nsec; ++i) {
+    let k = i + dirStart;
+    if (k >= nsec) k -= nsec;
+    if (chkd[k]) continue;
+    nr++;
+    const knoten = k === dirStart ? [] : null;
+    for (let j = k; j >= 0;) {
+      /* SheetJS: sectors[j] fehlt → __toBuffer wirft; hier sofort BESCHAEDIGT */
+      if (j >= nsec) throw kaputt("Sektorverweis außerhalb der Datei");
+      marke[j] = nr; chkd[j] = 1;
+      if (knoten) knoten.push(j);
+      if (++schritte > budget) throw kaputt("Sektorketten zu lang (Sektoren mehrfach verkettet)");
+      const addr = fat[Math.floor((j * 4) / ssz)];
+      if (!(Number.isInteger(addr) && addr >= 0 && addr < nsec)) break;
+      j = i32(addr, (j * 4) & (ssz - 1));
+      if (j >= 0 && j < nsec && marke[j] === nr) break;
+    }
+    if (knoten) dirKette = knoten;
+  }
+  return dirKette;
+}
+
+/** Rechnet build_full_paths nach (nur Zeiger und dad, ohne Texte) mit Schrittbudget; E: [{ typ, links, rechts, kind }]. */
+function pruefeBaumWieSheetJS(E) {
+  const n = E.length, budget = CFB_BUDGET * n;
+  const dad = new Int32Array(n), letzte = new Int32Array(n);
+  const q = [];
+  for (let i = 0; i < n; ++i) { dad[i] = i; letzte[i] = i; q.push(i); }
+  let L = -1, R = -1, C = -1;
+  for (let j = 0; j < q.length; ++j) {
+    const i = q[j];
+    L = E[i].links; R = E[i].rechts; C = E[i].kind;
+    if (dad[i] === i) {
+      if (L !== -1 && dad[L] !== L) dad[i] = dad[L];
+      if (R !== -1 && dad[R] !== R) dad[i] = dad[R];
+    }
+    if (C !== -1) dad[C] = i;
+    /* q.lastIndexOf(x) < j: letzte[x] ist die letzte Stelle von x in q */
+    if (L !== -1 && i !== dad[i]) { dad[L] = dad[i]; if (letzte[L] < j) { letzte[L] = q.length; q.push(L); } }
+    if (R !== -1 && i !== dad[i]) { dad[R] = dad[i]; if (letzte[R] < j) { letzte[R] = q.length; q.push(R); } }
+    if (q.length > budget) throw kaputt("Verzeichnisbaum: Zeiger bilden eine Schleife (Warteschlange)");
+  }
+  /* zweite Schleife von build_full_paths (mit L/R des letzten Durchlaufs, wie dort) */
+  for (let i = 1; i < n; ++i) {
+    if (dad[i] === i) {
+      if (R !== -1 && dad[R] !== R) dad[i] = dad[R];
+      else if (L !== -1 && dad[L] !== L) dad[i] = dad[L];
+    }
+  }
+  let schritte = 0;
+  for (let i = 1; i < n; ++i) {
+    if (E[i].typ === 0) continue;
+    let j = i;
+    if (j !== dad[j]) {
+      do {
+        j = dad[j];
+        if (++schritte > budget) throw kaputt("Verzeichnisbaum: Pfadkette bildet eine Schleife");
+      } while (j !== 0 && dad[j] !== -1 && j !== dad[j]);
+    }
+    dad[i] = -1;
+  }
+}
+
+export function pruefeCfb(buf, g) {
+  g = { ...STANDARD_GRENZEN, ...(g || {}) };
   const L = buf.length;
   if (L < 512) throw kaputt("Dateikopf unvollständig");
   const major = buf.readUInt16LE(0x1a), shift = buf.readUInt16LE(0x1e);
@@ -575,9 +655,11 @@ function pruefeCfb(buf, g) {
   if (anzahlFat < 1 || anzahlFat > nsec || anzahlDifat < 0 || anzahlDifat > nsec || anzahlMini < 0 || anzahlMini > nsec) throw kaputt("Dateikopf");
   if (!imBereich(dirStart)) throw kaputt("Verzeichnis außerhalb der Datei");
   if (anzahlMini > 0 && miniStart !== CFB_ENDE && !imBereich(miniStart)) throw kaputt("Verzeichnis außerhalb der Datei");
-  const lies = (sektor, versatz) => {
+  /** wie __readInt32LE(sectors[sektor], versatz): Bytes jenseits des Dateiendes zählen als 0 */
+  const i32 = (sektor, versatz) => {
     const o = (sektor + 1) * ssz + versatz;
-    return o + 4 <= L ? buf.readInt32LE(o) : null;
+    const b = (k) => (o + k < L ? buf[o + k] : 0);
+    return (b(3) << 24) | (b(2) << 16) | (b(1) << 8) | b(0);
   };
   /* FAT-Sektoren: Kopf (bis zum ersten negativen Wert) und DIFAT-Kette wie sleuth_fat */
   const fat = [];
@@ -586,13 +668,14 @@ function pruefeCfb(buf, g) {
   for (let idx = difatStart, rest = anzahlDifat; idx !== CFB_ENDE && idx !== -1;) {
     if (!imBereich(idx) || difatGesehen.has(idx)) throw kaputt("Sektorliste fehlerhaft");
     difatGesehen.add(idx);
-    for (let i = 0; i < (ssz >>> 2) - 1; i++) { const q = lies(idx, i * 4); if (q === null || q === CFB_ENDE) break; fat.push(q); }
+    for (let i = 0; i < (ssz >>> 2) - 1; i++) { const q = i32(idx, i * 4); if (q === CFB_ENDE) break; fat.push(q); }
     if (rest < 1) break;
     rest -= 1;
-    idx = lies(idx, ssz - 4);
-    if (idx === null) break;
+    idx = i32(idx, ssz - 4);
   }
   if (fat.length === 0 || !imBereich(fat[0])) throw kaputt("Sektorliste fehlerhaft");
+  /* K2: alle Ketten wie make_sector_list, Gesamtlänge ≤ 4 × Sektorzahl; liefert die Verzeichniskette */
+  const dirKette = pruefeSektorketten(i32, ssz, nsec, fat, dirStart);
   const belegt = new Set();
   /** Folgt einer Sektorkette wie get_sector_list, aber mit Zyklus-, Bereichs- und Doppelprüfung. */
   const kette = (start) => {
@@ -603,28 +686,24 @@ function pruefeCfb(buf, g) {
       belegt.add(j); n++;
       const addr = fat[Math.floor((j * 4) / ssz)];
       if (!imBereich(addr)) break;
-      const naechster = lies(addr, (j * 4) & (ssz - 1));
-      if (naechster === null) break;
-      j = naechster;
+      j = i32(addr, (j * 4) & (ssz - 1));
     }
     return n;
   };
-  const dirSektoren = kette(dirStart);
+  if (kette(dirStart) !== dirKette.length) throw kaputt("Verzeichniskette");
   if (anzahlMini > 0 && miniStart !== CFB_ENDE) kette(miniStart);
-  const eintraege = []; /* Verzeichniseinträge in Reihenfolge: { typ, links, rechts, kind, name, groesse } */
+  const eintraege = []; /* Verzeichniseinträge in der Reihenfolge von read_directory: { typ, links, rechts, kind, groesse } */
   let summe = 0;
-  for (let i = 0, s = dirStart; i < dirSektoren; i++) {
+  for (const s of dirKette) {
     const basis = (s + 1) * ssz;
+    if (basis + ssz > L) throw kaputt("Verzeichnis unvollständig");
     for (let k = 0; k < ssz; k += 128) {
       const p = basis + k;
-      if (p + 128 > L) break;
-      const typ = buf[p + 66], start = buf.readInt32LE(p + 116), groesse = buf.readInt32LE(p + 120);
-      const nl = Math.min(buf.readUInt16LE(p + 64), 64);
-      if (i === 0 && k === 0 && typ !== 5) throw kaputt("Stammeintrag fehlt");
-      eintraege.push({
-        typ, links: buf.readInt32LE(p + 68), rechts: buf.readInt32LE(p + 72), kind: buf.readInt32LE(p + 76), groesse,
-        name: buf.toString("utf16le", p, p + nl).replace(/\0+$/, "").toLowerCase(),
-      });
+      let typ = buf[p + 66];
+      const start = buf.readInt32LE(p + 116), groesse = buf.readInt32LE(p + 120);
+      if (groesse < 0 && start < 0) typ = 0; /* wie read_directory: Eintrag gilt als unbenutzt */
+      if (eintraege.length === 0 && typ !== 5) throw kaputt("Stammeintrag fehlt");
+      eintraege.push({ typ, links: buf.readInt32LE(p + 68), rechts: buf.readInt32LE(p + 72), kind: buf.readInt32LE(p + 76) });
       if (groesse < 0 && start < 0) continue;
       if (typ === 5) {
         if (anzahlMini > 0 && start !== CFB_ENDE && groesse > 0) {
@@ -642,33 +721,72 @@ function pruefeCfb(buf, g) {
         if (summe > g.entpacktBytes) throw zipAbbruchEntpackt(g);
       }
     }
-    const addr = fat[Math.floor((s * 4) / ssz)];
-    s = imBereich(addr) ? lies(addr, (s * 4) & (ssz - 1)) : -1;
   }
-  /* Verzeichnisbaum (imp-2-fix5, A1): SheetJS (build_full_paths) folgt links/rechts/Kind ohne Zykluserkennung.
-     Zeiger: vorhandener Eintrag oder -1 (NOSTREAM); jeder Eintrag ist von der Wurzel aus höchstens einmal erreichbar.
-     Nicht erreichbare, unbenutzte Einträge (Typ 0) bleiben unbeachtet. */
+  /* K1: Zeiger ALLER Einträge (auch unbenutzter): vorhandener Eintrag oder -1 (NOSTREAM) */
   const n = eintraege.length;
-  const zeigerOk = (z) => z === -1 || (Number.isInteger(z) && z >= 0 && z < n);
+  const zeigerOk = (z) => z === -1 || (z >= 0 && z < n);
   for (const e of eintraege) {
-    if (e.typ !== 0 && !(zeigerOk(e.links) && zeigerOk(e.rechts) && zeigerOk(e.kind))) throw kaputt("Verzeichniszeiger außerhalb der Einträge");
+    if (!(zeigerOk(e.links) && zeigerOk(e.rechts) && zeigerOk(e.kind))) throw kaputt("Verzeichniszeiger außerhalb der Einträge");
   }
-  /* Strom „Workbook“/„Book“ nur direkt unter der Wurzel (A2): Geschwisterbaum des Wurzelkindes, ohne Unterordner. */
-  const namen = [];
-  const gesehen = new Set();
-  const stapel = [[0, false]];
+  /* K1: build_full_paths nachrechnen (Warteschlange und dad-Ketten mit Schrittbudget) */
+  pruefeBaumWieSheetJS(eintraege);
+  /* A1 (imp-2-fix5): jeder Eintrag von der Wurzel aus höchstens einmal erreichbar, kein erreichbarer unbenutzter Eintrag */
+  const gesehen = new Uint8Array(n);
+  const stapel = [0];
   while (stapel.length) {
-    const [idx, direkt] = stapel.pop();
-    if (gesehen.has(idx)) throw kaputt("Verzeichnisbaum zyklisch oder mehrfach erreichbar");
-    gesehen.add(idx);
+    const idx = stapel.pop();
+    if (gesehen[idx]) throw kaputt("Verzeichnisbaum zyklisch oder mehrfach erreichbar");
+    gesehen[idx] = 1;
     const e = eintraege[idx];
     if (e.typ === 0) throw kaputt("Verzeichnisbaum verweist auf einen unbenutzten Eintrag");
-    if (direkt && e.typ === 2 && e.groesse > 0) namen.push(e.name);
-    if (e.links !== -1) stapel.push([e.links, direkt]);
-    if (e.rechts !== -1) stapel.push([e.rechts, direkt]);
-    if (e.kind !== -1) stapel.push([e.kind, idx === 0]);
+    if (e.links !== -1) stapel.push(e.links);
+    if (e.rechts !== -1) stapel.push(e.rechts);
+    if (e.kind !== -1) stapel.push(e.kind);
   }
-  return namen;
+}
+
+/* Review 561dd32, H2 (E-D): Tabellenstrom genau wie SheetJS parse_xlscfb wählen:
+   CFB.find(cfb, "/Workbook") || CFB.find(cfb, "/Book") (exakter Pfad unter der Wurzel, Großschreibung wie
+   SheetJS, also z. B. mit Kelvin-Zeichen nicht gleich; volle Namenslänge wie read_directory). cfbTreffer
+   zählt alle Einträge, die CFB.find für den Pfad treffen könnte (erst exakt, sonst mit dessen Ersatzregeln
+   für U+0000–U+0006): mehr als einer → BESCHAEDIGT (doppelter Name). */
+// eslint-disable-next-line no-control-regex -- bewusst dieselben Muster wie chr0/chr1 in vendor/sheetjs/xlsx.mjs (Z. 297)
+const CHR0 = /\u0000/g, CHR1 = /[\u0001-\u0006]/g;
+function cfbTreffer(cfb, pfad) {
+  const ucVoll = cfb.FullPaths.map((x) => x.toUpperCase());
+  const ucName = ucVoll.map((x) => { const y = x.split("/"); return y[y.length - (x.slice(-1) === "/" ? 2 : 1)]; });
+  let uc = (ucVoll[0].slice(0, -1) + pfad).toUpperCase();
+  const genau = [];
+  ucVoll.forEach((x, w) => { if (x === uc) genau.push(w); });
+  if (genau.length) return genau;
+  const m = !uc.match(CHR1);
+  uc = uc.replace(CHR0, "");
+  if (m) uc = uc.replace(CHR1, "!");
+  const norm = (x) => (m ? x.replace(CHR1, "!") : x).replace(CHR0, "");
+  const treffer = [];
+  for (let w = 0; w < ucVoll.length; ++w) if (norm(ucVoll[w]) === uc || norm(ucName[w]) === uc) treffer.push(w);
+  return treffer;
+}
+
+function waehleTabellenstrom(buf) {
+  let cfb;
+  try { cfb = XLSX.CFB.read(buf, { type: "buffer" }); } catch { throw kaputt("Containerstruktur nicht lesbar"); }
+  if (XLSX.CFB.find(cfb, "EncryptedPackage") || XLSX.CFB.find(cfb, "/encryption")) {
+    throw abbruch("PASSWORTGESCHUETZT", "Die Datei ist passwortgeschützt (verschlüsselt). Bitte ohne Passwort speichern und erneut hochladen.");
+  }
+  let wahl = null;
+  for (const pfad of ["/Workbook", "/Book"]) {
+    const t = cfbTreffer(cfb, pfad);
+    if (t.length === 0) continue;
+    if (t.length > 1) throw kaputt("Tabellenstrom mehrfach vorhanden");
+    wahl = cfb.FileIndex[t[0]];
+    break;
+  }
+  /* Gegenprobe gegen SheetJS selbst: dieselbe Auswahl, sonst BESCHAEDIGT */
+  if (wahl !== (XLSX.CFB.find(cfb, "/Workbook") || XLSX.CFB.find(cfb, "/Book") || null)) throw kaputt("Tabellenstrom nicht eindeutig");
+  if (!wahl || wahl.type !== 2 || !wahl.content || !(wahl.content.length > 0)) {
+    throw abbruch("NICHT_UNTERSTUETZT", "Der Inhalt der Datei ist keine Excel-Tabelle (z. B. ein Textdokument oder eine Präsentation). " + UNTERSTUETZT);
+  }
 }
 
 /* ------------------------------ Formaterkennung --------------------------- */
@@ -697,10 +815,9 @@ function erkenne(buf, g) {
     if (buf.includes(U16("EncryptedPackage")) || buf.includes(U16("EncryptionInfo"))) {
       throw abbruch("PASSWORTGESCHUETZT", "Die Datei ist passwortgeschützt (verschlüsselt). Bitte ohne Passwort speichern und erneut hochladen.");
     }
-    const stroeme = pruefeCfb(buf, g);
-    if (!stroeme.includes("workbook") && !stroeme.includes("book")) {
-      throw abbruch("NICHT_UNTERSTUETZT", "Der Inhalt der Datei ist keine Excel-Tabelle (z. B. ein Textdokument oder eine Präsentation). " + UNTERSTUETZT);
-    }
+    /* Struktur zuerst (K1, K2: SheetJS darf erst danach lesen), dann die Stromauswahl mit CFB.find (H2) */
+    pruefeCfb(buf, g);
+    waehleTabellenstrom(buf);
     return { format: "xls", namen: [], inhalte: new Map() };
   }
   const kopf = buf.subarray(0, 16);

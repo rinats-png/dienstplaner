@@ -77,12 +77,12 @@ ODS-Blattnamen kommen mit XML-Entitäten (`&amp;`), der Parser entschlüsselt si
 
 ## 6. Restrisiken und offene Punkte
 
-1. **Unbekannte Fehler in SheetJS** (xls/ods-Parser sind komplex): abgefedert durch Worker (Zeit, Speicher, Absturz bleibt im Thread), aber nicht ausgeschlossen. Empfehlung: Pentest/Fuzz-Lauf vor Produktivbetrieb (nicht Teil von IMP-2).
+1. **Unbekannte Fehler in SheetJS** (xls/ods-Parser sind komplex): abgefedert durch Worker (Zeit, Speicher, Absturz bleibt im Thread), aber nicht ausgeschlossen. **Seit Review 561dd32 (H1):** die Annahme „Absturz bleibt im Thread“ galt nicht für Speicher außerhalb des JS-Heaps; der Parser läuft jetzt in einem eigenen Kindprozess (siehe 11). Empfehlung: Pentest/Fuzz-Lauf vor Produktivbetrieb (nicht Teil von IMP-2).
 2. ~~ZIP-Prüfung ist kein vollständiger Ersatz für eine eigene Entpackbibliothek~~ — durch Review PR #123 Befund 1 widerlegt und behoben: SheetJS bekommt jetzt nur noch ein selbst neu gebautes Archiv aus geprüften Einträgen (siehe 7).
 3. **Doppelter Speicher statt doppelter Entpackarbeit**: seit Befund 1 entpackt nur noch der Parser; das neu gebaute Archiv ist unkomprimiert. Spitzenbedarf außerhalb des JS-Heaps bis ca. 2 × 100 MB im Worker; bewusst für Sicherheit.
 4. **XLS-Makros** werden nur über den Verzeichnisnamen `_VBA_PROJECT` erkannt (Zeichenfolge im Container). Ein bewusst verschleierter Container könnte den Hinweis umgehen; ausgeführt wird in keinem Fall etwas.
 5. **Zeilenlimit bei xlsx/xls/ods mit mehr als 10.000 Leerzeilen am Stück** meldet `ZU_VIELE_ZEILEN` (siehe Vertrag 3).
-6. **Worker-Start je Anfrage** (ca. 0,5–1 s Latenz). Für Upload-Importe vertretbar; bei Bedarf Worker-Pool in einem späteren Paket.
+6. **Worker-Start je Anfrage** (ca. 0,5–1 s Latenz). Für Upload-Importe vertretbar; bei Bedarf Worker-Pool in einem späteren Paket. Seit Review 561dd32: Kindprozess-Start je Anfrage, ca. 0,3–0,6 s (siehe 11).
 7. **Zeichensatz**: nur UTF-8 und Windows-1252. UTF-16-Text wird als „nicht erkennbar“ abgelehnt.
 8. Lokale Testumgebung: `pruefungen/verdrahtung.test.js` („das Repo selbst besteht“) überschreitet hier sein 5-s-Zeitlimit, weil das Werkzeug in diesem Worktree ca. 14 s braucht (Git-Abfragen). Unabhängig von IMP-2, das Werkzeug selbst endet fehlerfrei.
 9. `docs/acc45/work-packages.json` enthält auf `origin/integration/release-v4` noch keine Einträge `IMP-*`; Status wurde dort nicht geändert (Auftrag: keine Änderungen an Statusquellen genannt). Eintrag und Statuswechsel sind Sache des Integrators.
@@ -341,10 +341,10 @@ danach die Korrektur. Geändert: `server/lib/import/parser-kern.mjs` (`pruefeCfb
 
 | Auflage | Status | Test | vorher (bbf64ca) | nachher |
 |---|---|---|---|---|
-| A1 Endlosschleife (Verzeichnisbaum) | behoben | `A1-PoC: gültige XLS, Baumzeiger der Einträge 2 und 3 zeigen aufeinander → BESCHAEDIGT in unter 2 s` | **rot: kein Ergebnis, Prozess bricht nach ca. 19 s mit Heap-Überlauf ab** (vitest-Lauf 18,9 s) | grün, **623 ms**, `BESCHAEDIGT` |
+| A1 Endlosschleife (Verzeichnisbaum) | **unvollständig** (nur von der Wurzel erreichbare Einträge geprüft; Sicherheitsreview 561dd32, K1); vervollständigt in imp-2-fix6, siehe 11 | `A1-PoC: gültige XLS, Baumzeiger der Einträge 2 und 3 zeigen aufeinander → BESCHAEDIGT in unter 2 s` | **rot: kein Ergebnis, Prozess bricht nach ca. 19 s mit Heap-Überlauf ab** (vitest-Lauf 18,9 s) | grün, **623 ms**, `BESCHAEDIGT` |
 | A1 | | `A1: Zeiger außerhalb der Einträge, mehrfach erreichbarer Eintrag und Selbstverweis → BESCHAEDIGT` | rot (`ok:true`) | grün |
 | A1 | | `A1 Gegenprobe: gültige XLS (mit Verzeichnisbaum) wird weiter gelesen` | grün | grün |
-| A2 Lotus/Quattro Pro | behoben | `A2-PoC: CFB mit /Sub/Workbook und /PerfectOffice_MAIN (WK3-Daten) → NICHT_UNTERSTUETZT` | **rot: `ok:true`, format `xls`** | grün |
+| A2 Lotus/Quattro Pro | **umgehbar** (eigener Namensvergleich ≠ Auswahl von SheetJS; Sicherheitsreview 561dd32, H2a–d); ersetzt in imp-2-fix6 durch `CFB.find`, siehe 11 | `A2-PoC: CFB mit /Sub/Workbook und /PerfectOffice_MAIN (WK3-Daten) → NICHT_UNTERSTUETZT` | **rot: `ok:true`, format `xls`** | grün |
 | A2 | | `A2: leerer Workbook-Strom (Größe 0) unter der Wurzel zählt nicht → NICHT_UNTERSTUETZT` | rot (`ok:true`) | grün |
 | A2 | | `A2: Quattro-Pro-/Lotus-Ströme (NativeContent_MAIN, MN0) ohne Workbook/Book unter der Wurzel → NICHT_UNTERSTUETZT` | grün (Absicherung) | grün |
 | A2 | | `A2 Gegenprobe: normale XLS mit Workbook unter der Wurzel bleibt ok` | grün | grün |
@@ -355,13 +355,125 @@ Rot: 4 von 7 neuen Tests (die übrigen drei sichern Gegenproben und Fälle ab, d
 jedes benutzten Eintrags (Typ ≠ 0) müssen auf einen vorhandenen Eintrag zeigen oder -1 sein; eine Tiefensuche ab der Wurzel meldet jeden zweiten Besuch
 (Zyklus, Selbstverweis, Mehrfachverweis) als `BESCHAEDIGT`, ebenso einen erreichbaren unbenutzten Eintrag. Unbenutzte, nicht erreichbare Einträge werden nicht
 beurteilt. Messung: gleiche Datei vorher Abbruch nach ca. 19 s (Heap), nachher 623 ms. Die Prüfung ist linear in der Eintragszahl, die durch die Verzeichniskette begrenzt ist.
+**Korrektur (Sicherheitsreview 561dd32, K1):** Genau die nicht beurteilten Einträge durchläuft SheetJS aber auch (`build_full_paths` startet mit
+allen Einträgen in der Warteschlange). Die Aussage „behoben“ traf deshalb nicht zu; zwei unbenutzte, nicht erreichbare Einträge reichten weiter für
+eine Endlosschleife (4-KB-Datei: 20 s bis ZEITLIMIT, RSS-Spitze 1,5 GB). Vervollständigt in imp-2-fix6 (siehe 11).
 
 **A2 – Umsetzung.** `pruefeCfb` liefert nur noch Ströme des Geschwisterbaums direkt unter der Wurzel (Kind der Wurzel; Unterordner werden nicht betreten) mit
 Größe > 0. `erkenne` verlangt `workbook` oder `book` darin; damit sind Lotus/Quattro Pro (`PerfectOffice_MAIN`, `NativeContent_MAIN`, `MN0`) ohne diesen Strom
 `NICHT_UNTERSTUETZT`. Grenze: Eine Datei, die zusätzlich zu einem gültigen Wurzel-`Workbook` einen Quattro-Pro-Strom enthält, wird weiter als XLS gelesen
 (die Auflage betrifft Dateien ohne diesen Strom).
+**Korrektur (Sicherheitsreview 561dd32, H2a–d):** Der eigene Namensvergleich (klein geschrieben, höchstens 64 Byte Name, Größe statt Inhalt, erster
+Treffer beliebig) wich von der Auswahl in SheetJS ab (`CFB.find`, groß geschrieben, volle Namenslänge, Inhalt, erster Treffer im Verzeichnis). Vier
+Umgehungen lieferten weiter `ok:true` mit `format: "xls"` aus Lotus-Daten. Die Aussage „behoben“ traf nicht zu; ersetzt in imp-2-fix6 (siehe 11).
 
 **Vertrag.** Abschnitt 2 (Quattro Pro ausgeschlossen) und 5a präzisiert: „direkt unter der Wurzel“, „Größe > 0“, Verzeichnisbaum-Prüfung.
 
 **Verifikation.** `npx vitest run pruefungen/import-parser.test.js pruefungen/import-parser-vendor.test.js --testTimeout=60000` zweimal: je **121 von 121** grün
 (116 Parser, 5 Einbindung; vorher 114 + 7 neue), ca. 70 und 80 s. ESLint auf `server/lib/import` und den Prüfdateien: 0 Befunde. `node werkzeug/verdrahtung-pruefen.mjs`: grün (284 Prüfdateien).
+
+## 11. Befunde aus dem Sicherheitsreview 561dd32
+
+Branch `acc45/import/imp-2-fix6` (Basis `origin/acc45/import/imp-2` @ 561dd32). Zwei Commits: zuerst nur die Tests (8869b19, Rot-Nachweis per Commit),
+danach die Korrektur. Entscheidungen E-A bis E-E vom Auftraggeber. `vendor/sheetjs/` unverändert: SHA-256 `xlsx.mjs` = `1a0fb062…77db`
+(`import-parser-vendor.test.js` grün).
+
+Geändert: `server/lib/import/parser-kern.mjs` (`pruefeCfb` neu gegliedert und exportiert, `pruefeSektorketten`, `pruefeBaumWieSheetJS`,
+`cfbTreffer`, `waehleTabellenstrom`), `server/lib/import/parser-prozess.mjs` (neu, Kindprozess), `server/lib/import/parser.mjs` (Kindprozess statt
+Worker, Ergebnisform-Prüfung), `server/lib/import/parser-worker.mjs` (jetzt Kindskript: stdin/stdout statt `workerData`/`postMessage`; Dateiname
+bleibt, weil die bestehende Quelltextprüfung ihn liest), `pruefungen/import-parser.test.js` (neuer Block `Review 561dd32 (imp-2-fix6): …`, 21 Tests),
+`pruefungen/import-parser-hilfen.mjs` (nur ergänzt: `cfbEintraege`, `cfbSetze`, `cfbIndex`, `cfbFatOrt`, `cfbMitFreienEintraegen`,
+`cfbAbsteigendeFreieSektoren`, `WK3`, `poc561`), `pruefungen/hilfen/import-kind-attrappe.mjs` (neu, Testdouble des Kindskripts),
+`IMPORT-VERTRAG.md` (§2, §3 Textmenge, §4, §5 Punkt 5, §5a), dieser Nachweis (§6, §10 berichtigt, §11).
+
+### Ergebnis je Befund
+
+| Befund | Maßnahme | Test (Block `Review 561dd32 …`) | vorher (561dd32) | nachher |
+|---|---|---|---|---|
+| **K1** Verzeichnisbaum unvollständig geprüft | E-B: Zeiger **aller** Einträge (auch Typ 0, nicht erreichbar) auf vorhandenen Eintrag oder -1; `build_full_paths` wird nachgerechnet (Warteschlange mit `letzte[x]` statt `q.lastIndexOf`, dad-Zuordnung inkl. der zweiten Schleife mit den L/R des letzten Durchlaufs, dad-Ketten); Warteschlange > 4·n oder dad-Schritte > 4·n → `BESCHAEDIGT`. A1-Prüfung ab der Wurzel bleibt zusätzlich. | `K1-PoC a: … Warteschlange …` | **rot**: `ZEITLIMIT` nach 20,2 s; Einzelmessung RSS-Spitze Server-Prozess **1.513 MB** (4-KB-Datei) | grün, `BESCHAEDIGT`, 553 ms |
+| K1 | | `K1-PoC b: … Schleife der dad-Kette …` | **rot**: `ZEITLIMIT` nach 20,1 s; Einzelmessung RSS-Spitze **823 MB** | grün, `BESCHAEDIGT`, 470 ms |
+| K1 | | `K1: Zeiger … bei ALLEN Einträgen geprüft …` (`pruefeCfb` direkt) | **rot** (`pruefeCfb` prüfte Typ-0-Zeiger nicht; nicht exportiert). Über `parseDatei` kam schon vorher `BESCHAEDIGT`, aber nur, weil SheetJS an `FI[99]` mit TypeError scheiterte | grün |
+| K1 | | `K1 Gegenprobe: … vielen Strömen, entarteter … und ausgeglichener Baum …` (216 Einträge; SheetJS-Liste, links absteigend, ausgeglichen gemischt; 5 Ströme gemischt) | grün | grün |
+| **K2** Sektorketten quadratisch | E-C: `make_sector_list` wird nachgerechnet (Reihenfolge ab `dir_start`, Abbruch bei negativem Eintrag, fehlendem FAT-Sektor oder Schleife innerhalb der Kette; Bytes jenseits des Dateiendes als 0); Summe aller Kettenlängen > 4·nsec → `BESCHAEDIGT`; Kettenverweis über das Dateiende → `BESCHAEDIGT`. Die Verzeichniseinträge werden jetzt aus genau dieser Kette gelesen. | `K2-PoC: absteigend verkettete freie Sektoren (1,4-MB-Datei) …` | **rot**: `ok:true` nach ca. 10 s; Einzelmessung RSS-Spitze Server-Prozess **1.969 MB** | grün, `BESCHAEDIGT`; Vorprüfung < 1 s, `arrayBuffers`-Zuwachs < 32 MB; über `parseDatei` 513 ms, RSS-Zuwachs Server-Prozess **1 MB** |
+| K2 | | `K2 Gegenprobe: gültige XLS mit großem Füllstrom und große XLS (3000 Zeilen) …` | grün | grün |
+| K2 | | `K2: einzelne rückwärts verkettete Kette … bis 4 × Sektorzahl bleibt lesbar` (40 Sektoren rückwärts) | grün | grün |
+| **H2a** Kelvin-Zeichen | E-D: nach der Strukturprüfung `CFB.read` und Auswahl wie `parse_xlscfb` (`CFB.find("/Workbook") \|\| CFB.find("/Book")`); eindeutig (`cfbTreffer`, auch Ersatzregeln von `find`), Typ 2, Inhalt > 0; Gegenprobe gleiche Objektidentität wie `CFB.find`. | `H2a-PoC: Workbook mit Kelvin-Zeichen …` | **rot**: `ok:true`, `format: "xls"` (Lotus-Daten) | grün, `NICHT_UNTERSTUETZT` |
+| **H2b** Namenslänge 128 | | `H2b-PoC: … Namenslänge 128 Byte …` | **rot**: `ok:true`, `xls` | grün, `NICHT_UNTERSTUETZT` |
+| **H2c** Strom ohne Inhalt | | `H2c-PoC: … Start -2 (ohne Inhalt) …` | **rot**: `ok:true`, `xls` | grün, `NICHT_UNTERSTUETZT` |
+| **H2d** doppelter Name | | `H2d-PoC: doppelter Name Workbook …` und `H2d: doppelter Tabellenstrom … BESCHAEDIGT` | **rot**: `ok:true`, `xls` (beide) | grün, `BESCHAEDIGT` |
+| H2 | | `H2 Gegenprobe: Strom „Book“ … und „WORKBOOK“ …` | grün | grün |
+| **H1** Isolation / Speicherklasse | E-A: Kindprozess (`parser-prozess.mjs`), Heap 256 MB, Wandzeit 20 s mit SIGKILL, Linux `ulimit -v 1500000` (fail closed), stdout-JSON ≤ 128 MB, nur Vertragsform durchgelassen, minimale Umgebung, `--disallow-code-generation-from-strings`. | `H1: der Parser läuft in einem eigenen Kindprozess …` | **rot** (kein Kindprozess) | grün |
+| H1 | | `H1-PoC: Kind stürzt ab (Heap-Überlauf bei 256 MB) → … SPEICHERLIMIT …` | **rot** | grün, Antwort nach 2,8 s, nächste Datei ok |
+| H1 | | `H1-PoC: nativer Absturz des Kindes (abort) → VERARBEITUNG_FEHLGESCHLAGEN …` | **rot** | grün |
+| H1 | | `H1-PoC: SheetJS selbst stürzt im Kind ab (K1b-Datei ohne Vorprüfung gelesen) …` | grün (**Messartefakt**: alter Code ignoriert das Testdouble, liest K1b im Worker → `ZEITLIMIT`; der RSS-Zuwachs blieb im Testlauf unter 200 MB, weil der Speicher des vorigen Tests noch belegt war; Einzelmessung vorher 823 MB) | grün: SheetJS füllt den Kind-Heap → `SPEICHERLIMIT` nach 5,6 s, RSS-Zuwachs Server-Prozess **1 MB** |
+| H1 | | `H1: Zeitlimit beendet das Kind hart (SIGKILL) …` (zeitMs 500, Prozess danach weg, kein aktives Kind) | **rot** | grün, Antwort nach ca. 0,6 s (Einzellauf) |
+| H1 | | `H1: Standard-Zeitlimit 20 s, Heap … 256 MB; Ergebnisgröße begrenzt, ungültige Ausgabe und Teilergebnisse werden verworfen` | **rot** | grün |
+| H1 | | `H1: Quelltext des Prozessmoduls …` | **rot** (Modul fehlte) | grün |
+| H1 | | `H1 (nur Linux): Adressraum-Limit greift …` | übersprungen (Windows) | **übersprungen (Windows), auf Linux nicht ausgeführt** |
+
+Rot vorher: **15 von 21** neuen Tests (K1: 3, K2: 1, H2: 5, H1: 6); grün vorher 5 (vier Gegenproben, ein Messartefakt), 1 nur unter Linux.
+Lauf vorher: `npx vitest run pruefungen/import-parser.test.js -t "Review 561dd32" --testTimeout=60000` auf 561dd32 mit den neuen Tests:
+17 rot, 3 grün; danach wurden in den beiden Gegenproben K1/K2 die direkten Aufrufe von `pruefeCfb` entfernt (vorher nur rot, weil die Funktion
+nicht exportiert war) und beide liefen auf 561dd32 grün; Stand des Rot-Commits 8869b19: 15 rot.
+
+**Nach dem Rot-Commit geändert (benannt):** in meinem neuen Test `H1: Zeitlimit beendet das Kind hart …` die Schwelle der Antwortzeit von 2.000 ms
+auf 5.000 ms. Grund: im Volllauf (alle Parser-Tests) kam die Antwort einmal nach 3,3 s (Prozessstart unter Last, Windows); im Einzellauf 0,6 s.
+Die Aussage des Tests (Antwort ohne Ende des Kindes, Kind danach beendet) bleibt; ohne Kill käme nie eine Antwort. Keine bestehende Assertion
+der Basis wurde geändert oder entfernt.
+
+**Erwartung, die altes Verhalten festschreibt (benannt, nicht geändert):** Die bestehende Quelltextprüfung `Parser öffnet keine Netzwerkverbindung und
+schreibt keine Dateien` verbietet `node:child_process` in `parser.mjs`, `parser-kern.mjs`, `parser-worker.mjs`. Sie bleibt unverändert und gilt
+weiter. Der Prozessstart (E-A) liegt deshalb in einem eigenen Modul `parser-prozess.mjs`, das eine eigene, engere Quelltextprüfung bekommt (nur
+`spawn` mit `shell: false`, kein `exec*`/`spawnSync`/`fork`, kein Netz, kein `fs`). Zwei Tests der Basis tragen in ihrem Titel bzw. Kommentar noch
+„Worker“/„Thread“ (`Ereignisschleife bleibt … ansprechbar (eigener Thread)`, `H2-PoC … bevor postMessage kopiert`); ihre Aussagen gelten mit dem
+Kindprozess weiter, die Titel wurden nicht geändert.
+
+### Messungen
+
+| Messung | vorher (561dd32, Worker) | nachher (Kindprozess) |
+|---|---|---|
+| K1a, 4-KB-Datei | `ZEITLIMIT` nach 20,0 s, RSS-Spitze Server-Prozess 1.513 MB | `BESCHAEDIGT` nach 0,6 s, RSS-Spitze 63 MB |
+| K1b, 4-KB-Datei | `ZEITLIMIT` nach 20,0 s, RSS-Spitze 823 MB | `BESCHAEDIGT` nach 0,6 s, RSS-Spitze 63 MB |
+| K2, 1,4-MB-Datei | **`ok:true`** nach 10,3 s, RSS-Spitze **1.969 MB** im Server-Prozess (Worker-Grenze 768 MB griff nicht: Buffer außerhalb des Heaps) | `BESCHAEDIGT` nach 1,3 s, RSS-Spitze 68 MB |
+| H2a–c | `ok:true`, `format: "xls"` | `NICHT_UNTERSTUETZT` |
+| H2d | `ok:true`, `format: "xls"` | `BESCHAEDIGT` |
+| SheetJS-Absturz (K1b ohne Vorprüfung, Testdouble) | — (Worker im Server-Prozess) | Kind-Heap voll → `SPEICHERLIMIT` nach 5,6 s; Server-Prozess +1 MB |
+| Heap-Überlauf (Testdouble) | — | `SPEICHERLIMIT` nach 2,8 s; nächste Datei ok |
+
+Einzelmessungen (Spalten „RSS-Spitze“) mit einem eigenen Node-Prozess je PoC (`parseDatei`, RSS alle 100 ms), Windows 11, Node 24.18.0, 4 Kerne,
+12 GB RAM; Zeitpunkt 2026-11-09 vormittags. Hochrechnung K2 vorher: Speicher ≈ 256 Byte × n² bei n absteigend verketteten Sektoren; bei 10 MB
+(`dateiBytes`, n ≈ 20.000) ≈ 100 GB → der Server-Prozess wäre abgebrochen bzw. vom System beendet worden (nicht ausgeführt, um den Rechner nicht
+zu gefährden). Nachher bleibt der Server-Prozess bei jedem Absturz des Kindes bestehen.
+
+Gegenprobe Verzeichnisbaum (nachgerechnet mit einer Kopie von `build_full_paths`): Warteschlange / Eintragszahl: SheetJS-Liste 1,00; links absteigend
+1,35 (20 Einträge) bis 1,94 (216 Einträge); ausgeglichen in gemischter Reihenfolge (600 Varianten) höchstens 1,94; dad-Schritte ≤ 0,99 × n.
+Budget 4 × n lässt also etwa Faktor 2 Reserve.
+
+### Verifikation
+
+- Basis 561dd32: `npx vitest run pruefungen/import-parser.test.js pruefungen/import-parser-vendor.test.js --testTimeout=60000` → 121 von 121 grün (109 s).
+- Nachher, dreimal: 1. Lauf 139 grün / 2 rot (die Zeitschwelle oben und die eigene Quelltextprüfung, die das Wort `shell:true` in einem Kommentar
+  fand; Kommentar umformuliert), 2. und 3. Lauf je **141 grün, 1 übersprungen (Linux-Test) von 142** (129 s und 103 s). Davon Basis 121
+  unverändert grün, neu 20 grün + 1 übersprungen.
+- Je Befund grün: K1 4/4, K2 3/3, H2 6/6, H1 7/7 (+1 übersprungen, nur Linux).
+- ESLint (`server/lib/import`, Prüfdateien, Testdouble): 0 Befunde (eine bewusste Ausnahme `no-control-regex` für die SheetJS-Muster `chr0`/`chr1`, begründet im Code).
+- `npx tsc -p jsconfig.json`: 0 Fehler (`server/lib/import/` liegt nicht im `include`; unverändert).
+- `node werkzeug/verdrahtung-pruefen.mjs`: „Verdrahtung ok: 284 Prüfdateien geprüft.“ (das Testdouble liegt unter `pruefungen/hilfen/`).
+- `vendor/sheetjs/xlsx.mjs` SHA-256 `1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db` (unverändert).
+
+### Offen (ausdrücklich)
+
+1. **Echte Excel- und LibreOffice-XLS fehlen im Repo.** Alle Gegenproben nutzen von SheetJS erzeugte bzw. gezielt umgebaute Dateien. Ob echte
+   Dateien (Rot-Schwarz-Bäume von Excel, fragmentierte FAT nach vielen Speichervorgängen, rückwärts verkettete Freisektoren) innerhalb der
+   Budgets 4 × n / 4 × nsec bleiben, ist **nicht geprüft** (Gegenprobe ausstehend).
+2. **Windows-Entwicklung ohne Adressraumlimit.** Auf Windows/macOS begrenzt nur der Heap (256 MB) und die Wandzeit; Speicher außerhalb des
+   Heaps (Buffer) ist dort nicht begrenzt. Der Linux-Pfad (`/bin/sh -c 'ulimit -v 1500000 …'`) und der Test `H1 (nur Linux) …` wurden **lokal
+   nicht ausgeführt** (kein WSL, kein Docker auf dem Entwicklungsrechner). Vor Produktion auf dem Zielbild (`node:22-alpine`, BusyBox-`sh`) prüfen:
+   startet Node unter 1.500.000 KB, greift das Limit, läuft der Linux-Test grün. Die Prüfung ist nicht im CI-Workflow verdrahtet (`pruefung:import-parser`
+   läuft nur in der Gesamtkette `npm run pruefung`).
+3. Die Kosten je Datei steigen um den Prozessstart (ca. 0,3–0,6 s; die Parser-Prüfungen liefen auf diesem Rechner in 103, 129 und 214 s, die Basis in 109 s; die Schwankung kommt von der Last des Rechners). Eine Begrenzung
+   gleichzeitiger Kindprozesse liegt beim Endpunkt (IMP-3, `ZU_VIEL_GLEICHZEITIG`); einen Endpunkt und `pruefungen/import-endpunkt.test.js` gibt es
+   auf diesem Stand nicht, Endpunkt-Tests entfallen deshalb hier.
+4. Die Ergebnisgrenze 128 MB (stdout) ist eine Setzung (Heap des Kindes 256 MB); eine legitime Datei nahe `entpacktBytes` Text (100 Mio. Zeichen)
+   erreicht vorher das Heap-Limit des Kindes (`SPEICHERLIMIT`) statt `TEXT_ZU_GROSS`. Für Personaldateien unkritisch, aber eine Verhaltensänderung
+   gegenüber 768 MB im Worker.
