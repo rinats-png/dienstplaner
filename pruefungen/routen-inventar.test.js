@@ -43,7 +43,7 @@ const FUNKTIONEN = path.join(WURZEL, "server", "funktionen");
 export const INVENTAR = {
   "/api/zugaenge": ["pentest.mjs", "sicherheit-intern.test.js"],
   "/api/raum-loeschen": ["pentest.mjs"],
-  "/api/zugaenge-uebersicht": ["rechte.mjs", "server.test.js"],
+  "/api/zugaenge-uebersicht": ["rechte.mjs", "server.test.js", "si-p5-sonden.test.js"],
   "/api/zugang-sperren": ["rechte.mjs", "sitzungsbindung.test.js"],
   "/api/einladung": ["einladungen.test.js"],            // WP-18: Leitung stellt aus; Planung, Beschäftigte, Demo 403
   "/api/einladung/annehmen": ["einladungen.test.js"],   // WP-18: ohne Sitzung, einmalig
@@ -59,25 +59,25 @@ export const INVENTAR = {
   "/api/br-auswertung": ["br-auswertung.test.js"],
   "/api/stempeln": ["datenintegritaet.test.js", "bremse-wp47.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/stempel-korrektur": ["korrekturworkflow.test.js", "rollen-failclosed.test.js"],
-  "/api/korrektur-antrag": ["rollen-failclosed.test.js"],
+  "/api/korrektur-antrag": ["rollen-failclosed.test.js", "si-p5-sonden.test.js"],
   "/api/korrektur-entscheiden": ["rollen-failclosed.test.js"],
   "/api/selbstauskunft-entscheiden": ["rollen-failclosed.test.js", "selbstauskunft.test.js"],   // WP-15
   "/api/monatsabschluss": ["rollen-failclosed.test.js"],   // WP-16: abschliessen staff.edit, wiederoeffnen/lohnexport org.edit; Matrixzeile §2
   "/api/zeit-bestaetigen": ["rollen-failclosed.test.js", "zeiterfassung.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/auskunft": ["dsgvo-server.test.js"],
   "/api/vollausgabe": ["pentest.mjs", "rollen-failclosed.test.js"],
-  "/api/sicherungsschluessel": ["verwaltungswege.test.js", "sicherung.mjs"],
-  "/api/sicherung": ["rollen-failclosed.test.js", "wiederherstellen-ui.test.js"],
-  "/api/sicherungen": ["rollen-failclosed.test.js", "wiederherstellen-ui.test.js"],
+  "/api/sicherungsschluessel": ["verwaltungswege.test.js", "sicherung.mjs", "si-p5-sonden.test.js"],
+  "/api/sicherung": ["rollen-failclosed.test.js", "wiederherstellen-ui.test.js", "si-p5-sonden.test.js"],
+  "/api/sicherungen": ["rollen-failclosed.test.js", "wiederherstellen-ui.test.js", "si-p5-sonden.test.js"],
   "/api/wiederherstellen": ["wiederherstellen-ui.test.js", "mandanten-session.test.js"],
   "/api/account/anmelden": ["anmeldung-http.test.js"],
   "/api/account/sitzung": ["anmeldung-http.test.js"],
   "/api/account/abmelden": ["anmeldung-http.test.js"],
   "/api/account/mitgliedschaften": ["betriebsauswahl.test.js"],
   "/api/account/betrieb": ["betriebsauswahl.test.js"],
-  "/api/registrierung": ["registrierung-http.test.js"],
-  "/api/registrierung/verifizieren": ["registrierung-http.test.js"],
-  "/api/registrierung/passwort": ["passwort-http.test.js"],
+  "/api/registrierung": ["registrierung-http.test.js", "si-p5-sonden.test.js"],
+  "/api/registrierung/verifizieren": ["registrierung-http.test.js", "si-p5-sonden.test.js"],
+  "/api/registrierung/passwort": ["passwort-http.test.js", "si-p5-sonden.test.js"],
   "/einrichten": ["server.test.js"],
   "/einrichten/verwalter": ["zweifaktor.test.js"],
   "/einrichten/umgebung": ["zweifaktor.test.js"],
@@ -93,21 +93,15 @@ export const INVENTAR = {
   "/zustellung/abmelden": ["zustellung-rechte.test.js"],
   "/zustellung/schluessel": ["server.test.js"],
   "/zustellung/status": ["mail-push-handler.test.js", "zustellung-rechte.mjs"],   // WP-30, eigener Zustellstatus
-  "/lage": ["rechte.mjs", "server.test.js"],
-  "/starten": ["starten.test.js"],
-  "/starten/neu": ["starten.test.js"],
+  "/lage": ["rechte.mjs", "server.test.js", "si-p5-sonden.test.js"],
+  "/starten": ["starten.test.js", "si-p5-sonden.test.js"],
+  "/starten/neu": ["starten.test.js", "si-p5-sonden.test.js"],
   "/gesund": ["prozesssperre.test.js"],
 };
 
 /** Wege ohne eigene Zeile in RECHTEMATRIX.md — bewusst, mit Grund. */
-export const LUECKEN = {
-  "/api/registrierung": "öffentlich (Selbstregistrierung), eigene Bremse; Zeile in §2 nachtragen (SI-P5)",
-  "/api/registrierung/verifizieren": "öffentlich mit Einmal-Token; Zeile in §2 nachtragen (SI-P5)",
-  "/api/registrierung/passwort": "öffentlich mit Einmal-Token; Zeile in §2 nachtragen (SI-P5)",
-  "/starten": "öffentlicher Selbststart, gebremst; Zeile in §2 nachtragen (SI-P5)",
-  "/starten/neu": "öffentlicher Selbststart, gebremst; Zeile in §2 nachtragen (SI-P5)",
-};
-const LUECKEN_ANZAHL = 5;   // /api/abmelden hat inzwischen eine Matrixzeile (§ Push-Register, WP-30)
+export const LUECKEN = {};   // SI-P5: alle Wege haben eine Matrixzeile in §2
+const LUECKEN_ANZAHL = 0;
 
 /* ---------------------------------------------------------------- Quelltext */
 /* Review S4: Kommentare werden vor jeder Suche entfernt (im Code UND in den

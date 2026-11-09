@@ -17,6 +17,7 @@
    ========================================================================== */
 import { PAKETE, paketkosten } from "./stufen.js";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
+import { kannMerkmal } from "../server/lib/paketliste.mjs";
 import { PAKET_FREIGABEN, ZUSTIMMUNG_INTERVALL, TEXT_GRENZE, merkmalNutzbar, paketBuchbar, pilotAktiv, pilotImZeitraum,
   paketZubuchenErlaubt, abrechnungsGrund, paketTag, folgemonatsanfang } from "../server/lib/paketstand.mjs";
 
@@ -31,16 +32,8 @@ const gebucht = (m) => (m && Array.isArray(m.pakete) ? m.pakete : []);
 const aufpreisVon = (id) => (PAKETE.find((p) => p.id === id) || {}).aufpreis;
 const text = (x) => typeof x === "string" && x.trim() !== "" && x.trim().length <= TEXT_GRENZE;
 
-/**
- * Ist ein Merkmal für diesen Betrieb freigeschaltet? Das Paket muss gebucht sein UND das
- * Merkmal nutzbar (nicht in der Registry oder Modul abgenommen). Ein geplantes Merkmal ist nie
- * freigeschaltet, auch nicht bei gebuchtem Paket.
- */
-export function kannMerkmal(m, merkmal, liste = BRANCHENMODULE) {
-  const aktiv = ["kern", ...gebucht(m)];
-  return merkmalNutzbar(merkmal, liste)
-    && PAKETE.filter((p) => aktiv.includes(p.id)).some((p) => p.merkmale.includes(merkmal));
-}
+/* kannMerkmal steht seit WP-I12b in server/lib/paketliste.mjs (gemeinsame Quelle mit dem Rechenkern). */
+export { kannMerkmal };
 
 /**
  * Paketkosten eines Betriebs — der EINE Weg jeder Abrechnung. Berechnet wird nur bei Zustand 5,

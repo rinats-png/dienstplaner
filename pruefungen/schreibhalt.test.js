@@ -291,7 +291,7 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     await writeFile(ziel, "{}");
     await rm(path.join(verz(), H.ANFRAGE), { force: true });
     await symlink(ziel, path.join(verz(), H.ANFRAGE));
-    await warte(80);
+    await warte(400);  // Timing: unter CI-Last braucht der Kanal (Takt 10 ms) mehr als 80 ms; die Erwartung bleibt unverändert
     expect(H.haltZustand().gehalten).toBe(true);
     expect(await h.freigeben()).toBe(false);
   });

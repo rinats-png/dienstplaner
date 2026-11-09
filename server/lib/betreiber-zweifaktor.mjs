@@ -29,7 +29,7 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
-import { istProduktion } from "./umgebung.mjs";
+import { istProduktion, betreiberZweifaktorPflicht } from "./umgebung.mjs";
 import { ablageSchluessel, altHash, pfeffrig } from "./codes.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
@@ -41,17 +41,20 @@ import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorB
 /**
  * Ist der zweite Faktor für Betreibercodes Pflicht? (WP-32d)
  *
- * Ja, sobald der Server in der Auslieferung läuft (NODE_ENV=production, im
- * Docker-Image gesetzt) ODER CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1 gesetzt ist.
- * Es gibt bewusst KEINEN Schalter, der die Pflicht in der Auslieferung
- * abstellt: „0“, „aus“, leer — nichts davon ändert dort etwas (fail-closed).
- * Wer ohne Pflicht arbeiten will (Entwicklung, Prüfungen), startet nicht als
- * production. Wird bei jedem Aufruf gelesen, nicht beim Laden des Moduls.
+ * Ja, sobald der Server NICHT ausdrücklich als Entwicklung oder Prüfung läuft
+ * (NODE_ENV=development oder test) — also in der Auslieferung (NODE_ENV=production,
+ * im Docker-Image gesetzt) und ebenso bei fehlender oder unbekannter NODE_ENV
+ * (fail-closed, umgebung.mjs). Außerhalb davon schaltet
+ * CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1 sie ein.
+ * Es gibt bewusst KEINEN Schalter, der die Pflicht abstellt: „0“, „aus“, leer —
+ * nichts davon ändert etwas. Wer ohne Pflicht arbeiten will (Entwicklung,
+ * Prüfungen), startet ausdrücklich mit NODE_ENV=development oder test.
+ * Wird bei jedem Aufruf gelesen, nicht beim Laden des Moduls.
  * @param {Record<string, string|undefined>} [env]
  */
 export function betreiberPflicht(env = process.env) {
   if (istProduktion(env)) return true;
-  return String(env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  return betreiberZweifaktorPflicht(env);
 }
 
 /** Die id, unter der der zweite Faktor eines Betreibercodes liegt. */
