@@ -341,6 +341,9 @@ export default async (req) => {
       const geheim = pfad.slice(5).replace(/\.ics$/, "");
       if (!geheim || geheim.length < 20) return new Response("Nicht gefunden", { status: 404 });
 
+      /* Zuerst je Herkunft (WP-47b, Frage 11), bevor ein Zähler je Geheimnis entsteht. */
+      const bh = await bremse("feed-herkunft", kennung(req, null));
+      if (!bh.frei) return zuVielAntwort(bh.wartet);
       const b = await bremse("feed", `f:${hash(geheim).slice(0, 16)}`);
       if (!b.frei) return zuVielAntwort(b.wartet);
 
