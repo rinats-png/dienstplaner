@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 187,
   "statusZaehlung": {
-    "BLOCKED": 94,
-    "READY": 17,
+    "BLOCKED": 92,
+    "READY": 16,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 59,
+    "INTEGRATED": 62,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 87,
-      "offen": 40,
+      "offen": 37,
       "restPT": {
-        "min": 74.4,
-        "max": 114.60000000000001
+        "min": 69.9,
+        "max": 108.3
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 372.6,
-    "max": 628.7
+    "min": 368.1,
+    "max": 622.4
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -636,7 +636,7 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","rechte.mjs","daten.mjs"],
-      "pr": ["#131","#132"],
+      "pr": ["#131","#132","#134"],
       "nachweis": null,
       "akzeptanz": "Leitung lädt Testperson ein → Anmeldung → richtige Rolle; ein Code = eine Person",
       "tests": "HTTP, E2E",
@@ -1239,11 +1239,11 @@
       "prio": "P3",
       "aufwandPT": {"min":3,"max":4.5},
       "abhaengigkeiten": ["WP-39"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Commits 5d114abd, a7c2948b, ba0d846b; pruefungen/wp40-zugaenglichkeit.test.js"},
         "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"PR #165 Review-Abschnitt in docs/acc45/wp40-nachweis.md (Quelltext-Prüfung bestanden, 12 AA belegt, 7 offen)"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1258,7 +1258,7 @@
       "akzeptanz": "axe ohne Verstöße; Tastatur; Fokus; Kontrast",
       "tests": "axe in CI",
       "dateien": "src",
-      "notiz": null
+      "notiz": "Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1)."
     },
     {
       "id": "WP-41",
@@ -2290,7 +2290,7 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#108"],
+      "pr": ["#108","#153"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
@@ -4426,7 +4426,7 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs"],
-      "pr": ["#124"],
+      "pr": ["#124","#120"],
       "nachweis": null,
       "akzeptanz": "TOTP für Leitung/Planung/Kunde mindestens im Pilot; bis dahin „Zugang merken“ für Leitung gesperrt; Tests für Anmeldung mit/ohne zweiten Faktor",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
@@ -4552,12 +4552,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["SI-P8"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch acc45/sicherheit/si-p9 (sicherheit.yml, pruefung.yml, betrieb-sicherung.yml)"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/workflow-haertung.test.js 7/7 grün; sicherheit-intern 55/55; Verdrahtung ok"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #114 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4566,12 +4566,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#114"],
       "nachweis": "docs/acc45/SI-P9-NACHWEIS.md",
       "akzeptanz": "Jeder checkout-Schritt in den Workflows außer der Deploy-Pipeline setzt persist-credentials: false; jeder Workflow hat eine Berechtigungsvorgabe nur mit Lesen; deploy.yml und betrieb-deploy.yml bleiben bis zur Betreiberfreigabe unverändert",
       "tests": "pruefungen/workflow-haertung.test.js (Regel mit roten und grünen Proben, Stand im Repository)",
       "dateien": ".github/workflows/sicherheit.yml, .github/workflows/pruefung.yml, .github/workflows/betrieb-sicherung.yml, pruefungen/workflow-haertung.test.js, package.json",
-      "notiz": "Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe."
+      "notiz": "Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe. Stand 2026-11-09: INTEGRATED nach #114."
     },
     {
       "id": "SI-P6b",
@@ -4664,12 +4664,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
+        "reviewt": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
+        "integriert": {"wert":true,"beleg":"PR #121 in integration/release-v4; Vertrag docs/acc45/IMPORT-VERTRAG.md im Integrationsbranch"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4678,12 +4678,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#121"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Vertrag /api/import und Parser-Schnittstelle schriftlich fixiert; Grenzen 10 MB, 100 MB entpackt, 20.000 Zeilen, 200 Spalten, 20 Blätter",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "docs/acc45/IMPORT-PLAN.md, docs/acc45/IMPORT-VERTRAG.md",
-      "notiz": "Freigegeben. Entscheidungen 1–9 aus IMPORT-PLAN.md übernommen."
+      "notiz": "Freigegeben. Entscheidungen 1–9 aus IMPORT-PLAN.md übernommen. Stand 2026-11-09: INTEGRATED nach #121."
     },
     {
       "id": "IMP-1",
@@ -5056,12 +5056,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1.5,"max":1.5},
       "abhaengigkeiten": ["SI-P4"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung)"},
+        "reviewt": {"wert":true,"beleg":"PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung)"},
+        "integriert": {"wert":true,"beleg":"PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5070,12 +5070,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#167"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Zehn einmalige Codes, Format 4+12 Zeichen, scrypt mit Pfeffer-Schlüssel, Salt je Code; alte Codes kontrolliert migrieren",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/zweifaktor.mjs",
-      "notiz": "Aus KONTO-WIEDERHERSTELLUNG.md, Umsetzungsplan. Kann vor Integration von SI-P4-Delta gebaut, erst nach Integration gemergt werden."
+      "notiz": "Aus KONTO-WIEDERHERSTELLUNG.md, Umsetzungsplan. Kann vor Integration von SI-P4-Delta gebaut, erst nach Integration gemergt werden. Stand 2026-11-09: INTEGRATED nach #167."
     },
     {
       "id": "WR-2",

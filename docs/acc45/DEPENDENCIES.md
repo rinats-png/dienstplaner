@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 372,6–628,7 PT in 90 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 368,1–622,4 PT in 87 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -21,17 +21,15 @@ flowchart LR
     WP_34["WP-34<br/>BLOCKED"]
     WP_35["WP-35<br/>BLOCKED"]
     WP_36["WP-36<br/>BLOCKED"]
-    WP_40["WP-40<br/>BLOCKED"]
+    WP_40["WP-40<br/>REVIEW"]
     WP_42["WP-42<br/>BLOCKED"]
     WP_44["WP-44<br/>BLOCKED"]
     WP_16c["WP-16c<br/>REVIEW"]
     WP_42a["WP-42a<br/>BLOCKED"]
     WP_48["WP-48<br/>BLOCKED"]
-    SI_P9["SI-P9<br/>REVIEW"]
     SI_P6b["SI-P6b<br/>BLOCKED"]
     WP_42R1["WP-42R1<br/>BLOCKED"]
     WP_42R2["WP-42R2<br/>BLOCKED"]
-    IMP_0["IMP-0<br/>READY"]
     IMP_5["IMP-5<br/>BLOCKED"]
     IMP_6["IMP-6<br/>BLOCKED"]
     IMP_7["IMP-7<br/>BLOCKED"]
@@ -41,7 +39,6 @@ flowchart LR
     OPT_1["OPT-1<br/>BLOCKED"]
     OPT_2["OPT-2<br/>BLOCKED"]
     OPT_4["OPT-4<br/>BLOCKED"]
-    WR_1["WR-1<br/>BLOCKED"]
     WR_2["WR-2<br/>BLOCKED"]
     WR_3["WR-3<br/>BLOCKED"]
     WR_4["WR-4<br/>BLOCKED"]
@@ -321,12 +318,9 @@ flowchart LR
   WP_16b --> WP_42R2
   WP_24b --> WP_42R2
   IMP_6 --> IMP_7
-  IMP_0 --> IMP_9
   WR_3 --> OPT_2
-  WR_1 --> WR_2
   WR_2 --> WR_3
   WR_3 --> WR_4
-  WR_1 --> WR_5
   WR_2 --> WR_5
   WR_3 --> WR_5
   WR_3 --> WR_6
@@ -380,7 +374,7 @@ flowchart LR
 | WP-37 | acc45 | P3 | 1,5–2,5 | 0 | WP-43 | – | sonnet | INTEGRATED |
 | WP-38 | acc45 | P3 | 2–3 | 0 | WP-12 | App.jsx | sonnet | INTEGRATED |
 | WP-39 | acc45 | P3 | 4–5,5 | 0 | WP-12 | App.jsx | sonnet | INTEGRATED |
-| WP-40 | acc45 | P3 | 3–4,5 | 3–4,5 | WP-39 | App.jsx | sonnet | BLOCKED |
+| WP-40 | acc45 | P3 | 3–4,5 | 0,6–0,9 | WP-39 | App.jsx | sonnet | REVIEW |
 | WP-41 | acc45 | P3 | 2–3 | 0 | WP-04, WP-05, WP-31 | – | sonnet | INTEGRATED |
 | WP-42 | acc45 | P1 | 3–4,5 | 3–4,5 | WP-42a, E-1, E-2, E-3, E-4, E-5, E-6, E-7, E-8, E-11, E-12, E-13, E-14, E-15, E-17, E-18, E-21, E-22, E-9, E-10, E-29, E-30, E-32 | – | opus | BLOCKED |
 | WP-43 | acc45 | P0 | 2–3 | 0 | WP-09 | – | opus | INTEGRATED |
@@ -497,11 +491,11 @@ flowchart LR
 | SI-P6 | acc45 | P0 | 1,5–3 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P7 | acc45 | P2 | 1,5–2,5 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P8 | acc45 | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
-| SI-P9 | acc45 | P2 | 0,5–1 | 0,1–0,2 | SI-P8 | – | opus | REVIEW |
+| SI-P9 | acc45 | P2 | 0,5–1 | 0 | SI-P8 | – | opus | INTEGRATED |
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
 | WP-42R1 | acc45 | P1 | 0 | 0 | WP-16, WP-16c, WP-07b, WP-S1, WP-18, WP-33, WP-44, SI-P4 | – | opus | BLOCKED |
 | WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b | – | opus | BLOCKED |
-| IMP-0 | acc45 | P1 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| IMP-0 | acc45 | P1 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | IMP-1 | acc45 | P0 | 2–3,5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-2 | acc45 | P1 | 3–5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-3 | acc45 | P1 | 3–5 | 0 | IMP-0, IMP-2 | – | opus | INTEGRATED |
@@ -515,7 +509,7 @@ flowchart LR
 | OPT-1 | acc45 | P1 | 1–1,5 | 1–1,5 | SI-P4 | daten.mjs | opus | BLOCKED |
 | OPT-2 | acc45 | P1 | 0,5–1 | 0,5–1 | SI-P4, WR-3 | daten.mjs | opus | BLOCKED |
 | OPT-4 | acc45 | P1 | 3–5 | 3–5 | SI-P4 | daten.mjs | opus | BLOCKED |
-| WR-1 | acc45 | P1 | 1,5 | 1,5 | SI-P4 | daten.mjs | opus | BLOCKED |
+| WR-1 | acc45 | P1 | 1,5 | 0 | SI-P4 | daten.mjs | opus | INTEGRATED |
 | WR-2 | acc45 | P1 | 1,5 | 1,5 | WR-1 | daten.mjs | opus | BLOCKED |
 | WR-3 | acc45 | P1 | 2,5 | 2,5 | WR-2 | daten.mjs | opus | BLOCKED |
 | WR-4 | acc45 | P1 | 1 | 1 | WR-3 | daten.mjs | opus | BLOCKED |
