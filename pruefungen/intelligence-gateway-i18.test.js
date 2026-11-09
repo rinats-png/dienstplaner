@@ -387,3 +387,95 @@ describe("D — jede Fehlerklasse des Adapters → fester Rückfall, nie Rohinha
     }
   });
 });
+
+/* ------------------------------------------------- Review-Auflagen A–C ---- */
+describe("Review-Auflage A — Ausgabegrenze auch ohne gemeldete Token (fail closed)", () => {
+  const lauf = (antwort, max = 50) => ANB.aufrufen({ anbieter: { id: "t", modellOrt: "extern", erzeuge: async () => antwort },
+    eingabe: { ...{ funktion: "F2", stufe: 1, schemaVersion: "1.0", paket: {}, fremdtext: null, modellKennung: "platzhalter-stufe-1" }, maxAusgabeTokens: max },
+    zeitJeVersuchMs: 100, maxWiederholungen: 2, deadline: Date.now() + 1000, jetzt: Date.now, schlafen: () => Promise.resolve() });
+  const klasse = async (p) => { try { await p; return "ok"; } catch (e) { return e.klasse || "?"; } };
+  const LANG = { text: "x".repeat(200) };
+  it("ausgabeToken fehlt / null / unbrauchbar und Antwort länger als die Grenze → zu_gross (kein Durchlassen ohne Prüfung)", async () => {
+    for (const nutzung of [undefined, {}, { ausgabeToken: null }, { ausgabeToken: -1 }, { ausgabeToken: "5" }, { ausgabeToken: NaN }])
+      expect(await klasse(lauf({ ausgabe: LANG, nutzung })), JSON.stringify(nutzung)).toBe("zu_gross");
+  });
+  it("Mehrbyte-Zeichen zählen nach Bytes (UTF-8), nicht nach Zeichen", async () => {
+    expect(await klasse(lauf({ ausgabe: { text: "ä".repeat(30) } }))).toBe("zu_gross");   // 30 Zeichen, > 60 Byte
+  });
+  it("ohne Zählwert, aber Antwort sicher innerhalb der Grenze → besteht", async () => {
+    expect(await klasse(lauf({ ausgabe: { text: "kurz" } }))).toBe("ok");
+  });
+  it("nicht serialisierbare Ausgabe ohne Zählwert → zu_gross (fail closed)", async () => {
+    const zyklisch = {}; zyklisch.selbst = zyklisch;
+    expect(await klasse(lauf({ ausgabe: zyklisch }))).toBe("zu_gross");
+    expect(await klasse(lauf({ ausgabe: 10n }))).toBe("zu_gross");
+  });
+  it("im Gateway: Adapter meldet keine Token, Antwort über der Grenze → Rückfall KI_GROESSE nach EINER Stufe", async () => {
+    const t = bauen({ modus: "skript", skript: () => ({ ausgabe: { text: "Es liegen keine Fakten vor. ".repeat(10) } }), extra: { ausgabeTokenMax: 20 } });
+    const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
+    expect(r).toMatchObject({ status: "rueckfall", rueckfall: { code: "KI_GROESSE" } });
+    expect(r.ergebnis).toBeUndefined();
+    expect(t.anbieter.aufrufe.map((e) => e.stufe)).toEqual([1]);
+  });
+});
+
+describe("Review-Auflagen B/C — Live-Adapter: AVV-Datum und Anbieterschlüssel", () => {
+  const SCHL = "platzhalter-schluessel-" + "x".repeat(24);
+  const ENV = (o = {}) => ({ [LIVE.LIVE_SCHALTER_NAME]: "ja", [LIVE.LIVE_SCHLUESSEL_NAME]: SCHL, ...o });
+  const KONF = (datum = "2026-11-01") => ({ freigabe: true, monatsbudget: 50, avv: { status: "bestaetigt", datum } });
+  const EIN = { funktion: "F2", stufe: 1, schemaVersion: "1.0", paket: { fakten: [] }, fremdtext: null, modellKennung: "platzhalter-stufe-1", maxAusgabeTokens: 800 };
+  const okTransport = () => vi.fn(async () => ({ status: 200, daten: { ausgabe: { text: "Es liegen keine Fakten vor." }, nutzung: { eingabeToken: 10, ausgabeToken: 5 } } }));
+  const klasse = async (p) => { try { await p; return "ok"; } catch (e) { return e.klasse || "?"; } };
+  const tagIso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  let netz;
+  beforeEach(() => { netz = vi.fn(() => { throw new Error("kein Netz in Tests"); }); vi.stubGlobal("fetch", netz); });
+  afterEach(() => { expect(netz).not.toHaveBeenCalled(); vi.unstubAllGlobals(); });
+
+  it("B: AVV-Datum in der Zukunft → Gate geschlossen, kein Transportaufruf", async () => {
+    const morgen = tagIso(Date.now() + 86400_000);
+    const inEinemJahr = tagIso(Date.now() + 366 * 86400_000);
+    for (const datum of [morgen, inEinemJahr]) {
+      expect(LIVE.freigabeGate(KONF(datum)), datum).toMatchObject({ avv: false, offen: false });
+      const tr = okTransport();
+      expect(await klasse(LIVE.erzeugeLiveAnbieter({ env: ENV(), konfig: KONF(datum), transport: tr }).erzeuge(EIN)), datum).toBe("nicht_freigegeben");
+      expect(tr).not.toHaveBeenCalled();
+    }
+  });
+  it("B: mit fester Uhr — Datum nach der Uhr gesperrt, am selben Tag und davor offen; unbrauchbare Uhr gesperrt", async () => {
+    const uhr = () => Date.UTC(2026, 10, 15, 12, 0, 0);
+    expect(LIVE.freigabeGate(KONF("2026-11-16"), uhr)).toMatchObject({ avv: false, offen: false });
+    expect(LIVE.freigabeGate(KONF("2026-11-15"), uhr)).toMatchObject({ avv: true, offen: true });
+    expect(LIVE.freigabeGate(KONF("2026-11-01"), uhr)).toMatchObject({ avv: true, offen: true });
+    for (const kaputt of [() => NaN, () => "2026", () => undefined])
+      expect(LIVE.freigabeGate(KONF("2026-11-01"), kaputt)).toMatchObject({ avv: false, offen: false });
+    const tr = okTransport();
+    expect(await klasse(LIVE.erzeugeLiveAnbieter({ env: ENV(), konfig: KONF("2026-11-16"), transport: tr, jetzt: uhr }).erzeuge(EIN))).toBe("nicht_freigegeben");
+    expect(tr).not.toHaveBeenCalled();
+    expect(await klasse(LIVE.erzeugeLiveAnbieter({ env: ENV(), konfig: KONF("2026-11-15"), transport: tr, jetzt: uhr }).erzeuge(EIN))).toBe("ok");
+    expect(tr).toHaveBeenCalledTimes(1);
+  });
+  it("C: Schlüssel aus 20 (oder mehr) Leerzeichen bzw. < 20 Zeichen ohne Leerzeichen → gesperrt, kein Aufruf", async () => {
+    for (const schl of [" ".repeat(20), " ".repeat(40), "\t".repeat(25), " ".repeat(12) + "x".repeat(19), "x ".repeat(19)]) {
+      const tr = okTransport();
+      const a = LIVE.erzeugeLiveAnbieter({ env: ENV({ [LIVE.LIVE_SCHLUESSEL_NAME]: schl }), konfig: KONF(), transport: tr });
+      expect(await klasse(a.erzeuge(EIN)), JSON.stringify(schl)).toBe("nicht_freigegeben");
+      expect(a.toJSON().freigegeben).toBe(false);
+      expect(tr).not.toHaveBeenCalled();
+    }
+  });
+  it("C: Anbieterschlüssel gleich Alias- oder MAC-Schlüssel (auch mit Leerzeichen/Großschreibung) → gesperrt, kein Aufruf", async () => {
+    const alias = hex(); const mac = hex(); const macVorher = hex();
+    const N = { alias: "CENTRIC" + "_KI_ALIAS_SCHLUESSEL", mac: "CENTRIC" + "_KI_MAC_SCHLUESSEL", vorher: "CENTRIC" + "_KI_MAC_SCHLUESSEL_VORHER" };
+    const basis = { [N.alias]: alias, [N.mac]: mac, [N.vorher]: macVorher };
+    for (const schl of [alias, mac, macVorher, " " + alias + " ", mac.toUpperCase()]) {
+      const tr = okTransport();
+      const a = LIVE.erzeugeLiveAnbieter({ env: ENV({ ...basis, [LIVE.LIVE_SCHLUESSEL_NAME]: schl }), konfig: KONF(), transport: tr });
+      expect(await klasse(a.erzeuge(EIN))).toBe("nicht_freigegeben");
+      expect(tr).not.toHaveBeenCalled();
+    }
+    /* Kontrolle: eigener, getrennter Schlüssel → genau ein Aufruf. */
+    const tr = okTransport();
+    expect(await klasse(LIVE.erzeugeLiveAnbieter({ env: ENV(basis), konfig: KONF(), transport: tr }).erzeuge(EIN))).toBe("ok");
+    expect(tr).toHaveBeenCalledTimes(1);
+  });
+});
