@@ -93,16 +93,20 @@ export function aktionenStammdaten(k) {
           for (const q of [...new Set(zeilen.flatMap((z) => z.fehlendeQuals))])
             quals.push({ id: uid("q"), name: q, kurz: q.slice(0, 4).toUpperCase(), farbe: PALETTE[quals.length % PALETTE.length] });
         }
-        const neue = zeilen.map((z) => {
+        /* IMP-1 Review: nur übernehmbare Zeilen (ok true) werden angelegt; zielId wird hier nie gelesen —
+           eine Dublette (ok false) führt zu keinem Schreibpfad, auch nicht zu einer Aktualisierung.
+           Eintritt leer (null): zugehoerigkeit.ab und rolleSeit bleiben bewusst null; die Leser
+           (einheitAm, rolleAm, zugehoerigkeitsAbschnitte) lesen leeres ab als „von Anfang an“. */
+        const neue = zeilen.filter((z) => z.ok === true).map((z) => {
           const eid = z.einheitId || (einheiten.find((e) => e.name === z.einheitName) || {}).id || einheiten[0].id;
           const zusatz = z.fehlendeQuals.map((q) => (quals.find((x) => x.name === q) || {}).id).filter(Boolean);
           return { id: uid("p"), vorname: z.vorname, nachname: z.nachname, funktion: z.funktion,
             email: z.email || "", personalnummer: z.personalnummer || "",
-            zugehoerigkeit: [{ ab: z.eintritt, einheitId: eid }], eintritt: z.eintritt, austritt: null,
+            zugehoerigkeit: [{ ab: z.eintritt || null, einheitId: eid }], eintritt: z.eintritt || null, austritt: null,
             wochenstunden: z.wochenstunden, urlaubsanspruch: z.urlaubsanspruch, urlaubsuebertrag: 0, stundenuebertrag: 0,
             qualifikationen: [...z.qualifikationen, ...zusatz], einschraenkungen: {}, teilzeit: z.teilzeit, springer: false,
             rolle: z.rolle, bereich: ["leitung", "planer", "betriebsrat"].includes(z.rolle) ? "ALLE" : eid,
-            rolleSeit: z.eintritt, status: "aktiv" };
+            rolleSeit: z.eintritt || null, status: "aktiv" };
         });
         melde(`${neue.length} Personen übernommen.`);
         return { ...m, einheiten, qualifikationen: quals, personen: [...m.personen, ...neue] };

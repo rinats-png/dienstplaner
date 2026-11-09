@@ -74,4 +74,32 @@ Umgesetzt in `src/lib/fachlogik.js` (Kopie `src/pruefung.jsx` gleichlautend), Te
 | H Test E4/N3 sucht über `appQuelle()` statt nur in App.jsx, Vorbedingung `i >= 0` | erledigt | E4, N3 |
 | I Keine Assertion entfernt; angepasst nur D6 (Erwartung des alten Verhaltens). "neu bei Treffer" war vorher nicht getestet. | erledigt | - |
 
-Offen für den Rebase auf WP-39: (1) E-Mail-Erfindung `neuePerson` in `src/app/aktionen/stammdaten.js`/`plan.js`; (2) Speicherpfad für `eintritt === null` (`zugehoerigkeit.ab`, `rolleSeit` nicht schreiben/anzeigen) und App-Aufruf mit `{ vergeber: <Rolle des Anwenders> }`; (3) Oberfläche: Auswahl "neu" bei Personalnummer-Treffer ausblenden, `hinweis` anzeigen.
+Offen für den Rebase auf WP-39: (1) E-Mail-Erfindung `neuePerson` in `src/app/aktionen/stammdaten.js`/`plan.js`; (2) Speicherpfad für `eintritt === null` (`zugehoerigkeit.ab`, `rolleSeit` nicht schreiben/anzeigen) und App-Aufruf mit `{ vergeber: <Rolle des Anwenders> }`; (3) Oberfläche: Auswahl "neu" bei Personalnummer-Treffer ausblenden, `hinweis` anzeigen. — Erledigt bzw. eingeordnet im folgenden Abschnitt.
+
+## Rebase auf WP-39 und Review-Punkte
+
+Branch `acc45/import/imp-1-rebase` auf `origin/integration/release-v4` @ 9c9e80d (enthält WP-39). Übernommen per Cherry-Pick in Originalreihenfolge: e675b62, e7b4f22, e8e78e2, 50adfc8 (IMP-1) und 4414084 (acc45/person/eintritt). Danach ein Commit mit den Review-Punkten. Tests im Block „IMP-1 Rebase auf WP-39 und Review-Punkte" (R2a–R10) in `pruefungen/import-bestand-imp1.test.js`.
+
+**Konflikte:** `src/App.jsx` (e675b62): Die Importzeile steht nach WP-39 in `src/app/aktionen/stammdaten.js` (`importieren`); die IMP-1-Zeile (`email: z.email || "", personalnummer: z.personalnummer || ""`) ist dort eingesetzt, App.jsx bleibt auf WP-39-Stand (keine Strukturänderung). `package.json` (e675b62, 4414084): Skripte `pruefung:import-bestand` und `pruefung:person-eintritt` neben `pruefung:app-aufbau` eingefügt und an die Gesamtkette angehängt. `src/lib/fachlogik.js` (4414084 nach 50adfc8): `eintrittPruefen` stand in beiden Commits — eine Definition behalten, `eintrittUebernehmen` ergänzt, Kommentare des Eintritts-Branches übernommen. `sicht.test.js` (e7b4f22) und `import-bestand-imp1.test.js` (`appQuelle()`) laufen ohne Anpassung gegen die neue Struktur.
+
+| Punkt | Status | Test |
+|---|---|---|
+| 1 Rebase/Übernahme auf WP-39; Importzeile in `src/app/aktionen/stammdaten.js`, Einzelanlage in `src/app/aktionen/plan.js` | erledigt; WP-39-Struktur unverändert | N3, E4, R2b, R4b, R8, `wp39-app-aufbau` 4/4, `sicht` 30/30 |
+| 2 Eintritt leer → null; Weg (a): Branch acc45/person/eintritt (4414084) übernommen — `einheitAm` (fachpruefung.mjs, zeiterfassung.mjs, Kopie pruefung.jsx) und `rolleAm` lesen leeres `ab` als „von Anfang an“. Speicherpfad legt `zugehoerigkeit.ab`, `eintritt` und `rolleSeit` bewusst als `null` an (`z.eintritt \|\| null`). `eintrittLeer` jetzt `!eintrittRoh` (ungültig ≠ leer). | erledigt | R2a, R2b, R2c, AUF-C1–C3, `person-eintritt` 23/23 (L1–L6) |
+| 3 `importPruefen` mit der Rolle des Anwenders (`{ vergeber: sitz.person.rolle }` in `src/ansichten/import.jsx`, beide Aufrufe) | erledigt | R3a, R3b, AUF-D |
+| 3 Kunde: `IMPORT_VERGEBBAR` ohne Eintrag `kunde` — stimmt mit `vergebbareRollen()` überein (dort `[]`). Wer nichts vergeben darf, legt auch ohne Rollenspalte niemanden an („Keine Berechtigung, Zugänge anzulegen“). | erledigt | R3c |
+| 4 Dubletten ohne Oberfläche (IMP-4): Zeile bleibt `ok: false`, Rückmeldung zeigt den Grund (`dublettenGrund`, Spalte „Hinweis“). `zielId` bleibt reine Rückmeldung: Oberfläche liest es nicht, `importieren` legt nur `ok === true`-Zeilen an und liest `zielId` nicht. | erledigt | R4a, R4b, D1–D5, A1–A8 |
+| 5 Personalnummer-Exaktvergleich: beide Seiten getrimmt. „neu“ bei ähnlichem Treffer bleibt wählbar — fachlich bereits geregelt, nicht geändert. | erledigt | R5, AUF-G, A4, A5 |
+| 6 Namensgleichheit in der Datei auch, wenn nur eine Zeile eine Nummer hat (Zed Oli / Zed Oli Q9): beide markiert, klaeren. Tragen beide (verschiedene) Nummern, entscheidet die Nummer (keine Dublette, wie bisher). | erledigt | R6, AUF-E1, AUF-E2, D6 |
+| 7 `eintrittPruefen` genau einmal definiert | erledigt | R7 |
+| 8 Einzelanlage `neuePerson` (`src/app/aktionen/plan.js`): keine erfundene E-Mail, `email: f.email \|\| ""` | erledigt | R8 |
+| 9 Kommentar in fachlogik.js („nimmt wie bisher den heutigen Tag“) ersetzt | erledigt | R9 |
+| 10 Kopie `src/pruefung.jsx` im Gleichlauf (Importprüfung, `rolleAm` tolerant); Entfernung in IMP-4 | erledigt | R10 (Logikvergleich ohne Kommentare) |
+
+**Begründung Weg (a):** Der Branch acc45/person/eintritt ließ sich nach den IMP-1-Commits mit einem einzigen inhaltlichen Konflikt (die doppelte `eintrittPruefen`-Definition) übernehmen; die Leserkorrekturen in fachpruefung.mjs, zeiterfassung.mjs und rolleAm kamen konfliktfrei. Die übrigen Leser waren schon tolerant: `src/standorte.js` und `server/lib/geo.mjs` (`!z.ab || z.ab <= d`), `server/lib/sicht.mjs` `zugehoerigkeitsAbschnitte` (leeres `ab` → `0000-01-01`, damit auch `rechte.mjs`). `rolleAm` mit `rolleSeit: null` gibt die Rolle zurück; `setzeRolle` schreibt `ab: x.rolleSeit \|\| x.eintritt` (null) in den Verlauf, was `rolleAm` jetzt toleriert. Ergänzt: `rolleAm` in der Kopie `src/pruefung.jsx` (fehlte in 4414084).
+
+**Erwartungen, die altes Verhalten festschreiben:** keine neue Anpassung. Bestehend (aus 50adfc8): D6. Keine Assertion entfernt. Hinweis: AUF-D prüft `rolleRoh && …`; die Rollenprüfung greift jetzt auch ohne Rollenspalte (Vorgabe „mitarbeiter“) — für die Vorgabe „planer“ ändert das nichts.
+
+**Läufe:** `import-bestand-imp1` 52/52 (38 bisher + 14 neu), `person-eintritt` 23/23, `fachpruefung-server` 37/37, `schutzkonflikte` 20/20, `zeiterfassung` 40/40, `standorte` 14/14, `g9-nachtrag` 50/50, `g9-nachtrag2` 35/35, `g9-nachtrag3` 31/31, `g9-verkauf` 28/28, `konsistenz` 32/32, `personendaten` 11/11, `sicht` 30/30, `wp39-app-aufbau` 4/4; dazu `pruefung:zeiterfassung` (21 Dateien), `pruefung:g9`, `verdrahtung`, `rollenvergabe`, `kunde-abloesung`, `rollen-eintritt`, `sicht-tagesgenau`: 39 Dateien, 889/889. `selbsttest` nur „Erster Aufbau unter 500 ms“ rot — ebenso auf 9c9e80d ohne diese Änderungen (Lastbedingung). Lint der geänderten Dateien: 0 Fehler (Warnungen nur Bestand in fachlogik.js/pruefung.jsx).
+
+**Offen:** IMP-4 — Oberfläche für Dublettenentscheidungen (`entscheidungen`, Auswahl neu/überspringen/klären, „neu“ bei Personalnummer-Treffer ausblenden) und Entfernung der Kopie in `src/pruefung.jsx`.

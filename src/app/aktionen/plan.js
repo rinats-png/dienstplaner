@@ -313,7 +313,8 @@ export function aktionenPlan(k) {
       /* --- Personal --- */
       neuePerson: (f) => mUpd((m) => ({ ...m, personen: [...m.personen, {
         id: uid("p"), vorname: f.vorname, nachname: f.nachname, funktion: f.funktion,
-        email: `${f.vorname.toLowerCase()}.${f.nachname.toLowerCase()}@betrieb.de`,
+        /* IMP-1 Review: keine erfundene Adresse — ohne Angabe bleibt die E-Mail leer. */
+        email: f.email || "",
         zugehoerigkeit: [{ ab: f.eintritt, einheitId: f.einheitId }], eintritt: f.eintritt, austritt: null,
         wochenstunden: f.wochenstunden, urlaubsanspruch: f.urlaubsanspruch, urlaubsuebertrag: 0, stundenuebertrag: 0,
         qualifikationen: [], einfuehrung: { erledigt: false, schritt: 0 }, rolle: f.rolle,

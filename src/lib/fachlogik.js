@@ -2145,15 +2145,19 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
     if (!einheitName) fehler.push("Einheit fehlt");
     if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
-    /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. */
-    if (rolleRoh && !vergebbar.includes(rolleId)) fehler.push(`Rolle „${rolleRoh}" nicht vergebbar`);
+    /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
+       „mitarbeiter“; wer gar keine Rolle vergeben darf (Beschäftigte, abgelöste Rolle „kunde“: in
+       IMPORT_VERGEBBAR wie in vergebbareRollen() ohne Eintrag), legt auch so niemanden an. */
+    if (!vergebbar.includes(rolleId))
+      fehler.push(rolleRoh ? `Rolle „${rolleRoh}" nicht vergebbar` : "Keine Berechtigung, Zugänge anzulegen");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
     /* IMP-1: Dublette zuerst über die Personalnummer (mandantenintern), sonst über den Namen.
        Eine Dublette wird nie ungeprüft übernommen: ohne ausdrückliche Wahl bleibt die Zeile
        unübernehmbar. Namen allein führen nie zusammen oder überschreiben. */
-    const nrNorm = personalnummer.toLowerCase();
+    /* Exaktvergleich: beide Seiten getrimmt (Import und Bestand), Schreibweise egal. */
+    const nrNorm = personalnummer.trim().toLowerCase();
     const nameKey = importNameSchluessel(nachname, vorname);
-    let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").toLowerCase() === nrNorm) : null;
+    let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").trim().toLowerCase() === nrNorm) : null;
     let dublette = treffer ? { grund: "personalnummer", personId: treffer.id, inDatei: false } : null;
     /* Nur ein exakter Personalnummer-Treffer ist ein sicherer Treffer; Nummern, die sich nur in führenden
        Nullen oder Trennzeichen unterscheiden (01001/1001, P-1001/P1001), sind ein möglicher Treffer. */
@@ -2172,15 +2176,21 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
           nummerAbweicht: !!nrNorm && importNrLose(treffer.personalnummer) !== importNrLose(nrNorm) };
       }
     }
-    return { f, i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, personalnummer,
-      email, teilzeit, fehler, nrNorm, nameKey, dublette, hol };
+    return { f, i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, eintrittRoh,
+      personalnummer, email, teilzeit, fehler, nrNorm, nameKey, dublette, hol };
   });
   /* Auflage E: Doppelte Zeilen in der Datei — BEIDE (alle) Zeilen werden zum Klären markiert, kein stiller
-     Vorrang. Nummern über importNrLose (führende Nullen, Trennzeichen, Schreibweise), sonst über den Namen. */
+     Vorrang. Nummern über importNrLose (führende Nullen, Trennzeichen, Schreibweise), sonst über den Namen.
+     Tragen beide Zeilen eine Nummer, entscheidet allein die Nummer; hat nur eine (oder keine) eine Nummer,
+     entscheidet der Name (IMP-1 Review: „Zed Oli“ und „Zed Oli Q9“ werden beide gemeldet). */
   const inDateiGruppe = (r) => {
     const nr = importNrLose(r.nrNorm);
-    if (nr) return roh.filter((x) => x !== r && importNrLose(x.nrNorm) === nr);
-    return roh.filter((x) => x !== r && !importNrLose(x.nrNorm) && importNameGleich(r.nameKey, x.nameKey));
+    return roh.filter((x) => {
+      if (x === r) return false;
+      const nx = importNrLose(x.nrNorm);
+      if (nr && nx) return nr === nx;
+      return importNameGleich(r.nameKey, x.nameKey);
+    });
   };
   const zeilen = roh.map((r) => {
     const { i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, personalnummer,
@@ -2188,7 +2198,9 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     let dublette = r.dublette;
     const andere = inDateiGruppe(r);
     if (!dublette && andere.length) {
-      dublette = { grund: importNrLose(nrNorm) ? "personalnummer" : "name", personId: null, inDatei: true,
+      const nr = importNrLose(nrNorm);
+      const perNummer = !!nr && andere.some((x) => importNrLose(x.nrNorm) === nr);
+      dublette = { grund: perNummer ? "personalnummer" : "name", personId: null, inDatei: true,
         zeile: andere[0].i + 1, zeilen: andere.map((x) => x.i + 1) };
     }
     /* Auflage B: Aktualisieren ist über den Import nie möglich. Die Zuordnung bleibt für die Rückmeldung bestehen,
@@ -2212,14 +2224,25 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     if (neuAbgelehnt) aktion = "klaeren";
     const vorgabe = dublette ? "klaeren" : null;
     const neuGewaehlt = aktion === "neu";
+    /* IMP-1 Review: Grund der Dublette für die Rückmeldung (eine Wahl bietet die Oberfläche erst mit IMP-4).
+       Die Personalnummer-Fälle stehen schon als hinweis in fehler. */
+    const dublettenGrund = !dublette || hinweis ? null
+      : dublette.inDatei ? `Name kommt in der Datei mehrfach vor (Zeile ${dublette.zeilen.join(", ")}), bitte klären`
+        : dublette.grund === "personalnummer_aehnlich" ? `Ähnliche Personalnummer bereits vorhanden, bitte klären`
+          : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
+            : "Name bereits vorhanden, bitte klären";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
-      /* Auflage C: leeres Eintrittsdatum; zugehoerigkeit.ab/rolleSeit setzt der Speicherpfad (App.jsx). */
-      eintrittLeer: eintritt === null,
-      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette,
+      /* Auflage C: eintrittLeer heißt „Zelle leer“, nicht „kein gültiges Datum“ (ungültig ist ein Fehler, nicht
+         leer). Der Speicherpfad (importieren in src/app/aktionen/stammdaten.js) legt zugehoerigkeit.ab und
+         rolleSeit dann bewusst als null an; die Leser lesen leeres ab als „von Anfang an“. */
+      eintrittLeer: !r.eintrittRoh,
+      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette, dublettenGrund,
       personalnummer, email, aktion, aktualisierungBestaetigt: aktion === "aktualisieren" && bestaetigt,
       vorgabe, aktualisierungAbgelehnt, neuAbgelehnt, hinweis,
+      /* zielId ist nur Rückmeldung (welche Person gemeint wäre). Solche Zeilen sind nie ok; der Speicherpfad
+         nimmt nur ok-Zeilen und liest zielId nicht. */
       zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
       ok: fehler.length === 0 && (!doppelt || neuGewaehlt) };
   });
