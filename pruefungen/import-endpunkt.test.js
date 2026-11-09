@@ -538,3 +538,182 @@ describe("IMP-3 Eintrittsdatum ohne stille Ersetzung", { timeout: 120000 }, () =
     expect(x1.email).toBe("neu@example.test");
   });
 });
+
+/* ==========================================================================
+   Auflagen aus dem IMP-3-Review (Branch acc45/import/imp-3-auflagen)
+   ========================================================================== */
+
+/** Fremde Änderung am Betrieb m1 zwischen Vorschau und Übernahme. */
+async function betriebAendern(raum, fn) {
+  const g = await lesen(raum);
+  const best = structuredClone(g.bestand);
+  fn(best.mandanten.find((m) => m.id === "m1"));
+  await B.bestandSchreiben(laden(), raum, best, { durch: "Prüfung" });
+}
+
+describe("Auflage 4a — VORSCHAU_VERALTET", { timeout: 120000 }, () => {
+  it("Bestand ändert sich zwischen Vorschau und Übernahme: 409, nichts geschrieben", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, vs } = await bisVorschau(t.LT, DATEI_ZWEI());
+    expect(vs.status).toBe(200);
+    /* Jemand legt inzwischen eine Person mit derselben Personalnummer an: der Plan der Vorschau gilt nicht mehr. */
+    await betriebAendern(raum, (m) => m.personen.push(person("z9", "mitarbeiter", "m1-e1", { vorname: "Lena", nachname: "Neumann", personalnummer: "3001" })));
+    const stand = (await lesen(raum)).stand;
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status).toBe(409);
+    expect(ue.code).toBe("VORSCHAU_VERALTET");
+    const nachher = await lesen(raum);
+    expect(nachher.stand, "kein Schreibvorgang").toBe(stand);
+    expect((await betriebVon(raum, "m1")).personen.filter((p) => p.personalnummer === "3002").length).toBe(0);
+  });
+});
+
+describe("Auflage 4b — leere Zelle überschreibt bei Aktualisierung nichts", { timeout: 120000 }, () => {
+  it("nur die gefüllte Zelle ändert; leere Zellen lassen E-Mail, Wochenstunden, Urlaub, Funktion unberührt; neue Zeile mit leerer Zelle bleibt leer", async () => {
+    const { raum, t } = await neuerRaum();
+    const kopf = ["Personalnummer", "Nachname", "Vorname", "E-Mail", "Einheit", "Wochenstunden", "Funktion", "Urlaubsanspruch"];
+    const datei = csv([kopf,
+      ["1001", "Beispiel", "Erika", "", "Wohnbereich 1", "", "Leitung Pflege", ""],
+      ["6001", "Leer", "Lea", "", "Wohnbereich 1", "", "", ""]]);
+    const up = await hochladen(t.LT, datei);
+    await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, entscheidungen: { 1: "aktualisieren", 2: "neu" }, bestaetigungen: { 1: true } });
+    expect(vs.status, JSON.stringify(vs)).toBe(200);
+    expect(vs.vorschau.aktualisieren[0].aenderungen.map((a) => a.feld)).toEqual(["funktion"]);
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status).toBe(200);
+    const m1 = await betriebVon(raum, "m1");
+    expect(m1.personen.find((p) => p.id === "x1")).toMatchObject({ funktion: "Leitung Pflege", email: "alt@example.test", wochenstunden: 38.5, urlaubsanspruch: 30 });
+    const lea = m1.personen.find((p) => p.personalnummer === "6001");
+    expect(lea.email, "keine erfundene E-Mail").toBe("");
+  });
+});
+
+describe("Auflage 4c — Betreiber und Kundenrolle: 403", { timeout: 120000 }, () => {
+  for (const rolle of ["betreiber", "kunde"]) {
+    it(`${rolle}: Upload 403, nichts geparst, nichts gespeichert`, async () => {
+      const { raum } = await neuerRaum();
+      const tok = (await sitzungAnlegen({ bestand: raum, name: `Test ${rolle}`, rolle, person: null, betrieb: 0, mandantId: "m1", einheit: null }, 2 * 3600 * 1000)).token;
+      const vorher = await lesen(raum);
+      const r = await hochladen(tok, DATEI_ZWEI());
+      expect(r.status).toBe(403);
+      expect(r.vorgang).toBeUndefined();
+      expect(V._anzahl()).toBe(0);
+      expect((await lesen(raum)).stand).toBe(vorher.stand);
+    });
+  }
+});
+
+describe("Auflage 2/4d — Personalnummern mit führenden Nullen und Trennzeichen", { timeout: 120000 }, () => {
+  for (const [nummer, bestehend] of [["01001", "1001"], ["001001", "1001"], ["P-1001", "P1001"], ["p 1001", "P1001"], ["P01001", "P1001"]]) {
+    it(`„${nummer}“ gegen „${bestehend}“: möglicher Treffer, Vorgabe klären, nie still neu`, async () => {
+      const { raum, t } = await neuerRaum();
+      await betriebAendern(raum, (m) => { m.personen.find((p) => p.id === "x1").personalnummer = bestehend; });
+      const up = await hochladen(t.LT, csv([KOPF, [nummer, "Anders", "Anna", "", "Wohnbereich 1", "", "30"]]));
+      const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+      expect(an.datensaetze[0].dublette).toMatchObject({ art: "personalnummer-aehnlich", personId: "x1" });
+      expect(an.datensaetze[0].vorgabe).toBe("klaeren");
+      expect(an.datensaetze[0].erlaubt).not.toContain("aktualisieren");
+      const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang });
+      expect(vs.zaehler).toMatchObject({ neu: 0, aktualisiert: 0, offen: 1 });
+      /* Aktualisieren über eine nur ähnliche Nummer ist nie möglich. */
+      expect((await schritt(t.LT, "vorschau", { vorgang: up.vorgang, entscheidungen: { 1: "aktualisieren" }, bestaetigungen: { 1: true } })).code).toBe("ENTSCHEIDUNG_UNZULAESSIG");
+    });
+  }
+  it("gleichwertige Nummern innerhalb der Datei: beide Zeilen klären", async () => {
+    const { t } = await neuerRaum();
+    const { an, vs } = await bisVorschau(t.LT, csv([KOPF, ["07001", "Eins", "A", "", "Wohnbereich 1", "", "30"], ["7001", "Zwei", "B", "", "Wohnbereich 1", "", "30"]]));
+    expect(an.datensaetze.map((d) => d.vorgabe)).toEqual(["klaeren", "klaeren"]);
+    expect(an.datensaetze.map((d) => d.dublette && d.dublette.art)).toEqual(["personalnummer-datei", "personalnummer-datei"]);
+    expect(vs.zaehler.neu).toBe(0);
+  });
+  it("dieselbe Nummer dreimal in der Datei, die erste auch im Bestand: alle Zeilen markiert, nichts übernommen", async () => {
+    const { t } = await neuerRaum();
+    const { an, vs } = await bisVorschau(t.LT, csv([KOPF, ["1001", "Beispiel", "Erika", "", "Wohnbereich 1", "", "30"],
+      ["1001", "Zwei", "B", "", "Wohnbereich 1", "", "30"], ["1001", "Drei", "C", "", "Wohnbereich 1", "", "30"]]));
+    expect(an.datensaetze.map((d) => d.dublette && d.dublette.art)).toEqual(["personalnummer-datei", "personalnummer-datei", "personalnummer-datei"]);
+    expect(an.datensaetze.every((d) => !d.erlaubt.includes("aktualisieren"))).toBe(true);
+    expect(vs.zaehler).toMatchObject({ neu: 0, aktualisiert: 0 });
+  });
+  it("dieselbe Nummer mehrfach im Bestand: kein stiller Treffer auf die erste Person, sondern klären", async () => {
+    const { raum, t } = await neuerRaum();
+    await betriebAendern(raum, (m) => m.personen.push(person("x3", "mitarbeiter", "m1-e1", { vorname: "Zweite", nachname: "Doppelt", personalnummer: "1001" })));
+    const up = await hochladen(t.LT, csv([KOPF, ["1001", "Beispiel", "Erika", "", "Wohnbereich 1", "", "30"]]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an.datensaetze[0].dublette).toMatchObject({ art: "personalnummer-mehrdeutig", personIds: ["x1", "x3"] });
+    expect(an.datensaetze[0].erlaubt).toEqual(["ueberspringen", "klaeren"]);
+    expect(an.datensaetze[0].vorgabe).toBe("klaeren");
+  });
+});
+
+describe("Auflage 2/4e — gleicher Name bei abweichender oder fehlender Nummer: klären, nie neu", { timeout: 120000 }, () => {
+  it("Name gleich, Nummer abweicht (Bestand hat eine Nummer): klären", async () => {
+    const { t } = await neuerRaum();
+    const up = await hochladen(t.LT, csv([KOPF, ["9999", "Beispiel", "Erika", "", "Wohnbereich 1", "", "30"]]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an.datensaetze[0].dublette).toEqual({ art: "name", personId: "x1" });
+    expect(an.datensaetze[0].vorgabe).toBe("klaeren");
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang });
+    expect(vs.zaehler).toMatchObject({ neu: 0, offen: 1 });
+  });
+  it("Name gleich, Datei hat keine Nummer, Bestand hat eine: klären", async () => {
+    const { t } = await neuerRaum();
+    const up = await hochladen(t.LT, csv([["Nachname", "Vorname", "Einheit"], ["Beispiel", "Erika", "Wohnbereich 1"]]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an.datensaetze[0].dublette).toEqual({ art: "name", personId: "x1" });
+    expect(an.datensaetze[0].vorgabe).toBe("klaeren");
+  });
+  it("Name gleich, Datei hat Nummer, Bestand keine: klären", async () => {
+    const { t } = await neuerRaum();
+    const up = await hochladen(t.LT, csv([KOPF, ["5555", "Muster", "Otto", "", "Wohnbereich 1", "", "30"]]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an.datensaetze[0].dublette).toEqual({ art: "name", personId: "x2" });
+    expect(an.datensaetze[0].vorgabe).toBe("klaeren");
+  });
+  it("gleicher Name zweimal in der Datei mit verschiedenen Nummern: beide klären", async () => {
+    const { t } = await neuerRaum();
+    const { an, vs } = await bisVorschau(t.LT, csv([KOPF, ["8101", "Gleich", "Gerd", "", "Wohnbereich 1", "", "30"], ["8102", "Gleich", "Gerd", "", "Wohnbereich 1", "", "30"]]));
+    expect(an.datensaetze.map((d) => d.vorgabe)).toEqual(["klaeren", "klaeren"]);
+    expect(vs.zaehler.neu).toBe(0);
+  });
+  it("Entscheidung „neu“ bleibt ausdrücklich möglich (Benutzer entscheidet)", async () => {
+    const { raum, t } = await neuerRaum();
+    const up = await hochladen(t.LT, csv([KOPF, ["9999", "Beispiel", "Erika", "", "Wohnbereich 1", "", "30"]]));
+    await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, entscheidungen: { 1: "neu" } });
+    expect(vs.zaehler.neu).toBe(1);
+    expect((await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung })).status).toBe(200);
+    expect((await betriebVon(raum, "m1")).personen.filter((p) => p.nachname === "Beispiel").length).toBe(2);
+  });
+});
+
+describe("Auflage 3 — Parser-Grenzen", { timeout: 120000 }, () => {
+  it("Vorgangsgrenze greift VOR dem Parsen: vierter Upload im Raum bekommt 429, auch mit unlesbarer Datei", async () => {
+    const { t } = await neuerRaum();
+    for (let i = 0; i < 3; i++) expect((await hochladen(t.LT, DATEI_ZWEI())).status).toBe(201);
+    /* Wäre geparst worden, käme 422 (kein Tabellenformat). Mit der Grenze davor: 429, die Datei wird nicht angefasst. */
+    const r = await hochladen(t.LT, Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0x00, 0x00]), { name: "muell.bin" });
+    expect(r.status).toBe(429);
+    expect(r.code).toBe("ZU_VIELE_VORGAENGE");
+    expect(V._anzahl()).toBe(3);
+  });
+  it("ein fehlgeschlagener Upload hält keinen Vorgang fest", async () => {
+    const { t } = await neuerRaum();
+    for (let i = 0; i < 5; i++) expect((await hochladen(t.LT, Buffer.alloc(0))).status).toBe(422);
+    expect(V._anzahl()).toBe(0);
+    expect((await hochladen(t.LT, DATEI_ZWEI())).status).toBe(201);
+  });
+  it("höchstens 2 Parser gleichzeitig: überzählige Uploads 503, danach wieder frei", async () => {
+    const raeume = [];
+    for (let i = 0; i < 6; i++) raeume.push(await neuerRaum());
+    const rs = await Promise.all(raeume.map((r) => hochladen(r.t.LT, DATEI_ZWEI())));
+    const stati = JSON.stringify(rs.map((r) => r.status));
+    const ok = rs.filter((r) => r.status === 201).length;
+    const zuViel = rs.filter((r) => r.status === 503);
+    expect(rs.every((r) => r.status === 201 || r.status === 503), stati).toBe(true);
+    expect(zuViel.length, stati).toBeGreaterThan(0);
+    expect(zuViel[0].code).toBe("ZU_VIEL_GLEICHZEITIG");
+    expect(V._anzahl(), "abgewiesene Uploads halten keinen Vorgang").toBe(ok);
+    expect((await hochladen(raeume[0].t.PL, DATEI_ZWEI())).status).toBe(201);
+  });
+});

@@ -138,3 +138,31 @@ Markiert in `server/lib/import/personen.mjs`, `analysieren`, Kommentar `IMP-9 AN
 7. **Betreiberkonsole**: `spurLesen` listet die Art `import` nicht (feste Liste in `schutz.mjs`); die Zeilen liegen in der Spur und sind für die Auskunft auffindbar. Aufnahme in die Liste wäre eine Zeile in einer geteilten Datei — bewusst nicht gemacht.
 8. **Schichtzyklen**: nur Gerüst (`art=schichtzyklus`: Upload, Spaltenliste, Vorschau mit `zyklen: []`, Übernahme 422). Umsetzung IMP-6.
 9. Der 20.001-Zeilen-Test braucht in CI rund 1–2 Minuten.
+
+## 14. Auflagen aus dem Review
+
+Basis 90592bc, Branch `acc45/import/imp-3-auflagen`. Tests in `pruefungen/import-endpunkt.test.js` (Abschnitt „Auflagen aus dem IMP-3-Review"). Rot = gegen 90592bc gemessen (56 Tests, 13 rot); grün = nach der Umsetzung (56/56).
+
+| Auflage | Status | Test (Auszug) | rot/grün |
+|---|---|---|---|
+| 2 Gleicher Name bei abweichender/fehlender Nummer nie „neu" | umgesetzt (`personen.mjs`) | „Name gleich, Nummer abweicht", „…Datei hat Nummer, Bestand keine", „…keine Nummer, Bestand hat eine", „gleicher Name zweimal in der Datei mit verschiedenen Nummern" | 2 rot (Nummer abweicht; Name in Datei), danach grün; die übrigen Fälle waren schon grün |
+| 2 Gleichwertige Nummern (führende Nullen, Trennzeichen) = möglicher Treffer, „klären" (neue Art `personalnummer-aehnlich`, kein „aktualisieren") | umgesetzt | „01001 gegen 1001", „001001", „P-1001 gegen P1001", „p 1001", „P01001" | 5 rot / 5 grün |
+| 2 Doppelte Nummer in der Datei: alle Zeilen markiert | umgesetzt | „gleichwertige Nummern innerhalb der Datei", „dieselbe Nummer dreimal …" | 2 rot / grün |
+| 2 Stiller Treffer auf die erste Person (`nachNummer`) | beseitigt: mehrere Personen mit gleicher Nummer ergeben `personalnummer-mehrdeutig`, nur überspringen/klären | „dieselbe Nummer mehrfach im Bestand" | rot / grün |
+| 3 Parser-Worker global höchstens 2 gleichzeitig, übrige sofort 503 `ZU_VIEL_GLEICHZEITIG` (kein Warten: staut keine Dateipuffer auf) | umgesetzt (`parser.mjs`, `import.mjs`) | „höchstens 2 Parser gleichzeitig …" | rot / grün |
+| 3 Vorgangsgrenze (3 je Raum, 20 gesamt) vor dem Parsen | umgesetzt: Platz wird vor dem Lesen des Rumpfs belegt (`vorgangAnlegen`), nach dem Parsen gefüllt (`vorgangFuellen`), bei Fehlschlag freigegeben | „Vorgangsgrenze greift VOR dem Parsen", „ein fehlgeschlagener Upload hält keinen Vorgang fest" | 1 rot (422 statt 429) / grün; der zweite Test war schon grün |
+| 4a VORSCHAU_VERALTET | Test ergänzt | „Bestand ändert sich zwischen Vorschau und Übernahme" | grün/grün (Verhalten vorhanden, nur ungeprüft) |
+| 4b leere Zelle überschreibt nichts | Test ergänzt (nur Funktion gefüllt; E-Mail, Stunden, Urlaub bleiben; neue Zeile mit leerer Zelle: E-Mail leer) | „nur die gefüllte Zelle ändert …" | grün/grün (Verhalten vorhanden) |
+| 4c Betreiber und Kundenrolle 403 | Test ergänzt; für „kunde" mit Änderung in `import.mjs` | „betreiber: Upload 403", „kunde: Upload 403" | betreiber grün/grün; kunde rot / grün |
+| 4d führende Nullen | siehe Auflage 2 | s. o. | s. o. |
+| 4e Namensgleiche mit abweichender Nummer | siehe Auflage 2 | s. o. | s. o. |
+
+Gesamt: 13 rot gegen 90592bc, alle grün; keine bestehende Assertion geändert oder entfernt.
+
+Begründungen zu Verhaltensänderungen:
+- **Kundenrolle:** Die Kopfzeile von `import.mjs` nannte die Kundenrolle (Rückfallrolle „kunde", Zugang ohne Person) als importberechtigt (volles Schreibrecht). Die Review-Auflage verlangt 403; die Rolle wird jetzt ausdrücklich abgewiesen. `rechte.mjs` unberührt.
+- **Doppelte Nummer in der Datei geht einem Bestandstreffer vor:** Vorher blieb eine Zeile mit Treffer im Bestand „aktualisieren"-fähig, auch wenn dieselbe Nummer mehrfach in der Datei stand (dieselbe Person könnte zweimal aktualisiert werden). Jetzt: nur überspringen oder klären.
+- **Gleicher Name in der Datei** (verschiedene Nummern) ist jetzt „klären" (vorher nur ohne Nummer).
+- Neue Dublettenarten `personalnummer-aehnlich` und `personalnummer-mehrdeutig` im Feld `dublette.art`; die Oberfläche (IMP-4) muss sie anzeigen.
+
+Offene Punkte: Die Schlüsselregel (Trennzeichen entfernen, führende Nullen nach optionalem Buchstabenpräfix) erfasst keine Nullen mitten in der Nummer. Die Parser-Grenze gilt je Prozess (ein Prozess je Ablage).

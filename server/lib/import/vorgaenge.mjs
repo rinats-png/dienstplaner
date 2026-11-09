@@ -68,6 +68,15 @@ export function vorgangAnlegen(besitz, daten, jetzt = Date.now()) {
   return { ok: true, vorgang };
 }
 
+/**
+ * Einen angelegten, aber noch leeren Vorgang mit dem Ergebnis des Parsers füllen. Zusammen mit `vorgangAnlegen`
+ * VOR dem Parsen: Die Vorgangsgrenze (je Raum 3, gesamt 20) muss greifen, bevor eine Datei gelesen oder in
+ * einen Parser-Worker gegeben wird — sonst könnten beliebig viele Uploads parallel Speicher und Rechenzeit
+ * binden und erst danach abgewiesen werden. Der Platz ist ab dem Anlegen belegt (Zustand "offen", ohne Inhalt);
+ * scheitert das Parsen, gibt `vorgangEntfernen` ihn wieder frei. Die Id wird erst nach dem Füllen ausgegeben.
+ */
+export function vorgangFuellen(v, daten) { Object.assign(v, daten); return v; }
+
 /** Den Vorgang holen — nur für den Besitzer und nur, solange er gilt. Sonst null. */
 export function vorgangHolen(id, besitz, jetzt = Date.now()) {
   aufraeumen(jetzt);
