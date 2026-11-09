@@ -579,8 +579,8 @@ describe("Eine verbindliche Freigabequelle für alle Pfade (PAKET_FREIGABEN, ser
     expect(quelle("../server/lib/leerbetrieb.mjs")).toMatch(/paketFuerNeubuchung/);
     expect(quelle("../src/stufen.js")).toMatch(/from "\.\.\/server\/lib\/paketstand\.mjs"/);
     expect(quelle("../src/paketlogik.js")).toMatch(/from "\.\.\/server\/lib\/paketstand\.mjs"/);
-    expect(appQuelle()).toMatch(/from "\.\/stufen\.js"/);
-    expect(appQuelle()).toMatch(/from "\.\/paketlogik\.js"/);
+    expect(appQuelle()).toMatch(/from "(?:\.{1,2}\/)+stufen\.js"/); // WP-39: Import liegt in src/app/aktionen/
+    expect(appQuelle()).toMatch(/from "(?:\.{1,2}\/)+paketlogik\.js"/);
     expect(quelle("../src/main.jsx")).toMatch(/paketeAngebot[\s\S]*from "\.\/stufen\.js"/);
     expect(quelle("../src/pruefung.jsx")).toMatch(/from "\.\/paketlogik\.js"/);
   });
