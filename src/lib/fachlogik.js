@@ -31,7 +31,6 @@ import { abwArt, memo, absIdx, aktive, abwesenheitAm, personTag, besetzung, soll
 export { EINSCHRAENKUNG_BEWERTUNG, fachkraftLage, pruefen } from "../../server/lib/engine/befunde.mjs";
 import { pruefen } from "../../server/lib/engine/befunde.mjs";
 export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.mjs";
-import { merkmalPruefungSetzen } from "../../server/lib/engine/befunde.mjs";
 
 /* Bundesländer, in denen Feiertage von der Gemeinde abhängen.
 
@@ -3115,7 +3114,7 @@ export function antragUmsetzen(m, a) {
 
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
 export const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
-merkmalPruefungSetzen(kannMerkmal);   // WP-I12: der Rechenkern fragt die Paketlogik des Clients über diesen Haken
+/* Die Merkmalsprüfung des Rechenkerns ist seit WP-I12b dieselbe Funktion (server/lib/paketliste.mjs, Vorgabe in befunde.mjs). */
 /* ------------------------ Branchenbegriffe ------------------------------- */
 /**
  * Dieselbe Sache heißt je Branche anders. Die Begriffe stecken an einer Stelle,

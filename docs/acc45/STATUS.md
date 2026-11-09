@@ -18,32 +18,33 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 184 · BLOCKED 102 · READY 27 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 38 · DONE 3
+**Pakete gesamt:** 187 · BLOCKED 101 · READY 22 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 47 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 87 | 37 | 6 | 2 | 5 | 35 | 2 | 101,9–157,7 |
+| ACC45 | 87 | 34 | 2 | 2 | 5 | 42 | 2 | 81,9–126,6 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
-| Intelligence | 37 | 32 | 3 | 0 | 1 | 1 | 0 | 280,4–491,8 |
+| Intelligence | 40 | 34 | 2 | 0 | 1 | 3 | 0 | 271,3–477,8 |
 | Folgepakete | 10 | 1 | 2 | 2 | 3 | 2 | 0 | 8,6–17,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **457,7–770,8 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **428,6–725,7 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
+- gemeinsam: WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **63,8–109,8 PT**
 - ohne Intelligence: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
 - ACC45: WP-16 → WP-48 = **16,5–27,5 PT**
 - Folgepakete: WP-47b = **2–4 PT**
 - WP-19: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **20,8–32,2 PT**
-- Intelligence: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
+- Intelligence: WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **63,8–109,8 PT**
 
 ### In Arbeit / Review
 
 | Paket | Status | Branch | Notiz |
 |---|---|---|---|
 | WP-09 Kette B nach main | IN_PROGRESS | `integration/centric-complete` | Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge. |
+| WP-15 Selbstauskunft mit Freigabe und Stempelabgleich | REVIEW | `acc45/time/wp15-selbstauskunft-mit-freigabe-` | Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
 | WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). |
 | WP-19 Branchenpakete (12 Module) | IN_PROGRESS | `acc45/frontend/wp19-branchenpakete` | Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). |
 | WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | REVIEW | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. |
@@ -53,16 +54,15 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **457,7–770,
 | WP-28b Lasttest-Befund 6: Sicherung bricht unter Last mit ENOENT ab (Wiederholung greift nicht); Auswertung des Nachlaufs S2/S5 | IN_PROGRESS | `acc45/infra/wp28b-nachlauf` | NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). |
 | WP-07b Stempel-Sonderfall „500 nach Speicherung“ (clientEventId, sechs Szenarien) | REVIEW | `acc45/time/wp07b-500-nach-speicherung` | SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. |
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). |
-| WP-I10 Architekturabgleich Spezifikation auf heutigen Stack | REVIEW | `intelligence/wp-i10-architekturabgleich` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). |
+| WP-I12 Decision Engine (Extraktion aus App.jsx) | REVIEW | `intelligence/wp-i12-decision-engine-extrakti` | Kern extrahiert (26 von 27 Definitionen). Offen als WP-I12a/b/c. Fachfragen 2, 3, 5 (docs/acc45/wp-i12-fragen.md) sind Betreiberentscheidungen. Vorher: Schätzung laut Plan, nicht belegt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
-| SI-P4 Zweiter Faktor für Leitung, Planung und Kunde (Befund P4, mittel) | REVIEW | `acc45/sicherheit/si-p4` | Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Entscheidung 2026-11-09: Option 1 (Ersteinrichtung Neubetriebe) genehmigt, Option 2 (nachträglich, Zweitfreigabe) genehmigt, Option 3 (Offline-Ausnahme) ABGELEHNT, Option 4 (TOTP für Konten) genehmigt und priorisiert, Option 5 (Testbetriebe ausnehmen) ABGELEHNT. Quelle: SI-P4-NACHWEIS.md, Abschnitt Delta-Review. PR #120 durch #124 ersetzt. |
 | SI-P9 Workflow-Härtung: Checkout-Token nicht speichern, Berechtigungen nur lesend (Befund P8-Restpunkte 1+2, mittel) | REVIEW | `acc45/sicherheit/si-p9` | Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe. |
 
-### Bereit zum Start (13)
+### Bereit zum Start (15)
 
-WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT) · WP-39 (acc45, 4–5,5 PT) · WP-32d (acc45, 1–2 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-I2 (intelligence, 3–6 PT) · WP-I3 (intelligence, 8–14 PT) · WP-I6 (intelligence, 3–5 PT) · SI-P5 (acc45, 1–2 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-0 (acc45, 0,5–1 PT)
+WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 PT) · WP-38 (acc45, 2–3 PT) · WP-40 (acc45, 3–4,5 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-I2 (intelligence, 3–6 PT) · WP-I3 (intelligence, 8–14 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-0 (acc45, 0,5–1 PT) · IMP-8 (acc45, 2–3 PT) · OPT-1 (acc45, 1–1,5 PT) · OPT-4 (acc45, 3–5 PT) · WR-1 (acc45, 1,5 PT)
 
-### Integriert in `integration/centric-complete` (38)
+### Integriert in `integration/centric-complete` (47)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -78,6 +78,7 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 | WP-13 Stempeln ohne Plan, ungeplante Dienste im Ist | #51 (d5fccbd) | Review laut Nachweis |
 | WP-14 Korrekturworkflow Leitung/SV, Korrekturantrag | #52 (442527b), #66 (92a3b97) | Review abgelehnt → Nachbesserung; Opus-Delta-Review → Nachtrag 14b (#66) |
 | WP-17 Stempelkonflikt-Retry, Serverdatum | #47 (b3707d8) | Review (Ablehnung → Nachbesserung) laut Nachweis |
+| WP-18 Zugänge: personengebundene Codes, Konto-UI, Einladungen | PR #132 in integration/release-v4 gemergt | PR #131 in integration/release-v4 gemergt nach Review |
 | WP-20 Einsatzorte je Dienst, Geo-Modi, Außendienst | #56 (dd72a10) | Review laut Nachweis |
 | WP-22 Fachprüfungen auf dem Server, org.edit | #41 (cc19eb4), #45 (ca8c4bc), #54 (53b986a) | Review; Nachträge 22b (#45, #54) |
 | WP-23 Entwürfe nicht an Beschäftigte ausliefern | #53 (b6ee1cf), #64 (f2428aa) | Review abgelehnt → Nachbesserung; 23b (#64) |
@@ -90,26 +91,34 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 | WP-31 Deploy-Automatisierung mit Freigabe | #32 (4300f8d), #42 (d2d3f7a) | Agent F: Auflagen → Nachprüfung → Freigabe; 31b (#42) |
 | WP-32 Lieferkette, Infrastruktur, Betreiber-2FA | #30 (bb5ade8), #32 (4300f8d) | Agent F: Auflagen → Freigabe (32b, 32c) |
 | WP-37 PWA-Feinschliff | #62 (9d4f383) | Review laut Nachweis |
+| WP-39 App.jsx modularisieren | PR #128 in integration/release-v4 gemergt | PR #128 in integration/release-v4 gemergt |
 | WP-41 Betriebs- und Nutzerdokumentation | #42 (d2d3f7a) | Review mit Auflagen |
 | WP-43 Personaldaten-Filter vollständig (Matrix ↔ Code, tagesgenau) | #25 (eb5fc98), #26 (f5bec0d) | Agent F: Auflagen → Freigabe (N1 #26) |
 | WP-45 Atomarer Mehrdatei-Schreibvorgang (Journal), Kontovereinzelung | #29 (60818c0), #33 (737c453), #36 (efdde6b), #38 (57717df) | Agent F: 45b Ablehnung → vier Nachprüfungen → Freigabe |
 | WP-46 Bremse fail-closed, gleitendes Fenster, Notbremse Zugangscode | #27 (56c73d0), #28 (336788a) | Agent F: Auflagen → Freigabe |
 | WP-47 Bremsen: Lastgrenzen Stempeln und Anmeldung (je Person, je Raum, je Code) | #55 (2afab0c), #61 (006b036) | Review laut Nachweis; Flake-Fix #61 |
+| WP-32d Betreiber-2FA verpflichtend vor produktivem Betrieb mit echtem Betreiberzugriff | PR #141 in integration/release-v4 | PR #141 in integration/release-v4 |
 | WP-28c Konsistente Sicherung unter Dauerlast: kurzer, befristeter, koordinierter Schreib-Halt im Server (Folge zu WP-28b/2) | #110 (42e83da) in integration/release-v4 | Opus-Review, Befunde behoben |
 | WP-S1 Staging-Vorbereitung (Agent): Smoke, Testdaten, Abnahme-Checkliste 3.1–3.4 | PR #119 gemergt in integration/release-v4 (CI grün) | – |
+| WP-I6 Planungsreife | PR #138 in integration/release-v4 | PR #138 in integration/release-v4 |
+| WP-I10 Architekturabgleich Spezifikation auf heutigen Stack | PR #70 in integration/release-v4 | – |
 | WP-I11 Faktenpaket-Vertrag (Positivliste, Alias) | #86 (intelligence/wp-i11-integration) | Opus-Sicherheitsreview + Delta-Review (2 Runden) |
 | SI-P1 Sicherungsschlüssel an Ersteller binden und mit Austritt/Sperre widerrufen (Befund P1, mittel) | #107 (e5ada4e) in integration/release-v4 | Zwei unabhängige Opus-Reviews (SI-P1/P2), Befunde behoben |
 | SI-P2 Code-Sitzung endet, wenn die Person den Betrieb verlässt (Befund P2, mittel) | #107 (e5ada4e) in integration/release-v4 | Zwei unabhängige Opus-Reviews (SI-P1/P2) |
 | SI-P3 Mailversand aus Test- und Demoräumen begrenzen (Befund P3, mittel) | #109 (e58f163) in integration/release-v4 | Opus-Review, Regression (Betreibervorlagen als selbstAngelegt) behoben |
+| SI-P4 Zweiter Faktor für Leitung, Planung und Kunde (Befund P4, mittel) | PR #124 in integration/release-v4 gemergt | PR #124 in integration/release-v4 gemergt |
+| SI-P5 Matrixzeilen und Negativ-Sonden für die festgeschriebenen Lücken (Befund P5, niedrig) | PR #136 in integration/release-v4 | PR #136 in integration/release-v4 |
 | SI-P6 Betreiber-Leitungscodes nur mit frischer Anmeldung und frischem zweiten Faktor (Befund P6, HOCH) | #111 (e4a75e4) in integration/release-v4 | Vier unabhängige Opus-Reviews (inkl. Befund B1 hoch: Betreibercode in /einrichten, behoben) |
 | SI-P7 Herkunftssperre trifft keine gültigen Codes; IPv6 nach /64 (Befund P7, mittel) | #113 (8678cf6) in integration/release-v4 | Drei unabhängige Opus-Reviews; hoher Race-Befund (parallele Anfragen), mittlere Befunde (Zählerausfall, Antwort-Orakel, Kartenüberlauf) behoben |
 | SI-P8 Alle fremden Actions per Commit-SHA pinnen (Befund P8, mittel) | PR #98 (Merge-Beleg), Commits 4f1654b, 6733b47, a587df8 in integration/release-v4 | Unabhängiger Review plus Nach-Review, alle Befunde (mittel und niedrig) behoben und getestet |
+| IMP-1 Bestandsfehler Import: Dubletten, Personalnummer speichern, keine erfundene E-Mail, Datum nicht still ersetzen | PR #130 in integration/release-v4 gemergt | Review d6c92e0 plus Nachbesserung, integriert PR #130 in integration/release-v4 gemergt |
+| IMP-2 Parser: SheetJS CE 0.20.3 (Herstellerdistribution) lokal, Prüfsumme, Lizenz, Grenzen, ZIP-Schutz | PR #123 in integration/release-v4 | PR #123 in integration/release-v4 |
 
 ### Statusstufen
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-96 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+90 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -127,8 +136,10 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 | WP-12 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-13 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-14 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-15 | REVIEW | ✓ | – | – | – | – | – | – |
 | WP-16 | REVIEW | ✓ | ✓ | T | – | – | – | – |
 | WP-17 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-18 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-20 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-22 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-23 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
@@ -142,11 +153,13 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 | WP-32 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-33 | REVIEW | ✓ | T | – | – | – | – | – |
 | WP-37 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-39 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-41 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-43 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-45 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-46 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-47 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-32d | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-28b | IN_PROGRESS | T | T | T | T | – | – | – |
 | WP-28c | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-S1 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
@@ -156,16 +169,21 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT
 | WP-19.10 | BLOCKED | T | T | T | T | – | – | – |
 | WP-19.11 | BLOCKED | T | T | T | T | – | – | – |
 | WP-19.12 | BLOCKED | T | T | T | T | – | – | – |
-| WP-I10 | REVIEW | ✓ | – | – | – | – | – | – |
+| WP-I6 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-I10 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | WP-I11 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-I12 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | SI-P1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | SI-P2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | SI-P3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| SI-P4 | REVIEW | ✓ | – | T | – | – | – | – |
+| SI-P4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| SI-P5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | SI-P6 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | SI-P7 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | SI-P8 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | SI-P9 | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| IMP-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| IMP-2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)

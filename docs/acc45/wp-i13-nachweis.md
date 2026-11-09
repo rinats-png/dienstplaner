@@ -2,6 +2,7 @@
 
 Branch `feature/intelligence-gateway` (Basis `integration/release-v4`) · Agent: Sonnet · Stand 2026-11-06 · **Teilstand: nur gegen die Attrappe, inert, nicht verdrahtet.**
 Zusammen mit [`wp-i15-nachweis.md`](wp-i15-nachweis.md) (Limits, Kontingent, Schalter, Protokoll). Offene Fragen: [`wpI-offene-fragen.md`](wpI-offene-fragen.md).
+**Abschluss gegen die Attrappe (2026-11-09):** Bedingungen aus WP-I11 umgesetzt (F7A ganz gesperrt, Namenspolitik, Model Registry, Schlüsselbund mit Rotation) — siehe [letzter Abschnitt](#abschluss-gegen-die-attrappe-2026-11-09-branch-intelligencewp-i13-gateway).
 
 ## Statusstufen (ehrlich)
 
@@ -162,3 +163,81 @@ Tests: `intelligence-gateway-review3.test.js` (12; gegen e6d1fc5 waren 7 rot, di
 
 ### Invariante für die spätere Route `/ki` (aus Befund 10)
 Die Oberfläche ist nur ein Anzeigefilter. **Der Server muss durchsetzen**: Rolle `mitarbeiter` darf ausschließlich Funktion `F9` auslösen (so schon in `positivliste.mjs`: `rolleDarf`), Betriebsrat/Betreiber/Schichtverantwortung/Kunde nie; Rolle, Raum und Betrieb stammen aus der Sitzung, nie aus dem Rumpf; der Antwort-Abruf (`/ki/auftrag/<id>`) liefert fremde Kennungen als `KI_NICHT_GEFUNDEN`.
+
+## Abschluss gegen die Attrappe (2026-11-09, Branch `intelligence/wp-i13-gateway`)
+
+Branch `intelligence/wp-i13-gateway` (Basis `origin/integration/release-v4` @ 4d63716) · Stand 2026-11-09 · **Ergebnis ist eine Attrappe:** kein Anbieteranschluss, kein Netzaufruf, keine Zugangsdaten, keine Route, nicht in `server.mjs` verdrahtet.
+Vorstand und Invarianten G1–G16, A1–A6, P1–P9, L1–L5: Abschnitte oben (Teilstand vom 2026-11-06, drei Review-Runden). Dieser Abschnitt beschreibt nur den Zuwachs. Hinweis: Die Koordination nannte `docs/acc45/WP-I13-NACHWEIS.md`; unter Windows ist das dieselbe Datei wie diese (Groß-/Kleinschreibung), deshalb steht der Abschluss hier.
+
+### Basis und Abweichung
+
+- **WP-I11** ist integriert (Faktenpaket, Alias, Leck-Prüfung).
+- **WP-I12** (Rechenkern, Kern 4d55328) liegt im Integrationsbranch, **direkt, ohne PR**; die SSOT zeigt REVIEW, `acc45-backlog.mjs brief WP-I13` meldet noch BLOCKED (Stand der JSON im Branch). Auf Anweisung der Koordination gilt das als tragfähige Basis. Folge: die Gegenrechnung (`gegenrechnung`, P-10) ist im Gateway angeschlossen, eine Verdrahtung mit dem Rechenkern gibt es nicht (das Gateway ist nirgends verdrahtet).
+- `work-packages.json` und `status-schreiben` sind nicht berührt (Besitz Koordinator).
+- Testdateiname: Die Koordination nannte `pruefungen/ki-*.test.js`. Die CI ruft nur `npm run pruefung:intelligence` = `vitest run pruefungen/intelligence-` auf; eine Datei `ki-*` liefe dort **nicht** mit, und `package.json` (Skripte) gehört WP-02. Die neuen Tests stehen daher in `pruefungen/intelligence-gateway-i13.test.js` (läuft im CI-Gate).
+
+### Ist vor diesem Paket
+
+Gateway-Kern, Attrappe (14 Modi), Router (Funktion → Startstufe, nur aufwärts), zweistufiger Prüfer, Limits, Protokoll, Ergebnis-Speicher waren vorhanden (526 Tests). Offen aus den **Bedingungen vor einem Anbieteranschluss** (`wp-i11-nachweis.md`):
+
+| Nr. | Bedingung | Stand vorher |
+|---|---|---|
+| 1 | `modellOrt` nur aus Serverkonfiguration | Ort aus der Adapter-Konfiguration; keine Model Registry |
+| 2 | getrennte Schlüssel mit Rotation | offen: Gateway nahm eine einzelne Funktion `aliasSchluessel`; MAC-Schlüssel ohne Quelle, kein Wechsel |
+| 3 | Rückübersetzung nur nach Schemaprüfung | erfüllt (G5) |
+| 4 | Ausgabe durch die Leck-Prüfung | erfüllt (Prüfer `leckPruefen`, P3) |
+| 5 | F7A gesperrt | **nur ihr Fremdtext** gesperrt; F7A ohne Fremdtext lief bis zum Anbieter, wenn freigegeben |
+| 6 | Namenspolitik vor Freitext-Funktionen | offen: F5/F6/F9/F16 liefen ohne festgelegte Politik |
+
+### Rot → Grün je Befund
+
+Rot belegt per Commit 6e5a7c1 (nur Tests) gegen den Stand 4d63716: **17 von 27 rot**, 10 Kontrollfälle grün. Nach 1bbc0b8: **27 von 27 grün**.
+
+| Befund | Tests (Block in `intelligence-gateway-i13`) | rot | Umsetzung |
+|---|---|---|---|
+| B1 F7A ohne Fremdtext erreichte den Anbieter | „Bedingung 5“ (2; 1 rot, 1 Kontrolle) | 1 | **G17** in `gateway.mjs`: jede Funktion aus `FREISCHALTUNG_GESPERRT` wird verweigert, nicht nur ihr Fremdtext |
+| B2 Freitext-Funktionen ohne Namenspolitik | „Bedingung 6“ (6; 4 rot, 1 Kontrolle F2, 1 Freigabe-Fall) | 4 | `namenspolitik.mjs` (N1–N3), **G18**: ohne gültige Politik → `KI_FUNKTION` (Protokollgrund `namenspolitik`) vor Limits, Bestand, Anbieter; ungültige Politik → Gateway startet nicht (`KI_INTERN`) |
+| B3 keine Model Registry | „Bedingung 1“ (6; 5 rot, 1 Kontrolle) | 5 | `registry.mjs` (R1–R4), **G19**: Registry nur aus `erzeugeRegistry`, Ort muss dem Adapter gleichen, sie begrenzt die Stufenkette |
+| B4 Schlüssel nicht getrennt, keine Rotation | „Bedingung 2“ (7; alle rot) | 7 | `schluessel.mjs` (K1–K5): Alias- und MAC-Schlüssel getrennt, MAC-Wechsel über `…_VORHER`, Platzhalter abgelehnt, Schlüssel nur in der Closure |
+| Kette gegen die Attrappe | „Kette“ (6; 0 rot — Regression) | 0 | keine Änderung nötig; belegt Bedingungen 3 und 4 |
+
+Die Kette zeigt deterministisch: `ok` → fertig, gekennzeichnet (Entwurf, nicht veröffentlicht), gleicher Auftragskontext → gleiche Antwort; `fehler` → Rückfall `KI_ANBIETER`; `zeitueberschreitung` → `KI_ZEIT`; `falsche_zahl` → Stufen 1→2→3, dann `KI_PRUEFER`; Klarname in der Ausgabe → Rückfall ohne Namen in Antwort und Protokoll; erfundener Alias → keine Rückübersetzung; fremdes Feld → verworfen.
+
+Beobachtung beim Schreiben der Tests: Die Reihenfolge der Fakten im Paket hängt vom Auftragskontext ab (Alias-Sortierung). Das ist gewollt (keine Verknüpfbarkeit über Aufträge); deterministisch ist die Kette bei gleichem Kontext.
+
+### Angepasste bestehende Tests (begründet)
+
+- `intelligence-gateway-fixture.mjs`: neue Konstante `NAMENSPOLITIK_TEST`.
+- `intelligence-gateway-kern.test.js` (`bauen`) und `intelligence-gateway-review2.test.js` (`bauen`): übergeben `namenspolitik: NAMENSPOLITIK_TEST`. Grund: G18 sperrt F5 ohne Politik; die vier betroffenen F5-Fälle (Klarname → `KI_LECK`, Kapsel, Einschleusung, Treffer bei `zeitraum: null`) prüfen danach unverändert dasselbe. Keine Erwartung wurde gelockert oder entfernt. Dass F5 **ohne** Politik gesperrt ist, prüft die neue Datei.
+
+### Tests
+
+| Lauf | Ergebnis |
+|---|---|
+| `npx vitest run pruefungen/intelligence-gateway-i13.test.js` | 27 / 27 |
+| `npx vitest run pruefungen/intelligence- pruefungen/engine- pruefungen/doku.test.js` | 25 Dateien, 710 / 710 |
+| `node werkzeug/sicherheit/statik.mjs` | keine unbegründeten harten Treffer |
+| eslint (geänderte Dateien), `tsc -p jsconfig.json` | ohne Befund |
+
+Die statischen Grenztests (`intelligence-gateway-grenzen`) erfassen die drei neuen Module automatisch: kein Netz, kein `process.env`, kein Anbietername, Importe nur `node:crypto` und `intelligence/`.
+
+### Was die Attrappe kann – und was nicht
+
+Kann: die ganze Kette Anfrage → Notschalter → Rolle → Freigabe (inkl. F7A-Sperre, Namenspolitik) → Pause → Limits → Faktenpaket (Positivliste ∩ Rollensicht, Alias, Leck-Prüfung) → Pflichtprotokoll → Stufenkette (nur aufwärts, durch Registry begrenzbar) → Prüfer → Rückübersetzung → Antwort-Schema, mit 14 Verhaltensmodi einschließlich feindlicher Antworten; fail closed bei jedem Verstoß.
+
+Kann nicht: kein Modell, kein Netz, kein echter Schlüssel; der Live-Adapter bleibt Stumpf (wirft „nicht freigegeben“). Keine Route `/ki`, kein Auftragsjournal (202 + Abfrage), keine Stores in `STORES`, kein Eintrag in `.env.example`/Betriebshandbuch — das Gateway ist absichtlich nicht verdrahtet (Grenztest G11).
+
+### Restrisiken
+
+1. **Registry ist optional.** Ohne Registry gilt der Ort aus der Adapter-Konfiguration (ebenfalls Server, nie Anfrage). Mit dem Live-Adapter (WP-I18) muss die Registry Pflicht werden.
+2. **Anbieterschlüssel nicht im Trennungsvergleich.** `schluessel.mjs` vergleicht Alias-, MAC- und vorherigen MAC-Schlüssel; der Anbieterschlüssel bleibt nach dem Grenztest ausschließlich in `anbieter-live.mjs`. Der Vergleich mit ihm gehört zu WP-I18.
+3. **Alias-Rotation ohne Übergang.** Gespeicherte Antworten (WP-I14) mit alten Alias fallen nach einem Wechsel bei der Rückübersetzung durch (Rückfall, kein Leck); die Schlüsselkennung ist noch nicht Teil des Decision Fingerprint.
+4. **Namenspolitik ist eine Bestätigung, keine neue Prüfung.** Sie bindet die Freischaltung an die festgelegten strengen Werte der WP-I11-Leck-Prüfung; deren Restrisiken (Kurznamen, Doppelgänger-Tabelle, Ziffern-Verfremdung, `wp-i11-nachweis.md`) bleiben bestehen.
+5. Die übrigen Restrisiken aus `wp-i13-nachweis.md` (Prüfergrenzen) und `wp-i11-nachweis.md` gelten unverändert.
+
+### Offene Punkte
+
+- Route `server/funktionen/ki.mjs` mit Journal, Stores, `.env.example`, Betriebshandbuch — erst mit Freigabe der Verdrahtung.
+- Unabhängiges Review (Opus) der Erweiterung G17–G19, N1–N3, R1–R4, K1–K5.
+- Restrisiken-Freigabe durch die Produktverantwortung (Bedingung 7 aus `wp-i11-nachweis.md`).
+- WP-I18: Registry Pflicht, Anbieterschlüssel im Trennungsvergleich, Live-Adapter — nur nach Betreiberfreigabe.
