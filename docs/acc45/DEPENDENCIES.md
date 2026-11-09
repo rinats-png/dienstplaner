@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 385,6–650,7 PT in 92 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 372,6–628,7 PT in 90 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -77,8 +77,6 @@ flowchart LR
     WP_I8["WP-I8<br/>BLOCKED"]
     WP_I9["WP-I9<br/>BLOCKED"]
     WP_I12["WP-I12<br/>REVIEW"]
-    WP_I14["WP-I14<br/>BLOCKED"]
-    WP_I15["WP-I15<br/>BLOCKED"]
     WP_I16["WP-I16<br/>BLOCKED"]
     WP_I18["WP-I18<br/>BLOCKED"]
     WP_I19["WP-I19<br/>BLOCKED"]
@@ -234,11 +232,9 @@ flowchart LR
   WP_I7 --> WP_I8
   WP_I7 --> WP_I9
   WP_I8 --> WP_I9
-  WP_I15 --> WP_I16
   E_25 --> WP_I18
   WP_I12 --> WP_I19
   WP_I12 --> WP_I20
-  WP_I15 --> WP_I20
   WP_I19 --> WP_I21
   WP_I20 --> WP_I21
   E_24i --> WP_I21
@@ -252,7 +248,6 @@ flowchart LR
   E_26 --> WP_I27
   WP_I12 --> WP_I28
   WP_I19 --> WP_I28
-  WP_I15 --> WP_I29
   WP_I12 --> WP_I29
   WP_I12 --> WP_I31
   WP_I28 --> WP_I32
@@ -269,8 +264,6 @@ flowchart LR
   WP_I8 --> WP_I37
   WP_I9 --> WP_I37
   WP_I12 --> WP_I37
-  WP_I14 --> WP_I37
-  WP_I15 --> WP_I37
   WP_I16 --> WP_I37
   WP_I18 --> WP_I37
   WP_I19 --> WP_I37
@@ -435,8 +428,8 @@ flowchart LR
 | WP-I11 | intelligence | P3 | 6–10 | 0 | WP-43, WP-I10 | – | opus | INTEGRATED |
 | WP-I12 | intelligence | P3 | 14–24 | 2,8–4,8 | WP-11, WP-22, WP-I10 | App.jsx | sonnet | REVIEW |
 | WP-I13 | intelligence | P3 | 14–24 | 0 | WP-I11, WP-I12 | – | sonnet + opus-review | INTEGRATED |
-| WP-I14 | intelligence | P3 | 5–8 | 5–8 | WP-I13 | – | sonnet + opus-review | BLOCKED |
-| WP-I15 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-05 | – | sonnet + opus-review | BLOCKED |
+| WP-I14 | intelligence | P3 | 5–8 | 0 | WP-I13 | – | sonnet + opus-review | INTEGRATED |
+| WP-I15 | intelligence | P3 | 8–14 | 0 | WP-I13, WP-05 | – | sonnet + opus-review | INTEGRATED |
 | WP-I16 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-I15 | App.jsx, rechte.mjs | opus | BLOCKED |
 | WP-I17 | intelligence | P3 | 6–10 | 0 | WP-I13 | App.jsx | sonnet | INTEGRATED |
 | WP-I18 | intelligence | P3 | 2–4 | 2–4 | WP-I13, E-25 | – | sonnet | BLOCKED |
