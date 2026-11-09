@@ -27,8 +27,13 @@
    Einrichten, als Base32 und als otpauth-Adresse. Danach erscheint es in
    keiner Antwort, keinem Protokoll, keiner Liste.
 
-   Wiederherstellungscodes: zehn Stück, beim Bestätigen einmal angezeigt,
-   gespeichert nur als HMAC mit dem Pfeffer. Jeder gilt einmal.
+   Wiederherstellungscodes (Fassung 2, WR-1): zehn Stück, beim Bestätigen
+   oder Neugenerieren einmal angezeigt, Form SSSS-VVVV-VVVV-VVVV aus einem
+   32er-Alphabet, gezogen in 5-Bit-Gruppen ohne Modulo-Verzerrung.
+   Gespeichert nur als scrypt über ein HMAC mit einem aus dem Pfeffer
+   abgeleiteten Schlüssel, je Code eigenes Salz, gebunden an id und
+   Generation. Jeder gilt einmal. Altformat (Fassung 1, HMAC ohne Salz)
+   bleibt bis zur Neugenerierung lesbar und wird als „neu nötig“ gemeldet.
 
    Nachweis: Skripte rufen /einrichten mehrmals hintereinander auf, und ein
    Code gilt nur einmal. Deshalb lässt sich mit einem Code ein Nachweis
@@ -38,7 +43,7 @@
    ========================================================================== */
 
 import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync,
-  randomBytes, timingSafeEqual } from "node:crypto";
+  randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { vorgang } from "./schreibhalt.mjs";
 
 export const SCHRITT = 30;
@@ -198,22 +203,110 @@ const kapselNeu = (kapsel, roh, id) => (kapsel && kapsel.v === 2 ? kapsel : vers
    Wiederherstellungscodes und Nachweis
    -------------------------------------------------------------------------- */
 
-const ALPHABET = "ACDEFGHJKLMNPQRTUVWXY34679";
-
+/* Fassung 1 (Altformat, nur noch lesen): HMAC mit dem rohen Pfeffer, ohne
+   Salz, ohne Bindung. Wird nicht mehr geschrieben. */
 const normieren = (code) => String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 /** HMAC mit dem Pfeffer — ohne Pfeffer kein Wert, also auch kein Treffer. */
-function codeHash(code) {
+function codeHashV1(code) {
   const p = process.env.CENTRIC_PFEFFER;
   if (!p) return null;
   return createHmac("sha256", p).update(`wiederherstellung:${normieren(code)}`).digest("hex");
 }
 
-export function wiederherstellungErzeugen(n = WIEDERHERSTELLUNG_ANZAHL) {
-  const block = () => Array.from(randomBytes(5)).map((b) => ALPHABET[b % ALPHABET.length]).join("");
-  const klar = Array.from({ length: n }, () => `${block()}-${block()}`);
-  return { klar, hashes: klar.map(codeHash) };
+/* Fassung 2.
+   Alphabet: 32 Zeichen ohne Verwechsler 0/O und 1/I. 32 teilt 256, und
+   jedes Zeichen entsteht aus genau 5 Zufallsbits — jede der 2^80
+   Byte-Folgen ergibt genau einen Code (Bijektion), also ist jedes Zeichen
+   gleichverteilt. Kein `% länge`. */
+export const WIEDERHERSTELLUNG_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const WH_MUSTER = new RegExp(`^[${WIEDERHERSTELLUNG_ALPHABET}]{16}$`);
+/** scrypt-Kennwerte wie lib/passwoerter.mjs (rund 32 MB je Rechnung). */
+const WH_KDF = Object.freeze({ N: 32768, r: 8, p: 1 });
+const WH_LAENGE = 32;
+/** Für unbekannte Selektoren: gleiche Arbeit, kein Treffer möglich. */
+const WH_SCHEIN_SALZ = Buffer.alloc(16, 0);
+
+/**
+ * 10 Zufallsbyte (80 bit) → 16 Zeichen in 5-Bit-Gruppen, angezeigt als
+ * SSSS-VVVV-VVVV-VVVV. Umkehrbar, ohne Verzerrung.
+ * @param {Uint8Array} bytes
+ */
+export function wiederherstellungCodeAusBytes(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length !== 10) throw new Error("genau 10 Byte erwartet");
+  let bits = 0, wert = 0, roh = "";
+  for (const b of bytes) {
+    wert = ((wert << 8) | b) & 0xfff; bits += 8;
+    while (bits >= 5) { roh += WIEDERHERSTELLUNG_ALPHABET[(wert >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  return `${roh.slice(0, 4)}-${roh.slice(4, 8)}-${roh.slice(8, 12)}-${roh.slice(12, 16)}`;
 }
+
+/** Ein neuer Code aus dem kryptografischen Zufall. */
+export const wiederherstellungCodeNeu = () => wiederherstellungCodeAusBytes(randomBytes(10));
+
+/**
+ * Selektor (4 Zeichen, kein Geheimnis) und Prüfteil (12 Zeichen, 60 bit).
+ * Groß/klein, Leerzeichen und Bindestriche egal; andere Zeichen: null.
+ * @returns {{sel: string, pruef: string}|null}
+ */
+export function wiederherstellungZerlegen(code) {
+  const s = String(code ?? "").toUpperCase().replace(/[\s-]/g, "");
+  if (!WH_MUSTER.test(s)) return null;
+  return { sel: s.slice(0, 4), pruef: s.slice(4) };
+}
+
+/** Eigener Schlüssel aus dem Pfeffer (HKDF), getrennt vom TOTP-Schlüssel. */
+function whSchluessel() {
+  const p = process.env.CENTRIC_PFEFFER;
+  if (!p) return null;
+  return Buffer.from(hkdfSync("sha256", Buffer.from(p), Buffer.from("centric-zweifaktor"),
+    Buffer.from("wiederherstellung-v2"), 32));
+}
+
+/** HMAC-Vorstufe, gebunden an id, Einrichtung, Codegeneration und Selektor. */
+const whVor = (k, id, bindung, generation, sel, pruef) =>
+  createHmac("sha256", k).update(`w2|${id}|${bindung}|${generation}|${sel}|${pruef}`).digest();
+
+/** @returns {Promise<Buffer>} */
+const whScrypt = (vor, salz) => new Promise((gut, schlecht) => {
+  scrypt(vor, salz, WH_LAENGE, { N: WH_KDF.N, r: WH_KDF.r, p: WH_KDF.p, maxmem: 128 * WH_KDF.N * WH_KDF.r * 2 },
+    (f, w) => (f ? schlecht(f) : gut(w)));
+});
+
+const kdfGleich = (k) => !!k && k.N === WH_KDF.N && k.r === WH_KDF.r && k.p === WH_KDF.p;
+
+/**
+ * Zehn neue Codes und ihre Prüfeinträge. Ohne Pfeffer: Fehler.
+ * @param {string} id
+ * @param {number} generation  Codegeneration (steigt bei jeder Neugenerierung)
+ * @param {string} [bindung]   Einrichtungsgeneration des Faktors
+ * @returns {Promise<{klar: string[], eintraege: {sel: string, salz: string, wert: string, verbraucht: null}[]}>}
+ */
+export async function wiederherstellungErzeugen(id, generation, bindung = "", n = WIEDERHERSTELLUNG_ANZAHL) {
+  const k = whSchluessel();
+  if (!k) throw new Error("CENTRIC_PFEFFER fehlt");
+  const klar = [], sels = new Set();
+  while (klar.length < n) {
+    const c = wiederherstellungCodeNeu();
+    const z = /** @type {{sel: string, pruef: string}} */ (wiederherstellungZerlegen(c));
+    if (sels.has(z.sel)) continue; /* Selektor je Träger eindeutig */
+    sels.add(z.sel); klar.push(c);
+  }
+  const eintraege = await Promise.all(klar.map(async (c) => {
+    const z = /** @type {{sel: string, pruef: string}} */ (wiederherstellungZerlegen(c));
+    const salz = randomBytes(16);
+    const wert = await whScrypt(whVor(k, id, bindung, generation, z.sel, z.pruef), salz);
+    return { sel: z.sel, salz: salz.toString("base64"), wert: wert.toString("base64"), verbraucht: null };
+  }));
+  return { klar, eintraege };
+}
+
+/** Der Ablageteil `wiederherstellung` in Fassung 2. */
+const whStruktur = (w, generation, ms) => ({ v: 2, generation, erzeugt: new Date(ms).toISOString(),
+  kdf: { ...WH_KDF }, verbrauchtZahl: 0, eintraege: w.eintraege });
+
+const istV2 = (w) => !!w && !Array.isArray(w) && w.v === 2;
 
 const nachweisHash = (t) => createHash("sha256").update(`nachweis:${t}`).digest("hex");
 
@@ -267,18 +360,27 @@ const ausstehendGueltig = (e, ms) => !!(e && e.stand === "ausstehend" && Number.
 /**
  * Wie steht es um den zweiten Faktor? Wirft bei einem Lesefehler der
  * Ablage — der Aufrufer muss dann abweisen, nicht durchlassen.
- * @returns {Promise<{aktiv: boolean, ausstehend: boolean, ausstehendSeitMin: number|null, wiederherstellungUebrig: number}>}
+ * `wiederherstellungFassung`: 2, 1 (Altformat) oder null (keine Codes).
+ * `wiederherstellungNeuNoetig`: aktiv, aber nicht in Fassung 2 — Aufforderung zur Neugenerierung.
+ * @returns {Promise<{aktiv: boolean, ausstehend: boolean, ausstehendSeitMin: number|null, wiederherstellungUebrig: number,
+ *   wiederherstellungFassung: number|null, wiederherstellungNeuNoetig: boolean}>}
  */
 export async function zweifaktorStand(store, id, ms = Date.now()) {
   const e = await store.get(SCHLUESSEL(id), { type: "json" });
+  const w = e ? e.wiederherstellung : null;
+  const fassung = istV2(w) ? 2 : Array.isArray(w) && w.length > 0 ? 1 : null;
+  const aktiv = !!(e && e.stand === "aktiv");
   return {
-    aktiv: !!(e && e.stand === "aktiv"),
+    aktiv,
     ausstehend: ausstehendGueltig(e, ms),
     /** Minuten seit Beginn der (auch abgelaufenen) ausstehenden Einrichtung, sonst null. */
     ausstehendSeitMin: e && e.stand === "ausstehend" && Number.isFinite(Date.parse(e.begonnen))
       ? Math.max(0, Math.round((ms - Date.parse(e.begonnen)) / 60000)) : null,
-    wiederherstellungUebrig: e && Array.isArray(e.wiederherstellung)
-      ? e.wiederherstellung.filter(Boolean).length : 0,
+    wiederherstellungUebrig: fassung === 2
+      ? (Array.isArray(w.eintraege) ? w.eintraege.filter((x) => x && !x.verbraucht).length : 0)
+      : fassung === 1 ? w.filter(Boolean).length : 0,
+    wiederherstellungFassung: fassung,
+    wiederherstellungNeuNoetig: aktiv && fassung !== 2,
   };
 }
 
@@ -293,7 +395,7 @@ export async function zweifaktorBeginnen(store, id, konto) {
     if (e && e.stand === "aktiv") return { fehler: "aktiv" };
     const roh = randomBytes(20);
     await store.setJSON(SCHLUESSEL(id), { stand: "ausstehend", geheimnis: verschluesseln(roh, id),
-      letzterSchritt: -1, wiederherstellung: [], begonnen: new Date().toISOString() });
+      letzterSchritt: -1, wiederherstellung: null, begonnen: new Date().toISOString() });
     const b32 = base32Kodieren(roh);
     return { geheimnis: b32, otpauth: otpauthAdresse(b32, konto) };
   });
@@ -327,10 +429,11 @@ export async function zweifaktorBestaetigen(store, id, code, ms = Date.now()) {
     if (!roh) return { fehler: "pfeffer" };
     const p = codePruefen(roh, code, ms, e.letzterSchritt ?? -1);
     if (!p.ok) return { fehler: "code" };
-    const w = wiederherstellungErzeugen();
+    const generation = randomBytes(16).toString("hex");
+    const w = await wiederherstellungErzeugen(id, 1, generation);
     await store.setJSON(SCHLUESSEL(id), { ...e, stand: "aktiv", letzterSchritt: p.schritt,
-      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: w.hashes,
-      aktiviert: new Date().toISOString(), generation: randomBytes(16).toString("hex") });
+      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: whStruktur(w, 1, ms),
+      aktiviert: new Date().toISOString(), generation });
     return { ok: true, wiederherstellung: w.klar };
   });
 }
@@ -374,7 +477,8 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (!e || e.stand !== "aktiv") return { ok: false, grund: "nicht-aktiv" };
     const c = String(code).trim();
-    if (/^\d[\d\s]*$/.test(c)) {
+    /* Sechs Ziffern sind TOTP; alles andere geht in die Codeprüfung. */
+    if (/^\d{6}$/.test(c.replace(/\s/g, ""))) {
       const roh = entschluesseln(e.geheimnis, id);
       if (!roh) return { ok: false, grund: "pfeffer" };
       const p = codePruefen(roh, c, ms, e.letzterSchritt ?? -1);
@@ -384,7 +488,9 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
       return { ok: true, art: "totp" };
     }
     /* Wiederherstellungscode: verbraucht, sobald er passt. */
-    const h = codeHash(c);
+    if (istV2(e.wiederherstellung)) return wiederherstellungEinloesen(store, id, e, c, ms);
+    /* Altformat (Fassung 1): nur lesen und verbrauchen, bis neu generiert wird. */
+    const h = codeHashV1(c);
     const liste = Array.isArray(e.wiederherstellung) ? e.wiederherstellung : [];
     let stelle = -1;
     liste.forEach((x, i) => { if (h && x && gleich(x, h) && stelle < 0) stelle = i; });
@@ -392,6 +498,64 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
     const neu = liste.slice(); neu[stelle] = null;
     await store.setJSON(SCHLUESSEL(id), { ...e, wiederherstellung: neu });
     return { ok: true, art: "wiederherstellung" };
+  });
+}
+
+/**
+ * Fassung 2 einlösen — nur unter der Sperre je id aufrufen. Genau ein
+ * scrypt je Versuch: Bei unbekanntem oder verbrauchtem Selektor, falscher
+ * Form oder unstimmiger Ablage wird gegen ein Schein-Salz gerechnet, damit
+ * die Laufzeit nichts über die Existenz eines Selektors verrät. Erfolg erst
+ * nach erfolgreichem Schreiben; ein Schreibfehler geht an den Aufrufer.
+ * @returns {Promise<{ok: boolean, art?: string, grund?: string}>}
+ */
+async function wiederherstellungEinloesen(store, id, e, code, ms) {
+  const k = whSchluessel();
+  if (!k) return { ok: false, grund: "pfeffer" };
+  const w = e.wiederherstellung;
+  const eintraege = Array.isArray(w.eintraege) ? w.eintraege : [];
+  const stimmig = kdfGleich(w.kdf) && Number.isInteger(w.generation)
+    && w.verbrauchtZahl === eintraege.filter((x) => x && x.verbraucht).length;
+  const z = wiederherstellungZerlegen(code);
+  const stelle = z && stimmig ? eintraege.findIndex((x) => x && !x.verbraucht && x.sel === z.sel) : -1;
+  const ziel = stelle >= 0 ? eintraege[stelle] : null;
+  const vor = whVor(k, id, String(e.generation ?? ""), w.generation,
+    z ? z.sel : "AAAA", z ? z.pruef : "AAAAAAAAAAAA");
+  const ist = await whScrypt(vor, ziel ? Buffer.from(String(ziel.salz), "base64") : WH_SCHEIN_SALZ);
+  const soll = ziel ? Buffer.from(String(ziel.wert), "base64") : Buffer.alloc(WH_LAENGE);
+  const treffer = !!ziel && soll.length === ist.length && timingSafeEqual(soll, ist);
+  if (!treffer) return { ok: false, grund: "code" };
+  const neu = eintraege.slice();
+  neu[stelle] = { ...ziel, verbraucht: new Date(ms).toISOString() };
+  await store.setJSON(SCHLUESSEL(id), { ...e,
+    wiederherstellung: { ...w, eintraege: neu, verbrauchtZahl: w.verbrauchtZahl + 1 } });
+  return { ok: true, art: "wiederherstellung" };
+}
+
+/**
+ * Wiederherstellungscodes neu erzeugen. Verlangt einen frischen TOTP-Code —
+ * keinen Wiederherstellungscode, keinen Nachweis. Danach gilt keiner der
+ * bisherigen Codes mehr (auch kein Altformat); die Codegeneration steigt.
+ * Die neuen Codes verlassen den Server genau hier, einmal.
+ * @returns {Promise<{ok: boolean, fehler?: string, wiederherstellung?: string[]}>}
+ */
+export async function wiederherstellungNeu(store, id, code, ms = Date.now()) {
+  if (!zweifaktorMoeglich()) return { ok: false, fehler: "pfeffer" };
+  return unterSperre(id, async () => {
+    const e = await store.get(SCHLUESSEL(id), { type: "json" });
+    if (!e || e.stand !== "aktiv") return { ok: false, fehler: "nicht-aktiv" };
+    const c = String(code ?? "").replace(/\s/g, "");
+    if (!/^\d{6}$/.test(c)) return { ok: false, fehler: "code" };
+    const roh = entschluesseln(e.geheimnis, id);
+    if (!roh) return { ok: false, fehler: "pfeffer" };
+    const p = codePruefen(roh, c, ms, e.letzterSchritt ?? -1);
+    if (!p.ok) return { ok: false, fehler: p.wiederholt ? "wiederholt" : "code" };
+    const alt = e.wiederherstellung;
+    const generation = (istV2(alt) && Number.isInteger(alt.generation) ? alt.generation : 0) + 1;
+    const w = await wiederherstellungErzeugen(id, generation, String(e.generation ?? ""));
+    await store.setJSON(SCHLUESSEL(id), { ...e, letzterSchritt: p.schritt,
+      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: whStruktur(w, generation, ms) });
+    return { ok: true, wiederherstellung: w.klar };
   });
 }
 
