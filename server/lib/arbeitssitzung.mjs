@@ -672,6 +672,10 @@ export async function arbeitssitzungPruefen(store, sitzung,
   if (!bestand) return absage("bestand-fehlt");
   const grundM = mandantPruefen(bestand, sitzung.betrieb, m.mandantId);
   if (grundM) return absage(grundM);
+  /* Trägt die Sitzung eine Betriebskennung (betriebsauswahl.mjs, kennungZulaessig), muss es die der Mitgliedschaft
+     sein. Sitzungen ohne Kennung bleiben, wie sie sind. */
+  if (Object.prototype.hasOwnProperty.call(sitzung, "mandantId") && sitzung.mandantId !== undefined
+    && String(sitzung.mandantId) !== String(m.mandantId)) return absage("mandant-gewechselt");
   const mandant = eigenerMandant(bestand, { betrieb: sitzung.betrieb });
   const dabei = (Array.isArray(mandant.personen) ? mandant.personen : [])
     .some((p) => p && String(p.id) === String(person));

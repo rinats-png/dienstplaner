@@ -132,6 +132,22 @@ export async function mitgliedschaftenFuerAuswahl(store, accountId) {
 }
 
 /**
+ * Darf die Arbeitssitzung die Kennung des gewählten Betriebs tragen? (WP-18-Nachtrag, siehe betriebWaehlen)
+ * @param {Record<string, any>} felder  die Felder der neuen Arbeitssitzung
+ * @param {any} m  die frisch gelesene Mitgliedschaft
+ * @param {string|null} rolle  die wirksame Rolle der Person
+ * @param {any} mandant  der Betrieb, auf den Index und Kennung der Mitgliedschaft zeigen
+ */
+function kennungZulaessig(felder, m, rolle, mandant) {
+  if (!m || m.status !== "aktiv") return false;
+  if (felder.demo !== undefined || felder.nurSicherung !== undefined) return false;
+  if (m.rolle === "betreiber" || rolle === "betreiber") return false;
+  if (!zweifaktorRolle(m.rolle) || !zweifaktorRolle(rolle)) return false;
+  if (!mandant || typeof mandant.id !== "string" || !mandant.id) return false;
+  return mandant.id === String(m.mandantId);
+}
+
+/**
  * Öffnet genau einen Betrieb für genau diesen Account.
  *
  * Jeder Fehlschlag gibt denselben Grund nach außen — die Ebene darüber macht
@@ -222,7 +238,9 @@ export async function betriebWaehlen(store,
   /* Die Felder der Arbeitssitzung. Gespeichert wird die Rolle der
      Mitgliedschaft; was gilt, entscheidet `wirksameRolle` bei jeder Anfrage
      neu gegen den Bestand. Kein `konto` — es gibt keinen Zugangscode, auf
-     den sich eine Sperrung beziehen könnte —, und kein `demo`. */
+     den sich eine Sperrung beziehen könnte —, und kein `demo`. Die Betriebskennung (`mandantId`) kommt nur unter den
+     Bedingungen von kennungZulaessig dazu (unten). */
+  /** @type {Record<string, any>} */
   const felder = {
     bestand: raum,
     name: `${person.vorname || ""} ${person.nachname || ""}`.trim() || String(person.id),
@@ -253,6 +271,20 @@ export async function betriebWaehlen(store,
      Ohne Pflicht bleibt es wie bisher. Die Account-Anmeldung selbst ist nur eine Identität ohne Rolle und ohne
      Bestand (anmeldung.mjs) — die Rechte entstehen erst hier, also wird hier geprüft. */
   if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle))) return absage("zweifaktor-pflicht");
+
+  /* Kontositzung mit Betriebskennung (WP-18-Nachtrag). Eine Sitzung aus einem Zugangscode trägt seit Oktober 2026 die
+     Kennung ihres Betriebs (mandantId); Einladungen verlangen sie (einladungen.mjs, leitungPruefen). Die Arbeitssitzung
+     aus einem Konto bekommt sie hier — für genau den gewählten, oben geprüften Betrieb und nur, wenn:
+       - die Mitgliedschaft existiert und aktiv ist (oben: Status, Generation, Person, Betriebsindex = Kennung),
+       - die Rolle der Mitgliedschaft UND die wirksame Rolle der Person eine Funktionsrolle sind (leitung, planer,
+         subplaner, kunde — dieselbe Menge wie beim zweiten Faktor, betreiber-zweifaktor.mjs). Beide, nicht eine von
+         beiden: Die Kennung soll aus keiner der zwei Angaben allein entstehen,
+       - es keine Demo-, keine Sicherungs- und keine Betreibersitzung ist (Demoräume schließt raumErlaubt oben aus; die
+         Felder tragen weder `demo` noch `nurSicherung`; „betreiber" ist keine Funktionsrolle).
+     Die Kennung ist keine Rolle und kein Recht: Gespeichert bleibt die Rolle der Mitgliedschaft, und jede Anfrage
+     entscheidet weiter über `wirksameRolle` gegen den Bestand. Bei jeder Anfrage prüft arbeitssitzungPruefen, dass sie
+     noch die Kennung der Mitgliedschaft ist. Nach außen geht sie nicht (Antwort unten unverändert). */
+  if (kennungZulaessig(felder, m, rolle, mandant)) felder.mandantId = String(mandant.id);
 
   /* Die Arbeit überlebt ihre Anmeldung nicht: Die Dauer endet spätestens mit
      der Account-Sitzung. */

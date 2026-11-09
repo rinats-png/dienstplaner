@@ -710,6 +710,199 @@ describe("N-1 (Sicherheitsreview): erst die Rechte, dann die Bestätigung — ke
   });
 });
 
+/* ==========================================================================
+   KONTOSITZUNG MIT BETRIEBSKENNUNG (WP-18-Nachtrag, Branch acc45/betriebsauswahl/mandant)
+
+   Eine Arbeitssitzung aus Konto + Betriebsauswahl trägt die Kennung (mandantId) des gewählten Betriebs — nur wenn
+   die Mitgliedschaft aktiv ist und sowohl die Rolle der Mitgliedschaft als auch die wirksame Rolle der Person eine
+   Funktionsrolle ist (leitung, planer, subplaner, kunde). Die Kennung gibt keine Rolle und kein Recht: Ob eine
+   Einladung ausgestellt werden darf, entscheidet weiter `roles.assign` gegen die wirksame Rolle.
+   Nur erfundene Testdaten.
+   ========================================================================== */
+describe("Kontositzung mit Betriebskennung", () => {
+  const RAUM_B = "einladung-probe-zwei";
+  const PW = "pruefpasswort-kontowahl-richtig-123";
+  let A, AC, BA, S;
+
+  beforeAll(async () => {
+    A = await import("../server/lib/accounts.mjs");
+    AC = await import("../server/lib/accountsitzungen.mjs");
+    BA = await import("../server/lib/betriebsauswahl.mjs");
+    S = await import("../server/lib/sitzungen.mjs");
+    /* Ein zweiter Raum mit einem eigenen Betrieb: Dort ist die Leitung aus Raum A nur Mitarbeiterin. */
+    await B.bestandSchreiben(laden(), RAUM_B, { version: 9, stand: 1, session: null, mandanten: [
+      betrieb("m-z", "Testbetrieb Z", [person("zl", "mitarbeiter"), person("zm", "mitarbeiter")]),
+    ] }, { durch: "Pruefung" });
+  });
+
+  /** Ein aktives Konto mit Passwort. */
+  async function kontoMitPasswort(email) {
+    const { passwortAblegen } = await import("../server/lib/passwoerter.mjs");
+    const k = await A.accountAnlegen(laden(), { email });
+    expect(k.ok, JSON.stringify(k)).toBe(true);
+    await A.emailBestaetigen(laden(), k.account.id);
+    const g = await A.passwortSetzen(laden(), k.account.id, await passwortAblegen(PW));
+    expect(g.ok, JSON.stringify(g)).toBe(true);
+    return k.account.id;
+  }
+  /** Mitgliedschaft anlegen. */
+  async function mitglied(accountId, raum, { betrieb: bNr = 0, mandantId = "m-a", person: pid, rolle }) {
+    const m = await A.mitgliedschaftAnlegen(laden(), { accountId, raum, betrieb: bNr, mandantId, person: pid, rolle,
+      status: "aktiv" });
+    expect(m.ok, JSON.stringify(m)).toBe(true);
+  }
+  /** Anmelden (Account-Sitzung) und den Raum wählen — derselbe Weg wie /api/account/betrieb. */
+  async function waehlen(accountId, raum) {
+    const konto = await A.accountLesenPerId(laden(), accountId);
+    const as = await AC.accountSitzungAnlegen({ accountId, epoche: konto.epoche });
+    expect(as.ok).toBe(true);
+    return BA.betriebWaehlen(laden(), { accountId, raum,
+      kontoSitzung: { id: AC.accountSitzungsId(as.token), bis: as.gueltigBis } });
+  }
+  const roh = async (token) => S.sitzungsSpeicher().get(S.sitzungsSchluessel(token), { type: "json" });
+
+  it("1. Leitung mit Konto wählt Betrieb A: Sitzung trägt mandantId A, Einladung 200", async () => {
+    await personSetzen("kw1", "mitarbeiter");
+    const id = await kontoMitPasswort("kontowahl-leitung@example.org");
+    await mitglied(id, RAUM, { person: "al", rolle: "leitung" });
+    const wahl = await waehlen(id, RAUM);
+    expect(wahl.ok, JSON.stringify(wahl)).toBe(true);
+    if (!wahl.ok) return;
+    expect(wahl.rolle).toBe("leitung");
+    const s = await roh(wahl.token);
+    expect(s.mandantId).toBe("m-a");
+    expect(s.betrieb).toBe(0);
+    expect(s.rolle).toBe("leitung");
+    expect(s.demo).toBe(undefined);
+    expect(s.nurSicherung).toBe(undefined);
+    /* Ohne Passwort verlangt die Prüfung die Bestätigung (B1) — die Rechteprüfung ist also schon bestanden. */
+    const ohne = await einladen(wahl.token, { personId: "kw1" });
+    expect(ohne.status, ohne.roh).toBe(403);
+    expect(ohne.bestaetigung).toBe("passwort");
+    const r = await einladen(wahl.token, { personId: "kw1", bestaetigung: { passwort: PW } });
+    expect(r.status, r.roh).toBe(200);
+    expect(r.rolle).toBe("mitarbeiter");
+    /* Die Einladung gehört zu Betrieb A. */
+    const z = await annehmen(r.einladung);
+    expect(z.status, z.roh).toBe(200);
+    const k = await kontenDerPerson("kw1");
+    expect(k).toHaveLength(1);
+    expect(k[0]).toMatchObject({ mandantId: "m-a", betrieb: 0, rolle: "mitarbeiter" });
+  });
+
+  it("2. dieselbe Person wählt Betrieb B, in dem sie nur Mitarbeiterin ist: keine mandantId, Einladung 403", async () => {
+    const id = await kontoMitPasswort("kontowahl-zwei@example.org");
+    await mitglied(id, RAUM, { person: "al", rolle: "leitung" });
+    await mitglied(id, RAUM_B, { mandantId: "m-z", person: "zl", rolle: "mitarbeiter" });
+    const a = await waehlen(id, RAUM);
+    expect(a.ok).toBe(true);
+    if (!a.ok) return;
+    expect((await roh(a.token)).mandantId).toBe("m-a");
+    const b = await waehlen(id, RAUM_B);
+    expect(b.ok, JSON.stringify(b)).toBe(true);
+    if (!b.ok) return;
+    expect(b.rolle).toBe("mitarbeiter");
+    const sb = await roh(b.token);
+    expect(Object.prototype.hasOwnProperty.call(sb, "mandantId")).toBe(false);
+    for (const bestaetigung of [undefined, { passwort: PW }]) {
+      const r = await einladen(b.token, { personId: "zm", ...(bestaetigung ? { bestaetigung } : {}) });
+      expect(r.status, r.roh).toBe(403);
+      expect(r.einladung).toBeUndefined();
+    }
+  });
+
+  it("3. Mitarbeitende und Schichtverantwortung mit Konto: Einladung 403, kein Rechtegewinn", async () => {
+    await personSetzen("kw3", "mitarbeiter");
+    const fall = [{ email: "kontowahl-mita@example.org", person: "am5", rolle: "mitarbeiter", kennung: false },
+      { email: "kontowahl-sub@example.org", person: "as", rolle: "subplaner", kennung: true }];
+    for (const f of fall) {
+      const id = await kontoMitPasswort(f.email);
+      await mitglied(id, RAUM, { person: f.person, rolle: f.rolle });
+      const w = await waehlen(id, RAUM);
+      expect(w.ok, JSON.stringify(w)).toBe(true);
+      if (!w.ok) continue;
+      expect(w.rolle).toBe(f.rolle);
+      const s = await roh(w.token);
+      /* Die Rolle bleibt die der Mitgliedschaft; die Kennung trägt nur die Funktionsrolle. */
+      expect(s.rolle).toBe(f.rolle);
+      expect(s.mandantId).toBe(f.kennung ? "m-a" : undefined);
+      for (const bestaetigung of [undefined, { passwort: PW }]) {
+        const r = await einladen(w.token, { personId: "kw3", ...(bestaetigung ? { bestaetigung } : {}) });
+        expect(r.status, `${f.rolle}: ${r.roh}`).toBe(403);
+        expect(r.einladung).toBeUndefined();
+      }
+    }
+    expect(await kontenDerPerson("kw3")).toHaveLength(0);
+  });
+
+  it("Mitgliedschaft als Leitung, Person im Bestand inzwischen Mitarbeiterin: keine mandantId, Einladung 403", async () => {
+    await personSetzen("kw4", "leitung");
+    await personSetzen("kw5", "mitarbeiter");
+    const id = await kontoMitPasswort("kontowahl-herab@example.org");
+    await mitglied(id, RAUM, { person: "kw4", rolle: "leitung" });
+    await personSetzen("kw4", "mitarbeiter");
+    const w = await waehlen(id, RAUM);
+    expect(w.ok, JSON.stringify(w)).toBe(true);
+    if (!w.ok) return;
+    expect(w.rolle).toBe("mitarbeiter");
+    expect((await roh(w.token)).mandantId).toBe(undefined);
+    const r = await einladen(w.token, { personId: "kw5", bestaetigung: { passwort: PW } });
+    expect(r.status, r.roh).toBe(403);
+  });
+
+  it("4. ein Konto ohne Mitgliedschaft in B kann B nicht wählen (unverändert)", async () => {
+    const id = await kontoMitPasswort("kontowahl-fremd@example.org");
+    await mitglied(id, RAUM, { person: "ap", rolle: "planer" });
+    const vorher = (await S.sitzungsSpeicher().list({ prefix: "t:" })).blobs.length;
+    const w = await waehlen(id, RAUM_B);
+    expect(w).toEqual({ ok: false, grund: "keine-mitgliedschaft" });
+    expect((await S.sitzungsSpeicher().list({ prefix: "t:" })).blobs.length).toBe(vorher);
+  });
+
+  it("4b. eine nicht aktive Mitgliedschaft ergibt keine Sitzung und damit keine Kennung", async () => {
+    const id = await kontoMitPasswort("kontowahl-ruht@example.org");
+    await mitglied(id, RAUM, { person: "al", rolle: "leitung" });
+    await A.mitgliedschaftEntziehen(laden(), id, RAUM);
+    const vorher = (await S.sitzungsSpeicher().list({ prefix: "t:" })).blobs.length;
+    const w = await waehlen(id, RAUM);
+    expect(w.ok).toBe(false);
+    expect((await S.sitzungsSpeicher().list({ prefix: "t:" })).blobs.length).toBe(vorher);
+  });
+
+  it("5. Demo: über die Betriebsauswahl entsteht keine Demo-Sitzung und keine Kennung", async () => {
+    const id = await kontoMitPasswort("kontowahl-demo@example.org");
+    const vorher = (await S.sitzungsSpeicher().list({ prefix: "t:" })).blobs.length;
+    for (const raum of ["demo-probe", "Demo-Pflege"]) {
+      expect(await waehlen(id, raum)).toEqual({ ok: false, grund: "raum" });
+    }
+    expect((await S.sitzungsSpeicher().list({ prefix: "t:" })).blobs.length).toBe(vorher);
+  });
+
+  it("eine Kennung, die nicht zur Mitgliedschaft passt, macht die Sitzung ungültig (kein Umbiegen auf Betrieb B)", async () => {
+    const id = await kontoMitPasswort("kontowahl-umbiegen@example.org");
+    await mitglied(id, RAUM, { person: "ap", rolle: "planer" });
+    const w = await waehlen(id, RAUM);
+    expect(w.ok).toBe(true);
+    if (!w.ok) return;
+    const s = await roh(w.token);
+    expect(s.mandantId).toBe("m-a");
+    await S.sitzungsSpeicher().setJSON(S.sitzungsSchluessel(w.token), { ...s, mandantId: "m-b" });
+    const r = await einladen(w.token, { personId: "bm", bestaetigung: { passwort: PW } });
+    expect(r.status, r.roh).toBe(401);
+    expect(await roh(w.token)).toBe(null);
+  });
+
+  it("die Antwort der Auswahl nennt keine Betriebskennung", async () => {
+    const id = await kontoMitPasswort("kontowahl-antwort@example.org");
+    await mitglied(id, RAUM, { person: "al2", rolle: "leitung" });
+    const w = await waehlen(id, RAUM);
+    expect(w.ok).toBe(true);
+    if (!w.ok) return;
+    expect(Object.keys(w).sort()).toEqual(["betrieb", "gueltigBis", "name", "ok", "person", "raum", "rolle", "token"]);
+    expect(JSON.stringify(w)).not.toContain("m-a");
+  });
+});
+
 describe("B3: Einmaligkeit über zwei Ablage-Instanzen und zwei Prozesse", () => {
   it("zwei Modul-Instanzen (eigene Reihen, eigene Raumsperren) lösen gleichzeitig ein: je Einladung genau ein Code", async () => {
     vi.resetModules();

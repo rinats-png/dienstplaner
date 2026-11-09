@@ -415,3 +415,77 @@ Wiederherstellung die offenen Einladungen in der Liste prüfen und gegebenenfall
 Geänderte Dateien (Fix): `server/lib/einladungen.mjs`, `server/funktionen/einladung.mjs`, `server/lib/token.mjs`,
 `server/lib/betreiber-zweifaktor.mjs` (neue Funktion `rollenFaktorEingerichtet`), `pruefungen/einladungen.test.js`,
 `pruefungen/token.test.js`, dieses Dokument.
+
+## 8. Kontositzung mit Betriebskennung (Branch `acc45/betriebsauswahl/mandant`, Basis 9aad30f)
+
+### 8.1 Entscheidung (Betreiber, verbindlich)
+
+Eine Arbeitssitzung, die über Konto + Betriebsauswahl entsteht, trägt die Kennung (`mandantId`) des gewählten Betriebs —
+aber nur unter den Bedingungen in 8.2. Damit ist der offene Befund aus 7.2 behoben: Eine Leitung, die sich über ein Konto
+anmeldet, kann Einladungen ausstellen (vorher 403 „Dieser Zugang ist keinem Betrieb eindeutig zugeordnet.").
+
+### 8.2 Bedingungen (`server/lib/betriebsauswahl.mjs`, `kennungZulaessig`)
+
+Gesetzt wird `mandantId = mandant.id` des oben in `betriebWaehlen` geprüften Betriebs nur, wenn
+
+- die Mitgliedschaft existiert und aktiv ist (Status, Generation, Person, Betriebsindex = Kennung der Mitgliedschaft
+  sind schon vorher geprüft; sonst entsteht gar keine Sitzung),
+- die Rolle der Mitgliedschaft **und** die wirksame Rolle der Person (`wirksameRolle` gegen den Bestand) eine
+  Funktionsrolle sind: `leitung`, `planer`, `subplaner`, `kunde` (dieselbe Menge wie `ZWEIFAKTOR_ROLLEN`).
+  Beide statt einer: Die Kennung soll aus keiner der zwei Angaben allein entstehen (Gegenstück zur 2FA-Pflichtprüfung,
+  die für die Absage „eine von beiden" nimmt),
+- keine Demo- (Demoräume schließt `raumErlaubt` aus; kein `demo`-Feld), keine Sicherungs- (`nurSicherung`) und keine
+  Betreibersitzung (`betreiber` ist keine Funktionsrolle, zusätzlich ausdrücklich ausgeschlossen),
+- `mandant.id` eine nichtleere Zeichenkette ist und der `mandantId` der Mitgliedschaft entspricht.
+
+Die Kennung ist keine Rolle und kein Recht: Gespeichert bleibt die Rolle der Mitgliedschaft; jede Anfrage entscheidet
+weiter über `wirksameRolle`. Ob eine Einladung ausgestellt werden darf, entscheidet weiter `roles.assign`
+(`leitungPruefen`) und danach die frische Bestätigung (für Kontositzungen: Passwort). Die Antwort von
+`/api/account/betrieb` bleibt unverändert (keine Kennung nach außen); `server/funktionen/anmeldung.mjs` ist nicht geändert.
+
+Härtung (`server/lib/arbeitssitzung.mjs`, `arbeitssitzungPruefen`, Schritt 5): Trägt eine Kontositzung eine Kennung,
+muss es die der Mitgliedschaft sein, sonst Absage `mandant-gewechselt` (Sitzung wird weggeräumt, 401). Sitzungen ohne
+Kennung verhalten sich wie vorher.
+
+### 8.3 Betroffene Pfade (Lesestellen von `sitzung.mandantId`)
+
+| Stelle | Wirkung für Kontositzungen mit Kennung |
+|---|---|
+| `einladungen.mjs` `leitungPruefen` (Ausstellen, Liste, Widerruf) | jetzt eindeutig zugeordnet; Recht weiter nur über `roles.assign` |
+| `arbeitssitzung.mjs` Kontozweig Schritt 5 | neu: Kennung muss zur Mitgliedschaft passen |
+| `arbeitssitzung.mjs` Legacy-Zweig, `sitzungPersonGilt` | nicht betroffen (nur Sitzungen ohne `herkunft`) |
+| `daten.mjs` `stempelInhaber`, Auskunftsbremse; `schutz.mjs` `kennungPerson` | Schlüssel nach Kennung statt Index — wie bei Zugangscode-Sitzungen (Review L5); nur Hashwerte, kein Zugriff |
+| `daten.mjs`/`schutz.mjs` Protokoll (`wer.mandantId`) | Protokollzeilen tragen den Betrieb (WP-26, Art. 15) |
+| `einladung.mjs` `wer.mandantId` | nur Protokoll |
+| `sicherungen.mjs` `vollausgabeBetrieb` | nur `nurSicherung`, nicht betroffen |
+| `kalender.mjs`, `zustellung.mjs`, `lage.mjs` | lesen keine `sitzung.mandantId` (Betrieb über `eigenerMandant`), unverändert |
+| Konto-Startseite, Betriebsliste (`/api/account/mitgliedschaften`), Konto-Ansicht | arbeiten mit der Account-Sitzung (`as:`), die unverändert keine Kennung trägt; Liste gibt weiter nur `raum`/`name` |
+
+### 8.4 Tests (`pruefungen/einladungen.test.js`, Block „Kontositzung mit Betriebskennung")
+
+Neun Fälle: (1) Leitung wählt A → `mandantId` m-a, ohne Passwort 403 `bestaetigung: passwort`, mit Passwort 200,
+eingelöster Code an m-a gebunden; (2) dieselbe Person wählt Raum B als Mitarbeiterin → keine Kennung, 403;
+(3) Mitarbeiter (keine Kennung) und Schichtverantwortung (Kennung) → beide 403, kein Konto entsteht;
+Mitgliedschaft Leitung, Person herabgestuft → keine Kennung, 403; (4) ohne Mitgliedschaft in B → `keine-mitgliedschaft`,
+keine Sitzung; (4b) entzogene Mitgliedschaft → keine Sitzung; (5) Demoräume → `raum`, keine Sitzung; umgebogene Kennung
+→ 401, Sitzung weg; Antwort der Auswahl ohne Kennung.
+
+Rot vor der Änderung: 4 fehlgeschlagen / 5 bestanden (1, 2, 3, Umbiegen). Grün danach: 9/9.
+Verifikation: betriebsauswahl, einladungen, accountanmeldung, sitzungsinventar, routen-inventar, rechtematrix,
+rechtematrix-zeilen, arbeitssitzung: 1018/1019 grün; der eine Ausfall ist der Zwei-Prozess-Test aus 7.5
+(Millisekundenvergleich über Prozessgrenzen), der auch auf der Basis 9aad30f unverändert zeitweise rot ist (1 von 3
+Läufen). eslint 0 Fehler, `tsc -p jsconfig.json` grün, `werkzeug/verdrahtung-pruefen.mjs` ok. Keine bestehende
+Assertion geändert oder entfernt.
+
+### 8.5 Offen
+
+- Der Kommentar im N-1-Test (7.2, „Heute trägt eine Arbeitssitzung aus einem Konto keine Betriebskennung") ist
+  überholt; die Assertions gelten weiter (Planer bekommt jetzt die Kennung und scheitert an `roles.assign`).
+- Wird eine Person nach der Auswahl befördert oder herabgestuft, ändert sich die Kennung erst mit einer neuen Auswahl
+  (die Rechte selbst folgen wie bisher sofort `wirksameRolle`).
+- Unter 2FA-Pflicht entstehen Kontositzungen mit Funktionsrolle weiterhin nicht (SI-P4, M1) — die Kennung ist dann
+  praktisch nur für Mitarbeiter-/Betriebsratssitzungen relevant, die sie nicht bekommen.
+- Zwei-Prozess-Test (7.5) ist auf Windows zeitweise rot (Uhrvergleich über Prozesse), unabhängig von dieser Änderung.
+
+Geänderte Dateien: `server/lib/betriebsauswahl.mjs`, `server/lib/arbeitssitzung.mjs`, `pruefungen/einladungen.test.js`,
+dieses Dokument.
