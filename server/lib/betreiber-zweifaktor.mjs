@@ -161,8 +161,13 @@ async function faktorVermerken(store, schluessel, an) {
     try {
       const e = await kontoLesenStreng(store, s);
       if (!e) continue;
-      if (an) await kontoSchreiben(store, s, { ...e, zweiterFaktor: true });
-      else if (e.zweiterFaktor !== undefined) {
+      if (an) {
+        /* OPT-1: Die Ersteinrichtung ist mit der Bestätigung verbraucht. Der Vermerk (samt Frist) geht weg, die
+           Pflicht bleibt dauerhaft am Zugang (faktorPflicht) — keine spätere Anmeldung mit dem Code allein. */
+        const { ersteinrichtung, ...rest } = e;
+        await kontoSchreiben(store, s, { ...rest, zweiterFaktor: true,
+          ...(ersteinrichtung !== undefined ? { faktorPflicht: true, ersteinrichtungVerbraucht: new Date().toISOString() } : {}) });
+      } else if (e.zweiterFaktor !== undefined) {
         const rest = { ...e };
         delete rest.zweiterFaktor;
         await kontoSchreiben(store, s, rest);
@@ -222,18 +227,21 @@ export const betreiberZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.betrei
  * Dasselbe für einen bereits als gültig erkannten Code der Rolle Leitung,
  * Planung oder Kunde (SI-P4). Parameter und Rückgabe wie betreiberZweifaktor.
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
- *   altSchluessel?: string, name: string}} a
+ *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
+/* `pflichtErzwungen` (OPT-1): Pflicht für genau diesen Zugang, unabhängig vom Schalter — Zugänge aus der
+   Ersteinrichtung (zugangscode-ersteinrichtung.mjs). */
 
 /**
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
- *   altSchluessel?: string, name: string, art: typeof ART.betreiber, faktorVermerkt?: boolean}} a
+ *   altSchluessel?: string, name: string, art: typeof ART.betreiber, faktorVermerkt?: boolean,
+ *   pflichtErzwungen?: boolean}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art,
-  faktorVermerkt = false }) {
+  faktorVermerkt = false, pflichtErzwungen = false }) {
   const id = art.id(codeSchluessel);
   const E = art.etikett;
   /* Review-Auflage N2: Ohne Pfeffer liegt der Faktor unter einer anderen Kennung (ungepfefferter Schlüssel) und lässt
@@ -242,7 +250,11 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
      einen Faktor gibt es dann nicht und kann es nicht geben (Restrisiko, SI-P4-NACHWEIS). */
   const pfefferFehlt = () => json({ fehler: "Der zweite Faktor lässt sich auf diesem Server gerade nicht prüfen "
     + "(CENTRIC_PFEFFER fehlt oder wurde geändert). Bitte den Serverbetreiber verständigen.", zweifaktor: "pfeffer" }, 503);
-  if (art.vermerk && !pfeffrig() && (faktorVermerkt || art.pflicht())) {
+  /* OPT-1: Ein Zugang aus der Ersteinrichtung (zugangscode-ersteinrichtung.mjs) trägt die Pflicht selbst — offen
+     (`ersteinrichtung`) oder verbraucht (`faktorPflicht`). Für ihn gilt alles, was der Pflichtschalter bewirkt:
+     keine Sitzung ohne Faktor, kein Überschreiben einer begonnenen Einrichtung, kein Abschalten über das Netz. */
+  const pflicht = art.pflicht() || pflichtErzwungen === true;
+  if (art.vermerk && !pfeffrig() && (faktorVermerkt || pflicht)) {
     await protokoll("zweifaktor", k, "fehler", `${E} · Pfeffer fehlt`);
     return { antwort: pfefferFehlt() };
   }
@@ -260,8 +272,8 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
   const nichtAlleBeendet = (wann) => json({ fehler: `Bisherige Sitzungen dieses Zugangs ließen sich nicht `
     + `alle beenden — ${wann}. Bitte erneut versuchen.`, zweifaktor: "sitzungen" }, 503);
   /* Option: Pflicht für alle Betreibercodes (Vorgabe aus). Ohne
-     eingerichteten zweiten Faktor gibt es dann nur die Aktionen, keine Sitzung. */
-  const pflicht = art.pflicht();
+     eingerichteten zweiten Faktor gibt es dann nur die Aktionen, keine Sitzung
+     (`pflicht` oben, einschließlich OPT-1). */
   const aktion = String((rumpf && rumpf.zweifaktorAktion) || "");
   const code = rumpf && rumpf.zweifaktor ? String(rumpf.zweifaktor) : "";
   const kennungen = [`${art.kurz}:${id.slice(0, 16)}`, k];
