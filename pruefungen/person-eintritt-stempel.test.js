@@ -14,7 +14,7 @@
 import { describe, it, expect } from "vitest";
 import * as IE from "../server/lib/isteinfrieren.mjs";
 import { abschliessen, istAbdruck } from "../server/lib/monatsabschluss.mjs";
-import { demobestand, lohnPruefZeilen, lohnWarnung, lohnausgabeText, datevSaetze } from "../src/lib/fachlogik.js";
+import { demobestand, lohnPruefZeilen, lohnWarnung, lohnausgabeText, datevSaetze, ohneEintrittZeilen } from "../src/lib/fachlogik.js";
 
 const WER_L = { personId: "l1", name: "V L1", rolle: "leitung" };
 const JETZT = new Date("2026-11-05T09:00:00.000Z");
@@ -82,6 +82,18 @@ describe("Auflage A (2): Lohnausgabe — Hinweis statt stiller Auslassung", () =
     const w = lohnWarnung(mit(null), ym, null);
     expect(w).toBeTruthy();
     expect(w).toMatch(/Eintrittsdatum fehlt/);
+  });
+  it("A-2d ohneEintrittZeilen: offener Monat „rechnen mit“; abgeschlossen Wiederöffnen, nach Lohnexport Korrekturprozess", () => {
+    expect(ohneEintrittZeilen(mit(null), ym)[0]).toMatch(/rechnen die Stunden mit/);
+    const zu = (extra) => ({ ...mit(null), monatsabschluss: { [ym]: { abgeschlossen: true, am: "2025-11-03T08:00:00.000Z", ...extra } } });
+    const a = ohneEintrittZeilen(zu({}), ym).join("\n");
+    expect(a).toMatch(/Eintrittsdatum fehlt – Stunden nicht abgerechnet/);
+    expect(a).toMatch(/Ohne, Ida: 2 Stempel/);
+    expect(a).not.toMatch(/rechnen die Stunden mit/);
+    expect(a).toMatch(/Wiederöffnen und erneuten Abschluss/);
+    const b = ohneEintrittZeilen(zu({ lohnexport: { am: "2025-11-04T08:00:00.000Z" } }), ym).join("\n");
+    expect(b).not.toMatch(/rechnen die Stunden mit/);
+    expect(b).toMatch(/Korrekturprozess/);
   });
   it("A-2c keine erfundenen Stunden: die Person hat keine Lohnartensätze", () => {
     expect(datevSaetze(mit(null), ym).some((x) => x.personalnummer === "P-OHNE")).toBe(false);

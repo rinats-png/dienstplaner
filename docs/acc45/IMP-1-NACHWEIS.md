@@ -179,4 +179,5 @@ Basis `d6c92e0` (acc45/import/imp-1-auflagen-ac), Branch `acc45/import/imp-1-auf
 **Offen:**
 - Befund 4: Normalisierung der Personalnummer per NFKC (Vollbreiten-/Kompatibilitätszeichen) nicht umgesetzt — Vergleich bleibt `trim` + Kleinschreibung.
 - Befund 6: Betreiber-Erstbefüllung prüft die Personalnummer weiterhin nicht serverseitig (siehe Offene Punkte oben, Punkt 3); nicht geändert.
-- Hinweis am Rand: Die Lohnausgabe-Zeile `ohneEintrittZeilen` (`src/lib/fachlogik.js`) sagt ebenfalls „Eintrittsdatum setzen, dann rechnen die Stunden mit“, auch für abgeschlossene Monate; nicht Teil dieses Auftrags.
+
+**Nachtrag (gleicher Branch): Lohnausgabe-Zeile.** `ohneEintrittZeilen` (`src/lib/fachlogik.js`) sagte ebenfalls „Eintrittsdatum setzen, dann rechnen die Stunden mit“, auch für abgeschlossene Monate. Jetzt getrennt wie in der Ansicht: offener Monat unverändert; abgeschlossen „… nachtragen nur über Wiederöffnen und erneuten Abschluss“, nach bestätigtem Lohnexport „… nur über den Korrekturprozess“. Test A-2d in `pruefungen/person-eintritt-stempel.test.js`: rot (Datei 1 rot / 10 grün) → grün; `npm run pruefung:person-eintritt` 62/62. eslint auf `fachlogik.js`: 0 Fehler, keine neue Warnung (5 vorbestehende Warnungen unverändert).

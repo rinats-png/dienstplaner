@@ -3549,8 +3549,16 @@ export function freezeZeilen(m, ym) {
 export function ohneEintrittZeilen(m, ym) {
   const f = ohneEintrittPrueffaelle(m, ym);
   if (!f.length) return [];
+  /* Review d6c92e0, Befund 3: Im abgeschlossenen Monat ist das Ist eingefroren — ein später gesetztes Eintrittsdatum
+     ändert dessen Stunden nicht von selbst (wie src/ansichten/monatsabschluss.jsx). */
+  const e = m && m.monatsabschluss && m.monatsabschluss[ym];
+  const rat = !monatAbgeschlossen(m, ym)
+    ? "Eintrittsdatum setzen, dann rechnen die Stunden mit:"
+    : e && e.lohnexport && typeof e.lohnexport === "object"
+      ? "Der Monat ist abgeschlossen und der Lohnexport bestätigt — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über den Korrekturprozess:"
+      : "Der Monat ist abgeschlossen — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über Wiederöffnen und erneuten Abschluss:";
   return [`ACHTUNG: ${OHNE_EINTRITT_TEXT} (Prüffall) — ${f.length === 1 ? "1 Person ohne Eintrittsdatum fehlt" : `${f.length} Personen ohne Eintrittsdatum fehlen`} `
-    + "in dieser Ausgabe, ihre Stempel sind gespeichert. Eintrittsdatum setzen, dann rechnen die Stunden mit:",
+    + `in dieser Ausgabe, ihre Stempel sind gespeichert. ${rat}`,
   ...f.map((x) => `  ${ohneEintrittFallText(x)}`), ""];
 }
 
