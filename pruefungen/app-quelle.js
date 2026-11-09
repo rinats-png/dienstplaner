@@ -24,6 +24,6 @@ const kern = () => KERN.map((n) => lies(new URL(`${n}.mjs`, ENGINE)));
 export function appQuelle() {
   const lib = ordner("lib");   // alphabetisch; fachlogik.js ist die Datei, aus der die Planrechnung stammt
   const fi = readdirSync(new URL("lib/", SRC)).filter((f) => /.(jsx|js)$/.test(f)).sort().indexOf("fachlogik.js");
-  const teile = [...lib.slice(0, fi), ...kern(), ...lib.slice(fi), ...ordner("ui"), ...ordner("app"), lies(new URL("App.jsx", SRC)), ...ordner("ansichten")];
+  const teile = [...lib.slice(0, fi), ...kern(), ...lib.slice(fi), ...ordner("ui"), ...ordner("app"), ...ordner("app/aktionen"), lies(new URL("App.jsx", SRC)), ...ordner("ansichten")];
   return teile.join("\n").replace(/^export /gm, "");
 }

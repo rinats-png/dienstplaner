@@ -30,6 +30,7 @@ import { zusammenfuehren, bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { betriebWiederherstellen } from "../server/lib/sicherungen.mjs";
 import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import { branchenbestand, schreibeAls, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
+import { appQuelle } from "./app-quelle.js";
 
 const MS = await import("../server/lib/modulschreibwege.mjs");
 const RS = await import("../server/lib/regelstatus.mjs").catch(() => ({}));
@@ -426,7 +427,7 @@ describe("UI — Statusvertrag verlangt die Oberfläche des Ausnahmewegs", () =>
     expect(sp).toMatch(/mitEinmaligerAngabe\(/);
     expect(sp).not.toMatch(/if \(mit\.verbraucht\) einmalig = null/);
     expect(sp).toMatch(/auftrag\.ausnahme/);
-    expect(lies("src/App.jsx")).toMatch(/moduldatenAusnahme: \(angabe, aendern, erkennt\) => \{[^\n]*SP\.ausnahmeMitschicken/);
+    expect(appQuelle()).toMatch(/moduldatenAusnahme: \(angabe, aendern, erkennt\) => \{[^\n]*SP\.ausnahmeMitschicken/);
   });
 });
 const leeresFormularTest = () => ({ art: "loeschung", grund: "art17", aktenzeichen: "", auswahl: {}, neu: {} });
