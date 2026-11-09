@@ -15,7 +15,7 @@ import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { pruefeAntwort } from "../server/lib/intelligence/schemas.mjs";
 import { FUNKTIONEN_IDS } from "../server/lib/intelligence/schemas.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, verbotenImPaket, fold, VERBOTEN_IM_PAKET } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, verbotenImPaket, fold, VERBOTEN_IM_PAKET, NAMENSPOLITIK_TEST } from "./intelligence-gateway-fixture.mjs";
 
 const AN = { prozess: () => "an", laufzeit: () => "an" };
 const KEIN_WARTEN = () => Promise.resolve();
@@ -35,7 +35,7 @@ function bauen(o = {}) {
     anbieter, ladeBestand: o.ladeBestand || (() => bestand()), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits, audit,
     schalter: "schalter" in o ? o.schalter : AN, betriebAktiv: o.betriebAktiv || (() => true),
     funktionenFreigegeben: o.freigegeben || ["F1", "F2", "F3", "F5", "F6"], faktenquelle: o.faktenquelle || vollQuelle,
-    bausteinKatalog: o.katalog, hoechsteStufe: o.hoechste,
+    bausteinKatalog: o.katalog, hoechsteStufe: o.hoechste, namenspolitik: NAMENSPOLITIK_TEST,   // WP-I13 G18: F5/F6 brauchen eine Namenspolitik
     zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 2, minRestMs: 0, ...(o.zeiten || {}) }, schlafen: KEIN_WARTEN,
     // Deterministische Auftrags-IDs: Zufallswerte (base64url) enthielten gelegentlich
     // Teilfolgen wie „l1“, die die Leck-Prüfung auf Personendaten fälschlich trafen.

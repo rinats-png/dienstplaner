@@ -15,7 +15,7 @@ import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { ausgabePruefen } from "../server/lib/intelligence/gateway/pruefer.mjs";
 import { sperrlisteBilden } from "../server/lib/intelligence/leckpruefung.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, betrieb, sitzung, S, vollQuelle } from "./intelligence-gateway-fixture.mjs";
+import { SCHLUESSEL, VERSIONEN, ZR, bestand, betrieb, sitzung, S, vollQuelle, NAMENSPOLITIK_TEST } from "./intelligence-gateway-fixture.mjs";
 
 vi.setConfig({ testTimeout: 30000 });
 
@@ -159,7 +159,7 @@ describe("Gateway-Befunde", () => {
     const limits = o.limits || new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, parallelJeBetrieb: 5, ...(o.limitKonfig || {}) });
     let schalter = o.schalter || { prozess: () => "an", laufzeit: () => "an" };
     const gw = erzeugeGateway({ anbieter, ladeBestand: () => (o.bestand ? o.bestand() : bestand()), aliasSchluessel: () => SCHLUESSEL, versionen: VERSIONEN, limits,
-      audit: erzeugeAudit({ senke: () => {} }), schalter, betriebAktiv: o.betriebAktiv || (() => true), funktionenFreigegeben: ["F1", "F2", "F5"], faktenquelle: vollQuelle,
+      audit: erzeugeAudit({ senke: () => {} }), schalter, betriebAktiv: o.betriebAktiv || (() => true), funktionenFreigegeben: ["F1", "F2", "F5"], faktenquelle: vollQuelle, namenspolitik: NAMENSPOLITIK_TEST,   // WP-I13 G18
       ergebnisSpeicher: o.ohneSpeicher ? undefined : sp, kiVersionen: { prompt: "p1", pruefer: "v1", bausteinKatalog: "k1", routerRegistry: "rr1" },
       zeiten: { stufeMs: 250, deadlineMs: 2000, maxWiederholungen: 0, minRestMs: 0, schalterTaktMs: 15, ...(o.zeiten || {}) }, schlafen: () => Promise.resolve() });
     return { gw, anbieter, limits, store, sp, uhr };

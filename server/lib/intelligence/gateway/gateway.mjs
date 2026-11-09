@@ -44,6 +44,11 @@
    G16 Die zyklische Schalterprüfung überlappt sich nicht und hat eine eigene Frist (schalterFristMs); ein hängendes
        betriebAktiv zählt als „pausiert“.
    G10 Alle Zähler/Schalter/Prüfungen sind fail closed.
+   G17 F7A ist gesperrt, solange FREISCHALTUNG_GESPERRT sie nennt — mit und ohne Fremdtext, auch wenn sie
+       in funktionenFreigegeben steht (Bedingung 5 aus wp-i11-nachweis.md).
+   G18 Freitext-Funktionen (Positivliste fremdtext: true) nur mit gültiger Namenspolitik (namenspolitik.mjs, N1/N2).
+   G19 Modell und Modellort kommen aus der Serverkonfiguration: eine Model Registry (registry.mjs) muss zum
+       Ort des Adapters passen, sonst startet das Gateway nicht; sie begrenzt die Stufenkette (R1).
    ========================================================================== */
 
 import { randomBytes, createHash } from "node:crypto";
@@ -64,6 +69,8 @@ import { GatewayFehler, RUECKFALL_TEXTE } from "./codes.mjs";
 import { kanonisch } from "./kanonisch.mjs";
 import { fingerprintBilden, paketHash } from "./ergebnis.mjs";
 import { alarmeBerechnen } from "./alarme.mjs";
+import { namenspolitikPruefen } from "./namenspolitik.mjs";
+import { registryPruefen } from "./registry.mjs";
 
 export { kanonisch };
 
@@ -90,6 +97,8 @@ const fingerprint = (a) => createHash("sha256").update(kanonisch([a.funktion, a.
  *   faktenquelle?: Function,
  *   gegenrechnung?: (a: { ausgabe: any, paket: any }) => { ok: boolean },   // WP-I12: Rechenkern prüft die Zahlen nach (P-10)
  *   hoechsteStufe?: 1|2|3,
+ *   namenspolitik?: unknown,                 // G18: ohne gültige Politik keine Freitext-Funktion
+ *   registry?: ReturnType<typeof import("./registry.mjs").erzeugeRegistry>,   // G19
  *   zeiten?: Partial<typeof ZEITEN_VORGABE>,
  *   jetzt?: () => number,
  *   schlafen?: (ms: number) => Promise<void>,
@@ -112,7 +121,13 @@ export function erzeugeGateway(o) {
   const betriebAktiv = typeof o.betriebAktiv === "function" ? o.betriebAktiv : () => false;
   const freigegeben = new Set(o.funktionenFreigegeben || []);
   const katalog = o.bausteinKatalog || {};
-  const hoechste = o.hoechsteStufe ?? 3;
+  /* G18: eine übergebene, aber ungültige Namenspolitik ist ein Konfigurationsfehler (N2). */
+  const namenspolitik = o.namenspolitik === undefined ? null : namenspolitikPruefen(o.namenspolitik);
+  /* G19: Registry nur aus erzeugeRegistry und nur mit dem Ort des Adapters. */
+  const registry = o.registry === undefined ? null : registryPruefen(o.registry);
+  if (registry && registry.modellOrt !== anbieter.modellOrt) throw new KiFehler("KI_INTERN", "Model Registry passt nicht zum Adapter.");
+  const hoechsteGewuenscht = o.hoechsteStufe ?? 3;
+  const hoechste = registry && Number.isInteger(hoechsteGewuenscht) ? Math.min(hoechsteGewuenscht, registry.hoechsteStufe) : hoechsteGewuenscht;
   const zeiten = { ...ZEITEN_VORGABE, ...(o.zeiten || {}) };
   const jetzt = o.jetzt || (() => Date.now());
   const schlafen = o.schlafen || schlafenVorgabe;
@@ -163,10 +178,14 @@ export function erzeugeGateway(o) {
 
     /* 4 — Freigabe der Funktion und Startstufe. */
     const kette = stufenKette(anfrage.funktion, hoechste);
-    const fremdtext = Array.isArray(anfrage.eingabe.fremdtext) && anfrage.eingabe.fremdtext.length > 0;
-    if (!freigegeben.has(anfrage.funktion) || !kette.length
-      || (fremdtext && Object.prototype.hasOwnProperty.call(FREISCHALTUNG_GESPERRT, anfrage.funktion))) {
+    /* G17: gesperrte Funktionen (F7A) gar nicht — nicht nur ihr Fremdtext. */
+    if (!freigegeben.has(anfrage.funktion) || !kette.length || Object.prototype.hasOwnProperty.call(FREISCHALTUNG_GESPERRT, anfrage.funktion)) {
       abgelehnt(sitzung, anfrage.funktion, "KI_FUNKTION", "nicht_freigegeben");
+      throw new KiFehler("KI_FUNKTION", "Diese Funktion ist nicht freigeschaltet.");
+    }
+    /* G18: Freitext-Funktionen erst nach festgelegter Namenspolitik. */
+    if (eintrag.fremdtext && !namenspolitik) {
+      abgelehnt(sitzung, anfrage.funktion, "KI_FUNKTION", "namenspolitik");
       throw new KiFehler("KI_FUNKTION", "Diese Funktion ist nicht freigeschaltet.");
     }
 
