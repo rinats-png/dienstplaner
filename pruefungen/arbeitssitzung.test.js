@@ -642,7 +642,8 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
          `t:`. Beide sind den Endpunkten verschlossen. */
       if (/sitzungLesen/.test(text) || /`t:\$\{/.test(text)) roh.push(d);
     }
-    expect(leser.sort()).toEqual(["daten.mjs", "kalender.mjs", "lage.mjs",
+    /* einladung.mjs (WP-18): Einladung ausstellen braucht die Sitzung der Leitung. */
+    expect(leser.sort()).toEqual(["daten.mjs", "einladung.mjs", "kalender.mjs", "lage.mjs",
       "zustellung.mjs"]);
     expect(roh, "Dateien, die eine Sitzung auf dem alten Weg lesen").toEqual([]);
     /* Und die Primitive gibt es genau einmal. */

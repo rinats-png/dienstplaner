@@ -221,6 +221,7 @@ import { Fenster } from "./ansichten/fenster.jsx";
 import { Testablauf } from "./ansichten/testablauf.jsx";
 import { Personalakte } from "./ansichten/personalakte.jsx";
 import { Personal } from "./ansichten/personal.jsx";
+import { Einladungen } from "./ansichten/einladungen.jsx";
 import { Antraege } from "./ansichten/antraege.jsx";
 import { Schichtfolge } from "./ansichten/schichtfolge.jsx";
 import { Tagesdetail } from "./ansichten/tagesdetail.jsx";
@@ -12380,6 +12381,9 @@ ${da ? `<div class="d" style="color:${farbeSicher(da.farbe)}">${h(da.kurz)}</div
             {aktiveView === "antraege" && <AntraegeGeteilt sitz={sitz} akt={akt} />}
             {aktiveView === "personal" && <Personal sitz={sitz} ym={ym} akt={akt} oeffnePerson={setPerson}
               standortId={standortId} setStandortId={setStandortId} />}
+            {/* WP-18: Einladungen — nur mit Rollenvergabe und nicht im Demozugang; der Server prüft erneut. */}
+            {aktiveView === "personal" && darf(sitz, "roles.assign") && !(SP.zugangsdaten() || {}).demo
+              && <Einladungen sitz={sitz} />}
             {aktiveView === "planstand" && <div><H1 rubrik="Planung"
               sub="Jede Änderung nach der Freigabe im Vergleich zum damaligen Stand. Beantwortet die häufigste Frage im Schichtbetrieb.">
               Planstand · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>

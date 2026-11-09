@@ -613,6 +613,9 @@ function SelbstStarten({ onZurueck, onFertig }) {
     </div>);
 }
 
+/* WP-18: Einlösen einer Einladung auf der Anmeldeseite (hier statt oben, fern der Kopfzeilen anderer Arbeit). */
+import { EinladungEinstieg } from "./ansichten/einladungen.jsx";
+
 function Einstieg() {
   const [an, setAn] = useState(SP.angemeldet());
   /* Erscheinungsbild des Einstiegs (V4): Nutzereinstellung dieses Geräts, sonst
@@ -873,6 +876,8 @@ function Einstieg() {
           Die Daten sind erfunden — Namen und Dienstpläne sind erzeugt, keine echten Personen.
           Bitte auch keine echten Personaldaten eingeben.
         </p>
+        {/* WP-18: Einladung der Organisationsleitung einlösen → persönlicher Zugangscode. */}
+        {!begruessung && <EinladungEinstieg F={C} />}
 
         {/* Der Betreiberzugang steht bewusst nicht bei den Testzugängen: Wer
             Datenräume anlegen kann, darf nicht mit einem Antippen erreichbar
