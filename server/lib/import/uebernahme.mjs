@@ -90,30 +90,37 @@ async function nachpruefen(store, raum, mandantId, neueIds, plan) {
 
 /**
  * Die Übernahme. Läuft vollständig unter der Raumsperre.
- * @param {{ store: any, sitzung: any, vorgang: any, heute: string, orgEdit: boolean,
+ *
+ * Delta-Review 3a: Grundlage ist die `momentaufnahme` (Zeilen, Zuordnung, Entscheidungen, Bestätigungen,
+ * Einheiten anlegen, Dateihash) aus der Anfrage, die die Übernahme ausgelöst hat — nie der Vorgang, wie er
+ * nach dem Warten auf die Sperre aussieht. Der Plan aus dem aktuellen Stand muss genau den Hash der
+ * `bestaetigung` dieser Anfrage tragen.
+ * @param {{ store: any, sitzung: any, vorgang: any, bestaetigung: string, momentaufnahme: any, heute: string, orgEdit: boolean,
  *   protokolliere: (ausgang: string, zusatz: string) => Promise<void> }} e
  * @returns {Promise<any>} { ok: true, zaehler, stand } oder { ok: false, status, code, nachricht }
  */
-export function uebernehmen({ store: storeRoh, sitzung, vorgang, heute, orgEdit, protokolliere }) {
+export function uebernehmen({ store: storeRoh, sitzung, vorgang, bestaetigung, momentaufnahme: m, heute, orgEdit, protokolliere }) {
   const store = _pruefhaken.ablage ? _pruefhaken.ablage(storeRoh) : storeRoh;
   const raum = vorgang.besitz.raum;
+  if (!m || typeof bestaetigung !== "string" || !bestaetigung)
+    return Promise.resolve(nein(409, "VORSCHAU_VERALTET", "Die Übernahme braucht die Bestätigung der aktuellen Vorschau. Es wurde nichts geändert."));
   return unterRaumsperre(raum, async () => {
     const jetzt = await bestandLesenStreng(storeRoh, raum);
     const eigener = jetzt ? eigenerMandant(jetzt.bestand, sitzung) : null;
     if (!eigener || String(eigener.id) !== vorgang.besitz.mandantId) return nein(404, "NICHT_GEFUNDEN", "Importvorgang nicht gefunden.");
 
     /* Wiederholschutz über den Dateiinhalt (je Betrieb), unter derselben Sperre wie das Schreiben. */
-    const sErl = erledigtSchluessel(raum, vorgang.besitz.mandantId, vorgang.dateiHash);
+    const sErl = erledigtSchluessel(raum, vorgang.besitz.mandantId, m.dateiHash);
     const erl = await storeRoh.get(sErl, { type: "json" }).catch(() => null);
     if (erl && Date.parse(erl.zeit) + ERLEDIGT_FRIST_MS > Date.now())
       return nein(409, "DATEI_BEREITS_UEBERNOMMEN", "Diese Datei wurde für diesen Betrieb bereits übernommen. Es wurde nichts geändert.",
         { frueher: { zeit: erl.zeit, zaehler: erl.zaehler } });
 
-    /* Der Plan aus dem aktuellen Stand — muss der bestätigten Vorschau entsprechen. */
-    const analyse = analysieren({ mandant: eigener, zeilen: vorgang.zeilen, zuordnung: vorgang.zuordnung, heute });
-    const p = analyse.ok ? planen({ mandant: eigener, analyse, entscheidungen: vorgang.entscheidungen,
-      bestaetigungen: vorgang.bestaetigungen, einheitenAnlegen: vorgang.einheitenAnlegen, orgEdit }) : null;
-    if (!p || !p.ok || p.hash !== vorgang.plan.hash)
+    /* Der Plan aus dem aktuellen Stand und der Momentaufnahme — muss genau die bestätigte Vorschau sein. */
+    const analyse = analysieren({ mandant: eigener, zeilen: m.zeilen, zuordnung: m.zuordnung, heute, datumssystem: m.datumssystem });
+    const p = analyse.ok ? planen({ mandant: eigener, analyse, entscheidungen: m.entscheidungen,
+      bestaetigungen: m.bestaetigungen, einheitenAnlegen: m.einheitenAnlegen, orgEdit }) : null;
+    if (!p || !p.ok || p.hash !== bestaetigung)
       return nein(409, "VORSCHAU_VERALTET", "Der Bestand hat sich seit der Vorschau geändert. Bitte die Vorschau neu erstellen. Es wurde nichts geändert.");
     if (!p.zaehler.neu && !p.zaehler.aktualisiert)
       return nein(422, "NICHTS_ZU_UEBERNEHMEN", "Nach der Auswahl bleibt kein Datensatz zum Übernehmen. Es wurde nichts geändert.");

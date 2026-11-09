@@ -96,6 +96,29 @@ export function alsUebernommen(v, ergebnis) {
 
 export function vorgangEntfernen(id) { VORGAENGE.delete(id); }
 
+/* Delta-Review 4a: Parser-Plätze je Raum. Die Grenze in parser.mjs (PARSER_GLEICHZEITIG_MAX) gilt prozessweit; ohne
+   eigene Grenze je Raum könnte ein einziger Raum alle Plätze halten und alle anderen Betriebe aussperren. Je Raum
+   läuft deshalb höchstens EIN Parser gleichzeitig; ein weiterer Upload desselben Raums wird sofort abgewiesen
+   (503 ZU_VIEL_GLEICHZEITIG), ohne die Datei zu lesen. */
+export const PARSER_JE_RAUM_MAX = 1;
+const PARSER_IM_RAUM = new Map();
+/** Einen Parser-Platz für den Raum belegen. Liefert eine Freigabe-Funktion (einmal wirksam) oder null, wenn voll. */
+export function parserPlatzBelegen(raum) {
+  const n = PARSER_IM_RAUM.get(raum) || 0;
+  if (n >= PARSER_JE_RAUM_MAX) return null;
+  PARSER_IM_RAUM.set(raum, n + 1);
+  let frei = false;
+  return () => {
+    if (frei) return;
+    frei = true;
+    const rest = (PARSER_IM_RAUM.get(raum) || 1) - 1;
+    if (rest > 0) PARSER_IM_RAUM.set(raum, rest); else PARSER_IM_RAUM.delete(raum);
+  };
+}
+export const _parserImRaum = (raum) => PARSER_IM_RAUM.get(raum) || 0;
+/** Nur für die Prüfung: `vorParser({ raum })` wird nach dem Belegen des Raum-Platzes und vor dem Parsen abgewartet. */
+export const _pruefhaken = { vorParser: null };
+
 /** Für die Prüfung: Zahl der Vorgänge und ob ein Vorgang noch Inhalte hält. */
 export function _anzahl() { return VORGAENGE.size; }
 export function _roh(id) { return VORGAENGE.get(id) || null; }

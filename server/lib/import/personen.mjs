@@ -56,6 +56,14 @@ const norm = (s) => String(s ?? "").toLowerCase()
   .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
   .replace(/[^a-z0-9]/g, "");
 const vergleich = (s) => String(s ?? "").trim().toLowerCase();
+/** Vergleichsform für Namen (Delta-Review 1b): wie bei den Spalten Umlaute aufgelöst (ä→ae, ö→oe, ü→ue, ß→ss) und
+    Groß-/Kleinschreibung gleich; dazu Leerraum zusammengefasst und Bindestrich = Leerzeichen. Andere Schriftzeichen
+    bleiben erhalten (anders als `norm`), sonst fielen etwa kyrillische Namen alle auf denselben leeren Schlüssel.
+    Nur zum Aufspüren möglicher Dubletten (Vorschlag „klären"), nie zum Zusammenführen. */
+const nameVergleich = (s) => String(s ?? "").normalize("NFC").toLowerCase()
+  .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+  .replace(/[\s\u00a0\-\u2010-\u2015_]+/g, " ").trim();
+const namensSchluessel = (nachname, vorname) => `${nameVergleich(nachname)}|${nameVergleich(vorname)}`;
 /** Schlüssel für „gleichwertige" Personalnummern: Trennzeichen und führende Nullen zählen nicht
     („01001" = „1001", „P-1001" = „P1001", „P01001" = „P1001"). Nur zum Aufspüren möglicher Treffer, nie zum Aktualisieren. */
 const nummerSchluessel = (s) => vergleich(s).replace(/[^a-z0-9]/g, "").replace(/^([a-z]*)0+(?=[0-9])/, "$1");
@@ -82,12 +90,17 @@ function kalenderGueltig(j, mo, t) {
 /**
  * Datum aus einer Zelle: `{ wert }`, `{ leer: true }` oder `{ ungueltig: true }`. Strenge Kalenderprüfung wie IMP-1
  * (31.02. und 2024-02-30 sind ungültig); nie Ersatz durch „heute" bei einem nicht lesbaren Wert.
- * Excel-Datumszellen: Seriennummer im 1900er-System (Restrisiko 1904er-System, siehe Nachweis).
+ * Excel-Datumszellen: Seriennummer im Datumssystem der Mappe (`datumssystem` aus dem Parser, IMP-2): 1900 (Vorgabe)
+ * oder 1904 (Mac). Umgerechnet wird nur hier, in der Analyse; Vorschau und Übernahme tragen danach dasselbe
+ * ISO-Datum — beim Schreiben wird nichts mehr umgerechnet (Freigabe Betreiber IMP-3).
  */
-export function datumAusZelle(z) {
+export function datumAusZelle(z, datumssystem = 1900) {
   if (z && typeof z === "object" && z.typ === "datum") {
-    if (typeof z.roh === "number" && Number.isFinite(z.roh) && z.roh >= 1 && z.roh < 2958466) {
-      const d = new Date(Math.round((Math.floor(z.roh) - 25569) * 86400000));
+    const ist1904 = datumssystemAus(datumssystem) === 1904;
+    /* 1904er-System: Tag 0 = 01.01.1904, also 1462 Tage später als im 1900er-System (Tag 25569 = 01.01.1970). */
+    const epoche = ist1904 ? 24107 : 25569;
+    if (typeof z.roh === "number" && Number.isFinite(z.roh) && z.roh >= (ist1904 ? 0 : 1) && z.roh < 2958466) {
+      const d = new Date(Math.round((Math.floor(z.roh) - epoche) * 86400000));
       const w = kalenderGueltig(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
       return w ? { wert: w } : { ungueltig: true };
     }
@@ -103,6 +116,15 @@ export function datumAusZelle(z) {
   else if (de) w = kalenderGueltig(Number(de[3]), Number(de[2]), Number(de[1]));
   return w ? { wert: w } : { ungueltig: true };
 }
+
+/** Datumssystem aus der Parser-Angabe (`datumssystem`, IMP-2): 1904 nur bei ausdrücklicher Angabe, sonst 1900. */
+export function datumssystemAus(x) {
+  return String(x ?? "").trim() === "1904" ? 1904 : 1900;
+}
+
+/** Datum für die Vorschau: genau der Wert, der gespeichert würde, als TT.MM.JJJJ; leer → „nicht angegeben". */
+export const datumAnzeige = (iso) => (typeof iso === "string" && /^\d{4}-\d{2}-\d{2}$/.test(iso)
+  ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : "nicht angegeben");
 
 /** Zahl aus einer Zelle in [min, max]: `{ wert }`, `{ leer: true }` oder `{ ungueltig: true }`. */
 export function zahlAusZelle(z, min, max, ganz = false) {
@@ -161,9 +183,9 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Analyse eines Blatts gegen den eigenen Betrieb: Spalten, Zuordnung, Dubletten, Konflikte.
- * @param {{ mandant: any, zeilen: any[][], zuordnung?: any, heute: string }} e
+ * @param {{ mandant: any, zeilen: any[][], zuordnung?: any, heute: string, datumssystem?: any }} e
  */
-export function analysieren({ mandant, zeilen, zuordnung, heute }) {
+export function analysieren({ mandant, zeilen, zuordnung, heute, datumssystem = 1900 }) {
   const kopf = Array.isArray(zeilen) && zeilen.length ? zeilen[0] : [];
   const daten = Array.isArray(zeilen) ? zeilen.slice(1) : [];
   const vorschlag = spaltenVorschlag(kopf);
@@ -216,7 +238,7 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     if (!werte.einheit) fehler.push("Einheit fehlt");
     if (werte.email && !EMAIL.test(werte.email)) fehler.push("E-Mail ungültig");
     for (const [k, v] of Object.entries(werte)) if (v.length > 200) fehler.push(`${k} zu lang`);
-    const ein = datumAusZelle(hol("eintritt", z));
+    const ein = datumAusZelle(hol("eintritt", z), datumssystem);
     if (ein.ungueltig) fehler.push("Eintrittsdatum ungültig");
     /* Leer und optional -> null; nie „heute" (Entscheidung 2026-11-09). */
     werte.eintritt = ein.wert ?? null;
@@ -238,7 +260,7 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     let dublette = null;
     const nrNorm = vergleich(werte.personalnummer);
     const nrSchl = nummerSchluessel(werte.personalnummer);
-    const nameNorm = werte.nachname && werte.vorname ? `${vergleich(werte.nachname)}|${vergleich(werte.vorname)}` : "";
+    const nameNorm = werte.nachname && werte.vorname ? namensSchluessel(werte.nachname, werte.vorname) : "";
     if (nrNorm) {
       const genau = nachNummer.get(nrNorm) || [];
       const aehnlich = (nrSchl ? nachSchluessel.get(nrSchl) || [] : []).filter((x) => vergleich(x.personalnummer) !== nrNorm);
@@ -248,7 +270,7 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
       if (nrSchl) nummernInDatei.set(nrSchl, [...(nummernInDatei.get(nrSchl) || []), nr]);
     }
     if (!dublette && nameNorm) {
-      const p = personen.find((x) => `${vergleich(x.nachname)}|${vergleich(x.vorname)}` === nameNorm);
+      const p = personen.find((x) => namensSchluessel(x.nachname, x.vorname) === nameNorm);
       if (p) dublette = { art: "name", personId: String(p.id) };
     }
     if (nameNorm) namenInDatei.set(nameNorm, [...(namenInDatei.get(nameNorm) || []), nr]);
@@ -268,7 +290,7 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
   for (const d of datensaetze) {
     if (d.fehler.length) continue;
     const nrSchl = nummerSchluessel(d.werte.personalnummer);
-    const nameNorm = d.werte.nachname && d.werte.vorname ? `${vergleich(d.werte.nachname)}|${vergleich(d.werte.vorname)}` : "";
+    const nameNorm = d.werte.nachname && d.werte.vorname ? namensSchluessel(d.werte.nachname, d.werte.vorname) : "";
     const gleicheNr = nrSchl ? (nummernInDatei.get(nrSchl) || []).filter((x) => x !== d.datensatz) : [];
     const gleicherName = nameNorm ? (namenInDatei.get(nameNorm) || []).filter((x) => x !== d.datensatz) : [];
     if (gleicheNr.length) {
@@ -353,7 +375,14 @@ export function planen({ mandant, analyse, entscheidungen, bestaetigungen, einhe
   const zaehler = { neu: plan.neu.length, aktualisiert: plan.aktualisieren.length,
     uebersprungen: plan.uebersprungen.length + plan.offen.length, offen: plan.offen.length,
     neueEinheiten: plan.neueEinheiten.length, neueStandorte: plan.neueStandorte.length };
-  const hash = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+  /* Delta-Review 3b: Der Hash deckt nicht nur den Plan, sondern auch die Dubletten- und Konfliktlage je Datensatz
+     (Art, Vorgabe, Ziel). Legt jemand zwischen Vorschau und Übernahme eine Person gleichen Namens an, bleibt der Plan
+     („neu") gleich, die Lage aber nicht — dann gilt die Bestätigung nicht mehr (VORSCHAU_VERALTET). */
+  const ziel = (du) => (!du ? null : du.personIds ? du.personIds.map(String) : du.personId !== undefined ? String(du.personId)
+    : du.datensatz !== undefined ? `#${du.datensatz}` : null);
+  const lage = analyse.datensaetze.map((d) => [d.datensatz, d.dublette ? d.dublette.art : null, ziel(d.dublette), d.vorgabe,
+    d.konflikte.map((k) => k.art), d.einheitId, d.standortId]);
+  const hash = createHash("sha256").update(JSON.stringify({ plan, lage })).digest("hex");
   return { ok: true, plan, zaehler, hash };
 }
 

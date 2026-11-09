@@ -39,8 +39,9 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, sitzungsRolleBekannt, darf, schreibumfang, SCHREIBEN_VOLL } from "../lib/rechte.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
 import { parseDatei, STANDARD_GRENZEN } from "../lib/import/parser.mjs";
-import { analysieren, planen } from "../lib/import/personen.mjs";
-import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN } from "../lib/import/vorgaenge.mjs";
+import { analysieren, planen, datumssystemAus, datumAnzeige } from "../lib/import/personen.mjs";
+import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN,
+  parserPlatzBelegen, _pruefhaken as _importPruefhaken } from "../lib/import/vorgaenge.mjs";
 import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
@@ -51,6 +52,8 @@ const antwort = (daten, status = 200) => new Response(JSON.stringify(daten), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 const fehlerAntwort = (status, code, fehler, mehr = {}) => antwort({ fehler, code, ...mehr }, status);
 const NICHT_GEFUNDEN = () => fehlerAntwort(404, "NICHT_GEFUNDEN", "Importvorgang nicht gefunden.");
+const parserBelegt = (fehler) => new Response(JSON.stringify({ fehler, code: "ZU_VIEL_GLEICHZEITIG" }), { status: 503,
+  headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "retry-after": "5", "x-content-type-options": "nosniff" } });
 
 async function jsonLesen(req) {
   if (Number(req.headers.get("content-length") || 0) > JSON_MAX) return null;
@@ -73,6 +76,8 @@ function vorschauAus(plan, analyse) {
   return {
     neu: plan.neu.map((n) => ({ datensatz: n.datensatz, nachname: n.werte.nachname, vorname: n.werte.vorname,
       personalnummer: n.werte.personalnummer || null, einheit: n.werte.einheit, eintritt: n.werte.eintritt,
+      /* Freigabe Betreiber: die Vorschau zeigt genau das Datum, das gespeichert wird (bereits umgerechnet); leer → „nicht angegeben". */
+      eintrittAnzeige: datumAnzeige(n.werte.eintritt),
       neueEinheit: !n.einheitId, hinweise: (nach.get(n.datensatz) || {}).hinweise || [] })),
     aktualisieren: plan.aktualisieren.map((a) => ({ datensatz: a.datensatz, personId: a.personId, aenderungen: a.aenderungen })),
     uebersprungen: plan.uebersprungen, offen: plan.offen,
@@ -132,8 +137,17 @@ export default async (req) => {
       if (!platz.ok)
         return fehlerAntwort(429, platz.code, "Gerade laufen zu viele Importe. Bitte einen offenen Import abschließen oder später erneut versuchen.");
       const vorgangPlatz = platz.vorgang;
+      /* Delta-Review 4a: höchstens ein Parser je Raum (vorgaenge.mjs), zusätzlich zur prozessweiten Grenze. Geprüft vor
+         dem Lesen des Rumpfs; ein überzähliger Upload desselben Raums wird sofort mit 503 abgewiesen. */
+      const raumPlatz = parserPlatzBelegen(besitz.raum);
+      if (!raumPlatz) {
+        vorgangEntfernen(vorgangPlatz.id);
+        await protokoll("import", k, "abgewiesen", "Datei: Parser des Raums belegt", wer);
+        return parserBelegt("Für diesen Betrieb wird gerade schon eine Datei gelesen. Bitte in einigen Sekunden noch einmal versuchen.");
+      }
       let erg, dateiHash;
       try {
+        if (_importPruefhaken.vorParser) await _importPruefhaken.vorParser({ raum: besitz.raum });
         let buffer = new Uint8Array(await req.arrayBuffer());
         let name = "";
         try { name = decodeURIComponent(String(req.headers.get("x-dateiname") || "")).slice(0, 255); } catch { name = ""; }
@@ -143,18 +157,19 @@ export default async (req) => {
         dateiHash = createHash("sha256").update(buffer).digest("hex");
         buffer = null;   // Die Datei wird nicht über die Verarbeitung hinaus gehalten.
         name = "";
-      } catch (e) { vorgangEntfernen(vorgangPlatz.id); throw e; }
+      } catch (e) { vorgangEntfernen(vorgangPlatz.id); throw e; } finally { raumPlatz(); }
       if (!erg.ok) {
         vorgangEntfernen(vorgangPlatz.id);
         if (erg.code === "ZU_VIEL_GLEICHZEITIG") {
           await protokoll("import", k, "abgewiesen", "Datei: Parser ausgelastet", wer);
-          return new Response(JSON.stringify({ fehler: erg.nachricht, code: erg.code }), { status: 503,
-            headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "retry-after": "5", "x-content-type-options": "nosniff" } });
+          return parserBelegt(erg.nachricht);
         }
         await protokoll("import", k, "abgewiesen", `Datei: ${erg.code}`, wer);
         return fehlerAntwort(erg.code === "DATEI_ZU_GROSS" ? 413 : 422, erg.code, erg.nachricht);
       }
-      const angelegt = { vorgang: vorgangFuellen(vorgangPlatz, { dateiHash, format: erg.format, blaetter: erg.blaetter }) };
+      /* Datumssystem der Mappe (IMP-2 liefert `datumssystem`; Mappe oder je Blatt). Fehlt die Angabe, gilt 1900. */
+      const angelegt = { vorgang: vorgangFuellen(vorgangPlatz, { dateiHash, format: erg.format, blaetter: erg.blaetter,
+        datumssystem: erg.datumssystem ?? null }) };
       void erledigteAufraeumen(store, besitz.raum);
       const zeilen = erg.blaetter.reduce((a, bl) => a + Math.max(0, bl.zeilen.length - 1), 0);
       await protokoll("import", k, "hochgeladen", `Format ${erg.format} · ${erg.blaetter.length} Blätter · ${zeilen} Datenzeilen`, wer);
@@ -180,6 +195,10 @@ export default async (req) => {
 
     if (v.zustand === "uebernommen")
       return fehlerAntwort(409, "BEREITS_UEBERNOMMEN", "Dieser Import wurde bereits übernommen.", { ergebnis: v.ergebnis });
+    /* Delta-Review 3a: Solange die Übernahme läuft, ändert keine Analyse oder Vorschau (zweiter Tab, Doppelklick)
+       den Vorgang — sonst könnte unter der bestätigten Vorschau ein anderer Plan geschrieben werden. */
+    if (v.laeuft && (schritt === "analyse" || schritt === "vorschau"))
+      return fehlerAntwort(409, "UEBERNAHME_LAEUFT", "Für diesen Import läuft gerade die Übernahme. Bitte deren Ergebnis abwarten.");
 
     /* ------------------------------- Analyse ------------------------------- */
     if (schritt === "analyse") {
@@ -192,9 +211,10 @@ export default async (req) => {
         return antwort({ art: v.art, unterstuetzt: false, hinweis: "Schichtzyklen werden mit IMP-6 übernommen.",
           spalten: (zeilen[0] || []).map((h, i) => ({ index: i, kopf: h === null ? "" : String(typeof h === "object" ? h.text ?? "" : h) })), zyklen: [] });
       }
-      const a = analysieren({ mandant: eigener, zeilen, zuordnung: rumpf.zuordnung, heute });
+      const blattSystem = v.blaetter[blatt].datumssystem ?? v.datumssystem;
+      const a = analysieren({ mandant: eigener, zeilen, zuordnung: rumpf.zuordnung, heute, datumssystem: blattSystem });
       if (!a.ok) return fehlerAntwort(422, a.code, a.nachricht);
-      v.zeilen = zeilen; v.zuordnung = a.zuordnung; v.analyse = { art: v.art }; v.plan = null;
+      v.zeilen = zeilen; v.zuordnung = a.zuordnung; v.analyse = { art: v.art, datumssystem: datumssystemAus(blattSystem) }; v.plan = null;
       return antwort({ art: v.art, blatt, spalten: a.spalten, zuordnung: a.zuordnung, fehlendePflicht: a.fehlendePflicht,
         datensaetze: a.datensaetze.map((d) => ({ datensatz: d.datensatz, werte: d.werte, fehler: d.fehler, hinweise: d.hinweise,
           konflikte: d.konflikte, dublette: d.dublette, erlaubt: d.erlaubt, vorgabe: d.vorgabe })),
@@ -207,7 +227,7 @@ export default async (req) => {
       if (v.art === "schichtzyklus")
         return antwort({ art: v.art, unterstuetzt: false, vorschau: { zyklen: [], zeitraum: null }, bereit: false,
           hinweis: "Schichtzyklen werden mit IMP-6 übernommen." });
-      const a = analysieren({ mandant: eigener, zeilen: v.zeilen, zuordnung: v.zuordnung, heute });
+      const a = analysieren({ mandant: eigener, zeilen: v.zeilen, zuordnung: v.zuordnung, heute, datumssystem: v.analyse.datumssystem });
       if (!a.ok) return fehlerAntwort(422, a.code, a.nachricht);
       if (a.fehlendePflicht.length)
         return fehlerAntwort(422, "PFLICHTSPALTE_FEHLT", "Nicht alle Pflichtspalten sind zugeordnet.", { fehlendePflicht: a.fehlendePflicht });
@@ -229,15 +249,24 @@ export default async (req) => {
     if (schritt === "uebernahme") {
       if (v.art !== "personal") return fehlerAntwort(422, "ART_NICHT_FREIGEGEBEN", "Diese Importart kann noch nicht übernommen werden.");
       if (!v.plan) return fehlerAntwort(409, "VORSCHAU_FEHLT", "Bitte zuerst die Vorschau erstellen und prüfen.");
-      if (typeof rumpf.bestaetigung !== "string" || rumpf.bestaetigung !== v.plan.hash)
+      if (typeof rumpf.bestaetigung !== "string" || !rumpf.bestaetigung)
         return fehlerAntwort(409, "BESTAETIGUNG_UNGUELTIG", "Die Übernahme braucht die Bestätigung der aktuellen Vorschau.");
       if (v.laeuft) return fehlerAntwort(409, "LAEUFT_BEREITS", "Diese Übernahme läuft bereits.");
-      const b = await bremse("schreiben", k);
-      if (!b.frei) return zuVielAntwort(b.wartet);
+      /* Delta-Review 3a: Eine Bestätigung einer älteren Vorschau (etwa aus einem zweiten Tab überholt) ist veraltet. */
+      if (rumpf.bestaetigung !== v.plan.hash)
+        return fehlerAntwort(409, "VORSCHAU_VERALTET", "Die Bestätigung gehört nicht zur aktuellen Vorschau. Bitte die Vorschau erneut prüfen. Es wurde nichts geändert.");
+      /* Delta-Review 3a: Die Marke „läuft" wird VOR dem ersten await gesetzt (keine Lücke für einen Doppelklick), und
+         die Übernahme arbeitet mit einer Momentaufnahme der Entscheidungen und der Bestätigung aus DIESER Anfrage —
+         nicht mit dem, was der Vorgang später enthält. */
       v.laeuft = true;
+      const momentaufnahme = { zeilen: v.zeilen, zuordnung: v.zuordnung, dateiHash: v.dateiHash, datumssystem: v.analyse && v.analyse.datumssystem,
+        entscheidungen: Object.assign(Object.create(null), v.entscheidungen),
+        bestaetigungen: Object.assign(Object.create(null), v.bestaetigungen), einheitenAnlegen: v.einheitenAnlegen === true };
       let r;
       try {
-        r = await uebernehmen({ store, sitzung: s, vorgang: v, heute, orgEdit,
+        const b = await bremse("schreiben", k);
+        if (!b.frei) return zuVielAntwort(b.wartet);
+        r = await uebernehmen({ store, sitzung: s, vorgang: v, bestaetigung: rumpf.bestaetigung, momentaufnahme, heute, orgEdit,
           protokolliere: (ausgang, zusatz) => protokoll("import", k, ausgang, `Übernahme: ${zusatz}`, wer) });
       } finally { v.laeuft = false; }
       if (!r.ok) {

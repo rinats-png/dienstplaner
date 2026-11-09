@@ -11,6 +11,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mappe } from "./import-parser-hilfen.mjs";
+import * as XLSX from "../vendor/sheetjs/xlsx.mjs";
+import { parseDatei } from "../server/lib/import/parser.mjs";
 
 const WIRT = "127.0.0.1:3000";
 let wurzel, laden, imp, B, sitzungAnlegen, V, U, spurStore;
@@ -97,7 +99,7 @@ beforeAll(async () => {
   ({ sitzungAnlegen } = await import("../server/lib/sitzungen.mjs"));
 });
 afterAll(async () => { if (wurzel) await rm(wurzel, { recursive: true, force: true }); });
-afterEach(() => { U._pruefhaken.nachDatensatz = null; U._pruefhaken.ablage = null; V._zuruecksetzen(); });
+afterEach(() => { U._pruefhaken.nachDatensatz = null; U._pruefhaken.ablage = null; if (V._pruefhaken) V._pruefhaken.vorParser = null; V._zuruecksetzen(); });
 
 const DATEI_ZWEI = () => csv([KOPF, ["3001", "Neumann", "Lena", "lena.neumann@example.test", "Wohnbereich 1", "01.02.2026", "30"],
   ["3002", "Kranz", "Paul", "", "Wohnbereich 1", "", "40"]]);
@@ -715,5 +717,258 @@ describe("Auflage 3 — Parser-Grenzen", { timeout: 120000 }, () => {
     expect(zuViel[0].code).toBe("ZU_VIEL_GLEICHZEITIG");
     expect(V._anzahl(), "abgewiesene Uploads halten keinen Vorgang").toBe(ok);
     expect((await hochladen(raeume[0].t.PL, DATEI_ZWEI())).status).toBe(201);
+  });
+});
+
+/* ==========================================================================
+   Auflagen aus dem Delta-Review (Opus) — Branch acc45/import/imp-3-auflagen2
+   Reihenfolge wird über Zustände erzwungen (gehaltene Raumsperre, Parser-Haken),
+   nie über Wartezeiten.
+   ========================================================================== */
+
+/** Warten, bis ein Zustand eintritt — ohne Zeitannahme, nur durch Abgeben der Ereignisschleife (gedeckelt). */
+async function bisZustand(pruef) {
+  for (let i = 0; i < 20000 && !pruef(); i++) await new Promise((r) => setImmediate(r));
+  expect(pruef(), "Zustand nicht erreicht").toBe(true);
+}
+
+/** Die Raumsperre von außen halten: kehrt zurück, sobald die Sperre gehalten wird; das Ergebnis gibt sie frei. */
+async function sperreHalten(raum) {
+  let oeffnen;
+  const tor = new Promise((r) => { oeffnen = r; });
+  let gehalten;
+  const halt = new Promise((r) => { gehalten = r; });
+  const fertig = B.unterRaumsperre(raum, async () => { gehalten(); await tor; });
+  await halt;
+  return async () => { oeffnen(); await fertig; };
+}
+
+describe("Delta-Review 3a — Übernahme-Rennen", { timeout: 120000 }, () => {
+  it("zweiter Tab: Vorschau und Analyse während laufender Übernahme 409; geschrieben wird der bestätigte Plan", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, vs } = await bisVorschau(t.LT, DATEI_ZWEI());
+    expect(vs.zaehler.neu).toBe(2);
+    const freigeben = await sperreHalten(raum);
+    let vs2, an2, ueP;
+    try {
+      ueP = schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+      await bisZustand(() => (V._roh(up.vorgang) || {}).laeuft === true);
+      /* Die Übernahme wartet jetzt auf die Raumsperre. Ein zweiter Tab erstellt eine andere Vorschau. */
+      vs2 = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, entscheidungen: { 2: "ueberspringen" } });
+      an2 = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    } finally { await freigeben(); }
+    const ue = await ueP;
+    expect(vs2.status, JSON.stringify(vs2).slice(0, 200)).toBe(409);
+    expect(vs2.code).toBe("UEBERNAHME_LAEUFT");
+    expect(an2.status).toBe(409);
+    expect(an2.code).toBe("UEBERNAHME_LAEUFT");
+    expect(ue.status, JSON.stringify(ue)).toBe(200);
+    expect(ue.zaehler.neu, "der bestätigte Plan (zwei neue), nicht der des zweiten Tabs").toBe(2);
+    const m1 = await betriebVon(raum, "m1");
+    expect(m1.personen.filter((p) => ["3001", "3002"].includes(p.personalnummer)).length).toBe(2);
+  });
+  it("Doppelklick: zweite Übernahme während der ersten 409 LAEUFT_BEREITS, nichts doppelt", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, vs } = await bisVorschau(t.LT, DATEI_ZWEI());
+    const freigeben = await sperreHalten(raum);
+    let zweit, ueP;
+    try {
+      ueP = schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+      await bisZustand(() => (V._roh(up.vorgang) || {}).laeuft === true);
+      zweit = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    } finally { await freigeben(); }
+    expect(zweit.status).toBe(409);
+    expect(zweit.code).toBe("LAEUFT_BEREITS");
+    expect((await ueP).status).toBe(200);
+    expect((await betriebVon(raum, "m1")).personen.filter((p) => p.personalnummer === "3001").length).toBe(1);
+  });
+  it("Übernahme mit alter Bestätigung nach neuer Vorschau: 409 VORSCHAU_VERALTET, nichts geschrieben", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, vs } = await bisVorschau(t.LT, DATEI_ZWEI());
+    const vs2 = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, entscheidungen: { 2: "ueberspringen" } });
+    expect(vs2.status).toBe(200);
+    expect(vs2.bestaetigung).not.toBe(vs.bestaetigung);
+    const stand = (await lesen(raum)).stand;
+    const alt = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(alt.status).toBe(409);
+    expect(alt.code).toBe("VORSCHAU_VERALTET");
+    expect((await lesen(raum)).stand, "kein Schreibvorgang").toBe(stand);
+    expect((await betriebVon(raum, "m1")).personen.some((p) => ["3001", "3002"].includes(p.personalnummer))).toBe(false);
+    /* Mit der Bestätigung der aktuellen Vorschau gelingt es — genau deren Plan. */
+    const neu = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs2.bestaetigung });
+    expect(neu.status).toBe(200);
+    expect(neu.zaehler.neu).toBe(1);
+  });
+});
+
+describe("Delta-Review 3b — Plan-Hash mit Dublettenlage", { timeout: 120000 }, () => {
+  it("„neu“ bestätigt, danach Person gleichen Namens im Bestand angelegt: 409 VORSCHAU_VERALTET, keine doppelte Person", async () => {
+    const { raum, t } = await neuerRaum();
+    const up = await hochladen(t.LT, csv([KOPF, ["3101", "Sommer", "Sina", "", "Wohnbereich 1", "", "30"]]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an.datensaetze[0].dublette).toBeNull();
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, entscheidungen: { 1: "neu" } });
+    expect(vs.zaehler.neu).toBe(1);
+    await betriebAendern(raum, (m) => m.personen.push(person("z8", "mitarbeiter", "m1-e1", { vorname: "Sina", nachname: "Sommer" })));
+    const stand = (await lesen(raum)).stand;
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status, JSON.stringify(ue)).toBe(409);
+    expect(ue.code).toBe("VORSCHAU_VERALTET");
+    expect((await lesen(raum)).stand, "kein Schreibvorgang").toBe(stand);
+    expect((await betriebVon(raum, "m1")).personen.filter((p) => p.nachname === "Sommer").length).toBe(1);
+  });
+});
+
+describe("Delta-Review 1b — Namensvergleich wie bei den Spalten normalisiert", { timeout: 120000 }, () => {
+  for (const [bestandN, bestandV, dateiN, dateiV] of [
+    ["Müller", "Anna", "Mueller", "Anna"],
+    ["Mueller", "Anna", "Müller", "Anna"],
+    ["Strauß", "Jörg", "Strauss", "Joerg"],
+    ["Muster", "Anna Lena", "Muster", "Anna  Lena"],
+    ["Muster", "Anna Lena", "Muster", "Anna-Lena"],
+    ["Meyer-Lüdenscheidt", "Eva", "MEYER LUEDENSCHEIDT", "eva"],
+  ]) {
+    it(`„${dateiV} ${dateiN}“ gegen „${bestandV} ${bestandN}“: Treffer, Vorgabe klären, nie neu`, async () => {
+      const { raum, t } = await neuerRaum();
+      await betriebAendern(raum, (m) => Object.assign(m.personen.find((p) => p.id === "x2"), { nachname: bestandN, vorname: bestandV }));
+      const up = await hochladen(t.LT, csv([KOPF, ["5556", dateiN, dateiV, "", "Wohnbereich 1", "", "30"]]));
+      const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+      expect(an.datensaetze[0].dublette).toEqual({ art: "name", personId: "x2" });
+      expect(an.datensaetze[0].vorgabe).toBe("klaeren");
+      const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang });
+      expect(vs.zaehler).toMatchObject({ neu: 0, offen: 1 });
+    });
+  }
+  it("innerhalb der Datei: „Anna Müller“ und „Anna Mueller“ sind gleich — beide klären", async () => {
+    const { t } = await neuerRaum();
+    const { an, vs } = await bisVorschau(t.LT, csv([KOPF, ["8201", "Müller", "Anna", "", "Wohnbereich 1", "", "30"],
+      ["8202", "Mueller", "Anna", "", "Wohnbereich 1", "", "30"]]));
+    expect(an.datensaetze.map((d) => d.dublette && d.dublette.art)).toEqual(["name-datei", "name-datei"]);
+    expect(vs.zaehler.neu).toBe(0);
+  });
+  it("verschiedene Namen bleiben verschieden (kein Treffer über Wegnormalisieren)", async () => {
+    const { t } = await neuerRaum();
+    const up = await hochladen(t.LT, csv([KOPF, ["5557", "Muster", "Annalena", "", "Wohnbereich 1", "", "30"],
+      ["5558", "Мустер", "Отто", "", "Wohnbereich 1", "", "30"], ["5559", "Мустерова", "Анна", "", "Wohnbereich 1", "", "30"]]));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an.datensaetze.map((d) => d.dublette)).toEqual([null, null, null]);
+    expect(an.datensaetze.map((d) => d.vorgabe)).toEqual(["neu", "neu", "neu"]);
+  });
+});
+
+/** Parser-Haken: hält jeden Parser nach dem Belegen seines Platzes an, bis `oeffnen()`. */
+function parserTor() {
+  const erreicht = [];
+  const warter = [];
+  let oeffnen;
+  const tor = new Promise((r) => { oeffnen = r; });
+  V._pruefhaken.vorParser = async ({ raum }) => { erreicht.push(raum); warter.splice(0).forEach((w) => w()); await tor; };
+  const bis = async (n) => { while (erreicht.length < n) await new Promise((r) => warter.push(r)); };
+  return { erreicht, bis, oeffnen: () => oeffnen() };
+}
+
+describe("Delta-Review 4a — Parser-Plätze je Raum", { timeout: 120000 }, () => {
+  it("zwei parallele Uploads desselben Raums: der zweite 503 ZU_VIEL_GLEICHZEITIG, ohne Vorgang", async () => {
+    const { raum: raumA, t } = await neuerRaum();
+    const tor = parserTor();
+    let erstes, zweites;
+    try {
+      erstes = hochladen(t.LT, DATEI_ZWEI());
+      await tor.bis(1);
+      zweites = await Promise.race([hochladen(t.PL, DATEI_ZWEI()).then((antwort) => ({ antwort })), tor.bis(2).then(() => ({ imParser: true }))]);
+    } finally { tor.oeffnen(); }
+    expect(zweites.imParser, "zweiter Parser desselben Raums wurde gestartet").toBeUndefined();
+    expect(zweites.antwort.status).toBe(503);
+    expect(zweites.antwort.code).toBe("ZU_VIEL_GLEICHZEITIG");
+    expect((await erstes).status).toBe(201);
+    expect(V._anzahl(), "der abgewiesene Upload hält keinen Vorgang").toBe(1);
+    /* Danach ist der Platz des Raums wieder frei. */
+    V._pruefhaken.vorParser = null;
+    expect(V._parserImRaum(raumA), "Raum-Platz wieder frei").toBe(0);
+    expect((await hochladen(t.PL, DATEI_ZWEI())).status).toBe(201);
+  });
+  it("zwei Räume gleichzeitig: beide dürfen parsen", async () => {
+    const a = await neuerRaum();
+    const b = await neuerRaum();
+    const tor = parserTor();
+    let ra, rb;
+    try {
+      ra = hochladen(a.t.LT, DATEI_ZWEI());
+      await tor.bis(1);
+      rb = hochladen(b.t.LT, DATEI_ZWEI());
+      await tor.bis(2);
+      expect(tor.erreicht).toEqual([a.raum, b.raum]);
+    } finally { tor.oeffnen(); }
+    expect((await ra).status).toBe(201);
+    expect((await rb).status).toBe(201);
+  });
+});
+
+/* ==========================================================================
+   Freigabe Betreiber (IMP-3): Die Vorschau zeigt das endgültige Datum (nach der Umrechnung des Datumssystems),
+   die Übernahme speichert genau dieses; leer bleibt null und erscheint als „nicht angegeben".
+   ========================================================================== */
+
+const TAG = 86400000;
+/** XLSX-Mappe mit einer echten Datumszelle (Seriennummer + Datumsformat) im 1900er- oder 1904er-System. */
+function datumsMappe(personalnummer, iso, system) {
+  const serial1900 = Date.parse(`${iso}T00:00:00Z`) / TAG + 25569;
+  const serial = system === 1904 ? serial1900 - 1462 : serial1900;
+  const ws = XLSX.utils.aoa_to_sheet([["Personalnummer", "Nachname", "Vorname", "Einheit", "Eintritt"],
+    [personalnummer, "Datum", `D${personalnummer}`, "Wohnbereich 1", 0]]);
+  ws.E2 = { t: "n", v: serial, z: "dd.mm.yyyy" };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Personal");
+  wb.Workbook = { WBProps: { date1904: system === 1904 } };
+  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+}
+
+describe("Freigabe Betreiber — Datumswerte in der Vorschau = gespeicherte Werte", { timeout: 120000 }, () => {
+  async function vorschauUndUebernahme(t, raum, datei, { system } = {}) {
+    const up = await hochladen(t.LT, datei, { name: "datum.xlsx" });
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    /* Bis IMP-2 `datumssystem` liefert, wird die Angabe hier so gesetzt, wie der Parser sie liefern wird (Feldname
+       laut IMP-2-Freigabe). Liefert der Parser sie bereits, bleibt sein Wert unangetastet. */
+    if (system && V._roh(up.vorgang).datumssystem == null) V._roh(up.vorgang).datumssystem = system;
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang });
+    expect(vs.status, JSON.stringify(vs).slice(0, 300)).toBe(200);
+    const ue = await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status, JSON.stringify(ue)).toBe(200);
+    return { an, vs, ue };
+  }
+  it("1900er- und 1904er-Mappe mit gleichem Kalenderdatum: gleiche Vorschau; die Übernahme speichert genau das Vorschau-Datum", async () => {
+    const { raum, t } = await neuerRaum();
+    const a = await vorschauUndUebernahme(t, raum, datumsMappe("7190", "2026-03-15", 1900), { system: 1900 });
+    const b = await vorschauUndUebernahme(t, raum, datumsMappe("7194", "2026-03-15", 1904), { system: 1904 });
+    expect(a.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
+    expect(b.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
+    expect(a.vs.vorschau.neu[0].eintrittAnzeige).toBe("15.03.2026");
+    expect(b.vs.vorschau.neu[0].eintrittAnzeige).toBe("15.03.2026");
+    const m1 = await betriebVon(raum, "m1");
+    expect(m1.personen.find((p) => p.personalnummer === "7190").eintritt).toBe(a.vs.vorschau.neu[0].eintritt);
+    expect(m1.personen.find((p) => p.personalnummer === "7194").eintritt).toBe(b.vs.vorschau.neu[0].eintritt);
+  });
+  it("ohne Angabe des Datumssystems gilt 1900 (Rückwärtsverhalten)", async () => {
+    const { raum, t } = await neuerRaum();
+    const a = await vorschauUndUebernahme(t, raum, datumsMappe("7191", "2026-03-15", 1900));
+    expect(a.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
+  });
+  it("leeres Eintrittsdatum: null, in der Vorschau „nicht angegeben“, gespeichert null", async () => {
+    const { raum, t } = await neuerRaum();
+    const { up, vs } = await bisVorschau(t.LT, csv([KOPF, ["7192", "Leer", "Lia", "", "Wohnbereich 1", "", "30"]]));
+    expect(vs.vorschau.neu[0].eintritt).toBeNull();
+    expect(vs.vorschau.neu[0].eintrittAnzeige).toBe("nicht angegeben");
+    expect((await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung })).status).toBe(200);
+    expect((await betriebVon(raum, "m1")).personen.find((p) => p.personalnummer === "7192").eintritt).toBeNull();
+  });
+  it("echter Parser-Weg (sobald IMP-2 `datumssystem` liefert): 1904er-Mappe ohne Nachhilfe", async (ctx) => {
+    const r = await parseDatei({ buffer: datumsMappe("7195", "2026-03-15", 1904), name: "d.xlsx" });
+    expect(r.ok).toBe(true);
+    if (r.datumssystem == null && r.blaetter.every((b) => b.datumssystem == null)) ctx.skip();
+    const { raum, t } = await neuerRaum();
+    const b = await vorschauUndUebernahme(t, raum, datumsMappe("7195", "2026-03-15", 1904));
+    expect(b.vs.vorschau.neu[0].eintritt).toBe("2026-03-15");
+    expect((await betriebVon(raum, "m1")).personen.find((p) => p.personalnummer === "7195").eintritt).toBe("2026-03-15");
   });
 });

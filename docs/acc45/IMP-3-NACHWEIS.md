@@ -14,7 +14,7 @@ Andere Methode → 405. Antworten JSON, `cache-control: no-store`. Fehlerform im
 | `/api/import/upload?art=personal\|schichtzyklus` | die Datei selbst, `content-type: application/octet-stream`; optional Kopf `x-dateiname` (URI-kodiert, nur Endungshinweis für den Parser, nie gespeichert/protokolliert) | 201 `{ vorgang, art, format, blaetter:[{index,name,datenzeilen,spalten}], vorgabeBlatt, hinweise, gueltigBis, inaktivMinuten }` | 413 `DATEI_ZU_GROSS`, 415 falscher Inhaltstyp, 422 Parsercode (`ZU_VIELE_ZEILEN`, `ZU_VIELE_SPALTEN`, `ZU_VIELE_BLAETTER`, `BESCHAEDIGT`, `LEER`, `UNBEKANNTES_FORMAT`, …), 429 `ZU_VIELE_VORGAENGE` |
 | `/api/import/analyse` | `{ vorgang, blatt?, zuordnung? }` — `zuordnung` = `{ feld: spaltenindex }`, nur Felder der Weißliste | 200 `{ spalten:[{index,kopf,feld,herkunft}], zuordnung, fehlendePflicht, datensaetze:[{datensatz, werte, fehler, hinweise, konflikte, dublette, erlaubt, vorgabe}], zaehler }` | 404, 409 `BEREITS_UEBERNOMMEN`, 422 `BLATT_UNGUELTIG`/`ZUORDNUNG_UNGUELTIG` |
 | `/api/import/vorschau` | `{ vorgang, entscheidungen?: {datensatz: "neu"\|"aktualisieren"\|"ueberspringen"\|"klaeren"}, bestaetigungen?: {datensatz: true}, einheitenAnlegen?: true }` | 200 `{ vorschau:{ neu, aktualisieren:[{datensatz, personId, aenderungen:[{feld,alt,neu}]}], uebersprungen, offen, neueEinheiten, neueStandorte, zeitraum:{von,bis}, zyklen:[] }, zaehler, bereit, bestaetigung }` | 403 `ORG_EDIT_FEHLT`, 409 `ANALYSE_FEHLT`, 422 `PFLICHTSPALTE_FEHLT`, `ENTSCHEIDUNG_UNZULAESSIG`, `AKTUALISIERUNG_OHNE_BESTAETIGUNG`, `ZUORDNUNGSKONFLIKT` |
-| `/api/import/uebernahme` | `{ vorgang, bestaetigung }` — `bestaetigung` = Code der **letzten** Vorschau (ausdrücklicher Bestätigungsschritt) | 200 `{ ok, zaehler:{neu, aktualisiert, uebersprungen, neueEinheiten, neueStandorte}, etag }` | 409 `BESTAETIGUNG_UNGUELTIG`, `VORSCHAU_FEHLT`, `BEREITS_UEBERNOMMEN`, `LAEUFT_BEREITS`, `DATEI_BEREITS_UEBERNOMMEN`, `VORSCHAU_VERALTET`, `KONFLIKT`, `FACHPRUEFUNG`; 422 `NICHTS_ZU_UEBERNEHMEN`, `ART_NICHT_FREIGEGEBEN`; 500 `UEBERNAHME_ABGEBROCHEN`; 503 `SCHREIBEN_FEHLGESCHLAGEN` |
+| `/api/import/uebernahme` | `{ vorgang, bestaetigung }` — `bestaetigung` = Code der **letzten** Vorschau (ausdrücklicher Bestätigungsschritt) | 200 `{ ok, zaehler:{neu, aktualisiert, uebersprungen, neueEinheiten, neueStandorte}, etag }` | 409 `BESTAETIGUNG_UNGUELTIG`, `VORSCHAU_FEHLT`, `BEREITS_UEBERNOMMEN`, `LAEUFT_BEREITS`, `DATEI_BEREITS_UEBERNOMMEN`, `VORSCHAU_VERALTET` (auch: Bestätigung einer älteren Vorschau, Abschnitt 15), `KONFLIKT`, `FACHPRUEFUNG`; 422 `NICHTS_ZU_UEBERNEHMEN`, `ART_NICHT_FREIGEGEBEN`; 500 `UEBERNAHME_ABGEBROCHEN`; 503 `SCHREIBEN_FEHLGESCHLAGEN` |
 | `/api/import/verwerfen` | `{ vorgang }` | 200 `{ ok:true }` | 404 |
 
 Ein Vorgang eines anderen Betriebs, Raums oder einer anderen Person ist immer 404 `{ fehler, code:"NICHT_GEFUNDEN" }` — ohne Hinweis, ob es ihn gibt.
@@ -24,7 +24,8 @@ Pflichtspalten: Nachname, Vorname, Einheit. Weißliste: `nachname, vorname, pers
 
 | Rolle | Import | Neue Einheiten/Standorte | Grund |
 |---|---|---|---|
-| Leitung, Kundenrolle | ja | ja (`org.edit`) | `staff.edit` + Schreibumfang voll |
+| Leitung | ja | ja (`org.edit`) | `staff.edit` + Schreibumfang voll |
+| Kundenrolle (`kunde`, Zugang ohne Person) | **403** (Option A, Freigabe Betreiber; siehe Abschnitt 15) | – | Personaldaten nur durch Leitung/Planung mit Person |
 | Planung | ja | **nein** → 403 `ORG_EDIT_FEHLT`; fehlende Einheit bleibt Zuordnungskonflikt (Datensatz „offen") | Planungsrechte erzeugen keine Organisation |
 | Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber | 403 | – | kein `staff.edit` bzw. kein voller Schreibumfang |
 
@@ -166,3 +167,45 @@ Begründungen zu Verhaltensänderungen:
 - Neue Dublettenarten `personalnummer-aehnlich` und `personalnummer-mehrdeutig` im Feld `dublette.art`; die Oberfläche (IMP-4) muss sie anzeigen.
 
 Offene Punkte: Die Schlüsselregel (Trennzeichen entfernen, führende Nullen nach optionalem Buchstabenpräfix) erfasst keine Nullen mitten in der Nummer. Die Parser-Grenze gilt je Prozess (ein Prozess je Ablage).
+
+## 15. Auflagen aus dem Delta-Review (Opus)
+
+Basis `9125b0a` (`acc45/import/imp-3-auflagen`), Branch `acc45/import/imp-3-auflagen2`. Tests in `pruefungen/import-endpunkt.test.js`, Abschnitte „Delta-Review 3a/3b/1b/4a" und „Freigabe Betreiber — Datumswerte". Reihenfolgen werden über Zustände erzwungen (von außen gehaltene Raumsperre `unterRaumsperre`, Marke `laeuft`, Prüfhaken vor dem Parsen), nicht über Wartezeiten.
+
+**Rot-Messung:** die endgültige Testdatei gegen den Produktionscode von `9125b0a` (`server/funktionen/import.mjs`, `server/lib/import/*` zurückgesetzt): **14 rot, 59 grün, 1 übersprungen** von 74 (56 Bestand grün, 18 neu). **Grün:** nach der Umsetzung **73 grün, 1 übersprungen** (Datei allein), mit `import-parser.test.js` **116 grün, 1 übersprungen**, dreifach parallel unter Last (`--testTimeout=60000`) jeweils ohne Fehlschlag.
+
+| Auflage | Status | Test | rot vor Fix | grün nach Fix |
+|---|---|---|---|---|
+| 3a Übernahme-Rennen: Bestätigung und Momentaufnahme an `uebernehmen`, Hash dort gegen die Bestätigung, Vorschau/Analyse 409 bei laufender Übernahme | umgesetzt (`import.mjs`, `uebernahme.mjs`) | „zweiter Tab: Vorschau und Analyse während laufender Übernahme 409; geschrieben wird der bestätigte Plan" | rot (Vorschau 200 statt 409; alter Code schrieb den Plan des zweiten Tabs) | grün |
+| | | „Übernahme mit alter Bestätigung nach neuer Vorschau: 409 VORSCHAU_VERALTET, nichts geschrieben" | rot (409 `BESTAETIGUNG_UNGUELTIG`; geschrieben wurde auch vorher nichts) | grün |
+| | | „Doppelklick: zweite Übernahme während der ersten 409 LAEUFT_BEREITS" (deterministische Fassung) | grün (Regressionswächter) | grün |
+| 3b Plan-Hash mit Dublettenlage (je Datensatz Dublettenart, Ziel, Vorgabe, Konfliktarten, Einheit/Standort) | umgesetzt (`personen.mjs`, `planen`) | „„neu" bestätigt, danach Person gleichen Namens im Bestand angelegt: 409 VORSCHAU_VERALTET, keine doppelte Person" | rot (200, doppelte Person) | grün |
+| 1b Namensvergleich normalisiert (ä/ö/ü/ß, Leerraum zusammengefasst, Bindestrich = Leerzeichen, Groß/Klein) | umgesetzt (`personen.mjs`: `nameVergleich`, `namensSchluessel`; Bestand und innerhalb der Datei) | 6 Paare (Müller/Mueller beide Richtungen, Strauß/Strauss + Jörg/Joerg, „Anna  Lena"/„Anna Lena", „Anna-Lena"/„Anna Lena", „MEYER LUEDENSCHEIDT"/„Meyer-Lüdenscheidt"), „innerhalb der Datei …" | 7 rot | 7 grün |
+| | | „verschiedene Namen bleiben verschieden" (Annalena ≠ Anna Lena; kyrillische Namen nicht auf leeren Schlüssel) | grün (Wächter gegen Übernormalisierung) | grün |
+| 4a höchstens 1 Parser je Raum, überzählige 503 `ZU_VIEL_GLEICHZEITIG` | umgesetzt (`vorgaenge.mjs` `parserPlatzBelegen`, `PARSER_JE_RAUM_MAX = 1`; `import.mjs` vor dem Lesen des Rumpfs) — **`parser.mjs` unverändert** (Freigabe: Parser gehört IMP-2) | „zwei parallele Uploads desselben Raums: der zweite 503 …", „zwei Räume gleichzeitig: beide dürfen parsen" | gegen 9125b0a beide rot (Prüfhaken fehlt). Fachliche Probe: nur die Grenze ausgeschaltet (`PARSER_JE_RAUM_MAX = Infinity`) → 1 rot (gleicher Raum), 1 grün (zwei Räume) | 2 grün |
+
+### Freigaben Betreiber (2026-11-09, zusätzlich)
+
+1. **Kundenrolle: Option A.** Die Rolle `kunde` erhält beim Import 403 und verändert über den Import keine Mitarbeiterdaten (umgesetzt seit `9125b0a`, Test „kunde: Upload 403, nichts geparst, nichts gespeichert"). Option B wird nicht gebaut. Tabelle in Abschnitt 2 berichtigt.
+2. **Vorschau = gespeichertes Datum.** Die Umrechnung des Datumssystems geschieht nur in der Analyse (`personen.mjs` `datumAusZelle(z, datumssystem)`: 1900 Vorgabe, 1904 = +1462 Tage). Vorschau (`eintritt` ISO, neu `eintrittAnzeige` TT.MM.JJJJ) und Übernahme tragen denselben Wert; `anwenden` rechnet nichts um. Leer bleibt `null`, `eintrittAnzeige: "nicht angegeben"`. Ein Geburtsdatum kennt der Personalimport nicht (nicht in der Weißliste); kommt es hinzu, gilt dieselbe Regel.
+3. **Tests:** „1900er- und 1904er-Mappe mit gleichem Kalenderdatum: gleiche Vorschau; die Übernahme speichert genau das Vorschau-Datum" (rot gegen 9125b0a: 1904 lag 4 Jahre daneben, `eintrittAnzeige` fehlte → grün), „leeres Eintrittsdatum: null, „nicht angegeben"" (rot → grün), „ohne Angabe des Datumssystems gilt 1900" (grün/grün).
+4. **Feld `datumssystem` aus IMP-2:** gelesen als `erg.datumssystem` (Mappe) und vorrangig `blaetter[i].datumssystem` (Blatt), Werte `1900`/`1904` als Zahl oder Text. Der heutige Parser liefert das Feld noch nicht; der 1904-Test setzt es deshalb am Vorgang so, wie IMP-2 es liefern wird (nur wenn es fehlt). Der Test „echter Parser-Weg (sobald IMP-2 `datumssystem` liefert)" läuft automatisch, sobald der Parser das Feld liefert, und ist bis dahin **übersprungen**. Ohne Feld gilt 1900 (bisheriges Verhalten). Liefert IMP-2 einen anderen Ort oder Wertetyp, ist nur `import.mjs` (Upload/Analyse) und `datumssystemAus` anzupassen.
+
+### Verhaltensänderungen (Begründung)
+
+- Übernahme mit einer Bestätigung, die nicht zur letzten Vorschau gehört: jetzt 409 `VORSCHAU_VERALTET` statt `BESTAETIGUNG_UNGUELTIG` (Auftrag 3a). `BESTAETIGUNG_UNGUELTIG` bleibt für fehlende/leere Bestätigung. Keine bestehende Assertion prüfte den Code (Zeile „Ohne Bestätigung keine Übernahme" prüft nur 409 und bleibt grün).
+- Neu: 409 `UEBERNAHME_LAEUFT` für Analyse und Vorschau, solange eine Übernahme des Vorgangs läuft. Die Marke `laeuft` wird vor dem ersten `await` gesetzt (vorher erst nach der Bremse — Lücke für Doppelklick).
+- Neu: 503 `ZU_VIEL_GLEICHZEITIG` beim Upload, wenn im Raum schon ein Parser läuft (Datei wird nicht gelesen, kein Vorgang bleibt).
+- Bestätigungscodes ändern sich (Hash über Plan **und** Lage); alte Codes laufender Vorgänge werden nach dem Ausrollen als veraltet abgewiesen (Vorgänge leben ohnehin nur im Speicher und höchstens 2 h).
+- Namensdubletten werden häufiger erkannt (nur Vorgabe „klären", nie Zusammenführung).
+- Test-Hilfe: `afterEach` setzt den neuen Prüfhaken nur zurück, wenn es ihn gibt (damit die Rot-Messung gegen den alten Code lief). Keine bestehende Assertion geändert oder entfernt.
+
+### Nicht Teil dieses Auftrags (nur dokumentiert, nicht umgebaut)
+
+1a, 1c, 4b, 5a, 5b, 7b, 7c, 8a aus dem Delta-Review bleiben offen wie dort beschrieben. Kundenrollen-Frage: durch Freigabe Option A entschieden (s. o.).
+
+### Offene Punkte
+
+- **Verwerfen während laufender Übernahme** wird nicht abgewiesen: der Vorgang verschwindet, die Übernahme schreibt mit ihrer Momentaufnahme trotzdem zu Ende (ganz oder gar nicht). Kein Datenverlust, aber für die Person überraschend; Vorschlag: `verwerfen` bei `laeuft` ebenfalls 409.
+- `datumssystem`: endgültiger Ort/Wertetyp hängt an IMP-2 (s. o.); der übersprungene Test macht den Anschluss sichtbar.
+- Die Raum-Grenze gilt je Prozess (wie die globale; ein Prozess je Ablage).
