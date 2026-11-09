@@ -9,7 +9,8 @@ import { planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
 import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenvergabe.mjs";
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
-import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText } from "../../server/lib/isteinfrieren.mjs";
+import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
+  ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT } from "../../server/lib/isteinfrieren.mjs";
 import { istVerfuegbar, zeitraumMonat, zurPruefung, zeitraumJahr, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
@@ -3481,7 +3482,8 @@ export function lohnPruefZeilen(m, ym) {
   const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${abschlussLueckeText(m, ym)}`,
     ...lu.map((p) => `  ${p.nachname}, ${p.vorname}`), ""] : [];
   /* Austritt im Monat (A-5): keine Zeilen — gesagt, nicht still. */
-  const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym)];
+  /* Auflage A (Datenreview PR #130): Stempel ohne Eintrittsdatum — keine Zeilen, aber ein benannter Prüffall. */
+  const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym), ...ohneEintrittZeilen(m, ym)];
   if (!h) return [...luZeilen, ...fz];
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
@@ -3540,10 +3542,23 @@ export function freezeZeilen(m, ym) {
   return aus;
 }
 
+/**
+ * Auflage A (Datenreview PR #130): Personen ohne Eintrittsdatum mit Stempeln im Monat — PRÜFFALL „Eintrittsdatum
+ * fehlt – Stunden nicht abgerechnet" mit Anzahl der Stempel. Ohne solche Fälle leer.
+ */
+export function ohneEintrittZeilen(m, ym) {
+  const f = ohneEintrittPrueffaelle(m, ym);
+  if (!f.length) return [];
+  return [`ACHTUNG: ${OHNE_EINTRITT_TEXT} (Prüffall) — ${f.length === 1 ? "1 Person ohne Eintrittsdatum fehlt" : `${f.length} Personen ohne Eintrittsdatum fehlen`} `
+    + "in dieser Ausgabe, ihre Stempel sind gespeichert. Eintrittsdatum setzen, dann rechnen die Stunden mit:",
+  ...f.map((x) => `  ${ohneEintrittFallText(x)}`), ""];
+}
+
 /** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
 export function lohnWarnung(m, ym, w) {
   const l = freezeGeloescht(m, ym) ? 0 : abschlussLuecken(m, ym).length;
-  const fz = freezeZeilen(m, ym).filter((z) => z.startsWith("ACHTUNG")).join("\n");
+  /* Auflage A (Datenreview PR #130): Stempel ohne Eintrittsdatum stehen mit in der Rückfrage. */
+  const fz = [...freezeZeilen(m, ym), ...ohneEintrittZeilen(m, ym)].filter((z) => z.startsWith("ACHTUNG")).join("\n");
   if (!l && !fz) return w;
   const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${abschlussLueckeText(m, ym)} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
   return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;

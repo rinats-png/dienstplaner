@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { darf } from "../lib/berechtigung.js";
 import { freezeGeloescht, lohnexportRueckfrage, VORMONAT_KATEGORIEN, freezeZeilen } from "../lib/fachlogik.js";
-import { abschlussLuecken, abschlussLueckeText } from "../../server/lib/isteinfrieren.mjs";
+import { abschlussLuecken, abschlussLueckeText, ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT } from "../../server/lib/isteinfrieren.mjs";
 import { heute, zeitpunktText, fKurz } from "../lib/datum.js";
 import { C } from "../farben.js";
 import { monatText } from "../../server/lib/monatsabschluss.mjs";
@@ -25,6 +25,8 @@ export function Monatsabschluss({ sitz, ym, akt }) {
   const zu = !!e && e.abgeschlossen === true;
   const exportiert = zu && !!e.lohnexport && typeof e.lohnexport === "object";
   const luecken = zu && !freezeGeloescht(m, ym) ? abschlussLuecken(m, ym) : [];
+  /* Auflage A (Datenreview PR #130): Stempel von Personen ohne Eintrittsdatum — Prüffall, offen wie abgeschlossen. */
+  const ohneEintritt = ohneEintrittPrueffaelle(m, ym);
   const rueckfrage = zu && !exportiert ? lohnexportRueckfrage(m, ym) : null;
   const bestaetigen = () => { if (rueckfrage && rueckfrage.vormonate) setTrotz({ kategorie: "", grund: "" }); else akt.lohnexportBestaetigen(ym); };
   const laufend = ym >= heute().slice(0, 7);
@@ -51,6 +53,8 @@ export function Monatsabschluss({ sitz, ym, akt }) {
         Der Lohnexport ist bestätigt — der Abschluss lässt sich nicht mehr einfach wiederöffnen; eine Änderung braucht den Korrekturprozess.</div>}
       {luecken.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
         {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {abschlussLueckeText(m, ym)}</div>}
+      {ohneEintritt.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+        Prüffall: {OHNE_EINTRITT_TEXT} ({ohneEintritt.map(ohneEintrittFallText).join("; ")}). Die Stempel sind gespeichert; nach dem Setzen des Eintrittsdatums rechnen die Stunden mit.</div>}
       {trotz && zu && !exportiert && (
         <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: 6 }}>
           <div style={{ fontSize: 12.5, color: C.warn, whiteSpace: "pre-line", lineHeight: 1.45 }}>{rueckfrage ? rueckfrage.text : ""}</div>

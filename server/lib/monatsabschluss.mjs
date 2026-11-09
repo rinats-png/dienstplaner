@@ -68,7 +68,8 @@
    ========================================================================== */
 
 import { loeschStichtag } from "./stempelintegritaet.mjs";
-import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze, datevHinweise } from "./isteinfrieren.mjs";
+import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze, datevHinweise,
+  ohneEintrittPrueffaelle, OHNE_EINTRITT_TEXT } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
 
 export { abschlussPersonenRaeumen };
@@ -404,16 +405,25 @@ export function abschliessen(m, r, wer, jetzt, id, heute, opt = {}) {
   if (offen.antraege)
     return { status: 409, code: "ABSCHLUSS_ANTRAEGE_OFFEN", offen,
       grund: `Im ${monatText(monat)} ${offen.antraege === 1 ? "ist noch 1 Korrekturantrag" : `sind noch ${offen.antraege} Korrekturanträge`} offen. Bitte zuerst entscheiden.` };
-  if ((offen.offeneStempel || offen.zurPruefung) && !(r && r.trotzPrueffaellen === true)) {
+  /* Auflage A (Datenreview PR #130): Stempel von Personen ohne Eintritt gehen nicht ins Ist — ein Prüffall wie
+     offene Stempel; der Monat schließt nicht still, nur ausdrücklich (trotzPrueffaellen), und der Verlauf vermerkt ihn. */
+  const oe = ohneEintrittPrueffaelle(m, monat);
+  const ohneEintritt = oe.reduce((a, x) => a + x.anzahl, 0);
+  const oeText = ohneEintritt ? ` ${OHNE_EINTRITT_TEXT} (Prüffall): ${oe.length === 1 ? "1 Person" : `${oe.length} Personen`} `
+    + `ohne Eintrittsdatum mit ${ohneEintritt} Stempel${ohneEintritt === 1 ? "" : "n"} — bitte zuerst das Eintrittsdatum setzen.` : "";
+  if ((offen.offeneStempel || offen.zurPruefung || ohneEintritt) && !(r && r.trotzPrueffaellen === true)) {
     /* Nutzerführung (Review WP-16): Ein am Monatsletzten begonnener Dienst ohne Ende ist meist ein
        laufender Nachtdienst. Sein Ausstempeln gehört zum Tag des Beginns — nach dem Abschluss würde es
        abgewiesen. Das sagt die Meldung, statt nur „unvollständig" zu zählen. */
     const nachtOffen = laufendAmMonatsletzten(m, monat);
-    return { status: 409, code: "ABSCHLUSS_PRUEFFAELLE", offen: { ...offen, ...(nachtOffen ? { nachtOffen } : {}) },
-      grund: `Im ${monatText(monat)} sind noch ${offen.offeneStempel} unvollständige Stempel und ${offen.zurPruefung} Ist-Zeiten zur Prüfung offen.`
+    return { status: 409, code: "ABSCHLUSS_PRUEFFAELLE", offen: { ...offen, ...(nachtOffen ? { nachtOffen } : {}), ...(ohneEintritt ? { ohneEintritt } : {}) },
+      grund: (offen.offeneStempel || offen.zurPruefung
+        ? `Im ${monatText(monat)} sind noch ${offen.offeneStempel} unvollständige Stempel und ${offen.zurPruefung} Ist-Zeiten zur Prüfung offen.`
+        : `Im ${monatText(monat)}:`)
         + (nachtOffen ? ` Davon ${nachtOffen === 1 ? "ist 1 Dienst" : `sind ${nachtOffen} Dienste`} vom Monatsletzten noch nicht ausgestempelt `
           + "(etwa ein laufender Nachtdienst): Das Ausstempeln gehört noch zu diesem Monat und würde nach dem Abschluss abgewiesen "
           + "— besser erst abschließen, wenn ausgestempelt ist." : "")
+        + oeText
         + " Trotzdem abschließen?" };
   }
   /* Das Ist je Person und Tag einfrieren (Review H1) — am gespeicherten, vollständigen Stand. Die Prüfsumme deckt es mit. */
@@ -421,7 +431,8 @@ export function abschliessen(m, r, wer, jetzt, id, heute, opt = {}) {
   const abdruck = istAbdruck(mitIst, monat);
   /** @type {any} */
   const ereignis = { id, art: "abschluss", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
-    ...(offen.offeneStempel || offen.zurPruefung ? { offen: { offeneStempel: offen.offeneStempel, zurPruefung: offen.zurPruefung } } : {}) };
+    ...(offen.offeneStempel || offen.zurPruefung || ohneEintritt ? { offen: { offeneStempel: offen.offeneStempel, zurPruefung: offen.zurPruefung,
+      ...(ohneEintritt ? { ohneEintritt } : {}) } } : {}) };
   /* Schema und Revision (WP-16 Nachtrag): Der Abschluss ist Revision 1 — revisionsfähig für WP-16c. */
   /* `stand`: Kennung dieses Abschlusses (WP-16, Nachtrag dritter Review H-2) — der Lohnexport bestätigt genau ihn;
      ein erneutes Abschließen nach dem Wiederöffnen ist ein anderer Stand, auch bei gleicher Prüfsumme. */

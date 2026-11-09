@@ -542,6 +542,14 @@ async function schreibenAusfuehren(beimSchliessen) {
       else if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
       return;
     }
+    /* Auflage C (Datenreview PR #130): Personalnummer schon vergeben — kein Versionskonflikt (kein Konfliktfenster,
+       der ETag bleibt), sondern eine Absage mit dem Text des Servers. */
+    if (status === 409 && daten && daten.code === "PERSONALNUMMER_DOPPELT") {
+      if (daten.etag) etag = daten.etag;
+      const f = new Error(String(daten.text || daten.fehler || "Personalnummer schon vergeben."));
+      f.code = daten.code;
+      throw f;
+    }
     if (status === 409) {
       etag = daten.etag;
       /* Wurde dieselbe Angabe inzwischen angenommen, ist der 409 ein gewöhnlicher Konflikt (kein Alarm). */
