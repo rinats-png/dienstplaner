@@ -117,13 +117,14 @@ function lockFreigeben() { try { rmSync(LOCK, { recursive: true, force: true });
  * Nie INTEGRATED durch dieses Werkzeug, nie neue Umsetzung.
  */
 export function anwenden(ssot, zeilen) {
-  let n = 0;
+  let belegErgaenzt = 0;
+  let statusAufReview = 0;
   for (const z of zeilen) {
     const p = ssot.pakete.find((x) => x.id === z.id);
     if (z.klasse === "OK") {
       const nummern = (z.integriert.match(/#\d+/g) || []);
       const neu = nummern.filter((x) => !(p.pr || []).some((y) => String(y).includes(x)));
-      if (neu.length > 0) { p.pr = [...(p.pr || []), ...neu]; n++; }
+      if (neu.length > 0) { p.pr = [...(p.pr || []), ...neu]; belegErgaenzt++; }
       continue;
     }
     if (z.klasse !== "INTEGRIERT_OHNE_PR" && z.klasse !== "NICHT_BELEGT") continue;
@@ -133,9 +134,9 @@ export function anwenden(ssot, zeilen) {
     p.stufen.implementiert = { wert: z.commits.length + z.dateien.length > 0, beleg };
     p.stufen.integriert = { wert: false, beleg: null };
     p.notiz = `${(p.notiz || "").trim()} Stand (automatisch): ${z.klasse === "INTEGRIERT_OHNE_PR" ? "Code und Tests im Integrationsbranch, aber kein gemergter PR-Beleg. Koordinator entscheidet: nachträglicher Beleg oder Ausnahme. Keine Neuimplementierung." : "kein Beleg (Commit, Test, Nachweis) gefunden. Koordinator prüfen."}`.trim();
-    n++;
+    statusAufReview++;
   }
-  return n;
+  return { belegErgaenzt, statusAufReview };
 }
 
 function main() {
@@ -156,11 +157,11 @@ function main() {
   if (!lockNehmen()) { console.log("Sperre belegt."); process.exitCode = 3; return; }
   const alt = readFileSync(quelle, "utf8");
   try {
-    const n = anwenden(ssot, zeilen);
+    const { belegErgaenzt, statusAufReview } = anwenden(ssot, zeilen);
     writeFileSync(quelle, JSON.stringify(ssot, null, 2) + "\n");
     execFileSync("node", ["werkzeug/acc45-backlog.mjs", "status-schreiben"], { cwd: WURZEL, stdio: "ignore" });
     execFileSync("node", ["werkzeug/acc45-backlog.mjs", "pruefen"], { cwd: WURZEL, stdio: "ignore" });
-    console.log(`${n} Paket(e) auf REVIEW mit Beleg gesetzt.`);
+    console.log(`Nachweise ergänzt: ${belegErgaenzt} Paket(e) mit verifizierter PR-Nummer. Statuswechsel auf REVIEW: ${statusAufReview}.`);
   } catch (e) {
     writeFileSync(quelle, alt);
     console.log("Prüfung fehlgeschlagen, zurückgerollt:", String(e.message || e).split("\n")[0]);

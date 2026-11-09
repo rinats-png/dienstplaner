@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 187,
+  "anzahl": 188,
   "statusZaehlung": {
-    "BLOCKED": 92,
+    "BLOCKED": 93,
     "READY": 16,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 87,
-      "offen": 37,
+      "pakete": 88,
+      "offen": 38,
       "restPT": {
-        "min": 69.9,
-        "max": 108.3
+        "min": 71.9,
+        "max": 112.3
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 368.1,
-    "max": 622.4
+    "min": 370.1,
+    "max": 626.4
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -4992,6 +4992,34 @@
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/provisionierung.mjs, server/lib/zugangscode*.mjs, Tests",
       "notiz": "Genehmigt 2026-11-09. Aufwand enthält Provisionierung, Übergabe, Tests. Keine Überschneidung mit WR-3 (Verlustfall)."
+    },
+    {
+      "id": "OPT-1-F",
+      "titel": "Anmeldeweg für Leitungskonten nach Ersteinrichtung (Folgepaket zu OPT-1): Passwort plus zweiter Faktor, ohne Umgehung der Authentifizierung",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":2,"max":4},
+      "abhaengigkeiten": ["OPT-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs"],
+      "pr": [],
+      "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
+      "akzeptanz": "Nach Ersteinrichtung ist ein regulärer Anmeldeweg belegbar (Passwort oder bestehender Leitungsschlüssel plus zweiter Faktor, Sitzung). Verbrauchter Einrichtungscode wirkt nie als Anmeldung. Tests decken die ganze Kette ab.",
+      "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
+      "dateien": "server/funktionen/anmeldung.mjs, server/lib/betriebsauswahl.mjs, server/lib/betreiber-zweifaktor.mjs, Tests",
+      "notiz": "Aufgenommen 2026-11-09 nach Review PR #166: kein funktionsfähiger regulärer Anmeldeweg für Leitungskonten nach der Einrichtung. Schätzung, nicht belegt. Vor Start Betreiber-Bestätigung des Umfangs. Keine Umgehung der Authentifizierung, keine Ausnahme vom zweiten Faktor."
     },
     {
       "id": "OPT-2",
