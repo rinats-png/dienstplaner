@@ -156,12 +156,17 @@ const merkmalBrauchbar = (token) =>
  * Es gibt kein `felder`-Argument. Was im Datensatz steht, steht hier und
  * nirgends sonst; ein Aufrufer kann nichts hinzufügen.
  *
- * @param {{accountId?: string, epoche?: unknown}} o
+ * Einzige Ausnahme, ausdrücklich benannt (OPT-1-F): `zweifaktor: true`, wenn
+ * die Anmeldung den zweiten Faktor des Kontos bestanden hat. Gesetzt allein von
+ * `anmelden` (accountanmeldung.mjs) nach der Prüfung; jeder andere Wert als
+ * genau `true` schreibt nichts. Ohne ihn bleibt der Datensatz, wie er war.
+ *
+ * @param {{accountId?: string, epoche?: unknown, zweifaktor?: unknown}} o
  * @param {{jetzt?: () => number, ablage?: (object|null)}} [wahl]
  * @returns {Promise<{ok: true, token: string, gueltigBis: number}
  *   |{ok: false, grund: string}>}
  */
-export async function accountSitzungAnlegen({ accountId, epoche } = {},
+export async function accountSitzungAnlegen({ accountId, epoche, zweifaktor } = {},
   { jetzt = Date.now, ablage = null } = {}) {
   if (!accountId || typeof accountId !== "string") return { ok: false, grund: "accountId" };
   const nr = Number(epoche);
@@ -174,6 +179,7 @@ export async function accountSitzungAnlegen({ accountId, epoche } = {},
   try {
     await speicher.setJSON(accountSitzungsSchluessel(token), {
       art: ART, accountId, epoche: nr, seit: nun, zuletzt: nun, bis: gueltigBis,
+      ...(zweifaktor === true ? { zweifaktor: true } : {}),
     });
   } catch {
     /* Ohne Datensatz gibt es keine Sitzung — und damit auch kein Merkmal.
@@ -448,7 +454,11 @@ async function weg(speicher, id) {
  * @param {unknown} id  Kennung der Account-Sitzung (aus dem Anker)
  * @param {{accountId: string, epoche: number}} erwartet
  * @param {{jetzt?: () => number, ablage?: (object|null)}} [wahl]
- * @returns {Promise<{ok: true, bis: number}|{ok: false, grund: string}>}
+ * `zweifaktor: true` steht in der Antwort genau dann, wenn die Anmeldung den
+ * zweiten Faktor des Kontos bestanden hat (aus dem Datensatz, nie aus einer
+ * Anfrage; OPT-1-F).
+ *
+ * @returns {Promise<{ok: true, bis: number, zweifaktor?: true}|{ok: false, grund: string}>}
  */
 export async function kontoSitzungFuerArbeit(id, erwartet,
   { jetzt = Date.now, ablage = null } = {}) {
@@ -456,7 +466,8 @@ export async function kontoSitzungFuerArbeit(id, erwartet,
   if (!g.sitzung) return { ok: false, grund: g.grund || "unbekannt" };
   if (!erwartet || g.sitzung.accountId !== erwartet.accountId) return { ok: false, grund: "konto" };
   if (Number(g.sitzung.epoche) !== Number(erwartet.epoche)) return { ok: false, grund: "epoche" };
-  return { ok: true, bis: Number(g.sitzung.bis) };
+  return { ok: true, bis: Number(g.sitzung.bis),
+    ...(g.sitzung.zweifaktor === true ? { zweifaktor: true } : {}) };
 }
 
 /* --------------------------------------------------------------------------

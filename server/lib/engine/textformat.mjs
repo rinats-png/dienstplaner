@@ -18,3 +18,5 @@ export const zahlOder = (v, f) => {
 export const n1 = (v) => zahlOder(v, (x) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 
 export const fKurz = (s) => (s ? `${pad(pISO(s).getDate())}.${pad(pISO(s).getMonth() + 1)}.` : "—");
+
+export const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];

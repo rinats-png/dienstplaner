@@ -1,0 +1,62 @@
+{
+ "leer": {
+  "personen": 0,
+  "hindernisBefunde": {
+   "anzahl": 0,
+   "mitBefund": 0,
+   "sha": "4f53cda18c2baa0c"
+  },
+  "ersatzVorschlaege": {
+   "anzahl": 15,
+   "kandidaten": 0,
+   "sha": "26996763484d825e"
+  },
+  "nachtJahr": "4f53cda18c2baa0c",
+  "verfuegbarFuer": "4f53cda18c2baa0c"
+ },
+ "demo1-sicherheit": {
+  "personen": 86,
+  "hindernisBefunde": {
+   "anzahl": 630,
+   "mitBefund": 630,
+   "sha": "f06d4e2884ad303a"
+  },
+  "ersatzVorschlaege": {
+   "anzahl": 25,
+   "kandidaten": 1090,
+   "sha": "ad5b3ea95edb6c93"
+  },
+  "nachtJahr": "0c43c8ec545d882d",
+  "verfuegbarFuer": "6e720455beeb6a9d"
+ },
+ "demo2-pflege": {
+  "personen": 57,
+  "hindernisBefunde": {
+   "anzahl": 252,
+   "mitBefund": 205,
+   "sha": "f75ed0c0a94dc950"
+  },
+  "ersatzVorschlaege": {
+   "anzahl": 15,
+   "kandidaten": 330,
+   "sha": "ee53e5ea5735427c"
+  },
+  "nachtJahr": "7e7c58aaef70a4ce",
+  "verfuegbarFuer": "e5367ef22f167857"
+ },
+ "demo3-produktion": {
+  "personen": 48,
+  "hindernisBefunde": {
+   "anzahl": 210,
+   "mitBefund": 196,
+   "sha": "7ddb07ad9f9a17ee"
+  },
+  "ersatzVorschlaege": {
+   "anzahl": 15,
+   "kandidaten": 300,
+   "sha": "7fa94b08707114c6"
+  },
+  "nachtJahr": "ddc445b2695ce58a",
+  "verfuegbarFuer": "8d20c8c7e2b2b094"
+ }
+}

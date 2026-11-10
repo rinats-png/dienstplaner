@@ -9,6 +9,7 @@ import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from ".
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
 import { rollenPflicht, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
+import { kontoFaktorAktiv } from "./kontofaktor.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -270,7 +271,26 @@ export async function betriebWaehlen(store,
      wird, statt eine Sitzung ohne zweiten Faktor anzulegen; der Weg in diese Rolle ist der Zugangscode mit Faktor.
      Ohne Pflicht bleibt es wie bisher. Die Account-Anmeldung selbst ist nur eine Identität ohne Rolle und ohne
      Bestand (anmeldung.mjs) — die Rechte entstehen erst hier, also wird hier geprüft. */
-  if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle))) return absage("zweifaktor-pflicht");
+  /* OPT-1-F: Seit es einen zweiten Faktor am Konto gibt (kontofaktor.mjs), öffnet dieser Weg unter Pflicht auch
+     Leitung, Planung und Kunde — aber nur, wenn BEIDES stimmt:
+       - die Account-Sitzung ist mit bestandenem Faktor entstanden (`zweifaktor: true` im Datensatz der Sitzung,
+         frisch gelesen über ihre Kennung, nie aus der Anfrage und nie aus dem Parameter `kontoSitzung`), und
+       - der Faktor des Kontos ist jetzt aktiv (ein Lesefehler ist kein Ja).
+     Sonst bleibt es bei der Absage oben. Die Arbeitssitzung trägt dann `zweifaktor: true`; damit hält sie auch die
+     Prüfung jeder Anfrage (rollenSitzungOhneFaktor) — auf demselben Feld wie eine Sitzung aus Zugangscode + Faktor. */
+  const kontoMitFaktor = await kontoSitzungFuerArbeit(String(asId), { accountId, epoche },
+    { ablage: kontoAblage, jetzt }).catch(() => null);
+  /* OPT-1-F, Befund 3 (Zusatzprüfung): Der Faktor des Kontos wird immer gelesen. Ist er aktiv oder nicht lesbar,
+     öffnet eine Sitzung OHNE bestandenen Faktor keinen Betrieb — in keiner Rolle, mit oder ohne Pflicht. Sonst würde
+     eine ältere, schwächer geschützte Sitzung (vor der Aktivierung entstanden, Abmelden gescheitert) wieder gelten. */
+  /** @type {boolean|null} */
+  let faktorAktiv = null;
+  try { faktorAktiv = await kontoFaktorAktiv(store, accountId); } catch { faktorAktiv = null; }
+  const mitFaktor = faktorAktiv === true && !!(kontoMitFaktor && kontoMitFaktor.ok && kontoMitFaktor.zweifaktor === true);
+  if (faktorAktiv !== false && !mitFaktor) return absage("zweifaktor-pflicht");
+  if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle)) && !mitFaktor)
+    return absage("zweifaktor-pflicht");
+  if (mitFaktor) felder.zweifaktor = true;
 
   /* Kontositzung mit Betriebskennung (WP-18-Nachtrag). Eine Sitzung aus einem Zugangscode trägt seit Oktober 2026 die
      Kennung ihres Betriebs (mandantId); Einladungen verlangen sie (einladungen.mjs, leitungPruefen). Die Arbeitssitzung
