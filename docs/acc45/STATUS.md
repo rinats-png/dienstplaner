@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 188 · BLOCKED 87 · READY 16 · IN_PROGRESS 5 · REVIEW 10 · INTEGRATED 67 · DONE 3
+**Pakete gesamt:** 188 · BLOCKED 83 · READY 16 · IN_PROGRESS 7 · REVIEW 10 · INTEGRATED 69 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 88 | 26 | 0 | 3 | 5 | 52 | 2 | 63,9–99,8 |
+| ACC45 | 88 | 22 | 0 | 5 | 5 | 54 | 2 | 55,4–87,05 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
 | Intelligence | 40 | 28 | 0 | 0 | 1 | 11 | 0 | 222,3–391,8 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **358,1–605,9 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **349,6–593,15 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -47,6 +47,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **358,1–605,
 | WP-15 Selbstauskunft mit Freigabe und Stempelabgleich | REVIEW | `acc45/time/wp15-selbstauskunft-mit-freigabe-` | Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
 | WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). |
 | WP-19 Branchenpakete (12 Module) | IN_PROGRESS | `acc45/frontend/wp19-branchenpakete` | Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). |
+| WP-21 Smartphone/Tablet für alle Rollen | IN_PROGRESS | `acc45/frontend/wp21-smartphone-tablet-fur-alle-r` | Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. |
 | WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | REVIEW | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. |
 | WP-40 Barrierefreiheit WCAG 2.2 AA | REVIEW | `acc45/frontend/wp40-barrierefreiheit-wcag-2-2-aa` | Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). |
 | WP-16c Monatsabschluss: Korrekturrevisionen nach bestätigtem Lohnexport (Revision, Differenz, Korrekturexport, Freigabe, Audit) | REVIEW | `acc45/time/wp16c-korrekturrevisionen` | P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. |
@@ -57,13 +58,14 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **358,1–605,
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). |
 | WP-I12 Decision Engine (Extraktion aus App.jsx) | REVIEW | `intelligence/wp-i12-decision-engine-extrakti` | Kern extrahiert (26 von 27 Definitionen). Offen als WP-I12a/b/c. Fachfragen 2, 3, 5 (docs/acc45/wp-i12-fragen.md) sind Betreiberentscheidungen. Vorher: Schätzung laut Plan, nicht belegt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
+| IMP-6 Schichtmodelle und Schichtzyklen: mehrere Modelle, unterschiedliche Zykluslängen, bestehende Validierungen | IN_PROGRESS | `–` | Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. |
 | OPT-4 SI-P4 Option 4: zweiter Faktor (TOTP) direkt für Benutzerkonten, Zielarchitektur | IN_PROGRESS | `–` | Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. |
 
-### Bereit zum Start (13)
+### Bereit zum Start (9)
 
-WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-5 (acc45, 1,5–2,5 PT) · IMP-6 (acc45, 3–5 PT) · IMP-8 (acc45, 2–3 PT) · IMP-9 (acc45, 0,5–1 PT) · IMP-10 (acc45, 0,5–1 PT) · WR-3 (acc45, 2,5 PT)
+WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-8 (acc45, 2–3 PT) · IMP-10 (acc45, 0,5–1 PT) · WR-3 (acc45, 2,5 PT)
 
-### Integriert in `integration/centric-complete` (67)
+### Integriert in `integration/centric-complete` (69)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -128,6 +130,8 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence,
 | IMP-2 Parser: SheetJS CE 0.20.3 (Herstellerdistribution) lokal, Prüfsumme, Lizenz, Grenzen, ZIP-Schutz | PR #123 in integration/release-v4 | PR #123 in integration/release-v4 |
 | IMP-3 Endpunkt /api/import: Rollen, Mandant, Wiederholschutz, atomare Übernahme, Protokoll ohne Personendaten | PR #142 in integration/release-v4 | PR #142 in integration/release-v4 |
 | IMP-4 Personalimport mit Vorschau: Neu / Aktualisieren (ausdrücklich) / Überspringen / Konflikt klären | PR #137 in integration/release-v4 | PR #137 in integration/release-v4 |
+| IMP-5 Organisationseinheiten: Teams, Standorte, Qualifikationen; neue nur mit org.edit | PR #187 in integration/release-v4 | PR #187 in integration/release-v4 |
+| IMP-9 KI-Schnittstelle (austauschbar, ohne Aktivierung): strukturierte Ergebnisse, Unsicherheiten, Validierungsfehler | PR #187 in integration/release-v4 | PR #187 in integration/release-v4 |
 | OPT-1 SI-P4 Option 1: sichere Ersteinrichtung für neu angelegte Betriebe (einmalig, befristet, keine Klartext-Mail) | PR #179 in integration/release-v4 | PR #179 in integration/release-v4 |
 | OPT-1-F Anmeldeweg für Leitungskonten nach Ersteinrichtung (Folgepaket zu OPT-1): Passwort plus zweiter Faktor, ohne Umgehung der Authentifizierung | PR #179 in integration/release-v4 | PR #179 in integration/release-v4 |
 | WR-1 Kontowiederherstellung: Kern (zehn Codes, Speicherung scrypt, Verteilung ohne Verzerrung) | PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung) | PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung) |
@@ -139,7 +143,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence,
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-70 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+66 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -162,6 +166,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence,
 | WP-17 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-18 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-20 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-21 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-22 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-23 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-24 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
@@ -219,6 +224,9 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence,
 | IMP-2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | IMP-3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | IMP-4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| IMP-5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| IMP-6 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |
+| IMP-9 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-1-F | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-4 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |

@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 188,
   "statusZaehlung": {
-    "BLOCKED": 87,
+    "BLOCKED": 83,
     "READY": 16,
-    "IN_PROGRESS": 5,
+    "IN_PROGRESS": 7,
     "REVIEW": 10,
-    "INTEGRATED": 67,
+    "INTEGRATED": 69,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 88,
-      "offen": 34,
+      "offen": 32,
       "restPT": {
-        "min": 63.900000000000006,
-        "max": 99.8
+        "min": 55.4,
+        "max": 87.05
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 358.1,
-    "max": 605.9
+    "min": 349.6,
+    "max": 593.15
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -706,12 +706,12 @@
       "prio": "P1",
       "aufwandPT": {"min":10,"max":13.5},
       "abhaengigkeiten": ["WP-12","WP-39"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #183 integriert (Teil 1: Gerätematrix, Messung, Seitenleiste, Zielgrößen, Scrollbereiche)."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -720,12 +720,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#183"],
       "nachweis": null,
       "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
       "tests": "Playwright-Viewports, Geräte",
       "dateien": "src/ansichten/*",
-      "notiz": null
+      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen."
     },
     {
       "id": "WP-22",
@@ -4804,12 +4804,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1.5,"max":2.5},
       "abhaengigkeiten": ["IMP-3"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4818,12 +4818,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#187"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Fehlende Einheiten als Zuordnungskonflikt; Planung allein erzeugt keine Einheiten",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/org*.mjs, Tests",
-      "notiz": "Freigabe Punkt 4."
+      "notiz": "Freigabe Punkt 4. Stand (automatisch): INTEGRATED nach #187."
     },
     {
       "id": "IMP-6",
@@ -4832,12 +4832,12 @@
       "prio": "P2",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["IMP-3"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
+        "integriert": {"wert":false,"beleg":"Bibliothek in PR #185 integriert (schichtmodelle.mjs, schichtpruefung.mjs); nicht in /api/import verdrahtet."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4846,12 +4846,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#185"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Keine feste Zykluslänge; arbeitszeitrechtliche Prüfung mit den Dienstarten des Betriebs; Nachtschicht über Mitternacht",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/schicht*.mjs, Tests",
-      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel."
+      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche."
     },
     {
       "id": "IMP-7",
@@ -4916,12 +4916,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["IMP-0"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #187 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4930,12 +4930,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#187"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Deterministischer Import funktioniert ohne KI; keine Übertragung personenbezogener Daten an nicht freigegebene Dienste",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/ki-schnittstelle.mjs, Tests",
-      "notiz": "E-25 und E-26 bleiben Bedingung für jede produktive Anbindung."
+      "notiz": "E-25 und E-26 bleiben Bedingung für jede produktive Anbindung. Stand (automatisch): INTEGRATED nach #187. Hinweis 2026-11-10: Port ist nicht verdrahtet; vor jeder Verdrahtung oder E-25/E-26-Aktivierung IMPORT-VERTRAG §13 und die Allowlist-Garantie erneut prüfen."
     },
     {
       "id": "IMP-10",
