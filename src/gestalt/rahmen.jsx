@@ -3,6 +3,7 @@ import { C } from "../farben.js";
 import { Icon } from "./icons.jsx";
 import { Menue } from "./bausteine.jsx";
 import { Marke } from "../marke.jsx";
+import { SEITENLEISTE_ID } from "../ui/geraete.js";
 
 /* ==========================================================================
    RAHMEN — Kopfzeile, Bereichsnavigation, Unterleiste, Menüs
@@ -99,7 +100,7 @@ export function Kopfblock({
     <div className="kopfblock">
       <header className="kopfleiste">
         <button type="button" className="btn btn-sm btn-quiet nur-schmal kopf-menue" onClick={onDrawer}
-          aria-label="Navigation öffnen" aria-expanded={!!drawerOffen} title="Navigation">
+          aria-label="Navigation öffnen" aria-expanded={!!drawerOffen} aria-controls={SEITENLEISTE_ID} title="Navigation">
           <Icon n="menue" size={18} /></button>
 
         <div className="kopf-marke" title={betrieb}>

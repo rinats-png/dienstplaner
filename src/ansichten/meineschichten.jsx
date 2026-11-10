@@ -9,6 +9,7 @@ import { rolle } from "../lib/rollen.js";
 import { darf } from "../lib/berechtigung.js";
 import { SelbstauskunftStatus } from "./selbstauskunft.jsx";
 import { Kennzahlen, Fehlerband } from "../gestalt/ansichten.jsx";
+import { urlaubAntragFehler } from "../lib/antragpruefung.js";
 import { n1Ist, n1, sgn, sgnIst } from "../lib/format.js";
 import { ISTDATEN_TEXT, pruefHinweis, pruefFallText, vormonateMitPruefung } from "../istdaten.js";
 import { C } from "../farben.js";
@@ -41,9 +42,8 @@ export function MeineSchichten({ sitz, akt, ym }) {
 
   const sendeUrlaub = () => {
     setFehler(null);
-    if (form.bis < form.von) return setFehler("Das Ende liegt vor dem Beginn.");
-    const k = m.abwesenheiten.find((a) => a.personId === ich.id && a.von <= form.bis && form.von <= a.bis);
-    if (k) return setFehler(`Überschneidet sich mit ${abwArt(k.art).label} vom ${fKurz(k.von)} bis ${fKurz(k.bis)}.`);
+    const fe = urlaubAntragFehler(m, ich.id, form);
+    if (fe) return setFehler(fe);
     akt.stelleAntrag({ typ: "abwesenheit", art: form.art, von: form.von, bis: form.bis, text: form.text });
     setAntrag(null); setForm({ art: "urlaub", von: heute(), bis: heute(), text: "" });
   };
