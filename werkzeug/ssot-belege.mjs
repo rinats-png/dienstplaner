@@ -20,6 +20,7 @@
    Exit: 0 ok · 1 Prüfung fehlgeschlagen · 3 Sperre belegt
    ========================================================================== */
 import { execFileSync } from "node:child_process";
+import { prAnsicht } from "./gh-rest.mjs";
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,7 +70,7 @@ export function ssotPrBelege(p) {
     const n = String(x).match(/\d+/)?.[0];
     if (!n) continue;
     let info;
-    try { info = JSON.parse(execFileSync("gh", ["pr", "view", n, "--json", "state,mergeCommit"], { cwd: WURZEL, encoding: "utf8" })); }
+    try { info = prAnsicht(n, WURZEL); }
     catch { continue; }
     const hashes = Object.values(p.stufen || {}).map((st) => String(st?.beleg || "")).join(" ").match(/\b[0-9a-f]{7,40}\b/g) || [];
     const ueber = info.mergeCommit?.oid && imBasisstand(info.mergeCommit.oid);

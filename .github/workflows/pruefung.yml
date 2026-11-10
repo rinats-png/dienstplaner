@@ -43,6 +43,9 @@ jobs:
       - name: Verdrahtung der Prüfdateien
         run: npm run pruefung:verdrahtung
 
+      - name: Koordination (atomare Lease)
+        run: npm run pruefung:koordination
+
       - name: G9-Nachträge, Verkauf, Preisgestaltung, Stufen
         run: npm run pruefung:g9
 
@@ -588,6 +591,12 @@ jobs:
       # übrige — Mitgliedschaft, Person, Rolle — holt der Server aus der Ablage.
       - name: Betriebsauswahl
         run: npm run pruefung:betriebsauswahl
+
+      # OPT-1-F: Leitungskonto nach der Ersteinrichtung — Passwort plus zweiter
+      # Faktor am Konto, Sitzung mit Faktor, Fehlversuchs-Sperre; verbrauchte
+      # Einrichtungscodes wirken nie als Anmeldung.
+      - name: Konto-Anmeldeweg mit zweitem Faktor
+        run: npm run pruefung:konto-anmeldeweg
 
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.

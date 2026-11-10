@@ -18,7 +18,7 @@ const ordner = (name) => {
    gegen die diese Prüfungen den Quelltext lesen. Sie steht vor der Fachlogik (dort standen die Funktionen; Ausschnitte „von Marke A bis Marke B“
    behalten so ihre Richtung). */
 const ENGINE = new URL("../server/lib/engine/", import.meta.url);
-const KERN = ["zeit", "textformat", "abwesenheitsarten", "plan", "befunde", "kennzahlen"];
+const KERN = ["zeit", "textformat", "abwesenheitsarten", "plan", "befunde", "kennzahlen", "einsatz"];
 const kern = () => KERN.map((n) => lies(new URL(`${n}.mjs`, ENGINE)));
 
 export function appQuelle() {
