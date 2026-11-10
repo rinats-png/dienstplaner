@@ -28,6 +28,20 @@ export const AKTION_TEXT = Object.freeze({
 
 const MIT_NUMMER = ["personalnummer", "personalnummer-datei"];
 
+/** Qualifikationen einer neuen Person für Analyse und Vorschau (IMP-5): Name und Kennzeichen, die für die Bestätigung zählen
+    (Fachkraft, Nachweis erforderlich, harte Sperre; „neu angelegt“ oder „bestehend“). Leere Liste → „keine“. */
+export function qualifikationenText(liste) {
+  const l = Array.isArray(liste) ? liste.filter((q) => q && typeof q === "object") : [];
+  if (!l.length) return "keine";
+  return l.map((q) => {
+    const k = [];
+    if (q.fachkraft) k.push("Fachkraft");
+    if (q.nachweisPflicht) k.push("Nachweis erforderlich");
+    if (q.harteSperre) k.push("harte Sperre");
+    k.push(q.neu ? "neu angelegt" : "bestehend");
+    return `${q.name || "?"} (${k.join(", ")})`;
+  }).join("; ");
+}
 /** Dublette ohne Personalnummer = bloßer Namenshinweis. */
 export const istNamensVorschlag = (d) => !!(d && d.dublette && (d.dublette.art === "name" || d.dublette.art === "name-datei"));
 
@@ -77,7 +91,7 @@ export const unbestaetigteAktualisierungen = (entscheidungen, bestaetigungen) =>
 const FEHLER_TEXT = {
   NETZ: "Keine Verbindung zum Server. Es wurde nichts übernommen.",
   DATEI_ZU_GROSS: "Die Datei ist zu groß (höchstens 10 MB).",
-  ORG_EDIT_FEHLT: "Neue Einheiten oder Standorte darf nur die Leitung anlegen. Bitte die Einheit vorher anlegen lassen oder die Zeile überspringen.",
+  ORG_EDIT_FEHLT: "Neue Einheiten, Standorte oder Qualifikationen darf nur die Leitung anlegen. Bitte vorher anlegen lassen oder die Zeile überspringen.",
   KEINE_BERECHTIGUNG: "Den Import dürfen nur Leitung und Planung verwenden.",
   PFLICHTSPALTE_FEHLT: "Nachname, Vorname und Einheit müssen einer Spalte zugeordnet sein.",
   AKTUALISIERUNG_OHNE_BESTAETIGUNG: "Zum Aktualisieren bitte jede betroffene Person ausdrücklich bestätigen.",

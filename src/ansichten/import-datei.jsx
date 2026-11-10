@@ -6,11 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { C } from "../farben.js";
 import { Card, Lab, Btn, Sel, Kpi, KpiRow, Pill } from "../ui/bausteine.jsx";
 import { Sheet } from "../ui/leisten.jsx";
-import { erzeugeAblauf, aktionenFuer, AKTION_TEXT, dublettenText, istNamensVorschlag, unbestaetigteAktualisierungen } from "../lib/import-ablauf.js";
+import { erzeugeAblauf, aktionenFuer, AKTION_TEXT, dublettenText, istNamensVorschlag, unbestaetigteAktualisierungen, qualifikationenText } from "../lib/import-ablauf.js";
 
 const FELDER = [["nachname", "Nachname", true], ["vorname", "Vorname", true], ["einheit", "Einheit", true],
   ["personalnummer", "Personalnummer"], ["email", "E-Mail"], ["funktion", "Funktion"], ["wochenstunden", "Wochenstunden"],
-  ["urlaubsanspruch", "Urlaubsanspruch"], ["eintritt", "Eintritt"], ["standort", "Standort"]];
+  ["urlaubsanspruch", "Urlaubsanspruch"], ["eintritt", "Eintritt"], ["standort", "Standort"], ["qualifikationen", "Qualifikationen"]];
 const HERKUNFT = { genau: ["sicher", "ok"], hand: ["von Hand", "ok"], manuell: ["von Hand", "ok"], aehnlich: ["ähnlich", "accent"], inhalt: ["aus dem Inhalt", "warn"] };
 const FELD_NAME = Object.fromEntries(FELDER.map(([f, l]) => [f, l]));
 const wert = (v) => (v === null || v === undefined || v === "" ? "—" : String(v));
@@ -89,12 +89,15 @@ function Datensatz({ d, z, a }) {
       <td style={zelle}>
         <div style={{ fontSize: 13 }}>{wert(w.nachname)}, {wert(w.vorname)}</div>
         <div style={{ color: C.dim }}>{w.personalnummer ? `Nr. ${w.personalnummer}` : "ohne Personalnummer"} · {wert(w.einheit)}</div>
+        {(d.qualifikationen || []).length > 0 && <div style={{ color: (d.qualifikationen || []).some((q) => q.fachkraft || q.nachweisPflicht || q.harteSperre) ? C.warn : C.dim }}>
+          Qualifikationen: {qualifikationenText(d.qualifikationen)}</div>}
       </td>
       <td style={{ ...zelle, color: C.dim, maxWidth: 300 }}>
         {(d.fehler || []).length > 0 && <div style={{ color: C.danger }}>{d.fehler.join(", ")}</div>}
         {grund && <div style={{ color: istNamensVorschlag(d) ? C.dim : C.warn }}>{grund}</div>}
         {(d.konflikte || []).length > 0 && <div style={{ color: C.warn }}>
-          {d.konflikte.map((k) => k.art === "einheit-unbekannt" ? "Einheit gibt es noch nicht" : k.art === "standort-unbekannt" ? "Standort gibt es noch nicht" : k.art).join(", ")}</div>}
+          {d.konflikte.map((k) => k.art === "einheit-unbekannt" ? "Einheit gibt es noch nicht" : k.art === "standort-unbekannt" ? "Standort gibt es noch nicht"
+            : k.art === "qualifikation-unbekannt" ? "Qualifikation gibt es noch nicht" : k.art === "qualifikation-mehrdeutig" ? "Qualifikation ist nicht eindeutig" : k.art).join(", ")}</div>}
         {(d.hinweise || []).length > 0 && <div>{d.hinweise.map((h) => (typeof h === "string" ? h : h.nachricht || h.code)).join(", ")}</div>}
       </td>
       <td style={zelle}>
@@ -116,7 +119,7 @@ function Datensatz({ d, z, a }) {
 function Pruefen({ z, a }) {
   const offen = unbestaetigteAktualisierungen(z.entscheidungen, z.bestaetigungen);
   const klaeren = Object.values(z.entscheidungen).filter((x) => x === "klaeren").length;
-  const mehrEinheiten = z.datensaetze.some((d) => (d.konflikte || []).some((k) => k.art === "einheit-unbekannt" || k.art === "standort-unbekannt"));
+  const mehrEinheiten = z.datensaetze.some((d) => (d.konflikte || []).some((k) => k.art === "einheit-unbekannt" || k.art === "standort-unbekannt" || k.art === "qualifikation-unbekannt"));
   const pflichtFehlt = z.fehlendePflicht.length > 0;
   return (<>
     <Meldung z={z} />
@@ -132,7 +135,7 @@ function Pruefen({ z, a }) {
       <div className="karte" style={{ padding: 16, marginTop: 18 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
           <input type="checkbox" checked={z.einheitenAnlegen} disabled={z.laeuft} onChange={(e) => a.einheitenAnlegen(e.target.checked)} />
-          <span style={{ fontSize: 13.5 }}>Fehlende Einheiten und Standorte mit anlegen (nur Leitung)</span>
+          <span style={{ fontSize: 13.5 }}>Fehlende Einheiten, Standorte und Qualifikationen mit anlegen (nur Leitung)</span>
         </label>
       </div>)}
     <Card style={{ marginTop: 18, overflowX: "auto", maxHeight: 420, overflowY: "auto" }}>
@@ -165,16 +168,19 @@ function Vorschau({ z, a }) {
       <Kpi label="Übersprungen" value={Array.isArray(v.uebersprungen) ? v.uebersprungen.length : (v.uebersprungen || 0)} />
       <Kpi label="Noch offen" value={(v.offen || []).length} tone={(v.offen || []).length ? "warn" : "ok"} />
     </KpiRow>
-    {((v.neueEinheiten || []).length > 0 || (v.neueStandorte || []).length > 0) && (
+    {((v.neueEinheiten || []).length > 0 || (v.neueStandorte || []).length > 0 || (v.neueQualifikationen || []).length > 0) && (
       <div style={{ fontSize: 13, color: C.dim, marginTop: 14 }}>
         {(v.neueEinheiten || []).length > 0 && <>Neue Einheiten: {v.neueEinheiten.join(", ")}<br /></>}
-        {(v.neueStandorte || []).length > 0 && <>Neue Standorte: {v.neueStandorte.join(", ")}</>}
+        {(v.neueStandorte || []).length > 0 && <>Neue Standorte: {v.neueStandorte.join(", ")}<br /></>}
+        {(v.neueQualifikationen || []).length > 0 && <>Neue Qualifikationen: {v.neueQualifikationen.join(", ")}</>}
       </div>)}
     <Card style={{ marginTop: 18, padding: 16 }}>
       <Lab>Wird neu angelegt</Lab>
       {neu.length === 0 ? <div style={{ fontSize: 13, color: C.dim, marginTop: 6 }}>Keine.</div> : (
         <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13 }}>{neu.map((n) => (
-          <li key={n.datensatz}>{wert(n.nachname)}, {wert(n.vorname)} · {wert(n.einheit)} · {n.personalnummer ? `Nr. ${n.personalnummer}` : "ohne Personalnummer"}</li>))}</ul>)}
+          <li key={n.datensatz}>{wert(n.nachname)}, {wert(n.vorname)} · {wert(n.einheit)} · {n.personalnummer ? `Nr. ${n.personalnummer}` : "ohne Personalnummer"}
+            {(n.qualifikationen || []).length > 0 && <div style={{ color: n.qualifikationen.some((q) => q.fachkraft || q.nachweisPflicht || q.harteSperre) ? C.warn : C.dim }}>
+              Qualifikationen: {qualifikationenText(n.qualifikationen)}</div>}</li>))}</ul>)}
     </Card>
     <Card style={{ marginTop: 14, padding: 16 }}>
       <Lab>Wird aktualisiert (alt → neu)</Lab>

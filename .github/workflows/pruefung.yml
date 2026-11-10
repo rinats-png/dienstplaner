@@ -74,6 +74,12 @@ jobs:
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 
+      - name: Personalimport Organisationseinheiten nur mit org.edit (IMP-5)
+        run: npm run pruefung:import-org
+
+      - name: Import KI-Schnittstelle ohne Aktivierung (IMP-9)
+        run: npm run pruefung:import-ki
+
       - name: Schichtmodelle und Schichtzyklen (IMP-6)
         run: npm run pruefung:import-schichtmodelle
 

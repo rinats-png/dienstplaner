@@ -16,8 +16,8 @@
      er von der bestätigten Vorschau ab (jemand hat inzwischen Personen
      angelegt oder Einheiten umbenannt), wird nichts geschrieben (409).
    - Nach dem Zusammenführen wird geprüft, dass sich im Betrieb nur geändert
-     hat, was der Plan sagt: neue und aktualisierte Personen, neue Einheiten
-     und Standorte. Alles andere wäre ein Fehler in einer Station — dann
+     hat, was der Plan sagt: neue und aktualisierte Personen, neue Einheiten,
+     Standorte und Qualifikationen (die drei nur mit org.edit, siehe org.mjs). Alles andere wäre ein Fehler in einer Station — dann
      wird nichts geschrieben.
    - Wiederholschutz über den Inhalt der Datei je Betrieb (importerledigt:…),
      geprüft und gesetzt unter derselben Sperre.
@@ -48,7 +48,7 @@ export const _pruefhaken = { nachDatensatz: null, ablage: null };
 
 const neueId = (praefix) => `${praefix}${randomBytes(6).toString("hex")}`;
 const nein = (status, code, nachricht, mehr = {}) => ({ ok: false, status, code, nachricht, ...mehr });
-const BETRIEB_GEAENDERT_ERLAUBT = new Set(["personen", "einheiten", "standorte"]);
+const BETRIEB_GEAENDERT_ERLAUBT = new Set(["personen", "einheiten", "standorte", "qualifikationen"]);
 
 /** Hat sich im Betrieb nur geändert, was der Plan vorsieht? */
 function nurGeplant(altM, neuM, plan, neueIds) {
@@ -60,10 +60,14 @@ function nurGeplant(altM, neuM, plan, neueIds) {
   const neu = new Map((neuM.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
   for (const [id, p] of alt) if (!neu.has(id) || (!erlaubtP.has(id) && j(p) !== j(neu.get(id)))) return "Person";
   for (const id of neu.keys()) if (!alt.has(id) && !erlaubtP.has(id)) return "Person";
-  for (const feld of ["einheiten", "standorte"]) {
+  /* IMP-5: Einheiten, Standorte und Qualifikationen dürfen nur um genau die Einträge wachsen, die der Plan nennt (und die
+     nur mit org.edit entstehen); Bestehendes bleibt unverändert. */
+  const geplant = { einheiten: plan.neueEinheiten.length, standorte: plan.neueStandorte.length,
+    qualifikationen: (plan.neueQualifikationen || []).length };
+  for (const feld of ["einheiten", "standorte", "qualifikationen"]) {
     const a = (altM[feld] || []).filter(Boolean);
     const n = (neuM[feld] || []).filter(Boolean);
-    if (j(n.slice(0, a.length)) !== j(a)) return feld;
+    if (j(n.slice(0, a.length)) !== j(a) || n.length !== a.length + geplant[feld]) return feld;
   }
   return null;
 }
@@ -132,7 +136,7 @@ export function uebernehmen({ store: storeRoh, sitzung, vorgang, bestaetigung, m
       return nein(403, "KEINE_BERECHTIGUNG", "Keine Schreibberechtigung.");
     let angewendet;
     try {
-      angewendet = anwenden(sicht.mandanten[0], p.plan, { neueId, heute,
+      angewendet = anwenden(sicht.mandanten[0], p.plan, { neueId, heute, orgEdit,
         haken: _pruefhaken.nachDatensatz ? (i) => _pruefhaken.nachDatensatz(i) : null });
     } catch {
       /* Bis hierher liegt alles nur im Speicher: Ein Abbruch mitten in den Datensätzen hinterlässt nichts. */
@@ -183,7 +187,8 @@ export function uebernehmen({ store: storeRoh, sitzung, vorgang, bestaetigung, m
     if (!erg.ok) return nein(409, "KONFLIKT", "Jemand anderes hat inzwischen gespeichert. Bitte die Vorschau neu erstellen. Es wurde nichts geändert.");
 
     const zaehler = { neu: p.zaehler.neu, aktualisiert: p.zaehler.aktualisiert, uebersprungen: p.zaehler.uebersprungen,
-      neueEinheiten: p.zaehler.neueEinheiten, neueStandorte: p.zaehler.neueStandorte };
+      neueEinheiten: p.zaehler.neueEinheiten, neueStandorte: p.zaehler.neueStandorte,
+      neueQualifikationen: p.zaehler.neueQualifikationen };
     const zeit = new Date().toISOString();
     await storeRoh.setJSON(sErl, { zeit, person: sitzung.person ?? null, zaehler }).catch(() => {});
     return { ok: true, zaehler, stand: erg.stand, zeit };
