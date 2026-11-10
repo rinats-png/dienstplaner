@@ -1,10 +1,10 @@
 {
-  "epoche": 1,
-  "halter": "cloud-nachtaufgabe",
-  "uebernommen_am": "2026-11-10T05:45:26.391Z",
-  "erneuert_am": "2026-11-10T06:39:11.054Z",
-  "gueltig_bis": "2026-11-10T08:39:11.054Z",
-  "uebergabe": "Betreiber-Anweisung 2026-11-10: Hauptchat meldet Entwicklungsschleife beendet, kein Monitor, kein Cron, keine laufende Arbeit. Integrationskopf 38fc7d0 unveraendert, kein Schreiber auf Branches ausser Cloud-Aufgabe.",
-  "vorgaenger": null,
+  "epoche": 2,
+  "halter": "hauptchat",
+  "uebernommen_am": "2026-11-10T09:05:21.559Z",
+  "erneuert_am": "2026-11-10T09:05:21.559Z",
+  "gueltig_bis": "2026-11-10T11:05:21.559Z",
+  "uebergabe": "Hauptchat laut Betreiber-Mitteilung 2026-11-10 wieder aktiver Koordinator. Lease cloud-nachtaufgabe lief 08:39Z ohne Erneuerung ab, Cloud-Aufgabe 08:32Z ohne Aenderungen, Cloud-Sitzungen idle. Integrationskopf 67dd4426 nach Merge #170.",
+  "vorgaenger": "cloud-nachtaufgabe",
   "freigegeben_am": null
 }
