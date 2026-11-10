@@ -70,6 +70,11 @@ jobs:
       - name: Live-Prüfung Schichtfolge-Editor (WP-I2)
         run: npm run pruefung:schichtfolge-live
 
+      # Bewertungsfunktionen der lokalen Browser-Abnahme (ohne Browser). Das Skript
+      # selbst (npm run abnahme:browser-v4) läuft nur lokal mit Chromium.
+      - name: Browser-Abnahme V4, reine Bewertung
+        run: npm run pruefung:browser-abnahme-kern
+
       # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
       # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
       # Folgen hat. App.jsx bleibt außen vor.
