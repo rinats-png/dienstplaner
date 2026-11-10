@@ -58,6 +58,7 @@ const TRAEGER = { id: "traeger-id-1", kennung: "k-traeger", schluessel: "s-traeg
 const leitung = (n, extra = {}) => ({ kennung: `k-l${n}`, schluessel: `s-l${n}`, person: `l${n}`, raum: "r1",
   mandantId: "m1", betrieb: 0, rolle: "leitung", einheiten: [`e${n}`], ...extra });
 const immerGueltig = async () => true;
+const passt = async () => true;
 
 async function eroeffnet(store, ms = T0, traeger = TRAEGER) {
   const r = await KW.fallEroeffnen(store, { traeger, faktorKennung: "g:gen1:x", ms });
@@ -67,10 +68,10 @@ async function eroeffnet(store, ms = T0, traeger = TRAEGER) {
 async function freigegeben(store, ms = T0) {
   const fall = await eroeffnet(store, ms);
   const a = await KW.fallFreigeben(store, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: ms + MIN,
-    nochGueltig: immerGueltig });
+    nochGueltig: immerGueltig, identitaetPassend: passt });
   expect(a).toMatchObject({ ok: true, stand: "teilfreigegeben" });
   const b = await KW.fallFreigeben(store, { fall, freigebender: leitung(2), verfahren: "rueckruf", ms: ms + 2 * MIN,
-    nochGueltig: immerGueltig });
+    nochGueltig: immerGueltig, identitaetPassend: passt });
   expect(b).toMatchObject({ ok: true, stand: "freigegeben" });
   return { fall, token: b.token, bisMs: b.bisMs };
 }
@@ -85,11 +86,11 @@ describe("WR-3 Kern: Ablauf", () => {
     /* Ohne Freigabe: nichts einzulösen. */
     expect((await einloesen(s, "A".repeat(43), T0 + MIN)).ok).toBe(false);
     const a = await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN,
-      nochGueltig: immerGueltig });
+      nochGueltig: immerGueltig, identitaetPassend: passt });
     expect(a).toEqual({ ok: true, stand: "teilfreigegeben", verfallen: 0 });
     expect(/** @type {any} */ (a).token).toBeUndefined();
     const b = await KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "rueckruf", aktenzeichen: "AZ-7/2026",
-      ms: T0 + 2 * MIN, nochGueltig: immerGueltig });
+      ms: T0 + 2 * MIN, nochGueltig: immerGueltig, identitaetPassend: passt });
     expect(b.ok && b.stand).toBe("freigegeben");
     const token = /** @type {any} */ (b).token;
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -102,7 +103,7 @@ describe("WR-3 Kern: Ablauf", () => {
     expect(wirkungen).toBe(1);
     /* Eingelöst ist Endzustand: keine weitere Freigabe, kein neuer Token. */
     expect((await KW.fallFreigeben(s, { fall, freigebender: leitung(3), verfahren: "persoenlich", ms: T0 + 4 * MIN,
-      nochGueltig: immerGueltig })).ok).toBe(false);
+      nochGueltig: immerGueltig, identitaetPassend: passt })).ok).toBe(false);
   });
 
   it("falsches Token, fremder Träger, anderer Faktorzustand: kein Einlösen, Fall bleibt einlösbar", async () => {
@@ -124,9 +125,9 @@ describe("WR-3 Kern: Fristen (24 h Antrag, 15 min Token)", () => {
     const s = speicher();
     const fall = await eroeffnet(s);
     expect((await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich",
-      ms: T0 + 24 * H - 1, nochGueltig: immerGueltig })).ok).toBe(true);
+      ms: T0 + 24 * H - 1, nochGueltig: immerGueltig, identitaetPassend: passt })).ok).toBe(true);
     const zu = await KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "persoenlich",
-      ms: T0 + 24 * H, nochGueltig: immerGueltig });
+      ms: T0 + 24 * H, nochGueltig: immerGueltig, identitaetPassend: passt });
     expect(zu).toEqual({ ok: false, grund: "stand:abgelaufen" });
     expect(await KW.laufenderFall(s, TRAEGER.id, T0 + 24 * H)).toBe(null);
     /* Festgeschrieben, Endzustand: auch mit zurückgestellter Uhr nicht wieder offen. */
@@ -148,9 +149,9 @@ describe("WR-3 Kern: Fristen (24 h Antrag, 15 min Token)", () => {
   it("Token endet spätestens mit dem Antrag (24 h ab Eröffnung), auch wenn 15 min länger wären", async () => {
     const s = speicher();
     const fall = await eroeffnet(s);
-    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + H, nochGueltig: immerGueltig });
+    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + H, nochGueltig: immerGueltig, identitaetPassend: passt });
     const b = await KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "persoenlich", ms: T0 + 24 * H - 5 * MIN,
-      nochGueltig: immerGueltig });
+      nochGueltig: immerGueltig, identitaetPassend: passt });
     expect(b.ok && /** @type {any} */ (b).bisMs).toBe(T0 + 24 * H);
     expect((await einloesen(s, /** @type {any} */ (b).token, T0 + 24 * H)).ok).toBe(false);
   });
@@ -165,7 +166,7 @@ describe("WR-3 Kern: Fristen (24 h Antrag, 15 min Token)", () => {
 
 describe("WR-3 Kern: Wer darf freigeben", () => {
   const versuch = async (s, fall, w, ms = T0 + MIN) =>
-    KW.fallFreigeben(s, { fall, freigebender: w, verfahren: "persoenlich", ms, nochGueltig: immerGueltig });
+    KW.fallFreigeben(s, { fall, freigebender: w, verfahren: "persoenlich", ms, nochGueltig: immerGueltig, identitaetPassend: passt });
 
   it("nur Leitung im selben Raum, Mandanten und Betrieb", async () => {
     const s = speicher();
@@ -212,13 +213,13 @@ describe("WR-3 Kern: Wer darf freigeben", () => {
     const fall = await eroeffnet(s);
     await versuch(s, fall, leitung(1));
     const r = await KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "persoenlich", ms: T0 + 2 * MIN,
-      nochGueltig: async (fr) => fr.person !== "l1" });
+      nochGueltig: async (fr) => fr.person !== "l1", identitaetPassend: passt });
     expect(r).toEqual({ ok: true, stand: "teilfreigegeben", verfallen: 1 });
     expect(JSON.parse(s.m.get(`verlustfall:${fall}`)).freigaben.map((x) => x.person)).toEqual(["l2"]);
     /* Wirft die Prüfung (Ablage nicht lesbar): nichts geschrieben. */
     const vorher = s.m.get(`verlustfall:${fall}`);
     await expect(KW.fallFreigeben(s, { fall, freigebender: leitung(3), verfahren: "persoenlich", ms: T0 + 3 * MIN,
-      nochGueltig: async () => { throw new Error("EIO"); } })).rejects.toThrow();
+      nochGueltig: async () => { throw new Error("EIO"); }, identitaetPassend: passt })).rejects.toThrow();
     expect(s.m.get(`verlustfall:${fall}`)).toBe(vorher);
   });
 
@@ -227,20 +228,30 @@ describe("WR-3 Kern: Wer darf freigeben", () => {
     const fall = await eroeffnet(s);
     for (const v of ["", "mail", "per E-Mail"])
       expect((await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: v, ms: T0 + MIN,
-        nochGueltig: immerGueltig })).ok).toBe(false);
+        nochGueltig: immerGueltig, identitaetPassend: passt })).ok).toBe(false);
     expect((await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", aktenzeichen: "Max Muster <x>",
-      ms: T0 + MIN, nochGueltig: immerGueltig })).ok).toBe(false);
+      ms: T0 + MIN, nochGueltig: immerGueltig, identitaetPassend: passt })).ok).toBe(false);
   });
 
-  it("Ablehnung beendet den Fall; neuer Fall erst nach der Sperrfrist", async () => {
+  it("Ablehnung beendet den Fall; Sperre erst nach zwei Ablehnungen verschiedener Personen (M2)", async () => {
     const s = speicher();
-    const fall = await eroeffnet(s);
-    expect(await KW.fallAblehnen(s, { fall, freigebender: leitung(1), grund: "identitaet-zweifelhaft", ms: T0 + MIN }))
-      .toEqual({ ok: true, stand: "abgelehnt" });
-    expect((await versuch(s, fall, leitung(2), T0 + 2 * MIN)).ok).toBe(false);
-    expect(await KW.fallEroeffnen(s, { traeger: TRAEGER, faktorKennung: "g:gen1:x", ms: T0 + 2 * H }))
-      .toEqual({ ok: false, grund: "gesperrt" });
-    expect((await KW.fallEroeffnen(s, { traeger: TRAEGER, faktorKennung: "g:gen1:x", ms: T0 + MIN + 24 * H })).ok).toBe(true);
+    const ablehnen = (fall, w, ms) => KW.fallAblehnen(s, { fall, freigebender: w, grund: "identitaet-zweifelhaft", ms,
+      identitaetPassend: passt });
+    const neu = (ms) => KW.fallEroeffnen(s, { traeger: TRAEGER, faktorKennung: "g:gen1:x", ms });
+    const f1 = await eroeffnet(s);
+    expect(await ablehnen(f1, leitung(1), T0 + MIN)).toEqual({ ok: true, stand: "abgelehnt" });
+    expect((await versuch(s, f1, leitung(2), T0 + 2 * MIN)).ok).toBe(false);
+    /* Eine einzelne Leitung sperrt nicht: sofort ein neuer Fall; dieselbe Person erneut: weiterhin keine Sperre. */
+    const f2 = await neu(T0 + 3 * MIN);
+    expect(f2.ok).toBe(true);
+    expect((await ablehnen(/** @type {any} */ (f2).fall, leitung(1), T0 + 4 * MIN)).ok).toBe(true);
+    const f3 = await neu(T0 + 5 * MIN);
+    expect(f3.ok).toBe(true);
+    /* Zweite, andere Person: jetzt gesperrt — bis 24 h nach der ersten der beiden letzten Ablehnungen verstrichen sind. */
+    expect((await ablehnen(/** @type {any} */ (f3).fall, leitung(2), T0 + 6 * MIN)).ok).toBe(true);
+    expect(await neu(T0 + 7 * MIN)).toEqual({ ok: false, grund: "gesperrt" });
+    expect(await neu(T0 + 4 * MIN + 24 * H - 1)).toEqual({ ok: false, grund: "gesperrt" });
+    expect((await neu(T0 + 4 * MIN + 24 * H)).ok).toBe(true);
   });
 
   it("Rückzug: Endzustand, Token danach ungültig; nur ein laufender Fall je Träger", async () => {
@@ -262,12 +273,48 @@ describe("WR-3 Kern: Wer darf freigeben", () => {
   });
 });
 
+describe("WR-3 Kern: Review #191 (H1, L1, L2)", () => {
+  it("H1: ohne passende Träger-Identität keine Freigabe, kein Token, keine Ablehnung; ohne Prüfung ebenso", async () => {
+    const s = speicher();
+    const fall = await eroeffnet(s);
+    const nie = async () => false;
+    expect(await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN,
+      nochGueltig: immerGueltig, identitaetPassend: nie })).toEqual({ ok: false, grund: "identitaet" });
+    expect(await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN,
+      nochGueltig: immerGueltig, identitaetPassend: /** @type {any} */ (undefined) })).toEqual({ ok: false, grund: "identitaet" });
+    expect(await KW.fallAblehnen(s, { fall, freigebender: leitung(1), grund: "sonstiges", ms: T0 + MIN, identitaetPassend: nie }))
+      .toEqual({ ok: false, grund: "identitaet" });
+    const f = JSON.parse(s.m.get(`verlustfall:${fall}`));
+    expect(f.stand).toBe("offen");
+    expect(f.freigaben).toEqual([]);
+  });
+
+  it("L1: die Unabhängigkeit wird mit den JETZIGEN Einheiten des ersten Freigebenden geprüft", async () => {
+    const s = speicher();
+    const fall = await eroeffnet(s);
+    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN,
+      nochGueltig: immerGueltig, identitaetPassend: passt });
+    /* l1 ist inzwischen in Einheit e2 gewechselt — dieselbe wie l2. */
+    const r = await KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "persoenlich", ms: T0 + 2 * MIN,
+      nochGueltig: async () => ({ einheiten: ["e2"] }), identitaetPassend: passt });
+    expect(r).toEqual({ ok: false, grund: "nicht-unabhaengig" });
+  });
+
+  it("L2: wirft die Wirkung, ist das Ergebnis „ungewiss“ (nicht „unverändert“) und so vermerkt", async () => {
+    const s = speicher();
+    const { fall, token } = await freigegeben(s);
+    const r = await einloesen(s, token, T0 + 3 * MIN, async () => { throw new Error("EIO"); });
+    expect(r).toMatchObject({ ok: false, grund: "wirkung", ergebnis: { ungewiss: true } });
+    expect(JSON.parse(s.m.get(`verlustfall:${fall}`)).wirkung).toBe("ungewiss");
+  });
+});
+
 describe("WR-3 Kern: Gleichzeitigkeit und Fehler", () => {
   it("rennende Freigaben: genau ein Token, genau zwei Freigaben gespeichert", async () => {
     const s = speicher();
     const fall = await eroeffnet(s);
     const alle = await Promise.all([1, 2, 3, 4, 5].map((n) => KW.fallFreigeben(s, { fall, freigebender: leitung(n),
-      verfahren: "persoenlich", ms: T0 + MIN, nochGueltig: immerGueltig })));
+      verfahren: "persoenlich", ms: T0 + MIN, nochGueltig: immerGueltig, identitaetPassend: passt })));
     expect(alle.filter((r) => r.ok && r.stand === "freigegeben")).toHaveLength(1);
     expect(alle.filter((r) => r.ok && r.stand === "teilfreigegeben")).toHaveLength(1);
     expect(alle.filter((r) => !r.ok)).toHaveLength(3);
@@ -294,11 +341,11 @@ describe("WR-3 Kern: Gleichzeitigkeit und Fehler", () => {
   it("Schreibfehler bei der zweiten Freigabe: kein Token, Fall unverändert", async () => {
     const s = speicher();
     const fall = await eroeffnet(s);
-    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN, nochGueltig: immerGueltig });
+    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN, nochGueltig: immerGueltig, identitaetPassend: passt });
     const vorher = s.m.get(`verlustfall:${fall}`);
     s.fehler = (op, k) => op === "set" && k.startsWith("verlustfall:");
     await expect(KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "persoenlich", ms: T0 + 2 * MIN,
-      nochGueltig: immerGueltig })).rejects.toThrow();
+      nochGueltig: immerGueltig, identitaetPassend: passt })).rejects.toThrow();
     s.fehler = () => false;
     expect(s.m.get(`verlustfall:${fall}`)).toBe(vorher);
   });
@@ -356,15 +403,15 @@ describe("WR-3 Kern: Sicherungsstände und Schlüsselepoche", () => {
     ZF.wiederherstellungEpocheQuelle(async () => { if (!geht) throw new Error("weg"); return "epoche-a"; });
     const s = speicher();
     const fall = await eroeffnet(s);
-    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN, nochGueltig: immerGueltig });
+    await KW.fallFreigeben(s, { fall, freigebender: leitung(1), verfahren: "persoenlich", ms: T0 + MIN, nochGueltig: immerGueltig, identitaetPassend: passt });
     const b = await KW.fallFreigeben(s, { fall, freigebender: leitung(2), verfahren: "persoenlich", ms: T0 + 2 * MIN,
-      nochGueltig: immerGueltig });
+      nochGueltig: immerGueltig, identitaetPassend: passt });
     geht = false;
     expect(await KW.fallEroeffnen(s, { traeger: { ...TRAEGER, id: "anderer" }, faktorKennung: "g:x", ms: T0 }))
       .toEqual({ ok: false, grund: "epoche" });
     expect(await einloesen(s, /** @type {any} */ (b).token, T0 + 3 * MIN)).toEqual({ ok: false, grund: "epoche" });
     expect((await KW.fallFreigeben(s, { fall, freigebender: leitung(3), verfahren: "persoenlich", ms: T0 + 2 * MIN,
-      nochGueltig: immerGueltig })).ok).toBe(false);
+      nochGueltig: immerGueltig, identitaetPassend: passt })).ok).toBe(false);
   });
 });
 

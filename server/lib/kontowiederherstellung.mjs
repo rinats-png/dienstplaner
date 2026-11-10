@@ -69,8 +69,11 @@ import { faktorEpoche, WIEDERHERSTELLUNG_ALPHABET } from "./zweifaktor.mjs";
 export const ANTRAG_FRIST_MS = 24 * 60 * 60 * 1000;
 /** Ein Abschlusstoken gilt höchstens so lange (ab der zweiten Freigabe, nie über ANTRAG_FRIST_MS hinaus). */
 export const TOKEN_FRIST_MS = 15 * 60 * 1000;
-/** Nach einer Ablehnung beginnt für denselben Träger frühestens so viel später ein neuer Fall. */
+/** Nach ZWEI Ablehnungen verschiedener Personen innerhalb dieser Zeit beginnt für denselben Träger erst nach ihrem
+    Ablauf ein neuer Fall (M2, Review #191: eine einzelne Leitung kann den Träger so nicht dauerhaft aussperren). */
 export const SPERRE_NACH_ABLEHNUNG_MS = 24 * 60 * 60 * 1000;
+/** So viele Ablehnungen verschiedener Personen braucht die Sperre. */
+export const ABLEHNUNGEN_FUER_SPERRE = 2;
 /** So weit darf die Uhr hinter einen gespeicherten Zeitpunkt zurückgehen, bevor der Fall als abgelaufen gilt. */
 export const UHR_TOLERANZ_MS = 5 * 1000;
 /** Zwei Freigaben, zwei verschiedene Freigebende (Entscheidung 1). */
@@ -217,6 +220,14 @@ async function fallDesTraegers(store, traegerId) {
   return f && f.traeger && f.traeger.id === traegerId ? f : null;
 }
 
+/** Die Ablehnungen der letzten SPERRE_NACH_ABLEHNUNG_MS (gleiche Epoche) am Verweis des Trägers. */
+async function juengereAblehnungen(store, traegerId, ms, ep) {
+  const z = await store.get(TRAEGER(traegerId), { type: "json" });
+  const liste = z && Array.isArray(z.ablehnungen) ? z.ablehnungen : [];
+  return liste.filter((a) => a && !leer(a.person) && (!ep.gebunden || a.epoche === ep.epoche)
+    && innerhalb(a.zeitMs, SPERRE_NACH_ABLEHNUNG_MS, ms));
+}
+
 /**
  * Der laufende Fall eines Trägers, falls es einen gibt (offen, teilfreigegeben oder freigegeben, Frist und Epoche
  * gültig). Nur lesen. Ein Lesefehler wirft — der Aufrufer muss dann abweisen.
@@ -260,10 +271,10 @@ export async function fallEroeffnen(store, { traeger, faktorKennung, ms = Date.n
       const st = wirksamerStand(alt, ms, ep);
       if (LAUFEND.includes(st)) return { ok: false, grund: "offen" };
       await ablaufFesthalten(store, alt, ms, st);
-      /* Nach einer Ablehnung (in dieser Epoche) erst nach der Sperrfrist ein neuer Fall. */
-      if (alt.stand === "abgelehnt" && (!ep.gebunden || alt.epoche === ep.epoche)
-        && innerhalb(Date.parse(alt.ende), SPERRE_NACH_ABLEHNUNG_MS, ms)) return { ok: false, grund: "gesperrt" };
     }
+    /* Sperre nur nach zwei Ablehnungen verschiedener Personen (in dieser Epoche, innerhalb der Frist). */
+    const ablehnungen = await juengereAblehnungen(store, t.id, ms, ep);
+    if (new Set(ablehnungen.map((a) => a.person)).size >= ABLEHNUNGEN_FUER_SPERRE) return { ok: false, grund: "gesperrt" };
     const fall = fallKennungNeu();
     const f = {
       v: 1, fall, stand: "offen",
@@ -277,7 +288,7 @@ export async function fallEroeffnen(store, { traeger, faktorKennung, ms = Date.n
     };
     /* Erst der Fall, dann der Verweis: Ohne Verweis ist ein Fall für den Träger nicht einlösbar. */
     await store.setJSON(FALL(fall), f);
-    await store.setJSON(TRAEGER(t.id), { fall });
+    await store.setJSON(TRAEGER(t.id), { fall, ablehnungen });
     return { ok: true, fall, bisMs: ms + ANTRAG_FRIST_MS };
   });
 }
@@ -293,21 +304,25 @@ export async function fallEroeffnen(store, { traeger, faktorKennung, ms = Date.n
  * Antwort ohne Grund nach außen: `ok: false` heißt immer dasselbe.
  * @param {any} store
  * @param {{fall: string, freigebender: any, verfahren: string, aktenzeichen?: string|null, ms?: number,
- *   nochGueltig: (f: any) => Promise<boolean>}} a
+ *   nochGueltig: (f: any) => Promise<boolean|{einheiten?: string[]}>, identitaetPassend: (f: any) => Promise<boolean>}} a
  * @returns {Promise<{ok: true, stand: "teilfreigegeben"}|{ok: true, stand: "freigegeben", token: string, bisMs: number}
  *   |{ok: false, grund: string}>}
  */
 export async function fallFreigeben(store, { fall, freigebender, verfahren, aktenzeichen = null, ms = Date.now(),
-  nochGueltig }) {
+  nochGueltig, identitaetPassend }) {
   if (!VERFAHREN.includes(verfahren)) return { ok: false, grund: "verfahren" };
   if (aktenzeichen !== null && aktenzeichen !== undefined && !AKTENZEICHEN_MUSTER.test(String(aktenzeichen)))
     return { ok: false, grund: "aktenzeichen" };
   return fallAendern(store, fall, freigebender, ms, async (f) => {
     if (typeof nochGueltig !== "function") return { ok: false, grund: "pruefung" };
     /* J.2f: die bisherigen Freigaben neu prüfen; wer seine Berechtigung verloren hat, dessen Freigabe verfällt. */
+    /* L1: mit den JETZIGEN Einheiten der früheren Freigebenden (Rückgabe der Prüfung), nicht den eingefrorenen. */
     const bleiben = [];
     for (const fr of Array.isArray(f.freigaben) ? f.freigaben : []) {
-      if (!freigebenderUnzulaessig(f, fr) && (await nochGueltig(fr)) === true) bleiben.push(fr);
+      if (freigebenderUnzulaessig(f, fr)) continue;
+      const g = await nochGueltig(fr);
+      if (g === true) bleiben.push(fr);
+      else if (g && typeof g === "object") bleiben.push({ ...fr, einheiten: Array.isArray(g.einheiten) ? g.einheiten : fr.einheiten });
     }
     for (const fr of bleiben) { if (nichtUnabhaengig(fr, freigebender)) return { ok: false, grund: "nicht-unabhaengig" }; }
     const neu = { kennung: freigebender.kennung, schluessel: freigebender.schluessel || null,
@@ -325,23 +340,28 @@ export async function fallFreigeben(store, { fall, freigebender, verfahren, akte
     await store.setJSON(FALL(f.fall), { ...f, stand: "freigegeben", freigaben,
       token: { hash: tokenHash(f.fall, f.traeger.id, f.faktorKennung, token).toString("hex"), ausgestelltMs: ms, bisMs } });
     return { ok: true, stand: "freigegeben", token, bisMs };
-  }, ["offen", "teilfreigegeben"]);
+  }, ["offen", "teilfreigegeben"], identitaetPassend);
 }
 
 /**
  * Ablehnen (Endzustand). Dieselben Voraussetzungen an den Ablehnenden wie an einen Freigebenden.
  * @param {any} store
- * @param {{fall: string, freigebender: any, grund: string, ms?: number}} a
+ * @param {{fall: string, freigebender: any, grund: string, ms?: number, identitaetPassend: (f: any) => Promise<boolean>}} a
  * @returns {Promise<{ok: true, stand: "abgelehnt"}|{ok: false, grund: string}>}
  */
-export async function fallAblehnen(store, { fall, freigebender, grund, ms = Date.now() }) {
+export async function fallAblehnen(store, { fall, freigebender, grund, ms = Date.now(), identitaetPassend }) {
   if (!ABLEHNUNGSGRUENDE.includes(grund)) return { ok: false, grund: "grund" };
-  return fallAendern(store, fall, freigebender, ms, async (f) => {
+  return fallAendern(store, fall, freigebender, ms, async (f, ep) => {
+    /* M2: Ablehnung am Verweis des Trägers vermerken (für die Sperre nach zwei verschiedenen Personen). */
+    const z = (await store.get(TRAEGER(f.traeger.id), { type: "json" })) || { fall: f.fall };
+    const alt = (Array.isArray(z.ablehnungen) ? z.ablehnungen : []).filter((a) => a && innerhalb(a.zeitMs, SPERRE_NACH_ABLEHNUNG_MS, ms));
+    await store.setJSON(TRAEGER(f.traeger.id), { ...z, ablehnungen: [...alt, { person: String(freigebender.person),
+      kennung: freigebender.kennung, zeitMs: ms, ...(ep.gebunden ? { epoche: ep.epoche } : {}) }] });
     await store.setJSON(FALL(f.fall), { ...f, stand: "abgelehnt", token: null, freigaben: f.freigaben || [],
       ablehnung: { kennung: freigebender.kennung, person: String(freigebender.person), grund, zeit: new Date(ms).toISOString() },
       ende: new Date(ms).toISOString() });
     return { ok: true, stand: "abgelehnt" };
-  }, ["offen", "teilfreigegeben"]);
+  }, ["offen", "teilfreigegeben"], identitaetPassend);
 }
 
 /**
@@ -350,7 +370,9 @@ export async function fallAblehnen(store, { fall, freigebender, grund, ms = Date
  * @param {any} store @param {string} fall @param {any} w @param {number} ms
  * @param {(f: any, ep: any) => Promise<any>} arbeit @param {string[]} erlaubt
  */
-async function fallAendern(store, fall, w, ms, arbeit, erlaubt) {
+async function fallAendern(store, fall, w, ms, arbeit, erlaubt, identitaetPassend) {
+  /* H1 (Review #191): Ohne Prüfung der Träger-Identität keine Wirkung — fehlt sie, ist das ein Nein. */
+  if (typeof identitaetPassend !== "function") return { ok: false, grund: "identitaet" };
   const ep = await faktorEpoche();
   if (ep.gebunden && !ep.epoche) return { ok: false, grund: "epoche" };
   const vorab = await fallLesen(store, fall);
@@ -368,6 +390,8 @@ async function fallAendern(store, fall, w, ms, arbeit, erlaubt) {
       if (nichtUnabhaengig(fr, w) === "gleiches-konto" || nichtUnabhaengig(fr, w) === "gleiche-person")
         return { ok: false, grund: "schon-freigegeben" };
     }
+    /* H1: Die Freigebende bestätigt, WESSEN Fall es ist (Angabe aus ihrer Identitätsprüfung, gegen den Bestand). */
+    if ((await identitaetPassend(f)) !== true) return { ok: false, grund: "identitaet" };
     return arbeit(f, ep);
   });
 }
@@ -419,11 +443,14 @@ export async function fallEinloesen(store, { traegerId, token, faktorKennung, ms
     if (soll.length !== ist.length || !timingSafeEqual(soll, ist)) return { ok: false, grund: "token" };
     const eingeloest = { ...f, stand: "eingeloest", token: null, ende: new Date(ms).toISOString() };
     await store.setJSON(FALL(f.fall), eingeloest);
+    /** @type {any} */
     let ergebnis;
     try { ergebnis = await wirkung(f.fall); }
-    catch { ergebnis = { ok: false, fehler: "wirkung" }; }
+    catch { ergebnis = { ok: false, fehler: "wirkung", ungewiss: true }; }
     if (!ergebnis || ergebnis.ok !== true) {
-      await store.setJSON(FALL(f.fall), { ...eingeloest, wirkung: "gescheitert" }).catch(() => {});
+      /* L2: Warf die Wirkung, ist ungewiss, ob die neue Einrichtung schon geschrieben ist. */
+      await store.setJSON(FALL(f.fall), { ...eingeloest, wirkung: ergebnis && ergebnis.ungewiss ? "ungewiss" : "gescheitert" })
+        .catch(() => {});
       return { ok: false, grund: "wirkung", ergebnis };
     }
     return { ok: true, fall: f.fall, ergebnis };

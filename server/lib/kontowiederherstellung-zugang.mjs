@@ -37,7 +37,9 @@
    Ereignis und pseudonyme Kennungen — nie Token, Geheimnis, Namen.
    ========================================================================== */
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import { kontoLesenStreng } from "./konten.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
 import { bestandLesenStreng } from "./bestand.mjs";
 import { codeBindung } from "./erstbefuellung.mjs";
 import { wirksameRolle, eigenerMandant, einheitAm } from "./rechte.mjs";
@@ -67,8 +69,13 @@ const NEIN = { fehler: "Diese Freigabe ist nicht möglich.", verlust: "nein" };
 const FALSCH = { fehler: "Die Freigabe stimmt nicht oder gilt nicht mehr.", verlust: "falsch" };
 const leer = (v) => v === null || v === undefined || v === "";
 
-/** Heute als JJJJ-MM-TT (für die datumsbezogene Einheit). */
-const heute = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** Heute als JJJJ-MM-TT im Betriebsdatum (Europe/Berlin, wie die übrigen Tagesregeln; L1 Review #191). */
+const heute = (ms) => heuteBerlin(new Date(ms));
+
+/** Personalnummer vergleichbar machen: getrimmt, Großschreibung; als Prüfsumme für den zeitkonstanten Vergleich. */
+const pnSumme = (v) => createHash("sha256").update(`pn|${String(v ?? "").trim().toUpperCase()}`).digest();
+/** Höchstlänge einer eingegebenen Personalnummer (Form, keine Auskunft). */
+const PN_MAX = 40;
 
 /**
  * Die Einheiten eines Zugangs: am Code (`einheit`/`gruppe`) und der Person heute. Betriebsweit („ALLE", leer) fällt
@@ -121,7 +128,29 @@ const nochGueltigFuer = (store, faktorIdFuer, ms) => async (fr) => {
   const fid = faktorIdFuer(fr.kennung);
   if (!(await zweifaktorStand(store, fid)).aktiv) return false;
   if (await laufenderFall(store, fid, ms)) return false;
-  return true;
+  /* L1: die jetzigen Einheiten (Code und Person am Betriebsdatum) für die Unabhängigkeitsprüfung. */
+  return { einheiten: einheitenVon(e, g && g.bestand, ms) };
+};
+
+/**
+ * H1 (Review #191): Passt die von der Freigebenden eingegebene Personalnummer zur Person des Falls — frisch aus dem
+ * gespeicherten Bestand (Raum, Betrieb, Mandant des Falls)? Zeitkonstant über Prüfsummen. Ohne Personalnummer im
+ * Bestand: nein (fail-closed). Bei Treffer wird die Anzeige (Vor-/Nachname, Einheit) für die Antwort gemerkt.
+ * @param {any} store @param {string} eingabe @param {{anzeige: any}} merk @param {number} ms
+ */
+const identitaetPruefer = (store, eingabe, merk, ms) => async (f) => {
+  const t = f && f.traeger;
+  if (!t) return false;
+  const g = await bestandLesenStreng(store, t.raum);
+  const m = eigenerMandant(g && g.bestand, { betrieb: t.betrieb ?? 0 });
+  const p = m && String(m.id) === String(t.mandantId) && Array.isArray(m.personen)
+    ? m.personen.find((x) => x && String(x.id) === String(t.person)) : null;
+  const vorhanden = !!p && !leer(p.personalnummer);
+  const soll = pnSumme(vorhanden ? p.personalnummer : " kein-treffer");
+  const gleich = timingSafeEqual(soll, pnSumme(eingabe)) && vorhanden;
+  if (gleich) merk.anzeige = { vorname: p.vorname ?? null, nachname: p.nachname ?? null,
+    einheit: einheitAm(p, heute(ms)) ?? null };
+  return gleich;
 };
 
 /**
@@ -185,9 +214,8 @@ export async function verlustAktion({ store, k, rumpf, aktion, id, vermerk, stan
       return json({ fehler: "Für diesen Zugang ist der Weg über zwei Freigaben nicht möglich. Bitte an die "
         + "Organisationsleitung wenden.", verlust: "nicht-moeglich" }, 409);
     }
-    const vorher = await sitzungenBeenden();
-    if (vorher.fehler) return json({ fehler: "Bisherige Sitzungen dieses Zugangs ließen sich nicht alle beenden — "
-      + "es wurde kein Fall eröffnet. Bitte erneut versuchen.", zweifaktor: "sitzungen" }, 503);
+    /* M1 (Review #191): erst eröffnen, dann Sitzungen beenden — ein Aufruf, der keinen Fall eröffnet (offen,
+       gesperrt, Epoche), beendet keine Sitzung. */
     const r = /** @type {any} */ (await fallEroeffnen(store, { traeger: { id, kennung: t.kennung, schluessel: t.schluessel, person: t.person,
       raum: t.raum, mandantId: t.mandantId, betrieb: t.betrieb, rolle: t.rolle }, faktorKennung: stand.faktorKennung, ms }));
     if (!r.ok) {
@@ -198,18 +226,28 @@ export async function verlustAktion({ store, k, rumpf, aktion, id, vermerk, stan
         verlust: "gesperrt" }, 409);
       return json({ fehler: "Für diesen Zugang ist der Weg über zwei Freigaben nicht möglich.", verlust: "nicht-moeglich" }, 409);
     }
-    const danach = await sitzungenBeenden();
+    const beendet = await sitzungenBeenden();
+    if (beendet.fehler) {
+      /* Nicht alle Sitzungen beendet: den eben eröffneten Fall wieder zurückziehen (fail-closed, kein halber Fall). */
+      await fallZurueckziehen(store, { traegerId: id, ms }).catch(() => {});
+      await protokoll("zweifaktor", k, "fehler", `Verlust · Fall ${r.fall} zurückgenommen, Sitzungen nicht alle beendet`);
+      return json({ fehler: "Bisherige Sitzungen dieses Zugangs ließen sich nicht alle beenden — es wurde kein Fall "
+        + "eröffnet. Bitte erneut versuchen.", zweifaktor: "sitzungen" }, 503);
+    }
     await codeRichtig();
     await protokoll("zweifaktor", k, "warnung", `Verlust · Fall eröffnet ${r.fall} · ${pseud} · `
-      + `${vorher.beendet + danach.beendet} Sitzungen beendet`);
+      + `${beendet.beendet} Sitzungen beendet`);
     return json({ ok: true, fall: r.fall, gueltigBis: new Date(r.bisMs).toISOString(),
       hinweis: "Zwei Leitungen dieses Betriebs müssen den Fall freigeben, jede mit einem frischen Code aus ihrer App. "
         + "Das Ergebnis ist ein Abschlusstoken, das 15 Minuten gilt und persönlich übergeben wird. Der Fall endet nach 24 Stunden." });
   }
 
   async function zurueckziehen() {
-    const gebremst = await bremsen("verlust", [`vl:${id16}`, `vlh:${k}`], k); if (gebremst) return gebremst;
+    /* M1: eigener Zähler — der Eröffnungszähler (vl:) sperrt den Rückzug des Trägers nie. Nach Erfolg entlastet. */
+    const kennungenZ = [`vz:${id16}`, `vzh:${k}`];
+    const gebremst = await bremsen("verlust", kennungenZ, k); if (gebremst) return gebremst;
     const r = await fallZurueckziehen(store, { traegerId: id, ms });
+    await entlastenAlle("verlust", kennungenZ);
     await codeRichtig();
     if (r.fall) await protokoll("zweifaktor", k, "warnung", `Verlust · Fall zurückgezogen ${r.fall} · ${pseud}`);
     return json({ ok: true });
@@ -220,8 +258,12 @@ export async function verlustAktion({ store, k, rumpf, aktion, id, vermerk, stan
     const verfahren = String((rumpf && rumpf.verfahren) || "");
     const grund = String((rumpf && rumpf.grund) || "");
     const aktenzeichen = rumpf && !leer(rumpf.aktenzeichen) ? String(rumpf.aktenzeichen) : null;
+    const personalnummer = rumpf && typeof rumpf.personalnummer === "string" ? rumpf.personalnummer.trim() : "";
     /* Form zuerst — sie sagt nichts über einen Fall. */
     if (!fall) return json({ fehler: "Bitte die Fallkennung angeben (F-…).", verlust: "ungueltig" }, 400);
+    /* H1: Die Personalnummer der geprüften Person — aus der eigenen Identitätsprüfung, nicht vom Antragsteller. */
+    if (!personalnummer || personalnummer.length > PN_MAX)
+      return json({ fehler: "Bitte die Personalnummer der Person angeben, deren Identität geprüft wurde.", verlust: "ungueltig" }, 400);
     if (!ablehnen && !VERFAHREN.includes(verfahren))
       return json({ fehler: `Bitte das Verfahren der Identitätsprüfung angeben: ${VERFAHREN.join(", ")}.`, verlust: "ungueltig" }, 400);
     if (!ablehnen && aktenzeichen !== null && !AKTENZEICHEN_MUSTER.test(aktenzeichen))
@@ -258,14 +300,18 @@ export async function verlustAktion({ store, k, rumpf, aktion, id, vermerk, stan
     const w = handelnder(kontext, ms);
     const nochGueltig = nochGueltigFuer(store, faktorIdFuer, ms);
     /* Der Handelnde selbst — streng aus der Ablage (Rolle, Mandant, Faktor), nicht nur aus dem Anmeldeweg. */
-    if (leer(w.person) || leer(w.mandantId) || !(await nochGueltig(w))) {
+    const selbst = leer(w.person) || leer(w.mandantId) ? false : await nochGueltig(w);
+    if (!selbst) {
       await warten();
       await protokoll("zweifaktor", k, "abgewiesen", `Verlust · ${ablehnen ? "Ablehnung" : "Freigabe"} · ${pseud} · nicht berechtigt`);
       return json(NEIN, 403);
     }
+    if (typeof selbst === "object") w.einheiten = selbst.einheiten;
+    const merk = { anzeige: null };
+    const identitaetPassend = identitaetPruefer(store, personalnummer, merk, ms);
     const r = /** @type {any} */ (ablehnen
-      ? await fallAblehnen(store, { fall, freigebender: w, grund, ms })
-      : await fallFreigeben(store, { fall, freigebender: w, verfahren, aktenzeichen, ms, nochGueltig }));
+      ? await fallAblehnen(store, { fall, freigebender: w, grund, ms, identitaetPassend })
+      : await fallFreigeben(store, { fall, freigebender: w, verfahren, aktenzeichen, ms, nochGueltig, identitaetPassend }));
     if (!r.ok) {
       if (r.grund === "epoche") return nichtPruefbar();
       await warten();
@@ -275,12 +321,13 @@ export async function verlustAktion({ store, k, rumpf, aktion, id, vermerk, stan
     await entlastenAlle("verlust", kennungenV);
     if (ablehnen) {
       await protokoll("zweifaktor", k, "warnung", `Verlust · Fall abgelehnt ${fall} · ${pseud} · ${grund}`);
-      return json({ ok: true, stand: "abgelehnt" });
+      return json({ ok: true, stand: "abgelehnt", traeger: merk.anzeige });
     }
     await protokoll("zweifaktor", k, "erfolg", `Verlust · Fall ${r.stand} ${fall} · ${pseud} · ${verfahren}`
       + `${aktenzeichen ? ` · Az. ${aktenzeichen}` : ""}`);
-    if (r.stand === "teilfreigegeben") return json({ ok: true, stand: "teilfreigegeben" });
-    return json({ ok: true, stand: "freigegeben", freigabe: r.token, gueltigBis: new Date(r.bisMs).toISOString(),
+    /* Erst nach Authentifizierung UND passender Personalnummer: wessen Fall es ist (zur Kontrolle). */
+    if (r.stand === "teilfreigegeben") return json({ ok: true, stand: "teilfreigegeben", traeger: merk.anzeige });
+    return json({ ok: true, stand: "freigegeben", traeger: merk.anzeige, freigabe: r.token, gueltigBis: new Date(r.bisMs).toISOString(),
       hinweis: "Das Abschlusstoken erscheint genau einmal und gilt 15 Minuten. Nach der Identitätsprüfung persönlich "
         + "oder telefonisch übergeben, nie per E-Mail allein." });
   }
@@ -297,9 +344,15 @@ export async function verlustAktion({ store, k, rumpf, aktion, id, vermerk, stan
     if (!r.ok) {
       if (r.grund === "epoche") return nichtPruefbar();
       if (r.grund === "wirkung") {
-        await protokoll("zweifaktor", k, "fehler", `Verlust · Einlösen · Wirkung gescheitert · ${pseud}`);
-        return json({ fehler: "Die Freigabe ist verbraucht, der zweite Faktor blieb unverändert. Bitte einen neuen Fall "
-          + "eröffnen.", verlust: "gescheitert" }, 503);
+        const ungewiss = !!(r.ergebnis && r.ergebnis.ungewiss);
+        await protokoll("zweifaktor", k, "fehler", `Verlust · Einlösen · Wirkung ${ungewiss ? "ungewiss" : "gescheitert"} · ${pseud}`);
+        /* L2: Warf das Schreiben, kann die neue Einrichtung schon stehen (ohne dass ihr Geheimnis je ausgegeben
+           wurde). Sie läuft nach 15 min ab; danach ist ein neuer Fall möglich. */
+        return json({ fehler: ungewiss
+          ? "Die Freigabe ist verbraucht; ob der zweite Faktor schon ersetzt wurde, ist ungewiss. Bitte nach 15 Minuten "
+            + "einen neuen Fall eröffnen."
+          : "Die Freigabe ist verbraucht, der zweite Faktor blieb unverändert. Bitte einen neuen Fall eröffnen.",
+          verlust: ungewiss ? "ungewiss" : "gescheitert" }, 503);
       }
       await warten();
       await protokoll("zweifaktor", k, "abgewiesen", `Verlust · Einlösen · ${pseud} · ${r.grund}`);

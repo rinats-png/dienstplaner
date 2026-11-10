@@ -53,8 +53,14 @@ const uhr = (ms) => { jetzt = ms; vi.setSystemTime(ms); };
 const weiter = (s = 30) => uhr(jetzt + s * 1000);
 const totp = (b32, d = 0) => hotp(base32Dekodieren(b32), schrittZu(jetzt) + d);
 
-const anmelden = async (rumpf, herkunft) => {
+/** Fall → Person des Trägers (die Freigebende kennt die Personalnummer aus ihrer Identitätsprüfung). */
+const FT = {};
+const PN = (personId) => `PN-${personId}`;
+const anmelden = async (rumpf0, herkunft) => {
   nr += 1;
+  let rumpf = rumpf0;
+  if ((rumpf.zweifaktorAktion === "verlust-freigeben" || rumpf.zweifaktorAktion === "verlust-ablehnen")
+    && !("personalnummer" in rumpf)) rumpf = { ...rumpf, personalnummer: FT[rumpf.fall] ? PN(FT[rumpf.fall]) : "PN-unbekannt" };
   const a = await daten(new Request(`http://${WIRT}/api/anmelden`, { method: "POST",
     headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
       "x-forwarded-for": herkunft || `10.63.${Math.floor(nr / 250) % 250}.${nr % 250}` },
@@ -72,7 +78,8 @@ const bestandHolen = async (token) => {
 };
 
 const person = (id, rolle, einheit) => ({ id, vorname: "V", nachname: `N${id}`, rolle, bereich: "ALLE", status: "aktiv",
-  geburtstag: "1980-01-01", ...(einheit ? { zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }] } : {}) });
+  geburtstag: "1980-01-01", personalnummer: PN(id),
+  ...(Array.isArray(einheit) ? { zugehoerigkeit: einheit } : einheit ? { zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }] } : {}) });
 const mandant = (id, personen) => ({ id, name: `Haus ${id}`, status: "aktiv",
   einheiten: [{ id: "e1", name: "WB 1", versatzTage: 0 }, { id: "e2", name: "WB 2", versatzTage: 0 },
     { id: "e3", name: "WB 3", versatzTage: 0 }, { id: "e4", name: "WB 4", versatzTage: 0 }],
@@ -105,7 +112,13 @@ async function freigeben(name, fall, extra = {}) {
   return anmelden({ zugangscode: Z[name].code, zweifaktorAktion: "verlust-freigeben", zweifaktor: totp(F[name].geheimnis),
     fall, verfahren: "persoenlich", ...extra });
 }
-const melden = (name) => anmelden({ zugangscode: Z[name].code, zweifaktorAktion: "verlust-melden" });
+const melden = async (name) => {
+  const r = await anmelden({ zugangscode: Z[name].code, zweifaktorAktion: "verlust-melden" });
+  if (r.fall) FT[r.fall] = Z[name].person;
+  return r;
+};
+const ablehnen = (name, fall, extra = {}) => { weiter(); return anmelden({ zugangscode: Z[name].code,
+  zweifaktorAktion: "verlust-ablehnen", zweifaktor: totp(F[name].geheimnis), fall, grund: "identitaet-zweifelhaft", ...extra }); };
 const einloesen = (name, freigabe) => anmelden({ zugangscode: Z[name].code, zweifaktorAktion: "verlust-einloesen", freigabe });
 
 beforeAll(async () => {
@@ -138,7 +151,10 @@ beforeAll(async () => {
       person("t7", "leitung", "e4"), person("t8", "leitung", "e4"), person("t9", "leitung", "e4"),
       person("l1", "leitung", "e1"), person("l2", "leitung", "e2"), person("l3", "leitung", "e1"),
       person("l4", "leitung", "e3"), person("l5", "leitung", null), person("l6", "leitung", null),
-      person("p1", "planer", "e2"), person("m0", "mitarbeiter", "e2"), person("ab", "mitarbeiter", "e3")]),
+      person("p1", "planer", "e2"), person("m0", "mitarbeiter", "e2"), person("ab", "mitarbeiter", "e3"),
+      person("tv", "leitung", "e4"), person("tm", "leitung", "e4"), person("ta", "leitung", "e4"),
+      /* L1: wechselt am 2026-11-20 (Betriebsdatum Berlin) von e3 nach e1. */
+      person("lw", "leitung", [{ ab: "2020-01-01", einheitId: "e3" }, { ab: "2026-11-20", einheitId: "e1" }])]),
     mandant("m2", [person("x1", "leitung", "e1"), person("x2", "leitung", "e2")]),
   ] }, { durch: "WR-3" });
   await B.bestandSchreiben(laden(), RAUM2, { version: 9, mandanten: [
@@ -146,6 +162,8 @@ beforeAll(async () => {
 
   /* Betroffene (je Szenario einer) */
   for (const t of ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"]) zugang(t, "leitung", t.toLowerCase());
+  for (const t of ["TV", "TM", "TA"]) zugang(t, "leitung", t.toLowerCase());
+  zugang("LW", "leitung", "lw");
   zugang("TOHNE", "leitung", null);
   zugang("TB", "leitung", "t1");          // zweites Konto der Person t1 (Betroffene in T1)
   zugang("L1", "leitung", "l1");
@@ -176,6 +194,21 @@ afterAll(async () => {
   await rm(wurzel, { recursive: true, force: true });
 });
 
+/** Alle Protokollzeilen (centric-spur) als Text. */
+async function spurText() {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const texte = [];
+  const gehe = async (d) => {
+    for (const e of await readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const q = path.join(d, e.name);
+      if (e.isDirectory()) await gehe(q);
+      else if (/centric-spur/i.test(q)) texte.push(await readFile(q, "utf8").catch(() => ""));
+    }
+  };
+  await gehe(wurzel);
+  return texte.join("\n");
+}
+
 describe("WR-3 über /api/anmelden: vollständiger Ablauf", () => {
   it("melden → zwei Freigaben → Token einmal → einlösen → bestätigen → Anmeldung nur mit neuem Code", async () => {
     /* Eine laufende Sitzung des Betroffenen (mit Code aus der App). */
@@ -196,6 +229,11 @@ describe("WR-3 über /api/anmelden: vollständiger Ablauf", () => {
     expect(wc.status, wc.roh).toBe(409);
     expect(wc.zweifaktor).toBe("verlust-offen");
     expect(wc.token).toBeUndefined();
+    /* Abschalten gesperrt (Pflicht ist aus — sonst wäre es ohnehin verweigert). */
+    weiter();
+    const ab = await anmelden({ zugangscode: Z.T1.code, zweifaktorAktion: "abschalten", zweifaktor: totp(F.T1.geheimnis) });
+    expect(ab.status, ab.roh).toBe(409);
+    expect(ab.zweifaktor).toBe("verlust-offen");
     /* Neugenerierung gesperrt. */
     weiter();
     expect((await anmelden({ zugangscode: Z.T1.code, zweifaktorAktion: "wiederherstellung-neu",
@@ -206,6 +244,8 @@ describe("WR-3 über /api/anmelden: vollständiger Ablauf", () => {
     expect(a).toMatchObject({ ok: true, stand: "teilfreigegeben" });
     expect(a.freigabe).toBeUndefined();
     expect(a.token).toBeUndefined();
+    /* Erst nach Authentifizierung und passender Personalnummer: wessen Fall es ist. */
+    expect(a.traeger).toEqual({ vorname: "V", nachname: "Nt1", einheit: "e4" });
     const b = await freigeben("L2", m.fall, { verfahren: "rueckruf", aktenzeichen: "AZ-2026/17" });
     expect(b.status, b.roh).toBe(200);
     expect(b.stand).toBe("freigegeben");
@@ -302,8 +342,14 @@ describe("WR-3: frischer TOTP je Freigabe", () => {
     const nochmal = await anmelden({ zugangscode: Z.L1.code, zweifaktorAktion: "verlust-freigeben", zweifaktor: c2,
       fall: m3.fall, verfahren: "persoenlich" });
     expect(nochmal.status).toBe(401);
+    /* Bei laufendem Fall wird ein Wiederherstellungscode abgewiesen — und NICHT verbraucht. */
+    const wcT2 = await anmelden({ zugangscode: Z.T2.code, zweifaktor: F.T2.wiederherstellung[0] });
+    expect(wcT2.status).toBe(409);
     /* Aufräumen: beide Fälle zurückziehen. */
     for (const t of ["T2", "T3"]) expect((await anmelden({ zugangscode: Z[t].code, zweifaktorAktion: "verlust-zurueckziehen" })).status).toBe(200);
+    const danach = await anmelden({ zugangscode: Z.T2.code, zweifaktor: F.T2.wiederherstellung[0] });
+    expect(danach.status, danach.roh).toBe(200);
+    expect(danach.token).toBeTruthy();
   }, LIMIT);
 });
 
@@ -346,9 +392,12 @@ describe("WR-3: wer freigeben darf, Mandantentrennung, keine Auskunft", () => {
   it("keine Selbstfreigabe über ein zweites Konto derselben Person (T1/TB)", async () => {
     const m = await melden("T1");
     expect(m.status, m.roh).toBe(200);
+    /* TB hat keinen eigenen Fall, einen aktiven Faktor und die richtige Personalnummer — abgewiesen allein wegen
+       der Regel „keine Selbstfreigabe“ (Grund im Protokoll, nicht in der Antwort). */
     const r = await freigeben("TB", m.fall);
     expect(r.status).toBe(403);
     expect(r.verlust).toBe("nein");
+    expect(await spurText()).toMatch(/Verlust · Freigabe · r:[0-9a-f]{16} · selbst/);
     expect((await anmelden({ zugangscode: Z.T1.code, zweifaktorAktion: "verlust-zurueckziehen" })).status).toBe(200);
   }, LIMIT);
 
@@ -492,5 +541,86 @@ describe("WR-3: Schlüsselepoche und Bremse", () => {
       expect(st.slice(0, 3)).toEqual([401, 401, 401]);
       expect(st[3]).toBe(429);
     } finally { SCHUTZ.GRENZEN.verlust = vorher; }
+  }, LIMIT);
+
+  it("M1: Eröffnen und Rückzug haben getrennte Zähler — der Träger kann immer zurückziehen", async () => {
+    const vorher = SCHUTZ.GRENZEN.verlust;
+    SCHUTZ.GRENZEN.verlust = { ...vorher, versuche: 3 };
+    try {
+      for (let i = 0; i < 3; i++) {
+        expect((await melden("TM")).status).toBe(200);
+        expect((await anmelden({ zugangscode: Z.TM.code, zweifaktorAktion: "verlust-zurueckziehen" })).status).toBe(200);
+      }
+      expect((await melden("TM")).status).toBe(429);
+      /* Ein (fremd) eröffneter Fall ist weiter zurückziehbar, obwohl der Eröffnungszähler voll ist. */
+      for (let i = 0; i < 5; i++)
+        expect((await anmelden({ zugangscode: Z.TM.code, zweifaktorAktion: "verlust-zurueckziehen" })).status).toBe(200);
+    } finally { SCHUTZ.GRENZEN.verlust = vorher; }
+  }, LIMIT);
+});
+
+describe("WR-3: Review #191", () => {
+  it("H1: Wer den Zugangscode des Opfers kennt und sich selbst ausweist, bekommt keine Freigabe für dessen Fall", async () => {
+    /* Angreifer (Person ab) kennt den Zugangscode von TV, eröffnet dessen Fall und lässt SICH prüfen. */
+    const m = await melden("TV");
+    expect(m.status, m.roh).toBe(200);
+    const unbekannt = await freigeben("L1", "F-AAAAAAAAAAAAAAAA", { personalnummer: PN("tv") });
+    for (const n of ["L1", "L2"]) {
+      const r = await freigeben(n, m.fall, { personalnummer: PN("ab") });
+      expect(r.status, r.roh).toBe(403);
+      expect(r.roh).toBe(unbekannt.roh);          // keine Auskunft, kein Name
+      expect(r.freigabe).toBeUndefined();
+      expect(r.traeger).toBeUndefined();
+    }
+    /* Ablehnen braucht ebenso die richtige Person. */
+    expect((await ablehnen("L1", m.fall, { personalnummer: PN("ab") })).status).toBe(403);
+    /* Ohne Personalnummer: Formfehler, ohne Bezug zum Fall. */
+    weiter();
+    expect((await anmelden({ zugangscode: Z.L1.code, zweifaktorAktion: "verlust-freigeben", zweifaktor: totp(F.L1.geheimnis),
+      fall: m.fall, verfahren: "persoenlich", personalnummer: "" })).status).toBe(400);
+    /* Der Fall ist unberührt: mit der Personalnummer des echten Trägers geht es. */
+    expect((await freigeben("L1", m.fall)).stand).toBe("teilfreigegeben");
+    expect((await anmelden({ zugangscode: Z.TV.code, zweifaktorAktion: "verlust-zurueckziehen" })).status).toBe(200);
+  }, LIMIT);
+
+  it("verlust-ablehnen: frischer TOTP, nur derselbe Mandant; M2: Sperre erst nach zwei verschiedenen Personen", async () => {
+    const m = await melden("TA");
+    expect(m.status, m.roh).toBe(200);
+    /* Ohne Code aus der App, mit Wiederherstellungscode, aus anderem Mandanten: abgewiesen. */
+    expect((await anmelden({ zugangscode: Z.L1.code, zweifaktorAktion: "verlust-ablehnen", fall: m.fall,
+      grund: "sonstiges" })).status).toBe(401);
+    expect((await anmelden({ zugangscode: Z.L1.code, zweifaktorAktion: "verlust-ablehnen", fall: m.fall, grund: "sonstiges",
+      zweifaktor: F.L1.wiederherstellung[1] })).status).toBe(401);
+    expect((await ablehnen("X1", m.fall)).status).toBe(403);
+    const a = await ablehnen("L1", m.fall);
+    expect(a.status, a.roh).toBe(200);
+    expect(a.stand).toBe("abgelehnt");
+    /* Eine Ablehnung sperrt nicht: neuer Fall sofort möglich; dieselbe Person erneut: weiterhin keine Sperre. */
+    const m2 = await melden("TA");
+    expect(m2.status, m2.roh).toBe(200);
+    expect((await ablehnen("L1", m2.fall)).status).toBe(200);
+    const m3 = await melden("TA");
+    expect(m3.status, m3.roh).toBe(200);
+    expect((await ablehnen("L2", m3.fall)).status).toBe(200);
+    /* Zwei verschiedene Personen: gesperrt. Der gesperrte Aufruf beendet KEINE Sitzung (M1). */
+    weiter();
+    const sitz = await anmelden({ zugangscode: Z.TA.code, zweifaktor: totp(F.TA.geheimnis) });
+    expect(sitz.status, sitz.roh).toBe(200);
+    const g = await melden("TA");
+    expect(g.status).toBe(409);
+    expect(g.verlust).toBe("gesperrt");
+    expect((await bestandHolen(sitz.token)).status).toBe(200);
+  }, LIMIT);
+
+  it("L1: Einheit am Betriebsdatum (Europe/Berlin) — 23:30 UTC ist in Berlin schon der nächste Tag", async () => {
+    /* 2026-11-19 23:30 UTC = 2026-11-20 00:30 in Berlin: lw ist dann in e1, wie l1. */
+    uhr(Date.UTC(2026, 10, 19, 23, 30, 15));
+    const m = await melden("T3");
+    expect(m.status, m.roh).toBe(200);
+    expect((await freigeben("L1", m.fall)).stand).toBe("teilfreigegeben");
+    const w = await freigeben("LW", m.fall);
+    expect(w.status, w.roh).toBe(403);
+    expect(w.freigabe).toBeUndefined();
+    expect((await freigeben("L2", m.fall)).stand).toBe("freigegeben");
   }, LIMIT);
 });
