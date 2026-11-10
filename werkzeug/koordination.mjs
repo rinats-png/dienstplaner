@@ -55,7 +55,8 @@ export function entscheide(lease, jetzt, a) {
   const t = jetzt.getTime();
   const min = Math.min(Math.max(Number(a.minuten) || STANDARD_MIN, 1), MAX_MIN);
   const bis0 = lease ? Date.parse(lease.gueltig_bis) : NaN;
-  if (lease && (!Number.isFinite(bis0) || typeof lease.halter !== "string" || !Number.isInteger(lease.epoche))) {
+  const freigabeKaputt = Boolean(lease) && lease.freigegeben_am != null && !Number.isFinite(Date.parse(lease.freigegeben_am));
+  if (lease && (!Number.isFinite(bis0) || typeof lease.halter !== "string" || !Number.isInteger(lease.epoche) || freigabeKaputt)) {
     return { ok: false, grund: "Lease unlesbar oder beschädigt (fail-closed)" };
   }
   /* gueltig = fremde Sicht (noch nicht übernehmbar); eigenGueltig = der Halter darf noch schreiben. */
@@ -66,6 +67,9 @@ export function entscheide(lease, jetzt, a) {
 
   if (a.aktion === "freigeben") {
     if (!lease || lease.halter !== a.halter) return { ok: false, grund: "nur der Halter kann freigeben" };
+    if (a.epoche === undefined || !Number.isInteger(Number(a.epoche)) || Number(a.epoche) !== lease.epoche) {
+      return { ok: false, grund: `freigeben braucht die aktuelle Epoche ${lease.epoche} (ehemaliger Koordinator abgelehnt)` };
+    }
     return { ok: true, grund: "freigegeben", neu: { ...lease, freigegeben_am: jetzt.toISOString(), gueltig_bis: jetzt.toISOString() } };
   }
   if (a.aktion === "pruefen") {
@@ -100,13 +104,30 @@ function git(args, eingabe) {
 }
 const remote = () => process.env.KOORD_REMOTE || "origin";
 
-/** Liest Spitze und Lease; null, wenn der Branch noch fehlt. */
+/** Eine Lease muss ein Objekt sein; alles andere (null, 0, false, Liste, Text) ist unlesbar (fail-closed). */
+function leseLeaseText(text) {
+  let wert;
+  try { wert = JSON.parse(text); } catch { throw new Error("Lease unlesbar (kein JSON, fail-closed)"); }
+  if (wert === null || typeof wert !== "object" || Array.isArray(wert)) throw new Error("Lease unlesbar (kein Objekt, fail-closed)");
+  return wert;
+}
+
+/** Liest Spitze und Lease als EIN Schnappschuss: Inhalt und Spitze stammen aus demselben Commit.
+    Die Lesung läuft über einen eindeutigen, temporären Ref dieses Prozesses, nie über einen geteilten Ref,
+    den parallele Prozesse überschreiben könnten. Der zurückgegebene Spitzen-Commit ist genau der,
+    dessen Inhalt gelesen wurde; der spätere Push ist gegen ihn ein Compare-and-Swap. null, wenn der Branch fehlt. */
 export function lesen() {
-  let spitze;
-  try { spitze = git(["ls-remote", remote(), REF]).split(/\s+/)[0] || null; } catch (e) { throw new Error(`Remote nicht erreichbar: ${e.message.split("\n")[0]}`); }
-  if (!spitze) return { spitze: null, lease: null };
-  git(["fetch", "--quiet", remote(), `${REF}:refs/koordination/lokal`, "--force"]);
-  return { spitze, lease: JSON.parse(git(["show", "refs/koordination/lokal:lease.json"])) };
+  let entfernt;
+  try { entfernt = git(["ls-remote", remote(), REF]).split(/\s+/)[0] || null; } catch (e) { throw new Error(`Remote nicht erreichbar: ${e.message.split("\n")[0]}`); }
+  if (!entfernt) return { spitze: null, lease: null };
+  const tmp = `refs/koordination/tmp/${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  try {
+    git(["fetch", "--quiet", "--no-tags", remote(), `${REF}:${tmp}`, "--force"]);
+    const spitze = git(["rev-parse", "--verify", tmp]);
+    return { spitze, lease: leseLeaseText(git(["show", `${spitze}:lease.json`])) };
+  } finally {
+    try { git(["update-ref", "-d", tmp]); } catch { /* egal: temporärer Ref */ }
+  }
 }
 
 /** Schreibt als neuer Commit auf die gelesene Spitze; Push ohne Force = atomar. */
@@ -128,9 +149,13 @@ export function schreiben(spitze, lease, nachricht) {
     Hat inzwischen jemand die Lease geändert (Übernahme, Freigabe, Erneuerung), lehnt Git den
     gesamten Push ab; der Arbeits-Branch bleibt unverändert. Ein ehemaliger Koordinator kann so
     nichts mehr schreiben, auch wenn er seine Prüfung vor der Übernahme bestanden hatte. */
+export const GESPERRTE_ZIELE = /^refs\/heads\/(main|master|integration|koordination|release)(\/|$)/;
 export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(), ansicht }) {
-  if (!/^refs\/heads\/[\w./-]+$/.test(ziel) || ziel === REF || /\/(main|master)$/.test(ziel)) {
-    throw new Error(`Zielref nicht erlaubt: ${ziel}`);
+  if (!/^refs\/heads\/[\w./-]+$/.test(ziel) || ziel.includes("..") || GESPERRTE_ZIELE.test(ziel) || ziel === REF) {
+    throw new Error(`Zielref nicht erlaubt: ${ziel} (Integration, Release, main, Lease sind gesperrt; Arbeit nur über PR)`);
+  }
+  if (epoche === undefined || epoche === null || !Number.isInteger(Number(epoche)) || String(epoche).trim() === "") {
+    throw new Error("push braucht --epoche (Fencing)");
   }
   const { spitze, lease } = ansicht || lesen();
   const e = entscheide(lease, jetzt, { aktion: "erneuern", halter, epoche });
@@ -144,8 +169,13 @@ function arg(name) { const i = process.argv.indexOf(name); return i >= 0 ? proce
 
 function haupt() {
   const aktion = process.argv[2];
-  const { spitze, lease } = lesen();
+  let gelesen;
+  try { gelesen = lesen(); } catch (err) { console.error(`ABGELEHNT: ${err.message.split("\n")[0]}`); return 4; }
+  const { spitze, lease } = gelesen;
   if (aktion === "status") { console.log(JSON.stringify(lease || { halter: null }, null, 2)); return 0; }
+  if (["erneuern", "freigeben"].includes(aktion) && arg("--epoche") === undefined) {
+    console.error(`ABGELEHNT: ${aktion} braucht --epoche (Fencing)`); return 1;
+  }
   if (aktion === "push") {
     try { gepruefterPush({ halter: arg("--halter"), epoche: arg("--epoche"), quelle: arg("--quelle") || "HEAD", ziel: arg("--ziel") }); }
     catch (err) { console.error(`ABGELEHNT: ${err.message.split("\n")[0]}`); return 3; }
