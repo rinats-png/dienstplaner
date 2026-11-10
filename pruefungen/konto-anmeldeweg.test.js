@@ -716,3 +716,107 @@ describe("OPT-1-F Review: Befunde 2 und 3", () => {
     expect(danach.grund).toBe("epoche");
   }, LIMIT);
 });
+
+/* ==========================================================================
+   Review PR #179 (Opus, Blocker): Eine zweite, überlappende Bestätigung darf
+   den eben aktivierten Faktor nie löschen. Bis 073d9fea las sie nach der
+   Aktivierung „nichts ausstehend", zählte das als Fehlversuch am schon
+   verbrauchten Code („gesperrt") und schaltete den AKTIVEN Faktor ab — ohne
+   Pflicht wieder nur Passwort, unter Pflicht Aussperrung des Inhabers.
+   ========================================================================== */
+describe("OPT-1-F Review: überlappende Bestätigung löscht keinen aktiven Faktor", () => {
+  beforeEach(() => { weiter(11 * 60); });
+
+  /** A bestätigt vollständig, während B die oberen Prüfungen schon hinter sich hat und am Tor wartet. */
+  async function ueberlappend(was) {
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const K7 = await eingerichtet(was);
+    const s = laden();
+    const b = await AN.kontoFaktorAktion(s, { email: K7.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K7.code });
+    expect(b.ok, JSON.stringify(b)).toBe(true);
+    geheim.add(b.daten.geheimnis);
+    const wert = code(b.daten.geheimnis);
+    /** @type {(v?: any) => void} */ let freigabe = () => {};
+    const warten = new Promise((r) => { freigabe = r; });
+    let amTor = false;
+    const pB = AN.kontoFaktorAktion(s, { email: K7.email, passwort: GUT, aktion: "bestaetigen",
+      ersteinrichtungscode: K7.code, zweifaktor: wert, faktorTor: async () => { amTor = true; await warten; return null; } });
+    for (let i = 0; i < 200 && !amTor; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(amTor).toBe(true);
+    const a = await AN.kontoFaktorAktion(s, { email: K7.email, passwort: GUT, aktion: "bestaetigen",
+      ersteinrichtungscode: K7.code, zweifaktor: wert });
+    expect(a.ok, JSON.stringify(a)).toBe(true);
+    for (const w of a.daten.wiederherstellung) geheim.add(w);
+    expect((await KF.kontoFaktorStand(s, K7.accountId)).aktiv).toBe(true);
+    /* Nach A: eine Sitzung mit Faktor; Epoche festhalten. */
+    weiter();
+    const mit = await AN.anmelden(s, { email: K7.email, passwort: GUT, zweifaktor: code(b.daten.geheimnis) });
+    expect(mit.ok, JSON.stringify(mit)).toBe(true);
+    const epocheNachA = Number((await A.accountLesenPerId(s, K7.accountId)).epoche);
+    freigabe();
+    const rb = await pB;
+    return { AN, K7, s, b, rb, mit, epocheNachA };
+  }
+
+  it("(a) deterministisch: die zweite Bestätigung wird abgewiesen, der Faktor bleibt aktiv, Epoche und Sitzungen unverändert, Anmeldung nur mit Faktor", async () => {
+    const { AN, K7, s, b, rb, mit, epocheNachA } = await ueberlappend("ueberlapp-a");
+    expect(rb.ok).toBe(false);
+    expect(JSON.stringify(rb)).not.toContain("wiederherstellung");
+    const st = await KF.kontoFaktorStand(s, K7.accountId);
+    expect(st.aktiv, JSON.stringify(rb)).toBe(true);
+    expect(Number((await A.accountLesenPerId(s, K7.accountId)).epoche)).toBe(epocheNachA);
+    expect((await AN.sitzungPruefen(s, /** @type {any} */ (mit).token)).ok).toBe(true);
+    /* Ohne Pflicht: Passwort allein reicht nicht. */
+    delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
+    try {
+      const allein = await AN.anmelden(s, { email: K7.email, passwort: GUT });
+      expect(allein.ok).toBe(false);
+      expect(/** @type {any} */ (allein).grund).toBe("zweifaktor-erforderlich");
+    } finally { process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1"; }
+    weiter();
+    const neu = await AN.anmelden(s, { email: K7.email, passwort: GUT, zweifaktor: code(b.daten.geheimnis) });
+    expect(neu.ok, JSON.stringify(neu)).toBe(true);
+    /* Kein Neubeginn mit dem verbrauchten Code. */
+    const again = await AN.kontoFaktorAktion(s, { email: K7.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K7.code });
+    expect(again.ok).toBe(false);
+  }, LIMIT);
+
+  it("(c) unter Pflicht: der Inhaber ist nach der überlappenden Bestätigung nicht ausgesperrt und öffnet den Betrieb als Leitung", async () => {
+    expect(process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT).toBe("1");
+    const { K7, s, b } = await ueberlappend("ueberlapp-c");
+    expect((await KF.kontoFaktorStand(s, K7.accountId)).aktiv).toBe(true);
+    weiter();
+    const keks = await mitFaktorAngemeldet(K7.email, b.daten.geheimnis);
+    const w = await anfrage({ pfad: P_WAHL, rumpf: { raum: K7.raum }, keks });
+    expect(w.status, w.text).toBe(200);
+    expect(w.daten.rolle).toBe("leitung");
+  }, LIMIT);
+
+  it("(b) echte Parallelität: sechs Bestätigungen gleichzeitig (richtige und falsche Werte) — genau eine Aktivierung, danach immer aktiv", async () => {
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const K8 = await eingerichtet("parallel6");
+    const s = laden();
+    const b = await AN.kontoFaktorAktion(s, { email: K8.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K8.code });
+    expect(b.ok).toBe(true);
+    geheim.add(b.daten.geheimnis);
+    const wert = code(b.daten.geheimnis);
+    const falsch = wert === "000000" ? "111111" : "000000";
+    const werte = [wert, falsch, wert, falsch, wert, wert];
+    const erg = await Promise.all(werte.map((z) => AN.kontoFaktorAktion(s, { email: K8.email, passwort: GUT,
+      aktion: "bestaetigen", ersteinrichtungscode: K8.code, zweifaktor: z })));
+    const ok = erg.filter((r) => r.ok);
+    expect(ok.length, JSON.stringify(erg.map((r) => r.ok || r.grund))).toBe(1);
+    for (const w of /** @type {any} */ (ok[0]).daten.wiederherstellung) geheim.add(w);
+    expect((await KF.kontoFaktorStand(s, K8.accountId)).aktiv).toBe(true);
+    /* Auch spätere falsche Versuche mit dem verbrauchten Code ändern daran nichts. */
+    for (let i = 0; i < 6; i++) {
+      const r = await AN.kontoFaktorAktion(s, { email: K8.email, passwort: GUT, aktion: "bestaetigen",
+        ersteinrichtungscode: K8.code, zweifaktor: falsch });
+      expect(r.ok).toBe(false);
+    }
+    expect((await KF.kontoFaktorStand(s, K8.accountId)).aktiv).toBe(true);
+  }, LIMIT);
+});

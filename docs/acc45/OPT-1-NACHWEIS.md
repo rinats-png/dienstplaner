@@ -252,3 +252,35 @@ Prüfungen: `pruefungen/zugangscode-ersteinrichtung.test.js`, `pruefungen/konto-
 Geänderte Erwartungen (bewusst, durch die Entscheidung): Ersteinrichtungscode auf dem Zugangscode-Weg 401 statt
 403/200; Test 3a des #179-Reviews erwartet nach gescheitertem Abmelden einen aktiven Faktor statt eines
 zurückgenommenen.
+
+### Nachtrag Review PR #179 (2026-11-10)
+
+**Blocker: überlappende Bestätigung löschte den aktiven Faktor (behoben).** Ablauf bis 073d9fea: Anfrage A bestätigt,
+verbraucht den Code, aktiviert den Faktor; Anfrage B hatte die oberen Prüfungen schon hinter sich, ihre Vorprüfung las
+danach „nichts ausstehend", zählte das als Fehlversuch am verbrauchten Code („gesperrt") und rief
+`zweifaktorAbschalten` — der aktive Faktor war weg (ohne Pflicht wieder nur Passwort, unter Pflicht Aussperrung).
+Jetzt: Ein Fehlerpfad schaltet nie ab. Neu `zweifaktorEinrichtungVerwerfen` (zweifaktor.mjs) löscht nur eine
+AUSSTEHENDE Einrichtung, frisch gelesen unter derselben Sperre wie Bestätigen/Abschalten; aktiv, anderer Stand oder
+unlesbar: nichts gelöscht. „Nichts ausstehend" zählt nicht mehr als Fehlversuch (Antwort nach frischem Stand: 409
+`faktor-aktiv`/`faktor-nichts`). `ersteinrichtungFehlversuch` meldet `schonVerbraucht`, wenn kein offener Eintrag mehr
+da ist; dann verwirft kein Aufrufer etwas. Dasselbe im Zugangscode-Zweig (betreiber-zweifaktor.mjs). Übrige
+`zweifaktorAbschalten`-Aufrufer geprüft: nur ausdrückliches Abschalten durch den Inhaber (`einrichten.mjs` DELETE,
+`codeZweifaktor` Aktion „abschalten", mit Faktorprüfung) und das Offline-Zurücksetzen — keine Fehlerpfade.
+Prüfungen: konto-anmeldeweg „überlappende Bestätigung" (a) deterministisch, (b) sechs gleichzeitig, (c) unter Pflicht;
+zugangscode-ersteinrichtung (d) Zugangscode-Zweig und „parallele Einlösung" mit Prüfung `aktiv`. (a), (c), (d) waren auf
+073d9fea rot; (b) und die erweiterte Parallelprüfung hängen am Zeitverhalten und waren dort zufällig grün.
+
+**Offen (niedrig): Wiederherstellungscodes im Fehlerpfad „sitzungen".** Scheitern Epoche oder Abmelden nach der
+Aktivierung, bleibt der Faktor aktiv, und die Antwort ist eine Absage ohne Wiederherstellungscodes (sie liegen nur als
+Prüfwerte vor). Der Inhaber meldet sich mit Passwort und Code aus der App an; eine Neuausstellung der
+Wiederherstellungscodes für Konten gibt es noch nicht und wird hier bewusst nicht gebaut — sie gehört zu den
+WR-Paketen (Konto-Wiederherstellung). Bis dahin: Verlust des Geräts in diesem seltenen Fall = Wiederherstellung über
+den WR-Weg.
+
+**Befund 2 (mittel): Betreiberwerkzeug nicht im Docker-Image.** `werkzeug/testbetrieb-anlegen.mjs` wird vom Dockerfile
+nicht kopiert (es kopiert nur benannte Werkzeugdateien); das Dockerfile bleibt unverändert. Aufruf deshalb auf dem
+Host mit Quellstand und `node_modules` (gleiche Fassung wie das laufende Bild), bei gestopptem Server
+(`docker compose -f deploy/compose.yml stop centric-dp-web`), `CENTRIC_DATEN` = Pfad des Datenvolumes auf dem Host
+(Bind-Mount `deploy/data`), `CENTRIC_PFEFFER` = derselbe Wert wie im Dienst, als Benutzer mit uid 1000 (Eigentümer des
+Datenordners); danach wieder `start`. Nur mit Betreiberfreigabe. Ob das Werkzeug ins Image aufgenommen wird, ist eine
+Betreiber-/Infra-Entscheidung.

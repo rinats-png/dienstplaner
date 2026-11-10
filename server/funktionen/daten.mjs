@@ -861,7 +861,8 @@ async function behandeln(req, context, ctx) {
       }
       /* OPT-1 / OPT-1-F (Option A): Ein Ersteinrichtungscode (lib/zugangscode-ersteinrichtung.mjs) gilt auf diesem
          Weg NIE — weder offen noch verbraucht. Er richtet allein den zweiten Faktor am Konto ein, zusammen mit Adresse
-         und Passwort (accountanmeldung.mjs, kontoFaktorAktion); danach ist der Weg hinein die Kontoanmeldung mit Faktor.
+         und Passwort (Konto-Anmeldemodul, kontoFaktorAktion); danach ist der Weg hinein die Kontoanmeldung mit Faktor.
+         (Dieser Endpunkt nennt das Konto-Anmeldemodul bewusst nicht im Quelltext: Isolationsprüfung anmeldung-http.)
          Hier ist er genau wie ein unbekannter Code — dieselbe Bremse, dieselbe Antwort, kein Grund nach außen. So kann
          ihn auch niemand über diesen Weg in einen Faktor am Code verbrennen, den danach nichts mehr prüft (Review #166,
          Blocker 1 und 2). */

@@ -37,7 +37,7 @@ import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
   zweifaktorPruefen,
-  zweifaktorAbschalten, zweifaktorMoeglich } from "./zweifaktor.mjs";
+  zweifaktorAbschalten, zweifaktorEinrichtungVerwerfen, zweifaktorMoeglich } from "./zweifaktor.mjs";
 
 /**
  * Ist der zweite Faktor für Betreibercodes Pflicht? (WP-32d)
@@ -377,8 +377,10 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
       if (art.vermerk && ersteinrichtung && vor.fehler === "code") {
         let fv;
         try { fv = await ersteinrichtungFehlversuch(store, zugangSchluessel); } catch { return { antwort: nichtPruefbar() }; }
-        if (fv.gesperrt) {
-          await zweifaktorAbschalten(store, id).catch(() => {});   // die begonnene Einrichtung verwerfen
+        if (fv.gesperrt && !fv.schonVerbraucht) {
+          /* Nur die begonnene Einrichtung verwerfen — nie einen aktiven Faktor (Review PR #179): frisch unter der
+             Sperre des Faktors geprüft; aktiv oder unlesbar: nichts gelöscht. */
+          await zweifaktorEinrichtungVerwerfen(store, id).catch(() => ({ ok: false }));
           await protokoll("zweifaktor", k, "warnung", `${E} · Ersteinrichtung nach ${fv.fehlversuche} Fehlversuchen gesperrt`);
         }
       }

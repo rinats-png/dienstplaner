@@ -578,10 +578,31 @@ export async function nachweisAusstellen(store, id, ms = Date.now()) {
 }
 
 /**
+ * Eine BEGONNENE, nicht bestätigte Einrichtung verwerfen — für Fehlerpfade (z. B. gesperrter Ersteinrichtungscode).
+ * Anders als zweifaktorAbschalten berührt sie einen AKTIVEN Faktor nie (Review PR #179): Unter derselben Sperre wie
+ * Bestätigen und Abschalten wird frisch gelesen; ist der Eintrag aktiv oder in einem anderen Stand als „ausstehend",
+ * bleibt er unverändert (`grund: "aktiv"` bzw. `"anderer-stand"`). Ein Lesefehler wirft — der Aufrufer löscht dann
+ * nichts und sagt ab. Kein Eintrag: nichts zu tun.
+ * @returns {Promise<{ok: boolean, grund?: string}>}
+ */
+export async function zweifaktorEinrichtungVerwerfen(store, id) {
+  return unterSperre(id, async () => {
+    const e = await store.get(SCHLUESSEL(id), { type: "json" });
+    if (!e) return { ok: true, grund: "nichts" };
+    if (e.stand === "aktiv") return { ok: false, grund: "aktiv" };
+    if (e.stand !== "ausstehend") return { ok: false, grund: "anderer-stand" };
+    await store.delete(SCHLUESSEL(id));
+    return { ok: true };
+  });
+}
+
+/**
  * Abschalten: alle Nachweise dieses Schlüssels und den Eintrag entfernen.
  * Lässt sich die Liste der Nachweise nicht lesen, wird NICHT abgeschaltet —
  * der Fehler geht an den Aufrufer. (Die Generation macht übrig gebliebene
  * Nachweise ohnehin wertlos; abgeschaltet wird trotzdem nur sauber.)
+ * Nur für ausdrückliches Abschalten oder Zurücksetzen durch den Inhaber bzw.
+ * offline; ein Fehlerpfad nimmt zweifaktorEinrichtungVerwerfen (PR #179).
  */
 export async function zweifaktorAbschalten(store, id) {
   return unterSperre(id, async () => {

@@ -536,6 +536,9 @@ describe("OPT-1 Anmeldung mit dem Ersteinrichtungscode", () => {
     expect([x, y].filter((r) => Array.isArray(r.wiederherstellung)).length).toBe(1);
     const ein = await KS.kontoLesenStreng(laden(), K.schluessel);
     expect(ein.ersteinrichtungVerbraucht).toMatchObject({ grund: "eingerichtet" });
+    /* Review PR #179: Danach ist der Faktor AKTIV — die unterlegene Bestätigung hat ihn nicht gelöscht. */
+    const st = await KF.kontoFaktorStand(laden(), K.accountId);
+    expect(st.aktiv, `${x.roh} | ${y.roh}`).toBe(true);
     weiter();
   }, LIMIT);
 
@@ -818,5 +821,56 @@ describe("OPT-1 Provisionierung mit Ersteinrichtung", () => {
     const danach = await A.accountLesenPerId(s, konto.id);
     expect(A.testbetriebOffen(danach).ok).toBe(true);
     expect(danach.testbetriebRaum ?? null).toBeNull();
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   Review PR #179 (Blocker), Zugangscode-Zweig (betreiber-zweifaktor.mjs):
+   Ein Fehlversuch, der erst NACH einer gleichzeitigen Einlösung gezählt wird
+   (Code schon verbraucht), darf den inzwischen aktiven Faktor nicht löschen.
+   Bis 073d9fea: ersteinrichtungFehlversuch → „gesperrt" → zweifaktorAbschalten.
+   ========================================================================== */
+describe("OPT-1-F Review: Fehlversuch nach gleichzeitiger Einlösung löscht keinen aktiven Faktor", () => {
+  it("(d) betreiber-zweifaktor: falscher Wert, dazwischen aktiviert eine andere Anfrage — Faktor bleibt aktiv", async () => {
+    uhr(T0 + 20 * STUNDE);
+    const BZ = await import("../server/lib/betreiber-zweifaktor.mjs");
+    const ZF = await import("../server/lib/zweifaktor.mjs");
+    const e = await neuerCode("l3");
+    const schl = CODES.neuHash(e.code);
+    const id = BZ.rollenZweifaktorId(schl);
+    const echt = laden();
+    const beg = await ZF.zweifaktorBeginnen(echt, id, "Haus");
+    expect(beg.geheimnis).toBeTruthy();
+    const richtig = totp(beg.geheimnis);
+    const falsch = richtig === "000000" ? "111111" : "000000";
+    /* Die Ablage für Anfrage B: Liest B (nach der Vorprüfung) den Zugang für den Fehlversuch, ist A gerade fertig
+       geworden — Faktor aktiv, Code verbraucht. */
+    let zfGelesen = 0, ausgeloest = false;
+    const proxy = new Proxy(echt, { get(t, p) {
+      if (p === "get") return async (key, ...rest) => {
+        if (key === `zweifaktor:${id}`) zfGelesen += 1;
+        if (!ausgeloest && zfGelesen >= 2 && key === `konto:${schl}`) {
+          ausgeloest = true;
+          const a = await ZF.zweifaktorBestaetigen(echt, id, richtig);
+          expect(a.ok).toBe(true);
+          const ein = await KS.kontoLesenStreng(echt, schl);
+          const { ersteinrichtung, ...rest2 } = ein;
+          await KS.kontoSchreiben(echt, schl, { ...rest2, faktorPflicht: true,
+            ersteinrichtungVerbraucht: { am: new Date().toISOString(), grund: "eingerichtet", pruefwert: ersteinrichtung.pruefwert } });
+        }
+        return t.get(key, ...rest);
+      };
+      const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const r = await BZ.rollenZweifaktor({ store: proxy, k: "test-opt1f-d", rumpf: { zweifaktorAktion: "bestaetigen",
+      zweifaktor: falsch }, codeSchluessel: schl, name: "Haus", ersteinrichtung: true, pflichtErzwungen: true });
+    expect(ausgeloest).toBe(true);
+    expect(r.antwort && r.antwort.status).toBe(401);
+    expect((await ZF.zweifaktorStand(echt, id)).aktiv).toBe(true);
+    /* Bibliothek: ein Fehlversuch an einem verbrauchten Code meldet „schon verbraucht"; Verwerfen lässt Aktives stehen. */
+    const fv = await E.ersteinrichtungFehlversuch(echt, [schl]);
+    expect(fv).toMatchObject({ gesperrt: true, schonVerbraucht: true });
+    expect(await ZF.zweifaktorEinrichtungVerwerfen(echt, id)).toEqual({ ok: false, grund: "aktiv" });
+    expect((await ZF.zweifaktorStand(echt, id)).aktiv).toBe(true);
   }, LIMIT);
 });

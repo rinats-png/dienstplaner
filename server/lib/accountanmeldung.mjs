@@ -101,7 +101,7 @@ import { passwortPruefen, passwortAblegen } from "./passwoerter.mjs";
 import {
   accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
-import { zweifaktorAbschalten } from "./zweifaktor.mjs";
+import { zweifaktorEinrichtungVerwerfen } from "./zweifaktor.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
@@ -414,12 +414,27 @@ export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifa
   let vor;
   try { vor = await kontoFaktorVorpruefen(store, id, code); } catch { return nichtPruefbar("faktor-lesen"); }
   if (!vor.ok && vor.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+  if (!vor.ok && vor.grund !== "code") {
+    /* Review PR #179 (Blocker): Keine laufende Einrichtung mehr — typisch, weil eine gleichzeitige Bestätigung den
+       Faktor eben aktiviert hat. Das ist kein falscher Wert aus der App: nichts zählen, nichts verwerfen, nichts
+       abschalten. Antwort nach dem frisch gelesenen Stand; ein Lesefehler ist eine Absage (503). */
+    let jetztAktiv;
+    try { jetztAktiv = await kontoFaktorAktiv(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+    if (jetztAktiv) return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+    return nein("faktor-nichts", "Es ist keine Einrichtung begonnen.");
+  }
   if (!vor.ok) {
     /* Ein falscher Wert aus der App zählt am Ersteinrichtungscode — in der Ablage (Review #166, M1). Nach dem fünften
-       ist der Code endgültig verbraucht und die begonnene Einrichtung verworfen. Lässt sich nicht zählen: 503. */
+       ist der Code endgültig verbraucht und die begonnene Einrichtung verworfen. Lässt sich nicht zählen: 503.
+       Verworfen wird nur eine AUSSTEHENDE Einrichtung, frisch unter der Sperre des Faktors geprüft — ein aktiver Faktor
+       bleibt in jedem Fall (zweifaktorEinrichtungVerwerfen), und nur, wenn DIESER Versuch den Code gesperrt hat. */
     let fv;
     try { fv = await ersteinrichtungFehlversuch(store, [codeSchluessel]); } catch { return nichtPruefbar("faktor-lesen"); }
-    if (fv.gesperrt) await zweifaktorAbschalten(store, kontoFaktorId(id)).catch(() => {});
+    if (fv.gesperrt && !fv.schonVerbraucht) {
+      let w;
+      try { w = await zweifaktorEinrichtungVerwerfen(store, kontoFaktorId(id)); } catch { return nichtPruefbar("faktor-lesen"); }
+      if (!w.ok && w.grund === "aktiv") return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+    }
     return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
   }
   const vorher = await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }));

@@ -235,15 +235,19 @@ export async function ersteinrichtungFuerKonto(store, { code, accountId, jetzt =
  * Einen Fehlversuch zählen (M1, falscher Wert aus der App beim Bestätigen). Ab ERSTEINRICHTUNG_FEHLVERSUCHE ist der
  * Code endgültig verbraucht — gespeichert in der Ablage, nicht im Arbeitsspeicher. Wirft bei einem Ablagefehler
  * (der Aufrufer antwortet 503).
- * @returns {Promise<{gesperrt: boolean, fehlversuche: number}>}
+ * @returns {Promise<{gesperrt: boolean, fehlversuche: number, schonVerbraucht?: boolean}>}
+ *   `schonVerbraucht`: Es gab keinen offenen Eintrag mehr (eingerichtet oder vorher gesperrt) — dieser Versuch hat
+ *   nichts gesperrt, und der Aufrufer verwirft nichts.
  */
 export function ersteinrichtungFehlversuch(store, schluessel) {
   const haupt = schluessel.filter(Boolean)[0];
-  if (!haupt) return Promise.resolve({ gesperrt: true, fehlversuche: 0 });
+  if (!haupt) return Promise.resolve({ gesperrt: true, fehlversuche: 0, schonVerbraucht: true });
   return inReihe(haupt, async () => {
     const eintraege = await offeneEintraege(store, schluessel);
     const offen = eintraege.filter(([, e]) => ersteinrichtungOffen(e));
-    if (!offen.length) return { gesperrt: true, fehlversuche: 0 };
+    /* Schon verbraucht (eingerichtet oder gesperrt), etwa durch eine gleichzeitige Bestätigung: gesperrt, aber NICHT
+       durch diesen Versuch — der Aufrufer darf daraus nichts verwerfen (Review PR #179: ein aktiver Faktor bleibt). */
+    if (!offen.length) return { gesperrt: true, fehlversuche: 0, schonVerbraucht: true };
     const bisher = Math.max(0, ...offen.map(([, e]) => {
       const n = e.ersteinrichtung && e.ersteinrichtung.fehlversuche;
       return Number.isInteger(n) && n > 0 ? n : 0;
