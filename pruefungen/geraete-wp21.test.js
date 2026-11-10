@@ -128,7 +128,9 @@ describe("WP-21: Matrix-Datei und Messskript", () => {
     expect(skript).toMatch(/127\.0\.0\.1/);
     expect(skript).toMatch(/Math\.random\(\)\.toString\(36\)/);
     expect(skript).not.toMatch(/readFile|STAGING-KETTE|dotenv|\.env["']/i);
-    expect(skript).toMatch(/scrollWidth/);
+    /* seit Teil 2 steht die Messfunktion in pruefungen/browser/geraete-messung.mjs (beide Skripte benutzen sie) */
+    expect(skript).toMatch(/import \{ messeSeite \} from "\.\/geraete-messung\.mjs";/);
+    expect(lies("pruefungen/browser/geraete-messung.mjs")).toMatch(/scrollWidth/);
     expect(skript).toMatch(/ZIEL_MINDEST/);
     expect(skript).toMatch(/\.kopf-menue/);
     for (const r of ROLLEN.map((x) => x.id)) expect(skript, r).toContain(`${r}: {`);

@@ -71,6 +71,11 @@ jobs:
       - name: Darstellung Telefon und Tablet (WP-35, WP-21)
         run: npm run pruefung:darstellung && npm run pruefung:geraete
 
+      # WP-21 Teil 2: Bedienabläufe, Querformat, Fokus der Seitenleiste (Vertragsprüfung
+      # ohne Browser; die Messung selbst läuft von Hand: pruefung:geraete-ablaeufe-browser).
+      - name: Telefon und Tablet, Bedienabläufe (WP-21 Teil 2)
+        run: npm run pruefung:geraete-ablaeufe
+
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 

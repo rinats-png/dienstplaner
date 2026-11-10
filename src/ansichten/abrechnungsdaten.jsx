@@ -1,5 +1,6 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState, useMemo } from "react";
+import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { imDienst, einheitAm } from "../../server/lib/fachpruefung.mjs";
 import { kontoSichtbar, zuschlagWert, ausgleichBedarf, istStunden, darfEinheit } from "../lib/fachlogik.js";
 import { pruefHinweis, ZUR_PRUEFUNG_TEXT } from "../istdaten.js";
@@ -60,8 +61,10 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
 
         <Leitraster seiteBreite={480}
           haupt={<>
-        <Card style={{ overflowX: "auto" }}>
+        <Card>
           <CardHead right={<Lab>Zuschlagswert in Stunden</Lab>}>Je Person</CardHead>
+          {/* WP-21 Teil 2: zwischen 481 und 792 px (Tablet hoch) scrollt die Tabelle (760 px) quer; als benannter, per Tastatur erreichbarer Bereich mit Hinweis. Bis 480 px bleibt die Stapelung (WP-35). */}
+          <Scrollbereich label="Abrechnungsdaten, Zuschläge je Person">
           <table className="raster raster-stapel" style={{ minWidth: 760 }}>
             <thead><tr>{["Person", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag", "Zuschlagswert"].map((h, i) => (
               <th key={i} style={{ textAlign: i ? "right" : "left" }}>{h}</th>))}</tr></thead>
@@ -77,6 +80,7 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
                 <td data-label="Zuschlagswert" style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1Ist(z.summe)} h</td>
               </tr>))}</tbody>
           </table>
+          </Scrollbereich>
         </Card>
           </>}
           seite={<>
