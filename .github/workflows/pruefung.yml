@@ -64,6 +64,9 @@ jobs:
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 
+      - name: Schichtmodelle und Schichtzyklen (IMP-6)
+        run: npm run pruefung:import-schichtmodelle
+
       - name: Eintrittsdatum ohne stille Ersetzung
         run: npm run pruefung:person-eintritt
 
