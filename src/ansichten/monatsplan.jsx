@@ -4,6 +4,7 @@ import { einheitAm, einheitDienst } from "../../server/lib/fachpruefung.mjs";
 import { pad, pISO, dow, dim_, dauer } from "../regelwerk.js";
 import { C } from "../farben.js";
 import { Card, Lab, Schalter, Filterleiste, Planzelle, Btn, Sel, H1 } from "../ui/bausteine.jsx";
+import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { lesbar, NUM } from "../ui/thema.js";
 import { DOW, MON, heute, fLang } from "../lib/datum.js";
 import { n1 } from "../lib/format.js";
@@ -81,7 +82,8 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
             Zurücksetzen</Btn>
         </>} />
 
-      <Card style={{ overflowX: "auto" }}>
+      <Card>
+        <Scrollbereich label="Monatsplan, Tabelle mit allen Tagen des Monats">
         <table role="grid" aria-label="Monatsplan — mit den Pfeiltasten bewegen, Eingabetaste öffnet den Tag"
           style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
           <thead>
@@ -187,6 +189,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
               </tr>))}
           </tbody>
         </table>
+        </Scrollbereich>
       </Card>
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap", marginTop: 18 }}>
         {m.dienstarten.map((d) => (

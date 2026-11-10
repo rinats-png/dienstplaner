@@ -64,8 +64,8 @@ export function AntraegeGeteilt({ sitz, akt }) {
     <div>
       <H1 rubrik="Anliegen"
         sub="Erst die Anträge, daneben die Kapazität. Bei Auswahl eines Antrags werden die betroffenen Wochen hervorgehoben — so ist vor der Entscheidung sichtbar, was sie auslöst."
-        right={<Seg value={reiter} onChange={setReiter}
-          options={[{ id: "einzeln", label: "Einzelanträge" }, { id: "runde", label: "Jahresurlaubsrunde" }]} />}>
+        right={<div className="seg-umbruch"><Seg value={reiter} onChange={setReiter}
+          options={[{ id: "einzeln", label: "Einzelanträge" }, { id: "runde", label: "Jahresurlaubsrunde" }]} /></div>}>
         Anträge</H1>
 
       {reiter === "runde" ? <Urlaubsrunde sitz={sitz} akt={akt} /> : (
@@ -81,10 +81,10 @@ export function AntraegeGeteilt({ sitz, akt }) {
           <Card style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
               borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
-              <Seg value={filter} onChange={setFilter} options={[
+              <div className="seg-umbruch"><Seg value={filter} onChange={setFilter} options={[
                 { id: "offen", label: `Offen ${offeneZahl ? `· ${offeneZahl}` : ""}` },
                 { id: "genehmigt", label: "Genehmigt" }, { id: "abgelehnt", label: "Abgelehnt" },
-                { id: "alle", label: "Alle" }]} />
+                { id: "alle", label: "Alle" }]} /></div>
               <div style={{ flex: 1 }} />
               {gewaehlt.length > 0 ? (
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -122,7 +122,7 @@ export function AntraegeGeteilt({ sitz, akt }) {
                       <input type="checkbox" checked={anGewaehlt} aria-label={`Antrag von ${p ? `${p.nachname}, ${p.vorname}` : "unbekannt"} für Sammelentscheidung auswählen`} onClick={(ev) => ev.stopPropagation()}
                         onChange={(ev) => setGewaehlt(ev.target.checked
                           ? [...gewaehlt, a.id] : gewaehlt.filter((x) => x !== a.id))}
-                        style={{ width: 15, height: 15, flexShrink: 0, accentColor: C.accent }} />
+                        className="ziel-haken" style={{ width: 15, height: 15, flexShrink: 0, accentColor: C.accent }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                           {p && <Avatar person={p} size="sm" style={{ width: 24, height: 24, fontSize: 10 }} />}

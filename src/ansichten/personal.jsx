@@ -6,6 +6,7 @@ import { darf } from "../lib/berechtigung.js";
 import { rolle, ROLLEN, rollenName } from "../lib/rollen.js";
 import { imDienst, einheitAm, eintrittFehlt } from "../../server/lib/fachpruefung.mjs";
 import { H1, Btn, Card, Rubrik, klickbar, Filterleiste, Seg, Lab, Avatar, Sel, Pill, Fussleiste, Field, Inp } from "../ui/bausteine.jsx";
+import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { zahl, eur, sgnIst, n1Ist } from "../lib/format.js";
 import { Standortwahl, Standortleiste, Sheet } from "../ui/leisten.jsx";
 import { C } from "../farben.js";
@@ -112,12 +113,13 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
         </Card>)}
 
       <Filterleiste suche={q} setSuche={setQ} platzhalter="Name suchen">
-        <Seg value={filter} onChange={setFilter} options={[{ id: "alle", label: "Alle" },
+        <div className="seg-umbruch"><Seg value={filter} onChange={setFilter} options={[{ id: "alle", label: "Alle" },
           ...einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name })),
-          { id: "aus", label: "Ausgetreten" }]} />
+          { id: "aus", label: "Ausgetreten" }]} /></div>
       </Filterleiste>
 
-      <Card style={{ overflowX: "auto" }}>
+      <Card>
+        <Scrollbereich label="Personal, Tabelle mit Zugangsart, Qualifikationen und Konten">
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 980 }}>
           <thead><tr>{["Person", m.einheitLabel, "Zugangsart", "Qualifikationen", "Resturlaub", "Stundenkonto", `Nacht ${jahr}`, ""].map((h, i) => (
             <th key={i} style={{ textAlign: i > 3 ? "right" : "left", padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}><Lab>{h}</Lab></th>))}</tr></thead>
@@ -176,6 +178,7 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
               <td aria-hidden="true" style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}><Icon n="chevron-rechts" size={16} /></td>
             </tr>); })}</tbody>
         </table>
+        </Scrollbereich>
       </Card>
 
       {darf(sitz, "staff.edit") && (

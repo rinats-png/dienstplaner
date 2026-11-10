@@ -5,6 +5,7 @@ import { heute, MON, DOW, fKurz } from "../lib/datum.js";
 import { darfEinheit, offeneAbweichungen, useSchutzkonflikte, aktive, abwesenheitAm, istStunden, sollStunden, personTag } from "../lib/fachlogik.js";
 import { einheitAm } from "../../server/lib/fachpruefung.mjs";
 import { H1, Seg, Lab, Card, klickbar } from "../ui/bausteine.jsx";
+import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { darf } from "../lib/berechtigung.js";
 import { Zeitwahl } from "../gestalt/ansichten.jsx";
 import { C } from "../farben.js";
@@ -71,7 +72,8 @@ export function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
               {d.kurz}</button>))}
         </div>)}
 
-      <Card style={{ overflowX: "auto" }}>
+      <Card>
+        <Scrollbereich label="Personaleinsatz, Tabelle mit allen Tagen des Monats">
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1060 }}>
           <thead><tr>
             <th style={{ position: "sticky", left: 0, background: C.flaeche, zIndex: 2, textAlign: "left",
@@ -123,6 +125,7 @@ export function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                 </>)}</td>
             </tr>); })}</tbody>
         </table>
+        </Scrollbereich>
       </Card>
       <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14 }}>Bernsteinfarben hinterlegte Felder weichen vom Sollplan ab.</div>
     </div>);
