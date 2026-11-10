@@ -36,6 +36,19 @@ const GUT = "Nordwind und Sonne 1846";
 const PROFIL = { vorname: "Rina", nachname: "Schmitt", betriebsname: "Pflegedienst Morgenrot" };
 
 let wurzel, getStore, daten, E, K, CODES, B, P, A, R;
+/* OPT-1-F: Kontoweg (funktionen/anmeldung.mjs) und Faktor am Konto. KS = konten.mjs (K wird in Prüfungen lokal für ein
+   Konto verwendet). */
+let kontoHandler, KEKS, KF, KS;
+
+/** Die Anmeldebremsen dieser Prüfungen lockern — gemessen wird die Ersteinrichtung, nicht die Bremse. */
+function bremsenLockern(schutz) {
+  schutz.GRENZEN.anmelden = { ...schutz.GRENZEN.anmelden, versuche: 100000 };
+  schutz.WEITERE.anmelden = { ziel: { versuche: 100000, fenster: 300 }, gesamt: { versuche: 100000, fenster: 300 } };
+  schutz.NOTGRENZEN.anmelden = { versuche: 100000, fenster: 300, gesamt: 100000 };
+  schutz.GRENZEN["anmelden-konto"] = { ...schutz.GRENZEN["anmelden-konto"], versuche: 100000 };
+  schutz.WEITERE["anmelden-konto"] = { ziel: { versuche: 100000, fenster: 300 }, gesamt: { versuche: 100000, fenster: 300 } };
+  schutz.NOTGRENZEN["anmelden-konto"] = { versuche: 100000, fenster: 300, gesamt: 100000 };
+}
 let nr = 0;
 let jetzt = T0;
 const uhr = (ms) => { jetzt = ms; vi.setSystemTime(ms); };
@@ -92,10 +105,12 @@ beforeAll(async () => {
   delete process.env.RESEND_API_KEY;
   ({ getStore } = await import("../server/lib/ablage.mjs"));
   const schutz = await import("../server/lib/schutz.mjs");
-  schutz.GRENZEN.anmelden = { ...schutz.GRENZEN.anmelden, versuche: 100000 };
-  schutz.WEITERE.anmelden = { ziel: { versuche: 100000, fenster: 300 }, gesamt: { versuche: 100000, fenster: 300 } };
-  schutz.NOTGRENZEN.anmelden = { versuche: 100000, fenster: 300, gesamt: 100000 };
+  bremsenLockern(schutz);
   daten = (await import("../server/funktionen/daten.mjs")).default;
+  const anm = await import("../server/funktionen/anmeldung.mjs");
+  kontoHandler = anm.default;
+  KEKS = anm.COOKIE;
+  KF = await import("../server/lib/kontofaktor.mjs");
   E = await import("../server/lib/zugangscode-ersteinrichtung.mjs");
   K = await import("../server/lib/konten.mjs");
   CODES = await import("../server/lib/codes.mjs");
@@ -103,6 +118,7 @@ beforeAll(async () => {
   P = await import("../server/lib/provisionierung.mjs");
   A = await import("../server/lib/accounts.mjs");
   R = await import("../server/lib/registrierung.mjs");
+  KS = K;
   await probebestand();
 }, LIMIT);
 
@@ -282,205 +298,409 @@ describe("OPT-1 Einlösen (Verbrauch vor Einrichtung)", () => {
 });
 
 /* ==========================================================================
-   ANMELDEN ÜBER DEN ECHTEN HANDLER
+   ANMELDEN ÜBER DIE ECHTEN HANDLER
+
+   OPT-1-F, Option A (Betreiberentscheidung): Der Ersteinrichtungscode richtet
+   den zweiten Faktor AM KONTO ein, zusammen mit Adresse und Passwort
+   (funktionen/anmeldung.mjs, zweifaktorAktion, Feld ersteinrichtungscode).
+   Auf dem Zugangscode-Weg (funktionen/daten.mjs) gilt er nie — dort ist er
+   wie ein unbekannter Code. Bis b10ab01e richtete er auf dem Zugangscode-Weg
+   einen Faktor AM CODE ein (403 „einrichten", dann 200); nach dem Verbrauch
+   prüfte diesen Faktor nichts mehr, die Leitung war ausgesperrt (Review #166,
+   Blocker 1 und 2). Die Prüfungen dieses Abschnitts prüfen dieselben
+   Eigenschaften (einmalig, befristet, kaputt = unbekannt, fünf Fehlversuche
+   sperren auch über einen Neustart, gleichzeitig genau einer, ohne Pfeffer
+   nichts) jetzt auf dem Kontoweg — und zusätzlich, dass der Code auf dem
+   Zugangscode-Weg nie etwas bewirkt.
    ========================================================================== */
+
+/** POST /api/account/anmelden über den echten Handler. */
+const konto = async (rumpf) => {
+  nr += 1;
+  const a = await kontoHandler(new Request(`http://${WIRT}/api/account/anmelden`, { method: "POST",
+    headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+      "x-forwarded-for": `10.62.${Math.floor(nr / 250)}.${nr % 250}` },
+    body: JSON.stringify(rumpf) }));
+  const roh = await a.text();
+  let d = {}; try { d = JSON.parse(roh); } catch { /* leer */ }
+  return { status: a.status, roh, kopf: a.headers, ...d };
+};
+const keksAus = (kopf) => {
+  const roh = String(kopf.get("set-cookie") || "");
+  const i = roh.indexOf(`${KEKS}=`);
+  return i < 0 ? "" : roh.slice(i + KEKS.length + 1).split(";")[0];
+};
+
+/** Ein fertiges Konto mit Testbetrieb und Ersteinrichtungscode (Betreiberweg, ersteinrichtung: true). */
+async function kontoMitCode(was) {
+  const s = laden();
+  const { konto: k } = await fertigerAccount(s, `opt1f-${was}-${++nr}@example.org`);
+  const e = await P.testbetriebFuerAccountAnlegen(s, sitzungenStore(), { accountId: k.id, ersteinrichtung: true,
+    jetzt: () => jetzt });
+  expect(e.ok, JSON.stringify(e)).toBe(true);
+  return { email: k.email, accountId: k.id, raum: e.raum, person: e.person, code: e.ersteinrichtung.code,
+    bis: e.ersteinrichtung.bis, schluessel: CODES.neuHash(e.ersteinrichtung.code) };
+}
+
+const einrichtung = (K, aktion, o = {}) => konto({ email: K.email, passwort: GUT, zweifaktorAktion: aktion,
+  ersteinrichtungscode: K.code, ...o });
 
 describe("OPT-1 Anmeldung mit dem Ersteinrichtungscode", () => {
   it("gibt mit dem Code allein keine Sitzung — auch ohne Pflichtschalter", async () => {
-    const e = await neuerCode("l1");
-    const a = await anmelden({ zugangscode: e.code });
-    expect(a.status, a.roh).toBe(403);
-    expect(a.zweifaktor).toBe("einrichten");
+    uhr(T0 + 8 * STUNDE);
+    const K = await kontoMitCode("allein");
+    /* Zugangscode-Weg: wie unbekannt (vorher 403 „einrichten"), keine Sitzung, kein Stand. */
+    const unbekannt = await anmelden({ zugangscode: `${K.code.slice(0, -4)}XXXX` });
+    const a = await anmelden({ zugangscode: K.code });
+    expect(a.status, a.roh).toBe(401);
+    expect(a.fehler).toBe(unbekannt.fehler);
     expect(a.token).toBeUndefined();
-    const st = await anmelden({ zugangscode: e.code, zweifaktorAktion: "stand" });
-    expect(st.status, st.roh).toBe(200);
-    expect(st.aktiv).toBe(false);
+    const st = await anmelden({ zugangscode: K.code, zweifaktorAktion: "stand" });
+    expect(st.status, st.roh).toBe(401);
+    expect(st.aktiv).toBeUndefined();
     expect(st.token).toBeUndefined();
+    /* Kontoweg: der Code ohne Passwort ist keine Anmeldung und keine Einrichtung. */
+    for (const rumpf of [{ email: K.email, ersteinrichtungscode: K.code }, { email: K.email, passwort: K.code },
+      { email: K.email, ersteinrichtungscode: K.code, zweifaktorAktion: "beginnen" }]) {
+      const r = await konto(rumpf);
+      expect(r.status, r.roh).toBe(401);
+      expect(r.geheimnis).toBeUndefined();
+      expect(keksAus(r.kopf)).toBe("");
+    }
+    /* Stand mit Passwort: Auskunft, keine Sitzung, kein Cookie. */
+    const stand = await einrichtung(K, "stand");
+    expect(stand.status, stand.roh).toBe(200);
+    expect(stand.aktiv).toBe(false);
+    expect(stand.token).toBeUndefined();
+    expect(stand.kopf.get("set-cookie")).toBe(null);
   }, LIMIT);
 
   it("antwortet nach Ablauf genau wie auf einen unbekannten Code", async () => {
-    const e = await neuerCode("l2");
-    const unbekannt = `${e.code.slice(0, -4)}XXXX`;
-    uhr(new Date(e.bis).getTime() + 1);
+    const K = await kontoMitCode("ablauf");
+    const fremd = { ...K, code: `${K.code.slice(0, -4)}XXXX` };
+    uhr(new Date(K.bis).getTime() + 1);
     try {
-      const ab = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
-      const un = await anmelden({ zugangscode: unbekannt, zweifaktorAktion: "beginnen" });
-      expect(ab.status, ab.roh).toBe(401);
+      const ab = await einrichtung(K, "beginnen");
+      const un = await einrichtung(fremd, "beginnen");
+      expect(ab.status, ab.roh).toBe(403);
       expect(ab.status).toBe(un.status);
       expect(ab.fehler).toBe(un.fehler);
+      expect(ab.hinweis).toBe(un.hinweis);
       expect(ab.geheimnis).toBeUndefined();
       expect(ab.token).toBeUndefined();
-      const ohne = await anmelden({ zugangscode: e.code });
+      const ohne = await anmelden({ zugangscode: K.code });
       expect(ohne.status).toBe(401);
-      expect(ohne.fehler).toBe(un.fehler);
-    } finally { uhr(T0 + STUNDE); }
+    } finally { uhr(T0 + 9 * STUNDE); }
   }, LIMIT);
 
   it("ist mit kaputtem Vermerk wie unbekannt", async () => {
-    const e = await neuerCode("l2");
+    const K = await kontoMitCode("kaputt");
     const s = laden();
-    const schl = CODES.neuHash(e.code);
-    const ein = await K.kontoLesenStreng(s, schl);
-    await K.kontoSchreiben(s, schl, { ...ein, ersteinrichtung: { bis: "kaputt" } });
-    const a = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
-    expect(a.status, a.roh).toBe(401);
+    const ein = await KS.kontoLesenStreng(s, K.schluessel);
+    await KS.kontoSchreiben(s, K.schluessel, { ...ein, ersteinrichtung: { bis: "kaputt" } });
+    const a = await einrichtung(K, "beginnen");
+    expect(a.status, a.roh).toBe(403);
     expect(a.geheimnis).toBeUndefined();
+    /* Auch ohne Kontobindung oder mit fremder Bindung: nichts. */
+    await KS.kontoSchreiben(s, K.schluessel, { ...ein, accountId: undefined });
+    expect((await einrichtung(K, "beginnen")).status).toBe(403);
+    await KS.kontoSchreiben(s, K.schluessel, { ...ein, accountId: "a_fremdes-konto-123" });
+    expect((await einrichtung(K, "beginnen")).status).toBe(403);
   }, LIMIT);
 
-  it("richtet den Faktor genau einmal ein; danach ist der Code verbraucht und wird wie unbekannt abgelehnt (H1)", async () => {
-    uhr(T0 + 2 * STUNDE);
-    const e = await neuerCode("l3");
+  it("richtet den Faktor genau einmal ein; danach ist der Code verbraucht und wird wie unbekannt abgelehnt (H1); die Leitung meldet sich mit Passwort und Faktor an (Blocker 1)", async () => {
+    uhr(T0 + 10 * STUNDE);
+    const K = await kontoMitCode("einmal");
     const s = laden();
-    const schl = CODES.neuHash(e.code);
-    const unbekannt = await anmelden({ zugangscode: `${e.code.slice(0, -4)}XXXX` });
+    const unbekannt = await anmelden({ zugangscode: `${K.code.slice(0, -4)}XXXX` });
     expect(unbekannt.status, unbekannt.roh).toBe(401);
 
-    const b = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
+    const b = await einrichtung(K, "beginnen");
     expect(b.status, b.roh).toBe(200);
     expect(typeof b.geheimnis).toBe("string");
     expect(b.token).toBeUndefined();
-    /* Eine laufende Einrichtung lässt sich mit dem Code allein nicht überschreiben. */
-    const b2 = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
+    /* Eine laufende Einrichtung lässt sich nicht überschreiben. */
+    const b2 = await einrichtung(K, "beginnen");
     expect(b2.status, b2.roh).toBe(409);
     expect(b2.geheimnis).toBeUndefined();
 
-    const falsch = await anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen",
-      zweifaktor: totp(b.geheimnis) === "000000" ? "111111" : "000000" });
+    const falsch = await einrichtung(K, "bestaetigen", { zweifaktor: totp(b.geheimnis) === "000000" ? "111111" : "000000" });
     expect(falsch.status, falsch.roh).toBe(401);
 
-    const ok = await anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen", zweifaktor: totp(b.geheimnis) });
+    const ok = await einrichtung(K, "bestaetigen", { zweifaktor: totp(b.geheimnis) });
     expect(ok.status, ok.roh).toBe(200);
     expect(ok.aktiv).toBe(true);
     expect(ok.token).toBeUndefined();
+    expect(ok.wiederherstellung).toHaveLength(10);
     weiter();
 
-    /* Verbraucht: Vermerk weg, Faktor dauerhaft Pflicht; der Prüfwert bleibt für den Nachweis. */
-    const nach = await K.kontoLesenStreng(s, schl);
+    /* Verbraucht: Vermerk weg, Pflichtvermerk am Code, Prüfwert bleibt für den Nachweis; der Faktor liegt am Konto. */
+    const nach = await KS.kontoLesenStreng(s, K.schluessel);
     expect(nach.ersteinrichtung).toBeUndefined();
     expect(nach.faktorPflicht).toBe(true);
-    expect(nach.zweiterFaktor).toBe(true);
     expect(nach.ersteinrichtungVerbraucht).toMatchObject({ grund: "eingerichtet" });
     expect(typeof nach.ersteinrichtungVerbraucht.pruefwert).toBe("string");
-    expect(E.ersteinrichtungGueltig(nach, e.code, jetzt)).toBe(false);
+    expect(nach.ersteinrichtungVerbraucht.fehlversuche).toBe(1);
+    expect(E.ersteinrichtungGueltig(nach, K.code, jetzt)).toBe(false);
+    expect((await KF.kontoFaktorStand(s, K.accountId)).aktiv).toBe(true);
 
-    /* H1 (Review): Einmalig heißt, der Code ist mit der Einrichtung verbraucht. Jeder weitere Gebrauch — zweite
-       Einrichtung, Code allein, Code mit Faktor, auch nach der Frist, Abschalten — ist dieselbe Ablehnung wie für einen
-       unbekannten Code. Vorher galt derselbe Code mit Faktor dauerhaft als Leitungscode (falsche Erwartung 200). */
+    /* H1: Jeder weitere Gebrauch des Codes — Einrichtung über das Konto, Zugangscode allein, mit Faktor, auch nach der
+       Frist, Abschalten — ergibt nichts. */
     const versuche = [
-      ["zweite Einrichtung", { zugangscode: e.code, zweifaktorAktion: "beginnen" }],
-      ["Code allein", { zugangscode: e.code }],
-      ["Code mit Faktor", { zugangscode: e.code, zweifaktor: totp(b.geheimnis) }],
+      ["zweite Einrichtung (Konto)", () => einrichtung(K, "beginnen")],
+      ["Code allein", () => anmelden({ zugangscode: K.code })],
+      ["Code mit Faktor", () => anmelden({ zugangscode: K.code, zweifaktor: totp(b.geheimnis) })],
+      ["Code als Passwort", () => konto({ email: K.email, passwort: K.code, zweifaktor: totp(b.geheimnis) })],
     ];
-    for (const [was, rumpf] of versuche) {
-      const r = await anmelden(rumpf);
-      expect(r.status, `${was}: ${r.roh}`).toBe(401);
-      expect(r.fehler, was).toBe(unbekannt.fehler);
+    for (const [was, f] of versuche) {
+      const r = await f();
+      expect([401, 409], `${was}: ${r.roh}`).toContain(r.status);
       expect(r.token, was).toBeUndefined();
       expect(r.geheimnis, was).toBeUndefined();
+      expect(keksAus(r.kopf || new Headers())).toBe("");
       weiter();
     }
 
-    /* Auch nach der Frist: der zweite Gebrauch wird abgelehnt (vorher: spaet → 200). */
-    uhr(new Date(e.bis).getTime() + 24 * STUNDE);
-    const spaet = await anmelden({ zugangscode: e.code, zweifaktor: totp(b.geheimnis) });
+    /* Blocker 1: Der reguläre Weg hinein — Passwort und Code aus der App — und mit ihm der Betrieb als Leitung. */
+    const an = await konto({ email: K.email, passwort: GUT, zweifaktor: totp(b.geheimnis) });
+    expect(an.status, an.roh).toBe(200);
+    const keks = keksAus(an.kopf);
+    expect(keks).toBeTruthy();
+    weiter();
+    const w = await kontoHandler(new Request(`http://${WIRT}/api/account/betrieb`, { method: "POST",
+      headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json", cookie: `${KEKS}=${keks}`,
+        "x-forwarded-for": "10.63.0.1" }, body: JSON.stringify({ raum: K.raum }) }));
+    const wd = JSON.parse(await w.text());
+    expect(w.status, JSON.stringify(wd)).toBe(200);
+    expect(wd.rolle).toBe("leitung");
+
+    /* Auch nach der Frist: der zweite Gebrauch wird abgelehnt. */
+    uhr(new Date(K.bis).getTime() + 24 * STUNDE);
+    const spaet = await anmelden({ zugangscode: K.code, zweifaktor: totp(b.geheimnis) });
     expect(spaet.status, spaet.roh).toBe(401);
-    expect(spaet.fehler).toBe(unbekannt.fehler);
     expect(spaet.token).toBeUndefined();
     weiter();
-
-    /* Keine dauerhafte Umgehung: auch Abschalten über das Netz ist abgelehnt. */
-    const ab = await anmelden({ zugangscode: e.code, zweifaktorAktion: "abschalten", zweifaktor: totp(b.geheimnis) });
+    const ab = await anmelden({ zugangscode: K.code, zweifaktorAktion: "abschalten", zweifaktor: totp(b.geheimnis) });
     expect(ab.status, ab.roh).toBe(401);
     expect(ab.aktiv).toBeUndefined();
-    weiter();
-    const danach = await anmelden({ zugangscode: e.code });
-    expect(danach.status, danach.roh).toBe(401);
-    expect(danach.token).toBeUndefined();
+    uhr(T0 + 11 * STUNDE);
   }, LIMIT);
 
   it("M1: fünf falsche Werte aus der App sperren den Code endgültig, auch nach Neustart; danach auch der richtige Wert abgelehnt", async () => {
-    uhr(T0 + 5 * STUNDE);
-    const e = await neuerCode("l2");
+    uhr(T0 + 12 * STUNDE);
+    const K = await kontoMitCode("m1");
     const s = laden();
-    const schl = CODES.neuHash(e.code);
-    const unbekannt = await anmelden({ zugangscode: `${e.code.slice(0, -4)}XXXX` });
-    const b = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
+    const b = await einrichtung(K, "beginnen");
     expect(b.status, b.roh).toBe(200);
     const falsch = totp(b.geheimnis) === "000000" ? "111111" : "000000";
     for (let i = 0; i < E.ERSTEINRICHTUNG_FEHLVERSUCHE; i += 1) {
-      const f = await anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen", zweifaktor: falsch });
+      const f = await einrichtung(K, "bestaetigen", { zweifaktor: falsch });
       expect(f.status, `Versuch ${i + 1}: ${f.roh}`).toBe(401);
       expect(f.aktiv).toBeUndefined();
     }
     expect(E.ERSTEINRICHTUNG_FEHLVERSUCHE).toBe(5);
-    const ein = await K.kontoLesenStreng(s, schl);
+    const ein = await KS.kontoLesenStreng(s, K.schluessel);
     expect(ein.ersteinrichtung).toBeUndefined();
     expect(ein.ersteinrichtungVerbraucht).toMatchObject({ grund: "fehlversuche" });
 
     /* Neustart der Prozessinstanz: alle Module und Zähler im Arbeitsspeicher neu. Die Sperre liegt in der Ablage. */
     vi.resetModules();
     const schutz = await import("../server/lib/schutz.mjs");
-    schutz.GRENZEN.anmelden = { ...schutz.GRENZEN.anmelden, versuche: 100000 };
-    schutz.WEITERE.anmelden = { ziel: { versuche: 100000, fenster: 300 }, gesamt: { versuche: 100000, fenster: 300 } };
-    schutz.NOTGRENZEN.anmelden = { versuche: 100000, fenster: 300, gesamt: 100000 };
+    bremsenLockern(schutz);
     daten = (await import("../server/funktionen/daten.mjs")).default;
+    kontoHandler = (await import("../server/funktionen/anmeldung.mjs")).default;
+    /* Die Bremse des Faktors (fünf je fünf Minuten) ist hier nicht gemeint: abwarten, bis sie frei ist. */
+    uhr(jetzt + 16 * 60000);
 
-    const richtig = await anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen", zweifaktor: totp(b.geheimnis) });
-    expect(richtig.status, richtig.roh).toBe(401);
-    expect(richtig.fehler).toBe(unbekannt.fehler);
+    const richtig = await einrichtung(K, "bestaetigen", { zweifaktor: totp(b.geheimnis) });
+    expect([403, 409], richtig.roh).toContain(richtig.status);
     expect(richtig.wiederherstellung).toBeUndefined();
-    const neu = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
-    expect(neu.status, neu.roh).toBe(401);
+    const neu = await einrichtung(K, "beginnen");
+    expect(neu.status, neu.roh).toBe(403);
     expect(neu.geheimnis).toBeUndefined();
-    const ZF = await import("../server/lib/zweifaktor.mjs");
-    const BZ = await import("../server/lib/betreiber-zweifaktor.mjs");
-    expect((await ZF.zweifaktorStand(s, BZ.rollenZweifaktorId(schl))).aktiv).toBe(false);
+    const KF2 = await import("../server/lib/kontofaktor.mjs");
+    expect((await KF2.kontoFaktorStand(s, K.accountId)).aktiv).toBe(false);
+    expect((await KF2.kontoFaktorStand(s, K.accountId)).ausstehend).toBe(false);
   }, LIMIT);
 
   it("parallele Einlösung desselben Codes: genau eine gelingt", async () => {
-    uhr(T0 + 6 * STUNDE);
-    const e = await neuerCode("l3");
-    const b = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
+    uhr(T0 + 13 * STUNDE);
+    const K = await kontoMitCode("parallel");
+    const b = await einrichtung(K, "beginnen");
     expect(b.status, b.roh).toBe(200);
     const wert = totp(b.geheimnis);
-    const [x, y] = await Promise.all([
-      anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen", zweifaktor: wert }),
-      anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen", zweifaktor: wert }),
-    ]);
-    expect([x.status, y.status].sort(), `${x.roh} | ${y.roh}`).toEqual([200, 401]);
+    const [x, y] = await Promise.all([einrichtung(K, "bestaetigen", { zweifaktor: wert }),
+      einrichtung(K, "bestaetigen", { zweifaktor: wert })]);
+    expect(x.status === 200 || y.status === 200, `${x.roh} | ${y.roh}`).toBe(true);
+    expect([x, y].filter((r) => r.status === 200).length).toBe(1);
     expect([x, y].filter((r) => Array.isArray(r.wiederherstellung)).length).toBe(1);
-    const ein = await K.kontoLesenStreng(laden(), CODES.neuHash(e.code));
+    const ein = await KS.kontoLesenStreng(laden(), K.schluessel);
     expect(ein.ersteinrichtungVerbraucht).toMatchObject({ grund: "eingerichtet" });
     weiter();
   }, LIMIT);
 
   it("abgelaufen (Server-Uhr): auch mit richtigem Wert abgelehnt, keine Einrichtung", async () => {
-    const e = await neuerCode("l4");
-    const bis = new Date(e.bis).getTime();
+    uhr(T0 + 14 * STUNDE);
+    const K = await kontoMitCode("frist");
+    const bis = new Date(K.bis).getTime();
     uhr(bis - 10 * 60000);
-    const b = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
+    const b = await einrichtung(K, "beginnen");
     expect(b.status, b.roh).toBe(200);
     uhr(bis + 1);
-    const r = await anmelden({ zugangscode: e.code, zweifaktorAktion: "bestaetigen", zweifaktor: totp(b.geheimnis) });
-    expect(r.status, r.roh).toBe(401);
+    const r = await einrichtung(K, "bestaetigen", { zweifaktor: totp(b.geheimnis) });
+    expect(r.status, r.roh).toBe(403);
     expect(r.wiederherstellung).toBeUndefined();
-    const ZF = await import("../server/lib/zweifaktor.mjs");
-    const BZ = await import("../server/lib/betreiber-zweifaktor.mjs");
-    expect((await ZF.zweifaktorStand(laden(), BZ.rollenZweifaktorId(CODES.neuHash(e.code)))).aktiv).toBe(false);
-    uhr(T0 + 7 * STUNDE);
+    expect((await KF.kontoFaktorStand(laden(), K.accountId)).aktiv).toBe(false);
+    uhr(T0 + 15 * STUNDE);
   }, LIMIT);
 
   it("verweigert ohne Pfeffer jede Aktion (503), keine Sitzung", async () => {
-    uhr(T0 + 3 * STUNDE);
-    const e = await neuerCode("l4");
-    /* Ohne Pfeffer ist der gepfefferte Schlüssel nicht auffindbar: wie unbekannt. */
+    uhr(T0 + 16 * STUNDE);
+    const K = await kontoMitCode("pfeffer");
     delete process.env.CENTRIC_PFEFFER;
     try {
-      const a = await anmelden({ zugangscode: e.code, zweifaktorAktion: "beginnen" });
+      const a = await einrichtung(K, "beginnen");
       expect([401, 503]).toContain(a.status);
       expect(a.geheimnis).toBeUndefined();
       expect(a.token).toBeUndefined();
+      const z = await anmelden({ zugangscode: K.code, zweifaktorAktion: "beginnen" });
+      expect([401, 503]).toContain(z.status);
+      expect(z.geheimnis).toBeUndefined();
     } finally { process.env.CENTRIC_PFEFFER = PFEFFER; }
+  }, LIMIT);
+
+  it("Blocker 2: unter Pflicht richtet die Leitung den Faktor ein und meldet sich danach an; ohne Faktor kein Betrieb", async () => {
+    uhr(T0 + 17 * STUNDE);
+    process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1";
+    try {
+      const K = await kontoMitCode("pflicht");
+      /* Vorher: Passwort allein ist eine Identität, aber kein Betrieb als Leitung. */
+      const an0 = await konto({ email: K.email, passwort: GUT });
+      expect(an0.status, an0.roh).toBe(200);
+      const w0 = await kontoHandler(new Request(`http://${WIRT}/api/account/betrieb`, { method: "POST",
+        headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+          cookie: `${KEKS}=${keksAus(an0.kopf)}`, "x-forwarded-for": "10.63.1.1" }, body: JSON.stringify({ raum: K.raum }) }));
+      expect(w0.status).toBe(403);
+      /* Der Zugangscode-Weg öffnet mit dem Code nichts, auch unter Pflicht nicht. */
+      expect((await anmelden({ zugangscode: K.code })).status).toBe(401);
+      /* Einrichtung mit Adresse, Passwort und Code. */
+      const b = await einrichtung(K, "beginnen");
+      expect(b.status, b.roh).toBe(200);
+      const f = await einrichtung(K, "bestaetigen", { zweifaktor: totp(b.geheimnis) });
+      expect(f.status, f.roh).toBe(200);
+      /* Die Sitzung von vorher gilt nicht mehr. */
+      const alt = await kontoHandler(new Request(`http://${WIRT}/api/account/sitzung`, { method: "GET",
+        headers: { host: WIRT, origin: `http://${WIRT}`, cookie: `${KEKS}=${keksAus(an0.kopf)}`,
+          "x-forwarded-for": "10.63.1.2" } }));
+      expect(alt.status).toBe(401);
+      weiter();
+      /* Danach: Passwort und Code aus der App → Betrieb als Leitung → die Arbeitssitzung gilt bei Anfragen. */
+      const an = await konto({ email: K.email, passwort: GUT, zweifaktor: totp(b.geheimnis) });
+      expect(an.status, an.roh).toBe(200);
+      const w = await kontoHandler(new Request(`http://${WIRT}/api/account/betrieb`, { method: "POST",
+        headers: { host: WIRT, origin: `http://${WIRT}`, "content-type": "application/json",
+          cookie: `${KEKS}=${keksAus(an.kopf)}`, "x-forwarded-for": "10.63.1.3" }, body: JSON.stringify({ raum: K.raum }) }));
+      const wd = JSON.parse(await w.text());
+      expect(w.status, JSON.stringify(wd)).toBe(200);
+      expect(wd.rolle).toBe("leitung");
+      const best = await daten(new Request(`http://${WIRT}/api/bestand`, { method: "GET",
+        headers: { host: WIRT, origin: `http://${WIRT}`, authorization: `Bearer ${wd.token}`,
+          "x-forwarded-for": "10.63.1.4" } }), {});
+      expect(best.status).toBe(200);
+    } finally { delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT; }
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   BLOCKER 4: KEIN STILLES VERBRENNEN
+   ========================================================================== */
+
+describe("OPT-1-F Blocker 4: Verbrauch nur zusammen mit der Aktivierung", () => {
+  it("scheitert die Aktivierung nachweislich ohne aktiven Faktor, wird der Verbrauch zurückgenommen (samt Fehlversuchen)", async () => {
+    const e = await neuerCode("l4");
+    const schl = CODES.neuHash(e.code);
+    await E.ersteinrichtungFehlversuch(laden(), [schl]);
+    const vorher = await KS.kontoLesenStreng(laden(), schl);
+    const r = await E.ersteinrichtungEinloesen(laden(), [schl], async () => ({ ok: false, grund: "code" }),
+      { istAktiv: async () => false });
+    expect(r.ok).toBe(false);
+    expect(r.zurueckgenommen).toBe(true);
+    const ein = await KS.kontoLesenStreng(laden(), schl);
+    expect(ein).toEqual(vorher);
+    expect(ein.ersteinrichtung.fehlversuche).toBe(1);
+    expect(ein.ersteinrichtungVerbraucht).toBeUndefined();
+    expect(E.ersteinrichtungGueltig(ein, e.code, jetzt)).toBe(true);
+    /* Ein zweiter Versuch ist möglich. */
+    const r2 = await E.ersteinrichtungEinloesen(laden(), [schl], async () => ({ ok: true }), { istAktiv: async () => true });
+    expect(r2.ok).toBe(true);
+    expect((await KS.kontoLesenStreng(laden(), schl)).ersteinrichtungVerbraucht).toMatchObject({ grund: "eingerichtet" });
+  });
+
+  it("bleibt verbraucht, wenn der Faktor doch aktiv ist, der Zustand unklar ist, keine Zustandsfrage gestellt wird oder das Zurücknehmen scheitert", async () => {
+    const faelle = [
+      ["Faktor aktiv", async () => { throw new Error("nach dem Schreiben"); }, async () => true],
+      ["Zustand unlesbar", async () => ({ ok: false }), async () => { throw new Error("nicht lesbar"); }],
+      ["ohne Zustandsfrage", async () => ({ ok: false }), undefined],
+    ];
+    for (const [was, einrichten, istAktiv] of faelle) {
+      const e = await neuerCode("l4");
+      const schl = CODES.neuHash(e.code);
+      const r = await E.ersteinrichtungEinloesen(laden(), [schl], einrichten, { istAktiv });
+      expect(r.ok, was).toBe(false);
+      expect(r.zurueckgenommen, was).toBeUndefined();
+      expect((await KS.kontoLesenStreng(laden(), schl)).ersteinrichtungVerbraucht, was).toBeTruthy();
+    }
+    const e4 = await neuerCode("l4");
+    const s4 = CODES.neuHash(e4.code);
+    const echt = laden();
+    let schreibt = 0;
+    const kaputt = new Proxy(echt, { get(t, p) {
+      if (p === "setJSON" || p === "set") return async (...a) => {
+        schreibt += 1;
+        if (schreibt >= 2) throw new Error("Ablage nicht beschreibbar");   // 1 = Verbrauch, 2 = Zurücknehmen
+        return t[p](...a);
+      };
+      const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const r4 = await E.ersteinrichtungEinloesen(kaputt, [s4], async () => ({ ok: false }), { istAktiv: async () => false });
+    expect(r4.ok).toBe(false);
+    expect(r4.zurueckgenommen).toBeUndefined();
+    const ein4 = await KS.kontoLesenStreng(laden(), s4);
+    expect(ein4.ersteinrichtungVerbraucht).toBeTruthy();
+    expect(E.ersteinrichtungGueltig(ein4, e4.code, jetzt)).toBe(false);
+  });
+
+  it("über den Kontoweg: scheitert die Aktivierung vor dem Schreiben, gilt der Code weiter und die Einrichtung gelingt danach", async () => {
+    uhr(T0 + 18 * STUNDE);
+    const K = await kontoMitCode("blocker4");
+    const s = laden();
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const b = await AN.kontoFaktorAktion(s, { email: K.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K.code });
+    expect(b.ok, JSON.stringify(b)).toBe(true);
+    /* Die Ablage verweigert das Schreiben des aktiven Faktors (vor jeder Aktivierung). */
+    const kaputt = new Proxy(s, { get(t, p) {
+      if (p === "setJSON") return async (key, wert, ...rest) => {
+        if (String(key).startsWith("zweifaktor:") && wert && wert.stand === "aktiv") throw new Error("Ablage nicht beschreibbar");
+        return t.setJSON(key, wert, ...rest);
+      };
+      const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const f = await AN.kontoFaktorAktion(kaputt, { email: K.email, passwort: GUT, aktion: "bestaetigen",
+      ersteinrichtungscode: K.code, zweifaktor: totp(b.daten.geheimnis) });
+    expect(f.ok).toBe(false);
+    expect(JSON.stringify(f)).not.toContain("wiederherstellung");
+    expect((await KF.kontoFaktorStand(s, K.accountId)).aktiv).toBe(false);
+    /* Nicht verbrannt: Der Code gilt weiter … */
+    const ein = await KS.kontoLesenStreng(s, K.schluessel);
+    expect(ein.ersteinrichtungVerbraucht).toBeUndefined();
+    expect((await E.ersteinrichtungFuerKonto(s, { code: K.code, accountId: K.accountId })).ok).toBe(true);
+    /* … und die Einrichtung gelingt mit dem nächsten Wert aus der App. */
+    weiter();
+    const f2 = await AN.kontoFaktorAktion(s, { email: K.email, passwort: GUT, aktion: "bestaetigen",
+      ersteinrichtungscode: K.code, zweifaktor: totp(b.daten.geheimnis) });
+    expect(f2.ok, JSON.stringify(f2)).toBe(true);
+    expect((await KS.kontoLesenStreng(s, K.schluessel)).ersteinrichtungVerbraucht).toMatchObject({ grund: "eingerichtet" });
   }, LIMIT);
 });
 
@@ -522,24 +742,55 @@ describe("OPT-1 Provisionierung mit Ersteinrichtung", () => {
       mandantId: e.mandantId, betrieb: e.betrieb });
     expect(await kontoText(s)).not.toContain(e.ersteinrichtung.code);
 
-    /* Der Code führt über den echten Handler nur in die Einrichtung. */
+    /* OPT-1-F: an genau dieses Konto gebunden. */
+    expect(eintrag.accountId).toBe(konto.id);
+    /* Der Code führt über die echten Handler nur in die Einrichtung des Faktors am Konto — auf dem Zugangscode-Weg
+       ist er wie unbekannt (bis b10ab01e: 403 „einrichten"). */
     const a = await anmelden({ zugangscode: e.ersteinrichtung.code });
-    expect(a.status, a.roh).toBe(403);
-    expect(a.zweifaktor).toBe("einrichten");
-    const b = await anmelden({ zugangscode: e.ersteinrichtung.code, zweifaktorAktion: "beginnen" });
+    expect(a.status, a.roh).toBe(401);
+    expect(a.token).toBeUndefined();
+    const K1 = { email: konto.email, code: e.ersteinrichtung.code };
+    const b = await einrichtung(K1, "beginnen");
     expect(b.status, b.roh).toBe(200);
-    const f = await anmelden({ zugangscode: e.ersteinrichtung.code, zweifaktorAktion: "bestaetigen",
-      zweifaktor: totp(b.geheimnis) });
+    const f = await einrichtung(K1, "bestaetigen", { zweifaktor: totp(b.geheimnis) });
     expect(f.status, f.roh).toBe(200);
     expect(f.aktiv).toBe(true);
     weiter();
-    /* H1: Danach ist der Code verbraucht — auch mit Faktor keine Sitzung (vorher: 200 als Leitung). */
+    /* H1: Danach ist der Code verbraucht — auch mit Faktor keine Sitzung über den Code. */
     const mit = await anmelden({ zugangscode: e.ersteinrichtung.code, zweifaktor: totp(b.geheimnis) });
     expect(mit.status, mit.roh).toBe(401);
     expect(mit.token).toBeUndefined();
     const nach = await K.kontoLesenStreng(s, CODES.neuHash(e.ersteinrichtung.code));
     expect(nach).toMatchObject({ person: e.person, ersteinrichtungVerbraucht: { grund: "eingerichtet" } });
     weiter();
+  }, LIMIT);
+
+  it("Blocker 3: das Betreiberwerkzeug legt mit --ersteinrichtung den gebundenen Code an, ohne Schalter keinen", async () => {
+    const W = await import("../werkzeug/testbetrieb-anlegen.mjs");
+    const s = laden();
+    const env = { ...process.env };
+    /* Ohne --ja oder ohne Adresse: nichts. */
+    expect((await W.ausfuehren(["--email", "x@example.org"], env)).ok).toBe(false);
+    expect((await W.ausfuehren(["--ja"], env)).ok).toBe(false);
+    expect((await W.ausfuehren(["--email", "unbekannt-opt1f@example.org", "--ja"], env)).ok).toBe(false);
+    /* Mit Schalter: Code einmal in der Ausgabe, an das Konto gebunden, nirgends im Klartext abgelegt. */
+    const { konto: k1 } = await fertigerAccount(s, "opt1-werkzeug-a@example.org");
+    const r1 = await W.ausfuehren(["--email", "opt1-werkzeug-a@example.org", "--ersteinrichtung", "--ja"], env);
+    expect(r1.ok, r1.text).toBe(true);
+    const c = /\n {2}([A-Z0-9]{4}(?:-[A-Z0-9]{4}){3})\n/.exec(r1.text);
+    expect(c, r1.text).toBeTruthy();
+    const ein = await K.kontoLesenStreng(s, CODES.neuHash(c[1]));
+    expect(ein).toMatchObject({ accountId: k1.id, rolle: "leitung" });
+    expect(await kontoText(s)).not.toContain(c[1]);
+    expect((await E.ersteinrichtungFuerKonto(s, { code: c[1], accountId: k1.id })).ok).toBe(true);
+    /* Ohne Schalter: bisheriges Verhalten, kein Code, kein Zugang zum Raum. */
+    await fertigerAccount(s, "opt1-werkzeug-b@example.org");
+    const r2 = await W.ausfuehren(["--email", "opt1-werkzeug-b@example.org", "--ja"], env);
+    expect(r2.ok, r2.text).toBe(true);
+    expect(r2.text).not.toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/);
+    const raum = /Raum (\S+?)[ .]/.exec(r2.text)[1];
+    const alle = await K.alleKontenStreng(s);
+    expect(Object.values(alle).some((x) => x && x.bestand === raum)).toBe(false);
   }, LIMIT);
 
   it("legt ohne Wunsch keinen Zugangscode an (bisheriges Verhalten)", async () => {

@@ -14,6 +14,7 @@ import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherun
 import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sicherungsschluessel.mjs";
 import { schluesselEpoche } from "./schluesselepoche.mjs";
 import { rollenSitzungOhneFaktor } from "./betreiber-zweifaktor.mjs";
+import { kontoFaktorAktiv } from "./kontofaktor.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -640,6 +641,15 @@ export async function arbeitssitzungPruefen(store, sitzung,
   if (!konto) return absage("account-fehlt");
   if (konto.status !== "aktiv") return absage("account-status");
   if ((Number(konto.epoche) || 0) !== h.epoche) return absage("epoche");
+  /* 1b. OPT-1-F, Befund 3 (Zusatzprüfung): Hängt diese Arbeit an einer Anmeldung OHNE bestandenen Faktor, und hat das
+     Konto inzwischen einen aktiven Faktor, gilt sie nicht mehr — auch wenn Abmelden oder Epoche nach der Aktivierung
+     scheiterten. Ein Lesefehler schließt die Tür, räumt aber nichts weg. */
+  if (/** @type {any} */ (anm).zweifaktor !== true) {
+    let aktiv;
+    try { aktiv = await kontoFaktorAktiv(store, h.accountId); }
+    catch { return { ok: false, grund: "konto-faktor-fehler" }; }
+    if (aktiv) return absage("konto-faktor");
+  }
 
   /* 2. Die Mitgliedschaft, frisch gelesen. */
   let m;

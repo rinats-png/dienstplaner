@@ -42,6 +42,20 @@ export const kontoFaktorId = (accountId) =>
 const brauchbar = (accountId) => typeof accountId === "string" && /^a_[A-Za-z0-9_-]{8,}$/.test(accountId);
 
 /**
+ * Hat das Konto einen aktiven Faktor? Für die Prüfung, ob eine Sitzung OHNE bestandenen Faktor noch gelten darf
+ * (OPT-1-F, Befund 3): Ist der Faktor aktiv, gilt keine solche Sitzung mehr — gleich, ob das Abmelden nach der
+ * Aktivierung gelang. Wirft bei einem Lesefehler (der Aufrufer weist dann ab). Eine Kennung, die keinen Faktor tragen
+ * kann, hat keinen.
+ * @param {any} store
+ * @param {string} accountId
+ * @returns {Promise<boolean>}
+ */
+export async function kontoFaktorAktiv(store, accountId) {
+  if (!brauchbar(accountId)) return false;
+  return (await kontoFaktorStand(store, accountId)).aktiv === true;
+}
+
+/**
  * Stand des Faktors. Wirft bei einem Lesefehler — der Aufrufer muss dann
  * abweisen, nicht durchlassen.
  * @param {any} store  Ablage „centric"

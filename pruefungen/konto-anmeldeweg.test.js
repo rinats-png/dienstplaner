@@ -124,20 +124,23 @@ async function eingerichtet(was) {
   expect(v.fortsetzung, "Einrichtungsnachweis").toBeTruthy();
   const p = await REG.passwortMitNachweisSetzen(s, { fortsetzung: v.fortsetzung, passwort: GUT });
   expect(p.ok, `Passwort: ${p.grund}`).toBe(true);
-  const e = await PROV.testbetriebFuerAccountAnlegen(s, arbeitAblage(), { accountId: v.accountId });
+  /* OPT-1-F, Option A: Der Betreiberweg legt den Testbetrieb MIT Ersteinrichtungscode an (werkzeug/testbetrieb-anlegen.mjs,
+     --ersteinrichtung); ohne ihn richtet das Konto keinen Faktor ein. */
+  const e = await PROV.testbetriebFuerAccountAnlegen(s, arbeitAblage(), { accountId: v.accountId, ersteinrichtung: true });
   expect(e.ok, `Provisionierung: ${e.grund}`).toBe(true);
+  expect(e.ersteinrichtung && typeof e.ersteinrichtung.code).toBe("string");
   const m = await A.mitgliedschaftLesen(s, v.accountId, e.raum);
   expect(m.rolle).toBe("leitung");
-  geheim.add(link); geheim.add(v.fortsetzung);
-  return { email, raum: e.raum, accountId: v.accountId, link, fortsetzung: v.fortsetzung };
+  geheim.add(link); geheim.add(v.fortsetzung); geheim.add(e.ersteinrichtung.code);
+  return { email, raum: e.raum, accountId: v.accountId, link, fortsetzung: v.fortsetzung, code: e.ersteinrichtung.code };
 }
 
 /** Zweiten Faktor am Konto einrichten; gibt Geheimnis und Wiederherstellungscodes zurück. */
-async function faktorEinrichten(email) {
-  const b = await anfrage({ rumpf: { email, passwort: GUT, zweifaktorAktion: "beginnen" } });
+async function faktorEinrichten(email, ersteinrichtungscode) {
+  const b = await anfrage({ rumpf: { email, passwort: GUT, zweifaktorAktion: "beginnen", ersteinrichtungscode } });
   expect(b.status, b.text).toBe(200);
   expect(b.daten.geheimnis).toMatch(/^[A-Z2-7]+$/);
-  const f = await anfrage({ rumpf: { email, passwort: GUT, zweifaktorAktion: "bestaetigen",
+  const f = await anfrage({ rumpf: { email, passwort: GUT, zweifaktorAktion: "bestaetigen", ersteinrichtungscode,
     zweifaktor: code(b.daten.geheimnis) } });
   expect(f.status, f.text).toBe(200);
   geheim.add(b.daten.geheimnis);
@@ -204,25 +207,54 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
     expect(st0.status).toBe(200);
     expect(st0.daten).toMatchObject({ ok: true, aktiv: false, ausstehend: false });
 
-    const b = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "beginnen" } });
+    /* OPT-1-F, Option A (Befund 1): Adresse und Passwort allein richten keinen Faktor ein — ohne, mit falschem oder
+       mit fremdem Ersteinrichtungscode: 403, kein Geheimnis, keine laufende Einrichtung. */
+    const F2 = await eingerichtet("fremd");
+    for (const [was, ersteinrichtungscode] of [["ohne Code", undefined], ["falscher Code", "ACDE-FGHJ-KLMN-PQRT"],
+      ["fremder Code", F2.code], ["Code als Zahl", 1234]]) {
+      for (const aktion of ["beginnen", "bestaetigen"]) {
+        const r = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: aktion, ersteinrichtungscode,
+          zweifaktor: "123456" } });
+        const soll = aktion === "beginnen" ? 403 : 409;   // bestaetigen ohne begonnene Einrichtung: 409 wie bisher
+        expect(r.status, `${was} ${aktion}: ${r.text}`).toBe(soll);
+        if (aktion === "beginnen") expect(r.daten.fehler, was).toBe("ersteinrichtung");
+        expect(r.text, was).not.toContain("geheimnis\":");
+        expect(r.daten.wiederherstellung, was).toBeUndefined();
+      }
+      expect((await KF.kontoFaktorStand(laden(), K.accountId)).ausstehend, was).toBe(false);
+    }
+    /* Der fremde Code gilt nur für sein eigenes Konto — er ist dadurch nicht verbraucht. */
+    const E = await import("../server/lib/zugangscode-ersteinrichtung.mjs");
+    expect((await E.ersteinrichtungFuerKonto(laden(), { code: F2.code, accountId: F2.accountId })).ok).toBe(true);
+    expect((await E.ersteinrichtungFuerKonto(laden(), { code: F2.code, accountId: K.accountId })).ok).toBe(false);
+
+    const b = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "beginnen",
+      ersteinrichtungscode: K.code } });
     expect(b.status, b.text).toBe(200);
     expect(b.daten.otpauth).toMatch(/^otpauth:\/\/totp\//);
     expect(b.antwort.headers.get("cache-control")).toBe("no-store");
     expect(b.antwort.headers.get("set-cookie")).toBe(null);
     /* Eine laufende Einrichtung wird nicht überschrieben. */
-    const zweit = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "beginnen" } });
+    const zweit = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "beginnen",
+      ersteinrichtungscode: K.code } });
     expect(zweit.status).toBe(409);
     expect(zweit.text).not.toContain("geheimnis\":");
     /* Falscher erster Code: nicht aktiviert, Sitzungen unberührt. */
+    /* Bestätigen ohne Ersteinrichtungscode, aber mit richtigem Wert aus der App: abgewiesen, nicht aktiviert. */
+    const ohneCode = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "bestaetigen",
+      zweifaktor: code(b.daten.geheimnis) } });
+    expect(ohneCode.status, ohneCode.text).toBe(403);
+    expect(ohneCode.daten.wiederherstellung).toBeUndefined();
+    expect((await KF.kontoFaktorStand(laden(), K.accountId)).aktiv).toBe(false);
     const fc = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "bestaetigen",
-      zweifaktor: code(b.daten.geheimnis, 5) } });
+      ersteinrichtungscode: K.code, zweifaktor: code(b.daten.geheimnis, 5) } });
     expect(fc.status).toBe(401);
     expect((await anfrage({ pfad: P_SITZ, methode: "GET", keks: keksOhneFaktor })).status).toBe(200);
     expect((await KF.kontoFaktorStand(laden(), K.accountId)).aktiv).toBe(false);
 
     const ersterCode = code(b.daten.geheimnis);
     const f = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "bestaetigen",
-      zweifaktor: ersterCode } });
+      ersteinrichtungscode: K.code, zweifaktor: ersterCode } });
     expect(f.status, f.text).toBe(200);
     expect(f.daten.aktiv).toBe(true);
     expect(f.daten.wiederherstellung).toHaveLength(10);
@@ -242,12 +274,15 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
     weiter();
 
     /* Danach: kein zweites Einrichten, kein Bestätigen. */
-    const nochmal = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "beginnen" } });
+    const nochmal = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "beginnen",
+      ersteinrichtungscode: K.code } });
     expect(nochmal.status).toBe(409);
     expect(nochmal.text).not.toContain("geheimnis\":");
     const nochmalB = await anfrage({ rumpf: { email: K.email, passwort: GUT, zweifaktorAktion: "bestaetigen",
-      zweifaktor: code(F.geheimnis) } });
+      ersteinrichtungscode: K.code, zweifaktor: code(F.geheimnis) } });
     expect(nochmalB.status).toBe(409);
+    /* Der Ersteinrichtungscode ist mit der Aktivierung verbraucht. */
+    expect((await E.ersteinrichtungFuerKonto(laden(), { code: K.code, accountId: K.accountId })).ok).toBe(false);
     weiter();
   }, LIMIT);
 
@@ -330,6 +365,10 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
       { email: K.email, passwort: GUT, zweifaktor: F.ersterCode },
       { email: K.email, fortsetzung: K.fortsetzung },
       { email: K.email, token: K.link, zweifaktor: code(F.geheimnis) },
+      { email: K.email, passwort: K.code },
+      { email: K.email, passwort: GUT, zweifaktor: K.code },
+      { email: K.email, ersteinrichtungscode: K.code },
+      { email: K.email, ersteinrichtungscode: K.code, zweifaktor: code(F.geheimnis) },
     ]) {
       const e = await anfrage({ rumpf });
       expect(e.status, JSON.stringify(Object.keys(rumpf))).toBe(401);
@@ -341,12 +380,20 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
       headers: { host: WIRT, origin: EIGEN, "content-type": "application/json", "x-forwarded-for": herkunft() },
       body: JSON.stringify({ zugangscode: K.fortsetzung }) }), {});
     expect(z.status).toBe(401);
+    /* Der Ersteinrichtungscode ist auf dem Zugangscode-Weg wie unbekannt — allein und mit Faktor. */
+    for (const rumpf of [{ zugangscode: K.code }, { zugangscode: K.code, zweifaktor: code(F.geheimnis) }]) {
+      const zc = await daten(new Request(`${EIGEN}/api/anmelden`, { method: "POST",
+        headers: { host: WIRT, origin: EIGEN, "content-type": "application/json", "x-forwarded-for": herkunft() },
+        body: JSON.stringify(rumpf) }), {});
+      expect(zc.status).toBe(401);
+      expect(JSON.parse(await zc.text()).token).toBeUndefined();
+    }
     weiter();
   }, LIMIT);
 
   it("6. Fehlversuchs-Sperre: fünf falsche Codes mit richtigem Passwort sperren den Faktor, auch über Herkünfte", async () => {
     const S = await eingerichtet("sperre");
-    const f = await faktorEinrichten(S.email);
+    const f = await faktorEinrichten(S.email, S.code);
     for (let i = 0; i < 5; i++) {
       const e = await anfrage({ rumpf: { email: S.email, passwort: GUT, zweifaktor: String(100000 + i) } });
       expect(e.status, `Versuch ${i + 1}`).toBe(401);
@@ -364,7 +411,7 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
 
   it("6b. Falsche Passwörter mit Codes sperren den Faktor nicht (wer nur die Adresse kennt, sperrt niemanden aus)", async () => {
     const S = await eingerichtet("sperre-pw");
-    const f = await faktorEinrichten(S.email);
+    const f = await faktorEinrichten(S.email, S.code);
     for (let i = 0; i < 6; i++) {
       const e = await anfrage({ rumpf: { email: S.email, passwort: `Falsches Passwort ${i}xx`, zweifaktor: "123456" } });
       expect(e.status).toBe(401);
@@ -397,7 +444,7 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
 
   it("8b. Sitzung mit Faktor, aber Faktor nicht mehr auffindbar: kein Betrieb als Leitung", async () => {
     const S = await eingerichtet("verloren");
-    const f = await faktorEinrichten(S.email);
+    const f = await faktorEinrichten(S.email, S.code);
     const keks = await mitFaktorAngemeldet(S.email, f.geheimnis);
     /* Der Faktor verschwindet aus der Ablage (Datenfehler): kein Ja. */
     await laden().delete(`zweifaktor:${KF.kontoFaktorId(S.accountId)}`);
@@ -408,14 +455,15 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
 
   it("8c. Ohne Pfeffer: kein Einrichten, keine Anmeldung mit eingerichtetem Faktor", async () => {
     const S = await eingerichtet("pfeffer");
-    const f = await faktorEinrichten(S.email);
+    const f = await faktorEinrichten(S.email, S.code);
     const T = await eingerichtet("pfeffer-neu");
     delete process.env.CENTRIC_PFEFFER;
     try {
       const an = await anfrage({ rumpf: { email: S.email, passwort: GUT, zweifaktor: code(f.geheimnis) } });
       expect([401, 503]).toContain(an.status);
       expect(keksWert(an.antwort.headers.get("set-cookie")) || "").toBe("");
-      const b = await anfrage({ rumpf: { email: T.email, passwort: GUT, zweifaktorAktion: "beginnen" } });
+      const b = await anfrage({ rumpf: { email: T.email, passwort: GUT, zweifaktorAktion: "beginnen",
+        ersteinrichtungscode: T.code } });
       expect([401, 503]).toContain(b.status);
       expect(b.text).not.toContain("geheimnis\":");
     } finally {
@@ -483,11 +531,12 @@ describe("OPT-1-F Review: Befunde 2 und 3", () => {
     expect((await KF.kontoFaktorVorpruefen(s, K2.accountId, code(gewinner[0].geheimnis))).ok).toBe(true);
   }, LIMIT);
 
-  it("3a. Scheitert das zweite Abmelden, wird nicht aktiviert", async () => {
+  it("3a. Scheitert das zweite Abmelden: Faktor bleibt aktiv, Absage ohne Wiederherstellungscodes, nur neue Anmeldung mit Faktor", async () => {
     const AN = await import("../server/lib/accountanmeldung.mjs");
     const K3 = await eingerichtet("abmelden-kaputt");
     const s = laden();
-    const b = await AN.kontoFaktorAktion(s, { email: K3.email, passwort: GUT, aktion: "beginnen" });
+    const b = await AN.kontoFaktorAktion(s, { email: K3.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K3.code });
     expect(b.ok, JSON.stringify(b)).toBe(true);
     /* Die Sitzungsablage versagt, sobald der Faktor aktiv ist — also genau beim zweiten Abmelden. */
     const echt = kontoAblage();
@@ -501,12 +550,145 @@ describe("OPT-1-F Review: Befunde 2 und 3", () => {
       return typeof v === "function" ? v.bind(t) : v;
     } });
     const f = await AN.kontoFaktorAktion(s, { email: K3.email, passwort: GUT, aktion: "bestaetigen",
-      zweifaktor: code(b.daten.geheimnis), sitzungsAblage: ablage });
+      ersteinrichtungscode: K3.code, zweifaktor: code(b.daten.geheimnis), sitzungsAblage: ablage });
     expect(versagt).toBeGreaterThan(0);
     expect(f.ok).toBe(false);
     expect(f.grund).toBe("sitzungen");
     expect(JSON.stringify(f)).not.toContain("wiederherstellung");
-    expect((await KF.kontoFaktorStand(s, K3.accountId)).aktiv).toBe(false);
+    /* Befund 3, Zusatzprüfung (Betreiberentscheidung 2026-11-10): Der Faktor bleibt AKTIV — ein Zurücknehmen machte
+       ältere, schwächer geschützte Sitzungen wieder gültig. Bis 7f7718db wurde hier zurückgenommen (aktiv false). */
+    expect((await KF.kontoFaktorStand(s, K3.accountId)).aktiv).toBe(true);
+    /* Der Ersteinrichtungscode ist mit der Aktivierung verbraucht (kein zweites Einrichten damit). */
+    const E = await import("../server/lib/zugangscode-ersteinrichtung.mjs");
+    expect((await E.ersteinrichtungFuerKonto(s, { code: K3.code, accountId: K3.accountId })).ok).toBe(false);
+    /* Der Weg hinein ist eine neue, sichere Anmeldung: Passwort allein nicht, Passwort und Code aus der App ja. */
+    weiter();
+    const allein = await AN.anmelden(s, { email: K3.email, passwort: GUT });
+    expect(allein.ok).toBe(false);
+    expect(/** @type {any} */ (allein).grund).toBe("zweifaktor-erforderlich");
+    const neu = await AN.anmelden(s, { email: K3.email, passwort: GUT, zweifaktor: code(b.daten.geheimnis) });
+    expect(neu.ok, JSON.stringify(neu)).toBe(true);
+    expect(/** @type {any} */ (neu).zweifaktor).toBe(true);
+  }, LIMIT);
+
+  it("3c. Epoche UND Abmelden scheitern nach der Aktivierung: keine ältere Sitzung ohne Faktor gilt wieder — weder als Anmeldung noch für die Betriebsauswahl noch als Arbeitssitzung", async () => {
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const ACS = await import("../server/lib/accountsitzungen.mjs");
+    const K5 = await eingerichtet("alles-kaputt");
+    const s = laden();
+    const abseits = getStore({ name: "centric-accountsitzungen-abseits3c", consistency: "strong" });
+    /* Vor der Aktivierung: eine Anmeldung nur mit Passwort, in einer Ablage, die kein Abmelden erreicht, und — ohne
+       Pflicht, wie es vor der Aktivierung zulässig war — eine Arbeitssitzung als Leitung daraus. */
+    const alt = await AN.anmelden(s, { email: K5.email, passwort: GUT, sitzungsAblage: abseits });
+    expect(alt.ok, JSON.stringify(alt)).toBe(true);
+    const p0 = await AN.sitzungPruefen(s, alt.token, { sitzungsAblage: abseits });
+    expect(p0.ok).toBe(true);
+    delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
+    let arbeit;
+    try {
+      arbeit = await BA.betriebWaehlen(s, { accountId: K5.accountId, raum: K5.raum, kontoAblage: abseits,
+        kontoSitzung: { id: /** @type {any} */ (p0).sitzungsId, bis: /** @type {any} */ (p0).bis } });
+    } finally { process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1"; }
+    expect(arbeit.ok, JSON.stringify(arbeit)).toBe(true);
+    const roh = await arbeitAblage().get(`t:${hash(/** @type {any} */ (arbeit).token)}`, { type: "json" });
+    expect((await AS.arbeitssitzungPruefen(s, roh, { kontoAblage: abseits })).ok).toBe(true);
+
+    /* Die Aktivierung: Schreiben am Konto (Epoche) und Auflisten der Sitzungen versagen, sobald der Faktor aktiv ist. */
+    const epocheVorher = Number((await A.accountLesenPerId(s, K5.accountId)).epoche) || 1;
+    const aktiv = () => KF.kontoFaktorStand(s, K5.accountId).then((x) => x.aktiv);
+    const kaputtStore = new Proxy(s, { get(t, p) {
+      if (p === "setJSON") return async (key, ...rest) => {
+        if (String(key).startsWith("account:") && await aktiv()) throw new Error("ablage kaputt");
+        return t.setJSON(key, ...rest);
+      };
+      const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const echt = kontoAblage();
+    const kaputtSitzungen = new Proxy(echt, { get(t, p) {
+      if (p === "list") return async (...a) => { if (await aktiv()) throw new Error("ablage kaputt"); return t.list(...a); };
+      const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const b = await AN.kontoFaktorAktion(s, { email: K5.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K5.code });
+    expect(b.ok, JSON.stringify(b)).toBe(true);
+    const f = await AN.kontoFaktorAktion(kaputtStore, { email: K5.email, passwort: GUT, aktion: "bestaetigen",
+      ersteinrichtungscode: K5.code, zweifaktor: code(b.daten.geheimnis), sitzungsAblage: kaputtSitzungen });
+    expect(f.ok).toBe(false);
+    expect(f.grund).toBe("sitzungen");
+    expect(JSON.stringify(f)).not.toContain("wiederherstellung");
+    expect(await aktiv()).toBe(true);
+    expect(Number((await A.accountLesenPerId(s, K5.accountId)).epoche) || 1).toBe(epocheVorher);
+
+    /* Die alte Arbeitssitzung (Epoche unverändert) gilt nicht mehr … */
+    const nachArbeit = await AS.arbeitssitzungPruefen(s, roh, { kontoAblage: abseits });
+    expect(nachArbeit.ok).toBe(false);
+    expect(/** @type {any} */ (nachArbeit).grund).toBe("konto-faktor");
+    /* … ohne Pflicht öffnet die alte Anmeldung keinen Betrieb … */
+    delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
+    try {
+      const w = await BA.betriebWaehlen(s, { accountId: K5.accountId, raum: K5.raum, kontoAblage: abseits,
+        kontoSitzung: { id: /** @type {any} */ (p0).sitzungsId, bis: /** @type {any} */ (p0).bis } });
+      expect(w.ok).toBe(false);
+      expect(/** @type {any} */ (w).grund).toBe("zweifaktor-pflicht");
+    } finally { process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT = "1"; }
+    /* … und sie selbst ist beendet (geprüft und gelöscht). */
+    const p1 = await AN.sitzungPruefen(s, alt.token, { sitzungsAblage: abseits });
+    expect(p1.ok).toBe(false);
+    expect(/** @type {any} */ (p1).grund).toBe("zweifaktor");
+    expect(await abseits.get(`as:${hash(alt.token)}`, { type: "json" })).toBe(null);
+    /* Eine Sitzung ohne Faktor mit der aktuellen Epoche (wie aus einer Anmeldung, die den Faktorstand vor der
+       Aktivierung las) gilt ebenso wenig. */
+    const neuOhne = await ACS.accountSitzungAnlegen({ accountId: K5.accountId, epoche: epocheVorher }, { ablage: abseits });
+    expect(neuOhne.ok).toBe(true);
+    expect((await AN.sitzungPruefen(s, /** @type {any} */ (neuOhne).token, { sitzungsAblage: abseits })).ok).toBe(false);
+    /* Über HTTP: dieselbe Absage mit Hinweis auf den Weg, das Cookie weg. */
+    const ohneHttp = await ACS.accountSitzungAnlegen({ accountId: K5.accountId, epoche: epocheVorher });
+    const w2 = await anfrage({ pfad: P_WAHL, rumpf: { raum: K5.raum }, keks: /** @type {any} */ (ohneHttp).token });
+    expect(w2.status).toBe(403);
+    expect(w2.daten.fehler).toBe("zweifaktor-pflicht");
+    expect((await anfrage({ pfad: P_SITZ, methode: "GET", keks: /** @type {any} */ (ohneHttp).token })).status).toBe(401);
+    /* Der einzige Weg hinein: neue Anmeldung mit Passwort und Code aus der App — und damit der Betrieb als Leitung. */
+    weiter();
+    const keks = await mitFaktorAngemeldet(K5.email, b.daten.geheimnis);
+    const w3 = await anfrage({ pfad: P_WAHL, rumpf: { raum: K5.raum }, keks });
+    expect(w3.status, w3.text).toBe(200);
+    expect(w3.daten.rolle).toBe("leitung");
+  }, LIMIT);
+
+  it("3d. Gleichzeitige Aktivierungen und eine gleichzeitige Passwort-Anmeldung: genau eine Aktivierung, Epoche genau einmal erhöht, keine Sitzung ohne Faktor gilt danach", async () => {
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const K6 = await eingerichtet("gleichzeitig");
+    const s = laden();
+    const b = await anfrage({ rumpf: { email: K6.email, passwort: GUT, zweifaktorAktion: "beginnen",
+      ersteinrichtungscode: K6.code } });
+    expect(b.status, b.text).toBe(200);
+    geheim.add(b.daten.geheimnis);
+    const epocheVorher = Number((await A.accountLesenPerId(s, K6.accountId)).epoche) || 1;
+    const wert = code(b.daten.geheimnis);
+    const rumpf = { email: K6.email, passwort: GUT, zweifaktorAktion: "bestaetigen", ersteinrichtungscode: K6.code,
+      zweifaktor: wert };
+    const [x, y, z, pw] = await Promise.all([anfrage({ rumpf }), anfrage({ rumpf }), anfrage({ rumpf }),
+      AN.anmelden(s, { email: K6.email, passwort: GUT })]);
+    const ok = [x, y, z].filter((r) => r.status === 200);
+    expect(ok.length, [x, y, z].map((r) => r.text).join(" | ")).toBe(1);
+    expect(ok[0].daten.wiederherstellung).toHaveLength(10);
+    for (const w of ok[0].daten.wiederherstellung) geheim.add(w);
+    for (const r of [x, y, z].filter((q) => q.status !== 200)) {
+      expect([401, 403], r.text).toContain(r.status);
+      expect(r.daten.wiederherstellung).toBeUndefined();
+      expect(r.daten.token).toBeUndefined();
+    }
+    expect((await KF.kontoFaktorStand(s, K6.accountId)).aktiv).toBe(true);
+    expect(Number((await A.accountLesenPerId(s, K6.accountId)).epoche)).toBe(epocheVorher + 1);
+    /* Die gleichzeitige Passwort-Anmeldung: entweder schon abgewiesen oder ihre Sitzung gilt danach nicht. */
+    if (pw.ok) expect((await AN.sitzungPruefen(s, /** @type {any} */ (pw).token)).ok).toBe(false);
+    else expect(/** @type {any} */ (pw).grund).toBe("zweifaktor-erforderlich");
+    /* Der Code ist verbraucht; ein weiterer Versuch richtet nichts ein. */
+    weiter();
+    const nochmal = await anfrage({ rumpf: { ...rumpf, zweifaktor: code(b.daten.geheimnis) } });
+    expect(nochmal.status).toBe(409);
+    expect(nochmal.daten.wiederherstellung).toBeUndefined();
+    weiter();
   }, LIMIT);
 
   it("3b. Nach der Aktivierung gilt eine vorher angelegte Sitzung nicht mehr (Epoche erhöht)", async () => {
@@ -521,10 +703,11 @@ describe("OPT-1-F Review: Befunde 2 und 3", () => {
     expect(an.zweifaktor).toBeUndefined();
     expect((await AN.sitzungPruefen(s, an.token, { sitzungsAblage: abseits })).ok).toBe(true);
     const epocheVorher = Number((await A.accountLesenPerId(s, K4.accountId)).epoche) || 1;
-    const b = await AN.kontoFaktorAktion(s, { email: K4.email, passwort: GUT, aktion: "beginnen" });
+    const b = await AN.kontoFaktorAktion(s, { email: K4.email, passwort: GUT, aktion: "beginnen",
+      ersteinrichtungscode: K4.code });
     expect(b.ok).toBe(true);
     const f = await AN.kontoFaktorAktion(s, { email: K4.email, passwort: GUT, aktion: "bestaetigen",
-      zweifaktor: code(b.daten.geheimnis), sitzungsAblage: kontoAblage() });
+      ersteinrichtungscode: K4.code, zweifaktor: code(b.daten.geheimnis), sitzungsAblage: kontoAblage() });
     expect(f.ok, JSON.stringify(f)).toBe(true);
     expect((await KF.kontoFaktorStand(s, K4.accountId)).aktiv).toBe(true);
     expect((await A.accountLesenPerId(s, K4.accountId)).epoche).toBe(epocheVorher + 1);

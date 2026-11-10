@@ -9,7 +9,7 @@ import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from ".
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
 import { rollenPflicht, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
-import { kontoFaktorStand } from "./kontofaktor.mjs";
+import { kontoFaktorAktiv } from "./kontofaktor.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -278,12 +278,16 @@ export async function betriebWaehlen(store,
        - der Faktor des Kontos ist jetzt aktiv (ein Lesefehler ist kein Ja).
      Sonst bleibt es bei der Absage oben. Die Arbeitssitzung trägt dann `zweifaktor: true`; damit hält sie auch die
      Prüfung jeder Anfrage (rollenSitzungOhneFaktor) — auf demselben Feld wie eine Sitzung aus Zugangscode + Faktor. */
-  let mitFaktor = false;
   const kontoMitFaktor = await kontoSitzungFuerArbeit(String(asId), { accountId, epoche },
     { ablage: kontoAblage, jetzt }).catch(() => null);
-  if (kontoMitFaktor && kontoMitFaktor.ok && kontoMitFaktor.zweifaktor === true) {
-    try { mitFaktor = (await kontoFaktorStand(store, accountId)).aktiv === true; } catch { mitFaktor = false; }
-  }
+  /* OPT-1-F, Befund 3 (Zusatzprüfung): Der Faktor des Kontos wird immer gelesen. Ist er aktiv oder nicht lesbar,
+     öffnet eine Sitzung OHNE bestandenen Faktor keinen Betrieb — in keiner Rolle, mit oder ohne Pflicht. Sonst würde
+     eine ältere, schwächer geschützte Sitzung (vor der Aktivierung entstanden, Abmelden gescheitert) wieder gelten. */
+  /** @type {boolean|null} */
+  let faktorAktiv = null;
+  try { faktorAktiv = await kontoFaktorAktiv(store, accountId); } catch { faktorAktiv = null; }
+  const mitFaktor = faktorAktiv === true && !!(kontoMitFaktor && kontoMitFaktor.ok && kontoMitFaktor.zweifaktor === true);
+  if (faktorAktiv !== false && !mitFaktor) return absage("zweifaktor-pflicht");
   if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle)) && !mitFaktor)
     return absage("zweifaktor-pflicht");
   if (mitFaktor) felder.zweifaktor = true;

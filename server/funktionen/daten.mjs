@@ -13,7 +13,7 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
-import { ersteinrichtungOffen, ersteinrichtungGueltig, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
+import { ersteinrichtungOffen, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -859,11 +859,13 @@ async function behandeln(req, context, ctx) {
         eintragV = await kontoLesen(store, altS);
         if (eintragV) { fundSchluessel = altS; mussUmschluesseln = true; }
       }
-      /* OPT-1: Ein Ersteinrichtungscode (lib/zugangscode-ersteinrichtung.mjs) gilt nur befristet und nur mit
-         passendem Prüfwert (zeitkonstant verglichen) und nur bis zur Einlösung. Abgelaufen, verbraucht (eingerichtet oder nach
-         Fehlversuchen gesperrt, H1/M1), kaputt oder ohne Pfeffer: genau wie ein
-         unbekannter Code — dieselbe Bremse, dieselbe Antwort, kein Grund nach außen. */
-      if (eintragV && ersteinrichtungsZugang(eintragV) && !ersteinrichtungGueltig(eintragV, zugangscode)) {
+      /* OPT-1 / OPT-1-F (Option A): Ein Ersteinrichtungscode (lib/zugangscode-ersteinrichtung.mjs) gilt auf diesem
+         Weg NIE — weder offen noch verbraucht. Er richtet allein den zweiten Faktor am Konto ein, zusammen mit Adresse
+         und Passwort (accountanmeldung.mjs, kontoFaktorAktion); danach ist der Weg hinein die Kontoanmeldung mit Faktor.
+         Hier ist er genau wie ein unbekannter Code — dieselbe Bremse, dieselbe Antwort, kein Grund nach außen. So kann
+         ihn auch niemand über diesen Weg in einen Faktor am Code verbrennen, den danach nichts mehr prüft (Review #166,
+         Blocker 1 und 2). */
+      if (eintragV && ersteinrichtungsZugang(eintragV)) {
         eintragV = null; fundSchluessel = null; mussUmschluesseln = false;
       }
       const fund = { eintrag: eintragV, schluessel: fundSchluessel,

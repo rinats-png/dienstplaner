@@ -226,3 +226,29 @@ Nebenbei: Diese Datei war doppelt kodiert (UTF-8 als Windows-1252 gelesen und er
 statt „ä“); repariert, Inhalt sonst unverändert.
 
 Nicht integriert, nicht deployt; `work-packages.json` unverändert.
+
+## OPT-1-F, Option A — zusammengeführt mit PR #179 (2026-11-10)
+
+Entscheidung (Betreiber, verbindlich): Befund 1 aus dem Review von #179 wird mit dem Ersteinrichtungscode aus #166
+geschlossen. Kein E-Mail-Weg, keine allgemeine Freischaltung durch den Betreiber als Anmeldeweg.
+
+- Der Code ist an Konto, Person und Betrieb gebunden (`accountId` am Zugang, geprüft gegen die aktive
+  Leitungs-Mitgliedschaft). Er richtet nur den zweiten Faktor **am Konto** ein, zusammen mit Adresse und Passwort
+  (`kontoFaktorAktion`, Feld `ersteinrichtungscode`). Adresse und Passwort allein richten keinen Faktor ein.
+- Auf dem Zugangscode-Weg (`funktionen/daten.mjs`) gilt ein Ersteinrichtungscode nie — offen oder verbraucht wie
+  unbekannt. Der Code allein ergibt nie eine Sitzung.
+- Nach der Einrichtung: Kontoanmeldung mit Passwort und Code aus der App, Betriebsauswahl als Leitung, auch unter
+  `CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1` (Review #166, Blocker 1 und 2; damit ist „Offen: regulärer Anmeldeweg“ oben
+  erledigt).
+- Aufrufer (Blocker 3): `werkzeug/testbetrieb-anlegen.mjs --ersteinrichtung` (Server gestoppt, kein Netzweg). Ohne
+  Schalter bisheriges Verhalten. Auch ein wiederaufgenommener Vorgang liefert den Code.
+- Blocker 4: Verbrauch und Aktivierung als Einheit; scheitert die Aktivierung nachweislich ohne aktiven Faktor, wird
+  der Verbrauch samt Fehlversuchszähler zurückgenommen. Unklar oder Zurücknehmen gescheitert: verbraucht (fail-closed).
+- Befund 3, Zusatzprüfung: Scheitern Epoche oder Abmelden nach der Aktivierung, bleibt der Faktor aktiv (vorher wurde
+  er zurückgenommen); Absage ohne Wiederherstellungscodes. Bei aktivem Faktor gilt keine Kontositzung ohne bestandenen
+  Faktor (`sitzungPruefen`, `betriebWaehlen`, jede Anfrage einer Arbeitssitzung) — unabhängig von Epoche und Aufräumen.
+
+Prüfungen: `pruefungen/zugangscode-ersteinrichtung.test.js`, `pruefungen/konto-anmeldeweg.test.js` (3c, 3d neu).
+Geänderte Erwartungen (bewusst, durch die Entscheidung): Ersteinrichtungscode auf dem Zugangscode-Weg 401 statt
+403/200; Test 3a des #179-Reviews erwartet nach gescheitertem Abmelden einen aktiven Faktor statt eines
+zurückgenommenen.

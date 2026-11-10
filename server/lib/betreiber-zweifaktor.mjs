@@ -396,7 +396,10 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
       const ein = await ersteinrichtungEinloesen(store, zugangSchluessel, async () => {
         const r = await zweifaktorBestaetigen(store, id, code);
         return r.fehler ? { ok: false, fehler: r.fehler } : { ...r, ok: true };
-      });
+        /* Blocker 4 (Review #166): Nur wenn der Faktor nachweislich nicht aktiv ist, wird der Verbrauch zurückgenommen.
+           OPT-1-F: Dieser Zweig ist von funktionen/daten.mjs aus nicht mehr erreichbar (Ersteinrichtungscodes gelten
+           dort nie); er bleibt fail-closed für jeden anderen Aufrufer. */
+      }, { istAktiv: async () => (await zweifaktorStand(store, id)).aktiv === true });
       if (!ein.ok && ein.grund === "verbraucht") {
         await protokoll("zweifaktor", k, "abgewiesen", `${E} · Ersteinrichtung bereits eingelöst`);
         return { antwort: unbekannt() };

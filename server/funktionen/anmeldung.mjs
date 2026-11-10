@@ -179,6 +179,14 @@ const ZUGANG_ABSAGE = { ok: false, fehler: "zugangsdaten", hinweis: HINWEIS_ANME
     gar nicht vorhanden. Auch hier ein Satz. */
 const SITZUNG_ABSAGE = { ok: false, angemeldet: false, hinweis: HINWEIS_SITZUNG };
 
+/** SI-P4 / OPT-1-F: Für diesen Arbeitsbereich (oder dieses Konto) ist ein zweiter Faktor Pflicht. Ohne Personendaten,
+    ohne Rolle. Der Weg: Passwort plus Code aus der App (Faktor am Konto, eingerichtet mit dem Ersteinrichtungscode) oder
+    Zugangscode plus Code aus der App. */
+const ZWEIFAKTOR_PFLICHT_ABSAGE = { ok: false, fehler: "zweifaktor-pflicht",
+  hinweis: "Für diesen Arbeitsbereich ist ein zweiter Faktor Pflicht. Bitte mit Passwort und dem Code aus "
+    + "der App anmelden (zweiten Faktor am Konto mit dem Ersteinrichtungscode einrichten) oder mit dem Zugangscode "
+    + "und dem Code aus der App." };
+
 /* Was ein Fehler nach außen sagen darf: „speichern" ist kein Anmeldefehler,
    sondern ein Fehler des Servers, und ihn als falsche Zugangsdaten
    auszugeben wäre eine Falschauskunft an jemanden, der alles richtig
@@ -253,7 +261,7 @@ export default async (req) => {
 async function anmeldung(req, k) {
   const gelesen = await rumpfLesen(req);
   if (!gelesen.ok) return gelesen.antwort;
-  const { email, passwort, zweifaktor, zweifaktorAktion } = gelesen.daten;
+  const { email, passwort, zweifaktor, zweifaktorAktion, ersteinrichtungscode } = gelesen.daten;
 
   /* Zwei Dimensionen: die Herkunft und das Konto. Gezählt wird der
      Ablageschlüssel der Adresse — ein gepfefferter Prüfwert, nie die
@@ -290,11 +298,13 @@ async function anmeldung(req, k) {
     return zuVielAntwort(n.wartet);
   }
 
-  /* OPT-1-F: Einrichtung des zweiten Faktors am Konto, mit Adresse und Passwort als Ausweis. Dieselben zwei Bremsen
-     wie die Anmeldung (oben), dazu die des Faktors für den Code aus der App. Es entsteht keine Sitzung, und das Cookie
-     dieses Geräts bleibt, wie es ist — außer nach der Bestätigung: Dann sind alle Sitzungen des Kontos beendet. */
+  /* OPT-1-F: Einrichtung des zweiten Faktors am Konto, mit Adresse, Passwort und (Option A) dem Ersteinrichtungscode
+     des Kontos als Ausweis. Dieselben zwei Bremsen wie die Anmeldung (oben), dazu die des Faktors für den Code aus der
+     App. Es entsteht keine Sitzung, und das Cookie dieses Geräts bleibt, wie es ist — außer nach der Bestätigung: Dann
+     sind alle Sitzungen des Kontos beendet. */
   const tor = faktorTor(k);
-  if (zweifaktorAktion !== undefined) return faktorAktion(k, b, tor, { email, passwort, zweifaktor, zweifaktorAktion });
+  if (zweifaktorAktion !== undefined)
+    return faktorAktion(k, b, tor, { email, passwort, zweifaktor, zweifaktorAktion, ersteinrichtungscode });
 
   /* Ein Merkmal, das der Aufrufer schon mitbringt, wird widerrufen — noch
      bevor ein neues entsteht. Zwei Gründe: Nach einer neuen Anmeldung soll
@@ -422,17 +432,26 @@ const AKTION_STATUS = { "aktion-unbekannt": 400, "zweifaktor-erforderlich": 400,
  * @param {string} k
  * @param {any} b  das Ergebnis der Anmeldebremse dieser Anfrage
  * @param {ReturnType<typeof faktorTor>} tor
- * @param {{email: unknown, passwort: unknown, zweifaktor: unknown, zweifaktorAktion: unknown}} r
+ * @param {{email: unknown, passwort: unknown, zweifaktor: unknown, zweifaktorAktion: unknown,
+ *   ersteinrichtungscode: unknown}} r
  */
-async function faktorAktion(k, b, tor, { email, passwort, zweifaktor, zweifaktorAktion }) {
+async function faktorAktion(k, b, tor, { email, passwort, zweifaktor, zweifaktorAktion, ersteinrichtungscode }) {
   const e = await kontoFaktorAktion(store(), { email, passwort, aktion: zweifaktorAktion, zweifaktor,
-    faktorTor: tor.pruefen });
+    ersteinrichtungscode, faktorTor: tor.pruefen });
   const aktion = String(zweifaktorAktion).slice(0, 12);
   if (!e.ok) {
     const g = String(e.grund || "");
     await protokoll("anmelden-konto", k, "abgewiesen", `Konto-Faktor ${aktion} · ${g.slice(0, 30)}`);
     if (g === "zweifaktor-gebremst") return zuVielAntwort(e.wartet || 60);
-    if ((g.startsWith("faktor-") && !(g in AKTION_STATUS)) || g === "sitzungen")
+    /* OPT-1-F, Option A (Befund 1): ohne gültigen Ersteinrichtungscode keine Einrichtung. Nur wer das Passwort kennt,
+       sieht diese Antwort; sie sagt nicht, warum der Code nicht gilt. */
+    if (g === "ersteinrichtung")
+      return antwort({ ok: false, fehler: "ersteinrichtung", hinweis: e.hinweis }, 403);
+    /* Befund 3: Faktor aktiv, aber nicht alles aufgeräumt — keine Sitzung, das Cookie dieses Geräts weg. */
+    if (g === "sitzungen")
+      return antwort({ ok: false, fehler: "nicht-moeglich", zweifaktor: "nicht-pruefbar", hinweis: e.hinweis }, 503,
+        { "set-cookie": keksWeg() });
+    if (g.startsWith("faktor-") && !(g in AKTION_STATUS))
       return antwort({ ok: false, fehler: "nicht-moeglich", zweifaktor: "nicht-pruefbar", hinweis: e.hinweis }, 503);
     if (g in AKTION_STATUS) {
       if (g === "zweifaktor-falsch") await new Promise((r) => setTimeout(r, 400));
@@ -561,6 +580,10 @@ async function betriebOeffnen(req, k) {
   const merkmal = merkmalAusKeks(req);
   if (!merkmal) return antwort(SITZUNG_ABSAGE, 401);
   const p = await sitzungPruefen(store(), merkmal);
+  /* OPT-1-F, Befund 3: Eine Sitzung ohne bestandenen Faktor bei aktivem Faktor des Kontos ist beendet (sitzungPruefen
+     hat sie gelöscht). Die Antwort sagt dem Inhaber, wie es weitergeht — dieselbe wie unter Pflicht. */
+  if (!p.ok && p.grund === "zweifaktor")
+    return antwort(ZWEIFAKTOR_PFLICHT_ABSAGE, 403, { "set-cookie": keksWeg() });
   if (!p.ok) return antwort(SITZUNG_ABSAGE, 401, { "set-cookie": keksWeg() });
 
   /* Die Arbeitssitzung hängt an dieser Anmeldung: Kennung und Ende der
@@ -579,12 +602,7 @@ async function betriebOeffnen(req, k) {
     /* SI-P4, Review-Auflage M1: unter Pflicht kein Betrieb mit Leitungs-, Planungs- oder Kundenrechten über das
        Konto. Eigene Kennung, damit die Oberfläche auf den Zugangscode verweisen kann; ohne Personendaten, ohne
        Rolle — wer hier fragt, hat die Mitgliedschaft ohnehin. */
-    if (e.grund === "zweifaktor-pflicht") {
-      return antwort({ ok: false, fehler: "zweifaktor-pflicht",
-        hinweis: "Für diesen Arbeitsbereich ist ein zweiter Faktor Pflicht. Bitte mit Passwort und dem Code aus "
-          + "der App anmelden (zweiten Faktor am Konto einrichten) oder mit dem Zugangscode und dem Code aus der "
-          + "App." }, 403);
-    }
+    if (e.grund === "zweifaktor-pflicht") return antwort(ZWEIFAKTOR_PFLICHT_ABSAGE, 403);
     return antwort(BETRIEB_ABSAGE, 403);
   }
 

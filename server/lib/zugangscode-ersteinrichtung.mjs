@@ -29,6 +29,22 @@
    gespeichert in der Ablage. Ein falscher Zugangscode selbst trifft keinen
    Eintrag; ihn begrenzt die Anmeldebremse.
 
+   OPT-1-F, Option A (Befund 1, Betreiberentscheidung): Der Code ist an ein
+   KONTO gebunden (`accountId` am Zugang, geprüft gegen die aktive
+   Leitungs-Mitgliedschaft derselben Person im selben Betrieb) und dient
+   allein der Einrichtung des zweiten Faktors AM KONTO — zusammen mit Adresse
+   und Passwort (accountanmeldung.mjs, kontoFaktorAktion). Über den
+   Zugangscode-Weg (funktionen/daten.mjs) gilt ein Ersteinrichtungscode nie,
+   weder offen noch verbraucht: dort ist er dasselbe wie ein unbekannter Code.
+   Nach der Einrichtung ist der Weg hinein die gewöhnliche Kontoanmeldung mit
+   Passwort und Code aus der App. Kein E-Mail-Weg, keine Freischaltung durch
+   den Betreiber. Ein Code ohne Kontobindung gilt nirgends.
+   Transaktion (Review #166, Blocker 4): Scheitert die Aktivierung nach dem
+   Verbrauch und ist der Faktor nachweislich NICHT aktiv, wird der Verbrauch
+   zurückgenommen (ursprünglicher Eintrag samt Fehlversuchszähler). Ist der
+   Zustand unklar oder scheitert das Zurücknehmen, bleibt der Code verbraucht
+   (fail-closed).
+
    Übergabe: Der Klartext entsteht hier und verlässt dieses Modul genau
    einmal, im Rückgabewert. Er wird nicht verschickt und nicht gespeichert —
    abgelegt sind nur der gepfefferte Ablageschlüssel (codes.mjs, neuHash) und
@@ -40,6 +56,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { neuHash, pfeffrig, gleich } from "./codes.mjs";
 import { kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
 import { bestandLesenStreng } from "./bestand.mjs";
+import { mitgliedschaftLesen } from "./accounts.mjs";
 
 /** Gültigkeit des Ersteinrichtungscodes in Stunden (nur die Einrichtung, nicht der Zugang). */
 export const ERSTEINRICHTUNG_STUNDEN = 72;
@@ -141,10 +158,14 @@ const fristOffen = (e, jetzt) => {
  * @param {any} store
  * @param {Array<string|undefined>} schluessel  alle Ablageschlüssel des Zugangs
  * @param {() => Promise<any>} einrichten  liefert `{ok: true, ...}` bei Erfolg
- * @param {{jetzt?: number}} [o]
- * @returns {Promise<{ok: boolean, grund?: string, ergebnis?: any}>}
+ * @param {{jetzt?: number, istAktiv?: () => Promise<boolean>}} [o]
+ *   `istAktiv` (Review #166, Blocker 4): Ist der Faktor nach einem Fehlschlag von `einrichten` aktiv? Nur wenn diese
+ *   Frage ausdrücklich mit Nein beantwortet wird, wird der Verbrauch zurückgenommen (`zurueckgenommen: true`) — der
+ *   Code gilt dann weiter, samt bisher gezählter Fehlversuche. Ohne `istAktiv`, bei Ja, bei einem Lesefehler oder wenn
+ *   das Zurücknehmen scheitert, bleibt der Code verbraucht (fail-closed).
+ * @returns {Promise<{ok: boolean, grund?: string, ergebnis?: any, zurueckgenommen?: boolean}>}
  */
-export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt = Date.now() } = {}) {
+export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt = Date.now(), istAktiv } = {}) {
   const haupt = schluessel.filter(Boolean)[0];
   if (!haupt) return Promise.resolve({ ok: false, grund: "schluessel" });
   return inReihe(haupt, async () => {
@@ -153,14 +174,61 @@ export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt 
     if (!eintraege.length || eintraege.some(([, e]) => ersteinrichtungVerbraucht(e))
       || !eintraege.some(([, e]) => ersteinrichtungOffen(e) && fristOffen(e, jetzt)))
       return { ok: false, grund: "verbraucht" };
+    /* Der Stand vor dem Verbrauch, für ein Zurücknehmen (Blocker 4). */
+    const vorher = eintraege.map(([s, e]) => [s, structuredClone(e)]);
+    const zurueck = async () => {
+      try { for (const [s, e] of vorher) await kontoSchreiben(store, s, e); return true; } catch { return false; }
+    };
     try { await verbrauchtSchreiben(store, schluessel, eintraege, "eingerichtet", { faktorPflicht: true }); }
-    catch { return { ok: false, grund: "verbrauch" }; }
+    catch {
+      /* Nichts eingerichtet. Ein halb geschriebener Verbrauch (mehrere Schlüssel) wird bestenfalls zurückgenommen;
+         gelingt das nicht, bleibt der Code im Zweifel verbraucht. */
+      await zurueck();
+      return { ok: false, grund: "verbrauch" };
+    }
     /* Den Vermerk `zweiterFaktor` setzt der Aufrufer erst nach gelungener Einrichtung (faktorVermerken). */
-    let ergebnis;
+    let ergebnis = null;
     try { ergebnis = await einrichten(); } catch { ergebnis = null; }
-    if (!ergebnis || ergebnis.ok !== true) return { ok: false, grund: "einrichtung", ergebnis };
-    return { ok: true, ergebnis };
+    if (ergebnis && ergebnis.ok === true) return { ok: true, ergebnis };
+    /* Blocker 4: kein stilles Verbrennen. Zurückgenommen wird nur, wenn sicher ist, dass kein Faktor aktiv wurde. */
+    let sicherNichtAktiv = false;
+    if (typeof istAktiv === "function") {
+      try { sicherNichtAktiv = (await istAktiv()) === false; } catch { sicherNichtAktiv = false; }
+    }
+    if (sicherNichtAktiv && await zurueck()) return { ok: false, grund: "einrichtung", ergebnis, zurueckgenommen: true };
+    return { ok: false, grund: "einrichtung", ergebnis };
   });
+}
+
+/**
+ * OPT-1-F, Option A: Der Ersteinrichtungscode für die Einrichtung des zweiten Faktors AM KONTO prüfen — ohne ihn zu
+ * verbrauchen. Gültig nur, wenn ALLES stimmt (fail-closed, jeder Zweifel ist Nein):
+ *   - Pfeffer vorhanden, Code als gepfefferter Schlüssel auffindbar (streng gelesen; ein Lesefehler wirft nicht nach
+ *     außen, sondern ergibt `grund: "lesen"`),
+ *   - ersteinrichtungGueltig (offen, Frist, Leitung, Prüfwert an Raum und Code gebunden, zeitkonstant verglichen),
+ *   - der Code ist an GENAU dieses Konto gebunden (`accountId`),
+ *   - das Konto ist dort jetzt aktive Leitung derselben Person im selben Betrieb (Mitgliedschaft frisch gelesen).
+ * Gründe nach außen unterscheidet der Aufrufer nur zwischen „nicht prüfbar" (pfeffer, lesen) und „ungültig".
+ * @param {any} store
+ * @param {{code?: unknown, accountId?: unknown, jetzt?: number}} o
+ * @returns {Promise<{ok: true, schluessel: string, eintrag: any}|{ok: false, grund: "pfeffer"|"lesen"|"ungueltig"}>}
+ */
+export async function ersteinrichtungFuerKonto(store, { code, accountId, jetzt = Date.now() } = {}) {
+  if (!pfeffrig()) return { ok: false, grund: "pfeffer" };
+  const c = typeof code === "string" ? code.trim() : "";
+  if (!c || c.length > 64) return { ok: false, grund: "ungueltig" };
+  if (typeof accountId !== "string" || !accountId) return { ok: false, grund: "ungueltig" };
+  const schluessel = neuHash(c);
+  if (!schluessel) return { ok: false, grund: "pfeffer" };
+  let eintrag;
+  try { eintrag = await kontoLesenStreng(store, schluessel); } catch { return { ok: false, grund: "lesen" }; }
+  if (!eintrag || !ersteinrichtungGueltig(eintrag, c, jetzt)) return { ok: false, grund: "ungueltig" };
+  if (typeof eintrag.accountId !== "string" || eintrag.accountId !== accountId) return { ok: false, grund: "ungueltig" };
+  let m;
+  try { m = await mitgliedschaftLesen(store, accountId, eintrag.bestand); } catch { return { ok: false, grund: "lesen" }; }
+  if (!m || m.status !== "aktiv" || m.rolle !== "leitung" || String(m.person || "") !== String(eintrag.person)
+    || m.mandantId !== eintrag.mandantId) return { ok: false, grund: "ungueltig" };
+  return { ok: true, schluessel, eintrag };
 }
 
 /**
@@ -215,13 +283,17 @@ export function ersteinrichtungGueltig(eintrag, code, jetzt = Date.now()) {
  *
  * @param {any} store  Ablage „centric"
  * @param {{raum?: unknown, mandantId?: unknown, betrieb?: number, person?: unknown, name?: unknown,
- *          laeuftAb?: string|null, jetzt?: () => number}} o
+ *          laeuftAb?: string|null, jetzt?: () => number, accountId?: unknown}} o
+ *   `accountId` (OPT-1-F): das Konto, an das der Code gebunden wird. Es muss im Raum aktive Leitung genau dieser
+ *   Person in genau diesem Betrieb sein. Ohne `accountId` entsteht ein Code, der nirgends gilt
+ *   (ersteinrichtungFuerKonto verlangt die Bindung, der Zugangscode-Weg nimmt ihn nie an).
  * @returns {Promise<{ok: boolean, grund?: string, code?: string, bis?: string, kennung?: string}>}
  *   `code` ist der einzige Klartext; er steht nirgends sonst.
  */
 export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betrieb = 0, person, name,
-  laeuftAb = null, jetzt = Date.now } = {}) {
+  laeuftAb = null, jetzt = Date.now, accountId = undefined } = {}) {
   if (!pfeffrig()) return { ok: false, grund: "pfeffer" };
+  if (accountId !== undefined && (typeof accountId !== "string" || !accountId)) return { ok: false, grund: "konto" };
   if (!raum || typeof raum !== "string") return { ok: false, grund: "raum" };
   if (!mandantId || typeof mandantId !== "string") return { ok: false, grund: "betrieb" };
   if (!person || typeof person !== "string") return { ok: false, grund: "person" };
@@ -238,6 +310,15 @@ export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betr
   const p = Array.isArray(m.personen) ? m.personen.find((x) => x && String(x.id) === person) : null;
   if (!p) return { ok: false, grund: "person" };
   if (p.rolle !== "leitung" || (p.status !== undefined && p.status !== "aktiv")) return { ok: false, grund: "rolle" };
+
+  /* OPT-1-F: Die Kontobindung wird ebenso wenig blind gesetzt. Das Konto muss im Raum aktive Leitung genau dieser
+     Person in genau diesem Betrieb sein. */
+  if (typeof accountId === "string") {
+    let m;
+    try { m = await mitgliedschaftLesen(store, accountId, raum); } catch { return { ok: false, grund: "konto" }; }
+    if (!m || m.status !== "aktiv" || m.rolle !== "leitung" || String(m.person || "") !== person
+      || m.mandantId !== mandantId) return { ok: false, grund: "konto" };
+  }
 
   /* Kollision praktisch ausgeschlossen, trotzdem streng geprüft: Ein Lesefehler ist kein „frei". */
   let code = null;
@@ -256,6 +337,7 @@ export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betr
   const bis = new Date(start.getTime() + ERSTEINRICHTUNG_STUNDEN * 3600000).toISOString();
   await kontoSchreiben(store, schluessel, {
     name: String(name || raum), bestand: raum, rolle: "leitung", person, betrieb, mandantId,
+    ...(typeof accountId === "string" ? { accountId } : {}),
     demo: false, gruppe: null, hinweis: null, angelegt: start.toISOString(),
     ...(laeuftAb ? { laeuftAb } : {}),
     ersteinrichtung: { bis, pruefwert: wert },
