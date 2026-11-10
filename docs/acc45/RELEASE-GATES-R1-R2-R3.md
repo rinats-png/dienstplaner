@@ -23,6 +23,21 @@ Genehmigt vom Betreiber am 2026-11-09:
 - **WP-19-Kette, WP-21, WP-40, WP-35, WP-38, WP-39** sind R2/R3 und blockieren R1 nicht.
 - **SI-P6b** (Kundenzustimmung) ist für R1 ohne Kundenräume nicht nötig, R2-Blocker.
 
+## Release-Checkliste zweiter Faktor (OPT-4/WR-2, ab PR #182)
+
+Gilt für jedes Gate, auf dem der Stand mit OPT-4/WR-2 ausgeliefert wird. Einzelheiten:
+[OPT-4-WR-2-LUECKEN.md](OPT-4-WR-2-LUECKEN.md), Betriebshandbuch Abschnitt 4.
+
+- [ ] (a) `/zustand` existiert, gehört uid 1000 und ist beschreibbar. Sonst 503 beim Aktivieren eines Faktors, beim
+  Neuerzeugen der Wiederherstellungscodes und bei der Anmeldung mit Wiederherstellungscode.
+- [ ] (b) Inhaber sind informiert: Nach dem Deploy gelten Wiederherstellungscodes ohne Epoche (Altformat v1 und v2 aus
+  der Zeit vor diesem PR) nicht mehr, bis sie mit dem Code aus der App neu erzeugt werden.
+- [ ] (c) Bekannt und akzeptiert: Jede Epochen-Rotation (Vollwiederherstellung, fehlende `skbindung`, Kopie der
+  Ablage) macht alle Wiederherstellungscodes ungültig, ohne Benachrichtigung (Entscheidung E3 offen).
+- [ ] (d) Bekannt und akzeptiert: Bis WR-3 bis WR-9 gibt es keinen Rückweg für Inhaber, die Telefon UND Codes
+  verlieren.
+- [ ] (e) `NODE_ENV=production` in der Produktion (Docker-Image); `development`/`test` schalten die Epochenbindung ab.
+
 ## Externe Freigaben (getrennt, nicht in Gate-Abhängigkeiten)
 
 - E-1: Staging-Abnahme durch Betreiber (R1-Gate-Abschluss).

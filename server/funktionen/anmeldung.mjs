@@ -453,9 +453,13 @@ async function faktorAktion(k, b, tor, { email, passwort, zweifaktor, zweifaktor
         { "set-cookie": keksWeg() });
     if (g.startsWith("faktor-") && !(g in AKTION_STATUS))
       return antwort({ ok: false, fehler: "nicht-moeglich", zweifaktor: "nicht-pruefbar", hinweis: e.hinweis }, 503);
-    if (g in AKTION_STATUS) {
-      if (g === "zweifaktor-falsch") await new Promise((r) => setTimeout(r, 400));
-      return antwort({ ok: false, fehler: "zweifaktor", zweifaktor: g, hinweis: e.hinweis }, AKTION_STATUS[g]);
+    /* WR-2 (Review-Befund 4): Ein schon verwendeter Code aus der App bei der Neugenerierung ist ein falscher Faktor,
+       keine Absage von Adresse oder Passwort. Nach außen genau wie ein falscher Code (Status, Feld, Hinweis, Wartezeit)
+       — wie bei der Anmeldung (faktorAbsage), damit „schon verwendet" und „falsch" nicht unterscheidbar sind. */
+    const ga = g === "zweifaktor-wiederholt" ? "zweifaktor-falsch" : g;
+    if (ga in AKTION_STATUS) {
+      if (ga === "zweifaktor-falsch") await new Promise((r) => setTimeout(r, 400));
+      return antwort({ ok: false, fehler: "zweifaktor", zweifaktor: ga, hinweis: e.hinweis }, AKTION_STATUS[ga]);
     }
     /* Alles andere ist eine Absage von Adresse oder Passwort — derselbe Satz wie bei der Anmeldung. */
     return antwort(ZUGANG_ABSAGE, 401);

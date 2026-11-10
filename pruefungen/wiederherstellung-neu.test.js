@@ -37,15 +37,17 @@ const GUT = "Nordwind und Sonne 1846";
 const ADMIN = "wr2-verwalter-ursprung-0123456789";
 const CODE_LEITUNG = "WRZW-LEIT-UNG2";
 const CODE_BETREIBER = "WRZW-BETR-EIB2";
+const CODE_LEITUNG_BREMSE = "WRZW-BREM-SE02";
 const T0 = Date.UTC(2026, 10, 10, 9, 0, 15);
 
-let wurzel, getStore, anmeldungHandler, KEKS, daten, einrichten, A, REG, PROV, ZF, KF;
+let wurzel, getStore, SCHUTZ, anmeldungHandler, KEKS, daten, einrichten, A, REG, PROV, ZF, KF;
 let jetzt = T0;
 const uhr = (ms) => { jetzt = ms; vi.setSystemTime(ms); };
 const weiter = (s = 30) => uhr(jetzt + s * 1000);
 const totp = (b32, d = 0) => hotp(base32Dekodieren(b32), schrittZu(jetzt) + d);
 
 let zaehler = 0;
+/** @type {string} */ let verwalterGeheimnis = "";
 const herkunft = () => `10.72.${Math.floor(++zaehler / 250) + 1}.${(zaehler % 250) + 1}`;
 
 beforeAll(async () => {
@@ -62,6 +64,7 @@ beforeAll(async () => {
   delete process.env.REDIS_REST_TOKEN;
   ({ getStore } = await import("../server/lib/ablage.mjs"));
   const schutz = await import("../server/lib/schutz.mjs");
+  SCHUTZ = schutz;
   /* Bremsen sind hier nicht Gegenstand (eigene Prüfungen: konto-anmeldeweg, betreiber-zweifaktor). */
   for (const art of ["anmelden", "anmelden-konto", "einrichten", "zweifaktor"])
     schutz.GRENZEN[art] = { ...schutz.GRENZEN[art], versuche: 100000 };
@@ -83,7 +86,7 @@ beforeAll(async () => {
   KF = await import("../server/lib/kontofaktor.mjs");
   const { kontoSchreiben } = await import("../server/lib/konten.mjs");
   const { ablageSchluessel } = await import("../server/lib/codes.mjs");
-  for (const [c, rolle] of [[CODE_LEITUNG, "leitung"], [CODE_BETREIBER, "betreiber"]])
+  for (const [c, rolle] of [[CODE_LEITUNG, "leitung"], [CODE_BETREIBER, "betreiber"], [CODE_LEITUNG_BREMSE, "leitung"]])
     await kontoSchreiben(laden(), ablageSchluessel(c), { name: `WR2 ${rolle}`, bestand: "betreiber-probe",
       rolle, person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
 }, LIMIT);
@@ -370,6 +373,7 @@ describe("WR-2 Verwalterschlüssel über /einrichten/zweifaktor", () => {
     weiter();
     const b = await verwaltung("/einrichten/zweifaktor", { methode: "POST", rumpf: { aktion: "beginnen" } });
     expect(b.status, b.text).toBe(200);
+    verwalterGeheimnis = b.daten.geheimnis;
     const f = await verwaltung("/einrichten/zweifaktor", { methode: "POST",
       rumpf: { aktion: "bestaetigen", zweifaktor: totp(b.daten.geheimnis) } });
     expect(f.status, f.text).toBe(200);
@@ -402,5 +406,99 @@ describe("WR-2 Verwalterschlüssel über /einrichten/zweifaktor", () => {
       expect((await verwaltung("/einrichten/verwalter", { kopf: { "x-centric-zweifaktor": c } })).status).toBe(401);
     expect((await verwaltung("/einrichten/verwalter",
       { kopf: { "x-centric-zweifaktor": n.daten.wiederherstellung[0] } })).status).toBe(200);
+  }, LIMIT);
+});
+
+describe("WR-2 Review-Befund 4: schon verwendeter Code aus der App bei der Neugenerierung", () => {
+  it("antwortet wie ein falscher Code (nicht wie falsches Passwort) und ist davon nicht unterscheidbar", async () => {
+    const K = await kontoMitFaktor("wiederholt");
+    weiter();
+    const t = totp(K.geheimnis);
+    const eins = await konto({ email: K.email, passwort: GUT, zweifaktorAktion: "wiederherstellung-neu", zweifaktor: t });
+    expect(eins.status, eins.text).toBe(200);
+    const nochmal = await konto({ email: K.email, passwort: GUT, zweifaktorAktion: "wiederherstellung-neu", zweifaktor: t });
+    expect(nochmal.status).toBe(401);
+    expect(nochmal.daten.fehler).toBe("zweifaktor");
+    expect(nochmal.daten.fehler).not.toBe("zugangsdaten");
+    expect(nochmal.daten.wiederherstellung).toBeUndefined();
+    const falsch = await konto({ email: K.email, passwort: GUT, zweifaktorAktion: "wiederherstellung-neu",
+      zweifaktor: String((Number(t) + 500000) % 1000000).padStart(6, "0") });
+    expect(falsch.status).toBe(401);
+    expect(nochmal.daten).toEqual(falsch.daten);
+    expect(nochmal.text).toBe(falsch.text);
+  }, LIMIT);
+});
+
+describe("WR-2 Review-Befund 3: falsche Codes bei der Neugenerierung zählen gegen die Bremse (alle Eingänge)", () => {
+  /** @type {any} */ let grenzeVorher;
+  const GRENZE = 3;
+  const daneben = (t) => String((Number(t) + 500000) % 1000000).padStart(6, "0");
+  const ohneZeit = (a) => ({ status: a.status, daten: a.daten });
+
+  it("Konto: nach der Grenze 429 — auch mit richtigem Code; falsche Versuche sind gleich beantwortet; Codes unverändert", async () => {
+    const K = await kontoMitFaktor("bremse-konto");
+    grenzeVorher = SCHUTZ.GRENZEN.zweifaktor;
+    SCHUTZ.GRENZEN.zweifaktor = { ...grenzeVorher, versuche: GRENZE };
+    try {
+      weiter();
+      const vorher = JSON.stringify((await faktorEintrag(K.accountId)).wiederherstellung);
+      const antworten = [];
+      for (let i = 0; i < GRENZE; i += 1)
+        antworten.push(await konto({ email: K.email, passwort: GUT, zweifaktorAktion: "wiederherstellung-neu",
+          zweifaktor: daneben(totp(K.geheimnis)) }));
+      for (const a of antworten) expect(ohneZeit(a)).toEqual(ohneZeit(antworten[0]));
+      expect(antworten[0].status).toBe(401);
+      const gesperrt = await konto({ email: K.email, passwort: GUT, zweifaktorAktion: "wiederherstellung-neu",
+        zweifaktor: totp(K.geheimnis) });
+      expect(gesperrt.status).toBe(429);
+      expect(gesperrt.daten.wiederherstellung).toBeUndefined();
+      expect(JSON.stringify((await faktorEintrag(K.accountId)).wiederherstellung)).toBe(vorher);
+    } finally { SCHUTZ.GRENZEN.zweifaktor = grenzeVorher; }
+  }, LIMIT);
+
+  it("Zugangscode: nach der Grenze 429 — auch mit richtigem Code; falsche Versuche gleich beantwortet", async () => {
+    weiter();
+    const b = await code({ zugangscode: CODE_LEITUNG_BREMSE, zweifaktorAktion: "beginnen" });
+    expect(b.status, b.text).toBe(200);
+    const f = await code({ zugangscode: CODE_LEITUNG_BREMSE, zweifaktorAktion: "bestaetigen",
+      zweifaktor: totp(b.daten.geheimnis) });
+    expect(f.status, f.text).toBe(200);
+    grenzeVorher = SCHUTZ.GRENZEN.zweifaktor;
+    SCHUTZ.GRENZEN.zweifaktor = { ...grenzeVorher, versuche: GRENZE };
+    try {
+      weiter();
+      const antworten = [];
+      for (let i = 0; i < GRENZE; i += 1)
+        antworten.push(await code({ zugangscode: CODE_LEITUNG_BREMSE, zweifaktorAktion: "wiederherstellung-neu",
+          zweifaktor: daneben(totp(b.daten.geheimnis)) }));
+      for (const a of antworten) expect(ohneZeit(a)).toEqual(ohneZeit(antworten[0]));
+      expect(antworten[0].status).toBe(401);
+      const gesperrt = await code({ zugangscode: CODE_LEITUNG_BREMSE, zweifaktorAktion: "wiederherstellung-neu",
+        zweifaktor: totp(b.daten.geheimnis) });
+      expect(gesperrt.status).toBe(429);
+      expect(gesperrt.daten.wiederherstellung).toBeUndefined();
+      /* Der alte Satz gilt weiter (nicht ersetzt). */
+    } finally { SCHUTZ.GRENZEN.zweifaktor = grenzeVorher; }
+    weiter(16 * 60 * 60);
+    expect((await code({ zugangscode: CODE_LEITUNG_BREMSE, zweifaktor: f.daten.wiederherstellung[0] })).status).toBe(200);
+  }, LIMIT);
+
+  it("/einrichten: nach der Grenze 429 — auch mit richtigem Code; falsche Versuche gleich beantwortet", async () => {
+    weiter();
+    expect(verwalterGeheimnis).toBeTruthy();
+    grenzeVorher = SCHUTZ.GRENZEN.zweifaktor;
+    SCHUTZ.GRENZEN.zweifaktor = { ...grenzeVorher, versuche: GRENZE };
+    try {
+      const antworten = [];
+      for (let i = 0; i < GRENZE; i += 1)
+        antworten.push(await verwaltung("/einrichten/zweifaktor", { methode: "POST",
+          rumpf: { aktion: "wiederherstellung-neu", zweifaktor: daneben(totp(verwalterGeheimnis)) } }));
+      for (const a of antworten) expect(ohneZeit(a)).toEqual(ohneZeit(antworten[0]));
+      expect(antworten[0].status).toBe(401);
+      const gesperrt = await verwaltung("/einrichten/zweifaktor", { methode: "POST",
+        rumpf: { aktion: "wiederherstellung-neu", zweifaktor: totp(verwalterGeheimnis) } });
+      expect(gesperrt.status).toBe(429);
+      expect(gesperrt.daten.wiederherstellung).toBeUndefined();
+    } finally { SCHUTZ.GRENZEN.zweifaktor = grenzeVorher; }
   }, LIMIT);
 });

@@ -20,6 +20,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { hotp, base32Dekodieren, schrittZu } from "../server/lib/zweifaktor.mjs";
 
 const LIMIT = 60000;
@@ -30,7 +31,7 @@ const T0 = Date.UTC(2026, 10, 10, 9, 0, 15);
 const P_AN = "/api/account/anmelden";
 const P_WAHL = "/api/account/betrieb";
 
-let wurzel, getStore, handler, KEKS, daten, A, B, P, REG, PROV;
+let wurzel, getStore, handler, KEKS, daten, A, B, P, REG, PROV, R, AS, ZE;
 let jetzt = T0;
 const uhr = (ms) => { jetzt = ms; vi.setSystemTime(ms); };
 const weiter = (s = 30) => uhr(jetzt + s * 1000);
@@ -64,6 +65,9 @@ beforeAll(async () => {
   P = await import("../server/lib/passwoerter.mjs");
   REG = await import("../server/lib/registrierung.mjs");
   PROV = await import("../server/lib/provisionierung.mjs");
+  R = await import("../server/lib/rechte.mjs");
+  AS = await import("../server/lib/arbeitssitzung.mjs");
+  ZE = await import("../server/lib/zugangscode-ersteinrichtung.mjs");
 }, LIMIT);
 
 afterAll(async () => {
@@ -72,6 +76,7 @@ afterAll(async () => {
 });
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
+const hash = (x) => createHash("sha256").update(String(x)).digest("hex");
 const arbeitAblage = () => getStore({ name: "centric-sitzungen", consistency: "strong" });
 
 async function anfrage({ pfad = P_AN, rumpf = {}, keks = null } = {}) {
@@ -183,26 +188,81 @@ describe("OPT-4: Pflicht je Konto, ohne globalen Schalter", () => {
     expect(w.daten.fehler).toBe("zweifaktor-pflicht");
   }, LIMIT);
 
-  it("Rollenwechsel nach der Auswahl: als Mitarbeiter gewählt, danach zur Leitung — die Arbeitssitzung ohne Faktor gilt nicht mehr", async () => {
-    const k = await konto("hoch");
+  /* Review-Befund 5: Die wirksame Rolle wechselt tatsächlich — belegt über wirksameRolle gegen den frisch gelesenen
+     Bestand und über den Grund der Absage (konto-faktor-pflicht), nicht nur über einen Status. */
+  const wirksamJetzt = async (raum, token) => {
+    const roh = await arbeitAblage().get(`t:${hash(token)}`, { type: "json" });
+    const g = await B.bestandLesen(laden(), raum);
+    return { roh, rolle: R.wirksameRolle(roh, g.bestand) };
+  };
+
+  it("Rollenwechsel: Herabstufung öffnet den Betrieb ohne Faktor als Mitarbeiter; Hochstufung danach beendet genau diese Arbeitssitzung (Grund: Faktorpflicht)", async () => {
+    const k = await konto("wechsel");
     expect((await A.accountAendern(laden(), k.id, { faktorPflicht: true })).ok).toBe(true);
-    const raum = await arbeitsbereich(k.id, "hoch", { rolle: "mitarbeiter" });
-    const w = await waehlen(await angemeldet(k.email), raum);
+    /* Ausgang: Mitgliedschaft Mitarbeiter, Person im Bestand Leitung → wirksam Leitung → ohne Faktor keine Auswahl. */
+    const raum = await arbeitsbereich(k.id, "wechsel", { rolle: "mitarbeiter", personRolle: "leitung" });
+    const keks = await angemeldet(k.email);
+    const vorher = await waehlen(keks, raum);
+    expect(vorher.status, vorher.text).toBe(403);
+    expect(vorher.daten.fehler).toBe("zweifaktor-pflicht");
+    /* Herabstufung: Person wird Mitarbeiter → keine der beiden Rollen trägt Faktorpflicht → Auswahl gelingt. */
+    expect((await B.bestandSchreiben(laden(), raum, kernMit("mitarbeiter"), { durch: "Pruefung" })).ok).toBe(true);
+    const w = await waehlen(keks, raum);
     expect(w.status, w.text).toBe(200);
+    expect(w.daten.rolle).toBe("mitarbeiter");
+    const m = await wirksamJetzt(raum, w.daten.token);
+    expect(m.rolle).toBe("mitarbeiter");
+    expect((await AS.arbeitssitzungPruefen(laden(), m.roh)).ok).toBe(true);
     expect(await bestandStatus(w.daten.token)).toBe(200);
+    /* Hochstufung: Person wird wieder Leitung → wirksam Leitung → die Arbeitssitzung ohne Faktor gilt nicht mehr. */
     expect((await B.bestandSchreiben(laden(), raum, kernMit("leitung"), { durch: "Pruefung" })).ok).toBe(true);
+    const h = await wirksamJetzt(raum, w.daten.token);
+    expect(h.rolle).toBe("leitung");
+    const pr = await AS.arbeitssitzungPruefen(laden(), h.roh);
+    expect(pr.ok).toBe(false);
+    expect(/** @type {any} */ (pr).grund).toBe("konto-faktor-pflicht");
     expect(await bestandStatus(w.daten.token)).toBe(401);
-    /* Auch nach der Herabstufung lebt sie nicht wieder auf (weggeräumt). */
+    /* Erneute Herabstufung belebt sie nicht wieder (weggeräumt). */
     expect((await B.bestandSchreiben(laden(), raum, kernMit("mitarbeiter"), { durch: "Pruefung" })).ok).toBe(true);
     expect(await bestandStatus(w.daten.token)).toBe(401);
   }, LIMIT);
 
-  it("Kontrolle: Konto ohne Pflicht, ohne Schalter — Verhalten unverändert (Mitarbeiter, Hochstufung wirkt nur über den Schalter)", async () => {
+  it("Kontrolle: Konto ohne Pflicht, ohne Schalter — dieselbe Hochstufung beendet die Sitzung nicht (das Umschreiben des Bestands allein ist kein Grund)", async () => {
     const k = await konto("ohne-pflicht");
     const raum = await arbeitsbereich(k.id, "ohne-pflicht", { rolle: "mitarbeiter" });
     const w = await waehlen(await angemeldet(k.email), raum);
     expect(w.status, w.text).toBe(200);
     expect(await bestandStatus(w.daten.token)).toBe(200);
+    expect((await B.bestandSchreiben(laden(), raum, kernMit("leitung"), { durch: "Pruefung" })).ok).toBe(true);
+    const h = await wirksamJetzt(raum, w.daten.token);
+    expect(h.rolle).toBe("leitung");
+    expect((await AS.arbeitssitzungPruefen(laden(), h.roh)).ok).toBe(true);
+  }, LIMIT);
+
+  it("Schlägt das Vermerken der Pflicht am Konto fehl, entsteht kein Ersteinrichtungscode (fail-closed)", async () => {
+    const K = await mitErsteinrichtung("vermerk-kaputt");
+    const s = laden();
+    const m = await A.mitgliedschaftLesen(s, K.accountId, K.raum);
+    const kaputt = new Proxy(s, { get(z, name) {
+      if (name === "setJSON") return async (key, ...rest) => {
+        if (String(key).startsWith("account:")) throw new Error("Ablage streikt");
+        return z.setJSON(key, ...rest);
+      };
+      const v = z[name]; return typeof v === "function" ? v.bind(z) : v;
+    } });
+    const zaehlen = async () => (await s.list({ prefix: "konto:" })).blobs.length;
+    const vorher = await zaehlen();
+    const e = await ZE.ersteinrichtungscodeAnlegen(kaputt, { raum: K.raum, mandantId: m.mandantId, betrieb: m.betrieb,
+      person: String(m.person), accountId: K.accountId });
+    expect(e.ok).toBe(false);
+    expect(e.grund).toBe("konto");
+    expect(e.code).toBeUndefined();
+    expect(await zaehlen()).toBe(vorher);
+    /* Gegenprobe mit gesunder Ablage: es entsteht ein Code. */
+    const gut = await ZE.ersteinrichtungscodeAnlegen(s, { raum: K.raum, mandantId: m.mandantId, betrieb: m.betrieb,
+      person: String(m.person), accountId: K.accountId });
+    expect(gut.ok, JSON.stringify(gut.grund)).toBe(true);
+    expect(await zaehlen()).toBe(vorher + 1);
   }, LIMIT);
 });
 
