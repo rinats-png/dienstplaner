@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 188,
   "statusZaehlung": {
-    "BLOCKED": 83,
+    "BLOCKED": 82,
     "READY": 16,
-    "IN_PROGRESS": 7,
+    "IN_PROGRESS": 6,
     "REVIEW": 9,
-    "INTEGRATED": 70,
+    "INTEGRATED": 72,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 88,
-      "offen": 32,
+      "offen": 30,
       "restPT": {
-        "min": 55.4,
-        "max": 87.05
+        "min": 47.9,
+        "max": 77.8
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 346.8,
-    "max": 588.35
+    "min": 339.3,
+    "max": 579.1
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -706,12 +706,12 @@
       "prio": "P1",
       "aufwandPT": {"min":10,"max":13.5},
       "abhaengigkeiten": ["WP-12","WP-39"],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
-        "lokalGetestet": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
-        "reviewt": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #183 integriert (Teil 1: Gerätematrix, Messung, Seitenleiste, Zielgrößen, Scrollbereiche)."},
+        "implementiert": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -720,12 +720,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": ["#183"],
+      "pr": ["#183","#192"],
       "nachweis": null,
       "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
       "tests": "Playwright-Viewports, Geräte",
       "dateien": "src/ansichten/*",
-      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen."
+      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand (automatisch): INTEGRATED nach #192."
     },
     {
       "id": "WP-22",
@@ -5140,12 +5140,12 @@
       "prio": "P1",
       "aufwandPT": {"min":2.5,"max":2.5},
       "abhaengigkeiten": ["WR-2"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #191 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #191 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #191 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #191 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5154,12 +5154,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#191"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Antrag maximal 24 h offen; frische TOTP-Authentifizierung je Freigabe; Abschlusstoken 15 min; Freigebende nur Leitung im selben Mandanten; keine Selbstfreigabe; Einheitszugehörigkeit bei Unabhängigkeit berücksichtigen; Mandantentrennung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/funktionen/kontowiederherstellung*.mjs, Tests",
-      "notiz": "Entscheidungen 1 bis 4 (2026-11-09). Freigabemechanik für OPT-2 und das Offline-Werkzeug mitverwendet (kein Doppelzählen)."
+      "notiz": "Entscheidungen 1 bis 4 (2026-11-09). Freigabemechanik für OPT-2 und das Offline-Werkzeug mitverwendet (kein Doppelzählen). Stand (automatisch): INTEGRATED nach #191."
     },
     {
       "id": "WR-4",
