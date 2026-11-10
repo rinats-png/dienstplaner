@@ -68,6 +68,14 @@ export function aktionenStammdaten(k) {
         if (n) { melde(`Der Einsatzort wird noch von ${n} Dienstart(en) verwendet.`); return m; }
         return { ...m, einsatzorte: (m.einsatzorte || []).filter((o) => o.id !== id) };
       }, "Einsatzort gelöscht"),
+      /* Interne Vorgaben (WP-I4): nur org.edit; Form, Stufengrenze und Wann/Wer prüft und setzt der Server. */
+      vorgabeSpeichern: (v) => mUpd((m) => {
+        const liste = Array.isArray(m.vorgaben) ? m.vorgaben : [];
+        return { ...m, vorgaben: liste.some((x) => x.id === v.id) ? liste.map((x) => x.id === v.id ? v : x) : [...liste, v] };
+      }, `Vorgabe „${v.name}“ gespeichert`),
+      vorgabeStatus: (id, status) => mUpd((m) => ({ ...m,
+        vorgaben: (m.vorgaben || []).map((x) => x.id === id ? { ...x, status } : x) }), status === "aktiv" ? "Vorgabe aktiviert" : "Vorgabe deaktiviert"),
+      vorgabeLoeschen: (id) => mUpd((m) => ({ ...m, vorgaben: (m.vorgaben || []).filter((x) => x.id !== id) }), "Vorgabe gelöscht"),
       /* Planfreigabe als Pflicht (WP-23): nur org.edit; wann und von wem, setzt der Server. */
       setzePlanFreigabePflicht: (an) => mUpd((m) => ({ ...m,
         einstellungen: { ...(m.einstellungen || {}), planFreigabePflicht: !!an } }),
