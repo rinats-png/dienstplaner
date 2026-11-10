@@ -58,6 +58,15 @@ describe("WP-21 Teil 2: Meldungen und Zielgroesse", () => {
     expect(css).toMatch(/\.toast button\{min-height:24px; min-width:24px; padding:4px 8px;\}/);
     expect(css).toContain(`@media (max-width: ${UMBRUCH.seitenleiste}px){ .toast button{min-height:36px; padding:6px 10px;} }`);
   });
+  it("Schalter (Ein/Aus) sind auf Telefon und Tablet 24 px hoch (waren 23); die Rechneransicht behaelt 23", () => {
+    const regel = `@media (max-width: ${UMBRUCH.seitenleiste}px){ .schalter{height:24px;} .schalter i{top:3px;} }`;
+    expect(css).toContain(regel);
+    expect(css.replace(regel, "")).not.toMatch(/\.schalter/);
+    expect(app).toMatch(/\.schalter\{width:40px; height:23px;/);
+  });
+  it("der Meldungsstreifen der Telefonansicht nimmt keine Eingaben an und verdeckt im Querformat keine Schaltflaeche", () => {
+    expect(app).toMatch(/textAlign: "center",\n[\s\S]{0,260}?pointerEvents: "none" \}\}>\n\s+\{hinweis\}<\/div>\}/);
+  });
   it("die Schnellfilter von Mein Plan umbrechen bis 560 px statt innen zu scrollen; ausserhalb aendert sich nichts", () => {
     const regel = `@media (max-width: ${UMBRUCH.telefon}px){ .reiterreihe-umbruch{flex-wrap:wrap; overflow-x:visible;} }`;
     expect(css).toContain(regel);
@@ -109,6 +118,16 @@ describe("WP-21 Teil 2: Fokus der Seitenleiste", () => {
   });
 });
 
+describe("WP-21 Teil 2: Abrechnungsdaten bei Tablet hoch", () => {
+  it("die Tabelle (760 px) liegt im Scrollbereich mit Namen; die Stapelung bis 480 px (WP-35) bleibt", () => {
+    const q = lies("src/ansichten/abrechnungsdaten.jsx");
+    expect(q).toMatch(/<Scrollbereich label="Abrechnungsdaten, Zuschläge je Person">\n\s+<table className="raster raster-stapel" style=\{\{ minWidth: 760 \}\}>/);
+    expect(q).toMatch(/<\/table>\n\s+<\/Scrollbereich>\n\s+<\/Card>/);
+    expect(q).not.toMatch(/<Card style=\{\{ overflowX: "auto" \}\}>/);
+    expect(q).toMatch(/import \{ Scrollbereich \} from "\.\.\/ui\/scrollbereich\.jsx";/);
+  });
+});
+
 describe("WP-21 Teil 2: Betrieb, Rollen und Rechte", () => {
   it("die Tabelle (780 px) liegt im Scrollbereich mit Namen; die Karte scrollt nicht mehr selbst", () => {
     expect(app).toMatch(/<Scrollbereich label="Rollen und Rechte, Tabelle der Berechtigungen je Rolle">\n\s+<table style=\{\{ borderCollapse: "collapse", width: "100%", minWidth: 780/);
@@ -132,11 +151,18 @@ describe("WP-21 Teil 2: Ansichten ohne Tablet-Hinweis", () => {
     expect(app).toMatch(/const mobilOk = telefonTauglich\(aktiveView, istBetreiber\);/);
     expect(app).not.toMatch(/const MOBIL = \[/);
   });
-  it("jede Ansicht ohne Hinweis ist in der Matrix als gemessen und bestanden belegt", () => {
+  it("die sechs Ansichten aus Teil 1 bleiben ohne Hinweis; jede in Teil 2 hinzugekommene ist in Abschnitt 9 der Matrix als gemessen und bestanden belegt", () => {
+    const TEIL1 = ["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"];
+    for (const v of TEIL1) expect(TELEFON_ANSICHTEN, v).toContain(v);
     expect(doc.length).toBeGreaterThan(2000);
     const teil2 = doc.slice(doc.indexOf("## 9 "));
     expect(teil2.length).toBeGreaterThan(500);
-    for (const v of [...TELEFON_ANSICHTEN, ...TELEFON_ANSICHTEN_BETREIBER]) expect(teil2, v).toContain("`" + v + "`");
+    const neue = [...TELEFON_ANSICHTEN, ...TELEFON_ANSICHTEN_BETREIBER].filter((v) => !TEIL1.includes(v));
+    expect(neue).toEqual(["boerse", "pruef"]);                            /* Tauschboerse und Pruefung: Aufgaben bestanden, siehe 9.6 */
+    for (const v of neue) expect(teil2, v).toContain("`" + v + "`");
+    /* der Beleg nennt die Zahlen der Messung: Abschnitt 9.6 fuehrt Tauschboerse und Pruefung mit "8 von 8" */
+    expect(teil2.slice(teil2.indexOf("### 9.6"))).toMatch(/\x60boerse\x60[^\n]*8 von 8/);
+    expect(teil2.slice(teil2.indexOf("### 9.6"))).toMatch(/\x60pruef\x60[^\n]*8 von 8/);
   });
 });
 

@@ -32,7 +32,7 @@ export const SEITENLEISTE_SCHLIESSEN = "Navigation schließen";
  *  „Für Tablet und Rechner ausgelegt“ erscheinen. Eine Ansicht kommt nur hinein, wenn ihre Kernaufgaben mit
  *  pruefungen/browser/geraete-wp21-ablaeufe.mjs an allen acht Viewports bestanden haben; der Beleg steht in
  *  docs/acc45/WP-21-GERAETEMATRIX.md, Abschnitt 9 (ein Test prüft, dass jede Kennung dort steht). */
-export const TELEFON_ANSICHTEN = Object.freeze(["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"]);
+export const TELEFON_ANSICHTEN = Object.freeze(["meine", "plan", "antraege", "lage", "hilfe", "rechtliches", "boerse", "pruef"]);
 /** Dasselbe für die Betreiberkonsole (eigene Kennungen). */
 export const TELEFON_ANSICHTEN_BETREIBER = Object.freeze([]);
 /** Zeigt die Ansicht ohne den Hinweis „Für Tablet und Rechner ausgelegt“? */
@@ -106,6 +106,9 @@ export function geraeteStil() {
 /* WP-21 Teil 2: Schnellfilter in "Mein Plan" (Telefon) umbrechen statt innen zu scrollen: 475 px in 324 px breitem Bereich liess
    den fuenften Filter hinter dem Rand verschwinden. Reflow nach WCAG 1.4.10; ab ${UMBRUCH.telefon + 1} px passt die Reihe in eine Zeile. */
 @media (max-width: ${UMBRUCH.telefon}px){ .reiterreihe-umbruch{flex-wrap:wrap; overflow-x:visible;} }
+
+/* WP-21 Teil 2: Schalter (Ein/Aus) waren 40x23 px gross (gemessen im Monatsplan bei 932x430); auf Telefon und Tablet 24 px hoch. */
+@media (max-width: ${UMBRUCH.seitenleiste}px){ .schalter{height:24px;} .schalter i{top:3px;} }
 
 /* WP-21: Auswahlkaestchen in Listen (Sammelentscheidung ueber Antraege) waren 15 px gross; auf Telefon und Tablet mindestens ZIEL_MINDEST. */
 @media (max-width: ${UMBRUCH.seitenleiste}px){ .ziel-haken{width:${ZIEL_MINDEST}px !important; height:${ZIEL_MINDEST}px !important;} }

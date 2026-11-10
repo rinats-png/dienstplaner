@@ -1745,7 +1745,9 @@ function AppInnen() {
     <div role="status" aria-live="polite">
       {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
         zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
-        fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center" }}>
+        fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center",
+        /* WP-21: im Querformat liegt der Streifen über Schaltflächen eines Blattes (gemessen: „Schließen“ der Krankmeldung bei 390 und 430 px Höhe); er nimmt keine Eingaben an. */
+        pointerEvents: "none" }}>
         {hinweis}</div>}
     </div>
   </>);

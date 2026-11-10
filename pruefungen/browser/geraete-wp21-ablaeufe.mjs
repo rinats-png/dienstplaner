@@ -30,7 +30,7 @@ const ALLE_VP = [...GERAETE_VIEWPORTS, ...GERAETE_VIEWPORTS_QUER].map(({ w, h })
 const VIEWPORTS = process.env.WP21_VIEWPORTS
   ? process.env.WP21_VIEWPORTS.split(",").map((s) => s.split("x").map(Number)).map(([w, h]) => ({ w, h })) : ALLE_VP;
 const NUR_AUFGABEN = process.env.WP21_AUFGABEN ? process.env.WP21_AUFGABEN.split(",") : null;
-const ROLLEN_ALLE = ["mitarbeiter", "subplaner", "planer", "leitung", "betriebsrat", "betreiber", "subplanerP", "planerP"];
+const ROLLEN_ALLE = ["mitarbeiter", "subplaner", "planer", "leitung", "betriebsrat", "betreiber"];
 const ROLLEN = (process.env.WP21_ROLLEN || ROLLEN_ALLE.join(",")).split(",").filter((r) => ROLLEN_ALLE.includes(r));
 const addTage = (iso, n) => { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const HEUTE = heute();
@@ -54,11 +54,13 @@ function zielStand(el) {
   const r = el.getBoundingClientRect(), fw = window.innerWidth, fh = window.innerHeight;
   const cx = Math.min(Math.max(r.left + r.width / 2, 0), fw - 1), cy = Math.min(Math.max(r.top + r.height / 2, 0), fh - 1);
   const oben = document.elementFromPoint(cx, cy);
-  const bedeckt = !oben || !(oben === el || el.contains(oben) || oben.contains(el));
+  /* Elemente mit pointer-events:none (Meldungsstreifen) nimmt elementFromPoint nicht wahr; sie nehmen keine Eingaben an und gelten nicht als verdeckt. */
+  const bedeckt = getComputedStyle(el).pointerEvents === "none" ? false : (!oben || !(oben === el || el.contains(oben) || oben.contains(el)));
   const wer = oben ? (oben.tagName.toLowerCase() + (typeof oben.className === "string" && oben.className ? "." + oben.className.trim().split(/\s+/)[0] : "")) : "nichts";
   return { w: Math.round(r.width), h: Math.round(r.height), imBild: r.left >= -1 && r.right <= fw + 1 && r.top >= -1 && r.bottom <= fh + 1, bedeckt, wer };
 }
 
+class NichtPruefbar extends Error {}
 class Lauf {
   constructor(pg, rolle, vp, schale) { Object.assign(this, { pg, rolle, vp, schale, dialoge: [] }); this.neu(); }
   neu() { this.taps = 0; this.hind = []; this.mess = []; this.klein = [Infinity, Infinity]; this.notiz = []; }
@@ -74,7 +76,8 @@ class Lauf {
     if (g.w < ZIEL_MINDEST - 0.5 || g.h < ZIEL_MINDEST - 0.5) this.hind.push(`${name}: Ziel ${g.w}x${g.h} unter ${ZIEL_MINDEST} px`);
     this.klein = [Math.min(this.klein[0], g.w), Math.min(this.klein[1], g.h)];
     this.taps++;
-    await el.click({ timeout: 5000 });
+    /* ein Neuzeichnen zwischen Messung und Klick (Element nicht mehr im DOM) ist kein Befund: einmal erneut versuchen */
+    try { await el.click({ timeout: 20000 }); } catch (x) { if (!/not attached|detached|not stable/i.test(String(x.message))) throw x; await el.waitFor({ state: "visible", timeout: 5000 }); await el.click({ timeout: 20000 }); }
     return g;
   }
   async messe(was) { const m = await this.pg.evaluate(messeSeite, ZIEL_MINDEST); this.mess.push({ was, ...m }); return m; }
@@ -92,14 +95,16 @@ async function aufgabe(c, id, titel, fn, { hart = true } = {}) {
   if (NUR_AUFGABEN && !NUR_AUFGABEN.includes(id)) return;
   c.neu();
   const z = { rolle: c.rolle, vp: `${c.vp.w}x${c.vp.h}`, id, titel };
-  try { await fn(c); z.ok = true; } catch (x) { z.ok = false; z.fehler = kurzText(x); if (process.env.WP21_BILDER) await c.pg.screenshot({ path: `${process.env.WP21_BILDER}/FEHL-${c.rolle}-${c.vp.w}x${c.vp.h}-${id}.png` }).catch(() => {}); }
+  try { await fn(c); z.ok = true; } catch (x) { z.ok = false; if (x instanceof NichtPruefbar) z.np = true; z.fehler = kurzText(x); if (process.env.WP21_BILDER) await c.pg.screenshot({ path: `${process.env.WP21_BILDER}/FEHL-${c.rolle}-${c.vp.w}x${c.vp.h}-${id}.png` }).catch(() => {}); }
   z.taps = c.taps; z.hind = c.hind.slice(0, 5); z.notiz = c.notiz.slice(0, 5);
   z.klein = Number.isFinite(c.klein[0]) ? `${c.klein[0]}x${c.klein[1]}` : "-";
   z.quer = c.mess.some((m) => m.doc > m.fenster || m.body > m.fenster);
   z.zuKlein = Math.max(0, ...c.mess.map((m) => m.zuKlein));
   z.innen = Math.max(0, ...c.mess.map((m) => m.innen.length));
+  z.innenListe = [...new Set(c.mess.flatMap((m) => m.innen))].slice(0, 3);
   z.hinweisH = c.mess.some((m) => m.hinweis);
   z.zuKleinListe = c.mess.flatMap((m) => m.zuKleinListe).slice(0, 4);
+  if (z.np) z.ok = null;
   if (z.ok && (c.hind.length || z.quer || (hart && z.zuKlein > 0))) z.ok = false;
   zeilen.push(z);
 }
@@ -151,7 +156,8 @@ const MITARBEITER = {
     const { pg } = c;
     await c.tippe(knopf(pg, /^Einstempeln$/), "Einstempeln");
     await c.sicht("Eingestempelt"); await c.messe("eingestempelt");
-    await c.tippe(knopf(pg, /^Ausstempeln$/), "Ausstempeln");
+    /* Das Speichern des Einstempelns kann auf dem Wegwerf-Server dauern; solange steht die Schaltfläche auf "Wird gespeichert …". */
+    await c.tippe(knopf(pg, /^Ausstempeln$/), "Ausstempeln", { warte: 45000 });
     await c.sicht("Dienst erfasst"); await c.messe("ausgestempelt");
   },
   async stempelFehler(c) {
@@ -250,11 +256,11 @@ async function tagOeffnen(c) {
   } else {
     await geheZu(c, "Monatsplan");
     await c.messe("monatsplan");
-    const tag = pg.getByRole("button", { name: /^(Tag · |\d+\. )/ }).locator("visible=true");
+    const tag = pg.locator('[role="gridcell"][aria-label^="Tag · "]').or(pg.getByRole("button", { name: /^\d+\. / })).locator("visible=true");
     const n = await tag.count(); c.notiz.push(`${n} Tage bedienbar`);
     if (!n) throw new Error("kein Tag im Monatsplan bedienbar");
     /* der heutige Tag, sonst der erste */
-    const heut = pg.getByRole("button", { name: /heute/ }).locator("visible=true");
+    const heut = pg.locator('[aria-label*="heute"]').locator("visible=true");
     await c.tippe((await heut.count()) ? heut : tag, "Tag öffnen");
   }
   const dlg = pg.getByRole("dialog").first(); await dlg.waitFor({ state: "visible", timeout: 4000 });
@@ -281,10 +287,13 @@ async function antragEntscheiden(c) {
   await geheZu(c, "Anträge"); await c.messe("antraege");
   const gen = knopf(pg, /^(Genehmigen|Mitzeichnen)$/);
   const n = await gen.count(); c.notiz.push(`${n} offene Anträge entscheidbar`);
-  if (!n) throw new Error("keine entscheidbaren Anträge vorhanden (Demo)");
+  if (!n) throw new NichtPruefbar("keine entscheidbaren Anträge mehr vorhanden (die Wegwerfdaten haben nur wenige; frühere Aufgaben haben sie entschieden)");
   await c.tippe(gen, "Genehmigen");
-  await c.sicht("Antrag genehmigt", { warte: 4000 }).catch(() => c.sicht("Mitgezeichnet", { warte: 2000 }));
-  await c.tippe(knopf(pg, /^Ablehnen$/), "Ablehnen").then(() => c.sicht("Antrag abgelehnt", { warte: 4000 })).catch(() => c.notiz.push("kein zweiter Antrag zum Ablehnen"));
+  /* entschieden ist der Antrag, wenn er aus der Liste der offenen verschwindet (die Meldung steht nur drei Sekunden und kann auf dem
+     Wegwerf-Server vor dem Warten schon wieder weg sein); bei mehrstufiger Genehmigung genuegt "Mitgezeichnet" */
+  const ende = Date.now() + 15000; let weniger = false;
+  while (Date.now() < ende) { if ((await gen.count()) < n) { weniger = true; break; } await pg.waitForTimeout(300); }
+  if (!weniger) await c.sicht("Mitgezeichnet", { warte: 1500 }).catch(() => { throw new Error("Antrag bleibt nach „Genehmigen“ offen"); });
   await c.messe("entschieden");
 }
 async function uebergabe(c) {
@@ -305,13 +314,33 @@ async function krankPlanung(c) {
   const felder = dlg.locator('input[type="date"]'); await felder.nth(0).fill(tag); await felder.nth(1).fill(tag);
   await c.messe("krank-blatt");
   await c.tippe(dlg.getByRole("button", { name: /^Krank melden$/ }), "Krank melden (Blatt)");
-  await dlg.getByText(/Krankmeldung erfasst|Lücke \d+ von/).first().waitFor({ state: "visible", timeout: 5000 });
-  for (let i = 0; i < 6 && !(await dlg.getByText("Krankmeldung erfasst").count()); i++) {
-    const w = dlg.getByRole("button", { name: /^(Fertig|Überspringen)/ }).locator("visible=true");
-    if (!(await w.count())) break; await c.tippe(w, "Lücke überspringen");
+  /* Weist der Server die Meldung ab, schliesst sich das Blatt und ein Band nennt die fehlende Schreibberechtigung. */
+  const ergebnis = await Promise.race([
+    dlg.getByText(/Krankmeldung erfasst|Lücke \d+ von/).first().waitFor({ state: "visible", timeout: 15000 }).then(() => "weiter"),
+    pg.getByText("Diese Änderung ist mit deiner Rolle nicht zulässig").first().waitFor({ state: "visible", timeout: 15000 }).then(() => "abgewiesen"),
+  ]).catch(() => "nichts");
+  if (ergebnis === "abgewiesen") throw new Error("SERVER-RECHT: die Krankmeldung wird abgewiesen (Band „Diese Änderung ist mit deiner Rolle nicht zulässig“, Keine Schreibberechtigung); das Blatt schließt sich");
+  if (ergebnis === "nichts") throw new Error("nach „Krank melden“ erscheint weder die Bestätigung noch eine Meldung");
+  const luecken = await dlg.getByText(/Lücke \d+ von \d+/).first().textContent().catch(() => "");
+  c.notiz.push(luecken ? `Dienste betroffen: ${luecken.trim()}` : "keine Dienste betroffen");
+  const band = pg.getByText("Diese Änderung ist mit deiner Rolle nicht zulässig").first();
+  const abgewiesen = new Error("SERVER-RECHT: die Krankmeldung wird nach dem Absenden abgewiesen (Band „Diese Änderung ist mit deiner Rolle nicht zulässig“, Keine Schreibberechtigung); das Blatt schließt sich" + (luecken ? " (Tag mit Dienst: " + luecken.trim() + ")" : ""));
+  try {
+    for (let i = 0; i < 6 && !(await dlg.getByText("Krankmeldung erfasst").count()); i++) {
+      const w = dlg.getByRole("button", { name: /^(Fertig|Überspringen)/ }).locator("visible=true");
+      if (!(await w.count())) break;
+      await c.tippe(w, "Lücke überspringen");
+    }
+    await Promise.race([
+      dlg.getByText("Krankmeldung erfasst").first().waitFor({ state: "visible", timeout: 8000 }),
+      band.waitFor({ state: "visible", timeout: 8000 }).then(() => { throw abgewiesen; }),
+    ]);
+    await c.tippe(dlg.getByRole("button", { name: /^Schließen$/ }), "Schließen");
+  } catch (x) {
+    if (x === abgewiesen) throw x;
+    if (await band.count()) throw abgewiesen;
+    throw x;
   }
-  await c.sicht("Krankmeldung erfasst", { warte: 4000 });
-  await c.tippe(dlg.getByRole("button", { name: /^Schließen$/ }), "Schließen");
 }
 async function tauschboerse(c) {
   const { pg } = c;
@@ -328,8 +357,8 @@ const lesen = (name, optional) => async (c) => { await geheZu(c, name); await c.
 
 const AUFG = {
   subplaner: [["schichten", "Meine Schichten", lesen("Meine Schichten")], ["lage", "Lagebild lesen", lesen("Lagebild")], ["antraege", "Anträge entscheiden", antragEntscheiden],
-    ["tagoeffnen", "Tag öffnen", tagOeffnen], ["krank", "Krankmeldung (Leiste unten)", krankPlanung], ["boerse", "Tauschbörse", tauschboerse]],
-  planer: [["tagoeffnen", "Tag öffnen", tagOeffnen], ["antraege", "Anträge entscheiden", antragEntscheiden],
+    ["tagoeffnen", "Tag öffnen", tagOeffnen], ["uebergabe", "Schichtübergabe", uebergabe], ["krank", "Krankmeldung (Leiste unten)", krankPlanung], ["boerse", "Tauschbörse", tauschboerse]],
+  planer: [["tagoeffnen", "Tag öffnen", tagOeffnen], ["antraege", "Anträge entscheiden", antragEntscheiden], ["uebergabe", "Schichtübergabe", uebergabe],
     ["krank", "Krankmeldung (Leiste unten)", krankPlanung], ["boerse", "Tauschbörse lesen", lesen("Tauschbörse")],
     ["pruefung", "Prüfung lesen", lesen("Prüfung")], ["einsatz", "Personaleinsatz lesen", lesen("Personaleinsatz")], ["personal", "Personal lesen", lesen("Personal")]],
   leitung: [["freigeben", "Plan freigeben", planFreigeben], ["antraege", "Anträge entscheiden", antragEntscheiden], ["tagoeffnen", "Tag öffnen", tagOeffnen],
@@ -341,8 +370,6 @@ const AUFG = {
   betriebsrat: [["tagoeffnen", "Monatsplan lesen, Tag öffnen", tagOeffnen], ["pruefung", "Prüfung lesen", lesen("Prüfung")],
     ["auswertung", "Auswertung (Betriebsrat) lesen", lesen("Auswertung (Betriebsrat)")], ["hilfe", "Hilfe lesen", lesen("Hilfe")]],
   /* Pflege (Seniorenzentrum Lindenhof): dort ist das Paket Übergabe gebucht; Nordwacht (Sicherheit) hat keine Übergabe. */
-  subplanerP: [["uebergabe", "Schichtübergabe (Pflege)", uebergabe]],
-  planerP: [["uebergabe", "Schichtübergabe (Pflege)", uebergabe]],
   betreiber: [["mandanten", "Mandanten ansehen", async (c) => { await geheZu(c, "Mandanten"); await c.messe("liste");
       const z = c.pg.locator("main").getByRole("button").filter({ hasText: /Demo|WP|Betrieb|Mandant|Öffnen|Details/i }).locator("visible=true"); if (await z.count()) { await c.tippe(z, "Mandant öffnen"); await c.pg.waitForTimeout(700); await c.messe("detail"); } else c.notiz.push("kein Mandant zum Öffnen"); }],
     ["rechnungen", "Rechnungen ansehen", lesen("Rechnungen")], ["tarife", "Tarife ansehen", lesen("Tarife")]],
@@ -393,7 +420,7 @@ async function tastaturProbe(b, code, vp) {
   } else sonde(V, "Scrollbereich: Personaleinsatz ragt nicht über", true, "kein Scrollbereich nötig");
   /* Tagesblatt: Rolle dialog, aria-modal, Name, Escape, Fokus zurueck */
   await geheZu(c, "Monatsplan");
-  const tag = pg.getByRole("button", { name: /^(Tag · |\d+\. )/ }).locator("visible=true").first();
+  const tag = pg.locator('[role="gridcell"][aria-label^="Tag · "]').or(pg.getByRole("button", { name: /^\d+\. / })).locator("visible=true").first();
   if (await tag.count()) {
     await tag.focus(); await pg.keyboard.press("Enter"); await pg.waitForTimeout(500);
     const d = await pg.evaluate(() => { const e = document.querySelector('[role="dialog"]'); return e ? { modal: e.getAttribute("aria-modal"), name: e.getAttribute("aria-label") || e.getAttribute("aria-labelledby"), innen: e.contains(document.activeElement) } : null; });
@@ -433,6 +460,8 @@ try {
      (die Betreibersicht enthaelt keinen Dienstplan), und ein bestehender Betrieb nimmt vom Betreiber nur einmal
      (hoechstens 20) Zugaenge an. */
   const demo = demobestand();
+  /* Nordwacht (Sicherheit) bucht kein Paket mit Schichtübergabe; nur damit sie messbar ist, bekommt der Wegwerf-Betrieb zusätzlich "pflege". */
+  demo.mandanten[0].pakete = [...(demo.mandanten[0].pakete || []), "pflege"];
   const an = await j("/api/bestand-anlegen", { bestand: null, inhalt: demo, vorlage: "demo" }, bt);
   if (an.s >= 300) throw new Error("Demo-Bestand nicht angelegt: " + an.s + " " + JSON.stringify(an.d).slice(0, 160));
   const mm = demo.mandanten[0];
@@ -441,10 +470,7 @@ try {
   const vonRolle = (r) => personen.find((x) => x.rolle === r && aktiv(x) && (r !== "mitarbeiter" || x.imSchichtdienst !== false));
   const mitDienst = personen.filter((x) => x.rolle === "mitarbeiter" && aktiv(x) && x.imSchichtdienst !== false && (() => { try { return !!personTag(mm, x, HEUTE).dienstId; } catch { return false; } })());
   const ZUG = {}; const wunsch = [];
-  for (const r of ROLLEN.filter((x) => !["mitarbeiter", "betreiber", "subplanerP", "planerP"].includes(x))) { const p = vonRolle(r); if (p) wunsch.push({ tag: r, rolle: r, personId: p.id, name: "WP21 " + r }); }
-  const pflege = (demo.mandanten[1] || {}).personen || [];
-  for (const [tag, rolle] of [["subplanerP", "subplaner"], ["planerP", "planer"]]) { const p = pflege.find((x) => x.rolle === rolle && aktiv(x) && x.imSchichtdienst !== false) || pflege.find((x) => x.rolle === rolle && aktiv(x));
-    if (ROLLEN.includes(tag) && p) wunsch.push({ tag, rolle, personId: p.id, name: "WP21 " + tag }); }
+  for (const r of ROLLEN.filter((x) => !["mitarbeiter", "betreiber"].includes(x))) { const p = vonRolle(r); if (p) wunsch.push({ tag: r, rolle: r, personId: p.id, name: "WP21 " + r }); }
   if (ROLLEN.includes("mitarbeiter")) {
     /* Stempeln mit Erfolg verbraucht den Tag der Person: je Viewport eine eigene Person. Die Absage erreicht den Server nie
        und die uebrigen Aufgaben legen Anfragen mit je Viewport eigenen Tagen an: dafuer genuegt je eine Person. */
@@ -490,14 +516,16 @@ finally { if (b) await b.close(); srv.kill(); }
 /* ---------------- Auswertung ---------------- */
 let schlecht = 0;
 for (const z of zeilen) {
-  const kopf = z.ok ? "OK  " : "FEHL";
-  if (!z.ok) schlecht++;
+  const kopf = z.ok ? "OK  " : z.np ? "N.P. " : "FEHL";
+  if (!z.ok && !z.np) schlecht++;
   console.log(`${kopf} ${z.rolle} ${z.vp} ${z.titel}: ${z.fehler ? z.fehler + "; " : ""}Taps ${z.taps}; kleinstes getipptes Ziel ${z.klein}; Seite quer ${z.quer ? "JA" : "nein"}; Ziele<24 ${z.zuKlein ?? 0}; Innenscroll ${z.innen ?? 0}${z.hinweisH ? "; HINWEIS Tablet/Rechner" : ""}`
     + ((z.hind && z.hind.length) ? `; Hindernisse: ${z.hind.join(" | ")}` : "") + ((z.zuKleinListe && z.zuKleinListe.length) ? `; klein: ${z.zuKleinListe.join(",")}` : "")
     + ((z.notiz && z.notiz.length) ? `; ${z.notiz.join("; ")}` : ""));
 }
-console.log(`\nAufgaben: ${zeilen.length - schlecht} von ${zeilen.length} bestanden`);
-const je = {}; for (const z of zeilen) { const k = `${z.rolle}|${z.id}`; (je[k] = je[k] || { ok: 0, n: 0 }); je[k].n++; if (z.ok) je[k].ok++; }
+const npn = zeilen.filter((z) => z.np).length;
+console.log(`
+Aufgaben: ${zeilen.length - schlecht - npn} von ${zeilen.length - npn} bestanden${npn ? `, ${npn} nicht prüfbar` : ""}`);
+const je = {}; for (const z of zeilen) { const k = `${z.rolle}|${z.id}`; (je[k] = je[k] || { ok: 0, n: 0 }); if (z.np) continue; je[k].n++; if (z.ok) je[k].ok++; }
 for (const [k, v] of Object.entries(je)) console.log(`  ${k}: ${v.ok}/${v.n}`);
 if (sonden.length) {
   console.log("\nTastatur- und Vorlesesoftware-Probe");
