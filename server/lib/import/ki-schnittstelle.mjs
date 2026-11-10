@@ -21,11 +21,17 @@
         Notschalter beider Ebenen "an" UND Freigabe-Gate (freigabe, monatsbudget, AVV) UND ein
         PROTOKOLLIERTER Freigabevermerk der Voraussetzungen E-25 (Anbieter, AV-Vertrag, ZDR, Drittland)
         und E-26 (DSFA), gebunden an genau diesen Anbieter, diesen Modellort und diesen Zweck.
-     2  Minimierung (eingabeMinimieren): nur Spalten OHNE Zuordnung; je Spalte nur die bereinigte
+     2  Minimierung (eingabeMinimieren): nur Spalten OHNE Zuordnung; je Spalte der Index, eine
         Überschrift und höchstens 3 FORM-maskierte Proben (Buchstabenklasse, keine Inhalte);
         niemals eine Zeile, ein Zellwert im Klartext, eine Personendaten-Spalte oder Betriebsdaten.
-     3  Leck-Prüfung gegen die Sperrliste des Betriebs (Namen, Nummern, Kontakte …); was anschlägt,
-        wird weggelassen; ohne Sperrliste oder bei Restverdacht: kein Aufruf (KI_LECK).
+        Die Überschrift ist NUR dann Klartext, wenn sie ein Wort des festen Import-Vokabulars
+        ist (die Überschriften-Synonyme aus personen.mjs, FELD_SYNONYME) und die Datei eine erkannte
+        Kopfzeile hat; jede andere wird durch einen Platzhalter „Spalte N“ ersetzt. Grund: Die Sperrliste
+        des Betriebs kennt nur bereits gespeicherte Personen, nie die Personen der Importdatei; ein Name
+        oder die erste Datenzeile einer Datei ohne Kopfzeile wäre sonst eine ungeschützte „Überschrift“.
+     3  Leck-Prüfung gegen die Sperrliste des Betriebs (Namen, Nummern, Kontakte …) über jede Spalte und
+        das ganze Paket; was anschlägt, wird weggelassen; ohne Sperrliste oder bei Restverdacht:
+        kein Aufruf (KI_LECK). Das ist die zweite Schranke, nicht die erste.
      4  Aufruf des Anbieters mit Frist und Ausgabegrenze (anbieter.mjs). Fehlertexte des Anbieters
         verlassen das Modul nie (nur die Klasse).
      5  Strenge Prüfung der Ausgabe (ergebnisPruefen): genau dieses Schema, nur Kennungen und
@@ -53,9 +59,8 @@
 import { anbieterPruefen, aufrufen, alsAnbieterFehler } from "../intelligence/gateway/anbieter.mjs";
 import { gatewayAn, SCHALTER_AUS } from "../intelligence/gateway/schalter.mjs";
 import { freigabeGate } from "../intelligence/gateway/anbieter-live.mjs";
-import { fremdtextBereinigen } from "../intelligence/kapsel.mjs";
-import { leckPruefen, textPruefen } from "../intelligence/leckpruefung.mjs";
-import { FELDER, zuordnungPruefen } from "./personen.mjs";
+import { leckPruefen } from "../intelligence/leckpruefung.mjs";
+import { FELDER, FELD_SYNONYME, kopfNormalisieren, zuordnungPruefen } from "./personen.mjs";
 
 export const KI_SCHEMA_VERSION = "1";
 /** Kennung dieser Verwendung (nicht eine Funktion F1–F18 der Positivliste). */
@@ -65,7 +70,7 @@ export const KI_ZWECK = "import-spaltenzuordnung";
 export const PRODUKTIV_VORAUSSETZUNGEN = Object.freeze(["E-25", "E-26"]);
 
 export const KI_GRENZEN = Object.freeze({
-  spalten: 200, ueberschriftZeichen: 60, ueberschriftZiffern: 3, proben: 3, probeZeichen: 24,
+  spalten: 200, proben: 3, probeZeichen: 24,
   vorschlaege: 200, unsicherheiten: 200, validierungsfehler: 50, alternativen: 3,
   paketBytes: 32_768, ausgabeBytes: 16_384, ausgabeTokens: 4_000,
   fristMs: 20_000, aufrufeMax: 50, sicherAb: 0.8, befundeMax: 10,
@@ -141,7 +146,10 @@ export function kiFreigabe({ konfig, schalter, anbieter, jetzt = Date.now }) {
 /* --------------------------------------------------------------------------
    2/3  Minimierung und Leck-Prüfung
    -------------------------------------------------------------------------- */
-const UEBERSCHRIFT = /^[\p{L}\p{N} .,:;_\-/()%#&+?!]+$/u;
+/** Das feste Vokabular: normalisierte Überschriften-Synonyme des Imports (personen.mjs). NUR diese gehen im Klartext hinaus. */
+const ERLAUBTE_UEBERSCHRIFTEN = new Set(Object.values(FELD_SYNONYME).flat());
+/** Eine Kopfzeile gilt als erkannt, wenn mindestens zwei Spalten genau ein Synonym des Vokabulars tragen (Analyse: herkunft "genau"). */
+const kopfzeileErkannt = (spalten) => spalten.filter((s) => s && s.feld && s.herkunft === "genau").length >= 2;
 
 /**
  * Eine Probe auf ihre FORM reduzieren: Großbuchstabe → A, Kleinbuchstabe → a, Ziffer → 9, Leerraum → Leerzeichen, wenige
@@ -170,16 +178,18 @@ export function maskieren(wert) {
 
 /**
  * Das, was an einen Anbieter gehen DARF — und nichts sonst (Positivliste im Code, kein Durchreichen):
- * je unzugeordneter Spalte Index, bereinigte Überschrift und höchstens `proben` maskierte Proben.
- * @param {{ spalten: { index: number, kopf?: unknown, feld?: string|null }[], zeilen?: unknown[][], sperrliste: any, proben?: number }} e
+ * je unzugeordneter Spalte Index, Überschrift und höchstens `proben` maskierte Proben. Die Überschrift ist NUR dann Klartext, wenn sie ein Wort des festen
+ * Import-Vokabulars ist (FELD_SYNONYME) und die Datei eine erkannte Kopfzeile hat; sonst ein neutraler Platzhalter „Spalte N“.
+ * @param {{ spalten: { index: number, kopf?: unknown, feld?: string|null, herkunft?: string|null }[], zeilen?: unknown[][], sperrliste: any, proben?: number, kopfzeile?: boolean }} e
  * @returns {{ ok: true, paket: any, indizes: number[], ausgeschlossen: number } | { ok: false, code: string, text: string }}
  */
-export function eingabeMinimieren({ spalten, zeilen, sperrliste, proben = 0 } = /** @type {any} */ ({})) {
+export function eingabeMinimieren({ spalten, zeilen, sperrliste, proben = 0, kopfzeile } = /** @type {any} */ ({})) {
   try {
     if (!Array.isArray(spalten) || !sperrliste) return nein(sperrliste ? "KI_EINGABE" : "KI_LECK");
     const nProben = Number.isInteger(proben) ? Math.min(Math.max(proben, 0), KI_GRENZEN.proben) : 0;
     const offen = spalten.filter((s) => s && typeof s === "object" && (s.feld === null || s.feld === undefined)
       && Number.isInteger(s.index) && s.index >= 0 && s.index < KI_GRENZEN.spalten).slice(0, KI_GRENZEN.spalten);
+    const kopfErkannt = kopfzeile !== false && kopfzeileErkannt(spalten);
     const daten = Array.isArray(zeilen) ? zeilen.slice(1) : [];
     const liste = [];
     let ausgeschlossen = 0;
@@ -187,13 +197,12 @@ export function eingabeMinimieren({ spalten, zeilen, sperrliste, proben = 0 } = 
     for (const s of offen) {
       if (gesehen.has(s.index)) continue;
       gesehen.add(s.index);
-      let ueberschrift;
-      try { ueberschrift = fremdtextBereinigen(typeof s.kopf === "string" ? s.kopf : ""); } catch { ueberschrift = ""; }
-      const ziffern = (ueberschrift.match(/\p{Nd}/gu) || []).length;
-      const brauchbar = ueberschrift.length >= 1 && ueberschrift.length <= KI_GRENZEN.ueberschriftZeichen && /\p{L}/u.test(ueberschrift)
-        && UEBERSCHRIFT.test(ueberschrift) && ziffern <= KI_GRENZEN.ueberschriftZiffern;
-      const spalte = { index: s.index, ueberschrift };
-      if (brauchbar && nProben > 0) {
+      /* Die Sperrliste kennt nur BEREITS gespeicherte Personen, nie die der Datei: ein Name, ein Ort, eine Einheit oder die erste Datenzeile einer Datei
+         ohne Kopfzeile wäre als „Überschrift“ ungeschützt. Deshalb Klartext nur aus dem festen Vokabular, sonst Platzhalter. */
+      const klar = kopfErkannt && typeof s.kopf === "string" && s.kopf.length <= 100 && ERLAUBTE_UEBERSCHRIFTEN.has(kopfNormalisieren(s.kopf));
+      const ueberschrift = klar ? s.kopf.normalize("NFC").trim() : `Spalte ${s.index + 1}`;
+      const spalte = { index: s.index, ueberschrift, art: klar ? "feldname" : "platzhalter" };
+      if (nProben > 0) {
         const p = [];
         for (const z of daten) {
           if (p.length >= nProben) break;
@@ -202,8 +211,7 @@ export function eingabeMinimieren({ spalten, zeilen, sperrliste, proben = 0 } = 
         }
         spalte.proben = p;
       }
-      /* Jede Spalte einzeln: eine verdächtige Überschrift (etwa ein Name, wenn die Kopfzeile fehlt) fällt weg, der Rest bleibt. */
-      if (!brauchbar || !textPruefen(ueberschrift, sperrliste).ok || !leckPruefen(spalte, sperrliste).ok) { ausgeschlossen++; continue; }
+      if (!leckPruefen(spalte, sperrliste).ok) { ausgeschlossen++; continue; }
       liste.push(spalte);
     }
     if (!liste.length) return nein(ausgeschlossen ? "KI_LECK" : "KI_EINGABE");
@@ -414,7 +422,7 @@ export function erzeugeKiPort(o = {}) {
         const f = freigabe();
         if (!f.offen) return nein(f.grund === "schalter" || f.grund === "anbieter" ? "KI_AUS" : "KI_NICHT_FREIGEGEBEN");
         const a = anfrage && typeof anfrage === "object" ? anfrage : {};
-        const min = eingabeMinimieren({ spalten: a.spalten, zeilen: a.zeilen, sperrliste: a.sperrliste, proben: a.proben });
+        const min = eingabeMinimieren({ spalten: a.spalten, zeilen: a.zeilen, sperrliste: a.sperrliste, proben: a.proben, kopfzeile: a.kopfzeile });
         if (!min.ok) return nein(min.code);
         if (aufrufe >= aufrufeMax) return nein("KI_LIMIT");
         aufrufe++;

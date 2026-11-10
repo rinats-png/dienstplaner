@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { C } from "../farben.js";
 import { Card, Lab, Btn, Sel, Kpi, KpiRow, Pill } from "../ui/bausteine.jsx";
 import { Sheet } from "../ui/leisten.jsx";
-import { erzeugeAblauf, aktionenFuer, AKTION_TEXT, dublettenText, istNamensVorschlag, unbestaetigteAktualisierungen } from "../lib/import-ablauf.js";
+import { erzeugeAblauf, aktionenFuer, AKTION_TEXT, dublettenText, istNamensVorschlag, unbestaetigteAktualisierungen, qualifikationenText } from "../lib/import-ablauf.js";
 
 const FELDER = [["nachname", "Nachname", true], ["vorname", "Vorname", true], ["einheit", "Einheit", true],
   ["personalnummer", "Personalnummer"], ["email", "E-Mail"], ["funktion", "Funktion"], ["wochenstunden", "Wochenstunden"],
@@ -89,6 +89,8 @@ function Datensatz({ d, z, a }) {
       <td style={zelle}>
         <div style={{ fontSize: 13 }}>{wert(w.nachname)}, {wert(w.vorname)}</div>
         <div style={{ color: C.dim }}>{w.personalnummer ? `Nr. ${w.personalnummer}` : "ohne Personalnummer"} · {wert(w.einheit)}</div>
+        {(d.qualifikationen || []).length > 0 && <div style={{ color: (d.qualifikationen || []).some((q) => q.fachkraft || q.nachweisPflicht || q.harteSperre) ? C.warn : C.dim }}>
+          Qualifikationen: {qualifikationenText(d.qualifikationen)}</div>}
       </td>
       <td style={{ ...zelle, color: C.dim, maxWidth: 300 }}>
         {(d.fehler || []).length > 0 && <div style={{ color: C.danger }}>{d.fehler.join(", ")}</div>}
@@ -176,7 +178,9 @@ function Vorschau({ z, a }) {
       <Lab>Wird neu angelegt</Lab>
       {neu.length === 0 ? <div style={{ fontSize: 13, color: C.dim, marginTop: 6 }}>Keine.</div> : (
         <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13 }}>{neu.map((n) => (
-          <li key={n.datensatz}>{wert(n.nachname)}, {wert(n.vorname)} · {wert(n.einheit)} · {n.personalnummer ? `Nr. ${n.personalnummer}` : "ohne Personalnummer"}</li>))}</ul>)}
+          <li key={n.datensatz}>{wert(n.nachname)}, {wert(n.vorname)} · {wert(n.einheit)} · {n.personalnummer ? `Nr. ${n.personalnummer}` : "ohne Personalnummer"}
+            {(n.qualifikationen || []).length > 0 && <div style={{ color: n.qualifikationen.some((q) => q.fachkraft || q.nachweisPflicht || q.harteSperre) ? C.warn : C.dim }}>
+              Qualifikationen: {qualifikationenText(n.qualifikationen)}</div>}</li>))}</ul>)}
     </Card>
     <Card style={{ marginTop: 14, padding: 16 }}>
       <Lab>Wird aktualisiert (alt → neu)</Lab>

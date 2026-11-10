@@ -30,7 +30,13 @@ export const KONFLIKT_ANLEGBAR = Object.freeze(["einheit-unbekannt", "standort-u
 export const QUAL_JE_ZELLE_MAX = 20;
 export const QUAL_ZEICHEN_MAX = 100;
 
-const vergleich = (s) => String(s ?? "").trim().toLowerCase();
+/* Unsichtbare Formatzeichen (Null-Breite, Richtungswechsel, weiche Trennung, BOM), mit denen sich zwei „gleiche“ Namen unterscheiden lassen. */
+const UNSICHTBAR = /[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g;
+/** Anzeigeform eines Namens: NFC, ohne unsichtbare Zeichen, Leerraum zusammengefasst, getrimmt. */
+export const orgAnzeigeName = (s) => String(s ?? "").normalize("NFC").replace(UNSICHTBAR, "").replace(/\s+/g, " ").trim();
+/** Vergleichsschlüssel für Namen: NFKC (Müller in NFD = NFC, Vollbreite = Latein), ohne unsichtbare Zeichen, Leerraum zusammengefasst, klein. */
+export const orgSchluessel = (s) => String(s ?? "").normalize("NFKC").replace(UNSICHTBAR, "").replace(/\s+/g, " ").trim().toLowerCase();
+const vergleich = orgSchluessel;
 const liste = (x) => (Array.isArray(x) ? x.filter((e) => e && typeof e === "object") : []);
 const FARBEN = ["#5B8DEF", "#F2994A", "#27AE60", "#9B51E0", "#EB5757", "#2D9CDB", "#F2C94C", "#6FCF97"];
 
@@ -40,12 +46,14 @@ export function orgKatalog(mandant) {
   return { einheiten: liste(m.einheiten), standorte: liste(m.standorte), qualifikationen: liste(m.qualifikationen) };
 }
 
-/** Eine Zelle mit Qualifikationen als Liste von Namen: Trenner `,` `;` `|`; ohne Doppelte (Groß-/Kleinschreibung). */
+/** Eine Zelle mit Qualifikationen als Liste von Namen: Trenner `,` `;` `|`; ohne Doppelte (nach orgSchluessel).
+    Bekannte Grenze: Ein Qualifikationsname, der selbst ein Komma, Semikolon oder einen senkrechten Strich enthält, ist nicht importierbar
+    (er wird getrennt und bleibt ein Zuordnungskonflikt). */
 export function qualifikationenAusText(text) {
   const aus = [];
   const gesehen = new Set();
   for (const t of String(text ?? "").split(/[,;|]/)) {
-    const n = t.trim();
+    const n = orgAnzeigeName(t);
     if (!n || gesehen.has(vergleich(n))) continue;
     gesehen.add(vergleich(n));
     aus.push(n);
@@ -83,12 +91,40 @@ export function orgZuordnen(katalog, werte) {
     const verschieden = [...new Set(treffer.map((q) => String(q.id)))];
     if (verschieden.length === 1) { if (!ids.includes(verschieden[0])) ids.push(verschieden[0]); }
     else if (verschieden.length > 1) mehrdeutig = true;
-    else neu.push(String(name).trim());
+    else neu.push(orgAnzeigeName(name));
   }
   if (neu.length) konflikte.push({ art: "qualifikation-unbekannt" });
   if (mehrdeutig) konflikte.push({ art: "qualifikation-mehrdeutig" });
   return { einheitId: einheit ? String(einheit.id) : null, standortId: standort ? String(standort.id) : null,
     qualifikationIds: ids, neueQualifikationen: neu, konflikte };
+}
+
+/**
+ * Welche Qualifikationen eine NEUE Person bekäme, mit den Kennzeichen, die für die Bestätigung zählen: `fachkraft`, `nachweisPflicht`, `harteSperre`
+ * und `neu` (wird erst mit org.edit angelegt, ohne Sonderstatus) oder bestehend. Aus demselben Katalogstand wie die Zuordnung; Quelle sowohl der
+ * Anzeige (Analyse, Vorschau) als auch des Bestätigungs-Hashes (personen.mjs planen). Mehrdeutige Namen erscheinen nicht (die Zeile bleibt offen).
+ * @returns {{ name: string, kurz: string|null, neu: boolean, fachkraft: boolean, nachweisPflicht: boolean, harteSperre: boolean }[]}
+ */
+export function orgQualifikationenAnzeige(katalog, namen) {
+  const aus = [];
+  const gesehen = new Set();
+  for (const roh of Array.isArray(namen) ? namen : []) {
+    const n = vergleich(roh);
+    if (!n) continue;
+    let treffer = katalog.qualifikationen.filter((q) => vergleich(q.name) === n);
+    if (!treffer.length) treffer = katalog.qualifikationen.filter((q) => vergleich(q.kurz) === n);
+    const ids = [...new Set(treffer.map((q) => String(q.id)))];
+    if (ids.length > 1) continue;
+    const q = ids.length === 1 ? treffer[0] : null;
+    const schluessel = q ? `id:${q.id}` : `neu:${n}`;
+    if (gesehen.has(schluessel)) continue;
+    gesehen.add(schluessel);
+    aus.push(q
+      ? { name: String(q.name ?? ""), kurz: typeof q.kurz === "string" ? q.kurz : null, neu: false, fachkraft: q.fachkraft === true,
+        nachweisPflicht: q.nachweisPflicht === true, harteSperre: q.harteSperre === true }
+      : { name: orgAnzeigeName(roh), kurz: null, neu: true, fachkraft: false, nachweisPflicht: false, harteSperre: false });
+  }
+  return aus;
 }
 
 /** Lassen sich alle Konflikte eines Datensatzes durch Anlegen (mit org.edit) lösen? Ohne Konflikt: nein (es gibt nichts anzulegen). */
@@ -108,7 +144,7 @@ export function orgAnlegenPruefen({ anlegen, orgEdit }) {
 
 /** Name zu einer Liste ergänzen, wenn er (ohne Groß-/Kleinschreibung) noch fehlt. */
 export function orgNameMerken(namen, name) {
-  const n = String(name ?? "").trim();
+  const n = orgAnzeigeName(name);
   if (n && !namen.some((x) => vergleich(x) === vergleich(n))) namen.push(n);
 }
 

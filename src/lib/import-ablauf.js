@@ -29,6 +29,20 @@ export const AKTION_TEXT = Object.freeze({
 const MIT_NUMMER = ["personalnummer", "personalnummer-datei"];
 
 /** Dublette ohne Personalnummer = bloßer Namenshinweis. */
+/** Qualifikationen einer neuen Person für Analyse und Vorschau (IMP-5): Name und Kennzeichen, die für die Bestätigung zählen
+    (Fachkraft, Nachweis erforderlich, harte Sperre; „neu angelegt“ oder „bestehend“). Leere Liste → „keine“. */
+export function qualifikationenText(liste) {
+  const l = Array.isArray(liste) ? liste.filter((q) => q && typeof q === "object") : [];
+  if (!l.length) return "keine";
+  return l.map((q) => {
+    const k = [];
+    if (q.fachkraft) k.push("Fachkraft");
+    if (q.nachweisPflicht) k.push("Nachweis erforderlich");
+    if (q.harteSperre) k.push("harte Sperre");
+    k.push(q.neu ? "neu angelegt" : "bestehend");
+    return `${q.name || "?"} (${k.join(", ")})`;
+  }).join("; ");
+}
 export const istNamensVorschlag = (d) => !!(d && d.dublette && (d.dublette.art === "name" || d.dublette.art === "name-datei"));
 
 /** Erklärung zur Dublette für die Person. Namensfälle sind ausdrücklich nur ein Vorschlag. */

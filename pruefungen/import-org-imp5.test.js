@@ -361,3 +361,158 @@ describe("IMP-5 über den Endpunkt", { timeout: 120000 }, () => {
     expect((await B.bestandLesen(laden(), raum)).stand).toBe(vorher.stand);
   });
 });
+
+/* --------------------------------------------------------------------------
+   Folgeauftrag zu PR #187
+   -------------------------------------------------------------------------- */
+describe("IMP-5 Anzeige: welche Qualifikationen eine neue Person bekäme (Name, Kennzeichen, neu/bestehend)", () => {
+  it("Analyse: je Datensatz die zugeordneten Qualifikationen mit Fachkraft/Nachweis/Sperre und neu/bestehend", () => {
+    const a = analysieren({ mandant: MANDANT(), heute: HEUTE, zeilen: zeilen(["5001", "Neu", "Nina", "Wohnbereich 1", "", "Pflegefachkraft, EH, Hebammenkunde"]) });
+    expect(a.datensaetze[0].qualifikationenAnzeige).toEqual([
+      { name: "Pflegefachkraft", kurz: "PFK", neu: false, fachkraft: true, nachweisPflicht: true, harteSperre: true },
+      { name: "Ersthelfer", kurz: "EH", neu: false, fachkraft: false, nachweisPflicht: false, harteSperre: false },
+      { name: "Hebammenkunde", kurz: null, neu: true, fachkraft: false, nachweisPflicht: false, harteSperre: false }]);
+  });
+
+  it("der Bestätigungs-Hash deckt genau diese Anzeige ab: ändert sich ein Kennzeichen im Katalog, ändert sich der Hash", () => {
+    const zl = zeilen(["5001", "Neu", "Nina", "Wohnbereich 1", "", "Pflegefachkraft"]);
+    const hash = (m) => planen({ mandant: m, analyse: analysieren({ mandant: m, heute: HEUTE, zeilen: zl }), orgEdit: false }).hash;
+    const m = MANDANT();
+    const h0 = hash(m);
+    expect(hash(MANDANT())).toBe(h0);
+    for (const aendern of [(x) => { x.qualifikationen[0].fachkraft = false; }, (x) => { x.qualifikationen[0].nachweisPflicht = false; },
+      (x) => { x.qualifikationen[0].harteSperre = false; }]) {
+      const m2 = MANDANT(); aendern(m2);
+      expect(hash(m2)).not.toBe(h0);
+    }
+    /* eine unbeteiligte Qualifikation ändert die Bestätigung nicht */
+    const m3 = MANDANT(); m3.qualifikationen[1].fachkraft = true;
+    expect(hash(m3)).toBe(h0);
+  });
+
+  it("qualifikationenText (Oberfläche) zeigt Name, Kennzeichen und neu/bestehend", async () => {
+    const { qualifikationenText } = await import("../src/lib/import-ablauf.js");
+    expect(qualifikationenText([])).toBe("keine");
+    expect(qualifikationenText(undefined)).toBe("keine");
+    expect(qualifikationenText([
+      { name: "Pflegefachkraft", neu: false, fachkraft: true, nachweisPflicht: true, harteSperre: true },
+      { name: "Hebammenkunde", neu: true, fachkraft: false, nachweisPflicht: false, harteSperre: false }]))
+      .toBe("Pflegefachkraft (Fachkraft, Nachweis erforderlich, harte Sperre, bestehend); Hebammenkunde (neu angelegt)");
+  });
+
+  it("die Oberfläche bindet die Anzeige in Analysetabelle UND Vorschau ein", () => {
+    const q = readFileSync(path.join(import.meta.dirname, "../src/ansichten/import-datei.jsx"), "utf8");
+    expect(q.match(/qualifikationenText\(/g)).toHaveLength(2);
+    expect(q).toMatch(/qualifikationenText\(d\.qualifikationen\)/);
+    expect(q).toMatch(/qualifikationenText\(n\.qualifikationen\)/);
+  });
+});
+
+describe("IMP-5 Namensvergleich: Unicode-Normalisierung, unsichtbare Zeichen, Kommagrenze", () => {
+  const NFD = (s) => s.normalize("NFD");
+  const mit = (name) => { const m = MANDANT(); m.einheiten.push({ id: "e3", name }); m.standorte.push({ id: "st2", name: "Südhaus" }); return m; };
+
+  it("„Müller“ in NFD ist dieselbe Einheit wie in NFC (kein Konflikt, keine Dublette)", () => {
+    const m = mit("Müller-Station");
+    const a = analysieren({ mandant: m, heute: HEUTE, zeilen: zeilen(["5001", "Neu", "Nina", NFD("Müller-Station"), "", ""],
+      ["5002", "Neu", "Nico", "MÜLLER-STATION", "", ""]) });
+    expect(NFD("Müller-Station")).not.toBe("Müller-Station");
+    expect(a.datensaetze.map((d) => d.konflikte)).toEqual([[], []]);
+    expect(a.datensaetze.map((d) => d.einheitId)).toEqual(["e3", "e3"]);
+    const p = planen({ mandant: m, analyse: a, einheitenAnlegen: true, orgEdit: true });
+    expect(p.plan.neueEinheiten).toEqual([]);
+  });
+
+  it("NFD/NFC und unsichtbare Zeichen erzeugen keine zweite Einheit, keinen zweiten Standort, keine zweite Qualifikation", () => {
+    const m = MANDANT();
+    const a = analysieren({ mandant: m, heute: HEUTE, zeilen: zeilen(
+      ["5001", "Neu", "Nina", NFD("Bürostation"), NFD("Südhaus"), "Hebamme​nkunde, Ärztliche Leitung"],
+      ["5002", "Neu", "Nico", "Büro​station", "Süd­haus", "hebammenkunde, " + NFD("Ärztliche Leitung")]) });
+    const p = planen({ mandant: m, analyse: a, einheitenAnlegen: true, orgEdit: true });
+    expect(p.ok).toBe(true);
+    expect(p.plan.neueEinheiten).toHaveLength(1);
+    expect(p.plan.neueStandorte).toHaveLength(1);
+    expect(p.plan.neueQualifikationen).toHaveLength(2);
+    /* gespeichert wird die bereinigte NFC-Form, ohne unsichtbare Zeichen */
+    const { mandant: neu } = anwenden(m, p.plan, { neueId, heute: HEUTE, orgEdit: true });
+    const namen = [...neu.einheiten, ...neu.standorte, ...neu.qualifikationen].map((x) => x.name);
+    for (const n of namen) { expect(n).toBe(n.normalize("NFC")); expect(n).not.toMatch(/[​­]/); }
+    expect(neu.einheiten.filter((e) => e.name.toLowerCase().includes("büro"))).toHaveLength(1);
+    expect(neu.qualifikationen.filter((q) => /hebamme/i.test(q.name))).toHaveLength(1);
+    /* beide neuen Personen bekommen dieselbe Qualifikation */
+    const quals = neu.personen.filter((x) => ["5001", "5002"].includes(x.personalnummer)).map((x) => [...x.qualifikationen].sort());
+    expect(quals).toHaveLength(2);
+    expect(quals[0]).toEqual(quals[1]);
+  });
+
+  it("eine vorhandene Qualifikation wird auch in NFD oder mit Null-Breite-Zeichen gefunden", () => {
+    const m = MANDANT();
+    m.qualifikationen.push({ id: "q7", name: "Ärztliche Leitung", kurz: "ÄL" });
+    const a = analysieren({ mandant: m, heute: HEUTE, zeilen: zeilen(["5001", "Neu", "Nina", "Wohnbereich 1", "", NFD("Ärztliche Leitung") + ", Erst​helfer"]) });
+    expect(a.datensaetze[0].konflikte).toEqual([]);
+    expect(a.datensaetze[0].qualifikationIds.sort()).toEqual(["q2", "q7"]);
+  });
+
+  it("bekannte Grenze: ein Qualifikationsname mit Komma, Semikolon oder senkrechtem Strich ist nicht importierbar (wird getrennt, bleibt Konflikt)", () => {
+    expect(org.qualifikationenAusText("Ersthelfer, Pflege ambulant; Wundmanagement | Hygiene")).toEqual(["Ersthelfer", "Pflege ambulant", "Wundmanagement", "Hygiene"]);
+    const m = MANDANT();
+    m.qualifikationen.push({ id: "q8", name: "Pflege, ambulant", kurz: "PA" });
+    const a = analysieren({ mandant: m, heute: HEUTE, zeilen: zeilen(["5001", "Neu", "Nina", "Wohnbereich 1", "", "Pflege, ambulant"]) });
+    expect(a.datensaetze[0].konflikte).toEqual([{ art: "qualifikation-unbekannt" }]);
+    expect(a.datensaetze[0].neueQualifikationen).toEqual(["Pflege", "ambulant"]);
+    expect(a.datensaetze[0].qualifikationIds).toEqual([]);
+    expect(readFileSync(path.join(import.meta.dirname, "../docs/acc45/IMPORT-VERTRAG.md"), "utf8")).toMatch(/Qualifikationsname[^\n]*Komma/);
+  });
+});
+
+describe("IMP-5 Anzeige und Bestätigung über den Endpunkt", { timeout: 120000 }, () => {
+  const DATEI_Q = () => csv([KOPF_HTTP, ["8301", "Neu", "Nina", "Wohnbereich 1", "", "Pflegefachkraft, Hebammenkunde"],
+    ["8302", "Alt", "Alf", "Wohnbereich 1", "", ""]]);
+  const flags = (q) => ({ name: q.name, neu: q.neu, fachkraft: q.fachkraft, nachweisPflicht: q.nachweisPflicht });
+
+  it("Analyse und Vorschau zeigen dieselben Qualifikationen mit Kennzeichen, und genau diese stehen nach der Übernahme am Betrieb", async () => {
+    const { raum, t } = await neuerRaum();
+    const up = await hochladen(t.LT, DATEI_Q());
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang, einheitenAnlegen: true });
+    expect(vs.status, JSON.stringify(vs)).toBe(200);
+    const erwartet = [{ name: "Pflegefachkraft", neu: false, fachkraft: true, nachweisPflicht: true },
+      { name: "Hebammenkunde", neu: true, fachkraft: false, nachweisPflicht: false }];
+    expect(an.datensaetze[0].qualifikationen.map(flags)).toEqual(erwartet);
+    expect(vs.vorschau.neu[0].qualifikationen.map(flags)).toEqual(erwartet);
+    expect(vs.vorschau.neu[1].qualifikationen).toEqual([]);
+    expect(JSON.stringify(vs.vorschau.neu[0].qualifikationen)).toBe(JSON.stringify(an.datensaetze[0].qualifikationen));
+    expect((await schritt(t.LT, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung })).status).toBe(200);
+    const m = await betriebVon(raum);
+    const person = m.personen.find((p) => p.personalnummer === "8301");
+    const tatsaechlich = person.qualifikationen.map((id) => m.qualifikationen.find((q) => q.id === id))
+      .map((q) => ({ name: q.name, fachkraft: q.fachkraft, nachweisPflicht: q.nachweisPflicht })).sort((a, b) => a.name.localeCompare(b.name));
+    expect(tatsaechlich).toEqual(erwartet.map((q) => ({ name: q.name, fachkraft: q.fachkraft, nachweisPflicht: q.nachweisPflicht })).sort((a, b) => a.name.localeCompare(b.name)));
+  });
+
+  it("Planung sieht, dass die neue Person eine bestehende Fachkraft-Qualifikation bekäme (mit Kennzeichen)", async () => {
+    const { t } = await neuerRaum();
+    const up = await hochladen(t.PL, csv([KOPF_HTTP, ["8401", "Neu", "Nina", "Wohnbereich 1", "", "Pflegefachkraft"]]));
+    await schritt(t.PL, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.PL, "vorschau", { vorgang: up.vorgang });
+    expect(vs.status).toBe(200);
+    expect(vs.vorschau.neu[0].qualifikationen).toEqual([{ name: "Pflegefachkraft", kurz: "PFK", neu: false, fachkraft: true,
+      nachweisPflicht: true, harteSperre: false }]);
+  });
+
+  it("ändert sich ein Kennzeichen der Qualifikation zwischen Vorschau und Übernahme, ist die Bestätigung veraltet (409, nichts geschrieben)", async () => {
+    const { raum, t } = await neuerRaum();
+    const up = await hochladen(t.PL, csv([KOPF_HTTP, ["8501", "Neu", "Nina", "Wohnbereich 1", "", "Pflegefachkraft"]]));
+    await schritt(t.PL, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.PL, "vorschau", { vorgang: up.vorgang });
+    expect(vs.status).toBe(200);
+    const stand = await B.bestandLesen(laden(), raum);
+    const geaendert = kopie(stand.bestand);
+    geaendert.mandanten[0].qualifikationen[0].fachkraft = false;
+    await B.bestandSchreiben(laden(), raum, geaendert, { durch: "Prüfung" });
+    const ue = await schritt(t.PL, "uebernahme", { vorgang: up.vorgang, bestaetigung: vs.bestaetigung });
+    expect(ue.status).toBe(409);
+    expect(ue.code).toBe("VORSCHAU_VERALTET");
+    expect((await betriebVon(raum)).personen.some((p) => p.personalnummer === "8501")).toBe(false);
+  });
+});

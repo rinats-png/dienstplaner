@@ -271,9 +271,10 @@ describe("IMP-9 A2: Minimierung und Leck-Prüfung — Personendaten erreichen de
     expect(e.fremdtext).toBeNull();
     const text = JSON.stringify(e);
     expect(text).not.toMatch(GEHEIM);
-    /* Spalte 5 (Name als Überschrift) und 6 (Telefonnummer) fehlen; 0-2 sind schon zugeordnet; offen bleiben 3, 4, 7 */
-    expect(e.paket.spalten.map((x) => x.index)).toEqual([3, 4, 7]);
-    expect(e.paket.spalten.map((x) => x.ueberschrift)).toEqual(["Kontakt", "Bemerkung", "Mitarbeiter-Ref"]);
+    /* 0-2 sind schon zugeordnet; offen bleiben 3-7. Seit der Allowlist (Folgeauftrag zu PR #187) trägt KEINE davon ihre Überschrift im Klartext:
+       weder „Kontakt“ noch der Name in Spalte 5 noch die Telefonnummer in Spalte 6 — alles Platzhalter. */
+    expect(e.paket.spalten.map((x) => x.index)).toEqual([3, 4, 5, 6, 7]);
+    expect(e.paket.spalten.map((x) => x.ueberschrift)).toEqual(["Spalte 4", "Spalte 5", "Spalte 6", "Spalte 7", "Spalte 8"]);
     for (const sp of e.paket.spalten) for (const pr of sp.proben) expect(pr).toMatch(/^[Aa9 .,:;\-/()#+%?]+$/);
     expect(e.paket.spalten[1].proben).toEqual(["a a Aa", "Aa 9.9.9"]);
     /* keine Zeilen, keine Zellwerte, kein Betrieb, keine Alias-Karte, keine Sitzung */
@@ -310,13 +311,14 @@ describe("IMP-9 A2: Minimierung und Leck-Prüfung — Personendaten erreichen de
     }
   });
 
-  it("sind alle offenen Spalten verdächtig, gibt es keinen Aufruf (KI_LECK)", async () => {
-    const s = stub(gut);
+  it("tragen alle offenen Überschriften Namen oder Nummern, geht nur ein Platzhalter hinaus (nie der Wert)", async () => {
+    const s = stub(() => ({ ausgabe: { version: "1", vorschlaege: [] }, nutzung: { eingabeToken: 1, ausgabeToken: 1 } }));
     const a = analysieren({ mandant: MANDANT(), heute: HEUTE, zeilen: [["Nachname", "Vorname", "Einheit", "Musterfrau", "Erika", "4711"],
       ["N", "V", "Wohnbereich Sonnenschein", "a", "b", "c"]] });
     const r = await port(s).vorschlagen({ spalten: a.spalten, zeilen: [], sperrliste: SPERRLISTE() });
-    expect(r).toMatchObject({ ok: false, code: "KI_LECK" });
-    expect(s.aufrufe).toHaveLength(0);
+    expect(r.ok).toBe(true);
+    expect(JSON.stringify(s.aufrufe[0])).not.toMatch(GEHEIM);
+    expect(s.aufrufe[0].paket.spalten.map((x) => x.ueberschrift)).toEqual(["Spalte 4", "Spalte 5", "Spalte 6"]);
   });
 
   it("keine offenen Spalten: kein Aufruf (KI_EINGABE)", async () => {
@@ -326,15 +328,14 @@ describe("IMP-9 A2: Minimierung und Leck-Prüfung — Personendaten erreichen de
     expect(s.aufrufe).toHaveLength(0);
   });
 
-  it("Überschriften mit Steuerzeichen, Tags, Adressen, langen Zahlen oder Überlänge werden nicht weitergegeben", () => {
+  it("Überschriften mit Steuerzeichen, Tags, Adressen, langen Zahlen oder Überlänge werden nicht weitergegeben (Platzhalter)", () => {
     const spalten = ["<b>Kontakt</b>", "Kontakt\u0000Nr", "mail@example.test", "Konto 12345678", "http://x.example/a", "L".repeat(61), "", "123", "Kürzel"]
       .map((kopf, index) => ({ index, kopf, feld: null }));
     const m = eingabeMinimieren({ spalten, zeilen: [], sperrliste: SPERRLISTE() });
     expect(m.ok).toBe(true);
     const namen = m.paket.spalten.map((x) => x.ueberschrift);
-    expect(namen).toContain("Kürzel");
-    for (const n of namen) { expect(n).not.toMatch(/[<>@:]|\u0000|\d{4}/); expect(n.length).toBeLessThanOrEqual(KI_GRENZEN.ueberschriftZeichen); }
-    expect(m.ausgeschlossen).toBeGreaterThanOrEqual(5);
+    expect(namen).toEqual(spalten.map((x) => `Spalte ${x.index + 1}`));
+    for (const n of namen) expect(n).not.toMatch(/[<>@:]|\u0000|\d{4}|Kürzel|Kontakt/);
   });
 
   it("zugeordnete Spalten (Namen, Personalnummer, E-Mail) gehen nie hinaus, auch wenn die Datei sie enthält", async () => {
@@ -344,7 +345,66 @@ describe("IMP-9 A2: Minimierung und Leck-Prüfung — Personendaten erreichen de
     const r = await port(s).vorschlagen({ spalten: a.spalten, zeilen: [["Personalnummer"], ["4711"]], sperrliste: SPERRLISTE(), proben: 3 });
     expect(r.ok).toBe(true);
     expect(JSON.stringify(s.aufrufe[0])).not.toMatch(/4711|Musterfrau|Erika|Schwanger|example\.test/i);
-    expect(s.aufrufe[0].paket.spalten.map((x) => x.ueberschrift)).toEqual(["Notiz"]);
+    expect(s.aufrufe[0].paket.spalten.map((x) => x.ueberschrift)).toEqual(["Spalte 6"]);
+  });
+
+  /* ---- Folgeauftrag zu PR #187: Überschriften nur aus dem festen Vokabular; die Sperrliste kennt die Personen der DATEI nicht ---- */
+  const LEERE_SPERRLISTE = () => sperrlisteBilden({ id: "m0", name: "Leer", personen: [], einheiten: [], standorte: [], qualifikationen: [] }, { raum: "raum-leer" });
+  const HEADER_NAMEN = ["Schmidt, Hans", "Hans Schmidt", "Yilmaz Ayse", "Müller", "Mustermann Erik", "Musterfr4u", "Konfession"];
+  const PERSONEN_IN_DATEI = /Schmidt|Hans|Yilmaz|Ayse|M[üu]e?ller|Mustermann|Erik|Musterfr4u|Konfession|Kontakt|Geburtsort/i;
+
+  it("neue Personen-Namen (nicht im Betrieb gespeichert) als Überschrift gehen NICHT im Klartext hinaus — auch bei leerer Sperrliste", async () => {
+    for (const sperrliste of [LEERE_SPERRLISTE(), SPERRLISTE()]) {
+      const s = stub(() => ({ ausgabe: { version: "1", vorschlaege: [] }, nutzung: { eingabeToken: 1, ausgabeToken: 1 } }));
+      const kopf = ["Nachname", "Vorname", "Einheit", ...HEADER_NAMEN];
+      const a = analysieren({ mandant: MANDANT(), heute: HEUTE, zeilen: [kopf, kopf.map(() => "x")] });
+      const r = await port(s).vorschlagen({ spalten: a.spalten, zeilen: [kopf, kopf.map(() => "x")], sperrliste, proben: 2 });
+      expect(r.ok).toBe(true);
+      const text = JSON.stringify(s.aufrufe[0]);
+      for (const n of HEADER_NAMEN) expect(text, n).not.toContain(n);
+      expect(text).not.toMatch(PERSONEN_IN_DATEI);
+      expect(s.aufrufe[0].paket.spalten.map((x) => x.ueberschrift)).toEqual(HEADER_NAMEN.map((_, i) => `Spalte ${i + 4}`));
+      for (const sp of s.aufrufe[0].paket.spalten) expect(sp.art).toBe("platzhalter");
+    }
+  });
+
+  it("Datei OHNE Kopfzeile: die erste Datenzeile (Person, Einheit, Geburtsort) wird nie als Überschrift behandelt", () => {
+    const zeilen = [["Hans Schmidt", "Yilmaz Ayse", "Pflege Nord", "Geburtsort Ankara"], ["Erik Mustermann", "Ali Demir", "Pflege Süd", "Bochum"]];
+    const a = analysieren({ mandant: MANDANT(), heute: HEUTE, zeilen });
+    const m = eingabeMinimieren({ spalten: a.spalten, zeilen, sperrliste: LEERE_SPERRLISTE(), proben: 2 });
+    expect(m.ok).toBe(true);
+    expect(JSON.stringify(m.paket)).not.toMatch(/Schmidt|Yilmaz|Pflege|Ankara|Mustermann|Demir|Bochum/);
+    expect(m.paket.spalten.map((x) => x.ueberschrift)).toEqual(["Spalte 1", "Spalte 2", "Spalte 3", "Spalte 4"]);
+    /* Auch ein Wort des Vokabulars bleibt Platzhalter, wenn die Datei keine erkannte Kopfzeile hat oder der Aufrufer es so festlegt. */
+    const einzeln = [{ index: 0, kopf: "Team", feld: null, herkunft: null }, { index: 1, kopf: "Haus", feld: null, herkunft: null }];
+    expect(eingabeMinimieren({ spalten: einzeln, zeilen: [], sperrliste: LEERE_SPERRLISTE() }).paket.spalten.map((x) => x.ueberschrift)).toEqual(["Spalte 1", "Spalte 2"]);
+    const mitKopf = analyse().spalten;
+    expect(eingabeMinimieren({ spalten: mitKopf, zeilen: [], sperrliste: LEERE_SPERRLISTE(), kopfzeile: false }).paket.spalten.every((x) => x.art === "platzhalter")).toBe(true);
+  });
+
+  it("Allowlist-Treffer (Wort des Import-Vokabulars in erkannter Kopfzeile) geht im Klartext hinaus, jeder Nicht-Treffer wird Platzhalter — bei leerer Sperrliste", async () => {
+    const s = stub(() => ({ ausgabe: { version: "1", vorschlaege: [] }, nutzung: { eingabeToken: 1, ausgabeToken: 1 } }));
+    /* „Team“ ist Vokabular und bleibt unzugeordnet, weil „Einheit“ das Feld schon belegt; „Bemerkung“ und ein Name sind keine Treffer. */
+    const kopf = ["Nachname", "Vorname", "Einheit", "Team", "Bemerkung", "Ayse Yilmaz"];
+    const a = analysieren({ mandant: MANDANT(), heute: HEUTE, zeilen: [kopf, kopf.map(() => "x")] });
+    expect(a.spalten.filter((x) => !x.feld).map((x) => x.kopf)).toEqual(["Team", "Bemerkung", "Ayse Yilmaz"]);
+    const r = await port(s).vorschlagen({ spalten: a.spalten, zeilen: [], sperrliste: LEERE_SPERRLISTE() });
+    expect(r.ok).toBe(true);
+    expect(s.aufrufe[0].paket.spalten.map((x) => [x.ueberschrift, x.art])).toEqual([["Team", "feldname"], ["Spalte 5", "platzhalter"], ["Spalte 6", "platzhalter"]]);
+    expect(JSON.stringify(s.aufrufe[0])).not.toMatch(/Ayse|Yilmaz|Bemerkung/);
+  });
+
+  it("das Vokabular stammt aus den Synonymlisten des Imports (kein eigenes): jedes Synonym ist Klartext, alles Übrige nicht", async () => {
+    const { FELD_SYNONYME } = await import("../server/lib/import/personen.mjs");
+    const kopfBasis = [{ index: 0, kopf: "Nachname", feld: "nachname", herkunft: "genau" }, { index: 1, kopf: "Vorname", feld: "vorname", herkunft: "genau" }];
+    const alle = Object.values(FELD_SYNONYME).flat();
+    expect(alle.length).toBeGreaterThan(30);
+    const spalten = [...kopfBasis, ...alle.map((w, i) => ({ index: i + 2, kopf: w, feld: null, herkunft: null })),
+      { index: alle.length + 2, kopf: "Hans Schmidt", feld: null, herkunft: null }];
+    const m = eingabeMinimieren({ spalten, zeilen: [], sperrliste: LEERE_SPERRLISTE() });
+    expect(m.ok).toBe(true);
+    expect(m.paket.spalten.slice(0, -1).every((x) => x.art === "feldname")).toBe(true);
+    expect(m.paket.spalten.at(-1)).toMatchObject({ ueberschrift: `Spalte ${alle.length + 3}`, art: "platzhalter" });
   });
 
   it("der Anbieter bekommt eine eingefrorene Kopie: er kann das Paket nicht verändern", async () => {

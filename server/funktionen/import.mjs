@@ -82,7 +82,7 @@ function vorschauAus(plan, analyse) {
       personalnummer: n.werte.personalnummer || null, einheit: n.werte.einheit, eintritt: n.werte.eintritt,
       /* Freigabe Betreiber: die Vorschau zeigt genau das Datum, das gespeichert wird (bereits umgerechnet); leer → „nicht angegeben". */
       eintrittAnzeige: datumAnzeige(n.werte.eintritt),
-      neueEinheit: !n.einheitId, hinweise: (nach.get(n.datensatz) || {}).hinweise || [] })),
+      neueEinheit: !n.einheitId, qualifikationen: (nach.get(n.datensatz) || {}).qualifikationenAnzeige || [], hinweise: (nach.get(n.datensatz) || {}).hinweise || [] })),
     aktualisieren: plan.aktualisieren.map((a) => ({ datensatz: a.datensatz, personId: a.personId, aenderungen: a.aenderungen })),
     uebersprungen: plan.uebersprungen, offen: plan.offen,
     neueEinheiten: plan.neueEinheiten, neueStandorte: plan.neueStandorte, neueQualifikationen: plan.neueQualifikationen || [],
@@ -221,7 +221,7 @@ export default async (req) => {
       v.zeilen = zeilen; v.zuordnung = a.zuordnung; v.analyse = { art: v.art }; v.plan = null;
       return antwort({ art: v.art, blatt, spalten: a.spalten, zuordnung: a.zuordnung, fehlendePflicht: a.fehlendePflicht,
         datensaetze: a.datensaetze.map((d) => ({ datensatz: d.datensatz, werte: d.werte, fehler: d.fehler, hinweise: d.hinweise,
-          konflikte: d.konflikte, dublette: d.dublette, erlaubt: d.erlaubt, vorgabe: d.vorgabe })),
+          konflikte: d.konflikte, dublette: d.dublette, erlaubt: d.erlaubt, vorgabe: d.vorgabe, qualifikationen: d.qualifikationenAnzeige })),
         zaehler: a.zaehler, ...datumHinweis(v) });
     }
 

@@ -25,7 +25,7 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
-import { orgKatalog, orgZuordnen, orgAnlegbar, orgAnlegenPruefen, orgAnlegen, orgNameMerken,
+import { orgKatalog, orgZuordnen, orgAnlegbar, orgAnlegenPruefen, orgAnlegen, orgNameMerken, orgSchluessel, orgQualifikationenAnzeige,
   qualifikationenAusText, qualifikationenZuGross } from "./org.mjs";
 
 /** Felder, die der Personalimport kennt (Weißliste). Alles andere wird nicht gelesen. */
@@ -55,7 +55,11 @@ const MUSTER = {
   standort: ["standort", "filiale", "niederlassung", "haus", "betriebsstaette"],
   qualifikationen: ["qualifikation", "qualifikationen", "quali", "kenntnisse"],
 };
+/** Die Überschriften-Synonyme des Imports je Feld (normalisiert). Einzige Quelle des festen Vokabulars; die KI-Schnittstelle (IMP-9) gibt nur diese im Klartext weiter. */
+export const FELD_SYNONYME = Object.freeze(Object.fromEntries(Object.entries(MUSTER).map(([k, v]) => [k, Object.freeze([...v])])));
 
+/** Normalform einer Spaltenüberschrift (Kleinbuchstaben, Umlaute aufgelöst, nur a-z0-9). */
+export const kopfNormalisieren = (s) => norm(s);
 const norm = (s) => String(s ?? "").toLowerCase()
   .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
   .replace(/[^a-z0-9]/g, "");
@@ -281,6 +285,7 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     else { erlaubt = ["neu", "ueberspringen", "klaeren"]; vorgabe = konflikte.length ? "klaeren" : "neu"; }
     return { datensatz: nr, werte, einheitId: org.einheitId, standortId: org.standortId,
       qualifikationIds: org.qualifikationIds, neueQualifikationen: org.neueQualifikationen,
+      qualifikationenAnzeige: orgQualifikationenAnzeige(katalog, werte.qualifikationen),
       fehler, hinweise, konflikte, dublette, erlaubt, vorgabe };
   });
   /* Doppelt in der Datei: ALLE betroffenen Zeilen werden markiert, nicht nur die spätere. Eine (gleichwertige)
@@ -383,7 +388,7 @@ export function planen({ mandant, analyse, entscheidungen, bestaetigungen, einhe
   const ziel = (du) => (!du ? null : du.personIds ? du.personIds.map(String) : du.personId !== undefined ? String(du.personId)
     : du.datensatz !== undefined ? `#${du.datensatz}` : null);
   const lage = analyse.datensaetze.map((d) => [d.datensatz, d.dublette ? d.dublette.art : null, ziel(d.dublette), d.vorgabe,
-    d.konflikte.map((k) => k.art), d.einheitId, d.standortId, d.qualifikationIds || []]);
+    d.konflikte.map((k) => k.art), d.einheitId, d.standortId, d.qualifikationIds || [], d.qualifikationenAnzeige || []]);
   const hash = createHash("sha256").update(JSON.stringify({ plan, lage })).digest("hex");
   return { ok: true, plan, zaehler, hash };
 }
@@ -408,10 +413,10 @@ export function anwenden(mandant, plan, { neueId, heute, haken = null, orgEdit =
   let i = 0;
   for (const n of plan.neu) {
     const w = n.werte;
-    const eid = n.einheitId || einheitNachName.get(vergleich(w.einheit));
+    const eid = n.einheitId || einheitNachName.get(orgSchluessel(w.einheit));
     /* Qualifikationen nur für NEUE Personen: vorhandene aus dem Katalog plus die eben (mit org.edit) angelegten. */
     const qualIds = [...new Set([...(n.qualifikationIds || []),
-      ...(w.qualifikationen || []).map((q) => qualifikationNachName.get(vergleich(q))).filter(Boolean)])];
+      ...(w.qualifikationen || []).map((q) => qualifikationNachName.get(orgSchluessel(q))).filter(Boolean)])];
     /* Der Eintritt bleibt null, wenn er nicht angegeben ist (nie heute). Der Anker von Zugehörigkeit und Rolle
        braucht ein Datum und ist kein Eintritt: dafür gilt der Tag der Übernahme. */
     const eintritt = w.eintritt ?? null;
