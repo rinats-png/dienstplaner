@@ -387,12 +387,19 @@ export async function zweifaktorStand(store, id, ms = Date.now()) {
 /**
  * Einrichtung beginnen: neues Geheimnis, ausstehend bis zum ersten Code.
  * Gibt das Geheimnis zurück — der einzige Weg, auf dem es den Server verlässt.
+ *
+ * `laufendeSchuetzen` (OPT-1-F, Konto-Faktor): Eine noch gültige ausstehende
+ * Einrichtung wird nicht überschrieben (`fehler: "ausstehend"`). Geprüft unter
+ * derselben Sperre wie das Schreiben — zwei gleichzeitige Aufrufe können sich
+ * so nicht gegenseitig ersetzen. Ohne die Wahl bleibt das Verhalten der
+ * übrigen Aufrufer (Betreiber, Rollencodes) unverändert.
  */
-export async function zweifaktorBeginnen(store, id, konto) {
+export async function zweifaktorBeginnen(store, id, konto, { laufendeSchuetzen = false } = {}) {
   if (!zweifaktorMoeglich()) return { fehler: "pfeffer" };
   return unterSperre(id, async () => {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (e && e.stand === "aktiv") return { fehler: "aktiv" };
+    if (laufendeSchuetzen && ausstehendGueltig(e, Date.now())) return { fehler: "ausstehend" };
     const roh = randomBytes(20);
     await store.setJSON(SCHLUESSEL(id), { stand: "ausstehend", geheimnis: verschluesseln(roh, id),
       letzterSchritt: -1, wiederherstellung: null, begonnen: new Date().toISOString() });

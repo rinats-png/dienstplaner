@@ -68,8 +68,11 @@ export async function kontoFaktorBeginnen(store, accountId) {
   const st = await kontoFaktorStand(store, accountId);
   if (st.aktiv) return { ok: false, grund: "aktiv" };
   if (st.ausstehend) return { ok: false, grund: "ausstehend" };
-  const e = await zweifaktorBeginnen(store, kontoFaktorId(accountId), "Konto");
+  /* Die Vorprüfung oben bleibt; entscheidend ist die zweite Prüfung unter der
+     Sperre in zweifaktorBeginnen — erst sie schließt zwei gleichzeitige Aufrufe aus. */
+  const e = await zweifaktorBeginnen(store, kontoFaktorId(accountId), "Konto", { laufendeSchuetzen: true });
   if (e.fehler === "pfeffer") return { ok: false, grund: "pfeffer" };
+  if (e.fehler === "ausstehend") return { ok: false, grund: "ausstehend" };
   if (e.fehler) return { ok: false, grund: "aktiv" };
   return { ok: true, geheimnis: e.geheimnis, otpauth: e.otpauth };
 }

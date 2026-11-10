@@ -454,3 +454,82 @@ describe("OPT-1-F: die ganze Kette unter Pflicht", () => {
     }
   }, LIMIT);
 });
+
+/* ==========================================================================
+   Sicherheitsreview OPT-1-F, Befunde 2 und 3
+     2. Eine laufende Einrichtung wird unter derselben Sperre geprüft wie
+        geschrieben: zwei gleichzeitige „beginnen" ersetzen einander nicht.
+     3. Aktivierung fail-closed: Scheitert das zweite Abmelden, wird nicht
+        aktiviert. Die Aktivierung erhöht die Epoche; eine vorher angelegte
+        Sitzung gilt danach nicht mehr.
+   ========================================================================== */
+describe("OPT-1-F Review: Befunde 2 und 3", () => {
+  beforeEach(() => { weiter(11 * 60); });
+
+  it("2. Zwei gleichzeitige beginnen-Aufrufe: genau einer gewinnt, die erste Einrichtung bleibt unangetastet", async () => {
+    const K2 = await eingerichtet("parallel");
+    const s = laden();
+    const [x, y] = await Promise.all([KF.kontoFaktorBeginnen(s, K2.accountId), KF.kontoFaktorBeginnen(s, K2.accountId)]);
+    const gewinner = [x, y].filter((r) => r.ok);
+    const verlierer = [x, y].filter((r) => !r.ok);
+    expect(gewinner.length).toBe(1);
+    expect(verlierer.length).toBe(1);
+    expect(verlierer[0].grund).toBe("ausstehend");
+    expect("geheimnis" in verlierer[0]).toBe(false);
+    /* Abgelegt ist die Einrichtung des Gewinners: sein Code passt. */
+    expect((await KF.kontoFaktorVorpruefen(s, K2.accountId, code(gewinner[0].geheimnis))).ok).toBe(true);
+    /* Ein späterer Aufruf überschreibt sie ebenfalls nicht. */
+    expect(await KF.kontoFaktorBeginnen(s, K2.accountId)).toEqual({ ok: false, grund: "ausstehend" });
+    expect((await KF.kontoFaktorVorpruefen(s, K2.accountId, code(gewinner[0].geheimnis))).ok).toBe(true);
+  }, LIMIT);
+
+  it("3a. Scheitert das zweite Abmelden, wird nicht aktiviert", async () => {
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const K3 = await eingerichtet("abmelden-kaputt");
+    const s = laden();
+    const b = await AN.kontoFaktorAktion(s, { email: K3.email, passwort: GUT, aktion: "beginnen" });
+    expect(b.ok, JSON.stringify(b)).toBe(true);
+    /* Die Sitzungsablage versagt, sobald der Faktor aktiv ist — also genau beim zweiten Abmelden. */
+    const echt = kontoAblage();
+    let versagt = 0;
+    const ablage = new Proxy(echt, { get(t, p) {
+      if (p === "list") return async (...a) => {
+        if ((await KF.kontoFaktorStand(s, K3.accountId)).aktiv) { versagt++; throw new Error("ablage kaputt"); }
+        return t.list(...a);
+      };
+      const v = t[p];
+      return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const f = await AN.kontoFaktorAktion(s, { email: K3.email, passwort: GUT, aktion: "bestaetigen",
+      zweifaktor: code(b.daten.geheimnis), sitzungsAblage: ablage });
+    expect(versagt).toBeGreaterThan(0);
+    expect(f.ok).toBe(false);
+    expect(f.grund).toBe("sitzungen");
+    expect(JSON.stringify(f)).not.toContain("wiederherstellung");
+    expect((await KF.kontoFaktorStand(s, K3.accountId)).aktiv).toBe(false);
+  }, LIMIT);
+
+  it("3b. Nach der Aktivierung gilt eine vorher angelegte Sitzung nicht mehr (Epoche erhöht)", async () => {
+    const AN = await import("../server/lib/accountanmeldung.mjs");
+    const K4 = await eingerichtet("epoche");
+    const s = laden();
+    /* Eine Sitzung in einer Ablage, die das Abmelden nicht erreicht — wie eine, die zwischen dem Lesen des
+       Faktorstands und der Aktivierung entstand. Nur die Epoche kann sie noch entwerten. */
+    const abseits = getStore({ name: "centric-accountsitzungen-abseits", consistency: "strong" });
+    const an = await AN.anmelden(s, { email: K4.email, passwort: GUT, sitzungsAblage: abseits });
+    expect(an.ok, JSON.stringify(an)).toBe(true);
+    expect(an.zweifaktor).toBeUndefined();
+    expect((await AN.sitzungPruefen(s, an.token, { sitzungsAblage: abseits })).ok).toBe(true);
+    const epocheVorher = Number((await A.accountLesenPerId(s, K4.accountId)).epoche) || 1;
+    const b = await AN.kontoFaktorAktion(s, { email: K4.email, passwort: GUT, aktion: "beginnen" });
+    expect(b.ok).toBe(true);
+    const f = await AN.kontoFaktorAktion(s, { email: K4.email, passwort: GUT, aktion: "bestaetigen",
+      zweifaktor: code(b.daten.geheimnis), sitzungsAblage: kontoAblage() });
+    expect(f.ok, JSON.stringify(f)).toBe(true);
+    expect((await KF.kontoFaktorStand(s, K4.accountId)).aktiv).toBe(true);
+    expect((await A.accountLesenPerId(s, K4.accountId)).epoche).toBe(epocheVorher + 1);
+    const danach = await AN.sitzungPruefen(s, an.token, { sitzungsAblage: abseits });
+    expect(danach.ok).toBe(false);
+    expect(danach.grund).toBe("epoche");
+  }, LIMIT);
+});

@@ -99,8 +99,9 @@ import { randomBytes } from "node:crypto";
 import { mailNormieren, mailBrauchbar } from "./adressen.mjs";
 import { passwortPruefen, passwortAblegen } from "./passwoerter.mjs";
 import {
-  accountLesenPerMail, accountLesenPerId, anmeldungVermerken,
+  accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
+import { zweifaktorAbschalten } from "./zweifaktor.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
@@ -315,7 +316,10 @@ export const KONTO_FAKTOR_AKTIONEN = Object.freeze(["stand", "beginnen", "bestae
  *                2. ALLE Sitzungen des Kontos beenden (samt Arbeitssitzungen) —
  *                   scheitert das, wird nicht aktiviert,
  *                3. aktivieren,
- *                4. noch einmal beenden (was dazwischen entstand).
+ *                4. Epoche des Kontos erhöhen (entwertet jede vorher angelegte
+ *                   Sitzung) und noch einmal beenden (was dazwischen entstand) —
+ *                   scheitert eins davon, wird die Aktivierung zurückgenommen
+ *                   und abgewiesen.
  *                Danach gilt nur noch Passwort plus Code aus der App.
  *
  * Es entsteht nie eine Sitzung. Codes und Geheimnis stehen nur im
@@ -378,7 +382,26 @@ export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifa
   const bg = "grund" in e ? e.grund : null;
   if (bg === "pfeffer") return nichtPruefbar("faktor-pfeffer");
   if (bg || !("wiederherstellung" in e)) return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
-  const danach = await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }));
+  /* Review OPT-1-F, Befund 3: Eine Anmeldung, die den Faktorstand vor der Aktivierung gelesen hat, hat das
+     Konto (und damit die Epoche) noch früher gelesen. Die Epoche NACH der Aktivierung zu erhöhen, entwertet
+     jede solche Sitzung — auch eine, die nach dem ersten Abmelden angelegt wurde. Danach räumt das zweite
+     Abmelden die Sitzungen und Arbeitssitzungen weg. Scheitert eins von beiden, gilt die Einrichtung nicht:
+     Der eben aktivierte Faktor wird zurückgenommen (fail-closed, keine Wiederherstellungscodes, kein „aktiv").
+     Lässt sich auch das nicht, bleibt der Faktor aktiv — der strengere Zustand — und die Antwort ist trotzdem
+     eine Absage. */
+  const neueEpoche = await (async () => {
+    const k = await accountLesenPerId(store, id);
+    if (!k) return false;
+    const r = await accountAendern(store, id, { epoche: (Number(k.epoche) || 1) + 1 });
+    return !!(r && r.ok);
+  })().catch(() => false);
+  const danach = neueEpoche
+    ? await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }))
+    : { beendet: 0, fehler: 1 };
+  if (danach.fehler) {
+    await zweifaktorAbschalten(store, kontoFaktorId(id)).catch(() => {});
+    return nichtPruefbar("sitzungen");
+  }
   return { ok: true, sitzungenBeendet: vorher.beendet + danach.beendet,
     daten: { aktiv: true, wiederherstellung: e.wiederherstellung,
       hinweis: "Der zweite Faktor ist eingerichtet. Die Wiederherstellungscodes erscheinen genau einmal; "
