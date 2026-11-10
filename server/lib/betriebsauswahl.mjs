@@ -288,7 +288,10 @@ export async function betriebWaehlen(store,
   try { faktorAktiv = await kontoFaktorAktiv(store, accountId); } catch { faktorAktiv = null; }
   const mitFaktor = faktorAktiv === true && !!(kontoMitFaktor && kontoMitFaktor.ok && kontoMitFaktor.zweifaktor === true);
   if (faktorAktiv !== false && !mitFaktor) return absage("zweifaktor-pflicht");
-  if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle)) && !mitFaktor)
+  /* OPT-4: Die Pflicht gilt auch je Konto (`faktorPflicht`, gesetzt mit dem Ersteinrichtungscode) — unabhängig vom
+     Schalter, wie `pflichtErzwungen` für einen Zugang aus der Ersteinrichtung. Maßgeblich sind wieder beide Rollen. */
+  const kontoPflicht = konto.faktorPflicht === true;
+  if ((rollenPflicht() || kontoPflicht) && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle)) && !mitFaktor)
     return absage("zweifaktor-pflicht");
   if (mitFaktor) felder.zweifaktor = true;
 

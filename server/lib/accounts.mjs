@@ -466,7 +466,11 @@ export async function accountLesenPerId(store, accountId) {
 
 const AENDERBAR = new Set(["emailVerifiziertAm", "passwort", "status",
   "tokenNr", "epoche", "passwortGeaendert", "letzteAnmeldung",
-  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm", "testbetriebRaum"]);
+  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm", "testbetriebRaum",
+  /* OPT-4: Für dieses Konto ist der zweite Faktor Pflicht, wo es Rechte von Leitung, Planung oder Kunde trägt
+     (betriebsauswahl.mjs, arbeitssitzung.mjs) — unabhängig vom Schalter CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT. Nur
+     setzbar, nie zurücknehmbar (unten). */
+  "faktorPflicht"]);
 
 /**
  * Ändert einen Account feldweise. Unbekannte oder geschützte Felder führen
@@ -489,6 +493,10 @@ export async function accountAendern(store, accountId, felder) {
     return { ok: false, grund: "passwortform" };
   if ("epoche" in felder && (!Number.isInteger(felder.epoche) || felder.epoche < 1))
     return { ok: false, grund: "epoche" };
+  /* OPT-4: Die Pflicht des zweiten Faktors am Konto lässt sich nur einschalten. Ein Weg, sie über dieses Ändern
+     wieder abzuschalten, wäre eine Ausnahme vom zweiten Faktor ohne jede Prüfung. */
+  if ("faktorPflicht" in felder && felder.faktorPflicht !== true)
+    return { ok: false, grund: "faktorPflicht" };
   if ("profil" in felder && felder.profil !== null) {
     const g = profilPruefen(felder.profil);
     if (!g.ok) return { ok: false, grund: `profil:${g.grund}` };
