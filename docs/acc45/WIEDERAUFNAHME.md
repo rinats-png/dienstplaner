@@ -1,4 +1,4 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-10 09:10 UTC, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-10 ca. 10:30 UTC, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
@@ -33,31 +33,35 @@ Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
-- Integration: `integration/release-v4`, Kopf 67dd4426 (Merge #170, 2026-11-10 09:04Z; davor 0633a6ae nach #176). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
+- Integration: `integration/release-v4`, Kopf 163dc491 (Merge #174, 2026-11-10 ca. 10:20Z; davor #172, #179, #170 = 67dd4426, #176). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
 - `main`: 0423eeac. Kein Design-Release nach main ohne Betreiberfreigabe.
 - V4-Staging: `public/sw.js` hat auf der Integration `FASSUNG = "__CENTRIC_BUILD__"` (Platzhalter), auf `main` `"v4"`; die frühere Angabe "v5" war falsch. Betreiber bestätigt, welcher Stand angenommen wird (siehe `docs/acc45/STAGING-ABNAHME-V4.md`).
 
-## Offene PRs (Stand 2026-11-10 09:10Z)
-- #179 OPT-1-F (Draft, Kopf 073d9fea, im Fix): Anmeldeweg für Leitungskonten mit zweitem Faktor am Konto und Ersteinrichtungscode aus #166 (Option A). Unabhängiges Opus-Review fand einen Blocker (zweite überlappende Bestätigung löschte den aktiven Faktor); Fix mit Test läuft. Erst nach Fix, Re-Review und grüner CI integrieren. Vorher Befund-2/3-Fixes (Kopf 7f7718db) enthalten.
-- #175 OPT-1-F, gestapelte ältere Variante auf #166: durch #179 ersetzt; nach Integration von #179 schließen (Koordinator).
-- #166 OPT-1: nicht einzeln mergen (siehe oben); schließt sich mit #179, wenn dessen Inhalt in der Integration liegt, oder wird dann als ersetzt geschlossen.
+## Offene PRs (Stand 2026-11-10 ca. 10:30Z)
+- #179 OPT-1-F ist **gemergt** (a35fa29e, Kopf bd137911). Damit liegt auch der Ersteinrichtungscode aus #166 in der Integration (#166 von GitHub als gemergt markiert, weil sein Kopf enthalten ist). Zwei unabhängige Opus-Reviews: erster Review fand den Blocker "überlappende zweite Bestätigung löscht aktiven Faktor", behoben und im Delta-Review bestätigt.
+- #175 OPT-1-F, gestapelte ältere Variante (Draft): durch #179 ersetzt. Das Schließen wurde vom Berechtigungssystem verweigert; **Entscheidung beim Betreiber** (schließen oder stehen lassen). Kein Inhalt geht verloren (Branch `acc45/opt-1-f-anmeldeweg` bleibt).
 - #177 WP-I4 (Draft): Betriebsrat-Sicht wartet auf Betreiberfreigabe (neue Lesesicht auf interne Vorgaben, § 87 BetrVG offen).
-- #178 V4-Staging-Voraussetzungen, #174 WP-I12a, #172 Doku Legal-Teil A: offen, nach CI-Stand und Review zu entscheiden.
+- #178 V4-Staging-Voraussetzungen: Review ohne inhaltlichen Blocker; Konflikt in `package.json` (Prüfkette) gelöst, Kopf fa7c6c1d, CI läuft, danach mergen.
+- #180 Branchschutz-Prüfer, Betreiberanleitung, diese Datei; #181 SSOT-Nachführung (WP-35, OPT-1, OPT-1-F, WP-I12a): jeweils nach grüner CI mergen.
 - #139 WP-I12c (planKennzahlen, Spanne). Hold, Betreiberentscheidung zur Spanne-Definition.
 - #129, #127, #115, #97, #96, #94, #92, #91, #18, #17, #16, #15, #7, #6: ältere Doku-, Feature- und Security-PRs gegen Basen außerhalb der Integration. Vor dem Schließen prüfen, ob Inhalt in der Integration steht (ssot-belege, Commit-Suche). Nicht blind schließen.
 - #168 (ccr-…, Cloud-Session): fremd, nicht anfassen.
 - #104 "[NICHT INTEGRIEREN]": Referenz, nicht mergen.
 
 ## Abgeschlossen in dieser Sitzung (gemergt)
-#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #167 #169 #170 #171 #173 #176
-(#169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #173 V4-Abnahme-Checkliste, #176 WP-35 Darstellung.)
+#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #179
+(#169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #172 Doku Legal-Teil A, #173 V4-Abnahme-Checkliste, #174 WP-I12a Rechenkern, #176 WP-35 Darstellung, #179 OPT-1-F inklusive OPT-1/#166.)
+
+Hinweise aus den unabhängigen Reviews (nicht blockierend):
+- #174 (WP-I12a): Die Aussage "ohne `ausfaelle` byte-identisch" gilt nicht allgemein. `rechnen()` liefert jetzt zu jedem Ruhezeitbefund einen `ruhezeit.ist`-Fakt; `gegenrechnen` prüft kandidat.* und `ruhezeit.ist` strenger (fail-closed). Vor Verdrahtung in eine Route (WP-I20): Obergrenze für Personenzahl bei der Ersatzsuche, Definition von `ruhezeit.ist` (mit/ohne Zeitumstellung) vereinheitlichen, Golden um Ruhezeit-/Folgegrenzen erweitern.
+- #178: Dokument nennt Basis-Zahlen (1103 Commits, App.jsx 2066 Zeilen), die inzwischen veraltet sind; die Skripte laufen nur manuell.
 
 ## Abhängigkeiten und Betreiberfreigaben
 - E-25: AVV, Zero-Data-Retention, Drittland, DSFA, Mitbestimmung. Voraussetzung für jede produktive KI-Freigabe.
 - Monatsbudget gegen Verbrauch (WP-I15) vor Verdrahtung eines Anbieters.
 - Browser-Abnahmen: WP-40 (Reflow, Zielgröße, Fokus, Fehlertext 3.3.1), WP-I2 (Schichtfolge), WP-I17 (Intelligence-Antwort).
 - **Branch-Schutz setzen (prioritär):** `docs/acc45/BETREIBER-BRANCHSCHUTZ.md`. Ohne ihn ist die Lease nur kooperativ.
-- OPT-1 / OPT-1-F: Entschieden am 2026-11-10 (Option A: Ersteinrichtungscode aus #166, kein E-Mail-Weg, keine allgemeine Betreiberfreischaltung). Umsetzung in #179. Betrieblich offen: `werkzeug/testbetrieb-anlegen.mjs` ist nicht im Docker-Image und läuft auf dem Host bei gestopptem Server (Aufnahme ins Image ist eine Infra-Entscheidung).
+- OPT-1 / OPT-1-F: Entschieden am 2026-11-10 (Option A: Ersteinrichtungscode aus #166, kein E-Mail-Weg, keine allgemeine Betreiberfreischaltung). Umgesetzt und integriert mit #179 (inklusive #166). Betrieblich offen: `werkzeug/testbetrieb-anlegen.mjs` ist nicht im Docker-Image und läuft auf dem Host bei gestopptem Server (Aufnahme ins Image ist eine Infra-Entscheidung).
 - Betreiberentscheidung WP-35: Antwort "bejaht" zu Frage 6 (Kartenansicht statt Tabellenscroll) in `wp40-fragen.md` bestätigen.
 - I.7 (Altformat v1 bei WR-1). Stand: Empfehlung umgesetzt, blockiert nicht.
 - Fristen KI-Löschlauf (30/90 Tage) und Löschkonzept (#161).
@@ -85,6 +89,6 @@ Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne
 6. Vor Schreibvorgängen `node werkzeug/koordination.mjs status` und `pruefen --halter H --epoche N`. Textsuch-Prüfungen beachten (zum Beispiel verbietet `pruefungen/anmeldung-http.test.js` bestimmte Wörter im Quelltext von `server/funktionen/daten.mjs`): vor dem Push `npm run pruefung` oder zumindest alle Tests, die Quelltexte lesen.
 
 ## Agenten und Hintergrund
-- Stand 2026-11-10 09:10Z: Ein schreibender Agent (OPT-1-F-Fix auf #179, Branch `sicherheit/opt-1-f-anmeldeweg`) arbeitet im Auftrag des Hauptchats. Alle anderen gemeldeten Agenten (Review #170, Review #179) haben berichtet. Cloud-Sitzungen waren idle.
+- Stand 2026-11-10 ca. 10:30Z: Keine schreibenden Agenten aktiv. Reviews zu #170, #179, #174, #178/#172 sind abgeliefert. Cloud-Sitzungen waren idle.
 - Hintergrund-Watcher (Merge bei grün) sind an die Sitzung gebunden und enden mit ihr. Der neue Koordinator startet sie neu, falls nötig.
 - Worktrees: viele Agenten-Worktrees unter `.claude/worktrees/`. Nur Worktrees mit ungesicherten Änderungen prüfen (`git status --porcelain`), bevor man sie entfernt. Nicht blind löschen.
