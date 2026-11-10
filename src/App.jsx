@@ -629,6 +629,22 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .sheet-back > .blatt{border-radius:12px;}
 }
 
+/* WP-35: Datentabelle der Abrechnungsdaten (Zuschlaege je Person) ohne
+   Querscrollen bis 480px. Jede Zeile wird zur Karte; die Spaltenkoepfe
+   bleiben fuer Vorlesesoftware im Dokument (nur unsichtbar), jede Zelle
+   traegt ihre Beschriftung ueber data-label. */
+@media (max-width: 480px){
+  table.raster-stapel{min-width:0 !important; display:block;}
+  table.raster-stapel thead{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);}
+  table.raster-stapel tbody, table.raster-stapel tr{display:block;}
+  table.raster-stapel tr{padding:8px 0; border-bottom:1px solid ${C.line};}
+  table.raster-stapel td{display:flex; justify-content:space-between; align-items:center; gap:12px; height:auto; min-height:30px; border-bottom:0;}
+  table.raster-stapel td::before{content:attr(data-label); font-size:11.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:${C.dim};}
+  table.raster-stapel td:first-child::before{content:none;}
+  /* Reiterleiste der Abrechnungsdaten: umbrechen statt innen zu scrollen */
+  .seg-umbruch .seg{flex-wrap:wrap; overflow-x:visible;}
+}
+
 @media print{
   .seitenleiste,.kopfblock,.kopfleiste,.noprint,.toast{display:none !important;}
   .inhalt{margin-left:0;}
