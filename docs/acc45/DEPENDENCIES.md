@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 361,1–609,9 PT in 84 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 358,1–605,9 PT in 83 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -36,8 +36,7 @@ flowchart LR
     IMP_9["IMP-9<br/>BLOCKED"]
     IMP_10["IMP-10<br/>BLOCKED"]
     OPT_2["OPT-2<br/>BLOCKED"]
-    OPT_4["OPT-4<br/>BLOCKED"]
-    WR_2["WR-2<br/>BLOCKED"]
+    OPT_4["OPT-4<br/>IN_PROGRESS"]
     WR_3["WR-3<br/>BLOCKED"]
     WR_4["WR-4<br/>BLOCKED"]
     WR_5["WR-5<br/>BLOCKED"]
@@ -315,9 +314,7 @@ flowchart LR
   WP_24b --> WP_42R2
   IMP_6 --> IMP_7
   WR_3 --> OPT_2
-  WR_2 --> WR_3
   WR_3 --> WR_4
-  WR_2 --> WR_5
   WR_3 --> WR_5
   WR_3 --> WR_6
   WR_5 --> WR_7
@@ -504,9 +501,9 @@ flowchart LR
 | OPT-1 | acc45 | P1 | 1–1,5 | 0 | SI-P4 | daten.mjs | opus | INTEGRATED |
 | OPT-1-F | acc45 | P1 | 2–4 | 0 | OPT-1 | daten.mjs | opus | INTEGRATED |
 | OPT-2 | acc45 | P1 | 0,5–1 | 0,5–1 | SI-P4, WR-3 | daten.mjs | opus | BLOCKED |
-| OPT-4 | acc45 | P1 | 3–5 | 3–5 | SI-P4 | daten.mjs | opus | BLOCKED |
+| OPT-4 | acc45 | P1 | 3–5 | 1,5–2,5 | SI-P4 | daten.mjs | opus | IN_PROGRESS |
 | WR-1 | acc45 | P1 | 1,5 | 0 | SI-P4 | daten.mjs | opus | INTEGRATED |
-| WR-2 | acc45 | P1 | 1,5 | 1,5 | WR-1 | daten.mjs | opus | BLOCKED |
+| WR-2 | acc45 | P1 | 1,5 | 0 | WR-1 | daten.mjs | opus | INTEGRATED |
 | WR-3 | acc45 | P1 | 2,5 | 2,5 | WR-2 | daten.mjs | opus | BLOCKED |
 | WR-4 | acc45 | P1 | 1 | 1 | WR-3 | daten.mjs | opus | BLOCKED |
 | WR-5 | acc45 | P1 | 2 | 2 | WR-1, WR-2, WR-3 | daten.mjs | sonnet | BLOCKED |

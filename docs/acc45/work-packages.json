@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 188,
   "statusZaehlung": {
-    "BLOCKED": 89,
+    "BLOCKED": 87,
     "READY": 16,
-    "IN_PROGRESS": 4,
+    "IN_PROGRESS": 5,
     "REVIEW": 10,
-    "INTEGRATED": 66,
+    "INTEGRATED": 67,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 88,
-      "offen": 35,
+      "offen": 34,
       "restPT": {
-        "min": 66.9,
-        "max": 103.8
+        "min": 63.900000000000006,
+        "max": 99.8
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 361.1,
-    "max": 609.9
+    "min": 358.1,
+    "max": 605.9
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -5056,12 +5056,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["SI-P4"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #182 integriert (Faktorpflicht je Konto, Rollenwechsel, privilegierte Sitzungen, Mandantentrennung). Offen: kontrollierte Migration bestehender Leitungskonten (E1, OPT-2/WR-3), Nachtrag faktorPflicht für ältere Codes (E4)."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5070,12 +5070,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#182"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Kontogebundene TOTP-Einrichtung; bestehende Rollen und Sitzungen; sichere Ersteinrichtung; verpflichtend bei betroffenen Berechtigungen; kontrollierte Migration bestehender Benutzer ohne unsichere Ausnahme; Tests für Rollenwechsel und privilegierte Sitzungen; Mandantentrennung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/zweifaktor*.mjs, server/lib/konto*.mjs, server/funktionen/anmeldung.mjs, Migration, Tests",
-      "notiz": "Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat."
+      "notiz": "Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen."
     },
     {
       "id": "WR-1",
@@ -5112,12 +5112,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1.5,"max":1.5},
       "abhaengigkeiten": ["WR-1"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5126,12 +5126,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#182"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Neugenerierung invalidiert alle bisherigen Codes; keine Neugenerierung ohne frische Authentifizierung; Codeverbrauch und Schlüsselepoche gegen Wiederherstellung alter Sicherungsstände",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/zweifaktor.mjs, server/funktionen/daten.mjs",
-      "notiz": "Entscheidung 8 und 9 (2026-11-09): keine alleinige Faktoränderung über online eingegebenen Wiederherstellungscode."
+      "notiz": "Entscheidung 8 und 9 (2026-11-09): keine alleinige Faktoränderung über online eingegebenen Wiederherstellungscode. Stand (automatisch): INTEGRATED nach #182."
     },
     {
       "id": "WR-3",
