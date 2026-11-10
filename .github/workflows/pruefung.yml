@@ -61,6 +61,12 @@ jobs:
       - name: Querschnittsprüfungen (bisher nicht verdrahtet)
         run: npm run pruefung:querschnitt
 
+      # WP-35 (Abrechnungsdaten ohne Querscrollen) und WP-21 (Telefon/Tablet:
+      # Seitenleiste, Zielgrößen, Scrollbereiche). Beide liefen bisher nur in der
+      # Sammelkette, nicht in der CI.
+      - name: Darstellung Telefon und Tablet (WP-35, WP-21)
+        run: npm run pruefung:darstellung && npm run pruefung:geraete
+
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 

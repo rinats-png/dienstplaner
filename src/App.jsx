@@ -114,6 +114,8 @@ import { Icon } from "./gestalt/icons.jsx";
 import { Erklaerkasten } from "./gestalt/bausteine.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
+import { geraeteStil, SEITENLEISTE_SCHLIESSEN } from "./ui/geraete.js";
+import { Scrollbereich } from "./ui/scrollbereich.jsx";
 import { Rechtliches } from "./rechtstexte.jsx";
 
 
@@ -653,6 +655,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 }
 ${gestaltStil()}
 ${v4AppStil()}
+${geraeteStil()}
 `;
 
 function Betrieb({ sitz, akt }) {
@@ -962,7 +965,8 @@ function BetriebsratAuswertung({ sitz, melde }) {
     <div>
       <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.${berechnetUm ? ` Berechnet am ${berechnetUm} (höchstens alle paar Minuten neu).` : ""}${a.zeilen.some((z) => z.istKorrigiert) ? " † Seit der ersten Ausgabe wurden bestätigte Zeiten korrigiert; die Zahl bleibt unverändert." : ""}${a.zeilen.some((z) => z.istNichtVerfuegbar) ? " ‡ Ist nicht verfügbar: Der Monat wurde ohne diese Zeile festgeschrieben, ein späteres Ist bleibt aus Datenschutzgründen weg." : ""}`}
         right={darf(sitz, "export.data") && <Btn onClick={csv}>Als CSV exportieren</Btn>}>Auswertung</H1>
-      <Card style={{ overflowX: "auto" }}>
+      <Card>
+        <Scrollbereich label="Auswertung für den Betriebsrat, Tabelle je Monat und Einheit">
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>{["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].map((l) => (
             <th key={l} style={{ textAlign: "left", padding: "8px 10px", borderBottom: `1px solid ${C.line}` }}>{l}</th>))}</tr></thead>
@@ -972,6 +976,7 @@ function BetriebsratAuswertung({ sitz, melde }) {
               {SPALTEN.map(([k]) => <td key={k} style={{ padding: "6px 10px", ...NUM }}>{zelle(z, k)}</td>)}
             </tr>))}</tbody>
         </table>
+        </Scrollbereich>
       </Card>
     </div>);
 }
@@ -1036,6 +1041,8 @@ function AppInnen() {
   useEffect(() => {
     const f = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setKmd((x) => !x); }
+      /* WP-21: Escape schliesst die geoeffnete Seitenleiste (Telefon, Tablet); bei geschlossener ist es ein No-op. */
+      if (e.key === "Escape") setSeiteOffen(false);
     };
     window.addEventListener("keydown", f);
     return () => window.removeEventListener("keydown", f);
@@ -1750,6 +1757,8 @@ function AppInnen() {
       <div className="huelle">
 
         {/* ----------------------- Seitenleiste ----------------------- */}
+        {seiteOffen && <button type="button" tabIndex={-1} className="seiten-abdunkelung nur-schmal"
+          aria-label={SEITENLEISTE_SCHLIESSEN} onClick={() => setSeiteOffen(false)} />}
         <aside className={`seitenleiste${seiteOffen ? " offen" : ""}`}
           aria-label="Hauptnavigation">
           <div className="marke">

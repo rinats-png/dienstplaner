@@ -227,7 +227,7 @@ export function TourLeiste({ sitz, akt, gehZu }) {
             style={{ border: "none", background: "transparent", color: C.dim, fontFamily: "inherit",
               fontSize: 13, cursor: "pointer", padding: "4px 0", textAlign: "left" }}>
             {amKapitelende ? "Für heute genug" : "Später fortsetzen"}</button>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5,
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, minHeight: 24,
             color: C.dim, cursor: "pointer" }}>
             <input type="checkbox" onChange={(e) => { if (e.target.checked) akt.tourSchliessen(true); }}
               style={{ width: 16, height: 16, accentColor: C.accent, cursor: "pointer" }} />
