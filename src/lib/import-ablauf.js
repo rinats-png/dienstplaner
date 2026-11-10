@@ -77,7 +77,7 @@ export const unbestaetigteAktualisierungen = (entscheidungen, bestaetigungen) =>
 const FEHLER_TEXT = {
   NETZ: "Keine Verbindung zum Server. Es wurde nichts übernommen.",
   DATEI_ZU_GROSS: "Die Datei ist zu groß (höchstens 10 MB).",
-  ORG_EDIT_FEHLT: "Neue Einheiten oder Standorte darf nur die Leitung anlegen. Bitte die Einheit vorher anlegen lassen oder die Zeile überspringen.",
+  ORG_EDIT_FEHLT: "Neue Einheiten, Standorte oder Qualifikationen darf nur die Leitung anlegen. Bitte vorher anlegen lassen oder die Zeile überspringen.",
   KEINE_BERECHTIGUNG: "Den Import dürfen nur Leitung und Planung verwenden.",
   PFLICHTSPALTE_FEHLT: "Nachname, Vorname und Einheit müssen einer Spalte zugeordnet sein.",
   AKTUALISIERUNG_OHNE_BESTAETIGUNG: "Zum Aktualisieren bitte jede betroffene Person ausdrücklich bestätigen.",

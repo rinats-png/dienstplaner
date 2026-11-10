@@ -20,7 +20,7 @@
    je Weg begrenzt also, was ein Unangemeldeter pro Anfrage in den Speicher laden kann.
 
    Rollen: Import nur mit staff.edit UND vollem Schreibumfang (Leitung, Planung);
-   Betreiber und die alte Rückfallrolle „kunde" nie (Review-Auflage). Neue Einheiten/Standorte zusätzlich nur mit org.edit (Leitung).
+   Betreiber und die alte Rückfallrolle „kunde" nie (Review-Auflage). Neue Einheiten/Standorte/Qualifikationen zusätzlich nur mit org.edit (Leitung).
    Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber: 403.
    Der Betrieb kommt ausschließlich aus der Sitzung (eigenerMandant); ein
    Vorgang eines anderen Betriebs, Raums oder einer anderen Person ist „nicht
@@ -85,7 +85,7 @@ function vorschauAus(plan, analyse) {
       neueEinheit: !n.einheitId, hinweise: (nach.get(n.datensatz) || {}).hinweise || [] })),
     aktualisieren: plan.aktualisieren.map((a) => ({ datensatz: a.datensatz, personId: a.personId, aenderungen: a.aenderungen })),
     uebersprungen: plan.uebersprungen, offen: plan.offen,
-    neueEinheiten: plan.neueEinheiten, neueStandorte: plan.neueStandorte,
+    neueEinheiten: plan.neueEinheiten, neueStandorte: plan.neueStandorte, neueQualifikationen: plan.neueQualifikationen || [],
     zeitraum: plan.zeitraum, zyklen: plan.zyklen,
   };
 }
@@ -240,7 +240,7 @@ export default async (req) => {
       const einheitenAnlegen = rumpf.einheitenAnlegen === true;
       const p = planen({ mandant: eigener, analyse: a, entscheidungen, bestaetigungen, einheitenAnlegen, orgEdit });
       if (!p.ok) {
-        if (p.code === "ORG_EDIT_FEHLT") await protokoll("import", k, "abgewiesen", "Einheiten anlegen ohne org.edit", wer);
+        if (p.code === "ORG_EDIT_FEHLT") await protokoll("import", k, "abgewiesen", "Einheiten, Standorte oder Qualifikationen anlegen ohne org.edit", wer);
         return fehlerAntwort(p.status, p.code, p.nachricht, p.datensaetze ? { datensaetze: p.datensaetze } : {});
       }
       v.entscheidungen = entscheidungen; v.bestaetigungen = bestaetigungen; v.einheitenAnlegen = einheitenAnlegen;

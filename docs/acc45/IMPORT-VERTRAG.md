@@ -279,3 +279,30 @@ entfernt (Branch `acc45/import/imp-3-datum`); maßgeblich ist allein `roh` im Sy
 - **xlsb, Vorlagen, Add-ins, Numbers, unbekannte Hauptinhaltstypen (E3)**: binäre bzw. nicht vorgeprüfte Lesepfade von SheetJS.
 - **Makro-Arbeitsmappen (xlsm, E4-Entscheidung, imp-2-fix4)** werden abgewiesen: `NICHT_UNTERSTUETZT`, Meldung „Dateien mit Makros (xlsm) werden nicht gelesen. Bitte die Datei als .xlsx speichern (Makros entfernen).“ Keine Datenübernahme, kein Teilergebnis; eine Datei mit Makro-Typ wird nie Datenquelle. Der Hinweis `MAKROS_VERWORFEN` bleibt nur für Makro-Bestandteile in Dateien ohne Makro-Arbeitsmappentyp (siehe 8).
 - **xls (E2)** bleibt unterstützt, nur mit plausibler CFB-Struktur (5a).
+
+## 12. Organisationseinheiten im Import (IMP-5)
+
+Umsetzung: `server/lib/import/org.mjs` (rein), eingebunden in `personen.mjs` und `uebernahme.mjs`. Prüfung: `pruefungen/import-org-imp5.test.js` (`npm run pruefung:import-org`).
+
+- **Teams** = Einheiten, **Standorte**, **Qualifikationen** (neue Spalte „Qualifikationen“, Trenner `,` `;` `|`, höchstens 20 je Zelle, je Eintrag höchstens 100 Zeichen).
+- Zugeordnet wird nach Name (ohne Groß-/Kleinschreibung, getrimmt), bei Qualifikationen auch nach Kürzel. Unbekanntes ist ein **Zuordnungskonflikt**
+  (`einheit-unbekannt`, `standort-unbekannt`, `qualifikation-unbekannt`; der Konflikt nennt nie den Wert). Der Datensatz bleibt offen („klären“).
+  Trifft ein Name mehrere Qualifikationen, gilt `qualifikation-mehrdeutig`: nie „die erste“ wählen, und Anlegen löst das nicht.
+- **Planung allein erzeugt keine Einheiten.** Angelegt wird nur, wenn die Person ausdrücklich `einheitenAnlegen: true` verlangt (der Schalter gilt für alle drei Arten) **und** `org.edit` hat
+  (Leitung, bestehendes Recht, kein neues). Ohne `org.edit`: 403 `ORG_EDIT_FEHLT`, Planung und Übernahme schreiben nichts davon. Dieselbe Prüfung steht zusätzlich in `orgAnlegen`/`anwenden` (wirft ohne `org.edit`) und in `nurGeplant` (der Betrieb darf nur um genau die geplanten Einheiten, Standorte, Qualifikationen wachsen).
+- **Qualifikationen ohne Sonderstatus:** vom Import angelegt, aber nie Fachkraft, nie harte Sperre, nie nachweispflichtig, unbefristet; die Leitung stellt rechtlich Bedeutsames danach selbst ein. Eine Qualifikation wird nur **neuen** Personen zugeordnet, `aktualisieren` ändert sie nie (bewusst konservativ, Freigabe offen).
+- Vorschau und Übernahme führen `neueQualifikationen` (Namen) und die Zahl `zaehler.neueQualifikationen`.
+
+## 13. KI-Schnittstelle (IMP-9, austauschbar, ohne Aktivierung)
+
+Umsetzung: `server/lib/import/ki-schnittstelle.mjs`. Prüfung: `pruefungen/import-ki-schnittstelle-imp9.test.js` (`npm run pruefung:import-ki`).
+**Nicht verdrahtet:** kein Import-Modul, kein Endpunkt, kein Server ruft sie auf (Quelltextprüfung); der deterministische Import ist unabhängig von der KI.
+
+- **Port** `erzeugeKiPort({ anbieter, konfig, schalter })`; Vorgabe `KI_PORT_AUS` (kein Anbieter, beide Schalter „aus“). Der Anbieter ist ein Adapter nach `intelligence/gateway/anbieter.mjs`. Kein Netz, keine Umgebung, kein Schlüssel im Modul.
+- **Freigabe, alles oder nichts, bei jedem Aufruf:** Notschalter beider Ebenen `"an"` (`gatewayAn`) **und** Freigabe-Gate (`freigabe`, `monatsbudget` > 0, bestätigter AV-Vertrag mit Datum, `freigabeGate`) **und** ein protokollierter Vermerk
+  `vermerk: { e25: "erteilt", e26: "erteilt", zweck: "import-spaltenzuordnung", anbieterId, modellOrt, datum }` zu **E-25** (Anbieter, AVV, ZDR, Drittland) und **E-26** (DSFA), gebunden an Anbieter, Modellort und Zweck. Sonst Code `KI_AUS`/`KI_NICHT_FREIGEGEBEN`, der Anbieter wird nicht berührt.
+- **Minimierung:** an den Anbieter gehen nur Spalten **ohne** Zuordnung: bereinigte Überschrift und auf Verlangen höchstens 3 **Formmasken** (`Aa, Aa`, `9.9.9`), nie Zeilen oder Zellwerte; vorher Leck-Prüfung gegen die Sperrliste des Betriebs; ohne Sperrliste kein Aufruf (`KI_LECK`). Es gibt keinen Modus, der Personendaten freigibt.
+- **Ergebnis-Schema** (streng, genau diese Form, sonst wird die ganze Antwort verworfen): `{ version: "1", vorschlaege: [{ spalte, feld, konfidenz }], unsicherheiten?: [{ spalte, grund, alternativen? }], validierungsfehler?: [{ code, spalte? }] }`; kein Freitext, höchstens 16 KiB.
+- **Nur Vorschlag:** `bestaetigt: false`, `autoAnwenden: false`. Eine Zuordnung entsteht erst mit `vorschlagUebernehmen` und ausdrücklicher Bestätigung je Spalte; danach gilt dieselbe Prüfung wie bei jeder manuellen Zuordnung.
+- Codes: `KI_AUS`, `KI_NICHT_FREIGEGEBEN`, `KI_EINGABE`, `KI_LECK`, `KI_ANBIETER`, `KI_ZEIT`, `KI_GROESSE`, `KI_PRUEFER`, `KI_LIMIT`; feste Texte, keine Anbieter- oder Dateiwerte. Die Funktion F7A des Gateways bleibt gesperrt; E-25/E-26 bleiben Bedingung jeder produktiven Anbindung.
+

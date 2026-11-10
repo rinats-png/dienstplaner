@@ -25,14 +25,17 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
+import { orgKatalog, orgZuordnen, orgAnlegbar, orgAnlegenPruefen, orgAnlegen, orgNameMerken,
+  qualifikationenAusText, qualifikationenZuGross } from "./org.mjs";
 
 /** Felder, die der Personalimport kennt (Weißliste). Alles andere wird nicht gelesen. */
 export const FELDER = Object.freeze(["nachname", "vorname", "personalnummer", "email", "funktion",
-  "wochenstunden", "urlaubsanspruch", "eintritt", "einheit", "standort"]);
+  "wochenstunden", "urlaubsanspruch", "eintritt", "einheit", "standort", "qualifikationen"]);
 /** Ohne diese Zuordnung ist keine Analyse möglich. */
 export const PFLICHT_SPALTEN = Object.freeze(["nachname", "vorname", "einheit"]);
 /** Felder, die „Bestehenden aktualisieren" ändern darf. Nicht: Personalnummer (Schlüssel), Einheit
-    und Eintritt (Zugehörigkeitsgeschichte), Rolle (roles.assign), Qualifikationen (IMP-5). */
+    und Eintritt (Zugehörigkeitsgeschichte), Rolle (roles.assign), Qualifikationen (IMP-5: nur bei NEUEN Personen,
+    nie an einer bestehenden). */
 export const AKTUALISIERBAR = Object.freeze(["vorname", "nachname", "email", "funktion", "wochenstunden", "urlaubsanspruch"]);
 export const AKTIONEN = Object.freeze(["neu", "aktualisieren", "ueberspringen", "klaeren"]);
 
@@ -50,6 +53,7 @@ const MUSTER = {
   eintritt: ["eintritt", "eintrittsdatum", "beginn", "vertragsbeginn", "einstellung"],
   einheit: ["einheit", "team", "abteilung", "gruppe", "station", "wohnbereich", "bereich", "dienstgruppe"],
   standort: ["standort", "filiale", "niederlassung", "haus", "betriebsstaette"],
+  qualifikationen: ["qualifikation", "qualifikationen", "quali", "kenntnisse"],
 };
 
 const norm = (s) => String(s ?? "").toLowerCase()
@@ -194,14 +198,15 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
   /* IMP-9 ANDOCKSTELLE (nicht aktiv): Hier setzt später die KI-Unterstützung für unklare Spalten an. Eingabe wären
      NUR die Spalten ohne Zuordnung (`spalten.filter((s) => !s.feld)`) — Überschrift und höchstens maskierte Proben, über
      das Gateway (server/lib/intelligence/gateway) mit Positivliste F7A. Ausgabe sind Vorschläge für `zuordnung`, die die
-     Person bestätigt; nie ein Schreibvorgang. Bis zur Freigabe (WP-I19, E-25) gibt es hier keinen Aufruf. */
+     Person bestätigt; nie ein Schreibvorgang. Bis zur Freigabe (WP-I19, E-25) gibt es hier keinen Aufruf.
+     Die austauschbare Schnittstelle dafür steht in ki-schnittstelle.mjs (IMP-9); diese Analyse kennt sie NICHT und
+     braucht sie nicht — der deterministische Import ist vollständig ohne KI. */
   const fehlendePflicht = PFLICHT_SPALTEN.filter((f) => !hat(zu, f));
   if (fehlendePflicht.length)
     return { ok: true, spalten, zuordnung: { ...zu }, fehlendePflicht, datensaetze: [], zaehler: { gesamt: daten.length } };
 
   const personen = Array.isArray(mandant && mandant.personen) ? mandant.personen.filter((p) => p && typeof p === "object") : [];
-  const einheiten = Array.isArray(mandant && mandant.einheiten) ? mandant.einheiten.filter(Boolean) : [];
-  const standorte = Array.isArray(mandant && mandant.standorte) ? mandant.standorte.filter(Boolean) : [];
+  const katalog = orgKatalog(mandant);   // IMP-5: Einheiten, Standorte, Qualifikationen (org.mjs)
   /* Alle Personen je Nummer — nie „die erste" still wählen (Auflage 2 aus dem IMP-3-Review): Trägt der Bestand
      dieselbe Nummer mehrfach, ist der Treffer mehrdeutig und bleibt eine Klärung. */
   const nachNummer = new Map();
@@ -231,6 +236,8 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     if (!werte.einheit) fehler.push("Einheit fehlt");
     if (werte.email && !EMAIL.test(werte.email)) fehler.push("E-Mail ungültig");
     for (const [k, v] of Object.entries(werte)) if (v.length > 200) fehler.push(`${k} zu lang`);
+    werte.qualifikationen = qualifikationenAusText(zellText(hol("qualifikationen", z)));
+    if (qualifikationenZuGross(werte.qualifikationen)) fehler.push("Qualifikationen zu umfangreich");
     const ein = datumAusZelle(hol("eintritt", z));
     if (ein.ungueltig) fehler.push("Eintrittsdatum ungültig");
     /* Leer und optional -> null; nie „heute" (Entscheidung 2026-11-09). */
@@ -242,11 +249,9 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     if (url.ungueltig) fehler.push("Urlaubsanspruch ungültig");
     werte.urlaubsanspruch = url.wert ?? null;
 
-    const konflikte = [];
-    const einheit = werte.einheit ? einheiten.find((e) => vergleich(e.name) === vergleich(werte.einheit)) : null;
-    if (werte.einheit && !einheit) konflikte.push({ art: "einheit-unbekannt" });
-    const standort = werte.standort ? standorte.find((s) => vergleich(s.name) === vergleich(werte.standort)) : null;
-    if (werte.standort && !standort && !einheit) konflikte.push({ art: "standort-unbekannt" });
+    /* IMP-5: Fehlende Einheiten, Standorte und Qualifikationen sind Zuordnungskonflikte; hier wird nichts angelegt. */
+    const org = orgZuordnen(katalog, werte);
+    const konflikte = org.konflikte;
 
     /* Dubletten: Personalnummer (mandantenintern) vor Name; Name und gleichwertige Nummer nur als Vorschlag.
        Gleicher Name führt bei abweichender oder fehlender Nummer NIE zu „neu", sondern zu „klären". */
@@ -274,7 +279,8 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
     else if (dublette && (dublette.art === "personalnummer-datei" || dublette.art === "personalnummer-mehrdeutig")) { erlaubt = ["ueberspringen", "klaeren"]; vorgabe = "klaeren"; }
     else if (dublette) { erlaubt = ["neu", "ueberspringen", "klaeren"]; vorgabe = "klaeren"; }
     else { erlaubt = ["neu", "ueberspringen", "klaeren"]; vorgabe = konflikte.length ? "klaeren" : "neu"; }
-    return { datensatz: nr, werte, einheitId: einheit ? String(einheit.id) : null, standortId: standort ? String(standort.id) : null,
+    return { datensatz: nr, werte, einheitId: org.einheitId, standortId: org.standortId,
+      qualifikationIds: org.qualifikationIds, neueQualifikationen: org.neueQualifikationen,
       fehler, hinweise, konflikte, dublette, erlaubt, vorgabe };
   });
   /* Doppelt in der Datei: ALLE betroffenen Zeilen werden markiert, nicht nur die spätere. Eine (gleichwertige)
@@ -308,9 +314,9 @@ export function analysieren({ mandant, zeilen, zuordnung, heute }) {
 export function planen({ mandant, analyse, entscheidungen, bestaetigungen, einheitenAnlegen = false, orgEdit }) {
   const wahl = entscheidungen && typeof entscheidungen === "object" && !Array.isArray(entscheidungen) ? entscheidungen : {};
   const best = bestaetigungen && typeof bestaetigungen === "object" && !Array.isArray(bestaetigungen) ? bestaetigungen : {};
-  if (einheitenAnlegen === true && !orgEdit)
-    return { ok: false, status: 403, code: "ORG_EDIT_FEHLT",
-      nachricht: "Neue Einheiten und Standorte darf nur anlegen, wer die Organisation verwalten darf (org.edit)." };
+  /* IMP-5: „Einheiten anlegen" steht für Einheiten, Standorte UND Qualifikationen; ohne org.edit 403 (org.mjs). */
+  const orgGate = orgAnlegenPruefen({ anlegen: einheitenAnlegen, orgEdit });
+  if (!orgGate.ok) return orgGate;
   const nachNr = new Map(analyse.datensaetze.map((d) => [String(d.datensatz), d]));
   for (const k of Object.keys(wahl)) {
     const d = nachNr.get(k);
@@ -324,27 +330,29 @@ export function planen({ mandant, analyse, entscheidungen, bestaetigungen, einhe
     return { ok: false, status: 422, code: "AKTUALISIERUNG_OHNE_BESTAETIGUNG", datensaetze: ohneBestaetigung,
       nachricht: "Bestehende Personen werden nur mit ausdrücklicher Bestätigung je Datensatz aktualisiert." };
 
-  const anlegen = einheitenAnlegen === true && orgEdit === true;
+  const anlegen = orgGate.anlegen;
   const personen = new Map((Array.isArray(mandant.personen) ? mandant.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
-  const plan = { neu: [], aktualisieren: [], uebersprungen: [], offen: [], neueEinheiten: [], neueStandorte: [], zyklen: [] };
+  const plan = { neu: [], aktualisieren: [], uebersprungen: [], offen: [], neueEinheiten: [], neueStandorte: [], neueQualifikationen: [], zyklen: [] };
   for (const d of analyse.datensaetze) {
-    /* Mit „Einheiten anlegen" (org.edit) wird ein Datensatz, dessen einziger Mangel die fehlende Einheit ist, neu angelegt. */
-    const vorgabe = anlegen && d.vorgabe === "klaeren" && d.konflikte.length && !d.dublette && !d.fehler.length ? "neu" : d.vorgabe;
+    /* Mit „Einheiten anlegen" (org.edit) wird ein Datensatz, dessen einziger Mangel eine fehlende Einheit, ein fehlender
+       Standort oder eine fehlende Qualifikation ist, neu angelegt. Eine mehrdeutige Qualifikation lässt sich so nicht lösen. */
+    const vorgabe = anlegen && d.vorgabe === "klaeren" && orgAnlegbar(d.konflikte) && !d.dublette && !d.fehler.length ? "neu" : d.vorgabe;
     const aktion = hat(wahl, String(d.datensatz)) ? wahl[String(d.datensatz)] : vorgabe;
     if (aktion === "ueberspringen") { plan.uebersprungen.push({ datensatz: d.datensatz, grund: d.fehler.length ? "fehler" : "auswahl" }); continue; }
     if (aktion === "klaeren") { plan.offen.push({ datensatz: d.datensatz, grund: d.dublette ? "dublette" : d.konflikte.length ? "konflikt" : "auswahl" }); continue; }
     if (aktion === "neu") {
-      if (d.konflikte.length && !anlegen) {
+      if (d.konflikte.length && !(anlegen && orgAnlegbar(d.konflikte))) {
         if (hat(wahl, String(d.datensatz)))
           return { ok: false, status: 422, code: "ZUORDNUNGSKONFLIKT", datensaetze: [d.datensatz],
             nachricht: "Eine Einheit oder ein Standort ist im Betrieb nicht vorhanden. Bitte zuordnen oder überspringen." };
         plan.offen.push({ datensatz: d.datensatz, grund: "konflikt" });
         continue;
       }
-      if (!d.einheitId && !plan.neueEinheiten.some((n) => vergleich(n) === vergleich(d.werte.einheit))) plan.neueEinheiten.push(d.werte.einheit);
-      if (d.werte.standort && !d.standortId && !d.einheitId && !plan.neueStandorte.some((n) => vergleich(n) === vergleich(d.werte.standort)))
-        plan.neueStandorte.push(d.werte.standort);
-      plan.neu.push({ datensatz: d.datensatz, werte: d.werte, einheitId: d.einheitId, standortId: d.standortId });
+      if (!d.einheitId) orgNameMerken(plan.neueEinheiten, d.werte.einheit);
+      if (d.werte.standort && !d.standortId && !d.einheitId) orgNameMerken(plan.neueStandorte, d.werte.standort);
+      for (const q of d.neueQualifikationen || []) orgNameMerken(plan.neueQualifikationen, q);
+      plan.neu.push({ datensatz: d.datensatz, werte: d.werte, einheitId: d.einheitId, standortId: d.standortId,
+        qualifikationIds: d.qualifikationIds || [] });
       continue;
     }
     /* aktualisieren: nur über die Personalnummer, nur bestätigt (oben geprüft). */
@@ -361,64 +369,49 @@ export function planen({ mandant, analyse, entscheidungen, bestaetigungen, einhe
     if (!aenderungen.length) { plan.uebersprungen.push({ datensatz: d.datensatz, grund: "unveraendert" }); continue; }
     plan.aktualisieren.push({ datensatz: d.datensatz, personId: String(ziel.id), aenderungen });
   }
-  if ((plan.neueEinheiten.length || plan.neueStandorte.length) && !anlegen)
-    return { ok: false, status: 422, code: "ZUORDNUNGSKONFLIKT", nachricht: "Eine Einheit oder ein Standort ist im Betrieb nicht vorhanden." };
+  if ((plan.neueEinheiten.length || plan.neueStandorte.length || plan.neueQualifikationen.length) && !anlegen)
+    return { ok: false, status: 422, code: "ZUORDNUNGSKONFLIKT", nachricht: "Eine Einheit, ein Standort oder eine Qualifikation ist im Betrieb nicht vorhanden." };
   const tage = plan.neu.map((n) => n.werte.eintritt).filter(Boolean).sort();
   plan.zeitraum = tage.length ? { von: tage[0], bis: tage[tage.length - 1] } : null;
   const zaehler = { neu: plan.neu.length, aktualisiert: plan.aktualisieren.length,
     uebersprungen: plan.uebersprungen.length + plan.offen.length, offen: plan.offen.length,
-    neueEinheiten: plan.neueEinheiten.length, neueStandorte: plan.neueStandorte.length };
+    neueEinheiten: plan.neueEinheiten.length, neueStandorte: plan.neueStandorte.length,
+    neueQualifikationen: plan.neueQualifikationen.length };
   /* Delta-Review 3b: Der Hash deckt nicht nur den Plan, sondern auch die Dubletten- und Konfliktlage je Datensatz
      (Art, Vorgabe, Ziel). Legt jemand zwischen Vorschau und Übernahme eine Person gleichen Namens an, bleibt der Plan
      („neu") gleich, die Lage aber nicht — dann gilt die Bestätigung nicht mehr (VORSCHAU_VERALTET). */
   const ziel = (du) => (!du ? null : du.personIds ? du.personIds.map(String) : du.personId !== undefined ? String(du.personId)
     : du.datensatz !== undefined ? `#${du.datensatz}` : null);
   const lage = analyse.datensaetze.map((d) => [d.datensatz, d.dublette ? d.dublette.art : null, ziel(d.dublette), d.vorgabe,
-    d.konflikte.map((k) => k.art), d.einheitId, d.standortId]);
+    d.konflikte.map((k) => k.art), d.einheitId, d.standortId, d.qualifikationIds || []]);
   const hash = createHash("sha256").update(JSON.stringify({ plan, lage })).digest("hex");
   return { ok: true, plan, zaehler, hash };
 }
 
-const FARBEN = ["#5B8DEF", "#F2994A", "#27AE60", "#9B51E0", "#EB5757", "#2D9CDB", "#F2C94C", "#6FCF97"];
-
 /**
  * Den Plan auf eine Kopie des eigenen Betriebs anwenden. Verändert die Eingabe nicht. `haken(i)` wird nach jedem
  * Datensatz aufgerufen (nur für die Fehlerinjektion der Prüfung); wirft er, entsteht kein Ergebnis.
+ * IMP-5: Neue Einheiten, Standorte und Qualifikationen entstehen nur mit `orgEdit === true` (org.mjs); sonst wirft
+ * die Anwendung (`ORG_EDIT_FEHLT`), bevor etwas angelegt wird — auch wenn ein Plan sie nennt.
  * @returns {{ mandant: any, neueIds: string[] }}
  */
-export function anwenden(mandant, plan, { neueId, heute, haken = null }) {
+export function anwenden(mandant, plan, { neueId, heute, haken = null, orgEdit = false }) {
   const m = structuredClone(mandant);
   m.personen = Array.isArray(m.personen) ? m.personen : [];
   m.einheiten = Array.isArray(m.einheiten) ? m.einheiten : [];
-  const vergeben = new Set([...m.personen, ...m.einheiten, ...(Array.isArray(m.standorte) ? m.standorte : [])]
-    .filter(Boolean).map((x) => String(x.id)));
+  const vergeben = new Set([...m.personen, ...m.einheiten, ...(Array.isArray(m.standorte) ? m.standorte : []),
+    ...(Array.isArray(m.qualifikationen) ? m.qualifikationen : [])].filter(Boolean).map((x) => String(x.id)));
   const id = (praefix) => { let x; do x = neueId(praefix); while (vergeben.has(x)); vergeben.add(x); return x; };
-  const standortNachName = new Map();
-  if (plan.neueStandorte.length) {
-    m.standorte = Array.isArray(m.standorte) ? m.standorte : [];
-    for (const name of plan.neueStandorte) {
-      const st = { id: id("st"), name };
-      m.standorte.push(st);
-      standortNachName.set(vergleich(name), st.id);
-    }
-  }
-  const einheitNachName = new Map();
-  const wochen = m.zyklus && Number.isInteger(m.zyklus.wochen) && m.zyklus.wochen > 0 ? m.zyklus.wochen : 1;
-  for (const name of plan.neueEinheiten) {
-    const herkunft = plan.neu.find((n) => vergleich(n.werte.einheit) === vergleich(name));
-    const stName = herkunft && herkunft.werte.standort ? vergleich(herkunft.werte.standort) : "";
-    const standortId = (herkunft && herkunft.standortId) || standortNachName.get(stName)
-      || (Array.isArray(m.standorte) && m.standorte[0] ? m.standorte[0].id : null);
-    const e = { id: id("e"), name, versatz: m.einheiten.length % wochen, standortId, farbe: FARBEN[m.einheiten.length % FARBEN.length] };
-    m.einheiten.push(e);
-    einheitNachName.set(vergleich(name), e.id);
-  }
+  const { einheitNachName, qualifikationNachName } = orgAnlegen(m, plan, { id, orgEdit });
   const soll = m.einstellungen && Number.isFinite(m.einstellungen.sollWochenstunden) ? m.einstellungen.sollWochenstunden : 40;
   const neueIds = [];
   let i = 0;
   for (const n of plan.neu) {
     const w = n.werte;
     const eid = n.einheitId || einheitNachName.get(vergleich(w.einheit));
+    /* Qualifikationen nur für NEUE Personen: vorhandene aus dem Katalog plus die eben (mit org.edit) angelegten. */
+    const qualIds = [...new Set([...(n.qualifikationIds || []),
+      ...(w.qualifikationen || []).map((q) => qualifikationNachName.get(vergleich(q))).filter(Boolean)])];
     /* Der Eintritt bleibt null, wenn er nicht angegeben ist (nie heute). Der Anker von Zugehörigkeit und Rolle
        braucht ein Datum und ist kein Eintritt: dafür gilt der Tag der Übernahme. */
     const eintritt = w.eintritt ?? null;
@@ -427,7 +420,7 @@ export function anwenden(mandant, plan, { neueId, heute, haken = null }) {
       email: w.email || "", personalnummer: w.personalnummer || "",
       zugehoerigkeit: [{ ab: anker, einheitId: eid }], eintritt, austritt: null,
       wochenstunden: w.wochenstunden ?? soll, urlaubsanspruch: w.urlaubsanspruch ?? 30, urlaubsuebertrag: 0, stundenuebertrag: 0,
-      qualifikationen: [], einschraenkungen: {}, teilzeit: null, springer: false,
+      qualifikationen: qualIds, einschraenkungen: {}, teilzeit: null, springer: false,
       rolle: "mitarbeiter", bereich: eid, rolleSeit: anker, status: "aktiv" };
     m.personen.push(p);
     neueIds.push(p.id);
