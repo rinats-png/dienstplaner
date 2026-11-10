@@ -189,6 +189,7 @@
     "pruefung:geraete": "vitest run pruefungen/geraete-wp21.test.js",
     "pruefung:geraete-browser": "node pruefungen/browser/geraete-wp21.mjs",
     "pruefung:verdrahtung": "node werkzeug/verdrahtung-pruefen.mjs && vitest run pruefungen/verdrahtung.test.js",
+    "pruefung:ci-abdeckung": "node werkzeug/ci-abdeckung.mjs && vitest run pruefungen/ci-abdeckung.test.js",
     "pruefung:app-aufbau": "vitest run pruefungen/wp39-app-aufbau.test.js --testTimeout=60000",
     "pruefung:einladungen": "vitest run pruefungen/einladungen.test.js pruefungen/einladungen-oberflaeche.test.js",
     "pruefung:schreibhalt-last": "vitest run pruefungen/schreibhalt-last.test.js --testTimeout=120000",

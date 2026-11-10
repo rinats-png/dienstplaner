@@ -43,6 +43,10 @@ jobs:
       - name: Verdrahtung der Prüfdateien
         run: npm run pruefung:verdrahtung
 
+      # CI-Abdeckung: jedes Skript der Sammelprüfung `pruefung` läuft hier oder ist in pruefungen/ci-abdeckung-ausnahmen.json begründet ausgenommen (docs/acc45/CI-ABDECKUNG.md).
+      - name: CI-Abdeckung der Sammelprüfung
+        run: npm run pruefung:ci-abdeckung
+
       - name: Koordination (atomare Lease)
         run: npm run pruefung:koordination
 
@@ -83,6 +87,41 @@ jobs:
       # selbst (npm run abnahme:browser-v4) läuft nur lokal mit Chromium.
       - name: Browser-Abnahme V4, reine Bewertung
         run: npm run pruefung:browser-abnahme-kern
+
+      # Bisher nicht verdrahtete Skripte der Sammelprüfung `pruefung` (docs/acc45/CI-ABDECKUNG.md).
+      # Alle laufen ohne Browser, Netz und Geheimnisse (eigene Wegwerf-Ablagen, ggf. eigener Server auf 127.0.0.1).
+      - name: Design-Tokens V4
+        run: npm run pruefung:v4-tokens
+
+      # WP-39: App und alle Aktionsfabriken rendern nach der Aufteilung von App.jsx weiter.
+      - name: Aufbau der Anwendung (WP-39)
+        run: npm run pruefung:app-aufbau
+
+      # Personalimport: Parser (IMP-2, ZIP-Bombe, Makros), Endpunkt (IMP-3) und Oberfläche samt Ende-zu-Ende (IMP-4).
+      - name: Personalimport, Parser
+        run: npm run pruefung:import-parser
+
+      - name: Personalimport, Endpunkt
+        run: npm run pruefung:import-endpunkt
+
+      - name: Personalimport, Oberfläche
+        run: npm run pruefung:import-oberflaeche
+
+      # Der Schreibhalt hält die Ablage für Sicherungen an, ohne Schreiber zu verlieren; die Last-Probe
+      # läuft allein, weil sie neben anderen Dateien zu wenig Durchsatz misst.
+      - name: Schreibhalt unter Last
+        run: npm run pruefung:schreibhalt-last
+
+      - name: Konto-Wiederherstellung, Kern
+        run: npm run pruefung:konto-wiederherstellung
+
+      # Staging-Abnahme 3.1-3.4: ohne Ziel reine Abdeckung, mit Ziel nur lesende Proben gegen einen
+      # frischen lokalen Server (Port 3917, Wegwerf-Ablage, nichts wird geschrieben).
+      - name: Staging-Abnahme 3, Proben
+        run: npm run pruefung:staging-abnahme-3
+
+      - name: Pilot-Tagesbericht
+        run: npm run pruefung:pilot-tagesbericht
 
       # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
       # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
