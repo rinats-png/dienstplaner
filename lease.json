@@ -1,0 +1,10 @@
+{
+  "epoche": 1,
+  "halter": "cloud-nachtaufgabe",
+  "uebernommen_am": "2026-11-10T05:45:26.391Z",
+  "erneuert_am": "2026-11-10T05:45:26.391Z",
+  "gueltig_bis": "2026-11-10T07:15:26.391Z",
+  "uebergabe": "Betreiber-Anweisung 2026-11-10: Hauptchat meldet Entwicklungsschleife beendet, kein Monitor, kein Cron, keine laufende Arbeit. Integrationskopf 38fc7d0 unveraendert, kein Schreiber auf Branches ausser Cloud-Aufgabe.",
+  "vorgaenger": null,
+  "freigegeben_am": null
+}
