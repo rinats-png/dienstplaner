@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 188 · BLOCKED 93 · READY 16 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 62 · DONE 3
+**Pakete gesamt:** 188 · BLOCKED 92 · READY 16 · IN_PROGRESS 4 · REVIEW 10 · INTEGRATED 63 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 88 | 31 | 0 | 2 | 5 | 48 | 2 | 71,9–112,3 |
+| ACC45 | 88 | 30 | 0 | 2 | 5 | 49 | 2 | 69,9–109,3 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
 | Intelligence | 40 | 29 | 0 | 0 | 1 | 10 | 0 | 226,3–399,8 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **370,1–626,4 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **368,1–623,4 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -58,11 +58,11 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **370,1–626,
 | WP-I12 Decision Engine (Extraktion aus App.jsx) | REVIEW | `intelligence/wp-i12-decision-engine-extrakti` | Kern extrahiert (26 von 27 Definitionen). Offen als WP-I12a/b/c. Fachfragen 2, 3, 5 (docs/acc45/wp-i12-fragen.md) sind Betreiberentscheidungen. Vorher: Schätzung laut Plan, nicht belegt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
 
-### Bereit zum Start (16)
+### Bereit zum Start (15)
 
-WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-5 (acc45, 1,5–2,5 PT) · IMP-6 (acc45, 3–5 PT) · IMP-8 (acc45, 2–3 PT) · IMP-9 (acc45, 0,5–1 PT) · IMP-10 (acc45, 0,5–1 PT) · OPT-1 (acc45, 1–1,5 PT) · OPT-4 (acc45, 3–5 PT) · WR-2 (acc45, 1,5 PT)
+WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-5 (acc45, 1,5–2,5 PT) · IMP-6 (acc45, 3–5 PT) · IMP-8 (acc45, 2–3 PT) · IMP-9 (acc45, 0,5–1 PT) · IMP-10 (acc45, 0,5–1 PT) · OPT-1 (acc45, 1–1,5 PT) · OPT-4 (acc45, 3–5 PT) · WR-2 (acc45, 1,5 PT)
 
-### Integriert in `integration/centric-complete` (62)
+### Integriert in `integration/centric-complete` (63)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -90,6 +90,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 
 | WP-29 Geo-Spezifikationsreste | #63 (764b1ab) | Review laut Nachweis |
 | WP-31 Deploy-Automatisierung mit Freigabe | #32 (4300f8d), #42 (d2d3f7a) | Agent F: Auflagen → Nachprüfung → Freigabe; 31b (#42) |
 | WP-32 Lieferkette, Infrastruktur, Betreiber-2FA | #30 (bb5ade8), #32 (4300f8d) | Agent F: Auflagen → Freigabe (32b, 32c) |
+| WP-35 Darstellungsbefunde | PR #176 in integration/release-v4 | PR #176 in integration/release-v4 |
 | WP-37 PWA-Feinschliff | #62 (9d4f383) | Review laut Nachweis |
 | WP-38 Toter Code, eine Planrechnung | PR #143 in integration/release-v4 | PR #143 in integration/release-v4 |
 | WP-39 App.jsx modularisieren | PR #128 in integration/release-v4 gemergt | PR #128 in integration/release-v4 gemergt |
@@ -133,7 +134,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-76 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+75 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -167,6 +168,7 @@ WP-21 (acc45, 10–13,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-35 (acc45, 2–3 
 | WP-31 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-32 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-33 | REVIEW | ✓ | T | – | – | – | – | – |
+| WP-35 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-37 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-38 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-39 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |

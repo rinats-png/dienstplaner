@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 188,
   "statusZaehlung": {
-    "BLOCKED": 93,
+    "BLOCKED": 92,
     "READY": 16,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 62,
+    "INTEGRATED": 63,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 88,
-      "offen": 38,
+      "offen": 37,
       "restPT": {
-        "min": 71.9,
-        "max": 112.3
+        "min": 69.9,
+        "max": 109.3
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 370.1,
-    "max": 626.4
+    "min": 368.1,
+    "max": 623.4
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -1099,12 +1099,12 @@
       "prio": "P3",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": ["WP-39"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1113,12 +1113,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#176"],
       "nachweis": null,
       "akzeptanz": "Kein Querscrollen bei ≤430 px für Abrechnungsdaten/Handbuch; Geo-Schalter sofort",
       "tests": "Playwright-Viewport",
       "dateien": "src",
-      "notiz": null
+      "notiz": "Stand (automatisch): INTEGRATED nach #176."
     },
     {
       "id": "WP-36",
