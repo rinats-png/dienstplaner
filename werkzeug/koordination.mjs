@@ -87,7 +87,10 @@ export function entscheide(lease, jetzt, a) {
     return { ok: true, grund: "erneuert", neu: { ...lease, erneuert_am: jetzt.toISOString(), gueltig_bis: bis } };
   }
   if (a.aktion === "uebernehmen") {
-    if (eigenGueltig && lease.halter === a.halter) return entscheide(lease, jetzt, { ...a, aktion: "erneuern" });
+    if (eigenGueltig && lease.halter === a.halter) {
+      if (a.epoche === undefined) return { ok: false, grund: "eigene Lease läuft: Erneuerung braucht --epoche (Fencing)" };
+      return entscheide(lease, jetzt, { ...a, aktion: "erneuern" });
+    }
     if (gueltig) return { ok: false, grund: `${lease.halter} hält die Lease bis ${lease.gueltig_bis}; Rückübergabe durch Freigabe nötig` };
     if (!a.uebergabe || a.uebergabe.trim().length < 10) return { ok: false, grund: "ausdrückliche --uebergabe (Begründung/Beleg) fehlt" };
     return { ok: true, grund: "übernommen", neu: {
@@ -173,7 +176,7 @@ function haupt() {
   try { gelesen = lesen(); } catch (err) { console.error(`ABGELEHNT: ${err.message.split("\n")[0]}`); return 4; }
   const { spitze, lease } = gelesen;
   if (aktion === "status") { console.log(JSON.stringify(lease || { halter: null }, null, 2)); return 0; }
-  if (["erneuern", "freigeben"].includes(aktion) && arg("--epoche") === undefined) {
+  if (["erneuern", "freigeben", "pruefen"].includes(aktion) && arg("--epoche") === undefined) {
     console.error(`ABGELEHNT: ${aktion} braucht --epoche (Fencing)`); return 1;
   }
   if (aktion === "push") {
