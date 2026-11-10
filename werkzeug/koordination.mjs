@@ -20,6 +20,11 @@
      zuerst `freigeben` (kontrollierte Rückübergabe) oder ablaufen.
    - Gültigkeit begrenzt (Standard 90 Min, höchstens 240); wer schreibt,
      erneuert regelmäßig. Läuft sie ab, kann ein anderer übernehmen.
+   - Zeitabstand 2 Min: Der Halter gilt für sich schon 2 Min vor Ablauf als abgelaufen, Fremde
+     übernehmen erst 2 Min nach Ablauf (Schutz gegen Uhrenabweichung zwischen Rechnern).
+   - Fencing: `pruefen --epoche` und `push` binden jede Schreibaktion an die Epoche. Der atomare
+     Push schreibt Arbeits-Branch und Lease in einem Zug; ein ehemaliger Koordinator scheitert.
+   - Unlesbare Lease: fail-closed.
    - Schreibende Arbeit beginnt nur, wenn `pruefen` Exit 0 liefert.
 
    Aufruf:
@@ -27,7 +32,10 @@
      node werkzeug/koordination.mjs uebernehmen --halter H --uebergabe "Text" [--minuten 90]
      node werkzeug/koordination.mjs erneuern   --halter H [--minuten 90]
      node werkzeug/koordination.mjs freigeben  --halter H
-     node werkzeug/koordination.mjs pruefen    --halter H     (Exit 0 = darf schreiben)
+     node werkzeug/koordination.mjs pruefen    --halter H [--epoche N]  (Exit 0 = darf schreiben)
+     node werkzeug/koordination.mjs push --halter H --epoche N --ziel refs/heads/X [--quelle HEAD]
+         Atomarer Push (Arbeits-Branch + Lease). Nur so pushen Koordinatoren; schlägt fehl, wenn die
+         Lease sich geändert hat (ehemaliger Koordinator). Nie auf main/master, nie auf die Lease selbst.
    Umgebung: KOORD_REMOTE (Standard origin) für Prüfungen mit lokalem Remote.
    ========================================================================== */
 import { execFileSync } from "node:child_process";
@@ -38,30 +46,44 @@ const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REF = "refs/heads/koordination/lease";
 const STANDARD_MIN = 90;
 const MAX_MIN = 240;
+/* Uhrenabweichung: Der Halter hält sich selbst nur bis gueltig_bis minus Abstand für berechtigt,
+   Fremde übernehmen erst ab gueltig_bis plus Abstand. Dazwischen liegt eine Sicherheitszone ohne Schreiber. */
+const ABSTAND_MS = 120000;
 
 /** Reine Entscheidung, ohne I/O. Gibt { ok, grund, neu } zurück. */
 export function entscheide(lease, jetzt, a) {
   const t = jetzt.getTime();
   const min = Math.min(Math.max(Number(a.minuten) || STANDARD_MIN, 1), MAX_MIN);
-  const gueltig = lease && !lease.freigegeben_am && Date.parse(lease.gueltig_bis) > t;
+  const bis0 = lease ? Date.parse(lease.gueltig_bis) : NaN;
+  if (lease && (!Number.isFinite(bis0) || typeof lease.halter !== "string" || !Number.isInteger(lease.epoche))) {
+    return { ok: false, grund: "Lease unlesbar oder beschädigt (fail-closed)" };
+  }
+  /* gueltig = fremde Sicht (noch nicht übernehmbar); eigenGueltig = der Halter darf noch schreiben. */
+  const gueltig = Boolean(lease) && !lease.freigegeben_am && bis0 + ABSTAND_MS > t;
+  const eigenGueltig = Boolean(lease) && !lease.freigegeben_am && bis0 - ABSTAND_MS > t;
   const bis = new Date(t + min * 60000).toISOString();
-  if (!a.halter) return { ok: false, grund: "Halter fehlt" };
+  if (!a.halter || !/^[a-z0-9][a-z0-9_-]{1,40}$/.test(a.halter)) return { ok: false, grund: "Halter fehlt oder ungültig (a-z, 0-9, _, -)" };
 
   if (a.aktion === "freigeben") {
     if (!lease || lease.halter !== a.halter) return { ok: false, grund: "nur der Halter kann freigeben" };
     return { ok: true, grund: "freigegeben", neu: { ...lease, freigegeben_am: jetzt.toISOString(), gueltig_bis: jetzt.toISOString() } };
   }
   if (a.aktion === "pruefen") {
-    return gueltig && lease.halter === a.halter
-      ? { ok: true, grund: `Lease gültig bis ${lease.gueltig_bis}` }
-      : { ok: false, grund: gueltig ? `Lease hält ${lease.halter} bis ${lease.gueltig_bis}` : "keine gültige Lease" };
+    if (!eigenGueltig || lease.halter !== a.halter) {
+      return { ok: false, grund: gueltig ? `Lease hält ${lease.halter} bis ${lease.gueltig_bis}` : "keine gültige Lease" };
+    }
+    if (a.epoche !== undefined && Number(a.epoche) !== lease.epoche) {
+      return { ok: false, grund: `Epoche ${a.epoche} ist veraltet (aktuell ${lease.epoche}): ehemaliger Koordinator` };
+    }
+    return { ok: true, grund: `Lease gültig bis ${lease.gueltig_bis}, Epoche ${lease.epoche}` };
   }
   if (a.aktion === "erneuern") {
-    if (!gueltig || lease.halter !== a.halter) return { ok: false, grund: "Erneuern nur mit gültiger eigener Lease; erst übernehmen" };
+    if (!eigenGueltig || lease.halter !== a.halter) return { ok: false, grund: "Erneuern nur mit gültiger eigener Lease; erst übernehmen" };
+    if (a.epoche !== undefined && Number(a.epoche) !== lease.epoche) return { ok: false, grund: `Epoche ${a.epoche} ist veraltet (aktuell ${lease.epoche})` };
     return { ok: true, grund: "erneuert", neu: { ...lease, erneuert_am: jetzt.toISOString(), gueltig_bis: bis } };
   }
   if (a.aktion === "uebernehmen") {
-    if (gueltig && lease.halter === a.halter) return entscheide(lease, jetzt, { ...a, aktion: "erneuern" });
+    if (eigenGueltig && lease.halter === a.halter) return entscheide(lease, jetzt, { ...a, aktion: "erneuern" });
     if (gueltig) return { ok: false, grund: `${lease.halter} hält die Lease bis ${lease.gueltig_bis}; Rückübergabe durch Freigabe nötig` };
     if (!a.uebergabe || a.uebergabe.trim().length < 10) return { ok: false, grund: "ausdrückliche --uebergabe (Begründung/Beleg) fehlt" };
     return { ok: true, grund: "übernommen", neu: {
@@ -88,14 +110,34 @@ export function lesen() {
 }
 
 /** Schreibt als neuer Commit auf die gelesene Spitze; Push ohne Force = atomar. */
-export function schreiben(spitze, lease, nachricht) {
+export function leaseCommit(spitze, lease, nachricht) {
   const blob = git(["hash-object", "-w", "--stdin"], JSON.stringify(lease, null, 2) + "\n");
   const baum = git(["mktree"], `100644 blob ${blob}\tlease.json\n`);
   const args = ["-c", "user.name=koordination", "-c", "user.email=koordination@centric.invalid", "commit-tree", baum, "-m", nachricht];
   if (spitze) args.push("-p", spitze);
-  const commit = git(args);
+  return git(args);
+}
+
+export function schreiben(spitze, lease, nachricht) {
+  const commit = leaseCommit(spitze, lease, nachricht);
   git(["push", "--quiet", remote(), `${commit}:${REF}`]); // wirft bei Non-Fast-Forward
   return commit;
+}
+
+/** Fencing: Arbeits-Branch UND Lease-Erneuerung in EINEM atomaren Push (--atomic, ohne Force).
+    Hat inzwischen jemand die Lease geändert (Übernahme, Freigabe, Erneuerung), lehnt Git den
+    gesamten Push ab; der Arbeits-Branch bleibt unverändert. Ein ehemaliger Koordinator kann so
+    nichts mehr schreiben, auch wenn er seine Prüfung vor der Übernahme bestanden hatte. */
+export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(), ansicht }) {
+  if (!/^refs\/heads\/[\w./-]+$/.test(ziel) || ziel === REF || /\/(main|master)$/.test(ziel)) {
+    throw new Error(`Zielref nicht erlaubt: ${ziel}`);
+  }
+  const { spitze, lease } = ansicht || lesen();
+  const e = entscheide(lease, jetzt, { aktion: "erneuern", halter, epoche });
+  if (!e.ok) throw new Error(`Kein Schreibrecht: ${e.grund}`);
+  const lc = leaseCommit(spitze, e.neu, `Lease erneuert beim Push: ${halter} Epoche ${e.neu.epoche}`);
+  git(["push", "--atomic", "--quiet", remote(), `${git(["rev-parse", quelle])}:${ziel}`, `${lc}:${REF}`]);
+  return lc;
 }
 
 function arg(name) { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; }
@@ -104,7 +146,12 @@ function haupt() {
   const aktion = process.argv[2];
   const { spitze, lease } = lesen();
   if (aktion === "status") { console.log(JSON.stringify(lease || { halter: null }, null, 2)); return 0; }
-  const e = entscheide(lease, new Date(), { aktion, halter: arg("--halter"), uebergabe: arg("--uebergabe"), minuten: arg("--minuten") });
+  if (aktion === "push") {
+    try { gepruefterPush({ halter: arg("--halter"), epoche: arg("--epoche"), quelle: arg("--quelle") || "HEAD", ziel: arg("--ziel") }); }
+    catch (err) { console.error(`ABGELEHNT: ${err.message.split("\n")[0]}`); return 3; }
+    console.log("OK: Push mit Lease-Fencing"); return 0;
+  }
+  const e = entscheide(lease, new Date(), { aktion, halter: arg("--halter"), uebergabe: arg("--uebergabe"), minuten: arg("--minuten"), epoche: arg("--epoche") });
   if (!e.ok) { console.error(`ABGELEHNT: ${e.grund}`); return 1; }
   if (e.neu) {
     try { schreiben(spitze, e.neu, `Lease ${aktion}: ${e.neu.halter} Epoche ${e.neu.epoche}`); }
