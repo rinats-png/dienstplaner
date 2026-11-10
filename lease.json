@@ -1,10 +1,10 @@
 {
-  "epoche": 2,
-  "halter": "hauptchat",
-  "uebernommen_am": "2026-11-10T09:05:21.559Z",
-  "erneuert_am": "2026-11-10T19:56:11.854Z",
-  "gueltig_bis": "2026-11-10T21:56:11.854Z",
-  "uebergabe": "Hauptchat laut Betreiber-Mitteilung 2026-11-10 wieder aktiver Koordinator. Lease cloud-nachtaufgabe lief 08:39Z ohne Erneuerung ab, Cloud-Aufgabe 08:32Z ohne Aenderungen, Cloud-Sitzungen idle. Integrationskopf 67dd4426 nach Merge #170.",
-  "vorgaenger": "cloud-nachtaufgabe",
+  "epoche": 3,
+  "halter": "cloud-nachtaufgabe",
+  "uebernommen_am": "2026-11-10T23:33:18.295Z",
+  "erneuert_am": "2026-11-10T23:33:18.295Z",
+  "gueltig_bis": "2026-11-11T01:03:18.295Z",
+  "uebergabe": "Lease hauptchat Epoche 2 seit 2026-11-10T21:56Z abgelaufen (letzte Erneuerung 19:56Z), keine offenen Arbeits-PRs, Integrationskopf cf01a40; geplanter Nachtlauf uebernimmt",
+  "vorgaenger": "hauptchat",
   "freigegeben_am": null
 }
