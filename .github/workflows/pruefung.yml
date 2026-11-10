@@ -43,6 +43,9 @@ jobs:
       - name: Verdrahtung der Prüfdateien
         run: npm run pruefung:verdrahtung
 
+      - name: Koordination (atomare Lease)
+        run: npm run pruefung:koordination
+
       - name: G9-Nachträge, Verkauf, Preisgestaltung, Stufen
         run: npm run pruefung:g9
 

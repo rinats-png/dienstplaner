@@ -51,6 +51,17 @@ export function restZuPrListe(text) {
     .map((pr) => ({ number: pr.number, title: pr.title, headRefName: pr.head?.ref ?? pr.headRefName }));
 }
 
+/** Repo-Name; `gh repo view` nutzt GraphQL und scheitert in Cloud-Sitzungen, dann gilt der Remote `origin`. */
+function repoName(gh) {
+  try { return String(gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])).trim(); }
+  catch {
+    const url = execFileSync("git", ["remote", "get-url", "origin"], { cwd: WURZEL, encoding: "utf8" }).trim();
+    const m = url.match(/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/);
+    if (!m) throw new Error("Repo-Name aus origin nicht ermittelbar");
+    return m[1];
+  }
+}
+
 /** GraphQL-Weg, bei Fehler REST-Ausweichweg; scheitert beides, wird abgebrochen (fail-closed). */
 export function gemergteViaGh(gh = ghStandard) {
   let graphqlFehler;
@@ -59,7 +70,7 @@ export function gemergteViaGh(gh = ghStandard) {
       "--json", "number,title,headRefName"]));
   } catch (e) { graphqlFehler = e; }
   try {
-    const repo = String(gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])).trim();
+    const repo = repoName(gh);
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error(`Repo-Name unbrauchbar: "${repo}"`);
     const text = gh(["api", "--paginate", `repos/${repo}/pulls?state=closed&base=${BASIS}&per_page=100`, "--jq", ".[]"]);
     return restZuPrListe(text);
