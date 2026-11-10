@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 188,
   "statusZaehlung": {
-    "BLOCKED": 93,
+    "BLOCKED": 89,
     "READY": 16,
     "IN_PROGRESS": 4,
     "REVIEW": 10,
-    "INTEGRATED": 62,
+    "INTEGRATED": 66,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 88,
-      "offen": 38,
+      "offen": 35,
       "restPT": {
-        "min": 71.9,
-        "max": 112.3
+        "min": 66.9,
+        "max": 103.8
       }
     },
     "wp19": {
@@ -29,10 +29,10 @@
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 30,
+      "offen": 29,
       "restPT": {
-        "min": 226.3,
-        "max": 399.8
+        "min": 222.3,
+        "max": 391.8
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 370.1,
-    "max": 626.4
+    "min": 361.1,
+    "max": 609.9
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -1099,12 +1099,12 @@
       "prio": "P3",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": ["WP-39"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #176 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1113,12 +1113,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#176"],
       "nachweis": null,
       "akzeptanz": "Kein Querscrollen bei ≤430 px für Abrechnungsdaten/Handbuch; Geo-Schalter sofort",
       "tests": "Playwright-Viewport",
       "dateien": "src",
-      "notiz": null
+      "notiz": "Stand (automatisch): INTEGRATED nach #176."
     },
     {
       "id": "WP-36",
@@ -4972,12 +4972,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1,"max":1.5},
       "abhaengigkeiten": ["SI-P4"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4986,12 +4986,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#179"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Code einmalig verwendbar, begrenzt gültig, sicher übergeben, nicht als Klartext per E-Mail; nur für Einrichtung von Konto und zweitem Faktor; keine dauerhafte 2FA-Umgehung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/provisionierung.mjs, server/lib/zugangscode*.mjs, Tests",
-      "notiz": "Genehmigt 2026-11-09. Aufwand enthält Provisionierung, Übergabe, Tests. Keine Überschneidung mit WR-3 (Verlustfall)."
+      "notiz": "Genehmigt 2026-11-09. Aufwand enthält Provisionierung, Übergabe, Tests. Keine Überschneidung mit WR-3 (Verlustfall). Stand (automatisch): INTEGRATED nach #179."
     },
     {
       "id": "OPT-1-F",
@@ -5000,12 +5000,12 @@
       "prio": "P1",
       "aufwandPT": {"min":2,"max":4},
       "abhaengigkeiten": ["OPT-1"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #179 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5014,12 +5014,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#179"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Nach Ersteinrichtung ist ein regulärer Anmeldeweg belegbar (Passwort oder bestehender Leitungsschlüssel plus zweiter Faktor, Sitzung). Verbrauchter Einrichtungscode wirkt nie als Anmeldung. Tests decken die ganze Kette ab.",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/funktionen/anmeldung.mjs, server/lib/betriebsauswahl.mjs, server/lib/betreiber-zweifaktor.mjs, Tests",
-      "notiz": "Aufgenommen 2026-11-09 nach Review PR #166: kein funktionsfähiger regulärer Anmeldeweg für Leitungskonten nach der Einrichtung. Schätzung, nicht belegt. Vor Start Betreiber-Bestätigung des Umfangs. Keine Umgehung der Authentifizierung, keine Ausnahme vom zweiten Faktor."
+      "notiz": "Aufgenommen 2026-11-09 nach Review PR #166: kein funktionsfähiger regulärer Anmeldeweg für Leitungskonten nach der Einrichtung. Schätzung, nicht belegt. Vor Start Betreiber-Bestätigung des Umfangs. Keine Umgehung der Authentifizierung, keine Ausnahme vom zweiten Faktor. Stand (automatisch): INTEGRATED nach #179."
     },
     {
       "id": "OPT-2",
@@ -5364,12 +5364,12 @@
       "prio": "P3",
       "aufwandPT": {"min":4,"max":8},
       "abhaengigkeiten": ["WP-I12"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #174 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #174 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #174 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #174 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5378,12 +5378,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#174"],
       "nachweis": "docs/acc45/wp-i12-fragen.md",
       "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
       "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
       "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
-      "notiz": "SCHÄTZUNG Koordinator, nicht belegt. Freigabe Frage 7 durch Koordinator (technische Entscheidung). Erst Schließungsmessung mit werkzeug/engine-schliessung.mjs. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden."
+      "notiz": "SCHÄTZUNG Koordinator, nicht belegt. Freigabe Frage 7 durch Koordinator (technische Entscheidung). Erst Schließungsmessung mit werkzeug/engine-schliessung.mjs. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden. Stand (automatisch): INTEGRATED nach #174."
     },
     {
       "id": "WP-I12b",

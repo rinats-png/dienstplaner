@@ -70,6 +70,11 @@ jobs:
       - name: Live-Prüfung Schichtfolge-Editor (WP-I2)
         run: npm run pruefung:schichtfolge-live
 
+      # Bewertungsfunktionen der lokalen Browser-Abnahme (ohne Browser). Das Skript
+      # selbst (npm run abnahme:browser-v4) läuft nur lokal mit Chromium.
+      - name: Browser-Abnahme V4, reine Bewertung
+        run: npm run pruefung:browser-abnahme-kern
+
       # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
       # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
       # Folgen hat. App.jsx bleibt außen vor.
@@ -592,6 +597,16 @@ jobs:
       # Einrichtungscodes wirken nie als Anmeldung.
       - name: Konto-Anmeldeweg mit zweitem Faktor
         run: npm run pruefung:konto-anmeldeweg
+
+      # OPT-4: Faktorpflicht je Konto (nur setzbar, nie entfernbar) gilt in der
+      # Betriebsauswahl und bei jeder Arbeitssitzung, auch nach Rollenwechsel.
+      - name: Faktorpflicht je Konto (OPT-4)
+        run: npm run pruefung:konto-faktor-pflicht
+
+      # WR-2: Neugenerierung der Wiederherstellungscodes über alle Eingänge nur
+      # mit frischem Faktor, ein Schritt unter einer Sperre, Schlüsselepoche.
+      - name: Wiederherstellungscodes neu erzeugen (WR-2)
+        run: npm run pruefung:wiederherstellung-neu
 
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
