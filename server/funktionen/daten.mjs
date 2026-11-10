@@ -1029,7 +1029,11 @@ async function behandeln(req, context, ctx) {
           faktorVermerkt: eintrag.zweiterFaktor === true,
           /* OPT-1: Zugang aus der Ersteinrichtung — Faktor Pflicht; ein verbrauchter kommt hier nie an. */
           pflichtErzwungen: ersteinrichtungOffen(eintrag) || eintrag.faktorPflicht === true,
-          ersteinrichtung: ersteinrichtungOffen(eintrag) });
+          ersteinrichtung: ersteinrichtungOffen(eintrag),
+          /* WR-3: Verlustfall und Vier-Augen-Freigabe (lib/kontowiederherstellung-zugang.mjs) — Raum, Betrieb,
+             Person, wirksame Rolle und Einheit aus dem gespeicherten Bestand, nie aus der Anfrage. */
+          verlustKontext: { eintrag, bestand: gelesenC ? gelesenC.bestand : null, mandantId: bindungC.mandantId,
+            rolleWirksam: rolleWirksamC } });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {

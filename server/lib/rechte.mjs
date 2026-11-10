@@ -1613,7 +1613,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     eine, gehört sie vor dem ersten Abschnitt keiner Einheit an — bis WP-43
     fiel der Schreibweg dort auf `bereich` zurück, während die Lesesicht den
     Tag schon verschloss. Ohne gültigen Tag: keiner. */
-function einheitAm(person, datum) {
+export function einheitAm(person, datum) {
   if (!person || typeof datum !== "string" || !TAG.test(datum)) return null;
   const z = zugehoerigkeitsAbschnitte(person);
   if (!z) return person.bereich === undefined || person.bereich === null || person.bereich === "" ? null : String(person.bereich);

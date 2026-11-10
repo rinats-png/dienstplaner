@@ -327,7 +327,17 @@ const vorgabeEpochenQuelle = async () =>
 export function wiederherstellungEpocheQuelle(fn) { epochenQuelle = fn; }
 
 /** @returns {Promise<{gebunden: false}|{gebunden: true, epoche: string|null}>} */
-async function whEpoche() {
+function whEpoche() {
+  return faktorEpoche();
+}
+
+/**
+ * Die Schlüsselepoche, an die Wiederherstellungscodes und Verlustfälle (WR-3, kontowiederherstellung.mjs) gebunden
+ * werden — dieselbe Quelle für beide, damit eine zurückgespielte Ablage weder einen verbrauchten Code noch einen
+ * abgelaufenen oder eingelösten Fall wiederbelebt. `epoche: null` heißt: gebunden, aber nicht feststellbar (fail-closed).
+ * @returns {Promise<{gebunden: false}|{gebunden: true, epoche: string|null}>}
+ */
+export async function faktorEpoche() {
   const umgebung = String(process.env.NODE_ENV || "").trim().toLowerCase();
   const q = epochenQuelle === undefined
     ? (ENTWICKLUNGSUMGEBUNGEN.includes(umgebung) ? null : vorgabeEpochenQuelle) : epochenQuelle;
@@ -401,7 +411,8 @@ const ausstehendGueltig = (e, ms) => !!(e && e.stand === "ausstehend" && Number.
  * `wiederherstellungFassung`: 2, 1 (Altformat) oder null (keine Codes).
  * `wiederherstellungNeuNoetig`: aktiv, aber nicht in Fassung 2 — Aufforderung zur Neugenerierung.
  * @returns {Promise<{aktiv: boolean, ausstehend: boolean, ausstehendSeitMin: number|null, wiederherstellungUebrig: number,
- *   wiederherstellungFassung: number|null, wiederherstellungNeuNoetig: boolean}>}
+ *   wiederherstellungFassung: number|null, wiederherstellungNeuNoetig: boolean, ausVerlust: boolean,
+ *   faktorKennung: string|null}>}
  */
 export async function zweifaktorStand(store, id, ms = Date.now()) {
   const e = await store.get(SCHLUESSEL(id), { type: "json" });
@@ -419,7 +430,24 @@ export async function zweifaktorStand(store, id, ms = Date.now()) {
       : fassung === 1 ? w.filter(Boolean).length : 0,
     wiederherstellungFassung: fassung,
     wiederherstellungNeuNoetig: aktiv && fassung !== 2,
+    /** WR-3: eine Einrichtung, die aus einem eingelösten Verlustfall stammt (gültig oder abgelaufen). */
+    ausVerlust: !!(e && e.stand === "ausstehend" && typeof e.verlustFall === "string" && e.verlustFall),
+    /** WR-3: woran ein Verlustfall den Faktor bindet — wechselt mit jeder Einrichtung. */
+    faktorKennung: faktorKennungAus(e),
   };
+}
+
+/**
+ * WR-3: Die Kennung des jetzigen Faktorzustands, an die ein Verlustfall und sein Token gebunden werden. Aktiv: die
+ * Einrichtungsgeneration; aus einem Verlustfall ausstehend: dessen Fall. Alles andere: null (kein Fall möglich).
+ * @param {any} e
+ * @returns {string|null}
+ */
+function faktorKennungAus(e) {
+  if (!e) return null;
+  if (e.stand === "aktiv") return `g:${e.generation || "-"}:${e.aktiviert || "-"}`;
+  if (e.stand === "ausstehend" && typeof e.verlustFall === "string" && e.verlustFall) return `v:${e.verlustFall}`;
+  return null;
 }
 
 /**
@@ -438,6 +466,9 @@ export async function zweifaktorBeginnen(store, id, konto, { laufendeSchuetzen =
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (e && e.stand === "aktiv") return { fehler: "aktiv" };
     if (laufendeSchuetzen && ausstehendGueltig(e, Date.now())) return { fehler: "ausstehend" };
+    /* WR-3: Eine Einrichtung aus einem eingelösten Verlustfall (auch abgelaufen) überschreibt niemand mit dem
+       Zugangscode allein — sonst richtete ein Dieb des Codes sein Gerät statt des Inhabers ein. Neuer Fall nötig. */
+    if (e && e.stand === "ausstehend" && typeof e.verlustFall === "string" && e.verlustFall) return { fehler: "verlust" };
     const roh = randomBytes(20);
     await store.setJSON(SCHLUESSEL(id), { stand: "ausstehend", geheimnis: verschluesseln(roh, id),
       letzterSchritt: -1, wiederherstellung: null, begonnen: new Date().toISOString() });
@@ -633,6 +664,34 @@ export async function nachweisAusstellen(store, id, ms = Date.now()) {
   const bis = Math.floor(ms / 1000) + NACHWEIS_DAUER;
   await store.setJSON(NACHWEIS(nachweisHash(t)), { id, bis, generation: e.generation });
   return { nachweis: t, gueltigBis: new Date(bis * 1000).toISOString() };
+}
+
+/**
+ * WR-3: Nach einem eingelösten Verlustfall den Faktor durch eine NEUE AUSSTEHENDE Einrichtung ersetzen — in einem
+ * einzigen Schreibvorgang unter der Sperre des Faktors. Es gibt keinen Zwischenstand „kein Faktor, Einrichtung frei"
+ * (T13): Der alte Eintrag wird nie gelöscht, sondern durch den neuen überschrieben. Geprüft wird unter der Sperre, dass
+ * der Faktor noch derselbe ist, an den der Fall gebunden war (`erwartet`, faktorKennungAus); sonst bleibt alles, wie es
+ * ist (`fehler: "geaendert"`). Schreibfehler werfen — der alte Faktor bleibt dann unverändert gültig.
+ * Die Einrichtung trägt den Fall (`verlustFall`): Sie lässt sich mit dem Zugangscode allein nicht überschreiben
+ * (betreiber-zweifaktor.mjs, „beginnen"), und ohne bestätigten Code entsteht keine Sitzung.
+ * @param {any} store
+ * @param {string} id
+ * @param {string} konto  Anzeigename für die App (otpauth)
+ * @param {{erwartet: string, fall: string}} a
+ * @returns {Promise<{ok: true, geheimnis: string, otpauth: string}|{ok: false, fehler: string}>}
+ */
+export async function zweifaktorNachVerlustNeu(store, id, konto, { erwartet, fall }) {
+  if (!zweifaktorMoeglich()) return { ok: false, fehler: "pfeffer" };
+  if (typeof erwartet !== "string" || !erwartet || typeof fall !== "string" || !fall) return { ok: false, fehler: "geaendert" };
+  return unterSperre(id, async () => {
+    const e = await store.get(SCHLUESSEL(id), { type: "json" });
+    if (faktorKennungAus(e) !== erwartet) return { ok: false, fehler: "geaendert" };
+    const roh = randomBytes(20);
+    await store.setJSON(SCHLUESSEL(id), { stand: "ausstehend", geheimnis: verschluesseln(roh, id),
+      letzterSchritt: -1, wiederherstellung: null, begonnen: new Date().toISOString(), verlustFall: fall });
+    const b32 = base32Kodieren(roh);
+    return { ok: true, geheimnis: b32, otpauth: otpauthAdresse(b32, konto) };
+  });
 }
 
 /**
