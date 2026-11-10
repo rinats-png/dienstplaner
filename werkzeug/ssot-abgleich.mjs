@@ -18,7 +18,6 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gemergteListe } from "./gh-rest.mjs";
 import { paketeFuerPr, brauchtPrBeleg, ERLEDIGT } from "./ssot-zuordnung.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,10 +36,54 @@ export function ssotLesen(datei) {
   return JSON.parse(text);
 }
 
+/** gh-Aufruf (Injektionspunkt für Prüfungen ohne Netz). */
+function ghStandard(args) {
+  return execFileSync("gh", args, { cwd: WURZEL, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+}
+
+/** REST-Antwort (ein PR-Objekt je Zeile oder JSON-Array) -> [{number,title,headRefName}], nur gemergte. */
+export function restZuPrListe(text) {
+  const roh = [];
+  const t = String(text).trim();
+  if (t.startsWith("[")) roh.push(...JSON.parse(t));
+  else for (const z of t.split(/\r?\n/)) if (z.trim()) roh.push(JSON.parse(z));
+  return roh.filter((pr) => pr && pr.merged_at != null)
+    .map((pr) => ({ number: pr.number, title: pr.title, headRefName: pr.head?.ref ?? pr.headRefName }));
+}
+
+/** Repo-Name; `gh repo view` nutzt GraphQL und scheitert in Cloud-Sitzungen, dann gilt der Remote `origin`. */
+function repoName(gh) {
+  try { return String(gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])).trim(); }
+  catch {
+    const url = execFileSync("git", ["remote", "get-url", "origin"], { cwd: WURZEL, encoding: "utf8" }).trim();
+    const m = url.match(/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/);
+    if (!m) throw new Error("Repo-Name aus origin nicht ermittelbar");
+    return m[1];
+  }
+}
+
+/** GraphQL-Weg, bei Fehler REST-Ausweichweg; scheitert beides, wird abgebrochen (fail-closed). */
+export function gemergteViaGh(gh = ghStandard) {
+  let graphqlFehler;
+  try {
+    return JSON.parse(gh(["pr", "list", "--state", "merged", "--base", BASIS, "--limit", "500",
+      "--json", "number,title,headRefName"]));
+  } catch (e) { graphqlFehler = e; }
+  try {
+    const repo = repoName(gh);
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error(`Repo-Name unbrauchbar: "${repo}"`);
+    const text = gh(["api", "--paginate", `repos/${repo}/pulls?state=closed&base=${BASIS}&per_page=100`, "--jq", ".[]"]);
+    return restZuPrListe(text);
+  } catch (e) {
+    throw new Error("PR-Liste nicht ermittelbar (gh pr list: " + String(graphqlFehler?.message ?? graphqlFehler).split("\n")[0] +
+      "; REST: " + String(e?.message ?? e).split("\n")[0] + "). Es wird nichts als gemergt gewertet.");
+  }
+}
+
 /** Gemergte PRs in die Integration, mit Titel und Branch. */
 export function gemergteUndPrs(datei) {
   if (datei) return JSON.parse(readFileSync(datei, "utf8"));
-  return gemergteListe(BASIS, WURZEL);
+  return gemergteViaGh();
 }
 
 /** Klassifiziert alle Pakete. */
@@ -74,7 +117,9 @@ function ausgabe(zeilen, alsJson) {
 
 const istHaupt = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (istHaupt) {
-  const zeilen = abgleich(ssotLesen(argWert("--datei")), gemergteUndPrs(argWert("--prs")));
+  let zeilen;
+  try { zeilen = abgleich(ssotLesen(argWert("--datei")), gemergteUndPrs(argWert("--prs"))); }
+  catch (e) { console.error("SSOT-Abgleich ABGEBROCHEN: " + e.message); process.exit(2); }
   ausgabe(zeilen, process.argv.includes("--json"));
   const kritisch = zeilen.some((z) => z.klasse === "KORREKTUR" || z.klasse === "BELEG_FEHLT");
   process.exit(process.argv.includes("--pruefe") && kritisch ? 1 : 0);
