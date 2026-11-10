@@ -1,4 +1,4 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-10 ca. 10:30 UTC, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-10 ca. 15:10 UTC, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
@@ -33,26 +33,29 @@ Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
-- Integration: `integration/release-v4`, Kopf 163dc491 (Merge #174, 2026-11-10 ca. 10:20Z; davor #172, #179, #170 = 67dd4426, #176). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
+- Integration: `integration/release-v4`, Kopf 2c427d11 (Merge #188, 2026-11-10 ca. 15:05Z). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
 - `main`: 0423eeac. Kein Design-Release nach main ohne Betreiberfreigabe.
 - V4-Staging: `public/sw.js` hat auf der Integration `FASSUNG = "__CENTRIC_BUILD__"` (Platzhalter), auf `main` `"v4"`; die frühere Angabe "v5" war falsch. Betreiber bestätigt, welcher Stand angenommen wird (siehe `docs/acc45/STAGING-ABNAHME-V4.md`).
 
-## Offene PRs (Stand 2026-11-10 ca. 10:30Z)
-- #179 OPT-1-F ist **gemergt** (a35fa29e, Kopf bd137911). Damit liegt auch der Ersteinrichtungscode aus #166 in der Integration (#166 von GitHub als gemergt markiert, weil sein Kopf enthalten ist). Zwei unabhängige Opus-Reviews: erster Review fand den Blocker "überlappende zweite Bestätigung löscht aktiven Faktor", behoben und im Delta-Review bestätigt.
+## Offene PRs (Stand 2026-11-10 ca. 15:10Z)
 - #175 OPT-1-F, gestapelte ältere Variante (Draft): durch #179 ersetzt. Das Schließen wurde vom Berechtigungssystem verweigert; **Entscheidung beim Betreiber** (schließen oder stehen lassen). Kein Inhalt geht verloren (Branch `acc45/opt-1-f-anmeldeweg` bleibt).
 - #177 WP-I4 (Draft): Betriebsrat-Sicht wartet auf Betreiberfreigabe (neue Lesesicht auf interne Vorgaben, § 87 BetrVG offen).
-- #178 V4-Staging-Voraussetzungen: Review ohne inhaltlichen Blocker; Konflikt in `package.json` (Prüfkette) gelöst, Kopf fa7c6c1d, CI läuft, danach mergen.
-- #180 Branchschutz-Prüfer, Betreiberanleitung, diese Datei; #181 SSOT-Nachführung (WP-35, OPT-1, OPT-1-F, WP-I12a): jeweils nach grüner CI mergen.
+- Alle übrigen Integrations-PRs dieser Sitzung (#166, #170, #172, #174, #178 bis #188) sind gemergt, siehe unten.
 - #139 WP-I12c (planKennzahlen, Spanne). Hold, Betreiberentscheidung zur Spanne-Definition.
 - #129, #127, #115, #97, #96, #94, #92, #91, #18, #17, #16, #15, #7, #6: ältere Doku-, Feature- und Security-PRs gegen Basen außerhalb der Integration. Vor dem Schließen prüfen, ob Inhalt in der Integration steht (ssot-belege, Commit-Suche). Nicht blind schließen.
 - #168 (ccr-…, Cloud-Session): fremd, nicht anfassen.
 - #104 "[NICHT INTEGRIEREN]": Referenz, nicht mergen.
 
 ## Abgeschlossen in dieser Sitzung (gemergt)
-#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #179
-(#169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #172 Doku Legal-Teil A, #173 V4-Abnahme-Checkliste, #174 WP-I12a Rechenkern, #176 WP-35 Darstellung, #179 OPT-1-F inklusive OPT-1/#166.)
+#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #178 #179 #180 #181 #182 #183 #184 #185 #186 #187 #188
+(#169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #172 Doku Legal-Teil A, #173 V4-Abnahme-Checkliste, #174 WP-I12a Rechenkern, #176 WP-35 Darstellung, #178 V4-Staging-Voraussetzungen, #179 OPT-1-F inklusive OPT-1/#166, #180 Branchschutz-Prüfer und Betreiberanleitung, #181 und #184 und #188 SSOT-Nachführung, #182 OPT-4 (Teilumfang) und WR-2, #183 WP-21 Teil 1, #185 IMP-6 Bibliothek, #186 CI-Abdeckung samt Wächter, #187 IMP-5 und IMP-9.)
+
+Stand der Pakete dazu: WP-21 IN_PROGRESS (nur Teil 1), IMP-6 IN_PROGRESS (Bibliothek, nicht in `/api/import` verdrahtet, kein Schreiben in den Bestand), OPT-4 IN_PROGRESS (Migration bestehender Leitungskonten offen), WR-2, IMP-5, IMP-9, OPT-1, OPT-1-F, WP-I12a, WP-35 INTEGRATED. SI-P6b bleibt bis zur Betreiber-Spezifikation gesperrt.
 
 Hinweise aus den unabhängigen Reviews (nicht blockierend):
+- #182 (OPT-4/WR-2), Betrieb: (a) `/zustand` muss beschreibbar sein (uid 1000), sonst 503 bei Faktoraktivierung und Wiederherstellungscode-Anmeldung; (b) nach dem Deploy sind alle Wiederherstellungscodes ohne Epoche ungültig, bis die Inhaber neu erzeugen; (c) jede Epochen-Rotation macht alle Codes ungültig, ohne Benachrichtigung (E3); (d) bis WR-3..9 gibt es keinen Rückweg für Inhaber, die Telefon und Codes verlieren; (e) `NODE_ENV=production` Pflicht (development/test schaltet die Epochenbindung ab). Checkliste: `docs/acc45/RELEASE-GATES-R1-R2-R3.md`, `docs/BETRIEBSHANDBUCH.md` Abschnitt 4. Betreiberentscheidungen E1 bis E4 (Migration bestehender Leitungskonten, Altformat ohne Epoche, Benachrichtigung nach Vollwiederherstellung, Nachtrag `faktorPflicht` für ältere Codes) in `docs/acc45/OPT-4-WR-2-LUECKEN.md`.
+- #187 (IMP-9): Der Port ist nirgends verdrahtet. Vor jeder Verdrahtung oder E-25/E-26-Aktivierung IMPORT-VERTRAG §13 und die Allowlist-Garantie (Überschriften nur als kanonischer Feldname, sonst `Spalte N`) erneut prüfen.
+- #186: Neue `pruefung:*`-Skripte müssen als Schritt in `.github/workflows/pruefung.yml` stehen, sonst schlägt der Wächter `pruefung:ci-abdeckung` fehl; Ausnahmen nur mit Grund in `pruefungen/ci-abdeckung-ausnahmen.json`.
 - #174 (WP-I12a): Die Aussage "ohne `ausfaelle` byte-identisch" gilt nicht allgemein. `rechnen()` liefert jetzt zu jedem Ruhezeitbefund einen `ruhezeit.ist`-Fakt; `gegenrechnen` prüft kandidat.* und `ruhezeit.ist` strenger (fail-closed). Vor Verdrahtung in eine Route (WP-I20): Obergrenze für Personenzahl bei der Ersatzsuche, Definition von `ruhezeit.ist` (mit/ohne Zeitumstellung) vereinheitlichen, Golden um Ruhezeit-/Folgegrenzen erweitern.
 - #178: Dokument nennt Basis-Zahlen (1103 Commits, App.jsx 2066 Zeilen), die inzwischen veraltet sind; die Skripte laufen nur manuell.
 
@@ -89,6 +92,7 @@ Hinweise aus den unabhängigen Reviews (nicht blockierend):
 6. Vor Schreibvorgängen `node werkzeug/koordination.mjs status` und `pruefen --halter H --epoche N`. Textsuch-Prüfungen beachten (zum Beispiel verbietet `pruefungen/anmeldung-http.test.js` bestimmte Wörter im Quelltext von `server/funktionen/daten.mjs`): vor dem Push `npm run pruefung` oder zumindest alle Tests, die Quelltexte lesen.
 
 ## Agenten und Hintergrund
-- Stand 2026-11-10 ca. 10:30Z: Keine schreibenden Agenten aktiv. Reviews zu #170, #179, #174, #178/#172 sind abgeliefert. Cloud-Sitzungen waren idle.
+- Stand 2026-11-10 ca. 15:10Z: Keine schreibenden Agenten aktiv; alle gemeldeten Agenten haben berichtet. Cloud-Sitzungen waren idle.
+- Merge-Konflikte: Die lange `pruefung`-Zeile in `package.json` kollidiert bei jedem parallelen PR. Lösung ohne Handarbeit: Zeile der Integration nehmen und eigene Skripte am Ende anhängen (`node werkzeug/package-kette-vereinigen.cjs` im Worktree mitten im Merge: vereinigt beide Seiten per `&&`, bricht bei Blöcken mit mehr als einer Zeile je Seite ab).
 - Hintergrund-Watcher (Merge bei grün) sind an die Sitzung gebunden und enden mit ihr. Der neue Koordinator startet sie neu, falls nötig.
 - Worktrees: viele Agenten-Worktrees unter `.claude/worktrees/`. Nur Worktrees mit ungesicherten Änderungen prüfen (`git status --porcelain`), bevor man sie entfernt. Nicht blind löschen.
