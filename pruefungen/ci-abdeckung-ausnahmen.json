@@ -2,10 +2,5 @@
   {
     "skript": "pruefung:serverlauf",
     "grund": "Entwicklungs-Abkürzung ohne Docker: startet 25-mal einen frischen Server (rund 3,5 Minuten) und wiederholt Prüfungen, die in der CI bereits als vitest-Skripte oder gegen das Docker-Bild laufen; im Workflow steht die Auslassung ausdrücklich begründet."
-  },
-  {
-    "skript": "pruefung:darstellung",
-    "grund": "Wird mit PR #183 (WP-21 Teil 1) im Workflow verdrahtet; der Eintrag ist nur bis dahin nötig und danach zu entfernen.",
-    "vorlaeufig": true
   }
 ]

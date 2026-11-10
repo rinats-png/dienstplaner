@@ -5,7 +5,7 @@ Stand: Basis `integration/release-v4` (9831f4e2), Branch `acc45/ci/abdeckung`.
 `npm run pruefung` ruft über 130 Skripte auf; `.github/workflows/pruefung.yml` führt sie einzeln als Schritte aus.
 Wer ein Skript nur in die Sammelzeile schreibt, hat eine Prüfung, die lokal läuft und in der CI nie. Die Lücke wurde
 am Stand oben mit einem Skript neu berechnet (Kette von `pruefung` minus alle `npm run X`-Aufrufe im Workflow samt
-mittelbaren Aufrufen). Es fehlten elf Skripte; `pruefung:darstellung` ist nicht Teil dieses Auftrags (PR #183).
+mittelbaren Aufrufen). Es fehlten elf Skripte; `pruefung:darstellung` (und `pruefung:geraete`) hat PR #183 inzwischen verdrahtet.
 
 ## Ergebnis je Skript
 
@@ -23,7 +23,7 @@ Lokal gemessen unter Windows (Node 24), je Skript einzeln. Die CI (Ubuntu, Node 
 | `pruefung:staging-abnahme-3` | ja | startet selbst einen Server auf 127.0.0.1:3917 mit Wegwerf-Ablage; ohne Ziel kein Netzzugriff, mit Ziel nur lesend | 11 s |
 | `pruefung:pilot-tagesbericht` | ja | Werkzeug auf synthetischen Eingaben, kein Netz | 6 s |
 | `pruefung:serverlauf` | nein | Entwicklungs-Abkürzung: startet 25-mal einen frischen Server und wiederholt Prüfungen, die in der CI bereits als vitest-Skripte (z. B. `pruefung:sicht-schicht`, `pruefung:fachpruefung`) oder gegen das Docker-Bild laufen; der Workflow nennt die Auslassung ausdrücklich. Mit gut 3 Minuten außerdem die längste Einzelposition. Alle 25 Läufe lokal bestanden. | 208 s |
-| `pruefung:darstellung` | (PR #183) | wird mit PR #183 verdrahtet; bis dahin vorläufige Ausnahme | nicht gemessen |
+| `pruefung:darstellung` | ja | seit PR #183 im Workflow (zusammen mit `pruefung:geraete`), damit keine Ausnahme mehr nötig | nicht gemessen |
 
 `pruefung:serverlauf` steht zu Recht in der Sammelzeile (für Entwickler ohne Docker), ist aber in der CI
 bewusst ersetzt. Die Sammelzeile wurde nicht verändert.
