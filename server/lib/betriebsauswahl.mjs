@@ -8,7 +8,8 @@ import { wirksameRolle, eigenerMandant, sitzungsRolleBekannt } from "./rechte.mj
 import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from "./sitzungen.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
-import { rollenPflicht, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
+import { rollenPflicht, zweifaktorRolle, kontoFaktorEingerichtet, kontoFaktorPruefen }
+  from "./betreiber-zweifaktor.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -161,16 +162,25 @@ function kennungZulaessig(felder, m, rolle, mandant) {
  * Anmeldung hinaus — `gueltigBis` ist entsprechend gekappt, damit die Antwort
  * wahr bleibt.
  *
+ * OPT-1-F: Für Leitung, Planung und Kunde gilt der zweite Faktor des KONTOS (kontoZweifaktorId, eingerichtet über einen
+ * Ersteinrichtungscode). `zweifaktor` ist der aktuelle Code aus der App, `k` die Herkunftskennung für die Bremse
+ * (beides vom Aufrufer).
+ *   - Konto hat einen aktiven Faktor: Pflicht, auch ohne Pflichtschalter (kein Zurückfallen auf das Passwort allein).
+ *   - Kein Faktor am Konto, Pflichtschalter an: `zweifaktor-pflicht` (wie bisher, nichts öffnet ungeprüft).
+ *   - Kein Faktor, Schalter aus: wie bisher (Annahme A3, docs/acc45/OPT-1-F-NACHWEIS.md).
+ * Die Sitzung trägt `zweifaktor: true` nur nach bestandenem Faktor.
+ *
  * @param {object} store  Ablage „centric"
  * @param {{accountId?: string, raum?: unknown,
  *   kontoSitzung?: ({id?: unknown, bis?: unknown}|null),
- *   jetzt?: () => number, kontoAblage?: (object|null)}} o
+ *   jetzt?: () => number, kontoAblage?: (object|null), zweifaktor?: unknown, k?: string}} o
  * @returns {Promise<{ok: true, token: string, gueltigBis: number, raum: string,
  *     name: string, rolle: string, person: string, betrieb: number}
- *   |{ok: false, grund: string}>}
+ *   |{ok: false, grund: string, wartet?: number}>}
  */
 export async function betriebWaehlen(store,
-  { accountId, raum, kontoSitzung = null, jetzt = Date.now, kontoAblage = null } = {}) {
+  { accountId, raum, kontoSitzung = null, jetzt = Date.now, kontoAblage = null, zweifaktor = undefined,
+    k = "konto-betriebwahl" } = {}) {
   /** @type {(grund: string) => {ok: false, grund: string}} */
   const absage = (grund) => ({ ok: false, grund });
 
@@ -270,7 +280,29 @@ export async function betriebWaehlen(store,
      wird, statt eine Sitzung ohne zweiten Faktor anzulegen; der Weg in diese Rolle ist der Zugangscode mit Faktor.
      Ohne Pflicht bleibt es wie bisher. Die Account-Anmeldung selbst ist nur eine Identität ohne Rolle und ohne
      Bestand (anmeldung.mjs) — die Rechte entstehen erst hier, also wird hier geprüft. */
-  if (rollenPflicht() && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle))) return absage("zweifaktor-pflicht");
+  /* OPT-1-F: Der zweite Faktor des Kontos. Leitung, Planung und Kunde (Rolle der Mitgliedschaft ODER wirksame Rolle der
+     Person) öffnen einen Betrieb nur so:
+       - Aktiver Faktor am Konto: Code Pflicht, unabhängig vom Pflichtschalter. Wer ihn einmal eingerichtet hat, fällt
+         nie auf das Passwort allein zurück (kein Herunterstufen durch Ausschalten des Schalters).
+       - Kein Faktor, Pflichtschalter an: abgewiesen (`zweifaktor-pflicht`); der Weg dorthin ist ein Ersteinrichtungscode.
+       - Kein Faktor, Schalter aus: wie bisher.
+     Ein Lesefehler ist kein Ja. Versuche laufen über dieselbe Bremse wie beim Zugangscode (GRENZEN.zweifaktor). */
+  let faktorBestanden = false;
+  if (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle)) {
+    let hatFaktor;
+    try { hatFaktor = await kontoFaktorEingerichtet(store, accountId); } catch { return absage("faktor-lesen"); }
+    if (hatFaktor) {
+      const f = await kontoFaktorPruefen({ store, k, accountId, code: zweifaktor });
+      if (!f.ok) {
+        if (f.grund === "erforderlich") return absage("zweifaktor-erforderlich");
+        if (f.status === 429) return { ok: false, grund: "gebremst", wartet: f.wartet };
+        if (f.status === 503) return absage("faktor-lesen");
+        return absage("zweifaktor-falsch");
+      }
+      faktorBestanden = true;
+    } else if (rollenPflicht()) return absage("zweifaktor-pflicht");
+  }
+  if (faktorBestanden) felder.zweifaktor = true;
 
   /* Kontositzung mit Betriebskennung (WP-18-Nachtrag). Eine Sitzung aus einem Zugangscode trägt seit Oktober 2026 die
      Kennung ihres Betriebs (mandantId); Einladungen verlangen sie (einladungen.mjs, leitungPruefen). Die Arbeitssitzung
