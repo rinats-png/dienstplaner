@@ -584,6 +584,12 @@ jobs:
       - name: Betriebsauswahl
         run: npm run pruefung:betriebsauswahl
 
+      # OPT-1-F: Leitungskonto nach der Ersteinrichtung — Passwort plus zweiter
+      # Faktor am Konto, Sitzung mit Faktor, Fehlversuchs-Sperre; verbrauchte
+      # Einrichtungscodes wirken nie als Anmeldung.
+      - name: Konto-Anmeldeweg mit zweitem Faktor
+        run: npm run pruefung:konto-anmeldeweg
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration

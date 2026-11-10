@@ -106,6 +106,20 @@ import {
   accountSitzungenBeenden, accountSitzungsId,
 } from "./accountsitzungen.mjs";
 import { arbeitssitzungenBeenden } from "./arbeitssitzung.mjs";
+import {
+  kontoFaktorId, kontoFaktorStand, kontoFaktorBeginnen, kontoFaktorVorpruefen,
+  kontoFaktorBestaetigen, kontoFaktorPruefen,
+} from "./kontofaktor.mjs";
+
+/** OPT-1-F: Passwort richtig, aber für dieses Konto ist ein zweiter Faktor
+    eingerichtet und er fehlt. Diesen Satz sieht nur, wer das Passwort kennt. */
+export const HINWEIS_FAKTOR_FEHLT =
+  "Für dieses Konto ist ein zweiter Faktor eingerichtet. Bitte den Code aus der App eingeben.";
+/** OPT-1-F: Code aus der App falsch oder schon verwendet. */
+export const HINWEIS_FAKTOR_FALSCH = "Der zweite Faktor stimmt nicht.";
+/** OPT-1-F: Der Faktor lässt sich nicht prüfen (Ablage, Pfeffer). Keine Sitzung. */
+export const HINWEIS_FAKTOR_NICHT_PRUEFBAR =
+  "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.";
 
 /** Der eine Satz für jede fehlgeschlagene Anmeldung. Er unterscheidet
     nicht zwischen unbekannter Adresse, falschem Passwort, gesperrtem und
@@ -150,17 +164,15 @@ const hatPruefwert = (konto) =>
   !!konto && typeof konto.passwort === "string" && konto.passwort.startsWith("s1$");
 
 /**
- * Meldet einen Account an.
+ * Die Prüfung von Adresse und Passwort — Schritte 1 bis 4 oben, ohne Sitzung.
+ * Gemeinsam für die Anmeldung und für die Einrichtung des zweiten Faktors
+ * (OPT-1-F): Beide verlangen denselben Nachweis, und es gibt ihn nur hier.
  *
- * @param {object} store  Ablage „centric" — dort liegen die Accounts
- * @param {{email?: unknown, passwort?: unknown, jetzt?: () => number,
- *          sitzungsAblage?: (object|null)}} [o]
- * @returns {Promise<{ok: true, token: string, gueltigBis: number,
- *     accountId: string, epoche: number}
- *   |{ok: false, grund: string, hinweis: string}>}
+ * @param {object} store
+ * @param {{email?: unknown, passwort?: unknown}} o
+ * @returns {Promise<{ok: true, konto: any}|{ok: false, grund: string, hinweis: string}>}
  */
-export async function anmelden(store, { email, passwort, jetzt = Date.now,
-  sitzungsAblage = null } = {}) {
+async function zugangPruefen(store, { email, passwort }) {
   /** @type {(grund: string) => {ok: false, grund: string, hinweis: string}} */
   const absage = (grund) => ({ ok: false, grund, hinweis: HINWEIS_ANMELDUNG });
 
@@ -187,9 +199,85 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
      Ein Passwort allein macht daraus keine Anmeldung. */
   if (konto.status !== "aktiv") return absage("nicht-aktiv");
   if (!konto.emailVerifiziertAm) return absage("unbestaetigt");
+  return { ok: true, konto };
+}
+
+/**
+ * Das Tor vor jeder Prüfung eines Codes aus der App (OPT-1-F). Gestellt vom
+ * Endpunkt — diese Datei kennt keine Bremse. Gerufen wird es erst, wenn das
+ * Passwort stimmte: Wer nur die Adresse kennt, kann den Faktor eines anderen
+ * nicht sperren. `null` heißt frei; sonst keine Prüfung.
+ * @typedef {(faktorId: string) => Promise<null|{wartet?: number, nichtPruefbar?: boolean}>} FaktorTor
+ */
+
+/**
+ * Prüft den zweiten Faktor eines Kontos bei der Anmeldung. Fail-closed:
+ * Lesefehler, fehlender Pfeffer, Tor nicht frei — jeweils kein Ja.
+ * @param {object} store
+ * @param {any} konto
+ * @param {unknown} zweifaktor
+ * @param {FaktorTor|null} faktorTor
+ * @returns {Promise<{ok: true, mitFaktor: boolean}|{ok: false, grund: string, hinweis: string, wartet?: number}>}
+ */
+async function faktorDerAnmeldung(store, konto, zweifaktor, faktorTor) {
+  const nichtPruefbar = (grund) => ({ ok: /** @type {false} */ (false), grund,
+    hinweis: HINWEIS_FAKTOR_NICHT_PRUEFBAR });
+  let stand;
+  try { stand = await kontoFaktorStand(store, konto.id); }
+  catch { return nichtPruefbar("faktor-lesen"); }
+  /* Kein Faktor eingerichtet: die Sitzung ist eine Identität ohne Faktor,
+     wie bisher. Was sie darf, entscheidet die Betriebsauswahl. */
+  if (!stand.aktiv) return { ok: true, mitFaktor: false };
+  /* Ist der Faktor eingerichtet, verlangt JEDE Anmeldung ihn — mit oder
+     ohne Pflicht. Ein Passwort allein ergibt dann keine Sitzung. */
+  const code = typeof zweifaktor === "string" ? zweifaktor.trim() : "";
+  if (!code) return { ok: false, grund: "zweifaktor-erforderlich", hinweis: HINWEIS_FAKTOR_FEHLT };
+  if (faktorTor) {
+    const t = await faktorTor(kontoFaktorId(konto.id));
+    if (t && t.nichtPruefbar) return nichtPruefbar("faktor-bremse");
+    if (t) return { ok: false, grund: "zweifaktor-gebremst", hinweis: HINWEIS_FAKTOR_FALSCH,
+      wartet: Number(t.wartet) || 0 };
+  }
+  let p;
+  try { p = await kontoFaktorPruefen(store, konto.id, code); }
+  catch { return nichtPruefbar("faktor-lesen"); }
+  if (!p.ok) {
+    if (p.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    return { ok: false, grund: p.grund === "wiederholt" ? "zweifaktor-wiederholt" : "zweifaktor-falsch",
+      hinweis: HINWEIS_FAKTOR_FALSCH };
+  }
+  return { ok: true, mitFaktor: true };
+}
+
+/**
+ * Meldet einen Account an.
+ *
+ * OPT-1-F: Ist für das Konto ein zweiter Faktor eingerichtet, gehört der Code
+ * aus der App (`zweifaktor`) zur Anmeldung; ohne ihn oder mit falschem Code
+ * entsteht keine Sitzung. Bestanden, trägt die Sitzung `zweifaktor: true` —
+ * die einzige Grundlage, auf der die Betriebsauswahl unter Pflicht eine
+ * Leitungs-, Planungs- oder Kundensitzung öffnet.
+ *
+ * @param {object} store  Ablage „centric" — dort liegen die Accounts
+ * @param {{email?: unknown, passwort?: unknown, zweifaktor?: unknown,
+ *          faktorTor?: (FaktorTor|null), jetzt?: () => number,
+ *          sitzungsAblage?: (object|null)}} [o]
+ * @returns {Promise<{ok: true, token: string, gueltigBis: number,
+ *     accountId: string, epoche: number, zweifaktor?: true}
+ *   |{ok: false, grund: string, hinweis: string, wartet?: number}>}
+ */
+export async function anmelden(store, { email, passwort, zweifaktor = undefined,
+  faktorTor = null, jetzt = Date.now, sitzungsAblage = null } = {}) {
+  const z = await zugangPruefen(store, { email, passwort });
+  if ("grund" in z) return z;
+  const konto = z.konto;
+
+  const f = await faktorDerAnmeldung(store, konto, zweifaktor, faktorTor);
+  if ("grund" in f) return f;
 
   const epoche = Number(konto.epoche) || 1;
-  const sitzung = await accountSitzungAnlegen({ accountId: konto.id, epoche },
+  const sitzung = await accountSitzungAnlegen(
+    { accountId: konto.id, epoche, ...(f.mitFaktor ? { zweifaktor: true } : {}) },
     { jetzt, ablage: sitzungsAblage });
   if (!sitzung.ok) {
     /* Ohne Sitzung keine Anmeldung. Kein halbes Ergebnis, kein Merkmal,
@@ -204,7 +292,97 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
   try { await anmeldungVermerken(store, konto.id); } catch { /* egal */ }
 
   return { ok: true, token: sitzung.token, gueltigBis: sitzung.gueltigBis,
-    accountId: konto.id, epoche };
+    accountId: konto.id, epoche, ...(f.mitFaktor ? { zweifaktor: /** @type {true} */ (true) } : {}) };
+}
+
+/** Die Aktionen am zweiten Faktor eines Kontos. Kein Abschalten: Wechsel und
+    Verlust gehören zur Wiederherstellung (WR-2 bis WR-9), nicht hierher. */
+export const KONTO_FAKTOR_AKTIONEN = Object.freeze(["stand", "beginnen", "bestaetigen"]);
+
+/**
+ * Den zweiten Faktor eines Kontos einrichten (OPT-1-F).
+ *
+ * Ausweis ist dasselbe wie bei der Anmeldung — Adresse und Passwort —, nicht
+ * das Cookie: Wer nur ein abgegriffenes Sitzungsmerkmal hat, richtet hier
+ * nichts ein (dasselbe Muster wie bei Zugangscodes, betreiber-zweifaktor.mjs).
+ *
+ *   stand        aktiv/ausstehend, sonst nichts
+ *   beginnen     Geheimnis und otpauth-Adresse, genau einmal. Ein aktiver
+ *                Faktor oder eine laufende Einrichtung wird nicht
+ *                überschrieben.
+ *   bestaetigen  erster Code aus der App. Reihenfolge, fail-closed:
+ *                1. Code prüfen, ohne zu speichern,
+ *                2. ALLE Sitzungen des Kontos beenden (samt Arbeitssitzungen) —
+ *                   scheitert das, wird nicht aktiviert,
+ *                3. aktivieren,
+ *                4. noch einmal beenden (was dazwischen entstand).
+ *                Danach gilt nur noch Passwort plus Code aus der App.
+ *
+ * Es entsteht nie eine Sitzung. Codes und Geheimnis stehen nur im
+ * Rückgabewert, nie in einem Protokoll.
+ *
+ * @param {object} store
+ * @param {{email?: unknown, passwort?: unknown, aktion?: unknown, zweifaktor?: unknown,
+ *   faktorTor?: (FaktorTor|null), sitzungsAblage?: (object|null)}} o
+ * @returns {Promise<{ok: true, daten: Record<string, unknown>, sitzungenBeendet?: number}
+ *   |{ok: false, grund: string, hinweis: string, wartet?: number}>}
+ */
+export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifaktor,
+  faktorTor = null, sitzungsAblage = null } = {}) {
+  const z = await zugangPruefen(store, { email, passwort });
+  if ("grund" in z) return z;
+  const id = z.konto.id;
+  const nein = (grund, hinweis) => ({ ok: /** @type {false} */ (false), grund, hinweis });
+  const nichtPruefbar = (grund) => nein(grund, HINWEIS_FAKTOR_NICHT_PRUEFBAR);
+  const a = typeof aktion === "string" ? aktion : "";
+  if (!KONTO_FAKTOR_AKTIONEN.includes(a))
+    return nein("aktion-unbekannt", `Unbekannte Aktion. Erlaubt: ${KONTO_FAKTOR_AKTIONEN.join(", ")}.`);
+
+  let stand;
+  try { stand = await kontoFaktorStand(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+
+  if (a === "stand") return { ok: true, daten: { aktiv: stand.aktiv, ausstehend: stand.ausstehend } };
+
+  if (a === "beginnen") {
+    let e;
+    try { e = await kontoFaktorBeginnen(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+    const eg = "grund" in e ? e.grund : null;
+    if (eg === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    if (eg === "ausstehend")
+      return nein("faktor-ausstehend", "Eine Einrichtung ist bereits begonnen. Bitte mit dem ersten Code "
+        + "bestätigen oder nach 15 Minuten neu beginnen.");
+    if (eg || !("geheimnis" in e)) return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+    return { ok: true, daten: { geheimnis: e.geheimnis, otpauth: e.otpauth,
+      hinweis: "Geheimnis und Adresse erscheinen genau einmal. In der App erfassen und mit dem ersten "
+        + "Code bestätigen." } };
+  }
+
+  /* bestaetigen */
+  if (stand.aktiv) return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+  if (!stand.ausstehend) return nein("faktor-nichts", "Es ist keine Einrichtung begonnen.");
+  const code = typeof zweifaktor === "string" ? zweifaktor.trim() : "";
+  if (!code) return nein("zweifaktor-erforderlich", "Bitte den ersten Code aus der App angeben.");
+  if (faktorTor) {
+    const t = await faktorTor(kontoFaktorId(id));
+    if (t && t.nichtPruefbar) return nichtPruefbar("faktor-bremse");
+    if (t) return { ...nein("zweifaktor-gebremst", HINWEIS_FAKTOR_FALSCH), wartet: Number(t.wartet) || 0 };
+  }
+  let vor;
+  try { vor = await kontoFaktorVorpruefen(store, id, code); } catch { return nichtPruefbar("faktor-lesen"); }
+  if (!vor.ok && vor.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+  if (!vor.ok) return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
+  const vorher = await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }));
+  if (vorher.fehler) return nichtPruefbar("sitzungen");
+  let e;
+  try { e = await kontoFaktorBestaetigen(store, id, code); } catch { return nichtPruefbar("faktor-lesen"); }
+  const bg = "grund" in e ? e.grund : null;
+  if (bg === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+  if (bg || !("wiederherstellung" in e)) return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
+  const danach = await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }));
+  return { ok: true, sitzungenBeendet: vorher.beendet + danach.beendet,
+    daten: { aktiv: true, wiederherstellung: e.wiederherstellung,
+      hinweis: "Der zweite Faktor ist eingerichtet. Die Wiederherstellungscodes erscheinen genau einmal; "
+        + "jeder gilt einmal. Bitte mit Passwort und Code aus der App neu anmelden." } };
 }
 
 /**
@@ -231,7 +409,7 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
  * @param {unknown} token
  * @param {{jetzt?: () => number, sitzungsAblage?: (object|null)}} [o]
  * @returns {Promise<{ok: true, accountId: string, epoche: number,
- *     seit: number, bis: number, sitzungsId: string}
+ *     seit: number, bis: number, sitzungsId: string, zweifaktor?: true}
  *   |{ok: false, grund: string, hinweis: string}>}
  */
 export async function sitzungPruefen(store, token, { jetzt = Date.now,
@@ -257,7 +435,9 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
   /* Die Kennung der Sitzung — die Prüfsumme des Merkmals, nie das Merkmal. An ihr
      hängt eine Arbeitssitzung, die aus dieser Anmeldung entsteht. */
   return { ok: true, accountId: konto.id, epoche: Number(s.epoche),
-    seit: Number(s.seit), bis: Number(s.bis), sitzungsId: accountSitzungsId(token) };
+    seit: Number(s.seit), bis: Number(s.bis), sitzungsId: accountSitzungsId(token),
+    /* OPT-1-F: nur wenn die Anmeldung den zweiten Faktor bestanden hat. */
+    ...(s.zweifaktor === true ? { zweifaktor: /** @type {true} */ (true) } : {}) };
 }
 
 /**

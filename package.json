@@ -137,6 +137,7 @@
     "pruefung:accountanmeldung": "vitest run pruefungen/accountanmeldung.test.js",
     "pruefung:anmeldung-http": "vitest run pruefungen/anmeldung-http.test.js",
     "pruefung:betriebsauswahl": "vitest run pruefungen/betriebsauswahl.test.js",
+    "pruefung:konto-anmeldeweg": "vitest run pruefungen/konto-anmeldeweg.test.js",
     "pruefung:generation": "vitest run pruefungen/mitgliedschaftsgeneration.test.js",
     "pruefung:arbeitssitzung": "vitest run pruefungen/arbeitssitzung.test.js",
     "pruefung:lebendigkeit": "vitest run pruefungen/lebendigkeit.test.js",
