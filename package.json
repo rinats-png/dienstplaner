@@ -180,7 +180,7 @@
     "pruefung:import-bestand": "vitest run pruefungen/import-bestand-imp1.test.js",
     "pruefung:schichtfolge-live": "vitest run pruefungen/ki-schichtfolge-live.test.js --testTimeout=60000",
     "pruefung:person-eintritt": "vitest run pruefungen/person-eintritt.test.js pruefungen/person-eintritt-stempel.test.js pruefungen/bestand-personalnummer.test.js pruefungen/speicher-personalnummer.test.js --testTimeout=60000",
-    "pruefung:koordination": "vitest run pruefungen/koordination.test.js --testTimeout=120000",
+    "pruefung:koordination": "vitest run pruefungen/koordination.test.js pruefungen/branchschutz.test.js --testTimeout=120000",
     "pruefung:darstellung": "vitest run pruefungen/darstellung-wp35.test.js",
     "pruefung:darstellung-browser": "node pruefungen/browser/darstellung-wp35.mjs",
     "pruefung:verdrahtung": "node werkzeug/verdrahtung-pruefen.mjs && vitest run pruefungen/verdrahtung.test.js",
