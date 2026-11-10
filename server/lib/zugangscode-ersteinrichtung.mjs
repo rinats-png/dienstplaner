@@ -56,7 +56,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { neuHash, pfeffrig, gleich } from "./codes.mjs";
 import { kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
 import { bestandLesenStreng } from "./bestand.mjs";
-import { mitgliedschaftLesen } from "./accounts.mjs";
+import { mitgliedschaftLesen, accountAendern } from "./accounts.mjs";
 
 /** Gültigkeit des Ersteinrichtungscodes in Stunden (nur die Einrichtung, nicht der Zugang). */
 export const ERSTEINRICHTUNG_STUNDEN = 72;
@@ -322,6 +322,13 @@ export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betr
     try { m = await mitgliedschaftLesen(store, accountId, raum); } catch { return { ok: false, grund: "konto" }; }
     if (!m || m.status !== "aktiv" || m.rolle !== "leitung" || String(m.person || "") !== person
       || m.mandantId !== mandantId) return { ok: false, grund: "konto" };
+    /* OPT-4: Ab jetzt ist der zweite Faktor für dieses Konto Pflicht, wo es Rechte von Leitung, Planung oder Kunde
+       trägt — auch ohne den Schalter CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT, wie für einen Zugang aus der Ersteinrichtung
+       (pflichtErzwungen). Sonst arbeitete die Leitung bis zur Einrichtung mit dem Passwort allein. Gesetzt VOR dem
+       Code: Scheitert es, entsteht kein Code (fail-closed). */
+    let pf;
+    try { pf = await accountAendern(store, accountId, { faktorPflicht: true }); } catch { pf = null; }
+    if (!pf || !pf.ok) return { ok: false, grund: "konto" };
   }
 
   /* Kollision praktisch ausgeschlossen, trotzdem streng geprüft: Ein Lesefehler ist kein „frei". */

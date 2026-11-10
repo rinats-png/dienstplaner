@@ -469,6 +469,12 @@ async function faktorAktion(k, b, tor, { email, passwort, zweifaktor, zweifaktor
     /* Alle Sitzungen des Kontos sind beendet — auch die dieses Geräts. */
     return antwort({ ok: true, ...e.daten }, 200, { "set-cookie": keksWeg() });
   }
+  if (zweifaktorAktion === "wiederherstellung-neu") {
+    /* WR-2: Passwort und frischer Code aus der App stimmten. Die Codes stehen nur in der Antwort, nie im Protokoll. */
+    await tor.entlasten();
+    await protokoll("anmelden-konto", k, "erfolg", "Konto-Faktor · Wiederherstellungscodes neu erzeugt");
+    return antwort({ ok: true, ...e.daten });
+  }
   await protokoll("anmelden-konto", k, "erfolg", `Konto-Faktor ${aktion}`);
   return antwort({ ok: true, ...e.daten });
 }

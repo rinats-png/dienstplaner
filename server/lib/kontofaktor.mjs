@@ -25,13 +25,15 @@
 
    Was hier NICHT ist: keine Anfrage, keine Antwort, keine Bremse, kein
    Protokoll (das gehört dem Endpunkt, funktionen/anmeldung.mjs), kein
-   Abschalten und kein Zurücksetzen (Wiederherstellung ist WR-2 bis WR-9).
+   Abschalten und kein Zurücksetzen (Verlustfall ist WR-3 bis WR-9). Neu
+   erzeugen lassen sich nur die Wiederherstellungscodes (WR-2), mit frischem
+   Code aus der App.
    ========================================================================== */
 
 import { createHash } from "node:crypto";
 import {
   zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigenVorpruefen,
-  zweifaktorBestaetigen, zweifaktorPruefen,
+  zweifaktorBestaetigen, zweifaktorPruefen, wiederherstellungNeu,
 } from "./zweifaktor.mjs";
 
 /** Die Kennung, unter der der zweite Faktor eines Kontos liegt. Eigener Vorsatz,
@@ -122,4 +124,21 @@ export async function kontoFaktorPruefen(store, accountId, code) {
   const c = typeof code === "string" ? code.trim() : "";
   if (!c) return { ok: false, grund: "fehlt" };
   return zweifaktorPruefen(store, kontoFaktorId(accountId), { code: c, nachweisErlaubt: false });
+}
+
+/**
+ * WR-2: Wiederherstellungscodes des Kontos neu erzeugen. Nur mit einem frischen Code aus der App (sechs Ziffern, ein
+ * noch nicht angenommener Zeitschritt) — kein Wiederherstellungscode, kein Nachweis (Entscheidungen 8 und 9: keine
+ * Änderung am Faktor allein über einen online eingegebenen Wiederherstellungscode). Den ersten Faktor (Adresse und
+ * Passwort) prüft der Aufrufer (accountanmeldung.mjs). Prüfen, Erzeugen und Ersetzen laufen in zweifaktor.mjs unter
+ * einer Sperre; danach gilt keiner der bisherigen Codes.
+ * @returns {Promise<{ok: true, wiederherstellung: string[]}|{ok: false, grund: string}>}
+ */
+export async function kontoWiederherstellungNeu(store, accountId, code) {
+  if (!brauchbar(accountId)) return { ok: false, grund: "kontokennung" };
+  const c = typeof code === "string" ? code.replace(/\s/g, "") : "";
+  if (!/^\d{6}$/.test(c)) return { ok: false, grund: "nur-totp" };
+  const r = await wiederherstellungNeu(store, kontoFaktorId(accountId), c);
+  if (!r.ok) return { ok: false, grund: r.fehler || "code" };
+  return { ok: true, wiederherstellung: /** @type {string[]} */ (r.wiederherstellung) };
 }

@@ -13,7 +13,7 @@ import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsSchluessel } from "./sitzungen.mjs";
 import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sicherungsschluessel.mjs";
 import { schluesselEpoche } from "./schluesselepoche.mjs";
-import { rollenSitzungOhneFaktor } from "./betreiber-zweifaktor.mjs";
+import { rollenSitzungOhneFaktor, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
 import { kontoFaktorAktiv } from "./kontofaktor.mjs";
 
 /* ==========================================================================
@@ -696,6 +696,14 @@ export async function arbeitssitzungPruefen(store, sitzung,
      die Sitzung eine Kennung, ist sie oben schon als die der Mitgliedschaft und der Position bestätigt; beide Wege
      wählen denselben Betrieb. Die Absage räumt die Sitzung weg und nennt nur den Grund, keine Personendaten. */
   if (!sitzungPersonGilt(bestand, sitzung, heuteBerlin(new Date(jetzt())))) return absage("person-fort");
+
+  /* 6. OPT-4: Konto mit Faktorpflicht (`faktorPflicht`, accounts.mjs). Hängt diese Arbeit an einer Anmeldung OHNE
+     bestandenen Faktor, trägt sie keine Rechte von Leitung, Planung oder Kunde — weder nach der Rolle beim Anlegen noch
+     nach der jetzt wirksamen Rolle der Person (Rollenwechsel nach der Auswahl: als Mitarbeiter gewählt, danach zur
+     Leitung gemacht). Unabhängig vom Schalter; dort gilt zusätzlich rollenSitzungOhneFaktor. Die Sitzung endet. */
+  if (konto.faktorPflicht === true && /** @type {any} */ (anm).zweifaktor !== true
+    && (zweifaktorRolle(sitzung.rolle) || zweifaktorRolle(wirksameRolle(sitzung, bestand))))
+    return absage("konto-faktor-pflicht");
 
   return { ok: true, art: HERKUNFT_KONTO };
 }

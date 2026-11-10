@@ -15,7 +15,7 @@ import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, v
   verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
-  zweifaktorAbschalten, nachweisAusstellen, zweifaktorMoeglich } from "../lib/zweifaktor.mjs";
+  zweifaktorAbschalten, nachweisAusstellen, zweifaktorMoeglich, wiederherstellungNeu } from "../lib/zweifaktor.mjs";
 
 /* ==========================================================================
    EINRICHTUNG
@@ -130,7 +130,11 @@ export default async (req) => {
       + "Bitte später erneut versuchen." }, 503);
   }
   const zfPflicht = zfPflichtUmgebung || zfStand.aktiv || await verwalterZweifaktorIrgendwo(s0);
-  if (zfStand.aktiv) {
+  /* WR-2: Die Neugenerierung der Wiederherstellungscodes prüft ihren frischen Code aus der App selbst — zusammen mit
+     dem Erzeugen und Ersetzen unter EINER Sperre (zweifaktor.mjs, wiederherstellungNeu). Die allgemeine Prüfung unten
+     liefe vorher und verbrauchte den Zeitschritt. Ein Wiederherstellungscode oder Nachweis gilt dort nie. */
+  const zfNeu = zfAktion === "wiederherstellung-neu";
+  if (zfStand.aktiv && !zfNeu) {
     const nurCode = zfAbschalten || zfAktion === "nachweis" || zfVerwalterAenderung;
     if (!zfCode && (nurCode || !zfNachweis)) {
       await protokoll("zweifaktor", k, "abgewiesen", `fehlt · ${wer.name}`);
@@ -202,6 +206,8 @@ export default async (req) => {
       const erg = await zweifaktorBestaetigen(s0, id, zfCode);
       if (erg.fehler === "pfeffer") return antwort({ fehler: "Das Geheimnis lässt sich nicht "
         + "entschlüsseln (CENTRIC_PFEFFER fehlt oder wurde geändert). Neu beginnen." }, 503);
+      if (erg.fehler === "epoche") return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+        + "Bitte später erneut versuchen." }, 503);
       if (erg.fehler) {
         await new Promise((r) => setTimeout(r, 400));
         await protokoll("zweifaktor", k, "abgewiesen", `Bestätigung · ${wer.name}`);
@@ -220,7 +226,43 @@ export default async (req) => {
         hinweis: "Im Kopf x-centric-zweifaktor-nachweis mitschicken. Gilt 15 Minuten, nur für "
           + "diesen Schlüssel, nicht zum Abschalten." });
     }
-    return antwort({ fehler: "Unbekannte Aktion. Erlaubt: beginnen, bestaetigen, nachweis." }, 400);
+    if (zfNeu) {
+      /* WR-2: Verwalterschlüssel (oben geprüft, erster Faktor) UND frischer Code aus der App. */
+      if (!zfStand.aktiv) return antwort({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409);
+      const neuCode = typeof zfCode === "string" ? zfCode.replace(/\s/g, "") : "";
+      if (!neuCode) return antwort({ fehler: "Dafür ist ein frischer Code aus der App nötig.",
+        zweifaktor: "erforderlich" }, 401);
+      const gebremst = await zfBremse(); if (gebremst) return gebremst;
+      if (!/^\d{6}$/.test(neuCode)) {
+        await new Promise((r) => setTimeout(r, 400));
+        await protokoll("zweifaktor", k, "abgewiesen", "Neugenerierung ohne Code aus der App");
+        return antwort({ fehler: "Neue Wiederherstellungscodes gibt es nur mit dem aktuellen Code aus der App, "
+          + "nicht mit einem Wiederherstellungscode.", zweifaktor: "falsch" }, 401);
+      }
+      let r;
+      try { r = await wiederherstellungNeu(s0, id, neuCode); }
+      catch {
+        return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+          + "Bitte später erneut versuchen." }, 503);
+      }
+      if (!r.ok && (r.fehler === "pfeffer" || r.fehler === "epoche"))
+        return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+          + "Bitte später erneut versuchen." }, 503);
+      if (!r.ok) {
+        await new Promise((res) => setTimeout(res, 400));
+        await protokoll("zweifaktor", k, "abgewiesen", `Neugenerierung · ${r.fehler}`);
+        return antwort({ fehler: r.fehler === "wiederholt"
+          ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+          : "Der zweite Faktor stimmt nicht.", zweifaktor: "falsch" }, 401);
+      }
+      await zfEntlasten();
+      await protokoll("zweifaktor", k, "erfolg", "Wiederherstellungscodes neu erzeugt");
+      return antwort({ ok: true, wiederherstellung: r.wiederherstellung,
+        hinweis: "Neue Wiederherstellungscodes. Sie erscheinen genau einmal; jeder gilt einmal. Alle bisherigen "
+          + "Wiederherstellungscodes gelten nicht mehr." });
+    }
+    return antwort({ fehler: "Unbekannte Aktion. Erlaubt: beginnen, bestaetigen, nachweis, "
+      + "wiederherstellung-neu." }, 400);
   }
 
   /* Beschäftigte und Schichtverantwortung schreiben nur, was zu ihrer
