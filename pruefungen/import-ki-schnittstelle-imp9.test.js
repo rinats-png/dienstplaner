@@ -407,6 +407,18 @@ describe("IMP-9 A2: Minimierung und Leck-Prüfung — Personendaten erreichen de
     expect(m.paket.spalten.at(-1)).toMatchObject({ ueberschrift: `Spalte ${alle.length + 3}`, art: "platzhalter" });
   });
 
+  it("bei einem Allowlist-Treffer geht nur das KANONISCHE Synonym hinaus, nie die Rohzelle mit Zusatz (Initialen, Symbole, Leerzeichen)", () => {
+    const basis = [{ index: 0, kopf: "Nachname", feld: "nachname", herkunft: "genau" }, { index: 1, kopf: "Vorname", feld: "vorname", herkunft: "genau" }];
+    const koepfe = ["Team É.Ñ.", "Haus ©®", "Name (M. S.)", "T e a m", "TEAM", "Team - Hans S.", "Stand\u200bort"];
+    const spalten = [...basis, ...koepfe.map((kopf, i) => ({ index: i + 2, kopf, feld: null, herkunft: null }))];
+    const m = eingabeMinimieren({ spalten, zeilen: [], sperrliste: LEERE_SPERRLISTE() });
+    expect(m.ok).toBe(true);
+    const gesendet = m.paket.spalten.map((x) => x.ueberschrift);
+    expect(gesendet).toEqual(["Team", "Haus", "Spalte 5", "Team", "Team", "Spalte 8", "Standort"]);
+    expect(JSON.stringify(m.paket)).not.toMatch(/É|Ñ|©|®|M\. S\.|Hans|\u200b|T e a m|\(/);
+    for (const x of m.paket.spalten) expect(x.ueberschrift).toMatch(/^(Spalte \d+|[A-Z][a-z0-9]+)$/);
+  });
+
   it("der Anbieter bekommt eine eingefrorene Kopie: er kann das Paket nicht verändern", async () => {
     let versuch;
     const s = stub((e) => { try { e.paket.spalten[0].ueberschrift = "X"; versuch = "geschrieben"; } catch { versuch = "verweigert"; } return gut(); });

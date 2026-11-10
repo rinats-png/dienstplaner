@@ -148,6 +148,8 @@ export function kiFreigabe({ konfig, schalter, anbieter, jetzt = Date.now }) {
    -------------------------------------------------------------------------- */
 /** Das feste Vokabular: normalisierte Überschriften-Synonyme des Imports (personen.mjs). NUR diese gehen im Klartext hinaus. */
 const ERLAUBTE_UEBERSCHRIFTEN = new Set(Object.values(FELD_SYNONYME).flat());
+/** Gesendet wird nie die Rohzelle, sondern das KANONISCHE Synonym (Form aus FELD_SYNONYME, erster Buchstabe groß): Zusätze wie Initialen oder Symbole fahren nicht mit. */
+const kanonisch = (norm) => norm.charAt(0).toUpperCase() + norm.slice(1);
 /** Eine Kopfzeile gilt als erkannt, wenn mindestens zwei Spalten genau ein Synonym des Vokabulars tragen (Analyse: herkunft "genau"). */
 const kopfzeileErkannt = (spalten) => spalten.filter((s) => s && s.feld && s.herkunft === "genau").length >= 2;
 
@@ -199,8 +201,9 @@ export function eingabeMinimieren({ spalten, zeilen, sperrliste, proben = 0, kop
       gesehen.add(s.index);
       /* Die Sperrliste kennt nur BEREITS gespeicherte Personen, nie die der Datei: ein Name, ein Ort, eine Einheit oder die erste Datenzeile einer Datei
          ohne Kopfzeile wäre als „Überschrift“ ungeschützt. Deshalb Klartext nur aus dem festen Vokabular, sonst Platzhalter. */
-      const klar = kopfErkannt && typeof s.kopf === "string" && s.kopf.length <= 100 && ERLAUBTE_UEBERSCHRIFTEN.has(kopfNormalisieren(s.kopf));
-      const ueberschrift = klar ? s.kopf.normalize("NFC").trim() : `Spalte ${s.index + 1}`;
+      const norm = kopfErkannt && typeof s.kopf === "string" && s.kopf.length <= 100 ? kopfNormalisieren(s.kopf) : "";
+      const klar = norm !== "" && ERLAUBTE_UEBERSCHRIFTEN.has(norm);
+      const ueberschrift = klar ? kanonisch(norm) : `Spalte ${s.index + 1}`;
       const spalte = { index: s.index, ueberschrift, art: klar ? "feldname" : "platzhalter" };
       if (nProben > 0) {
         const p = [];
