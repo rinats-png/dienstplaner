@@ -427,6 +427,12 @@ export const GRENZEN = {
      Ablage, weist /einrichten ab, statt im Prozessspeicher weiterzuzählen. */
   zweifaktor: { versuche: 5, fenster: 300, sperre: 900, steigend: true, max: 86400,
     failClosed: true },
+  /* Verlustfall (WR-3, kontowiederherstellung-zugang.mjs): Eröffnen, Rückzug, Freigabe/Ablehnung und Einlösen —
+     je Zugang und je Herkunft. Drei Versuche je Stunde, Sperre steigend bis zu einem Tag (Vorschlag aus
+     KONTO-WIEDERHERSTELLUNG.md, Abschnitt D; Entscheidung 12). Eröffnen zählt immer (es beendet Sitzungen), die
+     übrigen werden nach einem Erfolg entlastet. Der Code aus der App einer Freigabe läuft zusätzlich über
+     `zweifaktor` (eigener Zähler `vf:`). failClosed: Ausfall der Zählerablage → 503, nie Durchlass. */
+  verlust: { versuche: 3, fenster: 3600, sperre: 3600, steigend: true, max: 86400, failClosed: true },
 };
 
 /* Raum-Bytegrenze für Bestandsabrufe (WP-47b, WP-28 Befund 5). Gemessen: ein

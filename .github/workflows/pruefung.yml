@@ -667,6 +667,12 @@ jobs:
       - name: Wiederherstellungscodes neu erzeugen (WR-2)
         run: npm run pruefung:wiederherstellung-neu
 
+      # WR-3: Verlustfall mit Vier-Augen-Freigabe — 24 h Antrag, Token 15 min,
+      # frischer TOTP je Freigabe, nur Leitung desselben Mandanten, keine
+      # Selbstfreigabe, Einheitsregel, Gleichzeitigkeit, Schlüsselepoche.
+      - name: Kontowiederherstellung Verlustfall (WR-3)
+        run: npm run pruefung:kontowiederherstellung-verlust
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration

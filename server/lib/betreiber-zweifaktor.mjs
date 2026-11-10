@@ -38,6 +38,8 @@ import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } fr
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
   zweifaktorPruefen, wiederherstellungNeu,
   zweifaktorAbschalten, zweifaktorEinrichtungVerwerfen, zweifaktorMoeglich } from "./zweifaktor.mjs";
+import { laufenderFall, fallZurueckziehen } from "./kontowiederherstellung.mjs";
+import { verlustAktion, VERLUST_AKTIONEN } from "./kontowiederherstellung-zugang.mjs";
 
 /**
  * Ist der zweite Faktor für Betreibercodes Pflicht? (WP-32d)
@@ -224,7 +226,8 @@ export const betreiberZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.betrei
  * Dasselbe für einen bereits als gültig erkannten Code der Rolle Leitung,
  * Planung oder Kunde (SI-P4). Parameter und Rückgabe wie betreiberZweifaktor.
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
- *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean, ersteinrichtung?: boolean}} a
+ *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean, ersteinrichtung?: boolean,
+ *   verlustKontext?: any}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
@@ -234,11 +237,11 @@ export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
 /**
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
  *   altSchluessel?: string, name: string, art: typeof ART.betreiber, faktorVermerkt?: boolean,
- *   pflichtErzwungen?: boolean, ersteinrichtung?: boolean}} a
+ *   pflichtErzwungen?: boolean, ersteinrichtung?: boolean, verlustKontext?: any}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art,
-  faktorVermerkt = false, pflichtErzwungen = false, ersteinrichtung = false }) {
+  faktorVermerkt = false, pflichtErzwungen = false, ersteinrichtung = false, verlustKontext = null }) {
   const id = art.id(codeSchluessel);
   const E = art.etikett;
   /* Review-Auflage N2: Ohne Pfeffer liegt der Faktor unter einer anderen Kennung (ungepfefferter Schlüssel) und lässt
@@ -250,7 +253,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
   /* OPT-1: Ein Zugang aus der Ersteinrichtung (zugangscode-ersteinrichtung.mjs) trägt die Pflicht selbst — offen
      (`ersteinrichtung`) oder verbraucht (`faktorPflicht`). Für ihn gilt alles, was der Pflichtschalter bewirkt:
      keine Sitzung ohne Faktor, kein Überschreiben einer begonnenen Einrichtung, kein Abschalten über das Netz. */
-  const pflicht = art.pflicht() || pflichtErzwungen === true;
+  let pflicht = art.pflicht() || pflichtErzwungen === true;
   if (art.vermerk && !pfeffrig() && (faktorVermerkt || pflicht)) {
     await protokoll("zweifaktor", k, "fehler", `${E} · Pfeffer fehlt`);
     return { antwort: pfefferFehlt() };
@@ -277,10 +280,13 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
 
   let stand;
   try { stand = await zweifaktorStand(store, id); } catch { return { antwort: nichtPruefbar() }; }
+  /* WR-3: Eine Einrichtung aus einem eingelösten Verlustfall (kontowiederherstellung.mjs) steht unter Pflicht —
+     unabhängig vom Schalter: kein Überschreiben mit dem Code allein, keine Sitzung ohne bestätigten Code. */
+  if (stand.ausVerlust) pflicht = true;
   /* N2: Vermerkt, aber unter der jetzigen Kennung kein aktiver Faktor — der Pfeffer wurde gewechselt (oder die
      Ablage des Faktors fehlt). Kein Durchlassen und auch kein Neueinrichten mit dem Code allein. Rückweg: neuer
      Zugangscode (der alte wird gesperrt). */
-  if (art.vermerk && faktorVermerkt && !stand.aktiv) {
+  if (art.vermerk && faktorVermerkt && !stand.aktiv && !stand.ausVerlust) {
     await protokoll("zweifaktor", k, "fehler", `${E} · vermerkt, aber nicht auffindbar`);
     return { antwort: pfefferFehlt() };
   }
@@ -329,7 +335,27 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     return null;
   };
 
+  /* WR-3: Verlust-Schnittstelle (kontowiederherstellung-zugang.mjs). Ein laufender Fall sperrt Abschalten und
+     Neugenerierung; eine Anmeldung mit gültigem Code aus der App zieht ihn zurück (KONTO-WIEDERHERSTELLUNG.md, E). */
+  let verlustLaufend = null;
+  if (art.vermerk) {
+    try { verlustLaufend = await laufenderFall(store, id); } catch { return { antwort: nichtPruefbar() }; }
+  }
+  const verlustOffen = () => json({ fehler: "Für diesen Zugang läuft ein Verlustfall. Anmelden geht nur mit dem Code "
+    + "aus der App (das zieht den Fall zurück) oder nach Freigabe und Einlösen.", zweifaktor: "verlust-offen" }, 409);
+  if (VERLUST_AKTIONEN.includes(aktion)) {
+    return { antwort: await verlustAktion({ store, k, rumpf, aktion, id, vermerk: art.vermerk === true, stand,
+      kontext: verlustKontext ? { ...verlustKontext, codeSchluessel, kontoSchluessel } : null, name,
+      sitzungenBeenden, codeRichtig, faktorIdFuer: art.id }) };
+  }
+
   if (aktion === "beginnen") {
+    /* WR-3: Eine (auch abgelaufene) Einrichtung aus einem Verlustfall überschreibt der Code allein nie. */
+    if (stand.ausVerlust && !stand.aktiv) {
+      await protokoll("zweifaktor", k, "warnung", `${E} · Überschreiben einer Einrichtung aus einem Verlustfall verweigert`);
+      return { antwort: json({ fehler: "Diese Einrichtung stammt aus einem Verlustfall. Bitte mit dem Geheimnis bestätigen "
+        + "oder einen neuen Fall eröffnen.", zweifaktor: "ausstehend" }, 409) };
+    }
     if (stand.aktiv) return { antwort: json({ fehler: "Der zweite Faktor ist schon eingerichtet. "
       + "Zum Neueinrichten erst abschalten." }, 409) };
     /* Eine laufende Einrichtung zu überschreiben ist ein Eingriff in fremde
@@ -438,6 +464,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
 
   if (aktion === "abschalten") {
     if (!stand.aktiv) return { antwort: json({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409) };
+    if (verlustLaufend) return { antwort: verlustOffen() };
     /* WP-32d (Review 2): Unter Pflicht gibt es kein Abschalten über den Netzweg. Wer Code und einen abgefangenen
        Code der App hat, würde sonst abschalten, ein eigenes Gerät einrichten und den Betreiber aussperren.
        Gerätewechsel und Verlust: offline (werkzeug/betreiber-2fa-zuruecksetzen.mjs). */
@@ -468,6 +495,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
      bleibt, wie er ist, nur der Satz Codes wird ersetzt. */
   if (aktion === "wiederherstellung-neu") {
     if (!stand.aktiv) return { antwort: json({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409) };
+    if (verlustLaufend) return { antwort: verlustOffen() };
     if (!code) return { antwort: json({ fehler: "Bitte den aktuellen Code aus der App angeben.",
       zweifaktor: "erforderlich" }, 401) };
     const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
@@ -502,10 +530,23 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
   }
 
   if (aktion) return { antwort: json({ fehler: "Unbekannte Aktion. Erlaubt: stand, beginnen, "
-    + "bestaetigen, abschalten, wiederherstellung-neu." }, 400) };
+    + "bestaetigen, abschalten, wiederherstellung-neu, verlust-melden, verlust-zurueckziehen, verlust-freigeben, "
+    + "verlust-ablehnen, verlust-einloesen." }, 400) };
 
   /* Gewöhnliche Anmeldung. */
-  if (stand.aktiv) { const r = await pruefen(); if (r) return { antwort: r }; }
+  if (stand.aktiv) {
+    /* WR-3: Bei laufendem Fall gilt nur der Code aus der App (er zieht den Fall zurück). Ein Wiederherstellungscode
+       wird dann gar nicht erst geprüft — und also nicht verbraucht. */
+    if (verlustLaufend && code && !/^\d{6}$/.test(code.replace(/\s/g, ""))) {
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · Verlustfall offen, Wiederherstellungscode abgewiesen`);
+      return { antwort: verlustOffen() };
+    }
+    const r = await pruefen(); if (r) return { antwort: r };
+    if (verlustLaufend) {
+      try { await fallZurueckziehen(store, { traegerId: id }); } catch { return { antwort: nichtPruefbar() }; }
+      await protokoll("zweifaktor", k, "warnung", `${E} · Verlustfall ${verlustLaufend.fall} durch Anmeldung mit Code aus der App zurückgezogen`);
+    }
+  }
   else if (pflicht) {
     await codeRichtig();      // der Code war richtig; die Einrichtung ist der nächste Schritt, kein Rateversuch
     await protokoll("zweifaktor", k, "abgewiesen", `${E} · Pflicht, nicht eingerichtet`);
