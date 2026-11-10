@@ -219,7 +219,7 @@ const BERECHNET_SCHLUESSEL = new Set(["feld", "person", "einheit", "ref", "wert"
 /* Felder, deren `ref` eine Dienstart ist, und Felder, deren Wert eine
    Dienstart ist (Review F5: Dienst-Kennungen gehen nur als Alias hinein). */
 const REF_IST_DIENST = new Set(["dienstart.beginn", "dienstart.ende", "dienstart.dauer", "besetzung.ist", "besetzung.soll",
-  "aenderung.art"]);
+  "aenderung.art", "kandidat.zulaessig", "kandidat.spielraum", "kandidat.hinderung", "ruhezeit.ist"]);
 const WERT_IST_DIENST = new Set(["schicht.dienst", "zyklus.tag"]);
 const STUFEN = ["hinweis", "achtung", "recht"];
 const AENDERUNGEN = ["neu", "geaendert", "entfernt"];
