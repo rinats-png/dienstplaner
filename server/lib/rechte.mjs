@@ -30,6 +30,7 @@ import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenmodule.mjs";
 import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
+import { vorgabenZusammen } from "./vorgaben.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -1376,6 +1377,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
       const bereiche = bereichsplanZusammen(geschickt, ort.betrieb);
       if (bereiche.grund) return { verweigert: bereiche.grund };
+      /* Interne Vorgaben (WP-I4): nur org.edit, Form, Stufengrenze und Wann/Wer vom Server (vorgaben.mjs). */
+      const vorgaben = vorgabenZusammen(ort.betrieb, geschickt, { darfOrgEdit: darf(rolle, "org.edit"), person: sitzung.person,
+        tarif: ort.betrieb.tarif, jetzt: new Date().toISOString() });
+      if (vorgaben.grund) return { verweigert: vorgaben.grund };
+      geschickt = vorgaben.mandant;
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };

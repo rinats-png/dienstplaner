@@ -90,6 +90,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Branchenmodule: wer geschaltet, bestätigt oder geprüft hat, Grundlage der Mitbestimmung, Modulprotokoll (`geaendertVon`, `mitbestimmung.grundlage`/`bestaetigtVon`, `regelwerte[].geprueftVon`/`geaendertVon`, `einstellungen.modulprotokoll`) ²⁹ | – | ✓ | – | ✓ | ✓ | – | ✓ | ✓ | B |
 | Betriebliche Regelwerte (`einstellungen.regelwerte`: Wert, Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus, Stufe, Prüf- und Änderungszeitpunkt) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Interne Vorgaben (`vorgaben`: Name, Beschreibung, Regelart und Parameter, Geltung, Zeitraum, Stärke, Priorität, Grundlage, Ausnahmen, Status, Wann/Wer; WP-I4) ³⁰ | – | nur Text und Zahlen ohne Personen | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -507,6 +508,11 @@ eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`s
 Andere Mitteilungen legen Planung, Leitung und die Schichtverantwortung (eigener Bereich) an — Titel ≤ 120,
 Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger ändern an eigenen Mitteilungen nur
 `gelesen`. An der Person wird höchstens der Merker `pushSchluessel: true` geschrieben.
+
+³⁰ WP-I4 (Intelligence-Plan, Block K), neue Zeile "Interne Vorgaben", keine neue Spalte: **interne Vorgaben** (betriebliche Regeln des Regelbaukastens, `vorgaben`, Verwaltung in `server/lib/vorgaben.mjs`).
+**Lesen:** Planung, Leitung und Kundenrolle alles. Der Betriebsrat bekommt Zahlen und Texte ohne Personenbezug — Name, Beschreibung, Regelart, Stärke, Priorität, Bezug, Status, Zeitraum, Grundlage mit Fundstelle, die Geltung (Art, Einheiten, Gruppen) —, bei Geltung "einzelne Personen" und bei den Ausnahmen nur die **Anzahl**, nie die Personen, nie die Parameter, nie Wer und Wann. Beschäftigte und Schichtverantwortung bekommen das Feld nicht. Name und Beschreibung sind Freitext: Die Oberfläche bittet, keine Personennamen und keine Personenmerkmale zu nennen; Wortstämme zu Gesundheit, Leistung, Verhalten weist der Server ab (Plan 6.3).
+**Schreiben:** nur mit `org.edit` (Leitung, Kundenrolle) — anlegen, ändern, aktivieren, deaktivieren, löschen. Die Planung hat den Voll-Schreibweg, aber kein `org.edit`: Sie wird abgewiesen, ein unveränderter Rundweg (auch ohne das Feld) ändert nichts. Der Server prüft die Form (der Regelbaukasten rechnet die Parameter probeweise), begrenzt die **aktiven** Vorgaben je Preisstufe (Basis 5, Business 25, Enterprise unbegrenzt, E-21; unbekannte Stufe wie Basis; nach einem Stufenwechsel nach unten bleibt der Bestand, aber keine weitere wird aktiv) und setzt Wann/Wer (`geaendertAm/-Von`, `aktiviertAm/-Von`) selbst. Eine neue Berechtigung gibt es nicht; `org.edit` ist bewusst wiederverwendet (Entscheidung offen, ob die Planung Vorgaben ändern darf — Mitbestimmung nach § 87 BetrVG).
+**Wirkung:** noch keine — eine aktive Vorgabe ist gespeichert und rechenbar, wirkt aber erst mit WP-I5 in Planungsassistent, Ersatzsuche und Selbstplanung. Geprüft in `pruefungen/intelligence-vorgaben.test.js`.
 
 ## 2. Weitere Wege
 

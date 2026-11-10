@@ -145,6 +145,7 @@ import { lade } from "./lib/download.js";
 
 
 import { Einsatzorte } from "./ansichten/einsatzorte.jsx";
+import { InterneVorgaben } from "./ansichten/vorgaben.jsx";
 import { Stempeluhr } from "./ansichten/stempeluhr.jsx";
 import { korrekturMeldung, ZeitFormular, KorrekturKarte, StempelBefunde } from "./ansichten/korrekturen.jsx";
 import { Standorte } from "./ansichten/standorte.jsx";
@@ -653,6 +654,7 @@ function Betrieb({ sitz, akt }) {
         <div>
           <H1 sub="Standorte und Bezeichnungen. Stammdaten und Regelwerk führt die Organisationsleitung.">Betrieb</H1>
           <Standorte sitz={sitz} akt={akt} />
+          <InterneVorgaben sitz={sitz} akt={akt} nurLesen />
           {/* Jugendarbeitsschutz „mehrschichtig“: auch die Planung (pattern.edit, Nutzerentscheidung). */}
           {darf(sitz, "pattern.edit") && <JugendschutzSchalter sitz={sitz} akt={akt} />}
           {/* WP-19.0: Branchenmodule — die Planung sieht den Stand und nutzt eingeschaltete Module, schaltet nicht. */}
@@ -687,6 +689,9 @@ function Betrieb({ sitz, akt }) {
       <PlanFreigabeSchalter sitz={sitz} akt={akt} />
 
       <JugendschutzSchalter sitz={sitz} akt={akt} />
+
+      {/* WP-I4: interne Vorgaben anlegen, testen, aktivieren — nur org.edit; die Planung liest. */}
+      <InterneVorgaben sitz={sitz} akt={akt} />
 
       {/* WP-19.0: Branchenmodule — Einschalten nur mit org.edit, Wann/Wer und Prüfung beim Server. */}
       <BranchenModule sitz={sitz} akt={akt} darf={(r) => darf(sitz, r)}
