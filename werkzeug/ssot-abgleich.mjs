@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gemergteListe } from "./gh-rest.mjs";
 import { paketeFuerPr, brauchtPrBeleg, ERLEDIGT } from "./ssot-zuordnung.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,9 +40,7 @@ export function ssotLesen(datei) {
 /** Gemergte PRs in die Integration, mit Titel und Branch. */
 export function gemergteUndPrs(datei) {
   if (datei) return JSON.parse(readFileSync(datei, "utf8"));
-  const text = execFileSync("gh", ["pr", "list", "--state", "merged", "--base", BASIS, "--limit", "500",
-    "--json", "number,title,headRefName"], { cwd: WURZEL, encoding: "utf8" });
-  return JSON.parse(text);
+  return gemergteListe(BASIS, WURZEL);
 }
 
 /** Klassifiziert alle Pakete. */

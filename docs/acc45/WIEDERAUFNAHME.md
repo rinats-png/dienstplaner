@@ -1,12 +1,13 @@
 # Wiederaufnahmepunkt CENTRIC (Stand 2026-11-09, Nachtübergabe)
 
-## Koordinationsregel (verbindlich)
-- Der ursprüngliche Hauptchat (CENTRIC, lokale CLI-Sitzung) bleibt dauerhaft der primäre Entwicklungskoordinator. Sein autonomer Release-Auftrag bleibt bestehen.
-- Die geplante Cloud-Aufgabe (stündlich, Minute 32) ist ergänzend: Nacht- und Wiederaufnahmekoordination. Sie übernimmt Entwicklung nur vorübergehend bei ausdrücklich dokumentierter Übergabe, und diese Übergabe gilt nur bis der Hauptchat wieder aktiv ist.
-- Der Hauptchat übernimmt nach einem Abgleich des Repository-Zustands wieder die primäre Koordination.
-- Niemals zwei gleichzeitig schreibende Hauptkoordinatoren. Keine doppelte Bearbeitung bereits integrierter Pakete. Kein Verlust laufender Agentenarbeit. Keine Reduzierung des Funktionsumfangs.
-- Kein Merge nach `main`, kein produktives Deployment ohne ausdrückliche Freigabe des Betreibers.
-- Abgleich-Stand dieses Dokuments: Hauptchat wieder aktiv am 2026-11-09 nach 19:50 (Repository-Zustand geprüft: Integrationskopf 744a2f68, #169 Kopf e015368 mit Folgepaket OPT-1-F; kein fremder Schreibvorgang auf #169 nach 18:44).
+## Koordinationsregel (verbindlich, Stand 2026-11-10)
+- Schreibender Koordinator ist, wer die Lease im Branch `koordination/lease` hält. Werkzeug: `node werkzeug/koordination.mjs status|uebernehmen|erneuern|freigeben|pruefen --halter H`. Jede Änderung ist ein Commit ohne Force; Git lehnt gleichzeitige Änderungen ab (Compare-and-Swap). Zwei Schreiber sind damit ausgeschlossen.
+- Der Hauptchat ist bevorzugt, solange er nachweislich aktiv entwickelt (gültige Lease, regelmäßig erneuert). Ein historischer Eintrag "Hauptchat primär" verhindert keine Übernahme.
+- Übernahme durch die Cloud-Aufgabe nur bei fehlender, freigegebener oder abgelaufener Lease und mit ausdrücklicher `--uebergabe` (Beleg). Eine gültige fremde Lease wird nie überschrieben.
+- Gültigkeit 90 Minuten (höchstens 240). Jeder Lauf erneuert am Anfang und vor jedem Push; ohne `pruefen`-Exit 0 keine schreibende Arbeit.
+- Rückübergabe: Der Hauptchat meldet sich. Die Cloud-Aufgabe beendet oder sichert ihre Arbeit (Push), dann `freigeben`. Erst danach übernimmt der Hauptchat.
+- Niemals zwei Schreiber. Kein Merge nach `main`, kein produktives Deployment ohne Betreiberfreigabe.
+- Übernahme 2026-11-10 durch `cloud-nachtaufgabe` auf Betreiber-Anweisung (Hauptchat: Schleife beendet, kein Monitor, kein Cron). Integrationskopf zu diesem Zeitpunkt 38fc7d0.
 
 ## Abweichungen zu docs/WIEDERAUFNAHME.md (Cloud-PR #168, nicht von dieser Sitzung geändert)
 Dieses Dokument (`docs/acc45/WIEDERAUFNAHME.md`) ist für den Acc45-Strang maßgeblich. PR #168 enthält eine parallele Übergabe mit folgenden veralteten Aussagen, die NICHT befolgt werden dürfen:

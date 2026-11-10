@@ -16,6 +16,7 @@
    dass zwei Watcher gleichzeitig Statusänderungen schreiben.
    ========================================================================== */
 import { execFileSync } from "node:child_process";
+import { prAnsicht } from "./gh-rest.mjs";
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,7 +42,6 @@ function lockNehmen() {
 }
 function lockFreigeben() { try { rmSync(LOCK, { recursive: true, force: true }); } catch { /* egal */ } }
 
-function gh(args) { return JSON.parse(execFileSync("gh", args, { cwd: WURZEL, encoding: "utf8" })); }
 
 const ERGEBNIS = (code, text) => { if (text) console.log(text); process.exitCode = code; };
 
@@ -81,7 +81,7 @@ function main() {
   const schreibe = process.argv.includes("--schreibe");
   const datei = process.argv.includes("--datei") ? process.argv[process.argv.indexOf("--datei") + 1] : null;
 
-  const pr = gh(["pr", "view", pnr, "--json", "number,title,headRefName,baseRefName,mergedAt"]);
+  const pr = prAnsicht(pnr, WURZEL);
   if (!pr.mergedAt || pr.baseRefName !== BASIS) return ERGEBNIS(2, `PR #${pnr} ist nicht in ${BASIS} gemergt (Basis ${pr.baseRefName}).`);
 
   const quelle = datei ? path.resolve(datei) : SSOT;
