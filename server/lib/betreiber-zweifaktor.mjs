@@ -144,6 +144,16 @@ export const rollenZweifaktorId = (codeSchluessel) =>
   createHash("sha256").update(`rollen-code:${codeSchluessel}`).digest("hex");
 
 /**
+ * OPT-1-F: Die Kennung, unter der der zweite Faktor eines KONTOS liegt (Leitung nach der Ersteinrichtung). Er hängt an
+ * der Kontokennung, nicht an einem Zugangscode: Der Ersteinrichtungscode richtet ihn nur ein und ist danach
+ * verbraucht; die Anmeldung läuft über Konto und Passwort (anmeldung.mjs) und diesen Faktor (betriebsauswahl.mjs).
+ * Eigener Namensraum (`konto-faktor:`), damit er mit keiner Code-Kennung kollidiert.
+ * @param {string} accountId
+ */
+export const kontoZweifaktorId = (accountId) =>
+  createHash("sha256").update(`konto-faktor:${accountId}`).digest("hex");
+
+/**
  * Review-Auflage N2: Vermerk am Zugang, dass für ihn ein zweiter Faktor eingerichtet ist (`zweiterFaktor: true`).
  *
  * Die Kennung des Faktors hängt am gepfefferten Ablageschlüssel des Codes. Fehlt der Pfeffer oder wurde er gewechselt,
@@ -224,7 +234,8 @@ export const betreiberZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.betrei
  * Dasselbe für einen bereits als gültig erkannten Code der Rolle Leitung,
  * Planung oder Kunde (SI-P4). Parameter und Rückgabe wie betreiberZweifaktor.
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
- *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean, ersteinrichtung?: boolean}} a
+ *   altSchluessel?: string, name: string, faktorVermerkt?: boolean, pflichtErzwungen?: boolean, ersteinrichtung?: boolean,
+ *   faktorId?: string}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
@@ -234,12 +245,13 @@ export const rollenZweifaktor = (a) => codeZweifaktor({ ...a, art: ART.rolle });
 /**
  * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
  *   altSchluessel?: string, name: string, art: typeof ART.betreiber, faktorVermerkt?: boolean,
- *   pflichtErzwungen?: boolean, ersteinrichtung?: boolean}} a
+ *   pflichtErzwungen?: boolean, ersteinrichtung?: boolean, faktorId?: string}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  */
 async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name, art,
-  faktorVermerkt = false, pflichtErzwungen = false, ersteinrichtung = false }) {
-  const id = art.id(codeSchluessel);
+  faktorVermerkt = false, pflichtErzwungen = false, ersteinrichtung = false, faktorId = "" }) {
+  /* OPT-1-F: Ein Ersteinrichtungscode richtet den Faktor des KONTOS ein (kontoZweifaktorId), nicht einen am Code. */
+  const id = faktorId || art.id(codeSchluessel);
   const E = art.etikett;
   /* Review-Auflage N2: Ohne Pfeffer liegt der Faktor unter einer anderen Kennung (ungepfefferter Schlüssel) und lässt
      sich weder einrichten noch prüfen. Nie still mit dem alten Schlüssel weiter: Ist der Faktor für diesen Zugang
@@ -396,7 +408,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
       const ein = await ersteinrichtungEinloesen(store, zugangSchluessel, async () => {
         const r = await zweifaktorBestaetigen(store, id, code);
         return r.fehler ? { ok: false, fehler: r.fehler } : { ...r, ok: true };
-      });
+      }, { istAktiv: async () => (await zweifaktorStand(store, id)).aktiv });
       if (!ein.ok && ein.grund === "verbraucht") {
         await protokoll("zweifaktor", k, "abgewiesen", `${E} · Ersteinrichtung bereits eingelöst`);
         return { antwort: unbekannt() };
@@ -559,6 +571,78 @@ export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
   return { aktiv: true };
 }
 
+/* --------------------------------------------------------------------------
+   OPT-1-F: DER ZWEITE FAKTOR EINES KONTOS
+
+   Leitungskonten (Konto + Passwort, anmeldung.mjs) öffnen einen Betrieb in betriebsauswahl.mjs. Der zweite Faktor
+   dafür liegt unter kontoZweifaktorId(accountId) — eingerichtet wird er ausschließlich über einen Ersteinrichtungscode
+   (zugangscode-ersteinrichtung.mjs), nie aus einer Kontositzung heraus: Wer nur Konto und Passwort hat, kann keinen
+   eigenen Faktor einrichten. Abschalten über das Netz gibt es nicht.
+   -------------------------------------------------------------------------- */
+
+/** Die Kontokennung einer Arbeitssitzung aus einem Konto (`herkunft.art === "account"`); sonst "". */
+function kontoIdAusSitzung(sitzung) {
+  const h = sitzung && sitzung.herkunft;
+  return h && h.art === "account" && typeof h.accountId === "string" && h.accountId ? h.accountId : "";
+}
+
+/**
+ * Hat dieses Konto einen aktiven zweiten Faktor? Ein Lesefehler wirft (der Aufrufer antwortet 503, kein Ja).
+ * @param {any} store
+ * @param {string} accountId
+ * @returns {Promise<boolean>}
+ */
+export async function kontoFaktorEingerichtet(store, accountId) {
+  if (!accountId || typeof accountId !== "string") return false;
+  return (await zweifaktorStand(store, kontoZweifaktorId(accountId))).aktiv;
+}
+
+/**
+ * Den zweiten Faktor eines Kontos prüfen (TOTP oder Wiederherstellungscode, nie ein Nachweis).
+ *
+ * - Kein Faktor am Konto: nein (403 `kein-faktor`) — es gibt keine Rückfall-Anmeldung.
+ * - Code fehlt: nein (403 `erforderlich`), ohne Versuch zu zählen.
+ * - Bremse je Faktor und je Herkunft (GRENZEN.zweifaktor, unverändert, fail-closed) — dieselben Zähler wie beim Zugang.
+ * - Falscher oder schon verbrauchter Code: nein (403 `falsch`), nach 400 ms; der Zähler bleibt stehen.
+ * - Ablage nicht lesbar: 503. Nie ein Ja im Zweifel.
+ * @param {{store: any, k: string, accountId: string, code?: unknown}} a
+ * @returns {Promise<{ok: boolean, status?: number, fehler?: string, grund?: string, wartet?: number}>}
+ */
+export async function kontoFaktorPruefen({ store, k, accountId, code }) {
+  const nein = (status, fehler, grund) => ({ ok: false, status, fehler, grund });
+  const nichtPruefbarT = "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.";
+  if (!accountId || typeof accountId !== "string") return nein(403, "Der zweite Faktor stimmt nicht.", "konto");
+  const id = kontoZweifaktorId(accountId);
+  try {
+    if (!(await zweifaktorStand(store, id)).aktiv)
+      return nein(403, "Für dieses Konto ist kein zweiter Faktor eingerichtet.", "kein-faktor");
+  } catch { return nein(503, nichtPruefbarT, "faktor nicht lesbar"); }
+  const eingabe = typeof code === "string" ? code.trim() : "";
+  if (!eingabe) return nein(403, "Bitte den aktuellen Code aus der App eingeben.", "erforderlich");
+  const kennungen = [`kf:${id.slice(0, 16)}`, k];
+  for (const kk of kennungen) {
+    const b = await bremse("zweifaktor", kk);
+    if (!b.frei) {
+      await protokoll("zweifaktor", k, "gebremst", b.grund);
+      return { ...nein(429, "Zu viele Versuche. Bitte später erneut versuchen.", "gebremst"), wartet: b.wartet };
+    }
+    if (b.fehler && GRENZEN.zweifaktor.failClosed) return nein(503, nichtPruefbarT, "bremse nicht lesbar");
+  }
+  let p;
+  try { p = await zweifaktorPruefen(store, id, { code: eingabe, nachweisErlaubt: false }); }
+  catch { return nein(503, nichtPruefbarT, "faktor nicht lesbar"); }
+  if (!p.ok) {
+    await new Promise((r) => setTimeout(r, 400));
+    await protokoll("zweifaktor", k, "abgewiesen", `Konto · ${p.grund}`);
+    return nein(403, p.grund === "wiederholt" ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+      : "Der zweite Faktor stimmt nicht.", "falsch");
+  }
+  for (const kk of kennungen) await entlasten("zweifaktor", kk);
+  if (p.art === "wiederherstellung")
+    await protokoll("zweifaktor", k, "erfolg", "Konto · Wiederherstellungscode verbraucht");
+  return { ok: true };
+}
+
 /**
  * D-N2 (WP-18, Sicherheitsreview N-2): Ist für den Zugangscode dieser Sitzung ein zweiter Faktor eingerichtet?
  * Gesucht wird wie in rollenFaktorFrisch (entlang `ersetztDurch`). Zusätzlich zählt der Vermerk `zweiterFaktor: true`
@@ -570,7 +654,11 @@ export async function betreiberFaktorFrisch({ store, k, sitzung, code }) {
  */
 export async function rollenFaktorEingerichtet({ store, sitzung }) {
   const konto = String((sitzung && sitzung.konto) || "");
-  if (!konto) return false;
+  if (!konto) {
+    /* OPT-1-F: Arbeitssitzung aus einem Konto — der Faktor hängt am Konto. */
+    const ak = kontoIdAusSitzung(sitzung);
+    return ak ? kontoFaktorEingerichtet(store, ak) : false;
+  }
   const kette = [konto];
   let akt = konto;
   for (let i = 0; i < 4; i++) {
@@ -603,6 +691,13 @@ export async function rollenFaktorFrisch({ store, k, sitzung, code }) {
   const nein = (status, fehler, grund) => ({ ok: false, status, fehler, grund });
   const nichtPruefbarT = "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.";
   const konto = String((sitzung && sitzung.konto) || "");
+  if (!konto && kontoIdAusSitzung(sitzung)) {
+    /* OPT-1-F: Arbeitssitzung aus einem Konto — derselbe Faktor wie bei der Betriebsauswahl, dieselbe Bremse. */
+    const r = await kontoFaktorPruefen({ store, k, accountId: kontoIdAusSitzung(sitzung), code });
+    if (r.ok) return { ok: true };
+    return { ...nein(r.status === 429 ? 429 : r.status === 503 ? 503 : 403, r.fehler, r.grund),
+      ...(r.wartet ? { wartet: r.wartet } : {}) };
+  }
   if (!konto) return nein(403, "Für diesen Schritt ist ein Code aus der App nötig; dieser Zugang hat keinen.", "ohne konto");
   const kette = [konto];
   try {

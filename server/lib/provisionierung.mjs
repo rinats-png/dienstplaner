@@ -338,7 +338,7 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
     /* Ein begonnener Vorgang? Dann diesen zu Ende bringen, nicht einen
        zweiten anfangen. */
     if (konto.testbetriebRaum) {
-      const wieder = await wiederaufnehmen(store, sitzungen, konto);
+      const wieder = await wiederaufnehmen(store, sitzungen, konto, { ersteinrichtung, jetzt });
       if (wieder) return wieder;
     }
 
@@ -417,7 +417,7 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
       /** @type {{ok: boolean, grund?: string, code?: string, bis?: string}} */
       const ec = await ersteinrichtungscodeAnlegen(store, {
         raum, mandantId: erstellt.mandantId, betrieb: erstellt.betrieb, person: person.id,
-        name: profil.betriebsname, laeuftAb: erstellt.laeuftAb, jetzt,
+        name: profil.betriebsname, laeuftAb: erstellt.laeuftAb, jetzt, kontoId: konto.id,
       }).catch((e) => ({ ok: false, grund: textVon(e) }));
       if (!ec.ok || !ec.code) {
         const weg = await zurueckrollen(store, sitzungen, konto.id, raum);
@@ -451,10 +451,28 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
 }
 
 /**
+ * OPT-1-F (Blocker 3): DER Einstieg für jeden Aufrufer, der einem Konto einen Testbetrieb anlegt. Er übergibt
+ * `ersteinrichtung: true` immer selbst — ein Aufrufer kann es nicht vergessen und nicht abschalten. Der Code (an das
+ * Konto gebunden) steht im Ergebnis genau einmal; verschickt wird er hier nicht.
+ *
+ * Unter Pflicht (CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1) ist ein Betrieb ohne diesen Code für seine Leitung nicht
+ * erreichbar (SI-P4 Delta-Auflage 2); die Prüfung pruefungen/provisionierung-aufrufer.test.js lässt in server/ keinen
+ * anderen Aufruf von testbetriebFuerAccountAnlegen zu.
+ *
+ * @param {object} store
+ * @param {object} sitzungen
+ * @param {{accountId?: unknown, jetzt?: () => number}} [o]
+ */
+export function testbetriebMitErsteinrichtung(store, sitzungen, { accountId, jetzt = Date.now } = {}) {
+  return testbetriebFuerAccountAnlegen(store, sitzungen, { accountId: /** @type {any} */ (accountId), jetzt,
+    ersteinrichtung: true });
+}
+
+/**
  * Bringt einen begonnenen Vorgang zu Ende — oder räumt ihn ab.
  * @returns {Promise<object|null>} ein Ergebnis, oder null für „neu beginnen"
  */
-async function wiederaufnehmen(store, sitzungen, konto) {
+async function wiederaufnehmen(store, sitzungen, konto, { ersteinrichtung = false, jetzt = Date.now } = {}) {
   const raum = konto.testbetriebRaum;
   /* Nur ein Raum, den es wirklich nicht gibt, wird abgeräumt. Ein
      vorübergehender Lesefehler hätte sonst den Vermerk gelöscht und einen
@@ -475,10 +493,25 @@ async function wiederaufnehmen(store, sitzungen, konto) {
     : false;
 
   if (m && index && person) {
+    /* OPT-1-F: Auch ein wiederaufgenommener Vorgang liefert den Ersteinrichtungscode, wenn der Aufrufer ihn verlangt —
+       sonst bliebe die Leitung unter Pflicht ausgesperrt. Der Code entsteht VOR dem Verbrauch des Anspruchs: Scheitert
+       er, bleibt alles wie es war und ein späterer Versuch kann es wieder versuchen (ein Code ohne Abnehmer, falls
+       danach der Verbrauch scheitert, verfällt nach der Frist und hat nie eine Auslieferung). */
+    let ersteinrichtungCode = null;
+    if (ersteinrichtung === true) {
+      /** @type {{ok: boolean, grund?: string, code?: string, bis?: string}} */
+      const ec = await ersteinrichtungscodeAnlegen(store, {
+        raum, mandantId: String(m.mandantId), betrieb: m.betrieb, person: String(m.person),
+        name: (gelesen.bestand.mandanten[m.betrieb] || {}).name || raum, jetzt, kontoId: konto.id,
+      }).catch((e) => ({ ok: false, grund: textVon(e) }));
+      if (!ec.ok || !ec.code) return { ok: false, grund: `ersteinrichtung: ${grundVon(ec)}` };
+      ersteinrichtungCode = { code: ec.code, bis: ec.bis };
+    }
     /* Alles da, nur der Verbrauch fehlt: nachziehen. */
     const verbraucht = await testbetriebVerbrauchen(store, konto.id);
     if (!verbraucht.ok) return { ok: false, grund: `verbrauch: ${grundVon(verbraucht)}` };
-    return { ok: true, raum, mitgliedschaft: m, person: m.person, wiederaufgenommen: true };
+    return { ok: true, raum, mitgliedschaft: m, person: m.person, wiederaufgenommen: true,
+      ...(ersteinrichtungCode ? { ersteinrichtung: ersteinrichtungCode } : {}) };
   }
 
   /* Etwas fehlt: Der Raum wird abgeräumt, der Anspruch bleibt offen. */

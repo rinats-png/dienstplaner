@@ -11,7 +11,7 @@ import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letz
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
-import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
+import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt, kontoZweifaktorId,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { ersteinrichtungOffen, ersteinrichtungGueltig, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
@@ -1026,7 +1026,11 @@ async function behandeln(req, context, ctx) {
           faktorVermerkt: eintrag.zweiterFaktor === true,
           /* OPT-1: Zugang aus der Ersteinrichtung — Faktor Pflicht; ein verbrauchter kommt hier nie an. */
           pflichtErzwungen: ersteinrichtungOffen(eintrag) || eintrag.faktorPflicht === true,
-          ersteinrichtung: ersteinrichtungOffen(eintrag) });
+          ersteinrichtung: ersteinrichtungOffen(eintrag),
+          /* OPT-1-F: Der Faktor eines Ersteinrichtungscodes liegt am KONTO (kontoId, geprüft in
+             ersteinrichtungGueltig), damit die Kontoanmeldung nach dem Verbrauch des Codes ihn prüfen kann. */
+          faktorId: ersteinrichtungOffen(eintrag) && typeof eintrag.kontoId === "string"
+            ? kontoZweifaktorId(eintrag.kontoId) : "" });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {

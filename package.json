@@ -20,7 +20,7 @@
     "pruefung:gesund": "vitest run pruefungen/gesund.test.js",
     "pruefung:doku": "vitest run pruefungen/doku.test.js",
     "pruefung:herkunft": "vitest run pruefungen/herkunft-xff.test.js",
-    "pruefung:betreiber-zweifaktor": "vitest run pruefungen/betreiber-zweifaktor.test.js pruefungen/rollen-zweifaktor.test.js pruefungen/rollen-zweifaktor-merken.test.js pruefungen/zugangscode-ersteinrichtung.test.js",
+    "pruefung:betreiber-zweifaktor": "vitest run pruefungen/betreiber-zweifaktor.test.js pruefungen/rollen-zweifaktor.test.js pruefungen/rollen-zweifaktor-merken.test.js pruefungen/zugangscode-ersteinrichtung.test.js pruefungen/opt-1-f-anmeldeweg.test.js",
     "pruefung:ablage": "vitest run pruefungen/ablage.test.js",
     "pruefung:aufraeumen": "vitest run pruefungen/aufraeumen.test.js",
     "pruefung:bremse-lokal": "vitest run pruefungen/bremse-lokal.test.js",

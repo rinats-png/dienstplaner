@@ -70,7 +70,8 @@ async function probebestand() {
 }
 
 const neuerCode = (personId, o = {}) => E.ersteinrichtungscodeAnlegen(laden(), {
-  raum: RAUM, mandantId: "m1", betrieb: 0, person: personId, name: "Haus", jetzt: () => jetzt, ...o });
+  raum: RAUM, mandantId: "m1", betrieb: 0, person: personId, name: "Haus", jetzt: () => jetzt,
+  kontoId: `konto-${personId}-${nr}`, ...o });
 
 /** Alles unter konto: als Text — darin darf kein Klartextcode stehen. */
 async function kontoText(s) {
@@ -238,21 +239,95 @@ describe("OPT-1 Gültigkeit", () => {
    ========================================================================== */
 
 describe("OPT-1 Einlösen (Verbrauch vor Einrichtung)", () => {
-  it("scheitert die Einrichtung nach dem Verbrauch, bleibt der Code verbraucht und ohne Faktor", async () => {
+  it("OPT-1-F Blocker 4: scheitert die Aktivierung (Faktor nicht aktiv), wird der Verbrauch zurückgenommen — der Code brennt nicht", async () => {
     const e = await neuerCode("l4");
     const schl = CODES.neuHash(e.code);
+    const vorher = await K.kontoLesenStreng(laden(), schl);
     const r = await E.ersteinrichtungEinloesen(laden(), [schl], async () => ({ fehler: "code" }));
     expect(r.ok).toBe(false);
+    expect(r.zurueckgenommen).toBe(true);
     const ein = await K.kontoLesenStreng(laden(), schl);
-    expect(ein.ersteinrichtung).toBeUndefined();
-    expect(ein.ersteinrichtungVerbraucht).toBeTruthy();
-    expect(ein.zweiterFaktor).toBeUndefined();
-    expect(E.ersteinrichtungGueltig(ein, e.code, jetzt)).toBe(false);
-    /* Ein zweites Einlösen ruft die Einrichtung nicht mehr auf. */
-    let gerufen = false;
-    const r2 = await E.ersteinrichtungEinloesen(laden(), [schl], async () => { gerufen = true; return { ok: true }; });
+    /* Der Eintrag ist genau der von vorher: offen, ohne Verbrauch, ohne Pflichtvermerk. */
+    expect(ein).toEqual(vorher);
+    expect(ein.ersteinrichtungVerbraucht).toBeUndefined();
+    expect(ein.faktorPflicht).toBeUndefined();
+    expect(E.ersteinrichtungGueltig(ein, e.code, jetzt)).toBe(true);
+    /* Ein zweiter Versuch ist möglich und kann gelingen. */
+    const r2 = await E.ersteinrichtungEinloesen(laden(), [schl], async () => ({ ok: true }));
+    expect(r2.ok).toBe(true);
+    const nach = await K.kontoLesenStreng(laden(), schl);
+    expect(nach.ersteinrichtungVerbraucht).toMatchObject({ grund: "eingerichtet" });
+    expect(E.ersteinrichtungGueltig(nach, e.code, jetzt)).toBe(false);
+  });
+
+  it("OPT-1-F Blocker 4: bleibt der Code verbraucht, wenn der Faktor doch aktiv ist, unklar ist oder das Zurücknehmen scheitert", async () => {
+    /* Aktivierung wirft, Faktor aber aktiv: verbraucht (das Konto hat den Faktor, der Weg ist die Kontoanmeldung). */
+    const e1 = await neuerCode("l4");
+    const s1 = CODES.neuHash(e1.code);
+    const r1 = await E.ersteinrichtungEinloesen(laden(), [s1], async () => { throw new Error("nach dem Schreiben"); },
+      { istAktiv: async () => true });
+    expect(r1).toMatchObject({ ok: false });
+    expect(r1.zurueckgenommen).toBeUndefined();
+    expect((await K.kontoLesenStreng(laden(), s1)).ersteinrichtungVerbraucht).toBeTruthy();
+
+    /* Aktivierung wirft, Zustand nicht bestimmbar: verbraucht (fail-closed). */
+    const e2 = await neuerCode("l4");
+    const s2 = CODES.neuHash(e2.code);
+    const r2 = await E.ersteinrichtungEinloesen(laden(), [s2], async () => { throw new Error("x"); },
+      { istAktiv: async () => { throw new Error("nicht lesbar"); } });
     expect(r2.ok).toBe(false);
-    expect(gerufen).toBe(false);
+    expect(r2.zurueckgenommen).toBeUndefined();
+    expect((await K.kontoLesenStreng(laden(), s2)).ersteinrichtungVerbraucht).toBeTruthy();
+
+    /* Ohne Zustandsprüfung zählt eine Ausnahme als unklar: verbraucht. */
+    const e3 = await neuerCode("l4");
+    const s3 = CODES.neuHash(e3.code);
+    const r3 = await E.ersteinrichtungEinloesen(laden(), [s3], async () => { throw new Error("x"); });
+    expect(r3.zurueckgenommen).toBeUndefined();
+    expect((await K.kontoLesenStreng(laden(), s3)).ersteinrichtungVerbraucht).toBeTruthy();
+
+    /* Das Zurücknehmen selbst scheitert: verbraucht, nicht offen. */
+    const e4 = await neuerCode("l4");
+    const s4 = CODES.neuHash(e4.code);
+    const echt = laden();
+    let schreibt = 0;
+    const kaputt = new Proxy(echt, { get(t, p) {
+      if (p === "setJSON" || p === "set") return async (...a) => {
+        schreibt += 1;
+        if (schreibt >= 2) throw new Error("Ablage nicht beschreibbar");   // 1 = Verbrauch, 2 = Zurücknehmen
+        return t[p](...a);
+      };
+      const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+    } });
+    const r4 = await E.ersteinrichtungEinloesen(kaputt, [s4], async () => ({ fehler: "x" }), { istAktiv: async () => false });
+    expect(r4.ok).toBe(false);
+    expect(r4.zurueckgenommen).toBeUndefined();
+    const ein4 = await K.kontoLesenStreng(laden(), s4);
+    expect(ein4.ersteinrichtungVerbraucht).toBeTruthy();
+    expect(E.ersteinrichtungGueltig(ein4, e4.code, jetzt)).toBe(false);
+  });
+
+  it("OPT-1-F: Fehlversuche bleiben nach einem Zurücknehmen gezählt (kein Zähler-Reset)", async () => {
+    const e = await neuerCode("l4");
+    const schl = CODES.neuHash(e.code);
+    await E.ersteinrichtungFehlversuch(laden(), [schl]);
+    await E.ersteinrichtungFehlversuch(laden(), [schl]);
+    const r = await E.ersteinrichtungEinloesen(laden(), [schl], async () => ({ fehler: "code" }));
+    expect(r.zurueckgenommen).toBe(true);
+    const ein = await K.kontoLesenStreng(laden(), schl);
+    expect(ein.ersteinrichtung.fehlversuche).toBe(2);
+  });
+
+  it("OPT-1-F: ein Ersteinrichtungscode ohne Kontobindung ist ungültig und lässt sich nicht anlegen", async () => {
+    const o = await E.ersteinrichtungscodeAnlegen(laden(), { raum: RAUM, mandantId: "m1", betrieb: 0, person: "l4",
+      jetzt: () => jetzt });
+    expect(o).toMatchObject({ ok: false, grund: "konto" });
+    const e = await neuerCode("l4");
+    const eintrag = await K.kontoLesenStreng(laden(), CODES.neuHash(e.code));
+    expect(E.ersteinrichtungGueltig(eintrag, e.code, jetzt)).toBe(true);
+    const ohne = { ...eintrag }; delete ohne.kontoId;
+    expect(E.ersteinrichtungGueltig(ohne, e.code, jetzt)).toBe(false);
+    expect(E.ersteinrichtungGueltig({ ...eintrag, kontoId: "" }, e.code, jetzt)).toBe(false);
   });
 
   it("scheitert der Verbrauch, wird nichts eingerichtet", async () => {

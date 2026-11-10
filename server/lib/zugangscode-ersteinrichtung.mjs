@@ -29,6 +29,15 @@
    gespeichert in der Ablage. Ein falscher Zugangscode selbst trifft keinen
    Eintrag; ihn begrenzt die Anmeldebremse.
 
+   OPT-1-F (Folgepaket): Der Code ist an ein KONTO gebunden (`kontoId` am Zugang). Der zweite Faktor, den er einzurichten
+   erlaubt, liegt unter der Kennung dieses Kontos (betreiber-zweifaktor.mjs, kontoZweifaktorId), nicht am Code. Damit
+   ist der Weg nach der Einrichtung die Kontoanmeldung mit Passwort UND diesem Faktor (betriebsauswahl.mjs) — nie der
+   verbrauchte Code. Ein Ersteinrichtungscode ohne `kontoId` ist ungültig (fail-closed): Er würde einen Faktor am Code
+   einrichten, den nach dem Verbrauch nichts mehr prüft — die Aussperrung aus SI-P4 Delta-Auflage 2.
+   Transaktion (Blocker 4): Scheitert die Aktivierung des Faktors nach dem Verbrauch und ist der Faktor danach NICHT
+   aktiv, wird der Verbrauch zurückgenommen (ursprünglicher Eintrag, samt Fehlversuchszähler). Bleibt unklar, ob der
+   Faktor aktiv ist, oder scheitert das Zurücknehmen, bleibt der Code verbraucht (fail-closed).
+
    Übergabe: Der Klartext entsteht hier und verlässt dieses Modul genau
    einmal, im Rückgabewert. Er wird nicht verschickt und nicht gespeichert —
    abgelegt sind nur der gepfefferte Ablageschlüssel (codes.mjs, neuHash) und
@@ -133,18 +142,25 @@ const fristOffen = (e, jetzt) => {
 };
 
 /**
- * Den Ersteinrichtungscode einlösen (H1): ERST verbrauchen, DANN einrichten — als Einheit, je Zugang nacheinander.
+ * Den Ersteinrichtungscode einlösen (H1, OPT-1-F Blocker 4): ERST verbrauchen, DANN einrichten — als Einheit, je Zugang
+ * nacheinander.
  *   - Ist der Zugang nicht mehr offen (verbraucht, Frist vorbei, Vermerk fehlt): nein, `einrichten` läuft nicht.
- *   - Scheitert das Schreiben des Verbrauchs: nein, `einrichten` läuft nicht (nichts eingerichtet).
- *   - Scheitert `einrichten` nach dem Verbrauch: nein, der Code bleibt verbraucht, das Konto ohne Faktor.
- * Nach dem Erfolg tragen die Einträge `zweiterFaktor` und `faktorPflicht`; der Code gilt nie wieder.
+ *   - Scheitert das Schreiben des Verbrauchs: nein, `einrichten` läuft nicht (nichts eingerichtet). Ein halb
+ *     geschriebener Verbrauch (mehrere Schlüssel) wird zurückgenommen.
+ *   - Scheitert `einrichten` und ist der Faktor danach nicht aktiv: Der Verbrauch wird zurückgenommen, der Code gilt
+ *     weiter (`zurueckgenommen: true`) — ein Systemfehler verbrennt den Code nicht. Fehlversuche bleiben gezählt.
+ *   - Ist der Faktor trotzdem aktiv, ist unklar (`istAktiv` wirft) oder scheitert das Zurücknehmen: Der Code bleibt
+ *     verbraucht (fail-closed). Mit aktivem Faktor am Konto ist die Kontoanmeldung der Weg, nicht der Code.
+ * Nach dem Erfolg tragen die Einträge `faktorPflicht`; der Code gilt nie wieder.
  * @param {any} store
  * @param {Array<string|undefined>} schluessel  alle Ablageschlüssel des Zugangs
  * @param {() => Promise<any>} einrichten  liefert `{ok: true, ...}` bei Erfolg
- * @param {{jetzt?: number}} [o]
- * @returns {Promise<{ok: boolean, grund?: string, ergebnis?: any}>}
+ * @param {{jetzt?: number, istAktiv?: () => Promise<boolean>}} [o]
+ *   `istAktiv`: ist der Faktor nach einem Fehlschlag aktiv? Ohne: Zurücknehmen nur bei einem gelieferten Fehlergebnis
+ *   (nicht bei einer Ausnahme).
+ * @returns {Promise<{ok: boolean, grund?: string, ergebnis?: any, zurueckgenommen?: boolean}>}
  */
-export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt = Date.now() } = {}) {
+export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt = Date.now(), istAktiv } = {}) {
   const haupt = schluessel.filter(Boolean)[0];
   if (!haupt) return Promise.resolve({ ok: false, grund: "schluessel" });
   return inReihe(haupt, async () => {
@@ -153,13 +169,28 @@ export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt 
     if (!eintraege.length || eintraege.some(([, e]) => ersteinrichtungVerbraucht(e))
       || !eintraege.some(([, e]) => ersteinrichtungOffen(e) && fristOffen(e, jetzt)))
       return { ok: false, grund: "verbraucht" };
+    /* Der Stand vor dem Verbrauch, für das Zurücknehmen. */
+    const vorher = eintraege.map(([s, e]) => [s, structuredClone(e)]);
+    const zurueck = async () => {
+      try { for (const [s, e] of vorher) await kontoSchreiben(store, s, e); return true; } catch { return false; }
+    };
     try { await verbrauchtSchreiben(store, schluessel, eintraege, "eingerichtet", { faktorPflicht: true }); }
-    catch { return { ok: false, grund: "verbrauch" }; }
+    catch {
+      /* Halb geschrieben? Dann zurück (gelingt das nicht, bleibt der Code im Zweifel verbraucht). */
+      await zurueck();
+      return { ok: false, grund: "verbrauch" };
+    }
     /* Den Vermerk `zweiterFaktor` setzt der Aufrufer erst nach gelungener Einrichtung (faktorVermerken). */
-    let ergebnis;
-    try { ergebnis = await einrichten(); } catch { ergebnis = null; }
-    if (!ergebnis || ergebnis.ok !== true) return { ok: false, grund: "einrichtung", ergebnis };
-    return { ok: true, ergebnis };
+    let ergebnis = null, geworfen = false;
+    try { ergebnis = await einrichten(); } catch { geworfen = true; }
+    if (!geworfen && ergebnis && ergebnis.ok === true) return { ok: true, ergebnis };
+    /* Die Aktivierung ist gescheitert. Zurücknehmen nur, wenn sicher ist, dass kein Faktor aktiv wurde. */
+    let sicherKeinFaktor = !geworfen;
+    if (typeof istAktiv === "function") {
+      try { sicherKeinFaktor = (await istAktiv()) === false; } catch { sicherKeinFaktor = false; }
+    }
+    if (sicherKeinFaktor && await zurueck()) return { ok: false, grund: "einrichtung", ergebnis, zurueckgenommen: true };
+    return { ok: false, grund: "einrichtung", ergebnis };
   });
 }
 
@@ -203,6 +234,8 @@ export function ersteinrichtungGueltig(eintrag, code, jetzt = Date.now()) {
   const z = eintrag.ersteinrichtung;
   if (!z || typeof z !== "object" || typeof z.pruefwert !== "string" || typeof z.bis !== "string") return false;
   if (eintrag.rolle !== "leitung" || !eintrag.bestand) return false;
+  /* OPT-1-F: Ohne Kontobindung gäbe es nach dem Verbrauch keinen Weg hinein (Aussperrung) — ungültig. */
+  if (typeof eintrag.kontoId !== "string" || !eintrag.kontoId) return false;
   const bis = new Date(z.bis).getTime();
   if (!Number.isFinite(bis) || !(jetzt < bis)) return false;
   const soll = pruefwert(code, eintrag.bestand);
@@ -215,13 +248,15 @@ export function ersteinrichtungGueltig(eintrag, code, jetzt = Date.now()) {
  *
  * @param {any} store  Ablage „centric"
  * @param {{raum?: unknown, mandantId?: unknown, betrieb?: number, person?: unknown, name?: unknown,
- *          laeuftAb?: string|null, jetzt?: () => number}} o
+ *          laeuftAb?: string|null, jetzt?: () => number, kontoId?: unknown}} o
  * @returns {Promise<{ok: boolean, grund?: string, code?: string, bis?: string, kennung?: string}>}
  *   `code` ist der einzige Klartext; er steht nirgends sonst.
  */
 export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betrieb = 0, person, name,
-  laeuftAb = null, jetzt = Date.now } = {}) {
+  laeuftAb = null, jetzt = Date.now, kontoId } = {}) {
   if (!pfeffrig()) return { ok: false, grund: "pfeffer" };
+  /* OPT-1-F: Der Code gehört zu genau einem Konto; dessen Faktor ist der Weg nach der Einrichtung. */
+  if (!kontoId || typeof kontoId !== "string") return { ok: false, grund: "konto" };
   if (!raum || typeof raum !== "string") return { ok: false, grund: "raum" };
   if (!mandantId || typeof mandantId !== "string") return { ok: false, grund: "betrieb" };
   if (!person || typeof person !== "string") return { ok: false, grund: "person" };
@@ -255,7 +290,7 @@ export async function ersteinrichtungscodeAnlegen(store, { raum, mandantId, betr
   const start = new Date(jetzt());
   const bis = new Date(start.getTime() + ERSTEINRICHTUNG_STUNDEN * 3600000).toISOString();
   await kontoSchreiben(store, schluessel, {
-    name: String(name || raum), bestand: raum, rolle: "leitung", person, betrieb, mandantId,
+    name: String(name || raum), bestand: raum, rolle: "leitung", person, betrieb, mandantId, kontoId,
     demo: false, gruppe: null, hinweis: null, angelegt: start.toISOString(),
     ...(laeuftAb ? { laeuftAb } : {}),
     ersteinrichtung: { bis, pruefwert: wert },

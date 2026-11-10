@@ -448,6 +448,9 @@ async function betriebOeffnen(req, k) {
      eine Personenkennung, eine Kontokennung, eine Mitgliedschaft — wird
      nicht gelesen und kann deshalb nichts bewirken. */
   const { raum } = gelesen.daten;
+  /* OPT-1-F: Der Code aus der Authenticator-App ist das zweite Feld, das gelesen wird — ein Nachweis für den zweiten
+     Faktor des Kontos, keine Rolle und keine Kennung. Geprüft wird er in betriebWaehlen, nicht hier. */
+  const zweifaktor = typeof gelesen.daten.zweifaktor === "string" ? gelesen.daten.zweifaktor.slice(0, 64) : undefined;
   if (typeof raum !== "string" || !raum.trim())
     return antwort({ ok: false, fehler: "raum-fehlt" }, 400);
 
@@ -459,7 +462,7 @@ async function betriebOeffnen(req, k) {
   /* Die Arbeitssitzung hängt an dieser Anmeldung: Kennung und Ende der
      geprüften Account-Sitzung gehen mit, nie etwas aus der Anfrage. */
   const e = await betriebWaehlen(store(), { accountId: p.accountId, raum,
-    kontoSitzung: { id: p.sitzungsId, bis: p.bis } });
+    kontoSitzung: { id: p.sitzungsId, bis: p.bis }, zweifaktor, k });
   if (!e.ok) {
     await protokoll("betrieb-waehlen", k, "abgewiesen",
       String(e.grund || "").slice(0, 30));
@@ -476,6 +479,19 @@ async function betriebOeffnen(req, k) {
       return antwort({ ok: false, fehler: "zweifaktor-pflicht",
         hinweis: "Für diesen Arbeitsbereich ist ein zweiter Faktor Pflicht. Bitte mit dem Zugangscode und dem "
           + "Code aus der App anmelden." }, 403);
+    }
+    /* OPT-1-F: Der zweite Faktor des Kontos. Diese Gründe entstehen erst nach Mitgliedschaft, Generation und Person —
+       es entsteht keine Auskunft über fremde Betriebe oder fremde Konten. */
+    if (e.grund === "zweifaktor-erforderlich" || e.grund === "zweifaktor-falsch") {
+      return antwort({ ok: false, fehler: e.grund,
+        hinweis: e.grund === "zweifaktor-erforderlich"
+          ? "Bitte zusätzlich den aktuellen Code aus der Authenticator-App eingeben."
+          : "Der Code aus der Authenticator-App stimmt nicht." }, 403);
+    }
+    if (e.grund === "gebremst") return zuVielAntwort(e.wartet);
+    if (e.grund === "faktor-lesen") {
+      return antwort({ ok: false, fehler: "nicht-moeglich",
+        hinweis: "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen." }, 503);
     }
     return antwort(BETRIEB_ABSAGE, 403);
   }
