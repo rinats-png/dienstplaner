@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 358,1–605,9 PT in 83 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 349,6–593,15 PT in 81 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -15,7 +15,7 @@ flowchart LR
     WP_15["WP-15<br/>REVIEW"]
     WP_16["WP-16<br/>REVIEW"]
     WP_19["WP-19<br/>IN_PROGRESS"]
-    WP_21["WP-21<br/>BLOCKED"]
+    WP_21["WP-21<br/>IN_PROGRESS"]
     WP_30["WP-30<br/>BLOCKED"]
     WP_33["WP-33<br/>REVIEW"]
     WP_34["WP-34<br/>BLOCKED"]
@@ -29,11 +29,9 @@ flowchart LR
     SI_P6b["SI-P6b<br/>BLOCKED"]
     WP_42R1["WP-42R1<br/>BLOCKED"]
     WP_42R2["WP-42R2<br/>BLOCKED"]
-    IMP_5["IMP-5<br/>BLOCKED"]
-    IMP_6["IMP-6<br/>BLOCKED"]
+    IMP_6["IMP-6<br/>IN_PROGRESS"]
     IMP_7["IMP-7<br/>BLOCKED"]
     IMP_8["IMP-8<br/>BLOCKED"]
-    IMP_9["IMP-9<br/>BLOCKED"]
     IMP_10["IMP-10<br/>BLOCKED"]
     OPT_2["OPT-2<br/>BLOCKED"]
     OPT_4["OPT-4<br/>IN_PROGRESS"]
@@ -347,7 +345,7 @@ flowchart LR
 | WP-18 | acc45 | P1 | 6–8,5 | 0 | SI-P4 | App.jsx, rechte.mjs, daten.mjs | opus | INTEGRATED |
 | WP-19 | acc45 | P1 | 0 | 0 | WP-11, WP-22, WP-19.13 | – | siehe WP-19.x | IN_PROGRESS |
 | WP-20 | acc45 | P1 | 6–8,5 | 0 | WP-06 | – | sonnet | INTEGRATED |
-| WP-21 | acc45 | P1 | 10–13,5 | 10–13,5 | WP-12, WP-39 | App.jsx | sonnet | BLOCKED |
+| WP-21 | acc45 | P1 | 10–13,5 | 5–6,75 | WP-12, WP-39 | App.jsx | sonnet | IN_PROGRESS |
 | WP-22 | acc45 | P2 | 6–8,5 | 0 | WP-11 | – | opus | INTEGRATED |
 | WP-23 | acc45 | P2 | 1–1,5 | 0 | WP-43 | – | opus | INTEGRATED |
 | WP-24 | acc45 | P2 | 2–3 | 0 | WP-43 | – | opus | INTEGRATED |
@@ -492,11 +490,11 @@ flowchart LR
 | IMP-2 | acc45 | P1 | 3–5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-3 | acc45 | P1 | 3–5 | 0 | IMP-0, IMP-2 | – | opus | INTEGRATED |
 | IMP-4 | acc45 | P1 | 2,5–4 | 0 | IMP-1, IMP-3 | – | sonnet | INTEGRATED |
-| IMP-5 | acc45 | P2 | 1,5–2,5 | 1,5–2,5 | IMP-3 | – | sonnet | BLOCKED |
-| IMP-6 | acc45 | P2 | 3–5 | 3–5 | IMP-3 | – | sonnet | BLOCKED |
+| IMP-5 | acc45 | P2 | 1,5–2,5 | 0 | IMP-3 | – | sonnet | INTEGRATED |
+| IMP-6 | acc45 | P2 | 3–5 | 1,5–2,5 | IMP-3 | – | sonnet | IN_PROGRESS |
 | IMP-7 | acc45 | P2 | 4–7 | 4–7 | IMP-6 | – | sonnet | BLOCKED |
 | IMP-8 | acc45 | P2 | 2–3 | 2–3 | IMP-2 | – | haiku | BLOCKED |
-| IMP-9 | acc45 | P2 | 0,5–1 | 0,5–1 | IMP-0 | – | sonnet | BLOCKED |
+| IMP-9 | acc45 | P2 | 0,5–1 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-10 | acc45 | P3 | 0,5–1 | 0,5–1 | IMP-4 | – | haiku | BLOCKED |
 | OPT-1 | acc45 | P1 | 1–1,5 | 0 | SI-P4 | daten.mjs | opus | INTEGRATED |
 | OPT-1-F | acc45 | P1 | 2–4 | 0 | OPT-1 | daten.mjs | opus | INTEGRATED |
