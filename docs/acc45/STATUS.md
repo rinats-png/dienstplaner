@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 188 · BLOCKED 83 · READY 16 · IN_PROGRESS 7 · REVIEW 10 · INTEGRATED 69 · DONE 3
+**Pakete gesamt:** 188 · BLOCKED 83 · READY 16 · IN_PROGRESS 7 · REVIEW 9 · INTEGRATED 70 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 88 | 22 | 0 | 5 | 5 | 54 | 2 | 55,4–87,05 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
-| Intelligence | 40 | 28 | 0 | 0 | 1 | 11 | 0 | 222,3–391,8 |
+| Intelligence | 40 | 28 | 0 | 0 | 0 | 12 | 0 | 219,5–387 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **349,6–593,15 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **346,8–588,35 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -56,16 +56,15 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **349,6–593,
 | WP-28b Lasttest-Befund 6: Sicherung bricht unter Last mit ENOENT ab (Wiederholung greift nicht); Auswertung des Nachlaufs S2/S5 | IN_PROGRESS | `acc45/infra/wp28b-nachlauf` | NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). |
 | WP-07b Stempel-Sonderfall „500 nach Speicherung“ (clientEventId, sechs Szenarien) | REVIEW | `acc45/time/wp07b-500-nach-speicherung` | SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. |
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). |
-| WP-I12 Decision Engine (Extraktion aus App.jsx) | REVIEW | `intelligence/wp-i12-decision-engine-extrakti` | Kern extrahiert (26 von 27 Definitionen). Offen als WP-I12a/b/c. Fachfragen 2, 3, 5 (docs/acc45/wp-i12-fragen.md) sind Betreiberentscheidungen. Vorher: Schätzung laut Plan, nicht belegt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
 | IMP-6 Schichtmodelle und Schichtzyklen: mehrere Modelle, unterschiedliche Zykluslängen, bestehende Validierungen | IN_PROGRESS | `–` | Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. |
 | OPT-4 SI-P4 Option 4: zweiter Faktor (TOTP) direkt für Benutzerkonten, Zielarchitektur | IN_PROGRESS | `–` | Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. |
 
-### Bereit zum Start (9)
+### Bereit zum Start (16)
 
-WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-8 (acc45, 2–3 PT) · IMP-10 (acc45, 0,5–1 PT) · WR-3 (acc45, 2,5 PT)
+WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I19 (intelligence, 16–28 PT) · WP-I20 (intelligence, 16–28 PT) · WP-I22 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I24 (intelligence, 5–9 PT) · WP-I29 (intelligence, 18–30 PT) · WP-I30 (intelligence, 4–8 PT) · WP-I31 (intelligence, 9–15 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-8 (acc45, 2–3 PT) · IMP-10 (acc45, 0,5–1 PT) · WR-3 (acc45, 2,5 PT) · WP-I12c (intelligence, 0,5–1 PT)
 
-### Integriert in `integration/centric-complete` (69)
+### Integriert in `integration/centric-complete` (70)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -112,6 +111,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-I6 Planungsreife | PR #138 in integration/release-v4 | PR #138 in integration/release-v4 |
 | WP-I10 Architekturabgleich Spezifikation auf heutigen Stack | PR #70 in integration/release-v4 | – |
 | WP-I11 Faktenpaket-Vertrag (Positivliste, Alias) | #86 (intelligence/wp-i11-integration) | Opus-Sicherheitsreview + Delta-Review (2 Runden) |
+| WP-I12 Decision Engine (Extraktion aus App.jsx) | Kern 4d553280 (Direkt-Merge 2026-11-06, kein PR) liegt in integration/release-v4; Koordinator-Entscheidung 2026-11-10: Beleg über Commit, Gleichheits- und Golden-Tests (pruefungen/engine-rechenkern.test.js, engine-golden, engine-paketliste, engine-einsatz) grün in der CI des Integrationskopfs, Teilpakete WP-I12a (#174) und WP-I12b (#140) mit PR und Review integriert. | – |
 | WP-I13 Gateway, Attrappe, Router, Prüfer | PR #146 in integration/release-v4 | PR #146 in integration/release-v4 |
 | WP-I14 Fingerprint, Ergebnis-Speicher, Decision Context | PR #159 in integration/release-v4 | PR #159 in integration/release-v4 |
 | WP-I15 Kostenschutz, Limits, Deadline, degradierter Modus | PR #158 in integration/release-v4 | PR #158 in integration/release-v4 |
@@ -205,7 +205,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-I6 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I10 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | WP-I11 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| WP-I12 | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| WP-I12 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | WP-I13 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I14 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I15 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
