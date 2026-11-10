@@ -29,6 +29,8 @@ import { darfSelbstEintragen, laufendeRunde, selbstplanStand } from "../lib/selb
 import { NOTRUF_ARTEN } from "../lib/notrufe.js";
 import { NAV_BETREIBER, NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { Logo } from "../ui/logo.jsx";
+import { urlaubAntragFehler } from "../lib/antragpruefung.js";
+import { Fehlerband } from "../gestalt/ansichten.jsx";
 
 
 export const M_TABS = [
@@ -285,7 +287,7 @@ export function MPlan({ sitz, akt, oeffnen }) {
         Mein Plan</MTitel>
 
       {/* Swipebare Schnellfilter — auf dem Telefon schneller als jedes Auswahlfeld */}
-      <div className="reiterreihe" style={{ marginBottom: 16 }}>
+      <div className="reiterreihe reiterreihe-umbruch" style={{ marginBottom: 16 }}>
         {[["alle", "Alle"], ["dienst", "Nur Dienste"], ["frei", "Nur frei"],
           ["nacht", "Nachtdienste"], ["we", "Wochenende"]].map(([id, l]) => (
           <button key={id} onClick={() => setSchnell(id)} className="btn btn-sm"
@@ -607,6 +609,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }
   useEffect(() => { if (startTab) setTab(startTab); }, [startTab]);   // Verknüpfung (WP-37)
   const [blatt, setBlatt] = useState(null);
   const [antrag, setAntrag] = useState(null);
+  const [antragFehler, setAntragFehler] = useState("");
   const m = sitz.mandant, p = sitz.person;
   const ungelesen = (m.nachrichten || []).filter((n) => n.personId === p.id && !n.gelesen).length;
   const oeffnen = (was) => setBlatt(was);
@@ -1074,7 +1077,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }
         <MWuensche sitz={sitz} akt={akt} />
       </MBlatt>
 
-      <MBlatt offen={!!antrag} onClose={() => setAntrag(null)} titel="Frei beantragen">
+      <MBlatt offen={!!antrag} onClose={() => { setAntrag(null); setAntragFehler(""); }} titel="Frei beantragen">
         {antrag && (
           <div style={{ display: "grid", gap: 14 }}>
             <Field label="Art">
@@ -1082,14 +1085,17 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }
                 {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich" && a.selbst !== false)
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={antrag.von}
-              onChange={(e) => setAntrag({ ...antrag, von: e.target.value })} /></Field>
-            <Field label="Bis"><Inp type="date" value={antrag.bis}
-              onChange={(e) => setAntrag({ ...antrag, bis: e.target.value })} /></Field>
+              onChange={(e) => { setAntragFehler(""); setAntrag({ ...antrag, von: e.target.value }); }} /></Field>
+            <Field label="Bis"><Inp type="date" value={antrag.bis} aria-invalid={antragFehler ? "true" : undefined}
+              onChange={(e) => { setAntragFehler(""); setAntrag({ ...antrag, bis: e.target.value }); }} /></Field>
             <Field label="Anmerkung"><Inp value={antrag.text}
               onChange={(e) => setAntrag({ ...antrag, text: e.target.value })} /></Field>
+            {/* Ende vor Beginn und Überschneidungen wie in der Rechneransicht: Fehlertext im Blatt, das Blatt bleibt offen. */}
+            {antragFehler && <Fehlerband>{antragFehler}</Fehlerband>}
             <Btn kind="primary" style={{ height: 52, borderRadius: 17, fontSize: 15.5 }}
-              onClick={() => { akt.stelleAntrag({ typ: "abwesenheit", art: antrag.art,
-                von: antrag.von, bis: antrag.bis, text: antrag.text }); setAntrag(null); }}>
+              onClick={() => { const fe = urlaubAntragFehler(m, p.id, antrag); if (fe) { setAntragFehler(fe); return; }
+                akt.stelleAntrag({ typ: "abwesenheit", art: antrag.art,
+                  von: antrag.von, bis: antrag.bis, text: antrag.text }); setAntrag(null); }}>
               Antrag stellen</Btn>
           </div>)}
       </MBlatt>

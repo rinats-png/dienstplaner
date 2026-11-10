@@ -114,7 +114,7 @@ import { Icon } from "./gestalt/icons.jsx";
 import { Erklaerkasten } from "./gestalt/bausteine.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
-import { geraeteStil, SEITENLEISTE_SCHLIESSEN } from "./ui/geraete.js";
+import { geraeteStil, SEITENLEISTE_SCHLIESSEN, SEITENLEISTE_ID, seitenleisteFokus, telefonTauglich } from "./ui/geraete.js";
 import { Scrollbereich } from "./ui/scrollbereich.jsx";
 import { Rechtliches } from "./rechtstexte.jsx";
 
@@ -803,12 +803,14 @@ function Betrieb({ sitz, akt }) {
           </div>
         </Card>)}
 
-      <Card style={{ marginTop: 16, overflowX: "auto" }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead right={<Btn size="sm" onClick={akt.matrixZuruecksetzen}>Auf Standard zurücksetzen</Btn>}>Rollen und Rechte</CardHead>
         <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
           Eine Rolle allein ist keine Berechtigung. Erst Rolle plus Geltungsbereich ergibt eine:
           <span style={{ color: C.text }}> {rollenName(m, "subplaner")} für {m.einheiten[0] ? m.einheiten[0].name : "eine Einheit"}</span> darf dort ändern und sonst nirgends.
         </div>
+        {/* WP-21 Teil 2: Tabelle mit eigenem Querscroll (780 px) als benannter, per Tastatur erreichbarer Bereich mit Hinweis. */}
+        <Scrollbereich label="Rollen und Rechte, Tabelle der Berechtigungen je Rolle">
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 780, marginTop: 16 }}>
           <thead><tr>
             <th style={{ textAlign: "left", padding: "13px 22px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 290 }}><Lab>Berechtigung</Lab></th>
@@ -860,6 +862,7 @@ function Betrieb({ sitz, akt }) {
                 </tr>))}
             </Fragment>))}</tbody>
         </table>
+        </Scrollbereich>
       </Card>
 
       <Abschnitt sub="Ausgabe, Prüfung und Nachweis. Nichts hiervon verändert den Betrieb — es liest ihn nur aus.">
@@ -1033,6 +1036,9 @@ function AppInnen() {
   const [dicht, setDicht] = useState(false);
   const [fokus, setFokus] = useState(false);
   const [seiteOffen, setSeiteOffen] = useState(false);
+  /* WP-21 Teil 2: Fokus hinein beim Öffnen der Seitenleiste, zurück zur Menütaste beim Schließen. */
+  const seiteWarOffen = useRef(false);
+  useEffect(() => { seitenleisteFokus(document, seiteOffen, seiteWarOffen.current); seiteWarOffen.current = seiteOffen; }, [seiteOffen]);
   const [imp, setImp] = useState(false);
   const [postfach, setPostfach] = useState(false);
   const [schmal, setSchmal] = useState(false);
@@ -1711,8 +1717,8 @@ function AppInnen() {
      390 Pixeln ohne waagerechten Überlauf. Und beide sind genau das, was
      eine Schichtverantwortliche abends vom Sofa aus braucht: einen Antrag
      entscheiden und sehen, ob morgen jemand fehlt. */
-  const MOBIL = ["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"];
-  const mobilOk = istBetreiber ? false : MOBIL.includes(aktiveView);
+  /* WP-21 Teil 2: Die Liste steht jetzt in src/ui/geraete.js (TELEFON_ANSICHTEN), samt Beleg in der Gerätematrix. */
+  const mobilOk = telefonTauglich(aktiveView, istBetreiber);
   const tabs = istBetreiber
     ? [["mandanten", "Mandanten", "raster"], ["rechnungen", "Rechnungen", "euro"],
        ["tarife", "Tarife", "tarif"], ["rechner", "Rechner", "rechner"]]
@@ -1734,10 +1740,14 @@ function AppInnen() {
     {verfDlg && <Verfuegbarkeit sitz={sitz} akt={akt} personId={verfDlg} onClose={() => setVerfDlg(null)} />}
     {krank && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
     {warnung && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
-    {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
-      zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
-      fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center" }}>
-      {hinweis}</div>}
+    {/* WP-21: Die Live-Region steht immer im Dokument, nur der Text kommt dazu; so liest Vorlesesoftware auch die
+        Absage eines Stempels („Stempel abgelehnt: …“) vor. Eine erst mit dem Text entstehende Region wird oft überhört. */}
+    <div role="status" aria-live="polite">
+      {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
+        zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
+        fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center" }}>
+        {hinweis}</div>}
+    </div>
   </>);
 
   if (zeigeMobil) return (
@@ -1759,7 +1769,7 @@ function AppInnen() {
         {/* ----------------------- Seitenleiste ----------------------- */}
         {seiteOffen && <button type="button" tabIndex={-1} className="seiten-abdunkelung nur-schmal"
           aria-label={SEITENLEISTE_SCHLIESSEN} onClick={() => setSeiteOffen(false)} />}
-        <aside className={`seitenleiste${seiteOffen ? " offen" : ""}`}
+        <aside id={SEITENLEISTE_ID} className={`seitenleiste${seiteOffen ? " offen" : ""}`}
           aria-label="Hauptnavigation">
           <div className="marke">
             <Logo size={26} hell />

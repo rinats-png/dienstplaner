@@ -12,6 +12,13 @@ export const GERAETE_VIEWPORTS = Object.freeze([
   Object.freeze({ id: "1024x768", w: 1024, h: 768, art: "tablet" }),
 ]);
 
+/** Querformat der Telefone (WP-21 Teil 2): dieselben Geraete um 90 Grad gedreht. Hoehe 360 bis 430 px, Tastatur und Leiste unten nehmen davon viel weg. */
+export const GERAETE_VIEWPORTS_QUER = Object.freeze([
+  Object.freeze({ id: "740x360", w: 740, h: 360, art: "telefon-quer" }),
+  Object.freeze({ id: "844x390", w: 844, h: 390, art: "telefon-quer" }),
+  Object.freeze({ id: "932x430", w: 932, h: 430, art: "telefon-quer" }),
+]);
+
 /** Die Umbruchpunkte der Oberflaeche (max-width, CSS-px). Sie stehen in src/App.jsx (bauStyles) und werden hier nur benannt. */
 export const UMBRUCH = Object.freeze({ telefon: 560, schmal: 820, seitenleiste: 1024 });
 
@@ -20,6 +27,46 @@ export const ZIEL_MINDEST = 24;
 
 /** Beschriftung der Abdunkelung hinter der geoeffneten Seitenleiste (nur Telefon und Tablet). */
 export const SEITENLEISTE_SCHLIESSEN = "Navigation schließen";
+
+/** Ansichten (Kennungen aus src/app/navigation.js), die auf dem Telefon und schmalen Tablets ohne den Hinweis
+ *  „Für Tablet und Rechner ausgelegt“ erscheinen. Eine Ansicht kommt nur hinein, wenn ihre Kernaufgaben mit
+ *  pruefungen/browser/geraete-wp21-ablaeufe.mjs an allen acht Viewports bestanden haben; der Beleg steht in
+ *  docs/acc45/WP-21-GERAETEMATRIX.md, Abschnitt 9 (ein Test prüft, dass jede Kennung dort steht). */
+export const TELEFON_ANSICHTEN = Object.freeze(["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"]);
+/** Dasselbe für die Betreiberkonsole (eigene Kennungen). */
+export const TELEFON_ANSICHTEN_BETREIBER = Object.freeze([]);
+/** Zeigt die Ansicht ohne den Hinweis „Für Tablet und Rechner ausgelegt“? */
+export function telefonTauglich(ansicht, istBetreiber) {
+  return (istBetreiber ? TELEFON_ANSICHTEN_BETREIBER : TELEFON_ANSICHTEN).includes(ansicht);
+}
+
+/** Kennung der Seitenleiste (aria-controls der Menütaste). */
+export const SEITENLEISTE_ID = "seitenleiste";
+
+/**
+ * Fokusführung der Seitenleiste auf Telefon und Tablet (WP-21 Teil 2). Beim Öffnen springt der Fokus auf den aktuellen
+ * Eintrag (die Menütaste liegt dann unter der Leiste; wer mit Tab weitergeht, landete sonst im Inhalt hinter der Abdunkelung).
+ * Beim Schließen kehrt er zur Menütaste zurück, sofern er in der Leiste lag oder verloren war (Escape, Abdunkelung, Auswahl
+ * eines Eintrags). Liegt der Fokus schon im Inhalt, bleibt er dort. `dok` ist document (oder ein Ersatz im Test).
+ * @returns {"hinein"|"zurueck"|"nichts"}
+ */
+export function seitenleisteFokus(dok, offen, warOffen) {
+  const leiste = `#${SEITENLEISTE_ID}`;
+  if (offen) {
+    const ziel = dok.querySelector(`${leiste} .slink[aria-current="page"]`) || dok.querySelector(`${leiste} .slink`);
+    if (ziel) { ziel.focus(); return "hinein"; }
+    return "nichts";
+  }
+  if (!warOffen) return "nichts";
+  const a = dok.activeElement;
+  const verloren = !a || a === dok.body || a === dok.documentElement;
+  const inLeiste = !!a && typeof a.closest === "function" && !!a.closest(leiste);
+  if (verloren || inLeiste) {
+    const taste = dok.querySelector(".kopf-menue");
+    if (taste) { taste.focus(); return "zurueck"; }
+  }
+  return "nichts";
+}
 
 /** Braucht ein Bereich mit eigenem Querscroll den Hinweis und die Tastaturerreichbarkeit? Ein Pixel Toleranz fuer Rundung. */
 export function scrollHinweisNoetig(scrollBreite, sichtbareBreite) {
@@ -50,6 +97,15 @@ export function geraeteStil() {
   .scrollhinweis{display:block;}
 }
 @media (min-width: ${UMBRUCH.seitenleiste + 1}px){ .seiten-abdunkelung{display:none !important;} }
+
+/* WP-21 Teil 2: Schaltflaechen im Meldungsstreifen (Rueckgaengig) waren 75x16 px gross (gemessen); jetzt mindestens 24 px,
+   auf Telefon und Tablet 36 px. Der Streifen selbst und sein Platz bleiben unveraendert. */
+.toast button{min-height:24px; min-width:24px; padding:4px 8px;}
+@media (max-width: ${UMBRUCH.seitenleiste}px){ .toast button{min-height:36px; padding:6px 10px;} }
+
+/* WP-21 Teil 2: Schnellfilter in "Mein Plan" (Telefon) umbrechen statt innen zu scrollen: 475 px in 324 px breitem Bereich liess
+   den fuenften Filter hinter dem Rand verschwinden. Reflow nach WCAG 1.4.10; ab ${UMBRUCH.telefon + 1} px passt die Reihe in eine Zeile. */
+@media (max-width: ${UMBRUCH.telefon}px){ .reiterreihe-umbruch{flex-wrap:wrap; overflow-x:visible;} }
 
 /* WP-21: Auswahlkaestchen in Listen (Sammelentscheidung ueber Antraege) waren 15 px gross; auf Telefon und Tablet mindestens ZIEL_MINDEST. */
 @media (max-width: ${UMBRUCH.seitenleiste}px){ .ziel-haken{width:${ZIEL_MINDEST}px !important; height:${ZIEL_MINDEST}px !important;} }
