@@ -6,6 +6,7 @@ import { addDays, dow, pad, pISO } from "../regelwerk.js";
 import { zeitraumBisMonat, istVerfuegbar, ISTDATEN_TEXT } from "../istdaten.js";
 import { einheitAm, einheitDienst } from "../../server/lib/fachpruefung.mjs";
 import { H1, Btn, klickbar, Pill, Avatar, Card, CardHead } from "../ui/bausteine.jsx";
+import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { Abschnittskopf, Leitraster, Seitenkarte, Namenschip, Punkt, Kennzahlen } from "../gestalt/ansichten.jsx";
 import { Zelle, Balken } from "../ui/leisten.jsx";
 import { NUM, lesbar } from "../ui/thema.js";
@@ -125,7 +126,7 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
 
           <Card>
             <CardHead>Schichtfolge der kommenden zwei Wochen</CardHead>
-            <div style={{ padding: 22, overflowX: "auto" }}>
+            <Scrollbereich label="Schichtfolge der kommenden zwei Wochen" style={{ padding: 22 }}>
               <table style={{ borderCollapse: "collapse" }}>
                 <thead><tr><th />{woche.map((d) => (
                   <th key={d} style={{ padding: "0 4px 11px", minWidth: 40 }}>
@@ -139,7 +140,7 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
                       <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
                   </tr>))}</tbody>
               </table>
-            </div>
+            </Scrollbereich>
           </Card>
         </>}
         seite={
