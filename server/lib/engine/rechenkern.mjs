@@ -29,15 +29,25 @@
 
    Der Rechenkern importiert nie etwas aus server/lib/intelligence/.
 
+   ERSATZKANDIDATEN (WP-I12a): Mit der Option `ausfaelle` ([{ datum, dienst }], datum im
+   Zeitraum, höchstens 5) rechnet der Kern je unterbesetztem Dienst die Kandidaten der
+   Ersatzsuche (ersatzfakten.mjs): kandidat.zulaessig (direkt, Wert wahr), und als
+   Near-Miss (nur die Ruhezeit hindert) kandidat.hinderung, kandidat.spielraum (Minuten)
+   und ruhezeit.ist (Minuten) — je mit person, ref = Dienstart, datum. Zusätzlich
+   ruhezeit.ist zu jedem Ruhezeitbefund der Planprüfung (person, ref = Dienstart, datum).
+
    WAS (NOCH) NICHT GERECHNET WIRD — nichts davon wird geraten; Fragen und
    Gründe in docs/acc45/wp-i12-fragen.md:
      befund.stufe   (Abbildung der Schwere auf hinweis/achtung/recht fehlt)
      besetzung.*    (Soll gilt je Dienstart, das Feld verlangt eine Einheit)
      konto.saldo    (Feld sagt „Plan, nicht Ist“, stundenkonto rechnet mit Ist)
-     kandidat.*, ruhezeit.ist, aenderung.art, regel.art
+     aenderung.art  (braucht einen Vergleichsstand des Plans: WP-I24)
+     regel.art      (Regelart des Baukastens: eigenes Paket)
    ========================================================================== */
 import { pruefen, mitMerkmalen } from "./befunde.mjs";
 import { planKennzahlen } from "./kennzahlen.mjs";
+import { ersatzKandidaten, ruheZuNachbarn } from "./ersatzfakten.mjs";
+import { personTag } from "./plan.mjs";
 import { mitTagesdatum } from "./zeit.mjs";
 
 export const ENGINE_VERSION = "engine-0.1";
@@ -51,7 +61,9 @@ const liste = (w) => (Array.isArray(w) ? w : []);
 const istObj = (w) => !!w && typeof w === "object" && !Array.isArray(w);
 
 /** Felder, die der Rechenkern berechnet (Teilmenge der „berechneten“ Felder des Faktenpakets). */
-export const BERECHNETE_FELDER = Object.freeze(["befund.regel", "kennzahl.wert"]);
+export const BERECHNETE_FELDER = Object.freeze(["befund.regel", "kennzahl.wert",
+  "kandidat.zulaessig", "kandidat.hinderung", "kandidat.spielraum", "ruhezeit.ist"]);
+const AUSFAELLE_MAX = 5;
 
 /** Kennzahlen aus planKennzahlen, die der Rechenkern nennt (ref = Kennung). `spanne` und `wochenenden` fehlen:
     sie sind in der vorhandenen Rechnung nicht zahlenwertig (docs/acc45/wp-i12-fragen.md, Frage 4). */
@@ -66,13 +78,19 @@ class EngineEingabeFehler extends Error {
 
 function optionenPruefen(o) {
   if (!istObj(o)) throw new EngineEingabeFehler("Optionen fehlen.");
-  const { zeitraum, heute, merkmale = [] } = o;
+  const { zeitraum, heute, merkmale = [], ausfaelle = [] } = o;
   if (!istObj(zeitraum) || !istTag(zeitraum.von) || !istTag(zeitraum.bis) || zeitraum.bis < zeitraum.von)
     throw new EngineEingabeFehler("Zeitraum fehlt oder ist ungültig.");
   if (tageZwischen(zeitraum.von, zeitraum.bis) + 1 > MAX_TAGE) throw new EngineEingabeFehler("Zeitraum zu lang.");
   if (!istTag(heute)) throw new EngineEingabeFehler("Tagesdatum (heute) fehlt oder ist ungültig.");
   if (!Array.isArray(merkmale) || merkmale.some((x) => typeof x !== "string")) throw new EngineEingabeFehler("Merkmale ungültig.");
-  return { von: zeitraum.von, bis: zeitraum.bis, heute, merkmale: new Set(merkmale) };
+  if (!Array.isArray(ausfaelle) || ausfaelle.length > AUSFAELLE_MAX) throw new EngineEingabeFehler("Ausfälle ungültig oder zu viele.");
+  const af = ausfaelle.map((a) => {
+    if (!istObj(a) || !istTag(a.datum) || a.datum < zeitraum.von || a.datum > zeitraum.bis || !(typeof a.dienst === "string" || typeof a.dienst === "number"))
+      throw new EngineEingabeFehler("Ausfall ungültig (datum im Zeitraum, dienst).");
+    return { datum: a.datum, dienst: String(a.dienst) };
+  });
+  return { von: zeitraum.von, bis: zeitraum.bis, heute, merkmale: new Set(merkmale), ausfaelle: af };
 }
 
 /** Eine Arbeitsansicht der Sicht: erbt von ihr (gelesen wird nur, was die Rechnung braucht — nichts wird kopiert, nichts
@@ -103,9 +121,24 @@ export function rechnen(sicht, optionen) {
   const fakten = [];
   const nichtBerechenbar = [];
   const ergebnis = mitTagesdatum(o.heute, () => mitMerkmalen((_m, merkmal) => o.merkmale.has(merkmal), () => {
-    const aus = { befunde: null, kennzahlen: null };
+    const aus = { befunde: null, kennzahlen: null, ersatz: [], ruhe: [] };
     try { aus.befunde = pruefen(m, o.von, o.bis); } catch { nichtBerechenbar.push({ berechnung: "pruefen", grund: "Eingabe unvollständig" }); }
     try { aus.kennzahlen = planKennzahlen(m, o.von, o.bis); } catch { nichtBerechenbar.push({ berechnung: "planKennzahlen", grund: "Eingabe unvollständig" }); }
+    if (aus.befunde) {
+      try {
+        for (const b of aus.befunde) {
+          if (!b || b.art !== "ruhezeit" || !istTag(b.datum) || b.personId === undefined) continue;
+          const p = (m.personen || []).find((x) => String(x.id) === String(b.personId));
+          const dienstId = p ? personTag(m, p, b.datum).dienstId : null;
+          const da = dienstId ? (m.dienstarten || []).find((x) => x.id === dienstId) : null;
+          const { vor } = da ? ruheZuNachbarn(m, p, b.datum, da, { zeitumstellung: true }) : { vor: null };
+          if (vor !== null) aus.ruhe.push({ personId: String(p.id), dienst: String(dienstId), datum: b.datum, minuten: Math.round(vor) });
+        }
+      } catch { nichtBerechenbar.push({ berechnung: "ruhezeit", grund: "Eingabe unvollständig" }); }
+    }
+    for (const a of o.ausfaelle) {
+      try { aus.ersatz.push(ersatzKandidaten(m, a.datum, a.dienst)); } catch { nichtBerechenbar.push({ berechnung: "ersatzKandidaten", grund: "Eingabe unvollständig" }); }
+    }
     return aus;
   }));
 
@@ -126,6 +159,22 @@ export function rechnen(sicht, optionen) {
       else nichtBerechenbar.push({ berechnung: ref, grund: "kein endlicher Zahlenwert" });
     }
   }
+  if (ergebnis.ruhe.length) {
+    const h = herkunft("ruhezeit", o);
+    for (const r of ergebnis.ruhe)
+      fakten.push({ id: `eng:ruhezeit:${r.personId}:${r.datum}`, feld: "ruhezeit.ist", person: r.personId, ref: r.dienst, wert: r.minuten, datum: r.datum, herkunft: h });
+  }
+  for (const e of ergebnis.ersatz) {
+    const h = herkunft("ersatzKandidaten", o);
+    const basis = `eng:ersatz:${e.datum}:${e.dienst}`;
+    const f = (feld, k, wert) => ({ id: `${basis}:${feld}:${k.personId}`, feld, person: k.personId, ref: e.dienst, wert, datum: e.datum, herkunft: h });
+    for (const k of e.direkt) fakten.push(f("kandidat.zulaessig", k, true));
+    for (const k of e.nahe) {
+      fakten.push(f("kandidat.hinderung", k, k.hinderung));
+      fakten.push(f("kandidat.spielraum", k, k.spielraumMin));
+      if (k.ruheVorMin !== null) fakten.push(f("ruhezeit.ist", k, Math.round(k.ruheVorMin)));
+    }
+  }
   /* Feste, vom Zufall und von der Hashreihenfolge unabhängige Reihenfolge. */
   fakten.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return Object.freeze({
@@ -139,15 +188,16 @@ export function rechnen(sicht, optionen) {
 /**
  * Faktenquelle für das Faktenpaket (faktenpaket.mjs, Parameter `faktenquelle`): liefert die berechneten Fakten
  * ohne `id` und `herkunft`. Eine Funktion ohne Zeitraum (zeitraum null) bekommt nichts.
- * @param {{ heute: string | (() => string), merkmale?: string[] | (() => string[]) }} o
+ * @param {{ heute: string | (() => string), merkmale?: string[] | (() => string[]), ausfaelle?: { datum: string, dienst: string }[] | (() => { datum: string, dienst: string }[]) }} o
  */
 export function faktenquelleErzeugen(o) {
   if (!istObj(o)) throw new EngineEingabeFehler("Optionen fehlen.");
   const tag = typeof o.heute === "function" ? o.heute : () => o.heute;
   const merk = typeof o.merkmale === "function" ? o.merkmale : () => o.merkmale || [];
+  const ausf = typeof o.ausfaelle === "function" ? o.ausfaelle : () => o.ausfaelle || [];
   return ({ sicht, zeitraum }) => {
     if (!zeitraum) return [];
-    const r = rechnen(sicht, { zeitraum, heute: tag(), merkmale: merk() });
+    const r = rechnen(sicht, { zeitraum, heute: tag(), merkmale: merk(), ausfaelle: ausf() });
     return r.fakten.map(({ feld, person, ref, wert, datum }) => {
       const x = { feld, wert };
       if (person !== undefined) x.person = person;

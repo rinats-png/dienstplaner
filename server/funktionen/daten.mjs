@@ -13,6 +13,7 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { ersteinrichtungOffen, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -858,6 +859,16 @@ async function behandeln(req, context, ctx) {
         eintragV = await kontoLesen(store, altS);
         if (eintragV) { fundSchluessel = altS; mussUmschluesseln = true; }
       }
+      /* OPT-1 / OPT-1-F (Option A): Ein Ersteinrichtungscode (lib/zugangscode-ersteinrichtung.mjs) gilt auf diesem
+         Weg NIE — weder offen noch verbraucht. Er richtet allein den zweiten Faktor am Konto ein, zusammen mit Adresse
+         und Passwort (Konto-Anmeldemodul, kontoFaktorAktion); danach ist der Weg hinein die Kontoanmeldung mit Faktor.
+         (Dieser Endpunkt nennt das Konto-Anmeldemodul bewusst nicht im Quelltext: Isolationsprüfung anmeldung-http.)
+         Hier ist er genau wie ein unbekannter Code — dieselbe Bremse, dieselbe Antwort, kein Grund nach außen. So kann
+         ihn auch niemand über diesen Weg in einen Faktor am Code verbrennen, den danach nichts mehr prüft (Review #166,
+         Blocker 1 und 2). */
+      if (eintragV && ersteinrichtungsZugang(eintragV)) {
+        eintragV = null; fundSchluessel = null; mussUmschluesseln = false;
+      }
       const fund = { eintrag: eintragV, schluessel: fundSchluessel,
         umschluesseln: mussUmschluesseln };
       const zielRaum = eintragV ? eintragV.bestand : null;
@@ -1015,7 +1026,10 @@ async function behandeln(req, context, ctx) {
       } else if (zweifaktorRolle(eintrag.rolle) || zweifaktorRolle(rolleWirksamC)) {
         const zf = await rollenZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
           kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name,
-          faktorVermerkt: eintrag.zweiterFaktor === true });
+          faktorVermerkt: eintrag.zweiterFaktor === true,
+          /* OPT-1: Zugang aus der Ersteinrichtung — Faktor Pflicht; ein verbrauchter kommt hier nie an. */
+          pflichtErzwungen: ersteinrichtungOffen(eintrag) || eintrag.faktorPflicht === true,
+          ersteinrichtung: ersteinrichtungOffen(eintrag) });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {

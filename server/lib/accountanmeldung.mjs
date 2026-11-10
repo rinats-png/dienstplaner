@@ -99,13 +99,44 @@ import { randomBytes } from "node:crypto";
 import { mailNormieren, mailBrauchbar } from "./adressen.mjs";
 import { passwortPruefen, passwortAblegen } from "./passwoerter.mjs";
 import {
-  accountLesenPerMail, accountLesenPerId, anmeldungVermerken,
+  accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
+import { zweifaktorEinrichtungVerwerfen } from "./zweifaktor.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
 } from "./accountsitzungen.mjs";
 import { arbeitssitzungenBeenden } from "./arbeitssitzung.mjs";
+import {
+  kontoFaktorId, kontoFaktorStand, kontoFaktorBeginnen, kontoFaktorVorpruefen,
+  kontoFaktorBestaetigen, kontoFaktorPruefen, kontoFaktorAktiv,
+} from "./kontofaktor.mjs";
+import {
+  ersteinrichtungFuerKonto, ersteinrichtungEinloesen, ersteinrichtungFehlversuch,
+} from "./zugangscode-ersteinrichtung.mjs";
+
+/** OPT-1-F, Option A (Befund 1): Die Einrichtung des zweiten Faktors am Konto
+    verlangt neben Adresse und Passwort den Ersteinrichtungscode dieses Kontos.
+    Diesen Satz sieht nur, wer das Passwort kennt; er sagt nicht, ob ein Code
+    fehlte, abgelaufen, verbraucht, gesperrt oder fremd war. */
+export const HINWEIS_ERSTEINRICHTUNG =
+  "Für die Einrichtung des zweiten Faktors ist der gültige Ersteinrichtungscode dieses Kontos nötig.";
+/** OPT-1-F, Befund 3: Der Faktor ist aktiv, aber nicht jede frühere Sitzung
+    ließ sich wegräumen. Sie gelten trotzdem nicht mehr (Sitzung ohne Faktor
+    bei aktivem Faktor); es entsteht keine Sitzung. */
+export const HINWEIS_FAKTOR_AKTIV_NEU_ANMELDEN =
+  "Der zweite Faktor ist eingerichtet und aktiv. Nicht alle bisherigen Sitzungen ließen sich beenden; sie gelten "
+  + "nicht mehr. Bitte mit Passwort und dem Code aus der App neu anmelden.";
+
+/** OPT-1-F: Passwort richtig, aber für dieses Konto ist ein zweiter Faktor
+    eingerichtet und er fehlt. Diesen Satz sieht nur, wer das Passwort kennt. */
+export const HINWEIS_FAKTOR_FEHLT =
+  "Für dieses Konto ist ein zweiter Faktor eingerichtet. Bitte den Code aus der App eingeben.";
+/** OPT-1-F: Code aus der App falsch oder schon verwendet. */
+export const HINWEIS_FAKTOR_FALSCH = "Der zweite Faktor stimmt nicht.";
+/** OPT-1-F: Der Faktor lässt sich nicht prüfen (Ablage, Pfeffer). Keine Sitzung. */
+export const HINWEIS_FAKTOR_NICHT_PRUEFBAR =
+  "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.";
 
 /** Der eine Satz für jede fehlgeschlagene Anmeldung. Er unterscheidet
     nicht zwischen unbekannter Adresse, falschem Passwort, gesperrtem und
@@ -150,17 +181,15 @@ const hatPruefwert = (konto) =>
   !!konto && typeof konto.passwort === "string" && konto.passwort.startsWith("s1$");
 
 /**
- * Meldet einen Account an.
+ * Die Prüfung von Adresse und Passwort — Schritte 1 bis 4 oben, ohne Sitzung.
+ * Gemeinsam für die Anmeldung und für die Einrichtung des zweiten Faktors
+ * (OPT-1-F): Beide verlangen denselben Nachweis, und es gibt ihn nur hier.
  *
- * @param {object} store  Ablage „centric" — dort liegen die Accounts
- * @param {{email?: unknown, passwort?: unknown, jetzt?: () => number,
- *          sitzungsAblage?: (object|null)}} [o]
- * @returns {Promise<{ok: true, token: string, gueltigBis: number,
- *     accountId: string, epoche: number}
- *   |{ok: false, grund: string, hinweis: string}>}
+ * @param {object} store
+ * @param {{email?: unknown, passwort?: unknown}} o
+ * @returns {Promise<{ok: true, konto: any}|{ok: false, grund: string, hinweis: string}>}
  */
-export async function anmelden(store, { email, passwort, jetzt = Date.now,
-  sitzungsAblage = null } = {}) {
+async function zugangPruefen(store, { email, passwort }) {
   /** @type {(grund: string) => {ok: false, grund: string, hinweis: string}} */
   const absage = (grund) => ({ ok: false, grund, hinweis: HINWEIS_ANMELDUNG });
 
@@ -187,9 +216,85 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
      Ein Passwort allein macht daraus keine Anmeldung. */
   if (konto.status !== "aktiv") return absage("nicht-aktiv");
   if (!konto.emailVerifiziertAm) return absage("unbestaetigt");
+  return { ok: true, konto };
+}
+
+/**
+ * Das Tor vor jeder Prüfung eines Codes aus der App (OPT-1-F). Gestellt vom
+ * Endpunkt — diese Datei kennt keine Bremse. Gerufen wird es erst, wenn das
+ * Passwort stimmte: Wer nur die Adresse kennt, kann den Faktor eines anderen
+ * nicht sperren. `null` heißt frei; sonst keine Prüfung.
+ * @typedef {(faktorId: string) => Promise<null|{wartet?: number, nichtPruefbar?: boolean}>} FaktorTor
+ */
+
+/**
+ * Prüft den zweiten Faktor eines Kontos bei der Anmeldung. Fail-closed:
+ * Lesefehler, fehlender Pfeffer, Tor nicht frei — jeweils kein Ja.
+ * @param {object} store
+ * @param {any} konto
+ * @param {unknown} zweifaktor
+ * @param {FaktorTor|null} faktorTor
+ * @returns {Promise<{ok: true, mitFaktor: boolean}|{ok: false, grund: string, hinweis: string, wartet?: number}>}
+ */
+async function faktorDerAnmeldung(store, konto, zweifaktor, faktorTor) {
+  const nichtPruefbar = (grund) => ({ ok: /** @type {false} */ (false), grund,
+    hinweis: HINWEIS_FAKTOR_NICHT_PRUEFBAR });
+  let stand;
+  try { stand = await kontoFaktorStand(store, konto.id); }
+  catch { return nichtPruefbar("faktor-lesen"); }
+  /* Kein Faktor eingerichtet: die Sitzung ist eine Identität ohne Faktor,
+     wie bisher. Was sie darf, entscheidet die Betriebsauswahl. */
+  if (!stand.aktiv) return { ok: true, mitFaktor: false };
+  /* Ist der Faktor eingerichtet, verlangt JEDE Anmeldung ihn — mit oder
+     ohne Pflicht. Ein Passwort allein ergibt dann keine Sitzung. */
+  const code = typeof zweifaktor === "string" ? zweifaktor.trim() : "";
+  if (!code) return { ok: false, grund: "zweifaktor-erforderlich", hinweis: HINWEIS_FAKTOR_FEHLT };
+  if (faktorTor) {
+    const t = await faktorTor(kontoFaktorId(konto.id));
+    if (t && t.nichtPruefbar) return nichtPruefbar("faktor-bremse");
+    if (t) return { ok: false, grund: "zweifaktor-gebremst", hinweis: HINWEIS_FAKTOR_FALSCH,
+      wartet: Number(t.wartet) || 0 };
+  }
+  let p;
+  try { p = await kontoFaktorPruefen(store, konto.id, code); }
+  catch { return nichtPruefbar("faktor-lesen"); }
+  if (!p.ok) {
+    if (p.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    return { ok: false, grund: p.grund === "wiederholt" ? "zweifaktor-wiederholt" : "zweifaktor-falsch",
+      hinweis: HINWEIS_FAKTOR_FALSCH };
+  }
+  return { ok: true, mitFaktor: true };
+}
+
+/**
+ * Meldet einen Account an.
+ *
+ * OPT-1-F: Ist für das Konto ein zweiter Faktor eingerichtet, gehört der Code
+ * aus der App (`zweifaktor`) zur Anmeldung; ohne ihn oder mit falschem Code
+ * entsteht keine Sitzung. Bestanden, trägt die Sitzung `zweifaktor: true` —
+ * die einzige Grundlage, auf der die Betriebsauswahl unter Pflicht eine
+ * Leitungs-, Planungs- oder Kundensitzung öffnet.
+ *
+ * @param {object} store  Ablage „centric" — dort liegen die Accounts
+ * @param {{email?: unknown, passwort?: unknown, zweifaktor?: unknown,
+ *          faktorTor?: (FaktorTor|null), jetzt?: () => number,
+ *          sitzungsAblage?: (object|null)}} [o]
+ * @returns {Promise<{ok: true, token: string, gueltigBis: number,
+ *     accountId: string, epoche: number, zweifaktor?: true}
+ *   |{ok: false, grund: string, hinweis: string, wartet?: number}>}
+ */
+export async function anmelden(store, { email, passwort, zweifaktor = undefined,
+  faktorTor = null, jetzt = Date.now, sitzungsAblage = null } = {}) {
+  const z = await zugangPruefen(store, { email, passwort });
+  if ("grund" in z) return z;
+  const konto = z.konto;
+
+  const f = await faktorDerAnmeldung(store, konto, zweifaktor, faktorTor);
+  if ("grund" in f) return f;
 
   const epoche = Number(konto.epoche) || 1;
-  const sitzung = await accountSitzungAnlegen({ accountId: konto.id, epoche },
+  const sitzung = await accountSitzungAnlegen(
+    { accountId: konto.id, epoche, ...(f.mitFaktor ? { zweifaktor: true } : {}) },
     { jetzt, ablage: sitzungsAblage });
   if (!sitzung.ok) {
     /* Ohne Sitzung keine Anmeldung. Kein halbes Ergebnis, kein Merkmal,
@@ -204,7 +309,174 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
   try { await anmeldungVermerken(store, konto.id); } catch { /* egal */ }
 
   return { ok: true, token: sitzung.token, gueltigBis: sitzung.gueltigBis,
-    accountId: konto.id, epoche };
+    accountId: konto.id, epoche, ...(f.mitFaktor ? { zweifaktor: /** @type {true} */ (true) } : {}) };
+}
+
+/** Die Aktionen am zweiten Faktor eines Kontos. Kein Abschalten: Wechsel und
+    Verlust gehören zur Wiederherstellung (WR-2 bis WR-9), nicht hierher. */
+export const KONTO_FAKTOR_AKTIONEN = Object.freeze(["stand", "beginnen", "bestaetigen"]);
+
+/**
+ * Den zweiten Faktor eines Kontos einrichten (OPT-1-F).
+ *
+ * Ausweis ist dasselbe wie bei der Anmeldung — Adresse und Passwort —, nicht
+ * das Cookie: Wer nur ein abgegriffenes Sitzungsmerkmal hat, richtet hier
+ * nichts ein (dasselbe Muster wie bei Zugangscodes, betreiber-zweifaktor.mjs).
+ *
+ *   stand        aktiv/ausstehend, sonst nichts
+ *   beginnen     Geheimnis und otpauth-Adresse, genau einmal. Ein aktiver
+ *                Faktor oder eine laufende Einrichtung wird nicht
+ *                überschrieben. Verlangt den gültigen Ersteinrichtungscode
+ *                des Kontos (Option A, Befund 1), verbraucht ihn nicht.
+ *   bestaetigen  erster Code aus der App, mit demselben Ersteinrichtungscode.
+ *                Reihenfolge, fail-closed:
+ *                1. Code aus der App prüfen, ohne zu speichern (falsch: zählt
+ *                   am Ersteinrichtungscode, nach fünf ist er gesperrt),
+ *                2. ALLE Sitzungen des Kontos beenden (samt Arbeitssitzungen) —
+ *                   scheitert das, wird nicht aktiviert und nichts verbraucht,
+ *                3. Ersteinrichtungscode verbrauchen und aktivieren, als
+ *                   Einheit (scheitert die Aktivierung nachweislich ohne
+ *                   aktiven Faktor, gilt der Code weiter),
+ *                4. Epoche des Kontos erhöhen (entwertet jede vorher angelegte
+ *                   Sitzung) und noch einmal beenden (was dazwischen entstand) —
+ *                   scheitert eins davon, bleibt der Faktor aktiv, die Antwort
+ *                   ist eine Absage ohne Wiederherstellungscodes, und keine
+ *                   Sitzung ohne Faktor gilt mehr (Befund 3).
+ *                Danach gilt nur noch Passwort plus Code aus der App.
+ *
+ * Es entsteht nie eine Sitzung. Codes und Geheimnis stehen nur im
+ * Rückgabewert, nie in einem Protokoll.
+ *
+ * @param {object} store
+ * @param {{email?: unknown, passwort?: unknown, aktion?: unknown, zweifaktor?: unknown,
+ *   ersteinrichtungscode?: unknown, faktorTor?: (FaktorTor|null), sitzungsAblage?: (object|null)}} o
+ * @returns {Promise<{ok: true, daten: Record<string, unknown>, sitzungenBeendet?: number}
+ *   |{ok: false, grund: string, hinweis: string, wartet?: number}>}
+ */
+export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifaktor,
+  ersteinrichtungscode = undefined, faktorTor = null, sitzungsAblage = null } = {}) {
+  const z = await zugangPruefen(store, { email, passwort });
+  if ("grund" in z) return z;
+  const id = z.konto.id;
+  const nein = (grund, hinweis) => ({ ok: /** @type {false} */ (false), grund, hinweis });
+  const nichtPruefbar = (grund) => nein(grund, HINWEIS_FAKTOR_NICHT_PRUEFBAR);
+  const a = typeof aktion === "string" ? aktion : "";
+  if (!KONTO_FAKTOR_AKTIONEN.includes(a))
+    return nein("aktion-unbekannt", `Unbekannte Aktion. Erlaubt: ${KONTO_FAKTOR_AKTIONEN.join(", ")}.`);
+
+  let stand;
+  try { stand = await kontoFaktorStand(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+
+  if (a === "stand") return { ok: true, daten: { aktiv: stand.aktiv, ausstehend: stand.ausstehend } };
+
+  /* OPT-1-F, Option A (Befund 1): Ein aktiver Faktor wird nie neu eingerichtet — das ist keine Auskunft über den Code
+     und bleibt deshalb vor seiner Prüfung (409 wie bisher). */
+  if (stand.aktiv) return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+  if (a === "bestaetigen" && !stand.ausstehend) return nein("faktor-nichts", "Es ist keine Einrichtung begonnen.");
+
+  /* OPT-1-F, Option A (Befund 1): Adresse und Passwort allein richten keinen Faktor ein. Dazu gehört der
+     Ersteinrichtungscode dieses Kontos (einmalig, 72 Stunden, an Konto, Person und Betrieb gebunden, nach fünf
+     falschen Werten aus der App gesperrt; zugangscode-ersteinrichtung.mjs). Wer nur das Passwort kennt, kann den Faktor
+     nicht vor dem Inhaber einrichten und ihn damit nicht aussperren. Geprüft wird hier, verbraucht erst zusammen mit
+     der Aktivierung (unten). Kein E-Mail-Weg, keine Freischaltung durch den Betreiber. */
+  const ec = await ersteinrichtungFuerKonto(store, { code: ersteinrichtungscode, accountId: id })
+    .catch(() => ({ ok: false, grund: "lesen" }));
+  if (!ec.ok) {
+    const g = "grund" in ec ? ec.grund : "";
+    if (g === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    if (g === "lesen") return nichtPruefbar("faktor-lesen");
+    return nein("ersteinrichtung", HINWEIS_ERSTEINRICHTUNG);
+  }
+  const codeSchluessel = /** @type {{schluessel: string}} */ (ec).schluessel;
+
+  if (a === "beginnen") {
+    let e;
+    try { e = await kontoFaktorBeginnen(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+    const eg = "grund" in e ? e.grund : null;
+    if (eg === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    if (eg === "ausstehend")
+      return nein("faktor-ausstehend", "Eine Einrichtung ist bereits begonnen. Bitte mit dem ersten Code "
+        + "bestätigen oder nach 15 Minuten neu beginnen.");
+    if (eg || !("geheimnis" in e)) return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+    return { ok: true, daten: { geheimnis: e.geheimnis, otpauth: e.otpauth,
+      hinweis: "Geheimnis und Adresse erscheinen genau einmal. In der App erfassen und mit dem ersten "
+        + "Code bestätigen." } };
+  }
+
+  /* bestaetigen */
+  const code = typeof zweifaktor === "string" ? zweifaktor.trim() : "";
+  if (!code) return nein("zweifaktor-erforderlich", "Bitte den ersten Code aus der App angeben.");
+  if (faktorTor) {
+    const t = await faktorTor(kontoFaktorId(id));
+    if (t && t.nichtPruefbar) return nichtPruefbar("faktor-bremse");
+    if (t) return { ...nein("zweifaktor-gebremst", HINWEIS_FAKTOR_FALSCH), wartet: Number(t.wartet) || 0 };
+  }
+  let vor;
+  try { vor = await kontoFaktorVorpruefen(store, id, code); } catch { return nichtPruefbar("faktor-lesen"); }
+  if (!vor.ok && vor.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+  if (!vor.ok && vor.grund !== "code") {
+    /* Review PR #179 (Blocker): Keine laufende Einrichtung mehr — typisch, weil eine gleichzeitige Bestätigung den
+       Faktor eben aktiviert hat. Das ist kein falscher Wert aus der App: nichts zählen, nichts verwerfen, nichts
+       abschalten. Antwort nach dem frisch gelesenen Stand; ein Lesefehler ist eine Absage (503). */
+    let jetztAktiv;
+    try { jetztAktiv = await kontoFaktorAktiv(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+    if (jetztAktiv) return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+    return nein("faktor-nichts", "Es ist keine Einrichtung begonnen.");
+  }
+  if (!vor.ok) {
+    /* Ein falscher Wert aus der App zählt am Ersteinrichtungscode — in der Ablage (Review #166, M1). Nach dem fünften
+       ist der Code endgültig verbraucht und die begonnene Einrichtung verworfen. Lässt sich nicht zählen: 503.
+       Verworfen wird nur eine AUSSTEHENDE Einrichtung, frisch unter der Sperre des Faktors geprüft — ein aktiver Faktor
+       bleibt in jedem Fall (zweifaktorEinrichtungVerwerfen), und nur, wenn DIESER Versuch den Code gesperrt hat. */
+    let fv;
+    try { fv = await ersteinrichtungFehlversuch(store, [codeSchluessel]); } catch { return nichtPruefbar("faktor-lesen"); }
+    if (fv.gesperrt && !fv.schonVerbraucht) {
+      let w;
+      try { w = await zweifaktorEinrichtungVerwerfen(store, kontoFaktorId(id)); } catch { return nichtPruefbar("faktor-lesen"); }
+      if (!w.ok && w.grund === "aktiv") return nein("faktor-aktiv", "Der zweite Faktor ist schon eingerichtet.");
+    }
+    return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
+  }
+  const vorher = await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }));
+  if (vorher.fehler) return nichtPruefbar("sitzungen");
+  /* Verbrauch des Codes und Aktivierung als Einheit, je Code nacheinander (zwei gleichzeitige Bestätigungen: genau
+     eine). Blocker 4 (Review #166): Scheitert die Aktivierung und ist der Faktor nachweislich nicht aktiv, wird der
+     Verbrauch zurückgenommen — der Code verbrennt nicht still. Im Zweifel bleibt er verbraucht. */
+  const ein = await ersteinrichtungEinloesen(store, [codeSchluessel], async () => {
+    const r = await kontoFaktorBestaetigen(store, id, code);
+    return r.ok ? r : { ok: false, grund: "grund" in r ? r.grund : "einrichtung" };
+  }, { istAktiv: () => kontoFaktorAktiv(store, id) });
+  if (!ein.ok) {
+    if (ein.grund === "verbraucht") return nein("ersteinrichtung", HINWEIS_ERSTEINRICHTUNG);
+    const eg = ein.ergebnis && typeof ein.ergebnis === "object" ? String(ein.ergebnis.grund || "") : "";
+    if (ein.grund === "einrichtung" && eg === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    if (ein.grund === "einrichtung" && ein.ergebnis && eg && eg !== "einrichtung")
+      return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
+    return nichtPruefbar("faktor-lesen");
+  }
+  const e = ein.ergebnis;
+  /* Review OPT-1-F, Befund 3 (mit Zusatzprüfung, Betreiberentscheidung): Eine Anmeldung, die den Faktorstand vor der
+     Aktivierung gelesen hat, hat das Konto (und damit die Epoche) noch früher gelesen. Die Epoche NACH der Aktivierung
+     zu erhöhen, entwertet jede solche Sitzung — auch eine, die nach dem ersten Abmelden angelegt wurde. Danach räumt
+     das zweite Abmelden die Sitzungen und Arbeitssitzungen weg.
+     Scheitert eins von beiden, bleibt der Faktor AKTIV (fail-closed): Ein Zurücknehmen machte ältere, schwächer
+     geschützte Sitzungen wieder gültig. Stattdessen gilt seit der Aktivierung keine Sitzung ohne bestandenen Faktor
+     mehr — sitzungPruefen, betriebWaehlen und jede Anfrage einer Arbeitssitzung lesen den Faktor des Kontos und weisen
+     ab (unabhängig von Epoche und Aufräumen). Die Antwort ist eine Absage ohne Sitzung und ohne
+     Wiederherstellungscodes; der Weg hinein ist eine neue Anmeldung mit Passwort und Code aus der App. */
+  const neueEpoche = await (async () => {
+    const k = await accountLesenPerId(store, id);
+    if (!k) return false;
+    const r = await accountAendern(store, id, { epoche: (Number(k.epoche) || 1) + 1 });
+    return !!(r && r.ok);
+  })().catch(() => false);
+  /* Aufgeräumt wird in jedem Fall, auch wenn die Epoche nicht stieg. */
+  const danach = await ueberallAbmelden(id, { sitzungsAblage }).catch(() => ({ beendet: 0, fehler: 1 }));
+  if (!neueEpoche || danach.fehler) return nein("sitzungen", HINWEIS_FAKTOR_AKTIV_NEU_ANMELDEN);
+  return { ok: true, sitzungenBeendet: vorher.beendet + danach.beendet,
+    daten: { aktiv: true, wiederherstellung: e.wiederherstellung,
+      hinweis: "Der zweite Faktor ist eingerichtet. Die Wiederherstellungscodes erscheinen genau einmal; "
+        + "jeder gilt einmal. Bitte mit Passwort und Code aus der App neu anmelden." } };
 }
 
 /**
@@ -231,7 +503,7 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
  * @param {unknown} token
  * @param {{jetzt?: () => number, sitzungsAblage?: (object|null)}} [o]
  * @returns {Promise<{ok: true, accountId: string, epoche: number,
- *     seit: number, bis: number, sitzungsId: string}
+ *     seit: number, bis: number, sitzungsId: string, zweifaktor?: true}
  *   |{ok: false, grund: string, hinweis: string}>}
  */
 export async function sitzungPruefen(store, token, { jetzt = Date.now,
@@ -253,11 +525,21 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
   if (konto.status === "gesperrt") return schluss("gesperrt");
   if (konto.status !== "aktiv") return schluss("nicht-aktiv");
   if ((Number(konto.epoche) || 1) !== Number(s.epoche)) return schluss("epoche");
+  /* OPT-1-F, Befund 3 (Zusatzprüfung): Hat das Konto einen aktiven zweiten Faktor, gilt keine Sitzung, die ohne ihn
+     entstand — auch dann nicht, wenn das Abmelden oder die Epoche nach der Aktivierung scheiterte oder eine Anmeldung
+     den Faktorstand vor der Aktivierung las. Ein Lesefehler ist kein Ja: abgewiesen, aber nicht gelöscht. */
+  if (s.zweifaktor !== true) {
+    let aktiv;
+    try { aktiv = await kontoFaktorAktiv(store, konto.id); } catch { return absage("faktor-lesen"); }
+    if (aktiv) return schluss("zweifaktor");
+  }
 
   /* Die Kennung der Sitzung — die Prüfsumme des Merkmals, nie das Merkmal. An ihr
      hängt eine Arbeitssitzung, die aus dieser Anmeldung entsteht. */
   return { ok: true, accountId: konto.id, epoche: Number(s.epoche),
-    seit: Number(s.seit), bis: Number(s.bis), sitzungsId: accountSitzungsId(token) };
+    seit: Number(s.seit), bis: Number(s.bis), sitzungsId: accountSitzungsId(token),
+    /* OPT-1-F: nur wenn die Anmeldung den zweiten Faktor bestanden hat. */
+    ...(s.zweifaktor === true ? { zweifaktor: /** @type {true} */ (true) } : {}) };
 }
 
 /**

@@ -1,7 +1,8 @@
 /* Datums-Hilfen der Oberfläche (aus src/App.jsx herausgelöst, WP-39; unverändert). */
 import { pISO, dow } from "../regelwerk.js";
 
-export const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+export { DOW } from "../../server/lib/engine/textformat.mjs";
+import { DOW } from "../../server/lib/engine/textformat.mjs";
 /* Ausgeschrieben für die Tagesliste auf dem Telefon — dort ist Platz,
    und „Donnerstag" liest sich im Dienst schneller als „Do". */
 export const DOW_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
