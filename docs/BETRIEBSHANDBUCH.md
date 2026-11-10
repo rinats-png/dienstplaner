@@ -197,6 +197,17 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
   Raum-ID `/^\d+$/` auflisten (nur lesend); (2) die Geräte der Betroffenen online bringen, bis keine Stempel ausstehen
   (Warteschlange leeren), oder die Stempel nachtragen; (3) erst dann ausliefern. Empfehlung: leeren lassen.
   **Offen:** Betreiberbestätigung; die Prüfung ist noch nicht gelaufen.
+- **Vor und nach Deploy prüfen: zweiter Faktor und Schlüsselepoche (OPT-4/WR-2,
+  [OPT-4-WR-2-LUECKEN.md](acc45/OPT-4-WR-2-LUECKEN.md)).**
+  (a) `/zustand` (compose: `./zustand:/zustand`) muss existieren, dem Containerbenutzer uid 1000 gehören und
+  beschreibbar sein. Sonst antworten Aktivieren eines zweiten Faktors, Neuerzeugen der Wiederherstellungscodes und
+  Anmelden mit einem Wiederherstellungscode mit 503 (fail-closed). (b) Nach dem ersten Deploy mit WR-2 gelten alle
+  Wiederherstellungscodes ohne Epoche (Altformat v1 und v2 aus der Zeit davor) nicht mehr, bis ihre Inhaber mit dem
+  Code aus der App neue erzeugen (Aktion `wiederherstellung-neu`); die Inhaber vorher informieren. (c) Jede neue
+  Schlüsselepoche (Vollwiederherstellung, fehlende oder überholte `skbindung`, Verzeichniskopie der Ablage) macht alle
+  Wiederherstellungscodes ungültig, ohne Benachrichtigung (Entscheidung E3 offen). (d) Bis WR-3 bis WR-9 gibt es keinen
+  Rückweg für Inhaber, die Telefon UND Wiederherstellungscodes verlieren. (e) `NODE_ENV` muss in Produktion
+  `production` sein (das Docker-Image setzt es); `development` oder `test` schalten die Epochenbindung ab.
 - **R0 (Standard bei Fehlern):** `./abschalten.sh` — Dienst kontrolliert anhalten. Lieber kein Dienst als ein
   unsicheres Bild.
 - **Rücksprung:** `./ruecksprung.sh` nur auf den Eintrag `vorherig` der Freigabeliste, nie auf ein gesperrtes Bild,

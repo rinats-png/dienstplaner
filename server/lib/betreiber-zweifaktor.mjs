@@ -36,7 +36,7 @@ import { kontoLesen, kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
-  zweifaktorPruefen,
+  zweifaktorPruefen, wiederherstellungNeu,
   zweifaktorAbschalten, zweifaktorEinrichtungVerwerfen, zweifaktorMoeglich } from "./zweifaktor.mjs";
 
 /**
@@ -412,7 +412,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     } else {
       erg = await zweifaktorBestaetigen(store, id, code);
     }
-    if (erg.fehler === "pfeffer") return { antwort: nichtPruefbar() };
+    if (erg.fehler === "pfeffer" || erg.fehler === "epoche") return { antwort: nichtPruefbar() };
     if (erg.fehler) {
       await new Promise((r) => setTimeout(r, 400));
       await protokoll("zweifaktor", k, "abgewiesen", `${E} · Bestätigung`);
@@ -461,6 +461,40 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
     return { antwort: json({ ok: true, aktiv: false, sitzungenBeendet: vorher.beendet }) };
   }
 
+  /* WR-2: Neue Wiederherstellungscodes — nur nach vollständiger, frischer Authentifizierung: der Zugangscode (vom
+     Aufrufer geprüft, erster Faktor) UND ein frischer Code aus der App. Kein Wiederherstellungscode, kein Nachweis
+     (Entscheidungen 8 und 9). Gebremst mit demselben Zähler wie die Anmeldung. Prüfen, Erzeugen und Ersetzen unter
+     einer Sperre (zweifaktor.mjs); danach gilt keiner der bisherigen Codes. Auch unter Pflicht erlaubt: Der Faktor
+     bleibt, wie er ist, nur der Satz Codes wird ersetzt. */
+  if (aktion === "wiederherstellung-neu") {
+    if (!stand.aktiv) return { antwort: json({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409) };
+    if (!code) return { antwort: json({ fehler: "Bitte den aktuellen Code aus der App angeben.",
+      zweifaktor: "erforderlich" }, 401) };
+    const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
+    if (!/^\d{6}$/.test(code.replace(/\s/g, ""))) {
+      await new Promise((r) => setTimeout(r, 400));
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · Neugenerierung ohne Code aus der App`);
+      return { antwort: json({ fehler: "Neue Wiederherstellungscodes gibt es nur mit dem aktuellen Code aus der App, "
+        + "nicht mit einem Wiederherstellungscode.", zweifaktor: "falsch" }, 401) };
+    }
+    let r;
+    try { r = await wiederherstellungNeu(store, id, code); } catch { return { antwort: nichtPruefbar() }; }
+    if (!r.ok && (r.fehler === "pfeffer" || r.fehler === "epoche")) return { antwort: nichtPruefbar() };
+    if (!r.ok) {
+      await new Promise((res) => setTimeout(res, 400));
+      await protokoll("zweifaktor", k, "abgewiesen", `${E} · Neugenerierung · ${r.fehler}`);
+      return { antwort: json({ fehler: r.fehler === "wiederholt"
+        ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+        : "Der zweite Faktor stimmt nicht.", zweifaktor: "falsch" }, 401) };
+    }
+    await entlastenAlle();
+    await codeRichtig();
+    await protokoll("zweifaktor", k, "erfolg", `${E} · Wiederherstellungscodes neu erzeugt`);
+    return { antwort: json({ ok: true, wiederherstellung: r.wiederherstellung,
+      hinweis: "Neue Wiederherstellungscodes. Sie erscheinen genau einmal; jeder gilt einmal. Alle bisherigen "
+        + "Wiederherstellungscodes gelten nicht mehr." }) };
+  }
+
   if (aktion === "stand") {
     await codeRichtig();
     return { antwort: json({ aktiv: stand.aktiv, ausstehend: stand.ausstehend,
@@ -468,7 +502,7 @@ async function codeZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel
   }
 
   if (aktion) return { antwort: json({ fehler: "Unbekannte Aktion. Erlaubt: stand, beginnen, "
-    + "bestaetigen, abschalten." }, 400) };
+    + "bestaetigen, abschalten, wiederherstellung-neu." }, 400) };
 
   /* Gewöhnliche Anmeldung. */
   if (stand.aktiv) { const r = await pruefen(); if (r) return { antwort: r }; }

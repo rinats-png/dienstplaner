@@ -45,6 +45,7 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync,
   randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { vorgang } from "./schreibhalt.mjs";
+import { ENTWICKLUNGSUMGEBUNGEN } from "./umgebung.mjs";
 
 export const SCHRITT = 30;
 export const STELLEN = 6;
@@ -302,9 +303,46 @@ export async function wiederherstellungErzeugen(id, generation, bindung = "", n 
   return { klar, eintraege };
 }
 
+/* WR-2: Schlüsselepoche gegen zurückgespielte Sicherungsstände.
+   Ein verbrauchter Wiederherstellungscode lebt wieder auf, wenn jemand eine
+   ältere Fassung der Ablage zurückspielt — der Verbrauch steht nur in der
+   Ablage. Deshalb trägt jeder Satz Codes die Schlüsselepoche, in der er
+   entstand (schluesselepoche.mjs: liegt AUSSERHALB der gesicherten Ablage
+   und wechselt nach jeder erkannten Wiederherstellung). Eingelöst wird ein
+   Code nur in derselben Epoche; danach gilt keiner der alten Codes mehr, und
+   der Inhaber erzeugt mit Passwort/Zugang und Code aus der App neue.
+   Gebunden wird überall außer in NODE_ENV=development/test (dort nur, wenn
+   eine Prüfung eine Quelle setzt). Lässt sich die Epoche nicht feststellen:
+   kein Einlösen, kein Erzeugen (fail-closed). TOTP hängt nicht daran. */
+/** @type {(() => Promise<string>)|null|undefined} */
+let epochenQuelle;
+const vorgabeEpochenQuelle = async () =>
+  (await (await import("./schluesselepoche.mjs")).schluesselEpoche()).epoche;
+
+/**
+ * Quelle der Schlüsselepoche setzen (Prüfungen). `undefined` stellt die Vorgabe wieder her, `null` schaltet die
+ * Bindung ab (nur sinnvoll in Prüfungen; die Vorgabe bindet außerhalb von Entwicklung und Prüfung immer).
+ * @param {(() => Promise<string>)|null|undefined} fn
+ */
+export function wiederherstellungEpocheQuelle(fn) { epochenQuelle = fn; }
+
+/** @returns {Promise<{gebunden: false}|{gebunden: true, epoche: string|null}>} */
+async function whEpoche() {
+  const umgebung = String(process.env.NODE_ENV || "").trim().toLowerCase();
+  const q = epochenQuelle === undefined
+    ? (ENTWICKLUNGSUMGEBUNGEN.includes(umgebung) ? null : vorgabeEpochenQuelle) : epochenQuelle;
+  if (!q) return { gebunden: false };
+  try {
+    const e = await q();
+    if (typeof e === "string" && e) return { gebunden: true, epoche: e };
+  } catch { /* unten: nicht feststellbar */ }
+  return { gebunden: true, epoche: null };
+}
+
 /** Der Ablageteil `wiederherstellung` in Fassung 2. */
-const whStruktur = (w, generation, ms) => ({ v: 2, generation, erzeugt: new Date(ms).toISOString(),
-  kdf: { ...WH_KDF }, verbrauchtZahl: 0, eintraege: w.eintraege });
+const whStruktur = (w, generation, ms, ep = /** @type {any} */ ({ gebunden: false })) => ({ v: 2, generation,
+  erzeugt: new Date(ms).toISOString(), kdf: { ...WH_KDF }, verbrauchtZahl: 0, eintraege: w.eintraege,
+  ...(ep.gebunden ? { epoche: ep.epoche } : {}) });
 
 const istV2 = (w) => !!w && !Array.isArray(w) && w.v === 2;
 
@@ -429,6 +467,9 @@ export async function zweifaktorBestaetigenVorpruefen(store, id, code, ms = Date
  * sind an sie gebunden und gelten nach Abschalten und Neueinrichten nicht mehr.
  */
 export async function zweifaktorBestaetigen(store, id, code, ms = Date.now()) {
+  /* WR-2: Die Codes tragen die Schlüsselepoche. Ist sie nicht feststellbar, wird nicht aktiviert (fail-closed). */
+  const ep = await whEpoche();
+  if (ep.gebunden && !ep.epoche) return { fehler: "epoche" };
   return unterSperre(id, async () => {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (!ausstehendGueltig(e, ms)) return { fehler: "nichts-ausstehend" };
@@ -439,7 +480,7 @@ export async function zweifaktorBestaetigen(store, id, code, ms = Date.now()) {
     const generation = randomBytes(16).toString("hex");
     const w = await wiederherstellungErzeugen(id, 1, generation);
     await store.setJSON(SCHLUESSEL(id), { ...e, stand: "aktiv", letzterSchritt: p.schritt,
-      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: whStruktur(w, 1, ms),
+      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: whStruktur(w, 1, ms, ep),
       aktiviert: new Date().toISOString(), generation });
     return { ok: true, wiederherstellung: w.klar };
   });
@@ -480,6 +521,9 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
     return { ok: false, grund: "nachweis" };
   }
   if (!code) return { ok: false, grund: "fehlt" };
+  /* WR-2: Für einen Wiederherstellungscode die Schlüsselepoche vor der Sperre feststellen (TOTP braucht sie nicht). */
+  const alsTotp = /^\d{6}$/.test(String(code).trim().replace(/\s/g, ""));
+  const ep = alsTotp ? /** @type {{gebunden: false}} */ ({ gebunden: false }) : await whEpoche();
   return unterSperre(id, async () => {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (!e || e.stand !== "aktiv") return { ok: false, grund: "nicht-aktiv" };
@@ -493,6 +537,13 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
       await store.setJSON(SCHLUESSEL(id), { ...e, letzterSchritt: p.schritt,
         geheimnis: kapselNeu(e.geheimnis, roh, id) });
       return { ok: true, art: "totp" };
+    }
+    /* WR-2: Ist die Epoche gebunden, gilt nur ein Satz aus genau dieser Epoche. Nicht feststellbar: kein Einlösen.
+       Ein Satz ohne Epoche (Altformat, oder aus der Zeit vor der Bindung) und einer aus einer früheren Epoche (die
+       Ablage wurde zurückgespielt) gilt nicht — auch nicht ein Code, der im zurückgespielten Stand unverbraucht ist. */
+    if (ep.gebunden) {
+      if (!ep.epoche) return { ok: false, grund: "epoche" };
+      if (!istV2(e.wiederherstellung) || e.wiederherstellung.epoche !== ep.epoche) return { ok: false, grund: "epoche-alt" };
     }
     /* Wiederherstellungscode: verbraucht, sobald er passt. */
     if (istV2(e.wiederherstellung)) return wiederherstellungEinloesen(store, id, e, c, ms);
@@ -544,10 +595,17 @@ async function wiederherstellungEinloesen(store, id, e, code, ms) {
  * keinen Wiederherstellungscode, keinen Nachweis. Danach gilt keiner der
  * bisherigen Codes mehr (auch kein Altformat); die Codegeneration steigt.
  * Die neuen Codes verlassen den Server genau hier, einmal.
- * @returns {Promise<{ok: boolean, fehler?: string, wiederherstellung?: string[]}>}
+ * @returns {Promise<{ok: boolean, fehler?: string, wiederherstellung?: string[], generation?: number}>}
  */
 export async function wiederherstellungNeu(store, id, code, ms = Date.now()) {
   if (!zweifaktorMoeglich()) return { ok: false, fehler: "pfeffer" };
+  /* WR-2: Der neue Satz trägt die jetzige Schlüsselepoche. Nicht feststellbar: nichts erzeugt, alte Codes unverändert. */
+  const ep = await whEpoche();
+  if (ep.gebunden && !ep.epoche) return { ok: false, fehler: "epoche" };
+  /* Prüfen, Erzeugen und Ersetzen unter EINER Sperre je id: Zwei gleichzeitige Neugenerierungen mit demselben Code
+     ergeben genau einen neuen Satz (der zweite scheitert am verbrauchten Zeitschritt), und ein gleichzeitiges Einlösen
+     eines alten Codes liegt entweder ganz davor oder scheitert danach. Scheitert das Schreiben, bleibt der alte Satz
+     unverändert gültig und es verlässt kein neuer Code den Server (der Fehler geht an den Aufrufer). */
   return unterSperre(id, async () => {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (!e || e.stand !== "aktiv") return { ok: false, fehler: "nicht-aktiv" };
@@ -561,8 +619,8 @@ export async function wiederherstellungNeu(store, id, code, ms = Date.now()) {
     const generation = (istV2(alt) && Number.isInteger(alt.generation) ? alt.generation : 0) + 1;
     const w = await wiederherstellungErzeugen(id, generation, String(e.generation ?? ""));
     await store.setJSON(SCHLUESSEL(id), { ...e, letzterSchritt: p.schritt,
-      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: whStruktur(w, generation, ms) });
-    return { ok: true, wiederherstellung: w.klar };
+      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: whStruktur(w, generation, ms, ep) });
+    return { ok: true, wiederherstellung: w.klar, generation };
   });
 }
 

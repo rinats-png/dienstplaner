@@ -583,6 +583,15 @@ describe("OPT-1-F Review: Befunde 2 und 3", () => {
     expect(alt.ok, JSON.stringify(alt)).toBe(true);
     const p0 = await AN.sitzungPruefen(s, alt.token, { sitzungsAblage: abseits });
     expect(p0.ok).toBe(true);
+    /* OPT-4: Seit dem Ersteinrichtungscode trägt das Konto `faktorPflicht`; ohne Faktor entstünde keine Arbeitssitzung
+       als Leitung mehr (konto-faktor-pflicht.test.js). Geprüft wird hier Befund 3 für eine ältere Sitzung — wie aus der
+       Zeit vor OPT-4: Der Vermerk wird für den Aufbau roh entfernt (accountAendern nimmt ihn nie zurück). Alle
+       Erwartungen unten bleiben unverändert. */
+    const kRoh = await A.accountLesenPerId(s, K5.accountId);
+    expect(kRoh.faktorPflicht).toBe(true);
+    const { faktorPflicht: _weg, ...ohnePflicht } = kRoh;
+    await s.setJSON(A.accountSchluessel(kRoh.emailNorm), ohnePflicht);
+    expect((await A.accountLesenPerId(s, K5.accountId)).faktorPflicht).toBeUndefined();
     delete process.env.CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT;
     let arbeit;
     try {

@@ -109,7 +109,7 @@ import {
 import { arbeitssitzungenBeenden } from "./arbeitssitzung.mjs";
 import {
   kontoFaktorId, kontoFaktorStand, kontoFaktorBeginnen, kontoFaktorVorpruefen,
-  kontoFaktorBestaetigen, kontoFaktorPruefen, kontoFaktorAktiv,
+  kontoFaktorBestaetigen, kontoFaktorPruefen, kontoFaktorAktiv, kontoWiederherstellungNeu,
 } from "./kontofaktor.mjs";
 import {
   ersteinrichtungFuerKonto, ersteinrichtungEinloesen, ersteinrichtungFehlversuch,
@@ -260,6 +260,8 @@ async function faktorDerAnmeldung(store, konto, zweifaktor, faktorTor) {
   catch { return nichtPruefbar("faktor-lesen"); }
   if (!p.ok) {
     if (p.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    /* WR-2: Schlüsselepoche nicht feststellbar — kein Wiederherstellungscode gilt (503, keine Sitzung). */
+    if (p.grund === "epoche") return nichtPruefbar("faktor-epoche");
     return { ok: false, grund: p.grund === "wiederholt" ? "zweifaktor-wiederholt" : "zweifaktor-falsch",
       hinweis: HINWEIS_FAKTOR_FALSCH };
   }
@@ -313,8 +315,14 @@ export async function anmelden(store, { email, passwort, zweifaktor = undefined,
 }
 
 /** Die Aktionen am zweiten Faktor eines Kontos. Kein Abschalten: Wechsel und
-    Verlust gehören zur Wiederherstellung (WR-2 bis WR-9), nicht hierher. */
-export const KONTO_FAKTOR_AKTIONEN = Object.freeze(["stand", "beginnen", "bestaetigen"]);
+    Verlust gehören zur Wiederherstellung (WR-3 bis WR-9), nicht hierher.
+    `wiederherstellung-neu` (WR-2): neue Wiederherstellungscodes, nur mit
+    Adresse, Passwort UND frischem Code aus der App. */
+export const KONTO_FAKTOR_AKTIONEN = Object.freeze(["stand", "beginnen", "bestaetigen", "wiederherstellung-neu"]);
+
+/** WR-2: Neugenerierung nur mit dem aktuellen Code aus der App (kein Wiederherstellungscode). */
+export const HINWEIS_NEU_NUR_TOTP =
+  "Neue Wiederherstellungscodes gibt es nur mit dem aktuellen Code aus der App, nicht mit einem Wiederherstellungscode.";
 
 /**
  * Den zweiten Faktor eines Kontos einrichten (OPT-1-F).
@@ -368,6 +376,36 @@ export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifa
   try { stand = await kontoFaktorStand(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
 
   if (a === "stand") return { ok: true, daten: { aktiv: stand.aktiv, ausstehend: stand.ausstehend } };
+
+  /* WR-2: Neue Wiederherstellungscodes — nur nach vollständiger, frischer Authentifizierung: Adresse und Passwort
+     (oben, zugangPruefen) UND ein frischer Code aus der App. Ein Wiederherstellungscode oder ein Nachweis genügt nie
+     (Entscheidungen 8 und 9). Kein Ersteinrichtungscode: Der Faktor ist schon aktiv, eingerichtet wird nichts.
+     Gebremst wie die Anmeldung (derselbe Zähler je Faktor und Herkunft), damit die Neugenerierung kein zusätzlicher
+     Rateweg ist. Prüfen, Erzeugen und Ersetzen unter einer Sperre (zweifaktor.mjs, wiederherstellungNeu); danach gilt
+     keiner der bisherigen Codes. Es entsteht keine Sitzung, und keine bestehende wird berührt. */
+  if (a === "wiederherstellung-neu") {
+    if (!stand.aktiv) return nein("faktor-nichts", "Für dieses Konto ist kein zweiter Faktor eingerichtet.");
+    const code = typeof zweifaktor === "string" ? zweifaktor.trim() : "";
+    if (!code) return nein("zweifaktor-erforderlich", "Bitte den aktuellen Code aus der App angeben.");
+    if (!/^\d{6}$/.test(code.replace(/\s/g, ""))) return nein("zweifaktor-falsch", HINWEIS_NEU_NUR_TOTP);
+    if (faktorTor) {
+      const t = await faktorTor(kontoFaktorId(id));
+      if (t && t.nichtPruefbar) return nichtPruefbar("faktor-bremse");
+      if (t) return { ...nein("zweifaktor-gebremst", HINWEIS_FAKTOR_FALSCH), wartet: Number(t.wartet) || 0 };
+    }
+    let r;
+    try { r = await kontoWiederherstellungNeu(store, id, code); } catch { return nichtPruefbar("faktor-lesen"); }
+    if (!r.ok) {
+      const g = "grund" in r ? r.grund : "";
+      if (g === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+      if (g === "epoche") return nichtPruefbar("faktor-epoche");
+      if (g === "nicht-aktiv") return nein("faktor-nichts", "Für dieses Konto ist kein zweiter Faktor eingerichtet.");
+      return nein(g === "wiederholt" ? "zweifaktor-wiederholt" : "zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
+    }
+    return { ok: true, daten: { wiederherstellung: r.wiederherstellung,
+      hinweis: "Neue Wiederherstellungscodes. Sie erscheinen genau einmal; jeder gilt einmal. Alle bisherigen "
+        + "Wiederherstellungscodes gelten nicht mehr." } };
+  }
 
   /* OPT-1-F, Option A (Befund 1): Ein aktiver Faktor wird nie neu eingerichtet — das ist keine Auskunft über den Code
      und bleibt deshalb vor seiner Prüfung (409 wie bisher). */
@@ -450,6 +488,7 @@ export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifa
     if (ein.grund === "verbraucht") return nein("ersteinrichtung", HINWEIS_ERSTEINRICHTUNG);
     const eg = ein.ergebnis && typeof ein.ergebnis === "object" ? String(ein.ergebnis.grund || "") : "";
     if (ein.grund === "einrichtung" && eg === "pfeffer") return nichtPruefbar("faktor-pfeffer");
+    if (ein.grund === "einrichtung" && eg === "epoche") return nichtPruefbar("faktor-epoche");
     if (ein.grund === "einrichtung" && ein.ergebnis && eg && eg !== "einrichtung")
       return nein("zweifaktor-falsch", HINWEIS_FAKTOR_FALSCH);
     return nichtPruefbar("faktor-lesen");

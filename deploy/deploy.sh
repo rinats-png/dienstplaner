@@ -236,7 +236,9 @@ bisher_startbar() {
 daten_bytes="$(du -sb "$DATEN_PFAD" 2>/dev/null | cut -f1)" || daten_bytes=""
 mkdir -p "$SICHERUNGEN" 2>/dev/null || abbruch 4 "Sicherungsverzeichnis $SICHERUNGEN lässt sich nicht anlegen"
 # Zustandsverzeichnis der Sicherungsschlüssel (compose: ./zustand:/zustand), dem Benutzer
-# des Containers (uid 1000). Ohne es gelten keine Sicherungsschlüssel; der Dienst läuft.
+# des Containers (uid 1000). Ohne es gelten keine Sicherungsschlüssel, und seit WR-2 antworten Aktivieren
+# eines zweiten Faktors, Neuerzeugen der Wiederherstellungscodes und Anmelden mit Wiederherstellungscode
+# mit 503 (fail-closed); Anmelden mit dem Code aus der App und der übrige Dienst laufen weiter.
 if ((trocken)); then
   [[ -d "$ZUSTAND_PFAD" ]] || echo "Trockenlauf: Zustandsverzeichnis $ZUSTAND_PFAD fehlt und würde angelegt." >&2
 elif [[ ! -d "$ZUSTAND_PFAD" ]]; then
