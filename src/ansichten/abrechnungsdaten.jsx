@@ -31,7 +31,7 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
   return (
     <div>
       <H1 sub="Was die Lohnstelle braucht — und was das Stundenkonto verlangt. Entgelte bleiben bewusst außerhalb: Löhne gehören in die Lohnabrechnung, nicht in die Dienstplanung."
-        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+        right={<div className="seg-umbruch" style={{ display: "flex", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
           <Seg value={reiter} onChange={setReiter} options={[{ id: "zuschlaege", label: "Zuschläge" },
             { id: "ausgleich", label: "Freizeitausgleich" }, { id: "lohn", label: "Lohnausgabe" },
             { id: "stempel", label: "Stempelbefunde" }]} />
@@ -62,7 +62,7 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
           haupt={<>
         <Card style={{ overflowX: "auto" }}>
           <CardHead right={<Lab>Zuschlagswert in Stunden</Lab>}>Je Person</CardHead>
-          <table className="raster" style={{ minWidth: 760 }}>
+          <table className="raster raster-stapel" style={{ minWidth: 760 }}>
             <thead><tr>{["Person", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag", "Zuschlagswert"].map((h, i) => (
               <th key={i} style={{ textAlign: i ? "right" : "left" }}>{h}</th>))}</tr></thead>
             <tbody>{zeilen.map(({ p, z }) => (
@@ -71,10 +71,10 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
                     <Avatar person={p} size="sm" style={{ width: 26, height: 26, fontSize: 10 }} />
                     {p.nachname}, {p.vorname}</span></td>
-                {["gesamt", "nacht", "sonntag", "feiertag", "samstag"].map((f) => (
-                  <td key={f} style={{ textAlign: "right", fontSize: 13,
+                {[["gesamt", "Gearbeitet"], ["nacht", "Nacht"], ["sonntag", "Sonntag"], ["feiertag", "Feiertag"], ["samstag", "Samstag"]].map(([f, kopf]) => (
+                  <td key={f} data-label={kopf} style={{ textAlign: "right", fontSize: 13,
                     color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1Ist(z.std[f])}</td>))}
-                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1Ist(z.summe)} h</td>
+                <td data-label="Zuschlagswert" style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1Ist(z.summe)} h</td>
               </tr>))}</tbody>
           </table>
         </Card>
