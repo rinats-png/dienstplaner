@@ -13,6 +13,7 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { ersteinrichtungOffen, ersteinrichtungGueltig, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -858,6 +859,13 @@ async function behandeln(req, context, ctx) {
         eintragV = await kontoLesen(store, altS);
         if (eintragV) { fundSchluessel = altS; mussUmschluesseln = true; }
       }
+      /* OPT-1: Ein Ersteinrichtungscode (lib/zugangscode-ersteinrichtung.mjs) gilt nur befristet und nur mit
+         passendem Prüfwert (zeitkonstant verglichen) und nur bis zur Einlösung. Abgelaufen, verbraucht (eingerichtet oder nach
+         Fehlversuchen gesperrt, H1/M1), kaputt oder ohne Pfeffer: genau wie ein
+         unbekannter Code — dieselbe Bremse, dieselbe Antwort, kein Grund nach außen. */
+      if (eintragV && ersteinrichtungsZugang(eintragV) && !ersteinrichtungGueltig(eintragV, zugangscode)) {
+        eintragV = null; fundSchluessel = null; mussUmschluesseln = false;
+      }
       const fund = { eintrag: eintragV, schluessel: fundSchluessel,
         umschluesseln: mussUmschluesseln };
       const zielRaum = eintragV ? eintragV.bestand : null;
@@ -1015,7 +1023,10 @@ async function behandeln(req, context, ctx) {
       } else if (zweifaktorRolle(eintrag.rolle) || zweifaktorRolle(rolleWirksamC)) {
         const zf = await rollenZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
           kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name,
-          faktorVermerkt: eintrag.zweiterFaktor === true });
+          faktorVermerkt: eintrag.zweiterFaktor === true,
+          /* OPT-1: Zugang aus der Ersteinrichtung — Faktor Pflicht; ein verbrauchter kommt hier nie an. */
+          pflichtErzwungen: ersteinrichtungOffen(eintrag) || eintrag.faktorPflicht === true,
+          ersteinrichtung: ersteinrichtungOffen(eintrag) });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {
