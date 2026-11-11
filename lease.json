@@ -3,8 +3,8 @@
   "halter": "cloud-nachtaufgabe",
   "uebernommen_am": "2026-11-11T01:33:06.266Z",
   "erneuert_am": "2026-11-11T01:33:06.266Z",
-  "gueltig_bis": "2026-11-11T03:03:06.266Z",
+  "gueltig_bis": "2026-11-11T01:56:23.339Z",
   "uebergabe": "Lease Epoche 3 abgelaufen/freigegeben 00:33Z, keine offenen Arbeits-PRs, Integrationskopf ecfa1ef; geplanter Nachtlauf 01:33Z uebernimmt",
   "vorgaenger": "cloud-nachtaufgabe",
-  "freigegeben_am": null
+  "freigegeben_am": "2026-11-11T01:56:23.339Z"
 }
