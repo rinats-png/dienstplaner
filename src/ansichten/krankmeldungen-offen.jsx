@@ -10,22 +10,33 @@ import { useState } from "react";
 import { Card, CardHead, Btn, Pill } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { fKurz } from "../lib/datum.js";
-import { KRANK_STATUS, krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
+import { KRANK_STATUS, krankSchrittErlaubt, fallOffen, meldendePerson, svZustaendig } from "../../server/lib/krankmeldung.mjs";
 
 export const KRANK_STATUS_TEXT = Object.freeze({
   [KRANK_STATUS.EINGEGANGEN]: "Eingegangen",
   [KRANK_STATUS.VORLAEUFIG]: "Vorläufig bestätigt",
   [KRANK_STATUS.ENDGUELTIG]: "Endgültig bestätigt",
+  [KRANK_STATUS.ABGELEHNT]: "Abgelehnt",
+  [KRANK_STATUS.ZURUECKGEZOGEN]: "Zurückgezogen",
 });
 
-/** Welche Schritte bietet die Oberfläche dieser Person für diesen Fall an? */
+/** Welche Schritte bietet die Oberfläche dieser Person für diesen Fall an? Dieselben Regeln wie der Server
+    (krankmeldungSchritt) — die Anzeige spiegelt nur, entscheiden tut der Server. Am eigenen Fall nur
+    „zurückziehen“, und das nur, wer ihn gemeldet hat. Die Schichtverantwortung bekommt „vorläufig“ nur,
+    wenn die Bereichsregel des Servers (erster und letzter Tag, svZustaendig) erfüllt ist (Review RB-2, L3). */
 export function krankSchritteFuer(sitz, fall) {
   const ich = sitz && sitz.person;
-  if (!ich || !fall || sitz.rolle === "betreiber" || String(fall.personId) === String(ich.id)) return [];
+  if (!ich || !fall || sitz.rolle === "betreiber" || !fallOffen(fall)) return [];
   const aus = [];
-  if (fall.status === KRANK_STATUS.EINGEGANGEN && krankSchrittErlaubt(ich.rolle, "vorlaeufig")) aus.push("vorlaeufig");
-  if ((fall.status === KRANK_STATUS.EINGEGANGEN || fall.status === KRANK_STATUS.VORLAEUFIG)
-    && krankSchrittErlaubt(ich.rolle, "endgueltig")) aus.push("endgueltig");
+  const eigenerFall = String(fall.personId) === String(ich.id);
+  const vonMir = fall.gemeldetVonMir === true || String(meldendePerson(fall)) === String(ich.id);
+  if (!eigenerFall) {
+    if (fall.status === KRANK_STATUS.EINGEGANGEN && krankSchrittErlaubt(ich.rolle, "vorlaeufig")
+      && svZustaendig(sitz.mandant, ich, fall.personId, fall.von, fall.bis)) aus.push("vorlaeufig");
+    if (krankSchrittErlaubt(ich.rolle, "endgueltig")) aus.push("endgueltig");
+    if (krankSchrittErlaubt(ich.rolle, "ablehnen")) aus.push("ablehnen");
+  }
+  if (vonMir && krankSchrittErlaubt(ich.rolle, "zurueckziehen")) aus.push("zurueckziehen");
   return aus;
 }
 
@@ -34,7 +45,7 @@ export function KrankmeldungenOffen({ sitz, akt }) {
   const [fehler, setFehler] = useState(null);
   const [laeuft, setLaeuft] = useState(null);
   const faelle = (Array.isArray(m.krankmeldungen) ? m.krankmeldungen : [])
-    .filter((f) => f && f.status !== KRANK_STATUS.ENDGUELTIG);
+    .filter((f) => fallOffen(f));
   if (!faelle.length) return null;
   const name = (pid) => {
     const p = (m.personen || []).find((x) => String(x.id) === String(pid));
@@ -70,6 +81,12 @@ export function KrankmeldungenOffen({ sitz, akt }) {
               {angebot.includes("endgueltig") && (
                 <Btn kind="primary" onClick={() => schritt(f, "endgueltig")} disabled={!!laeuft}
                   aria-label={`Krankmeldung von ${name(f.personId)} endgültig bestätigen`}>Endgültig bestätigen</Btn>)}
+              {angebot.includes("ablehnen") && (
+                <Btn onClick={() => schritt(f, "ablehnen")} disabled={!!laeuft}
+                  aria-label={`Krankmeldung von ${name(f.personId)} ablehnen`}>Ablehnen</Btn>)}
+              {angebot.includes("zurueckziehen") && (
+                <Btn kind="quiet" onClick={() => schritt(f, "zurueckziehen")} disabled={!!laeuft}
+                  aria-label={`Krankmeldung von ${name(f.personId)} zurückziehen`}>Zurückziehen</Btn>)}
               {fehler && fehler.id === f.id && (
                 <div role="alert" style={{ flexBasis: "100%", fontSize: 12.5, color: C.danger }}>{fehler.text}</div>)}
             </li>);

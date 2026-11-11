@@ -29,7 +29,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { KRANK_STATUS, krankSchrittErlaubt, krankmeldungMelden, krankmeldungBestaetigen, svZustaendig, fallEndgueltig,
-  krankProtokollZeilen } from "../server/lib/krankmeldung.mjs";
+  krankProtokollZeilen, krankmeldungSchritt } from "../server/lib/krankmeldung.mjs";
+import { vorschau, raeumen, berichtstext } from "../server/lib/aufbewahrung.mjs";
 import { zusammenfuehren, bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { personTag, istTag, stundenkonto } from "../server/lib/engine/plan.mjs";
 import { feedTermine } from "../server/lib/kalenderfeed.mjs";
@@ -122,9 +123,15 @@ describe("A  Rechte je Rolle und Schritt (Server-Kern)", () => {
         expect(r.status).toBe(403);
       }
     });
-    it("fremde Schichtverantwortung (anderer Bereich) und eine außerhalb ihres Bereichs am Tag: 403", () => {
-      expect(krankmeldungBestaetigen(mitFall(), AK("s2", "subplaner"), "vorlaeufig", "km-a", JETZT).status).toBe(403);
-      expect(krankmeldungBestaetigen(mitFall("a1", T(4), WECHSEL), AK("s3", "subplaner"), "vorlaeufig", "km-a", JETZT).status).toBe(403);
+    /* Review L2: außerhalb ihres Bereichs dieselbe Antwort wie für einen unbekannten Fall (keine Existenzauskunft). */
+    it("fremde Schichtverantwortung (anderer Bereich) und eine außerhalb ihres Bereichs am Tag: abgewiesen wie unbekannt (404)", () => {
+      const unbekannt = krankmeldungBestaetigen(mitFall(), AK("s2", "subplaner"), "vorlaeufig", "km-gibtsnicht", JETZT);
+      for (const r of [krankmeldungBestaetigen(mitFall(), AK("s2", "subplaner"), "vorlaeufig", "km-a", JETZT),
+        krankmeldungBestaetigen(mitFall("a1", T(4), WECHSEL), AK("s3", "subplaner"), "vorlaeufig", "km-a", JETZT)]) {
+        expect(r).toEqual(unbekannt);
+        expect(r.status).toBe(404);
+        expect(r.mandant).toBeUndefined();
+      }
     });
     for (const [pid, rolle] of [["a2", "mitarbeiter"], ["r1", "betriebsrat"], [null, "betreiber"]]) {
       it(`${rolle}: weder vorläufig noch endgültig`, () => {
@@ -297,7 +304,8 @@ describe("D  Sicht auf die Fälle (Gesundheitsangaben)", () => {
     expect(sicht({ rolle: "subplaner", person: "s1", betrieb: 0 })).toEqual([{ id: "km-a1", personId: "a1", von: T(2), bis: T(3), status: KRANK_STATUS.EINGEGANGEN }]);
   });
   it("Beschäftigte: nur die eigene, mit Anmerkung, ohne Verlauf; Kollegin sieht nichts", () => {
-    expect(sicht({ rolle: "mitarbeiter", person: "a1", betrieb: 0 })).toEqual([{ id: "km-a1", personId: "a1", von: T(2), bis: T(3), notiz: "NOTIZ-A1", status: KRANK_STATUS.EINGEGANGEN }]);
+    /* gemeldetVonMir: abgeleitet (Review M1, „Zurückziehen“), nie gespeichert. */
+    expect(sicht({ rolle: "mitarbeiter", person: "a1", betrieb: 0 })).toEqual([{ id: "km-a1", personId: "a1", von: T(2), bis: T(3), notiz: "NOTIZ-A1", status: KRANK_STATUS.EINGEGANGEN, gemeldetVonMir: true }]);
     expect(sicht({ rolle: "mitarbeiter", person: "a2", betrieb: 0 })).toEqual([]);
   });
   it("Betriebsrat und Betreiber: nichts", () => {
@@ -312,8 +320,9 @@ describe("D  Sicht auf die Fälle (Gesundheitsangaben)", () => {
 
 /* ===================== Oberfläche: angebotene Schritte ===================== */
 describe("Oberfläche spiegelt den Server", () => {
-  const sitz = (pid, rolle) => ({ rolle, person: { id: pid, rolle } });
-  const fall = (status, personId = "a1") => ({ id: "km", personId, status });
+  const M = betrieb();
+  const sitz = (pid, rolle) => ({ rolle, mandant: M, person: M.personen.find((p) => p.id === pid) || { id: pid, rolle } });
+  const fall = (status, personId = "a1", von = T(2), bis = T(2)) => ({ id: "km", personId, status, von, bis });
   it("Schichtverantwortung: nur „vorläufig“ und nur aus „eingegangen“; nie die eigene", () => {
     expect(krankSchritteFuer(sitz("s1", "subplaner"), fall(KRANK_STATUS.EINGEGANGEN))).toEqual(["vorlaeufig"]);
     expect(krankSchritteFuer(sitz("s1", "subplaner"), fall(KRANK_STATUS.VORLAEUFIG))).toEqual([]);
@@ -321,8 +330,8 @@ describe("Oberfläche spiegelt den Server", () => {
   });
   it("Planung und Leitung: „endgültig“ aus beiden offenen Stufen; Beschäftigte, Betriebsrat, Betreiber: nichts", () => {
     for (const r of ["planer", "leitung"]) {
-      expect(krankSchritteFuer(sitz("x", r), fall(KRANK_STATUS.EINGEGANGEN))).toEqual(["endgueltig"]);
-      expect(krankSchritteFuer(sitz("x", r), fall(KRANK_STATUS.VORLAEUFIG))).toEqual(["endgueltig"]);
+      expect(krankSchritteFuer(sitz("x", r), fall(KRANK_STATUS.EINGEGANGEN))).toEqual(["endgueltig", "ablehnen"]);
+      expect(krankSchritteFuer(sitz("x", r), fall(KRANK_STATUS.VORLAEUFIG))).toEqual(["endgueltig", "ablehnen"]);
       expect(krankSchritteFuer(sitz("x", r), fall(KRANK_STATUS.ENDGUELTIG))).toEqual([]);
     }
     for (const r of ["mitarbeiter", "betriebsrat", "betreiber"]) expect(krankSchritteFuer(sitz("x", r), fall(KRANK_STATUS.EINGEGANGEN)), r).toEqual([]);
@@ -442,7 +451,7 @@ describe("E  HTTP: POST /api/krankmeldung", () => {
     await zuruecksetzen();
     const id = (await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2) })).fall.id;
     expect((await km("s1", "subplaner", { aktion: "endgueltig", id, status: "endgueltig_bestaetigt", rolle: "leitung" })).status).toBe(403);
-    expect((await km("s2", "subplaner", { aktion: "vorlaeufig", id })).status).toBe(403);
+    expect((await km("s2", "subplaner", { aktion: "vorlaeufig", id })).status).toBe(404);     // Review L2: wie unbekannt
     for (const [pid, rolle] of [["a2", "mitarbeiter"], ["r1", "betriebsrat"]])
       for (const aktion of ["vorlaeufig", "endgueltig"]) expect((await km(pid, rolle, { aktion, id, personId: "p1" })).status, `${rolle} ${aktion}`).toBe(403);
     expect((await km("r1", "betriebsrat", { aktion: "melden", von: T(2), bis: T(2) })).status).toBe(403);
@@ -488,5 +497,212 @@ describe("E  HTTP: POST /api/krankmeldung", () => {
     const m = await gespeichert();
     expect(m.krankmeldungen.find((f) => f.id === id).status).toBe(KRANK_STATUS.EINGEGANGEN);
     expect(m.abwesenheiten.filter((a) => a.id === `a-${id}`)).toEqual([]);
+  });
+  /* ---- Nachtrag Review RB-2 über den Handler ---- */
+  it("M1: Planung lehnt ab, Beschäftigte zieht zurück — Endzustände, keine Abwesenheit, protokolliert ohne Anmerkung", async () => {
+    await zuruecksetzen();
+    const vorher = (await spurZeilen()).length;
+    const id1 = (await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2), notiz: "NOTIZ-GEHEIM" })).fall.id;
+    const ab = await km("p1", "planer", { aktion: "ablehnen", id: id1, grund: "irrtum" });
+    expect(ab.status, JSON.stringify(ab)).toBe(200);
+    expect(ab.fall.status).toBe(KRANK_STATUS.ABGELEHNT);
+    const id2 = (await km("a1", "mitarbeiter", { aktion: "melden", von: T(3), bis: T(3) })).fall.id;
+    const zu = await km("a1", "mitarbeiter", { aktion: "zurueckziehen", id: id2 });
+    expect(zu.status, JSON.stringify(zu)).toBe(200);
+    expect(zu.fall.status).toBe(KRANK_STATUS.ZURUECKGEZOGEN);
+    const m = await gespeichert();
+    expect(m.abwesenheiten).toEqual([]);
+    for (const [id, aktion, pid, rolle] of [[id1, "endgueltig", "l1", "leitung"], [id1, "ablehnen", "l1", "leitung"],
+      [id2, "zurueckziehen", "a1", "mitarbeiter"], [id2, "vorlaeufig", "s1", "subplaner"]])
+      expect((await km(pid, rolle, { aktion, id })).status, `${aktion} aus Endzustand`).toBe(409);
+    const z = (await spurZeilen()).slice(vorher).map((x) => `${x.zusatz}|${x.rolle}|${x.person}`);
+    expect(z).toEqual(expect.arrayContaining([`Krankmeldung ${id1}: abgelehnt · Rolle planer|planer|p1`,
+      `Krankmeldung ${id2}: zurueckgezogen · Rolle mitarbeiter|mitarbeiter|a1`]));
+    expect(JSON.stringify(await spurZeilen())).not.toMatch(/NOTIZ-GEHEIM|Diagnose/);
+  });
+  it("M1: manipulierte Rümpfe — SV lehnt nicht ab, Freitext-Grund nicht, fremde Person zieht nicht zurück", async () => {
+    await zuruecksetzen();
+    const id = (await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2) })).fall.id;
+    expect((await km("s1", "subplaner", { aktion: "ablehnen", id, rolle: "leitung" })).status).toBe(403);
+    expect((await km("p1", "planer", { aktion: "ablehnen", id, grund: "Diagnose J11" })).status).toBe(400);
+    expect((await km("a2", "mitarbeiter", { aktion: "zurueckziehen", id, personId: "a1" })).status).toBe(404);
+    expect((await km("r1", "betriebsrat", { aktion: "zurueckziehen", id })).status).toBe(403);
+    expect((await gespeichert()).krankmeldungen[0].status).toBe(KRANK_STATUS.EINGEGANGEN);
+    expect(JSON.stringify(await spurZeilen())).not.toContain("J11");
+  });
+  it("L1: dieselbe Meldung zweimal (Netzwiederholung) ergibt einen Fall", async () => {
+    await zuruecksetzen();
+    const a = await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2), clientEventId: "ev-http-1" });
+    const b = await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2), clientEventId: "ev-http-1" });
+    expect([a.status, b.status, b.wiederholt, b.fall.id]).toEqual([200, 200, true, a.fall.id]);
+    const c = await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2) });
+    expect(c.fall.id).toBe(a.fall.id);
+    expect((await gespeichert()).krankmeldungen).toHaveLength(1);
+  });
+  it("L2: ohne Zugang zum Fall dieselbe Antwort wie für einen unbekannten Fall", async () => {
+    await zuruecksetzen();
+    const id = (await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(2) })).fall.id;
+    const ohne = (x) => ({ status: x.status, fehler: x.fehler, code: x.code });
+    const fremd = ohne(await km("s2", "subplaner", { aktion: "vorlaeufig", id }));
+    const unbekannt = ohne(await km("s2", "subplaner", { aktion: "vorlaeufig", id: "km-gibtsnicht" }));
+    expect(fremd).toEqual(unbekannt);
+    expect(ohne(await km("a2", "mitarbeiter", { aktion: "zurueckziehen", id })))
+      .toEqual(ohne(await km("a2", "mitarbeiter", { aktion: "zurueckziehen", id: "km-gibtsnicht" })));
+  });
+});
+
+/* ==========================================================================
+   NACHTRAG REVIEW RB-2 (M1, M2, L1, L2, L3)
+   ========================================================================== */
+describe("M1  Ablehnen und Zurückziehen: Endzustände ohne Wirkung", () => {
+  const offen = (status = KRANK_STATUS.EINGEGANGEN, melder = ["a1", "mitarbeiter"], person = "a1") => betrieb({ krankmeldungen: [{
+    id: "km-r", personId: person, von: T(2), bis: T(3), notiz: "NOTIZ-R", status,
+    verlauf: [{ schritt: "eingegangen", von: melder[0], rolle: melder[1], zeit: "t" }] }] });
+  const schritt = (m, pid, rolle, s, extra = {}) => krankmeldungSchritt(m, AK(pid, rolle), s, { id: "km-r", ...extra }, JETZT);
+
+  for (const [pid, rolle] of [["p1", "planer"], ["l1", "leitung"]]) {
+    it(`${rolle} lehnt ab (aus „eingegangen“ und „vorläufig“), ohne oder mit festem Kennzeichen — keine Abwesenheit`, () => {
+      for (const st of [KRANK_STATUS.EINGEGANGEN, KRANK_STATUS.VORLAEUFIG]) {
+        const r = ok(schritt(offen(st), pid, rolle, "ablehnen"));
+        expect(r.fall.status).toBe(KRANK_STATUS.ABGELEHNT);
+        expect(r.mandant.abwesenheiten).toEqual([]);
+        expect(r.fall.verlauf.at(-1)).toMatchObject({ schritt: "ablehnen", von: pid, rolle });
+        const g = ok(schritt(offen(st), pid, rolle, "ablehnen", { grund: "doppelt" }));
+        expect(g.fall.verlauf.at(-1).grund).toBe("doppelt");
+      }
+    });
+  }
+  it("Ablehnen: Freitext statt Kennzeichen wird abgewiesen (keine Gesundheitsangabe im Verlauf)", () => {
+    for (const grund of ["Diagnose J11", "", 7, { x: 1 }, ["doppelt"]])
+      expect(schritt(offen(), "p1", "planer", "ablehnen", { grund }).status, JSON.stringify(grund)).toBe(400);
+  });
+  it("Ablehnen: Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber nie; die eigene Meldung nie", () => {
+    for (const [pid, rolle] of [["s1", "subplaner"], ["a2", "mitarbeiter"], ["r1", "betriebsrat"], [null, "betreiber"]])
+      expect(schritt(offen(), pid, rolle, "ablehnen").status, rolle).toBe(403);
+    expect(schritt(offen(KRANK_STATUS.EINGEGANGEN, ["p1", "planer"], "p1"), "p1", "planer", "ablehnen"))
+      .toMatchObject({ status: 403, code: "VIER_AUGEN" });
+  });
+  it("Zurückziehen: nur die meldende Person, solange offen — auch die Schichtverantwortung für ihre Meldung", () => {
+    const r = ok(schritt(offen(), "a1", "mitarbeiter", "zurueckziehen"));
+    expect(r.fall.status).toBe(KRANK_STATUS.ZURUECKGEZOGEN);
+    expect(r.mandant.abwesenheiten).toEqual([]);
+    expect(ok(schritt(offen(KRANK_STATUS.VORLAEUFIG, ["s1", "subplaner"]), "s1", "subplaner", "zurueckziehen")).fall.status)
+      .toBe(KRANK_STATUS.ZURUECKGEZOGEN);
+    for (const [pid, rolle] of [["a2", "mitarbeiter"], ["p1", "planer"], ["l1", "leitung"], ["s1", "subplaner"]])
+      expect(schritt(offen(), pid, rolle, "zurueckziehen").status, rolle).toBe(404);
+    for (const [pid, rolle] of [["r1", "betriebsrat"], [null, "betreiber"]])
+      expect(schritt(offen(), pid, rolle, "zurueckziehen").status, rolle).toBe(403);
+  });
+  it("kein Übergang aus einem Endzustand (409), für jede berechtigte Rolle und jeden Schritt", () => {
+    for (const st of [KRANK_STATUS.ENDGUELTIG, KRANK_STATUS.ABGELEHNT, KRANK_STATUS.ZURUECKGEZOGEN, "unbekannt"]) {
+      const m = offen(st);
+      for (const [pid, rolle, s] of [["s1", "subplaner", "vorlaeufig"], ["p1", "planer", "endgueltig"], ["l1", "leitung", "ablehnen"],
+        ["a1", "mitarbeiter", "zurueckziehen"]]) {
+        const r = schritt(m, pid, rolle, s);
+        expect(r.status, `${st} ${s}`).toBe(409);
+        expect(r.mandant, `${st} ${s}`).toBeUndefined();
+      }
+    }
+  });
+  it("abgelehnt und zurückgezogen wirken nirgends (Plan, Ersatzsuche)", () => {
+    for (const st of [KRANK_STATUS.ABGELEHNT, KRANK_STATUS.ZURUECKGEZOGEN]) {
+      const m = offen(st);
+      const t = personTag(m, m.personen.find((p) => p.id === "a1"), T(2));
+      expect(t.abwesenheit).toBeNull();
+      expect(t.dienstId).toBe("F");
+    }
+  });
+});
+
+describe("L1  Wiederholung und Überschneidung", () => {
+  it("dieselbe clientEventId liefert denselben Fall, nichts Neues", () => {
+    const erst = ok(melde(betrieb(), AK("a1", "mitarbeiter"), { von: T(2), bis: T(2), clientEventId: "ev-1" }, "km-1"));
+    const zweit = ok(melde(erst.mandant, AK("a1", "mitarbeiter"), { von: T(2), bis: T(2), clientEventId: "ev-1" }, "km-2"));
+    expect(zweit.wiederholt).toBe(true);
+    expect(zweit.fall.id).toBe("km-1");
+    expect(zweit.mandant.krankmeldungen).toHaveLength(1);
+    expect(melde(betrieb(), AK("a1", "mitarbeiter"), { von: T(2), bis: T(2), clientEventId: "x y" }).status).toBe(400);
+  });
+  it("ohne Kennung: derselbe offene Zeitraum derselben meldenden Person ist dieselbe Meldung; nach Zurückziehen eine neue", () => {
+    const erst = ok(melde(betrieb(), AK("a1", "mitarbeiter"), { von: T(2), bis: T(3) }, "km-1"));
+    const zweit = ok(melde(erst.mandant, AK("a1", "mitarbeiter"), { von: T(2), bis: T(3) }, "km-2"));
+    expect([zweit.wiederholt, zweit.fall.id, zweit.mandant.krankmeldungen.length]).toEqual([true, "km-1", 1]);
+    const weg = ok(krankmeldungSchritt(erst.mandant, AK("a1", "mitarbeiter"), "zurueckziehen", { id: "km-1" }, JETZT));
+    const neu = ok(melde(weg.mandant, AK("a1", "mitarbeiter"), { von: T(2), bis: T(3) }, "km-3"));
+    expect([neu.wiederholt, neu.fall.id, neu.mandant.krankmeldungen.length]).toEqual([undefined, "km-3", 2]);
+  });
+  it("endgültig bei gleicher bestehender Krankheit: zusammengeführt, keine zweite Abwesenheit", () => {
+    const m = ok(melde(betrieb({ abwesenheiten: [{ id: "alt", personId: "a1", art: "krank", von: T(2), bis: T(2), notiz: "" }] }),
+      AK("a1", "mitarbeiter"), { von: T(2), bis: T(2) }, "km-z")).mandant;
+    const r = ok(krankmeldungBestaetigen(m, AK("p1", "planer"), "endgueltig", "km-z", JETZT));
+    expect(r.zusammengefuehrt).toBe(true);
+    expect(r.mandant.abwesenheiten.map((a) => a.id)).toEqual(["alt"]);
+    expect(r.fall).toMatchObject({ status: KRANK_STATUS.ENDGUELTIG, abwesenheitId: "alt" });
+  });
+  it("endgültig bei anderer überschneidender Abwesenheit: 409 UEBERSCHNEIDUNG, Fall bleibt offen, nichts angelegt", () => {
+    for (const vorhanden of [{ art: "urlaub", von: T(2), bis: T(2) }, { art: "krank", von: T(1), bis: T(3) }]) {
+      const m = ok(melde(betrieb({ abwesenheiten: [{ id: "alt", personId: "a1", ...vorhanden }] }),
+        AK("a1", "mitarbeiter"), { von: T(2), bis: T(2) }, "km-u")).mandant;
+      const r = krankmeldungBestaetigen(m, AK("p1", "planer"), "endgueltig", "km-u", JETZT);
+      expect(r).toMatchObject({ status: 409, code: "UEBERSCHNEIDUNG" });
+      expect(r.mandant).toBeUndefined();
+    }
+  });
+});
+
+describe("L3  Schaltfläche der Schichtverantwortung = Serverregel", () => {
+  it("Fall im Bereich laut Sicht (ein Tag), aber Serverregel (erster und letzter Tag) nicht erfüllt: keine Schaltfläche", () => {
+    const m = betrieb({ krankmeldungen: [{ id: "km-w", personId: "a1", von: T(4), bis: WECHSEL, status: KRANK_STATUS.EINGEGANGEN,
+      verlauf: [{ schritt: "eingegangen", von: "a1", rolle: "mitarbeiter", zeit: "t" }] }] });
+    const gesehen = bestandFuerRolle(bestand(m), { rolle: "subplaner", person: "s3", betrieb: 0 }).mandanten[0].krankmeldungen;
+    expect(gesehen.map((f) => f.id)).toEqual(["km-w"]);                               // die Sicht zeigt ihn
+    const sitz = { rolle: "subplaner", mandant: m, person: m.personen.find((p) => p.id === "s3") };
+    expect(krankSchritteFuer(sitz, gesehen[0])).toEqual([]);                          // aber keine Schaltfläche
+    expect(krankmeldungBestaetigen(m, AK("s3", "subplaner"), "vorlaeufig", "km-w", JETZT).status).toBe(404);
+    const s1 = { rolle: "subplaner", mandant: m, person: m.personen.find((p) => p.id === "s1") };
+    expect(krankSchritteFuer(s1, gesehen[0])).toEqual(["vorlaeufig"]);
+    expect(ok(krankmeldungBestaetigen(m, AK("s1", "subplaner"), "vorlaeufig", "km-w", JETZT)).fall.status).toBe(KRANK_STATUS.VORLAEUFIG);
+  });
+  it("Oberfläche: Zurückziehen nur am selbst gemeldeten Fall, nie Bestätigen/Ablehnen am eigenen", () => {
+    const m = betrieb();
+    const p = (id) => m.personen.find((x) => x.id === id);
+    const f = { id: "km", personId: "a1", von: T(2), bis: T(2), status: KRANK_STATUS.EINGEGANGEN, gemeldetVonMir: true };
+    expect(krankSchritteFuer({ rolle: "mitarbeiter", mandant: m, person: p("a1") }, f)).toEqual(["zurueckziehen"]);
+    const pf = { id: "km", personId: "p1", von: T(2), bis: T(2), status: KRANK_STATUS.EINGEGANGEN, verlauf: [{ schritt: "eingegangen", von: "p1" }] };
+    expect(krankSchritteFuer({ rolle: "planer", mandant: m, person: p("p1") }, pf)).toEqual(["zurueckziehen"]);
+    const fremd = { ...f, gemeldetVonMir: undefined, verlauf: [{ schritt: "eingegangen", von: "a1" }] };
+    expect(krankSchritteFuer({ rolle: "mitarbeiter", mandant: m, person: p("a2") }, fremd)).toEqual([]);
+  });
+});
+
+describe("M2  Aufbewahrung: Fälle in Vorschau und Löschlauf", () => {
+  const HEUTE_ISO = "2026-11-11";
+  const alt = (id, status, notiz = "NOTIZ-ALT") => ({ id, personId: "a1", von: "2026-01-05", bis: "2026-01-06", notiz, status, verlauf: [] });
+  const m = () => betrieb({ abweichungen: {}, krankmeldungen: [
+    alt("km-e", KRANK_STATUS.EINGEGANGEN), alt("km-v", KRANK_STATUS.VORLAEUFIG), alt("km-a", KRANK_STATUS.ABGELEHNT),
+    alt("km-z", KRANK_STATUS.ZURUECKGEZOGEN), alt("km-f", KRANK_STATUS.ENDGUELTIG), alt("km-f2", KRANK_STATUS.ENDGUELTIG, ""),
+    { id: "km-neu", personId: "a1", von: "2026-11-01", bis: "2026-11-02", notiz: "NOTIZ-NEU", status: KRANK_STATUS.EINGEGANGEN, verlauf: [] }] });
+  it("die Vorschau zählt die Fälle — ein Betrieb mit nur solchen Fällen wird nicht übersprungen", () => {
+    const v = vorschau(m(), HEUTE_ISO);
+    expect(v.krankmeldungen).toBe(5);              // 4 nicht wirksame entfernen, 1 Anmerkung leeren
+    expect(v.gesamt).toBeGreaterThanOrEqual(5);
+    expect(berichtstext(v)).toMatch(/5 Krankmeldungsfälle bereinigt/);
+  });
+  it("der Löschlauf entfernt nicht wirksame Fälle nach der Frist und leert die Anmerkung wirksamer; junge bleiben", () => {
+    const { mandant } = raeumen(m(), HEUTE_ISO);
+    expect(mandant.krankmeldungen.map((f) => f.id)).toEqual(["km-f", "km-f2", "km-neu"]);
+    expect(mandant.krankmeldungen[0]).toMatchObject({ notiz: "", grundGeloescht: HEUTE_ISO, status: KRANK_STATUS.ENDGUELTIG });
+    expect(mandant.krankmeldungen[2].notiz).toBe("NOTIZ-NEU");
+    expect(JSON.stringify(mandant)).not.toContain("NOTIZ-ALT");
+  });
+});
+
+describe("L2  Bremse vor dem Protokoll", () => {
+  it("im Endpunkt steht die Bremse vor jedem Protokolleintrag", async () => {
+    const q = await readFile(path.join(WURZEL, "server/funktionen/daten.mjs"), "utf8");
+    const anfang = q.indexOf('if (pfad === "krankmeldung"');
+    const block = q.slice(anfang, q.indexOf("Monatsabschluss (WP-16)", anfang));
+    expect(block.indexOf('bremse("schreiben"')).toBeGreaterThan(0);
+    expect(block.indexOf('bremse("schreiben"')).toBeLessThan(block.indexOf("protokoll("));
   });
 });

@@ -107,8 +107,9 @@ describe("Krankmeldung", () => {
     expect(m1(wirksam).abwesenheiten.find((a) => a.id === "a-km-a-neu")).toEqual(WIRKSAM);
   });
   it("2. nach dem Neuladen ist sie da (Status eingegangen)", () => {
+    /* gemeldetVonMir: abgeleitet für „Zurückziehen“ (Review RB-2, M1), nie gespeichert. */
     expect(sicht(nachher, SITZ.a).krankmeldungen).toEqual([{ id: "km-a-neu", personId: 0, von: "2026-10-20", bis: "2026-10-21",
-      notiz: "Fieber", status: "eingegangen" }]);
+      notiz: "Fieber", status: "eingegangen", gemeldetVonMir: true }]);
     expect(sicht(wirksam, SITZ.a).abwesenheiten.find((a) => a.id === "a-km-a-neu")).toEqual(WIRKSAM);
   });
   it("3. Planung und Leitung sehen sie vollständig", () => {

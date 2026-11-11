@@ -37,7 +37,7 @@ import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
-import { KRANK_SCHRITTE, krankSchrittErlaubt, krankmeldungMelden, krankmeldungBestaetigen, krankProtokollZeilen } from "../lib/krankmeldung.mjs";
+import { KRANK_SCHRITTE, krankSchrittErlaubt, krankmeldungMelden, krankmeldungSchritt, krankProtokollZeilen } from "../lib/krankmeldung.mjs";
 import { selbstauskunftStellen, selbstauskunftEntscheiden } from "../lib/selbstauskunft.mjs";
 import { schreibKontext } from "../lib/schreibkontext.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, korrekturVerwerfen, abgewiesenVermerken, letzteWiederoeffnung,
@@ -2153,15 +2153,16 @@ async function behandeln(req, context, ctx) {
       const kK = kennung(req, s);
       const aktionK = rumpf && typeof rumpf.aktion === "string" ? rumpf.aktion : "";
       if (!KRANK_SCHRITTE.includes(aktionK)) return antwort({ fehler: "Unbekannte Aktion." }, 400);
+      /* Bremse vor jedem Protokolleintrag (Review RB-2, L2): abgewiesene Aufrufe fluten das Protokoll nicht. */
+      const bK = await bremse("schreiben", kK);
+      if (!bK.frei) return zuVielAntwort(bK.wartet);
       if (!krankSchrittErlaubt(s.rolle, aktionK)) {
         await protokoll("schreiben", kK, "abgewiesen", `Krankmeldung ${aktionK} · Rolle ${s.rolle}`, wer);
-        return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionK === "endgueltig"
-          ? "Endgültig bestätigen nur Planung und Leitung."
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionK === "endgueltig" || aktionK === "ablehnen"
+          ? "Endgültig bestätigen und ablehnen nur Planung und Leitung."
           : aktionK === "vorlaeufig" ? "Vorläufig bestätigt die Schichtverantwortung des Bereichs."
             : "Krankmeldungen nimmt dieser Zugang nicht entgegen." }, 403);
       }
-      const bK = await bremse("schreiben", kK);
-      if (!bK.frei) return zuVielAntwort(bK.wartet);
       if (s.person === null || s.person === undefined)
         return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
       return await unterRaumsperre(s.bestand, async () => {
@@ -2172,11 +2173,13 @@ async function behandeln(req, context, ctx) {
         const akteurK = { personId: s.person, rolle: s.rolle };
         const r = aktionK === "melden"
           ? krankmeldungMelden(mK, akteurK, rumpf, new Date(), `km-${randomBytes(6).toString("hex")}`)
-          : krankmeldungBestaetigen(mK, akteurK, aktionK, rumpf.id, new Date());
+          : krankmeldungSchritt(mK, akteurK, aktionK, rumpf, new Date());
         if ("grund" in r) {
           await protokoll("schreiben", kK, "abgewiesen", `Krankmeldung ${aktionK}: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}) }, r.status);
         }
+        /* Wiederholte Meldung (Review RB-2, L1): der bestehende Fall, nichts geschrieben. */
+        if (r.wiederholt) return antwort({ ok: true, wiederholt: true, fall: { id: r.fall.id, status: r.fall.status }, etag: mitK.stand || null });
         const ergK = await bestandSchreiben(store, s.bestand,
           { ...mitK.bestand, mandanten: mitK.bestand.mandanten.map((x) => (x === mK ? r.mandant : x)) },
           { erwarteterStand: mitK.stand, durch: s.name || "Krankmeldung" });

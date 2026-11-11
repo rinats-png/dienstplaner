@@ -21,6 +21,7 @@
    ========================================================================== */
 
 import { planungsregelnAbleiten } from "./planungsregeln.mjs";
+import { meldendePerson } from "./krankmeldung.mjs";
 import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
@@ -335,8 +336,11 @@ function personSicht(p, ctx) {
    Status. Der Verlauf (wer hat wann bestätigt) bleibt bei Planung und Leitung. */
 const KRANK_FALL_EIGEN = ["id", "personId", "von", "bis", "notiz", "status"];
 const KRANK_FALL_BEREICH = ["id", "personId", "von", "bis", "status"];
+/* Abgeleitet (nie gespeichert — das Feld kommt beim Speichern immer aus dem gespeicherten Stand): ob die
+   lesende Person den Fall selbst gemeldet hat; nur dann bietet die Oberfläche „Zurückziehen“ an (Review M1). */
+const mitMelder = (aus, f, ctx) => (gleich(meldendePerson(f), ctx.ich) ? { ...aus, gemeldetVonMir: true } : aus);
 function krankmeldungenEigene(w, ctx) {
-  return liste(w).filter((f) => f && eigen(f, ctx.ich)).map((f) => nimm(f, KRANK_FALL_EIGEN));
+  return liste(w).filter((f) => f && eigen(f, ctx.ich)).map((f) => mitMelder(nimm(f, KRANK_FALL_EIGEN), f, ctx));
 }
 
 function abwesenheiten(w, ctx) {
@@ -860,8 +864,8 @@ const schichtAbwesenheiten = (w, ctx) => liste(w).map((a) => {
 });
 const schichtKrankmeldungen = (w, ctx) => liste(w).filter(Boolean).map((f) => {
   const u = umfangImZeitraum(ctx, f.personId, f.von, f.bis);
-  if (u === "eigen") return nimm(f, KRANK_FALL_EIGEN);
-  if (u === "bereich") return nimm(f, KRANK_FALL_BEREICH);
+  if (u === "eigen") return mitMelder(nimm(f, KRANK_FALL_EIGEN), f, ctx);
+  if (u === "bereich") return mitMelder(nimm(f, KRANK_FALL_BEREICH), f, ctx);
   return null;
 }).filter(Boolean);
 /* Anträge: eigene und aus dem Bereich ganz (sie entscheidet sie), sonst

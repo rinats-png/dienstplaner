@@ -27,7 +27,8 @@ export function aktionenPlan(k) {
   /* RB-2: Krankmeldung ohne Recht zur endgültigen Bestätigung — über den Server, Status „eingegangen“. */
   const krankMeldenServer = async (pid, von, bis, notiz) => {
     try {
-      const erg = await SP.krankmeldung("melden", { personId: pid, von, bis, ...(notiz ? { notiz } : {}) });
+      /* clientEventId (Review RB-2, L1): eine Netzwiederholung liefert denselben Fall statt eines zweiten. */
+      const erg = await SP.krankmeldung("melden", { personId: pid, von, bis, ...(notiz ? { notiz } : {}), clientEventId: uid("km") });
       await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
         : { ...m, krankmeldungen: [{ id: erg.fall.id, personId: pid, von, bis, ...(notiz ? { notiz } : {}), status: erg.fall.status },
           ...(m.krankmeldungen || [])] }) }));
@@ -81,7 +82,9 @@ export function aktionenPlan(k) {
           await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
             : { ...m, krankmeldungen: (m.krankmeldungen || []).map((f) => (f && f.id === id ? { ...f, status: erg.fall.status } : f)) }) }));
           melde(schritt === "endgueltig" ? "Krankmeldung endgültig bestätigt · im Plan eingetragen."
-            : "Krankmeldung vorläufig bestätigt · noch nicht wirksam.");
+            : schritt === "ablehnen" ? "Krankmeldung abgelehnt · ohne Wirkung auf den Plan."
+              : schritt === "zurueckziehen" ? "Krankmeldung zurückgezogen."
+                : "Krankmeldung vorläufig bestätigt · noch nicht wirksam.");
           return true;
         } catch (e) {
           melde((e && e.message) || "Der Schritt ließ sich nicht speichern.");

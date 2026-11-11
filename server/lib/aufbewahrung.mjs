@@ -64,6 +64,7 @@
 import { BRANCHENMODULE, modulprotokollFaellig, MODULPROTOKOLL_FRIST, MODULDATEN_AUFBEWAHRUNG,
   BEWACHV_FRISTTYPEN_BERECHENBAR } from "./branchenmodule.mjs";
 import { regelGeprueft } from "./regelstatus.mjs";
+import { faelleFaellig, faelleRaeumen } from "./krankmeldung.mjs";
 
 /** Voreinstellungen, falls ein Betrieb sie noch nicht hat. */
 export const VORGABE = {
@@ -350,7 +351,7 @@ export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null, pl
  * @param {string} heuteIso
  * @param {{ module?: readonly any[], regeln?: { moduldaten?: any, modulprotokoll?: any } }} [o]
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
- *   planSumme: number, aenderungen: number, gruende: number, standort: number, abgewiesen: number,
+ *   planSumme: number, aenderungen: number, gruende: number, standort: number, abgewiesen: number, krankmeldungen: number,
  *   moduldaten: number, modulprotokoll: number, moduldatenZurueckgehalten: number,
  *   modulprotokollZurueckgehalten: number, bewachvZurueckgehalten: number, pruefhinweis: (string|null), gesamt: number,
  *   warnung: (string|null)}}
@@ -402,6 +403,11 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     return ende && ende < st.grund;
   }).length;
 
+  /* Fälle der zweistufigen Krankmeldung (RB-2, Review M2): mit der Frist der Gründe — Anmerkung leeren,
+     nicht wirksame Fälle entfernen (server/lib/krankmeldung.mjs). */
+  const km = faelleFaellig(m.krankmeldungen, st.grund);
+  const krankmeldungen = km.entfernen + km.leeren;
+
   /* Abgewiesene Stempel am Monatsabschluss (WP-16, Review M2): Person, Tag, Uhrzeit — mit der Frist der Gründe. */
   const abgewiesen = abschlussPersonenRaeumen(m.monatsabschluss, { grundStichtag: st.grund, planStichtag: st.plan }).entfernt;
 
@@ -427,6 +433,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     gruende,
     standort,
     abgewiesen,
+    krankmeldungen,
     moduldaten: md.anzahl,
     modulprotokoll,
     moduldatenZurueckgehalten: md.zurueckgehalten,
@@ -434,7 +441,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     bewachvZurueckgehalten: md.bewachvZurueckgehalten,
     pruefhinweis: [(md.zurueckgehalten > md.bewachvZurueckgehalten) || mp.zurueckgehalten ? PRUEFHINWEIS : null,
       md.bewachvZurueckgehalten ? BEWACHV_HINWEIS : null].filter(Boolean).join(" ") || null,
-    gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + md.anzahl + modulprotokoll,
+    gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + krankmeldungen + md.anzahl + modulprotokoll,
     warnung,
   };
 }
@@ -548,13 +555,9 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
            keine Fehlzeitenstatistik mehr. */
         return { ...a, notiz: "", grund: "", grundGeloescht: heuteIso };
       }),
-      /* RB-2: die Anmerkung eines Krankmeldungsfalls mit derselben Frist wie die der Abwesenheit. */
-      ...(Array.isArray(m.krankmeldungen) ? { krankmeldungen: m.krankmeldungen.map((f) => {
-        if (!f || typeof f !== "object") return f;
-        const ende = String(f.bis || f.von || "").slice(0, 10);
-        if (!ende || ende >= st.grund || !String(f.notiz || "").trim()) return f;
-        return { ...f, notiz: "", grundGeloescht: heuteIso };
-      }) } : {}),
+      /* RB-2 (Review M2): Fälle der Krankmeldung mit der Frist der Gründe — nicht wirksame entfernen,
+         wirksamen die Anmerkung nehmen. */
+      ...(Array.isArray(m.krankmeldungen) ? { krankmeldungen: faelleRaeumen(m.krankmeldungen, st.grund, heuteIso) } : {}),
       ...moduldatenGeraeumt,
       ...(plan.modulprotokoll ? { einstellungen: { ...m.einstellungen,
         modulprotokoll: modulprotokollFaellig(m, heuteIso, { regel: regeln.modulprotokoll || MODULPROTOKOLL_FRIST }).rest } } : {}),
@@ -582,6 +585,8 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.standort, "Standort-Ergebnis", "Standort-Ergebnisse")} entfernt`);
   if (b.gruende)
     teile.push(`${zahlwort(b.gruende, "Abwesenheitsgrund", "Abwesenheitsgründe")} entfernt`);
+  if (b.krankmeldungen)
+    teile.push(`${zahlwort(b.krankmeldungen, "Krankmeldungsfall", "Krankmeldungsfälle")} bereinigt`);
   if (b.abgewiesen)
     teile.push(`${zahlwort(b.abgewiesen, "abgewiesener Stempel", "abgewiesene Stempel")} am Monatsabschluss entfernt`);
   if (b.moduldaten)
