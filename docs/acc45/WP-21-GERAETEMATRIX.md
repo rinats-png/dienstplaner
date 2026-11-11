@@ -294,7 +294,7 @@ Die Zielregel des Repositorys ist `ZIEL_MINDEST` = 24 px (WCAG 2.5.8); 44 px gil
 
 ### 10.2 Was diese Prüfung nicht belegt
 
-- Tatsächliches Layout, Antippen, Verdeckung und Seitenbreite (`scrollWidth`) im Browser: das misst weiter `geraete-wp21-ablaeufe.mjs`. Ein Wiederholungslauf für Plan freigeben, Krankmeldung und Schichtübergabe nach RB-1 und RB-2 wurde in dieser Arbeitsumgebung versucht (Microsoft Edge, 390x844 und 844x390), kam aber nicht zu einem Ergebnis (der Wegwerf-Server antwortete zu langsam; kein Ergebnis wird behauptet). Die Zahlen für B16 und B17 in Abschnitt 9 stammen aus der Zeit vor RB-1 und RB-2; der Nachweis der Rechte steht in `rb1-plan-publish.test.js`, `rb2-krankmeldung.test.js`, `rb5-klaerung.test.js`.
+- Tatsächliches Layout, Antippen, Verdeckung und Seitenbreite (`scrollWidth`) im Browser: das misst weiter `geraete-wp21-ablaeufe.mjs`. Teilwiederholung der Browsermessung nach RB-1 und RB-2 (Microsoft Edge, nur 390x844 und 844x390, 12 Läufe, Wegwerf-Betrieb): Leitung Plan freigeben 2 von 2 bestanden (B16 behoben; Taps 3, kleinstes Ziel 48x44, keine Seite quer, keine Ziele unter 24 px); Leitung Krankmeldung 2 von 2; Planung Schichtübergabe 2 von 2 und Krankmeldung 2 von 2. **Nicht bestanden:** Schichtverantwortung Schichtübergabe 0 von 2 (die Ansicht „Übergabe“ fehlt in der Navigation dieser Rolle im Wegwerf-Betrieb; ungeklärt, ob gewollt) und Schichtverantwortung Krankmeldung 0 von 2 (Zeitüberschreitung beim Warten auf die Schaltfläche in der Leiste unten; Ursache nicht untersucht, möglicherweise Folge von RB-2). Die übrigen sechs Viewports und weitere Aufgaben wurden nicht neu gemessen; ein erster Versuch mit allen Viewports lief in die Zeitüberschreitung. Die Zahlen für B16 und B17 in Abschnitt 9 stammen aus der Zeit vor RB-1 und RB-2; der Nachweis der Rechte steht in `rb1-plan-publish.test.js`, `rb2-krankmeldung.test.js`, `rb5-klaerung.test.js`.
 - Echte Geräte (iOS Safari, Android Chrome), Notch und Sicherheitsbereiche, Textvergrößerung, Dunkel- und Kontrastmodus, Vorlesesoftware im Einsatz.
 - Die Hinweisliste ändert sich in diesem Teil nicht (10.3).
 
@@ -313,4 +313,4 @@ Der Schnellfilter war bereits in Teil 2 festgelegt und umgesetzt (B12, Abschnitt
 
 ### 10.5 Weiter offen
 
-Browser-Wiederholungsmessung nach RB-1 und RB-2 (Plan freigeben, Krankmeldung der Schichtverantwortung), echte Geräte, Vorlesesoftware, Kartenansicht (wp40-6), Rücknahme des Hinweises für weitere Ansichten nach Messung.
+vollständige Browsermessung an allen acht Viewports, Krankmeldung und Übergabe der Schichtverantwortung klären (10.2), echte Geräte, Vorlesesoftware, Kartenansicht (wp40-6), Rücknahme des Hinweises für weitere Ansichten nach Messung.
