@@ -6,8 +6,8 @@
 **Entwicklungsstand (automatisch):**
 <!-- AUTO:BEGIN entwicklung -->
 Stand der Entwicklung aus [`docs/acc45/work-packages.json`](acc45/work-packages.json) (erzeugt, nicht von Hand ändern):
-188 Pakete, davon 72 integriert und 3 produktiv; offener Entwicklungsaufwand 339,3–579,1 PT (ACC45 47,9–77,8, Folgepakete 5,1–10,1, WP-19 66,8–104,2, Intelligence 219,5–387). Kritischer Pfad gemeinsam 54–97 PT.
-Prognosen (optimistisch / realistisch / bei Problemen, Arbeitstage ab 2026-11-04): A ACC45-Backlog 2026-11-11 / 2026-11-19 / 2026-12-09; B technische Vollumsetzung 2026-11-18 / 2027-01-11 / 2027-04-21; C Produktionsreife 2027-01-21 / 2027-03-17 / 2027-05-21. Rechnung und Annahmen: [`docs/acc45/GESAMTPLAN.md`](acc45/GESAMTPLAN.md).
+188 Pakete, davon 71 integriert und 3 produktiv; offener Entwicklungsaufwand 344,3–585,85 PT (ACC45 52,9–84,55, Folgepakete 5,1–10,1, WP-19 66,8–104,2, Intelligence 219,5–387). Kritischer Pfad gemeinsam 54–97 PT.
+Prognosen (optimistisch / realistisch / bei Problemen, Arbeitstage ab 2026-11-04): A ACC45-Backlog 2026-11-11 / 2026-11-19 / 2026-12-09; B technische Vollumsetzung 2026-11-18 / 2027-01-11 / 2027-04-22; C Produktionsreife 2027-01-21 / 2027-03-17 / 2027-05-20. Rechnung und Annahmen: [`docs/acc45/GESAMTPLAN.md`](acc45/GESAMTPLAN.md).
 <!-- AUTO:END entwicklung -->
 
 ---
