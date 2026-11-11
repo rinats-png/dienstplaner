@@ -42,6 +42,18 @@ Testpartner. Die Pilotbetriebe werden in öffentlichen Unterlagen nicht namentli
 
 ---
 
+**Krankmeldungen (RB-2, Betreiberentscheidung 2026-11-11).** Eine eingehende Krankmeldung ist ein Fall mit Status
+(eingegangen, vorläufig bestätigt, endgültig bestätigt). Die Schichtverantwortung sieht von Fällen ihres Bereichs nur
+Zeitraum und Status — keine Anmerkung, keinen Verlauf; Fälle anderer Bereiche gar nicht. Betriebsrat und Betreiber
+sehen keine Fälle; Beschäftigte nur die eigenen. Das Betriebsprotokoll hält je Schritt Kennung, Status, Rolle und Person
+der handelnden Sitzung fest, keine Anmerkung und keinen Tag. Erst die endgültige Bestätigung durch Planung oder Leitung
+macht die Krankheit wirksam (Abwesenheit, Sicht wie bisher). Einzelheiten: `RECHTEMATRIX.md` ³⁰ und Abschnitt 2.
+Planung und Leitung können einen Fall ablehnen (nur Kennzeichen, kein Freitext), die meldende Person kann ihn
+zurückziehen; beides ohne Wirkung. Der Löschlauf entfernt nicht wirksame Fälle nach der Frist der Gründe und nimmt
+wirksamen die Anmerkung. Bekannte Eigenschaften mit offener Betreiberfrage: die Kundenrolle bestätigt wie die Leitung;
+Planung und Leitung können die eigene Krankheit unmittelbar eintragen (ohne zweite Person). Ein unbestätigter Fall
+löst keine Lücke und keine Ersatzsuche aus und benachrichtigt niemanden per Mail oder Push (nur Aufgabe in der Anwendung).
+
 ## 2. Stufenübersicht
 
 | Stufe | Name | Daten | Mandant | Zweck | Einstieg |

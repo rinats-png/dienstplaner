@@ -12,6 +12,7 @@ import { Ersatzliste } from "../ansichten/ersatzliste.jsx";
 import { anzahlWort } from "../lib/rollen.js";
 import { imDienst } from "../../server/lib/fachpruefung.mjs";
 import { einheitAm } from "../../server/lib/fachpruefung.mjs";
+import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 
 export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
   const m = sitz.mandant;
@@ -20,16 +21,23 @@ export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
   const [luecken, setLuecken] = useState([]);
   const [idx, setIdx] = useState(0);
   const eigene = sitz.person && !darf(sitz, "staff.edit") && !darfEinheit(sitz, sitz.person.bereich);
+  /* RB-2: Ohne Recht zur endgültigen Bestätigung (Beschäftigte, Schichtverantwortung) ist die Meldung nur
+     eingegangen — keine Lücke, keine Ersatzsuche, bis Planung oder Leitung sie endgültig bestätigt. */
+  const vorlaeufig = !krankSchrittErlaubt(sitz.person && sitz.person.rolle, "endgueltig");
+  const [fehler, setFehler] = useState(null);
 
-  const melden = () => {
+  const melden = async () => {
     const p = m.personen.find((x) => x.id === f.personId);
-    if (!p || f.bis < f.von) return;
+    setFehler(null);
+    if (!p) return;
+    if (f.bis < f.von) { setFehler("„Voraussichtlich bis“ liegt vor „Von“. Bitte den Zeitraum prüfen."); return; }
     const offen = [];
-    for (let d = f.von; d <= f.bis; d = addDays(d, 1)) {
+    if (!vorlaeufig) for (let d = f.von; d <= f.bis; d = addDays(d, 1)) {
       const t = personTag(m, p, d);
       if (t.dienstId) offen.push({ datum: d, dienstId: t.dienstId });
     }
-    akt.krankmelden(f.personId, f.von, f.bis, f.notiz);
+    const ok = await akt.krankmelden(f.personId, f.von, f.bis, f.notiz);
+    if (vorlaeufig && ok === false) { setFehler("Die Krankmeldung wurde nicht gespeichert. Die Meldung oben nennt den Grund."); return; }
     /* Wer nur die eigene Abwesenheit melden darf, teilt keinen Ersatz ein —
        das ist Sache der Planung, und der Server nähme es ohnehin nicht an. */
     setLuecken(offen); setIdx(0); setSchritt(offen.length && !eigene ? 3 : 4);
@@ -53,10 +61,13 @@ export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <Field label="Anmerkung" hint="Kein Grund, keine Diagnose — nur was für die Planung nötig ist.">
             <Inp value={f.notiz} onChange={(e) => setF({ ...f, notiz: e.target.value })} /></Field>
           <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-            {eigene
+            {vorlaeufig
+              ? "Die Meldung geht an Planung und Leitung. Wirksam wird sie mit deren endgültiger Bestätigung; bis dahin bleibt der Plan unverändert."
+              : eigene
               ? "Die Meldung wirkt sofort. Betroffene Dienste erscheinen für die Planung in der Prüfung."
               : "Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor."}
           </div>
+          {fehler && <div role="alert" style={{ fontSize: 13, color: C.danger }}>{fehler}</div>}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
             <Btn kind="primary" disabled={!f.personId} onClick={melden}>Krank melden</Btn>
@@ -79,9 +90,11 @@ export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
 
       {schritt === 4 && (
         <div style={{ textAlign: "center", padding: "26px 0" }}>
-          <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>Krankmeldung erfasst</div>
+          <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>{vorlaeufig ? "Krankmeldung eingegangen" : "Krankmeldung erfasst"}</div>
           <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 20, lineHeight: 1.5 }}>
-            {luecken.length === 0
+            {vorlaeufig
+              ? "Status: eingegangen. Endgültig bestätigen Planung oder Leitung; erst dann steht die Abwesenheit im Plan."
+              : luecken.length === 0
               ? "Es waren keine Dienste betroffen."
               : `${anzahlWort(luecken.length, "Dienst")} betroffen. Verbliebene Lücken erscheinen in der Prüfung.`}
           </div>

@@ -162,7 +162,10 @@ pruef("… Nachricht und Dienstbuch unverändert", nach.nachrichten.some((n) => 
   && nach.dienstbuch[0].text === "Übergabe");
 pruef("… erlaubte Schritte sind da", nach.abweichungen["a1|2026-11-02"] === "F"
   && nach.anfragen.find((a) => a.id === "an-a").status === "genehmigt"
-  && nach.abwesenheiten.some((a) => a.id === "abw-a") && nach.abwesenheiten.some((a) => a.id === "k-s"));
+  && nach.abwesenheiten.some((a) => a.id === "abw-a")
+  /* RB-2: die eigene Krankmeldung der Schichtverantwortung ist ein eingegangener Fall, noch keine Abwesenheit. */
+  && !nach.abwesenheiten.some((a) => a.id === "k-s")
+  && (nach.krankmeldungen || []).some((f) => f.id === "km-k-s" && f.status === "eingegangen"));
 pruef("… keine eigene Stempelzeit aus dem PUT", !(nach.einstempeln || {})["s1|2026-10-02"]);
 pruef("… Rolle von Anna unverändert", nach.personen.find((p) => p.id === "a1").rolle === "mitarbeiter");
 

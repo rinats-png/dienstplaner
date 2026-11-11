@@ -11,6 +11,7 @@ import { korrekturMeldung } from "../../ansichten/korrekturen.jsx";
 import { monatText } from "../../../server/lib/monatsabschluss.mjs";
 import { nurKorrekturGrund, bestaetigungsGrund } from "../../istdaten.js";
 import { rolle } from "../../lib/rollen.js";
+import { krankSchrittErlaubt } from "../../../server/lib/krankmeldung.mjs";
 
 /** Datenreview PR #130 (5): Zugehörigkeit null-sicher sortieren — ab null/leer („von Anfang an“) vor jedem
  *  Datum, gleiche Werte in der bisherigen Reihenfolge (stabile Sortierung, deterministisch). Nicht exportiert:
@@ -23,6 +24,21 @@ export function aktionenPlan(k) {
   const { jetzt, mUpd, melde, ref, serverstandNachladen, setKrank, setView, setVorbelegung, sitz, upd, wer } = k;
   /* `akt` ist beim Aufbau noch nicht fertig: Glieder erst beim Aufruf aus k lesen. */
   const akt = { get stempelKorrigieren() { return k.akt.stempelKorrigieren; } };
+  /* RB-2: Krankmeldung ohne Recht zur endgültigen Bestätigung — über den Server, Status „eingegangen“. */
+  const krankMeldenServer = async (pid, von, bis, notiz) => {
+    try {
+      /* clientEventId (Review RB-2, L1): eine Netzwiederholung liefert denselben Fall statt eines zweiten. */
+      const erg = await SP.krankmeldung("melden", { personId: pid, von, bis, ...(notiz ? { notiz } : {}), clientEventId: uid("km") });
+      await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+        : { ...m, krankmeldungen: [{ id: erg.fall.id, personId: pid, von, bis, ...(notiz ? { notiz } : {}), status: erg.fall.status },
+          ...(m.krankmeldungen || [])] }) }));
+      melde("Krankmeldung eingegangen · wirksam, sobald Planung oder Leitung sie endgültig bestätigt.");
+      return true;
+    } catch (e) {
+      melde((e && e.message) || "Die Krankmeldung ließ sich nicht speichern.");
+      return false;
+    }
+  };
   return {
       /* --- Plan --- */
       setzeAbweichung: (pid, d, dienstId) => mUpd((m) => {
@@ -54,7 +70,28 @@ export function aktionenPlan(k) {
       oeffneAbwesenheit: (pid, art, von, bis) => { setView("antraege");
         setVorbelegung({ pid, art: art || "urlaub", von: von || heute(),
           bis: bis || von || heute() }); },
-      krankmelden: (pid, von, bis, notiz) => mUpd((m) => {
+      /* RB-2 (Betreiberentscheidung 2026-11-11): Wer nicht endgültig bestätigen darf (Beschäftigte,
+         Schichtverantwortung), meldet über POST /api/krankmeldung — der Fall ist „eingegangen“ und wird
+         erst mit der endgültigen Bestätigung durch Planung oder Leitung wirksam. Planung und Leitung tragen
+         die Abwesenheit wie bisher unmittelbar ein (das ist selbst die endgültige Bestätigung). */
+      krankmelden: (pid, von, bis, notiz) => (!krankSchrittErlaubt(sitz && sitz.person && sitz.person.rolle, "endgueltig")
+        ? krankMeldenServer(pid, von, bis, notiz) : k.akt.krankUnmittelbar(pid, von, bis, notiz)),
+      krankBestaetigen: async (id, schritt) => {
+        try {
+          const erg = await SP.krankmeldung(schritt, { id });
+          await serverstandNachladen((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, krankmeldungen: (m.krankmeldungen || []).map((f) => (f && f.id === id ? { ...f, status: erg.fall.status } : f)) }) }));
+          melde(schritt === "endgueltig" ? "Krankmeldung endgültig bestätigt · im Plan eingetragen."
+            : schritt === "ablehnen" ? "Krankmeldung abgelehnt · ohne Wirkung auf den Plan."
+              : schritt === "zurueckziehen" ? "Krankmeldung zurückgezogen."
+                : "Krankmeldung vorläufig bestätigt · noch nicht wirksam.");
+          return true;
+        } catch (e) {
+          melde((e && e.message) || "Der Schritt ließ sich nicht speichern.");
+          return false;
+        }
+      },
+      krankUnmittelbar: (pid, von, bis, notiz) => mUpd((m) => {
         const p = m.personen.find((x) => x.id === pid);
         const betroffen = [];
         for (let d = von; d <= bis; d = addDays(d, 1)) if (personTag(m, p, d).dienstId) betroffen.push(d);

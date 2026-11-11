@@ -236,7 +236,7 @@ const MITARBEITER = {
     const felder = dlg.locator('input[type="date"]'); await felder.nth(0).fill(tag); await felder.nth(1).fill(tag);
     await c.messe("krank-blatt");
     await c.tippe(dlg.getByRole("button", { name: /^Krank melden$/ }), "Krank melden (Blatt)");
-    await c.sicht("Krankmeldung erfasst", { warte: 5000 });
+    await c.sicht(/Krankmeldung (erfasst|eingegangen)/, { warte: 5000 });   // RB-2: Beschäftigte melden „eingegangen“
     await c.tippe(dlg.getByRole("button", { name: /^Schließen$/ }), "Schließen");
   },
   async mehr(c) {
@@ -316,7 +316,7 @@ async function krankPlanung(c) {
   await c.tippe(dlg.getByRole("button", { name: /^Krank melden$/ }), "Krank melden (Blatt)");
   /* Weist der Server die Meldung ab, schliesst sich das Blatt und ein Band nennt die fehlende Schreibberechtigung. */
   const ergebnis = await Promise.race([
-    dlg.getByText(/Krankmeldung erfasst|Lücke \d+ von/).first().waitFor({ state: "visible", timeout: 15000 }).then(() => "weiter"),
+    dlg.getByText(/Krankmeldung (erfasst|eingegangen)|Lücke \d+ von/).first().waitFor({ state: "visible", timeout: 15000 }).then(() => "weiter"),
     pg.getByText("Diese Änderung ist mit deiner Rolle nicht zulässig").first().waitFor({ state: "visible", timeout: 15000 }).then(() => "abgewiesen"),
   ]).catch(() => "nichts");
   if (ergebnis === "abgewiesen") throw new Error("SERVER-RECHT: die Krankmeldung wird abgewiesen (Band „Diese Änderung ist mit deiner Rolle nicht zulässig“, Keine Schreibberechtigung); das Blatt schließt sich");
@@ -326,13 +326,13 @@ async function krankPlanung(c) {
   const band = pg.getByText("Diese Änderung ist mit deiner Rolle nicht zulässig").first();
   const abgewiesen = new Error("SERVER-RECHT: die Krankmeldung wird nach dem Absenden abgewiesen (Band „Diese Änderung ist mit deiner Rolle nicht zulässig“, Keine Schreibberechtigung); das Blatt schließt sich" + (luecken ? " (Tag mit Dienst: " + luecken.trim() + ")" : ""));
   try {
-    for (let i = 0; i < 6 && !(await dlg.getByText("Krankmeldung erfasst").count()); i++) {
+    for (let i = 0; i < 6 && !(await dlg.getByText(/Krankmeldung (erfasst|eingegangen)/).count()); i++) {
       const w = dlg.getByRole("button", { name: /^(Fertig|Überspringen)/ }).locator("visible=true");
       if (!(await w.count())) break;
       await c.tippe(w, "Lücke überspringen");
     }
     await Promise.race([
-      dlg.getByText("Krankmeldung erfasst").first().waitFor({ state: "visible", timeout: 8000 }),
+      dlg.getByText(/Krankmeldung (erfasst|eingegangen)/).first().waitFor({ state: "visible", timeout: 8000 }),
       band.waitFor({ state: "visible", timeout: 8000 }).then(() => { throw abgewiesen; }),
     ]);
     await c.tippe(dlg.getByRole("button", { name: /^Schließen$/ }), "Schließen");

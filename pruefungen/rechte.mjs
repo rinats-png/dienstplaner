@@ -442,9 +442,15 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
     JSON.stringify(wKonflikt.monate));
 }
 
+/* Code der Person p1 (S4, wiederverwendet in S11). */
+let CODE_P1 = null;
+
 /* --- S4: Die Schichtverantwortung schreibt nur den eigenen Bereich --- */
 {
-  const tSub = await anmelden(await zugang("subplaner", "p1"));
+  /* Der Code bleibt für S11 (RB-2): dort trägt p1 die Rolle Planung — kein weiterer Code, die Bremse für
+     /einrichten (20 je 10 Minuten) bleibt unberührt. */
+  CODE_P1 = await zugang("subplaner", "p1");
+  const tSub = await anmelden(CODE_P1);
   const r = await lies(tSub);
   pruef("Schichtverantwortung darf lesen", r.status === 200, `Status ${r.status}`);
 
@@ -871,6 +877,10 @@ let CODE_P2 = null;
   if (!m0.personen.some((p) => p.id === "p3"))
     m0.personen.push({ id: "p3", nachname: "Lind", rolle: "mitarbeiter",
       zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
+  /* RB-2: p1 (Schichtverantwortung aus S4, danach nicht mehr gebraucht) wird Planung — die endgültige
+     Bestätigung braucht eine Person im Betrieb mit Rolle Planung oder Leitung. */
+  const p1 = m0.personen.find((p) => p.id === "p1");
+  if (p1) p1.rolle = "planer";
   m0.abwesenheiten = m0.abwesenheiten || [];
   m0.notrufe = m0.notrufe || [];
   m0.selbstplanung = [{ id: "sp11", monat: "2026-11", status: "offen", eintraege: [
@@ -892,8 +902,22 @@ let CODE_P2 = null;
   const w1 = await schreib(tP2, b1, r1.etag);
   pruef("S11: Beschäftigte schreiben Krankmeldung, Selbstplanung und Notruf", w1.status === 200, `Status ${w1.status}`);
 
+  /* RB-2 (Betreiberentscheidung 2026-11-11): Die Meldung ist zuerst ein eingegangener Fall; wirksam wird sie
+     mit der endgültigen Bestätigung durch Planung oder Leitung (Kennung der Abwesenheit: a-km-k11). */
+  const vorBestaetigung = (await lies(tL11)).bestand.mandanten[0];
+  const fall = (vorBestaetigung.krankmeldungen || []).find((f) => f.id === "km-k11");
+  pruef("S11: die Krankmeldung ist eingegangen, mit Anmerkung, ohne Diagnose, noch keine Abwesenheit",
+    fall && fall.notiz === "Fieber" && fall.status === "eingegangen" && fall.diagnose === undefined
+      && !(vorBestaetigung.abwesenheiten || []).some((a) => a.id === "k11" || a.id === "a-km-k11"), JSON.stringify(fall));
+  /* p1 ist jetzt Planung; ihr Code aus S4 gilt mit der Rolle aus der Personalliste (wirksameRolle). */
+  const tPl11 = await anmelden(CODE_P1);
+  const eb = await fetch(`${BASIS}/api/krankmeldung`, { method: "POST",
+    headers: { authorization: `Bearer ${tPl11}`, "content-type": "application/json", ...herkunft() },
+    body: JSON.stringify({ aktion: "endgueltig", id: "km-k11" }) });
+  pruef("S11: die Planung bestätigt endgültig", eb.status === 200, `Status ${eb.status}`);
+
   const leitung = (await lies(tL11)).bestand.mandanten[0];
-  const k = (leitung.abwesenheiten || []).find((a) => a.id === "k11");
+  const k = (leitung.abwesenheiten || []).find((a) => a.id === "a-km-k11");
   pruef("S11: die Krankmeldung ist gespeichert, mit Anmerkung, ohne Diagnose",
     k && k.notiz === "Fieber" && k.art === "krank" && k.diagnose === undefined, JSON.stringify(k));
   const sp = (leitung.selbstplanung || []).find((r) => r.id === "sp11");
@@ -906,11 +930,11 @@ let CODE_P2 = null;
 
   const selbst = (await lies(tP2)).bestand.mandanten[0];
   pruef("S11: nach dem Neuladen sieht die Person alle drei",
-    selbst.abwesenheiten.some((a) => a.id === "k11") && selbst.notrufe.some((n) => n.id === "nr11")
+    selbst.abwesenheiten.some((a) => a.id === "a-km-k11") && selbst.notrufe.some((n) => n.id === "nr11")
       && selbst.selbstplanung[0].eintraege.some((e) => e.personId === "p2"));
 
   const kollegin = (await lies(tP3)).bestand.mandanten[0];
-  const kk = kollegin.abwesenheiten.find((a) => a.id === "k11");
+  const kk = kollegin.abwesenheiten.find((a) => a.id === "a-km-k11");
   pruef("S11: die Kollegin sieht nur „abwesend“ ohne Anmerkung",
     kk && kk.art === "abwesend" && kk.notiz === undefined, JSON.stringify(kk));
   pruef("S11: die Kollegin sieht den Notruf nicht", !kollegin.notrufe.some((n) => n.id === "nr11"));
@@ -923,7 +947,7 @@ let CODE_P2 = null;
   const w3 = await schreib(tP3, r3.bestand, r3.etag);
   const danach = (await lies(tL11)).bestand.mandanten[0];
   pruef("S11: Zurückschreiben der gekürzten Sicht verliert nichts",
-    w3.status === 200 && danach.abwesenheiten.find((a) => a.id === "k11")?.notiz === "Fieber"
+    w3.status === 200 && danach.abwesenheiten.find((a) => a.id === "a-km-k11")?.notiz === "Fieber"
       && danach.notrufe.some((n) => n.id === "nr11")
       && danach.selbstplanung[0].eintraege.some((e) => e.personId === "p2"),
     `Status ${w3.status}`);

@@ -186,6 +186,14 @@ const bestand = () => ({
          Bereich nicht im Klartext sehen darf. */
       ...["mutterschutz", "pflegezeit", "familienpflegezeit", "elternzeit", "arbeitsverhinderung", "berufsschule"]
         .map((art, i) => ({ id: `ab-a1-neu${i}`, personId: "a1", art, von: tag(3 + i), bis: tag(3 + i) }))],
+    /* RB-2: Fälle der zweistufigen Krankmeldung — b1 fremd, a1 im Bereich der SV, m0 die eigene Person der Beschäftigten. */
+    krankmeldungen: [
+      { id: M("KM-ID-B1"), personId: "b1", von: tag(1), bis: tag(2), notiz: M("KM-NOTIZ-B1"), status: "eingegangen",
+        verlauf: [{ schritt: "eingegangen", von: "b1", rolle: "mitarbeiter", zeit: M("KM-VERLAUF-B1") }] },
+      { id: "km-a1", personId: "a1", von: tag(1), bis: tag(2), notiz: M("KM-NOTIZ-A1"), status: "vorlaeufig_bestaetigt",
+        verlauf: [{ schritt: "vorlaeufig", von: "s1", rolle: "subplaner", zeit: M("KM-VERLAUF-A1") }] },
+      { id: "km-m0", personId: "m0", von: tag(1), bis: tag(1), notiz: M("KM-NOTIZ-M0"), status: "eingegangen",
+        verlauf: [{ schritt: "eingegangen", von: "m0", rolle: "mitarbeiter", zeit: M("KM-VERLAUF-M0") }] }],
     anfragen: [
       { id: "an-b1", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-B1") },
       { id: "t-b1", personId: "b1", typ: "tausch", status: "offen", partnerId: null, von: tag(9), bis: tag(9), text: M("ANTRAG-TAUSCH-B1"), interessenten: [] },
@@ -391,6 +399,20 @@ const ZEILEN = {
       }
       expect(JSON.stringify(s.betrieb.abwesenheiten)).not.toMatch(/mutterschutz|pflegezeit|elternzeit|arbeitsverhinderung|berufsschule/);
     } } },
+  "Krankmeldungen in Bearbeitung (`krankmeldungen`: Zeitraum, Anmerkung, Status, Verlauf; RB-2)": {
+    sonden: [mk("KM-ID-B1"), mk("KM-NOTIZ-B1"), mk("KM-VERLAUF-B1")],
+    bedingt: {
+      "nur eigene, ohne Verlauf": (s) => {
+        for (const x of ["KM-ID-B1", "KM-NOTIZ-B1", "KM-VERLAUF-B1", "KM-NOTIZ-A1", "KM-VERLAUF-A1", "KM-VERLAUF-M0"]) expect(mk(x)(s), x).toBe(false);
+        expect(mk("KM-NOTIZ-M0")(s), "eigene Anmerkung").toBe(true);
+        expect((s.betrieb.krankmeldungen || []).map((f) => f.id)).toEqual(["km-m0"]);
+      },
+      "nur eigener Bereich, ohne Anmerkung und Verlauf": (s) => {
+        for (const x of ["KM-ID-B1", "KM-NOTIZ-B1", "KM-VERLAUF-B1", "KM-NOTIZ-A1", "KM-VERLAUF-A1", "KM-NOTIZ-M0"]) expect(mk(x)(s), x).toBe(false);
+        expect((s.betrieb.krankmeldungen || []).map((f) => f.id).sort()).toEqual(["km-a1", "km-m0"]);
+        expect((s.betrieb.krankmeldungen || []).find((f) => f.id === "km-a1")).toEqual({ id: "km-a1", personId: "a1", von: tag(1), bis: tag(2), status: "vorlaeufig_bestaetigt" });
+      },
+    } },
   "Anträge (fremd)": {
     sonden: [mk("ANTRAG-URLAUB-B1"), mk("ANTRAG-TAUSCH-B1")],
     bedingt: { "nur offene Tauschgesuche": (s) => {

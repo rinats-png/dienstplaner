@@ -61,6 +61,7 @@ export const INVENTAR = {
   "/api/stempel-korrektur": ["korrekturworkflow.test.js", "rollen-failclosed.test.js"],
   "/api/korrektur-antrag": ["rollen-failclosed.test.js", "si-p5-sonden.test.js"],
   "/api/korrektur-entscheiden": ["rollen-failclosed.test.js"],
+  "/api/krankmeldung": ["rb2-krankmeldung.test.js"],                // RB-2: melden, vorläufig (SV), endgültig (Planung/Leitung)
   "/api/selbstauskunft-entscheiden": ["rollen-failclosed.test.js", "selbstauskunft.test.js"],   // WP-15
   "/api/monatsabschluss": ["rollen-failclosed.test.js"],   // WP-16: abschliessen staff.edit, wiederoeffnen/lohnexport org.edit; Matrixzeile §2
   "/api/zeit-bestaetigen": ["rollen-failclosed.test.js", "zeiterfassung.test.js"],   // stempel-datenschutz: nur Kommentar (S4)

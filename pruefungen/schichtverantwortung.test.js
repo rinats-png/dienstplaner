@@ -197,11 +197,18 @@ describe("C — Anträge", () => {
 });
 
 describe("D — Abwesenheiten", () => {
-  it("6. Krankmeldung im eigenen Bereich: erlaubt, bereinigt", () => {
+  /* RB-2 (Betreiberentscheidung 2026-11-11): Die Schichtverantwortung nimmt die Krankmeldung entgegen — als
+     eingegangener Fall, nicht als wirksame Abwesenheit (die legt erst die endgültige Bestätigung durch Planung
+     oder Leitung an). Bereinigt wie bisher: nur Kennung, Person, Zeitraum, Anmerkung. */
+  it("6. Krankmeldung im eigenen Bereich: erlaubt, bereinigt — als eingegangener Fall", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => {
       m.abwesenheiten.push({ id: "k1", personId: "a1", art: "krank", von: "2026-10-20", bis: "2026-10-21", notiz: "", geheim: 1 });
     }));
-    expect(m.abwesenheiten.find((x) => x.id === "k1")).toEqual({ id: "k1", personId: "a1", art: "krank", von: "2026-10-20", bis: "2026-10-21", notiz: "" });
+    expect(m.abwesenheiten.find((x) => x.id === "k1")).toBeUndefined();
+    const f = m.krankmeldungen.find((x) => x.id === "km-k1");
+    expect({ ...f, verlauf: undefined }).toEqual({ id: "km-k1", personId: "a1", von: "2026-10-20", bis: "2026-10-21", status: "eingegangen", verlauf: undefined });
+    expect(f.verlauf).toEqual([expect.objectContaining({ schritt: "eingegangen", von: "s1", rolle: "subplaner", funktion: "Schichtverantwortung" })]);
+    expect(JSON.stringify(f)).not.toContain("geheim");
   });
   it("… im fremden Bereich: abgewiesen", () => {
     ab(schreibe(bestand(), SUB, (m) => { m.abwesenheiten.push({ id: "k2", personId: "b1", art: "krank", von: "2026-10-20", bis: "2026-10-21" }); }));
@@ -325,7 +332,9 @@ describe("I — Protokoll und Änderungen: nur anhängen", () => {
 describe("J — Selbstservice der Schichtverantwortung", () => {
   it("14. eigene Krankmeldung", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => { m.abwesenheiten.push({ id: "ks", personId: "s1", art: "krank", von: "2026-10-20", bis: "2026-10-20" }); }));
-    expect(m.abwesenheiten.find((x) => x.id === "ks")).toBeTruthy();
+    /* RB-2: eingegangen, nicht wirksam — bestätigen muss eine andere Person. */
+    expect(m.abwesenheiten.find((x) => x.id === "ks")).toBeUndefined();
+    expect(m.krankmeldungen.find((x) => x.id === "km-ks")).toMatchObject({ personId: "s1", status: "eingegangen" });
   });
   it("15. eigener Notruf", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => {

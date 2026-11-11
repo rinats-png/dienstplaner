@@ -37,6 +37,7 @@ import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
+import { KRANK_SCHRITTE, krankSchrittErlaubt, krankmeldungMelden, krankmeldungSchritt, krankProtokollZeilen } from "../lib/krankmeldung.mjs";
 import { selbstauskunftStellen, selbstauskunftEntscheiden } from "../lib/selbstauskunft.mjs";
 import { schreibKontext } from "../lib/schreibkontext.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, korrekturVerwerfen, abgewiesenVermerken, letzteWiederoeffnung,
@@ -1462,6 +1463,8 @@ async function behandeln(req, context, ctx) {
         for (const z of modulProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "branchenmodul", z, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
+        /* RB-2: eingegangene Krankmeldungen und unmittelbar (endgültig) eingetragene — nur Kennung, Schritt, Rolle. */
+        const krankZeilen = krankProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben, s.rolle);
         {
           const altMd = jetzt && jetzt.bestand && Array.isArray(jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [];
           let weg = 0;
@@ -1547,6 +1550,7 @@ async function behandeln(req, context, ctx) {
         /* Erst nach dem erfolgreichen Schreiben (Nachtrag N2): eine abgewiesene oder verlorene Übermittlung
            nimmt nichts zurück und steht deshalb nicht als Rücknahme im Protokoll. */
         if (frei) await protokoll("schreiben", ks, "freigabe-zurueckgenommen", `${frei} Monat(e)`, wer);
+        for (const z of krankZeilen) await protokoll("schreiben", ks, "krankmeldung", z, wer);
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
@@ -2136,6 +2140,56 @@ async function behandeln(req, context, ctx) {
           + spurHinweise(r.hinweise), wer);
         return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, erfassung: r.erfassung || null, ereignis: r.ereignis || null,
           hinweise: r.hinweise || [], hinweis: r.hinweis || null, etag: ergE.stand || null });
+      });
+    }
+
+    /* ------------------- Krankmeldung in zwei Stufen (RB-2) -------------------
+       Betreiberentscheidung 2026-11-11: entgegennehmen (Beschäftigte für sich, Schichtverantwortung für sich und
+       ihren Bereich, Planung, Leitung), vorläufig bestätigen (nur Schichtverantwortung im Bereich, an den Tagen der
+       Meldung), endgültig bestätigen (nur Planung und Leitung). Erst die endgültige Bestätigung legt die wirksame
+       Abwesenheit an (server/lib/krankmeldung.mjs). Unter der Raumsperre mit erwartetem Stand: ein doppelter oder
+       gleichzeitiger Schritt bekommt 409. Protokoll: Kennung, Schritt, Rolle — keine Person, kein Tag, keine Anmerkung. */
+    if (pfad === "krankmeldung" && req.method === "POST") {
+      const kK = kennung(req, s);
+      const aktionK = rumpf && typeof rumpf.aktion === "string" ? rumpf.aktion : "";
+      if (!KRANK_SCHRITTE.includes(aktionK)) return antwort({ fehler: "Unbekannte Aktion." }, 400);
+      /* Bremse vor jedem Protokolleintrag (Review RB-2, L2): abgewiesene Aufrufe fluten das Protokoll nicht. */
+      const bK = await bremse("schreiben", kK);
+      if (!bK.frei) return zuVielAntwort(bK.wartet);
+      if (!krankSchrittErlaubt(s.rolle, aktionK)) {
+        await protokoll("schreiben", kK, "abgewiesen", `Krankmeldung ${aktionK} · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionK === "endgueltig" || aktionK === "ablehnen"
+          ? "Endgültig bestätigen und ablehnen nur Planung und Leitung."
+          : aktionK === "vorlaeufig" ? "Vorläufig bestätigt die Schichtverantwortung des Bereichs."
+            : "Krankmeldungen nimmt dieser Zugang nicht entgegen." }, 403);
+      }
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitK = await bestandLesenStreng(store, s.bestand);
+        if (!mitK) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mK = eigenerMandant(mitK.bestand, s);
+        if (!mK) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const akteurK = { personId: s.person, rolle: s.rolle };
+        const r = aktionK === "melden"
+          ? krankmeldungMelden(mK, akteurK, rumpf, new Date(), `km-${randomBytes(6).toString("hex")}`)
+          : krankmeldungSchritt(mK, akteurK, aktionK, rumpf, new Date());
+        if ("grund" in r) {
+          await protokoll("schreiben", kK, "abgewiesen", `Krankmeldung ${aktionK}: ${spurGrund(r.grund)}`, wer);
+          return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}) }, r.status);
+        }
+        /* Wiederholte Meldung (Review RB-2, L1): der bestehende Fall, nichts geschrieben. */
+        if (r.wiederholt) return antwort({ ok: true, wiederholt: true, fall: { id: r.fall.id, status: r.fall.status }, etag: mitK.stand || null });
+        const ergK = await bestandSchreiben(store, s.bestand,
+          { ...mitK.bestand, mandanten: mitK.bestand.mandanten.map((x) => (x === mK ? r.mandant : x)) },
+          { erwarteterStand: mitK.stand, durch: s.name || "Krankmeldung" });
+        if (!ergK.ok) {
+          await protokoll("schreiben", kK, "konflikt", `Krankmeldung ${aktionK}`, wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kK, "krankmeldung",
+          `Krankmeldung ${r.fall.id}: ${r.fall.status} · Rolle ${s.rolle}${s.rolle === "subplaner" ? " (Schichtverantwortung)" : ""}`, wer);
+        return antwort({ ok: true, fall: { id: r.fall.id, status: r.fall.status }, etag: ergK.stand || null });
       });
     }
 

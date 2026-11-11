@@ -172,7 +172,10 @@ describe("Die übrigen Rollen", () => {
       m.abwesenheiten.push({ id: "k1", personId: "b-x", art: "krank", von: "2026-11-01", bis: "2026-11-02" });
     });
     expect(ids(erg)).toEqual(ids(g));
-    expect(erg.mandanten[1].abwesenheiten.map((a) => a.id)).toEqual(["k1"]);
+    /* RB-2 (Betreiberentscheidung 2026-11-11): die Krankmeldung der Beschäftigten ist ein eingegangener Fall
+       im richtigen Betrieb, noch keine Abwesenheit (wirksam erst mit der endgültigen Bestätigung). */
+    expect(erg.mandanten[1].abwesenheiten.map((a) => a.id)).toEqual([]);
+    expect(erg.mandanten[1].krankmeldungen.map((f) => [f.id, f.status])).toEqual([["km-k1", "eingegangen"]]);
     expect(erg.mandanten[0]).toEqual(g.mandanten[0]);
     expect(erg.mandanten[2]).toEqual(g.mandanten[2]);
   });

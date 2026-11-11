@@ -682,6 +682,10 @@ jobs:
       - name: Kontowiederherstellung Oberfläche (WR-6)
         run: npm run pruefung:verlustweg-oberflaeche
 
+      # RB-2 (Betreiberentscheidung 2026-11-11): Krankmeldung in zwei Stufen — vorläufig Schichtverantwortung, endgültig Planung/Leitung.
+      - name: Krankmeldung zweistufig (RB-2)
+        run: npm run pruefung:rb2-krankmeldung
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration
