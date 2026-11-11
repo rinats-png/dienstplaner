@@ -43,6 +43,9 @@ export const ZUSTELLARTEN = {
   zeitFehlt: { mail: false, push: true, dringend: false },
   aushang: { mail: false, push: true, dringend: false },
   uebergabeFehlt: { mail: false, push: true, dringend: true },
+  /* RB-4: Eingang einer Krankmeldung an Planung, Leitung und — wo sachlich erforderlich — die
+     Schichtverantwortung (server/lib/krankmeldung.mjs, krankmeldungMitteilungen). Nur vom Server. */
+  krankmeldungEingegangen: { mail: true, push: true, dringend: false },
 };
 
 export const TITEL_MAX = 120;
@@ -79,10 +82,11 @@ const kuerzen = (t, n) => String(t ?? "").slice(0, n);
     uebergabeFehlt aus der Planung) genügt dafür nicht. */
 export const istNotruf = (n) => istObjekt(n) && istObjekt(n.quelle) && n.quelle.art === "notruf";
 
-/** Entsteht diese Mitteilung nur auf dem Server? */
+/** Entsteht diese Mitteilung nur auf dem Server? (RB-4: auch jede Mitteilung der Art
+    `krankmeldungEingegangen` — kein Client, auch nicht die Planung, legt sie an.) */
 export function nurVomServer(n) {
-  return istObjekt(n) && (n.ziel === "notruf" || n.art === "tauschAngebot" || n.quelle !== undefined
-    || /^n-(notruf|tausch)-/.test(String(n.id)));
+  return istObjekt(n) && (n.ziel === "notruf" || n.art === "tauschAngebot" || n.art === "krankmeldungEingegangen"
+    || n.quelle !== undefined || /^n-(notruf|tausch|krank)-/.test(String(n.id)));
 }
 
 /**
@@ -134,8 +138,10 @@ export function mitteilungenVorfiltern(altM, neuM, { grenzenPruefen = true, plan
 /** Name einer Person für Texte. */
 const name = (p) => (p ? `${p.vorname || ""} ${p.nachname || ""}`.trim() : "") || "Jemand";
 
-/** Eine Mitteilung des Servers.
+/** Eine Mitteilung des Servers (auch für RB-4: servermitteilung, genutzt in krankmeldung.mjs).
  * @param {{id: any, personId: any, art: any, titel: any, text: any, ziel: any, quelle: any, tag?: any}} o */
+export const servermitteilung = (o) => mitteilung(o);
+/** @param {{id: any, personId: any, art: any, titel: any, text: any, ziel: any, quelle: any, tag?: any}} o */
 function mitteilung({ id, personId, art, titel, text, ziel, quelle, tag }) {
   const jetzt = new Date();
   return { id, personId, art, titel: kuerzen(titel, TITEL_MAX), text: kuerzen(text, TEXT_MAX), ziel,

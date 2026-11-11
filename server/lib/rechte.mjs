@@ -35,7 +35,7 @@ import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
 import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
-import { fallAusAbwesenheit, svZustaendig } from "./krankmeldung.mjs";
+import { fallAusAbwesenheit, svZustaendig, krankmeldungMitteilungen } from "./krankmeldung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1523,6 +1523,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     }
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
+    /* RB-4: zu einem neuen eingegangenen Krankmeldungsfall (Schichtverantwortung, ältere Oberfläche) die
+       neutralen Mitteilungen an Planung, Leitung und zuständige Schichtverantwortung (krankmeldung.mjs). */
+    geschickt = krankmeldungMitteilungen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */
     geschickt = bestaetigungMitteilungen(ort.betrieb, geschickt, sitzung.person);
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
@@ -1645,7 +1648,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
 
   /* Mitteilungen aus eigenen Vorgängen (Notruf, Tauschmeldung) erzeugt der
      Server — dazu wird eine Push-Anmeldung an der Person zum Merker. */
-  const mitMitteilungen = mitteilungenErzeugen(alt, zusammen, sitzung.person);
+  /* RB-4: dazu die neutralen Mitteilungen zu einer neuen eigenen Krankmeldung (krankmeldung.mjs). */
+  const mitMitteilungen = krankmeldungMitteilungen(alt, mitteilungenErzeugen(alt, zusammen, sitzung.person), sitzung.person);
   neu.mandanten = gespeichert.mandanten.map((x) => (x && x.id === alt.id ? mitMitteilungen : x));
   return neu;
 }

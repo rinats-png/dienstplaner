@@ -52,6 +52,9 @@ export const ZUSTELLARTEN = {
     text: "Etwas Neues betrifft alle im Betrieb." },
   uebergabeFehlt: { titel: "Übergabe fehlt", mail: false, push: true, dringend: true,
     text: "Für eine abgeschlossene Schicht wurde keine Übergabe hinterlegt." },
+  /* RB-4: nur Planung, Leitung und die zuständige Schichtverantwortung; Inhalt ohne Gesundheitsangaben. */
+  krankmeldungEingegangen: { titel: "Neue Meldung zur Abwesenheit", mail: true, push: true, dringend: false,
+    text: "Eine Meldung ist eingegangen, die Planung oder Bereich betrifft." },
 };
 
 /** Voreinstellung je Person: alles an, was die Art vorsieht. */

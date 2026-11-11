@@ -34,7 +34,9 @@
    server/funktionen/daten.mjs) liest und schreibt unter der Raumsperre.
    ========================================================================== */
 
-import { einheitAm } from "./fachpruefung.mjs";
+import { einheitAm, dienstAm } from "./fachpruefung.mjs";
+import { servermitteilung } from "./mitteilungen.mjs";
+import { laufenderTag } from "./planfreigabe.mjs";
 
 export const KRANK_STATUS = Object.freeze({
   EINGEGANGEN: "eingegangen",
@@ -318,4 +320,116 @@ export function krankProtokollZeilen(altB, neuB, rolle) {
     }
   }
   return zeilen;
+}
+
+/* --------------------------------------------------------------------------
+   BENACHRICHTIGUNG BEI EINGANG (RB-4)
+
+   Betreiberentscheidung 2026-11-11: „Bei Eingang einer Krankmeldung sollen zuständige Planer und
+   Betriebsleiter benachrichtigt werden. Die zuständige Schichtverantwortung kann eine sachlich
+   erforderliche Benachrichtigung erhalten. Push und E-Mail enthalten keine Gesundheitsdetails.“
+
+   Empfänger (je neuem Fall genau einmal, Kennung n-krank-<Fall>-<Empfänger>):
+   - Planung und Leitung des Betriebs (Rollen „planer“, „leitung“): alle Personen des Betriebs mit dieser
+     Rolle, die nicht gesperrt und nicht ausgetreten sind. Einen Bereichsumfang hat die Planung im
+     Datenmodell nicht (schreibumfang „voll“, rechte.mjs) — zuständig ist damit die Planung des Betriebs.
+     Die Kundenrolle (alter Probierraum) bekommt nichts: die Entscheidung nennt Planer und Betriebsleiter.
+   - Schichtverantwortung („subplaner“) NUR, wenn es sachlich erforderlich ist: Die gemeldete Person hat ab
+     heute (Berliner Zeit) bis zum Ende des Zeitraums an mindestens einem Tag einen Dienst (dienstAm:
+     Abweichung, sonst Schichtfolge), und die Schichtverantwortung ist an genau diesem Tag für die Einheit
+     dieser Person zuständig (svZustaendig — dieselbe tagesgenaue Bereichsregel wie beim vorläufigen
+     Bestätigen). Ein rein rückwirkender Zeitraum oder einer ohne Dienst braucht keine Umplanung im Bereich.
+     Geprüft werden höchstens SV_TAGE_MAX Tage ab dem ersten offenen Tag.
+   - Nie: die gemeldete Person selbst, die meldende Person, Beschäftigte, Betriebsrat, Betreiber, Personen
+     anderer Betriebe (es zählen nur die Personen dieses Betriebs).
+
+   Inhalt: neutral, ohne Namen, ohne Tag, ohne Grund, ohne Anmerkung, ohne das Wort „krank“. Die
+   Mitteilung im Postfach trägt KRANK_HINWEIS_TITEL/-TEXT; E-Mail und Push tragen ohnehin nur den
+   neutralen Hinweis der Art (zustellregeln.mjs, HINWEIS_TITEL) — nie Titel oder Text der Mitteilung.
+   `quelle` = { art: "krankmeldung", id: <Fall> } setzt nur der Server (mitteilungen.mjs, NUR_SERVER und
+   nurVomServer) — ein Client kann eine solche Mitteilung weder anlegen noch ändern. Kein `tag`: Die
+   Mitteilung betrifft keinen Plantag; die Entwurfsregel greift damit nicht (Empfänger sind Planung,
+   Leitung und Schichtverantwortung, die den Plan in der Anwendung ohnehin sehen).
+   Zugestellt wird nach dem Speichern über versand.mjs (Wünsche je Person und Art, Sammelschalter,
+   Kontingente, Schalter der Anbieter) — ohne Anbieter (RESEND_API_KEY/SMTP, VAPID) geht nichts hinaus.
+   -------------------------------------------------------------------------- */
+export const KRANK_ART = "krankmeldungEingegangen";
+export const KRANK_HINWEIS_TITEL = "Neue Meldung zur Abwesenheit";
+export const KRANK_HINWEIS_TEXT = "Bitte in CENTRIC prüfen.";
+const KRANK_PLANUNG_ROLLEN = ["planer", "leitung"];
+const SV_TAGE_MAX = 62;
+
+const tagNach = (s) => new Date(Date.parse(`${s}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+const aktivAm = (p, heute) => p.status !== "gesperrt" && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute);
+
+/**
+ * Wer bekommt zu diesem neuen Fall eine Mitteilung?
+ * @param {any} m  der Betrieb
+ * @param {any} fall  { id, personId, von, bis, verlauf }
+ * @param {string} [heute]  JJJJ-MM-TT (Berlin)
+ * @returns {{ planung: any[], sv: any[] }}
+ */
+export function krankEmpfaenger(m, fall, heute = laufenderTag()) {
+  const personen = liste(m && m.personen);
+  const p = personen.find((x) => gleich(x.id, fall && fall.personId));
+  if (!p || !istObj(fall)) return { planung: [], sv: [] };
+  const melder = meldendePerson(fall);
+  const ausgeschlossen = (x) => gleich(x.id, p.id) || (melder !== undefined && melder !== null && gleich(x.id, melder));
+  const planung = personen.filter((x) => KRANK_PLANUNG_ROLLEN.includes(x.rolle) && !ausgeschlossen(x) && aktivAm(x, heute));
+  const sv = [];
+  if (tagGueltig(fall.von) && tagGueltig(fall.bis) && fall.bis >= fall.von) {
+    const kandidaten = personen.filter((x) => x.rolle === "subplaner" && !ausgeschlossen(x) && aktivAm(x, heute));
+    const gefunden = new Set();
+    let d = fall.von < heute ? heute : fall.von;
+    for (let i = 0; i < SV_TAGE_MAX && d <= fall.bis && gefunden.size < kandidaten.length; i++, d = tagNach(d)) {
+      if (!dienstAm(m, p, d)) continue;
+      for (const s of kandidaten) if (!gefunden.has(String(s.id)) && svZustaendig(m, s, p.id, d, d)) gefunden.add(String(s.id));
+    }
+    for (const s of kandidaten) if (gefunden.has(String(s.id))) sv.push(s);
+  }
+  return { planung, sv };
+}
+
+/**
+ * Erzeugt zu jedem NEUEN eingegangenen Fall (in `neuM`, nicht in `altM`), den die Person `ich` gemeldet hat,
+ * die Mitteilungen an die Empfänger (krankEmpfaenger). Kennungen sind fest: Was es schon gibt, entsteht nicht
+ * noch einmal (Wiederholung, zweiter Aufruf). Andere Fälle (fremd gemeldet, schon bekannt) lösen nichts aus.
+ * @returns {any} der Betrieb mit den neuen Mitteilungen vorn
+ */
+export function krankmeldungMitteilungen(altM, neuM, ich, heute = laufenderTag()) {
+  if (!istObj(neuM) || ich === null || ich === undefined) return neuM;
+  const bekannt = new Set(liste(altM && altM.krankmeldungen).map((f) => String(f.id)));
+  const neu = liste(neuM.krankmeldungen).filter((f) => !bekannt.has(String(f.id))
+    && f.status === KRANK_STATUS.EINGEGANGEN && gleich(meldendePerson(f), ich));
+  if (!neu.length) return neuM;
+  const basis = Array.isArray(neuM.nachrichten) ? neuM.nachrichten : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [];
+  const vorhanden = new Set(basis.filter(istObj).map((n) => String(n.id)));
+  const dazu = [];
+  for (const f of neu) {
+    const { planung, sv } = krankEmpfaenger(neuM, f, heute);
+    for (const e of [...planung, ...sv]) {
+      const id = `n-krank-${f.id}-${e.id}`;
+      if (vorhanden.has(id)) continue;
+      vorhanden.add(id);
+      dazu.push(servermitteilung({ id, personId: e.id, art: KRANK_ART, titel: KRANK_HINWEIS_TITEL, text: KRANK_HINWEIS_TEXT,
+        ziel: "lage", quelle: { art: "krankmeldung", id: f.id } }));
+    }
+  }
+  if (!dazu.length) return neuM;
+  return { ...neuM, nachrichten: [...dazu, ...basis] };
+}
+
+/**
+ * Zeilen für das Betriebsprotokoll: je Fall, zu dem in diesem Vorgang Mitteilungen entstanden sind, die Zahl
+ * der Empfänger — ohne Person, Tag, Anmerkung oder Empfängernamen.
+ */
+export function krankBenachrichtigungZeilen(altM, neuM) {
+  const alt = new Set(liste(altM && altM.nachrichten).map((n) => String(n.id)));
+  const jeFall = new Map();
+  for (const n of liste(neuM && neuM.nachrichten)) {
+    if (alt.has(String(n.id)) || n.art !== KRANK_ART || !istObj(n.quelle) || n.quelle.art !== "krankmeldung") continue;
+    const k = String(n.quelle.id);
+    jeFall.set(k, (jeFall.get(k) || 0) + 1);
+  }
+  return [...jeFall].map(([id, anzahl]) => `Krankmeldung ${id}: Benachrichtigung an ${anzahl} Empfänger (Planung, Leitung, Schichtverantwortung nach Zuständigkeit)`);
 }
