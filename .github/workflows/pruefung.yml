@@ -677,6 +677,11 @@ jobs:
       - name: Kontowiederherstellung Verlustfall (WR-3)
         run: npm run pruefung:kontowiederherstellung-verlust
 
+      # WR-6: Oberfläche zum Verlustweg (Antrag, Freigabe, Codeanzeige) ohne Browser; die
+      # Messung am Telefon läuft von Hand: pruefung:verlustweg-browser.
+      - name: Kontowiederherstellung Oberfläche (WR-6)
+        run: npm run pruefung:verlustweg-oberflaeche
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration

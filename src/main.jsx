@@ -13,6 +13,8 @@ import { Icon } from "./gestalt/icons.jsx";
 import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe, branchenpaketeHinweis, leistungenAnzeige } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
 import { ZweifaktorFeld, ZugangZweifaktor } from "./betreiber-2fa.jsx";
+import { useVerlustSperre } from "./verlustweg.jsx";
+import { halter as verlustHalter } from "./lib/verlustweg-halter.js";
 import { v4EinstiegAnwenden, v4EinstiegVerlassen, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 
 /* ==========================================================================
@@ -649,6 +651,10 @@ function Einstieg() {
   const [zfCode, setZfCode] = useState("");
   /* SI-P4: Einrichtung des zweiten Faktors für den eigenen Zugangscode. */
   const [zfVerwalten, setZfVerwalten] = useState(false);
+  /* WR-6: Verweis „Zugang verloren" im Feld für den Code aus der App öffnet den Verlustweg gleich aufgeklappt. */
+  const [zfVerlust, setZfVerlust] = useState(0);
+  /* Solange ein einmalig angezeigter Wert (neues Geheimnis, Wiederherstellungscodes, Abschlusstoken) sichtbar ist, darf der Bereich nicht geschlossen werden. */
+  const verlustSperre = useVerlustSperre();
   /* § 5 DDG verlangt „leicht erkennbar, unmittelbar erreichbar und
      ständig verfügbar". Das gilt für die öffentliche Seite zuerst — hier
      steht jemand, der die Anwendung noch gar nicht betreten hat. */
@@ -667,7 +673,7 @@ function Einstieg() {
   const oeffne = (versprechen) => {
     setLaeuft(true); setFehler(null);
     versprechen
-      .then((d) => { setBegruessung(d); setTimeout(() => setAn(true), 800); })
+      .then((d) => { verlustHalter.leeren(); setBegruessung(d); setTimeout(() => setAn(true), 800); })
       .catch((e) => { setFehler(e.message); setLaeuft(false);
         if (e && e.zweifaktor) { setZfNoetig(true); setZfCode(""); } });
   };
@@ -834,6 +840,12 @@ function Einstieg() {
                   letterSpacing: ".06em", fontVariantNumeric: "tabular-nums", boxSizing: "border-box",
                   background: C.bg, color: C.text }} />
               {zfNoetig && <ZweifaktorFeld wert={zfCode} setWert={setZfCode} senden={senden} F={C} />}
+              {zfNoetig && !betreiber && (
+                <button type="button" onClick={() => { setZfVerwalten(true); if (!verlustSperre) setZfVerlust((n) => n + 1); }}
+                  style={{ border: "none", background: "transparent", color: C.accent, fontFamily: "inherit",
+                    fontSize: 13.5, fontWeight: 600, cursor: "pointer", padding: "10px 0 0", minHeight: 32, display: "block",
+                    textAlign: "left" }}>
+                  Gerät oder Wiederherstellungscodes verloren?</button>)}
               {fehler && (
                 <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
                   color: C.danger, lineHeight: 1.45 }}>
@@ -874,12 +886,13 @@ function Einstieg() {
 
               {/* SI-P4: zweiter Faktor für den eigenen Zugangscode (Leitung, Planung, Kunde). */}
               {!betreiber && (
-                <button onClick={() => setZfVerwalten((v) => !v)}
+                <button onClick={() => setZfVerwalten((v) => !v)} disabled={zfVerwalten && verlustSperre}
                   style={{ border: "none", background: "transparent", color: C.accent,
-                    fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-                    padding: "16px 0 0", display: "block" }}>
-                  {zfVerwalten ? "Zwei-Faktor-Einrichtung schließen" : "Zweiten Faktor einrichten oder verwalten"}</button>)}
-              {!betreiber && zfVerwalten && <ZugangZweifaktor F={C} />}
+                    fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: zfVerwalten && verlustSperre ? "default" : "pointer",
+                    opacity: zfVerwalten && verlustSperre ? 0.55 : 1, padding: "16px 0 0", display: "block", textAlign: "left" }}>
+                  {zfVerwalten ? (verlustSperre ? "Schließen erst nach dem Sichern des angezeigten Werts" : "Zwei-Faktor-Einrichtung schließen")
+                    : "Zweiten Faktor einrichten oder verwalten"}</button>)}
+              {!betreiber && zfVerwalten && <ZugangZweifaktor key={zfVerlust} F={C} verlustStart={zfVerlust > 0} />}
             </div>
           </>)}
         </>)}

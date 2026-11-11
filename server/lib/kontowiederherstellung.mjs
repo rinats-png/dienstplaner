@@ -97,6 +97,9 @@ export const FALL_MUSTER = new RegExp(`^F-[${WIEDERHERSTELLUNG_ALPHABET}]{${FALL
 const FALL = (f) => `verlustfall:${f}`;
 const TRAEGER = (id) => `verlustfall-traeger:${id}`;
 
+/** Ein neues Abschlusstoken: 256 bit, base64url (43 Zeichen). Nur der Hash wird gespeichert. */
+export const tokenNeu = () => randomBytes(32).toString("base64url");
+
 /** Eine neue Fallkennung: 80 bit, gleichverteilt (5-Bit-Gruppen wie die Wiederherstellungscodes). */
 export function fallKennungNeu() {
   const b = randomBytes(FALL_LAENGE);
@@ -335,7 +338,7 @@ export async function fallFreigeben(store, { fall, freigebender, verfahren, akte
       await store.setJSON(FALL(f.fall), { ...f, stand: "teilfreigegeben", freigaben, token: null });
       return { ok: true, stand: "teilfreigegeben", verfallen: (f.freigaben || []).length - bleiben.length };
     }
-    const token = randomBytes(32).toString("base64url");
+    const token = tokenNeu();
     const bisMs = Math.min(ms + TOKEN_FRIST_MS, f.eroeffnetMs + ANTRAG_FRIST_MS);
     await store.setJSON(FALL(f.fall), { ...f, stand: "freigegeben", freigaben,
       token: { hash: tokenHash(f.fall, f.traeger.id, f.faktorKennung, token).toString("hex"), ausgestelltMs: ms, bisMs } });
