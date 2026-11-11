@@ -56,7 +56,6 @@ const VORRAT_BEDARF = [
   ["mitarbeiter", 0],                                           // S8
   ["mitarbeiter", "p2"],                                        // S10
   ["mitarbeiter", "p3"],                                        // S11
-  ["planer", "pl11"],                                           // S11 (RB-2: endgültige Bestätigung)
 ];
 const vorrat = new Map();
 const vorratSchluessel = (rolle, person) => `${rolle}|${person === null ? "" : String(person)}`;
@@ -443,9 +442,15 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
     JSON.stringify(wKonflikt.monate));
 }
 
+/* Code der Person p1 (S4, wiederverwendet in S11). */
+let CODE_P1 = null;
+
 /* --- S4: Die Schichtverantwortung schreibt nur den eigenen Bereich --- */
 {
-  const tSub = await anmelden(await zugang("subplaner", "p1"));
+  /* Der Code bleibt für S11 (RB-2): dort trägt p1 die Rolle Planung — kein weiterer Code, die Bremse für
+     /einrichten (20 je 10 Minuten) bleibt unberührt. */
+  CODE_P1 = await zugang("subplaner", "p1");
+  const tSub = await anmelden(CODE_P1);
   const r = await lies(tSub);
   pruef("Schichtverantwortung darf lesen", r.status === 200, `Status ${r.status}`);
 
@@ -872,10 +877,10 @@ let CODE_P2 = null;
   if (!m0.personen.some((p) => p.id === "p3"))
     m0.personen.push({ id: "p3", nachname: "Lind", rolle: "mitarbeiter",
       zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
-  /* RB-2: eine Planerin mit Person — die endgültige Bestätigung braucht eine Person im Betrieb. */
-  if (!m0.personen.some((p) => p.id === "pl11"))
-    m0.personen.push({ id: "pl11", nachname: "Pohl", rolle: "planer",
-      zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
+  /* RB-2: p1 (Schichtverantwortung aus S4, danach nicht mehr gebraucht) wird Planung — die endgültige
+     Bestätigung braucht eine Person im Betrieb mit Rolle Planung oder Leitung. */
+  const p1 = m0.personen.find((p) => p.id === "p1");
+  if (p1) p1.rolle = "planer";
   m0.abwesenheiten = m0.abwesenheiten || [];
   m0.notrufe = m0.notrufe || [];
   m0.selbstplanung = [{ id: "sp11", monat: "2026-11", status: "offen", eintraege: [
@@ -904,7 +909,8 @@ let CODE_P2 = null;
   pruef("S11: die Krankmeldung ist eingegangen, mit Anmerkung, ohne Diagnose, noch keine Abwesenheit",
     fall && fall.notiz === "Fieber" && fall.status === "eingegangen" && fall.diagnose === undefined
       && !(vorBestaetigung.abwesenheiten || []).some((a) => a.id === "k11" || a.id === "a-km-k11"), JSON.stringify(fall));
-  const tPl11 = await anmelden(await zugang("planer", "pl11"));
+  /* p1 ist jetzt Planung; ihr Code aus S4 gilt mit der Rolle aus der Personalliste (wirksameRolle). */
+  const tPl11 = await anmelden(CODE_P1);
   const eb = await fetch(`${BASIS}/api/krankmeldung`, { method: "POST",
     headers: { authorization: `Bearer ${tPl11}`, "content-type": "application/json", ...herkunft() },
     body: JSON.stringify({ aktion: "endgueltig", id: "km-k11" }) });
