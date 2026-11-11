@@ -29,6 +29,9 @@
 import "./betreiber-faktor-vorlauf.mjs";
 import { getStore } from "../server/lib/ablage.mjs";
 import { raumBelegt } from "../server/lib/bestand.mjs";
+import { laufenderTag, sekundenBisTageswechsel, tagVersetzt } from "../server/lib/planfreigabe.mjs";
+
+const GRENZE_TAGESWECHSEL_S = 300;
 
 const BASIS = "http://127.0.0.1:3000";
 const RAUM_A = "ppg-gate-a";
@@ -92,8 +95,14 @@ async function abschnitt(titel, fn) {
   try { await fn(); } catch (e) { pruef(`${titel}: ohne Ausnahme durchgelaufen`, false, e && e.message); }
 }
 const kopie = (x) => JSON.parse(JSON.stringify(x));
-const tag = (versatz) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" })
-  .format(new Date(Date.now() + versatz * 86400000));
+/* „Heute“ rechnet der Server live (laufenderTag, Berlin). Damit der Lauf nicht über
+   einen Tageswechsel stolpert, wartet die Probe kurz davor auf Mitternacht und
+   leitet alle Tage aus demselben Helfer ab wie der Server. */
+if (sekundenBisTageswechsel() < GRENZE_TAGESWECHSEL_S) {
+  console.log("Tageswechsel in Berlin steht bevor — die Probe wartet darauf.");
+  await new Promise((r) => setTimeout(r, (sekundenBisTageswechsel() + 2) * 1000));
+}
+const tag = (versatz) => tagVersetzt(laufenderTag(), versatz);
 const HEUTE = tag(0), GESTERN = tag(-1), MORGEN = tag(1), UEBERMORGEN = tag(2);
 
 /* ------------------------------ Altlasten ------------------------------- */
