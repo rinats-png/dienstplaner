@@ -35,6 +35,7 @@ import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
 import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
+import { fallAusAbwesenheit, svZustaendig } from "./krankmeldung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -294,24 +295,36 @@ const kennungGueltig = (id) => (typeof id === "string" && id.length > 0 && id.le
   || (typeof id === "number" && Number.isFinite(id));
 const textOderLeer = (t) => t === undefined || t === null || (typeof t === "string" && t.length <= ANMERKUNG_MAX);
 
-/** Neue eigene Krankmeldungen: nur Art „krank", nur die Felder des Formulars. */
-function krankmeldungenZusammen(alt, neu, ich) {
+/** Neue eigene Krankmeldungen: nur Art „krank", nur die Felder des Formulars.
+    RB-2 (Betreiberentscheidung 2026-11-11): Sie werden nicht mehr als wirksame Abwesenheit gespeichert,
+    sondern als eingegangener Fall (`krankmeldungen`, server/lib/krankmeldung.mjs) — wirksam erst mit der
+    endgültigen Bestätigung durch Planung oder Leitung. Die Abwesenheiten bleiben, wie sie gespeichert waren.
+    @returns {{ abwesenheiten: any[], faelle: any[] }} */
+function krankmeldungenZusammen(alt, neu, ich, faelleAlt, jetzt = new Date()) {
+  return krankAlsFaelle(alt, neu, faelleAlt, (a) => eigenerEintrag(a, ich), { personId: ich, rolle: "mitarbeiter" }, jetzt);
+}
+/** Gemeinsamer Kern für Beschäftigte und Schichtverantwortung: neue Krank-Einträge, die `zulassen`
+    besteht, werden zu eingegangenen Fällen; alles andere aus `neu` zählt hier nicht. */
+function krankAlsFaelle(alt, neu, faelleAlt, zulassen, akteur, jetzt) {
   const gespeichert = Array.isArray(alt) ? alt : [];
   const bekannt = new Set(gespeichert.filter(Boolean).map((a) => String(a.id)));
-  const neue = [];
+  const faelleBekannt = new Set((Array.isArray(faelleAlt) ? faelleAlt : []).filter(Boolean).map((f) => String(f.id)));
+  const faelle = [];
+  let verworfen = 0;
   for (const a of Array.isArray(neu) ? neu : []) {
-    if (!a || typeof a !== "object" || !eigenerEintrag(a, ich)) continue;
-    if (!kennungGueltig(a.id) || bekannt.has(String(a.id))) continue;    // Bestehendes bleibt, wie es war
-    if (a.art !== "krank") continue;                                       // Urlaub geht über den Antrag
+    if (!a || typeof a !== "object") continue;
+    if (!kennungGueltig(a.id) || bekannt.has(String(a.id))) continue;
+    if (a.art !== "krank") continue;
     if (typeof a.von !== "string" || !DATUM.test(a.von)
-      || typeof a.bis !== "string" || !DATUM.test(a.bis) || a.bis < a.von) continue;
-    if (!textOderLeer(a.notiz)) continue;
-    const sauber = { id: a.id, personId: a.personId, art: "krank", von: a.von, bis: a.bis };
-    if (typeof a.notiz === "string") sauber.notiz = a.notiz;
-    neue.push(sauber);
+      || typeof a.bis !== "string" || !DATUM.test(a.bis) || a.bis < a.von || !textOderLeer(a.notiz) || !zulassen(a)) { verworfen++; continue; }
+    const fall = fallAusAbwesenheit({ id: String(a.id).replace(/[^A-Za-z0-9_-]/g, "_"), personId: a.personId,
+      von: a.von, bis: a.bis, notiz: a.notiz }, akteur, jetzt);
+    if (faelleBekannt.has(fall.id)) continue;                              // Wiederholung: der Fall besteht schon
+    faelle.push(fall);
+    faelleBekannt.add(fall.id);
     bekannt.add(String(a.id));
   }
-  return [...gespeichert, ...neue];
+  return { abwesenheiten: gespeichert, faelle, verworfen };
 }
 
 const HINWEISE_MAX = 12;
@@ -402,7 +415,12 @@ export function eigenesZusammen(alt, geschickt, ich) {
   if (hat("nachrichten")) aus.nachrichten = nachrichtenZusammen(alt.nachrichten, geschickt.nachrichten, ich);
   if (hat("ausschreibungen")) aus.ausschreibungen = ausschreibungenZusammen(alt.ausschreibungen, geschickt.ausschreibungen, ich);
   if (hat("urlaubsrunde")) aus.urlaubsrunde = urlaubsrundeZusammen(alt.urlaubsrunde, geschickt.urlaubsrunde, ich);
-  if (hat("abwesenheiten")) aus.abwesenheiten = krankmeldungenZusammen(alt.abwesenheiten, geschickt.abwesenheiten, ich);
+  if (hat("abwesenheiten")) {
+    /* RB-2: eine neue eigene Krankmeldung wird ein eingegangener Fall, keine wirksame Abwesenheit. */
+    const k = krankmeldungenZusammen(alt.abwesenheiten, geschickt.abwesenheiten, ich, alt.krankmeldungen);
+    aus.abwesenheiten = k.abwesenheiten;
+    if (k.faelle.length) aus.krankmeldungen = [...k.faelle, ...(Array.isArray(alt.krankmeldungen) ? alt.krankmeldungen : [])];
+  }
   if (hat("selbstplanung")) aus.selbstplanung = selbstplanungZusammen(alt.selbstplanung, geschickt.selbstplanung, ich, alt.dienstarten);
   if (hat("notrufe")) aus.notrufe = notrufeZusammen(alt.notrufe, geschickt.notrufe, ich, alt.personen);
   return aus;
@@ -1310,6 +1328,15 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     const abweichung = einzigerEigenerBetrieb(uebermittelt, ort.betrieb.id);
     if (abweichung) return { verweigert: abweichung };
     let geschickt = uebermittelt.mandanten[0];
+    /* RB-2: Die Fälle der zweistufigen Krankmeldung (`krankmeldungen`) gehören dem Server. Ihren Status ändert
+       nur POST /api/krankmeldung; mitgeschickt ist das Feld für jede Rolle wirkungslos (auch eine veraltete
+       oder gekürzte Kopie aus der Sicht). Neue Fälle entstehen hier nur aus einer Krankmeldung der
+       Schichtverantwortung (einheitZusammen). */
+    if (geschickt && typeof geschickt === "object") {
+      const { krankmeldungen: _weg, ...ohneFaelle } = geschickt; // eslint-disable-line no-unused-vars
+      geschickt = Object.prototype.hasOwnProperty.call(ort.betrieb, "krankmeldungen")
+        ? { ...ohneFaelle, krankmeldungen: ort.betrieb.krankmeldungen } : ohneFaelle;
+    }
 
     /* Dienstarten (WP-22, Nutzerentscheidung): anlegen, ändern und löschen,
        wer org.edit oder pattern.edit hat (Leitung, Kundenrolle, Planung — die
@@ -2233,17 +2260,31 @@ export function einheitZusammen(altM, neuM, sitzung) {
       case "abwesenheiten": {
         const anfragenNeu = Array.isArray(aus.anfragen) ? aus.anfragen : [];
         const anfragenAlt = new Map((Array.isArray(altM.anfragen) ? altM.anfragen : []).filter(Boolean).map((x) => [String(x.id), x]));
-        const r = anhaengen(feld, a, n, { kuerzen: false, neuerEintrag: (e) => {
+        /* RB-2 (Betreiberentscheidung 2026-11-11): Eine neue Krankmeldung — die eigene oder die einer Person,
+           für die sie an diesen Tagen zuständig ist (svZustaendig) — nimmt die Schichtverantwortung als
+           eingegangenen Fall entgegen. Wirksam (Abwesenheit) wird sie erst mit der endgültigen Bestätigung
+           durch Planung oder Leitung; das vorläufige Bestätigen läuft über POST /api/krankmeldung. */
+        let nOhneKrank = n;
+        if (Array.isArray(n)) {
+          const altIds = new Set((Array.isArray(a) ? a : []).filter((x) => x && typeof x === "object").map((x) => String(x.id)));
+          const krankNeu = n.filter((e) => e && typeof e === "object" && e.art === "krank" && kennungGueltig(e.id) && !altIds.has(String(e.id)));
+          if (krankNeu.length) {
+            const k = krankAlsFaelle(a, krankNeu, altM.krankmeldungen,
+              (e) => eigen(e.personId) || svZustaendig(altM, ich, e.personId, e.von, e.bis),
+              { personId: ich.id, rolle: "subplaner" }, new Date());
+            if (k.verworfen) return nein("abwesenheiten: Diese Krankmeldung ist über diesen Zugang nicht möglich.");
+            if (k.faelle.length) aus.krankmeldungen = [...k.faelle, ...(Array.isArray(altM.krankmeldungen) ? altM.krankmeldungen : [])];
+            nOhneKrank = n.filter((e) => !krankNeu.includes(e));
+          }
+        }
+        const r = anhaengen(feld, a, nOhneKrank, { kuerzen: false, neuerEintrag: (e) => {
           if (typeof e.von !== "string" || !TAG.test(e.von) || typeof e.bis !== "string" || !TAG.test(e.bis) || e.bis < e.von)
             return null;
           if (!textOderLeer(e.notiz)) return null;
           const meine = eigen(e.personId);
           if (!meine && !(imBereich(e.personId, e.von) && imBereich(e.personId, e.bis))) return null;
-          if (e.art === "krank") {
-            const s = { id: e.id, personId: e.personId, art: "krank", von: e.von, bis: e.bis };
-            if (typeof e.notiz === "string") s.notiz = e.notiz;
-            return s;
-          }
+          /* RB-2: neue Krankmeldungen sind oben schon zu Fällen geworden; als Abwesenheit nie. */
+          if (e.art === "krank") return null;
           /* Alles andere entsteht aus einem Antrag, den dieser Vorgang genehmigt —
              nicht aus der eigenen Person und nicht ohne Antrag. */
           if (meine) return null;

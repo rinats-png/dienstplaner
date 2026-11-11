@@ -548,6 +548,13 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
            keine Fehlzeitenstatistik mehr. */
         return { ...a, notiz: "", grund: "", grundGeloescht: heuteIso };
       }),
+      /* RB-2: die Anmerkung eines Krankmeldungsfalls mit derselben Frist wie die der Abwesenheit. */
+      ...(Array.isArray(m.krankmeldungen) ? { krankmeldungen: m.krankmeldungen.map((f) => {
+        if (!f || typeof f !== "object") return f;
+        const ende = String(f.bis || f.von || "").slice(0, 10);
+        if (!ende || ende >= st.grund || !String(f.notiz || "").trim()) return f;
+        return { ...f, notiz: "", grundGeloescht: heuteIso };
+      }) } : {}),
       ...moduldatenGeraeumt,
       ...(plan.modulprotokoll ? { einstellungen: { ...m.einstellungen,
         modulprotokoll: modulprotokollFaellig(m, heuteIso, { regel: regeln.modulprotokoll || MODULPROTOKOLL_FRIST }).rest } } : {}),

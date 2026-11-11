@@ -908,6 +908,19 @@ export async function zeitBestaetigen(datum, start, ende, grund, pause) {
  * Ereignis angehängt. Antwort: der gespeicherte Stempel (eintrag) und die
  * abgeleitete Ist-Zeit (erfassung).
  */
+/**
+ * Krankmeldung in zwei Stufen (RB-2): aktion "melden" ({ personId, von, bis, notiz }), "vorlaeufig" oder
+ * "endgueltig" ({ id }). Der Server prüft Rolle, Bereich und Status; die Antwort nennt Kennung und Status.
+ */
+export async function krankmeldung(aktion, angaben) {
+  const a = await fetch("/api/krankmeldung", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ ...(angaben || {}), aktion }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Krankmeldung ließ sich nicht speichern.");
+  return d;
+}
+
 export async function stempelKorrektur(personId, datum, start, ende, grund, pause) {
   const a = await fetch("/api/stempel-korrektur", { method: "POST", headers: kopf(),
     body: JSON.stringify({ personId, datum, start, ende, grund: grund || "",

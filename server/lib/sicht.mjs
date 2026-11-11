@@ -331,6 +331,14 @@ function personSicht(p, ctx) {
    keine Anmerkung (dort steht die Anmerkung einer Krankmeldung), kein
    Nachweis. Dass jemand fehlt, ist Betriebswissen; warum, ist eine
    Gesundheitsangabe nach Art. 9 DSGVO. */
+/* RB-2: Fälle der zweistufigen Krankmeldung (server/lib/krankmeldung.mjs). Eigene: Zeitraum, Anmerkung,
+   Status. Der Verlauf (wer hat wann bestätigt) bleibt bei Planung und Leitung. */
+const KRANK_FALL_EIGEN = ["id", "personId", "von", "bis", "notiz", "status"];
+const KRANK_FALL_BEREICH = ["id", "personId", "von", "bis", "status"];
+function krankmeldungenEigene(w, ctx) {
+  return liste(w).filter((f) => f && eigen(f, ctx.ich)).map((f) => nimm(f, KRANK_FALL_EIGEN));
+}
+
 function abwesenheiten(w, ctx) {
   return liste(w).map((a) => {
     if (!a || eigen(a, ctx.ich)) return a;
@@ -613,6 +621,9 @@ export const BETRIEB = {
   personen: [R((w, ctx) => liste(w).map((p) => personSicht(p, ctx))),
     R((w, ctx) => liste(w).map((p) => personSicht(p, ctx)))],
   abwesenheiten: [R(abwesenheiten), R(abwesenheiten)],
+  /* Zweistufige Krankmeldung (RB-2): Beschäftigte nur die eigenen Fälle, der Betriebsrat keine
+     (Gesundheitsangabe; wirksame Krankheit sieht er wie bisher als „abwesend“). */
+  krankmeldungen: [R(krankmeldungenEigene), WEG],
   anfragen: [R(anfragen), WEG],
   wuensche: [NUR_EIGENE, WEG],
   einspruenge: [NUR_EIGENE, WEG],
@@ -847,6 +858,12 @@ const schichtAbwesenheiten = (w, ctx) => liste(w).map((a) => {
   if (u === "bereich") { const r = nimm(a, ["id", "personId", "art", "von", "bis"]); r.art = artFuerSV(a.art); return r; }
   return abwesenheiten([a], { ...ctx, ich: undefined })[0];
 });
+const schichtKrankmeldungen = (w, ctx) => liste(w).filter(Boolean).map((f) => {
+  const u = umfangImZeitraum(ctx, f.personId, f.von, f.bis);
+  if (u === "eigen") return nimm(f, KRANK_FALL_EIGEN);
+  if (u === "bereich") return nimm(f, KRANK_FALL_BEREICH);
+  return null;
+}).filter(Boolean);
 /* Anträge: eigene und aus dem Bereich ganz (sie entscheidet sie), sonst
    wie für Beschäftigte (nur offene Tauschgesuche, Meldungen verborgen).
    „Aus dem Bereich" heißt: am ersten Tag des Antrags — an demselben Tag
@@ -972,6 +989,10 @@ export const SCHICHT = Object.fromEntries(Object.entries(BETRIEB).map(([feld, [m
 Object.assign(SCHICHT, {
   personen: "personen",
   abwesenheiten: R(schichtAbwesenheiten),
+  /* RB-2: eigene Fälle wie Beschäftigte; Fälle von Personen ihres Bereichs (an den Tagen der Meldung) nur
+     Zeitraum und Status — keine Anmerkung, kein Verlauf; alle anderen nicht. Das ist genau, was sie zum
+     Entgegennehmen und vorläufigen Bestätigen braucht. */
+  krankmeldungen: R(schichtKrankmeldungen),
   anfragen: R(schichtAnfragen),
   erfassung: R(schichtErfassung),
   istEingefroren: R(schichtIstEingefroren),

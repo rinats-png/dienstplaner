@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
+import { krankmeldungBestaetigen } from "../server/lib/krankmeldung.mjs";
 
 const person = (id, vorname, rolle) => ({
   id, vorname, nachname: `${vorname}mann`, rolle, bereich: "e1", funktion: "Fachkraft",
@@ -86,29 +87,49 @@ const KRANK = { id: "a-neu", personId: 0, art: "krank", von: "2026-10-20", bis: 
 /* --------------------------------------------------------------------------
    KRANKMELDUNG
    -------------------------------------------------------------------------- */
+/* RB-2 (Betreiberentscheidung 2026-11-11): Die Meldung der Beschäftigten ist ein eingegangener Fall
+   (`krankmeldungen`, Kennung km-<Eintrag>); wirksam — und damit als Abwesenheit für Planung, Leitung,
+   Schichtverantwortung, Kolleginnen und Betriebsrat sichtbar — wird sie mit der endgültigen Bestätigung
+   durch Planung oder Leitung (Kennung a-km-<Eintrag>). Die Sichtregeln der Abwesenheit gelten unverändert. */
 describe("Krankmeldung", () => {
   const nachher = schreibe(bestand(), SITZ.a, (m) => m.abwesenheiten.push({ ...KRANK }));
+  const wirksam = (() => {
+    const r = krankmeldungBestaetigen(m1(nachher), { personId: 3, rolle: "planer" }, "endgueltig", "km-a-neu", new Date());
+    return { ...nachher, mandanten: [r.mandant, ...nachher.mandanten.slice(1)] };
+  })();
+  const WIRKSAM = { ...KRANK, id: "a-km-a-neu" };
 
-  it("1. die eigene Meldung wird gespeichert", () => {
-    expect(m1(nachher).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(KRANK);
+  it("1. die eigene Meldung wird gespeichert — als eingegangener Fall, noch nicht als Abwesenheit", () => {
+    expect(m1(nachher).abwesenheiten.find((a) => a.id === "a-neu")).toBeUndefined();
+    expect(m1(nachher).krankmeldungen).toHaveLength(1);
+    expect(m1(nachher).krankmeldungen[0]).toMatchObject({ id: "km-a-neu", personId: 0, von: "2026-10-20", bis: "2026-10-21",
+      notiz: "Fieber", status: "eingegangen" });
+    expect(m1(wirksam).abwesenheiten.find((a) => a.id === "a-km-a-neu")).toEqual(WIRKSAM);
   });
-  it("2. nach dem Neuladen ist sie da", () => {
-    expect(sicht(nachher, SITZ.a).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(KRANK);
+  it("2. nach dem Neuladen ist sie da (Status eingegangen)", () => {
+    expect(sicht(nachher, SITZ.a).krankmeldungen).toEqual([{ id: "km-a-neu", personId: 0, von: "2026-10-20", bis: "2026-10-21",
+      notiz: "Fieber", status: "eingegangen" }]);
+    expect(sicht(wirksam, SITZ.a).abwesenheiten.find((a) => a.id === "a-km-a-neu")).toEqual(WIRKSAM);
   });
   it("3. Planung und Leitung sehen sie vollständig", () => {
-    for (const s of [SITZ.planer, SITZ.leitung])
-      expect(sicht(nachher, s).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(KRANK);
+    for (const s of [SITZ.planer, SITZ.leitung]) {
+      expect(sicht(nachher, s).krankmeldungen[0]).toMatchObject({ id: "km-a-neu", notiz: "Fieber" });
+      expect(sicht(wirksam, s).abwesenheiten.find((a) => a.id === "a-km-a-neu")).toEqual(WIRKSAM);
+    }
   });
   it("3a. die Schichtverantwortung des Bereichs sieht Zeitraum und Kategorie, keine Anmerkung (seit 1e.2)", () => {
-    const { notiz, ...ohneNotiz } = KRANK;
+    const { notiz, ...ohneNotiz } = WIRKSAM;
     expect(notiz).toBeTruthy();
-    expect(sicht(nachher, SITZ.subplaner).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(ohneNotiz);
+    expect(sicht(wirksam, SITZ.subplaner).abwesenheiten.find((a) => a.id === "a-km-a-neu")).toEqual(ohneNotiz);
+    expect(text(sicht(nachher, SITZ.subplaner).krankmeldungen)).not.toContain("Fieber");
   });
   it("4./5. andere Beschäftigte und der Betriebsrat sehen nur Zeitraum und „abwesend“", () => {
     for (const s of [SITZ.b, SITZ.br]) {
-      expect(sicht(nachher, s).abwesenheiten.find((a) => a.id === "a-neu"))
-        .toEqual({ id: "a-neu", personId: 0, von: "2026-10-20", bis: "2026-10-21", art: "abwesend" });
+      expect(sicht(wirksam, s).abwesenheiten.find((a) => a.id === "a-km-a-neu"))
+        .toEqual({ id: "a-km-a-neu", personId: 0, von: "2026-10-20", bis: "2026-10-21", art: "abwesend" });
+      expect(text(sicht(wirksam, s))).not.toContain("Fieber");
       expect(text(sicht(nachher, s))).not.toContain("Fieber");
+      expect(sicht(nachher, s).krankmeldungen || []).toEqual([]);
     }
   });
   it("6. eine Meldung für eine andere Person wird verworfen", () => {
@@ -124,17 +145,22 @@ describe("Krankmeldung", () => {
   it("8. unerlaubte Felder werden entfernt, ungültige Meldungen verworfen", () => {
     const n = schreibe(bestand(), SITZ.a, (m) => m.abwesenheiten.push({ ...KRANK,
       diagnose: "J11", grund: "Grippe", nachweis: "AU", genehmigt: true, quelle: "x" }));
-    expect(m1(n).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(KRANK);
+    /* RB-2: der Fall trägt nur Kennung, Person, Zeitraum, Anmerkung, Status und Verlauf. */
+    const fall = m1(n).krankmeldungen[0];
+    expect(Object.keys(fall).sort()).toEqual(["id", "notiz", "personId", "status", "verlauf", "von", "bis"].sort());
+    expect(text(fall)).not.toMatch(/J11|Grippe|AU|genehmigt|"quelle"/);
+    expect(m1(n).abwesenheiten.map((a) => a.id)).toEqual(["a-b", "a-a"]);
     for (const kaputt of [{ von: "20.10.2026" }, { bis: "2026-10-19" }, { notiz: 42 },
       { notiz: "x".repeat(2001) }, { id: "" }, { id: { x: 1 } }]) {
       const k = schreibe(bestand(), SITZ.a, (m) => m.abwesenheiten.push({ ...KRANK, ...kaputt }));
       expect(m1(k).abwesenheiten.map((a) => a.id), text(kaputt)).toEqual(["a-b", "a-a"]);
+      expect(m1(k).krankmeldungen || [], text(kaputt)).toEqual([]);
     }
     const ohne = schreibe(bestand(), SITZ.a, (m) => {
       const { notiz: _notiz, ...rest } = KRANK; m.abwesenheiten.push(rest);
     });
-    expect(m1(ohne).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(
-      { id: "a-neu", personId: 0, art: "krank", von: "2026-10-20", bis: "2026-10-21" });
+    expect(m1(ohne).krankmeldungen[0]).toMatchObject({ id: "km-a-neu", personId: 0, von: "2026-10-20", bis: "2026-10-21", status: "eingegangen" });
+    expect(m1(ohne).krankmeldungen[0].notiz).toBeUndefined();
   });
   it("9. bestehende Meldungen lassen sich weder ändern noch löschen noch überschreiben", () => {
     const n = schreibe(bestand(), SITZ.a, (m) => {
@@ -154,7 +180,8 @@ describe("Krankmeldung", () => {
   });
   it("zwei gleichlautende Kennungen in einer Übermittlung zählen einmal", () => {
     const n = schreibe(bestand(), SITZ.a, (m) => m.abwesenheiten.push({ ...KRANK }, { ...KRANK, von: "2026-10-22", bis: "2026-10-22" }));
-    expect(m1(n).abwesenheiten.filter((a) => a.id === "a-neu")).toHaveLength(1);
+    expect(m1(n).abwesenheiten.filter((a) => a.id === "a-neu")).toHaveLength(0);
+    expect(m1(n).krankmeldungen.filter((f) => f.id === "km-a-neu")).toHaveLength(1);
   });
 });
 

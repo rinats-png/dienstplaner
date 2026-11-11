@@ -18,6 +18,7 @@ import { NUM } from "../ui/thema.js";
 import { LinienDiagramm } from "../ui/diagramme.jsx";
 import { feiertag } from "../../server/lib/feiertage.mjs";
 import { nachtschwelle } from "../../server/lib/fachpruefung.mjs";
+import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
 
 /* ==========================================================================
    MEINE SCHICHTEN — die Sicht der Mitarbeiterrolle
@@ -66,6 +67,8 @@ export function MeineSchichten({ sitz, akt, ym }) {
             <Btn onClick={() => setAntrag("tausch")}>Tausch anfragen</Btn></>}
           <Btn kind="quiet" onClick={() => akt.kalenderAbo(ich.id)}>Kalender</Btn>
         </div>}>Meine Schichten</H1>
+      {/* RB-2: Status der eigenen Krankmeldung (eingegangen / vorläufig bestätigt). */}
+      <KrankmeldungenOffen sitz={sitz} akt={akt} />
 
       {/* Ohne Ist-Daten (Betriebsrat, E1) steht „–" und der Grund — keine 0. */}
       <Kennzahlen min={200} kacheln={[

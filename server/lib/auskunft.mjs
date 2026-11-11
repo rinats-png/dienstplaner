@@ -253,6 +253,8 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     ...(modulhandlungen.length ? { modulhandlungen } : {}),
     plan,
     abwesenheiten: eigene(m.abwesenheiten, pid),
+    /* RB-2: eigene Krankmeldungen in Bearbeitung samt Verlauf (Schritt, Rolle, Zeit). */
+    krankmeldungen: eigene(m.krankmeldungen, pid),
     antraege,
     planaenderungen: eigene(m.aenderungen, pid),
     mitteilungen: eigene(m.nachrichten, pid),

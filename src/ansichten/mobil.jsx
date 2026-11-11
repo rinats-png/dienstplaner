@@ -31,6 +31,7 @@ import { NAV_BETREIBER, NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { Logo } from "../ui/logo.jsx";
 import { urlaubAntragFehler } from "../lib/antragpruefung.js";
 import { Fehlerband } from "../gestalt/ansichten.jsx";
+import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
 
 
 export const M_TABS = [
@@ -438,6 +439,8 @@ export function MAnliegen({ sitz, akt, oeffnen }) {
         <Btn kind="danger" style={{ height: 52, borderRadius: 17, fontSize: 15 }}
           onClick={() => akt.oeffneKrankmeldung(ich.id)}>Krank melden</Btn>
       </div>
+      {/* RB-2: Status der eigenen Krankmeldung (eingegangen / vorläufig bestätigt). */}
+      <KrankmeldungenOffen sitz={sitz} akt={akt} />
 
       {einsatz.length > 0 && (<>
         <Rubrik style={{ marginBottom: 11 }}>Einsatzanfragen</Rubrik>

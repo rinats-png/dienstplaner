@@ -34,6 +34,7 @@ export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.m
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
 import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen } from "../../server/lib/engine/einsatz.mjs";
+import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
 
 /* Bundesländer, in denen Feiertage von der Gemeinde abhängen.
@@ -2339,6 +2340,17 @@ export function tagesaufgaben(sitz) {
      (org.edit) schaltet das ein; sie bekommt den Hinweis als dringende Aufgabe. */
   if (darf(sitz, "org.edit") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
     titel: "Planfreigabe aktivieren", text: "Beschäftigte sehen sonst auch Entwürfe" });
+
+  /* RB-2: offene Krankmeldungen — nur wer den nächsten Schritt gehen darf, bekommt die Aufgabe (wie der Server). */
+  {
+    const schritt = krankSchrittErlaubt(sitz.person && sitz.person.rolle, "endgueltig") ? "endgueltig"
+      : krankSchrittErlaubt(sitz.person && sitz.person.rolle, "vorlaeufig") ? "vorlaeufig" : null;
+    const offen = schritt ? (m.krankmeldungen || []).filter((f) => f && String(f.personId) !== String(sitz.person.id)
+      && (f.status === "eingegangen" || (schritt === "endgueltig" && f.status === "vorlaeufig_bestaetigt"))) : [];
+    if (offen.length) push({ art: "krankmeldung", dringend: true, ziel: "lage",
+      titel: `${offen.length} Krankmeldung${offen.length > 1 ? "en" : ""} ${schritt === "endgueltig" ? "endgültig" : "vorläufig"} zu bestätigen`,
+      text: "Bis zur endgültigen Bestätigung steht die Abwesenheit nicht im Plan", anzahl: offen.length });
+  }
 
   if (darf(sitz, "plan.publish")) {
     for (const off of [0, 1]) {
