@@ -21,6 +21,7 @@
 
 import { useState, createContext, useContext } from "react";
 import { VerlustWeg } from "./verlustweg.jsx";
+import { CODEFELD, AUSWEISFELD } from "./lib/eingabefelder.js";
 
 async function antwortLesen(r) {
   let d = {};
@@ -82,9 +83,9 @@ function Abschnitt({ ui, titel, feld, feldHinweis, rufen, pflichtText }) {
       <ui.CardHead>{titel}</ui.CardHead>
       <div style={{ padding: 22, display: "grid", gap: 13, maxWidth: 560 }}>
         <ui.Field label={feld} hint={feldHinweis}>
-          <ui.Inp type="password" autoComplete="off" value={ausweis} onChange={(e) => setAusweis(e.target.value)} /></ui.Field>
+          <ui.Inp {...AUSWEISFELD} value={ausweis} onChange={(e) => setAusweis(e.target.value)} /></ui.Field>
         <ui.Field label="Code aus der App" hint="Sechs Ziffern — oder ein Wiederherstellungscode. Jeder Code gilt einmal.">
-          <ui.Inp inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></ui.Field>
+          <ui.Inp {...CODEFELD} value={code} onChange={(e) => setCode(e.target.value)} /></ui.Field>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <ui.Btn onClick={pruefen} disabled={laeuft || !ausweis}>Stand abfragen</ui.Btn>
           {stand && !stand.aktiv && !einrichtung &&
@@ -196,7 +197,7 @@ export function ZweifaktorFeld({ wert, setWert, senden, F }) {
     <div style={{ marginTop: 14 }}>
       <label htmlFor="zweifaktor" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
         color: F.dim, marginBottom: 7 }}>Code aus der Authenticator-App</label>
-      <input id="zweifaktor" value={wert} autoFocus inputMode="numeric" autoComplete="one-time-code"
+      <input id="zweifaktor" {...CODEFELD} value={wert} autoFocus
         onChange={(e) => setWert(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && senden()}
         placeholder="123456"

@@ -5,6 +5,7 @@ import { C } from "../farben.js";
 import { Card, CardHead, Lab, Btn, Inp, Sel, Field } from "../ui/bausteine.jsx";
 import { NUM } from "../ui/thema.js";
 import { zahl } from "../lib/format.js";
+import { CODEFELD } from "../lib/eingabefelder.js";
 import { ANWENDUNG_URL } from "../kontakt.js";
 import { BETREIBER_LEER } from "../lib/fachlogik.js";
 import { ROLLEN } from "../lib/rollen.js";
@@ -167,7 +168,7 @@ export function MandantNeuAnlegen({ db, akt, onFertig }) {
         hint={angelegt
           ? "Der Betrieb steht schon. Es fehlen nur die Zugänge: bitte den nächsten Code abwarten und eingeben."
           : "Pflicht, sobald für deinen Betreibercode ein zweiter Faktor eingerichtet ist. Jeder Code gilt nur einmal."}>
-        <Inp value={faktor} inputMode="numeric" autoComplete="one-time-code" maxLength={16}
+        <Inp {...CODEFELD} value={faktor} maxLength={16}
           onChange={(e) => setFaktor(e.target.value)} placeholder="6-stelliger Code" /></Field>
 
       {fehler && (
