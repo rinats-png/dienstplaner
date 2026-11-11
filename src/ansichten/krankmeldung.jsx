@@ -1,7 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState } from "react";
 import { heute } from "../lib/datum.js";
-import { darf } from "../lib/berechtigung.js";
+import { darf, krankRolle } from "../lib/berechtigung.js";
 import { darfEinheit, personTag } from "../lib/fachlogik.js";
 import { addDays } from "../regelwerk.js";
 import { Sheet } from "../ui/leisten.jsx";
@@ -23,7 +23,7 @@ export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
   const eigene = sitz.person && !darf(sitz, "staff.edit") && !darfEinheit(sitz, sitz.person.bereich);
   /* RB-2: Ohne Recht zur endgültigen Bestätigung (Beschäftigte, Schichtverantwortung) ist die Meldung nur
      eingegangen — keine Lücke, keine Ersatzsuche, bis Planung oder Leitung sie endgültig bestätigt. */
-  const vorlaeufig = !krankSchrittErlaubt(sitz.person && sitz.person.rolle, "endgueltig");
+  const vorlaeufig = !krankSchrittErlaubt(krankRolle(sitz), "endgueltig");
   const [fehler, setFehler] = useState(null);
 
   const melden = async () => {

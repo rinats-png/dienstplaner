@@ -14,7 +14,7 @@ import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschl
 import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
-import { darf } from "./berechtigung.js";
+import { darf, krankRolle } from "./berechtigung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege } from "../standorte.js";
 import { mandantPaketkosten, monatsanfang, paketTag, paketPositionen, kannMerkmal } from "../paketlogik.js";
 import { monatspreis } from "../preisgestaltung.js";
@@ -2338,13 +2338,13 @@ export function tagesaufgaben(sitz) {
 
   /* WP-23: Solange die Planfreigabe nicht gilt, sehen Beschäftigte auch Entwürfe. Nur die Leitung
      (org.edit) schaltet das ein; sie bekommt den Hinweis als dringende Aufgabe. */
-  if (darf(sitz, "org.edit") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
+  if (darf(sitz, "org.edit") && darf(sitz, "plan.publish") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
     titel: "Planfreigabe aktivieren", text: "Beschäftigte sehen sonst auch Entwürfe" });
 
   /* RB-2: offene Krankmeldungen — nur wer den nächsten Schritt gehen darf, bekommt die Aufgabe (wie der Server). */
   {
-    const schritt = krankSchrittErlaubt(sitz.person && sitz.person.rolle, "endgueltig") ? "endgueltig"
-      : krankSchrittErlaubt(sitz.person && sitz.person.rolle, "vorlaeufig") ? "vorlaeufig" : null;
+    const schritt = krankSchrittErlaubt(krankRolle(sitz), "endgueltig") ? "endgueltig"
+      : krankSchrittErlaubt(krankRolle(sitz), "vorlaeufig") ? "vorlaeufig" : null;
     const offen = schritt ? (m.krankmeldungen || []).filter((f) => f && String(f.personId) !== String(sitz.person.id)
       && (f.status === "eingegangen" || (schritt === "endgueltig" && f.status === "vorlaeufig_bestaetigt"))) : [];
     if (offen.length) push({ art: "krankmeldung", dringend: true, ziel: "lage",

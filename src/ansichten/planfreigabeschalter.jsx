@@ -4,6 +4,7 @@ import { Card, CardHead, Pill, Btn } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { NUM } from "../ui/thema.js";
 import { fDatum } from "../lib/datum.js";
+import { darf } from "../lib/berechtigung.js";
 
 /**
  * Planfreigabe als Pflicht (WP-23). Eingeschaltet (oder sobald ein Monat freigegeben ist) sehen
@@ -15,6 +16,8 @@ export function PlanFreigabeSchalter({ sitz, akt }) {
   const e = m.einstellungen || {};
   const pflicht = planFreigabePflicht(m);
   const wirkt = planFreigabeAktiv(m);
+  /* RB-3: umlegen nur mit plan.publish (wie der Server) — ein Zugang der Altrolle „kunde" sieht den Stand, schaltet aber nicht. */
+  const kannSchalten = darf(sitz, "plan.publish");
   const durch = e.planFreigabePflichtGeaendertVon
     ? (m.personen.find((x) => String(x.id) === String(e.planFreigabePflichtGeaendertVon)) || {}) : null;
   return (
@@ -30,10 +33,12 @@ export function PlanFreigabeSchalter({ sitz, akt }) {
         {e.planFreigabePflichtGeaendertAm && (
           <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.planFreigabePflichtGeaendertAm).slice(0, 10))}
             {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
-        <div style={{ marginTop: 14 }}>
-          <Btn kind={pflicht ? undefined : "primary"} onClick={() => akt.setzePlanFreigabePflicht(!pflicht)}>
-            {pflicht ? "Planfreigabe ausschalten" : "Planfreigabe aktivieren"}</Btn>
-        </div>
+        {kannSchalten ? (
+          <div style={{ marginTop: 14 }}>
+            <Btn kind={pflicht ? undefined : "primary"} onClick={() => akt.setzePlanFreigabePflicht(!pflicht)}>
+              {pflicht ? "Planfreigabe ausschalten" : "Planfreigabe aktivieren"}</Btn>
+          </div>) : (
+          <div style={{ marginTop: 14 }}>Umschalten kann nur, wer Dienstpläne verbindlich freigeben darf.</div>)}
       </div>
     </Card>);
 }

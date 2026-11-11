@@ -64,7 +64,7 @@ const ok = (r) => { expect(r.grund, r.grund).toBeUndefined(); return r; };
 
 /* =============================== A  Kern =============================== */
 describe("A  Rechte je Rolle und Schritt (Server-Kern)", () => {
-  it("melden: Beschäftigte, Schichtverantwortung, Planung, Leitung (Kundenrolle = Leitung); nie Betriebsrat, Betreiber", () => {
+  it("melden: Beschäftigte, Schichtverantwortung, Planung, Leitung (und die Kundenrolle); nie Betriebsrat, Betreiber", () => {
     for (const r of ["mitarbeiter", "subplaner", "planer", "leitung", "kunde"]) expect(krankSchrittErlaubt(r, "melden"), r).toBe(true);
     for (const r of ["betriebsrat", "betreiber", undefined, "", "gast"]) expect(krankSchrittErlaubt(r, "melden"), String(r)).toBe(false);
   });
@@ -72,9 +72,11 @@ describe("A  Rechte je Rolle und Schritt (Server-Kern)", () => {
     expect(krankSchrittErlaubt("subplaner", "vorlaeufig")).toBe(true);
     for (const r of ["mitarbeiter", "planer", "leitung", "kunde", "betriebsrat", "betreiber"]) expect(krankSchrittErlaubt(r, "vorlaeufig"), r).toBe(false);
   });
-  it("endgültig: nur Planung und Leitung (und die Kundenrolle); nie die Schichtverantwortung", () => {
-    for (const r of ["planer", "leitung", "kunde"]) expect(krankSchrittErlaubt(r, "endgueltig"), r).toBe(true);
-    for (const r of ["subplaner", "mitarbeiter", "betriebsrat", "betreiber"]) expect(krankSchrittErlaubt(r, "endgueltig"), r).toBe(false);
+  it("endgültig und ablehnen: nur Planung und Leitung; nie die Schichtverantwortung, nie die Kundenrolle (RB-3)", () => {
+    for (const s of ["endgueltig", "ablehnen"]) {
+      for (const r of ["planer", "leitung"]) expect(krankSchrittErlaubt(r, s), `${r} ${s}`).toBe(true);
+      for (const r of ["subplaner", "mitarbeiter", "betriebsrat", "betreiber", "kunde"]) expect(krankSchrittErlaubt(r, s), `${r} ${s}`).toBe(false);
+    }
   });
 
   it("Beschäftigte melden die eigene Krankheit, keine fremde", () => {

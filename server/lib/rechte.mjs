@@ -35,7 +35,7 @@ import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
 import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
-import { fallAusAbwesenheit, svZustaendig, krankmeldungMitteilungen } from "./krankmeldung.mjs";
+import { fallAusAbwesenheit, svZustaendig, krankSchrittErlaubt, krankmeldungMitteilungen } from "./krankmeldung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -45,14 +45,18 @@ const ALLE_RECHTE = [
   "plan.view.own", "plan.view.unit", "plan.view.all", "plan.edit.unit",
   "plan.edit.all", "pattern.edit", "shift.edit",
   /* RB-1 (Betreiberentscheidung 2026-11-11): Dienstpläne verbindlich veröffentlichen
-     (m.freigaben, m.planstaende) dürfen ausschließlich Leitung und Planung — dazu die
-     Kundenrolle, die als alter Probierraum funktional die Leitung ist (dieselbe MATRIX,
-     pruefungen/kunde-abloesung.test.js). Keine andere Rolle bekommt es. */
+     (m.freigaben, m.planstaende) dürfen ausschließlich Leitung und Planung. Keine andere
+     Rolle bekommt es — RB-3 (Betreiberentscheidung 2026-11-11, Ergänzung): auch die
+     Altrolle „kunde" nicht, auch nicht im Probierraum. Demo-Funktionen laufen über
+     ausdrücklich zugewiesene Rollen (leitung oder planer mit demo: true). */
   "plan.publish",
   "req.create", "req.approve.unit", "req.approve.all",
   "staff.view", "staff.edit", "account.view.own", "account.view.all",
   "org.edit", "roles.assign", "billing.view", "audit.view", "export.data",
 ];
+
+/* RB-3: Rechte, die die Altrolle „kunde" nicht trägt, obwohl sie sonst wie die Leitung behandelt wird. */
+export const KUNDE_OHNE = Object.freeze(["plan.publish"]);
 
 export const MATRIX = {
   leitung: [...ALLE_RECHTE],
@@ -63,8 +67,11 @@ export const MATRIX = {
   betriebsrat: ["plan.view.own", "plan.view.unit", "plan.view.all", "staff.view",
     "audit.view", "export.data"],
   /* Ein eigener Datenraum zum freien Ausprobieren — dort gibt es keine
-     zweite Person, vor der etwas zu schützen wäre. */
-  kunde: [...ALLE_RECHTE],
+     zweite Person, vor der etwas zu schützen wäre. RB-3 (Betreiberentscheidung
+     2026-11-11): alles wie die Leitung AUSSER plan.publish — die Altrolle erhält
+     auch im Probierraum keine Sonderrechte für die verbindliche Veröffentlichung
+     (pruefungen/kunde-abloesung.test.js, pruefungen/rb3-kunde-ohne-publish.test.js). */
+  kunde: ALLE_RECHTE.filter((r) => !KUNDE_OHNE.includes(r)),
 };
 
 export function darf(rolle, recht) {
@@ -1019,6 +1026,10 @@ function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
   if (geschickt === undefined || geschickt === null) return zurueck();
   if (typeof geschickt !== "boolean") return { grund: "Planfreigabe: erwartet wird true oder false." };
   if (geschickt === (altE.planFreigabePflicht === true)) return zurueck();
+  /* RB-3: Der Schalter entscheidet, ob Entwürfe vor Beschäftigten verborgen sind — also über den
+     Veröffentlichungsstand. Ihn umlegen darf nur, wer auch verbindlich freigeben darf (plan.publish); die
+     Altrolle „kunde" hat org.edit, aber nicht plan.publish. */
+  if (!darfPlanFreigeben(rolle)) return { grund: PLAN_FREIGEBEN_GRUND };
   e.planFreigabePflicht = geschickt;
   e.planFreigabePflichtGeaendertAm = new Date().toISOString();
   e.planFreigabePflichtGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
@@ -1047,6 +1058,37 @@ function planstaendeZusammen(altM, neuM, rolle) {
   const alt = altM && altM.planstaende && typeof altM.planstaende === "object" ? altM.planstaende : {};
   const neu = neuM.planstaende && typeof neuM.planstaende === "object" ? neuM.planstaende : {};
   return gleichJson(alt, neu) ? {} : { grund: PLAN_FREIGEBEN_GRUND };
+}
+
+/* RB-3: der Absagetext für eine unmittelbar eingetragene, geänderte oder entfernte Krankheit ohne Recht zur endgültigen Bestätigung. */
+export const KRANK_ENDGUELTIG_GRUND = "Krank-Abwesenheiten eintragen, ändern oder entfernen (endgültige Bestätigung) dürfen nur Planung und Leitung.";
+
+/* RB-3 (Betreiberentscheidung 2026-11-11): Planung und Leitung tragen eine Krankheit über PUT /api/bestand
+   unmittelbar als Abwesenheit ein — das ist selbst die endgültige Bestätigung (RB-2). Eine Rolle mit
+   Vollschreibrecht OHNE dieses Recht (die Altrolle „kunde") darf keine Krank-Abwesenheit anlegen, keine andere
+   Abwesenheit zu „krank“ machen und eine wirksame (gespeicherte) Krank-Abwesenheit weder ändern (Art, Person,
+   Zeitraum, halber Tag, Stunden, jedes andere Feld) noch entfernen — das hebt eine endgültige Bestätigung
+   mittelbar auf (Review PR #206). Erlaubt bleibt nur eine geänderte Anmerkung (`notiz`); Abwesenheiten
+   anderer Art legt sie weiter an und ändert sie. Fehlt das Feld `abwesenheiten`, gilt es als unverändert. */
+const ohneNotiz = (a) => JSON.stringify(Object.keys(a).filter((k) => k !== "notiz").sort().map((k) => [k, a[k]]));
+function krankUnmittelbarZusammen(altM, neuM, rolle) {
+  if (krankSchrittErlaubt(rolle, "endgueltig")) return {};
+  if (!neuM || typeof neuM !== "object" || !Array.isArray(neuM.abwesenheiten)) return {};
+  const istE = (a) => !!a && typeof a === "object" && !Array.isArray(a);
+  const alt = new Map((altM && Array.isArray(altM.abwesenheiten) ? altM.abwesenheiten : [])
+    .filter(istE).map((a) => [String(a.id), a]));
+  const neu = new Map(neuM.abwesenheiten.filter(istE).map((a) => [String(a.id), a]));
+  for (const e of neu.values()) {
+    if (e.art !== "krank") continue;
+    const v = alt.get(String(e.id));
+    if (!v || v.art !== "krank") return { grund: KRANK_ENDGUELTIG_GRUND };          // neu oder zu „krank“ gemacht
+  }
+  for (const [id, v] of alt) {
+    if (v.art !== "krank") continue;
+    const e = neu.get(id);
+    if (!e || ohneNotiz(e) !== ohneNotiz(v)) return { grund: KRANK_ENDGUELTIG_GRUND }; // entfernt oder geändert
+  }
+  return {};
 }
 /** @returns {{ grund?: string, mandant?: any }} */
 function freigabenZusammen(altM, neuM, sitzung, rolle) {
@@ -1426,6 +1468,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       /* Planstände (RB-1): wie die Freigabe nur mit plan.publish. */
       const staende = planstaendeZusammen(ort.betrieb, geschickt, rolle);
       if (staende.grund) return { verweigert: staende.grund };
+      /* RB-3: Eine Krank-Abwesenheit unmittelbar eintragen ist die endgültige Bestätigung (RB-2) — nur Planung
+         und Leitung, nicht die Altrolle „kunde" mit ihrem Vollschreibrecht. */
+      const krankUnm = krankUnmittelbarZusammen(ort.betrieb, geschickt, rolle);
+      if (krankUnm.grund) return { verweigert: krankUnm.grund };
       /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };

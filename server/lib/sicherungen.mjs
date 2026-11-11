@@ -262,7 +262,7 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     + "(CENTRIC_PFEFFER) nicht prüfbar — er fehlt oder wurde gegenüber dem Schlüssel geändert, mit dem die Vermerke "
     + "entstanden. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
   /* RB-1: Freigaben und Planstände kommen nur für eine Rolle mit plan.publish aus der Sicherung (heute nur
-     die Leitung, WIEDERHERSTELLEN_ROLLEN) — sonst gilt der jetzige Stand. */
+     die Leitung, WIEDERHERSTELLEN_ROLLEN; nie die Altrolle kunde, RB-3) — sonst gilt der jetzige Stand. */
   if (!darfPlanFreigeben(sitzung && sitzung.rolle)) {
     for (const f of ["freigaben", "planstaende"]) {
       if (f in alt) zurueck[f] = alt[f]; else delete zurueck[f];
