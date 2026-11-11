@@ -3,8 +3,8 @@
   "halter": "cloud-nachtaufgabe",
   "uebernommen_am": "2026-11-11T09:33:57.711Z",
   "erneuert_am": "2026-11-11T09:33:57.711Z",
-  "gueltig_bis": "2026-11-11T11:03:57.711Z",
+  "gueltig_bis": "2026-11-11T09:34:25.472Z",
   "uebergabe": "Cloud-Lauf 2026-11-11 09:35Z: Lease Epoche 6 (hauptchat) seit 08:23Z abgelaufen, letzte Aktivitaet Hauptchat 07:24+01 (#198). Nur Statuspflege.",
   "vorgaenger": "hauptchat",
-  "freigegeben_am": null
+  "freigegeben_am": "2026-11-11T09:34:25.472Z"
 }
