@@ -119,6 +119,11 @@ function reicherBestand() {
       { id: "abw1", personId: "a1", art: "krank", von: p(5), bis: p(6), notiz: "Grippe" },
       { id: "abw2", personId: "m0", art: "urlaub", von: p(10), bis: p(12), notiz: "" },
       { id: "abw3", personId: "b1", art: "urlaub", von: p(-10), bis: p(-8), notiz: "" }],
+    /* RB-2: Fälle der zweistufigen Krankmeldung — einer im Bereich der SV (a1), einer fremd (b1). */
+    krankmeldungen: [
+      { id: "km1", personId: "a1", von: p(7), bis: p(7), notiz: "Fieber", status: "eingegangen",
+        verlauf: [{ schritt: "eingegangen", von: "a1", rolle: "mitarbeiter", zeit: "2026-01-01T06:00:00.000Z" }] },
+      { id: "km2", personId: "b1", von: p(8), bis: p(8), status: "vorlaeufig_bestaetigt", verlauf: [] }],
     anfragen: [{ id: "an1", personId: "m0", art: "urlaub", von: p(30), bis: p(31), status: "offen", zeit: "2026-01-01" },
       { id: "an2", personId: "b1", art: "tausch", von: p(32), bis: p(32), status: "offen", zeit: "2026-01-01" }],
     wuensche: [], einspruenge: [], ausschreibungen: [], urlaubsrunde: null, selbstplanung: [],
