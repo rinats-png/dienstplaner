@@ -20,6 +20,7 @@
    ========================================================================== */
 
 import { useState, createContext, useContext } from "react";
+import { VerlustWeg } from "./verlustweg.jsx";
 
 async function antwortLesen(r) {
   let d = {};
@@ -170,13 +171,19 @@ function ZBtn({ kind, children, ...p }) {
 }
 const ZUI = { Card: ZCard, CardHead: ZCardHead, Field: ZField, Inp: ZInp, Btn: ZBtn };
 
-/** Zweiter Faktor für den eigenen Zugangscode (Anmeldemaske, SI-P4). `F`: Farben der Maske. */
-export function ZugangZweifaktor({ F }) {
+/** Zweiter Faktor für den eigenen Zugangscode (Anmeldemaske, SI-P4). `F`: Farben der Maske.
+ *  `verlustStart` (WR-6): den Weg „Zugang verloren" gleich aufgeklappt zeigen (Verweis aus dem Feld für den Code aus der App). */
+export function ZugangZweifaktor({ F, verlustStart = false }) {
   return (
     <FarbenKontext.Provider value={F}>
       <Abschnitt ui={ZUI} titel="Zweiter Faktor für deinen Zugangscode" feld="Zugangscode"
         feldHinweis="Für Leitung, Planung und Kunde. Der Code wird nirgends gespeichert; es entsteht keine Anmeldung."
         rufen={betreiberRufen} pflichtText=" · Pflicht für diesen Zugang" />
+      <ZCard>
+        <div style={{ padding: 22, display: "grid", gap: 13, maxWidth: 560 }}>
+          <VerlustWeg ui={ZUI} start={verlustStart ? "traeger" : null} />
+        </div>
+      </ZCard>
     </FarbenKontext.Provider>);
 }
 

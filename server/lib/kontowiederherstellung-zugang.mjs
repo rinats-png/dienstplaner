@@ -65,7 +65,7 @@ const json = (d, status = 200) => new Response(JSON.stringify(d), { status,
 const nichtPruefbar = () => json({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
   + "Bitte später erneut versuchen." }, 503);
 const warten = () => new Promise((r) => setTimeout(r, 400));
-const NEIN = { fehler: "Diese Freigabe ist nicht möglich.", verlust: "nein" };
+export const NEIN = { fehler: "Diese Freigabe ist nicht möglich.", verlust: "nein" };
 const FALSCH = { fehler: "Die Freigabe stimmt nicht oder gilt nicht mehr.", verlust: "falsch" };
 const leer = (v) => v === null || v === undefined || v === "";
 
@@ -75,7 +75,7 @@ const heute = (ms) => heuteBerlin(new Date(ms));
 /** Personalnummer vergleichbar machen: getrimmt, Großschreibung; als Prüfsumme für den zeitkonstanten Vergleich. */
 const pnSumme = (v) => createHash("sha256").update(`pn|${String(v ?? "").trim().toUpperCase()}`).digest();
 /** Höchstlänge einer eingegebenen Personalnummer (Form, keine Auskunft). */
-const PN_MAX = 40;
+export const PN_MAX = 40;
 
 /**
  * Die Einheiten eines Zugangs: am Code (`einheit`/`gruppe`) und der Person heute. Betriebsweit („ALLE", leer) fällt
