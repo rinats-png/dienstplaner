@@ -3,6 +3,13 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtlauf-Zusatz (2026-11-10 ca. 23:40Z, geplanter Cloud-Lauf)
+- Integrationskopf: cf01a40 (Merge #191 WR-3, #192 WP-21 Teil 2). Lease: `cloud-nachtaufgabe`, Epoche 3 (Vorgaenger hauptchat, Epoche 2 seit 21:56Z abgelaufen). Hauptchat uebernimmt bei Rueckkehr nur nach `freigeben --epoche 3`.
+- Offene Arbeits-PRs: keine neuen. Entwuerfe #175, #177, #104 unveraendert (Betreiberentscheidung). Keine schreibenden Agenten aktiv.
+- SSOT: Belege fuer #191 (WR-3) und #192 (WP-21) nachgefuehrt, Status unveraendert (WR-3 BLOCKED, WP-21 IN_PROGRESS, Statuspflege liegt beim Koordinator nach Review). 
+- Naechste ausfuehrbare Pakete: WR-4, WR-5, WR-6 (Abhaengigkeit WR-3 integriert; Schalter ausgeliefert aus). Vor Start Status in der SSOT pruefen.
+- Automatische Fortsetzung: dieser Lauf ist ein geplanter Cloud-Task; weitere Laeufe nur lesend/Statuspflege, solange die Lease nicht eindeutig bei diesem Halter liegt.
+
 ## Koordinationsregel (verbindlich, Stand 2026-11-10, Lease-Werkzeug in der Integration seit #170)
 - Schreibender Koordinator ist, wer die Lease im Branch `koordination/lease` hält. Werkzeug: `node werkzeug/koordination.mjs status|uebernehmen|erneuern|freigeben|pruefen|push --halter H [--epoche N]`. Jede Änderung ist ein Commit ohne Force; Git lehnt gleichzeitige Änderungen ab (Compare-and-Swap). Zwei Schreiber sind damit ausgeschlossen, **sofern Branch-Schutz gesetzt ist (siehe unten)**.
 - **`--epoche N` ist Pflicht** bei `erneuern`, `freigeben`, `pruefen`, `push` und bei Verlängerung über `uebernehmen`. Ältere Aufrufe ohne Epoche (zum Beispiel in Cloud-Aufgaben-Anweisungen) werden abgelehnt (Exit 1). Aktuelle Epoche: `node werkzeug/koordination.mjs status`.
