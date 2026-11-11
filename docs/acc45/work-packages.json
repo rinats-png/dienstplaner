@@ -4,7 +4,7 @@
   "anzahl": 190,
   "statusZaehlung": {
     "BLOCKED": 82,
-    "READY": 16,
+    "READY": 18,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
     "INTEGRATED": 71,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 88,
-      "offen": 31,
+      "pakete": 90,
+      "offen": 33,
       "restPT": {
-        "min": 52.9,
-        "max": 84.55
+        "min": 56.9,
+        "max": 91.55
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 344.3,
-    "max": 585.85
+    "min": 348.3,
+    "max": 592.85
   },
   "kritischerPfad": {
     "summe": 75.5,
