@@ -1,4 +1,4 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-10 ca. 15:10 UTC, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-11 ca. 03:40 UTC, Hauptchat aktiv, Lease Epoche 6)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
@@ -50,14 +50,14 @@ Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
-- Integration: `integration/release-v4`, Kopf cf01a404 (Merge #191, 2026-11-10 ca. 20:05Z). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
+- Integration: `integration/release-v4`, Kopf 5d0b867b (Merge #194, 2026-11-11 02:56Z; davor #193, #191 = cf01a404). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
 - `main`: 0423eeac. Kein Design-Release nach main ohne Betreiberfreigabe.
 - V4-Staging: `public/sw.js` hat auf der Integration `FASSUNG = "__CENTRIC_BUILD__"` (Platzhalter), auf `main` `"v4"`; die frühere Angabe "v5" war falsch. Betreiber bestätigt, welcher Stand angenommen wird (siehe `docs/acc45/STAGING-ABNAHME-V4.md`).
 
 ## Offene PRs (Stand 2026-11-10 ca. 15:10Z)
 - #175 OPT-1-F, gestapelte ältere Variante (Draft): durch #179 ersetzt. Das Schließen wurde vom Berechtigungssystem verweigert; **Entscheidung beim Betreiber** (schließen oder stehen lassen). Kein Inhalt geht verloren (Branch `acc45/opt-1-f-anmeldeweg` bleibt).
 - #177 WP-I4 (Draft): Betriebsrat-Sicht wartet auf Betreiberfreigabe (neue Lesesicht auf interne Vorgaben, § 87 BetrVG offen).
-- Alle übrigen Integrations-PRs dieser Sitzung (#166, #170, #172, #174, #178 bis #192) sind gemergt, siehe unten.
+- Alle übrigen Integrations-PRs dieser Sitzung (#166, #170, #172, #174, #178 bis #194) sind gemergt, siehe unten.
 - #139 WP-I12c (planKennzahlen, Spanne). Hold, Betreiberentscheidung zur Spanne-Definition.
 - #129, #127, #115, #97, #96, #94, #92, #91, #18, #17, #16, #15, #7, #6: ältere Doku-, Feature- und Security-PRs gegen Basen außerhalb der Integration. Vor dem Schließen prüfen, ob Inhalt in der Integration steht (ssot-belege, Commit-Suche). Nicht blind schließen.
 - #168 (ccr-…, Cloud-Session): fremd, nicht anfassen.
