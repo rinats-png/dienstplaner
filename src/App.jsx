@@ -216,7 +216,7 @@ import { Adressaenderungen } from "./ansichten/adressaenderungen.jsx";
 import { JugendschutzSchalter } from "./ansichten/jugendschutz-schalter.jsx";
 import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
-import { ROLLEN, rolle, mehrzahl, ROLLENBEZEICHNUNG, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, MATRIX_STD } from "./lib/rollen.js";
+import { ROLLEN, rolle, mehrzahl, ROLLENBEZEICHNUNG, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, FESTE_RECHTE, rechteDerRolle } from "./lib/rollen.js";
 import { baueMitteilung, urlaubshinweiseFaellig, zustellungAusstehend } from "./lib/zustellung.js";
 
 
@@ -820,7 +820,7 @@ function Betrieb({ sitz, akt }) {
                 eigentlich" zu beantworten — die häufigste Frage an diese
                 Tabelle, und die einzige, die sie nicht beantwortete. */}
             {ROLLEN.filter((r) => !r.extern).map((r) => {
-              const hat = (m.matrix || MATRIX_STD)[r.id] || [];
+              const hat = rechteDerRolle(m.matrix, r.id);
               const zahl = r.id === "leitung" ? ALLE_RECHTE.length : hat.length;
               return (
                 <th key={r.id} style={{ padding: "13px 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 86 }}>
@@ -839,7 +839,9 @@ function Betrieb({ sitz, akt }) {
                     <div style={{ fontSize: 13.5 }}>{label}</div>
                     <div style={{ fontSize: 11, color: C.dimmer, ...NUM }}>{id}</div></td>
                   {ROLLEN.filter((r) => !r.extern).map((r) => {
-                    const an = ((m.matrix || MATRIX_STD)[r.id] || []).includes(id), fest = r.id === "leitung";
+                    /* RB-1: plan.publish ist fest (Leitung und Planung), die Zelle lässt sich nicht umschalten. */
+                    const an = rechteDerRolle(m.matrix, r.id).includes(id), festesRecht = FESTE_RECHTE.includes(id),
+                      fest = r.id === "leitung" || festesRecht;
                     return (<td key={r.id} style={{ padding: "10px 8px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "center" }}>
                       {/* Gesetzt: gefüllte Fläche in der Rollenfarbe mit
                           weißem Haken. Nicht gesetzt: ein leerer Ring, kein
@@ -850,7 +852,8 @@ function Betrieb({ sitz, akt }) {
                       <button onClick={() => !fest && akt.toggleRecht(r.id, id)}
                         aria-pressed={an}
                         aria-label={`${label} — ${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
-                        title={fest ? "Die Organisationsleitung hat immer alle Rechte."
+                        title={festesRecht ? "Verbindlich freigeben dürfen nur Leitung und Planung — nicht änderbar."
+                          : fest ? "Die Organisationsleitung hat immer alle Rechte."
                           : `${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
                         style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer",
                           display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0,
