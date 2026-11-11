@@ -13,6 +13,7 @@ import { Icon } from "./gestalt/icons.jsx";
 import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe, branchenpaketeHinweis, leistungenAnzeige } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
 import { ZweifaktorFeld, ZugangZweifaktor } from "./betreiber-2fa.jsx";
+import { CODEFELD } from "./lib/eingabefelder.js";
 import { useVerlustSperre } from "./verlustweg.jsx";
 import { halter as verlustHalter } from "./lib/verlustweg-halter.js";
 import { v4EinstiegAnwenden, v4EinstiegVerlassen, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
@@ -830,8 +831,7 @@ function Einstieg() {
               </p>
               <label htmlFor="code" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
                 color: C.dim, marginBottom: 7 }}>Zugangscode</label>
-              <input id="code" value={code} autoFocus autoCapitalize="characters"
-                autoComplete="one-time-code" inputMode="text"
+              <input id="code" {...CODEFELD} value={code} autoFocus autoCapitalize="characters"
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && senden()}
                 placeholder="XXXX-XXXX-XXXX"

@@ -701,6 +701,10 @@ jobs:
       - name: Klärungsbedürftige Besetzung (RB-5)
         run: npm run pruefung:rb5-klaerung
 
+      # SI-P4: Passwortfelder im Betreiber-2FA-Block (wie WR-6), ohne Browser.
+      - name: Betreiber-Passwortfelder (SI-P4)
+        run: npm run pruefung:betreiber-passwortfelder
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration
