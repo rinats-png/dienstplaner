@@ -202,7 +202,10 @@ describe("B  Kein Leser zählt einen nicht endgültigen Fall", () => {
   it("Quelltext: außer den Wegen der Krankmeldung liest keine Datei `krankmeldungen` (Plan, Lohn, Auswertungen, Kalender, Statistik)", async () => {
     const erlaubt = new Set(["server/lib/krankmeldung.mjs", "server/lib/rechte.mjs", "server/lib/sicht.mjs", "server/lib/auskunft.mjs",
       "server/lib/aufbewahrung.mjs", "server/funktionen/daten.mjs", "src/ansichten/krankmeldungen-offen.jsx", "src/app/aktionen/plan.js",
-      "src/lib/fachlogik.js", "src/ansichten/krankmeldung.jsx", "src/speicher.js"]);
+      "src/lib/fachlogik.js", "src/ansichten/krankmeldung.jsx", "src/speicher.js",
+      /* RB-5: leitet die Markierung „Besetzung klärungsbedürftig“ aus offenen Fällen ab — schreibt nichts, zählt
+         keinen Fall als Abwesenheit (pruefungen/rb5-klaerung.test.js). */
+      "server/lib/klaerung.mjs"]);
     const treffer = [];
     const lauf = async (dir) => {
       for (const e of await readdir(path.join(WURZEL, dir), { withFileTypes: true })) {

@@ -13,6 +13,8 @@ import { dauer } from "../regelwerk.js";
 import { Pill, Btn, Lab } from "../ui/bausteine.jsx";
 import { darf } from "../lib/berechtigung.js";
 import { Ersatzliste } from "./ersatzliste.jsx";
+import { klaerungAm } from "./krankmeldungen-offen.jsx";
+import { KLAERUNG_HINWEIS } from "../../server/lib/klaerung.mjs";
 
 
 /* ============================== TAGESDETAIL ============================== */
@@ -107,6 +109,8 @@ export function Tagesdetail({ sitz, datum, onClose, akt }) {
                     <div style={{ fontSize: 11.5, color: C.dimmer }}>
                       <span style={{ color: eh ? eh.farbe : C.dimmer }}>{eh ? eh.name : "—"}</span>
                       {drin && t.quelle === "abweichung" && " · abweichend"}
+                      {/* RB-5: intern markiert, nur für Planung, Leitung und zuständige Schichtverantwortung (Server). */}
+                      {drin && klaerungAm(sitz, p.id, datum, aktiv) && <span style={{ color: C.warn, fontWeight: 600 }}> · {KLAERUNG_HINWEIS}</span>}
                       {p.qualifikationen.length > 0 && ` · ${p.qualifikationen.map((q) => (m.qualifikationen.find((x) => x.id === q) || {}).kurz).filter(Boolean).join(" ")}`}</div>
                   </div>
                   {darfEinheit(sitz, eid) && <Btn size="sm" kind={drin ? "danger" : "primary"}

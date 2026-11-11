@@ -6,11 +6,55 @@
    Rolle erlaubt (krankSchrittErlaubt, dieselbe Funktion wie auf dem Server): vorläufig die
    Schichtverantwortung, endgültig Planung und Leitung; nie die eigene Meldung. Die Oberfläche spiegelt
    nur — entscheiden tut der Server (POST /api/krankmeldung). */
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardHead, Btn, Pill } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { fKurz } from "../lib/datum.js";
 import { KRANK_STATUS, krankSchrittErlaubt, fallOffen, meldendePerson, svZustaendig } from "../../server/lib/krankmeldung.mjs";
+import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, ersatzVorbereiten } from "../../server/lib/klaerung.mjs";
+
+/* RB-5 (Betreiberentscheidung 2026-11-11): Der veröffentlichte Plan bleibt bis zur endgültigen Bestätigung
+   unverändert. Intern markiert der Server die betroffenen Dienste („Besetzung klärungsbedürftig“, `m.klaerung`,
+   abgeleitet beim Lesen, server/lib/klaerung.mjs) — nur für Planung, Leitung und die zuständige
+   Schichtverantwortung. Planung und Leitung können mögliche Unterbesetzung und Ersatz vorbereiten lassen:
+   gerechnet auf einer gedachten Kopie, angezeigt als Vorschlag, nie gespeichert. Einteilen bleibt eine Handlung
+   in der Tagesansicht. */
+
+/** Die Markierungen, die diese Person sehen darf (doppelte Sicherung zur Serverregel). */
+export function klaerungFuer(sitz) {
+  const ich = sitz && sitz.person;
+  const m = sitz && sitz.mandant;
+  if (!ich || !m || sitz.rolle === "betreiber" || !KLAERUNG_ROLLEN.includes(ich.rolle) || !Array.isArray(m.klaerung)) return [];
+  return m.klaerung.filter((k) => k && typeof k === "object");
+}
+/** Ist der Dienst dieser Person an diesem Tag klärungsbedürftig (für diese Person sichtbar)? */
+export const klaerungAm = (sitz, personId, datum, dienstId) => klaerungFuer(sitz)
+  .some((k) => String(k.personId) === String(personId) && k.datum === datum && (dienstId === undefined || k.dienstId === dienstId));
+/** Darf diese Person Ersatz vorbereiten lassen? Wer einteilen und endgültig bestätigen darf. */
+export const ersatzVorbereitbar = (sitz) => !!(sitz && sitz.person && sitz.rolle !== "betreiber" && ERSATZ_ROLLEN.includes(sitz.person.rolle));
+
+/** Vorbereiteter Ersatz zu einem Fall: rechnet erst beim Öffnen, schreibt nichts. */
+export function ErsatzVorbereitet({ m, fallId, name, dienstName, oeffneTag }) {
+  const vorschlaege = useMemo(() => ersatzVorbereiten(m, { fallId }), [m, fallId]);
+  if (!vorschlaege.length) return <div style={{ fontSize: 12.5, color: C.dim }}>Keine Dienste zu prüfen.</div>;
+  return (
+    <div role="region" aria-label="Vorbereiteter Ersatz" style={{ display: "grid", gap: 8 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.warn }}>{VORSCHLAG_HINWEIS}</div>
+      {vorschlaege.map((v) => {
+        const b = v.besetzung;
+        return (
+          <div key={`${v.datum}|${v.dienstId}`} style={{ fontSize: 12.5, lineHeight: 1.5, padding: "6px 0", borderTop: `1px dashed ${C.lineSoft}` }}>
+            <div style={{ fontWeight: 600 }}>{fKurz(v.datum)} · {dienstName(v.dienstId)}</div>
+            <div style={{ color: C.dim }}>
+              Ohne Änderung: {b.ohne}/{b.soll}{b.fehlt > 0 ? ` · ${b.fehlt} fehlt` : " · besetzt"}{b.qualFehlt.length ? " · Qualifikation fehlt" : ""}</div>
+            <div>{v.direkt.length ? `Infrage: ${v.direkt.slice(0, 3).map((k) => name(k.personId)).join(", ")}` : "Niemand ohne Hindernis."}
+              {v.nahe.length ? ` · Knapp (Ruhezeit): ${v.nahe.slice(0, 2).map((k) => name(k.personId)).join(", ")}` : ""}</div>
+            {oeffneTag && <Btn size="sm" kind="quiet" onClick={() => oeffneTag(v.datum)}
+              aria-label={`Tag ${fKurz(v.datum)} in der Planung öffnen`}>Tag öffnen</Btn>}
+          </div>);
+      })}
+    </div>);
+}
 
 export const KRANK_STATUS_TEXT = Object.freeze({
   [KRANK_STATUS.EINGEGANGEN]: "Eingegangen",
@@ -40,10 +84,14 @@ export function krankSchritteFuer(sitz, fall) {
   return aus;
 }
 
-export function KrankmeldungenOffen({ sitz, akt }) {
+export function KrankmeldungenOffen({ sitz, akt, oeffneTag }) {
   const m = sitz.mandant;
   const [fehler, setFehler] = useState(null);
   const [laeuft, setLaeuft] = useState(null);
+  const [ersatzFall, setErsatzFall] = useState(null);
+  const klaerung = klaerungFuer(sitz);
+  const ersatzErlaubt = ersatzVorbereitbar(sitz);
+  const dienstName = (id) => { const d = (m.dienstarten || []).find((x) => x.id === id); return d ? (d.kurz || d.name || id) : id; };
   const faelle = (Array.isArray(m.krankmeldungen) ? m.krankmeldungen : [])
     .filter((f) => fallOffen(f));
   if (!faelle.length) return null;
@@ -87,6 +135,18 @@ export function KrankmeldungenOffen({ sitz, akt }) {
               {angebot.includes("zurueckziehen") && (
                 <Btn kind="quiet" onClick={() => schritt(f, "zurueckziehen")} disabled={!!laeuft}
                   aria-label={`Krankmeldung von ${name(f.personId)} zurückziehen`}>Zurückziehen</Btn>)}
+              {klaerung.some((k) => k.fallId === String(f.id)) && (
+                <div style={{ flexBasis: "100%", fontSize: 12.5, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                  <Pill tone="warn">{KLAERUNG_HINWEIS}</Pill>
+                  <span style={{ color: C.dim }}>{klaerung.filter((k) => k.fallId === String(f.id)).slice(0, 7)
+                    .map((k) => `${fKurz(k.datum)} ${dienstName(k.dienstId)}`).join(" · ")}</span>
+                  {ersatzErlaubt && (
+                    <Btn size="sm" onClick={() => setErsatzFall(ersatzFall === f.id ? null : f.id)} aria-expanded={ersatzFall === f.id}
+                      aria-label={`Ersatz für ${name(f.personId)} vorbereiten`}>{ersatzFall === f.id ? "Vorschlag ausblenden" : "Ersatz vorbereiten"}</Btn>)}
+                </div>)}
+              {ersatzErlaubt && ersatzFall === f.id && (
+                <div style={{ flexBasis: "100%" }}>
+                  <ErsatzVorbereitet m={m} fallId={String(f.id)} name={name} dienstName={dienstName} oeffneTag={oeffneTag} /></div>)}
               {fehler && fehler.id === f.id && (
                 <div role="alert" style={{ flexBasis: "100%", fontSize: 12.5, color: C.danger }}>{fehler.text}</div>)}
             </li>);
