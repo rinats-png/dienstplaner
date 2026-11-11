@@ -273,3 +273,44 @@ Unverändert mit Hinweis, obwohl die Aufgabe bestanden hat: Betreiber Mandanten,
 
 - Test ohne Browser: `npm run pruefung:geraete-ablaeufe` (`pruefungen/geraete-wp21-ablaeufe.test.js`), Teil der Kette `pruefung` und der CI.
 - Messung: `npm run pruefung:geraete-ablaeufe-browser` (manuell); Regression der Teil-1-Messung (`npm run pruefung:geraete-browser`) nach den Änderungen: 173 von 173 Zeilen ohne Befund, 0 Zeilen mit Zielen unter 24 px.
+
+## 10 Teil 3: Abläufe gerendert, je Viewport (Stand: Branch `feature/wp21-teil3-ablaeufe`)
+
+Teil 3 ergänzt die Browsermessung aus Abschnitt 9 um einen Nachweis ohne Browser, der in der CI läuft: `npm run pruefung:geraete-ablaeufe-render` (`pruefungen/geraete-wp21-ablaeufe-render.test.js`, 35 Prüfungen). Die echten Komponenten werden mit `react-dom/server` gerendert, die echten Stilregeln der Anwendung (`bauStyles`) werden für jede Viewportbreite ausgewertet (`max-width` und `min-width`). Viewports: 360x740, 390x844, 768x1024 und das Querformat 844x390.
+
+### 10.1 Was die automatische Prüfung belegt
+
+| Ablauf | Belegt je Viewport |
+|---|---|
+| Stempeln (Telefonansicht) | Hauptaktion „Einstempeln“ steht im Dokument und ist nicht gesperrt; Fläche volle Breite, 56 px hoch (über 44 px); keine feste Breite über dem Viewport |
+| Plan freigeben | Schaltfläche nur bei Leitung und Planung (RB-1, RB-3), nicht bei Schichtverantwortung, Beschäftigten, Betriebsrat; die Leiste bricht um (`flex-wrap`) |
+| Tag öffnen | Tagesblatt rendert als Dialog (`role="dialog"`, `aria-modal`) mit Dienstreitern für Planung und Schichtverantwortung; das Blatt hat nach Stilregel 100 % Breite |
+| Schichtübergabe | Felder und Schaltflächen im Dokument; Kopfzeile (Einheit, Datum, Dienst) bricht um |
+| Krankmeldung | Hauptaktion „Krank melden“ vorhanden; Planung und Leitung „wirkt sofort“ (endgültig), Schichtverantwortung und Beschäftigte nur vorläufig (RB-2) |
+| RB-5 Klärungsmarker | sichtbar nur für Planung, Leitung und die zuständige Schichtverantwortung; nicht für Beschäftigte, Betriebsrat, Schichtverantwortung eines anderen Bereichs |
+| Seite insgesamt | bis 560 px Umbruch der Schaltflächen und der Schnellfilter; bis 1024 px Seitenleiste außerhalb des Bildes und `margin-left: 0`; Scrollbereiche innen (`max-width: 100%`); Meldungsstreifen und Schalter mindestens 24 px (`ZIEL_MINDEST`), Planzelle auf dem Telefon 44 px |
+
+Die Zielregel des Repositorys ist `ZIEL_MINDEST` = 24 px (WCAG 2.5.8); 44 px gilt dort, wo der Quelltext es setzt (Planzelle bis 560 px, Stempelfläche 56 px, Tippflächen im Telefonblatt) und wird dort geprüft.
+
+### 10.2 Was diese Prüfung nicht belegt
+
+- Tatsächliches Layout, Antippen, Verdeckung und Seitenbreite (`scrollWidth`) im Browser: das misst weiter `geraete-wp21-ablaeufe.mjs`. Ein Wiederholungslauf für Plan freigeben, Krankmeldung und Schichtübergabe nach RB-1 und RB-2 wurde in dieser Arbeitsumgebung versucht (Microsoft Edge, 390x844 und 844x390), kam aber nicht zu einem Ergebnis (der Wegwerf-Server antwortete zu langsam; kein Ergebnis wird behauptet). Die Zahlen für B16 und B17 in Abschnitt 9 stammen aus der Zeit vor RB-1 und RB-2; der Nachweis der Rechte steht in `rb1-plan-publish.test.js`, `rb2-krankmeldung.test.js`, `rb5-klaerung.test.js`.
+- Echte Geräte (iOS Safari, Android Chrome), Notch und Sicherheitsbereiche, Textvergrößerung, Dunkel- und Kontrastmodus, Vorlesesoftware im Einsatz.
+- Die Hinweisliste ändert sich in diesem Teil nicht (10.3).
+
+### 10.3 Hinweis „Für Tablet und Rechner ausgelegt“
+
+Keine neue Ansicht wird zurückgenommen: Der Hinweis fällt nur nach einer bestandenen Browsermessung an allen acht Viewports (Abschnitt 9.6), und die erneute Messung liegt nicht vor. Die gerenderte Prüfung allein genügt dafür nicht. Ein Test hält die Liste in `TELEFON_ANSICHTEN` und diesen Beleg gleich:
+
+<!-- TELEFON_ANSICHTEN: meine, plan, antraege, lage, hilfe, rechtliches, boerse, pruef -->
+<!-- TELEFON_ANSICHTEN_BETREIBER:  -->
+
+Ansichten ohne Hinweis: `meine`, `plan`, `antraege`, `lage`, `hilfe`, `rechtliches`, `boerse`, `pruef` (Belege Abschnitt 9.6). Betreiberkonsole: keine.
+
+### 10.4 Schnellfilter „Mein Plan“
+
+Der Schnellfilter war bereits in Teil 2 festgelegt und umgesetzt (B12, Abschnitt 9.3): Umbruch bis 560 px statt Innenscroll. Teil 3 hat dafür nichts hinzugefügt; der Umbruch wird je Viewport in der gerenderten Prüfung mitgeprüft (aktiv bei 360 und 390 px, nicht aktiv bei 768 und 844 px). Die Kartenansicht für Planungstabellen bleibt nicht gebaut (Operatorfrage wp40-6).
+
+### 10.5 Weiter offen
+
+Browser-Wiederholungsmessung nach RB-1 und RB-2 (Plan freigeben, Krankmeldung der Schichtverantwortung), echte Geräte, Vorlesesoftware, Kartenansicht (wp40-6), Rücknahme des Hinweises für weitere Ansichten nach Messung.

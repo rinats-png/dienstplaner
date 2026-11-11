@@ -2097,7 +2097,7 @@ export default function App() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { SicherungenVerwalten };
+export { SicherungenVerwalten, bauStyles };
 export { BestaetigungsText } from "./ansichten/bestaetigungstext.jsx";
 export { verknuepfungFuer, Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,

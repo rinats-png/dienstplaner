@@ -76,6 +76,10 @@ jobs:
       - name: Telefon und Tablet, Bedienabläufe (WP-21 Teil 2)
         run: npm run pruefung:geraete-ablaeufe
 
+      # WP-21 Teil 3: dieselben Abläufe gerendert, je Viewport mit den echten Stilregeln und Rollen.
+      - name: Telefon und Tablet, Abläufe gerendert (WP-21 Teil 3)
+        run: npm run pruefung:geraete-ablaeufe-render
+
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 
