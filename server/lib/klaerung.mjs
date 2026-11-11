@@ -119,6 +119,21 @@ export function klaerungFuerRolle(m, sitzung, sichtFaelle) {
 }
 
 /**
+ * Die Markierungen, deren Fall in diesem Stand noch offen ist. Die Oberfläche ändert nach einem Schritt
+ * (endgültig, abgelehnt, zurückgezogen) zuerst nur den Status des Falls — eine Markierung zu einem nicht mehr
+ * offenen (oder nicht sichtbaren) Fall gilt dann sofort nicht mehr, ohne auf das nächste Lesen zu warten.
+ * @param {any} m  der Betrieb in der Sicht der lesenden Rolle (mit `klaerung`)
+ */
+export function klaerungAktuell(m) {
+  if (!istObj(m)) return [];
+  const offen = new Set(liste(m.krankmeldungen).filter(fallOffen).map((f) => String(f.id)));
+  return liste(m.klaerung).filter((k) => offen.has(String(k.fallId)));
+}
+
+/** Mehr offene Fälle als KLAERUNG_FAELLE_MAX? Dann trägt nur ein Teil eine Markierung (Hinweis in der Oberfläche). */
+export const klaerungGekuerzt = (m) => istObj(m) && liste(m.krankmeldungen).filter(fallOffen).length > KLAERUNG_FAELLE_MAX;
+
+/**
  * Bereitet für markierte Dienste Unterbesetzung und Ersatz vor — gedacht, nie geschrieben.
  * @param {any} m  der Betrieb in der Sicht von Planung oder Leitung (mit `klaerung`)
  * @param {{ fallId?: string, max?: number }} [wahl]  nur die Dienste dieses Falls; höchstens `max` Dienste
@@ -128,13 +143,14 @@ export function klaerungFuerRolle(m, sitzung, sichtFaelle) {
  */
 export function ersatzVorbereiten(m, wahl = {}) {
   if (!istObj(m)) return [];
-  const marker = liste(m.klaerung).filter((k) => tagGueltig(k.datum) && typeof k.dienstId === "string"
+  const aktuell = klaerungAktuell(m);
+  const marker = aktuell.filter((k) => tagGueltig(k.datum) && typeof k.dienstId === "string"
     && (wahl.fallId === undefined || gleich(k.fallId, wahl.fallId)));
   if (!marker.length) return [];
   const max = Math.max(0, Math.min(ERSATZ_SCHICHTEN_MAX, Number.isFinite(wahl.max) ? Number(wahl.max) : ERSATZ_SCHICHTEN_MAX));
   const r = rechenbar(m);
   /* Gedacht: ALLE markierten Personen fehlen an ihren markierten Tagen (neutral, ohne Grund). */
-  const gedacht = { ...r, abwesenheiten: [...r.abwesenheiten, ...liste(m.klaerung).filter((k) => tagGueltig(k.datum))
+  const gedacht = { ...r, abwesenheiten: [...r.abwesenheiten, ...aktuell.filter((k) => tagGueltig(k.datum))
     .map((k, i) => ({ id: `klaerung-gedacht-${i}`, personId: k.personId, art: "abwesend", von: k.datum, bis: k.datum }))] };
   const aus = [];
   for (const k of marker.slice(0, max)) {

@@ -11,7 +11,7 @@ import { Card, CardHead, Btn, Pill } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { fKurz } from "../lib/datum.js";
 import { KRANK_STATUS, krankSchrittErlaubt, fallOffen, meldendePerson, svZustaendig } from "../../server/lib/krankmeldung.mjs";
-import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, ersatzVorbereiten } from "../../server/lib/klaerung.mjs";
+import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, ersatzVorbereiten, klaerungAktuell, klaerungGekuerzt } from "../../server/lib/klaerung.mjs";
 
 /* RB-5 (Betreiberentscheidung 2026-11-11): Der veröffentlichte Plan bleibt bis zur endgültigen Bestätigung
    unverändert. Intern markiert der Server die betroffenen Dienste („Besetzung klärungsbedürftig“, `m.klaerung`,
@@ -20,12 +20,13 @@ import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, er
    gerechnet auf einer gedachten Kopie, angezeigt als Vorschlag, nie gespeichert. Einteilen bleibt eine Handlung
    in der Tagesansicht. */
 
-/** Die Markierungen, die diese Person sehen darf (doppelte Sicherung zur Serverregel). */
+/** Die Markierungen, die diese Person sehen darf (doppelte Sicherung zur Serverregel) — nur zu Fällen, die in
+    diesem Stand noch offen sind (sonst bliebe sie nach „endgültig“ bis zum nächsten Laden stehen). */
 export function klaerungFuer(sitz) {
   const ich = sitz && sitz.person;
   const m = sitz && sitz.mandant;
   if (!ich || !m || sitz.rolle === "betreiber" || !KLAERUNG_ROLLEN.includes(ich.rolle) || !Array.isArray(m.klaerung)) return [];
-  return m.klaerung.filter((k) => k && typeof k === "object");
+  return klaerungAktuell(m);
 }
 /** Ist der Dienst dieser Person an diesem Tag klärungsbedürftig (für diese Person sichtbar)? */
 export const klaerungAm = (sitz, personId, datum, dienstId) => klaerungFuer(sitz)
@@ -112,6 +113,8 @@ export function KrankmeldungenOffen({ sitz, akt, oeffneTag }) {
         Vorläufig bestätigt heißt: noch nicht wirksam. Erst die endgültige Bestätigung durch Planung oder Leitung
         trägt die Abwesenheit in den Plan ein.
       </div>
+      {klaerung.length > 0 && klaerungGekuerzt(m) && (
+        <div style={{ padding: "0 20px 6px", fontSize: 12.5, color: C.dim }}>Weitere Fälle nicht markiert.</div>)}
       <ul style={{ listStyle: "none", margin: 0, padding: "0 20px 14px" }}>
         {faelle.map((f) => {
           const angebot = krankSchritteFuer(sitz, f);

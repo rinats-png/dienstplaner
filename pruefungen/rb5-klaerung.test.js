@@ -374,6 +374,42 @@ describe("F  Oberfläche: Markierung und Vorschlag nur für die erlaubten Rollen
     expect(klaerungFuer(s)).toEqual([]);
     expect(klaerungAm(s, "a1", T(2), "F")).toBe(false);
   });
+  /* Review #207 (LOW): Die Oberfläche setzt nach einem Schritt zuerst nur den Status des Falls (src/app/aktionen/plan.js,
+     krankBestaetigen). Die Markierung darf dann nicht bis zum nächsten Laden stehen bleiben. */
+  const nurStatus = (m, id, status) => ({ ...m, krankmeldungen: m.krankmeldungen.map((f) => (f.id === id ? { ...f, status } : f)) });
+  for (const status of [KRANK_STATUS.ENDGUELTIG, KRANK_STATUS.ABGELEHNT, KRANK_STATUS.ZURUECKGEZOGEN]) {
+    it(`nach „${status}“ (nur Status lokal geändert, kein Neuladen): Markierung und Vorschlag sofort weg`, () => {
+      for (const k of ["PL", "SV"]) {
+        const s0 = sitzFuer(k);
+        expect(zeige(s0)).toContain(KLAERUNG_HINWEIS);
+        const s1 = { ...s0, mandant: nurStatus(s0.mandant, "km-a1", status) };
+        expect(s1.mandant.klaerung).toEqual(ERWARTET);              // das Feld steht noch im lokalen Stand …
+        expect(klaerungFuer(s1), k).toEqual([]);                     // … gilt aber nicht mehr
+        expect(klaerungAm(s1, "a1", T(2), "F")).toBe(false);
+        expect(zeige(s1)).not.toContain(KLAERUNG_HINWEIS);
+        expect(ersatzVorbereiten(s1.mandant)).toEqual([]);
+      }
+    });
+  }
+  it("neu gemeldeter Fall vor dem nächsten Laden: kein fremder oder veralteter Zustand", () => {
+    const s0 = sitzFuer("PL");
+    const neu = { id: "km-neu", personId: "a2", von: T(2), bis: T(2), status: KRANK_STATUS.EINGEGANGEN };
+    const s1 = { ...s0, mandant: { ...s0.mandant, krankmeldungen: [neu, ...s0.mandant.krankmeldungen] } };
+    expect(klaerungAm(s1, "a2", T(2), "F")).toBe(false);
+    expect(klaerungFuer(s1)).toEqual(ERWARTET);
+    /* Eine Markierung, deren Fall im Stand fehlt, gilt nicht. */
+    const s2 = { ...s0, mandant: { ...s0.mandant, krankmeldungen: [] } };
+    expect(klaerungFuer(s2)).toEqual([]);
+  });
+  it("mehr als KLAERUNG_FAELLE_MAX offene Fälle: neutraler Hinweis „Weitere Fälle nicht markiert.“", () => {
+    const s0 = sitzFuer("PL");
+    expect(zeige(s0)).not.toContain("Weitere Fälle nicht markiert.");
+    const viele = Array.from({ length: KLAERUNG_FAELLE_MAX + 1 }, (_, i) => ({ id: `km-v${i}`, personId: "a3", von: T(9), bis: T(9),
+      status: KRANK_STATUS.EINGEGANGEN }));
+    const s1 = { ...s0, mandant: { ...s0.mandant, krankmeldungen: [...s0.mandant.krankmeldungen, ...viele] } };
+    const html = zeige(s1);
+    expect(html).toContain("Weitere Fälle nicht markiert.");
+  });
   it("Vorschlag: „Vorschlag, noch keine Änderung“, Namen der Kandidaten, keine Gesundheitsangabe", () => {
     const s = sitzFuer("PL");
     const name = (pid) => { const p = s.mandant.personen.find((x) => x.id === pid); return p ? `${p.vorname} ${p.nachname}` : "Person"; };
