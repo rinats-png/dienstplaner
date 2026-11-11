@@ -340,6 +340,10 @@ jobs:
       - name: Entwürfe nicht an Beschäftigte
         run: npm run pruefung:entwuerfe
 
+      # RB-1 (Betreiberentscheidung 2026-11-11): Dienstpläne verbindlich freigeben nur Leitung und Planung.
+      - name: Planfreigabe nur Leitung und Planung (RB-1)
+        run: npm run pruefung:rb1-plan-publish
+
       # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
       - name: Sicherungen in der Oberfläche
         run: npm run pruefung:wiederherstellen-ui

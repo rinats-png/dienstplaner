@@ -88,6 +88,8 @@ export function nurVomServer(n) {
 /**
  * Was der Client an Mitteilungen schickt, bevor die Rolle entscheidet:
  * - neue Notruf-/Tauschmitteilungen: verworfen (der Server erzeugt sie);
+ * - neue Mitteilungen der Art `planFreigegeben` ("Der Plan ist verbindlich"): nur von Rollen, die den Plan
+ *   verbindlich freigeben dürfen (`planFreigegebenErlaubt`, RB-1), sonst verworfen; ohne die Angabe gilt: nicht erlaubt;
  * - neue andere: ohne wege/zugestellt/quelle, Titel und Text in den Grenzen
  *   (sonst Absage, wenn `grenzenPruefen`);
  * - bestehende: wege/zugestellt/quelle aus dem gespeicherten Stand; eine
@@ -95,7 +97,7 @@ export function nurVomServer(n) {
  * Fehlt `nachrichten` in der Übermittlung, bleibt sie unangetastet.
  * @returns {{mandant?: any, grund?: string}}
  */
-export function mitteilungenVorfiltern(altM, neuM, { grenzenPruefen = true } = {}) {
+export function mitteilungenVorfiltern(altM, neuM, { grenzenPruefen = true, planFreigegebenErlaubt = false } = {}) {
   if (!istObjekt(neuM) || !Array.isArray(neuM.nachrichten)) return { mandant: neuM };
   const alt = new Map((Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])
     .filter(istObjekt).map((n) => [String(n.id), n]));
@@ -115,6 +117,9 @@ export function mitteilungenVorfiltern(altM, neuM, { grenzenPruefen = true } = {
       continue;
     }
     if (nurVomServer(n)) continue;
+    /* RB-1: Eine gefälschte "Plan freigegeben"-Mitteilung (Mail und Push an die Beschäftigten) darf nur schreiben,
+       wer den Plan wirklich verbindlich freigeben darf; für alle anderen wird die neue Mitteilung verworfen. */
+    if (n.art === "planFreigegeben" && !planFreigegebenErlaubt) continue;
     if (grenzenPruefen) {
       if (typeof n.titel !== "string" || !n.titel.trim() || n.titel.length > TITEL_MAX)
         return { grund: `Eine Mitteilung braucht einen Titel mit höchstens ${TITEL_MAX} Zeichen.` };

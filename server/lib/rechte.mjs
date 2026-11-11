@@ -43,6 +43,11 @@ import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, best
 const ALLE_RECHTE = [
   "plan.view.own", "plan.view.unit", "plan.view.all", "plan.edit.unit",
   "plan.edit.all", "pattern.edit", "shift.edit",
+  /* RB-1 (Betreiberentscheidung 2026-11-11): Dienstpläne verbindlich veröffentlichen
+     (m.freigaben, m.planstaende) dürfen ausschließlich Leitung und Planung — dazu die
+     Kundenrolle, die als alter Probierraum funktional die Leitung ist (dieselbe MATRIX,
+     pruefungen/kunde-abloesung.test.js). Keine andere Rolle bekommt es. */
+  "plan.publish",
   "req.create", "req.approve.unit", "req.approve.all",
   "staff.view", "staff.edit", "account.view.own", "account.view.all",
   "org.edit", "roles.assign", "billing.view", "audit.view", "export.data",
@@ -67,8 +72,23 @@ export function darf(rolle, recht) {
   /* Derselbe Riegel wie in der Oberfläche: Der Betriebsrat prüft, er ändert
      nicht. Auch dann nicht, wenn ihm jemand versehentlich ein Änderungsrecht
      in die Tabelle schreibt. */
-  if (rolle === "betriebsrat" && /\.(edit|approve|assign)/.test(recht)) return false;
+  if (rolle === "betriebsrat" && /\.(edit|approve|assign|publish)/.test(recht)) return false;
   return true;
+}
+
+/**
+ * Darf diese Rolle einen Dienstplan verbindlich freigeben, erneut freigeben
+ * oder eine Freigabe ändern (RB-1, Betreiberentscheidung 2026-11-11)? Das
+ * Recht plan.publish UND der volle Schreibumfang. Eine Rolle ohne
+ * Vollschreibrecht erreicht die Freigaben ohnehin nicht; die zweite Bedingung
+ * hält das auch dann, wenn jemand das Recht versehentlich einer weiteren
+ * Rolle in die Tabelle schreibt. Die Rücknahme einer Freigabe verlangt
+ * zusätzlich org.edit (WP-23b).
+ * @param {string|null|undefined} rolle
+ */
+export function darfPlanFreigeben(rolle) {
+  return typeof rolle === "string" && rolleBekannt(rolle) && darf(rolle, "plan.publish")
+    && schreibumfang(rolle) === SCHREIBEN_VOLL;
 }
 
 /* --------------------------------------------------------------------------
@@ -998,6 +1018,18 @@ function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
      Wann/Wer vom Server — der Schutz fällt nicht stillschweigend weg. */
 const FREIGABE_MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FREIGABE_GRUND = "Freigaben: erwartet wird ein Objekt mit Einträgen je Monat (JJJJ-MM).";
+/* RB-1: der eine Absagetext für jeden Freigabeweg ohne plan.publish. */
+export const PLAN_FREIGEBEN_GRUND = "Dienstpläne verbindlich freigeben dürfen nur Leitung und Planung (plan.publish).";
+
+/* RB-1: Der Planstand zum Freigabezeitpunkt (m.planstaende[JJJJ-MM]) gehört zur Freigabe. Ohne plan.publish
+   ist eine Änderung daran eine Absage; ein fehlendes oder unverändertes Feld stört nicht. */
+function planstaendeZusammen(altM, neuM, rolle) {
+  if (!neuM || typeof neuM !== "object" || darfPlanFreigeben(rolle)) return {};
+  if (!Object.prototype.hasOwnProperty.call(neuM, "planstaende") || neuM.planstaende === undefined) return {};
+  const alt = altM && altM.planstaende && typeof altM.planstaende === "object" ? altM.planstaende : {};
+  const neu = neuM.planstaende && typeof neuM.planstaende === "object" ? neuM.planstaende : {};
+  return gleichJson(alt, neu) ? {} : { grund: PLAN_FREIGEBEN_GRUND };
+}
 /** @returns {{ grund?: string, mandant?: any }} */
 function freigabenZusammen(altM, neuM, sitzung, rolle) {
   if (!neuM || typeof neuM !== "object") return { mandant: neuM };
@@ -1014,7 +1046,14 @@ function freigabenZusammen(altM, neuM, sitzung, rolle) {
     if (!FREIGABE_MONAT.test(k) || !istObj(v)) return { grund: FREIGABE_GRUND };
   }
   const neuF = { ...geschickt };
-  if (!darf(rolle, "org.edit"))
+  /* RB-1: Freigeben, erneut freigeben (neuer Stand) und jede andere Änderung an einem Eintrag nur mit
+     plan.publish (darfPlanFreigeben) — ausdrücklich geprüft, nicht nur über den Schreibumfang. Eine Rolle
+     ohne das Recht bekommt eine Absage; nichts davon wird gespeichert. */
+  const freigeben = darfPlanFreigeben(rolle);
+  if (!freigeben && Object.keys(neuF).some((k) => !gleichJson(altF[k], neuF[k])))
+    return { grund: PLAN_FREIGEBEN_GRUND };
+  /* Zurücknehmen: org.edit (WP-23b) und plan.publish. Für alle anderen kommt der gespeicherte Eintrag zurück. */
+  if (!darf(rolle, "org.edit") || !freigeben)
     for (const k of Object.keys(altF)) if (MONAT_FORM_WAHR(altF, k) && !neuF[k]) neuF[k] = altF[k];
   let mandant = { ...neuM, freigaben: neuF };
   if (freigegebeneMonate({ freigaben: altF }).size > 0 && freigegebeneMonate({ freigaben: neuF }).size === 0
@@ -1327,7 +1366,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
        und nur dem Modulschreibweg übergeben, gespeichert wird sie nie. */
     const moduldatenAusnahme = geschickt && typeof geschickt === "object" && hat(geschickt, "moduldatenAusnahme")
       ? geschickt.moduldatenAusnahme : undefined;
-    const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt);
+    const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt, { planFreigegebenErlaubt: darfPlanFreigeben(rolle) });
     if (vorgefiltert.grund) return { verweigert: vorgefiltert.grund };
     geschickt = vorgefiltert.mandant;
 
@@ -1357,6 +1396,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const freigaben = freigabenZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (freigaben.grund) return { verweigert: freigaben.grund };
       geschickt = freigaben.mandant;
+      /* Planstände (RB-1): wie die Freigabe nur mit plan.publish. */
+      const staende = planstaendeZusammen(ort.betrieb, geschickt, rolle);
+      if (staende.grund) return { verweigert: staende.grund };
       /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };
@@ -2418,6 +2460,12 @@ export function einheitZusammen(altM, neuM, sitzung) {
       case "selbstplanung":
         Object.assign(aus, eigenesZusammen(altM, { [feld]: n }, ichId));
         break;
+
+      /* --- Planfreigabe (RB-1): die Schichtverantwortung hat kein plan.publish, auch nicht als Funktion
+         am Tag. Ausdrücklich abgewiesen, nicht erst über den Rückfall unten. --- */
+      case "freigaben":
+      case "planstaende":
+        return nein(PLAN_FREIGEBEN_GRUND);
 
       default:
         return nein(`Änderungen an ${feld} sind der Leitung vorbehalten.`);
