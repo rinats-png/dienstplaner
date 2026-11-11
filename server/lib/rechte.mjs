@@ -1366,7 +1366,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
        und nur dem Modulschreibweg übergeben, gespeichert wird sie nie. */
     const moduldatenAusnahme = geschickt && typeof geschickt === "object" && hat(geschickt, "moduldatenAusnahme")
       ? geschickt.moduldatenAusnahme : undefined;
-    const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt);
+    const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt, { planFreigegebenErlaubt: darfPlanFreigeben(rolle) });
     if (vorgefiltert.grund) return { verweigert: vorgefiltert.grund };
     geschickt = vorgefiltert.mandant;
 

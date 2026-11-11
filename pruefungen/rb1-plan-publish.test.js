@@ -309,3 +309,38 @@ describe("Oberfläche: „Plan freigeben\" genau mit plan.publish", () => {
     }
   });
 });
+
+/* Review-Befund zu RB-1: Ein Subplaner konnte neue Mitteilungen der Art planFreigegeben ("Der Plan ist ab sofort
+   verbindlich", Mail und Push an die Beschäftigten) anlegen, obwohl er den Plan nicht freigeben darf. Die Mitteilung
+   darf nur schreiben, wer den Plan wirklich verbindlich freigeben darf. */
+describe("gefälschte Veröffentlichungsmitteilung (Art planFreigegeben)", () => {
+  const MELDUNG = { id: "n-fake-1", personId: "a1", art: "planFreigegeben", titel: "Monatsplan freigegeben", text: "Der Plan ist verbindlich." };
+  const gespeichert = (rolle) => {
+    const { m } = schreibe(rolle, (mm) => { mm.nachrichten = [...(mm.nachrichten || []), { ...MELDUNG }]; });
+    return (m.nachrichten || []).some((n) => n.id === MELDUNG.id);
+  };
+
+  it("Leitung und Planung dürfen die Mitteilung schreiben (wie bisher)", () => {
+    for (const r of ["leitung", "planer"]) expect(gespeichert(r), r).toBe(true);
+  });
+
+  it("alle übrigen Rollen: die neue Mitteilung wird nicht gespeichert", () => {
+    for (const r of NEGATIV) expect(gespeichert(r), r).toBe(false);
+  });
+
+  it("andere Mitteilungsarten des Subplaners bleiben unberührt (kein Kollateralschaden)", () => {
+    const { m, abgewiesen } = schreibe("subplaner", (mm) => {
+      mm.nachrichten = [...(mm.nachrichten || []), { id: "n-ok-1", personId: "a1", art: "info", titel: "Hinweis" }];
+    });
+    expect(abgewiesen).toBe(false);
+    expect((m.nachrichten || []).some((n) => n.id === "n-ok-1")).toBe(true);
+  });
+
+  it("mitteilungenVorfiltern: ohne ausdrückliche Erlaubnis gilt 'nicht erlaubt' (fail-closed)", async () => {
+    const { mitteilungenVorfiltern } = await import("../server/lib/mitteilungen.mjs");
+    const neu = { nachrichten: [{ ...MELDUNG }] };
+    expect(mitteilungenVorfiltern({ nachrichten: [] }, neu).mandant.nachrichten).toEqual([]);
+    expect(mitteilungenVorfiltern({ nachrichten: [] }, neu, { planFreigegebenErlaubt: false }).mandant.nachrichten).toEqual([]);
+    expect(mitteilungenVorfiltern({ nachrichten: [] }, neu, { planFreigegebenErlaubt: true }).mandant.nachrichten).toHaveLength(1);
+  });
+});
