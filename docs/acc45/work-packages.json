@@ -4,19 +4,19 @@
   "anzahl": 190,
   "statusZaehlung": {
     "BLOCKED": 81,
-    "READY": 18,
+    "READY": 16,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
-    "INTEGRATED": 72,
+    "INTEGRATED": 74,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 90,
-      "offen": 32,
+      "offen": 30,
       "restPT": {
-        "min": 55.9,
-        "max": 90.55
+        "min": 51.9,
+        "max": 83.55
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 347.3,
-    "max": 591.85
+    "min": 343.3,
+    "max": 584.85
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -725,7 +725,7 @@
       "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
       "tests": "Playwright-Viewports, Geräte",
       "dateien": "src/ansichten/*",
-      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Betreiberentscheidungen: Recht plan.publish fehlt im Server-Katalog, Schaltfläche Plan freigeben ist für niemanden sichtbar; Krankmeldung der Schichtverantwortung an Diensttagen wird vom Server abgewiesen; Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten."
+      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten."
     },
     {
       "id": "WP-22",
@@ -5448,12 +5448,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #199 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #199 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #199 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #199 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5462,12 +5462,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx","daten.mjs"],
-      "pr": [],
+      "pr": ["#199"],
       "nachweis": "docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md",
       "akzeptanz": "Nur Leitung und Planer dürfen Dienstpläne verbindlich veröffentlichen; keine andere Rolle erhält das Recht; serverseitige Rollenprüfung an jedem Weg, der die Planfreigabe ändert; Negativtests je Rolle, Positivtests für Leitung und Planer; Schaltfläche Plan freigeben erscheint genau mit diesem Recht; Katalog, Rechtematrix und Client-Tabelle wortgleich",
       "tests": "Positiv: leitung, planer. Negativ: subplaner, mitarbeiter, betriebsrat, Schichtverantwortung, Betreiber; manipulierter Rumpf bleibt wirkungslos",
       "dateien": "server/lib/rechte.mjs, server/lib/planfreigabe.mjs, server/funktionen/daten.mjs, src/App.jsx (MATRIX_STD), src/ansichten/freigabeleiste.jsx, docs/acc45/RECHTEMATRIX.md, Tests",
-      "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: der Client prüfte plan.publish, der Server-Katalog kannte das Recht nicht. SCHÄTZUNG."
+      "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: der Client prüfte plan.publish, der Server-Katalog kannte das Recht nicht. SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #199. Stand 2026-11-11: integriert (#199), zwei Opus-Reviews; Zusatzfund behoben: gefälschte planFreigegeben-Mitteilungen von Rollen ohne plan.publish werden verworfen. Offene Betreiberfrage: Die Altrolle kunde (Probierraum, funktional die Leitung) behält plan.publish auf dem Server; wörtlich steht die Entscheidung Ausschließlich Betriebsleiter und Planer dagegen."
     },
     {
       "id": "RB-2",
@@ -5476,12 +5476,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #202 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #202 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #202 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #202 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5490,12 +5490,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["daten.mjs","App.jsx"],
-      "pr": [],
+      "pr": ["#202"],
       "nachweis": "docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md",
       "akzeptanz": "Schichtverantwortung darf eingehende Krankmeldungen entgegennehmen und vorläufig bestätigen; endgültig bestätigen nur Planer oder Leitung; eine vorläufige Bestätigung löst keinen endgültigen Status und keine Folgewirkung aus; beide Schritte nachvollziehbar protokolliert (wer, wann, Schritt, ohne Gesundheitsdaten über das Nötige hinaus); Berechtigungen serverseitig; Positiv- und Negativtests (Schichtverantwortung darf nicht endgültig, Mitarbeiter/Subplaner/Betriebsrat dürfen keinen der beiden Schritte, manipulierter Rumpf wirkungslos); Oberfläche zeigt den Zustand vorläufig/endgültig",
       "tests": "Positiv und Negativ je Rolle und Schritt, Übergänge (vorläufig -> endgültig, vorläufig nie endgültig ohne Planer/Leitung), Protokoll, Datenschutz (Schichtverantwortung sieht nur nötige Angaben)",
       "dateien": "server/lib/rechte.mjs, server/lib/sicht.mjs, server/funktionen/daten.mjs, Antrags-/Abwesenheitsmodell, src/ (Krankmeldung, Anträge), docs/acc45/RECHTEMATRIX.md, Tests",
-      "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: Krankmeldung der Schichtverantwortung an Diensttagen wird heute vom Server abgewiesen. Datenschutz: Krankmeldungen sind Gesundheitsdaten, Zugriff eng halten (H8+). SCHÄTZUNG."
+      "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: Krankmeldung der Schichtverantwortung an Diensttagen wird heute vom Server abgewiesen. Datenschutz: Krankmeldungen sind Gesundheitsdaten, Zugriff eng halten (H8+). SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #202. Stand 2026-11-11: integriert (#202), zwei Opus-Reviews. Verhalten: eigene Krankmeldungen von Beschäftigten werden erst mit der endgültigen Bestätigung wirksam, die Person bleibt bis dahin eingeplant; neue Meldung erzeugt nur eine dringende In-App-Aufgabe, keine Lücke, keine Ersatzsuche, keine Mail/Push. Offene Betreiberfragen: (1) kunde behält die endgültige Bestätigung; (2) Mail/Push an Planung/Leitung bei neuer Meldung (relevant für Pilot B); (3) Planung/Leitung können die eigene Krankheit direkt endgültig eintragen. Bekannt: offene, nie bearbeitete Fälle werden nach der Löschfrist ohne Warnung entfernt; ein Doppelklick kann zwei Fälle anlegen, die beim Endschritt zusammenfallen."
     }
   ]
 }
