@@ -1,10 +1,10 @@
 {
-  "epoche": 7,
-  "halter": "cloud-nachtaufgabe",
-  "uebernommen_am": "2026-11-11T09:33:57.711Z",
-  "erneuert_am": "2026-11-11T09:33:57.711Z",
-  "gueltig_bis": "2026-11-11T09:34:25.472Z",
-  "uebergabe": "Cloud-Lauf 2026-11-11 09:35Z: Lease Epoche 6 (hauptchat) seit 08:23Z abgelaufen, letzte Aktivitaet Hauptchat 07:24+01 (#198). Nur Statuspflege.",
-  "vorgaenger": "hauptchat",
-  "freigegeben_am": "2026-11-11T09:34:25.472Z"
+  "epoche": 8,
+  "halter": "hauptchat",
+  "uebernommen_am": "2026-11-11T10:34:01.776Z",
+  "erneuert_am": "2026-11-11T10:34:01.776Z",
+  "gueltig_bis": "2026-11-11T13:04:01.776Z",
+  "uebergabe": "Hauptchat wieder aktiv am 2026-11-11 10:35Z. Lease cloud-nachtaufgabe Epoche 7 um 09:34Z freigegeben (nur Statuspflege, PR 200). Integrationskopf c3a7265c nach #198; offen: #199 RB-1, #200 Doku, #201 SSOT, RB-2 Branch.",
+  "vorgaenger": "cloud-nachtaufgabe",
+  "freigegeben_am": null
 }
