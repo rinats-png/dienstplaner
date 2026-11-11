@@ -51,6 +51,8 @@ export const HINWEIS_TITEL = {
   tauschAngebot: "Tauschangebot",
   urlaubVerfaellt: "Hinweis zum Urlaub",
   aushang: "Neuer Aushang",
+  /* RB-4: ohne „krank“, ohne Namen, Tag oder Grund — Sperrbildschirm und fremde Postfächer. */
+  krankmeldungEingegangen: "Neue Meldung zur Abwesenheit",
 };
 const ALLGEMEIN = "Neue Mitteilung";
 const HINWEIS_TEXT = "Bitte in CENTRIC öffnen.";

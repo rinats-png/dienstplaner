@@ -12,7 +12,7 @@
       Dienste der gemeldeten Person im gemeldeten Zeitraum, so wie der Plan
       sie heute zeigt (personTag). Abgeleitet beim Lesen, nie gespeichert:
       GET /api/bestand hängt sie als `klaerung` an den Betrieb — nur für
-      Planung, Leitung (Kundenrolle) und die zuständige Schichtverantwortung
+      Planung, Leitung und die zuständige Schichtverantwortung
       (dieselbe Bereichsregel wie RB-2: die Fälle, die ihr die Sicht zeigt und
       die sie vorläufig bestätigen dürfte — svZustaendig, erster und letzter
       Tag —, ohne den eigenen). Beschäftigte, Betriebsrat, Betreiber: nie.
@@ -50,9 +50,11 @@ export const KLAERUNG_FAELLE_MAX = 50;
 export const KLAERUNG_TAGE_MAX = 62;
 export const ERSATZ_SCHICHTEN_MAX = 14;
 /** Rollen, die die Markierung bekommen. Die Schichtverantwortung („subplaner“) nur für ihren Bereich. */
-export const KLAERUNG_ROLLEN = Object.freeze(["planer", "leitung", "kunde", "subplaner"]);
+/* Die Kundenrolle (alter Probierraum) bekommt weder Markierung noch Ersatz: Sie hat bei Veröffentlichung und
+   endgültiger Bestätigung keine Sonderrechte (Betreiberentscheidung RB-Ergänzung 2026-11-11); fail-closed. */
+export const KLAERUNG_ROLLEN = Object.freeze(["planer", "leitung", "subplaner"]);
 /** Rollen, für die der Ersatz vorbereitet wird: wer einteilen und endgültig bestätigen darf. */
-export const ERSATZ_ROLLEN = Object.freeze(["planer", "leitung", "kunde"]);
+export const ERSATZ_ROLLEN = Object.freeze(["planer", "leitung"]);
 
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const tagGueltig = (s) => typeof s === "string" && TAG.test(s)
@@ -95,7 +97,7 @@ export function klaerungsMarker(m, faelle) {
 }
 
 /**
- * Markierung für die lesende Rolle (GET /api/bestand). Planung, Leitung, Kundenrolle: alle offenen Fälle des
+ * Markierung für die lesende Rolle (GET /api/bestand). Planung, Leitung: alle offenen Fälle des
  * Betriebs. Schichtverantwortung: nur die Fälle, die ihr die Sicht ausliefert (`sichtFaelle`, Bereichsregel
  * RB-2), ohne den eigenen. Alle anderen Rollen: null (kein Feld).
  * @param {any} m  der gespeicherte Betrieb

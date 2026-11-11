@@ -11,7 +11,7 @@
    bestandFuerAntwort, GET /api/bestand):
    A  Plan unverändert für alle: Sicht der Beschäftigten, Kalender, Ist,
       Konto, Lohnsätze — mit offenem Fall wie ohne.
-   B  Markierung nur für Planung, Leitung, Kundenrolle und die zuständige
+   B  Markierung nur für Planung, Leitung und die zuständige
       Schichtverantwortung; nie Beschäftigte, Betriebsrat, Betreiber, fremder
       Bereich; ohne Gesundheitsangabe; endet bei endgültig, abgelehnt,
       zurückgezogen.
@@ -121,8 +121,8 @@ describe("A  Offener Fall: der veröffentlichte Plan bleibt für alle unverände
 
 /* ================== B  Markierung: wer, was, wie lange ================== */
 describe("B  Markierung „Besetzung klärungsbedürftig“", () => {
-  it("Planung, Leitung, Kundenrolle: die Dienste der Person im gemeldeten Zeitraum (nur Tage mit Dienst)", () => {
-    for (const k of ["PL", "LT", "KU"]) expect(markerVon(mitFall(), SITZ[k]), k).toEqual(ERWARTET);
+  it("Planung, Leitung: die Dienste der Person im gemeldeten Zeitraum (nur Tage mit Dienst)", () => {
+    for (const k of ["PL", "LT"]) expect(markerVon(mitFall(), SITZ[k]), k).toEqual(ERWARTET);
   });
   it("auch vorläufig bestätigt: markiert", () => {
     expect(markerVon(mitFall(KRANK_STATUS.VORLAEUFIG), SITZ.PL)).toEqual(ERWARTET);
@@ -143,8 +143,8 @@ describe("B  Markierung „Besetzung klärungsbedürftig“", () => {
     expect(markerVon(m, SITZ.SV)).toEqual([]);
     expect(markerVon(m, SITZ.PL)).toEqual([{ fallId: "km-s1", personId: "s1", datum: T(2), dienstId: "F", hinweis: KLAERUNG_HINWEIS }]);
   });
-  it("Beschäftigte (auch die gemeldete Person), Betriebsrat, Betreiber: kein Feld, nirgends", () => {
-    for (const k of ["MA", "MA2", "BR", "BT"]) {
+  it("Beschäftigte (auch die gemeldete Person), Betriebsrat, Betreiber, Kundenrolle: kein Feld, nirgends", () => {
+    for (const k of ["MA", "MA2", "BR", "BT", "KU"]) {
       const a = antwort(mitFall(), SITZ[k]);
       expect(JSON.stringify(a), k).not.toMatch(/klaerung|klärungsbedürftig/);
     }

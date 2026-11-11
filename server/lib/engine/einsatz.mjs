@@ -26,7 +26,7 @@ const STUFEN_RANG = { hinweis: 1, achtung: 2, recht: 3 };
 export const stufeRang = (s) => (Object.prototype.hasOwnProperty.call(STUFEN_RANG, s) ? STUFEN_RANG[s] : STUFEN_RANG.hinweis);
 
 /* Haken: Regelkennung im Regelregister. Ohne Haken keine Kennung (null). */
-/* Typangabe nur für die Typprüfung (seit RB-5 im Graph über server/lib/klaerung.mjs). */
+/* Typangabe nur für die Typprüfung (seit RB-5 liegt diese Datei im geprüften Graphen). */
 /** @type {(b: any) => any} */
 let regelIdHaken = () => null;
 export const regelIdHakenSetzen = (f) => { regelIdHaken = typeof f === "function" ? f : () => null; };

@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 190,
+  "anzahl": 193,
   "statusZaehlung": {
     "BLOCKED": 81,
-    "READY": 16,
+    "READY": 19,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
     "INTEGRATED": 74,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 90,
-      "offen": 30,
+      "pakete": 93,
+      "offen": 33,
       "restPT": {
-        "min": 51.9,
-        "max": 83.55
+        "min": 57.9,
+        "max": 94.05
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 343.3,
-    "max": 584.85
+    "min": 349.3,
+    "max": 595.35
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -5496,6 +5496,90 @@
       "tests": "Positiv und Negativ je Rolle und Schritt, Übergänge (vorläufig -> endgültig, vorläufig nie endgültig ohne Planer/Leitung), Protokoll, Datenschutz (Schichtverantwortung sieht nur nötige Angaben)",
       "dateien": "server/lib/rechte.mjs, server/lib/sicht.mjs, server/funktionen/daten.mjs, Antrags-/Abwesenheitsmodell, src/ (Krankmeldung, Anträge), docs/acc45/RECHTEMATRIX.md, Tests",
       "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: Krankmeldung der Schichtverantwortung an Diensttagen wird heute vom Server abgewiesen. Datenschutz: Krankmeldungen sind Gesundheitsdaten, Zugriff eng halten (H8+). SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #202. Stand 2026-11-11: integriert (#202), zwei Opus-Reviews. Verhalten: eigene Krankmeldungen von Beschäftigten werden erst mit der endgültigen Bestätigung wirksam, die Person bleibt bis dahin eingeplant; neue Meldung erzeugt nur eine dringende In-App-Aufgabe, keine Lücke, keine Ersatzsuche, keine Mail/Push. Offene Betreiberfragen: (1) kunde behält die endgültige Bestätigung; (2) Mail/Push an Planung/Leitung bei neuer Meldung (relevant für Pilot B); (3) Planung/Leitung können die eigene Krankheit direkt endgültig eintragen. Bekannt: offene, nie bearbeitete Fälle werden nach der Löschfrist ohne Warnung entfernt; ein Doppelklick kann zwei Fälle anlegen, die beim Endschritt zusammenfallen."
+    },
+    {
+      "id": "RB-3",
+      "titel": "Rolle kunde ohne plan.publish und ohne endgültige Krankmeldungsbestätigung; Demo-Funktionen über ausdrücklich zugewiesene Demo-Rollen",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": ["RB-1","RB-2"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": ["rechte.mjs"],
+      "pr": [],
+      "nachweis": "docs/acc45/ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md",
+      "akzeptanz": "kunde hat weder plan.publish noch endgültig/ablehnen bei Krankmeldungen (Server und Client, Katalog, MATRIX_STD, RECHTEMATRIX); nur Leitung und Planer; Demo- und Probierfunktionen laufen über ausdrücklich zugewiesene Demo-Rollen (leitung/planer im Demo-Raum) statt über kunde; kunde-abloesung-Test an die neue Entscheidung angepasst (bewusst, begründet); Negativtests für kunde über den echten Handler; Altkonten kunde bleiben lesbar und arbeitsfähig im Übrigen",
+      "tests": "Positiv leitung/planer, Negativ kunde (Veröffentlichen, endgültig, ablehnen), Demo-Zugang mit Rolle leitung/planer funktioniert",
+      "dateien": "server/lib/rechte.mjs, server/lib/krankmeldung.mjs, src/lib/rollen.js, RECHTEMATRIX.md, Tests",
+      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). SCHÄTZUNG."
+    },
+    {
+      "id": "RB-4",
+      "titel": "Benachrichtigung bei eingegangener Krankmeldung (Planer, Betriebsleiter, sachlich Schichtverantwortung), Push und E-Mail ohne Gesundheitsdetails",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":2,"max":3.5},
+      "abhaengigkeiten": ["RB-2"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": ["daten.mjs"],
+      "pr": [],
+      "nachweis": "docs/acc45/ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md",
+      "akzeptanz": "Neue Zustellart für eingegangene Krankmeldung über die bestehende Zustellung (Mail/Push, Schalter und E-9 unverändert); Empfänger: zuständige Planer und Betriebsleiter, die zuständige Schichtverantwortung nur bei sachlicher Erforderlichkeit; Text ohne Gesundheitsdetails (kein Grund, keine Diagnose, keine Notiz, im Betreff nur neutral, ohne Namen soweit vermeidbar); Empfängerwahl serverseitig aus dem gespeicherten Stand; Mitteilung nicht durch Clients fälschbar (nurVomServer); Wiederholung/Entdoppelung; Protokoll ohne Gesundheitsdaten; Tests",
+      "tests": "Empfänger je Rolle, kein Empfänger außerhalb des Zuständigkeitsbereichs, Inhalt ohne Gesundheitsdetails (Stichproben gegen Notiz/Grund), Fälschung durch Client wirkungslos, keine Zustellung bei ausgeschalteten Schaltern, Entdoppelung",
+      "dateien": "server/lib/mitteilungen.mjs, server/lib/zustellregeln.mjs, server/lib/krankmeldung.mjs, server/funktionen/daten.mjs, src/lib/zustellung.js, Tests",
+      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Datenschutz: Art. 9, Datensparsamkeit. SCHÄTZUNG."
+    },
+    {
+      "id": "RB-5",
+      "titel": "Offene Krankmeldung: Schicht intern klärungsbedürftig markieren, Unterbesetzung und Ersatzvorschläge vorbereiten, veröffentlichter Plan unverändert, keine eigenmächtige Umbesetzung",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":3,"max":5},
+      "abhaengigkeiten": ["RB-2"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": ["App.jsx","daten.mjs"],
+      "pr": [],
+      "nachweis": "docs/acc45/ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md",
+      "akzeptanz": "Bis zur endgültigen Bestätigung bleibt der veröffentlichte Plan für Beschäftigte und Kalenderfeed unverändert; die betroffene Schicht ist intern (nur Planung, Leitung, zuständige Schichtverantwortung) als klärungsbedürftig markiert; CENTRIC berechnet mögliche Unterbesetzung und Ersatzvorschläge mit der vorhandenen Ersatzsuche als Vorbereitung (nur Anzeige für Planung/Leitung); keine automatische Umbesetzung, kein Schreiben in Besetzung/Plan ohne ausdrückliche Handlung von Planer oder Leitung; Markierung verschwindet bei endgültig, abgelehnt, zurückgezogen; keine Gesundheitsdetails in der Markierung; Tests",
+      "tests": "Plan/Feed unverändert bei offenem Fall, Markierung nur für berechtigte Rollen sichtbar, Ersatzvorschläge ohne Schreibwirkung, Markierung endet mit Endzustand, kein Gesundheitsdatum in Markierung/Vorschlag",
+      "dateien": "server/lib/krankmeldung.mjs, server/lib/sicht.mjs, server/lib/engine/*, src/ansichten (Plan, Lagebild, krankmeldungen-offen), Tests",
+      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Bestehende Ersatzsuche wiederverwenden, nichts duplizieren. SCHÄTZUNG."
     }
   ]
 }

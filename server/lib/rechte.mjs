@@ -35,7 +35,7 @@ import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
 import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
-import { fallAusAbwesenheit, svZustaendig } from "./krankmeldung.mjs";
+import { fallAusAbwesenheit, svZustaendig, krankmeldungMitteilungen } from "./krankmeldung.mjs";
 import { klaerungFuerRolle, KLAERUNG_ROLLEN } from "./klaerung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
@@ -580,7 +580,7 @@ export function bestandFuerRolle(bestand, sitzung) {
 }
 
 /** Die Antwort von GET /api/bestand (und der 409-Antwort von PUT): die Sicht der Rolle und — nur für
-    Planung, Leitung, Kundenrolle und die Schichtverantwortung (ihr Bereich) — die abgeleitete Markierung
+    Planung, Leitung und die Schichtverantwortung (ihr Bereich; nicht die Kundenrolle) — die abgeleitete Markierung
     „Besetzung klärungsbedürftig“ (RB-5, klaerung.mjs) als `klaerung` am eigenen Betrieb. Nie gespeichert
     (abgeleiteteEntfernen), nicht in Auskunft, Import oder Faktenpaket (die lesen bestandFuerRolle). */
 export function bestandFuerAntwort(bestand, sitzung) {
@@ -1540,6 +1540,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     }
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
+    /* RB-4: zu einem neuen eingegangenen Krankmeldungsfall (Schichtverantwortung, ältere Oberfläche) die
+       neutralen Mitteilungen an Planung, Leitung und zuständige Schichtverantwortung (krankmeldung.mjs). */
+    geschickt = krankmeldungMitteilungen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */
     geschickt = bestaetigungMitteilungen(ort.betrieb, geschickt, sitzung.person);
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
@@ -1662,7 +1665,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
 
   /* Mitteilungen aus eigenen Vorgängen (Notruf, Tauschmeldung) erzeugt der
      Server — dazu wird eine Push-Anmeldung an der Person zum Merker. */
-  const mitMitteilungen = mitteilungenErzeugen(alt, zusammen, sitzung.person);
+  /* RB-4: dazu die neutralen Mitteilungen zu einer neuen eigenen Krankmeldung (krankmeldung.mjs). */
+  const mitMitteilungen = krankmeldungMitteilungen(alt, mitteilungenErzeugen(alt, zusammen, sitzung.person), sitzung.person);
   neu.mandanten = gespeichert.mandanten.map((x) => (x && x.id === alt.id ? mitMitteilungen : x));
   return neu;
 }
