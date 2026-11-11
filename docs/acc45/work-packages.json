@@ -5,18 +5,18 @@
   "statusZaehlung": {
     "BLOCKED": 82,
     "READY": 16,
-    "IN_PROGRESS": 7,
+    "IN_PROGRESS": 6,
     "REVIEW": 9,
-    "INTEGRATED": 71,
+    "INTEGRATED": 72,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 88,
-      "offen": 31,
+      "offen": 30,
       "restPT": {
-        "min": 52.9,
-        "max": 84.55
+        "min": 47.9,
+        "max": 77.8
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 344.3,
-    "max": 585.85
+    "min": 339.3,
+    "max": 579.1
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -706,12 +706,12 @@
       "prio": "P1",
       "aufwandPT": {"min":10,"max":13.5},
       "abhaengigkeiten": ["WP-12","WP-39"],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
-        "lokalGetestet": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
-        "reviewt": {"wert":true,"beleg":"PR #183 in integration/release-v4"},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #183 (Teil 1) und PR #192 (Teil 2: Bedienabläufe, Querformat, Zielgrößen, Fokus, Hinweis zurückgenommen für Tauschbörse und Prüfung) integriert."},
+        "implementiert": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -725,7 +725,7 @@
       "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
       "tests": "Playwright-Viewports, Geräte",
       "dateien": "src/ansichten/*",
-      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-10: Teil 2 integriert (#192), 274 von 288 Läufen bestanden, siehe docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9. Betreiberentscheidungen: Recht plan.publish fehlt im Server-Katalog, Schaltfläche Plan freigeben ist für niemanden sichtbar; Krankmeldung der Schichtverantwortung an Diensttagen wird vom Server abgewiesen; Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten."
+      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand (automatisch): INTEGRATED nach #192."
     },
     {
       "id": "WP-22",
@@ -5159,7 +5159,7 @@
       "akzeptanz": "Antrag maximal 24 h offen; frische TOTP-Authentifizierung je Freigabe; Abschlusstoken 15 min; Freigebende nur Leitung im selben Mandanten; keine Selbstfreigabe; Einheitszugehörigkeit bei Unabhängigkeit berücksichtigen; Mandantentrennung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/funktionen/kontowiederherstellung*.mjs, Tests",
-      "notiz": "Entscheidungen 1 bis 4 (2026-11-09). Freigabemechanik für OPT-2 und das Offline-Werkzeug mitverwendet (kein Doppelzählen). Stand (automatisch): INTEGRATED nach #191. Stand 2026-11-10: ausgeliefert AUS (CENTRIC_KONTOWIEDERHERSTELLUNG=1 schaltet ein, Betreiberfreigabe). Vor dem Einschalten: (1) Verfahrensvorgabe, dass die Leitung die Personalnummer aus den eigenen Unterlagen über die geprüfte Person nachschlägt und sie sich nie vom Antragsteller nennen lässt; (2) Regel für Personen ohne Personalnummer; (3) Benachrichtigung des Trägers (I.11); (4) Eröffnungszähler vl: nach erfolgreicher Eröffnung entlasten oder Ablehnungen einer einzelnen Leitung anders begrenzen; (5) Betreiberentscheidungen I.2, I.3, I.10, I.12, J.5. Siehe docs/acc45/WR-3-NACHWEIS.md und die Reviews zu PR #191."
+      "notiz": "Entscheidungen 1 bis 4 (2026-11-09). Freigabemechanik für OPT-2 und das Offline-Werkzeug mitverwendet (kein Doppelzählen). Stand (automatisch): INTEGRATED nach #191."
     },
     {
       "id": "WR-4",
