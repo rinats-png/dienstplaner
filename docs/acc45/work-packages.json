@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 190,
   "statusZaehlung": {
-    "BLOCKED": 82,
+    "BLOCKED": 81,
     "READY": 18,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
-    "INTEGRATED": 71,
+    "INTEGRATED": 72,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 90,
-      "offen": 33,
+      "offen": 32,
       "restPT": {
-        "min": 56.9,
-        "max": 91.55
+        "min": 55.9,
+        "max": 90.55
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 348.3,
-    "max": 592.85
+    "min": 347.3,
+    "max": 591.85
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -5224,12 +5224,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":1},
       "abhaengigkeiten": ["WR-3"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5238,12 +5238,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#198"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Antrag, Freigabe und Codeanzeige in der Anwendung; Review durch Opus",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "src/ (Oberfläche), nach WP-39",
-      "notiz": "Keine konfliktträchtige Änderung an App.jsx vor Integration WP-39."
+      "notiz": "Keine konfliktträchtige Änderung an App.jsx vor Integration WP-39. Stand (automatisch): INTEGRATED nach #198. Stand 2026-11-11: Oberfläche integriert (#198), hinter dem ausgeschalteten Server-Schalter CENTRIC_KONTOWIEDERHERSTELLUNG. Vor dem Einschalten: (1) einmal von Hand in Chrome und Safari mit aktivem Passwortmanager prüfen, dass kein Speicherangebot erscheint; (2) der vorbestehende SI-P4-Block in src/betreiber-2fa.jsx (~Zeile 85) hat dasselbe Passwortfeld-Muster und gehört in ein eigenes kleines Paket; (3) Browser-Messung gegen einen echten Server mit eingeschaltetem Schalter; (4) die WR-3-Liste Vor dem Einschalten. Zwei Opus-Reviews, siehe PR #198."
     },
     {
       "id": "WR-7",
