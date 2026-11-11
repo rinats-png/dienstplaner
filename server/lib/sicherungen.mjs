@@ -15,7 +15,7 @@
    Die Endpunkte stehen in server/funktionen/daten.mjs.
    ========================================================================== */
 
-import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
+import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM, darfPlanFreigeben } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { abschlussBeiWiederherstellung } from "./monatsabschluss.mjs";
@@ -261,6 +261,13 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
   if (md.unpruefbar) return { verweigert: "Löschvermerke des Datenschutz-Ausnahmewegs sind ohne den Serverschlüssel "
     + "(CENTRIC_PFEFFER) nicht prüfbar — er fehlt oder wurde gegenüber dem Schlüssel geändert, mit dem die Vermerke "
     + "entstanden. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
+  /* RB-1: Freigaben und Planstände kommen nur für eine Rolle mit plan.publish aus der Sicherung (heute nur
+     die Leitung, WIEDERHERSTELLEN_ROLLEN) — sonst gilt der jetzige Stand. */
+  if (!darfPlanFreigeben(sitzung && sitzung.rolle)) {
+    for (const f of ["freigaben", "planstaende"]) {
+      if (f in alt) zurueck[f] = alt[f]; else delete zurueck[f];
+    }
+  }
   if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
     zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
       ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };

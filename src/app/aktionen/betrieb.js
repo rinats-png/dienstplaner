@@ -8,7 +8,7 @@ import { fristen as loeschFristen, fristWert } from "../../aufbewahrung.js";
 import { uid } from "../../lib/format.js";
 import { PALETTE } from "../../lib/fachlogik.js";
 import { einheitAm, imDienst } from "../../../server/lib/fachpruefung.mjs";
-import { MATRIX_STD } from "../../lib/rollen.js";
+import { MATRIX_STD, FESTE_RECHTE } from "../../lib/rollen.js";
 import { nameGueltig } from "../../../server/lib/rollenvergabe.mjs";
 
 export function aktionenBetrieb(k) {
@@ -59,7 +59,8 @@ export function aktionenBetrieb(k) {
       loescheQual: (id) => mUpd((m) => ({ ...m, qualifikationen: m.qualifikationen.filter((q) => q.id !== id),
         personen: m.personen.map((p) => ({ ...p, qualifikationen: p.qualifikationen.filter((x) => x !== id) })),
         dienstarten: m.dienstarten.map((d) => { const mq = { ...d.mindestQual }; delete mq[id]; return { ...d, mindestQual: mq }; }) }), "Qualifikation gelöscht"),
-      toggleRecht: (r, recht) => mUpd((m) => {
+      /* RB-1: feste Rechte (plan.publish) schaltet die betriebseigene Tabelle nicht um. */
+      toggleRecht: (r, recht) => FESTE_RECHTE.includes(recht) ? undefined : mUpd((m) => {
         /* Ohne eigene Matrix gilt die Vorgabe — der erste Klick macht sie
            zur betrieblichen Matrix, statt auf undefined zu greifen. */
         const basis = m.matrix || JSON.parse(JSON.stringify(MATRIX_STD));

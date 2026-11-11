@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 188,
+  "anzahl": 190,
   "statusZaehlung": {
-    "BLOCKED": 82,
-    "READY": 16,
+    "BLOCKED": 81,
+    "READY": 18,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
-    "INTEGRATED": 71,
+    "INTEGRATED": 72,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 88,
-      "offen": 31,
+      "pakete": 90,
+      "offen": 32,
       "restPT": {
-        "min": 52.9,
-        "max": 84.55
+        "min": 55.9,
+        "max": 90.55
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 344.3,
-    "max": 585.85
+    "min": 347.3,
+    "max": 591.85
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -5224,12 +5224,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":1},
       "abhaengigkeiten": ["WR-3"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #198 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5238,12 +5238,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#198"],
       "nachweis": "docs/acc45/KONTO-WIEDERHERSTELLUNG.md",
       "akzeptanz": "Antrag, Freigabe und Codeanzeige in der Anwendung; Review durch Opus",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "src/ (Oberfläche), nach WP-39",
-      "notiz": "Keine konfliktträchtige Änderung an App.jsx vor Integration WP-39."
+      "notiz": "Keine konfliktträchtige Änderung an App.jsx vor Integration WP-39. Stand (automatisch): INTEGRATED nach #198. Stand 2026-11-11: Oberfläche integriert (#198), hinter dem ausgeschalteten Server-Schalter CENTRIC_KONTOWIEDERHERSTELLUNG. Vor dem Einschalten: (1) einmal von Hand in Chrome und Safari mit aktivem Passwortmanager prüfen, dass kein Speicherangebot erscheint; (2) der vorbestehende SI-P4-Block in src/betreiber-2fa.jsx (~Zeile 85) hat dasselbe Passwortfeld-Muster und gehört in ein eigenes kleines Paket; (3) Browser-Messung gegen einen echten Server mit eingeschaltetem Schalter; (4) die WR-3-Liste Vor dem Einschalten. Zwei Opus-Reviews, siehe PR #198."
     },
     {
       "id": "WR-7",
@@ -5440,6 +5440,62 @@
       "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
       "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
       "notiz": "SCHÄTZUNG Koordinator. Fehler: planKennzahlen ruft verteilung mit Monat statt von/bis auf; spanne undefined, wochenenden NaN. Rot vor grün; Golden-Umstellung nur mit Begründung im Nachweis. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden."
+    },
+    {
+      "id": "RB-1",
+      "titel": "Rollenrecht plan.publish: verbindliche Dienstplanveröffentlichung nur durch Betriebsleiter und Planer",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": ["App.jsx","daten.mjs"],
+      "pr": [],
+      "nachweis": "docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md",
+      "akzeptanz": "Nur Leitung und Planer dürfen Dienstpläne verbindlich veröffentlichen; keine andere Rolle erhält das Recht; serverseitige Rollenprüfung an jedem Weg, der die Planfreigabe ändert; Negativtests je Rolle, Positivtests für Leitung und Planer; Schaltfläche Plan freigeben erscheint genau mit diesem Recht; Katalog, Rechtematrix und Client-Tabelle wortgleich",
+      "tests": "Positiv: leitung, planer. Negativ: subplaner, mitarbeiter, betriebsrat, Schichtverantwortung, Betreiber; manipulierter Rumpf bleibt wirkungslos",
+      "dateien": "server/lib/rechte.mjs, server/lib/planfreigabe.mjs, server/funktionen/daten.mjs, src/App.jsx (MATRIX_STD), src/ansichten/freigabeleiste.jsx, docs/acc45/RECHTEMATRIX.md, Tests",
+      "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: der Client prüfte plan.publish, der Server-Katalog kannte das Recht nicht. SCHÄTZUNG."
+    },
+    {
+      "id": "RB-2",
+      "titel": "Krankmeldung zweistufig: Schichtverantwortung bestätigt vorläufig, Planer oder Betriebsleiter endgültig",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":3,"max":5},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": ["daten.mjs","App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md",
+      "akzeptanz": "Schichtverantwortung darf eingehende Krankmeldungen entgegennehmen und vorläufig bestätigen; endgültig bestätigen nur Planer oder Leitung; eine vorläufige Bestätigung löst keinen endgültigen Status und keine Folgewirkung aus; beide Schritte nachvollziehbar protokolliert (wer, wann, Schritt, ohne Gesundheitsdaten über das Nötige hinaus); Berechtigungen serverseitig; Positiv- und Negativtests (Schichtverantwortung darf nicht endgültig, Mitarbeiter/Subplaner/Betriebsrat dürfen keinen der beiden Schritte, manipulierter Rumpf wirkungslos); Oberfläche zeigt den Zustand vorläufig/endgültig",
+      "tests": "Positiv und Negativ je Rolle und Schritt, Übergänge (vorläufig -> endgültig, vorläufig nie endgültig ohne Planer/Leitung), Protokoll, Datenschutz (Schichtverantwortung sieht nur nötige Angaben)",
+      "dateien": "server/lib/rechte.mjs, server/lib/sicht.mjs, server/funktionen/daten.mjs, Antrags-/Abwesenheitsmodell, src/ (Krankmeldung, Anträge), docs/acc45/RECHTEMATRIX.md, Tests",
+      "notiz": "Betreiberentscheidung 2026-11-11 (docs/acc45/ENTSCHEIDUNG-ROLLENRECHTE-2026-11-11.md), beantwortet den Befund aus WP-21 Teil 2: Krankmeldung der Schichtverantwortung an Diensttagen wird heute vom Server abgewiesen. Datenschutz: Krankmeldungen sind Gesundheitsdaten, Zugriff eng halten (H8+). SCHÄTZUNG."
     }
   ]
 }

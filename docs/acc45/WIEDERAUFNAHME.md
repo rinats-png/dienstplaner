@@ -3,6 +3,12 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtlauf-Zusatz 3 (2026-11-11 ca. 09:40Z, geplanter Cloud-Lauf)
+- Integrationskopf: c3a7265 (Merge #198 WR-6 Oberflaeche, ausgeliefert hinter ausgeschaltetem Schalter). Lease `cloud-nachtaufgabe`, Epoche 7 (Vorgaenger hauptchat Epoche 6, seit 08:23Z abgelaufen; letzte Hauptchat-Aktivitaet 07:24 MEZ). Hauptchat uebernimmt bei Rueckkehr nur nach `freigeben --epoche 7`.
+- Offene PRs: #199 (RB-1 plan.publish, Entwurf), #177, #175, #104 (Entwuerfe, Betreiberentscheidung), #168, #139, #129, #127, #115 und aeltere Basen unveraendert. Keine schreibenden Agenten.
+- SSOT-Abgleich: WR-6 meldet KORREKTUR (PR #198 integriert, SSOT BLOCKED). Status bewusst nicht geaendert: Pruefung durch Koordinator (`ssot-nach-integration.mjs 198`, Dry-Run zeigt INTEGRIERT:BLOCKED).
+- Verbleibende Blocker sind Betreiberentscheidungen: I.5/I.6 (WR-4, WR-5 T19), Branch-Schutz, Rollenrechte `plan.publish`, E-25. Keine neue Funktionsarbeit ohne diese moeglich.
+
 ## Nachtlauf-Zusatz 2 (2026-11-11 ca. 01:45Z, geplanter Cloud-Lauf)
 - Integrationskopf: ecfa1ef (Merge #193). Lease `cloud-nachtaufgabe`, Epoche 4 (Vorgaenger Epoche 3, freigegeben 00:33Z). Keine neuen Arbeits-PRs, keine schreibenden Agenten. Offene PRs unveraendert (Entwuerfe #175, #177, #104, aeltere Doku-/Security-PRs).
 - Branch-Regel eingehalten: Arbeitsbranch von `origin/integration/release-v4`, Ziel-PR gegen `integration/release-v4`.

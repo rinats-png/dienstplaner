@@ -78,7 +78,7 @@ export const RECHTE_GRUPPEN = [
   ["Planung", [["plan.view.own","Eigenen Plan sehen"],["plan.view.unit","Plan der eigenen Einheit sehen"],
     ["plan.view.all","Pläne aller Einheiten sehen"],["plan.edit.unit","Einsätze der eigenen Einheit ändern"],
     ["plan.edit.all","Einsätze aller Einheiten ändern"],["pattern.edit","Schichtfolge bearbeiten"],
-    ["shift.edit","Dienstarten anlegen und ändern"]]],
+    ["shift.edit","Dienstarten anlegen und ändern"],["plan.publish","Dienstplan verbindlich freigeben"]]],
   ["Anträge", [["req.create","Anträge und Tauschanfragen stellen"],["req.approve.unit","Anträge der eigenen Einheit entscheiden"],
     ["req.approve.all","Anträge aller Einheiten entscheiden"]]],
   ["Personal", [["staff.view","Personalliste sehen"],["staff.edit","Personal anlegen und bearbeiten"],
@@ -87,6 +87,16 @@ export const RECHTE_GRUPPEN = [
     ["billing.view","Kosten des Betriebs sehen"],["audit.view","Protokoll einsehen"],["export.data","Daten exportieren"]]],
 ];
 export const ALLE_RECHTE = RECHTE_GRUPPEN.flatMap(([, i]) => i.map((x) => x[0]));
+/* RB-1 (Betreiberentscheidung 2026-11-11): Rechte, die die betriebseigene Tabelle (m.matrix) weder
+   geben noch nehmen kann. Für sie zählt allein MATRIX_STD — wie auf dem Server, der m.matrix nie liest.
+   Sonst bliebe „Plan freigeben" in jedem Betrieb mit gespeicherter Tabelle unsichtbar, und eine
+   angekreuzte Zelle böte es Rollen an, denen der Server es verweigert. */
+export const FESTE_RECHTE = Object.freeze(["plan.publish"]);
+/** Die Rechte einer Rolle, wie sie wirken: betriebseigene Tabelle, feste Rechte aus MATRIX_STD (RB-1). */
+export function rechteDerRolle(matrix, rolleId) {
+  const eigen = ((matrix || MATRIX_STD)[rolleId] || []).filter((r) => !FESTE_RECHTE.includes(r));
+  return [...eigen, ...(MATRIX_STD[rolleId] || []).filter((r) => FESTE_RECHTE.includes(r))];
+}
 export const MATRIX_STD = {
   leitung: [...ALLE_RECHTE],
   planer: ALLE_RECHTE.filter((r) => !["org.edit", "roles.assign", "billing.view"].includes(r)),

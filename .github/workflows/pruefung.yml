@@ -340,6 +340,10 @@ jobs:
       - name: Entwürfe nicht an Beschäftigte
         run: npm run pruefung:entwuerfe
 
+      # RB-1 (Betreiberentscheidung 2026-11-11): Dienstpläne verbindlich freigeben nur Leitung und Planung.
+      - name: Planfreigabe nur Leitung und Planung (RB-1)
+        run: npm run pruefung:rb1-plan-publish
+
       # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
       - name: Sicherungen in der Oberfläche
         run: npm run pruefung:wiederherstellen-ui
@@ -672,6 +676,11 @@ jobs:
       # Selbstfreigabe, Einheitsregel, Gleichzeitigkeit, Schlüsselepoche.
       - name: Kontowiederherstellung Verlustfall (WR-3)
         run: npm run pruefung:kontowiederherstellung-verlust
+
+      # WR-6: Oberfläche zum Verlustweg (Antrag, Freigabe, Codeanzeige) ohne Browser; die
+      # Messung am Telefon läuft von Hand: pruefung:verlustweg-browser.
+      - name: Kontowiederherstellung Oberfläche (WR-6)
+        run: npm run pruefung:verlustweg-oberflaeche
 
       # RB-2 (Betreiberentscheidung 2026-11-11): Krankmeldung in zwei Stufen — vorläufig Schichtverantwortung, endgültig Planung/Leitung.
       - name: Krankmeldung zweistufig (RB-2)
