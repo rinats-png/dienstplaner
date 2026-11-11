@@ -1026,6 +1026,10 @@ function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
   if (geschickt === undefined || geschickt === null) return zurueck();
   if (typeof geschickt !== "boolean") return { grund: "Planfreigabe: erwartet wird true oder false." };
   if (geschickt === (altE.planFreigabePflicht === true)) return zurueck();
+  /* RB-3: Der Schalter entscheidet, ob Entwürfe vor Beschäftigten verborgen sind — also über den
+     Veröffentlichungsstand. Ihn umlegen darf nur, wer auch verbindlich freigeben darf (plan.publish); die
+     Altrolle „kunde" hat org.edit, aber nicht plan.publish. */
+  if (!darfPlanFreigeben(rolle)) return { grund: PLAN_FREIGEBEN_GRUND };
   e.planFreigabePflicht = geschickt;
   e.planFreigabePflichtGeaendertAm = new Date().toISOString();
   e.planFreigabePflichtGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
@@ -1056,24 +1060,33 @@ function planstaendeZusammen(altM, neuM, rolle) {
   return gleichJson(alt, neu) ? {} : { grund: PLAN_FREIGEBEN_GRUND };
 }
 
-/* RB-3: der Absagetext für eine unmittelbar eingetragene Krankheit ohne Recht zur endgültigen Bestätigung. */
-export const KRANK_ENDGUELTIG_GRUND = "Krankmeldungen endgültig bestätigen (als Abwesenheit eintragen) dürfen nur Planung und Leitung.";
+/* RB-3: der Absagetext für eine unmittelbar eingetragene, geänderte oder entfernte Krankheit ohne Recht zur endgültigen Bestätigung. */
+export const KRANK_ENDGUELTIG_GRUND = "Krank-Abwesenheiten eintragen, ändern oder entfernen (endgültige Bestätigung) dürfen nur Planung und Leitung.";
 
 /* RB-3 (Betreiberentscheidung 2026-11-11): Planung und Leitung tragen eine Krankheit über PUT /api/bestand
    unmittelbar als Abwesenheit ein — das ist selbst die endgültige Bestätigung (RB-2). Eine Rolle mit
-   Vollschreibrecht OHNE dieses Recht (die Altrolle „kunde") darf keine Krank-Abwesenheit anlegen und an einer
-   bestehenden weder Person noch Zeitraum ändern noch eine andere Abwesenheit zu „krank“ machen. Entfernen
-   und eine geänderte Anmerkung bleiben, wie sie waren (keine Bestätigung). */
+   Vollschreibrecht OHNE dieses Recht (die Altrolle „kunde") darf keine Krank-Abwesenheit anlegen, keine andere
+   Abwesenheit zu „krank“ machen und eine wirksame (gespeicherte) Krank-Abwesenheit weder ändern (Art, Person,
+   Zeitraum, halber Tag, Stunden, jedes andere Feld) noch entfernen — das hebt eine endgültige Bestätigung
+   mittelbar auf (Review PR #206). Erlaubt bleibt nur eine geänderte Anmerkung (`notiz`); Abwesenheiten
+   anderer Art legt sie weiter an und ändert sie. Fehlt das Feld `abwesenheiten`, gilt es als unverändert. */
+const ohneNotiz = (a) => JSON.stringify(Object.keys(a).filter((k) => k !== "notiz").sort().map((k) => [k, a[k]]));
 function krankUnmittelbarZusammen(altM, neuM, rolle) {
   if (krankSchrittErlaubt(rolle, "endgueltig")) return {};
   if (!neuM || typeof neuM !== "object" || !Array.isArray(neuM.abwesenheiten)) return {};
+  const istE = (a) => !!a && typeof a === "object" && !Array.isArray(a);
   const alt = new Map((altM && Array.isArray(altM.abwesenheiten) ? altM.abwesenheiten : [])
-    .filter((a) => a && typeof a === "object").map((a) => [String(a.id), a]));
-  for (const e of neuM.abwesenheiten) {
-    if (!e || typeof e !== "object" || e.art !== "krank") continue;
+    .filter(istE).map((a) => [String(a.id), a]));
+  const neu = new Map(neuM.abwesenheiten.filter(istE).map((a) => [String(a.id), a]));
+  for (const e of neu.values()) {
+    if (e.art !== "krank") continue;
     const v = alt.get(String(e.id));
-    if (!v || v.art !== "krank" || String(v.personId) !== String(e.personId) || v.von !== e.von || v.bis !== e.bis)
-      return { grund: KRANK_ENDGUELTIG_GRUND };
+    if (!v || v.art !== "krank") return { grund: KRANK_ENDGUELTIG_GRUND };          // neu oder zu „krank“ gemacht
+  }
+  for (const [id, v] of alt) {
+    if (v.art !== "krank") continue;
+    const e = neu.get(id);
+    if (!e || ohneNotiz(e) !== ohneNotiz(v)) return { grund: KRANK_ENDGUELTIG_GRUND }; // entfernt oder geändert
   }
   return {};
 }

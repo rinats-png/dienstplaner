@@ -97,14 +97,74 @@ describe("PUT-Kern: Krank-Abwesenheit unmittelbar eintragen", () => {
     expect(schreibe("kunde", (m) => { m.abwesenheiten[0].bis = T(9); }, mitKrank).verweigert).toBe(KRANK_ENDGUELTIG_GRUND);
     expect(schreibe("kunde", (m) => { m.abwesenheiten[0].personId = "a2"; }, mitKrank).verweigert).toBe(KRANK_ENDGUELTIG_GRUND);
   });
-  it("kunde: übrige Rechte unverändert — Urlaub ändern, bestehende Krankheit unverändert oder entfernt, Anmerkung", () => {
+  /* Review PR #206 (L): eine wirksame Krankheit mittelbar aufheben ist wie der Endschritt nur Planung und Leitung. */
+  const KRANK_WIRKSAM = { ...KRANK, id: "k-alt", halbtag: false, stunden: 8 };
+  const AUFHEBEN = [
+    ["entfernt", (m) => { m.abwesenheiten = m.abwesenheiten.filter((a) => a.id !== "k-alt"); }],
+    ["Art krank → urlaub", (m) => { m.abwesenheiten.find((a) => a.id === "k-alt").art = "urlaub"; }],
+    ["halber Tag geändert", (m) => { m.abwesenheiten.find((a) => a.id === "k-alt").halbtag = true; }],
+    ["Stunden geändert", (m) => { m.abwesenheiten.find((a) => a.id === "k-alt").stunden = 4; }],
+    ["Feld entfernt", (m) => { delete m.abwesenheiten.find((a) => a.id === "k-alt").stunden; }],
+    ["Feld hinzugefügt", (m) => { m.abwesenheiten.find((a) => a.id === "k-alt").ende = "12:00"; }],
+    ["von verschoben", (m) => { m.abwesenheiten.find((a) => a.id === "k-alt").von = T(1); }],
+  ];
+  for (const [name, aendere] of AUFHEBEN) {
+    it(`wirksame Krankheit ${name}: kunde Absage, Leitung und Planung gespeichert`, () => {
+      const alt = bestand(betrieb({ abwesenheiten: [{ ...KRANK_WIRKSAM }, { id: "u1", personId: "a2", art: "urlaub", von: T(20), bis: T(21), notiz: "" }] }));
+      expect(schreibe("kunde", aendere, alt).verweigert, name).toBe(KRANK_ENDGUELTIG_GRUND);
+      for (const r of ["leitung", "planer"]) expect(schreibe(r, aendere, alt).verweigert, `${r} ${name}`).toBeFalsy();
+    });
+  }
+  it("kunde: übrige Rechte unverändert — Urlaub anlegen/ändern/entfernen, Krankheit unverändert, Anmerkung, Feldreihenfolge", () => {
     expect(schreibe("kunde", (m) => { m.abwesenheiten[0].bis = T(22); }).verweigert).toBeFalsy();
-    const mitKrank = bestand(betrieb({ abwesenheiten: [{ ...KRANK, id: "k-alt" }] }));
+    expect(schreibe("kunde", (m) => { m.abwesenheiten.push({ id: "u2", personId: "a1", art: "urlaub", von: T(30), bis: T(31), notiz: "" }); }).verweigert).toBeFalsy();
+    const mitKrank = bestand(betrieb({ abwesenheiten: [{ ...KRANK_WIRKSAM }, { id: "u1", personId: "a2", art: "urlaub", von: T(20), bis: T(21), notiz: "" }] }));
     expect(schreibe("kunde", () => {}, mitKrank).verweigert).toBeFalsy();
     expect(schreibe("kunde", (m) => { m.abwesenheiten[0].notiz = "geändert"; }, mitKrank).verweigert).toBeFalsy();
-    const weg = schreibe("kunde", (m) => { m.abwesenheiten = []; }, mitKrank);
+    expect(schreibe("kunde", (m) => { const a = m.abwesenheiten[0]; m.abwesenheiten[0] = Object.fromEntries(Object.entries(a).reverse()); }, mitKrank).verweigert).toBeFalsy();
+    const weg = schreibe("kunde", (m) => { m.abwesenheiten = m.abwesenheiten.filter((a) => a.id !== "u1"); }, mitKrank);
     expect(weg.verweigert).toBeFalsy();
-    expect(weg.mandanten[0].abwesenheiten).toEqual([]);
+    expect(weg.mandanten[0].abwesenheiten.map((a) => a.id)).toEqual(["k-alt"]);
+  });
+});
+
+/* Review PR #206 (M): einstellungen.planFreigabePflicht entscheidet, ob Entwürfe vor Beschäftigten verborgen sind. */
+describe("PUT-Kern: Planfreigabe-Pflicht umlegen nur mit plan.publish", () => {
+  const SITZ = { kunde: { rolle: "kunde", person: null, betrieb: 0, mandantId: "m1" },
+    leitung: { rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m1" },
+    planer: { rolle: "planer", person: "p1", betrieb: 0, mandantId: "m1" } };
+  const mit = (pflicht, freigaben = {}) => bestand(betrieb({ einstellungen: { planFreigabePflicht: pflicht }, freigaben, planstaende: {} }));
+  const umlegen = (rolle, alt, wert) => {
+    const neu = kopie(alt); neu.mandanten[0].einstellungen.planFreigabePflicht = wert;
+    return zusammenfuehren(alt, neu, SITZ[rolle]);
+  };
+  it("kunde: aus- und einschalten → Absage mit Grund; die Entwürfe bleiben verborgen", async () => {
+    const { planFreigabeAktiv } = await import("../server/lib/planfreigabe.mjs");
+    const aus = umlegen("kunde", mit(true), false);
+    expect(aus.verweigert).toBe(PLAN_FREIGEBEN_GRUND);
+    expect(umlegen("kunde", mit(false), true).verweigert).toBe(PLAN_FREIGEBEN_GRUND);
+    expect(planFreigabeAktiv(mit(true).mandanten[0])).toBe(true);
+  });
+  it("kunde: unveränderter Schalter stört nicht", () => {
+    expect(umlegen("kunde", mit(true), true).verweigert).toBeFalsy();
+  });
+  it("Leitung schaltet weiterhin aus und ein; Planung (ohne org.edit) wie bisher ohne Wirkung", () => {
+    const aus = umlegen("leitung", mit(true), false);
+    expect(aus.verweigert).toBeFalsy();
+    expect(aus.mandanten[0].einstellungen.planFreigabePflicht).toBe(false);
+    expect(umlegen("leitung", mit(false), true).mandanten[0].einstellungen.planFreigabePflicht).toBe(true);
+    const p = umlegen("planer", mit(true), false);
+    expect(p.verweigert).toBeFalsy();
+    expect(p.mandanten[0].einstellungen.planFreigabePflicht).toBe(true);
+  });
+  it("Oberfläche: Schalter und Aufgabe nur mit plan.publish", async () => {
+    const { PlanFreigabeSchalter } = await import("../src/ansichten/planfreigabeschalter.jsx");
+    const M = mit(false).mandanten[0];
+    const s = (z) => ({ rolle: "kunde", mandant: M, zugangRolle: z, person: person("x", "leitung", { bereich: "ALLE" }) });
+    const html = (z) => renderToStaticMarkup(h(PlanFreigabeSchalter, { sitz: s(z), akt: { setzePlanFreigabePflicht: () => {} } }));
+    expect(html("kunde")).not.toContain("Planfreigabe aktivieren");
+    expect(html("leitung")).toContain("Planfreigabe aktivieren");
+    expect(await quelle("src/lib/fachlogik.js")).toMatch(/darf\(sitz, "org\.edit"\) && darf\(sitz, "plan\.publish"\) && !planFreigabeAktiv\(m\)/);
   });
 });
 
@@ -205,7 +265,30 @@ describe("HTTP über den Handler: PUT /api/bestand und POST /api/krankmeldung", 
     expect((await gespeichert()).abwesenheiten.some((a) => a.id === "k-http" && a.art === "krank")).toBe(true);
   });
 
-  const fall = (id, status = KRANK_STATUS.EINGEGANGEN) => ({ id, personId: "a1", von: T(2), bis: T(2), notiz: "", status,
+  it("Planfreigabe-Pflicht ausschalten: kunde 403 (Entwürfe bleiben verborgen), Leitung 200", async () => {
+    const m0 = betrieb({ einstellungen: { planFreigabePflicht: true } });
+    await zuruecksetzen(m0);
+    const k = await put(await tok(null, "kunde"), (m) => { m.einstellungen = { ...m.einstellungen, planFreigabePflicht: false }; });
+    expect(k.status).toBe(403);
+    expect((await gespeichert()).einstellungen.planFreigabePflicht).toBe(true);
+    const l = await put(await tok("l1", "leitung"), (m) => { m.einstellungen = { ...m.einstellungen, planFreigabePflicht: false }; });
+    expect(l.status, JSON.stringify(l).slice(0, 300)).toBe(200);
+    expect((await gespeichert()).einstellungen.planFreigabePflicht).toBe(false);
+  });
+  it("wirksame Krankheit entfernen oder zu Urlaub machen: kunde 403, Planung 200", async () => {
+    const KR = { id: "k-w", personId: "a1", art: "krank", von: T(2), bis: T(3), notiz: "" };
+    for (const aendere of [(m) => { m.abwesenheiten = m.abwesenheiten.filter((a) => a.id !== "k-w"); },
+      (m) => { m.abwesenheiten.find((a) => a.id === "k-w").art = "urlaub"; }]) {
+      await zuruecksetzen(betrieb({ abwesenheiten: [{ ...KR }] }));
+      expect((await put(await tok(null, "kunde"), aendere)).status).toBe(403);
+      expect((await gespeichert()).abwesenheiten).toEqual([KR]);
+      const p = await put(await tok("p1", "planer"), aendere);
+      expect(p.status, JSON.stringify(p).slice(0, 300)).toBe(200);
+      expect((await gespeichert()).abwesenheiten.some((a) => a.id === "k-w" && a.art === "krank")).toBe(false);
+    }
+  });
+
+  const fall = (id, status = KRANK_STATUS.EINGEGANGEN) =>({ id, personId: "a1", von: T(2), bis: T(2), notiz: "", status,
     erstellt: new Date().toISOString(), verlauf: [{ schritt: "eingegangen", von: "a1", rolle: "mitarbeiter", zeit: new Date().toISOString() }] });
   const km = async (t, rumpf) => anfrage("/api/krankmeldung", { methode: "POST", token: t, rumpf });
 

@@ -2338,7 +2338,7 @@ export function tagesaufgaben(sitz) {
 
   /* WP-23: Solange die Planfreigabe nicht gilt, sehen Beschäftigte auch Entwürfe. Nur die Leitung
      (org.edit) schaltet das ein; sie bekommt den Hinweis als dringende Aufgabe. */
-  if (darf(sitz, "org.edit") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
+  if (darf(sitz, "org.edit") && darf(sitz, "plan.publish") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
     titel: "Planfreigabe aktivieren", text: "Beschäftigte sehen sonst auch Entwürfe" });
 
   /* RB-2: offene Krankmeldungen — nur wer den nächsten Schritt gehen darf, bekommt die Aufgabe (wie der Server). */
