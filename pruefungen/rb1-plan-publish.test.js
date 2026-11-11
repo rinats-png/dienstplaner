@@ -6,8 +6,8 @@
    keine zusätzlichen Rechte. Serverseitige Rollenprüfung, Negativtests.
 
    Geprüft:
-   - Rechtetabelle: plan.publish nur bei leitung, planer (und der Altrolle
-     kunde, die funktional die Leitung ist — dieselbe MATRIX), nie bei
+   - Rechtetabelle: plan.publish nur bei leitung und planer — nie bei der Altrolle
+     kunde (RB-3, Betreiberentscheidung 2026-11-11, Ergänzung), nie bei
      subplaner, mitarbeiter, betriebsrat, betreiber.
    - Jeder Schreibweg einer Freigabe (m.freigaben, m.planstaende):
      PUT /api/bestand (zusammenfuehren) je Rolle, auch mit manipuliertem
@@ -53,7 +53,7 @@ const SITZ = {
   betriebsrat: { rolle: "betriebsrat", person: "r1", betrieb: 0, mandantId: "m1" },
   betreiber: { rolle: "betreiber", person: null },
 };
-const NEGATIV = ["subplaner", "mitarbeiter", "betriebsrat", "betreiber"];
+const NEGATIV = ["subplaner", "mitarbeiter", "betriebsrat", "betreiber", "kunde"];
 
 /* Die manipulierten Rümpfe: neue Freigabe, erneute Freigabe (Stand erhöht), Planstand, Rücknahme. */
 const MANIPULATIONEN = [
@@ -83,9 +83,9 @@ describe("Rechtetabelle: plan.publish", () => {
     expect(MATRIX.leitung.length).toBe(ALLE_RECHTE.length);
     expect([...MATRIX.leitung]).toEqual([...ALLE_RECHTE]);
   });
-  it("nur Leitung und Planung (und die Altrolle kunde = Leitung des Probierraums) tragen es", () => {
+  it("nur Leitung und Planung tragen es (die Altrolle kunde nicht, RB-3)", () => {
     const mit = Object.keys(MATRIX).filter((r) => MATRIX[r].includes("plan.publish")).sort();
-    expect(mit).toEqual(["kunde", "leitung", "planer"]);
+    expect(mit).toEqual(["leitung", "planer"]);
     const client = Object.keys(MATRIX_STD).filter((r) => MATRIX_STD[r].includes("plan.publish")).sort();
     expect(client).toEqual(["leitung", "planer"]);
   });
@@ -97,8 +97,8 @@ describe("Rechtetabelle: plan.publish", () => {
       "audit.view", "export.data"]);
     expect(MATRIX.planer).not.toContain("org.edit");
   });
-  it("darfPlanFreigeben: ja für leitung, planer, kunde; nein für alle anderen und Unbekanntes", () => {
-    for (const r of ["leitung", "planer", "kunde"]) expect(darfPlanFreigeben(r), r).toBe(true);
+  it("darfPlanFreigeben: ja für leitung, planer; nein für kunde, alle anderen und Unbekanntes", () => {
+    for (const r of ["leitung", "planer"]) expect(darfPlanFreigeben(r), r).toBe(true);
     for (const r of [...NEGATIV, undefined, null, "", "Leitung", "__proto__", "gast"]) expect(darfPlanFreigeben(r), String(r)).toBe(false);
   });
   it("Riegel des Betriebsrats greift auch, wenn ihm jemand plan.publish in die Tabelle schreibt", () => {
@@ -143,10 +143,11 @@ describe("Server: Positivfälle Leitung und Planung", () => {
     expect(schreibe("leitung", (mm) => { mm.freigaben = {}; }).m.freigaben).toEqual({});
     expect(Object.keys(schreibe("planer", (mm) => { mm.freigaben = {}; }).m.freigaben)).toEqual([FREI]);
   });
-  it("kunde (Probierraum, funktional Leitung): Freigabe wie bisher möglich — keine Erweiterung", () => {
-    const { abgewiesen, m } = schreibe("kunde", (mm) => { mm.freigaben = { ...mm.freigaben, [ENTWURF]: { stand: 1 } }; });
-    expect(abgewiesen).toBe(false);
-    expect(Object.keys(m.freigaben).sort()).toEqual([ENTWURF, FREI]);
+  it("kunde (Altrolle, Probierraum): keine Freigabe mehr — ausdrückliche Absage (RB-3)", () => {
+    const { abgewiesen, grund, m } = schreibe("kunde", (mm) => { mm.freigaben = { ...mm.freigaben, [ENTWURF]: { stand: 1 } }; });
+    expect(abgewiesen).toBe(true);
+    expect(grund).toBe(PLAN_FREIGEBEN_GRUND);
+    expect(Object.keys(m.freigaben)).toEqual([FREI]);
   });
 });
 

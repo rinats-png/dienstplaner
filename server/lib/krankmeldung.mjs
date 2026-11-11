@@ -52,11 +52,12 @@ export const fallOffen = (f) => !!f && (f.status === KRANK_STATUS.EINGEGANGEN ||
 /** Ablehnen ohne Freitext (keine Gesundheitsangabe im Protokoll): nur ein Kennzeichen aus dieser Liste oder keines. */
 export const ABLEHNGRUENDE = Object.freeze(["doppelt", "irrtum", "ueberholt", "sonstiges"]);
 
-/** Rollen je Schritt. Andere Rollen (Betriebsrat, Betreiber, unbekannt): keiner. Die Kundenrolle ist der alte
-    Probierraum und funktional die Leitung (wie RB-1, dieselbe Rechtetabelle). */
+/** Rollen je Schritt. Andere Rollen (Betriebsrat, Betreiber, unbekannt): keiner. Die Kundenrolle (Altrolle,
+    alter Probierraum) darf melden und die eigene Meldung zurückziehen, aber — RB-3, Betreiberentscheidung
+    2026-11-11 — weder endgültig bestätigen noch ablehnen: das dürfen ausschließlich Planung und Leitung. */
 const MELDEN_ROLLEN = ["mitarbeiter", "subplaner", "planer", "leitung", "kunde"];
 const VORLAEUFIG_ROLLEN = ["subplaner"];
-const ENDGUELTIG_ROLLEN = ["planer", "leitung", "kunde"];
+const ENDGUELTIG_ROLLEN = ["planer", "leitung"];
 
 /** Darf diese Rolle diesen Schritt überhaupt (ohne Fallbezug)? */
 export function krankSchrittErlaubt(rolle, schritt) {

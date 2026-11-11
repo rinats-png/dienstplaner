@@ -11,6 +11,7 @@ import { Card, CardHead, Btn, Pill } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { fKurz } from "../lib/datum.js";
 import { KRANK_STATUS, krankSchrittErlaubt, fallOffen, meldendePerson, svZustaendig } from "../../server/lib/krankmeldung.mjs";
+import { krankRolle } from "../lib/berechtigung.js";
 import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, ersatzVorbereiten, klaerungAktuell, klaerungGekuerzt } from "../../server/lib/klaerung.mjs";
 
 /* RB-5 (Betreiberentscheidung 2026-11-11): Der veröffentlichte Plan bleibt bis zur endgültigen Bestätigung
@@ -25,14 +26,14 @@ import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, er
 export function klaerungFuer(sitz) {
   const ich = sitz && sitz.person;
   const m = sitz && sitz.mandant;
-  if (!ich || !m || sitz.rolle === "betreiber" || !KLAERUNG_ROLLEN.includes(ich.rolle) || !Array.isArray(m.klaerung)) return [];
+  if (!ich || !m || sitz.rolle === "betreiber" || !KLAERUNG_ROLLEN.includes(krankRolle(sitz)) || !Array.isArray(m.klaerung)) return [];
   return klaerungAktuell(m);
 }
 /** Ist der Dienst dieser Person an diesem Tag klärungsbedürftig (für diese Person sichtbar)? */
 export const klaerungAm = (sitz, personId, datum, dienstId) => klaerungFuer(sitz)
   .some((k) => String(k.personId) === String(personId) && k.datum === datum && (dienstId === undefined || k.dienstId === dienstId));
 /** Darf diese Person Ersatz vorbereiten lassen? Wer einteilen und endgültig bestätigen darf. */
-export const ersatzVorbereitbar = (sitz) => !!(sitz && sitz.person && sitz.rolle !== "betreiber" && ERSATZ_ROLLEN.includes(sitz.person.rolle));
+export const ersatzVorbereitbar = (sitz) => !!(sitz && sitz.person && sitz.rolle !== "betreiber" && ERSATZ_ROLLEN.includes(krankRolle(sitz)));
 
 /** Vorbereiteter Ersatz zu einem Fall: rechnet erst beim Öffnen, schreibt nichts. */
 export function ErsatzVorbereitet({ m, fallId, name, dienstName, oeffneTag }) {
@@ -75,13 +76,15 @@ export function krankSchritteFuer(sitz, fall) {
   const aus = [];
   const eigenerFall = String(fall.personId) === String(ich.id);
   const vonMir = fall.gemeldetVonMir === true || String(meldendePerson(fall)) === String(ich.id);
+  /* RB-3: Ein Zugang der Altrolle „kunde" zählt als „kunde" — kein endgültig, kein ablehnen. */
+  const rolle = krankRolle(sitz);
   if (!eigenerFall) {
-    if (fall.status === KRANK_STATUS.EINGEGANGEN && krankSchrittErlaubt(ich.rolle, "vorlaeufig")
+    if (fall.status === KRANK_STATUS.EINGEGANGEN && krankSchrittErlaubt(rolle, "vorlaeufig")
       && svZustaendig(sitz.mandant, ich, fall.personId, fall.von, fall.bis)) aus.push("vorlaeufig");
-    if (krankSchrittErlaubt(ich.rolle, "endgueltig")) aus.push("endgueltig");
-    if (krankSchrittErlaubt(ich.rolle, "ablehnen")) aus.push("ablehnen");
+    if (krankSchrittErlaubt(rolle, "endgueltig")) aus.push("endgueltig");
+    if (krankSchrittErlaubt(rolle, "ablehnen")) aus.push("ablehnen");
   }
-  if (vonMir && krankSchrittErlaubt(ich.rolle, "zurueckziehen")) aus.push("zurueckziehen");
+  if (vonMir && krankSchrittErlaubt(rolle, "zurueckziehen")) aus.push("zurueckziehen");
   return aus;
 }
 

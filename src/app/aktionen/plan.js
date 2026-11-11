@@ -12,6 +12,7 @@ import { monatText } from "../../../server/lib/monatsabschluss.mjs";
 import { nurKorrekturGrund, bestaetigungsGrund } from "../../istdaten.js";
 import { rolle } from "../../lib/rollen.js";
 import { krankSchrittErlaubt } from "../../../server/lib/krankmeldung.mjs";
+import { krankRolle } from "../../lib/berechtigung.js";
 
 /** Datenreview PR #130 (5): Zugehörigkeit null-sicher sortieren — ab null/leer („von Anfang an“) vor jedem
  *  Datum, gleiche Werte in der bisherigen Reihenfolge (stabile Sortierung, deterministisch). Nicht exportiert:
@@ -74,7 +75,7 @@ export function aktionenPlan(k) {
          Schichtverantwortung), meldet über POST /api/krankmeldung — der Fall ist „eingegangen“ und wird
          erst mit der endgültigen Bestätigung durch Planung oder Leitung wirksam. Planung und Leitung tragen
          die Abwesenheit wie bisher unmittelbar ein (das ist selbst die endgültige Bestätigung). */
-      krankmelden: (pid, von, bis, notiz) => (!krankSchrittErlaubt(sitz && sitz.person && sitz.person.rolle, "endgueltig")
+      krankmelden: (pid, von, bis, notiz) => (!krankSchrittErlaubt(krankRolle(sitz), "endgueltig")
         ? krankMeldenServer(pid, von, bis, notiz) : k.akt.krankUnmittelbar(pid, von, bis, notiz)),
       krankBestaetigen: async (id, schritt) => {
         try {
