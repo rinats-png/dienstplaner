@@ -1,10 +1,10 @@
 {
-  "epoche": 3,
+  "epoche": 4,
   "halter": "cloud-nachtaufgabe",
-  "uebernommen_am": "2026-11-10T23:33:18.295Z",
-  "erneuert_am": "2026-11-11T00:32:58.086Z",
-  "gueltig_bis": "2026-11-11T00:33:20.674Z",
-  "uebergabe": "Lease hauptchat Epoche 2 seit 2026-11-10T21:56Z abgelaufen (letzte Erneuerung 19:56Z), keine offenen Arbeits-PRs, Integrationskopf cf01a40; geplanter Nachtlauf uebernimmt",
-  "vorgaenger": "hauptchat",
-  "freigegeben_am": "2026-11-11T00:33:20.674Z"
+  "uebernommen_am": "2026-11-11T01:33:06.266Z",
+  "erneuert_am": "2026-11-11T01:33:06.266Z",
+  "gueltig_bis": "2026-11-11T03:03:06.266Z",
+  "uebergabe": "Lease Epoche 3 abgelaufen/freigegeben 00:33Z, keine offenen Arbeits-PRs, Integrationskopf ecfa1ef; geplanter Nachtlauf 01:33Z uebernimmt",
+  "vorgaenger": "cloud-nachtaufgabe",
+  "freigegeben_am": null
 }
