@@ -686,6 +686,11 @@ jobs:
       - name: Krankmeldung zweistufig (RB-2)
         run: npm run pruefung:rb2-krankmeldung
 
+      # RB-4 (Betreiberentscheidung 2026-11-11): Benachrichtigung bei Eingang einer Krankmeldung — Planung, Leitung,
+      # Schichtverantwortung nur bei Dienst im Bereich; Push und E-Mail ohne Gesundheitsangaben.
+      - name: Krankmeldung Benachrichtigung (RB-4)
+        run: npm run pruefung:rb4-krankmeldung-benachrichtigung
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration
