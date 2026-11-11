@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 348,3–592,85 PT in 81 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 347,3–591,85 PT in 80 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -37,7 +37,6 @@ flowchart LR
     OPT_4["OPT-4<br/>IN_PROGRESS"]
     WR_4["WR-4<br/>BLOCKED"]
     WR_5["WR-5<br/>BLOCKED"]
-    WR_6["WR-6<br/>BLOCKED"]
     WR_7["WR-7<br/>BLOCKED"]
     WR_8["WR-8<br/>BLOCKED"]
     WR_9["WR-9<br/>BLOCKED"]
@@ -491,7 +490,7 @@ flowchart LR
 | WR-3 | acc45 | P1 | 2,5 | 0 | WR-2 | daten.mjs | opus | INTEGRATED |
 | WR-4 | acc45 | P1 | 1 | 1 | WR-3 | daten.mjs | opus | BLOCKED |
 | WR-5 | acc45 | P1 | 2 | 2 | WR-1, WR-2, WR-3 | daten.mjs | sonnet | BLOCKED |
-| WR-6 | acc45 | P2 | 1 | 1 | WR-3 | daten.mjs | sonnet | BLOCKED |
+| WR-6 | acc45 | P2 | 1 | 0 | WR-3 | daten.mjs | sonnet | INTEGRATED |
 | WR-7 | acc45 | P1 | 0,75 | 0,75 | WR-5 | daten.mjs | opus | BLOCKED |
 | WR-8 | acc45 | P2 | 0,25 | 0,25 | WR-7 | daten.mjs | sonnet | BLOCKED |
 | WR-9 | acc45 | P1 | 2–4 | 2–4 | OPT-4, WR-3 | daten.mjs | opus | BLOCKED |
