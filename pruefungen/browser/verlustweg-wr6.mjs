@@ -1,4 +1,4 @@
-/* global document, window, localStorage, sessionStorage */
+/* global document, window, localStorage, sessionStorage, getComputedStyle */
 /* WR-6 (lokal, manuell, Wegwerfdaten): Oberfläche der Kontowiederherstellung am Telefon.
    Der Server liefert nur die Seite (127.0.0.1, Zufallsschlüssel, frischer Datenordner, erfundene Demo-Daten). Die Antworten
    von /api/anmelden stellt der Browser selbst (page.route) mit ERFUNDENEN Werten — so lässt sich jeder Schritt zeigen, ohne
@@ -145,14 +145,37 @@ async function lauf(b, vp) {
   await form.getByRole("button", { name: "Freigabe einlösen", exact: true }).click();
   await pg.getByText("JBSWY3DPEHPK3PXP").first().waitFor({ state: "visible", timeout: 5000 });
   await messen(pg, vp, "Träger: neues Geheimnis (einmal)");
+  /* H1: kein Feld vom Typ password im neuen Weg; Zugangscode und Token sind Textfelder, per CSS verdeckt. */
+  const felder = await pg.evaluate(() => { const w = document.querySelector("[data-verlustweg]"); const i = [...w.querySelectorAll("input")];
+    const geheim = i.filter((e) => e.classList.contains("verlust-geheim"));
+    return { passwort: i.filter((e) => e.type === "password").length, geheim: geheim.length,
+      verdeckt: geheim.every((e) => { const cs = getComputedStyle(e); return (cs.webkitTextSecurity || cs.getPropertyValue("-webkit-text-security")) === "disc"; }),
+      attribute: i.filter((e) => e.type !== "radio" && e.type !== "checkbox").every((e) => e.getAttribute("autocomplete") === "off" && e.getAttribute("data-lpignore") === "true"
+        && e.getAttribute("data-1p-ignore") === "true" && e.getAttribute("data-bwignore") === "true" && !e.name && !e.id) }; });
+  pruefe(vp, "H1: kein type=password, Zugangscode verdeckt per CSS, Attribute und keine name/id", felder.passwort === 0 && felder.geheim >= 1 && felder.verdeckt && felder.attribute, JSON.stringify(felder));
+  /* M1: das Geheimnis übersteht erneutes Anklicken des Verweises; Schließen und Einklappen sind gesperrt; Verwerfen fragt nach. */
+  await verweis.click();
+  pruefe(vp, "M1: Geheimnis nach erneutem Klick auf den Verweis noch da", (await pg.getByText("JBSWY3DPEHPK3PXP").count()) > 0, "Geheimnis verschwunden");
+  const sperren = await pg.evaluate(() => ({
+    schliessen: [...document.querySelectorAll("button")].filter((b) => /Schließen erst nach dem Sichern/.test(b.textContent)).every((b) => b.disabled)
+      && [...document.querySelectorAll("button")].some((b) => /Schließen erst nach dem Sichern/.test(b.textContent)),
+    umschalter: [...document.querySelectorAll("[data-verlustweg] button[aria-expanded]")].every((b) => b.disabled) }));
+  pruefe(vp, "M1: Schließen und Einklappen gesperrt, solange das Geheimnis steht", sperren.schliessen && sperren.umschalter, JSON.stringify(sperren));
+  await form.getByRole("button", { name: "Geheimnis verwerfen", exact: true }).click();
+  await pg.getByRole("alertdialog").waitFor({ state: "visible", timeout: 5000 });
+  await messen(pg, vp, "Träger: Rückfrage vor dem Verwerfen");
+  await pg.getByRole("button", { name: "Zurück", exact: true }).click();
+  pruefe(vp, "M1: nach „Zurück“ steht das Geheimnis noch da", (await pg.getByText("JBSWY3DPEHPK3PXP").count()) > 0, "Geheimnis nach Zurück weg");
   /* Bestätigen → neue Wiederherstellungscodes */
   await zc.fill(ZUGANG);
   await form.getByLabel(/^Erster Code aus der App/).fill("123456");
   await form.getByRole("button", { name: "Mit Code bestätigen", exact: true }).click();
   await pg.getByText(CODES[0]).first().waitFor({ state: "visible", timeout: 5000 });
   await messen(pg, vp, "Träger: neue Wiederherstellungscodes (einmal)");
+  pruefe(vp, "M1: Codes ausblenden erst nach dem Häkchen", await pg.getByRole("button", { name: "Codes ausblenden", exact: true }).isDisabled(), "Knopf ohne Häkchen frei");
   pruefe(vp, "Codes nach Ausblenden weg", await (async () => {
-    await pg.getByRole("button", { name: /Ich habe die Codes gesichert/ }).click();
+    await pg.getByLabel("Ich habe die Codes gesichert.").check();
+    await pg.getByRole("button", { name: "Codes ausblenden", exact: true }).click();
     return (await pg.getByText(CODES[0]).count()) === 0 && (await pg.getByText("JBSWY3DPEHPK3PXP").count()) === 0;
   })(), "Codes oder Geheimnis nach dem Ausblenden noch im Dokument");
 
@@ -187,6 +210,10 @@ async function lauf(b, vp) {
   await fl.getByRole("button", { name: "Antrag freigeben", exact: true }).click();
   await pg.getByText(TOKEN).waitFor({ state: "visible", timeout: 5000 });
   await messen(pg, vp, "Leitung: zweite Freigabe, Abschlusstoken (einmal)");
+  pruefe(vp, "M1: weitere Freigabe bis zum Ausblenden gesperrt", await fl.getByRole("button", { name: "Antrag freigeben", exact: true }).isDisabled(), "Absenden frei");
+  await fl.getByRole("button", { name: "Token ausblenden", exact: true }).click();
+  await pg.getByRole("button", { name: "Ja, verwerfen", exact: true }).click();
+  pruefe(vp, "M1: Token nach Bestätigung weg", (await pg.getByText(TOKEN).count()) === 0, "Token blieb");
   await fl.getByLabel("Antrag ablehnen").check();
   await fl.getByLabel(/^Dein Zugangscode/).fill("TEST-LEITUNG-0002");
   await fl.getByLabel(/^Frischer Code/).fill("654321");

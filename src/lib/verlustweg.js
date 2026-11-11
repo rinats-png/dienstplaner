@@ -53,6 +53,9 @@ export const PERSONALNUMMER_MAX = 40;
 /** Form des Abschlusstokens: 32 Byte als base64url (Groß-/Kleinschreibung zählt). */
 export const TOKEN_MUSTER = /^[A-Za-z0-9_-]{43}$/;
 
+/** Marker des allgemeinen „nein“ einer Freigabe (403 mit verlust: "nein", NEIN im Server): kein Hinweis auf den Schalter. */
+export const NEIN_MARKER = "nein";
+
 /** Wie lange ein Antrag offen ist und wie lange das Abschlusstoken gilt (Anzeige; maßgeblich ist der Server). */
 export const ANTRAG_STUNDEN = 24;
 export const TOKEN_MINUTEN = 15;
@@ -158,7 +161,7 @@ export function verlustAntwort(aktion, status, d) {
   if (status === 200 && aktion === AKTION.bestaetigen && Array.isArray(r.wiederherstellung))
     return { art: "ok", daten: { stufe: "bestaetigt", wiederherstellung: r.wiederherstellung.filter((x) => typeof x === "string") } };
   /* Verlust-Weg ausgeschaltet oder für diesen Zugang gesperrt: 403 ohne das allgemeine „nein" einer Freigabe. */
-  if (status === 403 && aktion !== AKTION.bestaetigen && r.verlust !== "nein")
+  if (status === 403 && aktion !== AKTION.bestaetigen && r.verlust !== NEIN_MARKER)
     return { art: "nicht-verfuegbar", text: TEXT_NICHT_VERFUEGBAR };
   if (status === 429) return { art: "bremse", text: neutral(r.text) };
   if (status === 0) return { art: "fehler", text: TEXT_KEINE_VERBINDUNG };

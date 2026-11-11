@@ -15,15 +15,22 @@
    403, sperrt die Oberfläche beide Wege mit einem neutralen Text. Sie nimmt nie an, dass er an ist.
 
    Geheimnisse: Zugangscode, Code aus der App, Fallnummer, Personalnummer, Abschlusstoken, Geheimnis und
-   Wiederherstellungscodes bleiben nur im Zustand dieser Bausteine, werden nach jedem Absenden geleert
-   (Zugangscode und Codes immer, Eingaben bei Erfolg) und verschwinden mit dem Schließen. Nichts davon geht
-   in den Speicher des Browsers, in die Adresse oder in ein Protokoll.
+   Wiederherstellungscodes gehen nie in den Speicher des Browsers, in die Adresse oder in ein Protokoll.
+   Eingaben werden nach jedem Absenden geleert. Einmalig angezeigte Werte (Geheimnis, Codes, Token) liegen im
+   Halter (lib/verlustweg-halter.js): Einklappen, Schließen und Neuaufbau verwerfen sie nicht; sie verschwinden
+   nur nach ausdrücklicher Bestätigung oder nach 15 Minuten.
+
+   Eingabefelder: nie type="password" (Passwortverwalter ignorieren autocomplete="off" auf Passwortfeldern und
+   böten Code und Token zum Speichern an). Stattdessen Textfelder, per CSS verdeckt (-webkit-text-security), mit
+   Schalter „Eingaben anzeigen"; kann der Browser nicht verdecken, steht die Eingabe offen und ein Hinweis dabei.
+   Die Felder tragen keinen name und keine id und die Hinweise für gängige Passwortverwalter (data-lpignore,
+   data-1p-ignore, data-bwignore).
    ========================================================================== */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { AKTION, VERFAHREN, ABLEHNUNGSGRUENDE, ANTRAG_STUNDEN, TOKEN_MINUTEN, TEXT_NICHT_VERFUEGBAR, verlustSenden, zeitText,
-  traegerZeile }
-  from "./lib/verlustweg.js";
+  traegerZeile } from "./lib/verlustweg.js";
+import { halter, schliessenErlaubt, haltenderWeg } from "./lib/verlustweg-halter.js";
 
 const MONO = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", wordBreak: "break-all", overflowWrap: "anywhere" };
 const ABSTAND = { display: "grid", gap: 13, minWidth: 0 };
@@ -32,8 +39,38 @@ const KASTEN = { padding: "12px 14px", borderRadius: 10, border: "1px solid curr
 const TAST = { padding: "8px 14px", minHeight: 36, fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: "inherit",
   cursor: "pointer", border: "1px solid currentColor", background: "transparent", color: "inherit", textAlign: "left" };
 
-/** Felder, in die ein Einmalwert getippt wird: nichts merken, nichts vorschlagen, nichts korrigieren. */
-const EINMAL = { autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false };
+/** Felder, in die ein Einmalwert getippt wird: nichts merken, nichts vorschlagen, nichts korrigieren, kein Passwortverwalter. */
+export const EINMAL = Object.freeze({ type: "text", autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false,
+  "data-lpignore": "true", "data-1p-ignore": "true", "data-bwignore": "true", "data-form-type": "other" });
+
+/** Verdeckung ohne type="password". */
+const MASKE_KLASSE = "verlust-geheim";
+const MASKE_STIL = `.${MASKE_KLASSE}{-webkit-text-security:disc;text-security:disc;}`;
+const kannVerdecken = () => typeof CSS !== "undefined" && typeof CSS.supports === "function"
+  && (CSS.supports("-webkit-text-security", "disc") || CSS.supports("text-security", "disc"));
+
+/** Zustand der Verdeckung eines Formulars: verdeckt, solange der Browser es kann und die Person nichts anderes wählt. */
+function useMaske() {
+  const [klar, setKlar] = useState(false);
+  const [kann, setKann] = useState(true);            // vor dem Messen (und im Server-Render) wird verdeckt
+  useEffect(() => { setKann(kannVerdecken()); }, []);
+  return { kann, klar, setKlar, verdeckt: kann && !klar };
+}
+
+/** Schalter „Eingaben anzeigen"; ohne Verdeckung im Browser stattdessen ein Hinweis. */
+function MaskeSchalter({ ui, maske }) {
+  if (!maske.kann) return <p style={TEXT}>Dieser Browser kann die Eingabe nicht verdecken. Achte darauf, dass dir niemand zusieht.</p>;
+  return <ui.Btn type="button" aria-pressed={maske.klar} onClick={() => maske.setKlar(!maske.klar)}>
+    {maske.klar ? "Eingaben verbergen" : "Eingaben anzeigen"}</ui.Btn>;
+}
+
+/** Feld für Zugangscode und Abschlusstoken: Text, verdeckt per CSS, ohne Passwortverwalter. */
+function Geheimfeld({ ui, label, hint, wert, setWert, maske }) {
+  return (
+    <ui.Field label={label} hint={hint}>
+      <ui.Inp {...EINMAL} className={maske.verdeckt ? MASKE_KLASSE : undefined} value={wert} onChange={(e) => setWert(e.target.value)} />
+    </ui.Field>);
+}
 
 /** Meldung: Fehler als Alarm mit Vorsatz „Fehler:" (nicht nur Farbe), Erfolg als Status. */
 function Meldung({ m }) {
@@ -46,7 +83,7 @@ function Meldung({ m }) {
 function Kopieren({ text, was, ui }) {
   const [stand, setStand] = useState("");
   const kopieren = async () => {
-    try { await navigator.clipboard.writeText(text); setStand("Kopiert."); }
+    try { await navigator.clipboard.writeText(text); setStand("Kopiert. Zwischenablage nach dem Einfügen leeren."); }
     catch { setStand("Kopieren nicht möglich. Bitte von Hand abschreiben."); }
   };
   return (
@@ -91,38 +128,52 @@ function CodesAnzeige({ codes, ui }) {
       </ul>
       <Kopieren text={codes.join("\n")} was="Wiederherstellungscodes" ui={ui} />
       <p style={TEXT}>Schreibe sie auf Papier oder lege sie in einem Passwortmanager ab, getrennt vom Telefon. Nicht per E-Mail oder
-        Messenger weitergeben und nicht auf einem fremden oder gemeinsamen Drucker ausdrucken. Jeder Code gilt einmal.</p>
+        Messenger weitergeben und nicht auf einem fremden oder gemeinsamen Drucker ausdrucken. Wer sie kopiert, leert danach die
+        Zwischenablage. Jeder Code gilt einmal. Die Anzeige endet nach 15 Minuten.</p>
     </div>);
 }
 
-/** Nach dieser Zeit verschwindet ein angezeigter Einmalwert, auch wenn die Ansicht offen bleibt. */
-function useNachFrist(aktiv, minuten, leeren) {
-  useEffect(() => {
-    if (!aktiv) return undefined;
-    const t = setTimeout(leeren, minuten * 60 * 1000);
-    return () => clearTimeout(t);
-  }, [aktiv]); // eslint-disable-line react-hooks/exhaustive-deps
+/** Der Halter als Zustand der Ansicht: Neuaufbau und Einklappen verlieren nichts. */
+export function useHalter() { return useSyncExternalStore(halter.abonnieren, halter.lesen, halter.lesen); }
+/** Für die Anmeldemaske: Solange ein Einmalwert sichtbar ist, darf die Ansicht nicht geschlossen werden. */
+export function useVerlustSperre() { return !schliessenErlaubt(useHalter()); }
+
+const ABLAUF_TEXT = Object.freeze({
+  einrichtung: `Die Einrichtung ist nach ${TOKEN_MINUTEN} Minuten abgelaufen. Bitte einen neuen Antrag stellen.`,
+  codes: "Die Wiederherstellungscodes wurden nach 15 Minuten ausgeblendet.",
+  freigabe: `Das Abschlusstoken wurde nach ${TOKEN_MINUTEN} Minuten ausgeblendet.`,
+});
+
+/** Frage vor dem Verwerfen eines Einmalwerts (im Panel, kein window.confirm). */
+function VerwerfenFrage({ ui, was, folge, ja, zurueck }) {
+  return (
+    <div style={KASTEN} role="alertdialog" aria-label={`${was} verwerfen?`}>
+      <div><strong>{was} wirklich verwerfen?</strong> {folge}</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <ui.Btn type="button" kind="primary" onClick={ja}>Ja, verwerfen</ui.Btn>
+        <ui.Btn type="button" onClick={zurueck}>Zurück</ui.Btn>
+      </div>
+    </div>);
 }
 
 /* ------------------------------------------------------------------------ Träger */
 
 function Traeger({ ui, gesperrt, sperren }) {
+  const h = useHalter();
+  const maske = useMaske();
   const [modus, setModus] = useState(AKTION.melden);
   const [zugangscode, setZugangscode] = useState("");
   const [token, setToken] = useState("");
   const [code, setCode] = useState("");
   const [laeuft, setLaeuft] = useState(false);
   const [meldung, setMeldung] = useState(null);
-  const [fall, setFall] = useState(null);                 // { fall, gueltigBis } — nach dem Melden
-  const [einrichtung, setEinrichtung] = useState(null);   // { geheimnis, otpauth } — nach dem Einlösen
-  const [codes, setCodes] = useState(null);               // neue Wiederherstellungscodes
-
-  useNachFrist(!!einrichtung, TOKEN_MINUTEN, () => { setEinrichtung(null); setMeldung({ art: "fehler",
-    text: `Die Einrichtung ist nach ${TOKEN_MINUTEN} Minuten abgelaufen. Bitte einen neuen Antrag stellen.` }); });
+  const [frage, setFrage] = useState(false);              // Frage „Geheimnis verwerfen?"
+  const [gesichert, setGesichert] = useState(false);      // Häkchen „Codes gesichert"
+  const { fall, einrichtung, codes } = h;                 // fall: { fall, gueltigBis } · einrichtung: { geheimnis, otpauth } · codes: [...]
 
   /** Eine Aktion absenden. Der Zugangscode und der Code aus der App werden danach immer geleert. */
   const senden = async (aktion, felder, bei) => {
-    setLaeuft(true); setMeldung(null);
+    setLaeuft(true); setMeldung(null); halter.quittieren();
     const a = await verlustSenden(aktion, felder);
     setLaeuft(false); setZugangscode(""); setCode("");
     if (a.art !== "eingabe") setToken("");      // abgeschickt: auch das Abschlusstoken wird geleert
@@ -135,25 +186,31 @@ function Traeger({ ui, gesperrt, sperren }) {
     e.preventDefault();
     if (laeuft) return;
     if (einrichtung) {
-      senden(AKTION.bestaetigen, { zugangscode, code }, (d) => { setEinrichtung(null); setCodes(d.wiederherstellung);
-        setMeldung({ art: "ok", text: "Der neue zweite Faktor ist eingerichtet." }); });
+      senden(AKTION.bestaetigen, { zugangscode, code }, (d) => { halter.setzen("einrichtung", null); halter.setzen("codes", d.wiederherstellung);
+        setFrage(false); setGesichert(false); setMeldung({ art: "ok", text: "Der neue zweite Faktor ist eingerichtet." }); });
       return;
     }
     if (modus === AKTION.melden)
-      senden(AKTION.melden, { zugangscode }, (d) => { setFall({ fall: d.fall, gueltigBis: d.gueltigBis }); });
+      senden(AKTION.melden, { zugangscode }, (d) => { halter.setzen("fall", { fall: d.fall, gueltigBis: d.gueltigBis }); });
     else if (modus === AKTION.zurueckziehen)
-      senden(AKTION.zurueckziehen, { zugangscode }, () => { setFall(null); setMeldung({ art: "ok", text: "Der Antrag ist zurückgezogen." }); });
+      senden(AKTION.zurueckziehen, { zugangscode }, () => { halter.setzen("fall", null); setMeldung({ art: "ok", text: "Der Antrag ist zurückgezogen." }); });
     else
-      senden(AKTION.einloesen, { zugangscode, token }, (d) => { setFall(null);
-        setEinrichtung({ geheimnis: d.geheimnis, otpauth: d.otpauth }); });
+      senden(AKTION.einloesen, { zugangscode, token }, (d) => { halter.setzen("fall", null);
+        halter.setzen("einrichtung", { geheimnis: d.geheimnis, otpauth: d.otpauth }); });
   };
-  const schliessen = () => { setFall(null); setEinrichtung(null); setCodes(null); setToken(""); setCode(""); setZugangscode(""); setMeldung(null); };
+
+  const abgelaufen = h.abgelaufen === "einrichtung" || h.abgelaufen === "codes" ? ABLAUF_TEXT[h.abgelaufen] : null;
 
   if (codes) return (
     <div style={ABSTAND}>
       <Meldung m={meldung} />
       <CodesAnzeige codes={codes} ui={ui} />
-      <ui.Btn type="button" kind="primary" onClick={schliessen}>Ich habe die Codes gesichert, ausblenden</ui.Btn>
+      <label style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 32, fontSize: 14, cursor: "pointer" }}>
+        <input type="checkbox" checked={gesichert} onChange={(e) => setGesichert(e.target.checked)} style={{ width: 18, height: 18, margin: 0, flexShrink: 0 }} />
+        <span>Ich habe die Codes gesichert.</span>
+      </label>
+      <div><ui.Btn type="button" kind="primary" disabled={!gesichert} onClick={() => { halter.setzen("codes", null); setMeldung(null); }}>
+        Codes ausblenden</ui.Btn></div>
     </div>);
 
   if (gesperrt && !einrichtung) return null;     // die Meldung steht einmal oben (VerlustWeg)
@@ -162,10 +219,13 @@ function Traeger({ ui, gesperrt, sperren }) {
     : modus === AKTION.melden ? "Antrag stellen" : modus === AKTION.zurueckziehen ? "Antrag zurückziehen" : "Freigabe einlösen";
   return (
     <form onSubmit={abschicken} style={ABSTAND} autoComplete="off" noValidate>
+      <style>{MASKE_STIL}</style>
+      {abgelaufen && <div role="alert" style={{ ...TEXT, fontWeight: 600 }}>{abgelaufen}</div>}
       {!einrichtung && <>
         <p style={TEXT}><strong>Gerät und Wiederherstellungscodes sind weg?</strong> Dann prüfen zwei Leitungen deines Betriebs
           deine Identität (Vier-Augen-Prinzip), jede mit eigenem Zugangscode und frischem Code aus ihrer App, persönlich, per Rückruf oder
-          schriftlich. Der Antrag bleibt {ANTRAG_STUNDEN} Stunden offen. Mit dem Antrag enden alle Anmeldungen dieses Zugangs.
+          schriftlich. Die beiden Leitungen dürfen nicht derselben Einheit angehören. Der Antrag bleibt {ANTRAG_STUNDEN} Stunden offen.
+          Mit dem Antrag enden alle Anmeldungen dieses Zugangs.
           Wenn du das Gerät wiederfindest, melde dich mit dem Code aus der App an: Das zieht den Antrag zurück.</p>
         <Wahl legende="Was möchtest du tun?" name="verlust-traeger-modus" wert={modus} setWert={setModus}
           liste={[{ wert: AKTION.melden, text: "Antrag stellen" }, { wert: AKTION.zurueckziehen, text: "Antrag zurückziehen" },
@@ -181,21 +241,27 @@ function Traeger({ ui, gesperrt, sperren }) {
       </>}
       {einrichtung && <>
         <EinrichtungAnzeige geheimnis={einrichtung.geheimnis} otpauth={einrichtung.otpauth} ui={ui} />
-        <p style={TEXT}>Danach den ersten Code aus der App und deinen Zugangscode eingeben.</p>
+        <p style={TEXT}>Danach den ersten Code aus der App und deinen Zugangscode eingeben. Bis dahin bleibt diese Anzeige stehen,
+          auch wenn du den Bereich verlässt; ohne Bestätigung ist ein neuer Antrag mit zwei Leitungen nötig.</p>
       </>}
-      <ui.Field label="Zugangscode" hint={`Dein bisheriger Zugangscode. Er wird nirgends gespeichert und bei jedem Schritt neu abgefragt.`}>
-        <ui.Inp type="password" {...EINMAL} value={zugangscode} onChange={(e) => setZugangscode(e.target.value)} /></ui.Field>
+      <Geheimfeld ui={ui} maske={maske} label="Zugangscode" hint="Dein bisheriger Zugangscode. Er wird von dieser Seite nirgends gespeichert und bei jedem Schritt neu abgefragt."
+        wert={zugangscode} setWert={setZugangscode} />
       {!einrichtung && modus === AKTION.einloesen &&
-        <ui.Field label="Abschlusstoken" hint={`Genau so, wie du es von der Leitung erhalten hast (Groß- und Kleinschreibung zählt). Gilt ${TOKEN_MINUTEN} Minuten.`}>
-          <ui.Inp type="password" {...EINMAL} value={token} onChange={(e) => setToken(e.target.value)} /></ui.Field>}
+        <Geheimfeld ui={ui} maske={maske} label="Abschlusstoken" hint={`Genau so, wie du es von der Leitung erhalten hast (Groß- und Kleinschreibung zählt). Gilt ${TOKEN_MINUTEN} Minuten.`}
+          wert={token} setWert={setToken} />}
       {einrichtung &&
         <ui.Field label="Erster Code aus der App" hint="Sechs Ziffern.">
           <ui.Inp {...EINMAL} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} /></ui.Field>}
+      <MaskeSchalter ui={ui} maske={maske} />
       <Meldung m={meldung} />
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <ui.Btn type="submit" kind="primary" disabled={laeuft}>{laeuft ? "Wird geprüft …" : knopf}</ui.Btn>
-        {(fall || einrichtung) && <ui.Btn type="button" onClick={schliessen}>Ausblenden</ui.Btn>}
-      </div>
+      {frage
+        ? <VerwerfenFrage ui={ui} was="Das Geheimnis" folge="Es lässt sich nicht erneut anzeigen. Ohne Bestätigung ist ein neuer Antrag mit zwei Leitungen nötig."
+          ja={() => { halter.setzen("einrichtung", null); setFrage(false); }} zurueck={() => setFrage(false)} />
+        : <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <ui.Btn type="submit" kind="primary" disabled={laeuft}>{laeuft ? "Wird geprüft …" : knopf}</ui.Btn>
+          {fall && !einrichtung && <ui.Btn type="button" onClick={() => halter.setzen("fall", null)}>Ausblenden</ui.Btn>}
+          {einrichtung && <ui.Btn type="button" onClick={() => setFrage(true)}>Geheimnis verwerfen</ui.Btn>}
+        </div>}
     </form>);
 }
 
@@ -204,40 +270,50 @@ function Traeger({ ui, gesperrt, sperren }) {
 const LEER = { zugangscode: "", code: "", fall: "", personalnummer: "", verfahren: "", aktenzeichen: "", grund: "" };
 
 function Freigabe({ ui, gesperrt, sperren }) {
+  const h = useHalter();
+  const maske = useMaske();
   const [modus, setModus] = useState(AKTION.freigeben);
   const [f, setF] = useState(LEER);
   const [laeuft, setLaeuft] = useState(false);
   const [meldung, setMeldung] = useState(null);
-  const [ergebnis, setErgebnis] = useState(null);   // { stufe, traeger, freigabe, gueltigBis } — nur aus der Serverantwort
+  const [lokal, setLokal] = useState(null);         // Ergebnis ohne Einmalwert (erste Freigabe, Ablehnung)
+  const [frage, setFrage] = useState(false);
+  const ergebnis = h.freigabe || lokal;             // { stufe, traeger, freigabe, gueltigBis } — nur aus der Serverantwort
   const setze = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const wahl = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
-
-  useNachFrist(!!(ergebnis && ergebnis.freigabe), TOKEN_MINUTEN, () => setErgebnis(null));
+  const tokenOffen = !!h.freigabe;
 
   const abschicken = async (e) => {
     e.preventDefault();
-    if (laeuft) return;
-    setLaeuft(true); setMeldung(null);
+    if (laeuft || tokenOffen) return;
+    setLaeuft(true); setMeldung(null); halter.quittieren();
     const a = await verlustSenden(modus, f);
     setLaeuft(false);
     if (a.art === "eingabe") {      // Form falsch: nichts abgeschickt, nur die Einmalwerte leeren
       setF((x) => ({ ...x, zugangscode: "", code: "" })); setMeldung({ art: "fehler", text: a.text }); return;
     }
-    if (a.art === "ok") { setF(LEER); setErgebnis(a.daten); return; }          // Erfolg: alles leeren
+    if (a.art === "ok") {          // Erfolg: alles leeren; ein Token kommt in den Halter
+      setF(LEER);
+      if (a.daten.stufe === "freigegeben") { setLokal(null); halter.setzen("freigabe", a.daten); } else setLokal(a.daten);
+      return;
+    }
     setF((x) => ({ ...x, zugangscode: "", code: "", personalnummer: "" }));      // Misserfolg: Einmalwerte und Nummer leeren
     if (a.art === "nicht-verfuegbar") { sperren(); return; }
     setMeldung({ art: "fehler", text: a.text });
   };
-  const schliessen = () => { setErgebnis(null); setMeldung(null); setF(LEER); };
 
-  if (gesperrt) return null;
+  if (gesperrt && !tokenOffen) return null;
 
   const ablehnen = modus === AKTION.ablehnen;
   const kontrolle = ergebnis ? traegerZeile(ergebnis.traeger) : "";
+  const abgelaufen = h.abgelaufen === "freigabe" ? ABLAUF_TEXT.freigabe : null;
   return (
     <form onSubmit={abschicken} style={ABSTAND} autoComplete="off" noValidate>
+      <style>{MASKE_STIL}</style>
+      {abgelaufen && <div role="alert" style={{ ...TEXT, fontWeight: 600 }}>{abgelaufen}</div>}
       <p style={TEXT}><strong>Vier-Augen-Prinzip:</strong> Zwei Leitungen desselben Betriebs müssen den Antrag unabhängig voneinander freigeben,
-        jede mit eigenem Zugangscode, frischem Code aus der eigenen App und eigener Prüfung der Identität. Eine eigene Freigabe ist nicht möglich.
+        jede mit eigenem Zugangscode, frischem Code aus der eigenen App und eigener Prüfung der Identität. Die beiden Leitungen dürfen
+        nicht derselben Einheit angehören. Eine eigene Freigabe ist nicht möglich.
         Die zweite Freigabe ergibt ein Abschlusstoken, das du persönlich oder am Telefon übergibst, nie per E-Mail allein.</p>
       {ergebnis && ergebnis.stufe === "teilfreigegeben" && <div style={KASTEN} role="status">
         <div><strong>Deine Freigabe ist gespeichert.</strong> Es fehlt noch die Freigabe einer zweiten Leitung.</div>
@@ -251,6 +327,8 @@ function Freigabe({ ui, gesperrt, sperren }) {
         <div>Gilt bis {zeitText(ergebnis.gueltigBis) || `${TOKEN_MINUTEN} Minuten nach der Freigabe`}. Erst nach der Identitätsprüfung
           persönlich oder telefonisch an die Person übergeben, nie per E-Mail allein.</div>
         {kontrolle && <div>Geprüfte Person laut System: {kontrolle}.</div>}
+        <div><strong>Stimmt der angezeigte Name nicht mit der geprüften Person überein, gib das Token nicht weiter.</strong></div>
+        <div>Die Anzeige bleibt stehen, bis du sie ausblendest, höchstens {TOKEN_MINUTEN} Minuten. Bis dahin ist keine weitere Freigabe möglich.</div>
       </div>}
       {ergebnis && ergebnis.stufe === "abgelehnt" && <div style={KASTEN} role="status">
         <div><strong>Der Antrag ist abgelehnt.</strong></div>
@@ -258,8 +336,8 @@ function Freigabe({ ui, gesperrt, sperren }) {
       </div>}
       <Wahl legende="Was möchtest du tun?" name="verlust-freigabe-modus" wert={modus} setWert={setModus}
         liste={[{ wert: AKTION.freigeben, text: "Antrag freigeben" }, { wert: AKTION.ablehnen, text: "Antrag ablehnen" }]} />
-      <ui.Field label="Dein Zugangscode" hint="Dein eigener Zugangscode, nicht der der antragstellenden Person. Wird nirgends gespeichert.">
-        <ui.Inp type="password" {...EINMAL} value={f.zugangscode} onChange={setze("zugangscode")} /></ui.Field>
+      <Geheimfeld ui={ui} maske={maske} label="Dein Zugangscode" hint="Dein eigener Zugangscode, nicht der der antragstellenden Person. Wird von dieser Seite nirgends gespeichert."
+        wert={f.zugangscode} setWert={(v) => setF((x) => ({ ...x, zugangscode: v }))} />
       <ui.Field label="Frischer Code aus deiner App" hint="Sechs Ziffern, jeder Code gilt einmal. Kein Wiederherstellungscode.">
         <ui.Inp {...EINMAL} inputMode="numeric" value={f.code} onChange={setze("code")} /></ui.Field>
       <ui.Field label="Fallnummer" hint="Die Fallnummer, die dir die antragstellende Person nennt (F- und 16 Zeichen).">
@@ -275,11 +353,16 @@ function Freigabe({ ui, gesperrt, sperren }) {
           <ui.Field label="Aktenzeichen (freiwillig)" hint="Verweis auf deine Unterlagen zur Prüfung, keine Personendaten.">
             <ui.Inp {...EINMAL} value={f.aktenzeichen} onChange={setze("aktenzeichen")} /></ui.Field>
         </>}
+      <MaskeSchalter ui={ui} maske={maske} />
       <Meldung m={meldung} />
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <ui.Btn type="submit" kind="primary" disabled={laeuft}>{laeuft ? "Wird geprüft …" : ablehnen ? "Antrag ablehnen" : "Antrag freigeben"}</ui.Btn>
-        {ergebnis && <ui.Btn type="button" onClick={schliessen}>Ausblenden</ui.Btn>}
-      </div>
+      {frage
+        ? <VerwerfenFrage ui={ui} was="Das Abschlusstoken" folge="Es lässt sich nicht erneut anzeigen. Ohne Token muss der Fall neu freigegeben werden."
+          ja={() => { halter.setzen("freigabe", null); setFrage(false); }} zurueck={() => setFrage(false)} />
+        : <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <ui.Btn type="submit" kind="primary" disabled={laeuft || tokenOffen}>{laeuft ? "Wird geprüft …" : ablehnen ? "Antrag ablehnen" : "Antrag freigeben"}</ui.Btn>
+          {tokenOffen && <ui.Btn type="button" onClick={() => setFrage(true)}>Token ausblenden</ui.Btn>}
+          {!tokenOffen && lokal && <ui.Btn type="button" onClick={() => { setLokal(null); setMeldung(null); setF(LEER); }}>Ausblenden</ui.Btn>}
+        </div>}
     </form>);
 }
 
@@ -287,26 +370,32 @@ function Freigabe({ ui, gesperrt, sperren }) {
 
 /**
  * Die beiden Wege unter dem zweiten Faktor des eigenen Zugangscodes. Ein Weg ist erst offen, wenn man ihn aufklappt
- * (Zuklappen löscht seine Eingaben). Meldet der Server „nicht verfügbar", sind beide gesperrt.
+ * (Zuklappen löscht seine Eingaben, nicht aber einen angezeigten Einmalwert: der liegt im Halter und sperrt das Zuklappen).
+ * Meldet der Server „nicht verfügbar", sind beide gesperrt.
  * @param {{ui: any, start?: "traeger"|"leitung"|null}} p
  */
 export function VerlustWeg({ ui, start = null }) {
   const [offen, setOffen] = useState(start);
   const [gesperrt, setGesperrt] = useState(false);
+  const h = useHalter();
+  const haelt = !schliessenErlaubt(h);
+  const aktiv = haltenderWeg(h) || offen;           // ein gehaltener Einmalwert hält seinen Weg offen
   const sperren = () => setGesperrt(true);
   const knopf = (id, text) => (
-    <button type="button" aria-expanded={offen === id} aria-controls={`verlust-${id}`} onClick={() => setOffen(offen === id ? null : id)}
-      disabled={gesperrt} style={{ ...TAST, opacity: gesperrt ? 0.55 : 1, cursor: gesperrt ? "default" : "pointer" }}>{text}</button>);
+    <button type="button" aria-expanded={aktiv === id} aria-controls={`verlust-${id}`} onClick={() => setOffen(aktiv === id ? null : id)}
+      disabled={gesperrt || haelt} style={{ ...TAST, opacity: gesperrt || haelt ? 0.55 : 1, cursor: gesperrt || haelt ? "default" : "pointer" }}>{text}</button>);
   return (
     <div style={{ display: "grid", gap: 10, minWidth: 0 }} data-verlustweg="">
       <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Zugang verloren?</h3>
       {gesperrt
         ? <p role="status" style={TEXT}>{TEXT_NICHT_VERFUEGBAR}</p>
         : <p style={TEXT}>Nur für Zugänge mit eingerichtetem zweitem Faktor (Leitung, Planung, Kunde).</p>}
+      {haelt && <p role="status" style={{ ...TEXT, fontWeight: 600 }}>Ein Wert wird nur einmal angezeigt. Bitte zuerst sichern und ausblenden, dann lässt sich
+        dieser Bereich schließen.</p>}
       {knopf("traeger", "Ich habe Gerät und Codes verloren")}
-      {offen === "traeger" && <div id="verlust-traeger"><Traeger ui={ui} gesperrt={gesperrt} sperren={sperren} /></div>}
+      {aktiv === "traeger" && <div id="verlust-traeger"><Traeger ui={ui} gesperrt={gesperrt} sperren={sperren} /></div>}
       {knopf("leitung", "Ich bin Leitung und gebe einen Antrag frei")}
-      {offen === "leitung" && <div id="verlust-leitung"><Freigabe ui={ui} gesperrt={gesperrt} sperren={sperren} /></div>}
+      {aktiv === "leitung" && <div id="verlust-leitung"><Freigabe ui={ui} gesperrt={gesperrt} sperren={sperren} /></div>}
     </div>);
 }
 

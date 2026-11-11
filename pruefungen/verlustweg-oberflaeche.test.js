@@ -9,11 +9,10 @@
    Die Bedienung im Browser (aufklappen, tippen, absenden) misst pruefungen/browser/verlustweg-wr6.mjs von Hand.
    Alle Personen und Nummern sind erfunden.
    ========================================================================== */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,6 +22,7 @@ let V;          // src/verlustweg.jsx
 let Z;          // src/betreiber-2fa.jsx
 let S;          // server/lib/kontowiederherstellung.mjs
 let ZUGANG;     // server/lib/kontowiederherstellung-zugang.mjs
+let H;          // src/lib/verlustweg-halter.js
 beforeAll(async () => {
   process.env.CENTRIC_DATEN = await mkdtemp(path.join(tmpdir(), "centric-wr6-"));
   L = await import("../src/lib/verlustweg.js");
@@ -30,6 +30,7 @@ beforeAll(async () => {
   Z = await import("../src/betreiber-2fa.jsx");
   S = await import("../server/lib/kontowiederherstellung.mjs");
   ZUGANG = await import("../server/lib/kontowiederherstellung-zugang.mjs");
+  H = await import("../src/lib/verlustweg-halter.js");
 }, 120000);
 
 const FALL = "F-ABCDEFGH23456789".slice(0, 18);               // F- und 16 Zeichen
@@ -106,8 +107,18 @@ describe("Anfragen bauen und Eingaben prüfen", () => {
     expect(L.TOKEN_MINUTEN * 60000).toBe(S.TOKEN_FRIST_MS);
     for (let i = 0; i < 200; i++) {
       expect(L.FALL_MUSTER.test(S.fallKennungNeu())).toBe(true);
-      expect(L.TOKEN_MUSTER.test(randomBytes(32).toString("base64url"))).toBe(true);
+      expect(L.TOKEN_MUSTER.test(S.tokenNeu())).toBe(true);            // der echte Generator des Servers (fallFreigeben)
     }
+  });
+  it("Kopplung an die echten Server-Konstanten: Höchstlänge der Personalnummer und Marker des allgemeinen Nein", async () => {
+    expect(L.PERSONALNUMMER_MAX).toBe(ZUGANG.PN_MAX);
+    expect(L.NEIN_MARKER).toBe(ZUGANG.NEIN.verlust);
+    /* genau das „nein“, das der Server schickt, ist für die Oberfläche kein Hinweis auf den Schalter */
+    expect(L.verlustAntwort(L.AKTION.freigeben, 403, ZUGANG.NEIN)).toEqual({ art: "fehler", text: ZUGANG.NEIN.fehler });
+    /* und die Form: 40 Zeichen gehen durch, 41 nicht — wie im Server */
+    const ok = { zugangscode: "z", code: "654321", fall: FALL, verfahren: "persoenlich" };
+    expect(L.verlustAnfrage(L.AKTION.freigeben, { ...ok, personalnummer: "9".repeat(ZUGANG.PN_MAX) }).ok).toBe(true);
+    expect(L.verlustAnfrage(L.AKTION.freigeben, { ...ok, personalnummer: "9".repeat(ZUGANG.PN_MAX + 1) }).ok).toBe(false);
   });
 });
 
@@ -239,7 +250,11 @@ describe("Wiedergabe", () => {
     for (const feld of m.match(/<input[^>]*>/g) || [])                           // nichts vorbelegt außer den Auswahlfeldern
       if (!/type="radio"/.test(feld)) expect(feld).not.toMatch(/value="[^"]+"/);
     expect(m).not.toContain("data-einmal");                                    // Fallnummer, Token, Geheimnis, Codes erst nach Antwort
-    expect(m).toMatch(/<input[^>]*type="password"/);                          // Zugangscode verdeckt
+    expect(m).not.toMatch(/type="password"/);                                  // Passwortverwalter würden Zugangscode und Token anbieten
+    expect(m).toContain("verlust-geheim");                                     // verdeckt per CSS, nicht per Feldtyp
+    expect(m).toContain("-webkit-text-security");
+    expect(m).toContain("Eingaben anzeigen");                                  // Schalter statt Passwortfeld
+    expect(m).toContain("Die beiden Leitungen dürfen nicht derselben Einheit angehören.");
     expect(m).not.toMatch(/F-[A-Z2-9]{16}/);
   });
   it("Träger: nicht verfügbar — nichts zu bedienen", () => {
@@ -259,10 +274,23 @@ describe("Wiedergabe", () => {
     expect(m).toContain("Antrag freigeben");
     expect(m).toContain("Antrag ablehnen");
     expect(m).not.toContain("one-time-code");
+    expect(m).not.toMatch(/type="password"/);
+    expect(m).toContain("nicht derselben Einheit angehören.");
     expect(m).not.toContain("Geprüfte Person laut System");                    // die Person erscheint nur nach einer Serverantwort
     expect(m).not.toContain("data-einmal");
-    for (const feld of m.match(/<input[^>]*type="(?:text|password)"[^>]*>|<input(?![^>]*type=)[^>]*>/g) || [])
-      expect(feld).toMatch(/autoComplete="off"/i);
+    for (const feld of m.match(/<input[^>]*>/g) || []) {
+      if (/type="radio"/.test(feld)) continue;
+      expect(feld, feld).toMatch(/autoComplete="off"/i);
+      expect(feld).toMatch(/autoCorrect="off"/i);
+      expect(feld).toMatch(/autoCapitalize="(off|characters)"/i);
+      expect(feld).toMatch(/spellCheck="false"/i);
+      expect(feld).toContain('data-lpignore="true"');
+      expect(feld).toContain('data-1p-ignore="true"');
+      expect(feld).toContain('data-bwignore="true"');
+      expect(feld).toContain('type="text"');
+      expect(feld).not.toMatch(/\b(name|id)=/);                                  // nichts, was Passwort-Heuristiken auslöst
+      expect(feld).not.toMatch(/pass|current-password|new-password/i);
+    }
   });
   it("Einhängepunkt: zugeklappt zwei Knöpfe, aufgeklappt der gewählte Weg; Name und Zustand sind ausgezeichnet", () => {
     const zu = html(h(V.VerlustWeg, { ui: UI }));
@@ -296,8 +324,146 @@ describe("Wiedergabe", () => {
   });
 });
 
+describe("Eingabefelder (H1): nie type=password, Passwortverwalter bleiben draußen", () => {
+  it("Vertrag der Einmalfelder", () => {
+    expect(V.EINMAL).toMatchObject({ type: "text", autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false,
+      "data-lpignore": "true", "data-1p-ignore": "true", "data-bwignore": "true" });
+    expect(Object.keys(V.EINMAL).some((k) => /^(name|id)$/.test(k))).toBe(false);
+  });
+  it("Zugangscode und Abschlusstoken sind verdeckt, aber Textfelder", () => {
+    const t = html(h(V.VerlustTraeger, { ui: UI, gesperrt: false, sperren: () => {} }));
+    expect(t.match(/<input[^>]*class="verlust-geheim"[^>]*>/g) || []).toHaveLength(1);        // Zugangscode (Token erst im Modus Einlösen)
+    const f = html(h(V.VerlustFreigabe, { ui: UI, gesperrt: false, sperren: () => {} }));
+    expect(f.match(/<input[^>]*class="verlust-geheim"[^>]*>/g) || []).toHaveLength(1);
+    for (const m of [t, f]) expect(m).not.toMatch(/type="password"/);
+  });
+  it("die Quelle des neuen Weges kennt kein type password", async () => {
+    for (const d of ["src/verlustweg.jsx", "src/lib/verlustweg.js"]) {
+      const q = (await readFile(new URL(`../${d}`, import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(q, d).not.toMatch(/type=["']password["']/);
+      expect(q, d).not.toMatch(/type:\s*["']password["']/);
+      expect(q, d).not.toMatch(/autoComplete=["'](one-time-code|new-password|current-password)["']/);
+    }
+  });
+});
+
+describe("Einmalwerte (M1): Einklappen, Neuaufbau und Schließen verwerfen sie nicht", () => {
+  afterEach(() => { vi.useRealTimers(); H.halter.leeren(); });
+  const traeger = () => html(h(V.VerlustTraeger, { ui: UI, gesperrt: false, sperren: () => {} }));
+  const weg = (start) => html(h(V.VerlustWeg, { ui: UI, start }));
+
+  it("reine Zustandsfunktionen: Schließen nur ohne Einmalwert; Weg des gehaltenen Werts", () => {
+    const leer = H.halter.lesen();
+    expect(H.schliessenErlaubt(leer)).toBe(true);
+    expect(H.haltenderWeg(leer)).toBe(null);
+    for (const [k, wert, w] of [["einrichtung", { geheimnis: "JBSWY3DP" }, "traeger"], ["codes", ["AAAA-BBBB"], "traeger"], ["freigabe", { stufe: "freigegeben" }, "leitung"]]) {
+      H.halter.setzen(k, wert);
+      expect(H.schliessenErlaubt(H.halter.lesen()), k).toBe(false);
+      expect(H.haltenderWeg(H.halter.lesen()), k).toBe(w);
+      H.halter.setzen(k, null);
+      expect(H.schliessenErlaubt(H.halter.lesen()), k).toBe(true);
+    }
+    H.halter.setzen("fall", { fall: FALL });                                  // die Fallnummer ist kein Einmalgeheimnis: Schließen bleibt erlaubt
+    expect(H.schliessenErlaubt(H.halter.lesen())).toBe(true);
+    expect(() => H.halter.setzen("zugangscode", "x")).toThrow();               // nur die vier bekannten Werte
+  });
+  it("das Geheimnis übersteht den Neuaufbau: mehrfach gerendert, jedes Mal da; erst nach Bestätigung weg", () => {
+    H.halter.setzen("einrichtung", { geheimnis: "JBSWY3DPEHPK3PXP", otpauth: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP" });
+    expect(traeger()).toContain("JBSWY3DPEHPK3PXP");
+    expect(traeger()).toContain("JBSWY3DPEHPK3PXP");                           // „Remount“: neuer Render, derselbe Halter
+    expect(traeger()).toContain("Mit Code bestätigen");
+    expect(traeger()).toContain("Geheimnis verwerfen");
+    expect(traeger()).toContain("ohne Bestätigung ist ein neuer Antrag mit zwei Leitungen nötig");
+    H.halter.setzen("einrichtung", null);                                       // nach „Ja, verwerfen“
+    expect(traeger()).not.toContain("JBSWY3DPEHPK3PXP");
+  });
+  it("die Wiederherstellungscodes übersteht der Neuaufbau; ausblenden erst nach dem Häkchen (Knopf gesperrt)", () => {
+    H.halter.setzen("codes", ["AAAA-BBBB-CCCC", "DDDD-EEEE-FFFF"]);
+    const m = traeger();
+    expect(m).toContain("AAAA-BBBB-CCCC");
+    expect(traeger()).toContain("DDDD-EEEE-FFFF");
+    expect(m).toContain("Ich habe die Codes gesichert.");
+    expect(m).toMatch(/<button[^>]*disabled[^>]*>Codes ausblenden/);          // ohne Häkchen gesperrt
+    expect(m).toContain("Zwischenablage");
+    expect(m).toContain("Die Anzeige endet nach 15 Minuten.");
+  });
+  it("das Abschlusstoken der Leitung bleibt gehalten; eine zweite Freigabe ist bis zum Ausblenden gesperrt", () => {
+    H.halter.setzen("freigabe", { stufe: "freigegeben", traeger: { vorname: "Erika", nachname: "Musterfrau", einheit: "Station 3" }, freigabe: TOKEN,
+      gueltigBis: "2026-11-11T10:15:00.000Z" });
+    const m = html(h(V.VerlustFreigabe, { ui: UI, gesperrt: false, sperren: () => {} }));
+    expect(m).toContain(TOKEN);
+    expect(html(h(V.VerlustFreigabe, { ui: UI, gesperrt: false, sperren: () => {} }))).toContain(TOKEN);
+    expect(m).toMatch(/<button[^>]*type="submit"[^>]*disabled|<button[^>]*disabled[^>]*type="submit"/);
+    expect(m).toContain("Token ausblenden");
+    expect(m).toContain("Erika Musterfrau · Einheit Station 3");
+  });
+  it("Einhängepunkt: ein gehaltener Wert hält seinen Weg offen und sperrt das Einklappen — auch ohne start", () => {
+    H.halter.setzen("einrichtung", { geheimnis: "JBSWY3DPEHPK3PXP", otpauth: null });
+    const m = weg(null);
+    expect(m).toContain("JBSWY3DPEHPK3PXP");                                    // Weg „traeger“ von selbst offen
+    expect(m).toContain('aria-expanded="true"');
+    expect(m.match(/<button[^>]*aria-expanded[^>]*>/g).every((b) => /disabled/.test(b))).toBe(true);   // beide Umschalter gesperrt
+    expect(m).toContain("Ein Wert wird nur einmal angezeigt.");
+    H.halter.leeren();
+    const frei = weg(null);
+    expect(frei).not.toContain("Ein Wert wird nur einmal angezeigt.");
+    expect(frei.match(/<button[^>]*aria-expanded[^>]*>/g).some((b) => /disabled/.test(b))).toBe(false);
+  });
+  it("Anmeldemaske: der Schließen-Knopf und der Verweis hängen an der Sperre (main.jsx)", async () => {
+    const main = (await readFile(new URL("../src/main.jsx", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+    expect(main).toContain("const verlustSperre = useVerlustSperre();");
+    expect(main).toMatch(/disabled=\{zfVerwalten && verlustSperre\}/);
+    expect(main).toContain("if (!verlustSperre) setZfVerlust((n) => n + 1);");
+    expect(main).toContain("verlustHalter.leeren();");                           // eine gelungene Anmeldung gibt alles frei
+  });
+  it("Frist: nach der Frist sind Geheimnis, Codes und Token weg und der Hinweis nennt es; Quittieren nimmt den Hinweis", () => {
+    vi.useFakeTimers();
+    expect(H.FRIST.codes).toBe(15 * 60 * 1000);                                   // auch die Codes: 15 Minuten
+    for (const k of ["einrichtung", "codes", "freigabe"]) {
+      const hl = H.halterNeu();
+      hl.setzen(k, k === "codes" ? ["A"] : { x: 1 });
+      vi.advanceTimersByTime(H.FRIST[k] - 1);
+      expect(hl.lesen()[k], k).not.toBe(null);
+      vi.advanceTimersByTime(1);
+      expect(hl.lesen(), k).toMatchObject({ [k]: null, abgelaufen: k });
+      hl.quittieren();
+      expect(hl.lesen().abgelaufen).toBe(null);
+    }
+    const hl = H.halterNeu();
+    hl.setzen("codes", ["B"]); hl.leeren();                                       // leeren stoppt die Zeitgeber
+    vi.advanceTimersByTime(H.FRIST.fall);
+    expect(hl.lesen().abgelaufen).toBe(null);
+  });
+  it("Abonnenten werden bei jeder Änderung benachrichtigt und lassen sich abmelden", () => {
+    const hl = H.halterNeu();
+    let n = 0; const ab = hl.abonnieren(() => { n++; });
+    hl.setzen("fall", { fall: FALL }); hl.leeren();
+    expect(n).toBe(2);
+    ab(); hl.setzen("fall", null);
+    expect(n).toBe(2);
+  });
+  it("Ablauftexte im Render: nach der Frist steht der Hinweis, nicht der Wert", () => {
+    vi.useFakeTimers();
+    H.halter.setzen("einrichtung", { geheimnis: "JBSWY3DPEHPK3PXP", otpauth: null });
+    vi.advanceTimersByTime(H.FRIST.einrichtung);
+    const m = traeger();
+    expect(m).not.toContain("JBSWY3DPEHPK3PXP");
+    expect(m).toContain("Die Einrichtung ist nach 15 Minuten abgelaufen.");
+  });
+});
+
+describe("Hinweise (L4)", () => {
+  it("Zweite Freigabe: Name nicht passend → Token nicht weitergeben; Einheitsregel im Vier-Augen-Text", () => {
+    H.halter.setzen("freigabe", { stufe: "freigegeben", traeger: { vorname: "E", nachname: "M", einheit: null }, freigabe: TOKEN, gueltigBis: null });
+    const m = html(h(V.VerlustFreigabe, { ui: UI, gesperrt: false, sperren: () => {} }));
+    H.halter.leeren();
+    expect(m).toContain("Stimmt der angezeigte Name nicht mit der geprüften Person überein, gib das Token nicht weiter.");
+    expect(m).toContain("nicht derselben Einheit angehören");
+  });
+});
+
 describe("Nichts bleibt liegen", () => {
-  const DATEIEN = ["src/lib/verlustweg.js", "src/verlustweg.jsx"];
+  const DATEIEN = ["src/lib/verlustweg.js", "src/lib/verlustweg-halter.js", "src/verlustweg.jsx"];
   it("kein localStorage, sessionStorage, IndexedDB, Cookie, Konsole, Adresse oder Verlauf in den neuen Quelltexten", async () => {
     for (const d of DATEIEN) {
       const q = (await readFile(new URL(`../${d}`, import.meta.url), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -319,8 +485,9 @@ describe("Nichts bleibt liegen", () => {
     expect(k).toMatch(/if \(a\.art !== "eingabe"\) setToken\(""\)/);
     expect(k).toMatch(/setF\(LEER\)/);
     expect(k).toMatch(/personalnummer: ""/);
-    expect((k.match(/useNachFrist\(/g) || []).length).toBeGreaterThanOrEqual(3);   // Definition + Geheimnis (Träger) + Token (Leitung)
-    expect(k).toMatch(/clearTimeout/);
+    const hq = await readFile(new URL("../src/lib/verlustweg-halter.js", import.meta.url), "utf8");
+    expect(hq).toMatch(/loescheTimer/);                                            // Zeitgeber werden gestoppt (Frist, Leeren)
+    expect(hq.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/localStorage|sessionStorage/);
   });
   it("Kopieren: nur die Zwischenablage, ohne Protokoll; schlägt es fehl, steht ein Hinweis da", async () => {
     const k = await readFile(new URL("../src/verlustweg.jsx", import.meta.url), "utf8");
