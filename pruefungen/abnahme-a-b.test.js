@@ -149,8 +149,17 @@ describe("1 GET je Rolle entspricht der Bibliothekssicht auf den gespeicherten S
     it(k, async () => {
       const g = await lesen(k);
       expect(g.status).toBe(200);
-      const erwartet = rechte.bestandFuerRolle(personenAngleichen(await gespeichert()), SITZ[k]);
-      expect(g.bestand).toEqual(kopie(erwartet));
+      const roh = personenAngleichen(await gespeichert());
+      /* Die Antwort von GET ist die Bibliothekssicht plus die beim Lesen abgeleitete Markierung „Besetzung
+         klärungsbedürftig“ (RB-5, rechte.bestandFuerAntwort / server/lib/klaerung.mjs) — genau dieselbe Funktion. */
+      expect(g.bestand).toEqual(kopie(rechte.bestandFuerAntwort(roh, SITZ[k])));
+      /* Ohne das abgeleitete Feld ist sie wertgleich zur Bibliothekssicht: Transport und Ablage ergänzen nichts. */
+      const { klaerung, ...ohneKlaerung } = g.bestand.mandanten[0];
+      expect({ ...g.bestand, mandanten: [ohneKlaerung] }).toEqual(kopie(rechte.bestandFuerRolle(roh, SITZ[k])));
+      /* Ohne offene Krankmeldung: leer für Planung, Leitung und Schichtverantwortung; für jede andere Rolle kein Feld. */
+      expect((roh.mandanten[0].krankmeldungen || []).filter((f) => f && ["eingegangen", "vorlaeufig_bestaetigt"].includes(f.status))).toEqual([]);
+      if (["planer", "leitung", "subplaner"].includes(SITZ[k].rolle)) expect(klaerung, k).toEqual([]);
+      else expect(g.bestand.mandanten[0], k).not.toHaveProperty("klaerung");
     });
   }
 });
