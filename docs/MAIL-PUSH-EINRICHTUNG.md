@@ -172,6 +172,9 @@ Das Betreiberprotokoll enthält nur Zähler und Statuscodes — nie Empfänger, 
 - Die Entwurfsregel greift, wenn die Mitteilung einen Tag (`tag`, JJJJ-MM-TT) trägt: Tauschmitteilungen (Server), Dienständerung
   und Ersatzeinteilung (Oberfläche). Selbstplanungsrunden (sie gelten gerade einem Entwurfsmonat), Krankmeldungen an die Planung
   und Notrufe tragen bewusst keinen Tag. Der Hinweistext enthält ohnehin keine Plandaten.
+- **Krankmeldung eingegangen (RB-4)**: Art `krankmeldungEingegangen` (Mail und Push an, nicht dringend) — an Planung, Leitung
+  und nur bei Dienst im Bereich an die Schichtverantwortung; Hinweis „Neue Meldung zur Abwesenheit“ ohne Name, Tag, Anmerkung
+  (`server/lib/krankmeldung.mjs`, `docs/acc45/PILOT-DATENSCHUTZ-RAHMEN.md`). Real hinaus geht sie erst mit eingerichtetem Anbieter.
 - **Betriebsname geht an den Anbieter**: Betreff und Fußzeile der Mail enthalten den Namen des Betriebs (eine Zeile, ohne
   Steuerzeichen) — er wird an Resend (US-Unternehmen) übermittelt. Betreiberentscheidung: hinnehmen (im AVV/Verzeichnis
   vermerken) oder den Namen weglassen (Codeänderung in `server/lib/versand.mjs`, `mailInhalt`).

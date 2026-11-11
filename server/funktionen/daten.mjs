@@ -37,7 +37,8 @@ import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
-import { KRANK_SCHRITTE, krankSchrittErlaubt, krankmeldungMelden, krankmeldungSchritt, krankProtokollZeilen } from "../lib/krankmeldung.mjs";
+import { KRANK_SCHRITTE, krankSchrittErlaubt, krankmeldungMelden, krankmeldungSchritt, krankProtokollZeilen,
+  krankmeldungMitteilungen, krankBenachrichtigungZeilen } from "../lib/krankmeldung.mjs";
 import { selbstauskunftStellen, selbstauskunftEntscheiden } from "../lib/selbstauskunft.mjs";
 import { schreibKontext } from "../lib/schreibkontext.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, korrekturVerwerfen, abgewiesenVermerken, letzteWiederoeffnung,
@@ -1465,6 +1466,8 @@ async function behandeln(req, context, ctx) {
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         /* RB-2: eingegangene Krankmeldungen und unmittelbar (endgültig) eingetragene — nur Kennung, Schritt, Rolle. */
         const krankZeilen = krankProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben, s.rolle);
+        /* RB-4: dazu je neuem Fall die Zahl der erzeugten Benachrichtigungen — ohne Person, Tag, Anmerkung. */
+        krankZeilen.push(...krankBenachrichtigungZeilen(jetzt ? eigenerMandant(jetzt.bestand, s) : null, eigenerMandant(zuSchreiben, s)));
         {
           const altMd = jetzt && jetzt.bestand && Array.isArray(jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [];
           let weg = 0;
@@ -2180,8 +2183,11 @@ async function behandeln(req, context, ctx) {
         }
         /* Wiederholte Meldung (Review RB-2, L1): der bestehende Fall, nichts geschrieben. */
         if (r.wiederholt) return antwort({ ok: true, wiederholt: true, fall: { id: r.fall.id, status: r.fall.status }, etag: mitK.stand || null });
+        /* RB-4: Beim Eingang erzeugt der Server die neutralen Mitteilungen an Planung, Leitung und — wo sachlich
+           erforderlich — die Schichtverantwortung; sie entstehen im selben Schreibvorgang wie der Fall. */
+        const mNeuK = aktionK === "melden" ? krankmeldungMitteilungen(mK, r.mandant, s.person) : r.mandant;
         const ergK = await bestandSchreiben(store, s.bestand,
-          { ...mitK.bestand, mandanten: mitK.bestand.mandanten.map((x) => (x === mK ? r.mandant : x)) },
+          { ...mitK.bestand, mandanten: mitK.bestand.mandanten.map((x) => (x === mK ? mNeuK : x)) },
           { erwarteterStand: mitK.stand, durch: s.name || "Krankmeldung" });
         if (!ergK.ok) {
           await protokoll("schreiben", kK, "konflikt", `Krankmeldung ${aktionK}`, wer);
@@ -2189,7 +2195,23 @@ async function behandeln(req, context, ctx) {
         }
         await protokoll("schreiben", kK, "krankmeldung",
           `Krankmeldung ${r.fall.id}: ${r.fall.status} · Rolle ${s.rolle}${s.rolle === "subplaner" ? " (Schichtverantwortung)" : ""}`, wer);
-        return antwort({ ok: true, fall: { id: r.fall.id, status: r.fall.status }, etag: ergK.stand || null });
+        for (const z of krankBenachrichtigungZeilen(mK, mNeuK)) await protokoll("schreiben", kK, "krankmeldung", z, wer);
+        return { antwortK: antwort({ ok: true, fall: { id: r.fall.id, status: r.fall.status }, etag: ergK.stand || null }),
+          zustellenK: neueServermitteilungen(mK, mNeuK) };
+      }).then(async (x) => {
+        if (x instanceof Response) return x;
+        /* Zustellung nach dem Speichern, aus dem gespeicherten Stand (wie beim Speichern, Commit 4). Ein
+           Versandfehler ändert nichts am Fall und nichts an der Antwort. */
+        if (x.zustellenK.length) {
+          try {
+            const danach = await bestandLesen(store, s.bestand);
+            const mD = danach && danach.bestand ? eigenerMandant(danach.bestand, s) : null;
+            if (mD) await zustellen(store, { raum: s.bestand, bestand: danach.bestand, m: mD, ids: x.zustellenK });
+          } catch (e) {
+            await protokoll("fehler", kK, "zustellung", String(e && e.message || e).slice(0, 200)).catch(() => {});
+          }
+        }
+        return x.antwortK;
       });
     }
 
