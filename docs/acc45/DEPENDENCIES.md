@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 343,3–586,1 PT in 80 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 344,3–585,85 PT in 79 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -15,6 +15,7 @@ flowchart LR
     WP_15["WP-15<br/>REVIEW"]
     WP_16["WP-16<br/>REVIEW"]
     WP_19["WP-19<br/>IN_PROGRESS"]
+    WP_21["WP-21<br/>IN_PROGRESS"]
     WP_30["WP-30<br/>BLOCKED"]
     WP_33["WP-33<br/>REVIEW"]
     WP_34["WP-34<br/>BLOCKED"]
@@ -165,6 +166,7 @@ flowchart LR
   WP_15 --> WP_42a
   WP_16 --> WP_42a
   WP_19 --> WP_42a
+  WP_21 --> WP_42a
   WP_33 --> WP_42a
   WP_40 --> WP_42a
   WP_44 --> WP_42a
@@ -292,6 +294,7 @@ flowchart LR
   WP_44 --> WP_42R1
   WP_42R1 --> WP_42R2
   WP_19_R --> WP_42R2
+  WP_21 --> WP_42R2
   WP_15 --> WP_42R2
   WP_30 --> WP_42R2
   SI_P6b --> WP_42R2
@@ -328,7 +331,7 @@ flowchart LR
 | WP-18 | acc45 | P1 | 6–8,5 | 0 | SI-P4 | App.jsx, rechte.mjs, daten.mjs | opus | INTEGRATED |
 | WP-19 | acc45 | P1 | 0 | 0 | WP-11, WP-22, WP-19.13 | – | siehe WP-19.x | IN_PROGRESS |
 | WP-20 | acc45 | P1 | 6–8,5 | 0 | WP-06 | – | sonnet | INTEGRATED |
-| WP-21 | acc45 | P1 | 10–13,5 | 0 | WP-12, WP-39 | App.jsx | sonnet | INTEGRATED |
+| WP-21 | acc45 | P1 | 10–13,5 | 5–6,75 | WP-12, WP-39 | App.jsx | sonnet | IN_PROGRESS |
 | WP-22 | acc45 | P2 | 6–8,5 | 0 | WP-11 | – | opus | INTEGRATED |
 | WP-23 | acc45 | P2 | 1–1,5 | 0 | WP-43 | – | opus | INTEGRATED |
 | WP-24 | acc45 | P2 | 2–3 | 0 | WP-43 | – | opus | INTEGRATED |

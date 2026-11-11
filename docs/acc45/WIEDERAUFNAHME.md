@@ -1,4 +1,4 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-10 ca. 15:10 UTC, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-11 ca. 03:40 UTC, Hauptchat aktiv, Lease Epoche 6)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
@@ -50,26 +50,28 @@ Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
-- Integration: `integration/release-v4`, Kopf 2c427d11 (Merge #188, 2026-11-10 ca. 15:05Z). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
+- Integration: `integration/release-v4`, Kopf 5d0b867b (Merge #194, 2026-11-11 02:56Z; davor #193, #191 = cf01a404). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
 - `main`: 0423eeac. Kein Design-Release nach main ohne Betreiberfreigabe.
 - V4-Staging: `public/sw.js` hat auf der Integration `FASSUNG = "__CENTRIC_BUILD__"` (Platzhalter), auf `main` `"v4"`; die frühere Angabe "v5" war falsch. Betreiber bestätigt, welcher Stand angenommen wird (siehe `docs/acc45/STAGING-ABNAHME-V4.md`).
 
 ## Offene PRs (Stand 2026-11-10 ca. 15:10Z)
 - #175 OPT-1-F, gestapelte ältere Variante (Draft): durch #179 ersetzt. Das Schließen wurde vom Berechtigungssystem verweigert; **Entscheidung beim Betreiber** (schließen oder stehen lassen). Kein Inhalt geht verloren (Branch `acc45/opt-1-f-anmeldeweg` bleibt).
 - #177 WP-I4 (Draft): Betriebsrat-Sicht wartet auf Betreiberfreigabe (neue Lesesicht auf interne Vorgaben, § 87 BetrVG offen).
-- Alle übrigen Integrations-PRs dieser Sitzung (#166, #170, #172, #174, #178 bis #188) sind gemergt, siehe unten.
+- Alle übrigen Integrations-PRs dieser Sitzung (#166, #170, #172, #174, #178 bis #194) sind gemergt, siehe unten.
 - #139 WP-I12c (planKennzahlen, Spanne). Hold, Betreiberentscheidung zur Spanne-Definition.
 - #129, #127, #115, #97, #96, #94, #92, #91, #18, #17, #16, #15, #7, #6: ältere Doku-, Feature- und Security-PRs gegen Basen außerhalb der Integration. Vor dem Schließen prüfen, ob Inhalt in der Integration steht (ssot-belege, Commit-Suche). Nicht blind schließen.
 - #168 (ccr-…, Cloud-Session): fremd, nicht anfassen.
 - #104 "[NICHT INTEGRIEREN]": Referenz, nicht mergen.
 
 ## Abgeschlossen in dieser Sitzung (gemergt)
-#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #178 #179 #180 #181 #182 #183 #184 #185 #186 #187 #188
-(#169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #172 Doku Legal-Teil A, #173 V4-Abnahme-Checkliste, #174 WP-I12a Rechenkern, #176 WP-35 Darstellung, #178 V4-Staging-Voraussetzungen, #179 OPT-1-F inklusive OPT-1/#166, #180 Branchschutz-Prüfer und Betreiberanleitung, #181 und #184 und #188 SSOT-Nachführung, #182 OPT-4 (Teilumfang) und WR-2, #183 WP-21 Teil 1, #185 IMP-6 Bibliothek, #186 CI-Abdeckung samt Wächter, #187 IMP-5 und IMP-9.)
+#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #178 #179 #180 #181 #182 #183 #184 #185 #186 #187 #188 #189 #190 #191 #192
+(#189 WIEDERAUFNAHME und Merge-Helfer, #190 WP-I12 auf INTEGRATED (Koordinator-Entscheidung nur für dieses Paket), #191 WR-3 Verlust-Schnittstelle (ausgeliefert aus), #192 WP-21 Teil 2, #169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #172 Doku Legal-Teil A, #173 V4-Abnahme-Checkliste, #174 WP-I12a Rechenkern, #176 WP-35 Darstellung, #178 V4-Staging-Voraussetzungen, #179 OPT-1-F inklusive OPT-1/#166, #180 Branchschutz-Prüfer und Betreiberanleitung, #181 und #184 und #188 SSOT-Nachführung, #182 OPT-4 (Teilumfang) und WR-2, #183 WP-21 Teil 1, #185 IMP-6 Bibliothek, #186 CI-Abdeckung samt Wächter, #187 IMP-5 und IMP-9.)
 
-Stand der Pakete dazu: WP-21 IN_PROGRESS (nur Teil 1), IMP-6 IN_PROGRESS (Bibliothek, nicht in `/api/import` verdrahtet, kein Schreiben in den Bestand), OPT-4 IN_PROGRESS (Migration bestehender Leitungskonten offen), WR-2, IMP-5, IMP-9, OPT-1, OPT-1-F, WP-I12a, WP-35 INTEGRATED. SI-P6b bleibt bis zur Betreiber-Spezifikation gesperrt.
+Stand der Pakete dazu: WR-3 INTEGRATED (Funktion aus), WP-21 IN_PROGRESS (Teil 1 und 2), IMP-6 IN_PROGRESS (Bibliothek, nicht in `/api/import` verdrahtet, kein Schreiben in den Bestand), OPT-4 IN_PROGRESS (Migration bestehender Leitungskonten offen), WR-2, IMP-5, IMP-9, OPT-1, OPT-1-F, WP-I12a, WP-35 INTEGRATED. SI-P6b bleibt bis zur Betreiber-Spezifikation gesperrt.
 
 Hinweise aus den unabhängigen Reviews (nicht blockierend):
+- #191 (WR-3), **vor dem Einschalten von `CENTRIC_KONTOWIEDERHERSTELLUNG=1`**: (1) Verfahrensvorgabe ins Betriebshandbuch, dass die Leitung die Personalnummer aus den eigenen Unterlagen über die geprüfte Person nachschlägt und sie sich nie vom Antragsteller nennen lässt (die Nummer ist nicht geheim, die Bindung hilft nur so); (2) Regel für Personen ohne Personalnummer (heute kann ihr Konto nie wiederhergestellt werden, fail-closed); (3) Benachrichtigung des Trägers (I.11); (4) Eröffnungszähler `vl:` nach erfolgreicher Eröffnung entlasten oder Ablehnungen einer einzelnen Leitung anders begrenzen; (5) Betreiberentscheidungen I.2, I.3, I.10, I.12, J.5. Siehe `docs/acc45/WR-3-NACHWEIS.md`.
+- #192 (WP-21 Teil 2), Betreiberentscheidungen zu Rechten: (a) `plan.publish` fehlt im Server-Rechtekatalog (`server/lib/rechte.mjs`), die Schaltfläche "Plan freigeben" ist deshalb für niemanden sichtbar; Recht aufnehmen oder Client auf ein vorhandenes Recht umstellen; (b) Krankmeldung der Schichtverantwortung an Diensttagen wird vom Server abgewiesen: Schaltfläche ausblenden oder Recht klären.
 - #182 (OPT-4/WR-2), Betrieb: (a) `/zustand` muss beschreibbar sein (uid 1000), sonst 503 bei Faktoraktivierung und Wiederherstellungscode-Anmeldung; (b) nach dem Deploy sind alle Wiederherstellungscodes ohne Epoche ungültig, bis die Inhaber neu erzeugen; (c) jede Epochen-Rotation macht alle Codes ungültig, ohne Benachrichtigung (E3); (d) bis WR-3..9 gibt es keinen Rückweg für Inhaber, die Telefon und Codes verlieren; (e) `NODE_ENV=production` Pflicht (development/test schaltet die Epochenbindung ab). Checkliste: `docs/acc45/RELEASE-GATES-R1-R2-R3.md`, `docs/BETRIEBSHANDBUCH.md` Abschnitt 4. Betreiberentscheidungen E1 bis E4 (Migration bestehender Leitungskonten, Altformat ohne Epoche, Benachrichtigung nach Vollwiederherstellung, Nachtrag `faktorPflicht` für ältere Codes) in `docs/acc45/OPT-4-WR-2-LUECKEN.md`.
 - #187 (IMP-9): Der Port ist nirgends verdrahtet. Vor jeder Verdrahtung oder E-25/E-26-Aktivierung IMPORT-VERTRAG §13 und die Allowlist-Garantie (Überschriften nur als kanonischer Feldname, sonst `Spalte N`) erneut prüfen.
 - #186: Neue `pruefung:*`-Skripte müssen als Schritt in `.github/workflows/pruefung.yml` stehen, sonst schlägt der Wächter `pruefung:ci-abdeckung` fehl; Ausnahmen nur mit Grund in `pruefungen/ci-abdeckung-ausnahmen.json`.
