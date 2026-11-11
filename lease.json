@@ -2,8 +2,8 @@
   "epoche": 6,
   "halter": "hauptchat",
   "uebernommen_am": "2026-11-11T03:33:45.256Z",
-  "erneuert_am": "2026-11-11T06:04:48.532Z",
-  "gueltig_bis": "2026-11-11T08:04:48.532Z",
+  "erneuert_am": "2026-11-11T06:23:15.127Z",
+  "gueltig_bis": "2026-11-11T08:23:15.127Z",
   "uebergabe": "Hauptchat wieder aktiv am 2026-11-11 03:35Z. Lease cloud-nachtaufgabe Epoche 5 um 03:33Z freigegeben (PR 195 offen). Integrationskopf 5d0b867b nach #194.",
   "vorgaenger": "cloud-nachtaufgabe",
   "freigegeben_am": null
