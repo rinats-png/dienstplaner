@@ -4,19 +4,19 @@
   "anzahl": 193,
   "statusZaehlung": {
     "BLOCKED": 81,
-    "READY": 19,
+    "READY": 16,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
-    "INTEGRATED": 74,
+    "INTEGRATED": 77,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 93,
-      "offen": 33,
+      "offen": 30,
       "restPT": {
-        "min": 57.9,
-        "max": 94.05
+        "min": 51.9,
+        "max": 83.55
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 349.3,
-    "max": 595.35
+    "min": 343.3,
+    "max": 584.85
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -5504,12 +5504,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["RB-1","RB-2"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #206 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #206 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #206 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #206 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5518,12 +5518,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["rechte.mjs"],
-      "pr": [],
+      "pr": ["#206"],
       "nachweis": "docs/acc45/ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md",
       "akzeptanz": "kunde hat weder plan.publish noch endgültig/ablehnen bei Krankmeldungen (Server und Client, Katalog, MATRIX_STD, RECHTEMATRIX); nur Leitung und Planer; Demo- und Probierfunktionen laufen über ausdrücklich zugewiesene Demo-Rollen (leitung/planer im Demo-Raum) statt über kunde; kunde-abloesung-Test an die neue Entscheidung angepasst (bewusst, begründet); Negativtests für kunde über den echten Handler; Altkonten kunde bleiben lesbar und arbeitsfähig im Übrigen",
       "tests": "Positiv leitung/planer, Negativ kunde (Veröffentlichen, endgültig, ablehnen), Demo-Zugang mit Rolle leitung/planer funktioniert",
       "dateien": "server/lib/rechte.mjs, server/lib/krankmeldung.mjs, src/lib/rollen.js, RECHTEMATRIX.md, Tests",
-      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). SCHÄTZUNG."
+      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #206."
     },
     {
       "id": "RB-4",
@@ -5532,12 +5532,12 @@
       "prio": "P1",
       "aufwandPT": {"min":2,"max":3.5},
       "abhaengigkeiten": ["RB-2"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #205 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #205 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #205 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #205 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5546,12 +5546,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#205"],
       "nachweis": "docs/acc45/ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md",
       "akzeptanz": "Neue Zustellart für eingegangene Krankmeldung über die bestehende Zustellung (Mail/Push, Schalter und E-9 unverändert); Empfänger: zuständige Planer und Betriebsleiter, die zuständige Schichtverantwortung nur bei sachlicher Erforderlichkeit; Text ohne Gesundheitsdetails (kein Grund, keine Diagnose, keine Notiz, im Betreff nur neutral, ohne Namen soweit vermeidbar); Empfängerwahl serverseitig aus dem gespeicherten Stand; Mitteilung nicht durch Clients fälschbar (nurVomServer); Wiederholung/Entdoppelung; Protokoll ohne Gesundheitsdaten; Tests",
       "tests": "Empfänger je Rolle, kein Empfänger außerhalb des Zuständigkeitsbereichs, Inhalt ohne Gesundheitsdetails (Stichproben gegen Notiz/Grund), Fälschung durch Client wirkungslos, keine Zustellung bei ausgeschalteten Schaltern, Entdoppelung",
       "dateien": "server/lib/mitteilungen.mjs, server/lib/zustellregeln.mjs, server/lib/krankmeldung.mjs, server/funktionen/daten.mjs, src/lib/zustellung.js, Tests",
-      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Datenschutz: Art. 9, Datensparsamkeit. SCHÄTZUNG."
+      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Datenschutz: Art. 9, Datensparsamkeit. SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #205."
     },
     {
       "id": "RB-5",
@@ -5560,12 +5560,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["RB-2"],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #207 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #207 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #207 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #207 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5574,12 +5574,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx","daten.mjs"],
-      "pr": [],
+      "pr": ["#207"],
       "nachweis": "docs/acc45/ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md",
       "akzeptanz": "Bis zur endgültigen Bestätigung bleibt der veröffentlichte Plan für Beschäftigte und Kalenderfeed unverändert; die betroffene Schicht ist intern (nur Planung, Leitung, zuständige Schichtverantwortung) als klärungsbedürftig markiert; CENTRIC berechnet mögliche Unterbesetzung und Ersatzvorschläge mit der vorhandenen Ersatzsuche als Vorbereitung (nur Anzeige für Planung/Leitung); keine automatische Umbesetzung, kein Schreiben in Besetzung/Plan ohne ausdrückliche Handlung von Planer oder Leitung; Markierung verschwindet bei endgültig, abgelehnt, zurückgezogen; keine Gesundheitsdetails in der Markierung; Tests",
       "tests": "Plan/Feed unverändert bei offenem Fall, Markierung nur für berechtigte Rollen sichtbar, Ersatzvorschläge ohne Schreibwirkung, Markierung endet mit Endzustand, kein Gesundheitsdatum in Markierung/Vorschlag",
       "dateien": "server/lib/krankmeldung.mjs, server/lib/sicht.mjs, server/lib/engine/*, src/ansichten (Plan, Lagebild, krankmeldungen-offen), Tests",
-      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Bestehende Ersatzsuche wiederverwenden, nichts duplizieren. SCHÄTZUNG."
+      "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Bestehende Ersatzsuche wiederverwenden, nichts duplizieren. SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #207."
     }
   ]
 }

@@ -18,7 +18,9 @@ WP-21 Teil 2 (`docs/acc45/WP-21-GERAETEMATRIX.md` Abschnitt 9). Umsetzung als Pa
 ## Auslegung der Umsetzung (konservativ, im Zweifel enger)
 - "Betriebsleiter" ist die Rolle `leitung`, "Planer" die Rolle `planer`. Alle übrigen Rollen (Subplaner, Mitarbeiter,
   Betriebsrat, Schichtverantwortung, Betreiber) erhalten `plan.publish` nicht. Der Datenraum zum Ausprobieren (Rolle
-  `kunde`) erhält es nur, wenn er fachlich die Leitung ist; sonst nicht.
+  `kunde`) erhielt es in der ersten Umsetzung (RB-1) nur, wenn er fachlich die Leitung war. **Überholt:** Die Ergänzung vom
+  2026-11-11 (`ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md`, Punkt 1) entscheidet, dass `kunde` auch im Probierraum weder
+  `plan.publish` noch die endgültige Krankmeldungsbestätigung erhält; umgesetzt mit RB-3 (#206).
 - Die Schichtverantwortung ist eine Funktion einer Person (Schichtverantwortung am Tag), keine Rolle der Rechtematrix.
   Das Recht zur vorläufigen Bestätigung hängt daran, nicht an einer Rolle, und gilt nur für Krankmeldungen.
 - Vorläufig bedeutet: keine Änderung am endgültigen Status, keine Folgewirkung (Plan, Abrechnung, Zeiten, Ersatzsuche),
