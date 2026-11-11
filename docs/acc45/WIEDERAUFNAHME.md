@@ -3,6 +3,16 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtlauf-Zusatz 2 (2026-11-11 ca. 01:45Z, geplanter Cloud-Lauf)
+- Integrationskopf: ecfa1ef (Merge #193). Lease `cloud-nachtaufgabe`, Epoche 4 (Vorgaenger Epoche 3, freigegeben 00:33Z). Keine neuen Arbeits-PRs, keine schreibenden Agenten. Offene PRs unveraendert (Entwuerfe #175, #177, #104, aeltere Doku-/Security-PRs).
+- Branch-Regel eingehalten: Arbeitsbranch von `origin/integration/release-v4`, Ziel-PR gegen `integration/release-v4`.
+- Vorpruefung der Pakete WR-4, WR-5, WR-6 (Befund, keine Neuimplementierung):
+  - **WR-5**: T14 bis T18 und T20 sind durch die WR-3-Pruefungen (`kontowiederherstellung-kern.test.js`, `-http.test.js`) bereits abgedeckt (Einmaligkeit, Wiederverwendung, Bremse, Gleichzeitigkeit, Mandantentrennung, Rollenpruefung, J.2f Rollenverlust, Protokoll ohne Geheimnisse). Es fehlt nur **T19** (Kennzeichen `betreiberprozess` bei weniger als zwei Berechtigten, D8 403): im Code nicht vorhanden, haengt an der Betreiberentscheidung I.5 (alleiniges Betreiberkonto). WR-5 ist damit bis zu I.5 nicht sinnvoll als eigenes Paket zu vergeben; kein Blindtest ohne Spezifikation.
+  - **WR-4**: verlangt eine Zweitfreigabe fuer `werkzeug/betreiber-2fa-zuruecksetzen.mjs`. Die Art der Zweitfreigabe (zweiter personengebundener Betreiberzugang oder externe Instanz, Vorlage I.6) ist Betreiberentscheidung. Eine selbst erfundene Zweitfreigabe in einem Sicherheitswerkzeug wird nicht gebaut. Das Werkzeug bleibt unveraendert (nur Test/Staging, nicht fuer Produktion freigegeben).
+  - **WR-6** (Oberflaeche): haengt nur an WR-3, ist unabhaengig von I.5 und der naechste ausfuehrbare Arbeitspaket-Kandidat (`src/`, daten.mjs-Konfliktzone beachten, Schalter `CENTRIC_KONTOWIEDERHERSTELLUNG` aus). Nicht in diesem kurzen Lauf begonnen.
+- **Betreiberentscheidungen, die den kritischen Pfad Kontowiederherstellung blockieren:** I.5/I.6 (Zweitfreigabe, alleiniges Betreiberkonto) fuer WR-4, WR-5(T19), WR-BETREIBER.
+- Branch-Schutz fuer `koordination/lease`, `integration/release-v4`, `main` weiterhin Betreiberaufgabe (siehe oben); ohne ihn bleibt die Lease kooperativ.
+
 ## Nachtlauf-Zusatz (2026-11-10 ca. 23:40Z, geplanter Cloud-Lauf)
 - Integrationskopf: cf01a40 (Merge #191 WR-3, #192 WP-21 Teil 2). Lease: `cloud-nachtaufgabe`, Epoche 3 (Vorgaenger hauptchat, Epoche 2 seit 21:56Z abgelaufen). Hauptchat uebernimmt bei Rueckkehr nur nach `freigeben --epoche 3`.
 - Offene Arbeits-PRs: keine neuen. Entwuerfe #175, #177, #104 unveraendert (Betreiberentscheidung). Keine schreibenden Agenten aktiv.
