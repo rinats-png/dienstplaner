@@ -50,7 +50,8 @@ der handelnden Sitzung fest, keine Anmerkung und keinen Tag. Erst die endgültig
 macht die Krankheit wirksam (Abwesenheit, Sicht wie bisher). Einzelheiten: `RECHTEMATRIX.md` ³⁰ und Abschnitt 2.
 Planung und Leitung können einen Fall ablehnen (nur Kennzeichen, kein Freitext), die meldende Person kann ihn
 zurückziehen; beides ohne Wirkung. Der Löschlauf entfernt nicht wirksame Fälle nach der Frist der Gründe und nimmt
-wirksamen die Anmerkung. Bekannte Eigenschaften mit offener Betreiberfrage: die Kundenrolle bestätigt wie die Leitung;
+wirksamen die Anmerkung. Die Kundenrolle (Altrolle, Probierraum) bestätigt nicht endgültig und lehnt nicht ab (RB-3, Betreiberentscheidung
+2026-11-11). Bekannte Eigenschaft mit offener Betreiberfrage:
 Planung und Leitung können die eigene Krankheit unmittelbar eintragen (ohne zweite Person). Ein unbestätigter Fall
 löst keine Lücke und keine Ersatzsuche aus und benachrichtigt niemanden per Mail oder Push (nur Aufgabe in der Anwendung).
 

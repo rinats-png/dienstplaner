@@ -686,6 +686,11 @@ jobs:
       - name: Krankmeldung zweistufig (RB-2)
         run: npm run pruefung:rb2-krankmeldung
 
+      # RB-3 (Betreiberentscheidung 2026-11-11, Ergänzung): Altrolle „kunde" ohne plan.publish und ohne
+      # endgültige Krankmeldungsbestätigung; Demo nur über ausdrücklich zugewiesene Rollen.
+      - name: Kundenrolle ohne Freigabe und endgültige Krankmeldung (RB-3)
+        run: npm run pruefung:rb3-kunde-ohne-publish
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration

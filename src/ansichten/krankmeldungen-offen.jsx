@@ -11,6 +11,7 @@ import { Card, CardHead, Btn, Pill } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { fKurz } from "../lib/datum.js";
 import { KRANK_STATUS, krankSchrittErlaubt, fallOffen, meldendePerson, svZustaendig } from "../../server/lib/krankmeldung.mjs";
+import { krankRolle } from "../lib/berechtigung.js";
 
 export const KRANK_STATUS_TEXT = Object.freeze({
   [KRANK_STATUS.EINGEGANGEN]: "Eingegangen",
@@ -30,13 +31,15 @@ export function krankSchritteFuer(sitz, fall) {
   const aus = [];
   const eigenerFall = String(fall.personId) === String(ich.id);
   const vonMir = fall.gemeldetVonMir === true || String(meldendePerson(fall)) === String(ich.id);
+  /* RB-3: Ein Zugang der Altrolle „kunde" zählt als „kunde" — kein endgültig, kein ablehnen. */
+  const rolle = krankRolle(sitz);
   if (!eigenerFall) {
-    if (fall.status === KRANK_STATUS.EINGEGANGEN && krankSchrittErlaubt(ich.rolle, "vorlaeufig")
+    if (fall.status === KRANK_STATUS.EINGEGANGEN && krankSchrittErlaubt(rolle, "vorlaeufig")
       && svZustaendig(sitz.mandant, ich, fall.personId, fall.von, fall.bis)) aus.push("vorlaeufig");
-    if (krankSchrittErlaubt(ich.rolle, "endgueltig")) aus.push("endgueltig");
-    if (krankSchrittErlaubt(ich.rolle, "ablehnen")) aus.push("ablehnen");
+    if (krankSchrittErlaubt(rolle, "endgueltig")) aus.push("endgueltig");
+    if (krankSchrittErlaubt(rolle, "ablehnen")) aus.push("ablehnen");
   }
-  if (vonMir && krankSchrittErlaubt(ich.rolle, "zurueckziehen")) aus.push("zurueckziehen");
+  if (vonMir && krankSchrittErlaubt(rolle, "zurueckziehen")) aus.push("zurueckziehen");
   return aus;
 }
 

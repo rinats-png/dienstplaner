@@ -8,7 +8,7 @@ Dieser Teil liefert die Matrix, die Messung und die Korrekturen mit der größte
 
 ## 1 Rollen und Kernaufgaben
 
-Die Rollen stammen aus `src/lib/rollen.js` (ROLLEN) und `RECHTEMATRIX.md`. Eine eigene Kundenrolle gibt es im Code nicht: „Kunde“ ist der Betrieb (Mandant); die Rolle `kunde` ist nur ein älterer Zugangscode und wird wie die Leitung behandelt (`RECHTEMATRIX.md`, Abschnitt 1). Die Kundensicht ist damit die der Organisationsleitung.
+Die Rollen stammen aus `src/lib/rollen.js` (ROLLEN) und `RECHTEMATRIX.md`. Eine eigene Kundenrolle gibt es im Code nicht: „Kunde“ ist der Betrieb (Mandant); die Rolle `kunde` ist nur ein älterer Zugangscode und wird wie die Leitung behandelt (`RECHTEMATRIX.md`, Abschnitt 1) — ohne `plan.publish` und ohne endgültige Krankmeldungsbestätigung (RB-3, Betreiberentscheidung 2026-11-11); Demo-Funktionen laufen über ausdrücklich zugewiesene Rollen. Die Kundensicht ist damit die der Organisationsleitung.
 
 | Rolle (Id) | Fachbegriff | Oberfläche auf kleinen Geräten | Kernaufgaben (3 bis 5) |
 |---|---|---|---|

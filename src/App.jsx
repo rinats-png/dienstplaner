@@ -1308,7 +1308,10 @@ function AppInnen() {
     if (!m) return null;
     const p = m.personen.find((x) => x.id === db.session.personId);
     if (!p) return null;
-    return { rolle: "kunde", db, mandant: m, person: p };
+    /* RB-3: die Rolle des Zugangs (Token) mitführen. Ein Zugang der Altrolle „kunde" bekommt über den
+       Rollenwähler eine beliebige Person zu sehen — plan.publish und die endgültige Krankmeldungsbestätigung
+       entscheidet aber, wie auf dem Server, die Rolle des Zugangs (berechtigung.js). */
+    return { rolle: "kunde", db, mandant: m, person: p, zugangRolle: (SP.zugangsdaten() || {}).rolle || null };
   }, [db]);
 
   /* Dichte: Die Einstellung der Person ist die Quelle — in den Einstellungen wie im Kopfmenü.

@@ -48,8 +48,13 @@ describe("Rollenvergabe ohne Vorgabe", () => {
     expect(sitzungsRolleBekannt("kunde")).toBe(true);
     expect(sitzungsRolleBekannt(undefined)).toBe(false);
   });
-  it("kunde und leitung haben dieselbe MATRIX und denselben Schreibumfang (Wege mit hartem leitung-Check: HTTP-Test in sicherheit-intern)", () => {
-    expect([...MATRIX.kunde].sort()).toEqual([...MATRIX.leitung].sort());
+  /* RB-3 (Betreiberentscheidung 2026-11-11, bewusste Änderung): Die Altrolle „kunde" erhält auch im Probierraum
+     kein plan.publish. Bis auf genau dieses Recht bleibt sie der Leitung gleich — kein weiteres Recht fällt weg,
+     keines kommt hinzu (Wege mit hartem leitung-Check: HTTP-Test in sicherheit-intern). */
+  it("kunde ist die MATRIX der Leitung ohne plan.publish, mit demselben Schreibumfang", () => {
+    expect([...MATRIX.kunde].sort()).toEqual(MATRIX.leitung.filter((r) => r !== "plan.publish").sort());
+    expect(MATRIX.kunde).not.toContain("plan.publish");
+    expect(MATRIX.leitung).toContain("plan.publish");
     expect(schreibumfang("kunde")).toBe(schreibumfang("leitung"));
   });
 });
