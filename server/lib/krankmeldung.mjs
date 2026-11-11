@@ -37,6 +37,7 @@
 import { einheitAm, dienstAm } from "./fachpruefung.mjs";
 import { servermitteilung } from "./mitteilungen.mjs";
 import { laufenderTag } from "./planfreigabe.mjs";
+import { aktivePerson } from "./personengueltig.mjs";
 
 export const KRANK_STATUS = Object.freeze({
   EINGEGANGEN: "eingegangen",
@@ -331,7 +332,9 @@ export function krankProtokollZeilen(altB, neuB, rolle) {
 
    Empfänger (je neuem Fall genau einmal, Kennung n-krank-<Fall>-<Empfänger>):
    - Planung und Leitung des Betriebs (Rollen „planer“, „leitung“): alle Personen des Betriebs mit dieser
-     Rolle, die nicht gesperrt und nicht ausgetreten sind. Einen Bereichsumfang hat die Planung im
+     Rolle, die heute im Betrieb gelten (Review #205: aktivePerson aus personengueltig.mjs — genau einmal in
+     der Liste, nicht anonymisiert, Status „aktiv“ oder ohne Angabe, nicht ausgetreten — und Eintritt gesetzt
+     und nicht nach heute; dieselbe Regel für die Schichtverantwortung). Einen Bereichsumfang hat die Planung im
      Datenmodell nicht (schreibumfang „voll“, rechte.mjs) — zuständig ist damit die Planung des Betriebs.
      Die Kundenrolle (alter Probierraum) bekommt nichts: die Entscheidung nennt Planer und Betriebsleiter.
    - Schichtverantwortung („subplaner“) NUR, wenn es sachlich erforderlich ist: Die gemeldete Person hat ab
@@ -360,7 +363,15 @@ const KRANK_PLANUNG_ROLLEN = ["planer", "leitung"];
 const SV_TAGE_MAX = 62;
 
 const tagNach = (s) => new Date(Date.parse(`${s}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
-const aktivAm = (p, heute) => p.status !== "gesperrt" && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute);
+/** Empfänger nur, wer heute im Betrieb gilt (aktivePerson) und schon eingetreten ist. Eintritt null/"" heißt im
+    Datenmodell „nie beschäftigt“ (imDienst) — kein Empfänger; ohne Angabe (undefined) gilt wie bisher „von Anfang an“.
+    Eine Sperre des Anmeldekontos (accounts.mjs) liegt nicht im Betrieb und ist hier nicht lesbar; zugestellt wird an
+    Adresse und Push-Anmeldung der Person (Abmelden löscht die Anmeldung) — siehe PILOT-DATENSCHUTZ-RAHMEN.md. */
+const aktivAm = (m, p, heute) => {
+  if (!aktivePerson(m, p.id, heute)) return false;
+  if (p.eintritt === null || p.eintritt === "") return false;
+  return !(typeof p.eintritt === "string" && p.eintritt > heute);
+};
 
 /**
  * Wer bekommt zu diesem neuen Fall eine Mitteilung?
@@ -375,10 +386,10 @@ export function krankEmpfaenger(m, fall, heute = laufenderTag()) {
   if (!p || !istObj(fall)) return { planung: [], sv: [] };
   const melder = meldendePerson(fall);
   const ausgeschlossen = (x) => gleich(x.id, p.id) || (melder !== undefined && melder !== null && gleich(x.id, melder));
-  const planung = personen.filter((x) => KRANK_PLANUNG_ROLLEN.includes(x.rolle) && !ausgeschlossen(x) && aktivAm(x, heute));
+  const planung = personen.filter((x) => KRANK_PLANUNG_ROLLEN.includes(x.rolle) && !ausgeschlossen(x) && aktivAm(m, x, heute));
   const sv = [];
   if (tagGueltig(fall.von) && tagGueltig(fall.bis) && fall.bis >= fall.von) {
-    const kandidaten = personen.filter((x) => x.rolle === "subplaner" && !ausgeschlossen(x) && aktivAm(x, heute));
+    const kandidaten = personen.filter((x) => x.rolle === "subplaner" && !ausgeschlossen(x) && aktivAm(m, x, heute));
     const gefunden = new Set();
     let d = fall.von < heute ? heute : fall.von;
     for (let i = 0; i < SV_TAGE_MAX && d <= fall.bis && gefunden.size < kandidaten.length; i++, d = tagNach(d)) {

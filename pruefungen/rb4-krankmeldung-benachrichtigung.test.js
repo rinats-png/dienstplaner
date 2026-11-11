@@ -62,13 +62,19 @@ const betrieb = () => ({ id: "m1", name: "Haus Linde", einheiten: [{ id: "e1", n
     person("sx", "subplaner", "e1", { status: "gesperrt" }),
     person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE", { zustellung: { kanal: { push: false } } }),
     person("p9", "planer", "ALLE", { austritt: T(-30) }),
-    person("r1", "betriebsrat", "ALLE"), person("k1", "kunde", "ALLE")],
+    person("r1", "betriebsrat", "ALLE"), person("k1", "kunde", "ALLE"),
+    /* Review #205: gelten heute nicht im Betrieb — nie Empfänger. */
+    ...NICHT_AKTIV.map(([id, rolle, einheit, extra]) => person(id, rolle, einheit, extra))],
   abweichungen: { [`a1|${T(2)}`]: "F", [`a1|${T(3)}`]: "F", [`b1|${T(2)}`]: "F", [`a2|${T(-3)}`]: "F" },
   abwesenheiten: [], krankmeldungen: [], anfragen: [], nachrichten: [], erfassung: {}, einstempeln: {}, einstellungen: {} });
 const zweiter = () => ({ id: "m2", name: "Haus Eiche", einheiten: [{ id: "e1", name: "WB1" }],
   personen: [person("q1", "planer", "ALLE"), person("q2", "leitung", "ALLE"), person("q3", "subplaner", "e1")],
   abweichungen: {}, abwesenheiten: [], krankmeldungen: [], anfragen: [], nachrichten: [], erfassung: {}, einstempeln: {}, einstellungen: {} });
 const kopie = (x) => JSON.parse(JSON.stringify(x));
+const NICHT_AKTIV = [["pi", "planer", "ALLE", { status: "inaktiv" }], ["ld", "leitung", "ALLE", { status: "deaktiviert" }],
+  ["pa", "planer", "ALLE", { anonym: true }], ["le", "leitung", "ALLE", { eintritt: T(10) }], ["pn", "planer", "ALLE", { eintritt: null }],
+  ["si", "subplaner", "e1", { status: "inaktiv" }], ["sd", "subplaner", "e1", { status: "deaktiviert" }],
+  ["sa", "subplaner", "e1", { anonym: true }], ["se", "subplaner", "e1", { eintritt: T(10) }]];
 
 /* Anmerkungen und Gründe, die nie in einer Benachrichtigung auftauchen dürfen. */
 const GEHEIM = ["Diagnose J11.1 Grippe", "Migräne seit gestern", "Bandscheibenvorfall L4/L5", "psychische Belastung", "AU bis Freitag"];
@@ -129,7 +135,7 @@ beforeAll(async () => {
   B = await import("../server/lib/bestand.mjs");
   V = await import("../server/lib/versand.mjs");
   /* Push-Anmeldungen für alle möglichen Empfänger (auch die, die nichts bekommen dürfen). */
-  for (const pid of ["a1", "a2", "b1", "s1", "s4", "s2", "sx", "p1", "l1", "p9", "r1", "k1"])
+  for (const pid of ["a1", "a2", "b1", "s1", "s4", "s2", "sx", "p1", "l1", "p9", "r1", "k1", ...NICHT_AKTIV.map((x) => x[0])])
     await laden().setJSON(V.pushSchluessel(R, "m1", pid), { endpoint: `https://push.beispiel.invalid/${pid}`, keys: { p256dh: "k", auth: "a" } });
 }, 60000);
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
@@ -146,6 +152,17 @@ describe("A  Empfänger je Rolle und Zuständigkeit (POST /api/krankmeldung)", (
     for (const nie of ["a1", "a2", "b1", "s2", "sx", "p9", "r1", "k1"]) expect(empfaengerVon(m, r.fall.id), nie).not.toContain(nie);
     /* anderer Betrieb: nichts */
     expect(krankNachrichten(await gespeichert("m2"))).toEqual([]);
+  });
+  it("Review #205: inaktive, deaktivierte, anonymisierte und noch nicht eingetretene Planung, Leitung, SV: nie Empfänger", async () => {
+    const r = await km("a1", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(3) });
+    expect(r.status).toBe(200);
+    const an = empfaengerVon(await gespeichert(), r.fall.id);
+    for (const [id] of NICHT_AKTIV) expect(an, id).not.toContain(id);
+    expect(an).toEqual(["l1", "p1", "s1", "s4"]);
+    for (const [id] of NICHT_AKTIV) {
+      expect(post.mails.map((x) => x.an), id).not.toContain(`${id}@beispiel.invalid`);
+      expect(post.pushes.map((x) => x.endpoint), id).not.toContain(`https://push.beispiel.invalid/${id}`);
+    }
   });
   it("ohne Dienst im Zeitraum: nur Planung und Leitung (die Schichtverantwortung braucht es sachlich nicht)", async () => {
     const r = await km("a2", "mitarbeiter", { aktion: "melden", von: T(2), bis: T(4) });
