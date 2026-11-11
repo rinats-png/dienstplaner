@@ -2,6 +2,9 @@
    SSOT-NACH-INTEGRATION — setzt die Pakete eines gemergten PRs auf
    INTEGRATED, mit dem PR als Beleg. Wird nach jeder Integration aufgerufen.
 
+   Teil-PRs: Nennt der PR-Titel nur einen Teil ("Teil 2", "Teilumfang", "Bibliothek"), setzt das Werkzeug das Paket
+   NICHT auf INTEGRATED, sondern vermerkt den PR und hält es auf IN_PROGRESS (Art TEILWEISE). Der Koordinator prüft den Rest.
+
    Aufruf:  node werkzeug/ssot-nach-integration.mjs <PR-Nummer> [--schreibe] [--datei F]
      Ohne --schreibe: nur Plan (Dry-Run, Standard).
      --schreibe: schreibt docs/acc45/work-packages.json, erzeugt die
@@ -45,14 +48,26 @@ function lockFreigeben() { try { rmSync(LOCK, { recursive: true, force: true });
 
 const ERGEBNIS = (code, text) => { if (text) console.log(text); process.exitCode = code; };
 
+/**
+ * Nennt der PR-Titel nur einen Teil eines Pakets ("Teil 2", "Teilumfang", "Bibliothek")? Dann darf das Werkzeug das
+ * Paket nicht auf INTEGRATED setzen, auch wenn die Paket-ID im Titel steht (WP-21 Teil 1 und 2, IMP-6 Bibliothek).
+ * Im Zweifel konservativ: Ein Treffer erzwingt die Prüfung durch den Koordinator.
+ */
+export function istTeilPr(titel) {
+  return /\bTeil\s*\d+\b|\bTeilumfang\b|\bBibliothek\b/i.test(String(titel ?? ""));
+}
+
 export function plan(ssot, pr) {
   const treffer = paketeFuerPr(ssot.pakete.map((p) => p.id), pr);
+  const teil = istTeilPr(pr.title);
   const aenderungen = [];
   for (const id of treffer) {
     const p = ssot.pakete.find((x) => x.id === id);
     const pnr = `#${pr.number}`;
     if (ERLEDIGT.includes(p.status)) {
       if (!(p.pr || []).includes(pnr)) aenderungen.push({ id, art: "PR_ERGAENZT", pr: pnr });
+    } else if (teil) {
+      aenderungen.push({ id, art: "TEILWEISE", von: p.status, pr: pnr });
     } else {
       aenderungen.push({ id, art: "INTEGRIERT", von: p.status, pr: pnr });
     }
@@ -69,6 +84,13 @@ export function anwenden(ssot, aenderungen, pr) {
     if (a.art === "INTEGRIERT") {
       p.status = "INTEGRATED";
       for (const k of ["implementiert", "lokalGetestet", "reviewt", "integriert"]) p.stufen[k] = { wert: true, beleg };
+    }
+    if (a.art === "TEILWEISE") {
+      /* Teilumfang: Status nie INTEGRATED. Ein noch nicht begonnenes Paket gilt jetzt als in Arbeit. */
+      if (p.status === "BLOCKED" || p.status === "READY") p.status = "IN_PROGRESS";
+      p.stufen.integriert = { wert: false, beleg: `Teilumfang in PR ${pnr} integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist.` };
+      p.notiz = `${(p.notiz || "").trim()} Stand (automatisch): Teilumfang nach ${pnr}, Status ${p.status}; Rest offen (Titel nennt nur einen Teil).`.trim();
+      continue;
     }
     p.notiz = `${(p.notiz || "").trim()} Stand (automatisch): ${p.status} nach ${pnr}.`.trim();
   }
