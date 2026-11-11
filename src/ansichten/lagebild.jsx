@@ -65,7 +65,7 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
       <H1 sub={fLang(d0)} right={darfEinheit(sitz, sitz.person.bereich) &&
         <Btn kind="danger" onClick={() => akt.oeffneKrankmeldung(null)}>Krankmeldung erfassen</Btn>}>Lagebild</H1>
       {/* RB-2: eingegangene und vorläufig bestätigte Krankmeldungen mit dem Schritt, den diese Rolle gehen darf. */}
-      <KrankmeldungenOffen sitz={sitz} akt={akt} />
+      <KrankmeldungenOffen sitz={sitz} akt={akt} oeffneTag={oeffneTag} />
 
       <Abschnittskopf titel="Besetzung heute"
         rechts={<Btn size="sm" onClick={() => oeffneTag(d0)}>Tag öffnen</Btn>} />

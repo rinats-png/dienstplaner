@@ -696,6 +696,11 @@ jobs:
       - name: Krankmeldung Benachrichtigung (RB-4)
         run: npm run pruefung:rb4-krankmeldung-benachrichtigung
 
+      # RB-5 (Betreiberentscheidung 2026-11-11): offener Fall — Plan unverändert, interne Markierung
+      # „Besetzung klärungsbedürftig“, Ersatz nur vorbereitet (nie geschrieben).
+      - name: Klärungsbedürftige Besetzung (RB-5)
+        run: npm run pruefung:rb5-klaerung
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration

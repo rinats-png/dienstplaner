@@ -26,6 +26,8 @@ const STUFEN_RANG = { hinweis: 1, achtung: 2, recht: 3 };
 export const stufeRang = (s) => (Object.prototype.hasOwnProperty.call(STUFEN_RANG, s) ? STUFEN_RANG[s] : STUFEN_RANG.hinweis);
 
 /* Haken: Regelkennung im Regelregister. Ohne Haken keine Kennung (null). */
+/* Typangabe nur für die Typprüfung (seit RB-5 liegt diese Datei im geprüften Graphen). */
+/** @type {(b: any) => any} */
 let regelIdHaken = () => null;
 export const regelIdHakenSetzen = (f) => { regelIdHaken = typeof f === "function" ? f : () => null; };
 const regelIdFuerBefund = (b) => regelIdHaken(b);
@@ -144,7 +146,7 @@ export function hindernisBefunde(m, p, d, da) {
     push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
   for (const b of bis(["ruhezeitGesetz", "ruhezeitBetrieb", "maxDiensteWoche", "keinAlleindienst", "tagesgrenze"])) fachPush(b);
   /* Branchenmodule (WP-19): Hinweise mit eigener Regelkennung aus dem Register. */
-  for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, b.regelId || null);
+  for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, /** @type {any} */ (b).regelId || null);
   // Dienste in Folge (Einstellung des Betriebs; nur die Oberfläche)
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {

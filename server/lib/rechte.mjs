@@ -36,6 +36,7 @@ import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
 import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
 import { fallAusAbwesenheit, svZustaendig, krankSchrittErlaubt, krankmeldungMitteilungen } from "./krankmeldung.mjs";
+import { klaerungFuerRolle, KLAERUNG_ROLLEN } from "./klaerung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -583,6 +584,20 @@ function ohneBetriebsSession(bestand) {
 export function bestandFuerRolle(bestand, sitzung) {
   const aus = ohneBetriebsSession(bestandFuerRolleKern(ohneBetriebsSession(bestand), sitzung));
   return aus && typeof aus === "object" && !Array.isArray(aus) ? { ...aus, session: null } : aus;
+}
+
+/** Die Antwort von GET /api/bestand (und der 409-Antwort von PUT): die Sicht der Rolle und — nur für
+    Planung, Leitung und die Schichtverantwortung (ihr Bereich; nicht die Kundenrolle) — die abgeleitete Markierung
+    „Besetzung klärungsbedürftig“ (RB-5, klaerung.mjs) als `klaerung` am eigenen Betrieb. Nie gespeichert
+    (abgeleiteteEntfernen), nicht in Auskunft, Import oder Faktenpaket (die lesen bestandFuerRolle). */
+export function bestandFuerAntwort(bestand, sitzung) {
+  const aus = bestandFuerRolle(bestand, sitzung);
+  if (!sitzung || !KLAERUNG_ROLLEN.includes(sitzung.rolle) || !aus || !Array.isArray(aus.mandanten) || aus.mandanten.length !== 1) return aus;
+  const sicht = aus.mandanten[0];
+  const roh = eigenerMandant(ohneBetriebsSession(bestand), sitzung);
+  if (!sicht || typeof sicht !== "object" || !roh || String(roh.id) !== String(sicht.id)) return aus;
+  const klaerung = klaerungFuerRolle(roh, sitzung, sicht.krankmeldungen);
+  return klaerung ? { ...aus, mandanten: [{ ...sicht, klaerung }] } : aus;
 }
 
 function bestandFuerRolleKern(bestand, sitzung) {
@@ -1318,8 +1333,10 @@ function abgeleiteteEntfernen(uebermittelt) {
      Personenfelder wird es vor dem Zusammenführen entfernt, nie gespeichert. */
   /* Ebenso die Auswertung für den Betriebsrat (WP-27). */
   const ohneVermerk = (m) => {
-    if (!m || typeof m !== "object" || (!("sichtIstDaten" in m) && !("auswertungBetriebsrat" in m))) return m;
-    const { sichtIstDaten, auswertungBetriebsrat, ...rest } = m; // eslint-disable-line no-unused-vars
+    /* Ebenso die Markierung „Besetzung klärungsbedürftig“ (RB-5, klaerung.mjs): mitgeschickt, verändert oder
+       gelöscht ohne Wirkung — sie entsteht beim Lesen allein aus den offenen Fällen. */
+    if (!m || typeof m !== "object" || (!("sichtIstDaten" in m) && !("auswertungBetriebsrat" in m) && !("klaerung" in m))) return m;
+    const { sichtIstDaten, auswertungBetriebsrat, klaerung, ...rest } = m; // eslint-disable-line no-unused-vars
     return rest;
   };
   return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m0) => {

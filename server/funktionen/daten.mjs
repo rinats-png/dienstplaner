@@ -4,7 +4,7 @@ import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungP
   protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen,
   sperrAuswertungBeginnen, sperrAuswertungenAbwarten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
-import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
+import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
@@ -1230,7 +1230,7 @@ async function behandeln(req, context, ctx) {
         merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true) });
       /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
          nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
-      return antwort({ bestand: bestandFuerRolle(personenAngleichen(mit.bestand), s), etag: mit.stand,
+      return antwort({ bestand: bestandFuerAntwort(personenAngleichen(mit.bestand), s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         /* SI-P4: Gilt der gemerkte Zugang noch? Die wirksame Rolle kann sich seit der Anmeldung geändert haben. */
@@ -1316,7 +1316,7 @@ async function behandeln(req, context, ctx) {
           await protokoll("schreiben", ks, "konflikt", "ohne ETag auf vorhandenem Bestand", wer);
           return antwort({ fehler: "konflikt",
             text: "Der Stand ist ohne Versionsangabe nicht überschreibbar. Bitte neu laden.",
-            bestand: bestandFuerRolle(personenAngleichen(jetzt.bestand), s), etag: jetzt.stand,
+            bestand: bestandFuerAntwort(personenAngleichen(jetzt.bestand), s), etag: jetzt.stand,
             durch: jetzt.durch, zeit: jetzt.zeit }, 409);
         }
 
@@ -1546,7 +1546,7 @@ async function behandeln(req, context, ctx) {
                 ? `Jemand anderes hat inzwischen ${monate.length > 1 ? "dieselben Monate" : "denselben Monat"} bearbeitet: ${monate.join(", ")}.`
                 : "Jemand anderes hat inzwischen gespeichert.",
             monate, kernBetroffen: !!erg.kernBetroffen,
-            bestand: bestandFuerRolle(personenAngleichen(erg.bestand), s), etag: erg.stand,
+            bestand: bestandFuerAntwort(personenAngleichen(erg.bestand), s), etag: erg.stand,
             durch: erg.durch, zeit: erg.zeit }, 409);
         }
 
