@@ -79,6 +79,7 @@ async function roh(token, weg, rumpf) {
 
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-impe2e-"));
+  process.env.CENTRIC_IMPORT_AKTIV = "true";   // Server-Schalter (Vorgabe aus); diese Datei prüft den eingeschalteten Import
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
   process.env.CENTRIC_PFEFFER = randomBytes(24).toString("hex");   // nur zur Laufzeit erzeugt

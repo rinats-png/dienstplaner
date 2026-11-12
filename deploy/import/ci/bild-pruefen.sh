@@ -6,9 +6,10 @@
 #   1. SheetJS lädt aus /app/vendor/sheetjs/xlsx.mjs
 #   2. Der Parser liest eine echte XLSX im Kindprozess und liefert Blätter
 #   3. Der Server startet ohne Netz, die Gesundheitsprüfung wird grün
-#   4. /api/import/upload ist erreichbar und verlangt Anmeldung (401).
-#      Unbekannte /api-Pfade liefern ebenfalls 401 (fail-closed). Routing selbst
-#      prüft pruefungen/import-sonden.test.js gegen den echten Handler.
+#   4. /api/import/upload ist im ausgelieferten Zustand AUS: ohne
+#      CENTRIC_IMPORT_AKTIV=true antwortet der Weg 404, bevor ein Rumpf gelesen
+#      wird (fail-closed; pruefungen/import-schalter.test.js). Das eingeschaltete
+#      Routing prüfen pruefungen/import-sonden.test.js und import-rumpfgrenze.test.js.
 # Geheimnisse entstehen je Lauf neu und liegen nur in einer Wegwerfdatei.
 set -euo pipefail
 
@@ -71,13 +72,13 @@ if [[ "$gesund" != "ja" ]]; then
 fi
 ok "Server läuft, Gesundheitsprüfung grün"
 
-# --- 4: Endpunkt erreichbar, Anmeldung verlangt ---
+# --- 4: Import ausgeliefert AUS (CENTRIC_IMPORT_AKTIV nicht gesetzt) ---
 antwort="$(docker exec "$NAME" node -e "
   const get = async (p, m) => (await fetch('http://127.0.0.1:3000' + p, { method: m })).status;
   get('/api/import/upload', 'POST')
-    .then((u) => { console.log(u); process.exit(u === 401 ? 0 : 1); })
+    .then((u) => { console.log(u); process.exit(u === 404 ? 0 : 1); })
     .catch(() => process.exit(1));
 ")" || fehl "Import-Endpunkt nicht wie erwartet (Antwort: ${antwort:-keine})"
-ok "/api/import/upload erreichbar, verlangt Anmeldung (Status $antwort)"
+ok "/api/import/upload ohne Schalter aus (Status $antwort)"
 
 echo "IMPORT-BILD: alle Prüfungen bestanden"
