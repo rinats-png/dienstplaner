@@ -120,6 +120,9 @@ jobs:
       - name: Schichtmodelle und Schichtzyklen (IMP-6)
         run: npm run pruefung:import-schichtmodelle
 
+      - name: Schichtmodell-Vorschau im Import, ohne Schreiben (IMP-6)
+        run: npm run pruefung:import-schichtmodell-vorschau
+
       - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
         run: npm run pruefung:import-abweichungen
 
