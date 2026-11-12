@@ -1,11 +1,10 @@
 /* ==========================================================================
    IMP-4 — Schnittstelle zu /api/import (Vertrag: IMP-3-NACHWEIS.md §1)
 
-   ACHTUNG: Der Endpunkt /api/import (IMP-3, Branch acc45/import/imp-3) ist zum
-   Zeitpunkt dieser Datei NICHT in integration/release-v4. IMP-4 darf erst nach
-   IMP-3 integriert werden. Bis dahin bleibt IMPORT_DATEI_AKTIV auf false; die
-   Oberfläche ruft dann nichts auf, und alle Prüfungen laufen gegen ein
-   Testdouble (pruefungen/hilfen/import-schnittstelle-attrappe.mjs).
+   Stand: Der Endpunkt /api/import (IMP-3) ist in integration/release-v4 eingebunden, liegt aber hinter dem
+   Serverschalter CENTRIC_IMPORT_AKTIV (Vorgabe aus: dann 404, siehe server/lib/schalter.mjs). Die Oberfläche
+   ruft ihn erst auf, wenn IMPORT_DATEI_AKTIV auf true steht; das ist eine eigene Freigabeentscheidung.
+   Die Prüfungen laufen gegen ein Testdouble (pruefungen/hilfen/import-schnittstelle-attrappe.mjs).
 
    Diese Datei ist die EINZIGE Stelle der Oberfläche, die /api/import kennt.
    Sie ist reiner Transport: keine Regel, keine Entscheidung, kein Zwischenspeicher.
@@ -14,7 +13,7 @@
    Speicher geschrieben (Personaldaten bleiben im Arbeitsspeicher des Vorgangs).
    ========================================================================== */
 
-/** Schalter: erst mit der Integration von IMP-3 auf true setzen (siehe docs/acc45/IMP-4-NACHWEIS.md). */
+/** Schalter der Oberfläche, Vorgabe aus: nur nach ausdrücklicher Freigabe auf true setzen (zusätzlich Serverschalter CENTRIC_IMPORT_AKTIV). */
 export const IMPORT_DATEI_AKTIV = false;
 
 export const IMPORT_PFADE = Object.freeze({

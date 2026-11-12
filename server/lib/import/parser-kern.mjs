@@ -44,7 +44,7 @@ class Abbruch extends Error {
 }
 const abbruch = (code, nachricht) => new Abbruch(code, nachricht);
 
-const ENDUNGEN = {
+export const ENDUNGEN = {
   xlsx: ["xlsx", "xlsm"],
   xls: ["xls"],
   csv: ["csv", "tsv", "txt", "tab"],

@@ -8,7 +8,7 @@ import { Icon } from "../gestalt/icons.jsx";
 import { Sheet } from "../ui/leisten.jsx";
 import { importParsen, importZuordnen, importPruefen, IMPORT_BEISPIEL } from "../lib/fachlogik.js";
 import { rolle } from "../lib/rollen.js";
-/* IMP-4: Dateiimport über den Import-Endpunkt (IMP-3). Bis IMP-3 integriert ist, bleibt IMPORT_DATEI_AKTIV false. */
+/* IMP-4: Dateiimport über den Import-Endpunkt (IMP-3). IMPORT_DATEI_AKTIV bleibt false, bis der Import freigegeben ist. */
 import { IMPORT_DATEI_AKTIV, erzeugeImportSchnittstelle } from "../lib/import-schnittstelle.js";
 import { ImportDatei } from "./import-datei.jsx";
 
