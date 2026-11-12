@@ -119,6 +119,9 @@ jobs:
       - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
         run: npm run pruefung:import-abweichungen
 
+      - name: Objektbericht-Dienstzeit aus der bestätigten Ist-Zeit (WP-19.3, OB-2)
+        run: npm run pruefung:objektbericht-dienstzeit
+
       - name: Synthetische Testdateien und Testmatrix des Imports (IMP-8)
         run: npm run pruefung:imp8-testmatrix
 

@@ -30,6 +30,7 @@ import { REGELN_BRANCHEN } from "../../server/lib/branchenkatalog.mjs";
 import { oberflaechenFuer, hatModuldaten, moduldatenExport } from "./index.js";
 import { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, ausnahmeAngabe, eintraegeListe, leeresFormular } from "./ausnahmeweg.js";
 import { modulKontext } from "./zugriff.js";
+import { objektberichtDienstzeit } from "./dienstzeit.js";
 
 export { ausnahmeAngabe };
 
@@ -277,7 +278,10 @@ function Oberflaechen({ m, sitz, darf, kontext, liste }) {
   if (!betrieb.length && !tagE.length && !da.length) return <p>Keine Moduloberfläche: Kein Branchenmodul wirkt in diesem Betrieb.</p>;
   const personen = kontext && typeof kontext.personenImDienst === "function" ? (kontext.personenImDienst(tag, dienstId) || []) : [];
   /* Basiskontext der Ansichten (zugriff.js): Zugriffsstufen, Person, Qualifikationsprüfung, Personen, Dienstzeit — fail-closed. */
-  const basis = { m, heute: heuteTag(), darf, ...modulKontext({ sitz, kontext }) };
+  /* Dienstzeit des Objektberichts (OB-2): nur aus der bestätigten Ist-Zeit (dienstzeit.js), nie aus dem Plan;
+     modulKontext reicht sie nur bei Berichtszugriff „voll“ (Planung, Leitung) weiter. */
+  const basis = { m, heute: heuteTag(), darf,
+    ...modulKontext({ sitz, kontext: { ...(kontext || {}), dienstzeit: objektberichtDienstzeit(m, sitz) } }) };
   const rahmen = (x, inhalt, schluessel) => (
     <section key={schluessel} style={RAHMEN} aria-label={x.eintrag.titel}>
       <h3 style={{ margin: 0, fontSize: 15 }}>{x.eintrag.titel}</h3>
