@@ -24,7 +24,8 @@ beforeAll(async () => {
   await writeFile(path.join(statik, "index.html"), "<!doctype html><title>Probe</title>");
   const s = await serverStarten({
     cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-    env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: "probe-geheim", NODE_ENV: "production" },
+    env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: "probe-geheim", NODE_ENV: "production",
+      CENTRIC_IMPORT_AKTIV: "true" },   // Server-Schalter (Vorgabe aus); hier wird die Rumpfgrenze des eingeschalteten Imports geprüft
   });
   ({ kind, basis: B } = s);
 }, 60000);

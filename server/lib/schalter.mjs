@@ -18,6 +18,21 @@ export const demoAn = () => process.env.CENTRIC_DEMO === "true";
 export const teilwegAn = () => process.env.CENTRIC_TEILSPEICHERUNG === "true";
 
 /* --------------------------------------------------------------------------
+   PERSONALIMPORT (IMP-1…IMP-4) — Vorgabe AUS
+
+   CENTRIC_IMPORT_AKTIV  alle Wege /api/import/* (upload, analyse, vorschau,
+                 uebernahme, verwerfen). Aus: server.mjs antwortet 404, bevor
+                 ein Rumpf gelesen wird; der Handler selbst prüft denselben
+                 Schalter als erste Anweisung (kein Parser-Kindprozess, kein
+                 Vorgang, kein Schreiben). Der Schalter der Oberfläche
+                 (`IMPORT_DATEI_AKTIV` in src/lib/import-schnittstelle.js) ist
+                 nur Anzeige und schützt den Server nicht. Einschalten erst
+                 nach der Prüfung IMP-9 §13 und Betreiberfreigabe.
+   Nur genau `true` schaltet ein; „TRUE", „1", „yes", „true " und alles andere bleiben aus.
+   -------------------------------------------------------------------------- */
+export const importAn = () => process.env.CENTRIC_IMPORT_AKTIV === "true";
+
+/* --------------------------------------------------------------------------
    HILFE-ASSISTENT (WP-I23, F9) — Vorgabe AUS
 
    CENTRIC_HILFE_ASSISTENT  aus (Vorgabe) | suche | an
