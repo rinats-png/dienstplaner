@@ -26,6 +26,7 @@
    ========================================================================== */
 
 import { randomBytes } from "node:crypto";
+import { schichtErgebnisVerwerfen, _cacheZuruecksetzen } from "./schichtcache.mjs";
 
 export const FRISTEN = Object.freeze({
   inaktivMs: 30 * 60 * 1000,
@@ -50,7 +51,7 @@ const gleicherBesitz = (a, b) => a.raum === b.raum && a.mandantId === b.mandantI
 export function aufraeumen(jetzt = Date.now()) {
   for (const [id, v] of VORGAENGE) {
     if (jetzt - v.angelegt > FRISTEN.hoechstMs || (v.zustand !== "uebernommen" && jetzt - v.zuletzt > FRISTEN.inaktivMs))
-      VORGAENGE.delete(id);
+      { VORGAENGE.delete(id); schichtErgebnisVerwerfen(id); }
   }
 }
 
@@ -92,9 +93,10 @@ export function alsUebernommen(v, ergebnis) {
   v.zustand = "uebernommen";
   v.ergebnis = ergebnis;
   v.zeilen = null; v.blaetter = null; v.analyse = null; v.plan = null;
+  schichtErgebnisVerwerfen(v.id);   // IMP-6: zwischengespeichertes Schichtergebnis fällt mit dem Inhalt weg
 }
 
-export function vorgangEntfernen(id) { VORGAENGE.delete(id); }
+export function vorgangEntfernen(id) { VORGAENGE.delete(id); schichtErgebnisVerwerfen(id); }
 
 /* Delta-Review 4a: Parser-Plätze je Raum. Die Grenze in parser.mjs (PARSER_GLEICHZEITIG_MAX) gilt prozessweit; ohne
    eigene Grenze je Raum könnte ein einziger Raum alle Plätze halten und alle anderen Betriebe aussperren. Je Raum
@@ -122,7 +124,7 @@ export const _pruefhaken = { vorParser: null };
 /** Für die Prüfung: Zahl der Vorgänge und ob ein Vorgang noch Inhalte hält. */
 export function _anzahl() { return VORGAENGE.size; }
 export function _roh(id) { return VORGAENGE.get(id) || null; }
-export function _zuruecksetzen() { VORGAENGE.clear(); }
+export function _zuruecksetzen() { VORGAENGE.clear(); _cacheZuruecksetzen(); }
 
 /* Alle 60 Sekunden aufräumen, auch ohne Zugriff (unref: hält den Prozess nicht am Leben). */
 setInterval(() => aufraeumen(), 60_000).unref();

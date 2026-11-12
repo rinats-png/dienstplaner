@@ -46,7 +46,7 @@ import { analysieren, planen, datumAnzeige } from "../lib/import/personen.mjs";
 import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN,
   parserPlatzBelegen, _pruefhaken as _importPruefhaken } from "../lib/import/vorgaenge.mjs";
 import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
-import { schichtVorschau, blaetterErkennen, HINWEIS_NUR_VORSCHAU } from "../lib/import/schichtvorschau.mjs";
+import { schichtVorschauMitSpeicher, blaetterErkennen, HINWEIS_NUR_VORSCHAU } from "../lib/import/schichtvorschau.mjs";
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
 const ARTEN = ["personal", "schichtzyklus"];
@@ -230,7 +230,7 @@ export default async (req) => {
           return fehlerAntwort(422, "BLATT_UNGUELTIG", "Dieses Tabellenblatt gibt es nicht.");
         const mZeilen = v.blaetter[mBlatt].zeilen;
         const zZeilen = zBlatt === null ? null : v.blaetter[zBlatt].zeilen;
-        const sv = schichtVorschau({ mandant: eigener, modellZeilen: mZeilen, zuordnungZeilen: zZeilen, zuordnung: rumpf.zuordnung });
+        const sv = schichtVorschauMitSpeicher({ raum: besitz.raum, vorgang: v.id }, { mandant: eigener, modellZeilen: mZeilen, zuordnungZeilen: zZeilen, zuordnung: rumpf.zuordnung });
         if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
         v.zeilen = mZeilen; v.zuordnungZeilen = zZeilen; v.zuordnung = rumpf.zuordnung === undefined ? undefined : rumpf.zuordnung;
         v.analyse = { art: v.art }; v.plan = null;
@@ -253,7 +253,7 @@ export default async (req) => {
       if (v.art === "schichtzyklus") {
         const br = await bremse("schreiben", k);
         if (!br.frei) return zuVielAntwort(br.wartet);
-        const sv = schichtVorschau({ mandant: eigener, modellZeilen: v.zeilen, zuordnungZeilen: v.zuordnungZeilen || null, zuordnung: v.zuordnung });
+        const sv = schichtVorschauMitSpeicher({ raum: besitz.raum, vorgang: v.id }, { mandant: eigener, modellZeilen: v.zeilen, zuordnungZeilen: v.zuordnungZeilen || null, zuordnung: v.zuordnung });
         if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
         const { ok: _ok, ...ergebnis } = sv;
         return antwort({ art: v.art, unterstuetzt: false, nurVorschau: true, vorschau: { ...ergebnis, zeitraum: null }, bereit: false,
