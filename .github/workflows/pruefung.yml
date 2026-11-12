@@ -171,6 +171,10 @@ jobs:
       - name: Pilot-Tagesbericht
         run: npm run pruefung:pilot-tagesbericht
 
+      # Synthetische Seeds SD-P/SD-S: Erzeugung, Schutz des Laders (nur Testumgebung), Rechenkern darüber.
+      - name: Pilot-Seeds
+        run: npm run pruefung:pilot-seeds
+
       # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
       # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
       # Folgen hat. App.jsx bleibt außen vor.
