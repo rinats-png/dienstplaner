@@ -41,7 +41,7 @@
      befund.stufe   (Abbildung der Schwere auf hinweis/achtung/recht fehlt)
      besetzung.*    (Soll gilt je Dienstart, das Feld verlangt eine Einheit)
      konto.saldo    (Feld sagt „Plan, nicht Ist“, stundenkonto rechnet mit Ist)
-     aenderung.art  (braucht einen Vergleichsstand des Plans: WP-I24)
+     aenderung.art  (braucht einen Vergleichsstand des Plans: WP-I24 Teil 1 rechnet den Vergleich in aenderungen.mjs; Anschluss hier offen)
      regel.art      (Regelart des Baukastens: eigenes Paket)
    ========================================================================== */
 import { pruefen, mitMerkmalen } from "./befunde.mjs";
