@@ -2,8 +2,8 @@
   "epoche": 9,
   "halter": "hauptchat",
   "uebernommen_am": "2026-11-11T18:51:08.241Z",
-  "erneuert_am": "2026-11-12T02:08:21.409Z",
-  "gueltig_bis": "2026-11-12T04:38:21.409Z",
+  "erneuert_am": "2026-11-12T03:16:21.569Z",
+  "gueltig_bis": "2026-11-12T05:46:21.569Z",
   "uebergabe": "Hauptchat wieder aktiv 2026-11-11 18:50Z nach Sitzungsneustart. Lease Epoche 8 seit 14:48Z abgelaufen, niemand hat uebernommen. Integrationskopf df4fa959 nach #202.",
   "vorgaenger": "hauptchat",
   "freigegeben_am": null
