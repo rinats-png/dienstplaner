@@ -118,6 +118,9 @@ jobs:
       - name: Teilspeicherung je Segment mit Versionen (WP-48.3)
         run: npm run pruefung:wp48-teilweg
 
+      - name: Hilfe-Assistent (WP-I23, Schalter aus, Rollen, Datenschutz)
+        run: npm run pruefung:hilfe-assistent
+
       - name: Eintrittsdatum ohne stille Ersetzung
         run: npm run pruefung:person-eintritt
 

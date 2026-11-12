@@ -5,6 +5,7 @@ import { C } from "../farben.js";
 import { Btn, H1, Card, CardHead, Lab } from "../ui/bausteine.jsx";
 import { KONTAKT_UNGESETZT, HILFE_ZEITEN, hilfeVerweis, HILFE_MAIL, HILFE_TELEFON } from "../kontakt.js";
 import { Hinweisband, Leitraster } from "../gestalt/ansichten.jsx";
+import { HilfeFrage } from "./hilfe-frage.jsx";
 
 /* ==========================================================================
    HILFE UND KONTAKT
@@ -52,6 +53,8 @@ export function Hilfe({ sitz, gehZu }) {
 
       <Leitraster seiteBreite={1}
         haupt={<>
+          <HilfeFrage />
+
           <Card>
             <CardHead>Selbst nachsehen</CardHead>
             <div className="wegliste">

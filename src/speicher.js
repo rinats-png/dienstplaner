@@ -682,6 +682,22 @@ export async function wiederherstellen(marke) {
    das Postfach in der Anwendung trägt die Mitteilung ohnehin.
    ========================================================================== */
 
+/* --------------------------- Hilfe-Assistent (WP-I23) --------------------------- */
+
+/** Was die Hilfe-Frage zeigen darf: { modus: "aus"|"suche"|"an" }. Jeder Fehler heißt aus. */
+export async function hilfeStatus() {
+  try {
+    const r = await ruf("hilfe/status");
+    return r.status === 200 && r.daten && typeof r.daten.modus === "string" ? r.daten : { modus: "aus" };
+  } catch { return { modus: "aus" }; }
+}
+
+/** Eine Frage zur Bedienung. Die Frage steht nur im Rumpf dieser Anfrage und wird nicht gemerkt. */
+export async function hilfeFrage(frage) {
+  const r = await ruf("hilfe/frage", { method: "POST", body: JSON.stringify({ frage }) });
+  return { status: r.status, daten: r.daten };
+}
+
 /** Was steht zur Verfügung? Push braucht einen Schlüssel, Mail einen Dienst. */
 export async function zustellwerte() {
   try {
