@@ -15,6 +15,7 @@
    ========================================================================== */
 
 import { fremdtextBereinigen } from "../kapsel.mjs";
+import { sperrlisteBilden, textPruefen } from "../leckpruefung.mjs";
 
 /** Grenzen der Frage in Zeichen (nach dem Bereinigen gemessen wird die Roheingabe). */
 export const FRAGE_MIN = 3;
@@ -59,6 +60,9 @@ export function woerter(text) {
 
 /* --- Frage bereinigen ----------------------------------------------------- */
 const MAIL = /[^\s@<>]{1,64}@[^\s@<>]{1,200}\.[A-Za-z]{2,24}/g;
+/* Verschleierte Adressen: "max (at) beispiel (punkt) de", "max[at]beispiel.de", "max at beispiel dot de". */
+const MAIL_VERSCHLEIERT = /[^\s@<>()[\]{}]{1,64}\s*[([{]\s*(?:at|ät)\s*[)\]}]\s*[^\s@<>]{1,60}?(?:\s*[([{]\s*(?:punkt|dot)\s*[)\]}]\s*|\.)[A-Za-z]{2,24}/gi;
+const MAIL_WORTE = /[^\s@<>()[\]{}]{1,64}\s+at\s+[^\s@<>]{1,60}?\s+(?:punkt|dot)\s+[A-Za-z]{2,24}/gi;
 const IBAN = /\b[A-Za-z]{2}\d{2}(?:[ ]?[A-Za-z0-9]{4}){3,7}(?:[ ]?[A-Za-z0-9]{1,4})?\b/g;
 const TELEFON = /(?:\+|00)?\d[\d ()/.-]{5,24}\d/g;
 export const ENTFERNT = "[entfernt]";
@@ -70,9 +74,10 @@ export const ENTFERNT = "[entfernt]";
  */
 export function frageBereinigen(roh) {
   /* Steuerzeichen, Tag- und Trennerfolgen raus (derselbe Weg wie für jeden Fremdtext, kapsel.mjs). */
-  let t = fremdtextBereinigen(String(roh));
+  /* NFKC zuerst: Ziffern, Klammern und @ in Vollbreite werden zu ASCII, bevor die Muster greifen. */
+  let t = fremdtextBereinigen(String(roh).normalize("NFKC"));
   const vorher = t;
-  t = t.replace(MAIL, ENTFERNT).replace(IBAN, ENTFERNT);
+  t = t.replace(MAIL, ENTFERNT).replace(MAIL_VERSCHLEIERT, ENTFERNT).replace(MAIL_WORTE, ENTFERNT).replace(IBAN, ENTFERNT);
   /* Telefon: nur, was nach einer Nummer aussieht (mindestens neun Ziffern, oder mit +/00 und sieben) —
      ein Datum wie 01.12.2026 oder ein Zeitraum bleibt stehen. */
   t = t.replace(TELEFON, (m) => {
@@ -117,4 +122,22 @@ export function suchen(frage, korpus, max = TREFFER_MAX) {
   }
   ergebnis.sort((a, b) => b.punkte - a.punkte || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return ergebnis.slice(0, max);
+}
+
+/* --- Gesundheitsangaben in der Frage ------------------------------------- */
+/** Zusätzlich zur Wortliste der Leck-Prüfung (leckpruefung.mjs, Kategorie GESUNDHEIT) einige häufige Krankheitswörter. */
+const GESUNDHEIT_PLUS = ["diabet", "epilep", "asthma", "migraen", "rheuma", "blutdruck", "grippe", "erkaeltung", "fieber", "schmerz", "therapie"];
+let leereSperrliste = null;
+/**
+ * Berührt die Frage ein Gesundheitsthema? Dann geht sie nie an ein Modell (die Hilfetexte werden trotzdem gezeigt).
+ * Nutzt dieselbe Wortliste wie die Leck-Prüfung des Gateways; im Zweifel (Fehler) gilt: ja.
+ * @param {string} text
+ */
+export function frageGesundheit(text) {
+  try {
+    if (!leereSperrliste) leereSperrliste = sperrlisteBilden({ id: "hilfe", name: "", personen: [], einheiten: [], dienstarten: [] }, { raum: "hilfe" });
+    if (textPruefen(text, leereSperrliste).befunde.some((b) => b.kategorie === "GESUNDHEIT")) return true;
+    const f = falten(text).replace(/ /g, "");
+    return GESUNDHEIT_PLUS.some((s) => f.includes(s));
+  } catch { return true; }
 }

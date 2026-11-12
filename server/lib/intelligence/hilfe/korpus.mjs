@@ -15,6 +15,12 @@
    sie werden der Person gezeigt, gehen aber nie an ein Modell, und eine Frage,
    die auf sie trifft, wird nie an ein Modell gestellt.
 
+   Bekannte Folge: Texte mit Gesundheitsbegriffen im Wortlaut (h-belastbarkeit: „Krankheitsfall“) weist die
+   Leck-Prüfung des Gateways (I11, GESUNDHEIT) immer ab. Eine Modellantwort dazu ist dauerhaft „nicht
+   verfügbar“; das ist Absicht der Prüfung, kein Leck. Die Hilfetexte selbst bleiben sichtbar.
+   Auch die Frage selbst wird vorab auf Gesundheitswörter geprüft (suche.mjs, frageGesundheit; dieselbe
+   Wortliste wie die Leck-Prüfung plus einige Krankheitswörter) und geht dann nie an ein Modell.
+
    Quelle der Inhalte: src/handbuch-inhalt.js (Handbuch) und die Ansichten selbst,
    gekürzt auf das, was eine Person beim Arbeiten nachschlägt.
    ========================================================================== */

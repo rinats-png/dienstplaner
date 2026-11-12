@@ -7,7 +7,8 @@
         · der Schalter auf „an“ steht,
         · die Rolle die Funktion F9 auslösen darf (Positivliste),
         · ein Gateway eingehängt ist (gateway.mjs; heute nie),
-        · kein Treffer ein Gesundheitsthema berührt (modell: false).
+        · weder ein Treffer (modell: false) noch die Frage selbst ein Gesundheitsthema
+        berührt (Wortliste der Leck-Prüfung des Gateways, I11; ohne sie fiele das erst dort auf).
       Zum Gateway gehen ausschließlich die bereinigte Frage und die gefundenen
       Hilfetexte als Fremdtext-Blöcke — kein Plan, keine Person, kein Betrieb.
    4  Jeder Fehler des Gateways (aus, Limit, Leck, Prüfer, Anbieter …) ist für die
@@ -18,7 +19,7 @@
    ========================================================================== */
 
 import { korpusFuerRolle } from "./korpus.mjs";
-import { frageBereinigen, suchen, FRAGE_MIN, FRAGE_MAX } from "./suche.mjs";
+import { frageBereinigen, frageGesundheit, suchen, FRAGE_MIN, FRAGE_MAX } from "./suche.mjs";
 import { funktionEintrag, rolleDarf } from "../positivliste.mjs";
 
 export const HILFE_TEXT_NICHT_VERFUEGBAR = "nicht verfügbar";
@@ -47,7 +48,7 @@ export async function hilfeBeantworten({ rolle, frage, modus, gateway, sitzung }
 
   const eintrag = funktionEintrag("F9");
   const darfFrage = !!eintrag && rolleDarf(eintrag, rolle);
-  const gesundheit = gefunden.some((t) => t.modell === false);
+  const gesundheit = gefunden.some((t) => t.modell === false) || frageGesundheit(bereinigt);
   if (!gateway || typeof gateway.ausfuehren !== "function" || !darfFrage || gesundheit)
     return { ok: true, treffer: passagen.length, passagen, keinTreffer: false, modell: { status: "nicht_verfuegbar", text: HILFE_TEXT_NICHT_VERFUEGBAR } };
 

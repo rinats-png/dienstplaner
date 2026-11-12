@@ -300,6 +300,21 @@ describe("S4 Gateway wird nie gerufen, wenn es nicht darf", () => {
     expect(b.modell.status).toBe("nicht_verfuegbar");
     expect(g.aufrufe).toHaveLength(0);
   });
+  it("Gesundheitswörter in der Frage selbst: Hilfetexte ja, Modell nie (auch ohne Treffer mit modell: false)", async () => {
+    process.env.CENTRIC_HILFE_ASSISTENT = "an";
+    const g = gw.gateway = spion(FERTIG);
+    for (const f of ["Wie stemple ich ein? Ich habe Diabetes", "Stempeln nach dem Arztbesuch", "Wie stemple ich ein, ich nehme Medikamente",
+      "Stempeln bei Schwangerschaft", "Attest und Stempeln", "Wie stemple ich ein trotz Krankheit"]) {
+      const r = await frage(T.ma, f);
+      expect(r.status, f).toBe(200);
+      expect(ids(r), f).toContain("h-stempeln");
+      expect(r.modell.status, f).toBe("nicht_verfuegbar");
+    }
+    expect(g.aufrufe).toHaveLength(0);
+    /* ohne Gesundheitswort geht es weiter */
+    await frage(T.ma, "Wie stemple ich ein?");
+    expect(g.aufrufe).toHaveLength(1);
+  });
   it("ungültige Frage (zu kurz, zu lang, kein Text): kein Aufruf", async () => {
     process.env.CENTRIC_HILFE_ASSISTENT = "an";
     const g = gw.gateway = spion(FERTIG);
@@ -384,6 +399,26 @@ describe("S6 zum Gateway nur Frage und Hilfetexte, Personenangaben vorher entfer
     expect(b(frei)).toEqual({ text: frei, entfernt: false });
     expect(b("a" + String.fromCharCode(0) + "b" + String.fromCharCode(0x202e) + "c  d")).toMatchObject({ text: "abc d" });   // Steuer- und Richtungszeichen
     expect(b("<script>x</script> Frage").text).not.toContain("<script");
+  });
+  it("Vollbreite-Ziffern und verschleierte Adressen werden entfernt (NFKC, (at)/[at]/at, (punkt)/dot)", () => {
+    const b = (x) => suche.frageBereinigen(x).text;
+    const voll = [0xff10, 0xff11, 0xff17, 0xff11, 0x20, 0xff12, 0xff13, 0xff14, 0xff15, 0xff16, 0xff17, 0xff18].map((c) => String.fromCharCode(c)).join("");
+    expect(b("ruf " + voll + " an")).toBe("ruf [entfernt] an");
+    expect(b("max (at) beispiel (punkt) de")).toBe("[entfernt]");
+    expect(b("max[at]beispiel.de")).toBe("[entfernt]");
+    expect(b("Mail max (AT) beispiel.de bitte")).toBe("Mail [entfernt] bitte");
+    expect(b("max at beispiel dot de")).toBe("[entfernt]");
+    expect(b("Wie stemple ich ein? Das ist at 6 Uhr")).toBe("Wie stemple ich ein? Das ist at 6 Uhr");
+  });
+  it("die Frage mit verschleierter Adresse und Vollbreite-Nummer erreicht das Gateway nicht im Klartext", async () => {
+    process.env.CENTRIC_HILFE_ASSISTENT = "an";
+    const g = gw.gateway = spion(FERTIG);
+    const voll = [0xff10, 0xff11, 0xff17, 0xff11, 0x20, 0xff12, 0xff13, 0xff14, 0xff15, 0xff16, 0xff17, 0xff18].map((c) => String.fromCharCode(c)).join("");
+    await frage(T.ma, "Wie stemple ich ein? max (at) beispiel (punkt) de oder " + voll);
+    expect(g.aufrufe).toHaveLength(1);
+    const alles = JSON.stringify(g.aufrufe[0].anf);
+    expect(alles).not.toMatch(/beispiel|2345678|\(at\)|punkt/);
+    expect(alles).not.toContain(voll);
   });
   it("bleibt bei langen, gemeinen Eingaben schnell (keine quadratische Laufzeit)", () => {
     const t0 = Date.now();

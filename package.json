@@ -210,7 +210,7 @@
     "pruefung:verlustweg-browser": "node pruefungen/browser/verlustweg-wr6.mjs",
     "pruefung:import-schichtmodelle": "vitest run pruefungen/import-schichtmodelle-imp6.test.js",
     "pruefung:imp8-testmatrix": "vitest run pruefungen/imp8-testmatrix.test.js --testTimeout=120000",
-    "pruefung:hilfe-assistent": "vitest run pruefungen/hilfe-assistent-i23.test.js pruefungen/hilfe-assistent-i23-oberflaeche.test.js --testTimeout=120000",
+    "pruefung:hilfe-assistent": "vitest run pruefungen/hilfe-assistent-i23.test.js pruefungen/hilfe-assistent-i23-oberflaeche.test.js pruefungen/hilfe-assistent-i23-grenzen.test.js --testTimeout=120000",
     "pruefung:rb1-plan-publish": "vitest run pruefungen/rb1-plan-publish.test.js --testTimeout=120000",
     "pruefung:rb2-krankmeldung": "vitest run pruefungen/rb2-krankmeldung.test.js --testTimeout=120000",
     "pruefung:rb3-kunde-ohne-publish": "vitest run pruefungen/rb3-kunde-ohne-publish.test.js --testTimeout=120000",
