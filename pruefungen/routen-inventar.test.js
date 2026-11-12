@@ -103,6 +103,8 @@ export const INVENTAR = {
   "/api/import/vorschau": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],      // IMP-3: wie analyse
   "/api/import/uebernahme": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],    // IMP-3: wie analyse, plus Bestätigungscode
   "/api/import/verwerfen": ["import-sonden.test.js", "import-rumpfgrenze.test.js"],     // IMP-3: wie analyse
+  "/api/hilfe/status": ["hilfe-assistent-i23.test.js"],    // WP-I23: jede bekannte Rolle außer Betreiber; Schalter CENTRIC_HILFE_ASSISTENT
+  "/api/hilfe/frage": ["hilfe-assistent-i23.test.js"],     // WP-I23: wie status, 404 bei Schalter aus; Frage nie gespeichert
 };
 
 /** Wege ohne eigene Zeile in RECHTEMATRIX.md — bewusst, mit Grund. */

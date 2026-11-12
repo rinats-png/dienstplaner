@@ -120,6 +120,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 | `CENTRIC_PUBLIC_REGISTRATION` | nein | **Vorgabe: aus.** Nur genau `true` öffnet die öffentliche Selbstregistrierung (`/api/registrierung*`); jeder andere Wert lässt sie zu. Erst setzen, wenn das Account-Onboarding steht — siehe 5.8 |
 | `CENTRIC_SELBSTSTART` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Selbststart (`/starten`, „Eigenen Betrieb anlegen"); jeder andere Wert lässt ihn aus. Im internen Piloten nicht setzen — siehe `docs/SELBSTSTART-SCHALTER.md` |
 | `CENTRIC_DEMO` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Demozugang (`POST /api/demo`, `GET /api/demos`, die drei Beispielbetriebe auf der Anmeldeseite); sonst 403 bzw. leere Liste, ohne Sitzung und ohne Datei. Siehe `docs/DEMO-SCHALTER.md`. |
+| `CENTRIC_HILFE_ASSISTENT` | nein | **Vorgabe: aus.** `suche` öffnet die Hilfe-Suche über die festen Hilfetexte (`GET /api/hilfe/status`, `POST /api/hilfe/frage`); `an` erlaubt zusätzlich eine vom Gateway formulierte Antwort — nur, wenn ein Gateway eingehängt ist (heute keines; Voraussetzung E-25/E-26). Jeder andere Wert bedeutet aus. WP-I23. |
 
 Die Anwendung **läuft auch ohne die optionalen Variablen**. Was fehlt:
 
