@@ -23,6 +23,7 @@ import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus }
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { planFreigabeAktiv } from "./planfreigabe.mjs";
 import { MODULEINSTELLUNGEN_FELDER } from "./branchenmodule.mjs";
+import { KI_FELD } from "./ki-steuerung.mjs";
 import { moduldatenBeiWiederherstellung } from "./modulschreibwege.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
@@ -243,7 +244,9 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
      kein Modul ohne Bestätigung ein, hebt keinen Regelwert an und kürzt das Protokoll nicht. */
   {
     const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
-    for (const f of MODULEINSTELLUNGEN_FELDER) {
+    /* Intelligence-Steuerung (WP-I16): Schalter, Pause und Protokoll gelten weiter, wie sie heute sind —
+       eine alte Sicherung hebt keine Pause des Betriebsrats auf und schaltet nichts ein. */
+    for (const f of [...MODULEINSTELLUNGEN_FELDER, KI_FELD]) {
       if (f in altE) z[f] = altE[f]; else delete z[f];
     }
     if ((zurueck.einstellungen && typeof zurueck.einstellungen === "object") || Object.keys(z).length) zurueck.einstellungen = z;

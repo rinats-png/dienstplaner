@@ -15,6 +15,7 @@ import { kommendeWeckzeiten } from "../lib/verfuegbarkeit.js";
 import { tourKapitel, tourStand } from "../lib/tour.js";
 import { NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { useTour } from "./tourleiste.jsx";
+import { KiSteuerung } from "./ki-steuerung.jsx";
 
 
 /* ==========================================================================
@@ -355,6 +356,9 @@ export function Einstellungen({ sitz, akt, gehZu }) {
               Jetzt sichern</Btn>
           </Zeile>
         </Card>)}
+
+      {/* WP-I16 Teil 1: Steuerung und Transparenz; ohne Prozessschalter nur „nicht verfügbar“, für Beschäftigte nichts. */}
+      {sitz.mandant && sitz.rolle !== "betreiber" && <KiSteuerung sitz={sitz} akt={akt} />}
 
       {/* ------------- Sicherungen: Liste und Zurückspielen (WP-25) ------------- */}
       {sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle) && (
