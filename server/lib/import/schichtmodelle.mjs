@@ -61,6 +61,8 @@ const norm = (s) => String(s ?? "").toLowerCase()
   .replace(/[^a-z0-9]/g, "");
 const vergleich = (s) => String(s ?? "").trim().toLowerCase();
 const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+/** Obergrenze der Zeilennummern je „zuordnung-doppelt“-Konflikt. */
+const DOPPELT_MAX = 20;
 const ZEIT = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -185,7 +187,7 @@ export function modelleLesen({ zeilen, zuordnung, dienstarten }) {
     const zeilenM = nachName.get(name);
     const konflikte = [];
     const nachTag = new Map();
-    for (const d of zeilenM) if (d.werte.tag !== null) nachTag.set(d.werte.tag, [...(nachTag.get(d.werte.tag) || []), d]);
+    for (const d of zeilenM) if (d.werte.tag !== null) { const l = nachTag.get(d.werte.tag); if (l) l.push(d); else nachTag.set(d.werte.tag, [d]); }
     const laenge = nachTag.size ? Math.max(...nachTag.keys()) : 0;
     const fehlend = [];
     for (let k = 1; k <= laenge; k++) if (!nachTag.has(k)) fehlend.push(k);
@@ -267,10 +269,15 @@ export function zuordnungenLesen({ zeilen, zuordnung, personen, modelle }) {
   const gleich = new Map();
   for (const d of datensaetze) if (d.personId && d.werte.beginn) {
     const k = `${d.personId}|${d.werte.beginn}`;
-    gleich.set(k, [...(gleich.get(k) || []), d]);
+    const l = gleich.get(k);
+    if (l) l.push(d); else gleich.set(k, [d]);
   }
-  for (const l of gleich.values()) if (l.length > 1)
-    for (const d of l) d.konflikte.push({ art: "zuordnung-doppelt", datensaetze: l.map((x) => x.datensatz).filter((x) => x !== d.datensatz) });
+  /* Linear in der Zeilenzahl: je Zeile höchstens DOPPELT_MAX andere Zeilennummern, dazu die Gesamtzahl (nie eine Liste aller anderen). */
+  for (const l of gleich.values()) if (l.length > 1) {
+    const erste = l.slice(0, DOPPELT_MAX + 1).map((x) => x.datensatz);
+    for (const d of l) d.konflikte.push({ art: "zuordnung-doppelt", anzahl: l.length - 1,
+      datensaetze: erste.filter((x) => x !== d.datensatz).slice(0, DOPPELT_MAX) });
+  }
   for (const d of datensaetze) {
     if (d.fehler.length) { d.erlaubt = ["ueberspringen"]; d.vorgabe = "ueberspringen"; }
     else if (d.konflikte.length) { d.erlaubt = ["ueberspringen", "klaeren"]; d.vorgabe = "klaeren"; }

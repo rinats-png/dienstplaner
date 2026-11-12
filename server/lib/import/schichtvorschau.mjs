@@ -9,26 +9,27 @@
    - Freitext aus der Datei wird nicht zurückgegeben. Unbekannte Dienstbezeichnungen erscheinen nur als laufender Index
      mit Anzahl und Datenzeilennummern. Abwesenheitsbezeichnungen (krank, Attest, Reha, auch „krank (Grippe)“) erscheinen
      nur als Zahl und Zeilennummern und werden nie einer Dienstart oder Abwesenheit zugeordnet.
-   - Modellnamen nur, wenn sie wie ein harmloser Kurzname aussehen (Buchstabe oder Ziffer am Anfang, nur Buchstaben,
-     Ziffern, Leerzeichen und . _ / + -, höchstens 40 Zeichen) und keine Abwesenheitsbezeichnung sind; sonst „Modell n“
-     ohne Namen (name: null).
+   - Modellnamen und Überschriftstexte werden gar nicht zurückgegeben: Modelle erscheinen als „Modell #n“ (Nummer in der
+     Reihenfolge des ersten Auftretens) mit Länge, Zahlen und Zuordnungen; Spalten nur mit ihrer festen Rollenbezeichnung
+     (Modell, Tag, Dienst, Personalnummer, Beginn, Versatz), nie mit dem Text der Überschrift.
    - Personalnummern und Namen der Zuordnungstabelle erscheinen nicht; nur Anzahlen und Zeilennummern.
    - Kürzel erscheinen nur, wenn sie zu einer Dienstart DES BETRIEBS gehören.
 
-   Grenzen: Summe der Zykluslängen aller Modelle höchstens zyklusTageMax (vor dem Lesen geprüft — die Bibliothek legt je
+   Grenzen: je Blatt höchstens zeilenMax Datenzeilen (vor jeder Rechnung geprüft, sonst 422 PRUEFUMFANG_ZU_GROSS; die Bibliothek
+   ist linear in der Zeilenzahl, die Obergrenze hält die synchrone Rechnung im Serverprozess klein); Summe der Zykluslängen aller Modelle höchstens zyklusTageMax (vor dem Lesen geprüft — die Bibliothek legt je
    Modell ein Feld der Länge der höchsten Tagesnummer an; ohne diese Prüfung ließen wenige Zeilen mit Tag 999999 sehr
    viel rechnen). Anzeige höchstens 50 Modelle, je Eintrag höchstens 20 Zeilennummern.
    ========================================================================== */
 
 import { modelleLesen, zuordnungenLesen, MODELL_FELDER, FREI } from "./schichtmodelle.mjs";
 import { zellText } from "./personen.mjs";
-import { abwesenheitsBezeichnung, bezeichnungNormalisiert } from "../intelligence/funktionen/altplan.mjs";
+import { norm as bezeichnungNormalisiert, abwesend as abwesenheitsBezeichnung } from "../bezeichnungen.mjs";
 
-export const VORSCHAU_GRENZEN = Object.freeze({ zyklusTageMax: 10000, modelleAnzeige: 50, zeilenJeEintrag: 20, unbekanntAnzeige: 50, dienstartenAnzeige: 30 });
+export const VORSCHAU_GRENZEN = Object.freeze({ zyklusTageMax: 10000, zeilenMax: 10000, modelleAnzeige: 50, zeilenJeEintrag: 20, unbekanntAnzeige: 50, dienstartenAnzeige: 30 });
 export const HINWEIS_NUR_VORSCHAU = "Schichtmodelle werden noch nicht übernommen. Dies ist nur eine Vorschau, es wird nichts gespeichert.";
 
 const G = VORSCHAU_GRENZEN;
-const SICHERER_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._/+-]{0,39}$/u;
+const ROLLE = Object.freeze({ modell: "Modell", tag: "Tag", dienst: "Dienst", personalnummer: "Personalnummer", beginn: "Beginn", versatz: "Versatz" });
 const kappen = (l, n = G.zeilenJeEintrag) => l.slice(0, n);
 const kopfVon = (zeilen) => (Array.isArray(zeilen) && Array.isArray(zeilen[0]) ? zeilen[0] : []);
 
@@ -44,7 +45,10 @@ export function blaetterErkennen(blaetter) {
   return { modell, zuordnung };
 }
 
-const spaltenAus = (sp) => sp.map((s) => ({ index: s.index, feld: s.feld, kopf: s.feld ? String(s.kopf).slice(0, 60) : "" }));
+/** Spalten nur mit der festen Rollenbezeichnung, nie mit dem Überschriftstext der Datei. */
+const spaltenAus = (sp) => sp.map((s) => ({ index: s.index, feld: s.feld, kopf: s.feld ? ROLLE[s.feld] : "" }));
+const zuViele = (z) => Array.isArray(z) && z.length - 1 > G.zeilenMax;
+const ZU_GROSS = { ok: false, code: "PRUEFUMFANG_ZU_GROSS", nachricht: "Die Tabelle hat zu viele Zeilen für eine Vorschau. Bitte die Datei teilen." };
 
 /** Vorprüfung, bevor die Bibliothek rechnet: Summe der Zykluslängen (höchste Tagesnummer je Modell). */
 function laengenSumme(zeilen, zuordnung) {
@@ -88,6 +92,8 @@ export function schichtVorschau({ mandant, modellZeilen, zuordnungZeilen = null,
     zaehler: { modelle: 0, pruefbar: 0, datensaetze: 0, fehlerhaft: 0, zuordnungen: 0 }, fehlendePflicht: [], spalten: [], zuordnungSpalten: [] };
   if (!Array.isArray(modellZeilen) || !modellZeilen.length) return { ok: true, ...leer, fehlendePflicht: [...MODELL_FELDER] };
   const dienstarten = (mandant && mandant.dienstarten) || [];
+  /* Zeilenobergrenze VOR jeder Rechnung, für beide Blätter. */
+  if (zuViele(modellZeilen) || zuViele(zuordnungZeilen)) return ZU_GROSS;
 
   const { vor, summe } = laengenSumme(modellZeilen, zuordnung);
   if (!vor.ok) return { ok: false, code: vor.code, nachricht: vor.nachricht };
@@ -114,8 +120,7 @@ export function schichtVorschau({ mandant, modellZeilen, zuordnungZeilen = null,
   for (const u of unbekannt) u.zeilen = kappen(u.zeilen);
 
   const zyklen = ml.modelle.slice(0, G.modelleAnzeige).map((m, i) => {
-    const sicher = SICHERER_NAME.test(m.name) && !abwesenheitsBezeichnung(bezeichnungNormalisiert(m.name));
-    return { nr: i + 1, name: sicher ? m.name : null, laenge: m.laenge, dienste: m.dienste, freieTage: m.pruefbar ? m.laenge - m.dienste : null,
+    return { nr: i + 1, laenge: m.laenge, dienste: m.dienste, freieTage: m.pruefbar ? m.laenge - m.dienste : null,
       pruefbar: m.pruefbar, datensaetze: kappen(m.datensaetze), dienstarten: dienstartenZaehlung(m),
       konflikte: m.konflikte.map(konfliktAus), hinweise: m.hinweise.map((h) => ({ art: h.art })) };
   });
@@ -128,7 +133,7 @@ export function schichtVorschau({ mandant, modellZeilen, zuordnungZeilen = null,
     if (zl.fehlendePflicht.length) zuordnungen = { gesamt: 0, fehlendePflicht: zl.fehlendePflicht };
     else {
       const nachArt = new Map();
-      for (const d of zl.datensaetze) for (const k of d.konflikte) nachArt.set(k.art, [...(nachArt.get(k.art) || []), d.datensatz]);
+      for (const d of zl.datensaetze) for (const k of d.konflikte) { const l = nachArt.get(k.art); if (l) l.push(d.datensatz); else nachArt.set(k.art, [d.datensatz]); }
       const personen = new Set(zl.datensaetze.filter((d) => d.personId).map((d) => d.personId));
       zuordnungen = { gesamt: zl.zaehler.gesamt, uebernehmbar: zl.datensaetze.filter((d) => d.vorgabe === "uebernehmen").length,
         fehlerhaft: zl.zaehler.fehlerhaft, mitKonflikt: zl.zaehler.konflikte, personen: personen.size,

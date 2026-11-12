@@ -10,11 +10,20 @@
      npx vitest run pruefungen/import-schichtmodell-vorschau-imp6.test.js
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mappe } from "./import-parser-hilfen.mjs";
+
+/* Aufrufzähler an der Bibliothek: die Zeilenobergrenze muss VOR jeder Rechnung greifen. */
+const aufrufe = vi.hoisted(() => ({ modelle: [], zuordnungen: [] }));
+vi.mock("../server/lib/import/schichtmodelle.mjs", async (original) => {
+  const echt = await original();
+  return { ...echt,
+    modelleLesen: (e) => { aufrufe.modelle.push(Array.isArray(e.zeilen) ? e.zeilen.length : 0); return echt.modelleLesen(e); },
+    zuordnungenLesen: (e) => { aufrufe.zuordnungen.push(Array.isArray(e.zeilen) ? e.zeilen.length : 0); return echt.zuordnungenLesen(e); } };
+});
 
 const WIRT = "127.0.0.1:3000";
 const WEGE = ["upload", "analyse", "vorschau", "uebernahme", "verwerfen"];
@@ -130,7 +139,7 @@ describe("IMP-6 Vorschau: Analyse und Vorschau", { timeout: 120000 }, () => {
     expect(an).toMatchObject({ status: 200, art: "schichtzyklus", unterstuetzt: false, nurVorschau: true, blatt: 0, zuordnungBlatt: 1, zyklenGesamt: 3 });
     expect(an.hinweis).toMatch(/noch nicht übernommen/);
     const [zwei, drei, defekt] = an.zyklen;
-    expect(zwei).toMatchObject({ name: "Zweier", laenge: 2, dienste: 1, freieTage: 1, pruefbar: true, konflikte: [] });
+    expect(zwei).toMatchObject({ nr: 1, laenge: 2, dienste: 1, freieTage: 1, pruefbar: true, konflikte: [] });
     expect(zwei.dienstarten).toEqual([{ kurz: "F", tage: 1 }]);
     expect(drei).toMatchObject({ laenge: 3, pruefbar: false });
     expect(drei.konflikte.map((k) => k.art)).toContain("dienstart-unbekannt");
@@ -153,7 +162,7 @@ describe("IMP-6 Vorschau: Analyse und Vorschau", { timeout: 120000 }, () => {
     expect(vs).toMatchObject({ status: 200, art: "schichtzyklus", nurVorschau: true, bereit: false });
     expect(vs.bestaetigung).toBeUndefined();
     expect(vs.vorschau.zeitraum).toBeNull();
-    expect(vs.vorschau.zyklen.map((z) => z.laenge)).toEqual([2, 3, 3]);
+    expect(vs.vorschau.zyklen.map((z) => [z.nr, z.laenge])).toEqual([[1, 2], [2, 3], [3, 3]]);
     expect(vs.vorschau.zuordnungen.gesamt).toBe(4);
   });
   it("ohne Zuordnungsblatt: nur Modelle; ohne Modellspalten: leeres Ergebnis mit fehlender Pflicht", async () => {
@@ -228,7 +237,7 @@ describe("IMP-6 Vorschau: feindliche Eingaben", { timeout: 120000 }, () => {
     expect(an.abwesenheitsartig.zeilen).toEqual([1, 2, 3, 7]);
     expect(an.unbekannteBezeichnungen.length).toBeGreaterThanOrEqual(1);
     expect(an.unbekannteBezeichnungen.every((u, i) => u.index === i + 1 && u.anzahl === 1)).toBe(true);
-    expect(an.zyklen.map((z) => z.name)).toEqual([null, null, "Muster-A"]);
+    expect(an.zyklen.every((z) => z.name === undefined)).toBe(true);   // Namen werden nie zurückgegeben
     expect(await stand(raum)).toEqual(vorher);
   });
   it("riesiger Zyklus (Tag 999999, viele Modelle): 422 ohne Rechnung, keine Teilausgabe", async () => {
@@ -264,5 +273,81 @@ describe("IMP-6 Vorschau: feindliche Eingaben", { timeout: 120000 }, () => {
     await schritt(t.LT, "analyse", { vorgang: up.vorgang });
     expect((await schritt(t.LT, "verwerfen", { vorgang: up.vorgang })).status).toBe(200);
     expect(V._roh(up.vorgang)).toBeNull();
+  });
+});
+
+describe("IMP-6 Vorschau: keine Namen, keine Überschriftstexte", { timeout: 120000 }, () => {
+  const PROBEN = ["Krebs", "Diabetes", "HIV", "krаnk", "krank", "Tag krank (Grippe)", "Dienst Chemo", "Modell Depression"];
+  it("Modellnamen und Überschriften (auch harmlos aussehende Krankheitswörter, kyrillisch) erscheinen nie", async () => {
+    const { t } = await neuerRaum();
+    const zeilen = [["Modell Depression", "Tag krank (Grippe)", "Dienst Chemo"], ...["Krebs", "Diabetes", "HIV", "krаnk", "krank"].flatMap((n) => [[n, 1, "F"], [n, 2, "-"]])];
+    const zu = [["Personalnummer", "Modell Krebs", "Beginn", "Versatz"], ["1001", "Krebs", "2026-06-01", 0]];
+    const up = await hochladen(t.LT, mappe({ Modelle: zeilen, Zuordnungen: zu }));
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    const vs = await schritt(t.LT, "vorschau", { vorgang: up.vorgang });
+    expect(an.zyklenGesamt).toBe(5);
+    for (const antwort of [an, vs]) {
+      const roh = JSON.stringify(antwort);
+      for (const p of PROBEN) expect(roh, p).not.toContain(p);
+    }
+    expect(an.spalten.map((s) => s.kopf).filter(Boolean)).toEqual(["Modell", "Tag", "Dienst"]);
+    expect(an.zuordnungSpalten.map((s) => s.kopf).filter(Boolean)).toEqual(["Personalnummer", "Modell", "Beginn", "Versatz"]);
+  });
+});
+
+describe("IMP-6 Vorschau: Last und Obergrenzen (kein Absturz durch große Tabellen)", { timeout: 120000 }, () => {
+  let schichtVorschau, GRENZEN;
+  beforeAll(async () => { ({ schichtVorschau, VORSCHAU_GRENZEN: GRENZEN } = await import("../server/lib/import/schichtvorschau.mjs")); });
+  afterEach(() => { aufrufe.modelle.length = 0; aufrufe.zuordnungen.length = 0; });
+  const mandant = betrieb("m1", [person("x1", "mitarbeiter", "m1-e1", { personalnummer: "1001" })]);
+  const MODELL = [["Modell", "Tag", "Dienst"], ["A", 1, "F"], ["A", 2, "-"]];
+  const messen = (fn) => {
+    const heap0 = process.memoryUsage().heapUsed; const t0 = Date.now();
+    const r = fn();
+    return { r, ms: Date.now() - t0, heapMb: (process.memoryUsage().heapUsed - heap0) / 1048576 };
+  };
+  it("Obergrenze: größere Tabellen werden VOR jeder Rechnung mit 422-Code abgewiesen (Zuordnungen und Modelle)", () => {
+    aufrufe.modelle.length = 0; aufrufe.zuordnungen.length = 0;
+    const n = GRENZEN.zeilenMax + 1;
+    const gross = Array.from({ length: n }, () => ["1001", "A", "2026-06-01", 0]);
+    const a = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...gross] }));
+    expect(a.r).toMatchObject({ ok: false, code: "PRUEFUMFANG_ZU_GROSS" });
+    expect(a.ms).toBeLessThan(500);
+    const b = schichtVorschau({ mandant, modellZeilen: [MODELL[0], ...Array.from({ length: n }, (_, i) => ["A", (i % 2) + 1, "F"])] });
+    expect(b).toMatchObject({ ok: false, code: "PRUEFUMFANG_ZU_GROSS" });
+    /* Die Bibliothek wurde nicht mit den großen Tabellen gerufen (höchstens mit Kopfzeilen der Blatterkennung). */
+    expect(Math.max(0, ...aufrufe.modelle, ...aufrufe.zuordnungen)).toBeLessThanOrEqual(1);
+  });
+  it("Obergrenze voll ausgeschöpft: gleiche Person und gleicher Beginn in jeder Zeile — schnell und ohne Speicherexplosion", () => {
+    const gleich = Array.from({ length: GRENZEN.zeilenMax }, () => ["1001", "A", "2026-06-01", 0]);
+    const { r, ms, heapMb } = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL,
+      zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...gleich] }));
+    expect(r.ok).toBe(true);
+    expect(r.zuordnungen.konflikte.find((k) => k.art === "zuordnung-doppelt").anzahl).toBe(GRENZEN.zeilenMax);
+    expect(r.zuordnungen.konflikte[0].datensaetze.length).toBeLessThanOrEqual(GRENZEN.zeilenJeEintrag);
+    expect(ms).toBeLessThan(2000);
+    expect(heapMb).toBeLessThan(200);
+  });
+  it("Obergrenze voll ausgeschöpft: lauter Konfliktzeilen (unbekannte Person, unbekanntes Modell)", () => {
+    const zeilen = Array.from({ length: GRENZEN.zeilenMax }, (_, i) => [String(5000 + i), "Gibtsnicht", "2026-06-01", 0]);
+    const { r, ms } = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...zeilen] }));
+    expect(r.ok).toBe(true);
+    expect(r.zuordnungen.mitKonflikt).toBe(GRENZEN.zeilenMax);
+    expect(ms).toBeLessThan(2000);
+  });
+  it("Obergrenze voll ausgeschöpft: alle Modellzeilen am selben Tag", () => {
+    const zeilen = [MODELL[0], ...Array.from({ length: GRENZEN.zeilenMax }, () => ["A", 1, "F"])];
+    const { r, ms } = messen(() => schichtVorschau({ mandant, modellZeilen: zeilen }));
+    expect(r.ok).toBe(true);
+    expect(r.zyklen[0].konflikte.map((k) => k.art)).toContain("tag-doppelt");
+    expect(ms).toBeLessThan(2000);
+  });
+  it("Zeilenzahl im Endpunkt: 20.000 Zeilen Zuordnungen ergeben 422 (kein Absturz)", async () => {
+    const { t } = await neuerRaum();
+    const gross = Array.from({ length: 19990 }, () => ["1001", "A", "2026-06-01", 0]);
+    const up = await hochladen(t.LT, mappe({ Modelle: MODELL, Zuordnungen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...gross] }));
+    expect(up.status).toBe(201);
+    const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    expect(an).toMatchObject({ status: 422, code: "PRUEFUMFANG_ZU_GROSS" });
   });
 });

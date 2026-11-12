@@ -29,6 +29,7 @@ import { betriebIndexAusSitzung } from "../alias.mjs";
 import { gatewayAn, SCHALTER_AUS } from "../gateway/schalter.mjs";
 import { GatewayFehler } from "../gateway/codes.mjs";
 import { KiFehler } from "../fehler.mjs";
+import { norm, abwesend } from "../../bezeichnungen.mjs";
 
 export const F7A_TEXT = "Die modellgestützte Zuordnung ist derzeit nicht verfügbar. Es gilt nur die genaue Zuordnung.";
 export const F7A_HINWEIS = "Vorschau, nichts übernommen";
@@ -45,15 +46,7 @@ const tagGueltig = (s) => typeof s === "string" && TAG.test(s) && new Date(`${s}
 const tageZwischen = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 const gleich = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);
 const EINGABE = () => new KiFehler("KI_EINGABE", "Anfrage ungültig.");
-const norm = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/ß/g, "ss")
-  .replace(/[.,;:()]/g, " ").replace(/\s+/g, " ").trim();
 const FREI_KUERZEL = new Set(["-", "–", "frei", "off"]);
-/* Abwesenheit jeder Art (auch Gesundheit): nie als Art übernommen, nie ausgegeben. */
-const ABW_WORTE = new Set(["krank", "kr", "k", "au", "gk", "kk", "uk", "u", "ue", "abw", "fb", "reha", "kur", "ku", "kh", "op", "bv", "mu", "ez", "sv", "krk", "krnk", "aub",
-  "bsch", "kind", "muschu", "psych", "kvk", "ak"]);
-const ABW_TEILE = /krank|krk|krnk|attest|arbeitsunf|urlaub|schwanger|mutterschutz|muschu|diagnos|abwesen|elternzeit|arzt|grippe|chemo|covid|corona|fieber|erk[a-z]*ltet|burnout|burn out|psych|klinik|krankenhaus|quarant|unfall|therap|op-|operation|infekt|migrane|depress|verletz|schmerz/;
-/* Abwesenheit jeder Art (auch Gesundheit), auch mit Bindestrich/Schrägstrich verbunden: nie als Art übernommen, nie ausgegeben. */
-const abwesend = (k) => ABW_TEILE.test(k) || k.split(/[ /+_-]+/).some((t) => ABW_WORTE.has(t));
 
 /** Strenge Prüfung der Zeilen; liefert normalisierte Zeilen mit Zeilennummer. Nichts davon wird ausgegeben, geloggt oder gespeichert. */
 function zeilenLesen(zeilen) {
@@ -252,6 +245,3 @@ export async function altplanVorschau(o) {
     konflikteStatus: ergebnis.konflikteStatus,
   };
 }
-
-/** Fuer die Schichtmodell-Vorschau des Imports (IMP-6): dieselbe Erkennung von Abwesenheitsbezeichnungen, damit sie dort nie ausgegeben werden. */
-export { abwesend as abwesenheitsBezeichnung, norm as bezeichnungNormalisiert };

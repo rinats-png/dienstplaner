@@ -221,6 +221,8 @@ export default async (req) => {
         /* IMP-6: Schichtmodelle, nur Analyse und Vorschau (lesend, nichts wird geschrieben; schichtvorschau.mjs). Modelltabelle:
            das gewählte Blatt, sonst das erste Blatt mit Modellspalten; Zuordnungstabelle: `zuordnungBlatt` (null = keine), sonst
            automatisch. Keine Begrenzung auf einen Zyklus je Betrieb. */
+        const br = await bremse("schreiben", k);   // Rechenweg: gleiche Bremse wie Upload und Übernahme
+        if (!br.frei) return zuVielAntwort(br.wartet);
         const erkannt = blaetterErkennen(v.blaetter);
         const mBlatt = rumpf.blatt !== undefined ? blatt : erkannt.modell !== null ? erkannt.modell : blatt;
         let zBlatt = rumpf.zuordnungBlatt === undefined ? (erkannt.zuordnung === mBlatt ? null : erkannt.zuordnung) : rumpf.zuordnungBlatt;
@@ -249,6 +251,8 @@ export default async (req) => {
     if (schritt === "vorschau") {
       if (!v.analyse) return fehlerAntwort(409, "ANALYSE_FEHLT", "Bitte zuerst die Analyse ausführen.");
       if (v.art === "schichtzyklus") {
+        const br = await bremse("schreiben", k);
+        if (!br.frei) return zuVielAntwort(br.wartet);
         const sv = schichtVorschau({ mandant: eigener, modellZeilen: v.zeilen, zuordnungZeilen: v.zuordnungZeilen || null, zuordnung: v.zuordnung });
         if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
         const { ok: _ok, ...ergebnis } = sv;

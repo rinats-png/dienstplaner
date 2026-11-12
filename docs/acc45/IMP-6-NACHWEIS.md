@@ -56,9 +56,12 @@ Umsetzung: `server/lib/import/schichtvorschau.mjs`, eingebunden in `server/funkt
 - Ergebnis je Modell: Länge, Zahl der Dienste und freien Tage, Zuordnung der Kürzel zu den Dienstarten des Betriebs, Konflikte mit Zeilennummern;
   für Zuordnungen nur Anzahlen, Konfliktarten und Zeilennummern.
 - Datenschutz wie die Altplan-Vorschau: unbekannte Bezeichnungen nur als Index mit Zeilennummern, Abwesenheitsbezeichnungen (auch „krank (Grippe)“) nur als
-  Zahl, nie zugeordnet, Modellnamen nur bei harmlosem Aussehen, keine Personalnummern oder Namen, nichts im Protokoll.
-- Grenzen: Summe der Zykluslängen 10.000 (vorab geprüft, `PRUEFUMFANG_ZU_GROSS`; die Bibliothek allein hätte bei Tag 999999 je Modell gerechnet), 50 Modelle
-  und 50 unbekannte Bezeichnungen in der Antwort. Rumpf-, Parser- und Vorgangsgrenzen unverändert.
+  Zahl, nie zugeordnet; Modellnamen und Überschriftstexte werden nie zurückgegeben (Modelle als „Modell #n“, Spalten mit fester Rollenbezeichnung); keine
+  Personalnummern oder Namen, nichts im Protokoll. Die gemeinsame Erkennung von Abwesenheitsbezeichnungen steht in `server/lib/bezeichnungen.mjs`
+  (auch von der Altplan-Vorschau genutzt).
+- Grenzen: je Blatt 10.000 Datenzeilen und Summe der Zykluslängen 10.000 (vorab geprüft, `PRUEFUMFANG_ZU_GROSS`; die Bibliothek allein hätte bei Tag 999999 je Modell gerechnet), 50 Modelle
+  und 50 unbekannte Bezeichnungen in der Antwort. Rumpf-, Parser- und Vorgangsgrenzen unverändert; Analyse und Vorschau laufen unter der Bremse „schreiben“. Die Bibliothek ist linear in der Zeilenzahl
+  (Doppelungen der Zuordnung nur als Anzahl plus höchstens 20 Zeilennummern; vorher quadratisch: 19.999 gleiche Zeilen = 52 s und 3,7 GB). Keine Zeit-/Operationsbudget-Abbruchlogik: die Zeilenobergrenzen begrenzen die synchrone Rechnung (gemessen unter 2 s).
 - Übernahme: 422 `ART_NICHT_FREIGEGEBEN` mit „Schichtmodelle werden noch nicht übernommen“, Bestand unverändert (Prüfung vergleicht den Bestand). Personalimport unverändert.
 
 ## Offen (Entscheidung nötig)
