@@ -9,5 +9,7 @@ const KODIERER = new TextEncoder();
 
 /** @param {string} text @returns {number} */
 export function byteLaenge(text) {
-  return KODIERER.encode(String(text)).length;
+  /* Wie Buffer.byteLength: Nicht-Text wirft TypeError (z. B. JSON.stringify(undefined)). */
+  if (typeof text !== "string") throw new TypeError("byteLaenge: Text erwartet");
+  return KODIERER.encode(text).length;
 }

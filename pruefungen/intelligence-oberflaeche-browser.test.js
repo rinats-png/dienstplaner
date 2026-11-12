@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync, readdirSync } from "node:fs";
 import { KiAntwort } from "../src/ansichten/intelligence/KiAntwort.jsx";
 import { KI_TEXTE } from "../src/ansichten/intelligence/texte.js";
+import { strukturPruefen } from "../server/lib/intelligence/schemas.mjs";
 import { byteLaenge } from "../server/lib/intelligence/bytes.mjs";
 import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
@@ -30,6 +31,16 @@ afterEach(() => { globalThis.Buffer = BUFFER; });
 describe("byteLaenge entspricht Buffer.byteLength", () => {
   const faelle = { leer: "", ascii: "Dienstplan 123", umlaute: "Ärger über Öl ß", emoji: "👩‍⚕️ 😀", kombiniert: "é ä", einzelnerHigh: "a\ud800b", einzelnerLow: "a\udc00b", ende: "x\ud83d" };
   for (const [n, t] of Object.entries(faelle)) it(n, () => expect(byteLaenge(t)).toBe(BUFFER.byteLength(t, "utf8")));
+});
+
+describe("byteLaenge: Nicht-Text wirft wie Buffer.byteLength", () => {
+  for (const x of [undefined, 5, null, {}, Symbol("s")]) it(String(typeof x) + " " + String(x === null ? "null" : typeof x === "symbol" ? "sym" : x), () => { expect(() => BUFFER.byteLength(x, "utf8")).toThrow(TypeError); expect(() => byteLaenge(x)).toThrow(TypeError); });
+  it("strukturPruefen: undefined, Funktion, Symbol werden weiter abgelehnt (schon vor der Größenprüfung)", () => {
+    expect(strukturPruefen(undefined)).toEqual(["$: Typ undefined nicht erlaubt"]);
+    expect(strukturPruefen(() => 1)).toEqual(["$: Typ function nicht erlaubt"]);
+    expect(strukturPruefen(Symbol("s"))).toEqual(["$: Typ symbol nicht erlaubt"]);
+    expect(strukturPruefen({ a: 1 })).toEqual([]);
+  });
 });
 
 describe("KiAntwort ohne Buffer (Browser)", () => {
