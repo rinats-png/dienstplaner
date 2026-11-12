@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 193,
+  "anzahl": 194,
   "statusZaehlung": {
     "BLOCKED": 81,
-    "READY": 16,
+    "READY": 17,
     "IN_PROGRESS": 7,
     "REVIEW": 9,
     "INTEGRATED": 77,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 93,
-      "offen": 30,
+      "pakete": 94,
+      "offen": 31,
       "restPT": {
-        "min": 51.9,
-        "max": 83.55
+        "min": 52.9,
+        "max": 85.55
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 343.3,
-    "max": 584.85
+    "min": 344.3,
+    "max": 586.85
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -711,7 +711,7 @@
         "implementiert": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
         "reviewt": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #183 (Teil 1) und PR #192 (Teil 2: Bedienabläufe, Querformat, Zielgrößen, Fokus, Hinweis zurückgenommen für Tauschbörse und Prüfung) integriert; Paket nicht vollständig."},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #183 (Teil 1), PR #192 (Teil 2) und PR #211 (Teil 3: Bedienabläufe auf kleinen Bildschirmen, automatisierter Nachweis) integriert; Paket nicht vollständig."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -720,12 +720,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": ["#183","#192"],
+      "pr": ["#183","#192","#211"],
       "nachweis": null,
       "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
       "tests": "Playwright-Viewports, Geräte",
       "dateien": "src/ansichten/*",
-      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten."
+      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten. Stand 2026-11-12: Teil 3 integriert (#211, 35 Render-Prüfungen bei 360/390/768/844x390; Teilmessung in Edge bei 390x844 und 844x390): Leitung Plan freigeben 2/2 (B16 behoben), Leitung/Planung Krankmeldung und Planung Übergabe bestanden. Offen: Schichtverantwortung Übergabe 0/2 (Ansicht fehlt in der SV-Navigation), Schichtverantwortung Krankmeldung 0/2 (Zeitüberschreitung), siehe WP-21-SV. Hinweis „Für Tablet und Rechner ausgelegt“ bleibt unverändert, bis alle 8 Viewports gemessen sind. Kartenansicht weiter blockiert durch wp40-Frage 6. Status bleibt IN_PROGRESS."
     },
     {
       "id": "WP-22",
@@ -4426,12 +4426,12 @@
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs"],
-      "pr": ["#124","#120"],
+      "pr": ["#124","#120","#209"],
       "nachweis": null,
       "akzeptanz": "TOTP für Leitung/Planung/Kunde mindestens im Pilot; bis dahin „Zugang merken“ für Leitung gesperrt; Tests für Anmeldung mit/ohne zweiten Faktor",
       "tests": "Unit, HTTP-Sonde; pruefungen/sicherheit-intern.test.js bzw. eigener Regressionstest",
       "dateien": "server/lib/zweifaktor.mjs, server/lib/betreiber-zweifaktor.mjs, src",
-      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Entscheidung 2026-11-09: Option 1 (Ersteinrichtung Neubetriebe) genehmigt, Option 2 (nachträglich, Zweitfreigabe) genehmigt, Option 3 (Offline-Ausnahme) ABGELEHNT, Option 4 (TOTP für Konten) genehmigt und priorisiert, Option 5 (Testbetriebe ausnehmen) ABGELEHNT. Quelle: SI-P4-NACHWEIS.md, Abschnitt Delta-Review. PR #120 durch #124 ersetzt. Stand 2026-11-09: #124 gemergt. Restarbeit in OPT-1/OPT-2/OPT-4 (offen)."
+      "notiz": "Offener Befund der internen Sicherheitsprüfung 2026-11 (docs/acc45/SICHERHEIT-INTERN-2026-11.md); bewusst nicht im Integrationslauf SI/WP-30 gebaut. Entscheidung 2026-11-09: Option 1 (Ersteinrichtung Neubetriebe) genehmigt, Option 2 (nachträglich, Zweitfreigabe) genehmigt, Option 3 (Offline-Ausnahme) ABGELEHNT, Option 4 (TOTP für Konten) genehmigt und priorisiert, Option 5 (Testbetriebe ausnehmen) ABGELEHNT. Quelle: SI-P4-NACHWEIS.md, Abschnitt Delta-Review. PR #120 durch #124 ersetzt. Stand 2026-11-09: #124 gemergt. Restarbeit in OPT-1/OPT-2/OPT-4 (offen). Stand 2026-11-12: #209 ergänzt (Passwortfelder im Betreiber-2FA-Block wie WR-6: Codefelder one-time-code, inputMode text, da 16-stellige Wiederherstellungscodes Buchstaben enthalten; Ausweisfelder type=password autoComplete new-password; gemeinsame src/lib/eingabefelder.js). Status unverändert."
     },
     {
       "id": "SI-P5",
@@ -5580,6 +5580,34 @@
       "tests": "Plan/Feed unverändert bei offenem Fall, Markierung nur für berechtigte Rollen sichtbar, Ersatzvorschläge ohne Schreibwirkung, Markierung endet mit Endzustand, kein Gesundheitsdatum in Markierung/Vorschlag",
       "dateien": "server/lib/krankmeldung.mjs, server/lib/sicht.mjs, server/lib/engine/*, src/ansichten (Plan, Lagebild, krankmeldungen-offen), Tests",
       "notiz": "Betreiberentscheidung 2026-11-11 (Ergänzung). Bestehende Ersatzsuche wiederverwenden, nichts duplizieren. SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #207."
+    },
+    {
+      "id": "WP-21-SV",
+      "titel": "Schichtverantwortung: Ansicht Übergabe fehlt in der SV-Navigation, Krankmeldung-Ablauf Timeout auf Smartphone (Befund aus WP-21 Teil 3)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Agent E – Business Modules & Frontend",
+      "modell": "sonnet",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/WP-21-GERAETEMATRIX.md",
+      "akzeptanz": "Rolle Schichtverantwortung erreicht die Ansicht Übergabe über ihre Navigation; die Abläufe Übergabe und Krankmeldung bestehen bei 390x844 und 844x390 (je 2/2) ohne Zeitüberschreitung",
+      "tests": "Render-Prüfungen und Edge-Messung der Bedienabläufe der Rolle Schichtverantwortung bei 390x844 und 844x390",
+      "dateien": "src/ (Navigation und Ansichten der Rolle Schichtverantwortung), Tests",
+      "notiz": "Befund aus WP-21 Teil 3 (#211): Edge-Teilmessung bei 390x844 und 844x390, Schichtverantwortung Übergabe 0/2, weil die Ansicht in der SV-Navigation fehlt; Schichtverantwortung Krankmeldung 0/2 mit Zeitüberschreitung. Ursache der Zeitüberschreitung nicht geklärt. Nicht gemessene Viewports bleiben in WP-21 offen. SCHÄTZUNG."
     }
   ]
 }
