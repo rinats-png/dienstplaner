@@ -62,14 +62,17 @@ Löschlauf). Nachweis: `pruefungen/modul-b1-schreibweg.test.js` (echte Handler, 
 Rümpfe; Prüfmodus „vorlaeufig“ nur über eine Registry-Kopie im Test; unbekannter Status; Altbestand unverändert und lesbar). Die Matrix unten
 zeigt die fünf Module jetzt mit „Register: ja“ und bei `geplant` dieselbe Zeile wie die neueren Module.
 
-**Befund B4 (gemeinsamer Kern, offen, nicht in diesem PR geändert).** (a) `modulAktiv` (`server/lib/branchenmodule.mjs`) prüft nur „nicht `geplant`“:
-Ein unbekannter oder unsinniger Status gilt dort als wirkend (nachgerechnet: `rotation` mit Status „unbekannt“, Schalter an → wirkt). Die Registry-Prüfung
-(`pruefeModulStatus`, `pruefeModulRegistry`) weist solche Stände ab, im Lauf schützt aber nur sie. Für die fünf älteren Module prüft die Registerwache den Status
-selbst (fail-closed); die neueren Module (`modul-wege.mjs`), Befunde und Oberflächen hängen weiter an `modulAktiv`. (b) Der Schreibweg der neueren Module lässt
-bei ausgeschaltetem Modul nur die Löschung des Ausnahmewegs durch, nicht die Berichtigung — auch dort, wo ein Wertschema sie vorsieht (nachgerechnet:
-`funktionsPlan`, Art. 16, Modul aus → 403). Die fünf älteren Module lassen die geprüfte Berichtigung durch (Posten, Bereichsplan). Mit echten Daten ist (a) nicht
-erreichbar: Die Registry ist eine eingefrorene Konstante im Quelltext, kein Endpunkt schreibt den Status. Empfohlene Folgearbeit: die Statusliste der Wache
-(`statusWirksam`) in `modulAktiv` übernehmen und die Berichtigung nach Art. 16 für die neueren Module entscheiden (gemeinsamer Kern).
+**Befund B4 (gemeinsamer Kern; (a) behoben, (b) offen).** (a) `modulAktiv` (`server/lib/branchenmodule.mjs`) prüfte nur „nicht `geplant`“:
+Ein unbekannter oder unsinniger Status galt dort als wirkend (nachgerechnet: `rotation` mit Status „unbekannt“, Schalter an → wirkte). Mit echten Daten war
+das nicht erreichbar (die Registry ist eine eingefrorene Konstante im Quelltext, kein Endpunkt schreibt den Status). **Behoben (WP-19 B4):** Es gibt eine
+Allowlist an einer Stelle — `WIRKSAME_STATUS` = „vorlaeufig“, „freigegeben“ und `statusWirksam` in `server/lib/branchenmodule.mjs`. `modulAktiv` wirkt nur
+mit einem Status darauf (Modul und Abhängigkeiten); unbekannt, fehlend, `null`, „AKTIV“, „aktiv “, `{}`, Prototyp-Namen u. a. → nicht wirkend (fail-closed). Dieselbe Allowlist gilt für `modulZustand`, `modulNurLesen` und das Einschalten: Ein solcher Status verhält sich wie „geplant“ (in Vorbereitung, nicht einschaltbar, ohne Wirkung).
+Die Registerwache der fünf älteren Module (`modul-altwege.mjs`) nutzt dieselbe Funktion, eine eigene Statusliste gibt es dort nicht mehr; für gültige Status
+ist das Verhalten unverändert. Nachweis: `pruefungen/modulaktiv-allowlist.test.js` (`npm run pruefung:modulaktiv`; alle zwölf Module × unsinnige Status,
+Abhängigkeiten, gültige Status, Gleichlauf Wache/`modulAktiv`, Mutationsnachweis). (b) **Offen — Betreiber-/Datenschutzentscheidung, Verhalten unverändert:**
+Der Schreibweg der neueren Module lässt bei ausgeschaltetem Modul nur die Löschung des Ausnahmewegs durch, nicht die Berichtigung nach Art. 16 — auch dort,
+wo ein Wertschema sie vorsieht (nachgerechnet: `funktionsPlan`, Art. 16, Modul aus → 403). Die fünf älteren Module lassen die geprüfte Berichtigung durch
+(Posten, Bereichsplan). Zu entscheiden: ob die Berichtigung nach Art. 16 bei ausgeschaltetem Modul auch für die neueren Module gilt (gemeinsamer Kern).
 
 **Befund B5 (Oberfläche, Beobachtung, keine Änderung).** Die Moduloberflächen der fünf Module erscheinen bei `geplant` nicht („in Vorbereitung“, „Keine
 Moduloberfläche“) — stimmig mit dem Server. Altdaten zeigen aber Kernansichten weiter mit Schreibaktionen: Betriebsmittel (eine Alt-Anlage lässt sich

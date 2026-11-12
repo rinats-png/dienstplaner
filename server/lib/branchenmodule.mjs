@@ -13,8 +13,10 @@
      - BRANCHENMODULE   die Registry: je Modul Merkmal, Pakete, Status,
                         Abhängigkeiten, Parameter (mit Typ und Vorgabe),
                         Registerregeln und Datenfelder.
-     - modulAktiv       gebucht (Paket, Vertrag des Betreibers) UND nicht
-                        mehr „geplant" UND vom Betrieb eingeschaltet.
+     - modulAktiv       gebucht (Paket, Vertrag des Betreibers) UND Status
+                        auf der Allowlist (statusWirksam: „vorlaeufig“,
+                        „freigegeben“; alles andere fail-closed) UND vom
+                        Betrieb eingeschaltet.
      - branchenmoduleZusammen
                         Schreibweg der Moduleinstellungen auf dem Server:
                         Schalter, Mitbestimmungsbestätigung (G6),
@@ -52,6 +54,17 @@ import { altmoduldatenVerwerfen } from "./modul-altwege.mjs";
  * @typedef {"geplant" | "vorlaeufig" | "freigegeben"} ModulStatus
  */
 export const MODUL_STATUS = Object.freeze(["geplant", "vorlaeufig", "freigegeben"]);
+
+/**
+ * Die Status, mit denen ein Modul wirken kann (Allowlist, WP-19 B4) — die eine Stelle für
+ * modulAktiv und die Registerwache der fünf älteren Module (modul-altwege.mjs). Alles andere
+ * (geplant, unbekannt, fehlend, null, andere Schreibweise, Leerzeichen, Objekt, Prototyp-Name)
+ * wirkt nicht: fail-closed.
+ */
+export const WIRKSAME_STATUS = Object.freeze(["vorlaeufig", "freigegeben"]);
+
+/** Kann ein Modul mit diesem Status wirken? Nur exakt ein Eintrag aus WIRKSAME_STATUS. */
+export const statusWirksam = (status) => typeof status === "string" && WIRKSAME_STATUS.includes(status);
 
 /** @typedef {"boolean" | "zahl" | "text" | "auswahl"} ParameterTyp */
 export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswahl"]);
@@ -277,7 +290,8 @@ export function modulEinstellung(m, id) {
 }
 
 /**
- * Wirkt das Modul in diesem Betrieb? Gebucht, nicht geplant, eingeschaltet
+ * Wirkt das Modul in diesem Betrieb? Gebucht, Status wirksam (statusWirksam:
+ * nur „vorlaeufig“ oder „freigegeben“), eingeschaltet
  * (Vorgabe: aus) und alle Abhängigkeiten ebenso aktiv.
  * @param {any} m
  * @param {string} id
@@ -286,7 +300,8 @@ export function modulEinstellung(m, id) {
  */
 export function modulAktiv(m, id, liste = BRANCHENMODULE, _besucht = new Set()) {
   const mod = modulVon(id, liste);
-  if (!mod || mod.status === "geplant" || _besucht.has(id)) return false;
+  /* Allowlist (B4): wirken nur „vorlaeufig“ und „freigegeben“ — unbekannter oder unsinniger Status: aus. */
+  if (!mod || !statusWirksam(mod.status) || _besucht.has(id)) return false;
   if (!modulGebucht(m, id, liste)) return false;
   const e = modulEinstellung(m, id);
   if (!e || e.an !== true) return false;
@@ -731,7 +746,7 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
       const gesendet = hat(wert, "mitbestimmung") ? wert.mitbestimmung : null;
       const gespeichertB = vorher && istObjekt(vorher.mitbestimmung) ? vorher.mitbestimmung : null;
       if (wert.an === true && !warAn) {
-        if (mod.status === "geplant") return { grund: `Branchenmodul ${mod.name} ist noch nicht verfügbar.` };
+        if (!statusWirksam(mod.status)) return { grund: `Branchenmodul ${mod.name} ist noch nicht verfügbar.` };
         if (!modulGebucht(altM, id, liste)) return { grund: `Branchenmodul ${mod.name}: Das Paket ist nicht gebucht.` };
       }
       let neueBestaetigung = false;
@@ -891,7 +906,7 @@ export const AKTENZEICHEN_MUSTER = /^(?=.{1,20}$)(?:[A-Z]{2,5}-?)?\d+(?:-\d+)*$/
 export function modulZustand(m, id, liste = BRANCHENMODULE) {
   const mod = modulVon(id, liste);
   if (!mod) return "unbekannt";
-  if (mod.status === "geplant") return "in-vorbereitung";
+  if (!statusWirksam(mod.status)) return "in-vorbereitung";   // geplant, unbekannt, unsinnig (B4)
   if (!modulGebucht(m, id, liste)) return "nicht-gebucht";
   const e = modulEinstellung(m, id);
   if (!e || e.an !== true) return "aus";
@@ -915,7 +930,8 @@ export function modulNurLesen(m, id, liste = BRANCHENMODULE) {
   const mod = modulVon(id, liste);
   const e = modulEinstellung(m, id);
   if (!mod || !e || !eingeschaltetSeit(e) || modulAktiv(m, id, liste)) return false;
-  return e.an === false || mod.status !== "geplant";
+  /* Ohne wirksamen Status (geplant, unbekannt, unsinnig — B4) wie „geplant“: Entwicklungsstand ohne Wirkung. */
+  return e.an === false || statusWirksam(mod.status);
 }
 
 /**

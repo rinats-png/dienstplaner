@@ -24,8 +24,9 @@
    betroffenen Person, keine neue Moduldatenerfassung.
    Unbekannter, fehlender oder unsinniger Status, fehlendes Modul in der
    Registry: geschlossen (fail-closed). Wirken kann nur „vorlaeufig“ oder
-   „freigegeben“ — modulAktiv selbst prüft nur „nicht geplant“; deshalb fragt
-   die Wache den Status hier zusätzlich ab (Modul und Abhängigkeiten).
+   „freigegeben“ — die eine Allowlist (statusWirksam, branchenmodule.mjs), die
+   seit WP-19 B4 auch modulAktiv nutzt; die Wache fragt sie hier zusätzlich ab
+   (Modul und Abhängigkeiten), beide Wege können nicht auseinanderlaufen.
 
    Aufgerufen wird die Wache an der einen Stelle, an der alle Modulschreibwege
    hängen (modulSchreibwegeAnwenden, modulschreibwege.mjs) — also für Planung,
@@ -60,7 +61,7 @@
 
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { BRANCHENMODULE, modulAktiv, modulVon } from "./branchenmodule.mjs";
+import { BRANCHENMODULE, modulAktiv, modulVon, statusWirksam } from "./branchenmodule.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const hat = (o, k) => istObjekt(o) && Object.prototype.hasOwnProperty.call(o, k);
@@ -165,14 +166,14 @@ export const ALTMODULE = Object.freeze([
     } }),
 ]);
 
-/** Wirken kann ein Modul nur mit bekanntem Status jenseits von „geplant“ — auch jede Abhängigkeit (fail-closed). */
-const WIRKSAM = Object.freeze(["vorlaeufig", "freigegeben"]);
-function statusWirksam(id, register, besucht = new Set()) {
+/** Wirken kann ein Modul nur mit einem Status der Allowlist (statusWirksam, branchenmodule.mjs — dieselbe Stelle wie
+    modulAktiv) — auch jede Abhängigkeit (fail-closed). */
+function kettenstatusWirksam(id, register, besucht = new Set()) {
   if (besucht.has(id)) return true;                      // Ring: modulAktiv entscheidet (falsch)
   const mod = modulVon(id, register);
-  if (!mod || !WIRKSAM.includes(mod.status)) return false;
+  if (!mod || !statusWirksam(mod.status)) return false;
   besucht.add(id);
-  return (Array.isArray(mod.abhaengigVon) ? mod.abhaengigVon : []).every((x) => statusWirksam(x, register, besucht));
+  return (Array.isArray(mod.abhaengigVon) ? mod.abhaengigVon : []).every((x) => kettenstatusWirksam(x, register, besucht));
 }
 
 /** Der Text der Abweisung — derselbe wie bei den neueren Modulen (modul-wege.mjs). */
@@ -198,7 +199,7 @@ export function altmodulWache(altM, neuM, { liste: register = BRANCHENMODULE, au
     const ausnahmeweg = istObjekt(ausnahme) && ausnahme.modul === a.modul && (ausnahme.art === "loeschung" || ausnahme.art === "berichtigung");
     const geaendert = a.restteil(alt, neuM) || (!ausnahmeweg && a.datenteil(alt, neuM));
     if (!geaendert) continue;
-    if (!(statusWirksam(a.modul, register) && modulAktiv(stand, a.modul, register))) return { grund: nichtWirkend(a.modul) };
+    if (!(kettenstatusWirksam(a.modul, register) && modulAktiv(stand, a.modul, register))) return { grund: nichtWirkend(a.modul) };
   }
   return null;
 }
