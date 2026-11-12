@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ausfallVorschlag, F3_TEXT, F3_HINWEIS, AUSFALL_GRENZEN } from "../server/lib/intelligence/funktionen/ausfallvorschlag.mjs";
 import { offenePersonenAm } from "../server/lib/klaerung.mjs";
-import { ruheIst, ruheZuNachbarn } from "../server/lib/engine/ersatzfakten.mjs";
+import { ruheIst, ruheZuNachbarn, ersatzKandidaten } from "../server/lib/engine/ersatzfakten.mjs";
 import { rechnen } from "../server/lib/engine/rechenkern.mjs";
 import { mitTagesdatum } from "../server/lib/engine/zeit.mjs";
 import { bestand, S, sitzung } from "./intelligence-gateway-fixture.mjs";
@@ -52,7 +52,7 @@ const fold = (s) => String(s).toLowerCase().replace(/ä/g, "ae").replace(/ö/g, 
 
 /* Die Prüfung, dass nichts über Gesundheit oder Abwesenheit in der Ausgabe steht. */
 const VERBOTEN = ["grippe", "diagnose", "j11", "magen", "bandscheibe", "krank", "kira", "k3", "k4", "offenerfall", "km1", "klaerung",
-  "abwesen", "urlaub", "notiz", "anmerkung", "grund", "gerda", "br1", "betriebsrat", "ab1", "\"art\""];
+  "abwesen", "urlaub", "notiz", "anmerkung", "grund", "ab1", "\"art\""];
 const leckt = (ausgabe) => { const s = fold(JSON.stringify(ausgabe)); return VERBOTEN.filter((v) => s.includes(v)); };
 
 const ERWARTET = {
@@ -60,7 +60,7 @@ const ERWARTET = {
   ergebnisse: [{
     personId: "x1", datum: TAG, hinweis: F3_HINWEIS, name: "Xaver Ausfall", status: "ok",
     dienst: { id: "F", kurz: "F", beginn: "06:00", ende: "14:00" },
-    direkt: [{ personId: "k1", name: "Karla Direkt", punkte: 8, ruheIstMin: null }, { personId: "l1", name: "Lena Brandt", punkte: 8, ruheIstMin: null },
+    direkt: [{ personId: "br1", name: "Gerda Rat", punkte: 8, ruheIstMin: null }, { personId: "k1", name: "Karla Direkt", punkte: 8, ruheIstMin: null }, { personId: "l1", name: "Lena Brandt", punkte: 8, ruheIstMin: null },
       { personId: "pl1", name: "Piotr Kowalski", punkte: 8, ruheIstMin: null }],
     nahe: [{ personId: "k2", name: "Kurt Nahe", punkte: -8, hinderung: "ruhezeitGesetz", spielraumMin: 180, ruheIstMin: 480 }],
   }],
@@ -137,18 +137,18 @@ describe("Anfrage und Grenzen", () => {
     b.personen = [...b.personen, ...Array.from({ length: 15 }, (_, i) => P(`z${String(i).padStart(2, "0")}`, "Z", `P${i}`))];
     const r = await lauf({ ladeBestand: async () => bestand(b) }).ruf();
     expect(r.ergebnisse[0].direkt).toHaveLength(10);
-    expect(r.ergebnisse[0].direkt.map((k) => k.personId)).toEqual(["k1", "l1", "pl1", "z00", "z01", "z02", "z03", "z04", "z05", "z06"]);
+    expect(r.ergebnisse[0].direkt.map((k) => k.personId)).toEqual(["br1", "k1", "l1", "pl1", "z00", "z01", "z02", "z03", "z04", "z05"]);
   });
 });
 
 describe("Ausgabe", () => {
-  it("genau die erwartete Ausgabe: Kandidaten, Near-Miss mit Spielraum und Ruhezeit (Minuten); Ausgefallene, Kranke, offener Fall, Betriebsrat nie Kandidat", async () => {
+  it("genau die erwartete Ausgabe: Kandidaten, Near-Miss mit Spielraum und Ruhezeit (Minuten); Ausgefallene, Kranke, offener Fall nie Kandidat; Betriebsrat wie in der Engine", async () => {
     const r = await lauf().ruf();
     expect(r).toEqual(ERWARTET);
     const ids = [...r.ergebnisse[0].direkt, ...r.ergebnisse[0].nahe].map((k) => k.personId);
-    for (const nie of ["x1", "k3", "k4", "br1"]) expect(ids).not.toContain(nie);
+    for (const nie of ["x1", "k3", "k4"]) expect(ids).not.toContain(nie);
   });
-  it("keine Gesundheits- oder Abwesenheitsangabe, kein Fall, keine Markierung, kein Betriebsrat in der Ausgabe", async () => {
+  it("keine Gesundheits- oder Abwesenheitsangabe, kein Fall, keine Markierung in der Ausgabe", async () => {
     expect(leckt(await lauf().ruf())).toEqual([]);
     /* Auch dann nicht, wenn die genannte Person selbst krank gemeldet ist (Abwesenheit mit Grund, offener Fall). */
     const b = betrieb();
@@ -168,7 +168,7 @@ describe("Ausgabe", () => {
   });
   it("Gegenprobe (Mutation der Prüfung): der Prüfer schlägt an, sobald etwas durchrutscht", async () => {
     const r = await lauf().ruf();
-    for (const dreck of [{ grund: "Grippe" }, { art: "krank" }, { name: "Kira Krank" }, { personId: "k4" }, { personId: "br1" }, { hinweis: "Besetzung klärungsbedürftig" },
+    for (const dreck of [{ grund: "Grippe" }, { art: "krank" }, { name: "Kira Krank" }, { personId: "k4" }, { hinweis: "Besetzung klärungsbedürftig" },
       { notiz: "Bandscheibe" }, { anmerkung: "x" }, { text: "abwesend (Urlaub)" }])
       expect(leckt({ ...r, ergebnisse: [{ ...r.ergebnisse[0], ...dreck }] }), JSON.stringify(dreck)).not.toEqual([]);
   });
@@ -237,16 +237,27 @@ describe("eine Ruhezeit-Rechnung: ruhezeit.ist", () => {
     const ist = r.fakten.filter((f) => f.feld === "ruhezeit.ist" && f.person === "k2");
     expect(ist.map((f) => f.wert)).toEqual([480]);
   });
-  it("über die Zeitumstellung: ruheIst rechnet mit Zeitumstellung (eine Stunde mehr Ruhe), wie die Planprüfung", () => {
-    const m = betrieb();
-    m.dienstarten = [...m.dienstarten, { id: "N", kurz: "N", name: "Nacht", start: "22:00", ende: "06:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
-    /* Spät bis 22:00 am 24.10., Früh ab 06:00 am 25.10. (Ende der Sommerzeit in der Nacht: 3:00 -> 2:00). */
-    m.abweichungen = { "k2|2026-10-24": "S", "k2|2026-10-25": "F" };
-    const k2 = m.personen.find((p) => p.id === "k2");
-    const da = m.dienstarten.find((d) => d.id === "F");
-    const ohne = mitTagesdatum("2026-10-20", () => ruheZuNachbarn(m, k2, "2026-10-25", da, { zeitumstellung: false }).vor);
-    const mit = mitTagesdatum("2026-10-20", () => ruheIst(m, k2, "2026-10-25", da));
-    expect(ohne).toBe(480);
-    expect(mit).toBe(540);
-  });
+  /* Golden: das BISHERIGE Verhalten ist festgehalten (keine Änderung am Produkt, WP-I20 Review): Near-Miss, Spielraum und
+     RB-5 ohne Zeitumstellung (ist + Spielraum = Grenze), der Ruhezeitbefund der Planprüfung mit Zeitumstellung. */
+  const FAELLE = [["gewöhnlicher Tag", "2026-11-04", "2026-11-03", 480, 480], ["Ende der Sommerzeit", "2026-10-25", "2026-10-24", 480, 540],
+    ["Beginn der Sommerzeit", "2026-03-29", "2026-03-28", 480, 420]];
+  for (const [titel, tag, vortag, ohneZu, mitZu] of FAELLE) {
+    it(`${titel} (${tag}): Near-Miss, Spielraum, ruheIst und Befundfakt wie bisher`, () => {
+      const m = betrieb();
+      m.abweichungen = { [`x1|${tag}`]: "F", [`k2|${vortag}`]: "S" };
+      const k2 = m.personen.find((q) => q.id === "k2");
+      const da = m.dienstarten.find((q) => q.id === "F");
+      const heute = "2026-03-20";
+      const kand = mitTagesdatum(heute, () => ersatzKandidaten({ ...m, abwesenheiten: [{ id: "g", personId: "x1", art: "abwesend", von: tag, bis: tag }] }, tag, "F"));
+      expect(kand.nahe).toEqual([{ personId: "k2", hinderung: "ruhezeitGesetz", spielraumMin: 180, ruheVorMin: ohneZu, punkte: expect.any(Number) }]);
+      expect(kand.nahe[0].ruheVorMin + kand.nahe[0].spielraumMin).toBe(660);
+      expect(mitTagesdatum(heute, () => ruheIst(m, k2, tag, da))).toBe(ohneZu);
+      expect(mitTagesdatum(heute, () => ruheIst(m, k2, tag, da, { zeitumstellung: true }))).toBe(mitZu);
+      expect(mitTagesdatum(heute, () => ruheZuNachbarn(m, k2, tag, da).vor)).toBe(ohneZu);
+      /* Befundfakt der Planprüfung (Spät, dann Früh bei derselben Person): mit Zeitumstellung, wie bisher. */
+      const m2 = { ...m, abweichungen: { ...m.abweichungen, [`k2|${tag}`]: "F" } };
+      const r = mitTagesdatum(heute, () => rechnen(m2, { zeitraum: { von: vortag, bis: tag }, heute, ausfaelle: [] }));
+      expect(r.fakten.filter((f) => f.feld === "ruhezeit.ist" && f.person === "k2" && f.datum === tag).map((f) => f.wert)).toEqual([mitZu]);
+    });
+  }
 });

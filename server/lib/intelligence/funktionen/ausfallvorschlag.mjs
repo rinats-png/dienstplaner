@@ -22,10 +22,10 @@
    7  Rechnung auf einer GEDACHTEN Kopie: die genannte Person fehlt an den genannten Tagen (neutral, ohne Grund,
       nur im Speicher), ebenso — nur als „fehlt“, nie als Kandidat — wer an dem Tag laut
       `ausgeschlossenAm` (Aufrufer, Pflicht; die Intelligence-Schicht liest keine Krankmeldungsfälle selbst,
-      RB-5) auszuschließen ist und wer im Betriebsrat ist. Die Personen werden nach Kennung geordnet (Ausgabe
+      RB-5) auszuschließen ist. Sonst gilt die Engine unverändert (auch für Betriebsratsmitglieder). Die Personen werden nach Kennung geordnet (Ausgabe
       unabhängig von der Reihenfolge im Bestand);
       der Fall selbst, Abwesenheitsart, Grund, Notizen, Klärungsmarkierung und Betriebsrat-Mitglieder kommen
-      nicht in die Ausgabe (Betriebsrat-Mitglieder sind keine Kandidaten).
+      nicht in die Ausgabe.
    8  Ausgabe: Kennungen, Name aus der Sicht, Dienstkürzel und -zeit, Punkte, Hinderung (Regelkennung),
       Spielraum und ruhezeit.ist in Minuten — nichts sonst. Deterministisch.
    ========================================================================== */
@@ -121,7 +121,6 @@ export async function ausfallVorschlag(o) {
 
   const r = rechenbar(sicht);
   const imFall = (pid, d) => { let l; try { l = [...o.ausgeschlossenAm(sicht, d)]; } catch { throw new KiFehler("KI_INTERN", "Ausschluss nicht berechenbar."); } return l.some((x) => gleich(x, pid)); };
-  const keinKandidat = (p) => p.rolle === "betriebsrat";
 
   const ergebnisse = mitTagesdatum(o.heute, () => mitMerkmalen(() => false, () => {
     const aus = [];
@@ -137,7 +136,7 @@ export async function ausfallVorschlag(o) {
         const da = dienstId ? r.dienstarten.find((x) => gleich(x.id, dienstId)) : null;
         if (!da) { aus.push({ ...kopf, name: name(p), status: "kein_dienst", dienst: null, direkt: [], nahe: [] }); continue; }
         /* Gedacht: genau diese Person fehlt an genau diesem Tag (neutral, nur im Speicher). */
-        const fehlen = [p, ...r.personen.filter((q) => !gleich(q.id, p.id) && (keinKandidat(q) || imFall(q.id, d)))];
+        const fehlen = [p, ...r.personen.filter((q) => !gleich(q.id, p.id) && imFall(q.id, d))];
         const gedacht = { ...r, abwesenheiten: [...r.abwesenheiten, ...fehlen.map((q, i) => ({ id: `f3-gedacht-${i}`, personId: q.id, art: "abwesend", von: d, bis: d }))] };
         try {
           const k = ersatzKandidaten(gedacht, d, String(da.id));

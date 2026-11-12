@@ -65,12 +65,13 @@ export function ruheZuNachbarn(m, p, d, da, { zeitumstellung = false } = {}) {
 
 /**
  * ruhezeit.ist — die EINE Rechnung der geplanten Ruhezeit vor dem Dienst `da` am Tag `d` (Minuten, gerundet; null: kein
- * Dienst davor). Mit Zeitumstellung, wie die Planprüfung (befunde.mjs). Rechenkern (Ruhezeitbefund, Near-Miss) und
- * Ausfall-Vorschlag (WP-I20) nutzen genau diese Funktion, damit dieselbe Lage nie zwei Zahlen ergibt.
+ * Dienst davor). Verhalten wie bisher, nichts geändert: Der Ruhezeitbefund der Planprüfung rechnet mit Zeitumstellung
+ * (`{ zeitumstellung: true }`, Rechenkern), Near-Miss, Spielraum, RB-5 und Ausfall-Vorschlag ohne (Vorgabe), damit
+ * ist + Spielraum = Grenze bleibt. Ob alle Pfade die Zeitumstellung zählen sollen, ist offen (wp-i20-nachweis.md).
  * @returns {number|null}
  */
-export function ruheIst(m, p, d, da) {
-  const { vor } = ruheZuNachbarn(m, p, d, da, { zeitumstellung: true });
+export function ruheIst(m, p, d, da, { zeitumstellung = false } = {}) {
+  const { vor } = ruheZuNachbarn(m, p, d, da, { zeitumstellung });
   return vor === null ? null : Math.round(vor);
 }
 

@@ -131,7 +131,7 @@ export function rechnen(sicht, optionen) {
           const p = (m.personen || []).find((x) => String(x.id) === String(b.personId));
           const dienstId = p ? personTag(m, p, b.datum).dienstId : null;
           const da = dienstId ? (m.dienstarten || []).find((x) => x.id === dienstId) : null;
-          const ist = da ? ruheIst(m, p, b.datum, da) : null;
+          const ist = da ? ruheIst(m, p, b.datum, da, { zeitumstellung: true }) : null;
           if (ist !== null) aus.ruhe.push({ personId: String(p.id), dienst: String(dienstId), datum: b.datum, minuten: ist });
         }
       } catch { nichtBerechenbar.push({ berechnung: "ruhezeit", grund: "Eingabe unvollständig" }); }
