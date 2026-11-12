@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "skript": "pruefung:selbst",
+    "grund": "Die Zusicherung 'Erster Aufbau unter 500 ms' (src/pruefung.jsx) misst echte Rechenzeit; auf dem Windows-Entwicklungsrechner liegt sie ueber 500 ms (kalter Transform/JIT, Virenscanner). Linux-CI besteht. Nicht gelockert.",
+    "plattform": "win32"
+  }
+]
