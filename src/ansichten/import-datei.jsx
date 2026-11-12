@@ -1,4 +1,4 @@
-/* IMP-4: Personalimport aus Datei (xlsx, xls, ods, csv) mit Vorschau und Dublettenwahl.
+/* IMP-4: Personalimport aus Datei (xlsx, xls, csv, tsv) mit Vorschau und Dublettenwahl.
    Läuft ausschließlich über den Import-Endpunkt (IMP-3, Schnittstelle: src/lib/import-schnittstelle.js).
    Die Regeln (keine automatische Überschreibung, Namenstreffer nur als Vorschlag) stehen in
    src/lib/import-ablauf.js; diese Datei zeigt nur an. */
@@ -6,7 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { C } from "../farben.js";
 import { Card, Lab, Btn, Sel, Kpi, KpiRow, Pill } from "../ui/bausteine.jsx";
 import { Sheet } from "../ui/leisten.jsx";
+import { IMPORT_ENDUNGEN_ANGEBOT } from "../../server/lib/import/formate.mjs";
 import { erzeugeAblauf, aktionenFuer, AKTION_TEXT, dublettenText, istNamensVorschlag, unbestaetigteAktualisierungen, qualifikationenText } from "../lib/import-ablauf.js";
+
+/** Dateidialog: genau die Formate, die der Parser liest (server/lib/import/formate.mjs). */
+export const IMPORT_ACCEPT = IMPORT_ENDUNGEN_ANGEBOT.map((e) => "." + e).join(",");
 
 const FELDER = [["nachname", "Nachname", true], ["vorname", "Vorname", true], ["einheit", "Einheit", true],
   ["personalnummer", "Personalnummer"], ["email", "E-Mail"], ["funktion", "Funktion"], ["wochenstunden", "Wochenstunden"],
@@ -27,13 +31,13 @@ function Wahl({ z, a }) {
     <div style={{ display: "grid", gap: 16 }}>
       <Meldung z={z} />
       <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.55 }}>
-        Excel-, ODS- oder CSV-Datei auswählen (höchstens 10 MB). Die Datei wird nur zum Lesen an den Server gesendet
+        Excel-Datei (.xlsx, .xls) oder CSV/TSV-Datei auswählen (höchstens 10 MB). Die Datei wird nur zum Lesen an den Server gesendet
         und nicht gespeichert; die Inhalte werden nach der Übernahme, beim Abbrechen oder nach 30 Minuten ohne Aktivität gelöscht.
         Nichts wird übernommen, bevor Sie die Vorschau ausdrücklich bestätigt haben.
       </div>
       <label style={{ display: "grid", gap: 6 }}>
         <Lab>Datei</Lab>
-        <input type="file" accept=".xlsx,.xlsm,.xls,.ods,.csv,.tsv" disabled={z.laeuft} aria-label="Datei für den Personalimport"
+        <input type="file" accept={IMPORT_ACCEPT} disabled={z.laeuft} aria-label="Datei für den Personalimport"
           onChange={(e) => { const d = e.target.files && e.target.files[0]; if (d) a.hochladen(d); }} />
       </label>
       {z.laeuft && <div style={{ fontSize: 13, color: C.dim }}>Datei wird gelesen …</div>}

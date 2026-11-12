@@ -261,6 +261,55 @@ Das ist durch Zeit-, Speicher- und Entpackgrenzen begrenzt (Ergebnis dann `ZEITL
 `ZU_VIEL_GLEICHZEITIG` (Begrenzung paralleler Parser-Läufe) in seinem Vertrag führen und verständlich anzeigen. Eine Datumsumrechnung in IMP-3 bleibt
 entfernt (Branch `acc45/import/imp-3-datum`); maßgeblich ist allein `roh` im System 1900 (siehe 6).
 
+### 9a. Endpunkt /api/import: Statuscodes und Fehlerschlüssel (Stand server/funktionen/import.mjs)
+
+Alle Wege (`/api/import/upload`, `analyse`, `vorschau`, `uebernahme`, `verwerfen`) sind POST mit Sitzung. Fehlerantworten sind JSON
+`{ fehler, code, … }`; die Ausnahmen sind unten vermerkt. Die Reihenfolge der Prüfung ist die der Tabelle von oben nach unten.
+
+**Server-Schalter `CENTRIC_IMPORT_AKTIV`** (Vorgabe aus; nur genau `"true"` schaltet ein): Ist er aus, antworten alle fünf Wege für jede Rolle und
+auch ohne Sitzung mit **404** und `{ "fehler": "Gibt es nicht." }` (ohne `code`), und zwar vor Methode, Herkunft, Sitzung und Rumpf
+(`server.mjs` prüft denselben Schalter über `config.aktiv` schon vor dem Einlesen). Die Oberfläche hat ihren eigenen Schalter
+`IMPORT_DATEI_AKTIV` (Vorgabe false); keiner von beiden ist eingeschaltet.
+
+| Status | code | Weg | Bedeutung |
+|---|---|---|---|
+| 404 | (ohne code) | alle | Serverschalter aus |
+| 405 | (ohne Rumpf, Kopf `Allow: POST`) | alle | Methode nicht POST |
+| 403 | `HERKUNFT` | alle | Anfrage kommt nicht von der Anwendung |
+| 401 | `NICHT_ANGEMELDET` | alle | keine Sitzung |
+| 403 | `KEINE_BERECHTIGUNG` | alle | nur Leitung und Planung mit vollem Schreibumfang; Betreiber, Rückfallrolle „kunde", Schichtverantwortung, Beschäftigte, Betriebsrat abgewiesen; auch bei der Übernahme, falls die Rolle dort nicht zulässig ist |
+| 404 | `NICHT_GEFUNDEN` | alle | kein eigener Betrieb in der Sitzung; Vorgang unbekannt oder gehört einem anderen Betrieb, Raum oder einer anderen Person |
+| 400 | `ART_UNBEKANNT` | upload | `art` weder `personal` noch `schichtzyklus` |
+| 415 | `FORMAT_DER_ANFRAGE` | upload | Inhaltstyp nicht `application/octet-stream` |
+| 413 | `DATEI_ZU_GROSS` | upload | größer als 10 MB (Kopf `Content-Length` oder Parser) |
+| 429 | (ohne code; `fehler: "zu viele Anfragen"`, `wartet`, Kopf `Retry-After`) | upload, uebernahme | allgemeine Bremse „schreiben" |
+| 429 | `ZU_VIELE_VORGAENGE` | upload | Vorgangsgrenze (je Raum und gesamt) erreicht |
+| 503 | `ZU_VIEL_GLEICHZEITIG` (Kopf `Retry-After: 5`) | upload | Parser des Raums oder prozessweit belegt |
+| 422 | Parsercode aus 9 (außer `DATEI_ZU_GROSS`, siehe 413) | upload | Datei nicht lesbar oder nicht unterstützt, kein Teilergebnis |
+| 201 | – | upload | Vorgang angelegt: `vorgang`, `art`, `format`, `blaetter`, `vorgabeBlatt`, `hinweise`, `gueltigBis`, `inaktivMinuten` |
+| 400 | `RUMPF_UNGUELTIG` | analyse, vorschau, uebernahme, verwerfen | kein JSON-Objekt oder größer als 2 MB |
+| 200 | – | verwerfen | `{ ok: true }`, Vorgang gelöscht |
+| 409 | `BEREITS_UEBERNOMMEN` | analyse, vorschau, uebernahme | Vorgang schon übernommen (`ergebnis`) |
+| 409 | `UEBERNAHME_LAEUFT` | analyse, vorschau | Übernahme dieses Vorgangs läuft |
+| 422 | `BLATT_UNGUELTIG` | analyse | Blattindex nicht vorhanden |
+| 422 | `ZUORDNUNG_UNGUELTIG` | analyse, vorschau | Spaltenzuordnung ungültig |
+| 409 | `ANALYSE_FEHLT` | vorschau | Analyse noch nicht ausgeführt |
+| 422 | `PFLICHTSPALTE_FEHLT` | vorschau | Pflichtspalte nicht zugeordnet (`fehlendePflicht`) |
+| 422 | `ENTSCHEIDUNG_UNZULAESSIG`, `AKTUALISIERUNG_OHNE_BESTAETIGUNG`, `ZUORDNUNGSKONFLIKT` | vorschau | Entscheidungen passen nicht zu den Datensätzen (`datensaetze`) oder Einheit, Standort, Qualifikation fehlt ohne Anlegen |
+| 403 | `ORG_EDIT_FEHLT` | vorschau | Einheiten, Standorte oder Qualifikationen anlegen ohne Recht `org.edit` (Leitung) |
+| 422 | `ART_NICHT_FREIGEGEBEN` | uebernahme | Art `schichtzyklus` wird nicht übernommen |
+| 409 | `VORSCHAU_FEHLT`, `BESTAETIGUNG_UNGUELTIG`, `LAEUFT_BEREITS`, `VORSCHAU_VERALTET` | uebernahme | keine Vorschau, keine oder veraltete Bestätigung, Übernahme läuft; `VORSCHAU_VERALTET` auch, wenn sich der Bestand seit der Vorschau änderte |
+| 409 | `DATEI_BEREITS_UEBERNOMMEN`, `FACHPRUEFUNG`, `KONFLIKT` | uebernahme | gleiche Datei schon übernommen (`frueher`), Prüfbefunde, gleichzeitige Änderung; jeweils nichts geändert |
+| 422 | `NICHTS_ZU_UEBERNEHMEN`, `STANDORT_UNGUELTIG`, `GESTALT` | uebernahme | nichts übrig, ungültiger Standort, unvollständiger neuer Stand |
+| 500 | `UEBERNAHME_ABGEBROCHEN`, `INTERNE_PRUEFUNG`, `SCHREIBEN_UNKLAR` | uebernahme | Übernahme nicht ausgeführt; `SCHREIBEN_UNKLAR`: Bestand vor erneutem Versuch prüfen |
+| 503 | `SCHREIBEN_FEHLGESCHLAGEN` | uebernahme | Schreiben fehlgeschlagen, nichts geändert |
+| 200 | – | analyse, vorschau, uebernahme | Erfolg (Übernahme: `{ ok, zaehler, etag }`) |
+| 503 | `VORUEBERGEHEND` | alle | Speicher vorübergehend nicht verfügbar |
+| 500 | `INTERNER_FEHLER` | alle | unerwarteter Fehler, nichts übernommen, kein Stacktrace |
+
+Schichtzyklen (`art=schichtzyklus`): Upload und Analyse liefern 200/201 mit `unterstuetzt: false` und den Hinweis, dass sie mit IMP-6 übernommen werden; die Vorschau ist
+leer (`bereit: false`), die Übernahme antwortet 422 `ART_NICHT_FREIGEGEBEN`. IMP-6 ist nur Bibliothek (`server/lib/import/schichtmodelle.mjs`), nicht an den Endpunkt oder die Oberfläche angeschlossen.
+
 ## 10. Sicherheitsregeln (verbindlich)
 
 - Bibliothek: ausschließlich `vendor/sheetjs/xlsx.mjs` (SheetJS CE 0.20.3, Prüfsummen in `vendor/sheetjs/PRUEFSUMMEN.txt`); nie das npm-Paket `xlsx`; nur Lesen, kein Schreiben.
