@@ -3,7 +3,7 @@
 
    Geprüft über den echten serverseitigen Kern (aenderungsuebersicht) und die reine Rechnung
    (planAenderungen): Schalter aus (Vorgabe), Rollenmatrix, Freigabe, Anfrageform, kein Anbieteraufruf
-   (Spy), keine Gesundheitsdaten (offene Krankmeldungen im Bestand), deterministische Ausgabe, begrenzte
+   (Quelltextprüfung), keine Gesundheitsdaten (offene Krankmeldungen im Bestand), deterministische Ausgabe, begrenzte
    Eingabe, Entwurfskennzeichnung, Oberfläche (nur Planung/Leitung, kein "KI"-Anspruch).
    ========================================================================== */
 import { describe, it, expect, vi } from "vitest";
@@ -62,14 +62,32 @@ describe("reine Rechnung planAenderungen", () => {
     const schluessel = r1.ereignisse.map((x) => x.datum + x.personId);
     expect(schluessel).toEqual([...schluessel].sort());
   });
-  it("Abwesenheiten (auch Krankheit) sind nie eine Planänderung", () => {
+  it("Abwesenheiten (auch Krankheit) sind nie eine Planänderung: Ergebnis identisch zu einem Bestand ohne Abwesenheiten", () => {
+    const ohne = (x) => ({ ...x, abwesenheiten: [], krankmeldungen: [] });
+    const basis = planAenderungen(ohne(alt()), ohne(neu()), { ...ZR, heute: HEUTE });
     const n = neu();
-    n.abwesenheiten = [...n.abwesenheiten, { id: "x", personId: "a3", von: "2026-11-04", bis: "2026-11-08", art: "krank", grund: "Grippe" }];
+    n.abwesenheiten = [...n.abwesenheiten,
+      { id: "x", personId: "a3", von: "2026-11-04", bis: "2026-11-08", art: "krank", grund: "Grippe" },
+      { id: "y", personId: "a1", von: "2026-11-03", bis: "2026-11-05", art: "urlaub", notiz: "Reise" }];
     n.krankmeldungen = [{ id: "k1", personId: "a3", von: "2026-11-04", status: "offen" }];
+    const mit = planAenderungen(alt(), n, { ...ZR, heute: HEUTE });
+    expect(mit).toEqual(basis);
+    const e = (p, d) => mit.ereignisse.filter((x) => x.personId === p && x.datum === d);
+    expect(e("a3", "2026-11-04")).toEqual([{ personId: "a3", datum: "2026-11-04", art: "geaendert", von: "S", nach: "S",
+      zeiten: { vorher: { beginn: "13:30", ende: "21:30" }, nachher: { beginn: "13:30", ende: "22:00" } } }]);
+    expect(e("a1", "2026-11-10")).toEqual([]);
+    expect(mit.ereignisse.some((x) => x.art === "entfernt" && x.personId === "a3")).toBe(false);
+  });
+  it("geplant und dann krank/abwesend, Plan unverändert: keine Ereignisse", () => {
+    const n = alt();
+    n.abwesenheiten = [
+      { id: "s1", personId: "a1", von: "2026-11-03", bis: "2026-11-03", art: "krank", grund: "Grippe", anmerkung: "AU" },
+      { id: "s2", personId: "a2", von: "2026-11-03", bis: "2026-11-03", art: "urlaub" },
+      { id: "s3", personId: "a3", von: "2026-11-04", bis: "2026-11-04", art: "mutterschutz", nachweis: "Attest" }];
+    n.krankmeldungen = [{ id: "k9", personId: "a1", von: "2026-11-03", status: "offen" }];
     const r = planAenderungen(alt(), n, { ...ZR, heute: HEUTE });
-    expect(r.ereignisse.filter((x) => x.personId === "a3" && x.datum === "2026-11-04")).toHaveLength(1);   // nur die Dienstzeit, nicht "entfernt"
-    expect(r.ereignisse.find((x) => x.personId === "a1" && x.datum === "2026-11-10")).toBeUndefined();
-    expect(r.ereignisse.find((x) => x.personId === "a3" && x.datum === "2026-11-05")).toBeUndefined();
+    expect(r.ereignisse).toEqual([]);
+    expect(r.zaehler).toEqual({ neu: 0, geaendert: 0, entfernt: 0 });
   });
   it("Personen nur in einem Stand: nicht verglichen, gezählt", () => {
     const n = neu();
@@ -123,11 +141,8 @@ describe("serverseitiger Kern", () => {
       expect(await fehlerCode(lauf({ anfrage }).ruf())).toBe("KI_EINGABE");
     }
   });
-  it("kein Anbieteraufruf: ein übergebenes Gateway wird nie gerufen; die Zusammenfassung ist nicht verfügbar", async () => {
-    const gateway = { ausfuehren: vi.fn(), anbieter: { erzeuge: vi.fn() } };
-    const r = await lauf({ gateway }).ruf();
-    expect(gateway.ausfuehren).not.toHaveBeenCalled();
-    expect(gateway.anbieter.erzeuge).not.toHaveBeenCalled();
+  it("kein Anbieteraufruf: die Funktion hat keinen Weg zu Gateway oder Anbieter (Quelltext); die Zusammenfassung ist nicht verfügbar", async () => {
+    const r = await lauf().ruf();
     expect(r.zusammenfassung).toEqual({ verfuegbar: false, text: F15_ZUSAMMENFASSUNG_TEXT });
     expect(r.quelle).toBe("berechnet");
     const quelle = readFileSync(path.join(WURZEL, "server/lib/intelligence/funktionen/aenderungsuebersicht.mjs"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -147,6 +162,11 @@ describe("serverseitiger Kern", () => {
     n.abwesenheiten.push({ id: "ab9", personId: "a3", von: "2026-11-04", bis: "2026-11-09", art: "krank", grund: "Bandscheibenvorfall", anmerkung: "Diagnose M51" });
     n.krankmeldungen = [{ id: "k1", personId: "a3", von: "2026-11-04", status: "offen", notiz: "Bandscheibenvorfall" }];
     const r = await lauf({ ladeBestand: async () => bestand(n) }).ruf();
+    const ohne = neu(); ohne.abwesenheiten = []; 
+    const basis = await lauf({ ladeBestand: async () => bestand(ohne), ladeVergleich: async () => bestand({ ...alt(), abwesenheiten: [] }) }).ruf();
+    expect(r.ereignisse).toEqual(basis.ereignisse);
+    expect(r.zaehler).toEqual({ neu: 1, geaendert: 2, entfernt: 1 });
+    expect(r.ereignisse.filter((x) => x.personId === "a3")).toEqual([expect.objectContaining({ art: "geaendert", datum: "2026-11-04" })]);
     const s = JSON.stringify(r).toLowerCase();
     for (const v of ["krank", "grippe", "bandscheibe", "diagnose", "m51", "mutterschutz", "schwanger", "attest", "urlaub", "grund", "anmerkung", "notiz",
       "email", "@", "iban", "geburtsdatum", "telefon", "personalnummer", "kinderwunsch", "insulin", "rückenschmerz"]) expect(s).not.toContain(v);

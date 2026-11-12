@@ -18,7 +18,7 @@
    7  Ausgabe: Kennungen, Namen aus der Sicht, Dienstkurzname, Art, Tag, Dienstzeiten — sonst nichts.
 
    Der Vergleichsstand kommt vom Aufrufer (ladeVergleich): Wo „Stand beim letzten Besuch" gespeichert
-   wird, ist eine offene Produktfrage (docs/acc45/wp-i24-fragen.md). Ohne Vergleichsstand: status
+   wird, ist eine offene Produktfrage (docs/acc45/wp-i24-nachweis.md). Ohne Vergleichsstand: status
    "kein_vergleich". Kein Schreiben, kein Netz, keine Umgebungsvariable.
    ========================================================================== */
 import { bestandFuerRolle } from "../../rechte.mjs";
