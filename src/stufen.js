@@ -39,6 +39,9 @@ import { PAKET_MERKMALE, PAKET_FREIGABEN, PAKET_ZUSTAENDE, merkmalNutzbar, merkm
 import { PAKETE_ROH, PAKETE, paketVon, mitModulstand, inVorbereitungModule } from "../server/lib/paketliste.mjs";
 export { PAKETE, paketVon, inVorbereitungModule };
 
+/* Interne Vorgaben (WP-I4, E-21): aktive Vorgaben je Stufe — Basis 5, Business 25, Enterprise unbegrenzt (server/lib/vorgaben.mjs). */
+export { VORGABEN_STUFENGRENZE, vorgabenGrenze } from "../server/lib/vorgaben.mjs";
+
 export { paketNutzbar, merkmalNutzbar, merkmaleInVorbereitung, paketZustand, paketBuchbar,
   paketAnzeige, pilotAktiv, PAKET_ZUSTAENDE };
 

@@ -144,6 +144,11 @@ const bestand = () => ({
       [`r-a1|${tag(1)}`]: { id: "r-a1", personId: "a1", art: "einsatz", einheitId: M("ROTATION-A1") },
       [`r-b1|${tag(1)}`]: { id: "r-b1", personId: "b1", art: "einsatz", einheitId: M("ROTATION-B1") } },
     pflegeNiveaus: [{ id: "n1", name: M("PFLEGENIVEAU-NAME") }],
+    /* Interne Vorgaben (WP-I4): Name ist Text für den Betriebsrat, Personen und Wer/Wann nicht. */
+    vorgaben: [{ id: "v1", name: M("VORGABE-NAME"), regelart: "grenzregel", staerke: "muss", prioritaet: 1, bezug: "monat", status: "aktiv",
+      geltung: { art: "personen", personen: [M("VORGABE-PERSON")] }, grundlage: { art: "hausregel" },
+      parameter: { groesse: M("VORGABE-PARAMETER"), hoechstens: 3 }, ausnahmen: { personen: [M("VORGABE-AUSNAHME")] },
+      geaendertAm: "2026-11-01T00:00:00.000Z", geaendertVon: M("VORGABE-VON") }],
     /* Branchenmodule (WP-19.0): Schalter mit Mitbestimmungsbestätigung, betrieblicher Regelwert, Modulprotokoll. */
     einstellungen: { ruhezeit: 11,
       branchenmodule: { wachbuch: { an: false, geaendertAm: M("MODUL-AM"), geaendertVon: M("MODUL-VON"),
@@ -470,6 +475,16 @@ const ZEILEN = {
     bedingt: {
       "nur eigene Einträge": (s) => { expect(mk("ROTATION-M0")(s), "eigene").toBe(true); for (const x of ["S1", "A1", "B1"]) expect(mk(`ROTATION-${x}`)(s), x).toBe(false); },
       "nur die eigene Person": (s) => { expect(mk("ROTATION-S1")(s), "eigene").toBe(true); for (const x of ["M0", "A1", "B1"]) expect(mk(`ROTATION-${x}`)(s), x).toBe(false); },
+    } },
+  "Interne Vorgaben (`vorgaben`: Name, Beschreibung, Regelart und Parameter, Geltung, Zeitraum, Stärke, Priorität, Grundlage, Ausnahmen, Status, Wann/Wer; WP-I4)": {
+    sonden: [mk("VORGABE-NAME"), mk("VORGABE-PERSON"), mk("VORGABE-PARAMETER"), mk("VORGABE-AUSNAHME"), mk("VORGABE-VON")],
+    bedingt: {
+      "nur Text und Zahlen ohne Personen": (s) => {
+        expect(mk("VORGABE-NAME")(s), "Name").toBe(true);
+        for (const x of ["VORGABE-PERSON", "VORGABE-PARAMETER", "VORGABE-AUSNAHME", "VORGABE-VON"]) expect(mk(x)(s), x).toBe(false);
+        expect(s.betrieb.vorgaben[0].geltung.anzahlPersonen).toBe(1);
+        expect(s.betrieb.vorgaben[0].ausnahmen.anzahlPersonen).toBe(1);
+      },
     } },
   "Pflegeniveaus (`pflegeNiveaus`: Niveaus je Betrieb; Branchenmodul Pflegequalifikation) — vorläufig": { sonden: [mk("PFLEGENIVEAU-NAME")] },
   /* WP-19.0 (²⁹): Moduleinstellungen in `einstellungen`. */

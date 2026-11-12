@@ -137,7 +137,7 @@ function reicherBestand() {
     notizen: {}, tagesnotizen: {}, adressAenderungen: [],
     tarif: "basis", seit: "2026-01-01", bis: null, testTage: 0, selbstAngelegt: false, preisgestaltung: {},
     rabattGrund: "", kontakt: "k@example.org", kontaktName: "K", anschrift: "Weg 1", ustId: "", notiz: "",
-    raum: null, lohnarten: [], aufbewahrung: null, aushaenge: [], checklisten: [], listeneintraege: [],
+    raum: null, lohnarten: [], aufbewahrung: null, aushaenge: [], checklisten: [], listeneintraege: [], vorgaben: [],
   }] };
 }
 
