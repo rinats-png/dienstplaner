@@ -16,8 +16,8 @@ Funktionen des Produkts in zwei fest benannte Räume. Es gibt keine Muster, kein
 | SD-S Sicherheitsdienst | `pilot-seed-s` | `pilot-seed-s-m` | `SEED-PILOT Unternehmen S (synthetisch)` | 60 |
 
 Die Erzeugung ist deterministisch (fester Seed, mulberry32, kein `Math.random`, keine Uhr): gleicher `--start`, gleiche
-`--groesse`, gleicher Bestand. Der Zeitraum sind 28 Tage ab einem Montag (`--start`, Standard: Montag der laufenden
-Woche). Tag 1 der Szenarien ist dieser Montag.
+`--groesse`, gleicher Bestand. Der Zeitraum sind 28 Tage ab einem Montag (`--start`; ohne Angabe der Montag der laufenden
+Woche nach der Systemuhr, der Standard hängt also vom Tag des Aufrufs ab; für reproduzierbare Testdaten `--start` immer angeben). Tag 1 der Szenarien ist dieser Montag.
 
 ## Inhalt SD-P (Pflege)
 
@@ -80,10 +80,12 @@ keine Notiz, keine Art „krank"). Jeder Seed-Betrieb trägt `seedMarke` (Satz, 
 
 1. Server stoppen (die Ablage gehört immer nur einem Prozess), Sicherung des Datenordners ist nicht nötig, weil nur die
    beiden Seed-Räume berührt werden.
-2. Einmalig die Markendatei im Datenordner der **Testumgebung** anlegen: `.centric-test-umgebung` (beliebiger Inhalt).
-   Der Betreiber legt sie bewusst an; in der Produktion gibt es sie nicht und darf sie nie geben.
-3. `CENTRIC_BASIS` auf den Host der Testumgebung setzen (Hostname mit einem Teil, der mit `staging`, `stage` oder `test`
-   beginnt, oder `localhost`, `127.0.0.1`, `*.invalid`, `*.local`, `*.test`).
+2. Einmalig die Markendatei im Datenordner der **Testumgebung** anlegen: `.centric-test-umgebung` (Inhalt: leer oder die erlaubten Hostnamen der Testumgebung, einer je Zeile, `#` für Kommentar).
+   Der Betreiber legt sie bewusst an; in der Produktion gibt es sie nicht und darf sie nie geben. Stehen Hostnamen darin, ist
+   nur ein dort genannter `CENTRIC_BASIS`-Host erlaubt (harte Allowlist).
+3. `CENTRIC_BASIS` auf den Host der Testumgebung setzen. Ist die Markendatei ohne Hostnamen, muss das erste Label des Hosts
+   genau `staging`, `stage`, `test`, `qa` oder `dev` sein (oder auf `-staging` usw. enden), oder der Host ist `localhost`,
+   `127.0.0.1`, `*.invalid`.
 4. Aufruf:
 
 ```
@@ -99,15 +101,25 @@ Ausgang: 0 ok, 1 Fehler, 2 Aufruf, 3 Schutz hat abgelehnt (nichts geschrieben).
 
 Alle Bedingungen gelten gleichzeitig, sonst Exit 3 ohne Schreibzugriff:
 
-- Der Datenpfad enthält keinen Pfadteil `prod`, `prd`, `production`, `produktion`, `live`, `echt`, `kunde(n)`, `customer`.
+- Kein Pfadteil des Datenpfads (eingegeben und aufgelöst per `realpath`, also auch Verknüpfungen, 8.3-Namen, UNC) enthält als
+  Teilzeichenfolge `prod`, `prd`, `live`, `kunde` oder `customer` (ohne Rücksicht auf Groß-/Kleinschreibung; `centric-prod` wird abgelehnt).
 - Im Datenordner liegt `.centric-test-umgebung`.
-- `CENTRIC_UMGEBUNG` nennt nicht Produktion.
-- `CENTRIC_BASIS` ist gesetzt und als Test-/Staging-Host erkennbar. Ohne Angabe gilt der Standardhost des Produkts
-  (Produktion) und das Werkzeug lehnt ab.
+- `CENTRIC_UMGEBUNG` ist ungesetzt oder genau `staging`, `test`, `ci` oder `lokal` (Allowlist; alles andere, auch `produktiv` oder
+  `production-eu`, lehnt ab).
+- `CENTRIC_BASIS` ist gesetzt, nie der Produktionshost (`centric-dienstplanung.de` und Unterdomänen, auch nicht über die
+  Markendatei) und als Testhost erkannt (siehe oben). Ohne Angabe gilt der Standardhost des Produkts und das Werkzeug lehnt ab.
 - Die Ablage des Prozesses ist derselbe Ordner wie der geprüfte (`CENTRIC_DATEN`).
 - Existiert einer der beiden Räume, muss er genau einen Betrieb enthalten, der `istSeedBetrieb` erfüllt (Kennung, Name mit
-  `SEED-PILOT`, Kontakt `@example.invalid`), und alle Zugänge des Raums müssen mit `SEED-PILOT` beginnen. Sonst: nichts
-  geschrieben und nichts gelöscht, auch nicht im anderen Satz (alles oder nichts).
+  `SEED-PILOT`, Kontakt `@example.invalid` und die vom Werkzeug geschriebene `seedMarke` mit `synthetisch: true`, Namensraum
+  und Satz).
+- Für beide Räume, auch wenn der Raum fehlt: Auf den Raum darf keine Mitgliedschaft verweisen (`raummitglied:<raum>:*`,
+  `mitglied:*:<raum>`); jede vorhandene stoppt den Lauf, es wird nie eine Mitgliedschaft gelöscht. Zugänge (Konten), die auf den
+  Raum zeigen, müssen alle mit `SEED-PILOT` beginnen; ein fremdes Konto stoppt den Lauf. Zugänge mit diesem Namen, die auf einen
+  fehlenden Raum zeigen (Reste), werden vor dem Laden mit dem Raum-Löschvorgang entfernt, damit sie nicht zu Zugängen auf den
+  neuen Seed werden.
+- Nur die Prüfphase ist alles-oder-nichts: Besteht ein Raum sie nicht, wird in keinem Satz etwas geschrieben oder gelöscht.
+  Die Schreibphase läuft Raum für Raum und ist nicht atomar; bricht sie ab, kann ein Raum schon geschrieben sein. Dann
+  `--entfernen` und erneut laden.
 - Das Werkzeug legt keine Räume mit anderen Namen an und löscht keine.
 
 ## Rückbau

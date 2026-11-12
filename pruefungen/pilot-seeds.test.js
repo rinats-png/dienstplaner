@@ -297,20 +297,34 @@ describe("S5 Schutz des Laders", () => {
     expect(ok).toEqual({ ok: true, gruende: [] });
     const nein = (e, text) => { const r = W.zielPruefen(e); expect(r.ok, text).toBe(false); expect(r.gruende.join(" "), text).toMatch(text); };
     nein(env({ CENTRIC_BASIS: undefined }), /CENTRIC_BASIS ist nicht gesetzt/);
-    nein(env({ CENTRIC_BASIS: "https://app.centric-dienstplanung.de" }), /nicht als Test/);
+    nein(env({ CENTRIC_BASIS: "https://app.centric-dienstplanung.de" }), /Produktionshost/);
     nein(env({ CENTRIC_BASIS: "https://www.example.org" }), /nicht als Test/);
     nein(env({ CENTRIC_BASIS: "kein host" }), /gültige Adresse/);
-    nein(env({ CENTRIC_UMGEBUNG: "Production" }), /Produktion/);
+    /* Host: nur ganze Labels (Reviewpunkt 2) */
+    for (const h of ["testament.de", "stagecoach.de", "app.centric-dienstplanung.de.test", "www.testament.example.org", "x.stagingfoo.example.org"])
+      nein(env({ CENTRIC_BASIS: `https://${h}` }), /nicht als Test|Produktionshost/);
+    /* Umgebung: Allowlist (Reviewpunkt 1) */
+    for (const u of ["Production", "production-eu", "produktiv", "prod", "live", "irgendwas"]) nein(env({ CENTRIC_UMGEBUNG: u }), /keine erlaubte Testumgebung/);
+    for (const u of ["staging", "TEST", "ci", "lokal", ""]) expect(W.zielPruefen(env({ CENTRIC_UMGEBUNG: u })).ok, u).toBe(true);
     nein({ ...STAGING }, /CENTRIC_DATEN fehlt/);
     nein(env({ CENTRIC_DATEN: path.join(wurzel, "gibtesnicht") }), /existiert nicht/);
     const ohneMarke = await mkdtemp(path.join(tmpdir(), "centric-pilot-ohne-"));
     try { nein(env({ CENTRIC_DATEN: ohneMarke }), /Markendatei/); } finally { await rm(ohneMarke, { recursive: true, force: true }); }
-    for (const seg of ["prod", "production", "live"]) {
+    for (const seg of ["prod", "production", "live", "centric-prod", "produktiv", "Live-Daten", "PROD~1", "kunde-a"]) {
       const d = path.join(wurzel, "unter", seg, "data"); await mkdir(d, { recursive: true }); await writeFile(path.join(d, W.TESTUMGEBUNG_MARKE), "x");
       nein(env({ CENTRIC_DATEN: d }), /Produktion aus/);
     }
-    for (const h of ["http://localhost:3000", "http://127.0.0.1", "https://x.staging.example.org", "https://teststand.example.org", "https://a.invalid"])
+    for (const h of ["http://localhost:3000", "http://127.0.0.1", "https://staging.example.org", "https://qa.example.org",
+      "https://app-staging.example.org", "https://dev.example.org", "https://a.invalid"])
       expect(W.zielPruefen(env({ CENTRIC_BASIS: h })).ok, h).toBe(true);
+  });
+  it("Markendatei mit Hostnamen ist eine harte Allowlist; der Produktionshost ist nie erlaubt", async () => {
+    const d = path.join(wurzel, "hosts"); await mkdir(d, { recursive: true });
+    await writeFile(path.join(d, W.TESTUMGEBUNG_MARKE), "# Testhosts\nstaging.example.org\napp.centric-dienstplanung.de\n");
+    const e = (h) => ({ CENTRIC_DATEN: d, CENTRIC_BASIS: h });
+    expect(W.zielPruefen(e("https://staging.example.org")).ok).toBe(true);
+    const a = W.zielPruefen(e("https://qa.example.org")); expect(a.ok).toBe(false); expect(a.gruende.join(" ")).toMatch(/nicht in der Markendatei/);
+    const b = W.zielPruefen(e("https://app.centric-dienstplanung.de")); expect(b.ok).toBe(false); expect(b.gruende.join(" ")).toMatch(/Produktionshost/);
   });
   it("Produktionsziel: nichts wird geschrieben (Exit 3), auch nicht im Trockenlauf-Pfad", async () => {
     const r = await W.ausfuehren(["--ja"], env({ CENTRIC_BASIS: "https://app.centric-dienstplanung.de" }));
@@ -365,6 +379,43 @@ describe("S5 Schutz des Laders", () => {
     expect((await W.ausfuehren(["--ja", "--entfernen"], env())).code).toBe(3);
     expect(await raumLeer("pilot-seed-s")).toBe(false);
     await raumLoeschen(laden(), sp(), "pilot-seed-s");
+  });
+  it("istSeedBetrieb verlangt die Seed-Marke des Werkzeugs (Reviewpunkt 4): richtiger Name ohne seedMarke wird abgelehnt", async () => {
+    const { seedMarke: _m, ...ohne } = P();
+    expect(W.istSeedBetrieb(ohne, "SD-P")).toBe(false);
+    expect(W.istSeedBetrieb({ ...P(), seedMarke: { ...P().seedMarke, synthetisch: false } }, "SD-P")).toBe(false);
+    expect(W.istSeedBetrieb({ ...P(), seedMarke: { ...P().seedMarke, satz: "SD-S" } }, "SD-P")).toBe(false);
+    await B.bestandSchreiben(laden(), "pilot-seed-p", { version: 9, mandanten: [ohne] }, { durch: "Pruefung" });
+    const vorher = sha(await lesen("pilot-seed-p"));
+    for (const argv of [["--ja", "--satz", "SD-P"], ["--ja", "--entfernen", "--satz", "SD-P"]]) expect((await W.ausfuehren(argv, env())).code).toBe(3);
+    expect(sha(await lesen("pilot-seed-p"))).toBe(vorher);
+  });
+  it("Mitgliedschaften und Zugangsreste auf die Seed-Räume (Reviewpunkt 5)", async () => {
+    const st = laden();
+    await st.setJSON("raummitglied:pilot-seed-p:a_echt", { x: 1 }); await st.setJSON("mitglied:a_echt:pilot-seed-p", { x: 1 });
+    for (const argv of [["--ja", "--satz", "SD-P"], ["--ja", "--entfernen"], ["--ja"]]) {
+      const r = await W.ausfuehren(argv, env()); expect(r.code, argv.join(" ")).toBe(3); expect(r.text).toMatch(/Mitgliedschaft/);
+    }
+    expect(await raumLeer("pilot-seed-p")).toBe(true); expect(await raumLeer("pilot-seed-s")).toBe(true);
+    expect(await st.get("mitglied:a_echt:pilot-seed-p", { type: "json" })).toEqual({ x: 1 });
+    expect(await st.get("raummitglied:pilot-seed-p:a_echt", { type: "json" })).toEqual({ x: 1 });
+    await st.delete("raummitglied:pilot-seed-p:a_echt"); await st.delete("mitglied:a_echt:pilot-seed-p");
+    await st.setJSON("mitglied:a_echt:pilot-seed-s", { x: 1 });
+    expect((await W.ausfuehren(["--ja", "--satz", "SD-S"], env())).code).toBe(3);
+    expect(await st.get("mitglied:a_echt:pilot-seed-s", { type: "json" })).toEqual({ x: 1 });
+    await st.delete("mitglied:a_echt:pilot-seed-s"); await st.setJSON("mitglied:a_echt:anderer-raum", { x: 1 });
+    expect((await W.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env())).code).toBe(0);
+    expect((await W.ausfuehren(["--ja", "--entfernen"], env())).code).toBe(0);
+    expect(await st.get("mitglied:a_echt:anderer-raum", { type: "json" })).toEqual({ x: 1 });
+    await st.delete("mitglied:a_echt:anderer-raum");
+    await kontoSchreiben(st, ablageSchluessel("FREMD-AAAA-0002"), { name: "Echte Person", bestand: "pilot-seed-p", rolle: "leitung", person: "x", betrieb: 0, angelegt: "2026-01-01T00:00:00.000Z" });
+    const r = await W.ausfuehren(["--ja", "--satz", "SD-P"], env()); expect(r.code).toBe(3); expect(r.text).toMatch(/ohne Kennzeichnung/);
+    expect(await raumLeer("pilot-seed-p")).toBe(true);
+    await raeumen();
+    await kontoSchreiben(st, ablageSchluessel("REST-AAAA-0003"), { name: `${W.SEED_MARKE} Rest`, bestand: "pilot-seed-p", rolle: "leitung", person: "x", betrieb: 0, angelegt: "2026-01-01T00:00:00.000Z" });
+    const r2 = await W.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env()); expect(r2.code, r2.text).toBe(0);
+    const { alleKonten } = await import("../server/lib/konten.mjs");
+    expect(Object.values(await alleKonten(st)).filter((c) => c.bestand === "pilot-seed-p")).toEqual([]);
   });
   it("Zugang ohne Seed-Kennzeichnung im Seed-Raum: abgelehnt", async () => {
     expect((await W.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env())).code).toBe(0);
@@ -467,7 +518,7 @@ describe("S6 Mutation: ohne Schutz würden die Schutzprüfungen rot", () => {
     expect(await zielSchutzHaelt(M)).toBe(false);
   }, 60000);
   it("Mutant ohne Markendatei-Pflicht: Ziel ohne Kennzeichnung wird akzeptiert -> Ziel-Prüfung rot", async () => {
-    const M = await mutant([["else if (!existsSync(path.join(abs, TESTUMGEBUNG_MARKE)))", "else if (false)"]]);
+    const M = await mutant([["gruende.push(`Im Datenordner fehlt die Markendatei", "void (`Im Datenordner fehlt die Markendatei"]]);
     const ohne = await mkdtemp(path.join(tmpdir(), "centric-pilot-ohnemarke-"));
     try { expect(M.zielPruefen({ CENTRIC_DATEN: ohne, ...STAGING }).ok).toBe(true); expect(W.zielPruefen({ CENTRIC_DATEN: ohne, ...STAGING }).ok).toBe(false); }
     finally { await rm(ohne, { recursive: true, force: true }); }
@@ -477,15 +528,54 @@ describe("S6 Mutation: ohne Schutz würden die Schutzprüfungen rot", () => {
     expect(await seedSchutzHaelt(M)).toBe(false);
   }, 60000);
   it("Mutant ohne Produktions-Pfadregel: prod-Pfad wird akzeptiert", async () => {
-    const M = await mutant([["abs.split(/[\\\\/]+/).some((seg) => PROD_SEGMENT.test(seg))", "false"]]);
-    const d = path.join(wurzel, "mut", "prod"); await mkdir(d, { recursive: true }); await writeFile(path.join(d, W.TESTUMGEBUNG_MARKE), "x");
+    const M = await mutant([["const PROD_SEGMENT = /(prod|prd|live|kunde|customer)/i;", "const PROD_SEGMENT = /^(prod|prd|production|produktion|live|echt|kunden?|customer)$/i;"]]);
+    const d = path.join(wurzel, "mut", "centric-prod"); await mkdir(d, { recursive: true }); await writeFile(path.join(d, W.TESTUMGEBUNG_MARKE), "x");
     expect(M.zielPruefen({ CENTRIC_DATEN: d, ...STAGING }).ok).toBe(true);
     expect(W.zielPruefen({ CENTRIC_DATEN: d, ...STAGING }).ok).toBe(false);
   });
   it("Mutant ohne Host-Regel: Standardhost der Produktion wird akzeptiert", async () => {
-    const M = await mutant([["if (!test) gruende.push(", "if (false) gruende.push("]]);
+    const M = await mutant([["if (!test) gruende.push(", "if (false) gruende.push("], ["if (PROD_HOST.test(host))", "if (false)"]]);
     const e = { CENTRIC_DATEN: wurzel, CENTRIC_BASIS: "https://app.centric-dienstplanung.de" };
     expect(M.zielPruefen(e).ok).toBe(true);
     expect(W.zielPruefen(e).ok).toBe(false);
   });
+  it("Mutant mit alter Hostregel (Label beginnt mit test): testament.de wird akzeptiert", async () => {
+    const M = await mutant([["(host.includes(\".\") && TEST_LABEL.test(erstes))", "host.split(\".\").some((l) => /^(staging|stage|test)/.test(l))"]]);
+    for (const h of ["https://testament.de", "https://app.centric-dienstplanung.de.test"]) {
+      expect(M.zielPruefen({ CENTRIC_DATEN: wurzel, CENTRIC_BASIS: h }).ok, h).toBe(true);
+      expect(W.zielPruefen({ CENTRIC_DATEN: wurzel, CENTRIC_BASIS: h }).ok, h).toBe(false);
+    }
+  });
+  it("Mutant ohne Umgebungs-Allowlist: production-eu wird akzeptiert", async () => {
+    const M = await mutant([["if (umgebung && !TEST_UMGEBUNGEN.includes(umgebung))", "if (false)"]]);
+    const e = { ...env(), CENTRIC_UMGEBUNG: "production-eu" };
+    expect(M.zielPruefen(e).ok).toBe(true); expect(W.zielPruefen(e).ok).toBe(false);
+  });
+  it("Mutant ohne Host-Allowlist der Markendatei: nicht gelisteter Host wird akzeptiert", async () => {
+    const M = await mutant([["if (!erlaubteHosts.includes(host))", "if (false)"]]);
+    const d = path.join(wurzel, "hosts2"); await mkdir(d, { recursive: true }); await writeFile(path.join(d, W.TESTUMGEBUNG_MARKE), "staging.example.org\n");
+    const e = { CENTRIC_DATEN: d, CENTRIC_BASIS: "https://qa.example.org" };
+    expect(M.zielPruefen(e).ok).toBe(true); expect(W.zielPruefen(e).ok).toBe(false);
+  });
+  it("Mutant ohne Seed-Marke in istSeedBetrieb: Betrieb ohne seedMarke gilt als Seed", async () => {
+    const M = await mutant([["&& !!m.seedMarke && m.seedMarke.synthetisch === true && m.seedMarke.namensraum === SEED_MARKE && m.seedMarke.satz === satz", ""]]);
+    const { seedMarke: _m, ...ohne } = P();
+    expect(M.istSeedBetrieb(ohne, "SD-P")).toBe(true); expect(W.istSeedBetrieb(ohne, "SD-P")).toBe(false);
+  });
+  it("Mutant ohne Mitgliedschaftsprüfung: Mitgliedschaft auf den Seed-Raum bleibt unbemerkt", async () => {
+    const M = await mutant([["if (spuren.length)", "if (false)"]]);
+    await laden().setJSON("mitglied:a_echt:pilot-seed-p", { x: 1 });
+    try {
+      const echt = await W.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env());
+      expect(echt.code).toBe(3); expect(await raumLeer("pilot-seed-p")).toBe(true);
+      const mut = await M.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env());
+      expect(mut.code).toBe(0);
+    } finally { await laden().delete("mitglied:a_echt:pilot-seed-p"); }
+  }, 60000);
+  it("Mutant ohne Fremdzugangsprüfung: fremdes Konto auf den fehlenden Raum bleibt unbemerkt", async () => {
+    const M = await mutant([["if (fremd.length) return", "if (false) return"]]);
+    await kontoSchreiben(laden(), ablageSchluessel("FREMD-AAAA-0009"), { name: "Echte Person", bestand: "pilot-seed-p", rolle: "leitung", person: "x", betrieb: 0, angelegt: "2026-01-01T00:00:00.000Z" });
+    expect((await W.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env())).code).toBe(3);
+    expect((await M.ausfuehren(["--ja", "--start", START, "--satz", "SD-P"], env())).code).toBe(0);
+  }, 60000);
 });

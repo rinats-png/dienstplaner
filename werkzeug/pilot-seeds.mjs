@@ -26,7 +26,7 @@
    Ausgang: 0 = ok, 1 = Fehler, 2 = Aufruf, 3 = Schutz hat abgelehnt, nichts geschrieben.
    ========================================================================== */
 import path from "node:path";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, realpathSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
 
@@ -425,45 +425,64 @@ export const alleSaetze = (opt = {}) => Object.fromEntries(Object.keys(SAETZE).m
 export function istSeedBetrieb(m, satz) {
   const s = SAETZE[satz];
   return !!(s && m && typeof m === "object" && m.id === s.mandant && typeof m.name === "string" && m.name.startsWith(SEED_MARKE)
-    && typeof m.kontakt === "string" && m.kontakt.endsWith("@example.invalid"));
+    && typeof m.kontakt === "string" && m.kontakt.endsWith("@example.invalid")
+    && !!m.seedMarke && m.seedMarke.synthetisch === true && m.seedMarke.namensraum === SEED_MARKE && m.seedMarke.satz === satz);
 }
 
 /* ------------------------------ Schutz ------------------------------------ */
-const PROD_SEGMENT = /^(prod|prd|production|produktion|live|echt|kunden?|customer)$/i;
-const PROD_UMGEBUNG = /^(prod|prd|production|produktion|live)$/i;
+/* Teilzeichenfolge, nicht ganzer Ordnername: "centric-prod", "produktiv", "live-data" sind Produktion. Fail-closed. */
+const PROD_SEGMENT = /(prod|prd|live|kunde|customer)/i;
+/** Einzige erlaubte Werte von CENTRIC_UMGEBUNG (Allowlist); ungesetzt ist erlaubt, dann entscheidet die Markendatei. */
+export const TEST_UMGEBUNGEN = Object.freeze(["staging", "test", "ci", "lokal"]);
+/** Der Standardhost des Produkts (post.mjs) und seine Hauptdomäne sind nie ein Testziel, auch nicht über die Markendatei. */
+const PROD_HOST = /(^|\.)centric-dienstplanung\.de$/;
+const TEST_LABEL = /^(staging|stage|test|qa|dev)$|-(staging|stage|test|qa|dev)$/;
 
 /**
  * Darf das Werkzeug gegen dieses Ziel laufen? Fail-closed: erlaubt ist nur, was ausdrücklich als Testumgebung erkennbar ist.
  * Alle Bedingungen müssen gelten:
  *  1. CENTRIC_DATEN gesetzt, Ordner vorhanden, kein Pfadteil prod/production/live/…;
  *  2. im Ordner liegt die Markendatei `.centric-test-umgebung` (legt der Betreiber bewusst an);
- *  3. CENTRIC_UMGEBUNG ist nicht „production“ o. ä.;
- *  4. CENTRIC_BASIS (der öffentliche Host) ist ausdrücklich gesetzt und kein Produktionshost: nur localhost, 127.0.0.1,
- *     *.invalid, *.local, *.test oder ein Hostname mit einem Teil, der mit „staging“, „stage“ oder „test“ beginnt.
+ *  3. CENTRIC_UMGEBUNG ist ungesetzt oder genau eines von staging, test, ci, lokal (Allowlist);
+ *  4. CENTRIC_BASIS (der öffentliche Host) ist ausdrücklich gesetzt, nie der Produktionshost, und entweder steht er in der
+ *     Markendatei (enthält sie Hostnamen, eine je Zeile, ist nur das erlaubt) oder — bei Markendatei ohne Hostnamen — er ist
+ *     localhost, 127.0.0.1, *.invalid oder sein ERSTES Label ist staging/stage/test/qa/dev (ganz) bzw. endet auf -staging usw.
  *     Ohne Angabe gilt der Standardhost des Produkts — das ist Produktion, also Ablehnung.
  * @param {Record<string, string | undefined>} env
  * @returns {{ ok: boolean, gruende: string[] }}
  */
 export function zielPruefen(env) {
   const gruende = [];
+  /** @type {string[]} */
+  let erlaubteHosts = [];
   const daten = env.CENTRIC_DATEN;
   if (!daten) gruende.push("CENTRIC_DATEN fehlt (Pfad des Datenordners).");
   else {
     const abs = path.resolve(daten);
-    if (abs.split(/[\\/]+/).some((seg) => PROD_SEGMENT.test(seg))) gruende.push("Der Datenpfad sieht nach Produktion aus (Pfadteil prod/production/live/kunde).");
+    let echt = abs;
+    try { echt = realpathSync.native(abs); } catch { /* existiert nicht: unten gemeldet */ }
+    /* Beide Fassungen prüfen: eingegebener und aufgelöster Pfad (Verknüpfungen, 8.3-Kurznamen, UNC). */
+    if ([abs, echt].some((p) => p.split(/[\\/]+/).some((seg) => PROD_SEGMENT.test(seg)))) gruende.push("Der Datenpfad sieht nach Produktion aus (Pfadteil enthält prod/live/kunde/customer).");
     if (!existsSync(abs) || !statSync(abs).isDirectory()) gruende.push("Der Datenordner existiert nicht.");
     else if (!existsSync(path.join(abs, TESTUMGEBUNG_MARKE))) gruende.push(`Im Datenordner fehlt die Markendatei ${TESTUMGEBUNG_MARKE} (Testumgebung nicht ausdrücklich gekennzeichnet).`);
+    else erlaubteHosts = readFileSync(path.join(abs, TESTUMGEBUNG_MARKE), "utf8").split(/\r?\n/).map((z) => z.trim().toLowerCase())
+      .filter((z) => z && !z.startsWith("#") && /^[a-z0-9.-]+$/.test(z) && z.includes("."));
   }
-  if (PROD_UMGEBUNG.test(String(env.CENTRIC_UMGEBUNG || "").trim())) gruende.push("CENTRIC_UMGEBUNG nennt Produktion.");
+  const umgebung = String(env.CENTRIC_UMGEBUNG || "").trim().toLowerCase();
+  if (umgebung && !TEST_UMGEBUNGEN.includes(umgebung)) gruende.push(`CENTRIC_UMGEBUNG "${umgebung}" ist keine erlaubte Testumgebung (erlaubt: ${TEST_UMGEBUNGEN.join(", ")} oder ungesetzt).`);
   const basis = String(env.CENTRIC_BASIS || "").trim();
   if (!basis) gruende.push("CENTRIC_BASIS ist nicht gesetzt (Standardhost des Produkts gilt als Produktion).");
   else {
     let host = "";
     try { host = new URL(basis).hostname.toLowerCase(); } catch { gruende.push("CENTRIC_BASIS ist keine gültige Adresse."); }
     if (host) {
-      const labels = host.split(".");
-      const test = host === "localhost" || host === "127.0.0.1" || /\.(invalid|local|test)$/.test(host) || labels.some((l) => /^(staging|stage|test)/.test(l));
-      if (!test) gruende.push(`Der Host ${host} ist nicht als Test-/Staging-Host erkennbar.`);
+      if (PROD_HOST.test(host)) gruende.push(`Der Host ${host} ist der Produktionshost.`);
+      else if (erlaubteHosts.length) { if (!erlaubteHosts.includes(host)) gruende.push(`Der Host ${host} steht nicht in der Markendatei ${TESTUMGEBUNG_MARKE}.`); }
+      else {
+        const erstes = host.split(".")[0];
+        const test = host === "localhost" || host === "127.0.0.1" || /\.invalid$/.test(host) || (host.includes(".") && TEST_LABEL.test(erstes));
+        if (!test) gruende.push(`Der Host ${host} ist nicht als Test-/Staging-Host erkennbar (erstes Label staging, stage, test, qa, dev oder ...-staging).`);
+      }
     }
   }
   return { ok: gruende.length === 0, gruende };
@@ -512,19 +531,27 @@ export async function ausfuehren(argv, env = process.env) {
     const { bestandLesen, bestandSchreiben, raumBelegt } = await imp("server/lib/bestand.mjs");
     const { alleKonten } = await imp("server/lib/konten.mjs");
 
-    /* Erst alles prüfen, dann schreiben: Ein Raum, der kein Seed ist, stoppt den ganzen Lauf. */
-    const vorhanden = {};
+    /* Erst alles prüfen, dann schreiben: Ein Raum, der kein Seed ist, stoppt den ganzen Lauf. Nur diese Prüfphase ist
+       alles-oder-nichts; die Schreibphase läuft Raum für Raum (bricht sie ab, ist ein Raum evtl. schon geschrieben). */
+    const vorhanden = {}, altlast = {};
     for (const k of saetze) {
       const raum = SAETZE[k].raum;
+      /* Zugangsspuren auf diesen Raum: Mitgliedschaften (Index und Quelle) und Zugänge. Sie würden den neuen Seed zugänglich
+         machen. Mitgliedschaften gibt es bei einem Seed nie: jede vorhandene stoppt den Lauf. Zugänge nur mit SEED-PILOT-Namen. */
+      const rl = raum.toLowerCase();
+      const spuren = [...(await store.list({ prefix: `raummitglied:${rl}:` })).blobs,
+        ...(await store.list({ prefix: "mitglied:" })).blobs.filter((b) => b.key.toLowerCase().endsWith(`:${rl}`))];
+      if (spuren.length) return ende(3, `Auf den Raum ${raum} verweisen ${spuren.length} Mitgliedschaft(en) von Konten. Nichts geschrieben, nichts gelöscht.`);
+      const konten = Object.values(await alleKonten(store)).filter((c) => c && String(c.bestand || "").toLowerCase() === rl);
+      const fremd = konten.filter((c) => !String(c.name || "").startsWith(SEED_MARKE));
+      if (fremd.length) return ende(3, `Im Raum ${raum} gibt es ${fremd.length} Zugang/Zugänge ohne Kennzeichnung ${SEED_MARKE}. Nichts geschrieben, nichts gelöscht.`);
+      altlast[k] = konten.length > 0;
       if (!(await raumBelegt(store, raum))) { vorhanden[k] = false; continue; }
       let gelesen = null;
       try { gelesen = await bestandLesen(store, raum); } catch { gelesen = null; }
       const ms = gelesen && gelesen.bestand && Array.isArray(gelesen.bestand.mandanten) ? gelesen.bestand.mandanten : null;
       if (!ms || ms.length !== 1 || !istSeedBetrieb(ms[0], k))
         return ende(3, `Der Raum ${raum} existiert, ist aber kein gekennzeichneter Seed-Betrieb. Nichts geschrieben, nichts gelöscht.`);
-      const konten = Object.values(await alleKonten(store)).filter((c) => c && c.bestand === raum);
-      const fremd = konten.filter((c) => !String(c.name || "").startsWith(SEED_MARKE));
-      if (fremd.length) return ende(3, `Im Raum ${raum} gibt es ${fremd.length} Zugang/Zugänge ohne Kennzeichnung ${SEED_MARKE}. Nichts geschrieben, nichts gelöscht.`);
       vorhanden[k] = true;
     }
     if (trocken) return ende(0, `Trockenlauf: Schutz bestanden, ${saetze.length} Satz/Sätze erzeugt, nichts geschrieben.`);
@@ -535,10 +562,10 @@ export async function ausfuehren(argv, env = process.env) {
     const zeilen = [];
     for (const k of saetze) {
       const raum = SAETZE[k].raum;
-      if (vorhanden[k]) {
+      if (vorhanden[k] || altlast[k]) {
         const r = await raumLoeschen(store, sitzungsSpeicher(), raum);
         if (!r.vollstaendig) return ende(1, `Löschen des Seed-Raums ${raum} unvollständig (${r.fehler.length} Fehler).`, geschrieben);
-        zeilen.push(`${k}: Seed-Raum ${raum} entfernt.`);
+        zeilen.push(vorhanden[k] ? `${k}: Seed-Raum ${raum} entfernt.` : `${k}: Zugangsreste mit Kennzeichnung ${SEED_MARKE} entfernt.`);
       }
       if (entfernen) continue;
       await bestandSchreiben(store, raum, bestaende[k], { durch: SEED_MARKE });
