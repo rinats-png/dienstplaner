@@ -175,23 +175,22 @@ describe("Schreibweg: wer ändert was (zusammenfuehren, manipulierte Rümpfe)", 
     it(`${k}: Hauptschalter, Funktion und Frage lassen sich nicht ändern`, () => {
       for (const absicht of [{ betrieb: { an: true } }, { funktionen: { F3: { an: true } } }, { betriebsratFrage: { antwort: "nein" } }]) {
         const r = schreibe(k, setze(absicht));
-        if (k === "betriebsrat" || k === "betreiber" || k === "mitarbeiter" || k === "subplaner") {
-          /* Diese Rollen tragen die Änderung nie in den Bestand: abgewiesen oder verworfen. */
-          expect(kiSteuerungLesen(r.m.einstellungen), `${k} ${JSON.stringify(absicht)}`).toBeNull();
-        } else {
-          expect(r.abgewiesen, `${k} ${JSON.stringify(absicht)}`).toBe(true);
-          expect(r.m.einstellungen.kiSteuerung).toBeUndefined();
-        }
+        /* Ohne Recht an diesem Teil zählt der gesendete Wert nicht: verworfen, der gespeicherte Stand bleibt. */
+        expect(kiSteuerungLesen(r.m.einstellungen), `${k} ${JSON.stringify(absicht)}`).toBeNull();
       }
     });
   }
   it("unbekannte Funktion, falsche Typen, Müll: abgewiesen, nichts gespeichert", () => {
     for (const absicht of [{ funktionen: { F99: { an: true } } }, { funktionen: { __proto__: { an: true }, F3: { an: "ja" } } }, { funktionen: [] },
-      { betrieb: { an: "true" } }, { betrieb: 1 }, { betriebsratFrage: { antwort: "vielleicht" } }, { pause: { aktiv: "ja" } }, "an", 5, [{}]]) {
+      { betrieb: { an: "true" } }, { betrieb: 1 }, { betriebsratFrage: { antwort: "vielleicht" } }, "an", 5, [{}]]) {
       const r = schreibe("leitung", setze(absicht));
       expect(r.abgewiesen, JSON.stringify(absicht)).toBe(true);
       expect(r.m.einstellungen.kiSteuerung).toBeUndefined();
     }
+    /* Die Pause gehört nicht der Leitung: Müll dort ist ohne Wirkung wie jeder Wert, kein Fehler. */
+    const p = schreibe("leitung", setze({ pause: { aktiv: "ja" } }));
+    expect(p.abgewiesen).toBe(false);
+    expect(kiSteuerungLesen(p.m.einstellungen)).toBeNull();
   });
   it("Fremder Betrieb: eine fremde Sitzung ändert nichts am Betrieb", () => {
     const alt = bestand();
@@ -247,13 +246,69 @@ describe("Betriebsrat-Pause", () => {
       expect(intelligenceErlaubt(r.m, f, rolle, AN), `${f} ${rolle}`).toBe(false);
     expect(KI(r.bestand).protokoll.at(-1)).toMatchObject({ art: "pause-gesetzt", vonRolle: "betriebsrat" });
   });
-  it("der Betriebsrat ändert sonst nichts: weder Hauptschalter noch Funktionen noch Frage, auch nicht zusammen mit der Pause", () => {
+  it("der Betriebsrat ändert sonst nichts: mit der Pause mitgeschickte Schalter und Frage werden ignoriert; ohne Pausenänderung 403", () => {
     const b = bereit();
     for (const absicht of [{ pause: { aktiv: true }, betrieb: { an: false } }, { pause: { aktiv: true }, funktionen: { F3: { an: false } } },
-      { pause: { aktiv: true }, betriebsratFrage: { antwort: "ja" } }, { betrieb: { an: false } }, { funktionen: { F6: { an: true } } }]) {
+      { pause: { aktiv: true }, betriebsratFrage: { antwort: "ja" } }]) {
+      const r = schreibe("betriebsrat", setze(absicht), b);
+      expect(r.abgewiesen, JSON.stringify(absicht)).toBe(false);
+      const k = r.m.einstellungen.kiSteuerung;
+      expect(k.pause.aktiv).toBe(true);
+      expect(k.betrieb).toEqual(KI(b).betrieb);
+      expect(k.funktionen).toEqual(KI(b).funktionen);
+      expect(k.betriebsratFrage).toEqual(KI(b).betriebsratFrage);
+      expect(k.protokoll.length).toBe(KI(b).protokoll.length + 1);
+    }
+    for (const absicht of [{ betrieb: { an: false } }, { funktionen: { F6: { an: true } } }]) {
       const r = schreibe("betriebsrat", setze(absicht), b);
       expect(r.abgewiesen, JSON.stringify(absicht)).toBe(true);
       expect(r.m.einstellungen.kiSteuerung).toEqual(KI(b));
+    }
+  });
+  it("veraltete Kopie: Planung speichert mit altem Schalterstand etwas anderes — kein 403, der Schalter bleibt, wie er gespeichert ist", () => {
+    const b = bereit();
+    const alt = kopie(b);
+    const aus = schreibe("leitung", setze({ funktionen: { F3: { an: false } } }), b);
+    const neu = kopie(alt); neu.mandanten[0].name = "Anderer Name";
+    const e = zusammenfuehren(aus.bestand, neu, SITZ.planer);
+    expect(e && e.verweigert, e && e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].name).toBe("Anderer Name");
+    expect(e.mandanten[0].einstellungen.kiSteuerung.funktionen.F3.an).toBe(false);
+  });
+  it("veraltete Kopie: die Pause des Betriebsrats gelingt trotz anderer veralteter Felder", () => {
+    const alt = bereit();
+    const stale = kopie(alt);
+    const gestellt = schreibe("leitung", setze({ funktionen: { F3: { an: false } }, betrieb: { an: false } }), alt).bestand;
+    stale.mandanten[0].einstellungen.kiSteuerung.pause = { aktiv: true };
+    const e = zusammenfuehren(gestellt, stale, SITZ.betriebsrat);
+    expect(e && e.verweigert, e && e.verweigert).toBeFalsy();
+    const k = e.mandanten[0].einstellungen.kiSteuerung;
+    expect(k.pause.aktiv).toBe(true);
+    expect(k.betrieb.an).toBe(false);
+    expect(k.funktionen.F3.an).toBe(false);
+  });
+  it("veraltete Kopie: Leitung mit aufgehobener Pause speichert, nachdem der Betriebsrat erneut pausiert hat — kein 403, Pause bleibt", () => {
+    const b0 = bereit();
+    const gesetzt = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), b0).bestand;
+    const aufgehoben = schreibe("betriebsrat", setze({ pause: { aktiv: false } }), gesetzt).bestand;
+    const kopieLeitung = kopie(aufgehoben);
+    const wieder = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), aufgehoben).bestand;
+    kopieLeitung.mandanten[0].einstellungen.kiSteuerung.funktionen.F15 = { an: false };
+    const e = zusammenfuehren(wieder, kopieLeitung, SITZ.leitung);
+    expect(e && e.verweigert, e && e.verweigert).toBeFalsy();
+    const k = e.mandanten[0].einstellungen.kiSteuerung;
+    expect(k.pause.aktiv).toBe(true);
+    expect(k.funktionen.F15.an).toBe(false);
+  });
+  it("die Sicht der Leitung und Planung nennt nur die Rolle, nicht das Betriebsratsmitglied, das pausiert hat", () => {
+    const b = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
+    expect(KI(b).pause.vonPerson).toBe("r1");
+    for (const k of ["leitung", "planer", "kunde"]) {
+      const s = bestandFuerRolle(b, SITZ[k]).mandanten[0].einstellungen.kiSteuerung;
+      expect(s.pause.vonRolle, k).toBe("betriebsrat");
+      expect(JSON.stringify(s.pause), k).not.toMatch(/r1|vonPerson/);
+      expect(JSON.stringify(s.protokoll.filter((x) => x.vonRolle === "betriebsrat")), k).not.toMatch(/r1|vonPerson/);
+      expect(s.betrieb.vonPerson, k).toBe("l1");
     }
   });
   it("sonstige Änderungen im Rumpf des Betriebsrats werden nicht übernommen", () => {
@@ -283,7 +338,6 @@ describe("Betriebsrat-Pause", () => {
     for (const k of ["leitung", "planer", "kunde", "leitungDemo", "subplaner", "mitarbeiter", "betreiber"]) {
       const r = schreibe(k, setze({ pause: { aktiv: false } }), pausiert);
       expect(KI(r.bestand).pause.aktiv, k).toBe(true);
-      if (k === "leitung" || k === "planer" || k === "kunde" || k === "leitungDemo") expect(r.abgewiesen, k).toBe(true);
       /* auch mit allem anderen zusammen: die Pause bleibt */
       const r2 = schreibe(k, setze({ pause: { aktiv: false }, betrieb: { an: true }, funktionen: { F3: { an: true } } }), pausiert);
       expect(KI(r2.bestand).pause.aktiv, k).toBe(true);

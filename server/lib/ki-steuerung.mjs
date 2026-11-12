@@ -40,6 +40,7 @@ export const KI_ROLLEN_AUSLOESEN = Object.freeze(["leitung", "planer", "mitarbei
 export const KI_GESPERRT = Object.freeze({ F7A: "serverseitige Maskierung der Tabelle vor der Leck-Prüfung fehlt" });
 
 export const KI_FELD = "kiSteuerung";
+const KI_TEILE = Object.freeze(["betrieb", "funktion", "frage", "pause"]);
 export const KI_PROTOKOLL_GRENZE = 200;
 export const KI_FRAGE_ANTWORTEN = Object.freeze(["ja", "nein"]);
 
@@ -150,36 +151,36 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
     : { betrieb: null, funktionen: {}, betriebsratFrage: null, pause: null, protokoll: [] };
   const ereignisse = [];
   if (absicht === undefined || absicht === null) return { stand, ereignisse };
+  /* Ohne Recht an irgendeinem Teil zählt die Anfrage nicht: Der gespeicherte Stand bleibt (wie branchenmoduleZusammen). */
+  if (!KI_TEILE.some(darfRecht)) return { stand, ereignisse };
   if (!istObjekt(absicht)) return { grund: "Intelligence-Steuerung: erwartet wird ein Objekt." };
   const stempel = { am: jetzt, vonRolle: sitzung && typeof sitzung.rolle === "string" ? sitzung.rolle : "unbekannt", vonPerson: wer(sitzung) };
-  const verweigert = (was) => ({ grund: `Intelligence-Steuerung: ${was} ist mit deiner Rolle nicht zulässig.` });
 
-  /* Pause zuerst: Sie ist der Teil, den nur der Betriebsrat anfassen darf — auch im selben Zug wie die Frage. */
-  if (hat(absicht, "pause")) {
+  /* Jeder Teil zählt nur für die Rolle, die ihn ändern darf. Für jede andere Rolle wird der gesendete Wert
+     ignoriert und der gespeicherte bleibt — eine veraltete Kopie scheitert so nie an Teilen, die sie nicht ändern darf
+     (und eine Fälschung bleibt ohne Wirkung). Abgewiesen wird nur, wer sein Recht mit ungültigen Werten ausübt. */
+  if (hat(absicht, "pause") && darfRecht("pause")) {
     const p = absicht.pause;
     if (!istObjekt(p) || (hat(p, "aktiv") && typeof p.aktiv !== "boolean")) return { grund: "Intelligence-Steuerung: Die Pause braucht den Wert „aktiv“ (wahr oder falsch)." };
     if (hat(p, "aktiv") && p.aktiv !== (stand.pause ? stand.pause.aktiv : false)) {
-      if (!darfRecht("pause")) return { grund: "Die Pause der Intelligence-Funktionen setzt und hebt nur der Betriebsrat auf — nicht die Leitung und keine andere Rolle." };
       stand.pause = { aktiv: p.aktiv, ...stempel };
       ereignisse.push({ art: p.aktiv ? "pause-gesetzt" : "pause-aufgehoben", ziel: "betrieb", wert: p.aktiv, ...stempel });
     }
   }
-  if (hat(absicht, "betrieb")) {
+  if (hat(absicht, "betrieb") && darfRecht("betrieb")) {
     const b = absicht.betrieb;
     if (!istObjekt(b) || (hat(b, "an") && typeof b.an !== "boolean")) return { grund: "Intelligence-Steuerung: Der Hauptschalter braucht den Wert „an“ (wahr oder falsch)." };
     if (hat(b, "an") && b.an !== (stand.betrieb ? stand.betrieb.an : false)) {
-      if (!darfRecht("betrieb")) return verweigert("Der Hauptschalter");
       if (b.an === true && !(absicht.betriebsratFrage && KI_FRAGE_ANTWORTEN.includes(absicht.betriebsratFrage.antwort)) && !stand.betriebsratFrage)
         return { grund: "Vor dem Einschalten ist die Frage zu beantworten, ob es einen Betriebsrat, Personalrat oder eine Mitarbeitervertretung gibt." };
       stand.betrieb = { an: b.an, ...stempel };
       ereignisse.push({ art: b.an ? "betrieb-an" : "betrieb-aus", ziel: "betrieb", wert: b.an, ...stempel });
     }
   }
-  if (hat(absicht, "betriebsratFrage")) {
+  if (hat(absicht, "betriebsratFrage") && darfRecht("frage")) {
     const f = absicht.betriebsratFrage;
     if (!istObjekt(f) || (hat(f, "antwort") && !KI_FRAGE_ANTWORTEN.includes(f.antwort))) return { grund: "Intelligence-Steuerung: Die Antwort auf die Frage nach der Vertretung ist „ja“ oder „nein“." };
     if (hat(f, "antwort") && f.antwort !== (stand.betriebsratFrage ? stand.betriebsratFrage.antwort : null)) {
-      if (!darfRecht("frage")) return verweigert("Die Antwort auf die Frage nach der Vertretung");
       const vorher = stand.betriebsratFrage ? stand.betriebsratFrage.antwort : null;
       stand.betriebsratFrage = { antwort: f.antwort, ...stempel };
       ereignisse.push({ art: "frage", ziel: "betriebsrat", wert: f.antwort, ...stempel });
@@ -190,14 +191,13 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
       }
     }
   }
-  if (hat(absicht, "funktionen")) {
+  if (hat(absicht, "funktionen") && darfRecht("funktion")) {
     const w = absicht.funktionen;
     if (!istObjekt(w)) return { grund: "Intelligence-Steuerung: Die Funktionen brauchen je Kennung den Wert „an“." };
     for (const [id, x] of Object.entries(w)) {
       if (!KI_FUNKTIONEN.includes(id)) return { grund: `Intelligence-Steuerung: Die Funktion „${String(id).slice(0, 12)}“ gibt es nicht.` };
       if (!istObjekt(x) || (hat(x, "an") && typeof x.an !== "boolean")) return { grund: `Intelligence-Steuerung: Funktion ${id} braucht den Wert „an“ (wahr oder falsch).` };
       if (!hat(x, "an") || x.an === (hat(stand.funktionen, id) ? stand.funktionen[id].an : false)) continue;
-      if (!darfRecht("funktion")) return verweigert(`Der Schalter der Funktion ${id}`);
       if (x.an === true && hat(KI_GESPERRT, id)) return { grund: `Funktion ${id} lässt sich noch nicht einschalten.` };
       stand.funktionen[id] = { an: x.an, ...stempel };
       ereignisse.push({ art: x.an ? "funktion-an" : "funktion-aus", ziel: id, wert: x.an, ...stempel });
@@ -261,8 +261,6 @@ export function kiPauseDurchBetriebsrat(gespeicherterBetrieb, geschickterBetrieb
   const r = kiSteuerungAnwenden(alt, neuE[KI_FELD], sitzung, o.jetzt || new Date().toISOString());
   if ("grund" in r) return { verweigert: r.grund };
   if (!r.ereignisse.length) return null;
-  if (r.ereignisse.some((x) => x.art !== "pause-gesetzt" && x.art !== "pause-aufgehoben"))
-    return { verweigert: "Der Betriebsrat ändert an der Intelligence-Steuerung ausschließlich die Pause." };
   return { mandant: { ...gespeicherterBetrieb, einstellungen: { ...altE, [KI_FELD]: standFuerAblage(r.stand) } } };
 }
 
@@ -312,4 +310,19 @@ export function kiSteuerungProtokollZeilen(altB, neuB) {
     for (const x of protokollVon(m)) if (!bekannt.has(JSON.stringify(x))) zeilen.push(`${sauber(x.art)} ${sauber(x.ziel)} (${sauber(x.vonRolle)})`);
   }
   return zeilen;
+}
+
+/**
+ * Die Steuerung in der Vollsicht (Leitung, Planung, Kundenrolle): Wer von den Betriebsratsmitgliedern die Pause gesetzt
+ * oder aufgehoben hat, steht nicht darin — nur die Rolle „Betriebsrat“. Die Personenkennung bleibt in der Ablage.
+ * @param {any} e einstellungen
+ */
+export function kiSteuerungSichtVoll(e) {
+  if (!istObjekt(e) || !hat(e, KI_FELD) || !istObjekt(e[KI_FELD])) return e;
+  const k = e[KI_FELD];
+  const ohne = (x) => (istObjekt(x) && x.vonRolle === "betriebsrat" && hat(x, "vonPerson") ? Object.fromEntries(Object.entries(x).filter(([n]) => n !== "vonPerson")) : x);
+  const aus = { ...k };
+  if (hat(k, "pause")) aus.pause = ohne(k.pause);
+  if (Array.isArray(k.protokoll)) aus.protokoll = k.protokoll.map(ohne);
+  return { ...e, [KI_FELD]: aus };
 }

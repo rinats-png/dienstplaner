@@ -8,7 +8,7 @@ import * as SP from "../speicher.js";
 const mitSteuerung = (m, fn) => ({ ...m, einstellungen: { ...(m.einstellungen || {}), kiSteuerung: fn((m.einstellungen || {}).kiSteuerung || {}) } });
 
 export function kiSteuerungAktionen(k) {
-  const { mUpd, melde, ref, upd, sitz } = k;
+  const { mUpd, melde, ref, upd } = k;
   return {
     setzeKiSteuerung: (absicht) => mUpd((m) => mitSteuerung(m, (s) => {
       const aus = { ...s };
@@ -24,8 +24,7 @@ export function kiSteuerungAktionen(k) {
       const neu = (d) => ({ ...d, mandanten: d.mandanten.map((m) => (m.id === d.session.mandantId
         ? mitSteuerung(m, (st) => ({ ...st, pause: { ...(st.pause || {}), aktiv: !!aktiv } })) : m)) });
       upd((d) => neu(d));
-      const p = (sitz && sitz.person) || {};
-      SP.schreib(neu(s), { durch: `${p.vorname || ""} ${p.nachname || ""}`.trim() || "Betriebsrat", sofort: true,
+      SP.schreib(neu(s), { durch: "Betriebsrat", sofort: true,
         onFehler: () => melde("Die Pause konnte nicht gespeichert werden."),
         onKonflikt: () => melde("Der Betrieb wurde zwischenzeitlich geändert. Bitte neu laden."),
         onGespeichert: () => melde(aktiv ? "Intelligence ist pausiert." : "Die Pause ist aufgehoben.") });

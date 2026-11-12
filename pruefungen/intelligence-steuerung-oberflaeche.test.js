@@ -168,6 +168,11 @@ describe("Quelltext", () => {
       expect(q, p).not.toMatch(/process\.env|CENTRIC_|fetch\s*\(|XMLHttpRequest|anthropic|openai|claude/i);
     }
   });
+  it("die Pause-Aktion schickt keinen Namen als „durch“ (der Server leitet Wer aus der Sitzung ab, nie ein Name)", () => {
+    const q = lies("src/lib/ki-steuerung-aktionen.js").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(q).not.toMatch(/vorname|nachname/);
+    expect(q).toMatch(/durch: "Betriebsrat"/);
+  });
   it("server.mjs kennt die Steuerung nicht — der Prozessschalter ist nicht verdrahtet", () => {
     expect(lies("server.mjs")).not.toMatch(/ki-steuerung|kiSteuerung|intelligenceErlaubt|CENTRIC_KI_MODUS|intelligence\/gateway/);
   });

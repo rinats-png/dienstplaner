@@ -105,9 +105,8 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
     expect(JSON.stringify(br)).not.toMatch(/vonPerson|"l1"/);
     for (const id of ["s1", "a1"]) expect(ki((await lies(T[id])).bestand.mandanten[0]), id).toBeUndefined();
   });
-  it("Planung ändert den Stand nicht (abgewiesen)", async () => {
-    const e = await schreibe("p1", setze({ funktionen: { F3: { an: false } } }));
-    expect(e.status).toBe(403);
+  it("Planung ändert den Stand nicht (der gesendete Wert wird ignoriert)", async () => {
+    await schreibe("p1", setze({ funktionen: { F3: { an: false } } }));
     expect(ki(await gespeichert()).funktionen.F3.an).toBe(true);
   });
   it("Betriebsrat: ohne Änderung der Pause bleibt es bei 403 (wie bisher)", async () => {
@@ -128,20 +127,15 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
   });
   it("Leitung hebt die Pause nicht auf — auch nicht mit anderen Änderungen zusammen", async () => {
     for (const absicht of [{ pause: { aktiv: false } }, { pause: { aktiv: false }, betrieb: { an: true } }]) {
-      const e = await schreibe("l1", (m) => setze({ ...ki(m), ...absicht })(m));
-      expect(e.status, JSON.stringify(absicht)).toBe(403);
-      expect(ki(await gespeichert()).pause.aktiv).toBe(true);
+      await schreibe("l1", (m) => setze({ ...ki(m), ...absicht })(m));
+      expect(ki(await gespeichert()).pause.aktiv, JSON.stringify(absicht)).toBe(true);
     }
   });
-  it("Betriebsrat ändert mit der Pause den Hauptschalter: 403, die Pause bleibt, wie sie war", async () => {
+  it("Betriebsrat hebt die Pause auf und fälscht dazu den Hauptschalter: die Pause gilt, der Hauptschalter bleibt; Funktion wieder erlaubt, Protokoll vollständig", async () => {
     const e = await schreibe("r1", (m) => setze({ ...ki(m), pause: { aktiv: false }, betrieb: { an: false } })(m));
-    expect(e.status).toBe(403);
-    expect(ki(await gespeichert()).pause.aktiv).toBe(true);
-  });
-  it("Betriebsrat hebt die Pause auf; danach ist die Funktion wieder erlaubt und das Protokoll vollständig", async () => {
-    const e = await schreibe("r1", (m) => setze({ ...ki(m), pause: { aktiv: false } })(m));
     expect(e.status, e.roh).toBe(200);
     const m = await gespeichert();
+    expect(ki(m).betrieb.an).toBe(true);
     const { intelligenceErlaubt } = await import("../server/lib/ki-steuerung.mjs");
     expect(ki(m).pause.aktiv).toBe(false);
     expect(intelligenceErlaubt(m, "F3", "leitung", AN)).toBe(true);

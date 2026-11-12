@@ -26,7 +26,7 @@ import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 import { moduleinstellungenSicht } from "./branchenmodule.mjs";
-import { kiSteuerungSicht } from "./ki-steuerung.mjs";
+import { kiSteuerungSicht, kiSteuerungSichtVoll } from "./ki-steuerung.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
 import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
 
@@ -1226,6 +1226,7 @@ export function betriebSichtVoll(m, sitzung) {
   if (!m || typeof m !== "object") return m;
   const aus = nimm(m, VOLL_BETRIEB);
   if (Array.isArray(m.personen)) aus.personen = m.personen.map((p) => vollPersonSicht(p, sitzung.person));
+  if (aus.einstellungen) aus.einstellungen = kiSteuerungSichtVoll(aus.einstellungen);
   return aus;
 }
 
