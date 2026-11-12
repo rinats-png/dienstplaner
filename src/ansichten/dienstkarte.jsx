@@ -21,8 +21,8 @@ export function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
       {vorgang && vorgang.vortag ? (
         <div style={{ flex: 1, minWidth: 190 }}>
           <Rubrik>Offener Dienst von gestern</Rubrik>
-          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>Eingestempelt gestern {vorgang.st.start}</div>
-          <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Bitte ausstempeln, wenn der Dienst endet.</div>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>{vorgang.st ? `Eingestempelt gestern ${vorgang.st.start}` : "Nachtdienst von gestern ohne Einstempeln"}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>{vorgang.st ? "Bitte ausstempeln, wenn der Dienst endet." : "Das Dienstende lässt sich noch erfassen."}</div>
         </div>
       ) : !meineDa ? (
         /* Offener Beginn, aber heute kein Dienst (mehr) im Plan. */

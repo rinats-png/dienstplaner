@@ -119,7 +119,7 @@ export function MHeute({ sitz, akt, setTab, oeffnen }) {
         <MKarte style={{ padding: 22 }}>
           <Rubrik>Offener Dienst von gestern</Rubrik>
           <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
-            Eingestempelt gestern {vorgang.st.start}</div>
+            {vorgang.st ? `Eingestempelt gestern ${vorgang.st.start}` : "Nachtdienst von gestern ohne Einstempeln"}</div>
           <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : da ? (

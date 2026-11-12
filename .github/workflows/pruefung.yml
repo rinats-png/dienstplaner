@@ -80,6 +80,10 @@ jobs:
       - name: Telefon und Tablet, Abläufe gerendert (WP-21 Teil 3)
         run: npm run pruefung:geraete-ablaeufe-render
 
+      # WP-21-SV: Uebergabe und Krankmeldung der Schichtverantwortung (Absturz bei offenem Nachtdienst von gestern).
+      - name: Telefon, Schichtverantwortung Uebergabe und Krankmeldung (WP-21-SV)
+        run: npm run pruefung:geraete-sv-uebergabe
+
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 
