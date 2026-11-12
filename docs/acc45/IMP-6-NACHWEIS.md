@@ -3,7 +3,7 @@
 Stand: 2026-11-10. Umsetzung: `server/lib/import/schichtmodelle.mjs` (Lesen, Ausrollen),
 `server/lib/import/schichtpruefung.mjs` (Analyse, Prüfung, Grenze). Prüfung: `pruefungen/import-schichtmodelle-imp6.test.js`
 (`npm run pruefung:import-schichtmodelle`, eigener CI-Schritt). Freigabe Punkt 5: mehrere Modelle je Betrieb, keine feste
-Zykluslänge. `IMPORT_DATEI_AKTIV` bleibt `false`; der Endpunkt `/api/import` ist unverändert (siehe „Offen").
+Zykluslänge. `IMPORT_DATEI_AKTIV` bleibt `false`, ebenso der Serverschalter `CENTRIC_IMPORT_AKTIV` (Vorgabe aus). Seit dem Teil „Vorschau im Import“ liefert `/api/import` (Art `schichtzyklus`) Analyse und Vorschau der Modelle, ohne zu schreiben (siehe unten).
 
 ## Format (Rohinhalt aus dem Parser, IMPORT-VERTRAG.md §6)
 
@@ -47,9 +47,25 @@ und unter dem Ziel „unter 2 s" (IMPORT-PLAN Teil E). Keine Grenze für Zyklusl
 3. „Kein Alleindienst" ist eine Besetzungsfrage, keine Arbeitszeitregel, und wird hier nicht bewertet.
 4. Leere Dienstzelle = Lücke, Versatz Pflicht, kein Modulo, Personenzuordnung nie über den Namen.
 
+## Vorschau im Import (ohne Schreiben)
+
+Umsetzung: `server/lib/import/schichtvorschau.mjs`, eingebunden in `server/funktionen/import.mjs` (Art `schichtzyklus`: `analyse`, `vorschau`). Prüfung:
+`pruefungen/import-schichtmodell-vorschau-imp6.test.js` (`npm run pruefung:import-schichtmodell-vorschau`, eigener CI-Schritt). Vertrag: IMPORT-VERTRAG.md §9a.
+
+- Modelltabelle: gewähltes Blatt oder das erste Blatt mit den Spalten Modell, Tag, Dienst; Zuordnungsblatt automatisch oder per `zuordnungBlatt`.
+- Ergebnis je Modell: Länge, Zahl der Dienste und freien Tage, Zuordnung der Kürzel zu den Dienstarten des Betriebs, Konflikte mit Zeilennummern;
+  für Zuordnungen nur Anzahlen, Konfliktarten und Zeilennummern.
+- Datenschutz wie die Altplan-Vorschau: unbekannte Bezeichnungen nur als Index mit Zeilennummern, Abwesenheitsbezeichnungen (auch „krank (Grippe)“) nur als
+  Zahl, nie zugeordnet, Modellnamen nur bei harmlosem Aussehen, keine Personalnummern oder Namen, nichts im Protokoll.
+- Grenzen: Summe der Zykluslängen 10.000 (vorab geprüft, `PRUEFUMFANG_ZU_GROSS`; die Bibliothek allein hätte bei Tag 999999 je Modell gerechnet), 50 Modelle
+  und 50 unbekannte Bezeichnungen in der Antwort. Rumpf-, Parser- und Vorgangsgrenzen unverändert.
+- Übernahme: 422 `ART_NICHT_FREIGEGEBEN` mit „Schichtmodelle werden noch nicht übernommen“, Bestand unverändert (Prüfung vergleicht den Bestand). Personalimport unverändert.
+
 ## Offen (Entscheidung nötig)
 
 - Übernahme in den Bestand: Der Bestand kennt **einen** Zyklus je Betrieb (`m.zyklus` + Versatz je Einheit). Mehrere Modelle
-  mit Zuordnung je Person brauchen ein Datenmodell (oder Abweichungen je Tag, begrenzt durch `RUMPF_MAX` 6 MB). Bis dahin:
-  nur Analyse und Vorschau als Bibliothek; `/api/import` (Art `schichtzyklus`) bleibt beim Gerüst mit 422 bei der Übernahme.
-- Anbindung an `/api/import/analyse|vorschau` (zwei Blätter: Modelle und Zuordnungen) und Oberfläche.
+  mit Zuordnung je Person brauchen ein Datenmodell (oder Abweichungen je Tag, begrenzt durch `RUMPF_MAX` 6 MB): Betreiberentscheidung „mehrere Modelle je Person“.
+- Die arbeitszeitrechtliche Prüfung (`schichtpruefung.mjs`) ist noch nicht an den Endpunkt angeschlossen (sie braucht einen Zeitraum `von` … `bis` und rechnet bis
+  etwa 1,5 s synchron); die Vorschau nennt nur Zuordnungs- und Formkonflikte.
+- Oberfläche: Die Import-Ansicht kennt die Art `schichtzyklus` nicht (nur Personal); keine Anzeige der Modellvorschau, die Oberfläche bleibt aus (`IMPORT_DATEI_AKTIV`).
+- Vor jedem Einschalten ist die Prüfung nach § 13 (IMP-9) nötig.

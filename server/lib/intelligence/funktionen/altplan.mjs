@@ -252,3 +252,6 @@ export async function altplanVorschau(o) {
     konflikteStatus: ergebnis.konflikteStatus,
   };
 }
+
+/** Fuer die Schichtmodell-Vorschau des Imports (IMP-6): dieselbe Erkennung von Abwesenheitsbezeichnungen, damit sie dort nie ausgegeben werden. */
+export { abwesend as abwesenheitsBezeichnung, norm as bezeichnungNormalisiert };

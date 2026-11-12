@@ -297,7 +297,9 @@ auch ohne Sitzung mit **404** und `{ "fehler": "Gibt es nicht." }` (ohne `code`)
 | 422 | `PFLICHTSPALTE_FEHLT` | vorschau | Pflichtspalte nicht zugeordnet (`fehlendePflicht`) |
 | 422 | `ENTSCHEIDUNG_UNZULAESSIG`, `AKTUALISIERUNG_OHNE_BESTAETIGUNG`, `ZUORDNUNGSKONFLIKT` | vorschau | Entscheidungen passen nicht zu den Datensätzen (`datensaetze`) oder Einheit, Standort, Qualifikation fehlt ohne Anlegen |
 | 403 | `ORG_EDIT_FEHLT` | vorschau | Einheiten, Standorte oder Qualifikationen anlegen ohne Recht `org.edit` (Leitung) |
-| 422 | `ART_NICHT_FREIGEGEBEN` | uebernahme | Art `schichtzyklus` wird nicht übernommen |
+| 422 | `ART_NICHT_FREIGEGEBEN` | uebernahme | Art `schichtzyklus`: „Schichtmodelle werden noch nicht übernommen. Es wurde nichts geändert.“ (zusätzlich `schichtmodelleUebernommen: false`); geschrieben wird nie, auch nicht mit Bestätigung |
+| 422 | `PRUEFUMFANG_ZU_GROSS` | analyse, vorschau | Art `schichtzyklus`: Summe der Zykluslängen über 10.000 Tage; keine Teilausgabe |
+| 422 | `BLATT_UNGUELTIG` | analyse | gilt bei Art `schichtzyklus` auch für `zuordnungBlatt` (Zuordnungstabelle: Index, `null` = keine, ausgelassen = automatisch) |
 | 409 | `VORSCHAU_FEHLT`, `BESTAETIGUNG_UNGUELTIG`, `LAEUFT_BEREITS`, `VORSCHAU_VERALTET` | uebernahme | keine Vorschau, keine oder veraltete Bestätigung, Übernahme läuft; `VORSCHAU_VERALTET` auch, wenn sich der Bestand seit der Vorschau änderte |
 | 409 | `DATEI_BEREITS_UEBERNOMMEN`, `FACHPRUEFUNG`, `KONFLIKT` | uebernahme | gleiche Datei schon übernommen (`frueher`), Prüfbefunde, gleichzeitige Änderung; jeweils nichts geändert |
 | 422 | `NICHTS_ZU_UEBERNEHMEN`, `STANDORT_UNGUELTIG`, `GESTALT` | uebernahme | nichts übrig, ungültiger Standort, unvollständiger neuer Stand |
@@ -307,8 +309,20 @@ auch ohne Sitzung mit **404** und `{ "fehler": "Gibt es nicht." }` (ohne `code`)
 | 503 | `VORUEBERGEHEND` | alle | Speicher vorübergehend nicht verfügbar |
 | 500 | `INTERNER_FEHLER` | alle | unerwarteter Fehler, nichts übernommen, kein Stacktrace |
 
-Schichtzyklen (`art=schichtzyklus`): Upload und Analyse liefern 200/201 mit `unterstuetzt: false` und den Hinweis, dass sie mit IMP-6 übernommen werden; die Vorschau ist
-leer (`bereit: false`), die Übernahme antwortet 422 `ART_NICHT_FREIGEGEBEN`. IMP-6 ist nur Bibliothek (`server/lib/import/schichtmodelle.mjs`), nicht an den Endpunkt oder die Oberfläche angeschlossen.
+Schichtzyklen und Schichtmodelle (`art=schichtzyklus`, IMP-6 Teil, nur Analyse und Vorschau, nichts wird geschrieben; Rechnung in
+`server/lib/import/schichtvorschau.mjs` über `schichtmodelle.mjs`): Ein Upload dieser Art nimmt eine Modelltabelle (`Modell | Tag | Dienst`, eine Zeile
+je Zyklustag) und optional ein zweites Blatt mit Zuordnungen (`Personalnummer | Modell | Beginn | Versatz`) an. `analyse` (Rumpf `vorgang`, optional
+`blatt` = Modellblatt, `zuordnungBlatt`, `zuordnung` = Spaltenzuordnung des Modellblatts) antwortet 200 mit `unterstuetzt: false`, `nurVorschau: true`,
+`hinweis` („Schichtmodelle werden noch nicht übernommen …“), `blatt`, `zuordnungBlatt`, `spalten`, `zuordnungSpalten`, `fehlendePflicht`,
+`zyklen` (je Modell `nr`, `name` oder `null`, `laenge`, `dienste`, `freieTage`, `pruefbar`, `datensaetze`, `dienstarten` [Kürzel des Betriebs mit Tagen],
+`konflikte` [`art`, `anzahl`, Zeilennummern], `hinweise`), `zyklenGesamt`, `zuordnungen` (Anzahlen, Konfliktarten, Zeilennummern; `null` ohne Blatt),
+`unbekannteBezeichnungen` (nur Index, Anzahl, Zeilennummern), `abwesenheitsartig` (nur Anzahl und Zeilennummern) und `zaehler`. `vorschau` liefert dasselbe
+unter `vorschau` (mit `zeitraum: null`), `bereit: false` und ohne `bestaetigung`. Freitext aus der Datei wird nicht zurückgegeben: unbekannte Bezeichnungen
+nur anonym, Abwesenheitsbezeichnungen (krank, Attest, Reha …, auch „krank (Grippe)“) nie ausgegeben und nie einer Dienstart oder Abwesenheit zugeordnet (gleiche
+Regel wie die Altplan-Vorschau); Modellnamen nur, wenn sie harmlos aussehen (sonst `name: null`); Personalnummern und Namen erscheinen nicht. Grenzen: höchstens
+50 Modelle und 50 unbekannte Bezeichnungen in der Antwort, 20 Zeilennummern je Eintrag, Summe der Zykluslängen 10.000 (vor dem Rechnen geprüft); Rumpf-, Zeilen- und
+Parsergrenzen unverändert. Die Übernahme antwortet 422 `ART_NICHT_FREIGEGEBEN` und ändert nichts. Der Personalimport (`art=personal`) ist unverändert und enthält
+keine Modellanalyse. Die Oberfläche zeigt die Modellvorschau nicht.
 
 ## 10. Sicherheitsregeln (verbindlich)
 

@@ -46,6 +46,7 @@ import { analysieren, planen, datumAnzeige } from "../lib/import/personen.mjs";
 import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfernen, alsUebernommen, FRISTEN,
   parserPlatzBelegen, _pruefhaken as _importPruefhaken } from "../lib/import/vorgaenge.mjs";
 import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
+import { schichtVorschau, blaetterErkennen, HINWEIS_NUR_VORSCHAU } from "../lib/import/schichtvorschau.mjs";
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
 const ARTEN = ["personal", "schichtzyklus"];
@@ -217,10 +218,23 @@ export default async (req) => {
       if (!Number.isInteger(blatt) || blatt < 0 || blatt >= v.blaetter.length) return fehlerAntwort(422, "BLATT_UNGUELTIG", "Dieses Tabellenblatt gibt es nicht.");
       const zeilen = v.blaetter[blatt].zeilen;
       if (v.art === "schichtzyklus") {
-        /* IMP-6: Schichtzyklen. Hier nur das Gerüst: keine Begrenzung auf einen Zyklus je Betrieb, die Vorschau trägt eine Liste. */
-        v.zeilen = zeilen; v.analyse = { art: v.art }; v.plan = null;
-        return antwort({ art: v.art, unterstuetzt: false, hinweis: "Schichtzyklen werden mit IMP-6 übernommen.",
-          spalten: (zeilen[0] || []).map((h, i) => ({ index: i, kopf: h === null ? "" : String(typeof h === "object" ? h.text ?? "" : h) })), zyklen: [] });
+        /* IMP-6: Schichtmodelle, nur Analyse und Vorschau (lesend, nichts wird geschrieben; schichtvorschau.mjs). Modelltabelle:
+           das gewählte Blatt, sonst das erste Blatt mit Modellspalten; Zuordnungstabelle: `zuordnungBlatt` (null = keine), sonst
+           automatisch. Keine Begrenzung auf einen Zyklus je Betrieb. */
+        const erkannt = blaetterErkennen(v.blaetter);
+        const mBlatt = rumpf.blatt !== undefined ? blatt : erkannt.modell !== null ? erkannt.modell : blatt;
+        let zBlatt = rumpf.zuordnungBlatt === undefined ? (erkannt.zuordnung === mBlatt ? null : erkannt.zuordnung) : rumpf.zuordnungBlatt;
+        if (zBlatt !== null && (!Number.isInteger(zBlatt) || zBlatt < 0 || zBlatt >= v.blaetter.length || zBlatt === mBlatt))
+          return fehlerAntwort(422, "BLATT_UNGUELTIG", "Dieses Tabellenblatt gibt es nicht.");
+        const mZeilen = v.blaetter[mBlatt].zeilen;
+        const zZeilen = zBlatt === null ? null : v.blaetter[zBlatt].zeilen;
+        const sv = schichtVorschau({ mandant: eigener, modellZeilen: mZeilen, zuordnungZeilen: zZeilen, zuordnung: rumpf.zuordnung });
+        if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
+        v.zeilen = mZeilen; v.zuordnungZeilen = zZeilen; v.zuordnung = rumpf.zuordnung === undefined ? undefined : rumpf.zuordnung;
+        v.analyse = { art: v.art }; v.plan = null;
+        const { ok: _ok, ...ergebnis } = sv;
+        return antwort({ art: v.art, unterstuetzt: false, nurVorschau: true, hinweis: HINWEIS_NUR_VORSCHAU, blatt: mBlatt,
+          zuordnungBlatt: zBlatt, ...ergebnis });
       }
       const a = analysieren({ mandant: eigener, zeilen, zuordnung: rumpf.zuordnung, heute });
       if (!a.ok) return fehlerAntwort(422, a.code, a.nachricht);
@@ -234,9 +248,13 @@ export default async (req) => {
     /* ------------------------------- Vorschau ------------------------------ */
     if (schritt === "vorschau") {
       if (!v.analyse) return fehlerAntwort(409, "ANALYSE_FEHLT", "Bitte zuerst die Analyse ausführen.");
-      if (v.art === "schichtzyklus")
-        return antwort({ art: v.art, unterstuetzt: false, vorschau: { zyklen: [], zeitraum: null }, bereit: false,
-          hinweis: "Schichtzyklen werden mit IMP-6 übernommen." });
+      if (v.art === "schichtzyklus") {
+        const sv = schichtVorschau({ mandant: eigener, modellZeilen: v.zeilen, zuordnungZeilen: v.zuordnungZeilen || null, zuordnung: v.zuordnung });
+        if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
+        const { ok: _ok, ...ergebnis } = sv;
+        return antwort({ art: v.art, unterstuetzt: false, nurVorschau: true, vorschau: { ...ergebnis, zeitraum: null }, bereit: false,
+          hinweis: HINWEIS_NUR_VORSCHAU });
+      }
       const a = analysieren({ mandant: eigener, zeilen: v.zeilen, zuordnung: v.zuordnung, heute });
       if (!a.ok) return fehlerAntwort(422, a.code, a.nachricht);
       if (a.fehlendePflicht.length)
@@ -257,7 +275,8 @@ export default async (req) => {
 
     /* ------------------------------ Übernahme ------------------------------ */
     if (schritt === "uebernahme") {
-      if (v.art !== "personal") return fehlerAntwort(422, "ART_NICHT_FREIGEGEBEN", "Diese Importart kann noch nicht übernommen werden.");
+      if (v.art !== "personal")
+        return fehlerAntwort(422, "ART_NICHT_FREIGEGEBEN", "Schichtmodelle werden noch nicht übernommen. Es wurde nichts geändert.", { schichtmodelleUebernommen: false });
       if (!v.plan) return fehlerAntwort(409, "VORSCHAU_FEHLT", "Bitte zuerst die Vorschau erstellen und prüfen.");
       if (typeof rumpf.bestaetigung !== "string" || !rumpf.bestaetigung)
         return fehlerAntwort(409, "BESTAETIGUNG_UNGUELTIG", "Die Übernahme braucht die Bestätigung der aktuellen Vorschau.");
