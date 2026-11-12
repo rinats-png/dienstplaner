@@ -3,20 +3,20 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 196,
   "statusZaehlung": {
-    "BLOCKED": 74,
-    "READY": 17,
-    "IN_PROGRESS": 15,
+    "BLOCKED": 73,
+    "READY": 16,
+    "IN_PROGRESS": 16,
     "REVIEW": 7,
-    "INTEGRATED": 80,
+    "INTEGRATED": 81,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 96,
-      "offen": 30,
+      "offen": 29,
       "restPT": {
-        "min": 43.55,
-        "max": 69.9
+        "min": 43.3,
+        "max": 69.4
       }
     },
     "wp19": {
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 28,
       "restPT": {
-        "min": 202.5,
-        "max": 357.5
+        "min": 194.5,
+        "max": 343.5
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 317.95,
-    "max": 541.7
+    "min": 309.7,
+    "max": 527.2
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -2659,7 +2659,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung."
     },
     {
       "id": "WP-I17",
@@ -2724,12 +2724,12 @@
       "prio": "P3",
       "aufwandPT": {"min":16,"max":28},
       "abhaengigkeiten": ["WP-I13","WP-I17","WP-I12"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #236 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2738,12 +2738,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#236"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #236, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-I20",
@@ -5000,12 +5000,12 @@
       "prio": "P3",
       "aufwandPT": {"min":0.25,"max":0.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #237 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #237 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #237 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #237 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5014,12 +5014,12 @@
       "agent": "Hauptorchestrator",
       "modell": "haiku",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#237"],
       "nachweis": "pruefungen/import-personal-e2e.test.js",
       "akzeptanz": "Die Prüfung, dass das Log keine Personalnummer enthält, vergleicht ganze Token (Wortgrenzen) statt Teilzeichenfolgen und schlägt nicht mehr bei „.3002“ in einem Zeitstempel fehl",
       "tests": "pruefungen/import-personal-e2e.test.js",
       "dateien": "pruefungen/import-personal-e2e.test.js",
-      "notiz": "Befund 2026-11-12: pruefungen/import-personal-e2e.test.js prüft, dass das Log die Teilzeichenfolge \"3002\" (eine Personalnummer) nicht enthält, und schlug einmal fehl, weil „3002“ in einem Zeitstempel „.3002“ vorkam. Ganze Token (Wortgrenzen) prüfen. Aufwand ist eine SCHÄTZUNG."
+      "notiz": "Befund 2026-11-12: pruefungen/import-personal-e2e.test.js prüft, dass das Log die Teilzeichenfolge \"3002\" (eine Personalnummer) nicht enthält, und schlug einmal fehl, weil „3002“ in einem Zeitstempel „.3002“ vorkam. Ganze Token (Wortgrenzen) prüfen. Aufwand ist eine SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #237."
     },
     {
       "id": "OPT-1",
