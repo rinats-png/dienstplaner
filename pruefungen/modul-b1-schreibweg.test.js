@@ -65,7 +65,8 @@ const ALT = () => ({
     { id: "po2", name: "Rundgang", soll: { F: 1 }, qualifikationen: [] }] }],
   postenPlan: { [`a1|${tag(2)}`]: "po1" },
   bereichsPlan: { [`a1|${tag(2)}`]: "b1" },
-  bereicheE1: [{ id: "b1", name: "Bereich Alt", soll: { F: 1 }, qualifikationen: [] }, { id: "b2", name: "Bereich Zwei", soll: { F: 1 }, qualifikationen: [] }],
+  /* Formgültig (pruefeBereiche: nur id, name, soll) — damit die Fälle unten die Registerwache treffen, nicht die Formprüfung. */
+  bereicheE1: [{ id: "b1", name: "Bereich Alt", soll: { F: 1 } }, { id: "b2", name: "Bereich Zwei", soll: { F: 1 } }],
   geteilt: { id: "GA", name: "Geteilt Alt", start: "06:00", ende: "10:00", zweiterAbschnitt: { start: "15:00", ende: "19:00" } },
   anlage: { id: "bm1", art: "anlage", name: "Presse Alt", personId: null, mindestBesetzung: { F: 1 },
     laufzeit: { wochentage: [true, true, true, true, true, false, false], ausnahmen: [] } },
@@ -161,9 +162,11 @@ async function anfrage(pfad, { methode = "GET", rumpf, token } = {}) {
   let d = {}; try { d = await a.json(); } catch { /* leer */ }
   return { status: a.status, ...d };
 }
-async function raum(k) {
+async function raum(k, aendern) {
   const name = `wp19b1-${++raumNr}`;
-  await S.B.bestandSchreiben(S.laden(), name, S.G.personenAngleichen(bestand()), { durch: "Pruefung" });
+  const b = bestand();
+  if (aendern) aendern(b.mandanten[0]);
+  await S.B.bestandSchreiben(S.laden(), name, S.G.personenAngleichen(b), { durch: "Pruefung" });
   const r = ROLLEN[k];
   const token = (await S.sitzungAnlegen({ bestand: name, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: 0,
     mandantId: "m1", einheit: r.einheit || null, ...(r.demo ? { demo: true } : {}) }, 2 * 3600 * 1000)).token;
@@ -276,9 +279,93 @@ describe("A — Registry echt („geplant“): nichts gespeichert, für jede Rol
       const g = await anfrage("/api/bestand", { token });
       const b = kopie(g.bestand); fn(b.mandanten[0]);
       const r = await anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
-      /* 403: die Registerwache — oder schon die Formprüfung in rechte.mjs (etwa ein Bereich, auf den der Plan noch zeigt). */
       expect(r.status, was).toBe(403);
+      expect(String(r.text), was).toMatch(B1_TEXT);
       expect(modulteile(await gespeichertM(name)), was).toEqual(modulteile(vorher));
+    }
+  });
+});
+
+/* ======================================================================== */
+describe("Nachreview F1/F2 — doppelte Kennungen und Ausnahmeweg mit Zusatzinhalt", { timeout: 300000 }, () => {
+  const KX = { id: "kx", name: "Befähigt Presse Alt", art: "geraet", betriebsmittelId: "bm1", wiederholungMonate: 12, befaehigtePerson: true,
+    stufe: "", freigabeStelle: "", grundlage: "", pflichtFuer: [], zugedacht: [] };
+  const KX_PLAIN = { id: "kx", name: "Tor", art: "geraet", betriebsmittelId: "bm2", wiederholungMonate: null, stufe: "", freigabeStelle: "", grundlage: "",
+    pflichtFuer: [], zugedacht: [] };
+  it("F1: Maschinenkompetenz hinter einer doppelten Kennung (Probe des Reviews) — jede Rolle, voller PUT und Teilweg: nichts gespeichert", async () => {
+    for (const weg of ["voll", "teil"]) for (const k of ALLE) {
+      const { name, token } = await raum(k);
+      const g = await anfrage("/api/bestand", { token });
+      const m = g.bestand && g.bestand.mandanten ? g.bestand.mandanten[0] : null;
+      const wert = [...((m && m.kompetenzen) || []), KX, KX_PLAIN];
+      const r = weg === "voll"
+        ? await anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: { ...kopie(g.bestand || { mandanten: [{ id: "m1" }] }),
+          mandanten: [{ ...kopie(m || { id: "m1" }), kompetenzen: wert }] }, etag: g.etag, durch: "Pruefung" } })
+        : await anfrage("/api/bestand/teile", { methode: "POST", token, rumpf: { format: 1, epoche: g.teile ? g.teile.epoche : "x", durch: "Pruefung",
+          kern: { kompetenzen: { basis: ((g.teile && g.teile.versionen) || {})["kern:kompetenzen"] ?? null, wert } } } });
+      const nachher = await gespeichertM(name);
+      const wo = `${weg} ${k} → ${r.status} ${String(r.text || r.fehler || "").slice(0, 120)}`;
+      expect((nachher.kompetenzen || []).some((x) => x.id === "kx"), wo).toBe(false);
+      if (["LT", "PL", "KD", "DL", "DP"].includes(k)) { expect(r.status, wo).toBe(403); expect(String(r.text), wo).toMatch(B1_TEXT); }
+    }
+  });
+  it("F1: neu doppelte Kennungen in jeder Liste der fünf Module sind bei „geplant“ geschlossen (Leitung, voller PUT)", async () => {
+    const faelle = {
+      dienstarten: (m) => { m.dienstarten = [...m.dienstarten, { ...m.dienstarten[0], name: "Kopie" }]; },
+      betriebsmittel: (m) => { m.betriebsmittel = [...m.betriebsmittel, { ...m.betriebsmittel[0], art: "schluessel" }]; },
+      kompetenzen: (m) => { const { befaehigtePerson: _b, ...k } = m.kompetenzen[0]; void _b; m.kompetenzen = [...m.kompetenzen, { ...k, betriebsmittelId: "bm2" }]; },
+      einheiten: (m) => { m.einheiten = [...m.einheiten, { ...m.einheiten[0] }]; },
+      objekte: (m) => { m.objekte = [...m.objekte, { ...m.objekte[0], name: "Zweitobjekt" }]; },
+    };
+    for (const [was, fn] of Object.entries(faelle)) {
+      const { name, token } = await raum("LT");
+      const vorher = await gespeichertM(name);
+      const g = await anfrage("/api/bestand", { token });
+      const b = kopie(g.bestand); fn(b.mandanten[0]);
+      const r = await anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+      expect(r.status, `${was} ${String(r.text).slice(0, 120)}`).toBe(403);
+      expect(modulteile(await gespeichertM(name)), was).toEqual(modulteile(vorher));
+    }
+  });
+  /* Modul war an und ist jetzt aus (nur lesbar, G3) — der Ausnahmeweg ist offen. */
+  const aus = (...ids) => (m) => { for (const id of ids) m.einstellungen.branchenmodule[id] = { an: false, eingeschaltetAm: "2026-10-01T08:00:00.000Z" }; };
+  const loeschAntrag = (modul, feld, schl) => ({ modul, art: "loeschung", grund: "art17", eintraege: { [feld]: [schl] } });
+  it("F2: Art.-17-Löschung allein geht (200); mit Zusatzinhalt außerhalb der Datenfelder wird der ganze Antrag abgewiesen (403), nichts gespeichert", async () => {
+    const T = `a1|${tag(2)}`;
+    const faelle = [
+      ["bereichsplan allein", "bereichsplan", "bereichsPlan", (m) => { delete m.bereichsPlan[T]; }, true],
+      ["bereichsplan + neuer Bereich an Einheit e2 (Probe)", "bereichsplan", "bereichsPlan",
+        (m) => { delete m.bereichsPlan[T]; m.einheiten[1] = { ...m.einheiten[1], bereiche: [{ id: "b9", name: "Neu" }] }; }, false],
+      ["bereichsplan + Bereich an e1 dazu", "bereichsplan", "bereichsPlan",
+        (m) => { delete m.bereichsPlan[T]; m.einheiten[0] = { ...m.einheiten[0], bereiche: [...m.einheiten[0].bereiche, { id: "b9", name: "Neu" }] }; }, false],
+      ["posten allein", "posten", "postenPlan", (m) => { delete m.postenPlan[T]; }, true],
+      ["posten + neue Anlage", "posten", "postenPlan", (m) => { delete m.postenPlan[T]; m.betriebsmittel = [...m.betriebsmittel, { ...m.betriebsmittel[0], id: "bm9" }]; }, false],
+      ["posten + zweiter Abschnitt", "posten", "postenPlan", (m) => { delete m.postenPlan[T];
+        m.dienstarten = m.dienstarten.map((d) => (d.id === "F" ? { ...d, zweiterAbschnitt: { start: "15:00", ende: "18:00" } } : d)); }, false],
+      ["posten + Maschinenkompetenz", "posten", "postenPlan", (m) => { delete m.postenPlan[T]; m.kompetenzen = [...m.kompetenzen, { ...m.kompetenzen[0], id: "k9" }]; }, false],
+      ["posten + neuer Bereich", "posten", "postenPlan", (m) => { delete m.postenPlan[T]; m.einheiten[1] = { ...m.einheiten[1], bereiche: [{ id: "b9", name: "Neu" }] }; }, false],
+      ["geteilterdienst (keine Datenfelder) + zweiter Abschnitt", "geteilterdienst", "dienstarten",
+        (m) => { m.dienstarten = [...m.dienstarten, { id: "GN", name: "N", start: "07:00", ende: "11:00", zweiterAbschnitt: { start: "16:00", ende: "20:00" } }]; }, false],
+      ["anlagen (keine Datenfelder) + Anlage", "anlagen", "betriebsmittel", (m) => { m.betriebsmittel = [...m.betriebsmittel, { ...m.betriebsmittel[0], id: "bm9" }]; }, false],
+      ["maschinenqual (keine Datenfelder) + Kompetenz", "maschinenqual", "kompetenzen", (m) => { m.kompetenzen = [...m.kompetenzen, { ...m.kompetenzen[0], id: "k9" }]; }, false],
+    ];
+    for (const [was, modul, feld, fn, ok] of faelle) {
+      const { name, token } = await raum("LT", aus(...MODULE));
+      const vorher = await gespeichertM(name);
+      const g = await anfrage("/api/bestand", { token });
+      const b = kopie(g.bestand); fn(b.mandanten[0]);
+      b.mandanten[0].moduldatenAusnahme = loeschAntrag(modul, feld, T);
+      const r = await anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+      const nachher = await gespeichertM(name);
+      const wo = `${was} → ${r.status} ${String(r.text || r.fehler || "").slice(0, 140)}`;
+      if (ok) {
+        expect(r.status, wo).toBe(200);
+        expect(nachher[feld][T], wo).toBeUndefined();
+        expect({ ...modulteile(nachher), [feld]: null }, wo).toEqual({ ...modulteile(vorher), [feld]: null });
+      } else {
+        expect(r.status, wo).toBe(403);
+        expect(modulteile(nachher), wo).toEqual(modulteile(vorher));
+      }
     }
   });
 });

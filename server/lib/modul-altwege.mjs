@@ -15,7 +15,9 @@
    Abhängigkeiten aktiv). Sonst weist der Schreibweg die ganze Übermittlung ab
    (403, derselbe Text wie bei den neueren Modulen). Einzige Ausnahme: der vom
    Ausnahmeweg (moduldatenZusammen) geprüfte Antrag nach Art. 16/17 DSGVO für
-   genau dieses Modul — Löschung wie bei den neueren Modulen, dazu die
+   genau dieses Modul und nur für dessen Datenfelder (bereichsPlan, objekte,
+   postenPlan; Bereiche an Einheiten und alles Übrige bleiben geschlossen,
+   ein gemischter Antrag wird ganz abgewiesen) — Löschung wie bei den neueren Modulen, dazu die
    Berichtigung, für die Posten und Bereichsplan ein Wertschema haben
    (berichtigungsWerte; geprüft wird sie dort, nur bei ausgeschaltetem Modul,
    nur die benannten Einträge, nur org.edit). Berichtigung ist ein Recht der
@@ -74,10 +76,29 @@ const anlagenIds = (...ms) => new Set(ms.flatMap((m) => liste(m && m.betriebsmit
 /** Gehört die Kompetenz zur Maschinenqualifikation (befähigte Person oder Bezug auf eine Anlage)? */
 const maschinenKompetenz = (k, anlagen) => istObjekt(k) && (k.befaehigtePerson !== undefined || anlagen.has(String(k.betriebsmittelId)));
 
+/** Zwei Listen enthalten dieselben Einträge (als Multimenge, Reihenfolge egal) — jeder Eintrag zählt, auch bei doppelter Kennung. */
+const mengeGleich = (a, b) => {
+  const s = (w) => w.map((x) => JSON.stringify(x)).sort();
+  const x = s(a), y = s(b);
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+};
+/** Kennungen, die in der Liste mehrfach vorkommen. */
+const doppelte = (w) => {
+  const n = new Map();
+  for (const x of liste(w)) n.set(String(x.id), (n.get(String(x.id)) || 0) + 1);
+  return new Set([...n].filter(([, z]) => z > 1).map(([id]) => id));
+};
+/** Neu doppelte Kennungen in der Übermittlung (gespeichert nicht schon so): nie eine zulässige Änderung eines geschlossenen Moduls. */
+const neuDoppelt = (alt, neu) => { const vorher = doppelte(alt); return [...doppelte(neu)].some((id) => !vorher.has(id)); };
+
 /**
- * Je Modul: `geaendert(altM, neuM)` — berührt die Übermittlung Daten des Moduls?
+ * Je Modul zwei Fragen an die Übermittlung (WP-19 B1, Nachreview F1/F2):
+ * `datenteil(altM, neuM)` — ändern sich die Datenfelder des Moduls aus der Registry (`datenfelder`)? Nur diesen Teil deckt
+ *   der geprüfte Ausnahmeweg (moduldatenZusammen prüft genau diese Felder);
+ * `restteil(altM, neuM)` — ändert sich Modulinhalt außerhalb davon (Bereiche an Einheiten, zweiter Abschnitt, Anlagen,
+ *   Maschinenkompetenzen)? Das deckt keine Ausnahme. Jeder übermittelte Eintrag zählt, neu doppelte Kennungen sind eine Änderung.
  * `verwerfen(m)` — ein Betrieb ohne Daten des Moduls (neu angelegter Betrieb).
- * @typedef {{ modul: string, geaendert: (altM: any, neuM: any) => boolean, verwerfen: (m: any) => void }} Altmodul
+ * @typedef {{ modul: string, datenteil: (altM: any, neuM: any) => boolean, restteil: (altM: any, neuM: any) => boolean, verwerfen: (m: any) => void }} Altmodul
  */
 
 /** Ein Betriebsfeld als Ganzes (posten, bereichsplan). */
@@ -85,45 +106,49 @@ const feldweise = (felder) => ({
   geaendert: (altM, neuM) => felder.some((f) => !gleich(altM && altM[f], neuM && neuM[f])),
   verwerfen: (m) => { for (const f of felder) delete m[f]; },
 });
+const nie = () => false;
 /** Ersetzt die Liste `feld` nur, wenn sich etwas ändert (sonst bleibt dieselbe Liste). */
 const ersetzen = (m, feld, neu) => { if (Array.isArray(m[feld]) && (neu.length !== m[feld].length || neu.some((x, i) => x !== m[feld][i]))) m[feld] = neu; };
 
 /** @type {readonly Altmodul[]} */
 export const ALTMODULE = Object.freeze([
-  Object.freeze({ modul: "posten", ...feldweise(["objekte", "postenPlan"]) }),
+  Object.freeze({ modul: "posten", datenteil: feldweise(["objekte", "postenPlan"]).geaendert, restteil: nie,
+    verwerfen: feldweise(["objekte", "postenPlan"]).verwerfen }),
   Object.freeze({ modul: "bereichsplan",
-    geaendert: (altM, neuM) => {
-      if (feldweise(["bereichsPlan"]).geaendert(altM, neuM)) return true;
+    datenteil: feldweise(["bereichsPlan"]).geaendert,
+    /* Bereiche an den Einheiten: jede übermittelte Einheit gegen die gespeicherte gleicher Kennung. */
+    restteil: (altM, neuM) => {
       const vorher = nachId(altM && altM.einheiten);
-      return liste(neuM && neuM.einheiten).some((e) => !gleich((vorher.get(String(e.id)) || {}).bereiche, e.bereiche));
+      return neuDoppelt(altM && altM.einheiten, neuM && neuM.einheiten)
+        || liste(neuM && neuM.einheiten).some((e) => !gleich((vorher.get(String(e.id)) || {}).bereiche, e.bereiche));
     },
     verwerfen: (m) => {
       feldweise(["bereichsPlan"]).verwerfen(m);
       if (Array.isArray(m.einheiten))
         ersetzen(m, "einheiten", m.einheiten.map((e) => { if (!hat(e, "bereiche")) return e; const { bereiche: _weg, ...ohne } = e; void _weg; return ohne; }));
     } }),
-  Object.freeze({ modul: "geteilterdienst",
-    geaendert: (altM, neuM) => {
+  Object.freeze({ modul: "geteilterdienst", datenteil: nie,
+    restteil: (altM, neuM) => {
       const vorher = nachId(altM && altM.dienstarten);
-      return liste(neuM && neuM.dienstarten).some((da) => !gleich(zweiter(vorher.get(String(da.id))), zweiter(da)));
+      return neuDoppelt(altM && altM.dienstarten, neuM && neuM.dienstarten)
+        || liste(neuM && neuM.dienstarten).some((da) => !gleich(zweiter(vorher.get(String(da.id))), zweiter(da)));
     },
     verwerfen: (m) => {
       if (Array.isArray(m.dienstarten)) ersetzen(m, "dienstarten", m.dienstarten.map((da) => (zweiter(da) ? { ...da, zweiterAbschnitt: null } : da)));
     } }),
-  Object.freeze({ modul: "anlagen",
-    geaendert: (altM, neuM) => {
-      const a = liste(altM && altM.betriebsmittel).filter(istAnlage), n = liste(neuM && neuM.betriebsmittel).filter(istAnlage);
-      const va = nachId(a), vn = nachId(n);
-      /* Anlegen, Ändern, Löschen einer Anlage — und ein Wechsel der Art zur Anlage hin oder von ihr weg. */
-      return a.length !== n.length || [...new Set([...va.keys(), ...vn.keys()])].some((id) => !gleich(va.get(id), vn.get(id)));
-    },
+  Object.freeze({ modul: "anlagen", datenteil: nie,
+    /* Anlegen, Ändern, Löschen einer Anlage, ein Wechsel der Art (zur Anlage hin oder von ihr weg) und neu doppelte Kennungen. */
+    restteil: (altM, neuM) => neuDoppelt(altM && altM.betriebsmittel, neuM && neuM.betriebsmittel)
+      || !mengeGleich(liste(altM && altM.betriebsmittel).filter(istAnlage), liste(neuM && neuM.betriebsmittel).filter(istAnlage)),
     verwerfen: (m) => { if (Array.isArray(m.betriebsmittel)) ersetzen(m, "betriebsmittel", m.betriebsmittel.filter((x) => !istAnlage(x))); } }),
-  Object.freeze({ modul: "maschinenqual",
-    geaendert: (altM, neuM) => {
+  Object.freeze({ modul: "maschinenqual", datenteil: nie,
+    restteil: (altM, neuM) => {
       const anlagen = anlagenIds(altM, neuM);
-      const va = nachId(altM && altM.kompetenzen), vn = nachId(neuM && neuM.kompetenzen);
-      const ids = new Set([...va, ...vn].filter(([, k]) => maschinenKompetenz(k, anlagen)).map(([id]) => id));
-      return [...ids].some((id) => !gleich(va.get(id), vn.get(id)));
+      const a = liste(altM && altM.kompetenzen), n = liste(neuM && neuM.kompetenzen);
+      /* Kennungen, unter denen gespeichert oder übermittelt eine Maschinenkompetenz steht: alle Einträge dieser Kennungen vergleichen. */
+      const ids = new Set([...a, ...n].filter((k) => maschinenKompetenz(k, anlagen)).map((k) => String(k.id)));
+      const nur = (w) => w.filter((k) => ids.has(String(k.id)));
+      return neuDoppelt(a, n) || !mengeGleich(nur(a), nur(n));
     },
     verwerfen: (m) => {
       const anlagen = anlagenIds(m);
@@ -148,7 +173,7 @@ export const nichtWirkend = (modul) => `Branchenmodul ${modul} wirkt in diesem B
 /**
  * Die Wache im Schreibweg: Berührt die Übermittlung Daten eines der fünf älteren Module, das nicht wirkt, → Grund.
  * Wie bei den neueren Modulen zählen Schalter aus der (vom Server geprüften) Übermittlung und Pakete aus dem
- * gespeicherten Betrieb. Ausnahme nur der geprüfte Ausnahmeweg (Art. 16/17) für genau dieses Modul.
+ * gespeicherten Betrieb. Ausnahme nur der geprüfte Ausnahmeweg (Art. 16/17) für genau dieses Modul und nur für dessen Datenfelder.
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter Betrieb (nach den Prüfungen der Rolle)
  * @param {{ liste?: readonly any[], ausnahme?: any }} [ktx]
@@ -158,9 +183,13 @@ export function altmodulWache(altM, neuM, { liste: register = BRANCHENMODULE, au
   if (!istObjekt(neuM)) return null;
   const stand = { ...neuM, pakete: istObjekt(altM) ? altM.pakete : undefined };
   for (const a of ALTMODULE) {
-    if (!a.geaendert(istObjekt(altM) ? altM : {}, neuM)) continue;
+    const alt = istObjekt(altM) ? altM : {};
+    /* Der geprüfte Ausnahmeweg (Art. 16/17) deckt nur die Datenfelder des Moduls; alles übrige Modulinhalt bleibt geschlossen —
+       ein gemischter Antrag (Ausnahme plus neuer Inhalt) wird als Ganzes abgewiesen. */
     const ausnahmeweg = istObjekt(ausnahme) && ausnahme.modul === a.modul && (ausnahme.art === "loeschung" || ausnahme.art === "berichtigung");
-    if (!ausnahmeweg && !(statusWirksam(a.modul, register) && modulAktiv(stand, a.modul, register))) return { grund: nichtWirkend(a.modul) };
+    const geaendert = a.restteil(alt, neuM) || (!ausnahmeweg && a.datenteil(alt, neuM));
+    if (!geaendert) continue;
+    if (!(statusWirksam(a.modul, register) && modulAktiv(stand, a.modul, register))) return { grund: nichtWirkend(a.modul) };
   }
   return null;
 }

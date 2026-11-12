@@ -42,7 +42,10 @@ der fünf Module braucht `modulAktiv` (gebucht, eingeschaltet, nicht `geplant`, 
 Betrieb nicht …“, für jede Rolle (Leitung, Kundenrolle und Demo eingeschlossen), über den vollen PUT und den Teilweg (`POST /api/bestand/teile`, derselbe
 `zusammenfuehren`). Unbekannter, fehlender oder unsinniger Status (auch einer Abhängigkeit): geschlossen — wirken kann nur `vorlaeufig` oder
 `freigegeben` (die Wache prüft das zusätzlich zu `modulAktiv`, siehe Befund B4). Einzige Ausnahme: der geprüfte Ausnahmeweg nach Art. 16/17 DSGVO
-für genau dieses Modul (Löschung wie bei den neueren Modulen, dazu die Berichtigung). Als Daten des Moduls gelten nur seine Teile: `objekte`/`postenPlan`, `bereichsPlan` und
+für genau dieses Modul (Löschung wie bei den neueren Modulen, dazu die Berichtigung) — und nur für dessen Datenfelder (`objekte`, `postenPlan`,
+`bereichsPlan`); Modulinhalt außerhalb davon (Bereiche an Einheiten, zweiter Abschnitt, Anlagen, Maschinenkompetenzen) bleibt geschlossen, ein
+gemischter Antrag wird ganz abgewiesen (Nachreview F2). Jeder übermittelte Eintrag zählt einzeln (Multimenge), neu doppelte Kennungen in den
+Listen der fünf Module sind bei geschlossenem Modul eine Abweisung (Nachreview F1). Als Daten des Moduls gelten nur seine Teile: `objekte`/`postenPlan`, `bereichsPlan` und
 `einheiten[].bereiche`, `zweiterAbschnitt` einer Dienstart (`null` ist keiner), Betriebsmittel der Art `anlage`, Kompetenzen mit `befaehigtePerson`
 oder Bezug auf eine Anlage; leer (fehlend, `null`, `[]`, `{}`) gilt als gleich. Kern (Dienstarten, Betriebsmittel, Kompetenzen, Einheiten ohne
 Modulteil, Löschen einer Dienstart oder Einheit) bleibt frei. Ein neu angelegter Betrieb (Betreiber, Erstbefüllung) bringt keine Daten der fünf Module
@@ -64,14 +67,16 @@ Ein unbekannter oder unsinniger Status gilt dort als wirkend (nachgerechnet: `ro
 (`pruefeModulStatus`, `pruefeModulRegistry`) weist solche Stände ab, im Lauf schützt aber nur sie. Für die fünf älteren Module prüft die Registerwache den Status
 selbst (fail-closed); die neueren Module (`modul-wege.mjs`), Befunde und Oberflächen hängen weiter an `modulAktiv`. (b) Der Schreibweg der neueren Module lässt
 bei ausgeschaltetem Modul nur die Löschung des Ausnahmewegs durch, nicht die Berichtigung — auch dort, wo ein Wertschema sie vorsieht (nachgerechnet:
-`funktionsPlan`, Art. 16, Modul aus → 403). Die fünf älteren Module lassen die geprüfte Berichtigung durch (Posten, Bereichsplan). Entscheidung und Härtung:
-eigener Auftrag (gemeinsamer Kern).
+`funktionsPlan`, Art. 16, Modul aus → 403). Die fünf älteren Module lassen die geprüfte Berichtigung durch (Posten, Bereichsplan). Mit echten Daten ist (a) nicht
+erreichbar: Die Registry ist eine eingefrorene Konstante im Quelltext, kein Endpunkt schreibt den Status. Empfohlene Folgearbeit: die Statusliste der Wache
+(`statusWirksam`) in `modulAktiv` übernehmen und die Berichtigung nach Art. 16 für die neueren Module entscheiden (gemeinsamer Kern).
 
 **Befund B5 (Oberfläche, Beobachtung, keine Änderung).** Die Moduloberflächen der fünf Module erscheinen bei `geplant` nicht („in Vorbereitung“, „Keine
 Moduloberfläche“) — stimmig mit dem Server. Altdaten zeigen aber Kernansichten weiter mit Schreibaktionen: Betriebsmittel (eine Alt-Anlage lässt sich
 bearbeiten oder löschen), Kompetenzen (Alt-Maschinenkompetenz bearbeiten oder löschen; die Auswahl „Betriebsmittel“ listet auch Alt-Anlagen). Solche
 Speichervorgänge weist der Server jetzt mit 403 ab („Branchenmodul … wirkt in diesem Betrieb nicht …“); die Oberfläche kennzeichnet diese Einträge nicht
-als „nicht verfügbar“. Betrifft nur Betriebe mit Altdaten aus Test- oder Staging-Nutzung.
+als „nicht verfügbar“. Betrifft nur Betriebe mit Altdaten aus Test- oder Staging-Nutzung. Folgearbeit: Die Ansichten blenden Bearbeiten und Löschen
+für Einträge geplanter Module aus.
 
 **Befund B2 (Zielgrößen, behoben, rot/grün).** Schaltflächen, Auswahl- und Eingabefelder und Auswahlkästchen im Bereich „Branchenmodule“
 (`src/module/kern.jsx`, eingehängte Oberflächen, Kontischicht-Assistent) waren unformatierte Standardelemente ohne Mindestgröße in den Stilregeln der Anwendung
