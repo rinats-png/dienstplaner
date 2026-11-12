@@ -84,6 +84,10 @@ jobs:
       - name: Telefon, Schichtverantwortung Uebergabe und Krankmeldung (WP-21-SV)
         run: npm run pruefung:geraete-sv-uebergabe
 
+      # Nachtdienst von gestern ohne Einstempeln: Dienstende-Pfad durch den echten Handler (nach #213).
+      - name: Nachtdienst ohne Einstempeln, Dienstende stempeln
+        run: npm run pruefung:nachtdienst-ohne-einstempeln
+
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 
