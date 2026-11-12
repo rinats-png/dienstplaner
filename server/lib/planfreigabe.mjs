@@ -32,6 +32,21 @@ export function laufenderTag(jetzt = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
 }
 
+/** Sekunden bis zum nächsten Tageswechsel in Berlin (Mitternacht). */
+export function sekundenBisTageswechsel(jetzt = new Date()) {
+  const t = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hourCycle: "h23",
+    hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(jetzt);
+  const w = (k) => Number(t.find((x) => x.type === k).value);
+  return 86400 - (w("hour") * 3600 + w("minute") * 60 + w("second"));
+}
+
+/** Kalendertag JJJJ-MM-TT um n Tage versetzt (reine Kalenderrechnung, ohne Zeitzone). */
+export function tagVersetzt(tag, n) {
+  const d = new Date(`${tag}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Die freigegebenen Monate eines Betriebs (m.freigaben, Schlüssel JJJJ-MM). */
 export function freigegebeneMonate(m) {
   const f = m && istObj(m.freigaben) ? m.freigaben : {};
