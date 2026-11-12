@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 199 · BLOCKED 72 · READY 19 · IN_PROGRESS 17 · REVIEW 7 · INTEGRATED 81 · DONE 3
+**Pakete gesamt:** 200 · BLOCKED 73 · READY 17 · IN_PROGRESS 16 · REVIEW 7 · INTEGRATED 84 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 99 | 17 | 3 | 9 | 3 | 65 | 2 | 44,6–72,7 |
+| ACC45 | 100 | 18 | 1 | 8 | 3 | 68 | 2 | 43,9–70,7 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 1 | 0 | 0 | 65,3–101,7 |
 | Intelligence | 40 | 23 | 0 | 5 | 0 | 12 | 0 | 194,5–343,5 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **309,5–528 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **308,8–526 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -46,7 +46,6 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **309,5–528 
 | WP-09 Kette B nach main | IN_PROGRESS | `integration/centric-complete` | Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge. |
 | WP-15 Selbstauskunft mit Freigabe und Stempelabgleich | REVIEW | `acc45/time/wp15-selbstauskunft-mit-freigabe-` | Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 1c1a27e0 (feature/wp15-wp32d 3c492f3a), Einbindung 7cee8eaf; PR-Beleg fehlt. Offen: Browser-E2E, Selbstfreigabe Einpersonenbetrieb (F15-2, Betreiber). |
 | WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-16 kam nicht per Direkt-Merge 594f32c, sondern über PR #85 (58432b75); der Nachweis liegt im Integrationsstand. Status bleibt REVIEW bis zur Koordinatorentscheidung (Betreibervorgabe: abnahmefähig erst mit WP-16c, dessen Kern ebenfalls im Code ist). |
-| WP-19 Branchenpakete (12 Module) | IN_PROGRESS | `acc45/frontend/wp19-branchenpakete` | Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. |
 | WP-21 Smartphone/Tablet für alle Rollen | IN_PROGRESS | `acc45/frontend/wp21-smartphone-tablet-fur-alle-r` | Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten. Stand 2026-11-12: Teil 3 integriert (#211, 35 Render-Prüfungen bei 360/390/768/844x390; Teilmessung in Edge bei 390x844 und 844x390): Leitung Plan freigeben 2/2 (B16 behoben), Leitung/Planung Krankmeldung und Planung Übergabe bestanden. Offen: Schichtverantwortung Übergabe 0/2 (Ansicht fehlt in der SV-Navigation), Schichtverantwortung Krankmeldung 0/2 (Zeitüberschreitung), siehe WP-21-SV. Hinweis „Für Tablet und Rechner ausgelegt“ bleibt unverändert, bis alle 8 Viewports gemessen sind. Kartenansicht weiter blockiert durch wp40-Frage 6. Status bleibt IN_PROGRESS. Stand (automatisch): INTEGRATED nach #213. Stand 2026-11-12: WP-21-SV integriert (#213, Absturz der Startseite bei Nachtdienst von gestern ohne Einstempeln behoben). Die automatische Nachführung hatte WP-21 nach #213 auf INTEGRATED gesetzt; zurückgenommen — WP-21 bleibt IN_PROGRESS (offen: Kartenansicht wp40-Frage 6, echte Geräte, nicht gemessene Viewports, Vorlesesoftware). |
 | WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | IN_PROGRESS | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. |
 | WP-40 Barrierefreiheit WCAG 2.2 AA | IN_PROGRESS | `acc45/frontend/wp40-barrierefreiheit-wcag-2-2-aa` | Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Browser lokal (abnahme-kern.mjs, 6203b0a): 2.5.8 und 3.3.1 ohne Befund; 1.4.10 Leitung 320 px Schublade/Verteilung 26 px Querscroll; 2.4.11 Leitung 320 px Tab-Stopps in geschlossener Schublade — seither visibility:hidden in src/ui/geraete.js, nicht nachgemessen. axe nicht installiert (WP-33). Stand nach #221 (Teil, docs/acc45/WP-40-BEFUNDE.md): 2.4.11 Fokus über scroll-padding behoben, 3.3.1 aria-describedby in Krankmeldung/Antrag, Korrektur nur offener Hinweis. Offen: Mitarbeiter bei 768 px Stempel/Korrektur Zeitüberschreitung (kein vollständiger Neulauf); 1.4.12, Zoom, Screenreader, axe, Safari, echte Geräte. |
@@ -68,11 +67,11 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **309,5–528 
 | IMP-8 Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E) | IN_PROGRESS | `–` | Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt. |
 | OPT-4 SI-P4 Option 4: zweiter Faktor (TOTP) direkt für Benutzerkonten, Zielarchitektur | IN_PROGRESS | `–` | Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. |
 
-### Bereit zum Start (14)
+### Bereit zum Start (13)
 
-WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · WP-I29 (intelligence, 18–30 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · QS-2 (acc45, 0,5–1,5 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B4 (acc45, 0,5–1 PT) · WP-19-B5 (acc45, 0,3–0,8 PT)
+WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · WP-I29 (intelligence, 18–30 PT) · WP-I30 (intelligence, 4–8 PT) · SI-P6b (acc45, 1,5–3 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B5 (acc45, 0,3–0,8 PT) · WP-19-B6 (acc45, 0,3–0,5 PT)
 
-### Integriert in `integration/centric-complete` (81)
+### Integriert in `integration/centric-complete` (84)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -89,6 +88,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-14 Korrekturworkflow Leitung/SV, Korrekturantrag | #52 (442527b), #66 (92a3b97) | Review abgelehnt → Nachbesserung; Opus-Delta-Review → Nachtrag 14b (#66) |
 | WP-17 Stempelkonflikt-Retry, Serverdatum | #47 (b3707d8) | Review (Ablehnung → Nachbesserung) laut Nachweis |
 | WP-18 Zugänge: personengebundene Codes, Konto-UI, Einladungen | PR #132 in integration/release-v4 gemergt | PR #131 in integration/release-v4 gemergt nach Review |
+| WP-19 Branchenpakete (12 Module) | PR #247 in integration/release-v4 | PR #247 in integration/release-v4 |
 | WP-20 Einsatzorte je Dienst, Geo-Modi, Außendienst | #56 (dd72a10) | Review laut Nachweis |
 | WP-22 Fachprüfungen auf dem Server, org.edit | #41 (cc19eb4), #45 (ca8c4bc), #54 (53b986a) | Review; Nachträge 22b (#45, #54) |
 | WP-23 Entwürfe nicht an Beschäftigte ausliefern | #53 (b6ee1cf), #64 (f2428aa) | Review abgelehnt → Nachbesserung; 23b (#64) |
@@ -143,6 +143,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | IMP-10 Handbuch und Betreiberdoku zum Import | PR #227 in integration/release-v4 | PR #227 in integration/release-v4 |
 | IMP-11 Import: Abweichungen UI/Parser/Doku bereinigen (ODS/xlsm im Dateidialog, veralteter Kommentar, Endpunkt-Codes in Vertrag §9) | PR #232 in integration/release-v4 | PR #232 in integration/release-v4 |
 | QS-1 Testhygiene: import-personal-e2e prüft die Personalnummer 3002 als Teilzeichenfolge (Zeitstempel-Treffer) | PR #237 in integration/release-v4 | PR #237 in integration/release-v4 |
+| QS-2 Zeitabhängige/flaky Tests härten | PR #246 in integration/release-v4 | PR #246 in integration/release-v4 |
 | OPT-1 SI-P4 Option 1: sichere Ersteinrichtung für neu angelegte Betriebe (einmalig, befristet, keine Klartext-Mail) | PR #179 in integration/release-v4 | PR #179 in integration/release-v4 |
 | OPT-1-F Anmeldeweg für Leitungskonten nach Ersteinrichtung (Folgepaket zu OPT-1): Passwort plus zweiter Faktor, ohne Umgehung der Authentifizierung | PR #179 in integration/release-v4 | PR #179 in integration/release-v4 |
 | WR-1 Kontowiederherstellung: Kern (zehn Codes, Speicherung scrypt, Verteilung ohne Verzerrung) | PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung) | PR #167 in integration/release-v4 (Kern: zehn Codes, scrypt, Verteilung) |
@@ -157,12 +158,13 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | RB-4 Benachrichtigung bei eingegangener Krankmeldung (Planer, Betriebsleiter, sachlich Schichtverantwortung), Push und E-Mail ohne Gesundheitsdetails | PR #205 in integration/release-v4 | PR #205 in integration/release-v4 |
 | RB-5 Offene Krankmeldung: Schicht intern klärungsbedürftig markieren, Unterbesetzung und Ersatzvorschläge vorbereiten, veröffentlichter Plan unverändert, keine eigenmächtige Umbesetzung | PR #207 in integration/release-v4 | PR #207 in integration/release-v4 |
 | WP-21-SV Schichtverantwortung: Ansicht Übergabe fehlt in der SV-Navigation, Krankmeldung-Ablauf Timeout auf Smartphone (Befund aus WP-21 Teil 3) | PR #213 in integration/release-v4 | PR #213 in integration/release-v4 |
+| WP-19-B4 Modul-Registry: modulAktiv fail-closed; Berichtigung nach Art. 16 vereinheitlichen | PR #247 in integration/release-v4 | PR #247 in integration/release-v4 |
 
 ### Statusstufen
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-52 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+50 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -184,6 +186,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-16 | REVIEW | ✓ | ✓ | T | – | – | – | – |
 | WP-17 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-18 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-19 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-20 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-21 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-22 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
@@ -263,6 +266,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | IMP-10 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | IMP-11 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | QS-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| QS-2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-1-F | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-4 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |
@@ -278,6 +282,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | RB-4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | RB-5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-21-SV | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-19-B4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)

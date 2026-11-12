@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 199,
+  "anzahl": 200,
   "statusZaehlung": {
-    "BLOCKED": 72,
-    "READY": 19,
-    "IN_PROGRESS": 17,
+    "BLOCKED": 73,
+    "READY": 17,
+    "IN_PROGRESS": 16,
     "REVIEW": 7,
-    "INTEGRATED": 81,
+    "INTEGRATED": 84,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 99,
-      "offen": 32,
+      "pakete": 100,
+      "offen": 30,
       "restPT": {
-        "min": 44.599999999999994,
-        "max": 72.7
+        "min": 43.89999999999999,
+        "max": 70.7
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 309.5,
-    "max": 528
+    "min": 308.8,
+    "max": 526
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -650,12 +650,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0,"max":0},
       "abhaengigkeiten": ["WP-11","WP-22","WP-19.13"],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #234, #243 und #244 integriert; Sammelpaket, Rest (WP-19.1 bis WP-19.13) offen."},
+        "implementiert": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -664,12 +664,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "siehe WP-19.x",
       "konfliktzonen": [],
-      "pr": ["#234","#243","#244"],
+      "pr": ["#234","#243","#244","#247"],
       "nachweis": null,
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
       "dateien": "src/module/*, server",
-      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte."
+      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247."
     },
     {
       "id": "WP-20",
@@ -5028,12 +5028,12 @@
       "prio": "P3",
       "aufwandPT": {"min":0.5,"max":1.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #246 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #246 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #246 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #246 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5042,12 +5042,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#246"],
       "nachweis": "pruefungen/schreibhalt.test.js; pruefungen/accessibility*.test.js",
       "akzeptanz": "Tests mit echten Wartezeiten oder Zeittoleranzen erhalten feste Uhren (Fake-Timer) oder großzügige, deterministische Grenzen, ohne Aussagen abzuschwächen",
       "tests": "pruefungen/schreibhalt.test.js und die in den CI-Protokollen gefundenen zeitabhängigen Prüfungen",
       "dateien": "pruefungen/*.test.js",
-      "notiz": "Befund 2026-11-12, SCHÄTZUNG des Aufwands. Liste: schreibhalt.test.js (Frist abgelaufen vor der Freigabe, Zeitverhalten), staging-smoke Tagesgrenze (behoben in #210), import-personal-e2e Teilzeichenfolge (behoben in #237, QS-1), accessibility- und weitere Prüfungen mit Zeitannahmen. Vorgehen: in den CI-Protokollen Tests mit echten sleeps/Toleranzen suchen und mit Fake-Uhren oder großzügigen deterministischen Grenzen härten, ohne Aussagen zu schwächen."
+      "notiz": "Befund 2026-11-12, SCHÄTZUNG des Aufwands. Liste: schreibhalt.test.js (Frist abgelaufen vor der Freigabe, Zeitverhalten), staging-smoke Tagesgrenze (behoben in #210), import-personal-e2e Teilzeichenfolge (behoben in #237, QS-1), accessibility- und weitere Prüfungen mit Zeitannahmen. Vorgehen: in den CI-Protokollen Tests mit echten sleeps/Toleranzen suchen und mit Fake-Uhren oder großzügigen deterministischen Grenzen härten, ohne Aussagen zu schwächen. Stand (automatisch): INTEGRATED nach #246."
     },
     {
       "id": "OPT-1",
@@ -5700,12 +5700,12 @@
       "prio": "P3",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5714,12 +5714,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#247"],
       "nachweis": "PR #244 (WP-19 B1)",
       "akzeptanz": "modulAktiv wirkt nur bei Status in der Allowlist; unbekannter oder fehlender Status schließt die Schreibwege; Berichtigung nach Art. 16 einheitlich nach Entscheidung von Betreiber und Datenschutz",
       "tests": "pruefungen/modul-*.test.js",
       "dateien": "server/lib (modulAktiv, Registry, modul-altwege.mjs)",
-      "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. modulAktiv: unbekannter oder fehlender Registry-Status gilt bei den neueren Modulen als wirkend (fail-open). Die Registry ist eine eingefrorene Quelltext-Konstante und kein Endpunkt schreibt den Status (nicht erreichbar); trotzdem härten (statusWirksam-Allowlist in modulAktiv). Entscheidung Berichtigung nach Art. 16: bei den neueren Modulen bei ausgeschaltetem Modul blockiert, bei den fünf älteren erlaubt; vereinheitlichen nach Entscheidung von Betreiber und Datenschutz (offen)."
+      "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. modulAktiv: unbekannter oder fehlender Registry-Status gilt bei den neueren Modulen als wirkend (fail-open). Die Registry ist eine eingefrorene Quelltext-Konstante und kein Endpunkt schreibt den Status (nicht erreichbar); trotzdem härten (statusWirksam-Allowlist in modulAktiv). Entscheidung Berichtigung nach Art. 16: bei den neueren Modulen bei ausgeschaltetem Modul blockiert, bei den fünf älteren erlaubt; vereinheitlichen nach Entscheidung von Betreiber und Datenschutz (offen). Stand (automatisch): INTEGRATED nach #247."
     },
     {
       "id": "WP-19-B5",
@@ -5748,6 +5748,34 @@
       "tests": "Oberflächentests der Module Betriebsmittel und Kompetenzen",
       "dateien": "src/ui (Betriebsmittel, Kompetenzen)",
       "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. Oberflächen der Module im Status geplant (Betriebsmittel, Kompetenzen) bieten Bearbeiten und Löschen an, der Server antwortet nun mit 403; bei Status geplant ausblenden statt Server-403."
+    },
+    {
+      "id": "WP-19-B6",
+      "titel": "Berichtigung nach Art. 16 bei ausgeschaltetem Modul vereinheitlichen (Entscheidung Betreiber und Datenschutz)",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.3,"max":0.5},
+      "abhaengigkeiten": [],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "PR #247 (WP-19 B4)",
+      "akzeptanz": "Entscheidung von Betreiber und Datenschutz liegt vor; die Berichtigung nach Art. 16 bei ausgeschaltetem Modul verhält sich bei allen Modulen gleich, mit Tests",
+      "tests": "pruefungen/modul-*.test.js",
+      "dateien": "server/lib (modul-altwege.mjs, branchenmodule.mjs)",
+      "notiz": "Offen nach PR #247 (WP-19 B4), Aufwand SCHÄTZUNG. Frage an Betreiber und Datenschutz: Darf bei ausgeschaltetem Modul (modulAktiv falsch) eine Berichtigung nach Art. 16 gespeichert werden? Heute: bei den neueren Modulen blockiert, bei den fünf älteren (Posten, Bereichsplan, geteilter Dienst, Anlagen, Maschinenqualifikation) erlaubt. Zu entscheiden: alle blockieren, alle erlauben oder je Modul. Abhängigkeit ist die Entscheidung von Betreiber und Datenschutz (keine Paket-ID); bis dahin keine Codeänderung."
     }
   ]
 }
