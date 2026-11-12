@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 196,
+  "anzahl": 197,
   "statusZaehlung": {
     "BLOCKED": 73,
-    "READY": 16,
+    "READY": 17,
     "IN_PROGRESS": 16,
     "REVIEW": 7,
     "INTEGRATED": 81,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 96,
-      "offen": 29,
+      "pakete": 97,
+      "offen": 30,
       "restPT": {
-        "min": 43.3,
-        "max": 69.4
+        "min": 43.8,
+        "max": 70.9
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 309.7,
-    "max": 527.2
+    "min": 310.2,
+    "max": 528.7
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -2701,7 +2701,7 @@
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Technische Auflagen in PR #162 integriert, Nachweis in PR #241 (docs/acc45/wp-i18-nachweis.md); Anbieteranschluss nicht verdrahtet."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2710,12 +2710,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#162","#161"],
+      "pr": ["#162","#161","#241"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Auflagen aus dem Opus-Review von PR #146 (WP-I13, 2e2a1ab), vor echtem Anbieter zwingend: (1) Die Modellregistry wird Pflicht, und die Modellkennung kommt aus der Registry an den Adapter; heute entscheidet der Adapter das Modell, modellFuer() wird nirgends aufgerufen (mittel). (2) Gateway und Speicher nur über erzeugeSchluesselbund versorgen; aliasSchluessel wird heute nicht gegen den MAC-Schlüssel getrennt geprüft (niedrig). Restrisiko: Anbieterschlüssel fehlt im Trennungsvergleich. Stand 2026-11-09: Kern technisch integriert (PR #162, Registry, Schlüsseltrennung, Ausgabegrenze, Freigabe-Gate, Rückfall). Status bleibt BLOCKED: Anbieteranschluss nicht verdrahtet, offen E-25 (AVV, Zero-Data-Retention, Drittland, DSFA), Monatsbudget gegen Verbrauch (WP-I15), Löschkonzept-Betreiberpunkte (PR #161)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Auflagen aus dem Opus-Review von PR #146 (WP-I13, 2e2a1ab), vor echtem Anbieter zwingend: (1) Die Modellregistry wird Pflicht, und die Modellkennung kommt aus der Registry an den Adapter; heute entscheidet der Adapter das Modell, modellFuer() wird nirgends aufgerufen (mittel). (2) Gateway und Speicher nur über erzeugeSchluesselbund versorgen; aliasSchluessel wird heute nicht gegen den MAC-Schlüssel getrennt geprüft (niedrig). Restrisiko: Anbieterschlüssel fehlt im Trennungsvergleich. Stand 2026-11-09: Kern technisch integriert (PR #162, Registry, Schlüsseltrennung, Ausgabegrenze, Freigabe-Gate, Rückfall). Status bleibt BLOCKED: Anbieteranschluss nicht verdrahtet, offen E-25 (AVV, Zero-Data-Retention, Drittland, DSFA), Monatsbudget gegen Verbrauch (WP-I15), Löschkonzept-Betreiberpunkte (PR #161). Stand 2026-11-12: PR #241 (Nachweis wp-i18-nachweis.md): Auflagen aus dem PR-#146-Review waren bereits durch PR #162 erledigt (Registry Pflicht, nur Schlüsselbund, Alias-/MAC-Schlüsseltrennung, rotierbarer MAC-Schlüssel); Rest blockiert durch E-25 (AVV, ZDR, Region/Drittland, Schlüsselverwahrung, Budgetdeckel an Verbrauch, DSFA, Mitbestimmung, echte Modellkennungen). Status bleibt BLOCKED."
     },
     {
       "id": "WP-I19",
@@ -4837,7 +4837,7 @@
         "implementiert": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
         "reviewt": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
-        "integriert": {"wert":false,"beleg":"Bibliothek in PR #185 integriert (schichtmodelle.mjs, schichtpruefung.mjs); nicht in /api/import verdrahtet."},
+        "integriert": {"wert":false,"beleg":"Bibliothek in PR #185, Schichtmodell-Vorschau im Import in PR #240 integriert; Schreiben nicht umgesetzt."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4846,12 +4846,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#185"],
+      "pr": ["#185","#240"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Keine feste Zykluslänge; arbeitszeitrechtliche Prüfung mit den Dienstarten des Betriebs; Nachtschicht über Mitternacht",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/schicht*.mjs, Tests",
-      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche."
+      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze)."
     },
     {
       "id": "IMP-7",
@@ -5020,6 +5020,34 @@
       "tests": "pruefungen/import-personal-e2e.test.js",
       "dateien": "pruefungen/import-personal-e2e.test.js",
       "notiz": "Befund 2026-11-12: pruefungen/import-personal-e2e.test.js prüft, dass das Log die Teilzeichenfolge \"3002\" (eine Personalnummer) nicht enthält, und schlug einmal fehl, weil „3002“ in einem Zeitstempel „.3002“ vorkam. Ganze Token (Wortgrenzen) prüfen. Aufwand ist eine SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #237."
+    },
+    {
+      "id": "QS-2",
+      "titel": "Zeitabhängige/flaky Tests härten",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1.5},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "pruefungen/schreibhalt.test.js; pruefungen/accessibility*.test.js",
+      "akzeptanz": "Tests mit echten Wartezeiten oder Zeittoleranzen erhalten feste Uhren (Fake-Timer) oder großzügige, deterministische Grenzen, ohne Aussagen abzuschwächen",
+      "tests": "pruefungen/schreibhalt.test.js und die in den CI-Protokollen gefundenen zeitabhängigen Prüfungen",
+      "dateien": "pruefungen/*.test.js",
+      "notiz": "Befund 2026-11-12, SCHÄTZUNG des Aufwands. Liste: schreibhalt.test.js (Frist abgelaufen vor der Freigabe, Zeitverhalten), staging-smoke Tagesgrenze (behoben in #210), import-personal-e2e Teilzeichenfolge (behoben in #237, QS-1), accessibility- und weitere Prüfungen mit Zeitannahmen. Vorgehen: in den CI-Protokollen Tests mit echten sleeps/Toleranzen suchen und mit Fake-Uhren oder großzügigen deterministischen Grenzen härten, ohne Aussagen zu schwächen."
     },
     {
       "id": "OPT-1",

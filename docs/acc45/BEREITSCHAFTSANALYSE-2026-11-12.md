@@ -182,30 +182,30 @@ Spalten: Status (SSOT) · Stand laut Code · Abhängigkeiten (Code) · Klasse ·
 | WP-15 | REVIEW | vollständig im Code (3) | WP-14 integriert | D | Direkt-Merge 1c1a27e0, PR-Beleg fehlt; danach Browser-E2E (B) |
 | WP-16 | REVIEW | vollständig im Code (3) | erfüllt | D | PR #85 vorhanden; Statushebung = Koordinator |
 | WP-16b | REVIEW | im Code (3) | WP-16 im Code | D | Direkt-Merge 594f32c3 |
-| WP-16c | REVIEW | Kern im Code (3) | WP-16 im Code | B | Messung Korrekturpfad 60/150/400 × 12/24/36; Rest C (E-29, Fragen 1/3/5/6/7, R2, R7, L5) |
+| WP-16c | REVIEW | Kern im Code (3) | WP-16 im Code | B | Messung Korrekturpfad 60/150/400 × 12/24/36; Rest C (E-29, Fragen 1/3/5/6/7, R2, R7, L5) Stand 2026-11-12: Teil 1 integriert (PR #223). |
 | WP-14c | REVIEW | F2/F4/F5/F7/F8 im Code | erfüllt | D | F6 = Fachentscheidung F6a/F6b (C) |
 | WP-07b | REVIEW | Schutz vorhanden, 6 Szenarien getestet | erfüllt | D | Direkt-Merge 594f32c3 |
 | WP-19 (Sammel) | IN_PROGRESS | 12 Module im Code, alle `geplant` | siehe 4.3 | B | siehe 4.3 |
 | WP-21 | IN_PROGRESS | Teil 1–3 + SV integriert (#183, #192, #211, #213) | erfüllt | B | fehlende Viewports in Edge messen; Kartenansicht = wp40-Frage 6 (C); echte Geräte = E-5 |
 | WP-30 Mail/Push | BLOCKED | **implementiert und über PR #84 integriert** (`docs/acc45/wp30-nachweis.md`, `pruefung:mail-push-*`); Notiz „noch nicht gebaut“ überholt | E-9 | B | Nachprüfung F1–F8 (Nachweis §11) ausführbar; produktiv nur nach **E-9** |
-| WP-33 | REVIEW | Sammelprüfung abgedeckt (#186), E2E/axe fehlen (3) | – | B | E2E-Suite portieren; PR #217 abwarten |
+| WP-33 | REVIEW | Sammelprüfung abgedeckt (#186), E2E/axe fehlen (3) | – | B | E2E-Suite portieren; PR #217 abwarten Stand 2026-11-12: Teil 1 integriert (PR #217). |
 | WP-34 Branches aufräumen | BLOCKED | – | WP-09 | C | nach Merge nach main (Betreiber) |
 | WP-36 Rechtstexte | BLOCKED | Platzhalter | E-32 | C | Inhalte und Dienstleisternamen vom Betreiber (E-32) |
-| WP-40 | REVIEW | Quelltext belegt, Browser teilweise (3) | WP-39 integriert | B | Browser-Nachmessung 320 px, Verteilung beheben; Fragen 2/6 (C) |
+| WP-40 | REVIEW | Quelltext belegt, Browser teilweise (3) | WP-39 integriert | B | Browser-Nachmessung 320 px, Verteilung beheben; Fragen 2/6 (C) Stand 2026-11-12: Teil 1 integriert (PR #221). |
 | WP-42 Endabnahme | BLOCKED | – | WP-42a, 20 E-Pakete | C | alle E-Abnahmen |
 | WP-42a RC (R3) | BLOCKED | – | 28 Pakete | C | WP-44/E-15, WP-30/E-9, WP-24b/E-21 u. a. |
 | WP-42R1 Gate R1 | BLOCKED | WP-16/16c/07b/18/S1/SI-P4 im Code | WP-33 (B), WP-44 (C) | C | **E-15** (Code-Rotation) über WP-44; sonst Koordinator-Status zu WP-16/16c/07b |
 | WP-42R2 Gate R2 | BLOCKED | – | R1, SI-P6b, WP-24b, WP-30 … | C | SI-P6b-Spezifikation, E-21, E-9 |
 | WP-44 Zugangscodes | BLOCKED | – | E-15 | C | Betreiber rotiert Z1–Z7 (E-15) |
-| WP-48 | BLOCKED | 48.1/48.2 integriert (#87), 48.3+ fehlt (3) | WP-16 im Code | B | 48.3 mit Auflage §7; 48.4/48.5/48.8 Entscheidungen §6 |
+| WP-48 | BLOCKED | 48.1/48.2 integriert (#87), 48.3+ fehlt (3) | WP-16 im Code | B | 48.3 mit Auflage §7; 48.4/48.5/48.8 Entscheidungen §6 Stand 2026-11-12: Teil 1 integriert (PR #224). |
 | WP-24b Altfeeds | BLOCKED | – | E-21 | C | WP-24-Stichtag (E-21, bis 2026-12-01) |
 | WP-28b Sicherung unter Last | IN_PROGRESS | fail-closed Teilfix (#100), WP-28c integriert | – | C | **E-20** Nachlauf S2/S5 (Handstart Betreiber, Linux) |
-| WP-PILOT | IN_PROGRESS | nur Doku/Definitionen | WP-19.0 (im Code), E-19 | B | Seeds SD-P/SD-S als synthetische Testdaten (Anschluss WP-S1); Echtdaten erst nach E-31/E-19 |
+| WP-PILOT | IN_PROGRESS | nur Doku/Definitionen | WP-19.0 (im Code), E-19 | B | Seeds SD-P/SD-S als synthetische Testdaten (Anschluss WP-S1); Echtdaten erst nach E-31/E-19 Stand 2026-11-12: Teil 1 integriert (PR #229). |
 | SI-P6b | BLOCKED | – | – | C | Betreiber-Spezifikation (Zustimmungsform, Notfallablauf, AV-Einordnung) |
-| IMP-6 Schichtmodelle | IN_PROGRESS | Bibliothek integriert (#185), nicht verdrahtet | – | B | Analyse/Vorschau in `/api/import` verdrahten (ohne Schreiben); Schreiben = Datenmodellentscheidung „mehrere Modelle je Person“ (C) |
+| IMP-6 Schichtmodelle | IN_PROGRESS | Bibliothek integriert (#185); Vorschau in `/api/import` verdrahtet seit PR #240 (hinter `CENTRIC_IMPORT_AKTIV`, aus) | – | B | Offen: Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Cache; Schreiben = Datenmodellentscheidung „mehrere Modelle je Person“ (C) |
 | IMP-7 Historische Pläne | BLOCKED | – | IMP-6 | V | nach IMP-6; Unsicherheit hoch, Opus-Review |
 | IMP-8 Testmatrix | IN_PROGRESS | 20 Fälle Unit (#215) | – | C | Betreiber bestätigt Fallliste (IMPORT-PLAN.md fehlt); Browser-E2E erst bei eingeschalteter Oberfläche (`IMPORT_DATEI_AKTIV`, T-18…T-20) |
-| IMP-10 Handbuch Import | BLOCKED | Entwicklervertrag `docs/acc45/IMPORT-VERTRAG.md` vorhanden; im Handbuch nur ein Satz (`src/handbuch-inhalt.js:106` „Team → Personal → Importieren“) und `CENTRIC_IMPORT_ADRESSRAUM_KB` in `docs/BETRIEBSHANDBUCH.md`; kein Kapitel für Leitung/Betreiber | IMP-4 integriert | A | Formate, Grenzen, Rechte, Dubletten, Fehlermeldungen für Leitung und Betreiber dokumentieren (Oberfläche bleibt aus) |
+| IMP-10 Handbuch Import | BLOCKED | Entwicklervertrag `docs/acc45/IMPORT-VERTRAG.md` vorhanden; im Handbuch nur ein Satz (`src/handbuch-inhalt.js:106` „Team → Personal → Importieren“) und `CENTRIC_IMPORT_ADRESSRAUM_KB` in `docs/BETRIEBSHANDBUCH.md`; kein Kapitel für Leitung/Betreiber | IMP-4 integriert | A | Formate, Grenzen, Rechte, Dubletten, Fehlermeldungen für Leitung und Betreiber dokumentieren (Oberfläche bleibt aus) Stand 2026-11-12: Teil 1 integriert (PR #227; IMP-11 PR #232). |
 | OPT-2 | BLOCKED | Freigabemechanik aus WR-3 vorhanden (`server/lib/kontowiederherstellung.mjs:16`) | SI-P4, WR-3 integriert | B | Weg hinter ausgeschaltetem Schalter bauen; Anzahl betroffener Konto-Betriebe vorab per Betreiberabfrage |
 | OPT-4 | IN_PROGRESS | Teilumfang integriert (#182) | – | C | Betreiberentscheidungen E1–E4 (`OPT-4-WR-2-LUECKEN.md`, Migration bestehender Leitungskonten) |
 | WR-4 | BLOCKED | Werkzeug unverändert | WR-3 integriert | C | Betreiberentscheidung **I.6** (Art der Zweitfreigabe) |
@@ -234,20 +234,20 @@ Browser bricht `KiAntwort` damit für „fertig/Rückfall/Injektion“ (V4-STAGI
 | WP-I9 Verbessern-Modus | nein: I7, I8 | V | nach I8 |
 | WP-I12c planKennzahlen | ja (I12 INTEGRATED #190) | C | Fehler weiter im Code (`server/lib/engine/kennzahlen.mjs:63` ruft `verteilung` mit Monat statt von/bis); PR #139 im Hold bis **Betreiberentscheidung zur Spanne-Definition** (`wp-i12-fragen.md` Frage 4) |
 | WP-I16 Betriebssteuerung/Transparenz | ja (I13, I15) | B | Transparenzansicht und BR-Pausierung gegen die Attrappe, Schalter bleibt aus; Verdrahtung des Prozessschalters an die Umgebung = Betreiberfreigabe |
-| WP-I18 Anbieter live | nein: E-25 | B | technische Auflagen aus dem Review von PR #146 (Modellregistry Pflicht, Schlüsselbund) ausführbar; Live-Anbindung **E-25** |
-| WP-I19 Altplan-Übernahme (F7A) | ja (I12, I13, I17) | B | Übernahme-Logik mit Vorschau gegen Attrappe/strukturierte Testdaten; Datei-Upload bleibt aus (`IMPORT_DATEI_AKTIV`, T-18…T-20) |
-| WP-I20 Ausfall-Vorschlag (F3) | ja (I12a `ersatzVorschlaege`, `server/lib/engine/einsatz.mjs`) | A | Route mit Obergrenze Personenzahl, einheitliches `ruhezeit.ist`, Golden um Ruhezeit-/Folgegrenzen (Review-Hinweise #174) |
+| WP-I18 Anbieter live | nein: E-25 | C | Technische Auflagen aus dem Review von PR #146 sind bereits durch PR #162 erledigt (Nachweis PR #241, `wp-i18-nachweis.md`); es blockiert nur **E-25** (AVV, ZDR, Region/Drittland, Schlüsselverwahrung, Budgetdeckel, DSFA, Mitbestimmung, echte Modellkennungen) |
+| WP-I19 Altplan-Übernahme (F7A) | ja (I12, I13, I17) | B | Übernahme-Logik mit Vorschau gegen Attrappe/strukturierte Testdaten; Datei-Upload bleibt aus (`IMPORT_DATEI_AKTIV`, T-18…T-20) Stand 2026-11-12: Teil 1 integriert (PR #236). |
+| WP-I20 Ausfall-Vorschlag (F3) | ja (I12a `ersatzVorschlaege`, `server/lib/engine/einsatz.mjs`) | A | Route mit Obergrenze Personenzahl, einheitliches `ruhezeit.ist`, Golden um Ruhezeit-/Folgegrenzen (Review-Hinweise #174) Stand 2026-11-12: Teil 1 integriert (PR #222). |
 | WP-I21 Testsätze/Schattenbetrieb | nein: I19, I20, E-24i | C | **E-24i** (Piloten) |
 | WP-I22 F1 Plan-Erklärer + F2 | ja | B | `Buffer.byteLength` → `TextEncoder` (schemas.mjs:327), `KiAntwort` hinter Schalter einhängen, gegen Attrappe; live **E-25** |
-| WP-I23 F9 Hilfe-Assistent | ja | B | wie I22, Inhalt aus `src/handbuch-inhalt.js`; live E-25 |
-| WP-I24 F15 Änderungsübersicht | ja | B | wie I22; live E-25 |
+| WP-I23 F9 Hilfe-Assistent | ja | B | wie I22, Inhalt aus `src/handbuch-inhalt.js`; live E-25 Stand 2026-11-12: Teil 1 integriert (PR #219). |
+| WP-I24 F15 Änderungsübersicht | ja | B | wie I22; live E-25 Stand 2026-11-12: Teil 1 integriert (PR #218). |
 | WP-I25 F16 Regel-Übersetzer | nein: I4 | V | nach I4 |
 | WP-I26 F17 Regel-Konflikte | nein: I8 | V | nach I8 |
 | WP-I27 F7B Scan/PDF/Foto | nein: I19, I16, E-25, E-26 | C | **E-25**, **E-26** (DSFA) |
 | WP-I28 F8 Schichtmodell-Analyse | nein: I19 | V | nach I19 |
 | WP-I29 Batch + F4/F11/F12 | ja | B | Batch-Infrastruktur (kein Code vorhanden) gegen Attrappe; live E-25 |
 | WP-I30 F5 Nachrichten-Werkstatt | ja | B | gegen Attrappe; live E-25 |
-| WP-I31 F6 Fragen an Daten | ja | B | gegen Attrappe über Faktenpaket/Positivliste; live E-25 |
+| WP-I31 F6 Fragen an Daten | ja | B | gegen Attrappe über Faktenpaket/Positivliste; live E-25 Stand 2026-11-12: Teil 1 integriert (PR #228). |
 | WP-I32 F10 Personalansatz | nein: I28 | V | nach I28 |
 | WP-I33 F14 Was-wäre-wenn | nein: I28 | V | nach I28 |
 | WP-I34 F18 Gutachten + F13 | nein: I8, I9, E-27 | C | **E-27** (KI-VO, Art. 22) |
@@ -267,7 +267,7 @@ R-1…R-12, `modul-rechte-wp19.test.js` 54/54). Statuswechsel auf `vorlaeufig` n
 |---|---|---|---|---|---|
 | WP-19.1 Posten | #49 + Rechte abe3e157 | – | ja | B | Postenplan-Einhängung in der Tagesansicht im Prüfmodus (E2E-Vorarbeit für 19.13); Rechte-Bestätigung (Betreiber) |
 | WP-19.2 Wachbuch | Direkt-Merge abe3e157 (614626d6) | modul-wachbuch 35/35 | ja | D / C | Rest gesperrt: WB-1 (Feld vs. Dienstbuch), WB-2 (Rollenzugriff), WB-3 = FN-01/02 (Frist), WB-5 (Anonymisierung) — Betreiber/E-22 |
-| WP-19.3 Objektbericht | Direkt-Merge abe3e157 (12a8519b) | modul-objektbericht 17/17 | ja | B | OB-2: `kontext.dienstzeit` an die bestätigte Ist-Zeit (WP-16) anbinden (`src/module/zugriff.js:55` liefert heute immer null); OB-1/OB-3/OB-4 = Rechtsgrundlage/PDF/Weitergabe (C) |
+| WP-19.3 Objektbericht | Direkt-Merge abe3e157 (12a8519b) | modul-objektbericht 17/17 | ja | B | OB-2: `kontext.dienstzeit` an die bestätigte Ist-Zeit (WP-16) anbinden (`src/module/zugriff.js:55` liefert heute immer null); OB-1/OB-3/OB-4 = Rechtsgrundlage/PDF/Weitergabe (C) Stand 2026-11-12: Teil 1 integriert (PR #234). |
 | WP-19.4 Bereichsplan | #49 | – | ja | B | E2E im Prüfmodus (19.13-Vorarbeit); Profil Rettungsdienst = 19.R (BS-3) |
 | WP-19.5 Pflegequalifikation | Direkt-Merge abe3e157 (9514c634) | modul-pflegequal 19/19 | ja | D / C | `qualGueltig` ist geliefert (`zugriff.js`); Rest PQ-1 (FN-12 Besetzungswerte), PQ-2 (Landesrecht Assistenz), PQ-3 |
 | WP-19.6 Bereitschaftsdienst | Direkt-Merge abe3e157 (32f46922) | modul-bereitschaftsdienst 22/22 | ja (WP-16 im Code; 19.7 teilweise) | C | BD-1…BD-6 = FN-15–FN-19 (Tarifwerte, Arbeitszeitrecht, Opt-out); BD-7 Kontoanrechnung hängt an der Bestätigung von BD-2/BD-3 |
