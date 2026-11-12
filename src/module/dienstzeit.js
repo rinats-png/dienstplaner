@@ -2,11 +2,15 @@
    DIENSTZEIT DES OBJEKTBERICHTS AUS DER BESTÄTIGTEN IST-ZEIT (WP-19.3, OB-2)
 
    Der Objektbericht (server/lib/modul-objektbericht.mjs, O3 a) zählt als Ist
-   nur, wer an dem Tag nachweislich im Dienst war. Quelle ist allein die von
-   der Leitung bestätigte Erfassung (m.erfassung["Person|Tag"], bestaetigt
-   === true, WP-16) — nie die Planzeit. Fehlt sie, ist sie unbestätigt oder
-   unvollständig, ist die Dienstzeit null mit einem Grundcode; der Bericht
-   zeigt dann „ungeklärt“, nie „0“ und nie den Plan.
+   nur, wer an dem Tag nachweislich im Dienst war. Quelle ist allein die
+   bestätigte Ist-Erfassung (Stempel/Selbstauskunft/Korrektur;
+   m.erfassung["Person|Tag"], bestaetigt === true, WP-16) — nie die Planzeit.
+   `bestaetigt` setzt auch das gewöhnliche Ausstempeln (außer Prüffällen wie
+   LANGER_DIENST) und die eigene Selbstauskunft (server/lib/zeiterfassung.mjs),
+   nicht nur die Leitung. Fehlt sie, ist sie unbestätigt oder ohne Beginn/Ende
+   (etwa Selbstauskunft „wie geplant“), ist die Dienstzeit null mit einem
+   Grundcode; der Bericht zeigt dann „ungeklärt“, nie „0“ und nie den Plan.
+   Bei offenem Korrekturantrag gilt der zuletzt übernommene bestätigte Wert.
 
    Rollenschutz (E1, H8+, „Ist-Zeiten unter Rollenschutz: nicht verfügbar
    statt Planzeit“): Ob die Ist-Zeit einer Person zugänglich ist, entscheidet
