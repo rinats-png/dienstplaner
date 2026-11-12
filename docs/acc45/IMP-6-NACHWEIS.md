@@ -64,6 +64,23 @@ Umsetzung: `server/lib/import/schichtvorschau.mjs`, eingebunden in `server/funkt
   (Doppelungen der Zuordnung nur als Anzahl plus höchstens 20 Zeilennummern; vorher quadratisch: 19.999 gleiche Zeilen = 52 s und 3,7 GB). Keine Zeit-/Operationsbudget-Abbruchlogik: die Zeilenobergrenzen begrenzen die synchrone Rechnung (gemessen unter 2 s).
 - Übernahme: 422 `ART_NICHT_FREIGEGEBEN` mit „Schichtmodelle werden noch nicht übernommen“, Bestand unverändert (Prüfung vergleicht den Bestand). Personalimport unverändert.
 
+## Zwischenspeicher des Ergebnisses (Analyse, dann Vorschau)
+
+Umsetzung: `server/lib/import/schichtcache.mjs`, Aufruf über `schichtVorschauMitSpeicher` in `schichtvorschau.mjs`; Prüfung
+`pruefungen/import-analyse-cache-imp6.test.js` (`npm run pruefung:import-analyse-cache`, eigener CI-Schritt). Funktion bleibt aus (`CENTRIC_IMPORT_AKTIV`, 404 vor dem Rumpf).
+
+- Problem (Review): `vorschau` rechnete alles noch einmal, was `analyse` schon berechnet hatte (gleiche Funktion, gleiche Eingaben).
+- Lösung: Das fertige Ergebnis wird je Raum und Vorgang nur im Arbeitsspeicher gehalten, Schlüssel = Raum + Vorgang-Id + Inhaltshash (SHA-256 über Modell- und
+  Zuordnungstabelle, Spaltenzuordnung, Dienstarten und Personen des Betriebs). Anderes Eingabeergebnis (andere Zuordnung, geänderte Dienstarten oder Personen, andere Tabelle)
+  ergibt einen anderen Hash und damit eine neue Rechnung. Das Ergebnis hängt nur von diesen Daten ab, nicht von Rolle oder Sitzung (die Rolle wird vorher im Handler geprüft).
+- Grenzen: je Vorgang ein Eintrag, je Raum höchstens 20, gesamt 200 (ältester zuerst), Lebensdauer 30 Minuten (wie die Inaktivitätsfrist des Vorgangs); der Eintrag wird
+  mit dem Vorgang verworfen (Verwerfen, Übernahme, Ablauf in `vorgaenge.mjs`). Nur erfolgreiche Ergebnisse; Kopie bei Ablage und Abruf.
+- Datenschutz: gehalten wird nur das Ergebnis, das der Vorgang ohnehin als Antwort an dieselbe Person liefert (keine Rohzeilen, Namen oder Personalnummern); der Hash ist nicht umkehrbar. Nichts wird gespeichert oder protokolliert.
+- DoS-Schutz unverändert: Zeilenobergrenze (10.000) und Zellkürzung greifen vor dem Hash und vor jeder Rechnung; die Bremse „schreiben“ läuft im Handler vor dem Speicher, ein Treffer umgeht sie nicht.
+- Messung (10.000 Modellzeilen + 10.000 Zuordnungszeilen, 3 Läufe, Windows-Entwicklungsrechner): Vorschau ohne Speicher 159 bis 197 ms, aus dem Speicher 47 bis 100 ms
+  (Hash und Kopie); Ablauf Analyse + Vorschau 358 bis 566 ms ohne, 246 bis 470 ms mit Speicher. Der Gewinn je Vorschau ist die ganze Rechnung abzüglich des Hashes; bei den im Review genannten ungünstigeren Eingaben (1,3 bis 2,7 s je Schritt) entfällt die zweite Rechnung ganz.
+- Prüfung: einmal gerechnet nach Analyse + Vorschau (Zähler 1), geänderte Zuordnung/Dienstarten/Personen rechnen neu, anderer Raum/Vorgang trifft nie, Verwerfen/Übernahme/Ablauf leeren, Grenzen 20/200, Differenz mit/ohne Speicher gleich, Schalter aus = 404.
+
 ## Offen (Entscheidung nötig)
 
 - Übernahme in den Bestand: Der Bestand kennt **einen** Zyklus je Betrieb (`m.zyklus` + Versatz je Einheit). Mehrere Modelle

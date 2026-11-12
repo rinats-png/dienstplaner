@@ -26,6 +26,8 @@
 
 import { modelleLesen, zuordnungenLesen, MODELL_FELDER, FREI } from "./schichtmodelle.mjs";
 import { zellText } from "./personen.mjs";
+import { createHash } from "node:crypto";
+import { schichtErgebnisHolen, schichtErgebnisMerken, _zaehler } from "./schichtcache.mjs";
 import { norm as bezeichnungNormalisiert, abwesend as abwesenheitsBezeichnung } from "../bezeichnungen.mjs";
 
 export const VORSCHAU_GRENZEN = Object.freeze({ zyklusTageMax: 10000, zeilenMax: 10000, zellMax: 100, modelleAnzeige: 50, zeilenJeEintrag: 20, unbekanntAnzeige: 50, dienstartenAnzeige: 30 });
@@ -152,4 +154,36 @@ export function schichtVorschau({ mandant, modellZeilen: modellRoh, zuordnungZei
   return { ok: true, zyklen, zyklenGesamt: ml.modelle.length, zuordnungen, unbekannteBezeichnungen: unbekannt.slice(0, G.unbekanntAnzeige),
     abwesenheitsartig: abw, zaehler: { ...ml.zaehler, datensaetze: ml.zaehler.gesamt, zuordnungen: zuordnungen ? zuordnungen.gesamt : 0 },
     fehlendePflicht: [], spalten: spaltenAus(ml.spalten), zuordnungSpalten };
+}
+
+/** Inhaltshash aller Eingaben, von denen das Ergebnis abhängt (Tabellen, Spaltenzuordnung, Dienstarten, Personen). Nur der Hash wird gehalten. */
+function eingabeHash({ mandant, modellZeilen, zuordnungZeilen, zuordnung }) {
+  const h = createHash("sha256");
+  const SEP = String.fromCharCode(1), NL = String.fromCharCode(10);
+  const teil = (tag, x) => { h.update(tag); h.update(JSON.stringify(x === undefined ? null : x)); h.update(SEP); };
+  const zeilen = (tag, z) => {
+    h.update(tag);
+    if (Array.isArray(z)) for (const r of z) { h.update(JSON.stringify(r === undefined ? null : r)); h.update(NL); } else h.update("-");
+    h.update(SEP);
+  };
+  zeilen("M", modellZeilen); zeilen("Z", zuordnungZeilen);
+  teil("S", zuordnung); teil("D", (mandant && mandant.dienstarten) || []); teil("P", (mandant && mandant.personen) || []);
+  return h.digest("hex");
+}
+
+/**
+ * Wie `schichtVorschau`, aber das Ergebnis wird je Raum und Vorgang im Arbeitsspeicher gehalten (schichtcache.mjs), damit die
+ * Vorschau nicht noch einmal rechnet, was die Analyse schon berechnet hat. Die Zeilenobergrenze gilt vor dem Hash und vor jeder
+ * Rechnung; nur erfolgreiche Ergebnisse werden gehalten; ein anderer Inhalt (Hash) rechnet neu.
+ * @param {{ raum: string, vorgang: string }} wo
+ */
+export function schichtVorschauMitSpeicher(wo, e, rechne = schichtVorschau) {
+  if (zuViele(e.modellZeilen) || zuViele(e.zuordnungZeilen)) return rechne(e);
+  const hash = eingabeHash(e);
+  const gehalten = schichtErgebnisHolen(wo.raum, wo.vorgang, hash);
+  if (gehalten) return gehalten;
+  _zaehler.berechnungen += 1;
+  const r = rechne(e);
+  if (r && r.ok) schichtErgebnisMerken(wo.raum, wo.vorgang, hash, r);
+  return r;
 }

@@ -309,7 +309,7 @@ auch ohne Sitzung mit **404** und `{ "fehler": "Gibt es nicht." }` (ohne `code`)
 | 503 | `VORUEBERGEHEND` | alle | Speicher vorübergehend nicht verfügbar |
 | 500 | `INTERNER_FEHLER` | alle | unerwarteter Fehler, nichts übernommen, kein Stacktrace |
 
-Schichtzyklen und Schichtmodelle (`art=schichtzyklus`, IMP-6 Teil, nur Analyse und Vorschau, nichts wird geschrieben; Rechnung in
+Schichtzyklen und Schichtmodelle (`art=schichtzyklus`, IMP-6 Teil, nur Analyse und Vorschau, nichts wird geschrieben; das Ergebnis der Analyse wird je Vorgang höchstens 30 Minuten nur im Arbeitsspeicher gehalten und mit dem Vorgang verworfen, die Vorschau rechnet bei gleichen Eingaben nicht neu, Grenzen und Bremse gelten davor, siehe IMP-6-NACHWEIS.md; Rechnung in
 `server/lib/import/schichtvorschau.mjs` über `schichtmodelle.mjs`): Ein Upload dieser Art nimmt eine Modelltabelle (`Modell | Tag | Dienst`, eine Zeile
 je Zyklustag) und optional ein zweites Blatt mit Zuordnungen (`Personalnummer | Modell | Beginn | Versatz`) an. `analyse` (Rumpf `vorgang`, optional
 `blatt` = Modellblatt, `zuordnungBlatt`, `zuordnung` = Spaltenzuordnung des Modellblatts) antwortet 200 mit `unterstuetzt: false`, `nurVorschau: true`,

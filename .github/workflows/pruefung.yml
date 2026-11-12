@@ -139,6 +139,9 @@ jobs:
       - name: Schichtmodell-Vorschau im Import, ohne Schreiben (IMP-6)
         run: npm run pruefung:import-schichtmodell-vorschau
 
+      - name: Schichtmodell-Ergebnis je Vorgang zwischengespeichert (IMP-6)
+        run: npm run pruefung:import-analyse-cache
+
       - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
         run: npm run pruefung:import-abweichungen
 
