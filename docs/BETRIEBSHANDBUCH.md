@@ -18,6 +18,7 @@ verlinkte Dokument. Es enthält keine Adressen, Zugangsdaten, Codes oder Schlüs
 | Wer sieht was | [RECHTEMATRIX.md](../RECHTEMATRIX.md) |
 | Handbuch je Rolle | [handbuch/README.md](handbuch/README.md) |
 | Vorlage der Laufzeitumgebung | [.env.example](../.env.example) |
+| Import von Personal- und Schichtdaten aus Dateien (Funktion bleibt aus) | Abschnitt 6 dieses Handbuchs |
 | Freigegebene Bilder | [deploy/FREIGEGEBENE-IMAGES.md](../deploy/FREIGEGEBENE-IMAGES.md) |
 
 ## 1. Architektur in Kürze
@@ -234,3 +235,191 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
 
 Der Verlust eines Codes ist kein Notfall: zurückziehen, neu anlegen. Der Verlust des Pfeffers ist einer:
 ohne ihn ist keine Sicherung mehr gegenprüfbar und kein Code mehr gültig.
+
+## 6. Import von Personal- und Schichtdaten aus Dateien (Funktion bleibt aus)
+
+Stand 2026-11-12. Maßgeblich sind der Parser-Vertrag [acc45/IMPORT-VERTRAG.md](acc45/IMPORT-VERTRAG.md), die Testmatrix
+[acc45/IMP-8-TESTMATRIX.md](acc45/IMP-8-TESTMATRIX.md) und der Quelltext; dieser Abschnitt fasst nur zusammen, was der Betreiber
+zum Ein- und Ausschalten, zu den Grenzen, zum Protokoll und zu den Fehlermeldungen wissen muss. Für die Leitung gibt es ein eigenes
+Kapitel im Handbuch der Anwendung („Import von Personal- und Schichtdaten“); es sagt ausdrücklich, dass die Funktion erst mit der
+Freigabe des Betreibers zur Verfügung steht.
+
+### 6.1 Was ausgeliefert ist und was nicht
+
+| Baustein | Stand |
+|---|---|
+| Parser (IMP-2), `server/lib/import/parser*.mjs` | im Server, läuft je Datei in einem eigenen Kindprozess |
+| Personalimport (IMP-3, IMP-5), `server/funktionen/import.mjs` | Endpunkte `/api/import/upload`, `analyse`, `vorschau`, `uebernahme`, `verwerfen`; **aus**, solange `CENTRIC_IMPORT_AKTIV` nicht genau `true` ist (jeder Weg antwortet 404) |
+| Oberfläche „Personal aus Datei importieren“ (IMP-4), `src/ansichten/import-datei.jsx` | **aus**: wird nicht angezeigt, solange die Anzeigekonstante `IMPORT_DATEI_AKTIV` den Wert `false` hat |
+| Schichtmodelle und Schichtzyklen (IMP-6), `schichtmodelle.mjs`, `schichtpruefung.mjs` | nur Bibliothek: kein Endpunkt, keine Oberfläche. Wählt jemand am Endpunkt die Art `schichtzyklus`, antworten `analyse` und `vorschau` mit „unterstuetzt: false“, `uebernahme` mit 422 `ART_NICHT_FREIGEGEBEN`; es wird nichts geschrieben |
+| KI-Unterstützung der Spaltenzuordnung (IMP-9), `ki-schnittstelle.mjs` | nicht verdrahtet; kein Server und kein Import ruft sie auf; der Import arbeitet vollständig ohne KI (IMPORT-VERTRAG §13) |
+| Testmatrix (IMP-8) | 20 Fälle mit synthetischen Dateien, `npm run pruefung:imp8-testmatrix`; Browser-Ende-zu-Ende-Prüfung bei allen Fällen offen, weil die Oberfläche aus ist |
+
+**Zwei Schalter, nur einer schützt den Server:** `CENTRIC_IMPORT_AKTIV` ist **der** Serverschalter (Umgebungsvariable, Vorgabe aus,
+nur genau `true` schaltet ein, alles andere bleibt aus). Ist er aus, antwortet jeder Weg `/api/import/*` mit 404, bevor ein Rumpf gelesen,
+ein Parser gestartet oder etwas gespeichert wird. `IMPORT_DATEI_AKTIV` ist dagegen eine reine Anzeigekonstante im Quelltext
+(`src/lib/import-schnittstelle.js`); sie steuert nur, ob die Oberfläche den Dialog zeigt, und schützt den Server **nicht**. Daneben gibt es in
+der Oberfläche den bisherigen Weg „Personal importieren“ durch Einfügen von Text aus der Zwischenablage; er ist ein anderer Weg, hat keinen
+Dateiupload und wird von diesem Abschnitt nicht berührt.
+
+### 6.2 Schalter und Umgebungsvariablen
+
+| Name | Art | Wirkung | Vorgabe |
+|---|---|---|---|
+| `CENTRIC_IMPORT_AKTIV` | Umgebungsvariable, **Serverschalter** | Nur genau `true` schaltet alle Wege `/api/import/*` ein; alles andere (`TRUE`, `1`, leer) bleibt aus und ergibt 404. Beschreibung in der Tabelle „Funktionen“ in Abschnitt 2 und in `.env.example` | aus |
+| `IMPORT_DATEI_AKTIV` | Quelltextkonstante (`src/lib/import-schnittstelle.js`), nur Anzeige | `true` zeigt in „Personal importieren“ den Weg „aus Datei“ und gibt der Oberfläche die Schnittstelle zu `/api/import`; `false`: keine Aufrufe der Oberfläche. Schützt den Server nicht | `false` |
+| `CENTRIC_IMPORT_ADRESSRAUM_KB` | Umgebungsvariable | Adressraum-Limit des Parser-Kindprozesses in KB, **nur Linux**. Beschreibung, Klemmen auf 4 GB, `0` und ungültige Werte siehe Tabelle „Funktionen“ in Abschnitt 2 | `1500000` |
+
+Weitere Umgebungsvariablen für den Import gibt es nicht. Alle übrigen Grenzen sind feste Werte im Code und lassen sich nicht über die Umgebung ändern; der Endpunkt reicht
+keine Werte aus der Anfrage an den Parser durch.
+
+### 6.3 Grenzen (fest im Code)
+
+| Grenze | Wert | Folge bei Überschreitung |
+|---|---|---|
+| Dateigröße | 10 MB (Rumpfgrenze des Servers für `upload` ebenfalls 10 MB) | 413 `DATEI_ZU_GROSS` |
+| Entpackte Größe (xlsx ist ein ZIP-Archiv) | 100 MB insgesamt; Kompressionsverhältnis höchstens 100 : 1; höchstens 1000 Archiv-Einträge | `ENTPACKT_ZU_GROSS`, `KOMPRESSION_VERDAECHTIG` |
+| Datenzeilen je Blatt | 20.000 ohne Kopfzeile | `ZU_VIELE_ZEILEN` |
+| Spalten je Blatt | 200 | `ZU_VIELE_SPALTEN` |
+| Tabellenblätter | 20 | `ZU_VIELE_BLAETTER` |
+| Zellen insgesamt | 4.000.000 | `ZU_VIELE_ZELLEN` |
+| Text je Zelle / Text insgesamt | 32.767 Zeichen / 100 Mio. Zeichen (Blattnamen höchstens 31 Zeichen) | `TEXT_ZU_GROSS` bzw. `BESCHAEDIGT` |
+| Verarbeitungszeit je Datei | 20 Sekunden Wandzeit, dann wird der Kindprozess hart beendet | `ZEITLIMIT` |
+| Arbeitsspeicher des Kindprozesses | Heap 256 MB; unter Linux zusätzlich Adressraum-Limit (6.2) | `SPEICHERLIMIT` |
+| Ergebnis des Kindprozesses | höchstens 128 MB | `TEXT_ZU_GROSS` |
+| Gleichzeitige Parser | prozessweit 2, je Betrieb (Raum) 1; weitere Uploads werden sofort abgewiesen, nicht eingereiht | 503 `ZU_VIEL_GLEICHZEITIG` (Header `retry-after: 5`) |
+| Offene Importvorgänge | 3 je Betrieb (Raum), 20 insgesamt; der Platz wird vor dem Lesen der Datei belegt | 429 `ZU_VIELE_VORGAENGE` |
+| Lebensdauer eines Vorgangs | 30 Minuten ohne Zugriff, höchstens 2 Stunden ab Upload; ein Neustart des Servers verwirft alle offenen Vorgänge | Vorgang „nicht gefunden“ (404), die Datei wird neu hochgeladen |
+| JSON-Anfragen (`analyse`, `vorschau`, `uebernahme`, `verwerfen`) | 2 MB | 400 `RUMPF_UNGUELTIG` bzw. 413 aus `server.mjs` |
+| Anfragebremse | Art „schreiben“: 120 Anfragen je 60 Sekunden und Kennung, gilt für `upload` und `uebernahme` | 429 „zu viele Anfragen“ |
+| Wiederholschutz je Datei und Betrieb | 30 Tage | 409 `DATEI_BEREITS_UEBERNOMMEN` |
+
+**Isolation des Parsers:** Jede Datei wird in einem eigenen Node-Kindprozess gelesen (`--max-old-space-size=256`,
+`--disallow-code-generation-from-strings`, ohne Shell-Option, ohne die Umgebungsvariablen des Servers, ohne Netz und ohne Schreiben von
+Dateien). Ein Absturz oder Überlauf beendet nur das Kind; der Server läuft weiter und antwortet mit `SPEICHERLIMIT` oder
+`VERARBEITUNG_FEHLGESCHLAGEN`. Unter Linux wird das Adressraum-Limit über die Shell (`ulimit -v`, dann `exec node`) gesetzt; lässt es
+sich nicht setzen, wird die Datei nicht verarbeitet (fail closed). **Windows und macOS (nur Entwicklung) laufen ohne Adressraum-Limit.**
+Pro Datei ist mit etwa 0,3 bis 0,6 s zusätzlicher Startzeit zu rechnen (Messung auf einem Windows-Entwicklungsrechner, IMPORT-VERTRAG §4).
+Der Linux-Test für das Adressraum-Limit (`H1 (nur Linux)` in `pruefungen/import-parser.test.js`) ist laut Vertrag noch nicht auf Linux gelaufen.
+
+### 6.4 Voraussetzungen und sicheres Einschalten
+
+Die Funktion wird erst eingeschaltet, wenn **alle** folgenden Punkte erfüllt und beim Betreiber festgehalten sind. Die ersten drei sind
+organisatorische Freigaben, die der Code nicht prüft.
+
+1. **Datenschutz:** Die Verarbeitung von Personaldaten aus Dateien ist datenschutzrechtlich freigegeben (Verarbeitungsverzeichnis,
+   Auftragsverarbeitung, Bewertung nach Art. 35 DSGVO). Die Entscheidungen **E-25** (Anbieter, Auftragsverarbeitung, Nullspeicherung,
+   Drittland) und **E-26** (Datenschutz-Folgenabschätzung) betreffen die KI-Unterstützung (IMP-9) und sind Bedingung jeder produktiven
+   Anbindung einer KI. Der deterministische Import braucht keine KI und ruft keinen Anbieter auf; solange E-25 und E-26 nicht erteilt sind,
+   bleibt IMP-9 aus.
+2. **Mitbestimmung:** Ist ein Betriebsrat vorhanden, ist die Einführung mit ihm geklärt; der Betriebsrat selbst darf den Import nicht
+   verwenden (6.5).
+3. **IMP-9-Neuprüfung (IMPORT-VERTRAG §13):** Vor jeder Verdrahtung der KI-Schnittstelle und vor jeder Erteilung von E-25 oder E-26 wird
+   §13 neu geprüft (Port nur mit Notschalter, Freigabe-Gate und Vermerk zu E-25/E-26; Minimierung; Ergebnis nur als Vorschlag).
+4. **Technisch:** Das Image enthält den Stand mit Parser-Kindprozess; unter Linux gilt ein Adressraum-Limit (6.2); die Testmatrix
+   (`npm run pruefung:imp8-testmatrix`) und die Importprüfungen sind grün; die Auslieferung folgt dem üblichen Weg (Abschnitt 4).
+5. **Probe zuerst mit Testdaten:** erst in einem Testbetrieb mit ausgedachten Personen (zum Beispiel „Testperson 01“), nie mit echten
+   Personaldaten.
+
+**Einschalten** erfolgt in zwei getrennten Schritten, beide erst nach den Punkten 1 bis 5: (a) auf dem Server `CENTRIC_IMPORT_AKTIV=true`
+in der `.env` und Neustart des Dienstes; erst dann nehmen die Wege `/api/import/*` Anfragen an. (b) Soll die Oberfläche den Weg „aus Datei“ zeigen,
+`IMPORT_DATEI_AKTIV` in `src/lib/import-schnittstelle.js` auf `true`, danach der übliche Weg über Prüfung, Image und Freigabe
+([DEPLOY-AUTOMATISIERUNG.md](DEPLOY-AUTOMATISIERUNG.md)). Die Quelltext-Prüfungen `pruefungen/import-oberflaeche-imp4.test.js` und
+`pruefungen/imp8-testmatrix.test.js` nennen die Anzeigekonstante und sind dabei mit zu beachten; den Serverschalter belegt
+`pruefungen/import-schalter.test.js`.
+
+**Ausschalten:** `CENTRIC_IMPORT_AKTIV` entfernen oder auf einen anderen Wert als `true` setzen und den Dienst neu starten; alle Wege antworten wieder 404, auch für einen offenen Vorgang. Die Anzeigekonstante lässt sich zusätzlich auf `false` setzen (neues Image). Bereits übernommene Personen
+bleiben, denn sie sind gewöhnliche Einträge im Personalbestand; **eine Funktion „Import rückgängig“ gibt es nicht**. Wer eine Übernahme
+korrigieren will, ändert oder löscht die Personen einzeln in der Anwendung oder stellt eine Sicherung wieder her
+([RESTORE-ANLEITUNG.md](RESTORE-ANLEITUNG.md)). Die Übernahme selbst ist „ganz oder gar nicht“; bei einem Fehler vor dem Schreiben bleibt
+der alte Stand.
+
+### 6.5 Rechte
+
+Nach `RECHTEMATRIX.md` und `server/funktionen/import.mjs` (bei eingeschaltetem Serverschalter): Den Import verwenden dürfen nur **Leitung** und **Planung** (Recht
+`staff.edit` mit vollem Schreibumfang). Neue Einheiten, Standorte und Qualifikationen legt der Import zusätzlich nur mit `org.edit` an
+(Leitung); ohne dieses Recht antwortet der Server mit 403 `ORG_EDIT_FEHLT` und schreibt davon nichts. Betreiber, die alte Rückfallrolle
+„kunde“ (Zugang ohne Person), Schichtverantwortung, Beschäftigte und Betriebsrat erhalten 403 `KEINE_BERECHTIGUNG`; ohne Sitzung 401.
+Der Betrieb kommt nur aus der Sitzung; ein Vorgang eines anderen Betriebs, Raums oder einer anderen Person ist „nicht gefunden“ (404).
+Fremde Herkunft einer Anfrage: 403 `HERKUNFT`.
+
+### 6.6 Was protokolliert wird (keine Personendaten)
+
+Jeder Schritt schreibt eine Zeile in die Betriebsspur (`protokoll("import", …)`, siehe [BETRIEB-UEBERWACHUNG.md](BETRIEB-UEBERWACHUNG.md)):
+Zeit, Art `import`, Ausgang (`hochgeladen`, `abgewiesen`, `verworfen`, `erfolg`, `fehler`), Kennung des Betriebs als Hashwert, Rolle,
+betriebsinterne Personenkennung der handelnden Person, Weg (`import/upload` usw.), Herkunft als Kürzel, Betriebs-Id und ein kurzer Text
+aus Zahlen und Codes, zum Beispiel „Format xlsx · 1 Blätter · 40 Datenzeilen“, „Datei: ZU_VIELE_ZEILEN“ oder „neu 12 · aktualisiert 3 ·
+übersprungen 1 · Einheiten neu 0 · Standorte neu 0“. **Nie** enthalten sind Dateiname, Zellinhalt, Name, E-Mail oder ein Stacktrace;
+Fehlermeldungen nennen Felder, keine Werte. Die Datei selbst wird nur im Arbeitsspeicher gelesen und danach verworfen; der Importvorgang
+(Rohinhalt, Analyse, Plan) liegt nur im Arbeitsspeicher und wird nach der Übernahme, beim Verwerfen, nach 30 Minuten ohne Zugriff oder
+spätestens nach 2 Stunden gelöscht. Dauerhaft bleibt nur der Wiederholschutz: ein Eintrag `importerledigt:…` (30 Tage) mit einem
+abgeleiteten Schlüssel aus Betrieb und Hashwert der Datei, dem Zeitpunkt, der Personenkennung und den Zahlen. Die Übernahme erscheint
+außerdem im Journal des Bestands mit „durch: Import“.
+
+### 6.7 Fehlercodes, Bedeutung und Abhilfe
+
+Die Meldung zum Code steht im Feld `fehler` der Antwort (Parser-Fehler: der Satz des Parsers) und ist für die Anzeige am Bildschirm
+gedacht. Fehlt `code` in der Antwort (z. B. bei der allgemeinen Anfragebremse), zeigt die Oberfläche „Der Import ist fehlgeschlagen.“
+
+**Datei und Parser (HTTP 422, bei Größe 413):**
+
+| Code | Bedeutung | Abhilfe |
+|---|---|---|
+| `LEER` | Datei leer, nur Leerraum oder ohne Daten | richtige Datei wählen |
+| `DATEI_ZU_GROSS` | über 10 MB | Datei teilen oder verkleinern |
+| `UNBEKANNTES_FORMAT` | weder xlsx, xls noch lesbarer Text (CSV/TSV); Binärdatei, UTF-16-Text | als xlsx oder als CSV in UTF-8 speichern |
+| `NICHT_UNTERSTUETZT` | ODS (OpenDocument), xlsm (Makros), xlsb, Vorlagen, Add-ins, Numbers, ZIP64, mehrteilige Archive, OLE ohne Tabellenstrom | als xlsx (ohne Makros) oder CSV speichern |
+| `PASSWORTGESCHUETZT` | Datei verschlüsselt | ohne Passwort speichern |
+| `BESCHAEDIGT` | Datei nicht lesbar oder widersprüchlich aufgebaut | in Excel öffnen und neu speichern |
+| `ENTPACKT_ZU_GROSS`, `KOMPRESSION_VERDAECHTIG` | Schutzgrenze gegen präparierte Archive (ZIP-Bomben) | Datei prüfen; echte Tabellen erreichen die Grenzen nicht |
+| `ZU_VIELE_ZEILEN`, `ZU_VIELE_SPALTEN`, `ZU_VIELE_BLAETTER`, `ZU_VIELE_ZELLEN`, `TEXT_ZU_GROSS` | Grenzen aus 6.3 überschritten | Datei verkleinern oder aufteilen |
+| `ZEITLIMIT` | Verarbeitung länger als 20 Sekunden, Kindprozess beendet | kleinere oder einfachere Datei; häufiges Auftreten dem Betreiber melden |
+| `SPEICHERLIMIT` | Kindprozess hat sein Speicherlimit erreicht | wie `ZEITLIMIT`; Adressraum-Limit nicht ohne Grund erhöhen |
+| `VERARBEITUNG_FEHLGESCHLAGEN` | unklarer Abbruch des Kindprozesses (auch: Adressraum-Limit unter Linux nicht setzbar, fail closed) | Wiederholen; bei Dauerfehler Serverprotokoll und `CENTRIC_IMPORT_ADRESSRAUM_KB` prüfen |
+| `EINGABE_UNGUELTIG` | keine Datei übergeben (nur intern) | nicht von der Oberfläche auslösbar |
+
+**Endpunkt (Ablauf und Auslastung):**
+
+| Code (HTTP) | Bedeutung | Abhilfe |
+|---|---|---|
+| `NICHT_ANGEMELDET` (401) | keine Sitzung | anmelden |
+| `HERKUNFT` (403) | Anfrage nicht von der Anwendung | nur über die Anwendung arbeiten |
+| `KEINE_BERECHTIGUNG` (403) | Rolle darf nicht importieren, oder die Rolle darf die Übernahme nicht schreiben | mit Leitung oder Planung anmelden |
+| `ORG_EDIT_FEHLT` (403) | „Fehlende Einheiten … anlegen“ gewählt ohne Recht `org.edit` | Leitung anlegen lassen oder Häkchen entfernen |
+| `NICHT_GEFUNDEN` (404) | Vorgang abgelaufen, fremd oder bereits verworfen | Datei erneut hochladen |
+| `ART_UNBEKANNT` (400), `FORMAT_DER_ANFRAGE` (415), `RUMPF_UNGUELTIG` (400) | fehlerhafte Anfrage (nicht von der Oberfläche auslösbar) | Fehler melden |
+| `ZU_VIELE_VORGAENGE` (429) | 3 offene Vorgänge im Betrieb oder 20 insgesamt | offene Vorgänge abschließen oder 30 Minuten abwarten |
+| `ZU_VIEL_GLEICHZEITIG` (503) | Parser des Betriebs oder des Servers ausgelastet | nach einigen Sekunden erneut |
+| `VORUEBERGEHEND` (503) | Ablage kurz nicht erreichbar | nach einigen Sekunden erneut |
+| `INTERNER_FEHLER` (500) | unerwarteter Fehler; es wurde nichts übernommen | Serverprotokoll (Eintrag `fehler`, `import`) prüfen |
+| `BLATT_UNGUELTIG`, `ZUORDNUNG_UNGUELTIG` (422) | Blatt oder Spaltenzuordnung gibt es nicht | in der Oberfläche neu wählen |
+| `ANALYSE_FEHLT` (409), `VORSCHAU_FEHLT` (409), `BESTAETIGUNG_UNGUELTIG` (409) | Reihenfolge Analyse, Vorschau, Übernahme nicht eingehalten | Schritte der Reihe nach ausführen |
+| `PFLICHTSPALTE_FEHLT` (422) | Nachname, Vorname oder Einheit nicht zugeordnet | Spalte zuordnen |
+| `ENTSCHEIDUNG_UNZULAESSIG` (422) | Wahl bei einem Datensatz nicht erlaubt | Wahl ändern |
+| `AKTUALISIERUNG_OHNE_BESTAETIGUNG` (422) | „Aktualisieren“ ohne ausdrückliche Bestätigung je Person | bestätigen oder anders wählen |
+| `ZUORDNUNGSKONFLIKT` (422) | Einheit, Standort oder Qualifikation im Betrieb nicht vorhanden | zuordnen, mit Leitung anlegen oder überspringen |
+| `ART_NICHT_FREIGEGEBEN` (422) | Schichtzyklen sind nicht übernehmbar | nicht verwendbar |
+| `VORSCHAU_VERALTET` (409) | Bestätigung gehört nicht zur aktuellen Vorschau oder der Bestand hat sich geändert; nichts geändert | Vorschau neu erstellen |
+| `UEBERNAHME_LAEUFT`, `LAEUFT_BEREITS` (409) | Übernahme läuft schon (Doppelklick, zweiter Tab) | Ergebnis abwarten |
+| `BEREITS_UEBERNOMMEN` (409), `DATEI_BEREITS_UEBERNOMMEN` (409) | Vorgang oder Datei in den letzten 30 Tagen für diesen Betrieb schon übernommen | nichts tun; die Antwort nennt Zeit und Zahlen |
+| `NICHTS_ZU_UEBERNEHMEN` (422) | nach der Auswahl bleibt kein Datensatz | Wahlen ändern |
+| `FACHPRUEFUNG` (409) | die Übernahme würde Prüfbefunde im Plan auslösen | Einteilungen prüfen |
+| `STANDORT_UNGUELTIG`, `GESTALT` (422) | Ergebnis wäre ungültig; nichts geändert | Fehler melden |
+| `KONFLIKT` (409) | jemand hat inzwischen gespeichert; nichts geändert | Vorschau neu erstellen |
+| `SCHREIBEN_FEHLGESCHLAGEN` (503) | Schreiben nicht erfolgt; nichts geändert | später erneut |
+| `SCHREIBEN_UNKLAR` (500) | Ausgang des Schreibens ungewiss | **Personalbestand prüfen**, bevor erneut übernommen wird; Hinweis im Protokoll |
+| `UEBERNAHME_ABGEBROCHEN`, `INTERNE_PRUEFUNG` (500) | Abbruch vor dem Schreiben bzw. Sicherheitsprüfung hat die Übernahme gestoppt; nichts geändert | Fehler melden |
+
+Hinweise zu Dateien (kein Fehler, die Datei wird gelesen): `ENDUNG_ABWEICHEND`, `ZEICHENSATZ_ERSATZ` (Windows-1252 angenommen),
+`DATUMSSYSTEM_1904` (umgerechnet), `LEERE_ZEILEN_ENTFERNT`, `LEERE_SPALTEN_ENTFERNT`, `LEERES_BLATT`, `AUSGEBLENDETES_BLATT`,
+`EXTERNE_VERWEISE_IGNORIERT`, `MAKROS_VERWORFEN`, `EINGEBETTETE_OBJEKTE_IGNORIERT`.
+
+### 6.8 Bekannte Abweichungen zwischen Beschreibung und Code
+
+Diese Punkte sind beobachtet, nicht geändert; die Tabellen oben beschreiben das Verhalten des Codes.
+
+- Der Text der Oberfläche (`src/ansichten/import-datei.jsx`) nennt „Excel-, ODS- oder CSV-Datei“ und lässt im Dateidialog `.xlsm` und
+  `.ods` zu; der Parser lehnt beide ab (`NICHT_UNTERSTUETZT`, IMPORT-VERTRAG §11).
+- Der Kommentar im Quelltext (`import-schnittstelle.js`) beschreibt den Endpunkt als noch nicht integriert; er ist integriert und über `CENTRIC_IMPORT_AKTIV` geschaltet (6.1).
+- Die Codes des Endpunkts (6.7, zweite Tabelle) stehen nicht im Parser-Vertrag §9; maßgeblich ist `server/funktionen/import.mjs` mit
+  `IMP-3-NACHWEIS.md`.
