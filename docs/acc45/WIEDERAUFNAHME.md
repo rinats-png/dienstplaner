@@ -1,7 +1,36 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #215, Hauptchat aktiv, Lease Epoche 8)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #223, Integrationskopf 55b030bb, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #223 (2026-11-12)
+- Integrationskopf: `55b030bb` (Merge #219). Seit dem letzten SSOT-Stand (#216) gemergt: #217 WP-33 Teil (Sammelprüfung: `werkzeug/sammelpruefung.mjs`, `pruefungen/sammelpruefung-bekannt.json`, `docs/acc45/TESTINFRASTRUKTUR.md`), #218 WP-I24 Teil 1 (Änderungsübersicht, Schalter aus), #219 WP-I23 Teil 1 (Hilfe-Assistent, Schalter `CENTRIC_HILFE_ASSISTENT` aus), #220 SSOT Bereitschaftsanalyse (`BEREITSCHAFTSANALYSE-2026-11-12.md`), #221 WP-40 Teil (Browser-Abnahme, `WP-40-BEFUNDE.md`), #222 WP-I20 Teil 1 (Ausfall-Vorschlag, Schalter aus), #223 WP-16c Teil (Messung Korrekturpfad, `WP-16c-MESSUNG.md`).
+- SSOT-Stand dazu: WP-33 und WP-40 IN_PROGRESS (Teil-PR, PR vermerkt); WP-16c bleibt REVIEW (PR #223 vermerkt, Stufen unverändert); WP-I24, WP-I23, WP-I20 IN_PROGRESS (Teil 1). `ssot-nach-integration.mjs` hatte WP-33, WP-40 und WP-16c wegen der Titelform fälschlich auf INTEGRATED gesetzt; von Hand zurückgenommen. Kein Teil-PR-Paket ist INTEGRATED.
+- Noch nicht gemergt, nicht vermerkt: #224 (WP-48.3).
+
+## Offene Entscheidungen für den Betreiber (Stand 2026-11-12)
+- WP-33: neue devDependencies `@playwright/test` und `@axe-core/playwright` für die e2e- und axe-Suite zulassen (Betreiber/Koordinator).
+- WP-I23: fachliche Freigabe der 25 Korpus-Inhalte; ob `suche` für Piloten sichtbar ist; Gesundheitstexte für das Modell gesperrt bestätigen.
+- Ruhezeit und Zeitumstellung (DST) im Near-Miss/Spielraum gegenüber dem Befund: Engine-Frage (WP-I20).
+- Betriebsratsmitglieder als Ersatzkandidaten: der Rechenkern schließt sie heute ein; Entscheidung nötig.
+- WP-I24: Ablage des Seit-letztem-Besuch-Standes, Sicht für Mitarbeitende, Umfang der Planer-Sicht ("nur eigener Bereich" oder ganzer Betrieb), Verhalten an der 400-Personen-Grenze.
+- WP-16c: leere Differenz bei reiner Ist-Zeit-Änderung ohne Planwirkung (Mehrarbeit nur bei positivem Konto) fachlich bestätigen.
+- WP-14c: Fachentscheidung F6a/F6b.
+- Direkt-Merge-Pakete ohne PR (WP-15, WP-16c, WP-14c, WP-16b, WP-07b, sechs WP-19-Module) sowie WP-16, WP-19.0, WP-30, WP-48.1/2 (PR-Beleg über `centric-complete`): Entscheidung, ob INTEGRATED gesetzt wird (siehe `BEREITSCHAFTSANALYSE-2026-11-12.md` §7).
+- IMP-8: Fallliste (20 Fälle) bestätigen, da `IMPORT-PLAN.md` fehlt.
+- `werkzeug/kunde-abloesen.mjs` auf Produktion ausführen (Freigabe nötig).
+- E-9: Anbieter-Einrichtung vor echtem Mail-/Push-Versand.
+- Branch-Schutz für `koordination/lease`, `integration/release-v4`, `main` setzen (`BETREIBER-BRANCHSCHUTZ.md`).
+- PR #175 schließen (durch #179 ersetzt).
+- wp40-Frage 6 (Kartenansicht statt Tabellenscroll) bestätigen.
+- OPT-4: Entscheidungen E1 bis E4 (`OPT-4-WR-2-LUECKEN.md`).
+- I.5 (alleiniges Betreiberkonto) und I.6 (Art der Zweitfreigabe) für WR-4/WR-5.
+
+## Nächste technische Schritte (Klasse A/B laut BEREITSCHAFTSANALYSE, keine neue Entscheidung)
+- A: WP-I20 weiter: HTTP-Einbindung mit Obergrenze Personenzahl, einheitliches `ruhezeit.ist`, Golden um Ruhezeit-/Folgegrenzen (#174).
+- B: WP-I22, WP-I23, WP-I24: `Buffer.byteLength` durch `TextEncoder` ersetzen (`schemas.mjs:327`), `KiAntwort` hinter Schalter einhängen, gegen Attrappe; live erst nach E-25.
+- B: WP-I29, WP-I30, WP-I31 gegen die Attrappe; WP-I19 Übernahme-Logik mit Vorschau; WP-I16 Transparenzansicht; WP-I18 technische Auflagen aus Review #146.
+- B: WP-48.3 (PR #224) mit Auflage §7; WP-40 Browser-Nachmessung; WP-21 fehlende Viewports; WP-30 Nachprüfung F1 bis F8; IMP-6 Vorschau in `/api/import`; OPT-2 hinter Schalter; WP-PILOT Seeds SD-P/SD-S; WP-I4 ohne Betriebsrat-Sicht.
 
 ## Nachtlauf-Zusatz 3 (2026-11-11 ca. 09:40Z, geplanter Cloud-Lauf)
 - Integrationskopf: c3a7265 (Merge #198 WR-6 Oberflaeche, ausgeliefert hinter ausgeschaltetem Schalter). Lease `cloud-nachtaufgabe`, Epoche 7 (Vorgaenger hauptchat Epoche 6, seit 08:23Z abgelaufen; letzte Hauptchat-Aktivitaet 07:24 MEZ). Hauptchat uebernimmt bei Rueckkehr nur nach `freigeben --epoche 7`.
@@ -56,7 +85,7 @@ Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
-- Integration: `integration/release-v4`, Kopf 80f99de3 (Merge #215 IMP-8, 2026-11-12; davor #214 Nachtdienst ohne Einstempeln, #213 WP-21-SV, #212 SSOT, #211 WP-21 Teil 3 (b7271fb3), #210 Smoke Tageswechsel, #209 SI-P4 Passwortfelder, #208 SSOT, #207 RB-5, #206 RB-3, #205 RB-4, #204 SSOT, #202 RB-2, #199 RB-1, #198 WR-6). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
+- Integration: `integration/release-v4`, Kopf 55b030bb (Stand nach #223; davor 80f99de3 (Merge #215 IMP-8, 2026-11-12; davor #214 Nachtdienst ohne Einstempeln, #213 WP-21-SV, #212 SSOT, #211 WP-21 Teil 3 (b7271fb3), #210 Smoke Tageswechsel, #209 SI-P4 Passwortfelder, #208 SSOT, #207 RB-5, #206 RB-3, #205 RB-4, #204 SSOT, #202 RB-2, #199 RB-1, #198 WR-6)). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
 - `main`: 0423eeac. Kein Design-Release nach main ohne Betreiberfreigabe.
 - V4-Staging: `public/sw.js` hat auf der Integration `FASSUNG = "__CENTRIC_BUILD__"` (Platzhalter), auf `main` `"v4"`; die frühere Angabe "v5" war falsch. Betreiber bestätigt, welcher Stand angenommen wird (siehe `docs/acc45/STAGING-ABNAHME-V4.md`).
 
@@ -70,7 +99,7 @@ Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne
 - #104 "[NICHT INTEGRIEREN]": Referenz, nicht mergen.
 
 ## Abgeschlossen in dieser Sitzung (gemergt)
-#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #178 #179 #180 #181 #182 #183 #184 #185 #186 #187 #188 #189 #190 #191 #192 #193 #194 #195 #196 #197 #198 #199 #200 #201 #202 #204 #205 #206 #207 #208 #209 #210 #211 #212 #213 #214 #215
+#123 #130 #131 #132 #133 #134 #136 #137 #138 #140 #141 #142 #143 #144 #145 #146 #147 #148 #149 #150 #151 #152 #153 #154 #155 #156 #157 #158 #159 #160 #161 #162 #163 #165 #166 #167 #169 #170 #171 #172 #173 #174 #176 #178 #179 #180 #181 #182 #183 #184 #185 #186 #187 #188 #189 #190 #191 #192 #193 #194 #195 #196 #197 #198 #199 #200 #201 #202 #204 #205 #206 #207 #208 #209 #210 #211 #212 #213 #214 #215 #217 #218 #219 #220 #221 #222 #223
 (#214 Nachtdienst ohne Einstempeln: serverseitig richtig (Ende auf den Nachtdienst von gestern, START_FEHLT, kein erfundener Beginn, Ist-Zeit bleibt Planzeit bis zur Korrektur, Auflösung per Korrekturantrag); Oberflächenbefunde behoben (vorbelegte Pause wird nicht mehr ungesehen gesendet, Stempeluhr am Rechner auch ohne Dienst heute). #215 IMP-8 synthetische Testdateien und Testmatrix: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde; SSOT IMP-8 IN_PROGRESS, nicht INTEGRATED. #212 SSOT-Nachführung nach #211, #213 WP-21-SV: Absturz der Startseite bei Nachtdienst von gestern ohne Einstempeln behoben (stempelVorgang liefert dort st null; Übergabe und Krankmeldung der Schichtverantwortung wieder erreichbar), Kopf 08053018. Nachprüfung 2026-11-12 (Branch fix/nachtdienst-ohne-einstempeln): der Pfad „Dienstende stempeln“ ist serverseitig richtig (Ende beim Nachtdienst von gestern, START_FEHLT, kein erfundener Beginn, keine Erfassung, Auflösung per Korrekturantrag); zwei Oberflächenbefunde behoben (ungesehene Pause beim Dienstende ohne Beginn, fehlende Stempeluhr am Rechner ohne Dienst heute), `npm run pruefung:nachtdienst-ohne-einstempeln`. SSOT: WP-21-SV INTEGRATED, WP-21 bleibt IN_PROGRESS (automatische Nachführung zurückgenommen). #208 SSOT-Nachführung, #209 SI-P4 Passwortfelder im Betreiber-2FA-Block (wie WR-6; Codefelder `one-time-code` mit `inputMode` text, da 16-stellige Wiederherstellungscodes Buchstaben enthalten; Ausweisfelder `type=password` und `autoComplete=new-password`; gemeinsame `src/lib/eingabefelder.js`), #210 Smoke: Tageswechsel zwischen Skript und Server (der Staging-Smoke fror "heute" beim Start ein und schlug einmal fehl, als ein Lauf Mitternacht Berlin überschritt; er leitet die Tage jetzt aus `laufenderTag` ab und wartet kurz vor Mitternacht), #211 WP-21 Teil 3 Bedienabläufe auf kleinen Bildschirmen (35 Render-Prüfungen bei 360/390/768/844x390; Teilmessung in Edge: Leitung Plan freigeben 2/2 (B16 behoben), Leitung/Planung Krankmeldung und Planung Übergabe bestanden), #189 WIEDERAUFNAHME und Merge-Helfer, #190 WP-I12 auf INTEGRATED (Koordinator-Entscheidung nur für dieses Paket), #191 WR-3 Verlust-Schnittstelle (ausgeliefert aus), #192 WP-21 Teil 2, #169 SSOT-Belege, #170 atomare Lease und REST-Abgleich, #171 SSOT-Abgleich REST-Ausweichweg, #172 Doku Legal-Teil A, #173 V4-Abnahme-Checkliste, #174 WP-I12a Rechenkern, #176 WP-35 Darstellung, #178 V4-Staging-Voraussetzungen, #179 OPT-1-F inklusive OPT-1/#166, #180 Branchschutz-Prüfer und Betreiberanleitung, #181 und #184 und #188 SSOT-Nachführung, #182 OPT-4 (Teilumfang) und WR-2, #183 WP-21 Teil 1, #185 IMP-6 Bibliothek, #186 CI-Abdeckung samt Wächter, #187 IMP-5 und IMP-9.)
 
 **Offener Betreiberpunkt (IMP-8):** `docs/acc45/IMPORT-PLAN.md` existiert im Repo nicht. Die 20 Fälle sind aus `IMPORT-VERTRAG.md` und dem IMP-1-Nachweis rekonstruiert (Herleitung in `docs/acc45/IMP-8-TESTMATRIX.md`). Betreiber/Koordinator bestätigt, dass diese Fallliste die Anforderungsliste abdeckt; erst danach IMP-8 auf INTEGRATED.

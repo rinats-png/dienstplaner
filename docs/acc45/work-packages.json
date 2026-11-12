@@ -3,10 +3,10 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 194,
   "statusZaehlung": {
-    "BLOCKED": 80,
+    "BLOCKED": 77,
     "READY": 16,
-    "IN_PROGRESS": 8,
-    "REVIEW": 9,
+    "IN_PROGRESS": 13,
+    "REVIEW": 7,
     "INTEGRATED": 78,
     "DONE": 3
   },
@@ -15,8 +15,8 @@
       "pakete": 94,
       "offen": 30,
       "restPT": {
-        "min": 50.9,
-        "max": 82.05
+        "min": 51.8,
+        "max": 83.4
       }
     },
     "wp19": {
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 28,
       "restPT": {
-        "min": 219.5,
-        "max": 387
+        "min": 207,
+        "max": 365
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 342.3,
-    "max": 583.35
+    "min": 330.7,
+    "max": 562.7
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -1043,7 +1043,7 @@
       "aufwandPT": {"min":5,"max":7},
       "restPT": {"min":1.5,"max":3},
       "abhaengigkeiten": [],
-      "status": "REVIEW",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/qa/wp33-testinfrastruktur dc27b7d"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Branch-Nachweis"},
@@ -1057,12 +1057,12 @@
       "agent": "Agent F – QA & Review",
       "modell": "sonnet",
       "konfliktzonen": ["package.json"],
-      "pr": [],
+      "pr": ["#217"],
       "nachweis": null,
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator."
     },
     {
       "id": "WP-34",
@@ -1239,7 +1239,7 @@
       "prio": "P3",
       "aufwandPT": {"min":3,"max":4.5},
       "abhaengigkeiten": ["WP-39"],
-      "status": "REVIEW",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Commits 5d114abd, a7c2948b, ba0d846b; pruefungen/wp40-zugaenglichkeit.test.js"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp40-zugaenglichkeit 28/28 (Quelltext/Render); Browser-Lauf lokal auf 6203b0a laut V4-STAGING-VORAUSSETZUNGEN.md 3.3"},
@@ -1253,12 +1253,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#221"],
       "nachweis": null,
       "akzeptanz": "axe ohne Verstöße; Tastatur; Fokus; Kontrast",
       "tests": "axe in CI",
       "dateien": "src",
-      "notiz": "Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Browser lokal (abnahme-kern.mjs, 6203b0a): 2.5.8 und 3.3.1 ohne Befund; 1.4.10 Leitung 320 px Schublade/Verteilung 26 px Querscroll; 2.4.11 Leitung 320 px Tab-Stopps in geschlossener Schublade — seither visibility:hidden in src/ui/geraete.js, nicht nachgemessen. axe nicht installiert (WP-33)."
+      "notiz": "Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Browser lokal (abnahme-kern.mjs, 6203b0a): 2.5.8 und 3.3.1 ohne Befund; 1.4.10 Leitung 320 px Schublade/Verteilung 26 px Querscroll; 2.4.11 Leitung 320 px Tab-Stopps in geschlossener Schublade — seither visibility:hidden in src/ui/geraete.js, nicht nachgemessen. axe nicht installiert (WP-33). Stand nach #221 (Teil, docs/acc45/WP-40-BEFUNDE.md): 2.4.11 Fokus über scroll-padding behoben, 3.3.1 aria-describedby in Krankmeldung/Antrag, Korrektur nur offener Hinweis. Offen: Mitarbeiter bei 768 px Stempel/Korrektur Zeitüberschreitung (kein vollständiger Neulauf); 1.4.12, Zoom, Screenreader, axe, Safari, echte Geräte."
     },
     {
       "id": "WP-41",
@@ -1477,12 +1477,12 @@
       "agent": "Agent D – Time/Offline/Geo",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs","stempelintegritaet.mjs"],
-      "pr": [],
+      "pr": ["#223"],
       "nachweis": "docs/acc45/wp16c-nachweis.md, docs/acc45/wp16c-fragen.md",
       "akzeptanz": "Originalabschluss bleibt als Revision 1 historisch; neue Revision mit Zeitpunkt, Berechtigtem, Grund und Differenz; Differenzberechnung; gekennzeichneter Korrekturexport (Lohn/DATEV); Berechtigungen und Auditierung; zweite berechtigte Freigabe für lohnrelevante nachträgliche Korrekturen (möglichst); keine starre Wiederöffnungsfrist (maßgeblich Abrechnungs-/Exportstatus); gesetzlich erforderliche Berichtigungen bleiben möglich",
       "tests": "je Prüfpunkt Test rot → grün: nachträgliche Offline-Stempel (WP-07) für Monate mit Revision, parallele Änderungen, alte Monatsabschlüsse ohne Revisionsschema (Migration), Änderung historischer Vertrags-/Tarifparameter (Freeze), Rechtematrix",
       "dateien": "server/lib/monatsabschluss*.mjs, server/funktionen/daten.mjs, server/lib/istdaten.mjs, Export Lohn/DATEV, src/App.jsx",
-      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Kern im Code (Revisionen, Differenz, Korrekturexport, zweite Freigabe, verwerfen, keine Frist), Direkt-Merge 594f32c3, PR-Beleg fehlt. Lücke: Laufzeitmessung des Korrekturpfads 60/150/400 × 12/24/36 fehlt (wp16c-fragen.md L6; werkzeug/wp16-messung.mjs misst nur Abschluss/Freeze). Offen als Betreiberentscheidung/E-29: Fragen 1, 3, 5, 6, 7, R2, R7, L5."
+      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Kern im Code (Revisionen, Differenz, Korrekturexport, zweite Freigabe, verwerfen, keine Frist), Direkt-Merge 594f32c3, PR-Beleg fehlt. Lücke: Laufzeitmessung des Korrekturpfads 60/150/400 × 12/24/36 fehlt (wp16c-fragen.md L6; werkzeug/wp16-messung.mjs misst nur Abschluss/Freeze). Offen als Betreiberentscheidung/E-29: Fragen 1, 3, 5, 6, 7, R2, R7, L5. Stand nach #223 (Teil, docs/acc45/WP-16c-MESSUNG.md): Messung des Korrekturpfads 60/150/400 Personen, alle 9 Zellen auf Bibliotheksebene ohne Befund. Nicht gemessen: HTTP-Pfad, Offline-Stempel, Migration, VPS. Beobachtung: reine Ist-Zeit-Änderung ohne Planwirkung ergibt leere Differenz, weil Mehrarbeit nur bei positivem Konto entsteht – fachlich bestätigen. Status unverändert REVIEW."
     },
     {
       "id": "WP-32d",
@@ -2752,12 +2752,12 @@
       "prio": "P3",
       "aufwandPT": {"min":16,"max":28},
       "abhaengigkeiten": ["WP-I12","WP-I13","WP-I15","WP-I17"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #222 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2766,12 +2766,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#222"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #222, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #222 (keine Verhaltensänderung im Rechenkern): Zeitumstellung (DST) bei Ruhezeit in Near-Miss/Spielraum gegenüber Befund als Engine-Frage; HTTP-Einbindung; Gateway-Text; Golden um Ruhezeit-/Folgegrenzen (#174)."
     },
     {
       "id": "WP-I21",
@@ -2836,12 +2836,12 @@
       "prio": "P3",
       "aufwandPT": {"min":4,"max":7},
       "abhaengigkeiten": ["WP-I13","WP-I17"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #219 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2850,12 +2850,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "haiku + sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#219"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #219, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #219 (25 Hilfetexte, BM25, /api/hilfe/status|frage, Schalter CENTRIC_HILFE_ASSISTENT aus|suche|an): fachliche Freigabe der Korpus-Inhalte; Sichtbarkeit von suche für Piloten; Gesundheitstexte für das Modell gesperrt bestätigen; Gateway-Verdrahtung nach E-25/E-26."
     },
     {
       "id": "WP-I24",
@@ -2864,12 +2864,12 @@
       "prio": "P3",
       "aufwandPT": {"min":5,"max":9},
       "abhaengigkeiten": ["WP-I12","WP-I13","WP-I17"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #218 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2878,12 +2878,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#218"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #218, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #218 (docs/acc45/wp-i24-nachweis.md): Ablage des Seit-letztem-Besuch-Standes, HTTP-Einbindung von /ki, Sicht für Mitarbeitende, Gateway-Text, aenderung.art in den Rechenkern."
     },
     {
       "id": "WP-I25",

@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 342,3–583,35 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 330,7–562,7 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -17,10 +17,10 @@ flowchart LR
     WP_19["WP-19<br/>IN_PROGRESS"]
     WP_21["WP-21<br/>IN_PROGRESS"]
     WP_30["WP-30<br/>BLOCKED"]
-    WP_33["WP-33<br/>REVIEW"]
+    WP_33["WP-33<br/>IN_PROGRESS"]
     WP_34["WP-34<br/>BLOCKED"]
     WP_36["WP-36<br/>BLOCKED"]
-    WP_40["WP-40<br/>REVIEW"]
+    WP_40["WP-40<br/>IN_PROGRESS"]
     WP_42["WP-42<br/>BLOCKED"]
     WP_44["WP-44<br/>BLOCKED"]
     WP_16c["WP-16c<br/>REVIEW"]
@@ -69,11 +69,11 @@ flowchart LR
     WP_I16["WP-I16<br/>BLOCKED"]
     WP_I18["WP-I18<br/>BLOCKED"]
     WP_I19["WP-I19<br/>BLOCKED"]
-    WP_I20["WP-I20<br/>BLOCKED"]
+    WP_I20["WP-I20<br/>IN_PROGRESS"]
     WP_I21["WP-I21<br/>BLOCKED"]
     WP_I22["WP-I22<br/>BLOCKED"]
-    WP_I23["WP-I23<br/>BLOCKED"]
-    WP_I24["WP-I24<br/>BLOCKED"]
+    WP_I23["WP-I23<br/>IN_PROGRESS"]
+    WP_I24["WP-I24<br/>IN_PROGRESS"]
     WP_I25["WP-I25<br/>BLOCKED"]
     WP_I26["WP-I26<br/>BLOCKED"]
     WP_I27["WP-I27<br/>BLOCKED"]
@@ -340,14 +340,14 @@ flowchart LR
 | WP-30 | acc45 | P2 | 2–3 | 2–3 | E-9 | – | sonnet | BLOCKED |
 | WP-31 | acc45 | P2 | 4–5,5 | 0 | WP-03 | – | sonnet | INTEGRATED |
 | WP-32 | acc45 | P2 | 3–4,5 | 0 | – | – | sonnet | INTEGRATED |
-| WP-33 | acc45 | P2 | 5–7 | 1,5–3 | – | package.json | sonnet | REVIEW |
+| WP-33 | acc45 | P2 | 5–7 | 1,5–3 | – | package.json | sonnet | IN_PROGRESS |
 | WP-34 | acc45 | P2 | 1–1,5 | 1–1,5 | WP-09 | – | sonnet | BLOCKED |
 | WP-35 | acc45 | P3 | 2–3 | 0 | WP-39 | App.jsx | sonnet | INTEGRATED |
 | WP-36 | acc45 | P3 | 1–1,5 | 1–1,5 | E-32 | – | sonnet | BLOCKED |
 | WP-37 | acc45 | P3 | 1,5–2,5 | 0 | WP-43 | – | sonnet | INTEGRATED |
 | WP-38 | acc45 | P3 | 2–3 | 0 | WP-12 | App.jsx | sonnet | INTEGRATED |
 | WP-39 | acc45 | P3 | 4–5,5 | 0 | WP-12 | App.jsx | sonnet | INTEGRATED |
-| WP-40 | acc45 | P3 | 3–4,5 | 0,6–0,9 | WP-39 | App.jsx | sonnet | REVIEW |
+| WP-40 | acc45 | P3 | 3–4,5 | 1,5–2,25 | WP-39 | App.jsx | sonnet | IN_PROGRESS |
 | WP-41 | acc45 | P3 | 2–3 | 0 | WP-04, WP-05, WP-31 | – | sonnet | INTEGRATED |
 | WP-42 | acc45 | P1 | 3–4,5 | 3–4,5 | WP-42a, E-1, E-2, E-3, E-4, E-5, E-6, E-7, E-8, E-11, E-12, E-13, E-14, E-15, E-17, E-18, E-21, E-22, E-9, E-10, E-29, E-30, E-32 | – | opus | BLOCKED |
 | WP-43 | acc45 | P0 | 2–3 | 0 | WP-09 | – | opus | INTEGRATED |
@@ -401,11 +401,11 @@ flowchart LR
 | WP-I17 | intelligence | P3 | 6–10 | 0 | WP-I13 | App.jsx | sonnet | INTEGRATED |
 | WP-I18 | intelligence | P3 | 2–4 | 2–4 | WP-I13, E-25 | – | sonnet | BLOCKED |
 | WP-I19 | intelligence | P3 | 16–28 | 16–28 | WP-I13, WP-I17, WP-I12 | App.jsx | sonnet + opus-review | BLOCKED |
-| WP-I20 | intelligence | P3 | 16–28 | 16–28 | WP-I12, WP-I13, WP-I15, WP-I17 | App.jsx | sonnet + opus-review | BLOCKED |
+| WP-I20 | intelligence | P3 | 16–28 | 8–14 | WP-I12, WP-I13, WP-I15, WP-I17 | App.jsx | sonnet + opus-review | IN_PROGRESS |
 | WP-I21 | intelligence | P3 | 8–14 | 8–14 | WP-I19, WP-I20, E-24i | – | sonnet | BLOCKED |
 | WP-I22 | intelligence | P3 | 8–14 | 8–14 | WP-I12, WP-I13, WP-I17 | App.jsx | sonnet | BLOCKED |
-| WP-I23 | intelligence | P3 | 4–7 | 4–7 | WP-I13, WP-I17 | – | haiku + sonnet | BLOCKED |
-| WP-I24 | intelligence | P3 | 5–9 | 5–9 | WP-I12, WP-I13, WP-I17 | App.jsx | sonnet | BLOCKED |
+| WP-I23 | intelligence | P3 | 4–7 | 2–3,5 | WP-I13, WP-I17 | – | haiku + sonnet | IN_PROGRESS |
+| WP-I24 | intelligence | P3 | 5–9 | 2,5–4,5 | WP-I12, WP-I13, WP-I17 | App.jsx | sonnet | IN_PROGRESS |
 | WP-I25 | intelligence | P3 | 7–12 | 7–12 | WP-I3, WP-I4, WP-I13 | – | sonnet | BLOCKED |
 | WP-I26 | intelligence | P3 | 8–14 | 8–14 | WP-I3, WP-I8, WP-I13 | – | sonnet | BLOCKED |
 | WP-I27 | intelligence | P3 | 20–34 | 20–34 | WP-I19, WP-I16, E-25, E-26 | – | opus | BLOCKED |
