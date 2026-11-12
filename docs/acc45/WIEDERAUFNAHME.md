@@ -1,7 +1,12 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #244, Integrationskopf ecad5ca8, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #247, Integrationskopf 53dc8565, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #247 (2026-11-12)
+- Integrationskopf: `53dc8565` (Merge #247). Seit dem Stand nach #244 gemergt: #245 (SSOT), #246 QS-2 (Zeitabhängige Tests deterministisch: schreibhalt "Frist abgelaufen" Frist 80 ms auf 1500 ms mit Abfrage; anmeldung-http Gesamtgrenze-Tests setzen Date mitten in das 300-s-Fenster; Skript mail-push-produktion mit `--testTimeout=60000`; Windows-gebundene Grenzen dokumentiert: pruefung:selbst 500 ms in `sammelpruefung-bekannt.json`, sicherung-ablage 60 s nur Doku) und #247 WP-19 B4 (`WIRKSAME_STATUS` vorlaeufig/freigegeben und `statusWirksam` in `branchenmodule.mjs`, genutzt von `modulAktiv`, `modulZustand`, `modulNurLesen`, Einschalten und `modul-altwege.mjs`; fail-closed).
+- SSOT-Stand dazu: QS-2 INTEGRATED, WP-19-B4 INTEGRATED, Sammelpaket WP-19 bleibt IN_PROGRESS. Neu: WP-19-B6 (Art.-16-Entscheidung), BLOCKED, P3, siehe Offene Entscheidungen. Werkzeug-Ausgabe geprüft, keine Handkorrektur nötig.
+- Nächste technische Schritte (Klasse B, keine neue Entscheidung): WP-19-B5 (Oberflächen blenden Bearbeiten/Löschen bei `geplant` aus); WP-I29 Batch-Infrastruktur; WP-I30 Nachrichten-Werkstatt; WP-I22 F1/F2, sobald eine Route entschieden ist; WP-19.7 Stempeln je Abschnitt (Konfliktzone Stempel); WP-21 fehlende Viewports; Analyse-Cache für IMP-6.
 
 ## Stand nach #244 (2026-11-12)
 - Integrationskopf: `ecad5ca8` (Merge #244). Seit dem Stand nach #241 gemergt: #242 (SSOT), #243 WP-19.13 Teil (Abnahmematrix der zwölf Module im Prüfmodus: zwölf Module mal Rollen, 400 Serverzellen und Oberflächenmatrix bei 360/390/768 px, `docs/acc45/WP-19-MODULABNAHME.md` gleich den berechneten Werten, Registry unverändert `geplant`, 24-px-Mindestgröße in `src/ui/geraete.js`; nicht geprüft: echte Geräte, Browser, Querformat, FN-01…34 (E-22), HTTP-E2E) und #244 WP-19 B1 (Sicherheitskorrektur: `server/lib/modul-altwege.mjs` schließt die Schreibwege der fünf älteren Module bei Status `geplant`, alle Rollen, voller PUT und Teilweg, unbekannter Status geschlossen; Löschausnahme Art. 17 nur für die Datenfelder des Moduls; doppelte IDs abgewiesen; zwei in der Prüfung gefundene Umgehungen behoben; betroffen waren nur Integrations- und Staging-Builds, die WP-19-Module sind nicht im Produktions-Build).
