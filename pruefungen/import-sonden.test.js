@@ -46,6 +46,7 @@ const WEGE = [UPLOAD, "/api/import/analyse", "/api/import/vorschau", "/api/impor
 
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-imp3-sonden-"));
+  process.env.CENTRIC_IMPORT_AKTIV = "true";   // Server-Schalter (Vorgabe aus); diese Datei prüft den eingeschalteten Import
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
   process.env.CENTRIC_PFEFFER = "pfeffer-nur-zum-pruefen-0123456789";

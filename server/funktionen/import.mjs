@@ -35,6 +35,7 @@
 
 import { createHash } from "node:crypto";
 import { getStore } from "../lib/ablage.mjs";
+import { importAn } from "../lib/schalter.mjs";
 import { bremse, kennung, herkunft, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesenStreng, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
@@ -92,7 +93,12 @@ function vorschauAus(plan, analyse) {
 
 const ERSTES_BLATT = (blaetter) => Math.max(0, blaetter.findIndex((b) => Array.isArray(b.zeilen) && b.zeilen.length > 0));
 
+/* Schalter CENTRIC_IMPORT_AKTIV (server/lib/schalter.mjs), Vorgabe aus: Dann gibt es den Weg nicht (404) — vor
+   Methode, Herkunft, Sitzung und Rumpf. server.mjs prüft denselben Schalter (`config.aktiv`) schon vor dem Einlesen. */
+const AUS = () => antwort({ fehler: "Gibt es nicht." }, 404);
+
 export default async (req) => {
+  if (!importAn()) return AUS();
   const url = new URL(req.url);
   const schritt = url.pathname.replace(/^\/api\/import\//, "");
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
@@ -296,6 +302,7 @@ export default async (req) => {
 
 export const config = {
   path: ["/api/import/upload", "/api/import/analyse", "/api/import/vorschau", "/api/import/uebernahme", "/api/import/verwerfen"],
+  aktiv: importAn,   // server.mjs: aus → 404 vor dem Einlesen des Rumpfs
   rumpfMax: 10 * 1024 * 1024,   // Obergrenze der Datei (nur upload)
   rumpfMaxJeWeg: {
     "/api/import/upload": 10 * 1024 * 1024,
