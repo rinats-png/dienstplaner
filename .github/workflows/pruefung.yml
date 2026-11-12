@@ -47,6 +47,10 @@ jobs:
       - name: CI-Abdeckung der Sammelprüfung
         run: npm run pruefung:ci-abdeckung
 
+      # Sammelpruefung: Kette 'pruefung' lesen, gegen package.json und diesen Workflow abgleichen, Laufwerkzeug testen (WP-33). Der volle Lauf aller Glieder ist `npm run sammelpruefung` (lokal).
+      - name: Sammelprüfung (Kette und Laufwerkzeug)
+        run: npm run pruefung:sammelpruefung
+
       - name: Koordination (atomare Lease)
         run: npm run pruefung:koordination
 
