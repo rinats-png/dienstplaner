@@ -133,3 +133,16 @@ Im Nachweis nicht genannt, aber für WCAG 2.2 AA relevant und nicht belegt (nur 
 ### Empfehlung für den SSOT-Status
 
 `BLOCKED` stimmt nicht mehr mit dem Bestand überein: Code und 28 Prüffälle sind vorhanden und bestehen. Empfehlung: Status auf einen Zwischenstand wie „Quelltext-Prüfung bestanden, Browser-Abnahme offen“ setzen (nicht auf erledigt), solange die Browser-Abnahme und die Fragen 1 bis 3 offen sind. Diese Änderung an `work-packages.json` ist hier nicht erfolgt.
+
+## Browser-Abnahme (Teil 2, 2026-11-12)
+
+Skript `pruefungen/browser/wcag-wp40.mjs` (`npm run pruefung:wcag-wp40-browser`, lokal, Edge, Wegwerfdaten, kein CI-Bestandteil); Bewertungslogik ohne Browser in `pruefungen/wcag-wp40.test.js` (CI, Kette `pruefung`). Gemessen: 76 Ansichten (Mitarbeit, Planung, Leitung, Schichtverantwortung; 320, 360, 390, 768 px). Einzelheiten und Befunde: `docs/acc45/WP-40-BEFUNDE.md`.
+
+| Kriterium | Stand | Beleg |
+|---|---|---|
+| 1.4.10 Reflow | bewiesen für die gemessenen 76 Ansichten: kein Querscrollen der Seite; Datentabellen und Schnellfilter rollen im eigenen Bereich | Browserlauf |
+| 2.5.8 Zielgröße | bewiesen für die gemessenen 76 Ansichten: alle Ziele mindestens 24 px oder durch Abstand erfüllt | Browserlauf |
+| 2.4.11 Fokus nicht verdeckt | Befund gefunden (35 Verdeckungen unter fester unterer Leiste) und behoben (`scroll-padding` in `src/gestalt/stil.js`); Nachmessung 76 Ansichten, 0 Befunde (je 18 Tab-Stopps) | Browserlauf 1 und 2 |
+| 3.3.1 Fehlertext | Krankmeldung, Antrag, Person hinzufügen: Text, `role="alert"`, `aria-describedby` (Lücke geschlossen, bewiesen in 31 Fällen); Stempel-Absage als Text in der Live-Region; Korrektur: Absenden nur deaktiviert, ohne Text (offen, Befund 2) | Browserlauf, Unit-Test |
+
+Weiterhin offen: Korrektur-Hinweis (Befund 2), Mitarbeit bei 768 px für Stempel und Korrektur nicht erreicht, vollständiger Nachlauf aller vier Kriterien nach der Korrektur, 1.4.12, 200 % Zoom, Vorlesesoftware, axe, Safari und echte Geräte. Die Tabellenzeile "3.3.? Fehler am Feld" oben ist damit für Krankmeldung, Antrag und Person hinzufügen geschlossen.

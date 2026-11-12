@@ -1088,14 +1088,14 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }
               <Sel value={antrag.art} onChange={(e) => setAntrag({ ...antrag, art: e.target.value })}>
                 {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich" && a.selbst !== false)
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
-            <Field label="Von"><Inp type="date" value={antrag.von}
+            <Field label="Von"><Inp type="date" value={antrag.von} aria-describedby={antragFehler ? "antrag-fehler" : undefined}
               onChange={(e) => { setAntragFehler(""); setAntrag({ ...antrag, von: e.target.value }); }} /></Field>
-            <Field label="Bis"><Inp type="date" value={antrag.bis} aria-invalid={antragFehler ? "true" : undefined}
+            <Field label="Bis"><Inp type="date" value={antrag.bis} aria-invalid={antragFehler ? "true" : undefined} aria-describedby={antragFehler ? "antrag-fehler" : undefined}
               onChange={(e) => { setAntragFehler(""); setAntrag({ ...antrag, bis: e.target.value }); }} /></Field>
             <Field label="Anmerkung"><Inp value={antrag.text}
               onChange={(e) => setAntrag({ ...antrag, text: e.target.value })} /></Field>
             {/* Ende vor Beginn und Überschneidungen wie in der Rechneransicht: Fehlertext im Blatt, das Blatt bleibt offen. */}
-            {antragFehler && <Fehlerband>{antragFehler}</Fehlerband>}
+            {antragFehler && <Fehlerband id="antrag-fehler">{antragFehler}</Fehlerband>}
             <Btn kind="primary" style={{ height: 52, borderRadius: 17, fontSize: 15.5 }}
               onClick={() => { const fe = urlaubAntragFehler(m, p.id, antrag); if (fe) { setAntragFehler(fe); return; }
                 akt.stelleAntrag({ typ: "abwesenheit", art: antrag.art,
