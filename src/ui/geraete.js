@@ -112,5 +112,11 @@ export function geraeteStil() {
 
 /* WP-21: Auswahlkaestchen in Listen (Sammelentscheidung ueber Antraege) waren 15 px gross; auf Telefon und Tablet mindestens ZIEL_MINDEST. */
 @media (max-width: ${UMBRUCH.seitenleiste}px){ .ziel-haken{width:${ZIEL_MINDEST}px !important; height:${ZIEL_MINDEST}px !important;} }
+
+/* WP-19.13 (Befund B2): Schaltflaechen, Auswahl- und Eingabefelder und Auswahlkaestchen der Branchenmodule (src/module/kern.jsx) waren
+   unformatierte Standardelemente (Browservorgabe unter 24 px). Jetzt in jeder Breite mindestens ZIEL_MINDEST (WCAG 2.5.8). */
+[aria-label="Branchenmodule"] button{min-height:${ZIEL_MINDEST}px; min-width:${ZIEL_MINDEST}px;}
+[aria-label="Branchenmodule"] select, [aria-label="Branchenmodule"] textarea, [aria-label="Branchenmodule"] input:not([type="checkbox"]){min-height:${ZIEL_MINDEST}px;}
+[aria-label="Branchenmodule"] input[type="checkbox"]{width:${ZIEL_MINDEST}px; height:${ZIEL_MINDEST}px;}
 `;
 }
