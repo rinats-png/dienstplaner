@@ -2264,8 +2264,11 @@ export function tagesaufgaben(sitz) {
     /* Dienst über Mitternacht: Ein offener Beginn von gestern wird zuerst
        ausgestempelt — kein neuer Start für heute (stempelvorgang.js). */
     const vorgang = stempelVorgang(m, p, d0);
+    /* Nachtdienst von gestern ohne Einstempeln (nachtEnde): kein Beginn (st ist null), nur das Dienstende lässt sich erfassen. */
     if (vorgang.vortag) push({ art: "stempel", dringend: true, ziel: "meine",
-      titel: `Im Dienst seit gestern ${vorgang.st.start}`, text: "Noch nicht ausgestempelt", aktion: "Ausstempeln" });
+      titel: vorgang.st ? `Im Dienst seit gestern ${vorgang.st.start}` : "Nachtdienst von gestern ohne Einstempeln",
+      text: vorgang.st ? "Noch nicht ausgestempelt" : "Das Dienstende lässt sich noch erfassen",
+      aktion: vorgang.st ? "Ausstempeln" : "Dienstende stempeln" });
     else if (t.dienstId) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId);
       const st = stempelStand(m, p, d0);
