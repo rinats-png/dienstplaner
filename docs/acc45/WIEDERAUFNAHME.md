@@ -1,7 +1,13 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #234, Integrationskopf e184d5a2, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #237, Integrationskopf a762b47f, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #237 (2026-11-12)
+- Integrationskopf: `a762b47f` (Merge #237). Seit dem Stand nach #234 gemergt: #235 SSOT, #236 WP-I19 Teil 1 (Altplan-Übernahme: Vorschau, deterministisch, Schalter aus; `server/lib/intelligence/funktionen/altplan.mjs` `altplanVorschau`; unbekannte Bezeichnungen nur als anonymer Index mit Zeilennummern, erweiterte Abwesenheits-Denylist; kein Schreiben, kein Protokoll, kein Gateway; Nachweis `docs/acc45/wp-i19-nachweis.md`), #237 QS-1 (Importtests prüfen Protokolle tokenbasiert, kein Zufallstreffer in Zeitstempeln).
+- SSOT-Stand dazu: QS-1 INTEGRATED. WP-I19 IN_PROGRESS (Teil 1; offen: Übernahme/Schreiben, Route und Einhängung, Gateway-Abbildung E-25/E-26 mit Maskierung, Zyklus-Ableitung, Datei-Lesen). Werkzeug-Ausgabe geprüft, keine Handkorrektur nötig.
+- Nicht gemergt: PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Schalter aus) ist angehalten, bis der Betreiber entschieden hat (Abschnitt "Offene Entscheidungen", Eintrag WP-I16). WP-I16 bleibt BLOCKED, PR #238 steht nur in der Notiz.
+- Nächste technische Schritte: WP-40 Browser-Abnahme wiederholen und 320-px-Verteilung beheben; WP-33 E2E-Suite portieren (Abhängigkeiten erst nach Zulassung); WP-48.6/48.7; WP-16c Kern; WP-I19 Rest (Übernahme, Route, Gateway-Abbildung); WP-I16 nach Betreiberentscheidung.
 
 ## Stand nach #234 (2026-11-12)
 - Integrationskopf: `e184d5a2` (Merge #234). Seit dem Stand nach #229 gemergt: #230 Import: serverseitiger Schalter `CENTRIC_IMPORT_AKTIV`, #231 SSOT, #232 IMP-11 Import: Abweichungen UI/Parser/Doku bereinigt (Dateidialog und Hilfetext nur xlsx, xls, csv, tsv; eine Quelle `server/lib/import/formate.mjs`; `IMPORT-VERTRAG.md` §9a Endpunkt-Codes; Funktion bleibt aus), #233 Intelligence: KiAntwort browserfähig (`byteLaenge` in `server/lib/intelligence/bytes.mjs`; nichts eingehängt, Einhängepunkte in `docs/acc45/INTELLIGENCE-UI.md`), #234 WP-19.3 Teil (Objektbericht-Dienstzeit aus der bestätigten Ist-Zeit, nie aus der Planzeit; Modul bleibt geplant).
@@ -23,6 +29,7 @@
 - (#224 inzwischen gemergt und vermerkt, siehe oben.)
 
 ## Offene Entscheidungen für den Betreiber (Stand 2026-11-12)
+- **WP-I16 / PR #238 (Entscheidung nötig, bevor #238 gemergt werden kann):** Der PR führt ein NEUES Schreibrecht für den Betriebsrat ein (nur `kiSteuerung.pause.aktiv` über `PUT /api/bestand`). Akzeptiertes Restrisiko: Die Leitung hält `roles.assign` und kann die Betriebsrat-Rolle vergeben und so die Pause aufheben. Zu entscheiden: (1) Recht freigeben ja/nein; (2) Minderung des roles.assign-Umwegs: bestehende BR-Mitglieder benachrichtigen, BR-Konto muss vor der Pause existieren, oder Vergabe der Betriebsrat-Rolle durch die Leitung untersagen; (3) Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch die Leitung, Frage vor dem Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung.
 - `CENTRIC_IMPORT_AKTIV` bleibt aus, bis IMPORT-VERTRAG §13 (IMP-9) geprüft ist und der Betreiber freigibt.
 - `CENTRIC_TEILSPEICHERUNG` bleibt aus, bis WP-48.5 erledigt ist und der Betreiber freigibt; Entscheidungen 6.2/6.4 (`WP48-TEILSPEICHERUNG.md`).
 - `CENTRIC_HILFE_ASSISTENT` bleibt aus (WP-I23: Korpus-Freigabe, Sichtbarkeit für Piloten).
