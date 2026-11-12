@@ -5,7 +5,7 @@
    nichts gespeichert, nichts in den Bestand geschrieben, nichts protokolliert. Die Übernahme der Modelle fehlt
    bewusst (Datenmodellentscheidung „mehrere Modelle je Person“ beim Betreiber).
 
-   Datenschutz der Ausgabe (gleiche Regel wie die Altplan-Vorschau, intelligence/funktionen/altplan.mjs):
+   Datenschutz der Ausgabe (gleiche Regel wie die Altplan-Vorschau):
    - Freitext aus der Datei wird nicht zurückgegeben. Unbekannte Dienstbezeichnungen erscheinen nur als laufender Index
      mit Anzahl und Datenzeilennummern. Abwesenheitsbezeichnungen (krank, Attest, Reha, auch „krank (Grippe)“) erscheinen
      nur als Zahl und Zeilennummern und werden nie einer Dienstart oder Abwesenheit zugeordnet.
@@ -14,6 +14,9 @@
      (Modell, Tag, Dienst, Personalnummer, Beginn, Versatz), nie mit dem Text der Überschrift.
    - Personalnummern und Namen der Zuordnungstabelle erscheinen nicht; nur Anzahlen und Zeilennummern.
    - Kürzel erscheinen nur, wenn sie zu einer Dienstart DES BETRIEBS gehören.
+
+   Zellen: Texte über zellMax (100) Zeichen werden vor jeder Rechnung durch einen Platzhalter ersetzt; die Bibliothek meldet sie je Zeile
+   anonym (Nummer, Konfliktart/Fehler ohne Wert) und hasht, vergleicht oder sucht nie mit langen Texten (Kosten sonst je Zeile ~Zellänge).
 
    Grenzen: je Blatt höchstens zeilenMax Datenzeilen (vor jeder Rechnung geprüft, sonst 422 PRUEFUMFANG_ZU_GROSS; die Bibliothek
    ist linear in der Zeilenzahl, die Obergrenze hält die synchrone Rechnung im Serverprozess klein); Summe der Zykluslängen aller Modelle höchstens zyklusTageMax (vor dem Lesen geprüft — die Bibliothek legt je
@@ -25,7 +28,7 @@ import { modelleLesen, zuordnungenLesen, MODELL_FELDER, FREI } from "./schichtmo
 import { zellText } from "./personen.mjs";
 import { norm as bezeichnungNormalisiert, abwesend as abwesenheitsBezeichnung } from "../bezeichnungen.mjs";
 
-export const VORSCHAU_GRENZEN = Object.freeze({ zyklusTageMax: 10000, zeilenMax: 10000, modelleAnzeige: 50, zeilenJeEintrag: 20, unbekanntAnzeige: 50, dienstartenAnzeige: 30 });
+export const VORSCHAU_GRENZEN = Object.freeze({ zyklusTageMax: 10000, zeilenMax: 10000, zellMax: 100, modelleAnzeige: 50, zeilenJeEintrag: 20, unbekanntAnzeige: 50, dienstartenAnzeige: 30 });
 export const HINWEIS_NUR_VORSCHAU = "Schichtmodelle werden noch nicht übernommen. Dies ist nur eine Vorschau, es wird nichts gespeichert.";
 
 const G = VORSCHAU_GRENZEN;
@@ -47,6 +50,10 @@ export function blaetterErkennen(blaetter) {
 
 /** Spalten nur mit der festen Rollenbezeichnung, nie mit dem Überschriftstext der Datei. */
 const spaltenAus = (sp) => sp.map((s) => ({ index: s.index, feld: s.feld, kopf: s.feld ? ROLLE[s.feld] : "" }));
+/** Zellen mit mehr als zellMax Zeichen durch einen Platzhalter ersetzen (länger als jede erlaubte Länge der Bibliothek, aber kurz). */
+const LANG = "x".repeat(G.zellMax + 1);
+const zuLang = (c) => (typeof c === "string" && c.length > G.zellMax) || (c !== null && typeof c === "object" && typeof c.text === "string" && c.text.length > G.zellMax);
+const gekuerzt = (zeilen) => (Array.isArray(zeilen) ? zeilen.map((r) => (Array.isArray(r) && r.some(zuLang) ? r.map((c) => (zuLang(c) ? LANG : c)) : r)) : zeilen);
 const zuViele = (z) => Array.isArray(z) && z.length - 1 > G.zeilenMax;
 const ZU_GROSS = { ok: false, code: "PRUEFUMFANG_ZU_GROSS", nachricht: "Die Tabelle hat zu viele Zeilen für eine Vorschau. Bitte die Datei teilen." };
 
@@ -87,13 +94,14 @@ function konfliktAus(k) {
  * @param {{ mandant: any, modellZeilen: any[][]|null, zuordnungZeilen?: any[][]|null, zuordnung?: any }} e
  * @returns {{ ok: true } & Record<string, any> | { ok: false, code: string, nachricht: string }}
  */
-export function schichtVorschau({ mandant, modellZeilen, zuordnungZeilen = null, zuordnung }) {
+export function schichtVorschau({ mandant, modellZeilen: modellRoh, zuordnungZeilen: zuordnungRoh = null, zuordnung }) {
   const leer = { zyklen: [], zyklenGesamt: 0, zuordnungen: null, unbekannteBezeichnungen: [], abwesenheitsartig: { anzahl: 0, zeilen: [] },
     zaehler: { modelle: 0, pruefbar: 0, datensaetze: 0, fehlerhaft: 0, zuordnungen: 0 }, fehlendePflicht: [], spalten: [], zuordnungSpalten: [] };
+  /* Zeilenobergrenze VOR jeder Rechnung, für beide Blätter; danach lange Zellen kürzen. */
+  if (zuViele(modellRoh) || zuViele(zuordnungRoh)) return ZU_GROSS;
+  const modellZeilen = gekuerzt(modellRoh), zuordnungZeilen = gekuerzt(zuordnungRoh);
   if (!Array.isArray(modellZeilen) || !modellZeilen.length) return { ok: true, ...leer, fehlendePflicht: [...MODELL_FELDER] };
   const dienstarten = (mandant && mandant.dienstarten) || [];
-  /* Zeilenobergrenze VOR jeder Rechnung, für beide Blätter. */
-  if (zuViele(modellZeilen) || zuViele(zuordnungZeilen)) return ZU_GROSS;
 
   const { vor, summe } = laengenSumme(modellZeilen, zuordnung);
   if (!vor.ok) return { ok: false, code: vor.code, nachricht: vor.nachricht };

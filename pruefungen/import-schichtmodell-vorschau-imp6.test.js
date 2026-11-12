@@ -17,12 +17,13 @@ import path from "node:path";
 import { mappe } from "./import-parser-hilfen.mjs";
 
 /* Aufrufzähler an der Bibliothek: die Zeilenobergrenze muss VOR jeder Rechnung greifen. */
-const aufrufe = vi.hoisted(() => ({ modelle: [], zuordnungen: [] }));
+const aufrufe = vi.hoisted(() => ({ modelle: [], zuordnungen: [], laengsteZelle: 0 }));
+const zellen = (z) => { for (const r of Array.isArray(z) ? z : []) for (const c of Array.isArray(r) ? r : []) if (typeof c === "string" && c.length > aufrufe.laengsteZelle) aufrufe.laengsteZelle = c.length; };
 vi.mock("../server/lib/import/schichtmodelle.mjs", async (original) => {
   const echt = await original();
   return { ...echt,
-    modelleLesen: (e) => { aufrufe.modelle.push(Array.isArray(e.zeilen) ? e.zeilen.length : 0); return echt.modelleLesen(e); },
-    zuordnungenLesen: (e) => { aufrufe.zuordnungen.push(Array.isArray(e.zeilen) ? e.zeilen.length : 0); return echt.zuordnungenLesen(e); } };
+    modelleLesen: (e) => { zellen(e.zeilen); aufrufe.modelle.push(Array.isArray(e.zeilen) ? e.zeilen.length : 0); return echt.modelleLesen(e); },
+    zuordnungenLesen: (e) => { zellen(e.zeilen); aufrufe.zuordnungen.push(Array.isArray(e.zeilen) ? e.zeilen.length : 0); return echt.zuordnungenLesen(e); } };
 });
 
 const WIRT = "127.0.0.1:3000";
@@ -349,5 +350,47 @@ describe("IMP-6 Vorschau: Last und Obergrenzen (kein Absturz durch große Tabell
     expect(up.status).toBe(201);
     const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
     expect(an).toMatchObject({ status: 422, code: "PRUEFUMFANG_ZU_GROSS" });
+  });
+});
+
+describe("IMP-6 Vorschau: sehr lange Zellen", { timeout: 120000 }, () => {
+  let schichtVorschau, GRENZEN;
+  beforeAll(async () => { ({ schichtVorschau, VORSCHAU_GRENZEN: GRENZEN } = await import("../server/lib/import/schichtvorschau.mjs")); });
+  const mandant = betrieb("m1", [person("x1", "mitarbeiter", "m1-e1", { personalnummer: "1001" })]);
+  const MODELL = [["Modell", "Tag", "Dienst"], ["A", 1, "F"], ["A", 2, "-"]];
+  const KOPF = ["Personalnummer", "Modell", "Beginn", "Versatz"];
+  const fallen = {
+    "5.000 Zeichen mit Leerzeichen am Ende": "7".repeat(4999) + " ",
+    "32.767 Zeichen mit Leerzeichen (geteilte Zeichenkette)": "krank grippe ".repeat(2520).slice(0, 32766) + " ",
+  };
+  for (const [name, lang] of Object.entries(fallen)) {
+    it(`${name}: schnell, genaue Ausgabe, kein Text zurück`, () => {
+      /* Eine geteilte Zeichenkette (XLSX-Sammeltabelle), in jeder Zelle der Zeilen: trim() erzeugt je Zelle eine neue lange Zeichenkette. */
+      const eigen = () => lang;
+      const n = GRENZEN.zeilenMax;
+      const zeilen = Array.from({ length: n }, (_, i) => [eigen(i), eigen(i + 1), eigen(i + 2), eigen(i + 3)]);
+      aufrufe.laengsteZelle = 0;
+      const t0 = Date.now();
+      const r = schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [KOPF, ...zeilen] });
+      const ms = Date.now() - t0;
+      expect(ms).toBeLessThan(500);
+      /* Deterministisch: die Bibliothek bekommt nie eine Zelle über zellMax Zeichen (kein Hashen/Vergleichen langer Texte). */
+      expect(aufrufe.laengsteZelle).toBeLessThanOrEqual(GRENZEN.zellMax + 1);
+      expect(r.ok).toBe(true);
+      expect(r.zuordnungen).toMatchObject({ gesamt: n, fehlerhaft: n, uebernehmbar: 0, personen: 0 });
+      expect(r.zuordnungen.fehlerhafteZeilen).toEqual(Array.from({ length: GRENZEN.zeilenJeEintrag }, (_, i) => i + 1));
+      const m = schichtVorschau({ mandant, modellZeilen: [MODELL[0], ...Array.from({ length: n }, (_, i) => [eigen(i), eigen(i + 1), eigen(i + 2)])] });
+      expect(m.ok).toBe(true);
+      expect(m.zaehler.fehlerhaft).toBe(n);
+      expect(m.abwesenheitsartig.anzahl).toBe(0);   // zu lange Dienstzellen sind Fehler, keine Bezeichnung
+      for (const roh of [JSON.stringify(r), JSON.stringify(m)]) { expect(roh).not.toContain("krank"); expect(roh).not.toContain("7777"); }
+    });
+  }
+  it("lange Zellen in Modell- und Zuordnungsblatt wirken wie kurze Fehlerzellen (gleiches Ergebnis)", () => {
+    const lang = "z".repeat(5000);
+    const a = schichtVorschau({ mandant, modellZeilen: [...MODELL, ["B", 1, lang]] });
+    const b = schichtVorschau({ mandant, modellZeilen: [...MODELL, ["B", 1, "z".repeat(101)]] });
+    expect(a).toEqual(b);
+    expect(a.zyklen.find((z) => z.nr === 2).konflikte.map((k) => k.art)).toContain("datensatz-fehlerhaft");
   });
 });

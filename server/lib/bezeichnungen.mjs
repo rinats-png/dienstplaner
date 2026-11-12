@@ -1,7 +1,6 @@
 /* ==========================================================================
    Gemeinsame Erkennung von Bezeichnungen (rein, ohne Abhängigkeiten): Normalisierung und Abwesenheitsbezeichnungen.
-   Genutzt von der Altplan-Vorschau (intelligence/funktionen/altplan.mjs) und der Schichtmodell-Vorschau des Imports
-   (schichtvorschau.mjs), damit beide dieselbe Regel anwenden: Abwesenheit jeder Art (auch Gesundheit) wird nie als Art
+   Von der Altplan-Vorschau und der Schichtmodell-Vorschau des Imports gemeinsam genutzt, damit beide dieselbe Regel anwenden: Abwesenheit jeder Art (auch Gesundheit) wird nie als Art
    übernommen und nie ausgegeben.
    ========================================================================== */
 

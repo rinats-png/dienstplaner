@@ -236,7 +236,7 @@ export function zuordnungenLesen({ zeilen, zuordnung, personen, modelle }) {
   const nachNummer = new Map();
   for (const p of (Array.isArray(personen) ? personen : []).filter((x) => x && typeof x === "object")) {
     const nr = vergleich(p.personalnummer);
-    if (nr) nachNummer.set(nr, [...(nachNummer.get(nr) || []), p]);
+    if (nr) { const l = nachNummer.get(nr); if (l) l.push(p); else nachNummer.set(nr, [p]); }
   }
   const nachModell = new Map((Array.isArray(modelle) ? modelle : []).map((m) => [m.name, m]));
   const datensaetze = daten.map((z, i) => {
