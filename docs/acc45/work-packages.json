@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 194,
+  "anzahl": 195,
   "statusZaehlung": {
-    "BLOCKED": 77,
-    "READY": 16,
-    "IN_PROGRESS": 13,
+    "BLOCKED": 74,
+    "READY": 17,
+    "IN_PROGRESS": 15,
     "REVIEW": 7,
-    "INTEGRATED": 78,
+    "INTEGRATED": 79,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 94,
+      "pakete": 95,
       "offen": 30,
       "restPT": {
-        "min": 51.8,
-        "max": 83.4
+        "min": 43.8,
+        "max": 70.4
       }
     },
     "wp19": {
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 28,
       "restPT": {
-        "min": 207,
-        "max": 365
+        "min": 202.5,
+        "max": 357.5
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 330.7,
-    "max": 562.7
+    "min": 318.2,
+    "max": 542.2
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -1547,12 +1547,12 @@
       "prio": "P0",
       "aufwandPT": {"min":16,"max":26},
       "abhaengigkeiten": ["WP-16"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"WP-48.1/48.2 (Prüfnetz, Speicherkern teileSchreiben, Hash-Vermerk, Epoche, Lesecache) über PR #87 (794df9a7); 48.3–48.7, 48.9 fehlen"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: wp48-speicherkern 44/44, wp48-rundweg 31/31; CI-Schritt pruefung:datenintegritaet"},
         "reviewt": {"wert":"teilweise","beleg":"Review-Auflagen zu 48.1/48.2 (H1, M4) in PR #87 umgesetzt, WP48-TEILSPEICHERUNG.md Abschnitt 7"},
-        "integriert": {"wert":"teilweise","beleg":"WP-48.1/48.2 über PR #87 (794df9a7)"},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #224 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1561,12 +1561,12 @@
       "agent": "Agent A – Security & Data Integrity",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs","rechte.mjs","App.jsx","stempelintegritaet.mjs"],
-      "pr": ["#87"],
+      "pr": ["#87","#224"],
       "nachweis": "docs/acc45/WP48-TEILSPEICHERUNG.md",
       "akzeptanz": "Siehe WP48-TEILSPEICHERUNG.md Abschnitt 4.4: PUT-Rumpf je Änderung unabhängig von der Historie (Einteilung < 300 KB), nie 413 bis 400 Personen × 36 Monate bei unverändertem RUMPF_MAX 6 MB, Teil-PUT gleichwertig zum Voll-PUT für jede Rolle (Rechte unverändert, fehlende Segmente ändern nichts), Konflikt je Zelle bzw. Kernfeld, Raumsperre bei Speichern und Monatsabschluss < 2 s bei 400 × 36, /gesund nie kritisch durch Speichern oder Abschluss",
       "tests": "Gleichwertigkeit Teil/Voll je Rolle × Segment, Rennen, Konflikte, Versatz alter Clients, Journal/Restore, Messmatrix 60/150/400 × 12/24/36 (werkzeug/wp48-messung.mjs), Rot vorher, Mutanten",
       "dateien": "server/lib/bestand.mjs, server/lib/scherben.mjs, server/funktionen/daten.mjs, server/lib/rechte.mjs, server/lib/monatsabschluss.mjs, server/lib/stempelintegritaet.mjs, src/speicher.js, src/App.jsx",
-      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung. Fortschritt 2026-11-03: WP-48.1 (Prüfnetz: Rundweg je Rolle über den Positivkatalog, Rennen/Konflikte im Speicherkern, Mutantenwerkzeug werkzeug/wp48-mutanten.mjs) und WP-48.2 (Hash-Vermerk mit Lesen alter Text-Vermerke, Lesecache unter der Raumsperre, Segmentschreiber teileSchreiben, Epoche, Vermerk-Aufräumen) umgesetzt auf Branch acc45/backend/wp48-1-2-pruefnetz-speicherkern, ohne PR; Befund für 48.3: gespeicherte abgeleitete Personenfelder brechen die Rundweg-Invariante (Schichtverantwortung 403), siehe WP48-TEILSPEICHERUNG.md Abschnitt 7. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-48.1/48.2 sind nicht „ohne PR“, sondern über PR #87 (acc45/backend/wp48-integration) integriert; teileSchreiben hat im Produktcode keinen Aufrufer. 48.3 ist technisch ausführbar (WP-16 ist über PR #85 im Code), die SSOT sperrt nur formal; 48.4/48.5/48.8 hängen an den Entscheidungen in Abschnitt 6."
+      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung. Fortschritt 2026-11-03: WP-48.1 (Prüfnetz: Rundweg je Rolle über den Positivkatalog, Rennen/Konflikte im Speicherkern, Mutantenwerkzeug werkzeug/wp48-mutanten.mjs) und WP-48.2 (Hash-Vermerk mit Lesen alter Text-Vermerke, Lesecache unter der Raumsperre, Segmentschreiber teileSchreiben, Epoche, Vermerk-Aufräumen) umgesetzt auf Branch acc45/backend/wp48-1-2-pruefnetz-speicherkern, ohne PR; Befund für 48.3: gespeicherte abgeleitete Personenfelder brechen die Rundweg-Invariante (Schichtverantwortung 403), siehe WP48-TEILSPEICHERUNG.md Abschnitt 7. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-48.1/48.2 sind nicht „ohne PR“, sondern über PR #87 (acc45/backend/wp48-integration) integriert; teileSchreiben hat im Produktcode keinen Aufrufer. 48.3 ist technisch ausführbar (WP-16 ist über PR #85 im Code), die SSOT sperrt nur formal; 48.4/48.5/48.8 hängen an den Entscheidungen in Abschnitt 6. Stand (automatisch): Teilumfang nach #224, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-14c",
@@ -3060,12 +3060,12 @@
       "prio": "P3",
       "aufwandPT": {"min":9,"max":15},
       "abhaengigkeiten": ["WP-I12","WP-I13"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #228 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -3074,12 +3074,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#228"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #228, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-I32",
@@ -4305,7 +4305,7 @@
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #229 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4314,12 +4314,12 @@
       "agent": "Agent Dokumentation",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#229"],
       "nachweis": "docs/acc45/PILOT-TESTSZENARIEN.md",
       "akzeptanz": "Erhebungsbögen Pflege/Sicherheit ausgefüllt (ohne Personendaten); je Pilot 8–12 Szenarien (PS-P-nn/PS-S-nn) mit synthetischen Ausgangsdaten als Seed umgesetzt und mindestens einmal durchgespielt; Datenschutzrahmen Stufe 1–3 mit offenen externen Punkten; Pilot-Kennzahlen je Branche vor Pilotbeginn mit Basismessung und Schwelle vereinbart",
       "tests": "pruefungen/acc45-status.test.js, pruefungen/doku.test.js; Szenarien manuell, Lauf je Szenario protokolliert",
       "dateien": "docs/acc45/PILOT-ERHEBUNG-PFLEGE.md, docs/acc45/PILOT-ERHEBUNG-SICHERHEIT.md, docs/acc45/PILOT-TESTSZENARIEN.md, docs/acc45/PILOT-DATENSCHUTZ-RAHMEN.md",
-      "notiz": "SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar."
+      "notiz": "SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. Stand (automatisch): Teilumfang nach #229, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "SI-P1",
@@ -4790,12 +4790,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#137"],
+      "pr": ["#137","#230"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Keine automatische Überschreibung; Dublettenvorschlag nur bei fehlender Personalnummer, nie nur über Namen",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "src/ (Importassistent Personal), Tests",
-      "notiz": "Personalnummer ist mandantenintern eindeutig, nicht global. Stand 2026-11-09: INTEGRATED nach PR #137."
+      "notiz": "Personalnummer ist mandantenintern eindeutig, nicht global. Stand 2026-11-09: INTEGRATED nach PR #137. Sicherheitsbefund 2026-11-12: Vor PR #230 hatten die Wege /api/import/* keinen Serverschalter; IMPORT_DATEI_AKTIV (src/lib/import-schnittstelle.js) ist nur eine Anzeige-Konstante der Oberfläche. Die Endpunkte waren auf Integrations- und Staging-Ständen für Leitung/Planung erreichbar. Die Import-Pakete IMP-1..IMP-4 liegen in integration/release-v4, aber nicht im Produktionsstand 64d08a49 vom 2026-10-11 (per git: keiner der Merge-Commits der Import-PRs ist Vorfahr von 64d08a49, dort existiert keine Importdatei). Seit PR #230: Serverschalter CENTRIC_IMPORT_AKTIV, Vorgabe aus, fail-closed (nur genau true schaltet ein); Einschalten erst nach IMPORT-VERTRAG §13 (IMP-9) und Betreiberfreigabe. Status unverändert."
     },
     {
       "id": "IMP-5",
@@ -4944,7 +4944,35 @@
       "prio": "P3",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["IMP-4"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #227 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #227 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #227 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #227 in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "haiku",
+      "konfliktzonen": [],
+      "pr": ["#227"],
+      "nachweis": "docs/acc45/IMPORT-PLAN.md",
+      "akzeptanz": "Dokumentiert: Formate, Grenzen, Rechte, Dubletten, Fehlermeldungen",
+      "tests": "siehe IMPORT-PLAN.md",
+      "dateien": "docs/BETRIEBSHANDBUCH.md, docs/",
+      "notiz": "Routine. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Abhängigkeit IMP-4 integriert. Im Handbuch fehlt ein Importkapitel (nur src/handbuch-inhalt.js „Team → Personal → Importieren“ und CENTRIC_IMPORT_ADRESSRAUM_KB im Betriebshandbuch); Entwicklervertrag docs/acc45/IMPORT-VERTRAG.md vorhanden. Stand (automatisch): INTEGRATED nach #227. Abweichungen aus der Dokumentation (Folgepaket IMP-11): (1) ODS/xlsm werden im UI-Text und im Dateidialog angeboten, der Parser weist beide ab; (2) ein veralteter Code-Kommentar behauptet, der Endpunkt sei nicht eingebunden; (3) die Endpunkt-Codes fehlen in IMPORT-VERTRAG §9; (4) die Bibliothek enthält nur Schichtzyklen."
+    },
+    {
+      "id": "IMP-11",
+      "titel": "Import: Abweichungen UI/Parser/Doku bereinigen (ODS/xlsm im Dateidialog, veralteter Kommentar, Endpunkt-Codes in Vertrag §9)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": ["IMP-4"],
+      "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -4956,14 +4984,14 @@
       },
       "branch": null,
       "agent": "Hauptorchestrator",
-      "modell": "haiku",
+      "modell": "sonnet",
       "konfliktzonen": [],
       "pr": [],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
-      "akzeptanz": "Dokumentiert: Formate, Grenzen, Rechte, Dubletten, Fehlermeldungen",
-      "tests": "siehe IMPORT-PLAN.md",
-      "dateien": "docs/BETRIEBSHANDBUCH.md, docs/",
-      "notiz": "Routine. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Abhängigkeit IMP-4 integriert. Im Handbuch fehlt ein Importkapitel (nur src/handbuch-inhalt.js „Team → Personal → Importieren“ und CENTRIC_IMPORT_ADRESSRAUM_KB im Betriebshandbuch); Entwicklervertrag docs/acc45/IMPORT-VERTRAG.md vorhanden."
+      "akzeptanz": "UI-Text und Dateidialog bieten nur Formate an, die der Parser annimmt (ODS/xlsm entweder abgewiesen im Dialog oder vom Parser unterstützt, Entscheidung vor Umsetzung); veralteter Kommentar zur Einbindung des Endpunkts korrigiert; Endpunkt-Codes in IMPORT-VERTRAG §9 vollständig; Funktion bleibt aus (CENTRIC_IMPORT_AKTIV unverändert)",
+      "tests": "pruefungen/import-*.test.js, pruefungen/doku.test.js",
+      "dateien": "src/ (Importassistent, Dateidialog), server/funktionen/import.mjs (Kommentar), docs/acc45/IMPORT-VERTRAG.md §9",
+      "notiz": "Befunde aus IMP-10 (PR #227): (1) ODS und xlsm werden im UI-Text und im Dateidialog angeboten, der Parser weist beide ab; (2) ein veralteter Code-Kommentar sagt, der Endpunkt sei nicht eingebunden; (3) die Endpunkt-Codes fehlen in IMPORT-VERTRAG §9; (4) die Bibliothek enthält nur Schichtzyklen. Keine Funktionsänderung am Import-Schalter. Aufwand ist eine SCHÄTZUNG."
     },
     {
       "id": "OPT-1",
