@@ -1,7 +1,7 @@
 /* WP-19.13 (Teil): Abnahmematrix der zwoelf Branchenmodule, Server-Seite.
    Rechnet je Modul, Feld und Rolle (pruefungen/hilfen/modulabnahme.mjs) und prueft:
-     (a) Registry „geplant“ (echt): Schreiben der sechs registergesteuerten Module (R-9) geschlossen, nichts gespeichert;
-         die fuenf aelteren Module (Befund B1) sind es nicht — das Verhalten ist festgehalten, nicht gutgeheissen.
+     (a) Registry „geplant“ (echt): Schreiben aller Module mit Betriebsfeld (R-9) geschlossen, nichts gespeichert —
+         seit WP-19 B1 auch die fuenf aelteren Module (Registerwache server/lib/modul-altwege.mjs).
      (b) Pruefmodus (Registry nur in der Testhilfe „vorlaeufig“): genau die dokumentierte vorlaeufige Rechtematrix
          (wp19-offene-fragen-agent.md R-1 bis R-4, R-8), wo offen: das strengste heutige Verhalten.
      (c) Lesen je Rolle (R-3), kein Leck in einen anderen Betrieb, Betreiber ohne Moduldaten.
@@ -48,20 +48,24 @@ describe("Umfang und Status: nichts eingeschaltet", () => {
 
 describe("(a) Registry „geplant“: Schreiben geschlossen, nichts gespeichert (R-9)", () => {
   const geplant = zeilen.filter((z) => z.art === "schreiben-geplant");
-  it("registergesteuerte Module (Wachbuch, Bereitschaft, Funktionsdienst, Rotation, Pflegequalifikation): kein Schreiben, keine Rolle, auch nicht die Leitung", () => {
+  it("registergesteuerte Module (alle mit Betriebsfeld): kein Schreiben, keine Rolle, auch nicht die Leitung", () => {
+    expect(geplant.every((x) => x.register), "jede Zeile fragt das Register").toBe(true);
     for (const z of geplant.filter((x) => x.register))
       for (const k of Object.keys(z.zellen)) expect(OHNE_WIRKUNG, `${z.feld} ${k}`).toContain(z.zellen[k]);
     for (const feld of ["bereitschaftStufen", "bereitschaft", "funktionsbereiche", "funktionsPlan", "rotationen", "pflegeNiveaus", "wachbuch"])
       expect(zelle(feld, "schreiben-geplant", "LT")).toBe("abgewiesen");
   });
-  it("Befund B1: die fünf älteren Module (Posten, Bereichsplan, geteilte Dienste, Anlagen, Maschinenqualifikation) kennen das Register im Schreibweg nicht — "
-    + "Planung, Leitung, Kundenrolle (und Demo) speichern auch bei „geplant“", () => {
+  it("Befund B1 (behoben): die fünf älteren Module (Posten, Bereichsplan, geteilte Dienste, Anlagen, Maschinenqualifikation) fragen das Register — "
+    + "bei „geplant“ speichert keine Rolle, auch nicht Leitung, Kundenrolle, Demo oder die Schichtverantwortung im Bereichsplan", () => {
     const betroffen = ["objekte", "postenPlan", "bereichsPlan", "dienstarten", "betriebsmittel", "kompetenzen"];
     for (const feld of betroffen) {
-      for (const k of ["LT", "PL", "KD", "DL", "DP"]) expect(zelle(feld, "schreiben-geplant", k), `B1 ${feld} ${k}`).toBe("gespeichert");
-      /* Das Register ändert nichts: Prüfmodus und echter Weg liefern dieselben Zellen. */
-      expect(zeile(feld, "schreiben-pruef").zellen, feld).toEqual(zeile(feld, "schreiben-geplant").zellen);
-      expect(zeile(feld, "schreiben-geplant").register, feld).toBe(false);
+      for (const k of ["LT", "PL", "SV", "KD", "DL", "DP"]) expect(zelle(feld, "schreiben-geplant", k), `B1 ${feld} ${k}`).toBe("abgewiesen");
+      for (const k of ROLLEN.map((r) => r.k)) expect(OHNE_WIRKUNG, `B1 ${feld} ${k}`).toContain(zelle(feld, "schreiben-geplant", k));
+      expect(zeile(feld, "schreiben-geplant").register, feld).toBe(true);
+      /* Wie die neueren Module: dieselbe Zeile wie Wachbuch & Co. bei „geplant“. */
+      expect(zeile(feld, "schreiben-geplant").zellen, feld).toEqual(zeile("rotationen", "schreiben-geplant").zellen);
+      /* Das Register wirkt: im Prüfmodus schreiben Planung und Leitung (und Kundenrolle, Demo) wieder. */
+      for (const k of ["LT", "PL", "KD", "DL", "DP"]) expect(zelle(feld, "schreiben-pruef", k), `Prüfmodus ${feld} ${k}`).toBe("gespeichert");
     }
   });
   it("Rollen ohne Schreibrecht und fremde Betriebe speichern nirgends (auch bei den älteren Modulen)", () => {
@@ -78,11 +82,12 @@ describe("(b) Prüfmodus: die dokumentierte vorläufige Rechtematrix (R-1, R-2, 
       for (const k of ["PL", "DP"]) expect(zelle(feld, P, k), `${feld} ${k}`).toBe("abgewiesen");
     }
   });
-  it("R-1/R-2: Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber und fremde Betriebe schreiben kein Modul mit Register (Ausnahme B1: Bereichsplan der Schichtverantwortung)", () => {
+  it("R-1/R-2: Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber und fremde Betriebe schreiben kein Modul mit Register (Ausnahme B2 b: Bereichsplan der Schichtverantwortung)", () => {
+    const sv = (z, k) => k === "SV" && z.feld === "bereichsPlan";
     for (const z of zeilen.filter((x) => x.art === P && x.register))
-      for (const k of ["SV", "MA", "BR", "BT", "AB"]) expect(z.zellen[k], `${z.feld} ${k}`).not.toBe("gespeichert");
+      for (const k of ["SV", "MA", "BR", "BT", "AB"]) if (!sv(z, k)) expect(z.zellen[k], `${z.feld} ${k}`).not.toBe("gespeichert");
     for (const z of zeilen.filter((x) => x.art === P && x.register))
-      for (const k of ["SV", "BR", "AB"]) expect(z.zellen[k], `${z.feld} ${k}`).toBe("abgewiesen");
+      for (const k of ["SV", "BR", "AB"]) if (!sv(z, k)) expect(z.zellen[k], `${z.feld} ${k}`).toBe("abgewiesen");
   });
   it("R-2: Wachbuch — Planung und Leitung tragen nur ein, wenn sie am Tag auf einem Posten des Objekts stehen; ohne Mitbestätigung (G6) nichts", () => {
     for (const k of ["LT", "PL", "KD", "DL", "DP"]) expect(zelle("wachbuch", P, k), k).toBe("gespeichert");
@@ -95,9 +100,9 @@ describe("(b) Prüfmodus: die dokumentierte vorläufige Rechtematrix (R-1, R-2, 
   it("R-8: ein anderer Betrieb schreibt nichts in den Betrieb 0 (jede Zeile abgewiesen)", () => {
     for (const z of zeilen.filter((x) => x.art.startsWith("schreiben"))) expect(z.zellen.AB, `${z.feld} ${z.art}`).toBe("abgewiesen");
   });
-  it("Schichtverantwortung im Bereichsplan: nur eigene Einheit (dokumentierter Weg bereichsPlanSchicht, B2) — hier gespeichert, in beiden Registerzuständen (B1)", () => {
+  it("Schichtverantwortung im Bereichsplan: nur eigene Einheit (dokumentierter Weg bereichsPlanSchicht, B2) — im Prüfmodus gespeichert, bei „geplant“ abgewiesen (B1 behoben)", () => {
     expect(zelle("bereichsPlan", P, "SV")).toBe("gespeichert");
-    expect(zelle("bereichsPlan", "schreiben-geplant", "SV")).toBe("gespeichert");
+    expect(zelle("bereichsPlan", "schreiben-geplant", "SV")).toBe("abgewiesen");
   });
 });
 
@@ -150,7 +155,9 @@ describe("(d) Das Dokument ist die Rechnung (kein Abweichen)", () => {
   });
   it("Befunde und Grenzen der Prüfung stehen im Dokument (B1, B2, B3; Status bleibt geplant; nicht geprüft)", () => {
     const d = doc();
-    for (const t of ["Befund B1", "Befund B2", "Befund B3", "Nicht geprüft", "geplant", "G8", "E-22"]) expect(d, t).toContain(t);
+    for (const t of ["Befund B1", "Befund B2", "Befund B3", "Befund B4", "Befund B5", "Nicht geprüft", "geplant", "G8", "E-22"]) expect(d, t).toContain(t);
+    expect(d).toContain("**Befund B1 (Rechte/Aktivität, kein Datenleck, behoben, dieser PR).**");
+    expect(d).toContain("modul-altwege.mjs");
     expect(blockLesen("MATRIX-UI")).toBeTruthy();
   });
 });

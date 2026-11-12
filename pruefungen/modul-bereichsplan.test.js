@@ -22,7 +22,7 @@ import { BETRIEB } from "../server/lib/sicht.mjs";
 import { pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../server/lib/regelbaukasten.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
-import { branchenbestand, schreibeAls, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
+import { branchenbestand, schreibeAls as schreibeAlsEcht, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
 import { BereichsUebersicht } from "../src/module/bereichsplan.jsx";
 
 const MO = "2026-11-02", DI = "2026-11-03";
@@ -31,6 +31,9 @@ const BEREICHE_E2 = [{ id: "b3", name: "Station 3", soll: { F: 1 } }];
 const person = (id, extra = {}) => ({ id, vorname: "V", nachname: id, status: "aktiv", ...extra });
 
 const AKTIV = BRANCHENMODULE.map((x) => (x.id === "bereichsplan" ? { ...x, status: "vorlaeufig" } : x));
+/* WP-19 B1: Bei Status „geplant“ ist das Schreiben geschlossen. Die Schreibfälle laufen deshalb im Prüfmodus (Registry-Kopie
+   „vorlaeufig“ nur im Test, über den echten zusammenfuehren); das Geschlossene prüft „WP-19 B1“ mit schreibeAlsEcht. */
+const schreibeAls = (g, r, aendern) => schreibeAlsEcht(g, r, aendern, { liste: AKTIV });
 const einheitAm = (p) => p.einheit || "e1";
 const opts = (extra = {}) => ({ auswerten: pruefeRegel, module: AKTIV, einheitAm, ...extra });
 
@@ -148,6 +151,13 @@ describe("Schreibweg (Server) — Planung, Leitung und Schichtverantwortung (B2 
     expect(bereichsplanZusammen({ einheiten: [{ id: "e1", bereiche: [{ id: "b" }] }] }).grund).toMatch(/Bereich/);
     const alt = { einheiten: [{ id: "e1", bereiche: [{ id: "b" }] }], bereichsPlan: { kaputt: 1 } };
     expect(bereichsplanZusammen(alt, alt).grund).toBeUndefined();
+  });
+  it("WP-19 B1: bei Status „geplant“ speichert keine Rolle Zuordnungen oder Bereiche (Planung, Leitung, Kundenrolle, Schichtverantwortung)", () => {
+    for (const r of ["PL", "LT", "KD", "SV"])
+      expect(schreibeAlsEcht(bestand(), r, (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+    for (const r of ["PL", "LT"])
+      expect(schreibeAlsEcht(bestand(), r, (m) => { m.einheiten[0].bereiche = [...m.einheiten[0].bereiche, { id: "b9", name: "Neu", soll: { F: 1 } }]; }).verweigert, r)
+        .toMatch(/wirkt in diesem Betrieb nicht/);
   });
   it("Planung und Leitung speichern Bereiche und Zuordnungen; Fehlerhaftes wird abgewiesen", () => {
     for (const r of ["PL", "LT"]) {

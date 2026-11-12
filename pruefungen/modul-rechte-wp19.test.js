@@ -202,8 +202,13 @@ describe("Wachbuch: nur anhängen, nur eingeteilt", () => {
   });
   it("Befund 2: Posten und Eintrag im selben Speichern zählen nicht — maßgeblich ist der gespeicherte Postenplan", () => {
     const g = wirkend(grund()); g.mandanten[0].objekte = kopie(OBJEKTE);
-    const res = direkt(g, "LT", (m) => { m.postenPlan = { [`l1|${TAG}`]: "po1" }; m.wachbuch = { [`w1|${TAG}`]: eintrag() }; });
+    /* Seit WP-19 B1 fragt auch der Postenplan das Register: hier wirkt Posten (Prüfmodus nur im Test), damit allein der Wachbuchweg urteilt. */
+    g.mandanten[0].einstellungen.branchenmodule.posten = { an: true };
+    const liste = LISTE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x));
+    const res = direkt(g, "LT", (m) => { m.postenPlan = { [`l1|${TAG}`]: "po1" }; m.wachbuch = { [`w1|${TAG}`]: eintrag() }; }, { liste });
     expect(res.grund).toMatch(/im Dienst/);
+    /* Bei „geplant“ (Registry echt für Posten) weist schon der Postenplan ab. */
+    expect(direkt(g, "LT", (m) => { m.postenPlan = { [`l1|${TAG}`]: "po1" }; m.wachbuch = { [`w1|${TAG}`]: eintrag() }; }).grund).toMatch(/posten wirkt in diesem Betrieb nicht/);
   });
   it("Befund 2: die Einheit des Eintrags muss eine Einheit des Betriebs sein", () => {
     const res = direkt(mitPosten(grund(), "l1"), "LT", (m) => { m.wachbuch = { [`w1|${TAG}`]: eintrag({ einheitId: "gibt-es-nicht" }) }; });
