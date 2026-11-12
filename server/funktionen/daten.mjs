@@ -49,6 +49,7 @@ import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
+import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -723,7 +724,10 @@ async function behandeln(req, context, ctx) {
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
       /* Moduleinstellungen (Schalter, Bestätigungen, Regelwerte, Modulprotokoll) bringt kein
          Inhalt mit — jeder Betrieb beginnt ohne (G1/G2/G6, WP-19.0 Nachtrag). */
-      const angeglichen = bestandOhneModuleinstellungen(personenAngleichen(roh));
+      const angeglichen0 = bestandOhneModuleinstellungen(personenAngleichen(roh));
+      /* Auch die Intelligence-Steuerung (WP-I16) bringt kein Inhalt mit. */
+      const angeglichen = angeglichen0 && Array.isArray(angeglichen0.mandanten)
+        ? { ...angeglichen0, mandanten: angeglichen0.mandanten.map(kiSteuerungVerwerfen) } : angeglichen0;
       /* Monatsabschluss und eingefrorenes Ist entstehen nur auf dem Server (POST /api/monatsabschluss) — aus
          einem übermittelten Inhalt werden sie verworfen (WP-16, Nachtrag N4), nie ungeprüft übernommen. */
       let neuerBestand = angeglichen && Array.isArray(angeglichen.mandanten)
@@ -1289,7 +1293,10 @@ async function behandeln(req, context, ctx) {
 
       /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
          soll auch keine Bremse und keinen Konfliktvergleich auslösen. */
-      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
+      /* WP-I16 Teil 1: Einzige Ausnahme ist der Betriebsrat im Voll-PUT — er darf die Pause der Intelligence-Funktionen
+         setzen und aufheben. Ob die Anfrage genau das und nichts sonst ist, entscheidet zusammenfuehren (rechte.mjs);
+         ohne Änderung der Pause weist es mit derselben Absage ab wie bisher. Der Teilweg bleibt für ihn gesperrt. */
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN && !(s.rolle === "betriebsrat" && !teilweg)) {
         await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
@@ -1563,6 +1570,8 @@ async function behandeln(req, context, ctx) {
         /* Branchenmodule (WP-19.0): geschaltet, Mitbestimmung bestätigt, Regelwert gesetzt — nur Modul und
            Art, ohne Person, Grundlage oder Person|Tag (WP-14b, M1). Wer, steht im Modulprotokoll des Betriebs. */
         for (const z of modulProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "branchenmodul", z, wer);
+        /* Intelligence-Steuerung (WP-I16): Art, Ziel und Rolle — ohne Person und ohne Inhalt. */
+        for (const z of kiSteuerungProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "ki-steuerung", z, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         /* RB-2: eingegangene Krankmeldungen und unmittelbar (endgültig) eingetragene — nur Kennung, Schritt, Rolle. */

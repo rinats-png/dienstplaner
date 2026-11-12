@@ -266,6 +266,7 @@ import { aktionenPlan } from "./app/aktionen/plan.js";
 import { aktionenStammdaten } from "./app/aktionen/stammdaten.js";
 import { aktionenPlanung } from "./app/aktionen/planung.js";
 import { aktionenEinstellungen } from "./app/aktionen/einstellungen.js";
+import { aktionenKiSteuerung } from "./app/aktionen/ki-steuerung.js";
 import { aktionenAusschreibung } from "./app/aktionen/ausschreibung.js";
 import { aktionenBegleitung } from "./app/aktionen/begleitung.js";
 import { aktionenZeiterfassung } from "./app/aktionen/zeiterfassung.js";
@@ -1583,6 +1584,7 @@ function AppInnen() {
       ...aktionenStammdaten(aktKontext),
       ...aktionenPlanung(aktKontext),
       ...aktionenEinstellungen(aktKontext),
+      ...aktionenKiSteuerung(aktKontext),
       ...aktionenAusschreibung(aktKontext),
       ...aktionenBegleitung(aktKontext),
       ...aktionenZeiterfassung(aktKontext),

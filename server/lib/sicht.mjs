@@ -26,6 +26,7 @@ import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 import { moduleinstellungenSicht } from "./branchenmodule.mjs";
+import { kiSteuerungSicht } from "./ki-steuerung.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
 import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
 
@@ -597,7 +598,7 @@ export const BETRIEB = {
   /* Einstellungen: alles wie bisher; nur die Branchenmodule (WP-19.0) gekürzt — Beschäftigte und
      Schichtverantwortung ohne Wer, Mitbestimmungsgrundlage und Modulprotokoll, der Betriebsrat ganz
      (moduleinstellungenSicht, server/lib/branchenmodule.mjs; RECHTEMATRIX ²⁹). */
-  einstellungen: [R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle)), R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle))],
+  einstellungen: [R((w, ctx) => kiSteuerungSicht(moduleinstellungenSicht(w, ctx.rolle), ctx.rolle)), R((w, ctx) => kiSteuerungSicht(moduleinstellungenSicht(w, ctx.rolle), ctx.rolle))],
   /* Die Oberfläche richtet Navigation und Knöpfe danach (darf → m.matrix). */
   matrix: [VOLL, VOLL],
   briefing: [VOLL, VOLL], aufgaben: [VOLL, VOLL], qualifikationen: [VOLL, VOLL],
