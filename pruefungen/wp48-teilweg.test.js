@@ -508,6 +508,58 @@ describe("Epoche, Idempotenz, Schalter, Rollen, Form", { timeout: 300000 }, () =
     expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[k]).toBeUndefined();
   });
 
+  it("Review Delta #224 Befund 2: Wiederholung nach Wiederherstellen → 409 NEU_LADEN, keine alte Antwort", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["PL"] });
+    const g = await anfrage("/api/bestand", { token: token.PL });
+    const d = deltaAus(g, { zellen: [{ feld: "abweichungen", k: `a1|${tag(21)}`, neu: "-" }] }, { anfrage: "anfrage-delta2-0001" });
+    expect((await teile(token.PL, d)).status).toBe(200);
+    const jetzt = await B.bestandLesenStreng(laden(), raum);
+    expect((await B.bestandSchreiben(laden(), raum, jetzt.bestand, { erwarteterStand: jetzt.stand, durch: "Wiederherstellen", neueEpoche: true })).ok).toBe(true);
+    const w = await teile(token.PL, d);
+    expect(w.status).toBe(409);
+    expect(w.code).toBe("NEU_LADEN");
+    expect(w.wiederholt).toBeUndefined();
+  });
+
+  it("Review Delta #224 Befund 1: Wiederholvermerke begrenzt je Sitzung und je Raum — voll → 429, nichts geschrieben, nie verdrängt", async () => {
+    const TW = await import("../server/lib/teilweg.mjs");
+    const alt = { ...TW.TEILANFRAGE_GRENZEN };
+    try {
+      TW.TEILANFRAGE_GRENZEN.jeSitzung = 3;
+      TW.TEILANFRAGE_GRENZEN.jeRaum = 5;
+      const { raum, token } = await neuerRaum({ rollen: ["PL", "LT"] });
+      const g = await anfrage("/api/bestand", { token: token.PL });
+      const zelle = (i) => ({ feld: "abweichungen", k: `b1|${tag(24 + i)}`, neu: "-" });
+      const ersteD = deltaAus(g, { zellen: [zelle(0)] }, { anfrage: "anfrage-voll-00" });
+      for (let i = 0; i < 3; i++)
+        expect((await teile(token.PL, i ? deltaAus(g, { zellen: [zelle(i)] }, { anfrage: `anfrage-voll-0${i}` }) : ersteD)).status).toBe(200);
+      const st = (await gespeichert(raum)).stand;
+      const voll = await teile(token.PL, deltaAus(g, { zellen: [zelle(3)] }, { anfrage: "anfrage-voll-03" }));
+      expect(voll.status).toBe(429);
+      expect(voll.code).toBe("TEILANFRAGEN_VOLL");
+      expect((await gespeichert(raum)).stand).toBe(st);
+      expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[`b1|${tag(27)}`]).toBeUndefined();
+      /* Der älteste Vermerk wurde nicht verdrängt: seine Wiederholung ist weiter „wiederholt", ohne Schreiben. */
+      const w = await teile(token.PL, ersteD);
+      expect(w.wiederholt).toBe(true);
+      expect((await gespeichert(raum)).stand).toBe(st);
+      /* Je Raum: die Leitung hat 2 frei (5 − 3), danach ebenfalls 429. */
+      const gL = await anfrage("/api/bestand", { token: token.LT });
+      for (let i = 0; i < 2; i++)
+        expect((await teile(token.LT, deltaAus(gL, { zellen: [{ feld: "abweichungen", k: `a1|${tag(30 + i)}`, neu: "-" }] }, { anfrage: `anfrage-raum-0${i}` }))).status).toBe(200);
+      expect((await teile(token.LT, deltaAus(gL, { zellen: [{ feld: "abweichungen", k: `a1|${tag(33)}`, neu: "-" }] }, { anfrage: "anfrage-raum-09" }))).status).toBe(429);
+      expect((await laden().list({ prefix: `teilanfrage:${raum}:` })).blobs.length).toBe(5);
+      /* Abgelaufenes wird entfernt (und nur das): mit kurzer Frist ist wieder Platz. */
+      TW.TEILANFRAGE_GRENZEN.frist = 0;
+      await new Promise((r) => setTimeout(r, 5));
+      expect((await teile(token.PL, deltaAus(g, { zellen: [zelle(3)] }, { anfrage: "anfrage-voll-03" }))).status).toBe(200);
+      /* Aufräumen außerhalb der Sperre, begrenzt je Lauf. */
+      TW.TEILANFRAGE_GRENZEN.aufraeumenJeLauf = 1;
+      TW.TEILANFRAGE_GRENZEN.aufraeumenAbstand = 0;
+      expect(await TW.anfragenAufraeumen(laden(), raum)).toBe(1);
+    } finally { Object.assign(TW.TEILANFRAGE_GRENZEN, alt); }
+  });
+
   it("Review #224 Befund 4: tief verschachtelter Rumpf → 422 statt Stapelüberlauf", async () => {
     const { raum, token } = await neuerRaum({ rollen: ["PL"] });
     const g = await anfrage("/api/bestand", { token: token.PL });

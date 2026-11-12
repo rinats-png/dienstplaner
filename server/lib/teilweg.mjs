@@ -248,55 +248,103 @@ export function teileAnwenden(sicht, mandantId, delta) {
 }
 
 /* ---------------------------------------------------------------------------
-   Wiederholschutz (2.3 Schritt 7, Review PR #224 Befunde 1–3)
+   Wiederholschutz (2.3 Schritt 7, Review PR #224)
 
    Dieselbe Anfragekennung DERSELBEN SITZUNG mit DEMSELBEN Rumpf bekommt die
    gespeicherte Antwort, ohne neu zu schreiben. Derselbe Schlüssel mit einem
    ANDEREN Rumpf ist ein Fehler des Absenders (422 ANFRAGE_WIEDERVERWENDET) —
    nie ein stilles „schon erledigt", sonst ginge die zweite Änderung verloren.
 
-   Der Vermerk liegt in der Ablage (teilanfrage:<raum>:…), geschrieben unter
-   derselben Raumsperre direkt nach dem Speichern: Er überlebt einen Neustart.
-   Sonst nähme ein Neustart die Erinnerung, und eine Wiederholung nach einem
-   fremden Zurücksetzen (A setzt null→F, B setzt F→null, A wiederholt) ginge
-   über den Erwartungswert wieder durch und überschriebe B (ABA).
-   Grenzen: Gemerkt wird nur ein Erfolg, 24 Stunden lang, je Sitzung. Eine
-   Wiederholung aus einer ANDEREN Sitzung oder nach 24 Stunden prüft wieder
-   nur die Erwartungswerte. Bricht der Prozess genau zwischen Speichern und
-   Vermerk ab, fehlt der Vermerk für diese eine Anfrage.
+   Der Vermerk liegt in der Ablage, unter derselben Raumsperre direkt nach dem
+   Speichern geschrieben: Er überlebt einen Neustart (sonst ginge eine
+   Wiederholung nach fremdem Zurücksetzen — A null→F, B F→null, A wiederholt —
+   über den Erwartungswert wieder durch, ABA).
+
+   Schlüssel: teilanfrage:<raum>:<Sitzung>:<Zeit>:<Anfrage> — Sitzung und
+   Anfrage gehasht, die Zeit (Basis 36) im Namen. Ablauf und Zählung kommen so
+   allein aus dem Verzeichnis, ohne eine Datei zu lesen.
+
+   Begrenzt (Review Delta #224, Befund 1): höchstens GRENZEN.jeSitzung
+   gültige Vermerke je Sitzung und GRENZEN.jeRaum je Raum. Ist eine Grenze
+   erreicht, wird eine NEUE Anfrage mit Kennung abgewiesen (429
+   TEILANFRAGEN_VOLL, nichts geschrieben) — es wird nie ein gültiger Vermerk
+   verdrängt, denn ein verdrängter Vermerk könnte eine doppelte Anwendung
+   zulassen. Nur Abgelaufenes wird entfernt: das der eigenen Sitzung unter der
+   Sperre (höchstens jeSitzung Einträge), der Rest des Raums AUSSERHALB der
+   Sperre, höchstens GRENZEN.aufraeumenJeLauf je Lauf, höchstens alle zehn
+   Minuten je Raum.
+
+   Grenzen der Wirkung: gemerkt wird nur ein Erfolg, GRENZEN.frist lang, je
+   Sitzung. Eine Wiederholung aus einer ANDEREN Sitzung (auch nach erneutem
+   Anmelden, etwa aus einem Offline-Puffer — Auflage für WP-48.5), nach
+   Ablauf oder mit neuer Kennung prüft nur die Erwartungswerte. Bricht der
+   Prozess genau zwischen Speichern und Vermerk ab, fehlt der Vermerk.
    --------------------------------------------------------------------------- */
 export const TEILANFRAGE_PRAEFIX = "teilanfrage:";
-export const TEILANFRAGE_FRIST_MS = 24 * 60 * 60 * 1000;
-const AUFRAEUMEN_ABSTAND_MS = 10 * 60 * 1000;
+/** Veränderbar nur für Prüfungen (wie schutz.mjs GRENZEN). */
+export const TEILANFRAGE_GRENZEN = { frist: 24 * 60 * 60 * 1000, jeSitzung: 200, jeRaum: 5000, aufraeumenJeLauf: 500, aufraeumenAbstand: 10 * 60 * 1000 };
 const aufgeraeumt = new Map();
 
-const anfrageSchluessel = (raum, sitzungsKennung, anfrage) =>
-  `${TEILANFRAGE_PRAEFIX}${raum}:${createHash("sha256").update(`${sitzungsKennung}|${anfrage}`).digest("hex").slice(0, 48)}`;
+const h = (s, n) => createHash("sha256").update(s).digest("hex").slice(0, n);
+const sitzungsPraefix = (raum, sitzungsKennung) => `${TEILANFRAGE_PRAEFIX}${raum}:${h(`s|${sitzungsKennung}`, 32)}:`;
+const anfrageTeil = (sitzungsKennung, anfrage) => h(`${sitzungsKennung}|${anfrage}`, 40);
+const ZEITSTELLEN = 10;
+/** Aus dem Schlüsselnamen: { zeit, anfrage } oder null. */
+function zerlege(schluessel) {
+  const m = /:([0-9a-z]{10}):([0-9a-f]{40})$/.exec(schluessel);
+  return m ? { zeit: parseInt(m[1], 36), anfrage: m[2] } : null;
+}
+const gueltig = (e, jetzt) => !!e && jetzt - e.zeit <= TEILANFRAGE_GRENZEN.frist;
 
 /** Abdruck des Rumpfs ohne die Anfragekennung (stabil, formgeprüft — also begrenzt tief). */
 export const rumpfAbdruck = (r) => version({ ...r, anfrage: undefined });
 
 /**
- * @returns {Promise<null | { gleich: true, antwort: any } | { gleich: false }>}
+ * Unter der Raumsperre, vor dem Schreiben.
+ * @returns {Promise<{ frei: true } | { gleich: true, antwort: any } | { gleich: false } | { voll: "sitzung"|"raum" }>}
  */
-export async function anfrageLesen(store, raum, sitzungsKennung, anfrage, abdruck, jetzt = Date.now()) {
-  if (!anfrage || !sitzungsKennung) return null;
-  const e = await store.get(anfrageSchluessel(raum, sitzungsKennung, anfrage), { type: "json" });
-  if (!e || typeof e !== "object" || !(jetzt - Number(e.zeit) <= TEILANFRAGE_FRIST_MS)) return null;
-  return e.abdruck === abdruck ? { gleich: true, antwort: e.antwort } : { gleich: false };
+export async function anfragePruefen(store, raum, sitzungsKennung, anfrage, abdruck, jetzt = Date.now()) {
+  if (!anfrage || !sitzungsKennung) return { frei: true };
+  const praefix = sitzungsPraefix(raum, sitzungsKennung);
+  const teil = anfrageTeil(sitzungsKennung, anfrage);
+  const { blobs } = await store.list({ prefix: praefix });
+  let eigene = 0;
+  for (const b of blobs) {
+    const e = zerlege(b.key);
+    if (!gueltig(e, jetzt)) { await store.delete(b.key).catch(() => {}); continue; }
+    if (e.anfrage === teil) {
+      const v = await store.get(b.key, { type: "json" });
+      /* Unlesbarer Vermerk zur selben Kennung: fail-closed wie „anderer Inhalt" (nie neu anwenden). */
+      return v && typeof v === "object" && v.abdruck === abdruck ? { gleich: true, antwort: v.antwort } : { gleich: false };
+    }
+    eigene++;
+  }
+  if (eigene >= TEILANFRAGE_GRENZEN.jeSitzung) return { voll: "sitzung" };
+  const raumListe = await store.list({ prefix: `${TEILANFRAGE_PRAEFIX}${raum}:` });
+  let imRaum = 0;
+  for (const b of raumListe.blobs) if (gueltig(zerlege(b.key), jetzt)) imRaum++;
+  if (imRaum >= TEILANFRAGE_GRENZEN.jeRaum) return { voll: "raum" };
+  return { frei: true };
 }
 
+/** Unter der Raumsperre, direkt nach dem erfolgreichen Schreiben. */
 export async function anfrageMerken(store, raum, sitzungsKennung, anfrage, abdruck, antwortDaten, jetzt = Date.now()) {
   if (!anfrage || !sitzungsKennung) return;
-  await store.setJSON(anfrageSchluessel(raum, sitzungsKennung, anfrage), { zeit: jetzt, abdruck, antwort: antwortDaten });
-  /* Abgelaufene Vermerke höchstens alle zehn Minuten je Raum wegräumen (Raumlöschung nimmt alle mit). */
-  if (jetzt - (aufgeraeumt.get(raum) || 0) < AUFRAEUMEN_ABSTAND_MS) return;
+  const schluessel = `${sitzungsPraefix(raum, sitzungsKennung)}${jetzt.toString(36).padStart(ZEITSTELLEN, "0")}:${anfrageTeil(sitzungsKennung, anfrage)}`;
+  await store.setJSON(schluessel, { abdruck, antwort: antwortDaten });
+}
+
+/** AUSSERHALB der Raumsperre: Abgelaufenes des Raums wegräumen, begrenzt je Lauf. Gibt die Zahl der entfernten zurück. */
+export async function anfragenAufraeumen(store, raum, jetzt = Date.now()) {
+  if (jetzt - (aufgeraeumt.get(raum) || 0) < TEILANFRAGE_GRENZEN.aufraeumenAbstand) return 0;
   aufgeraeumt.set(raum, jetzt);
+  let weg = 0;
   try {
     const { blobs } = await store.list({ prefix: `${TEILANFRAGE_PRAEFIX}${raum}:` });
     for (const b of blobs) {
-      const e = await store.get(b.key, { type: "json" }).catch(() => null);
-      if (!e || !(jetzt - Number(e.zeit) <= TEILANFRAGE_FRIST_MS)) await store.delete(b.key).catch(() => {});
+      if (weg >= TEILANFRAGE_GRENZEN.aufraeumenJeLauf) break;
+      if (!gueltig(zerlege(b.key), jetzt)) { await store.delete(b.key).catch(() => {}); weg++; }
     }
   } catch { /* nächstes Mal */ }
+  return weg;
 }

@@ -19,7 +19,7 @@ import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { demoAn, teilwegAn } from "../lib/schalter.mjs";
-import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfrageLesen, anfrageMerken } from "../lib/teilweg.mjs";
+import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
@@ -1359,20 +1359,29 @@ async function behandeln(req, context, ctx) {
            Wiederanlauf) oder ein Bestand ohne Epoche → NEU_LADEN, kein Abgleich je Zelle. Ein einziger
            Konflikt → 409 für die ganze Anfrage, nur mit den aktuellen Werten der streitigen Teile. */
         if (teilweg) {
-          /* Dieselbe Anfragekennung derselben Sitzung (unter der Sperre geprüft, dauerhaft gemerkt): mit demselben
-             Rumpf dieselbe Antwort ohne neues Schreiben; mit einem anderen Rumpf eine Absage — nie still verworfen. */
-          const schon = await anfrageLesen(store, s.bestand, teilSitzung, rumpf.anfrage, teilAbdruck);
-          if (schon && schon.gleich) return { wiederholt: schon.antwort };
-          if (schon) {
-            await protokoll("schreiben", ks, "abgewiesen", "Teilweg: Anfragekennung mit anderem Inhalt", wer);
-            return antwort({ fehler: "Die Änderung ist ungültig.", code: "ANFRAGE_WIEDERVERWENDET",
-              text: "Diese Anfragekennung gehört zu einer anderen Änderung. Es wurde nichts geändert." }, 422);
-          }
+          /* Zuerst die Epoche (Review Delta #224, Befund 2): Nach einem Wiederherstellen ist auch eine Wiederholung
+             ein Konflikt „neu laden", keine gespeicherte Antwort mit altem Stand. */
           if (!jetzt || !jetzt.bestand || !jetzt.epoche || jetzt.epoche !== rumpf.epoche) {
             await protokoll("schreiben", ks, "konflikt", "Teilweg: Epoche", wer);
             return antwort({ fehler: "konflikt", code: "NEU_LADEN",
               text: "Der gespeicherte Stand wurde inzwischen neu aufgesetzt. Bitte neu laden — es wurde nichts geändert.",
               epoche: (jetzt && jetzt.epoche) || null }, 409);
+          }
+          /* Dieselbe Anfragekennung derselben Sitzung (unter der Sperre geprüft, dauerhaft gemerkt): mit demselben
+             Rumpf dieselbe Antwort ohne neues Schreiben; mit einem anderen Rumpf eine Absage — nie still verworfen.
+             Sind die Vermerke der Sitzung oder des Raums voll, wird eine neue Anfrage MIT Kennung abgewiesen (429) —
+             ein gültiger Vermerk wird nie verdrängt (teilweg.mjs). */
+          const schon = await anfragePruefen(store, s.bestand, teilSitzung, rumpf.anfrage, teilAbdruck);
+          if ("gleich" in schon && schon.gleich) return { wiederholt: schon.antwort };
+          if ("gleich" in schon) {
+            await protokoll("schreiben", ks, "abgewiesen", "Teilweg: Anfragekennung mit anderem Inhalt", wer);
+            return antwort({ fehler: "Die Änderung ist ungültig.", code: "ANFRAGE_WIEDERVERWENDET",
+              text: "Diese Anfragekennung gehört zu einer anderen Änderung. Es wurde nichts geändert." }, 422);
+          }
+          if ("voll" in schon) {
+            await protokoll("schreiben", ks, "gebremst", `Teilweg: Wiederholvermerke voll (${schon.voll})`, wer);
+            return antwort({ fehler: "Gerade wird sehr viel gespeichert.", code: "TEILANFRAGEN_VOLL",
+              text: "Es wurde nichts gespeichert. Bitte später noch einmal versuchen." }, 429, { "retry-after": "60" });
           }
           const angeglichenT = personenAngleichen(jetzt.bestand);
           const roh = eigenerMandant(angeglichenT, s);
@@ -1676,6 +1685,8 @@ async function behandeln(req, context, ctx) {
         return gesperrt;
       }
       if (gesperrt.wiederholt) return antwort({ ...gesperrt.wiederholt, wiederholt: true });
+      /* Abgelaufene Wiederholvermerke außerhalb der Sperre, begrenzt je Lauf (teilweg.mjs). */
+      if (teilweg) await anfragenAufraeumen(store, s.bestand).catch(() => 0);
       const { erg, jetzt, zuSchreiben, stempelVerworfen, teilAntwort } = gesperrt;
 
       /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,

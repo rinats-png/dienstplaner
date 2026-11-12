@@ -680,6 +680,18 @@ kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
   mit neuer Kennung prüft nur Erwartungswerte (ABA dann möglich, wie bei jedem compare-and-set über Werte; ein Zähler
   je Zelle wäre eine Formatänderung der Scherbe). Abbruch genau zwischen Speichern und Vermerk: Vermerk fehlt. Die
   Raumlöschung nimmt die Vermerke mit (`raumloeschung.mjs`).
+- **Grenzen der Vermerke (Review Delta #224):** Schlüssel `teilanfrage:<raum>:<Sitzung>:<Zeit>:<Anfrage>` (Ablauf und
+  Zählung allein aus dem Verzeichnis). Höchstens 200 gültige Vermerke je Sitzung und 5 000 je Raum; ist eine Grenze
+  erreicht, wird eine neue Anfrage **mit** Kennung mit 429 `TEILANFRAGEN_VOLL` abgewiesen (nichts geschrieben) — ein
+  gültiger Vermerk wird nie verdrängt (sonst wäre eine doppelte Anwendung möglich). Abgelaufenes der eigenen Sitzung
+  räumt die Prüfung unter der Sperre weg (≤ 200 Einträge), den Rest des Raums ein Lauf **außerhalb** der Sperre,
+  höchstens 500 je Lauf und alle 10 min je Raum. Unter der Sperre wird je Anfrage mit Kennung das Verzeichnis der
+  Sitzung und des Raums gelistet (keine Datei gelesen außer bei einem Treffer).
+- **Epoche zuerst:** Eine Wiederholung nach einem Wiederherstellen bekommt 409 `NEU_LADEN`, nicht die alte Antwort.
+- **Auflage für WP-48.5 (bekannte Grenze):** Eine Wiederholung aus einer **neuen Sitzung** (erneutes Anmelden, etwa aus
+  einem Offline-Puffer) teilt die Vermerke nicht und prüft nur Erwartungswerte — ABA bleibt dort möglich. Die
+  Oberfläche darf ausstehende Deltas nach einem Sitzungswechsel nicht blind wiederholen, sondern muss gegen die frische
+  Sicht neu aufsetzen (Rebase, 2.4).
 - **Tiefe:** Rümpfe tiefer als 64 Ebenen → 422 vor jeder Rekursion (Review Befund 4).
 - **Differenzprüfung erweitert (Review Befund 5):** zusätzlich Planstände, gefälschte endgültige Krankmeldung,
   gefälschte Servermitteilung `planFreigegeben`, Matrix, Rollennamen, Rolle anheben (eigene/fremde), Person löschen,
