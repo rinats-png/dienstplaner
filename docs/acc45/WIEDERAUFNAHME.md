@@ -1,7 +1,12 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #229, Integrationskopf 63133a5c, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-12 nach Merge #234, Integrationskopf e184d5a2, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #234 (2026-11-12)
+- Integrationskopf: `e184d5a2` (Merge #234). Seit dem Stand nach #229 gemergt: #230 Import: serverseitiger Schalter `CENTRIC_IMPORT_AKTIV`, #231 SSOT, #232 IMP-11 Import: Abweichungen UI/Parser/Doku bereinigt (Dateidialog und Hilfetext nur xlsx, xls, csv, tsv; eine Quelle `server/lib/import/formate.mjs`; `IMPORT-VERTRAG.md` §9a Endpunkt-Codes; Funktion bleibt aus), #233 Intelligence: KiAntwort browserfähig (`byteLaenge` in `server/lib/intelligence/bytes.mjs`; nichts eingehängt, Einhängepunkte in `docs/acc45/INTELLIGENCE-UI.md`), #234 WP-19.3 Teil (Objektbericht-Dienstzeit aus der bestätigten Ist-Zeit, nie aus der Planzeit; Modul bleibt geplant).
+- SSOT-Stand dazu: IMP-11 INTEGRATED. WP-19.3 bleibt BLOCKED (PR #234 vermerkt, OB-2 erledigt, Rest offen); das Werkzeug hatte WP-19.3 auf IN_PROGRESS gesetzt, von Hand auf BLOCKED zurückgenommen. WP-I22, WP-I23, WP-I24 unverändert (PR #233 in der Notiz: Browserfähigkeit der Anzeige hergestellt, Einhängepunkte offen). Neu QS-1 READY P3 (Testhygiene: `pruefungen/import-personal-e2e.test.js` prüft "3002" als Teilzeichenfolge und schlug an einem Zeitstempel ".3002" fehl; ganze Token prüfen).
+- Nächste technische Schritte (Klasse B der `BEREITSCHAFTSANALYSE-2026-11-12.md`): WP-40 `pruefungen/browser/abnahme-kern.mjs` auf dem aktuellen Stand wiederholen und die Verteilung bei 320 px beheben; WP-33 E2E-Suite auf den heutigen Stand portieren (neue Abhängigkeiten erst nach Betreiberzulassung); WP-48.6/48.7 technisch; WP-16c Kern laut Analyse (Abschnitt WP-16c); QS-1.
 
 ## Stand nach #229 (2026-11-12)
 - Integrationskopf: `63133a5c` (Merge #229). Seit dem Stand nach #223 gemergt: #224 WP-48.3 Teil (Teilspeicherung je Segment mit Versionen: `POST /api/bestand/teile` und `teile` im GET hinter `CENTRIC_TEILSPEICHERUNG=true`, Vorgabe aus; Wiedergabe-Aufzeichnung je Sitzung 24 h mit Obergrenzen; §7-Korrektur abgeleiteter Felder auch im vollen PUT), #226 SSOT-Werkzeug erkennt "Teil:", #227 IMP-10 Handbuch und Betreiberdoku zum Import (nur Doku, Funktion bleibt aus), #228 WP-I31 Teil 1 (Fragen an Daten: Katalog, deterministisch, nur Kern, keine Route, Schalter aus), #229 WP-PILOT Teil (synthetische Seeds SD-P/SD-S, Lader mit fail-closed-Wächter, Markerdatei `.centric-test-umgebung`), #230 Import: serverseitiger Schalter `CENTRIC_IMPORT_AKTIV` (Vorgabe aus, fail-closed).
@@ -27,6 +32,7 @@
 - WP-I23: fachliche Freigabe der 25 Korpus-Inhalte; ob `suche` für Piloten sichtbar ist; Gesundheitstexte für das Modell gesperrt bestätigen.
 - Ruhezeit und Zeitumstellung (DST) im Near-Miss/Spielraum gegenüber dem Befund: Engine-Frage (WP-I20).
 - Betriebsratsmitglieder als Ersatzkandidaten: der Rechenkern schließt sie heute ein; Entscheidung nötig.
+- WP-19.3 Objektbericht (PR #234): Darf die Schichtverantwortung den Bericht sehen (umgesetzt: nein)? Wie oft darf "ungeklärt" bei der Selbstauskunft "wie geplant" erscheinen? Wie streng gilt `dienstzeitStand` über den ganzen Betrieb? Mandanten-Sitzungen mit Rolle `kunde` liefern Quelle null; abgeschlossener Monat mit ungestempeltem Tag.
 - WP-I24: Ablage des Seit-letztem-Besuch-Standes, Sicht für Mitarbeitende, Umfang der Planer-Sicht ("nur eigener Bereich" oder ganzer Betrieb), Verhalten an der 400-Personen-Grenze.
 - WP-16c: leere Differenz bei reiner Ist-Zeit-Änderung ohne Planwirkung (Mehrarbeit nur bei positivem Konto) fachlich bestätigen.
 - WP-14c: Fachentscheidung F6a/F6b.
@@ -99,7 +105,7 @@ Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 
 ## Integrationsstand
-- Integration: `integration/release-v4`, Kopf 63133a5c (Stand nach #229; davor 55b030bb (Stand nach #223); davor 80f99de3 (Merge #215 IMP-8, 2026-11-12; davor #214 Nachtdienst ohne Einstempeln, #213 WP-21-SV, #212 SSOT, #211 WP-21 Teil 3 (b7271fb3), #210 Smoke Tageswechsel, #209 SI-P4 Passwortfelder, #208 SSOT, #207 RB-5, #206 RB-3, #205 RB-4, #204 SSOT, #202 RB-2, #199 RB-1, #198 WR-6)). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
+- Integration: `integration/release-v4`, Kopf e184d5a2 (Stand nach #234; davor 63133a5c (Stand nach #229); davor 55b030bb (Stand nach #223); davor 80f99de3 (Merge #215 IMP-8, 2026-11-12; davor #214 Nachtdienst ohne Einstempeln, #213 WP-21-SV, #212 SSOT, #211 WP-21 Teil 3 (b7271fb3), #210 Smoke Tageswechsel, #209 SI-P4 Passwortfelder, #208 SSOT, #207 RB-5, #206 RB-3, #205 RB-4, #204 SSOT, #202 RB-2, #199 RB-1, #198 WR-6)). Die Liste der gemergten PRs steht in `git log --merges origin/integration/release-v4`.
 - `main`: 0423eeac. Kein Design-Release nach main ohne Betreiberfreigabe.
 - V4-Staging: `public/sw.js` hat auf der Integration `FASSUNG = "__CENTRIC_BUILD__"` (Platzhalter), auf `main` `"v4"`; die frühere Angabe "v5" war falsch. Betreiber bestätigt, welcher Stand angenommen wird (siehe `docs/acc45/STAGING-ABNAHME-V4.md`).
 

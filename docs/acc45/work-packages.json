@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 195,
+  "anzahl": 196,
   "statusZaehlung": {
     "BLOCKED": 74,
     "READY": 17,
     "IN_PROGRESS": 15,
     "REVIEW": 7,
-    "INTEGRATED": 79,
+    "INTEGRATED": 80,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 95,
+      "pakete": 96,
       "offen": 30,
       "restPT": {
-        "min": 43.8,
-        "max": 70.4
+        "min": 43.55,
+        "max": 69.9
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 318.2,
-    "max": 542.2
+    "min": 317.95,
+    "max": 541.7
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -655,7 +655,7 @@
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #234 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -664,12 +664,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "siehe WP-19.x",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#234"],
       "nachweis": null,
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
       "dateien": "src/module/*, server",
-      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar)."
+      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-20",
@@ -1917,7 +1917,7 @@
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 12a8519b, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-objektbericht 17/17, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #234 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1926,12 +1926,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#234"],
       "nachweis": "docs/acc45/WP19-MODULPLAN.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. PR #234 (Teil): OB-2 erledigt, Dienstzeit im Objektbericht nur aus der bestätigten Ist-Zeit, nie aus der Planzeit, rollengeschützt über istVerfuegbar; Modul bleibt geplant. Offene Produktfragen: Zugriff der Schichtverantwortung auf den Bericht (umgesetzt: nein); Häufigkeit von „ungeklärt“ bei Selbstauskunft „wie geplant“; Strenge von dienstzeitStand über den ganzen Betrieb; Mandanten-Sitzungen mit rolle kunde (Quelle null); abgeschlossener Monat mit ungestempeltem Tag."
     },
     {
       "id": "WP-19.4",
@@ -2827,7 +2827,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #233: Browserfähigkeit der Anzeige hergestellt (byteLaenge statt Buffer.byteLength), Einhängepunkte offen (docs/acc45/INTELLIGENCE-UI.md)."
     },
     {
       "id": "WP-I23",
@@ -2855,7 +2855,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #219, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #219 (25 Hilfetexte, BM25, /api/hilfe/status|frage, Schalter CENTRIC_HILFE_ASSISTENT aus|suche|an): fachliche Freigabe der Korpus-Inhalte; Sichtbarkeit von suche für Piloten; Gesundheitstexte für das Modell gesperrt bestätigen; Gateway-Verdrahtung nach E-25/E-26."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #219, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #219 (25 Hilfetexte, BM25, /api/hilfe/status|frage, Schalter CENTRIC_HILFE_ASSISTENT aus|suche|an): fachliche Freigabe der Korpus-Inhalte; Sichtbarkeit von suche für Piloten; Gesundheitstexte für das Modell gesperrt bestätigen; Gateway-Verdrahtung nach E-25/E-26. PR #233: Browserfähigkeit der Anzeige hergestellt (byteLaenge statt Buffer.byteLength), Einhängepunkte offen (docs/acc45/INTELLIGENCE-UI.md)."
     },
     {
       "id": "WP-I24",
@@ -2883,7 +2883,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #218, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #218 (docs/acc45/wp-i24-nachweis.md): Ablage des Seit-letztem-Besuch-Standes, HTTP-Einbindung von /ki, Sicht für Mitarbeitende, Gateway-Text, aenderung.art in den Rechenkern."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #218, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #218 (docs/acc45/wp-i24-nachweis.md): Ablage des Seit-letztem-Besuch-Standes, HTTP-Einbindung von /ki, Sicht für Mitarbeitende, Gateway-Text, aenderung.art in den Rechenkern. PR #233: Browserfähigkeit der Anzeige hergestellt (byteLaenge statt Buffer.byteLength), Einhängepunkte offen (docs/acc45/INTELLIGENCE-UI.md)."
     },
     {
       "id": "WP-I25",
@@ -4972,6 +4972,34 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["IMP-4"],
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #232 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #232 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #232 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #232 in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#232"],
+      "nachweis": "docs/acc45/IMPORT-PLAN.md",
+      "akzeptanz": "UI-Text und Dateidialog bieten nur Formate an, die der Parser annimmt (ODS/xlsm entweder abgewiesen im Dialog oder vom Parser unterstützt, Entscheidung vor Umsetzung); veralteter Kommentar zur Einbindung des Endpunkts korrigiert; Endpunkt-Codes in IMPORT-VERTRAG §9 vollständig; Funktion bleibt aus (CENTRIC_IMPORT_AKTIV unverändert)",
+      "tests": "pruefungen/import-*.test.js, pruefungen/doku.test.js",
+      "dateien": "src/ (Importassistent, Dateidialog), server/funktionen/import.mjs (Kommentar), docs/acc45/IMPORT-VERTRAG.md §9",
+      "notiz": "Befunde aus IMP-10 (PR #227): (1) ODS und xlsm werden im UI-Text und im Dateidialog angeboten, der Parser weist beide ab; (2) ein veralteter Code-Kommentar sagt, der Endpunkt sei nicht eingebunden; (3) die Endpunkt-Codes fehlen in IMPORT-VERTRAG §9; (4) die Bibliothek enthält nur Schichtzyklen. Keine Funktionsänderung am Import-Schalter. Aufwand ist eine SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #232."
+    },
+    {
+      "id": "QS-1",
+      "titel": "Testhygiene: import-personal-e2e prüft die Personalnummer 3002 als Teilzeichenfolge (Zeitstempel-Treffer)",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "abhaengigkeiten": [],
       "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -4984,14 +5012,14 @@
       },
       "branch": null,
       "agent": "Hauptorchestrator",
-      "modell": "sonnet",
+      "modell": "haiku",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": "docs/acc45/IMPORT-PLAN.md",
-      "akzeptanz": "UI-Text und Dateidialog bieten nur Formate an, die der Parser annimmt (ODS/xlsm entweder abgewiesen im Dialog oder vom Parser unterstützt, Entscheidung vor Umsetzung); veralteter Kommentar zur Einbindung des Endpunkts korrigiert; Endpunkt-Codes in IMPORT-VERTRAG §9 vollständig; Funktion bleibt aus (CENTRIC_IMPORT_AKTIV unverändert)",
-      "tests": "pruefungen/import-*.test.js, pruefungen/doku.test.js",
-      "dateien": "src/ (Importassistent, Dateidialog), server/funktionen/import.mjs (Kommentar), docs/acc45/IMPORT-VERTRAG.md §9",
-      "notiz": "Befunde aus IMP-10 (PR #227): (1) ODS und xlsm werden im UI-Text und im Dateidialog angeboten, der Parser weist beide ab; (2) ein veralteter Code-Kommentar sagt, der Endpunkt sei nicht eingebunden; (3) die Endpunkt-Codes fehlen in IMPORT-VERTRAG §9; (4) die Bibliothek enthält nur Schichtzyklen. Keine Funktionsänderung am Import-Schalter. Aufwand ist eine SCHÄTZUNG."
+      "nachweis": "pruefungen/import-personal-e2e.test.js",
+      "akzeptanz": "Die Prüfung, dass das Log keine Personalnummer enthält, vergleicht ganze Token (Wortgrenzen) statt Teilzeichenfolgen und schlägt nicht mehr bei „.3002“ in einem Zeitstempel fehl",
+      "tests": "pruefungen/import-personal-e2e.test.js",
+      "dateien": "pruefungen/import-personal-e2e.test.js",
+      "notiz": "Befund 2026-11-12: pruefungen/import-personal-e2e.test.js prüft, dass das Log die Teilzeichenfolge \"3002\" (eine Personalnummer) nicht enthält, und schlug einmal fehl, weil „3002“ in einem Zeitstempel „.3002“ vorkam. Ganze Token (Wortgrenzen) prüfen. Aufwand ist eine SCHÄTZUNG."
     },
     {
       "id": "OPT-1",
