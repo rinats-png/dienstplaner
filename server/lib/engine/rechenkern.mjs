@@ -41,12 +41,12 @@
      befund.stufe   (Abbildung der Schwere auf hinweis/achtung/recht fehlt)
      besetzung.*    (Soll gilt je Dienstart, das Feld verlangt eine Einheit)
      konto.saldo    (Feld sagt „Plan, nicht Ist“, stundenkonto rechnet mit Ist)
-     aenderung.art  (braucht einen Vergleichsstand des Plans: WP-I24)
+     aenderung.art  (braucht einen Vergleichsstand des Plans: WP-I24 Teil 1 rechnet den Vergleich in aenderungen.mjs; Anschluss hier offen)
      regel.art      (Regelart des Baukastens: eigenes Paket)
    ========================================================================== */
 import { pruefen, mitMerkmalen } from "./befunde.mjs";
 import { planKennzahlen } from "./kennzahlen.mjs";
-import { ersatzKandidaten, ruheZuNachbarn } from "./ersatzfakten.mjs";
+import { ersatzKandidaten, ruheIst } from "./ersatzfakten.mjs";
 import { personTag } from "./plan.mjs";
 import { mitTagesdatum } from "./zeit.mjs";
 
@@ -131,8 +131,8 @@ export function rechnen(sicht, optionen) {
           const p = (m.personen || []).find((x) => String(x.id) === String(b.personId));
           const dienstId = p ? personTag(m, p, b.datum).dienstId : null;
           const da = dienstId ? (m.dienstarten || []).find((x) => x.id === dienstId) : null;
-          const { vor } = da ? ruheZuNachbarn(m, p, b.datum, da, { zeitumstellung: true }) : { vor: null };
-          if (vor !== null) aus.ruhe.push({ personId: String(p.id), dienst: String(dienstId), datum: b.datum, minuten: Math.round(vor) });
+          const ist = da ? ruheIst(m, p, b.datum, da, { zeitumstellung: true }) : null;
+          if (ist !== null) aus.ruhe.push({ personId: String(p.id), dienst: String(dienstId), datum: b.datum, minuten: ist });
         }
       } catch { nichtBerechenbar.push({ berechnung: "ruhezeit", grund: "Eingabe unvollständig" }); }
     }

@@ -540,8 +540,8 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"3c492f3, 7cee8ea (Einbindung), in integration/release-v4 über Merge 1c1a27e"},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: selbstauskunft 22/22, selbstauskunft-oberflaeche 6/6, einbindung-korrektur-selbstauskunft 10/10; CI-Schritt pruefung:selbstauskunft-ui"},
+        "reviewt": {"wert":true,"beleg":"Opus-Review laut docs/acc45/wp15-nachweis.md (Review-Nachträge) und Merge-Commit 1c1a27e0"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -552,11 +552,11 @@
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs"],
       "pr": [],
-      "nachweis": null,
+      "nachweis": "docs/acc45/wp15-nachweis.md",
       "akzeptanz": "Selbstauskunft wird Antrag; Abweichung markiert; erst nach Freigabe Ist",
       "tests": "Unit, E2E",
       "dateien": "server, src",
-      "notiz": "Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat."
+      "notiz": "Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 1c1a27e0 (feature/wp15-wp32d 3c492f3a), Einbindung 7cee8eaf; PR-Beleg fehlt. Offen: Browser-E2E, Selbstfreigabe Einpersonenbetrieb (F15-2, Betreiber)."
     },
     {
       "id": "WP-16",
@@ -568,10 +568,10 @@
       "abhaengigkeiten": ["WP-06","WP-14"],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"acc45/time/wp16-pausen-und-monatsabschluss 1e1aac1"},
-        "lokalGetestet": {"wert":true,"beleg":"wp16-nachweis.md (Branch)"},
+        "implementiert": {"wert":true,"beleg":"acc45/time/wp16-pausen-und-monatsabschluss 6e51aa27 (Nachtrag 4), über PR #85 (58432b75)"},
+        "lokalGetestet": {"wert":true,"beleg":"wp16-nachweis.md; Lauf 2026-11-12 auf 6c195b66: monatsabschluss-nachtrag 25/25; CI-Schritt pruefung:zeiterfassung"},
         "reviewt": {"wert":"teilweise","beleg":"Opus-Review „integrierbar mit Auflagen“, Auflagen umgesetzt; Opus-Delta-Review nach Merge mit 14b/27b/23b läuft"},
-        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
+        "integriert": {"wert":false,"beleg":"PR #85 (58432b75, acc45/time/wp16-integration → integration/centric-complete, 2026-11-04), Vorfahr von integration/release-v4; Status-Hebung = Koordinatorentscheidung (Prüfregel: integriert=true nur mit INTEGRATED)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -580,12 +580,12 @@
       "agent": "Agent D – Time/Offline/Geo",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs","stempelintegritaet.mjs","package.json"],
-      "pr": [],
-      "nachweis": "docs/acc45/wp16-nachweis.md (nur auf dem Branch)",
+      "pr": ["#85"],
+      "nachweis": "docs/acc45/wp16-nachweis.md",
       "akzeptanz": "Pausenerfassung, ArbZG-Mindestpause-Warnung; Abschluss sperrt Ist; Wiederöffnen protokolliert",
       "tests": "Unit, E2E",
       "dateien": "server, src",
-      "notiz": "Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag)."
+      "notiz": "Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-16 kam nicht per Direkt-Merge 594f32c, sondern über PR #85 (58432b75); der Nachweis liegt im Integrationsstand. Status bleibt REVIEW bis zur Koordinatorentscheidung (Betreibervorgabe: abnahmefähig erst mit WP-16c, dessen Kern ebenfalls im Code ist)."
     },
     {
       "id": "WP-17",
@@ -960,9 +960,9 @@
       "abhaengigkeiten": ["E-9"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #84 (1e5096bc, acc45/sicherheit/integration-wp30): Warteschlange, Bounce, Abos, Bremsen; docs/acc45/wp30-nachweis.md"},
         "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":"teilweise","beleg":"Opus-Review und Delta-Review (wp30-nachweis.md Abschnitte 9 und 11); Nachprüfung F1–F8 offen"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -972,12 +972,12 @@
       "agent": "Agent B – Infrastructure & Reliability",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
+      "pr": ["#84"],
+      "nachweis": "docs/acc45/wp30-nachweis.md",
       "akzeptanz": "implementiert: synchrone Anbieterantworten klassifiziert (4xx/5xx, 422 ohne Empfängersperre außer ungültigem Empfänger), Notruf-Reserve und Zurückstellen statt Verwerfen, Doppelzustellung mit dokumentierter Restrisikogrenze (Idempotenz 24 h, Push-Topic), SSRF-Abwehr (Allowlist, kein Redirect, keine IP-Literale) mit Tests; asynchrone Bounces/Beschwerden (Webhook mit Signaturprüfung) als Teilpaket WP-30b; produktiv freigegeben erst nach E-9: Resend (SPF/DKIM/DMARC) und VAPID eingerichtet, echter Zustelltest Android + iOS-PWA (extern, Betreiber); Kriterien in docs/acc45/wp30-nachweis.md, Abschnitt Abnahmekriterien",
       "tests": "Zustelltest",
       "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
-      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“."
+      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: Der Code ist gebaut und über PR #84 integriert (Prüfungen pruefung:mail-push-produktion/-anbieter/-handler); „noch nicht gebaut“ ist überholt. Offen: Nachprüfung F1–F8, produktiver Betrieb erst nach E-9."
     },
     {
       "id": "WP-31",
@@ -1062,7 +1062,7 @@
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten."
     },
     {
       "id": "WP-34",
@@ -1242,7 +1242,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Commits 5d114abd, a7c2948b, ba0d846b; pruefungen/wp40-zugaenglichkeit.test.js"},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp40-zugaenglichkeit 28/28 (Quelltext/Render); Browser-Lauf lokal auf 6203b0a laut V4-STAGING-VORAUSSETZUNGEN.md 3.3"},
         "reviewt": {"wert":true,"beleg":"PR #165 Review-Abschnitt in docs/acc45/wp40-nachweis.md (Quelltext-Prüfung bestanden, 12 AA belegt, 7 offen)"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -1258,7 +1258,7 @@
       "akzeptanz": "axe ohne Verstöße; Tastatur; Fokus; Kontrast",
       "tests": "axe in CI",
       "dateien": "src",
-      "notiz": "Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1)."
+      "notiz": "Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Browser lokal (abnahme-kern.mjs, 6203b0a): 2.5.8 und 3.3.1 ohne Befund; 1.4.10 Leitung 320 px Schublade/Verteilung 26 px Querscroll; 2.4.11 Leitung 320 px Tab-Stopps in geschlossener Schublade — seither visibility:hidden in src/ui/geraete.js, nicht nachgemessen. axe nicht installiert (WP-33)."
     },
     {
       "id": "WP-41",
@@ -1465,9 +1465,9 @@
       "abhaengigkeiten": ["WP-16"],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"9bc6967f…ab4e3ba0 (feature/wp16c-stempelkette), Direkt-Merge 594f32c3; Einbindung 7cee8eaf (korrekturen.jsx MonatsKorrektur, app/aktionen/plan.js monatKorrektur)"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp16c-korrekturrevision 33/33; CI-Schritt pruefung:wp-nachtraege"},
+        "reviewt": {"wert":true,"beleg":"drei Opus-Review-Runden laut docs/acc45/wp16c-nachweis.md (Nachtrag Opus-Review, Re-Review, letzte Runde)"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1478,11 +1478,11 @@
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs","stempelintegritaet.mjs"],
       "pr": [],
-      "nachweis": null,
+      "nachweis": "docs/acc45/wp16c-nachweis.md, docs/acc45/wp16c-fragen.md",
       "akzeptanz": "Originalabschluss bleibt als Revision 1 historisch; neue Revision mit Zeitpunkt, Berechtigtem, Grund und Differenz; Differenzberechnung; gekennzeichneter Korrekturexport (Lohn/DATEV); Berechtigungen und Auditierung; zweite berechtigte Freigabe für lohnrelevante nachträgliche Korrekturen (möglichst); keine starre Wiederöffnungsfrist (maßgeblich Abrechnungs-/Exportstatus); gesetzlich erforderliche Berichtigungen bleiben möglich",
       "tests": "je Prüfpunkt Test rot → grün: nachträgliche Offline-Stempel (WP-07) für Monate mit Revision, parallele Änderungen, alte Monatsabschlüsse ohne Revisionsschema (Migration), Änderung historischer Vertrags-/Tarifparameter (Freeze), Rechtematrix",
       "dateien": "server/lib/monatsabschluss*.mjs, server/funktionen/daten.mjs, server/lib/istdaten.mjs, Export Lohn/DATEV, src/App.jsx",
-      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG."
+      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Kern im Code (Revisionen, Differenz, Korrekturexport, zweite Freigabe, verwerfen, keine Frist), Direkt-Merge 594f32c3, PR-Beleg fehlt. Lücke: Laufzeitmessung des Korrekturpfads 60/150/400 × 12/24/36 fehlt (wp16c-fragen.md L6; werkzeug/wp16-messung.mjs misst nur Abschluss/Freeze). Offen als Betreiberentscheidung/E-29: Fragen 1, 3, 5, 6, 7, R2, R7, L5."
     },
     {
       "id": "WP-32d",
@@ -1549,10 +1549,10 @@
       "abhaengigkeiten": ["WP-16"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"WP-48.1/48.2 (Prüfnetz, Speicherkern teileSchreiben, Hash-Vermerk, Epoche, Lesecache) über PR #87 (794df9a7); 48.3–48.7, 48.9 fehlen"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: wp48-speicherkern 44/44, wp48-rundweg 31/31; CI-Schritt pruefung:datenintegritaet"},
+        "reviewt": {"wert":"teilweise","beleg":"Review-Auflagen zu 48.1/48.2 (H1, M4) in PR #87 umgesetzt, WP48-TEILSPEICHERUNG.md Abschnitt 7"},
+        "integriert": {"wert":"teilweise","beleg":"WP-48.1/48.2 über PR #87 (794df9a7)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1561,12 +1561,12 @@
       "agent": "Agent A – Security & Data Integrity",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs","rechte.mjs","App.jsx","stempelintegritaet.mjs"],
-      "pr": [],
+      "pr": ["#87"],
       "nachweis": "docs/acc45/WP48-TEILSPEICHERUNG.md",
       "akzeptanz": "Siehe WP48-TEILSPEICHERUNG.md Abschnitt 4.4: PUT-Rumpf je Änderung unabhängig von der Historie (Einteilung < 300 KB), nie 413 bis 400 Personen × 36 Monate bei unverändertem RUMPF_MAX 6 MB, Teil-PUT gleichwertig zum Voll-PUT für jede Rolle (Rechte unverändert, fehlende Segmente ändern nichts), Konflikt je Zelle bzw. Kernfeld, Raumsperre bei Speichern und Monatsabschluss < 2 s bei 400 × 36, /gesund nie kritisch durch Speichern oder Abschluss",
       "tests": "Gleichwertigkeit Teil/Voll je Rolle × Segment, Rennen, Konflikte, Versatz alter Clients, Journal/Restore, Messmatrix 60/150/400 × 12/24/36 (werkzeug/wp48-messung.mjs), Rot vorher, Mutanten",
       "dateien": "server/lib/bestand.mjs, server/lib/scherben.mjs, server/funktionen/daten.mjs, server/lib/rechte.mjs, server/lib/monatsabschluss.mjs, server/lib/stempelintegritaet.mjs, src/speicher.js, src/App.jsx",
-      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung. Fortschritt 2026-11-03: WP-48.1 (Prüfnetz: Rundweg je Rolle über den Positivkatalog, Rennen/Konflikte im Speicherkern, Mutantenwerkzeug werkzeug/wp48-mutanten.mjs) und WP-48.2 (Hash-Vermerk mit Lesen alter Text-Vermerke, Lesecache unter der Raumsperre, Segmentschreiber teileSchreiben, Epoche, Vermerk-Aufräumen) umgesetzt auf Branch acc45/backend/wp48-1-2-pruefnetz-speicherkern, ohne PR; Befund für 48.3: gespeicherte abgeleitete Personenfelder brechen die Rundweg-Invariante (Schichtverantwortung 403), siehe WP48-TEILSPEICHERUNG.md Abschnitt 7."
+      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung. Fortschritt 2026-11-03: WP-48.1 (Prüfnetz: Rundweg je Rolle über den Positivkatalog, Rennen/Konflikte im Speicherkern, Mutantenwerkzeug werkzeug/wp48-mutanten.mjs) und WP-48.2 (Hash-Vermerk mit Lesen alter Text-Vermerke, Lesecache unter der Raumsperre, Segmentschreiber teileSchreiben, Epoche, Vermerk-Aufräumen) umgesetzt auf Branch acc45/backend/wp48-1-2-pruefnetz-speicherkern, ohne PR; Befund für 48.3: gespeicherte abgeleitete Personenfelder brechen die Rundweg-Invariante (Schichtverantwortung 403), siehe WP48-TEILSPEICHERUNG.md Abschnitt 7. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-48.1/48.2 sind nicht „ohne PR“, sondern über PR #87 (acc45/backend/wp48-integration) integriert; teileSchreiben hat im Produktcode keinen Aufrufer. 48.3 ist technisch ausführbar (WP-16 ist über PR #85 im Code), die SSOT sperrt nur formal; 48.4/48.5/48.8 hängen an den Entscheidungen in Abschnitt 6."
     },
     {
       "id": "WP-14c",
@@ -1577,9 +1577,9 @@
       "abhaengigkeiten": ["WP-14","WP-16"],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"50bbe0b0, Direkt-Merge 594f32c3: F2, F4, F5, F7 umgesetzt, F8 festgenagelt; F6 nicht umgesetzt (Fachfrage F6a/F6b)"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp14c-folgebefunde 18/18; CI-Schritt pruefung:wp-nachtraege"},
+        "reviewt": {"wert":true,"beleg":"Merge-Commit 594f32c3: nach drei Opus-Review-Runden (Branch feature/wp16c-stempelkette)"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1590,11 +1590,11 @@
       "modell": "opus",
       "konfliktzonen": ["App.jsx","daten.mjs"],
       "pr": [],
-      "nachweis": "docs/acc45/wp14b-nachweis.md (Abschnitt Folgearbeit WP-14c)",
+      "nachweis": "docs/acc45/wp14c-nachweis.md",
       "akzeptanz": "F2 Prüffall bei zu langer Pause/negativem Ist; F4 ZEITUMSTELLUNG nicht umgehbar; F5 gemessene Dauer im Befund; F6 24-h-Einsatz/verwerfen; F7 Oberfläche „überholt“ korrekt; F8 Selbstauskunft Mitternacht + pauseZuLang(…, datum)",
       "tests": "je Befund Test rot → grün",
       "dateien": "server/lib/istdaten.mjs, server/lib/zeiterfassung.mjs, src/App.jsx",
-      "notiz": "SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus."
+      "notiz": "SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. F6 (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleibt Fachentscheidung (wp16c-fragen.md F6a/F6b)."
     },
     {
       "id": "WP-27c",
@@ -1661,9 +1661,9 @@
       "abhaengigkeiten": ["WP-16"],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"5dab792e (feature/wp16c-stempelkette), Direkt-Merge 594f32c3"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp16b-spur 3/3; CI-Schritt pruefung:wp-nachtraege"},
+        "reviewt": {"wert":true,"beleg":"Merge-Commit 594f32c3: nach drei Opus-Review-Runden (Branch feature/wp16c-stempelkette)"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1674,11 +1674,11 @@
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
       "pr": [],
-      "nachweis": "wp16-nachweis.md (Branch), Abschnitt „Protokoll (Spur) nach WP-14b M1“",
+      "nachweis": "docs/acc45/wp16b-nachweis.md",
       "akzeptanz": "keine Spur-Zeile nennt Person|Tag; Altzeilen bereinigt oder beim Lesen geschwärzt",
       "tests": "Spur-Prüfung je Schreibweg",
       "dateien": "server/funktionen/daten.mjs, server/lib/zeiterfassung.mjs",
-      "notiz": "SCHÄTZUNG."
+      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md)."
     },
     {
       "id": "WP-24b",
@@ -1774,9 +1774,9 @@
       "abhaengigkeiten": ["WP-07","WP-16"],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"kein Codeänderungsbedarf; Prüfung pruefungen/wp07b-stempel-500.test.js (50bbe0b0), Direkt-Merge 594f32c3"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp07b-stempel-500 9/9 (sechs Szenarien); CI-Schritt pruefung:wp-nachtraege"},
+        "reviewt": {"wert":true,"beleg":"Merge-Commit 594f32c3: nach drei Opus-Review-Runden (Branch feature/wp16c-stempelkette)"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1787,11 +1787,11 @@
       "modell": "opus",
       "konfliktzonen": ["daten.mjs","stempelintegritaet.mjs"],
       "pr": [],
-      "nachweis": "docs/acc45/wp28-nachweis.md Befund 7",
+      "nachweis": "docs/acc45/wp07b-nachweis.md",
       "akzeptanz": "genau ein Stempel in allen Szenarien: (1) Speicherung erfolgreich + Antwort fehlgeschlagen, (2) Wiederholung mit gleicher clientEventId, (3) zwei Tabs, (4) Offline-Sync nach Fehler, (5) gleichzeitige Wiederholungen, (6) Serverneustart dazwischen",
       "tests": "je Szenario Test rot → grün (Renntest, Neustart)",
       "dateien": "server/funktionen/daten.mjs, server/lib/stempelintegritaet.mjs, src/stempelvorgang.js, src/stempelpuffer.js",
-      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6."
+      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt."
     },
     {
       "id": "WP-S1",
@@ -1830,9 +1830,9 @@
       "abhaengigkeiten": ["WP-11","WP-22"],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #82 (a9faf7ef): alle acht Bausteine aus WP19-MODULPLAN.md Abschnitt 13 (wp19-0-nachweis.md Abschnitt 1)"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: modul-kern 44/44; CI-Schritt pruefung:branchenmodule"},
+        "reviewt": {"wert":true,"beleg":"fünf Opus-Review-Runden (wp19-0-nachweis.md Abschnitte 11–15), PR #82"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1842,12 +1842,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","rechte.mjs","sicht.mjs"],
-      "pr": [],
-      "nachweis": "docs/acc45/WP19-MODULPLAN.md",
+      "pr": ["#82"],
+      "nachweis": "docs/acc45/wp19-0-nachweis.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet)."
+      "notiz": "Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Nacharbeit aus Abschnitt 13 vollständig über PR #82 integriert (in integration/centric-complete, Vorfahr von integration/release-v4). Status-Hebung = Koordinatorentscheidung. Fachlich offen: FN-32, FN-33; Folgepaket stammdatenMonate/gruendeMonate."
     },
     {
       "id": "WP-19.1",
@@ -1886,8 +1886,8 @@
       "abhaengigkeiten": ["WP-19.0","WP-19.1","WP-26"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 614626d6, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-wachbuch 35/35, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -1903,7 +1903,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22)."
+      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
     },
     {
       "id": "WP-19.3",
@@ -1914,8 +1914,8 @@
       "abhaengigkeiten": ["WP-19.1","WP-19.2","WP-16"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 12a8519b, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-objektbericht 17/17, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -1931,7 +1931,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
     },
     {
       "id": "WP-19.4",
@@ -1970,8 +1970,8 @@
       "abhaengigkeiten": ["WP-19.0","WP-19.4"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 9514c634, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-pflegequal 19/19, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -1987,7 +1987,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
     },
     {
       "id": "WP-19.6",
@@ -1998,8 +1998,8 @@
       "abhaengigkeiten": ["WP-19.0","WP-16","WP-19.7"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 32f46922, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-bereitschaftsdienst 22/22, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -2015,7 +2015,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
     },
     {
       "id": "WP-19.7",
@@ -2054,8 +2054,8 @@
       "abhaengigkeiten": ["WP-19.4"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 8123d4c9, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-funktionsdienst 18/18, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -2071,7 +2071,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
     },
     {
       "id": "WP-19.9",
@@ -2082,8 +2082,8 @@
       "abhaengigkeiten": ["WP-19.0","WP-19.4","WP-19.8","WP-43"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 889d2eb4, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-rotation 16/16, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -2099,7 +2099,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
     },
     {
       "id": "WP-19.10",
@@ -4963,7 +4963,7 @@
       "akzeptanz": "Dokumentiert: Formate, Grenzen, Rechte, Dubletten, Fehlermeldungen",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "docs/BETRIEBSHANDBUCH.md, docs/",
-      "notiz": "Routine."
+      "notiz": "Routine. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Abhängigkeit IMP-4 integriert. Im Handbuch fehlt ein Importkapitel (nur src/handbuch-inhalt.js „Team → Personal → Importieren“ und CENTRIC_IMPORT_ADRESSRAUM_KB im Betriebshandbuch); Entwicklervertrag docs/acc45/IMPORT-VERTRAG.md vorhanden."
     },
     {
       "id": "OPT-1",
@@ -5215,7 +5215,7 @@
       "akzeptanz": "Testplan T1 bis T20 aus KONTO-WIEDERHERSTELLUNG.md; rot vor grün; Protokoll ohne Geheimnisse",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "pruefungen/konto-wiederherstellung*.test.js",
-      "notiz": "Entscheidung 12 (serverseitige Rate-Limits und Missbrauchstests) 2026-11-09."
+      "notiz": "Entscheidung 12 (serverseitige Rate-Limits und Missbrauchstests) 2026-11-09. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): T14–T18 und T20 sind durch die WR-3-Prüfungen abgedeckt (WIEDERAUFNAHME.md); es fehlt nur T19, abhängig von Betreiberentscheidung I.5."
     },
     {
       "id": "WR-6",
@@ -5439,7 +5439,7 @@
       "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
       "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
       "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
-      "notiz": "SCHÄTZUNG Koordinator. Fehler: planKennzahlen ruft verteilung mit Monat statt von/bis auf; spanne undefined, wochenenden NaN. Rot vor grün; Golden-Umstellung nur mit Begründung im Nachweis. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden."
+      "notiz": "SCHÄTZUNG Koordinator. Fehler: planKennzahlen ruft verteilung mit Monat statt von/bis auf; spanne undefined, wochenenden NaN. Rot vor grün; Golden-Umstellung nur mit Begründung im Nachweis. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): WP-I12 ist INTEGRATED (#190), die Paketabhängigkeit ist erfüllt. Fehler unverändert im Code (server/lib/engine/kennzahlen.mjs: verteilung(m, von.slice(0, 7))). PR #139 (1 vor / 288 hinter) im Hold bis zur Betreiberentscheidung zur Spanne-Definition."
     },
     {
       "id": "RB-1",
