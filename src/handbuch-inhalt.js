@@ -440,7 +440,7 @@ export const HANDBUCH = [
     abschnitte: [
       {
         titel: "Ist der Dateiimport verfügbar?",
-        text: "Noch nicht. Der Import aus einer Datei ist ausgeschaltet und steht erst zur Verfügung, wenn der Betreiber ihn ausdrücklich freigibt. Einen Termin gibt es nicht. Solange der Dialog „Personal aus Datei importieren“ nicht erscheint, ist er für diesen Betrieb nicht freigegeben.",
+        text: "Noch nicht. Der Import aus einer Datei ist ausgeschaltet und steht erst zur Verfügung, wenn der Betreiber ihn ausdrücklich freigibt. Einen Termin gibt es nicht. Der Betreiber schaltet ihn erst nach einer Datenschutz- und Sicherheitsprüfung ein; bis dahin nimmt der Server keine Importdateien an. Solange der Dialog „Personal aus Datei importieren“ nicht erscheint, ist er für diesen Betrieb nicht freigegeben.",
         schritte: [
           "Bis dahin bleiben zwei Wege: Personen einzeln anlegen oder die Tabelle unter Team → Personal → Importieren als Text einfügen (siehe Schritt 2).",
           "Wer die Freigabe wünscht, wendet sich an den Betreiber. Der Betrieb entscheidet vorher über Datenschutz und, falls vorhanden, über die Mitbestimmung.",

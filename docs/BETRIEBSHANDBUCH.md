@@ -248,28 +248,28 @@ Freigabe des Betreibers zur Verfügung steht.
 | Baustein | Stand |
 |---|---|
 | Parser (IMP-2), `server/lib/import/parser*.mjs` | im Server, läuft je Datei in einem eigenen Kindprozess |
-| Personalimport (IMP-3, IMP-5), `server/funktionen/import.mjs` | Endpunkte `/api/import/upload`, `analyse`, `vorschau`, `uebernahme`, `verwerfen` sind beim Serverstart registriert |
-| Oberfläche „Personal aus Datei importieren“ (IMP-4), `src/ansichten/import-datei.jsx` | **aus**: wird nicht angezeigt, solange die Konstante `IMPORT_DATEI_AKTIV` den Wert `false` hat |
+| Personalimport (IMP-3, IMP-5), `server/funktionen/import.mjs` | Endpunkte `/api/import/upload`, `analyse`, `vorschau`, `uebernahme`, `verwerfen`; **aus**, solange `CENTRIC_IMPORT_AKTIV` nicht genau `true` ist (jeder Weg antwortet 404) |
+| Oberfläche „Personal aus Datei importieren“ (IMP-4), `src/ansichten/import-datei.jsx` | **aus**: wird nicht angezeigt, solange die Anzeigekonstante `IMPORT_DATEI_AKTIV` den Wert `false` hat |
 | Schichtmodelle und Schichtzyklen (IMP-6), `schichtmodelle.mjs`, `schichtpruefung.mjs` | nur Bibliothek: kein Endpunkt, keine Oberfläche. Wählt jemand am Endpunkt die Art `schichtzyklus`, antworten `analyse` und `vorschau` mit „unterstuetzt: false“, `uebernahme` mit 422 `ART_NICHT_FREIGEGEBEN`; es wird nichts geschrieben |
 | KI-Unterstützung der Spaltenzuordnung (IMP-9), `ki-schnittstelle.mjs` | nicht verdrahtet; kein Server und kein Import ruft sie auf; der Import arbeitet vollständig ohne KI (IMPORT-VERTRAG §13) |
 | Testmatrix (IMP-8) | 20 Fälle mit synthetischen Dateien, `npm run pruefung:imp8-testmatrix`; Browser-Ende-zu-Ende-Prüfung bei allen Fällen offen, weil die Oberfläche aus ist |
 
-**Wichtig zum Wort „aus“:** `IMPORT_DATEI_AKTIV` ist **keine Umgebungsvariable**, sondern eine Konstante im Quelltext
-(`src/lib/import-schnittstelle.js`) und wirkt nur auf die Oberfläche. Der Server kennt keinen Schalter für den Import: Die fünf
-Endpunkte sind immer registriert und beantworten Anfragen einer angemeldeten Sitzung von Leitung oder Planung (siehe 6.5), auch wenn die
-Oberfläche den Dialog nicht zeigt. Eine serverseitige Sperre der Endpunkte gibt es im Code nicht; sie wäre eine eigene Änderung (Proxy
-oder Quelltext) und ist nicht Teil dieser Dokumentation. Daneben gibt es in der Oberfläche den bisherigen Weg „Personal importieren“
-durch Einfügen von Text aus der Zwischenablage; er ist ein anderer Weg, hat keinen Dateiupload und wird von diesem Abschnitt nicht berührt.
+**Zwei Schalter, nur einer schützt den Server:** `CENTRIC_IMPORT_AKTIV` ist **der** Serverschalter (Umgebungsvariable, Vorgabe aus,
+nur genau `true` schaltet ein, alles andere bleibt aus). Ist er aus, antwortet jeder Weg `/api/import/*` mit 404, bevor ein Rumpf gelesen,
+ein Parser gestartet oder etwas gespeichert wird. `IMPORT_DATEI_AKTIV` ist dagegen eine reine Anzeigekonstante im Quelltext
+(`src/lib/import-schnittstelle.js`); sie steuert nur, ob die Oberfläche den Dialog zeigt, und schützt den Server **nicht**. Daneben gibt es in
+der Oberfläche den bisherigen Weg „Personal importieren“ durch Einfügen von Text aus der Zwischenablage; er ist ein anderer Weg, hat keinen
+Dateiupload und wird von diesem Abschnitt nicht berührt.
 
 ### 6.2 Schalter und Umgebungsvariablen
 
 | Name | Art | Wirkung | Vorgabe |
 |---|---|---|---|
-| `IMPORT_DATEI_AKTIV` | Quelltextkonstante (`src/lib/import-schnittstelle.js`), kein Laufzeitschalter | `true` zeigt in „Personal importieren“ den Weg „aus Datei“ und gibt der Oberfläche die Schnittstelle zu `/api/import`; `false`: keine Aufrufe der Oberfläche | `false` |
+| `CENTRIC_IMPORT_AKTIV` | Umgebungsvariable, **Serverschalter** | Nur genau `true` schaltet alle Wege `/api/import/*` ein; alles andere (`TRUE`, `1`, leer) bleibt aus und ergibt 404. Beschreibung in der Tabelle „Funktionen“ in Abschnitt 2 und in `.env.example` | aus |
+| `IMPORT_DATEI_AKTIV` | Quelltextkonstante (`src/lib/import-schnittstelle.js`), nur Anzeige | `true` zeigt in „Personal importieren“ den Weg „aus Datei“ und gibt der Oberfläche die Schnittstelle zu `/api/import`; `false`: keine Aufrufe der Oberfläche. Schützt den Server nicht | `false` |
 | `CENTRIC_IMPORT_ADRESSRAUM_KB` | Umgebungsvariable | Adressraum-Limit des Parser-Kindprozesses in KB, **nur Linux**. Beschreibung, Klemmen auf 4 GB, `0` und ungültige Werte siehe Tabelle „Funktionen“ in Abschnitt 2 | `1500000` |
 
-Weitere Umgebungsvariablen für den Import gibt es nicht (geprüft: im Verzeichnis `server/` liest nur `parser-prozess.mjs` eine
-Import-Variable). Alle übrigen Grenzen sind feste Werte im Code und lassen sich nicht über die Umgebung ändern; der Endpunkt reicht
+Weitere Umgebungsvariablen für den Import gibt es nicht. Alle übrigen Grenzen sind feste Werte im Code und lassen sich nicht über die Umgebung ändern; der Endpunkt reicht
 keine Werte aus der Anfrage an den Parser durch.
 
 ### 6.3 Grenzen (fest im Code)
@@ -320,12 +320,14 @@ organisatorische Freigaben, die der Code nicht prüft.
 5. **Probe zuerst mit Testdaten:** erst in einem Testbetrieb mit ausgedachten Personen (zum Beispiel „Testperson 01“), nie mit echten
    Personaldaten.
 
-**Einschalten** ist eine Änderung am Quelltext, kein Schalter in der `.env`: `IMPORT_DATEI_AKTIV` in `src/lib/import-schnittstelle.js`
-auf `true`, danach der übliche Weg über Prüfung, Image und Freigabe ([DEPLOY-AUTOMATISIERUNG.md](DEPLOY-AUTOMATISIERUNG.md)). Die
-Quelltext-Prüfungen `pruefungen/import-oberflaeche-imp4.test.js` und `pruefungen/imp8-testmatrix.test.js` nennen den Schalter und sind
-dabei mit zu beachten. Erst nach der Auslieferung zeigt „Personal importieren“ den Weg „aus Datei“.
+**Einschalten** erfolgt in zwei getrennten Schritten, beide erst nach den Punkten 1 bis 5: (a) auf dem Server `CENTRIC_IMPORT_AKTIV=true`
+in der `.env` und Neustart des Dienstes; erst dann nehmen die Wege `/api/import/*` Anfragen an. (b) Soll die Oberfläche den Weg „aus Datei“ zeigen,
+`IMPORT_DATEI_AKTIV` in `src/lib/import-schnittstelle.js` auf `true`, danach der übliche Weg über Prüfung, Image und Freigabe
+([DEPLOY-AUTOMATISIERUNG.md](DEPLOY-AUTOMATISIERUNG.md)). Die Quelltext-Prüfungen `pruefungen/import-oberflaeche-imp4.test.js` und
+`pruefungen/imp8-testmatrix.test.js` nennen die Anzeigekonstante und sind dabei mit zu beachten; den Serverschalter belegt
+`pruefungen/import-schalter.test.js`.
 
-**Ausschalten:** Konstante wieder auf `false`, neues Image, Auslieferung. Das beendet nur die Oberfläche. Bereits übernommene Personen
+**Ausschalten:** `CENTRIC_IMPORT_AKTIV` entfernen oder auf einen anderen Wert als `true` setzen und den Dienst neu starten; alle Wege antworten wieder 404, auch für einen offenen Vorgang. Die Anzeigekonstante lässt sich zusätzlich auf `false` setzen (neues Image). Bereits übernommene Personen
 bleiben, denn sie sind gewöhnliche Einträge im Personalbestand; **eine Funktion „Import rückgängig“ gibt es nicht**. Wer eine Übernahme
 korrigieren will, ändert oder löscht die Personen einzeln in der Anwendung oder stellt eine Sicherung wieder her
 ([RESTORE-ANLEITUNG.md](RESTORE-ANLEITUNG.md)). Die Übernahme selbst ist „ganz oder gar nicht“; bei einem Fehler vor dem Schreiben bleibt
@@ -333,7 +335,7 @@ der alte Stand.
 
 ### 6.5 Rechte
 
-Nach `RECHTEMATRIX.md` und `server/funktionen/import.mjs`: Den Import verwenden dürfen nur **Leitung** und **Planung** (Recht
+Nach `RECHTEMATRIX.md` und `server/funktionen/import.mjs` (bei eingeschaltetem Serverschalter): Den Import verwenden dürfen nur **Leitung** und **Planung** (Recht
 `staff.edit` mit vollem Schreibumfang). Neue Einheiten, Standorte und Qualifikationen legt der Import zusätzlich nur mit `org.edit` an
 (Leitung); ohne dieses Recht antwortet der Server mit 403 `ORG_EDIT_FEHLT` und schreibt davon nichts. Betreiber, die alte Rückfallrolle
 „kunde“ (Zugang ohne Person), Schichtverantwortung, Beschäftigte und Betriebsrat erhalten 403 `KEINE_BERECHTIGUNG`; ohne Sitzung 401.
@@ -417,7 +419,6 @@ Diese Punkte sind beobachtet, nicht geändert; die Tabellen oben beschreiben das
 
 - Der Text der Oberfläche (`src/ansichten/import-datei.jsx`) nennt „Excel-, ODS- oder CSV-Datei“ und lässt im Dateidialog `.xlsm` und
   `.ods` zu; der Parser lehnt beide ab (`NICHT_UNTERSTUETZT`, IMPORT-VERTRAG §11).
-- Der Kommentar im Quelltext (`import-schnittstelle.js`) beschreibt den Endpunkt als noch nicht integriert; er ist integriert und
-  registriert, ohne Schalter (6.1).
+- Der Kommentar im Quelltext (`import-schnittstelle.js`) beschreibt den Endpunkt als noch nicht integriert; er ist integriert und über `CENTRIC_IMPORT_AKTIV` geschaltet (6.1).
 - Die Codes des Endpunkts (6.7, zweite Tabelle) stehen nicht im Parser-Vertrag §9; maßgeblich ist `server/funktionen/import.mjs` mit
   `IMP-3-NACHWEIS.md`.
