@@ -71,7 +71,6 @@ const gleich = (a, b) => JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 const ANLAGE = "anlage";
 const istAnlage = (bm) => istObjekt(bm) && bm.art === ANLAGE;
 const zweiter = (da) => (istObjekt(da) && da.zweiterAbschnitt ? da.zweiterAbschnitt : null);
-const nachId = (w) => new Map(liste(w).map((x) => [String(x.id), x]));
 const anlagenIds = (...ms) => new Set(ms.flatMap((m) => liste(m && m.betriebsmittel).filter(istAnlage).map((x) => String(x.id))));
 /** Gehört die Kompetenz zur Maschinenqualifikation (befähigte Person oder Bezug auf eine Anlage)? */
 const maschinenKompetenz = (k, anlagen) => istObjekt(k) && (k.befaehigtePerson !== undefined || anlagen.has(String(k.betriebsmittelId)));
@@ -90,6 +89,24 @@ const doppelte = (w) => {
 };
 /** Neu doppelte Kennungen in der Übermittlung (gespeichert nicht schon so): nie eine zulässige Änderung eines geschlossenen Moduls. */
 const neuDoppelt = (alt, neu) => { const vorher = doppelte(alt); return [...doppelte(neu)].some((id) => !vorher.has(id)); };
+
+/**
+ * Modulteil je Kennung gegen den gespeicherten Stand (Delta-Review): Jeder übermittelte Eintrag muss in seinem Modulteil einem
+ * gespeicherten Eintrag derselben Kennung gleichen (ohne gespeicherten: kein Modulteil). Altbestand mit doppelten Kennungen läuft so
+ * unverändert durch; mehr Einträge je Kennung als gespeichert (neu doppelt) sind eine Änderung. Weglassen ist eine Kernänderung.
+ * @param {any} alt gespeicherte Liste @param {any} neu übermittelte Liste @param {(x: any) => any} teil Modulteil eines Eintrags
+ */
+const teilJeKennung = (alt, neu, teil) => {
+  const vorher = new Map();
+  for (const x of liste(alt)) { const id = String(x.id); vorher.set(id, [...(vorher.get(id) || []), JSON.stringify(norm(teil(x)))]); }
+  const zahl = new Map();
+  for (const x of liste(neu)) {
+    const id = String(x.id);
+    zahl.set(id, (zahl.get(id) || 0) + 1);
+    if (!(vorher.get(id) || [JSON.stringify(null)]).includes(JSON.stringify(norm(teil(x))))) return true;
+  }
+  return [...zahl].some(([id, n]) => n > 1 && n > (vorher.get(id) || []).length);
+};
 
 /**
  * Je Modul zwei Fragen an die Übermittlung (WP-19 B1, Nachreview F1/F2):
@@ -117,22 +134,14 @@ export const ALTMODULE = Object.freeze([
   Object.freeze({ modul: "bereichsplan",
     datenteil: feldweise(["bereichsPlan"]).geaendert,
     /* Bereiche an den Einheiten: jede übermittelte Einheit gegen die gespeicherte gleicher Kennung. */
-    restteil: (altM, neuM) => {
-      const vorher = nachId(altM && altM.einheiten);
-      return neuDoppelt(altM && altM.einheiten, neuM && neuM.einheiten)
-        || liste(neuM && neuM.einheiten).some((e) => !gleich((vorher.get(String(e.id)) || {}).bereiche, e.bereiche));
-    },
+    restteil: (altM, neuM) => teilJeKennung(altM && altM.einheiten, neuM && neuM.einheiten, (e) => e.bereiche),
     verwerfen: (m) => {
       feldweise(["bereichsPlan"]).verwerfen(m);
       if (Array.isArray(m.einheiten))
         ersetzen(m, "einheiten", m.einheiten.map((e) => { if (!hat(e, "bereiche")) return e; const { bereiche: _weg, ...ohne } = e; void _weg; return ohne; }));
     } }),
   Object.freeze({ modul: "geteilterdienst", datenteil: nie,
-    restteil: (altM, neuM) => {
-      const vorher = nachId(altM && altM.dienstarten);
-      return neuDoppelt(altM && altM.dienstarten, neuM && neuM.dienstarten)
-        || liste(neuM && neuM.dienstarten).some((da) => !gleich(zweiter(vorher.get(String(da.id))), zweiter(da)));
-    },
+    restteil: (altM, neuM) => teilJeKennung(altM && altM.dienstarten, neuM && neuM.dienstarten, zweiter),
     verwerfen: (m) => {
       if (Array.isArray(m.dienstarten)) ersetzen(m, "dienstarten", m.dienstarten.map((da) => (zweiter(da) ? { ...da, zweiterAbschnitt: null } : da)));
     } }),

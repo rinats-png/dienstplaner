@@ -371,6 +371,51 @@ describe("Nachreview F1/F2 — doppelte Kennungen und Ausnahmeweg mit Zusatzinha
 });
 
 /* ======================================================================== */
+describe("Delta-Review — Altbestand mit doppelten Kennungen sperrt den Betrieb nicht", { timeout: 300000 }, () => {
+  const ALTFAELLE = {
+    "zwei Einheiten e1 mit verschiedenen Bereichen": (m) => { m.einheiten = [m.einheiten[0], { ...m.einheiten[0], bereiche: [{ id: "b5", name: "Andere" }] }, m.einheiten[1]]; },
+    "Dienstart GA mit und ohne zweiten Abschnitt": (m) => { m.dienstarten = [...m.dienstarten, { ...m.dienstarten[1], zweiterAbschnitt: null }]; },
+  };
+  const put = async (token, g, fn) => {
+    const b = kopie(g.bestand); if (fn) fn(b.mandanten[0]);
+    return anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+  };
+  it("unveränderter Rundweg: Leitung, Planung, Kundenrolle, Schichtverantwortung, Demo — 200, Moduldaten unverändert", async () => {
+    for (const [was, alt] of Object.entries(ALTFAELLE)) for (const k of ["LT", "PL", "KD", "SV", "DL", "DP"]) {
+      const { name, token } = await raum(k, alt);
+      const vorher = await gespeichertM(name);
+      const r = await put(token, await anfrage("/api/bestand", { token }));
+      expect(r.status, `${was} ${k} ${String(r.text || "").slice(0, 140)}`).toBe(200);
+      expect(modulteile(await gespeichertM(name)), `${was} ${k}`).toEqual(modulteile(vorher));
+    }
+  });
+  it("Kernänderung neben doppeltem Altbestand geht (200); ein neuer Moduleintrag oder eine neu doppelte Kennung nicht (403)", async () => {
+    const faelle = [
+      ["Einheiten: Einteilung", "zwei Einheiten e1 mit verschiedenen Bereichen", (m) => { m.abweichungen = { ...(m.abweichungen || {}), [`a1|${tag(6)}`]: "F" }; }, 200],
+      ["Dienstarten: Name der Dienstart GA (beide)", "Dienstart GA mit und ohne zweiten Abschnitt",
+        (m) => { m.dienstarten = m.dienstarten.map((d) => (d.id === "GA" ? { ...d, name: "Umbenannt" } : d)); }, 200],
+      ["Einheiten: neuer Bereich an der ersten e1", "zwei Einheiten e1 mit verschiedenen Bereichen",
+        (m) => { m.einheiten[0] = { ...m.einheiten[0], bereiche: [...m.einheiten[0].bereiche, { id: "b9", name: "Neu" }] }; }, 403],
+      ["Dienstarten: zweiter Abschnitt geändert", "Dienstart GA mit und ohne zweiten Abschnitt",
+        (m) => { m.dienstarten = m.dienstarten.map((d) => (d.id === "GA" && d.zweiterAbschnitt ? { ...d, zweiterAbschnitt: { start: "16:00", ende: "19:00" } } : d)); }, 403],
+      ["Dienstarten: dritte Kopie GA (neu doppelt)", "Dienstart GA mit und ohne zweiten Abschnitt",
+        (m) => { m.dienstarten = [...m.dienstarten, m.dienstarten.find((d) => d.id === "GA")]; }, 403],
+      ["Einheiten: dritte Kopie e1 (neu doppelt)", "zwei Einheiten e1 mit verschiedenen Bereichen", (m) => { const { bereiche: _b, ...ohne } = m.einheiten[0]; void _b; m.einheiten = [...m.einheiten, ohne]; }, 403],
+    ];
+    for (const [was, alt, fn, soll] of faelle) for (const k of ["LT", "PL"]) {
+      const { name, token } = await raum(k, ALTFAELLE[alt]);
+      const vorher = await gespeichertM(name);
+      const r = await put(token, await anfrage("/api/bestand", { token }), fn);
+      expect(r.status, `${was} ${k} ${String(r.text || "").slice(0, 140)}`).toBe(soll);
+      if (soll === 403) {
+        expect(String(r.text), `${was} ${k}`).toMatch(B1_TEXT);
+        expect(modulteile(await gespeichertM(name)), `${was} ${k}`).toEqual(modulteile(vorher));
+      }
+    }
+  });
+});
+
+/* ======================================================================== */
 describe("B — Prüfmodus „vorlaeufig“ (Registry-Kopie nur im Test): Schreiben wie dokumentiert je Rolle", { timeout: 300000 }, () => {
   beforeAll(async () => { S = await server(() => "vorlaeufig"); }, 120000);
   afterAll(async () => { S = await server(null); }, 120000);
