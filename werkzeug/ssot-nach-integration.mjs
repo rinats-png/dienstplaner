@@ -2,7 +2,9 @@
    SSOT-NACH-INTEGRATION — setzt die Pakete eines gemergten PRs auf
    INTEGRATED, mit dem PR als Beleg. Wird nach jeder Integration aufgerufen.
 
-   Teil-PRs: Nennt der PR-Titel nur einen Teil ("Teil 2", "Teilumfang", "Bibliothek"), setzt das Werkzeug das Paket
+   Teil-PRs: Nennt der PR-Titel nur einen Teil ("Teil 2", "Teil:", "Teil-PR", "Teilpaket", "Teilumfang", "Bibliothek",
+   z. B. "WP-33 Teil: Testinfrastruktur ...", "WP-40 Teil: Browser-Abnahme ...", "WP-16c Teil: Messung des
+   Korrekturpfads ...", "WP-I24 Teil 1: ..."), setzt das Werkzeug das Paket
    NICHT auf INTEGRATED, sondern vermerkt den PR und hält es auf IN_PROGRESS (Art TEILWEISE). Der Koordinator prüft den Rest.
 
    Aufruf:  node werkzeug/ssot-nach-integration.mjs <PR-Nummer> [--schreibe] [--datei F]
@@ -49,12 +51,12 @@ function lockFreigeben() { try { rmSync(LOCK, { recursive: true, force: true });
 const ERGEBNIS = (code, text) => { if (text) console.log(text); process.exitCode = code; };
 
 /**
- * Nennt der PR-Titel nur einen Teil eines Pakets ("Teil 2", "Teilumfang", "Bibliothek")? Dann darf das Werkzeug das
+ * Nennt der PR-Titel nur einen Teil eines Pakets ("Teil 2", "Teil:", "Teil-PR", "Teilpaket", "Teilumfang", "Bibliothek")? Dann darf das Werkzeug das
  * Paket nicht auf INTEGRATED setzen, auch wenn die Paket-ID im Titel steht (WP-21 Teil 1 und 2, IMP-6 Bibliothek).
  * Im Zweifel konservativ: Ein Treffer erzwingt die Prüfung durch den Koordinator.
  */
 export function istTeilPr(titel) {
-  return /\bTeil\s*\d+\b|\bTeilumfang\b|\bBibliothek\b/i.test(String(titel ?? ""));
+  return /\bTeil\s*\d+\b|\bTeil(?:paket|umfang)?\b|\bBibliothek\b/i.test(String(titel ?? ""));
 }
 
 export function plan(ssot, pr) {

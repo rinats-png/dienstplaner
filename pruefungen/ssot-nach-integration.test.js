@@ -31,7 +31,33 @@ describe("istTeilPr", () => {
   });
 });
 
+describe("istTeilPr: Teil mit Doppelpunkt und Wortformen", () => {
+  it("erkennt Titel mit 'Teil:' und 'Teil N' einheitlich", () => {
+    for (const t of [
+      "WP-33 Teil: Testinfrastruktur für Browserprüfungen",
+      "WP-40 Teil: Browser-Abnahme der Kernabläufe",
+      "WP-16c Teil: Messung des Korrekturpfads",
+      "WP-I24 Teil 1: Einstieg",
+      "WP-50 Teil-PR: Grundlage",
+      "WP-51 Teilpaket Datenmodell",
+      "WP-52 teil - zweiter Schritt",
+    ]) expect(istTeilPr(t), t).toBe(true);
+  });
+
+  it("erkennt Wörter mit 'teil' im Wortinneren nicht", () => {
+    for (const t of ["Urteil der Prüfung", "Anteil der Pflegekräfte", "Teilnehmerliste", "Vorteile im Export", "Mitteilung an Leitung"]) {
+      expect(istTeilPr(t), t).toBe(false);
+    }
+  });
+});
+
 describe("plan und anwenden", () => {
+  it("Titel mit 'Teil:' ergibt TEILWEISE, nicht INTEGRIERT", () => {
+    const s = { pakete: [paket("WP-33", "BLOCKED"), paket("WP-40", "IN_PROGRESS")] };
+    expect(plan(s, pr(300, "WP-33 Teil: Testinfrastruktur für Browserprüfungen"))).toEqual([{ id: "WP-33", art: "TEILWEISE", von: "BLOCKED", pr: "#300" }]);
+    expect(plan(s, pr(301, "WP-40 Teil: Browser-Abnahme der Kernabläufe"))[0].art).toBe("TEILWEISE");
+  });
+
   it("Teil-PR: TEILWEISE statt INTEGRIERT, Status nie INTEGRATED, Beleg offen", () => {
     const s = ssot();
     const a = plan(s, pr(192, "WP-21 Teil 2: Bedienabläufe, Querformat, Zielgrößen"));
