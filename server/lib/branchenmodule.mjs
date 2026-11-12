@@ -41,6 +41,8 @@
    Funktionen, nie beim Laden. */
 import { REGELN_BRANCHEN } from "./branchenkatalog.mjs";
 import { kanonischerStatus, regelGeprueft } from "./regelstatus.mjs";
+/* Gegenseitiger Import (nur in Funktionen gelesen): die Registerwache der fünf älteren Module. */
+import { altmoduldatenVerwerfen } from "./modul-altwege.mjs";
 
 /**
  * Status eines Moduls.
@@ -637,11 +639,12 @@ export function moduleinstellungenVerwerfen(m) {
   const felder = istObjekt(m.einstellungen) && MODULEINSTELLUNGEN_FELDER.some((f) => hat(m.einstellungen, f));
   /* Ein neu angelegter Betrieb hat keine Moduldaten (Wachbuch, Rotationen, Bereitschaft …): sie entstehen erst über die Schreibwege. */
   const daten = BRANCHENMODULE.flatMap((x) => x.datenfelder).filter((f) => hat(m, f));
-  if (!angabe && !felder && !daten.length) return m;
+  /* WP-19 B1: auch ohne die Daten der fünf älteren Module (zweiter Abschnitt, Anlagen, Maschinenkompetenzen, Bereiche). */
+  if (!angabe && !felder && !daten.length) return altmoduldatenVerwerfen(m);
   const aus = felder ? { ...m, einstellungen: ohne(m.einstellungen, MODULEINSTELLUNGEN_FELDER) } : { ...m };
   delete aus.moduldatenAusnahme;
   for (const f of daten) delete aus[f];
-  return aus;
+  return altmoduldatenVerwerfen(aus);
 }
 
 /** Jeder Betrieb eines Bestands ohne Moduleinstellungen; ohne Bedarf dasselbe Objekt. */

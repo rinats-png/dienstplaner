@@ -7,10 +7,17 @@
    automatische Sicherungen OHNE diese Markierung (Altbestand) gelten als „Zeit unbekannt".
    Alle Fälle laufen über die echten Handler (PUT /api/bestand, /api/sicherung, /api/wiederherstellen).
    ========================================================================== */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+/* WP-19 B1: Bei „geplant“ ist das Schreiben der Postendaten geschlossen. „Modul wieder an“ heißt hier deshalb: Posten steht in einer
+   Registry-Kopie nur dieses Tests auf „vorlaeufig“ und der Schalter ist an (vorher: geplant ohne Schalter, damals schreibbar). */
+vi.mock("../server/lib/branchenmodule.mjs", async (echt) => {
+  const e = /** @type {any} */ (await echt());
+  return { ...e, BRANCHENMODULE: Object.freeze(e.BRANCHENMODULE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x))) };
+});
 
 const WIRT = "127.0.0.1:3000";
 const RAUM = "wp190n5raum";
@@ -49,7 +56,7 @@ const grundstand = () => ({ version: 9, mandanten: [{
 const neuStart = async () => { await B.bestandSchreiben(laden(), RAUM, grundstand(), { durch: "Pruefung" }); await pause(); };
 const modulAn = async () => {
   const roh = (await B.bestandLesen(laden(), RAUM)).bestand;
-  delete roh.mandanten[0].einstellungen.branchenmodule;
+  roh.mandanten[0].einstellungen.branchenmodule = { posten: { an: true, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "l1" } };
   await B.bestandSchreiben(laden(), RAUM, roh, { durch: "Pruefung" });
   await pause();
 };

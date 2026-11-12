@@ -1563,7 +1563,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     {
       /* Die Angabe immer übergeben, auch undefined: Ein gespeichertes Feld, das die Rückfüllung wieder
          eingesetzt hat, darf nie als Angabe gelten (zweiter Opus-Review H1 — es sperrte jedes Speichern). */
-      const modulweg = modulSchreibwegeAnwenden(ort.betrieb, geschickt, { sitzung, rolle, umfang, darfOrgEdit: darf(rolle, "org.edit"),
+      /* optionen.liste: nur Prüfungen (Abnahmematrix WP-19.13, Prüfmodus „vorlaeufig“) — kein HTTP-Weg übergibt sie,
+         ohne sie gilt die Registry (server/lib/branchenmodule.mjs). */
+      const nurPruefung = Array.isArray(optionen.liste) ? { liste: optionen.liste } : {};
+      const modulweg = modulSchreibwegeAnwenden(ort.betrieb, geschickt, { ...nurPruefung, sitzung, rolle, umfang, darfOrgEdit: darf(rolle, "org.edit"),
         ausnahme: moduldatenAusnahme });
       if (modulweg.grund) return { verweigert: modulweg.grund };
       geschickt = modulweg.mandant;

@@ -2,7 +2,8 @@
 
 Stand: 2026-11-12 · Vorarbeit zur Modulabnahme (WP-19.13). **Kein Modul ist eingeschaltet, kein Status geändert:** Alle zwölf Module
 stehen in `server/lib/branchenmodule.mjs` auf `geplant`, ohne `abnahme`. Den Status `vorlaeufig` (mit `abnahme`, G8) setzt nur der
-Betreiber. Diese Datei und ihre Prüfungen ändern an Produktionsverhalten nichts, außer Befund B2 (eine CSS-Regel, siehe unten).
+Betreiber. Diese Datei und ihre Prüfungen ändern an Produktionsverhalten nichts, außer Befund B2 (eine CSS-Regel) und der Behebung von Befund B1
+(Schreibwege der fünf älteren Module geschlossen, siehe unten).
 
 Die Tabellen unten sind **erzeugt** (`pruefungen/hilfen/modulabnahme.mjs`) und werden von `pruefungen/modul-abnahme.test.js` und
 `pruefungen/modul-abnahme-oberflaeche.test.js` gegen die Rechnung geprüft: Weicht die Tabelle ab, schlägt der Test fehl. Neu erzeugen:
@@ -23,20 +24,54 @@ Module auf `vorlaeufig` stehen (`PRUEF_LISTE`), wird über die vorhandenen `list
 
 Spalten: LT Leitung, PL Planung, SV Schichtverantwortung, MA Beschäftigte, BR Betriebsrat, KD Kundenrolle (Altrolle, `ALLE_RECHTE`), BT Betreiber,
 DL Demo-Leitung, DP Demo-Planung (Konto mit `demo: true`, gleiche Rolle), AB Leitung eines **anderen** Betriebs (versucht, den Betrieb 0 zu lesen und zu ändern).
-Spalte „Register“: ja = der Schreibweg des Moduls fragt die Registry (`MODUL_SCHREIBWEGE`, R-9); nein = der Weg steht in `rechte.mjs` und kennt sie nicht (Befund B1).
+Spalte „Register“: ja = der Schreibweg des Moduls fragt die Registry (`MODUL_SCHREIBWEGE`, R-9; für die fünf älteren Module die Registerwache
+`server/lib/modul-altwege.mjs`, seit der Behebung von B1); nein = der Weg kennt sie nicht (kommt nicht mehr vor). Im Prüfmodus laufen die fünf älteren Module
+ganz über den echten Schreibweg (`zusammenfuehren` mit einer Registry nur dieser Testhilfe, `optionen.liste`), weil ihre Rollen- und Formprüfung in `rechte.mjs` steht.
 
 ## 2 Befunde
 
-**Befund B1 (Rechte/Aktivität, kein Datenleck, nicht behoben).** Die fünf älteren Module Posten, Bereichsplan, geteilte Dienste, Anlagen und
+**Befund B1 (Rechte/Aktivität, kein Datenleck, behoben, dieser PR).** Die fünf älteren Module Posten, Bereichsplan, geteilte Dienste, Anlagen und
 Maschinenqualifikation haben ihre Formprüfung direkt in `server/lib/rechte.mjs` (`postenZusammen`, `bereichsplanZusammen`, `geteilterdienstZusammen`,
-`anlagenZusammen`, `maschinenqualZusammen`) und nicht in `MODUL_SCHREIBWEGE`. Sie fragen nicht, ob das Modul wirkt. Folge: Leitung, Planung und Kundenrolle
-(und im Bereichsplan die Schichtverantwortung für die eigene Einheit) **speichern `objekte`, `postenPlan`, `bereichsPlan`, `dienstarten` (zweiter Abschnitt),
-`betriebsmittel` (Anlage) und `kompetenzen` auch bei Status `geplant`**. Die zugesagte Aussage „Schreiben geschlossen, solange das Modul nicht wirkt“
-(R-9) gilt damit nur für die sechs Module aus WP-19.2 ff. Wirkung auf Planung und Prüfungen entsteht nicht (`modulAktiv` ist falsch, keine Befunde, keine
-Oberfläche), und fremde Rollen kommen nicht heran; es bleiben aber Daten gespeichert, die bei Status `geplant` nicht entstehen sollten (Datenminimierung,
-Löschlauf, Auskunft). Behebung wäre eine Änderung des Schreibwegs (Register vor der Formprüfung) und trifft bestehende Modultests, die mit `geplant` schreiben;
-sie ist deshalb **nicht** Teil dieses Pakets. Die Prüfung hält das heutige Verhalten fest (`modul-abnahme.test.js`, „Befund B1“); wird der Weg gehärtet, muss
-sie auf `abgewiesen` gedreht werden. Entscheidung: Betreiber/Produktverantwortung, vor dem Statuswechsel jedes dieser fünf Module.
+`anlagenZusammen`, `maschinenqualZusammen`) und fragten nicht, ob das Modul wirkt. Leitung, Planung und Kundenrolle (im Bereichsplan auch die
+Schichtverantwortung für die eigene Einheit) speicherten `objekte`, `postenPlan`, `bereichsPlan`, `dienstarten` (zweiter Abschnitt), `betriebsmittel`
+(Anlage) und `kompetenzen` auch bei Status `geplant` — entgegen R-9 („Schreiben geschlossen, solange das Modul nicht wirkt“).
+
+Behebung: eine Registerwache (`server/lib/modul-altwege.mjs`, `altmodulWache`) an der einen Stelle, an der alle Modulschreibwege hängen
+(`modulSchreibwegeAnwenden`), mit derselben Regel und derselben Antwort wie die neueren Module (`modul-wege.mjs`): Eine Änderung an den Daten eines
+der fünf Module braucht `modulAktiv` (gebucht, eingeschaltet, nicht `geplant`, Abhängigkeit aktiv); sonst 403 mit „Branchenmodul … wirkt in diesem
+Betrieb nicht …“, für jede Rolle (Leitung, Kundenrolle und Demo eingeschlossen), über den vollen PUT und den Teilweg (`POST /api/bestand/teile`, derselbe
+`zusammenfuehren`). Unbekannter, fehlender oder unsinniger Status (auch einer Abhängigkeit): geschlossen — wirken kann nur `vorlaeufig` oder
+`freigegeben` (die Wache prüft das zusätzlich zu `modulAktiv`, siehe Befund B4). Einzige Ausnahme: der geprüfte Ausnahmeweg nach Art. 16/17 DSGVO
+für genau dieses Modul (Löschung wie bei den neueren Modulen, dazu die Berichtigung). Als Daten des Moduls gelten nur seine Teile: `objekte`/`postenPlan`, `bereichsPlan` und
+`einheiten[].bereiche`, `zweiterAbschnitt` einer Dienstart (`null` ist keiner), Betriebsmittel der Art `anlage`, Kompetenzen mit `befaehigtePerson`
+oder Bezug auf eine Anlage; leer (fehlend, `null`, `[]`, `{}`) gilt als gleich. Kern (Dienstarten, Betriebsmittel, Kompetenzen, Einheiten ohne
+Modulteil, Löschen einer Dienstart oder Einheit) bleibt frei. Ein neu angelegter Betrieb (Betreiber, Erstbefüllung) bringt keine Daten der fünf Module
+mit (`altmoduldatenVerwerfen` in `moduleinstellungenVerwerfen`). Wiederherstellen (`/api/wiederherstellen`) spielt nur Sicherungen zurück, die der Server
+selbst aus dem gespeicherten Stand gemacht hat (Marke, kein Hochladen) — es entsteht nichts, was nicht schon gespeichert war; dafür gilt wie bei den neueren
+Modulen `moduldatenBeiWiederherstellung` (Nur-Lesen G3, Löschvermerke), keine Sonderregel. Berichtigung und Löschung nach Art. 16/17 über den
+geprüften Ausnahmeweg bleiben möglich (Posten und Bereichsplan haben ein Wertschema). Import ist aus (`/api/import`); Beschäftigte (auch
+Selbstservice), Betriebsrat und Betreiber erreichen den Modulweg ohnehin nicht (wirkungslos oder abgewiesen wie zuvor). Lesen unverändert.
+Nur für Prüfungen nimmt `zusammenfuehren` eine Registry-Kopie (`optionen.liste`); kein HTTP-Weg übergibt sie.
+
+**Bestehende Daten bleiben unberührt.** Was aus früherer Test- oder Staging-Nutzung gespeichert ist, bleibt gespeichert und lesbar: keine Löschung,
+keine Umstellung. Geschlossen ist nur das Ändern über die Schreibwege — auch das Entfernen (wie bei den neueren Modulen; gelöscht wird über den
+Löschlauf). Nachweis: `pruefungen/modul-b1-schreibweg.test.js` (echte Handler, alle Rollen × fünf Module × voller PUT und Teilweg, manipulierte
+Rümpfe; Prüfmodus „vorlaeufig“ nur über eine Registry-Kopie im Test; unbekannter Status; Altbestand unverändert und lesbar). Die Matrix unten
+zeigt die fünf Module jetzt mit „Register: ja“ und bei `geplant` dieselbe Zeile wie die neueren Module.
+
+**Befund B4 (gemeinsamer Kern, offen, nicht in diesem PR geändert).** (a) `modulAktiv` (`server/lib/branchenmodule.mjs`) prüft nur „nicht `geplant`“:
+Ein unbekannter oder unsinniger Status gilt dort als wirkend (nachgerechnet: `rotation` mit Status „unbekannt“, Schalter an → wirkt). Die Registry-Prüfung
+(`pruefeModulStatus`, `pruefeModulRegistry`) weist solche Stände ab, im Lauf schützt aber nur sie. Für die fünf älteren Module prüft die Registerwache den Status
+selbst (fail-closed); die neueren Module (`modul-wege.mjs`), Befunde und Oberflächen hängen weiter an `modulAktiv`. (b) Der Schreibweg der neueren Module lässt
+bei ausgeschaltetem Modul nur die Löschung des Ausnahmewegs durch, nicht die Berichtigung — auch dort, wo ein Wertschema sie vorsieht (nachgerechnet:
+`funktionsPlan`, Art. 16, Modul aus → 403). Die fünf älteren Module lassen die geprüfte Berichtigung durch (Posten, Bereichsplan). Entscheidung und Härtung:
+eigener Auftrag (gemeinsamer Kern).
+
+**Befund B5 (Oberfläche, Beobachtung, keine Änderung).** Die Moduloberflächen der fünf Module erscheinen bei `geplant` nicht („in Vorbereitung“, „Keine
+Moduloberfläche“) — stimmig mit dem Server. Altdaten zeigen aber Kernansichten weiter mit Schreibaktionen: Betriebsmittel (eine Alt-Anlage lässt sich
+bearbeiten oder löschen), Kompetenzen (Alt-Maschinenkompetenz bearbeiten oder löschen; die Auswahl „Betriebsmittel“ listet auch Alt-Anlagen). Solche
+Speichervorgänge weist der Server jetzt mit 403 ab („Branchenmodul … wirkt in diesem Betrieb nicht …“); die Oberfläche kennzeichnet diese Einträge nicht
+als „nicht verfügbar“. Betrifft nur Betriebe mit Altdaten aus Test- oder Staging-Nutzung.
 
 **Befund B2 (Zielgrößen, behoben, rot/grün).** Schaltflächen, Auswahl- und Eingabefelder und Auswahlkästchen im Bereich „Branchenmodule“
 (`src/module/kern.jsx`, eingehängte Oberflächen, Kontischicht-Assistent) waren unformatierte Standardelemente ohne Mindestgröße in den Stilregeln der Anwendung
@@ -74,12 +109,12 @@ Wo diese Fragen offen sind, steht das strengste heutige Verhalten; es ist **kein
 
 | Feld | Fall | Register | LT | PL | SV | MA | BR | KD | BT | DL | DP | AB | offen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| objekte | lesen (Sicht der Rolle) | nein | alles | alles | alles | alles | nichts | alles | nichts | alles | alles | nichts | P1, P3, FN-09, FN-10 |
-| objekte | schreiben, Registry „geplant“ (echt) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | P1, P3, FN-09, FN-10 |
-| objekte | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | P1, P3, FN-09, FN-10 |
-| postenPlan | lesen (Sicht der Rolle) | nein | alles | alles | alles | teilweise 1/3 | nichts | alles | nichts | alles | alles | nichts | P1, P3, FN-09, FN-10 |
-| postenPlan | schreiben, Registry „geplant“ (echt) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | P1, P3, FN-09, FN-10 |
-| postenPlan | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | P1, P3, FN-09, FN-10 |
+| objekte | lesen (Sicht der Rolle) | ja | alles | alles | alles | alles | nichts | alles | nichts | alles | alles | nichts | P1, P3, FN-09, FN-10 |
+| objekte | schreiben, Registry „geplant“ (echt) | ja | abgewiesen | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | abgewiesen | P1, P3, FN-09, FN-10 |
+| objekte | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | ja | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | P1, P3, FN-09, FN-10 |
+| postenPlan | lesen (Sicht der Rolle) | ja | alles | alles | alles | teilweise 1/3 | nichts | alles | nichts | alles | alles | nichts | P1, P3, FN-09, FN-10 |
+| postenPlan | schreiben, Registry „geplant“ (echt) | ja | abgewiesen | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | abgewiesen | P1, P3, FN-09, FN-10 |
+| postenPlan | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | ja | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | P1, P3, FN-09, FN-10 |
 
 ### wachbuch (Wachbuch) — Registry: geplant
 
@@ -98,9 +133,9 @@ Kein Betriebsfeld und kein Schreibweg des Moduls (siehe Abschnitt „Module ohne
 
 | Feld | Fall | Register | LT | PL | SV | MA | BR | KD | BT | DL | DP | AB | offen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| bereichsPlan | lesen (Sicht der Rolle) | nein | alles | alles | teilweise 2/3 | teilweise 1/3 | nichts | alles | nichts | alles | alles | nichts | R-3, B2, FN-31 |
-| bereichsPlan | schreiben, Registry „geplant“ (echt) | nein | GESPEICHERT | GESPEICHERT | GESPEICHERT | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | R-3, B2, FN-31 |
-| bereichsPlan | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | nein | GESPEICHERT | GESPEICHERT | GESPEICHERT | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | R-3, B2, FN-31 |
+| bereichsPlan | lesen (Sicht der Rolle) | ja | alles | alles | teilweise 2/3 | teilweise 1/3 | nichts | alles | nichts | alles | alles | nichts | R-3, B2, FN-31 |
+| bereichsPlan | schreiben, Registry „geplant“ (echt) | ja | abgewiesen | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | abgewiesen | R-3, B2, FN-31 |
+| bereichsPlan | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | ja | GESPEICHERT | GESPEICHERT | GESPEICHERT | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | R-3, B2, FN-31 |
 
 ### pflegequal (Pflegequalifikationen) — Registry: geplant
 
@@ -125,9 +160,9 @@ Kein Betriebsfeld und kein Schreibweg des Moduls (siehe Abschnitt „Module ohne
 
 | Feld | Fall | Register | LT | PL | SV | MA | BR | KD | BT | DL | DP | AB | offen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| dienstarten | lesen (Sicht der Rolle) | nein | alles | alles | alles | alles | alles | alles | alles | alles | alles | nichts | T2, FN-20, FN-21, FN-22 |
-| dienstarten | schreiben, Registry „geplant“ (echt) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | T2, FN-20, FN-21, FN-22 |
-| dienstarten | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | T2, FN-20, FN-21, FN-22 |
+| dienstarten | lesen (Sicht der Rolle) | ja | alles | alles | alles | alles | alles | alles | alles | alles | alles | nichts | T2, FN-20, FN-21, FN-22 |
+| dienstarten | schreiben, Registry „geplant“ (echt) | ja | abgewiesen | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | abgewiesen | T2, FN-20, FN-21, FN-22 |
+| dienstarten | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | ja | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | T2, FN-20, FN-21, FN-22 |
 
 ### funktionsdienst (Funktionsdienste) — Registry: geplant
 
@@ -152,17 +187,17 @@ Kein Betriebsfeld und kein Schreibweg des Moduls (siehe Abschnitt „Module ohne
 
 | Feld | Fall | Register | LT | PL | SV | MA | BR | KD | BT | DL | DP | AB | offen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| betriebsmittel | lesen (Sicht der Rolle) | nein | alles | alles | alles | alles | nichts | alles | nichts | alles | alles | nichts | A1, FN-11 |
-| betriebsmittel | schreiben, Registry „geplant“ (echt) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | A1, FN-11 |
-| betriebsmittel | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | A1, FN-11 |
+| betriebsmittel | lesen (Sicht der Rolle) | ja | alles | alles | alles | alles | nichts | alles | nichts | alles | alles | nichts | A1, FN-11 |
+| betriebsmittel | schreiben, Registry „geplant“ (echt) | ja | abgewiesen | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | abgewiesen | A1, FN-11 |
+| betriebsmittel | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | ja | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | A1, FN-11 |
 
 ### maschinenqual (Maschinenqualifikationen) — Registry: geplant
 
 | Feld | Fall | Register | LT | PL | SV | MA | BR | KD | BT | DL | DP | AB | offen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| kompetenzen | lesen (Sicht der Rolle) | nein | alles | alles | alles | alles | alles | alles | nichts | alles | alles | nichts | M1, M3, FN-26, FN-27 |
-| kompetenzen | schreiben, Registry „geplant“ (echt) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | M1, M3, FN-26, FN-27 |
-| kompetenzen | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | nein | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | M1, M3, FN-26, FN-27 |
+| kompetenzen | lesen (Sicht der Rolle) | ja | alles | alles | alles | alles | alles | alles | nichts | alles | alles | nichts | M1, M3, FN-26, FN-27 |
+| kompetenzen | schreiben, Registry „geplant“ (echt) | ja | abgewiesen | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | wirkungslos | abgewiesen | abgewiesen | abgewiesen | M1, M3, FN-26, FN-27 |
+| kompetenzen | schreiben, Prüfmodus „vorlaeufig“ (nur Test) | ja | GESPEICHERT | GESPEICHERT | abgewiesen | wirkungslos | abgewiesen | GESPEICHERT | wirkungslos | GESPEICHERT | GESPEICHERT | abgewiesen | M1, M3, FN-26, FN-27 |
 
 ### kontimodelle (Kontischichtmodelle mit Stufenversatz) — Registry: geplant
 

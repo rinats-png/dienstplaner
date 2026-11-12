@@ -18,7 +18,7 @@
    Wechselwirkungen (WP-16, WP-26, WP-43, WP-45, Backup, WP-16c):
    docs/acc45/wp19-0-nachweis.md, Abschnitt „Nachtrag zweiter Opus-Delta-Review".
    ========================================================================== */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -182,6 +182,13 @@ describe("Q4 — zwei Planende ändern gleichzeitig Moduldaten: kein stiller Ver
     return { status: a.status, ...d };
   }
   beforeAll(async () => {
+    /* WP-19 B1: Bei „geplant“ ist das Schreiben der Postendaten geschlossen. Für die Nebenläufigkeit läuft der echte Handler
+       deshalb mit einer Registry-Kopie, in der Posten „vorlaeufig“ steht (nur in diesem Test, frisch geladene Module). */
+    vi.resetModules();
+    vi.doMock("../server/lib/branchenmodule.mjs", async (echt) => {
+      const e = /** @type {any} */ (await echt());
+      return { ...e, BRANCHENMODULE: Object.freeze(e.BRANCHENMODULE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x))) };
+    });
     wurzel = await mkdtemp(path.join(tmpdir(), "centric-modul-quer-"));
     process.env.CENTRIC_DATEN = wurzel;
     process.env.CENTRIC_ABLAGE = "dateien";
@@ -191,7 +198,7 @@ describe("Q4 — zwei Planende ändern gleichzeitig Moduldaten: kein stiller Ver
     daten = (await import("../server/funktionen/daten.mjs")).default;
     B = await import("../server/lib/bestand.mjs");
     ({ sitzungAnlegen } = await import("../server/lib/sitzungen.mjs"));
-    const g = gesamt({});
+    const g = gesamt({ posten: { an: true, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "l1" } });
     g.version = 9;
     g.mandanten[0].status = "aktiv";
     g.mandanten[0].personen.push({ ...g.mandanten[0].personen.find((p) => p.id === "p1"), id: "p2", nachname: "Np2" });
@@ -199,7 +206,7 @@ describe("Q4 — zwei Planende ändern gleichzeitig Moduldaten: kein stiller Ver
     for (const [k, person, rolle] of [["P1", "p1", "planer"], ["P2", "p2", "planer"]])
       TOKEN[k] = (await sitzungAnlegen({ bestand: "modul-quer", name: k, rolle, person, betrieb: 0, mandantId: "m1", einheit: null }, 2 * 3600 * 1000)).token;
   });
-  afterAll(async () => { if (wurzel) await rm(wurzel, { recursive: true, force: true }); });
+  afterAll(async () => { vi.doUnmock("../server/lib/branchenmodule.mjs"); vi.resetModules(); if (wurzel) await rm(wurzel, { recursive: true, force: true }); });
 
   it("beide lesen denselben Stand; der zweite Schreibvorgang mit altem Stand bekommt 409, die erste Änderung bleibt", async () => {
     const a = await anfrage("/api/bestand", { token: TOKEN.P1 });
@@ -243,7 +250,10 @@ describe("Q5 — Monatsabschluss (WP-16): Moduldaten verändern das Ist nicht", 
        dann postenPlan/bereichsPlan des Oktobers über den Schreibweg der Leitung ändern und eine Sicherung von vor der
        Änderung zurückspielen — das eingefrorene Ist und die Prüfsumme des Monats bleiben, wie sie beim Abschluss waren. */
     const OKT = "2026-10";
-    const g = gesamt({});
+    /* WP-19 B1: Posten und Bereichsplan wirken hier (Prüfmodus nur im Test, Schalter an, Pakete gebucht) — sonst ist das Ändern geschlossen. */
+    const g = gesamt({ posten: { an: true }, bereichsplan: { an: true } });
+    g.mandanten[0].pakete = ["sicherheit", "pflege"];
+    const PRUEF = BM.BRANCHENMODULE.map((x) => (["posten", "bereichsplan"].includes(x.id) ? { ...x, status: "vorlaeufig" } : x));
     const m0 = g.mandanten[0];
     m0.postenPlan = { ...m0.postenPlan, "a1|2026-10-05": "po1", "a1|2026-10-06": "po1", "s1|2026-10-05": "po2" };
     m0.erfassung = { "a1|2026-10-05": { start: null, ende: null, bestaetigt: true, grund: "" },
@@ -263,7 +273,7 @@ describe("Q5 — Monatsabschluss (WP-16): Moduldaten verändern das Ist nicht", 
       m.postenPlan = { ...m.postenPlan, "a1|2026-10-05": "po2", "a1|2026-10-07": "po1" };
       delete m.postenPlan["a1|2026-10-06"];
       m.bereichsPlan = { ...(m.bereichsPlan || {}), "a1|2026-10-05": "b1" };
-    });
+    }, { liste: PRUEF });
     expect(v.verweigert, v.verweigert).toBeFalsy();
     const nach = v.mandanten[0];
     expect(nach.postenPlan["a1|2026-10-05"]).toBe("po2");                       // die Moduldaten haben sich geändert

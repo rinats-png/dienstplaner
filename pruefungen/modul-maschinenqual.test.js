@@ -20,7 +20,7 @@ import { REGELN_BRANCHEN, pruefeBranchenkatalog } from "../server/lib/branchenka
 import { pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../src/regelbaukasten.js";
 import { kompetenzStand } from "../src/regelwerk.js";
-import { branchenbestand, schreibeAls, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
+import { branchenbestand, schreibeAls, SITZUNGEN, vorlaeufigListe, schalterAn } from "./hilfen/branchenbetrieb.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { QualifikationsMatrix } from "../src/module/maschinenqual.jsx";
 
@@ -146,12 +146,19 @@ describe("Review-Auflage 2: Altbestand blockiert nicht", () => {
 });
 
 describe("Schreibweg (Server)", () => {
-  it("fehlerhafte Kompetenzfelder werden abgewiesen, gültige gespeichert", () => {
+  it("WP-19 B1: bei Status „geplant“ speichert keine Rolle eine Maschinenkompetenz; Kompetenzen ohne Modulteil bleiben frei", () => {
+    const g = branchenbestand({ pakete: ["industrie"], branchenmodule: schalterAn("anlagen", "maschinenqual") });
+    for (const r of ["LT", "KD", "PL"]) expect(schreibeAls(g, r, (m) => { m.kompetenzen = [{ ...K_PRESSE, befaehigtePerson: true }]; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+    const { befaehigtePerson: _b, ...ohne } = { ...K_PRESSE, id: "k-kern", betriebsmittelId: null }; void _b;
+    expect(schreibeAls(g, "LT", (m) => { m.kompetenzen = [ohne]; }).verweigert).toBeFalsy();
+  });
+  it("fehlerhafte Kompetenzfelder werden abgewiesen, gültige gespeichert (Prüfmodus „vorlaeufig“, Module an)", () => {
     expect(maschinenqualZusammen({ kompetenzen: [K_PRESSE, K_TOR] }).grund).toBeUndefined();
-    const g = branchenbestand({ pakete: ["industrie"] });
-    const falsch = schreibeAls(g, "LT", (m) => { m.kompetenzen = [{ ...K_PRESSE, befaehigtePerson: 1 }]; });
+    const g = branchenbestand({ pakete: ["industrie"], branchenmodule: schalterAn("anlagen", "maschinenqual") });
+    const liste = vorlaeufigListe("anlagen", "maschinenqual");
+    const falsch = schreibeAls(g, "LT", (m) => { m.kompetenzen = [{ ...K_PRESSE, befaehigtePerson: 1 }]; }, { liste });
     expect(falsch.verweigert).toMatch(/befähigte/i);
-    const gut = schreibeAls(g, "LT", (m) => { m.kompetenzen = [{ ...K_PRESSE, befaehigtePerson: true }]; });
+    const gut = schreibeAls(g, "LT", (m) => { m.kompetenzen = [{ ...K_PRESSE, befaehigtePerson: true }]; }, { liste });
     expect(gut.verweigert).toBeFalsy();
   });
 });

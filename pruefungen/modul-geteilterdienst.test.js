@@ -18,7 +18,7 @@ import { BRANCHENMODULE, modulVon, pruefeModulRegistry } from "../server/lib/bra
 import { REGELN_BRANCHEN, pruefeBranchenkatalog } from "../server/lib/branchenkatalog.mjs";
 import { pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../server/lib/regelbaukasten.mjs";
-import { branchenbestand, schreibeAls } from "./hilfen/branchenbetrieb.mjs";
+import { branchenbestand, schreibeAls, vorlaeufigListe, schalterAn } from "./hilfen/branchenbetrieb.mjs";
 import { AbschnittsAnzeige } from "../src/module/geteilterdienst.jsx";
 
 const MO = "2026-11-02", DI = "2026-11-03";
@@ -153,10 +153,16 @@ describe("Schreibweg (Server)", () => {
     expect(geteilterdienstZusammen({}).grund).toBeUndefined();
     expect(geteilterdienstZusammen({ dienstarten: [{ ...GET, zweiterAbschnitt: { start: "09:00", ende: "12:00" } }] }).grund).toMatch(/Geteilt/);
   });
-  it("über den Serverweg: Leitung speichert einen gültigen, ein fehlerhafter wird abgewiesen", () => {
-    const g = branchenbestand({ pakete: ["klinik"] });
-    expect(schreibeAls(g, "LT", (m) => { m.dienstarten = [...m.dienstarten, GET]; }).verweigert).toBeFalsy();
-    expect(schreibeAls(g, "LT", (m) => { m.dienstarten = [...m.dienstarten, { ...GET, zweiterAbschnitt: { start: "09:00", ende: "12:00" } }]; }).verweigert).toMatch(/Geteilt/);
+  it("WP-19 B1: bei Status „geplant“ speichert keine Rolle einen zweiten Abschnitt; Dienstarten ohne zweiten Abschnitt bleiben frei", () => {
+    const g = branchenbestand({ pakete: ["klinik"], branchenmodule: schalterAn("geteilterdienst") });
+    for (const r of ["LT", "KD", "PL"]) expect(schreibeAls(g, r, (m) => { m.dienstarten = [...m.dienstarten, GET]; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+    expect(schreibeAls(g, "LT", (m) => { m.dienstarten = [...m.dienstarten, { ...GET, id: "N", zweiterAbschnitt: null }]; }).verweigert).toBeFalsy();
+  });
+  it("über den Serverweg (Prüfmodus „vorlaeufig“, Modul an): Leitung speichert einen gültigen, ein fehlerhafter wird abgewiesen", () => {
+    const g = branchenbestand({ pakete: ["klinik"], branchenmodule: schalterAn("geteilterdienst") });
+    const liste = vorlaeufigListe("geteilterdienst");
+    expect(schreibeAls(g, "LT", (m) => { m.dienstarten = [...m.dienstarten, GET]; }, { liste }).verweigert).toBeFalsy();
+    expect(schreibeAls(g, "LT", (m) => { m.dienstarten = [...m.dienstarten, { ...GET, zweiterAbschnitt: { start: "09:00", ende: "12:00" } }]; }, { liste }).verweigert).toMatch(/Geteilt/);
   });
 });
 

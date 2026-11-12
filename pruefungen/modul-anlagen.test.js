@@ -17,7 +17,7 @@ import { BRANCHENMODULE, modulVon, pruefeModulRegistry } from "../server/lib/bra
 import { REGELN_BRANCHEN, pruefeBranchenkatalog } from "../server/lib/branchenkatalog.mjs";
 import { REGELN, pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../src/regelbaukasten.js";
-import { branchenbestand, schreibeAls } from "./hilfen/branchenbetrieb.mjs";
+import { branchenbestand, schreibeAls, vorlaeufigListe, schalterAn } from "./hilfen/branchenbetrieb.mjs";
 import { AnlagenUebersicht } from "../src/module/anlagen.jsx";
 
 const MO = "2026-11-02", SA = "2026-11-07", SO = "2026-11-08";
@@ -119,11 +119,18 @@ describe("Schreibweg (Server)", () => {
     expect(anlagenZusammen({}).grund).toBeUndefined();
     expect(anlagenZusammen({ betriebsmittel: [{ ...PRESSE, mindestBesetzung: { F: -2 } }] }).grund).toMatch(/Presse 1/);
   });
-  it("über den Serverweg: fehlerhafte Anlage wird abgewiesen, eine gültige gespeichert", () => {
-    const g = branchenbestand({ pakete: ["industrie"] });
-    const falsch = schreibeAls(g, "PL", (m) => { m.betriebsmittel = [{ ...PRESSE, laufzeit: { wochentage: "immer" } }]; });
+  it("WP-19 B1: bei Status „geplant“ speichert auch eine gültige Anlage nicht (Register geschlossen, jede Rolle)", () => {
+    const g = branchenbestand({ pakete: ["industrie"], branchenmodule: schalterAn("anlagen") });
+    for (const r of ["PL", "LT", "KD"]) expect(schreibeAls(g, r, (m) => { m.betriebsmittel = [PRESSE]; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+    /* Ein Betriebsmittel ohne Anlage (Kern) bleibt frei. */
+    expect(schreibeAls(g, "PL", (m) => { m.betriebsmittel = [SCHLUESSEL]; }).verweigert).toBeFalsy();
+  });
+  it("über den Serverweg (Prüfmodus „vorlaeufig“, Modul an): fehlerhafte Anlage wird abgewiesen, eine gültige gespeichert", () => {
+    const g = branchenbestand({ pakete: ["industrie"], branchenmodule: schalterAn("anlagen") });
+    const liste = vorlaeufigListe("anlagen");
+    const falsch = schreibeAls(g, "PL", (m) => { m.betriebsmittel = [{ ...PRESSE, laufzeit: { wochentage: "immer" } }]; }, { liste });
     expect(falsch.verweigert).toMatch(/Anlage/);
-    const gut = schreibeAls(g, "PL", (m) => { m.betriebsmittel = [PRESSE]; });
+    const gut = schreibeAls(g, "PL", (m) => { m.betriebsmittel = [PRESSE]; }, { liste });
     expect(gut.verweigert).toBeFalsy();
     expect(gut.mandanten[0].betriebsmittel[0]).toMatchObject({ art: "anlage", mindestBesetzung: { F: 2, S: 1 } });
   });

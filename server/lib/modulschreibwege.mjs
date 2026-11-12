@@ -46,14 +46,17 @@
         Grund wird zur Abweisung (403).
 
    Die fünf Module, die vor WP-19.0 eine eigene Zeile in rechte.mjs bekamen
-   (anlagen, maschinenqual, geteilterdienst, posten, bereichsplan), bleiben
-   dort; nichts wird umgehängt.
+   (anlagen, maschinenqual, geteilterdienst, posten, bereichsplan), behalten
+   dort ihre Formprüfung. Ob das Modul wirkt, fragt für sie seit WP-19 B1 die
+   Registerwache (modul-altwege.mjs) hier, nach dem Nur-Lesen und vor den
+   Schreibwegen der neueren Module — dieselbe Regel (modulAktiv, 403).
 
    Rein: keine Ablage, keine Uhr. Einzige Umgebung: CENTRIC_PFEFFER als Schlüssel der
    Löschvermerke (wie codes.mjs/zweifaktor.mjs; ohne ihn ungeschlüsselt, F4).
    ========================================================================== */
 import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { MODULWEGE_WP19 } from "./modul-wege.mjs";
+import { altmodulWache } from "./modul-altwege.mjs";
 import { BRANCHENMODULE, modulVon, modulNurLesen, AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER } from "./branchenmodule.mjs";
 
 export { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER };
@@ -402,6 +405,9 @@ export function modulSchreibwegeAnwenden(altM, neuM, { wege = MODUL_SCHREIBWEGE,
   const lesen = moduldatenZusammen(altM, neuM, liste, { darfOrgEdit: ktx.darfOrgEdit === true, sitzung: ktx.sitzung, ausnahme: ktx.ausnahme });
   if (lesen.grund) return lesen;
   let aus = lesen.mandant;
+  /* WP-19 B1: die fünf älteren Module — Änderung nur bei wirkendem Modul (wie `weg` in modul-wege.mjs). */
+  const wache = altmodulWache(altM, aus, { liste, ausnahme: ktx.ausnahme });
+  if (wache) return wache;
   for (const w of wege) {
     const r = w.zusammen(altM, aus, { ...ktx, liste });
     if (!r || r.grund) return { grund: (r && r.grund) || `Branchenmodul ${w.modul}: Schreibweg ohne Ergebnis.` };

@@ -72,28 +72,29 @@ function grund({ mitBestaetigung = true } = {}) {
 
 /**
  * Die Beschreibung der Felder: Modul, Feld, Beispielwert (gültig), Vorbedingung am gespeicherten Stand, Datenfüllung für die Lesesicht,
- * ob der Schreibweg das Register kennt (MODUL_SCHREIBWEGE) und wer laut Dokument schreiben darf (R-x).
+ * ob der Schreibweg das Register kennt (seit WP-19 B1 alle: MODUL_SCHREIBWEGE bzw. die Registerwache modul-altwege.mjs; `alt` = eines der
+ * fünf älteren Module, deren Form- und Rollenprüfung in rechte.mjs steht) und wer laut Dokument schreiben darf (R-x).
  * `schreiber`: die Rollenkürzel, die laut den Rechtedokumenten/-tests im Prüfmodus schreiben dürfen — oder null, wo das Dokument offen ist
  * und nur das strengste heutige Verhalten zählt (dann steht „offen“ und die Frage in `offen`).
  */
 const bereitschaftWert = { [`a1|${TAG}`]: { stufe: "B", beginn: "16:00", ende: "08:00" } };
 export const FELDER = Object.freeze([
-  { modul: "posten", feld: "objekte", wert: () => kopie(OBJEKTE), vorab: () => {}, register: false, offen: ["P1", "P3", "FN-09", "FN-10"],
+  { modul: "posten", feld: "objekte", wert: () => kopie(OBJEKTE), vorab: () => {}, register: true, alt: true, offen: ["P1", "P3", "FN-09", "FN-10"],
     lese: { objekte: OBJEKTE, postenPlan: { [`a1|${TAG}`]: "po1", [`a2|${TAG}`]: "po2", [`s1|${TAG}`]: "po1" } } },
-  { modul: "posten", feld: "postenPlan", wert: () => ({ [`a1|${TAG}`]: "po1" }), vorab: (m) => { m.objekte = kopie(OBJEKTE); }, register: false, offen: ["P1", "P3", "FN-09", "FN-10"] },
+  { modul: "posten", feld: "postenPlan", wert: () => ({ [`a1|${TAG}`]: "po1" }), vorab: (m) => { m.objekte = kopie(OBJEKTE); }, register: true, alt: true, offen: ["P1", "P3", "FN-09", "FN-10"] },
   { modul: "wachbuch", feld: "wachbuch", register: true, offen: ["R-2", "R-3", "WB-1", "FN-01", "FN-02", "FN-03", "FN-04", "FN-05"],
     wert: (r) => ({ [`w1|${TAG}`]: { id: "w1", datum: TAG, uhrzeit: "08:15", objektId: "o1", art: "vorkommnis", text: "Tor klemmt", einheitId: "e1" } }),
     vorab: (m, r) => { m.objekte = kopie(OBJEKTE); if (r.person) m.postenPlan = { [`${r.person}|${TAG}`]: "po1" }; },
     lese: { wachbuch: { [`w1|${TAG}`]: wachEintrag("w1", "a1", "e1"), [`w2|${TAG}`]: wachEintrag("w2", "a2", "e1"), [`w3|${TAG}`]: wachEintrag("w3", "a3", "e2") } } },
   { modul: "objektbericht", feld: null, offen: ["R-5", "OB-2", "FN-05", "FN-06", "FN-07", "FN-08"] },
-  { modul: "bereichsplan", feld: "bereichsPlan", wert: () => ({ [`a1|${TAG}`]: "b1" }), vorab: (m) => { m.einheiten[0].bereiche = kopie(BEREICHE); }, register: false, offen: ["R-3", "B2", "FN-31"],
+  { modul: "bereichsplan", feld: "bereichsPlan", wert: () => ({ [`a1|${TAG}`]: "b1" }), vorab: (m) => { m.einheiten[0].bereiche = kopie(BEREICHE); }, register: true, alt: true, offen: ["R-3", "B2", "FN-31"],
     lese: { bereichsPlan: { [`a1|${TAG}`]: "b1", [`a2|${TAG}`]: "b1", [`a3|${TAG}`]: "b2" }, einheiten: null } },
   { modul: "pflegequal", feld: "pflegeNiveaus", wert: () => kopie(NIVEAUS), vorab: () => {}, register: true, offen: ["R-1", "R-3", "PQ-1", "FN-12", "FN-13", "FN-14"], lese: { pflegeNiveaus: NIVEAUS } },
   { modul: "bereitschaftsdienst", feld: "bereitschaftStufen", wert: () => kopie(STUFEN), vorab: () => {}, register: true, offen: ["R-1", "R-3", "BD-5", "FN-15", "FN-16", "FN-17", "FN-18", "FN-19"], lese: { bereitschaftStufen: STUFEN } },
   { modul: "bereitschaftsdienst", feld: "bereitschaft", wert: () => kopie(bereitschaftWert), vorab: (m) => { m.bereitschaftStufen = kopie(STUFEN); }, register: true,
     offen: ["R-1", "R-3", "BD-5", "FN-15", "FN-16", "FN-17", "FN-18", "FN-19"],
     lese: { bereitschaft: { [`a1|${TAG}`]: { stufe: "B", beginn: "16:00", ende: "08:00" }, [`a2|${TAG}`]: { stufe: "B", beginn: "16:00", ende: "08:00" }, [`a3|${TAG}`]: { stufe: "B", beginn: "16:00", ende: "08:00" }, [`s1|${TAG}`]: { stufe: "B", beginn: "16:00", ende: "08:00" } } } },
-  { modul: "geteilterdienst", feld: "dienstarten", wert: (r, m) => [...kopie(m.dienstarten), kopie(GETEILT)], vorab: () => {}, register: false, offen: ["T2", "FN-20", "FN-21", "FN-22"],
+  { modul: "geteilterdienst", feld: "dienstarten", wert: (r, m) => [...kopie(m.dienstarten), kopie(GETEILT)], vorab: () => {}, register: true, alt: true, offen: ["T2", "FN-20", "FN-21", "FN-22"],
     nurAenderung: true },
   { modul: "funktionsdienst", feld: "funktionsbereiche", wert: () => kopie(FBEREICHE), vorab: () => {}, register: true, offen: ["R-1", "R-3", "FN-23"], lese: { funktionsbereiche: FBEREICHE } },
   { modul: "funktionsdienst", feld: "funktionsPlan", wert: () => ({ [`a1|${TAG}`]: "op" }), vorab: (m) => { m.funktionsbereiche = kopie(FBEREICHE); }, register: true, offen: ["R-1", "R-3", "FN-23"],
@@ -103,8 +104,8 @@ export const FELDER = Object.freeze([
     lese: { rotationen: { [`r1|${TAG}`]: { id: "r1", personId: "a1", art: "einsatz", einheitId: "e1", von: TAG, bis: tagPlus(10) },
       [`r2|${TAG}`]: { id: "r2", personId: "a3", art: "einsatz", einheitId: "e2", von: TAG, bis: tagPlus(10) },
       [`r3|${TAG}`]: { id: "r3", personId: "s1", art: "einsatz", einheitId: "e1", von: TAG, bis: tagPlus(10) } } } },
-  { modul: "anlagen", feld: "betriebsmittel", wert: () => [kopie(PRESSE)], vorab: () => {}, register: false, offen: ["A1", "FN-11"] },
-  { modul: "maschinenqual", feld: "kompetenzen", wert: () => [kopie(KOMPETENZ)], vorab: (m) => { m.betriebsmittel = [kopie(PRESSE)]; }, register: false, offen: ["M1", "M3", "FN-26", "FN-27"] },
+  { modul: "anlagen", feld: "betriebsmittel", wert: () => [kopie(PRESSE)], vorab: () => {}, register: true, alt: true, offen: ["A1", "FN-11"] },
+  { modul: "maschinenqual", feld: "kompetenzen", wert: () => [kopie(KOMPETENZ)], vorab: (m) => { m.betriebsmittel = [kopie(PRESSE)]; }, register: true, alt: true, offen: ["M1", "M3", "FN-26", "FN-27"] },
   { modul: "kontimodelle", feld: null, offen: ["K1", "FN-28", "FN-29", "FN-30"] },
 ]);
 /** Was gelesen wird: das Feld mit seiner Befüllung (Lesesicht). Für Felder ohne eigene Füllung zählt die Füllung des Schreibtests. */
@@ -160,9 +161,24 @@ function schreibenEcht(f, r, mitBestaetigung = true) {
   return urteil(zusammenfuehren(g, s, sitz), 0, f, wert);
 }
 
-/** Prüfmodus: das Register steht (nur hier) auf „vorlaeufig“. Wer den Modulweg im echten Ablauf nie erreicht, wird über den echten Weg gerechnet. */
+/** Schreiben über den echten Server mit einer Registry nur dieser Testhilfe (zusammenfuehren, optionen.liste). */
+function schreibenEchtMitListe(f, r, liste) {
+  const g = grund();
+  const m = g.mandanten[0];
+  f.vorab(m, r);
+  const wert = f.wert(r, m);
+  const sitz = sitzungVon(r);
+  const s = kopie(bestandFuerRolle(g, sitz) || { mandanten: [] });
+  if (!s.mandanten || !s.mandanten[0]) s.mandanten = [{ id: m.id }];
+  s.mandanten[0][f.feld] = kopie(wert);
+  return urteil(zusammenfuehren(g, s, sitz, { liste }), 0, f, wert);
+}
+
+/** Prüfmodus: das Register steht (nur hier) auf „vorlaeufig“. Wer den Modulweg im echten Ablauf nie erreicht, wird über den echten Weg gerechnet.
+    Die fünf älteren Module (`alt`) laufen ganz über zusammenfuehren (Rollen- und Formprüfung in rechte.mjs, dann die Registerwache). */
 function schreibenPruef(f, r, { mitbestimmungOffen = false } = {}) {
   const umfang = schreibumfang(r.rolle);
+  if (f.alt && r.betrieb === 0) return schreibenEchtMitListe(f, r, LISTE_PRUEF(BRANCHENMODULE.map((x) => x.id), mitbestimmungOffen ? undefined : false));
   const erreicht = (umfang === "voll" || umfang === "einheit") && r.betrieb === 0;
   if (!f.register || !erreicht) return schreibenEcht(f, r);
   const g = grund({ mitBestaetigung: !mitbestimmungOffen });

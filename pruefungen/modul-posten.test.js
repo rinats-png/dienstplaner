@@ -22,7 +22,7 @@ import { BETRIEB } from "../server/lib/sicht.mjs";
 import { pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../server/lib/regelbaukasten.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
-import { branchenbestand, schreibeAls, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
+import { branchenbestand, schreibeAls as schreibeAlsEcht, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
 import { PostenUebersicht } from "../src/module/posten.jsx";
 
 const MO = "2026-11-02";
@@ -34,6 +34,9 @@ const person = (id, quals = []) => ({ id, vorname: "V", nachname: id, status: "a
 const QUALS = [{ id: "q34a", name: "Sachkunde", fachkraft: false, gueltigMonate: null, nachweisPflicht: false }];
 
 const AKTIV = BRANCHENMODULE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x));
+/* WP-19 B1: Bei Status „geplant“ ist das Schreiben geschlossen. Die Schreibfälle laufen deshalb im Prüfmodus (Registry-Kopie
+   „vorlaeufig“ nur im Test, über den echten zusammenfuehren); das Geschlossene prüft „WP-19 B1“ mit schreibeAlsEcht. */
+const schreibeAls = (g, r, aendern) => schreibeAlsEcht(g, r, aendern, { liste: AKTIV });
 const betrieb = ({ an = true, pakete = ["sicherheit"], plan = {} } = {}) => ({
   ...branchenbestand({ pakete, branchenmodule: an ? { posten: { an: true } } : {} }).mandanten[0],
   objekte: OBJEKTE, postenPlan: plan, qualifikationen: QUALS,
@@ -136,8 +139,16 @@ describe("Schreibweg und Sicht (Server)", () => {
     expect(postenZusammen({ objekte: [{ id: "o" }] }).grund).toMatch(/Objekt/);
     expect(postenZusammen({ postenPlan: { x: 1 } }).grund).toMatch(/Posten/);
   });
+  it("WP-19 B1: bei Status „geplant“ speichert keine Rolle Objekte oder Einteilungen (auch nicht Leitung und Kundenrolle)", () => {
+    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });
+    for (const r of ["PL", "LT", "KD", "SV"]) {
+      const v = schreibeAlsEcht(g, r, (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; });
+      expect(!!v && !!v.verweigert, r).toBe(true);
+    }
+    for (const r of ["PL", "LT", "KD"]) expect(schreibeAlsEcht(g, r, (m) => { m.postenPlan = { [`a1|${MO}`]: "po1" }; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+  });
   it("Planung und Leitung speichern Objekte und Einteilungen; fehlerhafte werden abgewiesen", () => {
-    const g = branchenbestand({ pakete: ["sicherheit"] });
+    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });
     for (const r of ["PL", "LT"]) {
       const ok = schreibeAls(g, r, (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; });
       expect(ok.verweigert, r).toBeFalsy();
@@ -147,7 +158,7 @@ describe("Schreibweg und Sicht (Server)", () => {
     expect(schreibeAls(g, "PL", (m) => { m.objekte = [{ id: "o" }]; }).verweigert).toMatch(/Objekt/);
   });
   it("Kundenrolle schreibt wie die Leitung; Betriebsrat schreibt nichts", () => {
-    const g = branchenbestand({ pakete: ["sicherheit"] });
+    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });
     const kd = schreibeAls(g, "KD", (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; });
     expect(kd.verweigert).toBeFalsy();
     expect(kd.mandanten[0].objekte).toEqual(OBJEKTE);
@@ -161,10 +172,10 @@ describe("Schreibweg und Sicht (Server)", () => {
     expect(pruefePostenPlan({ [`a|${tagPlus(300)}`]: "po1" })).toBeNull();
     const alt = { [`a|${tagPlus(5000)}`]: "po1" };
     expect(pruefePostenPlan(alt, alt)).toBeNull();
-    for (const r of ["PL", "LT"]) expect(schreibeAls(branchenbestand({ pakete: ["sicherheit"] }), r, (m) => { m.postenPlan = { [`a1|${tagPlus(5000)}`]: "po1" }; }).verweigert, r).toMatch(/Tag/);
+    for (const r of ["PL", "LT"]) expect(schreibeAls(branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } }), r, (m) => { m.postenPlan = { [`a1|${tagPlus(5000)}`]: "po1" }; }).verweigert, r).toMatch(/Tag/);
   });
   it("Beschäftigte und Schichtverantwortung schreiben weder Objekte noch Einteilungen", () => {
-    const g = { ...branchenbestand({ pakete: ["sicherheit"] }) };
+    const g = { ...branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } }) };
     g.mandanten[0].objekte = OBJEKTE;
     for (const r of ["MA", "SV"]) {
       const v = schreibeAls(g, r, (m) => { m.objekte = []; m.postenPlan = { [`a1|${MO}`]: "po2" }; });
@@ -175,7 +186,7 @@ describe("Schreibweg und Sicht (Server)", () => {
     }
   });
   it("Sicht (W3, konservativ bis zur Nutzerentscheidung): Objekte sehen Beschäftigte und Schichtverantwortung nur mit Einteilung, Betriebsrat keine", () => {
-    const g = branchenbestand({ pakete: ["sicherheit"] });
+    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });
     const zweites = { id: "o2", name: "Objekt Süd", standortId: null, posten: [{ id: "po9", name: "Tor", soll: { F: 1 }, qualifikationen: [] }] };
     g.mandanten[0].objekte = [...OBJEKTE, zweites];
     g.mandanten[0].postenPlan = { [`a1|${MO}`]: "po1", [`s1|${MO}`]: "po2" };
@@ -186,12 +197,12 @@ describe("Schreibweg und Sicht (Server)", () => {
     expect(namen("LT")).toEqual(["o1", "o2"]);
     expect(namen("KD")).toEqual(["o1", "o2"]);
     expect(namen("BR")).toEqual([]);
-    const ohneEinteilung = branchenbestand({ pakete: ["sicherheit"] });
+    const ohneEinteilung = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });
     ohneEinteilung.mandanten[0].objekte = OBJEKTE;
     expect(bestandFuerRolle(ohneEinteilung, SITZUNGEN.MA).mandanten[0].objekte).toEqual([]);
   });
   it("Sicht: die Einteilung sehen Beschäftigte nur für sich, die Schichtverantwortung im Bereich am Tag, Betriebsrat nicht", () => {
-    const g = branchenbestand({ pakete: ["sicherheit"] });
+    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });
     g.mandanten[0].objekte = OBJEKTE;
     g.mandanten[0].postenPlan = { [`a1|${MO}`]: "po1", [`s1|${MO}`]: "po2" };
     for (const r of ["PL", "LT"]) expect(Object.keys(bestandFuerRolle(g, SITZUNGEN[r]).mandanten[0].postenPlan), r).toHaveLength(2);

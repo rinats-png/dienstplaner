@@ -8,6 +8,13 @@
    Rechte- und Aktivierungsfälle, statt eigene Betriebe zu bauen.
    ========================================================================== */
 import { bestandFuerRolle, zusammenfuehren } from "../../server/lib/rechte.mjs";
+import { BRANCHENMODULE } from "../../server/lib/branchenmodule.mjs";
+
+/** Prüfmodus nur für Tests (WP-19 B1): eine Kopie der Registry, in der die genannten Module „vorlaeufig“ stehen.
+    Die Registry selbst bleibt „geplant“; übergeben wird die Kopie über schreibeAls(…, { liste }). */
+export const vorlaeufigListe = (...ids) => BRANCHENMODULE.map((x) => (ids.includes(x.id) ? { ...x, status: "vorlaeufig" } : x));
+/** Schalter „an“ für die genannten Module (ohne Mitbestimmung). */
+export const schalterAn = (...ids) => Object.fromEntries(ids.map((id) => [id, { an: true }]));
 
 /** Sitzungen je Rollenkürzel (Leitung, Kundenrolle, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat). */
 export const SITZUNGEN = Object.freeze({
@@ -44,10 +51,10 @@ const kopie = (x) => JSON.parse(JSON.stringify(x));
 /**
  * Schreibt als Rolle `r`: liest den Bestand so, wie der Server ihn der Rolle
  * ausliefert, ändert ihn und gibt das Ergebnis von zusammenfuehren zurück
- * (Bestand oder { verweigert }).
+ * (Bestand oder { verweigert }). `liste`: Registry-Kopie nur für Tests (Prüfmodus, vorlaeufigListe).
  */
-export function schreibeAls(gesamt, r, aendern) {
+export function schreibeAls(gesamt, r, aendern, { liste } = {}) {
   const s = kopie(bestandFuerRolle(gesamt, SITZUNGEN[r]));
   aendern(s.mandanten[0]);
-  return zusammenfuehren(gesamt, s, SITZUNGEN[r]);
+  return zusammenfuehren(gesamt, s, SITZUNGEN[r], liste ? { liste } : {});
 }
