@@ -43,10 +43,10 @@ describe("WP-21 Teil 2: Abwesenheitsantrag prueft vor dem Absenden (Telefon und 
     expect(mobil).toMatch(/urlaubAntragFehler\(m, p\.id, antrag\)/);
   });
   it("das Telefonblatt zeigt den Fehler als Meldung (role alert), bleibt offen und markiert das Feld", () => {
-    expect(mobil).toMatch(/\{antragFehler && <Fehlerband>\{antragFehler\}<\/Fehlerband>\}/);
+    expect(mobil).toMatch(/\{antragFehler && <Fehlerband id="antrag-fehler">\{antragFehler\}<\/Fehlerband>\}/);
     expect(mobil).toMatch(/if \(fe\) \{ setAntragFehler\(fe\); return; \}/);
     expect(mobil).toMatch(/aria-invalid=\{antragFehler \? "true" : undefined\}/);
-    expect(lies("src/gestalt/ansichten.jsx")).toMatch(/className="fehlerband" role="alert"/);
+    expect(lies("src/gestalt/ansichten.jsx")).toMatch(/id={id} className="fehlerband" role="alert"/);
   });
 });
 

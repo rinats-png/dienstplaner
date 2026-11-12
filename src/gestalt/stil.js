@@ -177,6 +177,8 @@ export const gestaltStil = () => `
   font-family:inherit; font-size:11px; font-weight:500; cursor:pointer; padding:4px 2px;}
 .tabbar button.on{background:${C.accentLight}; color:${C.accent}; font-weight:620;}
 @media (min-width: 1025px){ .tabbar{display:none;} }
+/* WP-40 (2.4.11): wie bei .m-tabs, der Fokus per Tab bleibt über der festen unteren Leiste (gemessen: Mitzeichnen, Ablehnen, Namenssuche). */
+@media (max-width: 1024px){ html:has(.tabbar){scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom));} }
 @media print{ .tabbar{display:none !important;} }
 /* Geführte Tour: Auf schmalen Ansichten sitzt sie über der Unterleiste, nicht
    darüber — sonst deckt sie die Navigation zu (Browserprobe 375 px: Klick auf
@@ -399,6 +401,8 @@ button.kachel{cursor:pointer; display:block; width:100%;}
   color:${C.dim}; font-family:inherit; font-size:11.5px; font-weight:500; cursor:pointer; display:flex;
   flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 2px;}
 .m-tabs button.on{background:${C.accentLight}; color:${C.accent}; font-weight:620; box-shadow:inset 0 -2px 0 ${C.accent};}
+/* WP-40 (2.4.11): Fokus per Tab darf nicht unter der festen Kopfzeile oder der unteren Leiste landen; der Browser rollt den Fokus mit diesem Abstand ins Bild. */
+html:has(.m-tabs){scroll-padding-top:76px; scroll-padding-bottom:calc(92px + env(safe-area-inset-bottom));}
 .m-blattrahmen{position:fixed; inset:0; z-index:80; display:flex; align-items:flex-end;
   background:var(--c-ueberlagerung); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px);}
 .m-blatt{width:100%; max-height:92vh; overflow-y:auto; background:${C.flaeche}; border-radius:26px 26px 0 0;

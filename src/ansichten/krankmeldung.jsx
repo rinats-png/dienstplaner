@@ -55,8 +55,8 @@ export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
               <option value="">— wählen —</option>
               {kandidaten.map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
-            <Field label="Von"><Inp type="date" value={f.von} onChange={(e) => setF({ ...f, von: e.target.value })} /></Field>
-            <Field label="Voraussichtlich bis"><Inp type="date" value={f.bis} onChange={(e) => setF({ ...f, bis: e.target.value })} /></Field>
+            <Field label="Von"><Inp type="date" value={f.von} aria-describedby={fehler ? "krank-fehler" : undefined} onChange={(e) => setF({ ...f, von: e.target.value })} /></Field>
+            <Field label="Voraussichtlich bis"><Inp type="date" value={f.bis} aria-invalid={fehler ? "true" : undefined} aria-describedby={fehler ? "krank-fehler" : undefined} onChange={(e) => setF({ ...f, bis: e.target.value })} /></Field>
           </div>
           <Field label="Anmerkung" hint="Kein Grund, keine Diagnose — nur was für die Planung nötig ist.">
             <Inp value={f.notiz} onChange={(e) => setF({ ...f, notiz: e.target.value })} /></Field>
@@ -67,7 +67,7 @@ export function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
               ? "Die Meldung wirkt sofort. Betroffene Dienste erscheinen für die Planung in der Prüfung."
               : "Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor."}
           </div>
-          {fehler && <div role="alert" style={{ fontSize: 13, color: C.danger }}>{fehler}</div>}
+          {fehler && <div id="krank-fehler" role="alert" style={{ fontSize: 13, color: C.danger }}>{fehler}</div>}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
             <Btn kind="primary" disabled={!f.personId} onClick={melden}>Krank melden</Btn>
