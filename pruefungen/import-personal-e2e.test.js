@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import * as XLSX from "../vendor/sheetjs/xlsx.mjs";
+import { enthaeltToken } from "./hilfen/token-suche.mjs";
 import { erzeugeAblauf } from "../src/lib/import-ablauf.js";
 import { erzeugeImportSchnittstelle, IMPORT_PFADE } from "../src/lib/import-schnittstelle.js";
 
@@ -181,7 +182,25 @@ describe("E2E 1 Personalimport durch alle Schritte (UI-Schicht -> echter Endpunk
     expect(erfolg.zusatz).toContain("neu 2 · aktualisiert 1 · übersprungen 2");
     const text = JSON.stringify(zeilen);
     for (const verboten of ["Neumann", "Lena", "Kranz", "Paul", "Beispiel", "Erika", "Muster", "Otto", "Nina", "Nord", "3001", "3002", "1001", "alt@example", "Geheim", ".xlsx"])
-      expect(text, verboten).not.toContain(verboten);
+      expect(enthaeltToken(text, verboten), `${verboten} als Token im Protokoll`).toBe(false);
+  });
+});
+
+describe("QS-1 tokenbasierte Protokollprüfung (kein Zufallstreffer in Zeitstempeln)", () => {
+  const MIT_ZEIT = JSON.stringify([{ zeit: "2026-11-12T11:12:38.3002Z", art: "import", person: "l1", id: "a3002b", uuid: "ab12-3002-cd34" }]);
+  const MIT_NUMMER = JSON.stringify([{ zeit: "2026-11-12T11:12:38.341Z", zusatz: "Personalnummer 3002 neu" }]);
+  it("alte Teilstring-Logik meldet den Zeitstempel fälschlich, die Tokenprüfung nicht", () => {
+    expect(MIT_ZEIT.includes("3002")).toBe(true);   // der alte Fehlalarm
+    expect(enthaeltToken(MIT_ZEIT, "3002")).toBe(false);
+  });
+  it("echte Vorkommen werden weiter gefunden", () => {
+    expect(enthaeltToken(MIT_NUMMER, "3002")).toBe(true);
+    expect(enthaeltToken(JSON.stringify({ n: "3002" }), "3002")).toBe(true);
+    expect(enthaeltToken("Datei Liste.xlsx", ".xlsx")).toBe(true);
+    expect(enthaeltToken("Lena Neumann", "Lena")).toBe(true);
+    expect(enthaeltToken("id ab12-3002-cd34", "3002")).toBe(false);
+    expect(enthaeltToken("PN 3002, Lena", "3002")).toBe(true);
+    expect(enthaeltToken("Lenas", "Lena")).toBe(false);
   });
 });
 

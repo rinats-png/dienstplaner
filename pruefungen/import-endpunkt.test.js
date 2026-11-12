@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { enthaeltToken } from "./hilfen/token-suche.mjs";
 import { mappe } from "./import-parser-hilfen.mjs";
 import * as XLSX from "../vendor/sheetjs/xlsx.mjs";
 import { parseDatei } from "../server/lib/import/parser.mjs";
@@ -450,7 +451,7 @@ describe("IMP-3 Protokoll, Fristen, Gerüst", { timeout: 120000 }, () => {
     expect(zeilen.length).toBeGreaterThanOrEqual(3);
     const text = JSON.stringify(zeilen);
     for (const verboten of ["Neumann", "Lena", "Kranz", "Paul", "lena.neumann", "example.test", "3001", "3002", name, "Geheim"])
-      expect(text, verboten).not.toContain(verboten);
+      expect(enthaeltToken(text, verboten), `${verboten} als Token im Protokoll`).toBe(false);
     const erfolg = zeilen.find((z) => z.ausgang === "erfolg");
     expect(erfolg).toMatchObject({ art: "import", person: "l1", mandantId: "m1" });
     expect(erfolg.zusatz).toContain("neu 2 · aktualisiert 0 · übersprungen 0");
