@@ -16,7 +16,7 @@ Jede Abfrage ist eine reine Rechnung über die Rollensicht (`bestandFuerRolle`) 
 | `urlaub_uebersicht` | Wer hat im November Urlaub? | Betrieb | eigene Einheit | nur eigener Urlaub |
 | `eigene_dienste` | Wann sind meine nächsten Dienste? | nur eigene | nur eigene | nur eigene |
 
-Betriebsrat, Betreiber, Kunde und unbekannte Rollen: `KI_ROLLE`, ohne dass ein Bestand geladen wird.
+**Zugang heute: nur `leitung` und `planer`** (Positivliste F6, `rolleDarf`). Alle anderen Rollen, auch `subplaner` und `mitarbeiter`: `KI_ROLLE`, ohne dass ein Bestand geladen wird. Die Spalten subplaner/mitarbeiter oben sind die im Code vorbereitete (Tiefenverteidigung) Stufung, bis Frage 2 entschieden ist.
 
 | Teil | Datei |
 |---|---|
@@ -38,8 +38,8 @@ Betriebsrat, Betreiber, Kunde und unbekannte Rollen: `KI_ROLLE`, ohne dass ein B
 ## Offene Fragen (Produktentscheidung nötig)
 
 1. **HTTP-Weg:** Der Gateway-Weg `/ki` ist nicht eingehängt. Eine Route (nach dem Vorbild `/api/hilfe/*`: Arbeitssitzung, `bremse`, Schalter, `arbeitssitzung.test.js`, Routeninventar, `RECHTEMATRIX.md`) und die Oberfläche (Kommandoleiste) fehlen; Betreiberfreigabe nötig.
-2. **Rollen über die Positivliste hinaus:** Positivliste F6 nennt nur `leitung` und `planer`. Der deterministische Katalog beantwortet zusätzlich `subplaner` und `mitarbeiter` aus der eigenen Rollensicht (kein neues Recht, aber eine Produktentscheidung). Das Modell bleibt auf `leitung`/`planer` beschränkt.
-3. **Offene Krankmeldungen (RB-5):** `frei_am_tag` liest keine Fälle; ein Hinweis (fester Text) sagt, dass kurzfristige Ausfälle nicht berücksichtigt sind. Soll die Funktion die Ausschlussfunktion wie F3 (`ausgeschlossenAm`) bekommen?
+2. **Rollen über die Positivliste hinaus (offen):** Positivliste F6 nennt nur `leitung` und `planer`; die ganze Funktion ist daran gebunden. Sollen `subplaner` (eigene Einheit) und `mitarbeiter` (nur sich selbst) den Katalog bekommen, ist das eine Produktentscheidung samt Änderung der Positivliste (und ihres Abdrucktests); die Stufung im Code ist vorbereitet.
+3. **Offene Krankmeldungen (RB-5):** erledigt wie bei F3: `frei_am_tag` bekommt vom Aufrufer die Pflichtfunktion `ausgeschlossenAm(sicht, tag)` (serverseitig `offenePersonenAm`, klaerung.mjs); Personen mit offenem Fall werden nie als frei aufgeführt, ohne Hinweis auf den Fall. Die Funktion liest selbst keine Fälle (Quelltextprüfung). Der feste Hinweis zu kurzfristigen Ausfällen bleibt.
 4. **Zweiter Schritt „Frage → Abfrage durch das Modell“** (Plan: zwei Schritte) und Alias-Weg: erst nach E-25/E-26; der Katalog bleibt dann die einzige Menge möglicher Abfragen.
 5. **Katalog erweitern:** Qualifikationsablauf, Wunschfrei, Ruhezeit-Befunde, Zuschläge — je Abfrage Rolle und Sicht neu prüfen.
 6. **Person ohne Personensatz im Betrieb** (z. B. reine Organisationszugänge) bekommt `KI_NICHT_GEFUNDEN`.

@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { offenePersonenAm } from "../server/lib/klaerung.mjs";
 import { frageAnDaten, abfrageZuordnen, FRAGEN_KATALOG, FRAGEN_GRENZEN, F6_TEXT_ABGELEHNT, F6_TEXT_NICHT_ERLAUBT, F6_HINWEIS_AUSFAELLE } from "../server/lib/intelligence/funktionen/fragen-an-daten.mjs";
 import { betrieb, bestand, S, sitzung, fold } from "./intelligence-gateway-fixture.mjs";
 import { deepFreeze } from "../server/lib/intelligence/felder.mjs";
@@ -28,13 +29,13 @@ const daten = () => {
   b.abwesenheiten.push(
     { id: "ab4", personId: "a2", von: "2026-11-16", bis: "2026-11-20", art: "urlaub", notiz: "Reise nach Rom" },
     { id: "ab5", personId: "a2", von: "2026-11-05", bis: "2026-11-06", art: "krank", grund: "Magen-Darm", anmerkung: "AU Dr. Klein" });
-  b.krankmeldungen = [{ id: "k1", personId: "a3", von: "2026-11-04", status: "offen", notiz: "Grippe Fieber" }];
+  b.krankmeldungen = [{ id: "k1", personId: "a3", von: "2026-11-04", bis: "2026-11-04", status: "eingegangen", notiz: "Grippe Fieber" }];
   b.klaerung = { offen: [{ personId: "a3", tag: "2026-11-04" }] };
   return b;
 };
 function lauf(frage, o = {}) {
   const ladeBestand = vi.fn(async () => bestand(daten()));
-  return { ladeBestand, ruf: (extra = {}) => frageAnDaten({ sitzung: S.leitung, frage, heute: HEUTE, ladeBestand, schalter: AN, funktionenFreigegeben: ["F6"], ...o, ...extra }) };
+  return { ladeBestand, ruf: (extra = {}) => frageAnDaten({ sitzung: S.leitung, frage, heute: HEUTE, ladeBestand, schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm, ...o, ...extra }) };
 }
 const frage = (f, rolle = "leitung", o = {}) => lauf(f, { sitzung: S[rolle], ...o }).ruf();
 const fehlerCode = async (p) => { try { await p; } catch (e) { return e.code; } return null; };
@@ -70,7 +71,7 @@ describe("Schalter, Freigabe, Sitzung", () => {
     }
   });
   it("Rollen ohne Zugang: Betriebsrat, Betreiber, Kunde, unbekannt, leer — KI_ROLLE; ohne Person/Raum — KI_NICHT_ANGEMELDET", async () => {
-    for (const rolle of ["betriebsrat", "betreiber", "kunde", "gast", "", "LEITUNG"]) {
+    for (const rolle of ["betriebsrat", "betreiber", "kunde", "gast", "", "LEITUNG", "subplaner", "mitarbeiter"]) {
       const l = lauf(FRAGEN.besetzung_tag);
       expect(await fehlerCode(l.ruf({ sitzung: sitzung(rolle, "br1") })), rolle).toBe("KI_ROLLE");
       expect(l.ladeBestand).not.toHaveBeenCalled();
@@ -79,10 +80,10 @@ describe("Schalter, Freigabe, Sitzung", () => {
     expect(await fehlerCode(lauf("Besetzung heute").ruf({ sitzung: null }))).toBe("KI_NICHT_ANGEMELDET");
   });
   it("anderer Betrieb: ein Index außerhalb des Bestands ist KI_NICHT_GEFUNDEN, ein anderer Betrieb liefert nie Daten des eigenen", async () => {
-    expect(await fehlerCode(frageAnDaten({ sitzung: sitzung("leitung", "l1", { betrieb: 7 }), frage: FRAGEN.besetzung_tag, heute: HEUTE, ladeBestand: async () => bestand(daten()), schalter: AN, funktionenFreigegeben: ["F6"] }))).toBe("KI_NICHT_GEFUNDEN");
+    expect(await fehlerCode(frageAnDaten({ sitzung: sitzung("leitung", "l1", { betrieb: 7 }), frage: FRAGEN.besetzung_tag, heute: HEUTE, ladeBestand: async () => bestand(daten()), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm }))).toBe("KI_NICHT_GEFUNDEN");
     const fremd = { id: "m2", name: "Fremdhaus", einheiten: [{ id: "x1", name: "X" }], dienstarten: [], personen: [{ id: "z1", vorname: "Zora", nachname: "Fremd", rolle: "mitarbeiter", bereich: "x1" }], abwesenheiten: [] };
     let r, code = null;
-    try { r = await frageAnDaten({ sitzung: sitzung("leitung", "l1", { betrieb: 1 }), frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(daten(), fremd), schalter: AN, funktionenFreigegeben: ["F6"] }); } catch (e) { code = e.code; }
+    try { r = await frageAnDaten({ sitzung: sitzung("leitung", "l1", { betrieb: 1 }), frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(daten(), fremd), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm }); } catch (e) { code = e.code; }
     const s = fold(JSON.stringify(r ?? {}));
     for (const x of ["zora", "fremd", "brandt", "weberknecht", "kowalski"]) expect(s, x).not.toContain(x);
     expect(code).toBe("KI_NICHT_GEFUNDEN");                       // die Person l1 steht nicht in Betrieb 1
@@ -140,13 +141,65 @@ describe("Katalog: jede Abfrage, genaue Ausgabe (leitung)", () => {
     for (const e of r.antwort.eintraege) expect(Object.keys(e).sort()).toEqual(["bis", "name", "personId", "von"]);
     expect((await frage("Wer hat am 17.11. Urlaub?")).antwort.eintraege.map((e) => e.personId)).toEqual(["a2"]);
   });
-  it("eigene_dienste: die nächsten 14 Tage der fragenden Person; Tage mit Abwesenheit stehen nicht darin (ohne Art)", async () => {
-    const r = await frage(FRAGEN.eigene_dienste, "mitarbeiter");
+  it("eigene_dienste: die nächsten 14 Tage der fragenden Person (Leitung l1)", async () => {
+    const r = await frage(FRAGEN.eigene_dienste, "leitung");
     expect(r.geltung).toBe("eigene");
     expect(r.parameter).toEqual({ von: "2026-11-02", bis: "2026-11-15" });
-    expect(r.antwort.dienste.map((d) => `${d.datum}:${d.dienstId}`)).toEqual(["2026-11-02:F", "2026-11-03:F", "2026-11-04:S", "2026-11-06:N", "2026-11-07:N", "2026-11-09:F", "2026-11-13:N", "2026-11-14:N"]);
+    expect(r.antwort.dienste.map((d) => `${d.datum}:${d.dienstId}`)).toEqual(["2026-11-02:F", "2026-11-03:F", "2026-11-04:S", "2026-11-06:N", "2026-11-07:N", "2026-11-09:F", "2026-11-10:F", "2026-11-11:S", "2026-11-13:N", "2026-11-14:N"]);
     expect(r.antwort.dienste[0]).toEqual({ datum: "2026-11-02", dienstId: "F", dienst: "Früh", beginn: "06:00", ende: "14:00", entwurf: false });
-    expect(r.antwort.dienste.some((d) => d.datum === "2026-11-10" || d.datum === "2026-11-11")).toBe(false);
+  });
+});
+
+describe("frei_am_tag und offene Krankmeldungen (RB-5), Ist-Schutz, Wortgrenzen", () => {
+  const offen = () => { const b = daten(); b.krankmeldungen = [{ id: "k1", personId: "a3", von: "2026-11-04", bis: "2026-11-06", status: "eingegangen", notiz: "Grippe Fieber" }]; return b; };
+  const mitFall = (rolle, o = {}) => frageAnDaten({ sitzung: S[rolle], frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(offen()), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm, ...o });
+  it("eine Person mit offenem Fall wird nicht als frei aufgeführt (leitung und planer, genaue Ausgabe); ein abgeschlossener Fall nicht ausgeschlossen", async () => {
+    for (const rolle of ["leitung", "planer"]) {
+      const r = await mitFall(rolle);
+      expect(r.antwort).toEqual({ datum: "2026-11-05", qualifikation: null, anzahl: 4, gekuerzt: false, personen: [
+        { personId: "a1", name: "Anna Weberknecht" }, { personId: "l1", name: "Lena Brandt" }, { personId: "pl1", name: "Piotr Kowalski" }, { personId: "sv1", name: "Svetlana Iwanowa" }] });
+      expect(leck(r)).toEqual([]);
+    }
+    const zu = offen(); zu.krankmeldungen[0].status = "endgueltig_bestaetigt";
+    const r2 = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(zu), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm });
+    expect(r2.antwort.personen.some((p) => p.personId === "a3")).toBe(true);
+  });
+  it("eine wirksame Krankabwesenheit (a2 am 05.11.) steht nie als frei da; die Ausschlussfunktion ist Pflicht (fail closed) und wird mit Sicht und Tag gerufen", async () => {
+    const r = await frage(FRAGEN.frei_am_tag);
+    expect(r.antwort.personen.some((p) => p.personId === "a2")).toBe(false);
+    for (const ausgeschlossenAm of [undefined, null, "x"]) {
+      const l = lauf(FRAGEN.frei_am_tag);
+      expect(await fehlerCode(l.ruf({ ausgeschlossenAm })), String(ausgeschlossenAm)).toBe("KI_INTERN");
+      expect(l.ladeBestand).not.toHaveBeenCalled();
+    }
+    expect(await fehlerCode(lauf(FRAGEN.frei_am_tag).ruf({ ausgeschlossenAm: () => { throw new Error("x"); } }))).toBe("KI_INTERN");
+    const spion = vi.fn(() => ["l1"]);
+    const k = await lauf(FRAGEN.frei_am_tag).ruf({ ausgeschlossenAm: spion });
+    expect(spion).toHaveBeenCalledWith(expect.objectContaining({ id: "m1" }), "2026-11-05");
+    expect(k.antwort.personen.some((p) => p.personId === "l1")).toBe(false);
+    /* Andere Abfragen brauchen die Funktion nicht. */
+    expect((await lauf(FRAGEN.besetzung_tag).ruf({ ausgeschlossenAm: undefined })).status).toBe("ok");
+  });
+  it("Quelltext (RB-5): die Funktion liest m.krankmeldungen nicht selbst", () => {
+    const q = readFileSync(path.join(WURZEL, "server/lib/intelligence/funktionen/fragen-an-daten.mjs"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(q).not.toMatch(/krankmeldungen|klaerung\.mjs|offenePersonenAm/);
+  });
+  it("Ist-Schutz: ist der Monat abgeschlossen und das eingefrorene Ist nicht verfügbar, steht „nicht verfügbar“ da — nie eine Planzeit", async () => {
+    const zu = daten(); zu.monatsabschluss = { "2026-11": { abgeschlossen: true } };
+    const r = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.stundenkonto, heute: HEUTE, ladeBestand: async () => bestand(zu), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm });
+    expect(r.antwort).toEqual({ monat: "2026-11", gekuerzt: false, personen: ["a1", "a2", "a3", "alt1", "l1", "pl1", "sv1"].map((id) => ({
+      personId: id, name: { a1: "Anna Weberknecht", a2: "Jörg Müller-Lüdenscheidt", a3: "Zoë Nguyen", alt1: "Kurt Ausgeschieden", l1: "Lena Brandt", pl1: "Piotr Kowalski", sv1: "Svetlana Iwanowa" }[id],
+      verfuegbar: false, stunden: null })) });
+  });
+  it("Wortgrenzen: „Grundpflege“ ist eine Besetzungsfrage, „Grund der Abwesenheit“ wird abgelehnt", async () => {
+    const r = await frage("Wie ist die Grundpflege morgen besetzt?");
+    expect(r.status).toBe("ok");
+    expect(r.abfrage.id).toBe("besetzung_tag");
+    expect(r.parameter.datum).toBe("2026-11-03");
+    const a = await frage("Grund der Abwesenheit am 05.11.?");
+    expect(a.status).toBe("abgelehnt");
+    expect((await frage("Wer hat Urlaub aus gesundheitlichen Gründen?")).status).toBe("abgelehnt");
+    expect((await frage("Welche Krankheiten gibt es?")).status).toBe("abgelehnt");
   });
 });
 
@@ -163,9 +216,9 @@ describe("Zuordnung der Frage (Stichwörter, kein Modell)", () => {
     for (const f of ["WIE SIND DIE ÜBERSTUNDEN?", "wie sind die ueberstunden?", "Wie sind die Überstunden?"]) expect(abfrageZuordnen(f)).toBe("stundenkonto");
   });
   it("eine Frage ohne passende Abfrage: Liste der erlaubten Abfragen der Rolle, keine Daten", async () => {
-    const r = await frage("Wie wird das Wetter?", "mitarbeiter");
+    const r = await frage("Wie wird das Wetter?", "planer");
     expect(r.status).toBe("keine_passende_abfrage");
-    expect(r.verfuegbareAbfragen.map((a) => a.id)).toEqual(["stundenkonto", "urlaub_uebersicht", "eigene_dienste"]);
+    expect(r.verfuegbareAbfragen.map((a) => a.id)).toEqual(["besetzung_tag", "frei_am_tag", "stundenkonto", "urlaub_uebersicht", "eigene_dienste"]);
     expect(r.antwort).toBeUndefined();
   });
   it("ungültiges Datum: parameter_ungueltig, nichts berechnet", async () => {
@@ -182,51 +235,24 @@ describe("Rollenmatrix", () => {
     }
     expect((await frage(FRAGEN.eigene_dienste, "planer")).geltung).toBe("eigene");
   });
-  it("subplaner: nur die eigene Einheit — Ist ohne Soll, frei und Urlaub nur eigene Einheit, Konto und Dienste nur sich selbst", async () => {
-    const b = await frage(FRAGEN.besetzung_tag, "subplaner");
-    expect(b.geltung).toBe("einheit");
-    expect(b.antwort.dienste).toEqual([{ dienstId: "S", dienst: "Spät", beginn: "13:30", ende: "21:30", ist: 3, soll: null, differenz: null }]);
-    const f = await frage(FRAGEN.frei_am_tag, "subplaner");
-    expect(f.geltung).toBe("einheit");
-    expect(f.antwort.personen.map((p) => p.personId)).toEqual(["a1", "l1", "sv1"]);
-    const u = await frage(FRAGEN.urlaub_uebersicht, "subplaner");
-    expect(u.antwort.eintraege).toEqual([]);                      // a2 (Bereich e2) und a3 (Pool) sind nicht ihre Einheit
-    const k = await frage(FRAGEN.stundenkonto, "subplaner");
-    expect(k.geltung).toBe("eigene");
-    expect(k.antwort.personen).toEqual([{ personId: "sv1", name: "Svetlana Iwanowa", verfuegbar: true, stunden: 50 }]);
-    expect((await frage(FRAGEN.eigene_dienste, "subplaner")).geltung).toBe("eigene");
-    const s = fold(JSON.stringify([b, f, u, k]));
-    for (const n of ["nguyen", "mueller", "kowalski", "haberland"]) expect(s, n).not.toContain(n);
+  it("subplaner und mitarbeiter: die ganze Funktion ist an die Positivliste F6 gebunden (nur leitung, planer) — KI_ROLLE, ohne dass ein Bestand geladen wird", async () => {
+    for (const rolle of ["subplaner", "mitarbeiter"]) for (const f of Object.values(FRAGEN)) {
+      const l = lauf(f, { sitzung: S[rolle] });
+      expect(await fehlerCode(l.ruf()), `${rolle}: ${f}`).toBe("KI_ROLLE");
+      expect(l.ladeBestand).not.toHaveBeenCalled();
+    }
   });
-  it("mitarbeiter: nur über sich selbst; Besetzung und „wer ist frei“ sind nicht erlaubt (ohne Daten), nie eine andere Person", async () => {
-    for (const id of ["besetzung_tag", "frei_am_tag"]) {
-      const r = await frage(FRAGEN[id], "mitarbeiter");
-      expect(r).toEqual({ funktion: "F6", quelle: "berechnet", modell: { status: "nicht_verfuegbar", text: "nicht verfügbar" }, status: "nicht_erlaubt",
-        abfrage: { id, titel: FRAGEN_KATALOG.find((a) => a.id === id).titel }, text: F6_TEXT_NICHT_ERLAUBT,
-        verfuegbareAbfragen: [
-          { id: "stundenkonto", titel: "Plus-/Minusstunden eines Monats", beispiel: "Wie sind die Überstunden im November?" },
-          { id: "urlaub_uebersicht", titel: "Urlaub in einem Zeitraum", beispiel: "Wer hat im November Urlaub?" },
-          { id: "eigene_dienste", titel: "Meine nächsten Dienste", beispiel: "Wann sind meine nächsten Dienste?" }] });
-    }
-    const k = await frage(FRAGEN.stundenkonto, "mitarbeiter");
-    expect(k.geltung).toBe("eigene");
-    expect(k.antwort.personen).toEqual([{ personId: "a1", name: "Anna Weberknecht", verfuegbar: true, stunden: 46 }]);
-    /* Auch „Urlaub von Jörg“ und „Urlaub aller“ geben einer Beschäftigten nur den eigenen Urlaub (a1 hat keinen im November). */
-    for (const f of ["Wer hat im November Urlaub?", "Hat Jörg im November Urlaub?", "Urlaub von Zoë im November"]) {
-      const u = await frage(f, "mitarbeiter");
-      expect(u.antwort.eintraege, f).toEqual([]);
-    }
-    const mitUrlaub = daten(); mitUrlaub.abwesenheiten.push({ id: "ab9", personId: "a1", von: "2026-11-23", bis: "2026-11-27", art: "urlaub" });
-    const u2 = await frageAnDaten({ sitzung: S.mitarbeiter, frage: "Wer hat im November Urlaub?", heute: HEUTE, ladeBestand: async () => bestand(mitUrlaub), schalter: AN, funktionenFreigegeben: ["F6"] });
-    expect(u2.antwort.eintraege).toEqual([{ personId: "a1", name: "Anna Weberknecht", von: "2026-11-23", bis: "2026-11-27" }]);
-    const s = fold(JSON.stringify(await Promise.all(Object.values(FRAGEN).map((f) => frage(f, "mitarbeiter")))));
-    for (const n of NAMEN_FREMD) expect(s, n).not.toContain(n);
+  it("leitung und planer: „eigene Dienste“ nur die der fragenden Person", async () => {
+    const l = await frage(FRAGEN.eigene_dienste, "leitung"), p = await frage(FRAGEN.eigene_dienste, "planer");
+    expect(l.geltung).toBe("eigene");
+    expect(l.antwort.dienste.length).toBeGreaterThan(0);
+    expect(p.antwort.dienste).toEqual([]);                        // pl1 hat keine Einheit: keine Schichtfolge
   });
 });
 
 describe("Keine Gesundheits-, Abwesenheits- oder Betriebsratsangaben", () => {
   it("keine Ausgabe, keine Rolle, keine Frage enthält eine verbotene Zeichenfolge (Beispieldaten mit offenen Krankmeldungen und Krankabwesenheiten)", async () => {
-    for (const rolle of ["leitung", "planer", "subplaner", "mitarbeiter"])
+    for (const rolle of ["leitung", "planer"])
       for (const f of [...Object.values(FRAGEN), "Wie ist die Besetzung am 05.11.2026?", "Wer ist am 04.11.2026 frei?", "Wer ist am 06.11.2026 frei?", "Urlaub im Dezember", "Plus-Minus im Oktober"]) {
         const r = await frage(f, rolle);
         expect(leck(r), `${rolle}: ${f}`).toEqual([]);
@@ -242,7 +268,7 @@ describe("Keine Gesundheits-, Abwesenheits- oder Betriebsratsangaben", () => {
   it("Krankmeldungen, Gründe und Klärung stehen nirgends: wer abwesend ist, ist nur „nicht aufgeführt“; der offene Fall ändert die Ausgabe nicht", async () => {
     const ohneFall = daten(); delete ohneFall.krankmeldungen; delete ohneFall.klaerung;
     const mit = await frage(FRAGEN.frei_am_tag);
-    const ohne = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(ohneFall), schalter: AN, funktionenFreigegeben: ["F6"] });
+    const ohne = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(ohneFall), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm });
     expect(mit).toEqual(ohne);
     const tag = await frage("Wer ist am 06.11.2026 frei?");
     expect(tag.antwort.personen.some((p) => p.personId === "a2")).toBe(false);   // a2 ist abwesend: nicht aufgeführt, ohne Hinweis auf den Grund
@@ -270,10 +296,9 @@ describe("Kein Anbieter ohne Gateway, nur die bereinigte Frage, nie ein Ergebnis
   it("Schalter aus, Rolle ohne F6, Gesundheitsfrage, keine Abfrage, nicht erlaubt: das Gateway wird NIE gerufen", async () => {
     const g = spion(FERTIG);
     await expect(frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.besetzung_tag, heute: HEUTE, ladeBestand: async () => bestand(daten()), schalter: undefined, funktionenFreigegeben: ["F6"], gateway: g })).rejects.toMatchObject({ code: "KI_AUS" });
-    for (const rolle of ["subplaner", "mitarbeiter"]) await frage(FRAGEN.stundenkonto, rolle, { gateway: g });
+    for (const rolle of ["subplaner", "mitarbeiter"]) expect(await fehlerCode(frage(FRAGEN.stundenkonto, rolle, { gateway: g }))).toBe("KI_ROLLE");
     await frage("Wer ist krank?", "leitung", { gateway: g });
     await frage("Wie wird das Wetter?", "leitung", { gateway: g });
-    await frage(FRAGEN.besetzung_tag, "mitarbeiter", { gateway: g });
     expect(g.ausfuehren).not.toHaveBeenCalled();
   });
   it("leitung/planer mit Gateway: genau ein Aufruf, Funktion F6, nur die Frage — keine Kontaktdaten, kein Name, kein Ergebnis", async () => {
@@ -331,11 +356,11 @@ describe("Grenzen, Bremse, Determinismus", () => {
   });
   it("Ausgabe: höchstens 100 Zeilen, gekuerzt gesetzt; mehr als 400 Personen: KI_EINGABE", async () => {
     const viele = (n) => { const b = daten(); for (let i = 0; i < n; i++) b.personen.push({ id: `x${String(i).padStart(3, "0")}`, vorname: "P", nachname: String(i), rolle: "mitarbeiter", bereich: "e1", eintritt: "2026-11-01", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], springer: true }); return b; };
-    const r = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(viele(150)), schalter: AN, funktionenFreigegeben: ["F6"] });
+    const r = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(viele(150)), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm });
     expect(r.antwort.personen.length).toBe(FRAGEN_GRENZEN.zeilen);
     expect(r.antwort.gekuerzt).toBe(true);
     expect(r.antwort.anzahl).toBe(155);
-    expect(await fehlerCode(frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(viele(400)), schalter: AN, funktionenFreigegeben: ["F6"] }))).toBe("KI_EINGABE");
+    expect(await fehlerCode(frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.frei_am_tag, heute: HEUTE, ladeBestand: async () => bestand(viele(400)), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm }))).toBe("KI_EINGABE");
   });
   it("Urlaubszeitraum: Tag, Monat oder 30 Tage ab heute, nie mehr als 62 Tage", async () => {
     expect((await frage("Wer hat am 01.11.2026 Urlaub?")).parameter).toEqual({ von: "2026-11-01", bis: "2026-11-01" });
@@ -353,11 +378,11 @@ describe("Grenzen, Bremse, Determinismus", () => {
   });
   it("deterministisch; Eingabe unverändert (eingefrorener Bestand); Reihenfolge der Personen ohne Einfluss", async () => {
     const eingefroren = deepFreeze(bestand(daten()));
-    const ruf = (f, rolle = "leitung") => frageAnDaten({ sitzung: S[rolle], frage: f, heute: HEUTE, ladeBestand: async () => eingefroren, schalter: AN, funktionenFreigegeben: ["F6"] });
+    const ruf = (f, rolle = "leitung") => frageAnDaten({ sitzung: S[rolle], frage: f, heute: HEUTE, ladeBestand: async () => eingefroren, schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm });
     for (const f of Object.values(FRAGEN)) expect(await ruf(f)).toEqual(await ruf(f));
     const umgekehrt = daten(); umgekehrt.personen.reverse();
     const a = await ruf(FRAGEN.stundenkonto);
-    const b = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.stundenkonto, heute: HEUTE, ladeBestand: async () => bestand(umgekehrt), schalter: AN, funktionenFreigegeben: ["F6"] });
+    const b = await frageAnDaten({ sitzung: S.leitung, frage: FRAGEN.stundenkonto, heute: HEUTE, ladeBestand: async () => bestand(umgekehrt), schalter: AN, funktionenFreigegeben: ["F6"], ausgeschlossenAm: offenePersonenAm });
     expect(b).toEqual(a);
   });
 });

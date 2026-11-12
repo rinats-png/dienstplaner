@@ -17,6 +17,8 @@
    1  Schalter gatewayAn(schalter) — Vorgabe AUS (KI_AUS), vor allem anderen.
    2  Sitzung; Rolle leitung, planer, subplaner oder mitarbeiter (Betriebsrat, Betreiber, Kunde, unbekannt: KI_ROLLE);
       die fragende Person muss in dem Betrieb der Sitzung stehen (sonst KI_NICHT_GEFUNDEN).
+      Die ganze Funktion ist an die Positivliste F6 gebunden (rolleDarf: leitung, planer); die Rollenstufen für subplaner und
+      mitarbeiter bleiben als Tiefenverteidigung im Code, bis die Produktentscheidung (docs/acc45/wp-i31-nachweis.md, Frage 2) fällt.
    3  Freigabe der Funktion (funktionenFreigegeben enthält "F6"), Frage als Text bis 300 Zeichen.
    4  Frage bereinigen (suche.mjs frageBereinigen: Kontaktdaten, Kontonummern raus). Die Frage wird nicht gespeichert,
       nicht protokolliert und nie in einer Meldung wiederholt.
@@ -161,7 +163,10 @@ const ABFRAGEN = Object.freeze([
     muster: [[/\bfrei\b|verfuegbar|einspringen|springen|ersatz|einsetzbar/, 3], [/wer (hat|ist|kann)/, 1]],
     rechne(c) {
       const sc = umfang(c.sicht, c.rolle, c.ich, c.tag);
+      /* Offene Fälle liest diese Schicht nicht selbst (RB-5): die Kennungen liefert der Aufrufer, sie werden nie aufgeführt. */
+      let aus; try { aus = new Set([...c.ausgeschlossenAm(c.sicht, c.tag)].map(String)); } catch { throw new KiFehler("KI_INTERN", "Ausschluss nicht berechenbar."); }
       const zeilen = sc.personen.filter((p) => {
+        if (aus.has(String(p.id))) return false;
         if (!imDienst(p, c.tag) || abwesenheitAm(c.sicht, p.id, c.tag)) return false;
         if (personTag(c.sicht, p, c.tag).dienstId) return false;
         return !c.qual || qualGueltig(c.sicht, p, c.qual.id);
@@ -223,7 +228,7 @@ const ABFRAGEN = Object.freeze([
 export const FRAGEN_KATALOG = Object.freeze(ABFRAGEN.map((a) => Object.freeze({ id: a.id, titel: a.titel, beispiel: a.beispiel, rollen: Object.freeze([...a.rollen]) })));
 
 /* Themen, die nie beantwortet werden: Gesundheit (Wortliste der Leck-Prüfung), Gründe für Abwesenheiten, Klärung, Betriebsrat. */
-const ABGELEHNT = /krank|attest|diagnos|bescheinigung|gesundheit|arzt|schwanger|mutterschutz|behinder|grund|warum|wieso|weshalb|ursache|notiz|anmerkung|klaerung|klaerungs|betriebsrat|personalrat|br-mitglied/;
+const ABGELEHNT = /(^|[^a-z0-9])(krank\w*|attest\w*|diagnos\w*|bescheinigung\w*|gesundheit\w*|arzt|aerzt\w*|schwanger\w*|mutterschutz\w*|behinder\w*|grund|gruende\w*|warum|wieso|weshalb|ursache\w*|notiz\w*|anmerkung\w*|klaerung\w*|betriebsrat\w*|personalrat\w*|br-mitglied\w*)([^a-z0-9]|$)/;
 
 /** Welche Abfrage trifft die Frage? Höchste Summe der Gewichte; Gleichstand: Reihenfolge im Katalog. */
 export function abfrageZuordnen(frage) {
@@ -246,6 +251,7 @@ export function abfrageZuordnen(frage) {
  *   schalter?: { prozess: () => unknown, laufzeit: () => unknown },
  *   funktionenFreigegeben?: Iterable<string>,
  *   gateway?: { ausfuehren: (sitzung: any, anfrage: any) => Promise<any> } | null,
+ *   ausgeschlossenAm?: (sicht: any, tag: string) => Iterable<string|number>,   // Pflicht für „frei_am_tag“ (offene Fälle)
  *   bremse?: (person: string) => Promise<{ frei: boolean }> | { frei: boolean },
  * }} o
  */
@@ -255,7 +261,7 @@ export async function frageAnDaten(o) {
   const sitzung = o.sitzung;
   if (!istObj(sitzung) || typeof sitzung.rolle !== "string" || typeof sitzung.person !== "string" || typeof sitzung.bestand !== "string"
     || !sitzung.person || !sitzung.bestand) throw new KiFehler("KI_NICHT_ANGEMELDET", "Nicht angemeldet.");
-  if (!F6_ROLLEN.includes(sitzung.rolle)) throw new KiFehler("KI_ROLLE", "Diese Rolle darf die Funktion nicht auslösen.");
+  if (!F6_ROLLEN.includes(sitzung.rolle) || !rolleDarf(funktionEintrag("F6"), sitzung.rolle)) throw new KiFehler("KI_ROLLE", "Diese Rolle darf die Funktion nicht auslösen.");
   if (!new Set(o.funktionenFreigegeben || []).has("F6")) throw new KiFehler("KI_FUNKTION", "Diese Funktion ist nicht freigeschaltet.");
   if (typeof o.frage !== "string" || [...o.frage].length > FRAGEN_GRENZEN.frage) throw new KiFehler("KI_EINGABE", "Anfrage ungültig.");
   if (!tagGueltig(o.heute)) throw new KiFehler("KI_EINGABE", "Anfrage ungültig.");
@@ -279,6 +285,8 @@ export async function frageAnDaten(o) {
   const kennung = { id: abfrage.id, titel: abfrage.titel };
   if (!abfrage.rollen.includes(sitzung.rolle)) return { ...kopf, status: "nicht_erlaubt", abfrage: kennung, text: F6_TEXT_NICHT_ERLAUBT, verfuegbareAbfragen: verfuegbar };
 
+  /* Fail closed: ohne die Ausschlussfunktion (offene Fälle gehören nicht in diese Schicht) wird „wer ist frei“ nicht gerechnet. */
+  if (abfrage.id === "frei_am_tag" && typeof o.ausgeschlossenAm !== "function") throw new KiFehler("KI_INTERN", "Verdrahtung unvollständig.");
   const bestand = await o.ladeBestand(sitzung.bestand);
   const idx = betriebIndexAusSitzung(sitzung, bestand);
   if (idx === null) throw new KiFehler("KI_NICHT_GEFUNDEN", "Nicht gefunden.");
@@ -294,7 +302,7 @@ export async function frageAnDaten(o) {
 
   const tagParam = tagAusFrage(t, o.heute);
   if (tagParam === undefined) return { ...kopf, status: "parameter_ungueltig", abfrage: kennung, text: "Das Datum in der Frage ist ungültig." };
-  const ctx = { sicht, rolle: sitzung.rolle, ich: sitzung.person, heute: o.heute, tag: tagParam || o.heute, tagGenannt: !!tagParam,
+  const ctx = { ausgeschlossenAm: o.ausgeschlossenAm, sicht, rolle: sitzung.rolle, ich: sitzung.person, heute: o.heute, tag: tagParam || o.heute, tagGenannt: !!tagParam,
     monat: monatAusFrage(t, o.heute), qual: qualAusFrage(t, sicht), dienst: dienstAusFrage(t, sicht) };
   let r;
   try { r = mitTagesdatum(o.heute, () => abfrage.rechne(ctx)); } catch { throw new KiFehler("KI_INTERN", "Abfrage nicht berechenbar."); }
