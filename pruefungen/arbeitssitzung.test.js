@@ -644,7 +644,8 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
     }
     /* einladung.mjs (WP-18): Einladung ausstellen braucht die Sitzung der Leitung.
        import.mjs (IMP-3): Der Importendpunkt liest die Sitzung über arbeitssitzungLesen (technisch und fachlich). */
-    expect(leser.sort()).toEqual(["daten.mjs", "einladung.mjs", "import.mjs", "kalender.mjs", "lage.mjs",
+    /* hilfe.mjs (WP-I23): Hilfe-Assistent; liest die Sitzung über arbeitssitzungLesen vor dem Rumpf (Sonde: hilfe-assistent-i23.test.js, S1). */
+    expect(leser.sort()).toEqual(["daten.mjs", "einladung.mjs", "hilfe.mjs", "import.mjs", "kalender.mjs", "lage.mjs",
       "zustellung.mjs"]);
     expect(roh, "Dateien, die eine Sitzung auf dem alten Weg lesen").toEqual([]);
     /* Und die Primitive gibt es genau einmal. */

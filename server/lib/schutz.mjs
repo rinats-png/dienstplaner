@@ -371,6 +371,8 @@ export const GRENZEN = {
      damit die Schleife auch über die Zeit nicht mehr als 20 je 5 min schafft. */
   "anmelden-code": { versuche: 20, fenster: 300, sperre: 300 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
+  /* Hilfe-Assistent (WP-I23): je PERSON; eine Frage ist eine Eingabe von Hand, 20 je Minute reichen weit. */
+  hilfe:      { versuche: 20,  fenster: 60,   sperre: 60 },
   /* Sicherungen je Betrieb: sechs je Stunde reichen für jedes „vorher
      sichern“ — und niemand verdrängt damit die Wiederherstellungspunkte. */
   sicherung:  { versuche: 6,   fenster: 3600, sperre: 3600 },

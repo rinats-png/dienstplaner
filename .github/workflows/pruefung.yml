@@ -115,6 +115,9 @@ jobs:
       - name: Synthetische Testdateien und Testmatrix des Imports (IMP-8)
         run: npm run pruefung:imp8-testmatrix
 
+      - name: Hilfe-Assistent (WP-I23, Schalter aus, Rollen, Datenschutz)
+        run: npm run pruefung:hilfe-assistent
+
       - name: Eintrittsdatum ohne stille Ersetzung
         run: npm run pruefung:person-eintritt
 
