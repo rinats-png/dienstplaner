@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 343,3–584,85 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 342,3–583,35 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -31,7 +31,7 @@ flowchart LR
     WP_42R2["WP-42R2<br/>BLOCKED"]
     IMP_6["IMP-6<br/>IN_PROGRESS"]
     IMP_7["IMP-7<br/>BLOCKED"]
-    IMP_8["IMP-8<br/>BLOCKED"]
+    IMP_8["IMP-8<br/>IN_PROGRESS"]
     IMP_10["IMP-10<br/>BLOCKED"]
     OPT_2["OPT-2<br/>BLOCKED"]
     OPT_4["OPT-4<br/>IN_PROGRESS"]
@@ -476,7 +476,7 @@ flowchart LR
 | IMP-5 | acc45 | P2 | 1,5–2,5 | 0 | IMP-3 | – | sonnet | INTEGRATED |
 | IMP-6 | acc45 | P2 | 3–5 | 1,5–2,5 | IMP-3 | – | sonnet | IN_PROGRESS |
 | IMP-7 | acc45 | P2 | 4–7 | 4–7 | IMP-6 | – | sonnet | BLOCKED |
-| IMP-8 | acc45 | P2 | 2–3 | 2–3 | IMP-2 | – | haiku | BLOCKED |
+| IMP-8 | acc45 | P2 | 2–3 | 1–1,5 | IMP-2 | – | haiku | IN_PROGRESS |
 | IMP-9 | acc45 | P2 | 0,5–1 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-10 | acc45 | P3 | 0,5–1 | 0,5–1 | IMP-4 | – | haiku | BLOCKED |
 | OPT-1 | acc45 | P1 | 1–1,5 | 0 | SI-P4 | daten.mjs | opus | INTEGRATED |

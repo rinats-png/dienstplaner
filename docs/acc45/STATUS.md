@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 194 · BLOCKED 81 · READY 16 · IN_PROGRESS 7 · REVIEW 9 · INTEGRATED 78 · DONE 3
+**Pakete gesamt:** 194 · BLOCKED 80 · READY 16 · IN_PROGRESS 8 · REVIEW 9 · INTEGRATED 78 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 94 | 20 | 0 | 5 | 5 | 62 | 2 | 51,9–83,55 |
+| ACC45 | 94 | 19 | 0 | 6 | 5 | 62 | 2 | 50,9–82,05 |
 | WP-19-Module | 15 | 14 | 0 | 0 | 1 | 0 | 0 | 66,8–104,2 |
 | Intelligence | 40 | 28 | 0 | 0 | 0 | 12 | 0 | 219,5–387 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **343,3–584,85 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **342,3–583,35 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -58,11 +58,12 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **343,3–584,
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
 | IMP-6 Schichtmodelle und Schichtzyklen: mehrere Modelle, unterschiedliche Zykluslängen, bestehende Validierungen | IN_PROGRESS | `–` | Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. |
+| IMP-8 Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E) | IN_PROGRESS | `–` | Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt. |
 | OPT-4 SI-P4 Option 4: zweiter Faktor (TOTP) direkt für Benutzerkonten, Zielarchitektur | IN_PROGRESS | `–` | Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. |
 
-### Bereit zum Start (18)
+### Bereit zum Start (17)
 
-WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I19 (intelligence, 16–28 PT) · WP-I20 (intelligence, 16–28 PT) · WP-I22 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I24 (intelligence, 5–9 PT) · WP-I29 (intelligence, 18–30 PT) · WP-I30 (intelligence, 4–8 PT) · WP-I31 (intelligence, 9–15 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-8 (acc45, 2–3 PT) · IMP-10 (acc45, 0,5–1 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT)
+WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I19 (intelligence, 16–28 PT) · WP-I20 (intelligence, 16–28 PT) · WP-I22 (intelligence, 8–14 PT) · WP-I23 (intelligence, 4–7 PT) · WP-I24 (intelligence, 5–9 PT) · WP-I29 (intelligence, 18–30 PT) · WP-I30 (intelligence, 4–8 PT) · WP-I31 (intelligence, 9–15 PT) · SI-P6b (acc45, 1,5–3 PT) · IMP-10 (acc45, 0,5–1 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT)
 
 ### Integriert in `integration/centric-complete` (78)
 
@@ -151,7 +152,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-64 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+63 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -234,6 +235,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | IMP-4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | IMP-5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | IMP-6 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |
+| IMP-8 | IN_PROGRESS | ✓ | ✓ | – | – | – | – | – |
 | IMP-9 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | OPT-1-F | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
