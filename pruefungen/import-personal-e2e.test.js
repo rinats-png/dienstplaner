@@ -200,7 +200,15 @@ describe("QS-1 tokenbasierte Protokollprüfung (kein Zufallstreffer in Zeitstemp
     expect(enthaeltToken("Lena Neumann", "Lena")).toBe(true);
     expect(enthaeltToken("id ab12-3002-cd34", "3002")).toBe(false);
     expect(enthaeltToken("PN 3002, Lena", "3002")).toBe(true);
-    expect(enthaeltToken("Lenas", "Lena")).toBe(false);
+    expect(enthaeltToken("Lenas", "Lena")).toBe(false);   // kurzer Wert: nur ganzes Token
+    expect(enthaeltToken("pn=3002", "3002")).toBe(true);
+  });
+  it("Namen und E-Mails (ab 5 Zeichen) bleiben strenge Teilstring-Prüfung", () => {
+    expect(enthaeltToken("MaxMustermann", "Mustermann")).toBe(true);
+    expect(enthaeltToken("Mustermanns", "Mustermann")).toBe(true);
+    expect(enthaeltToken("mustermann@example.invalid", "Mustermann")).toBe(true);
+    expect(enthaeltToken("mustermann@example.invalid", "example.invalid")).toBe(true);
+    expect(enthaeltToken("x", "Mustermann")).toBe(false);
   });
 });
 

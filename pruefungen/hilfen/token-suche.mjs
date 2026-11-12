@@ -17,5 +17,11 @@ export function tokenRegex(wert) {
   return new RegExp(vorn + esc + hinten, "u");
 }
 
-/** true, wenn der Wert als eigenständiges Token im Text steht. */
-export const enthaeltToken = (text, wert) => tokenRegex(wert).test(String(text));
+/** Kurze Werte (höchstens 4 Zeichen) und reine Zahlen werden als ganzes Token gesucht, alles andere
+    (Namen, E-Mails, Dateinamen ab 5 Zeichen) bleibt eine strenge Teilstring-Suche ohne Beachtung der
+    Groß-/Kleinschreibung: "MaxMustermann" und "Mustermanns" treffen weiterhin "Mustermann". */
+export const istKurz = (wert) => /^[0-9]+$/.test(String(wert)) || String(wert).length <= 4;
+
+/** true, wenn der Wert im Text vorkommt (streng, außer bei kurzen Werten: dort nur als ganzes Token). */
+export const enthaeltToken = (text, wert) =>
+  istKurz(wert) ? tokenRegex(wert).test(String(text)) : String(text).toLowerCase().includes(String(wert).toLowerCase());
