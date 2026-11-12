@@ -95,6 +95,10 @@ jobs:
       - name: Nachtdienst ohne Einstempeln, Dienstende stempeln
         run: npm run pruefung:nachtdienst-ohne-einstempeln
 
+      # Intelligence-Oberfläche browserfähig: KiAntwort und Bytezählung ohne Buffer.
+      - name: Intelligence-Oberfläche ohne Node-APIs (Browser)
+        run: npm run pruefung:intelligence-browser
+
       # WP-40: Bewertungslogik der Browser-Abnahme und Fehlertext-Verknüpfung (ohne Browser;
       # die Messung selbst läuft von Hand, siehe pruefungen/browser/wcag-wp40.mjs).
       - name: Barrierefreiheit WP-40, Browser-Abnahme ohne Browser

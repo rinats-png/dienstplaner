@@ -28,6 +28,7 @@
    ========================================================================== */
 
 import { FELDNAMEN, deepFreeze } from "./felder.mjs";
+import { byteLaenge } from "./bytes.mjs";
 
 export const SCHEMA_VERSION = "1.0";
 const SCHEMA_URI = "https://json-schema.org/draft/2020-12/schema";
@@ -324,7 +325,7 @@ export function strukturPruefen(wert, grenzen = STRUKTUR_GRENZEN) {
   lauf(wert, "$", 0);
   if (!fehler.length) {
     let groesse = 0;
-    try { groesse = Buffer.byteLength(JSON.stringify(wert), "utf8"); } catch { fehler.push("$: nicht serialisierbar"); }
+    try { groesse = byteLaenge(JSON.stringify(wert)); } catch { fehler.push("$: nicht serialisierbar"); }
     if (groesse > grenzen.bytes) fehler.push("$: zu groß");
   }
   return fehler;
