@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 194,
   "statusZaehlung": {
-    "BLOCKED": 81,
+    "BLOCKED": 80,
     "READY": 16,
-    "IN_PROGRESS": 7,
+    "IN_PROGRESS": 8,
     "REVIEW": 9,
     "INTEGRATED": 78,
     "DONE": 3
@@ -15,8 +15,8 @@
       "pakete": 94,
       "offen": 30,
       "restPT": {
-        "min": 51.9,
-        "max": 83.55
+        "min": 50.9,
+        "max": 82.05
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 343.3,
-    "max": 584.85
+    "min": 342.3,
+    "max": 583.35
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -4888,12 +4888,12 @@
       "prio": "P2",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": ["IMP-2"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #215 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #215 in integration/release-v4"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Fälle aus IMPORT-VERTRAG/IMP-1 rekonstruiert, Anforderungsliste (IMPORT-PLAN.md) fehlt im Repo: Betreiber/Koordinator muss bestätigen, dass die 20 Fälle die Anforderungsliste abdecken"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4902,12 +4902,12 @@
       "agent": "Hauptorchestrator",
       "modell": "haiku",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#215"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Alle Fälle aus der Anforderungsliste durch Tests belegt; keine echten Personendaten",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "pruefungen/import-fixtures/*, Tests",
-      "notiz": "Nur synthetische Daten."
+      "notiz": "Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt."
     },
     {
       "id": "IMP-9",
