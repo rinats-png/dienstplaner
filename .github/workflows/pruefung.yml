@@ -100,6 +100,10 @@ jobs:
       - name: Barrierefreiheit WP-40, Browser-Abnahme ohne Browser
         run: npm run pruefung:wcag-wp40
 
+      # Personalimport: serverseitiger Schalter CENTRIC_IMPORT_AKTIV (Vorgabe aus, fail-closed, 404 vor dem Rumpf).
+      - name: Personalimport Serverschalter aus (CENTRIC_IMPORT_AKTIV)
+        run: npm run pruefung:import-schalter
+
       - name: Personalimport (IMP-1)
         run: npm run pruefung:import-bestand
 

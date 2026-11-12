@@ -110,6 +110,7 @@ const INHALT = {
 
 /**
  * @typedef {{ name: string, muster: string, exakt: string|null, praefix: string|null, rumpfMax: number,
+ *             aktiv: (() => boolean)|null,
  *             handler: (req: Request, context: object) => Promise<Response>|Response }} Route
  */
 
@@ -133,6 +134,9 @@ async function funktionenLaden() {
         exakt: muster.endsWith("/*") ? null : muster,
         praefix: muster.endsWith("/*") ? muster.slice(0, -1) : null,   // "/api/*" -> "/api/"
         handler: modul.default,
+        /* Abschaltbarer Weg (z. B. Import, CENTRIC_IMPORT_AKTIV): `config.aktiv()` wird je Anfrage gefragt;
+           falsch → 404, bevor ein Rumpf gelesen oder die Funktion aufgerufen wird. */
+        aktiv: typeof modul.config.aktiv === "function" ? modul.config.aktiv : null,
         rumpfMax: (() => {   // IMP-3: Grenze je Weg, sonst der Wert der Funktion, sonst RUMPF_MAX
           const je = modul.config.rumpfMaxJeWeg && modul.config.rumpfMaxJeWeg[muster];
           const g = Number.isInteger(je) && je > 0 ? je : modul.config.rumpfMax;
@@ -446,6 +450,12 @@ const server = createServer(async (req, res) => {
 
     const route = routeFuer(routen, pfad);
     if (route) {
+      if (route.aktiv && !route.aktiv()) {
+        /* Ausgeschalteter Weg: den Rumpf nicht behalten, nur verwerfen (die Verbindung bleibt im Takt). */
+        req.resume();
+        json(res, 404, { fehler: "Gibt es nicht." });
+        return;
+      }
       let rumpf;
       if (req.method !== "GET" && req.method !== "HEAD") {
         const laenge = Number(req.headers["content-length"] || 0);
