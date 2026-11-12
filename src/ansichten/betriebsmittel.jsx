@@ -10,12 +10,15 @@ import { Kennzahlen } from "../gestalt/ansichten.jsx";
 import { Ziehbar, Ablage } from "../ui/ziehen.jsx";
 import { Sheet } from "../ui/leisten.jsx";
 import { darf } from "../lib/berechtigung.js";
+import { BRANCHENMODULE } from "../../server/lib/branchenmodule.mjs";
+import { mittelSchreibbar, MODUL_NICHT_VERFUEGBAR } from "../module/altmodul-schreiben.js";
 
 
 export const MITTEL_ARTEN = [["schluessel", "Schlüssel"], ["fahrzeug", "Fahrzeug"], ["geraet", "Gerät"],
   ["kleidung", "Dienstkleidung"], ["sonstiges", "Sonstiges"]];
 
-export function Betriebsmittel({ sitz, akt }) {
+/** @param {{ sitz: any, akt: any, liste?: readonly any[] }} props  liste: nur für Prüfungen (Registry-Kopie) */
+export function Betriebsmittel({ sitz, akt, liste: register = BRANCHENMODULE }) {
   const m = sitz.mandant;
   const [neu, setNeu] = useState(false);
   const [f, setF] = useState({ art: "schluessel", name: "", kennung: "", personId: "" });
@@ -41,8 +44,11 @@ export function Betriebsmittel({ sitz, akt }) {
           ? <Leer titel="Noch nichts erfasst" text="Lege Schlüssel, Fahrzeuge oder Geräte an und weise sie Personen zu." />
           : liste.map((x, i) => {
             const p = x.personId && m.personen.find((y) => y.id === x.personId);
+            /* WP-19 B5: Anlagen sind Daten des Moduls „Anlagen“ — ändern, ausgeben und löschen nur, solange es wirkt (sonst 403). */
+            const schreibbar = darfPflegen && mittelSchreibbar(m, x, register);
+            const gesperrt = darfPflegen && !schreibbar;
             return (
-              <Ziehbar key={x.id} className="row" aktiv={darfPflegen}
+              <Ziehbar key={x.id} className="row" aktiv={schreibbar}
                 nutzlast={{ art: "mittel", mittelId: x.id, beschriftung: x.name, farbe: C.accentDeep }}
                 style={{ display: "flex", alignItems: "center", gap: 16,
                 padding: "14px 22px", borderBottom: i < liste.length - 1 ? `1px solid ${C.lineSoft}` : "none",
@@ -52,7 +58,7 @@ export function Betriebsmittel({ sitz, akt }) {
                   <div style={{ fontSize: 14.5, fontWeight: 500 }}>{x.name}</div>
                   {x.kennung && <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{x.kennung}</div>}
                 </div>
-                {darfPflegen
+                {schreibbar
                   ? <Sel value={x.personId || ""} style={{ width: 220 }}
                       onChange={(e) => akt.setzeMittel(x.id, "personId", e.target.value || null)}>
                       <option value="">— im Bestand —</option>
@@ -61,7 +67,12 @@ export function Betriebsmittel({ sitz, akt }) {
                     </Sel>
                   : <Pill size="sm" tone={p ? "accent" : "neutral"}>{p ? `${p.nachname}` : "im Bestand"}</Pill>}
                 {x.seit && <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>seit {fKurz(x.seit)}</span>}
-                {darfPflegen && <Btn size="sm" kind="danger" onClick={() => akt.loescheMittel(x.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
+                {schreibbar && <Btn size="sm" kind="danger" onClick={() => akt.loescheMittel(x.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
+                {gesperrt && (<>
+                  <span id={`mittel-grund-${x.id}`} style={{ fontSize: 12, color: C.dimmer }}>{MODUL_NICHT_VERFUEGBAR}</span>
+                  <Btn size="sm" kind="danger" disabled aria-label="Entfernen" aria-describedby={`mittel-grund-${x.id}`}
+                    title={`Entfernen nicht möglich: ${MODUL_NICHT_VERFUEGBAR}`}><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
+                </>)}
               </Ziehbar>);
           })}
       </Card>
