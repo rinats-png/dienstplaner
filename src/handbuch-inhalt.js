@@ -435,6 +435,110 @@ export const HANDBUCH = [
 
   /* ------------------------------------------------------------------ */
   {
+    id: "import", titel: "Import von Personal- und Schichtdaten", dauer: "10 Minuten",
+    einleitung: "Für die Leitung: wie das Einlesen einer Personaltabelle aus einer Datei funktioniert, sobald der Betreiber es freigibt.",
+    abschnitte: [
+      {
+        titel: "Ist der Dateiimport verfügbar?",
+        text: "Noch nicht. Der Import aus einer Datei ist ausgeschaltet und steht erst zur Verfügung, wenn der Betreiber ihn ausdrücklich freigibt. Einen Termin gibt es nicht. Solange der Dialog „Personal aus Datei importieren“ nicht erscheint, ist er für diesen Betrieb nicht freigegeben.",
+        schritte: [
+          "Bis dahin bleiben zwei Wege: Personen einzeln anlegen oder die Tabelle unter Team → Personal → Importieren als Text einfügen (siehe Schritt 2).",
+          "Wer die Freigabe wünscht, wendet sich an den Betreiber. Der Betrieb entscheidet vorher über Datenschutz und, falls vorhanden, über die Mitbestimmung.",
+          "Einlesen dürfen Leitung und Planung. Schichtverantwortung, Beschäftigte und Betriebsrat können den Import nicht verwenden.",
+        ],
+        merke: "Dieses Kapitel beschreibt, wie der Import arbeiten wird. Es ist kein Versprechen, dass er in Ihrem Betrieb verfügbar ist.",
+      },
+      {
+        titel: "Welche Dateien gehen",
+        text: "Gelesen werden Tabellen als Excel-Datei (.xlsx, .xls) und als Textdatei (CSV oder TSV).",
+        schritte: [
+          "Höchstens 10 MB, höchstens 20.000 Datenzeilen und 200 Spalten je Blatt, höchstens 20 Tabellenblätter.",
+          "Die erste Zeile jedes Blatts muss die Spaltenüberschriften enthalten.",
+          "Textdateien bitte als UTF-8 speichern; Trenner Semikolon, Komma oder Tabulator werden erkannt. Eine andere Kodierung wird als Windows-1252 gelesen, mit Hinweis zur Prüfung der Umlaute.",
+          "Nicht gelesen werden OpenDocument-Tabellen (ODS), Excel-Dateien mit Makros (.xlsm) und passwortgeschützte Dateien. Dann die Datei als .xlsx ohne Makros oder als CSV speichern.",
+          "Formeln werden nicht berechnet: Es zählt der Wert, der in der Datei gespeichert ist. Ein Datum, das als Text in der Datei steht, bleibt Text und muss lesbar geschrieben sein.",
+        ],
+        merke: "Was in der Datei sonst noch steht (Formeln, Makros, Verweise auf andere Dateien), wird nicht ausgeführt und nicht übernommen.",
+      },
+      {
+        titel: "Welche Spalten gelesen werden",
+        text: "Die Überschriften werden erkannt und den Feldern zugeordnet; die Zuordnung lässt sich von Hand ändern. Andere Spalten werden nicht gelesen.",
+        schritte: [
+          "Pflicht: Nachname, Vorname und Einheit (auch „Team“, „Station“, „Wohnbereich“ oder „Gruppe“). Ohne diese drei Zuordnungen geht es nicht weiter.",
+          "Freiwillig: Personalnummer, E-Mail, Funktion, Wochenstunden (0 bis 60), Urlaubsanspruch (ganze Tage, 0 bis 60), Eintritt, Standort und Qualifikationen.",
+          "Eintritt als TT.MM.JJJJ oder JJJJ-MM-TT. Ein erfundenes Datum wie der 31.02. ist ungültig. Bleibt die Zelle leer, bleibt der Eintritt leer; es wird nie „heute“ eingesetzt.",
+          "Qualifikationen in einer Zelle mit Komma, Semikolon oder senkrechtem Strich trennen, höchstens 20 je Zelle. Der Name selbst darf keines dieser Zeichen enthalten.",
+          "Die Einheit (und ein angegebener Standort, jede Qualifikation) muss im Betrieb schon vorhanden sein. Fehlt sie, bleibt die Zeile offen, bis sie zugeordnet wird. Nur die Leitung kann mit dem Häkchen „Fehlende Einheiten, Standorte und Qualifikationen mit anlegen“ neue anlegen lassen.",
+        ],
+        merke: "Neu angelegte Qualifikationen gelten weder als Fachkraft noch als harte Sperre oder nachweispflichtig. Das stellt die Leitung danach selbst ein.",
+      },
+      {
+        titel: "Erst ansehen, dann übernehmen",
+        text: "Nichts wird geschrieben, bevor Sie eine Vorschau geprüft und ausdrücklich bestätigt haben.",
+        schritte: [
+          "Datei wählen. Sie wird nur zum Lesen an den Server gesendet; danach arbeitet der Import mit dem gelesenen Inhalt, nicht mit der Datei.",
+          "Spalten prüfen und bei Bedarf zuordnen. Für jede Zeile steht der Befund da: Fehler, mögliche Dublette, fehlende Einheit.",
+          "Je Zeile wählen: als neue Person anlegen, bestehende Person aktualisieren, überspringen oder noch klären.",
+          "Vorschau erstellen. Sie nennt, wer neu angelegt und wer geändert wird (alt → neu), welche Einheiten, Standorte und Qualifikationen neu entstehen und wie viele Zeilen offen bleiben.",
+          "Häkchen setzen und „Jetzt übernehmen“. Ändert sich danach etwas an der Auswahl oder am Bestand, ist die Vorschau veraltet; dann neu erstellen.",
+        ],
+        pruefen: "Am Ende steht, wie viele Personen neu angelegt, aktualisiert und übersprungen wurden. Die Personalliste zeigt die neuen Einträge.",
+        merke: "Die Übernahme gilt ganz oder gar nicht: Bei einem Fehler bleibt der alte Stand. Zeilen, die auf „Noch klären“ stehen, werden nicht übernommen. Eine Funktion, um einen Import rückgängig zu machen, gibt es nicht.",
+      },
+      {
+        titel: "Doppelte Personen",
+        text: "Der Import überschreibt nie von selbst.",
+        schritte: [
+          "Die Personalnummer zählt, aber nur innerhalb des eigenen Betriebs. Eine gleiche Nummer in der Datei oder im Betrieb ergibt einen Treffer; ähnliche Schreibweisen („01001“, „1001“, „P-1001“) werden als möglicher Treffer gezeigt.",
+          "Treffer über die Personalnummer: Standard ist „Noch klären“. Aktualisieren geht nur mit Ihrer ausdrücklichen Bestätigung je Person. Leere Zellen überschreiben nichts. Geändert werden können Vorname, Nachname, E-Mail, Funktion, Wochenstunden und Urlaubsanspruch; nicht die Personalnummer, die Einheit, der Eintritt, die Rolle und die Qualifikationen.",
+          "Gleicher Vor- und Nachname ohne gleiche Nummer ist nur ein Vorschlag zur Prüfung. Über den Namen wird nie zusammengeführt oder aktualisiert.",
+          "Steht dieselbe Personalnummer in der Datei mehrfach, werden alle betroffenen Zeilen markiert; sie lassen sich nur überspringen oder klären.",
+          "Dieselbe Datei kann für denselben Betrieb 30 Tage lang nicht noch einmal übernommen werden.",
+        ],
+        merke: "Wer eine Personalnummer mit einliest, vermeidet die meisten Rückfragen.",
+      },
+      {
+        titel: "Wenn eine Meldung erscheint",
+        text: "Die Meldungen nennen das Feld oder den Grund, nie den Inhalt der Zelle. In allen Fällen gilt: Es wurde nichts übernommen, solange die Übernahme nicht ausdrücklich als erfolgreich gemeldet wird.",
+        schritte: [
+          "„Die Datei ist leer“ oder „enthält keine Daten“: eine andere Datei wählen.",
+          "„Dieses Dateiformat wird nicht unterstützt“, „OpenDocument-Tabellen (ODS) werden derzeit nicht unterstützt“ oder „Dateien mit Makros (xlsm) werden nicht gelesen“: als .xlsx oder CSV speichern.",
+          "„Die Datei ist passwortgeschützt“: ohne Passwort speichern und erneut wählen.",
+          "„Die Datei ist zu groß“, „zu viele Zeilen“, „zu viele Spalten“, „zu viele Tabellenblätter“: Datei verkleinern oder aufteilen.",
+          "„Die Verarbeitung der Datei hat zu lange gedauert“ oder „benötigt zu viel Arbeitsspeicher“: eine kleinere, einfachere Datei verwenden.",
+          "„Die Datei konnte nicht gelesen werden“: in Excel öffnen, neu speichern, erneut versuchen.",
+          "„Gerade werden zu viele Dateien gleichzeitig gelesen“ oder „Gerade laufen zu viele Importe“: einige Sekunden warten, offene Importe abschließen oder abbrechen.",
+          "„Nicht alle Pflichtspalten sind zugeordnet“: Nachname, Vorname und Einheit zuordnen.",
+          "Hinweis zur Zeile, etwa „Nachname fehlt“, „E-Mail ungültig“, „Eintrittsdatum ungültig“, „Wochenstunden ungültig“: die Zeile in der Datei korrigieren; bis dahin lässt sie sich nur überspringen.",
+          "„Einheit gibt es noch nicht“: zuordnen, von der Leitung anlegen lassen oder überspringen.",
+          "„Die Bestätigung gehört nicht zur aktuellen Vorschau“ oder „Der Bestand hat sich seit der Vorschau geändert“: Vorschau neu erstellen. Es wurde nichts geändert.",
+          "„Die Übernahme ist fehlgeschlagen. Bitte den Personalbestand prüfen“: die Personalliste ansehen, bevor erneut übernommen wird, und den Betreiber informieren.",
+        ],
+      },
+      {
+        titel: "Datenschutz beim Import",
+        text: "Personaldaten gehören dem Betrieb. Der Import behandelt sie sparsam.",
+        schritte: [
+          "Die Datei wird nicht gespeichert. Der gelesene Inhalt liegt nur im Arbeitsspeicher und wird nach der Übernahme, beim Abbrechen, nach 30 Minuten ohne Aktivität oder spätestens nach zwei Stunden gelöscht. Ein Neustart des Dienstes löscht ihn ebenfalls; dann Datei erneut wählen.",
+          "Im Protokoll stehen nur Zahlen, Codes und die Kennung der handelnden Person, nie Dateiname, Namen oder E-Mail-Adressen.",
+          "Geschrieben wird nur, was die Vorschau gezeigt hat, nur in den eigenen Betrieb und nur mit den Rechten der angemeldeten Person.",
+          "Eine KI liest keine Personaldaten mit. Der Import arbeitet ohne KI.",
+          "Spalten, die der Import nicht kennt (zum Beispiel Konfession oder Wohnort), werden nicht gelesen und nicht übernommen.",
+        ],
+        merke: "Der Import ersetzt keine Prüfung durch den Datenschutz im eigenen Betrieb. Wann und ob er genutzt wird, entscheidet der Betrieb gemeinsam mit dem Betreiber.",
+      },
+      {
+        titel: "Schichtzyklen aus einer Datei",
+        text: "Noch nicht möglich.",
+        schritte: [
+          "Das Einlesen von Schichtmodellen und Schichtzyklen aus einer Datei ist nicht freigegeben. Schichtfolgen legen Sie wie in Schritt 4 beschrieben an.",
+        ],
+      },
+    ],
+  },
+
+  /* ------------------------------------------------------------------ */
+  {
     id: "probleme", titel: "Wenn etwas nicht stimmt", dauer: "Nachschlagen",
     einleitung: "Die Fälle, die in der Einführung am häufigsten auftreten.",
     abschnitte: [
