@@ -668,15 +668,32 @@ kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
 - `preisgestaltung` (`null` vs. `{}`): kommt im Teilweg nicht vor — Vertragsfelder sind Serverfelder (422), der
   Betreiber bleibt beim Voll-PUT.
 - **Abweichungen vom Entwurf:** Bestätigungen (WP-22) gehen als Kernfeld `bestaetigungen` (kein eigenes Feld
-  `bestaetigungen` oben); Idempotenz nur im Arbeitsspeicher des Prozesses (10 min, je Raum/Rolle/Person/Betrieb, nur
-  Erfolge). Kernfelder außerhalb des Positivkatalogs `BETRIEB` → 422 (Oberfläche fällt auf den Voll-PUT zurück).
+  `bestaetigungen` oben). Kernfelder außerhalb des Positivkatalogs `BETRIEB` → 422 (Oberfläche fällt auf den Voll-PUT
+  zurück). Die eigene Bremse `teile` (120/min je Raum) kommt zu `schreiben` hinzu: Wer beide Wege nutzt, hat das
+  Schreibbudget eines Raums **doppelt** (bewusst getrennt gezählt; Stufe 1 kostet je Aufruf O(Bestand)).
+- **Wiederholschutz (Review PR #224, Befunde 1–3):** Vermerk `teilanfrage:<raum>:<hash(Sitzung|anfrage)>` in der Ablage,
+  unter der Raumsperre direkt nach dem Speichern geschrieben, 24 h, nur Erfolge, mit dem Abdruck des Rumpfs. Gleiche
+  Kennung + gleicher Rumpf derselben Sitzung → gespeicherte Antwort mit `wiederholt: true`, kein Schreiben; gleiche
+  Kennung + anderer Rumpf → 422 `ANFRAGE_WIEDERVERWENDET`; eine andere Sitzung teilt keine Vermerke. Der Vermerk
+  überdauert einen Neustart; damit kann eine Wiederholung nach fremdem Zurücksetzen (ABA: A null→F, B F→null, A
+  wiederholt) B nicht mehr überschreiben. **Restgrenze:** Eine Wiederholung aus einer anderen Sitzung, nach 24 h oder
+  mit neuer Kennung prüft nur Erwartungswerte (ABA dann möglich, wie bei jedem compare-and-set über Werte; ein Zähler
+  je Zelle wäre eine Formatänderung der Scherbe). Abbruch genau zwischen Speichern und Vermerk: Vermerk fehlt. Die
+  Raumlöschung nimmt die Vermerke mit (`raumloeschung.mjs`).
+- **Tiefe:** Rümpfe tiefer als 64 Ebenen → 422 vor jeder Rekursion (Review Befund 4).
+- **Differenzprüfung erweitert (Review Befund 5):** zusätzlich Planstände, gefälschte endgültige Krankmeldung,
+  gefälschte Servermitteilung `planFreigegeben`, Matrix, Rollennamen, Rolle anheben (eigene/fremde), Person löschen,
+  Bestätigungen, Urlaub→Krankheit, Standorte, gestempeltes Ist löschen, Zellschlüssel `__proto__|…` und unbekannte
+  Person — für LT/PL/KU/SV/MA, Demozugänge (Leitung/Planung) und einen zweiten Betrieb im Raum (PL/SV/MA). Wo der
+  Teilweg nicht früher abweist, sind Status und gespeicherter Stand gleich dem Voll-PUT; Junk-Schlüssel behandelt der
+  Teilweg damit genau wie der Voll-PUT.
 - **Prüfungen** `pruefungen/wp48-teilweg.test.js` (`pruefung:wp48-teilweg`, CI): Gleichwertigkeit Teil/Voll je Rolle
   (LT, PL, KU, SV, MA) über 17 feste und 6 zufällige Deltas (fester Startwert; Plan/Ist, eigener/fremder Bereich,
   gestempelter Tag, abgeschlossener Monat, Dienstarten, Freigaben, Krankheit, Personen, Wünsche, Einstellungen);
   Versionen/Erwartungswerte, Rennen (verschiedene Zellen, verschiedene Kernfelder, dieselbe Zelle), Teil-PUT gegen
   Stempel im selben Monat, Epoche nach Wiederherstellen, Idempotenz, Schalter, Rollen BR/BT, Seitenkanal, Form,
-  Befund §7 je Rolle, 150 × 12 (Voll-PUT > 6 MB, Teil-PUT < 2 KB → 200). Mutanten T1–T12 in
-  `werkzeug/wp48-mutanten.mjs` (Lauf 2026-11-12: 12 von 12 getötet; T10 = Befund §7 ohne Fix, belegt das Rot vorher).
+  Befund §7 je Rolle, 150 × 12 (Voll-PUT > 6 MB, Teil-PUT < 2 KB → 200). Mutanten T1–T16 in
+  `werkzeug/wp48-mutanten.mjs` (Lauf 2026-11-12: T1–T12 12 von 12, nach dem Review T1–T16 siehe PR; T10 = Befund §7 ohne Fix, belegt das Rot vorher).
   Grün dazu: wp48-rundweg, wp48-speicherkern, abnahme-a-b, rb1–rb5, selbstservice, schichtverantwortung,
   sicht-schichtverantwortung, etag-pflicht, abnahme-409, routen-inventar, rechtematrix, `serverlauf.mjs rechte` 150/150.
 
@@ -686,8 +703,7 @@ kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
    schon `konflikt.kern`/`konflikt.zellen` mit den aktuellen Werten.
 3. Stufe 1 kostet serverseitig weiter O(Bestand) je Aufruf (Sperrdauer wie heute); Freigabe großer Betriebe erst nach
    48.6 (Entscheidung 6.5).
-4. Idempotenz überlebt keinen Neustart; eine Wiederholung nach Neustart ist wegen der Erwartungswerte trotzdem ohne
-   doppelte Wirkung (neu == aktuell), nur der Stand zählt dann einmal mehr.
+4. Wiederholschutz: Restgrenzen siehe oben (andere Sitzung, > 24 h, neue Kennung).
 
 ---
 

@@ -56,8 +56,16 @@ const ROLLEN = {
   MA: { rolle: "mitarbeiter", person: "m0" },
   BR: { rolle: "betriebsrat", person: "r1" },
   BT: { rolle: "betreiber", person: null },
+  /* Demozugänge mit ausdrücklicher Rolle (RB-3) */
+  DL: { rolle: "leitung", person: "l1", demo: true },
+  DP: { rolle: "planer", person: "p1", demo: true },
+  /* ein zweiter Betrieb im selben Raum (Sitzung betrieb 1) */
+  PL2: { rolle: "planer", person: "p1", betrieb: 1, mandant: "m2" },
+  SV2: { rolle: "subplaner", person: "s1", einheit: "e1", betrieb: 1, mandant: "m2" },
+  MA2: { rolle: "mitarbeiter", person: "m0", betrieb: 1, mandant: "m2" },
 };
 const SCHREIBER = ["LT", "PL", "KU", "SV", "MA"];
+const WEITERE = ["DL", "DP", "PL2", "SV2", "MA2"];
 
 let HEUTE, tag;
 
@@ -89,7 +97,8 @@ function reicherBestand() {
     qualifikationen: [], genehmigungsstufen: [], tarifwerk: null, version: 9, stand: 1,
     personen: [person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1", { notiz: "privat", iban: "DE00" }),
       person("b1", "mitarbeiter", "e2"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
-      person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), person("x1", "mitarbeiter", "e1", { mutterschutzEinwilligungen: [] })],
+      person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), person("x1", "mitarbeiter", "e1", { mutterschutzEinwilligungen: [] }),
+      person("k1", "mitarbeiter", "e1")],
     abweichungen: plan, planstaende: {}, freigaben: {}, unterschreitungen: [], belegung: {}, therapie: {}, aushang: [],
     monatsabschluss: { [abgeschlossen]: { abgeschlossen: true, am: "2026-01-02T08:00:00.000Z", wer: "l1",
       verlauf: [{ id: "v1", art: "abschluss", am: "2026-01-02T08:00:00.000Z", wer: "l1", grund: "" }] } },
@@ -97,7 +106,8 @@ function reicherBestand() {
     standorte: [], abwesenheiten: [
       { id: "abw1", personId: "a1", art: "krank", von: p(5), bis: p(6), notiz: "Grippe" },
       { id: "abw2", personId: "m0", art: "urlaub", von: p(10), bis: p(12), notiz: "" }],
-    krankmeldungen: [], anfragen: [{ id: "an1", personId: "m0", art: "urlaub", von: p(30), bis: p(31), status: "offen", zeit: "2026-01-01" }],
+    krankmeldungen: [{ id: "km1", personId: "k1", von: p(7), bis: p(7), notiz: "", status: "eingegangen",
+      verlauf: [{ schritt: "eingegangen", von: "k1", rolle: "mitarbeiter", zeit: "2026-01-01T06:00:00.000Z" }] }], anfragen: [{ id: "an1", personId: "m0", art: "urlaub", von: p(30), bis: p(31), status: "offen", zeit: "2026-01-01" }],
     wuensche: [], einspruenge: [], ausschreibungen: [], selbstplanung: [],
     nachrichten: [{ id: "n1", an: "m0", von: "p1", text: "Hallo", zeit: "2026-01-01" }],
     notrufe: [], erfassung: ist, einstempeln: stempel, fahrzeiten: {}, checks: {}, ansichten: {},
@@ -107,16 +117,18 @@ function reicherBestand() {
 }
 
 let raumNr = 0;
-async function neuerRaum({ rollen = Object.keys(ROLLEN), aendern } = {}) {
+async function neuerRaum({ rollen = SCHREIBER.concat(["BR", "BT"]), aendern } = {}) {
   const raum = `wp48-teilweg-${++raumNr}`;
   const b = reicherBestand();
+  /* Rollen eines zweiten Betriebs: derselbe Prüfbetrieb noch einmal als m2 (eigene Kennung, eigener Name). */
+  if (rollen.some((k) => ROLLEN[k].mandant === "m2")) b.mandanten.push({ ...kopie(b.mandanten[0]), id: "m2", name: "Haus 2" });
   if (aendern) aendern(b);
   await B.bestandSchreiben(laden(), raum, G.personenAngleichen(G.uebergabenAngleichen(b)), { durch: "Pruefung" });
   const token = {};
   for (const k of rollen) {
     const r = ROLLEN[k];
-    token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: 0,
-      mandantId: "m1", einheit: r.einheit || null }, 2 * 3600 * 1000)).token;
+    token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: r.betrieb || 0,
+      mandantId: r.mandant || "m1", einheit: r.einheit || null, ...(r.demo ? { demo: true } : {}) }, 2 * 3600 * 1000)).token;
   }
   return { raum, token };
 }
@@ -141,8 +153,8 @@ function stabil(x) {
 const version = (x) => createHash("sha256").update(stabil(x)).digest("hex").slice(0, 32);
 
 /** Δ aus einer Beschreibung und der GET-Antwort: Erwartungswerte und Basisversionen aus der Sicht. */
-function deltaAus(g, besch, extra = {}) {
-  const m = g.bestand.mandanten.find((x) => x.id === "m1");
+function deltaAus(g, besch, extra = {}, mid = "m1") {
+  const m = g.bestand.mandanten.find((x) => x.id === mid);
   const kern = {};
   for (const [feld, fn] of Object.entries(besch.kern || {}))
     kern[feld] = { basis: g.teile.versionen[`kern:${feld}`] ?? version(m[feld]), wert: fn(kopie(m[feld])) };
@@ -152,9 +164,9 @@ function deltaAus(g, besch, extra = {}) {
     ...(zellen.length ? { zellen } : {}), ...extra };
 }
 /** Voll-PUT-Rumpf: dieselbe Sicht ⊕ Δ, hier unabhängig vom Server gebaut. */
-function vollAus(g, besch) {
+function vollAus(g, besch, mid = "m1") {
   const b = kopie(g.bestand);
-  const m = b.mandanten.find((x) => x.id === "m1");
+  const m = b.mandanten.find((x) => x.id === mid);
   for (const [feld, fn] of Object.entries(besch.kern || {})) m[feld] = fn(kopie(m[feld]));
   for (const z of besch.zellen || []) {
     m[z.feld] = { ...(m[z.feld] || {}) };
@@ -211,6 +223,22 @@ function feste(k) {
     ["Kern personen: eigene Rolle anheben", { kern: { personen: (w) => w.map((p) => (p.id === selbst ? { ...p, rolle: "leitung" } : p)) } }],
     ["Kern wuensche: eigener Eintrag", { kern: { wuensche: (w) => [...(w || []), { id: "wN", personId: selbst, datum: tag(25), art: "frei" }] } }],
     ["Kern einstellungen ändern", { kern: { einstellungen: (w) => ({ ...(w || {}), ruhezeit: 12 }) } }],
+    /* Differenzabsichten aus dem Review von PR #224 */
+    ["Kern planstaende setzen", { kern: { planstaende: (w) => ({ ...(w || {}), [tag(20).slice(0, 7)]: { stand: 2, zeit: "x", durch: "P" } }) } }],
+    ["Kern krankmeldungen: Fall endgültig bestätigen (gefälscht)", { kern: { krankmeldungen: (w) => (w || []).map((x) => (x.id === "km1" ? { ...x, status: "endgueltig_bestaetigt" } : x)) } }],
+    ["Kern nachrichten: Servermitteilung planFreigegeben (gefälscht)", { kern: { nachrichten: (w) => [...(w || []),
+      { id: "nS", an: "m0", von: "p1", art: "planFreigegeben", quelle: "server", titel: "Plan", text: "x", zeit: "2026-01-01" }] } }],
+    ["Kern matrix ändern", { kern: { matrix: () => ({ mitarbeiter: ["org.edit", "plan.publish"] }) } }],
+    ["Kern rollennamen ändern", { kern: { rollennamen: (w) => ({ ...(w || {}), leitung: "Chef" }) } }],
+    ["Kern personen: andere Person zur Leitung machen", { kern: { personen: (w) => w.map((p) => (p.id === "a1" ? { ...p, rolle: "leitung" } : p)) } }],
+    ["Kern personen: Person löschen (b1)", { kern: { personen: (w) => w.filter((p) => p.id !== "b1") } }],
+    ["Kern bestaetigungen: Eintrag anlegen", { kern: { bestaetigungen: (w) => [...(w || []),
+      { id: "bq1", personId: "a1", datum: tag(21), regel: "ruhezeit", wer: selbst, am: "2026-01-01T00:00:00.000Z" }] } }],
+    ["Kern standorte: Standort anlegen", { kern: { standorte: (w) => [...(w || []), { id: "st9", name: "Haus", lat: 52.5, lon: 13.4, radius: 100 }] } }],
+    ["Kern abwesenheiten: Urlaub zu Krankheit (abw2)", { kern: { abwesenheiten: (w) => (w || []).map((a) => (a.id === "abw2" ? { ...a, art: "krank" } : a)) } }],
+    ["Ist gestempelter Tag löschen (m0)", { zellen: [{ feld: "erfassung", k: `m0|${tag(-3)}`, neu: null }] }],
+    ["Zelle mit Schlüssel __proto__", { zellen: [{ feld: "abweichungen", k: `__proto__|${tag(21)}`, neu: "N" }] }],
+    ["Zelle für unbekannte Person", { zellen: [{ feld: "abweichungen", k: `unbekannt|${tag(21)}`, neu: "N" }] }],
   ];
 }
 
@@ -239,9 +267,10 @@ function zufaellige(k, anzahl) {
 }
 
 describe("Gleichwertigkeit Teil-PUT(Δ) = Voll-PUT(Sicht ⊕ Δ) je Rolle", { timeout: 600000 }, () => {
-  for (const k of SCHREIBER) {
-    it(`${k} (${ROLLEN[k].rolle}): feste und zufällige Deltas`, async () => {
-      const faelle = [...feste(k), ...zufaellige(k, 6)];
+  for (const k of [...SCHREIBER, ...WEITERE]) {
+    it(`${k} (${ROLLEN[k].rolle}${ROLLEN[k].demo ? ", Demo" : ""}${ROLLEN[k].mandant ? `, Betrieb ${ROLLEN[k].mandant}` : ""}): feste und zufällige Deltas`, async () => {
+      const mid = ROLLEN[k].mandant || "m1";
+      const faelle = [...feste(k), ...zufaellige(k, WEITERE.includes(k) ? 3 : 6)];
       const befunde = [];
       for (const [name, besch] of faelle) {
         const A = await neuerRaum({ rollen: [k] });
@@ -250,8 +279,8 @@ describe("Gleichwertigkeit Teil-PUT(Δ) = Voll-PUT(Sicht ⊕ Δ) je Rolle", { ti
         const gA = await anfrage("/api/bestand", { token: A.token[k] });
         const gB = await anfrage("/api/bestand", { token: Bv.token[k] });
         expect(gA.teile && gA.teile.format, `${k} ${name}: Fähigkeit`).toBe(1);
-        const t = await teile(A.token[k], deltaAus(gA, besch));
-        const v = await anfrage("/api/bestand", { methode: "PUT", token: Bv.token[k], rumpf: vollAus(gB, besch) });
+        const t = await teile(A.token[k], deltaAus(gA, besch, {}, mid));
+        const v = await anfrage("/api/bestand", { methode: "PUT", token: Bv.token[k], rumpf: vollAus(gB, besch, mid) });
         const nachA = await gespeichert(A.raum);
         const nachB = await gespeichert(Bv.raum);
         expect(t.bestand, `${k} ${name}: nie der ganze Bestand in der Antwort`).toBeUndefined();
@@ -423,6 +452,76 @@ describe("Epoche, Idempotenz, Schalter, Rollen, Form", { timeout: 300000 }, () =
     expect(b.etag).toBe(a.etag);
     expect((await gespeichert(raum)).stand).toBe(st);
     expect((await gespeichert(raum)).bestand.mandanten[0].aushang.filter((x) => x.id === "ah1").length).toBe(1);
+  });
+
+  it("Review #224 Befund 1: dieselbe Anfragekennung mit ANDEREM Rumpf → 422, nie ein stilles „wiederholt“", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["PL"] });
+    const g = await anfrage("/api/bestand", { token: token.PL });
+    const id = "anfrage-befund1-0001";
+    const d1 = deltaAus(g, { zellen: [{ feld: "abweichungen", k: `a1|${tag(21)}`, neu: "-" }] }, { anfrage: id });
+    expect((await teile(token.PL, d1)).status).toBe(200);
+    const st = (await gespeichert(raum)).stand;
+    const d2 = deltaAus(g, { zellen: [{ feld: "abweichungen", k: `b1|${tag(21)}`, neu: "-" }] }, { anfrage: id });
+    const t2 = await teile(token.PL, d2);
+    expect(t2.status).toBe(422);
+    expect(t2.code).toBe("ANFRAGE_WIEDERVERWENDET");
+    expect(t2.wiederholt).toBeUndefined();
+    expect((await gespeichert(raum)).stand).toBe(st);
+    /* Mit eigener Kennung geht dieselbe Änderung durch — nichts ging verloren. */
+    expect((await teile(token.PL, { ...d2, anfrage: "anfrage-befund1-0002" })).status).toBe(200);
+    expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[`b1|${tag(21)}`]).toBe("-");
+  });
+
+  it("Review #224 Befund 2: Wiederholschutz je Sitzung — eine zweite Sitzung derselben Person wird nicht verschluckt", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["PL"] });
+    const zweite = (await sitzungAnlegen({ bestand: raum, name: "V Np1", rolle: "planer", person: "p1", betrieb: 0,
+      mandantId: "m1", einheit: null }, 2 * 3600 * 1000)).token;
+    const g = await anfrage("/api/bestand", { token: token.PL });
+    const id = "anfrage-befund2-0001";
+    expect((await teile(token.PL, deltaAus(g, { zellen: [{ feld: "abweichungen", k: `a1|${tag(21)}`, neu: "-" }] }, { anfrage: id }))).status).toBe(200);
+    const g2 = await anfrage("/api/bestand", { token: zweite });
+    const t2 = await teile(zweite, deltaAus(g2, { zellen: [{ feld: "abweichungen", k: `b1|${tag(21)}`, neu: "-" }] }, { anfrage: id }));
+    expect(t2.status).toBe(200);
+    expect(t2.wiederholt).toBeUndefined();
+    expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[`b1|${tag(21)}`]).toBe("-");
+  });
+
+  it("Review #224 Befund 3: Wiederholung nach fremdem Zurücksetzen (ABA) überschreibt nicht — Vermerk liegt in der Ablage", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["PL", "LT"] });
+    const k = `b1|${tag(23)}`;
+    const g = await anfrage("/api/bestand", { token: token.PL });
+    expect(g.bestand.mandanten[0].abweichungen[k]).toBeUndefined();
+    const d = { format: 1, epoche: g.teile.epoche, anfrage: "anfrage-befund3-0001", zellen: [{ feld: "abweichungen", k, alt: null, neu: "-" }] };
+    expect((await teile(token.PL, d)).status).toBe(200);
+    /* Die Leitung nimmt die Änderung zurück (- → null). */
+    const gL = await anfrage("/api/bestand", { token: token.LT });
+    expect((await teile(token.LT, { format: 1, epoche: gL.teile.epoche, zellen: [{ feld: "abweichungen", k, alt: "-", neu: null }] })).status).toBe(200);
+    /* Der Vermerk liegt in der Ablage, nicht im Prozess: Er überdauert einen Neustart. */
+    const { blobs } = await laden().list({ prefix: `teilanfrage:${raum}:` });
+    expect(blobs.length).toBe(1);
+    /* Die Planung wiederholt dieselbe Anfrage (etwa nach Verbindungsabbruch): alt null passt wieder — trotzdem kein Schreiben. */
+    const st = (await gespeichert(raum)).stand;
+    const w = await teile(token.PL, d);
+    expect(w.status).toBe(200);
+    expect(w.wiederholt).toBe(true);
+    expect((await gespeichert(raum)).stand).toBe(st);
+    expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[k]).toBeUndefined();
+  });
+
+  it("Review #224 Befund 4: tief verschachtelter Rumpf → 422 statt Stapelüberlauf", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["PL"] });
+    const g = await anfrage("/api/bestand", { token: token.PL });
+    const st0 = (await gespeichert(raum)).stand;
+    const tief = "[".repeat(200000) + "]".repeat(200000);
+    const roh = `{"format":1,"epoche":"${g.teile.epoche}","kern":{"aushang":{"basis":"${g.teile.versionen["kern:aushang"]}","wert":${tief}}}}`;
+    const t = await teile(token.PL, roh);
+    expect([413, 422, 400]).toContain(t.status);
+    expect(t.status).not.toBe(500);
+    const z = await teile(token.PL, `{"format":1,"epoche":"${g.teile.epoche}","zellen":[{"feld":"abweichungen","k":"a1|${tag(21)}","alt":null,"neu":${tief}}]}`);
+    expect([413, 422, 400]).toContain(z.status);
+    expect((await gespeichert(raum)).stand).toBe(st0);
+    /* Der Prozess lebt: ein normales Delta geht danach durch. */
+    expect((await teile(token.PL, deltaAus(g, { zellen: [{ feld: "abweichungen", k: `a1|${tag(21)}`, neu: "-" }] }))).status).toBe(200);
   });
 
   it("Schalter aus: kein Weg (404), GET ohne teile; der Voll-PUT bleibt unverändert", async () => {

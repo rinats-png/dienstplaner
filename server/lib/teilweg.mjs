@@ -34,7 +34,20 @@ export const TEILE_GRENZEN = Object.freeze({
   kernfelder: 25,
   kernfeldBytes: 1024 * 1024,
   zellwertBytes: 4 * 1024,
+  tiefe: 64,
 });
+
+/** Iterativ (ohne Rekursion): ist irgendein Wert tiefer als max verschachtelt? */
+export function zuTief(x, max) {
+  const stapel = [[x, 0]];
+  while (stapel.length) {
+    const [w, d] = stapel.pop();
+    if (!w || typeof w !== "object") continue;
+    if (d >= max) return true;
+    for (const v of Array.isArray(w) ? w : Object.values(w)) if (v && typeof v === "object") stapel.push([v, d + 1]);
+  }
+  return false;
+}
 
 /** Zellfelder: flache Schlüssel/Wert-Paare je Person und Tag. */
 export const ZELLFELDER = Object.freeze(["abweichungen", "erfassung"]);
@@ -97,6 +110,8 @@ function datumGueltig(j, m, t) {
 export function teileFormFehler(r, sitzung) {
   const f = (grund, status = 422, code = "TEILE_UNGUELTIG") => ({ status, code, grund });
   if (!r || typeof r !== "object" || Array.isArray(r)) return f("Kein Teil-Rumpf übergeben.");
+  /* Vor jeder Rekursion (stabil, groesse): Tiefe begrenzt — 200 000 verschachtelte Listen liefen sonst über den Stapel. */
+  if (zuTief(r, TEILE_GRENZEN.tiefe)) return f("Die Änderung ist zu tief verschachtelt.");
   if (groesse(r) > TEILE_GRENZEN.rumpfBytes) return f("Zu viele Änderungen auf einmal — bitte in Schritten speichern.", 413, "TEILE_ZU_GROSS");
   for (const k of Object.keys(r)) if (!OBEN.has(k)) return f(`Unbekanntes Feld ${k.slice(0, 40)}.`);
   if (r.format !== TEILWEG_FORMAT) return f("Unbekanntes Format.");
@@ -233,28 +248,55 @@ export function teileAnwenden(sicht, mandantId, delta) {
 }
 
 /* ---------------------------------------------------------------------------
-   Idempotenz (2.3 Schritt 7): dieselbe Anfragekennung derselben Sitzung im
-   selben Raum bekommt 10 Minuten lang dieselbe Antwort, ohne neu zu schreiben.
-   Gemerkt wird nur ein Erfolg; eine Absage rechnet die nächste Anfrage neu.
+   Wiederholschutz (2.3 Schritt 7, Review PR #224 Befunde 1–3)
+
+   Dieselbe Anfragekennung DERSELBEN SITZUNG mit DEMSELBEN Rumpf bekommt die
+   gespeicherte Antwort, ohne neu zu schreiben. Derselbe Schlüssel mit einem
+   ANDEREN Rumpf ist ein Fehler des Absenders (422 ANFRAGE_WIEDERVERWENDET) —
+   nie ein stilles „schon erledigt", sonst ginge die zweite Änderung verloren.
+
+   Der Vermerk liegt in der Ablage (teilanfrage:<raum>:…), geschrieben unter
+   derselben Raumsperre direkt nach dem Speichern: Er überlebt einen Neustart.
+   Sonst nähme ein Neustart die Erinnerung, und eine Wiederholung nach einem
+   fremden Zurücksetzen (A setzt null→F, B setzt F→null, A wiederholt) ginge
+   über den Erwartungswert wieder durch und überschriebe B (ABA).
+   Grenzen: Gemerkt wird nur ein Erfolg, 24 Stunden lang, je Sitzung. Eine
+   Wiederholung aus einer ANDEREN Sitzung oder nach 24 Stunden prüft wieder
+   nur die Erwartungswerte. Bricht der Prozess genau zwischen Speichern und
+   Vermerk ab, fehlt der Vermerk für diese eine Anfrage.
    --------------------------------------------------------------------------- */
-const IDEMPOTENZ_MS = 10 * 60 * 1000;
-const IDEMPOTENZ_MAX = 5000;
-const gemerkt = new Map();
+export const TEILANFRAGE_PRAEFIX = "teilanfrage:";
+export const TEILANFRAGE_FRIST_MS = 24 * 60 * 60 * 1000;
+const AUFRAEUMEN_ABSTAND_MS = 10 * 60 * 1000;
+const aufgeraeumt = new Map();
 
-const idemSchluessel = (raum, sitzung, anfrage) =>
-  `${raum}\u0000${sitzung.rolle}\u0000${sitzung.person ?? ""}\u0000${sitzung.mandantId ?? ""}\u0000${anfrage}`;
+const anfrageSchluessel = (raum, sitzungsKennung, anfrage) =>
+  `${TEILANFRAGE_PRAEFIX}${raum}:${createHash("sha256").update(`${sitzungsKennung}|${anfrage}`).digest("hex").slice(0, 48)}`;
 
-export function idempotenzLesen(raum, sitzung, anfrage, jetzt = Date.now()) {
-  if (!anfrage) return null;
-  const k = idemSchluessel(raum, sitzung, anfrage);
-  const e = gemerkt.get(k);
-  if (!e) return null;
-  if (jetzt - e.zeit > IDEMPOTENZ_MS) { gemerkt.delete(k); return null; }
-  return e.antwort;
+/** Abdruck des Rumpfs ohne die Anfragekennung (stabil, formgeprüft — also begrenzt tief). */
+export const rumpfAbdruck = (r) => version({ ...r, anfrage: undefined });
+
+/**
+ * @returns {Promise<null | { gleich: true, antwort: any } | { gleich: false }>}
+ */
+export async function anfrageLesen(store, raum, sitzungsKennung, anfrage, abdruck, jetzt = Date.now()) {
+  if (!anfrage || !sitzungsKennung) return null;
+  const e = await store.get(anfrageSchluessel(raum, sitzungsKennung, anfrage), { type: "json" });
+  if (!e || typeof e !== "object" || !(jetzt - Number(e.zeit) <= TEILANFRAGE_FRIST_MS)) return null;
+  return e.abdruck === abdruck ? { gleich: true, antwort: e.antwort } : { gleich: false };
 }
 
-export function idempotenzMerken(raum, sitzung, anfrage, antwortDaten, jetzt = Date.now()) {
-  if (!anfrage) return;
-  for (const [k, e] of gemerkt) { if (jetzt - e.zeit > IDEMPOTENZ_MS || gemerkt.size >= IDEMPOTENZ_MAX) gemerkt.delete(k); else break; }
-  gemerkt.set(idemSchluessel(raum, sitzung, anfrage), { zeit: jetzt, antwort: antwortDaten });
+export async function anfrageMerken(store, raum, sitzungsKennung, anfrage, abdruck, antwortDaten, jetzt = Date.now()) {
+  if (!anfrage || !sitzungsKennung) return;
+  await store.setJSON(anfrageSchluessel(raum, sitzungsKennung, anfrage), { zeit: jetzt, abdruck, antwort: antwortDaten });
+  /* Abgelaufene Vermerke höchstens alle zehn Minuten je Raum wegräumen (Raumlöschung nimmt alle mit). */
+  if (jetzt - (aufgeraeumt.get(raum) || 0) < AUFRAEUMEN_ABSTAND_MS) return;
+  aufgeraeumt.set(raum, jetzt);
+  try {
+    const { blobs } = await store.list({ prefix: `${TEILANFRAGE_PRAEFIX}${raum}:` });
+    for (const b of blobs) {
+      const e = await store.get(b.key, { type: "json" }).catch(() => null);
+      if (!e || !(jetzt - Number(e.zeit) <= TEILANFRAGE_FRIST_MS)) await store.delete(b.key).catch(() => {});
+    }
+  } catch { /* nächstes Mal */ }
 }

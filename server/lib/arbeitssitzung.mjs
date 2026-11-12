@@ -2,6 +2,7 @@ import {
   accountLesenPerId, mitgliedschaftLesen, mitgliedlaufLesen, generationStimmt,
 } from "./accounts.mjs";
 import { getStore } from "./ablage.mjs";
+import { createHash } from "node:crypto";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
 import { aktivePerson } from "./personengueltig.mjs";
@@ -187,7 +188,7 @@ export const HERKUNFT_KONTO = "account";
  *   gelesene Sitzung und gibt einen schon gelesenen Bestand zurück, damit er
  *   nicht zweimal gelesen wird.
  * @returns {Promise<{sitzung: any, abgewiesen: boolean, grund: (string|null),
- *   mitMerkmal: boolean, widerruf?: {grund: string, am: string, text: string}}>}
+ *   mitMerkmal: boolean, widerruf?: {grund: string, am: string, text: string}, sitzungsKennung?: string}>}
  *   `widerruf` nur bei einem widerrufenen Sicherungsschlüssel (SI-P1), für die erkennbare Absage.
  */
 export async function arbeitssitzungLesen(req,
@@ -247,7 +248,10 @@ export async function arbeitssitzungLesen(req,
     await sitzungBeenden(merkmal);
     return { sitzung: null, abgewiesen: true, mitMerkmal: true, grund: "zweifaktor-pflicht" };
   }
-  return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };
+  /* WP-48.3: eine Kennung genau dieser Sitzung (Hashwert, nie das Merkmal selbst) — für Vermerke, die an der
+     Sitzung hängen (Wiederholschutz der Teilspeicherung). Doppelt gehasht, also nicht der Ablageschlüssel `t:`. */
+  const sitzungsKennung = createHash("sha256").update(`sitzung|${createHash("sha256").update(String(merkmal)).digest("hex")}`).digest("hex").slice(0, 40);
+  return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true, sitzungsKennung };
 }
 
 /* ==========================================================================

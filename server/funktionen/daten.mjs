@@ -19,7 +19,7 @@ import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { demoAn, teilwegAn } from "../lib/schalter.mjs";
-import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, idempotenzLesen, idempotenzMerken } from "../lib/teilweg.mjs";
+import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfrageLesen, anfrageMerken } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
@@ -1306,6 +1306,9 @@ async function behandeln(req, context, ctx) {
       const { durch } = rumpf;
       /* Teilweg: was der virtuelle Rumpf berührt (Kernfelder, Monate), der eigene Betrieb und die Epoche. */
       let teilBeruehrt = null, teilMandant = null, teilEpoche = null;
+      /* Wiederholschutz je Sitzung (teilweg.mjs): Kennung der Sitzung und Abdruck des Rumpfs. */
+      const teilSitzung = teilweg ? lese.sitzungsKennung || null : null;
+      const teilAbdruck = teilweg && rumpf && typeof rumpf === "object" && !teileFormFehler(rumpf, s) ? rumpfAbdruck(rumpf) : null;
       if (teilweg) {
         const ff = teileFormFehler(rumpf, s);
         if (ff) {
@@ -1313,9 +1316,6 @@ async function behandeln(req, context, ctx) {
           return antwort({ fehler: ff.status === 413 ? "Zu viel auf einmal." : ff.status === 403 ? "Keine Schreibberechtigung." : "Die Änderung ist ungültig.",
             code: ff.code, text: `${ff.grund} Es wurde nichts geändert.` }, ff.status);
         }
-        /* Dieselbe Anfragekennung derselben Sitzung: dieselbe Antwort, nichts wird noch einmal geschrieben. */
-        const schon = idempotenzLesen(s.bestand, s, rumpf.anfrage);
-        if (schon) return antwort({ ...schon, wiederholt: true });
       } else if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
 
@@ -1359,6 +1359,15 @@ async function behandeln(req, context, ctx) {
            Wiederanlauf) oder ein Bestand ohne Epoche → NEU_LADEN, kein Abgleich je Zelle. Ein einziger
            Konflikt → 409 für die ganze Anfrage, nur mit den aktuellen Werten der streitigen Teile. */
         if (teilweg) {
+          /* Dieselbe Anfragekennung derselben Sitzung (unter der Sperre geprüft, dauerhaft gemerkt): mit demselben
+             Rumpf dieselbe Antwort ohne neues Schreiben; mit einem anderen Rumpf eine Absage — nie still verworfen. */
+          const schon = await anfrageLesen(store, s.bestand, teilSitzung, rumpf.anfrage, teilAbdruck);
+          if (schon && schon.gleich) return { wiederholt: schon.antwort };
+          if (schon) {
+            await protokoll("schreiben", ks, "abgewiesen", "Teilweg: Anfragekennung mit anderem Inhalt", wer);
+            return antwort({ fehler: "Die Änderung ist ungültig.", code: "ANFRAGE_WIEDERVERWENDET",
+              text: "Diese Anfragekennung gehört zu einer anderen Änderung. Es wurde nichts geändert." }, 422);
+          }
           if (!jetzt || !jetzt.bestand || !jetzt.epoche || jetzt.epoche !== rumpf.epoche) {
             await protokoll("schreiben", ks, "konflikt", "Teilweg: Epoche", wer);
             return antwort({ fehler: "konflikt", code: "NEU_LADEN",
@@ -1640,7 +1649,20 @@ async function behandeln(req, context, ctx) {
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
-        return { erg, jetzt, zuSchreiben, stempelVerworfen };
+        /* Teilweg, 2.3 Schritt 7: Stand, Epoche und die Versionen nur der berührten Segmente — über die Sicht des eben
+           Geschriebenen, wie das nächste GET sie liefert; nie der ganze Bestand. Noch unter der Sperre als Vermerk
+           abgelegt (Wiederholschutz), damit keine Wiederholung dazwischenkommt. */
+        let teilAntwort = null;
+        if (teilweg) {
+          const sichtN = bestandFuerAntwort(personenAngleichen(zuSchreiben), s);
+          teilAntwort = { ok: true, etag: erg.stand, epoche: erg.epoche || teilEpoche,
+            versionen: beruehrteVersionen(sichtN, teilMandant, teilBeruehrt), zusammengefuehrt: false,
+            ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht und wurden aus der älteren Kopie nicht übernommen. Bitte neu laden.` } : {}) };
+          await anfrageMerken(store, s.bestand, teilSitzung, rumpf.anfrage, teilAbdruck, teilAntwort).catch(async (e) => {
+            await protokoll("fehler", ks, "teilanfrage-vermerk", String(e && e.message || e).slice(0, 200)).catch(() => {});
+          });
+        }
+        return { erg, jetzt, zuSchreiben, stempelVerworfen, teilAntwort };
       });
       if (gesperrt instanceof Response) {
         /* Teilweg: Eine Absage der Kette bringt nie den ganzen Bestand und nie einen Stand mit (2.3 Schritt 5) —
@@ -1653,7 +1675,8 @@ async function behandeln(req, context, ctx) {
         }
         return gesperrt;
       }
-      const { erg, jetzt, zuSchreiben, stempelVerworfen } = gesperrt;
+      if (gesperrt.wiederholt) return antwort({ ...gesperrt.wiederholt, wiederholt: true });
+      const { erg, jetzt, zuSchreiben, stempelVerworfen, teilAntwort } = gesperrt;
 
       /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,
          stellt er selbst zu (Commit 4) — nach dem Speichern, aus dem
@@ -1697,16 +1720,7 @@ async function behandeln(req, context, ctx) {
             await protokoll("schreiben", ks, "paket", z, wer);
         } catch { /* egal */ }
       }
-      if (teilweg) {
-        /* 2.3 Schritt 7: Stand, Epoche und die Versionen nur der berührten Segmente — gerechnet über die Sicht
-           des eben Geschriebenen, wie das nächste GET sie liefern würde. Nie der ganze Bestand. */
-        const sichtN = bestandFuerAntwort(personenAngleichen(zuSchreiben), s);
-        const datenT = { ok: true, etag: erg.stand, epoche: erg.epoche || teilEpoche,
-          versionen: beruehrteVersionen(sichtN, teilMandant, teilBeruehrt), zusammengefuehrt: false,
-          ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht und wurden aus der älteren Kopie nicht übernommen. Bitte neu laden.` } : {}) };
-        idempotenzMerken(s.bestand, s, rumpf.anfrage, datenT);
-        return antwort(datenT);
-      }
+      if (teilweg) return antwort(teilAntwort);
       return antwort({ ok: true, etag: erg.stand,
         /* Review N-A: der Betreiber bekommt den gespeicherten Vertragsstand der Pakete zurück. */
         vertragsstand: s.rolle === "betreiber" ? vertragsstandVon(zuSchreiben) : undefined,
