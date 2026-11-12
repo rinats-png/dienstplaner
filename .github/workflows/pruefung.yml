@@ -66,6 +66,9 @@ jobs:
       - name: Nachträge und Folgebefunde einzelner Pakete
         run: npm run pruefung:wp-nachtraege
 
+      - name: WP-16c Messung des Korrekturpfads (kleiner Maßstab)
+        run: npm run pruefung:wp16c-messung
+
       - name: Querschnittsprüfungen (bisher nicht verdrahtet)
         run: npm run pruefung:querschnitt
 
