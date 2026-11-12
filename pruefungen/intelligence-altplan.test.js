@@ -137,7 +137,8 @@ describe("Zuordnung: Kürzel und Personen", () => {
     const r = await mitZeilen([Z({ personalnummer: "100002", kuerzel: "Zwischendienst X" }), Z({ personalnummer: "100002", datum: T2, kuerzel: "N" }),
       Z({ personalnummer: "100002", datum: "2026-11-06", kuerzel: "N" }), Z({ personalnummer: "100002", datum: "2026-11-07", kuerzel: "Z" })], { ladeBestand: async () => b }).ruf();
     expect(r.zahlen).toMatchObject({ unbekanntKuerzel: 3, mehrdeutigKuerzel: 1, zugeordnet: 0 });
-    expect(r.nichtZugeordnet.kuerzelUnbekannt).toEqual([{ kuerzel: "(anderes Kürzel)", anzahl: 1 }, { kuerzel: "n", anzahl: 2 }]);
+    expect(r.nichtZugeordnet.kuerzelUnbekannt).toEqual([{ index: 1, anzahl: 1, zeilen: [1] }, { index: 2, anzahl: 2, zeilen: [2, 3] }]);
+    expect(JSON.stringify(r)).not.toMatch(/zwischendienst/i);
     expect(r.nichtZugeordnet.kuerzelMehrdeutig).toEqual([4]);
     expect(b).toEqual(vorher);
   });
@@ -216,7 +217,8 @@ describe("Gesundheit und Abwesenheit", () => {
   it("Zeilen mit „krank“/„Attest“ in Namens- oder Zusatzfeldern: kein Echo; unbekannte Kürzel nur kurz und unauffällig", async () => {
     const r = await mitZeilen([Z({ personalnummer: "100002", kuerzel: "Attest vom Arzt" }), Z({ name: "Kranke Attest", kuerzel: "F" }), Z({ personalnummer: "100002", datum: T2, kuerzel: "Qx" })]).ruf();
     expect(leckt(r)).toEqual([]);
-    expect(r.nichtZugeordnet.kuerzelUnbekannt).toEqual([{ kuerzel: "qx", anzahl: 1 }]);
+    expect(r.nichtZugeordnet.kuerzelUnbekannt).toEqual([{ index: 1, anzahl: 1, zeilen: [3] }]);
+    expect(JSON.stringify(r)).not.toMatch(/qx/i);
   });
   it("Bestandsabwesenheiten (krank mit Grund und Diagnose) und Krankmeldungsfall tauchen nirgends auf", async () => {
     const r = await mitZeilen([Z({ personalnummer: "100001" }), Z({ personalnummer: "100005", datum: T2 }), Z({ personalnummer: "100002", kuerzel: "S" })]).ruf();
@@ -226,6 +228,41 @@ describe("Gesundheit und Abwesenheit", () => {
     const r = await mitZeilen([Z({ personalnummer: "100001" })]).ruf();
     for (const dreck of [{ grund: "Grippe" }, { art: "krank" }, { text: "Attest" }, { x: "Kira Krank" }, { x: "Urlaub" }, { x: "Magen" }])
       expect(leckt({ ...r, ...dreck }), JSON.stringify(dreck)).not.toEqual([]);
+  });
+});
+
+describe("Kürzeltext wird nie ausgegeben", () => {
+  const PROBE = ["grippe", "chemo", "covid", "corona", "fieber", "erkältet", "burnout", "psych", "klinik", "kh", "op", "unfall", "quarantäne", "krk", "krnk", "aub",
+    "au-bsch", "kr/au", "k-kind", "kind-kr", "bv", "mu", "muschu", "ez", "ku", "sv"];
+  /* Wörter bis 3 Zeichen nur als ganzes Wort (sonst Zufallstreffer in Schlüsselnamen), längere auch als Teil. */
+  const ohneTreffer = (r, w) => { const t = JSON.stringify(r).toLowerCase(); const x = w.toLowerCase(); return x.length <= 3 ? new RegExp("(^|[^a-z0-9])" + x.replace(/[^a-z0-9]/g, "\const ohneTreffer = (r, w) => JSON.stringify(r).toLowerCase().includes(w.toLowerCase());") + "([^a-z0-9]|$)").test(t) : t.includes(x); };
+  it("Probeliste: alle Gesundheits-/Abwesenheitskürzel werden zu „Abwesenheit (Art nicht übernommen)“; kein Kürzeltext in der Ausgabe", async () => {
+    const zeilen = PROBE.map((k, i) => Z({ personalnummer: "100002", datum: `2026-11-${String(i + 1).padStart(2, "0")}`, kuerzel: k }));
+    const r = await mitZeilen(zeilen).ruf();
+    expect(r.abwesenheit).toEqual({ hinweis: ABWESENHEIT_HINWEIS, anzahl: PROBE.length });
+    expect(r.zahlen.unbekanntKuerzel).toBe(0);
+    for (const w of PROBE) expect(ohneTreffer(r, w), w).toBe(false);
+  });
+  it("auch ein wirklich unbekanntes Kürzel erscheint nie als Text (nur Index, Anzahl, Zeilen)", async () => {
+    const r = await mitZeilen([Z({ personalnummer: "100002", kuerzel: "Qx7" }), Z({ personalnummer: "100002", datum: T2, kuerzel: "QX7" }), Z({ personalnummer: "100002", datum: "2026-11-06", kuerzel: "zz" })]).ruf();
+    expect(r.nichtZugeordnet.kuerzelUnbekannt).toEqual([{ index: 1, anzahl: 2, zeilen: [1, 2] }, { index: 2, anzahl: 1, zeilen: [3] }]);
+    for (const w of ["qx7", "zz"]) expect(ohneTreffer(r, w), w).toBe(false);
+  });
+  it("Gegenprobe (Mutation): würde ein Kürzeltext ausgegeben, schlägt die Prüfung an", async () => {
+    const r = await mitZeilen([Z({ personalnummer: "100002", kuerzel: "Qx7" })]).ruf();
+    const mutiert = { ...r, nichtZugeordnet: { ...r.nichtZugeordnet, kuerzelUnbekannt: [{ kuerzel: "qx7", anzahl: 1 }] } };
+    expect(ohneTreffer(mutiert, "qx7")).toBe(true);
+    expect(ohneTreffer({ ...r, abwesenheit: { hinweis: "grippe", anzahl: 1 } }, "grippe")).toBe(true);
+  });
+});
+
+describe("Tag nicht vergleichbar: kein gedachter Planüberschreib", () => {
+  it("an einem Tag, an dem die Person abwesend ist, wird nichts in den gedachten Plan geschrieben (die Abwesenheit gilt vor dem Altplan: kein Befund aus diesem Tag)", async () => {
+    /* a5 ist am 4.11. abwesend; ein Altplan-Dienst S dort darf die Folgetagsprüfung nicht beeinflussen: Früh am 5.11. (ebenfalls abwesend) bliebe sonst Ruhezeit-Befund. */
+    const b = betrieb(); b.abwesenheiten = [{ id: "ab1", personId: "a5", von: T1, bis: T1, art: "krank", grund: "Grippe" }];
+    const r = await mitZeilen([Z({ personalnummer: "100005", kuerzel: "S" }), Z({ personalnummer: "100005", datum: T2, kuerzel: "F" })], { ladeBestand: async () => bestand(b) }).ruf();
+    expect(r.unterschied.zeilen.map((x) => x.status)).toEqual(["nicht_vergleichbar", "neu"]);
+    expect(r.konflikte).toEqual([]);
   });
 });
 

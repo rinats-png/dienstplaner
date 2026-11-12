@@ -8,7 +8,7 @@
    - Schichtkürzel → vorhandene Dienstart (genau/normalisiert); unbekannte und mehrdeutige Kürzel werden gemeldet, nie angelegt.
    - Person → Personalnummer, sonst Name, gegen die Personen der Rollensicht; unbekannt/mehrdeutig wird gemeldet, nie angelegt.
    - Abwesenheitskürzel (krank, Attest, Urlaub …) → nur die Kategorie „Abwesenheit (Art nicht übernommen)“, ohne Grund,
-     nie als Abwesenheitseintrag; das Kürzel selbst wird nicht ausgegeben.
+     nie als Abwesenheitseintrag; das Kürzel selbst wird nicht ausgegeben. Auch unbekannte Kürzel werden nie als Text ausgegeben (nur Index, Anzahl, Zeilennummern).
    - Konflikte: Doppelbelegung im Altplan; Ruhezeit, Folgegrenzen, Qualifikation, Aufgaben, Fachkraftquote über die Engine
      (nur NEUE Befunde gegenüber dem heutigen Plan).
    - Unterschied zum heutigen Plan je Zeile (gleich/neu/geaendert/entfaellt/nicht_vergleichbar).
@@ -49,9 +49,11 @@ const norm = (s) => String(s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").to
   .replace(/[.,;:()]/g, " ").replace(/\s+/g, " ").trim();
 const FREI_KUERZEL = new Set(["-", "–", "frei", "off"]);
 /* Abwesenheit jeder Art (auch Gesundheit): nie als Art übernommen, nie ausgegeben. */
-const ABWESEND = /(^|\s)(krank|kr|k|au|gk|kk|uk|u|ue|abw|fb|reha|kur)(\s|$)|krank|attest|arbeitsunf|urlaub|schwanger|mutterschutz|diagnos|abwesen|elternzeit|arzt/;
-const KURZ_ERLAUBT = /^[a-z0-9+\-/ ]{1,12}$/;
-const ANDERES = "(anderes Kürzel)";
+const ABW_WORTE = new Set(["krank", "kr", "k", "au", "gk", "kk", "uk", "u", "ue", "abw", "fb", "reha", "kur", "ku", "kh", "op", "bv", "mu", "ez", "sv", "krk", "krnk", "aub",
+  "bsch", "kind", "muschu", "psych", "kvk", "ak"]);
+const ABW_TEILE = /krank|krk|krnk|attest|arbeitsunf|urlaub|schwanger|mutterschutz|muschu|diagnos|abwesen|elternzeit|arzt|grippe|chemo|covid|corona|fieber|erk[a-z]*ltet|burnout|burn out|psych|klinik|krankenhaus|quarant|unfall|therap|op-|operation|infekt|migrane|depress|verletz|schmerz/;
+/* Abwesenheit jeder Art (auch Gesundheit), auch mit Bindestrich/Schrägstrich verbunden: nie als Art übernommen, nie ausgegeben. */
+const abwesend = (k) => ABW_TEILE.test(k) || k.split(/[ /+_-]+/).some((t) => ABW_WORTE.has(t));
 
 /** Strenge Prüfung der Zeilen; liefert normalisierte Zeilen mit Zeilennummer. Nichts davon wird ausgegeben, geloggt oder gespeichert. */
 function zeilenLesen(zeilen) {
@@ -99,7 +101,7 @@ function kuerzelIndex(dienstarten) {
 function kuerzelZu(k, nach) {
   if (nach.has(k)) { const ids = [...nach.get(k)]; return ids.length === 1 ? { art: "dienst", dienstId: ids[0] } : { art: "mehrdeutig" }; }
   if (FREI_KUERZEL.has(k) || k === "") return { art: "frei" };
-  if (ABWESEND.test(k)) return { art: "abwesenheit" };
+  if (abwesend(k)) return { art: "abwesenheit" };
   return { art: "unbekannt" };
 }
 
@@ -167,8 +169,9 @@ export async function altplanVorschau(o) {
     if (k.art === "abwesenheit") { z.abwesenheit++; merke(bericht.zeilenAbwesenheit, zl.nr); continue; }
     if (k.art === "unbekannt") {
       z.unbekanntKuerzel++;
-      const s = KURZ_ERLAUBT.test(zl.kuerzel) ? zl.kuerzel : ANDERES;
-      unbekannt.set(s, (unbekannt.get(s) || 0) + 1);
+      /* Nie der Text: nur ein stabiler, anonymer Index je verschiedenem Kürzel (nach erstem Auftreten) mit Zeilennummern. */
+      if (!unbekannt.has(zl.kuerzel)) unbekannt.set(zl.kuerzel, { index: unbekannt.size + 1, anzahl: 0, zeilen: [] });
+      const u = unbekannt.get(zl.kuerzel); u.anzahl++; if (u.zeilen.length < 50) u.zeilen.push(zl.nr);
       continue;
     }
     if (k.art === "mehrdeutig") { z.mehrdeutigKuerzel++; merke(bericht.kuerzelMehrdeutig, zl.nr); continue; }
@@ -220,7 +223,8 @@ export async function altplanVorschau(o) {
       else if (neu === null) status = "entfaellt";
       else status = "geaendert";
       summe[status]++;
-      if (vergleichbar) abw[`${p.id}|${zl.datum}`] = zl.ziel;
+      /* Immer gesetzt: an Tagen mit Abwesenheit (oder ohne Planung) gilt in der Engine die Abwesenheit vor der Abweichung; der Test pinnt das. */
+      abw[`${p.id}|${zl.datum}`] = zl.ziel;
       diff.push({ zeile: zl.nr, personId: String(p.id), datum: zl.datum, status, heute: vergleichbar ? heutig : null, vorschlag: neu });
     }
     const gedacht = { ...r, abweichungen: abw };
@@ -236,8 +240,7 @@ export async function altplanVorschau(o) {
     return { diff, summe, konflikte, konflikteStatus };
   }));
 
-  bericht.kuerzelUnbekannt = [...unbekannt.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .slice(0, ALTPLAN_GRENZEN.bericht).map(([kuerzel, anzahl]) => ({ kuerzel, anzahl }));
+  bericht.kuerzelUnbekannt = [...unbekannt.values()].slice(0, ALTPLAN_GRENZEN.bericht);
   return {
     funktion: "F7A", quelle: "berechnet", hinweis: F7A_HINWEIS, zeitraum: { von, bis },
     zusammenfassung: { verfuegbar: false, text: F7A_TEXT },

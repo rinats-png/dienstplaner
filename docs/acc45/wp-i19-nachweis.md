@@ -15,7 +15,7 @@ Echte Modellaufrufe mit Personendaten bleiben hinter E-25/E-26; es gibt in diese
 - Kürzel → vorhandene Dienstart (Kürzel oder Name, normalisiert); unbekannt/mehrdeutig wird gemeldet, nie angelegt. Person → Personalnummer vor Name; unbekannt/mehrdeutig wird gemeldet, nie angelegt.
 - Abwesenheitskürzel (krank, Attest, Urlaub, …) → nur „Abwesenheit (Art nicht übernommen)“ mit Anzahl, ohne Kürzel, ohne Grund, nie als Abwesenheitseintrag.
 - Konflikte: Doppelbelegung im Altplan (beide Zeilen entfallen); Ruhezeit, Folgegrenzen, Qualifikation, Aufgaben, Fachkraftquote über `pruefen` der Engine, nur NEUE Befunde gegenüber dem heutigen Plan. Unterschied je Zeile: gleich / neu / geaendert / entfaellt / nicht_vergleichbar.
-- Ausgabe ohne Rohdaten der Zeilen (nur Zeilennummer, Kennung aus der Sicht, Dienstart-Kennung). Keine Protokollierung, keine Speicherung, nichts geschrieben (Bestand tief eingefroren und gleich).
+- Ausgabe ohne Rohdaten der Zeilen: weder Namen, Personalnummern noch Kürzeltext (auch unbekannte Kürzel nicht; nur anonymer Index, Anzahl und Zeilennummern). Kürzel mit Gesundheits-/Abwesenheitsbezug (auch mit Bindestrich/Schrägstrich) werden zu „Abwesenheit (Art nicht übernommen)“. Test mit Probeliste und Mutation. Keine Protokollierung, keine Speicherung, nichts geschrieben (Bestand tief eingefroren und gleich).
 - Modellgestützte Zuordnung: „nicht verfügbar“ (kein Gateway-Aufruf).
 
 ## Offen
