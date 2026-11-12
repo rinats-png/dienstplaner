@@ -2,8 +2,8 @@
   "epoche": 10,
   "halter": "hauptchat",
   "uebernommen_am": "2026-11-12T06:00:50.570Z",
-  "erneuert_am": "2026-11-12T22:13:18.801Z",
-  "gueltig_bis": "2026-11-13T00:43:18.801Z",
+  "erneuert_am": "2026-11-12T22:53:39.111Z",
+  "gueltig_bis": "2026-11-13T01:23:39.111Z",
   "uebergabe": "Hauptchat: Lease Epoche 9 abgelaufen 05:46Z, niemand uebernommen; Integrationskopf fb2745fb nach #218; Agenten WP-48.3, I20-Review, 16c-Messung aktiv",
   "vorgaenger": "hauptchat",
   "freigegeben_am": null
