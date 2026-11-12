@@ -15,7 +15,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -120,7 +120,7 @@ describe("Halt im Prozess", () => {
       await store.setJSON("drain-mitglied", { gen: 2 });
     });
     await inDerMitte;
-    const h = H.halten(3000);
+    const h = H.halten(8000);       // QS-3: Drain-Grenze = Viertel der Frist (2 s), gross genug gegen CI-Last
     let bestaetigt = false;
     h.bereit.then(() => { bestaetigt = true; });
     await warte(20);
@@ -138,7 +138,10 @@ describe("Halt im Prozess", () => {
   it("Wiedereintritt: verschachtelte Raumsperre, Reihe und Ablage in einer zugelassenen Arbeit laufen im Halt weiter", async () => {
     let weiter = () => {};
     const tor = new Promise((r) => { weiter = r; });
+    let drin = () => {};
+    const zugelassen = new Promise((r) => { drin = r; });
     const t = R.unterRaumsperre("raum-r1", async () => {
+      drin();                                            // QS-3: die Arbeit ist nachweislich zugelassen (statt 5 ms zu schlafen)
       await tor;                                         // der Halt beginnt, während diese Arbeit zugelassen ist
       await store.setJSON("re-1", { gen: 1 });
       await R.unterRaumsperre("raum-r1", () => store.setJSON("re-2", { gen: 1 }));   // Wiedereintritt derselben Sperre
@@ -146,8 +149,8 @@ describe("Halt im Prozess", () => {
       await H.vorgang(() => store.delete("re-1"));
       return "fertig";
     });
-    await warte(5);
-    const h = H.halten(3000);
+    await zugelassen;
+    const h = H.halten(8000);
     weiter();
     expect(await t).toBe("fertig");
     expect(await h.bereit).toBe(true);
@@ -158,11 +161,17 @@ describe("Halt im Prozess", () => {
   it("Ein Hintergrundvorgang, der nach dem Ende seiner Arbeit schreibt, wird wieder gehalten", async () => {
     /** @type {Promise<any>|null} */
     let spaeter = null;
+    /* QS-3: Der Hintergrundvorgang startet erst, wenn der Halt bestaetigt ist (Tor), nicht nach 40 ms Schlaf: unter Last
+       lief er sonst schon vor dem Halt los und schrieb zu frueh. */
+    let los = () => {};
+    const tor = new Promise((r) => { los = r; });
     await R.unterRaumsperre("raum-h", async () => {
-      spaeter = warte(40).then(() => store.setJSON("hinten", { gen: 1 }));
+      spaeter = tor.then(() => store.setJSON("hinten", { gen: 1 }));
     });
     const h = H.halten(2000);
     expect(await h.bereit).toBe(true);
+    los();
+    expect(await warteBis(() => H.haltZustand().wartend === 1)).toBe(true);   // gehalten, nicht geschrieben
     await warte(80);
     expect(await lies("hinten")).toBe(null);
     H.freigeben(h);
@@ -234,9 +243,10 @@ describe("Halt im Prozess", () => {
     await warte(60);
     H.freigeben(h);
     expect(H.halten(1000)).toBe(null);
-    await warte(80);
-    const h2 = H.halten(1000);
-    expect(h2).not.toBe(null);
+    /* QS-3: Die Pause ist so lang wie der letzte Halt (unter Last auch deutlich laenger als 60 ms): auf das Pausenende
+       warten statt 80 ms zu schlafen. */
+    let h2 = null;
+    expect(await warteBis(() => { h2 = H.halten(1000); return h2 !== null; })).toBe(true);
     H.freigeben(h2);
   });
 
@@ -260,6 +270,7 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     const h = await H.haltAnfordern(verz(), { warteMs: 2000 });
     expect(h.gehalten).toBe(true);
     const w = store.setJSON("kanal-1", { gen: 1 });
+    expect(await warteBis(() => H.haltZustand().wartend === 1)).toBe(true);   // QS-3: wartet nachweislich
     await warte(50);
     expect(await lies("kanal-1")).toBe(null);
     expect(await h.freigeben()).toBe(true);
@@ -298,14 +309,19 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
 
   it.skipIf(process.platform === "win32")("Anfrage nicht lesbar (Link, ELOOP): kein Freigeben, danach nicht bewiesen", async () => {
     const { symlink } = await import("node:fs/promises");
-    await H.kanalStarten({ verzeichnis: verz(), taktMs: 10, protokoll: () => {} });
-    const h = await H.haltAnfordern(verz(), { warteMs: 2000 });
+    const meldungen = [];
+    await H.kanalStarten({ verzeichnis: verz(), taktMs: 10, protokoll: (m) => meldungen.push(m) });
+    const h = await H.haltAnfordern(verz(), { fristMs: 8000, warteMs: 10000 });
     expect(h.gehalten).toBe(true);
     const ziel = path.join(basis, "link-ziel.json");
     await writeFile(ziel, "{}");
-    await rm(path.join(verz(), H.ANFRAGE), { force: true });
-    await symlink(ziel, path.join(verz(), H.ANFRAGE));
-    await warte(400);  // Timing: unter CI-Last braucht der Kanal (Takt 10 ms) mehr als 80 ms; die Erwartung bleibt unverändert
+    /* QS-3: Der Link ersetzt die Anfrage in einem Schritt (Umbenennen). Vorher: rm, dann symlink: in der Luecke sah der
+       Kanal (Takt 10 ms) „Anfrage fehlt“ und gab frei (Freigabe „geloescht“) — unter CI-Last war die Luecke gross genug.
+       Statt 400 ms zu schlafen, wird auf die Meldung des Kanals gewartet. */
+    const tmpLink = path.join(verz(), `link-${process.pid}.tmp`);
+    await symlink(ziel, tmpLink);
+    await rename(tmpLink, path.join(verz(), H.ANFRAGE));
+    expect(await warteBis(() => meldungen.some((m) => /nicht lesbar/.test(m)))).toBe(true);
     expect(H.haltZustand().gehalten).toBe(true);
     expect(await h.freigeben()).toBe(false);
   });
@@ -318,8 +334,10 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     expect((await readdir(verz())).includes(H.ANFRAGE)).toBe(false);          // kein Halt über einen Neustart
     await writeFile(path.join(verz(), H.ANFRAGE), JSON.stringify({ fassung: 1, token: "b".repeat(32), fristMs: 1000,
       erstellt: new Date(Date.now() - 60_000).toISOString() }));
-    await warte(400);
-    const antwort = JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8"));
+    /* QS-3: auf die Ablehnung warten statt 400 ms zu schlafen */
+    const antwortLesen = async () => { try { return JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8")); } catch { return null; } };
+    expect(await warteBis(async () => (await antwortLesen())?.token === "b".repeat(32))).toBe(true);
+    const antwort = await antwortLesen();
     expect([antwort.token, antwort.stand]).toEqual(["b".repeat(32), "abgelehnt"]);
     expect(H.haltZustand().gehalten).toBe(false);
     await rm(path.join(verz(), H.ANFRAGE), { force: true });
