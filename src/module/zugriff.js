@@ -44,14 +44,16 @@ export function modulKontext({ sitz, kontext } = {}) {
   const eigene = person && typeof person.bereich === "string" && person.bereich && person.bereich !== "ALLE" ? person.bereich : null;
   const m = sitz && istObjekt(sitz.mandant) ? sitz.mandant : null;
   const k = istObjekt(kontext) ? kontext : {};
+  const berichtZugriff = berichtZugriffFuer(rolle);
   return {
     wachbuchZugriff: wachbuchZugriffFuer(rolle),
-    berichtZugriff: berichtZugriffFuer(rolle),
+    berichtZugriff,
     person: person && person.id !== undefined && person.id !== null ? String(person.id) : null,
     eigeneEinheit: eigene,
     personen: m && Array.isArray(m.personen) ? m.personen.filter(istObjekt) : [],
     qualGueltig,
-    /* Bestätigte Ist-Zeiten (OB-2): ohne Quelle des Aufrufers „ungeklärt“ (null), nie die Planzeit. */
-    dienstzeit: typeof k.dienstzeit === "function" ? k.dienstzeit : () => null,
+    /* Bestätigte Ist-Zeiten (OB-2, src/module/dienstzeit.js): nur mit Berichtszugriff „voll“ (Planung, Leitung);
+       ohne Quelle des Aufrufers oder ohne diesen Zugriff „ungeklärt“ (null), nie die Planzeit. */
+    dienstzeit: berichtZugriff === "voll" && typeof k.dienstzeit === "function" ? k.dienstzeit : () => null,
   };
 }
