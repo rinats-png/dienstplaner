@@ -9,10 +9,10 @@ Aktuelle Zahlen (erzeugt; die Tabelle vom 2026-11-02 mit 162,5 PT und 44 Paketen
 <!-- AUTO:BEGIN rechnung -->
 | Größe | Wert (erzeugt aus `work-packages.json`) |
 |---|---|
-| Pakete | 197 (ACC45 97, Folge 10, WP-19 15, Intelligence 40, extern 35) |
+| Pakete | 199 (ACC45 99, Folge 10, WP-19 15, Intelligence 40, extern 35) |
 | integriert / produktiv | 81 / 3 |
-| offener Entwicklungsaufwand | 310,2–528,7 PT |
-| kritischer Pfad ohne Intelligence | WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT** |
+| offener Entwicklungsaufwand | 309,5–528 PT |
+| kritischer Pfad ohne Intelligence | WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **23,3–36,2 PT** |
 | kritischer Pfad gemeinsam | WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT** |
 | Zeitprognosen | [`GESAMTPLAN.md`](GESAMTPLAN.md) |
 <!-- AUTO:END rechnung -->

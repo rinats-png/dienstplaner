@@ -263,6 +263,8 @@ geschlossen, R-9). Der Kern (WP-19.0) ist über PR #82 integriert; WP-16, WP-26,
 nur, weil WP-19.0 dort noch REVIEW ist. Rechte der sechs Module aus abe3e157 sind **vorläufig streng** (`wp19-offene-fragen-agent.md`
 R-1…R-12, `modul-rechte-wp19.test.js` 54/54). Statuswechsel auf `vorlaeufig` nur durch den Betreiber mit `abnahme` (G8, WP-19.13).
 
+Nachtrag nach #244: Die Abnahmematrix der zwölf Module im Prüfmodus liegt vor (PR #243: zwölf Module mal Rollen, 400 Serverzellen und Oberflächenmatrix bei 360/390/768 px; `docs/acc45/WP-19-MODULABNAHME.md` gleich den berechneten Werten; Registry unverändert `geplant`; 24-px-Mindestgröße für Modul-Schaltflächen, -Eingaben und -Kontrollkästchen in `src/ui/geraete.js`). Nicht geprüft: echte Geräte, Browser, Querformat, FN-01…34 (E-22), HTTP-E2E; WP-19.13 bleibt daher BLOCKED/IN_PROGRESS (Teilumfang). PR #244 (WP-19 B1, Sicherheitskorrektur): Die Schreibwege der fünf älteren Module (Posten, Bereichsplan, geteilter Dienst, Anlagen, Maschinenqualifikation) speichern bei Registry-Status `geplant` nichts mehr (alle Rollen, voller PUT und Teilweg; unbekannter Status geschlossen). Betroffen waren nur Integrations- und Staging-Builds, der Produktions-Build enthält die WP-19-Module nicht. Folgepakete: WP-19-B4 (modulAktiv-Härtung, Art. 16), WP-19-B5 (Oberflächen blenden Bearbeiten/Löschen bei `geplant` aus).
+
 | Paket | Code-Herkunft | Lauf 2026-11-12 | Kette im Code | Klasse | Erste ausführbare Scheibe / Sperre |
 |---|---|---|---|---|---|
 | WP-19.1 Posten | #49 + Rechte abe3e157 | – | ja | B | Postenplan-Einhängung in der Tagesansicht im Prüfmodus (E2E-Vorarbeit für 19.13); Rechte-Bestätigung (Betreiber) |

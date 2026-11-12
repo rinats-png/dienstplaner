@@ -1,30 +1,30 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 197,
+  "anzahl": 199,
   "statusZaehlung": {
-    "BLOCKED": 73,
-    "READY": 17,
-    "IN_PROGRESS": 16,
+    "BLOCKED": 72,
+    "READY": 19,
+    "IN_PROGRESS": 17,
     "REVIEW": 7,
     "INTEGRATED": 81,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 97,
-      "offen": 30,
+      "pakete": 99,
+      "offen": 32,
       "restPT": {
-        "min": 43.8,
-        "max": 70.9
+        "min": 44.599999999999994,
+        "max": 72.7
       }
     },
     "wp19": {
       "pakete": 15,
       "offen": 15,
       "restPT": {
-        "min": 66.8,
-        "max": 104.2
+        "min": 65.3,
+        "max": 101.7
       }
     },
     "intelligence": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 310.2,
-    "max": 528.7
+    "min": 309.5,
+    "max": 528
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -655,7 +655,7 @@
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #234 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #234, #243 und #244 integriert; Sammelpaket, Rest (WP-19.1 bis WP-19.13) offen."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -664,12 +664,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "siehe WP-19.x",
       "konfliktzonen": [],
-      "pr": ["#234"],
+      "pr": ["#234","#243","#244"],
       "nachweis": null,
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
       "dateien": "src/module/*, server",
-      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
+      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte."
     },
     {
       "id": "WP-20",
@@ -1875,7 +1875,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.2",
@@ -1959,7 +1959,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.5",
@@ -2043,7 +2043,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.8",
@@ -2127,7 +2127,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.11",
@@ -2155,7 +2155,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.12",
@@ -2192,12 +2192,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["WP-19.0","WP-19.1","WP-19.2","WP-19.3","WP-19.4","WP-19.5","WP-19.6","WP-19.7","WP-19.8","WP-19.9","WP-19.10","WP-19.11","WP-19.12"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #243 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2206,12 +2206,12 @@
       "agent": "Agent F – QA & Review",
       "modell": "opus (Rechte/Daten) / sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#243"],
       "nachweis": "docs/acc45/WP19-MODULPLAN.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": null
+      "notiz": "Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-I1",
@@ -5692,6 +5692,62 @@
       "tests": "Render-Prüfungen und Edge-Messung der Bedienabläufe der Rolle Schichtverantwortung bei 390x844 und 844x390",
       "dateien": "src/ (Navigation und Ansichten der Rolle Schichtverantwortung), Tests",
       "notiz": "Befund aus WP-21 Teil 3 (#211): Edge-Teilmessung bei 390x844 und 844x390, Schichtverantwortung Übergabe 0/2, weil die Ansicht in der SV-Navigation fehlt; Schichtverantwortung Krankmeldung 0/2 mit Zeitüberschreitung. Ursache der Zeitüberschreitung nicht geklärt. Nicht gemessene Viewports bleiben in WP-21 offen. SCHÄTZUNG. Stand (automatisch): INTEGRATED nach #213."
+    },
+    {
+      "id": "WP-19-B4",
+      "titel": "Modul-Registry: modulAktiv fail-closed; Berichtigung nach Art. 16 vereinheitlichen",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "PR #244 (WP-19 B1)",
+      "akzeptanz": "modulAktiv wirkt nur bei Status in der Allowlist; unbekannter oder fehlender Status schließt die Schreibwege; Berichtigung nach Art. 16 einheitlich nach Entscheidung von Betreiber und Datenschutz",
+      "tests": "pruefungen/modul-*.test.js",
+      "dateien": "server/lib (modulAktiv, Registry, modul-altwege.mjs)",
+      "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. modulAktiv: unbekannter oder fehlender Registry-Status gilt bei den neueren Modulen als wirkend (fail-open). Die Registry ist eine eingefrorene Quelltext-Konstante und kein Endpunkt schreibt den Status (nicht erreichbar); trotzdem härten (statusWirksam-Allowlist in modulAktiv). Entscheidung Berichtigung nach Art. 16: bei den neueren Modulen bei ausgeschaltetem Modul blockiert, bei den fünf älteren erlaubt; vereinheitlichen nach Entscheidung von Betreiber und Datenschutz (offen)."
+    },
+    {
+      "id": "WP-19-B5",
+      "titel": "Oberflächen der geplant-Module: Bearbeiten und Löschen bei Status geplant ausblenden",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.3,"max":0.8},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "PR #244 (WP-19 B1)",
+      "akzeptanz": "Bei Status geplant sind Bearbeiten und Löschen in den Oberflächen der Module Betriebsmittel und Kompetenzen nicht sichtbar",
+      "tests": "Oberflächentests der Module Betriebsmittel und Kompetenzen",
+      "dateien": "src/ui (Betriebsmittel, Kompetenzen)",
+      "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. Oberflächen der Module im Status geplant (Betriebsmittel, Kompetenzen) bieten Bearbeiten und Löschen an, der Server antwortet nun mit 403; bei Status geplant ausblenden statt Server-403."
     }
   ]
 }
