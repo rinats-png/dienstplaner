@@ -141,9 +141,9 @@ describe("Verdrahtung des Browser-Skripts", () => {
     expect(paket.scripts.pruefung).not.toContain("wcag-wp40-browser");
     expect(ci).not.toContain("wcag-wp40-browser");
   });
-  it("das Unit-Skript steht am Ende der Kette pruefung und in der CI", () => {
+  it("das Unit-Skript steht in der Kette pruefung vor der Sammelprüfung und in der CI", () => {
     expect(paket.scripts["pruefung:wcag-wp40"]).toBe("vitest run pruefungen/wcag-wp40.test.js");
-    expect(paket.scripts.pruefung.trim().endsWith("npm run pruefung:wcag-wp40")).toBe(true);
+    expect(paket.scripts.pruefung.trim().endsWith("npm run pruefung:wcag-wp40 && npm run pruefung:sammelpruefung")).toBe(true);
     expect(ci).toContain("pruefung:wcag-wp40");
   });
 });
