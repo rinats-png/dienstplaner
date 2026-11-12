@@ -676,7 +676,9 @@ kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
   Versionen/Erwartungswerte, Rennen (verschiedene Zellen, verschiedene Kernfelder, dieselbe Zelle), Teil-PUT gegen
   Stempel im selben Monat, Epoche nach Wiederherstellen, Idempotenz, Schalter, Rollen BR/BT, Seitenkanal, Form,
   Befund §7 je Rolle, 150 × 12 (Voll-PUT > 6 MB, Teil-PUT < 2 KB → 200). Mutanten T1–T12 in
-  `werkzeug/wp48-mutanten.mjs`.
+  `werkzeug/wp48-mutanten.mjs` (Lauf 2026-11-12: 12 von 12 getötet; T10 = Befund §7 ohne Fix, belegt das Rot vorher).
+  Grün dazu: wp48-rundweg, wp48-speicherkern, abnahme-a-b, rb1–rb5, selbstservice, schichtverantwortung,
+  sicht-schichtverantwortung, etag-pflicht, abnahme-409, routen-inventar, rechtematrix, `serverlauf.mjs rechte` 150/150.
 
 **Offene Punkte (Betreiber/Folgepakete, nicht geraten):**
 1. Einschalten des Schalters erst mit der Oberfläche (48.5) und Betreiberfreigabe; bis dahin hat der Weg keinen Aufrufer.
