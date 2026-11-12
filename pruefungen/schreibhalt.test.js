@@ -23,6 +23,15 @@ let basis;
 let H; let A; let R; let G;
 let store;
 const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+/** QS-2: wartet auf eine Bedingung (Abfrage alle 10 ms) statt eine feste Zeit zu schlafen; Obergrenze nur als Notausgang. */
+async function warteBis(bedingung, grenzeMs = 15000) {
+  const bis = Date.now() + grenzeMs;
+  for (;;) {
+    if (await bedingung()) return true;
+    if (Date.now() >= bis) return false;
+    await warte(10);
+  }
+}
 
 beforeAll(async () => {
   basis = await mkdtemp(path.join(tmpdir(), "wp28c-"));
@@ -261,9 +270,12 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
 
   it("Frist abgelaufen vor der Freigabe: freigeben() ist false, der Server schreibt weiter", async () => {
     await H.kanalStarten({ verzeichnis: verz(), taktMs: 10, protokoll: () => {} });
-    const h = await H.haltAnfordern(verz(), { fristMs: 80, warteMs: 2000 });
+    /* QS-2: Die Frist muss deutlich länger sein als der Handshake (Anfrage -> Takt -> Antwort -> Lesen). Mit 80 ms
+       lief die Frist unter CI-Last schon ab, bevor der Client „gehalten“ las (h.gehalten war dann false). Statt
+       fest zu schlafen, wird auf das tatsächliche Fristende gewartet. */
+    const h = await H.haltAnfordern(verz(), { fristMs: 1500, warteMs: 10000 });
     expect(h.gehalten).toBe(true);
-    await warte(200);
+    expect(await warteBis(() => !H.haltZustand().gehalten)).toBe(true);   // die Frist ist abgelaufen, der Server schreibt wieder
     await store.setJSON("kanal-2", { gen: 1 });
     expect(await h.freigeben()).toBe(false);
   });
@@ -274,9 +286,11 @@ describe("Dateikanal (Zustandsverzeichnis, kein Netz)", () => {
     expect(h.gehalten).toBe(true);
     const fremd = "c".repeat(32);
     await writeFile(path.join(verz(), H.ANFRAGE), JSON.stringify({ fassung: 1, token: fremd, fristMs: 1000, erstellt: new Date().toISOString() }));
-    await warte(400);
+    /* QS-2: auf die Ablehnung warten statt 400 ms zu schlafen */
+    const antwortLesen = async () => { try { return JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8")); } catch { return null; } };
+    expect(await warteBis(async () => (await antwortLesen())?.token === fremd)).toBe(true);
     expect(H.haltZustand().gehalten).toBe(true);                               // nicht freigegeben
-    const antwort = JSON.parse(await readFile(path.join(verz(), H.ANTWORT), "utf8"));
+    const antwort = await antwortLesen();
     expect([antwort.token, antwort.stand]).toEqual([fremd, "abgelehnt"]);
     expect(await h.freigeben()).toBe(false);                                   // löscht und bekommt „ersetzt“
     expect(H.haltZustand().gehalten).toBe(false);

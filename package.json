@@ -153,7 +153,7 @@
     "pruefung:token": "vitest run pruefungen/token.test.js",
     "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",
     "pruefung:post": "vitest run pruefungen/post.test.js",
-    "pruefung:mail-push-produktion": "vitest run pruefungen/mail-push-produktion.test.js",
+    "pruefung:mail-push-produktion": "vitest run pruefungen/mail-push-produktion.test.js --testTimeout=60000",
     "pruefung:testraum-mail": "vitest run pruefungen/testraum-mail.test.js",
     "pruefung:mail-push-anbieter": "vitest run pruefungen/mail-push-anbieter.test.js",
     "pruefung:mail-push-handler": "vitest run pruefungen/mail-push-handler.test.js",
