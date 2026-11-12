@@ -228,8 +228,8 @@ export function Statuszeile({ children, style, className = "" }) {
 
 /* ------------------------------ Fehlerband ------------------------------ */
 /** Meldung im Formular: Tönung und Wort, ohne Rand; wird vorgelesen (role="alert"). */
-export function Fehlerband({ children, style }) {
-  return <div className="fehlerband" role="alert" style={style}>{children}</div>;
+export function Fehlerband({ children, style, id }) {
+  return <div id={id} className="fehlerband" role="alert" style={style}>{children}</div>;
 }
 
 export { Pille };

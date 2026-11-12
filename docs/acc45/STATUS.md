@@ -44,18 +44,18 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **342,3–583,
 | Paket | Status | Branch | Notiz |
 |---|---|---|---|
 | WP-09 Kette B nach main | IN_PROGRESS | `integration/centric-complete` | Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge. |
-| WP-15 Selbstauskunft mit Freigabe und Stempelabgleich | REVIEW | `acc45/time/wp15-selbstauskunft-mit-freigabe-` | Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. |
-| WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). |
+| WP-15 Selbstauskunft mit Freigabe und Stempelabgleich | REVIEW | `acc45/time/wp15-selbstauskunft-mit-freigabe-` | Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 1c1a27e0 (feature/wp15-wp32d 3c492f3a), Einbindung 7cee8eaf; PR-Beleg fehlt. Offen: Browser-E2E, Selbstfreigabe Einpersonenbetrieb (F15-2, Betreiber). |
+| WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-16 kam nicht per Direkt-Merge 594f32c, sondern über PR #85 (58432b75); der Nachweis liegt im Integrationsstand. Status bleibt REVIEW bis zur Koordinatorentscheidung (Betreibervorgabe: abnahmefähig erst mit WP-16c, dessen Kern ebenfalls im Code ist). |
 | WP-19 Branchenpakete (12 Module) | IN_PROGRESS | `acc45/frontend/wp19-branchenpakete` | Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). |
 | WP-21 Smartphone/Tablet für alle Rollen | IN_PROGRESS | `acc45/frontend/wp21-smartphone-tablet-fur-alle-r` | Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten. Stand 2026-11-12: Teil 3 integriert (#211, 35 Render-Prüfungen bei 360/390/768/844x390; Teilmessung in Edge bei 390x844 und 844x390): Leitung Plan freigeben 2/2 (B16 behoben), Leitung/Planung Krankmeldung und Planung Übergabe bestanden. Offen: Schichtverantwortung Übergabe 0/2 (Ansicht fehlt in der SV-Navigation), Schichtverantwortung Krankmeldung 0/2 (Zeitüberschreitung), siehe WP-21-SV. Hinweis „Für Tablet und Rechner ausgelegt“ bleibt unverändert, bis alle 8 Viewports gemessen sind. Kartenansicht weiter blockiert durch wp40-Frage 6. Status bleibt IN_PROGRESS. Stand (automatisch): INTEGRATED nach #213. Stand 2026-11-12: WP-21-SV integriert (#213, Absturz der Startseite bei Nachtdienst von gestern ohne Einstempeln behoben). Die automatische Nachführung hatte WP-21 nach #213 auf INTEGRATED gesetzt; zurückgenommen — WP-21 bleibt IN_PROGRESS (offen: Kartenansicht wp40-Frage 6, echte Geräte, nicht gemessene Viewports, Vorlesesoftware). |
-| WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | REVIEW | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. |
-| WP-40 Barrierefreiheit WCAG 2.2 AA | REVIEW | `acc45/frontend/wp40-barrierefreiheit-wcag-2-2-aa` | Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). |
-| WP-16c Monatsabschluss: Korrekturrevisionen nach bestätigtem Lohnexport (Revision, Differenz, Korrekturexport, Freigabe, Audit) | REVIEW | `acc45/time/wp16c-korrekturrevisionen` | P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. |
-| WP-14c Stempel-/Korrekturkette: Folgebefunde F2, F4–F8 aus dem WP-14b-Delta-Review | REVIEW | `acc45/time/wp14c-folgebefunde` | SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. |
-| WP-16b Spur: ältere Spur-Zeilen nennen noch den Tag (Datenschutz nach WP-14b M1) | REVIEW | `acc45/time/wp16b-spur-tag` | SCHÄTZUNG. |
+| WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | REVIEW | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. |
+| WP-40 Barrierefreiheit WCAG 2.2 AA | REVIEW | `acc45/frontend/wp40-barrierefreiheit-wcag-2-2-aa` | Stand 2026-11-09: REVIEW. Quelltext-Prüfung bestanden, Browser-Abnahme offen (Reflow 1.4.10, Zielgröße 2.5.8, Fokus 2.4.11, Fehlertext 3.3.1). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Browser lokal (abnahme-kern.mjs, 6203b0a): 2.5.8 und 3.3.1 ohne Befund; 1.4.10 Leitung 320 px Schublade/Verteilung 26 px Querscroll; 2.4.11 Leitung 320 px Tab-Stopps in geschlossener Schublade — seither visibility:hidden in src/ui/geraete.js, nicht nachgemessen. axe nicht installiert (WP-33). |
+| WP-16c Monatsabschluss: Korrekturrevisionen nach bestätigtem Lohnexport (Revision, Differenz, Korrekturexport, Freigabe, Audit) | REVIEW | `acc45/time/wp16c-korrekturrevisionen` | P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Kern im Code (Revisionen, Differenz, Korrekturexport, zweite Freigabe, verwerfen, keine Frist), Direkt-Merge 594f32c3, PR-Beleg fehlt. Lücke: Laufzeitmessung des Korrekturpfads 60/150/400 × 12/24/36 fehlt (wp16c-fragen.md L6; werkzeug/wp16-messung.mjs misst nur Abschluss/Freeze). Offen als Betreiberentscheidung/E-29: Fragen 1, 3, 5, 6, 7, R2, R7, L5. |
+| WP-14c Stempel-/Korrekturkette: Folgebefunde F2, F4–F8 aus dem WP-14b-Delta-Review | REVIEW | `acc45/time/wp14c-folgebefunde` | SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. F6 (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleibt Fachentscheidung (wp16c-fragen.md F6a/F6b). |
+| WP-16b Spur: ältere Spur-Zeilen nennen noch den Tag (Datenschutz nach WP-14b M1) | REVIEW | `acc45/time/wp16b-spur-tag` | SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). |
 | WP-28b Lasttest-Befund 6: Sicherung bricht unter Last mit ENOENT ab (Wiederholung greift nicht); Auswertung des Nachlaufs S2/S5 | IN_PROGRESS | `acc45/infra/wp28b-nachlauf` | NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). |
-| WP-07b Stempel-Sonderfall „500 nach Speicherung“ (clientEventId, sechs Szenarien) | REVIEW | `acc45/time/wp07b-500-nach-speicherung` | SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. |
-| WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). |
+| WP-07b Stempel-Sonderfall „500 nach Speicherung“ (clientEventId, sechs Szenarien) | REVIEW | `acc45/time/wp07b-500-nach-speicherung` | SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. |
+| WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Nacharbeit aus Abschnitt 13 vollständig über PR #82 integriert (in integration/centric-complete, Vorfahr von integration/release-v4). Status-Hebung = Koordinatorentscheidung. Fachlich offen: FN-32, FN-33; Folgepaket stammdatenMonate/gruendeMonate. |
 | WP-PILOT Pilotbetriebe A (Pflege) und B (Sicherheitsdienst): Erhebung, synthetische Testszenarien, Datenschutzrahmen | IN_PROGRESS | `acc45/docs/pilot-erhebung` | SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. |
 | IMP-6 Schichtmodelle und Schichtzyklen: mehrere Modelle, unterschiedliche Zykluslängen, bestehende Validierungen | IN_PROGRESS | `–` | Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. |
 | IMP-8 Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E) | IN_PROGRESS | `–` | Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt. |
@@ -152,7 +152,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-63 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+50 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -170,7 +170,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-12 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-13 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-14 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| WP-15 | REVIEW | ✓ | – | – | – | – | – | – |
+| WP-15 | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-16 | REVIEW | ✓ | ✓ | T | – | – | – | – |
 | WP-17 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-18 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
@@ -184,6 +184,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-27 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-28 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-29 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-30 | BLOCKED | ✓ | – | T | – | – | – | – |
 | WP-31 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-32 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-33 | REVIEW | ✓ | T | – | – | – | – | – |
@@ -191,21 +192,33 @@ WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intellig
 | WP-37 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-38 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-39 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| WP-40 | REVIEW | ✓ | – | ✓ | – | – | – | – |
+| WP-40 | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-41 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-43 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-45 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-46 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-47 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-16c | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-32d | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-48 | BLOCKED | T | T | T | T | – | – | – |
+| WP-14c | REVIEW | T | ✓ | ✓ | – | – | – | – |
 | WP-27c | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-47b | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-16b | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-28b | IN_PROGRESS | T | T | T | T | – | – | – |
 | WP-28c | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-07b | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-S1 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
+| WP-19.0 | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-19.1 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.2 | BLOCKED | T | T | – | – | – | – | – |
+| WP-19.3 | BLOCKED | T | T | – | – | – | – | – |
 | WP-19.4 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.5 | BLOCKED | T | T | – | – | – | – | – |
+| WP-19.6 | BLOCKED | T | T | – | – | – | – | – |
 | WP-19.7 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.8 | BLOCKED | T | T | – | – | – | – | – |
+| WP-19.9 | BLOCKED | T | T | – | – | – | – | – |
 | WP-19.10 | BLOCKED | T | T | T | T | – | – | – |
 | WP-19.11 | BLOCKED | T | T | T | T | – | – | – |
 | WP-19.12 | BLOCKED | T | T | T | T | – | – | – |

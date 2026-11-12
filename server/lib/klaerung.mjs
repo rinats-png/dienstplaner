@@ -119,6 +119,19 @@ export function klaerungFuerRolle(m, sitzung, sichtFaelle) {
 }
 
 /**
+ * Personen, für die an diesem Tag ein offener Fall der Krankmeldung läuft (nur Kennungen). Für Funktionen, die keine
+ * Fälle lesen dürfen (Intelligence): sie bekommen diese Liste ausschließlich, um die Personen NICHT vorzuschlagen.
+ * @param {any} m  der Betrieb in der Sicht der lesenden Rolle
+ * @param {string} tag  JJJJ-MM-TT
+ * @returns {string[]}
+ */
+export function offenePersonenAm(m, tag) {
+  if (!istObj(m) || !tagGueltig(tag)) return [];
+  return liste(m.krankmeldungen).filter((f) => fallOffen(f) && tagGueltig(f.von) && tagGueltig(f.bis) && f.von <= tag && tag <= f.bis)
+    .map((f) => String(f.personId));
+}
+
+/**
  * Die Markierungen, deren Fall in diesem Stand noch offen ist. Die Oberfläche ändert nach einem Schritt
  * (endgültig, abgelehnt, zurückgezogen) zuerst nur den Status des Falls — eine Markierung zu einem nicht mehr
  * offenen (oder nicht sichtbaren) Fall gilt dann sofort nicht mehr, ohne auf das nächste Lesen zu warten.
