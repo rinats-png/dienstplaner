@@ -344,6 +344,9 @@ export const GRENZEN = {
   vollausgabe: { versuche: 300, fenster: 60, sperre: 60 },
   auswertung:  { versuche: 300, fenster: 60, sperre: 60 },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
+  /* Teilspeicherung (WP-48.3, POST /api/bestand/teile): eigene Art wie schreiben — je Aufruf kostet
+     Stufe 1 serverseitig noch O(Bestand), deshalb dieselbe Grenze, aber getrennt gezählt. */
+  teile:      { versuche: 120, fenster: 60,   sperre: 60 },
   /* Stempeln (WP-47). Eigene Arten, damit eine Stempelspitze weder die
      Planung (schreiben) blockiert noch von ihr gebremst wird.
        stempeln        je PERSON: niemand stempelt zehnmal in der Minute; ein

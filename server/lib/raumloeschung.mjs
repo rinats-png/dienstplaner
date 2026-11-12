@@ -189,6 +189,7 @@ export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
   await praefixWeg(`unzustellbar:${raum}:`);
   await praefixWeg(`zustellquote:${raum}:`);
   await praefixWeg(`importerledigt:${raum}:`);   // IMP-3: Wiederholschutz-Vermerke des Imports (lib/import/uebernahme.mjs)
+  await praefixWeg(`teilanfrage:${raum}:`);      // WP-48.3: Wiederholschutz der Teilspeicherung (lib/teilweg.mjs)
 
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein

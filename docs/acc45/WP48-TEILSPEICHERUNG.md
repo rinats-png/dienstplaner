@@ -646,6 +646,77 @@ Kern und Zeiger verlieren die Epoche, und der nächste Schreibvorgang von 48.2 b
 einen Mischstand" ist auf dem Laptop schon auf 219a5b0 rot (zu wenige Lesedurchgänge, Zeitgeber), unabhängig von
 dieser Änderung.
 
+### 7.2 WP-48.3 Server-Teilweg (Branch `feature/wp48-3-teilspeicherung`, Basis `integration/release-v4` 6c195b6)
+
+Stand 2026-11-12. 48.1/48.2 waren schon in `integration/release-v4` (die Branches `acc45/backend/wp48-1-2-pruefnetz-speicherkern`
+und `acc45/backend/wp48-integration` liegen 0 Commits vor). Umgesetzt ist nur Stufe 1 des Servers; keine Oberfläche (48.5),
+kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
+
+- **Weg** `POST /api/bestand/teile` und `teile: { format: 1, epoche, versionen }` im `GET /api/bestand`, beides **nur mit
+  Schalter `CENTRIC_TEILSPEICHERUNG=true`** (`server/lib/schalter.mjs`, Vorgabe aus: 404, GET ohne `teile`). Der alte
+  `PUT /api/bestand` bleibt in Verhalten und Antwort unverändert.
+- **Ein Rechtepfad.** Der Teilweg ist derselbe Block in `daten.mjs` wie der PUT: Unter der Raumsperre wird aus der Sicht der
+  Rolle (`bestandFuerAntwort(personenAngleichen(gespeichert))`, wie GET) und dem Delta der virtuelle Rumpf gebaut, mit
+  `etag = aktueller Stand` — danach laufen Gestaltprüfung, Stempel/Abschluss, `zusammenfuehren`, Fachprüfung,
+  Standorte, Personalnummer, `pruefeGestalt`, Schrumpfungssicherung und `bestandSchreiben` unverändert. Neu sind nur
+  Form, Epoche, Erwartungswerte/Versionen (`server/lib/teilweg.mjs`) und das Weglassen von `bestand`/`etag` aus
+  409-Antworten des Teilwegs.
+- **Befund §7 behoben** (`rechte.mjs` `zusammenfuehren`): abgeleitete Personenfelder werden jetzt auch auf der
+  gespeicherten Seite entfernt — der Rundweg ist für alle Rollen wirkungslos, die Schichtverantwortung bekommt kein 403
+  mehr (gilt für Voll- und Teilweg). Eine gespeicherte **leere** Einwilligungsliste räumt das Schreiben durch
+  Planung/Leitung/Kundenrolle weiter weg (leer = keine; kein Verlust) — bewusst unverändert.
+- `preisgestaltung` (`null` vs. `{}`): kommt im Teilweg nicht vor — Vertragsfelder sind Serverfelder (422), der
+  Betreiber bleibt beim Voll-PUT.
+- **Abweichungen vom Entwurf:** Bestätigungen (WP-22) gehen als Kernfeld `bestaetigungen` (kein eigenes Feld
+  `bestaetigungen` oben). Kernfelder außerhalb des Positivkatalogs `BETRIEB` → 422 (Oberfläche fällt auf den Voll-PUT
+  zurück). Die eigene Bremse `teile` (120/min je Raum) kommt zu `schreiben` hinzu: Wer beide Wege nutzt, hat das
+  Schreibbudget eines Raums **doppelt** (bewusst getrennt gezählt; Stufe 1 kostet je Aufruf O(Bestand)).
+- **Wiederholschutz (Review PR #224, Befunde 1–3):** Vermerk `teilanfrage:<raum>:<hash(Sitzung|anfrage)>` in der Ablage,
+  unter der Raumsperre direkt nach dem Speichern geschrieben, 24 h, nur Erfolge, mit dem Abdruck des Rumpfs. Gleiche
+  Kennung + gleicher Rumpf derselben Sitzung → gespeicherte Antwort mit `wiederholt: true`, kein Schreiben; gleiche
+  Kennung + anderer Rumpf → 422 `ANFRAGE_WIEDERVERWENDET`; eine andere Sitzung teilt keine Vermerke. Der Vermerk
+  überdauert einen Neustart; damit kann eine Wiederholung nach fremdem Zurücksetzen (ABA: A null→F, B F→null, A
+  wiederholt) B nicht mehr überschreiben. **Restgrenze:** Eine Wiederholung aus einer anderen Sitzung, nach 24 h oder
+  mit neuer Kennung prüft nur Erwartungswerte (ABA dann möglich, wie bei jedem compare-and-set über Werte; ein Zähler
+  je Zelle wäre eine Formatänderung der Scherbe). Abbruch genau zwischen Speichern und Vermerk: Vermerk fehlt. Die
+  Raumlöschung nimmt die Vermerke mit (`raumloeschung.mjs`).
+- **Grenzen der Vermerke (Review Delta #224):** Schlüssel `teilanfrage:<raum>:<Sitzung>:<Zeit>:<Anfrage>` (Ablauf und
+  Zählung allein aus dem Verzeichnis). Höchstens 200 gültige Vermerke je Sitzung und 5 000 je Raum; ist eine Grenze
+  erreicht, wird eine neue Anfrage **mit** Kennung mit 429 `TEILANFRAGEN_VOLL` abgewiesen (nichts geschrieben) — ein
+  gültiger Vermerk wird nie verdrängt (sonst wäre eine doppelte Anwendung möglich). Abgelaufenes der eigenen Sitzung
+  räumt die Prüfung unter der Sperre weg (≤ 200 Einträge), den Rest des Raums ein Lauf **außerhalb** der Sperre,
+  höchstens 500 je Lauf und alle 10 min je Raum. Unter der Sperre wird je Anfrage mit Kennung das Verzeichnis der
+  Sitzung und des Raums gelistet (keine Datei gelesen außer bei einem Treffer).
+- **Epoche zuerst:** Eine Wiederholung nach einem Wiederherstellen bekommt 409 `NEU_LADEN`, nicht die alte Antwort.
+- **Auflage für WP-48.5 (bekannte Grenze):** Eine Wiederholung aus einer **neuen Sitzung** (erneutes Anmelden, etwa aus
+  einem Offline-Puffer) teilt die Vermerke nicht und prüft nur Erwartungswerte — ABA bleibt dort möglich. Die
+  Oberfläche darf ausstehende Deltas nach einem Sitzungswechsel nicht blind wiederholen, sondern muss gegen die frische
+  Sicht neu aufsetzen (Rebase, 2.4).
+- **Tiefe:** Rümpfe tiefer als 64 Ebenen → 422 vor jeder Rekursion (Review Befund 4).
+- **Differenzprüfung erweitert (Review Befund 5):** zusätzlich Planstände, gefälschte endgültige Krankmeldung,
+  gefälschte Servermitteilung `planFreigegeben`, Matrix, Rollennamen, Rolle anheben (eigene/fremde), Person löschen,
+  Bestätigungen, Urlaub→Krankheit, Standorte, gestempeltes Ist löschen, Zellschlüssel `__proto__|…` und unbekannte
+  Person — für LT/PL/KU/SV/MA, Demozugänge (Leitung/Planung) und einen zweiten Betrieb im Raum (PL/SV/MA). Wo der
+  Teilweg nicht früher abweist, sind Status und gespeicherter Stand gleich dem Voll-PUT; Junk-Schlüssel behandelt der
+  Teilweg damit genau wie der Voll-PUT.
+- **Prüfungen** `pruefungen/wp48-teilweg.test.js` (`pruefung:wp48-teilweg`, CI): Gleichwertigkeit Teil/Voll je Rolle
+  (LT, PL, KU, SV, MA) über 17 feste und 6 zufällige Deltas (fester Startwert; Plan/Ist, eigener/fremder Bereich,
+  gestempelter Tag, abgeschlossener Monat, Dienstarten, Freigaben, Krankheit, Personen, Wünsche, Einstellungen);
+  Versionen/Erwartungswerte, Rennen (verschiedene Zellen, verschiedene Kernfelder, dieselbe Zelle), Teil-PUT gegen
+  Stempel im selben Monat, Epoche nach Wiederherstellen, Idempotenz, Schalter, Rollen BR/BT, Seitenkanal, Form,
+  Befund §7 je Rolle, 150 × 12 (Voll-PUT > 6 MB, Teil-PUT < 2 KB → 200). Mutanten T1–T16 in
+  `werkzeug/wp48-mutanten.mjs` (Lauf 2026-11-12: T1–T12 12 von 12, nach dem Review T1–T16 siehe PR; T10 = Befund §7 ohne Fix, belegt das Rot vorher).
+  Grün dazu: wp48-rundweg, wp48-speicherkern, abnahme-a-b, rb1–rb5, selbstservice, schichtverantwortung,
+  sicht-schichtverantwortung, etag-pflicht, abnahme-409, routen-inventar, rechtematrix, `serverlauf.mjs rechte` 150/150.
+
+**Offene Punkte (Betreiber/Folgepakete, nicht geraten):**
+1. Einschalten des Schalters erst mit der Oberfläche (48.5) und Betreiberfreigabe; bis dahin hat der Weg keinen Aufrufer.
+2. Entscheidung 6.2 (Voll-PUT abschalten) und 6.4 (Konfliktführung je Zelle) bleiben offen; der Server liefert dafür
+   schon `konflikt.kern`/`konflikt.zellen` mit den aktuellen Werten.
+3. Stufe 1 kostet serverseitig weiter O(Bestand) je Aufruf (Sperrdauer wie heute); Freigabe großer Betriebe erst nach
+   48.6 (Entscheidung 6.5).
+4. Wiederholschutz: Restgrenzen siehe oben (andere Sitzung, > 24 h, neue Kennung).
+
 ---
 
 ### Anhang: Messskript

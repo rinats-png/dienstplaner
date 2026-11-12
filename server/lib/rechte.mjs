@@ -1352,7 +1352,12 @@ function abgeleiteteEntfernen(uebermittelt) {
     Einheitsprüfung einen Altinhalt für eine Änderung und wiese ab. */
 export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung, optionen = {}) {
   offenePruefung = null;
-  const aus = zusammenfuehrenKern(ohneBetriebsSession(gespeichert), ohneBetriebsSession(uebermitteltRoh), sitzung, optionen);
+  /* WP-48.3 (Befund WP48-TEILSPEICHERUNG.md §7): Abgeleitete Felder werden nie gespeichert. Trägt ein
+     gespeicherter Altinhalt trotzdem eines (planungsregeln, sichtbereich an einer Person), galt das unveränderte
+     Zurückschreiben als Änderung — die Schichtverantwortung bekam 403, die Teilspeicherung erbte das. Deshalb
+     auf beiden Seiten dieselbe Entfernung: Ohne Wirkung bleibt ein abgeleitetes Feld jetzt auch im Altinhalt;
+     der nächste Schreibvorgang räumt es weg. Keine Rechteprüfung ändert sich — verglichen wird nur Gleiches mit Gleichem. */
+  const aus = zusammenfuehrenKern(ohneBetriebsSession(abgeleiteteEntfernen(gespeichert)), ohneBetriebsSession(uebermitteltRoh), sitzung, optionen);
   const ergebnis = aus && typeof aus === "object" && !Array.isArray(aus) && !aus.verweigert
     ? { ...ohneBetriebsSession(aus), session: null } : aus;
   if (offenePruefung && ergebnis && typeof ergebnis === "object" && !ergebnis.verweigert) OFFENE_PRUEFUNG.set(ergebnis, offenePruefung);
