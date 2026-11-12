@@ -64,6 +64,18 @@ export function ruheZuNachbarn(m, p, d, da, { zeitumstellung = false } = {}) {
 }
 
 /**
+ * ruhezeit.ist — die EINE Rechnung der geplanten Ruhezeit vor dem Dienst `da` am Tag `d` (Minuten, gerundet; null: kein
+ * Dienst davor). Verhalten wie bisher, nichts geändert: Der Ruhezeitbefund der Planprüfung rechnet mit Zeitumstellung
+ * (`{ zeitumstellung: true }`, Rechenkern), Near-Miss, Spielraum, RB-5 und Ausfall-Vorschlag ohne (Vorgabe), damit
+ * ist + Spielraum = Grenze bleibt. Ob alle Pfade die Zeitumstellung zählen sollen, ist offen (wp-i20-nachweis.md).
+ * @returns {number|null}
+ */
+export function ruheIst(m, p, d, da, { zeitumstellung = false } = {}) {
+  const { vor } = ruheZuNachbarn(m, p, d, da, { zeitumstellung });
+  return vor === null ? null : Math.round(vor);
+}
+
+/**
  * Kandidaten für einen Dienst, getrennt in direkte Treffer und Near-Miss.
  * @returns {{ datum: string, dienst: string, direkt: { personId: string, punkte: number }[],
  *   nahe: { personId: string, hinderung: string, spielraumMin: number, ruheVorMin: number|null, punkte: number }[],
@@ -79,11 +91,11 @@ export function ersatzKandidaten(m, d, dienstId) {
     const ernst = hindernisBefunde(m, k.person, d, da).filter((b) => stufeRang(b.stufe) >= 2);
     const nurRuhe = ernst.length > 0 && ernst.every((b) => RUHE_REGELN.includes(b.regel));
     if (!nurRuhe) { aus.andere++; continue; }
-    const { vor, kuerzeste } = ruheZuNachbarn(m, k.person, d, da);
+    const { kuerzeste } = ruheZuNachbarn(m, k.person, d, da);
     const spielraum = kuerzeste === null ? 0 : Math.round(grenzeMin - kuerzeste);
     if (!(spielraum > 0)) { aus.andere++; continue; }   // nicht in Minuten bezifferbar: kein Near-Miss
     const hinderung = ernst.some((b) => b.regel === "ruhezeitGesetz") ? "ruhezeitGesetz" : "ruhezeitBetrieb";
-    aus.nahe.push({ personId: String(k.person.id), hinderung, spielraumMin: spielraum, ruheVorMin: vor, punkte: k.punkte });
+    aus.nahe.push({ personId: String(k.person.id), hinderung, spielraumMin: spielraum, ruheVorMin: ruheIst(m, k.person, d, da), punkte: k.punkte });
   }
   aus.direkt = aus.direkt.slice(0, KANDIDATEN_MAX);
   aus.nahe.sort((a, b) => a.spielraumMin - b.spielraumMin || b.punkte - a.punkte || (a.personId < b.personId ? -1 : a.personId > b.personId ? 1 : 0));
