@@ -705,6 +705,10 @@ jobs:
       - name: Betreiber-Passwortfelder (SI-P4)
         run: npm run pruefung:betreiber-passwortfelder
 
+      # Smoke: Tageswechsel zwischen Skript und Server (Berlin-Tag, kein eingefrorener Tag).
+      - name: Smoke-Tageswechsel
+        run: npm run pruefung:smoke-tageswechsel
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration
