@@ -3,10 +3,13 @@
 import { sicherungenAktionen } from "../../sicherungen-ui.js";
 import * as SP from "../../speicher.js";
 import { heute } from "../../lib/datum.js";
+import { kiSteuerungAktionen } from "../../lib/ki-steuerung-aktionen.js";
 
 export function aktionenEinstellungen(k) {
-  const { mUpd, melde, ref, sitz } = k;
+  const { mUpd, melde, ref, sitz, upd } = k;
   return {
+      /* WP-I16 Teil 1: Steuerung der Intelligence-Funktionen (Hauptschalter, Funktionen, Frage; Pause des Betriebsrats). */
+      ...kiSteuerungAktionen(k),
       /* --- Tour und Einstellungen --- */
       /* Wer die Tour ausdrücklich startet, hebt damit auch das frühere
          Wegklicken und Einklappen auf — sonst öffnete sich eine Tour, die

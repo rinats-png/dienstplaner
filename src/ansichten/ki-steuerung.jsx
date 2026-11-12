@@ -65,7 +65,7 @@ const ZIEL = { minWidth: 24, minHeight: 24 };
 
 /**
  * @param {{ sitz: any, akt: any, prozess?: string }} p
- * `akt.setzeKiSteuerung(absicht)` und `akt.setzeKiPause(aktiv)` kommen aus src/app/aktionen/ki-steuerung.js.
+ * `akt.setzeKiSteuerung(absicht)` und `akt.setzeKiPause(aktiv)` kommen aus src/lib/ki-steuerung-aktionen.js.
  */
 export function KiSteuerung({ sitz, akt, prozess = KI_STEUERUNG_PROZESS }) {
   const rolle = sitz && sitz.person && sitz.person.rolle ? sitz.person.rolle : sitz && sitz.rolle;

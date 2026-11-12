@@ -163,7 +163,7 @@ describe("Transparenzdaten", () => {
 
 describe("Quelltext", () => {
   it("die Oberfläche kennt weder Umgebung noch Prozessschalter-Namen noch Netz noch Anbieter", () => {
-    for (const p of ["src/ansichten/ki-steuerung.jsx", "src/app/aktionen/ki-steuerung.js"]) {
+    for (const p of ["src/ansichten/ki-steuerung.jsx", "src/lib/ki-steuerung-aktionen.js"]) {
       const q = lies(p).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
       expect(q, p).not.toMatch(/process\.env|CENTRIC_|fetch\s*\(|XMLHttpRequest|anthropic|openai|claude/i);
     }

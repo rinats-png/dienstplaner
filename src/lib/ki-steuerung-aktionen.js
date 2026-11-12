@@ -3,11 +3,11 @@
    Betriebsrat: ausschließlich die Pause. Er speichert sonst nie von selbst (App.jsx), deshalb schreibt diese
    Aktion sofort und nur diese eine Änderung; der Server prüft Rolle und Inhalt (rechte.mjs), nicht die Oberfläche.
    Wann und von wem, setzt der Server; mitgeschickte Werte zählen nie. */
-import * as SP from "../../speicher.js";
+import * as SP from "../speicher.js";
 
 const mitSteuerung = (m, fn) => ({ ...m, einstellungen: { ...(m.einstellungen || {}), kiSteuerung: fn((m.einstellungen || {}).kiSteuerung || {}) } });
 
-export function aktionenKiSteuerung(k) {
+export function kiSteuerungAktionen(k) {
   const { mUpd, melde, ref, upd, sitz } = k;
   return {
     setzeKiSteuerung: (absicht) => mUpd((m) => mitSteuerung(m, (s) => {
