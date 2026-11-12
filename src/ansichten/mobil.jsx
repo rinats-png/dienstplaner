@@ -15,7 +15,7 @@ import { n1 } from "../lib/format.js";
 import { Icon } from "../gestalt/icons.jsx";
 import { feiertag } from "../../server/lib/feiertage.mjs";
 import { SelbstauskunftStatus } from "./selbstauskunft.jsx";
-import { AufgabeSymbol, GEO_HINWEIS, pauseVorgabe, PauseFeld } from "./stempeluhr.jsx";
+import { AufgabeSymbol, GEO_HINWEIS, pauseVorgabe, PauseFeld, pauseZumStempel } from "./stempeluhr.jsx";
 import { KorrekturKarte } from "./korrekturen.jsx";
 import { Kontoblatt } from "./kontoblatt.jsx";
 import { StempelPuffer } from "./stempelpuffer.jsx";
@@ -214,7 +214,8 @@ export function MStempel({ sitz, akt, vorgang }) {
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
-    positionHolen(geoAn, (k, grund) => { const ort = koordMitGrund(k, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort, art === "ende" ? pause : null)).finally(() => setLaeuft(false)); });
+    const pz = pauseZumStempel(art, st, pause);
+    positionHolen(geoAn, (k, grund) => { const ort = koordMitGrund(k, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort, pz)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}

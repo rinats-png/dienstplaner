@@ -12,7 +12,9 @@ import { Stempeluhr } from "./stempeluhr.jsx";
 import { StempelPuffer } from "./stempelpuffer.jsx";
 
 export function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
-  if (!meineDa && !(vorgang && vorgang.offen)) {
+  /* Auch ohne Dienst heute: ein offener Vorgang oder ein Nachtdienst von gestern ohne Einstempeln (nachtEnde) —
+     sonst böte die Aufgabe „Dienstende stempeln“ an, am Rechner aber fehlte die Stempeluhr dafür. */
+  if (!meineDa && !(vorgang && (vorgang.offen || vorgang.nachtEnde))) {
     const u = sitz.person && istUngeplant((sitz.mandant.erfassung || {})[`${sitz.person.id}|${heute()}`]);
     return u ? <Card style={{ padding: 24, ...style }}><UngeplantHinweis m={sitz.mandant} p={sitz.person} d={heute()} /></Card> : null;
   }

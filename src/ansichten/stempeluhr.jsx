@@ -29,6 +29,14 @@ export function pauseVorgabe(m, p, datum) {
   const da = t && t.dienstId ? (m.dienstarten || []).find((x) => x.id === t.dienstId) : null;
   return da && Number.isFinite(Number(da.pause)) && Number(da.pause) > 0 ? String(da.pause) : "";
 }
+/**
+ * Welche Pause geht mit dem Stempel hinaus? Nur beim Ausstempeln eines
+ * gestempelten Beginns — dort steht das Pausenfeld sichtbar daneben. Beim
+ * „Dienstende stempeln“ ohne Beginn (nachtEnde, st null) gibt es kein Feld;
+ * die vorbelegte Pause der Dienstart ginge sonst ungesehen als „genommene
+ * Pause“ in das unveränderliche Original (WP-06). Dann: keine Angabe.
+ */
+export const pauseZumStempel = (art, st, pause) => (art === "ende" && st ? pause : null);
 /** Eingabe der genommenen Pause neben „Ausstempeln“ (WP-16). Der Server prüft; eine ungültige Angabe kostet nie den Stempel. */
 export function PauseFeld({ wert, setWert, gross }) {
   return (
@@ -51,7 +59,8 @@ export function Stempeluhr({ sitz, akt, vorgang }) {
     setLaeuft(true);
     /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
        Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
-    positionHolen(geoAn, (koord, grund) => { const ort = koordMitGrund(koord, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort, art === "ende" ? pause : null)).finally(() => setLaeuft(false)); });
+    const pz = pauseZumStempel(art, st, pause);
+    positionHolen(geoAn, (koord, grund) => { const ort = koordMitGrund(koord, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort, pz)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
