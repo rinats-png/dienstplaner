@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **23,3–36,2 PT**
-**Offener Entwicklungsaufwand:** 308,8–526 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 306,5–521,2 PT in 77 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -39,7 +39,6 @@ flowchart LR
     WR_8["WR-8<br/>BLOCKED"]
     WR_9["WR-9<br/>BLOCKED"]
     WR_BETREIBER["WR-BETREIBER<br/>BLOCKED"]
-    WP_19_B5["WP-19-B5<br/>READY"]
     WP_19_B6["WP-19-B6<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
@@ -79,7 +78,7 @@ flowchart LR
     WP_I27["WP-I27<br/>BLOCKED"]
     WP_I28["WP-I28<br/>BLOCKED"]
     WP_I29["WP-I29<br/>BLOCKED"]
-    WP_I30["WP-I30<br/>BLOCKED"]
+    WP_I30["WP-I30<br/>IN_PROGRESS"]
     WP_I31["WP-I31<br/>IN_PROGRESS"]
     WP_I32["WP-I32<br/>BLOCKED"]
     WP_I33["WP-I33<br/>BLOCKED"]
@@ -409,7 +408,7 @@ flowchart LR
 | WP-I27 | intelligence | P3 | 20–34 | 20–34 | WP-I19, WP-I16, E-25, E-26 | – | opus | BLOCKED |
 | WP-I28 | intelligence | P3 | 12–20 | 12–20 | WP-I12, WP-I13, WP-I19 | App.jsx | sonnet | BLOCKED |
 | WP-I29 | intelligence | P3 | 18–30 | 18–30 | WP-I13, WP-I15, WP-I12 | App.jsx | sonnet | BLOCKED |
-| WP-I30 | intelligence | P3 | 4–8 | 4–8 | WP-I13, WP-I17 | App.jsx | sonnet | BLOCKED |
+| WP-I30 | intelligence | P3 | 4–8 | 2–4 | WP-I13, WP-I17 | App.jsx | sonnet | IN_PROGRESS |
 | WP-I31 | intelligence | P3 | 9–15 | 4,5–7,5 | WP-I12, WP-I13 | – | sonnet + opus-review | IN_PROGRESS |
 | WP-I32 | intelligence | P3 | 5–9 | 5–9 | WP-I28 | App.jsx | sonnet | BLOCKED |
 | WP-I33 | intelligence | P3 | 8–14 | 8–14 | WP-I28 | App.jsx | sonnet | BLOCKED |
@@ -480,6 +479,7 @@ flowchart LR
 | IMP-11 | acc45 | P2 | 0,5–1 | 0 | IMP-4 | – | sonnet | INTEGRATED |
 | QS-1 | acc45 | P3 | 0,25–0,5 | 0 | – | – | haiku | INTEGRATED |
 | QS-2 | acc45 | P3 | 0,5–1,5 | 0 | – | – | sonnet | INTEGRATED |
+| QS-3 | acc45 | P3 | 0,5–1 | 0 | QS-2 | – | sonnet | INTEGRATED |
 | OPT-1 | acc45 | P1 | 1–1,5 | 0 | SI-P4 | daten.mjs | opus | INTEGRATED |
 | OPT-1-F | acc45 | P1 | 2–4 | 0 | OPT-1 | daten.mjs | opus | INTEGRATED |
 | OPT-2 | acc45 | P1 | 0,5–1 | 0,5–1 | SI-P4, WR-3 | daten.mjs | opus | BLOCKED |
@@ -504,5 +504,5 @@ flowchart LR
 | RB-5 | acc45 | P1 | 3–5 | 0 | RB-2 | App.jsx, daten.mjs | sonnet | INTEGRATED |
 | WP-21-SV | acc45 | P2 | 1–2 | 0 | – | App.jsx | sonnet | INTEGRATED |
 | WP-19-B4 | acc45 | P3 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
-| WP-19-B5 | acc45 | P3 | 0,3–0,8 | 0,3–0,8 | – | – | sonnet | READY |
+| WP-19-B5 | acc45 | P3 | 0,3–0,8 | 0 | – | – | sonnet | INTEGRATED |
 | WP-19-B6 | acc45 | P3 | 0,3–0,5 | 0,3–0,5 | – | – | sonnet | BLOCKED |

@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 200,
+  "anzahl": 201,
   "statusZaehlung": {
-    "BLOCKED": 73,
-    "READY": 17,
-    "IN_PROGRESS": 16,
+    "BLOCKED": 72,
+    "READY": 16,
+    "IN_PROGRESS": 17,
     "REVIEW": 7,
-    "INTEGRATED": 84,
+    "INTEGRATED": 86,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 100,
-      "offen": 30,
+      "pakete": 101,
+      "offen": 29,
       "restPT": {
-        "min": 43.89999999999999,
-        "max": 70.7
+        "min": 43.599999999999994,
+        "max": 69.9
       }
     },
     "wp19": {
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 28,
       "restPT": {
-        "min": 194.5,
-        "max": 343.5
+        "min": 192.5,
+        "max": 339.5
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 308.8,
-    "max": 526
+    "min": 306.5,
+    "max": 521.2
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -664,12 +664,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "siehe WP-19.x",
       "konfliktzonen": [],
-      "pr": ["#234","#243","#244","#247"],
+      "pr": ["#234","#243","#244","#247","#249"],
       "nachweis": null,
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
       "dateien": "src/module/*, server",
-      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247."
+      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247. Stand #249: Teilumfang (Oberfläche der Betriebsmittel und Kompetenzen zeigt bei Status geplant keine Schreibaktionen, WP-19-B5), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte."
     },
     {
       "id": "WP-20",
@@ -3032,12 +3032,12 @@
       "prio": "P3",
       "aufwandPT": {"min":4,"max":8},
       "abhaengigkeiten": ["WP-I13","WP-I17"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #250 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -3046,12 +3046,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#250"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #250, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-I31",
@@ -4837,7 +4837,7 @@
         "implementiert": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
         "reviewt": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
-        "integriert": {"wert":false,"beleg":"Bibliothek in PR #185, Schichtmodell-Vorschau im Import in PR #240 integriert; Schreiben nicht umgesetzt."},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #251 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4846,12 +4846,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#185","#240"],
+      "pr": ["#185","#240","#251"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Keine feste Zykluslänge; arbeitszeitrechtliche Prüfung mit den Dienstarten des Betriebs; Nachtschicht über Mitternacht",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/schicht*.mjs, Tests",
-      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze)."
+      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze). Stand (automatisch): Teilumfang nach #251, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "IMP-7",
@@ -5048,6 +5048,34 @@
       "tests": "pruefungen/schreibhalt.test.js und die in den CI-Protokollen gefundenen zeitabhängigen Prüfungen",
       "dateien": "pruefungen/*.test.js",
       "notiz": "Befund 2026-11-12, SCHÄTZUNG des Aufwands. Liste: schreibhalt.test.js (Frist abgelaufen vor der Freigabe, Zeitverhalten), staging-smoke Tagesgrenze (behoben in #210), import-personal-e2e Teilzeichenfolge (behoben in #237, QS-1), accessibility- und weitere Prüfungen mit Zeitannahmen. Vorgehen: in den CI-Protokollen Tests mit echten sleeps/Toleranzen suchen und mit Fake-Uhren oder großzügigen deterministischen Grenzen härten, ohne Aussagen zu schwächen. Stand (automatisch): INTEGRATED nach #246."
+    },
+    {
+      "id": "QS-3",
+      "titel": "Weitere zeitabhängige Prüfungen im Schreib-Halt deterministisch machen",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": ["QS-2"],
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #252 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #252 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #252 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #252 in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#252"],
+      "nachweis": "pruefungen/schreibhalt*.test.js",
+      "akzeptanz": "Sieben weitere zeitabhängige Prüfungen im Schreib-Halt laufen deterministisch, ohne Aussagen abzuschwächen",
+      "tests": "pruefungen/schreibhalt*.test.js",
+      "dateien": "pruefungen/*.test.js",
+      "notiz": "Folge von QS-2. Sieben Schreib-Halt-Prüfungen gehärtet; der ELOOP-Test wird nur unter win32 übersprungen und läuft in der Linux-CI. Bekannt: wp28b-sicherung-last hatte unter Windows vereinzelt EPERM-Fehler beim Umbenennen (nicht Teil dieses Pakets). Von Hand angelegt, weil PR #252 keinem Paket zugeordnet wurde. Stand (automatisch): INTEGRATED nach #252."
     },
     {
       "id": "OPT-1",
@@ -5728,12 +5756,12 @@
       "prio": "P3",
       "aufwandPT": {"min":0.3,"max":0.8},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #249 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #249 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #249 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #249 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5742,12 +5770,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#249"],
       "nachweis": "PR #244 (WP-19 B1)",
       "akzeptanz": "Bei Status geplant sind Bearbeiten und Löschen in den Oberflächen der Module Betriebsmittel und Kompetenzen nicht sichtbar",
       "tests": "Oberflächentests der Module Betriebsmittel und Kompetenzen",
       "dateien": "src/ui (Betriebsmittel, Kompetenzen)",
-      "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. Oberflächen der Module im Status geplant (Betriebsmittel, Kompetenzen) bieten Bearbeiten und Löschen an, der Server antwortet nun mit 403; bei Status geplant ausblenden statt Server-403."
+      "notiz": "Befund aus PR #244 (WP-19 B1), Aufwand SCHÄTZUNG. Oberflächen der Module im Status geplant (Betriebsmittel, Kompetenzen) bieten Bearbeiten und Löschen an, der Server antwortet nun mit 403; bei Status geplant ausblenden statt Server-403. Stand (automatisch): INTEGRATED nach #249."
     },
     {
       "id": "WP-19-B6",
