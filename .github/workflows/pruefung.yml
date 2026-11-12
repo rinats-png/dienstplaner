@@ -103,6 +103,9 @@ jobs:
       - name: Synthetische Testdateien und Testmatrix des Imports (IMP-8)
         run: npm run pruefung:imp8-testmatrix
 
+      - name: Teilspeicherung je Segment mit Versionen (WP-48.3)
+        run: npm run pruefung:wp48-teilweg
+
       - name: Eintrittsdatum ohne stille Ersetzung
         run: npm run pruefung:person-eintritt
 

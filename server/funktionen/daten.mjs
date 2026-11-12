@@ -18,7 +18,8 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { demoAn } from "../lib/schalter.mjs";
+import { demoAn, teilwegAn } from "../lib/schalter.mjs";
+import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, idempotenzLesen, idempotenzMerken } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
@@ -299,8 +300,13 @@ async function sicherungsschluesselAbgleichen(store, raum) {
 
 /** Wege, die Personal, Rollen oder den Bestand im Ganzen ändern können: immer abgleichen. Alle anderen höchstens alle
     zehn Sekunden je Raum, damit häufige Schreibvorgänge (Stempeln) nicht jedes Mal zahlen. */
-const SK_IMMER_ABGLEICHEN = new Set(["bestand", "wiederherstellen"]);
+const SK_IMMER_ABGLEICHEN = new Set(["bestand", "bestand/teile", "wiederherstellen"]);
 const skZuletzt = new Map();
+
+/** WP-48.3: Teilweg nur mit Schalter, nur für schreibende Rollen des eigenen Betriebs — der Betreiber (mehrere
+    Betriebe, Vertragsfelder) und Sicherungsschlüssel bleiben beim Voll-PUT (Entwurf 2.6). */
+const teilwegNutzbar = (s) => teilwegAn() && !!s && !s.nurSicherung
+  && schreibumfang(s.rolle) !== SCHREIBEN_NEIN && s.rolle !== "betreiber";
 const SK_ABSTAND = 10000;
 
 export default async (req, context) => {
@@ -1230,7 +1236,17 @@ async function behandeln(req, context, ctx) {
         merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true) });
       /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
          nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
-      return antwort({ bestand: bestandFuerAntwort(personenAngleichen(mit.bestand), s), etag: mit.stand,
+      const angeglichenG = personenAngleichen(mit.bestand);
+      const sichtG = bestandFuerAntwort(angeglichenG, s);
+      /* WP-48.3: Fähigkeit der Teilspeicherung — nur mit Schalter, nur mit Epoche (ein Altbestand ohne Epoche
+         bekommt sie beim nächsten vollen Schreiben), nur für Rollen, die den Teilweg nutzen dürfen. Versionen
+         über die SICHT dieser Rolle, nie über verborgene Daten. */
+      const teileG = teilwegNutzbar(s) && mit.epoche ? (() => {
+        const roh = eigenerMandant(angeglichenG, s);
+        return roh && typeof roh.id === "string"
+          ? { format: TEILWEG_FORMAT, epoche: mit.epoche, versionen: teileVersionen(sichtG, roh.id) } : undefined;
+      })() : undefined;
+      return antwort({ bestand: sichtG, etag: mit.stand, ...(teileG ? { teile: teileG } : {}),
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         /* SI-P4: Gilt der gemerkte Zugang noch? Die wirksame Rolle kann sich seit der Anmeldung geändert haben. */
@@ -1262,7 +1278,13 @@ async function behandeln(req, context, ctx) {
     }
 
     /* ----------------------------- Schreiben ------------------------- */
-    if (pfad === "bestand" && req.method === "PUT") {
+    /* WP-48.3 Teilspeicherung (docs/acc45/WP48-TEILSPEICHERUNG.md 2.1/2.3): POST /api/bestand/teile ist der
+       Voll-PUT von Sicht(gespeichert) ⊕ Δ. Er läuft durch GENAU diese Schreibkette — derselbe Block, dieselben
+       Absagen (Rechte, Stempel, Abschluss, Fachprüfung, Gestalt, Standorte, Personalnummer, Schrumpfung). Neu sind
+       nur: Formprüfung des Deltas, Epoche, Erwartungswerte/Versionen je Segment (unter der Raumsperre) und der
+       Aufbau des virtuellen Rumpfs aus der Sicht der Rolle. Schalter aus: Den Weg gibt es nicht (404). */
+    const teilweg = pfad === "bestand/teile" && req.method === "POST" && teilwegAn();
+    if ((pfad === "bestand" && req.method === "PUT") || teilweg) {
       const ks = kennung(req, s);
 
       /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
@@ -1272,29 +1294,55 @@ async function behandeln(req, context, ctx) {
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
       }
+      if (teilweg && !teilwegNutzbar(s)) {
+        await protokoll("schreiben", ks, "abgewiesen", `Teilweg: Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", code: "TEILWEG_ROLLE",
+          text: "Diese Rolle speichert über den vollständigen Weg." }, 403);
+      }
 
-      const bs = await bremse("schreiben", ks);
+      const bs = await bremse(teilweg ? "teile" : "schreiben", ks);
       if (!bs.frei) return zuVielAntwort(bs.wartet);
-      const { bestand, etag, durch } = rumpf;
-      if (!bestand || typeof bestand !== "object")
+      let { bestand, etag } = teilweg ? { bestand: null, etag: null } : rumpf;
+      const { durch } = rumpf;
+      /* Teilweg: was der virtuelle Rumpf berührt (Kernfelder, Monate), der eigene Betrieb und die Epoche. */
+      let teilBeruehrt = null, teilMandant = null, teilEpoche = null;
+      if (teilweg) {
+        const ff = teileFormFehler(rumpf, s);
+        if (ff) {
+          await protokoll("schreiben", ks, "abgewiesen", `Teilweg: ${ff.code}`, wer);
+          return antwort({ fehler: ff.status === 413 ? "Zu viel auf einmal." : ff.status === 403 ? "Keine Schreibberechtigung." : "Die Änderung ist ungültig.",
+            code: ff.code, text: `${ff.grund} Es wurde nichts geändert.` }, ff.status);
+        }
+        /* Dieselbe Anfragekennung derselben Sitzung: dieselbe Antwort, nichts wird noch einmal geschrieben. */
+        const schon = idempotenzLesen(s.bestand, s, rumpf.anfrage);
+        if (schon) return antwort({ ...schon, wiederholt: true });
+      } else if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
 
       /* Doppelte oder ungültige Kennungen der Betriebe sind ein Strukturfehler,
          kein Rechtefall — und werden vor jeder Zusammenführung abgewiesen, für
          jede Rolle. Ein zweites Exemplar des eigenen Betriebs war der Weg an
          der Einheitsprüfung vorbei (siehe gestalt.mjs). */
-      const kennungen = mandantenKennungenGeprueft(bestand.mandanten);
-      if (kennungen) {
-        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${kennungen.grund}`, wer);
-        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
-          text: `${kennungen.grund} Es wurde nichts geändert.`, feld: kennungen.feld }, 422);
-      }
-      /* Eine falsch getypte Personenangabe des Absenders wird abgewiesen, nicht still zu [] gemacht. */
-      const personS = personenFehler(bestand);
-      if (personS) {
-        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${personS.grund}`, wer);
-        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
-          text: `${personS.grund} Es wurde nichts geändert.`, feld: personS.feld }, 422);
+      /* Teilweg: dieselben Prüfungen auf dem virtuellen Rumpf, unter der Sperre (unten). */
+      const gestaltVorab = async (b) => {
+        const kennungen = mandantenKennungenGeprueft(b.mandanten);
+        if (kennungen) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${kennungen.grund}`, wer);
+          return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+            text: `${kennungen.grund} Es wurde nichts geändert.`, feld: kennungen.feld }, 422);
+        }
+        /* Eine falsch getypte Personenangabe des Absenders wird abgewiesen, nicht still zu [] gemacht. */
+        const personS = personenFehler(b);
+        if (personS) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${personS.grund}`, wer);
+          return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+            text: `${personS.grund} Es wurde nichts geändert.`, feld: personS.feld }, 422);
+        }
+        return null;
+      };
+      if (!teilweg) {
+        const vorab = await gestaltVorab(bestand);
+        if (vorab) return vorab;
       }
 
       /* Ab hier unter der Sperre des Raums (lib/raumsperre.mjs): Lesen,
@@ -1306,6 +1354,41 @@ async function behandeln(req, context, ctx) {
          Zustellung danach braucht die Sperre nicht. */
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
         const jetzt = await bestandLesenStreng(store, s.bestand);
+
+        /* WP-48.3: virtueller Rumpf unter der Sperre (2.3 Schritte 2–6). Epoche anders (Wiederherstellen,
+           Wiederanlauf) oder ein Bestand ohne Epoche → NEU_LADEN, kein Abgleich je Zelle. Ein einziger
+           Konflikt → 409 für die ganze Anfrage, nur mit den aktuellen Werten der streitigen Teile. */
+        if (teilweg) {
+          if (!jetzt || !jetzt.bestand || !jetzt.epoche || jetzt.epoche !== rumpf.epoche) {
+            await protokoll("schreiben", ks, "konflikt", "Teilweg: Epoche", wer);
+            return antwort({ fehler: "konflikt", code: "NEU_LADEN",
+              text: "Der gespeicherte Stand wurde inzwischen neu aufgesetzt. Bitte neu laden — es wurde nichts geändert.",
+              epoche: (jetzt && jetzt.epoche) || null }, 409);
+          }
+          const angeglichenT = personenAngleichen(jetzt.bestand);
+          const roh = eigenerMandant(angeglichenT, s);
+          teilMandant = roh && typeof roh.id === "string" ? roh.id : null;
+          const sichtT = teilMandant ? bestandFuerAntwort(angeglichenT, s) : null;
+          const a = sichtT ? teileAnwenden(sichtT, teilMandant, rumpf) : { fehlt: true };
+          if (a.fehlt) {
+            await protokoll("schreiben", ks, "konflikt", "Teilweg: Betrieb nicht in der Sicht", wer);
+            return antwort({ fehler: "konflikt", code: "NEU_LADEN",
+              text: "Der Betrieb ist so nicht gespeichert. Bitte neu laden — es wurde nichts geändert.", epoche: jetzt.epoche }, 409);
+          }
+          if (a.konflikt) {
+            await protokoll("schreiben", ks, "konflikt",
+              `Teilweg: ${a.konflikt.kern.length} Kernfeld(er), ${a.konflikt.zellen.length} Zelle(n)`, wer);
+            return antwort({ fehler: "konflikt", code: "TEILE_KONFLIKT",
+              text: "Jemand anderes hat inzwischen dieselben Angaben geändert. Es wurde nichts geändert.",
+              konflikt: a.konflikt, epoche: jetzt.epoche, versionen: teileVersionen(sichtT, teilMandant) }, 409);
+          }
+          bestand = a.virtuell;
+          etag = jetzt.stand;
+          teilBeruehrt = a.beruehrt;
+          teilEpoche = jetzt.epoche;
+          const vorab = await gestaltVorab(bestand);
+          if (vorab) return vorab;
+        }
 
         /* B-9-1: Ein Schreibvorgang ohne ETag überschrieb auf einem vorhandenen Bestand still
            jede fremde Änderung. Jetzt: Ohne ETag wird nur geschrieben, wenn es noch keinen
@@ -1559,7 +1642,17 @@ async function behandeln(req, context, ctx) {
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
         return { erg, jetzt, zuSchreiben, stempelVerworfen };
       });
-      if (gesperrt instanceof Response) return gesperrt;
+      if (gesperrt instanceof Response) {
+        /* Teilweg: Eine Absage der Kette bringt nie den ganzen Bestand und nie einen Stand mit (2.3 Schritt 5) —
+           die Oberfläche hält ihre Basis je Segment, ein neuerer ETag ohne Inhalt wäre dort nur irreführend. */
+        if (teilweg && gesperrt.status === 409) {
+          let d = {};
+          try { d = await gesperrt.json(); } catch { /* leer */ }
+          delete d.bestand; delete d.etag;
+          return antwort(d, 409);
+        }
+        return gesperrt;
+      }
       const { erg, jetzt, zuSchreiben, stempelVerworfen } = gesperrt;
 
       /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,
@@ -1603,6 +1696,16 @@ async function behandeln(req, context, ctx) {
           for (const z of paketAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben))
             await protokoll("schreiben", ks, "paket", z, wer);
         } catch { /* egal */ }
+      }
+      if (teilweg) {
+        /* 2.3 Schritt 7: Stand, Epoche und die Versionen nur der berührten Segmente — gerechnet über die Sicht
+           des eben Geschriebenen, wie das nächste GET sie liefern würde. Nie der ganze Bestand. */
+        const sichtN = bestandFuerAntwort(personenAngleichen(zuSchreiben), s);
+        const datenT = { ok: true, etag: erg.stand, epoche: erg.epoche || teilEpoche,
+          versionen: beruehrteVersionen(sichtN, teilMandant, teilBeruehrt), zusammengefuehrt: false,
+          ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht und wurden aus der älteren Kopie nicht übernommen. Bitte neu laden.` } : {}) };
+        idempotenzMerken(s.bestand, s, rumpf.anfrage, datenT);
+        return antwort(datenT);
       }
       return antwort({ ok: true, etag: erg.stand,
         /* Review N-A: der Betreiber bekommt den gespeicherten Vertragsstand der Pakete zurück. */

@@ -646,6 +646,47 @@ Kern und Zeiger verlieren die Epoche, und der nächste Schreibvorgang von 48.2 b
 einen Mischstand" ist auf dem Laptop schon auf 219a5b0 rot (zu wenige Lesedurchgänge, Zeitgeber), unabhängig von
 dieser Änderung.
 
+### 7.2 WP-48.3 Server-Teilweg (Branch `feature/wp48-3-teilspeicherung`, Basis `integration/release-v4` 6c195b6)
+
+Stand 2026-11-12. 48.1/48.2 waren schon in `integration/release-v4` (die Branches `acc45/backend/wp48-1-2-pruefnetz-speicherkern`
+und `acc45/backend/wp48-integration` liegen 0 Commits vor). Umgesetzt ist nur Stufe 1 des Servers; keine Oberfläche (48.5),
+kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
+
+- **Weg** `POST /api/bestand/teile` und `teile: { format: 1, epoche, versionen }` im `GET /api/bestand`, beides **nur mit
+  Schalter `CENTRIC_TEILSPEICHERUNG=true`** (`server/lib/schalter.mjs`, Vorgabe aus: 404, GET ohne `teile`). Der alte
+  `PUT /api/bestand` bleibt in Verhalten und Antwort unverändert.
+- **Ein Rechtepfad.** Der Teilweg ist derselbe Block in `daten.mjs` wie der PUT: Unter der Raumsperre wird aus der Sicht der
+  Rolle (`bestandFuerAntwort(personenAngleichen(gespeichert))`, wie GET) und dem Delta der virtuelle Rumpf gebaut, mit
+  `etag = aktueller Stand` — danach laufen Gestaltprüfung, Stempel/Abschluss, `zusammenfuehren`, Fachprüfung,
+  Standorte, Personalnummer, `pruefeGestalt`, Schrumpfungssicherung und `bestandSchreiben` unverändert. Neu sind nur
+  Form, Epoche, Erwartungswerte/Versionen (`server/lib/teilweg.mjs`) und das Weglassen von `bestand`/`etag` aus
+  409-Antworten des Teilwegs.
+- **Befund §7 behoben** (`rechte.mjs` `zusammenfuehren`): abgeleitete Personenfelder werden jetzt auch auf der
+  gespeicherten Seite entfernt — der Rundweg ist für alle Rollen wirkungslos, die Schichtverantwortung bekommt kein 403
+  mehr (gilt für Voll- und Teilweg). Eine gespeicherte **leere** Einwilligungsliste räumt das Schreiben durch
+  Planung/Leitung/Kundenrolle weiter weg (leer = keine; kein Verlust) — bewusst unverändert.
+- `preisgestaltung` (`null` vs. `{}`): kommt im Teilweg nicht vor — Vertragsfelder sind Serverfelder (422), der
+  Betreiber bleibt beim Voll-PUT.
+- **Abweichungen vom Entwurf:** Bestätigungen (WP-22) gehen als Kernfeld `bestaetigungen` (kein eigenes Feld
+  `bestaetigungen` oben); Idempotenz nur im Arbeitsspeicher des Prozesses (10 min, je Raum/Rolle/Person/Betrieb, nur
+  Erfolge). Kernfelder außerhalb des Positivkatalogs `BETRIEB` → 422 (Oberfläche fällt auf den Voll-PUT zurück).
+- **Prüfungen** `pruefungen/wp48-teilweg.test.js` (`pruefung:wp48-teilweg`, CI): Gleichwertigkeit Teil/Voll je Rolle
+  (LT, PL, KU, SV, MA) über 17 feste und 6 zufällige Deltas (fester Startwert; Plan/Ist, eigener/fremder Bereich,
+  gestempelter Tag, abgeschlossener Monat, Dienstarten, Freigaben, Krankheit, Personen, Wünsche, Einstellungen);
+  Versionen/Erwartungswerte, Rennen (verschiedene Zellen, verschiedene Kernfelder, dieselbe Zelle), Teil-PUT gegen
+  Stempel im selben Monat, Epoche nach Wiederherstellen, Idempotenz, Schalter, Rollen BR/BT, Seitenkanal, Form,
+  Befund §7 je Rolle, 150 × 12 (Voll-PUT > 6 MB, Teil-PUT < 2 KB → 200). Mutanten T1–T12 in
+  `werkzeug/wp48-mutanten.mjs`.
+
+**Offene Punkte (Betreiber/Folgepakete, nicht geraten):**
+1. Einschalten des Schalters erst mit der Oberfläche (48.5) und Betreiberfreigabe; bis dahin hat der Weg keinen Aufrufer.
+2. Entscheidung 6.2 (Voll-PUT abschalten) und 6.4 (Konfliktführung je Zelle) bleiben offen; der Server liefert dafür
+   schon `konflikt.kern`/`konflikt.zellen` mit den aktuellen Werten.
+3. Stufe 1 kostet serverseitig weiter O(Bestand) je Aufruf (Sperrdauer wie heute); Freigabe großer Betriebe erst nach
+   48.6 (Entscheidung 6.5).
+4. Idempotenz überlebt keinen Neustart; eine Wiederholung nach Neustart ist wegen der Erwartungswerte trotzdem ohne
+   doppelte Wirkung (neu == aktuell), nur der Stand zählt dann einmal mehr.
+
 ---
 
 ### Anhang: Messskript

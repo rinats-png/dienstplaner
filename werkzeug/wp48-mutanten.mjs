@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KERN = ["pruefungen/wp48-speicherkern.test.js"];
 const RUNDWEG = ["pruefungen/wp48-rundweg.test.js"];
+const TEILWEG = ["pruefungen/wp48-teilweg.test.js"];
 
 /** @type {Array<{id: string, was: string, datei: string, ersetzungen: Array<[string, string]>, pruefungen: string[]}>} */
 export const MUTANTEN = [
@@ -110,7 +111,31 @@ export const MUTANTEN = [
     ersetzungen: [["    if (!hat(neuM, feld)) { if (hat(altM, feld)) aus[feld] = a; continue; }", "    if (!hat(neuM, feld)) { continue; }"]], pruefungen: RUNDWEG },
   { id: "R3", was: "PUT gleicht den gespeicherten Stand vor dem Zusammenführen nicht an (WP-12)", datei: "server/funktionen/daten.mjs",
     ersetzungen: [["zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s,", "zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s,"]], pruefungen: RUNDWEG },
-];
+  /* --- Teilweg (48.3, Entwurf 4.3 „Mutanten") --- */
+  { id: "T1", was: "Teilweg ohne Sicht (gespeicherter Rohstand als Grundlage des virtuellen Rumpfs)", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["const sichtT = teilMandant ? bestandFuerAntwort(angeglichenT, s) : null;", "const sichtT = teilMandant ? angeglichenT : null;"]], pruefungen: TEILWEG },
+  { id: "T2", was: "Erwartungswert einer Zelle nicht geprüft", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["if (!gleich(z.alt, aktuell) && !gleich(z.neu, aktuell)) {", "if (false) {"]], pruefungen: TEILWEG },
+  { id: "T3", was: "Stempel (einstempeln) als Zelle zugelassen", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["if (!ZELLFELDER.includes(z.feld)) return f(\"Zelle: Feld nicht erlaubt.\");", "if (![...ZELLFELDER, \"einstempeln\"].includes(z.feld)) return f(\"Zelle: Feld nicht erlaubt.\");"]], pruefungen: TEILWEG },
+  { id: "T4", was: "ungültiges Datum im Zellschlüssel zugelassen", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["if (!m || !datumGueltig(m[2], m[3], m[4]))", "if (!m)"]], pruefungen: TEILWEG },
+  { id: "T5", was: "Versionen über ungefilterte Daten (Seitenkanal)", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["versionen: teileVersionen(sichtG, roh.id) }", "versionen: teileVersionen(angeglichenG, roh.id) }"]], pruefungen: TEILWEG },
+  { id: "T6", was: "Epoche ignoriert", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["|| jetzt.epoche !== rumpf.epoche) {", ") {"]], pruefungen: TEILWEG },
+  { id: "T7", was: "Kernfeld null als Löschung zugelassen", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["if (t.wert === undefined || t.wert === null) return", "if (t.wert === undefined) return"]], pruefungen: TEILWEG },
+  { id: "T8", was: "Idempotenz doppelt angewandt (Anfragekennung nicht gemerkt)", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["        if (schon) return antwort({ ...schon, wiederholt: true });", "        if (false && schon) return antwort({ ...schon, wiederholt: true });"]], pruefungen: TEILWEG },
+  { id: "T9", was: "Konflikt nicht alles oder nichts (nicht streitige Teile trotzdem geschrieben)", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["  if (konfliktKern.length || konfliktZellen.length) return { konflikt:", "  if (false) return { konflikt:"]], pruefungen: TEILWEG },
+  { id: "T10", was: "Befund §7: abgeleitete Felder im gespeicherten Stand nicht entfernt", datei: "server/lib/rechte.mjs",
+    ersetzungen: [["zusammenfuehrenKern(ohneBetriebsSession(abgeleiteteEntfernen(gespeichert)),", "zusammenfuehrenKern(ohneBetriebsSession(gespeichert),"]], pruefungen: TEILWEG },
+  { id: "T11", was: "Kernfeld-Basisversion nicht geprüft", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["if (t.basis !== version(aktuell) && !gleich(t.wert, aktuell)) {", "if (false) {"]], pruefungen: TEILWEG },
+  { id: "T12", was: "Serverfeld (Monatsabschluss) als Kernfeld zugelassen", datei: "server/lib/teilweg.mjs",
+    ersetzungen: [["\"einstempeln\", \"istEingefroren\", \"monatsabschluss\", \"protokoll\",", "\"einstempeln\", \"istEingefroren\", \"protokoll\","]], pruefungen: TEILWEG },];
 
 function argWert(name) {
   const i = process.argv.indexOf(name);
