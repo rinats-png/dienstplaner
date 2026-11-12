@@ -11,6 +11,8 @@ import { Kennzahlen } from "../gestalt/ansichten.jsx";
 import { Sheet } from "../ui/leisten.jsx";
 import { kompetenzNachweis, mittelZuKompetenz, kompetenzLage } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
+import { BRANCHENMODULE } from "../../server/lib/branchenmodule.mjs";
+import { kompetenzSchreibbar, MODUL_NICHT_VERFUEGBAR } from "../module/altmodul-schreiben.js";
 
 
 /* ======================== QUALIFIKATIONSMATRIX ========================= */
@@ -27,15 +29,17 @@ export const KOMPETENZ_ARTEN = [
   ["taetigkeit", "Tätigkeit", "Freigabe für eine Verrichtung ohne festes Gerät, etwa Behandlungspflege"],
 ];
 
-export function Kompetenzen({ sitz, akt }) {
+/** @param {{ sitz: any, akt: any, liste?: readonly any[], startOffen?: string | null }} props  liste, startOffen: nur für Prüfungen (Registry-Kopie, aufgeklappte Karte) */
+export function Kompetenzen({ sitz, akt, liste: register = BRANCHENMODULE, startOffen = null }) {
   const m = sitz.mandant;
   const darfPflegen = darf(sitz, "staff.edit");
   const [neu, setNeu] = useState(null);
-  const [offen, setOffen] = useState(null);
+  const [offen, setOffen] = useState(startOffen);
   const [aufgabe, setAufgabe] = useState(null);
   const lage = useMemo(() => kompetenzLage(m), [m]);
   const liste = m.kompetenzen || [];
-  const mittel = m.betriebsmittel || [];
+  /* WP-19 B5: Eine Anlage lässt sich nur bei wirkender Maschinenqualifikation einer Kompetenz zuordnen (sonst 403). */
+  const mittel = (m.betriebsmittel || []).filter((x) => kompetenzSchreibbar(m, { betriebsmittelId: x.id }, register));
 
   const leer = { name: "", art: "geraet", betriebsmittelId: "", stufe: "",
     freigabeStelle: "", wiederholungMonate: "", grundlage: "", pflichtFuer: [], zugedacht: [] };
@@ -126,10 +130,18 @@ export function Kompetenzen({ sitz, akt }) {
                       })}
                     </div>
 
-                    {darfPflegen && (
+                    {darfPflegen && kompetenzSchreibbar(m, k, register) && (
                       <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
                         <Btn size="sm" onClick={() => setNeu({ ...k, bearbeiten: true })}>Bearbeiten</Btn>
                         <Btn size="sm" kind="danger" onClick={() => akt.loescheKompetenz(k.id)}>Löschen</Btn>
+                      </div>)}
+                    {darfPflegen && !kompetenzSchreibbar(m, k, register) && (
+                      <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap", alignItems: "center" }}>
+                        <span id={`kompetenz-grund-${k.id}`} style={{ fontSize: 12.5, color: C.dimmer }}>{MODUL_NICHT_VERFUEGBAR}</span>
+                        <Btn size="sm" disabled aria-describedby={`kompetenz-grund-${k.id}`}
+                          title={`Bearbeiten nicht möglich: ${MODUL_NICHT_VERFUEGBAR}`}>Bearbeiten</Btn>
+                        <Btn size="sm" kind="danger" disabled aria-describedby={`kompetenz-grund-${k.id}`}
+                          title={`Löschen nicht möglich: ${MODUL_NICHT_VERFUEGBAR}`}>Löschen</Btn>
                       </div>)}
                   </div>)}
               </div>);

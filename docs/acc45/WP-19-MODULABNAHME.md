@@ -74,12 +74,14 @@ Der Schreibweg der neueren Module lässt bei ausgeschaltetem Modul nur die Lösc
 wo ein Wertschema sie vorsieht (nachgerechnet: `funktionsPlan`, Art. 16, Modul aus → 403). Die fünf älteren Module lassen die geprüfte Berichtigung durch
 (Posten, Bereichsplan). Zu entscheiden: ob die Berichtigung nach Art. 16 bei ausgeschaltetem Modul auch für die neueren Module gilt (gemeinsamer Kern).
 
-**Befund B5 (Oberfläche, Beobachtung, keine Änderung).** Die Moduloberflächen der fünf Module erscheinen bei `geplant` nicht („in Vorbereitung“, „Keine
+**Befund B5 (Oberfläche, behoben, rot/grün).** Die Moduloberflächen der fünf Module erscheinen bei `geplant` nicht („in Vorbereitung“, „Keine
 Moduloberfläche“) — stimmig mit dem Server. Altdaten zeigen aber Kernansichten weiter mit Schreibaktionen: Betriebsmittel (eine Alt-Anlage lässt sich
 bearbeiten oder löschen), Kompetenzen (Alt-Maschinenkompetenz bearbeiten oder löschen; die Auswahl „Betriebsmittel“ listet auch Alt-Anlagen). Solche
 Speichervorgänge weist der Server jetzt mit 403 ab („Branchenmodul … wirkt in diesem Betrieb nicht …“); die Oberfläche kennzeichnet diese Einträge nicht
-als „nicht verfügbar“. Betrifft nur Betriebe mit Altdaten aus Test- oder Staging-Nutzung. Folgearbeit: Die Ansichten blenden Bearbeiten und Löschen
-für Einträge geplanter Module aus.
+als „nicht verfügbar“. Betrifft nur Betriebe mit Altdaten aus Test- oder Staging-Nutzung. Behoben: Betriebsmittel und Kompetenzen (`src/ansichten/`) fragen über `src/module/altmodul-schreiben.js` dieselbe Regel wie der Server (`modulAktiv`, keine zweite
+Liste): Bei nicht wirkendem Modul stehen Ausgabe, Entfernen, Bearbeiten und Löschen für Alt-Anlagen und Alt-Maschinenkompetenzen nicht mehr aktiv da (gesperrt mit dem
+Grund „Modul noch nicht verfügbar“, verknüpft per `aria-describedby`), die Auswahl „Betriebsmittel“ listet keine Alt-Anlagen; Lesen bleibt. Posten, Bereichsplan und
+geteilter Dienst haben keine Schreibansicht im Kern. Prüfung: `npm run pruefung:modul-altwege-oberflaeche`.
 
 **Befund B2 (Zielgrößen, behoben, rot/grün).** Schaltflächen, Auswahl- und Eingabefelder und Auswahlkästchen im Bereich „Branchenmodule“
 (`src/module/kern.jsx`, eingehängte Oberflächen, Kontischicht-Assistent) waren unformatierte Standardelemente ohne Mindestgröße in den Stilregeln der Anwendung

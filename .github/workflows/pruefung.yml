@@ -111,6 +111,10 @@ jobs:
       - name: Branchenmodule, modulAktiv nur Allowlist-Status (WP-19 B4)
         run: npm run pruefung:modulaktiv
 
+      # WP-19 B5: Ansichten Betriebsmittel und Kompetenzen zeigen für Module im Status geplant keine aktive Schreibaktion (Server: 403).
+      - name: Branchenmodule, Oberfläche ohne Schreibaktionen bei Status geplant (WP-19 B5)
+        run: npm run pruefung:modul-altwege-oberflaeche
+
       # WP-40: Bewertungslogik der Browser-Abnahme und Fehlertext-Verknüpfung (ohne Browser;
       # die Messung selbst läuft von Hand, siehe pruefungen/browser/wcag-wp40.mjs).
       - name: Barrierefreiheit WP-40, Browser-Abnahme ohne Browser
