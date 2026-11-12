@@ -124,6 +124,22 @@ describe("S1 Schalter aus (Vorgabe)", () => {
     expect(s.modell).toBe(false);
     expect(g.aufrufe).toHaveLength(0);
   });
+  it("Arbeitssitzung (gemeinsamer Prüfpunkt): fehlende, erfundene, fremdartige und beendete Sitzung → 401 an beiden Wegen, Rumpf wird nicht gelesen", async () => {
+    process.env.CENTRIC_HILFE_ASSISTENT = "an";
+    const g = gw.gateway = spion(FERTIG);
+    const frisch = await sitzung("HILA-FFFF-0010", "mitarbeiter", "ma2", "m-a");
+    expect((await status(frisch)).status).toBe(200);
+    const abm = await anfrage(daten, "/api/abmelden", { token: frisch });
+    expect(abm.status).toBeLessThan(300);
+    const falsche = [null, "", "x", "erfunden-" + "a".repeat(40), frisch, "Bearer " + frisch, T.ma.slice(0, -1) + (T.ma.endsWith("a") ? "b" : "a")];
+    for (const t of falsche) {
+      expect((await status(t)).status, "status " + String(t).slice(0, 12)).toBe(401);
+      expect((await frage(t, "Wie stemple ich ein?")).status, "frage " + String(t).slice(0, 12)).toBe(401);
+      /* kaputter Rumpf ändert die Absage nicht: die Sitzung wird zuerst geprüft */
+      expect((await anfrage(hilfe, "/api/hilfe/frage", { token: t, rumpf: "{kaputt" })).status).toBe(401);
+    }
+    expect(g.aufrufe).toHaveLength(0);
+  });
   it("nur genau „suche“ und „an“ schalten ein; Groß-, Kleinschreibung, „true“, „1“ und leer bleiben aus", async () => {
     for (const w of ["true", "1", "AN", "Suche", "", " an", "ja"]) {
       process.env.CENTRIC_HILFE_ASSISTENT = w;
