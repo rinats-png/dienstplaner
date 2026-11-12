@@ -47,3 +47,9 @@ und die **Liste der Personen, die angesprochen werden dürfen**. Sie **sendet, s
 | Freitext der Nutzerin („Entwurf aus Stichworten“, Übersetzung) | offen: braucht Eingabewarnung (Plan: Gesundheitswörter blockiert), Namenspolitik (`fremdtext`) und Gateway; hier bewusst nicht enthalten |
 | Weitere Vorlagen (z. B. Schulung, Tauschaufruf) | offen: je Vorlage Platzhalter, Sicht und Verbotsprüfung neu prüfen |
 | Positivliste F5 hat `felder: []` | unverändert; passt, weil dem Modell nur die Vorlage ohne Betriebsdaten gegeben wird |
+
+## Nachtrag (Review)
+
+- Verbotsprüfung gehärtet (lokale Zusatzliste, `leckpruefung.mjs` unverändert): zusätzliche Stämme quarant, psych, infekt, erkält, magen, isolation, urlaub, abwesen, fehlzeit und das Einzelwort „AU“; geprüft wird auch eine Fassung, in der aufeinanderfolgende Einzelbuchstaben zusammengezogen sind („K r a n k“, „K-r-a-n-k“, „A U“); Umlaute werden vorher normalisiert. Harmlose Namen (Früh, Station 3, Geschäftsstelle, Nachtwache, Wohnbereich Ost, Kurzdienst) bleiben zulässig (Negativtests).
+- Wortlaut `dienstbeginn_erinnerung`: „… zum Dienstbeginn, falls Sie eingeteilt sind“ — wahr für alle Empfänger der Einheit.
+- **Offen für den Versandschritt/die Oberfläche:** Die Empfängerliste einer Tagesvorlage ist „alle Beschäftigten der Einheit“, nicht „die Eingeteilten“. Der Versandschritt und die Oberfläche müssen diese Bedeutung der Empfänger der Absenderin eindeutig zeigen.

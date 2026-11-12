@@ -82,7 +82,7 @@ export const NACHRICHTEN_VORLAGEN = Object.freeze([
     text: "Guten Tag, eine freundliche Erinnerung: Bitte prüfen Sie Ihren Dienstplan in CENTRIC. Monat: {Monat}. Vielen Dank." },
   { id: "dienstbeginn_erinnerung", titel: "Erinnerung Dienstbeginn", parameter: ["datum", "dienstart", "einheit"],
     betreff: "Erinnerung: Dienst am {Datum}",
-    text: "Guten Tag, eine freundliche Erinnerung an Ihren Dienst. Datum: {Datum}. Dienst: {Dienstart} ({Uhrzeit}), Bereich: {Einheit}. Bitte prüfen Sie Ihren Dienstplan in CENTRIC. Vielen Dank." },
+    text: "Guten Tag, eine freundliche Erinnerung zum Dienstbeginn, falls Sie eingeteilt sind. Datum: {Datum}. Dienst: {Dienstart} ({Uhrzeit}), Bereich: {Einheit}. Bitte im Dienstplan in CENTRIC nachsehen. Vielen Dank." },
 ].map((v) => Object.freeze({ ...v, parameter: Object.freeze(v.parameter) })));
 
 const PLATZHALTER = /\{([A-Za-zÄÖÜäöüß]+)\}/g;
@@ -94,7 +94,11 @@ const MUSTER_KONTAKT = /@|https?:|www\.|mailto:|tel:|\+\s?\d|(?:\d[\s/().-]?){7,
 
 /* Zusätzliche Gesundheits-/Schutzstämme (nach Normalisierung) über die Wortliste der Leck-Prüfung hinaus: lieber zu viel verweigern. */
 const GESUNDHEIT_STAMM = ["krank", "erkrank", "attest", "diagnos", "grippe", "influenza", "covid", "corona", "fieber", "chemo", "klinik", "schwanger",
-  "mutterschutz", "reha", "therapie", "behinder", "gesundheit", "arbeitsunfaehig", "bescheinigung", "klaerung", "betriebsrat"];
+  "mutterschutz", "reha", "therapie", "behinder", "gesundheit", "arbeitsunfaehig", "bescheinigung", "klaerung", "betriebsrat",
+  "quarant", "psych", "infekt", "erkaelt", "magen", "isolation", "urlaub", "abwesen", "fehlzeit"];
+const WORT_AU = /(^| )au( |$)/;
+/* Auseinandergezogene Buchstaben („K r a n k“, „K-r-a-n-k“, „A U“): aufeinanderfolgende Einzelzeichen werden zu einem Wort. */
+const zusammengezogen = (n) => n.split(" ").reduce((a, w) => { if (w.length === 1 && a.length && a[a.length - 1].einzel) a[a.length - 1].w += w; else a.push({ w, einzel: w.length === 1 }); return a; }, []).map((x) => x.w).join(" ");
 const MUSTER_ARZT = /(^| )(arzt|aerzt)/;
 
 function anfrageLesen(anfrage) {
@@ -114,8 +118,9 @@ function verboten(texte, sperrliste) {
     for (const t of texte) {
       if (typeof t !== "string" || !t.trim() || t.includes("\u0000") || /\{[^}]*\}/.test(t)) return true;
       if (MUSTER_KONTAKT.test(t)) return true;
-      const n = normalisieren(t);
-      if (GESUNDHEIT_STAMM.some((s) => n.includes(s)) || MUSTER_ARZT.test(n)) return true;
+      for (const n of [normalisieren(t), zusammengezogen(normalisieren(t))]) {
+        if (GESUNDHEIT_STAMM.some((s) => n.includes(s)) || MUSTER_ARZT.test(n) || WORT_AU.test(n)) return true;
+      }
       if (!textPruefen(t, sperrliste).ok) return true;
     }
     return false;

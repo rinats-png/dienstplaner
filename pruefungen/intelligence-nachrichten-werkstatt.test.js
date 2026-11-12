@@ -55,7 +55,7 @@ describe("Katalog: jede Vorlage, genaue Ausgabe", () => {
     erinnerung_dienstplan: { betreff: "Erinnerung: Dienstplan Dezember 2026",
       text: "Guten Tag, eine freundliche Erinnerung: Bitte prüfen Sie Ihren Dienstplan in CENTRIC. Monat: Dezember 2026. Vielen Dank.", empf: nm("sv1", "a1", "a2", "a3") },
     dienstbeginn_erinnerung: { betreff: "Erinnerung: Dienst am Donnerstag, 5. November 2026",
-      text: `Guten Tag, eine freundliche Erinnerung an Ihren Dienst. Datum: Donnerstag, 5. November 2026. Dienst: Nacht (21:15 bis 06:15 Uhr), Bereich: Wohnbereich Ahornweg. ${SCHLUSS}`, empf: nm("a2") },
+      text: "Guten Tag, eine freundliche Erinnerung zum Dienstbeginn, falls Sie eingeteilt sind. Datum: Donnerstag, 5. November 2026. Dienst: Nacht (21:15 bis 06:15 Uhr), Bereich: Wohnbereich Ahornweg. Bitte im Dienstplan in CENTRIC nachsehen. Vielen Dank.", empf: nm("a2") },
   };
   it("der Katalog ist geschlossen: genau diese fünf Vorlagen", () => {
     expect(NACHRICHTEN_VORLAGEN.map((v) => v.id)).toEqual(Object.keys(ERWARTET));
@@ -179,7 +179,10 @@ describe("Entwurfsregel: nichts Unveröffentlichtes in einen Text an Beschäftig
 
 describe("Verbotsprüfung des endgültigen Textes", () => {
   const SONDE = { krank: "krank", Attest: "Attest", Diagnose: "Diagnose", Grippe: "Station Grippe", Chemo: "Chemo", Klinik: "Klinik", Schwangerschaft: "Schwangerschaft",
-    "e-mail": "info@sonnenhof.example", phone: "0421 1234567", phone2: "+49 171 2345678", Krankenhaus: "Krankenhaus", Mutterschutz: "Mutterschutz" };
+    "e-mail": "info@sonnenhof.example", phone: "0421 1234567", phone2: "+49 171 2345678", Krankenhaus: "Krankenhaus", Mutterschutz: "Mutterschutz",
+    Quarantäne: "Quarantäne", Quarantaene: "Quarantaene", Psych: "Psych", Psycho: "Psycho Team", Infekt: "Infekt", Erkältung: "Erkältung", "Magen-Darm": "Magen-Darm",
+    Isolation: "Isolation", Urlaub: "Urlaub", Sonderurlaub: "Sonderurlaub", Fehlzeit: "Fehlzeit", Abwesend: "Abwesend",
+    "K r a n k": "K r a n k", "K-r-a-n-k": "K-r-a-n-k", "K.r.a.n.k": "K.r.a.n.k", "A U": "A U", "A-U": "A-U", "au": "AU Team" };
   for (const [name, wort] of Object.entries(SONDE)) {
     it(`Einheitsname mit „${name}“ im Text: abgelehnt „verbotener_inhalt“, nichts gezeigt`, async () => {
       const b = daten();
@@ -195,6 +198,16 @@ describe("Verbotsprüfung des endgültigen Textes", () => {
       expect((await ruf(A.schichtwechsel, {}, b)).grund).toBe("verbotener_inhalt");
     });
   }
+  it("harmlose Namen werden nicht zu Unrecht abgelehnt (Einheit und Dienstart)", async () => {
+    for (const name of ["Früh", "Station 3", "Geschäftsstelle", "Nachtwache", "Wohnbereich Ost", "Kurzdienst", "Haus Nord", "Spätdienst 2"]) {
+      const b = daten();
+      b.einheiten = b.einheiten.map((e) => (e.id === "e1" ? { ...e, name } : e));
+      b.dienstarten = b.dienstarten.map((d) => (d.id === "F" ? { ...d, name } : d));
+      const r = await ruf(A.schichtwechsel, {}, b);
+      expect(r.status, name).toBe("ok");
+      expect(r.entwurf.text, name).toContain(name);
+    }
+  });
   it("ein Personenname (Vor- oder Nachname) als Einheit oder Dienst: abgelehnt", async () => {
     for (const name of ["Weberknecht", "Anna", "Team Nguyen"]) {
       const b = daten();
