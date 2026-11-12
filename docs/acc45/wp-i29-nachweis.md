@@ -25,6 +25,10 @@ bestehende Gateway (WP-I13) ausführt. Jeder Eintrag ist eine gewöhnliche Gatew
 - **Idempotenz:** gleicher Schlüssel + gleiche Spec (im selben Bestand/Betrieb/Person) liefert denselben Auftrag ohne zweite Ausführung (`neu: false`); gleicher Schlüssel + andere Spec: `KI_EINGABE`. Fremde Aufträge sind nicht lesbar (`KI_NICHT_GEFUNDEN`, keine Auskunft über Existenz).
 - **Kontingent:** (a) vor dem Start: Rest = Monatskontingent − Verbrauch und Tagesbudget − Verbrauch (nominell, strenger als die 1,1-Toleranz des Gateways) muss für die Mindestkosten (1 IE je Eintrag) reichen, sonst Status `kontingent_zu_knapp`, null Gateway-Aufrufe; ohne `limits` läuft nichts. (b) vor JEDEM Eintrag erneut (laufende Einträge als Reserve); (c) optionales Auftragsbudget `maxIE`; (d) meldet das Gateway `KI_KONTINGENT` oder `KI_LIMIT`, endet der Auftrag mit `kontingent_erreicht` bzw. `limit_erreicht`, der Rest ist `nicht_ausgefuehrt`. Das Gateway reserviert und bucht weiterhin selbst; der Batch bucht nichts.
 - **Abbruch/Frist/Notschalter:** `abbrechen()` (kein weiterer Eintrag startet), Frist `fristMs` (geprüft vor jedem Eintrag), Notschalter während des Laufs (`ausgeschaltet`). Statuswerte: `laeuft`, `fertig`, `abgebrochen`, `frist_abgelaufen`, `kontingent_erreicht`, `kontingent_zu_knapp`, `limit_erreicht`, `ausgeschaltet`.
+- **Lesewege (Review F1):** `status`, `warten`, `ergebnis`, `abbrechen`, `verwerfen` prüfen bei jedem Aufruf Schalter (`KI_AUS`) und Rolle leitung/planer (`KI_ROLLE`); der Auftrag ist an Bestand, Betrieb, Person UND Rolle gebunden.
+- **Kappen (F2):** höchstens 5 Aufträge je Person, 10 je Betrieb (laufende und gespeicherte), global 200 nur als Notbremse; Platz wird nur aus den eigenen beendeten Aufträgen geschaffen, sonst `KI_LIMIT` für den Verursacher, nie werden fremde Ergebnisse verdrängt. Gespeicherte Ergebnisse verfallen nach 1 Stunde (TTL).
+- **Ablehnungen (F3):** `kontingent_zu_knapp` wird nicht gespeichert (`id: null`, Einträge direkt im Rückgabewert), belegt weder Platz noch Idempotenz-Schlüssel.
+- **Rollenentzug (F4):** optionaler Haken `sitzungGueltig(sitzung)` wird vor jedem Eintrag aufgerufen; nicht `true` oder Wurf stoppt mit Status `nicht_mehr_berechtigt` (`KI_ROLLE`). Ohne Haken gilt die Sitzung des Starts (Verdrahtung muss den Haken liefern).
 - **Fortschritt:** nur Zähler (`gesamt`, `fertig`, `nicht_verfuegbar`, `fehler`, `nicht_ausgefuehrt`, `laufend`), nie Inhalte. Es wird nichts protokolliert.
 - **Determinismus:** Einträge laufen in Eingabereihenfolge, Ergebnisse stehen in Eingabereihenfolge (auch bei `parallel: 2`); gleiche Eingaben liefern gleiche Ergebnisse (die Alias-Bildung des Gateways ohne Ergebnis-Speicher hängt an dessen Auftrags-ID; im Test fest gesetzt).
 - **Keine Schreibzugriffe:** das Modul hat keinen Store, keine Datei, kein Netz, keine Umgebung, kein Protokoll (Quelltextprüfung); Bestand bleibt gleich.
@@ -33,7 +37,7 @@ bestehende Gateway (WP-I13) ausführt. Jeder Eintrag ist eine gewöhnliche Gatew
 ## Ergebnis-Format (Abweichung, begründet)
 
 Der Ergebnis-Speicher (WP-I14) ist je Einzelanfrage über den Decision Fingerprint adressiert und für eine Auftragssammlung nicht gedacht. Die Auftragsergebnisse liegen daher
-**nur im Prozessspeicher** (höchstens 50 Aufträge, älteste beendete werden verdrängt, `verwerfen()` gibt frei, Neustart leert alles), abrufbar nur für dieselbe Person im selben Bestand/Betrieb.
+**nur im Prozessspeicher** (Kappen siehe oben, eigene älteste beendete werden verdrängt, `verwerfen()` gibt frei, Neustart leert alles), abrufbar nur für dieselbe Person im selben Bestand/Betrieb.
 Legt der Aufrufer dem Gateway einen Ergebnis-Speicher bei, schreibt das Gateway seine Einzelergebnisse selbst unter den dort geltenden Regeln; der Batch ergänzt keine Persistenz.
 
 ## Offene Punkte

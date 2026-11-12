@@ -41,7 +41,7 @@ import { KiFehler } from "../fehler.mjs";
 
 export const BATCH_GRENZEN = Object.freeze({
   eintraege: 50, bytes: 64 * 1024, parallel: 2, maxIE: 500, fristMinMs: 1_000, fristMaxMs: 600_000, fristVorgabeMs: 120_000,
-  auftraege: 50, schluesselMuster: /^[A-Za-z0-9_-]{8,64}$/,
+  auftraege: 200, jeBetrieb: 10, jePerson: 5, ttlMs: 3_600_000, schluesselMuster: /^[A-Za-z0-9_-]{8,64}$/,
 });
 /** Rollen, die Batch-Aufträge starten dürfen (zusätzlich zur Positivliste je Funktion). */
 export const BATCH_ROLLEN = Object.freeze(["leitung", "planer"]);
@@ -49,7 +49,7 @@ export const BATCH_ROLLEN = Object.freeze(["leitung", "planer"]);
 export const MIN_IE_JE_EINTRAG = 1;
 
 export const BATCH_STATUS = Object.freeze(["laeuft", "fertig", "abgebrochen", "frist_abgelaufen", "kontingent_erreicht",
-  "kontingent_zu_knapp", "limit_erreicht", "ausgeschaltet"]);
+  "kontingent_zu_knapp", "limit_erreicht", "ausgeschaltet", "nicht_mehr_berechtigt"]);
 const ENDE_GRUND_CODES = new Set(["KI_KONTINGENT", "KI_LIMIT", "KI_AUS", "KI_PAUSIERT"]);
 const FEHLER_CODES = new Set(["KI_NICHT_ANGEMELDET", "KI_ROLLE", "KI_FUNKTION", "KI_EINGABE", "KI_NICHT_GEFUNDEN", "KI_LECK", "KI_ALIAS_SCHLUESSEL",
   "KI_ALIAS_UNBEKANNT", "KI_PRUEFER", "KI_INTERN", "KI_AUS", "KI_PAUSIERT", "KI_LIMIT", "KI_KONTINGENT", "KI_GROESSE", "KI_ZEIT", "KI_ANBIETER",
@@ -88,6 +88,7 @@ export function batchSpecLesen(spec) {
  *   limits?: { konfig: () => any, stand: (betrieb: string) => any, gesamtStand: () => any },  // fehlt = kein Kontingentwissen: nichts läuft
  *   schalter?: { prozess: () => unknown, laufzeit: () => unknown },
  *   funktionenFreigegeben?: Iterable<string>,
+ *   sitzungGueltig?: (sitzung: any) => boolean | Promise<boolean>,   // aktuelle Rolle/Sitzung je Eintrag neu prüfen (F4); false/Wurf = Stopp
  *   jetzt?: () => number,
  *   zufallId?: () => string,
  * }} o
@@ -105,7 +106,9 @@ export function erzeugeBatchLauf(o = {}) {
   const nachId = new Map();
 
   const betriebKey = (s) => `${s.bestand}|${String(s.betrieb ?? "")}`;
-  const bereich = (s) => hash([s.bestand, String(s.betrieb ?? ""), s.person]);
+  const bereich = (s) => hash([s.bestand, String(s.betrieb ?? ""), s.person, s.rolle]);
+  const mandant = (s) => hash([s.bestand, String(s.betrieb ?? "")]);
+  const person = (s) => hash([s.bestand, String(s.betrieb ?? ""), s.person]);
 
   /** Verbleibende IE nach nominellem Monats- und Tageskontingent (strenger als die 1,1-Toleranz des Gateways). */
   function restIE(s) {
@@ -119,12 +122,25 @@ export function erzeugeBatchLauf(o = {}) {
   }
   const verbrauchtMonat = (s) => { try { const v = limits.stand(betriebKey(s)).ieMonat; return Number.isFinite(v) ? v : null; } catch { return null; } };
 
-  function verdraengen() {
-    while (nachId.size >= BATCH_GRENZEN.auftraege) {
-      const aeltester = [...nachId.values()].find((a) => a.status !== "laeuft");
-      if (!aeltester) throw new GatewayFehler("KI_LIMIT", "Zu viele Batch-Aufträge.");
-      nachId.delete(aeltester.id); nachSchluessel.delete(aeltester.key);
-    }
+  /** Abgelaufene Ergebnisse entfernen (TTL); laufende nie. */
+  function ablaufen() {
+    const t = jetzt();
+    for (const x of [...nachId.values()]) if (x.status !== "laeuft" && Number.isFinite(t) && t - x.ende > BATCH_GRENZEN.ttlMs) { nachId.delete(x.id); nachSchluessel.delete(x.key); }
+  }
+  /** Platz schaffen NUR aus den eigenen Aufträgen des Verursachers (Person, dann Betrieb); nie fremde. Sonst Ablehnung. */
+  function platzSchaffen(s) {
+    const mine = (feld, wert, grenze) => {
+      for (;;) {
+        const liste = [...nachId.values()].filter((x) => x[feld] === wert);
+        if (liste.length < grenze) return;
+        const alt = liste.filter((x) => x.status !== "laeuft").sort((x, y) => x.ende - y.ende)[0];
+        if (!alt) throw new GatewayFehler("KI_LIMIT", "Zu viele Batch-Aufträge.");
+        nachId.delete(alt.id); nachSchluessel.delete(alt.key);
+      }
+    };
+    mine("personKey", person(s), BATCH_GRENZEN.jePerson);
+    mine("mandantKey", mandant(s), BATCH_GRENZEN.jeBetrieb);
+    if (nachId.size >= BATCH_GRENZEN.auftraege) throw new GatewayFehler("KI_LIMIT", "Zu viele Batch-Aufträge.");
   }
 
   const zaehler = (a) => {
@@ -146,6 +162,12 @@ export function erzeugeBatchLauf(o = {}) {
         if (abbruch.abgebrochen) { stoppen("abgebrochen", "abgebrochen"); return; }
         if (jetzt() >= deadline) { stoppen("frist_abgelaufen", "frist"); return; }
         if (!gatewayAn(schalter)) { stoppen("ausgeschaltet", "KI_AUS"); return; }
+        if (typeof o.sitzungGueltig === "function") {
+          let ok = false;
+          try { ok = (await o.sitzungGueltig(s)) === true; } catch { ok = false; }
+          if (!ok) { stoppen("nicht_mehr_berechtigt", "KI_ROLLE"); return; }
+          if (stopp || abbruch.abgebrochen) continue;
+        }
         const i = naechster;
         if (i >= a.eintraege.length) return;
         /* Kontingent vor JEDEM Eintrag (laufende Einträge sind schon gebucht, aber noch nicht abgerechnet: Reserve). */
@@ -175,6 +197,7 @@ export function erzeugeBatchLauf(o = {}) {
     }
     a.status = stopp ? stopp.status : "fertig";
     a.grund = stopp ? stopp.grund : null;
+    a.ende = jetzt();
   }
 
   async function eintragAusfuehren(anfrage, index, s) {
@@ -210,25 +233,28 @@ export function erzeugeBatchLauf(o = {}) {
     }
     const key = hash([bereich(sitzung), spec.schluessel]);
     const inhalt = hash([spec.eintraege, spec.maxIE, spec.fristMs, spec.parallel]);
+    ablaufen();
     const vorhanden = nachSchluessel.get(key);
     if (vorhanden) {
       if (vorhanden.inhalt !== inhalt) throw eingabeFehler();
       return { ...ansicht(vorhanden), neu: false };
     }
-    verdraengen();
-    const a = { id: zufallId(), key, inhalt, schluessel: spec.schluessel, spec, eintraege: spec.eintraege, ergebnisse: new Array(spec.eintraege.length),
-      status: "laeuft", grund: null, laufend: 0, start: jetzt(), vorher: 0, bereich: bereich(sitzung), abbruch: { abgebrochen: false }, fertigP: null };
-    nachSchluessel.set(key, a); nachId.set(a.id, a);
-
-    /* Kontingent VOR dem Start: ohne Kontingentwissen oder bei zu wenig Rest läuft nichts. */
+    /* Kontingent VOR dem Start: ohne Kontingentwissen oder bei zu wenig Rest läuft nichts. Ablehnungen werden NICHT gespeichert
+       (kein Platz, kein Idempotenz-Schlüssel): ein späterer Versuch nach dem Zurücksetzen des Kontingents läuft neu. */
     const rest = limits ? restIE(sitzung) : 0;
     const braucht = spec.eintraege.length * MIN_IE_JE_EINTRAG;
     if (!limits || rest < braucht || (spec.maxIE !== null && braucht > spec.maxIE)) {
-      a.ergebnisse = spec.eintraege.map((e, i) => ({ index: i, funktion: e.funktion, status: "nicht_ausgefuehrt", code: "KI_KONTINGENT" }));
-      a.status = "kontingent_zu_knapp"; a.grund = "KI_KONTINGENT";
-      a.fertigP = Promise.resolve();
-      return { ...ansicht(a), neu: true };
+      const eintraegeAbgelehnt = spec.eintraege.map((e, i) => ({ index: i, funktion: e.funktion, status: "nicht_ausgefuehrt", code: "KI_KONTINGENT" }));
+      return Object.freeze({ id: null, status: "kontingent_zu_knapp", grund: "KI_KONTINGENT", idempotenzSchluessel: spec.schluessel, neu: true,
+        fortschritt: Object.freeze({ gesamt: spec.eintraege.length, fertig: 0, nicht_verfuegbar: 0, fehler: 0, nicht_ausgefuehrt: spec.eintraege.length, laufend: 0 }),
+        eintraege: Object.freeze(eintraegeAbgelehnt.map((x) => Object.freeze(x))) });
     }
+    ablaufen();
+    platzSchaffen(sitzung);
+    const a = { id: zufallId(), key, inhalt, schluessel: spec.schluessel, spec, eintraege: spec.eintraege, ergebnisse: new Array(spec.eintraege.length),
+      status: "laeuft", grund: null, laufend: 0, start: jetzt(), ende: 0, vorher: 0, bereich: bereich(sitzung), mandantKey: mandant(sitzung), personKey: person(sitzung),
+      abbruch: { abgebrochen: false }, fertigP: null };
+    nachSchluessel.set(key, a); nachId.set(a.id, a);
     a.vorher = verbrauchtMonat(sitzung) ?? 0;
     const s2 = Object.freeze({ ...sitzung });
     a.fertigP = ablauf(a, s2, a.abbruch);
@@ -236,7 +262,10 @@ export function erzeugeBatchLauf(o = {}) {
   }
 
   const finden = (sitzung, id) => {
+    if (!gatewayAn(schalter)) throw new GatewayFehler("KI_AUS", "Intelligence ist ausgeschaltet.");
     pruefenSitzung(sitzung);
+    if (!BATCH_ROLLEN.includes(sitzung.rolle)) throw new KiFehler("KI_ROLLE", "Diese Rolle darf die Funktion nicht auslösen.");
+    ablaufen();
     const a = typeof id === "string" ? nachId.get(id) : undefined;
     /* Fremde Aufträge gibt es nicht: gleiche Antwort wie „unbekannt“ (keine Auskunft über Existenz). */
     if (!a || a.bereich !== bereich(sitzung)) throw new KiFehler("KI_NICHT_GEFUNDEN", "Nicht gefunden.");

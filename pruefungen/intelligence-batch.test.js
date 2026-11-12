@@ -211,7 +211,8 @@ describe("Kontingent", () => {
     expect(r.status).toBe("kontingent_zu_knapp");
     expect(r.grund).toBe("KI_KONTINGENT");
     expect(t.gateway.ausfuehren).not.toHaveBeenCalled();
-    expect(t.batch.ergebnis(S.leitung, r.id).eintraege.every((x) => x.status === "nicht_ausgefuehrt")).toBe(true);
+    expect(r.id).toBe(null);
+    expect(r.eintraege.every((x) => x.status === "nicht_ausgefuehrt")).toBe(true);
     expect(t.limits.stand("raum-a|0").ieMonat).toBe(0);
   });
   it("Auftragsbudget maxIE unter der Mindestmenge: kein Start", async () => {
@@ -337,6 +338,113 @@ describe("Rollenmatrix", () => {
   it("ohne gültige Sitzung → KI_NICHT_ANGEMELDET", async () => {
     const t = bauen();
     for (const s of [null, {}, { rolle: "leitung" }, { rolle: "leitung", person: "", bestand: "raum-a" }]) expect(await code(t.batch.starten(s, spec(1)))).toBe("KI_NICHT_ANGEMELDET");
+  });
+});
+
+const LIMIT_OK = () => ({ konfig: () => ({ kontingentIE: 100, tagesIE: 1000 }), stand: () => ({ ieMonat: 0 }), gesamtStand: () => ({ ieTag: 0 }) });
+const GW_OK = () => ({ ausfuehren: vi.fn(async () => ({ status: "fertig", ergebnis: { text: "ok" }, kennzeichnung: {} })) });
+
+describe("Nach Review: Lesewege, Kappen, Ablehnungen, Rollenentzug", () => {
+  const ROLLEN = ["leitung", "planer", "mitarbeiter", "subplaner", "betriebsrat", "betreiber", "kunde"];
+  const FUNKTIONEN = ["F2", "F3", "F4", "F11", "F12"];
+  it("F1: jeder Lesepfad ist je Rolle und Schalter exakt geprüft (dieselbe Person-ID, andere Rolle)", async () => {
+    let modus = "an";
+    const t = bauen({ schalter: { prozess: () => modus, laufzeit: () => "an" } });
+    const r = await laufen(t, S.leitung, spec(2));
+    for (const rolle of ROLLEN.filter((x) => x !== "leitung")) {
+      for (const weg of ["status", "warten", "ergebnis", "abbrechen", "verwerfen"]) {
+        const erwartet = rolle === "planer" ? "KI_NICHT_GEFUNDEN" : "KI_ROLLE";
+        expect(await code(Promise.resolve().then(() => t.batch[weg](sitzung(rolle, "l1"), r.id))), rolle + weg).toBe(erwartet);
+      }
+    }
+    expect(t.batch.ergebnis(S.leitung, r.id).eintraege.length).toBe(2);
+    modus = "aus";
+    for (const weg of ["status", "warten", "ergebnis", "abbrechen", "verwerfen"]) expect(await code(Promise.resolve().then(() => t.batch[weg](S.leitung, r.id))), weg).toBe("KI_AUS");
+    modus = "an";
+    expect(t.batch.ergebnis(S.leitung, r.id).status).toBe("fertig");
+  });
+  it("F1: Rolle x Funktion x Schalter beim Start: nur erlaubte Kombinationen laufen", async () => {
+    for (const an of [true, false]) {
+      for (const rolle of ROLLEN) {
+        for (const f of FUNKTIONEN) {
+          const t = bauen({ schalter: an ? AN : { prozess: () => "aus", laufzeit: () => "aus" } });
+          const erlaubt = an && (rolle === "leitung" || (rolle === "planer" && f !== "F4"));
+          const c = await code(t.batch.starten(sitzung(rolle, rolle === "leitung" ? "l1" : "pl1"), { schluessel: "auftrag-m1", eintraege: [{ funktion: f, eingabe: { zeitraum: { von: tag(1), bis: tag(1) } } }] }));
+          expect(c, `${an} ${rolle} ${f}`).toBe(erlaubt ? "ok" : !an ? "KI_AUS" : "KI_ROLLE");
+          if (!erlaubt) expect(t.gateway.ausfuehren).not.toHaveBeenCalled();
+        }
+      }
+    }
+  });
+  const job = (i, extra = {}) => ({ schluessel: `job-schluessel-${i}`, eintraege: [eintrag(i + 1)], ...extra });
+  const TOR = () => { let frei; const tor = new Promise((r) => { frei = r; }); return { frei, gateway: { ausfuehren: vi.fn(async () => { await tor; return { status: "fertig", ergebnis: { text: "ok" }, kennzeichnung: {} }; }) } }; };
+  it("F2: Betrieb A verdrängt nie Ergebnisse von Betrieb B; A an der Kappe wird abgelehnt, B arbeitet weiter", async () => {
+    const batch = erzeugeBatchLauf({ gateway: GW_OK(), limits: LIMIT_OK(), schalter: AN, funktionenFreigegeben: ["F2"] });
+    const sB = { ...S.leitung, bestand: "raum-b" };
+    const wart = async (s, j) => { const r = await batch.starten(s, j); return batch.warten(s, r.id); };
+    const rB = await wart(sB, job(0));
+    const eigene = [];
+    for (let i = 0; i < BATCH_GRENZEN.jePerson; i++) eigene.push(await wart(S.leitung, job(i)));
+    expect((await wart(S.leitung, job(20))).status).toBe("fertig");
+    expect(await code(Promise.resolve().then(() => batch.status(S.leitung, eigene[0].id)))).toBe("KI_NICHT_GEFUNDEN");
+    expect(batch.ergebnis(sB, rB.id).status).toBe("fertig");
+    const x = TOR();
+    const b2 = erzeugeBatchLauf({ gateway: x.gateway, limits: LIMIT_OK(), schalter: AN, funktionenFreigegeben: ["F2"] });
+    for (let i = 0; i < BATCH_GRENZEN.jePerson; i++) await b2.starten(S.leitung, job(i));
+    expect(await code(b2.starten(S.leitung, job(30)))).toBe("KI_LIMIT");
+    expect((await b2.starten(sB, job(0))).status).toBe("laeuft");
+    x.frei();
+  });
+  it("F2: Betriebskappe über Personen hinweg; abgelehnte Aufträge belegen keinen Platz", async () => {
+    const knapp = bauen({ limitKonfig: { betriebKontingentIE: 1 } });
+    for (let i = 0; i < 30; i++) expect((await knapp.batch.starten(S.leitung, job(i, { eintraege: [eintrag(1), eintrag(2), eintrag(3)] }))).status).toBe("kontingent_zu_knapp");
+    const x = TOR();
+    const b3 = erzeugeBatchLauf({ gateway: x.gateway, limits: LIMIT_OK(), schalter: AN, funktionenFreigegeben: ["F2"] });
+    for (let i = 0; i < BATCH_GRENZEN.jeBetrieb; i++) await b3.starten(sitzung(i % 2 ? "leitung" : "planer", `p${i}`), job(i));
+    expect(await code(b3.starten(sitzung("planer", "pNeu"), job(40)))).toBe("KI_LIMIT");
+    x.frei();
+  });
+  it("F2: gespeicherte Ergebnisse laufen nach der TTL ab", async () => {
+    const uhr = { t: Date.UTC(2026, 10, 15, 10) };
+    const t = bauen({ jetzt: () => uhr.t });
+    const r = await laufen(t, S.leitung, spec(1));
+    uhr.t += BATCH_GRENZEN.ttlMs - 1000;
+    expect(t.batch.status(S.leitung, r.id).status).toBe("fertig");
+    uhr.t += 2000;
+    expect(await code(Promise.resolve().then(() => t.batch.status(S.leitung, r.id)))).toBe("KI_NICHT_GEFUNDEN");
+  });
+  it("F3: eine Kontingent-Ablehnung belegt den Idempotenz-Schlüssel nicht; nach dem Zurücksetzen läuft derselbe Schlüssel neu", async () => {
+    let ieMonat = 100;
+    const limits = { konfig: () => ({ kontingentIE: 100, tagesIE: 1000 }), stand: () => ({ ieMonat }), gesamtStand: () => ({ ieTag: 0 }) };
+    const gateway = GW_OK();
+    const batch = erzeugeBatchLauf({ gateway, limits, schalter: AN, funktionenFreigegeben: ["F2"] });
+    expect((await batch.starten(S.leitung, spec(2))).status).toBe("kontingent_zu_knapp");
+    expect(gateway.ausfuehren).not.toHaveBeenCalled();
+    ieMonat = 0;
+    const b = await batch.starten(S.leitung, spec(2));
+    expect(b.neu).toBe(true);
+    expect((await batch.warten(S.leitung, b.id)).status).toBe("fertig");
+    expect(gateway.ausfuehren).toHaveBeenCalledTimes(2);
+  });
+  it("F4: Rollenentzug mitten im Lauf stoppt den Auftrag mit klarem Status", async () => {
+    let gueltig = true;
+    const gateway = { ausfuehren: vi.fn(async () => { gueltig = false; return { status: "fertig", ergebnis: { text: "ok" }, kennzeichnung: {} }; }) };
+    const batch = erzeugeBatchLauf({ gateway, limits: LIMIT_OK(), schalter: AN, funktionenFreigegeben: ["F2"], sitzungGueltig: () => gueltig });
+    const s = await batch.starten(S.leitung, spec(5));
+    const r = await batch.warten(S.leitung, s.id);
+    expect(r.status).toBe("nicht_mehr_berechtigt");
+    expect(r.grund).toBe("KI_ROLLE");
+    expect(gateway.ausfuehren).toHaveBeenCalledTimes(1);
+    expect(batch.ergebnis(S.leitung, s.id).eintraege.map((x) => x.status)).toEqual(["fertig", "nicht_ausgefuehrt", "nicht_ausgefuehrt", "nicht_ausgefuehrt", "nicht_ausgefuehrt"]);
+  });
+  it("F4: wirft die Gültigkeitsprüfung oder liefert sie nicht true, läuft nichts (fail closed)", async () => {
+    for (const pruefung of [() => { throw new Error("x"); }, () => false, () => undefined, () => "ja"]) {
+      const gateway = GW_OK();
+      const batch = erzeugeBatchLauf({ gateway, limits: LIMIT_OK(), schalter: AN, funktionenFreigegeben: ["F2"], sitzungGueltig: pruefung });
+      const s = await batch.starten(S.leitung, spec(2));
+      expect((await batch.warten(S.leitung, s.id)).status).toBe("nicht_mehr_berechtigt");
+      expect(gateway.ausfuehren).not.toHaveBeenCalled();
+    }
   });
 });
 
