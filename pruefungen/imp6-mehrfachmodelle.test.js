@@ -65,6 +65,9 @@ const ROLLEN = {
   MA_EIGEN: { rolle: "mitarbeiter", person: "a1" },
   BR: { rolle: "betriebsrat", person: "r1" },
   BT: { rolle: "betreiber", person: null },
+  DL: { rolle: "leitung", person: "l1", demo: true },
+  DP: { rolle: "planer", person: "p1", demo: true },
+  LT2: { rolle: "leitung", person: "l1", betrieb: 1, mandant: "m2" },
 };
 const ERLAUBT = ["LT", "KU", "PL"];
 const NICHT = ["SV", "MA", "MA_EIGEN", "BR"];
@@ -107,8 +110,8 @@ async function neuerRaum({ rollen = Object.keys(ROLLEN), ...opt } = {}) {
   const token = {};
   for (const k of rollen) {
     const r = ROLLEN[k];
-    token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: 0,
-      mandantId: "m1", einheit: r.einheit || null }, 2 * 3600 * 1000)).token;
+    token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: r.betrieb || 0,
+      mandantId: r.mandant || "m1", einheit: r.einheit || null, ...(r.demo ? { demo: true } : {}) }, 2 * 3600 * 1000)).token;
   }
   return { raum, token };
 }
@@ -145,7 +148,7 @@ async function schreibeAls(token, k, aendern, { roh } = {}) {
   const g = await anfrage("/api/bestand", { token: token[k] });
   expect(g.status, `${k}: Lesen`).toBe(200);
   const rumpf = { bestand: kopie(g.bestand), etag: g.etag, durch: "Pruefung" };
-  const m = rumpf.bestand.mandanten.find((x) => x.id === "m1");
+  const m = rumpf.bestand.mandanten.find((x) => x.id === (ROLLEN[k].mandant || "m1"));
   aendern(m, rumpf);
   return anfrage("/api/bestand", { methode: "PUT", token: token[k], rumpf: roh ? roh(rumpf) : rumpf });
 }
@@ -467,7 +470,16 @@ describe("6. Teilweg (POST /api/bestand/teile) ist nie großzügiger als der Vol
         const A = await neuerRaum({ rollen: [k] });
         const Bv = await neuerRaum({ rollen: [k] });
         const gA = await anfrage("/api/bestand", { token: A.token[k] });
-        if (!gA.teile) return;   // Teilweg für diese Rolle nicht angeboten
+        /* Der Teilweg fehlt nur für Rollen ohne Schreibumfang (Betriebsrat); dann muss er abweisen und nichts schreiben. */
+        expect(!!gA.teile, `${k}: Teilweg angeboten`).toBe(k !== "BR");
+        if (!gA.teile) {
+          const m0 = kopie(gA.bestand.mandanten[0]); aendern(m0);
+          const t0 = await anfrage("/api/bestand/teile", { methode: "POST", token: A.token[k],
+            rumpf: { format: 1, epoche: "x", durch: "Pruefung", kern: { personen: { basis: "0".repeat(32), wert: m0.personen } } } });
+          expect(t0.status, `${k}: Teilweg abgewiesen`).toBeGreaterThanOrEqual(400);
+          expect((await gespeichert(A.raum)).a1.schichtmodellZuordnungen).toEqual(ZUORDNUNGEN_A1());
+          return;
+        }
         const m = kopie(gA.bestand.mandanten[0]);
         aendern(m);
         const delta = { format: 1, epoche: gA.teile.epoche, durch: "Pruefung",
@@ -489,7 +501,82 @@ describe("6. Teilweg (POST /api/bestand/teile) ist nie großzügiger als der Vol
 });
 
 /* ------------------------------------------------------------------------ */
+describe("2b. Demo-Rollen und Sitzung eines anderen Betriebs", () => {
+  for (const k of ["DL", "DP"]) {
+    it(`${k} (${ROLLEN[k].rolle}, Demo): darf wie die Rolle ohne Demo — gültiger Wechsel, Stempel vom Server; Überschneidung abgewiesen`, async () => {
+      const { raum, token } = await neuerRaum({ rollen: [k] });
+      const a = await schreibeAls(token, k, WECHSEL);
+      expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+      expect((await gespeichert(raum)).a1.schichtmodellZuordnungen[2]).toMatchObject({ id: "a1-nacht", version: 1, geaendertVon: ROLLEN[k].person });
+      const b = await neuerRaum({ rollen: [k] });
+      const u = await schreibeAls(b.token, k, (m) => { pA1(m).schichtmodellZuordnungen = [...ZUORDNUNGEN_A1(), { id: "x", modellId: "nacht", gueltigAb: M2, gueltigBis: null }]; });
+      expect(u.status).toBe(403);
+      expect((await gespeichert(b.raum)).a1.schichtmodellZuordnungen).toEqual(ZUORDNUNGEN_A1());
+    });
+  }
+  it("Leitung von Betrieb 2 ändert die eigenen Zuordnungen; Betrieb 1 bleibt, auch mit gefälschtem fremdem Betrieb im Rumpf", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT2"] });
+    const vorher = await gespeichert(raum);
+    const a = await schreibeAls(token, "LT2", (m, rumpf) => {
+      WECHSEL(m);
+      const fremd = kopie(vorher.m1); fremd.schichtmodelle = []; for (const p of fremd.personen) p.schichtmodellZuordnungen = [];
+      rumpf.bestand.mandanten = [fremd, ...rumpf.bestand.mandanten];
+    });
+    const nachher = await gespeichert(raum);
+    expect(nachher.m1).toEqual(vorher.m1);
+    if (a.status === 200) expect(nachher.m2.personen.find((p) => p.id === "a1").schichtmodellZuordnungen.map((x) => x.id)).toEqual(["a1-alt", "a1-tag", "a1-nacht"]);
+    const b = await schreibeAls(token, "LT2", WECHSEL);
+    expect(b.status, JSON.stringify(b).slice(0, 200)).toBe(200);
+    const n2 = await gespeichert(raum);
+    expect(n2.m1).toEqual(vorher.m1);
+    expect(n2.m2.personen.find((p) => p.id === "a1").schichtmodellZuordnungen.map((x) => x.id)).toEqual(["a1-alt", "a1-tag", "a1-nacht"]);
+  });
+  it("Leitung von Betrieb 2 liest die Modelle von Betrieb 1 nicht", async () => {
+    const { token } = await neuerRaum({ rollen: ["LT2"] });
+    const g = await anfrage("/api/bestand", { token: token.LT2 });
+    expect(g.bestand.mandanten.map((m) => m.id)).toEqual(["m2"]);
+  });
+});
+
+describe("2c. Dienstart, die ein Modell noch nennt, und Prototyp-Härtung", () => {
+  it("Dienstart N löschen, solange das Modell nacht sie nennt: abgewiesen mit deutschem Grund", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const vorher = await gespeichert(raum);
+    const a = await schreibeAls(token, "LT", (m) => { m.dienstarten = m.dienstarten.filter((d) => d.id !== "N"); });
+    expect(a.status).toBe(403);
+    expect(String(a.text)).toMatch(/Dienstart N wird noch im Schichtmodell nacht verwendet/);
+    expect((await gespeichert(raum)).m1.dienstarten).toEqual(vorher.m1.dienstarten);
+  });
+  it("Altbestand ohne Modelle: Dienstart löschen geht wie bisher", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"], mit: false });
+    const a = await schreibeAls(token, "LT", (m) => { m.dienstarten = m.dienstarten.filter((d) => d.id !== "N"); });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    expect((await gespeichert(raum)).m1.dienstarten.map((d) => d.id)).toEqual(["F"]);
+  });
+  it("feldZurueck: ein eigener Schlüssel __proto__ wird Feld, nie Prototyp", () => {
+    const obj = JSON.parse("{\"__proto__\":{\"admin\":true},\"a\":1,\"x\":2}");
+    const r = L.feldZurueck(obj, { x: 3 }, "x");
+    expect(Object.getPrototypeOf(r)).toBe(Object.prototype);
+    expect(r.admin).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(r, "__proto__")).toBe(true);
+    expect(r).toMatchObject({ a: 1, x: 3 });
+    const q = L.feldZurueck({ a: 1 }, JSON.parse("{\"__proto__\":{\"admin\":true}}"), "__proto__");
+    expect(Object.getPrototypeOf(q)).toBe(Object.prototype);
+    expect(({}).admin).toBeUndefined();
+  });
+});
+
 describe("7. Protokoll: je Änderung eine Zeile, nur Kennungen", () => {
+  it("Person entfernt: je verschwundener Zuordnung eine Zeile mit Kennungen", async () => {
+    const { token } = await neuerRaum({ rollen: ["LT"] });
+    const a = await schreibeAls(token, "LT", (m) => { m.personen = m.personen.filter((p) => p.id !== "a1"); });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    const texte = [];
+    for (const b of (await spur().list({})).blobs) { const e = await spur().get(b.key, { type: "json" }); if (e && e.ausgang === "schichtmodell") texte.push(e.zusatz); }
+    expect(texte).toEqual(expect.arrayContaining(["Schichtmodell-Zuordnung a1-alt entfernt (Person entfernt): Person a1, Modell betrieb",
+      "Schichtmodell-Zuordnung a1-tag entfernt (Person entfernt): Person a1, Modell tag"]));
+    expect(JSON.stringify(texte)).not.toContain("Na1");
+  });
   it("Wechsel und neues Modell stehen mit Kennungen im Protokoll; kein Name, kein Modellname, kein Zeitraum", async () => {
     const { token } = await neuerRaum({ rollen: ["LT"] });
     const a = await schreibeAls(token, "LT", (m) => { WECHSEL(m); m.schichtmodelle.push({ id: "spaet", name: "GEHEIMER-MODELLNAME", tage: ["-"] }); });

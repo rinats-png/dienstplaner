@@ -41,7 +41,9 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    Datensatz. Fehlt ein Feld in der Übermittlung (veraltete Kopie), gilt der gespeicherte Stand (kein 403).
 6. **Protokoll**: je angelegtem/geändertem/entferntem Modell bzw. Zuordnung eine Zeile im Betriebsprotokoll (`schichtmodell`)
    nur mit Kennungen (Modell, Person, Zuordnung); keine Namen, Modellnamen oder Zeiträume; höchstens 50 Zeilen je Speichern.
-7. **Teilweg** (`/api/bestand/teile`, `CENTRIC_TEILSPEICHERUNG`): dieselbe Kette, gleicher Status und Stand wie der Voll-PUT (geprüft).
+7. **Dienstarten**: Eine Dienstart, die ein Zyklustag eines Modells noch nennt, lässt sich nicht löschen (403, deutscher Grund).
+   Eine entfernte Person hinterlässt je Zuordnung eine Protokollzeile (nur Kennungen).
+8. **Teilweg** (`/api/bestand/teile`, `CENTRIC_TEILSPEICHERUNG`): dieselbe Kette, gleicher Status und Stand wie der Voll-PUT (geprüft).
 
 ## Importvorschau (ohne Schreiben)
 
@@ -58,6 +60,12 @@ Ausgabe nur als Anzahlen und Zeilennummern. Der Zwischenspeicher bezieht Tag, Mo
 - Oberfläche (Abschnitt Einstellungen/Person): bewusst nicht gebaut; braucht Gestaltung der Klärungsanzeige.
 - Übernahme der Importzuordnungen in den Bestand (IMP-6 Übernahme) und IMP-7 (historische Pläne) bauen auf dieser Bibliothek auf.
 
+## Bekannte Grenze: Wiederherstellen
+
+`POST /api/wiederherstellen` (bestehender Leitungsweg) setzt einen gesicherten Stand ganz zurück und läuft am historischen Schutz
+dieser Zuordnungen vorbei. Das ist **nur hinnehmbar, solange die Zuordnungen keine Wirkung auf die Planrechnung haben**; vor dem
+Einschalten der Wirkung muss das Wiederherstellen die Zuordnungen wie die Ist-Daten abgeschlossener Monate behandeln.
+
 ## Offene Fragen an den Betreiber
 
 1. Gilt „ab morgen“ als frühester Wechsel, oder darf ein Wechsel für **heute** gelten (laufende Schichten)?
@@ -65,5 +73,6 @@ Ausgabe nur als Anzahlen und Zeilennummern. Der Zwischenspeicher bezieht Tag, Mo
    Derzeit nein (vergangene Tage bleiben immer).
 3. Freigegebene Monate: Absage (heute) oder Änderung mit Vorlauf und erneuter Freigabe wie andere Planänderungen?
 4. Sollen Beschäftigte ihr eigenes Modell (und der Betriebsrat Modelle ohne Personenbezug) sehen? Derzeit nein (keine neue Leserechte).
+   Dazu gehört die Auskunft nach Art. 15 DSGVO (Selbstauskunft, LUECKEN_SELBST) für `schichtmodellZuordnungen` — rechtliche Einschätzung nötig.
 5. Lücken und „keine“: Soll eine Person ohne Modell an Tagen außerhalb aller Zuordnungen zulässig sein (z. B. nicht im Schichtdienst),
    oder muss jede Liste offen enden? Derzeit: Lücken zwischen Zuordnungen abgewiesen, Ränder als `keine` (Klärung).

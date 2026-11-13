@@ -73,7 +73,11 @@ const vollePerson = (id, einheit) => person(id, "mitarbeiter", einheit, {
   kontrastmodus: false, feldmodus: false, thema: "hell", dichte: "normal", tour: null, einfuehrung: null,
   handbuch: null, startansicht: null, wenigerBewegung: false, beschaeftigungsmodell: "vollzeit",
   stundenGrenzeMonat: null, mutterschutzEinwilligungen: [{ art: "nacht", ab: "2026-01-01", bis: "2027-12-31", genehmigung: true,
-    geaendertAm: "2026-01-01T00:00:00.000Z", geaendertVon: "l1" }], mutterschutz: true, schwerbehindert: true,
+    geaendertAm: "2026-01-01T00:00:00.000Z", geaendertVon: "l1" }],
+  /* IMP-6 Teil 2: gültige Zuordnungskette (Betriebsmodell bis Ende 2025, danach Modell "wechsel"). */
+  schichtmodellZuordnungen: [{ id: `${id}-z1`, modellId: "betrieb", gueltigAb: null, gueltigBis: "2025-12-31" },
+    { id: `${id}-z2`, modellId: "wechsel", gueltigAb: "2026-01-01", gueltigBis: null, versatz: 0,
+      geaendertAm: "2026-01-01T00:00:00.000Z", geaendertVon: "l1", version: 1 }], mutterschutz: true, schwerbehindert: true,
   notiz: "vertraulich", notizen: "vertraulich", emailVorher: null, emailGeaendert: null, nachtvorsorge: null,
   rolleSeit: "2020-01-01", rolleVerlauf: [], urlaubshinweis: "", geburtsdatum: "1990-01-01", personalnummer: "4711",
   iban: "DE00", steuerId: "1", sozialversicherung: "1", notfall: "n", lohn: 1, gehalt: 1, zuschlaege: [],
@@ -138,6 +142,8 @@ function reicherBestand() {
     tarif: "basis", seit: "2026-01-01", bis: null, testTage: 0, selbstAngelegt: false, preisgestaltung: {},
     rabattGrund: "", kontakt: "k@example.org", kontaktName: "K", anschrift: "Weg 1", ustId: "", notiz: "",
     raum: null, lohnarten: [], aufbewahrung: null, aushaenge: [], checklisten: [], listeneintraege: [], vorgaben: [],
+    /* IMP-6 Teil 2: ein gültiges Schichtmodell (Dienstarten des Betriebs). */
+    schichtmodelle: [{ id: "wechsel", name: "Wechsel", tage: ["F", "N", "-"], geaendertAm: "2026-01-01T00:00:00.000Z", geaendertVon: "l1", version: 1 }],
   }] };
 }
 

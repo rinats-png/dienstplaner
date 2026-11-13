@@ -279,6 +279,19 @@ export function historischeSperre(m, zeitraeume, heute) {
    SCHREIBWEG (PUT /api/bestand und Teilweg — eine Kette in rechte.mjs)
    -------------------------------------------------------------------------- */
 
+/** Eigene Eigenschaft setzen, auch für Schlüssel wie "__proto__" (kein Prototypwechsel, Review #263). */
+const setze = (o, k, v) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+/**
+ * Kopie von obj, in der feld aus quelle stammt (oder fehlt, wenn quelle es nicht hat). Alle übrigen Felder bleiben,
+ * Reihenfolge wie in obj; gefährliche Schlüssel ("__proto__", "constructor", "prototype") werden als eigene Felder
+ * kopiert, nie als Prototyp gesetzt.
+ */
+export function feldZurueck(obj, quelle, feld) {
+  const r = {};
+  for (const [k, v] of Object.entries(obj)) if (k !== feld) setze(r, k, v); else if (hat(quelle, feld)) setze(r, k, quelle[feld]);
+  if (hat(quelle, feld) && !hat(obj, feld)) setze(r, feld, quelle[feld]);
+  return r;
+}
 const ohneStempel = (x) => { if (!istObjekt(x)) return x; const k = { ...x }; for (const f of SERVERFELDER) delete k[f]; return k; };
 const stempeln = (neu, vorher, wer, jetzt) => ({ ...ohneStempel(neu), geaendertAm: jetzt, geaendertVon: wer,
   version: vorher && Number.isInteger(vorher.version) && vorher.version >= 1 ? vorher.version + 1 : 1 });
@@ -308,12 +321,6 @@ export function schichtzuordnungZusammen(altM, neuM, { darf, person, jetzt, heut
   /* 1. Modelle des Betriebs. */
   let aus = neuM;
   const altModelle = Array.isArray(altM[MODELLE_FELD]) ? altM[MODELLE_FELD] : [];
-  const feldZurueck = (obj, quelle, feld) => {
-    const r = {};
-    for (const [k, v] of Object.entries(obj)) if (k !== feld) r[k] = v; else if (hat(quelle, feld)) r[k] = quelle[feld];
-    if (hat(quelle, feld) && !hat(obj, feld)) r[feld] = quelle[feld];
-    return r;
-  };
   if (darf && hat(neuM, MODELLE_FELD) && !Array.isArray(neuM[MODELLE_FELD])) return { grund: "Schichtmodelle: erwartet wird eine Liste.", code: "FORM" };
   const modelleGeaendert = darf && hat(neuM, MODELLE_FELD) && !listenGleich(neuM[MODELLE_FELD], altModelle)
     && !(!hat(altM, MODELLE_FELD) && Array.isArray(neuM[MODELLE_FELD]) && neuM[MODELLE_FELD].length === 0);
@@ -324,6 +331,16 @@ export function schichtzuordnungZusammen(altM, neuM, { darf, person, jetzt, heut
     aus = { ...aus, [MODELLE_FELD]: gestempelt(neuM[MODELLE_FELD], altModelle, wer, jetzt) };
   }
   const modelleNeu = modellVerzeichnis(aus);
+  /* Eine Dienstart, die ein Zyklustag eines Modells noch nennt, lässt sich nicht löschen (Review #263) — für jede Rolle,
+     auch wenn die Modelle selbst unverändert sind. */
+  {
+    const da = hat(aus, "dienstarten") ? aus.dienstarten : altM.dienstarten;
+    const bekannt = new Set((Array.isArray(da) ? da : []).filter(istObjekt).map((d) => String(d.id)));
+    for (const x of modelleNeu.values()) {
+      const t = x.tage.find((y) => typeof y === "string" && y !== "-" && !bekannt.has(y));
+      if (t !== undefined) return { grund: `Dienstarten: Die Dienstart ${kennung(t)} wird noch im Schichtmodell ${kennung(x.id)} verwendet. Bitte zuerst das Schichtmodell ändern.`, code: "DIENSTART_VERWENDET" };
+    }
+  }
   /* Welche Modelle haben andere Tage bekommen (die Zykluslage aller Personen mit diesem Modell ändert sich)? */
   const altVerz = modellVerzeichnis(altM);
   const tageGeaendert = new Set([...altVerz.keys()].filter((id) => modelleNeu.has(id) && !gleich(altVerz.get(id).tage, modelleNeu.get(id).tage)));
@@ -404,6 +421,10 @@ export function schichtzuordnungProtokollZeilen(altB, neuB) {
     if (!alt) continue;                                                       // neuer Betrieb: kein Wechsel
     vergleiche(alt[MODELLE_FELD], m[MODELLE_FELD], (art, id) => `Schichtmodell ${kennung(id)} ${art}`);
     const altP = new Map((Array.isArray(alt.personen) ? alt.personen : []).filter(istObjekt).map((p) => [String(p.id), p]));
+    const neuIds = new Set((Array.isArray(m.personen) ? m.personen : []).filter(istObjekt).map((p) => String(p.id)));
+    /* Entfernte Person (Review #263): ihre Zuordnungen verschwinden mit — je Zuordnung eine Zeile, nur Kennungen. */
+    for (const [pid, v] of altP) if (!neuIds.has(pid))
+      vergleiche(v[ZUORDNUNG_FELD], [], (art, id, x) => `Schichtmodell-Zuordnung ${kennung(id)} ${art} (Person entfernt): Person ${kennung(pid)}, Modell ${kennung(x && x.modellId)}`);
     for (const p of (Array.isArray(m.personen) ? m.personen : []).filter(istObjekt)) {
       const v = altP.get(String(p.id));
       vergleiche(v ? v[ZUORDNUNG_FELD] : [], p[ZUORDNUNG_FELD], (art, id, x) =>
