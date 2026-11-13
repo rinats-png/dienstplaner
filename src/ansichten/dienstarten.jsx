@@ -9,7 +9,7 @@ import { n1 } from "../lib/format.js";
 import { Erklaerkasten } from "../gestalt/bausteine.jsx";
 import { DIENSTFORMEN, dienstform } from "../../server/lib/lohnrechnung.mjs";
 import { Zelle, Sheet } from "../ui/leisten.jsx";
-import { PALETTE, AUFENTHALT, aufenthaltVon, bereitschaftHinweise, mindestWerte, mindestVorhanden, mindestLuecken } from "../lib/fachlogik.js";
+import { PALETTE, AUFENTHALT, aufenthaltVon, bereitschaftHinweise, mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
 import { Farbwahl } from "../ui/farbwahl.jsx";
 
@@ -143,10 +143,11 @@ export function Dienstarten({ sitz, akt }) {
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 16 }}>
                 {mindestVorhanden(d) ? (() => {
                   /* Vorhandene Werte wie gelesen; ein fehlendes Feld heißt „fehlt", nie still 0 (A-4). */
-                  const w = mindestWerte(d), lk = mindestLuecken(d);
+                  const w = mindestWerte(d), lk = mindestLuecken(d), ug = mindestUngueltig(d);
                   return [...[["mo_do", "Mo–Do"], ["fr", "Fr"], ["sa", "Sa"], ["so", "So/Feiertag"]].map(([k, l]) => (
-                    <Pill key={k} size="sm" tone={lk.includes(k) ? "warn" : undefined}>{l} {lk.includes(k) ? "fehlt" : w[k]}</Pill>)),
-                    lk.length > 0 && <span key="befund" data-befund="mindest-unvollstaendig"><Pill size="sm" tone="warn">Mindestbesetzung unvollständig — bitte ergänzen</Pill></span>];
+                    <Pill key={k} size="sm" tone={lk.includes(k) ? "warn" : undefined}>{l} {ug.includes(k) ? "ungültig" : lk.includes(k) ? "fehlt" : w[k]}</Pill>)),
+                    lk.length > ug.length && <span key="befund" data-befund="mindest-unvollstaendig"><Pill size="sm" tone="warn">Mindestbesetzung unvollständig — bitte ergänzen</Pill></span>,
+                    ug.length > 0 && <span key="ungueltig" data-befund="mindest-ungueltig"><Pill size="sm" tone="warn">Mindestbesetzung ungültig — bitte korrigieren</Pill></span>];
                 })()
                   : <span data-befund="mindest-fehlt"><Pill size="sm" tone="warn">Mindestbesetzung fehlt — bitte festlegen</Pill></span>}
               </div>

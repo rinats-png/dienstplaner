@@ -54,7 +54,7 @@ const berlin = (v) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berli
 const person = (id, rolle) => ({ id, vorname: "LOKAL", nachname: `Probe-${id}`, rolle,
   bereich: rolle === "leitung" ? "ALLE" : "e1", status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const betrieb = { id: `${RAUM}-m`, name: `${MARKE} Betrieb`, status: "aktiv", einstellungen: {}, einheitLabel: "Wohnbereich",
-  einheiten: [{ id: "e1", name: "WB 1" }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
+  einheiten: [{ id: "e1", name: "WB 1" }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("l", "leitung"), person("m1", "mitarbeiter"), person("m2", "mitarbeiter")],
   abweichungen: {}, einstempeln: {}, erfassung: {}, anfragen: [], nachrichten: [], protokoll: [] };
 const e = await http("/einrichten", { methode: "POST", rumpf: { verwaltung: ADMIN, name: `${MARKE} Betreiber`, bestand: RAUM, rolle: "betreiber", person: null, betrieb: 0 } });

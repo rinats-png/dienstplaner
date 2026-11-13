@@ -152,6 +152,33 @@ export function mindestFehler(md) {
   return null;
 }
 
+/** Ein Feld einer HISTORISCHEN Mindestbesetzung gleich? Zahl und Zahl-als-Text ("2" = 2) sind gleich, sonst streng. */
+function mindestFeldGleich(a, b) {
+  if (a === b) return true;
+  const z = (v) => (typeof v === "number" ? v : typeof v === "string" && /^\s*\d+\s*$/.test(v) ? Number(v) : null);
+  const x = z(a), y = z(b);
+  return x !== null && y !== null && x === y;
+}
+
+/**
+ * Ist `mindest` im Rumpf dasselbe wie das gespeicherte? Feld für Feld (mo_do, fr, sa, so), unabhängig von der
+ * Reihenfolge der Schlüssel; eine Zahl als Text zählt als dieselbe Zahl. Fehlen/null zählt nur gegen Fehlen/null
+ * gleich (dieselbe Art). Fremde Schlüssel müssen wertgleich vorhanden sein.
+ */
+export function mindestGleich(a, b) {
+  const leer = (v) => v === undefined || v === null;
+  if (leer(a) || leer(b)) return a === b || (leer(a) && leer(b) && (a === undefined) === (b === undefined));
+  if (typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return a === b;
+  if (Array.isArray(a)) return JSON.stringify(a) === JSON.stringify(b);
+  for (const f of MINDEST_FELDER) {
+    if (!(f in a) !== !(f in b)) return false;
+    if (f in a && !mindestFeldGleich(a[f], b[f])) return false;
+  }
+  const fremd = (o) => Object.keys(o).filter((k) => !MINDEST_FELDER.includes(k)).sort();
+  const fa = fremd(a), fb = fremd(b);
+  return fa.length === fb.length && fa.every((k, i) => k === fb[i] && JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
+
 /** Schlüssel einer Dienstart im Betrieb: Betrieb, Typ und Wert der Kennung (1 und "1" sind zwei). */
 const daSchluessel = (m, d) => `${m.id}\u0000${typeof d.id}\u0000${String(d.id)}`;
 
@@ -201,7 +228,13 @@ export function dienstartenAngleichen(bestand, vorher = null) {
   let n = 0;
   for (const { d, gespeichert } of dienstartenZuordnen(bestand, vorher)) {
     if (!gespeichert || !d || typeof d !== "object" || Array.isArray(d)) continue;
-    if (d.mindest !== undefined && d.mindest !== null) continue;
+    if (d.mindest !== undefined && d.mindest !== null) {
+      /* Ein veraltetes Exemplar (gleicher Inhalt, nur Schlüsselreihenfolge oder Zahl/Text anders) behält den
+         gespeicherten Wortlaut: nichts wird umgeschrieben. */
+      if (gespeichert.mindest !== undefined && gespeichert.mindest !== null && mindestGleich(d.mindest, gespeichert.mindest)
+        && JSON.stringify(d.mindest) !== JSON.stringify(gespeichert.mindest)) d.mindest = JSON.parse(JSON.stringify(gespeichert.mindest));
+      continue;
+    }
     if (gespeichert.mindest !== undefined && gespeichert.mindest !== null) {
       d.mindest = JSON.parse(JSON.stringify(gespeichert.mindest)); n += 1;
     } else if (gespeichert.mindest === null) d.mindest = null;
@@ -220,7 +253,7 @@ export function dienstartenFehler(bestand, vorher = null) {
   for (const { i, j, d, gespeichert } of dienstartenZuordnen(bestand, vorher)) {
     if (!d || typeof d !== "object" || Array.isArray(d))
       return { grund: "Eine Dienstart ist kein Objekt.", feld: `mandanten[${i}].dienstarten[${j}]` };
-    if (gespeichert && JSON.stringify(gespeichert.mindest) === JSON.stringify(d.mindest)) continue;
+    if (gespeichert && mindestGleich(gespeichert.mindest, d.mindest)) continue;
     const f = mindestFehler(d.mindest);
     if (f) return { grund: `Bei Dienstart ${d.name || d.id || j} ${f}.`, feld: `mandanten[${i}].dienstarten[${j}].mindest` };
   }

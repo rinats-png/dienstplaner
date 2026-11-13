@@ -10,10 +10,10 @@ import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenve
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
 import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
-  ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT, mindestWerte, mindestVorhanden, mindestLuecken } from "../../server/lib/isteinfrieren.mjs";
+  ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT, mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig, mindestFeldStatus } from "../../server/lib/isteinfrieren.mjs";
 /* A-4: Mindestbesetzung robust lesen, ohne den Bestand zu verändern. Ein Altstand ohne mindest rechnet als 0
    (kein Absturz) und wird als „Mindestbesetzung fehlt" gezeigt (mindestVorhanden) — nie still gespeichert. */
-export { mindestWerte, mindestVorhanden, mindestLuecken };
+export { mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig, mindestFeldStatus };
 const mindestSumme = (d) => { const md = mindestWerte(d); return md.mo_do + md.fr + md.sa + md.so; };
 import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";

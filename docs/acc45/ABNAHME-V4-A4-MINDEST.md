@@ -40,7 +40,21 @@ Kennungen). Je Kennung zählen so viele Vorkommen als gespeichert, wie gespeiche
 - Eine gelöschte und danach wieder mitgeschickte Dienstart (veraltete Kopie) ist neu: Sie braucht ein
   gültiges `mindest`.
 - Wer eine gespeicherte Kennung übernimmt, bekommt nur deren gespeicherten Stand (Rumpf ohne Angabe) oder
-  muss ein gültiges `mindest` schicken — eine Kennung „erschleicht" kein fehlendes `mindest`.
+  muss ein gültiges `mindest` schicken.
+- **Grenze dieser Regel (ausdrücklich):** Eine Kennung füllt kein fehlendes `mindest` auf — sie schreibt aber
+  auch keins vor. Verwendet ein Rumpf die Kennung einer gespeicherten Dienstart, die **kein** `mindest` hat, und
+  schickt ebenfalls keins, wird die Dienstart angenommen, auch wenn Name, Zeiten, Farbe usw. vollständig ersetzt
+  sind: Sie bleibt ohne `mindest` (byte-gleich fehlend, nie still 0), bleibt als fehlend **gekennzeichnet**
+  (Planungsreife „Besetzungsbedarf fehlt", Karte „Mindestbesetzung fehlt — bitte festlegen") und wird nie still
+  zu einer gespeicherten 0. Das ist die sicherste, mit „historisch fehlend wird gekennzeichnet, nie still
+  umgeschrieben" vereinbare Lesart; die Alternative (422) würde jede Pflege eines Altbestands blockieren, bis
+  überall `mindest` steht. Geprüft in `personendaten.test.js` („Kennung einer gespeicherten Dienstart ohne
+  mindest"). Offene Betreiberfrage 4 (Abschnitt 4).
+- Der Vergleich „`mindest` unverändert?" geschieht **Feld für Feld** (`mindestGleich`, `mo_do`/`fr`/`sa`/`so`),
+  nicht über den Text der Angabe: andere Reihenfolge der Schlüssel und eine Zahl als Text derselben Zahl
+  (`"2"` gegenüber `2`) gelten bei einer GESPEICHERTEN Dienstart als unverändert (veraltete Kopie: 200/409,
+  nie 422). Der gespeicherte Wortlaut bleibt dabei erhalten. Jeder andere Wert ist eine Änderung und wird
+  streng geprüft.
 
 ### 2.2 Zahlen als Text ("2")
 
@@ -63,7 +77,11 @@ Gewählt: **kontrolliert lesen, nie still umschreiben; nur bei aktiver Eingabe s
   release-v4, `server/lib/engine/planungsreife.mjs`).
 - Dienstarten-Ansicht: Karte zeigt „Mindestbesetzung fehlt — bitte festlegen" (`data-befund="mindest-fehlt"`)
   statt „Mo–Do 0 …"; ein unvollständiges `mindest` zeigt je fehlendem Feld „fehlt" und „Mindestbesetzung
-  unvollständig".
+  unvollständig". Jeder gespeicherte **ungültige** Wert (negativ, Kommazahl, über 999, kein Zahlwert, leer)
+  steht je Feld als „ungültig" da (nie als 0 oder still als Kommazahl) mit dem Textbefund „Mindestbesetzung
+  ungültig — bitte korrigieren" (`data-befund="mindest-ungueltig"`); die Kennzeichnung steht im Text, nicht nur
+  in der Farbe. Der Bestand wird dabei nicht umgeschrieben. Ein gespeicherter Altwert als Text ("2") ist
+  gültig und bleibt unmarkiert.
 - Einrichtungsstand: Schritt „Mindestbesetzung festlegen" bleibt offen.
 - Rechnen ohne Absturz: `mindestFuer`, Simulation und Einrichtungsstand lesen eine fehlende Angabe als 0 (wie
   die Server-Fachprüfung schon auf release-v4), schreiben aber nichts zurück.
@@ -122,7 +140,15 @@ ausdrückliches `mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 }` — dieselben Werte
 gerechnet hat (Fachprüfung: fehlend = 0), die Absicht der Prüfungen bleibt: `pruefungen/*.mjs` (bereich-*,
 betreiber-sicht, betreiberfelder, erstbefuellung, fachpruefung-server, geo, mandanten, pentest, rechte,
 schichtverantwortung, schutzmerkmale-sicht, session-kanal, sicherungen, sicht-*, vollausgabe, zeiterfassung),
-`werkzeug/staging-geo.mjs`, `werkzeug/staging-smoke.mjs`. In `rechte.mjs` („501 Dienstarten werden
+`werkzeug/staging-geo.mjs`, `werkzeug/staging-smoke.mjs`, **`deploy/abnahme-7-9-lokal.mjs` und
+`deploy/abnahme-7-9-staging.mjs`** (Anlage „Raum und 3 Zugänge" über `bestand-anlegen`; ohne `mindest` wäre sie
+jetzt 422 und die Prüfung „Anlage: Raum und 3 Zugänge" rot — berührt die offene Betreiberaufgabe B2,
+Freigabepaket). Durchgesehen und ohne Änderungsbedarf: `werkzeug/pilot-seeds.mjs`, `wp16-messung.mjs`,
+`wp48-messung.mjs` (tragen `mindest`), `werkzeug/last/lauf.mjs` (schreibt nur vorhandene Betriebe),
+`werkzeug/zugaenge-anlegen.sh`, `e2e/*` (`abnahme-a-ablauf` trägt `mindest`), `BEREITSTELLUNG.md` (nennt
+`bestand-anlegen` nur mit Vorlage). Handlerprüfungen mit Vorlage „leer"/„demo" oder ohne neue Dienstarten
+(`abnahme-a-ablauf`, `g9-nachtrag2/3`, `geo-spezifikation-handler`, `modul-kern-nachtrag-handler`,
+`rechte-betreiber`) laufen unverändert. In `rechte.mjs` („501 Dienstarten werden
 abgewiesen") tragen die 501 Dienstarten `mindest`, damit weiterhin die Obergrenze und nicht die
 Mindestbesetzung abweist. Prüfdaten, die direkt in die Ablage schreiben (Altstand), bleiben bewusst ohne
 `mindest` und decken den Altstand ab.
@@ -151,3 +177,11 @@ Status (200/403/409/422) sind unverändert.
 2. Soll eine im Rumpf **weggelassene** Angabe an einer gespeicherten Dienstart mit Wert weiterhin „keine
    Änderung" bedeuten (derzeit), oder soll das aktive Entfernen eines gültigen Werts 422 sein?
 3. Wiederherstellen aus einer Sicherung mit Dienstarten ohne `mindest` bleibt ungeprüft — gewünscht?
+4. Darf eine gespeicherte Dienstart ohne `mindest` über die Wiederverwendung ihrer Kennung vollständig ersetzt
+   werden (Name, Zeiten, Farbe), während sie ohne `mindest` bleibt (derzeit ja: gekennzeichnet, nie still 0,
+   Abschnitt 2.1)? Alternative: 422, sobald mehr als nur Nebenfelder geändert werden und `mindest` fehlt.
+5. **`bestand-anlegen` mit einem ALTEN EXPORT ohne `mindest`** (Migration alter Daten) ist jetzt 422 und wurde
+   bewusst nicht verändert. Optionen: (a) abweisen, wie jetzt — der Export wird vor dem Anlegen ergänzt;
+   (b) für Importe alter Exporte annehmen, aber je Dienstart als fehlend kennzeichnen (kein stilles 0); (c) ein
+   ausdrückliches Migrationswerkzeug, das `mindest` je Dienstart abfragt oder aus einer Vorgabe setzt und
+   protokolliert. Empfehlung steht aus; bis zur Entscheidung gilt (a).

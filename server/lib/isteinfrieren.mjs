@@ -56,16 +56,27 @@ export function mindestWerte(da) {
   return { mo_do: z(md.mo_do), fr: z(md.fr), sa: z(md.sa), so: z(md.so) };
 }
 
-/** Felder der Mindestbesetzung, die fehlen oder keine Zahl sind (auch nicht als Text) — alle vier, wenn `mindest`
-    fehlt. Für den Befund „Mindestbesetzung fehlt/unvollständig" in der Oberfläche; ändert nichts. */
+/** Zustand eines gespeicherten Mindestbesetzungs-Felds: "ok" (ganze Zahl 0..999, als Altwert auch als Text "2"),
+    "fehlt" (nicht vorhanden oder null) oder "ungueltig" (negativ, Kommazahl, über 999, kein Zahlwert, leer). */
+export function mindestFeldStatus(v) {
+  if (v === undefined || v === null) return "fehlt";
+  if (typeof v === "number") return Number.isInteger(v) && v >= 0 && v <= 999 ? "ok" : "ungueltig";
+  if (typeof v === "string") return /^\d{1,3}$/.test(v.trim()) ? "ok" : "ungueltig";
+  return "ungueltig";
+}
+
+/** Felder der Mindestbesetzung, die fehlen oder ungültig sind (negativ, Kommazahl, über 999, kein Zahlwert) — alle
+    vier, wenn `mindest` fehlt. Für den Befund „Mindestbesetzung fehlt/unvollständig/ungültig" in der Oberfläche;
+    ändert nichts am gespeicherten Stand. */
 export function mindestLuecken(da) {
   const md = mindestVorhanden(da) ? da.mindest : {};
-  return ["mo_do", "fr", "sa", "so"].filter((k) => {
-    const v = md[k];
-    if (typeof v === "number") return !Number.isFinite(v);
-    if (typeof v === "string") return v.trim() === "" || !Number.isFinite(Number(v));
-    return true;
-  });
+  return ["mo_do", "fr", "sa", "so"].filter((k) => mindestFeldStatus(md[k]) !== "ok");
+}
+
+/** Nur die Felder, die einen Wert tragen, der ungültig ist (negativ, Kommazahl, über 999, kein Zahlwert). */
+export function mindestUngueltig(da) {
+  const md = mindestVorhanden(da) ? da.mindest : {};
+  return ["mo_do", "fr", "sa", "so"].filter((k) => mindestFeldStatus(md[k]) === "ungueltig");
 }
 
 /** Mindestbesetzung eines Dienstes an einem Tag; ein Feiertag hebt sie an, senkt sie nie (C5).

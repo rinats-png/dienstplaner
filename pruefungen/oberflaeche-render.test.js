@@ -369,6 +369,40 @@ describe("A-4 — Dienstart ohne mindest rendert ohne Absturz und ist gekennzeic
     const ganz = renderToStaticMarkup(h(Dienstarten, { sitz: sitzFuer(betrieb(), "leitung"), akt }));
     expect(ganz).not.toContain("data-befund=");
   });
+  it("Dienstarten-Karte: jeder ungültig gespeicherte Wert (negativ, Kommazahl, über 999, Text, leer) steht als „ungültig\" da — nie als 0 oder still als Zahl; Daten unverändert", () => {
+    const ungueltig = [-1, 2.5, 1000, "abc", "", "2.5", "-1", " ", true];
+    for (const v of ungueltig) {
+      const m = betrieb();
+      m.dienstarten[0].mindest = { mo_do: 1, fr: v, sa: 1, so: 1 };
+      const sitz = sitzFuer(m, "leitung");
+      const vorher = JSON.stringify(sitz.mandant);
+      const html = renderToStaticMarkup(h(Dienstarten, { sitz, akt }));
+      const t = text(h(Dienstarten, { sitz, akt }));
+      const was = JSON.stringify(v);
+      expect(html, was).toContain('data-befund="mindest-ungueltig"');
+      expect(t, was).toMatch(/Fr ungültig/);
+      expect(t, was).toMatch(/Mindestbesetzung ungültig — bitte korrigieren/);
+      expect(t, was).not.toMatch(/Fr 0\b/);
+      expect(t, was).not.toMatch(/Fr -1|Fr 2\.5|Fr 1000/);
+      expect(html, was).not.toContain('data-befund="mindest-unvollstaendig"');
+      expect(JSON.stringify(sitz.mandant), `${was}: die Karte schreibt nichts zurück`).toBe(vorher);
+      expect(FL.mindestUngueltig(m.dienstarten[0]), was).toEqual(["fr"]);
+      expect(FL.mindestLuecken(m.dienstarten[0]), was).toEqual(["fr"]);
+    }
+    /* Fehlend und ungültig zugleich: beide Befunde, je Feld das Richtige. */
+    const gemischt = betrieb();
+    gemischt.dienstarten[0].mindest = { mo_do: -2, fr: 1 };
+    const t = text(h(Dienstarten, { sitz: sitzFuer(gemischt, "leitung"), akt }));
+    expect(t).toMatch(/Mo–Do ungültig Fr 1 Sa fehlt So\/Feiertag fehlt/);
+    expect(t).toMatch(/Mindestbesetzung unvollständig/);
+    expect(t).toMatch(/Mindestbesetzung ungültig/);
+    /* Gültig bleibt unmarkiert: ganze Zahlen 0..999, auch der Altwert als Text. */
+    for (const md of [{ mo_do: 0, fr: 0, sa: 0, so: 0 }, { mo_do: 999, fr: 1, sa: 2, so: 3 }, { mo_do: "2", fr: "3", sa: " 1 ", so: "0" }]) {
+      const ok = betrieb(); ok.dienstarten[0].mindest = md;
+      expect(renderToStaticMarkup(h(Dienstarten, { sitz: sitzFuer(ok, "leitung"), akt })), JSON.stringify(md)).not.toContain("data-befund=");
+      expect(FL.mindestLuecken(ok.dienstarten[0]), JSON.stringify(md)).toEqual([]);
+    }
+  });
   it("Fachlogik: simulation, einrichtungsstand und mindestFuer werfen nicht; die Altdienstart ist als fehlend erkennbar", () => {
     const m = altbetrieb("fehlt");
     const vorher = JSON.stringify(m);

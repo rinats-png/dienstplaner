@@ -18,7 +18,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { personenAngleichen, personenFehler, pruefeGestalt, mindestFehler, dienstartenFehler, dienstartenAngleichen } from "../server/lib/gestalt.mjs";
+import { personenAngleichen, personenFehler, pruefeGestalt, mindestFehler, dienstartenFehler, dienstartenAngleichen, mindestGleich } from "../server/lib/gestalt.mjs";
 
 const person = (id, rolle, extra = {}) => ({ id, vorname: `V${id}`, nachname: `N${id}`, rolle, bereich: "ALLE", status: "aktiv",
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], ...extra });
@@ -404,6 +404,212 @@ describe("A-4: Dienstart und mindest — echter Handler", () => {
       expect(ok.status, `${wer}: ${ok.text || ok.fehler}`).toBe(200);
       expect((await roh()).mandanten[0].dienstarten.find((d) => d.id === `N${wer}`).mindest).toEqual(MD0);
       expect(await dienstF()).not.toMatch(/mindest/);
+    }
+  });
+});
+
+/* ==========================================================================
+   A-4, Nachbesserung nach unabhängiger Prüfung (PR 280)
+   - Der Vergleich „mindest unverändert?" geschieht Feld für Feld, nicht über
+     JSON.stringify: andere Schlüsselreihenfolge und Zahl/Text desselben
+     Werts ("2" = 2) sind bei GESPEICHERTEN (historischen) Werten kein Grund
+     für 422. Der gespeicherte Wortlaut bleibt erhalten.
+   - Eine Kennung „erschleicht" kein mindest und schreibt keins still: Wer die
+     Kennung einer gespeicherten Dienstart ohne mindest wiederverwendet, kann
+     die Dienstart vollständig ersetzen (Name, Zeiten) — sie bleibt ohne
+     mindest, bleibt als fehlend GEKENNZEICHNET und wird nie still 0.
+     (Offene Betreiberfrage, docs/acc45/ABNAHME-V4-A4-MINDEST.md Abschnitt 4.)
+   ========================================================================== */
+describe("A-4 Nachbesserung: Vergleich feldweise (Einheit)", () => {
+  const b = (...da) => ({ mandanten: [{ id: "m-a", dienstarten: da }] });
+  const FELDER = ["mo_do", "fr", "sa", "so"];
+  const permutationen = (liste) => liste.length <= 1 ? [liste]
+    : liste.flatMap((x, i) => permutationen([...liste.slice(0, i), ...liste.slice(i + 1)]).map((r) => [x, ...r]));
+  const inReihenfolge = (md, reihenfolge) => Object.fromEntries(reihenfolge.map((k) => [k, md[k]]));
+
+  it("mindestGleich: Reihenfolge der Schlüssel egal, Zahl und Text derselben Zahl gleich, sonst streng", () => {
+    const md = { mo_do: 2, fr: 3, sa: 1, so: 0 };
+    for (const p of permutationen(FELDER)) expect(mindestGleich(md, inReihenfolge(md, p)), p.join()).toBe(true);
+    expect(mindestGleich({ mo_do: "2", fr: "3", sa: " 1 ", so: "0" }, md)).toBe(true);
+    expect(mindestGleich(md, { mo_do: "2", fr: 3, sa: 1, so: 0 })).toBe(true);
+    expect(mindestGleich(md, { ...md, fr: 4 })).toBe(false);
+    expect(mindestGleich(md, { ...md, fr: "4" })).toBe(false);
+    expect(mindestGleich(md, { ...md, fr: "abc" })).toBe(false);
+    expect(mindestGleich({ ...md, fr: "abc" }, { ...md, fr: "abc" })).toBe(true);
+    expect(mindestGleich(md, { mo_do: 2, fr: 3, sa: 1 })).toBe(false);
+    expect(mindestGleich(md, { ...md, feiertag: 1 })).toBe(false);
+    expect(mindestGleich({ ...md, feiertag: 1 }, { feiertag: 1, ...md })).toBe(true);
+    expect(mindestGleich(undefined, undefined)).toBe(true);
+    expect(mindestGleich(null, null)).toBe(true);
+    expect(mindestGleich(undefined, null)).toBe(false);
+    expect(mindestGleich(undefined, md)).toBe(false);
+    expect(mindestGleich(md, null)).toBe(false);
+    expect(mindestGleich({ ...md, fr: -1 }, { fr: -1, so: 0, sa: 1, mo_do: 2 })).toBe(true);
+  });
+  it("gespeichert als Text in anderer Reihenfolge: alle Permutationen werden angenommen, der gespeicherte Wortlaut bleibt", () => {
+    const text = { mo_do: "2", fr: "3", sa: "1", so: "0" };
+    const alt = b({ id: "T", mindest: text });
+    for (const p of permutationen(FELDER)) {
+      /* Der Rumpf trägt dieselben Werte, nur in anderer Reihenfolge — als Text und als Zahl (veraltete Kopie). */
+      for (const werte of [text, { mo_do: 2, fr: 3, sa: 1, so: 0 }]) {
+        const neu = b({ id: "T", mindest: inReihenfolge(werte, p) });
+        expect(dienstartenFehler(neu, alt), `${p.join()} ${JSON.stringify(werte)}`).toBeNull();
+        dienstartenAngleichen(neu, alt);
+        expect(JSON.stringify(neu.mandanten[0].dienstarten[0].mindest), p.join()).toBe(JSON.stringify(text));
+        expect(dienstartenFehler(neu, alt)).toBeNull();
+      }
+    }
+  });
+  it("gespeichert als Zahlen in anderer Reihenfolge (veraltete Kopie): angenommen, gespeicherter Wortlaut bleibt", () => {
+    const alt = b({ id: "S", mindest: { mo_do: 1, fr: 1, sa: 0, so: 0 } });
+    for (const p of permutationen(FELDER)) {
+      const neu = b({ id: "S", name: "veraltet", mindest: inReihenfolge({ mo_do: 1, fr: 1, sa: 0, so: 0 }, p) });
+      expect(dienstartenFehler(neu, alt), p.join()).toBeNull();
+      dienstartenAngleichen(neu, alt);
+      expect(JSON.stringify(neu.mandanten[0].dienstarten[0].mindest)).toBe(JSON.stringify(alt.mandanten[0].dienstarten[0].mindest));
+    }
+  });
+  it("ein anderer Wert bleibt eine Änderung: ungültig 422, gültig angenommen (dann gilt der neue Wert)", () => {
+    const alt = b({ id: "T", mindest: { mo_do: "2", fr: "3", sa: "1", so: "0" } });
+    for (const md of [{ so: 0, sa: 1, fr: 3, mo_do: "3" }, { so: 0, sa: 1, fr: 2.5, mo_do: 2 }, { so: "0", sa: "1", fr: "x", mo_do: "2" }, { fr: 3, mo_do: 2, sa: 1 }])
+      expect(dienstartenFehler(b({ id: "T", mindest: md }), alt), JSON.stringify(md)).toMatchObject({ feld: "mandanten[0].dienstarten[0].mindest" });
+    const gueltig = b({ id: "T", mindest: { so: 0, sa: 1, fr: 3, mo_do: 5 } });
+    expect(dienstartenFehler(gueltig, alt)).toBeNull();
+    dienstartenAngleichen(gueltig, alt);
+    expect(gueltig.mandanten[0].dienstarten[0].mindest.mo_do).toBe(5);
+  });
+  it("gespeichert ungültig (Altstand): dieselbe Angabe in anderer Reihenfolge angenommen, jede Änderung geprüft", () => {
+    const alt = b({ id: "K", mindest: { mo_do: -1, fr: 2.5, sa: "abc", so: 0 } });
+    expect(dienstartenFehler(b({ id: "K", mindest: { so: 0, sa: "abc", fr: 2.5, mo_do: -1 } }), alt)).toBeNull();
+    expect(dienstartenFehler(b({ id: "K", mindest: { so: 0, sa: "abc", fr: 2.5, mo_do: -2 } }), alt)).toMatchObject({ feld: "mandanten[0].dienstarten[0].mindest" });
+  });
+  it("neue Dienstart (andere Kennung): Reihenfolge hilft nicht, es gelten die strengen Regeln", () => {
+    const alt = b({ id: "T", mindest: { mo_do: "2", fr: "3", sa: "1", so: "0" } });
+    expect(dienstartenFehler(b({ id: "T", mindest: { mo_do: "2", fr: "3", sa: "1", so: "0" } }, { id: "N", mindest: { so: "0", sa: "1", fr: "3", mo_do: "2" } }), alt))
+      .toMatchObject({ feld: "mandanten[0].dienstarten[1].mindest" });
+    expect(dienstartenFehler(b({ id: "T", mindest: { mo_do: "2", fr: "3", sa: "1", so: "0" } }, { id: "N", mindest: { so: 0, sa: 1, fr: 3, mo_do: 2 } }), alt)).toBeNull();
+  });
+  it("gespeichert ohne mindest, Kennung wiederverwendet: bleibt OHNE mindest (nie still 0), auch bei geänderten Feldern", () => {
+    const alt = b({ id: "F", name: "Früh", start: "06:00", ende: "14:00" });
+    const neu = b({ id: "F", name: "Ersetzt", start: "05:00", ende: "13:00" });
+    expect(dienstartenAngleichen(neu, alt)).toBe(0);
+    expect(dienstartenFehler(neu, alt)).toBeNull();
+    expect(neu.mandanten[0].dienstarten[0]).toEqual({ id: "F", name: "Ersetzt", start: "05:00", ende: "13:00" });
+    expect(neu.mandanten[0].dienstarten[0]).not.toHaveProperty("mindest");
+    /* Mit ausdrücklichem mindest wird es dagegen geprüft und gespeichert wie bei jeder Änderung. */
+    expect(dienstartenFehler(b({ id: "F", mindest: { mo_do: 1, fr: 1, sa: 1, so: -1 } }), alt)).toMatchObject({ feld: "mandanten[0].dienstarten[0].mindest" });
+    expect(dienstartenFehler(b({ id: "F", mindest: { mo_do: 1, fr: 1, sa: 1, so: 1 } }), alt)).toBeNull();
+  });
+});
+
+describe("A-4 Nachbesserung: echter Handler (Kennung, veraltete Kopie, Rechte)", () => {
+  const MD = { mo_do: 1, fr: 1, sa: 0, so: 0 };
+  const RAUM_C = "personenraum-c", RAUM_B = "personenraum-b", RAUM_D = "demo-personenraum", RAUM_BETR = "personen-betreiber2";
+  const TK = {};
+  let demoVorher;
+  const konto = async (code, eintrag) => kontoSchreiben(laden(), ablageSchluessel(code), { betrieb: 0, angelegt: "2026-01-01T00:00:00.000Z", ...eintrag });
+  const anmelden = async (code) => (await anfrage("/api/anmelden", { rumpf: { zugangscode: code } })).token;
+  const lesenPut = async (token, aendern) => {
+    const g = await anfrage("/api/bestand", { methode: "GET", token });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    aendern(b);
+    const w = await anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+    return { g, w };
+  };
+
+  beforeAll(async () => {
+    await B.bestandSchreiben(laden(), RAUM_C, legacy(), { durch: "Pruefung" });
+    const lb = legacy(); lb.mandanten[0].id = "m-b"; lb.mandanten[0].name = "B";
+    await B.bestandSchreiben(laden(), RAUM_B, lb, { durch: "Pruefung" });
+    await B.bestandSchreiben(laden(), RAUM_D, legacy(), { durch: "Pruefung" });
+    await B.bestandSchreiben(laden(), RAUM_BETR, legacy(), { durch: "Pruefung" });
+    await konto("PERS41-AAAA-0041", { name: "lc", bestand: RAUM_C, rolle: "leitung", person: "l1", mandantId: "m-a" });
+    await konto("PERS42-AAAA-0042", { name: "lb", bestand: RAUM_B, rolle: "leitung", person: "l1", mandantId: "m-b" });
+    await konto("PERS43-AAAA-0043", { id: "dm-ma", demo: true, name: "dm", bestand: RAUM_D, rolle: "mitarbeiter", person: "ohne", mandantId: "m-a" });
+    await konto("PERS44-AAAA-0044", { name: "betr2", bestand: RAUM_BETR, rolle: "betreiber", person: null });
+    TK.lc = await anmelden("PERS41-AAAA-0041");
+    TK.lb = await anmelden("PERS42-AAAA-0042");
+    TK.betr = await anmelden("PERS44-AAAA-0044");
+    expect(TK.lc && TK.lb && TK.betr).toBeTruthy();
+    demoVorher = process.env.CENTRIC_DEMO;
+    process.env.CENTRIC_DEMO = "true";
+    TK.dm = (await anfrage("/api/demo", { rumpf: { id: "dm-ma" } })).token;
+    expect(TK.dm, "Demozugang").toBeTruthy();
+  });
+  afterAll(() => { if (demoVorher === undefined) delete process.env.CENTRIC_DEMO; else process.env.CENTRIC_DEMO = demoVorher; });
+
+  it("Kennung einer gespeicherten Dienstart ohne mindest: vollständig ersetzbar, bleibt ohne mindest und bleibt als fehlend gekennzeichnet — nie still 0", async () => {
+    const { w } = await lesenPut(TK.lc, (b) => { b.mandanten[0].dienstarten = [{ id: "F", name: "Ersetzt", start: "05:00", ende: "13:00", farbe: "#123456" }]; });
+    expect(w.status, w.text || w.fehler).toBe(200);
+    const f = (await roh(RAUM_C)).mandanten[0].dienstarten.find((d) => d.id === "F");
+    expect(f.name).toBe("Ersetzt");
+    expect(f.start).toBe("05:00");
+    expect(f).not.toHaveProperty("mindest");
+    /* Auch zurückgelesen: weiterhin ohne mindest (kein stilles 0 in der Antwort). */
+    const g = await anfrage("/api/bestand", { methode: "GET", token: TK.lc });
+    expect(g.bestand.mandanten[0].dienstarten.find((d) => d.id === "F")).not.toHaveProperty("mindest");
+    /* Gekennzeichnet: Planungsreife meldet fehlenden Besetzungsbedarf, die Oberflächenprüfung „fehlt". */
+    const { planungsreife } = await import("../server/lib/engine/planungsreife.mjs");
+    const r = planungsreife((await roh(RAUM_C)).mandanten[0], { von: "2026-12-01", bis: "2026-12-31" });
+    const bedarf = r.luecken.find((l) => l.punkt === "bedarf");
+    expect(bedarf && bedarf.text).toMatch(/fehlt der Besetzungsbedarf/);
+    expect(bedarf.ids).toContain("F");
+    const { mindestVorhanden } = await import("../server/lib/isteinfrieren.mjs");
+    expect(mindestVorhanden(f)).toBe(false);
+  });
+  it("dieselbe Kennung mit ausdrücklichem mindest: gültig gespeichert, ungültig 422", async () => {
+    const stand = JSON.stringify(await roh(RAUM_C));
+    const schlecht = await lesenPut(TK.lc, (b) => { b.mandanten[0].dienstarten[0].mindest = { ...MD, so: "2" }; });
+    expect(schlecht.w.status).toBe(422);
+    expect(JSON.stringify(await roh(RAUM_C))).toBe(stand);
+    const gut = await lesenPut(TK.lc, (b) => { b.mandanten[0].dienstarten[0].mindest = { so: 0, sa: 0, fr: 1, mo_do: 1 }; });
+    expect(gut.w.status, gut.w.text || gut.w.fehler).toBe(200);
+    expect((await roh(RAUM_C)).mandanten[0].dienstarten[0].mindest).toEqual(MD);
+  });
+  it("gespeichertes mindest als Text, Rumpf in anderer Reihenfolge: 200 (nie 422), gespeicherter Wortlaut bleibt; aktiv geändert und ungültig 422", async () => {
+    const text = { mo_do: "2", fr: "3", sa: "1", so: "0" };
+    const l = legacy(); l.mandanten[0].dienstarten[0].mindest = text;
+    await B.bestandSchreiben(laden(), RAUM_C, l, { durch: "Pruefung" });
+    for (const reihenfolge of [["so", "sa", "fr", "mo_do"], ["fr", "mo_do", "so", "sa"], ["sa", "so", "mo_do", "fr"]]) {
+      for (const werte of [text, { mo_do: 2, fr: 3, sa: 1, so: 0 }]) {
+        const { w } = await lesenPut(TK.lc, (b) => { b.mandanten[0].dienstarten[0].mindest = Object.fromEntries(reihenfolge.map((k) => [k, werte[k]])); });
+        expect(w.status, `${reihenfolge.join()}: ${w.text || w.fehler}`).toBe(200);
+        expect(JSON.stringify((await roh(RAUM_C)).mandanten[0].dienstarten[0].mindest), reihenfolge.join()).toBe(JSON.stringify(text));
+      }
+    }
+    const { w } = await lesenPut(TK.lc, (b) => { b.mandanten[0].dienstarten[0].mindest = { so: "0", sa: "1", fr: "3", mo_do: "zwei" }; });
+    expect(w.status).toBe(422);
+  });
+  it("Rechte: Betreiber (manipulierter Rumpf), Demo-Mitarbeiter und eine Leitung eines anderen Betriebs bekommen kein 422 — Absage aus der Rechteprüfung, Dienstarten unverändert", async () => {
+    const dienste = async (raum) => JSON.stringify((await roh(raum)).mandanten.map((m) => m.dienstarten));
+    const manipuliert = [
+      (m) => m.dienstarten.push({ id: "Z", name: "Z", start: "08:00", ende: "12:00" }),
+      (m) => m.dienstarten.push({ id: "Z", name: "Z", start: "08:00", ende: "12:00", mindest: { mo_do: 1, fr: -1, sa: 1, so: 1 } }),
+      (m) => { m.dienstarten[0].mindest = { mo_do: 2.5, fr: 1, sa: 1, so: 1 }; },
+    ];
+    for (const [wer, token, raum] of [["betreiber", TK.betr, RAUM_BETR], ["demo-mitarbeiter", TK.dm, RAUM_D]]) {
+      const vorher = await dienste(raum);
+      for (const [i, aendern] of manipuliert.entries()) {
+        const { g, w } = await lesenPut(token, (b) => aendern(b.mandanten[0]));
+        expect(g.status, `${wer}: Lesen`).toBe(200);
+        expect(w.status, `${wer}/${i}: ${w.text || w.fehler}`).not.toBe(422);
+        expect([200, 403, 409], `${wer}/${i}: ${w.status}`).toContain(w.status);
+        expect(await dienste(raum), `${wer}/${i}`).toBe(vorher);
+      }
+    }
+    /* Leitung von Betrieb B: schickt zusätzlich einen fremden Betrieb m-a mit manipulierten Dienstarten. */
+    const vorC = await dienste(RAUM_C), vorB = await dienste(RAUM_B);
+    for (const [i, aendern] of manipuliert.entries()) {
+      const { w } = await lesenPut(TK.lb, (b) => {
+        const fremd = JSON.parse(JSON.stringify(b.mandanten[0]));
+        fremd.id = "m-a"; fremd.name = "Fremd";
+        aendern(fremd);
+        b.mandanten.push(fremd);
+      });
+      expect(w.status, `Leitung B/${i}: ${w.text || w.fehler}`).not.toBe(422);
+      expect(await dienste(RAUM_C), `Leitung B/${i}: Raum C`).toBe(vorC);
+      expect((await roh(RAUM_B)).mandanten.map((m) => m.id), `Leitung B/${i}`).toEqual(["m-b"]);
+      expect(await dienste(RAUM_B), `Leitung B/${i}: Raum B`).toBe(vorB);
     }
   });
 });
