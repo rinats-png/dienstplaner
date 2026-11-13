@@ -19,7 +19,7 @@ permissions:
 jobs:
   pruefen:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
       BILD: centric-pruefung:${{ github.sha }}
