@@ -276,7 +276,7 @@ Unverändert mit Hinweis, obwohl die Aufgabe bestanden hat: Betreiber Mandanten,
 
 ## 10 Teil 3: Abläufe gerendert, je Viewport (Stand: Branch `feature/wp21-teil3-ablaeufe`)
 
-Teil 3 ergänzt die Browsermessung aus Abschnitt 9 um einen Nachweis ohne Browser, der in der CI läuft: `npm run pruefung:geraete-ablaeufe-render` (`pruefungen/geraete-wp21-ablaeufe-render.test.js`, 35 Prüfungen). Die echten Komponenten werden mit `react-dom/server` gerendert, die echten Stilregeln der Anwendung (`bauStyles`) werden für jede Viewportbreite ausgewertet (`max-width` und `min-width`). Viewports: 360x740, 390x844, 768x1024 und das Querformat 844x390.
+Teil 3 ergänzt die Browsermessung aus Abschnitt 9 um einen Nachweis ohne Browser, der in der CI läuft: `npm run pruefung:geraete-ablaeufe-render` (`pruefungen/geraete-wp21-ablaeufe-render.test.js`, 67 Prüfungen). Die echten Komponenten werden mit `react-dom/server` gerendert, die echten Stilregeln der Anwendung (`bauStyles`) werden für jede Viewportbreite ausgewertet (`max-width` und `min-width`). Viewports: ab Teil 4 alle acht der Matrix (360x740, 390x844, 430x932, 768x1024, 1024x768 und quer 740x360, 844x390, 932x430); Teil 3 deckte nur 360x740, 390x844, 768x1024 und 844x390 ab. Das ist weiterhin kein Browser- und kein Gerätenachweis (10.2).
 
 ### 10.1 Was die automatische Prüfung belegt
 
