@@ -93,6 +93,28 @@ export function pruefeBereitschaftEintrag(e, stufen) {
 export const inanspruchnahmeLaenge = (i) => (minuten(i.bis) - minuten(i.von) + TAG_MIN) % TAG_MIN;
 
 /**
+ * Summe der Inanspruchnahmen als Vereinigung: überlappende oder doppelte
+ * Zeiträume desselben Dienstes zählen nur einmal, aneinandergrenzende bleiben
+ * unverändert. Die Zeiten liegen relativ zum Fensterbeginn (Mitternacht ist so
+ * kein Sonderfall).
+ * @param {any} e
+ * @returns {number}
+ */
+export function inanspruchnahmeMinuten(e) {
+  const liste = (Array.isArray(e.inanspruchnahmen) ? e.inanspruchnahmen : [])
+    .map((i) => { const von = relativ(e.beginn, i.von); return [von, von + inanspruchnahmeLaenge(i)]; })
+    .filter(([v, b]) => b > v)
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let summe = 0;
+  let [von, bis] = [0, 0];
+  for (const [v, b] of liste) {
+    if (v > bis) { summe += bis - von; [von, bis] = [v, b]; }
+    else if (b > bis) { if (bis === von) von = v; bis = b; }
+  }
+  return summe + (bis - von);
+}
+
+/**
  * Anrechnung eines Eintrags: Arbeitszeit und Vergütungsbewertung getrennt (R2 c, R4 a).
  * @param {any} e
  * @param {any} stufe
@@ -100,7 +122,7 @@ export const inanspruchnahmeLaenge = (i) => (minuten(i.bis) - minuten(i.von) + T
  */
 export function bereitschaftAnrechnung(e, stufe) {
   const dauer = fensterMinuten(e.beginn, e.ende);
-  const inan = (Array.isArray(e.inanspruchnahmen) ? e.inanspruchnahmen : []).reduce((s, i) => s + inanspruchnahmeLaenge(i), 0);
+  const inan = inanspruchnahmeMinuten(e);
   const arbeitszeit = stufe.art === "rufbereitschaft" ? inan : dauer;
   const faktor = typeof stufe.faktor === "number" ? stufe.faktor : null;
   const verguetung = faktor === null ? null : Math.round(dauer * faktor);
