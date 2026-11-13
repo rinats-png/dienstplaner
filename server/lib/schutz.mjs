@@ -125,6 +125,12 @@ export function adressKuerzel(adresse) {
 const lokal = new Map();
 /** Anfragen, die gerade bei einer Ziel- oder Gesamtgrenze zählen (bremse, WEITERE): je Zählbasis die Anzahl. */
 const schwebend = new Map();
+/** Arten, deren Ziel- und Gesamtgrenze gleichzeitig laufende Anfragen mitzählen (bremse(), Parallelprüfung P1/P2 der
+    A-2 globalen Grenze). Ausdrückliche Zusage je Art, heute nur der Rateschutz beim Ausstellen einer Einladung: Diese
+    Zählung ist im Zweifel strenger als die Grenze. Für anmelden, anmelden-konto, registrierung, zugaenge, zweifaktor
+    usw. bliebe die wirksame Grenze damit bei gleichzeitigen Anfragen unter der eingestellten (CI zu #277,
+    anmeldesperre I7b) — sie laufen deshalb unverändert wie vor A-2. */
+const GLEICHZEITIG_DICHT = new Set(["einladung-nachweis"]);
 
 /* --------------------------------------------------------------------------
    GLEITENDES FENSTER
@@ -932,8 +938,10 @@ export function herkunftStreng(req) {
 export async function bremse(art, kennung, ziel, optionen = {}) {
   const basisG = GRENZEN[art];
   if (!basisG) return { frei: true };
-  if (!WEITERE[art]) return bremseZaehlen(art, kennung, ziel, optionen);
-  /* Arten mit Ziel- oder Gesamtgrenze (A-2 globale Grenze, Parallelprüfung): Gleichzeitige Anfragen DERSELBEN Kennung
+  if (!WEITERE[art] || !GLEICHZEITIG_DICHT.has(art)) return bremseZaehlen(art, kennung, ziel, optionen);
+  /* Nur Arten in GLEICHZEITIG_DICHT (heute einladung-nachweis); alle anderen — anmelden, registrierung, zugaenge, … —
+     laufen unverändert durch bremseZaehlen(), ihre wirksame Grenze bleibt genau die eingestellte.
+     Arten mit Ziel- oder Gesamtgrenze (A-2 globale Grenze, Parallelprüfung): Gleichzeitige Anfragen DERSELBEN Kennung
      sahen alle noch keine Sperre und füllten Ziel und Gesamt, bevor die erste die Sperre schrieb — eine Person mit 100
      parallelen Fehlversuchen trug so bis zu 40 statt 11 zur Gesamtgrenze bei. Jetzt synchron, vor jedem await: Wer
      zusammen mit den schon gezählten und den gerade laufenden Versuchen dieser Kennung über der Grenze läge, wird
@@ -1027,7 +1035,7 @@ async function bremseZaehlen(art, kennung, ziel, optionen = {}) {
        jemand einen fremden Betrieb absichtlich lahmlegen, indem er dessen
        Zugang mit Fehlversuchen bombardiert. */
     const w = WEITERE[art];
-    if (w) {
+    if (w && GLEICHZEITIG_DICHT.has(art)) {
       /* Zählen, prüfen und vermerken liegen hier über await auseinander: Ohne Vorkehrung sahen gleichzeitige Anfragen
          alle denselben Stand und kamen alle an Ziel- und Gesamtgrenze vorbei (A-2 globale Grenze, Prüfung mit 100
          parallelen Anfragen). Deshalb meldet jede Anfrage sich SYNCHRON als „schwebend“ an, bevor sie zählt, und zählt
@@ -1055,6 +1063,27 @@ async function bremseZaehlen(art, kennung, ziel, optionen = {}) {
       if (w.gesamt) {
         const nein = await dimension(`${art}:gesamt`, w.gesamt, "ungewöhnlich hohes Aufkommen", "gesamt");
         if (nein) return nein;
+      }
+    } else if (w) {
+      /* Alle übrigen Arten (anmelden, registrierung, zugaenge, …): unverändert wie vor A-2 — zählen, prüfen, vermerken,
+         ohne Mitzählung schwebender Anfragen. Die wirksame Grenze ist genau die eingestellte. */
+      if (w.ziel && ziel) {
+        const zl = fensterLage(jetztMs, w.ziel.fenster);
+        const zb = `${art}:ziel:${ziel}`;
+        const z = await versucheZaehlen(s, zb, zl.index);
+        if (gewichtet(z.laufend, z.vorig, zl.anteil) >= w.ziel.versuche)
+          return { frei: false, wartet: w.ziel.fenster - (jetzt % w.ziel.fenster),
+            grund: "ungewöhnlich viele Versuche für diesen Betrieb", dimension: "ziel" };
+        zurueck.push(await versuchVermerken(s, `${zb}:${zl.index}`));
+      }
+      if (w.gesamt) {
+        const gl = fensterLage(jetztMs, w.gesamt.fenster);
+        const gb = `${art}:gesamt`;
+        const z = await versucheZaehlen(s, gb, gl.index);
+        if (gewichtet(z.laufend, z.vorig, gl.anteil) >= w.gesamt.versuche)
+          return { frei: false, wartet: w.gesamt.fenster - (jetzt % w.gesamt.fenster),
+            grund: "ungewöhnlich hohes Aufkommen", dimension: "gesamt" };
+        zurueck.push(await versuchVermerken(s, `${gb}:${gl.index}`));
       }
     }
 
