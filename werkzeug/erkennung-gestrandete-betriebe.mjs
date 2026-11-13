@@ -62,6 +62,7 @@
    ========================================================================== */
 
 import { createHash, createHmac, randomBytes } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { open, readdir, readFile, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -332,10 +333,44 @@ export function betriebKlassifizieren(e) {
 const ist = async (/** @type {string} */ p, /** @type {"datei"|"ordner"} */ art) =>
   stat(p).then((s) => (art === "datei" ? s.isFile() : s.isDirectory()), () => false);
 
-/** Liegt `kind` in `eltern` (oder ist es)? */
+/** Pfad zum Vergleich: absolut, unter Windows ohne Groß-/Kleinschreibung (nur zum Vergleichen, nie zum Zugriff). */
+const vergleich = (/** @type {string} */ p) => (process.platform === "win32" ? path.resolve(p).toLowerCase() : path.resolve(p));
+
+/**
+ * Echter Pfad (Junctions und Symlinks aufgelöst). Existiert der Pfad (noch) nicht, wird der nächste vorhandene Elternordner
+ * aufgelöst und der Rest wieder angehängt — so lässt sich auch eine neu anzulegende Ausgabedatei über ihren Ordner prüfen.
+ */
+const echterPfad = (/** @type {string} */ p) => {
+  let rest = "";
+  let aktuell = path.resolve(p);
+  for (;;) {
+    try { return path.join(realpathSync(aktuell), rest); }
+    catch (e) {
+      const eltern = path.dirname(aktuell);
+      if (/** @type {any} */ (e).code !== "ENOENT" && /** @type {any} */ (e).code !== "ENOTDIR") throw e;
+      if (eltern === aktuell) return path.resolve(p);
+      rest = path.join(path.basename(aktuell), rest);
+      aktuell = eltern;
+    }
+  }
+};
+
+/** Liegt `kind` in `eltern` (oder ist es)? Rein textlich (ohne Auflösung von Junctions). */
 const liegtIn = (/** @type {string} */ kind, /** @type {string} */ eltern) => {
-  const r = path.relative(path.resolve(eltern), path.resolve(kind));
+  const r = path.relative(vergleich(eltern), vergleich(kind));
   return r === "" || (!r.startsWith("..") && !path.isAbsolute(r));
+};
+
+/** Liegt `kind` in `eltern` — textlich ODER nach Auflösung von Junctions/Symlinks (echte Pfade)? Nicht auflösbar: Ja (fail-closed). */
+const liegtEchtIn = (/** @type {string} */ kind, /** @type {string} */ eltern) => {
+  if (liegtIn(kind, eltern)) return true;
+  try { return liegtIn(echterPfad(kind), echterPfad(eltern)); } catch { return true; }
+};
+
+/** Gleicher Ordner — textlich (Windows: ohne Groß-/Kleinschreibung) oder nach Auflösung von Junctions/Symlinks. */
+const gleicherPfad = (/** @type {string} */ a, /** @type {string} */ b) => {
+  if (vergleich(a) === vergleich(b)) return true;
+  try { return vergleich(echterPfad(a)) === vergleich(echterPfad(b)); } catch { return true; }
 };
 
 /** Namen, Größen und Änderungszeiten aller Dateien unter `wurzel` — erkennt einen Schreiber während des Laufs. */
@@ -393,7 +428,7 @@ export async function eingabeBestimmen({ sicherung, daten, kopie = false, env = 
   if (sicherung) throw new ErkennungsFehler("--sicherung zeigt nicht auf eine Sicherung (MANIFEST.json fehlt). Für die Kopie einer Ablage: --daten <Ordner> --kopie.", AUSGANG.ABGELEHNT);
   if (!kopie) throw new ErkennungsFehler("Eine Ablage wird nur als Kopie gelesen: --kopie angeben und sicherstellen, dass kein Server darauf läuft.", AUSGANG.ABGELEHNT);
   const live = path.resolve(env.CENTRIC_DATEN || "/data");
-  if (eingabe === live) throw new ErkennungsFehler("Die Eingabe ist die Ablage aus CENTRIC_DATEN (bzw. /data) — nur eine Kopie lesen.", AUSGANG.ABGELEHNT);
+  if (gleicherPfad(eingabe, live)) throw new ErkennungsFehler("Die Eingabe ist die Ablage aus CENTRIC_DATEN (bzw. /data) — nur eine Kopie lesen.", AUSGANG.ABGELEHNT);
   const lage = await sperreLage(eingabe);
   if (lage === "frisch" || lage === "lebt" || lage === "unklar")
     throw new ErkennungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess ist frisch oder ihr Halter lebt) — abgelehnt.", AUSGANG.ABGELEHNT);
@@ -598,12 +633,18 @@ export async function main(argv, { aus = (s) => process.stdout.write(s), fehler 
     if (schluesselText !== undefined && !/^[0-9a-fA-F]{32,128}$/.test(schluesselText))
       throw new ErkennungsFehler("ERKENNUNG_LAUFSCHLUESSEL: 32 bis 128 Hex-Zeichen erwartet.", AUSGANG.ABGELEHNT);
     const laufschluessel = schluesselText ? Buffer.from(schluesselText, "hex") : randomBytes(32);
+    if (schluesselText)
+      fehler("HINWEIS: ERKENNUNG_LAUFSCHLUESSEL ist gesetzt — die Pseudonyme sind über Läufe hinweg gleich und damit verknüpfbar. "
+        + "Schlüssel nur beim Betreiber aufbewahren, nie neben der Ausgabe.");
+    if (o["gespeicherte-kennungen"] === true)
+      fehler("WARNUNG: --gespeicherte-kennungen gibt die gespeicherte Betriebskennung aus. Sie kann dem Raumnamen gleichen und damit "
+        + "Personen- oder Firmendaten enthalten. Ausgabe nicht einchecken, nicht weitergeben, nach Gebrauch löschen.");
 
     const ein = await eingabeBestimmen({ sicherung: typeof o.sicherung === "string" ? o.sicherung : undefined,
       daten: typeof o.daten === "string" ? o.daten : undefined, kopie: o.kopie === true, env });
     const ausgabe = typeof o.ausgabe === "string" ? path.resolve(o.ausgabe) : null;
-    if (ausgabe && liegtIn(ausgabe, ein.eingabe))
-      throw new ErkennungsFehler("--ausgabe darf nicht in der Eingabe liegen — die Eingabe bleibt unberührt.", AUSGANG.ABGELEHNT);
+    if (ausgabe && liegtEchtIn(ausgabe, ein.eingabe))
+      throw new ErkennungsFehler("--ausgabe darf nicht in der Eingabe liegen (auch nicht über Junction/Symlink) — die Eingabe bleibt unberührt.", AUSGANG.ABGELEHNT);
 
     const vorher = await abdruck(ein.eingabe);
     const erg = await erkennen({ wurzel: ein.wurzel, jetzt, stichtag: typeof o.stichtag === "string" ? o.stichtag : undefined,
@@ -613,6 +654,9 @@ export async function main(argv, { aus = (s) => process.stdout.write(s), fehler 
 
     const text = o.json ? JSON.stringify({ ...erg, eingabe: ein.art }, null, 2) + "\n" : alsMarkdown(erg, ein.art);
     if (ausgabe) {
+      /* Erneut unmittelbar vor dem Schreiben: der Ordner der Ausgabe könnte inzwischen auf die Eingabe zeigen. */
+      if (liegtEchtIn(ausgabe, ein.eingabe))
+        throw new ErkennungsFehler("--ausgabe darf nicht in der Eingabe liegen (auch nicht über Junction/Symlink) — die Eingabe bleibt unberührt.", AUSGANG.ABGELEHNT);
       const fh = await open(ausgabe, "wx", 0o600).catch((e) => {
         throw new ErkennungsFehler(`--ausgabe: Datei lässt sich nicht neu anlegen (${e.code || "Fehler"}; vorhandene Dateien werden nie überschrieben).`, AUSGANG.ABGELEHNT);
       });

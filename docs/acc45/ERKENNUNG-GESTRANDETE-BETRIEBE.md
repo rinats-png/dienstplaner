@@ -43,13 +43,13 @@ Archive (tar/zip) liest das Skript nicht; vorher in einen leeren Wegwerfordner a
 
 | Maßnahme | Umsetzung |
 |---|---|
-| Kein Schreiben | Das Skript legt weder Zwischenkopie noch Temp-Datei an. Ausgaben: stdout/stderr und nur auf Wunsch `--ausgabe` (Anlage mit `wx`, nie in der Eingabe). |
+| Kein Schreiben | Das Skript legt weder Zwischenkopie noch Temp-Datei an. Ausgaben: stdout/stderr und nur auf Wunsch `--ausgabe` (Anlage mit `wx`, nie in der Eingabe). Ob die Ausgabe in der Eingabe läge, wird mit **echten Pfaden** geprüft (`realpath` des vorhandenen Elternordners der Ausgabe und der Eingabe; unter Windows ohne Groß-/Kleinschreibung): auch eine Junction oder ein Symlink, der in die Eingabe führt, wird abgelehnt — vor dem Lauf und noch einmal unmittelbar vor dem Schreiben. Nicht auflösbare Pfade gelten als „in der Eingabe“ (fail-closed). |
 | Leser der Anwendung | `bestandLesenStreng` (Kern, Scherben, Journal, Altbestand), `alleKontenStreng` (`konto:*` und Sammelblob `konten`), `aktivePerson`, `pruefen` aus `ablage-sicherung.mjs`. |
 | Keine schreibfähige Ablage | `getStore()` wird **nicht** benutzt (legt beim Schreiben Ordner an, räumt `.tmp` weg). Die Leser bekommen eine eigene Ablage (`lesendeAblage`), die das Dateiformat von `server/lib/ablage.mjs` nur mit `readFile`/`readdir` liest; `set`, `setJSON`, `setJSONWennNeu`, `delete` werfen. Ein liegendes Journal wird von `bestand.mjs` nur im Speicher überlagert; die Raumsperre ist prozesslokal. |
-| Keine Live-Ablage | `--daten` nur mit `--kopie`; nie der Pfad aus `CENTRIC_DATEN` bzw. `/data`; abgelehnt bei frischer Prozesssperre `.prozess` oder lebendem Halter auf diesem Rechner; eine veraltete Sperre nur in einer wiederhergestellten Kopie (`.wiederhergestellt.json`). |
+| Keine Live-Ablage | `--daten` nur mit `--kopie`; nie der Pfad aus `CENTRIC_DATEN` bzw. `/data` (Vergleich unter Windows ohne Groß-/Kleinschreibung und nach Auflösung von Junctions/Symlinks); abgelehnt bei frischer Prozesssperre `.prozess` oder lebendem Halter auf diesem Rechner; eine veraltete Sperre nur in einer wiederhergestellten Kopie (`.wiederhergestellt.json`). |
 | Schreiber während des Laufs | Abdruck (Namen, Größen, Änderungszeiten) der Eingabe vor und nach dem Lauf; Abweichung → Ausgang 1, Ergebnis verworfen. |
 | Kein Geheimnis nötig | Kein Pfeffer, kein Netz, kein SSH. Zugänge werden nur über ihre Felder bewertet, Codes und Prüfsummen nie aufgelöst. |
-| Belegt durch Tests | Inhalt aller Dateien der Eingabe bytegleich vorher/nachher; Temp- und Arbeitsordner des Laufs danach leer; Ablehnungen (frische Sperre, ohne `--kopie`, `CENTRIC_DATEN`, Ausgabe in der Eingabe, vorhandene Ausgabedatei). |
+| Belegt durch Tests | Ausgabe über Junction/Symlink in die Eingabe abgelehnt; Eingabe, die sich zwischen den beiden Abdrücken ändert (Kindprozess mit Vorlademodul `pruefungen/erkennung-eingabe-aendern.preload.mjs`, kein Testhaken im Skript) → Ausgang 1; Inhalt aller Dateien der Eingabe bytegleich vorher/nachher; Temp- und Arbeitsordner des Laufs danach leer; Ablehnungen (frische Sperre, ohne `--kopie`, `CENTRIC_DATEN`, Ausgabe in der Eingabe, vorhandene Ausgabedatei). |
 
 ## 3. Klassen (Kurzfassung; maßgeblich ist PR #287, Abschnitt 1)
 
@@ -84,12 +84,15 @@ Ausnahme und zählt nicht). Die Summe steht im Abschnitt „Aussperrung“ der A
   Ablageschlüssel, Prüfsummen, `m.kontakt`, Anschrift, Pfade der Eingabe. Fehlermeldungen nennen nur die Art des Fehlers
   (Einzelheiten zu einer ungültigen Sicherung nur lokal mit `ablage-sicherung.mjs pruefen`). Belegt durch einen Test, der
   alle synthetischen Namen, Adressen, Codes, Prüfsummen und Kennungen in Markdown, JSON, Datei und stderr sucht.
-- Laufschlüssel: ohne `ERKENNUNG_LAUFSCHLUESSEL` zufällig je Lauf (Pseudonyme nicht wiederholbar). Für einen späteren
-  Delta-Lauf (Plan Schritt 10) einen eigenen Schlüssel erzeugen und **nur beim Betreiber** aufbewahren, nie neben der
-  Ausgabe.
+- Laufschlüssel: ohne `ERKENNUNG_LAUFSCHLUESSEL` zufällig je Lauf (Pseudonyme nicht wiederholbar; das ist die Vorgabe).
+  **Ein fester Schlüssel macht Läufe verknüpfbar**: gleiche Betriebe tragen dann in jeder Ausgabe dasselbe Pseudonym. Das
+  Skript schreibt bei gesetztem `ERKENNUNG_LAUFSCHLUESSEL` einen HINWEIS auf stderr. Nur für einen späteren Delta-Lauf
+  (Plan Schritt 10) verwenden, den Schlüssel dann **nur beim Betreiber** aufbewahren, nie neben der Ausgabe.
 - `--gespeicherte-kennungen` gibt die gespeicherte Betriebskennung (`mandantId`) aus. Vorsicht: Sie kann dem Raumnamen
-  gleichen (`leerbetrieb.mjs`) und damit einen Kunden erkennbar machen (Risiko R-8). Nur für den einzelnen
-  Folgeschritt des Betreibers verwenden.
+  gleichen (`leerbetrieb.mjs`) und damit einen Kunden erkennbar machen (Risiko R-8) — Raum- und Firmennamen können
+  Personen- oder Unternehmensdaten sein. Das Skript schreibt deshalb bei dieser Option eine **WARNUNG** auf stderr
+  (Ausgabe nicht einchecken, nicht weitergeben, nach Gebrauch löschen). Nur für den einzelnen Folgeschritt des
+  Betreibers verwenden; die Standardeinstellung bleibt: Pseudonyme mit zufälligem Laufschlüssel je Lauf.
 - **Ausgaben nie einchecken**, nicht in Tickets, Chats oder PRs kopieren; nur beim Betreiber ablegen, Aufbewahrung wie
   die Akzeptanzliste (E-M7). Die Kopie der Sicherung nach dem Lauf löschen.
 - Produktionsdaten: Lauf nur nach Freigabe, auf einem Betreiberrechner, die Kopie verschlüsselt abgelegt und danach
@@ -103,8 +106,12 @@ Ausnahme und zählt nicht). Die Summe steht im Abschnitt „Aussperrung“ der A
   nicht erkennbar. Der Fensterzustand stützt sich nur auf `ersteinrichtung:<raum>`.
 - **Accounts** des Kontowegs werden nicht auf Sperre geprüft; eine aktive Mitgliedschaft eines gesperrten Accounts zählt
   als ZP (zu günstig). Gleiches gilt für Mitgliedschaftsgenerationen (`mitgliedlauf:`).
-- **Erstanmeldevermerk** ist nach PR #281 (`227f633e`) nachgebildet, weil das Modul auf `release-v4` fehlt. Ändert #281
-  die Prädikate, ist das Skript nachzuziehen.
+- **Erstanmeldevermerk** ist nach PR #281 (`227f633e`) nachgebildet (`erstleitungOffen`, `erstleitungsZugang`), weil das Modul
+  auf `release-v4` fehlt. Ändert #281 die Prädikate, ist das Skript nachzuziehen. Ein Abgleichstest
+  (`Abgleich mit den Prädikaten aus PR #281` in der Prüfung) vergleicht die Kopie anhand einer Tabelle synthetischer Fälle mit
+  `server/lib/erstleitung.mjs`; solange die Datei fehlt, ist er mit ausdrücklichem Grund übersprungen.
+  **TODO:** Sobald #281 gemergt ist, die Kopie im Skript durch `import { erstleitungOffen, erstleitungsZugang } from
+  "../server/lib/erstleitung.mjs"` ersetzen und den Abgleichstest in einen Importtest umwandeln.
 - **Rollen ohne Leitung** (Planung, Betriebsrat, SV, Beschäftigte) ohne Person werden nur gezählt (`andereRollenOhnePerson`),
   nicht klassifiziert (NT-4 betrifft den Server, nicht die Erkennung).
 - **Demo** nur über den Raumnamen `demo-…` und `demo: true`; ein Demozugang außerhalb eines Demoraums zählt nicht als
@@ -112,3 +119,23 @@ Ausnahme und zählt nicht). Die Summe steht im Abschnitt „Aussperrung“ der A
 - Ergebnis gilt für **den Stand der Sicherung**, nicht für die Live-Ablage. Für das Go (Plan 4.2) höchstens 24 h alt.
 - Prüf- und Werkzeugräume außer `ppg-gate-…` (z. B. Wegwerfablagen aus `deploy/abnahme-7-9-staging.mjs`) werden nicht
   erkannt und normal klassifiziert.
+
+## 6. Abweichungen von MIGRATION-ERSTEINRICHTUNGSCODES.md §2 (Verhalten unverändert, Entscheidung beim Betreiber)
+
+Das Skript folgt §2 nicht in allen Punkten. Die Abweichungen sind bewusst nicht „korrigiert“, sondern hier festgehalten;
+der Betreiber entscheidet, ob Skript oder Spezifikation angepasst wird.
+
+1. **M5/M6 werden mit ausgegeben.** §2 verlangt „je Betrieb mit Klasse ≠ M5/M6 eine Zeile“. Das Skript gibt für **jeden**
+   Betrieb eine Zeile aus, auch für M5 und M6 (Pseudonyme, Zahlen; keine Personendaten). Folge: längere Ausgabe, dafür sind
+   unbetroffene Betriebe nachvollziehbar zählbar.
+2. **„Sonst M5“ ist enger gefasst.** §2 Punkt 7 sagt „Sonst M5“. Im Skript gilt M5 nur für (a) einen Betrieb ohne Personen
+   mit offenem Erstanmeldecode oder (b) einen Betrieb mit Personen, aktiver Leitung, nutzbarem personengebundenem Zugang und
+   ohne Z0. Zwei Fälle, die §2 unter „sonst“ als M5 einordnen würde, werden stattdessen **`unklar`** (Ausgang 1, fail-closed):
+   - **aktive Leitung, aber kein Zugang** (weder Z0 noch ZP noch offener Erstanmeldecode; Konzept „R“),
+   - **leerer Betrieb ohne jeden Leitungszugang** (keine Codes).
+   Folge: **frisch angelegte Räume ohne Zugang blockieren das Go** (Plan 4.2 Punkt 2, Ausgang 1), bis sie geklärt oder
+   gelöscht sind. Wer das nicht will, muss entscheiden, ob diese beiden Fälle M5 werden dürfen.
+3. **Selbststart je Betrieb, nicht je Raum.** `kundenraumschutz.mjs` entscheidet den Selbststart je Raum. Das Skript nutzt
+   zwar die Raummerkmale (`t-…`, Liste `selbststarts`; sie gelten für alle Betriebe des Raums), wertet aber zusätzlich
+   `selbstAngelegt` **je Betrieb** aus (M1-t). In einem Raum mit mehreren Betrieben kann daher ein Betrieb M1-t und ein
+   anderer M1-k sein, wo die Raumregel einheitlich entschiede.

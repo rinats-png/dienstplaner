@@ -22,11 +22,12 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile, utimes, stat } from "node:fs/promises";
+import { existsSync, symlinkSync, rmdirSync, unlinkSync } from "node:fs";
 import { tmpdir, hostname } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 vi.setConfig({ testTimeout: 120000, hookTimeout: 120000 });
 
@@ -140,15 +141,17 @@ async function inhaltsAbdruck(wurzel) {
 }
 
 /** Startet das Skript als eigenen Prozess mit eigenem, leerem Temp- und Arbeitsordner. */
-async function lauf(args, { env = {} } = {}) {
+async function lauf(args, { env = {}, nodeArgs = [] } = {}) {
   const tmp = await ordner("lauf-tmp");
   const cwd = await ordner("lauf-cwd");
   const umgebung = { ...process.env, TEMP: tmp, TMP: tmp, TMPDIR: tmp, ERKENNUNG_LAUFSCHLUESSEL: LAUFSCHLUESSEL, ...env };
   delete umgebung.CENTRIC_DATEN;
   for (const [k, v] of Object.entries(env)) if (v === null) delete umgebung[k];
   if (env.CENTRIC_DATEN) umgebung.CENTRIC_DATEN = env.CENTRIC_DATEN;
-  const r = spawnSync(process.execPath, [SKRIPT, "--jetzt", JETZT, ...args], { cwd, env: umgebung, encoding: "utf8", timeout: 60000 });
-  return { code: r.status, aus: r.stdout || "", fehler: r.stderr || "", tmp, cwd };
+  const r = spawnSync(process.execPath, [...nodeArgs, SKRIPT, "--jetzt", JETZT, ...args], { cwd, env: umgebung, encoding: "utf8", timeout: 60000 });
+  const roh = r.stderr || "";
+  /* Der Hinweis zum gesetzten Laufschlüssel erscheint bei jedem Lauf dieser Prüfung (der Schlüssel ist fest) und wird hier abgetrennt. */
+  return { code: r.status, aus: r.stdout || "", fehler: roh.replace(/^HINWEIS: ERKENNUNG_LAUFSCHLUESSEL[^\n]*\n/m, ""), fehlerRoh: roh, tmp, cwd };
 }
 const json = (r) => JSON.parse(r.aus);
 const finde = (erg, klasse, unterklasse) => erg.betriebe.filter((b) => b.klasse === klasse && (unterklasse === undefined || b.unterklasse === unterklasse));
@@ -538,5 +541,202 @@ describe("Bausteine", () => {
     expect(E.zugangNutzbar("a", k, jetzt)).toBe(true);     // Zyklus wird beendet
     expect(E.zugangNutzbar("c", k, jetzt)).toBe(true);
     expect(E.zugangNutzbar("d", k, jetzt)).toBe(false);    // Glied fehlt → wie gesperrt
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   Ausgabe über Junction/Symlink, Windows-Schreibweise, Änderung während des Laufs, Warnungen, Abgleich mit #281
+   --------------------------------------------------------------------------- */
+
+/** Legt eine Verbindung (Windows: Junction, sonst Symlink auf einen Ordner) an; false, wenn das hier nicht möglich ist. */
+function verbinden(ziel, link) {
+  try { symlinkSync(ziel, link, "junction"); return true; } catch { return false; }
+}
+function trennen(link) {
+  try { rmdirSync(link); } catch { try { unlinkSync(link); } catch { /* schon weg */ } }
+}
+const KANN_VERBINDEN = (() => {
+  const d = path.join(tmpdir(), `centric-erk-junction-probe-${process.pid}`);
+  const ok = verbinden(tmpdir(), d);
+  if (ok) trennen(d);
+  else console.warn("Junction/Symlink lässt sich hier nicht anlegen — Prüfungen über Verbindungen werden übersprungen.");
+  return ok;
+})();
+
+describe("Ausgabe und Eingabe: echte Pfade und Windows-Schreibweise", () => {
+  let sicherung, dir;
+  beforeAll(async () => {
+    ({ dir } = await ablageBauen({ raeume: { "haus-pfad": { mandanten: [betrieb("m-haus-pfad")] } },
+      zugaenge: [{ bestand: "haus-pfad", rolle: "leitung", person: null, betrieb: 0, mandantId: "m-haus-pfad" }] }));
+    sicherung = await sicherungZiehen(dir);
+  });
+
+  it.skipIf(!KANN_VERBINDEN)("--ausgabe über eine Junction/einen Symlink in die Eingabe wird abgelehnt, Eingabe unverändert", async () => {
+    const linkOrdner = await ordner("verbindungen");
+    const link = path.join(linkOrdner, "zur-eingabe");
+    expect(verbinden(sicherung, link)).toBe(true);
+    try {
+      const vorher = await inhaltsAbdruck(sicherung);
+      // Ordner der Ausgabe ist die Verbindung (textlich außerhalb der Eingabe, echt innerhalb)
+      for (const ziel of [path.join(link, "ergebnis.md"), path.join(link, "daten", "ergebnis.md"), path.join(link, "neu", "unter", "ergebnis.md")]) {
+        const r = await lauf(["--sicherung", sicherung, "--ausgabe", ziel]);
+        expect(r.code, r.fehler).toBe(3);
+        expect(r.fehler).toMatch(/nicht in der Eingabe/);
+        expect(r.aus).toBe("");
+      }
+      // auch die Eingabe selbst über die Verbindung benannt, Ausgabe textlich daneben
+      const r2 = await lauf(["--sicherung", link, "--ausgabe", path.join(sicherung, "ergebnis2.md")]);
+      expect(r2.code).toBe(3);
+      expect(await inhaltsAbdruck(sicherung)).toEqual(vorher);
+      // Gegenprobe: eine Ausgabe wirklich außerhalb funktioniert weiter
+      const aussen = path.join(await ordner("ausgabe-aussen"), "ok.md");
+      expect((await lauf(["--sicherung", sicherung, "--ausgabe", aussen])).code).toBe(2);
+      expect(await readFile(aussen, "utf8")).toMatch(/Erkennung gestrandeter Betriebe/);
+    } finally { trennen(link); }
+  });
+
+  it.skipIf(!KANN_VERBINDEN)("eine Verbindung auf die Ablage aus CENTRIC_DATEN wird als Live-Ablage erkannt", async () => {
+    const linkOrdner = await ordner("verbindungen-live");
+    const link = path.join(linkOrdner, "live");
+    expect(verbinden(dir, link)).toBe(true);
+    try {
+      const r = await lauf(["--daten", dir, "--kopie"], { env: { CENTRIC_DATEN: link } });
+      expect(r.code).toBe(3);
+      expect(r.fehler).toMatch(/CENTRIC_DATEN/);
+    } finally { trennen(link); }
+  });
+
+  it.skipIf(process.platform !== "win32")("Windows: CENTRIC_DATEN in anderer Groß-/Kleinschreibung ist dieselbe Ablage", async () => {
+    const r = await lauf(["--daten", dir, "--kopie"], { env: { CENTRIC_DATEN: dir.toUpperCase() } });
+    expect(r.code).toBe(3);
+    expect(r.fehler).toMatch(/CENTRIC_DATEN/);
+    const r2 = await lauf(["--daten", dir.toLowerCase(), "--kopie"], { env: { CENTRIC_DATEN: dir.toUpperCase() } });
+    expect(r2.code).toBe(3);
+  });
+
+  it.skipIf(process.platform !== "win32")("Windows: Ausgabe in der Eingabe in anderer Schreibweise wird abgelehnt", async () => {
+    const r = await lauf(["--sicherung", sicherung, "--ausgabe", path.join(sicherung.toUpperCase(), "ergebnis.md")]);
+    expect(r.code).toBe(3);
+    expect(r.fehler).toMatch(/nicht in der Eingabe/);
+  });
+});
+
+describe("Eingabe verändert sich während des Laufs (Abdruck vorher/nachher)", () => {
+  const VORLADEN = pathToFileURL(path.join(WURZEL, "pruefungen", "erkennung-eingabe-aendern.preload.mjs")).href;
+  let dir;
+  beforeAll(async () => {
+    ({ dir } = await ablageBauen({ raeume: { "haus-wandel": { mandanten: [betrieb("m-haus-wandel")] } },
+      zugaenge: [{ bestand: "haus-wandel", rolle: "leitung", person: null, betrieb: 0, mandantId: "m-haus-wandel" }] }));
+  });
+
+  /* Vorlademodul im Kindprozess (node --import): umhüllt fs.promises.readdir und legt beim n-ten Lesen der Eingabewurzel
+     eine Datei in der Eingabe an. Der erste Lesevorgang der Wurzel ist der erste Abdruck, der zweite der zweite Abdruck. */
+  const mitAenderung = (eingabe, ab) => ({ nodeArgs: ["--import", VORLADEN],
+    env: { TEST_EINGABE_WURZEL: eingabe, TEST_AENDERN_AB: String(ab) } });
+
+  it("eine Datei, die zwischen erstem und zweitem Abdruck entsteht, verwirft das Ergebnis (Ausgang 1, klare Meldung)", async () => {
+    const sicherung = await sicherungZiehen(dir);
+    const r = await lauf(["--sicherung", sicherung, "--json"], mitAenderung(sicherung, 2));
+    expect(existsSync(path.join(sicherung, "nachtraeglich.txt")), "Die Änderung des Vorlademoduls hat nicht stattgefunden").toBe(true);
+    expect(r.code).toBe(1);
+    expect(r.fehler).toMatch(/Die Eingabe hat sich während des Laufs verändert/);
+    expect(r.aus).toBe("");
+  });
+
+  it("auch mit --ausgabe wird dann nichts geschrieben", async () => {
+    const sicherung = await sicherungZiehen(dir);
+    const datei = path.join(await ordner("ausgabe-wandel"), "ergebnis.json");
+    const r = await lauf(["--sicherung", sicherung, "--json", "--ausgabe", datei], mitAenderung(sicherung, 2));
+    expect(r.code).toBe(1);
+    expect(existsSync(datei)).toBe(false);
+  });
+
+  it("Gegenprobe: ohne Änderung läuft derselbe Aufbau mit Vorlademodul normal durch", async () => {
+    const sicherung = await sicherungZiehen(dir);
+    const r = await lauf(["--sicherung", sicherung, "--json"], mitAenderung(sicherung, 0));
+    expect(existsSync(path.join(sicherung, "nachtraeglich.txt"))).toBe(false);
+    expect(r.code).toBe(2);
+    expect(json(r).summen.M1).toBe(1);
+  });
+});
+
+describe("Warnungen bei --gespeicherte-kennungen und festem Laufschlüssel", () => {
+  let sicherung;
+  beforeAll(async () => {
+    const { dir } = await ablageBauen({ raeume: { "haus-warn": { mandanten: [betrieb("m-haus-warn")] } },
+      zugaenge: [{ bestand: "haus-warn", rolle: "leitung", person: null, betrieb: 0, mandantId: "m-haus-warn" }] });
+    sicherung = await sicherungZiehen(dir);
+  });
+
+  it("--gespeicherte-kennungen: deutsche WARNUNG auf stderr, nicht auf stdout", async () => {
+    const r = await lauf(["--sicherung", sicherung, "--gespeicherte-kennungen"], { env: { ERKENNUNG_LAUFSCHLUESSEL: null } });
+    expect(r.fehlerRoh).toMatch(/^WARNUNG: --gespeicherte-kennungen gibt die gespeicherte Betriebskennung aus\./m);
+    expect(r.fehlerRoh).toMatch(/nicht einchecken, nicht weitergeben/);
+    expect(r.aus).not.toMatch(/WARNUNG/);
+  });
+
+  it("ohne die Option keine WARNUNG; mit festem Laufschlüssel ein HINWEIS, ohne ihn keiner", async () => {
+    const ohne = await lauf(["--sicherung", sicherung], { env: { ERKENNUNG_LAUFSCHLUESSEL: null } });
+    expect(ohne.fehlerRoh).toBe("");
+    const fest = await lauf(["--sicherung", sicherung]);
+    expect(fest.fehlerRoh).toMatch(/^HINWEIS: ERKENNUNG_LAUFSCHLUESSEL ist gesetzt .* verknüpfbar/m);
+    expect(fest.fehlerRoh).not.toMatch(/WARNUNG/);
+    expect(fest.fehlerRoh).not.toContain(LAUFSCHLUESSEL);
+  });
+});
+
+/* Abgleich der nachgebildeten Prädikate mit PR #281 (server/lib/erstleitung.mjs). Die Datei liegt auf release-v4 noch
+   nicht; solange sie fehlt, wird übersprungen (Titel nennt den Grund). Danach: Kopie im Skript durch Import ersetzen. */
+const ERSTLEITUNG = path.join(WURZEL, "server", "lib", "erstleitung.mjs");
+describe("Abgleich mit den Prädikaten aus PR #281", () => {
+  const vorhanden = existsSync(ERSTLEITUNG);
+  const basis0 = () => ({ rolle: "leitung", person: null, mandantId: "m1", bestand: "r1", erstleitung: { mandantId: "m1" } });
+  const FAELLE = [
+    ["null", null], ["undefiniert", undefined], ["Text", "x"], ["Zahl", 3], ["Liste", []], ["leeres Objekt", {}],
+    ["gültig offen", basis0()],
+    ["Vermerk fehlt", { ...basis0(), erstleitung: undefined }],
+    ["Vermerk Liste", { ...basis0(), erstleitung: [] }],
+    ["Vermerk Text", { ...basis0(), erstleitung: "x" }],
+    ["verbraucht", { ...basis0(), erstleitungVerbraucht: { grund: "belegt" } }],
+    ["verbraucht, ohne offenen Vermerk", { ...basis0(), erstleitung: undefined, erstleitungVerbraucht: { grund: "belegt" } }],
+    ["verbraucht, nicht Objekt", { ...basis0(), erstleitung: undefined, erstleitungVerbraucht: "ja" }],
+    ["Rolle Planung", { ...basis0(), rolle: "planung" }],
+    ["Rolle fehlt", { ...basis0(), rolle: undefined }],
+    ["Demo", { ...basis0(), demo: true }],
+    ["Demo falsch", { ...basis0(), demo: false }],
+    ["gesperrt", { ...basis0(), gesperrt: true }],
+    ["gesperrt als Text", { ...basis0(), gesperrt: "2026-01-01" }],
+    ["Betrieb weicht ab", { ...basis0(), mandantId: "m2" }],
+    ["Betrieb im Vermerk leer", { ...basis0(), erstleitung: { mandantId: "" } }],
+    ["Betrieb im Vermerk fehlt", { ...basis0(), erstleitung: {} }],
+    ["Betrieb im Vermerk Zahl", { ...basis0(), erstleitung: { mandantId: 1 }, mandantId: 1 }],
+    ["Betrieb am Zugang fehlt", { ...basis0(), mandantId: undefined }],
+    ["Bestand leer", { ...basis0(), bestand: "" }],
+    ["Bestand fehlt", { ...basis0(), bestand: undefined }],
+    ["Bestand Zahl", { ...basis0(), bestand: 7 }],
+    ["mit Person", { ...basis0(), person: "p_abc1234" }],
+    ["Person leer", { ...basis0(), person: "" }],
+    ["Person undefiniert", { ...basis0(), person: undefined }],
+  ];
+
+  it.skipIf(!vorhanden)("erstleitungOffen und erstleitungsZugang verhalten sich wie in server/lib/erstleitung.mjs", async () => {
+    const echt = await import("../server/lib/erstleitung.mjs");
+    expect(typeof echt.erstleitungOffen, "erstleitungOffen fehlt in server/lib/erstleitung.mjs").toBe("function");
+    expect(typeof echt.erstleitungsZugang, "erstleitungsZugang fehlt in server/lib/erstleitung.mjs").toBe("function");
+    for (const [name, eintrag] of FAELLE) {
+      expect(E.erstleitungOffen(eintrag), `erstleitungOffen: ${name}`).toBe(!!echt.erstleitungOffen(eintrag));
+      expect(E.erstleitungsZugang(eintrag), `erstleitungsZugang: ${name}`).toBe(!!echt.erstleitungsZugang(eintrag));
+    }
+  });
+
+  it.skipIf(vorhanden)("ÜBERSPRUNGEN, solange server/lib/erstleitung.mjs fehlt (PR #281 noch nicht auf release-v4): Abgleich nachholen", () => {
+    expect(vorhanden).toBe(false);
+  });
+
+  it("die Tabelle selbst ist nicht trivial (sowohl offene als auch nicht offene Fälle)", () => {
+    const offen = FAELLE.filter(([, e]) => E.erstleitungOffen(e)).length;
+    expect(offen).toBeGreaterThan(0);
+    expect(offen).toBeLessThan(FAELLE.length);
+    expect(FAELLE.filter(([, e]) => E.erstleitungsZugang(e)).length).toBeGreaterThan(3);
   });
 });
