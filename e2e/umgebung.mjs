@@ -13,6 +13,10 @@ export const ROLLEN = Object.freeze(["mitarbeiter", "subplaner", "planer", "leit
 /** Umgebungsvariable, über die global-setup.mjs die Zugangscodes an die Testprozesse reicht (nie ausgegeben). */
 export const ZUGAENGE_VAR = "CENTRIC_E2E_ZUGAENGE";
 
+/** Umgebungsvariable mit dem synthetischen Betreibercode des Testservers (Abnahme Strang A legt damit eigene Betriebe an;
+ *  nie ausgegeben). */
+export const BETREIBER_VAR = "CENTRIC_E2E_BETREIBER";
+
 /** axe-Regelsätze für WCAG 2.2 Stufe AA (A und AA aus 2.0, 2.1 und 2.2). */
 export const AXE_TAGS = Object.freeze(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"]);
 

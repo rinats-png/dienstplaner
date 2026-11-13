@@ -151,6 +151,11 @@ jobs:
       - name: Mehrere Schichtmodelle je Person (IMP-6 Teil 2)
         run: npm run pruefung:imp6-mehrfachmodelle
 
+      # Abnahme V4 Strang A (lokale Integrationsabnahme): ein Ablauf über den echten Server — Betreiber legt zwei Betriebe an,
+      # Leitung richtet ein, lädt ein, Personal, Schichtmodell (IMP-6), Plan, Freigabe (plan.publish), Mandantentrennung.
+      - name: Abnahme V4 Strang A, Geschäftsablauf über zwei Betriebe
+        run: npm run pruefung:abnahme-a-ablauf
+
       - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
         run: npm run pruefung:import-abweichungen
 
