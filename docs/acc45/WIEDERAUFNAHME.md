@@ -5,6 +5,12 @@
 
 - Vollständiger Bereitschaftsnachweis und Lease-Freigabe (Epoche 10): `BEREITSCHAFTSANALYSE-2026-11-12.md`, Abschnitt "Nachtrag 2026-11-13".
 
+## Betreiberentscheidungen 2026-11-13 (verbindlich, siehe `ENTSCHEIDUNG-BETREIBER-2026-11-13.md`)
+1. **Browser-Abnahme-Werkzeuge**: `@playwright/test` und `axe-core` als devDependencies genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur wiederverwenden). WP-33 wird fortgesetzt, damit WP-21, WP-40 und weitere Pakete automatisiert im Browser abgenommen werden können. Die Aufnahme erfolgt in einem eigenen PR; die Notiz nannte `@axe-core/playwright`, genehmigt ist `axe-core` (Abweichung bei der Aufnahme benennen).
+2. **Historische Direkt-Merges** dürfen nur bei fünf belegten Bedingungen als Integrationsnachweis gelten (Commit im Integrationsbranch, Umsetzung vorhanden, Tests grün, Review dokumentiert, offene Abnahmekriterien bleiben offen); keine erfundenen PR-Nummern; künftige Änderungen weiter mit PR, voller CI, Reviews und Merge-Gates. Ergebnis: `DIREKTMERGE-ABGLEICH-2026-11-13.md`. Anerkannt: WP-15, WP-16c (beide bleiben REVIEW wegen offener Abnahmekriterien). Review nachzuholen: WP-14c, WP-16b, WP-07b und die sechs WP-19-Module 19.2, 19.3, 19.5, 19.6, 19.8, 19.9. Kein Paket wurde auf INTEGRATED gesetzt.
+3. **Mehrere Schichtmodelle je Person** genehmigt (eindeutige Identität und Gültigkeit je Modell, serverseitige Prüfung, eindeutig bestimmbares Modell je Planung, keine stille Auflösung von Überschneidungen, abgeschlossene Pläne unverändert, Zuordnungsänderungen protokolliert, keine stille Migration, kontrollierte Klärung bei fehlender Zuordnung). Nächste Schritte: IMP-6 (Schreiben der Modelle in den Bestand), danach IMP-7 und die abhängigen Importpakete. Neue Produktentscheidungen mit großer Wirkung auf Rechte, Abrechnung, Datenschutz oder historische Daten gehen gesondert an den Betreiber.
+- Weiterhin: kein Merge nach `main`, kein Produktions-Deployment ohne ausdrückliche Freigabe.
+
 ## Stand nach #258 (2026-11-13)
 - Integrationskopf: `a5abd89b` (Merge #258). Seit #256 gemergt: #257 (SSOT nach #256) und #258 WP-21 Teil 4 (Render-Prüfung der Abläufe an allen acht Viewports).
 - SSOT-Stand dazu: WP-21 bleibt IN_PROGRESS (Teilumfang; nicht INTEGRATED). Werkzeug-Ausgabe von Hand geprüft und die automatische Notiz ersetzt. Offen, ohne Entscheidung oder Gerät nicht ausführbar: Kartenansicht (wp40-Frage 6), echte Geräte (E-5), Textvergrößerung, Vorlesesoftware, manuelle Messung in Edge.
