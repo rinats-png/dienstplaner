@@ -34,3 +34,20 @@ Für alle sechs Module gilt ferner: Rechte `6f788b72`/`424e3ff5` liegen im Stand
   Hinweis: `stufen.reviewt` steht bei WP-14c, 16b und 07b auf `true` mit Verweis auf den Merge-Commit; bei der Nachholung ist der Beleg zu präzisieren oder auf `teilweise` zu setzen.
 - **Nicht betroffen** (PR vorhanden, kein Direkt-Merge): WP-16 (#85), WP-19.0 (#82); die Zeilen dienen der Vollständigkeit.
 - Keine Statusänderung nach INTEGRATED. Nachzuholende Reviews sind unabhängige Reviews der jeweiligen Änderungen im Integrationsstand.
+
+## Nachholreviews (Fortschreibung nach #265 und #266)
+Die nachzuholenden Reviews liegen vor: `NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md` (#266) und `NACHHOLREVIEW-WP19-MODULE-2026-11-13.md` (#265), beide auf `ca25fea9`. Bedingung (e) bleibt eingehalten: kein Abnahmekriterium wurde geschlossen, kein Paket wurde INTEGRATED, `stufen.integriert.wert` bleibt überall `false`, es werden keine PR-Nummern für Direkt-Merges angegeben.
+
+| Paket | Review-Ergebnis | `stufen.reviewt` | Anerkennung des Direkt-Merges |
+|---|---|---|---|
+| WP-16b | bestanden, keine blockierenden Befunde | `true` | anerkannt (Teilumfang), Status REVIEW |
+| WP-07b | bestanden, keine blockierenden Befunde | `true` | anerkannt (Teilumfang), Status REVIEW |
+| WP-14c | mit Auflage bestanden (M-14c-1 mittel); M-14c-1 inzwischen durch #268 behoben, Delta-Review nicht dokumentiert | `teilweise` | nicht vollständig anerkannt: F6 (Fachfrage), Restrisiko F4 offen |
+| WP-19.2 | kein Befund Hoch; M-WB1, M-WB2 offen | `true` | anerkannt für den gemergten Teilumfang, BLOCKED |
+| WP-19.3 | kein Befund Hoch; M-OB1, N-OB2 offen | `true` | anerkannt für den gemergten Teilumfang, BLOCKED |
+| WP-19.5 | Defekt M-PQ1 offen (Frage Q2a an den Betreiber) | `teilweise` | noch nicht anerkannt, Behebung und Delta-Review nötig |
+| WP-19.6 | Defekt M-BD1 inzwischen durch #267 behoben, M-BD2 offen, Delta-Review nicht dokumentiert | `teilweise` | noch nicht anerkannt |
+| WP-19.8 | kein Befund Hoch oder Mittel | `true` | anerkannt für den gemergten Teilumfang, BLOCKED |
+| WP-19.9 | kein Befund Hoch; M-RO1 offen | `true` | anerkannt für den gemergten Teilumfang, BLOCKED |
+
+Offene Fragen an den Betreiber aus den Reviews und Behebungen: WP-19.5 Q2a (Betreuungskräfte nach § 43b SGB XI getrennt, keine Anrechnung auf Pflegekräfte); WP-14c (a) ausdrücklich bestätigter Tag mit 0 h, (b) Altdaten-Prüffälle als Blockade des Monatsabschlusses; WP-14c F6a/F6b.

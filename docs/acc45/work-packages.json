@@ -1057,12 +1057,12 @@
       "agent": "Agent F – QA & Review",
       "modell": "sonnet",
       "konfliktzonen": ["package.json"],
-      "pr": ["#217","#262"],
+      "pr": ["#217","#262","#269"],
       "nachweis": null,
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED. Teil 4 (Merge #269): Toast-Schaltflächenkontrast von 1,98:1 auf 7,36:1 (hell) und 11,0:1 (dunkel) behoben; jeder Toast wird deterministisch mit axe geprüft. Paket bleibt IN_PROGRESS, offen wie zuvor (nicht INTEGRATED)."
     },
     {
       "id": "WP-34",
@@ -1579,7 +1579,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"50bbe0b0, Direkt-Merge 594f32c3: F2, F4, F5, F7 umgesetzt, F8 festgenagelt; F6 nicht umgesetzt (Fachfrage F6a/F6b)"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp14c-folgebefunde 18/18; CI-Schritt pruefung:wp-nachtraege"},
-        "reviewt": {"wert":true,"beleg":"Merge-Commit 594f32c3: nach drei Opus-Review-Runden (Branch feature/wp16c-stempelkette)"},
+        "reviewt": {"wert":"teilweise","beleg":"Unabhängiges Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 4): F4/F5/F7/F8 bestätigt, F2 Lücke M-14c-1 (Pause = Anwesenheit in Altdaten nicht gekennzeichnet), F6 nicht umgesetzt; wp14c-folgebefunde 18/18"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1594,7 +1594,7 @@
       "akzeptanz": "F2 Prüffall bei zu langer Pause/negativem Ist; F4 ZEITUMSTELLUNG nicht umgehbar; F5 gemessene Dauer im Befund; F6 24-h-Einsatz/verwerfen; F7 Oberfläche „überholt“ korrekt; F8 Selbstauskunft Mitternacht + pauseZuLang(…, datum)",
       "tests": "je Befund Test rot → grün",
       "dateien": "server/lib/istdaten.mjs, server/lib/zeiterfassung.mjs, src/App.jsx",
-      "notiz": "SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. F6 (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleibt Fachentscheidung (wp16c-fragen.md F6a/F6b). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review."
+      "notiz": "SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. F6 (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleibt Fachentscheidung (wp16c-fragen.md F6a/F6b). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 4): mit Auflage bestanden, reviewt teilweise. M-14c-1 (Pause gleich Anwesenheit in Altdaten nicht als Prüffall gekennzeichnet) ist nach dem Review im Integrationsbranch behoben (Merge #268, Pause gleich Anwesenheit wird Prüffall); ein Delta-Review der Behebung ist nicht dokumentiert, daher bleibt reviewt teilweise. Offen: F6 (Fachfrage F6a/F6b), Restrisiko F4 bei Altstempeln (N-14c-2), N-14c-3, Staging. Fragen an den Betreiber aus #268: (a) Soll es einen ausdrücklich bestätigten Tag mit 0 h Arbeitszeit (Pause gleich Anwesenheit) geben? (b) Sollen Altdaten-Prüffälle den Monatsabschluss blockieren? Direkt-Merge nach dem Review nicht als vollständig anerkannt, Status bleibt REVIEW."
     },
     {
       "id": "WP-27c",
@@ -1663,7 +1663,7 @@
       "stufen": {
         "implementiert": {"wert":true,"beleg":"5dab792e (feature/wp16c-stempelkette), Direkt-Merge 594f32c3"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp16b-spur 3/3; CI-Schritt pruefung:wp-nachtraege"},
-        "reviewt": {"wert":true,"beleg":"Merge-Commit 594f32c3: nach drei Opus-Review-Runden (Branch feature/wp16c-stempelkette)"},
+        "reviewt": {"wert":true,"beleg":"Unabhängiges Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 2): 5dab792e geprüft, wp16b-spur 3/3, Sonde S8 grün; keine blockierenden Befunde"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1678,7 +1678,7 @@
       "akzeptanz": "keine Spur-Zeile nennt Person|Tag; Altzeilen bereinigt oder beim Lesen geschwärzt",
       "tests": "Spur-Prüfung je Schreibweg",
       "dateien": "server/funktionen/daten.mjs, server/lib/zeiterfassung.mjs",
-      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review."
+      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 2): Direkt-Merge anerkannt für den Teilumfang (Bedingungen a bis e belegt), Status bleibt REVIEW; offen: Frage, ob die Ablage zusätzlich bereinigt wird, Staging."
     },
     {
       "id": "WP-24b",
@@ -1776,7 +1776,7 @@
       "stufen": {
         "implementiert": {"wert":true,"beleg":"kein Codeänderungsbedarf; Prüfung pruefungen/wp07b-stempel-500.test.js (50bbe0b0), Direkt-Merge 594f32c3"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp07b-stempel-500 9/9 (sechs Szenarien); CI-Schritt pruefung:wp-nachtraege"},
-        "reviewt": {"wert":true,"beleg":"Merge-Commit 594f32c3: nach drei Opus-Review-Runden (Branch feature/wp16c-stempelkette)"},
+        "reviewt": {"wert":true,"beleg":"Unabhängiges Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 3): Prüfung aus 50bbe0b0, wp07b-stempel-500 9/9, offline-stempeln 38/38, stempelpuffer 22/22, Sonden S1–S6 grün; keine blockierenden Befunde"},
         "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1791,7 +1791,7 @@
       "akzeptanz": "genau ein Stempel in allen Szenarien: (1) Speicherung erfolgreich + Antwort fehlgeschlagen, (2) Wiederholung mit gleicher clientEventId, (3) zwei Tabs, (4) Offline-Sync nach Fehler, (5) gleichzeitige Wiederholungen, (6) Serverneustart dazwischen",
       "tests": "je Szenario Test rot → grün (Renntest, Neustart)",
       "dateien": "server/funktionen/daten.mjs, server/lib/stempelintegritaet.mjs, src/stempelvorgang.js, src/stempelpuffer.js",
-      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review."
+      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 3): Direkt-Merge anerkannt, Status bleibt REVIEW; offen: echter 500 nach dem Schreiben unter Last (Staging/VPS)."
     },
     {
       "id": "WP-S1",
@@ -1888,7 +1888,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 614626d6, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-wachbuch 35/35, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md, eigener Agentenlauf Opus): Direkt-Merge abe3e157 (614626d6, Rechte 6f788b72/424e3ff5) geprüft; kein Befund Hoch; Befunde Mittel M-WB1, M-WB2 offen; Status geplant serverseitig wirksam"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1903,7 +1903,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
+      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge für den gemergten Teilumfang anerkannt (Bedingungen a bis e), Status BLOCKED unverändert. Offen (Mittel): M-WB1 (Einheit des Wachbuch-Eintrags frei wählbar, falsche SV-Sicht, Entscheidung R-10), M-WB2 (kein Schreibweg für Wachleute)."
     },
     {
       "id": "WP-19.3",
@@ -1916,7 +1916,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 12a8519b, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-objektbericht 17/17, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md, eigener Agentenlauf Opus): Direkt-Merge abe3e157 (12a8519b) und Teil PR #234 geprüft; kein Befund Hoch; M-OB1, N-OB2 offen"},
         "integriert": {"wert":false,"beleg":"Teilumfang in PR #234 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1931,7 +1931,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. PR #234 (Teil): OB-2 erledigt, Dienstzeit im Objektbericht nur aus der bestätigten Ist-Zeit, nie aus der Planzeit, rollengeschützt über istVerfuegbar; Modul bleibt geplant. Offene Produktfragen: Zugriff der Schichtverantwortung auf den Bericht (umgesetzt: nein); Häufigkeit von „ungeklärt“ bei Selbstauskunft „wie geplant“; Strenge von dienstzeitStand über den ganzen Betrieb; Mandanten-Sitzungen mit rolle kunde (Quelle null); abgeschlossener Monat mit ungestempeltem Tag. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. PR #234 (Teil): OB-2 erledigt, Dienstzeit im Objektbericht nur aus der bestätigten Ist-Zeit, nie aus der Planzeit, rollengeschützt über istVerfuegbar; Modul bleibt geplant. Offene Produktfragen: Zugriff der Schichtverantwortung auf den Bericht (umgesetzt: nein); Häufigkeit von „ungeklärt“ bei Selbstauskunft „wie geplant“; Strenge von dienstzeitStand über den ganzen Betrieb; Mandanten-Sitzungen mit rolle kunde (Quelle null); abgeschlossener Monat mit ungestempeltem Tag. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge für den gemergten Teilumfang anerkannt, Status BLOCKED unverändert. Offen: M-OB1 (kein Server-Endpunkt, kein PDF, keine Mindestaggregation), N-OB2."
     },
     {
       "id": "WP-19.4",
@@ -1972,7 +1972,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 9514c634, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-pflegequal 19/19, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":"teilweise","beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge abe3e157 (9514c634) geprüft; Defekt M-PQ1 (Betreuungskraft als Assistenz zählbar, Q2 a) offen — Behebung und Delta-Review nötig"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -1987,7 +1987,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): reviewt teilweise. Defekt M-PQ1 offen: eine Betreuungskraft (§ 43b SGB XI), die als \"assistenz\" klassifizierbar ist, zählt als Pflegekraft. Das ist eine Produkt-/Fachfrage Q2a an den Betreiber (getrennte Betreuungskräfte ohne Anrechnung?); danach Behebung und Delta-Review. Direkt-Merge noch nicht anerkannt."
     },
     {
       "id": "WP-19.6",
@@ -2000,7 +2000,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 32f46922, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-bereitschaftsdienst 22/22, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":"teilweise","beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge abe3e157 (32f46922) geprüft; Defekt M-BD1 (überlappende Inanspruchnahmen doppelt gezählt) und M-BD2 offen — Behebung und Delta-Review (Opus-Klasse) nötig"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -2015,7 +2015,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): reviewt teilweise. Defekt M-BD1 (überlappende Inanspruchnahmen doppelt gezählt) ist nach dem Review im Integrationsbranch behoben (Merge #267, WP-19.6 Teil 2, Überlappungen werden als Vereinigung gezählt); ein Delta-Review der Behebung ist nicht dokumentiert. Offen: M-BD2 (Monatsabschluss bei Bereitschaft nicht berücksichtigt), weitere Kriterien (Tarifstufen, Opt-out, Ruhezeit, Konto). Direkt-Merge noch nicht anerkannt."
     },
     {
       "id": "WP-19.7",
@@ -2056,7 +2056,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 8123d4c9, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-funktionsdienst 18/18, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md, eigener Agentenlauf Opus): Direkt-Merge abe3e157 (8123d4c9) geprüft; kein Befund Hoch oder Mittel; Befunde nicht in die Fachprüfung eingehängt (offen)"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -2071,7 +2071,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge für den gemergten Teilumfang anerkannt, Status BLOCKED unverändert. Offen: die Befunde sind nicht in die Fachprüfung eingehängt."
     },
     {
       "id": "WP-19.9",
@@ -2084,7 +2084,7 @@
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 889d2eb4, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-rotation 16/16, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
-        "reviewt": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md, eigener Agentenlauf Opus): Direkt-Merge abe3e157 (889d2eb4) geprüft; kein Befund Hoch; M-RO1 (tagesgenaue Wirkung fehlt) offen"},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -2099,7 +2099,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge für den gemergten Teilumfang anerkannt, Status BLOCKED unverändert. Offen (Mittel): M-RO1 (Rotation ohne tagesgenaue Wirkung, Zugehörigkeitsbestätigung fehlt)."
     },
     {
       "id": "WP-19.10",
