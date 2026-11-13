@@ -38,7 +38,7 @@
     "pruefung:intelligence-browser": "vitest run pruefungen/intelligence-oberflaeche-browser.test.js",
     "pruefung:selbstservice": "vitest run pruefungen/selbstservice.test.js",
     "pruefung:oberflaeche": "vitest run pruefungen/oberflaeche-selbstservice.test.js",
-    "pruefung:render": "vitest run pruefungen/oberflaeche-render.test.js",
+    "pruefung:render": "vitest run pruefungen/oberflaeche-render.test.js pruefungen/personal-rollenauswahl-name.test.js",
     "pruefung:personendaten": "vitest run pruefungen/personendaten.test.js",
     "pruefung:mandanten": "vitest run pruefungen/mandanten.test.js",
     "pruefung:mandanten-http": "node --import ./werkzeug/betreiber-faktor-vorlauf.mjs pruefungen/mandanten.mjs",
