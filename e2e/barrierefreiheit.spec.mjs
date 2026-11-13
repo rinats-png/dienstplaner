@@ -2,6 +2,7 @@
    Planansicht, an jedem der acht Viewports der Gerätematrix (je ein Playwright-Projekt, playwright.config.mjs).
    Gate: serious und critical schlagen fehl, außer begründet in e2e/axe-ausnahmen.json. */
 import { test, expect, anmelden, geheZu, axePruefen, AUSNAHMEN } from "./hilfen.mjs";
+import { ABNAHME_B_FLAECHEN } from "./abnahme-b-flaechen.mjs";
 
 /** [Fläche, Rolle, Ansicht] — je Rollenfamilie eine Planansicht (Beschäftigte, Schichtverantwortung, Planung, Leitung, Betriebsrat). */
 const FLAECHEN = [
@@ -33,7 +34,7 @@ test.describe("Barrierefreiheit (axe, WCAG 2.2 AA)", () => {
    stilles Abschwächen des Gates. Läuft ohne Browser, einmal je Lauf. */
 test("Ausnahmeliste axe ist begründet", async ({}, testInfo) => {
   test.skip(testInfo.project.name !== "360x740", "einmal je Lauf genügt");
-  const bekannt = new Set(["anmeldung", ...FLAECHEN.map((f) => f[0]), "*"]);
+  const bekannt = new Set(["anmeldung", ...FLAECHEN.map((f) => f[0]), ...Object.values(ABNAHME_B_FLAECHEN), "*"]);
   for (const a of AUSNAHMEN) {
     expect(typeof a.regel === "string" && a.regel.length > 0, JSON.stringify(a)).toBe(true);
     expect(bekannt.has(a.flaeche), `Fläche ${a.flaeche}`).toBe(true);
