@@ -148,7 +148,8 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
                   const meine = vergebbareRollen(sitz.rolle === "kunde" ? "leitung" : sitz.rolle);
                   const darfIch = meine.includes(p.rolle) || !meine.length ? meine : [];
                   return darfIch.length ? (
-                    <Sel value={p.rolle} onChange={(ev) => akt.setzeRolle(p.id, ev.target.value)} style={{ width: 180 }}>
+                    <Sel value={p.rolle} onChange={(ev) => akt.setzeRolle(p.id, ev.target.value)} style={{ width: 180 }}
+                      aria-label={`Rolle von ${[p.vorname, p.nachname].filter(Boolean).join(" ")}`}>
                       {ROLLEN.filter((x) => darfIch.includes(x.id))
                         .map((x) => <option key={x.id} value={x.id}>{rollenName(m, x.id)}</option>)}</Sel>
                   ) : (<>
