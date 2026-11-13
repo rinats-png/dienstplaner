@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 201,
+  "anzahl": 202,
   "statusZaehlung": {
-    "BLOCKED": 70,
+    "BLOCKED": 71,
     "READY": 16,
     "IN_PROGRESS": 19,
     "REVIEW": 7,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 101,
-      "offen": 29,
+      "pakete": 102,
+      "offen": 30,
       "restPT": {
-        "min": 43.599999999999994,
-        "max": 69.9
+        "min": 44.599999999999994,
+        "max": 72.9
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 293.5,
-    "max": 499.2
+    "min": 294.5,
+    "max": 502.2
   },
   "kritischerPfad": {
     "summe": 70,
@@ -1048,7 +1048,7 @@
         "implementiert": {"wert":true,"beleg":"acc45/qa/wp33-testinfrastruktur dc27b7d"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Branch-Nachweis"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #262 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1057,12 +1057,12 @@
       "agent": "Agent F – QA & Review",
       "modell": "sonnet",
       "konfliktzonen": ["package.json"],
-      "pr": ["#217"],
+      "pr": ["#217","#262"],
       "nachweis": null,
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED."
     },
     {
       "id": "WP-34",
@@ -4837,7 +4837,7 @@
         "implementiert": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
         "reviewt": {"wert":true,"beleg":"PR #185 in integration/release-v4"},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #251 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #263 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -4846,12 +4846,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#185","#240","#251"],
+      "pr": ["#185","#240","#251","#263"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Keine feste Zykluslänge; arbeitszeitrechtliche Prüfung mit den Dienstarten des Betriebs; Nachtschicht über Mitternacht",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/schicht*.mjs, Tests",
-      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze). Stand (automatisch): Teilumfang nach #251, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Betreiberentscheidung 2026-11-13: mehrere Schichtmodelle je Person genehmigt (eindeutige Identität und Gültigkeitszeitraum je Modell, serverseitige Prüfung, eindeutig bestimmbares Modell je Planung, keine stille Auflösung von Überschneidungen, keine rückwirkende Änderung abgeschlossener Pläne, Protokoll der Zuordnungsänderungen, keine stille Migration, kontrollierte Klärung bei fehlender Zuordnung); die Datenmodellentscheidung ist damit getroffen, das Schreiben der Modelle ist zu entwickeln, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md."
+      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze). Stand (automatisch): Teilumfang nach #251, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Betreiberentscheidung 2026-11-13: mehrere Schichtmodelle je Person genehmigt (eindeutige Identität und Gültigkeitszeitraum je Modell, serverseitige Prüfung, eindeutig bestimmbares Modell je Planung, keine stille Auflösung von Überschneidungen, keine rückwirkende Änderung abgeschlossener Pläne, Protokoll der Zuordnungsänderungen, keine stille Migration, kontrollierte Klärung bei fehlender Zuordnung); die Datenmodellentscheidung ist damit getroffen, das Schreiben der Modelle ist zu entwickeln, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Stand (automatisch): Teilumfang nach #263, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 2 integriert (#263, Merge ca25fea9): serverseitige Zuordnung mehrerer Modelle je Person (m.schichtmodelle, schichtmodellZuordnungen), Bibliothek schichtzuordnung.mjs, Protokollzeile je Änderung, Zählung der Modellwechsel in der Importvorschau; keine Oberfläche, keine Wirkung auf die Planrechnung, CENTRIC_IMPORT_AKTIV bleibt aus. Offene Betreiberfragen 1 bis 8 (siehe PR #263 und docs/acc45/IMP-6-MEHRFACHMODELLE.md): (1) frühestes Änderungsdatum, morgen oder auch heute; (2) wiedergeöffnete Monate und Korrekturrevision WP-16c; (3) freigegebene Monate: Absage oder Änderung mit Vorlauf; (4) Sicht für Beschäftigte und Betriebsrat; (5) Tage ohne Modell zulässig oder jede Liste offen endend; (6) wann die Modelle in die Planung wirken; (7) Art. 15 DSGVO Auskunft für schichtmodellZuordnungen; (8) /api/wiederherstellen umgeht den historischen Schutz, hingenommen nur, solange die Zuordnungen keine Planwirkung haben. Außerdem offen: Oberfläche als Folgeschritt und Übernahme der Importzuordnungen in den Bestand. Status bleibt IN_PROGRESS, nicht INTEGRATED."
     },
     {
       "id": "IMP-7",
@@ -4879,7 +4879,7 @@
       "akzeptanz": "Keine unbeabsichtigte Änderung vorhandener Pläne; Vorschau je Zeitraum; historische Daten klar von künftiger Planung getrennt",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/plan*.mjs, Tests",
-      "notiz": "Unsicherheit hoch. Review Opus vor Übernahme. Betreiberentscheidung 2026-11-13: abhängige Importpakete werden nach IMP-6 (Schreiben der Modelle) freigegeben; bleibt bis dahin BLOCKED."
+      "notiz": "Unsicherheit hoch. Review Opus vor Übernahme. Betreiberentscheidung 2026-11-13: abhängige Importpakete werden nach IMP-6 (Schreiben der Modelle) freigegeben; bleibt bis dahin BLOCKED. Stand 2026-11-13 (nach #263): bleibt BLOCKED, weil die Abhängigkeit IMP-6 nur IN_PROGRESS ist, nicht INTEGRATED. IMP-7 braucht aus IMP-6: (a) die Bibliothek schichtzuordnung.mjs und das Modellformat (vorhanden, #185 und #263), (b) den Speicherweg für Zuordnungen mit serverseitigen Stempeln (vorhanden, #263), (c) den historischen Schutz abgeschlossener und freigegebener Monate (vorhanden, aber Fragen 1 bis 3 und 8 offen, vor Schreiben in die Vergangenheit zu klären), (d) die Übernahme der Importzuordnungen in den Bestand (fehlt, gehört zu IMP-6 Übernahme), (e) die Wirkung der Zuordnung auf die Planrechnung (fehlt, Frage 6). Punkt (d) und die Fragen 1 bis 3 und 8 müssen vor dem Start geklärt sein; Entscheidung des Koordinators, ob IMP-6 danach INTEGRATED wird. Review Opus bleibt Pflicht."
     },
     {
       "id": "IMP-8",
@@ -5804,6 +5804,34 @@
       "tests": "pruefungen/modul-*.test.js",
       "dateien": "server/lib (modul-altwege.mjs, branchenmodule.mjs)",
       "notiz": "Offen nach PR #247 (WP-19 B4), Aufwand SCHÄTZUNG. Frage an Betreiber und Datenschutz: Darf bei ausgeschaltetem Modul (modulAktiv falsch) eine Berichtigung nach Art. 16 gespeichert werden? Heute: bei den neueren Modulen blockiert, bei den fünf älteren (Posten, Bereichsplan, geteilter Dienst, Anlagen, Maschinenqualifikation) erlaubt. Zu entscheiden: alle blockieren, alle erlauben oder je Modul. Abhängigkeit ist die Entscheidung von Betreiber und Datenschutz (keine Paket-ID); bis dahin keine Codeänderung."
+    },
+    {
+      "id": "WP-48-GB",
+      "titel": "Lesen des Plans schreibt: Dialog „Gleichzeitig bearbeitet“ beim bloßen Öffnen (Befund aus dem Review von PR #262)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":3},
+      "abhaengigkeiten": [],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Agent A – Security & Data Integrity",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs","App.jsx"],
+      "pr": [],
+      "nachweis": "PR #262 (Review-Befund)",
+      "akzeptanz": "Zwei parallele Sitzungen, die den Plan nur öffnen und nichts eingeben, lösen keinen Speichervorgang und keinen Dialog „Gleichzeitig bearbeitet“ aus; ein echter Konflikt bei gleichzeitiger Änderung wird weiterhin gemeldet; die e2e-Suite läuft ohne die Notlösung workers: 1",
+      "tests": "Prüfung der Lade- und Öffnungswege auf Schreibzugriffe (App.jsx, src/speicher.js, daten.mjs), e2e mit zwei Sitzungen, Rot vorher",
+      "dateien": "src/App.jsx, src/speicher.js, src/ansichten/speicherlage.jsx, server/funktionen/daten.mjs, e2e/, Tests",
+      "notiz": "Befund aus dem Review von PR #262 (WP-33 Teil 3): Mehrere parallele Sitzungen, die den Plan nur öffnen und nichts eingeben, zeigen den Dialog „Gleichzeitig bearbeitet“; die e2e-Suite läuft deshalb mit workers: 1 als Notlösung (playwright.config.mjs). Der Dialog in src/ansichten/speicherlage.jsx:174 erscheint nach bisherigem Stand nur bei einem Speicherkonflikt, das Öffnen scheint also zu schreiben. Schritt 1 Analyse: welcher Lade- oder Öffnungsweg schreibt (Autospeichern, Herzschlag, Zeitstempel, Migration beim Laden). Schritt 2 Behebung. Bereich WP-48 und WP-16. Keine Produktentscheidung bekannt. Aufwand SCHÄTZUNG. Abhängigkeiten leer; BLOCKED bis zur Zuteilung durch den Koordinator (Strang acc45)."
     }
   ]
 }
