@@ -2,7 +2,7 @@
    Geprueft wird, was ohne Layout-Engine belegbar ist: die echten Komponenten werden gerendert (react-dom/server) und die echten
    Stilregeln der Anwendung (bauStyles) fuer jede Viewportbreite ausgewertet (max-width/min-width). Layout, Antippen und
    Vorlesesoftware bleiben der Messung im Browser (pruefungen/browser/geraete-wp21-ablaeufe.mjs) und echten Geraeten vorbehalten.
-   Je Ablauf und Viewport (360x740, 390x844, 768x1024, 844x390 quer):
+   Je Ablauf und Viewport (alle acht Pruefviewports aus src/ui/geraete.js: 360x740, 390x844, 430x932, 768x1024, 1024x768 und quer 740x360, 844x390, 932x430):
      - die Hauptaktion ist im Dokument und nicht deaktiviert,
      - Zielgroessen aus den Stilregeln: mindestens ZIEL_MINDEST (24 px); Stempelflaeche der Telefonansicht 56 px (ueber 44 px),
      - kein Signal fuer Querscroll der Seite (Umbruch aktiv, Seitenleiste ausserhalb, Blatt hoechstens Viewport, keine feste
@@ -37,11 +37,8 @@ beforeAll(async () => {
 }, 120000);
 afterAll(() => { vi.useRealTimers(); });
 
-/* Die vier Pruefviewports dieses Teils: zwei Telefone hoch, Tablet hoch, Telefon quer. */
-const VIEWPORTS = [
-  GERAETE_VIEWPORTS.find((v) => v.id === "360x740"), GERAETE_VIEWPORTS.find((v) => v.id === "390x844"),
-  GERAETE_VIEWPORTS.find((v) => v.id === "768x1024"), GERAETE_VIEWPORTS_QUER.find((v) => v.id === "844x390"),
-];
+/* Alle acht Pruefviewports der Geraetematrix (WP-21 Teil 4: vorher nur vier). */
+const VIEWPORTS = [...GERAETE_VIEWPORTS, ...GERAETE_VIEWPORTS_QUER];
 
 /* ---------- Stilregeln je Viewport auswerten ---------- */
 function bloecke(css) {
@@ -110,9 +107,9 @@ const ROLLEN = ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"];
 const CSS = () => A.bauStyles();
 
 describe("WP-21 Teil 3: Viewports und Auswertung der Stilregeln", () => {
-  it("die vier Pruefviewports; Querformat ist das gedrehte 390x844-Telefon", () => {
-    expect(VIEWPORTS.map((v) => v.id)).toEqual(["360x740", "390x844", "768x1024", "844x390"]);
-    expect(VIEWPORTS[3]).toMatchObject({ w: 844, h: 390 });
+  it("alle acht Pruefviewports; Querformat sind die gedrehten Telefone", () => {
+    expect(VIEWPORTS.map((v) => v.id)).toEqual(["360x740", "390x844", "430x932", "768x1024", "1024x768", "740x360", "844x390", "932x430"]);
+    expect(VIEWPORTS.filter((v) => v.art === "telefon-quer").map((v) => [v.w, v.h])).toEqual([[740, 360], [844, 390], [932, 430]]);
   });
   it("die Auswertung unterscheidet die Breiten (Probe an bekannten Regeln)", () => {
     const css = CSS();
