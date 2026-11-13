@@ -26,6 +26,7 @@
    davon unberührt.
    ========================================================================== */
 import { dauerAm } from "./regelwerk.mjs";
+import { pauseZuLang } from "./zeitregeln.mjs";
 
 export const ISTDATEN_TEXT = "Ist-Arbeitszeit für diese Rolle nicht personenbezogen verfügbar.";
 
@@ -251,10 +252,13 @@ export function istZeitFuer(m, p, d, da) {
   /* Nie negativ (WP-14b, M2): Altdaten mit einer Pause über der wirklichen Anwesenheit (Frühjahrsnacht)
      zählen 0 — eine negative Ist-Zeit zöge Konto, Zuschläge und Lohn ins Minus. */
   const std = Math.max(0, dauerAm(d, roh));
-  /* WP-14c (F2): Eine Pause über der Anwesenheit (negatives Ist, Altdaten) bleibt bei 0 h — aber nicht still:
-     Sie ist ein Prüffall (`zurPruefung`), Konto und Auswertung weisen darauf hin. */
+  /* WP-14c (F2): Eine Pause, die die Anwesenheit erreicht oder übersteigt (Altdaten), bleibt bei 0 h — aber nicht
+     still: Sie ist ein Prüffall (`zurPruefung`), Konto und Auswertung weisen darauf hin. Dieselbe Grenze (>=) wie
+     beim Stempeln und bei der Korrektur (pauseZuLang, mit der wirklichen Anwesenheit am Tag) — M-14c-1: vorher nur
+     bei negativem Ist, Pause = Anwesenheit zählte still 0 h. Nur Kennzeichnung: Stunden und Daten bleiben. */
+  const pauseErreicht = dauerAm(d, roh) <= 0 || pauseZuLang(roh.start, roh.ende, roh.pause, d);
   return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100,
-    ...(dauerAm(d, roh) < 0 ? { zurPruefung: true, pauseUeberAnwesenheit: true } : {}) };
+    ...(pauseErreicht ? { zurPruefung: true, pauseUeberAnwesenheit: true } : {}) };
 }
 
 /**
