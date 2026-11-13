@@ -18,26 +18,26 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 201 · BLOCKED 71 · READY 16 · IN_PROGRESS 18 · REVIEW 7 · INTEGRATED 86 · DONE 3
+**Pakete gesamt:** 201 · BLOCKED 70 · READY 16 · IN_PROGRESS 19 · REVIEW 7 · INTEGRATED 86 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 101 | 18 | 0 | 8 | 3 | 70 | 2 | 43,6–69,9 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 1 | 0 | 0 | 65,3–101,7 |
-| Intelligence | 40 | 21 | 0 | 7 | 0 | 12 | 0 | 183,5–324,5 |
+| Intelligence | 40 | 20 | 0 | 8 | 0 | 12 | 0 | 179,5–317,5 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **297,5–506,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **293,5–499,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
+- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 - ohne Intelligence: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **23,3–36,2 PT**
 - ACC45: WP-16 → WP-48 = **8,5–14,5 PT**
 - Folgepakete: WP-PILOT = **2–4 PT**
 - WP-19: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **19,3–29,7 PT**
-- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **54–97 PT**
+- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 
 ### In Arbeit / Review
 
@@ -57,6 +57,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **297,5–506,
 | WP-07b Stempel-Sonderfall „500 nach Speicherung“ (clientEventId, sechs Szenarien) | REVIEW | `acc45/time/wp07b-500-nach-speicherung` | SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. |
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | REVIEW | `acc45/frontend/wp19-0-modulkern` | Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Nacharbeit aus Abschnitt 13 vollständig über PR #82 integriert (in integration/centric-complete, Vorfahr von integration/release-v4). Status-Hebung = Koordinatorentscheidung. Fachlich offen: FN-32, FN-33; Folgepaket stammdatenMonate/gruendeMonate. |
 | WP-19.13 WP-19 Modulabnahme (E2E, Viewports, Rollenmatrix, Status „vorlaeufig“) | IN_PROGRESS | `acc45/qa/wp19-13-modulabnahme` | Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). |
+| WP-I4 Interne Vorgaben: Verwaltung | IN_PROGRESS | `intelligence/wp-i4-interne-vorgaben-verwalt` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? |
 | WP-I19 Altplan-Übernahme (F7A) | IN_PROGRESS | `intelligence/wp-i19-altplan-ubernahme-f7a` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #236, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). |
 | WP-I20 Ausfall-Vorschlag (F3) | IN_PROGRESS | `intelligence/wp-i20-ausfall-vorschlag-f3` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #222, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #222 (keine Verhaltensänderung im Rechenkern): Zeitumstellung (DST) bei Ruhezeit in Near-Miss/Spielraum gegenüber Befund als Engine-Frage; HTTP-Einbindung; Gateway-Text; Golden um Ruhezeit-/Folgegrenzen (#174). |
 | WP-I23 F9 Hilfe-Assistent | IN_PROGRESS | `intelligence/wp-i23-f9-hilfe-assistent` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #219, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #219 (25 Hilfetexte, BM25, /api/hilfe/status|frage, Schalter CENTRIC_HILFE_ASSISTENT aus|suche|an): fachliche Freigabe der Korpus-Inhalte; Sichtbarkeit von suche für Piloten; Gesundheitstexte für das Modell gesperrt bestätigen; Gateway-Verdrahtung nach E-25/E-26. PR #233: Browserfähigkeit der Anzeige hergestellt (byteLaenge statt Buffer.byteLength), Einhängepunkte offen (docs/acc45/INTELLIGENCE-UI.md). |
@@ -69,9 +70,9 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **297,5–506,
 | IMP-8 Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E) | IN_PROGRESS | `–` | Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt. |
 | OPT-4 SI-P4 Option 4: zweiter Faktor (TOTP) direkt für Benutzerkonten, Zielarchitektur | IN_PROGRESS | `–` | Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. |
 
-### Bereit zum Start (10)
+### Bereit zum Start (9)
 
-WP-34 (acc45, 1–1,5 PT) · WP-I4 (intelligence, 8–14 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · SI-P6b (acc45, 1,5–3 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B6 (acc45, 0,3–0,5 PT)
+WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · SI-P6b (acc45, 1,5–3 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B6 (acc45, 0,3–0,5 PT)
 
 ### Integriert in `integration/centric-complete` (86)
 

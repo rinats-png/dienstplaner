@@ -1,7 +1,11 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #254, Integrationskopf 8a7927c0, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #256, Integrationskopf 3eeee94f, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #256 (2026-11-13)
+- Integrationskopf: `3eeee94f` (Merge #256). Seit #254 gemergt: #256 WP-I4 Teil 1 (Verwaltung interner Vorgaben, ohne Betriebsrat-Sicht, ohne Wirkung).
+- SSOT-Stand dazu: WP-I4 IN_PROGRESS (Teilumfang; nicht INTEGRATED). Werkzeug-Ausgabe von Hand geprüft. Offene Betreiberfragen (auch in der Notiz von WP-I4): (1) Planung lesen/ändern? (2) Betriebsratssicht (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Protokoll für Löschen/Deaktivieren? (4) Tarif `pro` = Grenze 25 des Business-Tarifs? (5) Neu-Test einer geänderten Vorgabe (nur Oberfläche erzwingt, nicht der Server)?
 
 ## Stand nach #254 (2026-11-13)
 - Integrationskopf: `8a7927c0` (Merge #254). Seit #252 gemergt: #254 WP-I29 Teil 1 (Batch-Infrastruktur als Attrappe, Schalter aus; `server/lib/intelligence/funktionen/batch-lauf.mjs`: geschlossene Spezifikation mit Obergrenzen, Isolation je Eintrag, Idempotenzschlüssel je Bestand, Betrieb, Person und Rolle, Kontingent vor Start und je Eintrag über das bestehende Kontingent, Abbruch, Frist, Fortschritt; Rollenprüfung Leitung/Planer, in der Positivliste gibt es keinen F-Eintrag für Batch; Ergebnisse nur im Arbeitsspeicher, TTL 1 h, Obergrenzen 10 je Betrieb, 5 je Person, 200 gesamt, nie Verdrängung eines fremden Betriebs; Ablehnungen nicht gespeichert; der optionale Rückruf `sitzungGueltig` prüft die Rolle je Eintrag nur, wenn ein künftiger Aufrufer ihn übergibt; `docs/acc45/wp-i29-nachweis.md`).
