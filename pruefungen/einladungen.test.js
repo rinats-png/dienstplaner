@@ -899,7 +899,8 @@ describe("Kontositzung mit Betriebskennung", () => {
     expect(w.ok).toBe(true);
     if (!w.ok) return;
     expect(Object.keys(w).sort()).toEqual(["betrieb", "gueltigBis", "name", "ok", "person", "raum", "rolle", "token"]);
-    expect(JSON.stringify(w)).not.toContain("m-a");
+    /* Ohne den Zufallstoken prüfen: ein base64url-Token kann "m-a" zufällig enthalten. */
+    expect(JSON.stringify({ ...w, token: null })).not.toContain("m-a");
   });
 
   /* ------------------------------------------------------------------------

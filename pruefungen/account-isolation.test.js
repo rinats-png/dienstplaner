@@ -71,6 +71,12 @@ const mitglied = async (s, accountId, raum, felder) => {
    `email` fehlt in dieser Liste, weil sie die Identität ist und in den
    Account gehört; `status` und `rolle` stehen unten in eigenen Prüfungen,
    weil die Person sie ebenfalls trägt — mit anderer Bedeutung. */
+/* Kennung der Test-Person. Enthält `~`, das im base64url-Alphabet der
+   zufälligen Account-Kennung nicht vorkommt: ein Teilstring-Treffer in einem
+   serialisierten Account kann daher nur ein echtes Durchsickern sein (das
+   frühere "p17" steckte zufällig in a_…-Kennungen und machte den Lauf
+   flackernd). */
+const PERSON_ID = "p~17";
 const PERSONENFELDER = ["vorname", "nachname", "funktion", "zugehoerigkeit",
   "eintritt", "austritt", "wochenstunden", "urlaubsanspruch", "urlaubsuebertrag",
   "stundenuebertrag", "qualifikationen", "qualNachweise", "kompetenzen",
@@ -85,7 +91,7 @@ describe("Der Account bleibt Identität und wird nicht zum Mitarbeiterdatensatz"
   it("trägt keine Personendaten — auch nicht nach jeder Änderung", async () => {
     const s = laden();
     const a = await mitAccount(s, "ident@example.org");
-    await mitglied(s, a.id, "t-iso-a", { person: "p17", rolle: "leitung", einheit: "e1" });
+    await mitglied(s, a.id, "t-iso-a", { person: PERSON_ID, rolle: "leitung", einheit: "e1" });
     /* Alles, was das Modul an einem Account ändern kann, einmal anwenden. */
     await A.passwortSetzen(s, a.id, PW);
     await A.emailBestaetigen(s, a.id);
@@ -97,9 +103,16 @@ describe("Der Account bleibt Identität und wird nicht zum Mitarbeiterdatensatz"
     }
     /* Und nichts aus der Mitgliedschaft ist mitgewandert. */
     const text = JSON.stringify(stand);
-    expect(text).not.toContain("p17");
+    expect(text).not.toContain(PERSON_ID);
     expect(text).not.toContain("leitung");
     expect(text).not.toContain("t-iso-a");
+  });
+
+  it("Regression: eine zufällige Kennung mit dem alten Marker erzeugt keinen Fehlalarm, ein echtes Durchsickern schon", () => {
+    const zufaellig = { id: "a_xxp17xx", email: "x@example.org", status: "aktiv" };
+    expect(JSON.stringify(zufaellig)).not.toContain(PERSON_ID);
+    expect(JSON.stringify({ ...zufaellig, person: PERSON_ID })).toContain(PERSON_ID);
+    expect(PERSON_ID).toMatch(/[^A-Za-z0-9_-]/);
   });
 
   it("trägt weder Raum noch Betrieb noch Mandant — und kann sie nicht bekommen", async () => {
@@ -209,14 +222,14 @@ describe("Es gibt keine höchste Rolle", () => {
   it("hält Account-Kennung und Person-Kennung getrennt", async () => {
     const s = laden();
     const a = await mitAccount(s, "getrennt@example.org");
-    await mitglied(s, a.id, "t-iso-kennung", { person: "p17" });
+    await mitglied(s, a.id, "t-iso-kennung", { person: PERSON_ID });
     /* Zwei Namensräume, zwei Bedeutungen: a_ ist ein Mensch als Identität,
        p… ein Mitarbeiterdatensatz in einem Betrieb. Wären sie dasselbe,
        wäre derselbe Mensch in zwei Betrieben derselbe Datensatz. */
     expect(a.id.startsWith("a_")).toBe(true);
-    expect(a.id).not.toContain("p17");
+    expect(a.id).not.toContain(PERSON_ID);
     const m = await A.mitgliedschaftLesen(s, a.id, "t-iso-kennung");
-    expect(m.person).toBe("p17");
+    expect(m.person).toBe(PERSON_ID);
     expect(m.accountId).toBe(a.id);
     expect(m.person).not.toBe(m.accountId);
     /* Keine Funktion leitet eine Kennung aus der anderen ab. */
@@ -227,7 +240,7 @@ describe("Es gibt keine höchste Rolle", () => {
     /* Dieselbe Person-Kennung in einem anderen Raum stiftet keine
        Verbindung: p17 dort ist ein anderer Mensch. */
     const b = await mitAccount(s, "gleichep@example.org");
-    await mitglied(s, b.id, "t-iso-kennung-zwei", { person: "p17" });
+    await mitglied(s, b.id, "t-iso-kennung-zwei", { person: PERSON_ID });
     expect(await A.mitgliedschaftLesen(s, b.id, "t-iso-kennung")).toBe(null);
   });
 });
