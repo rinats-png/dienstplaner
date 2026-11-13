@@ -1,0 +1,19 @@
+{
+  "_hinweis": "Begründete Ausnahmen vom axe-Gate (serious/critical) der Playwright-Suite, WP-33 Teil 3. Nur Funde, die der erste Lauf (2026-11-13, axe-core 4.14.0, alle acht Viewports) wirklich gezeigt hat; je Eintrag regel (axe-Regel-ID), flaeche (Testname aus e2e/barrierefreiheit.spec.mjs), optional viewports (Projektnamen; fehlt = alle), grund (mind. 20 Zeichen) und wp (zuständiges Arbeitspaket). Andere Regeln auf derselben Fläche schlagen weiter fehl. Behobene Einträge streichen (der Test meldet ungenutzte als Anmerkung axe-ausnahme-ungenutzt).",
+  "ausnahmen": [
+    { "regel": "label-content-name-mismatch", "flaeche": "einstellungen-leitung", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell): Kontoknopf .avatarknopf zeigt die Initialen, sein Name ist 'Konto: <Name>'. Namensschema der Kopfleiste gehört zur WP-40-Nacharbeit, nicht trivial ohne Abstimmung der Sprachausgabe." },
+    { "regel": "label-content-name-mismatch", "flaeche": "plan-planer", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell): Kontoknopf (Initialen) und die Tageskarten/Zellen des Monatsplans (aria-label '10. Dienstag' bzw. '<Name> öffnen', sichtbar andere Kurzform); bis 231 Knoten in der breiten Tabellenansicht. Umbau der Plannamen ist WP-40-Nacharbeit." },
+    { "regel": "label-content-name-mismatch", "flaeche": "plan-leitung", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell): dieselbe Monatsplanansicht wie plan-planer (Kontoknopf, Tageskarten, Personenzellen mit abweichendem aria-label); Umbau der Plannamen ist WP-40-Nacharbeit." },
+    { "regel": "label-content-name-mismatch", "flaeche": "plan-betriebsrat", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell): dieselbe Monatsplanansicht (lesend) wie plan-planer (Kontoknopf, Tageskarten, Personenzellen mit abweichendem aria-label); Umbau der Plannamen ist WP-40-Nacharbeit." },
+    { "regel": "label-content-name-mismatch", "flaeche": "plan-subplaner", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell): Personaleinsatz, Personenzellen td[role=button] mit aria-label '<Nachname, Vorname> öffnen' bei sichtbar anderer Form, dazu der Kontoknopf (37/38 Knoten). WP-40-Nacharbeit." },
+    { "regel": "nested-interactive", "flaeche": "plan-mitarbeiter", "wp": "WP-40",
+      "grund": "WCAG 4.1.2: Schichtkarte in 'Mein Plan' ist div[role=button] und enthält selbst bedienbare Elemente. Behebung braucht Umbau der Karte (äußerer Knopf oder innere Aktionen trennen), nicht trivial." },
+    { "regel": "target-size", "flaeche": "plan-mitarbeiter", "wp": "WP-21",
+      "grund": "WCAG 2.5.8: dieselbe Schichtkarte gilt als teilweise verdeckt (sichtbarer Streifen 17 px unter fester Leiste an der Scrollposition des Tests); hängt an der Kartenstruktur (nested-interactive) und der festen Leiste der Telefonansicht." }
+  ]
+}
