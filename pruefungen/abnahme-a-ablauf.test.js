@@ -28,6 +28,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serverStarten } from "./hilfen/port.mjs";
@@ -88,13 +89,14 @@ const CODE = {};       // Zugangscodes (nie ausgegeben)
 let betreiber;
 
 beforeAll(async () => {
+  const pfeffer = randomUUID();   // zur Laufzeit erzeugt, kein festes Literal
   statik = await mkdtemp(path.join(tmpdir(), "centric-abn-a-statik-"));
   daten = await mkdtemp(path.join(tmpdir(), "centric-abn-a-daten-"));
   await mkdir(path.join(statik, "assets"));
   await writeFile(path.join(statik, "index.html"), "<!doctype html><title>CENTRIC Abnahme A</title>");
   const st = await serverStarten({ cwd: WURZEL, wartenMs: 30_000, env: {
     CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN,
-    CENTRIC_PFEFFER: "abnahme-a-pfeffer-" + Math.random().toString(36).slice(2),
+    CENTRIC_PFEFFER: pfeffer,
     CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "development",
     CENTRIC_DEMO: undefined, CENTRIC_SELBSTSTART: undefined, CENTRIC_IMPORT_AKTIV: undefined,
     CENTRIC_REGISTRIERUNG: undefined } });
