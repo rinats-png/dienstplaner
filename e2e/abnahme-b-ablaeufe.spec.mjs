@@ -40,7 +40,7 @@ async function apiAnmelden(rolle) {
   return r.d;
 }
 const mandantVon = (g) => (((g.d.bestand || {}).mandanten) || [])[0] || {};
-const stempelHeute = (m, pid) => Object.entries(m.einstempeln || {}).filter(([k]) => k === `${pid}|${HEUTE}`);
+const stempelAm = (m, pid, tag) => Object.entries(m.einstempeln || {}).filter(([k]) => k === `${pid}|${tag}`);
 
 /** Eigene Seite für eine zweite Rolle im selben Test (eigener Rechner, eigene Herkunft). */
 async function zweiteSeite(browser, viewport, nr) {
@@ -80,10 +80,17 @@ async function dienstSicherstellen(personId, tag) {
   throw new Error(`Kein Dienst am ${tag} zulässig (${abgelehnt.join(", ")})`);
 }
 
-/** Der Person der Beschäftigtenrolle heute einen Dienst geben. */
-async function dienstHeuteSicherstellen() {
+/** Der Person der Beschäftigtenrolle am (Berliner) Tag einen Dienst geben. */
+async function dienstAmSicherstellen(tag) {
   const ma = await apiAnmelden("mitarbeiter");
-  return { ma, dienst: await dienstSicherstellen(ma.person, HEUTE) };
+  return { ma, dienst: await dienstSicherstellen(ma.person, tag) };
+}
+
+/** Liegt Berliner Mitternacht in den nächsten zwei Minuten, erst danach beginnen: Ein Ablauf soll in EINEM Berliner Tag
+    laufen (Server und Stempeluhr wechseln den Tag um 00:00 Europe/Berlin). Gibt den Berliner Tag des Ablaufs zurück. */
+async function berlinerTagFuerAblauf(page) {
+  while (heuteBerlin(new Date(Date.now() + 120_000)) !== heuteBerlin()) await page.waitForTimeout(5000);
+  return heuteBerlin();
 }
 
 /** Ein Schritt am Monatsabschluss über die Oberfläche; schlägt mit den Serverantworten fehl, wenn der Zustand nicht eintritt. */
@@ -108,15 +115,25 @@ async function monatsSchritt(page, knopf, erwartet, eintrag, testInfo) {
 test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () => {
   /* Drei Anmeldungen und mehrere Serverwege je Ablauf: großzügiger als die 90 s der Suite. */
   test.describe.configure({ timeout: 300_000 });
+  /* QS-6: Die Oberfläche rechnet „heute“ in der Ortszeit des Geräts (src/lib/datum.js → engine/zeit.mjs), der Server
+     stempelt nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin). Ein Runner in UTC zeigte zwischen 23 und 24 Uhr UTC
+     (Winterzeit; Sommerzeit 22–24 Uhr) den Vortag: Der Stempel landete auf dem Berliner Tag, die Stempeluhr suchte ihn
+     am Vortag und bot nach dem Neuladen wieder „Einstempeln“ statt „Ausstempeln“ an. Darum hier, wie bei der
+     Stempeluhr unten, die Zeitzone des Betriebs. */
+  test.use({ timezoneId: "Europe/Berlin" });
   test("B7 Stempeln ohne Netz, vorläufig auf dem Gerät, nach dem Netz genau ein Stempel", async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
-    const { ma } = await dienstHeuteSicherstellen();
+    const tag = await berlinerTagFuerAblauf(page);
+    const stempelHeute = (m, pid) => stempelAm(m, pid, tag);
+    const { ma } = await dienstAmSicherstellen(tag);
     const vorher = stempelHeute(mandantVon(await api("bestand", { token: ma.token })), ma.person);
     test.skip(vorher.length > 0, "Heute ist schon gestempelt (Wiederholungslauf auf demselben Server)");
 
     const sendungen = [];
     page.on("request", (r) => { if (r.url().includes("/api/stempeln")) sendungen.push(r.method()); });
     await anmelden(page, "mitarbeiter");
+    /* Gerät und Server müssen denselben Tag meinen, sonst prüft der Ablauf nicht das Stempeln, sondern die Zeitzone. */
+    expect(await page.evaluate(() => new Date().toLocaleDateString("sv-SE")), "Tag des Browsers = Berliner Tag des Servers").toBe(tag);
     const ein = page.getByRole("button", { name: "Einstempeln", exact: true }).first();
     await expect(ein, "Stempeluhr mit Einstempeln (Dienst heute)").toBeVisible({ timeout: 20000 });
 
