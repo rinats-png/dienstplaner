@@ -65,8 +65,8 @@ export const BERECHNETE_FELDER = Object.freeze(["befund.regel", "kennzahl.wert",
   "kandidat.zulaessig", "kandidat.hinderung", "kandidat.spielraum", "ruhezeit.ist"]);
 const AUSFAELLE_MAX = 5;
 
-/** Kennzahlen aus planKennzahlen, die der Rechenkern nennt (ref = Kennung). `spanne` und `wochenenden` fehlen:
-    sie sind in der vorhandenen Rechnung nicht zahlenwertig (docs/acc45/wp-i12-fragen.md, Frage 4). */
+/** Kennzahlen aus planKennzahlen, die der Rechenkern nennt (ref = Kennung). `spanne` und `wochenenden` sind seit WP-I12c
+    endliche Zahlen in planKennzahlen, werden aber noch nicht als Fakten genannt (eigene Katalogentscheidung; Frage 4). */
 export const KENNZAHLEN = Object.freeze({
   "plan.befunde": "befunde", "plan.schwer": "schwer", "plan.unterbesetzt": "unterbesetzt",
   "plan.ueberbesetzt": "ueberbesetzt", "plan.dienste": "dienste", "plan.stunden": "stunden",
