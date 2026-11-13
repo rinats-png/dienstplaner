@@ -1,6 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
-import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
+import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungBetrieb, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen,
   sperrAuswertungBeginnen, sperrAuswertungenAbwarten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
@@ -540,7 +540,13 @@ async function behandeln(req, context, ctx) {
       }
       if (!frisch(sB)) return neuAnmelden();
       const kS = kennung(req, sB);
-      const bS = await bremse("zugaenge", kS);
+      /* A-2 globale Grenze: Die Leitung sperrt über ein eigenes Kontingent ihres BETRIEBS (`zugang-sperren`, dieselben
+         Zahlen wie `zugaenge`, ohne installationsweite Grenze). Bis hierher teilte sie die Gesamtgrenze von `zugaenge`
+         mit allen Betrieben — wer sie füllte, verhinderte das Zurückziehen eines verlorenen Zugangs überall. Gezählt
+         wird erst nach Rolle und frischer Anmeldung: Unberechtigte erreichen keinen Zähler. Der Betreiber bleibt bei
+         `zugaenge` (seine Wege speisen dessen Gesamtgrenze jetzt allein). */
+      const [artS, kennS] = sB.rolle === "betreiber" ? ["zugaenge", kS] : ["zugang-sperren", kennungBetrieb(sB)];
+      const bS = await bremse(artS, kennS);
       if (!bS.frei) { await protokoll("zugaenge", kS, "gebremst", bS.grund);
         return zuVielAntwort(bS.wartet); }
 

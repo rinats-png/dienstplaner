@@ -82,12 +82,19 @@ async function sperreAblaufen(art, kennung) {
   await takt().setJSON(`sperre:${art}:${kennung}`, { ...s, bis: Math.floor(Date.now() / 1000) - 1 });
 }
 
-/** Die Gesamtgrenze ist installationsweit (40 je 10 Minuten); die Szenarien hier teilen sich eine Ablage. */
+/** Die Gesamtgrenze ist installationsweit (40 je 10 Minuten); die Szenarien hier teilen sich eine Ablage. Ebenso die
+    Raumgrenze des Rateschutzes und die Kontingente fürs Ausstellen (A-2 globale Grenze) — vor jedem Szenario frisch. */
 async function gesamtLeeren() {
-  const { blobs } = await takt().list({ prefix: "v:zugaenge:gesamt:" });
-  for (const b of blobs) await takt().delete(b.key);
+  for (const praefix of ["v:einladung-nachweis:gesamt:", "v:einladung-nachweis:ziel:", "v:zugaenge:gesamt:"]) {
+    const { blobs } = await takt().list({ prefix: praefix });
+    for (const b of blobs) await takt().delete(b.key);
+  }
+  for (const [raum, m, p] of [[RAUM, "m-a", "al"], [RAUM, "m-a", "al2"], [RAUM2, "m-b", "bl"]])
+    await schutz.entlasten("einladung-ausstellen", kp(raum, m, p));
+  await schutz.entlasten("einladung-betrieb", schutz.kennungBetrieb({ bestand: RAUM, mandantId: "m-a" }));
+  await schutz.entlasten("einladung-betrieb", schutz.kennungBetrieb({ bestand: RAUM2, mandantId: "m-b" }));
 }
-const gesamtStand = async () => (await takt().list({ prefix: "v:zugaenge:gesamt:" })).blobs.length;
+const gesamtStand = async () => (await takt().list({ prefix: "v:einladung-nachweis:gesamt:" })).blobs.length;
 
 const T = {};
 beforeAll(async () => {
@@ -103,6 +110,9 @@ beforeAll(async () => {
      die Grenzen der Einladung (zugaenge, schreiben, WEITERE.zugaenge) bleiben die echten. */
   expect(schutz.GRENZEN.zugaenge).toMatchObject({ versuche: 10, fenster: 600, sperre: 1800, steigend: true });
   expect(schutz.WEITERE.zugaenge.gesamt.versuche).toBe(40);
+  /* A-2 globale Grenze: der Rateschutz beim Ausstellen mit denselben Zahlen und eigener Gesamtgrenze 40. */
+  expect(schutz.GRENZEN["einladung-nachweis"]).toMatchObject({ versuche: 10, fenster: 600, sperre: 1800, steigend: true });
+  expect(schutz.WEITERE["einladung-nachweis"].gesamt.versuche).toBe(40);
   daten = (await import("../server/funktionen/daten.mjs")).default;
   einladung = (await import("../server/funktionen/einladung.mjs")).default;
   ({ kontoSchreiben } = await import("../server/lib/konten.mjs"));
@@ -139,8 +149,9 @@ describe("A-2 (a): gelungene Einladungen erschöpfen kein Raumkontingent", () =>
       const r = await einladen(T.leitung, { personId: p, bestaetigung: { zugangscode: "BRA1-LEIT-0001" } });
       expect(r.status, `Einladung ${i + 1}: ${r.roh}`).toBe(200);
     }
-    /* Die bloßen Rückfragen zählen nicht in der Gesamtgrenze, die Ausstellungen schon. */
-    expect(await gesamtStand()).toBe(25);
+    /* A-2 globale Grenze: Weder die Rückfragen noch Ausstellungen mit STIMMENDEM Nachweis bleiben in der
+       installationsweiten Rategrenze (vorher 25 — damit füllte eine Leitung sie für alle Betriebe). */
+    expect(await gesamtStand()).toBe(0);
   });
 });
 
@@ -169,8 +180,9 @@ describe("A-2 (b): andere Rollen sperren die Leitung nicht aus", () => {
     expect(gesperrt.wartet).toBeGreaterThan(0);
     const l = await einladen(T.leitung, { personId: "n03", bestaetigung: { zugangscode: "BRA1-LEIT-0001" } });
     expect(l.status, l.roh).toBe(200);
-    /* Absagen an Rollen ohne Rollenvergabe fließen nicht in die installationsweite Gesamtgrenze. */
-    expect(await gesamtStand()).toBe(1);
+    /* Absagen an Rollen ohne Rollenvergabe fließen nicht in die installationsweite Gesamtgrenze — die gelungene
+       Einladung der Leitung auch nicht mehr (A-2 globale Grenze; vorher 1). */
+    expect(await gesamtStand()).toBe(0);
   });
 });
 
@@ -192,7 +204,7 @@ describe("Rateschutz bleibt: falsche Nachweise → 429, Sperre steigend", () => 
     expect((await einladen(T.leitung2, { personId: "n04", bestaetigung: { zugangscode: "BRA2-LEIT-0002" } })).status)
       .toBe(429);
 
-    await sperreAblaufen("zugaenge", kp(RAUM, "m-a", "al2"));
+    await sperreAblaufen("einladung-nachweis", kp(RAUM, "m-a", "al2"));
     let zweite = null;
     for (let i = 0; i < 12 && !zweite; i++) {
       const r = await einladen(T.leitung2, { personId: "n04", bestaetigung: { zugangscode: `FALS-CHER-${3000 + i}` } });
@@ -241,15 +253,21 @@ describe("Grenzen je Herkunft und installationsweit bleiben", () => {
     expect(fremd.status).toBe(403);
   });
 
-  it("die installationsweite Gesamtgrenze zählt gelungene Einladungen weiter", async () => {
-    const vorher = schutz.WEITERE.zugaenge.gesamt;
-    schutz.WEITERE.zugaenge.gesamt = { ...vorher, versuche: 2 };
+  it("die installationsweite Gesamtgrenze zählt Fehlversuche, nicht gelungene Einladungen (A-2 globale Grenze)", async () => {
+    const wb = schutz.WEITERE["einladung-nachweis"];
+    const vorher = wb.gesamt;
+    wb.gesamt = { ...vorher, versuche: 2 };
     try {
-      expect((await einladen(T.leitungB, { personId: "bm" })).status).toBe(200);
-      expect((await einladen(T.leitungB, { personId: "bm" })).status).toBe(200);
-      const r = await einladen(T.leitungB, { personId: "bm" });
+      /* Gelungene Einladungen (junge Anmeldung) füllen sie nicht mehr — vorher war hier der dritte Aufruf 429. */
+      for (let i = 0; i < 3; i++) expect((await einladen(T.leitungB, { personId: "bm" })).status).toBe(200);
+      /* Zwei falsche Nachweise füllen sie; danach wartet jeder Nachweis, auch ein stimmender. */
+      for (let i = 0; i < 2; i++) {
+        const f = await einladen(T.leitungB, { personId: "bm", bestaetigung: { zugangscode: `FALS-GESA-${i}` } });
+        expect(f.status, f.roh).toBe(403);
+      }
+      const r = await einladen(T.leitungB, { personId: "bm", bestaetigung: { zugangscode: "BRB1-LEIT-0001" } });
       expect(r.status, r.roh).toBe(429);
-    } finally { schutz.WEITERE.zugaenge.gesamt = vorher; }
+    } finally { wb.gesamt = vorher; }
   });
 });
 

@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { bremse, entlasten, kennung, kennungPerson, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, entlasten, kennung, kennungPerson, kennungBetrieb, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
@@ -36,21 +36,22 @@ import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWid
      1. Vor der Rollenprüfung nur eine Lastbremse JE PERSON (Art `schreiben`,
         kennungPerson): Eine Sitzung ohne Rollenvergabe bekommt immer dieselbe
         403 (N-1) und kann nichts raten; wer hämmert, bremst nur sich selbst.
-     2. Erst nach der Rollenprüfung zählt `zugaenge` — JE PERSON statt je Raum,
-        mit den bisherigen Zahlen (10 je 10 Minuten, Sperre 30 Minuten
-        steigend) und der installationsweiten Gesamtgrenze WEITERE.zugaenge
-        (40 je 10 Minuten, geteilt mit /api/zugaenge):
-          - Bestätigung mit Nachweis (Zugangscode, Passwort, Code aus der App):
-            gezählt VOR der Prüfung (Rateversuch). Stimmt der Nachweis, wird nur
-            der Zähler dieser Person entlastet (wie nach einer gelungenen
-            Anmeldung); der Versuch bleibt in der Gesamtgrenze. Falsche
-            Nachweise bleiben gezählt → 429, Sperre steigend.
-          - Ohne Nachweis (junge Anmeldung oder Rückfrage „Bestätigung fehlt“):
-            ein eigener Zähler der Person (`o:…`), der die Fehlversuche mit
-            Nachweis NIE zurücksetzt. Ausgestellt → bleibt in der
-            Gesamtgrenze; nur die Rückfrage → auch dort zurückgenommen.
-   Gelungene Einladungen erschöpfen damit kein Kontingent mehr außer der
-   Gesamtgrenze, und niemand sperrt eine andere Person aus.
+     2. Erst nach der Rollenprüfung, und nur MIT Nachweis (Zugangscode,
+        Passwort, Code aus der App), zählt der Rateschutz `einladung-nachweis`
+        (schutz.mjs): je Person mit den Zahlen von `zugaenge` (10 je 10
+        Minuten, Sperre 30 Minuten steigend), je Raum höchstens 25 und
+        installationsweit 40 je 10 Minuten. Gezählt VOR der Prüfung; stimmt
+        der Nachweis, werden nur der Zähler dieser Person und die Vermerke
+        dieses Aufrufs zurückgenommen. Falsche Nachweise bleiben gezählt.
+        Ohne Nachweis wird nichts verglichen — die Rückfrage zählt nirgends.
+     3. Erst nach bestandener Bestätigung das Kontingent fürs Ausstellen:
+        30 je Person und 40 je Betrieb in 10 Minuten, NIE installationsweit.
+   Befund „globale Grenze“ (Review zu #277): Bis hierher füllten gelungene
+   Einladungen die installationsweite Grenze von `zugaenge`, die auch
+   /api/zugaenge und das Sperren von Zugängen bremst — eine Leitung sperrte so
+   alle anderen Betriebe und den Betreiber aus. Gelungene Einladungen zählen
+   jetzt nur im eigenen Kontingent; die installationsweite Grenze sehen nur
+   noch Fehlversuche. Restrisiko S-1: docs/acc45/ABNAHME-V4-A2-GLOBALE-GRENZE.md.
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
@@ -136,26 +137,34 @@ export default async (req) => {
           await protokoll("einladung", k, "abgewiesen", v.grund, wer);
           return antwort({ fehler: v.fehler }, v.status);
         }
-        /* A-2: `zugaenge` je Person, erst für eine Sitzung, die ausstellen dürfte (siehe Kopf). */
+        /* A-2: Rateschutz je Person, erst für eine Sitzung, die ausstellen dürfte (siehe Kopf). */
         const kp = kennungPerson(s);
         const best = rumpf.bestaetigung && typeof rumpf.bestaetigung === "object" ? rumpf.bestaetigung : {};
         /* Streng: Jede nicht leere Zeichenkette gilt als Nachweis und zählt als Versuch — auch nur Leerzeichen. */
         const mitNachweis = ["zweifaktor", "zugangscode", "passwort"]
           .some((x) => typeof best[x] === "string" && best[x] !== "");
-        /* Eigener Zähler ohne Nachweis: vorangestellt, damit kein Präfix den Fehlversuchszähler `kp` mit erfasst. */
-        const kz = mitNachweis ? kp : `o:${kp}`;
-        const bz = await bremse("zugaenge", kz);
-        if (!bz.frei) { await protokoll("einladung", k, "gebremst", bz.grund, wer); return zuVielAntwort(bz.wartet); }
+        /* Nur ein Nachweis ist ein Rateversuch: gezählt je Person, je Raum (Ziel) und installationsweit (Gesamt). Ohne
+           Nachweis wird kein Geheimnis verglichen (frischeBestaetigung) — dann zählt hier nichts. */
+        let bn = null;
+        if (mitNachweis) {
+          bn = await bremse("einladung-nachweis", kp, k);
+          if (!bn.frei) { await protokoll("einladung", k, "gebremst", bn.grund, wer); return zuVielAntwort(bn.wartet); }
+        }
         /* B1: frische Bestätigung — erst, wenn die Sitzung überhaupt ausstellen dürfte. */
         const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
-        /* Stimmt der Nachweis, war es kein Rateversuch: Zähler der Person entlasten (ohne `bz` — der Versuch bleibt
-           in der Gesamtgrenze). Ohne Nachweis wurde nichts geraten; die bloße Rückfrage zählt nirgends. */
-        if (f.ok) await entlasten("zugaenge", kz);
-        else if (!mitNachweis) await entlasten("zugaenge", kz, bz);
+        /* Stimmt der Nachweis, war es kein Rateversuch: den Zähler DIESER Person und genau die Vermerke DIESES Aufrufs
+           bei Raum und Gesamt zurücknehmen — nie die anderer Personen oder Aufrufe. Falsche Nachweise bleiben gezählt. */
+        if (mitNachweis && f.ok) await entlasten("einladung-nachweis", kp, bn);
         if (!f.ok) {
           await protokoll("einladung", k, "abgewiesen", f.grund, wer);
           return antwort({ fehler: f.fehler, ...("bestaetigung" in f ? { bestaetigung: f.bestaetigung } : {}) },
             f.status);
+        }
+        /* Kontingent für das Ausstellen selbst: je Person, dann je Betrieb — nie installationsweit, damit kein Betrieb
+           einen anderen aussperrt (A-2 globale Grenze). */
+        for (const [art, kennungArt] of [["einladung-ausstellen", kp], ["einladung-betrieb", kennungBetrieb(s)]]) {
+          const ba = await bremse(art, kennungArt);
+          if (!ba.frei) { await protokoll("einladung", k, "gebremst", `${art}: ${ba.grund}`, wer); return zuVielAntwort(ba.wartet); }
         }
         const e = await einladungAusstellen(ablage, { sitzung: s, bestand,
           personId: rumpf.personId, rolle: rumpf.rolle });
