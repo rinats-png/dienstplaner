@@ -730,3 +730,39 @@ describe("Größe: 150 Personen × 12 Monate mit Stempeln", { timeout: 300000 },
     expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[k]).toBeUndefined();
   });
 });
+
+/* Abnahme V4, A-4: Dienstart ohne mindest — dieselbe Regel auf Teil- und Vollweg (Gleichwertigkeit).
+   Der Prüfbetrieb trägt bewusst Altdienstarten ohne mindest (F, N): sie bleiben schreibbar und byte-gleich. */
+describe("A-4: Dienstart ohne mindest — Teilweg wie Vollweg", { timeout: 300000 }, () => {
+  const MD = { mo_do: 1, fr: 1, sa: 1, so: 1 };
+  const NULL = { mo_do: 0, fr: 0, sa: 0, so: 0 };
+  const neu = (md) => (w) => [...w, { id: "S", name: "Spät", start: "14:00", ende: "22:00", pause: 30, ...(md === undefined ? {} : { mindest: md }) }];
+  const kaputt = (w) => w.map((d) => (d.id === "F" ? { ...d, mindest: { ...MD, fr: -1 } } : d));
+  it("ungültige mindest (neu oder an Altdienstart): 422 auf beiden Wegen, gleiches Feld, nichts geändert", async () => {
+    for (const [name, fn] of [["neu mit fremdem Feld", neu({ ...MD, feiertag: 1 })], ["Altdienstart negativ", kaputt]]) for (const k of ["LT", "PL"]) {
+      const { raum, token } = await neuerRaum({ rollen: [k] });
+      const vorher = await gespeichert(raum);
+      const g = await anfrage("/api/bestand", { token: token[k] });
+      const t = await teile(token[k], deltaAus(g, { kern: { dienstarten: fn } }));
+      expect(t.status, `${name}/${k}/Teil ${JSON.stringify(t).slice(0, 200)}`).toBe(422);
+      expect(t.text, `${name}/${k}`).toMatch(/Mindestbesetzung/);
+      const v = await anfrage("/api/bestand", { methode: "PUT", token: token[k], rumpf: vollAus(g, { kern: { dienstarten: fn } }) });
+      expect(v.status, `${name}/${k}/Voll`).toBe(422);
+      expect(v.feld, `${name}/${k}`).toBe(t.feld);
+      expect(await gespeichert(raum), `${name}/${k}`).toEqual(vorher);
+    }
+  });
+  it("neue Dienstart ohne / mit mindest: 200 auf beiden Wegen, gleich gespeichert; Altdienstarten byte-gleich", async () => {
+    for (const [md, soll] of [[undefined, NULL], [MD, MD]]) for (const weg of ["Teil", "Voll"]) {
+      const { raum, token } = await neuerRaum({ rollen: ["PL"] });
+      const alt = (await gespeichert(raum)).bestand.mandanten[0].dienstarten.map((d) => JSON.stringify(d));
+      const g = await anfrage("/api/bestand", { token: token.PL });
+      const r = weg === "Teil" ? await teile(token.PL, deltaAus(g, { kern: { dienstarten: neu(md) } }))
+        : await anfrage("/api/bestand", { methode: "PUT", token: token.PL, rumpf: vollAus(g, { kern: { dienstarten: neu(md) } }) });
+      expect(r.status, `${weg} ${JSON.stringify(r).slice(0, 200)}`).toBe(200);
+      const jetzt = (await gespeichert(raum)).bestand.mandanten[0].dienstarten;
+      expect(jetzt.slice(0, alt.length).map((d) => JSON.stringify(d)), weg).toEqual(alt);
+      expect(jetzt.find((d) => d.id === "S").mindest, weg).toEqual(soll);
+    }
+  });
+});

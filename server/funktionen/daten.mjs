@@ -9,7 +9,7 @@ import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, a
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
-  personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
+  personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
@@ -744,6 +744,10 @@ async function behandeln(req, context, ctx) {
         neuerBestand.mandanten = neuerBestand.mandanten.map((m) => paketfelderGeprueft(m, null));
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
+      /* Dienstarten (A-4): neue ohne mindest bekommen die Vorgabe 0, ein ungültiges mindest ist 422. */
+      dienstartenAngleichen(neuerBestand, null);
+      const daA = dienstartenFehler(neuerBestand, null);
+      if (daA) return antwort({ fehler: "Der Bestand ist ungültig.", text: daA.grund, feld: daA.feld }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
       const ortA = bestandStandorteFehler(null, neuerBestand) || bestandDienstartOrtFehler(null, neuerBestand);
       if (ortA) return antwort({ fehler: "Der Bestand ist ungültig.", text: ortA }, 422);
@@ -1487,6 +1491,17 @@ async function behandeln(req, context, ctx) {
           await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: zuSchreiben.verweigert }, 403);
+        }
+        /* Dienstarten (A-4): eine neue ohne mindest bekommt die Vorgabe 0 (an Ort und Stelle — zuSchreiben bleibt
+           dasselbe Objekt, die offene Fachprüfung hängt daran); ein neues oder geändertes mindest muss die
+           geschlossene Form haben, sonst 422. Ein gespeicherter Altstand ohne mindest bleibt unverändert schreibbar. Gilt für Voll- und Teilweg;
+           vor Fachprüfung und Strukturbremse, damit eine Abweisung kein Kontingent verbraucht. */
+        dienstartenAngleichen(zuSchreiben, jetzt ? jetzt.bestand : null);
+        const daS = dienstartenFehler(zuSchreiben, jetzt ? jetzt.bestand : null);
+        if (daS) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${daS.grund}`, wer);
+          return antwort({ fehler: "Die Dienstart ist unvollständig.",
+            text: `${daS.grund} Es wurde nichts geändert.`, feld: daS.feld }, 422);
         }
 
         /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —

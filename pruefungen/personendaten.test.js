@@ -175,3 +175,112 @@ describe("Handler: Schreiben", () => {
     expect((await roh("personen-neu-b")).mandanten[0].personen[0].qualifikationen).toEqual([]);
   });
 });
+
+/* ==========================================================================
+   DIENSTARTEN OHNE mindest (Abnahme V4, A-4)
+
+   Der Server nahm eine Dienstart ohne `mindest` an; die Oberfläche stürzte
+   danach ab („reading 'fr'"). Regel (gestalt.mjs):
+   - neue Dienstart ohne `mindest` (fehlt/null): Vorgabe 0 je Tag
+     (dienstartenAngleichen) — kein erfundener Bedarf;
+   - neues oder geändertes `mindest`: genau mo_do/fr/sa/so als ganze Zahlen
+     0..999, sonst 422 mit Feld; fehlt es an einer gespeicherten Dienstart,
+     bleibt die gespeicherte Vorgabe;
+   - gespeicherter Altstand ohne `mindest` bleibt schreibbar und byte-gleich.
+   Die Oberfläche liest den Altstand als 0 (oberflaeche-render.test.js).
+   ========================================================================== */
+describe("A-4: Dienstart ohne mindest — Handler", () => {
+  const MD = { mo_do: 1, fr: 1, sa: 0, so: 0 };
+  const dienstF = async () => JSON.stringify((await roh()).mandanten[0].dienstarten.find((d) => d.id === "F"));
+  /* Ein GET für den ganzen Block: Abweisungen ändern den Stand nicht, ein 200 liefert Bestand und ETag mit.
+     So bleibt der Block unter der Lesegrenze je Raum (lesen-raum). */
+  let stand = null;
+  const putMit = async (aendern) => {
+    if (!stand) { stand = await anfrage("/api/bestand", { methode: "GET", token: T.l1 }); expect(stand.status).toBe(200); }
+    const b = JSON.parse(JSON.stringify(stand.bestand));
+    aendern(b.mandanten[0]);
+    const r = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: stand.etag, durch: "Pruefung" } });
+    if (r.status === 200) stand = r.bestand && r.etag ? { bestand: r.bestand, etag: r.etag } : null;
+    return r;
+  };
+
+  it("der gespeicherte Altstand hat F ohne mindest", async () => {
+    expect((await roh()).mandanten[0].dienstarten.find((d) => d.id === "F")).not.toHaveProperty("mindest");
+  });
+  it("PUT: neue Dienstart ohne mindest (fehlt, null) → 200, gespeichert mit Vorgabe 0; F bleibt ohne mindest", async () => {
+    const vorF = await dienstF();
+    const w = await putMit((m) => { m.dienstarten.push({ id: "S0", name: "Spät 0", start: "14:00", ende: "22:00" },
+      { id: "S1", name: "Spät 1", start: "14:00", ende: "22:00", mindest: null }); });
+    expect(w.status).toBe(200);
+    const da = (await roh()).mandanten[0].dienstarten;
+    for (const id of ["S0", "S1"]) expect(da.find((d) => d.id === id).mindest, id).toEqual({ mo_do: 0, fr: 0, sa: 0, so: 0 });
+    expect(await dienstF()).toBe(vorF);
+  });
+  it("PUT: ungültige mindest (Typ, Lücke, fremdes Feld, negativ, Bruch, Liste) → 422", async () => {
+    const vorher = JSON.stringify(await roh());
+    for (const md of ["1", 0, [1, 1, 1, 1], { mo_do: 1, fr: 1, sa: 1 }, { ...MD, feiertag: 2 },
+      { ...MD, fr: -1 }, { ...MD, sa: 1.5 }, { ...MD, so: "2" }, { ...MD, mo_do: 1000 }]) {
+      const w = await putMit((m) => { m.dienstarten.push({ id: "S", name: "Spät", start: "14:00", ende: "22:00", mindest: md }); });
+      expect(w.status, JSON.stringify(md)).toBe(422);
+      expect(w.feld, JSON.stringify(md)).toBe("mandanten[0].dienstarten[3].mindest");
+    }
+    /* Auch eine bestehende Dienstart darf ihr mindest nicht in eine ungültige Form ändern. */
+    const w = await putMit((m) => { m.dienstarten[0].mindest = { mo_do: "viele" }; });
+    expect(w.status).toBe(422);
+    expect(JSON.stringify(await roh())).toBe(vorher);
+  });
+  it("PUT: Altstand ohne mindest bleibt schreibbar und byte-gleich (Rundweg und Änderung anderer Felder)", async () => {
+    const vorF = await dienstF();
+    const w = await putMit((m) => { m.name = "A-4 Rundweg"; });
+    expect(w.status).toBe(200);
+    expect((await roh()).mandanten[0].name).toBe("A-4 Rundweg");
+    expect(await dienstF()).toBe(vorF);
+    const w2 = await putMit((m) => { m.dienstarten[0].ende = "14:15"; });
+    expect(w2.status).toBe(200);
+    const f = JSON.parse(await dienstF());
+    expect(f.ende).toBe("14:15");
+    expect(f).not.toHaveProperty("mindest");
+  });
+  it("PUT: neue Dienstart mit gültiger mindest → 200, gespeichert wie gesendet", async () => {
+    const w = await putMit((m) => { m.dienstarten.push({ id: "S", name: "Spät", start: "14:00", ende: "22:00", mindest: { ...MD } }); });
+    expect(w.status).toBe(200);
+    expect((await roh()).mandanten[0].dienstarten.find((d) => d.id === "S").mindest).toEqual(MD);
+  });
+  it("PUT: fehlt mindest bei einer gespeicherten Dienstart (oder null), bleibt die gespeicherte Vorgabe", async () => {
+    for (const weg of [(d) => { delete d.mindest; }, (d) => { d.mindest = null; }]) {
+      const w = await putMit((m) => { weg(m.dienstarten.find((d) => d.id === "S")); m.dienstarten.find((d) => d.id === "S").ende = "22:15"; });
+      expect(w.status).toBe(200);
+      const sp = (await roh()).mandanten[0].dienstarten.find((d) => d.id === "S");
+      expect(sp.mindest).toEqual(MD);
+      expect(sp.ende).toBe("22:15");
+    }
+  });
+  it("bestand-anlegen: ungültige mindest → 422; ohne mindest → 200 mit Vorgabe 0; mit mindest → 200", async () => {
+    const neu = (d) => ({ version: 9, stand: 1, session: null, mandanten: [{ id: "m-d", name: "Neu", status: "aktiv", einstellungen: {},
+      einheiten: [{ id: "e1", name: "E" }], dienstarten: [d], abweichungen: {}, einstempeln: {}, erfassung: {}, anfragen: [], abwesenheiten: [],
+      personen: [person("x1", "leitung", { qualifikationen: [] })] }] });
+    const da = { id: "F", name: "Früh", start: "06:00", ende: "14:00" };
+    const f = await anfrage("/api/bestand-anlegen", { token: T.betr, rumpf: { bestand: "dienstart-neu-a", inhalt: neu({ ...da, mindest: { mo_do: 1 } }) } });
+    expect(f.status).toBe(422);
+    expect(f.feld).toBe("mandanten[0].dienstarten[0].mindest");
+    expect(await B.bestandLesen(laden(), "dienstart-neu-a").catch(() => null)).toBeFalsy();
+    const ok = await anfrage("/api/bestand-anlegen", { token: T.betr, rumpf: { bestand: "dienstart-neu-b", inhalt: neu({ ...da, mindest: { ...MD } }) } });
+    expect(ok.status).toBe(200);
+    const ohne = await anfrage("/api/bestand-anlegen", { token: T.betr, rumpf: { bestand: "dienstart-neu-c", inhalt: neu(da) } });
+    expect(ohne.status).toBe(200);
+    expect((await roh("dienstart-neu-c")).mandanten[0].dienstarten[0].mindest).toEqual({ mo_do: 0, fr: 0, sa: 0, so: 0 });
+  });
+  it("Rechte unverändert: Dienstarten der Beschäftigten werden wie bisher nicht übernommen — mit oder ohne mindest", async () => {
+    const dienste = async () => JSON.stringify((await roh()).mandanten[0].dienstarten);
+    const vorher = await dienste();
+    const g = await anfrage("/api/bestand", { methode: "GET", token: T.ohne });
+    for (const md of [{ ...MD }, undefined]) {
+      const b = JSON.parse(JSON.stringify(g.bestand));
+      b.mandanten[0].dienstarten.push({ id: "Z", name: "Zusatz", start: "08:00", ende: "12:00", ...(md ? { mindest: md } : {}) });
+      const w = await anfrage("/api/bestand", { methode: "PUT", token: T.ohne, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+      expect([200, 403, 409], String(w.status)).toContain(w.status);
+      expect(await dienste()).toBe(vorher);
+      if (w.etag) g.etag = w.etag;
+    }
+  });
+});

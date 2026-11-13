@@ -10,7 +10,10 @@ import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenve
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
 import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
-  ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT } from "../../server/lib/isteinfrieren.mjs";
+  ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT, mindestWerte } from "../../server/lib/isteinfrieren.mjs";
+/* A-4: Mindestbesetzung robust lesen (Altstand ohne mindest → 0), ohne den Bestand zu verändern. */
+export { mindestWerte };
+const mindestSumme = (d) => { const md = mindestWerte(d); return md.mo_do + md.fr + md.sa + md.so; };
 import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
@@ -828,7 +831,7 @@ export function simulation(m) {
       deckung.push(z);
     }
     const luecken = m.dienstarten
-      .filter((d) => !d.posten && (d.mindest.mo_do + d.mindest.fr + d.mindest.sa + d.mindest.so) > 0)
+      .filter((d) => !d.posten && mindestSumme(d) > 0)
       .map((d) => ({ da: d, tage: deckung.filter((z) => !z[d.id]).length })).filter((x) => x.tage > 0);
     const t = m.zyklus.tage; let maxFolge = 0, lauf = 0, maxNacht = 0, nl = 0, einzel = 0; const konflikte = [];
     for (let i = 0; i < len; i++) {
@@ -2889,8 +2892,7 @@ export function einrichtungsstand(m) {
         && aktivP.some((p) => p.qualifikationen && p.qualifikationen.length),
       titel: "Qualifikationen zuordnen",
       text: "Wer darf was — Grundlage für Besetzung und Ersatzsuche" },
-    { id: "mindest", ziel: "dienste", erledigt: m.dienstarten.some((d) =>
-        (d.mindest.mo_do + d.mindest.fr + d.mindest.sa + d.mindest.so) > 0),
+    { id: "mindest", ziel: "dienste", erledigt: m.dienstarten.some((d) => mindestSumme(d) > 0),
       titel: "Mindestbesetzung festlegen",
       text: "Wie viele Personen je Dienst gebraucht werden" },
     { id: "freigabe", ziel: "plan", erledigt: Object.keys(m.freigaben || {}).length > 0,

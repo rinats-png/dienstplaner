@@ -42,11 +42,20 @@ export const IST_EINGEFROREN = "istEingefroren";
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
 
+/** Mindestbesetzung einer Dienstart als vier Zahlen. Ein gespeicherter Altstand ohne (gültiges) `mindest`
+    liest sich als 0 — nur gelesen, nie zurückgeschrieben (Abnahme V4, A-4: sonst „reading 'fr'"). */
+export function mindestWerte(da) {
+  const md = da && objekt(da.mindest) ? da.mindest : {};
+  const z = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  return { mo_do: z(md.mo_do), fr: z(md.fr), sa: z(md.sa), so: z(md.so) };
+}
+
 /** Mindestbesetzung eines Dienstes an einem Tag; ein Feiertag hebt sie an, senkt sie nie (C5). */
 export function mindestFuer(m, da, d) {
   const w = dow(d);
-  const wt = w === 6 ? da.mindest.so : w === 5 ? da.mindest.sa : w === 4 ? da.mindest.fr : da.mindest.mo_do;
-  return Math.max(wt, feiertag(d, m.bundesland) ? da.mindest.so : 0);
+  const md = mindestWerte(da);
+  const wt = w === 6 ? md.so : w === 5 ? md.sa : w === 4 ? md.fr : md.mo_do;
+  return Math.max(wt, feiertag(d, m.bundesland) ? md.so : 0);
 }
 
 /* Abwesenheiten je Person, einmal je Zwischenspeicher (merk) — sonst liefe jeder Tag jeder Person über die ganze Liste. */

@@ -309,3 +309,65 @@ describe("P1 — Urlaubshinweise nur mit vollem Schreibumfang", () => {
     expect(A.urlaubshinweiseAnlegen(sitzFuer(betrieb(), "subplaner"), { schreiben: "voll" })).toBe(true);
   });
 });
+
+/* ==========================================================================
+   A-4 (Abnahme V4) — Dienstart ohne mindest
+
+   Der Server nahm eine Dienstart ohne `mindest` an; danach stürzte die
+   Oberfläche ab („Cannot read properties of undefined (reading 'fr')",
+   fachlogik.js simulation/einrichtungsstand, Dienstarten-Ansicht,
+   mindestFuer). Neue Eingaben weist der Server jetzt ab (personendaten.
+   test.js); ein schon gespeicherter Altstand muss trotzdem rendern — und
+   die Oberfläche darf ihn dabei nicht verändern (byte-gleicher Rundweg).
+   ========================================================================== */
+describe("A-4 — Dienstart ohne mindest rendert ohne Absturz", () => {
+  let FL, IE, Dienstarten, Lagebild, Schichtfolge;
+  beforeAll(async () => {
+    FL = await import("../src/lib/fachlogik.js");
+    IE = await import("../server/lib/isteinfrieren.mjs");
+    ({ Dienstarten } = await import("../src/ansichten/dienstarten.jsx"));
+    ({ Lagebild } = await import("../src/ansichten/lagebild.jsx"));
+    ({ Schichtfolge } = await import("../src/ansichten/schichtfolge.jsx"));
+  }, 120000);
+  /** Betrieb mit einer Altdienstart: mindest fehlt, ist null oder unvollständig. */
+  const altbetrieb = (wie = "fehlt") => {
+    const m = betrieb();
+    const d = m.dienstarten[0];
+    if (wie === "fehlt") delete d.mindest; else if (wie === "null") d.mindest = null; else d.mindest = { mo_do: 2 };
+    return m;
+  };
+  const ansichten = (sitz) => [
+    ["Dienstarten", () => text(h(Dienstarten, { sitz, akt }))],
+    ["Prioritaeten", () => text(h(A.Prioritaeten, { sitz, akt, gehZu: () => {}, oeffneTag: () => {} }))],
+    ["Lagebild", () => text(h(Lagebild, { sitz, akt, oeffneTag: () => {} }))],
+    ["Schichtfolge", () => text(h(Schichtfolge, { sitz, akt }))],
+  ];
+
+  it("Leitung und Planung: Dienstarten, Prioritäten, Lagebild, Schichtfolge rendern; Altdaten bleiben unverändert", () => {
+    for (const wie of ["fehlt", "null", "teil"]) for (const rolle of ["leitung", "planer"]) {
+      const sitz = sitzFuer(altbetrieb(wie), rolle);
+      const vorher = JSON.stringify(sitz.mandant);
+      for (const [name, rendern] of ansichten(sitz)) {
+        let t = "";
+        expect(() => { t = rendern(); }, `${wie}/${rolle}/${name}`).not.toThrow();
+        expect(t.length, `${wie}/${rolle}/${name}`).toBeGreaterThan(0);
+      }
+      expect(JSON.stringify(sitz.mandant), `${wie}/${rolle}: Oberfläche verändert den Altstand nicht`).toBe(vorher);
+    }
+  });
+  it("Dienstarten-Karte zeigt die fehlende Vorgabe als 0, eine vorhandene unverändert", () => {
+    const t = text(h(Dienstarten, { sitz: sitzFuer(altbetrieb("fehlt"), "leitung"), akt }));
+    expect(t).toMatch(/Mo–Do 0 Fr 0 Sa 0 So\/Feiertag 0/);
+    expect(text(h(Dienstarten, { sitz: sitzFuer(altbetrieb("teil"), "leitung"), akt }))).toMatch(/Mo–Do 2 Fr 0 Sa 0 So\/Feiertag 0/);
+  });
+  it("Fachlogik: simulation, einrichtungsstand und mindestFuer werfen nicht; Altdienstart zählt als ohne Vorgabe", () => {
+    const m = altbetrieb("fehlt");
+    const vorher = JSON.stringify(m);
+    expect(() => FL.simulation(m)).not.toThrow();
+    expect(() => FL.einrichtungsstand(m)).not.toThrow();
+    expect(IE.mindestFuer(m, m.dienstarten[0], HEUTE)).toBe(0);
+    expect(FL.mindestWerte(m.dienstarten[0])).toEqual({ mo_do: 0, fr: 0, sa: 0, so: 0 });
+    expect(FL.mindestWerte(m.dienstarten[1])).toEqual(m.dienstarten[1].mindest);
+    expect(JSON.stringify(m)).toBe(vorher);
+  });
+});

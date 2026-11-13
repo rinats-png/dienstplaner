@@ -97,6 +97,116 @@ export function personenFehler(bestand) {
   return null;
 }
 
+/* --------------------------------------------------------------------------
+   DIENSTARTEN: mindest (Abnahme V4, A-4)
+
+   Die Oberfläche rechnet mit `dienstart.mindest.{mo_do,fr,sa,so}` (Zyklus-
+   lücken, Einrichtungsschritte, Selbstplanung, Soll je Tag). Eine über die
+   Schnittstelle geschriebene Dienstart ohne `mindest` nahm der Server an —
+   danach stürzte die Oberfläche ab („reading 'fr'").
+
+   Regel:
+   - Eine NEUE Dienstart (Kennung bisher nicht gespeichert) ohne `mindest`
+     (fehlt oder null) bekommt { mo_do: 0, fr: 0, sa: 0, so: 0 } — „keine
+     Mindestbesetzung", dieselbe Lesart wie die Oberfläche für den Altstand.
+     Es wird kein Bedarf erfunden; die Planungsreife meldet „ohne Bedarf".
+     (Abweisen hätte die bisherigen Schreiber — Werkzeuge, Staging-Skripte,
+     Prüfungen —, die neue Dienstarten ohne mindest anlegen, gebrochen.)
+   - Ein `mindest`, das neu ist oder sich gegenüber dem gespeicherten Stand
+     ändert, muss ein geschlossenes Objekt mit genau den vier Feldern als
+     ganze Zahlen 0..MINDEST_MAX sein. Sonst 422 mit Text.
+   - Fehlt `mindest` (oder null) bei einer schon gespeicherten Dienstart —
+     etwa in einem vollständig neu geschriebenen Bestand —, bleibt die
+     gespeicherte Vorgabe: nichts geht still verloren, nichts wird erfunden.
+   Ein schon gespeicherter Altbestand ohne `mindest` ist keine Eingabe: Er
+   bleibt unverändert schreibbar (byte-gleich über Lesen und Zurückschreiben),
+   die Oberfläche liest ihn als 0 (mindestWerte in isteinfrieren.mjs).
+   -------------------------------------------------------------------------- */
+
+/** Felder der Mindestbesetzung — mehr nimmt der Server nicht an. */
+export const MINDEST_FELDER = ["mo_do", "fr", "sa", "so"];
+/** Obergrenze je Feld: weit über jedem echten Dienst, unter jeder Rechenlast. */
+const MINDEST_MAX = 999;
+
+/** Grund, warum `mindest` ungültig ist, oder null. */
+export function mindestFehler(md) {
+  if (!md || typeof md !== "object" || Array.isArray(md))
+    return "die Mindestbesetzung (mindest) fehlt";
+  const fremd = Object.keys(md).filter((k) => !MINDEST_FELDER.includes(k));
+  if (fremd.length) return `die Mindestbesetzung kennt kein Feld ${fremd.join(", ")}`;
+  for (const f of MINDEST_FELDER) {
+    const v = md[f];
+    if (!Number.isInteger(v) || v < 0 || v > MINDEST_MAX)
+      return `die Mindestbesetzung ${f} ist keine ganze Zahl von 0 bis ${MINDEST_MAX}`;
+  }
+  return null;
+}
+
+/** Die gespeicherten Dienstarten je Betrieb und Kennung. */
+function gespeicherteDienstarten(vorher) {
+  const alt = new Map();
+  for (const m of (vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])) {
+    if (!m || typeof m !== "object" || !Array.isArray(m.dienstarten)) continue;
+    for (const d of m.dienstarten) if (d && typeof d === "object") alt.set(`${m.id}\u0000${d.id}`, d);
+  }
+  return alt;
+}
+
+/**
+ * Ergänzt bei NEUEN Dienstarten ohne `mindest` (fehlt oder null) die Vorgabe 0;
+ * bei gespeicherten ohne Angabe bleibt die gespeicherte Vorgabe (auch ihr Fehlen).
+ * Verändert die Dienstart-Objekte an Ort und Stelle: Der Bestand bleibt dasselbe
+ * Objekt (am Schreibweg hängt an ihm die offene Fachprüfung, WeakMap in rechte.mjs).
+ * Gibt die Anzahl der Ergänzungen zurück.
+ * @param {any} bestand
+ * @param {any} [vorher]
+ */
+export function dienstartenAngleichen(bestand, vorher = null) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return 0;
+  const alt = gespeicherteDienstarten(vorher);
+  let n = 0;
+  for (const m of bestand.mandanten) {
+    if (!m || typeof m !== "object" || !Array.isArray(m.dienstarten)) continue;
+    for (const d of m.dienstarten) {
+      if (!d || typeof d !== "object" || Array.isArray(d)) continue;
+      if (d.mindest !== undefined && d.mindest !== null) continue;
+      const gespeichert = alt.get(`${m.id}\u0000${d.id}`);
+      if (!gespeichert) { d.mindest = { mo_do: 0, fr: 0, sa: 0, so: 0 }; n += 1; continue; }
+      /* Schon gespeichert: Eine fehlende Angabe ändert die Vorgabe nicht. Sie bleibt, wie gespeichert —
+         ein Altstand ohne mindest also ohne (byte-gleich). */
+      if (gespeichert.mindest !== undefined && gespeichert.mindest !== null) {
+        d.mindest = JSON.parse(JSON.stringify(gespeichert.mindest)); n += 1;
+      } else if (gespeichert.mindest === null) d.mindest = null;
+      else delete d.mindest;
+    }
+  }
+  return n;
+}
+
+/**
+ * Prüft neue und in `mindest` geänderte Dienstarten. Gibt null oder
+ * { grund, feld } zurück.
+ * @param {any} bestand  der zu schreibende Stand
+ * @param {any} [vorher] der gespeicherte Stand (null: alles ist neu)
+ */
+export function dienstartenFehler(bestand, vorher = null) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return null;
+  const alt = gespeicherteDienstarten(vorher);
+  for (const [i, m] of bestand.mandanten.entries()) {
+    if (!m || typeof m !== "object" || !Array.isArray(m.dienstarten)) continue;
+    for (const [j, d] of m.dienstarten.entries()) {
+      const feld = `mandanten[${i}].dienstarten[${j}].mindest`;
+      if (!d || typeof d !== "object" || Array.isArray(d))
+        return { grund: "Eine Dienstart ist kein Objekt.", feld: `mandanten[${i}].dienstarten[${j}]` };
+      const gespeichert = alt.get(`${m.id}\u0000${d.id}`);
+      if (gespeichert && JSON.stringify(gespeichert.mindest) === JSON.stringify(d.mindest)) continue;
+      const f = mindestFehler(d.mindest);
+      if (f) return { grund: `Bei Dienstart ${d.name || d.id || j} ${f}.`, feld };
+    }
+  }
+  return null;
+}
+
 /**
  * Prüft die Form eines Bestands.
  * Gibt { ok: true } oder { ok: false, grund, feld } zurück.

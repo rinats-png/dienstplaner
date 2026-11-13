@@ -9,7 +9,7 @@ import { n1 } from "../lib/format.js";
 import { Erklaerkasten } from "../gestalt/bausteine.jsx";
 import { DIENSTFORMEN, dienstform } from "../../server/lib/lohnrechnung.mjs";
 import { Zelle, Sheet } from "../ui/leisten.jsx";
-import { PALETTE, AUFENTHALT, aufenthaltVon, bereitschaftHinweise } from "../lib/fachlogik.js";
+import { PALETTE, AUFENTHALT, aufenthaltVon, bereitschaftHinweise, mindestWerte } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
 import { Farbwahl } from "../ui/farbwahl.jsx";
 
@@ -26,7 +26,9 @@ export function Dienstarten({ sitz, akt }) {
     aufenthalt: null, abrufMinuten: null, einsatzAnteil: null,
     mindest: { mo_do: 1, fr: 1, sa: 1, so: 1 }, mindestQual: {} };
   const [f, setF] = useState(leer);
-  const oeffnen = (d) => { setBearbeitet(d ? d.id : "neu"); setF(d ? JSON.parse(JSON.stringify(d)) : { ...leer, kurz: "" }); };
+  /* A-4: Ein Altstand ohne gültige Mindestbesetzung öffnet mit 0 — gespeichert wird sie erst durch „Speichern". */
+  const oeffnen = (d) => { setBearbeitet(d ? d.id : "neu");
+    setF(d ? { ...JSON.parse(JSON.stringify(d)), mindest: { ...mindestWerte(d), ...(d.mindest && typeof d.mindest === "object" ? d.mindest : {}) } } : { ...leer, kurz: "" }); };
   const speichern = () => {
     if (!f.name.trim() || !f.kurz.trim()) return;
     if (bearbeitet === "neu") akt.neueDienstart(f); else akt.aendereDienstart(bearbeitet, f);
@@ -56,7 +58,7 @@ export function Dienstarten({ sitz, akt }) {
                 {d.posten && <Pill size="sm" tone="ok">Posten</Pill>}
               </div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 16 }}>
-                {[["Mo–Do", d.mindest.mo_do], ["Fr", d.mindest.fr], ["Sa", d.mindest.sa], ["So/Feiertag", d.mindest.so]].map(([l, v]) => (
+                {(({ mo_do, fr, sa, so }) => [["Mo–Do", mo_do], ["Fr", fr], ["Sa", sa], ["So/Feiertag", so]])(mindestWerte(d)).map(([l, v]) => (
                   <Pill key={l} size="sm">{l} {v}</Pill>))}
               </div>
               {Object.entries(d.mindestQual || {}).filter(([, n]) => n > 0).length > 0 && (
