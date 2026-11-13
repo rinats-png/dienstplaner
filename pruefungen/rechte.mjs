@@ -136,7 +136,7 @@ const start = {
       "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
       "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
     },
-    dienstarten: [{ id: "F", name: "Früh", kurz: "F" }],
+    dienstarten: [{ id: "F", name: "Früh", kurz: "F", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     einheiten: [{ id: "e1", name: "Wohnbereich 1" }],
   }],
 };
@@ -379,7 +379,7 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
     session: { mandantId: "m1", personId: "p1", rolle: "kunde" },
     mandanten: [{ id: "m1", name: "Scherbentest", einheitLabel: "Wohnbereich",
       einheiten: [{ id: "e1", name: "WB 1" }, { id: "e2", name: "WB 2" }],
-      dienstarten: [{ id: "F", kurz: "F" }, { id: "S", kurz: "S" }],
+      dienstarten: [{ id: "F", kurz: "F", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }, { id: "S", kurz: "S", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
       personen: [
         { id: "p1", nachname: "Kern", rolle: "subplaner",
           zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] },
@@ -998,7 +998,7 @@ let CODE_P2 = null;
   /* Die bisherigen Dienstarten bleiben: Eine noch verwendete zu löschen weist
      der Server schon vorher ab (Nachprüfung WP-11, N1) — geprüft wird hier die Obergrenze. */
   viele.mandanten[0].dienstarten = [...viele.mandanten[0].dienstarten, ...Array.from({ length: 501 },
-    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D" }))];
+    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }))];
   const wViele = await schreib(tL9, viele, r11.etag);
   pruef("501 Dienstarten werden abgewiesen", wViele.status === 422, `Status ${wViele.status}`);
 

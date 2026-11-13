@@ -71,7 +71,7 @@ const tBetr = await anmelden(await zugang("betreiber", null, 0));
 const anl = await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: { version: 9, stand: 1, mandanten: [{
   id: "m-a", name: "Geobetrieb", status: "aktiv", einstellungen: {},
   einheiten: [{ id: "e1", name: "WB", standortId: "st1" }], standorte: [{ id: "st1", name: "Zentrale", bundesland: "HE", lat: REF.lat, lon: REF.lon, radius: 200 }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("l1", "leitung"), person("p1", "planer"), ...[...IDS, "v1", "v2"].map((i) => person(i, "mitarbeiter"))],
   /* v2: an den Tagen des Stempels Frühdienst geplant — kein ungeplanter Dienst (WP-13). */
   abweichungen: Object.fromEntries([...IDS.map((i) => [`${i}|${HEUTE}`, "F"]), [`v2|${HEUTE}`, "F"], [`v2|${VOR1.tag}`, "F"]]),

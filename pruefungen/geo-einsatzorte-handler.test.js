@@ -132,7 +132,7 @@ describe("Schreiben: Ortsangaben der Dienstarten", () => {
   const dienst = async (f, token = T.l1) => {
     const r = await lies(token);
     const b = JSON.parse(JSON.stringify(r.bestand));
-    b.mandanten[0].dienstarten = [...b.mandanten[0].dienstarten, { id: "Z", name: "Zusatz", start: "09:00", ende: "17:00", ...f }];
+    b.mandanten[0].dienstarten = [...b.mandanten[0].dienstarten, { id: "Z", name: "Zusatz", start: "09:00", ende: "17:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 }, ...f }];
     return anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
   };
   it("unbekannter Modus, Einsatzort ohne oder mit unbekanntem Ziel: 422, nichts gespeichert", async () => {

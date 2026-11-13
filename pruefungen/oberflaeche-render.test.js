@@ -309,3 +309,220 @@ describe("P1 — Urlaubshinweise nur mit vollem Schreibumfang", () => {
     expect(A.urlaubshinweiseAnlegen(sitzFuer(betrieb(), "subplaner"), { schreiben: "voll" })).toBe(true);
   });
 });
+
+/* ==========================================================================
+   A-4 (Abnahme V4; Betreiberentscheidung 2026-11-13) — Dienstart ohne mindest
+
+   Der Server nahm eine Dienstart ohne `mindest` an; danach stürzte die
+   Oberfläche ab („Cannot read properties of undefined (reading 'fr')",
+   fachlogik.js simulation/einrichtungsstand, Dienstarten-Ansicht,
+   mindestFuer). Neue Eingaben weist der Server jetzt ab (personendaten.
+   test.js); ein schon gespeicherter Altstand muss trotzdem rendern, wird als
+   „Mindestbesetzung fehlt" gekennzeichnet — nie still als 0 gezeigt — und
+   die Oberfläche verändert ihn dabei nicht (byte-gleicher Rundweg).
+   ========================================================================== */
+describe("A-4 — Dienstart ohne mindest rendert ohne Absturz und ist gekennzeichnet", () => {
+  let FL, IE, DA, Dienstarten, Lagebild, Schichtfolge;
+  beforeAll(async () => {
+    FL = await import("../src/lib/fachlogik.js");
+    IE = await import("../server/lib/isteinfrieren.mjs");
+    DA = await import("../src/ansichten/dienstarten.jsx");
+    ({ Dienstarten } = DA);
+    ({ Lagebild } = await import("../src/ansichten/lagebild.jsx"));
+    ({ Schichtfolge } = await import("../src/ansichten/schichtfolge.jsx"));
+  }, 120000);
+  /** Betrieb mit einer Altdienstart: mindest fehlt, ist null oder unvollständig. */
+  const altbetrieb = (wie = "fehlt") => {
+    const m = betrieb();
+    const d = m.dienstarten[0];
+    if (wie === "fehlt") delete d.mindest; else if (wie === "null") d.mindest = null; else d.mindest = { mo_do: 2 };
+    return m;
+  };
+  const ansichten = (sitz) => [
+    ["Dienstarten", () => text(h(Dienstarten, { sitz, akt }))],
+    ["Prioritaeten", () => text(h(A.Prioritaeten, { sitz, akt, gehZu: () => {}, oeffneTag: () => {} }))],
+    ["Lagebild", () => text(h(Lagebild, { sitz, akt, oeffneTag: () => {} }))],
+    ["Schichtfolge", () => text(h(Schichtfolge, { sitz, akt }))],
+  ];
+
+  it("Leitung und Planung: Dienstarten, Prioritäten, Lagebild, Schichtfolge rendern; Altdaten bleiben unverändert", () => {
+    for (const wie of ["fehlt", "null", "teil"]) for (const rolle of ["leitung", "planer"]) {
+      const sitz = sitzFuer(altbetrieb(wie), rolle);
+      const vorher = JSON.stringify(sitz.mandant);
+      for (const [name, rendern] of ansichten(sitz)) {
+        let t = "";
+        expect(() => { t = rendern(); }, `${wie}/${rolle}/${name}`).not.toThrow();
+        expect(t.length, `${wie}/${rolle}/${name}`).toBeGreaterThan(0);
+      }
+      expect(JSON.stringify(sitz.mandant), `${wie}/${rolle}: Oberfläche verändert den Altstand nicht`).toBe(vorher);
+    }
+  });
+  it("Dienstarten-Karte: fehlende Vorgabe als Befund „Mindestbesetzung fehlt\" (kein 0), unvollständige je Feld „fehlt\"", () => {
+    const fehlt = renderToStaticMarkup(h(Dienstarten, { sitz: sitzFuer(altbetrieb("fehlt"), "leitung"), akt }));
+    expect(fehlt).toContain('data-befund="mindest-fehlt"');
+    expect(text(h(Dienstarten, { sitz: sitzFuer(altbetrieb("fehlt"), "leitung"), akt }))).toMatch(/Mindestbesetzung fehlt — bitte festlegen/);
+    expect(text(h(Dienstarten, { sitz: sitzFuer(altbetrieb("fehlt"), "leitung"), akt }))).not.toMatch(/Mo–Do 0 Fr 0 Sa 0 So\/Feiertag 0 Mindestbesetzung fehlt/);
+    expect(renderToStaticMarkup(h(Dienstarten, { sitz: sitzFuer(altbetrieb("null"), "leitung"), akt }))).toContain('data-befund="mindest-fehlt"');
+    const teil = text(h(Dienstarten, { sitz: sitzFuer(altbetrieb("teil"), "leitung"), akt }));
+    expect(teil).toMatch(/Mo–Do 2 Fr fehlt Sa fehlt So\/Feiertag fehlt Mindestbesetzung unvollständig/);
+    /* Eine vollständige Dienstart zeigt ihre Werte ohne Befund. */
+    const ganz = renderToStaticMarkup(h(Dienstarten, { sitz: sitzFuer(betrieb(), "leitung"), akt }));
+    expect(ganz).not.toContain("data-befund=");
+  });
+  it("Dienstarten-Karte: jeder ungültig gespeicherte Wert (negativ, Kommazahl, über 999, Text, leer) steht als „ungültig\" da — nie als 0 oder still als Zahl; Daten unverändert", () => {
+    const ungueltig = [-1, 2.5, 1000, "abc", "", "2.5", "-1", " ", true];
+    for (const v of ungueltig) {
+      const m = betrieb();
+      m.dienstarten[0].mindest = { mo_do: 1, fr: v, sa: 1, so: 1 };
+      const sitz = sitzFuer(m, "leitung");
+      const vorher = JSON.stringify(sitz.mandant);
+      const html = renderToStaticMarkup(h(Dienstarten, { sitz, akt }));
+      const t = text(h(Dienstarten, { sitz, akt }));
+      const was = JSON.stringify(v);
+      expect(html, was).toContain('data-befund="mindest-ungueltig"');
+      expect(t, was).toMatch(/Fr ungültig/);
+      expect(t, was).toMatch(/Mindestbesetzung ungültig — bitte korrigieren/);
+      expect(t, was).not.toMatch(/Fr 0\b/);
+      expect(t, was).not.toMatch(/Fr -1|Fr 2\.5|Fr 1000/);
+      expect(html, was).not.toContain('data-befund="mindest-unvollstaendig"');
+      expect(JSON.stringify(sitz.mandant), `${was}: die Karte schreibt nichts zurück`).toBe(vorher);
+      expect(FL.mindestUngueltig(m.dienstarten[0]), was).toEqual(["fr"]);
+      expect(FL.mindestLuecken(m.dienstarten[0]), was).toEqual(["fr"]);
+    }
+    /* Fehlend und ungültig zugleich: beide Befunde, je Feld das Richtige. */
+    const gemischt = betrieb();
+    gemischt.dienstarten[0].mindest = { mo_do: -2, fr: 1 };
+    const t = text(h(Dienstarten, { sitz: sitzFuer(gemischt, "leitung"), akt }));
+    expect(t).toMatch(/Mo–Do ungültig Fr 1 Sa fehlt So\/Feiertag fehlt/);
+    expect(t).toMatch(/Mindestbesetzung unvollständig/);
+    expect(t).toMatch(/Mindestbesetzung ungültig/);
+    /* Gültig bleibt unmarkiert: ganze Zahlen 0..999, auch der Altwert als Text. */
+    for (const md of [{ mo_do: 0, fr: 0, sa: 0, so: 0 }, { mo_do: 999, fr: 1, sa: 2, so: 3 }, { mo_do: "2", fr: "3", sa: " 1 ", so: "0" }]) {
+      const ok = betrieb(); ok.dienstarten[0].mindest = md;
+      expect(renderToStaticMarkup(h(Dienstarten, { sitz: sitzFuer(ok, "leitung"), akt })), JSON.stringify(md)).not.toContain("data-befund=");
+      expect(FL.mindestLuecken(ok.dienstarten[0]), JSON.stringify(md)).toEqual([]);
+    }
+  });
+  it("Fachlogik: simulation, einrichtungsstand und mindestFuer werfen nicht; die Altdienstart ist als fehlend erkennbar", () => {
+    const m = altbetrieb("fehlt");
+    const vorher = JSON.stringify(m);
+    expect(() => FL.simulation(m)).not.toThrow();
+    expect(() => FL.einrichtungsstand(m)).not.toThrow();
+    expect(IE.mindestFuer(m, m.dienstarten[0], HEUTE)).toBe(0);
+    expect(FL.mindestVorhanden(m.dienstarten[0])).toBe(false);
+    expect(FL.mindestLuecken(m.dienstarten[0])).toEqual(["mo_do", "fr", "sa", "so"]);
+    expect(FL.mindestVorhanden(m.dienstarten[1])).toBe(true);
+    expect(FL.mindestLuecken(m.dienstarten[1])).toEqual([]);
+    expect(FL.mindestWerte(m.dienstarten[1])).toEqual(m.dienstarten[1].mindest);
+    expect(JSON.stringify(m)).toBe(vorher);
+  });
+  it("Planungsreife meldet die Altdienstart ohne mindest als fehlenden Besetzungsbedarf (Befund, kein stilles 0)", async () => {
+    const { planungsreife } = await import("../server/lib/engine/planungsreife.mjs");
+    const m = altbetrieb("fehlt");
+    const r = planungsreife(m, { von: "2026-12-01", bis: "2026-12-31" });
+    const bedarf = r.luecken.find((l) => l.punkt === "bedarf");
+    expect(bedarf && bedarf.text).toMatch(/fehlt der Besetzungsbedarf/);
+    expect(bedarf.ids).toContain(String(m.dienstarten[0].id));
+  });
+});
+
+describe("A-4 — Zahl als Text im gespeicherten mindest bleibt, was sie war", () => {
+  const textMindest = { mo_do: "2", fr: "3", sa: " 1 ", so: "0" };
+  const zahlMindest = { mo_do: 2, fr: 3, sa: 1, so: 0 };
+  it("mindestWerte liest \"2\" wie 2; ungültig oder fehlend bleibt 0 und steht in mindestLuecken", async () => {
+    const IE = await import("../server/lib/isteinfrieren.mjs");
+    expect(IE.mindestWerte({ mindest: textMindest })).toEqual(zahlMindest);
+    expect(IE.mindestLuecken({ mindest: textMindest })).toEqual([]);
+    expect(IE.mindestWerte({ mindest: zahlMindest })).toEqual(zahlMindest);
+    const kaputt = { mindest: { mo_do: "viele", fr: "", sa: null, so: NaN } };
+    expect(IE.mindestWerte(kaputt)).toEqual({ mo_do: 0, fr: 0, sa: 0, so: 0 });
+    expect(IE.mindestLuecken(kaputt)).toEqual(["mo_do", "fr", "sa", "so"]);
+  });
+  it("Einfrieren, Prüfung und Fachprüfung: Text und Zahl liefern dasselbe wie auf integration/release-v4", async () => {
+    const IE = await import("../server/lib/isteinfrieren.mjs");
+    const FP = await import("../server/lib/fachpruefung.mjs");
+    const FL = await import("../src/lib/fachlogik.js");
+    /* Die bisherige Rechnung (release-v4, isteinfrieren.mjs mindestFuer) wörtlich als Vergleich. */
+    const { dow } = await import("../server/lib/regelwerk.mjs");
+    const { feiertag } = await import("../server/lib/feiertage.mjs");
+    const bisher = (m, da, d) => { const w = dow(d);
+      const wt = w === 6 ? da.mindest.so : w === 5 ? da.mindest.sa : w === 4 ? da.mindest.fr : da.mindest.mo_do;
+      return Math.max(wt, feiertag(d, m.bundesland) ? da.mindest.so : 0); };
+    for (const d of ["2026-11-09", "2026-11-13", "2026-11-14", "2026-11-15"]) {
+      const m = betrieb();
+      const a = { ...m.dienstarten[0], mindest: textMindest }, b = { ...m.dienstarten[0], mindest: zahlMindest };
+      expect(IE.mindestFuer(m, a, d), d).toBe(IE.mindestFuer(m, b, d));
+      expect(IE.mindestFuer(m, a, d), d).toBe(bisher(m, a, d));
+      expect(FP.mindestOhneFeiertag(a, d)).toBe(FP.mindestOhneFeiertag(b, d));
+    }
+    /* Feiertag (3. Oktober, Mo–Do-Wert 2, So-Wert "4"): der Feiertag hebt auf 4 an — wie bisher. */
+    const m = betrieb();
+    expect(IE.mindestFuer(m, { mindest: { ...textMindest, so: "4" } }, "2024-10-03")).toBe(4);
+    expect(IE.mindestFuer(betrieb(), { mindest: textMindest }, "2026-11-09")).toBe(2);
+    const mt = betrieb(), mz = betrieb();
+    mt.dienstarten[0].mindest = textMindest; mz.dienstarten[0].mindest = zahlMindest;
+    expect(JSON.stringify(FL.simulation(mt).luecken.map((x) => x.tage))).toBe(JSON.stringify(FL.simulation(mz).luecken.map((x) => x.tage)));
+    expect(FL.einrichtungsstand(mt)).toEqual(FL.einrichtungsstand(mz));
+  });
+  it("Rundweg: Altstand mit Text wird weder angeglichen noch abgewiesen (byte-gleich)", async () => {
+    const G = await import("../server/lib/gestalt.mjs");
+    const m = betrieb(); m.dienstarten[0].mindest = textMindest;
+    const bestand = { mandanten: [m] };
+    const vorher = JSON.stringify(bestand);
+    const neu = JSON.parse(vorher);
+    expect(G.dienstartenFehler(neu, JSON.parse(vorher))).toBeNull();
+    G.dienstartenAngleichen(neu, JSON.parse(vorher));
+    expect(JSON.stringify(neu)).toBe(vorher);
+  });
+});
+
+describe("A-4 — Eingabe der Mindestbesetzung (Dialog)", () => {
+  let DA;
+  beforeAll(async () => { DA = await import("../src/ansichten/dienstarten.jsx"); }, 120000);
+  const felder = (props) => renderToStaticMarkup(h(DA.MindestFelder, { onChange: () => {}, ...props }));
+  it("Felder: ganze Zahlen (inputMode numeric, Schritt 1, min 0), Pflicht, zugänglicher Name, 24px", () => {
+    const html = felder({ werte: { mo_do: "", fr: "", sa: "", so: "" }, neu: true, ohneMindest: false, versucht: false });
+    const inputs = html.match(/<input[^>]*>/g) || [];
+    expect(inputs).toHaveLength(4);
+    for (const i of inputs) {
+      expect(i).toContain('type="number"'); expect(i).toContain('inputMode="numeric"');
+      expect(i).toContain('step="1"'); expect(i).toContain('min="0"'); expect(i).toContain('max="999"');
+      expect(i).toContain("required"); expect(i).toContain('aria-required="true"');
+      expect(i).toMatch(/min-height:\s*24px/);
+      const id = (i.match(/id="([^"]+)"/) || [])[1];
+      expect(id, i).toBeTruthy();
+      expect(html).toContain(`for="${id}"`);
+    }
+    for (const l of ["Mo – Do", "Freitag", "Samstag", "So / Feiertag"]) expect(html).toContain(l);
+    /* Leer und noch nicht gespeichert: kein Fehler vorab. */
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toMatch(/\bKI\b/);
+  });
+  it("Fehlertext neben dem Feld: Komma, negativ, Text sofort; leeres Pflichtfeld beim Speichern", () => {
+    const html = felder({ werte: { mo_do: "2.5", fr: "-1", sa: "abc", so: "" }, neu: true, ohneMindest: false, versucht: false });
+    expect((html.match(/role="alert"/g) || []).length).toBe(3);
+    expect(html).toContain("Bitte eine ganze Zahl von 0 bis 999 eingeben — ohne Komma, nicht negativ.");
+    expect(html).toMatch(/aria-invalid="true"[^>]*aria-describedby="mindest-mo_do-fehler"|aria-describedby="mindest-mo_do-fehler"[^>]*aria-invalid="true"/);
+    const nach = felder({ werte: { mo_do: "1", fr: "1", sa: "1", so: "" }, neu: true, ohneMindest: false, versucht: true });
+    expect(nach).toContain("Pflichtfeld: bitte eine ganze Zahl ab 0 eingeben (0 = keine Mindestbesetzung).");
+  });
+  it("Altstand ohne mindest: Hinweis „Mindestbesetzung fehlt\", Felder leer, ganz leer bleibt erlaubt (dann bleibt sie offen)", () => {
+    const html = felder({ werte: DA.mindestFuerDialog({ id: "F" }), neu: false, ohneMindest: true, versucht: true });
+    expect(html).toContain('data-befund="mindest-fehlt"');
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toMatch(/value="0"/);
+  });
+  it("Speichern: neu ohne Werte → Fehler (nichts gespeichert); 0 → {0,0,0,0}; Altstand leer → weglassen; Text \"2\" öffnet als 2", () => {
+    const leer = { mo_do: "", fr: "", sa: "", so: "" };
+    expect(DA.mindestZumSpeichern(leer, { neu: true, ohneMindest: false }).fehler).toBeTruthy();
+    expect(Object.keys(DA.mindestZumSpeichern(leer, { neu: true, ohneMindest: false }).fehler)).toEqual(["mo_do", "fr", "sa", "so"]);
+    expect(DA.mindestZumSpeichern({ mo_do: "0", fr: 0, sa: " 0 ", so: "0" }, { neu: true, ohneMindest: false })).toEqual({ mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } });
+    for (const v of ["2.5", "-1", "abc", "1e2", "1000", null])
+      expect(DA.mindestZumSpeichern({ mo_do: v, fr: 1, sa: 1, so: 1 }, { neu: true, ohneMindest: false }).fehler, String(v)).toHaveProperty("mo_do");
+    expect(DA.mindestZumSpeichern(leer, { neu: false, ohneMindest: true })).toEqual({ weglassen: true });
+    expect(DA.mindestZumSpeichern({ ...leer, fr: "1" }, { neu: false, ohneMindest: true }).fehler).toBeTruthy();
+    expect(DA.mindestZumSpeichern(leer, { neu: false, ohneMindest: false }).fehler).toBeTruthy();
+    expect(DA.mindestFuerDialog({ mindest: { mo_do: "2", fr: 3, sa: "x", so: 2.5 } })).toEqual({ mo_do: 2, fr: 3, sa: "x", so: 2.5 });
+    expect(DA.mindestFuerDialog({ mindest: { mo_do: 1 } })).toEqual({ mo_do: 1, fr: "", sa: "", so: "" });
+  });
+});

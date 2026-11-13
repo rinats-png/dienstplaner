@@ -42,11 +42,53 @@ export const IST_EINGEFROREN = "istEingefroren";
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
 
-/** Mindestbesetzung eines Dienstes an einem Tag; ein Feiertag hebt sie an, senkt sie nie (C5). */
+/** Hat die Dienstart eine Mindestbesetzung (ein Objekt)? Fehlt sie, ist das ein Befund („Mindestbesetzung fehlt"),
+    kein stilles 0 im Bestand (Abnahme V4, A-4; Betreiberentscheidung 2026-11-13). */
+export const mindestVorhanden = (da) => !!da && objekt(da.mindest);
+
+/** Mindestbesetzung einer Dienstart als vier Zahlen — nur zum ANZEIGEN und Rechnen in der Oberfläche, nie
+    zurückgeschrieben (sonst „reading 'fr'", A-4). Ein Altstand mit Text ("2") liest sich wie bisher als Zahl
+    (Number), ohne gültigen Wert als 0; ob die Angabe fehlt, sagt mindestVorhanden. */
+export function mindestWerte(da) {
+  const md = mindestVorhanden(da) ? da.mindest : {};
+  const z = (v) => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0; };
+  return { mo_do: z(md.mo_do), fr: z(md.fr), sa: z(md.sa), so: z(md.so) };
+}
+
+/** Zustand eines gespeicherten Mindestbesetzungs-Felds: "ok" (ganze Zahl 0..999, als Altwert auch als Text "2"),
+    "fehlt" (nicht vorhanden oder null) oder "ungueltig" (negativ, Kommazahl, über 999, kein Zahlwert, leer). */
+export function mindestFeldStatus(v) {
+  if (v === undefined || v === null) return "fehlt";
+  if (typeof v === "number") return Number.isInteger(v) && v >= 0 && v <= 999 ? "ok" : "ungueltig";
+  if (typeof v === "string") return /^\d{1,3}$/.test(v.trim()) ? "ok" : "ungueltig";
+  return "ungueltig";
+}
+
+/** Felder der Mindestbesetzung, die fehlen oder ungültig sind (negativ, Kommazahl, über 999, kein Zahlwert) — alle
+    vier, wenn `mindest` fehlt. Für den Befund „Mindestbesetzung fehlt/unvollständig/ungültig" in der Oberfläche;
+    ändert nichts am gespeicherten Stand. */
+export function mindestLuecken(da) {
+  const md = mindestVorhanden(da) ? da.mindest : {};
+  return ["mo_do", "fr", "sa", "so"].filter((k) => mindestFeldStatus(md[k]) !== "ok");
+}
+
+/** Nur die Felder, die einen Wert tragen, der ungültig ist (negativ, Kommazahl, über 999, kein Zahlwert). */
+export function mindestUngueltig(da) {
+  const md = mindestVorhanden(da) ? da.mindest : {};
+  return ["mo_do", "fr", "sa", "so"].filter((k) => mindestFeldStatus(md[k]) === "ungueltig");
+}
+
+/** Mindestbesetzung eines Dienstes an einem Tag; ein Feiertag hebt sie an, senkt sie nie (C5).
+    Mit `mindest` genau die bisherige Rechnung (auch für Altwerte als Text: Math.max wandelt "2" in 2) — Planung,
+    Monatsabschluss und Prüfung bleiben gleich. Ohne `mindest` (Altstand, A-4) 0 statt Absturz; gemeldet wird das
+    Fehlen von der Planungsreife und der Oberfläche, nicht hier. */
 export function mindestFuer(m, da, d) {
+  if (!mindestVorhanden(da)) return 0;
   const w = dow(d);
-  const wt = w === 6 ? da.mindest.so : w === 5 ? da.mindest.sa : w === 4 ? da.mindest.fr : da.mindest.mo_do;
-  return Math.max(wt, feiertag(d, m.bundesland) ? da.mindest.so : 0);
+  const md = da.mindest;
+  const wt = w === 6 ? md.so : w === 5 ? md.sa : w === 4 ? md.fr : md.mo_do;
+  return Math.max(wt, feiertag(d, m.bundesland) ? md.so : 0);
 }
 
 /* Abwesenheiten je Person, einmal je Zwischenspeicher (merk) — sonst liefe jeder Tag jeder Person über die ganze Liste. */

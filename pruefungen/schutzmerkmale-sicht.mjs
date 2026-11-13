@@ -67,7 +67,7 @@ const tBetr = await anmelden(await zugang("betreiber", null, 0));
 pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: null, mandanten: [{
     id: "m-a", name: "A", einheiten: [{ id: "e1" }, { id: "e2" }, { id: "ePool", pool: true }],
-    dienstarten: [{ id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30 }],
+    dienstarten: [{ id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     personen: [person("s1", "subplaner", "e1"), person("mu", "mitarbeiter", "e1", { mutterschutz: true }),
       person("sb", "mitarbeiter", "e1", { schwerbehindert: true }), person("ju", "mitarbeiter", "e1", { geburtstag: GEB }),
       person("vo", "mitarbeiter", "e1", { nachtvorsorge: VORSORGE }),

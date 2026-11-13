@@ -25,7 +25,7 @@ const anfrage = async (pfad, { methode = "POST", rumpf, token } = {}) => {
 const person = (id, rolle) => ({ id, vorname: `V${id}`, nachname: `N${id}`, rolle, bereich: "ALLE", status: "aktiv",
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const bestand = () => ({ version: 9, stand: 1, session: null, mandanten: [{ id: "m-e", name: "E", status: "aktiv", tarif: "pro",
-  einheiten: [{ id: "e1" }], standorte: [], dienstarten: [{ id: "F", name: "F" }],
+  einheiten: [{ id: "e1" }], standorte: [], dienstarten: [{ id: "F", name: "F", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("el", "leitung"), person("em", "mitarbeiter")],
   abweichungen: {}, anfragen: [], notrufe: [], nachrichten: [], dienstbuch: [], abwesenheiten: [] }] });
 const sitzung = async (code) => {

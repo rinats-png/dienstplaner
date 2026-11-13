@@ -56,7 +56,7 @@ const person = (id, nachname, rolle, einheit) => ({ id, vorname: "V", nachname, 
 const start = { version: 9, stand: 1, session: null, mandanten: [{
   id: "schicht-probe", name: "Haus Schicht", einheitLabel: "Wohnbereich",
   einheiten: [{ id: "e1", name: "WB 1" }, { id: "e2", name: "WB 2" }],
-  dienstarten: [{ id: "F", name: "Früh" }],
+  dienstarten: [{ id: "F", name: "Früh", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("s1", "Sami", "subplaner", "e1"), person("a1", "Anna", "mitarbeiter", "e1"),
     person("b1", "Bert", "mitarbeiter", "e2"), person("l1", "Lea", "leitung", "ALLE")],
   abweichungen: { "b1|2026-11-01": "F" }, abwesenheiten: [],
