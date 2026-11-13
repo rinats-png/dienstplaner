@@ -6,16 +6,17 @@
      - Umsetzung in ein Regelobjekt: nur aktive Vorgaben wirken, Muss/Soll/Wunsch,
      - Testlauf mit Beispielfällen für alle Regelarten,
      - Stufengrenzen 5/25/unbegrenzt (E-21),
-     - Rechte über den echten Schreib- und Lesepfad (Leitung schreibt; Planung,
-       Schichtverantwortung, Beschäftigte, Betriebsrat nicht), Wann/Wer vom Server,
-     - Sicht: Betriebsrat Zahlen und Texte ohne Personen, Beschäftigte und
-       Schichtverantwortung nichts,
+     - Rechte über den Schreib- und Lesepfad (nur org.edit: Leitung, Kundenrolle; für alle anderen
+       Rollen ist das Feld unsichtbar und ein mitgeschicktes Feld wirkungslos), Wann/Wer/Version vom Server,
+     - Sicht: Planung, Schichtverantwortung, Beschäftigte und Betriebsrat nichts (keine Lesesicht des
+       Betriebsrats: offene Mitbestimmungsfrage),
+     (Die Wege über den echten Handler: intelligence-vorgaben-wege.test.js.)
      - Formularfelder ↔ Parameter.
    Alle Daten synthetisch.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import {
-  pruefeVorgabe, vorgabeAlsRegel, vorgabeTestlauf, beispielFaelle, vorgabenGrenze, vorgabenZusammen, vorgabenBetriebsrat, aktiveVorgaben,
+  pruefeVorgabe, vorgabeAlsRegel, vorgabeTestlauf, beispielFaelle, vorgabenGrenze, vorgabenZusammen, aktiveVorgaben,
   PARAMETER_FELDER, felderAusParametern, parameterAusFeldern, VORGABEN_REGELARTEN, VORGABEN_STUFENGRENZE,
 } from "../server/lib/vorgaben.mjs";
 import { pruefeRegel } from "../server/lib/regelbaukasten-erweitert.mjs";
@@ -201,22 +202,32 @@ describe("Schreibweg: Rechte und Wann/Wer vom Server", () => {
       expect(v.aktiviertAm).toBe(v.geaendertAm);
     }
   });
-  it("Planung, Schichtverantwortung, Beschäftigte und Betriebsrat können nichts ändern", () => {
+  it("Planung, Schichtverantwortung, Beschäftigte und Betriebsrat können nichts ändern: das Feld ist wirkungslos, kein 403", () => {
+    const angelegt = schreibeAls(grund(), "LT", (m) => { m.vorgaben = [kopie(NEU)]; });
+    const vorher = kopie(angelegt.mandanten[0].vorgaben);
     for (const r of ["PL", "SV", "MA", "BR"]) {
-      const g = grund();
-      const res = schreibeAls(g, r, (m) => { m.vorgaben = [kopie(NEU)]; });
-      const gespeichert = res && !res.verweigert ? res.mandanten[0].vorgaben : undefined;
-      expect(!!(res && res.verweigert) || !gespeichert || gespeichert.length === 0, r).toBe(true);
+      for (const aendern of [(m) => { m.vorgaben = [kopie(NEU), vorgabe("grenzregel", { id: "zwei", name: "Zwei", status: "aktiv" })]; },
+        (m) => { m.vorgaben = []; }, (m) => { m.vorgaben = [{ ...kopie(NEU), status: "inaktiv", geaendertVon: "fremd" }]; }, (m) => { m.vorgaben = "x"; }]) {
+        const res = schreibeAls(angelegt, r, aendern);
+        /* Planung (Voll-Schreibweg): wirkungslos, kein 403. Die anderen Rollen prüft ihr eigener Katalog: entweder abgewiesen
+           oder unverändert; geändert wird nie etwas. */
+        if (r === "PL") expect(res.verweigert, r).toBeUndefined();
+        if (res && !res.verweigert) expect(res.mandanten[0].vorgaben, r).toEqual(vorher);
+      }
     }
-    /* Planung wird ausdrücklich abgewiesen (hat den Voll-Schreibweg, aber kein org.edit). */
-    expect(schreibeAls(grund(), "PL", (m) => { m.vorgaben = [kopie(NEU)]; }).verweigert).toMatch(/org\.edit/);
+    /* Ohne bestehende Vorgaben entsteht auch keine. */
+    for (const r of ["PL", "SV", "MA", "BR"]) {
+      const res = schreibeAls(grund(), r, (m) => { m.vorgaben = [kopie(NEU)]; });
+      expect(!res || res.verweigert ? [] : (res.mandanten[0].vorgaben || []), r).toEqual([]);
+    }
   });
-  it("Planung kann eine bestehende Vorgabe weder ändern noch löschen noch deaktivieren", () => {
-    const g = grund();
-    const angelegt = schreibeAls(g, "LT", (m) => { m.vorgaben = [kopie(NEU)]; });
-    for (const aendern of [(m) => { m.vorgaben[0].status = "inaktiv"; }, (m) => { m.vorgaben = []; }, (m) => { m.vorgaben[0].staerke = "wunsch"; }]) {
-      expect(schreibeAls(angelegt, "PL", aendern).verweigert).toMatch(/org\.edit/);
-    }
+  it("Version zählt der Server: neu 1, jede Änderung eins höher, eine mitgeschickte Version zählt nie", () => {
+    const g1 = schreibeAls(grund(), "LT", (m) => { m.vorgaben = [{ ...kopie(NEU), version: 99 }]; });
+    expect(g1.mandanten[0].vorgaben[0].version).toBe(1);
+    const g2 = schreibeAls(g1, "LT", (m) => { m.vorgaben[0].prioritaet = 3; m.vorgaben[0].version = 1; });
+    expect(g2.mandanten[0].vorgaben[0].version).toBe(2);
+    const g3 = schreibeAls(g2, "KD", (m) => { m.vorgaben[0].version = 50; });
+    expect(g3.mandanten[0].vorgaben[0].version).toBe(2);
   });
   it("ein Rundweg der Planung (unverändert zurückgeschickt, auch ohne das Feld) ändert nichts", () => {
     const angelegt = schreibeAls(grund(), "LT", (m) => { m.vorgaben = [kopie(NEU)]; });
@@ -257,33 +268,19 @@ describe("Lesesicht je Rolle", () => {
     geaendertAm: "2026-11-01T10:00:00.000Z", geaendertVon: MARKE, aktiviertAm: "2026-11-01T10:00:00.000Z", aktiviertVon: MARKE }];
     return g;
   };
-  it("Planung, Leitung und Kundenrolle sehen die Vorgaben vollständig", () => {
-    for (const r of ["PL", "LT", "KD"]) {
+  it("Leitung und Kundenrolle (org.edit) sehen die Vorgaben vollständig", () => {
+    for (const r of ["LT", "KD"]) {
       const v = bestandFuerRolle(bestand(), SITZUNGEN[r]).mandanten[0].vorgaben;
       expect(JSON.stringify(v), r).toContain(MARKE);
       expect(v[0].geltung.personen, r).toContain("a1");
     }
   });
-  it("Beschäftigte und Schichtverantwortung bekommen die Vorgaben nicht", () => {
-    for (const r of ["MA", "SV"]) {
+  it("Planung, Beschäftigte, Schichtverantwortung und Betriebsrat bekommen die Vorgaben nicht (auch keinen Namen, keine Zahl)", () => {
+    for (const r of ["PL", "MA", "SV", "BR"]) {
       const m = bestandFuerRolle(bestand(), SITZUNGEN[r]).mandanten[0];
       expect(m.vorgaben || [], r).toEqual([]);
       expect(JSON.stringify(m), r).not.toContain(MARKE);
+      expect(JSON.stringify(m), r).not.toContain("Freie Wochenenden");
     }
-  });
-  it("Betriebsrat: Zahlen und Texte, keine Personen, kein Wer und Wann", () => {
-    const m = bestandFuerRolle(bestand(), SITZUNGEN.BR).mandanten[0];
-    expect(JSON.stringify(m)).not.toContain(MARKE);
-    expect(m.vorgaben).toHaveLength(1);
-    const v = m.vorgaben[0];
-    expect(v).toMatchObject({ name: "Freie Wochenenden", staerke: "muss", status: "aktiv", bezug: "monat", regelart: "zaehlregel",
-      beschreibung: "Mindestens zwei freie Wochenende", grundlage: { art: "betriebsvereinbarung", fundstelle: "BV § 4" },
-      geltung: { art: "personen", anzahlPersonen: 2 }, ausnahmen: { anzahlPersonen: 1, anzahlZeitraeume: 1, teilzeitAnteilig: true } });
-    expect(v.geltung.personen).toBeUndefined();
-    for (const f of ["geaendertAm", "geaendertVon", "aktiviertAm", "aktiviertVon", "parameter"]) expect(v[f], f).toBeUndefined();
-  });
-  it("vorgabenBetriebsrat verträgt Unsinn", () => {
-    expect(vorgabenBetriebsrat(undefined)).toEqual([]);
-    expect(vorgabenBetriebsrat([null, 3, "x", { id: "a" }])).toEqual([{ id: "a", ausnahmen: { anzahlPersonen: 0, anzahlZeitraeume: 0, teilzeitAnteilig: false }, geltung: {} }]);
   });
 });

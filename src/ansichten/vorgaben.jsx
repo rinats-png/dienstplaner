@@ -10,6 +10,7 @@
    ========================================================================== */
 import { useState } from "react";
 import { C } from "../farben.js";
+import { darf } from "../lib/berechtigung.js";
 import { Pill, Btn, Card, CardHead, Field, Inp, Sel, Leer } from "../ui/bausteine.jsx";
 import {
   VORGABEN_REGELARTEN, VORGABEN_STAERKEN, VORGABEN_GRUNDLAGEN, VORGABEN_BEZUEGE, VORGABEN_GELTUNG, PARAMETER_FELDER,
@@ -61,7 +62,6 @@ function Formular({ m, start, onSpeichern, onAbbruch }) {
   const liste = (k, id) => { const g = v.geltung[k] || []; setz("geltung", { ...v.geltung, [k]: g.includes(id) ? g.filter((x) => x !== id) : [...g, id] }); };
   const ausnahmePerson = (id) => { const p = (v.ausnahmen && v.ausnahmen.personen) || []; setz("ausnahmen", { ...v.ausnahmen, personen: p.includes(id) ? p.filter((x) => x !== id) : [...p, id] }); };
   const personen = (m.personen || []).filter((p) => p.status !== "ausgetreten");
-  const hatRat = (m.personen || []).some((p) => p.rolle === "betriebsrat");
   const box = { maxHeight: 150, overflow: "auto", display: "grid", gap: 4, padding: 8, border: `1px solid ${C.lineSoft}`, borderRadius: "var(--r)" };
   return (
     <div className="karte-still" style={{ borderRadius: "var(--r)", padding: 16, display: "grid", gap: 14 }}>
@@ -103,41 +103,47 @@ function Formular({ m, start, onSpeichern, onAbbruch }) {
       </div>
       {v.geltung.art === "einheit" && (
         <Field label="Einheiten"><div style={box}>{(m.einheiten || []).map((e) => (
-          <label key={e.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
+          <label key={e.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
             <input type="checkbox" checked={(v.geltung.einheiten || []).includes(e.id)} onChange={() => liste("einheiten", e.id)} />{e.name || e.id}</label>))}</div></Field>)}
       {v.geltung.art === "gruppe" && (
         <Field label="Personengruppen" hint="Mit Komma trennen, z. B. Vollzeit, Fachkräfte."><Inp value={(v.geltung.gruppen || []).join(", ")}
           onChange={(e) => setz("geltung", { ...v.geltung, gruppen: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} /></Field>)}
       {v.geltung.art === "personen" && (
         <Field label="Personen"><div style={box}>{personen.map((p) => (
-          <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
+          <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
             <input type="checkbox" checked={(v.geltung.personen || []).includes(p.id)} onChange={() => liste("personen", p.id)} />{p.vorname} {p.nachname}</label>))}</div></Field>)}
       <details>
         <summary style={{ cursor: "pointer", fontSize: 13.5, fontWeight: 600 }}>Ausnahmen</summary>
         <div style={{ display: "grid", gap: 12, marginTop: 10 }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
             <input type="checkbox" checked={!!(v.ausnahmen && v.ausnahmen.teilzeitAnteilig)} onChange={(e) => setz("ausnahmen", { ...v.ausnahmen, teilzeitAnteilig: e.target.checked })} />
             Teilzeit anteilig berücksichtigen</label>
           <Field label="Ausgenommene Personen"><div style={box}>{personen.map((p) => (
-            <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
+            <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
               <input type="checkbox" checked={((v.ausnahmen && v.ausnahmen.personen) || []).includes(p.id)} onChange={() => ausnahmePerson(p.id)} />{p.vorname} {p.nachname}</label>))}</div></Field>
         </div>
       </details>
-      {hatRat && <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Hinweis: In diesem Betrieb gibt es eine Betriebsrats-Rolle. Regeln zur Verteilung der Arbeitszeit sind meist
-        mitbestimmungspflichtig (§ 87 Abs. 1 Nr. 2 BetrVG); bitte die Grundlage angeben. Der Betriebsrat sieht Name, Stärke und Grundlage, keine Personen.</div>}
-      {fehler && <div role="alert" style={{ fontSize: 13.5, color: C.dim }}>{fehler}</div>}
+      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Hinweis: Regeln zur Verteilung der Arbeitszeit sind meist mitbestimmungspflichtig
+        (§ 87 Abs. 1 Nr. 2 BetrVG). Bitte die Grundlage angeben und vor der Einführung die Beteiligung klären.</div>
+      {fehler && <div role="alert" id="vorgabe-fehler" style={{ fontSize: 13.5, color: C.dim }}>{fehler}</div>}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Btn kind="primary" disabled={!!fehler} onClick={() => onSpeichern(bereinigt())}>Speichern</Btn>
+        <Btn kind="primary" disabled={!!fehler} aria-describedby={fehler ? "vorgabe-fehler" : undefined} onClick={() => onSpeichern(bereinigt())}>Speichern</Btn>
         <Btn onClick={onAbbruch}>Abbrechen</Btn>
       </div>
     </div>);
 }
 
 /**
- * @param {{ sitz: any, akt: any, nurLesen?: boolean }} props
- * Schreiben (anlegen, testen, aktivieren, löschen) mit `akt` nur für org.edit; `nurLesen` zeigt die Liste.
+ * @param {{ sitz: any, akt: any }} props
+ * Nur für org.edit (Leitung, Kundenrolle): für alle anderen Rollen entsteht nichts (der Server liefert ihnen das Feld
+ * ohnehin nicht). Die Hooks stehen in der inneren Komponente.
  */
-export function InterneVorgaben({ sitz, akt, nurLesen = false }) {
+export function InterneVorgaben({ sitz, akt }) {
+  if (!sitz || !sitz.mandant || !darf(sitz, "org.edit")) return null;
+  return <VorgabenInnen sitz={sitz} akt={akt} />;
+}
+
+function VorgabenInnen({ sitz, akt }) {
   const m = sitz.mandant;
   const liste = Array.isArray(m.vorgaben) ? m.vorgaben : [];
   const grenze = vorgabenGrenze(m.tarif);
@@ -190,8 +196,7 @@ export function InterneVorgaben({ sitz, akt, nurLesen = false }) {
                       <li key={e.id}>{e.erwartet === "erfuellt" ? "Beispiel, das die Vorgabe erfüllt" : "Beispiel, das sie verletzt"}: {e.status === "erfuellt" ? "erfüllt" : e.status === "verletzt" ? "verletzt" : e.status}
                         {e.stimmt === false ? " (nicht wie erwartet)" : ""}</li>))}</ul></>}
                 </div>)}
-              {!nurLesen && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Btn size="sm" onClick={() => setBearbeite({ ...v, parameter: v.parameter || {} })}>Bearbeiten</Btn>
                   <Btn size="sm" onClick={() => testen(v)}>Testen</Btn>
                   {v.status === "aktiv"
@@ -200,12 +205,12 @@ export function InterneVorgaben({ sitz, akt, nurLesen = false }) {
                       title={!t ? "Zuerst testen." : !t.ok ? "Der Test ist nicht bestanden." : voll ? "Die Grenze der Preisstufe ist erreicht." : undefined}>Aktivieren</Btn>}
                   <span style={{ flex: 1 }} />
                   <Btn size="sm" kind="danger" onClick={() => akt.vorgabeLoeschen(v.id)}>Löschen</Btn>
-                </div>)}
+              </div>
             </div>);
         })}
-        {!nurLesen && (bearbeite && !liste.some((x) => x.id === bearbeite.id)
+        {bearbeite && !liste.some((x) => x.id === bearbeite.id)
           ? <Formular m={m} start={bearbeite} onSpeichern={speichern} onAbbruch={() => setBearbeite(null)} />
-          : !bearbeite && <div><Btn kind="primary" onClick={() => setBearbeite(leer())}>Neue Vorgabe</Btn></div>)}
+          : !bearbeite && <div><Btn kind="primary" onClick={() => setBearbeite(leer())}>Neue Vorgabe</Btn></div>}
       </div>
     </Card>);
 }

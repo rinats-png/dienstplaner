@@ -123,8 +123,8 @@ const MATRIX = [
   /* Commit C3: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
   ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["tagesnotizen (totes Feld)",  "MK-TOTFELD",               0, 0, 0, 1, 1, 0, 1, 1, "A"],
-  /* WP-I4: Personen in der Geltung einer Vorgabe sieht der Betriebsrat nicht (nur die Anzahl). */
-  ["Vorgabe: Person in der Geltung", "MK-VORGABE-PERSON",      0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  /* WP-I4: interne Vorgaben liest nur org.edit (Leitung, Kundenrolle); Betriebsrat, Planung, Schichtverantwortung, Beschäftigte nichts. */
+  ["Vorgabe: Person in der Geltung", "MK-VORGABE-PERSON",      0, 0, 0, 0, 1, 0, 1, 1, "A"],
   ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 0, 1, 1, "A"],
   /* Commit C1: Bewerbungen fremder Personen nur bei einer Ausschreibung der
      eigenen Einheit (hier: Altbestand ohne einheitId — also nicht). */

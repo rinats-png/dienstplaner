@@ -13,7 +13,6 @@
        Regelobjekt des Baukastens,
      - die Stufengrenzen (E-21: Basis 5, Business 25, Enterprise unbegrenzt,
        gezählt werden aktive Vorgaben),
-     - die neutrale Sicht des Betriebsrats (Zahlen und Texte, keine Personen),
      - Beispielfälle für den Testlauf.
 
    NICHT hier (WP-I5, Vorgaben wirksam machen): Planungsassistent, Ersatzsuche,
@@ -45,7 +44,7 @@ export function vorgabenGrenze(tarifId) {
 const FELDER = ["id", "name", "beschreibung", "regelart", "parameter", "geltung", "gueltigAb", "gueltigBis", "bezug", "staerke",
   "prioritaet", "grundlage", "ausnahmen", "status"];
 /** Vom Server gesetzt; was der Client schickt, wird überschrieben. */
-export const VORGABEN_SERVERFELDER = Object.freeze(["geaendertAm", "geaendertVon", "aktiviertAm", "aktiviertVon"]);
+export const VORGABEN_SERVERFELDER = Object.freeze(["geaendertAm", "geaendertVon", "aktiviertAm", "aktiviertVon", "version"]);
 
 /* Wortstämme, die in Vorgaben nichts zu suchen haben (Plan 6.3) — wie im Baukasten; dort nicht exportiert. */
 const VERBOTEN = /krank|gesund|fehlzeit|leistung|zuverl|verhalten|diagnos|schwanger|behinder|disziplin/i;
@@ -153,10 +152,10 @@ export const aktiveVorgaben = (liste) => (Array.isArray(liste) ? liste : []).fil
  * Was unverändert ist, bleibt unberührt (auch Altbestand wird nicht nachträglich abgewiesen);
  * Neues oder Geändertes wird streng geprüft.
  *
- *   - Ändern, Anlegen, Aktivieren, Löschen: nur die Organisationsleitung (`darfOrgEdit`).
+ *   - Ändern, Anlegen, Aktivieren, Löschen: nur die Organisationsleitung (`darfOrgEdit`); für jede andere Rolle ist das Feld wirkungslos (der gespeicherte Stand gilt, kein 403).
  *   - Höchstens `grenze` aktive Vorgaben; ein Betrieb über der Grenze (Stufenwechsel nach unten)
  *     behält seine aktiven, kann aber keine weitere aktivieren.
- *   - Wann und Wer (geaendertAm/-Von, aktiviertAm/-Von) setzt der Server; Angaben des Clients werden verworfen.
+ *   - Wann und Wer (geaendertAm/-Von, aktiviertAm/-Von, version) setzt der Server; Angaben des Clients werden verworfen.
  *
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter Betrieb
@@ -165,20 +164,32 @@ export const aktiveVorgaben = (liste) => (Array.isArray(liste) ? liste : []).fil
  */
 export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt }) {
   if (!istObjekt(neuM)) return { mandant: neuM };
+  const hatAlt = !!altM && Object.prototype.hasOwnProperty.call(altM, "vorgaben");
   const alt = Array.isArray(altM && altM.vorgaben) ? altM.vorgaben : [];
   const hatNeu = Object.prototype.hasOwnProperty.call(neuM, "vorgaben");
-  if (!hatNeu) return alt.length ? { mandant: { ...neuM, vorgaben: alt } } : { mandant: neuM };
+  /* Der gespeicherte Stand gilt: wie gespeichert (auch ein nicht listenförmiger Altbestand), oder ohne das Feld. */
+  const gespeichert = () => {
+    /* Reihenfolge der Felder bleibt (Abdrücke vergleichen sie). */
+    const aus = {};
+    for (const [k, v] of Object.entries(neuM)) {
+      if (k !== "vorgaben") aus[k] = v;
+      else if (hatAlt) aus[k] = altM.vorgaben;
+    }
+    if (hatAlt && !hatNeu) aus.vorgaben = altM.vorgaben;
+    return { mandant: aus };
+  };
+  /* Wer org.edit nicht hat, sieht das Feld nicht und ändert es nicht: Was eine veraltete oder gefälschte Kopie
+     mitschickt, ist wirkungslos (kein 403, damit eine Kopie, die sonst Erlaubtes ändert, nicht deswegen scheitert). */
+  if (!darfOrgEdit || !hatNeu) return gespeichert();
   const neu = neuM.vorgaben;
   const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   /* Ohne Serverfelder vergleichen: Ein Rundweg ändert nichts, auch wenn die Stempel mitkommen. */
   const ohneStempel = (v) => { if (!istObjekt(v)) return v; const k = { ...v }; for (const f of VORGABEN_SERVERFELDER) delete k[f]; return k; };
   const altMap = new Map(alt.filter(istObjekt).map((v) => [v.id, v]));
   if (!Array.isArray(neu)) return { grund: "Vorgaben: erwartet wird eine Liste." };
-  if (gleich(neu.map(ohneStempel), alt.map(ohneStempel))) {
-    /* Nichts geändert: der gespeicherte Stand gilt (mitgeschickte Stempel sind wirkungslos). */
-    return { mandant: alt.length || (altM && Object.prototype.hasOwnProperty.call(altM, "vorgaben")) ? { ...neuM, vorgaben: alt } : neuM };
-  }
-  if (!darfOrgEdit) return { grund: "Interne Vorgaben legt die Organisationsleitung an und ändert sie (org.edit)." };
+  /* Nichts geändert (auch Altbestand ohne Prüfung): der gespeicherte Stand gilt, mitgeschickte Stempel sind wirkungslos. */
+  if (hatAlt && gleich(neu.map(ohneStempel), alt.map(ohneStempel))) return gespeichert();
+  if (!hatAlt && neu.length === 0) return gespeichert();
   if (neu.length > VORGABEN_GRENZEN_FELD.max) return { grund: `Vorgaben: höchstens ${VORGABEN_GRENZEN_FELD.max}.` };
 
   const ids = new Set();
@@ -191,7 +202,8 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
     const vorher = altMap.get(v.id);
     const k = ohneStempel(v);
     if (vorher && gleich(k, ohneStempel(vorher))) { aus.push(vorher); continue; }
-    const st = { ...k, geaendertAm: jetzt, geaendertVon: person === undefined || person === null ? null : String(person) };
+    const st = { ...k, geaendertAm: jetzt, geaendertVon: person === undefined || person === null ? null : String(person),
+      version: vorher && Number.isInteger(vorher.version) && vorher.version >= 1 ? vorher.version + 1 : 1 };
     if (v.status === "aktiv" && !(vorher && vorher.status === "aktiv")) { st.aktiviertAm = jetzt; st.aktiviertVon = st.geaendertVon; }
     else if (v.status === "aktiv" && vorher) {
       if (vorher.aktiviertAm) st.aktiviertAm = vorher.aktiviertAm;
@@ -215,29 +227,6 @@ function pruefeVorgabeKurz(v, altMap) {
   if (kv) for (const f of VORGABEN_SERVERFELDER) delete kv[f];
   if (kv && JSON.stringify(k) === JSON.stringify(kv)) return null;
   return pruefeVorgabe(k);
-}
-
-/**
- * Sicht des Betriebsrats (Plan 5, Block K): Zahlen und Texte der Vorgabe, keine Personen — weder die der Geltung
- * noch die der Ausnahmen (dort nur die Anzahl) noch wer geändert hat.
- * @param {any} liste
- */
-export function vorgabenBetriebsrat(liste) {
-  return (Array.isArray(liste) ? liste : []).filter(istObjekt).map((v) => {
-    const g = istObjekt(v.geltung) ? v.geltung : {};
-    const a = istObjekt(v.ausnahmen) ? v.ausnahmen : {};
-    const aus = {
-      id: v.id, name: v.name, beschreibung: v.beschreibung, regelart: v.regelart, staerke: v.staerke, prioritaet: v.prioritaet,
-      bezug: v.bezug, status: v.status, gueltigAb: v.gueltigAb, gueltigBis: v.gueltigBis,
-      geltung: { art: g.art === "personen" ? "personen" : g.art, ...(Array.isArray(g.einheiten) ? { einheiten: g.einheiten } : {}),
-        ...(Array.isArray(g.gruppen) ? { gruppen: g.gruppen } : {}), ...(Array.isArray(g.personen) ? { anzahlPersonen: g.personen.length } : {}) },
-      grundlage: istObjekt(v.grundlage) ? { art: v.grundlage.art, ...(v.grundlage.fundstelle !== undefined ? { fundstelle: v.grundlage.fundstelle } : {}) } : v.grundlage,
-      ausnahmen: { anzahlPersonen: Array.isArray(a.personen) ? a.personen.length : 0, anzahlZeitraeume: Array.isArray(a.zeitraeume) ? a.zeitraeume.length : 0,
-        teilzeitAnteilig: a.teilzeitAnteilig === true },
-    };
-    for (const k of Object.keys(aus)) if (aus[k] === undefined) delete aus[k];
-    return aus;
-  });
 }
 
 /* --------------------------------------------------------------------------
