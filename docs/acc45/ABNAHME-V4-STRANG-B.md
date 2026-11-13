@@ -129,7 +129,8 @@ Rechteentscheidung 2026-11-11 (endgültig nur Planung/Leitung, keine einseitige 
 |---|---|---|---|---|
 | `wcag-wp40.test.js` | bestanden (24/24) | Bewertungslogik ohne Browser | – | |
 | `geraete-wp21-sv-uebergabe.test.js` | bestanden (10/10) | | – | |
-| NEU e2e axe `abnahme-b-heute-stempeluhr` (8 Viewports) | siehe 3.8 | Heute mit Stempeluhr; Zielgröße Ein-/Ausstempeln ≥ 24 px | – | |
+| NEU e2e axe `abnahme-b-heute-stempeluhr` (8 Viewports) | siehe 3.8 | Heute mit Stempeluhr „Einstempeln“; Zielgröße ≥ 24 px; eigene Person `stempeluhr-ein`, Dienst heute, nicht gestempelt | – | |
+| NEU e2e axe `abnahme-b-heute-stempeluhr-ausstempeln` (8 Viewports) | siehe 3.8 | Heute eingestempelt „Ausstempeln“ mit Pausenfeld; Zielgröße ≥ 24 px; eigene Person `stempeluhr-aus` | – | |
 | NEU e2e axe `abnahme-b-krankmeldung-blatt` (8 Viewports) | siehe 3.8 | geöffnetes Krankmeldungsblatt | – | |
 | NEU e2e axe `abnahme-b-lagebild-planer` (8 Viewports) | siehe 3.8 | Lagebild mit offenen Krankmeldungen | B-1 | |
 | NEU e2e axe `abnahme-b-stempelbefunde-leitung` (8 Viewports) | siehe 3.8 | Monatsabschluss-Fläche | B-2 | |
@@ -164,7 +165,7 @@ Die 34 Übersprungenen sind gewollt: die drei schreibenden Abläufe an 7 von 8 V
 | B8 Krankmeldung zweistufig | 390x844 (+ SV und Planung 1024x768) | bestanden | Meldung: Server 200 |
 | B10 Monatsabschluss | 390x844-Projekt, Seite auf 1024x768 | bestanden, **Korrekturschritt nicht ausführbar** | Abschluss 200, Wiederöffnen 200, erneuter Abschluss 200; Demo-Bestand hat im Vormonat keinen vollständigen Stempel, daher keine Korrektur in diesem Ablauf (Korrektur nach Wiederöffnen belegt `monatsabschluss.test.js` „Wiederöffnen durch die Leitung …“) |
 | mein-plan-mobil | alle 8 | bestanden | |
-| heute-stempeluhr (axe) | alle 8 | bestanden | |
+| heute-stempeluhr (axe) | alle 8 | Korrektur 2026-11-13: die erste Fassung prüfte die Person aus B7; nach B7 (ein- und ausgestempelt) zeigte deren Stempeluhr keinen Knopf, die Zielgröße wurde dort nie geprüft (CI-Lauf 43430275837: 7 von 8 rot, nur 360x740 vor B7 grün). Jetzt eigene Personen und fester Stand, Zeitzone Europe/Berlin | zusätzlich heute-stempeluhr-ausstempeln |
 | krankmeldung-blatt (axe) | alle 8 | bestanden | |
 | lagebild-planer (axe) | alle 8 | bestanden mit Ausnahme B-1 | Ausnahme an allen 8 genutzt |
 | stempelbefunde-leitung (axe) | alle 8 | bestanden mit Ausnahme B-2 | Ausnahme an allen 8 genutzt |

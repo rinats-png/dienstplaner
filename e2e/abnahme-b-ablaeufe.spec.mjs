@@ -57,26 +57,33 @@ async function zuKrankMelden(page) {
   await geheZu(page, (await page.locator(".m-tabs button:visible").count()) ? "Anliegen" : "Meine Schichten");
 }
 
-/** Der Person der Beschäftigtenrolle heute einen Frühdienst geben (über die Planung, PUT mit ETag). */
-async function dienstHeuteSicherstellen() {
-  const ma = await apiAnmelden("mitarbeiter");
+/** Einer Person am Tag einen Dienst mit Beginn und Ende geben (über die Planung, PUT mit ETag); vorhandener Dienst bleibt. */
+async function dienstSicherstellen(personId, tag) {
   const pl = await apiAnmelden("planer");
   const g = await api("bestand", { token: pl.token });
   expect(g.s, "Planung liest den Bestand").toBe(200);
   const m = mandantVon(g);
-  const tagKey = `${ma.person}|${HEUTE}`;
-  if ((m.abweichungen || {})[tagKey]) return { ma, dienst: m.abweichungen[tagKey] };
-  /* Die Planungsregeln (Ruhezeit nach dem Vortag) entscheiden, welcher Dienst heute zulässig ist: der erste, den der Server annimmt. */
+  const tagKey = `${personId}|${tag}`;
+  const dienste = (m.dienstarten || []).filter((x) => x.start && x.ende);
+  const da = (m.abweichungen || {})[tagKey];
+  if (dienste.some((x) => x.id === da)) return da;
+  /* Die Planungsregeln (Ruhezeit nach dem Vortag) entscheiden, welcher Dienst zulässig ist: der erste, den der Server annimmt. */
   const abgelehnt = [];
-  for (const d of (m.dienstarten || []).filter((x) => x.start && x.ende)) {
+  for (const d of dienste) {
     const g2 = await api("bestand", { token: pl.token });
     const m2 = mandantVon(g2);
     m2.abweichungen = { ...(m2.abweichungen || {}), [tagKey]: d.id };
     const w = await api("bestand", { methode: "PUT", token: pl.token, rumpf: { bestand: g2.d.bestand, etag: g2.d.etag } });
-    if (w.s === 200) return { ma, dienst: d.id };
+    if (w.s === 200) return d.id;
     abgelehnt.push(`${d.id}:${w.s}`);
   }
-  throw new Error(`Kein Dienst heute zulässig (${abgelehnt.join(", ")})`);
+  throw new Error(`Kein Dienst am ${tag} zulässig (${abgelehnt.join(", ")})`);
+}
+
+/** Der Person der Beschäftigtenrolle heute einen Dienst geben. */
+async function dienstHeuteSicherstellen() {
+  const ma = await apiAnmelden("mitarbeiter");
+  return { ma, dienst: await dienstSicherstellen(ma.person, HEUTE) };
 }
 
 /** Ein Schritt am Monatsabschluss über die Oberfläche; schlägt mit den Serverantworten fehl, wenn der Zustand nicht eintritt. */
@@ -307,16 +314,52 @@ test.describe("Abnahme B — Darstellung und Barrierefreiheit der Abläufe", () 
     expect(Math.min(km.w, km.h), `Zielgröße „Krank melden“ ${km.w}×${km.h}`).toBeGreaterThanOrEqual(24);
   });
 
-  test("heute-stempeluhr", async ({ page }, testInfo) => {
-    await anmelden(page, "mitarbeiter");
-    /* Vorbedingung: Die Stempeluhr zeigt je nach Stand Einstempeln oder Ausstempeln. Fehlt beides, liefert der Seed keinen Dienst heute: laut scheitern statt still nichts zu prüfen. */
-    let gefunden = 0;
-    for (const n of ["Einstempeln", "Ausstempeln"]) {
-      const g = await zielgroesse(page, n);
-      if (g) { gefunden += 1; expect(Math.min(g.w, g.h), `Zielgröße „${n}“ ${g.w}×${g.h}`).toBeGreaterThanOrEqual(24); }
+  /* Stempeluhr in festem Stand: je eine eigene Person (global-setup.mjs, ZUSATZ_ZUGAENGE), die kein anderer Test anmeldet.
+     Früher prüfte der Test die Person der Rolle „mitarbeiter“; nach B7 (390x844: ein- UND ausgestempelt) zeigte deren
+     Stempeluhr nur noch „Dienst erfasst“ ohne Knopf, und jeder spätere Viewport scheiterte. Der Browser rechnet „heute“ in
+     seiner Ortszeit, der Server stempelt nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin): darum hier die Zeitzone des
+     Betriebs, sonst zeigte ein Runner in UTC zwischen 23 und 24 Uhr den Vortag. */
+  test.describe("Stempeluhr", () => {
+    test.use({ timezoneId: "Europe/Berlin" });
+
+    /** Dienst heute und Stempelstand der Person herstellen und über den Server bestätigen. */
+    async function stempeluhrStand(zugang, eingestempelt) {
+      const ich = await apiAnmelden(zugang);
+      const tag = heuteBerlin();
+      await dienstSicherstellen(ich.person, tag);
+      const stand = async () => (mandantVon(await api("bestand", { token: ich.token })).einstempeln || {})[`${ich.person}|${tag}`] || null;
+      let st = await stand();
+      if (eingestempelt && !st) {
+        const r = await api("stempeln", { methode: "POST", token: ich.token, rumpf: { datum: tag, art: "start" } });
+        expect(r.s, `Einstempeln über den Server: ${r.text.slice(0, 160)}`).toBe(200);
+        st = await stand();
+      }
+      const offen = !!st && !!st.start && !st.ende;
+      expect(offen ? "eingestempelt" : st ? "abgeschlossen" : "nicht gestempelt",
+        `Vorbedingung ${zugang}: Stand am ${tag}`).toBe(eingestempelt ? "eingestempelt" : "nicht gestempelt");
     }
-    expect(gefunden, "Vorbedingung: Stempeluhr mit Einstempeln oder Ausstempeln sichtbar (Seed: Dienst heute für die Beschäftigtenrolle)").toBeGreaterThan(0);
-    await axePruefen(page, testInfo, FL.heute);
+
+    async function stempelknopfPruefen(page, name) {
+      const b = page.getByRole("button", { name, exact: true }).first();
+      await expect(b, `Vorbedingung: Stempeluhr zeigt „${name}“ (Dienst heute, eigener Stempelstand)`).toBeVisible({ timeout: 20000 });
+      const g = await zielgroesse(page, name);
+      expect(g, `Maße von „${name}“`).not.toBeNull();
+      expect(Math.min(g.w, g.h), `Zielgröße „${name}“ ${g.w}×${g.h} (WCAG 2.5.8)`).toBeGreaterThanOrEqual(24);
+    }
+
+    test("heute-stempeluhr", async ({ page }, testInfo) => {
+      await stempeluhrStand("stempeluhr-ein", false);
+      await anmelden(page, "stempeluhr-ein");
+      await stempelknopfPruefen(page, "Einstempeln");
+      await axePruefen(page, testInfo, FL.heute);
+    });
+
+    test("heute-stempeluhr-ausstempeln", async ({ page }, testInfo) => {
+      await stempeluhrStand("stempeluhr-aus", true);
+      await anmelden(page, "stempeluhr-aus");
+      await stempelknopfPruefen(page, "Ausstempeln");
+      await axePruefen(page, testInfo, FL.heuteAus);
+    });
   });
 
   test("krankmeldung-blatt", async ({ page }, testInfo) => {
