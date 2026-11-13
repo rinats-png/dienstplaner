@@ -31,6 +31,7 @@ import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenm
 import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { vorgabenZusammen } from "./vorgaben.mjs";
+import { schichtzuordnungZusammen } from "./schichtzuordnung.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -1525,6 +1526,13 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
         tarif: ort.betrieb.tarif, jetzt: new Date().toISOString() });
       if (vorgaben.grund) return { verweigert: vorgaben.grund };
       geschickt = vorgaben.mandant;
+      /* Mehrere Schichtmodelle je Person (IMP-6 Teil 2, Betreiberentscheidung 2026-11-13): wer heute Schichtfolge und Personal
+         pflegt (org.edit oder pattern.edit, dazu staff.edit). Form, Überschneidung, Lücke, unbekanntes Modell und Rückwirkung
+         (vergangene, abgeschlossene, freigegebene Monate) weist der Server ab; Wann/Wer/Version vom Server. Ohne Recht wirkungslos. */
+      const modelle = schichtzuordnungZusammen(ort.betrieb, geschickt, { darf: (darf(rolle, "org.edit") || darf(rolle, "pattern.edit")) && darf(rolle, "staff.edit"),
+        person: sitzung.person, jetzt: new Date().toISOString(), heute: heuteBerlin() });
+      if (modelle.grund) return { verweigert: modelle.grund };
+      geschickt = modelle.mandant;
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
@@ -1664,6 +1672,14 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
           /* Interne Vorgaben (WP-I4) ebenso: nur über vorgabenZusammen (org.edit), nie mit dem neuen Betrieb. */
           const neuerBetrieb = { ...moduleinstellungenVerwerfen(geschickt) };
           delete neuerBetrieb.vorgaben;
+          /* Schichtmodelle und Zuordnungen (IMP-6 Teil 2) ebenso: nur über schichtzuordnungZusammen (Planung, Leitung). */
+          delete neuerBetrieb.schichtmodelle;
+          if (Array.isArray(neuerBetrieb.personen))
+            neuerBetrieb.personen = neuerBetrieb.personen.map((x) => {
+              if (!x || typeof x !== "object" || !Object.prototype.hasOwnProperty.call(x, "schichtmodellZuordnungen")) return x;
+              const { schichtmodellZuordnungen: _weg, ...ohne } = x; // eslint-disable-line no-unused-vars
+              return ohne;
+            });
           return paketeGeprueft(neuerBetrieb, null);
         }
         const zusammen = { ...alt };

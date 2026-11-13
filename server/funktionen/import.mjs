@@ -230,7 +230,7 @@ export default async (req) => {
           return fehlerAntwort(422, "BLATT_UNGUELTIG", "Dieses Tabellenblatt gibt es nicht.");
         const mZeilen = v.blaetter[mBlatt].zeilen;
         const zZeilen = zBlatt === null ? null : v.blaetter[zBlatt].zeilen;
-        const sv = schichtVorschauMitSpeicher({ raum: besitz.raum, vorgang: v.id }, { mandant: eigener, modellZeilen: mZeilen, zuordnungZeilen: zZeilen, zuordnung: rumpf.zuordnung });
+        const sv = schichtVorschauMitSpeicher({ raum: besitz.raum, vorgang: v.id }, { mandant: eigener, modellZeilen: mZeilen, zuordnungZeilen: zZeilen, zuordnung: rumpf.zuordnung, heute });
         if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
         v.zeilen = mZeilen; v.zuordnungZeilen = zZeilen; v.zuordnung = rumpf.zuordnung === undefined ? undefined : rumpf.zuordnung;
         v.analyse = { art: v.art }; v.plan = null;
@@ -253,7 +253,7 @@ export default async (req) => {
       if (v.art === "schichtzyklus") {
         const br = await bremse("schreiben", k);
         if (!br.frei) return zuVielAntwort(br.wartet);
-        const sv = schichtVorschauMitSpeicher({ raum: besitz.raum, vorgang: v.id }, { mandant: eigener, modellZeilen: v.zeilen, zuordnungZeilen: v.zuordnungZeilen || null, zuordnung: v.zuordnung });
+        const sv = schichtVorschauMitSpeicher({ raum: besitz.raum, vorgang: v.id }, { mandant: eigener, modellZeilen: v.zeilen, zuordnungZeilen: v.zuordnungZeilen || null, zuordnung: v.zuordnung, heute });
         if (!sv.ok) return fehlerAntwort(422, sv.code, sv.nachricht);
         const { ok: _ok, ...ergebnis } = sv;
         return antwort({ art: v.art, unterstuetzt: false, nurVorschau: true, vorschau: { ...ergebnis, zeitraum: null }, bereit: false,

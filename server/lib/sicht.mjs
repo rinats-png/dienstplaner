@@ -141,7 +141,10 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
   "nachtvorsorge", "rolleSeit", "rolleVerlauf", "urlaubshinweis", "geburtstag",
   "geburtsdatum", "personalnummer", "iban", "steuerId", "sozialversicherung",
   "notfall", "lohn", "gehalt", "zuschlaege", "einarbeitung", "nachweise",
-  "neuerZugang", "anonymSeit", "schutz", "sichtbereich"])];
+  "neuerZugang", "anonymSeit", "schutz", "sichtbereich",
+  /* Mehrere Schichtmodelle je Person (IMP-6 Teil 2, schichtzuordnung.mjs): nur Planung, Leitung und Kundenrolle —
+     weder die eigene Person noch Betriebsrat oder Schichtverantwortung (keine neue Leserechte; Planrechnung unverändert). */
+  "schichtmodellZuordnungen"])];
 
 /* ------------------------------------------------------------------------
    KATALOG DER ART.-9-NAHEN FELDER (T-11, L-16, R-03)
@@ -694,6 +697,9 @@ export const BETRIEB = {
      § 87 BetrVG offen: eine Lesesicht des Betriebsrats gibt es nicht). Planung sieht das Feld nicht (rechte.mjs nimmt es aus der
      Sicht); nur org.edit (Leitung, Kundenrolle) liest und schreibt. */
   vorgaben: [WEG, WEG],
+  /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): nur Planung, Leitung und Kundenrolle; sie wirken
+     noch nicht auf die Planrechnung. Beschäftigte, Schichtverantwortung und Betriebsrat sehen das Feld nicht. */
+  schichtmodelle: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
