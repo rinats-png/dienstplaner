@@ -8,7 +8,7 @@
 | | |
 |---|---|
 | Auftrag | Betreiberauftrag 2026-11-13 „Vollständige Staging- und Release-Abnahme“, Strang C = Bereiche 12, 13, 15, 16 |
-| Geprüfter Stand | `integration/release-v4` @ `0638c10185c0171da3cc1d2ae4a2195adf9c42f4` (Merge #270), bei Beginn und Ende unverändert; neue Prüfungen auf `feature/abnahme-v4-strang-c` |
+| Geprüfter Stand | `integration/release-v4` @ `0638c10185c0171da3cc1d2ae4a2195adf9c42f4` (Merge #270) bei Beginn. Bis zum Ende rückte die Integration auf `ca45a0a2` vor (#271 WP-48-GB Öffnen, #272 Rollenauswahl; nur Oberfläche, `package.json`-Kette, Workflow) — die Läufe hier gelten für `0638c101`; der Zweig `feature/abnahme-v4-strang-c` ist danach mit `ca45a0a2` zusammengeführt (Kette: `wp48-gb-oeffnen`, `abnahme-c`, `wcag-wp40`, `sammelpruefung` zuletzt) |
 | CI auf demselben Commit | „Prüfung“ Lauf 43392304855 **success** (Jobs `pruefen`, `browser-abnahme`; darin „Bild bauen (lokal, für die Prüfung)“, „Container starten“, „Gate-Proben im Bild“, „Rückweg-Werkzeuge im Bild“ grün); „Betrieb: Deploy-Skripte“ 43392304782 success; „Sicherheit“ 43392304615 success; „Lieferkette“ 43392304696 success |
 | Umgebung | Windows 11, Git Bash, Node wie `package.json`; Docker **nicht installiert**; andere Prüfstränge liefen zeitgleich auf demselben Rechner (Last → Zeitüberschreitungen, siehe unten) |
 | Grenzen | kein Merge, keine Produktion, kein VPS/SSH, keine Freischaltung gesperrter Funktionen, keine Änderung an Rechten/Branch-Schutz; keine Prüfung abgeschwächt |
