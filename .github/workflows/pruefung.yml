@@ -19,7 +19,7 @@ permissions:
 jobs:
   pruefen:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
       BILD: centric-pruefung:${{ github.sha }}
@@ -114,6 +114,20 @@ jobs:
       # WP-19 B5: Ansichten Betriebsmittel und Kompetenzen zeigen für Module im Status geplant keine aktive Schreibaktion (Server: 403).
       - name: Branchenmodule, Oberfläche ohne Schreibaktionen bei Status geplant (WP-19 B5)
         run: npm run pruefung:modul-altwege-oberflaeche
+
+      # Abnahme V4 Strang B: Wiederholung kritischer Vorgänge (Doppelstempel, Krankmeldung zweistufig, Monatsabschluss, veralteter ETag) über die echten Handler.
+      - name: Abnahme V4 Strang B, Wiederholung kritischer Vorgänge
+        run: npm run pruefung:abnahme-b
+
+      # Erkennung gestrandeter Betriebe (M1–M6, unklar): nur lesendes Skript gegen synthetische Sicherungen;
+      # Eingabe bytegleich, Ausgabe ohne Personendaten, Ablehnung benutzter Ablagen.
+      - name: Erkennung gestrandeter Betriebe, nur lesend, synthetische Sicherungen
+        run: npm run pruefung:erkennung
+
+      # Prozess: Rechenfunktionen des Durchsatz-Dashboards (ohne Netz) und Wächter gegen wiederkehrende Fehlerklassen
+      # (Kettenreihenfolge, Zeilenenden, freie Uhr und Kurzliterale in neuen Tests).
+      - name: Durchsatz-Werkzeug und Prozess-Wächter
+        run: npm run pruefung:durchsatz
 
       # WP-40: Bewertungslogik der Browser-Abnahme und Fehlertext-Verknüpfung (ohne Browser;
       # die Messung selbst läuft von Hand, siehe pruefungen/browser/wcag-wp40.mjs).
@@ -469,6 +483,12 @@ jobs:
       # WP-12: Kette A + B zusammen über die Schnittstelle und die Dateiablage (Rundreise je Rolle × Feld).
       - name: Integrationsabnahme Kette A + B
         run: npm run pruefung:abnahme-ab
+
+      # Abnahme V4 Strang C: echter Server — SIGKILL mitten im Schreiben und Wiederanlauf, Sicherung → Schaden →
+      # Wiederherstellung byteweise, SIGTERM (nur Linux); Branchenmodule über PUT je Rolle nicht einschaltbar;
+      # Import/KI/Teilweg/Hilfe/Demo/Registrierung bei verstümmelten Schaltern aus, kein ausgehender Netzverkehr.
+      - name: Abnahme V4 Strang C (Sicherung, Fehlerzustände, Module, KI/Import aus)
+        run: npm run pruefung:abnahme-c
 
       # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
       - name: Preisanzeige nach Rolle

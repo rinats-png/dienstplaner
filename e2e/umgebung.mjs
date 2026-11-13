@@ -10,6 +10,10 @@ export const VIEWPORTS = Object.freeze([...GERAETE_VIEWPORTS, ...GERAETE_VIEWPOR
 /** Rollen, für die global-setup.mjs synthetische Zugänge im Demo-Bestand (erfundene Personen) anlegt. */
 export const ROLLEN = Object.freeze(["mitarbeiter", "subplaner", "planer", "leitung", "betriebsrat"]);
 
+/** Weitere Zugänge der Rolle Beschäftigte (je eine eigene Person) für die Stempeluhr der Abnahme B: ein Stand ohne
+ *  Einstempeln und einer eingestempelt, unabhängig vom schreibenden Ablauf B7 (e2e/abnahme-b-ablaeufe.spec.mjs). */
+export const ZUSATZ_ZUGAENGE = Object.freeze(["stempeluhr-ein", "stempeluhr-aus"]);
+
 /** Umgebungsvariable, über die global-setup.mjs die Zugangscodes an die Testprozesse reicht (nie ausgegeben). */
 export const ZUGAENGE_VAR = "CENTRIC_E2E_ZUGAENGE";
 

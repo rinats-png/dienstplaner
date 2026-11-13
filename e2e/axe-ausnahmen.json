@@ -14,6 +14,10 @@
     { "regel": "nested-interactive", "flaeche": "plan-mitarbeiter", "wp": "WP-40",
       "grund": "WCAG 4.1.2: Schichtkarte in 'Mein Plan' ist div[role=button] und enthält selbst bedienbare Elemente. Behebung braucht Umbau der Karte (äußerer Knopf oder innere Aktionen trennen), nicht trivial." },
     { "regel": "target-size", "flaeche": "plan-mitarbeiter", "wp": "WP-21",
-      "grund": "WCAG 2.5.8: dieselbe Schichtkarte gilt als teilweise verdeckt (sichtbarer Streifen 17 px unter fester Leiste an der Scrollposition des Tests); hängt an der Kartenstruktur (nested-interactive) und der festen Leiste der Telefonansicht." }
+      "grund": "WCAG 2.5.8: dieselbe Schichtkarte gilt als teilweise verdeckt (sichtbarer Streifen 17 px unter fester Leiste an der Scrollposition des Tests); hängt an der Kartenstruktur (nested-interactive) und der festen Leiste der Telefonansicht." },
+    { "regel": "label-content-name-mismatch", "flaeche": "abnahme-b-lagebild-planer", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell), Abnahme V4 Strang B 2026-11-13: Kontoknopf .avatarknopf (Initialen, Name Konto: <Name>) und die Achtungszeilen .achtungszeile[role=button] im Lagebild (aria-label weicht von der sichtbaren Kurzform ab). Gleiche Ursache wie plan-planer; WP-40-Nacharbeit." },
+    { "regel": "label-content-name-mismatch", "flaeche": "abnahme-b-stempelbefunde-leitung", "wp": "WP-40",
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell), Abnahme V4 Strang B 2026-11-13: nur der Kontoknopf .avatarknopf (Initialen sichtbar, Name Konto: <Name>), wie einstellungen-leitung; WP-40-Nacharbeit." }
   ]
 }

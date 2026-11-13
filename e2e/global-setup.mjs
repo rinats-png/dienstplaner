@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { istLoopback } from "../pruefungen/browser/abnahme-kern.mjs";
-import { BASIS, PORT, ROLLEN, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
+import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RAUM = "e2e-wp33";
@@ -84,10 +84,20 @@ export default async function globalSetup() {
       if (!p) throw new Error(`Demo-Bestand ohne aktive Person der Rolle ${r}`);
       eintraege.push({ rolle: r, personId: p.id, name: "E2E " + r });
     }
+    /* Abnahme B, heute-stempeluhr: zwei weitere Beschäftigte, die sonst kein Test anmeldet und nie stempelt (B7 stempelt
+       die Person der Rolle „mitarbeiter“ ein UND aus; danach zeigt deren Stempeluhr keinen Knopf mehr). Der Test bringt
+       sie selbst in den Stand „noch nicht eingestempelt“ bzw. „eingestempelt“. Später kann der Raum keine Zugänge mehr
+       bekommen (Kundenraumschutz), darum hier. */
+    const schluessel = eintraege.map((x) => x.rolle);
+    for (const [k, p] of ZUSATZ_ZUGAENGE.map((k, i) => [k, aktiv("mitarbeiter")[i + 1]])) {
+      if (!p) throw new Error(`Demo-Bestand ohne weitere aktive Beschäftigte für ${k}`);
+      eintraege.push({ rolle: "mitarbeiter", personId: p.id, name: "E2E " + k });
+      schluessel.push(k);
+    }
     const zz = await j("/api/zugaenge", { bestand: RAUM, eintraege }, bt);
     if (!Array.isArray(zz.d.zugaenge) || zz.d.zugaenge.length !== eintraege.length) throw new Error("Zugänge nicht angelegt (Status " + zz.s + ")");
     const codes = {};
-    eintraege.forEach((x, i) => { codes[x.rolle] = zz.d.zugaenge[i].code; });
+    schluessel.forEach((k, i) => { codes[k] = zz.d.zugaenge[i].code; });
     process.env[ZUGAENGE_VAR] = JSON.stringify(codes);
     process.env[BETREIBER_VAR] = e.d.zugangscode;
     console.log(`E2E: Server ${BASIS}, Demo-Bestand mit ${personen.length} erfundenen Personen, Zugänge für ${ROLLEN.join(", ")}`);
