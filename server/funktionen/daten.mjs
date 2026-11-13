@@ -14,6 +14,8 @@ import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { ersteinrichtungOffen, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
+import { erstleitungsZugang, erstleitungOffen, erstleitungUngueltig, erstleitungEinloesen, erstleitungAusstellen,
+  erstleitungVermerk } from "../lib/erstleitung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -420,8 +422,13 @@ async function behandeln(req, context, ctx) {
       const block = () => Array.from(randomBytes(4))
         .map((b) => alphabet[b % alphabet.length]).join("");
       const erzeugt = [];
+      /* A-3 (lib/erstleitung.mjs): Ein Leitungscode ohne Person für einen Betrieb OHNE Personen, im Fenster der
+         Ersteinrichtung, ist ein Erstanmeldecode — nur er legt bei der ersten Anmeldung die Leitungsperson an. */
+      const zielMandant = zielGelesen && zielGelesen.bestand && Array.isArray(zielGelesen.bestand.mandanten)
+        ? zielGelesen.bestand.mandanten[bindungZ.betrieb] : null;
       for (const e of eintraege) {
         const code = `${block()}-${block()}-${block()}`;
+        const erst = erstleitungAusstellen({ rolle: e.rolle, person: e.personId, demo: false, mandant: zielMandant, lage });
         /* Ein Schlüssel je Konto: Zwei gleichzeitige Anlagen stören
            einander nicht mehr, und kein ausgelieferter Code geht verloren. */
         await kontoSchreiben(store, ablageSchluessel(code), {
@@ -429,8 +436,9 @@ async function behandeln(req, context, ctx) {
           rolle: e.rolle, person: e.personId || null,
           betrieb: bindungZ.betrieb, mandantId: bindungZ.mandantId,
           demo: false, gruppe: null, hinweis: null,
-          angelegt: new Date().toISOString() });
-        erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
+          angelegt: new Date().toISOString(),
+          ...(erst ? { erstleitung: erstleitungVermerk(bindungZ.mandantId) } : {}) });
+        erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code, ...(erst ? { erstanmeldung: true } : {}) });
       }
       await protokoll("einrichten", kennung(req, sB), "erfolg",
         `${erzeugt.length} Zugänge für ${ziel} (${erzeugt.map((z) => z.rolle).join(", ")})`);
@@ -935,7 +943,7 @@ async function behandeln(req, context, ctx) {
       if (!zugangscode || String(zugangscode).length < 6)
         return antwort({ fehler: "Zugangscode fehlt oder ist zu kurz." }, 400);
 
-      const eintrag = eintragV;
+      let eintrag = eintragV;
       if (!eintrag) {
         // Gleichlange Antwortzeit, damit sich gültige und ungültige Codes
         // nicht anhand der Dauer unterscheiden lassen.
@@ -1047,6 +1055,40 @@ async function behandeln(req, context, ctx) {
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {
         return antwort({ fehler: "Einen zweiten Faktor gibt es nur für Betreiber-, Leitungs-, Planungs- und Kundenzugänge." }, 400);
+      }
+      /* A-3 (Betreiberentscheidung 2026-11-13, lib/erstleitung.mjs): Ein Erstanmeldecode legt bei seiner ersten
+         gelungenen Anmeldung die erste Leitungsperson des leeren Betriebs an — auf dem Server, unter der Sperre des
+         Raums, dauerhaft — und wird dabei an sie gebunden. Erst danach entsteht die Sitzung; scheitert ein Schritt,
+         entsteht keine. Gleichzeitige Versuche und Wiederholungen finden den eingelösten Zugang und melden sich als
+         dieselbe Person an. Nur dieser Vermerk löst das aus; ein Code ohne ihn legt nie eine Person an. */
+      if (erstleitungsZugang(eintrag)) {
+        const el = erstleitungOffen(eintrag)
+          ? await erstleitungEinloesen(store, { schluessel: fund.schluessel })
+          : (erstleitungUngueltig(eintrag) ? { ok: false, grund: "belegt" } : { ok: true, eintrag, angelegt: false });
+        if (!el.ok) {
+          if (el.grund === "belegt" || el.grund === "betrieb") {
+            await protokoll("anmelden", k, "abgewiesen", `Erstanmeldung: ${el.grund}`);
+            return antwort({ fehler: "Dieser Zugang ist nicht mehr gültig.",
+              text: "Der Betrieb ist bereits eingerichtet. Bitte wende dich an den Betreiber." }, 403);
+          }
+          await protokoll("anmelden", k, "fehler", `Erstanmeldung: ${el.grund}`);
+          return antwort({ fehler: "Die Anmeldung konnte gerade nicht abgeschlossen werden.",
+            text: "Bitte gleich noch einmal versuchen." }, 503);
+        }
+        /* Rolle, Raum und Betrieb dürfen sich dabei nicht verändert haben (fail-closed). */
+        if (!el.eintrag || el.eintrag.rolle !== eintrag.rolle || el.eintrag.bestand !== eintrag.bestand
+          || el.eintrag.gesperrt || (el.eintrag.betrieb ?? 0) !== (eintrag.betrieb ?? 0)
+          || el.eintrag.mandantId !== eintrag.mandantId) {
+          await protokoll("anmelden", k, "fehler", "Erstanmeldung: Zugang verändert");
+          return antwort({ fehler: "Die Anmeldung konnte gerade nicht abgeschlossen werden.",
+            text: "Bitte gleich noch einmal versuchen." }, 503);
+        }
+        eintrag = el.eintrag;
+        if (el.angelegt) {
+          /* Nur Kennungen: Raum, Betrieb, Person — keine Namen, keine Adressen. */
+          await protokoll("anmelden", k, "erfolg", `Erstanmeldung: Leitungsperson angelegt · ${eintrag.bestand}`,
+            { rolle: "leitung", person: el.personId, mandantId: bindungC.mandantId, verfahren: "code" });
+        }
       }
       if (bindungC.migrieren) {
         try {

@@ -14,8 +14,11 @@
    - Code ohne Person, Personen vorhanden, keine aktive der Rolle → klare
      Meldung (Ladefehler-Bildschirm), keine Sitzung, keine Person angelegt,
      auch keine im Bestand mitgebrachte fremde Sitzung.
-   - Betrieb ganz ohne Personen → wie bisher: die erste Person entsteht aus
-     dem Code (erste Anmeldung der Leitung im leeren Betrieb).
+   - Betrieb ganz ohne Personen → die Oberfläche legt KEINE Person mehr an
+     (auch nicht im Arbeitsspeicher). Die erste Leitungsperson legt seit
+     2026-11-13 der Server an, nur für einen Erstanmeldecode
+     (server/lib/erstleitung.mjs, pruefungen/erstleitung.test.js); die
+     Anmeldung meldet ihre Kennung, die Oberfläche löst sie nur auf.
    - Demozugang, Altrolle „kunde", Betreiber, personengebundene Codes →
      unverändert.
 
@@ -100,16 +103,28 @@ describe("A-3: Code ohne Person, Personen da, keine aktive Person der Rolle", ()
 });
 
 describe("A-3: unverändert", () => {
-  it("leerer Betrieb: erste Anmeldung der Leitung legt ihre Person an und meldet sie an", () => {
-    const b = bestand([], { seit: "2026-11-01", kontakt: "l@example.org" });
-    const r = sitzungAusZugang(b, LEITUNG, HEUTE);
+  it("leerer Betrieb: die Oberfläche legt keine Person an — Meldung statt Rollenwähler (jede Rolle, auch Leitung)", () => {
+    for (const rolle of ["leitung", "planer", "betriebsrat"]) {
+      const b = bestand([], { seit: "2026-11-01", kontakt: "l@example.org" });
+      const vorher = kopie(b);
+      const r = sitzungAusZugang(b, { ...LEITUNG, rolle }, HEUTE);
+      expect(r.fehler && r.fehler.titel, rolle).toBe(OHNE_PERSON_TITEL);
+      expect(r.bestand.mandanten[0].personen).toEqual([]);
+      expect(r.bestand.session).toBeNull();
+      expect(b).toEqual(vorher);
+    }
+  });
+  it("erste Anmeldung der Leitung im leeren Betrieb: die vom Server angelegte Person wird über zugang.person aufgelöst", () => {
+    /* So kommt der Bestand nach der Erstanmeldung an: Person vom Server angelegt, Code an sie gebunden. */
+    const b = bestand([person("p_abc1234", "leitung", { vorname: "", nachname: "Organisationsleitung" })]);
+    const r = sitzungAusZugang(b, { ...LEITUNG, person: "p_abc1234" }, HEUTE);
     expect(r.fehler).toBeNull();
-    const ps = r.bestand.mandanten[0].personen;
-    expect(ps).toHaveLength(1);
-    expect(ps[0]).toMatchObject({ rolle: "leitung", bereich: "ALLE", status: "aktiv", eintritt: "2026-11-01", email: "l@example.org",
-      imSchichtdienst: false, zugehoerigkeit: [{ ab: "2026-11-01", einheitId: "e1" }] });
-    expect(r.bestand.session).toEqual({ rolle: "kunde", mandantId: "m1", personId: ps[0].id });
-    expect(b.mandanten[0].personen).toEqual([]);
+    expect(r.bestand.session).toEqual({ rolle: "kunde", mandantId: "m1", personId: "p_abc1234" });
+    expect(r.bestand.mandanten).toEqual(b.mandanten);
+  });
+  it("Quelltext: die Oberfläche hat keinen Weg mehr, eine Person aus dem Zugang anzulegen", () => {
+    const q = readFileSync(new URL("../src/app/zugangssitzung.js", import.meta.url), "utf8");
+    expect(q).not.toMatch(/uid\(|personen: \[p\]|erstePerson\(/);
   });
   it("aktive Leitung vorhanden: Code ohne Person meldet die erste aktive Leitung an", () => {
     const b = bestand([person("l0", "leitung", { austritt: "2026-01-31" }), person("l1", "leitung"), person("m0", "mitarbeiter")]);

@@ -16,13 +16,19 @@
    Rollenwähler der Vorführfassung („Vorführfassung — du bist bereits
    angemeldet", „Zur Betreiberkonsole", „Als Planer anmelden …"), obwohl
    der Zugang kein Demozugang ist. Jetzt: eine klare Meldung, keine Sitzung,
-   keine angelegte Person, kein Rollenwechsel. Nur ein Betrieb ganz ohne
-   Personen legt — wie bisher — die erste Person aus dem Code an.
+   keine angelegte Person, kein Rollenwechsel.
+
+   Die erste Leitungsperson eines leeren Betriebs legt seit November 2026
+   der SERVER an — atomar, dauerhaft, nur für einen ausdrücklich so
+   ausgestellten Erstanmeldecode (server/lib/erstleitung.mjs). Die Anmeldung
+   meldet ihre Kennung zurück (zugang.person); hier wird sie nur noch
+   aufgelöst. Die Oberfläche legt keine Person mehr an, auch nicht im
+   Arbeitsspeicher: Ein Code ohne Person in einem Betrieb ohne Personen
+   (gewöhnlicher Code, kein Erstanmeldecode) bekommt dieselbe Meldung.
    ========================================================================== */
 import { imDienst } from "../../server/lib/fachpruefung.mjs";
 import { aktivePerson } from "../../server/lib/personengueltig.mjs";
 import { heute as heuteBerlin } from "../lib/datum.js";
-import { uid } from "../lib/format.js";
 import { ROLLENBEZEICHNUNG } from "../lib/rollen.js";
 
 /** Meldung, wenn ein Code ohne Person auf keine aktive Person seiner Rolle trifft. */
@@ -31,38 +37,6 @@ export const ohnePersonText = (betrieb, rolle) =>
   `In „${betrieb}" gibt es keine aktive Person mit der Rolle ${ROLLENBEZEICHNUNG[rolle] || rolle}, `
   + "der dieser Zugangscode zugeordnet werden kann. Bitte wenden Sie sich an den Betreiber oder die Verwaltung "
   + "Ihres Betriebs: Er kann den Code einer Person zuordnen oder einen personengebundenen Code ausstellen.";
-
-/** Die erste Person eines Betriebs ohne Personen: wer den Code in der Hand hält. */
-function erstePerson(mand, rolle, tag) {
-  const ersteEinheit = (mand.einheiten || [])[0];
-  return {
-    id: uid("p"),
-    vorname: "",
-    nachname: ROLLENBEZEICHNUNG[rolle] || "Leitung",
-    funktion: ROLLENBEZEICHNUNG[rolle] || "Leitung",
-    email: mand.kontakt || "",
-    zugehoerigkeit: ersteEinheit
-      ? [{ ab: mand.seit || tag, einheitId: ersteEinheit.id }] : [],
-    eintritt: mand.seit || tag,
-    austritt: null,
-    wochenstunden: (mand.einstellungen || {}).wochenstunden || 40,
-    urlaubsanspruch: (mand.einstellungen || {}).urlaubsanspruch || 30,
-    urlaubsuebertrag: 0,
-    stundenuebertrag: 0,
-    qualifikationen: [],
-    teilzeit: null,
-    springer: false,
-    einschraenkungen: {},
-    rolle,
-    rolleSeit: tag,
-    rolleVerlauf: [],
-    /* Alle Einheiten: Wer den Betrieb einrichtet, muss überall hinsehen können. */
-    bereich: "ALLE",
-    status: "aktiv",
-    /* Die Leitung fährt nicht zwangsläufig selbst Schicht — das entscheidet sie später unter Personal. */
-    imSchichtdienst: false,
-  };
-}
 
 /**
  * Löst den Zugang zu einer Sitzung der Oberfläche auf.
@@ -92,23 +66,18 @@ export function sitzungAusZugang(b, zugang, tag = heuteBerlin()) {
   let fehler = null;
   if (zugang.person == null) {
     p = kand[0] || null;
-    /* A-3: Personen da, aber keine aktive der Rolle — Meldung statt Rollenwähler der Vorführfassung. */
-    if (!p && personen.length) fehler = { titel: OHNE_PERSON_TITEL, text: ohnePersonText(mand.name, zugang.rolle) };
+    /* A-3: keine aktive Person der Rolle (auch: Betrieb noch ganz ohne Personen) — Meldung statt Rollenwähler der
+       Vorführfassung. Die Oberfläche legt keine Person an; das tut allein der Server für einen Erstanmeldecode. */
+    if (!p) fehler = { titel: OHNE_PERSON_TITEL, text: ohnePersonText(mand.name, zugang.rolle) };
   } else {
     p = personen.find((x) => x.id === zugang.person)
       || (Number.isInteger(zugang.person) ? personen[zugang.person] : null)
       || null;
-    if (!p && personen.length)
+    if (!p)
       fehler = `Der Zugangscode gehört zu einer Person, die es in „${mand.name}" nicht mehr gibt. `
         + "Bitte einen neuen Code ausstellen lassen.";
   }
-  /* Ein frisch angelegter Betrieb hat noch keine Person — ohne Person gäbe es keinen Weg hinein. Die erste
-     Person ist die, die den Zugangscode in der Hand hält (Rolle aus dem Code, alle Einheiten). */
-  let bestand = b;
-  if (!p && !personen.length) {
-    p = erstePerson(mand, zugang.rolle, tag);
-    bestand = { ...bestand, mandanten: bestand.mandanten.map((x) => (x.id === mand.id ? { ...mand, personen: [p] } : x)) };
-  }
+  const bestand = b;
   if (p) return { bestand: { ...bestand, session: { rolle: "kunde", mandantId: mand.id, personId: p.id } }, fehler };
   /* Keine Person: auch keine im Bestand mitgebrachte Sitzung übernehmen — sie gehörte jemand anderem. */
   return { bestand: { ...bestand, session: null }, fehler };

@@ -5,6 +5,7 @@ import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
 import { testbetriebAnlegen } from "../lib/provisionierung.mjs";
 import { TESTTAGE } from "../lib/aufraeumen.mjs";
+import { erstleitungVermerk } from "../lib/erstleitung.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -134,6 +135,9 @@ export default async (req) => {
         person: null, betrieb: 0, mandantId, demo: false, gruppe: null, hinweis: null,
         selbstAngelegt: true, laeuftAb,
         angelegt,
+        /* A-3 (lib/erstleitung.mjs): Der Leitungscode des eben angelegten, leeren Betriebs ist sein Erstanmeldecode —
+           er allein legt bei der ersten Anmeldung die Leitungsperson an. Die übrigen Codes legen nie eine Person an. */
+        ...(rolle === "leitung" ? { erstleitung: erstleitungVermerk(mandantId) } : {}),
       });
       zugaenge.push({ rolle, code });
     }

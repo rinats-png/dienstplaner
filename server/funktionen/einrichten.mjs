@@ -11,6 +11,7 @@ import { bestandLesen } from "../lib/bestand.mjs";
 import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
+import { erstleitungAusstellen, erstleitungVermerk } from "../lib/erstleitung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
   verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
@@ -466,6 +467,7 @@ export default async (req) => {
      (/api/bestand-anlegen); sein eigener Code darf deshalb vorher entstehen. */
   let bindungE = { betrieb: betrieb ?? 0, mandantId: null };
   let lageE = null;
+  let mandantE = null;
   if (rolle !== "betreiber") {
     const gelesenE = await bestandLesen(s0, bestand);
     const b2 = betriebFuerNeuenCode(gelesenE && gelesenE.bestand, betrieb);
@@ -474,6 +476,7 @@ export default async (req) => {
       return antwort({ fehler: b2.grund }, 409);
     }
     bindungE = b2;
+    mandantE = gelesenE.bestand.mandanten[b2.betrieb];
 
     /* SI-P6, Betreiberentscheidung G.2: Auch hier legt niemand ohne nachweisbare Kundenzustimmung neue Zugänge für
        einen BESTEHENDEN Kundenraum an — für jede Rolle, Demozugang eingeschlossen, gleich ob eine Leitung fehlt.
@@ -536,6 +539,9 @@ export default async (req) => {
   const code = `${block()}-${block()}-${block()}`;
 
   const s = s0;
+  /* A-3 (lib/erstleitung.mjs): Leitungscode ohne Person, kein Demozugang, Betrieb ohne Personen, Fenster der
+     Ersteinrichtung — ein Erstanmeldecode. Nur er legt bei der ersten Anmeldung die Leitungsperson an. */
+  const erstE = rolle !== "betreiber" && erstleitungAusstellen({ rolle, person, demo: !!demo, mandant: mandantE, lage: lageE });
   const konto = { name, bestand,
     rolle,                         // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
@@ -548,7 +554,8 @@ export default async (req) => {
     /* Kennung aus dem Code selbst statt aus der Anzahl — die Anzahl war
        unter Nebenläufigkeit nicht eindeutig. */
     id: demo ? `d${ablageSchluessel(code).slice(-8)}` : null,
-    angelegt: new Date().toISOString() };
+    angelegt: new Date().toISOString(),
+    ...(erstE ? { erstleitung: erstleitungVermerk(bindungE.mandantId) } : {}) };
   /* Erster Vorgang der Ersteinrichtung: das Fenster vermerken, BEVOR ein Code entsteht (SI-P6). */
   if (lageE && lageE.art === "neu") {
     try { await ersteinrichtungVermerken(s, bestand); }
