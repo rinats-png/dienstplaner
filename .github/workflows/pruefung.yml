@@ -119,6 +119,11 @@ jobs:
       - name: Abnahme V4 Strang B, Wiederholung kritischer Vorgänge
         run: npm run pruefung:abnahme-b
 
+      # Erkennung gestrandeter Betriebe (M1–M6, unklar): nur lesendes Skript gegen synthetische Sicherungen;
+      # Eingabe bytegleich, Ausgabe ohne Personendaten, Ablehnung benutzter Ablagen.
+      - name: Erkennung gestrandeter Betriebe, nur lesend, synthetische Sicherungen
+        run: npm run pruefung:erkennung
+
       # Prozess: Rechenfunktionen des Durchsatz-Dashboards (ohne Netz) und Wächter gegen wiederkehrende Fehlerklassen
       # (Kettenreihenfolge, Zeilenenden, freie Uhr und Kurzliterale in neuen Tests).
       - name: Durchsatz-Werkzeug und Prozess-Wächter
