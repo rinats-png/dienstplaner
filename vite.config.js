@@ -52,6 +52,10 @@ const swFassungAusBau = {
 export default defineConfig({
   plugins: [react(), cspNurFuerEntwicklung, swFassungAusBau],
   server: { proxy },
+  /* vitest: die Playwright-Suite (e2e/*.spec.mjs, WP-33 Teil 3) läuft mit
+     `npm run e2e`, nie unter vitest. Die übrigen Einträge sind die Vorgaben
+     von vitest, die ein eigenes exclude sonst ersetzen würde. */
+  test: { exclude: ["**/node_modules/**", "**/.git/**", "e2e/**"] },
   build: {
     outDir: "dist",
     sourcemap: false,

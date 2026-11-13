@@ -1226,3 +1226,43 @@ jobs:
       - name: Container-Logs (bei Fehler)
         if: failure()
         run: docker logs centric-pruefung
+
+  # WP-33 Teil 3: Browserabnahme mit Playwright und axe-core (WCAG 2.2 AA) an den acht
+  # Viewports der Gerätematrix WP-21 (src/ui/geraete.js). Eigener Job neben `pruefen`,
+  # damit die vitest-Kette unverändert bleibt. Keine Geheimnisse: Server, Verwalterschlüssel
+  # und Zugänge entstehen zufällig je Lauf in e2e/global-setup.mjs (Demo-Bestand, erfundene
+  # Personen). Chromium kommt in der zur gepinnten @playwright/test-Fassung passenden Version
+  # (Lockfile), nur in diesem Job. Anleitung: docs/acc45/WP-33-PLAYWRIGHT-AXE.md.
+  browser-abnahme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Chromium für Playwright installieren
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Browserabnahme (Playwright, axe, 8 Viewports)
+        run: npm run e2e
+
+      # Vollständige axe-Befunde je Fläche und Viewport (alle Schweregrade) und der JSON-Bericht.
+      # Keine Bildschirmfotos, Spuren oder Videos (playwright.config.mjs).
+      - name: Befunde als Artefakt
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-abnahme
+          path: |
+            e2e/ergebnisse/axe
+            e2e/ergebnisse/ergebnis.json
+          retention-days: 14
+          if-no-files-found: warn

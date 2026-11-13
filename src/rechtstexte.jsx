@@ -326,7 +326,8 @@ export function RechtLeiste({ onOeffnen, style }) {
         <React.Fragment key={t.id}>
           {i > 0 && <span aria-hidden="true" style={{ opacity: .5 }}>·</span>}
           <button type="button" onClick={() => onOeffnen(t.id)}
-            style={{ background: "none", border: 0, padding: "2px 4px", cursor: "pointer",
+            /* minHeight: WCAG 2.5.8 (24 px); beim Umbruch der Zeile (430 px) lagen die Ziele sonst zu dicht (axe, WP-33 Teil 3). */
+            style={{ background: "none", border: 0, padding: "2px 4px", minHeight: 24, cursor: "pointer",
               color: C.dim, fontSize: 12.5, fontFamily: "inherit", textDecoration: "underline",
               textUnderlineOffset: 3 }}>{t.titel}</button>
         </React.Fragment>))}

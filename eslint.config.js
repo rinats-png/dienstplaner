@@ -68,4 +68,23 @@ export default [
       "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
+
+  /* --- Playwright-Suite (WP-33 Teil 3) --- Node-Prozess; Rückrufe für
+     page.evaluate laufen im Browser, daher beide Globalsätze. */
+  {
+    files: ["e2e/**/*.mjs", "playwright.config.mjs"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": ["warn", { args: "none" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      /* Playwright verlangt für Tests ohne Fixtures ein leeres Objektmuster. */
+      "no-empty-pattern": "off",
+    },
+  },
 ];
