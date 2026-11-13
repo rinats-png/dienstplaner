@@ -8,6 +8,8 @@
      1. Smoke und Geo bestehen (Exit 0)
      2. ein zweiter Smoke-Lauf ohne Aufräumen bricht wegen Altlasten ab
         (Exit 3) und legt nichts an
+     3a. ohne oder mit falschem CENTRIC_PFEFFER verweigert die Aufräumprobe
+        (Exit 3) und löscht nichts (E-M6: Siegel des Widerrufbuchs)
      3. die Aufräumprobe besteht, danach ist von ppg-gate-a/-b/-geo nichts
         mehr in der Ablage — und zwei fremde Kontrollräume („fremd-kontrolle“
         und das namensähnliche „ppg-gate-ab“) sind byte-gleich
@@ -51,10 +53,14 @@ const env = { ...process.env, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", C
 for (const v of ["CENTRIC_PROBE_BASIS", "STAGING_PROBE_BASIS", "PROBE_BASIS", "PROBE_URL", "NODE_USE_ENV_PROXY"]) delete env[v];
 /* Wie im Container: CENTRIC_BASIS gesetzt (Link-Adresse des Servers) — die Proben lesen sie nicht. */
 env.CENTRIC_BASIS = "https://staging.example.invalid";
+/* Wie im Container: Jeder Aufruf dort (docker exec … node /app/werkzeug/…) sieht denselben CENTRIC_PFEFFER wie der
+   Server. Die Raumlöschung braucht ihn seit E-M6 (Siegel des Widerrufbuchs); fehlt er oder weicht er ab, muss die
+   Aufräumprobe verweigern — das prüft Schritt 3a eigens. */
+env.CENTRIC_PFEFFER = "staging-proben-pfeffer";
 
 let serverLog = "";
 const server = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL,
-  env: { ...env, PORT: "3000", CENTRIC_STATIK: statik, CENTRIC_PFEFFER: "staging-proben-pfeffer", NODE_ENV: "production" },
+  env: { ...env, PORT: "3000", CENTRIC_STATIK: statik, NODE_ENV: "production" },
   stdio: ["ignore", "pipe", "pipe"] });
 server.stdout.on("data", (d) => { serverLog += d; });
 server.stderr.on("data", (d) => { serverLog += d; });
@@ -161,6 +167,18 @@ try {
   pruef("zweiter Smoke-Lauf mit Altlasten: Exit 3, nichts angelegt", s2.code === 3 && gateVorher === gateNachher,
     `Exit ${s2.code}, ${gateVorher} → ${gateNachher}`);
 
+  /* 3a. E-M6: Ohne oder mit falschem Pfeffer ist das Widerrufbuch nicht prüfbar — die Aufräumprobe verweigert (Exit 3)
+         und löscht nichts. Vorher (a8d614cf) löschte sie halb: Codes weg, Kern, Marke und Vermerk blieben, Exit 1. */
+  const gateAbdruck = await abdruck(GATE);
+  console.log("\n— staging-aufraeumen.mjs ohne Pfeffer —");
+  const c0 = await probe("staging-aufraeumen.mjs", [], { CENTRIC_PFEFFER: "" });
+  console.log("\n— staging-aufraeumen.mjs mit falschem Pfeffer —");
+  const c0b = await probe("staging-aufraeumen.mjs", [], { CENTRIC_PFEFFER: "falscher-pfeffer-nur-proben" });
+  const gateAbdruckDanach = await abdruck(GATE);
+  pruef("Aufräumen ohne oder mit falschem Pfeffer: Exit 3, nichts gelöscht", c0.code === 3 && c0b.code === 3
+    && Object.keys(gateAbdruck).length > 0 && JSON.stringify(gateAbdruck) === JSON.stringify(gateAbdruckDanach),
+    `Exit ${c0.code}/${c0b.code}, ${Object.keys(gateAbdruck).length} → ${Object.keys(gateAbdruckDanach).length} Einträge`);
+
   console.log("\n— staging-aufraeumen.mjs —");
   const c = await probe("staging-aufraeumen.mjs");
   pruef("Aufräumen: Exit 0", c.code === 0, `Exit ${c.code}`);
@@ -199,6 +217,7 @@ try {
     server.kill("SIGTERM");
   });
   await rm(daten, { recursive: true, force: true });
+  await rm(`${daten}-zustand`, { recursive: true, force: true });   // Widerrufbuch (zustandsVerzeichnis)
   await rm(statik, { recursive: true, force: true });
 }
 process.exit(status);

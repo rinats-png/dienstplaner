@@ -1,4 +1,5 @@
 import { kontoIdSchluessel, mitgliedSchluessel, mitgliedlaufSchluessel, generationStimmt } from "./accounts.mjs";
+import { istWiderrufen } from "./widerrufbuch.mjs";
 
 /* ==========================================================================
    WOHER KOMMT DIESER KALENDER-FEED — UND GILT DAS NOCH? (WP-24)
@@ -106,7 +107,13 @@ export async function feedHerkunftGilt(store, eintrag) {
         const ende = new Date(k.laeuftAb).getTime();
         if (!Number.isFinite(ende) || ende < Date.now()) return { gilt: false, grund: "code-abgelaufen" };
       }
-      if (k.ersetztDurch === undefined || k.ersetztDurch === null) return { gilt: true };
+      if (k.ersetztDurch === undefined || k.ersetztDurch === null) {
+        /* E-M6 (Review, Befund 4): Steht ein Glied der Kette im Widerrufbuch, gilt der Feed nicht — auch wenn eine
+           zurückgespielte Ablage den Code ungesperrt zeigt. Ist das Buch nicht prüfbar, wirft istWiderrufen
+           (WiderrufbuchFehler, code BESTAND_UNLESBAR): ein Lesefehler, der nichts widerruft (→ 503). */
+        if (await istWiderrufen(store, [...gesehen])) return { gilt: false, grund: "code-widerrufen" };
+        return { gilt: true };
+      }
       if (typeof k.ersetztDurch !== "string" || !k.ersetztDurch) return { gilt: false, grund: "code-kette" };
       schluessel = k.ersetztDurch;
     }

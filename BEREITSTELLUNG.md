@@ -823,6 +823,74 @@ Sicherungsschlüssel); Automatisierungen werden kontrolliert umgestellt: neuen S
 eintragen, einen Lauf von Hand prüfen, erst dann den alten Eintrag löschen. Ein alter
 Schlüssel bekommt 401 mit `grund: "ablage-wiederhergestellt"`.
 
+**Widerrufene und ersetzte Zugangsdaten nach einem Rücksprung (Betreiberentscheidung E-M6, 2026-11-13).**
+Ein Zugangscode, der einmal zurückgezogen, ersetzt, als Ersteinrichtungscode oder als
+Erstanmeldecode ohne Person („belegt“) verbraucht oder mit seinem Raum gelöscht wurde,
+und ein gesperrter benannter Verwalterschlüssel gelten **nie wieder** — auch nicht nach dem
+Zurückspielen einer älteren Sicherung und nicht nach einem Rücksprung auf ein älteres Bild.
+Ein mit „angelegt“ eingelöster Erstanmeldecode ist der gewöhnliche Code der ersten Leitung
+und bleibt gültig; dass die Ersteinrichtung des Betriebs abgeschlossen ist, überlebt den
+Rücksprung ebenfalls. Ausnahme von „Was nach einer Wiederherstellung gilt“ oben: Ein
+Zugangsentzug wird durch eine Wiederherstellung **nicht** zurückgenommen. Die Autorität
+liegt wie bei der Schlüsselepoche außerhalb von `data/`: das Widerrufbuch
+`zustand/zugang-widerrufe.json` (nur Prüfsummen, nie Codes oder Schlüssel; mit einem aus
+dem Pfeffer abgeleiteten Siegel), dazu der Anker `widerrufbuch:anker` in `data/` (wird
+mitgesichert). **Nicht** abgedeckt sind Passwörter, entzogene Mitgliedschaften,
+2FA-Geheimnisse, benutzte Wiederherstellungscodes und einzeln zurückgesetzte
+Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (offene
+Betreiberentscheidung). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`.
+
+- **Mit `--zustand` wiederherstellen** (Weg 2 über `docker compose run` sieht
+  `CENTRIC_ZUSTAND=/zustand` von selbst; bei Weg 1 `-v "$PWD/zustand:/zustand"
+  -e CENTRIC_ZUSTAND=/zustand` ergänzen). Das Werkzeug übernimmt dann vor dem Tausch alles,
+  was die bisherige Ablage gesperrt oder abgeschlossen kennt, ins Buch, sperrt alles, was
+  im Buch steht, in der zurückgespielten Kopie (Codes, Verwalterschlüssel), legt fehlende
+  Marken der Ersteinrichtung an und vermerkt die Wiederherstellung im Buch. Läuft auf der
+  Ablage noch ein Server (Prozesssperre `.prozess`), lehnt es ab — auch mit
+  `--ohne-serverpruefung`. Ohne `--zustand` sperrt erst der Server **dieser oder einer
+  neueren Fassung** beim Start nach.
+- **Bild-Rücksprung:** Ein älteres Bild kennt das Buch nicht, wohl aber `gesperrt`.
+  Daher: Daten mit dem Werkzeug **dieser** Fassung und `--zustand` zurückspielen (oder
+  diese Fassung einmal starten), **erst dann** auf das ältere Bild zurück. Nie mit dem
+  Werkzeug eines älteren Bildes wiederherstellen und gleich das ältere Bild starten — dann
+  lebt ein widerrufener Code wieder auf (Gegenprobe im Test).
+- **Widerruf und Buch:** Ein Widerruf wirkt sofort in `data/` (Sperre, Sitzungen enden),
+  erst danach wird das Buch geschrieben. Antwortet die App mit „Widerruf wirksam,
+  Widerrufbuch nicht beschrieben“ oder meldet `/gesund` die Prüfung `widerrufbuch`:
+  Mount und Rechte von `zustand/` prüfen und den Dienst neu starten — der Start holt den
+  Eintrag nach. Bei einer Raumlöschung mit nicht
+  schreibbarem Buch werden die Codes dennoch gelöscht und als Nachtrag `widerrufbuch:nachtrag` in
+  `data/` (und im Speicher) festgehalten; Start, nächster Widerruf und das Werkzeug mit
+  `--zustand` tragen ihn ins Buch ein (das Werkzeug liest ihn vor dem Tausch aus der aktuellen
+  Ablage). Ohne `--zustand` zurückgespielt, sind die gelöschten Codes wieder gültig.
+- **Fail-closed:** Ist das Buch beschädigt, verändert, mit anderem Pfeffer gesiegelt,
+  gehört es zu einer anderen Ablage (Ankerkennung) oder fehlt es, obwohl `data/` einen
+  Anker trägt, gilt **kein** Zugangscode (Anmeldung, laufende Code-Sitzungen und
+  Kalenderfeeds aus Codes 503) und kein benannter Verwalterschlüssel; Startprotokoll
+  `WARNUNG Widerrufbuch … gilt kein Zugangscode`; das Werkzeug fasst nichts an.
+  Kontoanmeldung und der Ursprungsschlüssel bleiben. Sagt die Warnung dagegen „Das Buch ist
+  prüfbar … Die Ablage ist aber NICHT nachgezogen“, bleibt abgewiesen, was im Buch steht;
+  vor einem Rücksprung auf ein älteres Bild die Ursache beheben und neu starten.
+- **Sichern:** `zustand/zugang-widerrufe.json` ist bewusst NICHT in der Ablagesicherung
+  und gehört **getrennt** gesichert (heute von Hand: nach jedem Widerruf, mindestens
+  täglich; nur fortschreiben, nie ältere Kopien über neuere legen; Automatisierung ist eine
+  offene Betreiberentscheidung). Bei Verlust des Servers die jüngste Kopie nach
+  `zustand/` legen, dann erst starten. Ohne Buch gilt kein Code — es gibt keine Hintertür.
+- **Kein Buch mehr vorhanden** (Server neu, keine Kopie): bei gestopptem Dienst bewusst
+
+      docker compose run -T --rm --no-deps centric-dp-web \
+        node werkzeug/ablage-sicherung.mjs widerrufbuch-neu --zustand /zustand --daten /data
+
+  Das übernimmt alles in `data/` Gesperrte; was **nur** im verlorenen Buch stand
+  (Widerruf nach der Sicherung), ist danach nicht mehr geschützt → diese Codes und
+  Verwalterschlüssel von Hand erneut zurückziehen. Ein vorhandenes oder beschädigtes Buch
+  ersetzt der Befehl nie.
+- **Restore-Test mit `--zustand`:** Gesperrte Konten und Verwalterschlüssel, der Anker
+  und wiederhergestellte Marken weichen dann gewollt vom Manifest ab (die Ausgabe nennt die
+  Zahlen). Für den Datei-für-Datei-Vergleich ohne `--zustand` zurückspielen, wie in der
+  Probe (`deploy/sicherung/wiederherstellung-probe.sh`) — die Probe übt das Widerrufbuch
+  deshalb nicht; das prüft `npm run pruefung:em6-rollback-codes`.
+
 **Restore-Test.** Eine Sicherung, die nie zurückgespielt wurde, ist keine. Mindestens
 vierteljährlich, und nach jeder Änderung an Ablage oder Konten: in einen leeren
 Ordner zurückspielen (nicht in `data/`) und dort ansehen.
