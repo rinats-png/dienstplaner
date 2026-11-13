@@ -142,6 +142,11 @@ jobs:
       - name: Schichtmodell-Ergebnis je Vorgang zwischengespeichert (IMP-6)
         run: npm run pruefung:import-analyse-cache
 
+      # IMP-6 Teil 2: mehrere Schichtmodelle je Person (serverseitig, ohne Aktivierung) — Klärung statt stiller Auflösung,
+      # historischer Schutz, Rollen mit manipulierten Rümpfen, Teilweg, Protokoll, Importvorschau.
+      - name: Mehrere Schichtmodelle je Person (IMP-6 Teil 2)
+        run: npm run pruefung:imp6-mehrfachmodelle
+
       - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
         run: npm run pruefung:import-abweichungen
 

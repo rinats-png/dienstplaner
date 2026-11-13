@@ -95,6 +95,8 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   zuschlaege: [{ art: M("ZUSCHLAG-B1") }], nachweise: [M("NACHWEISE-B1")], neuerZugang: M("NEUERZUGANG-B1"),
   anonymSeit: M("ANONYMSEIT-B1"),
   beschaeftigungsmodell: M("MODELL-B1"), stundenGrenzeMonat: M("MONATSGRENZE-B1"),
+  /* IMP-6 Teil 2: Zuordnungen zu Schichtmodellen (Kennungen als Marker). */
+  schichtmodellZuordnungen: [{ id: "z1", modellId: "sm1", gueltigAb: "2026-01-01", gueltigBis: null, geaendertVon: M("SMZ-VON-B1") }],
   ...Object.fromEntries(["weckzeit", "benachrichtigung", "thema", "dichte", "kontrastmodus", "feldmodus", "tour",
     "einfuehrung", "handbuch", "startansicht", "wenigerBewegung"].map((f) => [f, M(`EINSTELLUNG-${f}-B1`)])),
 });
@@ -144,6 +146,8 @@ const bestand = () => ({
       [`r-a1|${tag(1)}`]: { id: "r-a1", personId: "a1", art: "einsatz", einheitId: M("ROTATION-A1") },
       [`r-b1|${tag(1)}`]: { id: "r-b1", personId: "b1", art: "einsatz", einheitId: M("ROTATION-B1") } },
     pflegeNiveaus: [{ id: "n1", name: M("PFLEGENIVEAU-NAME") }],
+    /* Schichtmodelle (IMP-6 Teil 2): nur Planung, Leitung, Kundenrolle. */
+    schichtmodelle: [{ id: "sm1", name: M("SCHICHTMODELL-NAME"), tage: ["-"], geaendertVon: M("SCHICHTMODELL-VON") }],
     /* Interne Vorgaben (WP-I4): nur org.edit (Leitung, Kundenrolle) liest sie; für den Betriebsrat gibt es keine Lesesicht. */
     vorgaben: [{ id: "v1", name: M("VORGABE-NAME"), regelart: "grenzregel", staerke: "muss", prioritaet: 1, bezug: "monat", status: "aktiv",
       geltung: { art: "personen", personen: [M("VORGABE-PERSON")] }, grundlage: { art: "hausregel" },
@@ -479,6 +483,8 @@ const ZEILEN = {
   "Interne Vorgaben (`vorgaben`: Name, Beschreibung, Regelart und Parameter, Geltung, Zeitraum, Stärke, Priorität, Grundlage, Ausnahmen, Status, Wann/Wer/Version; WP-I4)": {
     sonden: [mk("VORGABE-NAME"), mk("VORGABE-PERSON"), mk("VORGABE-PARAMETER"), mk("VORGABE-AUSNAHME"), mk("VORGABE-VON")] },
   "Pflegeniveaus (`pflegeNiveaus`: Niveaus je Betrieb; Branchenmodul Pflegequalifikation) — vorläufig": { sonden: [mk("PFLEGENIVEAU-NAME")] },
+  "Schichtmodelle und Zuordnungen je Person (`schichtmodelle`: Name, Zyklustage, Wann/Wer/Version; `schichtmodellZuordnungen` an der Person: Modell, Gültigkeit, Versatz, Wann/Wer/Version; IMP-6 Teil 2)": {
+    sonden: [mk("SCHICHTMODELL-NAME"), mk("SCHICHTMODELL-VON"), mk("SMZ-VON-B1"), feld("b1", "schichtmodellZuordnungen")] },
   /* WP-19.0 (²⁹): Moduleinstellungen in `einstellungen`. */
   "Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`)": {
     sonden: [mk("MODUL-AM"), mk("MB-AM"), Object.assign((s) => {
@@ -655,6 +661,7 @@ const FELD_ZEILE = {
   "Personennotizen (`notizen` „person|…\"; Notiz der Leitung `notiz` an der Person)": ["notiz", "notizen"],
   "Kalendergeheimnis, -verweis, -stand": ["kalenderGeheim", "kalenderVerweis", "kalenderStand"],
   "Push-Schlüssel, Zustelleinstellungen": ["pushSchluessel", "zustellung"],
+  "Schichtmodelle und Zuordnungen je Person (`schichtmodelle`: Name, Zyklustage, Wann/Wer/Version; `schichtmodellZuordnungen` an der Person: Modell, Gültigkeit, Versatz, Wann/Wer/Version; IMP-6 Teil 2)": ["schichtmodellZuordnungen"],
 };
 const feldSonden = (klasse) => (FELD_ZEILE[klasse] || []).map((f) => feld("b1", f));
 
