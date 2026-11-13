@@ -16,7 +16,7 @@ import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifakto
 import { ersteinrichtungOffen, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { erstleitungsZugang, erstleitungOffen, erstleitungUngueltig, erstleitungEinloesen, erstleitungAusstellen,
   erstleitungVermerk, erstleitungEingerichtet, leitungscodeOhnePerson, OHNE_PERSON_ANTWORT, erstleitungAbgelaufen, erstleitungStreng,
-  erstleitungRegimeVermerken } from "../lib/erstleitung.mjs";
+  erstleitungRegimeVermerken, neueBetriebsKennungen } from "../lib/erstleitung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -1738,6 +1738,30 @@ async function behandeln(req, context, ctx) {
           return antwort({ fehler: "Der Stand sieht unvollständig aus.",
             text: `${form.grund} Es wurde nichts geändert — bitte lade die Seite neu `
               + "und versuch es erneut.", feld: form.feld || null }, 422);
+        }
+
+        /* Delta-Review f69fd931, F1 (lib/erstleitung.mjs, Regime-Marke): Ein Betrieb, den dieser Schreibvorgang NEU in
+           den Raum bringt (heute nur der Betreiber-PUT, Konsole „neuerMandant“; rechte.mjs übernimmt ihn ganz), ist ein
+           neuer Betrieb — für ihn gilt das strenge Regime ab der Anlage, wie bei /api/bestand-anlegen. Die Marke steht
+           VOR dem Bestand: Scheitert sie, wird nichts geschrieben (503), es entsteht kein Betrieb ohne Marke. Bricht der
+           Prozess zwischen Marke und Bestand ab, bleibt eine Marke für eine Kennung, die es (noch) nicht gibt —
+           harmlos: Ein später unter dieser Kennung angelegter Betrieb ist neu und damit ohnehin streng. Gilt für Voll-
+           und Teilweg und jede Rolle; eine Rolle, die keinen Betrieb anlegen kann, bringt keine neue Kennung. */
+        const neueBetriebe = neueBetriebsKennungen(jetzt ? jetzt.bestand : null, zuSchreiben);
+        if (neueBetriebe === null) {
+          await protokoll("schreiben", ks, "abgewiesen", "Gestalt: neuer Betrieb ohne Kennung", wer);
+          return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+            text: "Ein neuer Betrieb hat keine Kennung. Es wurde nichts geändert.", feld: "mandanten" }, 422);
+        }
+        if (neueBetriebe.length) {
+          try {
+            for (const id of neueBetriebe)
+              await erstleitungRegimeVermerken(store, s.bestand, id, { durch: s.rolle === "betreiber" ? "Betreiber" : "Schreibweg" });
+          } catch {
+            await protokoll("schreiben", ks, "fehler", "Regime-Marke für neuen Betrieb nicht geschrieben", wer);
+            return antwort({ fehler: "Der Betrieb lässt sich gerade nicht anlegen. Bitte später erneut versuchen.",
+              text: "Es wurde nichts gespeichert." }, 503);
+          }
         }
 
         /* Auffälliger Verlust wird nicht abgelehnt — es gibt gute Gründe, viel

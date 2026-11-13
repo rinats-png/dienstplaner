@@ -195,7 +195,10 @@ export async function erstleitungMarkeLesen(store, raum, mandantId) {
    entfernen. Geschrieben ausschließlich vom Server, und zwar
      - beim Anlegen eines Betriebs: /api/bestand-anlegen (daten.mjs),
        Selbststart und Registrierung (provisionierung.mjs, testbetriebAnlegen)
-       — VOR dem Bestand, damit es keinen Augenblick ohne sie gibt;
+       und jeder Betrieb, den PUT /api/bestand NEU in einen Raum bringt (heute
+       der Betreiber-PUT, Konsole „neuerMandant“; neueBetriebsKennungen,
+       Delta-Review f69fd931, F1) — VOR dem Bestand, damit es keinen
+       Augenblick ohne sie gibt;
      - beim Ausstellen eines Erstanmeldecodes (/api/zugaenge, /einrichten) —
        VOR dem Code: Ein vor dieser Änderung angelegter, noch leerer Betrieb
        wird mit seinem ersten Erstanmeldecode streng.
@@ -222,6 +225,26 @@ export async function erstleitungRegimeVermerken(store, raum, mandantId, { durch
     throw new Error("Erstanmeldung: Raum oder Betrieb fehlt");
   await store.setJSONWennNeu(erstleitungRegimeSchluessel(raum, mandantId),
     { seit: new Date(jetzt).toISOString(), durch: String(durch).slice(0, 40) });
+}
+
+/**
+ * Delta-Review f69fd931, F1: Welche Betriebe bringt ein Schreibvorgang NEU in einen Raum? Kennungen aus `nachher`, die
+ * `vorher` nicht hat (vorher fehlt: alle). Ein neuer Eintrag ohne lesbare Kennung ergibt `null` — der Aufrufer
+ * schreibt dann nichts (kein Betrieb ohne Regime-Marke). Rein, ohne Ablage.
+ * @param {any} vorher  gespeicherter Bestand (oder null)
+ * @param {any} nachher  zu schreibender Bestand
+ * @returns {string[]|null}
+ */
+export function neueBetriebsKennungen(vorher, nachher) {
+  const alt = new Set((istObjekt(vorher) && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])
+    .filter(istObjekt).map((m) => m.id).filter((id) => typeof id === "string" && id));
+  const neu = [];
+  for (const m of (istObjekt(nachher) && Array.isArray(nachher.mandanten) ? nachher.mandanten : [])) {
+    if (!istObjekt(m)) continue;
+    if (typeof m.id !== "string" || !m.id) return null;
+    if (!alt.has(m.id) && !neu.includes(m.id)) neu.push(m.id);
+  }
+  return neu;
 }
 
 /**

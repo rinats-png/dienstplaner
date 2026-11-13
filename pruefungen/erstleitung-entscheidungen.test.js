@@ -52,11 +52,17 @@ const kopie = (x) => JSON.parse(JSON.stringify(x));
 const store = () => L.getStore({ name: "centric", consistency: "strong" });
 const personenIn = async (raum) => ((await L.bestandLesenStreng(store(), raum)).bestand.mandanten[0].personen || []);
 const kontoVon = (code) => L.kontoLesenStreng(store(), L.ablageSchluessel(code));
+/* Feste Zeitpunkte statt der Uhr (QS-2/QS-4): Der Server läuft als eigener Prozess mit seiner echten Uhr — eine
+   eingespeiste Uhr gibt es dort nicht. Ein offener Vermerk trägt deshalb ein ausdrückliches `bis` weit in der Zukunft,
+   ein abgelaufener ein Datum weit in der Vergangenheit: Das Ergebnis hängt nicht vom Zeitpunkt des Laufs ab. */
+const FEST_ANGELEGT = "2026-11-13T08:00:00.000Z";
+const FEST_OFFEN_BIS = "2099-12-31T00:00:00.000Z";
+const FEST_VORBEI = "2001-01-01T00:00:00.000Z";
 async function codeAblegen(raum, extra = {}) {
   const code = `T${randomUUID().replace(/-/g, "").slice(0, 14).toUpperCase()}`;
   await L.kontoSchreiben(store(), L.ablageSchluessel(code), { name: `Zugang ${raum}`, bestand: raum, rolle: "leitung",
     person: null, betrieb: 0, mandantId: raum, demo: false, gruppe: null, hinweis: null,
-    angelegt: new Date().toISOString(), ...extra });
+    angelegt: FEST_ANGELEGT, ...extra });
   return code;
 }
 async function betriebAnlegen(raum) {
@@ -151,8 +157,8 @@ describe.sequential("E-D1: gewöhnlicher Leitungscode ohne Person (Befund F-0)",
 
   it("ein Erstanmeldecode nach Ablauf seines Vermerks: keine Person, keine Sitzung (Gültigkeit beim Einlösen geprüft)", async () => {
     await betriebAnlegen("ent-abl");
-    const alt = new Date(Date.now() - 20 * 864e5).toISOString();
-    const abgelaufen = await codeAblegen("ent-abl", { erstleitung: { mandantId: "ent-abl", angelegt: alt, bis: new Date(Date.now() - 1000).toISOString() } });
+    const alt = FEST_VORBEI;
+    const abgelaufen = await codeAblegen("ent-abl", { erstleitung: { mandantId: "ent-abl", angelegt: alt, bis: "2001-01-02T00:00:00.000Z" } });
     const ohneBis = await codeAblegen("ent-abl", { erstleitung: { mandantId: "ent-abl", angelegt: alt } });
     for (const code of [abgelaufen, ohneBis]) {
       const r = await anmelden(code);
@@ -276,8 +282,10 @@ describe.sequential("E-D2: kein Rückfall in die Ersteinrichtung", () => {
     const leer = kopie(roh);
     const mm = Array.isArray(leer.mandanten) ? leer.mandanten[0] : leer;
     mm.personen = [];
-    const marke = markeNeu(new Date(Date.now() - 60_000));
-    await store().setJSON(`sicherung:ent-c:${marke}`, leer, { metadata: { zeit: new Date(Date.now() - 60_000).toISOString(),
+    /* Zeit der älteren Sicherung: eine Minute vor der eben vom Server geschriebenen — aus deren Vermerk, nicht aus der Uhr. */
+    const vorher = new Date(Date.parse((await store().getMetadata(blobs[0].key)).metadata.zeit) - 60_000);
+    const marke = markeNeu(vorher, () => 0.4242);
+    await store().setJSON(`sicherung:ent-c:${marke}`, leer, { metadata: { zeit: vorher.toISOString(),
       durch: "Leitung", mandantId: "ent-c", rolle: "leitung" } });
     const g = await anfrage("/api/bestand", { token: a.token });
     const w = await anfrage("/api/wiederherstellen", { methode: "POST", token: a.token, rumpf: { marke, etag: g.etag } });

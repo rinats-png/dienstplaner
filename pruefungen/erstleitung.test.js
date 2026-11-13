@@ -54,14 +54,20 @@ const personenIn = async (raum) => {
 };
 const kontoVon = (code) => L.kontoLesenStreng(store(), L.ablageSchluessel(code));
 /** Ein Zugang direkt in die Ablage (für Zustände, die kein Endpunkt erzeugt: Altcode, abgebrochener Vorgang). */
+/* Feste Zeitpunkte statt der Uhr (QS-2/QS-4): Der Server läuft als eigener Prozess mit seiner echten Uhr — eine
+   eingespeiste Uhr gibt es dort nicht. Ein offener Vermerk trägt deshalb ein ausdrückliches `bis` weit in der Zukunft,
+   ein abgelaufener ein Datum weit in der Vergangenheit: Das Ergebnis hängt nicht vom Zeitpunkt des Laufs ab. */
+const FEST_ANGELEGT = "2026-11-13T08:00:00.000Z";
+const FEST_OFFEN_BIS = "2099-12-31T00:00:00.000Z";
+const FEST_VORBEI = "2001-01-01T00:00:00.000Z";
 async function codeAblegen(raum, extra = {}) {
   const code = `T${randomUUID().replace(/-/g, "").slice(0, 14).toUpperCase()}`;
   await L.kontoSchreiben(store(), L.ablageSchluessel(code), { name: `Leitung ${raum}`, bestand: raum, rolle: "leitung",
     person: null, betrieb: 0, mandantId: raum, demo: false, gruppe: null, hinweis: null,
-    angelegt: new Date().toISOString(), ...extra });
+    angelegt: FEST_ANGELEGT, ...extra });
   return code;
 }
-const vermerk = (raum, extra = {}) => ({ erstleitung: { mandantId: raum, angelegt: new Date().toISOString(), ...extra } });
+const vermerk = (raum, extra = {}) => ({ erstleitung: { mandantId: raum, angelegt: FEST_ANGELEGT, bis: FEST_OFFEN_BIS, ...extra } });
 
 let betreiber;
 const CODE = {};
@@ -270,7 +276,7 @@ describe.sequential("Teil 1: echter Server", () => {
 
   it("abgelaufener oder gesperrter Erstanmeldecode: keine Person, keine Sitzung", async () => {
     await betriebAnlegen("erstl-abl");
-    const abgelaufen = await codeAblegen("erstl-abl", { laeuftAb: new Date(Date.now() - 60_000).toISOString(), ...vermerk("erstl-abl") });
+    const abgelaufen = await codeAblegen("erstl-abl", { laeuftAb: FEST_VORBEI, ...vermerk("erstl-abl") });
     const gesperrt = await codeAblegen("erstl-abl", { gesperrt: true, ...vermerk("erstl-abl") });
     for (const code of [abgelaufen, gesperrt]) {
       const a = await anmelden(code);
@@ -563,14 +569,17 @@ describe.sequential("Teil 2: Schreibfehler mitten im Vorgang (in-process, echte 
       { person: "p1" }, { person: 0 }, { demo: true }, { lage: { art: "demo" } }, { lage: { art: "kundenraum" } }, { lage: null },
       { mandant: { id: "m1", personen: [{ id: "p1" }] } }, { mandant: { id: "m1" } }, { mandant: null }])
       expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" }, eingerichtet: false, ...falsch }), JSON.stringify(falsch)).toBe(false);
-    const e = { rolle: "leitung", person: null, bestand: "r", mandantId: "m1", erstleitung: { mandantId: "m1", angelegt: new Date().toISOString() } };
-    expect(erstleitungOffen(e)).toBe(true);
+    /* Reine Funktion: die Uhr wird eingespeist (jetzt), Frist 14 Tage ab angelegt, wenn kein bis. */
+    const JETZT = Date.parse("2026-11-13T12:00:00.000Z");
+    const e = { rolle: "leitung", person: null, bestand: "r", mandantId: "m1", erstleitung: { mandantId: "m1", angelegt: FEST_ANGELEGT } };
+    expect(erstleitungOffen(e, JETZT)).toBe(true);
+    expect(erstleitungOffen(e, JETZT + 14 * 864e5)).toBe(false);
     /* Abgelaufen (bis vorbei, angelegt zu alt, keine Zeit): nie offen — fail-closed. */
-    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1", angelegt: new Date().toISOString(), bis: new Date(Date.now() - 1).toISOString() } })).toBe(false);
-    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1", angelegt: new Date(Date.now() - 15 * 864e5).toISOString() } })).toBe(false);
-    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1" } })).toBe(false);
+    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1", angelegt: FEST_ANGELEGT, bis: new Date(JETZT - 1).toISOString() } }, JETZT)).toBe(false);
+    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1", angelegt: new Date(JETZT - 15 * 864e5).toISOString() } }, JETZT)).toBe(false);
+    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1" } }, JETZT)).toBe(false);
     for (const falsch of [{ demo: true }, { gesperrt: true }, { rolle: "planer" }, { mandantId: "m2" }, { erstleitung: { mandantId: "m2" } },
       { erstleitung: true }, { erstleitungVerbraucht: { grund: "angelegt" } }, { bestand: "" }])
-      expect(erstleitungOffen({ ...e, ...falsch }), JSON.stringify(falsch)).toBe(false);
+      expect(erstleitungOffen({ ...e, ...falsch }, JETZT), JSON.stringify(falsch)).toBe(false);
   });
 });

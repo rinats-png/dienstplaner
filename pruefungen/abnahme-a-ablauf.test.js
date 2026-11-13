@@ -184,7 +184,7 @@ describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmod
     expect(a.status, a.text || a.fehler).toBe(200);
     const ids = (await lesen(T.leitung)).bestand.mandanten[0].personen.map((p) => p.id);
     expect(ids).toEqual(expect.arrayContaining(["p1", "a1", "a2", "s1", "r1"]));
-    expect(ids).not.toContain("k1");
+    expect(ids).not.toContain("k1"); // kollision-ok: ids ist eine Liste von Personenkennungen; toContain vergleicht ganze Elemente, keinen Teiltext
   });
 
   it("3.2 Personalimport bleibt gesperrt (CENTRIC_IMPORT_AKTIV nicht gesetzt): jeder /api/import-Weg 404", async () => {

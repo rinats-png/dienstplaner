@@ -13,7 +13,7 @@ und Umstellung läuft getrennt (PR #287).
 | **Gültigkeit** des Erstanmeldecodes | 14 Tage ab Ausstellung (`bis`), geprüft **beim Einlösen** (fail-closed: fehlende/unlesbare Zeit = abgelaufen) → 403 „Dieser Zugang ist abgelaufen.“ | `erstleitung.mjs` |
 | **E-D2** Kein Rückfall in die Ersteinrichtung | Einmal anlegbare Marke `erstleitung-marke:<raum>:<mandantId>` (`setJSONWennNeu`), **außerhalb des Bestands** — Schreibweg, `/api/wiederherstellen`, Import und Bestandsmigration erreichen sie nicht. Ein Erstanmeldecode, dessen vorgemerkte Kennung nicht die der Marke ist, wird verbraucht (`belegt`, 403). Ausstellungswege geben keinen Vermerk mehr, wenn Marke oder Personen da sind. Zusätzlich wiederabgeleitet: Ein Betrieb mit Personen gilt immer als eingerichtet. Die Marke geht nur mit der Raumlöschung. | `erstleitung.mjs`, `daten.mjs` (`/api/zugaenge`), `einrichten.mjs`, `raumloeschung.mjs` |
 | **E-D2** Ausnahme „leerer Betrieb“ | In `rollenwechselErlaubt` nur noch für eine Sitzung mit `ersteinrichtungAltweg` — das setzt allein der Server, und nur in einem **Bestandsbetrieb** (ohne Regime- und ohne Erstanmeldemarke) bei ausgeschaltetem Schalter (Abschnitt 1a). In jedem neuen Betrieb gilt der Rang ab der Anlage: Ein Planungscode, ein Demozugang oder jede andere Sitzung legt in einem leeren Betrieb keine Leitung an — auch nicht im Fenster der Ersteinrichtung, bevor der Erstanmeldecode eingelöst ist. | `server/lib/rechte.mjs`, `daten.mjs` |
-| **Regime-Marke** (Delta-Review e8b9b93d, Punkt 1) | Einmal anlegbare Marke `erstleitung-regime:<raum>:<mandantId>` `{ seit, durch }`, **außerhalb des Bestands**, nur vom Server geschrieben: beim **Anlegen** eines Betriebs (`/api/bestand-anlegen`, Selbststart/Registrierung über `testbetriebAnlegen`) vor dem Bestand, und beim **Ausstellen** eines Erstanmeldecodes (`/api/zugaenge`, `/einrichten`) vor dem Code. Keine Anfrage kann sie setzen oder entfernen (PUT, Teilweg, `/api/wiederherstellen`, Import, Migration schreiben nur den Bestand). Raumlöschung räumt sie zuletzt ab. | `erstleitung.mjs`, `daten.mjs`, `einrichten.mjs`, `provisionierung.mjs`, `raumloeschung.mjs` |
+| **Regime-Marke** (Delta-Review e8b9b93d, Punkt 1) | Einmal anlegbare Marke `erstleitung-regime:<raum>:<mandantId>` `{ seit, durch }`, **außerhalb des Bestands**, nur vom Server geschrieben: beim **Anlegen** eines Betriebs (`/api/bestand-anlegen`, Selbststart/Registrierung über `testbetriebAnlegen`, und — Delta-Review f69fd931, F1 — jeder Betrieb, den ein Schreibvorgang über `PUT /api/bestand` bzw. den Teilweg **neu** in einen bestehenden Raum bringt, heute der Betreiber-PUT der Konsole „neuerMandant“; `neueBetriebsKennungen`) vor dem Bestand — scheitert die Marke, wird nichts geschrieben (503), und beim **Ausstellen** eines Erstanmeldecodes (`/api/zugaenge`, `/einrichten`) vor dem Code. Keine Anfrage kann sie setzen oder entfernen (PUT, Teilweg, `/api/wiederherstellen`, Import, Migration schreiben nur den Bestand). Raumlöschung räumt sie zuletzt ab. | `erstleitung.mjs`, `daten.mjs`, `einrichten.mjs`, `provisionierung.mjs`, `raumloeschung.mjs` |
 | **E-Mail** | Erste Leitungsperson: `email: ""`. Die Anlage über die Betreiberkonsole (`baueAusAnlage`) übernimmt die Kontaktadresse des Betriebs nicht mehr als Personenadresse. | `erstleitung.mjs`, `src/lib/mandant-anlage.js` |
 | Zweiter Faktor (Review-Punkt 4) | Der Vermerk `zweiterFaktor` am Zugang wird unter der Sperre des Kontos (`kontoAendern`) frisch gelesen und geschrieben — ein gleichzeitiger Faktorschritt schreibt keine alte Kopie mehr über Vormerkung, Bindung oder Sperre. Geprüft über den echten Faktorweg (Abschnitt 3b). | `server/lib/betreiber-zweifaktor.mjs` |
 | Oberfläche (Delta-Review e8b9b93d, Punkt 3) | `GET /api/bestand` meldet je Sitzung `erstleitungStreng` (Wahrheitswert, keine personenbezogene Angabe). Nur bei `true` gilt in der Oberfläche der neue Ablauf (keine Person im Arbeitsspeicher, Meldung „keiner Person zugeordnet“, Kandidaten nur aktive Personen). Sonst — und wenn die Angabe fehlt — der bisherige Ablauf unverändert (`sitzungAltweg`), einzige Abweichung: E-Mail leer. | `src/app/zugangssitzung.js`, `src/speicher.js`, `daten.mjs` |
@@ -29,7 +29,7 @@ Betriebs bzw. beim Ausstellen seines ersten Erstanmeldecodes geschrieben) oder d
 
 | | Schalter aus (Vorgabe, Auslieferung) | Schalter an (nach Analyse, PR #289, und Umstellung, PR #287) |
 |---|---|---|
-| **Neuer Betrieb** — ab der Anlage (`/api/bestand-anlegen`, Selbststart, Registrierung) bzw. ab seinem ersten Erstanmeldecode (Regime-Marke), oder Erstanmeldung festgelegt (Erstanmeldemarke) | streng **ab der Anlage**, auch im Fenster der Ersteinrichtung vor dem Einlösen: kein Zugang für Leitungscodes ohne Person (Anmeldung 403, liegende Sitzung endet, Sicherungsschlüssel widerrufen); keine Ausnahme „leerer Betrieb“ | streng |
+| **Neuer Betrieb** — ab der Anlage (`/api/bestand-anlegen`, Selbststart, Registrierung, Betreiber-PUT eines zusätzlichen Betriebs) bzw. ab seinem ersten Erstanmeldecode (Regime-Marke), oder Erstanmeldung festgelegt (Erstanmeldemarke) | streng **ab der Anlage**, auch im Fenster der Ersteinrichtung vor dem Einlösen: kein Zugang für Leitungscodes ohne Person (Anmeldung 403, liegende Sitzung endet, Sicherungsschlüssel widerrufen); keine Ausnahme „leerer Betrieb“ | streng |
 | **Bestandsbetrieb** — vor dieser Änderung angelegt, keine der beiden Marken (auch: Betrieb, den der Betreiber früher mit Personen über die Konsole angelegt hat) | **bisheriger Ablauf unverändert**, Server und Oberfläche: Leitungscode ohne Person bekommt eine Sitzung (Rolle aus dem Code); Ausnahme „leerer Betrieb“ gilt für **jeden** solchen Betrieb; die Oberfläche legt im leeren Betrieb die erste Person wie bisher im Arbeitsspeicher an (ohne E-Mail) | streng |
 | Erstanmeldecode (Vermerk, Marken, Atomarität, 14-Tage-Gültigkeit, nie eine zweite Person) | immer | immer |
 | Merge-sichere Kontoänderungen (`kontoAendern`) | immer | immer |
@@ -186,7 +186,50 @@ fremder Personen oder Betriebe. Keine Rechteänderung: Für eine bestehende, nic
   `docs/acc45/BEFUND-VERSAND-UNVERIFIZIERTE-EMAIL.md`, P2).
 - Schalter aus: F-0 und die Ausnahme „leerer Betrieb“ bleiben für Bestandsbetriebe offen, bis umgeschaltet wird
   (Abschnitt 1a). Neue Betriebe sind ab der Anlage streng.
-- Ein Betrieb, den ein Weg außerhalb von `/api/bestand-anlegen`/`testbetriebAnlegen` in einen bestehenden Raum
-  schreibt (etwa ein zusätzlicher Betrieb per PUT des Betreibers), bekommt keine Regime-Marke und gilt bis zum
-  Schalter als Bestandsbetrieb. Codes stellt `/api/zugaenge` nur für den ersten Betrieb eines Raums aus.
+- Codes für einen Betrieb: `/api/zugaenge` (Betreiber) bindet immer an den **ersten** Betrieb des Raums;
+  **`/einrichten` (Verwaltung) stellt Codes für JEDEN Betrieb aus** (`betrieb` = Index, `betriebFuerNeuenCode`), auch
+  für einen später per PUT hinzugekommenen — ebenso `/api/einladung` (personengebunden). Deshalb hängt „neu oder
+  Bestand“ an der Marke je Betrieb, nicht am Weg, über den ein Code entsteht (Delta-Review f69fd931, F1).
+
+### 8a. Wege, auf denen ein Betrieb entsteht (Delta-Review f69fd931, F1)
+
+Geprüft: jeder Aufruf von `bestandSchreiben` in `server/` und `werkzeug/` sowie jeder Weg, der `mandanten` verlängert.
+
+| Weg | Neuer Betrieb? | Regime-Marke |
+|---|---|---|
+| `POST /api/bestand-anlegen` (Betreiber; Vorlagen `leer`, `test`, `demo`, eigener Inhalt) | ja, leerer Raum | **vor** dem Bestand, unter der Raumsperre; scheitert sie, kein Raum (`daten.mjs`) |
+| Selbststart `/api/starten`, Registrierung (`testbetriebAnlegen`, `testbetriebFuerAccountAnlegen`; Leerbetrieb aus `leerbetrieb.mjs`/`erstbefuellung.mjs`) | ja, leerer Raum | **vor** dem Bestand (`provisionierung.mjs`) |
+| `PUT /api/bestand` des **Betreibers** (Konsole „neuerMandant“, `src/app/aktionen/betreiber.js` → `baueAusAnlage`, `src/lib/mandant-anlage.js`; `rechte.mjs` übernimmt den neuen Mandanten ganz) | ja, zusätzlicher Betrieb im bestehenden Raum | **neu (F1):** für jede Kennung, die der gespeicherte Bestand nicht hat, **vor** `bestandSchreiben`, unter der Raumsperre, nach Rechte- und Gestaltprüfung; Marke scheitert → 503, nichts geschrieben; neuer Eintrag ohne Kennung → 422 (`daten.mjs`, `neueBetriebsKennungen` in `erstleitung.mjs`) |
+| `PUT /api/bestand` anderer Rollen, Teilweg `/api/bestand/teile` | nein — `rechte.mjs` ersetzt nur den eigenen Betrieb an seiner Stelle; der Teilweg ist dem Betreiber verschlossen (`teilwegNutzbar`) | dieselbe Prüfung läuft trotzdem (rollenunabhängig): brächte ein solcher Weg je eine neue Kennung mit, bekäme sie die Marke |
+| `POST /api/wiederherstellen` | nein — nur der eigene Betrieb an seiner Stelle (`betriebWiederherstellen`) | — |
+| Import `/api/import/uebernahme` | nein — nur der eigene Betrieb; eine Abweichung „Betrieb“ wird abgewiesen (`import/uebernahme.mjs`) | — |
+| Datenschutzlauf, Erstanmeldung (`erstleitungEinloesen`), Monatsabschluss, Stempeln und die übrigen Schreibwege in `daten.mjs` | nein — schreiben vorhandene Betriebe | — |
+| `/einrichten`, `/api/zugaenge`, `/api/einladung` | nein — stellen Codes aus, legen keinen Betrieb an | Erstanmeldecode: Marke **vor** dem Code (so wird ein leerer Bestandsbetrieb streng) |
+| Demozugang `/api/demo` | nein — öffnet einen vorhandenen Demoraum (angelegt über `/api/bestand-anlegen`, Vorlage `demo`) | wie Anlage |
+| Bestandsmigration (`bestand.mjs`, beim Lesen) | nein — keine neuen Kennungen | — |
+| Werkzeuge außerhalb des Servers: `werkzeug/pilot-seeds.mjs` (Pilot-Testräume aus dem Leerbetrieb), `werkzeug/ablage-pruefen.mjs` (Reparatur vorhandener Räume), Mess- und Lastwerkzeuge (`werkzeug/last/`, `wp16-messung`, `wp48-messung`, `sicherheit/wiederherstellung-uebung`) | Seeds, Mess- und Lasträume ja — nur Test- bzw. Wegwerfablagen, nie über HTTP | **keine Marke**: Solche Räume gelten bis zum Schalter als Bestand; die Seeds legen Personen mit an. Restrisiko, nur Betreiberwerkzeug |
+
+Absturz zwischen Marke und Bestand (Betreiber-PUT, Anlage): Es bleibt eine Marke für eine Kennung, die es (noch) nicht
+gibt — harmlos, ein später unter dieser Kennung angelegter Betrieb ist neu und damit ohnehin streng. Der umgekehrte
+Fall (Betrieb ohne Marke) entsteht auf keinem Serverweg. Geprüft in `pruefungen/erstleitung-betreiber-put.test.js`
+(echter Server, Schalter ungesetzt und verbogen „TRUE “; Probe a/b des Reviews, rot auf f69fd931; Gegenprobe
+Bestandsbetrieb; Marke nicht schreibbar → 503, kein Betrieb).
+
+### 8b. E-M6-Kopplung (folgt nach PR #292; hier bewusst nicht umgesetzt)
+
+PR #292 (`feature/em6-widerrufene-codes-rollback`, `server/lib/widerrufbuch.mjs`) wird zuerst gemergt; danach eine
+eigene Kopplungsrunde. Diese Änderung hält die Stellen bereit und braucht von #292:
+
+- **C1 Regime-Marke ins Widerrufbuch:** wie `MARKE_PRAEFIX`/`markenNachzuziehen`/`betriebeEintragen` für
+  `erstleitung-marke:` ein Gegenstück für `erstleitung-regime:<raum>:<mandantId>` (Präfix `erstleitungRegimePraefix(raum)`,
+  Schlüssel `erstleitungRegimeSchluessel(raum, mandantId)`), damit ein Rückspielen der Ablage einen neuen Betrieb nicht
+  wieder zum Bestandsbetrieb macht. Benötigt: `(store, raum, mandantId) → Promise<void>`, die den Eintrag vor oder
+  zusammen mit der Marke dauerhaft macht und bei Fehler wirft (dann bleibt es bei 503/„nichts angelegt“); Lesen:
+  `erstleitungStreng` zusätzlich gegen das Buch. Aufrufstellen = alle Schreiber von `erstleitungRegimeVermerken`:
+  `daten.mjs` (`/api/bestand-anlegen`, `/api/zugaenge`, Betreiber-PUT über `neueBetriebsKennungen`), `einrichten.mjs`,
+  `provisionierung.mjs`.
+- **C2 Erstanmeldung:** `ersteinrichtungAbschliessen`/`widerrufen` aus `erstleitungEinloesen` (Verbrauch
+  `erstleitungVerbraucht { grund: "angelegt" | "belegt" }`); Datensatz je Code: Ablageschlüssel, Grund, Zeit.
+- **C3 `/api/zugang-sperren`:** unter `kontoAendern` (wie heute) zusätzlich der Eintrag ins Buch und die Kette
+  `ersetztDurch` (`kettenHuelle`), damit ein zurückgezogener Erstanmeldecode nach einem Rückweg nicht wieder gilt.
 - Rückspielen der ganzen Ablage: ein benutzter Erstanmeldecode lebt wieder auf — abhängig von E-M6 (Abschnitt 3a).

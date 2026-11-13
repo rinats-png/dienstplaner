@@ -45,7 +45,7 @@ const leererBetrieb = (id) => ({ version: 9, mandanten: [{ id, name: id, einheit
 async function erstcode(raum) {
   const code = `P${randomUUID().replace(/-/g, "").slice(0, 14).toUpperCase()}`;
   await L.kontoSchreiben(store(), L.ablageSchluessel(code), { name: `Leitung ${raum}`, bestand: raum, rolle: "leitung",
-    person: null, betrieb: 0, mandantId: raum, demo: false, gruppe: null, hinweis: null, angelegt: new Date().toISOString(),
+    person: null, betrieb: 0, mandantId: raum, demo: false, gruppe: null, hinweis: null, angelegt: "2026-11-13T08:00:00.000Z",
     erstleitung: L.erstleitungVermerk(raum) });
   return code;
 }
@@ -187,6 +187,7 @@ describe.sequential("Zugang: Sperre, Faktorvermerk und Bindung der Erstanmeldung
     try {
       const geheimnis = base32Dekodieren(b.geheimnis);
       const bestaetigt = anfrage("/api/anmelden", { rumpf: { zugangscode: code, zweifaktorAktion: "bestaetigen",
+        // zeit-ok: der Einmalcode (TOTP) muss zum Zeitschritt der Uhr passen, gegen die der Server ihn prüft (zweifaktor.mjs, Fenster ±1 Schritt); ein fester Zeitpunkt wäre dort abgelaufen
         zweifaktor: hotp(geheimnis, schrittZu(Date.now())) } });
       await Promise.race([ankunft, bestaetigt.then((x) => { throw new Error(`Faktorvermerk nicht erreicht: ${x.status} ${x.fehler}`); })]);
       const offen0 = R.sperrZustand().offen;
@@ -221,6 +222,7 @@ describe.sequential("Zugang: Sperre, Faktorvermerk und Bindung der Erstanmeldung
         expect(k.person ?? null).toBeNull();
       }
       /* Der zurückgezogene Code meldet sich nicht wieder an — auch nicht mit gültigem zweitem Faktor. */
+      // zeit-ok: wie oben — ein gültiger Einmalcode zur Uhr des Servers (nächster Schritt); erwartet wird die Absage wegen der Sperre
       const a = await anfrage("/api/anmelden", { rumpf: { zugangscode: code, zweifaktor: hotp(geheimnis, schrittZu(Date.now()) + 1) } });
       expect(a.status).toBe(403);
       expect(a.token).toBeUndefined();
