@@ -309,10 +309,13 @@ test.describe("Abnahme B — Darstellung und Barrierefreiheit der Abläufe", () 
 
   test("heute-stempeluhr", async ({ page }, testInfo) => {
     await anmelden(page, "mitarbeiter");
+    /* Vorbedingung: Die Stempeluhr zeigt je nach Stand Einstempeln oder Ausstempeln. Fehlt beides, liefert der Seed keinen Dienst heute: laut scheitern statt still nichts zu prüfen. */
+    let gefunden = 0;
     for (const n of ["Einstempeln", "Ausstempeln"]) {
       const g = await zielgroesse(page, n);
-      if (g) expect(Math.min(g.w, g.h), `Zielgröße „${n}“ ${g.w}×${g.h}`).toBeGreaterThanOrEqual(24);
+      if (g) { gefunden += 1; expect(Math.min(g.w, g.h), `Zielgröße „${n}“ ${g.w}×${g.h}`).toBeGreaterThanOrEqual(24); }
     }
+    expect(gefunden, "Vorbedingung: Stempeluhr mit Einstempeln oder Ausstempeln sichtbar (Seed: Dienst heute für die Beschäftigtenrolle)").toBeGreaterThan(0);
     await axePruefen(page, testInfo, FL.heute);
   });
 
