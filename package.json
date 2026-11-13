@@ -220,7 +220,7 @@
     "pruefung:import-analyse-cache": "vitest run pruefungen/import-analyse-cache-imp6.test.js --testTimeout=120000",
     "pruefung:imp6-mehrfachmodelle": "vitest run pruefungen/imp6-mehrfachmodelle.test.js --testTimeout=120000 --hookTimeout=120000",
     "pruefung:abnahme-a-ablauf": "vitest run pruefungen/abnahme-a-ablauf.test.js --testTimeout=120000 --hookTimeout=120000",
-    "pruefung:erstleitung": "vitest run pruefungen/erstleitung.test.js pruefungen/erstleitung-entscheidungen.test.js pruefungen/erstleitung-abbruch.test.js pruefungen/erstleitung-betreiber-put.test.js pruefungen/konto-parallel.test.js --no-file-parallelism --testTimeout=180000 --hookTimeout=180000",
+    "pruefung:erstleitung": "vitest run pruefungen/erstleitung.test.js pruefungen/erstleitung-entscheidungen.test.js pruefungen/erstleitung-abbruch.test.js pruefungen/erstleitung-betreiber-put.test.js pruefungen/konto-parallel.test.js pruefungen/erstleitung-bestand-differenz.test.js --no-file-parallelism --testTimeout=180000 --hookTimeout=180000",
     "pruefung:import-schichtmodell-vorschau": "vitest run pruefungen/import-schichtmodell-vorschau-imp6.test.js --testTimeout=120000",
     "pruefung:import-abweichungen": "vitest run pruefungen/import-abweichungen-imp11.test.js",
     "pruefung:imp8-testmatrix": "vitest run pruefungen/imp8-testmatrix.test.js --testTimeout=120000",
