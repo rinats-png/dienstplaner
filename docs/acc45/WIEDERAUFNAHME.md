@@ -1,7 +1,14 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #258, Integrationskopf a5abd89b, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #269, Integrationskopf 2f55d243 oder neuer, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #269 (2026-11-13)
+- Integrationskopf: `2f55d243` (Merge #266) oder neuer. Seit #256 gemergt: #257 SSOT; #258 WP-21 Teil 4; #259 SSOT; #260 Bereitschaftsnachtrag; #261 Entscheidungen 2026-11-13; #262 WP-33 Teil 3 (Playwright und axe); #263 IMP-6 mehrere Modelle; #264 SSOT; #265 Nachholreview WP-19-Module; #266 Nachholreview Stempelkette; #267 WP-19.6 Teil 2 (Überlappungen als Vereinigung gezählt, behebt M-BD1); #268 WP-14c Teil 2 (M-14c-1: Pause gleich Anwesenheit wird Prüffall); #269 WP-33 Teil 4 (Toast-Kontrast 1,98:1 auf 7,36:1 hell und 11,0:1 dunkel, jeder Toast deterministisch mit axe geprüft).
+- Nachholreviews (siehe `DIREKTMERGE-ABGLEICH-2026-11-13.md`, Abschnitt "Nachholreviews"): reviewt true bei WP-16b, WP-07b, WP-19.2, 19.3, 19.8, 19.9; teilweise bei WP-14c, WP-19.5, WP-19.6. Kein Paket INTEGRATED, keine PR-Nummern für Direkt-Merges.
+- Offene Befunde: WP-19.5 M-PQ1 (Betreuungskraft als "assistenz" zählt als Pflegekraft); WP-19.5/19.6/19.2/19.9 mittlere Befunde (Wachbuch-Einheit frei wählbar, Rotation ohne tagesgenaue Wirkung, Monatsabschluss bei Bereitschaft).
+- Offene Betreiberfragen: IMP-6 Q1 bis Q8 (siehe `IMP-6-MEHRFACHMODELLE.md`); WP-I4 fünf Fragen (siehe Stand nach #256); WP-14c zwei Fragen (a: ausdrücklich bestätigter Tag mit 0 h, b: Altdaten-Prüffälle blockieren den Monatsabschluss?) plus F6a/F6b; WP-19.5 Q2a (Betreuungskräfte § 43b getrennt, keine Anrechnung).
+- SSOT-Stand: WP-33 bleibt IN_PROGRESS; WP-14c, WP-19.5, WP-19.6 bleiben REVIEW bzw. BLOCKED, Delta-Reviews der Behebungen #267 und #268 stehen aus.
 
 - Vollständiger Bereitschaftsnachweis und Lease-Freigabe (Epoche 10): `BEREITSCHAFTSANALYSE-2026-11-12.md`, Abschnitt "Nachtrag 2026-11-13".
 
