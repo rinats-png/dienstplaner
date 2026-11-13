@@ -55,7 +55,7 @@ const person = (id, rolle) => ({ id, vorname: "V", nachname: `N${id}`, rolle, em
   neuesGeheimesFeld: "darf-nicht-raus" });
 const start = { version: 9, stand: 1, session: null, betreiber: { firma: "CENTRIC", iban: "BETREIBER-IBAN" },
   tarife: [{ id: "t1", preis: 99 }], rechnungen: [{ id: "rg-eigen", mandantId: "export-probe" }],
-  mandanten: [{ id: "export-probe", name: "Haus Export", einheiten: [{ id: "e1" }], dienstarten: [{ id: "F", name: "Früh" }],
+  mandanten: [{ id: "export-probe", name: "Haus Export", einheiten: [{ id: "e1" }], dienstarten: [{ id: "F", name: "Früh", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     personen: [person("l1", "leitung"), person("a1", "mitarbeiter")],
     abweichungen: { "a1|2026-12-01": "F" }, abwesenheiten: [{ id: "ab", personId: "a1", art: "krank", von: "2026-12-01", bis: "2026-12-01", notiz: "Grippe" }],
     anfragen: [], nachrichten: [], notrufe: [], lohnarten: [{ id: "lz" }],

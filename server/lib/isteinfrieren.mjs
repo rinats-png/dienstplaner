@@ -42,18 +42,40 @@ export const IST_EINGEFROREN = "istEingefroren";
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
 
-/** Mindestbesetzung einer Dienstart als vier Zahlen. Ein gespeicherter Altstand ohne (gültiges) `mindest`
-    liest sich als 0 — nur gelesen, nie zurückgeschrieben (Abnahme V4, A-4: sonst „reading 'fr'"). */
+/** Hat die Dienstart eine Mindestbesetzung (ein Objekt)? Fehlt sie, ist das ein Befund („Mindestbesetzung fehlt"),
+    kein stilles 0 im Bestand (Abnahme V4, A-4; Betreiberentscheidung 2026-11-13). */
+export const mindestVorhanden = (da) => !!da && objekt(da.mindest);
+
+/** Mindestbesetzung einer Dienstart als vier Zahlen — nur zum ANZEIGEN und Rechnen in der Oberfläche, nie
+    zurückgeschrieben (sonst „reading 'fr'", A-4). Ein Altstand mit Text ("2") liest sich wie bisher als Zahl
+    (Number), ohne gültigen Wert als 0; ob die Angabe fehlt, sagt mindestVorhanden. */
 export function mindestWerte(da) {
-  const md = da && objekt(da.mindest) ? da.mindest : {};
-  const z = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  const md = mindestVorhanden(da) ? da.mindest : {};
+  const z = (v) => { const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+    return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0; };
   return { mo_do: z(md.mo_do), fr: z(md.fr), sa: z(md.sa), so: z(md.so) };
 }
 
-/** Mindestbesetzung eines Dienstes an einem Tag; ein Feiertag hebt sie an, senkt sie nie (C5). */
+/** Felder der Mindestbesetzung, die fehlen oder keine Zahl sind (auch nicht als Text) — alle vier, wenn `mindest`
+    fehlt. Für den Befund „Mindestbesetzung fehlt/unvollständig" in der Oberfläche; ändert nichts. */
+export function mindestLuecken(da) {
+  const md = mindestVorhanden(da) ? da.mindest : {};
+  return ["mo_do", "fr", "sa", "so"].filter((k) => {
+    const v = md[k];
+    if (typeof v === "number") return !Number.isFinite(v);
+    if (typeof v === "string") return v.trim() === "" || !Number.isFinite(Number(v));
+    return true;
+  });
+}
+
+/** Mindestbesetzung eines Dienstes an einem Tag; ein Feiertag hebt sie an, senkt sie nie (C5).
+    Mit `mindest` genau die bisherige Rechnung (auch für Altwerte als Text: Math.max wandelt "2" in 2) — Planung,
+    Monatsabschluss und Prüfung bleiben gleich. Ohne `mindest` (Altstand, A-4) 0 statt Absturz; gemeldet wird das
+    Fehlen von der Planungsreife und der Oberfläche, nicht hier. */
 export function mindestFuer(m, da, d) {
+  if (!mindestVorhanden(da)) return 0;
   const w = dow(d);
-  const md = mindestWerte(da);
+  const md = da.mindest;
   const wt = w === 6 ? md.so : w === 5 ? md.sa : w === 4 ? md.fr : md.mo_do;
   return Math.max(wt, feiertag(d, m.bundesland) ? md.so : 0);
 }

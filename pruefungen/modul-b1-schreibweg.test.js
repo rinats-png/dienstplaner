@@ -106,7 +106,7 @@ const AENDERUNG = {
     postenPlan: (w) => ({ ...(w || {}), [`a2|${tag(4)}`]: "po2" }),
   },
   bereichsplan: { bereichsPlan: (w) => ({ ...(w || {}), [`a2|${tag(4)}`]: "b2" }) },
-  geteilterdienst: { dienstarten: (w) => [...(w || []), { id: "GN", name: "Geteilt Neu", start: "07:00", ende: "11:00", zweiterAbschnitt: { start: "16:00", ende: "20:00" } }] },
+  geteilterdienst: { dienstarten: (w) => [...(w || []), { id: "GN", name: "Geteilt Neu", start: "07:00", ende: "11:00", zweiterAbschnitt: { start: "16:00", ende: "20:00" }, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }] },
   anlagen: { betriebsmittel: (w) => [...(w || []), { id: "bm9", art: "anlage", name: "Presse Neu", personId: null, mindestBesetzung: { F: 2 },
     laufzeit: { wochentage: [true, true, true, true, true, false, false], ausnahmen: [] } }] },
   maschinenqual: { kompetenzen: (w) => [...(w || []), { id: "k-neu", name: "Befähigt Presse", art: "geraet", betriebsmittelId: "bm1", wiederholungMonate: 12,
@@ -250,12 +250,12 @@ describe("A — Registry echt („geplant“): nichts gespeichert, für jede Rol
       if (weg === "voll") {
         const b = kopie(g.bestand);
         b.mandanten[0].abweichungen = { ...(b.mandanten[0].abweichungen || {}), [`a1|${tag(6)}`]: "F" };
-        b.mandanten[0].dienstarten = [...b.mandanten[0].dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00", zweiterAbschnitt: null }];
+        b.mandanten[0].dienstarten = [...b.mandanten[0].dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00", zweiterAbschnitt: null, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
         r = await anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
       } else {
         r = await anfrage("/api/bestand/teile", { methode: "POST", token, rumpf: { format: 1, epoche: g.teile.epoche, durch: "Pruefung",
           zellen: [{ feld: "abweichungen", k: `a1|${tag(6)}`, alt: null, neu: "F" }],
-          kern: { dienstarten: { basis: g.teile.versionen["kern:dienstarten"], wert: [...m.dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00", zweiterAbschnitt: null }] } } } });
+          kern: { dienstarten: { basis: g.teile.versionen["kern:dienstarten"], wert: [...m.dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00", zweiterAbschnitt: null, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }] } } } });
       }
       expect(r.status, `${weg} ${k} ${JSON.stringify(r).slice(0, 200)}`).toBe(200);
       const nachher = await gespeichertM(name);

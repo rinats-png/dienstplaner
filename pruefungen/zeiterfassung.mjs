@@ -72,8 +72,8 @@ const person = (id, rolle) => ({ id, vorname: "V", nachname: id, rolle, bereich:
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const start = { version: 9, stand: 1, session: null, mandanten: [{
   id: "zeit-probe", name: "Haus Zeit", einheiten: [{ id: "e1", name: "WB 1" }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00" },
-    { id: "NL", name: "Nacht lang", start: "23:59", ende: "23:58" }],
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } },
+    { id: "NL", name: "Nacht lang", start: "23:59", ende: "23:58", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung"), person("s1", "subplaner"),
     person("h1", "mitarbeiter")],
   abweichungen: abw, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [],

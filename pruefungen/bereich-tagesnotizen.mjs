@@ -64,7 +64,7 @@ const notiz = (id, einheitId, vonId = "pl") => ({ id, text: `NZ-${id}`, von: "Pl
 const tBetr = await anmelden(await zugang("betreiber", null, 0));
 pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: null, mandanten: [{
-    id: "m-a", name: "A", einheiten: [{ id: "eA" }, { id: "eB" }, { id: "ePool", pool: true }], dienstarten: [{ id: "F" }],
+    id: "m-a", name: "A", einheiten: [{ id: "eA" }, { id: "eB" }, { id: "ePool", pool: true }], dienstarten: [{ id: "F", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     personen: [person("s1", "subplaner", "eA"), person("a1", "mitarbeiter", "eA"), person("pl", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
     abweichungen: {}, aenderungen: [], nachrichten: [], anfragen: [], notrufe: [],
     notizen: { [D]: [notiz("n-A", "eA", "s1"), notiz("n-B", "eB"), notiz("n-P", "ePool"), notiz("n-N", null), notiz("n-L", undefined)] },

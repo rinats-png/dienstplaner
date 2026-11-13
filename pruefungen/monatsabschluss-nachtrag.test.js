@@ -331,7 +331,7 @@ const token = async (id, raum) => (await sitzungAnlegen({ bestand: raum, name: `
   betrieb: 0, mandantId: "m1", einheit: null }, 24 * 3600 * 1000)).token;
 const mandant = async (raum) => (await B.bestandLesen(laden(), raum)).bestand.mandanten[0];
 function serverBetrieb() {
-  const F = { id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 };
+  const F = { id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } };
   const person = (id) => ({ id, vorname: "V", nachname: id.toUpperCase(), rolle: ROLLEN[id], bereich: "e1", status: "aktiv", geburtstag: "1985-01-01",
     wochenstunden: 39, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
   const abweichungen = { "a1|2026-10-28": "F", "a1|2026-10-29": "F", "a1|2026-11-02": "F", "a1|2026-11-03": "F" };

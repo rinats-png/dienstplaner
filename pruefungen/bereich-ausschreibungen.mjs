@@ -67,7 +67,7 @@ const ausschreibung = (id, einheitId) => ({ id, datum: T, dienstId: "F", hinweis
 const tBetr = await anmelden(await zugang("betreiber", null, 0));
 pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: null, mandanten: [{
-    id: "m-a", name: "A", einheiten: [{ id: "eA" }, { id: "eB" }, { id: "ePool", pool: true }], dienstarten: [{ id: "F", name: "Früh" }],
+    id: "m-a", name: "A", einheiten: [{ id: "eA" }, { id: "eB" }, { id: "ePool", pool: true }], dienstarten: [{ id: "F", name: "Früh", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     personen: [person("s1", "subplaner", "eA"), person("a1", "mitarbeiter", "eA"), person("b1", "mitarbeiter", "eB"),
       person("p1", "mitarbeiter", "ePool"), person("pl", "planer", "ALLE")],
     abweichungen: {}, aenderungen: [], nachrichten: [], anfragen: [], notrufe: [],

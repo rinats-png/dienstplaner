@@ -56,7 +56,7 @@ const kopie = (x) => JSON.parse(JSON.stringify(x));
 const person = (id, rolle) => ({ id, vorname: id, nachname: id, rolle, bereich: rolle === "subplaner" ? "e1" : "ALLE",
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const betrieb = (id, name, personen) => ({ id, name, einheitLabel: "Wohnbereich",
-  einheiten: [{ id: "e1", name: "WB 1" }], dienstarten: [{ id: "F", name: "Früh" }],
+  einheiten: [{ id: "e1", name: "WB 1" }], dienstarten: [{ id: "F", name: "Früh", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen, abweichungen: {}, erfassung: {}, anfragen: [], nachrichten: [], protokoll: [] });
 const start = { version: 9, stand: 1, session: null, mandanten: [
   betrieb("m-nordwacht", "Nordwacht", [person("a-l", "leitung")]),

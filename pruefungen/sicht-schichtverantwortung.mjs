@@ -60,7 +60,7 @@ const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: "V", nachname
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }], ...privat(id), ...extra });
 const start = { version: 9, stand: 1, session: null, mandanten: [{
   id: "sicht-schicht", name: "Haus Sicht", einheiten: [{ id: "e1" }, { id: "e2" }, { id: "pool", pool: true }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("s1", "subplaner", "e1"), person("a1", "mitarbeiter", "e1"), person("b1", "mitarbeiter", "e2"),
     person("sp1", "mitarbeiter", "pool", { springer: true }), person("l1", "leitung", "ALLE")],
   abweichungen: {},

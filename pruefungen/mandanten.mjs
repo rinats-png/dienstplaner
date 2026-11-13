@@ -61,7 +61,7 @@ const kopie = (x) => JSON.parse(JSON.stringify(x));
        Schichtverantwortung in e1 und eine Beschäftigte in e2. --- */
 const betrieb = (id, name, personen) => ({ id, name, einheitLabel: "Wohnbereich",
   einheiten: [{ id: "e1", name: "WB 1" }, { id: "e2", name: "WB 2" }],
-  dienstarten: [{ id: "F", name: "Früh", kurz: "F" }],
+  dienstarten: [{ id: "F", name: "Früh", kurz: "F", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen, abweichungen: {}, erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [] });
 const person = (id, rolle, einheit) => ({ id, vorname: id, nachname: id, rolle, bereich: einheit,
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }] });

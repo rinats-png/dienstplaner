@@ -258,7 +258,8 @@ describe("2. Schreiben je Rolle mit manipulierten Rümpfen", () => {
     const { raum, token } = await neuerRaum();
     const g = await anfrage("/api/bestand", { token: token.BT });
     const rumpf = { bestand: kopie(g.bestand), etag: g.etag, durch: "Pruefung" };
-    const neu = { ...kopie(rumpf.bestand.mandanten[0]), id: "m3", name: "Haus 3", vorgaben: Array.from({ length: 9 }, (_, i) => ({ ...V(`b${i}`, "aktiv"), geaendertVon: "fremd", version: 99 })) };
+    /* Die Dienstarten des neuen Betriebs sind neu: Mindestbesetzung ist Pflicht (A-4, Betreiberentscheidung 2026-11-13). */
+    const neu = { ...kopie(rumpf.bestand.mandanten[0]), id: "m3", name: "Haus 3", dienstarten: (rumpf.bestand.mandanten[0].dienstarten || []).map((d) => ({ mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 }, ...d })), vorgaben: Array.from({ length: 9 }, (_, i) => ({ ...V(`b${i}`, "aktiv"), geaendertVon: "fremd", version: 99 })) };
     rumpf.bestand.mandanten = [...rumpf.bestand.mandanten, neu];
     await anfrage("/api/bestand", { methode: "PUT", token: token.BT, rumpf });
     const nach = (await gespeichert(raum)).bestand.mandanten.find((m) => m.id === "m3");

@@ -744,8 +744,7 @@ async function behandeln(req, context, ctx) {
         neuerBestand.mandanten = neuerBestand.mandanten.map((m) => paketfelderGeprueft(m, null));
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
-      /* Dienstarten (A-4): neue ohne mindest bekommen die Vorgabe 0, ein ungültiges mindest ist 422. */
-      dienstartenAngleichen(neuerBestand, null);
+      /* Dienstarten (A-4): jede Dienstart braucht eine gültige Mindestbesetzung (ganze Zahlen ab 0) — sonst 422. */
       const daA = dienstartenFehler(neuerBestand, null);
       if (daA) return antwort({ fehler: "Der Bestand ist ungültig.", text: daA.grund, feld: daA.feld }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
@@ -1492,10 +1491,12 @@ async function behandeln(req, context, ctx) {
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: zuSchreiben.verweigert }, 403);
         }
-        /* Dienstarten (A-4): eine neue ohne mindest bekommt die Vorgabe 0 (an Ort und Stelle — zuSchreiben bleibt
-           dasselbe Objekt, die offene Fachprüfung hängt daran); ein neues oder geändertes mindest muss die
-           geschlossene Form haben, sonst 422. Ein gespeicherter Altstand ohne mindest bleibt unverändert schreibbar. Gilt für Voll- und Teilweg;
-           vor Fachprüfung und Strukturbremse, damit eine Abweisung kein Kontingent verbraucht. */
+        /* Dienstarten (A-4, Betreiberentscheidung 2026-11-13): Eine NEUE Dienstart ohne mindest ist 422 — nichts wird
+           still als 0 gelesen; ein neues oder geändertes mindest muss ganze Zahlen 0..999 tragen, sonst 422. Eine
+           gespeicherte Dienstart ohne Angabe behält ihren gespeicherten Stand (auch das Fehlen, byte-gleich; an Ort
+           und Stelle — zuSchreiben bleibt dasselbe Objekt, die offene Fachprüfung hängt daran). Nach der
+           Rechteprüfung (zusammenfuehren), gilt für Voll- und Teilweg; vor Fachprüfung und Strukturbremse, damit
+           eine Abweisung kein Kontingent verbraucht. */
         dienstartenAngleichen(zuSchreiben, jetzt ? jetzt.bestand : null);
         const daS = dienstartenFehler(zuSchreiben, jetzt ? jetzt.bestand : null);
         if (daS) {

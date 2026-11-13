@@ -56,7 +56,7 @@ const MARKER = ["MK-VORNAME", "MK-NACHNAME", "mutterschutz", "MK-IBAN", "MK-STEU
   "MK-SESSION", "MK-BETRIEBSNOTIZ", "DARF-NICHT-RAUS"];
 const betrieb = (id, name) => ({
   id, name, status: "aktiv", tarif: "pro", einheiten: [{ id: "e1", name: "WB", standortId: "st1", geheim: "MK-UNBEKANNT-E" }],
-  standorte: [{ id: "st1", name: "Haus" }], dienstarten: [{ id: "F", name: "Früh" }],
+  standorte: [{ id: "st1", name: "Haus" }], dienstarten: [{ id: "F", name: "Früh", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("l1", "leitung", { bereich: "ALLE" }), person("a1", "mitarbeiter", { mutterschutz: true, iban: "MK-IBAN", steuerId: "MK-STEUER",
     lohn: "MK-LOHN", telefon: "MK-TEL", notfallkontakt: "MK-NOTFALL", kalenderGeheim: "MK-KALGEHEIM",
     einschraenkungen: { wiedereingliederung: { von: "2026-01-01", bis: "2026-12-31", maxStundenWoche: 20, x: "MK-WIEDER" } },
