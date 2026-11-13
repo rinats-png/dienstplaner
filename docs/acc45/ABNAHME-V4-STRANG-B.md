@@ -10,7 +10,7 @@ Betreiberauftrag 2026-11-13 „Vollständige Staging- und Release-Abnahme“, St
 | | |
 |---|---|
 | Geprüfter Stand (Beginn) | `integration/release-v4` @ `0638c10185c0171da3cc1d2ae4a2195adf9c42f4` |
-| Geprüfter Stand (Ende) | siehe Abschnitt 6 |
+| Geprüfter Stand (Ende) | `abc3e7174914f55b5e0538c4ea8d6f1318488ef1` = Zweig nachgezogen auf `integration/release-v4` @ `ca45a0a2` (Abschnitt 6) |
 | Arbeitszweig | `feature/abnahme-v4-strang-b` (eigener Worktree, eigenes `npm ci`) |
 | Laufzeitumgebung | Windows 11, Node 24.18.0, vitest 4.1.12, Playwright 1.64.1 (Chromium headless), axe-core 4.14.0 |
 | Bewertung | **bestanden** / **nicht bestanden** / **nicht ausführbar (Grund)**; ein fehlender Test zählt nie als bestanden |
@@ -207,4 +207,33 @@ Für die Bereiche 6, 7, 8, 9, 10 und 14 ist mit dieser lokalen Integrationsabnah
 
 ## 6. Stand am Ende und Einbindung
 
-(wird nach dem Nachziehen auf den aktuellen Stand von `integration/release-v4` ergänzt)
+Während der Abnahme rückte `integration/release-v4` von `0638c101` auf `ca45a0a2` vor (#271 WP-48-GB „Öffnen schreibt nicht“,
+#272 Rollenauswahl in „Personal“). Der Zweig wurde darauf nachgezogen; der einzige Konflikt war die Kette `pruefung` in
+`package.json` (gelöst mit `node werkzeug/package-kette-vereinigen.cjs`, danach Reihenfolge korrigiert: … `imp6-mehrfachmodelle`,
+`wp48-gb-oeffnen`, `abnahme-b`, `wcag-wp40`, `sammelpruefung` zuletzt).
+
+Am Ende-Stand `abc3e717` erneut ausgeführt:
+
+| Prüfung | Befehl | Ergebnis |
+|---|---|---|
+| neue API-Prüfung | `npx vitest run pruefungen/abnahme-b-wiederholung.test.js --testTimeout=120000` | bestanden (4/4) |
+| CI-Abdeckung | `npm run pruefung:ci-abdeckung` | bestanden (167 Skripte, alle in der CI; 8/8) |
+| Kette trocken | `npm run pruefung:sammelpruefung` | bestanden (167 Kettenglieder; 13/13) |
+| Lint | `npm run lint` | bestanden (0 Fehler, 132 Warnungen wie auf der Basis) |
+| Typen | `npm run pruefung:typen` | bestanden |
+| Browser | `E2E_PORT=4102 npx playwright test e2e/abnahme-b-ablaeufe.spec.mjs e2e/barrierefreiheit.spec.mjs --project=390x844 --project=932x430` | 28 bestanden, 0 fehlgeschlagen, 6 übersprungen (gewollt) |
+
+Die übrigen 43 vorhandenen vitest-Dateien und der Browser-Volllauf an allen acht Viewports liefen auf `0638c101`
+(Abschnitte 3.1–3.8); die beiden neuen Basis-Commits berühren keine Datei dieser Prüfungen außer `src/App.jsx` (Öffnen ohne
+Schreiben), das die Browserläufe am Ende-Stand mit abdecken.
+
+Einbindung: `pruefung:abnahme-b` in der Kette (vor `wcag-wp40`, `sammelpruefung` zuletzt) und als eigener Schritt in
+`.github/workflows/pruefung.yml`; `e2e/abnahme-b-ablaeufe.spec.mjs` läuft über `npm run e2e` im vorhandenen Job
+`browser-abnahme` mit (zusätzlich rund 50 nicht übersprungene Tests; auf dem belasteten Windows-Prüfrechner zusammen 28 min
+für beide Spec-Dateien, auf dem CI-Läufer deutlich weniger erwartet, Zeitgrenze des Jobs 40 min — im ersten CI-Lauf beobachten).
+
+Zählung dieses Strangs (Dateien bzw. Tests mit Ergebnis):
+- vitest vorhanden: 43 Dateien bestanden (nach Einzelwiederholung von 3 Dateien, Abschnitt 3.7), 0 nicht bestanden.
+- vitest neu: 1 Datei, 4 Tests bestanden.
+- Browser (Volllauf, 8 Viewports): 102 bestanden, 0 nicht bestanden.
+- nicht ausführbar: Ersatzplanung im Browser (Bereich 9) und der Korrekturschritt in B10 (Demo-Bestand ohne Stempel im Vormonat).
