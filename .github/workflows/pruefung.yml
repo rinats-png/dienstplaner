@@ -19,7 +19,7 @@ permissions:
 jobs:
   pruefen:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
       BILD: centric-pruefung:${{ github.sha }}
@@ -123,6 +123,11 @@ jobs:
       # Eingabe bytegleich, Ausgabe ohne Personendaten, Ablehnung benutzter Ablagen.
       - name: Erkennung gestrandeter Betriebe, nur lesend, synthetische Sicherungen
         run: npm run pruefung:erkennung
+
+      # Prozess: Rechenfunktionen des Durchsatz-Dashboards (ohne Netz) und Wächter gegen wiederkehrende Fehlerklassen
+      # (Kettenreihenfolge, Zeilenenden, freie Uhr und Kurzliterale in neuen Tests).
+      - name: Durchsatz-Werkzeug und Prozess-Wächter
+        run: npm run pruefung:durchsatz
 
       # WP-40: Bewertungslogik der Browser-Abnahme und Fehlertext-Verknüpfung (ohne Browser;
       # die Messung selbst läuft von Hand, siehe pruefungen/browser/wcag-wp40.mjs).
