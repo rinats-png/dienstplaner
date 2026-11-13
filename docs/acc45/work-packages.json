@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 201,
   "statusZaehlung": {
-    "BLOCKED": 72,
+    "BLOCKED": 71,
     "READY": 16,
-    "IN_PROGRESS": 17,
+    "IN_PROGRESS": 18,
     "REVIEW": 7,
     "INTEGRATED": 86,
     "DONE": 3
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 28,
       "restPT": {
-        "min": 192.5,
-        "max": 339.5
+        "min": 183.5,
+        "max": 324.5
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 306.5,
-    "max": 521.2
+    "min": 297.5,
+    "max": 506.2
   },
   "kritischerPfad": {
     "summe": 75.5,
@@ -3004,12 +3004,12 @@
       "prio": "P3",
       "aufwandPT": {"min":18,"max":30},
       "abhaengigkeiten": ["WP-I13","WP-I15","WP-I12"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #254 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -3018,12 +3018,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#254"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #254, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
     },
     {
       "id": "WP-I30",
