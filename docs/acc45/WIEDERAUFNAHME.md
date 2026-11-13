@@ -3,6 +3,8 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+- Vollständiger Bereitschaftsnachweis und Lease-Freigabe (Epoche 10): `BEREITSCHAFTSANALYSE-2026-11-12.md`, Abschnitt "Nachtrag 2026-11-13".
+
 ## Stand nach #258 (2026-11-13)
 - Integrationskopf: `a5abd89b` (Merge #258). Seit #256 gemergt: #257 (SSOT nach #256) und #258 WP-21 Teil 4 (Render-Prüfung der Abläufe an allen acht Viewports).
 - SSOT-Stand dazu: WP-21 bleibt IN_PROGRESS (Teilumfang; nicht INTEGRATED). Werkzeug-Ausgabe von Hand geprüft und die automatische Notiz ersetzt. Offen, ohne Entscheidung oder Gerät nicht ausführbar: Kartenansicht (wp40-Frage 6), echte Geräte (E-5), Textvergrößerung, Vorlesesoftware, manuelle Messung in Edge.
