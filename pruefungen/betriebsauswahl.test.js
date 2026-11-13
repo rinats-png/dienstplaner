@@ -655,7 +655,9 @@ describe("Behauptungen aus dem Rumpf wirken nicht", () => {
     expect(roh.bestand).toBe(raum);
     expect(roh.einheit).toBe(null);
     expect(roh.name).toBe("Rina Schmitt");
-    expect(JSON.stringify(roh)).not.toContain("p_9");
+    /* Wertweise statt Teilstring: zufällige Kennungen (base64url) können "p_9" zufällig enthalten. */
+    const werte = (x) => (x && typeof x === "object" ? Object.values(x).flatMap(werte) : [x]);
+    expect(werte(roh)).not.toContain("p_9");
     expect(JSON.stringify(roh)).not.toContain(fremd.id);
   }, LIMIT);
 

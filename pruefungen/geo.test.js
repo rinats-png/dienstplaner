@@ -8,7 +8,7 @@
    Fall gespeichert.
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,6 +25,12 @@ import {
 
 /* Ein Zeitpunkt nach Berliner Wanduhr. */
 const um = (datum, uhrzeit) => new Date(berlinZeitpunkt(datum, uhrzeit));
+/* Ein Korrekturende, das nie auf dem Beginn liegt (QS-4): Der Beginn eines vor 24 Stunden gestempelten Vorgangs ist
+   die aktuelle Berliner Uhrzeit — ein festes Ende wie "14:00" traf zu genau dieser Uhrzeit auf BEGINN_GLEICH_ENDE (422). */
+const korrekturEnde = (start) => {
+  const [h, m] = start.split(":").map(Number);
+  return `${String((h + 8) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};
 
 /* Ein Punkt n Meter nördlich des Referenzorts (auf der Kugel mit R = 6 371 km exakt). */
 const REF = { lat: 50, lon: 8 };
@@ -717,15 +723,47 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
     const k = `z4|${GESTERN}`;
     const stempel = (await gespeichert()).einstempeln[k];
     const w = await anfrage("/api/stempel-korrektur", { methode: "POST", token: T.l1,
-      rumpf: { personId: "z4", datum: GESTERN, start: stempel.start, ende: "14:00", grund: "Ausstempeln vergessen" } });
+      rumpf: { personId: "z4", datum: GESTERN, start: stempel.start, ende: korrekturEnde(stempel.start), grund: "Ausstempeln vergessen" } });
     expect(w.status, w.roh).toBe(200);
     const g = await gespeichert();
-    expect(g.erfassung[k]).toMatchObject({ start: stempel.start, ende: "14:00", bestaetigt: true });
+    expect(g.erfassung[k]).toMatchObject({ start: stempel.start, ende: korrekturEnde(stempel.start), bestaetigt: true });
     const { korrekturen, ...original } = g.einstempeln[k];
     expect(original).toEqual(stempel);
     expect(korrekturen).toHaveLength(1);
-    expect(korrekturen[0]).toMatchObject({ vorher: null, nachher: { start: stempel.start, ende: "14:00" },
+    expect(korrekturen[0]).toMatchObject({ vorher: null, nachher: { start: stempel.start, ende: korrekturEnde(stempel.start) },
       grund: "Ausstempeln vergessen", wer: { rolle: "leitung" } });
+  });
+  /* QS-4: dieselbe Korrektur unter festen Uhren — der Beginn ist immer „jetzt minus 24 h“, also die Uhrzeit der Uhr. */
+  it("Korrektur nach vergessenem Ausstempeln ist bei jeder Uhrzeit möglich (feste Uhren, auch Zeitumstellung)", async () => {
+    const uhren = ["2026-12-10T13:00:00Z", "2026-12-11T13:00:06Z", "2026-12-12T00:00:00Z", "2026-12-13T23:59:59Z",
+      "2027-03-27T13:00:00Z", "2027-03-29T22:00:00Z", "2027-10-30T13:00:00Z", "2027-11-01T00:00:30Z"];
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (const uhr of uhren) {
+        vi.setSystemTime(new Date(uhr));
+        /* Sitzungen laufen ab: unter der festen Uhr neu anmelden (Leitung = erster Code der Vorbereitung). */
+        const tok = (await anfrage("/api/anmelden", { rumpf: { zugangscode: "GEO1-AAAA-0001" } })).token;
+        expect(tok, uhr).toBeTruthy();
+        const beginn = new Date(Math.floor(Date.now() / 60000) * 60000 - 24 * 3600000);
+        const datum = heuteBerlin(beginn), start = uhrzeitBerlin(beginn), k = `z2|${datum}`;
+        const { bestand } = await B.bestandLesen(laden(), RAUM);
+        bestand.mandanten[0].einstempeln = { ...(bestand.mandanten[0].einstempeln || {}), [k]: { start, startAm: beginn.toISOString() } };
+        await B.bestandSchreiben(laden(), RAUM, bestand, { durch: "Pruefung" });
+        const ende = korrekturEnde(start);
+        expect(ende, uhr).not.toBe(start);
+        const w = await anfrage("/api/stempel-korrektur", { methode: "POST", token: tok,
+          rumpf: { personId: "z2", datum, start, ende, grund: "Ausstempeln vergessen" } });
+        expect(w.status, `${uhr} ${start}-${ende}: ${w.roh}`).toBe(200);
+        const g = await gespeichert();
+        expect(g.erfassung[k], uhr).toMatchObject({ start, ende });
+        expect(g.einstempeln[k].start, uhr).toBe(start);
+      }
+      /* Die Regel selbst bleibt: gleiche Uhrzeit ohne geplanten 24-Stunden-Dienst wird abgewiesen (zusätzlich: wp14c-folgebefunde). */
+      vi.setSystemTime(new Date("2026-12-10T13:00:00Z"));
+      const gleich = await anfrage("/api/stempel-korrektur", { methode: "POST", token: (await anfrage("/api/anmelden", { rumpf: { zugangscode: "GEO1-AAAA-0001" } })).token,
+        rumpf: { personId: "z2", datum: "2026-12-09", start: "14:00", ende: "14:00", grund: "Ausstempeln vergessen" } });
+      expect(gleich.status, gleich.roh).toBe(422);
+    } finally { vi.useRealTimers(); }
   });
   it("nach vergessenem Ausstempeln lässt sich heute einstempeln; der alte Vorgang bleibt unberührt", async () => {
     await minutenSicher();
