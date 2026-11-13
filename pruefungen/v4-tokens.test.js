@@ -20,6 +20,7 @@ import {
   V4_BREAKPOINTS, V4_FOKUS, V4_TOKENS_VERSION, v4AlsAltePalette,
 } from "../src/v4/tokens.js";
 import { v4Stil } from "../src/v4/stil.js";
+import { v4AppStil } from "../src/v4/app-stil.js";
 import { appQuelle } from "./app-quelle.js";
 import { v4ThemaAufloesen } from "../src/v4/thema.js";
 import { V4Karte, V4Knopf, V4Feld, V4Dialog, V4Hinweis } from "../src/v4/komponenten.jsx";
@@ -127,6 +128,13 @@ describe("Kontrast (WCAG 2.2 AA)", () => {
       const g = ueber(V4_GLAS[t].flaeche, f.bg);
       expect(verh(f.text, g)).toBeGreaterThanOrEqual(4.5);
       expect(verh(f.dim, g)).toBeGreaterThanOrEqual(4.5);
+    });
+    it(`${t}: Meldungsstreifen (Toast) — Text und Rücknahmeknopf >= 4,5:1 auf dem Glasgrund`, () => {
+      const grund = V4_GLAS[t].grund;
+      expect(verh(f.text, grund), "text/glas-grund").toBeGreaterThanOrEqual(4.5);
+      expect(verh(f.accent, grund), "accent/glas-grund").toBeGreaterThanOrEqual(4.5);
+      /* Der Knopf muss in der V4-Anwendung den Akzent tragen, nicht accentGlanz (für den dunklen Streifen gedacht). */
+      expect(v4AppStil()).toMatch(/html\[data-v4-app\] \.toast button\{color:var\(--v4-accent\);\}/);
     });
   }
 

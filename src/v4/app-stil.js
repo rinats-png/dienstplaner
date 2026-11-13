@@ -80,6 +80,9 @@ html[data-v4-app] .blatt{background:var(--v4-glas-grund); border:1px solid var(-
 /* Hinweise und Auswahl */
 html[data-v4-app] .toast{background:var(--v4-glas-grund); color:var(--v4-text); border:1px solid var(--v4-line);
   border-radius:var(--v4-r-mittel); box-shadow:var(--v4-schatten);}
+/* Rücknahmeknopf: Der Grundstil (App.jsx) färbt ihn für den dunklen Streifen (accentGlanz); auf dem hellen Glasgrund
+   ergab das rund 2:1 (axe color-contrast, WP-33 Teil 4). Der Akzent erreicht auf dem Grund in beiden Themen >= 4,5:1. */
+html[data-v4-app] .toast button{color:var(--v4-accent);}
 html[data-v4-app] .seg button{min-height:var(--v4-ziel);}
 html[data-v4-app] .suchknopf{background:var(--v4-flaeche); border-color:var(--v4-steuer);}
 
