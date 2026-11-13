@@ -542,7 +542,7 @@
         "implementiert": {"wert":true,"beleg":"3c492f3, 7cee8ea (Einbindung), in integration/release-v4 über Merge 1c1a27e"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: selbstauskunft 22/22, selbstauskunft-oberflaeche 6/6, einbindung-korrektur-selbstauskunft 10/10; CI-Schritt pruefung:selbstauskunft-ui"},
         "reviewt": {"wert":true,"beleg":"Opus-Review laut docs/acc45/wp15-nachweis.md (Review-Nachträge) und Merge-Commit 1c1a27e0"},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Direkt-Merge 1c1a27e0 (Commit liegt in integration/release-v4), Tests grün, Opus-Review dokumentiert (wp15-nachweis.md); Direkt-Merge anerkannt, keine PR-Nummer; Abnahmekriterien offen (Browser-E2E, F15-2), daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -556,7 +556,7 @@
       "akzeptanz": "Selbstauskunft wird Antrag; Abweichung markiert; erst nach Freigabe Ist",
       "tests": "Unit, E2E",
       "dateien": "server, src",
-      "notiz": "Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 1c1a27e0 (feature/wp15-wp32d 3c492f3a), Einbindung 7cee8eaf; PR-Beleg fehlt. Offen: Browser-E2E, Selbstfreigabe Einpersonenbetrieb (F15-2, Betreiber)."
+      "notiz": "Abhängigkeit WP-14 integriert; Status von BLOCKED auf READY nachgeführt. Stand 2026-11-09: Code steht im Integrationsbranch, aber per Direkt-Merge ohne PR. Status daher REVIEW statt INTEGRATED, bis ein Merge-PR-Beleg nachgetragen oder der Koordinator entschieden hat. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 1c1a27e0 (feature/wp15-wp32d 3c492f3a), Einbindung 7cee8eaf; PR-Beleg fehlt. Offen: Browser-E2E, Selbstfreigabe Einpersonenbetrieb (F15-2, Betreiber). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge anerkannt (alle fünf Bedingungen belegt, keine PR-Nummer); Status bleibt REVIEW wegen offener Abnahmekriterien."
     },
     {
       "id": "WP-16",
@@ -1062,7 +1062,7 @@
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40."
     },
     {
       "id": "WP-34",
@@ -1468,7 +1468,7 @@
         "implementiert": {"wert":true,"beleg":"9bc6967f…ab4e3ba0 (feature/wp16c-stempelkette), Direkt-Merge 594f32c3; Einbindung 7cee8eaf (korrekturen.jsx MonatsKorrektur, app/aktionen/plan.js monatKorrektur)"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp16c-korrekturrevision 33/33; CI-Schritt pruefung:wp-nachtraege"},
         "reviewt": {"wert":true,"beleg":"drei Opus-Review-Runden laut docs/acc45/wp16c-nachweis.md (Nachtrag Opus-Review, Re-Review, letzte Runde)"},
-        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
+        "integriert": {"wert":false,"beleg":"Direkt-Merge 594f32c3 (Commit liegt in integration/release-v4), wp16c-korrekturrevision 33/33, drei Opus-Review-Runden dokumentiert; Direkt-Merge anerkannt, keine PR-Nummer; Abnahmekriterien offen (E-29, Messung HTTP/Offline/Migration/VPS), daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1482,7 +1482,7 @@
       "akzeptanz": "Originalabschluss bleibt als Revision 1 historisch; neue Revision mit Zeitpunkt, Berechtigtem, Grund und Differenz; Differenzberechnung; gekennzeichneter Korrekturexport (Lohn/DATEV); Berechtigungen und Auditierung; zweite berechtigte Freigabe für lohnrelevante nachträgliche Korrekturen (möglichst); keine starre Wiederöffnungsfrist (maßgeblich Abrechnungs-/Exportstatus); gesetzlich erforderliche Berichtigungen bleiben möglich",
       "tests": "je Prüfpunkt Test rot → grün: nachträgliche Offline-Stempel (WP-07) für Monate mit Revision, parallele Änderungen, alte Monatsabschlüsse ohne Revisionsschema (Migration), Änderung historischer Vertrags-/Tarifparameter (Freeze), Rechtematrix",
       "dateien": "server/lib/monatsabschluss*.mjs, server/funktionen/daten.mjs, server/lib/istdaten.mjs, Export Lohn/DATEV, src/App.jsx",
-      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Kern im Code (Revisionen, Differenz, Korrekturexport, zweite Freigabe, verwerfen, keine Frist), Direkt-Merge 594f32c3, PR-Beleg fehlt. Lücke: Laufzeitmessung des Korrekturpfads 60/150/400 × 12/24/36 fehlt (wp16c-fragen.md L6; werkzeug/wp16-messung.mjs misst nur Abschluss/Freeze). Offen als Betreiberentscheidung/E-29: Fragen 1, 3, 5, 6, 7, R2, R7, L5. Stand nach #223 (Teil, docs/acc45/WP-16c-MESSUNG.md): Messung des Korrekturpfads 60/150/400 Personen, alle 9 Zellen auf Bibliotheksebene ohne Befund. Nicht gemessen: HTTP-Pfad, Offline-Stempel, Migration, VPS. Beobachtung: reine Ist-Zeit-Änderung ohne Planwirkung ergibt leere Differenz, weil Mehrarbeit nur bei positivem Konto entsteht – fachlich bestätigen. Status unverändert REVIEW."
+      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Kern im Code (Revisionen, Differenz, Korrekturexport, zweite Freigabe, verwerfen, keine Frist), Direkt-Merge 594f32c3, PR-Beleg fehlt. Lücke: Laufzeitmessung des Korrekturpfads 60/150/400 × 12/24/36 fehlt (wp16c-fragen.md L6; werkzeug/wp16-messung.mjs misst nur Abschluss/Freeze). Offen als Betreiberentscheidung/E-29: Fragen 1, 3, 5, 6, 7, R2, R7, L5. Stand nach #223 (Teil, docs/acc45/WP-16c-MESSUNG.md): Messung des Korrekturpfads 60/150/400 Personen, alle 9 Zellen auf Bibliotheksebene ohne Befund. Nicht gemessen: HTTP-Pfad, Offline-Stempel, Migration, VPS. Beobachtung: reine Ist-Zeit-Änderung ohne Planwirkung ergibt leere Differenz, weil Mehrarbeit nur bei positivem Konto entsteht – fachlich bestätigen. Status unverändert REVIEW. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge anerkannt (alle fünf Bedingungen belegt, keine PR-Nummer); Status bleibt REVIEW wegen offener Abnahmekriterien."
     },
     {
       "id": "WP-32d",
@@ -1594,7 +1594,7 @@
       "akzeptanz": "F2 Prüffall bei zu langer Pause/negativem Ist; F4 ZEITUMSTELLUNG nicht umgehbar; F5 gemessene Dauer im Befund; F6 24-h-Einsatz/verwerfen; F7 Oberfläche „überholt“ korrekt; F8 Selbstauskunft Mitternacht + pauseZuLang(…, datum)",
       "tests": "je Befund Test rot → grün",
       "dateien": "server/lib/istdaten.mjs, server/lib/zeiterfassung.mjs, src/App.jsx",
-      "notiz": "SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. F6 (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleibt Fachentscheidung (wp16c-fragen.md F6a/F6b)."
+      "notiz": "SCHÄTZUNG (nicht gemessen). F8 setzt WP-16 (pauseZuLang) voraus. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. F6 (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleibt Fachentscheidung (wp16c-fragen.md F6a/F6b). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review."
     },
     {
       "id": "WP-27c",
@@ -1678,7 +1678,7 @@
       "akzeptanz": "keine Spur-Zeile nennt Person|Tag; Altzeilen bereinigt oder beim Lesen geschwärzt",
       "tests": "Spur-Prüfung je Schreibweg",
       "dateien": "server/funktionen/daten.mjs, server/lib/zeiterfassung.mjs",
-      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md)."
+      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review."
     },
     {
       "id": "WP-24b",
@@ -1791,7 +1791,7 @@
       "akzeptanz": "genau ein Stempel in allen Szenarien: (1) Speicherung erfolgreich + Antwort fehlgeschlagen, (2) Wiederholung mit gleicher clientEventId, (3) zwei Tabs, (4) Offline-Sync nach Fehler, (5) gleichzeitige Wiederholungen, (6) Serverneustart dazwischen",
       "tests": "je Szenario Test rot → grün (Renntest, Neustart)",
       "dateien": "server/funktionen/daten.mjs, server/lib/stempelintegritaet.mjs, src/stempelvorgang.js, src/stempelpuffer.js",
-      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt."
+      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review."
     },
     {
       "id": "WP-S1",
@@ -1903,7 +1903,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
+      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
     },
     {
       "id": "WP-19.3",
@@ -1931,7 +1931,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. PR #234 (Teil): OB-2 erledigt, Dienstzeit im Objektbericht nur aus der bestätigten Ist-Zeit, nie aus der Planzeit, rollengeschützt über istVerfuegbar; Modul bleibt geplant. Offene Produktfragen: Zugriff der Schichtverantwortung auf den Bericht (umgesetzt: nein); Häufigkeit von „ungeklärt“ bei Selbstauskunft „wie geplant“; Strenge von dienstzeitStand über den ganzen Betrieb; Mandanten-Sitzungen mit rolle kunde (Quelle null); abgeschlossener Monat mit ungestempeltem Tag."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. PR #234 (Teil): OB-2 erledigt, Dienstzeit im Objektbericht nur aus der bestätigten Ist-Zeit, nie aus der Planzeit, rollengeschützt über istVerfuegbar; Modul bleibt geplant. Offene Produktfragen: Zugriff der Schichtverantwortung auf den Bericht (umgesetzt: nein); Häufigkeit von „ungeklärt“ bei Selbstauskunft „wie geplant“; Strenge von dienstzeitStand über den ganzen Betrieb; Mandanten-Sitzungen mit rolle kunde (Quelle null); abgeschlossener Monat mit ungestempeltem Tag. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
     },
     {
       "id": "WP-19.4",
@@ -1987,7 +1987,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
     },
     {
       "id": "WP-19.6",
@@ -2015,7 +2015,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
     },
     {
       "id": "WP-19.7",
@@ -2071,7 +2071,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
     },
     {
       "id": "WP-19.9",
@@ -2099,7 +2099,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review."
     },
     {
       "id": "WP-19.10",
@@ -4851,7 +4851,7 @@
       "akzeptanz": "Keine feste Zykluslänge; arbeitszeitrechtliche Prüfung mit den Dienstarten des Betriebs; Nachtschicht über Mitternacht",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/schicht*.mjs, Tests",
-      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze). Stand (automatisch): Teilumfang nach #251, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
+      "notiz": "Freigabe Punkt 5. Ressourcenlimits fachlich begründet, nicht als Geschäftsregel. Stand 2026-11-10: Bibliothek integriert (#185), siehe docs/acc45/IMP-6-NACHWEIS.md. Offen: Schreiben in den Bestand (mehrere Modelle je Person brauchen eine Datenmodell-Entscheidung), Verdrahtung in /api/import und Oberfläche. Stand 2026-11-12: PR #240 integriert Analyse und Vorschau für art=schichtzyklus in /api/import hinter CENTRIC_IMPORT_AKTIV (aus); nur Vorschau, Übernahme antwortet 422 und schreibt nichts; DoS-Grenzen (10.000 Zeilen je Blatt vor der Berechnung, Zellen über 100 Zeichen ersetzt, Bremse auf Analyse/Vorschau, Bibliothek linear); keine Modell- oder Kopfzeilentexte im Echo; gemeinsame server/lib/bezeichnungen.mjs. Offen: Schreiben der Modelle (Datenmodellentscheidung mehrere Modelle je Person), Arbeitszeitprüfung im Endpunkt, Oberfläche, Analyse-Ergebnis-Cache (Vorschau rechnet Analyse neu: ca. 2,7 s im ungünstigsten Fall an der Grenze). Stand (automatisch): Teilumfang nach #251, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Betreiberentscheidung 2026-11-13: mehrere Schichtmodelle je Person genehmigt (eindeutige Identität und Gültigkeitszeitraum je Modell, serverseitige Prüfung, eindeutig bestimmbares Modell je Planung, keine stille Auflösung von Überschneidungen, keine rückwirkende Änderung abgeschlossener Pläne, Protokoll der Zuordnungsänderungen, keine stille Migration, kontrollierte Klärung bei fehlender Zuordnung); die Datenmodellentscheidung ist damit getroffen, das Schreiben der Modelle ist zu entwickeln, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md."
     },
     {
       "id": "IMP-7",
@@ -4879,7 +4879,7 @@
       "akzeptanz": "Keine unbeabsichtigte Änderung vorhandener Pläne; Vorschau je Zeitraum; historische Daten klar von künftiger Planung getrennt",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "server/lib/import/plan*.mjs, Tests",
-      "notiz": "Unsicherheit hoch. Review Opus vor Übernahme."
+      "notiz": "Unsicherheit hoch. Review Opus vor Übernahme. Betreiberentscheidung 2026-11-13: abhängige Importpakete werden nach IMP-6 (Schreiben der Modelle) freigegeben; bleibt bis dahin BLOCKED."
     },
     {
       "id": "IMP-8",
