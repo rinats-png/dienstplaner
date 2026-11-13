@@ -11,7 +11,8 @@ import { bestandLesen } from "../lib/bestand.mjs";
 import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
-import { erstleitungAusstellen, erstleitungVermerk, erstleitungEingerichtet } from "../lib/erstleitung.mjs";
+import { erstleitungAusstellen, erstleitungVermerk, erstleitungEingerichtet, erstleitungRegimeVermerken }
+  from "../lib/erstleitung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
   verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
@@ -564,6 +565,15 @@ export default async (req) => {
     try { await ersteinrichtungVermerken(s, bestand); }
     catch {
       await protokoll("einrichten", k, "fehler", `${bestand}: Ersteinrichtung nicht vermerkbar`);
+      return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
+    }
+  }
+  /* Delta-Review e8b9b93d, Punkt 1 (lib/erstleitung.mjs, Regime-Marke): Mit dem Erstanmeldecode gilt für den Betrieb
+     das strenge Regime — VOR dem Code. Ohne Marke kein Code. */
+  if (erstE) {
+    try { await erstleitungRegimeVermerken(s, bestand, bindungE.mandantId, { durch: "Erstanmeldecode" }); }
+    catch {
+      await protokoll("einrichten", k, "fehler", `${bestand}: Erstanmeldung nicht vermerkbar`);
       return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
     }
   }

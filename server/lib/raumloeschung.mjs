@@ -269,6 +269,9 @@ export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
   if (fehler.length === 0) await praefixWeg(`erstleitung-marke:${raum}:`);
   if (fehler.length === 0) await weg(`ersteinrichtung:${raum}`);
   if (fehler.length === 0) await weg(`kern:${raum}`);
+  /* Regime-Marken (lib/erstleitung.mjs, Delta-Review e8b9b93d): erst nach dem Kern — bis dahin bleibt ein nur halb
+     gelöschter Raum streng. Ein später unter demselben Namen angelegter Betrieb bekommt beim Anlegen eine neue. */
+  if (fehler.length === 0) await praefixWeg(`erstleitung-regime:${raum}:`);
   /* 7. Die Marke der begonnenen Löschung (Schritt 0, aufraeumen.mjs) — erst, wenn der Kern weg ist; bis dahin sagt
         sie dem nächsten Lauf, dass hier eine begonnene Löschung zu Ende zu bringen ist, und dem Kundenraumschutz,
         dass der Raum nicht neu ist. */

@@ -12,28 +12,34 @@ und Umstellung läuft getrennt (PR #287).
 | **E-D1 / F-0** Ein gewöhnlicher Leitungscode ohne Person öffnet keinen Zugang | Anmeldung 403 „Ihr Zugang ist keiner Person zugeordnet.“, keine Sitzung, vor jedem Faktor- und Schreibschritt. Eine schon liegende Sitzung endet bei der nächsten Anfrage (401, auf jedem Pfad über `arbeitssitzungPruefen`). Ein Sicherungsschlüssel aus einem solchen Code wird abgewiesen und widerrufen (`sk-ohne-person`). Ausgenommen: Demozugang (`demo: true`), Betreiber, personengebundene Codes, Erstanmeldecode. | `daten.mjs`, `server/lib/arbeitssitzung.mjs` |
 | **Gültigkeit** des Erstanmeldecodes | 14 Tage ab Ausstellung (`bis`), geprüft **beim Einlösen** (fail-closed: fehlende/unlesbare Zeit = abgelaufen) → 403 „Dieser Zugang ist abgelaufen.“ | `erstleitung.mjs` |
 | **E-D2** Kein Rückfall in die Ersteinrichtung | Einmal anlegbare Marke `erstleitung-marke:<raum>:<mandantId>` (`setJSONWennNeu`), **außerhalb des Bestands** — Schreibweg, `/api/wiederherstellen`, Import und Bestandsmigration erreichen sie nicht. Ein Erstanmeldecode, dessen vorgemerkte Kennung nicht die der Marke ist, wird verbraucht (`belegt`, 403). Ausstellungswege geben keinen Vermerk mehr, wenn Marke oder Personen da sind. Zusätzlich wiederabgeleitet: Ein Betrieb mit Personen gilt immer als eingerichtet. Die Marke geht nur mit der Raumlöschung. | `erstleitung.mjs`, `daten.mjs` (`/api/zugaenge`), `einrichten.mjs`, `raumloeschung.mjs` |
-| **E-D2** Ausnahme „leerer Betrieb“ | In `rollenwechselErlaubt` **gestrichen**: Der Rang gilt auch im leeren Betrieb. Kein Weg braucht sie mehr (die Person entsteht vor jeder Sitzung). Ein Planungscode, ein Demozugang oder jede andere Sitzung legt in einem leeren Betrieb keine Leitung an. | `server/lib/rechte.mjs` |
+| **E-D2** Ausnahme „leerer Betrieb“ | In `rollenwechselErlaubt` nur noch für eine Sitzung mit `ersteinrichtungAltweg` — das setzt allein der Server, und nur in einem **Bestandsbetrieb** (ohne Regime- und ohne Erstanmeldemarke) bei ausgeschaltetem Schalter (Abschnitt 1a). In jedem neuen Betrieb gilt der Rang ab der Anlage: Ein Planungscode, ein Demozugang oder jede andere Sitzung legt in einem leeren Betrieb keine Leitung an — auch nicht im Fenster der Ersteinrichtung, bevor der Erstanmeldecode eingelöst ist. | `server/lib/rechte.mjs`, `daten.mjs` |
+| **Regime-Marke** (Delta-Review e8b9b93d, Punkt 1) | Einmal anlegbare Marke `erstleitung-regime:<raum>:<mandantId>` `{ seit, durch }`, **außerhalb des Bestands**, nur vom Server geschrieben: beim **Anlegen** eines Betriebs (`/api/bestand-anlegen`, Selbststart/Registrierung über `testbetriebAnlegen`) vor dem Bestand, und beim **Ausstellen** eines Erstanmeldecodes (`/api/zugaenge`, `/einrichten`) vor dem Code. Keine Anfrage kann sie setzen oder entfernen (PUT, Teilweg, `/api/wiederherstellen`, Import, Migration schreiben nur den Bestand). Raumlöschung räumt sie zuletzt ab. | `erstleitung.mjs`, `daten.mjs`, `einrichten.mjs`, `provisionierung.mjs`, `raumloeschung.mjs` |
 | **E-Mail** | Erste Leitungsperson: `email: ""`. Die Anlage über die Betreiberkonsole (`baueAusAnlage`) übernimmt die Kontaktadresse des Betriebs nicht mehr als Personenadresse. | `erstleitung.mjs`, `src/lib/mandant-anlage.js` |
-| Zweiter Faktor (Review-Punkt 4) | Der Vermerk `zweiterFaktor` am Zugang wird unter derselben Raumsperre frisch gelesen und geschrieben — ein gleichzeitiger Faktorschritt schreibt keine alte Kopie mehr über Vormerkung/Bindung. | `server/lib/betreiber-zweifaktor.mjs` |
+| Zweiter Faktor (Review-Punkt 4) | Der Vermerk `zweiterFaktor` am Zugang wird unter der Sperre des Kontos (`kontoAendern`) frisch gelesen und geschrieben — ein gleichzeitiger Faktorschritt schreibt keine alte Kopie mehr über Vormerkung, Bindung oder Sperre. Geprüft über den echten Faktorweg (Abschnitt 3b). | `server/lib/betreiber-zweifaktor.mjs` |
+| Oberfläche (Delta-Review e8b9b93d, Punkt 3) | `GET /api/bestand` meldet je Sitzung `erstleitungStreng` (Wahrheitswert, keine personenbezogene Angabe). Nur bei `true` gilt in der Oberfläche der neue Ablauf (keine Person im Arbeitsspeicher, Meldung „keiner Person zugeordnet“, Kandidaten nur aktive Personen). Sonst — und wenn die Angabe fehlt — der bisherige Ablauf unverändert (`sitzungAltweg`), einzige Abweichung: E-Mail leer. | `src/app/zugangssitzung.js`, `src/speicher.js`, `daten.mjs` |
 
 ## 1a. Aktivierung: neue Betriebe sofort, Bestandsbetriebe erst nach Analyse und Freigabe
 
 Betreibervorgabe 2026-11-13: Bestandsbetriebe werden **nicht** automatisch auf die strengen Regeln umgestellt.
-Schalter `CENTRIC_ERSTLEITUNG_STRENG` (Vorgabe **aus**, an nur bei genau `true`; `lib/erstleitung.mjs`,
-`erstleitungStreng`):
+Schalter `CENTRIC_ERSTLEITUNG_STRENG` (Vorgabe **aus**, an nur bei genau `true` — „TRUE“, „1“, „ja“ usw. gelten als
+aus; `lib/erstleitung.mjs`, `erstleitungStreng`). **Neu oder Bestand** entscheidet allein, was der Server in der Ablage
+vorfindet — nie etwas aus der Anfrage: die Regime-Marke `erstleitung-regime:<raum>:<mandantId>` (beim Anlegen des
+Betriebs bzw. beim Ausstellen seines ersten Erstanmeldecodes geschrieben) oder die Erstanmeldemarke
+`erstleitung-marke:<raum>:<mandantId>`. Ein Betrieb ohne beide ist ein Bestandsbetrieb.
 
 | | Schalter aus (Vorgabe, Auslieferung) | Schalter an (nach Analyse, PR #289, und Umstellung, PR #287) |
 |---|---|---|
-| **Neuer Betrieb** — Erstanmeldung über einen Erstanmeldecode gelaufen (Marke `erstleitung-marke:` vorhanden) | streng: kein Zugang für Leitungscodes ohne Person (Anmeldung 403, liegende Sitzung endet, Sicherungsschlüssel widerrufen); keine Ausnahme „leerer Betrieb“ | streng |
-| **Bestandsbetrieb** — keine Marke (auch: Betrieb, den der Betreiber mit Personen über die Konsole angelegt hat) | **bisheriger Ablauf unverändert**: Leitungscode ohne Person bekommt eine Sitzung (Rolle aus dem Code); Ausnahme „leerer Betrieb“ gilt | streng |
-| Erstanmeldecode (Vermerk, Marke, Atomarität, 14-Tage-Gültigkeit, nie eine zweite Person) | immer | immer |
+| **Neuer Betrieb** — ab der Anlage (`/api/bestand-anlegen`, Selbststart, Registrierung) bzw. ab seinem ersten Erstanmeldecode (Regime-Marke), oder Erstanmeldung festgelegt (Erstanmeldemarke) | streng **ab der Anlage**, auch im Fenster der Ersteinrichtung vor dem Einlösen: kein Zugang für Leitungscodes ohne Person (Anmeldung 403, liegende Sitzung endet, Sicherungsschlüssel widerrufen); keine Ausnahme „leerer Betrieb“ | streng |
+| **Bestandsbetrieb** — vor dieser Änderung angelegt, keine der beiden Marken (auch: Betrieb, den der Betreiber früher mit Personen über die Konsole angelegt hat) | **bisheriger Ablauf unverändert**, Server und Oberfläche: Leitungscode ohne Person bekommt eine Sitzung (Rolle aus dem Code); Ausnahme „leerer Betrieb“ gilt für **jeden** solchen Betrieb; die Oberfläche legt im leeren Betrieb die erste Person wie bisher im Arbeitsspeicher an (ohne E-Mail) | streng |
+| Erstanmeldecode (Vermerk, Marken, Atomarität, 14-Tage-Gültigkeit, nie eine zweite Person) | immer | immer |
 | Merge-sichere Kontoänderungen (`kontoAendern`) | immer | immer |
 
-Ein Lesefehler an der Marke zählt als streng (fail-closed). **Folge des Schalters aus:** Befund F-0 bleibt für
-Bestandsbetriebe offen, bis der Betreiber umschaltet — bewusst, damit niemand ohne Analyse ausgesperrt wird. Das steht
-nicht im Widerspruch zu „keine Sitzung ohne Vermerk“: Für jeden Betrieb, der über den neuen Weg eingerichtet wurde, gilt
-es ab sofort; für Bestandsbetriebe gilt es mit dem Schalter. Einschalten: `.env` → `CENTRIC_ERSTLEITUNG_STRENG=true`,
-Neustart; Rücknahme: Zeile entfernen, Neustart (keine Daten werden geändert, der Schalter wird je Anfrage gelesen).
+Ein Lesefehler an einer Marke zählt als streng (fail-closed). **Folge des Schalters aus:** Befund F-0 und die Ausnahme
+„leerer Betrieb“ bleiben für Bestandsbetriebe offen, bis der Betreiber umschaltet — bewusst, damit niemand ohne Analyse
+ausgesperrt wird. Ein Bestandsbetrieb wird ohne Schalter nur auf eine Weise streng: Der Betreiber stellt für den noch
+leeren Betrieb einen Erstanmeldecode aus (eine ausdrückliche Handlung der Ersteinrichtung). Einschalten: `.env` →
+`CENTRIC_ERSTLEITUNG_STRENG=true`, Neustart; Rücknahme: Zeile entfernen, Neustart (keine Daten werden geändert, der
+Schalter wird je Anfrage gelesen; die Marken bleiben — neue Betriebe bleiben streng).
 
 ## 2. Wer den Zugang verliert (Bestandsbetriebe, sobald der Schalter an ist)
 
@@ -47,7 +53,7 @@ Betroffen ist jeder **nicht gesperrte, nicht abgelaufene Zugang mit `rolle: "lei
 | **Z3** Betrieb mit Personen, gestrandeter Leitungscode ohne Person (Befund A-3) | Sitzung mit vollen Leitungsrechten neben den Personen (F-0) | 403 | gewollt (F-0 geschlossen) |
 | **Z4** Laufende Sitzung eines Codes aus Z1–Z3 | gültig bis Ablauf | endet bei der nächsten Anfrage (401) | Abmeldung mitten in der Arbeit; ungespeicherte Eingaben der Oberfläche gehen verloren |
 | **Z5** Sicherungsschlüssel, angelegt aus einer Sitzung aus Z1–Z3 (`ersteller.art: "code"`, `person: null`) | Lesen/Export möglich | abgewiesen und widerrufen (`sk-ohne-person`, erkennbare Absage) | externe Sicherungsautomatik bricht mit Meldung ab |
-| **Z6** Leerer Betrieb, in dem eine andere schreibende Rolle (z. B. Planung ohne Person) die erste Person speichern wollte | erlaubt (Ausnahme „leerer Betrieb“) | 403 (Rang) | gewollt (E-D2) |
+| **Z6** Leerer Betrieb, in dem eine andere schreibende Rolle (z. B. Planung ohne Person) die erste Person speichern wollte | erlaubt (Ausnahme „leerer Betrieb“) | Bestandsbetrieb: mit Schalter aus **weiter erlaubt**, mit Schalter an 403 (Rang). Neuer Betrieb: 403 ab der Anlage, unabhängig vom Schalter | gewollt (E-D2) |
 | **Z7** Erstanmeldecode, nicht innerhalb von 14 Tagen eingelöst | — (neu) | 403 „abgelaufen“ | neuer Code nur im Fenster oder über PR #287 |
 
 Nicht betroffen: Betreiber, Demozugänge (auch Leitung ohne Person), personengebundene Codes aller Rollen, Kontoanmeldung
@@ -104,8 +110,10 @@ Binden der Erstanmeldung, Faktorvermerk (`betreiber-zweifaktor.mjs`), Sperren (`
 Betriebskennung und Umschlüsseln beim Anmelden, Bindung über `/einrichten/bindung`. Sperrreihenfolge: erst Raum, dann
 Konto. Nicht umgestellt (eigener Ablauf mit eigener Rücknahme): OPT-1-Ersteinrichtungscode
 (`zugangscode-ersteinrichtung.mjs`). Geprüft: `pruefungen/konto-parallel.test.js` (deterministische Schranke in der
-Erstanmeldung; in der Pause Sperre über den echten Handler und Faktorvermerk; danach stehen Sperre, Faktor und Bindung;
-dazu eine Schleife echter gleichzeitiger Anmelde- und Sperranfragen).
+Erstanmeldung; in der Pause Sperre über den echten Handler und ein nachgebildeter Faktorschritt; dazu eine Schleife
+echter gleichzeitiger Anmelde- und Sperranfragen; und der **echte Faktorweg**: `POST /api/anmelden` mit
+`zweifaktorAktion` „beginnen“/„bestaetigen“, angehalten im Schreibvorgang von `faktorVermerken`, in der Pause Bindung
+der Erstanmeldung und Sperre — rot mit `betreiber-zweifaktor.mjs` von integration/release-v4, grün mit dieser Änderung).
 
 ## 4. Ein Prozess je Ablage (Produktionsannahme)
 
@@ -143,7 +151,11 @@ liegengebliebene Journal wird beim Lesen überlagert und vom nächsten Schreiber
 5. Zweiter Prozess: einen zweiten Container auf denselben Datenordner starten — er endet mit „belegt“; der erste
    arbeitet weiter.
 6. Schalter: Mit `CENTRIC_ERSTLEITUNG_STRENG` aus meldet sich ein Bestandscode (Leitung ohne Person, Betrieb ohne
-   Marke) wie bisher an, im Betrieb aus Schritt 1 nicht. Mit dem Schalter an auch der Bestandscode nicht (403).
+   Regime- und Erstanmeldemarke, also vor dieser Änderung angelegt) wie bisher an, und die Oberfläche verhält sich wie
+   bisher (`GET /api/bestand` meldet `erstleitungStreng: false`; im leeren Bestandsbetrieb legt sie die erste Person im
+   Arbeitsspeicher an, ohne E-Mail). Im Betrieb aus Schritt 1 nicht (403; `erstleitungStreng: true`) — und dort legt
+   ein Planungscode ohne Person schon **vor** dem Einlösen des Erstanmeldecodes keine Leitung an (PUT 403), der
+   Erstanmeldecode wirkt danach. Mit dem Schalter an auch der Bestandscode nicht (403).
 
 ## 6. E-Mail: Prüfung aller Wege, die eine Personenadresse nutzen
 
@@ -172,5 +184,9 @@ fremder Personen oder Betriebe. Keine Rechteänderung: Für eine bestehende, nic
   möglich ist — er ist wirkungslos (403 bei der Anmeldung). Eine Absage schon beim Ausstellen wäre klarer.
 - Benachrichtigungen an unbestätigte Personenadressen (Abschnitt 6; eigener Befund
   `docs/acc45/BEFUND-VERSAND-UNVERIFIZIERTE-EMAIL.md`, P2).
-- Schalter aus: F-0 bleibt für Bestandsbetriebe offen, bis umgeschaltet wird (Abschnitt 1a).
+- Schalter aus: F-0 und die Ausnahme „leerer Betrieb“ bleiben für Bestandsbetriebe offen, bis umgeschaltet wird
+  (Abschnitt 1a). Neue Betriebe sind ab der Anlage streng.
+- Ein Betrieb, den ein Weg außerhalb von `/api/bestand-anlegen`/`testbetriebAnlegen` in einen bestehenden Raum
+  schreibt (etwa ein zusätzlicher Betrieb per PUT des Betreibers), bekommt keine Regime-Marke und gilt bis zum
+  Schalter als Bestandsbetrieb. Codes stellt `/api/zugaenge` nur für den ersten Betrieb eines Raums aus.
 - Rückspielen der ganzen Ablage: ein benutzter Erstanmeldecode lebt wieder auf — abhängig von E-M6 (Abschnitt 3a).

@@ -1321,8 +1321,8 @@ export function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
      E-D2 (Betreiberentscheidung 2026-11-13): gestrichen. Die erste Leitungsperson legt der Server bei der
      Erstanmeldung an (lib/erstleitung.mjs), BEVOR es eine Sitzung gibt; kein Weg braucht die Ausnahme mehr. Der Rang
      gilt jetzt auch im leeren Betrieb — auch dann, wenn dort (noch) niemand ist.
-     Einzige Ausnahme: ein Bestandsbetrieb ohne Erstanmeldemarke bei ausgeschaltetem Schalter
-     CENTRIC_ERSTLEITUNG_STRENG (lib/erstleitung.mjs). daten.mjs setzt dafür `ersteinrichtungAltweg` an der Sitzung —
+     Einzige Ausnahme: ein Bestandsbetrieb (weder Regime- noch Erstanmeldemarke, also vor dieser Änderung angelegt) bei
+     ausgeschaltetem Schalter CENTRIC_ERSTLEITUNG_STRENG (lib/erstleitung.mjs). daten.mjs setzt dafür `ersteinrichtungAltweg` an der Sitzung —
      am Server ermittelt, nie aus einer Anfrage; fehlt der Vermerk, gilt der Rang. */
   if (sitzung.ersteinrichtungAltweg === true && (!Array.isArray(alt.personen) || alt.personen.length === 0))
     return { ok: true, grund: null };

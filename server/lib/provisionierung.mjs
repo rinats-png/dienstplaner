@@ -81,6 +81,7 @@ import {
 } from "./accounts.mjs";
 import { vorgang } from "./schreibhalt.mjs";
 import { ersteinrichtungscodeAnlegen } from "./zugangscode-ersteinrichtung.mjs";
+import { erstleitungRegimeVermerken } from "./erstleitung.mjs";
 
 const TAG_MS = 86400000;
 
@@ -169,6 +170,9 @@ export async function testbetriebAnlegen(store, { name, branche, email, land,
      zweite überschrieb die erste — beide meldeten Erfolg. */
   const angelegt = await unterRaumsperre(kennung, async () => {
     if (await raumBelegt(store, kennung)) return false;
+    /* Delta-Review e8b9b93d, Punkt 1 (erstleitung.mjs, Regime-Marke): ein neuer Betrieb — streng ab der Anlage, vor
+       dem Bestand geschrieben. Scheitert sie, entsteht kein Betrieb. */
+    await erstleitungRegimeVermerken(store, kennung, leer.mandanten[0].id, { durch });
     await bestandSchreiben(store, kennung, leer, { durch });
     return true;
   });

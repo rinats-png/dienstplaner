@@ -46,10 +46,13 @@ const CODE_BETREIBER = await zugangAnlegen("betreiber", null);
    Kundencodes für „probe2“ entstehen deshalb gleich nach dem Einrichten des Raums als Vorrat, in der Reihenfolge
    ihres Gebrauchs; zugang() gibt sie danach aus. Jeder Block bekommt weiterhin einen eigenen, frischen Code. Wer
    hier einen Block mit neuem Code ergänzt, trägt ihn in VORRAT_BEDARF nach (sonst bricht zugang() mit Hinweis ab). */
+/* A-3 (E-D1, Befund F-0): Ein Leitungscode ohne Person öffnet in einem neuen Betrieb keinen Zugang mehr — „probe2“
+   entsteht über /api/bestand-anlegen und ist damit neu (server/lib/erstleitung.mjs, Regime-Marke). Die Leitungscodes
+   gehören deshalb zur Leitungsperson 3 des Grundbestands (und des Scherbentests M1). */
 const VORRAT_BEDARF = [
-  ["leitung", null], ["betriebsrat", 2], ["mitarbeiter", 0],   // Grundcodes (CODES)
+  ["leitung", 3], ["betriebsrat", 2], ["mitarbeiter", 0],      // Grundcodes (CODES)
   ["mitarbeiter", 0],                                           // S1 Stempeluhr
-  ["leitung", null],                                            // M1 Monatsscherben
+  ["leitung", 3],                                               // M1 Monatsscherben
   ["subplaner", "p1"],                                          // S4
   ["mitarbeiter", 0],                                           // S5
   ["leitung", "p2"],                                            // S6
@@ -116,6 +119,7 @@ const start = {
         notfallkontakt: "Schwester 0171-9999", wochenstunden: 30 },
       { id: 2, vorname: "Britta", nachname: "Rat", rolle: "betriebsrat", bereich: "e1",
         email: "britta@probe.de", wochenstunden: 20 },
+      { id: 3, vorname: "Lena", nachname: "Leitung", rolle: "leitung", bereich: "ALLE", wochenstunden: 40 },
     ],
     abwesenheiten: [
       { id: "a1", personId: 1, art: "krank", von: "2026-08-10", bis: "2026-08-14",
@@ -143,7 +147,7 @@ const wAnlegen = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
 pruef("Betreiber richtet den Raum ein", wAnlegen.status === 200, `Status ${wAnlegen.status}`);
 await vorratAnlegen();
 const CODES = {
-  leitung: await zugang("leitung", null),
+  leitung: await zugang("leitung", 3),
   betriebsrat: await zugang("betriebsrat", 2),
   mitarbeiter: await zugang("mitarbeiter", 0),
 };
@@ -381,11 +385,14 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
           zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] },
         { id: "p2", nachname: "Vogt", rolle: "mitarbeiter",
           zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] },
+        /* Die Leitungsperson der Leitungscodes (A-3, siehe VORRAT_BEDARF) bleibt im Betrieb. */
+        { id: 3, nachname: "Leitung", rolle: "leitung", bereich: "ALLE",
+          zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] },
       ],
       abweichungen: {}, erfassung: {}, einstempeln: {},
       anfragen: [], nachrichten: [] }] };
 
-  const tS1 = await anmelden(await zugang("leitung", null));
+  const tS1 = await anmelden(await zugang("leitung", 3));
   /* Stempel sind Belege (WP-06): Auch ein vollständig neu geschriebener
      Bestand übernimmt sie unverändert — ohne sie wäre das ein Löschen (403). */
   {
@@ -400,7 +407,7 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
 
   const gelesen = await lies(tS1);
   pruef("Zerlegt geschrieben, vollständig gelesen",
-    gelesen.status === 200 && gelesen.bestand.mandanten[0].personen.length === 2);
+    gelesen.status === 200 && gelesen.bestand.mandanten[0].personen.length === 3);
   pruef("Der Stand ist eine fortlaufende Zahl",
     /^\d+$/.test(String(gelesen.etag)), `etag=${gelesen.etag}`);
 

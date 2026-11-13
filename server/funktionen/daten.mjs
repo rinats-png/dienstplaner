@@ -15,7 +15,8 @@ import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifakto
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { ersteinrichtungOffen, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { erstleitungsZugang, erstleitungOffen, erstleitungUngueltig, erstleitungEinloesen, erstleitungAusstellen,
-  erstleitungVermerk, erstleitungEingerichtet, leitungscodeOhnePerson, OHNE_PERSON_ANTWORT, erstleitungAbgelaufen, erstleitungStreng } from "../lib/erstleitung.mjs";
+  erstleitungVermerk, erstleitungEingerichtet, leitungscodeOhnePerson, OHNE_PERSON_ANTWORT, erstleitungAbgelaufen, erstleitungStreng,
+  erstleitungRegimeVermerken } from "../lib/erstleitung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
@@ -432,6 +433,16 @@ async function behandeln(req, context, ctx) {
         const code = `${block()}-${block()}-${block()}`;
         const erst = erstleitungAusstellen({ rolle: e.rolle, person: e.personId, demo: false, mandant: zielMandant, lage,
           eingerichtet: zielEingerichtet });
+        /* Delta-Review e8b9b93d, Punkt 1 (lib/erstleitung.mjs, Regime-Marke): Mit dem ersten Erstanmeldecode gilt das
+           strenge Regime für diesen Betrieb — VOR dem Code, auch für einen vor dieser Änderung angelegten leeren
+           Betrieb. Ohne Marke kein Code. */
+        if (erst) {
+          try { await erstleitungRegimeVermerken(store, ziel, bindungZ.mandantId, { durch: "Erstanmeldecode" }); }
+          catch {
+            await protokoll("zugaenge", kZ, "fehler", "Erstanmeldung: Regime nicht vermerkbar");
+            return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
+          }
+        }
         /* Ein Schlüssel je Konto: Zwei gleichzeitige Anlagen stören
            einander nicht mehr, und kein ausgelieferter Code geht verloren. */
         await kontoSchreiben(store, ablageSchluessel(code), {
@@ -771,6 +782,12 @@ async function behandeln(req, context, ctx) {
          als schnelle Absage; hier wird sie unter der Sperre wiederholt. */
       const angelegt = await unterRaumsperre(ziel, async () => {
         if (await raumBelegt(store, ziel)) return false;
+        /* Delta-Review e8b9b93d, Punkt 1 (lib/erstleitung.mjs, Regime-Marke): Ein hier angelegter Betrieb ist NEU — für
+           ihn gilt das strenge Regime ab jetzt (E-D1/F-0, E-D2), unabhängig von CENTRIC_ERSTLEITUNG_STRENG. Vor dem
+           Bestand geschrieben: Es gibt keinen Augenblick, in dem der Betrieb ohne sie stünde. Scheitert sie, entsteht
+           kein Betrieb. */
+        for (const m of neuerBestand.mandanten)
+          if (m && typeof m.id === "string" && m.id) await erstleitungRegimeVermerken(store, ziel, m.id, { durch: "Betreiber" });
         await bestandSchreiben(store, ziel, neuerBestand, { durch: "Betreiber" });
         return true;
       });
@@ -1040,6 +1057,13 @@ async function behandeln(req, context, ctx) {
         return antwort({ fehler: "Dieser Zugang passt nicht mehr zu seinem Betrieb.",
           text: "Bitte wende dich an die Organisationsleitung." }, 403);
       }
+      /* E-D1 / F-0 auch für einen alten Code OHNE Kennung (vor Oktober 2026): Erst die Bindung nennt den Betrieb, also
+         erst hier die Frage nach dem strengen Regime — mit derselben Kennung, die die Sitzung tragen würde. */
+      if (!eintrag.mandantId && leitungscodeOhnePerson(eintrag)
+        && await erstleitungStreng(store, eintrag.bestand, bindungC.mandantId)) {
+        await protokoll("anmelden", k, "abgewiesen", "Leitungscode ohne Person");
+        return antwort({ ...OHNE_PERSON_ANTWORT }, 403);
+      }
       /* Zweiter Faktor für Betreibercodes (WP-32b, lib/betreiber-zweifaktor.mjs):
          Einrichten, Abschalten und — wenn eingerichtet — Pflicht beim Anmelden.
          SI-P4: derselbe Weg für Leitung, Planung und Kunde. Maßgeblich ist die
@@ -1241,9 +1265,10 @@ async function behandeln(req, context, ctx) {
     const s = (s0.nurSicherung || s0.rolle === "betreiber"
       || s0.person === null || s0.person === undefined) ? s0
       : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };
-    /* E-D2 hinter dem Schalter (lib/erstleitung.mjs, erstleitungStreng): Nur in einem Bestandsbetrieb ohne Marke und
-       bei ausgeschaltetem CENTRIC_ERSTLEITUNG_STRENG gilt beim Schreiben noch die alte Ausnahme „leerer Betrieb“
-       (rechte.mjs, rollenwechselErlaubt). Ermittelt je schreibender Anfrage am Server, nie aus der Anfrage. */
+    /* E-D2 hinter dem Schalter (lib/erstleitung.mjs, erstleitungStreng): Nur in einem Bestandsbetrieb (weder Regime-
+       noch Erstanmeldemarke) und bei ausgeschaltetem CENTRIC_ERSTLEITUNG_STRENG gilt beim Schreiben noch die alte
+       Ausnahme „leerer Betrieb“ (rechte.mjs, rollenwechselErlaubt). Ein neuer Betrieb ist ab seiner Anlage streng.
+       Ermittelt je schreibender Anfrage am Server, nie aus der Anfrage. */
     if (req.method !== "GET" && !s.nurSicherung && s.rolle !== "betreiber"
       && !(await erstleitungStreng(store, s.bestand, s.mandantId))) s.ersteinrichtungAltweg = true;
     /* SI-P4, Review-Auflage M2: Unter Pflicht trägt eine Sitzung ohne bestandenen zweiten Faktor keine Rechte einer
@@ -1311,10 +1336,14 @@ async function behandeln(req, context, ctx) {
       const mit = await bestandJetzt();
       if (mit) groesseMerken(s.bestand, mit.bestand);
       if (mit) bytesMerken(s.bestand, mit);
+      /* Delta-Review e8b9b93d, Punkt 3: Gilt für den Betrieb dieser Sitzung das strenge Regime (lib/erstleitung.mjs)?
+         Die Oberfläche (src/app/zugangssitzung.js) richtet sich danach: nicht streng = bisheriger Ablauf. Nur ein
+         Wahrheitswert, keine personenbezogene Angabe; am Server ermittelt, nie aus der Anfrage. */
+      const strengG = s.rolle !== "betreiber" && !s.nurSicherung ? await erstleitungStreng(store, s.bestand, s.mandantId) : false;
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
-        merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true) });
+        merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true), erstleitungStreng: strengG });
       /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
          nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
       const angeglichenG = personenAngleichen(mit.bestand);
@@ -1331,7 +1360,7 @@ async function behandeln(req, context, ctx) {
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         /* SI-P4: Gilt der gemerkte Zugang noch? Die wirksame Rolle kann sich seit der Anmeldung geändert haben. */
-        merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true),
+        merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true), erstleitungStreng: strengG,
         geaendert: mit.zeit, durch: mit.durch });
     }
 

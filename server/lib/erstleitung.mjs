@@ -62,8 +62,9 @@
            Ein noch offener Erstanmeldecode wird abgewiesen, und einen neuen
            stellt kein Weg mehr aus. Wiederabgeleitet wird zusätzlich aus dem
            Bestand: Ein Betrieb mit Personen ist immer eingerichtet. Die
-           Ausnahme „leerer Betrieb“ in rechte.mjs (rollenwechselErlaubt) ist
-           gestrichen — sie wird von keinem Weg mehr gebraucht.
+           Ausnahme „leerer Betrieb“ in rechte.mjs (rollenwechselErlaubt)
+           gilt nur noch für Bestandsbetriebe bei ausgeschaltetem Schalter
+           (AKTIVIERUNG, unten); ein neuer Betrieb ist ab seiner Anlage streng.
      E-Mail Die erste Leitungsperson hat keine E-Mail-Adresse; die
            Kontaktadresse des Betriebs wird nie als persönliche Adresse
            übernommen.
@@ -165,27 +166,76 @@ export async function erstleitungMarkeLesen(store, raum, mandantId) {
    ohne vorherige Bestandsanalyse und Freigabe auf die strengen Regeln
    umgestellt.
 
-     CENTRIC_ERSTLEITUNG_STRENG  Vorgabe AUS; an nur bei genau `true`.
+     CENTRIC_ERSTLEITUNG_STRENG  Vorgabe AUS; an nur bei genau `true` (jeder
+       andere Wert, auch „TRUE“, „1“, „ja“: aus).
        aus  streng (E-D1/F-0: kein Zugang für einen Leitungscode ohne Person;
-            E-D2: keine Ausnahme „leerer Betrieb“) gilt nur für Betriebe, deren
-            Erstanmeldung über den Erstanmeldecode lief (Marke vorhanden) —
-            also für NEUE Betriebe. Bestandsbetriebe ohne Marke behalten den
-            bisherigen Ablauf unverändert.
+            E-D2: keine Ausnahme „leerer Betrieb“) gilt für jeden NEUEN
+            Betrieb — ab seiner Anlage (Regime-Marke, unten) — und für jeden
+            Betrieb, dessen Erstanmeldung festgelegt ist (Marke oben).
+            Bestandsbetriebe (vor dieser Änderung angelegt, ohne eine der
+            beiden Marken) behalten den bisherigen Ablauf unverändert.
        an   streng für alle Betriebe (nach Analyse und Umstellung, PR #287).
-   Ein Lesefehler an der Marke gilt als streng (fail-closed).
+   Ein Lesefehler an einer Marke gilt als streng (fail-closed).
    Der Erstanmeldecode selbst (Vermerk, Marke, Atomarität, Gültigkeit) wirkt
    immer, unabhängig vom Schalter.
+
+   Delta-Review e8b9b93d (Punkt 1): Vorher hing „neu“ allein an der Marke der
+   Erstanmeldung — die entsteht erst beim EINLÖSEN. Bis dahin war ein neuer
+   Betrieb nicht streng: Ein Planungscode ohne Person legte im Fenster der
+   Ersteinrichtung eine Leitung an (Ausnahme „leerer Betrieb“) und verbrannte
+   damit den echten Erstanmeldecode; ein gewöhnlicher Leitungscode ohne
+   Person bekam volle Leitungsrechte. Jetzt steht das strenge Regime ab der
+   ANLAGE des Betriebs fest.
+
+   REGIME-MARKE `erstleitung-regime:<raum>:<mandantId>` — „dieser Betrieb ist
+   neu, für ihn gilt das strenge Regime“. Einmal anlegbar (setJSONWennNeu),
+   nie überschrieben, außerhalb des Bestands wie die Marke oben: PUT,
+   Teilweg, /api/wiederherstellen, Import und Bestandsmigration schreiben nur
+   den Bestand und erreichen sie nicht; keine Anfrage kann sie setzen oder
+   entfernen. Geschrieben ausschließlich vom Server, und zwar
+     - beim Anlegen eines Betriebs: /api/bestand-anlegen (daten.mjs),
+       Selbststart und Registrierung (provisionierung.mjs, testbetriebAnlegen)
+       — VOR dem Bestand, damit es keinen Augenblick ohne sie gibt;
+     - beim Ausstellen eines Erstanmeldecodes (/api/zugaenge, /einrichten) —
+       VOR dem Code: Ein vor dieser Änderung angelegter, noch leerer Betrieb
+       wird mit seinem ersten Erstanmeldecode streng.
+   „Bestand oder neu“ entscheidet allein diese Marke (bzw. die Marke der
+   Erstanmeldung), nie etwas aus der Anfrage. Inhalt: { seit, durch } —
+   keine personenbezogenen Angaben. Raumlöschung räumt sie ab (zuletzt).
    -------------------------------------------------------------------------- */
 export const erstleitungStrengAn = () => process.env.CENTRIC_ERSTLEITUNG_STRENG === "true";
 
+export const erstleitungRegimeSchluessel = (raum, mandantId) => `erstleitung-regime:${raum}:${mandantId}`;
+/** Präfix aller Regime-Marken eines Raums (raumloeschung.mjs). */
+export const erstleitungRegimePraefix = (raum) => `erstleitung-regime:${raum}:`;
+
 /**
- * Gelten für diesen Betrieb die strengen Regeln (E-D1/F-0, E-D2)?
+ * Das strenge Regime für einen neuen Betrieb festhalten — einmal anlegbar; eine vorhandene Marke bleibt, wie sie ist.
+ * Wirft, wenn nicht geschrieben werden kann (der Aufrufer legt dann nichts an).
+ * @param {any} store
+ * @param {string} raum
+ * @param {string} mandantId
+ * @param {{durch?: string, jetzt?: number}} [o]
+ */
+export async function erstleitungRegimeVermerken(store, raum, mandantId, { durch = "", jetzt = Date.now() } = {}) {
+  if (typeof raum !== "string" || !raum || typeof mandantId !== "string" || !mandantId)
+    throw new Error("Erstanmeldung: Raum oder Betrieb fehlt");
+  await store.setJSONWennNeu(erstleitungRegimeSchluessel(raum, mandantId),
+    { seit: new Date(jetzt).toISOString(), durch: String(durch).slice(0, 40) });
+}
+
+/**
+ * Gelten für diesen Betrieb die strengen Regeln (E-D1/F-0, E-D2)? Schalter an, oder der Betrieb ist neu
+ * (Regime-Marke), oder seine Erstanmeldung ist festgelegt (Marke). Ein Lesefehler: ja.
  * @returns {Promise<boolean>}
  */
 export async function erstleitungStreng(store, raum, mandantId) {
   if (erstleitungStrengAn()) return true;
   if (typeof raum !== "string" || !raum || typeof mandantId !== "string" || !mandantId) return false;
-  try { return (await erstleitungMarkeLesen(store, raum, mandantId)) !== null; } catch { return true; }
+  try {
+    if ((await store.get(erstleitungRegimeSchluessel(raum, mandantId), { type: "json" })) != null) return true;
+    return (await erstleitungMarkeLesen(store, raum, mandantId)) !== null;
+  } catch { return true; }
 }
 
 /**

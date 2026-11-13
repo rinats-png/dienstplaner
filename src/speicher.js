@@ -185,7 +185,11 @@ export async function lies() {
     /* WP-07: wem die Offline-Warteschlange gehört (Raum, Betrieb, Person der
        Sitzung als Prüfsumme). Auch aus dem Speicher des Dienstarbeiters — der
        gehört immer der aktuellen Anmeldung, denn Abmelden löscht ihn. */
-    inhaber: typeof daten.inhaber === "string" ? daten.inhaber : null };
+    inhaber: typeof daten.inhaber === "string" ? daten.inhaber : null,
+    /* A-3 (Delta-Review e8b9b93d, Punkt 3): Gilt für den Betrieb das strenge Regime? Nur der Server weiß es
+       (server/lib/erstleitung.mjs); fehlt die Angabe, bleibt die Oberfläche beim bisherigen Ablauf
+       (src/app/zugangssitzung.js). Rechte bestimmt ohnehin allein der Server. */
+    erstleitungStreng: daten.erstleitungStreng === true };
   stempelPufferMelden().catch(() => {});
   /* Jetzt ist der Inhaber bekannt: Wartendes senden — beim Start der
      Anwendung der Weg, auf dem ein offline erfasster Stempel nach einem

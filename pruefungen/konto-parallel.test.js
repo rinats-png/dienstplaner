@@ -25,6 +25,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 
 const WIRT = "127.0.0.1:3000";
 let wurzel, L, daten;
@@ -99,7 +100,8 @@ describe.sequential("Zugang: Sperre, Faktorvermerk und Bindung der Erstanmeldung
     const sp = await anfrage("/api/zugang-sperren", { token: await betreiberSitzung(), rumpf: { code } });
     expect(sp.status, sp.fehler).toBe(200);
     expect((await L.kontoLesenStreng(store(), schluessel)).gesperrt).toBe(true);
-    /* Ein gleichzeitiger Faktorschritt am selben Zugang (frisch gelesen, ein Feld gesetzt). */
+    /* Ein gleichzeitiger Faktorschritt am selben Zugang (hier nur nachgebildet: frisch gelesen, ein Feld gesetzt — den
+       ECHTEN Faktorweg über faktorVermerken prüft der dritte Fall unten). */
     await L.kontoSchreiben(store(), schluessel, { ...(await L.kontoLesenStreng(store(), schluessel)), zweiterFaktor: true });
     weiter();
     const erg = await lauf;
@@ -135,6 +137,97 @@ describe.sequential("Zugang: Sperre, Faktorvermerk und Bindung der Erstanmeldung
       if (ps.length === 1 && an.status === 200) expect(k.person).toBe(ps[0].id);
       /* Danach: keine Anmeldung mehr. */
       expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: code } })).status).toBe(403);
+    }
+  });
+
+  /* Delta-Review e8b9b93d, Punkt 2 (Betreiberauflage): der ECHTE Faktorweg. POST /api/anmelden mit
+     zweifaktorAktion „beginnen“ und „bestaetigen“ (lib/betreiber-zweifaktor.mjs) vermerkt den Faktor am Zugang
+     (faktorVermerken). Angehalten wird genau dieser Schreibvorgang — nachdem der Vermerk seinen Stand gelesen und den
+     neuen Inhalt gebildet hat, bevor er unter dem Zielnamen steht (Umwicklung von rename aus node:fs/promises, wie
+     pruefungen/hilfen/kill-nach-schreiben.mjs; keine Einspeisestelle im Produktionscode). In der Pause binden die
+     Erstanmeldung (lib/erstleitung.mjs) und eine Sperre über den echten Handler (/api/zugang-sperren) denselben Zugang.
+       Ohne Kontosperre im Faktorvermerk (Stand integration/release-v4: lesen, dann eine Kopie schreiben) laufen beide in
+       der Pause durch, und die angehaltene, veraltete Kopie überschreibt danach Sperre und Bindung — rot.
+       Mit kontoAendern hält der angehaltene Vermerk die Sperre des Kontos; Bindung und Sperre stehen dahinter in der
+       Reihe und schreiben am frischen Stand — grün.
+     Welcher Fall vorliegt, sagt die Sperre selbst (sperreGehalten im Ablauf des angehaltenen Schreibvorgangs), nicht
+     eine Uhr: Gewartet wird entweder, bis beide fertig sind, oder bis beide hinter der Sperre stehen. */
+  it("echter Faktorweg (faktorVermerken) gegen Bindung der Erstanmeldung und Sperre: Faktor, Sperre und Bindung bleiben", async () => {
+    const { hotp, base32Dekodieren, schrittZu } = await import("../server/lib/zweifaktor.mjs");
+    const R = await import("../server/lib/raumsperre.mjs");
+    const raum = "pk-f";
+    await L.bestandSchreiben(store(), raum, leererBetrieb(raum), { durch: "Prüfung" });
+    const code = await erstcode(raum);
+    const schluessel = L.ablageSchluessel(code);
+    const b = await anfrage("/api/anmelden", { rumpf: { zugangscode: code, zweifaktorAktion: "beginnen" } });
+    expect(b.status, b.fehler).toBe(200);
+    expect(b.geheimnis).toEqual(expect.any(String));
+    /* Noch nichts eingelöst: Der Faktorschritt legt keine Person an. */
+    expect((await L.kontoLesenStreng(store(), schluessel)).erstleitung).toBeTruthy();
+
+    const zielDatei = path.resolve(wurzel, "centric", L.dateiname(`konto:${schluessel}`));
+    const fsp = createRequire(import.meta.url)("node:fs/promises");
+    const echt = fsp.rename;
+    let angekommen, weiter;
+    const ankunft = new Promise((r) => { angekommen = r; });
+    const freigabe = new Promise((r) => { weiter = r; });
+    let angehalten = false;
+    let unterKontosperre = null;
+    fsp.rename = async function umwickelt(von, nach, ...rest) {
+      if (!angehalten && path.resolve(String(nach)) === zielDatei
+        && (await fsp.readFile(von, "utf8")).includes("\"zweiterFaktor\":true")) {
+        angehalten = true;
+        unterKontosperre = R.sperreGehalten(L.kontoSperre(schluessel));
+        angekommen();
+        await freigabe;
+      }
+      return echt.call(this, von, nach, ...rest);
+    };
+    syncBuiltinESMExports();
+    try {
+      const geheimnis = base32Dekodieren(b.geheimnis);
+      const bestaetigt = anfrage("/api/anmelden", { rumpf: { zugangscode: code, zweifaktorAktion: "bestaetigen",
+        zweifaktor: hotp(geheimnis, schrittZu(Date.now())) } });
+      await Promise.race([ankunft, bestaetigt.then((x) => { throw new Error(`Faktorvermerk nicht erreicht: ${x.status} ${x.fehler}`); })]);
+      const offen0 = R.sperrZustand().offen;
+      /* In der Pause: die Erstanmeldung bindet, der Betreiber zieht den Code zurück (echter Handler). */
+      const bindung = L.erstleitungEinloesen(store(), { schluessel });
+      const sperre = anfrage("/api/zugang-sperren", { token: await betreiberSitzung(), rumpf: { code } });
+      if (unterKontosperre) {
+        /* Beide müssen hinter der Sperre des Kontos stehen (Bindung: Raum gehalten + Konto wartend; Sperre: wartend). */
+        for (let i = 0; i < 1000 && R.sperrZustand().offen < offen0 + 3; i++) await new Promise((r) => setTimeout(r, 10));
+      } else await Promise.allSettled([bindung, sperre]);
+      weiter();
+      const [f, el, sp] = await Promise.all([bestaetigt, bindung, sperre]);
+      expect(f.status, f.fehler).toBe(200);
+      expect(f.aktiv).toBe(true);
+      expect(f.vermerk).toBeUndefined();
+      expect(sp.status, sp.fehler).toBe(200);
+      const k = await L.kontoLesenStreng(store(), schluessel);
+      /* Nichts verloren: Faktorvermerk, Sperre — und die Bindung passt zum Bestand. */
+      expect(k.zweiterFaktor).toBe(true);
+      expect(k.gesperrt).toBe(true);
+      expect(k.gesperrtAm).toEqual(expect.any(String));
+      const ps = (await L.bestandLesenStreng(store(), raum)).bestand.mandanten[0].personen;
+      expect(ps.length).toBeLessThanOrEqual(1);
+      if (el.ok) {
+        expect(ps.map((p) => p.id)).toEqual([el.personId]);
+        expect(k.person).toBe(el.personId);
+        expect(k.erstleitung).toBeUndefined();
+        expect(k.erstleitungVerbraucht).toMatchObject({ grund: "angelegt", personId: el.personId });
+      } else {
+        /* Die Sperre kam zuerst: nichts angelegt, nichts gebunden. */
+        expect(ps).toEqual([]);
+        expect(k.person ?? null).toBeNull();
+      }
+      /* Der zurückgezogene Code meldet sich nicht wieder an — auch nicht mit gültigem zweitem Faktor. */
+      const a = await anfrage("/api/anmelden", { rumpf: { zugangscode: code, zweifaktor: hotp(geheimnis, schrittZu(Date.now()) + 1) } });
+      expect(a.status).toBe(403);
+      expect(a.token).toBeUndefined();
+    } finally {
+      fsp.rename = echt;
+      syncBuiltinESMExports();
+      weiter();
     }
   });
 });

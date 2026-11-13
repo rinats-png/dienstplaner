@@ -65,9 +65,18 @@ const vermerk = (raum, extra = {}) => ({ erstleitung: { mandantId: raum, angeleg
 
 let betreiber;
 const CODE = {};
-async function betriebAnlegen(raum) {
-  const a = await anfrage("/api/bestand-anlegen", { methode: "POST", token: betreiber, rumpf: { bestand: raum, vorlage: "leer", name: `Haus ${raum}` } });
+async function betriebAnlegen(raum, vorlage = "leer") {
+  const a = await anfrage("/api/bestand-anlegen", { methode: "POST", token: betreiber, rumpf: { bestand: raum, vorlage, name: `Haus ${raum}` } });
   expect(a.status, a.fehler).toBe(200);
+  return a.mandanten;
+}
+const regimeSchluessel = (raum, mandantId = raum) => `erstleitung-regime:${raum}:${mandantId}`;
+/** Ein BESTANDSbetrieb (vor dieser Änderung angelegt): wie ein neuer, aber ohne Regime-Marke — so stand er in der Ablage. */
+async function bestandsbetriebAnlegen(raum, vorlage = "leer") {
+  const ids = await betriebAnlegen(raum, vorlage);
+  for (const id of ids) await store().delete(regimeSchluessel(raum, id));
+  for (const id of ids) expect(await store().get(regimeSchluessel(raum, id), { type: "json" })).toBeNull();
+  return ids;
 }
 
 beforeAll(async () => {
@@ -150,7 +159,7 @@ describe.sequential("Teil 1: echter Server", () => {
     expect(bt.rolle).toBe("betreiber");
     /* Ein Leitungscode OHNE Vermerk im leeren BESTANDSbetrieb (ohne Marke), Schalter CENTRIC_ERSTLEITUNG_STRENG aus:
        der bisherige Ablauf bleibt (Sitzung, Rolle aus dem Code) — aber nie eine Person. Streng: erstleitung-entscheidungen. */
-    await betriebAnlegen("erstl-alt");
+    await bestandsbetriebAnlegen("erstl-alt");
     const alt = await codeAblegen("erstl-alt");
     const al = await anmelden(alt, boese);
     expect(al.status, al.fehler).toBe(200);
@@ -282,7 +291,7 @@ describe.sequential("Teil 1: echter Server", () => {
     expect(a.token).toBeUndefined();
     expect(await personenIn("erstl-a")).toHaveLength(1);
     /* Betrieb mit Personen, aber ohne Leitung; ein Erstanmeldecode, nachdem Personen eingespielt wurden: abgewiesen. */
-    await betriebAnlegen("erstl-voll");
+    await bestandsbetriebAnlegen("erstl-voll");
     const g = await L.bestandLesenStreng(store(), "erstl-voll");
     const b = JSON.parse(JSON.stringify(g.bestand));
     b.mandanten[0].personen = [{ id: "pl1", vorname: "P", nachname: "Plan", rolle: "planer", bereich: "ALLE", status: "aktiv",
@@ -350,6 +359,137 @@ describe.sequential("Teil 1: echter Server", () => {
     expect(a2.person).toBe("p_def5678");
     expect((await personenIn("erstl-k2")).map((p) => p.id)).toEqual(["p_def5678"]);
     expect((await kontoVon(k2)).erstleitungVerbraucht).toMatchObject({ grund: "angelegt", personId: "p_def5678" });
+  });
+});
+
+/* --------------------------------------------------------------------------
+   Delta-Review e8b9b93d, Punkt 1 (Probe des Prüfers, echter Server, Schalter AUS): Ein NEUER Betrieb ist ab seiner
+   Anlage streng — nicht erst, wenn die Marke der Erstanmeldung beim Einlösen entsteht. Rot auf e8b9b93d:
+     a) der Planungscode ohne Person legte im Fenster der Ersteinrichtung per PUT eine Leitung an (200),
+     b) der echte Erstanmeldecode war danach „nicht mehr gültig“ (403),
+     c) ein gewöhnlicher Leitungscode ohne Person im frischen Betrieb bekam eine volle Leitungssitzung (200).
+   „Bestand oder neu“ entscheidet allein die Regime-Marke, die nur der Server schreibt.
+   -------------------------------------------------------------------------- */
+describe.sequential("Teil 1b: streng ab der Anlage (neue Betriebe), Bestandsbetriebe unverändert", () => {
+  const leitungsperson = (id) => ({ id, vorname: "", nachname: "X", rolle: "leitung", bereich: "ALLE", status: "aktiv",
+    eintritt: "2026-01-01", austritt: null, qualifikationen: [], zugehoerigkeit: [] });
+  let NEU1;
+  /** Eine Planungsperson direkt in die Ablage (ein Betrieb MIT Personen, aber ohne Leitung). */
+  const planerEinspielen = async (raum) => {
+    const g = await L.bestandLesenStreng(store(), raum);
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    b.mandanten[0].personen = [{ ...leitungsperson("pl1"), rolle: "planer", nachname: "Plan" }];
+    expect((await L.bestandSchreiben(store(), raum, b, { erwarteterStand: g.stand, durch: "Prüfung" })).ok).toBe(true);
+  };
+  it("Anlage schreibt die Regime-Marke (einmal anlegbar, außerhalb des Bestands, ohne personenbezogene Angaben)", async () => {
+    const [mid] = await betriebAnlegen("erstl-neu1");
+    NEU1 = mid;
+    const m = await store().get(regimeSchluessel("erstl-neu1", mid), { type: "json" });
+    expect(m).toEqual({ seit: expect.any(String), durch: "Betreiber" });
+    /* Nicht im Bestand — kein Schreibweg erreicht sie. */
+    expect(JSON.stringify((await L.bestandLesenStreng(store(), "erstl-neu1")).bestand)).not.toMatch(/erstleitung-regime/);
+  });
+
+  it("Probe a/b: Planungscode ohne Person legt im Fenster der Ersteinrichtung KEINE Leitung an; der echte Erstanmeldecode wirkt danach", async () => {
+    const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: "erstl-neu1",
+      eintraege: [{ rolle: "leitung", personId: null }, { rolle: "planer", personId: null }] } });
+    expect(z.status, z.fehler).toBe(200);
+    expect(z.zugaenge.map((x) => x.erstanmeldung === true)).toEqual([true, false]);
+    const [erst, plan] = z.zugaenge.map((x) => x.code);
+    const pa = await anmelden(plan);
+    expect(pa.status, pa.fehler).toBe(200);
+    const gp = await anfrage("/api/bestand", { token: pa.token });
+    expect(gp.status).toBe(200);
+    const bp = JSON.parse(JSON.stringify(gp.bestand));
+    bp.mandanten[0].personen = [leitungsperson("p_plan001")];
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: pa.token, rumpf: { bestand: bp, etag: gp.etag } });
+    expect(w.status, w.fehler).toBe(403);
+    expect(await personenIn("erstl-neu1")).toEqual([]);
+    expect(gp.erstleitungStreng).toBe(true);
+    /* b) Der echte Erstanmeldecode ist nicht verbrannt: Er legt die erste Leitung an. */
+    const e = await anmelden(erst);
+    expect(e.status, e.fehler).toBe(200);
+    expect(e.person).toMatch(/^p_[0-9a-f]{7}$/);
+    const ps = await personenIn("erstl-neu1");
+    expect(ps.map((p) => [p.id, p.rolle])).toEqual([[e.person, "leitung"]]);
+    expect((await anfrage("/api/bestand", { token: e.token })).erstleitungStreng).toBe(true);
+    /* Die Regime-Marke blieb, wie sie war (einmal anlegbar). */
+    expect(await store().get(regimeSchluessel("erstl-neu1", NEU1), { type: "json" })).toMatchObject({ durch: "Betreiber" });
+  });
+
+  it("Probe c: ein gewöhnlicher Leitungscode ohne Person bekommt im frischen Betrieb keine Sitzung", async () => {
+    /* Frischer Betrieb mit Personen: der Leitungscode ohne Person ist kein Erstanmeldecode. */
+    await betriebAnlegen("erstl-neu2");
+    await planerEinspielen("erstl-neu2");
+    const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: "erstl-neu2",
+      eintraege: [{ rolle: "leitung", personId: null }] } });
+    expect(z.status, z.fehler).toBe(200);
+    expect(z.zugaenge[0].erstanmeldung).toBeUndefined();
+    const a = await anmelden(z.zugaenge[0].code);
+    expect(a.status).toBe(403);
+    expect(a.fehler).toBe("Ihr Zugang ist keiner Person zugeordnet.");
+    expect(a.token).toBeUndefined();
+    /* Frischer leerer Betrieb, Leitungscode ohne Vermerk (wie ihn kein Endpunkt mehr ausstellt): ebenso. */
+    await betriebAnlegen("erstl-neu3");
+    const o = await anmelden(await codeAblegen("erstl-neu3"));
+    expect(o.status).toBe(403);
+    expect(o.token).toBeUndefined();
+    expect(await personenIn("erstl-neu3")).toEqual([]);
+  });
+
+  it("Bestandsbetrieb (ohne Regime-Marke), Schalter aus: der bisherige Ablauf bleibt — auch die Angabe an die Oberfläche", async () => {
+    await bestandsbetriebAnlegen("erstl-alt2");
+    await planerEinspielen("erstl-alt2");
+    const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: "erstl-alt2",
+      eintraege: [{ rolle: "leitung", personId: null }] } });
+    expect(z.status, z.fehler).toBe(200);
+    const a = await anmelden(z.zugaenge[0].code);
+    expect(a.status, a.fehler).toBe(200);
+    expect(a.person).toBeNull();
+    const g = await anfrage("/api/bestand", { token: a.token });
+    expect(g.status).toBe(200);
+    expect(g.erstleitungStreng).toBe(false);
+  });
+
+  it("Bestandsbetrieb, noch leer: sein erster Erstanmeldecode macht ihn streng (Regime-Marke beim Ausstellen)", async () => {
+    const [mid] = await bestandsbetriebAnlegen("erstl-alt3");
+    const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: "erstl-alt3",
+      eintraege: [{ rolle: "leitung", personId: null }, { rolle: "planer", personId: null }] } });
+    expect(z.status, z.fehler).toBe(200);
+    expect(z.zugaenge[0].erstanmeldung).toBe(true);
+    expect(await store().get(regimeSchluessel("erstl-alt3", mid), { type: "json" })).toEqual({ seit: expect.any(String), durch: "Erstanmeldecode" });
+    const pa = await anmelden(z.zugaenge[1].code);
+    expect(pa.status, pa.fehler).toBe(200);
+    const gp = await anfrage("/api/bestand", { token: pa.token });
+    expect(gp.erstleitungStreng).toBe(true);
+    const bp = JSON.parse(JSON.stringify(gp.bestand));
+    bp.mandanten[0].personen = [leitungsperson("p_plan003")];
+    expect((await anfrage("/api/bestand", { methode: "PUT", token: pa.token, rumpf: { bestand: bp, etag: gp.etag } })).status).toBe(403);
+    expect((await anmelden(z.zugaenge[0].code)).status).toBe(200);
+  });
+
+  it("verbogene Schalterwerte („TRUE“, „1“, „ja“ …) gelten als AUS — neue Betriebe bleiben trotzdem streng, Bestandsbetriebe nicht", async () => {
+    const { erstleitungStreng } = await import("../server/lib/erstleitung.mjs");
+    const vorher = process.env.CENTRIC_ERSTLEITUNG_STRENG;
+    try {
+      for (const v of ["TRUE", "True", "1", "ja", "yes", "on", " true", "true ", "", "false", "0"]) {
+        process.env.CENTRIC_ERSTLEITUNG_STRENG = v;
+        expect(await erstleitungStreng(store(), "erstl-neu1", NEU1), `neu, ${JSON.stringify(v)}`).toBe(true);
+        expect(await erstleitungStreng(store(), "erstl-alt", "erstl-alt"), `Bestand, ${JSON.stringify(v)}`).toBe(false);
+      }
+      process.env.CENTRIC_ERSTLEITUNG_STRENG = "true";
+      expect(await erstleitungStreng(store(), "erstl-alt", "erstl-alt")).toBe(true);
+      /* Ein Lesefehler an der Regime-Marke: streng (fail-closed). */
+      process.env.CENTRIC_ERSTLEITUNG_STRENG = "TRUE";
+      const blind = new Proxy(store(), { get(z, k) {
+        const f = z[k];
+        if (k === "get") return (schl, ...r) => (String(schl).startsWith("erstleitung-regime:") ? Promise.reject(new Error("Lesefehler")) : f.call(z, schl, ...r));
+        return typeof f === "function" ? f.bind(z) : f;
+      } });
+      expect(await erstleitungStreng(blind, "erstl-alt", "erstl-alt")).toBe(true);
+    } finally {
+      if (vorher === undefined) delete process.env.CENTRIC_ERSTLEITUNG_STRENG; else process.env.CENTRIC_ERSTLEITUNG_STRENG = vorher;
+    }
   });
 });
 
