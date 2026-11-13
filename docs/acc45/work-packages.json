@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 201,
   "statusZaehlung": {
-    "BLOCKED": 71,
+    "BLOCKED": 70,
     "READY": 16,
-    "IN_PROGRESS": 18,
+    "IN_PROGRESS": 19,
     "REVIEW": 7,
     "INTEGRATED": 86,
     "DONE": 3
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 28,
       "restPT": {
-        "min": 183.5,
-        "max": 324.5
+        "min": 179.5,
+        "max": 317.5
       }
     },
     "folge": {
@@ -53,13 +53,13 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 297.5,
-    "max": 506.2
+    "min": 293.5,
+    "max": 499.2
   },
   "kritischerPfad": {
-    "summe": 75.5,
-    "min": 54,
-    "max": 97,
+    "summe": 70,
+    "min": 50,
+    "max": 90,
     "kette": [
       "WP-I4",
       "WP-I5",
@@ -2304,12 +2304,12 @@
       "prio": "P2",
       "aufwandPT": {"min":8,"max":14},
       "abhaengigkeiten": ["WP-I3","WP-22"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":"Teilumfang in PR #256 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2318,12 +2318,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": ["App.jsx","rechte.mjs"],
-      "pr": [],
+      "pr": ["#256"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)?"
     },
     {
       "id": "WP-I5",
