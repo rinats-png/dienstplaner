@@ -1,7 +1,11 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #256, Integrationskopf 3eeee94f, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #258, Integrationskopf a5abd89b, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach #258 (2026-11-13)
+- Integrationskopf: `a5abd89b` (Merge #258). Seit #256 gemergt: #257 (SSOT nach #256) und #258 WP-21 Teil 4 (Render-Prüfung der Abläufe an allen acht Viewports).
+- SSOT-Stand dazu: WP-21 bleibt IN_PROGRESS (Teilumfang; nicht INTEGRATED). Werkzeug-Ausgabe von Hand geprüft und die automatische Notiz ersetzt. Offen, ohne Entscheidung oder Gerät nicht ausführbar: Kartenansicht (wp40-Frage 6), echte Geräte (E-5), Textvergrößerung, Vorlesesoftware, manuelle Messung in Edge.
 
 ## Stand nach #256 (2026-11-13)
 - Integrationskopf: `3eeee94f` (Merge #256). Seit #254 gemergt: #256 WP-I4 Teil 1 (Verwaltung interner Vorgaben, ohne Betriebsrat-Sicht, ohne Wirkung).
