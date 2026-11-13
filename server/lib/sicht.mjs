@@ -690,6 +690,10 @@ export const BETRIEB = {
   rotationen: [R(rotationEigene), WEG],
   /* Pflegequalifikation (WP-19, modul-pflegequal.mjs): Niveaus je Betrieb (Konfiguration, keine Personendaten). Fail-closed. */
   pflegeNiveaus: [WEG, WEG],
+  /* Interne Vorgaben (WP-I4, vorgaben.mjs): Beschäftigte, Schichtverantwortung und Betriebsrat nichts (Mitbestimmung nach
+     § 87 BetrVG offen: eine Lesesicht des Betriebsrats gibt es nicht). Planung sieht das Feld nicht (rechte.mjs nimmt es aus der
+     Sicht); nur org.edit (Leitung, Kundenrolle) liest und schreibt. */
+  vorgaben: [WEG, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],

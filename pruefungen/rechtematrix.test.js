@@ -54,6 +54,7 @@ const bestand = () => ({
     dienstbuch: [{ id: "db", text: "MK-DIENSTBUCH" }], uebergaben: [{ id: "ue", text: "MK-UEBERGABE" }],
     notizen: { "tag|2026-12-01": [{ id: "tn", text: "MK-TAGESNOTIZ" }], "person|b1": [{ id: "pn", text: "MK-PERSONENNOTIZ" }] },
     tagesnotizen: { "2026-12-01": "MK-TOTFELD" },
+    vorgaben: [{ id: "v1", name: "Vorgabe", geltung: { art: "personen", personen: ["MK-VORGABE-PERSON"] } }],
     ausschreibungen: [{ id: "as", datum: "2026-12-05", dienstId: "F", status: "offen", bewerbungen: [{ personId: "b1", text: "MK-BEWERBUNG" }] }],
     protokoll: [{ id: "bl", text: "MK-BETRIEBSPROTOKOLL" }],
     adressAenderungen: [{ personId: "b1", von: "MK-ADRESSE-ALT", nach: "neu@x.de" }],
@@ -122,6 +123,8 @@ const MATRIX = [
   /* Commit C3: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
   ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["tagesnotizen (totes Feld)",  "MK-TOTFELD",               0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  /* WP-I4: interne Vorgaben liest nur org.edit (Leitung, Kundenrolle); Betriebsrat, Planung, Schichtverantwortung, Beschäftigte nichts. */
+  ["Vorgabe: Person in der Geltung", "MK-VORGABE-PERSON",      0, 0, 0, 0, 1, 0, 1, 1, "A"],
   ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 0, 1, 1, "A"],
   /* Commit C1: Bewerbungen fremder Personen nur bei einer Ausschreibung der
      eigenen Einheit (hier: Altbestand ohne einheitId — also nicht). */

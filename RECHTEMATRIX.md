@@ -91,6 +91,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Branchenmodule: wer geschaltet, bestätigt oder geprüft hat, Grundlage der Mitbestimmung, Modulprotokoll (`geaendertVon`, `mitbestimmung.grundlage`/`bestaetigtVon`, `regelwerte[].geprueftVon`/`geaendertVon`, `einstellungen.modulprotokoll`) ²⁹ | – | ✓ | – | ✓ | ✓ | – | ✓ | ✓ | B |
 | Betriebliche Regelwerte (`einstellungen.regelwerte`: Wert, Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus, Stufe, Prüf- und Änderungszeitpunkt) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Interne Vorgaben (`vorgaben`: Name, Beschreibung, Regelart und Parameter, Geltung, Zeitraum, Stärke, Priorität, Grundlage, Ausnahmen, Status, Wann/Wer/Version; WP-I4) ³⁰ | – | – | – | – | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -522,6 +523,11 @@ eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`s
 Andere Mitteilungen legen Planung, Leitung und die Schichtverantwortung (eigener Bereich) an — Titel ≤ 120,
 Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger ändern an eigenen Mitteilungen nur
 `gelesen`. An der Person wird höchstens der Merker `pushSchluessel: true` geschrieben.
+
+³⁰ WP-I4 Teil 1 (Intelligence-Plan, Block K), neue Zeile "Interne Vorgaben", keine neue Spalte: **interne Vorgaben** (betriebliche Regeln des Regelbaukastens, `vorgaben`, Verwaltung in `server/lib/vorgaben.mjs`).
+**Lesen:** nur wer `org.edit` hat (Leitung, Kundenrolle; Vollausgabe und Sicherung der Leitung enthalten das Feld wie jedes Betriebsfeld der Leitungssicht). Planung, Schichtverantwortung, Beschäftigte und Betriebsrat bekommen es nicht: Die Planung wird in `rechte.mjs` aus der Sicht genommen, die drei anderen Rollen haben die Regel `weg` in `sicht.mjs` (sie bekommen eine leere Liste). **Eine Lesesicht des Betriebsrats gibt es ausdrücklich nicht**: Ob und in welchem Umfang der Betriebsrat Vorgaben sieht, ist eine offene Mitbestimmungsentscheidung (§ 87 BetrVG) und wartet auf die Freigabe des Betreibers.
+**Schreiben:** nur mit `org.edit` — anlegen, ändern, aktivieren, deaktivieren, löschen. Für jede andere Rolle ist das Feld **wirkungslos**: Was eine veraltete oder gefälschte Kopie mitschickt, wird übergangen (der gespeicherte Stand gilt, kein 403, damit eine Kopie, die sonst Erlaubtes ändert, nicht daran scheitert; Schichtverantwortung, Beschäftigte und Betriebsrat prüft ihr eigener Katalog). Der Server prüft die Form (geschlossenes Schema, Obergrenzen, der Regelbaukasten rechnet die Parameter probeweise), begrenzt die **aktiven** Vorgaben je Preisstufe (Basis 5, Business 25, Enterprise unbegrenzt, E-21; unbekannte Stufe wie Basis; nach einem Stufenwechsel nach unten bleibt der Bestand, aber keine weitere wird aktiv) und setzt Wann/Wer/Version (`geaendertAm/-Von`, `aktiviertAm/-Von`, `version`) selbst; mitgeschickte Werte dafür zählen nie. Eine neue Berechtigung gibt es nicht; `org.edit` ist bewusst die engste vorhandene Wahl (offen, ob auch die Planung Vorgaben lesen oder ändern darf — Mitbestimmung nach § 87 BetrVG).
+**Wirkung:** noch keine — eine aktive Vorgabe ist gespeichert und rechenbar, wirkt aber erst mit WP-I5 in Planungsassistent, Ersatzsuche und Selbstplanung. Geprüft in `pruefungen/intelligence-vorgaben.test.js` und `pruefungen/intelligence-vorgaben-wege.test.js` (echter Handler, auch der Teilweg).
 
 ## 2. Weitere Wege
 

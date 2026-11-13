@@ -30,6 +30,7 @@ import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenmodule.mjs";
 import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
+import { vorgabenZusammen } from "./vorgaben.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -639,6 +640,12 @@ function bestandFuerRolleKern(bestand, sitzung) {
     for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
     const eigenerV = eigenerMandant(bestand, sitzung);
     if (eigenerV) aus.mandanten = [betriebSichtVoll(eigenerV, sitzung)];
+    /* Interne Vorgaben (WP-I4): nur wer org.edit hat (Leitung, Kundenrolle) liest sie; die Planung bekommt das Feld nicht. */
+    if (aus.mandanten && !darf(rolle, "org.edit")) {
+      const ohneVorgaben = { ...aus.mandanten[0] };
+      delete ohneVorgaben.vorgaben;
+      aus.mandanten = [ohneVorgaben];
+    }
     /* Die Kosten des eigenen Betriebs (B2): Wer billing.view hat — Leitung,
        Kundenrolle —, bekommt die Preisgrundlage nur lesend: Tarif,
        Preisgestaltung und Rabatt des eigenen Betriebs, oben nur den Eintrag
@@ -1513,6 +1520,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
       const bereiche = bereichsplanZusammen(geschickt, ort.betrieb);
       if (bereiche.grund) return { verweigert: bereiche.grund };
+      /* Interne Vorgaben (WP-I4): nur org.edit (sonst wirkungslos), Form, Stufengrenze und Wann/Wer vom Server (vorgaben.mjs). */
+      const vorgaben = vorgabenZusammen(ort.betrieb, geschickt, { darfOrgEdit: darf(rolle, "org.edit"), person: sitzung.person,
+        tarif: ort.betrieb.tarif, jetzt: new Date().toISOString() });
+      if (vorgaben.grund) return { verweigert: vorgaben.grund };
+      geschickt = vorgaben.mandant;
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
@@ -1648,7 +1660,12 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
         const alt = alteNachId.get(geschickt.id);
         /* Neu angelegt — ohne Moduleinstellungen: Schalter, Bestätigungen, Regelwerte und
            Modulprotokoll entstehen nur über branchenmoduleZusammen (G2/G6, WP-19.0 Nachtrag). */
-        if (!alt) return paketeGeprueft(moduleinstellungenVerwerfen(geschickt), null);
+        if (!alt) {
+          /* Interne Vorgaben (WP-I4) ebenso: nur über vorgabenZusammen (org.edit), nie mit dem neuen Betrieb. */
+          const neuerBetrieb = { ...moduleinstellungenVerwerfen(geschickt) };
+          delete neuerBetrieb.vorgaben;
+          return paketeGeprueft(neuerBetrieb, null);
+        }
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {
           if (Object.prototype.hasOwnProperty.call(geschickt, feld))

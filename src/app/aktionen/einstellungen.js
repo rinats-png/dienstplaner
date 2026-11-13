@@ -7,6 +7,14 @@ import { heute } from "../../lib/datum.js";
 export function aktionenEinstellungen(k) {
   const { mUpd, melde, ref, sitz } = k;
   return {
+      /* Interne Vorgaben (WP-I4): nur org.edit; Form, Stufengrenze und Wann/Wer/Version prüft und setzt der Server. */
+      vorgabeSpeichern: (v) => mUpd((m) => {
+        const liste = Array.isArray(m.vorgaben) ? m.vorgaben : [];
+        return { ...m, vorgaben: liste.some((x) => x.id === v.id) ? liste.map((x) => x.id === v.id ? v : x) : [...liste, v] };
+      }, `Vorgabe „${v.name}“ gespeichert`),
+      vorgabeStatus: (id, status) => mUpd((m) => ({ ...m,
+        vorgaben: (m.vorgaben || []).map((x) => x.id === id ? { ...x, status } : x) }), status === "aktiv" ? "Vorgabe aktiviert" : "Vorgabe deaktiviert"),
+      vorgabeLoeschen: (id) => mUpd((m) => ({ ...m, vorgaben: (m.vorgaben || []).filter((x) => x.id !== id) }), "Vorgabe gelöscht"),
       /* --- Tour und Einstellungen --- */
       /* Wer die Tour ausdrücklich startet, hebt damit auch das frühere
          Wegklicken und Einklappen auf — sonst öffnete sich eine Tour, die
