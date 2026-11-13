@@ -203,7 +203,7 @@
     "pruefung:sammelpruefung": "node werkzeug/sammelpruefung.mjs --trocken && vitest run pruefungen/sammelpruefung.test.js",
     "sammelpruefung": "node werkzeug/sammelpruefung.mjs",
     "pruefung:app-aufbau": "vitest run pruefungen/wp39-app-aufbau.test.js --testTimeout=60000",
-    "pruefung:einladungen": "vitest run pruefungen/einladungen.test.js pruefungen/einladungen-oberflaeche.test.js",
+    "pruefung:einladungen": "vitest run pruefungen/einladungen.test.js pruefungen/einladungen-oberflaeche.test.js pruefungen/einladungsbremse.test.js",
     "pruefung:schreibhalt-last": "vitest run pruefungen/schreibhalt-last.test.js --testTimeout=120000",
     "pruefung:import-endpunkt": "vitest run pruefungen/import-endpunkt.test.js pruefungen/import-rumpfgrenze.test.js pruefungen/import-sonden.test.js",
     "pruefung:import-oberflaeche": "vitest run pruefungen/import-oberflaeche-imp4.test.js pruefungen/import-personal-e2e.test.js",

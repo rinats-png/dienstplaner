@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, entlasten, kennung, kennungPerson, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
@@ -28,13 +28,29 @@ import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWid
    Pflicht mit der WIRKSAMEN Rolle (M1), Bremse, Protokoll.
    Genaue Pfade schlagen das Präfix /api/* von daten.mjs (server.mjs, routeFuer).
 
-   Bremsen: Ausstellen zählt gegen `zugaenge` (10 je 10 Minuten je Sitzung und
-   Herkunft, steigend). Wer viele Personen auf einmal einlädt — etwa beim
-   Start eines Betriebs —, läuft nach zehn Einladungen in die Sperre (N4):
-   Bedienhinweis im Nachweis; für Sammeleinladungen bleibt der Weg über den
-   Betreiber (/api/zugaenge, bis zu 20 je Aufruf). Dazu kommt die
-   installationsweite Gesamtgrenze WEITERE.zugaenge (40 je 10 Minuten über
-   alle Betriebe, geteilt mit /api/zugaenge).
+   Bremsen beim Ausstellen (Abnahme V4, Befund A-2): Bis hierher zählte jeder
+   Aufruf — auch jede gelungene Einladung und jede Absage an Beschäftigte, SV
+   oder Betriebsrat — VOR der Rollenprüfung gegen `zugaenge` JE RAUM. Eine
+   Leitung kam beim Einrichten nur bis zur zehnten Person, und eine angemeldete
+   Beschäftigte konnte die Einladungen ihres Betriebs sperren. Jetzt:
+     1. Vor der Rollenprüfung nur eine Lastbremse JE PERSON (Art `schreiben`,
+        kennungPerson): Eine Sitzung ohne Rollenvergabe bekommt immer dieselbe
+        403 (N-1) und kann nichts raten; wer hämmert, bremst nur sich selbst.
+     2. Erst nach der Rollenprüfung zählt `zugaenge` — JE PERSON statt je Raum,
+        mit den bisherigen Zahlen (10 je 10 Minuten, Sperre 30 Minuten
+        steigend) und der installationsweiten Gesamtgrenze WEITERE.zugaenge
+        (40 je 10 Minuten, geteilt mit /api/zugaenge):
+          - Bestätigung mit Nachweis (Zugangscode, Passwort, Code aus der App):
+            gezählt VOR der Prüfung (Rateversuch). Stimmt der Nachweis, wird nur
+            der Zähler dieser Person entlastet (wie nach einer gelungenen
+            Anmeldung); der Versuch bleibt in der Gesamtgrenze. Falsche
+            Nachweise bleiben gezählt → 429, Sperre steigend.
+          - Ohne Nachweis (junge Anmeldung oder Rückfrage „Bestätigung fehlt“):
+            ein eigener Zähler der Person (`o:…`), der die Fehlversuche mit
+            Nachweis NIE zurücksetzt. Ausgestellt → bleibt in der
+            Gesamtgrenze; nur die Rückfrage → auch dort zurückgenommen.
+   Gelungene Einladungen erschöpfen damit kein Kontingent mehr außer der
+   Gesamtgrenze, und niemand sperrt eine andere Person aus.
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
@@ -69,11 +85,12 @@ const SITZUNGSWEGE = new Set(["/api/einladung", "/api/einladung/liste", "/api/ei
  * Sitzung, Bremse, Bestand und M1 für die Wege der Leitung.
  * @returns {Promise<{antwort: Response}|{s: any, k: string, bestand: any, wer: object}>}
  */
-async function leitungSitzung(req, ablage, art, bremsArt) {
+async function leitungSitzung(req, ablage, art, bremsArt, jePerson = false) {
   const s = (await arbeitssitzungLesen(req, { store: ablage })).sitzung;
   if (!s) return { antwort: antwort({ fehler: "Nicht angemeldet." }, 401) };
   const k = kennung(req, s);
-  const b = await bremse(bremsArt, k);
+  /* A-2: Beim Ausstellen bremst diese Stufe je Person (kennungPerson), nicht je Raum. */
+  const b = await bremse(bremsArt, jePerson ? kennungPerson(s) : k);
   if (!b.frei) { await protokoll("einladung", k, "gebremst", b.grund); return { antwort: zuVielAntwort(b.wartet) }; }
   let gelesen;
   try { gelesen = s.rolle === "betreiber" ? null : await bestandLesenStreng(ablage, s.bestand); }
@@ -104,8 +121,9 @@ export default async (req) => {
 
   try {
     if (SITZUNGSWEGE.has(pfad)) {
-      const bremsArt = pfad === "/api/einladung" ? "zugaenge" : pfad === "/api/einladung/liste" ? "lesen" : "schreiben";
-      const l = await leitungSitzung(req, ablage, pfad.slice(5), bremsArt);
+      /* A-2: Ausstellen zählt hier nur als Last je Person; `zugaenge` zählt erst nach der Rollenprüfung (unten). */
+      const bremsArt = pfad === "/api/einladung/liste" ? "lesen" : "schreiben";
+      const l = await leitungSitzung(req, ablage, pfad.slice(5), bremsArt, pfad === "/api/einladung");
       if ("antwort" in l) return l.antwort;
       const { s, k, bestand, wer } = l;
 
@@ -118,8 +136,22 @@ export default async (req) => {
           await protokoll("einladung", k, "abgewiesen", v.grund, wer);
           return antwort({ fehler: v.fehler }, v.status);
         }
+        /* A-2: `zugaenge` je Person, erst für eine Sitzung, die ausstellen dürfte (siehe Kopf). */
+        const kp = kennungPerson(s);
+        const best = rumpf.bestaetigung && typeof rumpf.bestaetigung === "object" ? rumpf.bestaetigung : {};
+        /* Streng: Jede nicht leere Zeichenkette gilt als Nachweis und zählt als Versuch — auch nur Leerzeichen. */
+        const mitNachweis = ["zweifaktor", "zugangscode", "passwort"]
+          .some((x) => typeof best[x] === "string" && best[x] !== "");
+        /* Eigener Zähler ohne Nachweis: vorangestellt, damit kein Präfix den Fehlversuchszähler `kp` mit erfasst. */
+        const kz = mitNachweis ? kp : `o:${kp}`;
+        const bz = await bremse("zugaenge", kz);
+        if (!bz.frei) { await protokoll("einladung", k, "gebremst", bz.grund, wer); return zuVielAntwort(bz.wartet); }
         /* B1: frische Bestätigung — erst, wenn die Sitzung überhaupt ausstellen dürfte. */
         const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
+        /* Stimmt der Nachweis, war es kein Rateversuch: Zähler der Person entlasten (ohne `bz` — der Versuch bleibt
+           in der Gesamtgrenze). Ohne Nachweis wurde nichts geraten; die bloße Rückfrage zählt nirgends. */
+        if (f.ok) await entlasten("zugaenge", kz);
+        else if (!mitNachweis) await entlasten("zugaenge", kz, bz);
         if (!f.ok) {
           await protokoll("einladung", k, "abgewiesen", f.grund, wer);
           return antwort({ fehler: f.fehler, ...("bestaetigung" in f ? { bestaetigung: f.bestaetigung } : {}) },
