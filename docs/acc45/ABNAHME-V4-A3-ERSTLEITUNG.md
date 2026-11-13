@@ -207,13 +207,15 @@ Geprüft: jeder Aufruf von `bestandSchreiben` in `server/` und `werkzeug/` sowie
 | `/einrichten`, `/api/zugaenge`, `/api/einladung` | nein — stellen Codes aus, legen keinen Betrieb an | Erstanmeldecode: Marke **vor** dem Code (so wird ein leerer Bestandsbetrieb streng) |
 | Demozugang `/api/demo` | nein — öffnet einen vorhandenen Demoraum (angelegt über `/api/bestand-anlegen`, Vorlage `demo`) | wie Anlage |
 | Bestandsmigration (`bestand.mjs`, beim Lesen) | nein — keine neuen Kennungen | — |
-| Werkzeuge außerhalb des Servers: `werkzeug/pilot-seeds.mjs` (Pilot-Testräume aus dem Leerbetrieb), `werkzeug/ablage-pruefen.mjs` (Reparatur vorhandener Räume), Mess- und Lastwerkzeuge (`werkzeug/last/`, `wp16-messung`, `wp48-messung`, `sicherheit/wiederherstellung-uebung`) | Seeds, Mess- und Lasträume ja — nur Test- bzw. Wegwerfablagen, nie über HTTP | **keine Marke**: Solche Räume gelten bis zum Schalter als Bestand; die Seeds legen Personen mit an. Restrisiko, nur Betreiberwerkzeug |
+| Werkzeuge außerhalb des Servers: `werkzeug/pilot-seeds.mjs` (Pilot-Testräume aus dem Leerbetrieb), `werkzeug/ablage-pruefen.mjs` (Reparatur vorhandener Räume), Mess- und Lastwerkzeuge (`werkzeug/last/`, `wp16-messung`, `wp48-messung`, `sicherheit/wiederherstellung-uebung`) | Seeds, Mess- und Lasträume ja — nur Test- bzw. Wegwerfablagen, nie über HTTP | Seeds: **Marke** je Seed-Raum, **vor** dem Bestand, bei jedem Lauf neu (`raumLoeschen` entfernt die Marke mit; Prüfung `pruefungen/pilot-seeds.test.js`: Marke vorhanden, bleibt nach erneutem Laden, weg nach `--entfernen`). Übrige Werkzeuge: **keine Marke** — Mess-, Last- und Übungsräume sind Wegwerfablagen ohne Anspruch, einen echten Betrieb nachzubilden; sie gelten bis zum Schalter als Bestand. Restrisiko, nur Betreiberwerkzeug |
 
 Absturz zwischen Marke und Bestand (Betreiber-PUT, Anlage): Es bleibt eine Marke für eine Kennung, die es (noch) nicht
 gibt — harmlos, ein später unter dieser Kennung angelegter Betrieb ist neu und damit ohnehin streng. Der umgekehrte
 Fall (Betrieb ohne Marke) entsteht auf keinem Serverweg. Geprüft in `pruefungen/erstleitung-betreiber-put.test.js`
 (echter Server, Schalter ungesetzt und verbogen „TRUE “; Probe a/b des Reviews, rot auf f69fd931; Gegenprobe
 Bestandsbetrieb; Marke nicht schreibbar → 503, kein Betrieb).
+
+**Betreiberhinweis (Review #281, N1): gelöschter und neu angelegter oder umbenannter Bestandsbetrieb.** Löscht ein Betreiber per `PUT /api/bestand` einen vorhandenen Betrieb und legt ihn unter derselben Kennung wieder an, oder ändert er dessen Kennung (Umbenennung), ist die Kennung für den Server neu: sie bekommt die Regime-Marke, der Betrieb wird streng. Seine alten Leitungscodes ohne Person erhalten dann **403** („Ihr Zugang ist keiner Person zugeordnet“) und müssen durch personengebundene Zugänge (`/api/einladung`) oder einen neuen Erstanmeldecode ersetzt werden. Vor einem solchen Löschen/Neuanlegen oder einer Umbenennung die betroffenen Leitungen vorwarnen und die Ersatzzugänge bereithalten. Das ist gewollt (ein neuer Betrieb ist streng, s. oben) und kein Fehler; die Marke wird dabei nicht zurückgenommen.
 
 ### 8b. E-M6-Kopplung (folgt nach PR #292; hier bewusst nicht umgesetzt)
 

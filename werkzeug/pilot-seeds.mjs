@@ -557,6 +557,7 @@ export async function ausfuehren(argv, env = process.env) {
     if (trocken) return ende(0, `Trockenlauf: Schutz bestanden, ${saetze.length} Satz/Sätze erzeugt, nichts geschrieben.`);
 
     const { raumLoeschen } = await imp("server/lib/raumloeschung.mjs");
+    const { erstleitungRegimeVermerken } = await imp("server/lib/erstleitung.mjs");
     const { sitzungsSpeicher } = await imp("server/lib/sitzungen.mjs");
     const geschrieben = [];
     const zeilen = [];
@@ -568,6 +569,9 @@ export async function ausfuehren(argv, env = process.env) {
         zeilen.push(vorhanden[k] ? `${k}: Seed-Raum ${raum} entfernt.` : `${k}: Zugangsreste mit Kennzeichnung ${SEED_MARKE} entfernt.`);
       }
       if (entfernen) continue;
+      /* Regime-Marke (E-D1/F-0) vor dem Bestand, wie jeder Serverweg: ein Seed-Raum soll von Anfang an streng sein, auch bei
+         ungesetztem Schalter. Raum löschen entfernt die Marke mit — daher je Lauf neu. */
+      await erstleitungRegimeVermerken(store, raum, bestaende[k].mandanten[0].id, { durch: SEED_MARKE });
       await bestandSchreiben(store, raum, bestaende[k], { durch: SEED_MARKE });
       geschrieben.push(raum);
       const m = bestaende[k].mandanten[0];
