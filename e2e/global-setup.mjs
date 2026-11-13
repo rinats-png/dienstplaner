@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { istLoopback } from "../pruefungen/browser/abnahme-kern.mjs";
-import { BASIS, PORT, ROLLEN, ZUGAENGE_VAR } from "./umgebung.mjs";
+import { BASIS, PORT, ROLLEN, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RAUM = "e2e-wp33";
@@ -89,6 +89,7 @@ export default async function globalSetup() {
     const codes = {};
     eintraege.forEach((x, i) => { codes[x.rolle] = zz.d.zugaenge[i].code; });
     process.env[ZUGAENGE_VAR] = JSON.stringify(codes);
+    process.env[BETREIBER_VAR] = e.d.zugangscode;
     console.log(`E2E: Server ${BASIS}, Demo-Bestand mit ${personen.length} erfundenen Personen, Zugänge für ${ROLLEN.join(", ")}`);
   } catch (x) {
     await aufraeumen();
