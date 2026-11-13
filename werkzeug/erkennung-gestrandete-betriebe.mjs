@@ -163,14 +163,28 @@ const istObjekt = (/** @type {any} */ x) => !!x && typeof x === "object" && !Arr
 const ohnePerson = (/** @type {any} */ p) => p === null || p === undefined || p === "";
 const nichtLeer = (/** @type {any} */ x) => typeof x === "string" && x.length > 0;
 
-/** @param {any} e */
-export function erstleitungOffen(e) {
+/** Gültigkeit eines Erstanmeldevermerks wie in PR #281 (Review 227f633e, Punkt 3): `bis`, sonst `angelegt` + 14 Tage;
+ * fehlende oder unlesbare Zeit = abgelaufen (fail-closed). */
+const ERSTLEITUNG_GUELTIG_MS = 14 * 24 * 60 * 60 * 1000;
+/** @param {any} z @returns {number} */
+const vermerkBis = (z) => {
+  if (typeof z.bis === "string" && Number.isFinite(Date.parse(z.bis))) return Date.parse(z.bis);
+  const an = typeof z.angelegt === "string" ? Date.parse(z.angelegt) : NaN;
+  return Number.isFinite(an) ? an + ERSTLEITUNG_GUELTIG_MS : NaN;
+};
+
+/** Offener Vermerk ohne Blick auf die Frist (für die Zählung „abgelaufen“). @param {any} e */
+export function erstleitungVermerktOffen(e) {
   if (!istObjekt(e) || !istObjekt(e.erstleitung)) return false;
   if (e.erstleitungVerbraucht) return false;
   if (e.rolle !== "leitung" || e.demo === true || e.gesperrt) return false;
   const z = e.erstleitung;
   if (typeof z.mandantId !== "string" || !z.mandantId || z.mandantId !== e.mandantId) return false;
   return typeof e.bestand === "string" && !!e.bestand;
+}
+/** Wie server/lib/erstleitung.mjs: offen UND nicht abgelaufen. @param {any} e @param {number} [jetzt] */
+export function erstleitungOffen(e, jetzt = Date.now()) {
+  return erstleitungVermerktOffen(e) && vermerkBis(e.erstleitung) > jetzt;
 }
 /** @param {any} e */
 export const erstleitungsZugang = (e) => istObjekt(e) && (istObjekt(e.erstleitung) || istObjekt(e.erstleitungVerbraucht));
@@ -261,7 +275,10 @@ export function betriebKlassifizieren(e) {
     }
     if (k.demo === true) { if (nutzbar && ohnePerson(k.person)) codes.demoOhnePerson++; continue; }
     if (erstleitungsZugang(k)) {
-      if (erstleitungOffen(k)) { if (nutzbar) codes.erstleitungOffen++; else codes.gesperrtOderAbgelaufen++; continue; }
+      if (erstleitungVermerktOffen(k)) {
+        if (nutzbar && erstleitungOffen(k, jetzt)) codes.erstleitungOffen++; else codes.gesperrtOderAbgelaufen++;
+        continue;
+      }
       if (ohnePerson(k.person)) { codes.belegt++; continue; }          // M7: verbraucht ohne Person
       codes.erstleitungEingeloest++;                                     // jetzt ein personengebundener Code
     }

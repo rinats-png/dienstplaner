@@ -705,10 +705,15 @@ describe("Warnungen bei --gespeicherte-kennungen und festem Laufschlüssel", () 
 const ERSTLEITUNG = path.join(WURZEL, "server", "lib", "erstleitung.mjs");
 describe("Abgleich mit den Prädikaten aus PR #281", () => {
   const vorhanden = existsSync(ERSTLEITUNG);
-  const basis0 = () => ({ rolle: "leitung", person: null, mandantId: "m1", bestand: "r1", erstleitung: { mandantId: "m1" } });
+  /* Mit Ausstellungszeit: Seit PR #281 (e8b9b93d) ist ein Vermerk ohne lesbare Zeit abgelaufen (fail-closed). */
+  const basis0 = () => ({ rolle: "leitung", person: null, mandantId: "m1", bestand: "r1",
+    erstleitung: { mandantId: "m1", angelegt: new Date().toISOString() } });
   const FAELLE = [
     ["null", null], ["undefiniert", undefined], ["Text", "x"], ["Zahl", 3], ["Liste", []], ["leeres Objekt", {}],
     ["gültig offen", basis0()],
+    ["abgelaufen (angelegt vor 15 Tagen)", { ...basis0(), erstleitung: { mandantId: "m1", angelegt: new Date(Date.now() - 15 * 864e5).toISOString() } }],
+    ["abgelaufen (bis vorbei)", { ...basis0(), erstleitung: { mandantId: "m1", angelegt: new Date().toISOString(), bis: new Date(Date.now() - 1000).toISOString() } }],
+    ["ohne Zeit", { ...basis0(), erstleitung: { mandantId: "m1" } }],
     ["Vermerk fehlt", { ...basis0(), erstleitung: undefined }],
     ["Vermerk Liste", { ...basis0(), erstleitung: [] }],
     ["Vermerk Text", { ...basis0(), erstleitung: "x" }],
