@@ -14,6 +14,8 @@
 | Grenzen | kein Merge, keine Produktion, kein VPS/SSH, keine Freischaltung gesperrter Funktionen, keine Änderung an Rechten/Branch-Schutz; keine Prüfung abgeschwächt |
 | Bewertung | **bestanden** / **nicht bestanden** / **nicht ausführbar (Grund)**. Fehlende Prüfung zählt nie als Erfolg. Befundklassen P0 (Sicherheit/Datenschutz/Datenverlust) · P1 (releasekritisch) · P2 (Umgehung nötig) · P3 (gering) |
 
+**Ehrlicher Hinweis zur CI:** Der Lauf 43392304855 ist nur der Basislauf. Ein späterer „Prüfung“-Lauf (43407941276) auf dem Strang-Stand war **rot** (Job `pruefen`): alle 41 Tests bestanden, aber vitest meldete einen unbehandelten Fehler. Ursache: In `pruefungen/abnahme-c-absturz.test.js` (Abschnitt 5, SIGTERM) wurde die Ablehnung von `fetch` (ECONNRESET bei der beim Beenden laufenden Anfrage) erst nach `await ende` behandelt, also zu spät; außerdem zählte `catch(() => 200)` einen Verbindungsabbruch fälschlich als „beantwortet“. Behebung im Fix-Commit dieses Branches (Nachfolger von 8ad7c6fe): Fehlerbehandler hängt sofort an der Anfrage, das Ergebnis wird als „Antwort (200/503)“ oder „sauberer Abbruch (ECONNRESET/UND_ERR_SOCKET/ECONNREFUSED)“ festgehalten, alles andere lässt den Test scheitern. Hinweis: dieser Fall ist unter Windows übersprungen und lief nur in CI.
+
 ## 0. Neue Prüfungen dieses Strangs
 
 | Datei | Was sie zusätzlich zu den vorhandenen Prüfungen belegt |

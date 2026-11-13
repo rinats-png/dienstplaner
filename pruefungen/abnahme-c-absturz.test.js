@@ -345,11 +345,24 @@ describe("5 — sauberes Beenden mit SIGTERM", { timeout: 120_000 }, () => {
     const d = await mkdtemp(path.join(tmpdir(), "centric-abnahme-c-sigterm-"));
     aufraeumen.push(d, `${d}-zustand`);
     const s = await starten(d);
-    const anfrage = fetch(`${s.basis}/gesund`).then((a) => a.status);
+    /* Das Ergebnis der Anfrage wird sofort festgehalten (Fehlerbehandler hängt von Anfang an dran), damit eine
+       abgebrochene Verbindung nie als unbehandelte Ablehnung endet. Erwartung für eine Anfrage, die beim Beenden
+       unterwegs ist: entweder eine echte HTTP-Antwort (200 bereit oder 503 beim Herunterfahren) oder ein sauberer
+       Verbindungsabbruch (ECONNRESET/UND_ERR_SOCKET/ECONNREFUSED, falls die Verbindung noch nicht stand). Alles andere
+       (anderer Status, anderer Fehler, Hängen) lässt den Test scheitern. */
+    const anfrage = fetch(`${s.basis}/gesund`, { signal: AbortSignal.timeout(30_000) }).then(
+      (a) => ({ art: "antwort", status: a.status }),
+      (f) => ({ art: "abbruch", code: (f && f.cause && f.cause.code) || (f && f.code) || null, name: f && f.name }),
+    );
     const ende = new Promise((r) => s.kind.once("exit", (code, sig) => r({ code, sig })));
     s.kind.kill("SIGTERM");
     const e = await ende;
-    expect([200, 503].includes(await anfrage.catch(() => 200))).toBe(true);
+    const ergebnis = await anfrage;
+    if (ergebnis.art === "antwort") {
+      expect([200, 503], `Anfrage beim Beenden: HTTP ${ergebnis.status}`).toContain(ergebnis.status);
+    } else {
+      expect(["ECONNRESET", "UND_ERR_SOCKET", "ECONNREFUSED"], `Anfrage beim Beenden weder beantwortet noch sauber abgebrochen: ${JSON.stringify(ergebnis)}`).toContain(ergebnis.code);
+    }
     expect(e).toEqual({ code: 0, sig: null });
     expect(s.log()).toMatch(/SIGTERM: Server wird beendet/);
     expect(await readdir(d)).not.toContain(".prozess");
