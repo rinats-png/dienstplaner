@@ -108,7 +108,7 @@ class Fehlerauffang extends Component {
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Leer, Card, CardHead, Lab, Btn, Inp, Sel, Field, H1, Abschnitt, Pill } from "./ui/bausteine.jsx";
 import { istDunkel, dunkelSetzen, lesbar, NUM } from "./ui/thema.js";
-import { MON, heute, fKurz } from "./lib/datum.js";
+import { MON, heute } from "./lib/datum.js";
 import { eur, uid } from "./lib/format.js";
 import { Icon } from "./gestalt/icons.jsx";
 import { Erklaerkasten } from "./gestalt/bausteine.jsx";
@@ -217,7 +217,8 @@ import { JugendschutzSchalter } from "./ansichten/jugendschutz-schalter.jsx";
 import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
 import { ROLLEN, rolle, mehrzahl, ROLLENBEZEICHNUNG, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, FESTE_RECHTE, rechteDerRolle } from "./lib/rollen.js";
-import { baueMitteilung, urlaubshinweiseFaellig, zustellungAusstehend } from "./lib/zustellung.js";
+import { urlaubshinweiseFaellig, zustellungAusstehend } from "./lib/zustellung.js";
+import { abbildVon, schreibAbbild, urlaubshinweiseAnwenden, automatikKonfliktLoesen } from "./app/oeffnen.js";
 
 
 import { leererMandant, zugangsPerson } from "./lib/mandant-anlage.js";
@@ -1270,28 +1271,41 @@ function AppInnen() {
      Objekte nur in anderer Reihenfolge aufgebaut wurden (etwa weil die
      Sitzung einmal fehlt und einmal in der Mitte steht), sind sonst als
      Text verschieden — und lösten so den nächsten grundlosen PUT aus. */
-  const abbildVon = (d) => {
-    const { stand, session, ...rest } = d; // eslint-disable-line no-unused-vars
-    return JSON.stringify(rest, (k, v) => v && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(Object.keys(v).sort().map((s) => [s, v[s]])) : v);
-  };
+  /* abbildVon und die Entscheidung, ob geschrieben wird, stehen seit WP-48-GB in app/oeffnen.js
+     (unverändert), damit sie mit dem echten Server geprüft werden können. */
   const zuletztGeschrieben = useRef(null);
+  /* WP-48-GB: Abbild des Stands, den der Urlaubshinweis-Lauf beim Öffnen erzeugt hat. Besteht ein
+     Schreibvorgang nur daraus, löst er einen Konflikt still auf (app/oeffnen.js). */
+  const automatikAbbild = useRef(null);
+  const urlaubsLauf = useRef(false);
+  const urlaubsLaeufe = useRef(0);
   useEffect(() => { if (!db) return; if (erst.current) { erst.current = false; zuletztGeschrieben.current = abbildVon(db); return; }
-    const abbild = abbildVon(db);
-    if (abbild === zuletztGeschrieben.current) return;
-    if (db.session && db.session.personId) {
-      const mm = db.mandanten.find((x) => x.id === db.session.mandantId);
-      const pp = mm && mm.personen.find((x) => x.id === db.session.personId);
-      if (pp && pp.rolle === "betriebsrat") return;
-    }
+    const abbild = schreibAbbild(db, zuletztGeschrieben.current);
+    if (abbild === null) return;
     zuletztGeschrieben.current = abbild;
+    const automatisch = automatikAbbild.current;
+    automatikAbbild.current = null;
     SP.schreib(db, {
       durch: db.session && db.session.personId
         ? (() => { const mm = db.mandanten.find((x) => x.id === db.session.mandantId);
             const pp = mm && mm.personen.find((x) => x.id === db.session.personId);
             return pp ? `${pp.vorname} ${pp.nachname}` : "Betreiber"; })()
         : "Betreiber",
-      onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
+      onKonflikt: (d) => {
+        const uebernehmen = automatikKonfliktLoesen({ automatisch, geschrieben: abbild, lokal: ref.current,
+          antwort: d, migriere });
+        if (uebernehmen) {
+          /* Nur der automatische Lauf ist gescheitert, niemand hat etwas eingegeben: den Stand des
+             Servers übernehmen (den ETag dazu hat speicher.js schon) und den Lauf einmal neu prüfen —
+             meist stehen die Hinweise dort schon, von der anderen Sitzung. */
+          const naechster = { ...uebernehmen, session: ref.current.session, stand: (ref.current.stand || 0) + 1 };
+          zuletztGeschrieben.current = abbildVon(naechster);
+          if (urlaubsLaeufe.current < 2) urlaubsLauf.current = false;
+          setDb(naechster);
+          return;
+        }
+        setKonflikt({ ...d, meiner: ref.current });
+      },
       onFachbefunde: (d) => setFachFrage(d),
       onFehler: (lage) => setNichtGespeichert(lage),
       onGespeichert: (b) => { zustellungAnstossen(b); },
@@ -1331,17 +1345,12 @@ function AppInnen() {
 
      Jetzt hängt sie an `sitz`. Das ist dieselbe aufgelöste Sitzung, die
      auch die Oberfläche benutzt — gibt es sie, gibt es die Person. */
-  const tourGeprueft = useRef(false);
-  useEffect(() => {
-    if (tourGeprueft.current) return;
-    if (!sitz || !sitz.person || !sitz.mandant) return;
-    const pp = sitz.person, mm = sitz.mandant;
-    tourGeprueft.current = true;
-    if (tourStartet(pp, pp.rolle || "mitarbeiter"))
-      setDb((d) => ({ ...d, mandanten: d.mandanten.map((x) => x.id !== mm.id ? x
-        : { ...x, personen: x.personen.map((y) => y.id !== pp.id ? y
-          : { ...y, tour: { ...(y.tour || {}), offen: true, schritt: 0 } }) }) }));
-  }, [sitz]);
+  /* WP-48-GB: Hier stand ein Effekt, der beim ersten Öffnen `tour: { offen: true, schritt: 0 }` an die
+     eigene Person schrieb. Das war ein PUT ohne jede Eingabe — im Kern des Bestands, den der Server als
+     Ganzes abgleicht. Öffneten zwei Personen gleichzeitig zum ersten Mal, bekam die zweite „Gleichzeitig
+     bearbeitet". Gebraucht wurde der Wert nie: Ob die Tour steht, entscheidet die Darstellung über
+     tourStartet() (siehe unten bei TourLeiste), der Schritt ist ohne Angabe 0. Geschrieben wird der
+     Tourzustand jetzt erst, wenn die Person in der Tour etwas tut. */
 
   /* --- Urlaubshinweise auslösen ---
 
@@ -1350,8 +1359,13 @@ function AppInnen() {
      verfällt der Urlaub gar nicht erst, und er häuft sich über Jahre an.
 
      Festgehalten wird das Datum an der Person — so wird niemand zweimal im
-     selben Jahr angeschrieben, auch nicht nach einem Gerätewechsel. */
-  const urlaubsLauf = useRef(false);
+     selben Jahr angeschrieben, auch nicht nach einem Gerätewechsel.
+
+     WP-48-GB: Die Rechnung steht in app/oeffnen.js (urlaubshinweiseAnwenden). Der erzeugte Stand wird
+     als „automatisch" vermerkt: Scheitert sein Schreibvorgang an einem Konflikt, weil eine andere
+     Sitzung (Leitung oder Planung) beim Öffnen dasselbe getan hat, übernimmt diese Sitzung still den
+     Stand des Servers, statt „Gleichzeitig bearbeitet" zu zeigen. Ref urlaubsLauf steht oben beim
+     Speicher-Effekt, der ihn nach einer solchen Übernahme einmal zurücksetzt. */
   useEffect(() => {
     if (!db || urlaubsLauf.current) return;
     if (!urlaubshinweiseAnlegen(sitz, SP.zugangsdaten())) return;
@@ -1361,25 +1375,13 @@ function AppInnen() {
     catch (e) { return; }
     if (!faellig.length) return;
     urlaubsLauf.current = true;
+    urlaubsLaeufe.current += 1;
 
     setDb((s2) => {
-      if (!s2) return s2;
-      const mm = s2.mandanten.find((x) => x.id === m.id);
-      if (!mm) return s2;
-      const neueNachrichten = faellig.map((f) => baueMitteilung(mm, f.person.id, "urlaubVerfaellt",
-        `${f.offen} ${f.offen === 1 ? "Urlaubstag" : "Urlaubstage"} verfallen zum Jahresende`,
-        `${f.text} Übertragung ins nächste Jahr ist nur bei dringenden betrieblichen oder `
-        + `persönlichen Gründen möglich, dann bis zum ${fKurz(f.uebertragBis)}. `
-        + "Bitte plane deinen Urlaub rechtzeitig ein.",
-        "meine")).filter(Boolean);
-      if (!neueNachrichten.length) return s2;
-      const heuteIso = heute();
-      return { ...s2, mandanten: s2.mandanten.map((x) => x.id !== mm.id ? x : {
-        ...x,
-        nachrichten: [...(x.nachrichten || []), ...neueNachrichten],
-        personen: x.personen.map((pp) => faellig.some((f) => f.person.id === pp.id)
-          ? { ...pp, urlaubshinweis: heuteIso } : pp),
-      }) };
+      const erg = urlaubshinweiseAnwenden(s2, m.id, heute());
+      if (!erg) return s2;
+      automatikAbbild.current = abbildVon(erg.bestand);
+      return erg.bestand;
     });
     melde(`${faellig.length} ${faellig.length === 1 ? "Hinweis" : "Hinweise"} zum Resturlaub verschickt.`);
   }, [db, sitz]);
@@ -1974,8 +1976,8 @@ function AppInnen() {
                 Öffnen eines leeren Betriebs. Nachgestellt und bestätigt.
 
                 Die Frage wird deshalb beim Darstellen gestellt, nicht in
-                einem Effekt daneben. Der Effekt schreibt den Zustand
-                weiterhin fest, sobald er einmal zustande gekommen ist. */}
+                einem Effekt daneben. Festgeschrieben wird der Zustand erst,
+                wenn die Person in der Tour etwas tut (WP-48-GB: Öffnen schreibt nicht). */}
             {sitz.person && ((sitz.person.tour || {}).offen
               || tourStartet(sitz.person, sitz.person.rolle || "mitarbeiter")) && (
               <TourLeiste sitz={sitz} akt={akt} gehZu={setView} />)}

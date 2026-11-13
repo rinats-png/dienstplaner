@@ -159,6 +159,10 @@ jobs:
       - name: Teilspeicherung je Segment mit Versionen (WP-48.3)
         run: npm run pruefung:wp48-teilweg
 
+      # WP-48-GB: Öffnen ohne Eingabe schreibt nicht; zwei Sitzungen (Leitung, Planung) gegen den echten Handler.
+      - name: Öffnen des Plans schreibt nicht (WP-48-GB)
+        run: npm run pruefung:wp48-gb-oeffnen
+
       - name: Hilfe-Assistent (WP-I23, Schalter aus, Rollen, Datenschutz)
         run: npm run pruefung:hilfe-assistent
 
