@@ -9,6 +9,7 @@ import { aktivePerson } from "./personengueltig.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { BESTAND_UNLESBAR, bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant, wirksameRolle } from "./rechte.mjs";
+import { erstleitungStreng } from "./erstleitung.mjs";
 import { kontoLesenStreng } from "./konten.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus, sicherungsSchluessel } from "./sitzungen.mjs";
@@ -402,6 +403,8 @@ export async function sicherungsschluesselPruefen(store, sk, { bestandLader = nu
     }
     const zPerson = z.person === undefined || z.person === null ? null : String(z.person);
     if (zPerson !== e.person) return nein("sk-person-gewechselt");
+    /* E-D1 / Befund F-0: Ein Schlüssel aus einem Leitungscode ohne Person ist kein Weg mehr an die Daten. */
+    if ((zPerson === null || zPerson === "") && await erstleitungStreng(store, raum, sk.mandantId)) return nein("sk-ohne-person");
   }
 
   let gelesen;
@@ -575,6 +578,14 @@ export async function arbeitssitzungPruefen(store, sitzung,
        Person haben keine; Sicherungsschlüssel auch nicht. */
     const personGebunden = !sitzung.nurSicherung && sitzung.rolle !== "betreiber"
       && sitzung.person !== null && sitzung.person !== undefined && sitzung.person !== "";
+    /* E-D1 / Befund F-0 (Betreiberentscheidung 2026-11-13): Eine Sitzung aus einem Leitungscode OHNE Person trägt
+       keine Leitungsrechte mehr — auch eine, die vor dieser Änderung entstand. Die Anmeldung stellt keine mehr aus
+       (daten.mjs); eine noch liegende endet hier, auf jedem Pfad. Demozugänge und Betreiber bleiben, wie sie sind. */
+    if (!sitzung.nurSicherung && sitzung.rolle === "leitung" && sitzung.demo !== true && !personGebunden
+      && await erstleitungStreng(store, sitzung.bestand, sitzung.mandantId)) {
+      if (merkmal) await sitzungBeenden(merkmal).catch(() => false);
+      return { ok: false, grund: "leitung-ohne-person" };
+    }
     /* Seit Oktober 2026 trägt ein Zugangscode die Kennung seines Betriebs,
        und die Sitzung mit ihm. Zeigt die Position nicht mehr auf genau
        diesen Betrieb, gilt sie nicht — dieselbe Prüfung wie unten in

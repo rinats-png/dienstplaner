@@ -264,6 +264,9 @@ export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
      Konsole) findet den Raum wieder. Gesperrt bleibt der Raum bis dahin ohnehin durch die Marke (Schritt 0). Nach dem
      Kern bleibt nur noch die Marke — scheitert allein sie, räumt ein erneuter Aufruf (Konsole, /api/raum-loeschen,
      auch ohne Kern) sie ab. */
+  /* E-D2 (lib/erstleitung.mjs): die Marken der Erstanmeldung gehören zum Raum — wie der Vermerk oben. Ein später
+     unter demselben Namen neu angelegter Betrieb ist ein neuer Betrieb. */
+  if (fehler.length === 0) await praefixWeg(`erstleitung-marke:${raum}:`);
   if (fehler.length === 0) await weg(`ersteinrichtung:${raum}`);
   if (fehler.length === 0) await weg(`kern:${raum}`);
   /* 7. Die Marke der begonnenen Löschung (Schritt 0, aufraeumen.mjs) — erst, wenn der Kern weg ist; bis dahin sagt

@@ -215,9 +215,20 @@ describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmod
   });
 
   it("2.2b Altrolle kunde: weder Leitung (403) noch Betreiber (400) vergeben sie; der Betreiber legt für den eingerichteten Kundenraum keine weiteren Zugänge an (409, G.2)", async () => {
-    /* Seit A-3 gibt es keine Person der Altrolle kunde (3.1): keine Einladung (404 statt 403 für die Rolle). */
+    /* Seit A-3 legt die Leitung keine Person der Altrolle kunde mehr an (3.1). Damit die Regel „Leitung lädt kunde
+       nicht ein“ (403) weiter geprüft ist, steht k1 hier direkt in der Ablage — wie ein Altbestand (Review 227f633e,
+       Punkt 5). Die einheitliche 404 für unbekannte/fremde Personen prüft pruefungen/erstleitung-entscheidungen.test.js. */
+    process.env.CENTRIC_DATEN = daten;
+    process.env.CENTRIC_ABLAGE = "dateien";
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const B = await import("../server/lib/bestand.mjs");
+    const ablage = getStore({ name: "centric", consistency: "strong" });
+    const g = await B.bestandLesenStreng(ablage, NORD);
+    const neu = kopie(g.bestand);
+    neu.mandanten[0].personen = [...neu.mandanten[0].personen.filter((p) => p.id !== "k1"), person("k1", "kunde")];
+    expect((await B.bestandSchreiben(ablage, NORD, neu, { erwarteterStand: g.stand, durch: "Prüfung (Altbestand kunde)" })).ok).toBe(true);
     const e = await anfrage("/api/einladung", { methode: "POST", token: T.leitung, rumpf: { personId: "k1", bestaetigung: { zugangscode: CODE.leitung } } });
-    expect(e.status).toBe(404);
+    expect(e.status).toBe(403);
     expect(e.einladung).toBeUndefined();
     const k = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: NORD, eintraege: [{ rolle: "kunde", personId: "k1" }] } });
     expect(k.status).toBe(400);

@@ -32,7 +32,7 @@ import { createHash } from "node:crypto";
 import { ersteinrichtungEinloesen, ersteinrichtungFehlversuch } from "./zugangscode-ersteinrichtung.mjs";
 import { istProduktion, betreiberZweifaktorPflicht } from "./umgebung.mjs";
 import { ablageSchluessel, altHash, pfeffrig } from "./codes.mjs";
-import { kontoLesen, kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
+import { kontoLesen, kontoLesenStreng, kontoAendern } from "./konten.mjs";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
@@ -162,15 +162,18 @@ async function faktorVermerken(store, schluessel, an) {
   let ok = true;
   for (const s of new Set(schluessel.filter(Boolean))) {
     try {
-      const e = await kontoLesenStreng(store, s);
-      if (!e) continue;
-      /* OPT-1: Den Verbrauch eines Ersteinrichtungscodes schreibt ersteinrichtungEinloesen VOR der Aktivierung. */
-      if (an) await kontoSchreiben(store, s, { ...e, zweiterFaktor: true });
-      else if (e.zweiterFaktor !== undefined) {
+      /* A-3 (Review 227f633e, Punkt 4; Betreibervorgabe 2026-11-13): merge-sicher am FRISCHEN Stand unter der Sperre
+         dieses Kontos (konten.mjs, kontoAendern). Bis hierher wurde eine früher gelesene Kopie zurückgeschrieben — ein
+         gleichzeitiger Vorgang (Erstanmeldung: Vormerkung/Bindung; Sperre) ging dabei verloren. */
+      await kontoAendern(store, s, (e) => {
+        if (!e) return e;
+        /* OPT-1: Den Verbrauch eines Ersteinrichtungscodes schreibt ersteinrichtungEinloesen VOR der Aktivierung. */
+        if (an) return e.zweiterFaktor === true ? e : { ...e, zweiterFaktor: true };
+        if (e.zweiterFaktor === undefined) return e;
         const rest = { ...e };
         delete rest.zweiterFaktor;
-        await kontoSchreiben(store, s, rest);
-      }
+        return rest;
+      });
     } catch { ok = false; }
   }
   return ok;

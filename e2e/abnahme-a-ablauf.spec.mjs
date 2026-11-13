@@ -77,7 +77,8 @@ test.describe.serial("Abnahme Strang A: Betrieb → Personal → Plan → Freiga
   });
 
   test("0 Leitung Nord meldet sich erstmals im leeren Betrieb an; danach Personal, Einladungen und Entwurf (API)", async ({ page }) => {
-    /* Erste Anmeldung im leeren Betrieb: Die Oberfläche legt die Person der Leitung an und speichert sie. */
+    /* Erste Anmeldung im leeren Betrieb mit dem Erstanmeldecode: Der SERVER legt die Person der Leitung bei der
+       Anmeldung an und speichert sie (A-3, lib/erstleitung.mjs) — die Oberfläche legt keine Person mehr an. */
     await anmeldenBrowser(page, C.lN);
     const ln = await anmeldenApi(C.lN);
     await expect.poll(async () => ((await api("/api/bestand", { token: ln })).bestand.mandanten[0].personen || [])

@@ -34,11 +34,14 @@ const anfrage = async (handler, pfad, { methode = "POST", rumpf, token } = {}) =
 };
 const anmelden = (code) => anfrage(daten, "/api/anmelden", { rumpf: { zugangscode: code } });
 
-const betrieb = (id) => ({ id, name: id, einheiten: [{ id: "e1", name: "WB 1" }], personen: [] });
+/* Jeder Betrieb hat seine Leitungsperson: Ein Leitungscode ohne Person öffnet seit E-D1 (Befund F-0) keinen Zugang. */
+const LEITUNG = { id: "pl", vorname: "Lea", nachname: "Leitung", rolle: "leitung", bereich: "ALLE", status: "aktiv",
+  eintritt: "2020-01-01", austritt: null, qualifikationen: [], zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] };
+const betrieb = (id) => ({ id, name: id, einheiten: [{ id: "e1", name: "WB 1" }], personen: [LEITUNG] });
 /* Ein Code, wie er vor Oktober 2026 entstand: Position ohne Kennung. */
 const altcode = async (code, raum, rolle, betriebIndex) => {
   await kontoSchreiben(laden(), ablageSchluessel(code), { name: `Alt ${rolle} ${betriebIndex}`, bestand: raum, rolle,
-    person: null, betrieb: betriebIndex, demo: false, angelegt: "2026-01-01T00:00:00.000Z" });
+    person: rolle === "leitung" ? LEITUNG.id : null, betrieb: betriebIndex, demo: false, angelegt: "2026-01-01T00:00:00.000Z" });
   return ablageSchluessel(code);
 };
 

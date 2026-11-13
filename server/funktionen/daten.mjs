@@ -15,10 +15,10 @@ import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifakto
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { ersteinrichtungOffen, ersteinrichtungsZugang } from "../lib/zugangscode-ersteinrichtung.mjs";
 import { erstleitungsZugang, erstleitungOffen, erstleitungUngueltig, erstleitungEinloesen, erstleitungAusstellen,
-  erstleitungVermerk } from "../lib/erstleitung.mjs";
+  erstleitungVermerk, erstleitungEingerichtet, leitungscodeOhnePerson, OHNE_PERSON_ANTWORT, erstleitungAbgelaufen, erstleitungStreng } from "../lib/erstleitung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
-import { kontoLesen, kontoLesenStreng, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
+import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { demoAn, teilwegAn } from "../lib/schalter.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
@@ -426,9 +426,12 @@ async function behandeln(req, context, ctx) {
          Ersteinrichtung, ist ein Erstanmeldecode — nur er legt bei der ersten Anmeldung die Leitungsperson an. */
       const zielMandant = zielGelesen && zielGelesen.bestand && Array.isArray(zielGelesen.bestand.mandanten)
         ? zielGelesen.bestand.mandanten[bindungZ.betrieb] : null;
+      /* E-D2: Ist die Erstanmeldung des Betriebs schon festgelegt (Marke) oder hat er Personen, gibt es keinen mehr. */
+      const zielEingerichtet = await erstleitungEingerichtet(store, ziel, zielMandant);
       for (const e of eintraege) {
         const code = `${block()}-${block()}-${block()}`;
-        const erst = erstleitungAusstellen({ rolle: e.rolle, person: e.personId, demo: false, mandant: zielMandant, lage });
+        const erst = erstleitungAusstellen({ rolle: e.rolle, person: e.personId, demo: false, mandant: zielMandant, lage,
+          eingerichtet: zielEingerichtet });
         /* Ein Schlüssel je Konto: Zwei gleichzeitige Anlagen stören
            einander nicht mehr, und kein ausgelieferter Code geht verloren. */
         await kontoSchreiben(store, ablageSchluessel(code), {
@@ -627,18 +630,21 @@ async function behandeln(req, context, ctx) {
         return imEigenenBetrieb(k);
       });
       let gesperrt = 0;
+      /* Einzeln und merge-sicher (konten.mjs, kontoAendern): die Sperre am FRISCHEN Stand jedes Zugangs, unter seiner
+         Sperre. Bis 2026-11 wurde die zu Beginn gelesene Kopie zurückgeschrieben — eine gleichzeitige Bindung
+         (Erstanmeldung), ein Faktorvermerk oder eine Umschlüsselung ging dabei verloren. Der Sammelblob wird nicht mehr
+         gepflegt; ein Zugang, der nur dort steht, wird hier vereinzelt. */
       for (const h of erlaubt) {
-        const k = konten[h];
-        if (k.gesperrt) continue;
-        konten[h] = { ...k, gesperrt: true,
-          gesperrtAm: new Date().toISOString(), gesperrtDurch: sB.name || sB.rolle };
-        gesperrt++;
-      }
-      /* Einzeln zurückschreiben — der Sammelblob wird nicht mehr gepflegt. */
-      if (gesperrt) {
-        for (const h of erlaubt) {
-          if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
-        }
+        if (konten[h].gesperrt) continue;
+        const am = new Date().toISOString();
+        let neu = false;
+        konten[h] = await kontoAendern(store, h, (f) => {
+          const basis = f || konten[h];
+          if (!basis || basis.gesperrt) return f || basis;
+          neu = true;
+          return { ...basis, gesperrt: true, gesperrtAm: am, gesperrtDurch: sB.name || sB.rolle };
+        });
+        if (neu) gesperrt++;
       }
       /* WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24 trägt keine Herkunft
          und hinge sonst nur an der Person. Die Sperre widerruft zusätzlich den herkunftslosen Feed der
@@ -980,6 +986,16 @@ async function behandeln(req, context, ctx) {
           text: "Bitte wende dich an die Organisationsleitung." }, 403);
       }
 
+      /* E-D1 / Befund F-0 (Betreiberentscheidung 2026-11-13, lib/erstleitung.mjs): Ein gewöhnlicher Leitungscode OHNE
+         Person öffnet keinen Zugang mehr. Bis hierher bekam er eine Sitzung mit vollen Leitungsrechten (wirksameRolle
+         übernahm die Rolle des Codes) — auch in einem Betrieb mit Personen. Jetzt: keine Sitzung, vor jedem
+         Faktorschritt und vor jedem Schreiben. Ausgenommen: Demozugänge, Betreiber, personengebundene Codes und der
+         Erstanmeldecode (er legt die Person an, bevor eine Sitzung entsteht; unten). */
+      if (leitungscodeOhnePerson(eintrag) && await erstleitungStreng(store, eintrag.bestand, eintrag.mandantId)) {
+        await protokoll("anmelden", k, "abgewiesen", "Leitungscode ohne Person");
+        return antwort({ ...OHNE_PERSON_ANTWORT }, 403);
+      }
+
       /* Eine Betreitersitzung läuft kürzer ab. Wer Datenräume anlegen kann,
          soll nicht zwölf Stunden lang auf einem fremden Rechner offen sein —
          die Dauer zur Rolle steht in lib/sitzungen.mjs (dauerFuer). */
@@ -1062,6 +1078,12 @@ async function behandeln(req, context, ctx) {
          entsteht keine. Gleichzeitige Versuche und Wiederholungen finden den eingelösten Zugang und melden sich als
          dieselbe Person an. Nur dieser Vermerk löst das aus; ein Code ohne ihn legt nie eine Person an. */
       if (erstleitungsZugang(eintrag)) {
+        /* Review 227f633e, Punkt 3: Die Gültigkeit des Vermerks wird beim Einlösen geprüft, nicht nur beim Ausstellen. */
+        if (erstleitungAbgelaufen(eintrag)) {
+          await protokoll("anmelden", k, "abgewiesen", "Erstanmeldung: abgelaufen");
+          return antwort({ fehler: "Dieser Zugang ist abgelaufen.",
+            text: "Bitte wenden Sie sich an den Betreiber." }, 403);
+        }
         const el = erstleitungOffen(eintrag)
           ? await erstleitungEinloesen(store, { schluessel: fund.schluessel })
           : (erstleitungUngueltig(eintrag) ? { ok: false, grund: "belegt" } : { ok: true, eintrag, angelegt: false });
@@ -1076,6 +1098,12 @@ async function behandeln(req, context, ctx) {
             text: "Bitte gleich noch einmal versuchen." }, 503);
         }
         /* Rolle, Raum und Betrieb dürfen sich dabei nicht verändert haben (fail-closed). */
+        /* Während der Erstanmeldung gesperrt: abgewiesen wie jeder gesperrte Zugang (die Bindung blieb, die Sperre auch). */
+        if (el.eintrag && el.eintrag.gesperrt) {
+          await protokoll("anmelden", k, "abgewiesen", "gesperrt");
+          return antwort({ fehler: "Dieser Zugang wurde zurückgezogen.",
+            text: "Bitte wende dich an die Organisationsleitung." }, 403);
+        }
         if (!el.eintrag || el.eintrag.rolle !== eintrag.rolle || el.eintrag.bestand !== eintrag.bestand
           || el.eintrag.gesperrt || (el.eintrag.betrieb ?? 0) !== (eintrag.betrieb ?? 0)
           || el.eintrag.mandantId !== eintrag.mandantId) {
@@ -1092,8 +1120,9 @@ async function behandeln(req, context, ctx) {
       }
       if (bindungC.migrieren) {
         try {
-          await kontoSchreiben(store, fund.schluessel, { ...eintrag, mandantId: bindungC.mandantId,
-            gebunden: new Date().toISOString() });
+          /* Merge-sicher (konten.mjs, kontoAendern): nur die Bindung am frischen Stand — eine gleichzeitige Sperre bleibt. */
+          await kontoAendern(store, fund.schluessel, (f) => (f ? { ...f, mandantId: bindungC.mandantId,
+            gebunden: new Date().toISOString() } : f));
         } catch { /* darf keine Anmeldung scheitern lassen; beim nächsten Mal erneut */ }
       }
       const { token, gueltigBis } = await sitzungAnlegen({
@@ -1118,12 +1147,16 @@ async function behandeln(req, context, ctx) {
           /* Unter dem neuen Schlüssel ablegen, den alten stehen lassen —
              löschen könnte einen parallel laufenden Zugriff treffen. Er
              wird beim nächsten Sperren mit erfasst. */
-          await kontoSchreiben(store, ablageSchluessel(zugangscode),
-            { ...eintrag, umgeschluesselt: new Date().toISOString() });
+          /* Vom FRISCHEN Stand des alten Eintrags, und einen schon vorhandenen neuen nie überschreiben (merge-sicher:
+             eine gleichzeitige Sperre geht nicht verloren, konten.mjs kontoAendern). */
+          const frisch = (await kontoLesenStreng(store, fund.schluessel)) || eintrag;
+          const { ersetztDurch: _weg, ...ohneZeiger } = frisch; // eslint-disable-line no-unused-vars
+          await kontoAendern(store, ablageSchluessel(zugangscode),
+            (g) => g || { ...ohneZeiger, umgeschluesselt: new Date().toISOString() });
           /* Die Sitzung trägt noch den alten Schlüssel (konto: fund.schluessel), und ein Kalender-Feed
              aus ihr trägt ihn als Herkunft. Damit eine Sperre des neuen Eintrags auch ihn trifft, vermerkt
              der alte, wer ihn ersetzt (WP-24, Review-Befund 3); feedherkunft.mjs folgt dem Vermerk. */
-          await kontoSchreiben(store, fund.schluessel, { ...eintrag, ersetztDurch: ablageSchluessel(zugangscode) });
+          await kontoAendern(store, fund.schluessel, (f) => (f ? { ...f, ersetztDurch: ablageSchluessel(zugangscode) } : f));
         } else {
           /* Aus dem Sammelblob auf einen Einzelschlüssel heben. */
           await kontoVereinzeln(store, fund.schluessel);
@@ -1208,6 +1241,11 @@ async function behandeln(req, context, ctx) {
     const s = (s0.nurSicherung || s0.rolle === "betreiber"
       || s0.person === null || s0.person === undefined) ? s0
       : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };
+    /* E-D2 hinter dem Schalter (lib/erstleitung.mjs, erstleitungStreng): Nur in einem Bestandsbetrieb ohne Marke und
+       bei ausgeschaltetem CENTRIC_ERSTLEITUNG_STRENG gilt beim Schreiben noch die alte Ausnahme „leerer Betrieb“
+       (rechte.mjs, rollenwechselErlaubt). Ermittelt je schreibender Anfrage am Server, nie aus der Anfrage. */
+    if (req.method !== "GET" && !s.nurSicherung && s.rolle !== "betreiber"
+      && !(await erstleitungStreng(store, s.bestand, s.mandantId))) s.ersteinrichtungAltweg = true;
     /* SI-P4, Review-Auflage M2: Unter Pflicht trägt eine Sitzung ohne bestandenen zweiten Faktor keine Rechte einer
        Rolle mit Faktor — auch nicht, wenn die Person erst nach der Anmeldung dazu wurde. Die Sitzung endet (sie würde
        auch nach einer Herabstufung nicht wieder tragbar), die Anfrage bekommt 401. lib/betreiber-zweifaktor.mjs. */

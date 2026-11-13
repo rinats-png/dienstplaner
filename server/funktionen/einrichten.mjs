@@ -6,12 +6,12 @@ import { rollenPflicht, rollenPflichtUnerwartet } from "../lib/betreiber-zweifak
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
-import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
+import { kontoSchreiben, kontoAendern, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
-import { erstleitungAusstellen, erstleitungVermerk } from "../lib/erstleitung.mjs";
+import { erstleitungAusstellen, erstleitungVermerk, erstleitungEingerichtet } from "../lib/erstleitung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
   verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
@@ -449,8 +449,9 @@ export default async (req) => {
         ergebnis.push({ kennung: z.kennung, gebunden: false, grund: "Position zeigt nicht auf diesen Betrieb" });
         continue;
       }
-      await kontoSchreiben(s0, h, { ...kk, mandantId: m.id, gebunden: new Date().toISOString(),
-        gebundenDurch: wer.name });
+      /* Merge-sicher am frischen Stand (konten.mjs, kontoAendern): eine gleichzeitige Sperre bleibt. */
+      await kontoAendern(s0, h, (f) => { const b = f || kk;
+        return { ...b, mandantId: m.id, gebunden: new Date().toISOString(), gebundenDurch: wer.name }; });
       ergebnis.push({ kennung: z.kennung, gebunden: true, mandantId: m.id });
     }
     await protokoll("einrichten", k, "erfolg",
@@ -541,7 +542,9 @@ export default async (req) => {
   const s = s0;
   /* A-3 (lib/erstleitung.mjs): Leitungscode ohne Person, kein Demozugang, Betrieb ohne Personen, Fenster der
      Ersteinrichtung — ein Erstanmeldecode. Nur er legt bei der ersten Anmeldung die Leitungsperson an. */
-  const erstE = rolle !== "betreiber" && erstleitungAusstellen({ rolle, person, demo: !!demo, mandant: mandantE, lage: lageE });
+  const erstE = rolle !== "betreiber" && erstleitungAusstellen({ rolle, person, demo: !!demo, mandant: mandantE, lage: lageE,
+    /* E-D2: nur, wenn die Erstanmeldung des Betriebs nicht schon festgelegt ist (Marke) und er keine Personen hat. */
+    eingerichtet: rolle === "leitung" ? await erstleitungEingerichtet(s0, bestand, mandantE) : true });
   const konto = { name, bestand,
     rolle,                         // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs

@@ -78,7 +78,9 @@ beforeAll(async () => {
   const st = await serverStarten({ cwd: WURZEL, wartenMs: 30_000, env: {
     CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN,
     CENTRIC_PFEFFER: PFEFFER, CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "development",
-    CENTRIC_DEMO: undefined, CENTRIC_SELBSTSTART: undefined, CENTRIC_IMPORT_AKTIV: undefined, CENTRIC_REGISTRIERUNG: undefined } });
+    CENTRIC_DEMO: undefined, CENTRIC_SELBSTSTART: undefined, CENTRIC_IMPORT_AKTIV: undefined, CENTRIC_REGISTRIERUNG: undefined,
+    /* Vorgabe der Auslieferung: Schalter AUS — streng nur für Betriebe mit Erstanmeldemarke. */
+    CENTRIC_ERSTLEITUNG_STRENG: undefined } });
   ({ kind, basis: BASIS } = st);
   /* Der Prüfprozess liest und schreibt dieselbe Ablage (Dateien, ohne Zwischenspeicher) mit demselben Pfeffer. */
   process.env.CENTRIC_DATEN = daten;
@@ -110,8 +112,10 @@ describe.sequential("Teil 1: echter Server", () => {
     expect(z.zugaenge.map((x) => [x.rolle, x.erstanmeldung === true])).toEqual([["leitung", true], ["planer", false], ["betriebsrat", false]]);
     [CODE.a, CODE.aPlaner, CODE.aBr] = z.zugaenge.map((x) => x.code);
     const k = await kontoVon(CODE.a);
-    expect(k.erstleitung).toEqual({ mandantId: "erstl-a", angelegt: expect.any(String) });
-    expect(Object.keys(k.erstleitung).sort()).toEqual(["angelegt", "mandantId"]);
+    expect(k.erstleitung).toEqual({ mandantId: "erstl-a", angelegt: expect.any(String), bis: expect.any(String) });
+    expect(Object.keys(k.erstleitung).sort()).toEqual(["angelegt", "bis", "mandantId"]);
+    /* Gültigkeit beim Einlösen geprüft (Review Punkt 3): 14 Tage. */
+    expect(Date.parse(k.erstleitung.bis) - Date.parse(k.erstleitung.angelegt)).toBe(14 * 24 * 60 * 60 * 1000);
     expect((await kontoVon(CODE.aPlaner)).erstleitung).toBeUndefined();
     expect((await kontoVon(CODE.aBr)).erstleitung).toBeUndefined();
     /* Ausstellen allein legt nichts an. */
@@ -144,7 +148,8 @@ describe.sequential("Teil 1: echter Server", () => {
     const bt = await anmelden(CODE.betreiber, boese);
     expect(bt.status, bt.fehler).toBe(200);
     expect(bt.rolle).toBe("betreiber");
-    /* Ein Leitungscode OHNE Vermerk im leeren Betrieb (Altcode): Sitzung wie bisher, aber keine Person. */
+    /* Ein Leitungscode OHNE Vermerk im leeren BESTANDSbetrieb (ohne Marke), Schalter CENTRIC_ERSTLEITUNG_STRENG aus:
+       der bisherige Ablauf bleibt (Sitzung, Rolle aus dem Code) — aber nie eine Person. Streng: erstleitung-entscheidungen. */
     await betriebAnlegen("erstl-alt");
     const alt = await codeAblegen("erstl-alt");
     const al = await anmelden(alt, boese);
@@ -268,11 +273,13 @@ describe.sequential("Teil 1: echter Server", () => {
   });
 
   it("gestrandeter Code (Betrieb mit Personen, Leitungscode ohne Person): nie eine Person über diesen Weg", async () => {
-    /* Altcode ohne Vermerk in einem Betrieb mit Personen: Sitzung wie bisher (Rolle aus dem Code), keine Person. */
+    /* Altcode ohne Vermerk in einem Betrieb, dessen Erstanmeldung über den Erstanmeldecode lief (Marke): streng auch bei
+       ausgeschaltetem Schalter — keine Sitzung, keine Person (E-D1/F-0). */
     const alt = await codeAblegen("erstl-a");
     const a = await anmelden(alt);
-    expect(a.status, a.fehler).toBe(200);
-    expect(a.person).toBeNull();
+    expect(a.status).toBe(403);
+    expect(a.fehler).toBe("Ihr Zugang ist keiner Person zugeordnet.");
+    expect(a.token).toBeUndefined();
     expect(await personenIn("erstl-a")).toHaveLength(1);
     /* Betrieb mit Personen, aber ohne Leitung; ein Erstanmeldecode, nachdem Personen eingespielt wurden: abgewiesen. */
     await betriebAnlegen("erstl-voll");
@@ -281,6 +288,7 @@ describe.sequential("Teil 1: echter Server", () => {
     b.mandanten[0].personen = [{ id: "pl1", vorname: "P", nachname: "Plan", rolle: "planer", bereich: "ALLE", status: "aktiv",
       eintritt: "2020-01-01", austritt: null, qualifikationen: [], zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] }];
     expect((await L.bestandSchreiben(store(), "erstl-voll", b, { erwarteterStand: g.stand, durch: "Prüfung" })).ok).toBe(true);
+    /* Bestandsbetrieb ohne Marke, Schalter aus: bisheriger Ablauf (Sitzung ohne Person), nie eine neue Person. */
     const ohneVermerk = await codeAblegen("erstl-voll");
     const o = await anmelden(ohneVermerk);
     expect(o.status, o.fehler).toBe(200);
@@ -290,6 +298,35 @@ describe.sequential("Teil 1: echter Server", () => {
     expect(m.status).toBe(403);
     expect(m.token).toBeUndefined();
     expect((await personenIn("erstl-voll")).map((p) => p.id)).toEqual(["pl1"]);
+  });
+
+  it("Schalter aus: ein Betrieb MIT Marke bleibt streng — eine liegende Altsitzung endet, ein Planungscode legt nach Verlust aller Personen keine Leitung an", async () => {
+    /* erstl-d ist über den Erstanmeldecode eingerichtet (Marke). Eine Sitzung eines Leitungscodes ohne Person: endet. */
+    const L2 = { ...L, ...(await import("../server/lib/sitzungen.mjs")) };
+    const { token } = await L2.sitzungAnlegen({ bestand: "erstl-d", name: "Alt", rolle: "leitung", person: null, betrieb: 0,
+      mandantId: "erstl-d", konto: L.ablageSchluessel(await codeAblegen("erstl-d")), einheit: null }, 3600e3);
+    expect((await anfrage("/api/bestand", { token })).status).toBe(401);
+    /* Alle Personen verloren; ein Planungscode ohne Person (Sitzung erlaubt) darf trotzdem keine Leitung anlegen. */
+    const g = await L.bestandLesenStreng(store(), "erstl-d");
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    b.mandanten[0].personen = [];
+    expect((await L.bestandSchreiben(store(), "erstl-d", b, { erwarteterStand: g.stand, durch: "Prüfung" })).ok).toBe(true);
+    const planer = await anmelden(await codeAblegen("erstl-d", { rolle: "planer" }));
+    expect(planer.status, planer.fehler).toBe(200);
+    const gp = await anfrage("/api/bestand", { token: planer.token });
+    const bp = JSON.parse(JSON.stringify(gp.bestand));
+    bp.mandanten[0].personen = [{ id: "p_planlei", vorname: "", nachname: "X", rolle: "leitung", bereich: "ALLE", status: "aktiv",
+      eintritt: "2026-01-01", austritt: null, qualifikationen: [], zugehoerigkeit: [] }];
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: planer.token, rumpf: { bestand: bp, etag: gp.etag } });
+    expect(w.status).toBe(403);
+    expect(await personenIn("erstl-d")).toEqual([]);
+    /* Bestandsbetrieb ohne Marke (erstl-alt, leer): die alte Ausnahme gilt dort weiter (Schalter aus). */
+    const pa = await anmelden(await codeAblegen("erstl-alt", { rolle: "planer" }));
+    const ga = await anfrage("/api/bestand", { token: pa.token });
+    const ba = JSON.parse(JSON.stringify(ga.bestand));
+    ba.mandanten[0].personen = [{ ...bp.mandanten[0].personen[0], id: "p_altweg1" }];
+    const wa = await anfrage("/api/bestand", { methode: "PUT", token: pa.token, rumpf: { bestand: ba, etag: ga.etag } });
+    expect(wa.status, wa.fehler).toBe(200);
   });
 
   it("Wiederanlauf nach Abbruch zwischen den Schritten (wie nach einem Prozessende): keine zweite Person", async () => {
@@ -377,14 +414,21 @@ describe.sequential("Teil 2: Schreibfehler mitten im Vorgang (in-process, echte 
   it("reine Regeln: Vermerk nur für Leitung ohne Person, kein Demo, leerer Betrieb, Fenster der Ersteinrichtung", async () => {
     const { erstleitungAusstellen, erstleitungOffen } = await import("../server/lib/erstleitung.mjs");
     const leer = { id: "m1", personen: [] };
-    expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" } })).toBe(true);
-    expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "fenster" } })).toBe(true);
+    expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" }, eingerichtet: false })).toBe(true);
+    expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "fenster" }, eingerichtet: false })).toBe(true);
+    /* E-D2: ohne ausdrückliches „nicht eingerichtet“ (Marke unbekannt) und mit Marke kein Vermerk. */
+    expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" } })).toBe(false);
+    expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" }, eingerichtet: true })).toBe(false);
     for (const falsch of [{ rolle: "planer" }, { rolle: "betriebsrat" }, { rolle: "mitarbeiter" }, { rolle: "kunde" }, { rolle: "betreiber" },
       { person: "p1" }, { person: 0 }, { demo: true }, { lage: { art: "demo" } }, { lage: { art: "kundenraum" } }, { lage: null },
       { mandant: { id: "m1", personen: [{ id: "p1" }] } }, { mandant: { id: "m1" } }, { mandant: null }])
-      expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" }, ...falsch }), JSON.stringify(falsch)).toBe(false);
-    const e = { rolle: "leitung", person: null, bestand: "r", mandantId: "m1", erstleitung: { mandantId: "m1" } };
+      expect(erstleitungAusstellen({ rolle: "leitung", person: null, demo: false, mandant: leer, lage: { art: "neu" }, eingerichtet: false, ...falsch }), JSON.stringify(falsch)).toBe(false);
+    const e = { rolle: "leitung", person: null, bestand: "r", mandantId: "m1", erstleitung: { mandantId: "m1", angelegt: new Date().toISOString() } };
     expect(erstleitungOffen(e)).toBe(true);
+    /* Abgelaufen (bis vorbei, angelegt zu alt, keine Zeit): nie offen — fail-closed. */
+    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1", angelegt: new Date().toISOString(), bis: new Date(Date.now() - 1).toISOString() } })).toBe(false);
+    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1", angelegt: new Date(Date.now() - 15 * 864e5).toISOString() } })).toBe(false);
+    expect(erstleitungOffen({ ...e, erstleitung: { mandantId: "m1" } })).toBe(false);
     for (const falsch of [{ demo: true }, { gesperrt: true }, { rolle: "planer" }, { mandantId: "m2" }, { erstleitung: { mandantId: "m2" } },
       { erstleitung: true }, { erstleitungVerbraucht: { grund: "angelegt" } }, { bestand: "" }])
       expect(erstleitungOffen({ ...e, ...falsch }), JSON.stringify(falsch)).toBe(false);
