@@ -470,6 +470,12 @@ jobs:
       - name: Integrationsabnahme Kette A + B
         run: npm run pruefung:abnahme-ab
 
+      # Abnahme V4 Strang C: echter Server — SIGKILL mitten im Schreiben und Wiederanlauf, Sicherung → Schaden →
+      # Wiederherstellung byteweise, SIGTERM (nur Linux); Branchenmodule über PUT je Rolle nicht einschaltbar;
+      # Import/KI/Teilweg/Hilfe/Demo/Registrierung bei verstümmelten Schaltern aus, kein ausgehender Netzverkehr.
+      - name: Abnahme V4 Strang C (Sicherung, Fehlerzustände, Module, KI/Import aus)
+        run: npm run pruefung:abnahme-c
+
       # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
       - name: Preisanzeige nach Rolle
         run: npm run pruefung:preisanzeige
