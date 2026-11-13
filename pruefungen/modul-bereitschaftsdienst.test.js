@@ -113,6 +113,23 @@ describe("Anrechnung: Arbeitszeit und Vergütung getrennt (R2 c, R4 a)", () => {
     expect(a.arbeitszeitMinuten).toBe(90 + 45);
     expect(a.verguetungsMinuten).toBe(120);
   });
+  describe("überlappende Inanspruchnahmen zählen nur einmal (M-BD1)", () => {
+    const az = (inan, extra = {}) => bereitschaftAnrechnung(DIENST({ stufe: "R", inanspruchnahmen: inan, ...extra }), STUFE_R).arbeitszeitMinuten;
+    it("90 + 90 vollständig überlappend: 90", () => { expect(az([{ von: "23:00", bis: "00:30" }, { von: "23:00", bis: "00:30" }])).toBe(90); });
+    it("Teilüberlappung: Vereinigung", () => { expect(az([{ von: "23:00", bis: "00:30" }, { von: "00:00", bis: "01:00" }])).toBe(120); });
+    it("verschachtelt: nur der äußere Zeitraum", () => { expect(az([{ von: "22:00", bis: "02:00" }, { von: "23:00", bis: "23:30" }])).toBe(240); });
+    it("Reihenfolge der Einträge ist egal", () => { expect(az([{ von: "00:00", bis: "01:00" }, { von: "23:00", bis: "00:30" }])).toBe(120); });
+    it("aneinandergrenzend: Summe bleibt", () => { expect(az([{ von: "23:00", bis: "00:00" }, { von: "00:00", bis: "01:00" }])).toBe(120); });
+    it("getrennt: Summe bleibt", () => { expect(az([{ von: "17:00", bis: "18:00" }, { von: "20:00", bis: "20:30" }])).toBe(90); });
+    it("Bereitschaft (nicht Ruf): Arbeitszeit bleibt die Dauer", () => {
+      expect(bereitschaftAnrechnung(DIENST({ inanspruchnahmen: [{ von: "23:00", bis: "00:30" }, { von: "23:00", bis: "00:30" }] }), STUFE_B).arbeitszeitMinuten).toBe(960);
+    });
+    it("Höchstarbeitszeit nutzt die Vereinigung", () => {
+      const doppelt = [{ von: "17:00", bis: "21:00" }, { von: "17:00", bis: "21:00" }];
+      const m = betrieb({ grenze: 5, bereitschaft: { [`p1|${TAG}`]: DIENST({ stufe: "R", inanspruchnahmen: doppelt }) } });
+      expect(bereitschaftHoechstBefunde(m, { module: AKTIV })).toEqual([]);
+    });
+  });
   it("ohne Tarifwert: Vergütung ungeklärt (null), nie 0", () => {
     const a = bereitschaftAnrechnung(DIENST({ stufe: "O" }), STUFE_OHNE);
     expect(a).toMatchObject({ verguetungsMinuten: null, status: "ungeklaert", arbeitszeitMinuten: 960 });

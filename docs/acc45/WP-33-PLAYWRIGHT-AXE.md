@@ -85,6 +85,26 @@ Betrieb, ohne Eingabe) erschien in zwei Läufen der Dialog „Gleichzeitig bearb
 deshalb nacheinander (`workers: 1`). Ob das bloße Öffnen in zwei Sitzungen einen Schreibkonflikt auslösen darf, gehört fachlich
 geprüft (WP-48/WP-16-Umfeld).
 
+## 4a. Teil 4: Toast-Kontrast und stabile Prüfung (2026-11-13)
+
+Nach dem Merge (#262) schlug `browser-abnahme` in der CI zeitabhängig fehl, beide Male `[360x740] einstellungen-leitung`:
+`serious color-contrast [.toast > button]`. Bei der ersten Anmeldung der Leitung erscheint ein Meldungsstreifen mit „Rückgängig“;
+ob er beim Scan noch sichtbar war (3 s), hing von der Laufzeit ab (CI schnell, Windows langsam).
+
+- **Behebung in der Anwendung:** In der V4-Anwendung liegt der Streifen auf dem hellen Glasgrund, der Knopf trug aber
+  `accentGlanz` (für den dunklen Streifen gedacht), hell rund 2:1. Jetzt `html[data-v4-app] .toast button{color:var(--v4-accent)}`
+  (`src/v4/app-stil.js`), hell und dunkel >= 4,5:1; abgesichert in `pruefungen/v4-tokens.test.js`. Keine Ausnahme.
+- **Deterministische Prüfung (`e2e/hilfen.mjs`):** Nichts wird versteckt oder weggeklickt. axe und ein Beobachter werden per
+  `addInitScript` vor der Anwendung geladen; der Beobachter prüft **jeden** Meldungsstreifen, sobald er erscheint (gleiche Regeln,
+  gleiches Gate, keine Ausnahmen), unabhängig davon, ob er beim Seitenscan noch sichtbar ist. Am Testende schlagen serious/critical
+  fehl; die Befunde stehen in `e2e/ergebnisse/axe/meldung-<test>-<viewport>.json` und als Anmerkung `axe-meldung`. Alle axe-Läufe
+  einer Seite laufen über eine Kette (kein „Axe is already running“). Ein beim Seitenscan sichtbarer Streifen wird dort
+  zusätzlich mitgeprüft (`meldungSichtbar`). Vor jedem Scan und nach jeder Navigation wird auf Netzruhe gewartet statt fester
+  Pausen. Erscheint der Dialog „Gleichzeitig bearbeitet“, scheitert der Test mit genau dieser Meldung, statt an einer verdeckten
+  Navigation. Der automatische Urlaubshinweis-Lauf beim ersten Öffnen durch die Leitung schreibt Daten; er ist die
+  wahrscheinliche Ursache des Konfliktdialogs bei parallelen Sitzungen (Nebenbefund oben).
+- Kontrast: Rücknahmeknopf hell vorher 1,98:1, jetzt 7,36:1 (hell) und 11,0:1 (dunkel).
+
 ## 5. Offen
 
 - Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.

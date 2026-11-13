@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **23,3–36,2 PT**
-**Offener Entwicklungsaufwand:** 293,5–499,2 PT in 77 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 294,5–502,2 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -40,6 +40,7 @@ flowchart LR
     WR_9["WR-9<br/>BLOCKED"]
     WR_BETREIBER["WR-BETREIBER<br/>BLOCKED"]
     WP_19_B6["WP-19-B6<br/>BLOCKED"]
+    WP_48_GB["WP-48-GB<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -506,3 +507,4 @@ flowchart LR
 | WP-19-B4 | acc45 | P3 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
 | WP-19-B5 | acc45 | P3 | 0,3–0,8 | 0 | – | – | sonnet | INTEGRATED |
 | WP-19-B6 | acc45 | P3 | 0,3–0,5 | 0,3–0,5 | – | – | sonnet | BLOCKED |
+| WP-48-GB | acc45 | P2 | 1–3 | 1–3 | – | daten.mjs, App.jsx | opus | BLOCKED |
