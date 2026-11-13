@@ -487,6 +487,7 @@ describe("nie auf einer benutzten Ablage", () => {
 
   it("frische Prozesssperre (laufender Server): abgelehnt, auch mit --kopie; nichts angefasst", async () => {
     const sperre = path.join(dir, ".prozess");
+    /* zeit-ok: Das Skript läuft als Kindprozess und prüft die Sperre gegen die echte Uhr (Änderungszeit der Datei, nicht gegen --jetzt); Fake-Timer wirken dort nicht. "start" ist nur ein Datenwert, die frisch geschriebene Datei ist Sekunden alt (Grenze 45 s). */
     await writeFile(sperre, JSON.stringify({ pid: process.pid, start: new Date().toISOString(), rechner: hostname() }));
     const vorher = await inhaltsAbdruck(dir);
     const r = await lauf(["--daten", dir, "--kopie"]);
@@ -494,12 +495,25 @@ describe("nie auf einer benutzten Ablage", () => {
     expect(r.fehler).toMatch(/in Benutzung/);
     expect(await inhaltsAbdruck(dir)).toEqual(vorher);
     /* Veraltet, aber keine wiederhergestellte Kopie: ebenfalls abgelehnt. */
+    /* zeit-ok: Alter relativ zur echten Uhr des Kindprozesses (siehe oben); 10 min liegen weit über der Grenze von 45 s, das Ergebnis hängt nicht vom Laufzeitpunkt ab. */
     const alt = new Date(Date.now() - 10 * 60 * 1000);
     await writeFile(sperre, JSON.stringify({ pid: 999999, start: alt.toISOString(), rechner: "anderer-rechner" }));
     await utimes(sperre, alt, alt);
     const v = await lauf(["--daten", dir, "--kopie"]);
     expect(v.code).toBe(3);
     expect(v.fehler).toMatch(/keine wiederhergestellte Kopie/);
+    /* Grenze der Frische (45 s) mit Abstand: 20 s alt gilt als frisch (auch mit totem Halter), 90 s alt als veraltet. */
+    /* zeit-ok: Alter relativ zur echten Uhr des Kindprozesses; beide Werte liegen mindestens 25 s von der Grenze, Laufzeitschwankungen ändern das Ergebnis nicht. */
+    const knapp = new Date(Date.now() - 20 * 1000);
+    await utimes(sperre, knapp, knapp);
+    const f = await lauf(["--daten", dir, "--kopie"]);
+    expect(f.code).toBe(3);
+    expect(f.fehler).toMatch(/in Benutzung/);
+    const spaet = new Date(Date.now() - 90 * 1000);
+    await utimes(sperre, spaet, spaet);
+    const g = await lauf(["--daten", dir, "--kopie"]);
+    expect(g.code).toBe(3);
+    expect(g.fehler).toMatch(/keine wiederhergestellte Kopie/);
     await rm(sperre);
   });
 
@@ -508,6 +522,7 @@ describe("nie auf einer benutzten Ablage", () => {
     const ziel = await ordner("wiederhergestellt");
     await G.wiederherstellen({ sicherung: s, ziel, serverPruefen: false });
     expect((await stat(path.join(ziel, G.WIEDERHERSTELL_VERMERK))).isFile()).toBe(true);
+    /* zeit-ok: Alter relativ zur echten Uhr des Kindprozesses (siehe oben); 10 min liegen weit über 45 s. */
     const alt = new Date(Date.now() - 10 * 60 * 1000);
     const sperre = path.join(ziel, ".prozess");
     await writeFile(sperre, JSON.stringify({ pid: 999999, start: alt.toISOString(), rechner: "anderer-rechner" }));
