@@ -1,7 +1,40 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Merge #269, Integrationskopf 2f55d243 oder neuer, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Abnahme V4, Integrationskopf 76621eba oder neuer, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand nach Abnahme V4 (2026-11-13)
+
+- Integrationskopf: `76621eba` (Merge #285) oder neuer. Seit #270 gemergt (jeweils mit `gh pr view` geprüft): #271 WP-48-GB (Öffnen des Plans schreibt nicht mehr), #272 A-5 (Rollenauswahl in Personal mit Namen, axe `select-name`), #274 Abnahme V4 Strang B, #275 Strang A, #276 Strang C (Tests und Berichte, kein Produktionscode), #278 Matrix und Baseline, #279 Staging-Plan (`STAGING-PLAN-V4.md`), #282 Risikobewertung S-1/S-2 (`ABNAHME-V4-A2-RISIKOBEWERTUNG.md`), #283 QS-4 (`geo.test.js` Uhrzeit), #284 Wiederherstellungskonzept gestrandete Betriebe (nur Konzept), #285 QS-5 (Zufallskollision in drei Tests). #273 ist geschlossen (nicht gemergt; gleicher Titel wie #275); #277, #280, #281 siehe unten.
+- SSOT-Stand dazu: neu ABNAHME-V4 (IN_PROGRESS: implementiert, lokal getestet, reviewt, Testinfrastruktur integriert; Staging, fachlich/rechtlich und produktiv nicht), WP-ST1 (BLOCKED auf Betreiberentscheidungen), QS-4 und QS-5 (INTEGRATED), ABN-A2, ABN-A3, ABN-A4 (BLOCKED, PRs angehalten), ABN-S2 (SECURITY, BLOCKED), ABN-C1 (BLOCKED, P3), ABN-B3 (READY, P3). WP-48-GB ist IN_PROGRESS: `workers: 1` bleibt, Produktfragen offen, Review nicht belegt. Das Werkzeug setzte das Sammelpaket WP-48 durch #271 auf INTEGRATED; von Hand auf IN_PROGRESS zurückgenommen. A-5 ist als Nachtrag in WP-40 vermerkt.
+- Offen, angehalten, nicht gemergt: **#277** (A-2, Einladungsbremse sperrt die Leitung nicht mehr aus), **#280** (A-4, Dienstart ohne `mindest`), **#281** (A-3, Leitungscode ohne Person). Keiner wurde in dieser Runde gemergt.
+  - A-3: serverseitig atomare erste Anmeldung ist in Arbeit. **Befund F-0**: Ein Leitungscode ohne Person hat serverseitig volle Leitungsrechte. Recovery-Konzept E-D1 bis E-D11 liegt nur als Konzept vor.
+  - A-4: Regel seit 2026-11-13 geändert: fehlendes `mindest` bei neuer Dienstart gibt 422, ein ausdrückliches 0 ist zulässig, nur ganze Zahlen, Zahlen als Zeichenfolge werden normalisiert, historisch Fehlendes wird markiert.
+  - Vorbestehender Sicherheitsbefund **S-2** (ABN-S2): Eine Flut aus etwa 45 Herkünften sperrt die erneute Anmeldung des Betreibers und die Einladungseinlösung; bei etwa 134 Herkünften auch Leitungen mit gültigem Code.
+
+### Entscheidungen und Aufgaben für den Betreiber (nichts davon ist entschieden)
+1. S-1/S-2 und gelockerte Ausgabegrenzen sowie die sechs unbelegten Behauptungen G1 bis G6 zu #277.
+2. Design der ersten Anmeldung (A-3, #281) und Befund F-0; Wiederherstellungskonzept E-D1 bis E-D11 (#284).
+3. Wirkung der neuen `mindest`-Regel (A-4, #280) auf Bestand, Import und Altdaten.
+4. Urlaubshinweis (WP-48-GB): serverseitig als täglicher Lauf? Nur eine Rolle oder nur auf Handlung? Meldung bei still ersetztem Lauf?
+5. C-1: Produktionsstart ohne `CENTRIC_PFEFFER` verweigern oder dokumentierte Warnung (Betreiberpolitik, P3).
+6. Bildfrage: Produktion auf `64d08a4` (Digest `f03a8514`), `deploy/FREIGEGEBENE-IMAGES.md` führt dieses Bild als gesperrt und `274bfa0` als aktiv. Klärung offen, kein Deployment ohne ausdrückliche Freigabe.
+7. Branch-Schutz (offene Betreiberaufgabe, `BETREIBER-BRANCHSCHUTZ.md`).
+8. Staging: Variante (O2 eigene VM empfohlen), VM und DNS, Beauftragung; Auslöser des Bildbaus "Auslieferung" mit `bauen=true`, `ausliefern=false`.
+9. Externe E-Pakete (Rechtsfreigabe, Dienstleister-Verträge, Geräte, Pentest und weitere, siehe `STAGING-PLAN-V4.md` Abschnitt 7 und `EXTERNE-ABNAHMEN-UEBERGABE.md`).
+10. Lieferkette (nur zur Kenntnis): Browser-Tests laden Chromium und CDN-Skripte ohne Integritätsprüfung; der Browser-Job steuert das Deployment.
+11. Hinweis B-3 (`e2e/hilfen.mjs` verliert unter Windows den Nachrichtenbefund bei Doppelpunkt im Testtitel, P3) und S0-B2: fachliche Browser-E2E ist durch die Strang-A/B-Spezifikationen nur teilweise geschlossen, Ersatzplanung im Browser fehlt.
+
+### Release-Empfehlung (aus `STAGING-PLAN-V4.md` Abschnitt 9, zweigeteilt)
+- **A, lokaler Release-Kandidat**: technisch annehmbar, mit Auflagen (RC nach Merge von #277 und den Strang-PRs; C-1, A-3, A-4 behoben oder bewusst geführt; Kette auf neuem Kopf ohne Parallellast, CI grün auf genau diesem Kopf; S0-B2 als Teillücke geführt).
+- **B, geeignet für die Betreiberfreigabe nach produktionsnaher Staging-Abnahme**: noch nicht (Bild und Digest, Staging eingerichtet, ST-B bis ST-F, Sicherung/Restore/Rücksprung, Geräte, keine offenen P0/P1, fachliche Bestätigung fehlen).
+
+### Kritischer Pfad (Schätzung aus `STAGING-PLAN-V4.md` Abschnitt 8.3, Tag 1 = 2026-11-16, Arbeitstage; Annahmen dort)
+| | best | wahrscheinlich | schlecht |
+|---|---|---|---|
+| technisch (G1-tech, Testdaten) | 7 | 14 | 28 |
+| erster sicherer Go-live mit echten Nutzern (rechtliche Kette E-32, WP-36, E-18, Einarbeitung) | 22 | 36 | 51 |
+Pilotabschluss E-24 danach 10 bis 15 Arbeitstage. Mit Pentest vor dem Piloten im schlechten Fall 53. Schätzungen, keine Messungen.
 
 ## Stand nach #269 (2026-11-13)
 - Integrationskopf: `2f55d243` (Merge #266) oder neuer. Seit #256 gemergt: #257 SSOT; #258 WP-21 Teil 4; #259 SSOT; #260 Bereitschaftsnachtrag; #261 Entscheidungen 2026-11-13; #262 WP-33 Teil 3 (Playwright und axe); #263 IMP-6 mehrere Modelle; #264 SSOT; #265 Nachholreview WP-19-Module; #266 Nachholreview Stempelkette; #267 WP-19.6 Teil 2 (Überlappungen als Vereinigung gezählt, behebt M-BD1); #268 WP-14c Teil 2 (M-14c-1: Pause gleich Anwesenheit wird Prüffall); #269 WP-33 Teil 4 (Toast-Kontrast 1,98:1 auf 7,36:1 hell und 11,0:1 dunkel, jeder Toast deterministisch mit axe geprüft).
