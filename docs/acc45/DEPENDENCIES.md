@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **23,3–36,2 PT**
-**Offener Entwicklungsaufwand:** 294,5–502,2 PT in 78 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 302,25–522,2 PT in 86 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -40,7 +40,15 @@ flowchart LR
     WR_9["WR-9<br/>BLOCKED"]
     WR_BETREIBER["WR-BETREIBER<br/>BLOCKED"]
     WP_19_B6["WP-19-B6<br/>BLOCKED"]
-    WP_48_GB["WP-48-GB<br/>BLOCKED"]
+    WP_48_GB["WP-48-GB<br/>IN_PROGRESS"]
+    ABNAHME_V4["ABNAHME-V4<br/>IN_PROGRESS"]
+    WP_ST1["WP-ST1<br/>BLOCKED"]
+    ABN_A2["ABN-A2<br/>BLOCKED"]
+    ABN_A3["ABN-A3<br/>BLOCKED"]
+    ABN_A4["ABN-A4<br/>BLOCKED"]
+    ABN_S2["ABN-S2<br/>BLOCKED"]
+    ABN_C1["ABN-C1<br/>BLOCKED"]
+    ABN_B3["ABN-B3<br/>READY"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -507,4 +515,14 @@ flowchart LR
 | WP-19-B4 | acc45 | P3 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
 | WP-19-B5 | acc45 | P3 | 0,3–0,8 | 0 | – | – | sonnet | INTEGRATED |
 | WP-19-B6 | acc45 | P3 | 0,3–0,5 | 0,3–0,5 | – | – | sonnet | BLOCKED |
-| WP-48-GB | acc45 | P2 | 1–3 | 1–3 | – | daten.mjs, App.jsx | opus | BLOCKED |
+| WP-48-GB | acc45 | P2 | 1–3 | 0,5–1,5 | – | daten.mjs, App.jsx | opus | IN_PROGRESS |
+| ABNAHME-V4 | acc45 | P1 | 3–6 | 1,5–3 | – | – | opus | IN_PROGRESS |
+| WP-ST1 | acc45 | P1 | 2–5 | 2–5 | – | – | opus | BLOCKED |
+| QS-4 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
+| QS-5 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
+| ABN-A2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
+| ABN-A3 | acc45 | P2 | 1–3 | 1–3 | – | – | opus | BLOCKED |
+| ABN-A4 | acc45 | P2 | 1–3 | 1–3 | – | – | opus | BLOCKED |
+| ABN-S2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
+| ABN-C1 | acc45 | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
+| ABN-B3 | acc45 | P3 | 0,25–0,5 | 0,25–0,5 | – | – | opus | READY |
