@@ -9,12 +9,84 @@ import { n1 } from "../lib/format.js";
 import { Erklaerkasten } from "../gestalt/bausteine.jsx";
 import { DIENSTFORMEN, dienstform } from "../../server/lib/lohnrechnung.mjs";
 import { Zelle, Sheet } from "../ui/leisten.jsx";
-import { PALETTE, AUFENTHALT, aufenthaltVon, bereitschaftHinweise } from "../lib/fachlogik.js";
+import { PALETTE, AUFENTHALT, aufenthaltVon, bereitschaftHinweise, mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
 import { Farbwahl } from "../ui/farbwahl.jsx";
 
 
 /* ========================= DIENSTARTEN — frei gestaltbar ================== */
+/* Mindestbesetzung (A-4, Betreiberentscheidung 2026-11-13): Pflicht beim Anlegen, nur ganze Zahlen 0..999 —
+   0 heißt ausdrücklich „keine Mindestbesetzung". Nichts wird still ergänzt; der Server weist dasselbe mit 422 ab
+   (server/lib/gestalt.mjs, docs/acc45/ABNAHME-V4-A4-MINDEST.md). */
+export const MINDEST_TAGE = [["mo_do", "Mo – Do"], ["fr", "Freitag"], ["sa", "Samstag"], ["so", "So / Feiertag"]];
+const leerFeld = (v) => v === undefined || v === null || String(v).trim() === "";
+
+/** Fehlertext für eine Eingabe der Mindestbesetzung, oder null. Leer ist nur dann erlaubt, wenn `leerOk`. */
+export function mindestEingabeFehler(v, leerOk = false) {
+  if (leerFeld(v)) return leerOk ? null : "Pflichtfeld: bitte eine ganze Zahl ab 0 eingeben (0 = keine Mindestbesetzung).";
+  const t = String(v).trim();
+  if (!/^\d+$/.test(t) || Number(t) > 999) return "Bitte eine ganze Zahl von 0 bis 999 eingeben — ohne Komma, nicht negativ.";
+  return null;
+}
+
+/** Die Werte, mit denen der Dialog eine gespeicherte Dienstart öffnet: Zahlen bleiben, eine ganze Zahl als Text
+    ("2") öffnet als 2, alles andere so, wie es gespeichert ist (der Dialog zeigt dann den Fehler) — fehlende Felder
+    bleiben leer (Pflicht). Nie ein erfundenes 0. */
+export function mindestFuerDialog(d) {
+  const roh = mindestVorhanden(d) ? d.mindest : {};
+  return Object.fromEntries(MINDEST_TAGE.map(([k]) => {
+    const v = roh[k];
+    if (leerFeld(v)) return [k, ""];
+    if (typeof v === "string" && /^\s*\d+\s*$/.test(v)) return [k, Number(v.trim())];
+    return [k, v];
+  }));
+}
+
+/** Darf die Mindestbesetzung im Dialog ganz leer bleiben? Nur bei einem Altstand ohne Angabe — dann bleibt sie offen. */
+export const mindestLeerErlaubt = (werte, { neu, ohneMindest }) =>
+  !neu && !!ohneMindest && MINDEST_TAGE.every(([k]) => leerFeld(werte && werte[k]));
+
+/**
+ * Was „Speichern" mit der Mindestbesetzung tut: { fehler } (nichts speichern), { weglassen: true } (Altstand ohne
+ * Angabe bleibt ohne) oder { mindest } mit vier ganzen Zahlen.
+ */
+export function mindestZumSpeichern(werte, { neu, ohneMindest }) {
+  const leerOk = mindestLeerErlaubt(werte, { neu, ohneMindest });
+  const fehler = Object.fromEntries(MINDEST_TAGE.map(([k]) => [k, mindestEingabeFehler(werte && werte[k], leerOk)]).filter(([, t]) => t));
+  if (Object.keys(fehler).length) return { fehler };
+  if (leerOk) return { weglassen: true };
+  return { mindest: Object.fromEntries(MINDEST_TAGE.map(([k]) => [k, Number(String(werte[k]).trim())])) };
+}
+
+/** Die vier Eingabefelder der Mindestbesetzung mit Fehlertext je Feld (zugänglicher Name über Field/label). */
+export function MindestFelder({ werte, onChange, neu, ohneMindest, versucht }) {
+  const leerOk = mindestLeerErlaubt(werte, { neu, ohneMindest });
+  return (
+    <div>
+      {ohneMindest && !neu && (
+        <div role="note" data-befund="mindest-fehlt" style={{ fontSize: 12.5, color: C.warn, marginBottom: 10 }}>
+          Mindestbesetzung fehlt. Bitte für jeden Tag eine ganze Zahl eintragen (0 = keine Mindestbesetzung) —
+          bleiben alle vier Felder leer, bleibt sie weiter offen.</div>)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 11 }}>
+        {MINDEST_TAGE.map(([k, l]) => {
+          const v = werte ? werte[k] : "";
+          const roh = mindestEingabeFehler(v, leerOk);
+          /* Ein leeres Pflichtfeld meldet sich erst beim Speichern, eine falsche Eingabe sofort. */
+          const fe = roh && (versucht || !leerFeld(v)) ? roh : null;
+          const fehlerId = `mindest-${k}-fehler`;
+          return (
+            <div key={k}>
+              <Field label={l}><Inp type="number" inputMode="numeric" step={1} min={0} max={999}
+                required={!leerOk} aria-required={!leerOk} aria-invalid={fe ? true : undefined}
+                aria-describedby={fe ? fehlerId : undefined} style={{ minHeight: 24 }}
+                value={v ?? ""} onChange={(e) => onChange(k, e.target.value)} /></Field>
+              {fe && <div id={fehlerId} role="alert" style={{ fontSize: 12, color: C.danger, marginTop: 4 }}>{fe}</div>}
+            </div>);
+        })}
+      </div>
+    </div>);
+}
+
 export function Dienstarten({ sitz, akt }) {
   const m = sitz.mandant;
   const [bearbeitet, setBearbeitet] = useState(null);
@@ -24,12 +96,25 @@ export function Dienstarten({ sitz, akt }) {
   const leer = { name: "", kurz: "", start: "08:00", ende: "16:00", pause: 0, farbe: PALETTE[0], ort: "",
     posten: false, quelle: null, form: "regel", fachkraftQuote: null, zweiterAbschnitt: null,
     aufenthalt: null, abrufMinuten: null, einsatzAnteil: null,
-    mindest: { mo_do: 1, fr: 1, sa: 1, so: 1 }, mindestQual: {} };
+    mindest: { mo_do: "", fr: "", sa: "", so: "" }, mindestQual: {} };
   const [f, setF] = useState(leer);
-  const oeffnen = (d) => { setBearbeitet(d ? d.id : "neu"); setF(d ? JSON.parse(JSON.stringify(d)) : { ...leer, kurz: "" }); };
+  /* Altstand ohne Mindestbesetzung (A-4): Der Dialog öffnet mit leeren Feldern und dem Hinweis „fehlt" — kein
+     stilles 0. Ein Altwert als Text ("2") öffnet als Zahl und wird erst mit diesem Speichern als Zahl geschrieben. */
+  const [ohneMindest, setOhneMindest] = useState(false);
+  const [versucht, setVersucht] = useState(false);
+  const oeffnen = (d) => {
+    setBearbeitet(d ? d.id : "neu"); setVersucht(false);
+    setOhneMindest(!!d && !mindestVorhanden(d));
+    setF(d ? { ...JSON.parse(JSON.stringify(d)), mindest: mindestFuerDialog(d) } : { ...leer, kurz: "" });
+  };
   const speichern = () => {
     if (!f.name.trim() || !f.kurz.trim()) return;
-    if (bearbeitet === "neu") akt.neueDienstart(f); else akt.aendereDienstart(bearbeitet, f);
+    const neu = bearbeitet === "neu";
+    const md = mindestZumSpeichern(f.mindest, { neu, ohneMindest });
+    if (md.fehler) { setVersucht(true); return; }
+    const g = { ...f };
+    if (md.weglassen) delete g.mindest; else g.mindest = md.mindest;
+    if (neu) akt.neueDienstart(g); else akt.aendereDienstart(bearbeitet, g);
     setBearbeitet(null);
   };
 
@@ -56,8 +141,15 @@ export function Dienstarten({ sitz, akt }) {
                 {d.posten && <Pill size="sm" tone="ok">Posten</Pill>}
               </div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 16 }}>
-                {[["Mo–Do", d.mindest.mo_do], ["Fr", d.mindest.fr], ["Sa", d.mindest.sa], ["So/Feiertag", d.mindest.so]].map(([l, v]) => (
-                  <Pill key={l} size="sm">{l} {v}</Pill>))}
+                {mindestVorhanden(d) ? (() => {
+                  /* Vorhandene Werte wie gelesen; ein fehlendes Feld heißt „fehlt", nie still 0 (A-4). */
+                  const w = mindestWerte(d), lk = mindestLuecken(d), ug = mindestUngueltig(d);
+                  return [...[["mo_do", "Mo–Do"], ["fr", "Fr"], ["sa", "Sa"], ["so", "So/Feiertag"]].map(([k, l]) => (
+                    <Pill key={k} size="sm" tone={lk.includes(k) ? "warn" : undefined}>{l} {ug.includes(k) ? "ungültig" : lk.includes(k) ? "fehlt" : w[k]}</Pill>)),
+                    lk.length > ug.length && <span key="befund" data-befund="mindest-unvollstaendig"><Pill size="sm" tone="warn">Mindestbesetzung unvollständig — bitte ergänzen</Pill></span>,
+                    ug.length > 0 && <span key="ungueltig" data-befund="mindest-ungueltig"><Pill size="sm" tone="warn">Mindestbesetzung ungültig — bitte korrigieren</Pill></span>];
+                })()
+                  : <span data-befund="mindest-fehlt"><Pill size="sm" tone="warn">Mindestbesetzung fehlt — bitte festlegen</Pill></span>}
               </div>
               {Object.entries(d.mindestQual || {}).filter(([, n]) => n > 0).length > 0 && (
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 9 }}>
@@ -197,12 +289,9 @@ export function Dienstarten({ sitz, akt }) {
           </div>
           <div>
             <Lab style={{ marginBottom: 10 }}>Mindestbesetzung</Lab>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 11 }}>
-              {[["mo_do", "Mo – Do"], ["fr", "Freitag"], ["sa", "Samstag"], ["so", "So / Feiertag"]].map(([k, l]) => (
-                <Field key={k} label={l}><Inp type="number" min={0} value={f.mindest[k]}
-                  onChange={(e) => setF({ ...f, mindest: { ...f.mindest, [k]: Number(e.target.value) } })} /></Field>))}
-            </div>
-            <div style={{ fontSize: 12, color: C.dimmer, marginTop: 8 }}>Ein Feiertag hebt die Vorgabe an, senkt sie nie.</div>
+            <MindestFelder werte={f.mindest} onChange={(k, v) => setF({ ...f, mindest: { ...f.mindest, [k]: v } })}
+              neu={bearbeitet === "neu"} ohneMindest={ohneMindest} versucht={versucht} />
+            <div style={{ fontSize: 12, color: C.dimmer, marginTop: 8 }}>Pflichtangabe, ganze Zahlen ab 0. Ein Feiertag hebt die Vorgabe an, senkt sie nie.</div>
           </div>
           {m.qualifikationen.length > 0 && (<div>
             <Lab style={{ marginBottom: 10 }}>Davon mit Qualifikation</Lab>

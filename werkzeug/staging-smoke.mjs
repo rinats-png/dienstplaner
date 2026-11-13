@@ -135,7 +135,8 @@ const person = (id, rolle, extra = {}) => ({ id, vorname: "PPG", nachname: `Gate
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], ...extra });
 const betrieb = (id, name, personen, extra = {}) => ({ id, name, status: "aktiv", einstellungen: {},
   einheitLabel: "Wohnbereich", einheiten: [{ id: "e1", name: "WB 1" }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
+  /* Mindestbesetzung ist Pflicht (A-4, Betreiberentscheidung 2026-11-13): ausdrücklich 0. */
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen, abweichungen: {}, einstempeln: {}, erfassung: {}, anfragen: [], nachrichten: [], protokoll: [], ...extra });
 
 const BETRIEB_A = betrieb(`${RAUM_A}-m`, `${MARKE} Betrieb A (Wegwerf)`,

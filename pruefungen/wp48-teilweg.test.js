@@ -730,3 +730,79 @@ describe("Größe: 150 Personen × 12 Monate mit Stempeln", { timeout: 300000 },
     expect((await gespeichert(raum)).bestand.mandanten[0].abweichungen[k]).toBeUndefined();
   });
 });
+
+/* Abnahme V4, A-4 (Betreiberentscheidung 2026-11-13): Dienstart und mindest — dieselbe Regel auf Teil- und Vollweg.
+   Der Prüfbetrieb trägt bewusst Altdienstarten ohne mindest (F, N): sie bleiben schreibbar und byte-gleich. Eine NEUE
+   Dienstart ohne mindest ist auf beiden Wegen 422 (nicht still 0), mit 0 je Tag 200. */
+describe("A-4: Dienstart und mindest — Teilweg wie Vollweg", { timeout: 300000 }, () => {
+  const MD = { mo_do: 1, fr: 1, sa: 1, so: 1 };
+  const NULL = { mo_do: 0, fr: 0, sa: 0, so: 0 };
+  const neu = (md) => (w) => [...w, { id: "S", name: "Spät", start: "14:00", ende: "22:00", pause: 30, ...(md === undefined ? {} : { mindest: md }) }];
+  const kaputt = (w) => w.map((d) => (d.id === "F" ? { ...d, mindest: { ...MD, fr: -1 } } : d));
+  /* Gefälschte „Bestandskennung": eine zweite Kopie von F ohne mindest ist neu. */
+  const kopieF = (w) => { const f = w.find((d) => d.id === "F");
+    return [...w, { id: f.id, name: "Früh Kopie", start: f.start, ende: f.ende, pause: f.pause }]; };
+  it("ohne mindest, ungültige mindest (neu oder an Altdienstart), gefälschte Kennung: 422 auf beiden Wegen, gleiches Feld, nichts geändert", async () => {
+    for (const [name, fn] of [["neu ohne mindest", neu(undefined)], ["neu mit null", neu(null)], ["neu 2.5", neu({ ...MD, sa: 2.5 })],
+      ["neu \"2\"", neu({ ...MD, so: "2" })], ["neu mit fremdem Feld", neu({ ...MD, feiertag: 1 })], ["Altdienstart negativ", kaputt]])
+      for (const k of ["LT", "PL"]) {
+      const { raum, token } = await neuerRaum({ rollen: [k] });
+      const vorher = await gespeichert(raum);
+      const g = await anfrage("/api/bestand", { token: token[k] });
+      const t = await teile(token[k], deltaAus(g, { kern: { dienstarten: fn } }));
+      expect(t.status, `${name}/${k}/Teil ${JSON.stringify(t).slice(0, 200)}`).toBe(422);
+      expect(t.text, `${name}/${k}`).toMatch(/Mindestbesetzung/);
+      const v = await anfrage("/api/bestand", { methode: "PUT", token: token[k], rumpf: vollAus(g, { kern: { dienstarten: fn } }) });
+      expect(v.status, `${name}/${k}/Voll`).toBe(422);
+      expect(v.feld, `${name}/${k}`).toBe(t.feld);
+      expect(v.text, `${name}/${k}`).toBe(t.text);
+      expect(await gespeichert(raum), `${name}/${k}`).toEqual(vorher);
+    }
+  });
+  it("gefälschte Kennung (zweite Kopie einer Altdienstart ohne mindest): auf beiden Wegen abgewiesen, nichts geändert", async () => {
+    /* Die Modulprüfung (geteilterdienst: doppelte Kennung) weist schon vorher mit 403 ab; ohne sie greift die
+       mindest-Regel (422, Einheitsprüfung in personendaten.test.js). Angenommen wird die Kopie nie. */
+    for (const k of ["LT", "PL"]) {
+      const { raum, token } = await neuerRaum({ rollen: [k] });
+      const vorher = await gespeichert(raum);
+      const g = await anfrage("/api/bestand", { token: token[k] });
+      const t = await teile(token[k], deltaAus(g, { kern: { dienstarten: kopieF } }));
+      expect([403, 422], `${k}/Teil ${t.status}`).toContain(t.status);
+      const v = await anfrage("/api/bestand", { methode: "PUT", token: token[k], rumpf: vollAus(g, { kern: { dienstarten: kopieF } }) });
+      expect(v.status, `${k}/Voll`).toBe(t.status);
+      expect(await gespeichert(raum), k).toEqual(vorher);
+    }
+  });
+  it("neue Dienstart mit 0 oder 1 je Tag: 200 auf beiden Wegen, gleich gespeichert; Altdienstarten byte-gleich", async () => {
+    for (const md of [NULL, MD]) for (const weg of ["Teil", "Voll"]) {
+      const { raum, token } = await neuerRaum({ rollen: ["PL"] });
+      const alt = (await gespeichert(raum)).bestand.mandanten[0].dienstarten.map((d) => JSON.stringify(d));
+      const g = await anfrage("/api/bestand", { token: token.PL });
+      const r = weg === "Teil" ? await teile(token.PL, deltaAus(g, { kern: { dienstarten: neu(md) } }))
+        : await anfrage("/api/bestand", { methode: "PUT", token: token.PL, rumpf: vollAus(g, { kern: { dienstarten: neu(md) } }) });
+      expect(r.status, `${weg} ${JSON.stringify(r).slice(0, 200)}`).toBe(200);
+      const jetzt = (await gespeichert(raum)).bestand.mandanten[0].dienstarten;
+      expect(jetzt.slice(0, alt.length).map((d) => JSON.stringify(d)), weg).toEqual(alt);
+      expect(jetzt.find((d) => d.id === "S").mindest, weg).toEqual(md);
+    }
+  });
+  it("blockierte Rollen (Schichtverantwortung, Mitarbeiter, Betriebsrat): keine Wirkung auf Dienstarten, nie 422 — auf beiden Wegen", async () => {
+    for (const k of ["SV", "MA", "BR"]) {
+      const { raum, token } = await neuerRaum({ rollen: [k] });
+      const dienste = async () => JSON.stringify((await gespeichert(raum)).bestand.mandanten[0].dienstarten);
+      const vorher = await dienste();
+      const g = await anfrage("/api/bestand", { token: token[k] });
+      if (g.status !== 200) continue;
+      /* Je Rolle und Weg: 403 oder (eigener Ausschnitt) 200 ohne Wirkung auf die Dienstarten — nie 422. */
+      /* Ohne Teilweg-Versionen (Betriebsrat: kein Schreibweg) gibt es keinen Teil-PUT zu prüfen. */
+      if (g.teile) {
+        const t = await teile(token[k], deltaAus(g, { kern: { dienstarten: neu(undefined) } }));
+        expect(t.status, `${k}/Teil ${JSON.stringify(t).slice(0, 200)}`).not.toBe(422);
+        expect(await dienste(), `${k}/Teil`).toBe(vorher);
+      }
+      const v = await anfrage("/api/bestand", { methode: "PUT", token: token[k], rumpf: vollAus(g, { kern: { dienstarten: neu(undefined) } }) });
+      expect(v.status, `${k}/Voll ${JSON.stringify(v).slice(0, 200)}`).not.toBe(422);
+      expect(await dienste(), `${k}/Voll`).toBe(vorher);
+    }
+  });
+});

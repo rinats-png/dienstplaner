@@ -505,7 +505,7 @@ describe("Handler: Standortangaben — direkter Aufruf am Schreibweg vorbei", ()
     expect((await B.bestandSchreiben(laden(), RAUM, b, { durch: "Altbestand" })).ok).toBe(true);
     const r = await lies(T.l1);
     const n = JSON.parse(JSON.stringify(r.bestand));
-    n.mandanten[0].dienstarten = [...n.mandanten[0].dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00" }];
+    n.mandanten[0].dienstarten = [...n.mandanten[0].dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
     const w = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: n, etag: r.etag, durch: "Test" } });
     expect(w.status, w.roh).toBe(200);
     const g = await gespeichert();

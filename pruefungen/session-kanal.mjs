@@ -57,7 +57,7 @@ const person = (id, rolle, extra = {}) => ({ id, vorname: `V${id}`, nachname: `N
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], ...extra });
 const betrieb = (id, p) => ({
   id, name: `Betrieb ${id}`, status: "aktiv", tarif: "pro", einheiten: [{ id: "e1", name: "WB" }], standorte: [],
-  dienstarten: [{ id: "F", name: "Früh" }],
+  dienstarten: [{ id: "F", name: "Früh", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person(`${p}l`, "leitung", { bereich: "ALLE" }), person(`${p}p`, "planer", { bereich: "ALLE" }), person(`${p}m`, "mitarbeiter")],
   abweichungen: {}, anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [],
 });
@@ -105,11 +105,11 @@ for (const [name, t] of [["Planung A", tAP], ["Beschäftigte A", tAM], ["Leitung
 {
   const r1 = await rufe(tAL, "/api/bestand", "GET");
   const b2 = JSON.parse(JSON.stringify(r1.bestand));
-  b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät" }];
+  b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
   const w2 = await rufe(tAP, "/api/bestand", "PUT", { bestand: b2, etag: r1.etag, durch: "Test" });
   const b1 = JSON.parse(JSON.stringify(r1.bestand));
   b1.session = SESSION();
-  b1.mandanten[0].dienstarten = [...b1.mandanten[0].dienstarten, { id: "N", name: "Nacht" }];
+  b1.mandanten[0].dienstarten = [...b1.mandanten[0].dienstarten, { id: "N", name: "Nacht", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
   const w1 = await rufe(tAL, "/api/bestand", "PUT", { bestand: b1, etag: r1.etag, durch: "Test" });
   pruef("409: Antwort trägt den Bestand mit session: null und ohne Marker",
     w2.status === 200 && w1.status === 409 && !!w1.bestand && w1.bestand.session === null && funde(w1.roh).length === 0,

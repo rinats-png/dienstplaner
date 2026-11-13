@@ -112,7 +112,9 @@ const person = (id, rolle) => ({ id, vorname: "PPG", nachname: `Gate-${id}`, rol
 const BETRIEB = { id: `${RAUM}-m`, name: `${MARKE} Geobetrieb (Wegwerf)`, status: "aktiv", einstellungen: {},
   einheitLabel: "Wohnbereich", einheiten: [{ id: "e1", name: "WB", standortId: "st1" }],
   standorte: [{ id: "st1", name: `${MARKE} Zentrale`, bundesland: "HE", lat: REF.lat, lon: REF.lon, radius: 200 }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00" }],
+  /* Mindestbesetzung ist Pflicht (A-4, Betreiberentscheidung 2026-11-13): ausdrücklich 0 — der Lauf prüft Stempel, keinen Bedarf. */
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } },
+    { id: "N", name: "Nacht", start: "22:00", ende: "06:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
   personen: [person("l1", "leitung"), person("p1", "planer"), ...MA.map((i) => person(i, "mitarbeiter"))],
   /* a8 ohne Dienst (UNGEPLANTER_DIENST), a10 Nachtdienst seit gestern mit offenem Beginn,
      a11 ein alter Stempel von gestern ohne geoStart/geoEnde, a12/a13 ohne Dienst. */

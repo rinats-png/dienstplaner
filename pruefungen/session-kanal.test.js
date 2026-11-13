@@ -201,13 +201,13 @@ describe("Altbestand mit gespeicherter session", () => {
     const r1 = await lies(T.al);
     /* jemand anderes ändert den Kern … */
     const b2 = JSON.parse(JSON.stringify(r1.bestand));
-    b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät" }];
+    b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
     expect((await schreib(T.ap, b2, r1.etag)).status).toBe(200);
     await altbestand();
     /* … und die Leitung schreibt mit dem alten Stand ebenfalls in den Kern */
     const b1 = JSON.parse(JSON.stringify(r1.bestand));
     b1.session = JSON.parse(JSON.stringify(SESSION));
-    b1.mandanten[0].dienstarten = [...b1.mandanten[0].dienstarten, { id: "N", name: "Nacht" }];
+    b1.mandanten[0].dienstarten = [...b1.mandanten[0].dienstarten, { id: "N", name: "Nacht", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
     const w = await schreib(T.al, b1, r1.etag);
     expect(w.status, w.roh).toBe(409);
     expect(w.bestand).toBeTruthy();
@@ -218,7 +218,7 @@ describe("Altbestand mit gespeicherter session", () => {
   it("Drei-Wege-Abgleich ohne eigenen Kernanteil: der übernommene Kern verliert den Altinhalt", async () => {
     const r1 = await lies(T.al);
     const b2 = JSON.parse(JSON.stringify(r1.bestand));
-    b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "Z", name: "Zwischen" }];
+    b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "Z", name: "Zwischen", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }];
     expect((await schreib(T.ap, b2, r1.etag)).status).toBe(200);
     await altbestand();
     const b1 = JSON.parse(JSON.stringify(r1.bestand));

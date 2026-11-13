@@ -68,9 +68,9 @@ const tBetr = await anmelden(await zugang("betreiber", null, 0));
 pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: null, mandanten: [{
     id: "m-f", name: "F", einheiten: [{ id: "e1" }],
-    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 },
-      { id: "S", name: "Spät", start: "14:00", ende: "22:00", pause: 30 },
-      { id: "L", name: "Lang", start: "07:00", ende: "19:30", pause: 45 }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30 }],
+    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } },
+      { id: "S", name: "Spät", start: "14:00", ende: "22:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } },
+      { id: "L", name: "Lang", start: "07:00", ende: "19:30", pause: 45, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     zyklus: { tage: ["-", "-", "-", "-", "-", "-", "-"] }, anker: "2026-01-05",
     qualifikationen: [{ id: "qG", name: "Pflegefachkraft", harteSperre: true, ebene: "bund", grundlage: "PflBG § 4" },
       { id: "qB", name: "Hausschulung", harteSperre: true, ebene: "betrieb", grundlage: "Dienstanweisung" }],

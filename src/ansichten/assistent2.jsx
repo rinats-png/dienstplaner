@@ -13,6 +13,9 @@ import { Ziehbar, Ablage } from "../ui/ziehen.jsx";
 import { Zelle, Sheet } from "../ui/leisten.jsx";
 import { BRANCHEN, PALETTE, DIENST_VORLAGEN, MODELLE, modellFuerBranche, modellPruefen } from "../lib/fachlogik.js";
 
+/* Mindestbesetzung (A-4): nur ganze Zahlen 0..999 — anderes (Komma, negativ, leer) ändert den Wert nicht. */
+const ganzeMindest = (v, alt) => (/^\d{1,3}$/.test(String(v).trim()) ? Number(String(v).trim()) : alt);
+
 
 export function Assistent2({ sitz, akt, onClose }) {
   /* Der Einrichtungsassistent zeigt Nachtanteile, bevor der Betrieb steht.
@@ -293,13 +296,15 @@ export function Assistent2({ sitz, akt, onClose }) {
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, ...NUM,
                     color: nachtAnteil(d, einst) > 0 ? C.violet : C.dimmer }}>{n1(nachtAnteil(d, einst))} h</td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
-                    <Inp type="number" min={0} value={d.mindest.mo_do} style={{ width: 62 }}
+                    <Inp type="number" inputMode="numeric" step={1} min={0} max={999} value={d.mindest.mo_do} style={{ width: 62 }}
+                      aria-label={`Mindestbesetzung Montag bis Freitag, ${d.name || d.kurz}`}
                       onChange={(e) => setDienste(dienste.map((x, k) => k === i
-                        ? { ...x, mindest: { ...x.mindest, mo_do: Number(e.target.value), fr: Number(e.target.value) } } : x))} /></td>
+                        ? { ...x, mindest: { ...x.mindest, mo_do: ganzeMindest(e.target.value, x.mindest.mo_do), fr: ganzeMindest(e.target.value, x.mindest.fr) } } : x))} /></td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
-                    <Inp type="number" min={0} value={d.mindest.sa} style={{ width: 62 }}
+                    <Inp type="number" inputMode="numeric" step={1} min={0} max={999} value={d.mindest.sa} style={{ width: 62 }}
+                      aria-label={`Mindestbesetzung Wochenende und Feiertag, ${d.name || d.kurz}`}
                       onChange={(e) => setDienste(dienste.map((x, k) => k === i
-                        ? { ...x, mindest: { ...x.mindest, sa: Number(e.target.value), so: Number(e.target.value) } } : x))} /></td>
+                        ? { ...x, mindest: { ...x.mindest, sa: ganzeMindest(e.target.value, x.mindest.sa), so: ganzeMindest(e.target.value, x.mindest.so) } } : x))} /></td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
                     {dienste.length > 1 && <Btn size="sm" kind="danger"
                       onClick={() => { setDienste(dienste.filter((_, k) => k !== i));
