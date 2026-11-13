@@ -360,3 +360,47 @@ Nur Statusstufen und Notizen mit Code-Beleg; **kein Status geändert**.
    `BELEG_FEHLT`-Fälle.
 3. Folge: Mit 1. und 2. würden WP-42R1 (bis auf WP-33/WP-44), WP-48 (48.3) und die WP-19-Module in der SSOT startfähig; heute sperrt
    die SSOT sie nur formal.
+
+## Nachtrag 2026-11-13: Vollständiger Nachweis, Lease-Freigabe
+
+Stand: Integrationskopf `a4a5a6e9` (Merge #259). Alle Zahlen aus `docs/acc45/work-packages.json` dieses Kopfes gelesen und nachgezählt.
+
+### Backlog (201 Pakete)
+DONE 3, INTEGRATED 86, IN_PROGRESS 19, REVIEW 7, BLOCKED 70, READY 16.
+
+- Die 16 READY-Pakete sind ausschließlich externe Betreiberpakete: E-7, E-8, E-9, E-11, E-12, E-13, E-15, E-16, E-17a, E-19, E-20, E-21, E-22, E-30, E-31, E-32. Kein technisch ausführbares Paket ist READY.
+- Die 26 Pakete IN_PROGRESS/REVIEW (19 + 7) und ihre konkrete Restabhängigkeit:
+- WP-09 (IN_PROGRESS): Staging-Abnahme E-1 und Merge nach main nur mit Freigabe; Produktiv-Deploy danach.
+- WP-15 (REVIEW): F15-2 beim Betreiber; Direkt-Merge 1c1a27e0 ohne PR-Beleg.
+- WP-16 (REVIEW): Koordinator-/Fachentscheidung zum Status INTEGRATED; abnahmefähig laut Betreiber erst mit WP-16c.
+- WP-16c (REVIEW): Fachentscheidung offen (`wp16c-fragen.md`); Direkt-Merge 594f32c3 ohne PR-Beleg.
+- WP-14c (REVIEW): Koordinator-Entscheidung INTEGRATED; F6a/F6b (ungeplanter 24-h-Einsatz, Fehlstempel verwerfen) bleiben Fachentscheidung (`wp16c-fragen.md`).
+- WP-16b (REVIEW): Koordinator-Entscheidung INTEGRATED; offen die Frage, ob die Ablage zusätzlich bereinigt wird (`wp16c-fragen.md`).
+- WP-07b (REVIEW): Koordinator-Entscheidung INTEGRATED (Direkt-Merge 594f32c3, PR-Beleg fehlt).
+- WP-19.0 (REVIEW): Koordinator-Entscheidung zum Status; Nacharbeit aus Abschnitt 13 über #82 integriert.
+- WP-21 (IN_PROGRESS): Kartenansicht nach Betreiberentscheidung wp40-Frage 6; echte Geräte (E-5), Textvergrößerung, Vorlesesoftware.
+- WP-33 (IN_PROGRESS): neue devDependencies (Playwright, axe) nur nach Betreiberzulassung.
+- WP-40 (IN_PROGRESS): Zoom, Screenreader, axe, Safari und echte Geräte.
+- WP-48 (IN_PROGRESS): Entscheidungen aus Abschnitt 6 des Dokuments und 48.5.
+- WP-28b (IN_PROGRESS): Docker-Bildbau/Umgebung; WP-28c.
+- WP-19.13 (IN_PROGRESS) und WP-PILOT (IN_PROGRESS): setzen die Abschaltbarkeit der WP-19-Module voraus (Betreiber R-1 bis R-12 und G8).
+- WP-I4 (IN_PROGRESS): fünf Betreiberfragen, darunter Betriebsratssicht nach § 87 BetrVG.
+- WP-I19, WP-I29, WP-I30, WP-I31, WP-I23, WP-I24 (IN_PROGRESS): E-21i, E-25, E-26 (Anbieter, AVV, DSFA, Budget) sowie Einbindung/Anbindung (Mounting) und fachliche Freigaben.
+- WP-I20 (IN_PROGRESS): Engine-Frage Zeitumstellung (DST) bei der Ruhezeit.
+- IMP-6 und IMP-8 (IN_PROGRESS): IMP-6 Datenmodellentscheidung "mehrere Modelle je Person", Schreiben, Verdrahtung, Oberfläche; IMP-8 Browser-E2E für alle 20 Fälle bei ausgeschalteter Oberfläche (Fallliste).
+- OPT-4 (IN_PROGRESS): Migration bestehender Konten.
+
+### Offener PR
+PR #238 (WP-I16 Teil 1, Betriebsrat-Pause) ist offen und bleibt zurückgehalten: Er gibt dem Betriebsrat erstmals ein Schreibrecht (nur `pause.aktiv`), und die Leitung kann über `roles.assign` ein neues Betriebsratskonto vergeben. Die Minderung (Benachrichtigung, nur bestehende Konten, Vergabeverbot) und die Freigabe des Schreibrechts stehen aus.
+
+### In dieser Sitzung gemergte PRs
+55 PRs der Nummern #204 bis #259 sind nach `integration/release-v4` gemergt (gezählt über GitHub); #238 ist offen.
+
+### Aussage zur Bereitschaft
+Es bleibt kein technisch ausführbares Paket übrig, das ohne Betreiberentscheidung, neue Abhängigkeit, Gerät oder externe Freigabe lösbar wäre.
+
+### Lease
+Die Koordinations-Lease des Hauptchats (Epoche 10) ist freigegeben; die Cloud-Nachtentwicklung ist dadurch nicht blockiert.
+
+### Unveränderte Grenzen
+Kein Merge nach main, kein Deployment, OPT-1 (#166) bleibt gesperrt.
