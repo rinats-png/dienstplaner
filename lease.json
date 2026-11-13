@@ -1,10 +1,10 @@
 {
-  "epoche": 10,
+  "epoche": 11,
   "halter": "hauptchat",
-  "uebernommen_am": "2026-11-12T06:00:50.570Z",
-  "erneuert_am": "2026-11-13T03:00:04.053Z",
-  "gueltig_bis": "2026-11-13T03:27:21.426Z",
-  "uebergabe": "Hauptchat: Lease Epoche 9 abgelaufen 05:46Z, niemand uebernommen; Integrationskopf fb2745fb nach #218; Agenten WP-48.3, I20-Review, 16c-Messung aktiv",
+  "uebernommen_am": "2026-11-13T04:21:47.139Z",
+  "erneuert_am": "2026-11-13T04:21:47.139Z",
+  "gueltig_bis": "2026-11-13T06:51:47.139Z",
+  "uebergabe": "Hauptchat: Betreiberentscheidungen 13.11.2026 (Playwright/axe, Direkt-Merges, Mehrfach-Schichtmodelle); Integrationskopf 54ec5804",
   "vorgaenger": "hauptchat",
-  "freigegeben_am": "2026-11-13T03:27:21.426Z"
+  "freigegeben_am": null
 }
