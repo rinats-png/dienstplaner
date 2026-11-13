@@ -1660,7 +1660,12 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
         const alt = alteNachId.get(geschickt.id);
         /* Neu angelegt — ohne Moduleinstellungen: Schalter, Bestätigungen, Regelwerte und
            Modulprotokoll entstehen nur über branchenmoduleZusammen (G2/G6, WP-19.0 Nachtrag). */
-        if (!alt) return paketeGeprueft(moduleinstellungenVerwerfen(geschickt), null);
+        if (!alt) {
+          /* Interne Vorgaben (WP-I4) ebenso: nur über vorgabenZusammen (org.edit), nie mit dem neuen Betrieb. */
+          const neuerBetrieb = { ...moduleinstellungenVerwerfen(geschickt) };
+          delete neuerBetrieb.vorgaben;
+          return paketeGeprueft(neuerBetrieb, null);
+        }
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {
           if (Object.prototype.hasOwnProperty.call(geschickt, feld))

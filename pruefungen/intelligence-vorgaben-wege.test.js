@@ -254,6 +254,17 @@ describe("2. Schreiben je Rolle mit manipulierten Rümpfen", () => {
     });
     expect((await gespeichert(raum)).m1.vorgaben).toEqual(vorher.m1.vorgaben);
   });
+  it("Betreiber legt einen neuen Betrieb mit gefälschten Vorgaben an: das Feld entsteht nicht", async () => {
+    const { raum, token } = await neuerRaum();
+    const g = await anfrage("/api/bestand", { token: token.BT });
+    const rumpf = { bestand: kopie(g.bestand), etag: g.etag, durch: "Pruefung" };
+    const neu = { ...kopie(rumpf.bestand.mandanten[0]), id: "m3", name: "Haus 3", vorgaben: Array.from({ length: 9 }, (_, i) => ({ ...V(`b${i}`, "aktiv"), geaendertVon: "fremd", version: 99 })) };
+    rumpf.bestand.mandanten = [...rumpf.bestand.mandanten, neu];
+    await anfrage("/api/bestand", { methode: "PUT", token: token.BT, rumpf });
+    const nach = (await gespeichert(raum)).bestand.mandanten.find((m) => m.id === "m3");
+    expect(nach, "Betrieb angelegt").toBeTruthy();
+    expect(Object.prototype.hasOwnProperty.call(nach, "vorgaben")).toBe(false);
+  });
   it("die Leitung von Betrieb 1 ändert nichts an den Vorgaben von Betrieb 2", async () => {
     const { raum, token } = await neuerRaum();
     const vorher = await gespeichert(raum);
