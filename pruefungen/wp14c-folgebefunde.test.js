@@ -230,3 +230,67 @@ describe("F4 (Re-Review): die Ausnahme gilt nicht für die eigene Zeit", { timeo
     expect([r.status, /eigene Zeit/.test(r.roh)]).toEqual([422, true]);
   });
 });
+
+/* M-14c-1 (Nachholreview 2026-11-13): istZeitFuer kennzeichnete bestätigte Altdaten nur bei NEGATIVEM Ist. Pause genau
+   so lang wie die Anwesenheit zählte still 0 h. Jetzt dieselbe Grenze wie pauseZuLang (>=): Prüffall, Stunden bleiben 0.
+   Nur Kennzeichnung — gespeicherte Daten, abgeschlossene Monate und Summen ändern sich nicht. */
+describe("M-14c-1: Pause gleich Anwesenheit (bestätigte Altdaten) ⇒ Prüffall, nicht still 0 h", { timeout: 120000 }, () => {
+  const alt = (e, d = "2026-11-09") => ({ personen: [{ id: "a" }], dienstarten: [F], erfassung: { [`a|${d}`]: e } });
+  const ist = (m, d = "2026-11-09") => istZeitFuer(m, m.personen[0], d, F);
+  it("Pause = Anwesenheit (Pause der Dienstart, 06:00–06:30 mit 30): 0 h, erfasst, Prüffall", () => {
+    expect(ist(alt({ start: "06:00", ende: "06:30", bestaetigt: true, grund: "" })))
+      .toMatchObject({ std: 0, erfasst: true, zurPruefung: true, pauseUeberAnwesenheit: true });
+  });
+  it("Pause = Anwesenheit mit erfasster Pause (Korrektur/Selbstauskunft, 06:00–07:00 mit 60): Prüffall", () => {
+    expect(ist(alt({ start: "06:00", ende: "07:00", pause: 60, bestaetigt: true, grund: "" })))
+      .toMatchObject({ std: 0, erfasst: true, zurPruefung: true, pauseUeberAnwesenheit: true });
+  });
+  it("Altstempel ohne Beginn (Beginn aus der Dienstart, ohne Zeitpunkte startAm/endeAm): Pause = Anwesenheit ⇒ Prüffall", () => {
+    expect(ist(alt({ ende: "06:30", bestaetigt: true }))).toMatchObject({ std: 0, erfasst: true, zurPruefung: true });
+  });
+  it("Pause über der Anwesenheit (06:00–06:29 mit 30) und negatives Ist bleiben Prüffall (unverändert)", () => {
+    expect(ist(alt({ start: "06:00", ende: "06:29", bestaetigt: true }))).toMatchObject({ std: 0, erfasst: true, zurPruefung: true, pauseUeberAnwesenheit: true });
+    expect(ist(alt({ start: "06:00", ende: "06:30", pause: 60, bestaetigt: true }))).toMatchObject({ std: 0, erfasst: true, zurPruefung: true });
+  });
+  it("Pause unter der Anwesenheit (06:00–06:31 mit 30, 06:00–14:00): kein Prüffall, Stunden wie bisher", () => {
+    const r = ist(alt({ start: "06:00", ende: "06:31", bestaetigt: true }));
+    expect(r.zurPruefung).toBeUndefined(); expect(r.pauseUeberAnwesenheit).toBeUndefined();
+    expect(r).toMatchObject({ erfasst: true }); expect(r.std).toBeCloseTo(1 / 60, 2);
+    expect(ist(alt({ start: "06:00", ende: "14:00", bestaetigt: true })))
+      .toEqual({ std: 7.5, erfasst: true, abweichung: 0 });
+  });
+  it("Zeitumstellung: Frühjahrsnacht 01:00–03:00 (1 h wirklich) mit 60 min Pause ⇒ Prüffall; Herbstnacht 01:00–03:00 (3 h) mit 120 ⇒ 1 h, kein Prüffall", () => {
+    const fr = ist(alt({ start: "01:00", ende: "03:00", pause: 60, bestaetigt: true }, "2027-03-28"), "2027-03-28");
+    expect(fr).toMatchObject({ std: 0, erfasst: true, zurPruefung: true });
+    const he = ist(alt({ start: "01:00", ende: "03:00", pause: 120, bestaetigt: true }, "2026-10-25"), "2026-10-25");
+    expect(he.zurPruefung).toBeUndefined(); expect(he.std).toBeCloseTo(1, 2);
+  });
+  it("Unbestätigt: ohne Prüfgrund Planzeit ohne Kennzeichnung; mit PAUSE_ZU_LANG Planzeit als Prüffall (unverändert)", () => {
+    expect(ist(alt({ start: "06:00", ende: "06:30", bestaetigt: false }))).toEqual({ std: 7.5, erfasst: false, abweichung: 0 });
+    expect(ist(alt({ start: "06:00", ende: "06:30", bestaetigt: false, grund: "PAUSE_ZU_LANG" })))
+      .toEqual({ std: 7.5, erfasst: false, abweichung: 0, zurPruefung: true });
+  });
+  it("Rollenschutz unverändert: fremde Ist-Daten bleiben „nicht verfügbar“ (keine Planzeit, kein Prüffall)", () => {
+    const m = { ...alt({ start: "06:00", ende: "06:30", bestaetigt: true }), sichtIstDaten: { umfang: "eigene", person: "x" } };
+    expect(ist(m)).toEqual({ std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true });
+  });
+  it("Abgeschlossener Monat: neuer Abschluss friert den Prüffall ein (p:1, 0 h); ein früher eingefrorener Stand ohne Kennung bleibt unverändert", async () => {
+    const { abschliessen, offenePunkte } = await import("../server/lib/monatsabschluss.mjs");
+    const { eingefrorenFuerPerson, IST_EINGEFROREN } = await import("../server/lib/isteinfrieren.mjs");
+    const { istTag } = await import("../server/lib/engine/plan.mjs");
+    const basis = () => ({ id: "m1", personen: [{ id: "a1" }], dienstarten: [F], abweichungen: { "a1|2026-10-28": "F" }, abwesenheiten: [],
+      erfassung: { "a1|2026-10-28": { start: "06:00", ende: "06:30", bestaetigt: true } } });
+    /* Gesperrt wird der Abschluss davon nicht (offenePunkte zählt nur unbestätigte Erfassungen) — wie bisher beim negativen Ist. */
+    expect(offenePunkte(basis(), "2026-10").zurPruefung).toBe(0);
+    const r = abschliessen(basis(), { monat: "2026-10" }, { personId: "l1", name: "L", rolle: "leitung" }, new Date("2026-11-05T09:00:00Z"), "ma-1", "2026-11-05");
+    expect("status" in r ? r.grund : "ok").toBe("ok");
+    const tag = eingefrorenFuerPerson(r.mandant, "a1")["a1|2026-10-28"];
+    expect(tag).toMatchObject({ std: 0, e: 1, p: 1 });
+    /* Früherer Freeze (vor der Korrektur, ohne p): wird nicht neu bewertet — Stunden und Kennung wie gespeichert. */
+    const frueher = JSON.parse(JSON.stringify(r.mandant));
+    delete frueher[IST_EINGEFROREN]["a1|2026-10-28"].p;
+    const t = istTag(frueher, frueher.personen[0], "2026-10-28");
+    expect(t.eingefroren).toBe(true);
+    expect(t.idn).toEqual({ std: 0, erfasst: true, abweichung: 0 });
+  });
+});
