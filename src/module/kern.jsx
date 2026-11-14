@@ -31,6 +31,7 @@ import { oberflaechenFuer, hatModuldaten, moduldatenExport } from "./index.js";
 import { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, ausnahmeAngabe, eintraegeListe, leeresFormular } from "./ausnahmeweg.js";
 import { modulKontext } from "./zugriff.js";
 import { objektberichtDienstzeit } from "./dienstzeit.js";
+import { betriebstag } from "../../server/lib/betriebszeit.mjs";
 
 export { ausnahmeAngabe };
 
@@ -44,7 +45,9 @@ const ZUSTAND = {
   unbekannt: "unbekannt",
 };
 const datum = (iso) => (typeof iso === "string" && iso.length >= 10 ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : "");
-const heuteTag = () => new Date().toISOString().slice(0, 10);
+/* Betrieblicher Kalendertag (Europe/Berlin), nicht das UTC-Datum: sonst zeigte die Modulansicht zwischen
+   00:00 und 01:00/02:00 Uhr den Vortag (WP-ZEIT, Z18). */
+const heuteTag = () => betriebstag();
 const RAHMEN = { border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere", maxWidth: "100%" };
 const FELD = { display: "grid", gap: 4, maxWidth: "100%" };
 const EINGABE = { maxWidth: "100%", boxSizing: "border-box", width: "100%" };

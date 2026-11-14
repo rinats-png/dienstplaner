@@ -68,7 +68,9 @@ function tagesangaben() {
  *  Zeitzone dieses Prozesses (der Server läuft als Kindprozess in derselben Zeitzone). ankerMontag rechnet den Wochentag
  *  in Ortszeit, gibt aber das UTC-Datum aus: in einer Zeitzone östlich von UTC liefert es kurz nach Mitternacht den
  *  Sonntag davor (die Golden-Aufzeichnung vom 2026-11-14 unter Windows hielt „2026-11-08“ fest; der Linux-Läufer der CI
- *  in UTC liefert „2026-11-09“). Jeder andere Wert bleibt wörtlich und lässt den Vergleich scheitern. */
+ *  in UTC liefert „2026-11-09“). Seit WP-ZEIT (ZEIT-C) rechnet ankerMontag auf dem Berliner Kalendertag (montagZu(berlin));
+ *  „wieServer“ bleibt für Vergleichsläufe gegen einen älteren Stand. Jeder andere Wert bleibt wörtlich und lässt den
+ *  Vergleich scheitern. */
 function wochenanker() {
   const jetzt = Date.now();
   const montagZu = (tag) => {
