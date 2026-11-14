@@ -123,6 +123,14 @@ export function adressKuerzel(adresse) {
    braucht den Fremddienst. Diese Sperre ist die Untergrenze, nicht das Ziel.
    -------------------------------------------------------------------------- */
 const lokal = new Map();
+/** Anfragen, die gerade bei einer Ziel- oder Gesamtgrenze zählen (bremse, WEITERE): je Zählbasis die Anzahl. */
+const schwebend = new Map();
+/** Arten, deren Ziel- und Gesamtgrenze gleichzeitig laufende Anfragen mitzählen (bremse(), Parallelprüfung P1/P2 der
+    A-2 globalen Grenze). Ausdrückliche Zusage je Art, heute nur der Rateschutz beim Ausstellen einer Einladung: Diese
+    Zählung ist im Zweifel strenger als die Grenze. Für anmelden, anmelden-konto, registrierung, zugaenge, zweifaktor
+    usw. bliebe die wirksame Grenze damit bei gleichzeitigen Anfragen unter der eingestellten (CI zu #277,
+    anmeldesperre I7b) — sie laufen deshalb unverändert wie vor A-2. */
+const GLEICHZEITIG_DICHT = new Set(["einladung-nachweis"]);
 
 /* --------------------------------------------------------------------------
    GLEITENDES FENSTER
@@ -319,7 +327,24 @@ export const GRENZEN = {
   demo:       { versuche: 20,  fenster: 300,  sperre: 300,  failClosed: true },
   einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
-  lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
+  /* Einladungen und Sperren der Leitung (Abnahme V4, A-2 globale Grenze, docs/acc45/ABNAHME-V4-A2-GLOBALE-GRENZE.md).
+     Bis hierher teilten sie mit den Betreiberwegen (/api/zugaenge, Übersicht, Raumlöschung, Sperren) die Art
+     `zugaenge` und damit deren installationsweite Gesamtgrenze: Eine einzige Leitung füllte sie mit 40 gelungenen
+     Einladungen und sperrte damit jeden anderen Betrieb und den Betreiber aus. Jetzt eigene Arten:
+       einladung-nachweis    Rateschutz für den Nachweis (Zugangscode, Passwort, Code aus der App) beim Ausstellen,
+                             je PERSON — dieselben Zahlen wie `zugaenge`; dazu WEITERE (je Raum, installationsweit).
+                             Ein stimmender Nachweis nimmt nur die eigenen Vermerke zurück (entlasten).
+       einladung-ausstellen  Kontingent für ausgestellte Einladungen je PERSON (kein Rateschutz — der Nachweis ist
+                             da schon geprüft): 30 je 10 Minuten tragen das Einrichten eines Betriebs (A-2).
+       einladung-betrieb     dasselbe je BETRIEB: 40 je 10 Minuten — so viel wie bisher die ganze Installation.
+       zugang-sperren        Zugänge zurückziehen durch die Leitung: dieselben Zahlen wie `zugaenge`, je Betrieb
+                             (kennungBetrieb), OHNE installationsweite Grenze — ein sicherheitskritischer Widerruf darf nicht davon
+                             abhängen, was andere Betriebe tun. */
+  "einladung-nachweis":   { versuche: 10, fenster: 600, sperre: 1800, steigend: true, max: 86400, failClosed: true },
+  "einladung-ausstellen": { versuche: 30, fenster: 600, sperre: 600, failClosed: true },
+  "einladung-betrieb":    { versuche: 40, fenster: 600, sperre: 600, failClosed: true },
+  "zugang-sperren":       { versuche: 10, fenster: 600, sperre: 1800, steigend: true, max: 86400, failClosed: true },
+  lesen:     { versuche: 300, fenster: 60,   sperre: 60 },
   /* Abrufe eines Kalender-Feeds je GEHEIMNIS (WP-47b). Eigene Art, damit ein
      Kalender-Abruf nicht das Lesen der Anwendung bremst und umgekehrt. 30 je
      Minute liegt am oberen Ende der Spanne 12–30; ein Kalenderprogramm fragt
@@ -470,6 +495,10 @@ export const WEITERE = {
   anmelden: { ziel: { versuche: 40, fenster: 300 }, gesamt: { versuche: 400, fenster: 300 } },
   einrichten: { gesamt: { versuche: 20, fenster: 600 } },
   zugaenge: { gesamt: { versuche: 40, fenster: 600 } },
+  /* Rateschutz beim Ausstellen einer Einladung: dieselbe installationsweite Grenze wie bisher (40 je 10 Minuten),
+     jetzt nur noch für Nachweise — nie für gelungene Einladungen, Betreiberwege oder Sperren. Das Ziel ist der RAUM:
+     Ein Raum kann höchstens 25 Fehlversuche je Fenster beisteuern, auch mit vielen Personen (Restrisiko S-1). */
+  "einladung-nachweis": { ziel: { versuche: 25, fenster: 600 }, gesamt: { versuche: 40, fenster: 600 } },
   /* Auch insgesamt gedeckelt — ein verteilter Ansturm soll nicht durchkommen. */
   starten: { gesamt: { versuche: 60, fenster: 3600 } },
   /* Zwei weitere Dimensionen für die Registrierung: dieselbe Adresse aus
@@ -508,6 +537,13 @@ export function kennungPerson(sitzung) {
   const s = sitzung || {};
   const wer = s.person !== null && s.person !== undefined ? `p:${s.person}` : `r:${s.rolle || "?"}`;
   return `s:${kurz(s.bestand ?? "")}:${kurz(`${String(s.mandantId ?? s.betrieb ?? "")}|${wer}`)}`;
+}
+
+/** Die Kennung eines BETRIEBS innerhalb eines Raums (Hashwert): für Kontingente, die alle Personen eines Betriebs
+    teilen, aber kein anderer Betrieb im selben Raum (A-2 globale Grenze). */
+export function kennungBetrieb(sitzung) {
+  const s = sitzung || {};
+  return `s:${kurz(s.bestand ?? "")}:b:${kurz(String(s.mandantId ?? s.betrieb ?? ""))}`;
 }
 
 /** Die Kennung eines Raums/Betriebs für Lastgrenzen (Hashwert, kein Klartext). */
@@ -902,6 +938,34 @@ export function herkunftStreng(req) {
 export async function bremse(art, kennung, ziel, optionen = {}) {
   const basisG = GRENZEN[art];
   if (!basisG) return { frei: true };
+  if (!WEITERE[art] || !GLEICHZEITIG_DICHT.has(art)) return bremseZaehlen(art, kennung, ziel, optionen);
+  /* Nur Arten in GLEICHZEITIG_DICHT (heute einladung-nachweis); alle anderen — anmelden, registrierung, zugaenge, … —
+     laufen unverändert durch bremseZaehlen(), ihre wirksame Grenze bleibt genau die eingestellte.
+     Arten mit Ziel- oder Gesamtgrenze (A-2 globale Grenze, Parallelprüfung): Gleichzeitige Anfragen DERSELBEN Kennung
+     sahen alle noch keine Sperre und füllten Ziel und Gesamt, bevor die erste die Sperre schrieb — eine Person mit 100
+     parallelen Fehlversuchen trug so bis zu 40 statt 11 zur Gesamtgrenze bei. Jetzt synchron, vor jedem await: Wer
+     zusammen mit den schon gezählten und den gerade laufenden Versuchen dieser Kennung über der Grenze läge, wird
+     sofort abgewiesen und zählt nirgends mehr mit. Nacheinander (nichts läuft gleichzeitig) ändert sich nichts. */
+  const sk = `k:${art}:${kennung}`;
+  const andere = schwebend.get(sk) || 0;
+  if (andere > 0) {
+    const versuche = Number.isFinite(optionen?.versuche) ? Math.max(1, Math.floor(optionen.versuche)) : basisG.versuche;
+    const lage = fensterLage(Date.now(), basisG.fenster);
+    const basis = `${art}:${kennung}`;
+    const n = gewichtet(lokalLesen(`${basis}:${lage.index}`), lokalLesen(`${basis}:${lage.index - 1}`), lage.anteil);
+    if (n + andere > versuche) return { frei: false, wartet: basisG.sperre, grund: "zu viele Versuche", gleichzeitig: true };
+  }
+  schwebend.set(sk, andere + 1);
+  try {
+    return await bremseZaehlen(art, kennung, ziel, optionen);
+  } finally {
+    const rest = (schwebend.get(sk) || 1) - 1;
+    if (rest > 0) schwebend.set(sk, rest); else schwebend.delete(sk);
+  }
+}
+
+async function bremseZaehlen(art, kennung, ziel, optionen = {}) {
+  const basisG = GRENZEN[art];
   /* Eigene Grenze dieses Aufrufs (WP-47b: Lesebremse nach Bestandsgröße).
      Alles andere — Fenster, Sperre, failClosed — bleibt die der Art. */
   /* Erst abrunden, dann mindestens 1: eine Grenze von 0 würde jeden Aufruf sperren,
@@ -971,7 +1035,38 @@ export async function bremse(art, kennung, ziel, optionen = {}) {
        jemand einen fremden Betrieb absichtlich lahmlegen, indem er dessen
        Zugang mit Fehlversuchen bombardiert. */
     const w = WEITERE[art];
-    if (w) {
+    if (w && GLEICHZEITIG_DICHT.has(art)) {
+      /* Zählen, prüfen und vermerken liegen hier über await auseinander: Ohne Vorkehrung sahen gleichzeitige Anfragen
+         alle denselben Stand und kamen alle an Ziel- und Gesamtgrenze vorbei (A-2 globale Grenze, Prüfung mit 100
+         parallelen Anfragen). Deshalb meldet jede Anfrage sich SYNCHRON als „schwebend“ an, bevor sie zählt, und zählt
+         die anderen schwebenden mit. Im Zweifel (Vermerk gelandet, Abmeldung noch nicht) zählt ein Versuch doppelt —
+         strenger, nie lockerer. Je Prozess wirksam; die Ablage gehört genau einem Prozess (prozesssperre.mjs). */
+      const dimension = async (basis, grenze, grund, name) => {
+        const lage = fensterLage(jetztMs, grenze.fenster);
+        schwebend.set(basis, (schwebend.get(basis) || 0) + 1);
+        try {
+          const z = await versucheZaehlen(s, basis, lage.index);
+          const andere = Math.max(0, (schwebend.get(basis) || 1) - 1);
+          if (gewichtet(z.laufend, z.vorig, lage.anteil) + andere >= grenze.versuche)
+            return { frei: false, wartet: grenze.fenster - (jetzt % grenze.fenster), grund, dimension: name };
+          zurueck.push(await versuchVermerken(s, `${basis}:${lage.index}`));
+          return null;
+        } finally {
+          const n = (schwebend.get(basis) || 1) - 1;
+          if (n > 0) schwebend.set(basis, n); else schwebend.delete(basis);
+        }
+      };
+      if (w.ziel && ziel) {
+        const nein = await dimension(`${art}:ziel:${ziel}`, w.ziel, "ungewöhnlich viele Versuche für diesen Betrieb", "ziel");
+        if (nein) return nein;
+      }
+      if (w.gesamt) {
+        const nein = await dimension(`${art}:gesamt`, w.gesamt, "ungewöhnlich hohes Aufkommen", "gesamt");
+        if (nein) return nein;
+      }
+    } else if (w) {
+      /* Alle übrigen Arten (anmelden, registrierung, zugaenge, …): unverändert wie vor A-2 — zählen, prüfen, vermerken,
+         ohne Mitzählung schwebender Anfragen. Die wirksame Grenze ist genau die eingestellte. */
       if (w.ziel && ziel) {
         const zl = fensterLage(jetztMs, w.ziel.fenster);
         const zb = `${art}:ziel:${ziel}`;

@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, entlasten, kennung, kennungPerson, kennungBetrieb, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
@@ -28,13 +28,30 @@ import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWid
    Pflicht mit der WIRKSAMEN Rolle (M1), Bremse, Protokoll.
    Genaue Pfade schlagen das Präfix /api/* von daten.mjs (server.mjs, routeFuer).
 
-   Bremsen: Ausstellen zählt gegen `zugaenge` (10 je 10 Minuten je Sitzung und
-   Herkunft, steigend). Wer viele Personen auf einmal einlädt — etwa beim
-   Start eines Betriebs —, läuft nach zehn Einladungen in die Sperre (N4):
-   Bedienhinweis im Nachweis; für Sammeleinladungen bleibt der Weg über den
-   Betreiber (/api/zugaenge, bis zu 20 je Aufruf). Dazu kommt die
-   installationsweite Gesamtgrenze WEITERE.zugaenge (40 je 10 Minuten über
-   alle Betriebe, geteilt mit /api/zugaenge).
+   Bremsen beim Ausstellen (Abnahme V4, Befund A-2): Bis hierher zählte jeder
+   Aufruf — auch jede gelungene Einladung und jede Absage an Beschäftigte, SV
+   oder Betriebsrat — VOR der Rollenprüfung gegen `zugaenge` JE RAUM. Eine
+   Leitung kam beim Einrichten nur bis zur zehnten Person, und eine angemeldete
+   Beschäftigte konnte die Einladungen ihres Betriebs sperren. Jetzt:
+     1. Vor der Rollenprüfung nur eine Lastbremse JE PERSON (Art `schreiben`,
+        kennungPerson): Eine Sitzung ohne Rollenvergabe bekommt immer dieselbe
+        403 (N-1) und kann nichts raten; wer hämmert, bremst nur sich selbst.
+     2. Erst nach der Rollenprüfung, und nur MIT Nachweis (Zugangscode,
+        Passwort, Code aus der App), zählt der Rateschutz `einladung-nachweis`
+        (schutz.mjs): je Person mit den Zahlen von `zugaenge` (10 je 10
+        Minuten, Sperre 30 Minuten steigend), je Raum höchstens 25 und
+        installationsweit 40 je 10 Minuten. Gezählt VOR der Prüfung; stimmt
+        der Nachweis, werden nur der Zähler dieser Person und die Vermerke
+        dieses Aufrufs zurückgenommen. Falsche Nachweise bleiben gezählt.
+        Ohne Nachweis wird nichts verglichen — die Rückfrage zählt nirgends.
+     3. Erst nach bestandener Bestätigung das Kontingent fürs Ausstellen:
+        30 je Person und 40 je Betrieb in 10 Minuten, NIE installationsweit.
+   Befund „globale Grenze“ (Review zu #277): Bis hierher füllten gelungene
+   Einladungen die installationsweite Grenze von `zugaenge`, die auch
+   /api/zugaenge und das Sperren von Zugängen bremst — eine Leitung sperrte so
+   alle anderen Betriebe und den Betreiber aus. Gelungene Einladungen zählen
+   jetzt nur im eigenen Kontingent; die installationsweite Grenze sehen nur
+   noch Fehlversuche. Restrisiko S-1: docs/acc45/ABNAHME-V4-A2-GLOBALE-GRENZE.md.
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
@@ -69,11 +86,12 @@ const SITZUNGSWEGE = new Set(["/api/einladung", "/api/einladung/liste", "/api/ei
  * Sitzung, Bremse, Bestand und M1 für die Wege der Leitung.
  * @returns {Promise<{antwort: Response}|{s: any, k: string, bestand: any, wer: object}>}
  */
-async function leitungSitzung(req, ablage, art, bremsArt) {
+async function leitungSitzung(req, ablage, art, bremsArt, jePerson = false) {
   const s = (await arbeitssitzungLesen(req, { store: ablage })).sitzung;
   if (!s) return { antwort: antwort({ fehler: "Nicht angemeldet." }, 401) };
   const k = kennung(req, s);
-  const b = await bremse(bremsArt, k);
+  /* A-2: Beim Ausstellen bremst diese Stufe je Person (kennungPerson), nicht je Raum. */
+  const b = await bremse(bremsArt, jePerson ? kennungPerson(s) : k);
   if (!b.frei) { await protokoll("einladung", k, "gebremst", b.grund); return { antwort: zuVielAntwort(b.wartet) }; }
   let gelesen;
   try { gelesen = s.rolle === "betreiber" ? null : await bestandLesenStreng(ablage, s.bestand); }
@@ -104,8 +122,9 @@ export default async (req) => {
 
   try {
     if (SITZUNGSWEGE.has(pfad)) {
-      const bremsArt = pfad === "/api/einladung" ? "zugaenge" : pfad === "/api/einladung/liste" ? "lesen" : "schreiben";
-      const l = await leitungSitzung(req, ablage, pfad.slice(5), bremsArt);
+      /* A-2: Ausstellen zählt hier nur als Last je Person; `zugaenge` zählt erst nach der Rollenprüfung (unten). */
+      const bremsArt = pfad === "/api/einladung/liste" ? "lesen" : "schreiben";
+      const l = await leitungSitzung(req, ablage, pfad.slice(5), bremsArt, pfad === "/api/einladung");
       if ("antwort" in l) return l.antwort;
       const { s, k, bestand, wer } = l;
 
@@ -118,12 +137,34 @@ export default async (req) => {
           await protokoll("einladung", k, "abgewiesen", v.grund, wer);
           return antwort({ fehler: v.fehler }, v.status);
         }
+        /* A-2: Rateschutz je Person, erst für eine Sitzung, die ausstellen dürfte (siehe Kopf). */
+        const kp = kennungPerson(s);
+        const best = rumpf.bestaetigung && typeof rumpf.bestaetigung === "object" ? rumpf.bestaetigung : {};
+        /* Streng: Jede nicht leere Zeichenkette gilt als Nachweis und zählt als Versuch — auch nur Leerzeichen. */
+        const mitNachweis = ["zweifaktor", "zugangscode", "passwort"]
+          .some((x) => typeof best[x] === "string" && best[x] !== "");
+        /* Nur ein Nachweis ist ein Rateversuch: gezählt je Person, je Raum (Ziel) und installationsweit (Gesamt). Ohne
+           Nachweis wird kein Geheimnis verglichen (frischeBestaetigung) — dann zählt hier nichts. */
+        let bn = null;
+        if (mitNachweis) {
+          bn = await bremse("einladung-nachweis", kp, k);
+          if (!bn.frei) { await protokoll("einladung", k, "gebremst", bn.grund, wer); return zuVielAntwort(bn.wartet); }
+        }
         /* B1: frische Bestätigung — erst, wenn die Sitzung überhaupt ausstellen dürfte. */
         const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
+        /* Stimmt der Nachweis, war es kein Rateversuch: den Zähler DIESER Person und genau die Vermerke DIESES Aufrufs
+           bei Raum und Gesamt zurücknehmen — nie die anderer Personen oder Aufrufe. Falsche Nachweise bleiben gezählt. */
+        if (mitNachweis && f.ok) await entlasten("einladung-nachweis", kp, bn);
         if (!f.ok) {
           await protokoll("einladung", k, "abgewiesen", f.grund, wer);
           return antwort({ fehler: f.fehler, ...("bestaetigung" in f ? { bestaetigung: f.bestaetigung } : {}) },
             f.status);
+        }
+        /* Kontingent für das Ausstellen selbst: je Person, dann je Betrieb — nie installationsweit, damit kein Betrieb
+           einen anderen aussperrt (A-2 globale Grenze). */
+        for (const [art, kennungArt] of [["einladung-ausstellen", kp], ["einladung-betrieb", kennungBetrieb(s)]]) {
+          const ba = await bremse(art, kennungArt);
+          if (!ba.frei) { await protokoll("einladung", k, "gebremst", `${art}: ${ba.grund}`, wer); return zuVielAntwort(ba.wartet); }
         }
         const e = await einladungAusstellen(ablage, { sitzung: s, bestand,
           personId: rumpf.personId, rolle: rumpf.rolle });
