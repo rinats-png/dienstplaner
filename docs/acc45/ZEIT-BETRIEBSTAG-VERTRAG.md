@@ -436,3 +436,31 @@ Weitere: Fehlalarme der neuen Plausibilitätsregeln (Pilot mit Zählung, Schwell
 
 ## 12. Quellen im Repository
 Betreiberentscheidungen: dieser Auftrag (2026-11-14); `docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md`; Geo-Spezifikation B4–B7 (zitiert in `zeiterfassung.mjs`); WP-06/07/14/16/16c/17/43 (zitiert in den genannten Modulen); `deploy/FREIGEGEBENE-IMAGES.md:37`.
+---
+
+## 13. Betreiberentscheidungen E1–E8 (2026-11-14, bindend) und Umsetzungsstand
+
+Die Entscheidungen ersetzen die Empfehlungen aus § 11 dort, wo sie abweichen.
+
+| # | Entscheidung |
+|---|---|
+| E1 | Release 1: nur `Europe/Berlin`. Die Architektur nimmt die Zone als Parameter (späterer IANA-Verlauf möglich), nicht Teil des Umfangs. |
+| E2 | Zonenwechsel frühestens zum nächsten Monatsersten, ≥ 24 h Vorlauf, geplanter Wechsel stornierbar, nie rückwirkend. |
+| E3 | Online: Serveruhr maßgeblich; Gerätezeit nur zusätzlich als `geraetAm` (Plausibilität). Offline: ursprünglicher Ereigniszeitpunkt bleibt, Servereingang getrennt gespeichert. |
+| E4 | Plausibilitätsschwellen **nicht** je Betrieb einstellbar. |
+| E5 | Plausibilität nur für Datenintegrität; **keine** personenbezogene Häufigkeitsauswertung, keine Leistungs- oder Verhaltenskontrolle. Verständlicher Informationstext für Beschäftigte und einer für die Mitbestimmung des Betriebsrats (Dokumentation; ersetzt keine rechtliche Freigabe). |
+| E6 | Zeitumstellung bei Sonn-/Feiertagszuschlägen (Z47) **jetzt** für offene Abrechnungszeiträume; abgeschlossene Monate unverändert, historische Korrekturen nur über die kontrollierte Revision. |
+| E7 | Abrechnungstag bleibt Europe/Berlin; bestehende unveränderliche Abrechnungsgrundlagen bleiben. |
+| E8 | Gerätezeitzone wird nicht als eigenes Personenmerkmal gespeichert; maßgeblich ist die Betriebszone; eine abweichende Gerätezone allein erzeugt **keinen** Prüffall. |
+
+### 13.1 Umsetzungsstand
+
+| Teilpaket | Stand |
+|---|---|
+| **T1 = ZEIT-A (Kern) + ZEIT-C (Kern)** | `server/lib/betriebszeit.mjs` (`betriebstag`, `wanduhr`, `montagDerWoche`, Positivliste `zoneErlaubt`, fail-closed); `heuteBerlin` als Alias; `heute()` der Planrechnung = Berliner Kalendertag in Browser und Server (Z02, mit Z04–Z06, Z14–Z16, Z56); `stempelVorgang` ohne Gerätetag (Z01); Modulansicht (Z18); `ankerMontag` (P3). Tests `pruefungen/betriebstag.test.js` (DST 2026-03-29/2026-10-25, Mitternacht, Nachtdienste, Prozesszonen UTC/Los Angeles/Auckland/Kiritimati). Keine Datenwirkung, keine Migration. |
+| ZEIT-A Rest | `zeitpunktAusWanduhr` (Frühjahrslücke, Z22), `zoneZum` (mit ZEIT-B), `uhrzeitBerlin`/`berlinZeitpunkt`/`laufenderTag` als Aliase. |
+| ZEIT-C Rest | Anzeigen ohne Zone (Z13, Z16 `wann`, Z17 Protokolltexte), Z19 `src/pruefung.jsx` (Selbsttest), `seit` in `leerbetrieb.mjs` (UTC-Datum), Hinweise `monotonMs`/`letzterKontaktAm` erfassen, Playwright-Zonenprojekte (T-E2E-TZ). |
+| ZEIT-B | offen — Zeitmodell 2, `eingegangenAm` immer, Zonenverlauf (E2), Schalter `CENTRIC_ZEITMODELL`, Rücksprungsperre. |
+| ZEIT-D | offen — Plausibilitätsgründe (E3–E5, E8), Informationstexte Beschäftigte/Betriebsrat (E5). |
+| ZEIT-E | offen — **Z47 Zuschläge Zeitumstellung (E6, release-relevant)**, ICS-Zone, Z57 Protokollzeiten; Z56 ist mit T1 erledigt. |
+| ZEIT-F / ZEIT-G | offen — Restmatrix § 9, Reviews. |

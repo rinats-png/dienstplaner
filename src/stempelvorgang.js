@@ -9,6 +9,7 @@
 import { addDays } from "./regelwerk.js";
 import { entfernungText, geoAktiv, grundText, koordinateGueltig, genauigkeitGueltig, GENAUIGKEIT_WARNUNG, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
 import { startZuordenbar, nachtdienstOffen, heuteBerlin, uhrzeitBerlin } from "../server/lib/zeiterfassung.mjs";
+import { betriebstag } from "../server/lib/betriebszeit.mjs";
 import { vorlaeufige } from "./stempelpuffer.js";
 
 /**
@@ -116,8 +117,14 @@ export const koordinatenFelder = (feld, wert) => ({ [feld]: wert, koordinatenQue
  * mit START_VERALTET; liegt der Beginn auf gestern, als eigenes Ende auf
  * heute (START_FEHLT), und der alte Vorgang wird KONFLIKT (zeiterfassung.mjs,
  * stempelZiel). Beides ist kein normaler Abschluss.
+ *
+ * `heute` ist der betriebliche Kalendertag (WP-ZEIT, ZEIT-C). Fehlt er, gilt
+ * betriebstag(jetzt) — nie der Rechnertag des Geräts: Ein Gerät in UTC oder
+ * Auckland bot sonst um Mitternacht „Einstempeln" statt „Ausstempeln" an
+ * (Befund P2), weil Tag (Gerät) und Zeitpunkte (Berlin) nicht zusammenpassten.
  */
-export function stempelVorgang(m, p, heute, jetzt = new Date(), ereignisse = vorlaeufige()) {
+export function stempelVorgang(m, p, heuteTag, jetzt = new Date(), ereignisse = vorlaeufige()) {
+  const heute = typeof heuteTag === "string" && heuteTag ? heuteTag : betriebstag(jetzt);
   const tab = mitVorlaeufigen((m && m.einstempeln) || {}, p && p.id, ereignisse);
   const gestern = addDays(heute, -1);
   const vom = p ? tab[`${p.id}|${gestern}`] : null;

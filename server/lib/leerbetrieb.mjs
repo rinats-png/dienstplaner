@@ -20,6 +20,7 @@ import { MATRIX } from "./rechte.mjs";
 import { brancheVon, einheitLabel, qualifikationenFuer, dienstartenFuer, quoteFuer, paketFuer }
   from "./branchen.mjs";
 import { paketFuerNeubuchung } from "./paketstand.mjs";
+import { montagDerWoche } from "./betriebszeit.mjs";
 
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
@@ -30,12 +31,12 @@ export const VERSION = 9;
    branchen.mjs — eine Branche ist dort ein Datensatz, keine über drei
    Dateien verteilte Tabelle. Die Oberfläche liest dieselbe Quelle. */
 
-/** Montag der laufenden Woche — Ankerpunkt für die Schichtfolge. */
-function ankerMontag(jetzt) {
-  const d = new Date(jetzt);
-  const versatz = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - versatz);
-  return d.toISOString().slice(0, 10);
+/** Montag der laufenden Woche — Ankerpunkt für die Schichtfolge. Gerechnet auf dem betrieblichen
+ *  Kalendertag (Europe/Berlin), nicht in der Prozesszeitzone: Bis WP-ZEIT bestimmte die Ortszeit den
+ *  Wochentag, ausgegeben wurde aber das UTC-Datum — östlich von UTC kurz nach Mitternacht der Sonntag
+ *  davor, in UTC zwischen 00:00 und 01:00/02:00 Berlin am Montag noch der Montag der Vorwoche. */
+export function ankerMontag(jetzt) {
+  return montagDerWoche(jetzt);
 }
 
 /**
