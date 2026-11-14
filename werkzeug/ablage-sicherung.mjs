@@ -134,7 +134,8 @@ import { BINDUNG_SCHLUESSEL, epocheDateiErneuern, ueberlappen } from "../server/
 import { haltAnfordern } from "../server/lib/schreibhalt.mjs";
 import { dateiname } from "../server/lib/ablage.mjs";
 import { ANKER_SCHLUESSEL, MARKE_PRAEFIX, VERWALTER_PRAEFIX, buchLesen, buchNeu, buchSchreiben, einsammeln, nachzuziehen,
-  verwalterNachzuziehen, markenNachzuziehen, markeZerlegen, gesperrtesKonto, NACHTRAG_SCHLUESSEL, nachtragSchluessel }
+  verwalterNachzuziehen, markenNachzuziehen, markeZerlegen, gesperrtesKonto, NACHTRAG_SCHLUESSEL, nachtragSchluessel,
+  REGIME_PRAEFIX, regimeNachzuziehen, BESTAND_PRAEFIXE, bestandRaum, bestandBetriebe }
   from "../server/lib/widerrufbuch.mjs";
 import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
 
@@ -669,21 +670,28 @@ async function umschlagSchreiben(/** @type {string} */ datei, /** @type {any} */
 
 const VERWALTER_DATEI = dateiname(`${VERWALTER_PRAEFIX}x`).slice(0, -"x.json".length);
 const MARKE_DATEI = dateiname(`${MARKE_PRAEFIX}x`).slice(0, -"x.json".length);
+const REGIME_DATEI = dateiname(`${REGIME_PRAEFIX}x`).slice(0, -"x.json".length);
+const BESTAND_DATEIEN = BESTAND_PRAEFIXE.map((p) => dateiname(`${p}x`).slice(0, -"x.json".length));
 
 /**
- * Alle Zugänge (konto:* und der alte Sammelblob „konten"), Verwalterschlüssel (verwalter:*) und Marken
- * „Erstanmeldung festgelegt" (erstleitung-marke:*, PR #281) eines Store-Verzeichnisses `centric`. Beschädigt: wirft.
+ * Alle Zugänge (konto:* und der alte Sammelblob „konten"), Verwalterschlüssel (verwalter:*), Marken
+ * „Erstanmeldung festgelegt" (erstleitung-marke:*, PR #281), Regime-Marken (erstleitung-regime:*, PR #281) und die
+ * Betriebe aller Bestände (kern:*, bestand:* — nur Raum und Betriebskennung) eines Store-Verzeichnisses `centric`.
+ * Beschädigt: wirft.
  * @param {string} dir
  * @returns {Promise<{konten: Record<string, any>, verwalter: Record<string, any>,
- *   marken: Array<{raum: string, mandantId: string, personId: string}>, nachtrag?: string[]}>}
+ *   marken: Array<{raum: string, mandantId: string, personId: string}>, regime: Array<{raum: string, mandantId: string}>,
+ *   betriebe: Array<{raum: string, mandantId: string}>, nachtrag?: string[]}>}
  */
 async function kontenImOrdner(dir) {
   /** @type {Record<string, any>} */ const konten = {};
   /** @type {Record<string, any>} */ const verwalter = {};
   /** @type {Array<{raum: string, mandantId: string, personId: string}>} */ const marken = [];
+  /** @type {Array<{raum: string, mandantId: string}>} */ const regime = [];
+  /** @type {Array<{raum: string, mandantId: string}>} */ const betriebe = [];
   let namen = [];
   try { namen = await readdir(dir); }
-  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return { konten, verwalter, marken }; throw e; }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return { konten, verwalter, marken, regime, betriebe }; throw e; }
   const sammel = namen.includes("konten.json") ? await umschlagDaten(path.join(dir, "konten.json")) : null;
   if (sammel && typeof sammel === "object") Object.assign(konten, sammel);
   for (const n of namen) {
@@ -699,13 +707,23 @@ async function kontenImOrdner(dir) {
       const m = z ? await umschlagDaten(path.join(dir, n)) : null;
       if (z && m !== null && m !== undefined)
         marken.push({ ...z, personId: m && typeof m === "object" && typeof m.personId === "string" ? m.personId : "" });
+    } else if (n.startsWith(REGIME_DATEI)) {
+      /* Review C1: vorhandene Regime-Marken (ins Buch einsammeln; keine doppelt nachziehen). */
+      const z = markeZerlegen(decodeURIComponent(n.slice(0, -5)), REGIME_PRAEFIX);
+      const m = z ? await umschlagDaten(path.join(dir, n)) : null;
+      if (z && m !== null && m !== undefined) regime.push(z);
+    } else if (BESTAND_DATEIEN.some((p) => n.startsWith(p))) {
+      /* Review C2: Betriebe aus den Beständen — Marken werden für JEDEN Betrieb nachgezogen, nicht nur für einen mit
+         Erstanmeldecode (eine Sicherung von vor dem ersten Code kennt keinen). */
+      const raum = bestandRaum(decodeURIComponent(n.slice(0, -5)));
+      if (raum) betriebe.push(...bestandBetriebe(raum, await umschlagDaten(path.join(dir, n))));
     }
   }
   /* Nachtrag einer Raumlöschung bei nicht schreibbarem Buch (widerrufbuch.mjs, nachtragAufnehmen): Codes, die die
      Ablage schon gelöscht hat — vor dem Tausch ins Buch, sonst lebten sie mit einer älteren Sicherung wieder auf. */
   const nachtragDatei = dateiname(NACHTRAG_SCHLUESSEL);
   const nachtrag = namen.includes(nachtragDatei) ? nachtragSchluessel(await umschlagDaten(path.join(dir, nachtragDatei))) : [];
-  return { konten, verwalter, marken, nachtrag };
+  return { konten, verwalter, marken, regime, betriebe, nachtrag };
 }
 
 /**
@@ -756,7 +774,8 @@ export async function widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manif
   einsammeln(buch, stufeAblage.konten, stufeAblage);
   const offen = nachzuziehen(buch, stufeAblage.konten);
   const vOffen = verwalterNachzuziehen(buch, stufeAblage.verwalter);
-  const mOffen = markenNachzuziehen(buch, stufeAblage.konten, stufeAblage.marken);
+  const mOffen = markenNachzuziehen(buch, stufeAblage.konten, stufeAblage.marken, stufeAblage.betriebe, stufeAblage.regime);
+  const rOffen = regimeNachzuziehen(buch, stufeAblage.konten, stufeAblage.regime, stufeAblage.betriebe, stufeAblage.marken);
   await mkdir(path.join(stufe, "centric"), { recursive: true, mode: 0o700 });
   for (const h of offen)
     await umschlagSchreiben(path.join(stufe, "centric", dateiname(`konto:${h}`)), gesperrtesKonto(stufeAblage.konten[h], "wiederherstellung", jetzt.toISOString()));
@@ -765,11 +784,14 @@ export async function widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manif
   /* Marken „Erstanmeldung festgelegt" (PR #281), die die ältere Sicherung noch nicht kannte: Ohne sie legte ein offener
      Erstanmeldecode eines schon eingerichteten Betriebs erneut eine erste Leitung an. Kein Code wird dafür gesperrt. */
   for (const m of mOffen) await umschlagSchreiben(path.join(stufe, "centric", dateiname(m.schluessel)), m.wert);
+  /* Review C1: Regime-Marken (PR #281), die die ältere Sicherung nicht kannte: Ohne sie fiele ein schon strenger Betrieb
+     auf die alten Regeln zurück — ein Leitungscode ohne Person bekäme wieder Leitungsrechte. Kein Code wird gesperrt. */
+  for (const m of rOffen) await umschlagSchreiben(path.join(stufe, "centric", dateiname(m.schluessel)), m.wert);
   if (!anker) await umschlagSchreiben(ankerDatei, { id: buch.id });
   buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
   await buchSchreiben(zustandsVerz, buch);
   return { eintraege: Object.keys(buch.eintraege).length + Object.keys(buch.verwalter || {}).length, eingesammelt,
-    nachgezogen: offen.length + vOffen.length, marken: mOffen.length };
+    nachgezogen: offen.length + vOffen.length, marken: mOffen.length, regime: rOffen.length };
 }
 
 /**
@@ -891,7 +913,7 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
     try {
       const w = await widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
       meldung(`Widerrufbuch: ${w.eintraege} widerrufene Zugänge, ${w.eingesammelt} aus der bisherigen Ablage übernommen, `
-        + `${w.nachgezogen} in der Sicherung gesperrt, ${w.marken} Marken der Ersteinrichtung wiederhergestellt.`);
+        + `${w.nachgezogen} in der Sicherung gesperrt, ${w.marken} Marken der Ersteinrichtung und ${w.regime} Regime-Marken wiederhergestellt.`);
     } catch (e) {
       await rm(stufe, { recursive: true, force: true });
       throw e instanceof SicherungsFehler ? e

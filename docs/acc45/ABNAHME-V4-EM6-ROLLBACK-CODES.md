@@ -124,6 +124,13 @@ starten, bevor ein Altbild läuft. Gegenprobe: altes Werkzeug + Altbild → B 20
 
 ## 6. Kopplung an PR #281 (Erstanmeldecode, `erstleitung.mjs`) — Schnittstelle (Befund 1)
 
+**Stand Kopplungsrunde (PR #281 nach dem Merge von #292): umgesetzt.** `erstleitungEinloesen` ruft nach der
+Raumsperre `ersteinrichtungAbschliessen` (`angelegt`) bzw. `widerrufen` (`belegt`); `erstleitungRegimeVermerken`
+ruft `regimeFesthalten` (neue Buch-Klasse `regime`, Review C1); `erstleitungStreng`, `erstleitungEingerichtet` und
+das Einlösen lesen bei fehlender Marke das Buch (`regimeImBuch`, `ersteinrichtungImBuch`; Buch unklar → streng bzw.
+eingerichtet). Marken und Regime-Marken werden für jeden Betrieb der Ablage nachgezogen, nicht nur über
+Erstanmeldecodes (Review C2). Einzelheiten und Nachweise: `docs/acc45/ABNAHME-V4-A3-ERSTLEITUNG.md` §8b.
+
 Befund: Die erste Fassung wertete JEDES `erstleitungVerbraucht` als Widerruf — auch Grund `angelegt`. In #281
 (`erstleitung.mjs`, `einloesenGesperrt` Schritt 3, `verbrauchen(…, "angelegt", personId)`) ist ein so eingelöster Code
 der **gewöhnliche Anmeldecode der ersten Leitung**. Nach dem Merge beider hätte der nächste Serverstart diesen Code ins
@@ -169,7 +176,7 @@ Reihenfolge). Lösung wie im Wegwerf-Arbeitsbaum: je Glied von `new Set([...erla
 ## 7. Betreiberschritte
 
 - **Wiederherstellen:** wie `BEREITSTELLUNG.md` §5.4, immer mit `--zustand`. Ausgabe „Widerrufbuch: n widerrufene
-  Zugänge … m Marken der Ersteinrichtung wiederhergestellt“ prüfen.
+  Zugänge … m Marken der Ersteinrichtung und r Regime-Marken wiederhergestellt“ prüfen.
 - **Bild-Rücksprung** (`deploy/ruecksprung.sh`): Wurden auch Daten zurückgespielt, zuerst mit dem Werkzeug dieser
   Fassung wiederherstellen (oder diese Fassung einmal starten), dann das Bild wechseln.
 - **Sichern:** `zustand/zugang-widerrufe.json` liegt bewusst NICHT in restic/der Ablagesicherung (sonst rollte es mit
@@ -191,7 +198,8 @@ Reihenfolge). Lösung wie im Wegwerf-Arbeitsbaum: je Glied von `new Set([...erla
 | Klasse | Ablage | Wirkung eines Restores ohne E-M6 | Mit E-M6 | Vorschlag |
 |---|---|---|---|---|
 | Zugangscodes `konto:*` (zurückgezogen, ersetzt, Kette, OPT-1 verbraucht, #281 `belegt`, Raum gelöscht) | A | widerrufener Code gilt wieder | **abgedeckt** (Anmeldung, Sitzung, Feed, Altbilder) | — |
-| #281 Ersteinrichtung abgeschlossen (Marke `erstleitung-marke:*`) | A | Betrieb fällt in die Ersteinrichtung zurück; offener Erstanmeldecode legt zweite erste Leitung an | **abgedeckt** (Abschluss im Buch, Marke wiederhergestellt; kein Code gesperrt) | #281 ruft die Schnittstelle (§6) |
+| #281 Ersteinrichtung abgeschlossen (Marke `erstleitung-marke:*`) | A | Betrieb fällt in die Ersteinrichtung zurück; offener Erstanmeldecode legt zweite erste Leitung an | **abgedeckt** (Abschluss im Buch, Marke für jeden Betrieb der Ablage wiederhergestellt; Einlösen und Ausstellen fragen das Buch; kein Code gesperrt) | umgesetzt (§6) |
+| #281 strenges Regime (Regime-Marke `erstleitung-regime:*`) | A | Betrieb fällt auf die alten Regeln zurück; Leitungscode ohne Person bekommt wieder Leitungsrechte | **abgedeckt** (Buch `regime`, Regime-Marke für jeden Betrieb der Ablage wiederhergestellt; `erstleitungStreng` fragt das Buch) | umgesetzt (§6, Review C1) |
 | Benannte Verwalterschlüssel `verwalter:*` | A | gesperrter Betreiber-/Verwalterschlüssel gilt wieder | **abgedeckt** (Buch `verwalter`, Werkzeug und Start sperren nach, Altbilder 401) | — |
 | Ursprungsschlüssel `CENTRIC_ADMIN` | Umgebung | unberührt (nicht in der Sicherung) | — | Wechsel = Umgebung ändern |
 | **Passwörter** der Konten (`account:*`, Hash) | A | ein nach T geändertes (z. B. kompromittiertes) Passwort gilt wieder | **nicht abgedeckt** | BE-1 |
@@ -236,9 +244,10 @@ Mount `CENTRIC_ZUSTAND=/zustand` in `deploy/compose.yml`, Altbilder `274bfa0` un
 | R-5 | Fail-closed betrifft alle Codes und benannten Verwalterschlüssel eines Servers, solange das Buch unklar ist. | Gewollt; Kontoanmeldung und Ursprungsschlüssel bleiben. |
 | R-6 | Keine gemeinsame Sperre zwischen Werkzeug und Server über Rechnergrenzen hinweg, die mehr kann als `.prozess` (Puls 45 s) und `/gesund`. | Werkzeug verweigert eine belegte Ablage (lebende PID auf demselben Rechner, frischer Puls eines anderen). |
 | R-7 | Codes, die in einer verworfenen Folge NACH der Sicherung ausgegeben wurden (Ersatzcode C2), sind nach dem Rücksprung unbekannt (401). | Gewollt; Ersatz neu ausstellen. |
+| R-11 | Ein Buch mit Einträgen `regime` ist für die Fassung von #292 ohne Kopplung (a9cc145b) nicht mehr gültig (Siegel über `regime`): Rücksprung des Bilds auf genau diese, nie ausgerollte Fassung → fail-closed (alle Codes 503). Produktion 274bfa0 liest kein Buch und ist nicht betroffen. | Rücksprung nur auf die Produktion oder auf eine Fassung mit Kopplung; sonst Buch-Kopie von vor der Kopplung zurücklegen (R-1). |
 | R-9 | Nach einer älteren Sicherung (erste Leitung verloren) verbraucht ein Einlöseversuch des Erstanmeldecodes ihn nach #281 als „belegt“ — ein Widerruf, den auch eine danach zurückgespielte neuere Sicherung nicht aufhebt. | Gewollt (E-M6: nie wieder gültig); der Betreiber stellt der ersten Leitung einen personengebundenen Code aus. |
 | R-8 | Nachtrag offen (Buch beim Widerruf nicht schreibbar) und danach Restore per Verzeichniskopie oder mit dem Werkzeug OHNE `--zustand`, ohne Start dazwischen: die gelöschten Codes sind dann wieder gültig (wie schon im Vorgängerentwurf: die Sperre lag nur in den getauschten Daten; das Werkzeug warnt). | `/gesund` warnt; 503-Antwort an die Leitung; Start oder Werkzeug holt nach. |
-| R-10 | Abschlüsse und Widerrufe gelöschter Räume bleiben dauerhaft im Buch (§6 Nr. 5): Das Buch wächst; ein Betrieb, der unter demselben Raumnamen UND derselben Betriebskennung neu angelegt wird, bekommt, sobald für ihn ein Erstanmeldecode vorliegt, beim nächsten Start bzw. bei der nächsten Wiederherstellung die Marke „Ersteinrichtung abgeschlossen“ nachgezogen. | Gewollt (Rücksprungschutz geht vor). Nur Kennungen und Prüfsummen, keine Namen oder Codes. Betreiber: einen neuen Raumnamen oder eine neue Betriebskennung wählen und der ersten Leitung einen personengebundenen Code ausstellen; ein Entfernen aus dem Buch gibt es nicht automatisch. |
+| R-10 | Abschlüsse, Regime und Widerrufe gelöschter Räume bleiben dauerhaft im Buch (§6 Nr. 5): Das Buch wächst; ein Betrieb, der unter demselben Raumnamen UND derselben Betriebskennung neu angelegt wird, gilt sofort als eingerichtet (kein Erstanmeldecode; Einlösen `belegt`) und als streng; die Marken werden beim nächsten Start bzw. bei der nächsten Wiederherstellung nachgezogen. Dasselbe gilt (Review #281, INFO) für einen Betrieb, den der Betreiber per `PUT /api/bestand` aus einem bestehenden Raum entfernt und unter **derselben Betriebskennung** wieder anlegt: Der Raum wurde nicht gelöscht, Marke und Bucheintrag des alten Betriebs bestehen fort — der neue Betrieb erhält **keinen Erstanmeldecode** (`/api/zugaenge`, `/einrichten` stellen keinen aus; ein vorhandener wird beim Einlösen `belegt`). | Gewollt (Rücksprungschutz geht vor). Nur Kennungen und Prüfsummen, keine Namen oder Codes. Betreiber: einen neuen Raumnamen oder eine neue Betriebskennung wählen und der ersten Leitung einen personengebundenen Code ausstellen; ein Entfernen aus dem Buch gibt es nicht automatisch. Beim per PUT neu angelegten Betrieb mit alter Kennung ebenso, mit vorhandenen Mitteln: entweder den Betrieb unter einer **neuen** Betriebskennung anlegen (dann neu, streng, Erstanmeldecode möglich), oder die erste Leitung in der Konsole als Person des Betriebs anlegen und ihr über `/api/einladung` einen personengebundenen Zugang ausstellen. Ein Werkzeug, das Marke oder Bucheintrag zurücknimmt, gibt es bewusst nicht. |
 
 ## 12. Nachweis
 

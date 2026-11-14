@@ -6,11 +6,13 @@ import { rollenPflicht, rollenPflichtUnerwartet } from "../lib/betreiber-zweifak
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
-import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
+import { kontoSchreiben, kontoAendern, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
+import { erstleitungAusstellen, erstleitungVermerk, erstleitungEingerichtet, erstleitungRegimeVermerken }
+  from "../lib/erstleitung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
   verwalterZweifaktorIrgendwo, VerwalterBuchFehler }
   from "../lib/verwalter.mjs";
@@ -457,8 +459,9 @@ export default async (req) => {
         ergebnis.push({ kennung: z.kennung, gebunden: false, grund: "Position zeigt nicht auf diesen Betrieb" });
         continue;
       }
-      await kontoSchreiben(s0, h, { ...kk, mandantId: m.id, gebunden: new Date().toISOString(),
-        gebundenDurch: wer.name });
+      /* Merge-sicher am frischen Stand (konten.mjs, kontoAendern): eine gleichzeitige Sperre bleibt. */
+      await kontoAendern(s0, h, (f) => { const b = f || kk;
+        return { ...b, mandantId: m.id, gebunden: new Date().toISOString(), gebundenDurch: wer.name }; });
       ergebnis.push({ kennung: z.kennung, gebunden: true, mandantId: m.id });
     }
     await protokoll("einrichten", k, "erfolg",
@@ -475,6 +478,7 @@ export default async (req) => {
      (/api/bestand-anlegen); sein eigener Code darf deshalb vorher entstehen. */
   let bindungE = { betrieb: betrieb ?? 0, mandantId: null };
   let lageE = null;
+  let mandantE = null;
   if (rolle !== "betreiber") {
     const gelesenE = await bestandLesen(s0, bestand);
     const b2 = betriebFuerNeuenCode(gelesenE && gelesenE.bestand, betrieb);
@@ -483,6 +487,7 @@ export default async (req) => {
       return antwort({ fehler: b2.grund }, 409);
     }
     bindungE = b2;
+    mandantE = gelesenE.bestand.mandanten[b2.betrieb];
 
     /* SI-P6, Betreiberentscheidung G.2: Auch hier legt niemand ohne nachweisbare Kundenzustimmung neue Zugänge für
        einen BESTEHENDEN Kundenraum an — für jede Rolle, Demozugang eingeschlossen, gleich ob eine Leitung fehlt.
@@ -545,6 +550,11 @@ export default async (req) => {
   const code = `${block()}-${block()}-${block()}`;
 
   const s = s0;
+  /* A-3 (lib/erstleitung.mjs): Leitungscode ohne Person, kein Demozugang, Betrieb ohne Personen, Fenster der
+     Ersteinrichtung — ein Erstanmeldecode. Nur er legt bei der ersten Anmeldung die Leitungsperson an. */
+  const erstE = rolle !== "betreiber" && erstleitungAusstellen({ rolle, person, demo: !!demo, mandant: mandantE, lage: lageE,
+    /* E-D2: nur, wenn die Erstanmeldung des Betriebs nicht schon festgelegt ist (Marke) und er keine Personen hat. */
+    eingerichtet: rolle === "leitung" ? await erstleitungEingerichtet(s0, bestand, mandantE) : true });
   const konto = { name, bestand,
     rolle,                         // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
@@ -557,12 +567,22 @@ export default async (req) => {
     /* Kennung aus dem Code selbst statt aus der Anzahl — die Anzahl war
        unter Nebenläufigkeit nicht eindeutig. */
     id: demo ? `d${ablageSchluessel(code).slice(-8)}` : null,
-    angelegt: new Date().toISOString() };
+    angelegt: new Date().toISOString(),
+    ...(erstE ? { erstleitung: erstleitungVermerk(bindungE.mandantId) } : {}) };
   /* Erster Vorgang der Ersteinrichtung: das Fenster vermerken, BEVOR ein Code entsteht (SI-P6). */
   if (lageE && lageE.art === "neu") {
     try { await ersteinrichtungVermerken(s, bestand); }
     catch {
       await protokoll("einrichten", k, "fehler", `${bestand}: Ersteinrichtung nicht vermerkbar`);
+      return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
+    }
+  }
+  /* Delta-Review e8b9b93d, Punkt 1 (lib/erstleitung.mjs, Regime-Marke): Mit dem Erstanmeldecode gilt für den Betrieb
+     das strenge Regime — VOR dem Code. Ohne Marke kein Code. */
+  if (erstE) {
+    try { await erstleitungRegimeVermerken(s, bestand, bindungE.mandantId, { durch: "Erstanmeldecode" }); }
+    catch {
+      await protokoll("einrichten", k, "fehler", `${bestand}: Erstanmeldung nicht vermerkbar`);
       return antwort({ fehler: "Der Raum lässt sich gerade nicht einrichten. Bitte später erneut versuchen." }, 503);
     }
   }

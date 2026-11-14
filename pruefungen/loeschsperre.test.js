@@ -324,4 +324,55 @@ describe("E-M6 — Raumlöschung und Widerrufbuch", () => {
     expect(k7.gesperrt).toBe(true);
     expect(await store.get(W.markeSchluessel("t-marke", "m1"), { type: "json" })).toMatchObject({ personId: ERSTE });
   }, LAST_GRENZE);
+
+  /* Review PR #281 (LOW, widerrufbuch.mjs ablageStand): Rot vorher — ein einziger beschädigter Bestand (kern:/bestand:)
+     ließ widerrufbuchStart ganz scheitern, und der widerrufene Code eines ANDEREN Betriebs blieb nach dem Rücksprung
+     ungesperrt in der Ablage. Jetzt: übersprungen mit Warnung (ohne Inhalt), Start gelingt, Code gesperrt. Das Buch
+     selbst bleibt streng: beschädigtes Buch → Start scheitert (fail-closed). */
+  it("beschädigter Bestand beim Serverstart: übersprungen mit Warnung, widerrufener Code bleibt gesperrt; beschädigtes Buch scheitert", async () => {
+    const W = await import("../server/lib/widerrufbuch.mjs");
+    const { dateiname } = await import("../server/lib/ablage.mjs");
+    const { readFile, writeFile } = await import("node:fs/promises");
+    const RAUM_WEG = "t-pr281-widerrufen-anderer-betrieb";
+    const RAUM_KAPUTT = "t-pr281-beschaedigter-bestand-blob";
+    const INHALT = "{ pr281-beschaedigter-inhalt-darf-nie-ins-protokoll";
+    const code = h("4");
+    W.widerrufbuchVergessen();
+    const alt = { [code]: { bestand: RAUM_WEG, name: "Widerrufen" }, [h("c")]: { bestand: "fremd", name: "C" } };
+    await store.setJSON("konten", alt);
+    expect((await L.raumLoeschen(store, sitzungen, RAUM_WEG)).fehler).toEqual([]);
+    expect(await W.istWiderrufen(store, [code])).toBe(true);
+    /* Rücksprung der Ablage (ältere Sicherung mit dem Code) und ein beschädigter Bestand eines anderen Betriebs. */
+    await store.setJSON("konten", alt);
+    const kaputt = path.join(wurzel, "centric", dateiname(`kern:${RAUM_KAPUTT}`));
+    await writeFile(kaputt, INHALT);
+    await expect(store.get(`kern:${RAUM_KAPUTT}`, { type: "json" })).rejects.toThrow();
+    const warnungen = [];
+    const echt = console.warn;
+    console.warn = (...a) => { warnungen.push(a.map(String).join(" ")); };
+    try {
+      W.widerrufbuchVergessen();
+      await expect(W.widerrufbuchStart(store)).resolves.toBeTruthy();
+    } finally { console.warn = echt; }
+    const meldung = warnungen.filter((w) => w.includes(`kern:${RAUM_KAPUTT}`));
+    expect(meldung).toHaveLength(1);
+    expect(meldung[0]).toContain("übersprungen");
+    expect(warnungen.join("\n")).not.toContain("pr281-beschaedigter-inhalt");
+    const einzeln = await store.get(`konto:${code}`, { type: "json" });
+    expect((einzeln || (await store.get("konten", { type: "json" }))[code]).gesperrt).toBe(true);
+    expect(await W.istWiderrufen(store, [code])).toBe(true);
+
+    /* Gegenprobe: das Buch selbst beschädigt → der Start scheitert weiter (fail-closed), und keine Prüfung gilt. */
+    const gut = await readFile(buchDatei(), "utf8");
+    await writeFile(buchDatei(), "{ pr281-beschaedigtes-widerrufbuch");
+    try {
+      W.widerrufbuchVergessen();
+      await expect(W.widerrufbuchStart(store)).rejects.toThrow(W.WiderrufbuchFehler);
+      await expect(W.istWiderrufen(store, [h("c")])).rejects.toThrow();
+    } finally {
+      await writeFile(buchDatei(), gut);
+      await rm(kaputt, { force: true });
+      W.widerrufbuchVergessen();
+    }
+  }, LAST_GRENZE);
 });

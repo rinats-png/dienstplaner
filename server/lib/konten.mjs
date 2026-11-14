@@ -53,6 +53,31 @@ export async function kontoSchreiben(store, schluessel, konto) {
   await store.setJSON(PRAEFIX + schluessel, konto);
 }
 
+/** Sperre je Konto (kontoAendern). Reihenfolge, wo beide nötig sind: erst der Raum, dann das Konto — nie umgekehrt. */
+export const kontoSperre = (schluessel) => `@konto:${schluessel}`;
+
+/**
+ * Ein Konto ändern, ohne eine ältere Kopie zurückzuschreiben (A-3, Review 227f633e Punkt 4; Betreibervorgabe
+ * 2026-11-13): Lesen, Ändern und Schreiben unter der Sperre DIESES Kontos, frisch und streng gelesen. Wer ein Feld
+ * setzt (Sperre, zweiter Faktor, Bindung, Erstanmeldung), behält alle übrigen — auch die, die ein gleichzeitiger
+ * Vorgang eben geschrieben hat. Bis 2026-11 schrieben mehrere Wege eine früher gelesene Kopie zurück; eine
+ * gleichzeitige Sperre (`gesperrt`) oder Bindung konnte so verloren gehen.
+ * @param {any} store
+ * @param {string} schluessel
+ * @param {(alt: any) => any} aendern  bekommt den frischen Stand (null, wenn es keinen gibt); gibt den neuen zurück —
+ *   `undefined` oder denselben Gegenstand: nichts schreiben
+ * @returns {Promise<any>} der danach gültige Stand
+ */
+export function kontoAendern(store, schluessel, aendern) {
+  return unterRaumsperre(kontoSperre(schluessel), async () => {
+    const alt = await kontoLesenStreng(store, schluessel);
+    const neu = await aendern(alt);
+    if (neu === undefined || neu === alt) return alt;
+    await kontoSchreiben(store, schluessel, neu);
+    return neu;
+  });
+}
+
 /**
  * Alle Konten. Braucht nur, wer suchen muss: die Demoliste und das Sperren
  * eines ganzen Betriebs. Der Anmeldeweg kommt ohne aus.

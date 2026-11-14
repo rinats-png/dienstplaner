@@ -129,3 +129,51 @@ describe("Raum mit mehreren Betrieben", () => {
     expect(t.status).toBe(409);
   });
 });
+
+/* --------------------------------------------------------------------------
+   A-3 (Betreiberentscheidung E-D1, Befund F-0; Delta-Review e8b9b93d, Punkt 5). Die Fälle oben sind die
+   BESTANDSbetriebe bei ausgeschaltetem CENTRIC_ERSTLEITUNG_STRENG — alte Leitungscodes ohne Person verhalten sich dort
+   unverändert wie auf integration/release-v4 (Sitzung, Bindung an die Kennung). Hier die strengen Fälle: Schalter an,
+   oder ein NEUER Betrieb (Regime-Marke, server/lib/erstleitung.mjs) bei ausgeschaltetem Schalter.
+   -------------------------------------------------------------------------- */
+describe("alte Leitungscodes ohne Person, streng", () => {
+  const LEITUNG = { id: "pl", vorname: "Lea", nachname: "Leitung", rolle: "leitung", bereich: "ALLE", status: "aktiv",
+    eintritt: "2020-01-01", austritt: null, qualifikationen: [], zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] };
+  const personengebunden = async (code, raum) => {
+    await kontoSchreiben(laden(), ablageSchluessel(code), { name: "Alt leitung 0", bestand: raum, rolle: "leitung",
+      person: LEITUNG.id, betrieb: 0, demo: false, angelegt: "2026-01-01T00:00:00.000Z" });
+    return ablageSchluessel(code);
+  };
+
+  it("Schalter an: Bestandsbetrieb — der alte Code ohne Person bekommt keine Sitzung und wird nicht gebunden", async () => {
+    await bestandSchreiben(laden(), "alt-streng", { version: 9, mandanten: [{ ...betrieb("haus2"), personen: [LEITUNG] }] }, { durch: "Pruefung" });
+    const s = await altcode("ALT4-STRE-DDDD", "alt-streng", "leitung", 0);
+    const p = await personengebunden("ALT5-STRE-EEEE", "alt-streng");
+    const vorher = process.env.CENTRIC_ERSTLEITUNG_STRENG;
+    process.env.CENTRIC_ERSTLEITUNG_STRENG = "true";
+    try {
+      const a = await anmelden("ALT4-STRE-DDDD");
+      expect(a.status).toBe(403);
+      expect(a.fehler).toBe("Ihr Zugang ist keiner Person zugeordnet.");
+      expect(a.token).toBeFalsy();
+      expect((await kontoLesen(laden(), s)).mandantId).toBeUndefined();
+      /* Derselbe alte Code MIT Person: wie bisher — Sitzung und Bindung an die Kennung. */
+      const b = await anmelden("ALT5-STRE-EEEE");
+      expect(b.token, JSON.stringify(b)).toBeTruthy();
+      expect((await kontoLesen(laden(), p)).mandantId).toBe("haus2");
+    } finally {
+      if (vorher === undefined) delete process.env.CENTRIC_ERSTLEITUNG_STRENG; else process.env.CENTRIC_ERSTLEITUNG_STRENG = vorher;
+    }
+  });
+
+  it("Schalter aus, NEUER Betrieb (Regime-Marke): der alte Code ohne Person bekommt keine Sitzung", async () => {
+    const { erstleitungRegimeVermerken } = await import("../server/lib/erstleitung.mjs");
+    expect(process.env.CENTRIC_ERSTLEITUNG_STRENG).toBeUndefined();
+    await bestandSchreiben(laden(), "alt-neu", { version: 9, mandanten: [betrieb("haus3")] }, { durch: "Pruefung" });
+    await erstleitungRegimeVermerken(laden(), "alt-neu", "haus3", { durch: "Pruefung" });
+    await altcode("ALT6-NEUB-FFFF", "alt-neu", "leitung", 0);
+    const a = await anmelden("ALT6-NEUB-FFFF");
+    expect(a.status).toBe(403);
+    expect(a.token).toBeFalsy();
+  });
+});

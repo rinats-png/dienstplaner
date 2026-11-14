@@ -1313,21 +1313,20 @@ export function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
      geprüft. */
   if (!alt || !neu) return { ok: true, grund: null };
 
-  /* Der leere Betrieb ist der Sonderfall, an dem die Regel sonst zerbricht.
+  /* Bis 2026-11 galt hier eine Ausnahme: In einem Betrieb OHNE Personen durfte jede schreibende Sitzung Personen mit
+     beliebiger Rolle anlegen — so speicherte die Oberfläche die erste Leitungsperson. Die Ausnahme hing allein an
+     „keine Personen“: Ein Planungscode ohne Person konnte sich so eine Leitung anlegen, und ein eingerichteter
+     Betrieb, dessen Personen verloren gingen, war wieder offen.
 
-     Ein selbst gestarteter Betrieb hat beim ersten Anmelden niemanden. Die
-     Anwendung legt dann die Person an, die den Zugangscode in der Hand
-     hält — mit der Rolle aus dem Code, also in aller Regel „leitung". Nach
-     der Regel „niemand vergibt die eigene Rolle" wäre genau das verboten,
-     und der Betrieb käme nie über den ersten Bildschirm hinaus. Beim
-     Sichttest lief er prompt in „Keine Schreibberechtigung".
-
-     Wo niemand ist, ist auch niemand zu schützen: Die erste Person darf
-     die Rolle ihres Codes tragen. Ab der zweiten greift der Rang. */
-  if (!Array.isArray(alt.personen) || alt.personen.length === 0)
+     E-D2 (Betreiberentscheidung 2026-11-13): gestrichen. Die erste Leitungsperson legt der Server bei der
+     Erstanmeldung an (lib/erstleitung.mjs), BEVOR es eine Sitzung gibt; kein Weg braucht die Ausnahme mehr. Der Rang
+     gilt jetzt auch im leeren Betrieb — auch dann, wenn dort (noch) niemand ist.
+     Einzige Ausnahme: ein Bestandsbetrieb (weder Regime- noch Erstanmeldemarke, also vor dieser Änderung angelegt) bei
+     ausgeschaltetem Schalter CENTRIC_ERSTLEITUNG_STRENG (lib/erstleitung.mjs). daten.mjs setzt dafür `ersteinrichtungAltweg` an der Sitzung —
+     am Server ermittelt, nie aus einer Anfrage; fehlt der Vermerk, gilt der Rang. */
+  if (sitzung.ersteinrichtungAltweg === true && (!Array.isArray(alt.personen) || alt.personen.length === 0))
     return { ok: true, grund: null };
-
-  return pruefeRollenwechsel(alt.personen, neu.personen, rolle);
+  return pruefeRollenwechsel(Array.isArray(alt.personen) ? alt.personen : [], neu.personen, rolle);
 }
 
 /* Abgeleitete Personenfelder (planungsregeln, sichtbereich) entstehen beim

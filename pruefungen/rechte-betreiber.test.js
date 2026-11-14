@@ -308,17 +308,20 @@ describe("Rollenwechsel beim Speichern", () => {
     expect(e.verweigert).toBeTruthy();
   });
 
-  it("der leere Betrieb legt seine erste Leitung an", () => {
+  it("der leere Betrieb legt seine erste Leitung an — nur im Bestandsbetrieb bei ausgeschaltetem Schalter", () => {
     /* Der Selbststart. Beim ersten Anmelden hat der Betrieb niemanden, und
-       die Anwendung legt die Person an, die den Code in der Hand hält —
-       mit dessen Rolle. Ohne diese Ausnahme scheiterte genau das an der
-       Regel „niemand vergibt die eigene Rolle", und der Betrieb kam nie
-       über den ersten Bildschirm hinaus. Im Sichttest: 403. */
+       die Anwendung legte die Person an, die den Code in der Hand hält —
+       mit dessen Rolle. Seit A-3 (E-D2, server/lib/erstleitung.mjs) legt die
+       erste Leitung der Server bei der Erstanmeldung an; die Ausnahme gilt
+       nur noch, wenn daten.mjs die Sitzung als Bestandsbetrieb vermerkt
+       (`ersteinrichtungAltweg`: weder Regime- noch Erstanmeldemarke,
+       CENTRIC_ERSTLEITUNG_STRENG aus). Ohne den Vermerk gilt der Rang. */
     const leer = mitPersonal([]);
     const erste = mitPersonal([{ id: "p1", rolle: "leitung" }]);
-    const e = zusammenfuehren(leer, erste, LEIT);
+    const e = zusammenfuehren(leer, erste, { ...LEIT, ersteinrichtungAltweg: true });
     expect(e.verweigert).toBeUndefined();
     expect(e.mandanten[0].personen[0].rolle).toBe("leitung");
+    expect(zusammenfuehren(mitPersonal([]), mitPersonal([{ id: "p1", rolle: "leitung" }]), LEIT).verweigert).toBeTruthy();
   });
 
   it("aber die zweite nicht mehr", () => {

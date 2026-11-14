@@ -437,7 +437,7 @@ try {
        ist aber nicht nachgezogen — ein älteres Bild auf diesen Daten nähme dort ungesperrte Codes an. */
 try {
   const r = await widerrufbuchStart(getStore({ name: "centric", consistency: "strong" }));
-  console.log(`Widerrufbuch: ${r.eintraege} Einträge, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.marken} Marken angelegt`);
+  console.log(`Widerrufbuch: ${r.eintraege} Einträge, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.marken} Marken, ${r.regime} Regime-Marken angelegt`);
 } catch (e) {
   const grund = e && e.message ? e.message : String(e);
   const pruefbar = await buchGeprueft(getStore({ name: "centric", consistency: "strong" })).then(() => true, () => false);

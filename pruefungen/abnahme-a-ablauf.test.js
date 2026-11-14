@@ -169,14 +169,22 @@ describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmod
   });
 
   /* ---------------- Bereich 3: Personal anlegen ---------------- */
-  it("3.1 Leitung legt Personal an (Planung, zwei Beschäftigte, SV, Betriebsrat, Kundenrolle)", async () => {
+  it("3.1 Leitung legt Personal an (Planung, zwei Beschäftigte, SV, Betriebsrat); die Altrolle kunde nicht", async () => {
+    /* A-3 (2026-11-13): Die Erstanmeldung der Leitung hat ihre Person serverseitig angelegt — der Betrieb ist nicht mehr
+       leer, der Rang gilt (rollenvergabe.mjs). Eine Person der Altrolle „kunde“ ging bisher nur über die Ausnahme des
+       leeren Betriebs durch; die Leitung legt sie nicht an. */
+    const ich = (await lesen(T.leitung)).bestand.mandanten[0].personen;
+    expect(ich.map((p) => p.rolle)).toEqual(["leitung"]);
+    const kunde = await schreiben(T.leitung, (m) => { m.personen = [...m.personen, person("k1", "kunde")]; });
+    expect(kunde.status).toBe(403);
     const a = await schreiben(T.leitung, (m) => {
       m.personen = [...m.personen, person("p1", "planer"), person("a1", "mitarbeiter"), person("a2", "mitarbeiter"),
-        person("s1", "subplaner"), person("r1", "betriebsrat"), person("k1", "kunde")];
+        person("s1", "subplaner"), person("r1", "betriebsrat")];
     });
     expect(a.status, a.text || a.fehler).toBe(200);
     const ids = (await lesen(T.leitung)).bestand.mandanten[0].personen.map((p) => p.id);
-    expect(ids).toEqual(expect.arrayContaining(["p1", "a1", "a2", "s1", "r1", "k1"]));
+    expect(ids).toEqual(expect.arrayContaining(["p1", "a1", "a2", "s1", "r1"]));
+    expect(ids).not.toContain("k1"); // kollision-ok: ids ist eine Liste von Personenkennungen; toContain vergleicht ganze Elemente, keinen Teiltext
   });
 
   it("3.2 Personalimport bleibt gesperrt (CENTRIC_IMPORT_AKTIV nicht gesetzt): jeder /api/import-Weg 404", async () => {
@@ -207,8 +215,21 @@ describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmod
   });
 
   it("2.2b Altrolle kunde: weder Leitung (403) noch Betreiber (400) vergeben sie; der Betreiber legt für den eingerichteten Kundenraum keine weiteren Zugänge an (409, G.2)", async () => {
+    /* Seit A-3 legt die Leitung keine Person der Altrolle kunde mehr an (3.1). Damit die Regel „Leitung lädt kunde
+       nicht ein“ (403) weiter geprüft ist, steht k1 hier direkt in der Ablage — wie ein Altbestand (Review 227f633e,
+       Punkt 5). Die einheitliche 404 für unbekannte/fremde Personen prüft pruefungen/erstleitung-entscheidungen.test.js. */
+    process.env.CENTRIC_DATEN = daten;
+    process.env.CENTRIC_ABLAGE = "dateien";
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const B = await import("../server/lib/bestand.mjs");
+    const ablage = getStore({ name: "centric", consistency: "strong" });
+    const g = await B.bestandLesenStreng(ablage, NORD);
+    const neu = kopie(g.bestand);
+    neu.mandanten[0].personen = [...neu.mandanten[0].personen.filter((p) => p.id !== "k1"), person("k1", "kunde")];
+    expect((await B.bestandSchreiben(ablage, NORD, neu, { erwarteterStand: g.stand, durch: "Prüfung (Altbestand kunde)" })).ok).toBe(true);
     const e = await anfrage("/api/einladung", { methode: "POST", token: T.leitung, rumpf: { personId: "k1", bestaetigung: { zugangscode: CODE.leitung } } });
     expect(e.status).toBe(403);
+    expect(e.einladung).toBeUndefined();
     const k = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: NORD, eintraege: [{ rolle: "kunde", personId: "k1" }] } });
     expect(k.status).toBe(400);
     const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: NORD, eintraege: [{ rolle: "planer", personId: "p1" }] } });

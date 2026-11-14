@@ -5,7 +5,7 @@ import { MARKIERUNG_TEXT, stempelSchluessel } from "./stempelvorgang.js";
 
 
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
-import { einheitAm, imDienst } from "../server/lib/fachpruefung.mjs";
+import { einheitAm } from "../server/lib/fachpruefung.mjs";
 import { verknuepfungsZiel, ohneVerknuepfung } from "./verknuepfung.js";
 import { migriere, migrationstext } from "./migration.js";
 import { addDays } from "./regelwerk.js";
@@ -216,7 +216,7 @@ import { Adressaenderungen } from "./ansichten/adressaenderungen.jsx";
 import { JugendschutzSchalter } from "./ansichten/jugendschutz-schalter.jsx";
 import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
-import { ROLLEN, rolle, mehrzahl, ROLLENBEZEICHNUNG, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, FESTE_RECHTE, rechteDerRolle } from "./lib/rollen.js";
+import { ROLLEN, rolle, mehrzahl, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, FESTE_RECHTE, rechteDerRolle } from "./lib/rollen.js";
 import { urlaubshinweiseFaellig, zustellungAusstehend } from "./lib/zustellung.js";
 import { abbildVon, schreibAbbild, urlaubshinweiseAnwenden, automatikKonfliktLoesen } from "./app/oeffnen.js";
 
@@ -240,6 +240,8 @@ import { AntraegeGeteilt } from "./ansichten/antraegegeteilt.jsx";
 import { Monatsplan } from "./ansichten/monatsplan.jsx";
 import { Dienstarten } from "./ansichten/dienstarten.jsx";
 import { Konfliktfenster, NichtGespeichert, Offlineleiste } from "./ansichten/speicherlage.jsx";
+import { sitzungAusZugang } from "./app/zugangssitzung.js";
+import { Ladefehlerseite } from "./ansichten/ladefehler.jsx";
 import { Import } from "./ansichten/import.jsx";
 import { Dienstbuch } from "./ansichten/dienstbuch.jsx";
 import { Schnellbesetzung } from "./ansichten/schnellbesetzung.jsx";
@@ -1138,82 +1140,14 @@ function AppInnen() {
          auf diesem Weg nicht mehr erreichbar.
 
          Der Code in der Hand entscheidet, nicht der Rückstand im Speicher. */
-      /* Demo (Betreiberentscheidung D.2): Der Rollenwähler hängt am Merkmal demo des Zugangs, nicht an der Rolle „kunde“. Er ändert nur die Ansicht; Rechte und Daten bestimmt weiter die Rolle des Tokens, und Verwaltungswege sind für Demo-Sitzungen serverseitig gesperrt. „kunde“ bleibt als Altbestand gleich behandelt, bis die Umstellung gelaufen ist. */
+      /* Auflösung Zugang → Person: src/app/zugangssitzung.js (A-3: ein Code ohne Person in einem Betrieb ohne
+         aktive Person seiner Rolle zeigt eine Meldung statt des Rollenwählers der Vorführfassung). */
+      /* Demo (Betreiberentscheidung D.2): Der Rollenwähler hängt am Merkmal demo des Zugangs, nicht an der Rolle „kunde“ —
+         ein Demozugang bleibt hier unberührt. */
       if (zugang && zugang.rolle && zugang.rolle !== "kunde" && zugang.demo !== true) {
-        if (zugang.rolle === "betreiber") b = { ...b, session: { rolle: "betreiber" } };
-        else {
-          const mand = b.mandanten[zugang.betrieb || 0] || b.mandanten[0];
-          if (mand) {
-            const kand = mand.personen.filter((p) => p.rolle === zugang.rolle && imDienst(p, heute()));
-            /* `zugang.person` war hier ein Array-Index. Die Betreiberkonsole
-               hinterlegt beim Ausstellen eines Codes aber die Kennung der
-               Person — „p1", nicht 1. `mand.personen["p1"]` ist undefined,
-               es entstand keine Sitzung, und jede Beschäftigte mit einem
-               personengebundenen Code landete auf dem Rollenwähler der
-               Vorführfassung. Nur Codes ohne Person oder mit numerischem
-               Index kamen durch.
-
-               Aufgelöst wird jetzt zuerst über die Kennung, dann über den
-               Index. Und ein gesetzter Wert, der auf niemanden passt, fällt
-               nicht mehr auf den ersten Kandidaten zurück — das meldete
-               jemanden als eine andere Person an. Er führt zu keiner
-               Sitzung und zu einer klaren Meldung. */
-            let p = null;
-            if (zugang.person == null) p = kand[0];
-            else {
-              p = mand.personen.find((x) => x.id === zugang.person)
-                || (Number.isInteger(zugang.person) ? mand.personen[zugang.person] : null)
-                || null;
-              if (!p && mand.personen.length)
-                setLadefehler(`Der Zugangscode gehört zu einer Person, die es in „${mand.name}" nicht mehr gibt. `
-                  + "Bitte einen neuen Code ausstellen lassen.");
-            }
-
-            /* Ein frisch angelegter Betrieb hat noch keine Person — und ohne
-               Person gibt es keine Sitzung, also auch keinen Weg hinein. Der
-               Selbststart endete damit auf einer Rollenauswahl ohne Auswahl.
-
-               Die erste Person ist die, die den Zugangscode in der Hand hält.
-               Sie wird hier angelegt, mit der Rolle aus dem Code und Zugriff
-               auf alle Einheiten. Umbenennen lässt sich sie unter Personal. */
-            if (!p && !mand.personen.length) {
-              const ersteEinheit = (mand.einheiten || [])[0];
-              p = {
-                id: uid("p"),
-                vorname: "",
-                nachname: ROLLENBEZEICHNUNG[zugang.rolle] || "Leitung",
-                funktion: ROLLENBEZEICHNUNG[zugang.rolle] || "Leitung",
-                email: mand.kontakt || "",
-                zugehoerigkeit: ersteEinheit
-                  ? [{ ab: mand.seit || heute(), einheitId: ersteEinheit.id }] : [],
-                eintritt: mand.seit || heute(),
-                austritt: null,
-                wochenstunden: (mand.einstellungen || {}).wochenstunden || 40,
-                urlaubsanspruch: (mand.einstellungen || {}).urlaubsanspruch || 30,
-                urlaubsuebertrag: 0,
-                stundenuebertrag: 0,
-                qualifikationen: [],
-                teilzeit: null,
-                springer: false,
-                einschraenkungen: {},
-                rolle: zugang.rolle,
-                rolleSeit: heute(),
-                rolleVerlauf: [],
-                /* Alle Einheiten: Wer den Betrieb einrichtet, muss überall
-                   hinsehen können. */
-                bereich: "ALLE",
-                status: "aktiv",
-                /* Die Leitung fährt nicht zwangsläufig selbst Schicht — das
-                   entscheidet sie später unter Personal. */
-                imSchichtdienst: false,
-              };
-              const mitPerson = { ...mand, personen: [p] };
-              b = { ...b, mandanten: b.mandanten.map((x) => x.id === mand.id ? mitPerson : x) };
-            }
-
-            if (p) b = { ...b, session: { rolle: "kunde", mandantId: mand.id, personId: p.id } };
-          }
-        }
+        const aufgeloest = sitzungAusZugang(b, zugang);
+        b = aufgeloest.bestand;
+        if (aufgeloest.fehler) setLadefehler(aufgeloest.fehler);
       }
       setDb(b);
     } catch (e) {
@@ -1652,26 +1586,13 @@ function AppInnen() {
      Ladehinweis stehen. Jetzt sind sie sichtbar; die Migration braucht das,
      weil ihre wichtigste Antwort lautet „nichts angefasst, bitte neu laden". */
   if (ladefehler) {
-    const f = typeof ladefehler === "string"
-      ? { titel: "Die Daten lassen sich nicht laden", text: ladefehler, neuladen: true }
-      : ladefehler;
     return (<><style>{bauStyles()}</style>
-      <div className="sw-root"><div style={{ minHeight: "100vh", display: "flex",
-        alignItems: "center", justifyContent: "center", padding: "5vh 20px" }}>
-        <Card style={{ padding: 30, maxWidth: 520 }}>
-          <div role="alert">
-            <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
-            <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
-          </div>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-            {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
-            {f.demoAnlegen && <Btn kind="primary" onClick={async () => {
-              try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
-              catch (e) { setLadefehler(String(e.message || e)); }
-            }}>Demo-Bestand anlegen</Btn>}
-            <Btn onClick={abmeldenMitHinweis}>Abmelden</Btn>
-          </div>
-        </Card></div></div></>);
+      <Ladefehlerseite ladefehler={ladefehler} onNeuLaden={() => window.location.reload()}
+        onDemoAnlegen={async () => {
+          try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
+          catch (e) { setLadefehler(String(e.message || e)); }
+        }}
+        onAbmelden={abmeldenMitHinweis} /></>);
   }
 
   /* Gerüst statt Satz.

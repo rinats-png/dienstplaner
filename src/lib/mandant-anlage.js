@@ -190,7 +190,9 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
     standorte, einheiten, qualifikationen: quals, dienstarten,
     personen: [{ id: hauptId, vorname: (f.kontaktName || "Haupt Zugang").split(" ")[0],
       nachname: (f.kontaktName || "Haupt Zugang").split(" ").slice(1).join(" ") || "Zugang",
-      funktion: "Organisationsleitung", email: f.kontakt || "",
+      /* Betreiberentscheidung 2026-11-13 (E-Mail): Die Kontaktadresse des Betriebs ist nie die persönliche Adresse der
+         ersten Leitungsperson — leer, bis die Person sie selbst einträgt. */
+      funktion: "Organisationsleitung", email: "",
       zugehoerigkeit: [{ ab: heute(), einheitId: einheiten[0].id }],
       eintritt: heute(), austritt: null, wochenstunden: f.wochenstunden || 40,
       urlaubsanspruch: 30, urlaubsuebertrag: 0, stundenuebertrag: 0,

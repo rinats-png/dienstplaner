@@ -339,6 +339,22 @@ describe("S5 Schutz des Laders", () => {
     finally { await rm(anders, { recursive: true, force: true }); }
     expect(await raumLeer("pilot-seed-p")).toBe(true);
   });
+  it("Regime-Marke: Seed-Räume sind von Anfang an streng und bleiben es nach erneutem Laden (Raum gelöscht, neu angelegt)", async () => {
+    const E = await import("../server/lib/erstleitung.mjs");
+    const marke = async (raum, id) => (await laden().get(E.erstleitungRegimeSchluessel(raum, id), { type: "json" }));
+    for (let lauf = 0; lauf < 2; lauf++) {
+      const r = await W.ausfuehren(["--ja", "--start", START], env());
+      expect(r.code, r.text).toBe(0);
+      for (const [raum, m] of [["pilot-seed-p", P()], ["pilot-seed-s", S()]]) {
+        const v = await marke(raum, m.id);
+        expect(v, `Lauf ${lauf + 1}: ${raum}`).not.toBeNull();
+        expect(v.durch).toMatch(/^SEED-PILOT/);
+        expect(await E.erstleitungStreng(laden(), raum, m.id)).toBe(true);
+      }
+    }
+    expect((await W.ausfuehren(["--ja", "--entfernen"], env())).code).toBe(0);
+    expect(await marke("pilot-seed-p", P().id)).toBeNull();
+  });
   it("Trockenlauf schreibt nichts", async () => {
     const r = await W.ausfuehren(["--trocken", "--start", START], env());
     expect(r.code, r.text).toBe(0); expect(r.text).toMatch(/Trockenlauf/);

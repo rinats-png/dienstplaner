@@ -172,6 +172,13 @@ jobs:
       - name: Abnahme V4 Strang A, Geschäftsablauf über zwei Betriebe
         run: npm run pruefung:abnahme-a-ablauf
 
+      # A-3: Die Erstanmeldung der Leitung legt die erste Leitungsperson serverseitig, atomar und dauerhaft an (echter Server).
+      # E-D1/E-D2/E-Mail (Betreiberentscheidungen 2026-11-13) und echter Prozessabbruch (SIGKILL, Vorladehilfe) mit Neustart.
+      # Differenzgarantie Bestandsbetriebe: Szenarienkatalog gegen die Golden-Aufzeichnung der Basis ohne #281, Schalter
+      # ungesetzt und verbogen (pruefungen/erstleitung-bestand-differenz.test.js).
+      - name: Erstanmeldung der Leitung im leeren Betrieb (A-3, serverseitig)
+        run: npm run pruefung:erstleitung
+
       - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
         run: npm run pruefung:import-abweichungen
 
