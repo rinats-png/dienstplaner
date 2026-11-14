@@ -27,9 +27,15 @@
    Stand 2 (WP-16, Nachtrag vierter Review N-1): Bereitschafts- und
    Rufstunden der Lohnausgabe aus der Ist-Zeit des Tages (Sommerzeit,
    erfasste Zeit) statt aus der Plandauer der Dienstart.
+
+   Stand 3 (WP-ZEIT, ZEIT-E / E6, Befund Z47): Sonntags-, Feiertags- und
+   Samstagsanteile je Kalendertag mit wirklichen Minuten in Europe/Berlin
+   (Zeitumstellung) statt Wanduhr-Minuten (isteinfrieren.mjs tagesanteile).
+   Nur offene Monate; abgeschlossene bleiben beim Stand ihres Abschlusses
+   (zuschlagStand) und ihren eingefrorenen Zuschlägen.
    ========================================================================== */
 
-export const RECHEN_STAND = 2;
+export const RECHEN_STAND = 3;
 
 /**
  * Dienstformen. Bereitschaftsdienst (Anwesenheit am Arbeitsplatz) und

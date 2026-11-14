@@ -25,7 +25,8 @@ import { VERSION } from "../src/migration.js";
 import { ohneServerFelder, SERVER_FELDER } from "../src/speicher.js";
 import { abschliessen, wiederoeffnen, abschlussWiderspruch, abgewiesenVermerken, lohnexportBestaetigen, istAbdruck,
   ABGEWIESEN_MAX, ABGEWIESEN_JE_PERSON, KORREKTUR_ERFORDERLICH } from "../server/lib/monatsabschluss.mjs";
-import { istEinfrieren, eingefrorenFuerPerson, FREEZE_SCHEMA } from "../server/lib/isteinfrieren.mjs";
+import { istEinfrieren, eingefrorenFuerPerson, FREEZE_SCHEMA, zuschlagTagAddieren, RECHEN_STAND_WANDUHR } from "../server/lib/isteinfrieren.mjs";
+import { LOHNARTEN_STD } from "../server/lib/lohnrechnung.mjs";
 import { betriebsratAuswertung } from "../server/lib/br-auswertung.mjs";
 import { betriebErzeugen, istEinfrierenSchema1, alleAbschliessen, abschlussWiderspruchVorher, monateVor, RUMPF_MAX as MESS_RUMPF_MAX }
   from "../werkzeug/wp16-messung.mjs";
@@ -70,12 +71,25 @@ const auf = (m, monat = OKT) => {
   return r.mandant;
 };
 
+/** Zuschlagsanteile eines Schema-1-Abschlusses mit der Wanduhr-Teilung (Rechenstand 2) aus den eingefrorenen Tagen. */
+function zuschlagWanduhr(s1, p, monat) {
+  const r = { nacht: 0, sonntag: 0, feiertag: 0, samstag: 0 };
+  const [j, mo] = monat.split("-").map(Number);
+  for (let i = 1; i <= new Date(Date.UTC(j, mo, 0)).getUTCDate(); i++) {
+    const d = `${monat}-${String(i).padStart(2, "0")}`;
+    const e = s1.istEingefroren[`${p.id}|${d}`];
+    if (e && e.da) zuschlagTagAddieren(s1, p, d, e.da, r, RECHEN_STAND_WANDUHR);
+  }
+  for (const k of Object.keys(r)) r[k] = Math.round(r[k] * 100) / 100;
+  return r;
+}
+
 /* ------------------------------------------------------------------------ */
 describe("H-neu-1: Freeze kompakt (Schema 2) — gleiches Ergebnis, kleiner, nicht im PUT der Oberfläche", { timeout: 120000 }, () => {
   it("alle Demobetriebe: Schema 1 (je Tag volle Dienstart) und Schema 2 rechnen Stunden, Konto, Zuschläge, DATEV, Ausgleich gleich", () => {
     const b = A.demobestand();
     const monat = `${new Date().getFullYear()}-03`;
-    let personen = 0;
+    let personen = 0, umstellungAbweichend = 0;
     for (const m of b.mandanten) {
       const ab = { [monat]: { abgeschlossen: true } };
       const s1 = { ...m, monatsabschluss: ab, istEingefroren: istEinfrierenSchema1(m, monat) };
@@ -96,16 +110,32 @@ describe("H-neu-1: Freeze kompakt (Schema 2) — gleiches Ergebnis, kleiner, nic
         personen++;
         expect(A.istStunden(s2, p, monat), `${m.name} ${p.id}`).toEqual(A.istStunden(s1, p, monat));
         expect(A.stundenkonto(s2, p, monat), `${m.name} ${p.id}`).toEqual(A.stundenkonto(s1, p, monat));
-        expect(A.zuschlagStunden(s2, p, monat), `${m.name} ${p.id}`).toEqual(A.zuschlagStunden(s1, p, monat));
+        /* ZEIT-E / E6 (Z47): Ein Abschluss ohne eingefrorene Zuschläge (Schema 1, vor Rechenstand 3) wird nicht neu
+           gerechnet — Sonn-, Feiertags- und Samstagsanteile bleiben bei der Wanduhr-Teilung von damals; alles andere
+           gleich Schema 2. Der März hat die Frühjahrs-Umstellungsnacht, die Abweichung ist also echt zu sehen. */
+        const z1 = A.zuschlagStunden(s1, p, monat), z2 = A.zuschlagStunden(s2, p, monat), alt = zuschlagWanduhr(s1, p, monat);
+        expect(alt.nacht, `${m.name} ${p.id}`).toBe(z2.nacht);
+        expect(z1, `${m.name} ${p.id}`).toEqual({ ...z2, sonntag: alt.sonntag, feiertag: alt.feiertag, samstag: alt.samstag });
+        if (z1.sonntag !== z2.sonntag || z1.feiertag !== z2.feiertag || z1.samstag !== z2.samstag) umstellungAbweichend++;
         expect(A.ausgleichPruefen(s2, p, `${monat}-31`), `${m.name} ${p.id}`).toEqual(A.ausgleichPruefen(s1, p, `${monat}-31`));
       }
       expect(A.datevSaetze(s2, monat)).toEqual(A.datevSaetze(m, monat));
       const ohneLuecke = (z) => z.filter((x) => !A.istStunden(s1, m.personen.find((q) => (q.personalnummer || q.id) === x.personalnummer), monat).abschlussLuecke);
-      expect(ohneLuecke(A.datevSaetze(s2, monat))).toEqual(A.datevSaetze(s1, monat));
+      /* ZEIT-E: Sonn-/Feiertags-/Samstagszeilen von Schema 1 aus seinen (Wanduhr-)Zuschlagsstunden, alle übrigen gleich. */
+      const la = { ...LOHNARTEN_STD, ...(m.lohnarten || {}) };
+      const z47 = new Set(["sonntag", "feiertag", "samstag"].map((k) => String(la[k].nr)));
+      const ohneZ47 = (z) => z.filter((x) => !z47.has(String(x.lohnart)));
+      expect(ohneZ47(ohneLuecke(A.datevSaetze(s2, monat)))).toEqual(ohneZ47(A.datevSaetze(s1, monat)));
+      for (const x of A.datevSaetze(s1, monat).filter((y) => z47.has(String(y.lohnart)))) {
+        const p = m.personen.find((q) => (q.personalnummer || q.id) === x.personalnummer);
+        const art = ["sonntag", "feiertag", "samstag"].find((k) => String(la[k].nr) === String(x.lohnart));
+        expect(x.stunden, `${m.name} ${x.personalnummer} ${art}`).toBe(Math.round(zuschlagWanduhr(s1, p, monat)[art] * 100) / 100);
+      }
       /* Schema und Verzeichnis */
       expect(s2.istEingefroren[`*|${monat}`].v).toBe(FREEZE_SCHEMA);
     }
     expect(personen).toBeGreaterThan(20);
+    expect(umstellungAbweichend).toBeGreaterThan(0);
   });
   it("Größe (Stichprobe 60 Personen × 12 Monate): ≤ 60 B je Personentag, < 35 % von Schema 1; PUT der Oberfläche ohne Freeze und Abschluss unter RUMPF_MAX", () => {
     const monate = monateVor(OKT, 11).concat([OKT]);
