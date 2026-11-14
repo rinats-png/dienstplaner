@@ -117,13 +117,40 @@ export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
         Die Einzelkonten gezielt über das Präfix, nicht über alleKonten():
         Ein unlesbares Konto darf den Lauf nicht beenden, es landet als
         Fehler. */
+  /* 2a. E-M6: Die Codes des Raums ERST ins Widerrufbuch (außerhalb der gesicherten Ablage), dann löschen. Sonst lebten
+        sie nach dem Zurückspielen einer älteren Sicherung mit dem Raum wieder auf. Hier steht das Buch VORN, weil die
+        Ablage die Codes danach nicht mehr kennt (nichts bliebe einzusammeln).
+        Lässt sich das Buch nicht lesen oder schreiben, werden die Codes TROTZDEM gelöscht — eine Löschung hinterlässt
+        keine Codes (loeschsperre.test.js, Fälle 9 und WP-45/2) —, vorher aber in der Ablage gesperrt (scheitert das
+        Löschen danach, bleibt kein gültiger Code) und danach als NACHTRAG festgehalten (widerrufbuch.mjs,
+        nachtragAufnehmen: in der Ablage und im Speicher). Der nächste Widerruf, der Serverstart und das
+        Wiederherstellungswerkzeug (vor dem Tausch) tragen ihn ins Buch; bis dahin gilt ohnehin kein Code (Buch nicht
+        prüfbar → Anmeldung 503), /gesund meldet „Nachtrag offen“. Fehler, `vollstaendig` falsch.
+        Ein Schlüssel, den das Buch nicht eintragen kann (unbekannte Gestalt — kein Code führt zu ihm), wird nur gelöscht. */
+  const W = await import("./widerrufbuch.mjs");
+  const { alleKontenStreng, kontoSchreiben } = await import("./konten.mjs");
+  /** @type {Set<string>} */ const imBuch = new Set();
+  let buchFehler = false;
+  /** @type {Array<[string, any]>} */ let eigeneKonten = [];
+  try {
+    eigeneKonten = Object.entries(await alleKontenStreng(store)).filter(([, k]) => k && k.bestand === raum);
+    const eintragbare = eigeneKonten.map(([s]) => s).filter(W.eintragbar);
+    if (eintragbare.length) for (const s of await W.widerrufen(store, eintragbare, "raum-geloescht")) imBuch.add(s);
+  } catch (e) {
+    buchFehler = true;
+    fehler.push({ schluessel: "widerrufbuch", grund: grundVon(e) });
+    try {
+      for (const [s, k] of eigeneKonten) if (!k.gesperrt) await kontoSchreiben(store, s, W.gesperrtesKonto(k, "raumloeschung"));
+    } catch (e2) { fehler.push({ schluessel: "konto:*", grund: grundVon(e2) }); }
+  }
+  /** @type {Set<string>} */ const codesDesRaums = new Set(eigeneKonten.map(([s]) => s));
   try {
     await unterRaumsperre(KONTEN_SPERRE, async () => {
       const sammel = await store.get("konten", { type: "json" });
       if (sammel && typeof sammel === "object") {
         const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
         if (eigene.length) {
-          for (const s of eigene) delete sammel[s];
+          for (const s of eigene) { delete sammel[s]; codesDesRaums.add(s); }
           await store.setJSON("konten", sammel);
           geloescht += eigene.length;
         }
@@ -141,6 +168,34 @@ export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
     }
   } catch (e) { fehler.push({ schluessel: "konto:*", grund: grundVon(e) }); }
   for (const schl of zuLoeschen) await weg(`konto:${schl}`);
+  /* 2a'. Was nicht im Buch steht (Buch scheiterte, oder ein Code kam nach dem Lesen hinzu): jetzt eintragen, sonst als
+         Nachtrag festhalten. Erst NACH dem Löschen — die Ablage ist dann schon sicher. */
+  for (const s of zuLoeschen) codesDesRaums.add(s);
+  const offen = [...codesDesRaums].filter((s) => W.eintragbar(s) && !imBuch.has(s));
+  if (offen.length) {
+    let eingetragen = false;
+    if (!buchFehler) {
+      try { await W.widerrufen(store, offen, "raum-geloescht"); eingetragen = true; }
+      catch (e) { fehler.push({ schluessel: "widerrufbuch", grund: grundVon(e) }); }
+    }
+    if (!eingetragen) {
+      try { await W.nachtragAufnehmen(store, offen, "raum-geloescht"); }
+      catch (e) { fehler.push({ schluessel: W.NACHTRAG_SCHLUESSEL, grund: grundVon(e) }); }
+    }
+  }
+
+  /* 2c. E-M6/PR #281: Die Marken „Erstanmeldung festgelegt“ dieses Raums (erstleitung-marke:<raum>:<mandantId>) sind
+         Daten des Raums und gehen mit. Nur exakt dieser Raum (Zerlegung, nicht bloß das Präfix — „r“ trifft nie „r-x“).
+         Der Abschluss im Widerrufbuch BLEIBT (das Buch wird nur fortgeschrieben, nie gekürzt): Spielt jemand eine
+         ältere Sicherung mit diesem Raum zurück, zieht das Werkzeug bzw. der Serverstart die Marke aus dem Buch nach,
+         und die Ersteinrichtung öffnet sich nicht wieder (em6-rollback-codes.test.js, Raumlöschung und Rücksprung). */
+  try {
+    const { blobs } = await store.list({ prefix: `${W.MARKE_PRAEFIX}${raum}:` });
+    for (const b of blobs) {
+      const z = W.markeZerlegen(b.key);
+      if (z && z.raum === raum) await weg(b.key);
+    }
+  } catch (e) { fehler.push({ schluessel: `${W.MARKE_PRAEFIX}*`, grund: grundVon(e) }); }
 
   /* 2b. Persönliche Mitgliedschaften dieses Raums — und der Raumindex dazu.
 

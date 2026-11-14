@@ -34,6 +34,8 @@
                  CENTRIC_SICHERUNG_STATUS auf deren Statusdatei zeigt  → warnung
      loeschlauf  letzter Lauf des Löschlaufs (aufraeumen:letzter)      → warnung
      fehler      gleitende Fehlerzählung (gesund-zaehler.mjs)          → warnung
+     widerrufbuch  E-M6: Buch nicht prüfbar oder Widerruf nicht im Buch
+                 (widerrufbuch.mjs, widerrufbuchLage)                 → warnung
 
    Ergebnisse werden CACHE_MS lang wiederverwendet — /gesund ist
    anmeldefrei, und ein Ansturm soll nicht je Anfrage eine Probe schreiben.
@@ -41,6 +43,7 @@
 
 import { statfs, readFile, writeFile, mkdir, unlink, open, readdir, stat } from "node:fs/promises";
 import { zustandPruefen } from "./schluesselepoche.mjs";
+import { widerrufbuchLage } from "./widerrufbuch.mjs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
@@ -262,6 +265,8 @@ async function pruefenAlle(g, jetzt) {
     /* Wiederherstellungsschutz der Sicherungsschlüssel: Warnung (nicht kritisch), wenn CENTRIC_ZUSTAND nicht nutzbar
        ist; dann gilt kein Sicherungsschlüssel, der übrige Dienst ist nicht gestört. */
     schluessel: await zustandPruefen().catch(() => ({ stufe: "warnung", text: "nicht prüfbar" })),
+    /* E-M6 (widerrufbuch.mjs): Buch nicht prüfbar (kein Zugangscode gilt) oder ein Widerruf noch nicht im Buch. */
+    widerrufbuch: widerrufbuchLage(),
   };
   const stufe = Object.values(pruefungen).reduce((a, p) => schlimmer(a, p.stufe), "ok");
   const ergebnis = { stufe, pruefungen, zeit: new Date(jetzt).toISOString() };

@@ -31,6 +31,7 @@ import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenb
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen, sicherungsschluesselErsteller, sicherungsschluesselPruefen } from "../lib/arbeitssitzung.mjs";
 import { schluesselEpoche } from "../lib/schluesselepoche.mjs";
+import { istWiderrufen, widerrufen as widerrufbuchEintragen, gesperrtesKonto, kettenHuelle } from "../lib/widerrufbuch.mjs";
 import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung, raumIndex,
   schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
@@ -618,20 +619,24 @@ async function behandeln(req, context, ctx) {
         if (sB.rolle === "betreiber") return true;
         return imEigenenBetrieb(k);
       });
+      /* E-M6 (Review, Befund 3): Der Widerruf wirkt ZUERST — in der Ablage gesperrt (jedes Glied der Kette
+         `ersetztDurch`: ein älteres Bild folgt ihr nicht, kennt aber `gesperrt`, Produktion 274bfa0), Sitzungen und
+         Sicherungsschlüssel beendet. ERST DANN das Widerrufbuch (außerhalb der gesicherten Ablage). Scheitert es, bleibt
+         die Sperre wirksam; die Antwort sagt das (503), Protokoll und /gesund zeigen es, und der nächste Widerruf, der
+         Serverstart oder die Wiederherstellung mit dem Werkzeug sammeln den Eintrag aus der Ablage nach. Bis Review E-M6
+         stand das Buch vorn: Ein nicht schreibbares Buch ließ den Zugang samt Sitzungen gültig (fail-open). */
+      const kette = [...kettenHuelle(konten, erlaubt)];
       let gesperrt = 0;
-      for (const h of erlaubt) {
+      const zuSchreiben = [];
+      for (const h of new Set([...erlaubt, ...kette])) {
         const k = konten[h];
-        if (k.gesperrt) continue;
-        konten[h] = { ...k, gesperrt: true,
-          gesperrtAm: new Date().toISOString(), gesperrtDurch: sB.name || sB.rolle };
-        gesperrt++;
+        if (!k || k.gesperrt) continue;
+        konten[h] = gesperrtesKonto(k, sB.name || sB.rolle);
+        zuSchreiben.push(h);
+        if (erlaubt.includes(h)) gesperrt++;
       }
       /* Einzeln zurückschreiben — der Sammelblob wird nicht mehr gepflegt. */
-      if (gesperrt) {
-        for (const h of erlaubt) {
-          if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
-        }
-      }
+      for (const h of zuSchreiben) await kontoSchreiben(store, h, konten[h]);
       /* WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24 trägt keine Herkunft
          und hinge sonst nur an der Person. Die Sperre widerruft zusätzlich den herkunftslosen Feed der
          Person, an die der Code gebunden ist (Index feedperson:, lib/feedwiderruf.mjs). Ein Code ohne
@@ -647,7 +652,7 @@ async function behandeln(req, context, ctx) {
       /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
          noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
       let beendet = 0;
-      const gesperrteHashes = new Set(erlaubt);
+      const gesperrteHashes = new Set([...erlaubt, ...kette]);
       try {
         beendet = (await sitzungenBeendenWenn((sit) => {
           /* Die Leitung sieht nur die Sitzungen des eigenen Hauses. Der
@@ -684,6 +689,19 @@ async function behandeln(req, context, ctx) {
           { ablage: sitzungen() })).widerrufen;
       } catch { /* sie enden ohnehin beim nächsten Gebrauch (arbeitssitzungLesen) */ }
 
+      /* E-M6: jetzt ins Widerrufbuch. Auch ohne neues Ziel (nichts gefunden, schon gesperrt) wird nicht geschrieben. */
+      if (kette.length) {
+        try { await widerrufbuchEintragen(store, kette, "zugang-gesperrt"); }
+        catch {
+          /* Nur Kennungen (die letzten acht Zeichen der Prüfsumme, wie in der Konsole), nie ein Code. */
+          await protokoll("zugaenge", kS, "fehler", `Widerruf wirksam, Widerrufbuch nicht beschrieben: ${gesperrt} gesperrt (${kette.map((h) => h.slice(-8)).join(", ")}) · ${beendet} Sitzungen beendet`);
+          return antwort({ fehler: "Widerruf wirksam, Widerrufbuch nicht beschrieben.",
+            text: "Der Zugang ist gesperrt und seine Sitzungen sind beendet. Dass er auch nach dem Zurückspielen einer älteren "
+              + "Sicherung gesperrt bleibt, ist noch nicht festgehalten — der Betreiber ist informiert (Überwachung); "
+              + "der nächste Serverstart holt es nach.",
+            widerrufWirksam: true, gesperrt, sitzungenBeendet: beendet, schluesselBeendet }, 503);
+        }
+      }
       await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen, ${schluesselBeendet} Sicherungsschlüssel beendet`);
       return antwort({ ok: true, gesperrt, sitzungenBeendet: beendet, schluesselBeendet });
     }
@@ -881,7 +899,17 @@ async function behandeln(req, context, ctx) {
       if (eintragV && ersteinrichtungsZugang(eintragV)) {
         eintragV = null; fundSchluessel = null; mussUmschluesseln = false;
       }
-      const fund = { eintrag: eintragV, schluessel: fundSchluessel,
+      /* E-M6: Ein Code, der im Widerrufbuch steht (lib/widerrufbuch.mjs, außerhalb der gesicherten Ablage), gilt nie
+         wieder — auch wenn eine zurückgespielte Ablage ihn ungesperrt zeigt. Ist das Buch nicht prüfbar, gilt er
+         ebenfalls nicht (unten 503). Er läuft wie ein gesperrter Code durch die Bremse: keine Abkürzung für Rater. */
+      let widerrufUnklar = false;
+      if (eintragV) {
+        try {
+          if (await istWiderrufen(store, [neuS, altS, fundSchluessel, eintragV.ersetztDurch]))
+            eintragV = { ...eintragV, gesperrt: true };
+        } catch { widerrufUnklar = true; eintragV = { ...eintragV, gesperrt: true }; }
+      }
+      const fund ={ eintrag: eintragV, schluessel: fundSchluessel,
         umschluesseln: mussUmschluesseln };
       const zielRaum = eintragV ? eintragV.bestand : null;
       /* SI-P7: Ein nutzbarer Zugangscode (gefunden, nicht gesperrt, nicht abgelaufen, bekannte Rolle, kein Betreiber)
@@ -951,6 +979,10 @@ async function behandeln(req, context, ctx) {
 
       /* Gesperrt? Ein zurückgezogener Zugang bleibt als Eintrag stehen,
          damit derselbe Code nicht später erneut vergeben wird. */
+      if (widerrufUnklar) {
+        await protokoll("anmelden", k, "fehler", "Widerrufbuch nicht prüfbar");
+        return antwort({ fehler: "Gerade nicht verfügbar.", text: "Bitte später erneut versuchen." }, 503);
+      }
       if (eintrag.gesperrt) {
         await protokoll("anmelden", k, "abgewiesen", "gesperrt");
         return antwort({ fehler: "Dieser Zugang wurde zurückgezogen.",
