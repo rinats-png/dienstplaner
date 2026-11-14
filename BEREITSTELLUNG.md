@@ -720,9 +720,10 @@ ist ein Umbenennen.
     docker run --rm --network none --read-only --user 1000:1000 --cap-drop ALL \
       --security-opt no-new-privileges:true --env-file .env \
       -v "$PWD/sicherungen/centric-sicherung-<Zeit>:/s/sicherung:ro" \
-      -v "$PWD/data:/s/ziel" <dasselbe-Bild-wie-der-Dienst> \
+      -v "$PWD/data:/s/ziel" \
+      -v "$PWD/zustand:/zustand" -e CENTRIC_ZUSTAND=/zustand <dasselbe-Bild-wie-der-Dienst> \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
-      --sicherung /s/sicherung --ziel /s/ziel < /dev/null
+      --sicherung /s/sicherung --ziel /s/ziel --zustand /zustand < /dev/null
     docker compose rm -f -s centric-dp-web         # Container entfernen …
     docker compose up -d --pull never              # … und neu erzeugen, nicht nur neu starten
 
@@ -914,8 +915,8 @@ Ordner zurückspielen (nicht in `data/`) und dort ansehen.
       -v "$PWD/sicherungen:/sicherungen:ro" -v "$PWD/restore-test:/restore" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
-    # BE-1: eine Kopie (nie das Original) des Konto-Widerrufbuchs für den Test-Server
-    mkdir -p restore-test-zustand && sudo cp -p zustand/konto-widerrufe.json restore-test-zustand/ \
+    # BE-1: Kopien (nie die Originale) beider Widerrufbücher (Konto und Codes) für den Test-Server
+    mkdir -p restore-test-zustand && sudo cp -p zustand/konto-widerrufe.json zustand/zugang-widerrufe.json restore-test-zustand/ \
       && sudo chown -R 1000:1000 restore-test-zustand && sudo chmod 700 restore-test-zustand
     docker run --rm -p 127.0.0.1:3001:3000 --env-file .env \
       -e CENTRIC_DATEN=/data -v "$PWD/restore-test:/data" \
