@@ -1,5 +1,11 @@
 # Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Abnahme V4, Integrationskopf 76621eba oder neuer, Hauptchat aktiv)
 
+## Statusnachtrag 2026-11-14 07:3x (lesender Lauf des stündlichen Cloud-Triggers)
+- Integrationskopf: `a9cc145` (Merge #292, 2026-11-14 03:03). Seit `76621eba` per `git log --first-parent` belegt gemergt: #286 SSOT, #287 Migration Ersteinrichtungscodes (Doku), #288 Entscheidungsmatrix EM, #291 CI-Prüf-Timeout, #290 Durchsatz-Dashboard, #289 Erkennung gestrandeter Betriebe, #280 A-4 (Dienstart ohne `mindest`), #294 E2E B-7 Mitternacht, #293 Entscheidung BE1/BE3, #295 Entscheidungsvorlage konsolidiert, #296 Zeit/Betriebstag-Vertrag, #292 EM-6 widerrufene Codes Rollback.
+- Offen (GitHub, Ziel `integration/release-v4`): #281 (A-3, zuletzt 03:05 aktualisiert, Status "pending", keine Checks gemeldet), #277 (A-2), #238 (WP-I16, wartet auf Betreiber), Altlast-Entwürfe #177, #175, #168, #139, #129, #127, #115, #104. Der Abschnitt "Stand nach Abnahme V4" oben nennt #280 noch als offen; das ist überholt.
+- Koordination: Es gibt genau einen Cloud-Trigger (stündlich, `:32`). Eine zweite Hauptsitzung "CENTRIC" (Bridge, idle, zuletzt 06:20Z) ist nicht ausschließbar; daher führt dieser Lauf nur lesende Prüfung und Statuspflege aus, keine neuen Arbeitspakete. Keine Hintergrundagenten gestartet.
+- Nicht ausgeführt: kein Merge, kein Deployment, keine Sicherheitsänderung. SSOT-Werkzeug nicht ausgeführt (PT-Zahlen daher nicht neu berechnet).
+
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
