@@ -1,0 +1,116 @@
+# =====================================================================
+#  CENTRIC Dienstplanung — STAGING auf eigener VM (Variante O2)
+#  Ort auf der Staging-VM: /opt/centric-staging/compose.yml
+#  Anleitung: docs/acc45/STAGING-O2-VORBEREITUNG.md
+#
+#  VORBEREITUNG: nichts hiervon wurde ausgeführt. Es gibt noch keine VM.
+#
+#  Eigene VM, eigene Daten, eigene Geheimnisse: nichts davon teilt sich
+#  Netz, Pfeffer, Verwalterschlüssel, Ablage oder Zertifikat mit der
+#  Produktion. Das Bild läuft als DIESELBE Bildebene wie in der Produktion
+#  (gleicher Digest, gleiche Härtung wie deploy/compose.yml); nur Caddy
+#  ist hier Teil dieses Stacks, damit TLS und Zugriffsbegrenzung mitgeprüft
+#  werden.
+#
+#  Beide Bilder NUR per Digest (kein Tag, kein latest). Ohne die Variablen
+#  bricht Compose ab. Werte stehen in .env (Vorlage: env.staging.beispiel),
+#  Platzhalter in dieser Datei gibt es nicht.
+#
+#    IMAGE_DIGEST   sha256:<64 hex> des Release-Kandidaten (GHCR)
+#    CADDY_DIGEST   sha256:<64 hex> des geprüften Caddy-Bilds
+#    STAGING_HOST   staging.<domain> (Platzhalter, bis der Betreiber DNS anlegt)
+#    STAGING_ERLAUBT  Adressen, die das Staging erreichen dürfen (CIDR, Leerzeichen)
+#
+#  Befehle (im Verzeichnis /opt/centric-staging):
+#    ./betrieb.sh pruefen            Vorab: Digest-Format, .env ohne Platzhalter
+#    docker compose up -d --pull never
+#    docker compose ps | logs -f
+# =====================================================================
+name: centric-staging
+
+services:
+  centric-staging-web:
+    image: ghcr.io/rinats-png/dienstplaner@${IMAGE_DIGEST:?IMAGE_DIGEST fehlt - nur ein Digest, kein Tag}
+    pull_policy: never
+    container_name: centric-staging-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      CENTRIC_DATEN: /data
+      CENTRIC_ABLAGE: dateien
+      CENTRIC_ZUSTAND: /zustand
+      # Caddy ist die einzige vertraute Station davor (docker-Netz dieses Stacks).
+      CENTRIC_VERTRAUTE_PROXYS: 172.30.0.0/24
+    # Kein veröffentlichter Port: nur Caddy erreicht den Container.
+    networks:
+      staging-intern:
+        ipv4_address: 172.30.0.10
+    volumes:
+      - ./data:/data
+      - ./zustand:/zustand
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/gesund').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy@${CADDY_DIGEST:?CADDY_DIGEST fehlt - nur ein Digest, kein Tag}
+    pull_policy: never
+    container_name: centric-staging-caddy
+    restart: unless-stopped
+    depends_on:
+      centric-staging-web:
+        condition: service_healthy
+    environment:
+      STAGING_HOST: ${STAGING_HOST:?STAGING_HOST fehlt (staging.<domain>)}
+      STAGING_ERLAUBT: ${STAGING_ERLAUBT:?STAGING_ERLAUBT fehlt (CIDR-Liste der erlaubten Adressen)}
+    # Einzige Ports der VM nach außen; die Cloud-Firewall lässt außerdem nur 22 (Betreiberadresse) zu.
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      staging-intern:
+        ipv4_address: 172.30.0.2
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-daten:/data
+      - ./caddy-konfig:/config
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  staging-intern:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

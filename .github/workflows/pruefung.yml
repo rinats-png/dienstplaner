@@ -135,6 +135,11 @@ jobs:
       - name: E-M6, widerrufene Zugangscodes nach Rücksprung ungültig
         run: npm run pruefung:em6-rollback-codes
 
+      # Staging O2 (C1/C2): Offline-Prüfung von deploy/staging-o2/ und dem Staging-Gate-Workflow
+      # (Compose, Platzhalter, Caddyfile, Betriebsskript, Gate nur per Hand und nur lesend; kein Docker, kein Netz).
+      - name: Staging O2, Vorbereitung offline
+        run: npm run pruefung:staging-o2
+
       # WP-40: Bewertungslogik der Browser-Abnahme und Fehlertext-Verknüpfung (ohne Browser;
       # die Messung selbst läuft von Hand, siehe pruefungen/browser/wcag-wp40.mjs).
       - name: Barrierefreiheit WP-40, Browser-Abnahme ohne Browser

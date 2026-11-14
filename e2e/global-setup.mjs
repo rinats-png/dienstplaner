@@ -28,15 +28,19 @@ export default async function globalSetup() {
     for (const d of weg) await rm(d, { recursive: true, force: true }).catch(() => {});
   };
   try {
+    /* Staging-Gate (docs/acc45/STAGING-O2-VORBEREITUNG.md): E2E_EXTERN_ADMIN = Verwalterschlüssel eines bereits laufenden
+       Containers auf 127.0.0.1:E2E_PORT (das Bild des Release-Kandidaten, per Digest). Dann weder Bau noch eigener Server;
+       alles Übrige (synthetischer Demo-Bestand, Zugänge) bleibt wie beim lokalen Lauf. Ohne die Variable unverändert. */
+    const extern = process.env.E2E_EXTERN_ADMIN || "";
     let dist = process.env.E2E_DIST ? path.resolve(process.env.E2E_DIST) : null;
-    if (!dist) {
+    if (!dist && !extern) {
       dist = await mkdtemp(path.join(tmpdir(), "centric-e2e-bau-")); weg.push(dist);
       execFileSync(process.execPath, [path.join(WURZEL, "node_modules", "vite", "bin", "vite.js"), "build", "--outDir", dist, "--emptyOutDir"],
         { cwd: WURZEL, stdio: "ignore" });
     }
-    const daten = await mkdtemp(path.join(tmpdir(), "centric-e2e-daten-")); weg.push(daten);
-    const admin = "e2e-admin-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    srv = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
+    const daten = extern ? "" : await mkdtemp(path.join(tmpdir(), "centric-e2e-daten-")); if (daten) weg.push(daten);
+    const admin = extern || "e2e-admin-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    if (!extern) srv = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
       env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: dist, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: admin,
         CENTRIC_PFEFFER: "e2e-pfeffer-" + Math.random().toString(36).slice(2), CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1",
         NODE_ENV: "development", CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true" } });
