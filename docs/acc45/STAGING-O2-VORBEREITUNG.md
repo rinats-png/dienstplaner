@@ -37,7 +37,7 @@ Reihenfolge; jeder Schritt ist eine Betreiberhandlung (Kosten, DNS, Rechte oder 
 2. **Docker und Compose installieren**; Benutzer `admin` (uid 1000) anlegen, SSH nur mit Schlüssel.
 3. **DNS:** A-Eintrag `staging.<domain>` auf die VM-Adresse (Platzhalter bis zur Entscheidung über die Domain).
 4. **Verzeichnis anlegen und Dateien kopieren:** `/opt/centric-staging` mit `compose.yml`, `Caddyfile`, `betrieb.sh`,
-   `env.staging.beispiel` aus `deploy/staging-o2/`; `chmod +x betrieb.sh`; `install -d -m 700 -o 1000 -g 1000 zustand data`.
+   `env.staging.beispiel` aus `deploy/staging-o2/` sowie `freigabe-lib.sh` und `FREIGEGEBENE-IMAGES.md` aus `deploy/` (für die Sperrprüfung des Rücksprungs); `chmod +x betrieb.sh`; `install -d -m 700 -o 1000 -g 1000 zustand data`.
 5. **`.env` auf der VM füllen** (`cp env.staging.beispiel .env; chmod 600 .env`): eigene Zufallswerte für `CENTRIC_ADMIN` und
    `CENTRIC_PFEFFER` (nie die der Produktion; nie anzeigen oder weitergeben), `STAGING_HOST`, `STAGING_ERLAUBT`,
    `CENTRIC_BASIS=https://staging.<domain>`.
@@ -94,9 +94,9 @@ Alle Befehle mit `--trocken` vorab ausprobieren.
 | Fall | Befehl | Wirkung |
 |---|---|---|
 | Sicherung | `./betrieb.sh sichern` | Anwendung kurz anhalten, `./data` als Archiv mit Prüfsumme unter `./sicherungen` ablegen, starten. `./zustand` wird nie gesichert |
-| Wiederherstellung | `./betrieb.sh wiederherstellen sicherungen/data-<zeit>.tar.gz` | Prüfsumme prüfen, altes `./data` als `data.vor-wiederherstellung-<zeit>` behalten, Archiv entpacken, starten. Danach melden sich alle neu an (Schlüsselepoche, `docs/BETRIEBSHANDBUCH.md`) |
-| Merken vor Wechsel | `./betrieb.sh merken sha256:<digest>` | den **bisher laufenden** Digest für den Rücksprung ablegen |
-| Rücksprung | `./betrieb.sh zurueck` | `IMAGE_DIGEST` auf den gemerkten Vorgänger setzen und neu erstellen (Bild muss lokal liegen) |
+| Wiederherstellung | `./betrieb.sh wiederherstellen sicherungen/data-<zeit>.tar.gz` | Prüfsumme prüfen, altes `./data` als `data.vor-wiederherstellung-<zeit>` behalten, Archiv vor dem Entpacken prüfen (nur `data/`, keine absoluten Pfade, kein `..`, keine Verknüpfungen, nichts mit `.env`/compose), nur `data` entpacken, starten; bei einem Fehler wird `data` zurückgelegt und der Dienst wieder gestartet (Exit ungleich 0). Danach melden sich alle neu an (Schlüsselepoche, `docs/BETRIEBSHANDBUCH.md`) |
+| Merken vor Wechsel | `./betrieb.sh merken sha256:<digest>` | den **bisher laufenden** Digest für den Rücksprung ablegen; **gesperrte Bilder** (Freigabeliste, z. B. `f03a8514`, `0861adee`) werden verweigert |
+| Rücksprung | `./betrieb.sh zurueck` | `IMAGE_DIGEST` auf den gemerkten Vorgänger setzen und neu erstellen (Bild muss lokal liegen); ein in `FREIGEGEBENE-IMAGES.md` **gesperrtes Ziel wird verweigert** (Exit 1, `.env` bleibt unverändert), ebenso wenn `freigabe-lib.sh` fehlt |
 | Notstopp | `docker compose stop` | Dienst anhalten; lieber kein Dienst als ein unsicheres Bild |
 
 Der echte Ablauf (Sicherung, Wiederherstellung in ein leeres Verzeichnis, Rücksprung A, B, A) ist erst auf der VM nachzuweisen

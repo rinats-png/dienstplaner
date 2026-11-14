@@ -6,7 +6,8 @@
        keine veröffentlichten Ports am Anwendungscontainer, Härtung wie die Produktion
      - deploy/staging-o2/env.staging.beispiel: ausschließlich Platzhalter, Digests als <...> markiert
      - deploy/staging-o2/Caddyfile: Host und Zugriffsliste aus der Umgebung, kein trusted_proxies
-     - deploy/staging-o2/betrieb.sh: Syntax, Aufrufvertrag, bricht ohne .env ab
+     - deploy/staging-o2/betrieb.sh: Syntax, Aufrufvertrag, bricht ohne .env ab; Verhalten (Sperrprüfung bei merken/zurueck,
+       --trocken, Archivprüfung, Rückfall bei Fehlern) an einer Kopie im Temp-Verzeichnis mit Stub-docker/-tar, ohne Docker
      - .github/workflows/staging-gate.yml: nur workflow_dispatch, contents: read, kein Schreibrecht,
        keine Auslieferung, kein Aufruf aus einem anderen Workflow, abgeschaltet bis STAGING_GATE_AKTIV
        (actionlint, falls installiert; sonst nur diese Strukturprüfung)
@@ -14,8 +15,9 @@
      - docs/acc45/STAGING-O2-VORBEREITUNG.md: Pflichtabschnitte
    Es werden keine Geheimnisse gelesen oder erzeugt; alle Werte in den Dateien sind Platzhalter.
    ========================================================================== */
-import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { describe, it, expect, afterAll, vi } from "vitest";
+import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, chmodSync } from "node:fs";
+import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -161,6 +163,277 @@ describe("O2: betrieb.sh", () => {
     expect(t).toContain("--trocken");
     expect(t).not.toMatch(/echo[^\n]*\$\(wert (CENTRIC|IMAGE)/);
     expect(t).not.toMatch(/cat \.env/);
+  });
+});
+
+describe("O2: betrieb.sh Verhalten (Stub-docker, ohne Docker; Kopie im Temp-Verzeichnis)", () => {
+  const BASH = spawnSync("bash", ["-c", "echo ok"], { encoding: "utf8" }).status === 0 ? "bash" : null;
+  const GESPERRT_F03 = "sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79";
+  const GESPERRT_0861 = "sha256:0861adee" + "0".repeat(56);
+  const FREI = "sha256:" + "ab12".repeat(16);
+  const BETRIEB = "deploy/staging-o2/betrieb.sh";
+  vi.setConfig({ testTimeout: 60000 }); // jeder Fall startet mehrere bash-Prozesse (langsam unter Windows und bei Last)
+  const aufraeumen = [];
+  const posix = (x) => x.replace(/\\/g, "/");
+  const rb = (dir, skript, env = {}) =>
+    spawnSync(BASH, ["-c", skript], { cwd: dir, encoding: "utf8", timeout: 60000, env: { ...process.env, ...env } });
+
+  /* Arbeitsordner <tmp>/<zufall>/staging/ mit betrieb.sh; mitLib legt Bibliothek und Liste eine Ebene darüber ab (wie im Repository). */
+  function werkstatt({ mitLib = true } = {}) {
+    const wurzel = mkdtempSync(path.join(os.tmpdir(), "staging-o2-"));
+    aufraeumen.push(wurzel);
+    const dir = path.join(wurzel, "staging");
+    mkdirSync(dir);
+    copyFileSync(path.join(WURZEL, BETRIEB), path.join(dir, "betrieb.sh"));
+    if (mitLib) {
+      copyFileSync(path.join(WURZEL, "deploy/freigabe-lib.sh"), path.join(wurzel, "freigabe-lib.sh"));
+      copyFileSync(path.join(WURZEL, "deploy/FREIGEGEBENE-IMAGES.md"), path.join(wurzel, "FREIGEGEBENE-IMAGES.md"));
+    }
+    const stub = path.join(wurzel, "stub");
+    mkdirSync(stub);
+    writeFileSync(path.join(stub, "docker"), '#!/bin/sh\necho "$*" >> "$DOCKER_LOG"\nexit 0\n');
+    writeFileSync(
+      path.join(stub, "tar"),
+      '#!/bin/sh\nprev=""\nfor a in "$@"; do\n' +
+        '  if [ "$a" = "-xzf" ] && [ "$TAR_FAIL" = x ]; then echo "tar: simuliert" >&2; exit 2; fi\n' +
+        '  if [ "$prev" = "-czf" ] && [ "$TAR_FAIL" = c ]; then echo halb > "$a"; echo "tar: simuliert" >&2; exit 2; fi\n' +
+        '  prev="$a"\ndone\nexec "$REAL_TAR" "$@"\n',
+    );
+    chmodSync(path.join(stub, "docker"), 0o755);
+    chmodSync(path.join(stub, "tar"), 0o755);
+    const log = path.join(wurzel, "docker.log");
+    const env = { DOCKER_LOG: posix(log), STUBVERZ: posix(stub) };
+    const betrieb = (args, extra = {}) =>
+      rb(
+        dir,
+        'REAL_TAR="$(command -v tar)"; export REAL_TAR; p="$STUBVERZ"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$STUBVERZ")"; PATH="$p:$PATH" bash ./betrieb.sh ' +
+          args,
+        { ...env, ...extra },
+      );
+    const dockerLog = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []);
+    return { dir, betrieb, dockerLog, sh: (cmd) => rb(dir, cmd), lesen: (n) => readFileSync(path.join(dir, n), "utf8") };
+  }
+  afterAll(() => {
+    for (const d of aufraeumen) {
+      try {
+        rmSync(d, { recursive: true, force: true });
+      } catch {
+        /* Temp-Verzeichnis */
+      }
+    }
+  });
+
+  describe.skipIf(!BASH)("merken und zurueck prüfen das Ziel gegen die Freigabeliste", () => {
+    it("merken verweigert den gesperrten Digest f03a8514 (Exit 1, klare Meldung, nichts abgelegt)", () => {
+      const w = werkstatt();
+      for (const extra of ["", " --trocken"]) {
+        const r = w.betrieb("merken " + GESPERRT_F03 + extra);
+        expect(r.status).toBe(1);
+        expect(r.stderr).toMatch(/gesperrt und wird verweigert/);
+        expect(r.stderr).toContain("Datenschutzlücke");
+      }
+      expect(existsSync(path.join(w.dir, ".vorheriger-digest"))).toBe(false);
+    });
+
+    it("merken verweigert auch den per Präfix gesperrten Digest 0861adee", () => {
+      const w = werkstatt();
+      const r = w.betrieb("merken " + GESPERRT_0861);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/gesperrt und wird verweigert/);
+      expect(existsSync(path.join(w.dir, ".vorheriger-digest"))).toBe(false);
+    });
+
+    it("merken --trocken mit freigegebenem Digest: Exit 0, nur Ankündigung, nichts abgelegt", () => {
+      const w = werkstatt();
+      const r = w.betrieb("merken " + FREI + " --trocken");
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("[trocken]");
+      expect(existsSync(path.join(w.dir, ".vorheriger-digest"))).toBe(false);
+    });
+
+    it("merken ohne --trocken legt den freigegebenen Digest ab", () => {
+      const w = werkstatt();
+      expect(w.betrieb("merken " + FREI).status).toBe(0);
+      expect(w.lesen(".vorheriger-digest").trim()).toBe(FREI);
+    });
+
+    it("zurueck verweigert ein gesperrtes gemerktes Ziel und lässt .env und docker unberührt", () => {
+      const w = werkstatt();
+      writeFileSync(path.join(w.dir, ".vorheriger-digest"), GESPERRT_F03 + "\n");
+      writeFileSync(path.join(w.dir, ".env"), "IMAGE_DIGEST=sha256:<platzhalter>\n");
+      for (const extra of ["", " --trocken"]) {
+        const r = w.betrieb("zurueck" + extra);
+        expect(r.status).toBe(1);
+        expect(r.stderr).toMatch(/gesperrt und wird verweigert/);
+      }
+      expect(w.lesen(".env")).toBe("IMAGE_DIGEST=sha256:<platzhalter>\n");
+      expect(w.dockerLog()).toEqual([]);
+    });
+
+    it("zurueck --trocken mit freigegebenem Ziel: Exit 0, Ankündigungen, .env unverändert, docker nicht aufgerufen", () => {
+      const w = werkstatt();
+      writeFileSync(path.join(w.dir, ".vorheriger-digest"), FREI + "\n");
+      writeFileSync(path.join(w.dir, ".env"), "IMAGE_DIGEST=sha256:<platzhalter>\n");
+      const r = w.betrieb("zurueck --trocken");
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("[trocken] sed -i");
+      expect(r.stdout).toContain("[trocken] docker compose up -d --pull never");
+      expect(w.lesen(".env")).toBe("IMAGE_DIGEST=sha256:<platzhalter>\n");
+      expect(w.dockerLog()).toEqual([]);
+    });
+
+    it("zurueck ohne --trocken setzt den freigegebenen Digest und startet neu (Stub-docker)", () => {
+      const w = werkstatt();
+      writeFileSync(path.join(w.dir, ".vorheriger-digest"), FREI + "\n");
+      writeFileSync(path.join(w.dir, ".env"), "IMAGE_DIGEST=sha256:<platzhalter>\nCENTRIC_ADMIN=<x>\n");
+      expect(w.betrieb("zurueck").status).toBe(0);
+      expect(w.lesen(".env")).toContain("IMAGE_DIGEST=" + FREI);
+      expect(w.dockerLog()).toEqual(["compose up -d --pull never"]);
+    });
+
+    it("zurueck ohne .vorheriger-digest bricht ab", () => {
+      const r = werkstatt().betrieb("zurueck --trocken");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(".vorheriger-digest fehlt");
+    });
+
+    it("fehlt freigabe-lib.sh, wird verweigert (fail-closed), auch für einen sonst harmlosen Digest", () => {
+      const w = werkstatt({ mitLib: false });
+      for (const [bef, vor] of [
+        ["merken " + FREI, null],
+        ["zurueck", FREI],
+      ]) {
+        if (vor) writeFileSync(path.join(w.dir, ".vorheriger-digest"), vor + "\n");
+        const r = w.betrieb(bef);
+        expect(r.status, bef).toBe(1);
+        expect(r.stderr).toContain("freigabe-lib.sh nicht gefunden");
+      }
+    });
+
+    it("liegt die Bibliothek neben dem Skript (Anordnung auf der VM), gilt dieselbe Sperre", () => {
+      const w = werkstatt({ mitLib: false });
+      copyFileSync(path.join(WURZEL, "deploy/freigabe-lib.sh"), path.join(w.dir, "freigabe-lib.sh"));
+      copyFileSync(path.join(WURZEL, "deploy/FREIGEGEBENE-IMAGES.md"), path.join(w.dir, "FREIGEGEBENE-IMAGES.md"));
+      expect(w.betrieb("merken " + GESPERRT_F03).status).toBe(1);
+      expect(w.betrieb("merken " + FREI + " --trocken").status).toBe(0);
+    });
+  });
+
+  describe.skipIf(!BASH)("wiederherstellen: Archivprüfung vor dem Entpacken", () => {
+    /* Archiv im Arbeitsordner erzeugen; null, wenn dieses tar die Konstruktion nicht kann (Fall wird dann übersprungen). */
+    function archiv(w, name, erzeuge) {
+      const r = w.sh(
+        "mkdir -p data sicherungen && echo alt > data/a.db && " + erzeuge + " && sha256sum sicherungen/" + name + " > sicherungen/" + name + ".sha256",
+      );
+      return r.status === 0 ? "sicherungen/" + name : null;
+    }
+
+    it("gültiges Archiv: --trocken Exit 0, nur Ankündigungen, data und docker unberührt", () => {
+      const w = werkstatt();
+      const a = archiv(w, "ok.tar.gz", "tar -czf sicherungen/ok.tar.gz data");
+      expect(a).not.toBeNull();
+      const r = w.betrieb("wiederherstellen " + a + " --trocken");
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("[trocken] docker compose stop centric-staging-web");
+      expect(r.stdout).toContain("[trocken] tar -C . -xzf " + a + " data");
+      expect(w.lesen("data/a.db").trim()).toBe("alt");
+      expect(w.dockerLog()).toEqual([]);
+    });
+
+    it("gültiges Archiv ohne --trocken: data ersetzt, altes bleibt als data.vor-wiederherstellung-*, Exit 0", () => {
+      const w = werkstatt();
+      const a = archiv(w, "ok.tar.gz", "tar -czf sicherungen/ok.tar.gz data");
+      w.sh("echo neu > data/a.db");
+      const r = w.betrieb("wiederherstellen " + a);
+      expect(r.status).toBe(0);
+      expect(w.lesen("data/a.db").trim()).toBe("alt");
+      expect(w.sh("cat data.vor-wiederherstellung-*/a.db").stdout.trim()).toBe("neu");
+      expect(w.dockerLog()).toEqual(["compose stop centric-staging-web", "compose up -d --pull never"]);
+    });
+
+    it.each([
+      ["absoluter Pfad", "tar -czPf sicherungen/x.tar.gz --transform 's,^data,/tmp/staging-o2-fremd,' data", /absoluten Pfad|außerhalb von data/],
+      ["Pfad mit ..", "tar -czf sicherungen/x.tar.gz --transform 's,^data,../data,' data", /\.\. oder \.|außerhalb von data/],
+      ["Eintrag außerhalb von data/ (.env im Archivwurzel)", "echo X=1 > .env && tar -czf sicherungen/x.tar.gz data .env", /außerhalb von data\/|berührt \.env/],
+      ["data/.env", "echo X=1 > data/.env && tar -czf sicherungen/x.tar.gz data", /berührt \.env/],
+      ["data/compose.yml", "echo x: 1 > data/compose.yml && tar -czf sicherungen/x.tar.gz data", /compose-Datei/],
+    ])("lehnt ab: %s (Exit 1, nichts angehalten oder verschoben)", (_titel, erzeuge, meldung) => {
+      const w = werkstatt();
+      const a = archiv(w, "x.tar.gz", erzeuge);
+      if (!a) return; // tar kann diese Konstruktion hier nicht erzeugen
+      for (const extra of ["", " --trocken"]) {
+        const r = w.betrieb("wiederherstellen " + a + extra);
+        expect(r.status).toBe(1);
+        expect(r.stderr).toMatch(meldung);
+      }
+      expect(existsSync(path.join(w.dir, "data/a.db"))).toBe(true);
+      expect(w.sh("ls -d data.vor-wiederherstellung-* 2>/dev/null").stdout).toBe("");
+      expect(w.dockerLog()).toEqual([]);
+    });
+
+    it("lehnt Verknüpfungen im Archiv ab", () => {
+      const w = werkstatt();
+      const a = archiv(w, "l.tar.gz", "ln -s /etc/hostname data/verweis && tar -czf sicherungen/l.tar.gz data");
+      if (!a || !/^l/m.test(w.sh("tar -tvzf " + a).stdout)) return; // Dateisystem legt keine echten Verknüpfungen an
+      const r = w.betrieb("wiederherstellen " + a + " --trocken");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("Verknüpfungen");
+    });
+  });
+
+  describe.skipIf(!BASH)("Rückfall bei Fehlern (trap): kein angehaltener Dienst, kein fehlendes data", () => {
+    it("wiederherstellen: schlägt das Entpacken fehl, kommt data zurück, der Dienst startet wieder, Exit ungleich 0", () => {
+      const w = werkstatt();
+      w.sh(
+        "mkdir -p data sicherungen && echo original > data/a.db && tar -czf sicherungen/x.tar.gz data && sha256sum sicherungen/x.tar.gz > sicherungen/x.tar.gz.sha256",
+      );
+      const r = w.betrieb("wiederherstellen sicherungen/x.tar.gz", { TAR_FAIL: "x" });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain("Wiederherstellung fehlgeschlagen");
+      expect(w.lesen("data/a.db").trim()).toBe("original");
+      expect(w.sh("ls -d data.vor-wiederherstellung-* 2>/dev/null").stdout).toBe("");
+      expect(w.dockerLog()).toEqual(["compose stop centric-staging-web", "compose up -d --pull never"]);
+    });
+
+    const einrichten = (w) => {
+      w.sh(
+        "mkdir -p data zustand && echo daten > data/a.db && printf '%s\\n' 'IMAGE_DIGEST=" +
+          FREI +
+          "' 'CADDY_DIGEST=" +
+          FREI +
+          "' 'STAGING_HOST=staging.example' 'CENTRIC_ADMIN=a' 'CENTRIC_PFEFFER=b' > .env && chmod 600 .env",
+      );
+      return w.sh("stat -c %a .env").stdout.trim() === "600";
+    };
+
+    it("sichern: schlägt tar fehl, ist das halbe Archiv entfernt, der Dienst startet wieder, Exit ungleich 0", () => {
+      const w = werkstatt();
+      if (!einrichten(w)) return; // Dateisystem kennt Modus 600 nicht (pruefen verlangt ihn)
+      const r = w.betrieb("sichern", { TAR_FAIL: "c" });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain("Sicherung fehlgeschlagen");
+      expect(w.sh("ls sicherungen").stdout.trim()).toBe("");
+      expect(w.dockerLog()).toEqual(["compose stop centric-staging-web", "compose up -d --pull never"]);
+    });
+
+    it("sichern: Erfolg legt Archiv samt Prüfsumme an und startet den Dienst", () => {
+      const w = werkstatt();
+      if (!einrichten(w)) return;
+      const r = w.betrieb("sichern");
+      expect(r.status).toBe(0);
+      expect(w.sh("ls sicherungen").stdout).toMatch(/data-.*\.tar\.gz\.sha256/);
+      expect(w.dockerLog()).toEqual(["compose stop centric-staging-web", "compose up -d --pull never"]);
+    });
+
+    it("sichern --trocken: nur Ankündigungen, nichts angelegt, docker nicht aufgerufen", () => {
+      const w = werkstatt();
+      if (!einrichten(w)) return;
+      const r = w.betrieb("sichern --trocken");
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("[trocken] tar -C . -czf");
+      expect(existsSync(path.join(w.dir, "sicherungen"))).toBe(false);
+      expect(w.dockerLog()).toEqual([]);
+    });
   });
 });
 
