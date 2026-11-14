@@ -1,0 +1,47 @@
+# =====================================================================
+#  Caddy für die Staging-VM (O2). Host und Zugriffsliste kommen aus der
+#  Umgebung (compose.yml), nicht aus dieser Datei:
+#    STAGING_HOST     staging.<domain> — erst nach DNS-Eintrag durch den Betreiber
+#    STAGING_ERLAUBT  CIDR-Liste, z. B. die Betreiberadresse und die Prüfgeräte
+#  Vor dem Neuladen: caddy validate --config /etc/caddy/Caddyfile
+#  Hintergrund: docs/CADDY-UND-XFF.md (kein trusted_proxies: Caddy ist die erste Station).
+# =====================================================================
+{
+	# Staging ist nicht öffentlich: kein Eintrag in Verzeichnisse, kein Admin-Endpunkt.
+	admin off
+}
+
+{$STAGING_HOST} {
+	# TLS und http->https macht Caddy selbst (automatic HTTPS, Zertifikat von Let's Encrypt).
+
+	encode zstd gzip
+
+	# Kontrollierter Zugriff: nur erlaubte Adressen; alle anderen bekommen 403 ohne Inhalt.
+	@fremd not remote_ip {$STAGING_ERLAUBT}
+	respond @fremd 403
+
+	# Suchmaschinen ausschließen (Staging ist kein öffentlicher Auftritt).
+	header {
+		defer
+		X-Robots-Tag "noindex, nofollow"
+		?Strict-Transport-Security "max-age=31536000"
+		?X-Content-Type-Options "nosniff"
+		?X-Frame-Options "SAMEORIGIN"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		?Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
+		-Server
+		-X-Powered-By
+	}
+
+	reverse_proxy centric-staging-web:3000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+	}
+
+	# Kein Zugriffsprotokoll (siehe Produktionsvorlage: IP-Adressen im Klartext brauchen eine Löschfrist).
+}
