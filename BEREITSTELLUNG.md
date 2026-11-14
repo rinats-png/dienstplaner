@@ -914,15 +914,24 @@ Ordner zurückspielen (nicht in `data/`) und dort ansehen.
       -v "$PWD/sicherungen:/sicherungen:ro" -v "$PWD/restore-test:/restore" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
+    # BE-1: eine Kopie (nie das Original) des Konto-Widerrufbuchs für den Test-Server
+    mkdir -p restore-test-zustand && sudo cp -p zustand/konto-widerrufe.json restore-test-zustand/ \
+      && sudo chown -R 1000:1000 restore-test-zustand && sudo chmod 700 restore-test-zustand
     docker run --rm -p 127.0.0.1:3001:3000 --env-file .env \
       -e CENTRIC_DATEN=/data -v "$PWD/restore-test:/data" \
+      -e CENTRIC_ZUSTAND=/zustand -v "$PWD/restore-test-zustand:/zustand" \
       "ghcr.io/rinats-png/dienstplaner@$(sed -n 's/^IMAGE_DIGEST=//p' .env)"
 
 (Dasselbe Bild wie der Dienst, per Digest aus der `.env` — nie `latest`: das lokale
 `latest` auf dem VPS ist ein altes, gesperrtes Bild.)
 
+Die Sicherung trägt den Anker des Konto-Widerrufbuchs (BE-1), `zustand/` ist aber nie darin.
+Ohne die Kopie des Buchs antwortet die Kontoanmeldung des Test-Servers gewollt mit 503
+(fail-closed: ein Rücksprung ohne Buch ließe gesperrte Konten wieder aufleben). Bei Verlust des
+Servers dasselbe mit der getrennt gesicherten Kopie (siehe Konto-Widerrufbuch oben).
+
 Gegen `127.0.0.1:3001` (SSH-Tunnel) anmelden und einen Betrieb öffnen; danach
-Container beenden und `restore-test/` löschen.
+Container beenden und `restore-test/` sowie `restore-test-zustand/` löschen.
 
 Ein Restore, der nicht gegen die Sicherung verglichen wurde, ist nicht geprüft.
 Belastbar ist der Vergleich Datei für Datei: Jede Datei unter `daten/` der Sicherung

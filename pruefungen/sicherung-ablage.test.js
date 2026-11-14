@@ -16,7 +16,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile, stat, copyFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -233,6 +233,18 @@ describe("Sichern und Wiederherstellen — der ganze Weg", () => {
     // Der Sicherungsschlüssel dagegen wirkt weiter.
     expect(await arbeitAblage().get(S.sicherungsSchluessel("roh-schluessel-1"), { type: "json" }))
       .toMatchObject({ bestand: raumA });
+
+    // BE-1: Die Ablage trägt den Anker des Konto-Widerrufbuchs, der neue Ort hat aber noch kein Buch
+    // (zustand/ wird nie mitgesichert). Das ist der gefährliche Fall — ein Rücksprung ohne Buch ließe gesperrte
+    // Konten und entzogene Mitgliedschaften wieder aufleben —, also kein Konto-Zugang (fail-closed, 503).
+    const ohneBuch = await anmelden(k.email);
+    expect(ohneBuch.status).toBe(503);
+    expect(ohneBuch.keks).toBeFalsy();
+    // Dokumentierter Weg (BEREITSTELLUNG.md §5.4): die getrennt gesicherte Kopie des Konto-Widerrufbuchs nach
+    // zustand/ legen, dann erst starten. Hier: das Buch der Quelle (<daten>-zustand) an den neuen Ort.
+    const { KONTOBUCH_DATEI } = await import("../server/lib/kontowiderrufbuch.mjs");
+    await mkdir(`${neu}-zustand`, { recursive: true });
+    await copyFile(path.join(`${quelle}-zustand`, KONTOBUCH_DATEI), path.join(`${neu}-zustand`, KONTOBUCH_DATEI));
 
     // Anmeldung und Betriebsauswahl gehen wieder.
     const a2 = await anmelden(k.email);
