@@ -35,6 +35,7 @@
    ========================================================================== */
 import { pauseZuLang } from "./zeitregeln.mjs";
 import { dienstAm, imDienst } from "./fachpruefung.mjs";
+import { betriebstag, BETRIEBSZONE } from "./betriebszeit.mjs";
 
 const TAG_MS = 86400000;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
@@ -58,9 +59,9 @@ const utc = (s) => new Date(`${s}T00:00:00Z`);
 const iso = (d) => d.toISOString().slice(0, 10);
 export const tagePlus = (s, n) => iso(new Date(utc(s).getTime() + n * TAG_MS));
 
-/** Das heutige Datum dort, wo der Betrieb arbeitet. */
+/** Das heutige Datum dort, wo der Betrieb arbeitet — Alias für betriebstag(jetzt, Europe/Berlin) (WP-ZEIT, ZEIT-A). */
 export function heuteBerlin(jetzt = new Date()) {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
+  return betriebstag(jetzt, BETRIEBSZONE);
 }
 
 /* --- Offener Stempelvorgang: technische Zuordnungsgrenze (Geo-Spezifikation B6) ---

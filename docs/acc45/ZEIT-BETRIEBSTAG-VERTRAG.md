@@ -422,11 +422,12 @@ Weitere: Fehlalarme der neuen Plausibilitätsregeln (Pilot mit Zählung, Schwell
 Betreiberentscheidung E6 (2026-11-14, bindend): Korrektur jetzt für **offene** Abrechnungszeiträume; **abgeschlossene** Monate bleiben unverändert (keine Neuberechnung, keine stille Migration); historische Korrekturen nur über den kontrollierten Revisionsweg; Abrechnungstag bleibt Europe/Berlin (E7, unberührt); eingefrorene Abrechnungsgrundlagen bleiben; nur Europe/Berlin (E1 a).
 
 - **Rechnung** (`server/lib/isteinfrieren.mjs`): `tagesanteile(datum, da, stand)` teilt ab Rechenstand 3 an der wirklichen Mitternacht (Zeitpunkte über `Intl.DateTimeFormat` mit `timeZone: "Europe/Berlin"`, `berlinZeitpunkt`); Dauer = Lohndauer (`bruttoAm`/`uhrversatz`), sodass Σ Tagesanteile = bezahlte Bruttodauer an jedem Tag (Test über 2026–2027). Für jede eindeutige Wanduhrzeit sind die Minuten exakt der Abstand der Zeitpunkte. Nachtstunden waren schon richtig und bleiben unverändert.
+- **Review #303 (Beginn genau 02:00 am Umstellungstag, ≥ 22 h):** Der Beginn wurde für die Mitternachtsteilung anders aufgelöst als für die Dauer (`uhrversatz` zählt den Sprung bei Beginn = Sprungpunkt nicht). Folge vorher: Herbst 25.10.2026 02:00–00:30 → Folgetag **−30 min**; Frühjahr 29.03.2026 02:00–00:00 → 60 min fielen weg. Behoben ohne Kappung: der Beginn wird wie in `bruttoAm` als „nach dem Sprung" gelesen (`uhrversatz(…, von + 1)`), der Folgetag erhält Bruttodauer − erster Teil; Teile nie negativ, Σ = `bruttoAm`, Folgetag = Wanduhrminuten nach Mitternacht (Durchlauf 02:00–02:59 × 22–24 h an vier Umstellungstagen im Test). Im Herbst exakt die wirklichen Minuten (spätere 02:00); im Frühjahr folgt die Dauer weiter der Lohnrechnung (Z22).
 - **Rechenstand:** `RECHEN_STAND` 2 → 3 (`server/lib/lohnrechnung.mjs`); der Abschluss schreibt `rv: 3` ins Verzeichnis.
 - **Abgeschlossene Monate:** Schema ≥ 2 lesen weiter nur `z` aus dem Freeze; Altabschlüsse ohne `z` (Schema 1) rechnen mit dem Rechenstand ihres Abschlusses (`zuschlagStand`: `rv` ≥ 3, sonst Wanduhr-Teilung 2). Nachweis: Freeze, Zuschlagsstunden, Zuschlagswert und DATEV-Datei eines vor ZEIT-E abgeschlossenen Monats SHA-256-gleich zum Stand `d84e4a83` (`pruefungen/zeit-e-zuschlaege-dst.test.js`). Die Lohnausgabe nennt wie vorgesehen (N-d) „Abschluss mit Rechenstand 2 … Die eingefrorenen Werte gelten unverändert."
 - **Revisionsschnittstelle (nicht neu gebaut):** Eine historische Korrektur eines abgeschlossenen Monats geschieht nur über Wiederöffnen mit Grund (`monatsabschluss.mjs wiederoeffnen`, protokolliert) und neuen Abschluss bzw. die Korrekturrevision WP-16c; der neue Abschluss friert mit dem dann gültigen Rechenstand ein (`rv: 3`, neue Kennung `stand`), Folgemonate melden „Vormonat geändert" (A-1). Kein Sammel-Umrechnen, kein Hintergrundlauf.
 - **Vorher/nachher (offen, je Person):** Sa 24.10.2026 22:00 → So 25.10. 06:00: Sonntag 6 h → **7 h** (Samstag 2 h, Nacht 23–06 8 h unverändert). Sa 28.03.2026 22:00 → So 29.03. 06:00: Sonntag 6 h → **5 h**. Sa 30.10.2027 22:00 → So 31.10.2027 (Reformationstag, z. B. BB): Feiertag 6 h → **7 h**.
-- **Folgearbeit:** nach Merge von PR #301 `berlinZeitpunkt` durch `zeitpunktAusWanduhr` aus `server/lib/betriebszeit.mjs` ersetzen. `src/pruefung.jsx` (Selbsttest-Seite) hat eine eigene Kopie der alten Teilung — nur Anzeige im Selbsttest, nicht abrechnungswirksam.
+- **Folgearbeit:** `server/lib/betriebszeit.mjs` (PR #301, gemergt) bietet bisher nur Zeitpunkt → Betriebstag/Wanduhr, keine Abbildung Wanduhr → Zeitpunkt; `berlinZeitpunkt` bleibt daher lokal, bis die Zeitbasis eine solche Funktion mit derselben Auflösung (Lücke vorwärts, doppelte Stunde spät) hat. `src/pruefung.jsx` (Selbsttest-Seite) hat eine eigene Kopie der alten Teilung — nur Anzeige im Selbsttest, nicht abrechnungswirksam.
 - **Offen (Z22 [A]):** Dienstbeginn/-ende in der Frühjahrslücke bzw. doppelten Herbststunde folgt weiter der Lohnrechnung (`uhrversatz`), nicht einer zweiten Lesart.
 
 ---
@@ -448,3 +449,36 @@ Betreiberentscheidung E6 (2026-11-14, bindend): Korrektur jetzt für **offene** 
 
 ## 12. Quellen im Repository
 Betreiberentscheidungen: dieser Auftrag (2026-11-14); `docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md`; Geo-Spezifikation B4–B7 (zitiert in `zeiterfassung.mjs`); WP-06/07/14/16/16c/17/43 (zitiert in den genannten Modulen); `deploy/FREIGEGEBENE-IMAGES.md:37`.
+---
+
+## 13. Betreiberentscheidungen E1–E8 (2026-11-14, bindend) und Umsetzungsstand
+
+Die Entscheidungen ersetzen die Empfehlungen aus § 11 dort, wo sie abweichen.
+
+| # | Entscheidung |
+|---|---|
+| E1 | Release 1: nur `Europe/Berlin`. Die Architektur nimmt die Zone als Parameter (späterer IANA-Verlauf möglich), nicht Teil des Umfangs. |
+| E2 | Zonenwechsel frühestens zum nächsten Monatsersten, ≥ 24 h Vorlauf, geplanter Wechsel stornierbar, nie rückwirkend. |
+| E3 | Online: Serveruhr maßgeblich; Gerätezeit nur zusätzlich als `geraetAm` (Plausibilität). Offline: ursprünglicher Ereigniszeitpunkt bleibt, Servereingang getrennt gespeichert. |
+| E4 | Plausibilitätsschwellen **nicht** je Betrieb einstellbar. |
+| E5 | Plausibilität nur für Datenintegrität; **keine** personenbezogene Häufigkeitsauswertung, keine Leistungs- oder Verhaltenskontrolle. Verständlicher Informationstext für Beschäftigte und einer für die Mitbestimmung des Betriebsrats (Dokumentation; ersetzt keine rechtliche Freigabe). |
+| E6 | Zeitumstellung bei Sonn-/Feiertagszuschlägen (Z47) **jetzt** für offene Abrechnungszeiträume; abgeschlossene Monate unverändert, historische Korrekturen nur über die kontrollierte Revision. |
+| E7 | Abrechnungstag bleibt Europe/Berlin; bestehende unveränderliche Abrechnungsgrundlagen bleiben. |
+| E8 | Gerätezeitzone wird nicht als eigenes Personenmerkmal gespeichert; maßgeblich ist die Betriebszone; eine abweichende Gerätezone allein erzeugt **keinen** Prüffall. |
+
+### 13.1 Umsetzungsstand
+
+| Teilpaket | Stand |
+|---|---|
+| **T1 = ZEIT-A (Kern) + ZEIT-C (Kern)** | `server/lib/betriebszeit.mjs` (`betriebstag`, `wanduhr`, `montagDerWoche`, Positivliste `zoneErlaubt`, fail-closed); `heuteBerlin` als Alias; `heute()` der Planrechnung = Berliner Kalendertag in Browser und Server (Z02, mit Z04–Z06, Z14–Z16, Z56); `stempelVorgang` ohne Gerätetag (Z01); Modulansicht (Z18); `ankerMontag` (P3). Tests `pruefungen/betriebstag.test.js` (DST 2026-03-29/2026-10-25, Mitternacht, Nachtdienste, Prozesszonen UTC/Los Angeles/Auckland/Kiritimati). Keine Datenwirkung, keine Migration. |
+| ZEIT-A Rest | `zeitpunktAusWanduhr` (Frühjahrslücke, Z22), `zoneZum` (mit ZEIT-B), `uhrzeitBerlin`/`berlinZeitpunkt`/`laufenderTag` als Aliase. |
+| ZEIT-C Rest | Anzeigen ohne Zone (Z13, Z16 `wann`, Z17 Protokolltexte), Z19 `src/pruefung.jsx` (Selbsttest), `seit` in `leerbetrieb.mjs` (UTC-Datum), Hinweise `monotonMs`/`letzterKontaktAm` erfassen, Playwright-Zonenprojekte (T-E2E-TZ). |
+| ZEIT-B | offen — Zeitmodell 2, `eingegangenAm` immer, Zonenverlauf (E2), Schalter `CENTRIC_ZEITMODELL`, Rücksprungsperre. |
+| ZEIT-D | offen — Plausibilitätsgründe (E3–E5, E8), Informationstexte Beschäftigte/Betriebsrat (E5). |
+| ZEIT-E | offen — **Z47 Zuschläge Zeitumstellung (E6, release-relevant)**, ICS-Zone, Z57 Protokollzeiten; Z56 ist mit T1 erledigt. |
+| ZEIT-F / ZEIT-G | offen — Restmatrix § 9, Reviews. |
+
+### Hinweise aus dem Review von T1 (2026-11-14)
+
+- **Intl-Voraussetzung:** `heute()` (`betriebszeit.mjs`) braucht `Intl.DateTimeFormat` mit Zeitzonenunterstützung. Fehlt sie, wirft die Funktion einen Fehler; es gibt bewusst **keinen** Rückfall auf das Gerätedatum, weil der stille Rückfall genau den Fehler wieder einführen würde, den T1 behebt. Jeder unterstützte Browser (seit 2017) und die Server-Laufzeit erfüllen das. Vor einer Erweiterung des Browserumfangs ist das zu prüfen.
+- **Leistung:** `heute()` rechnet bei jedem Aufruf `formatToParts` (der Formatierer ist gecacht). In heißen Schleifen (`plan.mjs` ~255/258) ist das nicht gemessen; bei Auffälligkeiten den Tageswert je Render einmal berechnen und weiterreichen.

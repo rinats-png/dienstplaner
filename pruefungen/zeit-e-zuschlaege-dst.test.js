@@ -159,6 +159,37 @@ describe("ZEIT-E Z47: Tagesanteile mit wirklichen Minuten in Europe/Berlin", () 
     expect(anteile("2026-10-24", "21:30", "07:15", 1)).toEqual([["2026-10-24", 150], ["2026-10-25", 435]]);
     expect(anteile("2026-10-24", "21:30", "07:15")).toEqual([["2026-10-24", 150], ["2026-10-25", 495]]);
   });
+
+  it("Beginn genau 02:00 am Umstellungstag, 22–24 h: keine negativen Minuten, nichts fällt weg (Review #303)", () => {
+    /* Vorher: Herbst 25.10. 02:00–00:30 → [1350, −30]; Frühjahr 29.03. 02:00–00:00 → [1260] (60 min fehlten). Beginn
+       02:00 gilt wie in bruttoAm/uhrversatz als nach dem Sprung; der Folgetag bekommt genau die Wanduhrminuten nach
+       Mitternacht (der Montag hat keine Umstellung). */
+    expect(anteile("2026-10-25", "02:00", "00:30")).toEqual([["2026-10-25", 1320], ["2026-10-26", 30]]);
+    expect(anteile("2026-10-25", "02:00", "00:00")).toEqual([["2026-10-25", 1320]]);
+    expect(anteile("2026-10-25", "02:00", "02:00")).toEqual([["2026-10-25", 1320], ["2026-10-26", 120]]);
+    expect(anteile("2026-03-29", "02:00", "00:30")).toEqual([["2026-03-29", 1320], ["2026-03-30", 30]]);
+    expect(anteile("2026-03-29", "02:00", "00:00")).toEqual([["2026-03-29", 1320]]);
+    expect(anteile("2026-03-29", "02:00", "02:00")).toEqual([["2026-03-29", 1320], ["2026-03-30", 120]]);
+    /* Herbst eindeutig nachrechenbar: Beginn = die spätere 02:00 (01:00Z), Mitternacht 23:00Z = 22 h. */
+    expect((IE.berlinZeitpunkt("2026-10-25", 1440) - Date.UTC(2026, 9, 25, 1, 0)) / 60000).toBe(1320);
+    /* Durchlauf: alle Beginne 02:00–02:59 an vier Umstellungstagen, Dauer 22–24 h (Wanduhr). */
+    let n = 0;
+    for (const d of ["2026-03-29", "2026-10-25", "2027-03-28", "2027-10-31"]) {
+      for (let sm = 120; sm < 180; sm++) for (let dauer = 22 * 60; dauer <= 24 * 60; dauer += 15) {
+        const em = (sm + dauer) % 1440;
+        const hm = (x) => `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`;
+        const x = da(hm(sm), hm(em));
+        const t = IE.tagesanteile(d, x);
+        const ctx = `${d} ${x.start}-${x.ende}`;
+        for (const z of t) expect(z.minuten, ctx).toBeGreaterThan(0);
+        expect(t.reduce((a, z) => a + z.minuten, 0), ctx).toBe(Math.round(bruttoAm(d, x) * 60));
+        const nach = t.find((z) => z.datum === addDays(d, 1));
+        expect(nach ? nach.minuten : 0, ctx).toBe(sm + dauer > 1440 ? sm + dauer - 1440 : 0);
+        n++;
+      }
+    }
+    expect(n).toBe(4 * 60 * 9);
+  });
 });
 
 /* ------------------------------------------------------------------------ */

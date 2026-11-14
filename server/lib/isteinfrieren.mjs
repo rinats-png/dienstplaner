@@ -228,8 +228,10 @@ export function nachtAnteilAm(datum, d, einst) {
    Revisionsweg (Wiederöffnen mit Grund und neuer Abschluss, WP-16/WP-16c):
    Der neue Abschluss friert mit dem dann gültigen Rechenstand ein (rv).
 
-   Folgearbeit: Nach dem Merge von PR #301 (server/lib/betriebszeit.mjs)
-   berlinZeitpunkt durch zeitpunktAusWanduhr der Zeitbasis ersetzen.
+   Folgearbeit: server/lib/betriebszeit.mjs (PR #301) bietet bisher keine
+   Abbildung Wanduhr → Zeitpunkt (nur Zeitpunkt → Betriebstag/Wanduhr).
+   berlinZeitpunkt erst dorthin verlegen, wenn die Zeitbasis eine solche
+   Funktion mit derselben Auflösung (Lücke vorwärts, doppelte Stunde spät) hat.
    -------------------------------------------------------------------------- */
 export const BETRIEBSZONE_ZUSCHLAEGE = "Europe/Berlin";
 /** Rechenstand vor ZEIT-E: Kalendertage an der Wanduhr, ohne Zeitumstellung (abgeschlossene Altmonate). */
@@ -275,14 +277,18 @@ export function tagesanteile(datum, da, stand = RECHEN_STAND) {
   }
   /* Beginn als Zeitpunkt ab der (immer eindeutigen) Mitternacht des Tages, Ende = Beginn + wirkliche Dauer — dieselbe
      Dauer wie bruttoAm/dauerAm (Lohn), auch wenn Beginn oder Ende in der Frühjahrslücke bzw. der doppelten
-     Herbststunde liegen (Z22 offen). Für jede eindeutige Wanduhrzeit ist das genau berlinZeitpunkt(datum, s|e). */
+     Herbststunde liegen (Z22 offen). Für jede eindeutige Wanduhrzeit ist das genau berlinZeitpunkt(datum, s|e).
+     Beginn GENAU 02:00 am Umstellungstag: uhrversatz zählt den Sprung dann nicht in die Dauer (Beginn gilt als
+     nach dem Sprung), also zählt er hier in den Abstand zur Mitternacht (von + 1: Sprungpunkt ≤ Beginn). Sonst
+     lag der Beginn im Herbst eine Stunde zu früh (25.10. 02:00–00:30: Folgetag −30 Min.) und im Frühjahr eine
+     Stunde zu spät (29.03. 02:00–00:00: 60 Min. fielen weg). Die Teile ergeben immer die Gesamtdauer. */
   const [von, bis] = fenster(datum, da);
-  const a = berlinZeitpunkt(datum, 0) + (s + uhrversatz(von - s, von)) * 60000;
-  const b = a + (bis - von + uhrversatz(von, bis)) * 60000;
+  const dauer = bis - von + uhrversatz(von, bis);
+  const a = berlinZeitpunkt(datum, 0) + (s + uhrversatz(von - s, von + 1)) * 60000;
   const mitternacht = berlinZeitpunkt(datum, 1440);
-  const ersterTeil = Math.round((Math.min(b, mitternacht) - a) / 60000);
+  const ersterTeil = Math.max(0, Math.min(dauer, Math.round((mitternacht - a) / 60000)));
   if (ersterTeil > 0) out.push({ datum, minuten: ersterTeil });
-  if (e > 1440) out.push({ datum: addDays(datum, 1), minuten: Math.round((b - mitternacht) / 60000) });
+  if (dauer - ersterTeil > 0) out.push({ datum: addDays(datum, 1), minuten: dauer - ersterTeil });
   return out;
 }
 

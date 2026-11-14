@@ -1,7 +1,16 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-14, Integrationskopf 7833f46e oder neuer, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-14, Integrationskopf d84e4a83 oder neuer, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand 2026-11-14 (Betreiberentscheidungen Pakete A, B, C; Integrationskopf `d84e4a83`)
+
+- **Entschieden** (Statusstufe `entschieden`, Einzelheiten und Stufen je Paket in `ENTSCHEIDUNGSLISTE.md` Abschnitt A): WP-ZEIT E1 bis E8, `mindest` Q1 bis Q5 (#280), IMP-6 Q1 bis Q5, WP-19.5 (§ 43b, getrennt, keine Anrechnung), BE-1 bis BE-3, Staging O2 und Gate-Vorbereitung, Digest-Abweichung nur lesend darstellen, Branch-Schutz nur vorbereiten und prüfen, Betreiberaufgaben trennen.
+- **Eine bestätigte Produktentscheidung ist keine Produktionsfreigabe.** Für diese Punkte sind technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben und produktiv aktiviert weiterhin **nicht** erreicht (Ausnahme: der Vertrag WP-ZEIT ist als Dokument integriert, #296). Im SSOT ist die Stufe `entschieden` nicht im Schema; sie steht in den `notiz`-Feldern (Marke „Entscheidungsstand 2026-11-14“ bei IMP-6, WP-19.5, WP-I16, ABN-A2, ABN-A4, ABN-S2, WP-ST1, ABNAHME-V4). WP-ZEIT hat im SSOT noch kein eigenes Paket.
+- **Weiter offen** (siehe `ENTSCHEIDUNGSLISTE.md` Abschnitt B): #277/S-1/S-2/X1 (gesperrt bis zur Sicherheitsbewertung mit Grenzwerten, Angriffsbedingungen, Auswirkung, Alternativen, Negativtests); #238 (Schreibrecht nicht freigegeben; KI-Pause aktivieren/aufheben, wer BR-Konten zuweist, Umgehung über Rollenvergabe); E-M1 bis E-M8; IMP-6 Punkte 6 bis 8; Bildfrage (Ist-Bild klären); Sicherungskopie für den Erkennungslauf #289; externe Betreiberaufgaben.
+- **Korrektur IMP-6:** Die frühere Angabe „Q1 bis Q8“ ist falsch. `IMP-6-MEHRFACHMODELLE.md` hat fünf nummerierte Fragen; die Nummern 6 bis 8 stammen aus der Beschreibung von PR #263 (Wirkung auf die Planrechnung, Art. 15 DSGVO, `/api/wiederherstellen`) und sind nicht entschieden. Offene Prüfung zu Q4: Vollständigkeit der Selbstauskunft für `schichtmodellZuordnungen`; keine Betriebsrat-Leserechte.
+- Neue Dokumente: `PROD-DIGEST-ABWEICHUNG.md` (Produktionsbild gegen Freigabeliste, lesende Prüfkommandos, keine Bildänderung), `BRANCH-SCHUTZ-PRUEFUNG.md` (lesender Ist-Stand: kein Schutz und keine Rulesets auf `main`, `integration/release-v4`, `koordination/lease`; Claude ändert nichts), `BETREIBERAUFGABEN-RELEASE.md` (acht Betreiberaufgaben, getrennt in Claude, Betreiber, extern).
+- Grenzen unverändert: kein Merge nach `main`, kein Deployment, keine Produktionsmigration, keine strengen Regeln für Bestandsbetriebe ohne weiteren Schritt.
 
 ## Stand 2026-11-14 (Integrationskopf `7833f46e`, Merge #281)
 
@@ -51,7 +60,7 @@ Pilotabschluss E-24 danach 10 bis 15 Arbeitstage. Mit Pentest vor dem Piloten im
 - Integrationskopf: `2f55d243` (Merge #266) oder neuer. Seit #256 gemergt: #257 SSOT; #258 WP-21 Teil 4; #259 SSOT; #260 Bereitschaftsnachtrag; #261 Entscheidungen 2026-11-13; #262 WP-33 Teil 3 (Playwright und axe); #263 IMP-6 mehrere Modelle; #264 SSOT; #265 Nachholreview WP-19-Module; #266 Nachholreview Stempelkette; #267 WP-19.6 Teil 2 (Überlappungen als Vereinigung gezählt, behebt M-BD1); #268 WP-14c Teil 2 (M-14c-1: Pause gleich Anwesenheit wird Prüffall); #269 WP-33 Teil 4 (Toast-Kontrast 1,98:1 auf 7,36:1 hell und 11,0:1 dunkel, jeder Toast deterministisch mit axe geprüft).
 - Nachholreviews (siehe `DIREKTMERGE-ABGLEICH-2026-11-13.md`, Abschnitt "Nachholreviews"): reviewt true bei WP-16b, WP-07b, WP-19.2, 19.3, 19.8, 19.9; teilweise bei WP-14c, WP-19.5, WP-19.6. Kein Paket INTEGRATED, keine PR-Nummern für Direkt-Merges.
 - Offene Befunde: WP-19.5 M-PQ1 (Betreuungskraft als "assistenz" zählt als Pflegekraft); WP-19.5/19.6/19.2/19.9 mittlere Befunde (Wachbuch-Einheit frei wählbar, Rotation ohne tagesgenaue Wirkung, Monatsabschluss bei Bereitschaft).
-- Offene Betreiberfragen: IMP-6 Q1 bis Q8 (siehe `IMP-6-MEHRFACHMODELLE.md`); WP-I4 fünf Fragen (siehe Stand nach #256); WP-14c zwei Fragen (a: ausdrücklich bestätigter Tag mit 0 h, b: Altdaten-Prüffälle blockieren den Monatsabschluss?) plus F6a/F6b; WP-19.5 Q2a (Betreuungskräfte § 43b getrennt, keine Anrechnung).
+- Offene Betreiberfragen (Stand 2026-11-13; IMP-6 Q1 bis Q5 sind am 2026-11-14 entschieden, die Zählung bis Q8 war falsch, siehe oben): IMP-6 (siehe `IMP-6-MEHRFACHMODELLE.md`); WP-I4 fünf Fragen (siehe Stand nach #256); WP-14c zwei Fragen (a: ausdrücklich bestätigter Tag mit 0 h, b: Altdaten-Prüffälle blockieren den Monatsabschluss?) plus F6a/F6b; WP-19.5 Q2a (Betreuungskräfte § 43b getrennt, keine Anrechnung).
 - SSOT-Stand: WP-33 bleibt IN_PROGRESS; WP-14c, WP-19.5, WP-19.6 bleiben REVIEW bzw. BLOCKED, Delta-Reviews der Behebungen #267 und #268 stehen aus.
 
 - Vollständiger Bereitschaftsnachweis und Lease-Freigabe (Epoche 10): `BEREITSCHAFTSANALYSE-2026-11-12.md`, Abschnitt "Nachtrag 2026-11-13".

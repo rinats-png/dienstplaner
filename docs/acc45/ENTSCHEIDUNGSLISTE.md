@@ -1,57 +1,106 @@
 # Entscheidungsliste für den Betreiber (Einzelquelle)
 
-Stand: 2026-11-14 (Integrationskopf `7833f46e`). Nur Dokumentation, keine Entscheidung ist hier getroffen.
-Diese Liste ist die **einzige** priorisierte Zusammenfassung der offenen Betreiberentscheidungen. Statusberichte
+Stand: 2026-11-14 (Integrationskopf `d84e4a83`). Nur Dokumentation, kein Produktcode.
+Diese Liste ist die **einzige** priorisierte Zusammenfassung der Betreiberentscheidungen. Statusberichte
 verweisen auf diese Datei und wiederholen sie nicht. Bei Abweichung gilt der Wortlaut der jeweiligen Quelle.
 Wo eine Aussage in den Quellen nicht eindeutig nachgesehen wurde, steht „Quelle prüfen“.
 
-Spalten: **ID**, **Frage**, **Empfehlung** (wo bekannt), **Folge bei Nichtentscheidung**, **Quelle**.
+> **Eine bestätigte Produktentscheidung ist keine Produktionsfreigabe.** „Entschieden“ heißt: Die Regel gilt als
+> Vorgabe für die Umsetzung. Sie heißt nicht, dass sie gebaut, geprüft, integriert, auf Staging geprüft, fachlich
+> freigegeben oder produktiv aktiviert ist. Es gibt weiterhin kein Deployment, keine Produktionsmigration und keinen
+> Merge nach `main` ohne ausdrückliche weitere Freigabe.
 
-## Priorität 1 — release-kritisch
+## Statusstufen (je Paket getrennt führen)
+
+`entschieden` → `technisch umgesetzt` → `reviewt` → `integriert` → `staging-geprüft` → `fachlich freigegeben` →
+`produktiv aktiviert`. Im SSOT (`work-packages.json`) gibt es für die Stufen nach `entschieden` die Felder
+`implementiert`/`lokalGetestet`, `reviewt`, `integriert`, `stagingGeprueft`, `fachlichFreigegeben`, `produktiv`. Das
+Schema (Validator `werkzeug/acc45-backlog.mjs`) kennt **keine** Stufe `entschieden`; sie steht deshalb in der `notiz`
+des Pakets (Marke „Entscheidungsstand 2026-11-14“) und in dieser Datei. Das Schema wurde nicht erweitert.
+
+## A. Am 2026-11-14 entschieden (nicht mehr offen)
+
+Quelle der Entscheidungen: Betreiberentscheidungen vom 2026-11-14 (Pakete A, B, C). **Stufe bei allen Zeilen:
+`entschieden`.** Alle späteren Stufen (technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben,
+produktiv aktiviert) sind „nein“, soweit in der Spalte „Weitere Stufen“ nichts anderes steht.
+
+| ID (alt) | Inhalt der Entscheidung | Quelle der Frage | Weitere Stufen |
+|---|---|---|---|
+| WP-ZEIT E1 | Nur `Europe/Berlin`; Architektur bleibt für weitere Zonen erweiterbar | `ZEIT-BETRIEBSTAG-VERTRAG.md` §11 | nur Vertrag integriert (#296), sonst nein; im SSOT kein eigenes Paket |
+| E2 | Zonenwechsel frühestens zum nächsten Monatsersten, mindestens 24 h Vorlauf, stornierbar, nie rückwirkend | wie E1 | wie E1 |
+| E3 | Online-Stempel zählt nach Serveruhr; Gerätezeit nur als `geraetAm`; Offline behält den Ereigniszeitpunkt und einen getrennten Eingangszeitpunkt | wie E1 | wie E1 |
+| E4 | Keine betriebsbezogenen Schwellen | wie E1 | wie E1 |
+| E5 | Plausibilitätsprüfung nur als Datenintegrität, keine personenbezogene Häufigkeitsauswertung; Informationsbausteine für Beschäftigte und Mitbestimmung | wie E1 | wie E1 |
+| E6 | Zuschlagskorrektur Sommerzeit jetzt für offene Zeiträume; geschlossene Zeiträume nur über den Revisionsprozess | wie E1 | wie E1 |
+| E7 | Abrechnungstag nach Berliner Zeit | wie E1 | wie E1 |
+| E8 | Gerätezeitzone wird nicht gespeichert und erzeugt keinen Prüffall | wie E1 | wie E1 |
+| WP-ZEIT Rahmen | Vier Zeitbegriffe trennen (Ereigniszeitpunkt, betrieblicher Kalendertag, Schichttag, Eingangszeitpunkt); versioniertes Zeitmodell, keine stille Migration | Vertrag §1, §6 | wie E1 |
+| #280 Q1 | `mindest: 0` als Kurzform bleibt 422 | `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §6 | PR #280 angehalten, nicht integriert |
+| #280 Q2 | Weglassen bei bestehender Dienstart: Wert bleibt | wie Q1 | wie Q1 |
+| #280 Q3 | Historische Sicherungen bleiben brauchbar, kein stilles Ergänzen | wie Q1 | wie Q1 |
+| #280 Q4 | Bearbeiten historisch fehlender Werte erlaubt, gekennzeichnet | wie Q1 | wie Q1 |
+| #280 Q5 | Alter Export beim Neuanlegen: Validierungsfehler; Migrationswerkzeug nur mit gesonderter Freigabe | wie Q1 | wie Q1 |
+| IMP-6 Q1 | Wechsel des Schichtmodells frühestens am Folgetag | `IMP-6-MEHRFACHMODELLE.md` „Offene Fragen“ 1 | nein; Paket IN_PROGRESS |
+| IMP-6 Q2 | Nie rückwirkend; nur über den Revisionsprozess | dort 2 | wie Q1 |
+| IMP-6 Q3 | Veröffentlichte Zukunftspläne brauchen eine neue Planfreigabe | dort 3 | wie Q1 |
+| IMP-6 Q4 | Beschäftigte sehen ihr eigenes Modell; **keine** neuen Leserechte für den Betriebsrat. Die Vollständigkeit der Selbstauskunft ist separat zu prüfen (siehe B, P2-4) | dort 4 | wie Q1 |
+| IMP-6 Q5 | Zustand „kein Schichtmodell“ ist zulässig | dort 5 | wie Q1 |
+| WP-19.5 / FN-14 (§ 43b) | Betreuungskräfte nach § 43b SGB XI getrennt ausweisen, keine automatische Anrechnung auf die Fachkraftquote, Fachregeln bleiben gesperrt | `WP19-OFFENE-FACHNACHWEISE.md` FN-14 | reviewt teilweise (Nachholreview); Direktmerge nicht anerkannt; sonst nein |
+| BE-1 | Option A: eigenes Konto-Widerrufbuch, gemeinsam mit E-M6; Integrität nicht schwächen; keine automatische Rechte-Wiederherstellung | `ENTSCHEIDUNG-BE1-BE3.md` §1 | nein |
+| BE-2 | Gestuft; vor dem Pilot mindestens A1 (2FA darf durch ein altes Bild nicht entfallen; benutzte Wiederherstellungscodes werden nicht wieder gültig); A2/A3 nach dem Pilot nur mit unabhängiger Sicherheitsbestätigung | dort §2 | nein |
+| BE-3 | Option A: restic-Sicherung, Prüfung, Restore, `widerrufbuch-vereinen`, Alterswarnung, fail-closed; produktives Ziel, Zugangsdaten und Kosten brauchen eine eigene Freigabe | dort §3 | nein |
+| C1 Staging O2 | Eigene VM; Vorbereitung vollständig; Bestellung, DNS und Infrastrukturänderung nur mit Freigabe | `STAGING-PLAN-V4.md` | nichts gebaut; WP-ST1 BLOCKED |
+| C2 Gate | GitHub-Runner-Staging-Gate über einen unveränderlichen Digest vorbereiten; keine automatische Produktionsauslieferung | WP-ST1 | nichts gebaut |
+| C3 Digest | Die Abweichung der Produktion von `deploy/FREIGEGEBENE-IMAGES.md` wird nur **lesend gegenübergestellt**, ohne Bildänderung (`PROD-DIGEST-ABWEICHUNG.md`) | früher P1-5 | keine Stufe anwendbar; das tatsächlich laufende Bild ist nicht belegt |
+
+Hinweise:
+- Die Zählung „IMP-6 Q1 bis Q8“ der früheren Fassung war falsch. Die Quelldatei hat fünf nummerierte Fragen; siehe B,
+  P2-4.
+- E-M6 ist durch BE-1 berührt (gemeinsame Umsetzung). Die inhaltlichen Antworten auf die E-M-Fragen sind damit nicht
+  gegeben (siehe B, P1-1).
+- Mit diesen Entscheidungen ist nichts aktiviert: keine strengen Regeln für Bestandsbetriebe, keine produktive
+  Migration, kein Deployment.
+
+## B. Weiter offen
+
+### Priorität 1 — release-kritisch
 
 | ID | Frage | Empfehlung | Folge bei Nichtentscheidung | Quelle |
 |---|---|---|---|---|
-| P1-0 | **Betreiberschritt:** Kopie der Produktionssicherung über einen autorisierten, geschützten Weg bereitstellen (Erkennungslauf #289 ist am 2026-11-14 genehmigt, sobald die Kopie vorliegt). Bedingungen: Originale unberührt; keine personenbezogenen Einzelwerte, Zugangsdaten oder Geheimnisse in GitHub, PRs, Protokollen; nur aggregierte Befunde; keine Code-Rotation, keine Kontowiederherstellung, keine Migration | Kopie bereitstellen | Erkennung #289 bleibt nicht ausgeführt; E-M1-Lauf, Migrationsplanung und die Aktivierung strenger Regeln für Bestandsbetriebe bleiben ohne Datengrundlage | `ERKENNUNG-GESTRANDETE-BETRIEBE.md`, `ENTSCHEIDUNGSMATRIX-MIGRATION-EM.md` (E-M1) |
-| P1-1 | E-M1 bis E-M8 (Erkennung, Neuausstellung für leere Betriebe, Selbststarträume, Kopplung #281 mit E-D1/E-D2 und Aufschub, Weg für M2 ohne anderen Zugang, kein Wiederaufleben widerrufener Codes, Akzeptanzliste, Option D als Notfall) | Empfehlungen je Frage in der Matrix; Aktivierungsreihenfolge dort Abschnitt 3 | Strenge Zugangsregeln (#281, Schalter aus) bleiben ohne Aktivierungsplan; Migration der gestrandeten Betriebe nicht planbar | `ENTSCHEIDUNGSMATRIX-MIGRATION-EM.md` |
-| P1-2 | BE-1: Wie werden Passwörter, Kontosperren und entzogene Mitgliedschaften nach einem Restore geschützt? | A: eigenes Konto-Widerrufbuch (eigene Datei); Teil Mitgliedschaften/Sperre vor G1 | Nach einem Restore können entzogene Rechte und Sperren wieder aufleben; Voraussetzung für Migrationsläufe und Aktivierung #281 fehlt | `ENTSCHEIDUNG-BE1-BE3.md` §1, `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §4.1 |
-| P1-3 | BE-2: 2FA-Geheimnisse, benutzte Wiederherstellungscodes, einzeln zurückgesetzte Kalenderfeeds | A gestuft (A1 vor G1, A2/A3 nach dem Pilot) | Siehe P1-2; A1 setzt das Buch aus BE-1 voraus | `ENTSCHEIDUNG-BE1-BE3.md` §2, Vorlage §4.2 |
-| P1-4 | BE-3: Automatische Sicherung des Widerrufbuchs `zustand/zugang-widerrufe.json` | A: eigener restic-Job plus `widerrufbuch-vereinen` plus Alterswarnung | E-M6 (#292) wirkt im Hauptfall Hostverlust nicht; zweite Buchdatei aus BE-1 fehlt | `ENTSCHEIDUNG-BE1-BE3.md` §3, Vorlage §4.3 |
-| | Aufwand BE-1 (Teil), BE-2 (A1), BE-3 zusammen laut Quelle: ca. 3,5 bis 6 PT plus je ein Review vor Go-live | | | `ENTSCHEIDUNG-BE1-BE3.md` §6 |
-| P1-5 | Bildfrage: Produktion läuft auf `64d08a4` (Digest `f03a8514`); `deploy/FREIGEGEBENE-IMAGES.md` führt dieses Bild als gesperrt und `274bfa0` als aktiv. `274bfa0` hat weder 2FA noch `ersetztDurch` | Klärung vor jedem Deployment; kein Wechsel ohne ausdrückliche Freigabe | Freigabeliste und Produktion widersprechen sich; ein Rücksprung auf `274bfa0` würde 2FA und `ersetztDurch` verlieren | `deploy/FREIGEGEBENE-IMAGES.md`, `docs/acc45/STAGING-PLAN-V4.md` |
-| P1-6 | S-1/S-2 und PR #277 (angehalten): gelockerte Ausstellgrenzen, X1 (Gesamtgrenze streichen), G1 bis G6 (unbelegte Behauptungen) | Vorlage: Grenzwerte A, S-1 B (= #277 + X1 + X5), G1/G3/G5 vor Merge; S2-b + S2-d + S2-e vor dem Pilot | Basisfehler A-2 bleibt im Release-Kandidaten; #277 bleibt angehalten | `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §5, `ABNAHME-V4-A2-RISIKOBEWERTUNG.md`; `ABNAHME-V4-A2-GLOBALE-GRENZE.md` liegt nur auf dem Branch von #277 (Quelle prüfen) |
+| P1-0 | **Betreiberschritt:** Kopie der Produktionssicherung über einen autorisierten, geschützten Weg bereitstellen (Erkennungslauf #289 ist am 2026-11-14 genehmigt, sobald die Kopie vorliegt). Bedingungen: Originale unberührt; keine personenbezogenen Einzelwerte, Zugangsdaten oder Geheimnisse in GitHub, PRs, Protokollen; nur aggregierte Befunde; keine Code-Rotation, keine Kontowiederherstellung, keine Migration. Offen bleibt auch, aus welcher Sicherung (Stand, Ablage) die Kopie stammt | Kopie bereitstellen | Erkennung #289 bleibt nicht ausgeführt; E-M1-Lauf, Migrationsplanung und die Aktivierung strenger Regeln für Bestandsbetriebe bleiben ohne Datengrundlage | `ERKENNUNG-GESTRANDETE-BETRIEBE.md`, `ENTSCHEIDUNGSMATRIX-MIGRATION-EM.md` (E-M1) |
+| P1-1 | E-M1 bis E-M8 (Erkennung, Neuausstellung für leere Betriebe, Selbststarträume, Kopplung #281 mit E-D1/E-D2 und Aufschub, Weg für M2 ohne anderen Zugang, kein Wiederaufleben widerrufener Codes, Akzeptanzliste, Option D als Notfall). In den Entscheidungen vom 2026-11-14 nicht ausdrücklich beantwortet; BE-1 koppelt nur die Umsetzung mit E-M6 | Empfehlungen je Frage in der Matrix; Aktivierungsreihenfolge dort Abschnitt 3. Die Matrix bleibt unverändert | Strenge Zugangsregeln (#281, Schalter aus) bleiben ohne Aktivierungsplan; Migration der gestrandeten Betriebe nicht planbar | `ENTSCHEIDUNGSMATRIX-MIGRATION-EM.md` |
+| P1-5 | Bildfrage: Offen ist die **Klärung des Ist-Bilds** durch den Betreiber (welcher Digest läuft tatsächlich). Gegenüberstellung und lesende Prüfkommandos: `PROD-DIGEST-ABWEICHUNG.md`. Kein Bildwechsel, kein stilles Rücksprungziel | Betreiber führt die lesenden Kommandos aus und trägt das Ergebnis ein | Freigabeliste und Produktion widersprechen sich möglicherweise; ein Rücksprung auf `274bfa0` würde 2FA und `ersetztDurch` verlieren | `PROD-DIGEST-ABWEICHUNG.md`, `deploy/FREIGEGEBENE-IMAGES.md` |
+| P1-6 | **#277, S-1, S-2, X1 (gesperrt).** Freigabe erst nach einer **Sicherheitsbewertung**, die vorlegt: (a) konkrete Grenzwerte, (b) Angriffsbedingungen, (c) Auswirkung, (d) Alternativen, (e) Negativtests. X1 (Gesamtgrenze streichen) und G1 bis G6 (unbelegte Behauptungen) gehören dazu | Die Vorlage nennt Grenzwerte A, S-1 B (= #277 + X1 + X5), G1/G3/G5 vor Merge, S2-b + S2-d + S2-e vor dem Pilot; das ersetzt die Bewertung nicht | Basisfehler A-2 bleibt im Release-Kandidaten; #277 bleibt angehalten | `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §5, `ABNAHME-V4-A2-RISIKOBEWERTUNG.md`; `ABNAHME-V4-A2-GLOBALE-GRENZE.md` liegt nur auf dem Branch von #277 (Quelle prüfen) |
 
-## Priorität 2 — Produkt
+### Priorität 2 — Produkt
 
 | ID | Frage | Empfehlung | Folge bei Nichtentscheidung | Quelle |
 |---|---|---|---|---|
-| P2-E1 | WP-ZEIT E1: erlaubte Zeitzonen | (a) nur Europe/Berlin | Zeitmodell-Umsetzung (ZEIT-B) bleibt blockiert | `ZEIT-BETRIEBSTAG-VERTRAG.md` §11 |
-| P2-E2 | E2: Wirksamkeit eines Zonenwechsels | nächster Monatserster, mindestens 24 h Vorlauf, stornierbar | wie E1 | wie oben |
-| P2-E3 | E3: Zeitpunkt online gestempelter Ereignisse | Serveruhr (Geräteuhr zusätzlich als `geraetAm`) | wie E1 | wie oben |
-| P2-E4 | E4: Schwellen je Betrieb einstellbar? | nein in Phase 1 | wie E1 | wie oben |
-| P2-E5 | E5: Mitbestimmung § 87 Abs. 1 Nr. 6 BetrVG, Wortlaut für die Plausibilitätsprüfung | Baustein plus Hinweis; nur technische Plausibilität, keine personenbezogene Häufigkeitsauswertung | Pilotunterlagen ohne Mitbestimmungsaussage | wie oben |
-| P2-E6 | E6: Zuschlagskorrektur in Sommerzeit-Umstellungsnächten | jetzt, nur offene Monate (`RECHEN_STAND` 3) | Zuschlag in Umstellungsnächten bleibt falsch | wie oben |
-| P2-E7 | E7: Abrechnungstag | bleibt Berliner Zeit (Betreiberzone) | Abrechnung nicht eindeutig | wie oben |
-| P2-E8 | E8: Gerätezeitzone übertragen/speichern? | nein | Datensparsamkeit offen | wie oben |
-| P2-2 | P2-Befund `heute()` mit Gerätezeitzone (`server/lib/engine/zeit.mjs:17`): Produktregel für Gerätezeit (Betriebstag nach Betriebszone) und P3 `ankerMontag` (`server/lib/leerbetrieb.mjs:34-39`) | Quelle prüfen (Vertrag §1 bis §4) | Tageswechsel nahe Mitternacht außerhalb Berlins kann falsch zugeordnet werden | `ZEIT-BETRIEBSTAG-VERTRAG.md` |
-| P2-3 | Konsolidierte Vorlage (#295): Q1 `mindest: 0` als Zahl (Empf. A, weiter 422); Q2 Weglassen eines vorhandenen Werts (A, keine Änderung); Q3 Wiederherstellen prüft `mindest` nicht (A, so lassen); Q4 Ersetzen über Kennung ohne `mindest` (A, gekennzeichnet, nie still 0); Q5 alter Export über `bestand-anlegen` (a, weiter 422) | wie genannt | Kein Blocker; Q5 vor dem ersten Anlegen aus einem alten Export | `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §6, `ABNAHME-V4-A4-MINDEST.md` |
-| P2-4 | IMP-6 Q1 bis Q8 (mehrere Schichtmodelle je Person, Schreiben in den Bestand) | Quelle prüfen | IMP-7 und abhängige Importpakete warten | `IMP-6-MEHRFACHMODELLE.md` |
+| P2-2 | P2-Befund `heute()` mit Gerätezeitzone (`server/lib/engine/zeit.mjs:17`) und P3 `ankerMontag` (`server/lib/leerbetrieb.mjs:34-39`). E1, E3 und E8 geben die Richtung vor; offen ist die Umsetzungsreihenfolge (ZEIT-C vor ZEIT-B) | Quelle prüfen (Vertrag §10) | Tageswechsel nahe Mitternacht außerhalb Berlins kann falsch zugeordnet werden | `ZEIT-BETRIEBSTAG-VERTRAG.md` |
+| P2-4 | **IMP-6 offene Punkte 6 bis 8** (nicht entschieden). Herkunft: Beschreibung von PR #263, nicht die Quelldatei: (6) Wirkung der Modelle auf die Planrechnung einschalten, ja/wann; (7) Art. 15 DSGVO: Auskunft/`LUECKEN_SELBST` für `schichtmodellZuordnungen` (rechtliche Einschätzung); (8) `/api/wiederherstellen` umgeht den historischen Schutz, hingenommen nur solange die Zuordnungen keine Planwirkung haben. **Offene Prüfung zu Q4:** Beschäftigte sehen das eigene Modell; die Vollständigkeit der Selbstauskunft ist getrennt zu prüfen; Leserechte für den Betriebsrat sind nicht freigegeben | Punkt 6 erst nach Lösung von 8 (Wiederherstellen muss die Zuordnungen wie Ist-Daten abgeschlossener Monate behandeln); Punkt 7 rechtlich klären | IMP-7 und abhängige Importpakete warten; keine Planwirkung | `IMP-6-MEHRFACHMODELLE.md` („Offene Fragen“, „Bekannte Grenze“), PR #263 |
 | P2-5 | WP-I4, fünf Fragen (Planung lesen/ändern, Betriebsratssicht § 87 BetrVG, Protokoll für Löschen/Deaktivieren, Tarif `pro` gleich Grenze 25, Neu-Test einer geänderten Vorgabe) | Quelle prüfen | WP-I4 bleibt Teilumfang (IN_PROGRESS) | `WIEDERAUFNAHME.md` (Stand nach #256), `wpI-offene-fragen.md` |
 | P2-6 | WP-14c: (a) ausdrücklich bestätigter Tag mit 0 h; (b) blockieren Altdaten-Prüffälle den Monatsabschluss? | Quelle prüfen | WP-14c bleibt REVIEW | `wp14c-nachweis.md` (Quelle prüfen) |
-| P2-7 | WP-19.5 Q2a: Betreuungskräfte nach § 43b SGB XI getrennt ausweisen, keine Anrechnung | getrennt ausweisen, nie auf die Fachkraftquote anrechnen (laut FN-14) | Fachliche Abnahme WP-19.5 offen | `WP19-OFFENE-FACHNACHWEISE.md` |
-| P2-8 | Betriebsrat-Schreibrecht (WP-I16, PR #238, angehalten) und Pausenrecht des Betriebsrats | Quelle prüfen | #238 bleibt ungemergt, Intelligence-Steuerung ohne Recht | `WIEDERAUFNAHME.md`, `ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md` (Quelle prüfen) |
+| P2-8 | **PR #238 (WP-I16, angehalten):** Das Schreibrecht des Betriebsrats ist **nicht freigegeben**. Offene Fragen: (a) Wer darf die KI-Pause aktivieren und wer aufheben? (b) Wer weist Betriebsrat-Konten zu? (c) Umgehung durch die Leitung über die Rollenvergabe (`roles.assign`)? | Quelle prüfen (`ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md`) | #238 bleibt ungemergt, Intelligence-Steuerung ohne Recht | `WIEDERAUFNAHME.md`, `work-packages.json` (WP-I16) |
 | P2-9 | Urlaubshinweis (WP-48-GB): täglicher Serverlauf? nur eine Rolle oder nur auf Handlung? Meldung bei still ersetztem Lauf? | Quelle prüfen | Bisheriges Verhalten bleibt (Leitung und Planung, automatisch) | `WP-48-GB-ANALYSE.md` §5 |
 | P2-10 | Fragen zum Erkennungsskript #289: Behandlung der Fälle „unklar“ (Ausgang 1, fail-closed) und Nutzung von `--gespeicherte-kennungen` (gibt die gespeicherte Betriebskennung statt Pseudonym aus, kann dem Raumnamen entsprechen) | Quelle prüfen | Lauf kann nur mit Pseudonymen und ohne Klärung der Fallbacks ausgewertet werden | `ERKENNUNG-GESTRANDETE-BETRIEBE.md` |
 
-## Priorität 3 — Betrieb
+### Priorität 3 — Betrieb und Extern
 
 | ID | Frage | Empfehlung | Folge bei Nichtentscheidung | Quelle |
 |---|---|---|---|---|
-| P3-1 | Staging: Variante (O2 eigene VM empfohlen), VM, DNS, Beauftragung | O2 | Kein produktionsnahes Staging, Release-Variante B nicht erreichbar | `STAGING-PLAN-V4.md` |
+| P3-1 | Bestellung der Staging-VM, DNS, Beauftragung (die Variante O2 ist entschieden, siehe A) | Freigabe zur Bestellung erteilen, wenn gewünscht | Kein produktionsnahes Staging | `STAGING-PLAN-V4.md` |
 | P3-2 | Auslöser des Bildbaus: „Auslieferung“ mit `bauen=true`, `ausliefern=false` | so auslösen | Kein Bild, kein Digest für den RC | `STAGING-PLAN-V4.md` (O-2) |
-| P3-3 | Branch-Schutz (offene Betreiberaufgabe) | Quelle prüfen | Merge-Gates nicht technisch erzwungen | `BETREIBER-BRANCHSCHUTZ.md`, `docs/BRANCH-SCHUTZ.md` |
+| P3-3 | Branch-Schutz setzen (offene Betreiberaufgabe; Claude ändert nichts). Prüfstand und Checkliste: `BRANCH-SCHUTZ-PRUEFUNG.md` | Rulesets nach `BETREIBER-BRANCHSCHUTZ.md` setzen | Merge-Gates nicht technisch erzwungen | `BETREIBER-BRANCHSCHUTZ.md`, `BRANCH-SCHUTZ-PRUEFUNG.md` |
 | P3-4 | Lieferkette: Browser-Tests laden Chromium und CDN-Skripte ohne Integritätsprüfung; der Browser-Job steuert das Deployment | zur Kenntnis; Entscheidung, ob der Job das Deployment weiter steuern darf | Risiko bleibt bestehen | `STAGING-PLAN-V4.md`, `docs/CI-LIEFERKETTE.md` |
+| P3-5 | Externe Betreiberaufgaben nach Auswirkung auf den ersten Livegang (Backup außer Haus, Monitoring, Mail/Push, Pentest, Verträge, Recht, Geräte, Pilotverträge): Aufteilung Claude / Betreiber / extern in `BETREIBERAUFGABEN-RELEASE.md` | Betreiber arbeitet die Betreiberspalte ab | Der erste Livegang bleibt blockiert | `BETREIBERAUFGABEN-RELEASE.md` |
 
-## Verwandte Betreiberaufgaben (nur Verweis)
+## C. Verwandte Betreiberaufgaben (nur Verweis)
 
 Externe E-Pakete (Rechtsfreigabe, Dienstleister-Verträge, Geräte, Pentest): `EXTERNE-ABNAHMEN-UEBERGABE.md`,
 `STAGING-PLAN-V4.md` Abschnitt 7. C-1 (Produktionsstart ohne `CENTRIC_PFEFFER`), Hinweis B-3: `WIEDERAUFNAHME.md`.
+
+## D. Änderungen gegenüber der Fassung mit Kopf `7833f46e`
+
+Entfernt als entschieden: P1-2, P1-3, P1-4 (BE-1 bis BE-3), P2-E1 bis P2-E8, P2-3 (#280 Q1 bis Q5), P2-7 (WP-19.5
+Q2a), Teil von P3-1 (O2). Korrigiert: P2-4 (IMP-6 „Q1 bis Q8“: Q1 bis Q5 entschieden, die Punkte 6 bis 8 offen).
+Geschärft: P1-6 (Anforderungen an die Sicherheitsbewertung), P2-8 (Fragen zu #238), P1-5 (Klärung statt Entscheidung).
