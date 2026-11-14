@@ -464,3 +464,8 @@ Die Entscheidungen ersetzen die Empfehlungen aus § 11 dort, wo sie abweichen.
 | ZEIT-D | offen — Plausibilitätsgründe (E3–E5, E8), Informationstexte Beschäftigte/Betriebsrat (E5). |
 | ZEIT-E | offen — **Z47 Zuschläge Zeitumstellung (E6, release-relevant)**, ICS-Zone, Z57 Protokollzeiten; Z56 ist mit T1 erledigt. |
 | ZEIT-F / ZEIT-G | offen — Restmatrix § 9, Reviews. |
+
+### Hinweise aus dem Review von T1 (2026-11-14)
+
+- **Intl-Voraussetzung:** `heute()` (`betriebszeit.mjs`) braucht `Intl.DateTimeFormat` mit Zeitzonenunterstützung. Fehlt sie, wirft die Funktion einen Fehler; es gibt bewusst **keinen** Rückfall auf das Gerätedatum, weil der stille Rückfall genau den Fehler wieder einführen würde, den T1 behebt. Jeder unterstützte Browser (seit 2017) und die Server-Laufzeit erfüllen das. Vor einer Erweiterung des Browserumfangs ist das zu prüfen.
+- **Leistung:** `heute()` rechnet bei jedem Aufruf `formatToParts` (der Formatierer ist gecacht). In heißen Schleifen (`plan.mjs` ~255/258) ist das nicht gemessen; bei Auffälligkeiten den Tageswert je Render einmal berechnen und weiterreichen.
