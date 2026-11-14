@@ -5,18 +5,18 @@
   "statusZaehlung": {
     "BLOCKED": 76,
     "READY": 17,
-    "IN_PROGRESS": 21,
+    "IN_PROGRESS": 20,
     "REVIEW": 7,
-    "INTEGRATED": 88,
+    "INTEGRATED": 89,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 112,
-      "offen": 38,
+      "offen": 37,
       "restPT": {
-        "min": 52.349999999999994,
-        "max": 92.9
+        "min": 50.849999999999994,
+        "max": 89.9
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 302.25,
-    "max": 522.2
+    "min": 300.75,
+    "max": 519.2
   },
   "kritischerPfad": {
     "summe": 70,
@@ -5840,12 +5840,12 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":6},
       "abhaengigkeiten": [],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"PR #274, #275, #276 (Strang B, A, C) und #278 (Matrix, Baseline) in integration/release-v4"},
-        "lokalGetestet": {"wert":true,"beleg":"docs/acc45/ABNAHME-V4-STRANG-A.md, -B.md, -C.md, ABNAHME-V4-MATRIX.md; pruefungen/abnahme-*.test.js, e2e/abnahme-*"},
-        "reviewt": {"wert":true,"beleg":"Unabhängige Opus-Reviews laut Auftrag der Abnahme V4; Nachweis in den Strangberichten, im SSOT nicht einzeln nachgeprüft"},
-        "integriert": {"wert":false,"beleg":"Testinfrastruktur und Berichte integriert (#274, #275, #276, #278), kein Produktionscode; das Paket (Release-Kandidat) ist nicht abgenommen"},
+        "implementiert": {"wert":true,"beleg":"PR #281 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #281 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #281 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #281 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5854,12 +5854,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#274","#275","#276","#278","#279","#282","#284"],
+      "pr": ["#274","#275","#276","#278","#279","#282","#284","#281"],
       "nachweis": "docs/acc45/ABNAHME-V4-MATRIX.md; ABNAHME-V4-STRANG-A/B/C.md; STAGING-PLAN-V4.md",
       "akzeptanz": "Matrix und Ströme A, B, C ohne offenen P0/P1; Staging-Abnahme auf produktionsnaher Umgebung (Digest des RC); fachliche und rechtliche Freigabe; erst danach produktiv",
       "tests": "pruefungen/abnahme-a-ablauf, abnahme-b-wiederholung, abnahme-c-*; e2e/abnahme-a-ablauf.spec, abnahme-b-ablaeufe.spec, axe",
       "dateien": "docs/acc45/ABNAHME-V4-*.md, e2e/, pruefungen/abnahme-*",
-      "notiz": "Stand 2026-11-13. Lokale Integrationsabnahme: implementiert, lokal getestet, reviewt und für die Testinfrastruktur integriert. Staging geprüft: NEIN. Fachlich/rechtlich freigegeben: NEIN. Produktiv: NEIN. IN_PROGRESS bis zur produktionsnahen Staging-Abnahme. Release-Empfehlung (STAGING-PLAN-V4.md Abschnitt 9): A lokaler Kandidat technisch annehmbar mit Auflagen; B (reif für die Betreiberfreigabe nach Staging) noch nicht. S0-B2 (fachliche Browser-E2E, vorher nur axe) ist durch die Strang-A/B-Spezifikationen teilweise geschlossen, nicht vollständig: ehrliche Teillücke, Ersatzplanung im Browser fehlt. Betreiberhinweis: Browser-Tests laden Chromium und CDN-Skripte ohne Integritätsprüfung, und der Browser-Job steuert das Deployment (Lieferkette, Betreiberentscheidung). Offene Bildfrage: Die Produktion läuft laut Stand auf 64d08a4 (Digest f03a8514); deploy/FREIGEGEBENE-IMAGES.md führt dieses Bild als gesperrt (P0-0) und 274bfa0 als aktiv; Klärung durch den Betreiber offen. Verwandte Pakete: ABN-A2, ABN-A3, ABN-A4, ABN-S2, ABN-C1, ABN-B3, WP-ST1. PR #271 siehe WP-48-GB, #272 siehe WP-40, #283 QS-4, #285 QS-5, #282 Risikobewertung (ABN-A2/ABN-S2), #284 Wiederherstellungskonzept (ABN-A3), #279 Staging-Plan (WP-ST1)."
+      "notiz": "Stand 2026-11-13. Lokale Integrationsabnahme: implementiert, lokal getestet, reviewt und für die Testinfrastruktur integriert. Staging geprüft: NEIN. Fachlich/rechtlich freigegeben: NEIN. Produktiv: NEIN. IN_PROGRESS bis zur produktionsnahen Staging-Abnahme. Release-Empfehlung (STAGING-PLAN-V4.md Abschnitt 9): A lokaler Kandidat technisch annehmbar mit Auflagen; B (reif für die Betreiberfreigabe nach Staging) noch nicht. S0-B2 (fachliche Browser-E2E, vorher nur axe) ist durch die Strang-A/B-Spezifikationen teilweise geschlossen, nicht vollständig: ehrliche Teillücke, Ersatzplanung im Browser fehlt. Betreiberhinweis: Browser-Tests laden Chromium und CDN-Skripte ohne Integritätsprüfung, und der Browser-Job steuert das Deployment (Lieferkette, Betreiberentscheidung). Offene Bildfrage: Die Produktion läuft laut Stand auf 64d08a4 (Digest f03a8514); deploy/FREIGEGEBENE-IMAGES.md führt dieses Bild als gesperrt (P0-0) und 274bfa0 als aktiv; Klärung durch den Betreiber offen. Verwandte Pakete: ABN-A2, ABN-A3, ABN-A4, ABN-S2, ABN-C1, ABN-B3, WP-ST1. PR #271 siehe WP-48-GB, #272 siehe WP-40, #283 QS-4, #285 QS-5, #282 Risikobewertung (ABN-A2/ABN-S2), #284 Wiederherstellungskonzept (ABN-A3), #279 Staging-Plan (WP-ST1). Stand (automatisch): INTEGRATED nach #281."
     },
     {
       "id": "WP-ST1",

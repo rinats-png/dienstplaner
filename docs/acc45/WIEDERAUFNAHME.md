@@ -1,7 +1,18 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-13 nach Abnahme V4, Integrationskopf 76621eba oder neuer, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-14, Integrationskopf 7833f46e oder neuer, Hauptchat aktiv)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+
+## Stand 2026-11-14 (Integrationskopf `7833f46e`, Merge #281)
+
+- Integrationskopf: `7833f46e` (Merge #281) oder neuer. Seit #286 gemergt: #287 bis #296 (Migrationskonzept, Entscheidungsmatrix E-M1 bis E-M8, lesendes Erkennungsskript #289, Durchsatzanalyse #290, CI-Zeitgrenze 25 auf 40 Minuten #291, E-M6-Widerrufbuch #292, BE-1 bis BE-3-Entscheidungsunterlage #293, QS-6 #294, konsolidierte Entscheidungsvorlage #295, Vertrag WP-ZEIT #296) und **#281**.
+- **#281** (A-3): serverseitig atomare erste Leitungsanmeldung; Schalter `CENTRIC_ERSTLEITUNG_STRENG` Standard AUS; Regime- und Abschlussmarker an das E-M6-Buch gekoppelt. Bestandsbetriebe sind bei ausgeschaltetem Schalter unverändert (Differenztest 138/138). Der unabhängige Abschlussreview (MERGE-OK mit Auflagen) ist durch CI 23/23 auf genau dem Kopf `6130a609` erfüllt. Strenge Regeln sind für Bestandsbetriebe nicht aktiviert, keine produktive Migration, kein Merge nach `main`, kein Deployment.
+- Befunde: **P2** `heute()` nutzt die Gerätezeitzone (`server/lib/engine/zeit.mjs:17`); P3 `ankerMontag` (`server/lib/leerbetrieb.mjs:34-39`); Nebenbefund Zuschlag in Sommerzeit-Umstellungsnächten (siehe `ZEIT-BETRIEBSTAG-VERTRAG.md`).
+- **Betreiberentscheidungen 2026-11-14**: (1) #281 in `integration/release-v4` freigegeben, unter den oben genannten Bedingungen. (2) Der lesende Erkennungslauf (#289) auf einer gesonderten Kopie der Produktionssicherung ist genehmigt, **sobald** die Kopie über einen autorisierten, geschützten Weg bereitgestellt wird (Originale unberührt; keine personenbezogenen Einzelwerte, Zugangsdaten oder Geheimnisse in GitHub, PRs oder Protokollen; nur aggregierte Befunde; keine Code-Rotation, keine Kontowiederherstellung, keine Migration). (3) Offene Betreiberentscheidungen werden in **einer** Liste geführt: `docs/acc45/ENTSCHEIDUNGSLISTE.md` (Einzelquelle; in Statusberichten verweisen, nicht wiederholen).
+- **Konkreter Betreiberschritt**: die Sicherungskopie sicher bereitstellen. Bis dahin bleibt der Erkennungslauf #289 **nicht ausgeführt**; die unabhängige Weiterarbeit läuft ohne ihn.
+- Offen, angehalten, unverändert: #277 (angehalten), #238, #177, #175, #168, #139, #129, #127, #115, #104.
+- Koordination: Es schreibt nur ein Koordinator; die Lease wird vom Koordinator nach den Lease-Regeln freigegeben. Keine stündlichen gleichlautenden Statusmeldungen; Bericht nur bei neuen Befunden, Änderungen oder Handlungsbedarf.
+- SSOT: siehe `work-packages.json` (Nachtrag per `werkzeug/ssot-nach-integration.mjs`, Teilumfänge bleiben IN_PROGRESS).
 
 ## Stand nach Abnahme V4 (2026-11-13)
 
