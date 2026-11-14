@@ -1,10 +1,10 @@
 {
-  "epoche": 11,
+  "epoche": 12,
   "halter": "hauptchat",
-  "uebernommen_am": "2026-11-13T04:21:47.139Z",
-  "erneuert_am": "2026-11-14T14:09:08.790Z",
-  "gueltig_bis": "2026-11-14T14:50:20.777Z",
-  "uebergabe": "Hauptchat: Betreiberentscheidungen 13.11.2026 (Playwright/axe, Direkt-Merges, Mehrfach-Schichtmodelle); Integrationskopf 54ec5804",
+  "uebernommen_am": "2026-11-14T18:45:20.592Z",
+  "erneuert_am": "2026-11-14T18:45:20.592Z",
+  "gueltig_bis": "2026-11-14T21:15:20.592Z",
+  "uebergabe": "Hauptchat: Betreiberentscheidungen 14.11.2026 Pakete A/B/C; Integrationskopf d84e4a83",
   "vorgaenger": "hauptchat",
-  "freigegeben_am": "2026-11-14T14:50:20.777Z"
+  "freigegeben_am": null
 }
