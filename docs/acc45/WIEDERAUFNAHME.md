@@ -3,6 +3,13 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtrag 2026-11-14 (geplanter Lauf, nur lesender Abgleich und Statuspflege)
+
+- Integrationskopf: `a9cc145` (Merge #292, E-M6 widerrufene Codes), Prüfung auf genau diesem Kopf: Lauf 1987 `success` (2026-11-14 02:22Z). Seit `76621eba` zusätzlich gemergt: #280 (A-4, `mindest`-Regel, **nicht mehr angehalten**), #286 SSOT, #287 Migrationsvorschlag Ersteinrichtungscodes, #288 Entscheidungsmatrix E-M1..E-M8, #289 Erkennung gestrandeter Betriebe, #290 Durchsatz-Dashboard, #291 CI-Zeitgrenze `pruefen` 40 min, #292 E-M6, #293 Entscheidung BE-1..3, #294 QS-6 (B7 Mitternacht), #295 Entscheidungsvorlage konsolidiert, #296 Betriebstag/Zeitzone (WP-ZEIT, Vertrag). Die SSOT-Zahlen wurden in diesem Lauf nicht neu erzeugt; maßgeblich bleibt `work-packages.json`.
+- Weiterhin offen und nicht gemergt: #277 (A-2), #281 (A-3, Befund F-0), #238 (WP-I16, wartet auf Betreiber), #175, #177 (Entwürfe), #168 (älterer Wiederaufnahmepunkt, durch dieses Dokument überholt). Alle Betreiberentscheidungen aus dem Abschnitt unten bleiben offen.
+- Ausführung im Hintergrund (geprüft): Der Cloud-Zeitplan `CENTRIC – Autonome Nachtentwicklung` existiert, ist aktiv und feuert stündlich (Minute 32); jeder Lauf startet eine neue Sitzung ohne Gedächtnis, Wiederaufnahme geschieht nur über dieses Dokument und den Repository-Zustand. Eine Haupt-Chat-Sitzung "CENTRIC" (Bridge) war zuletzt 2026-11-14 13:10Z aktiv. Weil ein zweiter schreibender Koordinator nicht sicher auszuschließen ist, beschränken sich geplante Läufe auf lesende Prüfung und Statuspflege (Auftragsregel 4); sie vergeben keine Aufgaben und mergen nichts.
+- Aktive Agenten/Worktrees dieses Laufs: keine. Nächste ausführbare Arbeitspakete: nur durch den Haupt-Chat oder nach Betreiberentscheidung (E-M-Matrix, #277, #281).
+
 ## Stand nach Abnahme V4 (2026-11-13)
 
 - Integrationskopf: `76621eba` (Merge #285) oder neuer. Seit #270 gemergt (jeweils mit `gh pr view` geprüft): #271 WP-48-GB (Öffnen des Plans schreibt nicht mehr), #272 A-5 (Rollenauswahl in Personal mit Namen, axe `select-name`), #274 Abnahme V4 Strang B, #275 Strang A, #276 Strang C (Tests und Berichte, kein Produktionscode), #278 Matrix und Baseline, #279 Staging-Plan (`STAGING-PLAN-V4.md`), #282 Risikobewertung S-1/S-2 (`ABNAHME-V4-A2-RISIKOBEWERTUNG.md`), #283 QS-4 (`geo.test.js` Uhrzeit), #284 Wiederherstellungskonzept gestrandete Betriebe (nur Konzept), #285 QS-5 (Zufallskollision in drei Tests). #273 ist geschlossen (nicht gemergt; gleicher Titel wie #275); #277, #280, #281 siehe unten.
