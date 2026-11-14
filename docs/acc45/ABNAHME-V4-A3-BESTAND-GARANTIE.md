@@ -50,6 +50,23 @@ Auflagen (vor bzw. bei der Integration):
   verschwindet (ausgenommen nur Zähler der Bremsen/Takte, die an der Uhr hängen). Maskiert: Token, erzeugte Codes,
   Prüfsummen, Zeitstempel, das heutige Datum, Sicherungsmarken; Verwaltungsgeheimnis/Pfeffer sind Prüfwerte und werden
   ebenfalls maskiert. Große Teilbäume (ganzer Betrieb) stehen als Prüfsumme plus Personenübersicht in der Golden-Datei.
+- Wochenanker (Nachtrag 2026-11-14, CI-Befund an #281): Ein über `/api/bestand-anlegen` angelegter Raum
+  (`server/lib/leerbetrieb.mjs`, `ankerMontag`) trägt als `anker` den Montag der laufenden Woche — eine Uhrzeitgröße.
+  Die erste Aufzeichnung hielt ihn wörtlich fest, und zwar als „2026-11-08“ (Sonntag): Windows, Ortszeit Berlin, kurz
+  nach Mitternacht; `ankerMontag` rechnet den Wochentag in Ortszeit, gibt aber das UTC-Datum aus. Der Linux-Läufer der
+  CI (UTC) lieferte „2026-11-09“ — KIPP-6 scheiterte an der Prüfsumme des Raums. Seither wird `anker` nur dann zu
+  `<WOCHENANKER>`, wenn er genau einer der Werte ist, die der Server gerade erzeugen kann (Montag zum UTC- bzw. Berliner
+  Datum, `ankerMontag` in der Zeitzone des Prüfprozesses); jeder andere Wert bleibt wörtlich. Neu aufgezeichnet wurde
+  nur KIPP-6, wieder gegen die Basis (bcddf680); alle übrigen Szenarien glichen der bisherigen Aufzeichnung. KIPP-6
+  vergleicht wie zuvor die Basisausgabe mit der Ausgabe dieser Fassung ohne die Regime-Marke. Produktion (Linux, UTC)
+  ist nicht betroffen; in einer Zeitzone östlich von UTC liefert `ankerMontag` kurz nach Mitternacht einen Sonntag
+  (Nebenbefund, P3, unverändert wie in der Basis).
+- Zufallswerte ohne Ziffer (Nachtrag 2026-11-14): `<ZUFALL>` verlangte Ziffer und Buchstabe. Eine Einladungskennung
+  (16 Zeichen base64url) hat in rund 7 % der Läufe keine Ziffer, eine Epoche besteht nur aus Ziffern — beides blieb
+  wörtlich und ließ einzelne Läufe zufällig scheitern. Seither gelten auch reine Ziffernfolgen (ab 16 Zeichen) und
+  ziffernfreie Folgen mit Kleinbuchstaben und zwei benachbarten Großbuchstaben als Zufall; Wörter und Bezeichner der
+  Ausgabe haben das nie. Zwei vollständige Neuaufzeichnungen gegen die Basis (je fünf Schalterwerte) ergaben die
+  Golden-Datei Byte für Byte; Rot-vor-Grün (Abschnitt 8) weiterhin 55 von 138 rot.
 - Die Golden-Aufzeichnung lief gegen die Basis mit allen fünf Schalterwerten und war in allen fünf gleich
   (Determinismus des Katalogs belegt). Der Test spielt alle fünf Werte gegen #281.
 - **Rot-vor-Grün:** Mit einer absichtlich eingebauten Verhaltensänderung (Leitungscode ohne Person → 403 auch bei

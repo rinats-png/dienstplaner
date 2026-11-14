@@ -62,6 +62,25 @@ function tagesangaben() {
   return [...s].map((t) => [t, "<HEUTE>"]);
 }
 
+/** Der Wochenanker eines neu angelegten Raums (server/lib/leerbetrieb.mjs, ankerMontag) ist der Montag der laufenden
+ *  Woche — eine Uhrzeitgröße wie das heutige Datum. Erwartet werden genau die Werte, die der Server JETZT erzeugen kann:
+ *  der Montag zum UTC- und zum Berliner Datum (reine Datumsrechnung) sowie ankerMontag selbst, nachgebildet in der
+ *  Zeitzone dieses Prozesses (der Server läuft als Kindprozess in derselben Zeitzone). ankerMontag rechnet den Wochentag
+ *  in Ortszeit, gibt aber das UTC-Datum aus: in einer Zeitzone östlich von UTC liefert es kurz nach Mitternacht den
+ *  Sonntag davor (die Golden-Aufzeichnung vom 2026-11-14 unter Windows hielt „2026-11-08“ fest; der Linux-Läufer der CI
+ *  in UTC liefert „2026-11-09“). Jeder andere Wert bleibt wörtlich und lässt den Vergleich scheitern. */
+function wochenanker() {
+  const jetzt = Date.now();
+  const montagZu = (tag) => {
+    const d = new Date(`${tag}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  };
+  const wieServer = (t) => { const d = new Date(t); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+  const berlin = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date(jetzt));
+  return new Set([montagZu(new Date(jetzt).toISOString().slice(0, 10)), montagZu(berlin), wieServer(jetzt)]);
+}
+
 /** @param {string} s @param {Array<[string,string]>} register */
 function maskeText(s, register, tage) {
   let t = s;
@@ -74,7 +93,14 @@ function maskeText(s, register, tage) {
   t = t.replace(/\b[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b/g, "<CODE>");
   t = t.replace(/\bp_[0-9a-f]{7}\b/g, "<PID>");
   t = t.replace(/\bd[0-9a-f]{8}\b/g, "<DEMOID>");
-  t = t.replace(/[A-Za-z0-9_-]{16,}/g, (w) => (/[0-9]/.test(w) && /[A-Za-z]/.test(w) ? "<ZUFALL>" : w));
+  /* Zufall: Ziffern und Buchstaben gemischt — oder ein Zufallswert, der zufällig nur aus Ziffern (Epoche, 16 Stellen)
+     bzw. nur aus Buchstaben besteht (Einladungskennung, 16 Zeichen base64url: in rund 7 % der Läufe ohne Ziffer,
+     z. B. „IPs_uewFyvnfbntG“; Sicherungsschlüssel, 32 Zeichen). Wörter und Bezeichner (klein, camelCase, kebab-case)
+     haben Kleinbuchstaben, aber nie zwei Großbuchstaben nebeneinander; ein Zufallswert aus 16 Buchstaben fast immer
+     (rund 98 %). Die Golden-Aufzeichnung der Basis blieb unter dieser Regel unverändert. */
+  const zufall = (w) => (/[0-9]/.test(w) && /[A-Za-z]/.test(w)) || (/^[0-9_-]+$/.test(w) && /[0-9]/.test(w))
+    || (/^[A-Za-z_-]+$/.test(w) && /[a-z]/.test(w) && /[A-Z]{2}/.test(w));
+  t = t.replace(/[A-Za-z0-9_-]{16,}/g, (w) => (zufall(w) ? "<ZUFALL>" : w));
   return t;
 }
 
@@ -96,14 +122,15 @@ function verdichten(x) {
   return { "#pruefsumme": sha(text), "#laenge": text.length, ...(personen.length ? { "#personen": personen } : {}) };
 }
 
-export function maskieren(x, register, tage = tagesangaben()) {
+export function maskieren(x, register, tage = tagesangaben(), anker = wochenanker()) {
   const geh = (y) => {
     if (typeof y === "string") return maskeText(y, register, tage);
     if (typeof y === "number") return y > 1.5e12 && y < 2.5e12 ? "<MS>" : y;
     if (Array.isArray(y)) return y.map(geh);
     if (istObjekt(y)) {
       const aus = {};
-      for (const k of Object.keys(y).sort()) aus[maskeText(k, register, tage)] = geh(y[k]);
+      for (const k of Object.keys(y).sort())
+        aus[maskeText(k, register, tage)] = k === "anker" && typeof y[k] === "string" && anker.has(y[k]) ? "<WOCHENANKER>" : geh(y[k]);
       return aus;
     }
     return y;
