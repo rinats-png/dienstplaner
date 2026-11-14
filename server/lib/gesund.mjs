@@ -36,6 +36,8 @@
      fehler      gleitende Fehlerzählung (gesund-zaehler.mjs)          → warnung
      widerrufbuch  E-M6: Buch nicht prüfbar oder Widerruf nicht im Buch
                  (widerrufbuch.mjs, widerrufbuchLage)                 → warnung
+     kontowiderrufbuch  BE-1: Konto-Widerrufbuch nicht prüfbar oder Sperre/
+                 Entzug nicht im Buch (kontowiderrufbuch.mjs)          → warnung
 
    Ergebnisse werden CACHE_MS lang wiederverwendet — /gesund ist
    anmeldefrei, und ein Ansturm soll nicht je Anfrage eine Probe schreiben.
@@ -44,6 +46,7 @@
 import { statfs, readFile, writeFile, mkdir, unlink, open, readdir, stat } from "node:fs/promises";
 import { zustandPruefen } from "./schluesselepoche.mjs";
 import { widerrufbuchLage } from "./widerrufbuch.mjs";
+import { kontoWiderrufbuchLage } from "./kontowiderrufbuch.mjs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
@@ -267,6 +270,8 @@ async function pruefenAlle(g, jetzt) {
     schluessel: await zustandPruefen().catch(() => ({ stufe: "warnung", text: "nicht prüfbar" })),
     /* E-M6 (widerrufbuch.mjs): Buch nicht prüfbar (kein Zugangscode gilt) oder ein Widerruf noch nicht im Buch. */
     widerrufbuch: widerrufbuchLage(),
+    /* BE-1 (kontowiderrufbuch.mjs): Buch nicht prüfbar (kein Konto-Zugang) oder eine Sperre/ein Entzug nicht im Buch. */
+    kontowiderrufbuch: kontoWiderrufbuchLage(),
   };
   const stufe = Object.values(pruefungen).reduce((a, p) => schlimmer(a, p.stufe), "ok");
   const ergebnis = { stufe, pruefungen, zeit: new Date(jetzt).toISOString() };

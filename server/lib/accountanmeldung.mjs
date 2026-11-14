@@ -102,6 +102,7 @@ import {
   accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
 import { zweifaktorEinrichtungVerwerfen } from "./zweifaktor.mjs";
+import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
@@ -216,6 +217,10 @@ async function zugangPruefen(store, { email, passwort }) {
      Ein Passwort allein macht daraus keine Anmeldung. */
   if (konto.status !== "aktiv") return absage("nicht-aktiv");
   if (!konto.emailVerifiziertAm) return absage("unbestaetigt");
+  /* BE-1 (kontowiderrufbuch.mjs): Eine Sperre im Konto-Widerrufbuch gilt, auch wenn eine zurückgespielte Ablage das
+     Konto „aktiv“ zeigt. Erst nach dem Passwort gefragt (keine Auskunft an Unbekannte). Ist das Buch nicht prüfbar,
+     wirft es (fail-closed, der Endpunkt antwortet 503). */
+  if (await kontoZugangImBuch(store, konto.id)) return absage("gesperrt");
   return { ok: true, konto };
 }
 
@@ -564,6 +569,8 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
   if (konto.status === "gesperrt") return schluss("gesperrt");
   if (konto.status !== "aktiv") return schluss("nicht-aktiv");
   if ((Number(konto.epoche) || 1) !== Number(s.epoche)) return schluss("epoche");
+  /* BE-1: Sperre im Konto-Widerrufbuch beendet die Sitzung; nicht prüfbar → wirft (fail-closed, 503). */
+  if (await kontoZugangImBuch(store, konto.id)) return schluss("gesperrt");
   /* OPT-1-F, Befund 3 (Zusatzprüfung): Hat das Konto einen aktiven zweiten Faktor, gilt keine Sitzung, die ohne ihn
      entstand — auch dann nicht, wenn das Abmelden oder die Epoche nach der Aktivierung scheiterte oder eine Anmeldung
      den Faktorstand vor der Aktivierung las. Ein Lesefehler ist kein Ja: abgewiesen, aber nicht gelöscht. */

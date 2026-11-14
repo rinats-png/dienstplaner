@@ -1,5 +1,6 @@
 import { kontoIdSchluessel, mitgliedSchluessel, mitgliedlaufSchluessel, generationStimmt } from "./accounts.mjs";
 import { istWiderrufen } from "./widerrufbuch.mjs";
+import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 
 /* ==========================================================================
    WOHER KOMMT DIESER KALENDER-FEED — UND GILT DAS NOCH? (WP-24)
@@ -86,6 +87,10 @@ export async function feedHerkunftGilt(store, eintrag) {
     if (!lauf || lauf.accountId !== h.accountId || lauf.raum !== raum || !Number.isInteger(lauf.generation))
       return { gilt: false, grund: "lauf" };
     if (!generationStimmt(m, lauf.generation) || h.generation !== lauf.generation) return { gilt: false, grund: "generation" };
+    /* BE-1: Kontosperre oder Entzug im Konto-Widerrufbuch. Nicht prüfbar: wirft (KontoWiderrufbuchFehler, code
+       BESTAND_UNLESBAR) — ein Lesefehler, der nichts widerruft (→ 503), wie bei E-M6 unten. */
+    const imBuch = await kontoZugangImBuch(store, h.accountId, { raum, generation: m.generation });
+    if (imBuch) return { gilt: false, grund: imBuch };
     return { gilt: true };
   }
 

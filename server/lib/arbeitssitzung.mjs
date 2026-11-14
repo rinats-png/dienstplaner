@@ -18,6 +18,7 @@ import { schluesselEpoche } from "./schluesselepoche.mjs";
 import { rollenSitzungOhneFaktor, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
 import { kontoFaktorAktiv } from "./kontofaktor.mjs";
 import { istWiderrufen } from "./widerrufbuch.mjs";
+import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -373,6 +374,11 @@ export async function sicherungsschluesselPruefen(store, sk, { bestandLader = nu
     if (!lauf.ok) return /** @type {any} */ (lauf).grund === "fehler" ? unklar("sk-lauf") : nein("sk-lauf");
     if (!generationStimmt(m, lauf.generation)) return nein("sk-generation-mitglied");
     if (e.generation !== lauf.generation) return nein("sk-generation");
+    /* BE-1: Konto-Widerrufbuch (Sperre, Entzug). Nicht prüfbar: abgewiesen, nicht entfernt. */
+    let imBuch;
+    try { imBuch = await kontoZugangImBuch(store, e.accountId, { raum, generation: m.generation }); }
+    catch { return unklar("sk-kontobuch"); }
+    if (imBuch) return nein("sk-kontobuch");
     if (String(m.person || "") !== String(e.person)) return nein("sk-person-gewechselt");
     if (m.mandantId !== sk.mandantId) return nein("sk-betrieb-gewechselt");
   } else {
@@ -690,6 +696,16 @@ export async function arbeitssitzungPruefen(store, sitzung,
   if (!lauf.ok) return absage("lauf");
   if (!generationStimmt(m, lauf.generation)) return absage("generation-mitglied");
   if (h.generation !== lauf.generation) return absage("generation-sitzung");
+  /* 3b. BE-1 (kontowiderrufbuch.mjs): Kontosperre oder Entzug im Konto-Widerrufbuch — auch wenn eine zurückgespielte
+     Ablage beides gültig zeigt. Nicht prüfbar: vorübergehend (→ 503), die Sitzung bleibt, wie bei E-M6. */
+  let imBuch;
+  try { imBuch = await kontoZugangImBuch(store, h.accountId, { raum, generation: m.generation }); }
+  catch (e) {
+    const f = /** @type {Error & {code?: string}} */ (new Error(`Konto-Widerrufbuch nicht prüfbar (${String(e && /** @type {any} */ (e).message || e)})`));
+    f.code = BESTAND_UNLESBAR;
+    throw f;
+  }
+  if (imBuch) return absage(imBuch);
 
   /* 4. Dieselbe Person wie bei der Auswahl. */
   if (String(m.person || "") !== String(person)) return absage("person-gewechselt");

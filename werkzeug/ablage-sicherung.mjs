@@ -12,6 +12,7 @@
      node werkzeug/ablage-sicherung.mjs wiederherstellen --sicherung … --ziel /data [--ersetzen] [--zustand <Ordner>]
      node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner>
      node werkzeug/ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data]
+     node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data]
 
    ---------------------------------------------------------------------------
    Was gesichert wird — und was nicht
@@ -119,6 +120,13 @@
    beschädigt, fremd oder fehlend bei vorhandenem Anker: Abbruch, nichts
    angefasst. `widerrufbuch-neu` legt ein verlorenes Buch nur bewusst neu an.
 
+   Gesperrte Konten und entzogene Mitgliedschaften nach einer Wiederherstellung
+   (BE-1, 2026-11-14, server/lib/kontowiderrufbuch.mjs): dasselbe mit dem
+   Konto-Widerrufbuch (eigene Datei konto-widerrufe.json): einsammeln, in der
+   Kopie nachziehen (Konto „gesperrt“, Lauf angehoben, Mitgliedschaft
+   „entzogen“), vermerken; jeder Zweifel bricht ab. `kontowiderrufbuch-neu`
+   legt ein verlorenes Konto-Buch nur bewusst neu an.
+
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
    mit --ersetzen angefasst, und auch dann nichts gelöscht: Der alte Inhalt
@@ -138,6 +146,8 @@ import { ANKER_SCHLUESSEL, MARKE_PRAEFIX, VERWALTER_PRAEFIX, buchLesen, buchNeu,
   REGIME_PRAEFIX, regimeNachzuziehen, BESTAND_PRAEFIXE, bestandRaum, bestandBetriebe }
   from "../server/lib/widerrufbuch.mjs";
 import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
+import { KONTOBUCH_ANKER, KONTOBUCH_NACHTRAG, ACCOUNT_PRAEFIX, MITGLIED_PRAEFIX, MITGLIEDLAUF_PRAEFIX, kontobuchLesen,
+  kontobuchNeu, kontobuchSchreiben, kontobuchEinsammeln, kontobuchNormalisieren } from "../server/lib/kontowiderrufbuch.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -794,6 +804,106 @@ export async function widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manif
     nachgezogen: offen.length + vOffen.length, marken: mOffen.length, regime: rOffen.length };
 }
 
+/* ---------------------------------------------------------------------------
+   Konto-Widerrufbuch (BE-1) — Konten, Mitgliedschaften und Läufe einer Ablage auf der Platte
+   --------------------------------------------------------------------------- */
+
+const ACCOUNT_DATEI = dateiname(`${ACCOUNT_PRAEFIX}x`).slice(0, -"x.json".length);
+const MITGLIED_DATEI = dateiname(`${MITGLIED_PRAEFIX}x`).slice(0, -"x.json".length);
+const MITGLIEDLAUF_DATEI = dateiname(`${MITGLIEDLAUF_PRAEFIX}x`).slice(0, -"x.json".length);
+
+/**
+ * Konten (account:*), Mitgliedschaften (mitglied:*), Läufe (mitgliedlauf:*) und den Nachtrag eines Store-Verzeichnisses
+ * `centric`, je mit Ablageschlüssel. Beschädigt: wirft.
+ * @param {string} dir
+ */
+async function kontoStandImOrdner(dir) {
+  /** @type {{konten: any[], mitglieder: any[], laeufe: any[], nachtrag: any}} */
+  const aus = { konten: [], mitglieder: [], laeufe: [], nachtrag: null };
+  let namen = [];
+  try { namen = await readdir(dir); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return aus; throw e; }
+  for (const n of namen) {
+    if (!n.endsWith(".json")) continue;
+    /* „mitgliedlauf%3A“ beginnt nicht mit „mitglied%3A“: getrennte Namensräume. */
+    const ziel = n.startsWith(ACCOUNT_DATEI) ? aus.konten : n.startsWith(MITGLIEDLAUF_DATEI) ? aus.laeufe
+      : n.startsWith(MITGLIED_DATEI) ? aus.mitglieder : null;
+    if (!ziel) continue;
+    const wert = await umschlagDaten(path.join(dir, n));
+    if (wert !== null && wert !== undefined) ziel.push({ schluessel: decodeURIComponent(n.slice(0, -5)), wert });
+  }
+  const nd = dateiname(KONTOBUCH_NACHTRAG);
+  if (namen.includes(nd)) aus.nachtrag = await umschlagDaten(path.join(dir, nd));
+  return aus;
+}
+
+/**
+ * Nur prüfen (vor jedem Schreiben, auch vor dem Buch der Codes): Konto-Widerrufbuch lesbar und unversehrt, passt zum
+ * Anker der Sicherung. Wirft SicherungsFehler oder KontoWiderrufbuchFehler.
+ * @param {{zustandsVerz: string, stufe: string}} o
+ */
+export async function kontobuchVorpruefen({ zustandsVerz, stufe }) {
+  const buchVorher = await kontobuchLesen(zustandsVerz);
+  const ankerDatei = path.join(stufe, "centric", dateiname(KONTOBUCH_ANKER));
+  const anker = await umschlagDaten(ankerDatei).catch(() => { throw new SicherungsFehler("Der Anker des Konto-Widerrufbuchs in der Sicherung ist beschädigt. Nichts wurde angefasst.", 2); });
+  if (!buchVorher && anker)
+    throw new SicherungsFehler(`Das Konto-Widerrufbuch fehlt in ${zustandsVerz}, die Sicherung kennt aber eines. Ohne es lebten `
+      + "gesperrte Konten und entzogene Mitgliedschaften wieder auf. Erst die Kopie des Konto-Widerrufbuchs zurücklegen "
+      + "(BEREITSTELLUNG.md §5.4) oder bewusst `kontowiderrufbuch-neu` aufrufen. Nichts wurde angefasst.", 2);
+  if (buchVorher && anker && !buchVorher.ids.includes(anker.id))
+    throw new SicherungsFehler("Die Sicherung gehört zu einem anderen Konto-Widerrufbuch (andere Umgebung?). Nichts wurde angefasst.", 2);
+  return { buchVorher, anker, ankerDatei };
+}
+
+/**
+ * Vor dem Tausch (wie widerrufbuchVorbereiten): Konto-Widerrufbuch prüfen, aus der laufenden Ablage und der Sicherung
+ * einsammeln, in der Stufe nachziehen (Konto gesperrt, Lauf angehoben, Mitgliedschaft entzogen), Wiederherstellung
+ * vermerken, Buch schreiben. Wirft bei jedem Zweifel (dann wird nichts getauscht).
+ * @param {{zustandsVerz: string, stufe: string, ziel: string, manifest: any, jetzt: Date}} o
+ */
+export async function kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt }) {
+  const { buchVorher, anker, ankerDatei } = await kontobuchVorpruefen({ zustandsVerz, stufe });
+  const buch = buchVorher ? structuredClone(buchVorher) : kontobuchNeu();
+  const eingesammelt = kontobuchEinsammeln(buch, await kontoStandImOrdner(path.join(ziel, "centric")));
+  const stufeStand = await kontoStandImOrdner(path.join(stufe, "centric"));
+  kontobuchEinsammeln(buch, stufeStand);
+  const n = kontobuchNormalisieren(buch, stufeStand, { am: jetzt.toISOString() });
+  await mkdir(path.join(stufe, "centric"), { recursive: true, mode: 0o700 });
+  /* Reihenfolge wie beim Entzug: Lauf vor Status (für einen Abbruch hier ohne Belang — die Stufe wird dann verworfen). */
+  for (const x of [...n.konten, ...n.laeufe, ...n.mitglieder])
+    await umschlagSchreiben(path.join(stufe, "centric", dateiname(x.schluessel)), x.wert);
+  if (!anker) await umschlagSchreiben(ankerDatei, { id: buch.id });
+  buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
+  await kontobuchSchreiben(zustandsVerz, buch);
+  return { konten: Object.keys(buch.konten).length, mitglieder: Object.keys(buch.mitglieder).length, eingesammelt,
+    nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length };
+}
+
+/**
+ * Bewusster Neuanfang des Konto-Widerrufbuchs, wenn es verloren ist (wie widerrufbuch-neu): nur bei stehendem Server
+ * und nur, wenn es KEINES gibt. Eingesammelt wird, was die Ablage gesperrt bzw. entzogen kennt; was nur im verlorenen
+ * Buch stand, ist danach nicht mehr geschützt (Restrisiko, BE-3).
+ * @param {{zustand: string, daten: string, serverUrl?: string, serverPruefen?: boolean}} o
+ */
+export async function kontowiderrufbuchNeu({ zustand, daten, serverUrl, serverPruefen = true }) {
+  const z = zustandOrtPruefen(zustand, path.resolve(daten));
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url)) throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen. Nichts wurde angefasst.`);
+  }
+  let vorhanden = null;
+  try { vorhanden = await kontobuchLesen(z); } catch { vorhanden = "kaputt"; }
+  if (vorhanden) throw new SicherungsFehler("Es gibt schon ein Konto-Widerrufbuch (oder ein beschädigtes) — es wird nie ersetzt. Beschädigt: die Kopie zurücklegen.", 2);
+  if (await ablageBelegt(path.resolve(daten)))
+    throw new SicherungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen. Nichts wurde angefasst.");
+  const buch = kontobuchNeu();
+  const ankerAlt = await umschlagDaten(path.join(path.resolve(daten), "centric", dateiname(KONTOBUCH_ANKER))).catch(() => null);
+  if (ankerAlt && /^[0-9a-f]{32}$/.test(ankerAlt.id)) buch.ids.push(ankerAlt.id);
+  const n = kontobuchEinsammeln(buch, await kontoStandImOrdner(path.join(path.resolve(daten), "centric")));
+  await kontobuchSchreiben(z, buch);
+  return { eintraege: n };
+}
+
 /**
  * Bewusster Neuanfang des Widerrufbuchs, wenn es verloren ist (Server neu aufgesetzt, Zustandsverzeichnis weg, keine
  * Kopie). Nur bei stehendem Server und nur, wenn es KEIN Buch gibt. Eingesammelt wird, was die Ablage gesperrt kennt;
@@ -910,6 +1020,14 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
      was im Buch steht, wird in der zurückzuspielenden Kopie gesperrt — so belebt auch ein älteres Bild, das das Buch
      nicht kennt, keinen widerrufenen oder ersetzten Code. Jeder Zweifel bricht ab, bevor etwas angefasst ist. */
   if (zustandsVerz) {
+    /* BE-1: Das Konto-Widerrufbuch wird VOR jedem Schreiben geprüft — ein Zweifel dort soll auch das Buch der Codes
+       unberührt lassen (kein Vermerk einer Wiederherstellung, die nicht stattfand). */
+    try { await kontobuchVorpruefen({ zustandsVerz, stufe }); }
+    catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Konto-Widerrufbuch: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
     try {
       const w = await widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
       meldung(`Widerrufbuch: ${w.eintraege} widerrufene Zugänge, ${w.eingesammelt} aus der bisherigen Ablage übernommen, `
@@ -922,6 +1040,24 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
   } else {
     meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Widerrufene Zugangscodes sperrt erst der Server dieser Fassung "
       + "beim Start nach — vor einem Rücksprung auf ein älteres Bild mit --zustand wiederherstellen (BEREITSTELLUNG.md §5.4).");
+  }
+
+  /* 1d. BE-1: Konto-Widerrufbuch (server/lib/kontowiderrufbuch.mjs), eigene Datei neben dem Buch der Codes. Was die
+     laufende Ablage gesperrt/entzogen kennt, kommt ins Buch; was im Buch steht, wird in der Kopie nachgezogen (Konto
+     gesperrt, Lauf angehoben, Mitgliedschaft entzogen). Jeder Zweifel bricht ab, bevor etwas getauscht ist. */
+  if (zustandsVerz) {
+    try {
+      const w = await kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
+      meldung(`Konto-Widerrufbuch: ${w.konten} gesperrte Konten, ${w.mitglieder} entzogene Beziehungen, ${w.eingesammelt} `
+        + `aus der bisherigen Ablage übernommen, ${w.nachgezogen} in der Sicherung nachgezogen, ${w.laeufe} Läufe angehoben.`);
+    } catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Konto-Widerrufbuch: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+  } else {
+    meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Gesperrte Konten und entzogene Mitgliedschaften zieht erst der "
+      + "Server dieser Fassung beim Start nach — vor einem Rücksprung auf ein älteres Bild mit --zustand wiederherstellen.");
   }
 
   // 2. alten Inhalt beiseite, neuen an seinen Platz — Umbenennen, nichts löschen
@@ -991,7 +1127,8 @@ const HILFE = `Aufruf:
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
                                         [--server-url <URL>] [--ohne-serverpruefung] [--zustand <Ordner>]
   ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
-  ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]`;
+  ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
+  ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]`;
 
 export async function main(/** @type {string[]} */ argv) {
   const [befehl, ...rest] = argv;
@@ -1053,6 +1190,14 @@ export async function main(/** @type {string[]} */ argv) {
       const r = await widerrufbuchNeu({ zustand, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
         serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
       console.log(`Widerrufbuch neu angelegt: ${r.eintraege} gesperrte Zugänge aus der Ablage übernommen. Was nur im verlorenen Buch stand, ist nicht mehr geschützt.`);
+      return 0;
+    }
+    if (befehl === "kontowiderrufbuch-neu") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      const r = await kontowiderrufbuchNeu({ zustand, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log(`Konto-Widerrufbuch neu angelegt: ${r.eintraege} Sperren und Entzüge aus der Ablage übernommen. Was nur im verlorenen Buch stand, ist nicht mehr geschützt.`);
       return 0;
     }
     throw new SicherungsFehler(HILFE, 2);
