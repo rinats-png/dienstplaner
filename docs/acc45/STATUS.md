@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 212 · BLOCKED 76 · READY 17 · IN_PROGRESS 21 · REVIEW 7 · INTEGRATED 88 · DONE 3
+**Pakete gesamt:** 212 · BLOCKED 76 · READY 17 · IN_PROGRESS 20 · REVIEW 7 · INTEGRATED 89 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 112 | 24 | 1 | 10 | 3 | 72 | 2 | 52,35–92,9 |
+| ACC45 | 112 | 24 | 1 | 9 | 3 | 73 | 2 | 50,85–89,9 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 1 | 0 | 0 | 65,3–101,7 |
 | Intelligence | 40 | 20 | 0 | 8 | 0 | 12 | 0 | 179,5–317,5 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **302,25–522,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **300,75–519,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -70,13 +70,12 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **302,25–522
 | IMP-8 Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E) | IN_PROGRESS | `–` | Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt. |
 | OPT-4 SI-P4 Option 4: zweiter Faktor (TOTP) direkt für Benutzerkonten, Zielarchitektur | IN_PROGRESS | `–` | Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. |
 | WP-48-GB Lesen des Plans schreibt: Dialog „Gleichzeitig bearbeitet“ beim bloßen Öffnen (Befund aus dem Review von PR #262) | IN_PROGRESS | `–` | Befund aus dem Review von PR #262 (WP-33 Teil 3): Mehrere parallele Sitzungen, die den Plan nur öffnen und nichts eingeben, zeigen den Dialog „Gleichzeitig bearbeitet“; die e2e-Suite läuft deshalb mit workers: 1 als Notlösung (playwright.config.mjs). Der Dialog in src/ansichten/speicherlage.jsx:174 erscheint nach bisherigem Stand nur bei einem Speicherkonflikt, das Öffnen scheint also zu schreiben. Schritt 1 Analyse: welcher Lade- oder Öffnungsweg schreibt (Autospeichern, Herzschlag, Zeitstempel, Migration beim Laden). Schritt 2 Behebung. Bereich WP-48 und WP-16. Keine Produktentscheidung bekannt. Aufwand SCHÄTZUNG. Abhängigkeiten leer; BLOCKED bis zur Zuteilung durch den Koordinator (Strang acc45). Stand 2026-11-13: PR #271 gemergt (bbd5e6e0). Akzeptanz nur teilweise belegt: das Öffnen löst keinen Speichervorgang und keinen Konfliktdialog mehr aus, echte Konflikte werden weiter gemeldet (Prüfung laut PR). NICHT erfüllt: die e2e-Suite läuft weiter mit workers: 1 (playwright.config.mjs; der PR nennt das ausdrücklich). Unabhängiges Review nicht belegt (reviewt false). Offene Produktfragen: (1) Urlaubshinweis serverseitig als täglicher Lauf statt beim Öffnen? (2) nur eine Rolle (Leitung) oder nur auf ausdrückliche Handlung? (3) Meldung 'N Hinweise verschickt' auch in der Sitzung, deren Lauf still ersetzt wurde? Deshalb IN_PROGRESS, nicht INTEGRATED. |
-| ABNAHME-V4 Abnahme V4: Release-Kandidat, lokale Integrationsabnahme (Matrix, Ströme A, B, C) | IN_PROGRESS | `–` | Stand 2026-11-13. Lokale Integrationsabnahme: implementiert, lokal getestet, reviewt und für die Testinfrastruktur integriert. Staging geprüft: NEIN. Fachlich/rechtlich freigegeben: NEIN. Produktiv: NEIN. IN_PROGRESS bis zur produktionsnahen Staging-Abnahme. Release-Empfehlung (STAGING-PLAN-V4.md Abschnitt 9): A lokaler Kandidat technisch annehmbar mit Auflagen; B (reif für die Betreiberfreigabe nach Staging) noch nicht. S0-B2 (fachliche Browser-E2E, vorher nur axe) ist durch die Strang-A/B-Spezifikationen teilweise geschlossen, nicht vollständig: ehrliche Teillücke, Ersatzplanung im Browser fehlt. Betreiberhinweis: Browser-Tests laden Chromium und CDN-Skripte ohne Integritätsprüfung, und der Browser-Job steuert das Deployment (Lieferkette, Betreiberentscheidung). Offene Bildfrage: Die Produktion läuft laut Stand auf 64d08a4 (Digest f03a8514); deploy/FREIGEGEBENE-IMAGES.md führt dieses Bild als gesperrt (P0-0) und 274bfa0 als aktiv; Klärung durch den Betreiber offen. Verwandte Pakete: ABN-A2, ABN-A3, ABN-A4, ABN-S2, ABN-C1, ABN-B3, WP-ST1. PR #271 siehe WP-48-GB, #272 siehe WP-40, #283 QS-4, #285 QS-5, #282 Risikobewertung (ABN-A2/ABN-S2), #284 Wiederherstellungskonzept (ABN-A3), #279 Staging-Plan (WP-ST1). |
 
 ### Bereit zum Start (16)
 
 WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · SI-P6b (acc45, 1,5–3 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B6 (acc45, 0,3–0,5 PT) · WP-ST1 (acc45, 2–5 PT) · ABN-A2 (acc45, 1–3 PT) · ABN-A3 (acc45, 1–3 PT) · ABN-A4 (acc45, 1–3 PT) · ABN-S2 (acc45, 1–3 PT) · ABN-C1 (acc45, 0,5–1 PT) · ABN-B3 (acc45, 0,25–0,5 PT)
 
-### Integriert in `integration/centric-complete` (88)
+### Integriert in `integration/centric-complete` (89)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -166,6 +165,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelli
 | WP-21-SV Schichtverantwortung: Ansicht Übergabe fehlt in der SV-Navigation, Krankmeldung-Ablauf Timeout auf Smartphone (Befund aus WP-21 Teil 3) | PR #213 in integration/release-v4 | PR #213 in integration/release-v4 |
 | WP-19-B4 Modul-Registry: modulAktiv fail-closed; Berichtigung nach Art. 16 vereinheitlichen | PR #247 in integration/release-v4 | PR #247 in integration/release-v4 |
 | WP-19-B5 Oberflächen der geplant-Module: Bearbeiten und Löschen bei Status geplant ausblenden | PR #249 in integration/release-v4 | PR #249 in integration/release-v4 |
+| ABNAHME-V4 Abnahme V4: Release-Kandidat, lokale Integrationsabnahme (Matrix, Ströme A, B, C) | PR #281 in integration/release-v4 | PR #281 in integration/release-v4 |
 | QS-4 geo.test.js: Uhrzeit-abhängige Prüfung deterministisch | PR #283 in integration/release-v4 | PR #283 in integration/release-v4 |
 | QS-5 Zufallskollision in account-isolation, betriebsauswahl, einladungen entfernt | PR #285 in integration/release-v4 | PR #285 in integration/release-v4 |
 
@@ -295,7 +295,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelli
 | WP-19-B4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-19-B5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-48-GB | IN_PROGRESS | ✓ | ✓ | – | – | – | – | – |
-| ABNAHME-V4 | IN_PROGRESS | ✓ | ✓ | ✓ | – | – | – | – |
+| ABNAHME-V4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | QS-4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | QS-5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 <!-- AUTO:END -->
