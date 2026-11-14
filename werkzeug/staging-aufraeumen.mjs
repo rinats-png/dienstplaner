@@ -29,13 +29,16 @@
 
    Exit 0: aufgeräumt und nachgewiesen (oder nichts zu tun) ·
    1: Löschen oder Nachweis gescheitert · 2: falscher Aufruf ·
-   3: unklare Lage, nichts gelöscht.
+   3: unklare Lage, nichts gelöscht — auch, wenn CENTRIC_PFEFFER fehlt
+   oder das Widerrufbuch mit diesem Pfeffer nicht prüfbar ist (E-M6).
    ========================================================================== */
 
 import { getStore } from "../server/lib/ablage.mjs";
 import { bestandLesen, raumBelegt } from "../server/lib/bestand.mjs";
 import { raumLoeschen } from "../server/lib/raumloeschung.mjs";
 import { sitzungsSpeicher } from "../server/lib/sitzungen.mjs";
+import { pfeffrig } from "../server/lib/codes.mjs";
+import { buchGeprueft, NACHTRAG_SCHLUESSEL } from "../server/lib/widerrufbuch.mjs";
 
 const NAME = "STAGING-AUFRAEUMEN";
 const MARKE = "PPG-GATE";
@@ -130,13 +133,34 @@ if (unklar.length) {
   abbruch(3, "Mindestens ein Raum sieht nicht wie Gate-Wegwerfdaten aus. Nichts gelöscht — bitte von Hand ansehen.");
 }
 
+/* E-M6: Die Raumlöschung trägt die Codes ins Widerrufbuch (widerrufbuch.mjs), gesiegelt mit einem Schlüssel aus
+   CENTRIC_PFEFFER. Ohne den Pfeffer des Servers (Aufruf außerhalb des Containers, fehlende Variable) scheitert das Buch:
+   Die Löschung bliebe halb stehen (Kern, Marke und Vermerk als Wiederholungsmarker), und ohne Pfeffer könnte sie ein
+   neues Buch mit falschem Siegel anlegen — dann gälte für den Server kein Code mehr. Deshalb vorher prüfen, und bei
+   Zweifel nichts löschen (Exit 3). */
+if (aufnahmen.some((x) => x.vorhanden)) {
+  if (!pfeffrig())
+    abbruch(3, "CENTRIC_PFEFFER fehlt — ohne den Pfeffer des Servers ist das Widerrufbuch nicht prüfbar. Nichts gelöscht (im Container aufrufen).");
+  try { await buchGeprueft(store); }
+  catch (e) {
+    abbruch(3, `Widerrufbuch nicht prüfbar (${String(e && e.message || e).slice(0, 160)}). Nichts gelöscht — anderer Pfeffer als der Server?`);
+  }
+}
+
+/** Fehler der Raumlöschung ohne Schlüsselrest (der könnte eine Code-Prüfsumme sein): nur Art und, bei Buch und
+    Nachtrag, der Grund. */
+const fehlerText = (/** @type {Array<{schluessel: string, grund: string}>} */ f) => f.map((x) => {
+  const art = String(x.schluessel).split(":")[0];
+  return x.schluessel === "widerrufbuch" || x.schluessel === NACHTRAG_SCHLUESSEL ? `${art}: ${String(x.grund).slice(0, 120)}` : art;
+}).join("; ");
+
 console.log("\nLöschen");
 for (const a of aufnahmen.filter((x) => x.vorhanden)) {
   const r = await raumLoeschen(store, sitzungen, a.raum);
   let index = 0;
   for (const b of (await store.list({ prefix: `feedperson:${a.raum}:` })).blobs) { await store.delete(b.key); index++; }
   pruef(`${a.raum}: gelöscht (${r.geloescht} Einträge, ${index} Kalender-Index)`, r.vollstaendig,
-    `${r.fehler.length} Fehler`);
+    `${r.fehler.length} Fehler (${fehlerText(r.fehler)})`);
 }
 if (!aufnahmen.some((x) => x.vorhanden)) console.log("  nichts zu tun");
 

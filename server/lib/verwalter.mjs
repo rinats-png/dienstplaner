@@ -24,6 +24,7 @@
    ========================================================================== */
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { verwalterWiderrufen, verwalterInsBuch } from "./widerrufbuch.mjs";
 
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
@@ -64,6 +65,10 @@ export async function verwalterPruefen(store, roh) {
     .catch(() => null);
   if (eintrag) {
     if (eintrag.gesperrt) return null;
+    /* E-M6 (widerrufbuch.mjs): Ein gesperrter Schlüssel steht außerhalb der gesicherten Ablage im Widerrufbuch und gilt
+       nie wieder — auch wenn eine zurückgespielte ältere Sicherung ihn ungesperrt zeigt. Ist das Buch nicht prüfbar,
+       gilt er ebenfalls nicht (fail-closed); der Ursprungsschlüssel CENTRIC_ADMIN hängt nicht am Buch. */
+    try { if (await verwalterWiderrufen(store, hash(roh))) return null; } catch { return null; }
     if (eintrag.laeuftAb && new Date(eintrag.laeuftAb).getTime() < Date.now()) return null;
     return { art: "konto", name: eintrag.name, kennung: hash(roh).slice(0, 8),
       email: eintrag.email || null, zweifaktorId: hash(roh) };
@@ -118,19 +123,37 @@ export async function verwalterListe(store) {
   return aus.sort((a, b) => (a.angelegt < b.angelegt ? 1 : -1));
 }
 
+/** Wirft verwalterSperren, wenn die Sperre in der Ablage wirkt, das Widerrufbuch aber nicht geschrieben wurde. */
+export class VerwalterBuchFehler extends Error {
+  /** @param {number} gesperrt */
+  constructor(gesperrt) { super("Widerruf wirksam, Widerrufbuch nicht beschrieben."); this.gesperrt = gesperrt; }
+}
+
 /**
  * Sperrt ein Konto. Gelöscht wird nicht — der Eintrag bleibt als Beleg
  * stehen, dass es dieses Konto gab und wann es endete.
+ *
+ * E-M6: zuerst in der Ablage (wirkt sofort), dann im Widerrufbuch — sonst
+ * lebte der Schlüssel nach dem Zurückspielen einer älteren Sicherung wieder
+ * auf. Scheitert das Buch: VerwalterBuchFehler (die Sperre wirkt trotzdem;
+ * der nächste Widerruf oder Serverstart sammelt sie ein).
  */
 export async function verwalterSperren(store, kennung) {
   const { blobs } = await store.list({ prefix: `verwalter:${kennung}` })
     .catch(() => ({ blobs: [] }));
   let n = 0;
+  const hashes = [];
   for (const b of blobs) {
     const e = await store.get(b.key, { type: "json" }).catch(() => null);
-    if (!e || e.gesperrt) continue;
+    if (!e) continue;
+    hashes.push(b.key.slice("verwalter:".length));
+    if (e.gesperrt) continue;
     await store.setJSON(b.key, { ...e, gesperrt: true, gesperrtAm: new Date().toISOString() });
     n++;
+  }
+  if (hashes.length) {
+    try { await verwalterInsBuch(store, hashes, "verwalter-gesperrt"); }
+    catch { throw new VerwalterBuchFehler(n); }
   }
   return n;
 }

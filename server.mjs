@@ -44,6 +44,7 @@ import { nachfassen, zustellungAufraeumen } from "./server/lib/versand.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
 import { bindungErneuern, zustandPruefen, zustandsVerzeichnis } from "./server/lib/schluesselepoche.mjs";
+import { widerrufbuchStart, buchGeprueft } from "./server/lib/widerrufbuch.mjs";
 import { kanalStarten, haltObergrenze, HALT_ORDNER } from "./server/lib/schreibhalt.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
@@ -424,6 +425,28 @@ try {
   const r = await betreiberSitzungenOhneFaktorBeenden(getStore({ name: "centric", consistency: "strong" }));
   if (r.beendet || r.fehler) console.log(`Betreibersitzungen ohne zweiten Faktor: ${r.beendet} beendet, ${r.fehler} Fehler`);
 } catch (e) { console.error("Betreibersitzungen ohne zweiten Faktor ließen sich nicht prüfen:", e && e.message); }
+
+/* E-M6 (server/lib/widerrufbuch.mjs): Widerrufene und ersetzte Zugangsdaten bleiben nach jedem Rücksprung ungültig. Beim
+   Start: Stand des Widerrufbuchs feststellen, was die Ablage gesperrt kennt einsammeln, und jeden Zugang und Verwalter-
+   schlüssel, der im Buch steht, in der Ablage sperren (auch für ein älteres Bild, das das Buch nicht kennt); fehlende
+   Marken abgeschlossener Ersteinrichtungen anlegen. Vor dem ersten Anfrageweg. Scheitert das, sagt die Warnung genau,
+   was gilt (Review E-M6, Befund 4) — zwei Fälle:
+     Buch nicht prüfbar (fehlt bei vorhandenem Anker, beschädigt, fremd, falsches Siegel): kein Zugangscode gilt
+       (Anmeldung, laufende Code-Sitzungen und Kalenderfeeds aus Codes 503), kein benannter Verwalterschlüssel.
+     Buch prüfbar, aber Ablage nicht lesbar oder nicht nachziehbar: Was im Buch steht, bleibt abgewiesen; die Ablage
+       ist aber nicht nachgezogen — ein älteres Bild auf diesen Daten nähme dort ungesperrte Codes an. */
+try {
+  const r = await widerrufbuchStart(getStore({ name: "centric", consistency: "strong" }));
+  console.log(`Widerrufbuch: ${r.eintraege} Einträge, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.marken} Marken angelegt`);
+} catch (e) {
+  const grund = e && e.message ? e.message : String(e);
+  const pruefbar = await buchGeprueft(getStore({ name: "centric", consistency: "strong" })).then(() => true, () => false);
+  console.error(pruefbar
+    ? `WARNUNG Widerrufbuch: ${grund} Das Buch ist prüfbar: Was darin steht, bleibt abgewiesen. Die Ablage ist aber NICHT `
+      + "nachgezogen — vor einem Rücksprung auf ein älteres Bild beheben und neu starten (BEREITSTELLUNG.md §5.4)."
+    : `WARNUNG Widerrufbuch: ${grund} Bis zur Klärung gilt kein Zugangscode und kein benannter Verwalterschlüssel `
+      + "(Anmeldung, Code-Sitzungen, Kalenderfeeds aus Codes: 503; BEREITSTELLUNG.md §5.4).");
+}
 
 const routen = await funktionenLaden();
 console.log("Funktionen: " + routen.map((r) => `${r.name} ${r.muster}`).join(", "));

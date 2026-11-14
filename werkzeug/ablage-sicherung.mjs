@@ -11,6 +11,7 @@
      node werkzeug/ablage-sicherung.mjs pruefen --sicherung /sicherungen/centric-sicherung-…
      node werkzeug/ablage-sicherung.mjs wiederherstellen --sicherung … --ziel /data [--ersetzen] [--zustand <Ordner>]
      node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner>
+     node werkzeug/ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data]
 
    ---------------------------------------------------------------------------
    Was gesichert wird — und was nicht
@@ -110,6 +111,14 @@
    abgelehnt. Wer ein altes /data per Verzeichniskopie zurückspielt (ohne
    dieses Werkzeug), ruft danach `schluessel-erneuern` auf.
 
+   Widerrufene Zugangscodes nach einer Wiederherstellung (E-M6, 2026-11-13,
+   server/lib/widerrufbuch.mjs): Mit Zustandsverzeichnis übernimmt das Werkzeug
+   vor dem Tausch alle in der bisherigen Ablage gesperrten Codes ins Widerrufbuch,
+   sperrt alles, was dort steht, in der zurückzuspielenden Kopie (`gesperrt`,
+   das auch ältere Bilder kennen) und vermerkt die Wiederherstellung. Buch
+   beschädigt, fremd oder fehlend bei vorhandenem Anker: Abbruch, nichts
+   angefasst. `widerrufbuch-neu` legt ein verlorenes Buch nur bewusst neu an.
+
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
    mit --ersetzen angefasst, und auch dann nichts gelöscht: Der alte Inhalt
@@ -119,9 +128,15 @@
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { hostname } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BINDUNG_SCHLUESSEL, epocheDateiErneuern, ueberlappen } from "../server/lib/schluesselepoche.mjs";
 import { haltAnfordern } from "../server/lib/schreibhalt.mjs";
+import { dateiname } from "../server/lib/ablage.mjs";
+import { ANKER_SCHLUESSEL, MARKE_PRAEFIX, VERWALTER_PRAEFIX, buchLesen, buchNeu, buchSchreiben, einsammeln, nachzuziehen,
+  verwalterNachzuziehen, markenNachzuziehen, markeZerlegen, gesperrtesKonto, NACHTRAG_SCHLUESSEL, nachtragSchluessel }
+  from "../server/lib/widerrufbuch.mjs";
+import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -627,6 +642,162 @@ export async function schluesselErneuern({ zustand, daten, serverUrl, serverPrue
   catch (e) { throw new SicherungsFehler(`Schlüsselepoche nicht erneuert: ${/** @type {Error} */ (e).message}`); }
 }
 
+/* ---------------------------------------------------------------------------
+   Widerrufbuch (E-M6) — Zugangscodes einer Ablage auf der Platte lesen und sperren
+   --------------------------------------------------------------------------- */
+
+const KONTO_PRAEFIX = "konto%3A";
+
+/** Den Inhalt (`daten`) eines Umschlags lesen; fehlt die Datei: null. Beschädigt: wirft (fail-closed). */
+async function umschlagDaten(/** @type {string} */ datei) {
+  let roh;
+  try { roh = await readFile(datei); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return null; throw e; }
+  umschlagPruefen(datei, roh);
+  const u = JSON.parse(roh.toString("utf8"));
+  return u.typ === "json" ? u.daten : JSON.parse(u.daten);
+}
+
+/** Einen JSON-Umschlag wie server/lib/ablage.mjs schreiben (überschreibt; nur in der Stufe oder einem stillen Ziel). */
+async function umschlagSchreiben(/** @type {string} */ datei, /** @type {any} */ daten, /** @type {object} */ metadata = {}) {
+  const serialisiert = JSON.stringify(daten);
+  const inhalt = JSON.stringify({ fassung: ABLAGE_FASSUNG, etag: `"${sha256(serialisiert).slice(0, 32)}"`, typ: "json", metadata, daten });
+  const tmp = `${datei}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  await schreibenFest(tmp, inhalt);
+  try { await rename(tmp, datei); } catch (e) { await rm(tmp, { force: true }); throw e; }
+}
+
+const VERWALTER_DATEI = dateiname(`${VERWALTER_PRAEFIX}x`).slice(0, -"x.json".length);
+const MARKE_DATEI = dateiname(`${MARKE_PRAEFIX}x`).slice(0, -"x.json".length);
+
+/**
+ * Alle Zugänge (konto:* und der alte Sammelblob „konten"), Verwalterschlüssel (verwalter:*) und Marken
+ * „Erstanmeldung festgelegt" (erstleitung-marke:*, PR #281) eines Store-Verzeichnisses `centric`. Beschädigt: wirft.
+ * @param {string} dir
+ * @returns {Promise<{konten: Record<string, any>, verwalter: Record<string, any>,
+ *   marken: Array<{raum: string, mandantId: string, personId: string}>, nachtrag?: string[]}>}
+ */
+async function kontenImOrdner(dir) {
+  /** @type {Record<string, any>} */ const konten = {};
+  /** @type {Record<string, any>} */ const verwalter = {};
+  /** @type {Array<{raum: string, mandantId: string, personId: string}>} */ const marken = [];
+  let namen = [];
+  try { namen = await readdir(dir); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return { konten, verwalter, marken }; throw e; }
+  const sammel = namen.includes("konten.json") ? await umschlagDaten(path.join(dir, "konten.json")) : null;
+  if (sammel && typeof sammel === "object") Object.assign(konten, sammel);
+  for (const n of namen) {
+    if (!n.endsWith(".json")) continue;
+    if (n.startsWith(KONTO_PRAEFIX)) {
+      const k = await umschlagDaten(path.join(dir, n));
+      if (k) konten[decodeURIComponent(n.slice(KONTO_PRAEFIX.length, -5))] = k;
+    } else if (n.startsWith(VERWALTER_DATEI)) {
+      const e = await umschlagDaten(path.join(dir, n));
+      if (e) verwalter[decodeURIComponent(n.slice(VERWALTER_DATEI.length, -5))] = e;
+    } else if (n.startsWith(MARKE_DATEI)) {
+      const z = markeZerlegen(decodeURIComponent(n.slice(0, -5)));
+      const m = z ? await umschlagDaten(path.join(dir, n)) : null;
+      if (z && m !== null && m !== undefined)
+        marken.push({ ...z, personId: m && typeof m === "object" && typeof m.personId === "string" ? m.personId : "" });
+    }
+  }
+  /* Nachtrag einer Raumlöschung bei nicht schreibbarem Buch (widerrufbuch.mjs, nachtragAufnehmen): Codes, die die
+     Ablage schon gelöscht hat — vor dem Tausch ins Buch, sonst lebten sie mit einer älteren Sicherung wieder auf. */
+  const nachtragDatei = dateiname(NACHTRAG_SCHLUESSEL);
+  const nachtrag = namen.includes(nachtragDatei) ? nachtragSchluessel(await umschlagDaten(path.join(dir, nachtragDatei))) : [];
+  return { konten, verwalter, marken, nachtrag };
+}
+
+/**
+ * Hält ein lebender Prozess die Ablage (Prozesssperre .prozess, server/lib/prozesssperre.mjs)? Dann wird nichts
+ * angefasst — auch mit --ohne-serverpruefung (Review E-M6, Befund 5: Werkzeug und Server haben keine gemeinsame
+ * Sperre; das ersetzt sie für einen Server, dessen /gesund nicht erreichbar ist). Derselbe Rechner: lebt die PID, ist
+ * sie belegt; ist sie tot, nicht (auch wenn die Datei frisch ist — ein hart beendeter Server). Ein anderer Rechner
+ * (zweiter Container): belegt, solange der Puls frisch ist. Unlesbar: belegt.
+ * @param {string} daten
+ */
+export async function ablageBelegt(daten) {
+  const datei = path.join(daten, SPERRDATEI);
+  let roh, st;
+  try { [roh, st] = await Promise.all([readFile(datei, "utf8"), stat(datei)]); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return false; return true; }
+  let halter = null;
+  try { halter = JSON.parse(roh); } catch { /* unten */ }
+  const frisch = Date.now() - st.mtimeMs < VERALTET_MS;
+  if (halter && halter.rechner === hostname() && Number.isInteger(halter.pid) && halter.pid > 0) {
+    if (halter.pid === process.pid) return false;
+    try { process.kill(halter.pid, 0); return true; }
+    catch (e) { return /** @type {any} */ (e).code === "EPERM"; }
+  }
+  return frisch;
+}
+
+/**
+ * Vor dem Tausch: Widerrufbuch prüfen, aus der laufenden Ablage einsammeln, in der Stufe sperren, Wiederherstellung
+ * vermerken, Buch schreiben. Wirft bei jedem Zweifel (dann wird nichts getauscht).
+ * @param {{zustandsVerz: string, stufe: string, ziel: string, manifest: any, jetzt: Date}} o
+ */
+export async function widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt }) {
+  const buchVorher = await buchLesen(zustandsVerz);
+  const ankerDatei = path.join(stufe, "centric", dateiname(ANKER_SCHLUESSEL));
+  const anker = await umschlagDaten(ankerDatei).catch(() => { throw new SicherungsFehler("Der Anker des Widerrufbuchs in der Sicherung ist beschädigt. Nichts wurde angefasst.", 2); });
+  if (!buchVorher && anker)
+    throw new SicherungsFehler(`Das Widerrufbuch fehlt in ${zustandsVerz}, die Sicherung kennt aber eines. Ohne es lebten `
+      + "widerrufene Zugangscodes wieder auf. Erst die Kopie des Widerrufbuchs zurücklegen (BEREITSTELLUNG.md §5.4) "
+      + "oder bewusst `widerrufbuch-neu` aufrufen. Nichts wurde angefasst.", 2);
+  if (buchVorher && anker && !buchVorher.ids.includes(anker.id))
+    throw new SicherungsFehler("Die Sicherung gehört zu einem anderen Widerrufbuch (andere Umgebung?). Nichts wurde angefasst.", 2);
+  const buch = buchVorher ? structuredClone(buchVorher) : buchNeu();
+  /* Was die bisherige Ablage gesperrt oder abgeschlossen kennt (auch aus einem älteren Bild, das das Buch nicht schrieb). */
+  const jetzigeAblage = await kontenImOrdner(path.join(ziel, "centric"));
+  const eingesammelt = einsammeln(buch, jetzigeAblage.konten, jetzigeAblage);
+  /* Was in der Sicherung selbst schon gesperrt ist, ebenso — und dann alles im Buch in der Stufe sperren. */
+  const stufeAblage = await kontenImOrdner(path.join(stufe, "centric"));
+  einsammeln(buch, stufeAblage.konten, stufeAblage);
+  const offen = nachzuziehen(buch, stufeAblage.konten);
+  const vOffen = verwalterNachzuziehen(buch, stufeAblage.verwalter);
+  const mOffen = markenNachzuziehen(buch, stufeAblage.konten, stufeAblage.marken);
+  await mkdir(path.join(stufe, "centric"), { recursive: true, mode: 0o700 });
+  for (const h of offen)
+    await umschlagSchreiben(path.join(stufe, "centric", dateiname(`konto:${h}`)), gesperrtesKonto(stufeAblage.konten[h], "wiederherstellung", jetzt.toISOString()));
+  for (const h of vOffen)
+    await umschlagSchreiben(path.join(stufe, "centric", dateiname(`${VERWALTER_PRAEFIX}${h}`)), gesperrtesKonto(stufeAblage.verwalter[h], "wiederherstellung", jetzt.toISOString()));
+  /* Marken „Erstanmeldung festgelegt" (PR #281), die die ältere Sicherung noch nicht kannte: Ohne sie legte ein offener
+     Erstanmeldecode eines schon eingerichteten Betriebs erneut eine erste Leitung an. Kein Code wird dafür gesperrt. */
+  for (const m of mOffen) await umschlagSchreiben(path.join(stufe, "centric", dateiname(m.schluessel)), m.wert);
+  if (!anker) await umschlagSchreiben(ankerDatei, { id: buch.id });
+  buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
+  await buchSchreiben(zustandsVerz, buch);
+  return { eintraege: Object.keys(buch.eintraege).length + Object.keys(buch.verwalter || {}).length, eingesammelt,
+    nachgezogen: offen.length + vOffen.length, marken: mOffen.length };
+}
+
+/**
+ * Bewusster Neuanfang des Widerrufbuchs, wenn es verloren ist (Server neu aufgesetzt, Zustandsverzeichnis weg, keine
+ * Kopie). Nur bei stehendem Server und nur, wenn es KEIN Buch gibt. Eingesammelt wird, was die Ablage gesperrt kennt;
+ * was nur im verlorenen Buch stand, ist damit nicht mehr geschützt (Restrisiko, BEREITSTELLUNG.md §5.4).
+ * @param {{zustand: string, daten: string, serverUrl?: string, serverPruefen?: boolean}} o
+ */
+export async function widerrufbuchNeu({ zustand, daten, serverUrl, serverPruefen = true }) {
+  const z = zustandOrtPruefen(zustand, path.resolve(daten));
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url)) throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen. Nichts wurde angefasst.`);
+  }
+  let vorhanden = null;
+  try { vorhanden = await buchLesen(z); } catch { vorhanden = "kaputt"; }
+  if (vorhanden) throw new SicherungsFehler("Es gibt schon ein Widerrufbuch (oder ein beschädigtes) — es wird nie ersetzt. Beschädigt: die Kopie zurücklegen.", 2);
+  const buch = buchNeu();
+  const ankerAlt = await umschlagDaten(path.join(path.resolve(daten), "centric", dateiname(ANKER_SCHLUESSEL))).catch(() => null);
+  if (ankerAlt && /^[0-9a-f]{32}$/.test(ankerAlt.id)) buch.ids.push(ankerAlt.id);
+  if (await ablageBelegt(path.resolve(daten)))
+    throw new SicherungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen. Nichts wurde angefasst.");
+  const a = await kontenImOrdner(path.join(path.resolve(daten), "centric"));
+  const n = einsammeln(buch, a.konten, a);
+  await buchSchreiben(z, buch);
+  return { eintraege: n };
+}
+
 /**
  * @param {{sicherung: string, ziel: string, ersetzen?: boolean, serverUrl?: string,
  *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void, zustand?: (string|null)}} o
@@ -662,6 +833,9 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
     if (await serverLaeuft(url))
       throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen, dann wiederherstellen. Nichts wurde angefasst.`);
   }
+  /* Auch ohne Serverprüfung über HTTP: Hält ein lebender Prozess die Ziel-Ablage (.prozess), wird nichts angefasst. */
+  if (await ablageBelegt(ziel))
+    throw new SicherungsFehler("Die Ziel-Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen, dann wiederherstellen. Nichts wurde angefasst.");
 
   await mkdir(ziel, { recursive: true, mode: 0o700 });
   const vorhanden = (await readdir(ziel)).filter((n) => !n.startsWith("."));
@@ -707,6 +881,25 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
     meldung("Schlüsselepoche erneuert: Kein früherer Sicherungsschlüssel gilt mehr.");
   } else {
     meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Der Server beginnt beim ersten Gebrauch eines Schlüssels eine neue Epoche.");
+  }
+
+  /* 1c. E-M6: Widerrufbuch (server/lib/widerrufbuch.mjs), nach der Epoche (deren Erneuerung bleibt bei einem Abbruch:
+     sichere Richtung). Was die LAUFENDE Ablage gesperrt kennt, kommt ins Buch; alles,
+     was im Buch steht, wird in der zurückzuspielenden Kopie gesperrt — so belebt auch ein älteres Bild, das das Buch
+     nicht kennt, keinen widerrufenen oder ersetzten Code. Jeder Zweifel bricht ab, bevor etwas angefasst ist. */
+  if (zustandsVerz) {
+    try {
+      const w = await widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
+      meldung(`Widerrufbuch: ${w.eintraege} widerrufene Zugänge, ${w.eingesammelt} aus der bisherigen Ablage übernommen, `
+        + `${w.nachgezogen} in der Sicherung gesperrt, ${w.marken} Marken der Ersteinrichtung wiederhergestellt.`);
+    } catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Widerrufbuch: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+  } else {
+    meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Widerrufene Zugangscodes sperrt erst der Server dieser Fassung "
+      + "beim Start nach — vor einem Rücksprung auf ein älteres Bild mit --zustand wiederherstellen (BEREITSTELLUNG.md §5.4).");
   }
 
   // 2. alten Inhalt beiseite, neuen an seinen Platz — Umbenennen, nichts löschen
@@ -775,7 +968,8 @@ const HILFE = `Aufruf:
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
                                         [--server-url <URL>] [--ohne-serverpruefung] [--zustand <Ordner>]
-  ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]`;
+  ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
+  ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]`;
 
 export async function main(/** @type {string[]} */ argv) {
   const [befehl, ...rest] = argv;
@@ -829,6 +1023,14 @@ export async function main(/** @type {string[]} */ argv) {
       await schluesselErneuern({ zustand, daten: typeof o.daten === "string" ? o.daten : undefined,
         serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
       console.log("Schlüsselepoche erneuert: Kein früherer Sicherungsschlüssel gilt mehr. Eine Leitung legt in der App neue an.");
+      return 0;
+    }
+    if (befehl === "widerrufbuch-neu") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      const r = await widerrufbuchNeu({ zustand, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log(`Widerrufbuch neu angelegt: ${r.eintraege} gesperrte Zugänge aus der Ablage übernommen. Was nur im verlorenen Buch stand, ist nicht mehr geschützt.`);
       return 0;
     }
     throw new SicherungsFehler(HILFE, 2);

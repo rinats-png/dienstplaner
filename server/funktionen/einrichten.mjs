@@ -14,7 +14,7 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { erstleitungAusstellen, erstleitungVermerk, erstleitungEingerichtet, erstleitungRegimeVermerken }
   from "../lib/erstleitung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
-  verwalterZweifaktorIrgendwo }
+  verwalterZweifaktorIrgendwo, VerwalterBuchFehler }
   from "../lib/verwalter.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
   zweifaktorAbschalten, nachweisAusstellen, zweifaktorMoeglich, wiederherstellungNeu } from "../lib/zweifaktor.mjs";
@@ -317,7 +317,16 @@ export default async (req) => {
       if (body.kennung === wer.kennung)
         return antwort({ fehler: "Der eigene Zugang lässt sich nicht sperren. "
           + "Sonst steht am Ende niemand mehr bereit." }, 400);
-      const n = await verwalterSperren(s0, body.kennung);
+      let n;
+      try { n = await verwalterSperren(s0, body.kennung); }
+      catch (e) {
+        if (!(e instanceof VerwalterBuchFehler)) throw e;
+        /* E-M6: Die Sperre wirkt (Ablage), nur das Widerrufbuch fehlt — laut melden, nie still. */
+        await protokoll("verwalter", k, "fehler", `Widerruf wirksam, Widerrufbuch nicht beschrieben: ${body.kennung} durch ${wer.name}`);
+        return antwort({ fehler: "Widerruf wirksam, Widerrufbuch nicht beschrieben.", widerrufWirksam: true, gesperrt: e.gesperrt,
+          text: "Der Schlüssel ist gesperrt. Dass er nach dem Zurückspielen einer älteren Sicherung gesperrt bleibt, holt der "
+            + "nächste Serverstart nach (BEREITSTELLUNG.md §5.4)." }, 503);
+      }
       await protokoll("verwalter", k, "gesperrt", `${body.kennung} durch ${wer.name}`);
       return antwort({ ok: true, gesperrt: n });
     }

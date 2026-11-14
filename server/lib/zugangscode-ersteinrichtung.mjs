@@ -57,6 +57,7 @@ import { neuHash, pfeffrig, gleich } from "./codes.mjs";
 import { kontoLesenStreng, kontoSchreiben } from "./konten.mjs";
 import { bestandLesenStreng } from "./bestand.mjs";
 import { mitgliedschaftLesen, accountAendern } from "./accounts.mjs";
+import { istWiderrufen, widerrufen } from "./widerrufbuch.mjs";
 
 /** Gültigkeit des Ersteinrichtungscodes in Stunden (nur die Einrichtung, nicht der Zugang). */
 export const ERSTEINRICHTUNG_STUNDEN = 72;
@@ -171,9 +172,12 @@ export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt 
   return inReihe(haupt, async () => {
     let eintraege;
     try { eintraege = await offeneEintraege(store, schluessel); } catch { return { ok: false, grund: "lesen" }; }
-    if (!eintraege.length || eintraege.some(([, e]) => ersteinrichtungVerbraucht(e))
+    if (!eintraege.length || eintraege.some(([, e]) => ersteinrichtungVerbraucht(e) || e.gesperrt)
       || !eintraege.some(([, e]) => ersteinrichtungOffen(e) && fristOffen(e, jetzt)))
       return { ok: false, grund: "verbraucht" };
+    /* E-M6: Im Widerrufbuch (außerhalb der Ablage) = verbraucht, auch wenn eine zurückgespielte Ablage ihn offen zeigt. */
+    try { if (await istWiderrufen(store, eintraege.map(([s]) => s))) return { ok: false, grund: "verbraucht" }; }
+    catch { return { ok: false, grund: "lesen" }; }
     /* Der Stand vor dem Verbrauch, für ein Zurücknehmen (Blocker 4). */
     const vorher = eintraege.map(([s, e]) => [s, structuredClone(e)]);
     const zurueck = async () => {
@@ -189,7 +193,13 @@ export function ersteinrichtungEinloesen(store, schluessel, einrichten, { jetzt 
     /* Den Vermerk `zweiterFaktor` setzt der Aufrufer erst nach gelungener Einrichtung (faktorVermerken). */
     let ergebnis = null;
     try { ergebnis = await einrichten(); } catch { ergebnis = null; }
-    if (ergebnis && ergebnis.ok === true) return { ok: true, ergebnis };
+    if (ergebnis && ergebnis.ok === true) {
+      /* E-M6: Erst jetzt ins Widerrufbuch — vorher könnte der Verbrauch noch zurückgenommen werden (Blocker 4). Misslingt
+         es, steht der Verbrauch in der Ablage; der nächste Widerruf oder Serverstart sammelt ihn ein (/gesund warnt). */
+      try { await widerrufen(store, eintraege.map(([s]) => s), "ersteinrichtung-eingerichtet"); }
+      catch { /* Nachtrag offen (widerrufbuchLage): Der nächste Widerruf oder Serverstart sammelt den Verbrauch ein. */ }
+      return { ok: true, ergebnis };
+    }
     /* Blocker 4: kein stilles Verbrennen. Zurückgenommen wird nur, wenn sicher ist, dass kein Faktor aktiv wurde. */
     let sicherNichtAktiv = false;
     if (typeof istAktiv === "function") {
@@ -222,7 +232,10 @@ export async function ersteinrichtungFuerKonto(store, { code, accountId, jetzt =
   if (!schluessel) return { ok: false, grund: "pfeffer" };
   let eintrag;
   try { eintrag = await kontoLesenStreng(store, schluessel); } catch { return { ok: false, grund: "lesen" }; }
-  if (!eintrag || !ersteinrichtungGueltig(eintrag, c, jetzt)) return { ok: false, grund: "ungueltig" };
+  if (!eintrag || eintrag.gesperrt || !ersteinrichtungGueltig(eintrag, c, jetzt)) return { ok: false, grund: "ungueltig" };
+  /* E-M6: Steht er im Widerrufbuch, gilt er nie wieder; ist das Buch nicht prüfbar, gilt er auch nicht. */
+  try { if (await istWiderrufen(store, [schluessel])) return { ok: false, grund: "ungueltig" }; }
+  catch { return { ok: false, grund: "lesen" }; }
   if (typeof eintrag.accountId !== "string" || eintrag.accountId !== accountId) return { ok: false, grund: "ungueltig" };
   let m;
   try { m = await mitgliedschaftLesen(store, accountId, eintrag.bestand); } catch { return { ok: false, grund: "lesen" }; }
@@ -255,7 +268,11 @@ export function ersteinrichtungFehlversuch(store, schluessel) {
     const n = bisher + 1;
     const neu = offen.map(([s, e]) => [s, { ...e, ersteinrichtung: { ...e.ersteinrichtung, fehlversuche: n } }]);
     if (n >= ERSTEINRICHTUNG_FEHLVERSUCHE) {
+      /* E-M6 (Review, Befund 3): erst in der Ablage verbrauchen — das wirkt sofort —, dann ins Widerrufbuch. Stand das
+         Buch vorn und war nicht schreibbar, blieb der Code nach der Höchstzahl offen und jeder weitere Versuch erlaubt.
+         Misslingt das Buch, holt der nächste Widerruf oder Serverstart den Verbrauch aus der Ablage nach (/gesund warnt). */
       await verbrauchtSchreiben(store, schluessel, neu, "fehlversuche");
+      try { await widerrufen(store, neu.map(([s]) => s), "ersteinrichtung-fehlversuche"); } catch { /* Nachtrag offen, s. o. */ }
       return { gesperrt: true, fehlversuche: n };
     }
     for (const [s, e] of neu) await kontoSchreiben(store, s, e);

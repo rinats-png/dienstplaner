@@ -17,6 +17,7 @@ import { grundAusPruefung, schluesselWiderrufen, widerrufsVermerk } from "./sich
 import { schluesselEpoche } from "./schluesselepoche.mjs";
 import { rollenSitzungOhneFaktor, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
 import { kontoFaktorAktiv } from "./kontofaktor.mjs";
+import { istWiderrufen } from "./widerrufbuch.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -498,11 +499,22 @@ async function zugangGesperrt(store, schluessel) {
       f.code = BESTAND_UNLESBAR;
       throw f;
     }
-    if (!z) return false;
+    if (!z) break;
     if (z.gesperrt) return true;
     schluessel = z.ersetztDurch;
   }
-  return false;
+  /* E-M6 (Review, Befund 4): Steht ein Glied der Kette im Widerrufbuch (außerhalb der gesicherten Ablage), gilt die
+     Sitzung nicht — auch wenn eine zurückgespielte Ablage den Zugang ungesperrt zeigt. Ist das Buch nicht prüfbar,
+     gilt sie ebenso wenig wie eine Anmeldung mit dem Code: vorübergehend (→ 503), keine Absage und kein 401. Kosten:
+     ein stat je Prüfung, das Buch selbst liegt im Speicher (widerrufbuch.mjs, buchGeprueft). */
+  let widerrufen;
+  try { widerrufen = await istWiderrufen(store, [...gesehen]); }
+  catch (e) {
+    const f = /** @type {Error & {code?: string}} */ (new Error(`Widerrufbuch nicht prüfbar (${String(e && e.message || e)})`));
+    f.code = BESTAND_UNLESBAR;
+    throw f;
+  }
+  return widerrufen;
 }
 
 /**
