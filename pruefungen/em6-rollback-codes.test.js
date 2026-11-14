@@ -20,8 +20,12 @@
      4. Sitzungen und Kalenderfeeds fragen das Buch (Befund 4), fail-closed.
      5. Manipuliertes, fehlendes, fremdes Widerrufbuch und anderer Pfeffer → fail-closed; Werkzeug fasst nichts an und
         verweigert eine belegte Ablage (Prozesssperre, Befund 5).
-     6. PR #281 mit der ECHTEN erstleitung.mjs — läuft erst, wenn sie auf dem Stand liegt (sonst ausdrücklich
-        übersprungen, TODO-Wächter); gegen den Merge mit #281 nachgewiesen (docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md).
+     6. PR #281 mit der ECHTEN erstleitung.mjs (Kopplungsrunde, Review C1–C3): Einlösen schreibt Abschluss bzw. Widerruf
+        („belegt") sofort ins Buch; Regime-Marke im Buch — eine ältere Sicherung ohne sie (Werkzeug, --zustand) oder eine
+        Verzeichniskopie (Serverstart) lässt den Betrieb streng; Sicherung von VOR dem ersten Erstanmeldecode: Marke aus
+        dem Buch über den Bestand, keine zweite erste Leitung; harter Abbruch zwischen Bindung und Buch (vorgeladener
+        Kill) → der Neustart trägt den Abschluss nach. Liegt erstleitung.mjs nicht auf dem Stand: ausdrücklich
+        übersprungen (TODO-Wächter).
 
    Aufruf: npx vitest run pruefungen/em6-rollback-codes.test.js --testTimeout=240000
    ========================================================================== */
@@ -301,7 +305,7 @@ describe("E-M6: Rücksprung der Daten (ältere Sicherung) mit echtem Werkzeug un
     const epocheVorher = JSON.parse(await readFile(path.join(ZUSTAND, "schluessel-epoche.json"), "utf8").catch(() => "{}"));
     const r = wiederherstellen(SICHERUNGEN.vorher, ["--zustand", ZUSTAND]);
     expect(r.code, r.aus).toBe(0);
-    expect(r.aus).toMatch(/Widerrufbuch: \d+ widerrufene Zugänge.*1 Marken der Ersteinrichtung wiederhergestellt/s);
+    expect(r.aus).toMatch(/Widerrufbuch: \d+ widerrufene Zugänge.*1 Marken der Ersteinrichtung und 0 Regime-Marken wiederhergestellt/s);
     /* Die Daten der Sicherung kannten die Widerrufe nicht — das Werkzeug hat sie vor dem Tausch gesperrt. */
     for (const s of [k(C.B), k(C.C), C.Ralt, C.Rneu, k(C.F)])
       expect((await kontoLesen(s)).gesperrt, `in der Ablage gesperrt: …${s.slice(-6)}`).toBe(true);
@@ -414,7 +418,7 @@ describe("E-M6: Rücksprung der Daten (ältere Sicherung) mit echtem Werkzeug un
     /* „vorher": RAUM2 mit den noch OFFENEN Erstanmeldecodes E und F, ohne Marke. */
     r = wiederherstellen(SICHERUNGEN.vorher, ["--zustand", ZUSTAND]);
     expect(r.code, r.aus).toBe(0);
-    expect(r.aus).toMatch(/1 Marken der Ersteinrichtung wiederhergestellt/);
+    expect(r.aus).toMatch(/1 Marken der Ersteinrichtung und \d+ Regime-Marken wiederhergestellt/);
     expect(await ablageLesen(`erstleitung-marke:${RAUM2}:m2`), "Marke aus dem Buch nachgezogen").toMatchObject({ personId: ERSTE });
     for (const n of ["E", "F"]) expect((await kontoLesen(k(C[n]))).gesperrt, `${n} in der Ablage gesperrt`).toBe(true);
     const s = await starten();
@@ -642,6 +646,11 @@ describe.skipIf(!ERSTLEITUNG_DA)("E-M6 × PR #281: echte erstleitung.mjs (TODO-W
     expect(r3, JSON.stringify(r3)).toMatchObject({ ok: true, angelegt: true });
     const r4 = await EL.erstleitungEinloesen(store, { schluessel: k(X.E4) });
     expect(r4).toMatchObject({ ok: false, grund: "belegt" });
+    /* Kopplung: Abschluss und Widerruf stehen SOFORT im Buch — nicht erst nach dem nächsten Start (§6 der E-M6-Doku). */
+    const sofort = await buchRoh();
+    expect(sofort.betriebe[M.buch.betriebsKennung(RAUM3, "m3")], "Abschluss im Augenblick des Einlösens").toMatchObject({ person: r3.personId });
+    expect(Object.keys(sofort.eintraege), "belegt im Augenblick des Einlösens widerrufen").toContain(k(X.E4));
+    expect(Object.keys(sofort.eintraege), "angelegt ist kein Widerruf").not.toContain(k(X.E3));
     M.buch.widerrufbuchVergessen();
     const s = await starten();
     try {
@@ -669,5 +678,143 @@ describe.skipIf(!ERSTLEITUNG_DA)("E-M6 × PR #281: echte erstleitung.mjs (TODO-W
     expect(Object.keys((await buchRoh()).eintraege), "belegt eingesammelt").toContain(k(X.E3));
     const s2 = await starten();
     try { expect((await anmelden(s2, X.E3)).status, "belegt bleibt ungültig").toBe(403); } finally { await s2.stoppen(); }
+  }, LIMIT);
+
+  /* Review C1: Ein Betrieb aus der Zeit vor #281 (ohne Regime-Marke) bekommt seinen ersten Erstanmeldecode — damit die
+     Regime-Marke. Eine ÄLTERE Sicherung kennt sie nicht. Ohne Buch fiele der Betrieb auf die alten Regeln zurück, und ein
+     vorhandener Leitungscode ohne Person bekäme wieder Leitungsrechte. */
+  it("C1: Regime im Buch — ältere Sicherung ohne Regime-Marke (Werkzeug) und Verzeichniskopie (Serverstart): der Betrieb bleibt streng", async () => {
+    const EL = await import("../server/lib/erstleitung.mjs");
+    const store = centric();
+    M.buch.widerrufbuchVergessen();
+    const R = "em6-c1";
+    const regimeDatei = ablageDatei(`erstleitung-regime:${R}:m4`);
+    expect((await M.bestand.bestandSchreiben(store, R, { version: 5, mandanten: [{ id: "m4", name: "Alt C1",
+      einheiten: [{ id: "e1", name: "WB 1" }], personen: [] }] }, { durch: "Pruefung" })).ok).toBe(true);
+    /* Ein gewöhnlicher Leitungscode ohne Person aus der Zeit vor #281 (Bestandsbetrieb). */
+    const LO = neuerCode();
+    await M.konten.kontoSchreiben(store, k(LO), { name: "Alt C1", bestand: R, rolle: "leitung", person: null, betrieb: 0,
+      mandantId: "m4", demo: false, gruppe: null, hinweis: null, angelegt: new Date().toISOString() });
+    sichern("v-c1");
+    let s = await starten();
+    try { expect((await anmelden(s, LO)).status, "Gegenprobe: Bestandsbetrieb ohne Regime, alte Regeln").toBe(200); }
+    finally { await s.stoppen(); }
+    /* Erster Erstanmeldecode → Regime-Marke (derselbe Aufruf wie /api/zugaenge und /einrichten), sofort im Buch. */
+    M.buch.widerrufbuchVergessen();
+    await EL.erstleitungRegimeVermerken(store, R, "m4", { durch: "Erstanmeldecode" });
+    expect(Object.keys((await buchRoh()).regime || {}), "Regime im Buch").toContain(M.buch.betriebsKennung(R, "m4"));
+    expect(existsSync(regimeDatei)).toBe(true);
+    s = await starten();
+    try { expect((await anmelden(s, LO)).status, "streng: Leitungscode ohne Person").toBe(403); } finally { await s.stoppen(); }
+
+    /* Ältere Sicherung (ohne Regime-Marke) mit dem echten Werkzeug: die Marke ist wieder da, der Betrieb bleibt streng. */
+    const w = wiederherstellen(SICHERUNGEN["v-c1"], ["--zustand", ZUSTAND]);
+    expect(w.code, w.aus).toBe(0);
+    expect(w.aus).toMatch(/und [1-9]\d* Regime-Marken wiederhergestellt/);
+    expect(existsSync(regimeDatei), "Regime-Marke nach dem Rücksprung wieder in der Ablage").toBe(true);
+    s = await starten();
+    try { expect((await anmelden(s, LO)).status, "nach Rücksprung (Werkzeug) weiter streng").toBe(403); } finally { await s.stoppen(); }
+
+    /* Rücksprung per Verzeichniskopie OHNE Werkzeug (Marke fehlt): Die Entscheidungsstelle fragt das Buch — streng; der
+       nächste Serverstart legt die Marke wieder an. */
+    await rm(regimeDatei);
+    M.buch.widerrufbuchVergessen();
+    expect(await EL.erstleitungStreng(store, R, "m4"), "Buch statt Marke").toBe(true);
+    expect(await EL.erstleitungStreng(store, RAUM, "m1"), "Gegenprobe: Bestandsbetrieb ohne Regime bleibt bei den alten Regeln").toBe(false);
+    s = await starten();
+    try { expect((await anmelden(s, LO)).status, "nach Verzeichniskopie weiter streng").toBe(403); } finally { await s.stoppen(); }
+    expect(existsSync(regimeDatei), "Serverstart hat die Regime-Marke nachgezogen").toBe(true);
+    /* Buch unklar (Regime entfernt, Siegel bricht): streng (fail-closed). */
+    const echt = await readFile(buchDatei(), "utf8");
+    try {
+      const o = JSON.parse(echt); o.regime = {}; await writeFile(buchDatei(), JSON.stringify(o));
+      await rm(regimeDatei);
+      M.buch.widerrufbuchVergessen();
+      expect(await EL.erstleitungStreng(store, R, "m4"), "Regime aus dem Buch entfernt").toBe(true);
+      expect(await EL.erstleitungStreng(store, RAUM, "m1"), "auch ein Bestandsbetrieb: streng, solange das Buch unklar ist").toBe(true);
+    } finally { await writeFile(buchDatei(), echt); M.buch.widerrufbuchVergessen(); }
+    expect(await EL.erstleitungStreng(store, R, "m4")).toBe(true);
+  }, LIMIT);
+
+  /* Review C2: Eine Sicherung von VOR dem ersten Erstanmeldecode kennt keinen Code dieses Betriebs. Bis hierher zog nur
+     ein Erstanmeldecode die Marke nach — ein danach ausgestellter Code legte eine zweite erste Leitung an. */
+  it("C2: Sicherung von vor dem ersten Erstanmeldecode: Marke aus dem Buch über den Bestand, keine zweite erste Leitung", async () => {
+    const EL = await import("../server/lib/erstleitung.mjs");
+    const store = centric();
+    M.buch.widerrufbuchVergessen();
+    const R = "em6-c2";
+    const markeDatei = ablageDatei(`erstleitung-marke:${R}:m5`);
+    expect((await M.bestand.bestandSchreiben(store, R, { version: 5, mandanten: [{ id: "m5", name: "Neu C2",
+      einheiten: [{ id: "e1", name: "WB 1" }], personen: [] }] }, { durch: "Pruefung" })).ok).toBe(true);
+    sichern("v-c2");
+    const erstcode = async () => {
+      const c = neuerCode();
+      await M.konten.kontoSchreiben(store, k(c), { name: "Neu C2", bestand: R, rolle: "leitung", person: null, betrieb: 0,
+        mandantId: "m5", demo: false, gruppe: null, hinweis: null, angelegt: new Date().toISOString(), erstleitung: EL.erstleitungVermerk("m5") });
+      return c;
+    };
+    const X1 = await erstcode();
+    const r1 = await EL.erstleitungEinloesen(store, { schluessel: k(X1) });
+    expect(r1, JSON.stringify(r1)).toMatchObject({ ok: true, angelegt: true });
+    expect((await buchRoh()).betriebe[M.buch.betriebsKennung(R, "m5")], "Abschluss sofort im Buch").toMatchObject({ person: r1.personId });
+
+    const w = wiederherstellen(SICHERUNGEN["v-c2"], ["--zustand", ZUSTAND]);
+    expect(w.code, w.aus).toBe(0);
+    expect(existsSync(kontoDatei(k(X1))), "die Sicherung kennt den Code nicht").toBe(false);
+    expect(await ablageLesen(`erstleitung-marke:${R}:m5`), "Marke über den Bestand nachgezogen").toMatchObject({ personId: r1.personId });
+    M.buch.widerrufbuchVergessen();
+    const leer = (await M.bestand.bestandLesenStreng(store, R)).bestand.mandanten[0];
+    expect(leer.personen).toEqual([]);
+    expect(await EL.erstleitungEingerichtet(store, R, leer), "kein neuer Erstanmeldecode").toBe(true);
+    /* Auch ein trotzdem ausgestellter Code legt keine zweite erste Leitung an — mit Marke … */
+    const X2 = await erstcode();
+    expect(await EL.erstleitungEinloesen(store, { schluessel: k(X2) })).toMatchObject({ ok: false, grund: "belegt" });
+    expect(Object.keys((await buchRoh()).eintraege), "belegt sofort widerrufen").toContain(k(X2));
+    /* … und ohne Marke (Verzeichniskopie ohne Werkzeug, vor dem nächsten Start): das Buch entscheidet. */
+    await rm(markeDatei);
+    M.buch.widerrufbuchVergessen();
+    expect(await EL.erstleitungEingerichtet(store, R, leer), "ohne Marke: Abschluss im Buch").toBe(true);
+    const X3 = await erstcode();
+    expect(await EL.erstleitungEinloesen(store, { schluessel: k(X3) })).toMatchObject({ ok: false, grund: "belegt" });
+    expect((await M.bestand.bestandLesenStreng(store, R)).bestand.mandanten[0].personen, "keine zweite erste Leitung").toEqual([]);
+    expect(await ablageLesen(`erstleitung-marke:${R}:m5`), "Marke aus dem Buch wieder angelegt").toMatchObject({ personId: r1.personId });
+    const s = await starten();
+    try { for (const c of [X2, X3]) expect((await anmelden(s, c)).status, "belegt").toBe(403); } finally { await s.stoppen(); }
+  }, LIMIT);
+
+  /* Kopplung, Abbruchfestigkeit: Person und Bindung sind geschrieben, das Buch noch nicht — harter Prozessabbruch
+     (vorgeladener Kill nach dem zweiten Schreiben am Zugang: 1 Vormerken, 2 Binden). Kein halber Zustand: die
+     Erstanmeldung ist vollständig, und der Neustart trägt den Abschluss ins Buch nach. */
+  it("harter Abbruch zwischen Bindung und Buch: vollständig in der Ablage, Neustart trägt den Abschluss nach", async () => {
+    const EL = await import("../server/lib/erstleitung.mjs");
+    const store = centric();
+    M.buch.widerrufbuchVergessen();
+    const R = "em6-kill";
+    expect((await M.bestand.bestandSchreiben(store, R, { version: 5, mandanten: [{ id: "m6", name: "Neu Kill",
+      einheiten: [{ id: "e1", name: "WB 1" }], personen: [] }] }, { durch: "Pruefung" })).ok).toBe(true);
+    const K = neuerCode();
+    await M.konten.kontoSchreiben(store, k(K), { name: "Neu Kill", bestand: R, rolle: "leitung", person: null, betrieb: 0,
+      mandantId: "m6", demo: false, gruppe: null, hinweis: null, angelegt: new Date().toISOString(), erstleitung: EL.erstleitungVermerk("m6") });
+    const kennung = M.buch.betriebsKennung(R, "m6");
+    const kill = pathToFileURL(path.join(WURZEL, "pruefungen", "hilfen", "em6-abbruch.mjs")).href;
+    const muster = `centric/konto%3A${k(K).replaceAll(":", "%3A")}\\.json$`;
+    const s = await starten({ env: { NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import ${kill}`.trim(),
+      EM6_ABBRUCH_MUSTER: muster, EM6_ABBRUCH_NR: "2" } });
+    const antwort = await anmelden(s, K).catch(() => null);
+    await Promise.race([s.beendet, new Promise((r) => setTimeout(r, 20000))]);
+    expect(s.prozess.exitCode !== null || s.prozess.signalCode !== null, `Server beendet (Antwort: ${JSON.stringify(antwort)})\n${s.log()}`).toBe(true);
+    expect(s.log()).toMatch(/\[em6-abbruch\] harter Abbruch nach Treffer 2/);
+    const z = await kontoLesen(k(K));
+    expect(z.erstleitungVerbraucht, "gebunden").toMatchObject({ grund: "angelegt" });
+    const personen = (await M.bestand.bestandLesenStreng(store, R)).bestand.mandanten[0].personen;
+    expect(personen.map((x) => x.id), "genau die eine erste Leitung").toEqual([z.person]);
+    expect((await buchRoh()).betriebe[kennung], "Buch noch nicht beschrieben").toBeUndefined();
+    const s2 = await starten();
+    try {
+      const a = await anmelden(s2, K);
+      expect(a.status, JSON.stringify(a.daten)).toBe(200);
+    } finally { await s2.stoppen(); }
+    expect((await buchRoh()).betriebe[kennung], "Neustart hat den Abschluss eingesammelt").toMatchObject({ person: z.person });
+    expect((await M.bestand.bestandLesenStreng(store, R)).bestand.mandanten[0].personen.length, "keine zweite Person").toBe(1);
   }, LIMIT);
 });

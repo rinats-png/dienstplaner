@@ -96,11 +96,9 @@ Vor dem Ausrollen in Produktion laufen lassen; das Ergebnis entscheidet, ob PR #
   stehen Marke, Zugang und Bestand gemeinsam auf dem alten Stand. War der Erstanmeldecode dort noch offen, gilt er
   wieder — ein **schon benutzter** Erstanmeldecode würde wieder nutzbar (er legte im alten Stand die Person neu an).
   Das ist derselbe Fall wie E-M6 (widerrufene/ersetzte/verbrauchte Codes dürfen durch einen Rückweg nie wieder gelten).
-  **PR #281 hängt dafür von E-M6 ab** (`feature/em6-widerrufene-codes-rollback`, laut Entscheidungsmatrix PR #288
-  Merge-Voraussetzung von #281; der Zweig existiert noch nicht); dieser PR baut den Mechanismus nicht nach.
-  Anforderung an E-M6: Ein Erstanmeldecode mit `erstleitungVerbraucht` (`angelegt` und `belegt`) gehört in dessen
-  rückwegfestes Verzeichnis/Epoche wie ein gesperrter Code; die Prüfung muss vor `erstleitungEinloesen` greifen. Bis
-  dahin begrenzt die Gültigkeit von 14 Tagen das Fenster.
+  **Gelöst mit E-M6 (PR #292, gemergt) und der Kopplungsrunde (§8b):** `belegt` ist ein Widerruf im Widerrufbuch,
+  `angelegt` bleibt der Code der ersten Leitung; Marke und Regime-Marke stehen zusätzlich im Buch und werden nach
+  jedem Rücksprung nachgezogen. Die Gültigkeit von 14 Tagen bleibt als zweite Grenze.
 
 ## 3b. Gleichzeitige Schreibvorgänge am Zugang
 
@@ -217,21 +215,29 @@ Bestandsbetrieb; Marke nicht schreibbar → 503, kein Betrieb).
 
 **Betreiberhinweis (Review #281, N1): gelöschter und neu angelegter oder umbenannter Bestandsbetrieb.** Löscht ein Betreiber per `PUT /api/bestand` einen vorhandenen Betrieb und legt ihn unter derselben Kennung wieder an, oder ändert er dessen Kennung (Umbenennung), ist die Kennung für den Server neu: sie bekommt die Regime-Marke, der Betrieb wird streng. Seine alten Leitungscodes ohne Person erhalten dann **403** („Ihr Zugang ist keiner Person zugeordnet“) und müssen durch personengebundene Zugänge (`/api/einladung`) oder einen neuen Erstanmeldecode ersetzt werden. Vor einem solchen Löschen/Neuanlegen oder einer Umbenennung die betroffenen Leitungen vorwarnen und die Ersatzzugänge bereithalten. Das ist gewollt (ein neuer Betrieb ist streng, s. oben) und kein Fehler; die Marke wird dabei nicht zurückgenommen.
 
-### 8b. E-M6-Kopplung (folgt nach PR #292; hier bewusst nicht umgesetzt)
+### 8b. E-M6-Kopplung (umgesetzt nach dem Merge von PR #292)
 
-PR #292 (`feature/em6-widerrufene-codes-rollback`, `server/lib/widerrufbuch.mjs`) wird zuerst gemergt; danach eine
-eigene Kopplungsrunde. Diese Änderung hält die Stellen bereit und braucht von #292:
+PR #292 (Widerrufbuch, `server/lib/widerrufbuch.mjs`) ist in `integration/release-v4` gemergt (a9cc145b) und in
+diesen Zweig zusammengeführt. Die unabhängige Prüfung von #292 fand drei Kopplungsbefunde; alle sind hier behoben.
+Grundsatz wie beim Widerruf: **zuerst wirksam in der Ablage, dann das Buch**; scheitert das Buch, bleibt der Schritt
+vollständig und gültig, `/gesund` meldet „Nachtrag offen“, und der nächste Bucheintrag, jeder Serverstart und die
+Wiederherstellung mit dem Werkzeug sammeln ihn aus der Ablage ein (kein halber Zustand).
 
-- **C1 Regime-Marke ins Widerrufbuch:** wie `MARKE_PRAEFIX`/`markenNachzuziehen`/`betriebeEintragen` für
-  `erstleitung-marke:` ein Gegenstück für `erstleitung-regime:<raum>:<mandantId>` (Präfix `erstleitungRegimePraefix(raum)`,
-  Schlüssel `erstleitungRegimeSchluessel(raum, mandantId)`), damit ein Rückspielen der Ablage einen neuen Betrieb nicht
-  wieder zum Bestandsbetrieb macht. Benötigt: `(store, raum, mandantId) → Promise<void>`, die den Eintrag vor oder
-  zusammen mit der Marke dauerhaft macht und bei Fehler wirft (dann bleibt es bei 503/„nichts angelegt“); Lesen:
-  `erstleitungStreng` zusätzlich gegen das Buch. Aufrufstellen = alle Schreiber von `erstleitungRegimeVermerken`:
-  `daten.mjs` (`/api/bestand-anlegen`, `/api/zugaenge`, Betreiber-PUT über `neueBetriebsKennungen`), `einrichten.mjs`,
-  `provisionierung.mjs`.
-- **C2 Erstanmeldung:** `ersteinrichtungAbschliessen`/`widerrufen` aus `erstleitungEinloesen` (Verbrauch
-  `erstleitungVerbraucht { grund: "angelegt" | "belegt" }`); Datensatz je Code: Ablageschlüssel, Grund, Zeit.
-- **C3 `/api/zugang-sperren`:** unter `kontoAendern` (wie heute) zusätzlich der Eintrag ins Buch und die Kette
-  `ersetztDurch` (`kettenHuelle`), damit ein zurückgezogener Erstanmeldecode nach einem Rückweg nicht wieder gilt.
-- Rückspielen der ganzen Ablage: ein benutzter Erstanmeldecode lebt wieder auf — abhängig von E-M6 (Abschnitt 3a).
+| # | Befund | Lösung | Nachweis (`pruefungen/em6-rollback-codes.test.js`, Block „E-M6 × PR #281“) |
+|---|---|---|---|
+| C1 (MITTEL) | Regime-Marke `erstleitung-regime:*` nicht im Buch: ältere Sicherung → Betrieb wieder unter alten Regeln, Leitungscode ohne Person bekommt wieder Leitungsrechte | Buch-Klasse `regime` (`HMAC(raum, mandantId)`, gesiegelt, nur fortgeschrieben). `erstleitungRegimeVermerken` schreibt nach der Marke `regimeFesthalten` — alle Aufrufer (Anlage, Selbststart, Betreiber-PUT, `/api/zugaenge`, `/einrichten`, Seeds) damit abgedeckt. Einsammeln übernimmt jede Regime-Marke der Ablage; Werkzeug (`--zustand`) und Serverstart ziehen fehlende Regime-Marken für jeden Betrieb der Ablage nach. `erstleitungStreng` fragt bei fehlender Marke das Buch (Regime oder Abschluss); Buch unklar → streng | Test „C1“: Bestandsbetrieb mit Leitungscode ohne Person → 200 (Gegenprobe); Regime vermerkt → 403; ältere Sicherung mit dem Werkzeug → Regime-Marke wieder da, 403; Marke gelöscht (Verzeichniskopie) → `erstleitungStreng` = true aus dem Buch, Start zieht sie nach, 403; Buch manipuliert → streng |
+| C2 (NIEDRIG) | `markenNachzuziehen` zog die Marke nur über einen Erstanmeldecode der Ablage nach — eine Sicherung von VOR dem ersten Code bekam keine; ein neuer Code legte eine zweite erste Leitung an | Nachgezogen wird über ALLE Betriebe der Ablage (`bekannteBetriebe`: Zugänge, Kern/Altbestand jedes Raums, vorhandene Marken). Zusätzlich fragen `erstleitungEingerichtet` (Ausstellen) und `erstleitungEinloesen` (bei fehlender Marke; legt sie aus dem Buch wieder an) den Abschluss im Buch; Buch unklar → eingerichtet bzw. 503 | Test „C2“: Sicherung vor dem ersten Code → Marke mit derselben Personenkennung aus dem Bestand nachgezogen; `erstleitungEingerichtet` = true; neuer Code → `belegt`; ohne Marke ebenso (Buch), Betrieb bleibt leer |
+| C3 (MITTEL) | `zugang-sperren`: #281 `kontoAendern` vs. #292 Kette und Reihenfolge | Merge: je Glied von `new Set([...erlaubt, ...kette])` `kontoAendern(store, h, (f) => gesperrtesKonto(f \|\| konten[h], …))` (frischer Stand, merge-sicher), danach Sitzungen, Sicherungsschlüssel, dann das Buch; Buchfehler → 503 „Widerruf wirksam, Widerrufbuch nicht beschrieben“ (unverändert aus #292) | E-M6-Tests (Kette R, Buch nicht schreibbar, Kill zwischen Ablage und Buch) und `konto-parallel` |
+
+**§6-Schnittstelle von #292 jetzt aufgerufen** (`erstleitung.mjs`, `erstleitungEinloesen`, nach der Raumsperre):
+`angelegt` → `ersteinrichtungAbschliessen(store, raum, mandantId, personId)` (Abschluss, KEIN Widerruf — der Code
+bleibt der Anmeldecode der ersten Leitung); `belegt` → `widerrufen(store, [schluessel], "erstleitung-belegt")`.
+Beides im Augenblick des Einlösens, nicht erst beim nächsten Start (Test: Buch unmittelbar nach dem Einlösen).
+Abbruchfestigkeit: echter Prozessabbruch (vorgeladener Kill) nach der Bindung, vor dem Buch → Person und Bindung
+vollständig, genau eine Person; der Neustart sammelt den Abschluss ein, die erste Leitung meldet sich an (Test
+„harter Abbruch zwischen Bindung und Buch“).
+
+Bestandsbetriebe bei ausgeschaltetem Schalter: unverändert, solange das Buch lesbar ist (Differenzprüfung
+`erstleitung-bestand-differenz`). Neu und gewollt (fail-closed): Ist das Buch unklar (beschädigt, fremd, fehlt bei
+vorhandenem Anker), gilt auch ein Bestandsbetrieb als streng — in diesem Zustand gilt nach E-M6 ohnehin kein
+Zugangscode (503).

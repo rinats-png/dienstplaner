@@ -73,6 +73,32 @@
 import { randomBytes } from "node:crypto";
 import { kontoLesenStreng, kontoAendern } from "./konten.mjs";
 import { bestandLesenStreng, bestandSchreiben, unterRaumsperre } from "./bestand.mjs";
+import { ersteinrichtungAbschliessen, ersteinrichtungImBuch, regimeFesthalten, regimeImBuch, widerrufen as widerrufbuchEintragen }
+  from "./widerrufbuch.mjs";
+
+/* --------------------------------------------------------------------------
+   KOPPLUNG MIT DEM WIDERRUFBUCH (E-M6, PR #292; Review C1/C2, 2026-11-14)
+
+   Beide Marken dieses Moduls liegen in der Ablage — eine Wiederherstellung
+   einer älteren Sicherung nähme sie mit zurück. Deshalb steht jede auch im
+   Widerrufbuch (außerhalb der gesicherten Ablage, nur fortgeschrieben):
+     Regime-Marke  → Buch `regime`   (regimeFesthalten)
+     Marke         → Buch `betriebe` (ersteinrichtungAbschliessen, mit Person)
+     „belegt“      → Buch `eintraege` (widerrufen: der Code gilt nie wieder)
+   „angelegt“ wird NICHT widerrufen: Es ist der gewöhnliche Code der ersten
+   Leitung.
+   Reihenfolge wie beim Widerruf: zuerst wirksam in der Ablage (Marke bzw.
+   Person, Bindung, Verbrauch), DANN das Buch. Scheitert das Buch, bleibt der
+   Schritt gültig und vollständig; /gesund meldet „Nachtrag offen“ (lage in
+   widerrufbuch.mjs), und der nächste Bucheintrag, jeder Serverstart und die
+   Wiederherstellung mit dem Werkzeug sammeln ihn aus der Ablage ein. Kein
+   halber Zustand: Das Buch hält nur fest, was die Ablage schon trägt.
+   Nachgezogen werden die Marken beim Serverstart und vom Werkzeug für JEDEN
+   Betrieb der Ablage (Bestände und Zugänge). Zusätzlich fragen
+   erstleitungStreng, erstleitungEingerichtet und das Einlösen das Buch
+   selbst, wenn die Marke fehlt — ein Lesefehler ist dort „streng“ bzw.
+   „eingerichtet“ (fail-closed).
+   -------------------------------------------------------------------------- */
 
 /** Bezeichnung der ersten Person (wie bisher in der Oberfläche: Rolle als Nachname, Vorname leer). */
 const BEZEICHNUNG = "Organisationsleitung";
@@ -218,6 +244,8 @@ export const erstleitungRegimePraefix = (raum) => `erstleitung-regime:${raum}:`;
  * @param {any} store
  * @param {string} raum
  * @param {string} mandantId
+ * Review C1: danach ins Widerrufbuch (regimeFesthalten). Dessen Fehler wirft NICHT — die Marke wirkt schon; der
+ * Eintrag wird eingesammelt (siehe KOPPLUNG oben).
  * @param {{durch?: string, jetzt?: number}} [o]
  */
 export async function erstleitungRegimeVermerken(store, raum, mandantId, { durch = "", jetzt = Date.now() } = {}) {
@@ -225,6 +253,7 @@ export async function erstleitungRegimeVermerken(store, raum, mandantId, { durch
     throw new Error("Erstanmeldung: Raum oder Betrieb fehlt");
   await store.setJSONWennNeu(erstleitungRegimeSchluessel(raum, mandantId),
     { seit: new Date(jetzt).toISOString(), durch: String(durch).slice(0, 40) });
+  try { await regimeFesthalten(store, raum, mandantId); } catch { /* Nachtrag offen (/gesund); eingesammelt beim nächsten Mal */ }
 }
 
 /**
@@ -249,7 +278,8 @@ export function neueBetriebsKennungen(vorher, nachher) {
 
 /**
  * Gelten für diesen Betrieb die strengen Regeln (E-D1/F-0, E-D2)? Schalter an, oder der Betrieb ist neu
- * (Regime-Marke), oder seine Erstanmeldung ist festgelegt (Marke). Ein Lesefehler: ja.
+ * (Regime-Marke), oder seine Erstanmeldung ist festgelegt (Marke) — in der Ablage ODER im Widerrufbuch (Review C1:
+ * eine ältere Sicherung kann die Marken verloren haben). Ein Lesefehler (auch des Buchs): ja.
  * @returns {Promise<boolean>}
  */
 export async function erstleitungStreng(store, raum, mandantId) {
@@ -257,18 +287,24 @@ export async function erstleitungStreng(store, raum, mandantId) {
   if (typeof raum !== "string" || !raum || typeof mandantId !== "string" || !mandantId) return false;
   try {
     if ((await store.get(erstleitungRegimeSchluessel(raum, mandantId), { type: "json" })) != null) return true;
-    return (await erstleitungMarkeLesen(store, raum, mandantId)) !== null;
+    if ((await erstleitungMarkeLesen(store, raum, mandantId)) !== null) return true;
+    if (await regimeImBuch(store, raum, mandantId)) return true;
+    return (await ersteinrichtungImBuch(store, raum, mandantId)) !== null;
   } catch { return true; }
 }
 
 /**
- * Für die Ausstellungswege: Gilt der Betrieb als schon eingerichtet? Marke vorhanden, Personen im Bestand, oder die
- * Marke ist nicht lesbar (dann lieber kein Erstanmeldecode). Nie ein Fehler nach außen.
+ * Für die Ausstellungswege: Gilt der Betrieb als schon eingerichtet? Marke vorhanden, Personen im Bestand, Abschluss
+ * im Widerrufbuch (Review C2: eine Sicherung von vor dem ersten Erstanmeldecode trägt keine Marke), oder Marke bzw.
+ * Buch nicht lesbar (dann lieber kein Erstanmeldecode). Nie ein Fehler nach außen.
  */
 export async function erstleitungEingerichtet(store, raum, mandant) {
   if (!istObjekt(mandant) || typeof mandant.id !== "string" || !mandant.id) return true;
   if (Array.isArray(mandant.personen) && mandant.personen.length > 0) return true;
-  try { return (await erstleitungMarkeLesen(store, raum, mandant.id)) !== null; } catch { return true; }
+  try {
+    if ((await erstleitungMarkeLesen(store, raum, mandant.id)) !== null) return true;
+    return (await ersteinrichtungImBuch(store, raum, mandant.id)) !== null;
+  } catch { return true; }
 }
 
 /**
@@ -348,9 +384,19 @@ export function erstleitungEinloesen(store, { schluessel, jetzt = Date.now(), du
     try { vorab = await kontoLesenStreng(store, schluessel); } catch { return { ok: false, grund: "lesen" }; }
     if (!erstleitungOffen(vorab)) return { ok: true, eintrag: vorab, angelegt: false };
     const raum = vorab.bestand;
+    let r;
     try {
-      return await unterRaumsperre(raum, () => einloesenGesperrt(store, schluessel, raum, jetzt, durch));
+      r = await unterRaumsperre(raum, () => einloesenGesperrt(store, schluessel, raum, jetzt, durch));
     } catch { return { ok: false, grund: "schreiben" }; }
+    /* KOPPLUNG (oben): erst wirksam in der Ablage (Marke, Person, Bindung bzw. Verbrauch), dann das Widerrufbuch —
+       außerhalb der Raumsperre (das Buch liest alle Zugänge; keine Sperre hängt am Buch). Ein Fehler des Buchs ändert
+       das Ergebnis nicht: Der Schritt ist vollständig, der Eintrag wird eingesammelt (Nachtrag offen, /gesund). */
+    if (r && r.ok === true && typeof r.personId === "string" && r.personId && typeof r.mandantId === "string") {
+      try { await ersteinrichtungAbschliessen(store, raum, r.mandantId, r.personId); } catch { /* Nachtrag offen */ }
+    } else if (r && r.ok === false && r.grund === "belegt") {
+      try { await widerrufbuchEintragen(store, [schluessel], "erstleitung-belegt"); } catch { /* Nachtrag offen */ }
+    }
+    return r;
   })();
 }
 
@@ -401,6 +447,17 @@ async function einloesenGesperrt(store, schluessel, raum, jetzt, durch) {
      wenn seine Personen inzwischen fehlen (gelöscht, verloren, älterer Stand zurückgespielt). */
   let marke;
   try { marke = await erstleitungMarkeLesen(store, raum, m.id); } catch { return { ok: false, grund: "lesen" }; }
+  /* Review C2: Fehlt die Marke (ältere Sicherung zurückgespielt, noch nicht nachgezogen), entscheidet der Abschluss im
+     Widerrufbuch — wie die Marke, mit der ersten Leitung von damals; die Marke wird dabei wieder angelegt. Buch nicht
+     lesbar: keine Sitzung (fail-closed). */
+  if (!marke) {
+    let imBuch;
+    try { imBuch = await ersteinrichtungImBuch(store, raum, m.id); } catch { return { ok: false, grund: "lesen" }; }
+    if (imBuch) {
+      marke = { personId: imBuch.person, am: imBuch.am };
+      try { await store.setJSONWennNeu(erstleitungMarkeSchluessel(raum, m.id), marke); } catch { /* das Buch gilt weiter */ }
+    }
+  }
   if (marke && marke.personId !== personId) return belegt();
   let angelegt = false;
   if (!schonDa) {
@@ -431,7 +488,7 @@ async function einloesenGesperrt(store, schluessel, raum, jetzt, durch) {
   try { gebunden = await verbrauchen(store, schluessel, e, "angelegt", personId, jetzt); }
   catch { return { ok: false, grund: "schreiben" }; }
   if (!gebunden || String(gebunden.person ?? "") !== personId) return { ok: false, grund: "konflikt" };
-  return { ok: true, eintrag: gebunden, angelegt, personId };
+  return { ok: true, eintrag: gebunden, angelegt, personId, mandantId: m.id };
 }
 
 /**

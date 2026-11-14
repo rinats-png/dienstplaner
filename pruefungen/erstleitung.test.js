@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serverStarten } from "./hilfen/port.mjs";
+import { regimeAusBuchEntfernen } from "./hilfen/bestandsbetrieb-regime.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ADMIN = "erstleitung-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -81,6 +82,8 @@ const regimeSchluessel = (raum, mandantId = raum) => `erstleitung-regime:${raum}
 async function bestandsbetriebAnlegen(raum, vorlage = "leer") {
   const ids = await betriebAnlegen(raum, vorlage);
   for (const id of ids) await store().delete(regimeSchluessel(raum, id));
+  /* Kopplung E-M6 (Review C1): auch der Eintrag im Widerrufbuch — ein Betrieb von vor A-3 hat keinen. */
+  await regimeAusBuchEntfernen(raum, ids);
   for (const id of ids) expect(await store().get(regimeSchluessel(raum, id), { type: "json" })).toBeNull();
   return ids;
 }

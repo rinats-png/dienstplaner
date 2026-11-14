@@ -33,6 +33,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serverStarten } from "./hilfen/port.mjs";
 import { baueAusAnlage } from "../src/lib/mandant-anlage.js";
+import { regimeAusBuchEntfernen } from "./hilfen/bestandsbetrieb-regime.mjs";
 
 /* Teil 2: die Ablage dieses Prüfprozesses kann das Schreiben der Regime-Marke verweigern (Schalter unten). Der Server
    aus Teil 1 läuft als eigener Prozess und ist davon nicht berührt. */
@@ -125,6 +126,8 @@ describe.each([
     expect(an.status, an.fehler).toBe(200);
     [M0] = an.mandanten;
     await store().delete(regimeSchluessel(RAUM, M0));
+    /* Kopplung E-M6 (Review C1): auch der Eintrag im Widerrufbuch — ein Raum von vor A-3 hat keinen. */
+    await regimeAusBuchEntfernen(RAUM, [M0]);
     expect(await L.erstleitungStreng(store(), RAUM, M0)).toBe(false);
     const b1 = await einrichten({ name: "Betreiber Raum", bestand: RAUM, rolle: "betreiber", betrieb: 0 });
     expect(b1.status, b1.fehler).toBe(200);

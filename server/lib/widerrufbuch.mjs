@@ -18,13 +18,14 @@
             eintraege: { <Ablageschlüssel eines Codes>: { am, grund } },
             verwalter: { <sha256 eines Verwalterschlüssels>: { am, grund } },
             betriebe:  { <Betriebskennung>: { am, grund, person? } },
+            regime:    { <Betriebskennung>: { am, grund } },
             wiederherstellungen: [{ zeit, sicherungErstellt }], siegel }
         Nur Prüfsummen (wie die Dateinamen der Ablage), nie ein Code oder
         Schlüssel. Das Siegel ist ein HMAC über den Inhalt mit einem aus
         CENTRIC_PFEFFER abgeleiteten Schlüssel: Wer die Datei ohne Pfeffer
         verändert, kürzt oder aus einer anderen Umgebung einsetzt, fällt auf.
-        `verwalter` und `person` gehen nur ins Siegel, wenn belegt — ein Buch
-        ohne sie bleibt gültig.
+        `verwalter`, `regime` und `person` gehen nur ins Siegel, wenn
+        belegt — ein Buch ohne sie bleibt gültig.
      A  centric/widerrufbuch:anker   { id }   (in der Ablage, mitgesichert)
         Sagt: „Zu dieser Ablage gehört ein Widerrufbuch mit dieser Kennung."
         Fehlt W, obwohl A da ist, ist der Zustand unbekannt.
@@ -38,6 +39,17 @@
         ersten Leitung. Der Abschluss stellt nach einem Rücksprung nur die
         Marke wieder her, damit kein Erstanmeldecode des Betriebs je wieder
         eine erste Leitung anlegt.
+     Regime (`regime`, Kopplung E-M6 × PR #281, Review C1): „Für diesen
+        Betrieb gilt das strenge Regime“ (Marke
+        `erstleitung-regime:<raum>:<mandantId>`). Sperrt ebenfalls keinen
+        Code; stellt nach einem Rücksprung die Regime-Marke wieder her, damit
+        ein Betrieb, der einmal streng war, nie wieder unter die alten Regeln
+        fällt (ein Leitungscode ohne Person bekäme dort Leitungsrechte).
+     Beide Marken werden über ALLE Betriebe der Ablage nachgezogen (Bestände
+     und Zugänge), nicht nur über Erstanmeldecodes (Review C2): Eine Sicherung
+     von VOR dem ersten Erstanmeldecode kennt keinen; ohne Marke stellte ein
+     neuer Code eine zweite erste Leitung aus. Zusätzlich fragen die
+     Entscheidungsstellen in erstleitung.mjs das Buch selbst (fail-closed).
 
    Ein Code gilt nur, wenn W lesbar und unversehrt ist, zu A passt UND keiner
    seiner Ablageschlüssel (neu, alt, Kette `ersetztDurch` in beide Richtungen)
@@ -82,6 +94,10 @@ export const BUCH_DATEI = "zugang-widerrufe.json";
 export const ANKER_SCHLUESSEL = "widerrufbuch:anker";
 /** Präfix der Marke „Erstanmeldung festgelegt“ aus PR #281 (erstleitung.mjs, erstleitungMarkeSchluessel). */
 export const MARKE_PRAEFIX = "erstleitung-marke:";
+/** Präfix der Regime-Marke aus PR #281 (erstleitung.mjs, erstleitungRegimeSchluessel). */
+export const REGIME_PRAEFIX = "erstleitung-regime:";
+/** Präfixe der Bestände in der Ablage (scherben.mjs kernSchluessel; bestand.mjs altBestandSchluessel). */
+export const BESTAND_PRAEFIXE = Object.freeze(["kern:", "bestand:"]);
 export const VERWALTER_PRAEFIX = "verwalter:";
 /** Nachtrag (Raumlöschung bei nicht schreibbarem Buch): Codes, die die Ablage schon gelöscht hat, die aber noch ins
     Buch müssen. Liegt in der Ablage, damit Serverstart, nächster Widerruf und Wiederherstellungswerkzeug sie finden. */
@@ -116,8 +132,11 @@ function kanonisch(b) {
   }
   const verwalter = {};
   for (const k of Object.keys(b.verwalter || {}).sort()) verwalter[k] = zeile(b.verwalter[k]);
+  const regime = {};
+  for (const k of Object.keys(b.regime || {}).sort()) regime[k] = zeile(b.regime[k]);
   return JSON.stringify({ fassung: b.fassung, id: b.id, ids: [...b.ids], eintraege, betriebe,
     ...(Object.keys(verwalter).length ? { verwalter } : {}),
+    ...(Object.keys(regime).length ? { regime } : {}),
     wiederherstellungen: b.wiederherstellungen.map((w) => ({ zeit: String(w.zeit), sicherungErstellt: String(w.sicherungErstellt) })) });
 }
 
@@ -134,6 +153,7 @@ function pruefen(o, datei, pfeffer) {
   if (!o || typeof o !== "object" || o.fassung !== FASSUNG || !ID_FORM.test(o.id) || !Array.isArray(o.ids)
     || !o.ids.every((i) => ID_FORM.test(i)) || !o.ids.includes(o.id)
     || !istMap(o.eintraege) || !istMap(o.betriebe) || (o.verwalter !== undefined && !istMap(o.verwalter))
+    || (o.regime !== undefined && !istMap(o.regime))
     || !Array.isArray(o.wiederherstellungen) || typeof o.siegel !== "string" || !/^[0-9a-f]{64}$/.test(o.siegel))
     throw kaputt("ist beschädigt");
   for (const [k, v] of Object.entries(o.eintraege))
@@ -143,10 +163,13 @@ function pruefen(o, datei, pfeffer) {
       throw kaputt("ist beschädigt");
   for (const [k, v] of Object.entries(o.verwalter || {}))
     if (!HEX64.test(k) || !v || typeof v !== "object") throw kaputt("ist beschädigt");
+  for (const [k, v] of Object.entries(o.regime || {}))
+    if (!HEX64.test(k) || !v || typeof v !== "object") throw kaputt("ist beschädigt");
   for (const w of o.wiederherstellungen) if (!w || typeof w !== "object") throw kaputt("ist beschädigt");
   const soll = Buffer.from(siegelBilden(o, pfeffer), "hex");
   if (!timingSafeEqual(soll, Buffer.from(o.siegel, "hex"))) throw kaputt("trägt ein falsches Siegel (verändert oder anderer Pfeffer)");
   if (!o.verwalter) o.verwalter = {};
+  if (!o.regime) o.regime = {};
   return o;
 }
 
@@ -171,7 +194,7 @@ export async function buchLesen(verz, { pfeffer } = {}) {
 /** Ein neues, leeres Buch (noch nicht geschrieben). */
 export function buchNeu() {
   const id = zufall();
-  return { fassung: FASSUNG, id, ids: [id], eintraege: {}, verwalter: {}, betriebe: {}, wiederherstellungen: [], siegel: "" };
+  return { fassung: FASSUNG, id, ids: [id], eintraege: {}, verwalter: {}, betriebe: {}, regime: {}, wiederherstellungen: [], siegel: "" };
 }
 
 /**
@@ -181,6 +204,7 @@ export function buchNeu() {
 export async function buchSchreiben(verz, b, { pfeffer } = {}) {
   const fertig = { ...b, siegel: siegelBilden(b, pfeffer) };
   if (!Object.keys(fertig.verwalter || {}).length) delete fertig.verwalter;
+  if (!Object.keys(fertig.regime || {}).length) delete fertig.regime;
   try {
     await mkdir(verz, { recursive: true, mode: 0o700 });
     const ziel = path.join(verz, BUCH_DATEI);
@@ -193,6 +217,7 @@ export async function buchSchreiben(verz, b, { pfeffer } = {}) {
     throw new WiderrufbuchFehler(`Widerrufbuch nicht schreibbar (${/** @type {any} */ (e).code || e}).`);
   }
   if (!fertig.verwalter) fertig.verwalter = {};
+  if (!fertig.regime) fertig.regime = {};
   return fertig;
 }
 
@@ -300,10 +325,13 @@ export function betriebsKennung(raum, mandantId, pfeffer) {
 /** Schlüssel der Marke aus PR #281 (erstleitung.mjs: erstleitungMarkeSchluessel) — die dokumentierte Schnittstelle. */
 export const markeSchluessel = (raum, mandantId) => `${MARKE_PRAEFIX}${raum}:${mandantId}`;
 
-/** Aus einem Markenschlüssel Raum und Betrieb (die Betriebskennung ist das letzte Glied). */
-export function markeZerlegen(schluessel) {
-  if (typeof schluessel !== "string" || !schluessel.startsWith(MARKE_PRAEFIX)) return null;
-  const rest = schluessel.slice(MARKE_PRAEFIX.length);
+/** Schlüssel der Regime-Marke aus PR #281 (erstleitung.mjs: erstleitungRegimeSchluessel). */
+export const regimeSchluessel = (raum, mandantId) => `${REGIME_PRAEFIX}${raum}:${mandantId}`;
+
+/** Aus einem Marken- (mit `praefix` auch Regime-)Schlüssel Raum und Betrieb (die Betriebskennung ist das letzte Glied). */
+export function markeZerlegen(schluessel, praefix = MARKE_PRAEFIX) {
+  if (typeof schluessel !== "string" || !schluessel.startsWith(praefix)) return null;
+  const rest = schluessel.slice(praefix.length);
   const i = rest.lastIndexOf(":");
   if (i <= 0 || i === rest.length - 1) return null;
   return { raum: rest.slice(0, i), mandantId: rest.slice(i + 1) };
@@ -354,22 +382,35 @@ export function betriebeEintragen(b, liste, grund, am = new Date().toISOString()
   return neu;
 }
 
+/** Betriebe als streng (Regime) eintragen (nie entfernen). Zahl der neuen Einträge. */
+export function regimeEintragen(b, kennungen, grund, am = new Date().toISOString()) {
+  if (!b.regime) b.regime = {};
+  let neu = 0;
+  for (const kennung of kennungen) {
+    if (typeof kennung !== "string" || !HEX64.test(kennung) || Object.hasOwn(b.regime, kennung)) continue;
+    b.regime[kennung] = { am, grund: String(grund).slice(0, 40) };
+    neu++;
+  }
+  return neu;
+}
+
 /**
  * Was die Ablage selbst als widerrufen oder abgeschlossen kennt (samt Kette), in das Buch übernehmen.
  * @param {any} b  Buch
  * @param {Record<string, any>} konten
  * @param {{verwalter?: Record<string, any>, marken?: Array<{raum: string, mandantId: string, personId?: string}>,
- *   nachtrag?: string[]}} [weitere]
- *   verwalter: sha256 → Eintrag; marken: Marken „Erstanmeldung festgelegt“ (PR #281);
+ *   regime?: Array<{raum: string, mandantId: string}>, nachtrag?: string[]}} [weitere]
+ *   verwalter: sha256 → Eintrag; marken: Marken „Erstanmeldung festgelegt“ (PR #281); regime: Regime-Marken (PR #281);
  *   nachtrag: Schlüssel aus NACHTRAG_SCHLUESSEL (aus der Ablage schon gelöscht, noch nicht im Buch)
  */
-export function einsammeln(b, konten, { verwalter = {}, marken = [], nachtrag = [] } = {}) {
+export function einsammeln(b, konten, { verwalter = {}, marken = [], regime = [], nachtrag = [] } = {}) {
   const gesperrt = Object.entries(konten || {}).filter(([, k]) => inAblageWiderrufen(k)).map(([h]) => h);
   const im = new Set(Object.keys(b.eintraege));
   const huelle = kettenHuelle(konten, [...gesperrt, ...im, ...(nachtrag || []).filter(eintragbar)]);
   const v = Object.entries(verwalter || {}).filter(([h, e]) => HEX64.test(h) && e && e.gesperrt).map(([h]) => h);
   return eintragen(b, [...huelle], "aus-ablage") + verwalterEintragen(b, v, "aus-ablage")
-    + betriebeEintragen(b, abgeschlosseneBetriebe(konten, marken), "aus-ablage");
+    + betriebeEintragen(b, abgeschlosseneBetriebe(konten, marken), "aus-ablage")
+    + regimeEintragen(b, (regime || []).map((r) => betriebsKennung(r.raum, r.mandantId)), "aus-ablage");
 }
 
 /**
@@ -387,22 +428,84 @@ export function verwalterNachzuziehen(b, verwalter) {
 }
 
 /**
- * Welche Marken „Erstanmeldung festgelegt“ fehlen in der Ablage, obwohl das Buch den Betrieb als abgeschlossen kennt?
- * Gesucht wird über die Erstanmeldecodes der Ablage (offen oder verbraucht): nur sie können eine erste Leitung anlegen.
- * @returns {Array<{schluessel: string, wert: {personId: string, am: string}}>}
+ * Alle Betriebe, die die Ablage kennt — Raum und Betriebskennung, keine Namen: aus jedem Zugang (Raum mit
+ * Betriebskennung oder Erstanmeldevermerk), aus den Beständen (`listen`: Kern bzw. Altbestand) und aus vorhandenen
+ * Marken. Review C2: Bis hierher nur aus Erstanmeldecodes — eine Sicherung von VOR dem ersten Code bekam keine Marke.
+ * @param {Record<string, any>} konten
+ * @param {...(Array<{raum: string, mandantId: string}>|undefined)} listen
+ * @returns {Array<{raum: string, mandantId: string}>}
  */
-export function markenNachzuziehen(b, konten, marken) {
-  const da = new Set((marken || []).map((m) => markeSchluessel(m.raum, m.mandantId)));
+export function bekannteBetriebe(konten, ...listen) {
   const aus = new Map();
+  const dazu = (raum, mandantId) => {
+    if (typeof raum !== "string" || !raum || typeof mandantId !== "string" || !mandantId) return;
+    const s = JSON.stringify([raum, mandantId]);
+    if (!aus.has(s)) aus.set(s, { raum, mandantId });
+  };
   for (const k of Object.values(konten || {})) {
     const z = erstleitungBetrieb(k);
-    if (!z) continue;
-    const s = markeSchluessel(z.raum, z.mandantId);
-    if (da.has(s) || aus.has(s)) continue;
-    const e = b.betriebe[betriebsKennung(z.raum, z.mandantId)];
-    if (e) aus.set(s, { schluessel: s, wert: { personId: String(e.person || ""), am: String(e.am || "") } });
+    if (z) dazu(z.raum, z.mandantId);
+    if (istMap(k)) dazu(k.bestand, k.mandantId);
   }
+  for (const l of listen) for (const x of l || []) if (x) dazu(x.raum, x.mandantId);
   return [...aus.values()];
+}
+
+/**
+ * Welche Marken „Erstanmeldung festgelegt“ fehlen in der Ablage, obwohl das Buch den Betrieb als abgeschlossen kennt?
+ * Gesucht wird über ALLE Betriebe der Ablage (bekannteBetriebe: Zugänge, Bestände, Marken — Review C2).
+ * @param {any} b
+ * @param {Record<string, any>} konten
+ * @param {Array<{raum: string, mandantId: string}>} marken  vorhandene Marken
+ * @param {Array<{raum: string, mandantId: string}>} [betriebe]  Betriebe aus den Beständen der Ablage
+ * @param {Array<{raum: string, mandantId: string}>} [regime]  vorhandene Regime-Marken
+ * @returns {Array<{schluessel: string, wert: {personId: string, am: string}}>}
+ */
+export function markenNachzuziehen(b, konten, marken, betriebe = [], regime = []) {
+  const da = new Set((marken || []).map((m) => markeSchluessel(m.raum, m.mandantId)));
+  const aus = [];
+  for (const z of bekannteBetriebe(konten, betriebe, marken, regime)) {
+    const s = markeSchluessel(z.raum, z.mandantId);
+    if (da.has(s)) continue;
+    const e = b.betriebe[betriebsKennung(z.raum, z.mandantId)];
+    if (e) aus.push({ schluessel: s, wert: { personId: String(e.person || ""), am: String(e.am || "") } });
+  }
+  return aus;
+}
+
+/**
+ * Review C1: Welche Regime-Marken fehlen in der Ablage, obwohl das Buch den Betrieb als streng kennt? Über alle
+ * Betriebe der Ablage (wie oben). Wert wie bei erstleitungRegimeVermerken: { seit, durch } — keine Personenangaben.
+ * @param {any} b
+ * @param {Record<string, any>} konten
+ * @param {Array<{raum: string, mandantId: string}>} regime  vorhandene Regime-Marken
+ * @param {Array<{raum: string, mandantId: string}>} [betriebe]
+ * @param {Array<{raum: string, mandantId: string}>} [marken]
+ * @returns {Array<{schluessel: string, wert: {seit: string, durch: string}}>}
+ */
+export function regimeNachzuziehen(b, konten, regime, betriebe = [], marken = []) {
+  const da = new Set((regime || []).map((m) => regimeSchluessel(m.raum, m.mandantId)));
+  const aus = [];
+  for (const z of bekannteBetriebe(konten, betriebe, marken, regime)) {
+    const s = regimeSchluessel(z.raum, z.mandantId);
+    if (da.has(s)) continue;
+    const e = (b.regime || {})[betriebsKennung(z.raum, z.mandantId)];
+    if (e) aus.push({ schluessel: s, wert: { seit: String(e.am || ""), durch: "widerrufbuch" } });
+  }
+  return aus;
+}
+
+/** Raum eines Bestandsschlüssels (Kern `kern:<raum>`, Altbestand `bestand:<raum>`); sonst null. */
+export function bestandRaum(schluessel) {
+  for (const p of BESTAND_PRAEFIXE)
+    if (typeof schluessel === "string" && schluessel.startsWith(p) && schluessel.length > p.length) return schluessel.slice(p.length);
+  return null;
+}
+
+/** Die Betriebe eines Bestands (Kern oder Altbestand); ohne lesbare Liste: keine. */
+export function bestandBetriebe(raum, bestand) {
+  if (!istMap(bestand) || !Array.isArray(bestand.mandanten)) return [];
+  return bestand.mandanten.filter((m) => istMap(m) && typeof m.id === "string" && m.id).map((m) => ({ raum, mandantId: m.id }));
 }
 
 /** Der gesperrte Stand eines Kontos oder Verwalterschlüssels, wie ihn jede Fassung der Anwendung versteht. */
@@ -474,8 +577,9 @@ const ankerLesen = async (store) => {
   } catch (e) { throw new WiderrufbuchFehler(`Anker des Widerrufbuchs nicht lesbar (${/** @type {any} */ (e).message || e}).`); }
 };
 
-/** Alle Zugänge, Verwalterschlüssel und Marken der Ablage — streng (ein Lesefehler wirft, nie „leer“). */
-async function ablageStand(store) {
+/** Alle Zugänge, Verwalterschlüssel und Marken der Ablage — streng (ein Lesefehler wirft, nie „leer“). Mit
+    `betriebe` zusätzlich die Betriebe aller Bestände (nur beim Serverstart: liest jeden Kern). */
+async function ablageStand(store, { betriebe: mitBetrieben = false } = {}) {
   const { alleKontenStreng } = await import("./konten.mjs");
   try {
     const konten = await alleKontenStreng(store);
@@ -493,9 +597,24 @@ async function ablageStand(store) {
       if (m === null || m === undefined) continue;
       marken.push({ ...z, personId: istMap(m) && typeof m.personId === "string" ? m.personId : "" });
     }
+    /** @type {Array<{raum: string, mandantId: string}>} */ const regime = [];
+    for (const b of (await store.list({ prefix: REGIME_PRAEFIX })).blobs) {
+      const z = markeZerlegen(b.key, REGIME_PRAEFIX);
+      if (!z) continue;
+      const m = await store.get(b.key, { type: "json" });
+      if (m !== null && m !== undefined) regime.push(z);
+    }
+    /** @type {Array<{raum: string, mandantId: string}>} */ const betriebe = [];
+    if (mitBetrieben) {
+      for (const p of BESTAND_PRAEFIXE)
+        for (const b of (await store.list({ prefix: p })).blobs) {
+          const raum = bestandRaum(b.key);
+          if (raum) betriebe.push(...bestandBetriebe(raum, await store.get(b.key, { type: "json" })));
+        }
+    }
     const n = await store.get(NACHTRAG_SCHLUESSEL, { type: "json" });
     const nachtrag = [...new Set([...nachtragSchluessel(n), ...imSpeicher.keys()])];
-    return { konten, verwalter, marken, nachtrag, nachtragDa: n !== null && n !== undefined };
+    return { konten, verwalter, marken, regime, betriebe, nachtrag, nachtragDa: n !== null && n !== undefined };
   } catch (e) { throw new WiderrufbuchFehler(`Zugänge nicht lesbar (${/** @type {any} */ (e).message || e}).`); }
 }
 
@@ -608,7 +727,8 @@ export function verwalterInsBuch(store, hashes, grund) {
 }
 
 /* ---------------------------------------------------------------------------
-   Schnittstelle für den Erstanmeldecode (PR #281, erstleitung.mjs) — dort zu rufen, hier nur bereitgestellt.
+   Schnittstelle für den Erstanmeldecode (PR #281, erstleitung.mjs) — dort gerufen (Kopplungsrunde E-M6 × #281:
+   erstleitungEinloesen, erstleitungRegimeVermerken; gelesen von erstleitungStreng, erstleitungEingerichtet).
    Verbindliche Abgrenzung (Review E-M6, Befund 1):
      „angelegt“ (Code an die neue erste Leitung gebunden): KEIN Widerruf. Nur
           await ersteinrichtungAbschliessen(store, raum, mandantId, personId)
@@ -637,6 +757,38 @@ export function ersteinrichtungAbschliessen(store, raum, mandantId, personId = "
 }
 
 /**
+ * Review C1: Das strenge Regime eines Betriebs festhalten — außerhalb der Ablage, überlebt jede Wiederherstellung.
+ * NACH dem Anlegen der Regime-Marke zu rufen (erstleitung.mjs, erstleitungRegimeVermerken). Sperrt keinen Code.
+ * @param {any} store @param {string} raum @param {string} mandantId
+ */
+export function regimeFesthalten(store, raum, mandantId) {
+  if (typeof raum !== "string" || !raum || typeof mandantId !== "string" || !mandantId)
+    return Promise.reject(new WiderrufbuchFehler("Betrieb für das Regime unklar."));
+  return fortschreiben(store, (b) => ({
+    geaendert: regimeEintragen(b, [betriebsKennung(raum, mandantId)], "erstleitung-regime") > 0, wert: undefined }));
+}
+
+/**
+ * Steht das strenge Regime dieses Betriebs im Buch? Wirft bei unbekanntem Zustand (der Aufrufer entscheidet: streng).
+ * @param {any} store @param {string} raum @param {string} mandantId
+ */
+export async function regimeImBuch(store, raum, mandantId) {
+  const b = await buchGeprueft(store);
+  return Object.hasOwn(b.regime || {}, betriebsKennung(raum, mandantId));
+}
+
+/**
+ * Der Abschluss der Ersteinrichtung nach dem Buch: { person, am } oder null. Wirft bei unbekanntem Zustand.
+ * @param {any} store @param {string} raum @param {string} mandantId
+ * @returns {Promise<{person: string, am: string}|null>}
+ */
+export async function ersteinrichtungImBuch(store, raum, mandantId) {
+  const b = await buchGeprueft(store);
+  const e = b.betriebe[betriebsKennung(raum, mandantId)];
+  return e ? { person: String(e.person || ""), am: String(e.am || "") } : null;
+}
+
+/**
  * Ist die Ersteinrichtung dieses Betriebs abgeschlossen (nach dem Buch)? Wirft bei unbekanntem Zustand.
  * @param {any} store @param {string} raum @param {string} mandantId
  */
@@ -654,7 +806,7 @@ export async function widerrufbuchStart(store) {
   return vermerken(nacheinander(async () => {
     const verz = await verzeichnis();
     const b = structuredClone(await standJetzt(store));
-    const a = await ablageStand(store);
+    const a = await ablageStand(store, { betriebe: true });
     const eingesammelt = einsammeln(b, a.konten, a);
     const geschrieben = eingesammelt ? await buchSchreiben(verz, b) : b;
     const marke = await markeVon();
@@ -665,9 +817,12 @@ export async function widerrufbuchStart(store) {
     for (const h of offen) await kontoSchreiben(store, h, gesperrtesKonto(a.konten[h]));
     const vOffen = verwalterNachzuziehen(geschrieben, a.verwalter);
     for (const h of vOffen) await store.setJSON(`${VERWALTER_PRAEFIX}${h}`, gesperrtesKonto(a.verwalter[h]));
-    const mOffen = markenNachzuziehen(geschrieben, a.konten, a.marken);
+    const mOffen = markenNachzuziehen(geschrieben, a.konten, a.marken, a.betriebe, a.regime);
     for (const m of mOffen) await store.setJSONWennNeu(m.schluessel, m.wert);
-    return { eingesammelt, nachgezogen: offen.length + vOffen.length, marken: mOffen.length,
+    /* Review C1: Regime-Marken, die ein Rücksprung der Ablage verloren hat. */
+    const rOffen = regimeNachzuziehen(geschrieben, a.konten, a.regime, a.betriebe, a.marken);
+    for (const m of rOffen) await store.setJSONWennNeu(m.schluessel, m.wert);
+    return { eingesammelt, nachgezogen: offen.length + vOffen.length, marken: mOffen.length, regime: rOffen.length,
       eintraege: Object.keys(geschrieben.eintraege).length + Object.keys(geschrieben.verwalter || {}).length };
   }), { schreibt: true });
 }

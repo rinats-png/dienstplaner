@@ -845,7 +845,8 @@ Betreiberentscheidung). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLL
   -e CENTRIC_ZUSTAND=/zustand` ergänzen). Das Werkzeug übernimmt dann vor dem Tausch alles,
   was die bisherige Ablage gesperrt oder abgeschlossen kennt, ins Buch, sperrt alles, was
   im Buch steht, in der zurückgespielten Kopie (Codes, Verwalterschlüssel), legt fehlende
-  Marken der Ersteinrichtung an und vermerkt die Wiederherstellung im Buch. Läuft auf der
+  Marken der Ersteinrichtung und Regime-Marken (PR #281) für jeden Betrieb der Kopie an und
+  vermerkt die Wiederherstellung im Buch. Läuft auf der
   Ablage noch ein Server (Prozesssperre `.prozess`), lehnt es ab — auch mit
   `--ohne-serverpruefung`. Ohne `--zustand` sperrt erst der Server **dieser oder einer
   neueren Fassung** beim Start nach.
