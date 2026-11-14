@@ -76,3 +76,30 @@ Einschalten der Wirkung muss das Wiederherstellen die Zuordnungen wie die Ist-Da
    Dazu gehört die Auskunft nach Art. 15 DSGVO (Selbstauskunft, LUECKEN_SELBST) für `schichtmodellZuordnungen` — rechtliche Einschätzung nötig.
 5. Lücken und „keine“: Soll eine Person ohne Modell an Tagen außerhalb aller Zuordnungen zulässig sein (z. B. nicht im Schichtdienst),
    oder muss jede Liste offen enden? Derzeit: Lücken zwischen Zuordnungen abgewiesen, Ränder als `keine` (Klärung).
+
+## Entscheidungen des Betreibers vom 2026-11-14 (Fragen 1 bis 5)
+
+Die Fragen 1 bis 5 oben sind entschieden. Das ist eine Produktentscheidung, **keine** Produktionsfreigabe: Die Regeln sind
+noch nicht umgesetzt, reviewt, integriert, auf Staging geprüft oder aktiviert (`CENTRIC_IMPORT_AKTIV` bleibt aus).
+
+| Frage | Entscheidung |
+|---|---|
+| 1 | Ein Wechsel gilt frühestens am Folgetag. |
+| 2 | Nie rückwirkend; Änderungen für die Vergangenheit nur über den Revisionsprozess (WP-16c). |
+| 3 | Veröffentlichte Zukunftspläne brauchen nach einer Modelländerung eine neue Planfreigabe. |
+| 4 | Beschäftigte sehen ihr eigenes Modell. Es gibt **keine** neuen Leserechte für den Betriebsrat. Offene Prüfung: Die Selbstauskunft nach Art. 15 DSGVO für `schichtmodellZuordnungen` ist getrennt auf Vollständigkeit zu prüfen. |
+| 5 | Der Zustand „kein Schichtmodell“ ist zulässig. |
+
+## Zählung „Fragen 1 bis 8“: Berichtigung
+
+Frühere Dokumente (SSOT-Notiz IMP-6, `WIEDERAUFNAHME.md`, `ENTSCHEIDUNGSLISTE.md`) sprachen von „Q1 bis Q8“. Diese Datei hat
+nur die fünf nummerierten Fragen oben. Die Fragen 6 bis 8 stammen aus der Beschreibung von PR #263 und stehen nur dort
+als eigene Nummern. In dieser Datei sind sie bereits enthalten, aber nicht als Fragen: Frage 7 ist der Zusatz zu Frage 4
+(Art. 15 DSGVO), Frage 8 ist der Abschnitt „Bekannte Grenze: Wiederherstellen“. Frage 6 hat in dieser Datei keine
+eigene Entsprechung (sie steht in der SSOT-Notiz zu IMP-7 als Punkt (e)).
+
+| Nr | Wortlaut laut PR #263 | Stand |
+|---|---|---|
+| 6 | Wirkung auf die Planrechnung einschalten (`dienstAm`/Oberfläche): ja, und wann? | **offen**, nicht entschieden |
+| 7 | Art. 15 DSGVO: Auskunft/`LUECKEN_SELBST` für `schichtmodellZuordnungen` (rechtliche Einschätzung, gehört zu Frage 4) | **offen**, rechtliche Einschätzung nötig |
+| 8 | `/api/wiederherstellen` umgeht den historischen Schutz; hingenommen nur, solange die Zuordnungen keine Planwirkung haben | **offen**, Voraussetzung vor Frage 6 |
