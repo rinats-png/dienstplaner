@@ -206,22 +206,111 @@ export function nachtAnteilAm(datum, d, einst) {
   return Math.max(0, Math.round((nachtAnteil(d, einst) + versatz / 60) * 100) / 100);
 }
 
-/** Zerlegt einen Dienst in Kalendertage (Nachtdienst Sa 21:30–So 07:15: anteilig Samstag und Sonntag). */
-export function tagesanteile(datum, da) {
+/* --------------------------------------------------------------------------
+   ZUSCHLÄGE IN DEN UMSTELLUNGSNÄCHTEN (WP-ZEIT, Teilpaket ZEIT-E / E6, Befund Z47)
+
+   Bis Rechenstand 2 teilte tagesanteile einen Dienst an der Wanduhr-Mitternacht
+   und zählte Wanduhr-Minuten: In der Nacht zum letzten Sonntag im Oktober
+   (25 Stunden) fehlte dem Sonntag eine Stunde, im März (23 Stunden) bekam er
+   eine zu viel — für Sonntags-, Feiertags- und Samstagsanteile. Die
+   Nachtstunden rechneten schon richtig (nachtAnteilAm, uhrversatz).
+
+   Ab Rechenstand 3 (lohnrechnung.mjs) rechnet tagesanteile mit Zeitpunkten:
+   Beginn, Ende und die Mitternacht dazwischen werden in Europe/Berlin auf
+   wirkliche Zeitpunkte abgebildet, die Minuten sind deren Abstand. Betriebs-
+   zone ist ausschließlich Europe/Berlin (Betreiberentscheidung E1 a).
+
+   Betreiberentscheidung 2026-11-14 (E6, bindend): Die Korrektur gilt für
+   OFFENE Monate. Abgeschlossene Monate bleiben unverändert — sie rechnen aus
+   dem Freeze (z) bzw. ohne eingefrorene Zuschläge (Schema 1) mit dem
+   Rechenstand ihres Abschlusses (zuschlagStand); nichts wird still
+   umgerechnet. Eine historische Korrektur geht nur über den kontrollierten
+   Revisionsweg (Wiederöffnen mit Grund und neuer Abschluss, WP-16/WP-16c):
+   Der neue Abschluss friert mit dem dann gültigen Rechenstand ein (rv).
+
+   Folgearbeit: server/lib/betriebszeit.mjs (PR #301) bietet bisher keine
+   Abbildung Wanduhr → Zeitpunkt (nur Zeitpunkt → Betriebstag/Wanduhr).
+   berlinZeitpunkt erst dorthin verlegen, wenn die Zeitbasis eine solche
+   Funktion mit derselben Auflösung (Lücke vorwärts, doppelte Stunde spät) hat.
+   -------------------------------------------------------------------------- */
+export const BETRIEBSZONE_ZUSCHLAEGE = "Europe/Berlin";
+/** Rechenstand vor ZEIT-E: Kalendertage an der Wanduhr, ohne Zeitumstellung (abgeschlossene Altmonate). */
+export const RECHEN_STAND_WANDUHR = 2;
+const BERLIN_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: BETRIEBSZONE_ZUSCHLAEGE, hourCycle: "h23",
+  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+/** Versatz von Europe/Berlin gegen UTC in Minuten zu einem (minutengenauen) Zeitpunkt. */
+function berlinVersatz(ms) {
+  const t = {};
+  for (const x of BERLIN_FORMAT.formatToParts(new Date(ms))) t[x.type] = x.value;
+  return Math.round((Date.UTC(Number(t.year), Number(t.month) - 1, Number(t.day), Number(t.hour), Number(t.minute)) - ms) / 60000);
+}
+/**
+ * Der wirkliche Zeitpunkt (ms seit 1970, UTC) einer Wanduhrzeit in Europe/Berlin: Kalendertag `datum` plus
+ * `minuten` (auch über 1440 hinaus, dann Folgetag). Mehrdeutige Wanduhrzeiten fest aufgelöst: Die Frühjahrslücke
+ * (02:00–02:59 gibt es nicht) wird nach vorn geschoben (Versatz vor dem Sprung, 02:30 → 03:30 Sommerzeit), die
+ * doppelte Herbststunde ist die spätere (Winterzeit). tagesanteile braucht nur Mitternachten — die sind in
+ * Europe/Berlin immer eindeutig.
+ */
+export function berlinZeitpunkt(datum, minuten) {
+  const [j, mo, t] = String(datum).split("-").map(Number);
+  const wand = Date.UTC(j, mo - 1, t) + minuten * 60000;
+  const passend = [60, 120].filter((v) => berlinVersatz(wand - v * 60000) === v);
+  const v = passend.length === 1 ? passend[0] : 60;
+  return wand - v * 60000;
+}
+
+/**
+ * Zerlegt einen Dienst in Kalendertage (Nachtdienst Sa 21:30–So 07:15: anteilig Samstag und Sonntag).
+ * Rechenstand ≥ 3: wirkliche Minuten je Kalendertag in Europe/Berlin (Zeitumstellung, Z47); darunter die
+ * Wanduhr-Teilung von damals (nur für abgeschlossene Altmonate, zuschlagStand).
+ */
+export function tagesanteile(datum, da, stand = RECHEN_STAND) {
   const s = toMin(da.start);
   let e = toMin(da.ende);
   if (e <= s) e += 1440;
   const out = [];
-  const ersterTeil = Math.min(e, 1440) - s;
+  if (stand < 3) {
+    const ersterTeil = Math.min(e, 1440) - s;
+    if (ersterTeil > 0) out.push({ datum, minuten: ersterTeil });
+    if (e > 1440) out.push({ datum: addDays(datum, 1), minuten: e - 1440 });
+    return out;
+  }
+  /* Beginn als Zeitpunkt ab der (immer eindeutigen) Mitternacht des Tages, Ende = Beginn + wirkliche Dauer — dieselbe
+     Dauer wie bruttoAm/dauerAm (Lohn), auch wenn Beginn oder Ende in der Frühjahrslücke bzw. der doppelten
+     Herbststunde liegen (Z22 offen). Für jede eindeutige Wanduhrzeit ist das genau berlinZeitpunkt(datum, s|e).
+     Beginn GENAU 02:00 am Umstellungstag: uhrversatz zählt den Sprung dann nicht in die Dauer (Beginn gilt als
+     nach dem Sprung), also zählt er hier in den Abstand zur Mitternacht (von + 1: Sprungpunkt ≤ Beginn). Sonst
+     lag der Beginn im Herbst eine Stunde zu früh (25.10. 02:00–00:30: Folgetag −30 Min.) und im Frühjahr eine
+     Stunde zu spät (29.03. 02:00–00:00: 60 Min. fielen weg). Die Teile ergeben immer die Gesamtdauer. */
+  const [von, bis] = fenster(datum, da);
+  const dauer = bis - von + uhrversatz(von, bis);
+  const a = berlinZeitpunkt(datum, 0) + (s + uhrversatz(von - s, von + 1)) * 60000;
+  const mitternacht = berlinZeitpunkt(datum, 1440);
+  const ersterTeil = Math.max(0, Math.min(dauer, Math.round((mitternacht - a) / 60000)));
   if (ersterTeil > 0) out.push({ datum, minuten: ersterTeil });
-  if (e > 1440) out.push({ datum: addDays(datum, 1), minuten: e - 1440 });
+  if (dauer - ersterTeil > 0) out.push({ datum: addDays(datum, 1), minuten: dauer - ersterTeil });
   return out;
 }
 
+/**
+ * Mit welchem Rechenstand die Zuschlagsanteile eines Monats gerechnet werden: offen der heutige (RECHEN_STAND);
+ * abgeschlossen der des Abschlusses (`rv` im Verzeichnis) — ohne Angabe (Schema 1/2, vor ZEIT-E) die Wanduhr-
+ * Teilung. Bei Schema ≥ 2 gelten ohnehin die eingefrorenen Zuschläge (z); das hier betrifft nur Altabschlüsse,
+ * die keine haben. So ändert ZEIT-E keinen abgeschlossenen Monat (Betreiberentscheidung E6).
+ */
+export function zuschlagStand(m, mon) {
+  const st = freezeStatus(m, mon);
+  if (!st) return RECHEN_STAND;
+  const w = objekt(m[IST_EINGEFROREN]) ? m[IST_EINGEFROREN] : {};
+  const b = w[betriebsSchluessel(mon)];
+  const rv = objekt(b) ? b.rv : undefined;
+  return Number.isInteger(rv) && rv >= 3 && rv <= RECHEN_STAND ? rv : RECHEN_STAND_WANDUHR;
+}
+
 /** Nacht-, Sonn-, Feiertags- und Samstagsanteile eines Diensttages auf r aufaddieren (zuschlagStunden). */
-export function zuschlagTagAddieren(m, p, d, da, r) {
+export function zuschlagTagAddieren(m, p, d, da, r, stand = RECHEN_STAND) {
   r.nacht += nachtAnteilAm(d, da, m.einstellungen);
-  for (const teil of tagesanteile(d, da)) {
+  for (const teil of tagesanteile(d, da, stand)) {
     const std = teil.minuten / 60;
     const w = dow(teil.datum);
     if (feiertagFuer(m, teil.datum, p)) r.feiertag += std;

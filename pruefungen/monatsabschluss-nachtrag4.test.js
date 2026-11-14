@@ -370,9 +370,9 @@ describe("A-6: Mehrarbeit als Kontostand bezeichnet", { timeout: 120000 }, () =>
 
 /* ------------------------------------------------------------------------ */
 describe("N-1 / U10: Bereitschaft und Ruf aus dem Ist (Sommerzeit, erfasste Zeit)", { timeout: 120000 }, () => {
-  it("R5: Bereitschaft 21–06 in der Nacht 24./25.10. = 10 h, Ruf erfasst 20–06 = 10 h (geplant 12); offen = eingefroren; Rechenstand 2", async () => {
+  it("R5: Bereitschaft 21–06 in der Nacht 24./25.10. = 10 h, Ruf erfasst 20–06 = 10 h (geplant 12); offen = eingefroren; Rechenstand 3 (N-1 kam mit 2, ZEIT-E/Z47 hebt auf 3)", async () => {
     const L = await import("../server/lib/lohnrechnung.mjs");
-    expect(L.RECHEN_STAND).toBe(2);
+    expect(L.RECHEN_STAND).toBe(3);
     const roh = mitBereitschaft();
     const m = zu(roh);
     expect(m.istEingefroren["a1|2026-10-24"].std).toBe(10);
@@ -380,7 +380,7 @@ describe("N-1 / U10: Bereitschaft und Ruf aus dem Ist (Sommerzeit, erfasste Zeit
     const zeilen = (x) => A.datevSaetze(x, OKT).filter((z) => z.personalnummer === "P1" && ["1500", "1510"].includes(z.lohnart));
     expect(zeilen(m).map((z) => [z.lohnart, z.stunden])).toEqual([["1500", 10], ["1510", 10]]);
     expect(zeilen(roh)).toEqual(zeilen(m));
-    expect(m.istEingefroren[`*|${OKT}`].rv).toBe(2);
+    expect(m.istEingefroren[`*|${OKT}`].rv).toBe(3);
   });
 });
 
@@ -441,11 +441,18 @@ describe("N-3: Prüfungen gegen überlebende Mutanten", { timeout: 120000 }, () 
       for (const [name, x] of [["Schema 1", s1], ["Schema 3", s3]]) {
         expect(A.istStunden(x, p(x, q.id), OKT), `${name} ${q.id}`).toEqual(A.istStunden(roh, q, OKT));
         expect(A.stundenkonto(x, p(x, q.id), OKT), `${name} ${q.id}`).toBe(A.stundenkonto(roh, q, OKT));
-        expect(A.zuschlagStunden(x, p(x, q.id), OKT), `${name} ${q.id}`).toEqual(A.zuschlagStunden(roh, q, OKT));
+        /* ZEIT-E / E6 (Z47): Schema 1 (Abschluss ohne eingefrorene Zuschläge, vor Rechenstand 3) wird nicht neu
+           gerechnet — die Bereitschaft von a1 in der Umstellungsnacht 24./25.10. zählt dort 1 h Sonntag weniger
+           (Wanduhr 6 h statt wirklich 7 h); offen und Schema 3 rechnen mit wirklichen Minuten. */
+        const offen = A.zuschlagStunden(roh, q, OKT);
+        const erwartet = name === "Schema 1" && q.id === "a1" ? { ...offen, sonntag: offen.sonntag - 1 } : offen;
+        expect(A.zuschlagStunden(x, p(x, q.id), OKT), `${name} ${q.id}`).toEqual(erwartet);
       }
     }
     expect(A.datevSaetze(s3, OKT)).toEqual(A.datevSaetze(roh, OKT));
-    expect(A.datevSaetze(s1, OKT)).toEqual(A.datevSaetze(roh, OKT));
+    const sonntagP1 = (z) => z.map((y) => (y.personalnummer === "P1" && y.lohnart === "1410" ? { ...y, stunden: y.stunden - 1 } : y));
+    expect(A.datevSaetze(s1, OKT)).toEqual(sonntagP1(A.datevSaetze(roh, OKT)));
+    expect(A.datevSaetze(roh, OKT).some((z) => z.personalnummer === "P1" && z.lohnart === "1410")).toBe(true);
     expect(A.datevSaetze(roh, OKT).some((z) => z.lohnart === "1500" && z.stunden === 10)).toBe(true);
     expect(A.datevSaetze(roh, OKT).some((z) => z.personalnummer === "P2")).toBe(false);
   });

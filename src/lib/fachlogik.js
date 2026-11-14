@@ -9,7 +9,7 @@ import { planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
 import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenvergabe.mjs";
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
-import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
+import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, zuschlagStand, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
   ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT, mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig, mindestFeldStatus } from "../../server/lib/isteinfrieren.mjs";
 /* A-4: Mindestbesetzung robust lesen, ohne den Bestand zu verändern. Ein Altstand ohne mindest rechnet als 0
    (kein Absturz) und wird als „Mindestbesetzung fehlt" gezeigt (mindestVorhanden) — nie still gespeichert. */
@@ -1396,6 +1396,8 @@ export function zuschlagStunden(m, p, ym) {
     const [y, mo] = ym.split("-").map(Number);
     const n = dim_(y, mo - 1);
     const r = { nacht: 0, sonntag: 0, feiertag: 0, samstag: 0, gesamt: 0 };
+    /* ZEIT-E (E6, Z47): offen mit heutigem Rechenstand (Zeitumstellung), abgeschlossen mit dem des Abschlusses. */
+    const stand = zuschlagStand(m, ym);
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`;
       /* Abgeschlossener Monat: der eingefrorene Dienst und seine Ist-Dauer (WP-16, Review H1). */
@@ -1404,7 +1406,7 @@ export function zuschlagStunden(m, p, ym) {
       if (!da) continue;
       const gearbeitet = t.idn.std;
       r.gesamt += gearbeitet;
-      zuschlagTagAddieren(m, p, d, da, r);
+      zuschlagTagAddieren(m, p, d, da, r, stand);
     }
     for (const k of Object.keys(r)) r[k] = Math.round(r[k] * 100) / 100;
     /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Nacht-, Sonn-, Feiertags- und Samstagsstunden wie zum

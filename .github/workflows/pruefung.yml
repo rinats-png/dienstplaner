@@ -141,6 +141,11 @@ jobs:
       - name: BE-1, Kontosperren und entzogene Mitgliedschaften nach Rücksprung wirksam
         run: npm run pruefung:be1-konto-widerrufbuch
 
+      # WP-ZEIT, ZEIT-E / E6 (Befund Z47): Sonn-/Feiertags-/Samstagsanteile in den Umstellungsnächten mit wirklichen
+      # Minuten (Europe/Berlin) für offene Monate; abgeschlossene Monate bytegleich (Freeze, DATEV-Datei).
+      - name: ZEIT-E, Zuschläge in den Umstellungsnächten
+        run: npm run pruefung:zeit-e
+
       # Staging O2 (C1/C2): Offline-Prüfung von deploy/staging-o2/ und dem Staging-Gate-Workflow
       # (Compose, Platzhalter, Caddyfile, Betriebsskript, Gate nur per Hand und nur lesend; kein Docker, kein Netz).
       - name: Staging O2, Vorbereitung offline
