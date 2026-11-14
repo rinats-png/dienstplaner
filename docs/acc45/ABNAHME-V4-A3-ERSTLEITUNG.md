@@ -188,6 +188,31 @@ fremder Personen oder Betriebe. Keine Rechteänderung: Für eine bestehende, nic
   **`/einrichten` (Verwaltung) stellt Codes für JEDEN Betrieb aus** (`betrieb` = Index, `betriebFuerNeuenCode`), auch
   für einen später per PUT hinzugekommenen — ebenso `/api/einladung` (personengebunden). Deshalb hängt „neu oder
   Bestand“ an der Marke je Betrieb, nicht am Weg, über den ein Code entsteht (Delta-Review f69fd931, F1).
+- **Wiederanlauf und Sicherung im Millisekundenfenster (Review #281, LOW, `erstleitungEinloesen`).** Entsteht eine
+  Sicherung genau zwischen Schritt 1 (Personenkennung im Code vorgemerkt) und Schritt 2a (Erstanmeldemarke gesetzt)
+  und wird sie später zurückgespielt, nachdem die Erstanmeldung vollständig gelaufen war, dann fehlen nach dem
+  Rücksprung Person und Marke, der Code trägt aber die vorgemerkte Kennung. Löst **derselbe** Code ihn erneut ein, legt
+  er die verlorene Person wieder an — mit **derselben** Personenkennung (Wiederanlauf; eine Marke aus dem Buch, falls
+  nachgezogen, nennt dieselbe Kennung, also kein `belegt`). Bewusst nur dokumentiert, nicht abgefangen: (a) das
+  Fenster ist ein Bruchteil einer Sekunde je Betrieb und tritt einmal im Leben eines Betriebs auf; (b) es entsteht
+  keine zweite und keine fremde erste Leitung — es ist dieselbe Person, für die der Code ausgestellt wurde, mit
+  denselben Rechten wie vor dem Rücksprung; (c) der Rücksprung hat diese Person ohnehin verloren, sie wieder
+  herzustellen ist das erwartete Ergebnis; (d) ist der Betrieb inzwischen nicht mehr leer (andere Personen aus der
+  Sicherung), gilt weiter `belegt`. Abfangen hieße, eine echte erste Leitung nach einem Abbruch auszusperren.
+- **Betrieb per `PUT /api/bestand` unter derselben Kennung neu angelegt (Review #281, INFO; R-10 in
+  `ABNAHME-V4-EM6-ROLLBACK-CODES.md`).** Entfernt der Betreiber einen Betrieb aus dem Bestand und legt ihn unter
+  **derselben** Betriebskennung wieder an, bleiben Erstanmeldemarke, Regime-Marke und der Abschluss im Widerrufbuch
+  bestehen (nur die Raumlöschung räumt Marken ab; das Buch nie). Der Betrieb gilt sofort als eingerichtet und streng:
+  **kein Erstanmeldecode** (`/api/zugaenge`, `/einrichten` stellen keinen aus; Einlösen eines vorhandenen → `belegt`). Abhilfe für den Betreiber,
+  ausschließlich mit vorhandenen Wegen: den Betrieb unter einer **neuen** Betriebskennung anlegen (gilt als neu,
+  Erstanmeldecode möglich), oder die erste Leitung in der Konsole als Person des Betriebs anlegen und ihr über
+  `/api/einladung` einen personengebundenen Zugang ausstellen. Ein Zurücknehmen von Marke oder Bucheintrag gibt es
+  bewusst nicht (Rücksprungschutz geht vor).
+- **Unlesbarer Bestand beim Serverstart (Review #281, LOW, behoben).** `widerrufbuchStart` überspringt einen
+  beschädigten `kern:`/`bestand:`-Blob mit Warnung (Schlüssel und Fehlerart, kein Inhalt) und sperrt alle übrigen
+  widerrufenen Codes nach; für diesen Betrieb fehlt nur das Nachziehen der Marken aus dem Bestand (Zugänge und Buch
+  wirken weiter). Das Widerrufbuch selbst bleibt streng: beschädigt → Start scheitert, 503 (Nachweis
+  `pruefungen/loeschsperre.test.js`, „beschädigter Bestand beim Serverstart“).
 
 ### 8a. Wege, auf denen ein Betrieb entsteht (Delta-Review f69fd931, F1)
 

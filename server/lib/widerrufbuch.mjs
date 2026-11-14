@@ -606,10 +606,22 @@ async function ablageStand(store, { betriebe: mitBetrieben = false } = {}) {
     }
     /** @type {Array<{raum: string, mandantId: string}>} */ const betriebe = [];
     if (mitBetrieben) {
+      /* Review PR #281 (LOW): Ein einzelner unlesbarer Bestand darf den Serverstart nicht kippen — sonst sperrt er auch
+         die widerrufenen Codes aller ANDEREN Betriebe nicht nach. Übersprungen wird nur dieser Blob (mit Warnung, ohne
+         Inhalt und ohne Fehlertext, der Inhalt zitieren könnte); dessen Betriebe fehlen dann nur als Quelle für das
+         Nachziehen der Marken. Das Auflisten selbst und das Buch bleiben streng (fail-closed). */
       for (const p of BESTAND_PRAEFIXE)
         for (const b of (await store.list({ prefix: p })).blobs) {
           const raum = bestandRaum(b.key);
-          if (raum) betriebe.push(...bestandBetriebe(raum, await store.get(b.key, { type: "json" })));
+          if (!raum) continue;
+          let bestand;
+          try { bestand = await store.get(b.key, { type: "json" }); }
+          catch (e) {
+            const art = /** @type {any} */ (e)?.code || /** @type {any} */ (e)?.name || "Fehler";
+            console.warn(`Widerrufbuch: Bestand ${b.key} beim Serverstart nicht lesbar (${art}) — übersprungen, die übrigen werden nachgezogen.`);
+            continue;
+          }
+          betriebe.push(...bestandBetriebe(raum, bestand));
         }
     }
     const n = await store.get(NACHTRAG_SCHLUESSEL, { type: "json" });
