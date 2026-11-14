@@ -59,6 +59,7 @@ import { RANG } from "./rollenvergabe.mjs";
 import { herkunftsloseFeedsWiderrufen } from "./feedwiderruf.mjs";
 import { schluesselDesKontos, schluesselWiderrufenWenn } from "./sicherungsschluessel.mjs";
 import { vorgang } from "./schreibhalt.mjs";
+import { kontoSperreVermerken, mitgliedEntzugVermerken } from "./kontowiderrufbuch.mjs";
 
 /** Sicherungsschlüssel eines Kontos endgültig widerrufen (SI-P1). Ein Fehler lässt den Anlass nicht scheitern: Die
     Prüfung beim Gebrauch widerruft ohnehin. Das Ergebnis steht in der Antwort, damit ein Fehler nicht unsichtbar bleibt. */
@@ -659,6 +660,13 @@ export async function accountSperren(store, accountId) {
         .map((m) => ({ raum: m.raum, mandantId: m.mandantId, personId: String(m.person) }));
       await herkunftsloseFeedsWiderrufen(store, bindungen);
     } catch { /* die Sperre gilt; der Altfeed bleibt bis zur Prüfung der Person */ }
+    /* BE-1 (kontowiderrufbuch.mjs): ZUERST die Ablage (oben, wirkt sofort), DANN das Konto-Widerrufbuch, damit die
+       Sperre jeden Rücksprung überlebt. Scheitert das Buch, bleibt die Sperre wirksam: `kontobuch.geschrieben: false`
+       heißt „Widerruf wirksam, Widerrufbuch nicht beschrieben“ (ein Endpunkt antwortet 503); Nachtrag, /gesund-Warnung
+       und der nächste Start holen es nach. */
+    const kontobuch = await kontoSperreVermerken(store, accountId);
+    return { ...erg, ...(sk ? { sicherungsschluessel: sk } : {}), kontobuch,
+      ...(kontobuch.geschrieben ? {} : { widerrufWirksam: true }) };
   }
   return sk ? { ...erg, sicherungsschluessel: sk } : erg;
 }
@@ -1103,6 +1111,17 @@ export const mitgliedschaftEntziehen = async (store, accountId, raum) => {
   const erg = await statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
     { laufWeiterZaehlen: true });
   /* SI-P1: Mit der Mitgliedschaft enden die Sicherungsschlüssel, die dieses Konto für diesen Raum angelegt hat. */
-  if (erg && erg.ok) return { ...erg, sicherungsschluessel: await schluesselDesKontosWiderrufen(accountId, "ersteller-berechtigung", raum) };
+  if (erg && erg.ok) {
+    const sk = await schluesselDesKontosWiderrufen(accountId, "ersteller-berechtigung", raum);
+    /* BE-1 (kontowiderrufbuch.mjs): Lauf und Status stehen schon in der Ablage (statusSetzen); jetzt die
+       Mindestgeneration der Beziehung ins Konto-Widerrufbuch — der Lauf nach dem Entzug, mindestens die Generation des
+       Grabsteins + 1. Scheitert das Buch, bleibt der Entzug wirksam (siehe accountSperren). */
+    const lauf = await mitgliedlaufLesen(store, accountId, raum).catch(() => ({ ok: false }));
+    const grab = Number.isInteger(erg.mitgliedschaft && erg.mitgliedschaft.generation) ? erg.mitgliedschaft.generation + 1 : 2;
+    const ausLauf = "generation" in lauf && Number.isInteger(lauf.generation) ? lauf.generation : 0;
+    /* Generationen, keine Ränge: der größere der beiden Werte (das Buch senkt ohnehin nie). */
+    const kontobuch = await mitgliedEntzugVermerken(store, accountId, raum, ausLauf > grab ? ausLauf : grab);
+    return { ...erg, sicherungsschluessel: sk, kontobuch, ...(kontobuch.geschrieben ? {} : { widerrufWirksam: true }) };
+  }
   return erg;
 };

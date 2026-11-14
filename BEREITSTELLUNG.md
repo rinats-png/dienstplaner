@@ -835,10 +835,12 @@ Zugangsentzug wird durch eine Wiederherstellung **nicht** zurückgenommen. Die A
 liegt wie bei der Schlüsselepoche außerhalb von `data/`: das Widerrufbuch
 `zustand/zugang-widerrufe.json` (nur Prüfsummen, nie Codes oder Schlüssel; mit einem aus
 dem Pfeffer abgeleiteten Siegel), dazu der Anker `widerrufbuch:anker` in `data/` (wird
-mitgesichert). **Nicht** abgedeckt sind Passwörter, entzogene Mitgliedschaften,
+mitgesichert). Kontosperren und entzogene Mitgliedschaften deckt seit BE-1 ein **eigenes**
+Konto-Widerrufbuch ab (siehe unten). **Nicht** abgedeckt sind Passwörter,
 2FA-Geheimnisse, benutzte Wiederherstellungscodes und einzeln zurückgesetzte
-Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (offene
-Betreiberentscheidung). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`.
+Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (BE-1 Passwörter,
+BE-2). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`,
+`docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`.
 
 - **Mit `--zustand` wiederherstellen** (Weg 2 über `docker compose run` sieht
   `CENTRIC_ZUSTAND=/zustand` von selbst; bei Weg 1 `-v "$PWD/zustand:/zustand"
@@ -886,6 +888,17 @@ Betreiberentscheidung). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLL
   (Widerruf nach der Sicherung), ist danach nicht mehr geschützt → diese Codes und
   Verwalterschlüssel von Hand erneut zurückziehen. Ein vorhandenes oder beschädigtes Buch
   ersetzt der Befehl nie.
+- **Konto-Widerrufbuch (BE-1):** `zustand/konto-widerrufe.json` (eigene Datei, eigenes Siegel,
+  Anker `kontowiderrufbuch:anker` in `data/`) hält gesperrte Konten und entzogene
+  Mitgliedschaften (Mindestgeneration je Konto×Raum) — nur HMAC-Kennungen, keine Namen,
+  Adressen oder Räume. Dieselben Regeln wie oben: Werkzeug mit `--zustand` zieht in der
+  Kopie nach (Konto `gesperrt`, Lauf angehoben, Mitgliedschaft `entzogen`), der Start dieser
+  Fassung ebenso; `/gesund` meldet `kontowiderrufbuch`. Beschädigt/fremd/fehlend bei Anker:
+  **kein Konto-Zugang** (Anmeldung mit Passwort, Betriebsauswahl, Konto-Sitzungen, Feeds aus
+  Konten: 503), Zugangscodes bleiben. Getrennt sichern wie das Buch der Codes. Verloren und
+  keine Kopie: bei gestopptem Dienst `node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu
+  --zustand /zustand --daten /data` (sammelt aus `data/`; was nur im verlorenen Buch stand,
+  danach von Hand erneut sperren bzw. entziehen).
 - **Restore-Test mit `--zustand`:** Gesperrte Konten und Verwalterschlüssel, der Anker
   und wiederhergestellte Marken weichen dann gewollt vom Manifest ab (die Ausgabe nennt die
   Zahlen). Für den Datei-für-Datei-Vergleich ohne `--zustand` zurückspielen, wie in der

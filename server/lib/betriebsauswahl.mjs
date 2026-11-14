@@ -10,6 +10,7 @@ import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen
   from "./accountsitzungen.mjs";
 import { rollenPflicht, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
 import { kontoFaktorAktiv } from "./kontofaktor.mjs";
+import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -213,6 +214,9 @@ export async function betriebWaehlen(store,
   const konto = await accountLesenPerId(store, accountId).catch(() => null);
   if (!konto) return absage("konto-fehlt");
   if (konto.status !== "aktiv") return absage("konto-status");
+  /* BE-1 (kontowiderrufbuch.mjs): Kontosperre oder Entzug im Konto-Widerrufbuch gilt, auch wenn eine zurückgespielte
+     Ablage beides „aktiv“ mit passender Generation zeigt. Nicht prüfbar → wirft (fail-closed, 503). */
+  if (await kontoZugangImBuch(store, accountId, { raum, generation: m.generation })) return absage("widerrufen");
   const epoche = Number(konto.epoche);
   if (!Number.isInteger(epoche) || epoche < 1) return absage("epoche");
 
