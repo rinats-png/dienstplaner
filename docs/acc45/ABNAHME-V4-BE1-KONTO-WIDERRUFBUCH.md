@@ -111,6 +111,13 @@ Buch weist ab, Start zieht nach); Altbild; SIGKILL zwischen Ablage und Buch (Ent
 Manipulation/Fehlen fail-closed mit Codes unberührt; `kontowiderrufbuch-neu`; reine Bausteine (nur hinzufügen,
 Vereinigung, künftige Abschnitte, anderer Pfeffer).
 
+`npm run pruefung:sicherung-ablage` (`pruefungen/sicherung-ablage.test.js`) prüft beide Zustände getrennt:
+**vollständig** zurückgespielt (Kopien beider Widerrufbücher nach `zustand/` gelegt, Werkzeug mit `--zustand`, §6
+Schritte 2–3) → Anmeldung und Betriebsauswahl 200, alles Gesicherte bytegleich; **unvollständig oder verändert** (nur
+Daten ohne Buch, Buch verloren, fremde Kennung, verändertes Siegel/Inhalt, abgeschnitten/leer) → Anmeldung 503, das
+Werkzeug mit `--zustand` fasst ohne Buch nichts an — und je Fall der dokumentierte Rückweg bis 200: Kopie zurücklegen
+(§6 Schritt 4) bzw. `kontowiderrufbuch-neu` bei Verlust ohne Kopie (§6 Schritt 5).
+
 ## 5. Restrisiken
 
 1. **Passwörter** (Szenario 1a) sind nicht abgedeckt: Ein nach der Sicherung geändertes (kompromittiertes) Passwort gilt

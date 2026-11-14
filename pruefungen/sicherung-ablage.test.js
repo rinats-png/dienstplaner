@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
-let basis, G, getStore, handler, KEKS, A, P, B, T, S;
+let basis, G, getStore, handler, KEKS, A, P, B, T, S, KW, WB;
 let zaehler = 0;
 
 const LIMIT = 60000;
@@ -50,6 +50,8 @@ beforeAll(async () => {
   T = await import("../server/lib/token.mjs");
   S = await import("../server/lib/sitzungen.mjs");
   G = await import("../werkzeug/ablage-sicherung.mjs");
+  KW = await import("../server/lib/kontowiderrufbuch.mjs");
+  WB = await import("../server/lib/widerrufbuch.mjs");
 });
 
 afterAll(async () => {
@@ -122,6 +124,23 @@ async function mitglied(accountId, raum, rolle) {
   const e = await A.mitgliedschaftAnlegen(laden(), { accountId, raum, betrieb: 0,
     mandantId: "m1", person: "p_1", rolle, einheit: null, status: "aktiv" });
   expect(e.ok, JSON.stringify(e)).toBe(true);
+}
+
+/** Zustandsverzeichnis einer Ablage (ohne CENTRIC_ZUSTAND: <daten>-zustand, wie server/lib/schluesselepoche.mjs). */
+const zustandVon = (dir) => `${dir}-zustand`;
+
+/**
+ * Dokumentierter Schritt vor dem Start bzw. Wiederherstellen an einem neuen Ort (BEREITSTELLUNG.md §5.4): die getrennt
+ * gesicherten Kopien beider Widerrufbücher (Codes, Konten) nach zustand/ legen. Nur, was die Quelle hat.
+ */
+async function buecherZuruecklegen(quelle, neu) {
+  const z = zustandVon(neu);
+  await mkdir(z, { recursive: true });
+  for (const datei of [WB.BUCH_DATEI, KW.KONTOBUCH_DATEI]) {
+    try { await copyFile(path.join(zustandVon(quelle), datei), path.join(z, datei)); }
+    catch (e) { if (e.code !== "ENOENT") throw e; }
+  }
+  return z;
 }
 
 /** Alle Dateien eines Stores: Name -> Inhalt. */
@@ -202,14 +221,27 @@ describe("Sichern und Wiederherstellen — der ganze Weg", () => {
     expect(await B.bestandLesen(laden(), raumA)).not.toEqual(vorherA);
     expect(await A.accountLesenPerMail(laden(), k.email)).toBeFalsy();
 
-    // --- Wiederherstellen ---
-    const w = await G.wiederherstellen({ sicherung: r.pfad, ziel: neu, serverPruefen: false });
+    // --- Wiederherstellen, vollständig und wie dokumentiert (BEREITSTELLUNG.md §5.4, BE-1-Abnahme §6 Schritte 2–3) ---
+    // zustand/ wird nie mitgesichert; die getrennt gesicherten Kopien der Widerrufbücher (Codes und Konten) kommen
+    // zuerst nach zustand/ des neuen Orts, dann spielt das Werkzeug dieser Fassung mit --zustand zurück.
+    const zustandNeu = await buecherZuruecklegen(quelle, neu);
+    expect(await readdir(zustandNeu)).toContain(KW.KONTOBUCH_DATEI);
+    const w = await G.wiederherstellen({ sicherung: r.pfad, ziel: neu, serverPruefen: false, zustand: zustandNeu });
     expect(w.dateien).toBe(m.summe.dateien);
 
     // Dieselben Bytes, Store für Store, für alles, was gesichert wurde.
     for (const s of ["centric", "centric-spur"]) {
       const alt = await inhalt(quelle, s);
       const neuInh = await inhalt(neu, s);
+      // Einzige gewollte Abweichung mit --zustand (BEREITSTELLUNG.md §5.4, „Restore-Test mit --zustand“): Kannte die
+      // Quelle noch kein Buch der Codes, legt das Werkzeug es an und setzt dessen Anker — er muss genau zu diesem Buch
+      // gehören. Alles Gesicherte bleibt bytegleich (unten).
+      const ankerName = `${encodeURIComponent(WB.ANKER_SCHLUESSEL)}.json`;
+      if (s === "centric" && !(ankerName in alt)) {
+        const buchC = JSON.parse(await readFile(path.join(zustandNeu, WB.BUCH_DATEI), "utf8"));
+        expect(JSON.parse(neuInh[ankerName]).daten.id).toBe(buchC.id);
+        delete neuInh[ankerName];
+      }
       const ohneToken = Object.fromEntries(Object.entries(alt)
         .filter(([n]) => !n.startsWith("token%3A") && !n.startsWith("tokencode%3A")));
       expect(neuInh).toEqual(ohneToken);
@@ -234,18 +266,6 @@ describe("Sichern und Wiederherstellen — der ganze Weg", () => {
     expect(await arbeitAblage().get(S.sicherungsSchluessel("roh-schluessel-1"), { type: "json" }))
       .toMatchObject({ bestand: raumA });
 
-    // BE-1: Die Ablage trägt den Anker des Konto-Widerrufbuchs, der neue Ort hat aber noch kein Buch
-    // (zustand/ wird nie mitgesichert). Das ist der gefährliche Fall — ein Rücksprung ohne Buch ließe gesperrte
-    // Konten und entzogene Mitgliedschaften wieder aufleben —, also kein Konto-Zugang (fail-closed, 503).
-    const ohneBuch = await anmelden(k.email);
-    expect(ohneBuch.status).toBe(503);
-    expect(ohneBuch.keks).toBeFalsy();
-    // Dokumentierter Weg (BEREITSTELLUNG.md §5.4): die getrennt gesicherte Kopie des Konto-Widerrufbuchs nach
-    // zustand/ legen, dann erst starten. Hier: das Buch der Quelle (<daten>-zustand) an den neuen Ort.
-    const { KONTOBUCH_DATEI } = await import("../server/lib/kontowiderrufbuch.mjs");
-    await mkdir(`${neu}-zustand`, { recursive: true });
-    await copyFile(path.join(`${quelle}-zustand`, KONTOBUCH_DATEI), path.join(`${neu}-zustand`, KONTOBUCH_DATEI));
-
     // Anmeldung und Betriebsauswahl gehen wieder.
     const a2 = await anmelden(k.email);
     expect(a2.status).toBe(200);
@@ -259,6 +279,106 @@ describe("Sichern und Wiederherstellen — der ganze Weg", () => {
     expect(w2.status).toBe(200);
     expect(w2.daten).toMatchObject({ ok: true, raum: raumB, name: "Haus Beta", rolle: "mitarbeiter" });
     expect(await arbeitAblage().get(`t:${hash(w2.daten.token)}`, { type: "json" })).toBeTruthy();
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   BE-1: UNVOLLSTÄNDIG ODER VERÄNDERT ZURÜCKGESPIELT — FAIL-CLOSED, MIT RÜCKWEG
+   Die Ablage trägt den Anker des Konto-Widerrufbuchs. Fehlt das Buch, ist es fremd, im Siegel verändert oder
+   abgeschnitten, ließe ein Konto-Zugang gesperrte Konten und entzogene Mitgliedschaften wieder aufleben: 503.
+   Jeder Fall prüft danach den dokumentierten Rückweg (docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md §6:
+   Schritt 4 „Kopie des Buchs zurücklegen“, Schritt 5 `kontowiderrufbuch-neu` bei Verlust ohne Kopie) bis zur
+   Anmeldung mit 200.
+   ========================================================================== */
+
+/** Quelle mit Konto (einmal angemeldet: Buch und Anker entstehen), Sicherung, Rückspielen NUR der Daten an einen
+    neuen Ort. Gibt die getrennt gesicherte Kopie des Konto-Buchs (Inhalt) mit. */
+async function nurDatenZurueck() {
+  const quelle = await ordner("be1q");
+  umschalten(quelle);
+  const { k, raumA } = await bestueckt();
+  expect((await anmelden(k.email)).status).toBe(200);
+  const kopie = await readFile(path.join(zustandVon(quelle), KW.KONTOBUCH_DATEI), "utf8");
+  const r = await G.sichern({ quelle, ziel: await ordner("be1s"), pause: 0 });
+  const neu = await ordner("be1n");
+  umschalten(neu);
+  await G.wiederherstellen({ sicherung: r.pfad, ziel: neu, serverPruefen: false });
+  expect(await laden().get(KW.KONTOBUCH_ANKER, { type: "json" })).toBeTruthy();
+  await mkdir(zustandVon(neu), { recursive: true });
+  return { quelle, neu, k, raumA, kopie, buchPfad: path.join(zustandVon(neu), KW.KONTOBUCH_DATEI) };
+}
+
+/** Kein Konto-Zugang: Anmeldung 503, kein Keks. */
+async function gesperrt(email) {
+  const a = await anmelden(email);
+  expect(a.status).toBe(503);
+  expect(a.keks).toBeFalsy();
+}
+
+/** Wieder zugänglich: Anmeldung 200 und Betriebsauswahl 200. */
+async function offen(email, raum) {
+  const a = await anmelden(email);
+  expect(a.status).toBe(200);
+  expect(a.keks).toBeTruthy();
+  const b = await anfrage({ pfad: "/api/account/betrieb", rumpf: { raum }, keks: a.keks });
+  expect(b.status).toBe(200);
+}
+
+describe("BE-1: Wiederherstellen ohne gültiges Konto-Widerrufbuch", () => {
+  it("nur Daten, Buch fehlt: 503; Werkzeug mit --zustand lehnt ab; Kopie zurücklegen → 200", async () => {
+    const { quelle, neu, k, raumA, kopie, buchPfad } = await nurDatenZurueck();
+    await gesperrt(k.email);
+    // Das Werkzeug mit --zustand fasst ohne Buch nichts an (Abbruch statt stiller Neuanlage).
+    const r2 = await G.sichern({ quelle, ziel: await ordner("be1s"), pause: 0 });
+    await expect(G.wiederherstellen({ sicherung: r2.pfad, ziel: neu, ersetzen: true, serverPruefen: false,
+      zustand: zustandVon(neu) })).rejects.toMatchObject({ code: 2 });
+    await gesperrt(k.email);
+    // Rückweg §6 Schritt 4: die Kopie des Buchs zurücklegen.
+    await writeFile(buchPfad, kopie);
+    await offen(k.email, raumA);
+  }, LIMIT);
+
+  it("Buch verloren, keine Kopie: 503; `kontowiderrufbuch-neu` bei stehendem Dienst → 200", async () => {
+    const { neu, k, raumA } = await nurDatenZurueck();
+    await gesperrt(k.email);
+    // Rückweg §6 Schritt 5.
+    await G.kontowiderrufbuchNeu({ zustand: zustandVon(neu), daten: neu, serverPruefen: false });
+    await offen(k.email, raumA);
+    // Ein vorhandenes Buch ersetzt der Befehl nie.
+    await expect(G.kontowiderrufbuchNeu({ zustand: zustandVon(neu), daten: neu, serverPruefen: false }))
+      .rejects.toMatchObject({ code: 2 });
+  }, LIMIT);
+
+  it("fremdes Buch (andere Kennung): 503; Kopie zurücklegen → 200", async () => {
+    const { neu, k, raumA, kopie, buchPfad } = await nurDatenZurueck();
+    await KW.kontobuchSchreiben(zustandVon(neu), KW.kontobuchNeu());
+    await gesperrt(k.email);
+    await writeFile(buchPfad, kopie);
+    await offen(k.email, raumA);
+  }, LIMIT);
+
+  it("Buch verändert (Siegel passt nicht): 503; Kopie zurücklegen → 200", async () => {
+    const { k, raumA, kopie, buchPfad } = await nurDatenZurueck();
+    const o = JSON.parse(kopie);
+    o.konten[hash("untergeschoben")] = { grund: "untergeschoben" };
+    await writeFile(buchPfad, JSON.stringify(o));
+    await gesperrt(k.email);
+    const s = JSON.parse(kopie);
+    s.siegel = s.siegel.replace(/^./, (c) => (c === "0" ? "1" : "0"));
+    await writeFile(buchPfad, JSON.stringify(s));
+    await gesperrt(k.email);
+    await writeFile(buchPfad, kopie);
+    await offen(k.email, raumA);
+  }, LIMIT);
+
+  it("Buch abgeschnitten: 503; Kopie zurücklegen → 200", async () => {
+    const { k, raumA, kopie, buchPfad } = await nurDatenZurueck();
+    await writeFile(buchPfad, kopie.slice(0, Math.floor(kopie.length / 2)));
+    await gesperrt(k.email);
+    await writeFile(buchPfad, "");
+    await gesperrt(k.email);
+    await writeFile(buchPfad, kopie);
+    await offen(k.email, raumA);
   }, LIMIT);
 });
 
