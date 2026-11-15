@@ -1,18 +1,18 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 212,
+  "anzahl": 214,
   "statusZaehlung": {
     "BLOCKED": 76,
     "READY": 17,
     "IN_PROGRESS": 20,
     "REVIEW": 7,
-    "INTEGRATED": 89,
+    "INTEGRATED": 91,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 112,
+      "pakete": 114,
       "offen": 37,
       "restPT": {
         "min": 50.849999999999994,
@@ -5870,8 +5870,8 @@
       "abhaengigkeiten": [],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"PR #299 in integration/release-v4 (Vorbereitung O2 und Gate; Gate ausgeschaltet bis STAGING_GATE_AKTIV=true)"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"PR #299: Offline-Prüfung pruefung:staging-o2; kein Lauf auf einer Staging-VM"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -5882,12 +5882,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#279"],
+      "pr": ["#279","#299"],
       "nachweis": "docs/acc45/STAGING-PLAN-V4.md (Varianten O2 eigene Staging-VM, O4 Runner-Staging)",
       "akzeptanz": "Staging-Gate läuft gegen das gebaute Bild (Compose, Caddy, Playwright) ohne Produktionspfad und Produktionsdaten; ST-B bis ST-F reproduzierbar; Ergebnis je Digest dokumentiert",
       "tests": "ST-B bis ST-F laut STAGING-PLAN-V4.md",
       "dateien": "docs/acc45/STAGING-PLAN-V4.md, .github/workflows, deploy/",
-      "notiz": "Nur Plan (PR #279), nichts gebaut. BLOCKED auf Betreiberentscheidungen: Staging-Variante (O2 eigene VM empfohlen), VM und DNS beauftragen, Auslöser des Bildbaus 'Auslieferung' (bauen=true, ausliefern=false), Betreiberliste. Schätzung laut Plan: 2/3/5 Arbeitstage. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Staging O2 (eigene VM) entschieden, Vorbereitung vollständig; Bestellung, DNS und jede Infrastrukturänderung nur mit gesonderter Freigabe. Das GitHub-Runner-Staging-Gate wird über einen unveränderlichen Digest vorbereitet, keine automatische Produktionsauslieferung. Stufe: entschieden (Variante und Gate-Vorbereitung); nichts gebaut, nicht staging-geprüft, nicht produktiv."
+      "notiz": "Plan (PR #279), ursprünglich nichts gebaut; Vorbereitung durch PR #299 (Nachtrag am Ende). BLOCKED auf Betreiberentscheidungen: Staging-Variante (O2 eigene VM empfohlen), VM und DNS beauftragen, Auslöser des Bildbaus 'Auslieferung' (bauen=true, ausliefern=false), Betreiberliste. Schätzung laut Plan: 2/3/5 Arbeitstage. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Staging O2 (eigene VM) entschieden, Vorbereitung vollständig; Bestellung, DNS und jede Infrastrukturänderung nur mit gesonderter Freigabe. Das GitHub-Runner-Staging-Gate wird über einen unveränderlichen Digest vorbereitet, keine automatische Produktionsauslieferung. Stufe: entschieden (Variante und Gate-Vorbereitung); nichts gebaut, nicht staging-geprüft, nicht produktiv. Nachtrag 2026-11-15 (Abgleich mit GitHub): PR #299 ist in integration/release-v4 (deploy/staging-o2/, Staging-Gate .github/workflows/staging-gate.yml nur workflow_dispatch und ausgeschaltet bis STAGING_GATE_AKTIV=true, Offline-Prüfung pruefung:staging-o2, STAGING-O2-VORBEREITUNG.md). Die Aussage nichts gebaut ist damit überholt: nur Vorbereitung ist integriert. Nicht erreicht: VM bestellt, DNS, Gate aktiviert, Lauf gegen einen Digest, staging-geprüft, produktiv. Review von #299: Quelle prüfen. Status bleibt BLOCKED (Bestellung, DNS und Aktivierung brauchen eine Betreiberfreigabe)."
     },
     {
       "id": "QS-4",
@@ -6112,6 +6112,62 @@
       "tests": "e2e",
       "dateien": "e2e/hilfen.mjs",
       "notiz": "Befund B-3 aus Strang B: Unter Windows geht die Meldung verloren, wenn der Testtitel einen Doppelpunkt enthält. Nur Testwerkzeug, P3, kein Produktionscode."
+    },
+    {
+      "id": "QS-6",
+      "titel": "B7 Offline-Stempel um Mitternacht (Berliner Tag) deterministisch",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "abhaengigkeiten": [],
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #294 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #294 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #294 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #294 in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#294"],
+      "nachweis": "e2e/ (Abnahme B7)",
+      "akzeptanz": "B7 hängt nicht von der Tageszeit des Laufs ab, ohne Aussagen abzuschwächen",
+      "tests": "e2e/abnahme-b-ablaeufe.spec.mjs (B7)",
+      "dateien": "e2e/",
+      "notiz": "Von Hand angelegt, PR #294 war keinem Paket zugeordnet (Abgleich 2026-11-15, Titel: QS-6: B7 Offline-Stempel Mitternacht (Berliner Tag) deterministisch). Reviewstufe über den PR-Beleg, kein zusätzliches Einzelreview geprüft. Inhalt der Änderung nicht im Einzelnen nachgesehen: Quelle prüfen."
+    },
+    {
+      "id": "QS-ZEIT",
+      "titel": "Zeitabhängige Tests: geo.test.js und Browserabnahme B8 auf fester Zeitbasis",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "abhaengigkeiten": [],
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #305 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #305 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #305 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #305 in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#305"],
+      "nachweis": "docs/acc45/QS-ZEITABHAENGIGKEIT.md",
+      "akzeptanz": "Nachgewiesene zeitabhängige Ausfälle behoben, Ruhezeitregel (11 h) nicht abgeschwächt, Gegenprobe vorhanden",
+      "tests": "pruefungen/geo.test.js, pruefungen/qs-b8-zeitbasis.test.js, pruefung:geo-uhren, e2e/abnahme-b-ablaeufe.spec.mjs",
+      "dateien": "pruefungen/, e2e/",
+      "notiz": "Von Hand angelegt, PR #305 war keinem Paket zugeordnet (Abgleich 2026-11-15). Reviewstufe über den PR-Beleg. Bekannte Restpunkte stehen als Liste in docs/acc45/QS-ZEITABHAENGIGKEIT.md (P2, nicht nachgewiesene Ausfälle); Browserjobs laufen nur in der CI (browser-abnahme)."
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Entscheidungsliste für den Betreiber (Einzelquelle)
 
-Stand: 2026-11-14 (Integrationskopf `d84e4a83`). Nur Dokumentation, kein Produktcode.
+Stand: 2026-11-14 (Integrationskopf `d84e4a83`), Umsetzungsstufen abgeglichen am 2026-11-15 mit dem Kopf `aff9c320` (Abgleich siehe `WIEDERAUFNAHME.md`, Abschnitt „Konsolidierter Stand 2026-11-15“). Nur Dokumentation, kein Produktcode.
 Diese Liste ist die **einzige** priorisierte Zusammenfassung der Betreiberentscheidungen. Statusberichte
 verweisen auf diese Datei und wiederholen sie nicht. Bei Abweichung gilt der Wortlaut der jeweiligen Quelle.
 Wo eine Aussage in den Quellen nicht eindeutig nachgesehen wurde, steht „Quelle prüfen“.
@@ -26,7 +26,7 @@ produktiv aktiviert) sind „nein“, soweit in der Spalte „Weitere Stufen“ 
 
 | ID (alt) | Inhalt der Entscheidung | Quelle der Frage | Weitere Stufen |
 |---|---|---|---|
-| WP-ZEIT E1 | Nur `Europe/Berlin`; Architektur bleibt für weitere Zonen erweiterbar | `ZEIT-BETRIEBSTAG-VERTRAG.md` §11 | nur Vertrag integriert (#296), sonst nein; im SSOT kein eigenes Paket |
+| WP-ZEIT E1 | Nur `Europe/Berlin`; Architektur bleibt für weitere Zonen erweiterbar | `ZEIT-BETRIEBSTAG-VERTRAG.md` §11 | Vertrag integriert (#296). Seit 2026-11-15 zusätzlich im Integrationsbranch: ZEIT-A/ZEIT-C Kern (#301, betrieblicher Kalendertag statt Gerätedatum) und ZEIT-E/E6 (#303, Zuschläge in den Umstellungsnächten, nur offene Monate; RECHEN_STAND 3). Reviewstufe von #301/#303: Quelle prüfen. Nicht staging-geprüft, nicht fachlich freigegeben, nicht produktiv; im SSOT weiter kein eigenes Paket |
 | E2 | Zonenwechsel frühestens zum nächsten Monatsersten, mindestens 24 h Vorlauf, stornierbar, nie rückwirkend | wie E1 | wie E1 |
 | E3 | Online-Stempel zählt nach Serveruhr; Gerätezeit nur als `geraetAm`; Offline behält den Ereigniszeitpunkt und einen getrennten Eingangszeitpunkt | wie E1 | wie E1 |
 | E4 | Keine betriebsbezogenen Schwellen | wie E1 | wie E1 |
@@ -46,12 +46,12 @@ produktiv aktiviert) sind „nein“, soweit in der Spalte „Weitere Stufen“ 
 | IMP-6 Q4 | Beschäftigte sehen ihr eigenes Modell; **keine** neuen Leserechte für den Betriebsrat. Die Vollständigkeit der Selbstauskunft ist separat zu prüfen (siehe B, P2-4) | dort 4 | wie Q1 |
 | IMP-6 Q5 | Zustand „kein Schichtmodell“ ist zulässig | dort 5 | wie Q1 |
 | WP-19.5 / FN-14 (§ 43b) | Betreuungskräfte nach § 43b SGB XI getrennt ausweisen, keine automatische Anrechnung auf die Fachkraftquote, Fachregeln bleiben gesperrt | `WP19-OFFENE-FACHNACHWEISE.md` FN-14 | reviewt teilweise (Nachholreview); Direktmerge nicht anerkannt; sonst nein |
-| BE-1 | Option A: eigenes Konto-Widerrufbuch, gemeinsam mit E-M6; Integrität nicht schwächen; keine automatische Rechte-Wiederherstellung | `ENTSCHEIDUNG-BE1-BE3.md` §1 | nein |
-| BE-2 | Gestuft; vor dem Pilot mindestens A1 (2FA darf durch ein altes Bild nicht entfallen; benutzte Wiederherstellungscodes werden nicht wieder gültig); A2/A3 nach dem Pilot nur mit unabhängiger Sicherheitsbestätigung | dort §2 | nein |
-| BE-3 | Option A: restic-Sicherung, Prüfung, Restore, `widerrufbuch-vereinen`, Alterswarnung, fail-closed; produktives Ziel, Zugangsdaten und Kosten brauchen eine eigene Freigabe | dort §3 | nein |
-| C1 Staging O2 | Eigene VM; Vorbereitung vollständig; Bestellung, DNS und Infrastrukturänderung nur mit Freigabe | `STAGING-PLAN-V4.md` | nichts gebaut; WP-ST1 BLOCKED |
-| C2 Gate | GitHub-Runner-Staging-Gate über einen unveränderlichen Digest vorbereiten; keine automatische Produktionsauslieferung | WP-ST1 | nichts gebaut |
-| C3 Digest | Die Abweichung der Produktion von `deploy/FREIGEGEBENE-IMAGES.md` wird nur **lesend gegenübergestellt**, ohne Bildänderung (`PROD-DIGEST-ABWEICHUNG.md`) | früher P1-5 | keine Stufe anwendbar; das tatsächlich laufende Bild ist nicht belegt |
+| BE-1 | Option A: eigenes Konto-Widerrufbuch, gemeinsam mit E-M6; Integrität nicht schwächen; keine automatische Rechte-Wiederherstellung | `ENTSCHEIDUNG-BE1-BE3.md` §1 | Teil Kontosperren und Mitgliedschaften technisch umgesetzt und integriert (#304, ersetzt das geschlossene #302; unabhängiges Diff-Review MERGE-OK mit Auflagen, CI 23/23). Review-Auflagen eingearbeitet (#307); Auflage 2 als Code: Registrierungsweg prüft das Buch, fail-closed (#308). Offen: Passwörter (BE-1 Rest), staging-geprüft, fachlich freigegeben, produktiv: nein |
+| BE-2 | Gestuft; vor dem Pilot mindestens A1 (2FA darf durch ein altes Bild nicht entfallen; benutzte Wiederherstellungscodes werden nicht wieder gültig); A2/A3 nach dem Pilot nur mit unabhängiger Sicherheitsbestätigung | dort §2 | A1 laut Betreiberauftrag 2026-11-15 in Arbeit; im Integrationsbranch und in den offenen PRs kein belegender PR gefunden (Quelle prüfen); sonst nein |
+| BE-3 | Option A: restic-Sicherung, Prüfung, Restore, `widerrufbuch-vereinen`, Alterswarnung, fail-closed; produktives Ziel, Zugangsdaten und Kosten brauchen eine eigene Freigabe | dort §3 | offen, nicht begonnen (kein belegender PR); nein |
+| C1 Staging O2 | Eigene VM; Vorbereitung vollständig; Bestellung, DNS und Infrastrukturänderung nur mit Freigabe | `STAGING-PLAN-V4.md` | Vorbereitung im Repository integriert (#299, `STAGING-O2-VORBEREITUNG.md`); VM nicht bestellt, DNS nicht geändert; WP-ST1 BLOCKED |
+| C2 Gate | GitHub-Runner-Staging-Gate über einen unveränderlichen Digest vorbereiten; keine automatische Produktionsauslieferung | WP-ST1 | Gate als Workflow vorbereitet und ausgeschaltet bis Variable `STAGING_GATE_AKTIV=true` (#299); nie gelaufen |
+| C3 Digest | Die Abweichung der Produktion von `deploy/FREIGEGEBENE-IMAGES.md` wird nur **lesend gegenübergestellt**, ohne Bildänderung (`PROD-DIGEST-ABWEICHUNG.md`) | früher P1-5 | Dokument `PROD-DIGEST-ABWEICHUNG.md` integriert (#300); sonst keine Stufe anwendbar; das tatsächlich laufende Bild ist nicht belegt |
 
 Hinweise:
 - Die Zählung „IMP-6 Q1 bis Q8“ der früheren Fassung war falsch. Die Quelldatei hat fünf nummerierte Fragen; siehe B,
@@ -90,7 +90,7 @@ Hinweise:
 |---|---|---|---|---|
 | P3-1 | Bestellung der Staging-VM, DNS, Beauftragung (die Variante O2 ist entschieden, siehe A) | Freigabe zur Bestellung erteilen, wenn gewünscht | Kein produktionsnahes Staging | `STAGING-PLAN-V4.md` |
 | P3-2 | Auslöser des Bildbaus: „Auslieferung“ mit `bauen=true`, `ausliefern=false` | so auslösen | Kein Bild, kein Digest für den RC | `STAGING-PLAN-V4.md` (O-2) |
-| P3-3 | Branch-Schutz setzen (offene Betreiberaufgabe; Claude ändert nichts). Prüfstand und Checkliste: `BRANCH-SCHUTZ-PRUEFUNG.md` | Rulesets nach `BETREIBER-BRANCHSCHUTZ.md` setzen | Merge-Gates nicht technisch erzwungen | `BETREIBER-BRANCHSCHUTZ.md`, `BRANCH-SCHUTZ-PRUEFUNG.md` |
+| P3-3 | Branch-Schutz setzen (offene Betreiberaufgabe; Claude ändert nichts; lesender Befund: kein Schutz und keine Rulesets auf `main`, `integration/release-v4`, `koordination/lease`). Prüfstand und Checkliste: `BRANCH-SCHUTZ-PRUEFUNG.md` | Rulesets nach `BETREIBER-BRANCHSCHUTZ.md` setzen | Merge-Gates nicht technisch erzwungen | `BETREIBER-BRANCHSCHUTZ.md`, `BRANCH-SCHUTZ-PRUEFUNG.md` |
 | P3-4 | Lieferkette: Browser-Tests laden Chromium und CDN-Skripte ohne Integritätsprüfung; der Browser-Job steuert das Deployment | zur Kenntnis; Entscheidung, ob der Job das Deployment weiter steuern darf | Risiko bleibt bestehen | `STAGING-PLAN-V4.md`, `docs/CI-LIEFERKETTE.md` |
 | P3-5 | Externe Betreiberaufgaben nach Auswirkung auf den ersten Livegang (Backup außer Haus, Monitoring, Mail/Push, Pentest, Verträge, Recht, Geräte, Pilotverträge): Aufteilung Claude / Betreiber / extern in `BETREIBERAUFGABEN-RELEASE.md` | Betreiber arbeitet die Betreiberspalte ab | Der erste Livegang bleibt blockiert | `BETREIBERAUFGABEN-RELEASE.md` |
 

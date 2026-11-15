@@ -25,11 +25,11 @@ die sich mit dem Backlog ändern.
 <!-- AUTO:BEGIN kennzahlen -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 212 · BLOCKED 76 · READY 17 · IN_PROGRESS 20 · REVIEW 7 · INTEGRATED 89 · DONE 3
+**Pakete gesamt:** 214 · BLOCKED 76 · READY 17 · IN_PROGRESS 20 · REVIEW 7 · INTEGRATED 91 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 112 | 24 | 1 | 9 | 3 | 73 | 2 | 50,85–89,9 |
+| ACC45 | 114 | 24 | 1 | 9 | 3 | 75 | 2 | 50,85–89,9 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 1 | 0 | 0 | 65,3–101,7 |
 | Intelligence | 40 | 20 | 0 | 8 | 0 | 12 | 0 | 179,5–317,5 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
