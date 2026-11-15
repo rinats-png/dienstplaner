@@ -28,7 +28,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { lauf, SCHALTER } from "./hilfen/erstleitung-bestand-szenarien.mjs";
+import { lauf, SCHALTER, uhrgetrieben } from "./hilfen/erstleitung-bestand-szenarien.mjs";
 import { sitzungAltweg } from "../src/app/zugangssitzung.js";
 import { ROLLENBEZEICHNUNG } from "../src/lib/rollen.js";
 
@@ -165,6 +165,32 @@ describe.each(SCHALTER)("Bestandsbetriebe, Schalter %s", (_name, wert) => {
     const n = kipp("KIPP-6"); const g = GOLDEN.szenarien[n]; const i = ist[n];
     expect(marken(i).map((m) => m.schluessel)).toEqual(["centric/erstleitung-regime:bd-k6:bd-k6"]);
     expect(ohneRegime(i)).toEqual(g);
+  });
+});
+
+/* --------------------------------------------------------------------------
+   UHRGETRIEBEN (pruefungen/hilfen/erstleitung-bestand-szenarien.mjs): Nur genau
+   die beiden Schreibvorgänge nach der Uhr fallen aus dem Vergleich — jede
+   andere Form bleibt ein Unterschied. Nachstellen unter Last:
+   BDIFF_PAUSE_MS=61000 BDIFF_PAUSE_VOR="^KIPP-(1|3|6)" (Aufruf wie oben).
+   -------------------------------------------------------------------------- */
+describe("UHRGETRIEBEN: nur genau diese Form fällt aus dem Vergleich", () => {
+  it("Bindung (geändert) und Sitzungsaktivität (neu/geändert) — sonst nichts", () => {
+    const h = (daten) => ({ daten, etag: "\"<ZUFALL>\"", fassung: 1, metadata: {}, typ: "json" });
+    const bindung = { art: "geaendert", schluessel: "centric-sitzungen/skbindung", wert: h({ bindung: "<ZUFALL>" }) };
+    const ta = (art) => ({ art, schluessel: "centric-sitzungen/ta:<ZUFALL>", wert: h({ zuletzt: "<MS>" }) });
+    expect([bindung, ta("neu"), ta("geaendert")].map(uhrgetrieben)).toEqual([true, true, true]);
+    const nein = [
+      { ...bindung, art: "neu" },                                                     /* erstes Anlegen (M2) bleibt verglichen */
+      { ...bindung, wert: h({ bindung: "<ZUFALL>", raum: "bd-m1" }) },                 /* weiteres Feld */
+      { ...ta("neu"), wert: h({ zuletzt: "<MS>", erstleitung: true }) },              /* weiteres Feld */
+      { ...ta("neu"), wert: { ...h({ zuletzt: "<MS>" }), metadata: { durch: "x" } } }, /* andere Hülle */
+      { art: "weg", schluessel: "centric-sitzungen/ta:<ZUFALL>" },                     /* Entfernen */
+      { ...ta("neu"), schluessel: "centric-sitzungen/t:<ZUFALL>" },                    /* die Sitzung selbst */
+      { ...ta("neu"), schluessel: "centric/erstleitung-regime:bd-m1:bd-m1" },          /* eine Marke */
+      { ...bindung, schluessel: "centric/skbindung" },                                 /* andere Ablage */
+    ];
+    expect(nein.map(uhrgetrieben)).toEqual(nein.map(() => false));
   });
 });
 

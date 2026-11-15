@@ -189,3 +189,25 @@ Absichtlich eingebaute Änderung (nicht übernommen): in `server/funktionen/date
 - Mit dem Bruch: **55 von 138 Prüfungen rot**, je Schalterwert dieselben 11: M1, M1b, M1d, M2, M2b, M4, M5/M6,
   „Betreiber leer“, „Manipuliert“, „Altcode“ und KIPP-5 (Bestandsbetrieb im Raum mit neuem Betrieb).
 - Bruch zurückgenommen (nie eingecheckt): **138 von 138 grün**.
+
+## 9. Determinismus unter Last (Nachtrag 2026-11-15)
+
+Befund: Lief ein Schalterlauf länger als 60 s (Maschine unter Last), fielen Schreibvorgänge nach der **Uhr** in das
+Beobachtungsfenster eines Szenarios — je Lauf in einem anderen (beobachtet KIPP-1, KIPP-3, KIPP-6; 133–136/138):
+`aufraeumen:letzter`, `datenschutzlauf:letzter`, `centric-spur/…/loeschlauf/…` (erster Aufräumlauf 60 s nach dem
+Start), `centric-sitzungen/skbindung` (bindungTakt, jede Minute ab dem Sicherungsschlüssel in M2) und
+`centric-sitzungen/ta:…` (Sitzungsaktivität, höchstens einmal je Minute, ohne await geschrieben). Nachgestellt ohne
+Last mit `BDIFF_PAUSE_MS=61000 BDIFF_PAUSE_VOR="^KIPP-(1|3|6)"`: genau diese Schlüssel, genau diese drei Prüfungen rot.
+
+Behebung (nur Prüfung, kein Servercode; Regel UHRGETRIEBEN in `pruefungen/hilfen/erstleitung-bestand-szenarien.mjs`):
+- `CENTRIC_AUFRAEUMEN=aus`, `CENTRIC_ZUSTELL_TAKT=aus` für den Prüfserver (vorhandene Schalter; kein Szenario ruft
+  diese Läufe auf; die Golden-Aufzeichnung enthält keinen ihrer Schlüssel).
+- Herausgenommen in genau dieser Form, jede andere bleibt ein Unterschied (eigene Prüfung „UHRGETRIEBEN“):
+  `skbindung` nur als „geaendert“ mit Inhalt genau `{ bindung }` (das Anlegen in M2 bleibt verglichen);
+  `ta:<Prüfsumme>` nur als „neu“/„geaendert“ mit Inhalt genau `{ zuletzt }` (die Sitzung `t:` bleibt verglichen).
+
+Gegenprobe (Mutationen im Servercode, je zurückgenommen, nie eingecheckt):
+- Schalter „TRUE“/„ true“ als an gelesen: 18 rot (Schalter „gross“).
+- Jeder Bestandsbetrieb streng (`erstleitungStreng` → true): 17 rot (Schalter ungesetzt).
+- Marke ohne Wirkung (`erstleitung-marke:…:mutation`) für Bestandsbetriebe geschrieben: 18 rot (Schalter „eins“).
+- Zusatzfeld in der Sitzungsaktivität `ta:` (`{ zuletzt, mandant }`), mit erzwungener Pause: KIPP-1 rot.
