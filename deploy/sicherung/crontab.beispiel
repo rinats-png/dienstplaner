@@ -18,3 +18,8 @@ SHELL=/bin/bash
 
 # monatlich am 3., 04:15 UTC: Wiederherstellungsprobe (neuester Snapshot)
 15 4 3 * * /home/admin/centric-sicherung/wiederherstellung-probe.sh >>/home/admin/sicherung/cron.log 2>&1
+
+# stündlich zur Minute 17: Sicherung der Widerrufbücher (BE-3) — eigener Job,
+# eigene Konfiguration (widerrufbuch.env), eigene Sperre; erst nach Freigabe
+# des Speicherziels einkommentieren (docs/BETRIEB-SICHERUNG.md §7).
+# 17 * * * * /home/admin/centric-sicherung/widerrufbuch-sicherung.sh >>/home/admin/sicherung/cron.log 2>&1
