@@ -457,7 +457,12 @@ try {
    aus Konten: 503); Zugangscodes bleiben unberührt. */
 try {
   const r = await kontobuchStart(getStore({ name: "centric", consistency: "strong" }));
-  console.log(`Konto-Widerrufbuch: ${r.konten} gesperrte Konten, ${r.mitglieder} entzogene Beziehungen, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.laeufe} Läufe angehoben`);
+  console.log(`Konto-Widerrufbuch: ${r.konten} gesperrte Konten, ${r.mitglieder} entzogene Beziehungen, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.laeufe} Läufe angehoben`
+    /* BE-2 A1: Pflicht-Faktoren und verbrauchte Wiederherstellungscodes (nur Anzahlen). */
+    + `; Faktoren: ${r.faktorpflicht} Pflicht, ${r.faktorGesperrt} nach Rücksprung gesperrt, ${r.whverbraucht} verbrauchte Wiederherstellungscodes, ${r.whNachgezogen} Faktoren nachgezogen`);
+  if (r.faktorGesperrt)
+    console.error(`WARNUNG Konto-Widerrufbuch: ${r.faktorGesperrt} Konto/Konten mit Pflicht-Faktor ohne Faktor in der Ablage — Anmeldung `
+      + "gesperrt (403), bis der Betreiber den Fall klärt (BETRIEBSHANDBUCH.md, Wiederherstellung; ABNAHME-V4-BE2-A1).");
 } catch (e) {
   const grund = e && e.message ? e.message : String(e);
   const pruefbar = await kontobuchGeprueft(getStore({ name: "centric", consistency: "strong" })).then(() => true, () => false);

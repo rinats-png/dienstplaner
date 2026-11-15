@@ -214,6 +214,12 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
   Wiederherstellungscodes ungültig, ohne Benachrichtigung (Entscheidung E3 offen). (d) Bis zur Freischaltung von WR-3 (`CENTRIC_KONTOWIEDERHERSTELLUNG=1`, nur Zugangscodes) und bis WR-9 (Konten) gibt es keinen
   Rückweg für Inhaber, die Telefon UND Wiederherstellungscodes verlieren. (e) `NODE_ENV` muss in Produktion
   `production` sein (das Docker-Image setzt es); `development` oder `test` schalten die Epochenbindung ab.
+  (f) **Nach jeder Wiederherstellung der Ablage (BE-2 A1):** Ein Konto, dessen zweiter Faktor einmal aktiv war, bekommt
+  ihn durch keinen Rücksprung „geschenkt“: fehlt er im zurückgespielten Stand, ist die Anmeldung gesperrt (403, gesperrter
+  Platzhalter, nie ein zurückgelegtes Geheimnis), und eingelöste Wiederherstellungscodes bleiben verbraucht. Meldet das
+  Werkzeug oder der Start gesperrte Faktoren: zuerst eine jüngere Sicherung mit dem Faktor zurückspielen (mit
+  `--zustand`); sonst Neueinladung mit neuer Adresse, kein Freischaltweg
+  ([ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md](acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md) §6, BEREITSTELLUNG §5.4).
 - **R0 (Standard bei Fehlern):** `./abschalten.sh` — Dienst kontrolliert anhalten. Lieber kein Dienst als ein
   unsicheres Bild.
 - **Rücksprung:** `./ruecksprung.sh` nur auf den Eintrag `vorherig` der Freigabeliste, nie auf ein gesperrtes Bild,

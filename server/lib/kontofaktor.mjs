@@ -35,6 +35,13 @@ import {
   zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigenVorpruefen,
   zweifaktorBestaetigen, zweifaktorPruefen, wiederherstellungNeu,
 } from "./zweifaktor.mjs";
+import { kontoFaktorPflichtVermerken, whCodeImBuch, whCodeVerbrauchVermerken } from "./kontowiderrufbuch.mjs";
+
+/* BE-2 A1 (Betreiberentscheidung 2026-11-14; kontowiderrufbuch.mjs, docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md):
+   Ein einmal AKTIVIERTER Konto-Faktor bleibt Pflicht, und ein eingelöster Wiederherstellungscode bleibt verbraucht —
+   auch nach einem Rücksprung der Ablage. Reihenfolge wie BE-1/E-M6: ZUERST die Ablage (Aktivierung bzw. Verbrauch),
+   DANN das Konto-Widerrufbuch; scheitert das Buch, Nachtrag in der Ablage (einsammelbar beim nächsten Schreiben oder
+   Start), /gesund warnt. Das Buch trägt nie ein Geheimnis und nie einen Code — nur HMAC-Kennungen. */
 
 /** Die Kennung, unter der der zweite Faktor eines Kontos liegt. Eigener Vorsatz,
     getrennt von Betreiber- („betreiber-code:") und Rollencodes („rollen-code:"). */
@@ -62,12 +69,13 @@ export async function kontoFaktorAktiv(store, accountId) {
  * abweisen, nicht durchlassen.
  * @param {any} store  Ablage „centric"
  * @param {string} accountId
- * @returns {Promise<{aktiv: boolean, ausstehend: boolean}>}
+ * `ruecksprungSperre` (BE-2 A1): der gesperrte Platzhalter eines nach einem Rücksprung fehlenden Pflicht-Faktors.
+ * @returns {Promise<{aktiv: boolean, ausstehend: boolean, ruecksprungSperre: boolean}>}
  */
 export async function kontoFaktorStand(store, accountId) {
   if (!brauchbar(accountId)) throw new Error("kontokennung");
   const s = await zweifaktorStand(store, kontoFaktorId(accountId));
-  return { aktiv: s.aktiv === true, ausstehend: s.ausstehend === true };
+  return { aktiv: s.aktiv === true, ausstehend: s.ausstehend === true, ruecksprungSperre: s.ruecksprungSperre === true };
 }
 
 /**
@@ -105,25 +113,38 @@ export async function kontoFaktorVorpruefen(store, accountId, code) {
 
 /**
  * Einrichtung bestätigen: aktiv, Wiederherstellungscodes genau einmal.
- * @returns {Promise<{ok: true, wiederherstellung: string[]}|{ok: false, grund: string}>}
+ * BE-2 A1: Nach der Aktivierung (Ablage) „Faktor ist Pflicht“ ins Konto-Widerrufbuch. Scheitert das, bleibt der Faktor
+ * aktiv und die Codes gehen trotzdem an den Inhaber (sie erscheinen nur hier); `kontobuch.geschrieben: false`, Nachtrag
+ * in der Ablage, der nächste Schreibvorgang oder Start holt nach (einsammeln: aktiver Faktor).
+ * @returns {Promise<{ok: true, wiederherstellung: string[], kontobuch: {geschrieben: boolean}}|{ok: false, grund: string}>}
  */
 export async function kontoFaktorBestaetigen(store, accountId, code) {
   if (!brauchbar(accountId)) return { ok: false, grund: "kontokennung" };
   const e = await zweifaktorBestaetigen(store, kontoFaktorId(accountId), String(code || ""));
   if (e.fehler) return { ok: false, grund: e.fehler };
-  return { ok: true, wiederherstellung: e.wiederherstellung };
+  const kontobuch = await kontoFaktorPflichtVermerken(store, accountId);
+  return { ok: true, wiederherstellung: e.wiederherstellung, kontobuch };
 }
 
 /**
  * Den Faktor bei der Anmeldung prüfen: Code aus der App (einmal je Schritt)
  * oder Wiederherstellungscode (einmal). Nie ein Nachweis.
+ * BE-2 A1: Ein Wiederherstellungscode, der im Konto-Widerrufbuch als verbraucht steht, gilt nicht (auch wenn die
+ * Ablage ihn nach einem Rücksprung als unverbraucht zeigt); ist das Buch nicht prüfbar, wirft es (der Aufrufer weist
+ * ab, 503). Nach dem Einlösen (Ablage) kommt seine Stelle ins Buch; scheitert das, gilt die Prüfung als nicht bestanden
+ * (`grund: "buch"`, fail-closed — der Code ist in der Ablage verbraucht, der Nachtrag hält ihn fest).
  * @returns {Promise<{ok: boolean, art?: string, grund?: string}>}
  */
 export async function kontoFaktorPruefen(store, accountId, code) {
   if (!brauchbar(accountId)) return { ok: false, grund: "kontokennung" };
   const c = typeof code === "string" ? code.trim() : "";
   if (!c) return { ok: false, grund: "fehlt" };
-  return zweifaktorPruefen(store, kontoFaktorId(accountId), { code: c, nachweisErlaubt: false });
+  const r = await zweifaktorPruefen(store, kontoFaktorId(accountId), { code: c, nachweisErlaubt: false,
+    whBuch: (stelle) => whCodeImBuch(store, accountId, stelle) });
+  if (!r.ok || !r.stelle) return r.ok ? { ok: true, art: r.art } : { ok: false, grund: r.grund };
+  const v = await whCodeVerbrauchVermerken(store, accountId, r.stelle);
+  if (!v.geschrieben) return { ok: false, grund: "buch" };
+  return { ok: true, art: r.art };
 }
 
 /**

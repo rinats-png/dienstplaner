@@ -102,7 +102,7 @@ import {
   accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
 import { zweifaktorEinrichtungVerwerfen } from "./zweifaktor.mjs";
-import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
+import { kontoZugangImBuch, kontoFaktorPflichtImBuch } from "./kontowiderrufbuch.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
@@ -138,6 +138,14 @@ export const HINWEIS_FAKTOR_FALSCH = "Der zweite Faktor stimmt nicht.";
 /** OPT-1-F: Der Faktor lässt sich nicht prüfen (Ablage, Pfeffer). Keine Sitzung. */
 export const HINWEIS_FAKTOR_NICHT_PRUEFBAR =
   "Der zweite Faktor lässt sich gerade nicht prüfen. Bitte später erneut versuchen.";
+
+/** BE-2 A1 (kontowiderrufbuch.mjs): Für das Konto war ein zweiter Faktor aktiv, die (zurückgespielte) Ablage zeigt
+    keinen — oder nur den gesperrten Platzhalter. Keine Anmeldung, keine Neueinrichtung mit dem Passwort, nie wird das
+    Geheimnis zurückgelegt. Diesen Satz sieht nur, wer das Passwort kennt. Der Weg hinaus ist ein Betreiberschritt
+    (BETRIEBSHANDBUCH.md, Wiederherstellung; docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md §6). */
+export const HINWEIS_FAKTOR_RUECKSPRUNG =
+  "Für dieses Konto war ein zweiter Faktor eingerichtet, der im wiederhergestellten Datenstand fehlt. Die Anmeldung "
+  + "bleibt gesperrt, bis der Betreiber den Fall geklärt hat. Bitte wende dich an die Leitung oder den Betreiber.";
 
 /** Der eine Satz für jede fehlgeschlagene Anmeldung. Er unterscheidet
     nicht zwischen unbekannter Adresse, falschem Passwort, gesperrtem und
@@ -233,6 +241,18 @@ async function zugangPruefen(store, { email, passwort }) {
  */
 
 /**
+ * BE-2 A1: Fehlt ein Pflicht-Faktor nach einem Rücksprung? Ja, wenn die Ablage den gesperrten Platzhalter trägt oder
+ * das Konto-Widerrufbuch den Faktor als Pflicht kennt und die Ablage keinen aktiven zeigt. Wirft, wenn das Buch nicht
+ * prüfbar ist. @param {object} store @param {string} accountId @param {{aktiv: boolean, ruecksprungSperre?: boolean}} stand
+ */
+async function faktorRuecksprung(store, accountId, stand) {
+  if (stand.ruecksprungSperre) return true;
+  return !stand.aktiv && await kontoFaktorPflichtImBuch(store, accountId);
+}
+const ruecksprungAbsage = () => ({ ok: /** @type {false} */ (false), grund: "zweifaktor-ruecksprung",
+  hinweis: HINWEIS_FAKTOR_RUECKSPRUNG });
+
+/**
  * Prüft den zweiten Faktor eines Kontos bei der Anmeldung. Fail-closed:
  * Lesefehler, fehlender Pfeffer, Tor nicht frei — jeweils kein Ja.
  * @param {object} store
@@ -247,6 +267,9 @@ async function faktorDerAnmeldung(store, konto, zweifaktor, faktorTor) {
   let stand;
   try { stand = await kontoFaktorStand(store, konto.id); }
   catch { return nichtPruefbar("faktor-lesen"); }
+  /* BE-2 A1: War der Faktor einmal aktiv (Konto-Widerrufbuch), gilt keine Anmeldung ohne ihn — auch wenn eine
+     zurückgespielte Ablage keinen zeigt. Ist das Buch nicht prüfbar, wirft es (fail-closed, 503). */
+  if (await faktorRuecksprung(store, konto.id, stand)) return ruecksprungAbsage();
   /* Kein Faktor eingerichtet: die Sitzung ist eine Identität ohne Faktor,
      wie bisher. Was sie darf, entscheidet die Betriebsauswahl. */
   if (!stand.aktiv) return { ok: true, mitFaktor: false };
@@ -267,6 +290,8 @@ async function faktorDerAnmeldung(store, konto, zweifaktor, faktorTor) {
     if (p.grund === "pfeffer") return nichtPruefbar("faktor-pfeffer");
     /* WR-2: Schlüsselepoche nicht feststellbar — kein Wiederherstellungscode gilt (503, keine Sitzung). */
     if (p.grund === "epoche") return nichtPruefbar("faktor-epoche");
+    /* BE-2 A1: Code eingelöst, Konto-Widerrufbuch aber nicht beschrieben — keine Sitzung (503), Nachtrag hält ihn fest. */
+    if (p.grund === "buch") return nichtPruefbar("faktor-buch");
     return { ok: false, grund: p.grund === "wiederholt" ? "zweifaktor-wiederholt" : "zweifaktor-falsch",
       hinweis: HINWEIS_FAKTOR_FALSCH };
   }
@@ -379,6 +404,11 @@ export async function kontoFaktorAktion(store, { email, passwort, aktion, zweifa
 
   let stand;
   try { stand = await kontoFaktorStand(store, id); } catch { return nichtPruefbar("faktor-lesen"); }
+
+  /* BE-2 A1: Fehlt ein Pflicht-Faktor nach einem Rücksprung, richtet das Passwort (auch mit einem — womöglich wieder
+     gültigen — Ersteinrichtungscode) keinen neuen ein, und es gibt keine neuen Wiederherstellungscodes. Kein
+     Zurücklegen des Geheimnisses. Buch nicht prüfbar: wirft (503). */
+  if (await faktorRuecksprung(store, id, stand)) return ruecksprungAbsage();
 
   if (a === "stand") return { ok: true, daten: { aktiv: stand.aktiv, ausstehend: stand.ausstehend } };
 
@@ -578,6 +608,8 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
     let aktiv;
     try { aktiv = await kontoFaktorAktiv(store, konto.id); } catch { return absage("faktor-lesen"); }
     if (aktiv) return schluss("zweifaktor");
+    /* BE-2 A1: Pflicht laut Konto-Widerrufbuch (Faktor war aktiv, die Ablage zeigt keinen) — keine Sitzung ohne Faktor. */
+    if (await kontoFaktorPflichtImBuch(store, konto.id)) return schluss("zweifaktor");
   }
 
   /* Die Kennung der Sitzung — die Prüfsumme des Merkmals, nie das Merkmal. An ihr

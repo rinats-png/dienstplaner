@@ -126,6 +126,10 @@
    Kopie nachziehen (Konto „gesperrt“, Lauf angehoben, Mitgliedschaft
    „entzogen“), vermerken; jeder Zweifel bricht ab. `kontowiderrufbuch-neu`
    legt ein verlorenes Konto-Buch nur bewusst neu an.
+   BE-2 A1 (2026-11-14): im selben Buch „Faktor war aktiv“ und verbrauchte
+   Wiederherstellungscodes; in der Kopie wird ein fehlender Pflicht-Faktor
+   durch einen gesperrten Platzhalter ersetzt (kein Geheimnis zurückgelegt)
+   und ein verbrauchter Code als verbraucht vermerkt.
 
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
@@ -147,7 +151,8 @@ import { ANKER_SCHLUESSEL, MARKE_PRAEFIX, VERWALTER_PRAEFIX, buchLesen, buchNeu,
   from "../server/lib/widerrufbuch.mjs";
 import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
 import { KONTOBUCH_ANKER, KONTOBUCH_NACHTRAG, ACCOUNT_PRAEFIX, MITGLIED_PRAEFIX, MITGLIEDLAUF_PRAEFIX, kontobuchLesen,
-  kontobuchNeu, kontobuchSchreiben, kontobuchEinsammeln, kontobuchNormalisieren } from "../server/lib/kontowiderrufbuch.mjs";
+  kontobuchNeu, kontobuchSchreiben, kontobuchEinsammeln, kontobuchNormalisieren, kontoFaktorSchluessel,
+  faktorZahlen } from "../server/lib/kontowiderrufbuch.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -834,7 +839,15 @@ async function kontoStandImOrdner(dir) {
   }
   const nd = dateiname(KONTOBUCH_NACHTRAG);
   if (namen.includes(nd)) aus.nachtrag = await umschlagDaten(path.join(dir, nd));
-  return aus;
+  /* BE-2 A1: der Faktor jedes Kontos (zweifaktor:<kontoFaktorId>), streng wie oben. */
+  /** @type {Array<{schluessel: string, wert: any, accountId: string}>} */ const faktoren = [];
+  for (const { wert: a } of aus.konten) {
+    if (!a || typeof a !== "object" || typeof a.id !== "string" || !a.id) continue;
+    const schluessel = kontoFaktorSchluessel(a.id);
+    const wert = namen.includes(dateiname(schluessel)) ? await umschlagDaten(path.join(dir, dateiname(schluessel))) : null;
+    if (wert !== null && wert !== undefined) faktoren.push({ schluessel, wert, accountId: a.id });
+  }
+  return { ...aus, faktoren };
 }
 
 /**
@@ -869,14 +882,16 @@ export async function kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest
   kontobuchEinsammeln(buch, stufeStand);
   const n = kontobuchNormalisieren(buch, stufeStand, { am: jetzt.toISOString() });
   await mkdir(path.join(stufe, "centric"), { recursive: true, mode: 0o700 });
-  /* Reihenfolge wie beim Entzug: Lauf vor Status (für einen Abbruch hier ohne Belang — die Stufe wird dann verworfen). */
-  for (const x of [...n.konten, ...n.laeufe, ...n.mitglieder])
+  /* Reihenfolge wie beim Entzug: Lauf vor Status (für einen Abbruch hier ohne Belang — die Stufe wird dann verworfen).
+     BE-2 A1: danach die Faktoren — fehlender Pflicht-Faktor → gesperrter Platzhalter (kein Geheimnis wird
+     zurückgelegt), verbrauchter Wiederherstellungscode → als verbraucht vermerkt. */
+  for (const x of [...n.konten, ...n.laeufe, ...n.mitglieder, ...n.faktoren])
     await umschlagSchreiben(path.join(stufe, "centric", dateiname(x.schluessel)), x.wert);
   if (!anker) await umschlagSchreiben(ankerDatei, { id: buch.id });
   buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
   await kontobuchSchreiben(zustandsVerz, buch);
   return { konten: Object.keys(buch.konten).length, mitglieder: Object.keys(buch.mitglieder).length, eingesammelt,
-    nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length };
+    nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(buch, n.faktoren) };
 }
 
 /**
@@ -1050,6 +1065,14 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
       const w = await kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
       meldung(`Konto-Widerrufbuch: ${w.konten} gesperrte Konten, ${w.mitglieder} entzogene Beziehungen, ${w.eingesammelt} `
         + `aus der bisherigen Ablage übernommen, ${w.nachgezogen} in der Sicherung nachgezogen, ${w.laeufe} Läufe angehoben.`);
+      /* BE-2 A1: nur Anzahlen. */
+      meldung(`Zweiter Faktor (BE-2 A1): ${w.faktorpflicht} Konten mit Pflicht-Faktor, ${w.whverbraucht} verbrauchte `
+        + `Wiederherstellungscodes im Buch; ${w.whNachgezogen} Faktoren in der Sicherung nachgezogen, ${w.faktorGesperrt} `
+        + "Pflicht-Faktoren fehlen in der Sicherung und sind gesperrt.");
+      if (w.faktorGesperrt)
+        meldung(`ACHTUNG: ${w.faktorGesperrt} Konto/Konten hatten einen aktiven zweiten Faktor, den die Sicherung nicht kennt. Ihre `
+          + "Anmeldung bleibt gesperrt (kein Geheimnis wird zurückgelegt). Erst eine jüngere Sicherung prüfen, die den Faktor "
+          + "enthält; sonst Betreiberschritt laut BETRIEBSHANDBUCH.md (Wiederherstellung, Zweiter Faktor).");
     } catch (e) {
       await rm(stufe, { recursive: true, force: true });
       throw e instanceof SicherungsFehler ? e

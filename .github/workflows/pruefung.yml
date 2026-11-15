@@ -141,6 +141,12 @@ jobs:
       - name: BE-1, Kontosperren und entzogene Mitgliedschaften nach Rücksprung wirksam
         run: npm run pruefung:be1-konto-widerrufbuch
 
+      # BE-2 Stufe A1 (Betreiberentscheidung 2026-11-14): ein einmal aktiver Konto-Faktor verschwindet durch keinen
+      # Rücksprung (Platzhalter, 403), eingelöste Wiederherstellungscodes bleiben verbraucht — Abschnitte im
+      # Konto-Widerrufbuch; echte Server, echtes Werkzeug, harter Abbruch zwischen Ablage und Buch, Altbild vor A1.
+      - name: BE-2 A1, Pflicht-Faktor und verbrauchte Wiederherstellungscodes nach Rücksprung
+        run: npm run pruefung:be2-a1-zweiter-faktor
+
       # WP-ZEIT, ZEIT-E / E6 (Befund Z47): Sonn-/Feiertags-/Samstagsanteile in den Umstellungsnächten mit wirklichen
       # Minuten (Europe/Berlin) für offene Monate; abgeschlossene Monate bytegleich (Freeze, DATEV-Datei).
       - name: ZEIT-E, Zuschläge in den Umstellungsnächten
