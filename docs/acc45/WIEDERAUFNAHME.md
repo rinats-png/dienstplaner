@@ -3,6 +3,57 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Konsolidierter Stand 2026-11-15
+
+Abgleich der Dokumente mit dem wirklichen GitHub-Stand (nur lesend: `git log`, `gh pr list`, `gh run list`, `gh pr view`). Einzige Stelle für diese Zusammenfassung; die Betreiberliste steht ausschließlich in `ENTSCHEIDUNGSLISTE.md`. Aussagen, die nicht einzeln nachgesehen wurden, tragen „Quelle prüfen“. Eine entschiedene oder integrierte Sache ist keine Produktionsfreigabe.
+
+**Integrationskopf und CI.** `integration/release-v4` steht auf `aff9c320` (Merge #308, 2026-11-15 09:33Z). Die vier Läufe auf diesem Kopf (Prüfung 19 min, Sicherheit, Betrieb: Deploy-Skripte, Lieferkette) sind grün; ebenso die vier auf `d390d700` (#307). Fehlgeschlagene Läufe seit `d84e4a83`: Prüfung auf dem Merge #303 (Browserabnahme B8, Ruhezeit, zeitabhängig; behoben durch #305, danach grün); Sicherheit auf dem Merge #301 (Ursache nicht nachgesehen, spätere Läufe grün: Quelle prüfen). Geschlossen ohne Merge: #302 (ersetzt durch #304; alter Branch am 2026-11-14 mit Betreiberfreigabe gelöscht, Grund: Verlaufsprüfung).
+
+**Seit dem Kopf `d84e4a83` gemergt** (nach `gh pr list --state merged`, die Datumsangaben sind UTC):
+
+| PR | Inhalt | Stufe |
+|---|---|---|
+| #299 | Staging O2: Vorbereitung der Staging-VM und Staging-Gate per Digest (Gate ausgeschaltet bis `STAGING_GATE_AKTIV=true`) | technisch umgesetzt und integriert (nur Vorbereitung); nie gelaufen |
+| #300 | Doku: Betreiberentscheidungen 2026-11-14, Digest-Abweichung, Branch-Schutz, Betreiberaufgaben | integriert |
+| #301 | WP-ZEIT T1: betrieblicher Kalendertag statt Gerätedatum (ZEIT-A/ZEIT-C Kern) | technisch umgesetzt, integriert; Review: Quelle prüfen |
+| #303 | ZEIT-E/E6: Zuschläge in den Umstellungsnächten (Z47), nur offene Monate, `RECHEN_STAND` 3 | technisch umgesetzt, integriert; Review: Quelle prüfen |
+| #304 | BE-1: Konto-Widerrufbuch (Kontosperren, entzogene Mitgliedschaften), neu und mit bereinigter Historie | integriert; unabhängiges Diff-Review MERGE-OK mit Auflagen, CI 23/23 |
+| #305 | QS-ZEIT: B8 und `geo.test.js` auf fester Zeitbasis, Ruhezeit-Gegenprobe | integriert (SSOT: QS-ZEIT) |
+| #306 | Doku: Wiederaufnahmepunkt Nachtrag (Kopf `38eda4fe`) | integriert |
+| #307 | Doku: Review-Auflagen zu BE-1 eingearbeitet, Nachtrag 04:40Z | integriert |
+| #308 | BE-1 Auflage 2: Registrierungsweg prüft das Konto-Widerrufbuch (fail-closed) | integriert |
+
+Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wiederaufnahme und Entscheidungsliste), #296 (Vertrag WP-ZEIT), #295, #294 (QS-6, SSOT: QS-6), #293, #292 (E-M6), #281 (A-3).
+
+**Lease.** `hauptchat` Epoche 12, danach `cloud-nachtaufgabe` Epoche 13 (abgelaufen 05:03Z), danach `hauptchat` Epoche 14 (übernommen 2026-11-15 11:42Z, gültig bis 14:12Z). Die Lease ist nur ein kooperativer Schutz: Branch-Schutz ist weiter nicht gesetzt (lesender Befund, Betreiberaufgabe).
+
+**Entschieden und Umsetzungsstand je Gruppe** (Einzelheiten in `ENTSCHEIDUNGSLISTE.md` Abschnitt A; Stufen: entschieden, technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv aktiviert).
+- WP-ZEIT E1 bis E8: entschieden; Vertrag integriert (#296); Umsetzung teilweise integriert (#301, #303); kein Paket im SSOT.
+- #280 Q1 bis Q5 und IMP-6 Q1 bis Q5: entschieden; #280 angehalten, IMP-6 IN_PROGRESS. IMP-6 Punkte 6 bis 8 (aus der Beschreibung von PR #263) sind weiter offen.
+- WP-19.5 (§ 43b): entschieden; reviewt teilweise.
+- BE-1: entschieden, Teil Konten und Mitgliedschaften integriert (#304, #307, #308); Passwörter offen. BE-2: A1 laut Betreiberauftrag in Arbeit, kein belegender PR (Quelle prüfen). BE-3: offen.
+- C1: Vorbereitung integriert (#299), nichts bestellt. C2: Gate vorbereitet, ausgeschaltet. C3: Gegenüberstellung als Dokument. C4: Branch-Schutz nirgends gesetzt. C5: Betreiberaufgaben dokumentiert (`BETREIBERAUFGABEN-RELEASE.md`).
+
+**Offene PRs** (22 am 2026-11-15; nur aufgelistet, keiner geschlossen oder gemergt).
+- Durch Betreiberentscheidung angehalten: #277 (A-2, Sicherheitsbewertung erforderlich), #238 (WP-I16, Schreibrecht des Betriebsrats nicht freigegeben). Entwürfe: #177 (WP-I4 Teil), #175 (OPT-1-F, gestapelt auf #166), beide mit Konflikten.
+- Alte Doku- und Statusstände, Kandidaten zum Schließen (nur Liste): #297 (Nachtrag 2026-11-14, Kopf `a9cc145`, überholt durch die Nachträge in dieser Datei, Konflikte), #168 (Wiederaufnahmepunkt Nachtbetrieb), #129 (Entscheidungsregister, ersetzt durch `ENTSCHEIDUNGSLISTE.md`), #127 (Plan Bereinigung Testkonten, nur Doku), #115 (Backlog SI-P9, Konflikte), #104 (Titel „NICHT INTEGRIEREN“, ersetzt durch `fix/ci-baseline`). Ob inhaltlich etwas zu übernehmen ist: Quelle prüfen.
+- Nicht eingeordnet in den Aufträgen: #139 (WP-I12c, `planKennzahlen` ohne Fehlwerte, mergeable, seit 2026-11-09 unverändert): Quelle prüfen.
+- Alt und fachfremd, Basis `integration/centric-complete`, `main` oder frühere Branches; veraltet oder unbekannt, nicht nachgesehen: #6, #7, #15, #16, #17, #18, #91, #92, #94, #96, #97 (alle seit 2026-10-22 bis 2026-11-06 unverändert; die meisten Entwürfe). Entscheidung über Schließen: Betreiber.
+
+**Echte Release-Blocker** (belegt durch die genannten Quellen; keine Vermutungen):
+1. A-2 und S-2 in `integration/release-v4`: Basisfehler bleibt, bis #277 nach der Sicherheitsbewertung entschieden ist (`ENTSCHEIDUNGSLISTE.md` P1-6).
+2. Bildfrage: Welcher Digest in Produktion läuft, ist nicht belegt (`PROD-DIGEST-ABWEICHUNG.md`, P1-5). Kein Bildwechsel ohne Freigabe.
+3. Kein produktionsnahes Staging: VM nicht bestellt, Gate ausgeschaltet, WP-ST1 BLOCKED (P3-1). Ohne Staging ist nichts staging-geprüft.
+4. Migration der gestrandeten Betriebe nicht planbar ohne E-M1 bis E-M8 und ohne die Kopie der Produktionssicherung (P1-0, P1-1). BE-2 A1 ist vor dem Pilot Pflicht und nicht belegt fertig.
+5. Branch-Schutz fehlt auf `main`, `integration/release-v4` und `koordination/lease` (P3-3): Merge-Gates sind nur Disziplin.
+6. Externe und rechtliche Kette (Verträge, Rechtsfreigabe, Pentest, Geräte): `BETREIBERAUFGABEN-RELEASE.md`, `EXTERNE-ABNAHMEN-UEBERGABE.md`. Keine Aktivierung strenger Regeln für Bestandsbetriebe, keine Produktionsmigration, kein Merge nach `main`, kein Deployment ohne ausdrückliche Freigabe.
+
+**Bekannte QS-Punkte.** QS-ZEITABHÄNGIGKEIT (`QS-ZEITABHAENGIGKEIT.md`): `geo.test.js` und B8 sind behoben; weitere zeitabhängige Tests bleiben als Liste, Priorität P2, nur nachgewiesene Ausfälle werden behoben. Offen außerdem: Staging-Gate kann die Uhr des fremden Containers nicht stellen (Restrisiko dort). Browser-Jobs prüft nur die CI (lokal Speicherengpass). Der Volllauf lokal zeigt in dieser Umgebung 15 Fehler in fünf Dateien, die auch auf dem unveränderten Kopf auftreten (Umgebung, Stand 06:35Z).
+
+**SSOT-Abgleich 2026-11-15.** `werkzeug/ssot-nach-integration.mjs` ordnet #299, #301, #303, #304 und #305 keinem vorhandenen Paket zu. Von Hand nachgeführt, jeweils mit PR-Beleg: WP-ST1 (Stufen implementiert und lokalGetestet „teilweise“ durch #299, Status bleibt BLOCKED; Aussage „nichts gebaut“ überholt), neu QS-6 (#294) und QS-ZEIT (#305), beide INTEGRATED. WP-ZEIT, BE-1 und BE-2 haben im SSOT kein eigenes Paket und wurden nicht angelegt (kein erfundener Status); ihr Stand steht in `ENTSCHEIDUNGSLISTE.md`. `acc45-backlog.mjs status-schreiben` und `pruefen` sind grün; STATUS, ROADMAP, GESAMTPLAN und DEPENDENCIES sind neu erzeugt.
+
+**Betreiber:** die einzige Liste steht in `ENTSCHEIDUNGSLISTE.md` Abschnitt B; hier nicht wiederholt.
+
 ## Nachtrag 2026-11-15 06:35Z (Cloud-Routine, Folgelauf)
 
 - Abgleich: Integrationskopf `d390d70` (#307). Lease `cloud-nachtaufgabe` Epoche 13 abgelaufen (05:03Z), kein aktiver Koordinator, keine anderen schreibenden Sitzungen; offene PRs unverändert. Stündlicher Scheduled Task (Minute 32) aktiv, dieser Lauf ist sein Lauf.
