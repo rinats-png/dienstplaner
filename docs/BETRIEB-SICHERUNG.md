@@ -386,3 +386,47 @@ dem Wiederherstellen unvollständig. Deshalb bleibt es bei 503, und der Rückweg
 CI (`betrieb-sicherung.yml`, `deploy/sicherung/ci/ende-zu-ende.sh`) mit echtem Bild, Testdaten über die Anwendungsschicht und lokalem restic-Repository — Einzelheiten und Kennzahlen: [acc45/wp04-nachweis.md](acc45/wp04-nachweis.md).
 
 Offen und nicht Teil dieses Pakets: Ausdünnen der In-App-Sicherungen und der Spur (F-26, `server/lib/daten.mjs`, anderer Agent).
+
+## 7. Sicherung der Widerrufbücher (BE-3)
+
+Die Widerrufbücher `zustand/zugang-widerrufe.json` (E-M6) und `zustand/konto-widerrufe.json` (BE-1/BE-2) liegen bewusst
+**nicht** in der Sicherung der Ablage (sie dürfen nie mit `data/` zurückrollen). Sie sichert ein **eigener** Job:
+`deploy/sicherung/widerrufbuch-sicherung.sh` — stündlich, eigene Konfiguration (`widerrufbuch.env`, Vorlage
+`widerrufbuch.env.beispiel`), eigenes restic-Repository mit eigenem Passwort (empfohlen; derselbe Tag-/Host-Filter
+erlaubt technisch auch das Repository der Ablage), eigene Sperre `widerrufbuch.lock`, eigene Statusdatei
+`widerrufbuch-status.json`, eigener Totmannschalter. Aufbewahrung fest: `--keep-last 200 --keep-daily 90`.
+
+Ablauf je Lauf: Bücher in eine feste Stufe kopieren → letzte Sicherung zurückholen → im Produktionsbild (ohne Netz)
+`ablage-sicherung.mjs widerrufbuch-pruefen --zustand <Stufe> --vorher <letzte>`: beide Siegel gültig, gemeinsame
+Herkunft, **nichts fehlt** gegenüber der letzten Sicherung → `restic backup --tag widerrufbuch` → `forget --prune` →
+Nachweis: `restic check`, Snapshot-Liste, neuen Snapshot zurückholen, bytegleich und Siegel gültig → Status `ok`.
+Fehlt etwas (ein älterer, gültig gesiegelter Stand liegt in `zustand/`), endet der Lauf mit **Exit 3, Status
+`ruecksprung`, ohne Sicherung** — sonst verdrängte der alte Stand den neuen als „letzten“.
+
+**Einrichtung (Betreiber, nach Freigabe):** Speicherziel, Zugangsdaten und ein kostenpflichtiger Dienst brauchen die
+Freigabe des Betreibers; bis dahin bleibt es bei Platzhaltern und der Handkopie (BEREITSTELLUNG §5.4).
+
+1. Ziel wählen und freigeben (eigenes Repository, z. B. eigenes Unterverzeichnis der Storage Box oder eigener Bucket).
+2. Passwortdatei anlegen (`install -m 600 /dev/null ~/.config/centric-sicherung/widerrufbuch-restic-passwort`, Inhalt
+   aus dem Passwortmanager), `restic init` gegen das neue Repository.
+3. `cp deploy/sicherung/widerrufbuch.env.beispiel ~/.config/centric-sicherung/widerrufbuch.env && chmod 600 …`,
+   Platzhalter ersetzen (Bild-Digest wie in `env`, Repository, Passwortdatei, eigener Ping).
+4. Skript nach `~/centric-sicherung/` kopieren (mit `gemeinsam.sh`), einmal von Hand laufen lassen: Exit 0,
+   `widerrufbuch-status.json` mit `"ergebnis":"ok"` und `"nachweis":"check+liste+rueckholung+siegel"`.
+5. Crontab-Zeile aus `crontab.beispiel` einkommentieren (stündlich, Minute 17).
+6. In `deploy/compose.yml` `CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS` und den Mount `/sicherung-status` einkommentieren,
+   Dienst neu starten; `/gesund?detail=1` (lokal) zeigt `widerrufbuchsicherung: ok`.
+7. Probe: `restic restore latest --tag widerrufbuch --target /tmp/wb-probe` und
+   `widerrufbuch-pruefen --zustand /zustand --vorher /tmp/wb-probe` im Bild → Exit 0.
+
+Optional (nicht umgesetzt, **[unsicher]**): ein systemd-Pfadauslöser auf die Bücher für Sekunden-RPO statt ≤ 1 h.
+
+**Alarm:** `/gesund` (Prüfung `widerrufbuchsicherung`) warnt bei gescheitertem Lauf, `ruecksprung`, letzter Erfolg
+älter als **3 h** oder einem Buch, das sich vor mehr als **90 min** geändert hat und seitdem nicht gesichert ist (feste
+Grenzen in `server/lib/widerrufbuchsicherung.mjs`, nicht je Betrieb). Das ist **nur eine Warnung**: Eine
+ausgefallene Sicherung sperrt keine Anmeldung. Fail-closed (503) bleibt allein bei einem unklaren Buch
+(unlesbar, fremd, falsches Siegel, fehlt bei Anker).
+
+**Zurücklegen = vereinigen:** `widerrufbuch-vereinen` bzw. `wiederherstellen --widerrufbuch-kopie`
+(BEREITSTELLUNG §5.4). Nie eine Kopie über `zustand/` kopieren. Einzelheiten, Matrix und Restrisiken:
+[acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md](acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md).

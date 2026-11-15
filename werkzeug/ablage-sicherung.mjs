@@ -13,6 +13,18 @@
      node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner>
      node werkzeug/ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data]
      node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data]
+     node werkzeug/ablage-sicherung.mjs widerrufbuch-pruefen --zustand <Ordner> [--vorher <Kopie>]
+     node werkzeug/ablage-sicherung.mjs widerrufbuch-vereinen --zustand <Ordner> --kopie <Kopie> [--kopie …]
+
+   BE-3 (2026-11-14): Die Widerrufbücher (zugang-widerrufe.json, konto-widerrufe.json)
+   sichert ein eigener Job (deploy/sicherung/widerrufbuch-sicherung.sh). Eine
+   Kopie wird nie über das Buch gelegt, sondern VEREINIGT: beide Bücher enthalten
+   nur Einschränkungen, mehr Einträge heißen nie mehr Zugang. `widerrufbuch-vereinen`
+   prüft vorher jedes Siegel und die Herkunft (gemeinsame Kennung, Anker der Ablage),
+   hebt die Eingaben unter <Zustand>/vereinen-sicherung/ auf und schreibt atomar;
+   nichts Neues: nichts geschrieben. `widerrufbuch-pruefen --vorher` erkennt einen
+   zurückgelegten älteren Stand (Exit 3). `wiederherstellen --widerrufbuch-kopie`
+   vereinigt vor dem Tausch (Hostverlust: das Buch entsteht aus der Kopie).
 
    ---------------------------------------------------------------------------
    Was gesichert wird — und was nicht
@@ -138,7 +150,7 @@
    ========================================================================== */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { hostname } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -153,6 +165,8 @@ import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
 import { KONTOBUCH_ANKER, KONTOBUCH_NACHTRAG, ACCOUNT_PRAEFIX, MITGLIED_PRAEFIX, MITGLIEDLAUF_PRAEFIX, kontobuchLesen,
   kontobuchNeu, kontobuchSchreiben, kontobuchEinsammeln, kontobuchNormalisieren, kontoFaktorSchluessel,
   faktorZahlen } from "../server/lib/kontowiderrufbuch.mjs";
+import { BUECHER, vereinen as vereinenNach, fehlendeEintraege, eintragZahl, gemeinsameHerkunft }
+  from "../server/lib/widerrufbuchsicherung.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -945,15 +959,204 @@ export async function widerrufbuchNeu({ zustand, daten, serverUrl, serverPruefen
   return { eintraege: n };
 }
 
+/* ---------------------------------------------------------------------------
+   BE-3 — Kopien der Widerrufbücher prüfen und VEREINIGEN (nie ersetzen)
+   (server/lib/widerrufbuchsicherung.mjs; deploy/sicherung/widerrufbuch-sicherung.sh)
+   --------------------------------------------------------------------------- */
+
+/** Art eines Buchs nach seinem Dateinamen. */
+const ART_VON_DATEI = Object.fromEntries(Object.entries(BUECHER).map(([art, datei]) => [datei, art]));
+/** @type {Record<string, (verz: string) => Promise<any>>} */
+const BUCH_LESER = { codes: (verz) => buchLesen(verz), konten: (verz) => kontobuchLesen(verz) };
+/** @type {Record<string, (verz: string, b: any) => Promise<any>>} */
+const BUCH_SCHREIBER = { codes: (verz, b) => buchSchreiben(verz, b), konten: (verz, b) => kontobuchSchreiben(verz, b) };
+const BUCH_ANKER = { codes: ANKER_SCHLUESSEL, konten: KONTOBUCH_ANKER };
+/** Unterordner des Zustandsverzeichnisses mit den Eingaben jeder Vereinigung (nie gelöscht). */
+export const VEREINEN_SICHERUNG = "vereinen-sicherung";
+
+/** Ohne Pfeffer lässt sich kein Siegel prüfen — und jede Kopie fiele als „falsches Siegel“ durch. */
+function pfefferPflicht() {
+  if (!process.env.CENTRIC_PFEFFER)
+    throw new SicherungsFehler("CENTRIC_PFEFFER fehlt — ohne ihn lässt sich kein Siegel eines Widerrufbuchs prüfen. Nichts wurde angefasst.", 2);
+}
+
+/**
+ * Kopien finden: eine Datei mit dem Namen eines Buchs (zugang-widerrufe.json, konto-widerrufe.json) oder ein Ordner,
+ * der rekursiv durchsucht wird (z. B. das Ziel von `restic restore`; symbolische Verweise unterhalb werden übergangen).
+ * @param {string[]} pfade @param {{leerErlaubt?: boolean}} [o]
+ * @returns {Promise<Array<{art: string, datei: string}>>}
+ */
+async function kopienFinden(pfade, { leerErlaubt = false } = {}) {
+  /** @type {Array<{art: string, datei: string}>} */ const aus = [];
+  const besuchen = async (/** @type {string} */ p, /** @type {number} */ tiefe) => {
+    let st;
+    try { st = tiefe === 0 ? await stat(p) : await lstat(p); }
+    catch (e) { throw new SicherungsFehler(`Kopie ${p} nicht lesbar (${/** @type {any} */ (e).code || e}). Nichts wurde angefasst.`, 2); }
+    if (st.isSymbolicLink()) return;
+    if (st.isDirectory()) {
+      if (tiefe > 24) return;
+      for (const n of (await readdir(p)).sort()) await besuchen(path.join(p, n), tiefe + 1);
+      return;
+    }
+    const art = ART_VON_DATEI[path.basename(p)];
+    if (st.isFile() && art) aus.push({ art, datei: p });
+  };
+  for (const p of pfade) {
+    const vorher = aus.length;
+    await besuchen(path.resolve(p), 0);
+    if (aus.length === vorher && !leerErlaubt)
+      throw new SicherungsFehler(`In ${p} liegt kein Widerrufbuch (${Object.values(BUECHER).join(", ")}). Nichts wurde angefasst.`, 2);
+  }
+  return aus;
+}
+
+/** Eine Kopie mit Siegelprüfung lesen (der Name der Datei ist der des Buchs, also liest der Leser ihr Verzeichnis). */
+async function kopieLesen(/** @type {{art: string, datei: string}} */ k) {
+  try {
+    const b = await BUCH_LESER[k.art](path.dirname(k.datei));
+    if (!b) throw new Error("verschwunden");
+    return b;
+  } catch (e) {
+    const grund = String(/** @type {Error} */ (e).message || e).replace(/ — kein (Zugangscode|Konto-Zugang) gilt.*$/, "");
+    throw new SicherungsFehler(`Kopie ${k.datei}: ${grund} Es wird nicht vereinigt. Nichts wurde angefasst.`, 2);
+  }
+}
+
+/**
+ * Nur lesend: Sind beide Bücher in `zustand` lesbar, unversehrt und gesiegelt? Mit `vorher` (Datei oder Ordner, etwa
+ * die zuletzt gesicherte Kopie): Fehlt im aktuellen Buch ein Eintrag, den die Kopie kennt? Dann wurde ein älterer
+ * Stand zurückgelegt („ruecksprung“). Kopie fremder Herkunft oder beschädigt: Fehler (Code 2).
+ * @param {{zustand: string, vorher?: (string|null)}} o
+ */
+export async function widerrufbuchPruefen({ zustand, vorher = null }) {
+  pfefferPflicht();
+  const z = path.resolve(zustand);
+  /** @type {Record<string, any>} */ const aktuell = {};
+  for (const art of Object.keys(BUECHER)) {
+    try { aktuell[art] = await BUCH_LESER[art](z); }
+    catch (e) { throw new SicherungsFehler(`${BUECHER[art]}: ${/** @type {Error} */ (e).message}`, 2); }
+  }
+  let fehlend = 0;
+  if (vorher) {
+    for (const k of await kopienFinden([vorher], { leerErlaubt: true })) {
+      const alt = await kopieLesen(k);
+      if (aktuell[k.art] && !gemeinsameHerkunft(aktuell[k.art], alt))
+        throw new SicherungsFehler(`Die Kopie ${k.datei} stammt aus einer anderen Umgebung (keine gemeinsame Kennung).`, 2);
+      fehlend += fehlendeEintraege(aktuell[k.art], alt, /** @type {"codes"|"konten"} */ (k.art));
+    }
+  }
+  return { ergebnis: fehlend ? "ruecksprung" : "ok", buecher: Object.values(aktuell).filter(Boolean).length,
+    codes: eintragZahl(aktuell.codes, "codes"), konten: eintragZahl(aktuell.konten, "konten"), fehlend };
+}
+
+/**
+ * Der Kern der Vereinigung (Server steht; der Aufrufer hat das geprüft). Erst ALLES lesen und prüfen — aktuelles Buch
+ * und jede Kopie mit Siegel, Herkunft (gemeinsame Kennung; Anker der Ablage) —, dann die Eingaben unter
+ * <zustand>/vereinen-sicherung/<Zeit>/ ablegen, dann jedes Buch atomar neu gesiegelt schreiben. Ein Zweifel: nichts
+ * angefasst. Kein Eintrag geht verloren (nachgeprüft); nichts Neues: nichts geschrieben (idempotent).
+ * @param {{z: string, kopien: string[], anker: Record<string, string[]>, jetzt: Date}} o
+ */
+async function vereinenKern({ z, kopien, anker, jetzt }) {
+  pfefferPflicht();
+  const gefunden = await kopienFinden(kopien);
+  const plan = [];
+  for (const art of Object.keys(BUECHER)) {
+    let aktuell;
+    try { aktuell = await BUCH_LESER[art](z); }
+    catch (e) {
+      throw new SicherungsFehler(`Das aktuelle ${BUECHER[art]} ist nicht in Ordnung (${/** @type {Error} */ (e).message}) `
+        + "— ein beschädigtes Buch wird nicht vereinigt. Erst klären (BEREITSTELLUNG.md §5.4). Nichts wurde angefasst.", 2);
+    }
+    const quellen = [];
+    for (const k of gefunden.filter((x) => x.art === art)) quellen.push({ datei: k.datei, buch: await kopieLesen(k) });
+    if (!quellen.length) continue;
+    const ankerIds = (anker[art] || []).filter((i) => /^[0-9a-f]{32}$/.test(i));
+    if (aktuell && ankerIds.some((i) => !aktuell.ids.includes(i)))
+      throw new SicherungsFehler(`Das aktuelle ${BUECHER[art]} gehört nicht zu dieser Ablage (Kennung des Ankers unbekannt). Nichts wurde angefasst.`, 2);
+    const bezug = aktuell || (ankerIds.length ? { ids: ankerIds } : quellen[0].buch);
+    for (const q of quellen)
+      if (!gemeinsameHerkunft(bezug, q.buch))
+        throw new SicherungsFehler(`Die Kopie ${q.datei} stammt aus einer anderen Umgebung (keine gemeinsame Kennung mit `
+          + `${aktuell ? "dem aktuellen Buch" : "der Ablage"}). Es wird nicht vereinigt. Nichts wurde angefasst.`, 2);
+    const basis = aktuell || (quellen.find((q) => ankerIds.some((i) => q.buch.ids.includes(i))) || quellen[0]).buch;
+    const ergebnis = structuredClone(basis);
+    let neu = 0;
+    for (const q of quellen) neu += vereinenNach(art, ergebnis, q.buch);
+    /* Nie etwas verlieren: Jede Eingabe muss im Ergebnis vollständig enthalten sein. */
+    for (const e of [aktuell, ...quellen.map((q) => q.buch)])
+      if (e && fehlendeEintraege(ergebnis, e, /** @type {"codes"|"konten"} */ (art)))
+        throw new SicherungsFehler("Vereinigung unvollständig (interner Fehler). Nichts wurde angefasst.");
+    plan.push({ art, aktuell, quellen, ergebnis, neu, schreiben: !aktuell || neu > 0 });
+  }
+  const zuSchreiben = plan.filter((p) => p.schreiben);
+  let sicherung = null;
+  if (zuSchreiben.length) {
+    /* Eingaben aufheben (das aktuelle Buch und jede Kopie) — vor dem ersten Schreiben, je Datei atomar. */
+    sicherung = path.join(z, VEREINEN_SICHERUNG, `${stempel(jetzt)}-${randomBytes(4).toString("hex")}`);
+    await mkdir(sicherung, { recursive: true, mode: 0o700 });
+    const ablegen = async (/** @type {string} */ name, /** @type {Buffer} */ inhalt) => {
+      const ziel = path.join(/** @type {string} */ (sicherung), name);
+      const tmp = `${ziel}.${process.pid}.tmp`;
+      await schreibenFest(tmp, inhalt);
+      await rename(tmp, ziel);
+    };
+    for (const p of zuSchreiben) {
+      if (p.aktuell) await ablegen(`aktuell-${BUECHER[p.art]}`, await readFile(path.join(z, BUECHER[p.art])));
+      let i = 0;
+      for (const q of p.quellen) await ablegen(`kopie-${++i}-${BUECHER[p.art]}`, await readFile(q.datei));
+    }
+    await ordnerFest(sicherung);
+    for (const p of zuSchreiben) await BUCH_SCHREIBER[p.art](z, p.ergebnis);
+  }
+  return { sicherung, buecher: plan.map((p) => ({ art: p.art, datei: BUECHER[p.art], neu: p.neu, geschrieben: p.schreiben,
+    neuAngelegt: !p.aktuell, kopien: p.quellen.length, eintraege: eintragZahl(p.ergebnis, /** @type {"codes"|"konten"} */ (p.art)) })) };
+}
+
+/**
+ * `widerrufbuch-vereinen`: Kopien (aus der Sicherung der Widerrufbücher) mit dem aktuellen Buch vereinigen — bei
+ * stehendem Server. Fehlt das aktuelle Buch (Hostverlust), entsteht es aus den Kopien; deren Herkunft muss dann zum
+ * Anker der Ablage passen.
+ * @param {{zustand: string, kopien: string[], daten: string, serverUrl?: string, serverPruefen?: boolean, jetzt?: Date}} o
+ */
+export async function widerrufbuchVereinen({ zustand, kopien, daten, serverUrl, serverPruefen = true, jetzt = new Date() }) {
+  const d = path.resolve(daten);
+  const z = zustandOrtPruefen(zustand, d);
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url)) throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen. Nichts wurde angefasst.`);
+  }
+  if (await ablageBelegt(d))
+    throw new SicherungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen. Nichts wurde angefasst.");
+  /** @type {Record<string, string[]>} */ const anker = { codes: [], konten: [] };
+  for (const [art, schluessel] of Object.entries(BUCH_ANKER)) {
+    const a = await umschlagDaten(path.join(d, "centric", dateiname(schluessel)))
+      .catch(() => { throw new SicherungsFehler(`Der Anker von ${BUECHER[art]} in der Ablage ist beschädigt. Nichts wurde angefasst.`, 2); });
+    if (a && typeof a.id === "string") anker[art].push(a.id);
+  }
+  return vereinenKern({ z, kopien, anker, jetzt });
+}
+
+/** Meldung einer Vereinigung (nur Anzahlen und der Ordner der aufgehobenen Eingaben). */
+function vereinenMeldung(/** @type {Awaited<ReturnType<typeof vereinenKern>>} */ r) {
+  const teile = r.buecher.map((b) => `${b.datei}: ${b.kopien} Kopie(n), ${b.neu} neu, ${b.eintraege} Einträge`
+    + (b.neuAngelegt ? " (neu aus den Kopien)" : b.geschrieben ? "" : " (nichts Neues)"));
+  return `Widerrufbuch vereinigt — ${teile.join("; ") || "keine Kopie"}.`
+    + (r.sicherung ? ` Eingaben aufgehoben in ${r.sicherung}.` : " Nichts geschrieben.");
+}
+
 /**
  * @param {{sicherung: string, ziel: string, ersetzen?: boolean, serverUrl?: string,
- *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void, zustand?: (string|null)}} o
+ *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void, zustand?: (string|null),
+ *          widerrufbuchKopien?: string[]}} o
  *   `zustand`: Zustandsverzeichnis (CENTRIC_ZUSTAND) — dann wird die Schlüsselepoche vor dem Tausch erneuert.
+ *   `widerrufbuchKopien` (BE-3): Kopien der Widerrufbücher, die VOR dem Tausch mit dem Buch vereinigt werden.
  */
 export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serverUrl,
-  serverPruefen = true, jetzt = new Date(), meldung = () => {}, zustand = null }) {
+  serverPruefen = true, jetzt = new Date(), meldung = () => {}, zustand = null, widerrufbuchKopien = [] }) {
   sicherung = path.resolve(sicherung); ziel = path.resolve(ziel);
   const zustandsVerz = zustand ? zustandOrtPruefen(zustand, ziel) : null;
+  if (widerrufbuchKopien.length && !zustandsVerz)
+    throw new SicherungsFehler("--widerrufbuch-kopie braucht --zustand (das Zustandsverzeichnis mit den Widerrufbüchern). Nichts wurde angefasst.", 2);
 
   const probe = await pruefen(sicherung);
   if (!probe.ok)
@@ -1034,6 +1237,26 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
      sichere Richtung). Was die LAUFENDE Ablage gesperrt kennt, kommt ins Buch; alles,
      was im Buch steht, wird in der zurückzuspielenden Kopie gesperrt — so belebt auch ein älteres Bild, das das Buch
      nicht kennt, keinen widerrufenen oder ersetzten Code. Jeder Zweifel bricht ab, bevor etwas angefasst ist. */
+  /* 1c-0. BE-3: Kopien der Widerrufbücher (aus deren eigener Sicherung) zuerst mit dem Buch VEREINIGEN — nie ersetzen.
+     Nach einem Hostverlust entsteht das Buch so aus den Kopien; nach einem Rücksprung über Ablage UND Zustand kehren
+     die Widerrufe zurück, die nur die Kopie kennt. Herkunft: Anker der Sicherung und der bisherigen Ablage. */
+  if (zustandsVerz && widerrufbuchKopien.length) {
+    try {
+      /** @type {Record<string, string[]>} */ const anker = { codes: [], konten: [] };
+      for (const [art, schluessel] of Object.entries(BUCH_ANKER))
+        for (const wurzel of [stufe, ziel]) {
+          const a = await umschlagDaten(path.join(wurzel, "centric", dateiname(schluessel)))
+            .catch(() => { throw new SicherungsFehler(`Der Anker von ${BUECHER[art]} ist beschädigt. Nichts wurde angefasst.`, 2); });
+          if (a && typeof a.id === "string" && !anker[art].includes(a.id)) anker[art].push(a.id);
+        }
+      meldung(vereinenMeldung(await vereinenKern({ z: zustandsVerz, kopien: widerrufbuchKopien, anker, jetzt })));
+    } catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Widerrufbuch vereinigen: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+  }
+
   if (zustandsVerz) {
     /* BE-1: Das Konto-Widerrufbuch wird VOR jedem Schreiben geprüft — ein Zweifel dort soll auch das Buch der Codes
        unberührt lassen (kein Vermerk einer Wiederherstellung, die nicht stattfand). */
@@ -1131,16 +1354,22 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
    Kommandozeile
    --------------------------------------------------------------------------- */
 
+/** Schalter, die mehrfach angegeben werden dürfen (BE-3: mehrere Kopien). */
+const MEHRFACH = ["kopie", "widerrufbuch-kopie"];
+
 function argumente(/** @type {string[]} */ a) {
   /** @type {Record<string, string|true>} */ const o = {};
+  /** @type {Record<string, string[]>} */ const mehr = {};
   for (let i = 0; i < a.length; i++) {
     if (!a[i].startsWith("--")) throw new SicherungsFehler(`Unerwartetes Argument: ${a[i]}`, 2);
     const k = a[i].slice(2);
     if (["ersetzen", "ohne-serverpruefung"].includes(k)) o[k] = true;
-    else if (i + 1 < a.length && !a[i + 1].startsWith("--")) o[k] = a[++i];
-    else throw new SicherungsFehler(`--${k} braucht einen Wert`, 2);
+    else if (i + 1 < a.length && !a[i + 1].startsWith("--")) {
+      if (MEHRFACH.includes(k)) (mehr[k] ||= []).push(a[++i]);
+      else o[k] = a[++i];
+    } else throw new SicherungsFehler(`--${k} braucht einen Wert`, 2);
   }
-  return o;
+  return { o, mehr };
 }
 
 const HILFE = `Aufruf:
@@ -1149,15 +1378,38 @@ const HILFE = `Aufruf:
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
                                         [--server-url <URL>] [--ohne-serverpruefung] [--zustand <Ordner>]
+                                        [--widerrufbuch-kopie <Datei|Ordner> …]
   ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
   ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
-  ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]`;
+  ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
+  ablage-sicherung.mjs widerrufbuch-pruefen --zustand <Ordner> [--vorher <Datei|Ordner>]
+  ablage-sicherung.mjs widerrufbuch-vereinen --zustand <Ordner> --kopie <Datei|Ordner> [--kopie …] [--daten /data]
+                                        [--server-url <URL>] [--ohne-serverpruefung]`;
 
 export async function main(/** @type {string[]} */ argv) {
   const [befehl, ...rest] = argv;
   const say = (/** @type {string} */ s) => console.error(s);
   try {
-    const o = argumente(rest);
+    const { o, mehr } = argumente(rest);
+    if (befehl === "widerrufbuch-pruefen") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      const r = await widerrufbuchPruefen({ zustand, vorher: typeof o.vorher === "string" ? o.vorher : null });
+      /* Eine Zeile zum Auswerten (Job, Status): nur Anzahlen, nie eine Kennung. */
+      console.log(`WIDERRUFBUCH-PRUEFUNG ergebnis=${r.ergebnis} buecher=${r.buecher} codes=${r.codes} konten=${r.konten} fehlend=${r.fehlend}`);
+      if (r.ergebnis === "ruecksprung")
+        say(`RÜCKSPRUNG ERKANNT: ${r.fehlend} Einträge der Vergleichskopie fehlen im aktuellen Widerrufbuch. Server stoppen und `
+          + "`widerrufbuch-vereinen` mit der Kopie ausführen (BEREITSTELLUNG.md §5.4).");
+      return r.ergebnis === "ok" ? 0 : 3;
+    }
+    if (befehl === "widerrufbuch-vereinen") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand || !(mehr.kopie || []).length) throw new SicherungsFehler(HILFE, 2);
+      const r = await widerrufbuchVereinen({ zustand, kopien: mehr.kopie, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log(vereinenMeldung(r));
+      return 0;
+    }
     if (befehl === "sichern") {
       if (!o.ziel) throw new SicherungsFehler(HILFE, 2);
       // Nur reine Dezimalzahlen: Number("") ist 0 und würde die Bestätigung still abschalten (z. B. --ruhe "$LEER").
@@ -1192,7 +1444,8 @@ export async function main(/** @type {string[]} */ argv) {
         ziel: String(o.ziel || process.env.CENTRIC_DATEN || "/data"), ersetzen: !!o.ersetzen,
         serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined,
         serverPruefen: !o["ohne-serverpruefung"], meldung: say,
-        zustand: typeof o.zustand === "string" ? o.zustand : (process.env.CENTRIC_ZUSTAND || null) });
+        zustand: typeof o.zustand === "string" ? o.zustand : (process.env.CENTRIC_ZUSTAND || null),
+        widerrufbuchKopien: mehr["widerrufbuch-kopie"] || [] });
       console.log(`Wiederhergestellt: ${r.dateien} Dateien nach ${r.ziel}`);
       console.log("Sicherungsschlüssel: Alle früheren sind ungültig. Eine Leitung legt in der App neue an; Automatisierungen danach kontrolliert umstellen.");
       if (r.beiseite) console.log(`Alter Inhalt liegt in ${r.beiseite} — nach erfolgreichem Start prüfen und dann von Hand entfernen.`);

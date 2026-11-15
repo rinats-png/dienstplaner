@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # =====================================================================
-#  Gemeinsame Teile von sicherung-ausser-haus.sh und
-#  wiederherstellung-probe.sh — wird nur eingebunden, nie ausgeführt.
+#  Gemeinsame Teile von sicherung-ausser-haus.sh,
+#  wiederherstellung-probe.sh und widerrufbuch-sicherung.sh (BE-3)
+#  — wird nur eingebunden, nie ausgeführt.
 #
 #  Konfiguration kommt ausschließlich aus einer Env-Datei (Modus 600).
 #  Sie wird NICHT mit `source` ausgeführt, sondern Zeile für Zeile als
@@ -46,7 +47,8 @@ dateimodus_pruefen() {
 
 # Erlaubte Schlüssel. Zugangsdaten für S3-kompatible Ziele (AWS_*) und
 # Backblaze (B2_*) gehen nur an restic, über die Umgebung, nie als Argument.
-readonly KONFIG_ERLAUBT='^(CENTRIC_PROD_IMAGE|CENTRIC_DATEN_PFAD|CENTRIC_SCHREIBHALT_PFAD|CENTRIC_ENV_DATEI|RESTIC_REPOSITORY|RESTIC_PASSWORD_FILE|RESTIC_HOST|RESTIC_BIN|RESTIC_CACHE_DIR|RESTIC_COMPRESSION|RESTIC_PACK_SIZE|DOCKER_BIN|ALARM_PING_URL|PROBE_PING_URL|LOKAL_BEHALTEN|LOKAL_ZIEL|STATUS_VERZEICHNIS|PROBE_ARBEITSORDNER|SPERRDATEI|CHECK_ANTEIL|SCHWUND_GRENZE_PROZENT|ZEITGRENZE_RESTIC|ZEITGRENZE_CONTAINER|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_DEFAULT_REGION|AWS_SESSION_TOKEN|B2_ACCOUNT_ID|B2_ACCOUNT_KEY)$'
+# CENTRIC_ZUSTAND_PFAD liest nur widerrufbuch-sicherung.sh (BE-3).
+readonly KONFIG_ERLAUBT='^(CENTRIC_PROD_IMAGE|CENTRIC_DATEN_PFAD|CENTRIC_SCHREIBHALT_PFAD|CENTRIC_ZUSTAND_PFAD|CENTRIC_ENV_DATEI|RESTIC_REPOSITORY|RESTIC_PASSWORD_FILE|RESTIC_HOST|RESTIC_BIN|RESTIC_CACHE_DIR|RESTIC_COMPRESSION|RESTIC_PACK_SIZE|DOCKER_BIN|ALARM_PING_URL|PROBE_PING_URL|LOKAL_BEHALTEN|LOKAL_ZIEL|STATUS_VERZEICHNIS|PROBE_ARBEITSORDNER|SPERRDATEI|CHECK_ANTEIL|SCHWUND_GRENZE_PROZENT|ZEITGRENZE_RESTIC|ZEITGRENZE_CONTAINER|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_DEFAULT_REGION|AWS_SESSION_TOKEN|B2_ACCOUNT_ID|B2_ACCOUNT_KEY)$'
 # Nur diese gehen in die Umgebung (für restic); alles andere bleibt
 # Shell-Variable — insbesondere die Ping-URLs.
 readonly EXPORT_MUSTER='^(RESTIC_REPOSITORY|RESTIC_PASSWORD_FILE|RESTIC_CACHE_DIR|RESTIC_COMPRESSION|RESTIC_PACK_SIZE|AWS_[A-Z_]+|B2_[A-Z_]+)$'

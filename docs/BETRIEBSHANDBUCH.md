@@ -120,6 +120,7 @@ Einrichtung Schritt für Schritt (DNS, Anbieter, VAPID, Zustelltest, Fehlersuche
 | `CENTRIC_GESUND_5XX_WARNUNG` | 5xx je 15 min bis zur Warnung | 10 | ja (auskommentiert) |
 | `CENTRIC_GESUND_429_WARNUNG` | Abweisungen durch eine **Lastgrenze** (Stempeln je Person/Raum, gelungene Anmeldungen je Betrieb) je 15 min bis zur Warnung — ehrliche Anfragen, die der Server abgewiesen hat; Fehlversuche beim Anmelden zählen nicht | 20 | ja (auskommentiert) |
 | `CENTRIC_SICHERUNG_STATUS` | Pfad zur Statusdatei der Sicherung im Container (mit dem Mount in `deploy/compose.yml`) | leer (Prüfung „nicht eingerichtet“) | ja (auskommentiert) |
+| `CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS` | BE-3: Pfad zur Statusdatei der Sicherung der Widerrufbücher (`widerrufbuch-status.json`, derselbe Mount). Warnung bei gescheitertem Lauf, Rücksprung, älter als 3 h oder ungesicherter Änderung nach 90 min (feste Grenzen, `server/lib/widerrufbuchsicherung.mjs`); sperrt nie eine Anmeldung | leer (Prüfung „nicht eingerichtet“) | ja (auskommentiert) |
 | `CENTRIC_ALARM_WEBHOOK` | Alarmkanal (nur https); Geheimnis | aus | ja (auskommentiert) |
 | `CENTRIC_GESUND_ZEITGRENZE_MS` | Zeitgrenze einer Zustandsprüfung (danach „Ablage kritisch: Zeitgrenze“) | 15000 | ja (auskommentiert) |
 | `CENTRIC_ALARM_ENTPRELLUNG_S` | Entprellung des Alarms | 120 | ja (auskommentiert) |
@@ -180,6 +181,7 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
 | Wann | Was | Wo |
 |---|---|---|
 | täglich (automatisch) | Sicherung außer Haus 02:30, Alarm per Totmannschalter, wenn sie ausbleibt | [BETRIEB-SICHERUNG.md](BETRIEB-SICHERUNG.md) §1–3 |
+| stündlich (automatisch, nach Freigabe des Speicherziels) | Sicherung der Widerrufbücher (BE-3): eigener Job, Siegel- und Rücksprungprüfung, Nachweis; `/gesund` warnt (`widerrufbuchsicherung`), sperrt aber nie eine Anmeldung | [BETRIEB-SICHERUNG.md](BETRIEB-SICHERUNG.md) §7 |
 | täglich (automatisch) | Löschlauf abgelaufener Testbetriebe (Start + 24 h) | `CENTRIC_AUFRAEUMEN` |
 | täglich (automatisch) | Datenschutzlauf: Aufbewahrungsfristen; in der Vorgabe `vorschau` nur Bericht, kein Löschen | `CENTRIC_DATENSCHUTZLAUF` |
 | bei Bedarf | **Unvollständige Raumlöschung** (Konsole meldet „Löschung unvollständig – erneut ausführen“, `/api/raum-loeschen` antwortet 500 mit `offen`): Der Mandant bleibt in der Konsole stehen; Ursache in `offen` prüfen (auch unlesbare Einträge anderer Räume zählen, weil sie zu diesem Raum gehören könnten) und die Löschung erneut ausführen. Der Aufruf ist wiederholbar, auch wenn der Kern schon weg ist. Bis dahin ist der Raumname für neue Zugänge gesperrt (409 `kundenraum_gesperrt`, Marke `loeschung:<raum>`); der Löschlauf greift nur bei `t-…`-Räumen mit Kern. | Betreiberkonsole, `docs/acc45/SI-P6-NACHWEIS.md` §6 |
@@ -220,6 +222,12 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
   Werkzeug oder der Start gesperrte Faktoren: zuerst eine jüngere Sicherung mit dem Faktor zurückspielen (mit
   `--zustand`); sonst Neueinladung mit neuer Adresse, kein Freischaltweg
   ([ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md](acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md) §6, BEREITSTELLUNG §5.4).
+  (g) **Widerrufbücher zurücklegen = vereinigen, nie ersetzen (BE-3):** Kopie aus der Sicherung der Widerrufbücher
+  holen und bei gestopptem Dienst `widerrufbuch-vereinen --zustand /zustand --kopie <Kopie> --daten /data` ausführen;
+  bei Hostverlust zusammen mit den Daten `wiederherstellen … --zustand /zustand --widerrufbuch-kopie <Kopie>`. Nie
+  eine Datei über `zustand/` kopieren. Meldet `/gesund` `widerrufbuchsicherung` „älterer Stand zurückgelegt“: Dienst
+  stoppen, letzte Sicherung der Bücher zurückholen, vereinigen, starten
+  ([ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md](acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md) §5, BEREITSTELLUNG §5.4).
 - **R0 (Standard bei Fehlern):** `./abschalten.sh` — Dienst kontrolliert anhalten. Lieber kein Dienst als ein
   unsicheres Bild.
 - **Rücksprung:** `./ruecksprung.sh` nur auf den Eintrag `vorherig` der Freigabeliste, nie auf ein gesperrtes Bild,

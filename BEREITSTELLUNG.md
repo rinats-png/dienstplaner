@@ -878,11 +878,31 @@ abgelöste 2FA-Geheimnisse (BE-2 A2) und einzeln zurückgesetzte Kalenderfeeds (
   Kontoanmeldung und der Ursprungsschlüssel bleiben. Sagt die Warnung dagegen „Das Buch ist
   prüfbar … Die Ablage ist aber NICHT nachgezogen“, bleibt abgewiesen, was im Buch steht;
   vor einem Rücksprung auf ein älteres Bild die Ursache beheben und neu starten.
-- **Sichern:** `zustand/zugang-widerrufe.json` ist bewusst NICHT in der Ablagesicherung
-  und gehört **getrennt** gesichert (heute von Hand: nach jedem Widerruf, mindestens
-  täglich; nur fortschreiben, nie ältere Kopien über neuere legen; Automatisierung ist eine
-  offene Betreiberentscheidung). Bei Verlust des Servers die jüngste Kopie nach
-  `zustand/` legen, dann erst starten. Ohne Buch gilt kein Code — es gibt keine Hintertür.
+- **Sichern (BE-3, 2026-11-14):** `zustand/zugang-widerrufe.json` und `zustand/konto-widerrufe.json` sind bewusst
+  NICHT in der Ablagesicherung. Sie sichert ein **eigener, stündlicher Job**
+  (`deploy/sicherung/widerrufbuch-sicherung.sh`, eigene Konfiguration `widerrufbuch.env`, eigenes restic-Repository,
+  eigene Sperre; Einrichtung `docs/BETRIEB-SICHERUNG.md` §7). Er prüft vor jeder Sicherung beide Siegel und ob das
+  Buch alles enthält, was die letzte Sicherung kannte; danach `restic check`, Snapshot-Liste und Rückholung
+  (bytegleich, Siegel gültig). Ergebnis in `widerrufbuch-status.json` (keine Geheimnisse); `/gesund` warnt
+  (Prüfung `widerrufbuchsicherung`, `CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS`) bei gescheitertem Lauf, älter als
+  3 Stunden, ungesicherter Änderung nach 90 Minuten oder erkanntem Rücksprung — **nur Warnung, keine
+  Anmeldesperre**. Das produktive Speicherziel, seine Zugangsdaten und ein kostenpflichtiger Dienst brauchen die
+  Freigabe des Betreibers; bis dahin gilt die Handkopie wie bisher (nach jedem Widerruf, mindestens täglich).
+- **Zurücklegen heißt VEREINIGEN, nie ersetzen.** Eine Kopie wird nie über `zustand/` kopiert, sondern bei
+  gestopptem Dienst vereinigt — die Bücher enthalten nur Einschränkungen, mehr Einträge heißen nie mehr Zugang:
+
+      restic -r <Repository> restore latest --tag widerrufbuch --target /tmp/wb-kopie   # (Host)
+      docker compose run -T --rm --no-deps -v /tmp/wb-kopie:/kopie:ro centric-dp-web \
+        node werkzeug/ablage-sicherung.mjs widerrufbuch-vereinen --zustand /zustand --kopie /kopie --daten /data
+
+  Das Werkzeug prüft jedes Siegel (Pfeffer) und die Herkunft (gemeinsame Kennung, Anker in `data/`), verweigert
+  eine manipulierte, fremde oder gekürzte Kopie und ein beschädigtes aktuelles Buch (nichts angefasst), hebt beide
+  Eingaben unter `zustand/vereinen-sicherung/<Zeit>/` auf, schreibt atomar neu gesiegelt und entfernt nie einen
+  Eintrag; ein zweiter Lauf schreibt nichts. **Hostverlust:** Kopie zurückholen und in einem Schritt mit
+  `wiederherstellen … --zustand /zustand --widerrufbuch-kopie /kopie` zurückspielen — das Buch entsteht aus der
+  Kopie. **Schnappschuss über `data/` UND `zustand/`** (älterer, gültig gesiegelter Stand, früher Restrisiko R-1):
+  der Server bemerkt das nicht, der Job meldet `ruecksprung` (Exit 3), sichert dann **nicht** und `/gesund` warnt,
+  bis `widerrufbuch-vereinen` mit der letzten Sicherung gelaufen ist. Ohne Buch gilt kein Code — es gibt keine Hintertür.
 - **Kein Buch mehr vorhanden** (Server neu, keine Kopie): bei gestopptem Dienst bewusst
 
       docker compose run -T --rm --no-deps centric-dp-web \
@@ -899,7 +919,7 @@ abgelöste 2FA-Geheimnisse (BE-2 A2) und einzeln zurückgesetzte Kalenderfeeds (
   Kopie nach (Konto `gesperrt`, Lauf angehoben, Mitgliedschaft `entzogen`), der Start dieser
   Fassung ebenso; `/gesund` meldet `kontowiderrufbuch`. Beschädigt/fremd/fehlend bei Anker:
   **kein Konto-Zugang** (Anmeldung mit Passwort, Betriebsauswahl, Konto-Sitzungen, Feeds aus
-  Konten: 503), Zugangscodes bleiben. Getrennt sichern wie das Buch der Codes. Verloren und
+  Konten: 503), Zugangscodes bleiben. Getrennt sichern wie das Buch der Codes (derselbe BE-3-Job). Verloren und
   keine Kopie: bei gestopptem Dienst `node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu
   --zustand /zustand --daten /data` (sammelt aus `data/`; was nur im verlorenen Buch stand,
   danach von Hand erneut sperren bzw. entziehen).

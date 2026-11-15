@@ -38,6 +38,9 @@
                  (widerrufbuch.mjs, widerrufbuchLage)                 → warnung
      kontowiderrufbuch  BE-1: Konto-Widerrufbuch nicht prüfbar oder Sperre/
                  Entzug nicht im Buch (kontowiderrufbuch.mjs)          → warnung
+     widerrufbuchsicherung  BE-3: Sicherung der Widerrufbücher gescheitert,
+                 veraltet oder Rücksprung erkannt (widerrufbuchsicherung.mjs;
+                 Statusdatei des Jobs) — nur Warnung, sperrt keine Anmeldung
 
    Ergebnisse werden CACHE_MS lang wiederverwendet — /gesund ist
    anmeldefrei, und ein Ansturm soll nicht je Anfrage eine Probe schreiben.
@@ -47,6 +50,7 @@ import { statfs, readFile, writeFile, mkdir, unlink, open, readdir, stat } from 
 import { zustandPruefen } from "./schluesselepoche.mjs";
 import { widerrufbuchLage } from "./widerrufbuch.mjs";
 import { kontoWiderrufbuchLage } from "./kontowiderrufbuch.mjs";
+import { widerrufbuchSicherungPruefen } from "./widerrufbuchsicherung.mjs";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
@@ -272,6 +276,9 @@ async function pruefenAlle(g, jetzt) {
     widerrufbuch: widerrufbuchLage(),
     /* BE-1 (kontowiderrufbuch.mjs): Buch nicht prüfbar (kein Konto-Zugang) oder eine Sperre/ein Entzug nicht im Buch. */
     kontowiderrufbuch: kontoWiderrufbuchLage(),
+    /* BE-3 (widerrufbuchsicherung.mjs): Sicherung der Bücher gescheitert, veraltet oder Rücksprung erkannt — Warnung,
+       nie eine Sperre (fail-closed bleibt Sache der Bücher selbst). */
+    widerrufbuchsicherung: await widerrufbuchSicherungPruefen({ jetzt }).catch(() => ({ stufe: "warnung", text: "nicht prüfbar" })),
   };
   const stufe = Object.values(pruefungen).reduce((a, p) => schlimmer(a, p.stufe), "ok");
   const ergebnis = { stufe, pruefungen, zeit: new Date(jetzt).toISOString() };
