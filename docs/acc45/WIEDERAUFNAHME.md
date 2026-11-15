@@ -3,6 +3,18 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtrag 2026-11-15 03:50Z (Cloud-Routine, Lease `cloud-nachtaufgabe` Epoche 13)
+
+- Integrationskopf: `38eda4fe` (Merge #304 BE-1 Konto-Widerrufbuch, Teil Kontosperren + Mitgliedschaften). Zuvor #305 (QS-ZEIT). CI auf #304: 23/23 grün. Unabhängiges Diff-Review: MERGE-OK mit Auflagen (kein Blocker, keine Abschwächung, kein Fail-open).
+- Auflagen aus dem Review (offen, als Folgearbeit, nicht blockierend):
+  1. `ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md:53` abschwächen oder auf §5.9 verweisen (kein HTTP-Weg ruft `accountSperren`/`mitgliedschaftEntziehen`; 503 bei `widerrufWirksam` ungetestet verdrahtet).
+  2. `server/lib/registrierung.mjs` (Bestätigen, Passwort setzen, Einrichten) prüft nur `konto.status`, nicht das Buch; keine Sitzung möglich (Anmeldung prüft das Buch). Dokumentieren oder `kontoZugangImBuch` ergänzen.
+  3. `wiederherstellen` ohne `--zustand` nur Hinweis, kein Abbruch: in `BEREITSTELLUNG.md` hervorheben.
+- Nicht berührt: Passwörter (BE-1 Rest), BE-2, BE-3. #302 bleibt offen bis Betreiberentscheidung (durch #304 ersetzt).
+- Offene PRs: #297, #277 (angehalten, Sicherheitsbewertung), #238 (Schreibrecht nicht freigegeben), #177/#175 (Entwurf), #168, #139, #129, #127, #115, #104 unverändert. Keine schreibenden Agenten aktiv.
+- Nächste ausführbare Pakete: die drei Auflagen oben (klein, unabhängig); danach SSOT-Nachtrag per `werkzeug/ssot-nach-integration.mjs`. Betreiberbedarf unverändert (siehe `ENTSCHEIDUNGSLISTE.md` B).
+- Automatische Fortsetzung: stündlicher Cloud-Scheduled-Task (Minute 32) besteht und ist aktiv; Lease kooperativ, Branch-Schutz weiter Betreiberaufgabe.
+
 ## Stand 2026-11-14 (Betreiberentscheidungen Pakete A, B, C; Integrationskopf `d84e4a83`)
 
 - **Entschieden** (Statusstufe `entschieden`, Einzelheiten und Stufen je Paket in `ENTSCHEIDUNGSLISTE.md` Abschnitt A): WP-ZEIT E1 bis E8, `mindest` Q1 bis Q5 (#280), IMP-6 Q1 bis Q5, WP-19.5 (§ 43b, getrennt, keine Anrechnung), BE-1 bis BE-3, Staging O2 und Gate-Vorbereitung, Digest-Abweichung nur lesend darstellen, Branch-Schutz nur vorbereiten und prüfen, Betreiberaufgaben trennen.
