@@ -14,10 +14,11 @@
 import { test, expect, anmelden, geheZu, axePruefen } from "./hilfen.mjs";
 import { BASIS, ZUGAENGE_VAR } from "./umgebung.mjs";
 import { ABNAHME_B_FLAECHEN as FL } from "./abnahme-b-flaechen.mjs";
+import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
 
 const ABLAUF_PROJEKT = "390x844";
-const heuteBerlin = (d = new Date()) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
-const tagPlus = (iso, n) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+/* QS-ZEIT: „heute“ nach der gemeinsamen Zeitbasis (e2e/zeitbasis.mjs) — derselbe Berliner Tag wie Server und Browser. */
+const heuteBerlin = abnahmeHeute;
 const HEUTE = heuteBerlin();
 const NOTIZ = "SYNTH-ANMERKUNG-B8";
 
@@ -46,6 +47,7 @@ const stempelAm = (m, pid, tag) => Object.entries(m.einstempeln || {}).filter(([
 async function zweiteSeite(browser, viewport, nr) {
   const cx = await browser.newContext({ baseURL: BASIS, viewport, serviceWorkers: "block", reducedMotion: "reduce", locale: "de-DE",
     extraHTTPHeaders: { "x-forwarded-for": `10.36.${nr}.1` } });
+  await cx.addInitScript(uhrVersetzen, versatzMs());                  // QS-ZEIT: dieselbe Uhr wie Server und erste Seite
   const p = await cx.newPage();
   p.setDefaultTimeout(15000);
   p.on("dialog", (d) => d.accept().catch(() => {}));
@@ -89,7 +91,7 @@ async function dienstAmSicherstellen(tag) {
 /** Liegt Berliner Mitternacht in den nächsten zwei Minuten, erst danach beginnen: Ein Ablauf soll in EINEM Berliner Tag
     laufen (Server und Stempeluhr wechseln den Tag um 00:00 Europe/Berlin). Gibt den Berliner Tag des Ablaufs zurück. */
 async function berlinerTagFuerAblauf(page) {
-  while (heuteBerlin(new Date(Date.now() + 120_000)) !== heuteBerlin()) await page.waitForTimeout(5000);
+  while (heuteBerlin(new Date(jetzt().getTime() + 120_000)) !== heuteBerlin()) await page.waitForTimeout(5000);
   return heuteBerlin();
 }
 
@@ -173,7 +175,9 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
     const tag = tagPlus(HEUTE, 3);
-    /* Am Krankheitstag einen Dienst im Plan, damit „Plan unverändert“ prüfbar ist. */
+    /* Am Krankheitstag einen Dienst im Plan, damit „Plan unverändert“ prüfbar ist. QS-ZEIT: Der Tag folgt der gemeinsamen
+       Zeitbasis (Abnahmetag + 3 = 2026-11-17, Vortag frei; pruefungen/qs-b8-zeitbasis.test.js hält das fest). Mit der
+       echten Uhr traf derselbe Frühdienst am 2026-11-15 auf den Spätdienst des Vortags (Ruhezeit 8 h, 403). */
     {
       const g = await api("bestand", { token: pl.token });
       const m = mandantVon(g);
@@ -260,6 +264,26 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
     expect(nochmal.s).toBe(409);
     expect((mandantVon(await api("bestand", { token: pl.token })).abwesenheiten || [])
       .filter((a) => a.personId === ma.person && a.art === "krank" && a.von <= tag && a.bis >= tag)).toHaveLength(1);
+  });
+
+  /* QS-ZEIT, Gegenprobe zu B8: Die Ruhezeitregel (11 h, § 5 ArbZG) bleibt sperrend. Spätdienst (bis 22:00) und am
+     Folgetag Frühdienst (ab 06:00) = 8 h: Der Server weist die Planung mit 403 und der Ruhezeitmeldung ab, nichts wird
+     gespeichert. Tage nach der Zeitbasis (Abnahmetag + 4/+5), unabhängig vom positiven Ablauf B8 (+3). */
+  test("B8 Gegenprobe: Frühdienst nach Spätdienst verletzt die Ruhezeit und wird abgewiesen (403)", async ({}, testInfo) => {
+    test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
+    const ma = await apiAnmelden("mitarbeiter");
+    const pl = await apiAnmelden("planer");
+    const spaet = tagPlus(HEUTE, 4), frueh = tagPlus(HEUTE, 5);
+    const g = await api("bestand", { token: pl.token });
+    expect(g.s, "Planung liest den Bestand").toBe(200);
+    const m = mandantVon(g);
+    const vorher = JSON.stringify(m.abweichungen || {});
+    m.abweichungen = { ...(m.abweichungen || {}), [`${ma.person}|${spaet}`]: "S", [`${ma.person}|${frueh}`]: "F" };
+    const w = await api("bestand", { methode: "PUT", token: pl.token, rumpf: { bestand: g.d.bestand, etag: g.d.etag } });
+    expect(w.s, w.text.slice(0, 200)).toBe(403);
+    const ruhezeit = [spaet, frueh].map((t) => `Einteilung am ${t} nicht möglich: Ruhezeit unter 11 Stunden.`);
+    expect(ruhezeit.some((x) => String(w.d.text || "").startsWith(x)), `Ruhezeitmeldung erwartet: ${w.text.slice(0, 200)}`).toBe(true);
+    expect(JSON.stringify(mandantVon(await api("bestand", { token: pl.token })).abweichungen || {}), "nichts gespeichert").toBe(vorher);
   });
 
   test("B10 Monatsabschluss abschließen, mit Grund wiederöffnen, korrigieren, erneut abschließen", async ({ page }, testInfo) => {

@@ -13,11 +13,12 @@
    macht barrierefreiheit.spec.mjs. Nur erfundene Daten; Codes nie ausgegeben. */
 import { test, expect, geheZu, axePruefen } from "./hilfen.mjs";
 import { BASIS, BETREIBER_VAR } from "./umgebung.mjs";
+import { abnahmeHeute } from "./zeitbasis.mjs";
 
 const PROJEKT = "1024x768";
 const MK_NORD = "NordMKe2e", MK_SUED = "SuedMKe2e";
 const DIENST = `Frühdienst ${MK_NORD}`;
-const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+const heute = abnahmeHeute();                         // QS-ZEIT: gemeinsame Zeitbasis (e2e/zeitbasis.mjs)
 const plusTage = (t, n) => new Date(Date.parse(`${t}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 /* Zehn Tage voraus: sicher Zukunft (Entwurfstag) und in der Sechs-Wochen-Liste von „Mein Plan“. */
 const TAG = plusTage(heute, 10);
