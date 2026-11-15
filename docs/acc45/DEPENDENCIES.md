@@ -525,3 +525,5 @@ flowchart LR
 | ABN-S2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
 | ABN-C1 | acc45 | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
 | ABN-B3 | acc45 | P3 | 0,25–0,5 | 0,25–0,5 | – | – | opus | READY |
+| QS-6 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
+| QS-ZEIT | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
