@@ -16,7 +16,9 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { demobestand } from "../src/lib/fachlogik.js";
 import { fachpruefungUebermittlung } from "../server/lib/schutzdurchsetzung.mjs";
 import { betriebstag } from "../server/lib/betriebszeit.mjs";
-import { sucheDiensttag, istRuhezeitSperre, SUCHTAGE_MAX } from "../e2e/dienstsuche.mjs";
+import { personTag } from "../server/lib/engine/plan.mjs";
+import { sucheDiensttag, istRuhezeitSperre, betriebstagAusKopf, sucheMitTagwechsel, SUCHTAGE_MAX } from "../e2e/dienstsuche.mjs";
+import { abnahmeHeute } from "../e2e/zeitbasis.mjs";
 import { tagPlus } from "../e2e/zeitbasis.mjs";
 
 afterEach(() => { vi.useRealTimers(); });
@@ -34,6 +36,18 @@ function planen(m, eintraege, heute) {
   return fachpruefungUebermittlung(m, neu, heute);
 }
 const RUHEZEIT = (tag) => `Einteilung am ${tag} nicht möglich: Ruhezeit unter 11 Stunden. Sperrende Regeln lassen sich nicht bestätigen.`;
+
+/** Unabhängige Nachrechnung der Ruhezeit aus den Stammdaten des Tests (nicht aus der Serverregel): Ende des Vortagsdienstes
+ *  bis Beginn des Frühdienstes am Tag, in Stunden; null = kein Dienst am Vortag. */
+function ruheStunden(m, ma, tag) {
+  const vorId = personTag(m, ma, tagPlus(tag, -1)).dienstId;
+  const vor = (m.dienstarten || []).find((d) => d.id === vorId && d.start && d.ende);
+  if (!vor) return null;
+  const min = (hhmm) => { const [h, mi] = hhmm.split(":").map(Number); return h * 60 + mi; };
+  const ende = min(vor.ende) + (min(vor.ende) <= min(vor.start) ? 1440 : 0);      // über Mitternacht: Ende am Folgetag
+  const fruehStart = 1440 + min(m.dienstarten.find((d) => d.id === "F").start);
+  return (fruehStart - ende) / 60;
+}
 
 /** Die Suche wie in B8: Frühdienst probieren; die Antwort des Servers (Text der Sperre oder angenommen). */
 async function sucheAm(zeitpunkt) {
@@ -69,6 +83,10 @@ describe("Tagsuche für B8: immer ein gültiger Tag, nie eine Ruhezeitverletzung
     expect(probiert[probiert.length - 1]).toBe(tag);
     /* Der gefundene Tag wird angenommen (derselbe Serverweg wie PUT /api/bestand). */
     expect(planen(m, { [`${ma.id}|${tag}`]: "F" }, basis)).toBeNull();
+    /* Unabhängig nachgerechnet: am gefundenen Tag mindestens 11 h Ruhe; an jedem übersprungenen Tag wirklich weniger. */
+    const ruhe = ruheStunden(m, ma, tag);
+    expect(ruhe === null || ruhe >= 11, `Ruhe ${ruhe} h am ${tag}`).toBe(true);
+    for (const t of abgelehnt) expect(ruheStunden(m, ma, t), `übersprungener Tag ${t}`).toBeLessThan(11);
     /* Jeder übersprungene Tag ist eine echte Ruhezeitsperre mit der Meldung der Regel. */
     for (const t of abgelehnt) expect(planen(m, { [`${ma.id}|${t}`]: "F" }, basis)).toEqual({ sperre: RUHEZEIT(t) });
     /* Die Regel gilt unverändert: Spätdienst am Vortag des gefundenen Tages macht denselben Frühdienst unzulässig. */
@@ -94,15 +112,73 @@ describe("Tagsuche für B8: immer ein gültiger Tag, nie eine Ruhezeitverletzung
 });
 
 describe("Sucheverhalten", () => {
-  it("bricht bei jeder anderen Abweisung sofort ab (nichts wird überspielt)", async () => {
-    await expect(sucheDiensttag("2026-11-14", () => ({ ok: false, text: "Kein Zugriff" }))).rejects.toThrow(/anderem Grund/);
-  });
   it("meldet, wenn kein Tag zulässig ist (kein stilles Weitersuchen)", async () => {
     await expect(sucheDiensttag("2026-11-14", (t) => ({ ok: false, text: RUHEZEIT(t) }), { max: 5 })).rejects.toThrow(/Kein Tag in 5 Tagen/);
   });
-  it("erkennt nur die Ruhezeitsperre", () => {
+  it("nur die echte Ruhezeitmeldung für genau diesen Tag rückt den Tag vor", async () => {
+    const probiert = [];
+    const r = await sucheDiensttag("2026-11-14", (t) => { probiert.push(t); return t < "2026-11-19" ? { ok: false, text: RUHEZEIT(t) } : { ok: true }; });
+    expect(r.tag).toBe("2026-11-19");
+    expect(r.abgelehnt).toEqual(["2026-11-17", "2026-11-18"]);
+  });
+  /* Echte Antworten des Servers, die KEINE Ruhezeitsperre sind: Die Suche bricht ab (ein Rechte- oder Formatfehler darf nie als
+     „Tag überspringen“ durchgehen). Quellen: PUT /api/bestand, Schreibschutz, Teilweg, Rollen, Fachprüfung anderer Regeln. */
+  const andere = [
+    ["Rollenverweigerung", "Keine Schreibberechtigung."],
+    ["Rolle (JSON-Rumpf)", '{"text":"Keine Schreibberechtigung.","code":"rolle"}'],
+    ["TEILWEG_ROLLE", "Diese Rolle darf den Bestand nicht schreiben (Teilweg)."],
+    ["andere sperrende Regel", "Einteilung am 2026-11-17 nicht möglich: Höchstarbeitszeit überschritten. Sperrende Regeln lassen sich nicht bestätigen."],
+    ["Ruhezeit hinter Betriebsvorgabe (nicht sperrend)", "Einteilung am 2026-11-17 nicht möglich: Ruhezeit unter der Vorgabe von Tarif oder Betrieb."],
+    ["Konflikt 409", "Der Bestand wurde zwischenzeitlich geändert (ETag)."],
+    ["Unverarbeitbar 422", "Bestand ungültig."],
+    ["Serverfehler 500", "Interner Fehler"],
+    ["leer", ""],
+  ];
+  it.each(andere)("bricht ab bei: %s", async (_name, text) => {
+    await expect(sucheDiensttag("2026-11-14", () => ({ ok: false, text }))).rejects.toThrow(/anderem Grund/);
+    let n = 0;
+    await expect(sucheDiensttag("2026-11-14", () => { n++; return { ok: false, text }; })).rejects.toThrow();
+    expect(n, "kein Weitersuchen nach der ersten fremden Abweisung").toBe(1);
+  });
+  it("bricht ab, wenn die Ruhezeitmeldung einen ANDEREN Tag nennt (Klassifikation prüft das Datum)", async () => {
+    await expect(sucheDiensttag("2026-11-14", () => ({ ok: false, text: RUHEZEIT("2026-12-24") }))).rejects.toThrow(/anderen Tag/);
+  });
+  it("istRuhezeitSperre: Meldung und Datum", () => {
     expect(istRuhezeitSperre(RUHEZEIT("2026-11-18"))).toBe(true);
+    expect(istRuhezeitSperre(RUHEZEIT("2026-11-18"), "2026-11-18")).toBe(true);
+    expect(istRuhezeitSperre(RUHEZEIT("2026-11-18"), "2026-11-19")).toBe(false);
+    expect(istRuhezeitSperre("Keine Schreibberechtigung.")).toBe(false);
     expect(istRuhezeitSperre("Einteilung am 2026-11-18 nicht möglich: Höchstarbeitszeit.")).toBe(false);
     expect(istRuhezeitSperre(undefined)).toBe(false);
+  });
+});
+
+describe("Betriebstag des fremden Servers (Kopf Date) und Tageswechsel", () => {
+  it("liest den Berliner Tag aus dem Kopf (UTC-Fenster 22:59-23:59, Sommer-/Winterzeit)", () => {
+    expect(betriebstagAusKopf("Sat, 14 Nov 2026 22:59:59 GMT", abnahmeHeute)).toBe("2026-11-14");
+    expect(betriebstagAusKopf("Sat, 14 Nov 2026 23:00:00 GMT", abnahmeHeute)).toBe("2026-11-15");
+    expect(betriebstagAusKopf("Fri, 30 Apr 2027 21:59:59 GMT", abnahmeHeute)).toBe("2027-04-30");
+    expect(betriebstagAusKopf("Fri, 30 Apr 2027 22:00:00 GMT", abnahmeHeute)).toBe("2027-05-01");
+  });
+  it.each([[undefined], [null], [""], ["kein Datum"]])("fehlender oder ungültiger Kopf (%s) bricht laut ab, ohne Rückgriff auf die eigene Uhr", (kopf) => {
+    const eigeneUhr = vi.fn(() => "2000-01-01");
+    expect(() => betriebstagAusKopf(kopf, eigeneUhr)).toThrow(/Kopf „Date“ fehlt oder ist ungültig/);
+    expect(eigeneUhr).not.toHaveBeenCalled();
+  });
+  it("Tageswechsel während der Suche: einmal neu suchen, mit dem neuen Tag", async () => {
+    const tage = ["2026-11-14", "2026-11-15", "2026-11-15", "2026-11-15"];       // vor, nach der ersten Suche, vor, nach der zweiten
+    const gesucht = [];
+    const r = await sucheMitTagwechsel(async () => tage.shift(), async (basis) => { gesucht.push(basis); return { tag: "x", abgelehnt: [] }; });
+    expect(gesucht).toEqual(["2026-11-14", "2026-11-15"]);
+    expect(r.basis).toBe("2026-11-15");
+  });
+  it("kein Tageswechsel: genau eine Suche", async () => {
+    let n = 0;
+    const r = await sucheMitTagwechsel(async () => "2026-11-14", async () => { n++; return { tag: "t", abgelehnt: [] }; });
+    expect(n).toBe(1); expect(r.basis).toBe("2026-11-14");
+  });
+  it("zweimaliger Tageswechsel: Abbruch mit klarer Meldung", async () => {
+    const tage = ["2026-11-14", "2026-11-15", "2026-11-15", "2026-11-16"];
+    await expect(sucheMitTagwechsel(async () => tage.shift(), async () => ({ tag: "x", abgelehnt: [] }))).rejects.toThrow(/zweimal geändert/);
   });
 });

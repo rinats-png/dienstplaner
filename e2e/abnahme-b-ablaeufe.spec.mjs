@@ -15,7 +15,7 @@ import { test, expect, anmelden, geheZu, axePruefen } from "./hilfen.mjs";
 import { BASIS, ZUGAENGE_VAR } from "./umgebung.mjs";
 import { ABNAHME_B_FLAECHEN as FL } from "./abnahme-b-flaechen.mjs";
 import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
-import { sucheDiensttag } from "./dienstsuche.mjs";
+import { sucheDiensttag, sucheMitTagwechsel, betriebstagAusKopf } from "./dienstsuche.mjs";
 
 const ABLAUF_PROJEKT = "390x844";
 /* QS-ZEIT: „heute“ nach der gemeinsamen Zeitbasis (e2e/zeitbasis.mjs) — derselbe Berliner Tag wie Server und Browser. */
@@ -46,8 +46,7 @@ async function apiAnmelden(rolle) {
 async function serverBetriebstag() {
   if (versatzMs()) return abnahmeHeute();
   const a = await fetch(`${BASIS}/gesund`);
-  const d = new Date(a.headers.get("date") || NaN);
-  return Number.isNaN(d.getTime()) ? abnahmeHeute() : abnahmeHeute(d);
+  return betriebstagAusKopf(a.headers.get("date"), abnahmeHeute);        // fehlender Kopf: Fehler, kein Rückgriff auf die eigene Uhr
 }
 const mandantVon = (g) => (((g.d.bestand || {}).mandanten) || [])[0] || {};
 const stempelAm = (m, pid, tag) => Object.entries(m.einstempeln || {}).filter(([k]) => k === `${pid}|${tag}`);
@@ -187,17 +186,16 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
        gerechnet. Ausgang ist der Berliner Betriebstag des ZIELSERVERS (lokal die Zeitbasis, extern der Kopf „Date“ der
        Serverantwort); ab Betriebstag + 3 nimmt der Server den ersten Tag an, an dem der Frühdienst die Ruhezeit (11 h)
        einhält. Die Regel bleibt unberührt (Gegenprobe unten; e2e/dienstsuche.mjs, pruefungen/qs-b8-dienstsuche.test.js). */
-    const basis = await serverBetriebstag();
-    const gesucht = await sucheDiensttag(basis, async (t) => {
+    const gesucht = await sucheMitTagwechsel(serverBetriebstag, (basis) => sucheDiensttag(basis, async (t) => {
       const g = await api("bestand", { token: pl.token });
       const m = mandantVon(g);
       if ((m.abweichungen || {})[`${ma.person}|${t}`]) return { ok: true };      // Wiederholungslauf: Dienst schon da
       m.abweichungen = { ...(m.abweichungen || {}), [`${ma.person}|${t}`]: "F" };
       const w = await api("bestand", { methode: "PUT", token: pl.token, rumpf: { bestand: g.d.bestand, etag: g.d.etag } });
       return { ok: w.s === 200, text: String((w.d && w.d.text) || w.text) };
-    });
+    }));
     const tag = gesucht.tag;
-    testInfo.annotations.push({ type: "abnahme-b", description: `B8 Tag ${tag} (Betriebstag ${basis}, abgewiesen: ${gesucht.abgelehnt.length})` });
+    testInfo.annotations.push({ type: "abnahme-b", description: `B8 Tag ${tag} (Betriebstag ${gesucht.basis}, abgewiesen: ${gesucht.abgelehnt.length})` });
     const planVorher = (mandantVon(await api("bestand", { token: pl.token })).abweichungen || {})[`${ma.person}|${tag}`];
     const faelleVorher = (mandantVon(await api("bestand", { token: pl.token })).krankmeldungen || []).length;
 
