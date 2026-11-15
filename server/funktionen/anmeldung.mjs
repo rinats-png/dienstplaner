@@ -242,7 +242,12 @@ export default async (req) => {
     if (req.method !== "POST")
       return antwort({ ok: false, fehler: "nur-post" }, 405, { allow: "POST" });
     return await abmeldung(req, k);
-  } catch {
+  } catch (e) {
+    /* BE-1 (kontowiderrufbuch.mjs): Konto-Widerrufbuch nicht prüfbar — kein Konto-Zugang, vorübergehend (503), nichts
+       über die Eingabe. */
+    if (e && /** @type {any} */ (e).kontobuch === true)
+      return antwort({ ok: false, fehler: "nicht-moeglich",
+        hinweis: "Das hat nicht geklappt. Bitte versuch es später noch einmal." }, 503);
     /* Kein Grund nach außen: Was hier ankommt, ist ein Fehler der Ablage,
        und der sagt über die Eingabe nichts. */
     return antwort({ ok: false, fehler: "nicht-moeglich",

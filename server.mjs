@@ -45,6 +45,7 @@ import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
 import { bindungErneuern, zustandPruefen, zustandsVerzeichnis } from "./server/lib/schluesselepoche.mjs";
 import { widerrufbuchStart, buchGeprueft } from "./server/lib/widerrufbuch.mjs";
+import { kontobuchStart, kontobuchGeprueft } from "./server/lib/kontowiderrufbuch.mjs";
 import { kanalStarten, haltObergrenze, HALT_ORDNER } from "./server/lib/schreibhalt.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
@@ -446,6 +447,25 @@ try {
       + "nachgezogen — vor einem Rücksprung auf ein älteres Bild beheben und neu starten (BEREITSTELLUNG.md §5.4)."
     : `WARNUNG Widerrufbuch: ${grund} Bis zur Klärung gilt kein Zugangscode und kein benannter Verwalterschlüssel `
       + "(Anmeldung, Code-Sitzungen, Kalenderfeeds aus Codes: 503; BEREITSTELLUNG.md §5.4).");
+}
+
+/* BE-1 (server/lib/kontowiderrufbuch.mjs): Kontosperren und entzogene Mitgliedschaften bleiben nach jedem Rücksprung
+   wirksam. Beim Start: Stand des Konto-Widerrufbuchs feststellen, aus der Ablage einsammeln (holt auch einen Eintrag
+   nach, dessen Schreiben zwischen Ablage und Buch abbrach) und das Buch in die Ablage nachziehen (Konto gesperrt, Lauf
+   angehoben, Mitgliedschaft entzogen — Felder, die auch ein älteres Bild kennt). Getrennt vom Buch der Zugangscodes:
+   Scheitert das hier, gilt kein Konto-Zugang (Anmeldung mit Passwort, Betriebsauswahl, Konto-Arbeitssitzungen, Feeds
+   aus Konten: 503); Zugangscodes bleiben unberührt. */
+try {
+  const r = await kontobuchStart(getStore({ name: "centric", consistency: "strong" }));
+  console.log(`Konto-Widerrufbuch: ${r.konten} gesperrte Konten, ${r.mitglieder} entzogene Beziehungen, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.laeufe} Läufe angehoben`);
+} catch (e) {
+  const grund = e && e.message ? e.message : String(e);
+  const pruefbar = await kontobuchGeprueft(getStore({ name: "centric", consistency: "strong" })).then(() => true, () => false);
+  console.error(pruefbar
+    ? `WARNUNG Konto-Widerrufbuch: ${grund} Das Buch ist prüfbar: Was darin steht, bleibt abgewiesen. Die Ablage ist aber `
+      + "NICHT nachgezogen — vor einem Rücksprung auf ein älteres Bild beheben und neu starten (BEREITSTELLUNG.md §5.4)."
+    : `WARNUNG Konto-Widerrufbuch: ${grund} Bis zur Klärung gilt kein Konto-Zugang (Anmeldung mit Passwort, `
+      + "Betriebsauswahl, Konto-Arbeitssitzungen, Kalenderfeeds aus Konten: 503; BEREITSTELLUNG.md §5.4).");
 }
 
 const routen = await funktionenLaden();

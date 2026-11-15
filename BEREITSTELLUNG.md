@@ -720,9 +720,10 @@ ist ein Umbenennen.
     docker run --rm --network none --read-only --user 1000:1000 --cap-drop ALL \
       --security-opt no-new-privileges:true --env-file .env \
       -v "$PWD/sicherungen/centric-sicherung-<Zeit>:/s/sicherung:ro" \
-      -v "$PWD/data:/s/ziel" <dasselbe-Bild-wie-der-Dienst> \
+      -v "$PWD/data:/s/ziel" \
+      -v "$PWD/zustand:/zustand" -e CENTRIC_ZUSTAND=/zustand <dasselbe-Bild-wie-der-Dienst> \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
-      --sicherung /s/sicherung --ziel /s/ziel < /dev/null
+      --sicherung /s/sicherung --ziel /s/ziel --zustand /zustand < /dev/null
     docker compose rm -f -s centric-dp-web         # Container entfernen …
     docker compose up -d --pull never              # … und neu erzeugen, nicht nur neu starten
 
@@ -835,10 +836,12 @@ Zugangsentzug wird durch eine Wiederherstellung **nicht** zurückgenommen. Die A
 liegt wie bei der Schlüsselepoche außerhalb von `data/`: das Widerrufbuch
 `zustand/zugang-widerrufe.json` (nur Prüfsummen, nie Codes oder Schlüssel; mit einem aus
 dem Pfeffer abgeleiteten Siegel), dazu der Anker `widerrufbuch:anker` in `data/` (wird
-mitgesichert). **Nicht** abgedeckt sind Passwörter, entzogene Mitgliedschaften,
+mitgesichert). Kontosperren und entzogene Mitgliedschaften deckt seit BE-1 ein **eigenes**
+Konto-Widerrufbuch ab (siehe unten). **Nicht** abgedeckt sind Passwörter,
 2FA-Geheimnisse, benutzte Wiederherstellungscodes und einzeln zurückgesetzte
-Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (offene
-Betreiberentscheidung). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`.
+Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (BE-1 Passwörter,
+BE-2). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`,
+`docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`.
 
 - **Mit `--zustand` wiederherstellen** (Weg 2 über `docker compose run` sieht
   `CENTRIC_ZUSTAND=/zustand` von selbst; bei Weg 1 `-v "$PWD/zustand:/zustand"
@@ -886,6 +889,17 @@ Betreiberentscheidung). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLL
   (Widerruf nach der Sicherung), ist danach nicht mehr geschützt → diese Codes und
   Verwalterschlüssel von Hand erneut zurückziehen. Ein vorhandenes oder beschädigtes Buch
   ersetzt der Befehl nie.
+- **Konto-Widerrufbuch (BE-1):** `zustand/konto-widerrufe.json` (eigene Datei, eigenes Siegel,
+  Anker `kontowiderrufbuch:anker` in `data/`) hält gesperrte Konten und entzogene
+  Mitgliedschaften (Mindestgeneration je Konto×Raum) — nur HMAC-Kennungen, keine Namen,
+  Adressen oder Räume. Dieselben Regeln wie oben: Werkzeug mit `--zustand` zieht in der
+  Kopie nach (Konto `gesperrt`, Lauf angehoben, Mitgliedschaft `entzogen`), der Start dieser
+  Fassung ebenso; `/gesund` meldet `kontowiderrufbuch`. Beschädigt/fremd/fehlend bei Anker:
+  **kein Konto-Zugang** (Anmeldung mit Passwort, Betriebsauswahl, Konto-Sitzungen, Feeds aus
+  Konten: 503), Zugangscodes bleiben. Getrennt sichern wie das Buch der Codes. Verloren und
+  keine Kopie: bei gestopptem Dienst `node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu
+  --zustand /zustand --daten /data` (sammelt aus `data/`; was nur im verlorenen Buch stand,
+  danach von Hand erneut sperren bzw. entziehen).
 - **Restore-Test mit `--zustand`:** Gesperrte Konten und Verwalterschlüssel, der Anker
   und wiederhergestellte Marken weichen dann gewollt vom Manifest ab (die Ausgabe nennt die
   Zahlen). Für den Datei-für-Datei-Vergleich ohne `--zustand` zurückspielen, wie in der
@@ -901,15 +915,24 @@ Ordner zurückspielen (nicht in `data/`) und dort ansehen.
       -v "$PWD/sicherungen:/sicherungen:ro" -v "$PWD/restore-test:/restore" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
+    # BE-1: Kopien (nie die Originale) beider Widerrufbücher (Konto und Codes) für den Test-Server
+    mkdir -p restore-test-zustand && sudo cp -p zustand/konto-widerrufe.json zustand/zugang-widerrufe.json restore-test-zustand/ \
+      && sudo chown -R 1000:1000 restore-test-zustand && sudo chmod 700 restore-test-zustand
     docker run --rm -p 127.0.0.1:3001:3000 --env-file .env \
       -e CENTRIC_DATEN=/data -v "$PWD/restore-test:/data" \
+      -e CENTRIC_ZUSTAND=/zustand -v "$PWD/restore-test-zustand:/zustand" \
       "ghcr.io/rinats-png/dienstplaner@$(sed -n 's/^IMAGE_DIGEST=//p' .env)"
 
 (Dasselbe Bild wie der Dienst, per Digest aus der `.env` — nie `latest`: das lokale
 `latest` auf dem VPS ist ein altes, gesperrtes Bild.)
 
+Die Sicherung trägt den Anker des Konto-Widerrufbuchs (BE-1), `zustand/` ist aber nie darin.
+Ohne die Kopie des Buchs antwortet die Kontoanmeldung des Test-Servers gewollt mit 503
+(fail-closed: ein Rücksprung ohne Buch ließe gesperrte Konten wieder aufleben). Bei Verlust des
+Servers dasselbe mit der getrennt gesicherten Kopie (siehe Konto-Widerrufbuch oben).
+
 Gegen `127.0.0.1:3001` (SSH-Tunnel) anmelden und einen Betrieb öffnen; danach
-Container beenden und `restore-test/` löschen.
+Container beenden und `restore-test/` sowie `restore-test-zustand/` löschen.
 
 Ein Restore, der nicht gegen die Sicherung verglichen wurde, ist nicht geprüft.
 Belastbar ist der Vergleich Datei für Datei: Jede Datei unter `daten/` der Sicherung
