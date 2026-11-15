@@ -7,7 +7,8 @@
 // Jede Uhr in dieser Datei ist fest (vi.setSystemTime); die Prozesszeitzone wird je Fall über process.env.TZ
 // umgestellt (Node liest TZ bei jeder Zuweisung neu) und danach wiederhergestellt.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { betriebstag, wanduhr, montagDerWoche, zoneErlaubt, ERLAUBTE_ZONEN, BETRIEBSZONE } from "../server/lib/betriebszeit.mjs";
+import { berlinZeitpunkt } from "../server/lib/isteinfrieren.mjs";
+import { betriebstag, wanduhr, montagDerWoche, zeitpunktAusWanduhr, zoneErlaubt, ERLAUBTE_ZONEN, BETRIEBSZONE } from "../server/lib/betriebszeit.mjs";
 import { heute, mitTagesdatum } from "../server/lib/engine/zeit.mjs";
 import { heute as heuteOberflaeche } from "../src/lib/datum.js";
 import { heuteBerlin, uhrzeitBerlin } from "../server/lib/zeiterfassung.mjs";
@@ -189,5 +190,45 @@ describe("Wochenanker eines neuen Betriebs (Befund P3, leerbetrieb.mjs)", () => 
         expect(baueLeerenBetrieb({ name: "Zeit T1 Anker", branche: "pflege", raum: "zeit-t1-anker-5f2e9b" }).mandanten[0].anker, z).toBe(montag);
       });
     }
+  });
+});
+
+/* ZEIT-P2 (c): Abbildung Wanduhr → Zeitpunkt zentral in betriebszeit.mjs; isteinfrieren.berlinZeitpunkt delegiert.
+   Erwartungswerte fest (UTC), Prozesszeitzone je Fall umgestellt — das Ergebnis darf nicht von ihr abhängen. */
+describe("zeitpunktAusWanduhr (ZEIT-P2 c)", () => {
+  const FESTE = [
+    ["2026-07-01", 720, "2026-07-01T10:00:00.000Z"],   // Sommerzeit
+    ["2026-12-01", 720, "2026-12-01T11:00:00.000Z"],   // Winterzeit
+    ["2026-03-29", 0, "2026-03-28T23:00:00.000Z"],     // Mitternacht vor der Frühjahrsumstellung
+    ["2026-03-29", 150, "2026-03-29T01:30:00.000Z"],   // Lücke 02:30 → nach vorn (03:30 MESZ)
+    ["2026-10-25", 150, "2026-10-25T01:30:00.000Z"],   // doppelte Stunde → die spätere (MEZ)
+    ["2026-10-25", 0, "2026-10-24T22:00:00.000Z"],
+    ["2026-10-25", 1440, "2026-10-25T23:00:00.000Z"],  // Folgetag-Mitternacht
+    ["2026-12-31", 1500, "2027-01-01T00:00:00.000Z"],  // über 1440 hinaus, Jahreswechsel (01:00 am 01.01.)
+  ];
+  for (const zone of GERAETEZONEN) {
+    it(`feste Erwartung, Prozesszeitzone ${zone}`, () => {
+      for (const [datum, min, erwartet] of FESTE) {
+        expect(new Date(inZone(zone, () => zeitpunktAusWanduhr(datum, min))).toISOString(), `${datum} +${min}`).toBe(erwartet);
+        expect(inZone(zone, () => berlinZeitpunkt(datum, min))).toBe(Date.parse(erwartet));
+      }
+    });
+  }
+  it("Umkehrung: betriebstag/wanduhr des Ergebnisses ergeben Tag und Uhrzeit (eindeutige Zeiten, ganzes Jahr, mehrere Prozesszonen)", () => {
+    for (const zone of ["UTC", "Pacific/Auckland"]) {
+      inZone(zone, () => {
+        for (let d = Date.UTC(2026, 0, 1); d < Date.UTC(2027, 0, 1); d += 86400000 * 7) {
+          const tag = new Date(d).toISOString().slice(0, 10);
+          for (const min of [0, 61, 600, 1439]) {
+            const ms = zeitpunktAusWanduhr(tag, min);
+            expect(betriebstag(ms)).toBe(tag);
+            expect(wanduhr(ms)).toBe(`${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`);
+          }
+        }
+      });
+    }
+  });
+  it("Zone außerhalb der Positivliste wird abgewiesen", () => {
+    expect(() => zeitpunktAusWanduhr("2026-07-01", 0, "UTC")).toThrow(RangeError);
   });
 });

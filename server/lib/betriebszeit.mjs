@@ -92,3 +92,23 @@ export function montagDerWoche(jetzt = new Date(), zone = BETRIEBSZONE) {
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Der wirkliche Zeitpunkt (ms seit 1970, UTC) einer Wanduhrzeit in der Zone: Kalendertag `datum` (JJJJ-MM-TT) plus
+ * `minuten` (auch über 1440 hinaus, dann Folgetag). Umkehrung von betriebstag/wanduhr, unabhängig von der Zeitzone
+ * des Prozesses. Mehrdeutige Wanduhrzeiten fest aufgelöst: Die Frühjahrslücke (02:00–02:59 gibt es nicht) wird nach
+ * vorn geschoben (Versatz vor dem Sprung, 02:30 → 03:30 Sommerzeit), die doppelte Herbststunde ist die spätere
+ * (Winterzeit). Mitternachten sind in Europe/Berlin immer eindeutig.
+ * @param {string} datum @param {number} minuten @param {string} [zone] @returns {number}
+ */
+export function zeitpunktAusWanduhr(datum, minuten, zone = BETRIEBSZONE) {
+  const [j, mo, t] = String(datum).split("-").map(Number);
+  const wand = Date.UTC(j, mo - 1, t) + minuten * 60000;
+  const versatz = (ms) => {
+    const p = teile(ms, zone);
+    return Math.round((Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute)) - ms) / 60000);
+  };
+  const passend = [60, 120].filter((v) => versatz(wand - v * 60000) === v);
+  const v = passend.length === 1 ? passend[0] : 60;
+  return wand - v * 60000;
+}
