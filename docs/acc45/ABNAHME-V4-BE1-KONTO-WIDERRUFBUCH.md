@@ -49,8 +49,9 @@ künftige Verwaltungswege); die Absicherung sitzt deshalb in der Bibliothek selb
 2. `mitgliedschaftEntziehen`: Lauf +1, Status `entzogen` (wie bisher), Sicherungsschlüssel, **dann**
    `mitgliedEntzugVermerken` mit Mindestgeneration = max(Lauf, Generation des Grabsteins + 1) → Buch.
 3. Scheitert das Buch: Der Widerruf bleibt wirksam. Ergebnis `kontobuch: { geschrieben: false }, widerrufWirksam: true`
-   — die Bedeutung ist „Widerruf wirksam, Widerrufbuch nicht beschrieben“ (`KONTOBUCH_NICHT_BESCHRIEBEN`); ein künftiger
-   Endpunkt antwortet darauf mit **503** wie `zugang-sperren` (E-M6). Zusätzlich Nachtrag in der Ablage und im Speicher,
+   — die Bedeutung ist „Widerruf wirksam, Widerrufbuch nicht beschrieben“ (`KONTOBUCH_NICHT_BESCHRIEBEN`). Heute ruft kein
+   HTTP-Weg diese Funktionen auf (siehe Restrisiko 9); die 503-Antwort wie bei `zugang-sperren` (E-M6) ist für einen
+   künftigen Endpunkt vorgesehen und **noch nicht verdrahtet oder getestet**. Zusätzlich Nachtrag in der Ablage und im Speicher,
    `/gesund` → `kontowiderrufbuch: warnung`.
 4. Nachholen (Reparaturweg): Jeder spätere Bucheintrag, **jeder Serverstart** und das Werkzeug sammeln ein, was die
    Ablage selbst weiß — Konto `gesperrt`, Lauf ≥ 2, Grabstein `entzogen` (g → g+1) — und den Nachtrag; danach wird der
@@ -144,7 +145,11 @@ Werkzeug mit `--zustand` fasst ohne Buch nichts an — und je Fall der dokumenti
    Prozess.
 9. Kein HTTP-Weg ruft heute `accountSperren`/`mitgliedschaftEntziehen`; ein künftiger Weg muss
    `widerrufWirksam`/`kontobuch.geschrieben === false` als 503 „Widerruf wirksam, Widerrufbuch nicht beschrieben“ melden.
-10. Prüfkosten: je Konto-Prüfung ein `stat`; je Widerruf und Start ein Lauf über alle `account:`/`mitglied:`/
+10. **Registrierungsweg prüft nur `konto.status`:** `server/lib/registrierung.mjs` (Bestätigen, Passwort setzen,
+    Einrichten) fragt nicht das Widerrufbuch ab. Ein nur im Buch (nicht in der Ablage) gesperrtes Konto kann diese
+    Schritte also noch durchlaufen, erhält aber keine Sitzung, weil die Anmeldung das Buch prüft (503/Absage). Folgearbeit:
+    `kontoZugangImBuch` auch im Registrierungsweg abfragen.
+11. Prüfkosten: je Konto-Prüfung ein `stat`; je Widerruf und Start ein Lauf über alle `account:`/`mitglied:`/
     `mitgliedlauf:`-Schlüssel (wie E-M6 über die Codes) — für Pilotgrößen unkritisch.
 
 ## 6. Betreiberschritte

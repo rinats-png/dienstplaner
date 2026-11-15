@@ -3,6 +3,12 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtrag 2026-11-15 04:40Z (Cloud-Routine, Folgelauf)
+
+- Abgleich: Kopf `d73ff57` (#306 Doku), keine neuen Merges seit 03:50Z; offene PRs unverändert; Lease `cloud-nachtaufgabe` Epoche 13 gültig bis 05:03Z.
+- Die drei Review-Auflagen zu #304 sind als reine Dokumentationsänderung bearbeitet (ABNAHME-V4-BE1 §2.2 und Restrisiko 10 neu, `BEREITSTELLUNG.md` Hervorhebung `--zustand`). Kein Code geändert; `kontoZugangImBuch` im Registrierungsweg bleibt Folgearbeit.
+- Nächste ausführbare Pakete: Auflage 2 als Code (Test zuerst), danach SSOT-Nachtrag.
+
 ## Nachtrag 2026-11-15 03:50Z (Cloud-Routine, Lease `cloud-nachtaufgabe` Epoche 13)
 
 - Integrationskopf: `38eda4fe` (Merge #304 BE-1 Konto-Widerrufbuch, Teil Kontosperren + Mitgliedschaften). Zuvor #305 (QS-ZEIT). CI auf #304: 23/23 grün. Unabhängiges Diff-Review: MERGE-OK mit Auflagen (kein Blocker, keine Abschwächung, kein Fail-open).
