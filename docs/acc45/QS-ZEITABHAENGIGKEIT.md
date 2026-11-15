@@ -47,8 +47,16 @@ nicht abgeschwächt; nur nachgewiesene Ausfälle werden behoben, alles Übrige b
   sperrt), B8 positiv auf der Zeitbasis, Gegenprobe sperrt mit der Ruhezeitmeldung, und `uhrVersetzen` versetzt nur „jetzt“.
 - **Nicht lokal gelaufen:** Playwright ist auf dem Arbeitsrechner nicht installiert (Speicherengpass); die Browserjobs
   prüft die CI (`browser-abnahme`).
-- **Restrisiko:** Staging-Gate (`E2E_EXTERN_ADMIN`, fremder Container): dessen Uhr lässt sich nicht stellen, dort läuft
-  die Suite mit der echten Uhr (siehe Liste, Zeile 9).
+- **Staging-Gate (erledigt, QS-B8-2026-11-15):** Gegen einen fremden Container (`E2E_EXTERN_ADMIN`) lässt sich die Uhr nicht
+  stellen; Versatz 0, echte Uhr. B8 rechnet den Krankheitstag deshalb nicht mehr (`heute + 3`), sondern SUCHT ihn
+  (`e2e/dienstsuche.mjs`): Ausgang ist der Berliner Betriebstag des Zielservers (lokal die Zeitbasis, extern der Kopf `Date`
+  der Serverantwort, nicht die Uhr des Testrechners); ab Betriebstag + 3 wird der Frühdienst über `PUT /api/bestand` probiert, nur die
+  Ruhezeitsperre führt zum nächsten Tag (höchstens 45 Tage, mehr als der 35-Tage-Zyklus), jede andere Abweisung bricht ab. Die 11-h-Regel
+  ist unberührt. Die Gegenprobe rechnet ebenfalls vom Betriebstag des Zielservers. `pruefungen/qs-b8-dienstsuche.test.js` (in
+  `npm run pruefung:qs-zeitbasis`): 183 Fälle unter festen Uhren (40 Basistage × 4 Tageszeiten inkl. 22:59–23:59Z, beide
+  Zeitumstellungen, Monats-/Jahres-/Schaltjahrwechsel) — immer ein Tag gefunden, angenommen, Vortag-Spätdienst bleibt gesperrt;
+  `qs-b8-zeitbasis.test.js` zusätzlich: Gegenprobe an allen 40 Basistagen gesperrt, Bestand unverändert. Nur die Browserschritte
+  prüft die CI (Playwright lokal nicht gelaufen).
 
 ## 2. Liste der übrigen zeitabhängigen Tests (nicht geändert)
 
@@ -67,7 +75,7 @@ folgenden Fälle ist bisher als Ausfall belegt; Priorität nach Wahrscheinlichke
 | `pruefungen/browser/geraete-wp21-ablaeufe.mjs:36` | `HEUTE = heute()` nach Gerätezeit (Läufer in UTC) gegen Berliner Servertag | 23:00–24:00Z (Winter) bzw. 22:00–24:00Z (Sommer) Vortag statt Berliner Tag → „kein Zugang (zu wenige Beschäftigte mit Dienst heute)“ | 3 | Berliner Tag (`betriebstag`) oder Zeitbasis wie e2e |
 | `pruefungen/browser/v4-abnahme.mjs:467` | Berichtsdatum als UTC-Tag | nur Anzeige im Bericht | 5 | Berliner Tag |
 | `e2e/abnahme-b-ablaeufe.spec.mjs` B7/Stempeluhr, `e2e/abnahme-a-ablauf.spec.mjs:20` | vorher echte Uhr; jetzt Zeitbasis | Mitternachtsfenster entfällt (Lauf beginnt 10:00 Berlin) | erledigt | — |
-| `e2e/global-setup.mjs` (Staging-Gate, `E2E_EXTERN_ADMIN`) | fremder Container ohne stellbare Uhr: Versatz 0, echte Uhr | B8 kann dort an Zyklustagen wie 2026-11-15 wieder 403 bekommen (siehe 1.2) | 2 | im Gate einen Krankheitstag mit freiem Vortag wählen (wie `dienstSicherstellen`) oder Gate-Container mit Testuhr |
+| `e2e/global-setup.mjs` / `e2e/abnahme-b-ablaeufe.spec.mjs` B8 (Staging-Gate, `E2E_EXTERN_ADMIN`) | fremder Container ohne stellbare Uhr: Versatz 0, echte Uhr | war: B8 konnte an Zyklustagen wie 2026-11-15 403 bekommen | erledigt | Tagsuche statt `heute + 3` (siehe 1.2); übrige Specs (`abnahme-a-ablauf`: `dienstSicherstellen` sucht schon; B7/B10: Berliner Tag des Laufs, kein Ruhezeitbezug) ohne nachweisbaren Ausfall, unverändert |
 | `pruefungen/prozess-wachen.test.js` (`uhrBefund`) | Wächter prüft je Datei: ein einziges `useFakeTimers` befreit die ganze Datei | geo.test.js hatte eine feste Uhr nur in einem Test und fiel deshalb nicht auf | 3 | Prüfung je `describe`/je Fundstelle oder Markierung `zeit-ok:` je Zeile verlangen |
 
 Weitere Dateien der eingefrorenen Bestandsliste (`pruefungen/prozess-wachen-bestand.json`, 92 Einträge) nutzen

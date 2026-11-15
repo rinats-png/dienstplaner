@@ -15,6 +15,7 @@ import { test, expect, anmelden, geheZu, axePruefen } from "./hilfen.mjs";
 import { BASIS, ZUGAENGE_VAR } from "./umgebung.mjs";
 import { ABNAHME_B_FLAECHEN as FL } from "./abnahme-b-flaechen.mjs";
 import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
+import { sucheDiensttag } from "./dienstsuche.mjs";
 
 const ABLAUF_PROJEKT = "390x844";
 /* QS-ZEIT: „heute“ nach der gemeinsamen Zeitbasis (e2e/zeitbasis.mjs) — derselbe Berliner Tag wie Server und Browser. */
@@ -39,6 +40,14 @@ async function apiAnmelden(rolle) {
   const r = await api("anmelden", { methode: "POST", rumpf: { zugangscode: code } });
   if (!r.d.token) throw new Error(`API-Anmeldung ${rolle} gescheitert (Status ${r.s})`);
   return r.d;
+}
+/** Berliner Betriebstag des Zielservers: lokal die gemeinsame Zeitbasis; gegen einen fremden Container (Versatz 0) der Kopf
+    „Date“ seiner Antwort, nicht die Uhr des Testrechners. */
+async function serverBetriebstag() {
+  if (versatzMs()) return abnahmeHeute();
+  const a = await fetch(`${BASIS}/gesund`);
+  const d = new Date(a.headers.get("date") || NaN);
+  return Number.isNaN(d.getTime()) ? abnahmeHeute() : abnahmeHeute(d);
 }
 const mandantVon = (g) => (((g.d.bestand || {}).mandanten) || [])[0] || {};
 const stempelAm = (m, pid, tag) => Object.entries(m.einstempeln || {}).filter(([k]) => k === `${pid}|${tag}`);
@@ -174,19 +183,21 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
-    const tag = tagPlus(HEUTE, 3);
-    /* Am Krankheitstag einen Dienst im Plan, damit „Plan unverändert“ prüfbar ist. QS-ZEIT: Der Tag folgt der gemeinsamen
-       Zeitbasis (Abnahmetag + 3 = 2026-11-17, Vortag frei; pruefungen/qs-b8-zeitbasis.test.js hält das fest). Mit der
-       echten Uhr traf derselbe Frühdienst am 2026-11-15 auf den Spätdienst des Vortags (Ruhezeit 8 h, 403). */
-    {
+    /* Am Krankheitstag einen Dienst im Plan, damit „Plan unverändert“ prüfbar ist. QS-ZEIT: Der Tag wird gesucht, nicht
+       gerechnet. Ausgang ist der Berliner Betriebstag des ZIELSERVERS (lokal die Zeitbasis, extern der Kopf „Date“ der
+       Serverantwort); ab Betriebstag + 3 nimmt der Server den ersten Tag an, an dem der Frühdienst die Ruhezeit (11 h)
+       einhält. Die Regel bleibt unberührt (Gegenprobe unten; e2e/dienstsuche.mjs, pruefungen/qs-b8-dienstsuche.test.js). */
+    const basis = await serverBetriebstag();
+    const gesucht = await sucheDiensttag(basis, async (t) => {
       const g = await api("bestand", { token: pl.token });
       const m = mandantVon(g);
-      if (!(m.abweichungen || {})[`${ma.person}|${tag}`]) {
-        m.abweichungen = { ...(m.abweichungen || {}), [`${ma.person}|${tag}`]: "F" };
-        const w = await api("bestand", { methode: "PUT", token: pl.token, rumpf: { bestand: g.d.bestand, etag: g.d.etag } });
-        expect(w.s, w.text.slice(0, 160)).toBe(200);
-      }
-    }
+      if ((m.abweichungen || {})[`${ma.person}|${t}`]) return { ok: true };      // Wiederholungslauf: Dienst schon da
+      m.abweichungen = { ...(m.abweichungen || {}), [`${ma.person}|${t}`]: "F" };
+      const w = await api("bestand", { methode: "PUT", token: pl.token, rumpf: { bestand: g.d.bestand, etag: g.d.etag } });
+      return { ok: w.s === 200, text: String((w.d && w.d.text) || w.text) };
+    });
+    const tag = gesucht.tag;
+    testInfo.annotations.push({ type: "abnahme-b", description: `B8 Tag ${tag} (Betriebstag ${basis}, abgewiesen: ${gesucht.abgelehnt.length})` });
     const planVorher = (mandantVon(await api("bestand", { token: pl.token })).abweichungen || {})[`${ma.person}|${tag}`];
     const faelleVorher = (mandantVon(await api("bestand", { token: pl.token })).krankmeldungen || []).length;
 
@@ -268,12 +279,14 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
 
   /* QS-ZEIT, Gegenprobe zu B8: Die Ruhezeitregel (11 h, § 5 ArbZG) bleibt sperrend. Spätdienst (bis 22:00) und am
      Folgetag Frühdienst (ab 06:00) = 8 h: Der Server weist die Planung mit 403 und der Ruhezeitmeldung ab, nichts wird
-     gespeichert. Tage nach der Zeitbasis (Abnahmetag + 4/+5), unabhängig vom positiven Ablauf B8 (+3). */
+     gespeichert. Tage nach dem Betriebstag des Zielservers (+ 4/+ 5); gilt auch mit echter Uhr (Staging-Gate): ein Frühdienst nach
+     Spätdienst ist an jedem Tag und in jedem Zyklusabschnitt eine echte Verletzung. */
   test("B8 Gegenprobe: Frühdienst nach Spätdienst verletzt die Ruhezeit und wird abgewiesen (403)", async ({}, testInfo) => {
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
-    const spaet = tagPlus(HEUTE, 4), frueh = tagPlus(HEUTE, 5);
+    const basis = await serverBetriebstag();                       // auch gegen den fremden Container mit echter Uhr
+    const spaet = tagPlus(basis, 4), frueh = tagPlus(basis, 5);
     const g = await api("bestand", { token: pl.token });
     expect(g.s, "Planung liest den Bestand").toBe(200);
     const m = mandantVon(g);

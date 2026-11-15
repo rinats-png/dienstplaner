@@ -249,7 +249,7 @@
     "pruefung:wcag-wp40": "vitest run pruefungen/wcag-wp40.test.js",
     "pruefung:objektbericht-dienstzeit": "vitest run pruefungen/objektbericht-dienstzeit.test.js",
     "pruefung:zeit-e": "vitest run pruefungen/zeit-e-zuschlaege-dst.test.js",
-    "pruefung:qs-zeitbasis": "vitest run pruefungen/qs-b8-zeitbasis.test.js",
+    "pruefung:qs-zeitbasis": "vitest run pruefungen/qs-b8-zeitbasis.test.js pruefungen/qs-b8-dienstsuche.test.js",
     "pruefung:geo-uhren": "node pruefungen/geo-uhren.mjs",
     "pruefung:wcag-wp40-browser": "node pruefungen/browser/wcag-wp40.mjs"
   },

@@ -68,6 +68,20 @@ describe("B8 auf fester Zeitbasis", () => {
   });
 });
 
+describe("Gegenprobe gilt auch mit echter Uhr (Staging-Gate, Versatz 0): an jedem Basistag des Zyklus", () => {
+  it("Spätdienst + 4, Frühdienst + 5 ist an jedem der 40 Basistage gesperrt, mit der Ruhezeitmeldung, ohne den Bestand zu ändern", () => {
+    for (let i = 0; i < 40; i++) {
+      const basis = tagPlus("2026-11-01", i);
+      const { m, ma } = demoAm(`${basis}T12:00:00.000Z`);
+      const vorher = JSON.stringify(m);
+      const spaet = tagPlus(basis, 4), frueh = tagPlus(basis, 5);
+      const r = planen(m, { [`${ma.id}|${spaet}`]: "S", [`${ma.id}|${frueh}`]: "F" }, basis);
+      expect([RUHEZEIT(spaet), RUHEZEIT(frueh)], `Basistag ${basis}`).toContain(r && r.sperre);
+      expect(JSON.stringify(m), "die Prüfung speichert nichts").toBe(vorher);
+    }
+  });
+});
+
 describe("uhrVersetzen (Server-Vorlauf und Init-Skript des Browsers)", () => {
   it("versetzt nur jetzt; feste Zeitpunkte, parse, UTC und instanceof bleiben", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
