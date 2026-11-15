@@ -140,6 +140,11 @@ jobs:
       - name: ZEIT-E, Zuschläge in den Umstellungsnächten
         run: npm run pruefung:zeit-e
 
+      # QS-ZEIT (docs/acc45/QS-ZEITABHAENGIGKEIT.md): B8 der Browserabnahme auf fester Zeitbasis, Ruhezeit-Gegenprobe
+      # sperrend; geo.test.js zusätzlich unter den Grenzuhren 23:59:50 und 00:30 Berlin (TZ=UTC).
+      - name: QS-ZEIT, feste Zeitbasis und Grenzuhren
+        run: npm run pruefung:qs-zeitbasis && npm run pruefung:geo-uhren
+
       # Staging O2 (C1/C2): Offline-Prüfung von deploy/staging-o2/ und dem Staging-Gate-Workflow
       # (Compose, Platzhalter, Caddyfile, Betriebsskript, Gate nur per Hand und nur lesend; kein Docker, kein Netz).
       - name: Staging O2, Vorbereitung offline

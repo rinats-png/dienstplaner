@@ -11,9 +11,10 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { istLoopback } from "../pruefungen/browser/abnahme-kern.mjs";
 import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
+import { ABNAHME_ZEITPUNKT, UHR_VERSATZ_VAR, uhrVersetzen, abnahmeHeute } from "./zeitbasis.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RAUM = "e2e-wp33";
@@ -39,9 +40,14 @@ export default async function globalSetup() {
         { cwd: WURZEL, stdio: "ignore" });
     }
     const daten = extern ? "" : await mkdtemp(path.join(tmpdir(), "centric-e2e-daten-")); if (daten) weg.push(daten);
+    /* QS-ZEIT: gemeinsame Zeitbasis (e2e/zeitbasis.mjs). Der eigene Testserver, jeder Browser und der Testcode laufen ab
+       dem festen Abnahmezeitpunkt; die Testprozesse erben den Versatz über die Umgebung. Fremder Container: echte Uhr. */
+    const versatz = extern ? 0 : Date.parse(ABNAHME_ZEITPUNKT) - Date.now();
+    process.env[UHR_VERSATZ_VAR] = String(versatz);
     const admin = extern || "e2e-admin-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    if (!extern) srv = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
-      env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: dist, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: admin,
+    if (!extern) srv = spawn(process.execPath, ["--import", pathToFileURL(path.join(WURZEL, "e2e", "uhr-vorlauf.mjs")).href, "server.mjs"],
+      { cwd: WURZEL, stdio: "ignore",
+      env: { ...process.env, [UHR_VERSATZ_VAR]: String(versatz), PORT: String(PORT), CENTRIC_STATIK: dist, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: admin,
         CENTRIC_PFEFFER: "e2e-pfeffer-" + Math.random().toString(36).slice(2), CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1",
         NODE_ENV: "development", CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true" } });
 
@@ -67,6 +73,7 @@ export default async function globalSetup() {
     try {
       const cx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "block",
         extraHTTPHeaders: { "x-forwarded-for": "10.33.251.1" } });
+      await cx.addInitScript(uhrVersetzen, versatz);                 // Demo-Bestand entsteht im Browser: derselbe Tag
       const pg = await cx.newPage();
       await pg.goto(BASIS + "/", { waitUntil: "load", timeout: 60000 });
       await pg.locator("input").first().fill(e.d.zugangscode);
@@ -104,7 +111,7 @@ export default async function globalSetup() {
     schluessel.forEach((k, i) => { codes[k] = zz.d.zugaenge[i].code; });
     process.env[ZUGAENGE_VAR] = JSON.stringify(codes);
     process.env[BETREIBER_VAR] = e.d.zugangscode;
-    console.log(`E2E: Server ${BASIS}, Demo-Bestand mit ${personen.length} erfundenen Personen, Zugänge für ${ROLLEN.join(", ")}`);
+    console.log(`E2E: Server ${BASIS}, Abnahmetag ${abnahmeHeute()}${extern ? " (echte Uhr, fremder Container)" : ""}, Demo-Bestand mit ${personen.length} erfundenen Personen, Zugänge für ${ROLLEN.join(", ")}`);
   } catch (x) {
     await aufraeumen();
     throw new Error("E2E-Einrichtung gescheitert: " + kurz(x));

@@ -23,6 +23,16 @@ import {
   berlinZeitpunkt, offenSeitMinuten, startZuordenbar, uhrzeitBerlin, heuteBerlin, OFFEN_MAX_MINUTEN,
 } from "../server/lib/zeiterfassung.mjs";
 
+/* QS-ZEIT (docs/acc45/QS-ZEITABHAENGIGKEIT.md, Priorität 1): feste Uhr für die ganze Datei. Vorher stand HEUTE einmal
+   in beforeAll fest, die Handler liefen mit der echten Uhr weiter, und minutenSicher wartete bis zu 11 s: Startete der
+   Lauf kurz vor Berliner Mitternacht (z. B. 22:59:50Z = 23:59:50 Berlin), liefen die Anfragen schon am neuen Berliner
+   Tag, der Test erwartete den alten — 9 von 62 Fällen scheiterten. Jetzt steht die Uhr (nur Date; Zeitgeber laufen
+   echt) auf CENTRIC_PRUEF_UHR oder dem gemeinsamen Abnahmezeitpunkt 2026-11-14 10:00 Berlin. Die Grenzfälle laufen
+   als eigener Lauf mit CENTRIC_PRUEF_UHR (pruefungen/geo-uhren.mjs: 23:59:50 und 00:30 Berlin). */
+const UHR_START = process.env.CENTRIC_PRUEF_UHR || "2026-11-14T09:00:00.000Z";
+if (!Number.isFinite(Date.parse(UHR_START))) throw new Error(`CENTRIC_PRUEF_UHR ist kein Zeitpunkt: ${UHR_START}`);
+const uhrFest = () => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(UHR_START)); };
+
 /* Ein Zeitpunkt nach Berliner Wanduhr. */
 const um = (datum, uhrzeit) => new Date(berlinZeitpunkt(datum, uhrzeit));
 /* Ein Korrekturende, das nie auf dem Beginn liegt (QS-4): Der Beginn eines vor 24 Stunden gestempelten Vorgangs ist
@@ -361,6 +371,7 @@ const MARKE = 50.0012345;                     // eine unverwechselbare Breite, d
 const T = {};
 
 beforeAll(async () => {
+  uhrFest();
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-geo-"));
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
@@ -403,7 +414,7 @@ beforeAll(async () => {
     expect(T[id], id).toBeTruthy();
   }
 });
-afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
+afterAll(async () => { vi.useRealTimers(); await rm(wurzel, { recursive: true, force: true }); });
 
 describe("Handler: Schalter aus (Vorgabe)", () => {
   it("Arbeitszeit wird erfasst, keine Prüfung — auch wenn eine Position mitkommt", async () => {
@@ -634,12 +645,16 @@ describe("Handler: Nachtdienst und Altbestand", () => {
 });
 
 describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () => {
-  /* Der Handler rechnet mit der echten Serverzeit. Der offene Beginn wird
-     deshalb relativ zu „jetzt" angelegt; damit Anlegen und Ausstempeln in
-     dieselbe Minute fallen, wird ein Minutenwechsel abgewartet. */
+  /* Der Handler rechnet mit der Serverzeit. Der offene Beginn wird deshalb
+     relativ zu „jetzt" angelegt; Anlegen und Ausstempeln fallen in dieselbe
+     Minute, weil die Uhr dieser Datei steht (QS-ZEIT, uhrFest). Früher wartete
+     minutenSicher hier einen Minutenwechsel ab — und schob den Lauf damit kurz
+     vor Mitternacht in den neuen Berliner Tag. Die Prüfung bleibt: steht die
+     Uhr nicht, schlägt sie fehl, statt still zu warten. */
   const minutenSicher = async () => {
-    const s = new Date().getSeconds();
-    if (s >= 50) await new Promise((r) => setTimeout(r, (61 - s) * 1000));
+    const a = Date.now();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(Date.now(), "feste Uhr (QS-ZEIT): Anlegen und Ausstempeln in derselben Minute").toBe(a);
   };
   const offenSeit = async (pid, minuten) => {
     const beginn = new Date(Math.floor(Date.now() / 60000) * 60000 - minuten * 60000);
@@ -763,7 +778,7 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
       const gleich = await anfrage("/api/stempel-korrektur", { methode: "POST", token: (await anfrage("/api/anmelden", { rumpf: { zugangscode: "GEO1-AAAA-0001" } })).token,
         rumpf: { personId: "z2", datum: "2026-12-09", start: "14:00", ende: "14:00", grund: "Ausstempeln vergessen" } });
       expect(gleich.status, gleich.roh).toBe(422);
-    } finally { vi.useRealTimers(); }
+    } finally { uhrFest(); }
   });
   it("nach vergessenem Ausstempeln lässt sich heute einstempeln; der alte Vorgang bleibt unberührt", async () => {
     await minutenSicher();
