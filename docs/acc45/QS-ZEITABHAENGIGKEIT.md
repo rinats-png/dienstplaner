@@ -1,0 +1,75 @@
+# QS-ZEIT: zeitabhängige Tests (Stand 2026-11-15)
+
+Eigenständiger QS-Befund, nicht durch PR #304 verursacht. Betreiberentscheidung 2026-11-15: Testdaten und Zeitsteuerung
+deterministisch auf eine gemeinsame Zeitbasis für Browser, Server und Seeds; die Ruhezeitregel (11 h, § 5 ArbZG) wird
+nicht abgeschwächt; nur nachgewiesene Ausfälle werden behoben, alles Übrige bleibt Liste.
+
+## 1. Behobene Ausfälle (nachgewiesen)
+
+### 1.1 `pruefungen/geo.test.js` (Priorität 1)
+
+- **Befund:** Startet die Datei kurz vor Berliner Mitternacht (z. B. 22:59:50Z = 23:59:50 Berlin), scheitern 9 von 62
+  Fällen (Zeilen 693, 702, 726, 785, 793, 812, 823, 835, 849 im Stand vor der Behebung). `beforeAll` setzte `HEUTE`
+  einmal; `minutenSicher` wartete bis zu 11 s auf einen Minutenwechsel, die Anfragen liefen danach am neuen Berliner
+  Tag, der Test erwartete den alten. Nachgestellt mit TZ=UTC und `vi.setSystemTime`: Start 22:59:50Z → 9 rot (auch auf
+  9131960f vor #301, also nicht durch #301 verursacht); 23:30Z, 23:59:50Z, 2026-11-15T12:00Z → 62/62.
+- **Kein Produktfehler:** Server und Oberfläche nutzen den Berliner Tag (`stempelZiel` in
+  `server/lib/zeiterfassung.mjs`, `src/stempelvorgang.js` über `betriebstag`). Kein Sicherheits- oder Datenbefund.
+- **Behebung (nur Test):** Die ganze Datei läuft unter fester Uhr (`vi.useFakeTimers({ toFake: ["Date"] })`,
+  `CENTRIC_PRUEF_UHR`, Vorgabe 2026-11-14 10:00 Berlin). `minutenSicher` wartet nicht mehr, sondern prüft, dass die Uhr
+  steht. Der Test mit wechselnden festen Uhren kehrt danach auf die feste Uhr zurück statt auf die echte. Keine
+  Zusicherung entfernt oder gelockert.
+- **Regression:** `npm run pruefung:geo-uhren` (`pruefungen/geo-uhren.mjs`) führt die Datei zusätzlich unter
+  2026-11-14T22:59:50Z und 2026-11-14T23:30Z mit TZ=UTC aus (lokal je 62/62); in CI im Schritt „QS-ZEIT“.
+
+### 1.2 Browserabnahme B8 (`e2e/abnahme-b-ablaeufe.spec.mjs`, Priorität 1)
+
+- **Befund:** CI `browser-abnahme` auf integration/release-v4 (df534301, Lauf 43650443252, 2026-11-15):
+  `PUT /api/bestand` → 403 „Einteilung am 2026-11-18 nicht möglich: Ruhezeit unter 11 Stunden“. Am 2026-11-14 grün.
+- **Ursache (nachgestellt mit `fachpruefungUebermittlung` und `demobestand()` unter fester Uhr):** B8 trägt am Tag
+  „heute + 3“ einen Frühdienst (06:00) für die erste aktive Beschäftigte des Demo-Betriebs Nordwacht ein. Deren
+  Schichtfolge hängt am Kalender (Vorlage v5, Anker `montag(Jahr-01-01)` = 2025-12-29, 35-Tage-Zyklus, Gruppe 1):
+  11-17 S, 11-18 S, 11-19 S, 11-20 frei, 11-21 N. Basis 11-14 → Tag 11-17, Vortag 11-16 frei → angenommen.
+  Basis 11-15 → Tag 11-18, Vortag 11-17 Spätdienst bis 22:00 → 8 h Ruhezeit → zu Recht gesperrt. Ergebnisse je
+  Basistag: 11-10 rot, 11-11 rot, 11-12/13/14 grün, 11-15/16/17 rot — kein Wochentags-, sondern ein Zykluseffekt.
+- **Behebung:** gemeinsame Zeitbasis `e2e/zeitbasis.mjs` (Abnahmezeitpunkt 2026-11-14 10:00 Berlin, Betriebstag nach
+  `server/lib/betriebszeit.mjs`):
+  - Server: `e2e/uhr-vorlauf.mjs` per `node --import`, nur für den Testserver aus `e2e/global-setup.mjs`; versetzt `Date`
+    um den Versatz (Uhr läuft ab dem Abnahmezeitpunkt weiter); bricht unter `NODE_ENV=production` ab.
+  - Browser: dieselbe Funktion `uhrVersetzen` als Init-Skript (`e2e/hilfen.mjs`, zweite Seiten in B8, Einrichtung in
+    `global-setup.mjs` — dort entsteht der Demo-Bestand im Browser, also auf demselben Tag).
+  - Testcode: `abnahmeHeute()`/`jetzt()` statt `new Date()` (Abnahme A und B).
+  - Kein `page.clock`: Dessen `install` ersetzt auch Zeitgeber und `performance.now`; der Versatz hält Zeitgeber, Netz und
+    Wartezeiten echt und ist mit der Serveruhr identisch.
+- **Gegenprobe (neu, nicht abgeschwächt):** „B8 Gegenprobe“ trägt Abnahmetag + 4 Spätdienst und + 5 Frühdienst ein und
+  erwartet 403 mit „Einteilung am … nicht möglich: Ruhezeit unter 11 Stunden.“ und unveränderte Abweichungen.
+  `pruefungen/qs-b8-zeitbasis.test.js` (`npm run pruefung:qs-zeitbasis`) hält ohne Browser fest: Ursache (Basis 11-15
+  sperrt), B8 positiv auf der Zeitbasis, Gegenprobe sperrt mit der Ruhezeitmeldung, und `uhrVersetzen` versetzt nur „jetzt“.
+- **Nicht lokal gelaufen:** Playwright ist auf dem Arbeitsrechner nicht installiert (Speicherengpass); die Browserjobs
+  prüft die CI (`browser-abnahme`).
+- **Restrisiko:** Staging-Gate (`E2E_EXTERN_ADMIN`, fremder Container): dessen Uhr lässt sich nicht stellen, dort läuft
+  die Suite mit der echten Uhr (siehe Liste, Zeile 9).
+
+## 2. Liste der übrigen zeitabhängigen Tests (nicht geändert)
+
+Suche über `e2e/*.spec.mjs`, `e2e/global-setup.mjs`, `pruefungen/**` nach `new Date()`, `Date.now()`, `heute()`,
+`heuteBerlin()`, `toISOString().slice(0, 10)`, `getDay()` und relativen Seeds; Dateien mit fester Uhr oder `// zeit-ok:`
+ausgenommen. Geprüft wurde, ob ein Tag einmal festgehalten und später gegen die Serveruhr verglichen wird. Keiner der
+folgenden Fälle ist bisher als Ausfall belegt; Priorität nach Wahrscheinlichkeit und Folge.
+
+| Datei:Zeile | Risiko | Evidenz | Priorität | Fix-Vorschlag |
+|---|---|---|---|---|
+| `pruefungen/korrekturworkflow.test.js:65`, `pruefungen/korrektur-nachtrag.test.js:76`, `pruefungen/geo-einsatzorte-handler.test.js:57`, `pruefungen/geo-spezifikation-handler.test.js:56` | gleiches Muster wie geo.test.js: `HEUTE = Z.heuteBerlin()` einmal in `beforeAll`, danach Stempel-/Korrekturhandler mit echter Serveruhr | scheitert, wenn der Dateilauf 00:00 Berlin (23:00Z Winter, 22:00Z Sommer) überspannt; ohne Wartezeiten seltener als geo (Laufzeit wenige Sekunden) | 2 | `uhrFest()` wie in geo.test.js; Grenzuhrlauf über `geo-uhren.mjs`-Muster |
+| `pruefungen/zeiterfassung.test.js:21`, `pruefungen/nachpruefung-wp11.test.js:38`, `pruefungen/rb2-krankmeldung.test.js:43`, `pruefungen/rb4-krankmeldung-benachrichtigung.test.js:52`, `pruefungen/imp6-mehrfachmodelle.test.js:41`, `pruefungen/stempel-fachpruefung.test.js:104`, `pruefungen/abnahme-a-b.test.js:129` | `HEUTE` beim Laden der Datei; Serverwege rechnen „heute“ selbst | wie oben (Mitternacht Berlin während des Laufs); imp6 zusätzlich Monatswechsel über `monat(n)` aus `HEUTE` (konsistent, solange `HEUTE` nicht veraltet) | 2 | feste Uhr je Datei (`vi.setSystemTime`), Tag aus derselben Uhr |
+| `pruefungen/stempeln.test.js:211`, `pruefungen/korrekturworkflow.test.js:261` | Spur-Präfix aus dem UTC-Tag des Tests; Server schreibt die Spur unter `jetzt.toISOString().slice(0, 10)` (`server/lib/schutz.mjs:1184`) | Zählungen scheitern, wenn Schreiben und Lesen 00:00 UTC (01:00 Berlin) überspannen; sonst konsistent | 3 | Präfix aus derselben festen Uhr oder beide Tage lesen |
+| `pruefungen/geo-einsatzorte-handler.test.js:114`, `:271` | UTC-Tag des Tests gegen Serverzeitstempel (`ortGeaendertAm`, `geoModusGeaendertAm`) | scheitert nur, wenn 00:00 UTC zwischen Sammeln (Zeile 271 im describe-Körper) und Anfrage liegt | 3 | feste Uhr |
+| `pruefungen/kalender-feed-autoritaet.test.js:110` | `gestern` = jetzt − 2 Tage (UTC) gegen Berliner Austrittstag | 1 Tag Puffer; praktisch stabil | 4 | `tagePlus(heuteBerlin(), -2)` |
+| `pruefungen/browser/geraete-wp21-ablaeufe.mjs:36` | `HEUTE = heute()` nach Gerätezeit (Läufer in UTC) gegen Berliner Servertag | 23:00–24:00Z (Winter) bzw. 22:00–24:00Z (Sommer) Vortag statt Berliner Tag → „kein Zugang (zu wenige Beschäftigte mit Dienst heute)“ | 3 | Berliner Tag (`betriebstag`) oder Zeitbasis wie e2e |
+| `pruefungen/browser/v4-abnahme.mjs:467` | Berichtsdatum als UTC-Tag | nur Anzeige im Bericht | 5 | Berliner Tag |
+| `e2e/abnahme-b-ablaeufe.spec.mjs` B7/Stempeluhr, `e2e/abnahme-a-ablauf.spec.mjs:20` | vorher echte Uhr; jetzt Zeitbasis | Mitternachtsfenster entfällt (Lauf beginnt 10:00 Berlin) | erledigt | — |
+| `e2e/global-setup.mjs` (Staging-Gate, `E2E_EXTERN_ADMIN`) | fremder Container ohne stellbare Uhr: Versatz 0, echte Uhr | B8 kann dort an Zyklustagen wie 2026-11-15 wieder 403 bekommen (siehe 1.2) | 2 | im Gate einen Krankheitstag mit freiem Vortag wählen (wie `dienstSicherstellen`) oder Gate-Container mit Testuhr |
+| `pruefungen/prozess-wachen.test.js` (`uhrBefund`) | Wächter prüft je Datei: ein einziges `useFakeTimers` befreit die ganze Datei | geo.test.js hatte eine feste Uhr nur in einem Test und fiel deshalb nicht auf | 3 | Prüfung je `describe`/je Fundstelle oder Markierung `zeit-ok:` je Zeile verlangen |
+
+Weitere Dateien der eingefrorenen Bestandsliste (`pruefungen/prozess-wachen-bestand.json`, 92 Einträge) nutzen
+`Date.now()`/`new Date()` überwiegend für Kennungen, Laufzeiten, Ablaufzeitpunkte mit großem Puffer oder relative Tage
+ohne Vergleich gegen einen später berechneten Servertag; dort ist kein Ausfallmuster erkennbar.

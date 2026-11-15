@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AXE_GATE, AXE_TAGS, ZUGAENGE_VAR } from "./umgebung.mjs";
+import { uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const AXE_QUELLE = readFileSync(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
@@ -55,6 +56,7 @@ export const test = basis.extend({
     await page.context().setExtraHTTPHeaders({ "x-forwarded-for": `10.33.${(h >> 8) % 240}.${(h % 254) + 1}` });
     page.setDefaultTimeout(15000);
     page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript(uhrVersetzen, versatzMs());            // QS-ZEIT: Browseruhr = Serveruhr (e2e/zeitbasis.mjs)
     await page.addInitScript(AXE_QUELLE);
     await page.addInitScript(seitenBeobachter, [...AXE_TAGS]);
     await page.addLocatorHandler(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" }), async () => {
