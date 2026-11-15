@@ -392,8 +392,10 @@ Offen und nicht Teil dieses Pakets: Ausdünnen der In-App-Sicherungen und der Sp
 Die Widerrufbücher `zustand/zugang-widerrufe.json` (E-M6) und `zustand/konto-widerrufe.json` (BE-1/BE-2) liegen bewusst
 **nicht** in der Sicherung der Ablage (sie dürfen nie mit `data/` zurückrollen). Sie sichert ein **eigener** Job:
 `deploy/sicherung/widerrufbuch-sicherung.sh` — stündlich, eigene Konfiguration (`widerrufbuch.env`, Vorlage
-`widerrufbuch.env.beispiel`), eigenes restic-Repository mit eigenem Passwort (empfohlen; derselbe Tag-/Host-Filter
-erlaubt technisch auch das Repository der Ablage), eigene Sperre `widerrufbuch.lock`, eigene Statusdatei
+`widerrufbuch.env.beispiel`), **eigenes restic-Repository (Pflicht)** mit eigenem Passwort — nie das der Ablage: das stündliche
+`forget --prune`/`check` sperrt das Repository exklusiv, die tägliche Sicherung scheiterte sonst an der Sperre; der
+Job vergleicht mit `RESTIC_REPOSITORY` aus `env` (daneben bzw. `~/.config/centric-sicherung/env`) und verweigert
+denselben Wert mit Exit 78 —, **restic ≥ 0.16.0** (alle sperrenden Aufrufe mit `--retry-lock 5m`), eigene Sperre `widerrufbuch.lock`, eigene Statusdatei
 `widerrufbuch-status.json`, eigener Totmannschalter. Aufbewahrung fest: `--keep-last 200 --keep-daily 90`.
 
 Ablauf je Lauf: Bücher in eine feste Stufe kopieren → letzte Sicherung zurückholen → im Produktionsbild (ohne Netz)
@@ -403,16 +405,28 @@ Nachweis: `restic check`, Snapshot-Liste, neuen Snapshot zurückholen, bytegleic
 Fehlt etwas (ein älterer, gültig gesiegelter Stand liegt in `zustand/`), endet der Lauf mit **Exit 3, Status
 `ruecksprung`, ohne Sicherung** — sonst verdrängte der alte Stand den neuen als „letzten“.
 
+Exit-Codes (eindeutig, Feld `code` der Statusdatei): 0 gut · 1 Fehler · **3 nur Rücksprung** · **4 restic
+gescheitert** (jeder restic-Code, auch dessen 3 „Snapshot unvollständig“, und die restic-Zeitgrenze) · **5
+Vergleichsstand fehlt** · 75 anderer Lauf · 78 Konfiguration (auch Repository der Ablage, restic < 0.16.0) · 124
+Zeitgrenze des Prüfcontainers. **Exit 5 / `vergleich-fehlt`:** für `RESTIC_HOST` gibt es keinen Snapshot, aber
+Snapshots unter anderer Kennung oder einen früheren Erfolg in der Statusdatei — der Job sichert dann **nicht** ohne
+Rücksprungprüfung. `RESTIC_HOST` auf die bisherige Kennung (Feld `host` der Statusdatei) zurücksetzen; nur bei
+bewusstem Neubeginn nach Prüfung einmal von Hand `widerrufbuch-sicherung.sh --erster-lauf`.
+
 **Einrichtung (Betreiber, nach Freigabe):** Speicherziel, Zugangsdaten und ein kostenpflichtiger Dienst brauchen die
 Freigabe des Betreibers; bis dahin bleibt es bei Platzhaltern und der Handkopie (BEREITSTELLUNG §5.4).
 
-1. Ziel wählen und freigeben (eigenes Repository, z. B. eigenes Unterverzeichnis der Storage Box oder eigener Bucket).
+1. Ziel wählen und freigeben — **eigenes Repository ist Pflicht** (z. B. eigenes Unterverzeichnis der Storage Box oder
+   eigener Bucket), nie das Repository der Ablage. `restic version` ≥ 0.16.0 sicherstellen.
 2. Passwortdatei anlegen (`install -m 600 /dev/null ~/.config/centric-sicherung/widerrufbuch-restic-passwort`, Inhalt
    aus dem Passwortmanager), `restic init` gegen das neue Repository.
 3. `cp deploy/sicherung/widerrufbuch.env.beispiel ~/.config/centric-sicherung/widerrufbuch.env && chmod 600 …`,
    Platzhalter ersetzen (Bild-Digest wie in `env`, Repository, Passwortdatei, eigener Ping).
 4. Skript nach `~/centric-sicherung/` kopieren (mit `gemeinsam.sh`), einmal von Hand laufen lassen: Exit 0,
-   `widerrufbuch-status.json` mit `"ergebnis":"ok"` und `"nachweis":"check+liste+rueckholung+siegel"`.
+   `widerrufbuch-status.json` mit `"ergebnis":"ok"` und `"nachweis":"check+liste+rueckholung+siegel"`; im Log
+   „Eigenes Repository: verschieden …“ und „restic X.Y.Z (>= 0.16.0)“.
+   **Vor der Aktivierung: Staging-Lauf mit echtem restic ≥ 0.16.0** (offener Punkt B3-8, Übungen in
+   `docs/acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md` §6.1 Schritt 4).
 5. Crontab-Zeile aus `crontab.beispiel` einkommentieren (stündlich, Minute 17).
 6. In `deploy/compose.yml` `CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS` und den Mount `/sicherung-status` einkommentieren,
    Dienst neu starten; `/gesund?detail=1` (lokal) zeigt `widerrufbuchsicherung: ok`.

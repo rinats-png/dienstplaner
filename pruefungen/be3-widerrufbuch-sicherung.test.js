@@ -135,29 +135,36 @@ const STUB_RESTIC = `#!/usr/bin/env bash
 # NUR PRÜFUNG: restic-Stub — lokales Repository als Ordner, kein Netz.
 set -euo pipefail
 echo "restic $*" >> "$STUB_LOG"
+if [[ "\${1:-}" == version ]]; then echo "restic \${STUB_RESTIC_VERSION:-0.17.3} compiled with go1.22.5 on linux/amd64"; exit 0; fi
 repo="\${RESTIC_REPOSITORY:?}"
 [[ -s "\${RESTIC_PASSWORD_FILE:?}" ]] || { echo "stub-restic: kein Passwort" >&2; exit 1; }
 cmd="$1"; shift
-if [[ -n "\${STUB_RESTIC_FEHLER:-}" && "$cmd" == "$STUB_RESTIC_FEHLER" ]]; then echo "stub-restic: $cmd scheitert absichtlich" >&2; exit 1; fi
+if [[ -n "\${STUB_RESTIC_FEHLER:-}" && "$cmd" == "$STUB_RESTIC_FEHLER" ]]; then echo "stub-restic: $cmd scheitert absichtlich" >&2; exit "\${STUB_RESTIC_FEHLERCODE:-1}"; fi
 [[ -f "$repo/config" ]] || { echo "Fatal: unable to open config file" >&2; exit 1; }
+# Host-Kennung je Snapshot (wie restic); ohne Eintrag: centric.
+hostvon() { cat "$repo/hosts/$1" 2>/dev/null || echo centric; }
+liste() { for d in $(ls "$repo/snapshots" | sort); do [[ -z "$1" || "$(hostvon "$d")" == "$1" ]] && echo "$d"; done; return 0; }
 case "$cmd" in
   cat) echo '{"version":2}' ;;
   snapshots)
+    h=""
+    while [[ $# -gt 0 ]]; do case "$1" in --host) h="$2"; shift 2 ;; --tag|--retry-lock) shift 2 ;; *) shift ;; esac; done
     printf '['; t=""
-    for d in $(ls "$repo/snapshots" | sort); do printf '%s{"id":"%s","short_id":"%s"}' "$t" "$d" "\${d:0:8}"; t=","; done
+    for d in $(liste "$h"); do printf '%s{"id":"%s","short_id":"%s"}' "$t" "$d" "\${d:0:8}"; t=","; done
     printf ']\\n' ;;
   backup)
-    pfade=()
-    while [[ $# -gt 0 ]]; do case "$1" in --json) shift ;; --host|--tag) shift 2 ;; *) pfade+=("$1"); shift ;; esac; done
+    pfade=(); h=centric
+    while [[ $# -gt 0 ]]; do case "$1" in --json) shift ;; --host) h="$2"; shift 2 ;; --tag|--retry-lock) shift 2 ;; *) pfade+=("$1"); shift ;; esac; done
     n=$(( $(ls "$repo/snapshots" | wc -l) + 1 ))
     id="$(printf '%064x' "$n")"
     for p in "\${pfade[@]}"; do mkdir -p "$repo/snapshots/$id$(dirname "$p")"; cp -r "$p" "$repo/snapshots/$id$p"; done
+    mkdir -p "$repo/hosts"; printf '%s' "$h" > "$repo/hosts/$id"
     echo '{"message_type":"status","percent_done":1}'
     echo "{\\"message_type\\":\\"summary\\",\\"snapshot_id\\":\\"$id\\",\\"data_added\\":42}" ;;
   restore)
-    was="$1"; shift; ziel=""
-    while [[ $# -gt 0 ]]; do case "$1" in --target) ziel="$2"; shift 2 ;; --host|--tag) shift 2 ;; *) shift ;; esac; done
-    [[ "$was" == latest ]] && was="$(ls "$repo/snapshots" | sort | tail -n1)"
+    was=""; ziel=""; h=""
+    while [[ $# -gt 0 ]]; do case "$1" in --target) ziel="$2"; shift 2 ;; --host) h="$2"; shift 2 ;; --tag|--retry-lock) shift 2 ;; -*) shift ;; *) [[ -z "$was" ]] && was="$1"; shift ;; esac; done
+    [[ "$was" == latest ]] && was="$(liste "$h" | tail -n1)"
     [[ -n "$was" && -d "$repo/snapshots/$was" ]] || { echo "stub-restic: kein Snapshot $was" >&2; exit 1; }
     mkdir -p "$ziel"; cp -r "$repo/snapshots/$was/." "$ziel/" ;;
   forget|check) echo "stub-restic: $cmd ok" ;;
@@ -203,14 +210,26 @@ const statusLesen = async () => JSON.parse(await readFile(STATUS(), "utf8"));
 const snapshots = async () => (await readdir(path.join(REPO, "snapshots"))).sort();
 const stubLog = async () => (existsSync(path.join(STUB, "stub.log")) ? readFile(path.join(STUB, "stub.log"), "utf8") : "");
 
-/** Den echten Job laufen lassen. */
-function job(env = {}) {
+/** Den echten Job laufen lassen (`erster`: mit --erster-lauf). */
+function job(env = {}, { erster = false } = {}) {
   const skript = path.join(WURZEL, "deploy", "sicherung", "widerrufbuch-sicherung.sh").replace(/\\/g, "/");
   const r = spawnSync(BASH, ["-c", 'p="$STUBVERZ"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$STUBVERZ")"; '
-    + 'PATH="$p:$PATH" exec bash "$SKRIPT" "$KONFIG"'], { encoding: "utf8", timeout: 240000,
+    + 'PATH="$p:$PATH" exec bash "$SKRIPT" ${JOBARG:+"$JOBARG"} "$KONFIG"'], { encoding: "utf8", timeout: 240000,
     env: { ...process.env, NODE_OPTIONS: "", STUBVERZ: posix(STUB), SKRIPT: skript, KONFIG: posix(path.join(T, "widerrufbuch.env")),
-      STUB_LOG: posix(path.join(STUB, "stub.log")), STUB_WURZEL: posix(WURZEL), ...env } });
+      STUB_LOG: posix(path.join(STUB, "stub.log")), STUB_WURZEL: posix(WURZEL), JOBARG: erster ? "--erster-lauf" : "", ...env } });
   return { code: r.status, aus: `${r.stdout}\n${r.stderr}` };
+}
+/** Eine weitere Konfiguration (Modus 600) aus der des Tests ableiten: Zeilen ersetzen bzw. anhängen. */
+async function konfigAbleiten(name, aenderungen) {
+  let text = await readFile(path.join(T, "widerrufbuch.env"), "utf8");
+  for (const [k, v] of Object.entries(aenderungen)) {
+    const zeile = `${k}=${v}`;
+    text = new RegExp(`^${k}=`, "m").test(text) ? text.replace(new RegExp(`^${k}=.*$`, "m"), zeile) : `${text}${zeile}\n`;
+  }
+  const ziel = path.join(T, name);
+  await writeFile(ziel, text, { mode: 0o600 });
+  await chmod(ziel, 0o600);
+  return posix(ziel);
 }
 
 /** Code widerrufen wie die Anwendung (echte Bibliothek): zuerst die Ablage, dann das Buch. */
@@ -306,12 +325,12 @@ describe.skipIf(!BASH)("BE-3: eigener Sicherungsjob (Stub-restic, lokales Reposi
     const r = job();
     expect(r.code, r.aus).toBe(0);
     const st = await statusLesen();
-    expect(st).toMatchObject({ art: "widerrufbuch", ergebnis: "ok", schritt: "fertig", snapshots: 1, buecher: 2, fehlend: 0,
-      nachweis: "check+liste+rueckholung+siegel" });
+    expect(st).toMatchObject({ art: "widerrufbuch", ergebnis: "ok", schritt: "fertig", code: 0, host: "centric", snapshots: 1,
+      buecher: 2, fehlend: 0, nachweis: "check+liste+rueckholung+siegel" });
     expect(st.letzte_erfolgreiche).toBe(st.zeit);
     expect(await snapshots()).toHaveLength(1);
     const log = await stubLog();
-    for (const befehl of ["restic cat config", "restic backup", "--tag widerrufbuch", "restic forget", "--keep-last 200",
+    for (const befehl of ["restic cat --retry-lock 5m config", "restic backup", "--tag widerrufbuch", "restic forget", "--keep-last 200",
       "--keep-daily 90", "restic check", "restic restore"]) expect(log, befehl).toContain(befehl);
     expect(log).toMatch(/docker run .*--network none .*--read-only/);
     /* Nur die beiden Bücher im Snapshot — nie die Schlüsselepoche. */
@@ -432,6 +451,89 @@ describe.skipIf(!BASH)("BE-3: eigener Sicherungsjob (Stub-restic, lokales Reposi
     } finally { await s.stoppen(); }
     /* Wieder in Ordnung: der nächste Lauf gelingt. */
     expect(job().code).toBe(0);
+  }, LIMIT);
+
+  it("--retry-lock 5m an jedem sperrenden restic-Aufruf; restic < 0.16.0 oder unklare Version → Code 78, nichts gesichert", async () => {
+    const zeilen = (await stubLog()).split("\n").filter((z) => /^restic (snapshots|restore|backup|forget|check|cat) /.test(z));
+    for (const befehl of ["snapshots", "restore", "backup", "forget", "check", "cat"])
+      expect(zeilen.some((z) => z.startsWith(`restic ${befehl} `)), befehl).toBe(true);
+    for (const z of zeilen) expect(z, z).toContain("--retry-lock 5m");
+    expect(await stubLog()).toContain("restic version");
+    for (const version of ["0.15.2", "0.9.6", "kaputt"]) {
+      const vorher = await snapshots();
+      const j = job({ STUB_RESTIC_VERSION: version });
+      expect(j.code, j.aus).toBe(78);
+      expect(j.aus).toMatch(/verlangt ist restic >= 0\.16\.0/);
+      expect(await statusLesen()).toMatchObject({ ergebnis: "fehler", schritt: "restic-version", code: 78 });
+      expect(await snapshots(), "nichts gesichert").toEqual(vorher);
+    }
+    for (const version of ["0.16.0", "1.0.0"]) expect(job({ STUB_RESTIC_VERSION: version }).code, version).toBe(0);
+  }, LIMIT);
+
+  it("restic endet selbst mit 3 („Snapshot unvollständig“): Job endet mit 4 (restic), nicht mit 3 (Rücksprung)", async () => {
+    for (const befehl of ["backup", "forget", "check"]) {
+      const j = job({ STUB_RESTIC_FEHLER: befehl, STUB_RESTIC_FEHLERCODE: "3" });
+      expect(j.code, j.aus).toBe(4);
+      expect(j.aus).toMatch(new RegExp(`restic ${befehl} gescheitert \\(restic-Code 3\\)`));
+      expect(j.aus).not.toMatch(/RÜCKSPRUNG ERKANNT/);
+      const st = await statusLesen();
+      expect(st).toMatchObject({ ergebnis: "fehler", schritt: `restic-${befehl}`, code: 4 });
+      expect(M.ws.sicherungLage(st, { jetzt: Date.now() }).text).toMatch(/Code 4 \(restic gescheitert\)/);
+    }
+    expect(job().code).toBe(0);
+  }, LIMIT);
+
+  it("Pflicht eigenes Repository: dasselbe wie in der Konfiguration der Ablage (env daneben) → Code 78, nichts gesichert", async () => {
+    const ablage = path.join(T, "env");
+    try {
+      for (const form of [posix(REPO), `"${posix(REPO)}/"`, `local:${posix(REPO)}`]) {
+        await writeFile(ablage, `# Platzhalter-Konfiguration der Ablage (nur Prüfung)\nRESTIC_REPOSITORY=${form}\n`);
+        const vorher = await snapshots();
+        const aufrufe = (await stubLog()).split("\nrestic ").length;
+        const j = job();
+        expect(j.code, `${form}\n${j.aus}`).toBe(78);
+        expect(j.aus).toMatch(/dasselbe Repository wie die Sicherung der Ablage/);
+        expect(j.aus, "Repository-Angabe nicht im Log").not.toContain(posix(REPO));
+        expect(await statusLesen()).toMatchObject({ ergebnis: "fehler", schritt: "konfiguration", code: 78 });
+        expect(await snapshots()).toEqual(vorher);
+        expect((await stubLog()).split("\nrestic ").length, "kein restic-Aufruf").toBe(aufrufe);
+      }
+      await writeFile(ablage, `RESTIC_REPOSITORY=${posix(path.join(T, "anderes-repo"))}\n`);
+      const j = job();
+      expect(j.code, j.aus).toBe(0);
+      expect(j.aus).toMatch(/Eigenes Repository: verschieden/);
+    } finally { await rm(ablage, { force: true }); }
+  }, LIMIT);
+
+  it("RESTIC_HOST geändert: kein stiller erster Lauf — Code 5 „vergleich-fehlt“, nichts gesichert; nur mit --erster-lauf", async () => {
+    const neu = await konfigAbleiten("wb-neuhost.env", { RESTIC_HOST: "centric-neu" });
+    const vorher = await snapshots();
+    let j = job({ KONFIG: neu });
+    expect(j.code, j.aus).toBe(5);
+    expect(j.aus).toMatch(/kein Snapshot für Host-Kennung 'centric-neu'/);
+    expect(j.aus).toMatch(/--erster-lauf/);
+    let st = await statusLesen();
+    expect(st).toMatchObject({ ergebnis: "vergleich-fehlt", schritt: "vergleichsstand", code: 5 });
+    expect(st.letzte_erfolgreiche, "früherer Erfolg bleibt vermerkt").toMatch(/^\d{4}-/);
+    expect(M.ws.sicherungLage(st, { jetzt: Date.now() })).toMatchObject({ stufe: "warnung" });
+    expect(M.ws.sicherungLage(st, { jetzt: Date.now() }).text).toMatch(/kein Vergleichsstand für diese Host-Kennung/);
+    expect(await snapshots()).toEqual(vorher);
+    /* Auch ohne Statusdatei: Snapshots unter anderer Host-Kennung (Suche ohne Host-Filter) verhindern den stillen Erstlauf. */
+    await rm(STATUS(), { force: true });
+    j = job({ KONFIG: neu });
+    expect(j.code, j.aus).toBe(5);
+    expect(await snapshots()).toEqual(vorher);
+    /* Bewusst bestätigt: sichert ohne Vergleichsstand unter der neuen Kennung. */
+    j = job({ KONFIG: neu }, { erster: true });
+    expect(j.code, j.aus).toBe(0);
+    expect(j.aus).toMatch(/--erster-lauf: vom Betreiber bestätigt/);
+    st = await statusLesen();
+    expect(st).toMatchObject({ ergebnis: "ok", host: "centric-neu", snapshots: 1 });
+    expect(await snapshots()).toHaveLength(vorher.length + 1);
+    /* Danach vergleicht die neue Kennung normal; die bisherige ebenso. */
+    expect(job({ KONFIG: neu }).code).toBe(0);
+    expect(job().code).toBe(0);
+    expect(await statusLesen()).toMatchObject({ ergebnis: "ok", host: "centric" });
   }, LIMIT);
 });
 
@@ -615,6 +717,13 @@ describe("BE-3: reine Bausteine (feste Uhr)", () => {
     expect(L(ok(3.1), { jetzt: JETZT })).toMatchObject({ stufe: "warnung", alterStunden: 3.1 });
     expect(L({ ergebnis: "fehler", schritt: "restic-backup", letzte_erfolgreiche: iso(JETZT - STUNDE) }, { jetzt: JETZT }).text)
       .toMatch(/gescheitert \(Schritt restic-backup\)/);
+    /* Eindeutige Exit-Codes: 3 nur Rücksprung, 4 restic, 5 Vergleichsstand fehlt, 78 Konfiguration. */
+    expect(M.ws.EXIT_BEDEUTUNG).toMatchObject({ 3: "(Rücksprung)", 4: "(restic gescheitert)", 5: "(Vergleichsstand fehlt)", 78: "(Konfiguration)" });
+    expect(L({ ergebnis: "fehler", schritt: "restic-check", code: 4 }, { jetzt: JETZT }).text)
+      .toMatch(/gescheitert \(Schritt restic-check, Code 4 \(restic gescheitert\)\)/);
+    expect(L({ ergebnis: "fehler", schritt: "konfiguration", code: "78; x" }, { jetzt: JETZT }).text).toMatch(/\(Schritt konfiguration\)/);
+    expect(L({ ergebnis: "vergleich-fehlt", letzte_erfolgreiche: iso(JETZT) }, { jetzt: JETZT }))
+      .toMatchObject({ stufe: "warnung", ergebnis: "vergleich-fehlt" });
     expect(L({ ergebnis: "ruecksprung", letzte_erfolgreiche: iso(JETZT) }, { jetzt: JETZT }).stufe).toBe("warnung");
     expect(L({ ergebnis: "ok" }, { jetzt: JETZT }).text).toMatch(/keine erfolgreiche Sicherung/);
     expect(L(null, { jetzt: JETZT }).text).toMatch(/nicht lesbar/);

@@ -147,6 +147,13 @@ export function fehlendeEintraege(aktuell, vorher, art) {
 }
 
 /**
+ * Exit-Codes des Jobs deploy/sicherung/widerrufbuch-sicherung.sh (Tabelle dort und in
+ * docs/acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md §2.2.1). 3 gilt NUR für einen erkannten Rücksprung.
+ */
+export const EXIT_BEDEUTUNG = Object.freeze({ 1: "(Fehler)", 3: "(Rücksprung)", 4: "(restic gescheitert)",
+  5: "(Vergleichsstand fehlt)", 75: "(anderer Lauf aktiv)", 78: "(Konfiguration)", 124: "(Zeitgrenze Container)" });
+
+/**
  * Lage der Sicherung aus der Statusdatei des Jobs — reine Funktion (feste Uhr in den Prüfungen).
  * @param {any} st  Inhalt der Statusdatei (null: nicht lesbar)
  * @param {{jetzt: number, buchGeaendertMs?: number|null}} o  buchGeaendertMs: jüngste Änderung eines der Bücher
@@ -161,9 +168,14 @@ export function sicherungLage(st, { jetzt, buchGeaendertMs = null }) {
   if (ergebnis === "ruecksprung")
     return { stufe: "warnung", ...werte, text: "Widerrufbuch kennt Einträge der letzten Sicherung nicht (älterer Stand zurückgelegt?) — "
       + "widerrufbuch-vereinen ausführen (BEREITSTELLUNG.md §5.4)" };
+  if (ergebnis === "vergleich-fehlt")
+    return { stufe: "warnung", ...werte, text: "kein Vergleichsstand für diese Host-Kennung, obwohl frühere Sicherungen bekannt sind — "
+      + "Rücksprungprüfung nicht möglich, nichts gesichert; RESTIC_HOST prüfen oder bewusst --erster-lauf (BETRIEB-SICHERUNG.md §7)" };
   if (ergebnis !== "ok") {
     const schritt = /^[a-z-]{1,40}$/.test(String(st.schritt)) ? String(st.schritt) : "unbekannt";
-    return { stufe: "warnung", ...werte, text: `letzter Lauf gescheitert (Schritt ${schritt}) — Anmeldungen sind davon nicht betroffen` };
+    const code = Number.isInteger(st.code) && st.code > 0 && st.code < 256 ? st.code : null;
+    const art = code === null ? "" : `, Code ${code}${EXIT_BEDEUTUNG[code] ? ` ${EXIT_BEDEUTUNG[code]}` : ""}`;
+    return { stufe: "warnung", ...werte, text: `letzter Lauf gescheitert (Schritt ${schritt}${art}) — Anmeldungen sind davon nicht betroffen` };
   }
   if (alterStunden === undefined) return { stufe: "warnung", ...werte, text: "keine erfolgreiche Sicherung bekannt" };
   if (alterStunden > SICHERUNG_WARNUNG_STUNDEN)

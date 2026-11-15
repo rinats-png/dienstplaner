@@ -38,8 +38,47 @@ dem Pfeffer), gemeinsame Herkunft, nichts fehlt → `restic backup --tag widerru
 bytegleich mit der Stufe (`cmp`) und Siegel der zurückgeholten Kopie gültig → `widerrufbuch-status.json`
 (`ergebnis`, `schritt`, `letzte_erfolgreiche`, `snapshot_id`, `snapshots`, Zahl der Bücher und Einträge, `fehlend`,
 `nachweis: "check+liste+rueckholung+siegel"`) und Log — beides ohne Pfeffer, Passwort, Kennungen oder Ping-URL.
-Eigene Konfiguration, eigenes Repository (empfohlen), eigene Sperre `widerrufbuch.lock` (die lange tägliche
+Eigene Konfiguration, **eigenes Repository (Pflicht)**, eigene Sperre `widerrufbuch.lock` (die lange tägliche
 Sicherung weist den Job nicht ab), eigener Totmannschalter. Nie gesichert: `schluessel-epoche.json` (Vorlage §3.3 ¹).
+
+**Eigenes Repository ist Pflicht (Nachbesserung nach Sicherheitsprüfung #313, MITTEL):** Der Job ruft stündlich
+`forget --prune` und `check` auf; beide sperren das Repository exklusiv. Die eigene Sperrdatei schützt nur auf dem
+Host, nicht im Repository — teilten sich beide Jobs ein Repository, scheiterte die tägliche Sicherung der Ablage an
+der Sperre. Deshalb: (1) Der Job liest `RESTIC_REPOSITORY` aus der Konfiguration der Ablage (`env` neben
+`widerrufbuch.env` und `~/.config/centric-sicherung/env`, nur lesend, ohne Ausführen), vergleicht normalisiert
+(Anführungszeichen, `~/`, `local:`, Schrägstriche am Ende, lokale Pfade aufgelöst) und verweigert denselben Wert mit
+Exit 78 (Schritt `konfiguration`), ohne die Angabe zu protokollieren. Liegt die Konfiguration der Ablage anderswo oder
+ist sie unlesbar, meldet der Job einen Hinweis — dann bleibt die Trennung Pflicht des Betreibers (§6.1). Verschiedene
+Schreibweisen derselben entfernten Adresse (z. B. `sftp:host:/x` und `sftp://host//x`) erkennt der Vergleich nicht.
+(2) Alle sperrenden restic-Aufrufe (`cat config`, `snapshots`, `restore`, `backup`, `forget --prune`, `check`)
+laufen mit `--retry-lock 5m`: eine fremde Sperre (z. B. eine Wartung von Hand) führt zu Warten statt zu sofortigem
+Scheitern, begrenzt und deutlich unter `ZEITGRENZE_RESTIC`. `--retry-lock` gibt es seit **restic 0.16.0**; der Job
+prüft `restic version` vorab und endet bei älterer oder unklarer Version mit Exit 78 (Schritt `restic-version`).
+
+#### 2.2.1 Exit-Codes (eindeutig) und Host-Kennung
+
+| Code | Bedeutung | Status `ergebnis` |
+|---|---|---|
+| 0 | gesichert, Nachweis vollständig | `ok` |
+| 1 | sonstiger Fehler (Kopieren, Prüfwerkzeug, Rückholung weicht ab) | `fehler` |
+| 3 | **nur** Rücksprung erkannt — nichts gesichert | `ruecksprung` |
+| 4 | restic gescheitert — jeder Code von restic, auch dessen eigener Exit 3 („Snapshot unvollständig“), und die restic-Zeitgrenze; der restic-Code steht im Log | `fehler` |
+| 5 | Vergleichsstand fehlt (siehe unten) — nichts gesichert | `vergleich-fehlt` |
+| 75 | anderer Lauf hält die Sperre | (unverändert) |
+| 78 | Konfiguration (auch: Repository der Ablage, restic < 0.16.0) | `fehler` |
+| 124 | Zeitgrenze des Prüfcontainers | `fehler` |
+
+Vorher endete ein restic-Exit 3 über `set -e` mit demselben Code wie „Rücksprung erkannt“. Jetzt beendet jeder
+restic-Fehler den Job mit 4, und eine 3 aus einer anderen Quelle wird im Abschluss zu 1. Die Statusdatei trägt `code`
+und `host`; `/gesund` nennt Schritt und Code („Code 4 (restic gescheitert)“), der Fail-Ping wie bisher Art, Schritt, Code.
+
+**Host-Kennung (Nachbesserung, NIEDRIG):** Findet der Job für `RESTIC_HOST` keinen Snapshot, behandelt er den Lauf nur
+dann als ersten, wenn auch **ohne Host-Filter** kein Snapshot mit Tag `widerrufbuch` existiert **und** die
+Statusdatei (außerhalb von restic) keinen früheren Erfolg und keine Snapshots vermerkt. Sonst: Exit 5, Status
+`vergleich-fehlt` (früherer Erfolg bleibt vermerkt, die Warnung bleibt bei jedem Lauf), Log mit Zahl der Snapshots
+und früherer Kennung — es wird **nicht** ohne Rücksprungprüfung gesichert. Abhilfe: `RESTIC_HOST` auf die bisherige
+Kennung setzen; nur bei bewusstem Neubeginn (neues Repository, neue Kennung) nach Prüfung durch den Betreiber
+`widerrufbuch-sicherung.sh --erster-lauf` (einmal von Hand).
 
 ### 2.3 Wiederherstellung (c) und Vereinigung (d)
 
@@ -99,7 +138,11 @@ falsches Siegel, fehlt bei Anker → Code- bzw. Konto-Zugang 503 (E-M6/BE-1), un
 | Kopie manipuliert / anderer Pfeffer / gekürzt | — | verweigert, nichts angefasst | „Vereinigung verweigert“ |
 | Kopie anderer Herkunft (gültig gesiegelt) | — | verweigert („andere Umgebung“) | dito |
 | aktuelles Buch unklar | 503 (E-M6/BE-1) | unverändert 503; `vereinen` verweigert | „unklares Buch“ |
-| restic scheitert / Job bleibt aus | — | `/gesund` warnt (Schritt, Alter); Anmeldungen offen | „restic scheitert“, Bausteine |
+| restic scheitert / Job bleibt aus | — | `/gesund` warnt (Schritt, Code, Alter); Anmeldungen offen | „restic scheitert“, Bausteine |
+| restic endet selbst mit 3 | Job Exit 3 = wie Rücksprung | Job Exit 4, Status `fehler`, Code 4 | „restic endet selbst mit 3“ |
+| Repository der Ablage eingetragen | nur „empfohlen“ | verweigert (78), kein restic-Aufruf | „Pflicht eigenes Repository“ |
+| fremde Sperre im Repository / restic < 0.16.0 | sofortiges Scheitern | `--retry-lock 5m`; alte Version → 78 | „--retry-lock …“ |
+| `RESTIC_HOST` geändert | stiller erster Lauf, ohne Rücksprungprüfung | Exit 5 `vergleich-fehlt`; nur `--erster-lauf` | „RESTIC_HOST geändert“ |
 | Abbruch (SIGKILL) während der Vereinigung | — | jedes Buch alt **oder** neu, gültig; Wiederholung vollendet | „harter Abbruch“ (2 Stellen) |
 | zweite Vereinigung derselben Kopie | — | nichts geschrieben | „vereinen … idempotent“, Eigenschaftstest |
 
@@ -108,18 +151,21 @@ falsches Siegel, fehlt bei Anker → Code- bzw. Konto-Zugang 503 (E-M6/BE-1), un
 `pruefungen/be3-widerrufbuch-sicherung.test.js` (`npm run pruefung:be3-widerrufbuch-sicherung`, CI `pruefung.yml`):
 echte Serverprozesse, echtes Werkzeug, echte Dateien, echter Job; restic und docker als Stubs (lokales Repository als
 Ordner, kein Netz; docker führt das Werkzeug mit dem node des Repositorys aus und bildet Volumes als Pfade nach), unter
-Windows zusätzlich `flock` und die Modusprüfung (NTFS). 16 Fälle: Job erster/zweiter Lauf mit Nachweis und Status ohne
+Windows zusätzlich `flock` und die Modusprüfung (NTFS). 20 Fälle: Job erster/zweiter Lauf mit Nachweis und Status ohne
 Geheimnisse; Rücksprung (rot ohne BE-3: widerrufener Code und gesperrtes Konto gelten wieder; Job Exit 3, kein
 Snapshot, Warnung, Anmeldungen offen); Vereinigung (Union, neu gesiegelt, Eingaben aufgehoben, idempotent, Server zieht
-nach); restic-Fehler (Status, Warnung, öffentlich 200, Anmeldungen offen); vier Ablehnungen; `widerrufbuch-pruefen`
+nach); restic-Fehler (Status, Warnung, öffentlich 200, Anmeldungen offen); `--retry-lock 5m` an jedem sperrenden
+Aufruf und Mindestversion (0.15.2/0.9.6/unklar → 78, 0.16.0/1.0.0 → 0); restic-Exit 3 bei backup/forget/check → Job 4;
+Repository der Ablage in drei Schreibweisen → 78 ohne restic-Aufruf, anderes Repository → 0; geänderte Host-Kennung →
+5 (mit und ohne Statusdatei), `--erster-lauf` → 0; vier Ablehnungen; `widerrufbuch-pruefen`
 0/3/2; unklares Buch 503; Hostverlust; SIGKILL nach dem Buch der Codes und beim Aufheben der Eingaben
 (`pruefungen/hilfen/em6-abbruch.mjs`); Schwellen der Alterswarnung mit fester Uhr; Eigenschaftstest (40 zufällige
 Paare, fester Zufall): Vereinigung entfernt nie etwas, Maximum der Generation, idempotent.
 
-Nicht mit echtem restic geprüft: die Befehlsform (`snapshots --json`, `restore latest --host --tag --target`,
-`forget --group-by host --keep-last --keep-daily --prune`, `check --read-data-subset`) entspricht der dokumentierten
-Kommandozeile von restic 0.18 und der vorhandenen Sicherung; ein Lauf gegen echtes restic gehört in die
-Staging-Übung (§6 Schritt 4). `shellcheck` läuft in `betrieb-sicherung.yml` (alle `deploy/sicherung/*.sh`).
+Nicht mit echtem restic geprüft (B3-8 bleibt offen): die Befehlsform (`snapshots --json`, `restore latest --host
+--tag --target`, `forget --group-by host --keep-last --keep-daily --prune`, `check --read-data-subset`, `--retry-lock`
+nach dem Unterbefehl, Ausgabe von `restic version`) entspricht der dokumentierten Kommandozeile von restic 0.16–0.18
+und der vorhandenen Sicherung; ein Lauf gegen echtes restic (≥ 0.16.0) gehört in die Staging-Übung (§6.1 Schritt 4). `shellcheck` läuft in `betrieb-sicherung.yml` (alle `deploy/sicherung/*.sh`).
 
 ## 5. Restrisiken
 
@@ -132,20 +178,27 @@ Staging-Übung (§6 Schritt 4). `shellcheck` läuft in `betrieb-sicherung.yml` (
 | B3-5 | Vereinigen braucht einen gestoppten Dienst (kurze Auszeit). | Gewollt (kein Wettlauf mit Schreibvorgängen des Servers). |
 | B3-6 | `/gesund` vertraut der Statusdatei des Hosts (nur für die Warnung). | Eine gefälschte Statusdatei kann nur eine Warnung unterdrücken; die Bücher selbst bleiben fail-closed. |
 | B3-7 | Nicht abgedeckt (unverändert): Passwörter, BE-2 A2/A3. | Siehe BE-1/BE-2-Dokumente. |
-| B3-8 | Die Prüfung nutzt Stubs; echtes restic noch nicht gegen diesen Job gelaufen. | Staging-Übung vor Aktivierung (§6 Schritt 4). |
+| B3-8 | **Offen:** Die Prüfung nutzt Stubs; echtes restic noch nicht gegen diesen Job gelaufen (auch `--retry-lock`, Versionsprüfung). | Staging-Übung mit echtem restic ≥ 0.16.0 vor Aktivierung (§6.1 Schritt 4). |
+| B3-9 | Der Vergleich mit dem Repository der Ablage erkennt nur die Konfiguration an den beiden festen Orten und gleiche Schreibweisen. | Eigenes Repository bleibt Betreiberpflicht (§6.1 Schritt 1), Abnahme prüft es. |
 
 ## 6. Betreiberschritte (produktives Ziel — Freigabe nötig)
 
 ### 6.1 Einrichtung
 
-1. **Freigabe:** Speicherziel (eigenes Repository, z. B. eigenes Unterverzeichnis der Storage Box oder eigener Bucket),
-   Zugangsdaten, ggf. Kosten. Entscheidung Löschschutz (append-only/Object Lock).
-2. Passwortdatei (Modus 600), `restic init`, `widerrufbuch.env` aus der Vorlage (Modus 600), Skripte nach
+1. **Freigabe:** Speicherziel — **Pflicht: eigenes Repository**, nie das der Ablage (z. B. eigenes Unterverzeichnis
+   der Storage Box oder eigener Bucket; §2.2), Zugangsdaten, ggf. Kosten. Entscheidung Löschschutz
+   (append-only/Object Lock).
+2. **restic ≥ 0.16.0** auf dem Host (`restic version`; ältere Fassung → Job Exit 78). Passwortdatei (Modus 600, anderes
+   Passwort als die Ablage), `restic init` gegen das **neue** Repository, `widerrufbuch.env` aus der Vorlage (Modus
+   600) im selben Ordner wie die `env` der Ablage (dann greift der Repository-Vergleich), Skripte nach
    `~/centric-sicherung/` — Schritte in `docs/BETRIEB-SICHERUNG.md` §7.
-3. Erster Lauf von Hand: Exit 0, Status `ok`, `nachweis` vollständig.
-4. **Staging-Übung mit echtem restic** (STAGING-PLAN-V4 §5.2 Schritt 2/4 der Vorlage): Sicherung, Hostverlust-Übung
-   (`zustand/` leer → `wiederherstellen --widerrufbuch-kopie`), Rücksprung-Übung (ältere Bücher zurücklegen → Job Exit 3
-   → `widerrufbuch-vereinen`).
+3. Erster Lauf von Hand: Exit 0, Status `ok`, `nachweis` vollständig, Log „Eigenes Repository: verschieden …“ und
+   „restic X.Y.Z (>= 0.16.0)“. `RESTIC_HOST` danach nicht mehr ändern (§2.2.1).
+4. **Staging-Übung mit echtem restic ≥ 0.16.0** (STAGING-PLAN-V4 §5.2 Schritt 2/4 der Vorlage; schließt B3-8):
+   Sicherung; Gegenprobe Repository der Ablage eingetragen → Exit 78; Sperrprobe (`restic lock` bzw. laufendes
+   `restic check` von Hand → Job wartet dank `--retry-lock` und gelingt); geänderte `RESTIC_HOST` → Exit 5;
+   Hostverlust-Übung (`zustand/` leer → `wiederherstellen --widerrufbuch-kopie`); Rücksprung-Übung (ältere Bücher
+   zurücklegen → Job Exit 3 → `widerrufbuch-vereinen`); tägliche Sicherung der Ablage am selben Tag ungestört.
 5. Crontab (stündlich, Minute 17), `CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS` und Mount in `deploy/compose.yml`
    einkommentieren, eigener Totmannschalter (Raster 1 h, Karenz 2 h).
 6. Optional **[unsicher, nicht umgesetzt]**: systemd-Pfadauslöser auf die Bücher (Sekunden statt ≤ 1 h).
@@ -156,6 +209,10 @@ Staging-Übung (§6 Schritt 4). `shellcheck` läuft in `betrieb-sicherung.yml` (
 2. `widerrufbuch-vereinen --zustand /zustand --kopie /kopie --daten /data` (im Bild, Kopie `:ro` eingebunden).
 3. Ausgabe lesen (Zahl neuer Einträge, Ordner der aufgehobenen Eingaben); Dienst starten; Job von Hand → Exit 0.
 4. Ursache klären (wer hat welchen Stand zurückgelegt?), Vorgang in `betrieb-protokoll.log`.
+
+Andere Codes (§2.2.1): **4** restic (Log nennt den restic-Code; Repository erreichbar? Sperre? Platz?), **5**
+`vergleich-fehlt` (`RESTIC_HOST` mit `host` der Statusdatei vergleichen und zurücksetzen; nur bei bewusstem
+Neubeginn `--erster-lauf`), **78** Konfiguration (Log: Repository der Ablage? restic-Version?).
 
 ### 6.3 Neue Werkzeuge
 
