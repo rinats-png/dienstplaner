@@ -145,10 +145,10 @@ Werkzeug mit `--zustand` fasst ohne Buch nichts an — und je Fall der dokumenti
    Prozess.
 9. Kein HTTP-Weg ruft heute `accountSperren`/`mitgliedschaftEntziehen`; ein künftiger Weg muss
    `widerrufWirksam`/`kontobuch.geschrieben === false` als 503 „Widerruf wirksam, Widerrufbuch nicht beschrieben“ melden.
-10. **Registrierungsweg prüft nur `konto.status`:** `server/lib/registrierung.mjs` (Bestätigen, Passwort setzen,
-    Einrichten) fragt nicht das Widerrufbuch ab. Ein nur im Buch (nicht in der Ablage) gesperrtes Konto kann diese
-    Schritte also noch durchlaufen, erhält aber keine Sitzung, weil die Anmeldung das Buch prüft (503/Absage). Folgearbeit:
-    `kontoZugangImBuch` auch im Registrierungsweg abfragen.
+10. **Registrierungsweg (behoben, Auflage 2):** `server/lib/registrierung.mjs` (Bestätigen, Passwort setzen, Einrichten)
+    fragt jetzt zusätzlich `kontoZugangImBuch` ab. Ein nur im Buch gesperrtes Konto wird mit Grund `gesperrt` abgewiesen;
+    ist das Buch nicht prüfbar, gewährt der Weg nichts (Grund `nicht-pruefbar`, fail-closed). Test:
+    `pruefungen/registrierung.test.js` „Konto-Widerrufbuch im Registrierungsweg“. Verschärfung, keine Abschwächung.
 11. Prüfkosten: je Konto-Prüfung ein `stat`; je Widerruf und Start ein Lauf über alle `account:`/`mitglied:`/
     `mitgliedlauf:`-Schlüssel (wie E-M6 über die Codes) — für Pilotgrößen unkritisch.
 

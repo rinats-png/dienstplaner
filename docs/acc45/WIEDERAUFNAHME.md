@@ -3,6 +3,12 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtrag 2026-11-15 06:35Z (Cloud-Routine, Folgelauf)
+
+- Abgleich: Integrationskopf `d390d70` (#307). Lease `cloud-nachtaufgabe` Epoche 13 abgelaufen (05:03Z), kein aktiver Koordinator, keine anderen schreibenden Sitzungen; offene PRs unverändert. Stündlicher Scheduled Task (Minute 32) aktiv, dieser Lauf ist sein Lauf.
+- Erledigt: BE-1 Auflage 2 als Code (Registrierungsweg prüft das Konto-Widerrufbuch, fail-closed), Test zuerst (rot ohne Änderung, grün mit). Registrierungs-, HTTP- und BE-1-Tests 109/109. Volllauf: 15 Fehler in fünf Dateien (abnahme-c-absturz, abnahme-c-schalter, gesund, server, staging-abnahme-3), dieselben vier prüfbaren Dateien schlagen auch auf dem unveränderten Integrationskopf in dieser Umgebung fehl (Umgebung, nicht Änderung).
+- Nächstes ausführbares Paket: SSOT-Nachtrag per `werkzeug/ssot-nach-integration.mjs` nach Merge des PR; danach unabhängige Pakete laut Entscheidungsliste B (alle Rest-Pakete brauchen Betreiberentscheidungen).
+
 ## Nachtrag 2026-11-15 04:40Z (Cloud-Routine, Folgelauf)
 
 - Abgleich: Kopf `d73ff57` (#306 Doku), keine neuen Merges seit 03:50Z; offene PRs unverändert; Lease `cloud-nachtaufgabe` Epoche 13 gültig bis 05:03Z.
