@@ -388,3 +388,11 @@ Hinweise aus den unabhängigen Reviews (nicht blockierend):
 - Merge-Konflikte: Die lange `pruefung`-Zeile in `package.json` kollidiert bei jedem parallelen PR. Lösung ohne Handarbeit: Zeile der Integration nehmen und eigene Skripte am Ende anhängen (`node werkzeug/package-kette-vereinigen.cjs` im Worktree mitten im Merge: vereinigt beide Seiten per `&&`, bricht bei Blöcken mit mehr als einer Zeile je Seite ab).
 - Hintergrund-Watcher (Merge bei grün) sind an die Sitzung gebunden und enden mit ihr. Der neue Koordinator startet sie neu, falls nötig.
 - Worktrees: viele Agenten-Worktrees unter `.claude/worktrees/`. Nur Worktrees mit ungesicherten Änderungen prüfen (`git status --porcelain`), bevor man sie entfernt. Nicht blind löschen.
+
+## Nachtrag 2026-11-15 (Integrationskopf `45219bd5`, Lease Epoche 15)
+
+- Integrationskopf `integration/release-v4` ist `45219bd5` (Merge #316). Seit `19f3ac8b` gemergt:
+- **#315 (WP-ZEIT-Rest):** gemeinsamer Helfer `zeitpunktAusWanduhr` in `betriebszeit.mjs`; `isteinfrieren` nutzt ihn. Review MERGE-OK, Differenzialtest 0 Abweichungen. Offen als eigenes Paket: die weiteren lokalen Berlin-Tagesformeln in `erstleitung`, `paketstand`, `planfreigabe` und `zeiterfassung` (`QS-ZEITABHAENGIGKEIT.md` §3) sowie die optionale Datumsvalidierung (fail-closed).
+- **#316 (Infra-Vorbereitung Staging/Backup/Restore):** `deploy/sicherung/widerrufbuch-probe.sh`, Vorlagen der restic-Übung, Doku `docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md`. Review MERGE-OK, Auflagen A1/A2 eingearbeitet. Nichts ausgeführt; Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-6.
+- Lease: `hauptchat` Epoche 15. Die Operator-Blocker sind unverändert; die einzige Liste bleibt `ENTSCHEIDUNGSLISTE.md`.
+- SSOT: `node werkzeug/ssot-nach-integration.mjs 315` und `... 316` (Dry-Run, ohne `--schreibe`) melden jeweils „kein Paket zugeordnet“ (Exit 2). Nichts geschrieben, keine Zuordnung erfunden. WP-ZEIT und die Infra-Vorbereitung haben im SSOT weiter kein Paket; ihr Stand steht in `ENTSCHEIDUNGSLISTE.md`.
