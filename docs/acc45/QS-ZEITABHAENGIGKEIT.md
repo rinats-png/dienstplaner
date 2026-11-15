@@ -81,3 +81,18 @@ folgenden Fälle ist bisher als Ausfall belegt; Priorität nach Wahrscheinlichke
 Weitere Dateien der eingefrorenen Bestandsliste (`pruefungen/prozess-wachen-bestand.json`, 92 Einträge) nutzen
 `Date.now()`/`new Date()` überwiegend für Kennungen, Laufzeiten, Ablaufzeitpunkte mit großem Puffer oder relative Tage
 ohne Vergleich gegen einen später berechneten Servertag; dort ist kein Ausfallmuster erkennbar.
+
+## 3. ZEIT-P2: Restbefunde heute() / ankerMontag / Wanduhr → Zeitpunkt (Stand 2026-11-15)
+
+- **P2 `heute()` (`server/lib/engine/zeit.mjs`)** und **P3 `ankerMontag` (`server/lib/leerbetrieb.mjs`)**: auf
+  integration/release-v4 bereits umgestellt (`betriebstag`, `montagDerWoche` aus `server/lib/betriebszeit.mjs`, WP-ZEIT T1);
+  Test `pruefungen/betriebstag.test.js` mit Zonenmatrix. Nachgeprüft: Mutation (UTC-Datum bzw. Ortszeit statt Betriebstag)
+  lässt 22 Fälle in TZ=UTC, America/Los_Angeles und Pacific/Auckland scheitern.
+- **Erledigt:** Der lokale Berlin-Hilfsbau in `server/lib/isteinfrieren.mjs` (`BERLIN_FORMAT`, `berlinVersatz`) ist entfallen;
+  die Abbildung Wanduhr → Zeitpunkt steht als `zeitpunktAusWanduhr` in `betriebszeit.mjs` (gleiche Auflösung: Frühjahrslücke
+  nach vorn, doppelte Herbststunde die spätere). `isteinfrieren.berlinZeitpunkt` delegiert; Verhalten unverändert
+  (`pruefungen/zeit-e-zuschlaege-dst.test.js` unverändert grün).
+- **Offen (nicht Teil dieses Pakets, kein Verhaltensfehler, nur Doppelimplementierung):** lokale Berlin-Tagesformeln in
+  `server/lib/erstleitung.mjs:107`, `server/lib/paketstand.mjs:127`, `server/lib/planfreigabe.mjs:32/37` (`sv-SE`/`en-GB` mit
+  `timeZone: "Europe/Berlin"`) sowie `server/lib/zeiterfassung.mjs` (`berlinZeitpunkt(datum, "HH:MM")`, `heuteBerlin`).
+  Sie liefern dasselbe Ergebnis wie `betriebstag`; Zusammenführung bei Gelegenheit, mit Golden-Vergleich je Stelle.

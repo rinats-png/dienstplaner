@@ -34,6 +34,7 @@
 import { einheitAm, imDienst, einheitDienst, teilzeitDienst, landFuerEinheit, nachtAnteil, nachtschwelle, eintrittFehlt } from "./fachpruefung.mjs";
 import { between, dow, addDays, toMin, fenster, uhrversatz, dim_, pad, dauerAm } from "./regelwerk.mjs";
 import { gewertet, abwHoechste, abwBezahlt, LOHNARTEN_STD, RECHEN_STAND } from "./lohnrechnung.mjs";
+import { zeitpunktAusWanduhr } from "./betriebszeit.mjs";
 import { feiertag } from "./feiertage.mjs";
 import { istZeitFuer, ungeplanterDienst, istVerfuegbar, UNGEPLANT_NAME, zeitraumMonat } from "./istdaten.mjs";
 
@@ -228,36 +229,17 @@ export function nachtAnteilAm(datum, d, einst) {
    Revisionsweg (Wiederöffnen mit Grund und neuer Abschluss, WP-16/WP-16c):
    Der neue Abschluss friert mit dem dann gültigen Rechenstand ein (rv).
 
-   Folgearbeit: server/lib/betriebszeit.mjs (PR #301) bietet bisher keine
-   Abbildung Wanduhr → Zeitpunkt (nur Zeitpunkt → Betriebstag/Wanduhr).
-   berlinZeitpunkt erst dorthin verlegen, wenn die Zeitbasis eine solche
-   Funktion mit derselben Auflösung (Lücke vorwärts, doppelte Stunde spät) hat.
+   Die Abbildung Wanduhr → Zeitpunkt liegt seit ZEIT-P2 in betriebszeit.mjs (zeitpunktAusWanduhr).
    -------------------------------------------------------------------------- */
 export const BETRIEBSZONE_ZUSCHLAEGE = "Europe/Berlin";
 /** Rechenstand vor ZEIT-E: Kalendertage an der Wanduhr, ohne Zeitumstellung (abgeschlossene Altmonate). */
 export const RECHEN_STAND_WANDUHR = 2;
-const BERLIN_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: BETRIEBSZONE_ZUSCHLAEGE, hourCycle: "h23",
-  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-/** Versatz von Europe/Berlin gegen UTC in Minuten zu einem (minutengenauen) Zeitpunkt. */
-function berlinVersatz(ms) {
-  const t = {};
-  for (const x of BERLIN_FORMAT.formatToParts(new Date(ms))) t[x.type] = x.value;
-  return Math.round((Date.UTC(Number(t.year), Number(t.month) - 1, Number(t.day), Number(t.hour), Number(t.minute)) - ms) / 60000);
-}
 /**
  * Der wirkliche Zeitpunkt (ms seit 1970, UTC) einer Wanduhrzeit in Europe/Berlin: Kalendertag `datum` plus
- * `minuten` (auch über 1440 hinaus, dann Folgetag). Mehrdeutige Wanduhrzeiten fest aufgelöst: Die Frühjahrslücke
- * (02:00–02:59 gibt es nicht) wird nach vorn geschoben (Versatz vor dem Sprung, 02:30 → 03:30 Sommerzeit), die
- * doppelte Herbststunde ist die spätere (Winterzeit). tagesanteile braucht nur Mitternachten — die sind in
- * Europe/Berlin immer eindeutig.
+ * `minuten` (auch über 1440 hinaus, dann Folgetag). Rechnung und Auflösung der Lücke/Doppelstunde stehen in
+ * betriebszeit.mjs (zeitpunktAusWanduhr); tagesanteile braucht nur Mitternachten.
  */
-export function berlinZeitpunkt(datum, minuten) {
-  const [j, mo, t] = String(datum).split("-").map(Number);
-  const wand = Date.UTC(j, mo - 1, t) + minuten * 60000;
-  const passend = [60, 120].filter((v) => berlinVersatz(wand - v * 60000) === v);
-  const v = passend.length === 1 ? passend[0] : 60;
-  return wand - v * 60000;
-}
+export const berlinZeitpunkt = (datum, minuten) => zeitpunktAusWanduhr(datum, minuten, BETRIEBSZONE_ZUSCHLAEGE);
 
 /**
  * Zerlegt einen Dienst in Kalendertage (Nachtdienst Sa 21:30–So 07:15: anteilig Samstag und Sonntag).
