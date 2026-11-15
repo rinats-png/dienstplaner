@@ -837,11 +837,12 @@ liegt wie bei der Schlüsselepoche außerhalb von `data/`: das Widerrufbuch
 `zustand/zugang-widerrufe.json` (nur Prüfsummen, nie Codes oder Schlüssel; mit einem aus
 dem Pfeffer abgeleiteten Siegel), dazu der Anker `widerrufbuch:anker` in `data/` (wird
 mitgesichert). Kontosperren und entzogene Mitgliedschaften deckt seit BE-1 ein **eigenes**
-Konto-Widerrufbuch ab (siehe unten). **Nicht** abgedeckt sind Passwörter,
-2FA-Geheimnisse, benutzte Wiederherstellungscodes und einzeln zurückgesetzte
-Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (BE-1 Passwörter,
-BE-2). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`,
-`docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`.
+Konto-Widerrufbuch ab (siehe unten); seit BE-2 A1 auch, dass ein Konto-Faktor einmal aktiv
+war, und eingelöste Wiederherstellungscodes von Konten. **Nicht** abgedeckt sind Passwörter,
+abgelöste 2FA-Geheimnisse (BE-2 A2) und einzeln zurückgesetzte Kalenderfeeds (A3) — eine
+ältere Sicherung bringt deren alten Stand zurück. Einzelheiten und Matrix:
+`docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`, `docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`,
+`docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md`.
 
 - **Immer mit `--zustand` wiederherstellen.** Ohne `--zustand` gibt das Werkzeug nur einen Hinweis aus und bricht
   **nicht** ab; die Widerrufe aus dem Buch werden dann erst vom nächsten Serverstart nachgezogen.
@@ -902,6 +903,18 @@ BE-2). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`,
   keine Kopie: bei gestopptem Dienst `node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu
   --zustand /zustand --daten /data` (sammelt aus `data/`; was nur im verlorenen Buch stand,
   danach von Hand erneut sperren bzw. entziehen).
+- **Zweiter Faktor von Konten (BE-2 A1):** Im selben Konto-Widerrufbuch stehen (nur als HMAC-Kennung) Konten, deren
+  Faktor einmal **aktiv** war, und eingelöste Wiederherstellungscodes. Fehlt einem solchen Konto nach dem Rücksprung der
+  Faktor, ersetzt das Werkzeug (`--zustand`) bzw. der Start ihn in `data/` durch einen **gesperrten Platzhalter** (kein
+  Geheimnis wird zurückgelegt): Anmeldung **403** „zweiter Faktor fehlt im wiederhergestellten Datenstand“, keine
+  Neueinrichtung mit dem Passwort. Ein eingelöster Code wird in `data/` als verbraucht vermerkt und abgewiesen.
+  Ausgabe lesen: `Zweiter Faktor (BE-2 A1): … n Pflicht-Faktoren fehlen in der Sicherung und sind gesperrt` /
+  Startprotokoll `WARNUNG Konto-Widerrufbuch: n Konto/Konten mit Pflicht-Faktor ohne Faktor`. Ist n > 0: **zuerst eine
+  jüngere Sicherung suchen, die den Faktor enthält, und diese mit `--zustand` zurückspielen** (dann gilt die Anmeldung
+  mit Code aus der App wieder). Gibt es keine: Es gibt bewusst keinen Freischaltweg (kein Werkzeug, keine Route); die
+  Leitung lädt die Person mit neuer Adresse neu ein, das alte Konto bleibt gesperrt; Vorgang in
+  `betrieb-protokoll.log` vermerken. Ein Offline-Werkzeug dafür ist eine offene Betreiberentscheidung
+  (`docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md` §6.2). Immer erst diese Fassung starten, dann ein älteres Bild.
 - **Restore-Test mit `--zustand`:** Gesperrte Konten und Verwalterschlüssel, der Anker
   und wiederhergestellte Marken weichen dann gewollt vom Manifest ab (die Ausgabe nennt die
   Zahlen). Für den Datei-für-Datei-Vergleich ohne `--zustand` zurückspielen, wie in der

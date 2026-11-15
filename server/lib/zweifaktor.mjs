@@ -412,7 +412,7 @@ const ausstehendGueltig = (e, ms) => !!(e && e.stand === "ausstehend" && Number.
  * `wiederherstellungNeuNoetig`: aktiv, aber nicht in Fassung 2 — Aufforderung zur Neugenerierung.
  * @returns {Promise<{aktiv: boolean, ausstehend: boolean, ausstehendSeitMin: number|null, wiederherstellungUebrig: number,
  *   wiederherstellungFassung: number|null, wiederherstellungNeuNoetig: boolean, ausVerlust: boolean,
- *   faktorKennung: string|null}>}
+ *   faktorKennung: string|null, ruecksprungSperre: boolean}>}
  */
 export async function zweifaktorStand(store, id, ms = Date.now()) {
   const e = await store.get(SCHLUESSEL(id), { type: "json" });
@@ -434,6 +434,9 @@ export async function zweifaktorStand(store, id, ms = Date.now()) {
     ausVerlust: !!(e && e.stand === "ausstehend" && typeof e.verlustFall === "string" && e.verlustFall),
     /** WR-3: woran ein Verlustfall den Faktor bindet — wechselt mit jeder Einrichtung. */
     faktorKennung: faktorKennungAus(e),
+    /** BE-2 A1 (kontowiderrufbuch.mjs, sperrFaktor): gesperrter Platzhalter für einen nach einem Rücksprung fehlenden
+        Pflicht-Faktor — aktiv, ohne Geheimnis; nichts besteht ihn. */
+    ruecksprungSperre: !!(e && e.ruecksprungSperre === true),
   };
 }
 
@@ -533,10 +536,16 @@ async function nachweiseRaeumen(store, ms) {
  *
  * @param {any} store
  * @param {string} id
- * @param {{code?: string, nachweis?: string, nachweisErlaubt?: boolean, ms?: number}} a
- * @returns {Promise<{ok: boolean, art?: string, grund?: string}>}
+ * BE-2 A1 (`whBuch`, nur Konto-Faktor, kontofaktor.mjs): Vor dem Einlösen eines Wiederherstellungscodes fragt
+ * `whBuch(stelle)` das Konto-Widerrufbuch, ob dieser Code (Stelle: Einrichtung, Satz, Selektor) schon verbraucht ist —
+ * auch wenn eine zurückgespielte Ablage ihn als unverbraucht zeigt. Ja: nicht eingelöst. Wirft whBuch, geht der Fehler
+ * an den Aufrufer (fail-closed). Mit `whBuch` trägt ein Erfolg die Stelle (`stelle`), damit der Aufrufer sie ins Buch
+ * schreibt; ohne bleibt die Antwort wie bisher.
+ * @param {{code?: string, nachweis?: string, nachweisErlaubt?: boolean, ms?: number,
+ *   whBuch?: (stelle: {bindung: string, generation: number, sel: string}) => Promise<boolean>}} a
+ * @returns {Promise<{ok: boolean, art?: string, grund?: string, stelle?: {bindung: string, generation: number, sel: string}}>}
  */
-export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErlaubt = true, ms = Date.now() }) {
+export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErlaubt = true, ms = Date.now(), whBuch = undefined }) {
   if (nachweisErlaubt && nachweis && !code) {
     const schl = NACHWEIS(nachweisHash(String(nachweis)));
     const n = await store.get(schl, { type: "json" });
@@ -577,7 +586,9 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
       if (!istV2(e.wiederherstellung) || e.wiederherstellung.epoche !== ep.epoche) return { ok: false, grund: "epoche-alt" };
     }
     /* Wiederherstellungscode: verbraucht, sobald er passt. */
-    if (istV2(e.wiederherstellung)) return wiederherstellungEinloesen(store, id, e, c, ms);
+    if (istV2(e.wiederherstellung)) return wiederherstellungEinloesen(store, id, e, c, ms, whBuch);
+    /* BE-2 A1: Mit Buch gilt das Altformat nicht (es hat keine Stelle, die das Buch kennen könnte) — fail-closed. */
+    if (whBuch) return { ok: false, grund: "code" };
     /* Altformat (Fassung 1): nur lesen und verbrauchen, bis neu generiert wird. */
     const h = codeHashV1(c);
     const liste = Array.isArray(e.wiederherstellung) ? e.wiederherstellung : [];
@@ -598,7 +609,7 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
  * nach erfolgreichem Schreiben; ein Schreibfehler geht an den Aufrufer.
  * @returns {Promise<{ok: boolean, art?: string, grund?: string}>}
  */
-async function wiederherstellungEinloesen(store, id, e, code, ms) {
+async function wiederherstellungEinloesen(store, id, e, code, ms, whBuch = undefined) {
   const k = whSchluessel();
   if (!k) return { ok: false, grund: "pfeffer" };
   const w = e.wiederherstellung;
@@ -614,11 +625,14 @@ async function wiederherstellungEinloesen(store, id, e, code, ms) {
   const soll = ziel ? Buffer.from(String(ziel.wert), "base64") : Buffer.alloc(WH_LAENGE);
   const treffer = !!ziel && soll.length === ist.length && timingSafeEqual(soll, ist);
   if (!treffer) return { ok: false, grund: "code" };
+  /* BE-2 A1: Steht der Code im Konto-Widerrufbuch als verbraucht, ist er es — gleich, was die Ablage sagt. */
+  const ort = { bindung: String(e.generation ?? ""), generation: w.generation, sel: /** @type {{sel: string}} */ (z).sel };
+  if (whBuch && await whBuch(ort)) return { ok: false, grund: "code" };
   const neu = eintraege.slice();
   neu[stelle] = { ...ziel, verbraucht: new Date(ms).toISOString() };
   await store.setJSON(SCHLUESSEL(id), { ...e,
     wiederherstellung: { ...w, eintraege: neu, verbrauchtZahl: w.verbrauchtZahl + 1 } });
-  return { ok: true, art: "wiederherstellung" };
+  return { ok: true, art: "wiederherstellung", ...(whBuch ? { stelle: ort } : {}) };
 }
 
 /**

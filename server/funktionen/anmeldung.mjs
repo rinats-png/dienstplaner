@@ -418,6 +418,9 @@ function faktorAbsage(e) {
     return antwort({ ok: false, fehler: "zweifaktor", zweifaktor: "erforderlich", hinweis: e.hinweis }, 401, weg);
   if (g === "zweifaktor-falsch" || g === "zweifaktor-wiederholt")
     return antwort({ ok: false, fehler: "zweifaktor", zweifaktor: "falsch", hinweis: e.hinweis }, 401, weg);
+  /* BE-2 A1: Pflicht-Faktor fehlt nach einem Rücksprung — kein vorübergehender Fehler, sondern ein Betreiberfall (403). */
+  if (g === "zweifaktor-ruecksprung")
+    return antwort({ ok: false, fehler: "zweifaktor", zweifaktor: "ruecksprung", hinweis: e.hinweis }, 403, weg);
   if (g === "zweifaktor-gebremst") {
     const z = zuVielAntwort(e.wartet || 60);
     z.headers.set("set-cookie", keksWeg());
@@ -430,7 +433,9 @@ function faktorAbsage(e) {
 
 /** Statuscodes der Einrichtung, je innerem Grund. */
 const AKTION_STATUS = { "aktion-unbekannt": 400, "zweifaktor-erforderlich": 400, "faktor-aktiv": 409,
-  "faktor-ausstehend": 409, "faktor-nichts": 409, "zweifaktor-falsch": 401 };
+  "faktor-ausstehend": 409, "faktor-nichts": 409, "zweifaktor-falsch": 401,
+  /* BE-2 A1: Pflicht-Faktor fehlt nach einem Rücksprung (Betreiberfall). */
+  "zweifaktor-ruecksprung": 403 };
 
 /**
  * Einrichtung des zweiten Faktors am Konto (stand, beginnen, bestaetigen).

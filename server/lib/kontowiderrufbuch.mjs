@@ -67,6 +67,30 @@
    Mandantentrennung: Eine entzogene Mitgliedschaft betrifft genau diese
    Beziehung Konto×Raum; eine Kontosperre die Identität (wie accountSperren).
    Kein Eintrag wirkt auf ein anderes Konto oder einen anderen Raum.
+
+   BE-2 Stufe A1 (Betreiberentscheidung 2026-11-14; docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md):
+   zwei weitere Abschnitte im SELBEN Buch (gleiches Siegel, gleiche Mechanik,
+   eine Fassung ohne sie erhält sie als „künftige Abschnitte“):
+     faktorpflicht: { <Kennung „faktor|Konto“>: { am, grund } }
+        Ein Konto, dessen zweiter Faktor einmal AKTIV war. Monoton: einmal
+        Pflicht, immer Pflicht. Kein Geheimnis, kein Fingerabdruck des
+        Geheimnisses, nur die HMAC-Kennung des Kontos.
+     whverbraucht:  { <Kennung „whcode|Konto|Einrichtung|Satz|Selektor“>: { am, grund } }
+        Ein eingelöster Wiederherstellungscode — gekennzeichnet über seine
+        Stelle (Einrichtungsgeneration des Faktors, Satzgeneration, Selektor;
+        zweifaktor.mjs), nie über den Code oder seinen Prüfteil.
+   Beide sind aus der Ablage einsammelbar (aktiver Faktor, Eintrag mit
+   `verbraucht`), Reihenfolge wie oben: ZUERST die Ablage, DANN das Buch,
+   bei Fehlschlag Nachtrag N. Durchsetzung: Prüfen (accountanmeldung.mjs:
+   Pflicht im Buch, Faktor in der Ablage nicht aktiv → keine Anmeldung, keine
+   Neueinrichtung mit dem Passwort; kontofaktor.mjs: Code im Buch → nicht
+   eingelöst) und Normalisieren (Serverstart, Werkzeug): ein fehlender
+   Pflicht-Faktor wird in der Ablage durch einen GESPERRTEN Platzhalter
+   ersetzt (aktiv, ohne Geheimnis — jede Fassung mit Konto-Faktor verlangt
+   dann einen Faktor, den es nicht gibt; nie wird ein Geheimnis
+   zurückgelegt); ein verbrauchter Code wird in der Ablage als verbraucht
+   vermerkt. Stufen A2/A3 (abgelöste Geheimnisse, Feeds) sind weitere
+   Abschnitte derselben Gestalt.
    ========================================================================== */
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -80,6 +104,17 @@ export const KONTOBUCH_NACHTRAG = "kontowiderrufbuch:nachtrag";
 export const ACCOUNT_PRAEFIX = "account:";
 export const MITGLIED_PRAEFIX = "mitglied:";
 export const MITGLIEDLAUF_PRAEFIX = "mitgliedlauf:";
+/** BE-2 A1: Abschnitte im Buch. */
+export const FAKTORPFLICHT = "faktorpflicht";
+export const WHVERBRAUCHT = "whverbraucht";
+/** BE-2 A1: Ablageschlüssel des Faktors (zweifaktor.mjs) — hier wiederholt wie die Präfixe oben (kontofaktor.mjs lädt dieses Modul). */
+export const FAKTOR_PRAEFIX = "zweifaktor:";
+/** Wie kontofaktor.mjs `kontoFaktorId` (Gleichheit belegt die Prüfung be2-a1). @param {string} accountId */
+export const kontoFaktorSchluessel = (accountId) =>
+  `${FAKTOR_PRAEFIX}${createHash("sha256").update(`konto-account:${String(accountId)}`).digest("hex")}`;
+/** Der gesperrte Platzhalter für einen Pflicht-Faktor, der in der Ablage fehlt: aktiv, ohne Geheimnis, ohne Codes. */
+export const sperrFaktor = (am) => ({ stand: "aktiv", ruecksprungSperre: true, geheimnis: null, letzterSchritt: -1,
+  wiederherstellung: null, aktiviert: am, generation: "ruecksprung-sperre" });
 /** Der Text für einen Aufrufer, dessen Widerruf wirkt, dessen Bucheintrag aber scheiterte (wie E-M6). */
 export const KONTOBUCH_NICHT_BESCHRIEBEN = "Widerruf wirksam, Widerrufbuch nicht beschrieben.";
 const FASSUNG = 1;
@@ -111,6 +146,16 @@ export const kontoKennung = (accountId, pfeffer) =>
 /** Die Kennung der Beziehung Konto×Raum im Buch. @param {string} accountId @param {string} raum @param {string} [pfeffer] */
 export const mitgliedKennung = (accountId, raum, pfeffer) =>
   createHmac("sha256", kennungsSchluessel(pfeffer)).update(`mitglied|${String(accountId)}|${String(raum)}`).digest("hex");
+/** BE-2 A1: Kennung „Faktor dieses Kontos ist Pflicht“. @param {string} accountId @param {string} [pfeffer] */
+export const faktorPflichtKennung = (accountId, pfeffer) =>
+  createHmac("sha256", kennungsSchluessel(pfeffer)).update(`faktor|${String(accountId)}`).digest("hex");
+/**
+ * BE-2 A1: Kennung eines Wiederherstellungscodes über seine Stelle — nie über den Code.
+ * @param {string} accountId @param {{bindung: string, generation: number, sel: string}} k @param {string} [pfeffer]
+ */
+export const whCodeKennung = (accountId, { bindung, generation, sel }, pfeffer) =>
+  createHmac("sha256", kennungsSchluessel(pfeffer))
+    .update(`whcode|${String(accountId)}|${String(bindung)}|${String(generation)}|${String(sel)}`).digest("hex");
 
 /** Kanonische Form: Schlüssel rekursiv sortiert, ohne `siegel`. */
 function kanonisch(o) {
@@ -222,9 +267,35 @@ export function mitgliederEintragen(b, liste, grund, am = new Date().toISOString
 }
 
 /**
+ * BE-2 A1: Kennungen in einen Abschnitt (faktorpflicht, whverbraucht) eintragen — nur hinzufügen. Zahl der neuen.
+ * @param {any} b @param {string} abschnitt @param {Iterable<string>} kennungen @param {string} grund @param {string} [am]
+ */
+export function abschnittEintragen(b, abschnitt, kennungen, grund, am = new Date().toISOString()) {
+  if (abschnitt !== FAKTORPFLICHT && abschnitt !== WHVERBRAUCHT)
+    throw new KontoWiderrufbuchFehler("Unbekannter Abschnitt des Konto-Widerrufbuchs.");
+  let neu = 0;
+  for (const h of kennungen) {
+    if (typeof h !== "string" || !HEX64.test(h))
+      throw new KontoWiderrufbuchFehler("Eine Kennung hat eine unbekannte Form und lässt sich nicht eintragen.");
+    if (!istMap(b[abschnitt])) b[abschnitt] = {};
+    if (Object.hasOwn(b[abschnitt], h)) continue;
+    b[abschnitt][h] = { am, grund: String(grund).slice(0, 40) };
+    neu++;
+  }
+  return neu;
+}
+
+/** Steht die Kennung im Abschnitt? @param {any} b @param {string} abschnitt @param {string} h */
+const imAbschnitt = (b, abschnitt, h) => istMap(b[abschnitt]) && Object.hasOwn(b[abschnitt], h);
+
+/** Fassung 2 der Wiederherstellungscodes (zweifaktor.mjs) mit Einträgen. */
+const whFassung2 = (w) => istMap(w) && w.v === 2 && Number.isInteger(w.generation) && Array.isArray(w.eintraege);
+
+/**
  * @typedef {{ konten: Array<{schluessel: string, wert: any}>, mitglieder: Array<{schluessel: string, wert: any}>,
- *   laeufe: Array<{schluessel: string, wert: any}>, nachtrag?: any }} KontoStand
- *   Was die Ablage über Konten, Mitgliedschaften und Läufe weiß (je Schlüssel der Datensatz).
+ *   laeufe: Array<{schluessel: string, wert: any}>, faktoren?: Array<{schluessel: string, wert: any, accountId: string}>,
+ *   nachtrag?: any }} KontoStand
+ *   Was die Ablage über Konten, Mitgliedschaften, Läufe und (BE-2 A1) die Faktoren der Konten weiß.
  */
 
 /** Die eintragbaren Teile eines Nachtrags N; alles andere: keine. */
@@ -233,7 +304,27 @@ export function nachtragTeile(n) {
   const mitglieder = istMap(n) && istMap(n.mitglieder)
     ? Object.entries(n.mitglieder).filter(([h, v]) => HEX64.test(h) && istMap(v) && ganz(v.generation))
       .map(([kennung, v]) => ({ kennung, generation: v.generation })) : [];
-  return { konten, mitglieder };
+  const schluessel = (a) => (istMap(n) && istMap(n[a]) ? Object.keys(n[a]).filter((h) => HEX64.test(h)) : []);
+  return { konten, mitglieder, [FAKTORPFLICHT]: schluessel(FAKTORPFLICHT), [WHVERBRAUCHT]: schluessel(WHVERBRAUCHT) };
+}
+
+/**
+ * BE-2 A1: Was die Faktoren der Ablage selbst kennen — aktiver Faktor (auch ein gesperrter Platzhalter) → Pflicht;
+ * Wiederherstellungscode mit `verbraucht` → verbraucht.
+ * @param {KontoStand} stand @param {string} [pfeffer]
+ */
+function faktorenEinsammeln(stand, pfeffer) {
+  const pflicht = [], verbraucht = [];
+  for (const { wert: e, accountId } of stand.faktoren || []) {
+    if (!istMap(e) || typeof accountId !== "string" || !accountId) continue;
+    if (e.stand === "aktiv") pflicht.push(faktorPflichtKennung(accountId, pfeffer));
+    const w = e.wiederherstellung;
+    if (!whFassung2(w)) continue;
+    for (const x of w.eintraege)
+      if (istMap(x) && x.verbraucht && typeof x.sel === "string")
+        verbraucht.push(whCodeKennung(accountId, { bindung: String(e.generation ?? ""), generation: w.generation, sel: x.sel }, pfeffer));
+  }
+  return { pflicht, verbraucht };
 }
 
 /**
@@ -259,7 +350,10 @@ export function kontobuchEinsammeln(b, stand, { pfeffer } = {}) {
       && typeof m.raum === "string" && m.raum)
       mind.push({ kennung: mitgliedKennung(m.accountId, m.raum, pfeffer), generation: (ganz(m.generation) ? m.generation : 1) + 1 });
   const n = nachtragTeile(stand.nachtrag);
-  return kontenEintragen(b, [...gesperrt, ...n.konten], "aus-ablage") + mitgliederEintragen(b, [...mind, ...n.mitglieder], "aus-ablage");
+  const f = faktorenEinsammeln(stand, pfeffer);
+  return kontenEintragen(b, [...gesperrt, ...n.konten], "aus-ablage") + mitgliederEintragen(b, [...mind, ...n.mitglieder], "aus-ablage")
+    + abschnittEintragen(b, FAKTORPFLICHT, [...f.pflicht, ...n[FAKTORPFLICHT]], "aus-ablage")
+    + abschnittEintragen(b, WHVERBRAUCHT, [...f.verbraucht, ...n[WHVERBRAUCHT]], "aus-ablage");
 }
 
 /**
@@ -291,7 +385,7 @@ export function kontobuchVereinen(ziel, quelle) {
  *   mitglieder: Mitgliedschaft unter der Mindestgeneration und nicht „entzogen“ → status: "entzogen"
  * @param {any} b @param {KontoStand} stand @param {{pfeffer?: string, am?: string}} [o]
  * @returns {{konten: Array<{schluessel: string, wert: any}>, laeufe: Array<{schluessel: string, wert: any}>,
- *   mitglieder: Array<{schluessel: string, wert: any}>}}
+ *   mitglieder: Array<{schluessel: string, wert: any}>, faktoren: Array<{schluessel: string, wert: any}>}}
  */
 export function kontobuchNormalisieren(b, stand, { pfeffer, am = new Date().toISOString() } = {}) {
   const konten = [];
@@ -323,7 +417,46 @@ export function kontobuchNormalisieren(b, stand, { pfeffer, am = new Date().toIS
     if (m.status !== "entzogen" && !(ganz(m.generation) && m.generation >= g))
       mitglieder.push({ schluessel, wert: { ...m, status: "entzogen", entzogenAm: m.entzogenAm || am } });
   }
-  return { konten, laeufe, mitglieder };
+  return { konten, laeufe, mitglieder, faktoren: faktorenNormalisieren(b, stand, { pfeffer, am }) };
+}
+
+/**
+ * BE-2 A1: Faktoren der Ablage nach dem Buch nachziehen.
+ *   Pflicht im Buch, Faktor fehlt oder ist nicht aktiv → gesperrter Platzhalter (sperrFaktor): kein Geheimnis wird
+ *     zurückgelegt; jede Fassung mit Konto-Faktor verlangt einen Faktor, den es nicht gibt (fail-closed, altbildfest).
+ *   Wiederherstellungscode im Buch verbraucht, in der Ablage nicht → als verbraucht vermerkt (Zähler mit).
+ * Nur Konten, die die Ablage kennt; nichts an einem Konto ohne Eintrag im Buch.
+ * @param {any} b @param {KontoStand} stand @param {{pfeffer?: string, am?: string}} [o]
+ * @returns {Array<{schluessel: string, wert: any}>}
+ */
+export function faktorenNormalisieren(b, stand, { pfeffer, am = new Date().toISOString() } = {}) {
+  const aus = [];
+  const faktorVon = new Map((stand.faktoren || []).map((f) => [f.accountId, f.wert]));
+  const gesehen = new Set();
+  for (const { wert: a } of stand.konten || []) {
+    if (!istMap(a) || typeof a.id !== "string" || !a.id || gesehen.has(a.id)) continue;
+    gesehen.add(a.id);
+    const schluessel = kontoFaktorSchluessel(a.id);
+    const e = faktorVon.get(a.id);
+    const aktiv = istMap(e) && e.stand === "aktiv";
+    if (imAbschnitt(b, FAKTORPFLICHT, faktorPflichtKennung(a.id, pfeffer)) && !aktiv) {
+      aus.push({ schluessel, wert: sperrFaktor(am) });
+      continue;
+    }
+    if (!aktiv || !whFassung2(e.wiederherstellung)) continue;
+    const w = e.wiederherstellung;
+    let n = 0;
+    const eintraege = w.eintraege.map((x) => {
+      if (!istMap(x) || x.verbraucht || typeof x.sel !== "string") return x;
+      const h = whCodeKennung(a.id, { bindung: String(e.generation ?? ""), generation: w.generation, sel: x.sel }, pfeffer);
+      if (!imAbschnitt(b, WHVERBRAUCHT, h)) return x;
+      n++;
+      return { ...x, verbraucht: am };
+    });
+    if (n) aus.push({ schluessel, wert: { ...e, wiederherstellung: { ...w, eintraege,
+      verbrauchtZahl: (Number.isInteger(w.verbrauchtZahl) ? w.verbrauchtZahl : 0) + n } } });
+  }
+  return aus;
 }
 
 /* ---------------------------------------------------------------------------
@@ -360,7 +493,8 @@ async function vermerken(p, { schreibt = false } = {}) {
 }
 
 /** Nachtrag im Speicher (falls schon das Schreiben von N scheiterte). */
-const imSpeicher = { konten: new Set(), mitglieder: /** @type {Map<string, number>} */ (new Map()) };
+const imSpeicher = { konten: new Set(), mitglieder: /** @type {Map<string, number>} */ (new Map()),
+  [FAKTORPFLICHT]: new Set(), [WHVERBRAUCHT]: new Set() };
 
 let zwischen = /** @type {{marke: string, buch: any}|null} */ (null);
 
@@ -408,7 +542,18 @@ async function ablageStand(store) {
     for (const m of t.mitglieder)
       if (!nachtrag.mitglieder[m.kennung] || nachtrag.mitglieder[m.kennung].generation < m.generation)
         nachtrag.mitglieder[m.kennung] = { generation: m.generation };
-    return { konten: await alle(ACCOUNT_PRAEFIX), mitglieder: await alle(MITGLIED_PRAEFIX), laeufe: await alle(MITGLIEDLAUF_PRAEFIX),
+    for (const a of [FAKTORPFLICHT, WHVERBRAUCHT])
+      nachtrag[a] = Object.fromEntries([...imSpeicher[a], ...t[a]].map((h) => [h, {}]));
+    const konten = await alle(ACCOUNT_PRAEFIX);
+    /* BE-2 A1: der Faktor jedes Kontos (streng wie oben: ein Lesefehler wirft). */
+    const faktoren = [];
+    for (const { wert: a } of konten) {
+      if (!istMap(a) || typeof a.id !== "string" || !a.id) continue;
+      const schluessel = kontoFaktorSchluessel(a.id);
+      const wert = await store.get(schluessel, { type: "json" });
+      if (wert !== null && wert !== undefined) faktoren.push({ schluessel, wert, accountId: a.id });
+    }
+    return { konten, mitglieder: await alle(MITGLIED_PRAEFIX), laeufe: await alle(MITGLIEDLAUF_PRAEFIX), faktoren,
       nachtrag, nachtragDa: n !== null && n !== undefined };
   } catch (e) { throw new KontoWiderrufbuchFehler(`Konten nicht lesbar (${/** @type {any} */ (e).message || e}).`); }
 }
@@ -463,6 +608,8 @@ export async function kontoZugangImBuch(store, accountId, { raum, generation } =
 async function nachtragAbraeumen(store, a) {
   imSpeicher.konten.clear();
   imSpeicher.mitglieder.clear();
+  imSpeicher[FAKTORPFLICHT].clear();
+  imSpeicher[WHVERBRAUCHT].clear();
   if (a.nachtragDa) { try { await store.delete(KONTOBUCH_NACHTRAG); } catch { /* bleibt: wird erneut eingesammelt */ } }
 }
 
@@ -487,18 +634,23 @@ function fortschreiben(store, aendern) {
  * Nachtrag festhalten (Bucheintrag scheiterte): im Speicher und in der Ablage (N). Wirft nie; scheitert auch N, hält
  * der Speicher den Nachtrag bis zum nächsten gelungenen Schreiben des Buchs, und /gesund warnt.
  */
-async function nachtragAufnehmen(store, { konten = [], mitglieder = [] }) {
+async function nachtragAufnehmen(store, { konten = [], mitglieder = [], abschnitte = {} }) {
   for (const h of konten) imSpeicher.konten.add(h);
   for (const m of mitglieder) imSpeicher.mitglieder.set(m.kennung, Math.max(imSpeicher.mitglieder.get(m.kennung) || 0, m.generation));
+  for (const a of [FAKTORPFLICHT, WHVERBRAUCHT]) for (const h of abschnitte[a] || []) imSpeicher[a].add(h);
   lage.nachtrag = true;
   try {
     await nacheinander(async () => {
       const alt = await store.get(KONTOBUCH_NACHTRAG, { type: "json" });
       const t = nachtragTeile(alt);
       const am = new Date().toISOString();
-      /** @type {{konten: Record<string, any>, mitglieder: Record<string, any>}} */
+      /** @type {{konten: Record<string, any>, mitglieder: Record<string, any>, [k: string]: Record<string, any>}} */
       const neu = { konten: Object.fromEntries(t.konten.map((h) => [h, { am }])),
         mitglieder: Object.fromEntries(t.mitglieder.map((m) => [m.kennung, { am, generation: m.generation }])) };
+      for (const a of [FAKTORPFLICHT, WHVERBRAUCHT]) {
+        const alle = [...t[a], ...(abschnitte[a] || [])];
+        if (alle.length) neu[a] = Object.fromEntries(alle.map((h) => [h, { am }]));
+      }
       for (const h of konten) if (!neu.konten[h]) neu.konten[h] = { am };
       for (const m of mitglieder)
         if (!neu.mitglieder[m.kennung] || neu.mitglieder[m.kennung].generation < m.generation)
@@ -541,8 +693,57 @@ export async function mitgliedEntzugVermerken(store, accountId, raum, generation
 }
 
 /**
+ * BE-2 A1: Ist der zweite Faktor dieses Kontos laut Buch Pflicht (war er einmal aktiv)? Wirft, wenn das Buch nicht
+ * prüfbar ist (fail-closed: der Aufrufer gewährt nichts).
+ * @param {any} store @param {string} accountId
+ */
+export async function kontoFaktorPflichtImBuch(store, accountId) {
+  return imAbschnitt(await kontobuchGeprueft(store), FAKTORPFLICHT, faktorPflichtKennung(accountId));
+}
+
+/**
+ * BE-2 A1: Steht dieser Wiederherstellungscode (über seine Stelle) im Buch als verbraucht? Wirft, wenn das Buch nicht
+ * prüfbar ist. @param {any} store @param {string} accountId @param {{bindung: string, generation: number, sel: string}} k
+ */
+export async function whCodeImBuch(store, accountId, k) {
+  return imAbschnitt(await kontobuchGeprueft(store), WHVERBRAUCHT, whCodeKennung(accountId, k));
+}
+
+/**
+ * BE-2 A1: Nach der Aktivierung des Konto-Faktors (die Ablage ist schon geschrieben): „Faktor ist Pflicht“ ins Buch.
+ * Wirft nie. @param {any} store @param {string} accountId @returns {Promise<{geschrieben: boolean}>}
+ */
+export async function kontoFaktorPflichtVermerken(store, accountId) {
+  const h = faktorPflichtKennung(accountId);
+  try {
+    await fortschreiben(store, (b) => abschnittEintragen(b, FAKTORPFLICHT, [h], "faktor-aktiv") > 0);
+    return { geschrieben: true };
+  } catch {
+    await nachtragAufnehmen(store, { abschnitte: { [FAKTORPFLICHT]: [h] } });
+    return { geschrieben: false };
+  }
+}
+
+/**
+ * BE-2 A1: Nach dem Einlösen eines Wiederherstellungscodes (der Verbrauch steht schon in der Ablage): seine Stelle ins
+ * Buch. Wirft nie. @param {any} store @param {string} accountId @param {{bindung: string, generation: number, sel: string}} k
+ * @returns {Promise<{geschrieben: boolean}>}
+ */
+export async function whCodeVerbrauchVermerken(store, accountId, k) {
+  const h = whCodeKennung(accountId, k);
+  try {
+    await fortschreiben(store, (b) => abschnittEintragen(b, WHVERBRAUCHT, [h], "wh-eingeloest") > 0);
+    return { geschrieben: true };
+  } catch {
+    await nachtragAufnehmen(store, { abschnitte: { [WHVERBRAUCHT]: [h] } });
+    return { geschrieben: false };
+  }
+}
+
+/**
  * Beim Serverstart: Stand feststellen, aus der Ablage einsammeln, das Buch in die Ablage nachziehen (Konten sperren,
- * Läufe anheben, Mitgliedschaften entziehen). Wirft KontoWiderrufbuchFehler — dann gilt kein Konto-Zugang.
+ * Läufe anheben, Mitgliedschaften entziehen; BE-2 A1: fehlende Pflicht-Faktoren gesperrt, verbrauchte Codes vermerkt).
+ * Wirft KontoWiderrufbuchFehler — dann gilt kein Konto-Zugang.
  * @param {any} store
  */
 export async function kontobuchStart(store) {
@@ -560,12 +761,23 @@ export async function kontobuchStart(store) {
     for (const x of n.konten) await store.setJSON(x.schluessel, x.wert);
     for (const x of n.laeufe) await store.setJSON(x.schluessel, x.wert);
     for (const x of n.mitglieder) await store.setJSON(x.schluessel, x.wert);
+    /* BE-2 A1: Faktoren (Platzhalter bzw. verbrauchte Codes) — kein Geheimnis wird zurückgelegt. */
+    for (const x of n.faktoren) await store.setJSON(x.schluessel, x.wert);
     return { eingesammelt, konten: Object.keys(geschrieben.konten).length, mitglieder: Object.keys(geschrieben.mitglieder).length,
-      nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length };
+      nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(geschrieben, n.faktoren) };
   }), { schreibt: true });
+}
+
+/** BE-2 A1: Zahlen für Meldungen (Serverstart, Werkzeug) — nur Anzahlen, keine Kennungen. */
+export function faktorZahlen(b, nachgezogen) {
+  return { faktorpflicht: istMap(b[FAKTORPFLICHT]) ? Object.keys(b[FAKTORPFLICHT]).length : 0,
+    whverbraucht: istMap(b[WHVERBRAUCHT]) ? Object.keys(b[WHVERBRAUCHT]).length : 0,
+    faktorGesperrt: nachgezogen.filter((x) => x.wert && x.wert.ruecksprungSperre === true).length,
+    whNachgezogen: nachgezogen.filter((x) => !(x.wert && x.wert.ruecksprungSperre === true)).length };
 }
 
 /** Nur für Prüfungen: Zwischenspeicher und Lage leeren. */
 export function kontowiderrufbuchVergessen() {
   zwischen = null; lage.unklar = false; lage.nachtrag = false; imSpeicher.konten.clear(); imSpeicher.mitglieder.clear();
+  imSpeicher[FAKTORPFLICHT].clear(); imSpeicher[WHVERBRAUCHT].clear();
 }
