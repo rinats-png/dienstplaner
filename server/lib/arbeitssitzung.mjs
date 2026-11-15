@@ -18,7 +18,7 @@ import { schluesselEpoche } from "./schluesselepoche.mjs";
 import { rollenSitzungOhneFaktor, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
 import { kontoFaktorAktiv } from "./kontofaktor.mjs";
 import { istWiderrufen } from "./widerrufbuch.mjs";
-import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
+import { kontoFaktorPflichtImBuch, kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -682,6 +682,18 @@ export async function arbeitssitzungPruefen(store, sitzung,
     try { aktiv = await kontoFaktorAktiv(store, h.accountId); }
     catch { return { ok: false, grund: "konto-faktor-fehler" }; }
     if (aktiv) return absage("konto-faktor");
+    /* BE-2 A1 (Tiefenschutz, Sicherheitsreview PR #311): „Faktor ist Pflicht“ im Konto-Widerrufbuch zählt wie ein
+       aktiver Faktor — auch wenn die Ablage nach einem Rücksprung keinen (und keinen Platzhalter) zeigt, etwa weil das
+       Nachziehen beim Start scheiterte. Dasselbe zwischengespeicherte Buch wie in 3b (je Anfrage ein stat und ein HMAC,
+       kein Lesen bei unveränderter Datei). Nicht prüfbar: vorübergehend (→ 503), die Sitzung bleibt, wie in 3b. */
+    let pflicht;
+    try { pflicht = await kontoFaktorPflichtImBuch(store, h.accountId); }
+    catch (e) {
+      const f = /** @type {Error & {code?: string}} */ (new Error(`Konto-Widerrufbuch nicht prüfbar (${String(e && /** @type {any} */ (e).message || e)})`));
+      f.code = BESTAND_UNLESBAR;
+      throw f;
+    }
+    if (pflicht) return absage("konto-faktor");
   }
 
   /* 2. Die Mitgliedschaft, frisch gelesen. */

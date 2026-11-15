@@ -20,10 +20,14 @@
         mit Code aus der App an.
      7. Wiederherstellungscode: eingelöst, dann NICHT erkannter Rücksprung (Verzeichniskopie, WR-2 greift nicht) → der
         verbrauchte Code wird abgewiesen, ein unverbrauchter desselben Satzes gilt.
+    7b. Dasselbe ohne Nachziehen beim Start (Faktor-Datei erst bei laufendem Server zurückgelegt) — allein die
+        Buchprüfung im Anmeldeweg (zweifaktor.mjs, `whBuch`) weist ab.
      8. Harter Prozessabbruch (SIGKILL) zwischen Ablage und Buch — beim Aktivieren und beim Einlösen → der nächste Start
         trägt nach; Rücksprung danach → bleibt Pflicht bzw. verbraucht.
      9. Buch verändert / gekürzt / fremd / fehlend → fail-closed (Konto-Anmeldung 503), Werkzeug fasst nichts an;
         dokumentierter Weg (Kopie zurücklegen, `kontowiderrufbuch-neu`) stellt wieder her.
+    9b. Tiefenschutz: laufende Arbeitssitzung ohne Faktor, danach „Faktor ist Pflicht“ im Buch bei Ablage ohne Faktor
+        (Nachziehen ausgefallen) → die nächste Anfrage weist ab (arbeitssitzung.mjs).
     10. Reine Bausteine: Kennung des Faktors gleich kontofaktor.mjs, nur hinzufügen, kein Geheimnis im Buch.
 
    Aufruf: npx vitest run pruefungen/be2-a1-zweiter-faktor.test.js --testTimeout=300000 --hookTimeout=300000
@@ -407,6 +411,26 @@ describe("BE-2 A1: Pflicht-Faktor und verbrauchte Wiederherstellungscodes nach R
     expect(w.verbrauchtZahl, "Ablage nachgezogen (Code 1) und Code 2 eingelöst").toBe(2);
   }, LIMIT);
 
+  it("Wiederherstellungscode: das Buch entscheidet im Anmeldeweg selbst — Ablage erst NACH dem Start zurückgelegt", async () => {
+    /* Der Serverstart zieht verbrauchte Codes in der Ablage nach; damit bliebe die Prüfung im Anmeldeweg
+       (zweifaktor.mjs, `whBuch`) ungeprüft. Hier läuft der Server schon, dann wird die Faktor-Datei von R aus der
+       Verzeichniskopie „vor-code“ zurückgelegt (Codes 1 und 2 dort unverbraucht, im Buch verbraucht) — ohne Nachziehen. */
+    const datei = ablageDatei(M.kb.kontoFaktorSchluessel(K.R.id));
+    const jetzt = await readFile(datei, "utf8");
+    const alt = await readFile(path.join(T, "kopie-vor-code", path.relative(DATEN, datei)), "utf8");
+    const s = await starten({ umgebung: "test" });
+    try {
+      await writeFile(datei, alt);
+      expect((await faktorDaten("R")).wiederherstellung.verbrauchtZahl, "Ablage zeigt Code 1 und 2 unverbraucht").toBe(0);
+      expect((await kontoAnmelden(s, "R", CODES.R[0])).status, "verbrauchter Code 1, nur das Buch weiß es").toBe(401);
+      expect((await kontoAnmelden(s, "R", CODES.R[1])).status, "verbrauchter Code 2, nur das Buch weiß es").toBe(401);
+      expect((await faktorDaten("R")).wiederherstellung.verbrauchtZahl, "nichts eingelöst").toBe(0);
+    } finally {
+      await s.stoppen();
+      await writeFile(datei, jetzt);
+    }
+  }, LIMIT);
+
   it("Harter Abbruch zwischen Ablage und Buch (Einlösen und Aktivieren): Start trägt nach, Rücksprung bleibt wirksam", async () => {
     /* (a) Einlösen von Code 3: Ablage verbraucht, Buch nicht. */
     await kopieZiehen("vor-abbruch");
@@ -488,6 +512,32 @@ describe("BE-2 A1: Pflicht-Faktor und verbrauchte Wiederherstellungscodes nach R
       expect(await zugang(s, "K", RAUM_A)).toEqual({ anmeldung: 200, betrieb: 200 });
       expect((await kontoAnmelden(s, "S")).status).toBe(403);
       expect(await zugang(s, "N", RAUM_B)).toEqual({ anmeldung: 200, betrieb: 200 });
+    } finally { await s.stoppen(); }
+  }, LIMIT);
+
+  it("Tiefenschutz Arbeitssitzung: Pflicht im Buch ohne Faktor in der Ablage (Nachziehen ausgefallen) — Sitzung ohne Faktor endet", async () => {
+    /* Der Fall, den sonst nur der Platzhalter abfängt: N hat eine Arbeitssitzung aus einer Anmeldung ohne Faktor; das
+       Buch sagt „Faktor ist Pflicht“, die Ablage zeigt keinen Faktor (und keinen Platzhalter) — so stünde es nach einem
+       Rücksprung, dessen Nachziehen beim Start scheiterte. Der Server läuft schon; das Buch wird danach beschrieben. */
+    const s = await starten();
+    try {
+      const a = await kontoAnmelden(s, "N");
+      expect(a.status).toBe(200);
+      const r = await fetch(`${s.basis}/api/account/betrieb`, { method: "POST",
+        headers: { "content-type": "application/json", "sec-fetch-site": "same-origin", "x-forwarded-for": ip(),
+          cookie: `__Host-centric_konto=${a.merkmal}` }, body: JSON.stringify({ raum: RAUM_B }) });
+      const token = (await r.json()).token;
+      expect(r.status).toBe(200);
+      const bestand = async () => (await fetch(`${s.basis}/api/bestand`,
+        { headers: { authorization: `Bearer ${token}`, "x-forwarded-for": ip() } })).status;
+      expect(await bestand(), "vorher: Arbeitssitzung gilt").toBe(200);
+      M.kb.kontowiderrufbuchVergessen();
+      expect((await M.kb.kontoFaktorPflichtVermerken(centric(), K.N.id)).geschrieben).toBe(true);
+      expect(await faktorDaten("N"), "Ablage: kein Faktor, kein Platzhalter").toBeNull();
+      expect(await bestand(), "Pflicht im Buch: Arbeitssitzung ohne Faktor endet").toBe(401);
+      expect(await bestand(), "und bleibt beendet").toBe(401);
+      expect((await kontoAnmelden(s, "N")).status, "neue Anmeldung ohne Faktor: gesperrt").toBe(403);
+      expect(await zugang(s, "J", RAUM_A), "J unberührt").toEqual({ anmeldung: 200, betrieb: 200 });
     } finally { await s.stoppen(); }
   }, LIMIT);
 });

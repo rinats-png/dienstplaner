@@ -64,6 +64,7 @@ holen sie nach — auch nach einem harten Prozessabbruch zwischen Ablage und Buc
 | Anmeldung (`faktorDerAnmeldung`) | Ablage trägt den Platzhalter **oder** `faktorpflicht` und Ablage zeigt keinen aktiven Faktor → **403** `zweifaktor: "ruecksprung"` mit klarem Hinweis; kein Code wird geprüft, keine Sitzung |
 | Faktor-Aktionen (`stand`, `beginnen`, `bestaetigen`, `wiederherstellung-neu`) | dasselbe **vor** jeder Aktion und vor dem Ersteinrichtungscode → 403; das Passwort richtet nichts neu ein |
 | Kontositzung ohne Faktor (`sitzungPruefen`) | `faktorpflicht` → Sitzung beendet |
+| Arbeitssitzung aus einer Anmeldung ohne Faktor (`arbeitssitzungPruefen`, je Anfrage) | aktiver Faktor (auch Platzhalter) **oder** `faktorpflicht` → Sitzung beendet (401); Buch nicht prüfbar → 503, Sitzung bleibt (wie BE-1, Schritt 3b). Tiefenschutz für den Fall, dass das Nachziehen beim Start scheiterte (Test 11); Kosten: dasselbe zwischengespeicherte Buch wie die BE-1-Prüfung derselben Anfrage (ein `stat`, ein HMAC, kein Lesen bei unveränderter Datei) |
 | Wiederherstellungscode (`zweifaktorPruefen` mit `whBuch`, nur Konto-Faktor) | Stelle im Buch → nicht eingelöst (401 wie ein falscher Code); Altformat ohne Stelle gilt mit Buch nicht |
 | Buch nicht prüfbar (fehlt bei Anker, beschädigt, gekürzt, fremd, falsches Siegel) | wie BE-1: **kein Konto-Zugang** (503); Zugangscodes unberührt |
 
@@ -99,21 +100,26 @@ ausstehende Einrichtung ausdrücklich zulassen — heute gibt es keinen solchen 
 | Altbild vor A1 auf nachgezogenen Daten | K 401/503, nie 200; J, N wie bisher | 5 |
 | **Vollständiger, richtiger Rücksprung** (Ablage + Bücher, dokumentierter Weg) | K mit Code 200 | 6 |
 | **Verbrauchter Wiederherstellungscode nach nicht erkanntem Rücksprung** | 401; unverbrauchter Code desselben Satzes 200 | 7 |
-| SIGKILL zwischen Ablage und Buch — Einlösen | Start sammelt ein; Rücksprung → Code 401 | 8 |
-| SIGKILL zwischen Ablage und Buch — Aktivieren | Start sammelt ein; Rücksprung → Konto 403 | 8 |
-| Buch verändert / gekürzt / fremd / fehlend bei Anker | Konto-Anmeldung 503 (mit und ohne Faktor); Werkzeug Abbruch, nichts angefasst | 9 |
-| Kopie des Buchs zurückgelegt | alles wie vorher | 9 |
-| Buch verloren, keine Kopie: `kontowiderrufbuch-neu` | Pflicht für alle aktiven Faktoren (auch Platzhalter) aus der Ablage | 9 |
-| Anderer Betrieb (N, S in Haus B), andere 2FA-Konten (J, R) | unberührt | 3, 8 |
-| Bausteine: nur hinzufügen, Vereinigung erhält Abschnitte, Siegel deckt sie, Kennung = `kontoFaktorId` | ja | 10–12 |
+| Verbrauchter Code, Ablage erst **nach** dem Start zurückgelegt (kein Nachziehen) — Buchprüfung im Anmeldeweg allein | 401, nichts eingelöst | 8 |
+| SIGKILL zwischen Ablage und Buch — Einlösen | Start sammelt ein; Rücksprung → Code 401 | 9 |
+| SIGKILL zwischen Ablage und Buch — Aktivieren | Start sammelt ein; Rücksprung → Konto 403 | 9 |
+| Buch verändert / gekürzt / fremd / fehlend bei Anker | Konto-Anmeldung 503 (mit und ohne Faktor); Werkzeug Abbruch, nichts angefasst | 10 |
+| Kopie des Buchs zurückgelegt | alles wie vorher | 10 |
+| Buch verloren, keine Kopie: `kontowiderrufbuch-neu` | Pflicht für alle aktiven Faktoren (auch Platzhalter) aus der Ablage | 10 |
+| Laufende Arbeitssitzung ohne Faktor; danach `faktorpflicht` im Buch, Ablage ohne Faktor und ohne Platzhalter | nächste Anfrage 401, Sitzung beendet; neue Anmeldung 403 | 11 |
+| Anderer Betrieb (N, S in Haus B), andere 2FA-Konten (J, R) | unberührt | 3, 9, 11 |
+| Bausteine: nur hinzufügen, Vereinigung erhält Abschnitte, Siegel deckt sie, Kennung = `kontoFaktorId` | ja | 12–14 |
 
 ## 4. Prüfungen
 
-`npm run pruefung:be2-a1-zweiter-faktor` (`pruefungen/be2-a1-zweiter-faktor.test.js`, 12 Fälle): echte Serverprozesse
+`npm run pruefung:be2-a1-zweiter-faktor` (`pruefungen/be2-a1-zweiter-faktor.test.js`, 14 Fälle): echte Serverprozesse
 (`node server.mjs`), echtes Werkzeug, echte Faktor-Prozesse (`pruefungen/hilfen/be2-faktor.mjs`), harter Abbruch über
 `pruefungen/hilfen/em6-abbruch.mjs` (SIGKILL nach dem Umbenennen der Ablagedatei, vor dem Buch). Altbild:
-`git archive aff9c320` (Integrationsstand vor A1). Fall 7/8 laufen unter `NODE_ENV=test`, weil unter `production` die
+`git archive aff9c320` (Integrationsstand vor A1). Fall 7–9 laufen unter `NODE_ENV=test`, weil unter `production` die
 Verzeichniskopie von WR-2 erkannt wird und dann ohnehin kein alter Code gilt — so entscheidet dort allein das Buch.
+Fall 8 legt die Faktor-Datei erst bei laufendem Server zurück: Das Nachziehen beim Start kann die Buchprüfung im
+Anmeldeweg (`whBuch`) dann nicht verdecken (Mutationsprobe: ohne die Prüfung wird Fall 8 rot). Fall 11 beschreibt das
+Buch bei laufendem Server (Mutationsprobe: ohne die Buchprüfung in `arbeitssitzungPruefen` wird Fall 11 rot).
 
 Regression (einzeln, nacheinander): `be1-konto-widerrufbuch`, `em6-rollback-codes`, `wiederherstellung-schutz`,
 `wiederherstellung-neu`, `sicherung-ablage`, Erstleitungs-Prüfungen (`erstleitung-bestand-differenz` allein: 138/138),
@@ -135,8 +141,11 @@ Regression (einzeln, nacheinander): `be1-konto-widerrufbuch`, `em6-rollback-code
   Schreibvorgang einsammeln konnte → Eintrag fehlt. Ein Schreibfehler ohne Abbruch landet im Nachtrag.
 - **R-6 A2 nicht enthalten:** Ein nach der Sicherung **ersetztes** Geheimnis (heute für Konten nicht möglich — es gibt
   kein Abschalten und keinen Verlustweg für Konten) lebte wieder auf. Relevant ab WR-9.
-- **R-7 Verfügbarkeit:** Ein Konto mit fehlendem Pflicht-Faktor bleibt gesperrt, bis der Betreiber den Fall klärt
-  (§6.2). Ein eingelöster Code bei nicht schreibbarem Buch kostet den Code (503, kein Zugang).
+- **R-7 Verfügbarkeit — Betreiber muss akzeptieren:** Ein Konto mit fehlendem Pflicht-Faktor bleibt gesperrt. Enthält
+  **keine** Sicherung den verlorenen Faktor, ist der **einzige** Weg in dieser Fassung: die Person mit einer **neuen
+  E-Mail-Adresse** neu einladen; das **alte Konto bleibt dauerhaft gesperrt** (§6.2). Das optionale Offline-Werkzeug
+  (§6.2) ist **nicht gebaut** und braucht eine **gesonderte Freigabe**. Ein eingelöster Code bei nicht schreibbarem Buch
+  kostet den Code (503, kein Zugang).
 - **R-8 TOTP-Wiederholung** im selben 30-s-Schritt nach einem Rücksprung (`letzterSchritt` rollt mit) — praktisch
   bedeutungslos (Vorlage §2.2).
 
@@ -154,6 +163,12 @@ Regression (einzeln, nacheinander): `be1-konto-widerrufbuch`, `em6-rollback-code
 4. `/gesund` → `kontowiderrufbuch: ok`, kein offener Nachtrag.
 
 ### 6.2 Faktor nach einem Rücksprung legitim verloren (keine Sicherung enthält ihn)
+
+> **Betreiber muss akzeptieren** (Abnahmepunkt R-7; von der Entwicklung nicht entschieden): Enthält keine Sicherung
+> den verlorenen Faktor, ist die **einzige** Wiederherstellung in dieser Fassung, die Person mit einer **neuen
+> E-Mail-Adresse** neu einzuladen. Das **alte Konto bleibt dauerhaft gesperrt** (der Eintrag in `faktorpflicht` wird nie
+> entfernt; es gibt keinen anderen Weg hinein). Das unten beschriebene optionale Offline-Werkzeug ist **nicht gebaut**
+> und braucht eine **gesonderte Betreiberfreigabe**, bevor es gebaut wird.
 
 Es gibt **keine** Hintertür: keine Route, kein Betreiberrecht, keine Personenbearbeitung, die den Platzhalter entfernt
 oder ein Geheimnis setzt. Ein ausdrücklicher, protokollierter Offline-Schritt dafür (z. B. ein Werkzeug
@@ -188,6 +203,7 @@ Wie BE-1 (BEREITSTELLUNG.md §5.4, Konto-Widerrufbuch): Kopie zurücklegen; ohne
 | `server/funktionen/anmeldung.mjs` | 403 `zweifaktor: "ruecksprung"` (keine neue Route) |
 | `server.mjs` | Startmeldung und Warnung |
 | `werkzeug/ablage-sicherung.mjs` | Faktoren lesen, in der Stufe nachziehen, Meldung/Warnung |
+| `server/lib/arbeitssitzung.mjs` | Arbeitssitzung ohne Faktor: zusätzlich `faktorpflicht` im Buch (Tiefenschutz, Review PR #311) |
 | `pruefungen/be2-a1-zweiter-faktor.test.js`, `pruefungen/hilfen/be2-faktor.mjs` | Prüfung, Hilfsprozess |
 | `package.json`, `.github/workflows/pruefung.yml` | `pruefung:be2-a1-zweiter-faktor` |
 | `BEREITSTELLUNG.md` §5.4, `docs/BETRIEBSHANDBUCH.md` §4 | Betreiberschritte |
