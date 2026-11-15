@@ -1,10 +1,10 @@
 {
-  "epoche": 13,
-  "halter": "cloud-nachtaufgabe",
-  "uebernommen_am": "2026-11-15T02:32:51.963Z",
-  "erneuert_am": "2026-11-15T03:33:13.186Z",
-  "gueltig_bis": "2026-11-15T05:03:13.186Z",
-  "uebergabe": "Cloud-Routine 2026-11-15 02:3xZ: Hauptchat-Lease Epoche 12 abgelaufen (22:23Z); Kopf df53430; #305 CI gruen, Review offen",
-  "vorgaenger": "hauptchat",
+  "epoche": 14,
+  "halter": "hauptchat",
+  "uebernommen_am": "2026-11-15T11:42:15.540Z",
+  "erneuert_am": "2026-11-15T11:42:15.540Z",
+  "gueltig_bis": "2026-11-15T14:12:15.540Z",
+  "uebergabe": "Hauptchat 2026-11-15 11:4xZ: Lease Epoche 13 (cloud-nachtaufgabe) abgelaufen 05:03Z; Kopf aff9c320; #304/#305 gemergt",
+  "vorgaenger": "cloud-nachtaufgabe",
   "freigegeben_am": null
 }
