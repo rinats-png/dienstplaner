@@ -54,6 +54,14 @@ Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wi
 
 **Betreiber:** die einzige Liste steht in `ENTSCHEIDUNGSLISTE.md` Abschnitt B; hier nicht wiederholt.
 
+## Nachtrag 2026-11-15 17:35Z (Cloud-Routine, stündlicher Lauf, nur lesend und Statuspflege)
+
+- Abgleich: Integrationskopf `8208b5a` (Merge #313). Seit dem Konsolidierten Stand (`aff9c320`) gemergt (nach `git log`): #309 (QS-ZEIT: B8 sucht seinen Krankheitstag, unabhängig vom Staging-Gate), #310 (Doku: Abgleich GitHub-Stand), #311 (BE-2 A1: aktiver Konto-Faktor und eingelöste Wiederherstellungscodes überleben jeden Rücksprung; Dokument `ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md`), #312 (QS: Bestandsdifferenz deterministisch unter Last), #313 (BE-3: Sicherung der Widerrufbücher, Dokument `ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md`). CI-Zustand dieser Merges in dieser Sitzung nicht einzeln nachgesehen: Quelle prüfen.
+- Damit überholt: die Aussagen in `ENTSCHEIDUNGSLISTE.md` „BE-2: kein belegender PR“ und „BE-3: offen, nicht begonnen“ (A1 und Sicherungsjob sind integriert; produktives Ziel, Zugangsdaten, Kosten und Staging-Prüfung weiterhin nicht freigegeben und nicht erfolgt).
+- Lease: `hauptchat` Epoche 14 ist seit 14:12Z abgelaufen, nicht freigegeben; kein aktiver Koordinator belegt. Dieser Lauf übernimmt keine Lease und schreibt nur diese Statuspflege.
+- Offene PRs unverändert (22, keine neuen seit 2026-11-14). Scheduled Task `trig_0144efYe…` (Minute 32, stündlich) aktiv, dieser Lauf ist sein Lauf.
+- Nächste ausführbare Pakete: SSOT-Nachtrag für #311 und #313 per `werkzeug/ssot-nach-integration.mjs` (Zuordnung zu BE-2/BE-3 ist im SSOT nicht angelegt, kein erfundener Status); alle weiteren Pakete brauchen Betreiberentscheidungen (`ENTSCHEIDUNGSLISTE.md` B).
+
 ## Nachtrag 2026-11-15 06:35Z (Cloud-Routine, Folgelauf)
 
 - Abgleich: Integrationskopf `d390d70` (#307). Lease `cloud-nachtaufgabe` Epoche 13 abgelaufen (05:03Z), kein aktiver Koordinator, keine anderen schreibenden Sitzungen; offene PRs unverändert. Stündlicher Scheduled Task (Minute 32) aktiv, dieser Lauf ist sein Lauf.
