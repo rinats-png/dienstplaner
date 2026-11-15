@@ -433,6 +433,11 @@ Freigabe des Betreibers; bis dahin bleibt es bei Platzhaltern und der Handkopie 
 7. Probe: `restic restore latest --tag widerrufbuch --target /tmp/wb-probe` und
    `widerrufbuch-pruefen --zustand /zustand --vorher /tmp/wb-probe` im Bild → Exit 0.
 
+8. Monatliche Probe `deploy/sicherung/widerrufbuch-probe.sh` (gleiche `widerrufbuch.env`, eigener Check `PROBE_PING_URL`,
+   Crontab-Zeile am 5., 04:45 UTC): `check --read-data`, neuester und ältester Snapshot in leere Ordner, sha256-Prüfsummen,
+   laufendes Buch enthält alles aus dem neuesten (sonst Exit 3), **Rollback-Gegenprobe** (älterer Stand muss als Rücksprung
+   erkannt werden; Status `gegenprobe`). Nur lesend, Sperre des Jobs. Einzelheiten: `acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md` §5.4.
+
 Optional (nicht umgesetzt, **[unsicher]**): ein systemd-Pfadauslöser auf die Bücher für Sekunden-RPO statt ≤ 1 h.
 
 **Alarm:** `/gesund` (Prüfung `widerrufbuchsicherung`) warnt bei gescheitertem Lauf, `ruecksprung`, letzter Erfolg
