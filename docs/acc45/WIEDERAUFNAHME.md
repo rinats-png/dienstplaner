@@ -54,6 +54,11 @@ Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wi
 
 **Betreiber:** die einzige Liste steht in `ENTSCHEIDUNGSLISTE.md` Abschnitt B; hier nicht wiederholt.
 
+## Nachtrag 2026-11-15 (Infra-Vorbereitung Staging/Sicherung, Kopf `19f3ac8b`)
+
+- Nur Repository, nichts ausgeführt: `INFRA-VORBEREITUNG-STAGING-BACKUP.md` (Bestand, lokal geprüfte Zugänge, Staging-Plan, zwei getrennte restic-Repositorys, Restore-Proben, Sicherheitsprüfung, Checkliste A/B/C). Neu: `deploy/sicherung/widerrufbuch-probe.sh` (monatlich, Prüfsummen, Rollback-Gegenprobe), Vorlagen der restic-Übung in `deploy/staging-o2/`. Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-6.
+- Nächster ausführbarer Schritt ohne Betreiber: B-1 (BE-3-Job und Probe mit echtem restic in CI).
+
 ## Nachtrag 2026-11-15 17:35Z (Cloud-Routine, stündlicher Lauf, nur lesend und Statuspflege)
 
 - Abgleich: Integrationskopf `8208b5a` (Merge #313). Seit dem Konsolidierten Stand (`aff9c320`) gemergt (nach `git log`): #309 (QS-ZEIT: B8 sucht seinen Krankheitstag, unabhängig vom Staging-Gate), #310 (Doku: Abgleich GitHub-Stand), #311 (BE-2 A1: aktiver Konto-Faktor und eingelöste Wiederherstellungscodes überleben jeden Rücksprung; Dokument `ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md`), #312 (QS: Bestandsdifferenz deterministisch unter Last), #313 (BE-3: Sicherung der Widerrufbücher, Dokument `ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md`). CI-Zustand dieser Merges in dieser Sitzung nicht einzeln nachgesehen: Quelle prüfen.

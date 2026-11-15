@@ -9,7 +9,9 @@
    die Modusprüfung (NTFS kennt 0600 nicht); unter Linux laufen die echten.
 
      1. Job: erster Lauf sichert beide Bücher, Nachweis (check, Liste, Rückholung bytegleich, Siegel), Status ohne
-        Geheimnisse. Widerruf danach → zweiter Lauf.
+        Geheimnisse. Widerruf danach → zweiter Lauf. Monatliche Probe (widerrufbuch-probe.sh): check --read-data,
+        Rückholung, Prüfsummen, laufendes Buch vollständig, Rollback-Gegenprobe mit den gesicherten Ständen; bei
+        zurückgerolltem Buch Code 3.
      2. Älterer, GÜLTIG gesiegelter Stand über Ablage UND Zustand zurückgelegt (Restrisiko R-1): der Server allein
         merkt nichts (rot: Code gilt wieder) — der Job erkennt es, sichert NICHT, Status „ruecksprung“, /gesund warnt,
         Anmeldungen bleiben offen. `widerrufbuch-vereinen` mit der letzten Sicherung → alle neueren Widerrufe zurück,
@@ -29,7 +31,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -219,6 +221,16 @@ function job(env = {}, { erster = false } = {}) {
       STUB_LOG: posix(path.join(STUB, "stub.log")), STUB_WURZEL: posix(WURZEL), JOBARG: erster ? "--erster-lauf" : "", ...env } });
   return { code: r.status, aus: `${r.stdout}\n${r.stderr}` };
 }
+/** Die monatliche Probe der Widerrufbücher (deploy/sicherung/widerrufbuch-probe.sh) mit denselben Stubs. */
+const PROBE_STATUS = () => path.join(STATUSV, "widerrufbuch-probe-status.json");
+function probe(args = [], env = {}) {
+  const skript = path.join(WURZEL, "deploy", "sicherung", "widerrufbuch-probe.sh").replace(/\\/g, "/");
+  const r = spawnSync(BASH, ["-c", 'p="$STUBVERZ"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$STUBVERZ")"; '
+    + 'PATH="$p:$PATH" exec bash "$SKRIPT" "$@" "$KONFIG"', "probe", ...args], { encoding: "utf8", timeout: 240000,
+    env: { ...process.env, NODE_OPTIONS: "", STUBVERZ: posix(STUB), SKRIPT: skript, KONFIG: posix(path.join(T, "widerrufbuch.env")),
+      STUB_LOG: posix(path.join(STUB, "stub.log")), STUB_WURZEL: posix(WURZEL), ...env } });
+  return { code: r.status, aus: `${r.stdout}\n${r.stderr}` };
+}
 /** Eine weitere Konfiguration (Modus 600) aus der des Tests ableiten: Zeilen ersetzen bzw. anhängen. */
 async function konfigAbleiten(name, aenderungen) {
   let text = await readFile(path.join(T, "widerrufbuch.env"), "utf8");
@@ -357,6 +369,41 @@ describe.skipIf(!BASH)("BE-3: eigener Sicherungsjob (Stub-restic, lokales Reposi
     expect(st.eintraege_konten).toBeGreaterThanOrEqual(1);
   }, LIMIT);
 
+  it("Probe (monatlich): check --read-data, Rückholung beider Stände, Prüfsummen, laufendes Buch vollständig, Rollback-Gegenprobe erkannt", async () => {
+    const vorher = await snapshots();
+    const imRepo = (await stubLog()).split("\n").filter((z) => /^restic (backup|forget) /.test(z)).length;
+    const r = probe();
+    expect(r.code, r.aus).toBe(0);
+    const st = JSON.parse(await readFile(PROBE_STATUS(), "utf8"));
+    expect(st).toMatchObject({ art: "widerrufbuch-probe", ergebnis: "ok", schritt: "fertig", code: 0, snapshots: 2,
+      neuester: vorher.at(-1), vergleich: vorher[0], live_fehlend: 0, gegenprobe: "erkannt" });
+    expect(st.gegenprobe_fehlend, "Gegenprobe: neuere Widerrufe fehlen im älteren Stand").toBeGreaterThanOrEqual(2);
+    /* Prüfsummen des neuesten Stands = sha256 der Stufe des letzten Jobs (bytegleich). */
+    for (const b of ["zugang-widerrufe.json", "konto-widerrufe.json"]) {
+      const soll = createHash("sha256").update(await readFile(path.join(STATUSV, "widerrufbuch", "stufe", b))).digest("hex");
+      expect(st.pruefsummen, b).toContain(`${b}=${soll}`);
+    }
+    expect(r.aus).toMatch(/bytegleich mit der Stufe des letzten erfolgreichen Jobs/);
+    const log = await stubLog();
+    expect(log).toContain("restic check --retry-lock 5m --read-data\n");
+    /* Nur lesend: kein backup, kein forget, kein neuer Snapshot; Arbeitsordner aufgeräumt; keine Geheimnisse. */
+    expect(log.split("\n").filter((z) => /^restic (backup|forget) /.test(z)).length).toBe(imRepo);
+    expect(await snapshots()).toEqual(vorher);
+    expect((await readdir(STATUSV)).filter((n) => n.startsWith("widerrufbuch-probe-") && !n.endsWith(".json"))).toEqual([]);
+    for (const geheim of [PFEFFER, RESTIC_PW]) expect(`${JSON.stringify(st)}\n${r.aus}`).not.toContain(geheim);
+    /* Vergleich mit sich selbst: Gegenprobe nicht möglich, aber kein Fehler; unbekannte ID → Fehler. */
+    const selbst = probe(["--alt", vorher.at(-1).slice(0, 8)]);
+    expect(selbst.code, selbst.aus).toBe(0);
+    expect(JSON.parse(await readFile(PROBE_STATUS(), "utf8")).gegenprobe).toBe("nicht-moeglich");
+    expect(probe(["--alt", "deadbeef"]).code).toBe(1);
+    expect(probe(["--alt", "kein-hex"]).code).toBe(78);
+    /* Wie der Job: restic < 0.16.0 → 78 (kein --retry-lock); restic scheitert → 4. */
+    expect(probe([], { STUB_RESTIC_VERSION: "0.15.2" }).code).toBe(78);
+    const rf = probe([], { STUB_RESTIC_FEHLER: "check", STUB_RESTIC_FEHLERCODE: "3" });
+    expect(rf.code, rf.aus).toBe(4);
+    expect(JSON.parse(await readFile(PROBE_STATUS(), "utf8"))).toMatchObject({ ergebnis: "fehler", schritt: "restic-check", code: 4 });
+  }, LIMIT);
+
   it("älterer, gültig gesiegelter Stand über Ablage UND Zustand: Server merkt nichts (rot), der Job erkennt es und sichert NICHT", async () => {
     const r = werkzeug(["wiederherstellen", "--sicherung", S0, "--ziel", DATEN, "--ersetzen", "--ohne-serverpruefung"]);
     expect(r.code, r.aus).toBe(0);
@@ -387,6 +434,18 @@ describe.skipIf(!BASH)("BE-3: eigener Sicherungsjob (Stub-restic, lokales Reposi
       expect(await codeAnmelden(s, "C2"), "Anmeldungen bleiben offen").toBe(200);
       expect(await kontoAnmelden(s, "A2")).toBe(200);
     } finally { await s.stoppen(); }
+  }, LIMIT);
+
+  it("Probe bei zurückgerolltem laufendem Buch: Code 3, Status „ruecksprung“, Zustandsverzeichnis unberührt", async () => {
+    const vorher = await Promise.all(["zugang-widerrufe.json", "konto-widerrufe.json"].map((n) => readFile(path.join(ZUSTAND, n))));
+    const r = probe();
+    expect(r.code, r.aus).toBe(3);
+    expect(r.aus).toMatch(/RÜCKSPRUNG ERKANNT/);
+    const st = JSON.parse(await readFile(PROBE_STATUS(), "utf8"));
+    expect(st).toMatchObject({ ergebnis: "ruecksprung", schritt: "live-vergleich", code: 3 });
+    expect(st.live_fehlend).toBeGreaterThanOrEqual(2);
+    const nachher = await Promise.all(["zugang-widerrufe.json", "konto-widerrufe.json"].map((n) => readFile(path.join(ZUSTAND, n))));
+    expect(nachher.map(String)).toEqual(vorher.map(String));
   }, LIMIT);
 
   it("widerrufbuch-vereinen mit der letzten Sicherung: alle neueren Widerrufe zurück, neu gesiegelt, Eingaben aufgehoben, idempotent", async () => {

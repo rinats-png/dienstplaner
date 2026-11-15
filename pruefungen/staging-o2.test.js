@@ -507,6 +507,71 @@ describe("C2: Haken in der vorhandenen Playwright-Suite (WP-33)", () => {
   });
 });
 
+describe("O2: Sicherungsvorlagen für die Staging-Übung (zwei getrennte, lokale restic-Repositorys)", () => {
+  /* Erlaubte Schlüssel aus dem Parser der Sicherung selbst (deploy/sicherung/gemeinsam.sh), nicht nachgebaut. */
+  const gemeinsam = lesen("deploy/sicherung/gemeinsam.sh");
+  const erlaubt = new RegExp(/readonly KONFIG_ERLAUBT='([^']+)'/.exec(gemeinsam)[1]);
+  const VORLAGEN = { ablage: `${ORDNER}/sicherung.env.beispiel`, widerrufbuch: `${ORDNER}/widerrufbuch.env.beispiel` };
+  const werte = (rel) => Object.fromEntries(lesen(rel).split(/\r?\n/).filter((z) => z.trim() && !z.trim().startsWith("#"))
+    .map((z) => { const i = z.indexOf("="); return [z.slice(0, i), z.slice(i + 1)]; }));
+  const v = { ablage: werte(VORLAGEN.ablage), widerrufbuch: werte(VORLAGEN.widerrufbuch) };
+
+  it("jede Zeile ist ein Schlüssel, den die Sicherung kennt; kein Passwort, keine Zugangsdaten eines Anbieters", () => {
+    for (const [art, w] of Object.entries(v)) {
+      for (const k of Object.keys(w)) {
+        expect(k, `${art}: ${k}`).toMatch(erlaubt);
+        expect(k, `${art}: ${k}`).not.toMatch(/^(RESTIC_PASSWORD|RESTIC_PASSWORD_COMMAND)$|^(AWS_|B2_)/);
+      }
+      for (const pflicht of ["CENTRIC_PROD_IMAGE", "CENTRIC_DATEN_PFAD", "CENTRIC_ENV_DATEI", "RESTIC_REPOSITORY", "RESTIC_PASSWORD_FILE"])
+        expect(w[pflicht], `${art}: ${pflicht}`).toBeTruthy();
+    }
+  });
+
+  it("zwei getrennte Repositorys mit getrennten Passwortdateien, beide nur lokal auf der Staging-VM", () => {
+    expect(v.ablage.RESTIC_REPOSITORY).not.toBe(v.widerrufbuch.RESTIC_REPOSITORY);
+    expect(v.ablage.RESTIC_PASSWORD_FILE).not.toBe(v.widerrufbuch.RESTIC_PASSWORD_FILE);
+    for (const w of Object.values(v)) expect(w.RESTIC_REPOSITORY, "lokaler Pfad, kein sftp:/s3:/rest:/b2:").toMatch(/^(\/|~\/)/);
+    const [a, b] = [v.ablage.RESTIC_REPOSITORY, v.widerrufbuch.RESTIC_REPOSITORY];
+    expect(a.startsWith(`${b}/`) || b.startsWith(`${a}/`), "kein Repository im anderen").toBe(false);
+  });
+
+  it("nur Pfade des Staging, nie die der Produktion; Bild nur als Digest-Platzhalter; Ping leer", () => {
+    for (const [art, rel] of Object.entries(VORLAGEN)) {
+      const t = lesen(rel);
+      expect(t, art).not.toMatch(/\/opt\/apps\/centric-dienstplanung/);
+      expect(t, art).not.toMatch(/centric-storagebox|your-storagebox|https?:\/\/(?!<)/);
+      expect(/[0-9a-f]{64}/.test(t), `${art}: 64-Hex-Wert`).toBe(false);
+      expect(v[art].CENTRIC_PROD_IMAGE, art).toMatch(/@sha256:<[A-Z_]+>$/);
+      for (const p of ["CENTRIC_DATEN_PFAD", "CENTRIC_ENV_DATEI"]) expect(v[art][p], `${art}: ${p}`).toMatch(/^\/opt\/centric-staging\//);
+      expect(v[art].ALARM_PING_URL ?? "", art).toBe("");
+      expect(v[art].PROBE_PING_URL ?? "", art).toBe("");
+    }
+    expect(v.widerrufbuch.CENTRIC_ZUSTAND_PFAD).toBe("/opt/centric-staging/zustand");
+  });
+});
+
+describe("Dokumentation INFRA-VORBEREITUNG-STAGING-BACKUP", () => {
+  const d = lesen("docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md");
+  it.each([
+    "Bestand",
+    "Lokal geprüfte Zugänge",
+    "Voraussetzungen",
+    "Isolierte Staging-VM",
+    "Zwei getrennte restic-Repositorys",
+    "Restore-Proben",
+    "Sicherheitsprüfung",
+    "A. Bereits technisch vorbereitet",
+    "B. Durch Claude ohne weitere Betreiberentscheidung ausführbar",
+    "C. Nur durch den Betreiber",
+  ])("enthält den Abschnitt „%s“", (titel) => {
+    expect(d).toContain(titel);
+  });
+  it("keine echten Digests oder langen Zufallswerte", () => {
+    expect(/[0-9a-f]{64}/.test(d)).toBe(false);
+    expect(/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(d)).toBe(false);
+  });
+});
+
 describe("Dokumentation", () => {
   const d = lesen("docs/acc45/STAGING-O2-VORBEREITUNG.md");
   it.each([

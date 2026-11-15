@@ -68,10 +68,7 @@ readonly BUECHER=(zugang-widerrufe.json konto-widerrufe.json)
 readonly CODE_RUECKSPRUNG=3
 readonly CODE_RESTIC=4
 readonly CODE_VERGLEICH_FEHLT=5
-# --retry-lock: wartet begrenzt auf eine fremde Sperre im Repository, statt
-# sofort zu scheitern (restic >= 0.16.0); deutlich unter ZEITGRENZE_RESTIC.
-readonly RESTIC_MINDESTVERSION=0.16.0
-readonly RETRY_LOCK=(--retry-lock 5m)
+# --retry-lock 5m (RETRY_LOCK) und restic >= 0.16.0 (restic_version_pruefen): gemeinsam.sh
 
 ERSTER_LAUF=0
 if [[ "${1:-}" == "--erster-lauf" ]]; then
@@ -150,24 +147,6 @@ restic_wb() {
     log "restic $befehl gescheitert (restic-Code $rc) — Job endet mit Code $CODE_RESTIC" >&2
     return "$CODE_RESTIC"
   fi
-}
-
-# restic-Version >= RESTIC_MINDESTVERSION (sonst kennt restic --retry-lock nicht).
-restic_version_pruefen() {
-  local zeile ist i
-  local -a soll=() hat=()
-  zeile="$(restic_lauf version 2>/dev/null | head -n1 || true)"
-  [[ "$zeile" =~ ^restic[[:space:]]+v?([0-9]+)\.([0-9]+)\.([0-9]+) ]] ||
-    abbruch_konfig "restic-Version nicht erkennbar ($RESTIC_BIN version) — verlangt ist restic >= $RESTIC_MINDESTVERSION"
-  ist="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-  IFS=. read -r -a soll <<<"$RESTIC_MINDESTVERSION"
-  IFS=. read -r -a hat <<<"$ist"
-  for i in 0 1 2; do
-    ((10#${hat[i]} > 10#${soll[i]})) && break
-    ((10#${hat[i]} < 10#${soll[i]})) &&
-      abbruch_konfig "restic $ist ist zu alt — verlangt ist restic >= $RESTIC_MINDESTVERSION (--retry-lock)"
-  done
-  log "restic $ist (>= $RESTIC_MINDESTVERSION)"
 }
 
 # Repository-Angabe vergleichbar machen: Anführungszeichen, ~/, „local:“ und
