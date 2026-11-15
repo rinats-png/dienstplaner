@@ -32,8 +32,12 @@
 #  Exit-Codes: 0 gut · 1 Fehler (Werkzeug, Abweichung zur Stufe, kein
 #  Snapshot) · 3 Rücksprung im laufenden Buch · 4 restic gescheitert ·
 #  75 anderer Lauf · 78 Konfiguration (auch restic < 0.16.0, wie der Job)
-#  Annahme (in der Staging-Übung mit echtem restic zu bestätigen, wie B3-8):
-#  `restic snapshots --json` liefert die Snapshots zeitlich aufsteigend.
+#  Reihenfolge: Die Ausgabe von `restic snapshots --json` wird NICHT als sortiert
+#  angenommen. Neuester und ältester Snapshot werden über das Feld "time"
+#  bestimmt (Nanosekunden seit 1970, also auch über Zeitzonen/Sommerzeit
+#  hinweg). Unlesbare Zeiten, ein nicht eindeutiger neuester Stand oder ein
+#  Vergleichsstand, der nicht älter ist als der neueste, beenden mit Exit 1.
+#  Meldet der letzte Job „ok“, muss sein Snapshot der neueste sein (sonst Exit 1).
 #  Einrichtung: docs/BETRIEB-SICHERUNG.md §7, docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md
 # =====================================================================
 set -Eeuo pipefail
@@ -163,15 +167,34 @@ log "restic check --read-data bestanden (ganzes Repository gelesen)"
 SCHRITT="snapshot-liste"
 LISTE="$(restic_probe snapshots --json --host "$RESTIC_HOST" --tag "$WB_TAG")" || exit "$CODE_RESTIC"
 mapfile -t IDS < <(printf '%s\n' "$LISTE" | grep -o '"id":"[0-9a-f]\{64\}"' | cut -d'"' -f4)
+# Je Snapshot genau ein "time" und ein "id" (64 hex) auf oberster Ebene; gepaart in Ausgabereihenfolge.
+mapfile -t ZEITEN < <(printf '%s\n' "$LISTE" | grep -o '"time":"[^"]*"' | cut -d'"' -f4)
 SNAPSHOTS=${#IDS[@]}
 ((SNAPSHOTS > 0)) || { log "Kein Snapshot mit Host-Kennung $RESTIC_HOST und Tag $WB_TAG — der stündliche Job lief noch nie erfolgreich"; exit 1; }
-NEU_ID="${IDS[$((SNAPSHOTS - 1))]}"
+((${#ZEITEN[@]} == SNAPSHOTS)) || { log "Snapshot-Liste nicht auswertbar: $SNAPSHOTS IDs, ${#ZEITEN[@]} Zeitangaben"; exit 1; }
+declare -A NS=()
+for i in "${!IDS[@]}"; do
+  n="$(date -d "${ZEITEN[i]}" +%s%N 2>/dev/null || true)"
+  [[ "$n" =~ ^[0-9]{10,}$ ]] || { log "Zeitangabe von Snapshot ${IDS[i]:0:8} nicht lesbar"; exit 1; }
+  NS["${IDS[i]}"]="$n"
+done
+NEU_ID="" ALT_ID=""
+for i in "${IDS[@]}"; do
+  if [[ -z "$NEU_ID" ]] || ((NS[$i] > NS[$NEU_ID])); then NEU_ID="$i"; fi
+  if [[ -z "$ALT_ID" ]] || ((NS[$i] < NS[$ALT_ID])); then ALT_ID="$i"; fi
+done
+for i in "${IDS[@]}"; do
+  if [[ "$i" != "$NEU_ID" ]] && ((NS[$i] == NS[$NEU_ID])); then
+    log "Neuester Snapshot nicht eindeutig: ${i:0:8} und ${NEU_ID:0:8} haben dieselbe Zeit"; exit 1
+  fi
+done
 if [[ -n "$ALT_WUNSCH" ]]; then
   ALT_ID=""
   for i in "${IDS[@]}"; do [[ "$i" == "$ALT_WUNSCH"* ]] && ALT_ID="$i"; done
   [[ -n "$ALT_ID" ]] || { log "Snapshot $ALT_WUNSCH gehört nicht zu Host-Kennung $RESTIC_HOST / Tag $WB_TAG"; exit 1; }
-else
-  ALT_ID="${IDS[0]}"
+fi
+if [[ "$ALT_ID" != "$NEU_ID" ]] && ! ((NS[$ALT_ID] < NS[$NEU_ID])); then
+  log "Vergleichs-Snapshot ${ALT_ID:0:8} ist nicht älter als der neueste ${NEU_ID:0:8}"; exit 1
 fi
 log "Snapshots: $SNAPSHOTS · neuester ${NEU_ID:0:8} · Vergleich ${ALT_ID:0:8}"
 
@@ -194,11 +217,16 @@ for b in "${BUECHER[@]}"; do
     log "sha256 vergleich ${ALT_ID:0:8} $b $(sha256sum -- "$ALT_ORDNER/$b" | cut -d' ' -f1)"
   fi
 done
-# Stufe des letzten erfolgreichen Jobs: war dessen Snapshot der neueste, muss sie bytegleich sein.
-if [[ -f "$JOB_STATUS" && -d "$JOB_STUFE" ]]; then
+# Letzter Job erfolgreich: sein Snapshot MUSS der neueste sein, und dessen Stufe bytegleich.
+if [[ -f "$JOB_STATUS" ]]; then
   JOB_ID="$(json_text snapshot_id <"$JOB_STATUS" || true)"
   JOB_ERG="$(json_text ergebnis <"$JOB_STATUS" || true)"
-  if [[ "$JOB_ERG" == "ok" && -n "$JOB_ID" && "$NEU_ID" == "$JOB_ID"* ]]; then
+  if [[ "$JOB_ERG" == "ok" ]]; then
+    if [[ ! "$JOB_ID" =~ ^[0-9a-f]{8,64}$ || "$NEU_ID" != "$JOB_ID"* ]]; then
+      log "Letzter Job meldet ok mit Snapshot ${JOB_ID:0:8}, der neueste Snapshot ist ${NEU_ID:0:8} — Repository, Host-Kennung oder Statusdatei passen nicht zusammen"
+      exit 1
+    fi
+    [[ -d "$JOB_STUFE" ]] || { log "Stufe des letzten Jobs fehlt ($JOB_STUFE)"; exit 1; }
     for b in "${BUECHER[@]}"; do
       [[ -f "$JOB_STUFE/$b" ]] || continue
       cmp -s -- "$JOB_STUFE/$b" "$NEU_ORDNER/$b" || { log "Zurückgeholte Kopie von $b weicht von der Stufe des letzten Jobs ab"; exit 1; }
@@ -219,7 +247,7 @@ RC=0
 AUSGABE="$(im_bild -v "$ARBEIT/live:/buch:ro" -v "$NEU_ORDNER:/vorher:ro" -- \
   werkzeug/ablage-sicherung.mjs widerrufbuch-pruefen --zustand /buch --vorher /vorher)" || RC=$?
 printf '%s\n' "$AUSGABE"
-LIVE_FEHLEND="$(printf '%s\n' "$AUSGABE" | grep '^WIDERRUFBUCH-PRUEFUNG ' | tail -n1 | zeile_zahl fehlend)"
+LIVE_FEHLEND="$(printf '%s\n' "$AUSGABE" | { grep '^WIDERRUFBUCH-PRUEFUNG ' || true; } | tail -n1 | zeile_zahl fehlend)"
 : "${LIVE_FEHLEND:=0}"
 if [[ $RC -eq $CODE_RUECKSPRUNG ]]; then
   ERGEBNIS="ruecksprung"
@@ -227,7 +255,7 @@ if [[ $RC -eq $CODE_RUECKSPRUNG ]]; then
   log "Abhilfe: docs/BETRIEB-SICHERUNG.md §7 / ABNAHME-V4-BE3 §6.2 (Dienst stoppen, widerrufbuch-vereinen)."
   exit "$CODE_RUECKSPRUNG"
 fi
-[[ $RC -eq 0 ]] || { log "Prüfung laufendes Buch gegen neuesten Snapshot gescheitert (Code $RC) — Siegel, Herkunft oder Pfeffer?"; exit "$RC"; }
+[[ $RC -eq 0 ]] || { log "Prüfung laufendes Buch gegen neuesten Snapshot gescheitert (Code $RC) — Siegel, Herkunft, Pfeffer oder Container?"; exit 1; }
 log "Siegel gültig; laufendes Widerrufbuch enthält alles aus Snapshot ${NEU_ID:0:8}"
 
 # --- 4. Rollback-Gegenprobe ---------------------------------------------------
@@ -239,7 +267,7 @@ else
   RC=0
   AUSGABE="$(im_bild -v "$ALT_ORDNER:/buch:ro" -v "$NEU_ORDNER:/vorher:ro" -- \
     werkzeug/ablage-sicherung.mjs widerrufbuch-pruefen --zustand /buch --vorher /vorher 2>&1)" || RC=$?
-  GEGEN_FEHLEND="$(printf '%s\n' "$AUSGABE" | grep '^WIDERRUFBUCH-PRUEFUNG ' | tail -n1 | zeile_zahl fehlend)"
+  GEGEN_FEHLEND="$(printf '%s\n' "$AUSGABE" | { grep '^WIDERRUFBUCH-PRUEFUNG ' || true; } | tail -n1 | zeile_zahl fehlend)"
   : "${GEGEN_FEHLEND:=0}"
   case "$RC" in
     "$CODE_RUECKSPRUNG")

@@ -28,7 +28,7 @@
 // zeit-ok: echte Serverprozesse und der Job laufen auf der echten Uhr (Status, Sitzungen); die Schwellen der Alterswarnung prüft Abschnitt 8 mit fester Uhr.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, spawnSync } from "node:child_process";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { createHash, randomBytes } from "node:crypto";
@@ -152,7 +152,9 @@ case "$cmd" in
     h=""
     while [[ $# -gt 0 ]]; do case "$1" in --host) h="$2"; shift 2 ;; --tag|--retry-lock) shift 2 ;; *) shift ;; esac; done
     printf '['; t=""
-    for d in $(liste "$h"); do printf '%s{"id":"%s","short_id":"%s"}' "$t" "$d" "\${d:0:8}"; t=","; done
+    # Wie restic: "time" vor "id" je Objekt. STUB_RESTIC_ORDNUNG=umgekehrt kehrt die Ausgabereihenfolge um.
+    ids="$(liste "$h")"; [[ "\${STUB_RESTIC_ORDNUNG:-}" == umgekehrt ]] && ids="$(printf '%s\\n' $ids | sort -r)"
+    for d in $ids; do printf '%s{"time":"%s","id":"%s","short_id":"%s"}' "$t" "$(cat "$repo/times/$d" 2>/dev/null || echo 2020-01-01T00:00:00Z)" "$d" "\${d:0:8}"; t=","; done
     printf ']\\n' ;;
   backup)
     pfade=(); h=centric
@@ -160,7 +162,7 @@ case "$cmd" in
     n=$(( $(ls "$repo/snapshots" | wc -l) + 1 ))
     id="$(printf '%064x' "$n")"
     for p in "\${pfade[@]}"; do mkdir -p "$repo/snapshots/$id$(dirname "$p")"; cp -r "$p" "$repo/snapshots/$id$p"; done
-    mkdir -p "$repo/hosts"; printf '%s' "$h" > "$repo/hosts/$id"
+    mkdir -p "$repo/hosts" "$repo/times"; printf '%s' "$h" > "$repo/hosts/$id"; date -u +%Y-%m-%dT%H:%M:%S.%NZ > "$repo/times/$id"
     echo '{"message_type":"status","percent_done":1}'
     echo "{\\"message_type\\":\\"summary\\",\\"snapshot_id\\":\\"$id\\",\\"data_added\\":42}" ;;
   restore)
@@ -179,6 +181,8 @@ const STUB_DOCKER = `#!/usr/bin/env bash
 set -euo pipefail
 echo "docker $*" >> "$STUB_LOG"
 [[ "\${1:-}" == run ]] || exit 0
+# NUR PRÜFUNG: der Container endet mit diesem Code, ohne das Werkzeug zu starten.
+[[ -z "\${STUB_DOCKER_CODE:-}" ]] || exit "$STUB_DOCKER_CODE"
 shift
 von=(); nach=(); envdatei=""
 while [[ $# -gt 0 ]]; do
@@ -402,6 +406,60 @@ describe.skipIf(!BASH)("BE-3: eigener Sicherungsjob (Stub-restic, lokales Reposi
     const rf = probe([], { STUB_RESTIC_FEHLER: "check", STUB_RESTIC_FEHLERCODE: "3" });
     expect(rf.code, rf.aus).toBe(4);
     expect(JSON.parse(await readFile(PROBE_STATUS(), "utf8"))).toMatchObject({ ergebnis: "fehler", schritt: "restic-check", code: 4 });
+  }, LIMIT);
+
+  it("Probe wählt neuesten/ältesten nach Feld „time“, nie nach Ausgabereihenfolge (3 Snapshots, Zeitzonen); Unklares → Code 1", async () => {
+    const [s1, s2] = await snapshots();
+    const R3 = path.join(T, "repo-zeit"); const ST3 = path.join(T, "status-zeit");
+    await mkdir(path.join(R3, "snapshots"), { recursive: true }); await mkdir(path.join(R3, "hosts")); await mkdir(path.join(R3, "times"));
+    await mkdir(ST3, { recursive: true });
+    await copyFile(path.join(REPO, "config"), path.join(R3, "config"));
+    /* Namen absichtlich gegen die Zeit sortiert (ls: neu, mitte, alt); Zeiten mit wechselnden Zeitzonen
+       (Umstellungsnacht): lexikalisch wäre „mitte“ der neueste, tatsächlich ist es „neu“. */
+    const S = { neu: "1".repeat(64), mitte: "7".repeat(64), alt: "c".repeat(64) };
+    const ZEIT = { alt: "2026-03-29T00:30:00+01:00", mitte: "2026-03-29T03:10:00+02:00", neu: "2026-03-29T02:20:00Z" };
+    for (const [k, quelle] of [["neu", s2], ["mitte", s2], ["alt", s1]]) {
+      await cp(path.join(REPO, "snapshots", quelle), path.join(R3, "snapshots", S[k]), { recursive: true });
+      await writeFile(path.join(R3, "hosts", S[k]), "centric");
+      await writeFile(path.join(R3, "times", S[k]), ZEIT[k]);
+    }
+    const konf = await konfigAbleiten("wb-zeit.env", { RESTIC_REPOSITORY: posix(R3), STATUS_VERZEICHNIS: posix(ST3) });
+    const lesen = async () => JSON.parse(await readFile(path.join(ST3, "widerrufbuch-probe-status.json"), "utf8"));
+    for (const ordnung of ["", "umgekehrt"]) {
+      const r = probe([], { KONFIG: konf, STUB_RESTIC_ORDNUNG: ordnung });
+      expect(r.code, `${ordnung}\n${r.aus}`).toBe(0);
+      expect(await lesen(), ordnung).toMatchObject({ ergebnis: "ok", snapshots: 3, neuester: S.neu, vergleich: S.alt, gegenprobe: "erkannt" });
+    }
+    /* --alt auf einen Stand mit gleichem Inhalt wie der neueste: kein Fehler, nur nicht aussagekräftig. */
+    const m = probe(["--alt", S.mitte.slice(0, 8)], { KONFIG: konf });
+    expect(m.code, m.aus).toBe(0);
+    expect(await lesen()).toMatchObject({ neuester: S.neu, vergleich: S.mitte, gegenprobe: "nicht-aussagekraeftig" });
+    /* Gleiche Zeit für zwei Stände an der Spitze: neuester nicht eindeutig → 1. */
+    await writeFile(path.join(R3, "times", S.mitte), "2026-03-29T04:20:00+02:00");
+    const g = probe([], { KONFIG: konf });
+    expect(g.code, g.aus).toBe(1);
+    expect(g.aus).toMatch(/Neuester Snapshot nicht eindeutig/);
+    await writeFile(path.join(R3, "times", S.mitte), ZEIT.mitte);
+    /* Unlesbare Zeit → 1. */
+    await writeFile(path.join(R3, "times", S.alt), "kein-datum");
+    expect(probe([], { KONFIG: konf }).code).toBe(1);
+    await writeFile(path.join(R3, "times", S.alt), ZEIT.alt);
+    /* Letzter Job meldet ok, aber mit einem anderen Snapshot als dem neuesten → 1 (nicht still übergangen). */
+    await copyFile(STATUS(), path.join(ST3, "widerrufbuch-status.json"));
+    expect((await statusLesen()).ergebnis).toBe("ok");
+    const j = probe([], { KONFIG: konf });
+    expect(j.code, j.aus).toBe(1);
+    expect(j.aus).toMatch(/Letzter Job meldet ok mit Snapshot/);
+  }, LIMIT);
+
+  it("Probe: Codes von Werkzeug/Container (4, 75, 78, 124, 125, 126) werden auf 1 abgebildet", async () => {
+    for (const c of ["4", "75", "78", "124", "125", "126"]) {
+      const r = probe([], { STUB_DOCKER_CODE: c });
+      expect(r.code, `${c}\n${r.aus}`).toBe(1);
+      /* Die ausdrückliche Abbildung greift (nicht ein früherer Abbruch). */
+      expect(r.aus, c).toContain(`Prüfung laufendes Buch gegen neuesten Snapshot gescheitert (Code ${c})`);
+      expect(JSON.parse(await readFile(PROBE_STATUS(), "utf8")), c).toMatchObject({ ergebnis: "fehler", schritt: "live-vergleich", code: 1 });
+    }
   }, LIMIT);
 
   it("älterer, gültig gesiegelter Stand über Ablage UND Zustand: Server merkt nichts (rot), der Job erkennt es und sichert NICHT", async () => {

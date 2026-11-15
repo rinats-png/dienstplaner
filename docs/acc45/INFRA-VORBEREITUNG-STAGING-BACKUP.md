@@ -106,7 +106,8 @@ globalen Block), um Ratenbegrenzungen zu vermeiden; vor der Abnahme (K3) wieder 
 1. Docker Engine + Compose-Plugin aus dem offiziellen Paketquell, Benutzer `admin` (uid 1000) in der Gruppe `docker`
    (Hinweis: Gruppe `docker` ist root-gleich; auf der Staging-VM hingenommen). `timedatectl` → UTC.
 2. GHCR-Zugang: öffentliches Paket **oder** befristetes Token nur `read:packages`;
-   `echo "$TOKEN" | docker login ghcr.io -u <benutzer> --password-stdin`, Pull, danach `docker logout ghcr.io`
+   `read -rs TOKEN && printf '%s' "$TOKEN" | docker login ghcr.io -u <benutzer> --password-stdin; unset TOKEN` (keine
+   Shell-History), Pull, danach `docker logout ghcr.io`
    (sonst liegt das Token in `~/.docker/config.json`).
 3. `docker pull ghcr.io/rinats-png/dienstplaner@sha256:<DIGEST>` und `docker pull caddy@sha256:<CADDY_DIGEST>` —
    **nicht** `docker save | docker load` vom Arbeitsrechner: dabei gehen die RepoDigests verloren und
@@ -172,7 +173,10 @@ Alarm kommt an). Ping-URLs sind Geheimnisse (gehen über `curl -K -`, nie in Log
 
 Die Probe der Widerrufbücher liest nur: Die beiden Bücher werden in einen Temp-Ordner **kopiert** (nie das ganze
 Zustandsverzeichnis mit der Schlüsselepoche einbinden), Prüfung im Produktionsbild ohne Netz, kein `backup`, kein `forget`.
-Annahme, in der Übung mit echtem restic zu bestätigen: `restic snapshots --json` liefert zeitlich aufsteigend.
+Die Reihenfolge der Ausgabe von `restic snapshots --json` wird **nicht** angenommen: neuester und ältester Snapshot nach dem Feld
+`time` (Nanosekunden, zeitzonenfest); unlesbare Zeit, nicht eindeutiger neuester Stand oder ein Vergleichsstand, der nicht älter ist,
+ergeben Exit 1. Meldet der letzte Job `ok`, muss sein Snapshot der neueste sein (sonst Exit 1). Codes von Werkzeug/Container
+(4, 75, 78, 124–126) werden in der Probe auf 1 abgebildet; 3 bleibt dem Rücksprung vorbehalten.
 
 ### 5.5 Übung auf der Staging-VM mit echtem restic (schließt B3-8)
 
@@ -243,7 +247,7 @@ Nachweis: Statusdateien (enthalten keine Geheimnisse), Logauszüge, Datum, Diges
 
 | Nr. | Schritt | Befehl / Aktion | Zugang | Risiko | Dauer |
 |---|---|---|---|---|---|
-| B-1 | BE-3-Job **und** Probe mit **echtem restic** in CI (schließt B3-8 ohne VM): Ende-zu-Ende in `deploy/sicherung/ci/` um Widerrufbücher erweitern (Server im Bild erzeugt Bücher, Widerruf, Job ×2, Probe, Rücksprung → 3) | neuer PR, CI `betrieb-sicherung.yml` | Repository (vorhanden) | gering; CI-Laufzeit + ~5 min | 0,5–1 Tag |
+| B-1 | BE-3-Job **und** Probe mit **echtem restic** in CI (schließt B3-8 ohne VM): Ende-zu-Ende in `deploy/sicherung/ci/` um Widerrufbücher erweitern (Server im Bild erzeugt Bücher, Widerruf, Job ×3 mit **mindestens drei Snapshots**, Probe mit Auswahl nach `time`, Rücksprung → 3) | neuer PR, CI `betrieb-sicherung.yml` | Repository (vorhanden) | gering; CI-Laufzeit + ~5 min | 0,5–1 Tag |
 | B-2 | CI dieses PR auswerten (shellcheck der neuen Probe, Ende-zu-Ende der Ablage nach Verschiebung in `gemeinsam.sh`) | `gh pr checks <PR>` | vorhanden | keins | 30 min |
 | B-3 | SSOT-Nachtrag BE-3/Probe nach Merge | `node werkzeug/ssot-nach-integration.mjs <PR>` | vorhanden | gering | 15 min |
 | B-4 | **Nach** Entscheidung C-7 für Append-only: Schalter „Aufbewahrung nicht auf dem Host“ in beiden Jobs + Prune-Runbook für zweiten Rechner, mit Tests | PR | vorhanden | mittel (Verhalten der Jobs) | 1 Tag |
