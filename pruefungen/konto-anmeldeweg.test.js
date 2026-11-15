@@ -682,8 +682,14 @@ describe("OPT-1-F Review: Befunde 2 und 3", () => {
     expect(ok.length, [x, y, z].map((r) => r.text).join(" | ")).toBe(1);
     expect(ok[0].daten.wiederherstellung).toHaveLength(10);
     for (const w of ok[0].daten.wiederherstellung) geheim.add(w);
+    /* Die Verlierer: 401/403 (Wert aus der App bzw. Ersteinrichtungscode schon verbraucht) — oder 409 „faktor-aktiv“,
+       wenn ihr Lesen des Faktorstands erst NACH der Aktivierung durch den Gewinner lag (accountanmeldung.mjs,
+       kontoFaktorAktion: `if (stand.aktiv)` vor jeder Prüfung des Codes, und nach der Vorprüfung „frisch gelesener
+       Stand“, Review PR #179). Das hängt allein an der Reihenfolge unter Last; es ist dieselbe Antwort, die unten
+       `nochmal` nach dem Wettlauf ausdrücklich verlangt. Jede andere 409 (z. B. „faktor-nichts“) bleibt ein Fehler. */
     for (const r of [x, y, z].filter((q) => q.status !== 200)) {
-      expect([401, 403], r.text).toContain(r.status);
+      expect([401, 403, 409], r.text).toContain(r.status);
+      if (r.status === 409) expect(r.daten.zweifaktor, r.text).toBe("faktor-aktiv");
       expect(r.daten.wiederherstellung).toBeUndefined();
       expect(r.daten.token).toBeUndefined();
     }

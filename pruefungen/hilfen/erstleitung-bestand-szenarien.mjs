@@ -169,6 +169,55 @@ export function maskieren(x, register, tage = tagesangaben(), anker = wochenanke
 /* Zähler der Bremsen und der Gesundheitsanzeige hängen an Uhr und Prozess, nicht am Fachverhalten. */
 const FLUECHTIG = /^(centric-bremse|centric-gesund|centric-last|centric-zaehler|centric-takt)\//;
 
+/* --------------------------------------------------------------------------
+   UHRGETRIEBEN — was der Server nach der Uhr schreibt, nicht nach einer Anfrage
+
+   Unter Last (ein Lauf je Schalterwert über 60 s) fielen Schreibvorgänge in das
+   Beobachtungsfenster eines Szenarios, die nur von der Uhr abhängen — je Lauf in
+   einem anderen Szenario (beobachtet: KIPP-1, KIPP-3, KIPP-6). Nachgestellt mit
+   BDIFF_PAUSE_MS (unten): ohne diese Regeln rot, mit ihnen grün.
+
+   1. Ausgeschaltet über die vorhandenen Schalter des Servers (server.mjs), beim
+      Basislauf der Golden-Aufzeichnung wie hier (dieselbe Funktion `lauf`):
+        CENTRIC_AUFRAEUMEN=aus    Löschlauf, Datenschutzlauf, Zustellaufräumen —
+                                  erster Lauf 60 s nach dem Start (schrieb
+                                  aufraeumen:letzter, datenschutzlauf:letzter,
+                                  centric-spur/…/loeschlauf/…).
+        CENTRIC_ZUSTELL_TAKT=aus  Zustell-Warteschlange, alle 60 s.
+      Beide laufen ohne Anfrage und kennen keinen Schalterwert und keine Marke;
+      kein Szenario ruft sie auf. Die Golden-Aufzeichnung enthält keinen ihrer
+      Schlüssel.
+   2. Ohne Schalter, deshalb hier in GENAU dieser Form herausgenommen (jede andere
+      Form — weiteres Feld, anderer Schlüssel, andere Art — bleibt ein Unterschied):
+        centric-sitzungen/skbindung, Art „geaendert“, Inhalt genau { bindung }:
+          bindungTakt (server.mjs) erneuert die Bindung der Schlüsselepoche jede
+          Minute, sobald es eine gibt (ab dem Sicherungsschlüssel in M2). Ein
+          Zufallswert, kein Bezug zu Betrieb, Rolle oder Regime. Das ERSTE
+          Anlegen („neu“, in M2) bleibt verglichen.
+        centric-sitzungen/ta:<Prüfsumme>, Art „neu“ oder „geaendert“, Inhalt
+          genau { zuletzt: <Zeit> }: die Aktivität einer Sitzung aus einem
+          Zugangscode (sitzungen.mjs, sitzungLesen) — höchstens einmal je Minute,
+          ohne await geschrieben. Ob sie fällt, hängt allein an der Zeit seit der
+          letzten Anfrage dieser Sitzung (lebendigkeit.mjs, VERLAENGERN_AB). Die
+          Sitzung selbst (t:) bleibt verglichen.
+   -------------------------------------------------------------------------- */
+const HUELLE = (daten) => JSON.stringify({ daten, etag: "\"<ZUFALL>\"", fassung: 1, metadata: {}, typ: "json" });
+const UHR_BINDUNG = HUELLE({ bindung: "<ZUFALL>" });
+const UHR_AKTIVITAET = HUELLE({ zuletzt: "<MS>" });
+/** Ist dieser (maskierte) Eintrag genau ein Schreibvorgang nach der Uhr (2.)? */
+export function uhrgetrieben(e) {
+  if (!istObjekt(e)) return false;
+  const w = JSON.stringify(e.wert);
+  if (e.schluessel === "centric-sitzungen/skbindung") return e.art === "geaendert" && w === UHR_BINDUNG;
+  if (e.schluessel === "centric-sitzungen/ta:<ZUFALL>") return (e.art === "neu" || e.art === "geaendert") && w === UHR_AKTIVITAET;
+  return false;
+}
+
+/* Nachstellen von Last (nur von Hand): BDIFF_PAUSE_MS=61000 BDIFF_PAUSE_VOR="^KIPP-(1|3|6)" pausiert in den genannten
+   Szenarien zwischen „vorher“ und den Anfragen. Ungesetzt: keine Pause. */
+const PAUSE_MS = Number(process.env.BDIFF_PAUSE_MS) > 0 ? Number(process.env.BDIFF_PAUSE_MS) : 0;
+const PAUSE_VOR = new RegExp(process.env.BDIFF_PAUSE_VOR || "^KIPP");
+
 async function abbild(wurzel) {
   /** @type {Map<string,string>} */
   const aus = new Map();
@@ -224,6 +273,8 @@ export async function lauf({ wurzel, schalter, meldung = () => {} }) {
       CENTRIC_PFEFFER: PFEFFER, CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "development",
       CENTRIC_DEMO: undefined, CENTRIC_SELBSTSTART: undefined, CENTRIC_IMPORT_AKTIV: undefined, CENTRIC_REGISTRIERUNG: undefined,
       CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT: undefined, CENTRIC_TEILSPEICHERUNG: "true",
+      /* UHRGETRIEBEN 1.: Läufe nach der Uhr aus, damit kein Minutentakt ins Beobachtungsfenster fällt. */
+      CENTRIC_AUFRAEUMEN: "aus", CENTRIC_ZUSTELL_TAKT: "aus",
       CENTRIC_ERSTLEITUNG_STRENG: schalter } });
     kind = st.kind;
     const BASIS = st.basis;
@@ -293,6 +344,9 @@ export async function lauf({ wurzel, schalter, meldung = () => {} }) {
     async function szenario(name, klasse, fn) {
       meldung(`  ${name}`);
       const vorher = await abbild(daten);
+      /* Nachstellen einer langsamen Maschine (nur von Hand, sonst aus): Pause im Beobachtungsfenster, damit die
+         Minutentakte des Servers und die Aktivität von Sitzungen sicher hineinfallen. Siehe UHRGETRIEBEN oben. */
+      if (PAUSE_MS > 0 && PAUSE_VOR.test(name)) await new Promise((w) => setTimeout(w, PAUSE_MS));
       const schritte = [];
       const s = async (titel, a) => { schritte.push({ schritt: titel, status: a.status, rumpf: a.rumpf }); return a; };
       await fn(s);
@@ -300,7 +354,9 @@ export async function lauf({ wurzel, schalter, meldung = () => {} }) {
       const nachher = await abbild(daten);
       const ablage = abbildDifferenz(vorher, nachher);
       const m = maskieren({ schritte, ablage }, register);
-      m.ablage = m.ablage.map((e) => JSON.stringify(e)).sort().map((e) => JSON.parse(e));
+      const uhr = m.ablage.filter(uhrgetrieben).length;
+      if (uhr) meldung(`    ${uhr} Schreibvorgang/-vorgänge nach der Uhr herausgenommen (UHRGETRIEBEN)`);
+      m.ablage = m.ablage.filter((e) => !uhrgetrieben(e)).map((e) => JSON.stringify(e)).sort().map((e) => JSON.parse(e));
       ergebnis[name] = { klasse, ...m };
     }
 
