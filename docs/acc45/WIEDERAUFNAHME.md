@@ -6,7 +6,7 @@
 ## Nachtrag 2026-11-15 02:xxZ (Cloud-Routine, Lease Epoche 13 `cloud-nachtaufgabe`)
 
 - Integrationskopf: `a0a06dec` (Merge #305, QS-ZEIT: feste Zeitbasis für B8 und `geo.test.js`, Ruhezeit-Gegenprobe). Unabhängiger Review: MERGE-OK (kein Produktionscode berührt, Uhrvorlauf bricht unter production ab); CI 23/23 auf `88522c27`.
-- #304 (BE-1): `browser-abnahme` war rot (vermutlich B8-Zeitabhängigkeit); Automatisches Aktualisieren auf den neuen Kopf scheitert an einem **Merge-Konflikt** (zu lösen, dann CI neu, Review, erst dann Merge). Nächstes Arbeitspaket.
+- #304 (BE-1): `browser-abnahme` war rot (vermutlich B8-Zeitabhängigkeit); Der Merge-Konflikt in `package.json` (Prüfkette) wurde gelöst (`be1-konto-widerrufbuch` neben `qs-zeitbasis`/`geo-uhren`) und gepusht; CI läuft neu. Merge erst nach grüner CI und Review.
 - Lease: Hauptchat Epoche 12 war seit 2026-11-14 22:23Z abgelaufen; übernommen als Epoche 13.
 - Hintergrundausführung: ein aktiver Scheduled Task (stündlich, Minute 32) feuert diese Routine; Fortsetzung nach dem Limit-Reset hängt an der Plattform und ist nicht belegt.
 - Weiter offen/angehalten: #277, #238, #177, #175, #168, #139, #129, #127, #115, #104, #297; Betreiberentscheidungen siehe `ENTSCHEIDUNGSLISTE.md`.
