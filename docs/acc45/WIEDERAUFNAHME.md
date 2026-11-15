@@ -3,6 +3,14 @@
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
 
+## Nachtrag 2026-11-15 02:xxZ (Cloud-Routine, Lease Epoche 13 `cloud-nachtaufgabe`)
+
+- Integrationskopf: `a0a06dec` (Merge #305, QS-ZEIT: feste Zeitbasis für B8 und `geo.test.js`, Ruhezeit-Gegenprobe). Unabhängiger Review: MERGE-OK (kein Produktionscode berührt, Uhrvorlauf bricht unter production ab); CI 23/23 auf `88522c27`.
+- #304 (BE-1): `browser-abnahme` war rot (vermutlich B8-Zeitabhängigkeit); Branch wurde auf den neuen Kopf aktualisiert, CI läuft neu. Merge erst nach grüner CI und Review.
+- Lease: Hauptchat Epoche 12 war seit 2026-11-14 22:23Z abgelaufen; übernommen als Epoche 13.
+- Hintergrundausführung: ein aktiver Scheduled Task (stündlich, Minute 32) feuert diese Routine; Fortsetzung nach dem Limit-Reset hängt an der Plattform und ist nicht belegt.
+- Weiter offen/angehalten: #277, #238, #177, #175, #168, #139, #129, #127, #115, #104, #297; Betreiberentscheidungen siehe `ENTSCHEIDUNGSLISTE.md`.
+
 ## Stand 2026-11-14 (Betreiberentscheidungen Pakete A, B, C; Integrationskopf `d84e4a83`)
 
 - **Entschieden** (Statusstufe `entschieden`, Einzelheiten und Stufen je Paket in `ENTSCHEIDUNGSLISTE.md` Abschnitt A): WP-ZEIT E1 bis E8, `mindest` Q1 bis Q5 (#280), IMP-6 Q1 bis Q5, WP-19.5 (§ 43b, getrennt, keine Anrechnung), BE-1 bis BE-3, Staging O2 und Gate-Vorbereitung, Digest-Abweichung nur lesend darstellen, Branch-Schutz nur vorbereiten und prüfen, Betreiberaufgaben trennen.
