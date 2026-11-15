@@ -843,6 +843,8 @@ Kalenderfeeds — eine ältere Sicherung bringt deren alten Stand zurück (BE-1 
 BE-2). Einzelheiten und Matrix: `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`,
 `docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`.
 
+- **Immer mit `--zustand` wiederherstellen.** Ohne `--zustand` gibt das Werkzeug nur einen Hinweis aus und bricht
+  **nicht** ab; die Widerrufe aus dem Buch werden dann erst vom nächsten Serverstart nachgezogen.
 - **Mit `--zustand` wiederherstellen** (Weg 2 über `docker compose run` sieht
   `CENTRIC_ZUSTAND=/zustand` von selbst; bei Weg 1 `-v "$PWD/zustand:/zustand"
   -e CENTRIC_ZUSTAND=/zustand` ergänzen). Das Werkzeug übernimmt dann vor dem Tausch alles,
