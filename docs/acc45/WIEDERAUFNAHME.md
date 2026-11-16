@@ -396,3 +396,10 @@ Hinweise aus den unabhängigen Reviews (nicht blockierend):
 - **#316 (Infra-Vorbereitung Staging/Backup/Restore):** `deploy/sicherung/widerrufbuch-probe.sh`, Vorlagen der restic-Übung, Doku `docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md`. Review MERGE-OK, Auflagen A1/A2 eingearbeitet. Nichts ausgeführt; Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-6.
 - Lease: `hauptchat` Epoche 15. Die Operator-Blocker sind unverändert; die einzige Liste bleibt `ENTSCHEIDUNGSLISTE.md`.
 - SSOT: `node werkzeug/ssot-nach-integration.mjs 315` und `... 316` (Dry-Run, ohne `--schreibe`) melden jeweils „kein Paket zugeordnet“ (Exit 2). Nichts geschrieben, keine Zuordnung erfunden. WP-ZEIT und die Infra-Vorbereitung haben im SSOT weiter kein Paket; ihr Stand steht in `ENTSCHEIDUNGSLISTE.md`.
+
+## Nachtrag 2026-11-16 (geplanter Lauf, nur lesende Prüfung und Statuspflege)
+
+- Integrationskopf unverändert `ba5055e4` (Merge #317). Koordinationssperre: Epoche 15 `hauptchat`, freigegeben 2026-11-15T21:06Z; kein aktiver Koordinator, keine schreibenden Agenten festgestellt.
+- Offene Nicht-Draft-PRs gegen die Integration mit grünen CI-Läufen (Stand der letzten Läufe): #277 (Einladungsbremse je Raum, A-2, Läufe 2026-11-13) und #238 (WP-I16 Teil 1, Läufe 2026-11-12). Für beide ist hier kein unabhängiges Review dokumentiert; sicherheits- bzw. mitbestimmungsnahe Inhalte. **Nicht gemergt**, Review vor Merge nötig (siehe „Was ein neuer Koordinator gefahrlos übernehmen kann“, Punkt 4).
+- Alle übrigen offenen PRs unverändert (Drafts, ältere Basen, Referenz). Keine Änderung an `main`, keine Deployments.
+- Hintergrundbetrieb: Nur dieser geplante Lauf ist belegt; eine eigene dauerhafte Nachtfortsetzung wurde nicht eingerichtet (keine Zusicherung möglich).
