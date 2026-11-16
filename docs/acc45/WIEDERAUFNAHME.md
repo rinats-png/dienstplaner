@@ -54,6 +54,10 @@ Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wi
 
 **Betreiber:** die einzige Liste steht in `ENTSCHEIDUNGSLISTE.md` Abschnitt B; hier nicht wiederholt.
 
+## Nachtrag 2026-11-16 (IONOS-Bestandsprüfung, Kopf `ba5055e4`)
+
+- Nur lesend: `IONOS-BESTANDSPRUEFUNG.md` (VPS L+ und Cloud Backup Starter 100 gegen Staging/Sicherung/Restore). Ergebnis: Staging C (eigene VM, O2 bleibt), restic-Ziel C (externer S3, Cloud Backup ohne restic-Backend), Host-DR B (Cloud Backup als Image mit Auflagen). Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-7.
+
 ## Nachtrag 2026-11-15 (Infra-Vorbereitung Staging/Sicherung, Kopf `19f3ac8b`)
 
 - Nur Repository, nichts ausgeführt: `INFRA-VORBEREITUNG-STAGING-BACKUP.md` (Bestand, lokal geprüfte Zugänge, Staging-Plan, zwei getrennte restic-Repositorys, Restore-Proben, Sicherheitsprüfung, Checkliste A/B/C). Neu: `deploy/sicherung/widerrufbuch-probe.sh` (monatlich, Prüfsummen, Rollback-Gegenprobe), Vorlagen der restic-Übung in `deploy/staging-o2/`. Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-6.
