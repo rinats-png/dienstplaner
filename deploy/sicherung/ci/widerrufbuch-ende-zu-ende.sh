@@ -321,7 +321,8 @@ rr "$REPO" prune >"$AUS/w9-ohne-retry.txt" 2>&1 || CODE=$?
 [[ "$CODE" != 0 ]] || fehl "W9: prune ohne --retry-lock hätte an der fremden Sperre scheitern müssen"
 grep -qi "locked" "$AUS/w9-ohne-retry.txt" || fehl "W9: erwartete Sperrmeldung fehlt: $(cat "$AUS/w9-ohne-retry.txt")"
 SNAP_VOR="$(snap_n)"
-ohne_umgebung "$JOB" "$K" >"$AUS/w9-job.txt" 2>&1 &
+# fd 7 (Schreibende der Halter-Eingabe) darf der Job nicht erben, sonst endet die Eingabe nie.
+ohne_umgebung "$JOB" "$K" 7>&- >"$AUS/w9-job.txt" 2>&1 &
 JOBPID=$!
 GEWARTET=0
 for _ in $(seq 1 240); do
