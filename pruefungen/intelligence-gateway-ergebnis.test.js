@@ -325,7 +325,7 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
     const r = await t.gw.ausfuehren(S.leitung, anf());
     expect(r.status).toBe("fertig");
     const roh = fold(JSON.stringify([...t.store.m.entries()]));
-    for (const v of VERBOTEN_IM_PAKET.filter((x) => !["notiz", "grund", "anmerkung", "raum-a"].includes(x))) expect(roh.includes(fold(v)), v).toBe(false);
+    for (const v of VERBOTEN_IM_PAKET.filter((x) => !["notiz", "grund", "anmerkung", "raum-a"].includes(x))) { const i = roh.indexOf(fold(v)); expect(i < 0, `${v} im Speicher, Umgebung: ${i < 0 ? "" : JSON.stringify(roh.slice(Math.max(0, i - 60), i + 40))}`).toBe(true); }
     const ktx = [...t.store.m.entries()].find(([k]) => k.startsWith("ki:ktx:"))[1];
     expect(JSON.stringify(ktx)).not.toMatch(/[PEOD]_[BCDFGHJKLMNPQRSTVWXZ]{8}/);
     expect(JSON.stringify([...t.store.m.entries()].find(([k]) => k.startsWith("ki:erg:"))[1])).toMatch(/P_[BCDFGHJKLMNPQRSTVWXZ]{8}/);   // Alias-Form
