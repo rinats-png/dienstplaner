@@ -6181,7 +6181,7 @@
         "implementiert": {"wert":"teilweise","beleg":"PR #301 (101989f8, T1: betrieblicher Kalendertag, ZEIT-A/C Kern), PR #303 (df534301, ZEIT-E/E6: Zuschläge in Umstellungsnächten, RECHEN_STAND 3), PR #315 (0ec7ac63, P2: Wanduhr-zu-Zeitpunkt zentral); Vertrag PR #296 (36f5c39b). Offen laut Vertrag: ZEIT-B, ZEIT-D, ICS-Zone, Z56, Z57, Auskunftserläuterung, ZEIT-F, ZEIT-G"},
         "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/betriebstag.test.js (PR #301, #315), pruefung:zeit-e (PR #303); Browserabnahme B8 siehe QS-ZEIT (#305)"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":"teilweise","beleg":"PR #296, #301, #303, #315 gemergt in integration/release-v4 (alle Merge-Commits Vorfahren); Paket nicht vollständig"},
+        "integriert": {"wert":"teilweise","beleg":"PR #296, #301, #303, #315, #337 (Merge 7fb14d03: lokale Berlin-Tagesformeln über die zentrale Zeitbasis) gemergt in integration/release-v4 (alle Merge-Commits Vorfahren); Paket nicht vollständig: ZEIT-B Zonenverlauf und optionale Datumsvalidierung offen"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
