@@ -105,8 +105,24 @@ ob er beim Scan noch sichtbar war (3 s), hing von der Laufzeit ab (CI schnell, W
   wahrscheinliche Ursache des Konfliktdialogs bei parallelen Sitzungen (Nebenbefund oben).
 - Kontrast: Rücknahmeknopf hell vorher 1,98:1, jetzt 7,36:1 (hell) und 11,0:1 (dunkel).
 
+## 4b. WP-33 Rest: weitere axe-Flächen (2026-11-17)
+
+Neu: `e2e/barrierefreiheit-flaechen.spec.mjs` mit den Flächen aus `e2e/weitere-flaechen.mjs` (reine Daten), je Viewport der Gerätematrix:
+Anträge und Tauschbörse (Planung), Personal, Prüfung, Abrechnungsdaten, Hilfe und Rechtliches (Leitung) = 7 x 8 = 56 axe-Läufe, nur lesend
+(Anmelden, Navigieren). Gleiches Gate (serious/critical), gleiche Meldungsstreifen-Prüfung. Zusätzlich `pruefungen/e2e-flaechen.test.js`
+(Skript `pruefung:e2e-flaechen`, Glied der Kette `pruefung` vor `pruefung:wcag-wp40`, eigener Schritt in `pruefung.yml`): Ohne Browser wird geprüft,
+dass Namen eindeutig sind, die Rolle zur Suite gehört, der Navigationseintrag in `src/app/navigation.js` genau einmal besteht und die Ausnahmeliste
+nur bekannte Flächen nennt (kein Platzhalter). Die Listenprüfung in `barrierefreiheit.spec.mjs` kennt die neuen Flächen.
+
+Befund des Laufs (lokal, Windows, Chromium 1.64.1, axe-core 4.14.0): keine critical-Funde, nur Funde der schon bekannten Ursachen, die als
+begründete Ausnahmen (WP-40) in `e2e/axe-ausnahmen.json` stehen: `label-content-name-mismatch` (Kontoknopf, ab Tabletbreite Suchknopf, auf
+`personal-leitung` rund 87 Personenzellen) auf allen sieben Flächen, `nested-interactive` auf `antraege-planer` (Antragszeilen). Keine bestehende
+Ausnahme und kein Gate wurde geändert oder gelockert. Entscheidungsvorlage zum Abbau: ENTSCHEIDUNGSLISTE P2-11.
+
+Lauf mit den Ausnahmen (lokal, Windows, einzeln nacheinander): **56 von 56 bestanden** (alle acht Viewports, 19,2 min) plus die Listenprüfung (1 bestanden).
+
 ## 5. Offen
 
 - Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.
-- Weitere Flächen (Anträge, Lagebild, Betreiberkonsole), Offline-Fälle und Rollenabläufe aus dem alten Branch (674d1c04) nachziehen.
+- Weitere Flächen: Anträge, Tauschbörse, Personal, Prüfung, Abrechnungsdaten, Hilfe, Rechtliches und Lagebild sind in der Suite (siehe 4b); offen bleiben die Betreiberkonsole (eigener Zugang, eigener Betrieb) und weitere Verwaltungsansichten. Offline: Stempeln ohne Netz deckt B7 der Abnahme B ab; weitere Offline-Fälle brauchen eine Fachvorgabe.
 - Erster Lauf auf dem GitHub-Runner (Chromium-Download) steht mit dem PR aus.
