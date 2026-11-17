@@ -33,12 +33,23 @@ async function api(pfad, { methode = "GET", rumpf, token } = {}) {
   return { status: a.status, ...(await a.json().catch(() => ({}))) };
 }
 const anmeldenApi = async (code) => (await api("/api/anmelden", { methode: "POST", rumpf: { zugangscode: code } })).token;
+/* Lesen, ändern, mit dem gelesenen Stand schreiben. Ein 409 („Jemand anderes hat inzwischen die Stammdaten geändert“) heißt:
+   zwischen Lesen und Schreiben hat ein anderer Schreiber den Stand verändert (im Lauf als erster Test der Hälfte 2 der
+   CI-Aufteilung beobachtet: letzte Speicherung der gerade geschlossenen Seite). Dann wird, wie jeder Client mit
+   optimistischer Sperre, der neue Stand gelesen und die Änderung darauf neu angewendet; höchstens dreimal, jeder
+   Versuch steht im Log, jeder andere Status und ein dritter 409 schlagen sofort fehl. Die Prüfungen des Tests bleiben unverändert. */
 async function schreiben(token, aendern) {
-  const g = await api("/api/bestand", { token });
-  const b = JSON.parse(JSON.stringify(g.bestand));
-  aendern(b.mandanten[0]);
-  const a = await api("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag } });
-  if (a.status !== 200) throw new Error(`Speichern ${a.status}: ${a.text || a.fehler}`);
+  let a;
+  for (let versuch = 1; versuch <= 3; versuch++) {
+    const g = await api("/api/bestand", { token });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    aendern(b.mandanten[0]);
+    a = await api("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag } });
+    if (a.status === 200) return;
+    if (a.status !== 409) break;
+    console.log(`Abnahme A: Speichern 409 im Versuch ${versuch}, Stand neu gelesen`);
+  }
+  throw new Error(`Speichern ${a.status}: ${a.text || a.fehler}`);
 }
 
 /** Anmeldung über die echte Anmeldeseite (wie hilfen.anmelden, aber mit dem Code dieses Ablaufs). */
