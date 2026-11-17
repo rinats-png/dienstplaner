@@ -62,7 +62,7 @@ async function schreibvorgaengeVerfolgen(page) {
   });
   // Das request-Ereignis eines beim Verlassen ausgelösten PUT trifft vor dem Ende von goto() ein (geordnete Protokollereignisse);
   // ein Fehler von route.fetch zählt als beantwortet — das Rennen würde dann als 409 sichtbar, nicht verdeckt.
-  return { abgeschlossen: () => expect.poll(() => beantwortet === angefragt, { timeout: 20000, message: () => `offene PUT /api/bestand: ${angefragt - beantwortet}` }).toBe(true) };
+  return { abgeschlossen: () => expect.poll(() => beantwortet === angefragt, { timeout: 20000, message: "Seite hat noch unbeantwortete PUT /api/bestand (angefragt > beantwortet)" }).toBe(true) };
 }
 
 /** Anmeldung über die echte Anmeldeseite (wie hilfen.anmelden, aber mit dem Code dieses Ablaufs). */
