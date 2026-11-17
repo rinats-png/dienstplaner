@@ -18,6 +18,21 @@ export const demoAn = () => process.env.CENTRIC_DEMO === "true";
 export const teilwegAn = () => process.env.CENTRIC_TEILSPEICHERUNG === "true";
 
 /* --------------------------------------------------------------------------
+   MONATSABSCHLUSS SEGMENTWEISE (WP-48.7, Stufe a) — Vorgabe AUS
+
+   CENTRIC_ABSCHLUSS_SEGMENTWEISE  Abschließen, Wiederöffnen und Lohnexport
+                 lesen unter der Raumsperre nur den Kern und die Monatsscherben
+                 des Jahres bis zum Monat und schreiben Kern + die Scherbe des
+                 Monats über den Segmentschreiber (WP-48.2). Ergebnis auf der
+                 Platte gleich dem vollen Weg (pruefungen/wp48-7-abschluss-segmentweise.test.js).
+                 Aus: der bisherige volle Weg, unverändert. Kein neuer Weg und
+                 kein neues Recht; eingeschaltet wird erst nach der Messung auf
+                 Staging (WP-48.9) und Betreiberfreigabe.
+   Nur genau `true` schaltet ein.
+   -------------------------------------------------------------------------- */
+export const abschlussSegmentweiseAn = () => process.env.CENTRIC_ABSCHLUSS_SEGMENTWEISE === "true";
+
+/* --------------------------------------------------------------------------
    PERSONALIMPORT (IMP-1…IMP-4) — Vorgabe AUS
 
    CENTRIC_IMPORT_AKTIV  alle Wege /api/import/* (upload, analyse, vorschau,

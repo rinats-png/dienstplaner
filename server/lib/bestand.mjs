@@ -947,6 +947,65 @@ async function teileSchreibenGesperrt(store, raum, teile, { erwarteterStand, erw
   return { ok: true, stand: String(neuerStand), geschrieben, epoche };
 }
 
+/* ---------------------------------------------------------------------------
+   Auswahl lesen (WP-48.7, Stufe a)
+
+   Der Monatsabschluss braucht den Kern und die Monate des Jahres bis zum
+   abzuschließenden Monat (Stundenkonto ab Januar), nicht 36 Monate Historie.
+   Hier wird unter der gehaltenen Raumsperre genau das gelesen — streng wie
+   bestandLesenStreng: Jede gewählte Scherbe, die im Verzeichnis steht, muss
+   lesbar sein, sonst BESTAND_UNLESBAR (→ 503, nichts geschrieben).
+
+   null heißt „nicht segmentweise": kein Kern (Altbestand), ein liegendes
+   Journal, keine Epoche, Kern/Zeiger/Vermerk/Verzeichnis passen nicht
+   zusammen — dieselben Bedingungen, unter denen teileSchreiben „unbestimmt"
+   meldet. Der Aufrufer nimmt dann den vollen Weg, der Journal und
+   Wiederanlauf kennt.
+
+   Nicht gewählte Scherben werden weder gelesen noch geschrieben noch
+   gelöscht; der Segmentschreiber übernimmt ihre Abdrücke aus dem Vermerk.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Kern und gewählte Monatsscherben strikt lesen — nur unter der gehaltenen Raumsperre.
+ * @param {(kern: object) => (string[]|null)} waehle  aus dem Kern die Kennungen „betriebId::JJJJ-MM"; null = nicht segmentweise
+ * @returns {Promise<null | {bestand: object, stand: string, epoche: string, zeit: string|null, durch: string|null}>}
+ */
+export async function bestandLesenAuswahlStreng(store, raum, waehle) {
+  if (!sperreGehalten(raum)) throw new Error("bestandLesenAuswahlStreng: nur unter der Raumsperre");
+  const streng = async (was, arbeit) => {
+    try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
+  };
+  if (await streng("Schreibjournal", () => journalLesen(store, raum))) return null;
+  const zeigerRoh = await streng("Standzeiger", () => store.get(STAND_ZEIGER(raum), { type: "json" }));
+  const kernRoh = await streng("Kern", () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }));
+  if (!kernRoh || !istObjekt(kernRoh.data) || !Array.isArray(kernRoh.data.mandanten) || !zeigerRoh) return null;
+  const stand = Number(kernRoh.metadata?.stand);
+  const epoche = kernRoh.metadata?.epoche;
+  if (!Number.isFinite(stand) || stand < 1 || Number(zeigerRoh.nr) !== stand
+      || !epocheGueltig(epoche) || zeigerRoh.epoche !== epoche) return null;
+  const abd = vermerkAbdruecke(await streng(`Vermerk ${stand}`, () => store.get(STAND(raum, stand), { type: "json" })));
+  if (!abd) return null;
+  const { blobs } = await streng("Verzeichnis der Scherben", () => store.list({ prefix: `scherbe:${raum}:` }));
+  const imVermerk = Object.keys(abd).filter((id) => id !== "kern");
+  const vorhanden = new Set(blobs.map((b) => scherbenKennung(raum, b.key)));
+  if (imVermerk.length !== vorhanden.size || imVermerk.some((id) => !vorhanden.has(id))) return null;
+  const gewaehlt = waehle(kernRoh.data);
+  if (!Array.isArray(gewaehlt)) return null;
+  const wahl = new Set(gewaehlt);
+  const liste = [];
+  /* In der Reihenfolge des Verzeichnisses — wie bestandLesenStreng, damit der zusammengesetzte Betrieb dieselbe
+     Schlüsselfolge trägt wie im vollen Weg. */
+  for (const b of blobs) {
+    if (!wahl.has(scherbenKennung(raum, b.key))) continue;
+    const s = await streng(`Scherbe ${b.key}`, () => store.get(b.key, { type: "json" }));
+    if (s === undefined || s === null) throw unlesbar(raum, `Scherbe ${b.key}`, "verschwunden oder leer");
+    liste.push(s);
+  }
+  return { bestand: zusammensetzen(kernRoh.data, liste), stand: String(stand), epoche,
+    zeit: kernRoh.metadata?.zeit || null, durch: kernRoh.metadata?.durch || null };
+}
+
 /**
  * Welche Monatsscherben („betriebId::JJJJ-MM") sind seit dem Stand, den die
  * Oberfläche zuletzt bekam, unverändert? Für sie kennt die Oberfläche den

@@ -717,6 +717,44 @@ kein Löschlauf-Endpunkt (48.4), keine segmentproportionale Kette (48.6).
    48.6 (Entscheidung 6.5).
 4. Wiederholschutz: Restgrenzen siehe oben (andere Sitzung, > 24 h, neue Kennung).
 
+### 7.3 WP-48.7 Stufe a: Monatsabschluss segmentweise (Branch `feature/wp48-integritaet`, Basis `integration/release-v4` 8300c34)
+
+Stand 2026-11-17. Abgleich Ist gegen Soll vor dem Start: 48.1/48.2 (#87), 48.3 Server-Teilweg (#224) und WP-48-GB (#271) sind
+integriert; offen waren 48.4, 48.5, 48.6, 48.7, 48.9 (48.8 optional). Umgesetzt ist hier nur **48.7 Stufe a**; 48.4/48.5/48.8
+stehen auf HOLD (Betreiberentscheidungen, `ENTSCHEIDUNGSLISTE.md` P1-7), 48.6 und 48.7 Stufe b bleiben offen (ausführbar,
+keine Entscheidung nötig).
+
+- **Was sich ändert (nur mit Schalter `CENTRIC_ABSCHLUSS_SEGMENTWEISE=true`, Vorgabe aus):** `POST /api/monatsabschluss` mit
+  `abschliessen`, `wiederoeffnen`, `lohnexport` liest unter der Raumsperre nur den Kern und die Scherben des eigenen Betriebs
+  **von Januar bis zum Monat** (`bestand.mjs` `bestandLesenAuswahlStreng`) und schreibt Kern + die Scherbe des Monats über den
+  Segmentschreiber `teileSchreiben` (ein Journal). Ohne Schalter läuft der bisherige volle Weg unverändert.
+- **Abweichung vom Entwurf (Abschnitt 5, Punkt 1):** nicht „Kern + eine Scherbe“, sondern Kern + die Monate des Jahres bis zum
+  Monat. Grund [Code]: Der Freeze (Schema 3) trägt das Stundenkonto zum Monatsende, gerechnet ab Januar
+  (`isteinfrieren.mjs` `kontoBis`, `vo`/`vs` im Betriebseintrag). Alles andere (Ist, Prüffälle, Prüfsumme, Nachtdienst am
+  Monatsletzten) liegt im Monat; Personal, Abschlüsse und Einstellungen stehen im Kern. Damit sinkt das Gelesene unter der
+  Sperre bei 36 Monaten Historie auf höchstens 12 Scherben, das Zerlegen und Hashen beim Schreiben auf Kern + 1 Scherbe.
+- **Fail-closed zurück auf den vollen Weg:** Korrekturaktionen; irgendein Betrieb des Raums mit laufender Korrekturrevision
+  (WP-16c: nur `bestandSchreiben` vermerkt Mitwirkende); Journal liegt, kein Kern, keine Epoche, Kern/Zeiger/Vermerk/Verzeichnis
+  passen nicht zusammen (dieselben Bedingungen wie „unbestimmt“ in `teileSchreiben`); die Rechnung hat einen Monatsschlüssel
+  außerhalb des Monats verändert (`abschlussTeile` → null, dann voll neu gelesen und neu gerechnet). Eine gewählte, aber
+  unlesbare Scherbe → 503, nichts geschrieben.
+- **Rechte, Mandanten, Daten:** keine neue Route, kein neues Recht (`abschlussRecht` unverändert vor der Sperre), Betrieb nur aus
+  der Sitzung (`eigenerMandant`), Kennung strikt eindeutig. Keine Formatänderung, keine Migration; das Ergebnis auf der Platte ist
+  bytegleich zum vollen Weg (Prüfung unten).
+- **Bekannt:** Die Sitzungsprüfung jeder Anfrage liest den Bestand weiterhin vollständig, aber **außerhalb** der Raumsperre; Stufe a
+  verkürzt die gehaltene Sperre, nicht das gesamte Lesen. Die Rechnung läuft weiter **unter** der Sperre (Stufe b: Rechnen ohne
+  Sperre, compare-and-set auf Stand/Epoche, höchstens 3 Wiederholungen — offen). Messung der Haltezeit 60/150/400 × 12/24/36
+  ist WP-48.9 (Staging), nicht lokal gemacht.
+- **Prüfungen** `pruefungen/wp48-7-abschluss-segmentweise.test.js` (`pruefung:wp48-abschluss`, CI, feste Zeit 05.11.2026):
+  Gleichwertigkeit über 16 Schritte in zwei gleichen Räumen (Erfolge und Absagen, Vorjahr, Monat ohne Scherbe, Wiederöffnen
+  leert die Scherbe, Lohnexport mit offenem Vormonat, Konto mit wiederoffenem Januar, Nachtdienst am Monatsletzten, ungültiger
+  und nicht vergangener Monat): Status, Antwort, Kern, jede Scherbe und zusammengesetzter Bestand gleich, Vermerk passt zur
+  Platte, Scherbe 2024 und zweiter Betrieb bytegleich. Zugriff unter der Sperre (Beschädigung, während die Anfrage an der
+  Sperre wartet): Scherbe außerhalb des Jahres → segmentweise 200 und unberührt, voll 503; Scherbe im Jahr → 503 in beiden,
+  Stand unverändert; Schalterwerte `TRUE`, `1`, leer, `true ` → voller Weg; Korrekturaktion und laufende Korrektur im anderen
+  Betrieb → voller Weg; Einheit `abschlussTeile`/`jahrBisMonat`; Lesen nur unter der Sperre; 4 Rennen Abschluss gegen
+  Ausstempeln des Nachtdiensts (Prüfsumme stimmt immer). Mutanten A1–A8 in `werkzeug/wp48-mutanten.mjs`.
+
 ---
 
 ### Anhang: Messskript
