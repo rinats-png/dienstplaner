@@ -119,6 +119,8 @@ begründete Ausnahmen (WP-40) in `e2e/axe-ausnahmen.json` stehen: `label-content
 `personal-leitung` rund 87 Personenzellen) auf allen sieben Flächen, `nested-interactive` auf `antraege-planer` (Antragszeilen). Keine bestehende
 Ausnahme und kein Gate wurde geändert oder gelockert. Entscheidungsvorlage zum Abbau: ENTSCHEIDUNGSLISTE P2-11.
 
+**Offener Mangel:** `nested-interactive` auf `antraege-planer` (WCAG 4.1.2) ist ein echter Bedienmangel (Antragszeilen `div[role=button]` mit bedienbaren Kindern), kein Namensschema-Befund; Behebung durch WP-40 (ENTSCHEIDUNGSLISTE P2-11a). Die Ausnahmen in `e2e/axe-ausnahmen.json` (17 Einträge) haben keinen Ablauf; ihr Abbau hängt an WP-40, ein Ablaufdatum-Mechanismus ist nicht vorgesehen. Die 8 neuen Ausnahmen sind eng, begründet und unabhängig geprüft und verdecken nichts, was bisher geprüft wurde (nur neue Abdeckung). Der Betreiber ist über die Entscheidungsliste informiert; das ist keine stille Freigabe.
+
 Lauf mit den Ausnahmen (lokal, Windows, einzeln nacheinander): **56 von 56 bestanden** (alle acht Viewports, 19,2 min) plus die Listenprüfung (1 bestanden).
 
 ## 5. Offen
