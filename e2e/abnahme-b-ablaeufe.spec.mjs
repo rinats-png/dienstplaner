@@ -11,7 +11,7 @@
    Lesende Prüfungen an allen acht Viewports (B6/B14): Mein Plan ohne waagrechtes Scrollen, Bedienflächen ≥ 24 px,
    axe WCAG 2.2 AA auf Heute (Stempeluhr), Krankmeldungsblatt, Lagebild (offene Krankmeldungen) und Stempelbefunde
    (Monatsabschluss); Tastaturbedienung des Krankmeldungsblatts. Zugangscodes werden nie ausgegeben. */
-import { test, expect, anmelden, geheZu, axePruefen } from "./hilfen.mjs";
+import { test, expect, anmelden, geheZu, axePruefen, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
 import { BASIS, ZUGAENGE_VAR } from "./umgebung.mjs";
 import { ABNAHME_B_FLAECHEN as FL } from "./abnahme-b-flaechen.mjs";
 import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
@@ -48,6 +48,23 @@ async function serverBetriebstag() {
   const a = await fetch(`${BASIS}/gesund`);
   return betriebstagAusKopf(a.headers.get("date"), abnahmeHeute);        // fehlender Kopf: Fehler, kein Rückgriff auf die eigene Uhr
 }
+/* Schreibwettlauf (wie Strang A, PR #332): Die App schreibt von selbst (Urlaubshinweis nach 1200 ms Verzögerung, beim Verlassen
+   per keepalive). Fällt dieser PUT zwischen GET und PUT eines API-Schreibens dieses Tests (dienstSicherstellen, B8, Gegenprobe),
+   bekommt dessen PUT mit veraltetem ETag einen 409 statt der erwarteten 200/403. Darum werden die Seiten der Tests über
+   hilfen.schreibvorgaengeVerfolgen verfolgt, und vor jedem solchen Schreiben wartet nachlaufAbwarten(), bis jeder angefragte
+   PUT beantwortet ist (Bedingung, keine Wartezeit). B7 ist ausgenommen: Dort muss context.setOffline(true) jeden Schreibweg
+   der Seite sperren, eine Route mit route.fetch liefe am Browser vorbei.
+   Restrisiko: Erfasst werden nur bereits ANGEFRAGTE PUTs. Ein noch laufender 1200-ms-Debounce (src/speicher.js) einer eben
+   geschlossenen Seite bleibt ein Restwettlauf. Auch die nicht verfolgte B7-Seite (offline) kann beim Abbau schreiben, was
+   nachlaufAbwarten in B8 nicht erfasst (gering).
+   Das Register umfasst nur den laufenden und den vorangehenden Test (neuerTest() rotiert in beforeEach), damit Verfolger
+   toter Seiten älterer Tests nicht später als unbeantwortet gelten. */
+let verfolger = [], vorherige = [];
+function neuerTest() { vorherige = verfolger; verfolger = []; }
+async function seiteVerfolgen(page) { verfolger.push(await schreibvorgaengeVerfolgen(page)); }
+async function nachlaufAbwarten() { for (const v of [...vorherige, ...verfolger]) await v.abgeschlossen(); }
+/** Zusatzseite verlassen (löst das Wegschreiben beim Verlassen aus) und dessen Ende abwarten. */
+async function seiteVerlassen(p) { await p.goto("about:blank").catch(() => {}); await nachlaufAbwarten(); }
 const mandantVon = (g) => (((g.d.bestand || {}).mandanten) || [])[0] || {};
 const stempelAm = (m, pid, tag) => Object.entries(m.einstempeln || {}).filter(([k]) => k === `${pid}|${tag}`);
 
@@ -57,6 +74,7 @@ async function zweiteSeite(browser, viewport, nr) {
     extraHTTPHeaders: { "x-forwarded-for": `10.36.${nr}.1` } });
   await cx.addInitScript(uhrVersetzen, versatzMs());                  // QS-ZEIT: dieselbe Uhr wie Server und erste Seite
   const p = await cx.newPage();
+  await seiteVerfolgen(p);
   p.setDefaultTimeout(15000);
   p.on("dialog", (d) => d.accept().catch(() => {}));
   return { cx, p };
@@ -69,6 +87,7 @@ async function zuKrankMelden(page) {
 
 /** Einer Person am Tag einen Dienst mit Beginn und Ende geben (über die Planung, PUT mit ETag); vorhandener Dienst bleibt. */
 async function dienstSicherstellen(personId, tag) {
+  await nachlaufAbwarten();
   const pl = await apiAnmelden("planer");
   const g = await api("bestand", { token: pl.token });
   expect(g.s, "Planung liest den Bestand").toBe(200);
@@ -131,6 +150,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
      am Vortag und bot nach dem Neuladen wieder „Einstempeln“ statt „Ausstempeln“ an. Darum hier, wie bei der
      Stempeluhr unten, die Zeitzone des Betriebs. */
   test.use({ timezoneId: "Europe/Berlin" });
+  test.beforeEach(async ({ page }, testInfo) => { neuerTest(); if (!testInfo.title.startsWith("B7")) await seiteVerfolgen(page); });
   test("B7 Stempeln ohne Netz, vorläufig auf dem Gerät, nach dem Netz genau ein Stempel", async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const tag = await berlinerTagFuerAblauf(page);
@@ -180,6 +200,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
 
   test("B8 Krankmeldung zweistufig, Beschäftigte → Schichtverantwortung vorläufig → Planung endgültig", async ({ page, browser }, testInfo) => {
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
+    await nachlaufAbwarten();
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
     /* Am Krankheitstag einen Dienst im Plan, damit „Plan unverändert“ prüfbar ist. QS-ZEIT: Der Tag wird gesucht, nicht
@@ -243,7 +264,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
         .find((f) => f.id === fall.id) || {}).status, { message: `SV vorläufig (Server: ${sA})`, timeout: 30000 }).toBe("vorlaeufig_bestaetigt");
       const svSicht = await sv.p.evaluate(() => document.body.innerText);
       expect(svSicht.includes(NOTIZ), "Anmerkung nicht bei der Schichtverantwortung").toBe(false);
-    } finally { await sv.cx.close(); }
+    } finally { await seiteVerlassen(sv.p); await sv.cx.close(); }
     const svApi = await apiAnmelden("subplaner");
     expect((await api("bestand", { token: svApi.token })).text.includes(NOTIZ), "Anmerkung nicht im Bestand der SV").toBe(false);
     const brApi = await apiAnmelden("betriebsrat");
@@ -263,7 +284,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
       const pA = await schrittKlick(pp.p, end);
       await expect.poll(async () => ((mandantVon(await api("bestand", { token: pl.token })).krankmeldungen || [])
         .find((f) => f.id === fall.id) || {}).status, { message: `Planung endgültig (Server: ${pA})`, timeout: 30000 }).toBe("endgueltig_bestaetigt");
-    } finally { await pp.cx.close(); }
+    } finally { await seiteVerlassen(pp.p); await pp.cx.close(); }
     mp = mandantVon(await api("bestand", { token: pl.token }));
     const abw = (mp.abwesenheiten || []).filter((a) => a.personId === ma.person && a.art === "krank" && a.von <= tag && a.bis >= tag);
     expect(abw, "endgültig: genau eine Abwesenheit").toHaveLength(1);
@@ -281,6 +302,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
      Spätdienst ist an jedem Tag und in jedem Zyklusabschnitt eine echte Verletzung. */
   test("B8 Gegenprobe: Frühdienst nach Spätdienst verletzt die Ruhezeit und wird abgewiesen (403)", async ({}, testInfo) => {
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
+    await nachlaufAbwarten();
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
     const basis = await serverBetriebstag();                       // auch gegen den fremden Container mit echter Uhr
@@ -352,6 +374,7 @@ async function zielgroesse(page, name) {
 }
 
 test.describe("Abnahme B — Darstellung und Barrierefreiheit der Abläufe", () => {
+  test.beforeEach(async ({ page }) => { neuerTest(); await seiteVerfolgen(page); });
   test("mein-plan-mobil", async ({ page }, testInfo) => {
     await anmelden(page, "mitarbeiter");
     await geheZu(page, "Mein Plan");
