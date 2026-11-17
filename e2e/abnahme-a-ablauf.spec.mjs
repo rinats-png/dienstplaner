@@ -11,7 +11,7 @@
      5  Leitung Süd sieht in Personal und Monatsplan nichts aus Nord.
    Nur ein Viewport (1024x768; Schritt 2/4 auf 390x844 umgestellt): Der Ablauf schreibt Daten, die Rasterprüfung je Viewport
    macht barrierefreiheit.spec.mjs. Nur erfundene Daten; Codes nie ausgegeben. */
-import { test, expect, geheZu, axePruefen } from "./hilfen.mjs";
+import { test, expect, geheZu, axePruefen, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
 import { BASIS, BETREIBER_VAR } from "./umgebung.mjs";
 import { abnahmeHeute } from "./zeitbasis.mjs";
 
@@ -39,30 +39,6 @@ async function schreiben(token, aendern) {
   aendern(b.mandanten[0]);
   const a = await api("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag } });
   if (a.status !== 200) throw new Error(`Speichern ${a.status}: ${a.text || a.fehler}`);
-}
-
-/** Verfolgt die Schreibvorgänge der Seite (PUT /api/bestand), auch den keepalive-PUT beim Verlassen. Der Browser meldet
-    dessen Ende nach der Navigation nicht mehr (kein requestfinished); deshalb geht der PUT über eine Route, deren Ende der
-    Test selbst sieht. Inhalt und Ziel der Anfrage bleiben unverändert. abgeschlossen() wartet, bis jeder angefragte PUT
-    beim Server beantwortet ist — eine Bedingung, keine Wartezeit. */
-async function schreibvorgaengeVerfolgen(page) {
-  let angefragt = 0, beantwortet = 0;
-  const istPut = (r) => r.method() === "PUT" && new URL(r.url()).pathname === "/api/bestand";
-  page.on("request", (r) => { if (istPut(r)) angefragt += 1; });
-  await page.route("**/api/bestand", async (route) => {
-    if (!istPut(route.request())) return route.fallback();
-    try {
-      const antwort = await route.fetch();
-      beantwortet += 1;
-      await route.fulfill({ response: antwort }).catch(() => {});   // Seite schon verlassen: niemand nimmt die Antwort an
-    } catch {
-      beantwortet += 1;
-      await route.abort().catch(() => {});
-    }
-  });
-  // Das request-Ereignis eines beim Verlassen ausgelösten PUT trifft vor dem Ende von goto() ein (geordnete Protokollereignisse);
-  // ein Fehler von route.fetch zählt als beantwortet — das Rennen würde dann als 409 sichtbar, nicht verdeckt.
-  return { abgeschlossen: () => expect.poll(() => beantwortet === angefragt, { timeout: 20000, message: "Seite hat noch unbeantwortete PUT /api/bestand (angefragt > beantwortet)" }).toBe(true) };
 }
 
 /** Anmeldung über die echte Anmeldeseite (wie hilfen.anmelden, aber mit dem Code dieses Ablaufs). */
