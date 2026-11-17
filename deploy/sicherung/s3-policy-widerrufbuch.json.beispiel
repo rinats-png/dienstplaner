@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "HostWiderrufbuchAuflisten",
+      "Effect": "Allow",
+      "Principal": { "AWS": ["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"] },
+      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+      "Resource": ["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>"]
+    },
+    {
+      "Sid": "HostWiderrufbuchLesenSchreibenLoeschmarker",
+      "Effect": "Allow",
+      "Principal": { "AWS": ["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"] },
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"]
+    },
+    {
+      "Sid": "HostWiderrufbuchNieVersionenOderSchutzAendern",
+      "Effect": "Deny",
+      "Principal": { "AWS": ["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"] },
+      "Action": [
+        "s3:DeleteObjectVersion",
+        "s3:BypassGovernanceRetention",
+        "s3:PutObjectRetention",
+        "s3:PutObjectLegalHold",
+        "s3:PutBucketObjectLockConfiguration",
+        "s3:PutBucketVersioning",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutBucketPolicy",
+        "s3:DeleteBucketPolicy",
+        "s3:DeleteBucket"
+      ],
+      "Resource": ["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>", "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"]
+    }
+  ]
+}

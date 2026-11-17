@@ -588,3 +588,210 @@ describe("Dokumentation", () => {
     expect(d).toContain(titel);
   });
 });
+
+/* ==========================================================================
+   IONOS (Betreiberentscheidung 2026-11-17): Vorlagen für Object Storage, lesende Auslastungsmessung, Einrichtungskette.
+   Nur Dateien im Repository und Stubs; kein Netz, kein Konto, keine Zugangsdaten.
+   ========================================================================== */
+describe("IONOS: S3-Vorlagen (zwei Buckets, zwei Nutzer, Löschschutz beim Anbieter)", () => {
+  const S = "deploy/sicherung";
+  const policy = { ablage: JSON.parse(lesen(`${S}/s3-policy-ablage.json.beispiel`)), widerrufbuch: JSON.parse(lesen(`${S}/s3-policy-widerrufbuch.json.beispiel`)) };
+  const liste = (x) => (Array.isArray(x) ? x : [x]);
+  const principals = (p) => [...new Set(p.Statement.flatMap((s) => liste(s.Principal.AWS)))];
+  const ressourcen = (p) => [...new Set(p.Statement.flatMap((s) => liste(s.Resource)))];
+  const aktionen = (p, effekt) => p.Statement.filter((s) => s.Effect === effekt).flatMap((s) => liste(s.Action));
+  const SCHUTZ = ["s3:DeleteObjectVersion", "s3:BypassGovernanceRetention", "s3:PutObjectRetention", "s3:PutObjectLegalHold",
+    "s3:PutBucketObjectLockConfiguration", "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:DeleteBucket"];
+
+  it("Vorlagen sind gültiges JSON und enthalten nur Platzhalter (keine Vertragsnummer, Nutzer-ID, kein echter Bucket)", () => {
+    for (const d of ["s3-policy-ablage.json.beispiel", "s3-policy-widerrufbuch.json.beispiel", "s3-lifecycle.json.beispiel"]) {
+      const t = lesen(`${S}/${d}`);
+      expect(() => JSON.parse(t), d).not.toThrow();
+      expect(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(t), `${d}: UUID`).toBe(false);
+      expect(/\b\d{5,}\b/.test(t.replace(/"2012-10-17"/, "")), `${d}: Vertragsnummer`).toBe(false);
+      expect(/[0-9a-f]{64}/.test(t), `${d}: 64-Hex`).toBe(false);
+    }
+    for (const p of Object.values(policy)) {
+      for (const pr of principals(p)) expect(pr).toMatch(/^arn:aws:iam:::user\/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_[A-Z]+>$/);
+      for (const r of ressourcen(p)) expect(r).toMatch(/^arn:aws:s3:::<BUCKET_[A-Z]+>(\/\*)?$/);
+    }
+  });
+
+  it("je Policy genau ein Host-Nutzer und ein Bucket; Ablage und Widerrufbücher getrennt (Bucket und Nutzer)", () => {
+    const [pa, pw] = [principals(policy.ablage), principals(policy.widerrufbuch)];
+    expect(pa).toHaveLength(1);
+    expect(pw).toHaveLength(1);
+    expect(pa[0]).not.toBe(pw[0]);
+    const bucket = (p) => [...new Set(ressourcen(p).map((r) => r.replace(/\/\*$/, "")))];
+    expect(bucket(policy.ablage)).toEqual(["arn:aws:s3:::<BUCKET_ABLAGE>"]);
+    expect(bucket(policy.widerrufbuch)).toEqual(["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>"]);
+  });
+
+  it("Host darf nie Versionen löschen, Sperre umgehen oder Schutz/Policy/Lifecycle ändern — und es ist ausdrücklich verweigert", () => {
+    for (const [art, p] of Object.entries(policy)) {
+      const erlaubt = aktionen(p, "Allow");
+      for (const a of SCHUTZ) expect(erlaubt, `${art}: ${a} erlaubt`).not.toContain(a);
+      for (const a of erlaubt) expect(a, `${art}: Platzhalter-Aktion`).not.toMatch(/\*/);
+      const verweigert = aktionen(p, "Deny");
+      for (const a of SCHUTZ) expect(verweigert, `${art}: ${a} nicht verweigert`).toContain(a);
+      /* Variante L (EINRICHTUNGSKETTE-IONOS.md §5.3): Löschen nur als Löschmarker unter Object Lock — nie mehr als DeleteObject */
+      expect(erlaubt.filter((a) => /Delete/.test(a)), art).toEqual(["s3:DeleteObject"]);
+      expect([...erlaubt].sort(), art).toEqual(["s3:DeleteObject", "s3:GetBucketLocation", "s3:GetObject", "s3:ListBucket", "s3:PutObject"]);
+    }
+  });
+
+  it("Lifecycle entfernt nur nicht aktuelle Versionen und abgelaufene Löschmarker, nie aktuelle Objekte", () => {
+    const l = JSON.parse(lesen(`${S}/s3-lifecycle.json.beispiel`));
+    expect(l.Rules.length).toBeGreaterThan(0);
+    for (const r of l.Rules) {
+      expect(r.NoncurrentVersionExpiration.NoncurrentDays).toBe("<TAGE_NICHT_AKTUELL>");
+      expect(r.Expiration ?? {}).toEqual({ ExpiredObjectDeleteMarker: true });
+    }
+  });
+
+  it("env-Vorlagen: Ziel nur als Platzhalter, S3-Zeilen auskommentiert, getrennte Buckets und Schlüssel, nur bekannte Schlüssel", () => {
+    const erlaubt = new RegExp(/readonly KONFIG_ERLAUBT='([^']+)'/.exec(lesen(`${S}/gemeinsam.sh`))[1]);
+    const t = { ablage: lesen(`${S}/env.beispiel`), widerrufbuch: lesen(`${S}/widerrufbuch.env.beispiel`) };
+    const aktiv = (x) => x.split(/\r?\n/).filter((z) => z.trim() && !z.trim().startsWith("#"));
+    const s3 = {};
+    for (const [art, x] of Object.entries(t)) {
+      expect(aktiv(x).find((z) => z.startsWith("RESTIC_REPOSITORY=")), art).toBe("RESTIC_REPOSITORY=<ZIEL_NACH_FREIGABE>");
+      expect(aktiv(x).filter((z) => /^(AWS_|B2_)/.test(z)), `${art}: aktive Zugangsdaten`).toEqual([]);
+      const kommentiert = x.split(/\r?\n/).map((z) => /^#\s+([A-Z][A-Z0-9_]+)=(.*)$/.exec(z)).filter(Boolean);
+      for (const [, k] of kommentiert) expect(k, `${art}: ${k}`).toMatch(erlaubt);
+      for (const [, k, v] of kommentiert) if (/^AWS_/.test(k)) expect(v, `${art}: ${k}`).toMatch(/^<[A-Z_]+>$/);
+      s3[art] = Object.fromEntries(kommentiert.filter(([, , v]) => !/^sftp:/.test(v)).map(([, k, v]) => [k, v]));
+      expect(s3[art].RESTIC_REPOSITORY, art).toMatch(/^s3:https:\/\/s3\.<REGION>\.ionoscloud\.com\/<BUCKET_[A-Z]+>\/[a-z-]+$/);
+    }
+    expect(s3.ablage.RESTIC_REPOSITORY).toContain("<BUCKET_ABLAGE>");
+    expect(s3.widerrufbuch.RESTIC_REPOSITORY).toContain("<BUCKET_WIDERRUFBUCH>");
+    expect(s3.ablage.AWS_ACCESS_KEY_ID).not.toBe(s3.widerrufbuch.AWS_ACCESS_KEY_ID);
+    expect(s3.ablage.AWS_SECRET_ACCESS_KEY).not.toBe(s3.widerrufbuch.AWS_SECRET_ACCESS_KEY);
+  });
+});
+
+describe("IONOS: Auslastungsmessung (deploy/auslastung-messen.sh, nur lesend)", () => {
+  const BASH = spawnSync("bash", ["-c", "echo ok"], { encoding: "utf8" }).status === 0 ? "bash" : null;
+  const REL = "deploy/auslastung-messen.sh";
+  const code = lesen(REL).split(/\r?\n/).filter((z) => !/^\s*#/.test(z)).join("\n");
+  const posix = (x) => x.replace(/\\/g, "/");
+  const temp = [];
+  vi.setConfig({ testTimeout: 60000 });
+  afterAll(() => {
+    for (const d of temp) {
+      try {
+        rmSync(d, { recursive: true, force: true });
+      } catch {
+        /* Temp-Verzeichnis */
+      }
+    }
+  });
+
+  it("liest nie Geheimnisse und ändert nichts: kein .env, kein docker inspect/compose config, keine Prozessumgebung, sudo nur -n", () => {
+    expect(code).not.toMatch(/\.env\b/);
+    expect(code).not.toMatch(/docker\s+(container\s+)?inspect|compose\s+config/);
+    expect(code).not.toMatch(/environ|printenv|\bps\s+-?[a-z]*e\b/);
+    expect(code).not.toMatch(/\b(rm|mv|cp|tee|chmod|chown|kill)\s/);
+    expect(code).not.toMatch(/systemctl\s+(start|stop|restart|enable|disable)|ufw\s+(allow|deny|enable|disable|delete|reset)|iptables\s+-[AIDFX]\b/);
+    /* jeder Aufruf von sudo nicht interaktiv (nie eine Passwortabfrage); `hat sudo` prüft nur, ob es das Programm gibt */
+    expect(code.match(/(?<!hat )\bsudo\s(?!-n )[^\n]*/g) ?? []).toEqual([]);
+    expect(code).toMatch(/sudo -n "\$@"/);
+  });
+
+  it.skipIf(!BASH)("Syntax (bash -n), Aufruffehler Exit 2, Trockenlauf führt nichts aus", () => {
+    const s = posix(path.join(WURZEL, REL));
+    expect(spawnSync(BASH, ["-n", s], { encoding: "utf8" }).status).toBe(0);
+    expect(spawnSync(BASH, [s, "--unsinn"], { encoding: "utf8" }).status).toBe(2);
+    expect(spawnSync(BASH, [s, "--intervall", "x"], { encoding: "utf8" }).status).toBe(2);
+    const t = spawnSync(BASH, [s, "--trocken"], { encoding: "utf8" });
+    expect(t.status).toBe(0);
+    expect(t.stdout).toContain("Trockenlauf");
+    expect(t.stdout).not.toContain("Bewertung");
+  });
+
+  function lauf({ sudo = true, mem = 3000000, load = "0.40 0.50 0.60", steal = 2, belegt = 30, args = [] } = {}) {
+    const w = mkdtempSync(path.join(os.tmpdir(), "auslastung-"));
+    temp.push(w);
+    const stub = path.join(w, "stub"), proc = path.join(w, "proc"), app = path.join(w, "app");
+    for (const d of [stub, proc, path.join(app, "data"), path.join(app, "zustand")]) mkdirSync(d, { recursive: true });
+    writeFileSync(path.join(app, "data", "x.json"), "{}");
+    writeFileSync(path.join(proc, "meminfo"), `MemTotal: 8000000 kB\nMemAvailable: ${mem} kB\nSwapTotal: 1000000 kB\nSwapFree: 990000 kB\n`);
+    writeFileSync(path.join(proc, "loadavg"), `${load} 1/200 4242\n`);
+    const s = {
+      nproc: "echo 4",
+      vmstat: `echo 'procs'; echo ' r b st'; echo ' 0 0 0 0 0 0 0 0 0 0 0 0 1 1 97 0 ${steal}'`,
+      free: "echo 'Mem: 7.6Gi'",
+      df: `case "$*" in *-i*) echo 'Filesystem Inodes IUsed IFree IUse% Mounted'; echo '/dev/vda1 100 10 90 10% /';; *) echo 'Filesystem 1024-blocks Used Available Capacity Mounted'; echo '/dev/vda1 100 ${belegt} ${100 - belegt} ${belegt}% /';; esac`,
+      docker: "case \"$1\" in info) exit 0;; stats) echo 'NAME CPU MEM'; echo 'centric-dp-web 0.5% 120MiB/512MiB 23%';; system) echo 'TYPE TOTAL SIZE'; echo 'Images 3 900MB';; ps) echo 'NAMES IMAGE STATUS'; echo 'caddy caddy Up 3 days 10.20.30.40';; inspect) echo VERBOTEN; exit 9;; *) exit 1;; esac",
+      ss: "printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:443 0.0.0.0:* users:((\"docker-proxy\",pid=12,fd=4))' 'LISTEN 0 128 10.0.0.5:22 0.0.0.0:* users:((\"sshd\",pid=1,fd=3))' 'LISTEN 0 4096 [::1]:631 [::]:*'",
+      sudo: sudo ? '[ "$1" = "-n" ] && shift; exec "$@"' : "exit 1",
+      ufw: "echo 'Status: active'; echo '22/tcp ALLOW IN 203.0.113.7'; echo '22/tcp (v6) ALLOW IN 2001:db8:1::5'",
+      iptables: "echo '-N DOCKER-USER'; echo '-A DOCKER-USER -s 198.51.100.9/32 -j RETURN'",
+      systemctl: "echo 'acronis_mms.service loaded active running Acronis'",
+    };
+    for (const [n, body] of Object.entries(s)) {
+      writeFileSync(path.join(stub, n), `#!/bin/sh\n${body}\n`);
+      chmodSync(path.join(stub, n), 0o755);
+    }
+    const skript = 'p="$STUBVERZ"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$STUBVERZ")"; PATH="$p:$PATH" bash "$SKRIPT" --intervall 0 ' + args.join(" ");
+    return spawnSync(BASH, ["-c", skript], {
+      encoding: "utf8",
+      timeout: 60000,
+      env: { ...process.env, STUBVERZ: posix(stub), SKRIPT: posix(path.join(WURZEL, REL)), MESS_PROC: posix(proc), CENTRIC_APP_VERZ: posix(app) },
+    });
+  }
+
+  it.skipIf(!BASH)("Stub-Lauf: alle Abschnitte, Adressen maskiert, Ports nur mit Klasse und Prozessname, Bewertung AUSREICHEND", () => {
+    const r = lauf();
+    expect(r.status, r.stderr).toBe(0);
+    for (const t of ["CPU und Last", "Speicher", "Platz", "Docker", "Lauschende TCP-Ports", "Firewall", "Backup-Agent", "Bewertung"]) expect(r.stdout).toContain(t);
+    expect(r.stdout).not.toMatch(/10\.0\.0\.5|10\.20\.30\.40|203\.0\.113\.7|198\.51\.100\.9|2001:db8/);
+    expect(r.stdout).toContain("<ipv4>");
+    expect(r.stdout).toMatch(/443\talle\tdocker-proxy/);
+    expect(r.stdout).toMatch(/22\teinzeln\tsshd/);
+    expect(r.stdout).toMatch(/631\tlokal\t-/);
+    expect(r.stdout).toContain("Agent vorhanden: ja");
+    expect(r.stdout).not.toContain("VERBOTEN");
+    expect(r.stdout).toMatch(/Gesamt: AUSREICHEND \(erfüllt 5, verfehlt 0, nicht gemessen 0\)/);
+  });
+
+  it.skipIf(!BASH)("Schwellen verfehlt → NICHT AUSREICHEND; ohne sudo bzw. --ohne-sudo → Firewall nicht gemessen", () => {
+    const r = lauf({ sudo: false, mem: 1000000, load: "3.0 3.0 3.0", steal: 15, belegt: 80 });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("ufw / DOCKER-USER: nicht gemessen (sudo)");
+    expect(r.stdout).toMatch(/Gesamt: NICHT AUSREICHEND \(erfüllt 1, verfehlt 4, nicht gemessen 0\)/);
+    const o = lauf({ args: ["--ohne-sudo"] });
+    expect(o.status, o.stderr).toBe(0);
+    expect(o.stdout).toContain("ufw / DOCKER-USER: nicht gemessen (sudo)");
+    expect(o.stdout).not.toMatch(/203\.0\.113\.7/);
+  });
+});
+
+describe("Dokumentation EINRICHTUNGSKETTE-IONOS", () => {
+  const d = lesen("docs/acc45/EINRICHTUNGSKETTE-IONOS.md");
+  it.each([
+    "Bestell- und Aktivierungsschritte",
+    "Verifizierte Bedingungen",
+    "Staging-VM",
+    "Firewall, DNS, TLS",
+    "Docker, Deployment per Digest",
+    "Object Storage",
+    "Löschschutz gegen `forget --prune`",
+    "Entscheidungsvorlage Policy",
+    "Wiederherstellung nach Löschangriff",
+    "Cron/Timer, Alarmierung, Restore-Probe",
+    "Restore-Runbook mit BE-1 bis BE-3",
+    "Auslastungsmessung",
+  ])("enthält den Abschnitt „%s“", (titel) => {
+    expect(d).toContain(titel);
+  });
+  it("Kurzfassung steht ganz oben; jeder Schritt ist [AUTO] oder [BETREIBER]; kein AAAA; keine Geheimnisse oder Adressen", () => {
+    expect(d.indexOf("## 0. Bestell- und Aktivierungsschritte")).toBeLessThan(d.indexOf("## 1."));
+    const schritte = d.split(/\r?\n/).filter((z) => /^\| [A-Z]-\d+ \| \[/.test(z));
+    expect(schritte.length).toBeGreaterThan(20);
+    for (const z of schritte) expect(z).toMatch(/^\| [A-Z]-\d+ \| \[(AUTO|BETREIBER)\]/);
+    expect(d).toContain("kein `AAAA`");
+    expect(/[0-9a-f]{64}/.test(d)).toBe(false);
+    expect(/\b\d{1,3}(\.\d{1,3}){3}\b/.test(d)).toBe(false);
+  });
+});

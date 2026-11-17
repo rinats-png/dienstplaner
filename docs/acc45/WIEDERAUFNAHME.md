@@ -54,6 +54,10 @@ Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wi
 
 **Betreiber:** die einzige Liste steht in `ENTSCHEIDUNGSLISTE.md` Abschnitt B; hier nicht wiederholt.
 
+## Nachtrag 2026-11-17 (Einrichtungskette IONOS, Kopf `8300c346`)
+
+- Betreiberentscheidung 2026-11-17 (VM M+, Object Storage, Cloud Backup mit BE-1–BE-3, Messung) vorbereitet: `EINRICHTUNGSKETTE-IONOS.md` (Kurzfassung §0), Vorlagen `deploy/sicherung/s3-*.json.beispiel`, Messskript `deploy/auslastung-messen.sh`. Nichts bestellt, nichts verbunden. Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-8.
+
 ## Nachtrag 2026-11-16 (IONOS-Bestandsprüfung, Kopf `ba5055e4`)
 
 - Nur lesend: `IONOS-BESTANDSPRUEFUNG.md` (VPS L+ und Cloud Backup Starter 100 gegen Staging/Sicherung/Restore). Ergebnis: Staging C (eigene VM, O2 bleibt), restic-Ziel C (externer S3, Cloud Backup ohne restic-Backend), Host-DR B (Cloud Backup als Image mit Auflagen). Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-7.
