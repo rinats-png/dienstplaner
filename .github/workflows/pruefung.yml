@@ -1323,7 +1323,7 @@ jobs:
   # eine eigene serverseitige Anmeldebremse; es gibt keinen gemeinsamen Zustand. Die Aufteilung ist disjunkt und
   # vollständig (je Shard 100 von 200 Tests: Shard 1 = 360x740, 390x844, 430x932, 768x1024; Shard 2 = 1024x768,
   # 740x360, 844x390, 932x430). Kein Test, kein Viewport, keine Schwelle, kein Timeout und keine Wiederholung ist
-  # geändert. Der Job `browser-abnahme` unten bleibt als Sammelstelle unter dem bisherigen Namen und ist nur grün,
+  # geändert; nur die Datenlage ist gleich gehalten (Hälfte 2 schreibt die Abläufe B vorab, siehe env). Der Job `browser-abnahme` unten bleibt als Sammelstelle unter dem bisherigen Namen und ist nur grün,
   # wenn beide Läufe grün sind.
   browser-abnahme-shard:
     name: browser-abnahme-shard (${{ matrix.shard }}/2)
@@ -1350,6 +1350,10 @@ jobs:
 
       - name: Browserabnahme (Playwright, axe, 8 Viewports; Hälfte ${{ matrix.shard }} von 2)
         run: npm run e2e -- --shard=${{ matrix.shard }}/2
+        env:
+          # Hälfte 2 beginnt auf frischem Bestand: Abläufe B (Stempel, Monatsabschluss) laufen dort einmal vor den
+          # Darstellungsprüfungen, damit jeder Viewport dieselbe Datenlage sieht wie im ungeteilten Lauf (e2e/abnahme-b-ablaeufe.spec.mjs).
+          E2E_ABLAUF_B_VORLAUF: ${{ matrix.shard == 2 && '1' || '0' }}
 
       # Vollständige axe-Befunde je Fläche und Viewport (alle Schweregrade) und der JSON-Bericht.
       # Keine Bildschirmfotos, Spuren oder Videos (playwright.config.mjs).

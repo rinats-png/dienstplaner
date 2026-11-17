@@ -62,10 +62,17 @@ Aufruf lokal: `npm run e2e:browser` (einmal, Chromium), dann `npm run e2e`. Fert
 
 ## 3. CI
 
-Neuer Job `browser-abnahme` in `.github/workflows/pruefung.yml`, neben `pruefen` (die vitest-Kette bleibt unverändert):
+Seit der Aufteilung (PR #327, Wall-Clock) läuft die Browserabnahme als Matrix `browser-abnahme-shard` (Hälfte 1 und 2,
+`npm run e2e -- --shard=N/2`, `fail-fast: false`) neben `pruefen` (die vitest-Kette bleibt unverändert). Jede Hälfte hat einen eigenen
+Runner, Build, Testserver (frischer Datenordner) und damit eine eigene Anmeldebremse; gerechnet wird je Hälfte mit
 `npm ci`, `npx --no-install playwright install --with-deps chromium` (Browserfassung durch die gepinnte Playwright-Fassung
-festgelegt), `npm run e2e`, Artefakt `browser-abnahme` (axe-JSON, Bericht). Keine Geheimnisse, Actions per SHA gepinnt wie im
-übrigen Workflow. Da `deploy.yml` `pruefung.yml` aufruft, gilt das Gate auch vor der Auslieferung. `e2e` ist kein Glied der Kette
+festgelegt) und `npm run e2e`. Die Aufteilung folgt den Viewports und ist disjunkt und vollständig: Hälfte 1 = 360x740, 390x844,
+430x932, 768x1024, Hälfte 2 = 1024x768, 740x360, 844x390, 932x430, je 100 von 200 Tests. Weil die schreibenden Abläufe B (Stempel,
+Monatsabschluss) im ungeteilten Lauf vor allen späteren Viewports liefen, setzt Hälfte 2 `E2E_ABLAUF_B_VORLAUF=1`: Die Abläufe B
+laufen dort einmal (im Telefonformat) auf 1024x768 vor den Darstellungsprüfungen; Testtitel und Testzahl bleiben gleich.
+Zwei Artefakte: `browser-abnahme-1` und `browser-abnahme-2` (axe-JSON, Bericht je Hälfte). Der Sammeljob `browser-abnahme`
+(bisheriger Name) ist nur grün, wenn beide Hälften grün sind. Keine Geheimnisse, Actions per SHA gepinnt wie im übrigen Workflow.
+Da `deploy.yml` `pruefung.yml` aufruft, gilt das Gate auch vor der Auslieferung. `e2e` ist kein Glied der Kette
 `pruefung`; `pruefung:ci-abdeckung` und `pruefung:sammelpruefung` bleiben unverändert grün.
 
 ## 4. Befunde des ersten Laufs (lokal, Windows, 2026-11-13)
