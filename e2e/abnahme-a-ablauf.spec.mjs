@@ -41,6 +41,30 @@ async function schreiben(token, aendern) {
   if (a.status !== 200) throw new Error(`Speichern ${a.status}: ${a.text || a.fehler}`);
 }
 
+/** Verfolgt die Schreibvorgänge der Seite (PUT /api/bestand), auch den keepalive-PUT beim Verlassen. Der Browser meldet
+    dessen Ende nach der Navigation nicht mehr (kein requestfinished); deshalb geht der PUT über eine Route, deren Ende der
+    Test selbst sieht. Inhalt und Ziel der Anfrage bleiben unverändert. abgeschlossen() wartet, bis jeder angefragte PUT
+    beim Server beantwortet ist — eine Bedingung, keine Wartezeit. */
+async function schreibvorgaengeVerfolgen(page) {
+  let angefragt = 0, beantwortet = 0;
+  const istPut = (r) => r.method() === "PUT" && new URL(r.url()).pathname === "/api/bestand";
+  page.on("request", (r) => { if (istPut(r)) angefragt += 1; });
+  await page.route("**/api/bestand", async (route) => {
+    if (!istPut(route.request())) return route.fallback();
+    try {
+      const antwort = await route.fetch();
+      beantwortet += 1;
+      await route.fulfill({ response: antwort }).catch(() => {});   // Seite schon verlassen: niemand nimmt die Antwort an
+    } catch {
+      beantwortet += 1;
+      await route.abort().catch(() => {});
+    }
+  });
+  // Das request-Ereignis eines beim Verlassen ausgelösten PUT trifft vor dem Ende von goto() ein (geordnete Protokollereignisse);
+  // ein Fehler von route.fetch zählt als beantwortet — das Rennen würde dann als 409 sichtbar, nicht verdeckt.
+  return { abgeschlossen: () => expect.poll(() => beantwortet === angefragt, { timeout: 20000, message: "Seite hat noch unbeantwortete PUT /api/bestand (angefragt > beantwortet)" }).toBe(true) };
+}
+
 /** Anmeldung über die echte Anmeldeseite (wie hilfen.anmelden, aber mit dem Code dieses Ablaufs). */
 async function anmeldenBrowser(page, code) {
   await page.goto("/", { waitUntil: "load" });
@@ -80,11 +104,17 @@ test.describe.serial("Abnahme Strang A: Betrieb → Personal → Plan → Freiga
   test("0 Leitung Nord meldet sich erstmals im leeren Betrieb an; danach Personal, Einladungen und Entwurf (API)", async ({ page }) => {
     /* Erste Anmeldung im leeren Betrieb mit dem Erstanmeldecode: Der SERVER legt die Person der Leitung bei der
        Anmeldung an und speichert sie (A-3, lib/erstleitung.mjs) — die Oberfläche legt keine Person mehr an. */
+    const seiteSchreibt = await schreibvorgaengeVerfolgen(page);
     await anmeldenBrowser(page, C.lN);
     const ln = await anmeldenApi(C.lN);
     await expect.poll(async () => ((await api("/api/bestand", { token: ln })).bestand.mandanten[0].personen || [])
       .filter((p) => p.rolle === "leitung").length, { timeout: 20000 }).toBe(1);
     await page.goto("about:blank");          // Seite zu, bevor die API schreibt (kein „Gleichzeitig bearbeitet“)
+    /* Das Verlassen schreibt Ausstehendes noch weg (speicher.js: beforeunload/visibilitychange, keepalive) — hier den
+       Urlaubshinweis, den die Oberfläche beim Öffnen anlegt. Erst wenn der Server diesen PUT beantwortet hat, liest die
+       API den Stand; sonst landet er zwischen GET und PUT von schreiben(), und dessen PUT bekommt mit veraltetem ETag einen
+       409 „Stammdaten geändert“ (CI-Lauf 44073724126). */
+    await seiteSchreibt.abgeschlossen();
     const pers = (id, rolle, nach) => ({ id, vorname: rolle === "planer" ? "Pia" : "Mara", nachname: nach, rolle,
       bereich: rolle === "planer" ? "ALLE" : "e1", status: "aktiv", geburtstag: "1988-03-03", qualifikationen: [],
       zugehoerigkeit: [{ ab: "2020-01-01", einheitId: rolle === "planer" ? "ALLE" : "e1" }] });
