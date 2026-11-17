@@ -134,20 +134,28 @@ belegen). Das bestätigt `INFRA-VORBEREITUNG-STAGING-BACKUP.md` S-1.
 Der Löschschutz entsteht deshalb **beim Anbieter**, nicht durch Weglassen von `DeleteObject`:
 
 - Object Lock schaltet Versionierung fest ein. Ein `DeleteObject` **ohne** Versionsangabe legt nur einen **Löschmarker** an; die
-  gesperrte Version bleibt bis Fristende erhalten, auch nach `forget --prune` eines Angreifers mit dem Host-Schlüssel.
+  Version bleibt erhalten, auch nach `forget --prune` eines Angreifers mit dem Host-Schlüssel.
+- **Grenze der Sperrfrist:** Retention schützt eine Version nur, solange sie **jünger als die Sperrfrist** ist. Langlebige Objekte
+  (`config`, `keys/`, alte Packs, die restic nie neu schreibt) haben danach **keine** Sperre mehr; sie schützt dann allein das
+  `Deny` auf `s3:DeleteObjectVersion` — dessen Wirkung bei IONOS ist **unbestätigt** (F-15) und wird in S-6 (3) gezielt an einem
+  Objekt mit **abgelaufener** Retention geprüft.
 - Das eigentliche Löschen (`s3:DeleteObjectVersion`), das Umgehen der Governance-Sperre (`s3:BypassGovernanceRetention`) und
   jede Änderung an Sperre, Versionierung, Lifecycle und Policy werden dem Host-Nutzer **ausdrücklich verweigert** (`Deny`).
 - Alte Versionen entfernt **nur** eine Lifecycle-Regel des Betreibers (`NoncurrentVersionExpiration`), und zwar erst nach
   Ablauf der Sperrfrist (Object Lock hat Vorrang vor Lifecycle, bestätigt).
 
-Restrisiko: Löschmarker selbst sind nicht geschützt; ein Angreifer kann Stände „verstecken“, aber nicht vernichten. Rückweg
-siehe §5.6. Wirkung von `Deny` bei IONOS ist **unbestätigt** → Probe S-6, ohne bestandene Probe kein Produktivbetrieb.
+Restrisiko: Löschmarker selbst sind nicht geschützt; ein Angreifer kann Stände „verstecken“, aber nicht vernichten — **solange
+die Lifecycle-Regel die verdeckten Versionen noch nicht entfernt hat**. Das Erkennungsfenster ist `NoncurrentDays` der
+Lifecycle-Regel (für Objekte jünger als die Sperrfrist mindestens bis Fristende); ein Angriff muss innerhalb dieses Fensters
+bemerkt werden (Totmannschalter, `/gesund`, Probe). Zweites Restrisiko **Kosten-DoS**: Mit dem Host-Schlüssel lassen sich
+beliebig viele Objekte schreiben, die unter Object Lock bis Fristende kostenpflichtig bleiben → im IONOS-Konto einen
+Budget-/Kostenalarm einrichten (Betreiber; Verfügbarkeit unbestätigt, F-15). Rückweg siehe §5.6. Wirkung von `Deny` bei IONOS ist **unbestätigt** → Probe S-6, ohne bestandene Probe kein Produktivbetrieb.
 
 ### 5.3 Entscheidungsvorlage Policy (keine stille Abschwächung)
 
 | Variante | Host-Nutzer darf | Job unverändert? | Löschschutz | Empfehlung |
 |---|---|---|---|---|
-| **L** Löschmarker (Vorlagen `deploy/sicherung/s3-policy-*.json.beispiel`) | List, Get, Put, `DeleteObject`; **Deny** auf Versionen löschen, Bypass, Sperre/Versionierung/Lifecycle/Policy ändern, Bucket löschen | ja | anbieterseitig bis Fristende (Object Lock + Deny) | **empfohlen** |
+| **L** Löschmarker (Vorlagen `deploy/sicherung/s3-policy-*.json.beispiel`) | List, Get, Put, `DeleteObject`; **Deny** auf Versionen löschen, Bypass, Sperre/Versionierung/Lifecycle/Policy/ACL ändern, Bucket löschen; zusätzlich **Deny `s3:*`** für den jeweils anderen Host-Nutzer | ja | anbieterseitig bis Fristende (Object Lock + Deny) | **empfohlen** |
 | **S** strikt ohne `DeleteObject` | List, Get, Put | **nein**: braucht Schalter „Aufbewahrung nicht auf dem Host“ (B-4) in beiden Jobs, `forget --prune`, `unlock` und Sperrbereinigung von einem **zweiten Rechner** mit eigenem Schlüssel | wie L plus kein Löschmarker vom Host | nur, wenn der Betreiber den zweiten Rechner betreiben will; Umsetzung erst nach Entscheidung |
 
 Mit **L** ist die Vorgabe „ohne DeleteObject“ **bewusst nicht** wörtlich erfüllt; der Schutz liegt in Object Lock + Deny. Das
@@ -162,7 +170,7 @@ ist Entscheidungspunkt **P3-8 (a)** in `ENTSCHEIDUNGSLISTE.md`.
 | S-3 | [BETREIBER] | Zwei DCD-Nutzer ohne Verwaltungsrechte (`<NUTZER_UUID_HOST_ABLAGE>`, `<NUTZER_UUID_HOST_WIDERRUFBUCH>`), je **ein** S3-Schlüssel; Schlüssel nur in den Passwortmanager | DCD | Schlüsselabfluss | 20 min | Schlüssel widerrufen | 0 € |
 | S-4 | [AUTO] (Vorlage) / [BETREIBER] (anwenden) | Policy aus `deploy/sicherung/s3-policy-ablage.json.beispiel` bzw. `…-widerrufbuch.json.beispiel`, Platzhalter ersetzen, mit dem **Verwaltungszugang** setzen (z. B. `aws s3api put-bucket-policy --endpoint-url https://s3.<REGION>.ionoscloud.com --bucket <BUCKET> --policy file://…`) | Verwaltungszugang | Fehlpolicy sperrt aus | 15 min | Policy entfernen | 0 € |
 | S-5 | [BETREIBER] | Lifecycle aus `deploy/sicherung/s3-lifecycle.json.beispiel` (`<TAGE_NICHT_AKTUELL>` als Zahl ≥ Sperrfrist) | Verwaltungszugang | zu kurze Frist | 10 min | Regel entfernen | 0 € |
-| S-6 | [BETREIBER] (Testweg L-4; [AUTO] nur, wenn der Betreiber einen isolierten Runner mit Test-Schlüsseln freigibt) | **Probe auf Test-Buckets**, alles mit restic 0.18.1: (1) `restic init`, `backup`, `forget --prune`, `check` gelingen mit Variante L; (2) Host-Schlüssel A erreicht Bucket B **nicht** (403) und umgekehrt; (3) `aws s3api delete-object --version-id …` mit Host-Schlüssel → verweigert; (4) nach `forget --prune` sind alte Versionen per `list-object-versions` noch da; (5) `restic -o s3.bucket-lookup=path` nötig? (Endpunkt-/Regionsfrage); (6) verlangt Object Lock einen Prüfsummenkopf, den restic sendet? Ergebnis in die Nachweistabelle | Arbeitsrechner/Wegwerf-Runner, Test-Schlüssel | gering | 1–2 h | Test-Buckets verfallen lassen | Cent |
+| S-6 | [BETREIBER] (Testweg L-4; [AUTO] nur, wenn der Betreiber einen isolierten Runner mit Test-Schlüsseln freigibt) | **Probe auf Test-Buckets**, alles mit restic 0.18.1: (1) `restic init`, `backup`, `forget --prune`, `check` gelingen mit Variante L; (2) Host-Schlüssel A erreicht Bucket B **nicht** (403) und umgekehrt; (3) `aws s3api delete-object --version-id …` mit Host-Schlüssel → verweigert, und zwar **auch** an einem Objekt, dessen Retention **abgelaufen** ist (Test-Bucket mit 1-Tag-Frist, Objekt älter als 1 Tag) — nur so ist das Deny selbst belegt; (3b) Host-Schlüssel A auf Bucket B: jede Aktion verweigert (Deny `s3:*` für den anderen Principal); (4) nach `forget --prune` sind alte Versionen per `list-object-versions` noch da; (5) `restic -o s3.bucket-lookup=path` nötig? (Endpunkt-/Regionsfrage); (6) verlangt Object Lock einen Prüfsummenkopf, den restic sendet? Ergebnis in die Nachweistabelle | Arbeitsrechner/Wegwerf-Runner, Test-Schlüssel | gering | 1–2 h | Test-Buckets verfallen lassen | Cent |
 | S-7 | [BETREIBER] | Erst nach bestandener S-6 und Entscheidung C-9 (Frist): Produktions-Buckets `<BUCKET_ABLAGE>`, `<BUCKET_WIDERRUFBUCH>` mit Object Lock Governance, Frist `<TAGE_SPERRFRIST>`; Policy und Lifecycle wie S-4/S-5 | DCD | Frist verlängert Speicherdauer (C-9) | 30 min | Bucket leer verfallen lassen | §0 |
 
 Sperrfrist: mindestens die Zeit bis zur sicheren Entdeckung eines Angriffs (Vorschlag 30 Tage), höchstens die rechtlich
@@ -199,7 +207,7 @@ Die Widerrufbücher analog mit `<BUCKET_WIDERRUFBUCH>` und dem **anderen** Nutze
 | C-1 | [BETREIBER] | cron des Benutzers `admin` nach `deploy/sicherung/crontab.beispiel` (4 Zeilen: 02:30 Ablage, 04:15 am 3. Probe, Minute 17 Widerrufbuch, 04:45 am 5. Probe). **Kein** zusätzlicher systemd-Timer (doppelte Alarme) | VPS | Last kurz | 10 min | Zeilen auskommentieren | 0 € |
 | A-1 | [BETREIBER] | Totmannschalter mit **vier** Checks: `centric-sicherung` (1 d, Karenz 2–3 h), `centric-probe` (31 d, 1 d), `centric-widerrufbuch` (1 h, 2 h), `centric-widerrufbuch-probe` (31 d, 1 d). URLs sind Geheimnisse (`ALARM_PING_URL`, `PROBE_PING_URL` je Datei) | Alarmdienst | leere URL = stiller Ausfall | 30 min | Checks pausieren | §0 |
 | A-2 | [BETREIBER] | Fehlalarm-Probe je Check (falsche Passwortdatei → Exit ≠ 0 → Alarm kommt an) | VPS | keins | 20 min | Datei zurück | 0 € |
-| P-1 | [AUTO] (CI) / [BETREIBER] (Test-Buckets) | Übung mit echtem restic: Ablage auf dem CI-Runner (L-2), Widerrufbücher per CI-Erweiterung (L-3), danach gegen **Test-Buckets** (L-4/S-6); die VM-Variante `INFRA-VORBEREITUNG-STAGING-BACKUP.md` §5.5 erst in Phase D; `wiederherstellung-probe.sh`, `widerrufbuch-probe.sh` (Exit 0, `gegenprobe: erkannt`) | Staging-VM | gering | 2 h | Repos löschen | Cent |
+| P-1 | [AUTO] (CI) / [BETREIBER] (Test-Buckets) | Übung mit echtem restic: Ablage auf dem CI-Runner (L-2), Widerrufbücher per CI-Erweiterung (L-3), danach gegen **Test-Buckets** (L-4/S-6); die VM-Variante `INFRA-VORBEREITUNG-STAGING-BACKUP.md` §5.5 erst in Phase D; `wiederherstellung-probe.sh`, `widerrufbuch-probe.sh` (Exit 0, `gegenprobe: erkannt`) | CI-Runner/Test-Buckets | gering | 2 h | Repos löschen | Cent |
 | P-2 | [BETREIBER] | Object-Lock-/Löschmarker-Probe: nach `forget --prune` Versionen noch vorhanden; Löschmarker entfernen stellt den Stand wieder her (§5.6); Restore in **leeres** Verzeichnis | Test-Buckets | gering | 1 h | — | Cent |
 
 ## 7. Produktion: restic aktivieren (gesonderte Freigabe)
@@ -217,11 +225,21 @@ Image-Sicherung erlaubt (F-14; sonst gilt die Regel unten unverändert). Kosten:
 **Runbook Image-Restore** (Reihenfolge verbindlich; jeder produktive Restore braucht eine **gesonderte Freigabe**; **nie** auf
 eine Staging- oder Testumgebung, weil das Image Produktionsdaten und Geheimnisse enthält):
 
-1. Image auf den VPS (oder einen neuen VPS) zurückspielen; **vor dem ersten Boot-Ende** bzw. sofort danach die Anwendung
-   **gestoppt halten** (`docker compose stop` im Anwendungsordner; Autostart des Stacks nicht zulassen).
-2. `zustand/` aus dem Image **nicht** verwenden: Schlüsselepoche nie zurückspielen (`deploy/compose.yml`). War `zustand/`
-   ausgeschlossen, gilt Hostverlust: `wiederherstellen --widerrufbuch-kopie` aus dem restic-Repository der Widerrufbücher
-   (BE-3 §2.3).
+0. **Vor** Restore und erstem Boot den Zugang sperren: `deploy/compose.yml` hat `restart: unless-stopped` — der Stack startet
+   nach dem Boot von selbst mit dem **alten** `data/` und `zustand/` aus dem Image; der Rücksprung bliebe unerkannt, widerrufene
+   Codes könnten wieder gelten. Deshalb in der **Anbieter-Firewall** (Cloud Panel) 80/443 für alle sperren (SSH nur
+   Betreiberadresse) **oder** im Rescue-System `docker.service` deaktivieren (`systemctl disable docker.service docker.socket` im
+   gemounteten System). Erst nach bestandener Prüfung in Schritt 5 wieder öffnen bzw. aktivieren.
+1. Image zurückspielen; nach dem Boot sofort `docker compose stop` im Anwendungsordner (falls Docker doch lief) und die
+   **Crontab** des Benutzers `admin` stilllegen (`crontab -l > ~/crontab.vor-restore`, dann alle Zeilen auskommentieren, wie
+   §5.6): Sonst sichert der Ablage-Job um 02:30 das zurückgerollte `data/` als neuesten Snapshot, und der Widerrufbuch-Job läuft
+   gegen alte Bücher. Erst in Schritt 5 wieder einsetzen.
+2. `zustand/` aus dem Image **nicht** verwenden: Schlüsselepoche nie zurückspielen (`deploy/compose.yml`).
+   - War `zustand/` **ausgeschlossen**: Hostverlust — `wiederherstellen --widerrufbuch-kopie` aus dem restic-Repository der
+     Widerrufbücher (BE-3 §2.3).
+   - War `zustand/` **nicht** ausgeschlossen: den Image-Stand **beiseitelegen, nicht löschen** (`mv zustand zustand.image-<DATUM>`,
+     nur für `admin` lesbar; Beleg und Rückfall), dann ebenfalls `wiederherstellen --widerrufbuch-kopie` in ein leeres
+     `zustand/`. Der beiseitegelegte Stand wird nie zurückkopiert.
 3. `data/` aus dem restic-Repository **Ablage** wiederherstellen (neuester geprüfter Stand, `BETRIEB-SICHERUNG.md`), nicht aus
    dem Image.
 4. Widerrufbücher **vereinen**, nie ersetzen: `widerrufbuch-vereinen` mit dem neuesten Stand aus dem restic-Repository
@@ -229,8 +247,10 @@ eine Staging- oder Testumgebung, weil das Image Produktionsdaten und Geheimnisse
    Mitgliedschaften) und die Abschnitte von BE-2 A1 (aktiver Faktor, verbrauchte Wiederherstellungscodes) ab. **Ein widerrufener
    oder verbrauchter Code darf danach nie wieder gültig sein**: Probe mit einem bekannten widerrufenen Testcode bzw. Prüfung
    `widerrufbuch-probe.sh` (Exit 0).
-5. Erst jetzt starten; `/gesund` prüfen (kein Rücksprung, Widerrufbuch-Alter), nächster Job-Lauf Exit 0.
-6. Abbruch: bei jedem Fehler in 2–4 bleibt die Anwendung gestoppt (fail-closed); Eskalation an den Betreiber.
+5. Erst jetzt starten (Docker wieder aktivieren, falls in Schritt 0 deaktiviert); `/gesund` prüfen (kein Rücksprung,
+   Widerrufbuch-Alter) und die Testcode-Probe aus Schritt 4 bestehen; **dann** Firewall 80/443 wieder öffnen und die Crontab
+   wieder einsetzen; nächster Job-Lauf Exit 0.
+6. Abbruch: bei jedem Fehler in 0–5 bleiben Anwendung, Firewall-Sperre und Cron gestoppt (fail-closed); Eskalation an den Betreiber.
 
 Probe [BETREIBER]: Datei-Restore einzelner, unkritischer Systemdateien in ein **getrenntes Zielverzeichnis** (nie an Ort und
 Stelle, nie `data/`/`zustand/`, Anwendung unberührt). Ein Voll-Image-Restore ist ein gefährlicher Test und läuft **nie** auf dem

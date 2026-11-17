@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-[[ "$INTERVALL" =~ ^[0-9]{1,3}$ ]] || aufruf
+[[ "$INTERVALL" =~ ^[1-9][0-9]{0,2}$ ]] || aufruf
 
 if [ "$TROCKEN" = 1 ]; then
   cat <<EOF
@@ -80,6 +80,7 @@ maskieren() {
     -e 's/\b[0-9]{1,3}(\.[0-9]{1,3}){3}(\/[0-9]{1,2})?\b/<ipv4>/g' \
     -e 's/(^|[^0-9a-fA-F:])::1([^0-9a-fA-F:]|$)/\1__LOKAL6__\2/g' \
     -e 's/[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{0,4}){2,7}(\/[0-9]{1,3})?/<ipv6>/g' \
+    -e 's/(^|[^0-9a-fA-F:<])::[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4})*(\/[0-9]{1,3})?/\1<ipv6>/g' \
     -e 's/__ALLE4__/0.0.0.0/g; s/__LOKAL4__/127.x/g; s/__LOKAL6__/::1/g'
 }
 abschnitt() { printf '\n== %s ==\n' "$1"; }
@@ -102,8 +103,12 @@ if [ -r "$PROC/loadavg" ]; then
 fi
 STEAL=""
 if hat vmstat; then
-  # letzte Zeile von `vmstat N 2` = Durchschnitt über N Sekunden; Spalte st ist die letzte
-  STEAL="$(vmstat "$INTERVALL" 2 2>/dev/null | tail -n1 | awk '{print $NF}')" || STEAL=""
+  # letzte Zeile von `vmstat N 2` = Durchschnitt über N Sekunden; Spalte st über den Namen in der
+  # Kopfzeile (Zeile 2) bestimmen, nicht als letzte Spalte (neuere vmstat haben danach noch gu)
+  STEAL="$(vmstat "$INTERVALL" 2 2>/dev/null | awk '
+      NR == 2 { for (i = 1; i <= NF; i++) if ($i == "st") s = i }
+      NF > 0  { z = $0 }
+      END     { if (s) { n = split(z, f); if (s <= n) print f[s] } }')" || STEAL=""
   [[ "$STEAL" =~ ^[0-9]+$ ]] || STEAL=""
   echo "Steal-Zeit (vmstat st, ${INTERVALL}s): ${STEAL:-nicht gemessen}%"
 fi
@@ -145,7 +150,7 @@ if hat ss; then
       if (adr=="0.0.0.0" || adr=="*" || adr=="[::]" || adr=="::") klasse="alle"
       else if (adr ~ /^127\./ || adr=="[::1]" || adr=="::1") klasse="lokal"
       proz="-"; if (match($0, /\("[^"]+"/)) proz=substr($0, RSTART+2, RLENGTH-3)
-      print port "\t" klasse "\t" proz }' | sort -u -n
+      print port "\t" klasse "\t" proz }' | sort -u | sort -n -k1,1
 else
   echo "ss fehlt (nicht gemessen)"
 fi

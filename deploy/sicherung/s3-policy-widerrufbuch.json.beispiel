@@ -4,21 +4,44 @@
     {
       "Sid": "HostWiderrufbuchAuflisten",
       "Effect": "Allow",
-      "Principal": { "AWS": ["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"] },
-      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
-      "Resource": ["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>"]
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"
+        ]
+      },
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>"
+      ]
     },
     {
       "Sid": "HostWiderrufbuchLesenSchreibenLoeschmarker",
       "Effect": "Allow",
-      "Principal": { "AWS": ["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"] },
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": ["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"]
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"
+        ]
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"
+      ]
     },
     {
       "Sid": "HostWiderrufbuchNieVersionenOderSchutzAendern",
       "Effect": "Deny",
-      "Principal": { "AWS": ["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"] },
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"
+        ]
+      },
       "Action": [
         "s3:DeleteObjectVersion",
         "s3:BypassGovernanceRetention",
@@ -29,9 +52,30 @@
         "s3:PutLifecycleConfiguration",
         "s3:PutBucketPolicy",
         "s3:DeleteBucketPolicy",
-        "s3:DeleteBucket"
+        "s3:DeleteBucket",
+        "s3:PutBucketAcl",
+        "s3:PutObjectAcl"
       ],
-      "Resource": ["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>", "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"]
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>",
+        "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"
+      ]
+    },
+    {
+      "Sid": "AndererHostNieZugriffAufWiderrufbuch",
+      "Effect": "Deny",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_ABLAGE>"
+        ]
+      },
+      "Action": [
+        "s3:*"
+      ],
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>",
+        "arn:aws:s3:::<BUCKET_WIDERRUFBUCH>/*"
+      ]
     }
   ]
 }

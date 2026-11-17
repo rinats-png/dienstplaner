@@ -601,7 +601,7 @@ describe("IONOS: S3-Vorlagen (zwei Buckets, zwei Nutzer, Löschschutz beim Anbie
   const ressourcen = (p) => [...new Set(p.Statement.flatMap((s) => liste(s.Resource)))];
   const aktionen = (p, effekt) => p.Statement.filter((s) => s.Effect === effekt).flatMap((s) => liste(s.Action));
   const SCHUTZ = ["s3:DeleteObjectVersion", "s3:BypassGovernanceRetention", "s3:PutObjectRetention", "s3:PutObjectLegalHold",
-    "s3:PutBucketObjectLockConfiguration", "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:DeleteBucket"];
+    "s3:PutBucketObjectLockConfiguration", "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:DeleteBucket", "s3:PutBucketAcl", "s3:PutObjectAcl"];
 
   it("Vorlagen sind gültiges JSON und enthalten nur Platzhalter (keine Vertragsnummer, Nutzer-ID, kein echter Bucket)", () => {
     for (const d of ["s3-policy-ablage.json.beispiel", "s3-policy-widerrufbuch.json.beispiel", "s3-lifecycle.json.beispiel"]) {
@@ -617,17 +617,39 @@ describe("IONOS: S3-Vorlagen (zwei Buckets, zwei Nutzer, Löschschutz beim Anbie
     }
   });
 
-  it("je Policy genau ein Host-Nutzer und ein Bucket; Ablage und Widerrufbücher getrennt (Bucket und Nutzer)", () => {
-    const [pa, pw] = [principals(policy.ablage), principals(policy.widerrufbuch)];
-    expect(pa).toHaveLength(1);
-    expect(pw).toHaveLength(1);
-    expect(pa[0]).not.toBe(pw[0]);
+  it("je Policy ein eigener Host-Nutzer (alle Allow-Statements) und ein Bucket; Ablage und Widerrufbücher getrennt (Bucket und Nutzer)", () => {
+    const eigen = (p) => [...new Set(p.Statement.filter((s) => s.Effect === "Allow").flatMap((s) => liste(s.Principal.AWS)))];
+    const [pa, pw] = [eigen(policy.ablage), eigen(policy.widerrufbuch)];
+    expect(pa).toEqual(["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_ABLAGE>"]);
+    expect(pw).toEqual(["arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_WIDERRUFBUCH>"]);
     const bucket = (p) => [...new Set(ressourcen(p).map((r) => r.replace(/\/\*$/, "")))];
     expect(bucket(policy.ablage)).toEqual(["arn:aws:s3:::<BUCKET_ABLAGE>"]);
     expect(bucket(policy.widerrufbuch)).toEqual(["arn:aws:s3:::<BUCKET_WIDERRUFBUCH>"]);
   });
 
-  it("Host darf nie Versionen löschen, Sperre umgehen oder Schutz/Policy/Lifecycle ändern — und es ist ausdrücklich verweigert", () => {
+  it("jedes Deny deckt Bucket UND Objekte (ARN und /*), ohne Condition/NotPrincipal/NotAction/NotResource; der jeweils andere Host ist ganz ausgesperrt", () => {
+    const anderer = { ablage: "WIDERRUFBUCH", widerrufbuch: "ABLAGE" };
+    for (const [art, p] of Object.entries(policy)) {
+      const B = `arn:aws:s3:::<BUCKET_${art.toUpperCase()}>`;
+      const eigenerP = `arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_${art.toUpperCase()}>`;
+      const fremderP = `arn:aws:iam:::user/<VERTRAGSNUMMER>:<NUTZER_UUID_HOST_${anderer[art]}>`;
+      for (const s of p.Statement) {
+        for (const k of ["Condition", "NotPrincipal", "NotAction", "NotResource"]) expect(s[k], `${art}/${s.Sid}: ${k}`).toBeUndefined();
+        expect(Object.keys(s.Principal), `${art}/${s.Sid}`).toEqual(["AWS"]);
+      }
+      const denies = p.Statement.filter((s) => s.Effect === "Deny");
+      expect(denies.length, art).toBe(2);
+      for (const s of denies) expect([...liste(s.Resource)].sort(), `${art}/${s.Sid}`).toEqual([B, `${B}/*`]);
+      const schutz = denies.find((s) => liste(s.Principal.AWS).includes(eigenerP));
+      expect(liste(schutz.Principal.AWS), art).toEqual([eigenerP]);
+      const fremd = denies.find((s) => liste(s.Principal.AWS).includes(fremderP));
+      expect(liste(fremd.Principal.AWS), art).toEqual([fremderP]);
+      expect(liste(fremd.Action), art).toEqual(["s3:*"]);
+      for (const s of p.Statement.filter((x) => x.Effect === "Allow")) expect(liste(s.Principal.AWS), `${art}/${s.Sid}`).toEqual([eigenerP]);
+    }
+  });
+
+  it("Host darf nie Versionen löschen, Sperre umgehen oder Schutz/Policy/Lifecycle/ACL ändern — und es ist ausdrücklich verweigert", () => {
     for (const [art, p] of Object.entries(policy)) {
       const erlaubt = aktionen(p, "Allow");
       for (const a of SCHUTZ) expect(erlaubt, `${art}: ${a} erlaubt`).not.toContain(a);
@@ -703,6 +725,8 @@ describe("IONOS: Auslastungsmessung (deploy/auslastung-messen.sh, nur lesend)", 
     expect(spawnSync(BASH, ["-n", s], { encoding: "utf8" }).status).toBe(0);
     expect(spawnSync(BASH, [s, "--unsinn"], { encoding: "utf8" }).status).toBe(2);
     expect(spawnSync(BASH, [s, "--intervall", "x"], { encoding: "utf8" }).status).toBe(2);
+    expect(spawnSync(BASH, [s, "--intervall", "0"], { encoding: "utf8" }).status, "0 s wäre kein Messintervall").toBe(2);
+    expect(spawnSync(BASH, [s, "--intervall", "1000"], { encoding: "utf8" }).status).toBe(2);
     const t = spawnSync(BASH, [s, "--trocken"], { encoding: "utf8" });
     expect(t.status).toBe(0);
     expect(t.stdout).toContain("Trockenlauf");
@@ -719,13 +743,14 @@ describe("IONOS: Auslastungsmessung (deploy/auslastung-messen.sh, nur lesend)", 
     writeFileSync(path.join(proc, "loadavg"), `${load} 1/200 4242\n`);
     const s = {
       nproc: "echo 4",
-      vmstat: `echo 'procs'; echo ' r b st'; echo ' 0 0 0 0 0 0 0 0 0 0 0 0 1 1 97 0 ${steal}'`,
+      /* wie procps 4: nach st folgt noch gu — die letzte Spalte ist NICHT st */
+      vmstat: `echo 'procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------'; echo ' r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu'; echo ' 0  0      0 100000  2000  30000    0    0     1     2   50   60  1  1 90  0 ${steal}  0'`,
       free: "echo 'Mem: 7.6Gi'",
       df: `case "$*" in *-i*) echo 'Filesystem Inodes IUsed IFree IUse% Mounted'; echo '/dev/vda1 100 10 90 10% /';; *) echo 'Filesystem 1024-blocks Used Available Capacity Mounted'; echo '/dev/vda1 100 ${belegt} ${100 - belegt} ${belegt}% /';; esac`,
       docker: "case \"$1\" in info) exit 0;; stats) echo 'NAME CPU MEM'; echo 'centric-dp-web 0.5% 120MiB/512MiB 23%';; system) echo 'TYPE TOTAL SIZE'; echo 'Images 3 900MB';; ps) echo 'NAMES IMAGE STATUS'; echo 'caddy caddy Up 3 days 10.20.30.40';; inspect) echo VERBOTEN; exit 9;; *) exit 1;; esac",
-      ss: "printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:443 0.0.0.0:* users:((\"docker-proxy\",pid=12,fd=4))' 'LISTEN 0 128 10.0.0.5:22 0.0.0.0:* users:((\"sshd\",pid=1,fd=3))' 'LISTEN 0 4096 [::1]:631 [::]:*'",
+      ss: "printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:443 0.0.0.0:* users:((\"docker-proxy\",pid=12,fd=4))' 'LISTEN 0 128 10.0.0.5:22 0.0.0.0:* users:((\"sshd\",pid=1,fd=3))' 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=1,fd=4))' 'LISTEN 0 4096 [::1]:631 [::]:*'",
       sudo: sudo ? '[ "$1" = "-n" ] && shift; exec "$@"' : "exit 1",
-      ufw: "echo 'Status: active'; echo '22/tcp ALLOW IN 203.0.113.7'; echo '22/tcp (v6) ALLOW IN 2001:db8:1::5'",
+      ufw: "echo 'Status: active'; echo '22/tcp ALLOW IN 203.0.113.7'; echo '22/tcp (v6) ALLOW IN 2001:db8:1::5'; echo '80/tcp (v6) DENY IN ::5'",
       iptables: "echo '-N DOCKER-USER'; echo '-A DOCKER-USER -s 198.51.100.9/32 -j RETURN'",
       systemctl: "echo 'acronis_mms.service loaded active running Acronis'",
     };
@@ -733,7 +758,7 @@ describe("IONOS: Auslastungsmessung (deploy/auslastung-messen.sh, nur lesend)", 
       writeFileSync(path.join(stub, n), `#!/bin/sh\n${body}\n`);
       chmodSync(path.join(stub, n), 0o755);
     }
-    const skript = 'p="$STUBVERZ"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$STUBVERZ")"; PATH="$p:$PATH" bash "$SKRIPT" --intervall 0 ' + args.join(" ");
+    const skript = 'p="$STUBVERZ"; command -v cygpath >/dev/null 2>&1 && p="$(cygpath -u "$STUBVERZ")"; PATH="$p:$PATH" bash "$SKRIPT" --intervall 1 ' + args.join(" ");
     return spawnSync(BASH, ["-c", skript], {
       encoding: "utf8",
       timeout: 60000,
@@ -749,6 +774,9 @@ describe("IONOS: Auslastungsmessung (deploy/auslastung-messen.sh, nur lesend)", 
     expect(r.stdout).toContain("<ipv4>");
     expect(r.stdout).toMatch(/443\talle\tdocker-proxy/);
     expect(r.stdout).toMatch(/22\teinzeln\tsshd/);
+    expect(r.stdout, "gleicher Port auf einzelner Adresse UND allen bleibt sichtbar").toMatch(/22\talle\tsshd/);
+    expect(r.stdout).not.toMatch(/ ::5\b/);
+    expect(r.stdout).toContain("Steal-Zeit (vmstat st, 1s): 2%");
     expect(r.stdout).toMatch(/631\tlokal\t-/);
     expect(r.stdout).toContain("Agent vorhanden: ja");
     expect(r.stdout).not.toContain("VERBOTEN");
@@ -782,6 +810,13 @@ describe("Dokumentation EINRICHTUNGSKETTE-IONOS", () => {
     "Cron/Timer, Alarmierung, Restore-Probe",
     "Restore-Runbook mit BE-1 bis BE-3",
     "Auslastungsmessung",
+    /* Review #319: Image-Restore-Fenster, Cron, zustand-Zweig, Grenze der Sperrfrist, Kosten-DoS */
+    "`restart: unless-stopped`",
+    "**Crontab** des Benutzers `admin` stilllegen",
+    "**beiseitelegen, nicht löschen**",
+    "**abgelaufener** Retention",
+    "Retention **abgelaufen** ist",
+    "Kosten-DoS",
   ])("enthält den Abschnitt „%s“", (titel) => {
     expect(d).toContain(titel);
   });
