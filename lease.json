@@ -2,8 +2,8 @@
   "epoche": 20,
   "halter": "hauptchat-e20",
   "uebernommen_am": "2026-11-17T16:14:31.711Z",
-  "erneuert_am": "2026-11-17T16:14:31.711Z",
-  "gueltig_bis": "2026-11-17T19:14:31.711Z",
+  "erneuert_am": "2026-11-17T17:56:22.982Z",
+  "gueltig_bis": "2026-11-17T20:56:22.982Z",
   "uebergabe": "Hauptchat 16:1xZ: Epoche 19 abgelaufen 15:28Z, Leerlauf nach Merge #333; Kopf 7e66322f; naechstes Paket aus Welle 1",
   "vorgaenger": "hauptchat",
   "freigegeben_am": null
