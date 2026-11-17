@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 218 · BLOCKED 76 · READY 17 · IN_PROGRESS 22 · REVIEW 7 · INTEGRATED 93 · DONE 3
+**Pakete gesamt:** 218 · BLOCKED 76 · READY 16 · IN_PROGRESS 22 · REVIEW 7 · INTEGRATED 94 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 118 | 24 | 1 | 11 | 3 | 77 | 2 | 55,85–98,4 |
+| ACC45 | 118 | 24 | 0 | 11 | 3 | 78 | 2 | 55,6–97,9 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 1 | 0 | 0 | 65,3–101,7 |
 | Intelligence | 40 | 20 | 0 | 8 | 0 | 12 | 0 | 179,5–317,5 |
 | Folgepakete | 10 | 1 | 0 | 2 | 3 | 4 | 0 | 5,1–10,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **305,75–527,7 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **305,5–527,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -73,11 +73,11 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **305,75–527
 | BE-1 Konto-Widerrufbuch: Kontosperren und entzogene Mitgliedschaften überleben jeden Rücksprung | IN_PROGRESS | `–` | Von Hand angelegt (2026-11-17): bisher kein SSOT-Paket (BACKLOG-PHASEN.md Abschnitt 7 Punkt 6). Wiederaufnahmepunkt: „Teil Konten und Mitgliedschaften integriert (#304, #307, #308); Passwörter offen“. Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. |
 | BE-3 Sicherung der Widerrufbücher: eigener Job, Nachweis, Vereinigen statt Ersetzen, Alterswarnung, Probe, Einrichtungskette | IN_PROGRESS | `–` | Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. |
 
-### Bereit zum Start (16)
+### Bereit zum Start (15)
 
-WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · SI-P6b (acc45, 1,5–3 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B6 (acc45, 0,3–0,5 PT) · WP-ST1 (acc45, 2–5 PT) · ABN-A2 (acc45, 1–3 PT) · ABN-A3 (acc45, 1–3 PT) · ABN-A4 (acc45, 1–3 PT) · ABN-S2 (acc45, 1–3 PT) · ABN-C1 (acc45, 0,5–1 PT) · ABN-B3 (acc45, 0,25–0,5 PT)
+WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelligence, 8–14 PT) · SI-P6b (acc45, 1,5–3 PT) · OPT-2 (acc45, 0,5–1 PT) · WR-4 (acc45, 1 PT) · WR-5 (acc45, 2 PT) · WP-I12c (intelligence, 0,5–1 PT) · WP-19-B6 (acc45, 0,3–0,5 PT) · WP-ST1 (acc45, 2–5 PT) · ABN-A2 (acc45, 1–3 PT) · ABN-A3 (acc45, 1–3 PT) · ABN-A4 (acc45, 1–3 PT) · ABN-S2 (acc45, 1–3 PT) · ABN-C1 (acc45, 0,5–1 PT)
 
-### Integriert in `integration/centric-complete` (93)
+### Integriert in `integration/centric-complete` (94)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -171,6 +171,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelli
 | ABNAHME-V4 Abnahme V4: Release-Kandidat, lokale Integrationsabnahme (Matrix, Ströme A, B, C) | PR #281 in integration/release-v4 | PR #281 in integration/release-v4 |
 | QS-4 geo.test.js: Uhrzeit-abhängige Prüfung deterministisch | PR #283 in integration/release-v4 | PR #283 in integration/release-v4 |
 | QS-5 Zufallskollision in account-isolation, betriebsauswahl, einladungen entfernt | PR #285 in integration/release-v4 | PR #285 in integration/release-v4 |
+| ABN-B3 B-3: e2e/hilfen.mjs verliert den Nachrichtenbefund unter Windows bei Doppelpunkt im Testtitel | PR #334 in integration/release-v4 | PR #334 in integration/release-v4 |
 | QS-6 B7 Offline-Stempel um Mitternacht (Berliner Tag) deterministisch | PR #294 in integration/release-v4 | PR #294 in integration/release-v4 |
 | QS-ZEIT Zeitabhängige Tests: geo.test.js und Browserabnahme B8 auf fester Zeitbasis | PR #305 in integration/release-v4 | PR #305 in integration/release-v4 |
 | BE-2 BE-2 Stufe A1: aktiver Konto-Faktor und eingelöste Wiederherstellungscodes überleben jeden Rücksprung | PR #311 in integration/release-v4 (Merge 87cbde26) | – |
@@ -179,7 +180,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelli
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-53 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+52 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -307,6 +308,7 @@ WP-34 (acc45, 1–1,5 PT) · WP-I16 (intelligence, 8–14 PT) · WP-I22 (intelli
 | QS-5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | ABN-A3 | BLOCKED | ✓ | ✓ | T | T | – | – | – |
 | ABN-A4 | BLOCKED | ✓ | ✓ | – | T | – | – | – |
+| ABN-B3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | QS-6 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | QS-ZEIT | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-ZEIT | IN_PROGRESS | T | T | – | T | – | – | – |

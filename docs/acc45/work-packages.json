@@ -4,19 +4,19 @@
   "anzahl": 218,
   "statusZaehlung": {
     "BLOCKED": 76,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 22,
     "REVIEW": 7,
-    "INTEGRATED": 93,
+    "INTEGRATED": 94,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 118,
-      "offen": 39,
+      "offen": 38,
       "restPT": {
-        "min": 55.849999999999994,
-        "max": 98.4
+        "min": 55.599999999999994,
+        "max": 97.9
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 305.75,
-    "max": 527.7
+    "min": 305.5,
+    "max": 527.2
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6092,12 +6092,12 @@
       "prio": "P3",
       "aufwandPT": {"min":0.25,"max":0.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #334 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #334 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #334 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #334 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6106,12 +6106,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#334"],
       "nachweis": "docs/acc45/ABNAHME-V4-STRANG-B.md",
       "akzeptanz": "Der Befund wird unabhängig vom Testtitel und vom Betriebssystem erfasst",
       "tests": "e2e",
       "dateien": "e2e/hilfen.mjs",
-      "notiz": "Befund B-3 aus Strang B: Unter Windows geht die Meldung verloren, wenn der Testtitel einen Doppelpunkt enthält. Nur Testwerkzeug, P3, kein Produktionscode."
+      "notiz": "Befund B-3 aus Strang B: Unter Windows geht die Meldung verloren, wenn der Testtitel einen Doppelpunkt enthält. Nur Testwerkzeug, P3, kein Produktionscode. Stand (automatisch): INTEGRATED nach #334."
     },
     {
       "id": "QS-6",
