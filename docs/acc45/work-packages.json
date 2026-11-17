@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 214,
+  "anzahl": 218,
   "statusZaehlung": {
     "BLOCKED": 76,
     "READY": 17,
-    "IN_PROGRESS": 20,
+    "IN_PROGRESS": 23,
     "REVIEW": 7,
-    "INTEGRATED": 91,
+    "INTEGRATED": 92,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 114,
-      "offen": 37,
+      "pakete": 118,
+      "offen": 40,
       "restPT": {
-        "min": 50.849999999999994,
-        "max": 89.9
+        "min": 57.349999999999994,
+        "max": 101.4
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 300.75,
-    "max": 519.2
+    "min": 307.25,
+    "max": 530.7
   },
   "kritischerPfad": {
     "summe": 70,
@@ -961,9 +961,9 @@
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #84 (1e5096bc, acc45/sicherheit/integration-wp30): Warteschlange, Bounce, Abos, Bremsen; docs/acc45/wp30-nachweis.md"},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":"teilweise","beleg":"Opus-Review und Delta-Review (wp30-nachweis.md Abschnitte 9 und 11); Nachprüfung F1–F8 offen"},
-        "integriert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":true,"beleg":"docs/acc45/wp30-nachweis.md Abschnitte 9, 11, 12: mail-push-produktion 75, mail-push-anbieter + -handler 78, zustellung-rechte 42 grün (einzeln gelaufen); Merge #84 (1e5096bc) ist Vorfahre von integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"Opus-Review und Delta-Review (wp30-nachweis.md Abschnitte 9 und 11); Nachprüfung F1–F8 am Integrationsstand 8300c346: alle acht erfüllt (Abschnitt 12, PR #321, Merge cfcfac13)"},
+        "integriert": {"wert":"teilweise","beleg":"Code vollständig über PR #84 (Merge 1e5096bc, Basis integration/centric-complete, Vorfahre von integration/release-v4) integriert; Nachprüfung über PR #321 (cfcfac13). Stufe nur „teilweise“, weil das Schema integriert=true nur bei Status INTEGRATED/DONE zulässt und das Paket bis E-9 (Betreiber) BLOCKED bleibt; WP-30b (Webhook-Bounces) offen"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -972,12 +972,12 @@
       "agent": "Agent B – Infrastructure & Reliability",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#84"],
+      "pr": ["#84","#321"],
       "nachweis": "docs/acc45/wp30-nachweis.md",
       "akzeptanz": "implementiert: synchrone Anbieterantworten klassifiziert (4xx/5xx, 422 ohne Empfängersperre außer ungültigem Empfänger), Notruf-Reserve und Zurückstellen statt Verwerfen, Doppelzustellung mit dokumentierter Restrisikogrenze (Idempotenz 24 h, Push-Topic), SSRF-Abwehr (Allowlist, kein Redirect, keine IP-Literale) mit Tests; asynchrone Bounces/Beschwerden (Webhook mit Signaturprüfung) als Teilpaket WP-30b; produktiv freigegeben erst nach E-9: Resend (SPF/DKIM/DMARC) und VAPID eingerichtet, echter Zustelltest Android + iOS-PWA (extern, Betreiber); Kriterien in docs/acc45/wp30-nachweis.md, Abschnitt Abnahmekriterien",
       "tests": "Zustelltest",
       "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
-      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: Der Code ist gebaut und über PR #84 integriert (Prüfungen pruefung:mail-push-produktion/-anbieter/-handler); „noch nicht gebaut“ ist überholt. Offen: Nachprüfung F1–F8, produktiver Betrieb erst nach E-9."
+      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: Der Code ist gebaut und über PR #84 integriert (Prüfungen pruefung:mail-push-produktion/-anbieter/-handler); „noch nicht gebaut“ ist überholt. Offen: Nachprüfung F1–F8, produktiver Betrieb erst nach E-9. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): Nachprüfung F1–F8 alle erfüllt (PR #321, wp30-nachweis.md Abschnitt 12). Status bleibt BLOCKED wegen E-9 (Mailanbieter, SPF/DKIM/DMARC, VAPID, echter Zustelltest). Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv, WP-30b."
     },
     {
       "id": "WP-31",
@@ -1048,7 +1048,7 @@
         "implementiert": {"wert":true,"beleg":"acc45/qa/wp33-testinfrastruktur dc27b7d"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Branch-Nachweis"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #262 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
+        "integriert": {"wert":false,"beleg":"Teile 1–4 integriert: #217 (fb69c8dd, Sammelprüfung), #262 (9ca82adc, Playwright und axe in der CI), #269 (70d18ba1, Toast-Kontrast); Merge-Commits sind Vorfahren von integration/release-v4. Rest (weitere axe-Flächen) liegt in PR #323, noch OFFEN, nicht integriert"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1062,7 +1062,7 @@
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED. Teil 4 (Merge #269): Toast-Schaltflächenkontrast von 1,98:1 auf 7,36:1 (hell) und 11,0:1 (dunkel) behoben; jeder Toast wird deterministisch mit axe geprüft. Paket bleibt IN_PROGRESS, offen wie zuvor (nicht INTEGRATED)."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED. Teil 4 (Merge #269): Toast-Schaltflächenkontrast von 1,98:1 auf 7,36:1 (hell) und 11,0:1 (dunkel) behoben; jeder Toast wird deterministisch mit axe geprüft. Paket bleibt IN_PROGRESS, offen wie zuvor (nicht INTEGRATED). Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #323 „WP-33 Rest: weitere axe-Flächen der Browserabnahme“ ist OFFEN und nicht integriert; erst nach dessen Merge und Prüfung des Restes kann das Paket höher gesetzt werden. Status bleibt IN_PROGRESS."
     },
     {
       "id": "WP-34",
@@ -1549,10 +1549,10 @@
       "abhaengigkeiten": ["WP-16"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":"teilweise","beleg":"WP-48.1/48.2 (Prüfnetz, Speicherkern teileSchreiben, Hash-Vermerk, Epoche, Lesecache) über PR #87 (794df9a7); 48.3–48.7, 48.9 fehlen"},
+        "implementiert": {"wert":"teilweise","beleg":"WP-48.1/48.2 (Prüfnetz, Speicherkern teileSchreiben, Hash-Vermerk, Epoche, Lesecache) über PR #87 (794df9a7); 48.3 Server-Teilweg über PR #224 (10a7d439); WP-48-GB über PR #271 (bbd5e6e0); 48.7 Stufe a (Monatsabschluss segmentweise, Schalter CENTRIC_ABSCHLUSS_SEGMENTWEISE, Vorgabe aus, nicht aktiviert) über PR #322 (bfa7a110); offen 48.4, 48.5, 48.6, 48.7 Stufe b, 48.9"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: wp48-speicherkern 44/44, wp48-rundweg 31/31; CI-Schritt pruefung:datenintegritaet"},
         "reviewt": {"wert":"teilweise","beleg":"Review-Auflagen zu 48.1/48.2 (H1, M4) in PR #87 umgesetzt, WP48-TEILSPEICHERUNG.md Abschnitt 7"},
-        "integriert": {"wert":false,"beleg":"Teilumfang in PR #224 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},
+        "integriert": {"wert":false,"beleg":"Teilumfänge integriert (PR #87, #224, #271, #322; alle Merge-Commits sind Vorfahren von integration/release-v4); Paket nicht abgeschlossen: 48.4, 48.5, 48.6, 48.7 Stufe b, 48.9 offen, 48.4/48.5/48.8 auf Betreiberentscheidung (ENTSCHEIDUNGSLISTE P1-7)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1561,12 +1561,12 @@
       "agent": "Agent A – Security & Data Integrity",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs","rechte.mjs","App.jsx","stempelintegritaet.mjs"],
-      "pr": ["#87","#224","#271"],
+      "pr": ["#87","#224","#271","#322"],
       "nachweis": "docs/acc45/WP48-TEILSPEICHERUNG.md",
       "akzeptanz": "Siehe WP48-TEILSPEICHERUNG.md Abschnitt 4.4: PUT-Rumpf je Änderung unabhängig von der Historie (Einteilung < 300 KB), nie 413 bis 400 Personen × 36 Monate bei unverändertem RUMPF_MAX 6 MB, Teil-PUT gleichwertig zum Voll-PUT für jede Rolle (Rechte unverändert, fehlende Segmente ändern nichts), Konflikt je Zelle bzw. Kernfeld, Raumsperre bei Speichern und Monatsabschluss < 2 s bei 400 × 36, /gesund nie kritisch durch Speichern oder Abschluss",
       "tests": "Gleichwertigkeit Teil/Voll je Rolle × Segment, Rennen, Konflikte, Versatz alter Clients, Journal/Restore, Messmatrix 60/150/400 × 12/24/36 (werkzeug/wp48-messung.mjs), Rot vorher, Mutanten",
       "dateien": "server/lib/bestand.mjs, server/lib/scherben.mjs, server/funktionen/daten.mjs, server/lib/rechte.mjs, server/lib/monatsabschluss.mjs, server/lib/stempelintegritaet.mjs, src/speicher.js, src/App.jsx",
-      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung. Fortschritt 2026-11-03: WP-48.1 (Prüfnetz: Rundweg je Rolle über den Positivkatalog, Rennen/Konflikte im Speicherkern, Mutantenwerkzeug werkzeug/wp48-mutanten.mjs) und WP-48.2 (Hash-Vermerk mit Lesen alter Text-Vermerke, Lesecache unter der Raumsperre, Segmentschreiber teileSchreiben, Epoche, Vermerk-Aufräumen) umgesetzt auf Branch acc45/backend/wp48-1-2-pruefnetz-speicherkern, ohne PR; Befund für 48.3: gespeicherte abgeleitete Personenfelder brechen die Rundweg-Invariante (Schichtverantwortung 403), siehe WP48-TEILSPEICHERUNG.md Abschnitt 7. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-48.1/48.2 sind nicht „ohne PR“, sondern über PR #87 (acc45/backend/wp48-integration) integriert; teileSchreiben hat im Produktcode keinen Aufrufer. 48.3 ist technisch ausführbar (WP-16 ist über PR #85 im Code), die SSOT sperrt nur formal; 48.4/48.5/48.8 hängen an den Entscheidungen in Abschnitt 6. Stand (automatisch): Teilumfang nach #224, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Nachtrag 2026-11-13: PR #271 (WP-48-GB, Öffnen schreibt nicht mehr) ist ein Teilbeitrag; das Werkzeug setzte das Sammelpaket fälschlich auf INTEGRATED, von Hand zurückgenommen. Status bleibt IN_PROGRESS."
+      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. (Überholt, Stand 2026-11-17: Status ist IN_PROGRESS; früher BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt und WP-16 auf REVIEW stand.) GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung. Fortschritt 2026-11-03: WP-48.1 (Prüfnetz: Rundweg je Rolle über den Positivkatalog, Rennen/Konflikte im Speicherkern, Mutantenwerkzeug werkzeug/wp48-mutanten.mjs) und WP-48.2 (Hash-Vermerk mit Lesen alter Text-Vermerke, Lesecache unter der Raumsperre, Segmentschreiber teileSchreiben, Epoche, Vermerk-Aufräumen) umgesetzt auf Branch acc45/backend/wp48-1-2-pruefnetz-speicherkern, ohne PR; Befund für 48.3: gespeicherte abgeleitete Personenfelder brechen die Rundweg-Invariante (Schichtverantwortung 403), siehe WP48-TEILSPEICHERUNG.md Abschnitt 7. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-48.1/48.2 sind nicht „ohne PR“, sondern über PR #87 (acc45/backend/wp48-integration) integriert; teileSchreiben hat im Produktcode keinen Aufrufer. 48.3 ist technisch ausführbar (WP-16 ist über PR #85 im Code), die SSOT sperrt nur formal; 48.4/48.5/48.8 hängen an den Entscheidungen in Abschnitt 6. Stand (automatisch): Teilumfang nach #224, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Nachtrag 2026-11-13: PR #271 (WP-48-GB, Öffnen schreibt nicht mehr) ist ein Teilbeitrag; das Werkzeug setzte das Sammelpaket fälschlich auf INTEGRATED, von Hand zurückgenommen. Status bleibt IN_PROGRESS. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): Belegt und integriert: 48.1/48.2 (#87), 48.3 Server-Teilweg (#224), WP-48-GB (#271), 48.7 Stufe a hinter ausgeschaltetem Schalter (#322, nicht aktiviert, Messung 60/150/400 × 12/24/36 steht aus). Das Werkzeug ssot-nach-integration würde #322 als INTEGRIERT lesen; das ist für dieses Sammelpaket falsch und wurde nicht übernommen. Status bleibt IN_PROGRESS; reviewt, stagingGeprueft, fachlichFreigegeben, produktiv unverändert nicht belegt."
     },
     {
       "id": "WP-14c",
@@ -5975,17 +5975,17 @@
     },
     {
       "id": "ABN-A3",
-      "titel": "Abnahme V4 A-3: Leitungscode ohne Person zeigt nicht den Vorführ-Rollenwähler (PR #281 angehalten)",
+      "titel": "Abnahme V4 A-3: Leitungscode ohne Person zeigt nicht den Vorführ-Rollenwähler (PR #281 gemergt 2026-11-14)",
       "strang": "acc45",
       "prio": "P2",
       "aufwandPT": {"min":1,"max":3},
       "abhaengigkeiten": [],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #281 (Merge 7833f46e, 2026-11-14, Vorfahre von integration/release-v4): Erstanmeldung der Leitung serverseitig, atomar; Regime-Marke; Leitungscode ohne Person: Anmeldung 403"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #281: CI 23/23 grün; Prüfungen laut ABNAHME-V4-A3-ERSTLEITUNG.md und pruefungen/em6-rollback-codes.test.js (Block „E-M6 × PR #281“)"},
+        "reviewt": {"wert":"teilweise","beleg":"Review-Befunde und Delta-Reviews (e8b9b93d, f69fd931) sind in ABNAHME-V4-A3-ERSTLEITUNG.md dokumentiert; kein formales GitHub-Review am PR"},
+        "integriert": {"wert":"teilweise","beleg":"PR #281 gemergt; Schalter laut ABNAHME-V4-A3-ERSTLEITUNG.md Vorgabe aus: nur neue Betriebe streng, Bestandsbetriebe unverändert; Status BLOCKED, daher nicht „true“"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5994,26 +5994,26 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "PR #281 (offen, angehalten)",
+      "pr": ["#281"],
+      "nachweis": "PR #281 (gemergt, 7833f46e); docs/acc45/ABNAHME-V4-A3-ERSTLEITUNG.md",
       "akzeptanz": "Produktentscheidung erste Anmeldung; F-0 serverseitig behoben und geprüft; Konzept E-D1 bis E-D11 entschieden",
       "tests": "siehe PR",
       "dateien": "siehe PR",
-      "notiz": "PR #281 offen, angehalten. Der serverseitig atomare Ablauf der ersten Anmeldung ist in Arbeit. Befund F-0: Ein Leitungscode ohne Person hat serverseitig volle Leitungsrechte (nicht nur ein Oberflächenfehler). Wiederherstellungskonzept für gestrandete Betriebe E-D1 bis E-D11 in docs/acc45/WIEDERHERSTELLUNG-GESTRANDETE-BETRIEBE.md (#284, nur Konzept). Produktentscheidung zum Design der ersten Anmeldung offen."
+      "notiz": "PR #281 offen, angehalten. Der serverseitig atomare Ablauf der ersten Anmeldung ist in Arbeit. Befund F-0: Ein Leitungscode ohne Person hat serverseitig volle Leitungsrechte (nicht nur ein Oberflächenfehler). Wiederherstellungskonzept für gestrandete Betriebe E-D1 bis E-D11 in docs/acc45/WIEDERHERSTELLUNG-GESTRANDETE-BETRIEBE.md (#284, nur Konzept). Produktentscheidung zum Design der ersten Anmeldung offen. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #281 ist MERGED (2026-11-14, Merge 7833f46e); die Aussage „offen, angehalten“ ist überholt. F-0 (Leitungscode ohne Person hat volle Leitungsrechte): laut ABNAHME-V4-A3-ERSTLEITUNG.md für neue Betriebe (Regime-Marke) geschlossen (403); für Bestandsbetriebe bleibt F-0 offen, solange der Schalter aus ist (Umschalten ist Betreiberentscheidung, Analyse PR #289, Umstellung PR #287). Nachweis F-0 für Bestandsbetriebe: offen. Konzept E-D1 bis E-D11 siehe Wiederherstellungskonzept (#284). Status bleibt BLOCKED; stagingGeprueft, fachlichFreigegeben, produktiv: nein."
     },
     {
       "id": "ABN-A4",
-      "titel": "Abnahme V4 A-4: Dienstart ohne mindest stürzt die Oberfläche nicht mehr ab (PR #280 angehalten)",
+      "titel": "Abnahme V4 A-4: Dienstart ohne mindest stürzt die Oberfläche nicht mehr ab (PR #280 gemergt 2026-11-13)",
       "strang": "acc45",
       "prio": "P2",
       "aufwandPT": {"min":1,"max":3},
       "abhaengigkeiten": [],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #280 (Merge bcddf680, 2026-11-13, Vorfahre von integration/release-v4): fehlendes mindest bei neuer Dienstart 422, Bestand bleibt, Oberfläche stürzt nicht ab"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #280: CI 23/23 grün; Prüfungen laut ABNAHME-V4-A4-MINDEST.md (personendaten, wp48-teilweg, oberflaeche-render)"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":"teilweise","beleg":"PR #280 gemergt; ob jede der Entscheidungen Q1–Q5 vom 2026-11-14 im gemergten Code einzeln umgesetzt ist, ist nicht belegt; Status BLOCKED, daher nicht „true“"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6022,12 +6022,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "PR #280 (offen, angehalten)",
+      "pr": ["#280"],
+      "nachweis": "PR #280 (gemergt, bcddf680); docs/acc45/ABNAHME-V4-A4-MINDEST.md",
       "akzeptanz": "Wirkung der mindest-Regel geklärt; Merge mit Review",
       "tests": "siehe PR",
       "dateien": "siehe PR",
-      "notiz": "PR #280 offen, angehalten. Regel seit 2026-11-13 geändert: fehlendes mindest bei neuer Dienstart gibt 422, ein ausdrückliches 0 ist zulässig, nur ganze Zahlen, Zahlen als Zeichenfolge werden normalisiert, historisch Fehlendes wird markiert. Wirkung der Regel auf Bestand und Import offen. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber hat die Fragen Q1 bis Q5 der konsolidierten Vorlage (ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md Abschnitt 6) am 2026-11-14 entschieden: mindest:0 als Kurzform bleibt 422; Weglassen bei bestehender Dienstart lässt den Wert; historische Sicherungen bleiben brauchbar, kein stilles Ergänzen; Bearbeiten historisch fehlender Werte erlaubt und gekennzeichnet; alter Export beim Neuanlegen gibt einen Validierungsfehler, ein Migrationswerkzeug nur mit gesonderter Freigabe. Stufe: entschieden. PR #280 bleibt bis zur Umsetzung dieser Regeln angehalten; technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv: nein."
+      "notiz": "PR #280 offen, angehalten. Regel seit 2026-11-13 geändert: fehlendes mindest bei neuer Dienstart gibt 422, ein ausdrückliches 0 ist zulässig, nur ganze Zahlen, Zahlen als Zeichenfolge werden normalisiert, historisch Fehlendes wird markiert. Wirkung der Regel auf Bestand und Import offen. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber hat die Fragen Q1 bis Q5 der konsolidierten Vorlage (ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md Abschnitt 6) am 2026-11-14 entschieden: mindest:0 als Kurzform bleibt 422; Weglassen bei bestehender Dienstart lässt den Wert; historische Sicherungen bleiben brauchbar, kein stilles Ergänzen; Bearbeiten historisch fehlender Werte erlaubt und gekennzeichnet; alter Export beim Neuanlegen gibt einen Validierungsfehler, ein Migrationswerkzeug nur mit gesonderter Freigabe. Stufe: entschieden. PR #280 bleibt bis zur Umsetzung dieser Regeln angehalten; technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv: nein. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #280 ist MERGED (2026-11-13, Merge bcddf680); die Aussage „offen, angehalten“ ist überholt. Das Datum des Merges liegt vor der Betreiberentscheidung Q1–Q5 (2026-11-14); die Umsetzung von Q1–Q5 im Code ist nicht einzeln nachgewiesen (Nachweis offen). Kein Review belegt (reviewt false). Status bleibt BLOCKED; stagingGeprueft, fachlichFreigegeben, produktiv: nein."
     },
     {
       "id": "ABN-S2",
@@ -6168,6 +6168,118 @@
       "tests": "pruefungen/geo.test.js, pruefungen/qs-b8-zeitbasis.test.js, pruefung:geo-uhren, e2e/abnahme-b-ablaeufe.spec.mjs",
       "dateien": "pruefungen/, e2e/",
       "notiz": "Von Hand angelegt, PR #305 war keinem Paket zugeordnet (Abgleich 2026-11-15). Reviewstufe über den PR-Beleg. Bekannte Restpunkte stehen als Liste in docs/acc45/QS-ZEITABHAENGIGKEIT.md (P2, nicht nachgewiesene Ausfälle); Browserjobs laufen nur in der CI (browser-abnahme)."
+    },
+    {
+      "id": "WP-ZEIT",
+      "titel": "Betriebstag und Zeitzone: betrieblicher Kalendertag statt Gerätedatum, Zuschläge in den Umstellungsnächten",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":9,"max":15},
+      "abhaengigkeiten": [],
+      "status": "IN_PROGRESS",
+      "stufen": {
+        "implementiert": {"wert":"teilweise","beleg":"PR #301 (101989f8, T1: betrieblicher Kalendertag, ZEIT-A/C Kern), PR #303 (df534301, ZEIT-E/E6: Zuschläge in Umstellungsnächten, RECHEN_STAND 3), PR #315 (0ec7ac63, P2: Wanduhr-zu-Zeitpunkt zentral); Vertrag PR #296 (36f5c39b). Offen laut Vertrag: ZEIT-B, ZEIT-D, ICS-Zone, Z56, Z57, Auskunftserläuterung, ZEIT-F, ZEIT-G"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/betriebstag.test.js (PR #301, #315), pruefung:zeit-e (PR #303); Browserabnahme B8 siehe QS-ZEIT (#305)"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":"teilweise","beleg":"PR #296, #301, #303, #315 gemergt in integration/release-v4 (alle Merge-Commits Vorfahren); Paket nicht vollständig"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#296","#301","#303","#315"],
+      "nachweis": "docs/acc45/ZEIT-BETRIEBSTAG-VERTRAG.md",
+      "akzeptanz": "Umsetzungsplan ZEIT-A bis ZEIT-G laut ZEIT-BETRIEBSTAG-VERTRAG.md Abschnitt 10; Stempeltag aus der Betriebszone, nicht aus dem Gerätedatum",
+      "tests": "pruefungen/betriebstag.test.js, pruefung:zeit-e, pruefung:geo-uhren, pruefung:qs-zeitbasis",
+      "dateien": "server/lib/betriebszeit.mjs, src/stempelvorgang.js, server/lib/isteinfrieren.mjs, pruefungen/",
+      "notiz": "Von Hand angelegt (2026-11-17): bisher kein SSOT-Paket, obwohl PR #296, #301, #303, #315 gemergt sind (BACKLOG-PHASEN.md Abschnitt 7 Punkt 6). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Betreiberentscheidungen E1 bis E8 am 2026-11-14. Review: Quelle prüfen (reviewt nicht belegt). Verwandt: QS-ZEIT (#305, #309). Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG."
+    },
+    {
+      "id": "BE-1",
+      "titel": "Konto-Widerrufbuch: Kontosperren und entzogene Mitgliedschaften überleben jeden Rücksprung",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":2,"max":4},
+      "abhaengigkeiten": [],
+      "status": "IN_PROGRESS",
+      "stufen": {
+        "implementiert": {"wert":"teilweise","beleg":"PR #304 (38eda4fe, Kontosperren und Mitgliedschaften), PR #308 (aff9c320, Auflage 2: Registrierungsweg fail-closed); Rest: Passwörter offen"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #304: CI 23/23 grün (WIEDERAUFNAHME.md Konsolidierter Stand 2026-11-15); pruefungen/be1-konto-widerrufbuch.test.js; PR #308: Registrierungs-, HTTP- und BE-1-Tests 109/109"},
+        "reviewt": {"wert":true,"beleg":"PR #304: unabhängiges Diff-Review MERGE-OK mit Auflagen (WIEDERAUFNAHME.md); Auflagen eingearbeitet in PR #307 (Doku) und PR #308 (Code)"},
+        "integriert": {"wert":"teilweise","beleg":"PR #304, #306, #307, #308 gemergt (Merge-Commits Vorfahren von integration/release-v4); Passwörter (BE-1 Rest) offen"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#304","#306","#307","#308"],
+      "nachweis": "docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md",
+      "akzeptanz": "Konto-Widerrufbuch für Kontosperren und entzogene Mitgliedschaften (Option A mit E-M6); Registrierungsweg prüft das Buch fail-closed; Passwörter als Rest laut Wiederaufnahmepunkt",
+      "tests": "pruefung:be1-konto-widerrufbuch, pruefungen/registrierung.test.js, pruefungen/sicherung-ablage.test.js",
+      "dateien": "server/lib/ (Konto-Widerrufbuch), server/lib/registrierung.mjs, pruefungen/",
+      "notiz": "Von Hand angelegt (2026-11-17): bisher kein SSOT-Paket (BACKLOG-PHASEN.md Abschnitt 7 Punkt 6). Wiederaufnahmepunkt: „Teil Konten und Mitgliedschaften integriert (#304, #307, #308); Passwörter offen“. Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG."
+    },
+    {
+      "id": "BE-2",
+      "titel": "BE-2 Stufe A1: aktiver Konto-Faktor und eingelöste Wiederherstellungscodes überleben jeden Rücksprung",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":2,"max":4},
+      "abhaengigkeiten": [],
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #311 (Merge 87cbde26, 2026-11-15, Vorfahre von integration/release-v4)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #311: pruefungen/be2-a1-zweiter-faktor.test.js (pruefung:be2-a1-zweiter-faktor); CI-Ergebnis des PR nicht einzeln nachgesehen"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"PR #311 in integration/release-v4 (Merge 87cbde26)"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#311"],
+      "nachweis": "docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md",
+      "akzeptanz": "Option A, Stufe A1 (Betreiberentscheidung 2026-11-14, vor dem Pilot Pflicht): ein aktiver zweiter Faktor entfällt durch ein altes Bild nicht still, benutzte Wiederherstellungscodes werden nicht wieder gültig",
+      "tests": "pruefung:be2-a1-zweiter-faktor",
+      "dateien": "server/lib/ (Konto-Widerrufbuch, faktorpflicht), server/funktionen/daten.mjs, pruefungen/",
+      "notiz": "Von Hand angelegt (2026-11-17): Das Paket umfasst nur Stufe A1; weitere Stufen von BE-2 sind nicht beauftragt und hier nicht erfasst. Frühere Aussage „BE-2 A1: kein belegender PR“ ist überholt (PR #311). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG."
+    },
+    {
+      "id": "BE-3",
+      "titel": "Sicherung der Widerrufbücher: eigener Job, Nachweis, Vereinigen statt Ersetzen, Alterswarnung, Probe, Einrichtungskette",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":2,"max":4},
+      "abhaengigkeiten": [],
+      "status": "IN_PROGRESS",
+      "stufen": {
+        "implementiert": {"wert":"teilweise","beleg":"PR #313 (8208b5a2, Sicherungsjob, Nachweis, Vereinigen, Alterswarnung); PR #316 (45219bd5, Probe der Widerrufbücher, Übungsvorlagen, Checkliste A/B/C); PR #319 (6525dee9, Einrichtungskette IONOS, Messskript, überwiegend Vorbereitung und Doku). Offen: B-1 (Probe mit echtem restic in der CI), produktives Ziel, Zugangsdaten"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/be3-widerrufbuch-sicherung.test.js (PR #313, #316), pruefungen/staging-o2.test.js (PR #316, #319); kein Lauf gegen echtes restic und kein Lauf auf der Zielumgebung belegt"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":"teilweise","beleg":"PR #313, #316, #319 gemergt (Merge-Commits Vorfahren von integration/release-v4); produktives Ziel, Zugangsdaten, Kosten und Staging-Prüfung offen (WIEDERAUFNAHME.md)"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#313","#316","#319"],
+      "nachweis": "docs/acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md",
+      "akzeptanz": "Option A / restic-Sicherung der Widerrufbücher außer Haus mit Vereinigung, Alterswarnung und Probe; Probe mit echtem restic in der CI (INFRA §8 B-1) und produktives Ziel stehen aus",
+      "tests": "pruefung:be3-widerrufbuch-sicherung, pruefung:staging-o2",
+      "dateien": "werkzeug/ablage-sicherung.mjs, deploy/sicherung/, docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md, docs/acc45/EINRICHTUNGSKETTE-IONOS.md",
+      "notiz": "Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG."
     }
   ]
 }
