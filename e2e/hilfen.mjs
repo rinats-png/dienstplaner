@@ -78,7 +78,9 @@ async function meldungenAuswerten(page, testInfo) {
   const meldungen = await page.evaluate(() => window.__meldungen || []).catch(() => []);
   if (!meldungen.length) return;
   mkdirSync(ERGEBNISSE, { recursive: true });
-  const datei = path.join(ERGEBNISSE, `meldung-${testInfo.title}-${viewport}.json`);
+  // Testtitel enthalten Doppelpunkte u. ä.; unter Windows ist das im Dateinamen unzulässig (Doppelpunkt = Datenstrom).
+  const titelAlsName = testInfo.title.replace(/[^\p{L}\p{N}._-]+/gu, "_").slice(0, 120);
+  const datei = path.join(ERGEBNISSE, `meldung-${titelAlsName}-${viewport}.json`);
   writeFileSync(datei, JSON.stringify({ flaeche: "meldung", test: testInfo.title, viewport, tags: AXE_TAGS, meldungen }, null, 1));
   const probleme = [];
   for (const m of meldungen) {
