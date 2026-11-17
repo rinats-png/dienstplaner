@@ -258,6 +258,8 @@ lauf w7-falsches-passwort 4 "$JOB" "$T/k1/falsches-pw.env"
 lauf w7-probe-falsches-passwort 4 "$PROBE" "$T/k1/falsches-pw.env"
 konfig "$T/k1/kein-repo.env" "$T/gibt-es-nicht" "$T/restic-pw" "$STATUS"
 lauf w7-kein-repository 4 "$JOB" "$T/k1/kein-repo.env"
+[[ "$(sf "$JOB_STATUS" ergebnis)" == "fehler" && "$(sf "$JOB_STATUS" schritt)" == "repository-zugang" && "$(sf "$JOB_STATUS" code)" == "4" ]] ||
+  fehl "W7: Status bei fehlendem Repository ($(cat "$JOB_STATUS"))"
 # restic zu alt (0.15.x): Konfigurationsfehler, bevor irgendetwas geschieht.
 cat >"$T/restic-alt.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -356,6 +358,8 @@ snaps centric "$REPO_A" >"$T/w10-vorher.json"
 konfig "$T/k1/aufbewahrung.env" "$REPO_A" "$T/restic-pw" "$STATUS_A"
 lauf w10-aufbewahrung 0 "$JOB" "$T/k1/aufbewahrung.env"
 snaps centric "$REPO_A" >"$T/w10-nachher.json"
+# ACHTUNG: Die Erwartung 201 hängt am gepinnten RESTIC_VERSION (Verhalten von --keep-daily im ältesten Tag); bei jedem
+# restic-Update neu prüfen.
 # Nachrechnung: die neuesten 200 (keep-last) plus der älteste Snapshot des ältesten Tages (restic 0.18 nennt ihn
 # "oldest daily snapshot" — Befund aus dem echten restic: keep-daily behält je Tag den neuesten, im ältesten Tag den ältesten).
 jq -s '(.[0] + .[1]) | unique_by(.id) | sort_by(.time) | (.[-200:] + [.[0]]) | map(.id) | unique' "$T/w10-vorher.json" "$T/w10-nachher.json" >"$T/w10-erwartet.json"
