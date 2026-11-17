@@ -60,7 +60,9 @@ async function schreibvorgaengeVerfolgen(page) {
       await route.abort().catch(() => {});
     }
   });
-  return { abgeschlossen: () => expect.poll(() => beantwortet === angefragt, { timeout: 20000 }).toBe(true) };
+  // Das request-Ereignis eines beim Verlassen ausgelösten PUT trifft vor dem Ende von goto() ein (geordnete Protokollereignisse);
+  // ein Fehler von route.fetch zählt als beantwortet — das Rennen würde dann als 409 sichtbar, nicht verdeckt.
+  return { abgeschlossen: () => expect.poll(() => beantwortet === angefragt, { timeout: 20000, message: () => `offene PUT /api/bestand: ${angefragt - beantwortet}` }).toBe(true) };
 }
 
 /** Anmeldung über die echte Anmeldeseite (wie hilfen.anmelden, aber mit dem Code dieses Ablaufs). */
