@@ -62,17 +62,10 @@ Aufruf lokal: `npm run e2e:browser` (einmal, Chromium), dann `npm run e2e`. Fert
 
 ## 3. CI
 
-Seit der Aufteilung (PR #327, Wall-Clock) läuft die Browserabnahme als Matrix `browser-abnahme-shard` (Hälfte 1 und 2,
-`npm run e2e -- --shard=N/2`, `fail-fast: false`) neben `pruefen` (die vitest-Kette bleibt unverändert). Jede Hälfte hat einen eigenen
-Runner, Build, Testserver (frischer Datenordner) und damit eine eigene Anmeldebremse; gerechnet wird je Hälfte mit
+Neuer Job `browser-abnahme` in `.github/workflows/pruefung.yml`, neben `pruefen` (die vitest-Kette bleibt unverändert):
 `npm ci`, `npx --no-install playwright install --with-deps chromium` (Browserfassung durch die gepinnte Playwright-Fassung
-festgelegt) und `npm run e2e`. Die Aufteilung folgt den Viewports und ist disjunkt und vollständig: Hälfte 1 = 360x740, 390x844,
-430x932, 768x1024, Hälfte 2 = 1024x768, 740x360, 844x390, 932x430, je 100 von 200 Tests. Weil die schreibenden Abläufe B (Stempel,
-Monatsabschluss) im ungeteilten Lauf vor allen späteren Viewports liefen, setzt Hälfte 2 `E2E_ABLAUF_B_VORLAUF=1`: Die Abläufe B
-laufen dort einmal (im Telefonformat) auf 1024x768 vor den Darstellungsprüfungen; Testtitel und Testzahl bleiben gleich.
-Zwei Artefakte: `browser-abnahme-1` und `browser-abnahme-2` (axe-JSON, Bericht je Hälfte). Der Sammeljob `browser-abnahme`
-(bisheriger Name) ist nur grün, wenn beide Hälften grün sind. Keine Geheimnisse, Actions per SHA gepinnt wie im übrigen Workflow.
-Da `deploy.yml` `pruefung.yml` aufruft, gilt das Gate auch vor der Auslieferung. `e2e` ist kein Glied der Kette
+festgelegt), `npm run e2e`, Artefakt `browser-abnahme` (axe-JSON, Bericht). Keine Geheimnisse, Actions per SHA gepinnt wie im
+übrigen Workflow. Da `deploy.yml` `pruefung.yml` aufruft, gilt das Gate auch vor der Auslieferung. `e2e` ist kein Glied der Kette
 `pruefung`; `pruefung:ci-abdeckung` und `pruefung:sammelpruefung` bleiben unverändert grün.
 
 ## 4. Befunde des ersten Laufs (lokal, Windows, 2026-11-13)
@@ -117,3 +110,14 @@ ob er beim Scan noch sichtbar war (3 s), hing von der Laufzeit ab (CI schnell, W
 - Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.
 - Weitere Flächen (Anträge, Lagebild, Betreiberkonsole), Offline-Fälle und Rollenabläufe aus dem alten Branch (674d1c04) nachziehen.
 - Erster Lauf auf dem GitHub-Runner (Chromium-Download) steht mit dem PR aus.
+
+## 5. Sharding erprobt und zurückgenommen (PR #327, 2026-11-17)
+
+Versuch: Die Browserabnahme in zwei parallele Hälften (`--shard=1/2`, `2/2`, nach Viewport: 200 Tests, je 100) teilen, um die Laufzeit (ca. 16,7 min, Job `browser-abnahme`) zu verkürzen. Zurückgenommen, weil Hälfte 2 rot war und die Datenlage nicht als gleichwertig belegt werden konnte. Die Workflow- und Testdateien stehen wieder auf dem Stand vor dem Versuch.
+
+- Messwerte (letzter grüner ungeteilter Lauf 44026497363): Strang A (1024x768) 2,3 + 1,9 + 4,8 + 2,3 + 3,0 s plus Test 0 (unter 1 min); Abläufe B (390x844) B7 4,4 s, B8-Gegenprobe 0,1 s, B10 9,7 s. A und B zusammen weit unter 4 min. Playwright gesamt 16,3 min (117 passed, 83 skipped).
+- Datenlage: Im ungeteilten Lauf schreibt B auf 390x844 vor allen späteren Viewports, A auf 1024x768. Hälfte 2 begann auf frischem Bestand; ein Vorlauf der Abläufe B auf 1024x768 (Schalter, Telefonformat) wurde versucht, kam aber nicht zur Ausführung.
+- Fehler in Hälfte 2 (Run 44036533927, Job 133880644174): Strang A, Test 0, `Speichern 409: Jemand anderes hat inzwischen die Stammdaten geändert.` (`e2e/abnahme-a-ablauf.spec.mjs`, `schreiben()`), als erster Test auf kaltem Server nach etwa 2 s; Tests 1 bis 5 von A liefen deshalb nicht (serial), 57 passed, 1 failed, 37 skipped, 5 did not run.
+- Hypothese, unbelegt: Der Browser des Tests schreibt nach der Erstanmeldung noch (Migration `src/App.jsx` um Zeile 1123, Speicher-Effekt/Urlaubshinweis um Zeile 1222, Debounce 1200 ms und keepalive-PUT beim Schließen `src/speicher.js:26, 635-650`) und kollidiert mit dem Lesen und Speichern des Tests, nachdem dieser nur auf die serverseitig angelegte Person wartet und auf `about:blank` geht. Server-Etags und Zeiten liegen in den CI-Logs nicht vor.
+- Restsymptom: Es ist ein latentes Rennen in Strang A, das nur sichtbar wird, wenn A nicht auf einem warmen Server läuft. Es kann auch im ungeteilten Lauf auftreten.
+- Verworfen: Ein Neulesen und erneutes Anwenden bei 409 (verdeckt ein echtes Rennen). Ein gezielter Wartepunkt auf ein echtes Ereignis (z. B. Antwort des Browser-PUT) oder `page.close()` statt `about:blank` wäre zu prüfen, braucht aber Diagnose (PUT-Zeiten, Etags) im E2E-Lauf.

@@ -18,13 +18,6 @@ import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbas
 import { sucheDiensttag, sucheMitTagwechsel, betriebstagAusKopf } from "./dienstsuche.mjs";
 
 const ABLAUF_PROJEKT = "390x844";
-/* CI-Aufteilung (Playwright --shard, .github/workflows/pruefung.yml): Die Abläufe schreiben Daten, die die Darstellungsprüfungen
-   der späteren Viewports sehen (Stempel, Monatsabschluss). Im ungeteilten Lauf kamen alle Viewports nach 390x844 nach den Abläufen.
-   Der zweite Lauf der Aufteilung beginnt auf frischem Bestand; mit E2E_ABLAUF_B_VORLAUF=1 schreibt er die Abläufe darum einmal auf
-   seinem ersten Viewport (1024x768, im Telefonformat 390x844 wie sonst), vor den Darstellungsprüfungen. Ohne die Variable
-   unverändert: Abläufe nur auf 390x844. Testtitel und Testzahl ändern sich nicht. */
-const VORLAUF_PROJEKT = "1024x768";
-const schreibtHier = (projekt) => projekt === ABLAUF_PROJEKT || (process.env.E2E_ABLAUF_B_VORLAUF === "1" && projekt === VORLAUF_PROJEKT);
 /* QS-ZEIT: „heute“ nach der gemeinsamen Zeitbasis (e2e/zeitbasis.mjs) — derselbe Berliner Tag wie Server und Browser. */
 const heuteBerlin = abnahmeHeute;
 const HEUTE = heuteBerlin();
@@ -137,9 +130,9 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
      (Winterzeit; Sommerzeit 22–24 Uhr) den Vortag: Der Stempel landete auf dem Berliner Tag, die Stempeluhr suchte ihn
      am Vortag und bot nach dem Neuladen wieder „Einstempeln“ statt „Ausstempeln“ an. Darum hier, wie bei der
      Stempeluhr unten, die Zeitzone des Betriebs. */
-  test.use({ timezoneId: "Europe/Berlin", viewport: { width: 390, height: 844 }, hasTouch: true });
+  test.use({ timezoneId: "Europe/Berlin" });
   test("B7 Stempeln ohne Netz, vorläufig auf dem Gerät, nach dem Netz genau ein Stempel", async ({ page, context }, testInfo) => {
-    test.skip(!schreibtHier(testInfo.project.name), "Schreibender Ablauf einmal je Lauf");
+    test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const tag = await berlinerTagFuerAblauf(page);
     const stempelHeute = (m, pid) => stempelAm(m, pid, tag);
     const { ma } = await dienstAmSicherstellen(tag);
@@ -186,7 +179,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
   });
 
   test("B8 Krankmeldung zweistufig, Beschäftigte → Schichtverantwortung vorläufig → Planung endgültig", async ({ page, browser }, testInfo) => {
-    test.skip(!schreibtHier(testInfo.project.name), "Schreibender Ablauf einmal je Lauf");
+    test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
     /* Am Krankheitstag einen Dienst im Plan, damit „Plan unverändert“ prüfbar ist. QS-ZEIT: Der Tag wird gesucht, nicht
@@ -287,7 +280,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
      gespeichert. Tage nach dem Betriebstag des Zielservers (+ 4/+ 5); gilt auch mit echter Uhr (Staging-Gate): ein Frühdienst nach
      Spätdienst ist an jedem Tag und in jedem Zyklusabschnitt eine echte Verletzung. */
   test("B8 Gegenprobe: Frühdienst nach Spätdienst verletzt die Ruhezeit und wird abgewiesen (403)", async ({}, testInfo) => {
-    test.skip(!schreibtHier(testInfo.project.name), "Schreibender Ablauf einmal je Lauf");
+    test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const ma = await apiAnmelden("mitarbeiter");
     const pl = await apiAnmelden("planer");
     const basis = await serverBetriebstag();                       // auch gegen den fremden Container mit echter Uhr
@@ -305,7 +298,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
   });
 
   test("B10 Monatsabschluss abschließen, mit Grund wiederöffnen, korrigieren, erneut abschließen", async ({ page }, testInfo) => {
-    test.skip(!schreibtHier(testInfo.project.name), "Schreibender Ablauf einmal je Lauf");
+    test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const vormonat = tagPlus(`${HEUTE.slice(0, 7)}-01`, -1).slice(0, 7);
     const le = await apiAnmelden("leitung");
     const eintrag = async () => ((mandantVon(await api("bestand", { token: le.token })).monatsabschluss || {})[vormonat]) || null;

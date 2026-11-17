@@ -1317,22 +1317,9 @@ jobs:
   # und Zugänge entstehen zufällig je Lauf in e2e/global-setup.mjs (Demo-Bestand, erfundene
   # Personen). Chromium kommt in der zur gepinnten @playwright/test-Fassung passenden Version
   # (Lockfile), nur in diesem Job. Anleitung: docs/acc45/WP-33-PLAYWRIGHT-AXE.md.
-  #
-  # Aufteilung (Wall-Clock): zwei parallele Läufe derselben Suite (Playwright --shard=N/2). Jeder Lauf hat eine eigene
-  # Maschine, einen eigenen Build, einen eigenen Testserver mit frischem Datenordner (e2e/global-setup.mjs) und damit
-  # eine eigene serverseitige Anmeldebremse; es gibt keinen gemeinsamen Zustand. Die Aufteilung ist disjunkt und
-  # vollständig (je Shard 100 von 200 Tests: Shard 1 = 360x740, 390x844, 430x932, 768x1024; Shard 2 = 1024x768,
-  # 740x360, 844x390, 932x430). Kein Test, kein Viewport, keine Schwelle, kein Timeout und keine Wiederholung ist
-  # geändert; nur die Datenlage ist gleich gehalten (Hälfte 2 schreibt die Abläufe B vorab, siehe env). Der Job `browser-abnahme` unten bleibt als Sammelstelle unter dem bisherigen Namen und ist nur grün,
-  # wenn beide Läufe grün sind.
-  browser-abnahme-shard:
-    name: browser-abnahme-shard (${{ matrix.shard }}/2)
+  browser-abnahme:
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -1348,12 +1335,8 @@ jobs:
       - name: Chromium für Playwright installieren
         run: npx --no-install playwright install --with-deps chromium
 
-      - name: Browserabnahme (Playwright, axe, 8 Viewports; Hälfte ${{ matrix.shard }} von 2)
-        run: npm run e2e -- --shard=${{ matrix.shard }}/2
-        env:
-          # Hälfte 2 beginnt auf frischem Bestand: Abläufe B (Stempel, Monatsabschluss) laufen dort einmal vor den
-          # Darstellungsprüfungen, damit jeder Viewport dieselbe Datenlage sieht wie im ungeteilten Lauf (e2e/abnahme-b-ablaeufe.spec.mjs).
-          E2E_ABLAUF_B_VORLAUF: ${{ matrix.shard == 2 && '1' || '0' }}
+      - name: Browserabnahme (Playwright, axe, 8 Viewports)
+        run: npm run e2e
 
       # Vollständige axe-Befunde je Fläche und Viewport (alle Schweregrade) und der JSON-Bericht.
       # Keine Bildschirmfotos, Spuren oder Videos (playwright.config.mjs).
@@ -1361,22 +1344,9 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: browser-abnahme-${{ matrix.shard }}
+          name: browser-abnahme
           path: |
             e2e/ergebnisse/axe
             e2e/ergebnisse/ergebnis.json
           retention-days: 14
           if-no-files-found: warn
-
-  # Sammelstelle unter dem bisherigen Jobnamen: grün nur, wenn beide Hälften der Browserabnahme grün sind
-  # (auch bei Abbruch oder Überspringen einer Hälfte rot).
-  browser-abnahme:
-    if: ${{ always() }}
-    needs: browser-abnahme-shard
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Beide Hälften müssen grün sein
-        run: |
-          echo "Ergebnis der Browserabnahme-Hälften: ${{ needs.browser-abnahme-shard.result }}"
-          test "${{ needs.browser-abnahme-shard.result }}" = "success"
