@@ -303,7 +303,7 @@ Schritte voraus (E-9, nur der Betreiber). Sicherheit und Datenschutz (B1–B7) g
 | A3 | **Doppelzustellung**: atomarer Claim je Versuch (parallel genau einmal); nach Absturz derselbe Idempotency-Key (Mail) bzw. dasselbe Topic (Push); kein Versand vor dem Status „offen“ (Absturz davor ⇒ kein Versand); **Restrisikogrenze**: höchstens `versucheMax()` (Vorgabe 5) Zustellversuche je Mitteilung und Kanal; ein Duplikat ist nur möglich, wenn ein Prozess **nach** dem Senden und **vor** dem Quittieren abbricht **und** (Mail) die Wiederholung später als 24 h nach dem ersten Versuch beim Anbieter ankommt — die Wiederholung erfolgt nach `OFFEN_FRIST` = 15 min, also nur bei mehr als 24 h Takt-Ausfall — oder (Push) das Gerät die erste Nachricht schon abgeholt hatte | implementiert | erfüllt; gemessen in Prüfungen („zehn gleichzeitige Anstöße: genau eine Mail“, „Absturz zwischen Senden und Quittieren … gleicher Idempotenzschlüssel“, „Absturz nach dem Claim, vor dem Status“); Messung im Betrieb: Zähler `zugestellt` je Stunde in `/gesund` gegen Anbieter-Dashboard (Staging) |
 | A4 | **SSRF-Abwehr** Push: Allowlist der Herstellerdienste (`pushEndpunktErlaubt`; weitere nur über `CENTRIC_PUSH_HOSTS`), nur `https`, kein Port, keine Zugangsdaten in der Adresse, keine IP-Literale/`localhost`/Metadatenadressen, `.example` nur außerhalb der Auslieferung; geprüft beim Anmelden **und** vor jedem Senden; Redirect: `web-push` sendet über Node-`https.request`, das keinem Redirect folgt; DNS: nur Hostnamen der Allowlist (fremde Namen werden nicht aufgelöst) | implementiert | erfüllt für Allowlist/Schema/IP-Literal/Port (Tests `mail-push-anbieter`, `mail-push-handler`, HTTP `zustellung-rechte.mjs`); **offen für WP-30b**: Prüfung der aufgelösten IP (privates Netz) bei Allowlist-Hosts und ein Test, der „kein Redirect“ am Transport belegt |
 | A5 | Inhalt ohne Personen-/Gesundheitsdaten, Entwurfsregel, Opt-out, Rollen-/Mandantentrennung, Kontingente mit Notruf-Reserve, Statusabfrage nur eigene Person, Löschung/Aufbewahrung | implementiert | erfüllt (Abschnitte 2–4, 9) |
-| A6 | Unabhängiges Review (Opus) und Nachprüfung der Befunde B1–B7 | reviewt | Review erfolgt; Delta-Review erfolgt (Befunde F1–F8, Abschnitt 11, behoben); Nachprüfung von F1–F8 offen |
+| A6 | Unabhängiges Review (Opus) und Nachprüfung der Befunde B1–B7 | reviewt | Review erfolgt; Delta-Review erfolgt (Befunde F1–F8, Abschnitt 11, behoben); Nachprüfung von F1–F8 erfolgt, alle erfüllt (Abschnitt 12) |
 | A7 | **Echte Zustelltests** mit realen Konten/Geräten: Resend-Konto, Domain mit SPF/DKIM/DMARC verifiziert, API-Schlüssel, VAPID-Paar, `.env`; Zustelltest Mail (Posteingang, nicht Spam), Push auf Android (Chrome) **und** iOS-PWA (Startbildschirm, iOS ≥ 16.4); Fehlerpfade (falscher Absender ⇒ `konfiguration`, keine Sperre) | **produktiv freigegeben** (extern, E-9, Betreiber) | offen — nicht Voraussetzung für „implementiert“; Schritte in `docs/MAIL-PUSH-EINRICHTUNG.md` Abschnitt 4 |
 
 ## 11. Nachtrag 2 — Delta-Review (F1–F8)
@@ -385,3 +385,26 @@ Prüfdateien; nicht im Repository, kein fremder Worktree verändert); jede Zeile
 | `mail-push-handler` | 20 | grün |
 | `zustellung-rechte`; `post` + `doku` | 42; 16 | grün |
 | `eslint` (geänderte Dateien), `tsc -p jsconfig.json` | – | 0 Fehler |
+
+## 12. Nachtrag 3 — Nachprüfung der Behebungen F1–F8 (Stand `8300c346`, Integrationsbranch)
+
+Unabhängige Nachprüfung der in Abschnitt 11 behaupteten Behebungen gegen den Code im Integrationsbranch. Kein Code geändert,
+keine Anbieteraufrufe (Attrappen), keine Schlüssel. Ergebnis: **alle acht Befunde erfüllt.**
+
+| Befund | Beleg im Code | Beleg in der Prüfung | Ergebnis |
+|---|---|---|---|
+| F1 Reserve nur für Notrufe | `versand.mjs` (`kontingentPruefen`, Zweig `istNotruf`), `mitteilungen.mjs` (`istNotruf`) | `mail-push-produktion` „Nachtrag 2 F1“ (2 Fälle) | erfüllt |
+| F2 Fristen Mail/Push/Takt | `post.mjs` (`MAIL_FRIST_MS`, `AbortSignal.timeout`), `webpush.mjs` (`timeout`, `Promise.race`), `versand.mjs` (`nachfassen` `bis`), `server.mjs` (`bis: Date.now() + 50_000`, `finally`) | `mail-push-anbieter` „Nachtrag 2 F2“; `mail-push-produktion` „Nachtrag 2 F2“ | erfüllt |
+| F3 frische Zeit, Schlüssel des übernommenen Versuchs | `versand.mjs` (fortlaufende Uhr in `zustellen`/`nachfassen`) | `mail-push-produktion` „Nachtrag 2 F3“ (3 Fälle) | erfüllt |
+| F4 Urgency high | `webpush.mjs` (`urgency`), `versand.mjs` (`dringend`) | `mail-push-anbieter` „Nachtrag 2 F4“; `mail-push-produktion` „Nachtrag 2 F4“ | erfüllt |
+| F5 Flutschutz zählt Notrufe, zurückstellen | `versand.mjs` (`qMarke`, Rückgabe „zurueck“) | `mail-push-produktion` „F5“ (2 Fälle) | erfüllt |
+| F6 zurückgestellt belegt keine Plätze | `versand.mjs` (`plaetzeFreigeben`, `nein`) | `mail-push-produktion` „F6“ (2 Fälle) | erfüllt |
+| F7 Sperrwert nur mit Pfeffer | `versand.mjs` (`sperrWert`) | `mail-push-produktion` „Nachtrag 2 F7“ | erfüllt |
+| F8 Empfängerursache nur To-Feld; C1/DEL | `post.mjs` (`EMPFAENGER_TEXT`, `invalid_to_address`), `zustellregeln.mjs` (`einzeilig`) | `mail-push-anbieter` „Nachtrag B2“; `mail-push-produktion` „Nachtrag 2 F8“ | erfüllt |
+
+Läufe (einzeln): `mail-push-anbieter` + `mail-push-handler` 78 grün; `mail-push-produktion` 75 grün.
+Stichproben-Mutanten auf dem Stand (je Datei zurückgesetzt): Urgency immer „normal“ (F4), Sperrwert ohne Pfeffer-Pflicht (F7),
+`nachfassen` ohne `bis`-Abbruch (F2), dringende Arten nehmen die Reserve (F1) — alle von der zuständigen Prüfung gefangen.
+Die 24 Mutanten aus Abschnitt 11 wurden nicht erneut vollständig gefahren.
+
+Offen bleiben unverändert: Staging-Probe, WP-30b (Webhook-Bounces) und der produktive Betrieb erst nach E-9 (Betreiber).
