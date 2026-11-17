@@ -404,3 +404,15 @@ Hinweise aus den unabhängigen Reviews (nicht blockierend):
 - **#316 (Infra-Vorbereitung Staging/Backup/Restore):** `deploy/sicherung/widerrufbuch-probe.sh`, Vorlagen der restic-Übung, Doku `docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md`. Review MERGE-OK, Auflagen A1/A2 eingearbeitet. Nichts ausgeführt; Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-6.
 - Lease: `hauptchat` Epoche 15. Die Operator-Blocker sind unverändert; die einzige Liste bleibt `ENTSCHEIDUNGSLISTE.md`.
 - SSOT: `node werkzeug/ssot-nach-integration.mjs 315` und `... 316` (Dry-Run, ohne `--schreibe`) melden jeweils „kein Paket zugeordnet“ (Exit 2). Nichts geschrieben, keine Zuordnung erfunden. WP-ZEIT und die Infra-Vorbereitung haben im SSOT weiter kein Paket; ihr Stand steht in `ENTSCHEIDUNGSLISTE.md`.
+
+## Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, nur Doku und SSOT)
+
+- Integrationskopf `integration/release-v4`: `bfa7a110` (Merge #322). Seit `45219bd5` gemergt (nach `gh pr view`, Merge-Commits sind Vorfahren des Kopfes): #318 (IONOS-Bestandspruefung), #319 (Einrichtungskette IONOS, `6525dee9`), #320 (Backlog-Phasen), #321 (WP-30: Nachpruefung F1-F8 alle erfuellt, `cfcfac13`), #322 (WP-48.7 Stufe a: Monatsabschluss segmentweise, Schalter, Vorgabe aus, `bfa7a110`). Offen: #323 (WP-33 Rest: weitere axe-Flaechen), nicht integriert.
+- SSOT von Hand nachgezogen (das Werkzeug `ssot-nach-integration.mjs` wuerde WP-30 und WP-48 auf INTEGRATED setzen und ordnet #280/#281/#296/#301/#303/#304/#311/#313/#315/#316/#319 keinem passenden Paket zu; deshalb nicht mit `--schreibe` benutzt), jeweils mit PR- und Merge-Beleg, danach `acc45-backlog.mjs status-schreiben` und `pruefen`:
+  - WP-30: lokalGetestet und reviewt belegt (wp30-nachweis.md Abschnitte 9, 11, 12; #84, #321); integriert nur "teilweise" (Schema: integriert=true nur bei INTEGRATED/DONE). Status BLOCKED bleibt (E-9).
+  - WP-48: veraltete Notiz "BLOCKED statt READY" korrigiert; Belege #87, #224, #271, #322 (Stufe a hinter Schalter, nicht aktiviert). Status IN_PROGRESS unveraendert.
+  - WP-33: Teile 1-4 (#217, #262, #269) belegt; Rest in #323 offen, nicht als integriert eingetragen.
+  - ABN-A3 und ABN-A4: #281 (2026-11-14) und #280 (2026-11-13) sind MERGED; Notiz "offen, angehalten" korrigiert. F-0 nur fuer neue Betriebe belegt geschlossen, fuer Bestandsbetriebe offen (Schalter aus); Umsetzung Q1-Q5 in #280 nicht einzeln nachgewiesen. Status beide BLOCKED.
+  - Neu angelegt: WP-ZEIT (IN_PROGRESS; #296, #301, #303, #315), BE-1 (IN_PROGRESS; #304, #306-#308; Passwoerter offen), BE-2 Stufe A1 (INTEGRATED; #311), BE-3 (IN_PROGRESS; #313, #316, #319). Prioritaet, Strang und Aufwand vorlaeufig nach `BACKLOG-PHASEN.md`, vom Betreiber nicht bestaetigt. Keine Stufe staging-geprueft, fachlich freigegeben oder produktiv.
+- Nicht geaendert: Namenskollision "S-1" (Einladungsbremse ABN-A2 gegen Loeschschutz der Sicherung INFRA) bleibt offen, eindeutige IDs braeuchten Aenderungen in mehreren Dokumenten (Koordinatorsache).
+

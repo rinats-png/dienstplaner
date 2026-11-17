@@ -83,6 +83,23 @@ function wochenanker() {
   return new Set([montagZu(new Date(jetzt).toISOString().slice(0, 10)), montagZu(berlin), wieServer(jetzt)]);
 }
 
+/* Dritte Form des Zufallsmusters: Einladungskennung aus Buchstaben mit Bindestrich/Unterstrich und Großbuchstaben, aber
+   ohne zwei Großbuchstaben nebeneinander, z. B. „KqejpjhBcDwy-Lq-“ (Beleg: CI-Lauf 44031380657, Job 133863898090, PR #325:
+   rumpf.id blieb unmaskiert). Erkennung nur bei genau 16 Zeichen, mindestens 3 Großbuchstaben und mindestens 2 kurzen
+   Abschnitten (höchstens 2 Zeichen, geteilt an Großbuchstaben, „-“, „_“): echte Bezeichner (camelCase, Wörter) haben fast
+   nur Abschnitte ab 3 Zeichen. Geprüft: kein Treffer unter den Tokens aus pruefungen/, server/, src/ und der Golden-Datei.
+   Restrisiko: (1) Restlücke rund 0,07 % je 16-Zeichen-Zufallskennung, seltene Flakes bleiben möglich. (2) Künftige reale
+   Bezeichner mit genau 16 Zeichen, mindestens 3 Großbuchstaben und mindestens 2 Abschnitten von höchstens 2 Zeichen werden
+   still maskiert, auch innerhalb von Prüfsummen — bei neuen Namen dieser Form die Golden neu ansehen. */
+const kurzeAbschnitte = (w) => w.split(/[-_]|(?=[A-Z])/).filter((x) => x && x.length <= 2).length;
+const zufallBuchstabenMitTrenner = (w) => w.length === 16 && /^[A-Za-z_-]+$/.test(w) && /[a-z]/.test(w)
+  && (w.match(/[A-Z]/g) || []).length >= 3 && kurzeAbschnitte(w) >= 2;
+
+/** Prädikat: ist dieses Token (>= 16 Zeichen aus [A-Za-z0-9_-]) ein Zufallswert? Exportiert für den Prädikat-Beleg. */
+export const istZufall = (w) => (/[0-9]/.test(w) && /[A-Za-z]/.test(w)) || (/^[0-9_-]+$/.test(w) && /[0-9]/.test(w))
+  || (/^[A-Za-z_-]+$/.test(w) && /[a-z]/.test(w) && /[A-Z]{2}/.test(w))
+  || zufallBuchstabenMitTrenner(w);
+
 /** @param {string} s @param {Array<[string,string]>} register */
 function maskeText(s, register, tage) {
   let t = s;
@@ -100,9 +117,7 @@ function maskeText(s, register, tage) {
      z. B. „IPs_uewFyvnfbntG“; Sicherungsschlüssel, 32 Zeichen). Wörter und Bezeichner (klein, camelCase, kebab-case)
      haben Kleinbuchstaben, aber nie zwei Großbuchstaben nebeneinander; ein Zufallswert aus 16 Buchstaben fast immer
      (rund 98 %). Die Golden-Aufzeichnung der Basis blieb unter dieser Regel unverändert. */
-  const zufall = (w) => (/[0-9]/.test(w) && /[A-Za-z]/.test(w)) || (/^[0-9_-]+$/.test(w) && /[0-9]/.test(w))
-    || (/^[A-Za-z_-]+$/.test(w) && /[a-z]/.test(w) && /[A-Z]{2}/.test(w));
-  t = t.replace(/[A-Za-z0-9_-]{16,}/g, (w) => (zufall(w) ? "<ZUFALL>" : w));
+  t = t.replace(/[A-Za-z0-9_-]{16,}/g, (w) => (istZufall(w) ? "<ZUFALL>" : w));
   return t;
 }
 
