@@ -11,7 +11,7 @@
 | Lokaler Rechner | 4 logische Kerne, 11,8 GB RAM (≈ 6 GB frei) | höchstens 3 schreibende Agenten gleichzeitig; nur gezielte Tests lokal |
 | VPS (Test) | nur mit Freigabe | isolierte Proben wie A2/T1 |
 
-**Grenze:** Agenten arbeiten nur, solange eine Claude-Code-Sitzung aktiv ist. Unbeaufsichtigte Arbeit über Nacht ohne laufende Sitzung findet nicht statt.
+**Grenze:** Agenten arbeiten nur, solange eine Claude-Code-Sitzung aktiv ist. Ohne laufende Sitzung arbeitet nur eine geplante Cloud-Routine (dokumentierte Läufe 2026-11-10 bis 2026-11-15), und nur nach den Lease-Regeln (`WIEDERAUFNAHME.md`, „Koordinationsregel“); ob sie aktuell besteht, ist aus dem Repository nicht prüfbar.
 
 ## Rollen
 
@@ -39,7 +39,7 @@ Ein Agent F prüft jede Korrektur selbst nach (Test auf altem Stand rot, auf neu
 
 ## Arbeitsvertrag je Agent
 
-1. Branch `acc45/<bereich>/<wp>-<kurzname>` von `integration/centric-complete` (die ersten drei: von Kette B, identischer Baum).
+1. Branch `acc45/<bereich>/<wp>-<kurzname>` von `integration/release-v4` (früher `integration/centric-complete`, letzte PRs dorthin 2026-11-05).
 2. Akzeptanzkriterien lesen → fehlende Tests zuerst (rot auf altem Stand) → umsetzen → gezielte Tests lokal → Push → CI auswerten.
 3. Commit-Identität `rinats-png`, Trailer laut Projektregel. Kein PR, kein Merge durch Implementierungsagenten: PR und Integration macht Agent 0.
 4. Keine Produktion, kein VPS ohne Freigabe, keine Secrets, keine Abschwächung von Tests, keine erfundenen Ergebnisse.

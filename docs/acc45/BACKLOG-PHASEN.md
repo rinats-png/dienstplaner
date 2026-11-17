@@ -146,6 +146,8 @@ Sortiert nach Kategorie. Erledigte Pakete sind laut SSOT 91 INTEGRATED und 3 DON
 
 ## 2. Jetzt ausführbare Pakete, priorisiert
 
+> **Nachtrag 2026-11-17 (Kopf `f1741670`):** Seit dieser Rangliste gemergt: Rang 3 BE-2 A1 (#311, schon 2026-11-15; SSOT-Paket inzwischen angelegt), Rang 4 WP-33 Rest (#323), Rang 5 BE-3 B-1 (#325), Rang 6 WP-30 Nachprüfung (#321), von Rang 1 nur WP-48.7 Stufe a (#322, Schalter aus). Vor der Auswahl `node werkzeug/acc45-backlog.mjs bereit` und `gh pr list` gegenprüfen.
+
 Rangfolge nach Release-Relevanz (Gate R1/R2, P0), Risiko und Abhängigkeit. Insgesamt sind 11 Pakete „ja“ und 29 „teilweise“ (Spalte „jetzt“). Die Intelligence-Pakete (Kategorie D) stehen hinter allem anderen.
 
 **Konfliktgruppen** (nur ein Schreiber je Gruppe gleichzeitig; Quelle: Feld `konfliktzonen` im SSOT und Bereitschaftsanalyse):
@@ -243,7 +245,7 @@ Seit 2026-11-10 sind 143 PRs gemergt (etwa 20 je Kalendertag). Die PR-Zahl ist k
 | Phase | Inhalt | Rechnung | Ergebnis (Kalendertage Agentenarbeit) | Unsicherheit |
 |---|---|---|---|---|
 | A Feature Complete | 25 Pakete Kat A; 16 ausführbar (ja/teilweise), 9 an Fachentscheidungen (FN, BS-3, E-21) | 16 Pakete bei 1 bis 4 Paketen je Tag; SSOT-PT 100 bis 159 bei 18 PT/AT (Annahme 3 Agenten x 6 PT aus `annahmen`, nicht gemessen) = 6 bis 9 AT | rund 4 bis 16 Tage für den ausführbaren Teil; die 9 gesperrten Pakete nicht schätzbar | sehr hoch |
-| B Internal Test Ready (R1) | WP-16/16c/07b Belege, WP-33, WP-44 (E-15 Betreiber), SI-P4/WP-18 laut SSOT bereits integriert | wenige Pakete, Engpass E-15 (Nutzerhandlung) und Statusbelege | rund 2 bis 8 Tage nach Freigabe von E-15 und der Staging-Variante für R1 | hoch |
+| B Internal Test Ready (R1) | WP-16/16c/07b Belege, WP-33, WP-44 (E-15 Betreiber), SI-P4/WP-18 laut SSOT bereits integriert | wenige Pakete, Engpass E-15 (Nutzerhandlung) und Statusbelege | rund 2 bis 8 Tage nach Freigabe von E-15 und des Testwegs für R1 (ohne Staging-VM, `EINRICHTUNGSKETTE-IONOS.md` §1a) | hoch |
 | C Pilot Ready (R2) | 39 Pakete Kat B; 12 ausführbar; 27 „nein“ (12 davon E-Pakete, Betreiber oder extern) | ausführbarer Teil 12 Pakete; SSOT-PT 60 bis 105 ohne E-Pakete = 3 bis 6 AT bei 18 PT/AT | rund 3 bis 12 Tage für den ausführbaren Teil | sehr hoch |
 | D Final Staging und Release Validation | 22 Pakete Kat C (davon 15 E-Pakete) | Betreiber-, Dienstleister- und Rechtswartezeiten; die Wartezeiten der E-Pakete sind laut SSOT selbst ANNAHMEN; Pilot: E-24 verlangt 2 Wochen ohne P0/P1 | nicht schätzbar; Untergrenze 2 Wochen Pilot | nicht bestimmbar |
 | E Production Ready/Livegang | Freigabe, Deploy, Rücksprung (E-23) | nur nach ausdrücklicher Betreiberfreigabe | nicht schätzbar | nicht bestimmbar |
