@@ -18,7 +18,7 @@
    die 20 neuesten Sicherungen bleiben immer (N1).
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { appQuelle } from "./app-quelle.js";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -28,7 +28,11 @@ import { fileURLToPath } from "node:url";
 const WIRT = "127.0.0.1:3000";
 const RAUM = "dsgvo-raum";
 let wurzel, laden, daten, sitzungAnlegen, B, D, A;
-const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+/* Feste Uhr (QS-ZEITABHAENGIGKEIT): Der Stempel, den die Anfrage selbst erzeugt, trägt die Serverzeit; ohne feste Uhr
+   kollidierte er in der Stunde 07:00 Berlin mit dem Fixture-Stempel „07:00“. 12:30 Berlin liegt fern von jedem Fixture-Stempel,
+   von Mitternacht und von der Zeitumstellung. Nur Date wird gefälscht; CENTRIC_TEST_UHR erlaubt Läufe zu anderen Zeitpunkten. */
+const FEST = new Date(process.env.CENTRIC_TEST_UHR || "2026-10-06T10:30:00Z");
+const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(FEST);
 
 let nr = 0;
 const anfrage = async (pfad, { methode = "GET", rumpf, token } = {}) => {
@@ -84,6 +88,8 @@ beforeAll(async () => {
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
 
 describe("Art. 15: GET /api/auskunft", () => {
+  beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(FEST); });
+  afterAll(() => { vi.useRealTimers(); });
   it("die Person über sich selbst: maschinenlesbar, mit Stempeln samt Ortsbefund, eigenen Sammlungen und Protokoll", async () => {
     const t = await sitzung(RAUM, "a1", "mitarbeiter", "m1");
     /* Ein Vorgang, der im Protokoll zur Person landet. */

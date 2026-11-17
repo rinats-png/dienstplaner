@@ -96,3 +96,31 @@ ohne Vergleich gegen einen später berechneten Servertag; dort ist kein Ausfallm
   `server/lib/erstleitung.mjs:107`, `server/lib/paketstand.mjs:127`, `server/lib/planfreigabe.mjs:32/37` (`sv-SE`/`en-GB` mit
   `timeZone: "Europe/Berlin"`) sowie `server/lib/zeiterfassung.mjs` (`berlinZeitpunkt(datum, "HH:MM")`, `heuteBerlin`).
   Sie liefern dasselbe Ergebnis wie `betriebstag`; Zusammenführung bei Gelegenheit, mit Golden-Vergleich je Stelle.
+
+## 4. ZEIT-P4: Uhrzeit-Kollision Fixture-Stempel gegen Server-Stempel „jetzt“ (Stand 2026-11-17)
+
+**Behoben (nachgewiesen, CI):** `pruefungen/dsgvo-server.test.js`, „Art. 15: GET /api/auskunft“. Der Test stempelt über
+`POST /api/stempeln` (Serverzeit) und erwartet, dass der Fixture-Stempel von b1 („07:00“) nicht in der Auskunft von a1 steht.
+Läuft der Test genau in der Minute 07:00 Berlin (CI zwischen 06:00 und 06:59 UTC, im Sommer 05:00 UTC), trägt der eigene Stempel
+von a1 ebenfalls „07:00“, und `a.stempel.some(start === "07:00")` ist zu Unrecht wahr. Fix: feste Uhr nur für diesen Block
+(`vi.useFakeTimers({ toFake: ["Date"] })`, 2026-10-06 10:30 UTC = 12:30 Berlin, fern von „07:00“, Mitternacht und Umstellung);
+`HEUTE` leitet sich aus derselben festen Uhr ab. Erwartung unverändert. `CENTRIC_TEST_UHR` (ISO-Zeit) setzt die feste Uhr für
+Gegenproben; Vorgabe ist der feste Wert.
+
+Beleg (TZ=UTC, Uhr per Setup-Datei gefälscht): ursprüngliche Datei bei 2026-11-10 06:00 UTC rot, bei 06:10 und 05:30 UTC grün;
+gehärtete Datei bei 06:00, 06:10, 05:30 UTC grün. Gegenprobe der Härtung: `CENTRIC_TEST_UHR=2026-11-10T06:00:00Z` macht die
+gehärtete Datei erwartungsgemäß rot (Kollisionsminute), 06:30 und 06:59 grün.
+
+**Weitere Kandidaten (nicht geändert, kein Ausfall nachgewiesen), nach Priorität:**
+
+1. P2 `pruefungen/stempeln.test.js`, `datenintegritaet.test.js`, `stempelpuffer.test.js`, `wp07b-stempel-500.test.js`,
+   `geo-*-handler.test.js`: rufen `/api/stempeln` bzw. Handler ohne eigene Uhr auf; Fixture-Zeiten stehen auf festen Tagen
+   (2026-11-xx), Vergleiche gegen Wanduhrzeit des Laufs nur, wo „heute“ (`HEUTE`) gestempelt und `start` verglichen wird.
+   Prüfen: jede Stelle mit `start` gegen Literal bei Stempel „jetzt“; bei Treffer wie hier feste Uhr.
+2. P3 `schichtverantwortung.test.js`, `zeiterfassung.test.js`, `wp48-rundweg.test.js`: Fixtures mit festen Zeiten, reine
+   Funktionsaufrufe, keine Serverzeit-Stempel in Erwartungen gefunden; nur beobachten.
+3. P3 Tests mit `new Date()`/`Date.now()` ohne fake Timer (Spitzenreiter `import-parser.test.js` 28, `sicherungsschluessel-
+   ersteller.test.js` 11, `em6-rollback-codes.test.js` 11, `stempel-integritaet.test.js` 10, `koordination.test.js` 9):
+   Häufigkeit ist kein Befund; je Datei prüfen, ob eine Erwartung am Wochentag, der Stunde oder der Zone hängt.
+4. Allgemeine Regel: Tests, die den Server „jetzt“ stempeln lassen, frieren `Date` ein (`toFake: ["Date"]`), statt Fixtures an
+   die Tageszeit anzupassen.
