@@ -79,7 +79,7 @@ async function meldungenAuswerten(page, testInfo) {
   if (!meldungen.length) return;
   mkdirSync(ERGEBNISSE, { recursive: true });
   // Testtitel enthalten Doppelpunkte u. ä.; unter Windows ist das im Dateinamen unzulässig (Doppelpunkt = Datenstrom).
-  const titelAlsName = testInfo.title.replace(/[^p{L}p{N}._-]+/gu, "_").slice(0, 120);
+  const titelAlsName = testInfo.title.replace(/[^\p{L}\p{N}._-]+/gu, "_").slice(0, 120);
   const datei = path.join(ERGEBNISSE, `meldung-${titelAlsName}-${viewport}.json`);
   writeFileSync(datei, JSON.stringify({ flaeche: "meldung", test: testInfo.title, viewport, tags: AXE_TAGS, meldungen }, null, 1));
   const probleme = [];
