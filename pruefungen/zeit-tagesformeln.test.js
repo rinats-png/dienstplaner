@@ -8,6 +8,7 @@
 // America/Los_Angeles, Pacific/Auckland und Pacific/Kiritimati; Breitenmenge (Raster 2000–2040, alle Minuten der
 // Umstellungstage 2020–2035, jeder Tag 2026) in TZ=UTC — die alten Formeln bauen je Aufruf ein Intl-Format
 // (~0,3 ms), deshalb nicht alles in jeder Zone. Erwartet: 0 Abweichungen.
+// zeit-ok: Jeder Vergleich übergibt einen festen Zeitpunkt; die Vorgabe `jetzt = new Date()` stammt nur aus den wörtlich übernommenen alten Formeln und wird hier nie genutzt.
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { betriebstag } from "../server/lib/betriebszeit.mjs";
