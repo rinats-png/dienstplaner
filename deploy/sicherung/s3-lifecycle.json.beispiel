@@ -1,0 +1,11 @@
+{
+  "Rules": [
+    {
+      "ID": "AlteVersionenNachFristEntfernen",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": "<TAGE_NICHT_AKTUELL>" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    }
+  ]
+}

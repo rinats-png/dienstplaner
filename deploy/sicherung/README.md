@@ -9,6 +9,7 @@
 | `gemeinsam.sh` | Konfiguration lesen/prüfen, Sperre, Ping, Container-Aufruf |
 | `hilfen/abgleich.mjs`, `hilfen/bestaende-zaehlen.mjs` | laufen im Produktionsbild (Abgleich, Bestände zählen) |
 | `env.beispiel`, `crontab.beispiel` | Vorlagen |
+| `s3-policy-ablage.json.beispiel`, `s3-policy-widerrufbuch.json.beispiel`, `s3-lifecycle.json.beispiel` | Vorlagen IONOS Object Storage (nur Platzhalter): je Bucket ein eigener Host-Nutzer; Löschmarker ja, Versionen und Schutz ändern nie; Aufräumen nur per Lifecycle des Betreibers ([EINRICHTUNGSKETTE-IONOS.md](../../docs/acc45/EINRICHTUNGSKETTE-IONOS.md)) |
 | `ci/` | nur CI-Nachweis (`.github/workflows/betrieb-sicherung.yml`) |
 
 Einrichtung, Schlüsselverwahrung, Ernstfall und Grenzen: [docs/BETRIEB-SICHERUNG.md](../../docs/BETRIEB-SICHERUNG.md).
