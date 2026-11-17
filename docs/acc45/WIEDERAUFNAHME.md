@@ -56,7 +56,7 @@ Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wi
 
 ## Nachtrag 2026-11-17 (Einrichtungskette IONOS, Kopf `8300c346`)
 
-- Betreiberentscheidung 2026-11-17 (VM M+, Object Storage, Cloud Backup mit BE-1–BE-3, Messung) vorbereitet: `EINRICHTUNGSKETTE-IONOS.md` (Kurzfassung §0), Vorlagen `deploy/sicherung/s3-*.json.beispiel`, Messskript `deploy/auslastung-messen.sh`. Nichts bestellt, nichts verbunden. Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-8.
+- Betreiberentscheidung 2026-11-17: keine Staging-VM bis Phase D (Phasen A–E); Object Storage, Cloud Backup mit BE-1–BE-3 und Messung vorbereitet: `EINRICHTUNGSKETTE-IONOS.md` (Kurzfassung §0), Vorlagen `deploy/sicherung/s3-*.json.beispiel`, Messskript `deploy/auslastung-messen.sh`. Nichts bestellt, nichts verbunden. Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-8.
 
 ## Nachtrag 2026-11-16 (IONOS-Bestandsprüfung, Kopf `ba5055e4`)
 

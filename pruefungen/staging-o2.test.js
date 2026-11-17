@@ -794,4 +794,14 @@ describe("Dokumentation EINRICHTUNGSKETTE-IONOS", () => {
     expect(/[0-9a-f]{64}/.test(d)).toBe(false);
     expect(/\b\d{1,3}(\.\d{1,3}){3}\b/.test(d)).toBe(false);
   });
+  it("Betreiberentscheidung 2026-11-17 (Nachtrag): Staging-Teile zurückgestellt bis Phase D, nicht in der Kurzfassung; Testwege ohne VM", () => {
+    for (const k of ["## 2.", "## 3.", "## 4."]) {
+      const kopf = d.split(/\r?\n/).find((z) => z.startsWith(k));
+      expect(kopf, k).toContain("ZURÜCKGESTELLT bis Phase D");
+    }
+    const kurz = d.slice(d.indexOf("## 0."), d.indexOf("## 1a."));
+    expect(kurz).not.toMatch(/^\| V-\d/m);
+    expect(d).toContain("## 1a. Isolierte Testwege ohne VM");
+    expect(d).toMatch(/nie\*\* auf dem laufenden Produktionssystem|\*\*nie\*\* auf dem\s+Produktionssystem/);
+  });
 });

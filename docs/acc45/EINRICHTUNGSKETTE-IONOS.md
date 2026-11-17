@@ -1,4 +1,4 @@
-# Einrichtungskette IONOS: Staging-VM, Object Storage, restic, Alarm, Restore
+# Einrichtungskette IONOS: Object Storage, restic, Alarm, Restore (Staging-VM zurückgestellt)
 
 Stand 2026-11-17, Basis `integration/release-v4` @ `8300c346`. Grundlage: Betreiberentscheidung 2026-11-17 (Punkte 1–5),
 [IONOS-BESTANDSPRUEFUNG.md](IONOS-BESTANDSPRUEFUNG.md), [INFRA-VORBEREITUNG-STAGING-BACKUP.md](INFRA-VORBEREITUNG-STAGING-BACKUP.md),
@@ -15,11 +15,16 @@ Betreiber bzw. nach gesonderter Freigabe.
 Preise laut offizieller IONOS-Quelle, Abruf 2026-11-17 (Quellen in §1). „bestätigt“ = so auf der offiziellen Seite;
 „unbestätigt“ = dort nicht eindeutig → im Bestellprozess bzw. beim Support klären, **bevor** bestellt wird.
 
+**Betreiberentscheidung 2026-11-17 (Nachtrag, ersetzt Punkt 1):** Während der Produktentwicklung **keine** dauerhafte
+Staging-VM, kein zweiter VPS, keine neue kostenpflichtige Staging-Infrastruktur. Der vorhandene VPS Linux L+ bleibt Produktion,
+Cloud Backup Starter 100 bleibt. Phasen: **A** Feature Complete → **B** Internal Test Ready (synthetische Daten, isolierte
+lokale Umgebung bzw. CI-Runner) → **C** Pilot Ready → **D** Final Staging & Release Validation (nach dem Pilot, isolierte
+Umgebung, ggf. temporäre Infrastruktur nach Freigabe) → **E** Production Ready. Gefährliche Restore-, Migrations-, Last- und
+Ausfalltests **nie** auf dem laufenden Produktionssystem. Die Staging-Teile (§2–§4) sind deshalb **ZURÜCKGESTELLT bis Phase D**;
+Testwege bis dahin: §1a.
+
 | Schritt | Kosten | Kosten bestätigt? | Entscheidung / Klärung nötig |
 |---|---|---|---|
-| V-1 VPS M+ für Staging bestellen | 4 €/Monat für 3 Monate (inkl. MwSt.), 10 € Einrichtung; danach angezeigt 12 €/Monat | Aktion + Einrichtung **bestätigt**; Folgepreis 12 € **unbestätigt** (als Durchstreichpreis gezeigt), Mindestlaufzeit/Kündigungsfrist **unbestätigt** (AGB-Grundregel 12 Monate nur aus Suchergebnis), Abrechnung monatlich/stündlich **unbestätigt** | Freigabe der Bestellung nach Prüfung von Folgepreis, Laufzeit, Kündigungsfrist im Warenkorb; Standort Deutschland wählbar? (EU bestätigt) |
-| V-2 Firewall-Richtlinie im Cloud Panel | 0 € (im Tarif) | bestätigt („individualisierbare Firewall“) | TLS-Weg T1 (Empfehlung, §3) bestätigen |
-| V-3 DNS `staging.<domain>` (nur A) | 0 € (bestehende Domain) | Annahme, unbestätigt | keine |
 | S-1 IONOS Object Storage aktivieren | 0,007 €/GB je 30 Tage netto, stundengenau; API-Aufrufe und Eingang frei; Ausgang erste 2 TB/Monat frei, dann 0,030 €/GB; keine Mindestabnahme | Preise **bestätigt** (Preisliste IONOS Cloud GmbH); ob der bestehende Hosting-Vertrag genügt oder ein **IONOS-Cloud-Vertrag (DCD)** nötig ist: **unbestätigt**; Bezug der 2-TB-Freigrenze: unbestätigt | Vertragsweg klären (F-11); Region **eu-central-3 (Berlin)** oder **eu-central-4 (Frankfurt)**; Aufbewahrungsfrist Object Lock (§5, hängt an C-9) |
 | S-2 zwei Buckets mit Object Lock (Governance) | Speicher wie S-1; Object Lock verlängert die Lagerdauer gelöschter Stände bis Fristende | Funktion **bestätigt**; Kostenhöhe hängt an Datenmenge (unbelegt bis Messung §B) | Frist `<TAGE_SPERRFRIST>`; Policy-Variante L oder S (§5.3) |
 | S-3 zwei Nutzer + Schlüssel je Bucket | 0 € | Bucket-Policy mit Nutzer-Principal **bestätigt**; IAM gibt es **nicht**; Wirksamkeit von Deny/Delete-Aktionen **unbestätigt** → Test-Bucket-Probe S-6 | keine (Teil der Freigabe S-1) |
@@ -27,8 +32,25 @@ Preise laut offizieller IONOS-Quelle, Abruf 2026-11-17 (Quellen in §1). „best
 | B-1 Cloud Backup Starter 100 (vorhanden) | 7 €/Monat inkl. MwSt. (bereits gebucht); Mehrverbrauch automatisch je GB | 7 € bestätigt am 2026-11-16 (ionos.de); am 2026-11-17 nur die US-Seite erneut gelesen; Preis je Mehr-GB **unbestätigt** (F-2) | Agent installieren, Plan anlegen (§8); Ausschluss `zustand/` (F-14) |
 | R-1 produktiver Restore jeder Art | 0 € | — | **gesonderte Freigabe**, nie ohne |
 
-Reihenfolge: Klärung F-11/F-12 und Folgepreis → Freigabe V-1 und S-1 → Staging (§2–4) → S3-Probe auf Test-Buckets (§5.5) →
-restic-Übung auf Staging (§6) → erst danach Produktion (§7) mit gesonderter Freigabe.
+Neue wiederkehrende Kosten (S-1/S-2, A-1 falls kostenpflichtig) nur mit **endgültiger Betreiberbestätigung**; nichts davon
+wird automatisch aktiviert. Reihenfolge: Klärung F-11/F-15/F-17 → Freigabe S-1 → S3-Probe auf Test-Buckets (§5.4 S-6) →
+restic-Übung auf isoliertem Testweg (§1a) → erst danach Produktion (§7) mit gesonderter Freigabe.
+
+Zurückgestellt bis Phase D (nur Stand notiert, nicht priorisiert verifiziert): VPS M+ 2 vCores/4 GB/120 GB, 4 €/Monat für
+3 Monate inkl. MwSt., 10 € Einrichtung, danach angezeigt 12 €/Monat (Folgepreis, Laufzeit, Kündigungsfrist unbestätigt);
+Quelle [ionos.de/server/vps](https://www.ionos.de/server/vps), Abruf 2026-11-17.
+
+## 1a. Isolierte Testwege ohne VM (Phasen A–C)
+
+| Nr. | Art | Testweg | Was er belegt | Grenze |
+|---|---|---|---|---|
+| L-1 | [AUTO] | Lokal (Arbeitsrechner, Git Bash, Stubs): `npm run pruefung:staging-o2`, `pruefung:be3-widerrufbuch-sicherung`, `npx vitest run pruefungen/deploy-skripte.test.js` | Skriptlogik, Vorlagen, Rücksprung-/Vereinigungslogik mit synthetischen Daten | kein echtes restic, kein Docker |
+| L-2 | [AUTO] | CI-Runner `betrieb-sicherung.yml`: echtes restic 0.18.1, **lokales** Repository auf dem Runner, Skripte der Ablage Ende-zu-Ende, shellcheck | Sicherung und Restore-Probe der Ablage mit echtem restic | kein S3, keine Widerrufbücher |
+| L-3 | [AUTO] | CI-Erweiterung B-1 (`INFRA-VORBEREITUNG-STAGING-BACKUP.md` §8 B): BE-3-Job und `widerrufbuch-probe.sh` mit echtem restic auf dem Runner, mindestens drei Snapshots, Rücksprung → Exit 3, Vereinigung | schließt B3-8 ohne VM | eigener PR |
+| L-4 | [BETREIBER] (Freigabe Test-Buckets und Test-Schlüssel) | S3-Probe S-6 gegen **Test-Buckets** vom Arbeitsrechner des Betreibers (restic 0.18.1 und AWS CLI installiert) oder einem Wegwerf-Runner ohne gespeicherte Geheimnisse; **nie** vom Produktions-VPS und nie mit Produktionsschlüsseln | Object Lock, Deny, Löschmarker, Trennung der Schlüssel, restic-Kompatibilität | Cent-Kosten; Test-Schlüssel danach widerrufen |
+| L-5 | [AUTO] | Restore-Probe mit synthetischen Daten lokal/CI: `restic restore` in leeres Verzeichnis, `wiederherstellung-probe.sh` (Stub lokal, echt in L-2) | Wiederherstellbarkeit, Manifest-Abgleich | keine Produktionsdaten |
+
+Keine Kopie, Sicherung oder Export der Produktion in diese Testwege (`INFRA-VORBEREITUNG-STAGING-BACKUP.md` §4.5).
 
 ## 1. Verifizierte Bedingungen (Quelle, Abruf 2026-11-17)
 
@@ -61,7 +83,9 @@ Bucket-Policies aus, wirkt `Deny` für Nutzer desselben Vertrags, und hat ein Nu
 contract-owned Buckets? **F-16** VPS M+: Preis ab Monat 4, Mindestlaufzeit, Kündigungsfrist, Abrechnungsart, Standort
 Deutschland wählbar? **F-17** Gilt die API-Aussage „does not provide object locking“ für contract-owned Buckets noch?
 
-## 2. Staging-VM (VPS M+)
+## 2. Staging-VM (VPS M+) — ZURÜCKGESTELLT bis Phase D
+
+Inhalt bleibt als Vorlage für Phase D (dann ggf. temporär, mit eigener Freigabe); bis dahin nichts bestellen, Testwege §1a.
 
 | Nr. | Art | Aktion / Befehl | Zugang | Risiko | Dauer | Abbruch / Rücksprung | Kosten |
 |---|---|---|---|---|---|---|---|
@@ -69,7 +93,7 @@ Deutschland wählbar? **F-17** Gilt die API-Aussage „does not provide object l
 | V-2 | [BETREIBER] | Eigenen SSH-Schlüssel erzeugen `ssh-keygen -t ed25519 -f ~/.ssh/centric-staging`, nur den öffentlichen Teil hinterlegen; Alias `centric-staging` mit `IdentitiesOnly yes`; Passwort-Login aus | Arbeitsrechner, Cloud Panel | gering | 15 min | Schlüssel im Panel entfernen | 0 € |
 | V-3 | [BETREIBER] | `timedatectl set-timezone UTC`; Benutzer `admin` (uid 1000); Updates | VM | gering | 20 min | VM neu aufsetzen | 0 € |
 
-## 3. Firewall, DNS, TLS
+## 3. Firewall, DNS, TLS — ZURÜCKGESTELLT bis Phase D
 
 | Nr. | Art | Aktion / Befehl | Zugang | Risiko | Dauer | Abbruch / Rücksprung | Kosten |
 |---|---|---|---|---|---|---|---|
@@ -79,7 +103,7 @@ Deutschland wählbar? **F-17** Gilt die API-Aussage „does not provide object l
 | D-1 | [BETREIBER] | DNS: **nur** `A`-Eintrag `staging.<domain>` → Staging-IPv4; **kein `AAAA`** (solange `STAGING_ERLAUBT` keine IPv6-Bereiche hat) | DNS-Verwaltung | Fehleintrag trifft nur Staging | 15 min + TTL | Eintrag löschen | 0 € |
 | T-1 | [BETREIBER] | TLS = T1 (`INFRA-VORBEREITUNG-STAGING-BACKUP.md` §4.3): Caddy holt das Zertifikat per HTTP-01; für erste Versuche Test-CA (`acme_ca …acme-staging…`), vor Abnahme K3 entfernen. **Kein** DNS-API-Schlüssel auf der VM (T2 nur mit auf Staging beschränkter Zone) | VM | Ratenbegrenzung bei Fehlversuchen | 15 min | Test-CA nutzen | 0 € |
 
-## 4. Docker, Deployment per Digest, Testdaten, Rücksprung
+## 4. Docker, Deployment per Digest, Testdaten, Rücksprung — ZURÜCKGESTELLT bis Phase D
 
 | Nr. | Art | Aktion / Befehl | Zugang | Risiko | Dauer | Abbruch / Rücksprung | Kosten |
 |---|---|---|---|---|---|---|---|
@@ -138,7 +162,7 @@ ist Entscheidungspunkt **P3-8 (a)** in `ENTSCHEIDUNGSLISTE.md`.
 | S-3 | [BETREIBER] | Zwei DCD-Nutzer ohne Verwaltungsrechte (`<NUTZER_UUID_HOST_ABLAGE>`, `<NUTZER_UUID_HOST_WIDERRUFBUCH>`), je **ein** S3-Schlüssel; Schlüssel nur in den Passwortmanager | DCD | Schlüsselabfluss | 20 min | Schlüssel widerrufen | 0 € |
 | S-4 | [AUTO] (Vorlage) / [BETREIBER] (anwenden) | Policy aus `deploy/sicherung/s3-policy-ablage.json.beispiel` bzw. `…-widerrufbuch.json.beispiel`, Platzhalter ersetzen, mit dem **Verwaltungszugang** setzen (z. B. `aws s3api put-bucket-policy --endpoint-url https://s3.<REGION>.ionoscloud.com --bucket <BUCKET> --policy file://…`) | Verwaltungszugang | Fehlpolicy sperrt aus | 15 min | Policy entfernen | 0 € |
 | S-5 | [BETREIBER] | Lifecycle aus `deploy/sicherung/s3-lifecycle.json.beispiel` (`<TAGE_NICHT_AKTUELL>` als Zahl ≥ Sperrfrist) | Verwaltungszugang | zu kurze Frist | 10 min | Regel entfernen | 0 € |
-| S-6 | [AUTO] mit freigegebenen **Test**-Schlüsseln auf der Staging-VM, sonst [BETREIBER] | **Probe auf Test-Buckets**, alles mit restic 0.18.1: (1) `restic init`, `backup`, `forget --prune`, `check` gelingen mit Variante L; (2) Host-Schlüssel A erreicht Bucket B **nicht** (403) und umgekehrt; (3) `aws s3api delete-object --version-id …` mit Host-Schlüssel → verweigert; (4) nach `forget --prune` sind alte Versionen per `list-object-versions` noch da; (5) `restic -o s3.bucket-lookup=path` nötig? (Endpunkt-/Regionsfrage); (6) verlangt Object Lock einen Prüfsummenkopf, den restic sendet? Ergebnis in die Nachweistabelle | Staging-VM, Test-Schlüssel | gering | 1–2 h | Test-Buckets verfallen lassen | Cent |
+| S-6 | [BETREIBER] (Testweg L-4; [AUTO] nur, wenn der Betreiber einen isolierten Runner mit Test-Schlüsseln freigibt) | **Probe auf Test-Buckets**, alles mit restic 0.18.1: (1) `restic init`, `backup`, `forget --prune`, `check` gelingen mit Variante L; (2) Host-Schlüssel A erreicht Bucket B **nicht** (403) und umgekehrt; (3) `aws s3api delete-object --version-id …` mit Host-Schlüssel → verweigert; (4) nach `forget --prune` sind alte Versionen per `list-object-versions` noch da; (5) `restic -o s3.bucket-lookup=path` nötig? (Endpunkt-/Regionsfrage); (6) verlangt Object Lock einen Prüfsummenkopf, den restic sendet? Ergebnis in die Nachweistabelle | Arbeitsrechner/Wegwerf-Runner, Test-Schlüssel | gering | 1–2 h | Test-Buckets verfallen lassen | Cent |
 | S-7 | [BETREIBER] | Erst nach bestandener S-6 und Entscheidung C-9 (Frist): Produktions-Buckets `<BUCKET_ABLAGE>`, `<BUCKET_WIDERRUFBUCH>` mit Object Lock Governance, Frist `<TAGE_SPERRFRIST>`; Policy und Lifecycle wie S-4/S-5 | DCD | Frist verlängert Speicherdauer (C-9) | 30 min | Bucket leer verfallen lassen | §0 |
 
 Sperrfrist: mindestens die Zeit bis zur sicheren Entdeckung eines Angriffs (Vorschlag 30 Tage), höchstens die rechtlich
@@ -175,7 +199,7 @@ Die Widerrufbücher analog mit `<BUCKET_WIDERRUFBUCH>` und dem **anderen** Nutze
 | C-1 | [BETREIBER] | cron des Benutzers `admin` nach `deploy/sicherung/crontab.beispiel` (4 Zeilen: 02:30 Ablage, 04:15 am 3. Probe, Minute 17 Widerrufbuch, 04:45 am 5. Probe). **Kein** zusätzlicher systemd-Timer (doppelte Alarme) | VPS | Last kurz | 10 min | Zeilen auskommentieren | 0 € |
 | A-1 | [BETREIBER] | Totmannschalter mit **vier** Checks: `centric-sicherung` (1 d, Karenz 2–3 h), `centric-probe` (31 d, 1 d), `centric-widerrufbuch` (1 h, 2 h), `centric-widerrufbuch-probe` (31 d, 1 d). URLs sind Geheimnisse (`ALARM_PING_URL`, `PROBE_PING_URL` je Datei) | Alarmdienst | leere URL = stiller Ausfall | 30 min | Checks pausieren | §0 |
 | A-2 | [BETREIBER] | Fehlalarm-Probe je Check (falsche Passwortdatei → Exit ≠ 0 → Alarm kommt an) | VPS | keins | 20 min | Datei zurück | 0 € |
-| P-1 | [AUTO] (Staging) / [BETREIBER] (Produktion) | Übung mit echtem restic nach `INFRA-VORBEREITUNG-STAGING-BACKUP.md` §5.5, zuerst lokal, dann gegen **Test-Buckets** (S-6); `wiederherstellung-probe.sh`, `widerrufbuch-probe.sh` (Exit 0, `gegenprobe: erkannt`) | Staging-VM | gering | 2 h | Repos löschen | Cent |
+| P-1 | [AUTO] (CI) / [BETREIBER] (Test-Buckets) | Übung mit echtem restic: Ablage auf dem CI-Runner (L-2), Widerrufbücher per CI-Erweiterung (L-3), danach gegen **Test-Buckets** (L-4/S-6); die VM-Variante `INFRA-VORBEREITUNG-STAGING-BACKUP.md` §5.5 erst in Phase D; `wiederherstellung-probe.sh`, `widerrufbuch-probe.sh` (Exit 0, `gegenprobe: erkannt`) | Staging-VM | gering | 2 h | Repos löschen | Cent |
 | P-2 | [BETREIBER] | Object-Lock-/Löschmarker-Probe: nach `forget --prune` Versionen noch vorhanden; Löschmarker entfernen stellt den Stand wieder her (§5.6); Restore in **leeres** Verzeichnis | Test-Buckets | gering | 1 h | — | Cent |
 
 ## 7. Produktion: restic aktivieren (gesonderte Freigabe)
@@ -191,7 +215,7 @@ Einrichtung [BETREIBER]: Agent aus dem Cloud Panel (Rechenzentrum Europa), Plan 
 Image-Sicherung erlaubt (F-14; sonst gilt die Regel unten unverändert). Kosten: Paket vorhanden, Mehrverbrauch automatisch (F-2).
 
 **Runbook Image-Restore** (Reihenfolge verbindlich; jeder produktive Restore braucht eine **gesonderte Freigabe**; **nie** auf
-die Staging-VM, weil das Image Produktionsdaten und Geheimnisse enthält):
+eine Staging- oder Testumgebung, weil das Image Produktionsdaten und Geheimnisse enthält):
 
 1. Image auf den VPS (oder einen neuen VPS) zurückspielen; **vor dem ersten Boot-Ende** bzw. sofort danach die Anwendung
    **gestoppt halten** (`docker compose stop` im Anwendungsordner; Autostart des Stacks nicht zulassen).
@@ -208,8 +232,9 @@ die Staging-VM, weil das Image Produktionsdaten und Geheimnisse enthält):
 5. Erst jetzt starten; `/gesund` prüfen (kein Rücksprung, Widerrufbuch-Alter), nächster Job-Lauf Exit 0.
 6. Abbruch: bei jedem Fehler in 2–4 bleibt die Anwendung gestoppt (fail-closed); Eskalation an den Betreiber.
 
-Probe [BETREIBER]: Datei-Restore einzelner Systemdateien auf dem VPS; ein Voll-Image-Restore nur auf einem eigenen, danach
-gelöschten VPS mit eigener Freigabe.
+Probe [BETREIBER]: Datei-Restore einzelner, unkritischer Systemdateien in ein **getrenntes Zielverzeichnis** (nie an Ort und
+Stelle, nie `data/`/`zustand/`, Anwendung unberührt). Ein Voll-Image-Restore ist ein gefährlicher Test und läuft **nie** auf dem
+Produktionssystem: erst in Phase D auf temporärer, danach gelöschter Infrastruktur mit eigener Freigabe (Kosten).
 
 ## 9. Auslastungsmessung des Produktions-VPS (nur lesend)
 
