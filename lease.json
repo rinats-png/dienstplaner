@@ -1,10 +1,10 @@
 {
-  "epoche": 16,
+  "epoche": 17,
   "halter": "hauptchat",
-  "uebernommen_am": "2026-11-16T20:33:09.066Z",
-  "erneuert_am": "2026-11-16T20:33:09.066Z",
-  "gueltig_bis": "2026-11-16T21:09:36.827Z",
-  "uebergabe": "Hauptchat 2026-11-16: IONOS-Bestandsprüfung (lesend, Doku-PR); Kopf ba5055e4",
+  "uebernommen_am": "2026-11-17T03:45:05.514Z",
+  "erneuert_am": "2026-11-17T03:45:05.514Z",
+  "gueltig_bis": "2026-11-17T06:15:05.514Z",
+  "uebergabe": "Hauptchat 2026-11-17: Einrichtungskette IONOS (Staging-VM, Object Storage, Auslastungsmessung); Kopf aus origin",
   "vorgaenger": "hauptchat",
-  "freigegeben_am": "2026-11-16T21:09:36.827Z"
+  "freigegeben_am": null
 }
