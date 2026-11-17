@@ -1,10 +1,10 @@
 {
-  "epoche": 17,
+  "epoche": 18,
   "halter": "hauptchat",
-  "uebernommen_am": "2026-11-17T03:45:05.514Z",
-  "erneuert_am": "2026-11-17T03:45:05.514Z",
-  "gueltig_bis": "2026-11-17T06:15:05.514Z",
-  "uebergabe": "Hauptchat 2026-11-17: Einrichtungskette IONOS (Staging-VM, Object Storage, Auslastungsmessung); Kopf aus origin",
+  "uebernommen_am": "2026-11-17T06:50:08.246Z",
+  "erneuert_am": "2026-11-17T06:50:08.246Z",
+  "gueltig_bis": "2026-11-17T09:20:08.246Z",
+  "uebergabe": "Hauptchat 2026-11-17 06:50Z: Lease Epoche 17 abgelaufen 06:15Z; Kopf bfa7a110; autonome Fortsetzung",
   "vorgaenger": "hauptchat",
   "freigegeben_am": null
 }
