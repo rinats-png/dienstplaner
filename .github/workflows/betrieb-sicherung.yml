@@ -4,8 +4,11 @@
 # über die echte Anwendungsschicht im Bild, legt ein lokales restic-
 # Repository mit Zufallspasswort an und fährt deploy/sicherung/*.sh gegen
 # beides — samt Aufbewahrung, Wiederherstellungsprobe, Fehlalarm und Sperre
-# (deploy/sicherung/ci/ende-zu-ende.sh). Kein echtes Speicherziel, keine
-# echten Geheimnisse, kein Zugriff auf den VPS.
+# (deploy/sicherung/ci/ende-zu-ende.sh). Danach derselbe echte restic gegen den
+# Widerrufbuch-Job und dessen monatliche Probe (BE-3, B-1: Rücksprung, Exit-Codes,
+# Erstlauf-Sperre, --retry-lock, Aufbewahrung; deploy/sicherung/ci/widerrufbuch-
+# ende-zu-ende.sh). Kein echtes Speicherziel, keine echten Geheimnisse, kein
+# Zugriff auf den VPS.
 name: Betrieb Sicherung
 
 on:
@@ -38,7 +41,7 @@ permissions:
 jobs:
   sicherung:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       BILD: centric-sicherung:${{ github.sha }}
       RESTIC_VERSION: "0.18.1"
@@ -63,6 +66,7 @@ jobs:
           node --check deploy/sicherung/hilfen/abgleich.mjs
           node --check deploy/sicherung/hilfen/bestaende-zaehlen.mjs
           node --check deploy/sicherung/ci/testdaten.mjs
+          node --check deploy/sicherung/ci/widerrufbuch-testdaten.mjs
           python3 -m py_compile deploy/sicherung/ci/ping-empfaenger.py deploy/sicherung/ci/aufbewahrung-erwartet.py
 
       - name: restic installieren (gepinnt, Prüfsumme)
@@ -89,6 +93,10 @@ jobs:
 
       - name: Ende-zu-Ende-Nachweis
         run: deploy/sicherung/ci/ende-zu-ende.sh
+
+      - name: Widerrufbuch-Job und Probe mit echtem restic (BE-3, B-1)
+        timeout-minutes: 20
+        run: deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh
 
       - name: Import am gebauten Bild (IMP-3, SheetJS, Parser, Endpunkt)
         run: deploy/import/ci/bild-pruefen.sh

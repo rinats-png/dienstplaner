@@ -162,7 +162,7 @@ Repository der Ablage in drei Schreibweisen → 78 ohne restic-Aufruf, anderes R
 (`pruefungen/hilfen/em6-abbruch.mjs`); Schwellen der Alterswarnung mit fester Uhr; Eigenschaftstest (40 zufällige
 Paare, fester Zufall): Vereinigung entfernt nie etwas, Maximum der Generation, idempotent.
 
-Nicht mit echtem restic geprüft (B3-8 bleibt offen): die Befehlsform (`snapshots --json`, `restore latest --host
+Gegen echtes restic (B3-8): `betrieb-sicherung.yml` fährt Job UND Probe mit echtem restic (≥ 0.16.0, gepinnt) gegen lokale Wegwerf-Repositories (`deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh`, Bücher aus der echten Anwendungsschicht im gebauten Bild): Erstlauf, drei Snapshots, Probe mit Auswahl nach `time` (auch bei umgekehrter und umgestellter Ausgabe), Rücksprung (Job und Probe Exit 3; restic-Exit 3 wird 4), falsches Passwort, fehlendes Repository, restic < 0.16.0, Repository der Ablage, Erstlauf-Sperre (Exit 5, `--erster-lauf`), `--retry-lock` bei fremder Sperre, Aufbewahrung (200 neueste + ältester Snapshot des ältesten Tages = 201, W10; Erwartung hängt am gepinnten restic und ist bei jedem restic-Update neu zu prüfen), `check --read-data`. Exit 75 (paralleler Lauf über `flock`) ist nur im Stub-Test belegt, nicht mit echtem restic. Der CI-Lauf ist der Beleg. Zuvor galt: die Befehlsform (`snapshots --json`, `restore latest --host
 --tag --target`, `forget --group-by host --keep-last --keep-daily --prune`, `check --read-data-subset`, `--retry-lock`
 nach dem Unterbefehl, Ausgabe von `restic version`) entspricht der dokumentierten Kommandozeile von restic 0.16–0.18
 und der vorhandenen Sicherung; ein Lauf gegen echtes restic (≥ 0.16.0) gehört in die Staging-Übung (§6.1 Schritt 4). `shellcheck` läuft in `betrieb-sicherung.yml` (alle `deploy/sicherung/*.sh`).
@@ -178,7 +178,7 @@ und der vorhandenen Sicherung; ein Lauf gegen echtes restic (≥ 0.16.0) gehört
 | B3-5 | Vereinigen braucht einen gestoppten Dienst (kurze Auszeit). | Gewollt (kein Wettlauf mit Schreibvorgängen des Servers). |
 | B3-6 | `/gesund` vertraut der Statusdatei des Hosts (nur für die Warnung). | Eine gefälschte Statusdatei kann nur eine Warnung unterdrücken; die Bücher selbst bleiben fail-closed. |
 | B3-7 | Nicht abgedeckt (unverändert): Passwörter, BE-2 A2/A3. | Siehe BE-1/BE-2-Dokumente. |
-| B3-8 | **Offen:** Die Prüfung nutzt Stubs; echtes restic noch nicht gegen diesen Job gelaufen (auch `--retry-lock`, Versionsprüfung). | Staging-Übung mit echtem restic ≥ 0.16.0 vor Aktivierung (§6.1 Schritt 4). |
+| B3-8 | **Durch CI belegt, sobald der Schritt „Widerrufbuch-Job und Probe mit echtem restic“ in `betrieb-sicherung.yml` grün ist:** Stub-Prüfung ergänzt um Läufe mit echtem restic (auch `--retry-lock`, Versionsprüfung, Reihenfolge/`time` von `snapshots --json`). Nicht belegt bleibt das echte Speicherziel (S3/Storage Box, Latenz, Zugangsdaten). | Staging-Übung auf der VM bleibt für das Speicherziel und die Betriebsabläufe (§6.1 Schritt 4); die restic-Mechanik braucht sie nicht mehr. |
 | B3-9 | Der Vergleich mit dem Repository der Ablage erkennt nur die Konfiguration an den beiden festen Orten und gleiche Schreibweisen. | Eigenes Repository bleibt Betreiberpflicht (§6.1 Schritt 1), Abnahme prüft es. |
 
 ## 6. Betreiberschritte (produktives Ziel — Freigabe nötig)
