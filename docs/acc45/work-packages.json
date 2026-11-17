@@ -5,18 +5,18 @@
   "statusZaehlung": {
     "BLOCKED": 76,
     "READY": 17,
-    "IN_PROGRESS": 23,
+    "IN_PROGRESS": 22,
     "REVIEW": 7,
-    "INTEGRATED": 92,
+    "INTEGRATED": 93,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 118,
-      "offen": 40,
+      "offen": 39,
       "restPT": {
-        "min": 57.349999999999994,
-        "max": 101.4
+        "min": 55.849999999999994,
+        "max": 98.4
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 307.25,
-    "max": 530.7
+    "min": 305.75,
+    "max": 527.7
   },
   "kritischerPfad": {
     "summe": 70,
@@ -1043,12 +1043,12 @@
       "aufwandPT": {"min":5,"max":7},
       "restPT": {"min":1.5,"max":3},
       "abhaengigkeiten": [],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"acc45/qa/wp33-testinfrastruktur dc27b7d"},
-        "lokalGetestet": {"wert":"teilweise","beleg":"Branch-Nachweis"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":"Teile 1–4 integriert: #217 (fb69c8dd, Sammelprüfung), #262 (9ca82adc, Playwright und axe in der CI), #269 (70d18ba1, Toast-Kontrast); Merge-Commits sind Vorfahren von integration/release-v4. Rest (weitere axe-Flächen) liegt in PR #323, noch OFFEN, nicht integriert"},
+        "implementiert": {"wert":true,"beleg":"PR #323 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #323 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"PR #323 in integration/release-v4"},
+        "integriert": {"wert":true,"beleg":"PR #323 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1057,12 +1057,12 @@
       "agent": "Agent F – QA & Review",
       "modell": "sonnet",
       "konfliktzonen": ["package.json"],
-      "pr": ["#217","#262","#269"],
+      "pr": ["#217","#262","#269","#323"],
       "nachweis": null,
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
       "dateien": "e2e/, package.json, pruefung.yml",
-      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED. Teil 4 (Merge #269): Toast-Schaltflächenkontrast von 1,98:1 auf 7,36:1 (hell) und 11,0:1 (dunkel) behoben; jeder Toast wird deterministisch mit axe geprüft. Paket bleibt IN_PROGRESS, offen wie zuvor (nicht INTEGRATED). Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #323 „WP-33 Rest: weitere axe-Flächen der Browserabnahme“ ist OFFEN und nicht integriert; erst nach dessen Merge und Prüfung des Restes kann das Paket höher gesetzt werden. Status bleibt IN_PROGRESS."
+      "notiz": "Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Von den drei Commits des Branches (3 vor / 1196 hinter) ist 039d62d4 (Sammelkette gegen CI) durch pruefung:verdrahtung und pruefung:ci-abdeckung (#186) inhaltlich abgedeckt; 674d1c04 (Playwright-Suite e2e/, playwright.config.mjs, .github/workflows/e2e.yml, axe) und dc27b7de (Nachweis) fehlen im Integrationsstand. Offener PR #217 (feature/wp33-testinfrastruktur-neu) eines anderen Agenten. Stand nach #217 (Teil, Sammelprüfung: werkzeug/sammelpruefung.mjs, pruefungen/sammelpruefung-bekannt.json, docs/acc45/TESTINFRASTRUKTUR.md): in integration/release-v4, Paket nicht abgeschlossen. Offen: Playwright-e2e- und axe-Suite braucht neue devDependencies (@playwright/test, @axe-core/playwright) – Entscheidung Betreiber/Koordinator. Betreiberentscheidung 2026-11-13: devDependencies @playwright/test und axe-core genehmigt (feste Versionen, Lizenz-/Schwachstellen-/Lieferkettenprüfung, Einbindung in die bestehende CI, keine Prüfung abschwächen, vorhandene Infrastruktur nutzen); die Frage ist beantwortet, siehe docs/acc45/ENTSCHEIDUNG-BETREIBER-2026-11-13.md. Nächster Schritt: Aufnahme in eigenem PR, dann e2e/axe-Suite für WP-21 und WP-40. Stand (automatisch): Teilumfang nach #262, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand 2026-11-13: Teil 3 integriert (#262, Merge 9ca82adc): Playwright 1.64.1 und axe-core 4.14.0 fest eingetragen, CI-Job browser-abnahme (Bedingung für die Bereitstellung), 56 axe-Prüfungen über 8 Viewports; bekannte Ausnahmen in e2e/axe-ausnahmen.json (label-content-name-mismatch: WP-40; nested-interactive: WP-40; target-size: WP-21, jeweils auf der Schichtkarte in Mein Plan). Offen: Ausnahmen abbauen; weitere Oberflächen in die axe-Suite aufnehmen (weitere Ansichten aus WP-21 und WP-40). Restrisiko: Chromium kommt über das Playwright-CDN ohne Integritätsprüfung; der Browser-Job gate-t auch Hotfix-Bereitstellungen (Betreiber zur Kenntnis); browser-abnahme ist noch keine erforderliche Statusprüfung (Aufgabe Branch-Schutz, Betreiber). Status bleibt IN_PROGRESS, nicht INTEGRATED. Teil 4 (Merge #269): Toast-Schaltflächenkontrast von 1,98:1 auf 7,36:1 (hell) und 11,0:1 (dunkel) behoben; jeder Toast wird deterministisch mit axe geprüft. Paket bleibt IN_PROGRESS, offen wie zuvor (nicht INTEGRATED). Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #323 „WP-33 Rest: weitere axe-Flächen der Browserabnahme“ ist OFFEN und nicht integriert; erst nach dessen Merge und Prüfung des Restes kann das Paket höher gesetzt werden. Status bleibt IN_PROGRESS. Stand (automatisch): INTEGRATED nach #323."
     },
     {
       "id": "WP-34",
