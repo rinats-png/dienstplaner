@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { entscheide, lesen, schreiben, gepruefterPush, leaseCommit } from "../werkzeug/koordination.mjs";
+import { entscheide, lesen, schreiben, gepruefterPush, leaseCommit, bewerteLeerlauf } from "../werkzeug/koordination.mjs";
 
 const WZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../werkzeug/koordination.mjs");
 const T0 = new Date("2026-11-10T06:00:00Z");
@@ -247,5 +247,89 @@ describe("Review-Befunde H1, H2, M1, M2", () => {
       expect(() => gepruefterPush({ halter: "koord-a", epoche: 1, quelle: "HEAD", ziel: z })).toThrow(/nicht erlaubt/);
     }
     expect(() => gepruefterPush({ halter: "koord-a", epoche: 1, quelle: "HEAD", ziel: "refs/heads/arbeit/../main" })).toThrow(/nicht erlaubt/);
+  });
+});
+
+/* Leerlauf-Erkennung (nur lesend). Nachstellung des Stillstands vom 2026-11-17: Lease hauptchat Epoche 18
+   übernommen 06:50Z, gültig bis 09:20Z, nie erneuert; Merge #328 07:53Z; #325 mit grüner CI, zuletzt 07:05Z. */
+describe("Leerlauf-Erkennung", () => {
+  const L18 = { epoche: 18, halter: "hauptchat", uebernommen_am: "2026-11-17T06:50:08Z", erneuert_am: "2026-11-17T06:50:08Z", gueltig_bis: "2026-11-17T09:20:08Z", freigegeben_am: null };
+  const INT = { kopf: "eb744da0", zeit: "2026-11-17T07:53:09Z" };
+  const PRS = [{ nummer: 325, aktualisiert: "2026-11-17T07:05:00Z", ciGruen: true }, { nummer: 6, aktualisiert: "2026-10-22T06:14:20Z", ciGruen: true }];
+  const um = (hhmm, o = {}) => bewerteLeerlauf({ lease: L18, jetzt: new Date(`2026-11-17T${hhmm}:00Z`), integration: INT, prs: PRS, ...o });
+
+  it("kurz nach dem Merge: AKTIV, Exit 0", () => {
+    const b = um("08:00");
+    expect(b.zustand).toBe("AKTIV");
+    expect(b.exit).toBe(0);
+    expect(b.letzteAktivitaet.quelle).toBe("Integrationskopf");
+  });
+  it("gültige Lease, aber über Schwelle still: LEERLAUF-VERDACHT, ohne Übernahmebefehl", () => {
+    const b = um("08:54");
+    expect(b.zustand).toBe("LEERLAUF-VERDACHT");
+    expect(b.exit).toBe(5);
+    expect(b.wiederaufnahme).toMatch(/NICHT übernehmen/);
+    expect(b.wiederaufnahme).not.toMatch(/uebernehmen --halter/);
+    expect(b.wartendePrs).toEqual([325]); // alte PRs außerhalb des Fensters sind kein Rauschen
+  });
+  it("Sicherheitszone um den Ablauf: BLOCKIERT, Exit 6", () => {
+    for (const z of ["09:19", "09:21"]) {
+      const b = um(z);
+      expect(b.zustand).toBe("BLOCKIERT");
+      expect(b.exit).toBe(6);
+    }
+  });
+  it("abgelaufen ohne Freigabe: Übernahme nur in den Slot des Halters, Epoche + 1", () => {
+    const b = um("09:23");
+    expect(b.zustand).toBe("LEERLAUF-VERDACHT");
+    expect(b.wiederaufnahme).toMatch(/uebernehmen --halter hauptchat /);
+    expect(b.wiederaufnahme).toMatch(/Epoche 19/);
+  });
+  it("Invariante: Übernahmebefehl nur, wenn entscheide() die Übernahme durch einen Fremden zuließe", () => {
+    for (let m = 0; m <= 240; m += 1) {
+      const jetzt = new Date(Date.parse("2026-11-17T07:00:00Z") + m * 60000);
+      const b = bewerteLeerlauf({ lease: L18, jetzt, integration: INT, prs: PRS });
+      const zul = entscheide(L18, jetzt, { aktion: "uebernehmen", halter: "cloud-nachtaufgabe", uebergabe: UEB }).ok;
+      expect(/uebernehmen --halter/.test(b.wiederaufnahme)).toBe(zul);
+    }
+  });
+  it("Schwelle einstellbar, PR-Aktivität zählt als Lebenszeichen", () => {
+    expect(um("08:54", { schwelleMin: 90 }).zustand).toBe("AKTIV");
+    expect(um("08:54", { prs: [{ nummer: 325, aktualisiert: "2026-11-17T08:50:00Z", ciGruen: true }] }).zustand).toBe("AKTIV");
+  });
+  it("freigegeben: AKTIV als bewusste Pause; mit wartenden grünen PRs LEERLAUF-VERDACHT", () => {
+    const frei = { ...L18, freigegeben_am: "2026-11-17T07:00:00Z", gueltig_bis: "2026-11-17T07:00:00Z" };
+    expect(bewerteLeerlauf({ lease: frei, jetzt: new Date("2026-11-17T10:00:00Z"), integration: INT, prs: [] }).zustand).toBe("AKTIV");
+    const b = bewerteLeerlauf({ lease: frei, jetzt: new Date("2026-11-17T10:00:00Z"), integration: INT, prs: PRS });
+    expect(b.zustand).toBe("LEERLAUF-VERDACHT");
+    expect(b.wiederaufnahme).toMatch(/Epoche 19/);
+  });
+  it("keine Lease: Verdacht mit Erstübernahme; beschädigte Lease: BLOCKIERT ohne Befehl", () => {
+    expect(bewerteLeerlauf({ lease: null, jetzt: T0 }).wiederaufnahme).toMatch(/Epoche 1;/);
+    const b = bewerteLeerlauf({ lease: { epoche: "x", halter: "h", gueltig_bis: "kaputt" }, jetzt: T0 });
+    expect(b.zustand).toBe("BLOCKIERT");
+    expect(b.wiederaufnahme).not.toMatch(/uebernehmen --halter/);
+  });
+  it("ohne PR-Daten (gh fehlt) bleibt die Bewertung möglich", () => {
+    const b = um("09:23", { prs: null });
+    expect(b.prDaten).toBe(false);
+    expect(b.zustand).toBe("LEERLAUF-VERDACHT");
+  });
+
+  it("CLI gegen lokales Remote: Exit-Codes und keine Schreibaktion", () => {
+    const d = mkdtempSync(path.join(tmpdir(), "koord-leer-"));
+    execFileSync("git", ["init", "--bare", "-q", "remote.git"], { cwd: d });
+    const remote = path.join(d, "remote.git");
+    const env = { ...process.env, KOORD_REMOTE: remote };
+    const alt = process.env.KOORD_REMOTE; process.env.KOORD_REMOTE = remote;
+    try { schreiben(null, L18, "e18"); } finally { if (alt === undefined) delete process.env.KOORD_REMOTE; else process.env.KOORD_REMOTE = alt; }
+    const spitze = () => execFileSync("git", ["ls-remote", remote, "refs/heads/koordination/lease"], { encoding: "utf8" });
+    const vorher = spitze();
+    const lauf = (jetzt) => { try { execFileSync("node", [WZ, "leerlauf", "--ohne-pr", "--json", "--jetzt", jetzt], { env, encoding: "utf8", stdio: "pipe" }); return 0; } catch (e) { return e.status; } };
+    expect(lauf("2026-11-17T07:00:00Z")).toBe(0);
+    expect(lauf("2026-11-17T08:30:00Z")).toBe(5);
+    expect(lauf("2026-11-17T09:21:00Z")).toBe(6);
+    expect(lauf("2026-11-17T09:30:00Z")).toBe(5);
+    expect(spitze()).toBe(vorher);
   });
 });
