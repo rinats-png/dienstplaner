@@ -105,8 +105,28 @@ ob er beim Scan noch sichtbar war (3 s), hing von der Laufzeit ab (CI schnell, W
   wahrscheinliche Ursache des Konfliktdialogs bei parallelen Sitzungen (Nebenbefund oben).
 - Kontrast: Rücknahmeknopf hell vorher 1,98:1, jetzt 7,36:1 (hell) und 11,0:1 (dunkel).
 
+## 4b. WP-33 Rest: weitere axe-Flächen (2026-11-17)
+
+Neu: `e2e/barrierefreiheit-flaechen.spec.mjs` mit den Flächen aus `e2e/weitere-flaechen.mjs` (reine Daten), je Viewport der Gerätematrix:
+Anträge und Tauschbörse (Planung), Personal, Prüfung, Abrechnungsdaten, Hilfe und Rechtliches (Leitung) = 7 x 8 = 56 axe-Läufe, nur lesend
+(Anmelden, Navigieren). Gleiches Gate (serious/critical), gleiche Meldungsstreifen-Prüfung. Zusätzlich `pruefungen/e2e-flaechen.test.js`
+(Skript `pruefung:e2e-flaechen`, Glied der Kette `pruefung` vor `pruefung:wcag-wp40`, eigener Schritt in `pruefung.yml`): Ohne Browser wird geprüft,
+dass Namen eindeutig sind, die Rolle zur Suite gehört, der Navigationseintrag in `src/app/navigation.js` genau einmal besteht und die Ausnahmeliste
+nur bekannte Flächen nennt (kein Platzhalter). Die Listenprüfung in `barrierefreiheit.spec.mjs` kennt die neuen Flächen.
+
+Befund des Laufs (lokal, Windows, Chromium 1.64.1, axe-core 4.14.0): keine critical-Funde, nur Funde der schon bekannten Ursachen, die als
+begründete Ausnahmen (WP-40) in `e2e/axe-ausnahmen.json` stehen: `label-content-name-mismatch` (Kontoknopf, ab Tabletbreite Suchknopf, auf
+`personal-leitung` rund 87 Personenzellen) auf allen sieben Flächen, `nested-interactive` auf `antraege-planer` (Antragszeilen). Keine bestehende
+Ausnahme und kein Gate wurde geändert oder gelockert. Entscheidungsvorlage zum Abbau: ENTSCHEIDUNGSLISTE P2-11.
+
+**Offener Mangel:** `nested-interactive` auf `antraege-planer` (WCAG 4.1.2) ist ein echter Bedienmangel (Antragszeilen `div[role=button]` mit bedienbaren Kindern), kein Namensschema-Befund; Behebung durch WP-40 (ENTSCHEIDUNGSLISTE P2-11a). Die Ausnahmen in `e2e/axe-ausnahmen.json` (17 Einträge) haben keinen Ablauf; ihr Abbau hängt an WP-40, ein Ablaufdatum-Mechanismus ist nicht vorgesehen. Die 8 neuen Ausnahmen sind eng, begründet und unabhängig geprüft und verdecken nichts, was bisher geprüft wurde (nur neue Abdeckung). Der Betreiber ist über die Entscheidungsliste informiert; das ist keine stille Freigabe.
+
+**Anmeldebremse (CI-Befund 2026-11-17):** Der Server lässt je Zugangscode nur 20 gelungene Anmeldungen je 5 Minuten zu, danach 5 Minuten Sperre (`server/lib/schutz.mjs`, „anmelden-code“). Mit einer Anmeldung je Fläche (und 8 Viewports) überschritt die Leitung die Grenze auf dem schnellen CI-Runner (Run 44026690544, 844x390: `hilfe-leitung`, `rechtliches-leitung` und die Leitungs-Tests danach, Fehler `waitForSelector(".m-tabs, .kopfleiste")` nach der Anmeldung). Behebung ohne Änderung der Bremse und ohne Gate-Änderung: `barrierefreiheit-flaechen.spec.mjs` meldet sich je Rolle und Viewport einmal an (zwei Tests je Viewport: Planung, Leitung) und prüft die Flächen nacheinander; jede Fläche behält Namen, Ergebnisdatei und Ausnahmen, ein Fund bricht die übrigen nicht ab. Das senkt die Leitungs-Anmeldungen der Suite je Viewport von 7 auf 3. Gesamt jetzt 16 statt 56 Läufe, aber dieselben 56 axe-Prüfungen.
+
+Lauf mit den Ausnahmen (lokal, Windows, einzeln nacheinander): **56 von 56 bestanden** (alle acht Viewports, 19,2 min) plus die Listenprüfung (1 bestanden).
+
 ## 5. Offen
 
 - Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.
-- Weitere Flächen (Anträge, Lagebild, Betreiberkonsole), Offline-Fälle und Rollenabläufe aus dem alten Branch (674d1c04) nachziehen.
+- Weitere Flächen: Anträge, Tauschbörse, Personal, Prüfung, Abrechnungsdaten, Hilfe, Rechtliches und Lagebild sind in der Suite (siehe 4b); offen bleiben die Betreiberkonsole (eigener Zugang, eigener Betrieb) und weitere Verwaltungsansichten. Offline: Stempeln ohne Netz deckt B7 der Abnahme B ab; weitere Offline-Fälle brauchen eine Fachvorgabe.
 - Erster Lauf auf dem GitHub-Runner (Chromium-Download) steht mit dem PR aus.
