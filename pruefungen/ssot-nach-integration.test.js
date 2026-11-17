@@ -118,4 +118,14 @@ describe("plan und anwenden", () => {
     const s = { pakete: [paket("WP-99", "IN_PROGRESS")] };
     expect(plan(s, pr(400, "WP-99: abgeschlossen"))[0].art).toBe("INTEGRIERT");
   });
+
+  it("als „teilweise“ deklariertes BLOCKED-Paket bleibt BLOCKED (Betreibersperre), PR-Vergleich mit Wortgrenze (#30 ≠ #301)", () => {
+    const p = paket("WP-30", "BLOCKED", { stufen: { integriert: { wert: "teilweise", beleg: "PR #301 gemergt; Rest nach E-9" } } });
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, pr(30, "WP-30 Nachtrag")), pr(30, "x"));
+    expect(p.status).toBe("BLOCKED");
+    expect(p.stufen.integriert.beleg).toContain("#301 gemergt; Rest nach E-9 (+ PR #30)");
+    anwenden(s, plan(s, pr(30, "WP-30 Nachtrag")), pr(30, "x"));
+    expect(p.stufen.integriert.beleg.split("(+ PR #30)")).toHaveLength(2);
+  });
 });

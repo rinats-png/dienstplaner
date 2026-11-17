@@ -94,11 +94,12 @@ export function anwenden(ssot, aenderungen, pr) {
     }
     if (a.art === "TEILWEISE") {
       /* Teilumfang: Status nie INTEGRATED. Ein noch nicht begonnenes Paket gilt jetzt als in Arbeit. */
-      if (p.status === "BLOCKED" || p.status === "READY") p.status = "IN_PROGRESS";
+      /* Als „teilweise“ deklarierte Pakete behalten ihren Status: ein BLOCKED-Paket (Betreibersperre, z. B. E-9) wird durch einen PR nicht freigegeben. */
+      if (!istDeklariertTeilweise(p) && (p.status === "BLOCKED" || p.status === "READY")) p.status = "IN_PROGRESS";
       /* Bereits als „teilweise“ geführt: Wert und bisherigen Beleg behalten, den PR nur anhängen (nie zurückstufen). */
       if (istDeklariertTeilweise(p)) {
         const alt = String(p.stufen.integriert.beleg || "");
-        if (!alt.includes(pnr)) p.stufen.integriert = { wert: "teilweise", beleg: `${alt} (+ PR ${pnr})`.trim() };
+        if (!new RegExp(pnr + "(?![0-9])").test(alt)) p.stufen.integriert = { wert: "teilweise", beleg: `${alt} (+ PR ${pnr})`.trim() };
       } else {
         p.stufen.integriert = { wert: false, beleg: `Teilumfang in PR ${pnr} integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist.` };
       }
