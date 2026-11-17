@@ -247,7 +247,7 @@ Nachweis: Statusdateien (enthalten keine Geheimnisse), Logauszüge, Datum, Diges
 
 | Nr. | Schritt | Befehl / Aktion | Zugang | Risiko | Dauer |
 |---|---|---|---|---|---|
-| B-1 | BE-3-Job **und** Probe mit **echtem restic** in CI (schließt B3-8 ohne VM): Ende-zu-Ende in `deploy/sicherung/ci/` um Widerrufbücher erweitern (Server im Bild erzeugt Bücher, Widerruf, Job ×3 mit **mindestens drei Snapshots**, Probe mit Auswahl nach `time`, Rücksprung → 3) | neuer PR, CI `betrieb-sicherung.yml` | Repository (vorhanden) | gering; CI-Laufzeit + ~5 min | 0,5–1 Tag |
+| B-1 (umgesetzt, Beleg: CI-Lauf von `betrieb-sicherung.yml`) | BE-3-Job **und** Probe mit **echtem restic** in CI (schließt B3-8 ohne VM): Ende-zu-Ende in `deploy/sicherung/ci/` um Widerrufbücher erweitern (Server im Bild erzeugt Bücher, Widerruf, Job ×3 mit **mindestens drei Snapshots**, Probe mit Auswahl nach `time`, Rücksprung → 3) | neuer PR, CI `betrieb-sicherung.yml` | Repository (vorhanden) | gering; CI-Laufzeit + ~5 min | 0,5–1 Tag |
 | B-2 | CI dieses PR auswerten (shellcheck der neuen Probe, Ende-zu-Ende der Ablage nach Verschiebung in `gemeinsam.sh`) | `gh pr checks <PR>` | vorhanden | keins | 30 min |
 | B-3 | SSOT-Nachtrag BE-3/Probe nach Merge | `node werkzeug/ssot-nach-integration.mjs <PR>` | vorhanden | gering | 15 min |
 | B-4 | **Nach** Entscheidung C-7 für Append-only: Schalter „Aufbewahrung nicht auf dem Host“ in beiden Jobs + Prune-Runbook für zweiten Rechner, mit Tests | PR | vorhanden | mittel (Verhalten der Jobs) | 1 Tag |
