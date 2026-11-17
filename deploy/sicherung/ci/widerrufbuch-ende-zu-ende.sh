@@ -344,7 +344,7 @@ ok "W9 --retry-lock: bei fremder Sperre scheitert 'restic prune' sofort, der Job
 REPO_A="$T/repo-aufbew"
 STATUS_A="$T/status-aufbew"
 rr "$REPO_A" init >/dev/null
-mkdir -p -m 700 "$STATUS_A/widerrufbuch/stufe"
+mkdir -p "$STATUS_A/widerrufbuch/stufe"
 for b in "${BUECHER[@]}"; do cp -- "$T/zustand/$b" "$STATUS_A/widerrufbuch/stufe/$b"; done
 for i in $(seq 1 204); do
   rr "$REPO_A" backup --quiet --host centric --tag widerrufbuch \
