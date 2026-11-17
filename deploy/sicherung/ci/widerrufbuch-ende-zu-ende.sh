@@ -29,7 +29,7 @@
 #    W8  Erstlauf-Sperre: andere Host-Kennung → Exit 5, mit --erster-lauf Exit 0;
 #        neues leeres Repository bei früherem Erfolg → Exit 5
 #    W9  --retry-lock: fremde Sperre im Repository, der Job wartet und endet 0
-#    W10 Aufbewahrung 200: 204 Snapshots + Lauf → genau die neuesten 200, unabhängig nachgerechnet
+#    W10 Aufbewahrung: 204 Snapshots + Lauf → neueste 200 + ältester des ältesten Tages, unabhängig nachgerechnet
 #    W11 restic check --read-data über das Haupt-Repository; keine Geheimnisse
 # =====================================================================
 set -Eeuo pipefail
@@ -356,11 +356,13 @@ snaps centric "$REPO_A" >"$T/w10-vorher.json"
 konfig "$T/k1/aufbewahrung.env" "$REPO_A" "$T/restic-pw" "$STATUS_A"
 lauf w10-aufbewahrung 0 "$JOB" "$T/k1/aufbewahrung.env"
 snaps centric "$REPO_A" >"$T/w10-nachher.json"
-jq -s '(.[0] + .[1]) | unique_by(.id) | sort_by(.time) | .[-200:] | map(.id) | sort' "$T/w10-vorher.json" "$T/w10-nachher.json" >"$T/w10-erwartet.json"
+# Nachrechnung: die neuesten 200 (keep-last) plus der älteste Snapshot des ältesten Tages (restic 0.18 nennt ihn
+# "oldest daily snapshot" — Befund aus dem echten restic: keep-daily behält je Tag den neuesten, im ältesten Tag den ältesten).
+jq -s '(.[0] + .[1]) | unique_by(.id) | sort_by(.time) | (.[-200:] + [.[0]]) | map(.id) | unique' "$T/w10-vorher.json" "$T/w10-nachher.json" >"$T/w10-erwartet.json"
 jq 'map(.id) | sort' "$T/w10-nachher.json" >"$T/w10-behalten.json"
 cmp -s "$T/w10-erwartet.json" "$T/w10-behalten.json" || fehl "W10: behaltene Snapshots weichen von der Nachrechnung ab"
-[[ "$(jq length "$T/w10-behalten.json")" == "200" ]] || fehl "W10: nicht genau 200 Snapshots behalten"
-ok "W10 Aufbewahrung: 204 Snapshots + Lauf → genau die neuesten 200 behalten (forget --keep-last 200 --keep-daily 90 --prune, Gruppe Host+Tag), identisch mit unabhängiger Nachrechnung"
+[[ "$(jq length "$T/w10-behalten.json")" == "201" ]] || fehl "W10: nicht genau 201 Snapshots behalten (200 neueste + ältester des ältesten Tages)"
+ok "W10 Aufbewahrung: 204 Snapshots + Lauf → die neuesten 200 plus der älteste Snapshot des ältesten Tages behalten (Befund: restic 0.18 behält mit --keep-daily im ältesten Tag zusätzlich den ältesten Snapshot; forget --keep-last 200 --keep-daily 90 --prune, Gruppe Host+Tag), identisch mit unabhängiger Nachrechnung"
 
 # === W11 ganzes Repository lesen, keine Geheimnisse =====================================
 rr "$REPO" check --read-data >"$AUS/w11-check.txt" 2>&1 || { cat "$AUS/w11-check.txt"; fehl "W11: restic check --read-data meldet Fehler"; }
