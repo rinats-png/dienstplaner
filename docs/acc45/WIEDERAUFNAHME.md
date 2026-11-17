@@ -1,7 +1,9 @@
-# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-14, Integrationskopf d84e4a83 oder neuer, Hauptchat aktiv)
+# Wiederaufnahmepunkt CENTRIC (Stand 2026-11-17, Integrationskopf f1741670 oder neuer)
 
 > Dieses Dokument ersetzt den Stand vom 09.11. (Nachtübergabe). Wer noch von "Hauptchat beendet" oder
 > "Integrationskopf 744a2f68 / 38fc7d0" ausgeht, arbeitet mit veralteten Angaben.
+> Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
+> (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
 ## Konsolidierter Stand 2026-11-15
 
@@ -296,7 +298,9 @@ Für weitere Schritte muss der Betreiber entscheiden: E-25 (AVV, ZDR, Drittland,
 - Naechste ausfuehrbare Pakete: WR-4, WR-5, WR-6 (Abhaengigkeit WR-3 integriert; Schalter ausgeliefert aus). Vor Start Status in der SSOT pruefen.
 - Automatische Fortsetzung: dieser Lauf ist ein geplanter Cloud-Task; weitere Laeufe nur lesend/Statuspflege, solange die Lease nicht eindeutig bei diesem Halter liegt.
 
-## Koordinationsregel (verbindlich, Stand 2026-11-10, Lease-Werkzeug in der Integration seit #170)
+## Koordinationsregel (verbindlich, Stand 2026-11-10, ergänzt 2026-11-17; Lease-Werkzeug in der Integration seit #170)
+- **Turn-Beginn (Hauptchat, ergänzt 2026-11-17):** Zu Beginn jedes Turns `node werkzeug/koordination.mjs status` und `leerlauf` ausführen. Zugesagte Folgeschritte („ich starte jetzt den Review“) sofort im selben Turn ausführen, nicht nur ankündigen. Wartezeit (CI, Review-Agent) mit einem unabhängigen ausführbaren Paket aus einer anderen Konfliktgruppe füllen (`BACKLOG-PHASEN.md` §2, `acc45-backlog.mjs bereit`), höchstens drei Schreiber. Die Lease vor Ablauf erneuern; nach eigenem Ablauf eine neue Kennung verwenden (Abschnitt „Leerlauf-Erkennung“).
+- **Rückfragen (Betreiber 2026-11-17):** Gewöhnliche technische Entscheidungen trifft der Koordinator selbst. Betreiberfreigabe nur für: Merge nach `main`, Produktions-Deployment, produktive Migration oder irreversible Datenänderung, Aktivierung neuer produktiver Funktionen, neue oder wiederkehrende Kosten, neue Rechte oder Abschwächung der Sicherheit, Recht/Datenschutz, Arbeitszeit-/Entgeltregeln, Aufbewahrung/Löschung, echte personenbezogene Daten in neuen Verarbeitungen, externe Freigaben. Vorlage höchstens drei Optionen mit Empfehlung und Folgen, nur in `ENTSCHEIDUNGSLISTE.md`; nur der betroffene Strang wartet. Keine Staging-VM bis Phase D (`EINRICHTUNGSKETTE-IONOS.md`).
 - Schreibender Koordinator ist, wer die Lease im Branch `koordination/lease` hält. Werkzeug: `node werkzeug/koordination.mjs status|uebernehmen|erneuern|freigeben|pruefen|push --halter H [--epoche N]`. Jede Änderung ist ein Commit ohne Force; Git lehnt gleichzeitige Änderungen ab (Compare-and-Swap). Zwei Schreiber sind damit ausgeschlossen, **sofern Branch-Schutz gesetzt ist (siehe unten)**.
 - **`--epoche N` ist Pflicht** bei `erneuern`, `freigeben`, `pruefen`, `push` und bei Verlängerung über `uebernehmen`. Ältere Aufrufe ohne Epoche (zum Beispiel in Cloud-Aufgaben-Anweisungen) werden abgelehnt (Exit 1). Aktuelle Epoche: `node werkzeug/koordination.mjs status`.
 - `push` (Arbeits-Branch plus Lease atomar) darf nie auf `main`, `master`, `integration/*`, `release/*`, `koordination/*` zielen. Integration läuft ausschließlich über PRs (`gh pr merge --match-head-commit`).
@@ -328,8 +332,8 @@ Dieses Dokument (`docs/acc45/WIEDERAUFNAHME.md`) ist für den Acc45-Strang maßg
 - „Koordinator mit Freigabe-Befugnis“ als Nachtkoordinator: die Freigabe liegt beim Betreiber, nicht bei der Nachtaufgabe.
 Empfehlung an den Betreiber: #168 entweder auf den Stand dieses Dokuments bringen oder schließen. Dieses Dokument wird nicht gegen #168 zusammengeführt, weil #168 nicht von dieser Sitzung stammt.
 
-## Aktueller Hinweis zur Übergabe
-Die Übergabe der Nacht ist beendet. Der Hauptchat ist aktiv und hält die Lease (Epoche 2, siehe oben). Die Cloud-Aufgabe soll weder auf den Stand vom 09.11. noch auf Aufrufe ohne `--epoche` zurückgreifen: Vor jedem Schreibvorgang `node werkzeug/koordination.mjs status` lesen. Hält ein anderer Halter eine gültige Lease, nichts schreiben.
+## Hinweis zur Übergabe (historisch, Stand 2026-11-10)
+Die Übergabe der Nacht ist beendet. Der Hauptchat war damals aktiv und hielt die Lease (Epoche 2; heutiger Stand nur über `status`). Die Cloud-Aufgabe soll weder auf den Stand vom 09.11. noch auf Aufrufe ohne `--epoche` zurückgreifen: Vor jedem Schreibvorgang `node werkzeug/koordination.mjs status` lesen. Hält ein anderer Halter eine gültige Lease, nichts schreiben.
 
 Verbindlich bleiben: kein Merge nach `main` und kein produktives Deployment ohne ausdrückliche Zustimmung des Betreibers; keine Tests abschwächen; keine Geheimnisse ausgeben; der autonome Release-Auftrag bleibt bestehen.
 

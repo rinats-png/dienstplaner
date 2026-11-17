@@ -10,7 +10,7 @@ Stand 2026-11-03 · gilt für **neue** Agenten ab sofort · keine globale Einste
 | `haiku` | `claude-haiku-5-5` |
 | `opus` | `claude-opus-5-5` (Kennung laut Umgebung; Koordinator läuft aktuell auf Sonnet 5.5, Subagenten bisher überwiegend Opus 5.5) |
 
-Subagenten können pro Aufruf ein eigenes Modell bekommen (`model` im Agent-Tool). Ein laufender Agent behält sein Modell; per Nachricht fortgesetzte Agenten ebenfalls. **Umgestellt werden nur neu gestartete Agenten.** Remote Control und die Koordinator-Sitzung sind nicht betroffen.
+Subagenten können pro Aufruf ein eigenes Modell bekommen (`model` im Agent-Tool). **Jeder Agent-Aufruf nennt `model` ausdrücklich** (Betreibervorgabe 2026-11-03: ohne Angabe erbt der Agent das Koordinatormodell; fortgesetzte Altagenten wechselten still das Modell). Große Agentenkontexte nicht per Nachricht fortsetzen, sondern frische Agenten mit Delta-Briefing starten. Ein laufender Agent behält sein Modell; per Nachricht fortgesetzte Agenten ebenfalls. **Umgestellt werden nur neu gestartete Agenten.** Remote Control und die Koordinator-Sitzung sind nicht betroffen.
 
 ## Regeln
 
