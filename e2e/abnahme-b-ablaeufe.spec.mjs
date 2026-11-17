@@ -53,10 +53,16 @@ async function serverBetriebstag() {
    bekommt dessen PUT mit veraltetem ETag einen 409 statt der erwarteten 200/403. Darum werden die Seiten der Tests über
    hilfen.schreibvorgaengeVerfolgen verfolgt, und vor jedem solchen Schreiben wartet nachlaufAbwarten(), bis jeder angefragte
    PUT beantwortet ist (Bedingung, keine Wartezeit). B7 ist ausgenommen: Dort muss context.setOffline(true) jeden Schreibweg
-   der Seite sperren, eine Route mit route.fetch liefe am Browser vorbei. */
-const verfolger = [];
+   der Seite sperren, eine Route mit route.fetch liefe am Browser vorbei.
+   Restrisiko: Erfasst werden nur bereits ANGEFRAGTE PUTs. Ein noch laufender 1200-ms-Debounce (src/speicher.js) einer eben
+   geschlossenen Seite bleibt ein Restwettlauf. Auch die nicht verfolgte B7-Seite (offline) kann beim Abbau schreiben, was
+   nachlaufAbwarten in B8 nicht erfasst (gering).
+   Das Register umfasst nur den laufenden und den vorangehenden Test (neuerTest() rotiert in beforeEach), damit Verfolger
+   toter Seiten älterer Tests nicht später als unbeantwortet gelten. */
+let verfolger = [], vorherige = [];
+function neuerTest() { vorherige = verfolger; verfolger = []; }
 async function seiteVerfolgen(page) { verfolger.push(await schreibvorgaengeVerfolgen(page)); }
-async function nachlaufAbwarten() { for (const v of verfolger) await v.abgeschlossen(); }
+async function nachlaufAbwarten() { for (const v of [...vorherige, ...verfolger]) await v.abgeschlossen(); }
 /** Zusatzseite verlassen (löst das Wegschreiben beim Verlassen aus) und dessen Ende abwarten. */
 async function seiteVerlassen(p) { await p.goto("about:blank").catch(() => {}); await nachlaufAbwarten(); }
 const mandantVon = (g) => (((g.d.bestand || {}).mandanten) || [])[0] || {};
@@ -144,7 +150,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
      am Vortag und bot nach dem Neuladen wieder „Einstempeln“ statt „Ausstempeln“ an. Darum hier, wie bei der
      Stempeluhr unten, die Zeitzone des Betriebs. */
   test.use({ timezoneId: "Europe/Berlin" });
-  test.beforeEach(async ({ page }, testInfo) => { if (!testInfo.title.startsWith("B7")) await seiteVerfolgen(page); });
+  test.beforeEach(async ({ page }, testInfo) => { neuerTest(); if (!testInfo.title.startsWith("B7")) await seiteVerfolgen(page); });
   test("B7 Stempeln ohne Netz, vorläufig auf dem Gerät, nach dem Netz genau ein Stempel", async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== ABLAUF_PROJEKT, "Schreibender Ablauf einmal je Lauf");
     const tag = await berlinerTagFuerAblauf(page);
@@ -368,7 +374,7 @@ async function zielgroesse(page, name) {
 }
 
 test.describe("Abnahme B — Darstellung und Barrierefreiheit der Abläufe", () => {
-  test.beforeEach(async ({ page }) => { await seiteVerfolgen(page); });
+  test.beforeEach(async ({ page }) => { neuerTest(); await seiteVerfolgen(page); });
   test("mein-plan-mobil", async ({ page }, testInfo) => {
     await anmelden(page, "mitarbeiter");
     await geheZu(page, "Mein Plan");
