@@ -17,6 +17,10 @@ for (const f of WEITERE_FLAECHEN) JE_ROLLE.set(f[1], [...(JE_ROLLE.get(f[1]) || 
 test.describe("Barrierefreiheit weiterer Flächen (axe, WCAG 2.2 AA)", () => {
   for (const [rolle, flaechen] of JE_ROLLE) {
     test(`${rolle}: ${flaechen.map((f) => f[0]).join(", ")}`, async ({ page }, testInfo) => {
+      // Ein Test je Rolle fasst mehrere Flächen zusammen (je ca. 20 s mit axe); die globalen 90 s reichten für die Leitung mit
+      // fünf Flächen nicht (CI 6b3b942c: Zeitüberschreitung bei 430x932 und 740x360, danach "Target page ... has been closed").
+      // Das Zeitbudget wächst mit der Zahl der Flächen; das axe-Gate selbst bleibt unverändert.
+      test.setTimeout(60_000 + 40_000 * flaechen.length);
       await anmelden(page, rolle);
       const fehler = [];
       for (const [flaeche, , ansicht] of flaechen) {
