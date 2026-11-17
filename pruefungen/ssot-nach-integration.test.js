@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { plan, anwenden, istTeilPr } from "../werkzeug/ssot-nach-integration.mjs";
+import { plan, anwenden, istTeilPr, istDeklariertTeilweise } from "../werkzeug/ssot-nach-integration.mjs";
 
 /* Der Fehler, den diese Prüfung festhält: Ein PR "WP-21 Teil 2: …" setzte WP-21 auf INTEGRATED, obwohl nur ein Teil
    des Pakets integriert war (ebenso OPT-4 und IMP-6). Die Zuordnung über die Paket-ID im Titel bleibt, aber ein Titel,
@@ -97,5 +97,25 @@ describe("plan und anwenden", () => {
     const p = s.pakete.find((x) => x.id === "OPT-1");
     expect(p.status).toBe("INTEGRATED");
     expect(p.pr).toEqual(["#166", "#300"]);
+  });
+  it("Paket mit Stufe integriert = „teilweise“: auch ohne Teil im Titel nur TEILWEISE, Wert bleibt, PR wird angehängt (WP-ZEIT, PR #337)", () => {
+    const zeit = paket("WP-ZEIT", "IN_PROGRESS", { stufen: { integriert: { wert: "teilweise", beleg: "PR #296 gemergt; Paket nicht vollständig" } } });
+    const s = { pakete: [zeit] };
+    expect(istDeklariertTeilweise(zeit)).toBe(true);
+    const a = plan(s, pr(337, "WP-ZEIT-Rest: lokale Berlin-Tagesformeln über die zentrale Zeitbasis"));
+    expect(a).toEqual([{ id: "WP-ZEIT", art: "TEILWEISE", von: "IN_PROGRESS", pr: "#337" }]);
+    anwenden(s, a, pr(337, "x"));
+    expect(zeit.status).toBe("IN_PROGRESS");
+    expect(zeit.stufen.integriert.wert).toBe("teilweise");
+    expect(zeit.stufen.integriert.beleg).toMatch(/#296.*#337/);
+    anwenden(s, a, pr(337, "x"));
+    expect(zeit.stufen.integriert.beleg.match(/#337/g)).toHaveLength(1);
+  });
+
+  it("Paket ohne Teil-Deklaration und ohne Teil im Titel: weiterhin INTEGRIERT (keine Regression)", () => {
+    expect(istDeklariertTeilweise(paket("WP-99", "READY"))).toBe(false);
+    expect(istDeklariertTeilweise(paket("WP-98", "IN_PROGRESS", { stufen: { integriert: { wert: false, beleg: null } } }))).toBe(false);
+    const s = { pakete: [paket("WP-99", "IN_PROGRESS")] };
+    expect(plan(s, pr(400, "WP-99: abgeschlossen"))[0].art).toBe("INTEGRIERT");
   });
 });

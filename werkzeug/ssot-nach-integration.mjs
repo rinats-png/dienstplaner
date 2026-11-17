@@ -59,6 +59,11 @@ export function istTeilPr(titel) {
   return /\bTeil\s*\d+\b|\bTeil(?:paket|umfang)?\b|\bBibliothek\b/i.test(String(titel ?? ""));
 }
 
+/** Hat das Paket die Stufe „integriert“ ausdrücklich als „teilweise“ geführt, ist es nach einem weiteren PR nicht vollständig, auch wenn der Titel keinen Teil nennt. */
+export function istDeklariertTeilweise(p) {
+  return p?.stufen?.integriert?.wert === "teilweise";
+}
+
 export function plan(ssot, pr) {
   const treffer = paketeFuerPr(ssot.pakete.map((p) => p.id), pr);
   const teil = istTeilPr(pr.title);
@@ -68,7 +73,7 @@ export function plan(ssot, pr) {
     const pnr = `#${pr.number}`;
     if (ERLEDIGT.includes(p.status)) {
       if (!(p.pr || []).includes(pnr)) aenderungen.push({ id, art: "PR_ERGAENZT", pr: pnr });
-    } else if (teil) {
+    } else if (teil || istDeklariertTeilweise(p)) {
       aenderungen.push({ id, art: "TEILWEISE", von: p.status, pr: pnr });
     } else {
       aenderungen.push({ id, art: "INTEGRIERT", von: p.status, pr: pnr });
@@ -90,7 +95,13 @@ export function anwenden(ssot, aenderungen, pr) {
     if (a.art === "TEILWEISE") {
       /* Teilumfang: Status nie INTEGRATED. Ein noch nicht begonnenes Paket gilt jetzt als in Arbeit. */
       if (p.status === "BLOCKED" || p.status === "READY") p.status = "IN_PROGRESS";
-      p.stufen.integriert = { wert: false, beleg: `Teilumfang in PR ${pnr} integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist.` };
+      /* Bereits als „teilweise“ geführt: Wert und bisherigen Beleg behalten, den PR nur anhängen (nie zurückstufen). */
+      if (istDeklariertTeilweise(p)) {
+        const alt = String(p.stufen.integriert.beleg || "");
+        if (!alt.includes(pnr)) p.stufen.integriert = { wert: "teilweise", beleg: `${alt} (+ PR ${pnr})`.trim() };
+      } else {
+        p.stufen.integriert = { wert: false, beleg: `Teilumfang in PR ${pnr} integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist.` };
+      }
       p.notiz = `${(p.notiz || "").trim()} Stand (automatisch): Teilumfang nach ${pnr}, Status ${p.status}; Rest offen (Titel nennt nur einen Teil).`.trim();
       continue;
     }
