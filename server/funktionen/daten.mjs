@@ -21,9 +21,10 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { demoAn, teilwegAn } from "../lib/schalter.mjs";
+import { demoAn, teilwegAn, abschlussSegmentweiseAn } from "../lib/schalter.mjs";
+import { ABSCHLUSS_SEGMENT_AKTIONEN, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
-import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
+import { bestandLesen, bestandLesenStreng, bestandLesenAuswahlStreng, bestandSchreiben, teileSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
 import { personalnummerKonflikt, personalnummerText } from "../lib/personalnummer.mjs";
@@ -47,7 +48,7 @@ import { KRANK_SCHRITTE, krankSchrittErlaubt, krankmeldungMelden, krankmeldungSc
 import { selbstauskunftStellen, selbstauskunftEntscheiden } from "../lib/selbstauskunft.mjs";
 import { schreibKontext } from "../lib/schreibkontext.mjs";
 import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, korrekturBeginnen, korrekturFreigeben, korrekturVerwerfen, abgewiesenVermerken, letzteWiederoeffnung,
-  monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur } from "../lib/monatsabschluss.mjs";
+  monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur, hatLaufendeKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
@@ -2555,31 +2556,52 @@ async function behandeln(req, context, ctx) {
       const bM = await bremse("schreiben", kM);
       if (!bM.frei) return zuVielAntwort(bM.wartet);
       return await unterRaumsperre(s.bestand, async () => {
-        const mitM = await bestandLesenStreng(store, s.bestand);
-        if (!mitM) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-        const mM = eigenerMandant(mitM.bestand, s);
-        if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        /* WP-48.7 (Stufe a, Schalter CENTRIC_ABSCHLUSS_SEGMENTWEISE, lib/abschluss-segmentweise.mjs): nur Kern und die Monate
+           des Jahres bis zum Monat lesen, Kern + Scherbe des Monats schreiben. Sonst — und bei laufender Korrekturrevision
+           in irgendeinem Betrieb des Raums — der volle Weg wie bisher. */
+        let teilM = abschlussSegmentweiseAn() && ABSCHLUSS_SEGMENT_AKTIONEN.includes(aktionM) && monatM !== "ungültig"
+          ? await bestandLesenAuswahlStreng(store, s.bestand, abschlussAuswahl(s, monatM)) : null;
+        if (teilM && teilM.bestand.mandanten.some(hatLaufendeKorrektur)) teilM = null;
         const werM = { personId: s.person ?? null, name: s.name || null, rolle: s.rolle };
         /* Positivliste (WP-16c, Review): nur diese Felder des Rumpfes erreichen die Monatsabschluss-Funktionen; interne Schalter
            (etwa die Vorschau der Freigabe) lassen sich von außen nicht setzen. */
         const rumpfM = {};
         for (const f of MONATSABSCHLUSS_RUMPF) if (rumpf && Object.prototype.hasOwnProperty.call(rumpf, f)) rumpfM[f] = rumpf[f];
         const idM = `ma-${randomBytes(6).toString("hex")}`;
-        const r = aktionM === "abschliessen"
-          ? abschliessen(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
-          : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpfM, werM, new Date(), idM)
-            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(mM, rumpfM, werM, new Date(), idM)
-              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(mM, rumpfM, werM, new Date(), idM, heuteBerlin())
-                : aktionM === "korrektur-verwerfen" ? korrekturVerwerfen(mM, rumpfM, werM, new Date(), idM)
-                : wiederoeffnen(mM, rumpfM, werM, new Date(), idM);
+        const rechnenM = (m) => (aktionM === "abschliessen"
+          ? abschliessen(m, rumpfM, werM, new Date(), idM, heuteBerlin())
+          : aktionM === "lohnexport" ? lohnexportBestaetigen(m, rumpfM, werM, new Date(), idM)
+            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(m, rumpfM, werM, new Date(), idM)
+              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(m, rumpfM, werM, new Date(), idM, heuteBerlin())
+                : aktionM === "korrektur-verwerfen" ? korrekturVerwerfen(m, rumpfM, werM, new Date(), idM)
+                : wiederoeffnen(m, rumpfM, werM, new Date(), idM));
+        let mitM = teilM || await bestandLesenStreng(store, s.bestand);
+        if (!mitM) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        let mM = eigenerMandant(mitM.bestand, s);
+        if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        let r = rechnenM(mM);
+        let teileM = teilM && !("status" in r) ? abschlussTeile(mitM.bestand, mM, r.mandant, monatM) : null;
+        if (teilM && !("status" in r) && !teileM) {
+          /* Die Rechnung hat außerhalb des Monats etwas verändert (darf nicht sein): Segmentweise ginge das verloren —
+             fail-closed zurück auf den vollen Weg, neu gelesen und neu gerechnet. */
+          teilM = null;
+          mitM = await bestandLesenStreng(store, s.bestand);
+          if (!mitM) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+          mM = eigenerMandant(mitM.bestand, s);
+          if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+          r = rechnenM(mM);
+        }
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),
             ...(r.vormonate ? { vormonate: r.vormonate } : {}), ...(r.differenz ? { differenz: r.differenz } : {}) }, r.status);
         }
-        const ergM = await bestandSchreiben(store, s.bestand,
-          { ...mitM.bestand, mandanten: mitM.bestand.mandanten.map((x) => (x === mM ? r.mandant : x)) },
-          { erwarteterStand: mitM.stand, durch: s.name || "Monatsabschluss" });
+        const neuM = r.mandant, altM = mM;
+        const ergM = teilM && teileM
+          ? await teileSchreiben(store, s.bestand, teileM, { erwarteterStand: mitM.stand, erwarteteEpoche: teilM.epoche, durch: s.name || "Monatsabschluss" })
+          : await bestandSchreiben(store, s.bestand,
+            { ...mitM.bestand, mandanten: mitM.bestand.mandanten.map((x) => (x === altM ? neuM : x)) },
+            { erwarteterStand: mitM.stand, durch: s.name || "Monatsabschluss" });
         if (!ergM.ok) {
           await protokoll("schreiben", kM, "konflikt", `Monatsabschluss ${aktionM} ${monatM}`, wer);
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);

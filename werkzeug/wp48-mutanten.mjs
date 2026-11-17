@@ -32,6 +32,7 @@ const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KERN = ["pruefungen/wp48-speicherkern.test.js"];
 const RUNDWEG = ["pruefungen/wp48-rundweg.test.js"];
 const TEILWEG = ["pruefungen/wp48-teilweg.test.js"];
+const ABSCHLUSS = ["pruefungen/wp48-7-abschluss-segmentweise.test.js"];
 
 /** @type {Array<{id: string, was: string, datei: string, ersetzungen: Array<[string, string]>, pruefungen: string[]}>} */
 export const MUTANTEN = [
@@ -147,7 +148,30 @@ export const MUTANTEN = [
   { id: "T18", was: "Wiederholvermerke ohne Grenze je Raum", datei: "server/lib/teilweg.mjs",
     ersetzungen: [["  if (imRaum >= TEILANFRAGE_GRENZEN.jeRaum) return { voll: \"raum\" };", ""]], pruefungen: TEILWEG },
   { id: "T12", was: "Serverfeld (Monatsabschluss) als Kernfeld zugelassen", datei: "server/lib/teilweg.mjs",
-    ersetzungen: [["\"einstempeln\", \"istEingefroren\", \"monatsabschluss\", \"protokoll\",", "\"einstempeln\", \"istEingefroren\", \"protokoll\","]], pruefungen: TEILWEG },];
+    ersetzungen: [["\"einstempeln\", \"istEingefroren\", \"monatsabschluss\", \"protokoll\",", "\"einstempeln\", \"istEingefroren\", \"protokoll\","]], pruefungen: TEILWEG },
+  /* --- Monatsabschluss segmentweise (48.7 Stufe a) --- */
+  { id: "A1", was: "nur der Monat gelesen statt Januar bis Monat (Stundenkonto ohne Vormonate)", datei: "server/lib/abschluss-segmentweise.mjs",
+    ersetzungen: [["  return Array.from({ length: mo }, (_, i) => `${j}-${String(i + 1).padStart(2, \"0\")}`);", "  void j; void mo; return [monat];"]], pruefungen: ABSCHLUSS },
+  { id: "A2", was: "Wächter gegen Änderungen außerhalb des Monats fehlt", datei: "server/lib/abschluss-segmentweise.mjs",
+    ersetzungen: [["  if (aussenGeaendert(mAlt, mNeu, monat)) return null;\n", ""]], pruefungen: ABSCHLUSS },
+  { id: "A3", was: "kein Rückfall auf den vollen Weg bei laufender Korrekturrevision", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["        if (teilM && teilM.bestand.mandanten.some(hatLaufendeKorrektur)) teilM = null;\n", ""]], pruefungen: ABSCHLUSS },
+  { id: "A4", was: "unlesbare gewählte Scherbe übergangen statt Abbruch (fail-open)", datei: "server/lib/bestand.mjs",
+    ersetzungen: [["    const s = await streng(`Scherbe ${b.key}`, () => store.get(b.key, { type: \"json\" }));\n    if (s === undefined || s === null) throw unlesbar(raum, `Scherbe ${b.key}`, \"verschwunden oder leer\");",
+      "    const s = await store.get(b.key, { type: \"json\" }).catch(() => null);\n    if (!s) continue;"]], pruefungen: ABSCHLUSS },
+  { id: "A5", was: "Scherbe des Monats nicht aus dem Ergebnis übernommen (leer geschrieben)", datei: "server/lib/abschluss-segmentweise.mjs",
+    ersetzungen: [["  const s = z.scherben.get(id);", "  const s = id && undefined;"]], pruefungen: ABSCHLUSS },
+  { id: "A6", was: "Schalter immer an", datei: "server/lib/schalter.mjs",
+    ersetzungen: [["export const abschlussSegmentweiseAn = () => process.env.CENTRIC_ABSCHLUSS_SEGMENTWEISE === \"true\";", "export const abschlussSegmentweiseAn = () => true;"]], pruefungen: ABSCHLUSS },
+  { id: "A7", was: "Auswahl-Lesen ohne gehaltene Raumsperre erlaubt", datei: "server/lib/bestand.mjs",
+    ersetzungen: [["  if (!sperreGehalten(raum)) throw new Error(\"bestandLesenAuswahlStreng: nur unter der Raumsperre\");\n", ""]], pruefungen: ABSCHLUSS },
+  { id: "A8", was: "Auswahl ignoriert: alle Scherben unter der Sperre gelesen", datei: "server/lib/bestand.mjs",
+    ersetzungen: [["    if (!wahl.has(scherbenKennung(raum, b.key))) continue;\n", ""]], pruefungen: ABSCHLUSS },
+  { id: "A9", was: "Rückfall entfernt: abschlussTeile null schreibt den Teilbestand über den vollen Schreiber", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["        if (teilM && !(\"status\" in r) && !teileM) {", "        if (false && teilM && !(\"status\" in r) && !teileM) {"]], pruefungen: ABSCHLUSS },
+  { id: "A10", was: "Eindeutigkeit nur der eigenen Betriebskennung geprüft (zwei Betriebe ohne Kennung → 500)", datei: "server/lib/abschluss-segmentweise.mjs",
+    ersetzungen: [["    if (new Set(ids).size !== ids.length) return null;", "    if (ids.filter((x) => x === m.id).length !== 1) return null;"]], pruefungen: ABSCHLUSS },
+];
 
 function argWert(name) {
   const i = process.argv.indexOf(name);
