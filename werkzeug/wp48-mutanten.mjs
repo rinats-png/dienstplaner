@@ -167,6 +167,10 @@ export const MUTANTEN = [
     ersetzungen: [["  if (!sperreGehalten(raum)) throw new Error(\"bestandLesenAuswahlStreng: nur unter der Raumsperre\");\n", ""]], pruefungen: ABSCHLUSS },
   { id: "A8", was: "Auswahl ignoriert: alle Scherben unter der Sperre gelesen", datei: "server/lib/bestand.mjs",
     ersetzungen: [["    if (!wahl.has(scherbenKennung(raum, b.key))) continue;\n", ""]], pruefungen: ABSCHLUSS },
+  { id: "A9", was: "Rückfall entfernt: abschlussTeile null schreibt den Teilbestand über den vollen Schreiber", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["        if (teilM && !(\"status\" in r) && !teileM) {", "        if (false && teilM && !(\"status\" in r) && !teileM) {"]], pruefungen: ABSCHLUSS },
+  { id: "A10", was: "Eindeutigkeit nur der eigenen Betriebskennung geprüft (zwei Betriebe ohne Kennung → 500)", datei: "server/lib/abschluss-segmentweise.mjs",
+    ersetzungen: [["    if (new Set(ids).size !== ids.length) return null;", "    if (ids.filter((x) => x === m.id).length !== 1) return null;"]], pruefungen: ABSCHLUSS },
 ];
 
 function argWert(name) {

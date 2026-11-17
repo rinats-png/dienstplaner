@@ -57,8 +57,11 @@ export function abschlussAuswahl(sitzung, monat) {
   return (kern) => {
     const m = eigenerMandant(kern, sitzung);
     if (!m || typeof m.id !== "string" || !m.id || m.id.includes(":")) return null;
+    /* Alle Betriebskennungen des Raums eindeutig — dieselbe Regel wie teileGeprueft (bestand.mjs, „Betriebskennung
+       doppelt“, auch zwei Betriebe ohne Kennung). Sonst würfe der Segmentschreiber (500); so nimmt der Abschluss den
+       vollen Weg (Review PR #322, Auflage 2). */
     const ids = (Array.isArray(kern.mandanten) ? kern.mandanten : []).map((x) => (objekt(x) ? x.id : undefined));
-    if (ids.filter((x) => x === m.id).length !== 1) return null;
+    if (new Set(ids).size !== ids.length) return null;
     const monate = jahrBisMonat(monat);
     return monate.length ? monate.map((mon) => `${m.id}::${mon}`) : null;
   };

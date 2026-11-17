@@ -745,6 +745,15 @@ keine Entscheidung nötig).
   verkürzt die gehaltene Sperre, nicht das gesamte Lesen. Die Rechnung läuft weiter **unter** der Sperre (Stufe b: Rechnen ohne
   Sperre, compare-and-set auf Stand/Epoche, höchstens 3 Wiederholungen — offen). Messung der Haltezeit 60/150/400 × 12/24/36
   ist WP-48.9 (Staging), nicht lokal gemacht.
+- **Bekannt (Review PR #322, Auflage 4):** Der Segmentweg übernimmt die Abdrücke der nicht berührten Scherben **ungeprüft aus
+  dem Vermerk** (`teileSchreiben`). Der volle Weg hasht dagegen alle Scherben neu und schreibt eine abweichende neu. Weicht eine
+  Scherbe auf der Platte vom Vermerk ab, ohne dass Verzeichnis oder Stand es zeigen (etwa eine von Hand ersetzte Datei), bleibt
+  das im Segmentweg unbemerkt, bis der nächste volle Schreibvorgang sie neu hasht. Vor dem Einschalten (P1-7 (e)) gehört
+  `ablage-pruefen` zur Staging-Abnahme.
+- **Review-Auflagen PR #322 eingearbeitet:** Rückfall Ende-zu-Ende (`abschlussTeile` erzwungen null → voll neu gelesen und
+  gerechnet, Platte gleich dem vollen Weg, Sonde unter der Sperre); Eindeutigkeit **aller** Betriebskennungen des Raums vor dem
+  Segmentweg (sonst `TEILE_UNGUELTIG` → 500; jetzt Rückfall); Schritte mit Nachtdiensten über die Zeitumstellung (28./29.03.,
+  24./25.10.) und über den Jahreswechsel (31.12.→01.01.) in der Gleichwertigkeit. Mutanten A9, A10 dazu.
 - **Prüfungen** `pruefungen/wp48-7-abschluss-segmentweise.test.js` (`pruefung:wp48-abschluss`, CI, feste Zeit 05.11.2026):
   Gleichwertigkeit über 16 Schritte in zwei gleichen Räumen (Erfolge und Absagen, Vorjahr, Monat ohne Scherbe, Wiederöffnen
   leert die Scherbe, Lohnexport mit offenem Vormonat, Konto mit wiederoffenem Januar, Nachtdienst am Monatsletzten, ungültiger

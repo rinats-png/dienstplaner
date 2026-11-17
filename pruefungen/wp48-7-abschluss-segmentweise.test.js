@@ -38,6 +38,15 @@ vi.mock("node:crypto", async (original) => {
     ? Buffer.from(String(globalThis.__wp487id++).padStart(12, "0").slice(-12), "hex") : echt.randomBytes(n, ...rest));
   return { ...echt, randomBytes, default: { ...(echt.default || echt), randomBytes } };
 });
+/* Rückfallpfad (Review PR #322, Auflage 1): abschlussTeile liefert auf Wunsch null — wie bei einer Änderung außerhalb
+   des Monats. Gezählt wird, wie oft der Endpunkt abschlussTeile aufruft. */
+vi.mock("../server/lib/abschluss-segmentweise.mjs", async (original) => {
+  const echt = await original();
+  return { ...echt, abschlussTeile: (...a) => {
+    globalThis.__wp487teile = (globalThis.__wp487teile || 0) + 1;
+    return globalThis.__wp487nichtTeile ? null : echt.abschlussTeile(...a);
+  } };
+});
 
 const WIRT = "127.0.0.1:3000";
 const SCHALTER = "CENTRIC_ABSCHLUSS_SEGMENTWEISE";
@@ -82,6 +91,14 @@ function betrieb(id, pre, extra = {}) {
   einstempeln[`${pre}a2|2026-03-20`] = stempel("2026-03-20", "06:00", null); abweichungen[`${pre}a2|2026-03-20`] = "F";
   einstempeln[`${pre}a2|2026-10-31`] = stempel("2026-10-31", "22:00", null, { startAm: "2026-10-31T21:00:00.000Z" });
   abweichungen[`${pre}a2|2026-10-31`] = "N";
+  /* Nachtdienste über die Zeitumstellung (29.03. 7 h, 25.10. 9 h Wanduhr 22–6) und über den Jahreswechsel 31.12.→01.01.
+     (Review PR #322, Auflage 3). Der Schlüssel gehört zum Tag des Beginns. */
+  for (const [t, an, ab] of [["2026-03-28", "2026-03-28T21:00:00.000Z", "2026-03-29T04:00:00.000Z"],
+    ["2026-10-24", "2026-10-24T20:00:00.000Z", "2026-10-25T05:00:00.000Z"], ["2025-12-31", "2025-12-31T21:00:00.000Z", "2026-01-01T05:00:00.000Z"]]) {
+    abweichungen[`${pre}a1|${t}`] = "N";
+    einstempeln[`${pre}a1|${t}`] = stempel(t, "22:00", "06:00", { startAm: an, endeAm: ab });
+    erfassung[`${pre}a1|${t}`] = { start: "22:00", ende: "06:00", bestaetigt: true, grund: "" };
+  }
   /* Ein Eintrag ohne erkennbares Datum bleibt im Kern (scherben.mjs) — muss durch beide Wege gleich laufen. */
   abweichungen["ohne-datum"] = "F";
   return { id, name: `Haus ${id}`, einheiten: [{ id: "e1", name: "WB 1" }], einstellungen: { ruhezeit: 11 },
@@ -90,8 +107,8 @@ function betrieb(id, pre, extra = {}) {
     abweichungen, abwesenheiten: [{ id: "u1", personId: `${pre}a1`, art: "urlaub", von: "2026-04-20", bis: "2026-04-24" }],
     erfassung, einstempeln, anfragen: [], nachrichten: [], monatsabschluss: {}, ...extra };
 }
-const raumAnlegen = async (raum, m2extra = {}) =>
-  B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [betrieb("m1", ""), betrieb("m2", "b", m2extra)] }, { durch: "Pruefung" });
+const raumAnlegen = async (raum, m2extra = {}, weitere = []) =>
+  B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [betrieb("m1", ""), betrieb("m2", "b", m2extra), ...weitere] }, { durch: "Pruefung" });
 const token = async (raum, person = "l1", rolle = "leitung", betrieb = 0, mandantId = "m1") =>
   (await sitzungAnlegen({ bestand: raum, name: `V ${person}`, rolle, person, betrieb, mandantId, einheit: null }, 24 * 3600 * 1000)).token;
 const mandant = async (raum, i = 0) => (await B.bestandLesen(laden(), raum)).bestand.mandanten[i];
@@ -183,6 +200,10 @@ describe("Gleichwertigkeit: voller Weg und segmentweise ergeben dieselbe Platte"
     { rumpf: { aktion: "wiederoeffnen", monat: "2026-10", grund: "kurz" }, erwartet: 422 },
     { rumpf: { aktion: "abschliessen", monat: "2026-11" }, erwartet: 422 },                                   // nicht vergangen
     { rumpf: { aktion: "abschliessen", monat: "2026-13" }, erwartet: 422 },                                   // ungültig
+    { rumpf: { aktion: "wiederoeffnen", monat: "2025-12", grund: "Nachtdienst Silvester prüfen" }, erwartet: 200 }, // Jahreswechsel
+    { rumpf: { aktion: "abschliessen", monat: "2025-12", trotzPrueffaellen: true }, erwartet: 200 },
+    { rumpf: { aktion: "abschliessen", monat: "2026-04", trotzPrueffaellen: true }, erwartet: 200 },          // nach Sommerzeitbeginn
+    { rumpf: { aktion: "wiederoeffnen", monat: "2026-03", grund: "Sommerzeit prüfen" }, erwartet: 409 },        // exportiert
   ];
 
   it("16 Schritte: Status, Antwort, Bestand und jede Datei gleich; der Vermerk passt; Monate außerhalb unberührt", async () => {
@@ -214,7 +235,10 @@ describe("Gleichwertigkeit: voller Weg und segmentweise ergeben dieselbe Platte"
     }
     /* Die Folge hat wirklich geschrieben: Abschlüsse mit Freeze, Konto über Vorjahr und Monate. */
     const m = await mandant(teil);
-    expect(Object.keys(m.monatsabschluss).sort()).toEqual(["2025-12", "2026-01", "2026-02", "2026-03", "2026-06", "2026-10"]);
+    expect(Object.keys(m.monatsabschluss).sort()).toEqual(["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-06", "2026-10"]);
+    /* Zeitumstellung und Jahreswechsel liegen eingefroren am Tag des Beginns (in beiden Wegen gleich, siehe oben). */
+    for (const k of ["a1|2026-03-28", "a1|2026-10-24", "a1|2025-12-31"]) expect(m.istEingefroren[k], k).toBeTruthy();
+    expect(m.istEingefroren["a1|2026-03-28"].std).not.toBe(m.istEingefroren["a1|2026-10-24"].std);
     expect(m.monatsabschluss["2026-03"].lohnexport).toBeTruthy();
     expect(MA.istAbdruck(m, "2026-02")).toBe(m.monatsabschluss["2026-02"].abdruck);
     expect(m.istEingefroren["a1|2026-02"].k).not.toBeNull();
@@ -322,6 +346,66 @@ describe("Fail-closed zurück auf den vollen Weg", { timeout: 120000 }, () => {
     expect(SW.abschlussTeile(bestand, alt, wegFremd, "2026-03")).toBeNull();
     const leer = SW.abschlussTeile(bestand, alt, { ...alt, abweichungen: { "a|2026-02-01": "F", x: "F" } }, "2026-03");
     expect(leer && leer.scherben[0].felder.abweichungen).toEqual({});
+  });
+
+  it("Rückfall Ende-zu-Ende: abschlussTeile null → voll neu gelesen und gerechnet; Platte gleich dem vollen Weg", async () => {
+    const voll = "wp487rf-voll", teil = "wp487rf-teil";
+    await raumAnlegen(voll); await raumAnlegen(teil);
+    const schritte = [{ aktion: "abschliessen", monat: "2026-03", trotzPrueffaellen: true },
+      { aktion: "wiederoeffnen", monat: "2026-03", grund: "Rückfall erneut prüfen" }, { aktion: "abschliessen", monat: "2026-02", trotzPrueffaellen: true }];
+    for (const [i, rumpf] of schritte.entries()) {
+      schalter(undefined);
+      globalThis.__wp487id = 500 * (i + 1);
+      const av = await anfrage("monatsabschluss", { token: await token(voll), rumpf });
+      schalter("true");
+      globalThis.__wp487id = 500 * (i + 1);
+      globalThis.__wp487nichtTeile = true; globalThis.__wp487teile = 0;
+      const at = await anfrage("monatsabschluss", { token: await token(teil), rumpf });
+      const aufrufe = globalThis.__wp487teile;
+      delete globalThis.__wp487nichtTeile; delete globalThis.__wp487id;
+      schalter(undefined);
+      expect(aufrufe, `Schritt ${i}: segmentweise versucht`).toBe(1);
+      expect([av.status, at.status], at.roh).toEqual([200, 200]);
+      expect(norm(at)).toBe(norm(av));
+      const [pv, pt] = [await platte(voll), await platte(teil)];
+      expect(pt.kern).toBe(pv.kern);
+      expect(pt.scherben).toBe(pv.scherben);
+      await vermerkPasst(teil);
+    }
+  });
+
+  it("Rückfall unter der Sperre: abschlussTeile null → der volle Weg liest die Scherbe 2024 (503)", async () => {
+    const raum = "wp487rf-sonde";
+    await raumAnlegen(raum);
+    globalThis.__wp487nichtTeile = true;
+    try {
+      const { r } = await beschaedigtAnDerSperre(raum, "2024-06", MAERZ, "true");
+      expect(r.status, r.roh).toBe(503);
+    } finally { delete globalThis.__wp487nichtTeile; }
+  });
+
+  it("zwei Betriebe ohne Kennung im Raum: kein 500, Rückfall auf den vollen Weg (gleich dem vollen Weg; 503 an der Scherbe 2024)", async () => {
+    const ohne = [{ name: "ohne Kennung A", personen: [] }, { name: "ohne Kennung B", personen: [] }];
+    const voll = "wp487oi-voll", teil = "wp487oi-teil";
+    await raumAnlegen(voll, {}, ohne); await raumAnlegen(teil, {}, ohne);
+    schalter(undefined);
+    globalThis.__wp487id = 9000;
+    const av = await anfrage("monatsabschluss", { token: await token(voll), rumpf: MAERZ });
+    schalter("true");
+    globalThis.__wp487id = 9000;
+    const at = await anfrage("monatsabschluss", { token: await token(teil), rumpf: MAERZ });
+    delete globalThis.__wp487id;
+    expect([av.status, at.status], at.roh).toEqual([200, 200]);
+    expect(norm(at)).toBe(norm(av));
+    expect((await platte(teil)).scherben).toBe((await platte(voll)).scherben);
+    expect((await platte(teil)).kern).toBe((await platte(voll)).kern);
+    const sonde = "wp487oi-sonde";
+    await raumAnlegen(sonde, {}, ohne);
+    const { r } = await beschaedigtAnDerSperre(sonde, "2024-06", MAERZ, "true");
+    expect(r.status, r.roh).toBe(503);
+    const SW = await import("../server/lib/abschluss-segmentweise.mjs");
+    expect(SW.abschlussAuswahl({ betrieb: 0, mandantId: "m1" }, "2026-03")({ mandanten: [{ id: "m1" }, {}, {}] })).toBeNull();
+    expect(SW.abschlussAuswahl({ betrieb: 0, mandantId: "m1" }, "2026-03")({ mandanten: [{ id: "m1" }, { id: "m2" }] })).toEqual(["m1::2026-01", "m1::2026-02", "m1::2026-03"]);
   });
 
   it("bestandLesenAuswahlStreng nur unter der Raumsperre", async () => {
