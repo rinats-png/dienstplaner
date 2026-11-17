@@ -19,6 +19,7 @@
    src/stufen.js liest sie von hier (keine zweite Liste, die driftet).
    ========================================================================== */
 import { BRANCHENMODULE, pruefeModulStatus } from "./branchenmodule.mjs";
+import { betriebstag } from "./betriebszeit.mjs";
 
 export const PAKET_MERKMALE = Object.freeze({
   kern: Object.freeze(["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"]),
@@ -122,9 +123,8 @@ export function tagGueltig(s) {
   return t <= new Date(Date.UTC(j, m, 0)).getUTCDate();
 }
 
-/** Der heutige Kalendertag in Europe/Berlin (Servertag). */
-export const paketTag = (jetzt = new Date()) =>
-  new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
+/** Der heutige Kalendertag in Europe/Berlin (Servertag) — zentrale Zeitbasis betriebszeit.mjs (WP-ZEIT). */
+export const paketTag = (jetzt = new Date()) => betriebstag(jetzt);
 
 /** Pflichttext: nicht leer, höchstens TEXT_GRENZE Zeichen. */
 const text = (x) => typeof x === "string" && x.trim() !== "" && x.length <= TEXT_GRENZE;

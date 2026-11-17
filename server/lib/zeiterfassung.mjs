@@ -35,7 +35,7 @@
    ========================================================================== */
 import { pauseZuLang } from "./zeitregeln.mjs";
 import { dienstAm, imDienst } from "./fachpruefung.mjs";
-import { betriebstag, BETRIEBSZONE } from "./betriebszeit.mjs";
+import { betriebstag, wanduhr, zeitpunktAusWanduhr, BETRIEBSZONE } from "./betriebszeit.mjs";
 
 const TAG_MS = 86400000;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
@@ -87,29 +87,20 @@ export function heuteBerlin(jetzt = new Date()) {
    kurz gerechnet. */
 export const OFFEN_MAX_MINUTEN = 20 * 60;
 
-const BERLIN_TEILE = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", hourCycle: "h23",
-  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-
-/** Abstand der Berliner Wanduhr zu UTC in Millisekunden, zum Zeitpunkt ms. */
-function berlinVersatz(ms) {
-  const t = Object.fromEntries(BERLIN_TEILE.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
-  const wand = Date.UTC(Number(t.year), Number(t.month) - 1, Number(t.day), Number(t.hour), Number(t.minute));
-  return wand - Math.floor(ms / 60000) * 60000;
-}
-
-/** Zeitpunkt (ms) einer Berliner Wanduhrzeit „JJJJ-MM-TT" + „HH:MM" — oder null. */
+/**
+ * Zeitpunkt (ms) einer Berliner Wanduhrzeit „JJJJ-MM-TT" + „HH:MM" — oder null. Die Abbildung (Frühjahrslücke nach
+ * vorn, doppelte Herbststunde die spätere) liegt in betriebszeit.mjs (zeitpunktAusWanduhr, WP-ZEIT).
+ */
 export function berlinZeitpunkt(datum, uhrzeit) {
   if (!TAG.test(String(datum)) || typeof uhrzeit !== "string" || !UHRZEIT.test(uhrzeit)) return null;
   const [y, mo, d] = datum.split("-").map(Number);
   if (iso(new Date(Date.UTC(y, mo - 1, d))) !== datum) return null;          // 2026-13-01, 2026-02-30
-  const wand = Date.UTC(y, mo - 1, d, Number(uhrzeit.slice(0, 2)), Number(uhrzeit.slice(3, 5)));
-  const erst = wand - berlinVersatz(wand);
-  return wand - berlinVersatz(erst);
+  return zeitpunktAusWanduhr(datum, Number(uhrzeit.slice(0, 2)) * 60 + Number(uhrzeit.slice(3, 5)), BETRIEBSZONE);
 }
 
-/** Die Berliner Uhrzeit (HH:MM, Minuten abgeschnitten) — dieselbe, die /api/stempeln speichert. */
+/** Die Berliner Uhrzeit (HH:MM, Minuten abgeschnitten) — dieselbe, die /api/stempeln speichert (wanduhr, WP-ZEIT). */
 export function uhrzeitBerlin(jetzt = new Date()) {
-  return jetzt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+  return wanduhr(jetzt, BETRIEBSZONE);
 }
 
 /** Ein gespeicherter UTC-Zeitpunkt (ISO), auf die Minute abgeschnitten — oder null. */
