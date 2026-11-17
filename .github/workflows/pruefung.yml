@@ -163,6 +163,11 @@ jobs:
       - name: QS-ZEIT, feste Zeitbasis und Grenzuhren
         run: npm run pruefung:qs-zeitbasis && npm run pruefung:geo-uhren
 
+      # WP-ZEIT-Rest (QS-ZEITABHAENGIGKEIT.md § 3): lokale Berlin-Tagesformeln in erstleitung/paketstand/planfreigabe/
+      # zeiterfassung über betriebszeit.mjs; Differenzialtest alt gegen neu (Umstellungsnächte, Mitternachten, Zonenmatrix).
+      - name: WP-ZEIT, Berlin-Tagesformeln über die zentrale Zeitbasis
+        run: npm run pruefung:zeit-tagesformeln
+
       # Staging O2 (C1/C2): Offline-Prüfung von deploy/staging-o2/ und dem Staging-Gate-Workflow
       # (Compose, Platzhalter, Caddyfile, Betriebsskript, Gate nur per Hand und nur lesend; kein Docker, kein Netz).
       - name: Staging O2, Vorbereitung offline

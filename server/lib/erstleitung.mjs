@@ -75,6 +75,7 @@ import { kontoLesenStreng, kontoAendern } from "./konten.mjs";
 import { bestandLesenStreng, bestandSchreiben, unterRaumsperre } from "./bestand.mjs";
 import { ersteinrichtungAbschliessen, ersteinrichtungImBuch, regimeFesthalten, regimeImBuch, widerrufen as widerrufbuchEintragen }
   from "./widerrufbuch.mjs";
+import { betriebstag } from "./betriebszeit.mjs";
 
 /* --------------------------------------------------------------------------
    KOPPLUNG MIT DEM WIDERRUFBUCH (E-M6, PR #292; Review C1/C2, 2026-11-14)
@@ -103,8 +104,8 @@ import { ersteinrichtungAbschliessen, ersteinrichtungImBuch, regimeFesthalten, r
 /** Bezeichnung der ersten Person (wie bisher in der Oberfläche: Rolle als Nachname, Vorname leer). */
 const BEZEICHNUNG = "Organisationsleitung";
 
-const heuteBerlin = (jetzt = Date.now()) =>
-  new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date(jetzt));
+/** Heutiger Betriebstag (JJJJ-MM-TT, Europe/Berlin) — zentrale Zeitbasis betriebszeit.mjs (WP-ZEIT). */
+const heuteBerlin = (jetzt = Date.now()) => betriebstag(jetzt);
 
 /** Personenkennung aus dem Zufallsgenerator des Betriebssystems (Muster wie provisionierung.mjs). */
 const neuePersonId = () => `p_${randomBytes(5).toString("hex").slice(0, 7)}`;
