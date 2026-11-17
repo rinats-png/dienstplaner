@@ -56,6 +56,13 @@ Davor schon gemergt und in der Entscheidungsliste als Vorgang geführt: #298 (Wi
 
 **Betreiber:** die einzige Liste steht in `ENTSCHEIDUNGSLISTE.md` Abschnitt B; hier nicht wiederholt.
 
+## Nachtrag 2026-11-17 Abend (Leerlauf nach #333, Kopf `10965585`)
+
+- Leerlauf nach dem Merge von #333: Lease Epoche 19 war seit 15:28Z abgelaufen; `leerlauf` meldete Exit 5, Übernahme mit neuer Kennung (Epoche 20, 16:14Z). Danach gemergt: #334 (ABN-B3, Meldungsdateiname unter Windows), #335 (SSOT ABN-B3), #336 (Flake-Diagnose `intelligence-gateway-ergebnis`: Zufallstreffer auf Marker „0151“, lokal in 30 Läufen nicht reproduzierbar, Meldung zeigt jetzt die Umgebung), #337 (WP-ZEIT-Rest, Differenzialtest `pruefung:zeit-tagesformeln`), #338 (Beleg), #339 (SSOT-Werkzeug: als „teilweise“ deklarierte Pakete werden nie komplett INTEGRATED, BLOCKED bleibt).
+- Befund: `ssot-nach-integration.mjs 337 --schreibe` hätte WP-ZEIT komplett auf INTEGRATED gesetzt (Ursache in #339 behoben). Beim Merge-Gate: Gate `prozess-wachen` verlangt für neue Testdateien mit Uhr-Bezug eine feste Uhr oder `// zeit-ok: <Grund>`.
+- Backlog: kein Paket mehr READY. Alles Weitere hängt an Betreiberentscheidungen (`ENTSCHEIDUNGSLISTE.md` B, neu P2-12). #327 (Workflow-Entwurf, Shard) bleibt Entwurf: Workflow-Änderung nur auf Auftrag. main-Drift (#78, #79, `1066563d`): Inhalt ist in `integration/release-v4` enthalten (Demo-Schalter-Doku und -Test identisch), kein Handlungsbedarf.
+- Lokal: Speichermangel beim Lauf großer Testmengen (Claude Code beendete einen Lauf mit 40 Testdateien); große Mengen der CI überlassen.
+
 ## Nachtrag 2026-11-17 (Einrichtungskette IONOS, Kopf `8300c346`)
 
 - Betreiberentscheidung 2026-11-17: keine Staging-VM bis Phase D (Phasen A–E); Object Storage, Cloud Backup mit BE-1–BE-3 und Messung vorbereitet: `EINRICHTUNGSKETTE-IONOS.md` (Kurzfassung §0), Vorlagen `deploy/sicherung/s3-*.json.beispiel`, Messskript `deploy/auslastung-messen.sh`. Nichts bestellt, nichts verbunden. Betreiberpunkte nur in `ENTSCHEIDUNGSLISTE.md` P3-8.
