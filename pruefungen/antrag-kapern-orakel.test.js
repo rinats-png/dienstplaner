@@ -218,6 +218,8 @@ function altEigeneEintraege(alt, neu, ich) {
   const eigene = (Array.isArray(neu) ? neu : []).filter((e) => eigenerEintrag(e, ich));
   return [...fremde, ...eigene];
 }
+const tauschgesuchSichtbar = (a) => !!a && a.typ === "tausch" && a.status === "offen" && !a.partnerId;
+/** Stand nach #356 (M1: Interessenmeldung nur an sichtbaren Tauschgesuchen), vor B1. */
 function altAnfragenZusammen(alt, neu, ich) {
   const alteNachId = new Map((Array.isArray(alt) ? alt : []).filter(Boolean).map((a) => [a.id, a]));
   const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
@@ -231,6 +233,8 @@ function altAnfragenZusammen(alt, neu, ich) {
         ? { ...a, status, freigaben: vorher.freigaben, entschieden: vorher.entschieden,
             durch: vorher.durch, antwort: vorher.antwort }
         : { ...a, status, freigaben: undefined, entschieden: undefined, durch: undefined, antwort: undefined });
+    } else if (vorher && !tauschgesuchSichtbar(vorher)) {
+      aus.push(vorher);
     } else if (vorher) {
       const alteI = (vorher.interessenten || []).filter((x) => String(x) !== String(ich));
       const meineI = (a.interessenten || []).filter((x) => String(x) === String(ich));
