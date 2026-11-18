@@ -1,7 +1,7 @@
 /* ==========================================================================
    WP-48.7 (Stufe b): MONATSABSCHLUSS — RECHNEN OHNE RAUMSPERRE
 
-   docs/acc45/WP48-TEILSPEICHERUNG.md Abschnitt 5 und 7.7. Schalter
+   docs/acc45/WP48-TEILSPEICHERUNG.md Abschnitt 5 und 7.8. Schalter
    CENTRIC_ABSCHLUSS_OHNE_SPERRE (nur zusammen mit
    CENTRIC_ABSCHLUSS_SEGMENTWEISE; Vorgabe aus). Abschließen, Wiederöffnen und
    Lohnexport lesen einen Schnappschuss (Kern + Jahr bis zum Monat, Stand,
