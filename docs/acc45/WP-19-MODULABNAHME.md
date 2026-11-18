@@ -97,6 +97,12 @@ Keine weiteren Auffälligkeiten: kein Absturz, kein Leck in einen anderen Betrie
 Beobachtungen ohne Befund: Der Betreiber sieht `dienstarten` (Betriebskonfiguration, keine Personendaten) und der Betriebsrat `dienstarten` und `kompetenzen`
 (Maschinenqualifikationen, Recht `staff.view`, offen M3); beides ist vorbestehendes Verhalten außerhalb der Modulregeln.
 
+**Nachtrag 2026-11-18 (Nachholreview WP-19, erledigt im Code, Delta-Review offen):** M-PQ1 (Betreuungsqualifikation nach § 43b nur in der
+Gruppe `betreuung`, Altbestand mit Hinweis statt Umdeutung), M-BD2 (abgeschlossener Monat aus dem gespeicherten Stand; Stufe als Tarifversion,
+keine rückwirkende Vergütungsänderung, auch nicht durch erstmaliges Setzen eines leeren Faktors einer gebundenen Stufe), N-1, N-2, N-BD3 (Prüftag vom Aufrufer). Einzelheiten:
+[NACHHOLREVIEW-WP19-MODULE-2026-11-13.md](NACHHOLREVIEW-WP19-MODULE-2026-11-13.md), Abschnitt 7. Die Matrix unten ändert sich dadurch nicht
+(gleiche Rollenrechte); Status bleibt `geplant`.
+
 ## 3 Zugriffsstufen der Ansichten (ohne Betriebsfeld: Objektbericht, Wachbuch-Ansicht)
 
 Der Objektbericht hat kein Betriebsfeld und keinen Schreibweg (R-5, OB-2); Kontischichtmodelle auch nicht (K1; der Assistent rechnet nur, „Als Schichtfolge übernehmen“ ist

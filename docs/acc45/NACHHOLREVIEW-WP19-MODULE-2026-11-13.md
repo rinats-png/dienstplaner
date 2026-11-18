@@ -309,3 +309,24 @@ Für alle sechs gilt:
   nach Behebung und Delta-Review auszusprechen.
 
 PR-Nummern für abe3e157 gibt es nicht und werden nicht angegeben.
+
+## 7. Nachtrag 2026-11-18: Behebung M-PQ1, M-BD2, N-1, N-2, N-BD3 (Branch `fix/wp19-5-6-nachbesserung`)
+
+Erledigt im Code, Delta-Review steht aus. Module bleiben `geplant`, kein Statuswechsel, keine Aktivierung; die Fachnachweise
+(FN-12 bis FN-19) sperren weiter nur die produktive Aktivierung.
+
+| Befund | Behebung | Nachweis |
+|---|---|---|
+| M-PQ1 (19.5) | Betreuungsqualifikation (§ 43b SGB XI in Grundlage oder Name, oder Merkmal `betreuung`) nur in der Gruppe `betreuung` (FN-14, Q2 a); neue oder geänderte Niveaus abgewiesen. Altbestand nicht still umgedeutet: ein unverändert gespeichertes Niveau bleibt speicherbar, die Verteilung zählt die Qualifikation dort nie (nie Pflegekraft) und meldet `hinweise` (nur Niveau und Qualifikation). | `pruefungen/modul-pflegequal-betreuung.test.js` (Probe D, Rollen, Zustand byte-gleich, Regression `fachkraftLage` am Pflege-Demobetrieb) |
+| M-BD2 (a) (19.6) | Einträge `Person\|Tag` eines abgeschlossenen Monats: Anlegen, Ändern, Entfernen abgewiesen; Abschlussstand nur aus dem gespeicherten Betrieb; unveränderte Alteinträge bleiben speicherbar. Auch der Ausnahmeweg (Art. 17) erst nach dem Wiederöffnen. | `pruefungen/modul-bereitschaft-abschluss.test.js` |
+| M-BD2 (b) (19.6) | Kleinste sichere Lösung: die Stufe ist die Tarifversion. Art und Faktor (auch ein leerer, „ungeklärt“) einer Stufe, die ein gespeicherter Dienst am oder vor dem Prüftag (der heutige Dienst läuft schon) oder in einem abgeschlossenen Monat trägt, sind fest; ein Tarifwert oder eine neue Fassung ist eine neue Stufe. Einen leeren Faktor erstmals setzen geht nur bei einer Stufe ohne gebundenen Dienst (Review #359, strenge Variante). Abgewiesen: Probe 0,5 → 1 (300 → 600 Minuten) und Probe leerer Faktor → 1 im abgeschlossenen Oktober (null → 600 Minuten). | wie oben |
+| N-BD3 (19.6) | Keine Uhr im Modul; Prüftag `heute` vom Aufrufer (`modul-wege.mjs`: `betriebstag()`); Fenster wie bisher ±731 Tage. | wie oben (feste Uhr, Grenzfall Mitternacht Berlin/UTC) |
+| N-1, N-2 (19.6) | Toter Zweig in `inanspruchnahmeMinuten` entfernt; JSDoc: spätere Konto-/Ruhezeitrechnung summiert die Vereinigung, nie `inanspruchnahmeLaenge`. Eigenschaftstest 2 000 Zufallsdienste (fester Startwert) gegen Minuten-Zählung. | wie oben |
+
+Grenzen: Erkennung § 43b über Grundlage, Name oder Merkmal (andere Bezeichnungen ohne § 43b nicht); Tarifänderung einer gebundenen
+Stufe nur über eine neue Stufe (keine Datumsversionierung, BD-1 bleibt offen).
+
+**Betreiberentscheidung BD/Art. 17 (offen, Verhalten unverändert):** Eine Löschung nach Art. 17 über den Ausnahmeweg wird in einem
+abgeschlossenen Monat abgewiesen, bis die Leitung ihn wiederöffnet. Die Fristlöschung des Löschlaufs (`aufbewahrung.mjs`, `raeumen` mit
+`moduldatenFaellig`) entfernt `bereitschaft`-Einträge dagegen nach Datum an den Modulwegen vorbei, auch in abgeschlossenen Monaten (erst nach
+Ablauf der Plandatenfrist). Zu entscheiden: ob diese Asymmetrie so bleibt oder Art. 17 im abgeschlossenen Monat ohne Wiederöffnen gehen soll.
