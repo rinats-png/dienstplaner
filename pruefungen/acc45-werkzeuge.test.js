@@ -46,6 +46,14 @@ describe("acc45-backlog: bereit, brief, fortschritt", () => {
     expect(BL.bereit(pakete).map((p) => p.id)).toEqual(["WP-09", "WP-02", "WP-10", "WP-13"]);
     expect(BL.bereit(pakete).map((p) => p.id)).not.toContain("WP-11");
     expect(BL.startbereit(pakete).map((p) => p.id)).toEqual(["WP-10"]);
+    expect(BL.fortsetzbar(pakete).map((p) => p.id)).toEqual(["WP-09", "WP-02", "WP-13"]);
+  });
+
+  it("Statusdokument: Abschnitt „In Arbeit, fortsetzbar (n)“ neben „Bereit zum Start“, n aus bereit", async () => {
+    const live = BL.paketeAus();
+    const t = await readFile(path.join(REPO, "docs", "acc45", "STATUS.md"), "utf8");
+    expect(t).toContain(`### Bereit zum Start (${BL.startbereit(live).length})`);
+    expect(t).toContain(`### In Arbeit, fortsetzbar (${BL.fortsetzbar(live).length})`);
   });
 
   it("bereit: BLOCKED mit erfüllten Abhängigkeiten steht nur in der Zweitliste; Erledigte und Unerfüllte nirgends", () => {

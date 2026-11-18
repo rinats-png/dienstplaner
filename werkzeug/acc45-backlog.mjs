@@ -231,6 +231,9 @@ export function bereit(pakete, { alle = false } = {}) {
 /** Nur READY (noch nicht begonnen): „Bereit zum Start“ in Kurzstatus und Statusdokument. */
 export const startbereit = (pakete, opt) => bereit(pakete, opt).filter((p) => p.status === "READY");
 
+/** IN_PROGRESS mit offener Restarbeit und erfüllten Abhängigkeiten (der IN_PROGRESS-Teil von bereit). */
+export const fortsetzbar = (pakete, opt) => bereit(pakete, opt).filter((p) => p.status === "IN_PROGRESS");
+
 /** BLOCKED, aber alle Abhängigkeiten erfüllt: Der Sperrgrund steht in der Notiz und ist zu prüfen. */
 export function bereitGesperrt(pakete, { alle = false } = {}) {
   const nach = new Map(pakete.map((p) => [p.id, p]));
@@ -545,6 +548,10 @@ function blockStatus(pakete, quelle) {
     `### Bereit zum Start (${startbereit(pakete).length})`,
     "",
     startbereit(pakete).map((p) => `${p.id} (${p.strang}, ${spanneText(p.aufwandPT)} PT)`).join(" · ") || "–",
+    "",
+    `### In Arbeit, fortsetzbar (${fortsetzbar(pakete).length})`,
+    "",
+    fortsetzbar(pakete).map((p) => `${p.id} (${p.strang}, ${spanneText(restAufwand(p))} PT offen)`).join(" · ") || "–",
     "",
     `### Integriert in \`integration/centric-complete\` (${integ.length})`,
     "",
