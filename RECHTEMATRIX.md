@@ -532,7 +532,11 @@ Interessenmeldung nur an einen fremden Antrag, den ihre Sicht zeigt — ein offe
 dieselbe Antwort wie für eine Kennung, die es nicht gibt. **Geschlossene Altlücke:** Bis dahin wurde die Meldung an
 JEDEN fremden Antrag gehängt, auch an einen verborgenen Urlaubsantrag (mit erratener Kennung), und gespeichert; mit der
 Kalendertagsprüfung (P2-12) hätte ein 422 Existenz und Tag eines verborgenen Antrags verraten. Geprüft in
-`pruefungen/p212-kalendertag.test.js` (Zustand und gleiche Antwort wie bei unbekannter Kennung).
+`pruefungen/p212-kalendertag.test.js` (Zustand und gleiche Antwort wie bei unbekannter Kennung; verborgen: Urlaub,
+Tauschgesuch mit festem Partner, entschiedenes Tauschgesuch). **Zustandswechsel (bewusst):** Hängt die eigene Meldung
+schon an einem Gesuch, das danach einen Partner bekommt oder entschieden wird, ist es nicht mehr sichtbar — ein
+Zurückziehen der Meldung wird dann ebenfalls still übergangen; die Meldung bleibt gespeichert, bis Planung oder Leitung
+das Gesuch ändern.
 
 **Betreiberhinweis P2-12 (Kalendertage, die es nicht gibt):** Ein gespeicherter Alteintrag mit einem Tag wie
 „2026-02-30" in `anfragen`, `ausschreibungen`, Krankmeldungsfällen, `abwesenheiten`, `erfassung` oder `abweichungen`

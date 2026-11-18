@@ -620,6 +620,9 @@ describe("Handler: anfragen/ausschreibungen/krankmeldungen je Rolle", () => {
       /* Review #356 M1: fremde Anträge, die die Sicht für m1 verbirgt (kein offenes Tauschgesuch) — einer mit unechtem Tag */
       { id: "r-verborgen", personId: "m2", typ: "abwesenheit", art: "urlaub", von: "2026-06-31", bis: "2026-07-01", status: "offen", erstellt: "x", antwort: "" },
       { id: "r-urlaub-ok", personId: "m2", typ: "abwesenheit", art: "urlaub", von: "2026-07-06", bis: "2026-07-07", status: "offen", erstellt: "x", antwort: "" },
+      /* Delta-Review #356 A1: verborgene Tauschgesuche — mit festem Partner und entschieden (je mit unechtem Tag) */
+      { id: "t-partner", personId: "m2", typ: "tausch", status: "offen", von: "2026-09-31", bis: "2026-09-31", partnerId: "m1", interessenten: [], text: "", erstellt: "x" },
+      { id: "t-zu", personId: "m2", typ: "tausch", status: "genehmigt", von: "2026-11-31", bis: "2026-11-31", partnerId: null, interessenten: [], text: "", erstellt: "x" },
       /* ein sichtbares, gültiges Tauschgesuch (Regression: Interesse melden und zurückziehen) */
       { id: "r-tausch-ok", personId: "m2", typ: "tausch", status: "offen", von: "2026-07-02", bis: "2026-07-02", partnerId: null, interessenten: [], text: "", erstellt: "x" }],
     ausschreibungen: [{ id: "as-alt", datum: "2026-06-31", dienstId: "F", einheitId: "e1", hinweis: "", status: "offen", erstellt: "2026-03-01T08:00:00.000Z", durch: "L",
@@ -725,13 +728,13 @@ describe("Handler: anfragen/ausschreibungen/krankmeldungen je Rolle", () => {
     const d = await put("leitung", (m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "r-alt"); });
     expect(d.status, JSON.stringify(d)).toBe(200);
     const s = (await roh2()).mandanten[0];
-    expect(s.anfragen.map((a) => a.id)).toEqual(["r-tausch", "r-verborgen", "r-urlaub-ok", "r-tausch-ok"]);
+    expect(s.anfragen.map((a) => a.id)).toEqual(["r-tausch", "r-verborgen", "r-urlaub-ok", "t-partner", "t-zu", "r-tausch-ok"]);
     expect(s.erfassung["m1|2026-2-30"]).toEqual(ALT_ERF);
   });
   it("Review #356 M1: Interesse an einem verborgenen fremden Antrag (erratene Kennung) — 200, Zustand unverändert, wie eine Kennung, die es nicht gibt", async () => {
     const ohneStand = (w) => { const { etag: _e, stand: _s, ...rest } = w; void _e; void _s; return rest; };
     const antworten = {};
-    for (const id of ["r-verborgen", "r-urlaub-ok", "r-gibt-es-nicht"]) {
+    for (const id of ["r-verborgen", "r-urlaub-ok", "t-partner", "t-zu", "r-gibt-es-nicht"]) {
       await zurueck();
       const vorher = (await roh2()).mandanten[0];
       const w = await put("mitarbeiter", (m) => { m.anfragen.push({ id, interessenten: ["m1"] }); });
@@ -744,9 +747,10 @@ describe("Handler: anfragen/ausschreibungen/krankmeldungen je Rolle", () => {
       expect(ohneTausch(s), id).toEqual(ohneTausch(vorher));
       expect(s.anfragen.find((a) => a.id === "r-verborgen").interessenten, id).toBeUndefined();
       expect(s.anfragen.find((a) => a.id === "r-urlaub-ok").interessenten, id).toBeUndefined();
+      expect(s.anfragen.find((a) => a.id === "t-partner").interessenten, id).toEqual([]);
+      expect(s.anfragen.find((a) => a.id === "t-zu").interessenten, id).toEqual([]);
     }
-    expect(antworten["r-verborgen"]).toEqual(antworten["r-gibt-es-nicht"]);
-    expect(antworten["r-urlaub-ok"]).toEqual(antworten["r-gibt-es-nicht"]);
+    for (const id of ["r-verborgen", "r-urlaub-ok", "t-partner", "t-zu"]) expect(antworten[id], id).toEqual(antworten["r-gibt-es-nicht"]);
   });
   it("Regression: Interesse an einem sichtbaren Tauschgesuch melden und zurückziehen geht weiter", async () => {
     await zurueck();
