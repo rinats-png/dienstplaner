@@ -3,36 +3,36 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 218,
   "statusZaehlung": {
-    "BLOCKED": 76,
+    "BLOCKED": 79,
     "READY": 16,
-    "IN_PROGRESS": 22,
-    "REVIEW": 7,
-    "INTEGRATED": 94,
+    "IN_PROGRESS": 19,
+    "REVIEW": 6,
+    "INTEGRATED": 95,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 118,
-      "offen": 38,
+      "offen": 39,
       "restPT": {
-        "min": 55.599999999999994,
-        "max": 97.9
+        "min": 62.599999999999994,
+        "max": 107.65
       }
     },
     "wp19": {
       "pakete": 15,
-      "offen": 15,
+      "offen": 14,
       "restPT": {
-        "min": 65.3,
-        "max": 101.7
+        "min": 64.5,
+        "max": 100.5
       }
     },
     "intelligence": {
       "pakete": 40,
-      "offen": 28,
+      "offen": 27,
       "restPT": {
-        "min": 179.5,
-        "max": 317.5
+        "min": 181,
+        "max": 320
       }
     },
     "folge": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 305.5,
-    "max": 527.2
+    "min": 313.2,
+    "max": 538.25
   },
   "kritischerPfad": {
     "summe": 70,
@@ -369,7 +369,7 @@
       "aufwandPT": {"min":2,"max":3},
       "restPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["WP-02"],
-      "status": "IN_PROGRESS",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"integration/centric-complete"},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -379,7 +379,7 @@
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "integration/centric-complete",
+      "branch": "integration/release-v4",
       "agent": "Agent 0 – Integration",
       "modell": "opus",
       "konfliktzonen": [],
@@ -388,7 +388,7 @@
       "akzeptanz": "Integrationsmerge B, Staging-Abnahme ohne Funktionsfehler, Produktiv-Deploy nach Freigabe",
       "tests": "CI, Abnahmelauf 89+, H8+-Invarianten",
       "dateien": "gesamte Kette B",
-      "notiz": "Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge."
+      "notiz": "Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge. Nachtrag 2026-11-18 (SSOT-Klassifizierung): BLOCKED statt IN_PROGRESS. Es gibt keine offene Entwicklungsarbeit; der Rest ist nur der Merge nach main (ohne ausdrückliche Betreiberfreigabe untersagt) sowie die Staging-Abnahme E-1 und Phase D. Branch-Feld von integration/centric-complete auf integration/release-v4 nachgeführt (der Integrationsbranch ist jetzt integration/release-v4)."
     },
     {
       "id": "WP-10",
@@ -570,7 +570,7 @@
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/time/wp16-pausen-und-monatsabschluss 6e51aa27 (Nachtrag 4), über PR #85 (58432b75)"},
         "lokalGetestet": {"wert":true,"beleg":"wp16-nachweis.md; Lauf 2026-11-12 auf 6c195b66: monatsabschluss-nachtrag 25/25; CI-Schritt pruefung:zeiterfassung"},
-        "reviewt": {"wert":"teilweise","beleg":"Opus-Review „integrierbar mit Auflagen“, Auflagen umgesetzt; Opus-Delta-Review nach Merge mit 14b/27b/23b läuft"},
+        "reviewt": {"wert":"teilweise","beleg":"Opus-Review „integrierbar mit Auflagen“, Auflagen umgesetzt; Opus-Delta-Review nach Merge mit 14b/27b/23b (Stand 2026-11-18: nicht mehr als laufend belegt)"},
         "integriert": {"wert":false,"beleg":"PR #85 (58432b75, acc45/time/wp16-integration → integration/centric-complete, 2026-11-04), Vorfahr von integration/release-v4; Status-Hebung = Koordinatorentscheidung (Prüfregel: integriert=true nur mit INTEGRATED)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
@@ -585,7 +585,7 @@
       "akzeptanz": "Pausenerfassung, ArbZG-Mindestpause-Warnung; Abschluss sperrt Ist; Wiederöffnen protokolliert",
       "tests": "Unit, E2E",
       "dateien": "server, src",
-      "notiz": "Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-16 kam nicht per Direkt-Merge 594f32c, sondern über PR #85 (58432b75); der Nachweis liegt im Integrationsstand. Status bleibt REVIEW bis zur Koordinatorentscheidung (Betreibervorgabe: abnahmefähig erst mit WP-16c, dessen Kern ebenfalls im Code ist)."
+      "notiz": "Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: WP-16 kam nicht per Direkt-Merge 594f32c, sondern über PR #85 (58432b75); der Nachweis liegt im Integrationsstand. Status bleibt REVIEW bis zur Koordinatorentscheidung (Betreibervorgabe: abnahmefähig erst mit WP-16c, dessen Kern ebenfalls im Code ist). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Die Aussage „Delta-Review läuft“ ist veraltet. Der Status bleibt REVIEW wegen der offenen Entscheidung A-6 (wp16-nachweis.md: Lohnart 1200 Mehrarbeit als Kontostand oder als Delta je Monat, Abstimmung mit dem Lohnbüro) sowie der Betreibervorgabe, dass WP-16 erst mit WP-16c abnahmefähig ist."
     },
     {
       "id": "WP-17",
@@ -650,12 +650,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0,"max":0},
       "abhaengigkeiten": ["WP-11","WP-22","WP-19.13"],
-      "status": "INTEGRATED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
-        "lokalGetestet": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
-        "reviewt": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
-        "integriert": {"wert":true,"beleg":"PR #247 in integration/release-v4"},
+        "implementiert": {"wert":"teilweise","beleg":"Teilumfänge integriert (PR #234, #243, #244, #247, #249; PR #247 in integration/release-v4); Sammelpaket nicht abgeschlossen, WP-19.13 (Modulabnahme) und weitere Teilpakete offen"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Teilumfänge integriert (PR #234, #243, #244, #247, #249; PR #247 in integration/release-v4); Sammelpaket nicht abgeschlossen, WP-19.13 (Modulabnahme) und weitere Teilpakete offen"},
+        "reviewt": {"wert":"teilweise","beleg":"Teilumfänge integriert (PR #234, #243, #244, #247, #249; PR #247 in integration/release-v4); Sammelpaket nicht abgeschlossen, WP-19.13 (Modulabnahme) und weitere Teilpakete offen"},
+        "integriert": {"wert":"teilweise","beleg":"Teilumfänge integriert (PR #234, #243, #244, #247, #249; PR #247 in integration/release-v4); Sammelpaket nicht abgeschlossen, WP-19.13 (Modulabnahme) und weitere Teilpakete offen"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -669,7 +669,7 @@
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
       "dateien": "src/module/*, server",
-      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247. Stand #249: Teilumfang (Oberfläche der Betriebsmittel und Kompetenzen zeigt bei Status geplant keine Schreibaktionen, WP-19-B5), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte."
+      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247. Stand #249: Teilumfang (Oberfläche der Betriebsmittel und Kompetenzen zeigt bei Status geplant keine Schreibaktionen, WP-19-B5), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status von INTEGRATED auf IN_PROGRESS zurückgesetzt (das Werkzeug ssot-nach-integration hatte das Sammelpaket nach #247 erneut auf INTEGRATED gesetzt, im Widerspruch zu dieser Notiz). Alle vier Stufen implementiert, lokalGetestet, reviewt und integriert stehen jetzt ausdrücklich auf „teilweise“, damit das Werkzeug auch PRs ohne „Teil“ im Titel nicht auf INTEGRATED setzt (wie bei WP-48)."
     },
     {
       "id": "WP-20",
@@ -706,7 +706,7 @@
       "prio": "P1",
       "aufwandPT": {"min":10,"max":13.5},
       "abhaengigkeiten": ["WP-12","WP-39"],
-      "status": "IN_PROGRESS",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #192 in integration/release-v4"},
@@ -725,7 +725,7 @@
       "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
       "tests": "Playwright-Viewports, Geräte",
       "dateien": "src/ansichten/*",
-      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten. Stand 2026-11-12: Teil 3 integriert (#211, 35 Render-Prüfungen bei 360/390/768/844x390; Teilmessung in Edge bei 390x844 und 844x390): Leitung Plan freigeben 2/2 (B16 behoben), Leitung/Planung Krankmeldung und Planung Übergabe bestanden. Offen: Schichtverantwortung Übergabe 0/2 (Ansicht fehlt in der SV-Navigation), Schichtverantwortung Krankmeldung 0/2 (Zeitüberschreitung), siehe WP-21-SV. Hinweis „Für Tablet und Rechner ausgelegt“ bleibt unverändert, bis alle 8 Viewports gemessen sind. Kartenansicht weiter blockiert durch wp40-Frage 6. Status bleibt IN_PROGRESS. Stand (automatisch): INTEGRATED nach #213. Stand 2026-11-12: WP-21-SV integriert (#213, Absturz der Startseite bei Nachtdienst von gestern ohne Einstempeln behoben). Die automatische Nachführung hatte WP-21 nach #213 auf INTEGRATED gesetzt; zurückgenommen — WP-21 bleibt IN_PROGRESS (offen: Kartenansicht wp40-Frage 6, echte Geräte, nicht gemessene Viewports, Vorlesesoftware). Stand 2026-11-13: Teil 4 integriert (#258, Merge a5abd89b): alle 8 Viewports sind jetzt durch die Render-Prüfung der CI abgedeckt. Weiterhin offen (ohne Entscheidung oder Gerät nicht ausführbar): Kartenansicht (wp40-Frage 6), echte Geräte (E-5), Textvergrößerung, Vorlesesoftware, manuelle Messung in Edge. Status bleibt IN_PROGRESS."
+      "notiz": "Stand (automatisch): INTEGRATED nach #183. Stand 2026-11-10: Teil 1 integriert (#183), siehe docs/acc45/WP-21-GERAETEMATRIX.md. Offen: Querformat und echte Geräte, Bedienabläufe (Stempeln, Plan freigeben, Tag öffnen, Übergabe, Krankmeldung), Kartenansicht nach Betreiberentscheidung wp40-Frage 6, Schnellfilter Mein Plan, Rollen und Rechte, Tastatur-/Vorlesesoftwareprobe, Hinweis Für Tablet und Rechner ausgelegt ansichtsweise zurücknehmen. Stand 2026-11-11: Korrektur der automatischen Nachführung: WP-21 ist nur zum Teil integriert (Teil 1 #183, Teil 2 #192; 274 von 288 Läufen bestanden, docs/acc45/WP-21-GERAETEMATRIX.md Abschnitt 9). Die Rechte-Befunde B16 (plan.publish) und B17 (Krankmeldung der Schichtverantwortung) sind per Betreiberentscheidung vom 2026-11-11 entschieden und mit RB-1 (#199) und RB-2 (#202) umgesetzt. Offen: Kartenansicht (wp40-Frage 6). Offen: echte Geräte, Notch, Textvergrößerung, Dunkel-/Kontrastmodus, Vorlesesoftware, nicht gemessene Ansichten. Stand 2026-11-12: Teil 3 integriert (#211, 35 Render-Prüfungen bei 360/390/768/844x390; Teilmessung in Edge bei 390x844 und 844x390): Leitung Plan freigeben 2/2 (B16 behoben), Leitung/Planung Krankmeldung und Planung Übergabe bestanden. Offen: Schichtverantwortung Übergabe 0/2 (Ansicht fehlt in der SV-Navigation), Schichtverantwortung Krankmeldung 0/2 (Zeitüberschreitung), siehe WP-21-SV. Hinweis „Für Tablet und Rechner ausgelegt“ bleibt unverändert, bis alle 8 Viewports gemessen sind. Kartenansicht weiter blockiert durch wp40-Frage 6. Status bleibt IN_PROGRESS. Stand (automatisch): INTEGRATED nach #213. Stand 2026-11-12: WP-21-SV integriert (#213, Absturz der Startseite bei Nachtdienst von gestern ohne Einstempeln behoben). Die automatische Nachführung hatte WP-21 nach #213 auf INTEGRATED gesetzt; zurückgenommen — WP-21 bleibt IN_PROGRESS (offen: Kartenansicht wp40-Frage 6, echte Geräte, nicht gemessene Viewports, Vorlesesoftware). Stand 2026-11-13: Teil 4 integriert (#258, Merge a5abd89b): alle 8 Viewports sind jetzt durch die Render-Prüfung der CI abgedeckt. Weiterhin offen (ohne Entscheidung oder Gerät nicht ausführbar): Kartenansicht (wp40-Frage 6), echte Geräte (E-5), Textvergrößerung, Vorlesesoftware, manuelle Messung in Edge. Status bleibt IN_PROGRESS. Nachtrag 2026-11-18 (SSOT-Klassifizierung): BLOCKED statt IN_PROGRESS: Der Rest ist ohne Betreiberentscheidung oder echtes Gerät nicht ausführbar (Kartenansicht: wp40-fragen.md Frage 6; echte Geräte: E-5; Textvergrößerung, Vorlesesoftware, Edge-Messung), siehe die eigene Notiz „Weiterhin offen“. Teil 1 ist integriert (#183)."
     },
     {
       "id": "WP-22",
@@ -1664,7 +1664,7 @@
         "implementiert": {"wert":true,"beleg":"5dab792e (feature/wp16c-stempelkette), Direkt-Merge 594f32c3"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp16b-spur 3/3; CI-Schritt pruefung:wp-nachtraege"},
         "reviewt": {"wert":true,"beleg":"Unabhängiges Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 2): 5dab792e geprüft, wp16b-spur 3/3, Sonde S8 grün; keine blockierenden Befunde"},
-        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c3 (2026-11-07, Vorfahr), ohne Merge-PR; als Direkt-Merge (Teilumfang) anerkannt per Nachholreview (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, PR #266) und Betreiberregel 2026-11-13 Punkt 2 (DIREKTMERGE-ABGLEICH-2026-11-13.md, PR #261); Status bleibt laut Nachholreview REVIEW, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1678,7 +1678,7 @@
       "akzeptanz": "keine Spur-Zeile nennt Person|Tag; Altzeilen bereinigt oder beim Lesen geschwärzt",
       "tests": "Spur-Prüfung je Schreibweg",
       "dateien": "server/funktionen/daten.mjs, server/lib/zeiterfassung.mjs",
-      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 2): Direkt-Merge anerkannt für den Teilumfang (Bedingungen a bis e belegt), Status bleibt REVIEW; offen: Frage, ob die Ablage zusätzlich bereinigt wird, Staging."
+      "notiz": "SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 2): Direkt-Merge anerkannt für den Teilumfang (Bedingungen a bis e belegt), Status bleibt REVIEW; offen: Frage, ob die Ablage zusätzlich bereinigt wird, Staging. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status REVIEW (laut Nachholreview: keine Statusänderung über REVIEW hinaus). Direkt-Merge 594f32c3 ist anerkannt (Teilumfang, Bedingungen a bis e belegt). Offen: ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md) und Staging; stagingGeprueft, fachlichFreigegeben, produktiv: nein."
     },
     {
       "id": "WP-24b",
@@ -1735,7 +1735,7 @@
       "akzeptanz": "ablage-sicherung wiederholt bei ENOENT zwischen readdir und stat; Nachlauf S2/S5 (E-20) ausgewertet und in wp28-nachweis.md nachgetragen",
       "tests": "werkzeug/last (CI-Profil voll), ablage-sicherung, wp28b-sicherung-last",
       "dateien": "werkzeug/last, werkzeug/ablage-sicherung.mjs",
-      "notiz": "NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt)."
+      "notiz": "NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Punkt (2) ist überholt oder unsicher: PR #102 (CI-Basis) ist gemergt (2026-11-07, integration/release-v4), die Bedingung „nach Reparatur der CI-Basis“ ist erfüllt; ob die blockierten Prüfungen (Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, Fachprüfungen hinter dem Typen-Schritt) inzwischen nachgeholt wurden, ist nicht belegt. Punkte (1) und (3) unverändert offen."
     },
     {
       "id": "WP-28c",
@@ -1777,7 +1777,7 @@
         "implementiert": {"wert":true,"beleg":"kein Codeänderungsbedarf; Prüfung pruefungen/wp07b-stempel-500.test.js (50bbe0b0), Direkt-Merge 594f32c3"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: wp07b-stempel-500 9/9 (sechs Szenarien); CI-Schritt pruefung:wp-nachtraege"},
         "reviewt": {"wert":true,"beleg":"Unabhängiges Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 3): Prüfung aus 50bbe0b0, wp07b-stempel-500 9/9, offline-stempeln 38/38, stempelpuffer 22/22, Sonden S1–S6 grün; keine blockierenden Befunde"},
-        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c (2026-11-07), CI 18ce941 gruen; PR-Nachweis fehlt, daher nicht INTEGRATED"},
+        "integriert": {"wert":false,"beleg":"Code in integration/release-v4 per Direkt-Merge 594f32c3 (2026-11-07, Vorfahr), ohne Merge-PR; als Direkt-Merge (Teilumfang) anerkannt per Nachholreview (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, PR #266) und Betreiberregel 2026-11-13 Punkt 2 (DIREKTMERGE-ABGLEICH-2026-11-13.md, PR #261); Status bleibt laut Nachholreview REVIEW, daher nicht INTEGRATED"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1791,7 +1791,7 @@
       "akzeptanz": "genau ein Stempel in allen Szenarien: (1) Speicherung erfolgreich + Antwort fehlgeschlagen, (2) Wiederholung mit gleicher clientEventId, (3) zwei Tabs, (4) Offline-Sync nach Fehler, (5) gleichzeitige Wiederholungen, (6) Serverneustart dazwischen",
       "tests": "je Szenario Test rot → grün (Renntest, Neustart)",
       "dateien": "server/funktionen/daten.mjs, server/lib/stempelintegritaet.mjs, src/stempelvorgang.js, src/stempelpuffer.js",
-      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 3): Direkt-Merge anerkannt, Status bleibt REVIEW; offen: echter 500 nach dem Schreiben unter Last (Staging/VPS)."
+      "notiz": "SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 3): Direkt-Merge anerkannt, Status bleibt REVIEW; offen: echter 500 nach dem Schreiben unter Last (Staging/VPS). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status REVIEW (laut Nachholreview: kein Paket wird INTEGRATED; Präzedenz WP-15 und WP-16c bleiben REVIEW). Direkt-Merge 594f32c3 ist anerkannt (Teilumfang, Betreiberregel 2026-11-13 Punkt 2). Restpunkt N-07b-1: echter 500 nach dem Schreiben unter Last (Last-500) auf Staging/VPS; stagingGeprueft, fachlichFreigegeben, produktiv: nein."
     },
     {
       "id": "WP-S1",
@@ -1828,12 +1828,12 @@
       "prio": "P1",
       "aufwandPT": {"min":4,"max":6},
       "abhaengigkeiten": ["WP-11","WP-22"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #82 (a9faf7ef): alle acht Bausteine aus WP19-MODULPLAN.md Abschnitt 13 (wp19-0-nachweis.md Abschnitt 1)"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-12 auf 6c195b66: modul-kern 44/44; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":true,"beleg":"fünf Opus-Review-Runden (wp19-0-nachweis.md Abschnitte 11–15), PR #82"},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"PR #82 gemergt am 2026-11-04 (Merge a9faf7ef in integration/centric-complete; Kopf 59079b5); beide Commits sind Vorfahren von integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1847,7 +1847,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review läuft (Stand: implementiert/lokal getestet). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Nacharbeit aus Abschnitt 13 vollständig über PR #82 integriert (in integration/centric-complete, Vorfahr von integration/release-v4). Status-Hebung = Koordinatorentscheidung. Fachlich offen: FN-32, FN-33; Folgepaket stammdatenMonate/gruendeMonate."
+      "notiz": "Basis des Kerns (Registry, Katalog, Andockpunkte) integriert in #44; offen ist die Nacharbeit aus Abschnitt 13. Kopf 59079b5, CI grün, Opus-Review abgeschlossen (fünf Runden, wp19-0-nachweis.md Abschnitte 11–15; reviewt=true). Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Nacharbeit aus Abschnitt 13 vollständig über PR #82 integriert (in integration/centric-complete, Vorfahr von integration/release-v4). Status-Hebung = Koordinatorentscheidung. Fachlich offen: FN-32, FN-33; Folgepaket stammdatenMonate/gruendeMonate. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status REVIEW auf INTEGRATED gehoben, Beleg PR #82 (gemergt 2026-11-04, a9faf7ef) und 59079b5 als Vorfahr von integration/release-v4; die frühere Notiz „Opus-Review läuft“ war überholt. stagingGeprueft, fachlichFreigegeben, produktiv: nein."
     },
     {
       "id": "WP-19.1",
@@ -2318,12 +2318,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet + opus-review",
       "konfliktzonen": ["App.jsx","rechte.mjs"],
-      "pr": ["#256"],
+      "pr": ["#256","#177"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)?"
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #177 ergänzt (älterer Entwurf „Interne Vorgaben Verwaltung“, offen, nicht gemergt; der gemergte Teil ist #256)."
     },
     {
       "id": "WP-I5",
@@ -2654,12 +2654,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","rechte.mjs"],
-      "pr": [],
+      "pr": ["#238"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt)."
     },
     {
       "id": "WP-I17",
@@ -2836,7 +2836,7 @@
       "prio": "P3",
       "aufwandPT": {"min":4,"max":7},
       "abhaengigkeiten": ["WP-I13","WP-I17"],
-      "status": "IN_PROGRESS",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -2855,7 +2855,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #219, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #219 (25 Hilfetexte, BM25, /api/hilfe/status|frage, Schalter CENTRIC_HILFE_ASSISTENT aus|suche|an): fachliche Freigabe der Korpus-Inhalte; Sichtbarkeit von suche für Piloten; Gesundheitstexte für das Modell gesperrt bestätigen; Gateway-Verdrahtung nach E-25/E-26. PR #233: Browserfähigkeit der Anzeige hergestellt (byteLaenge statt Buffer.byteLength), Einhängepunkte offen (docs/acc45/INTELLIGENCE-UI.md)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #219, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offen nach #219 (25 Hilfetexte, BM25, /api/hilfe/status|frage, Schalter CENTRIC_HILFE_ASSISTENT aus|suche|an): fachliche Freigabe der Korpus-Inhalte; Sichtbarkeit von suche für Piloten; Gesundheitstexte für das Modell gesperrt bestätigen; Gateway-Verdrahtung nach E-25/E-26. PR #233: Browserfähigkeit der Anzeige hergestellt (byteLaenge statt Buffer.byteLength), Einhängepunkte offen (docs/acc45/INTELLIGENCE-UI.md). Nachtrag 2026-11-18 (SSOT-Klassifizierung): BLOCKED statt IN_PROGRESS. Die technischen Teile sind integriert (#219, 55b030bb; #233). Offen sind nur Betreiberpunkte: fachliche Freigabe der Korpus-Inhalte, Sichtbarkeit von „suche“ für Piloten, Gateway-Verdrahtung nach E-25/E-26."
     },
     {
       "id": "WP-I24",
@@ -3519,7 +3519,7 @@
       "aufwandPT": {"min":0.25,"max":0.25},
       "wartezeitAT": {"min":1,"max":3},
       "abhaengigkeiten": ["WP-32","WP-32d"],
-      "status": "BLOCKED",
+      "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -3538,7 +3538,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja bei echtem Betreiberzugriff (Betreiberentscheidung 2026-11-03). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht technisch: WP-32d. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-15, Variante B 2026-12-01; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja bei echtem Betreiberzugriff (Betreiberentscheidung 2026-11-03). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht technisch: WP-32d. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-15, Variante B 2026-12-01; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (SSOT-Klassifizierung): READY statt BLOCKED, weil die technische Pflicht WP-32 und WP-32d beide INTEGRATED sind; die Einrichtung ist Betreiberaufgabe."
     },
     {
       "id": "E-11",
@@ -3838,7 +3838,7 @@
       "aufwandPT": {"min":0.25,"max":0.5},
       "wartezeitAT": {"min":1,"max":3},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -3857,7 +3857,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Handstart braucht lasttest.yml auf dem Standardzweig oder einen temporären Branch. Spätester Start (ANNAHME, Stand 2026-11-04): erst nach Merge der Workflow-Datei nach main (E-23); kein Blocker."
+      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Handstart braucht lasttest.yml auf dem Standardzweig oder einen temporären Branch. Spätester Start (ANNAHME, Stand 2026-11-04): erst nach Merge der Workflow-Datei nach main (E-23); kein Blocker. Nachtrag 2026-11-18 (SSOT-Klassifizierung): BLOCKED statt READY. Der Handstart braucht lasttest.yml auf dem Standardzweig (main); ein Merge nach main ist ohne ausdrückliche Betreiberfreigabe untersagt. Freigabe nötig (Merge der Workflow-Datei oder temporärer Branch)."
     },
     {
       "id": "E-21",
@@ -4060,7 +4060,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Keine Zugangsdaten durch Agenten. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-16 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Keine Zugangsdaten durch Agenten. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-16 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (SSOT-Klassifizierung): zurückgestellt bis nach dem Pilot (Betreiberentscheidung „Externe nach Pilot“), keine Kosten oder Aktivierung ohne Freigabe; Vertrags- und Kostenstrecke KI-Anbieter. Einzige formale Abhängigkeit E-21i ist DONE."
     },
     {
       "id": "E-26",
@@ -4089,7 +4089,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-16 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-16 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (SSOT-Klassifizierung): zurückgestellt bis nach dem Pilot (Betreiberentscheidung „Externe nach Pilot“), keine Kosten oder Aktivierung ohne Freigabe; Vertrags- und Kostenstrecke KI-Anbieter. Einzige formale Abhängigkeit E-21i ist DONE."
     },
     {
       "id": "E-27",
@@ -4118,7 +4118,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (SSOT-Klassifizierung): zurückgestellt bis nach dem Pilot (Betreiberentscheidung „Externe nach Pilot“), keine Kosten oder Aktivierung ohne Freigabe; Vertrags- und Kostenstrecke KI-Anbieter. Einzige formale Abhängigkeit E-21i ist DONE."
     },
     {
       "id": "E-28",
@@ -4147,7 +4147,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (SSOT-Klassifizierung): zurückgestellt bis nach dem Pilot (Betreiberentscheidung „Externe nach Pilot“), keine Kosten oder Aktivierung ohne Freigabe; Vertrags- und Kostenstrecke KI-Anbieter. Einzige formale Abhängigkeit E-21i ist DONE."
     },
     {
       "id": "E-29",
@@ -4176,7 +4176,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Aufbewahrungs- und Berichtigungspflichten, Revisionssicherheit des Korrekturexports; Anfrage sofort möglich, Prüfung des Beispielexports nach WP-16c. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Aufbewahrungs- und Berichtigungspflichten, Revisionssicherheit des Korrekturexports; Anfrage sofort möglich, Prüfung des Beispielexports nach WP-16c. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (SSOT-Klassifizierung): BLOCKED. Die Anfrage an Steuerberatung und Lohnbüro ist sofort möglich (wp16c-fragen.md); die Prüfung des Beispielexports erfolgt erst nach WP-16c (Abhängigkeit WP-16c bleibt, E-29 ist P0 und Gate für WP-42). Eine Ringsperre WP-16c <-> E-29 besteht nicht: WP-16c hängt nur an WP-16."
     },
     {
       "id": "E-30",
@@ -4319,7 +4319,7 @@
       "akzeptanz": "Erhebungsbögen Pflege/Sicherheit ausgefüllt (ohne Personendaten); je Pilot 8–12 Szenarien (PS-P-nn/PS-S-nn) mit synthetischen Ausgangsdaten als Seed umgesetzt und mindestens einmal durchgespielt; Datenschutzrahmen Stufe 1–3 mit offenen externen Punkten; Pilot-Kennzahlen je Branche vor Pilotbeginn mit Basismessung und Schwelle vereinbart",
       "tests": "pruefungen/acc45-status.test.js, pruefungen/doku.test.js; Szenarien manuell, Lauf je Szenario protokolliert",
       "dateien": "docs/acc45/PILOT-ERHEBUNG-PFLEGE.md, docs/acc45/PILOT-ERHEBUNG-SICHERHEIT.md, docs/acc45/PILOT-TESTSZENARIEN.md, docs/acc45/PILOT-DATENSCHUTZ-RAHMEN.md",
-      "notiz": "SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S fehlt noch (Anschluss an WP-S1). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. Stand (automatisch): Teilumfang nach #229, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil)."
+      "notiz": "SCHÄTZUNG (nicht gemessen). Nur Doku und synthetische Testdaten-Definitionen; Seed-Umsetzung der Datensätze SD-P/SD-S: Teil gemergt über PR #229 (63133a5c, „synthetische Seeds SD-P und SD-S“, nur Testumgebung; frühere Aussage „fehlt noch“ überholt). Echtdaten erst nach Erfüllung aller Voraussetzungen der Stufe 3 im Datenschutzrahmen; externe Punkte (AVV, Pilotvereinbarung, Mitbestimmung) offen. Szenarien mit Modul-Voraussetzung erst nach Einschaltbarkeit der WP-19-Module ausführbar. Stand (automatisch): Teilumfang nach #229, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Nachtrag 2026-11-18 (SSOT-Klassifizierung): #229 ist gemergt. Der Commit 64402880 („Doku: Pilot-Mindestanforderungen je Betriebsform und Betreiberliste Pilot“, 2026-11-03) liegt nur auf origin/acc45/docs/pilot-mindestanforderungen und ist KEIN Vorfahr von integration/release-v4 (verwaist); ob sein Inhalt anderweitig übernommen ist, ist nicht geprüft."
     },
     {
       "id": "SI-P1",
@@ -5159,7 +5159,7 @@
       "akzeptanz": "Dokumentierte Identitätsprüfung; zwei unabhängige Freigaben; keine Selbstfreigabe; sichere Übergabe; einmalig; befristet; revisionsfähig; keine dauerhafte 2FA-Umgehung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/provisionierung.mjs, Freigabe-Erweiterung, Tests",
-      "notiz": "Genehmigt 2026-11-09. Aufwand NUR der inkrementelle Teil; die Freigabemechanik kommt aus WR-3 und wird nicht doppelt gezählt. Vorab: Anzahl betroffener Konto-Betriebe nur lesend per Betreiberabfrage ermitteln (Repo enthält keine Produktionsdaten)."
+      "notiz": "Genehmigt 2026-11-09. Aufwand NUR der inkrementelle Teil; die Freigabemechanik kommt aus WR-3 und wird nicht doppelt gezählt. Vorab: Anzahl betroffener Konto-Betriebe nur lesend per Betreiberabfrage ermitteln (Repo enthält keine Produktionsdaten). Nachtrag 2026-11-18 (SSOT-Klassifizierung): bleibt BLOCKED. Die Abhängigkeiten SI-P4 und WR-3 sind INTEGRATED, aber die Kopplung an P1-1 (E-M2 Weg für M2 ohne anderen Zugang, E-M4 Kopplung #281, E-M5 kein Wiederaufleben widerrufener Codes; ENTSCHEIDUNGSLISTE.md P1-1, ENTSCHEIDUNGSMATRIX-MIGRATION-EM.md) ist nicht entschieden, und OPT-4 E1 (Migration bestehender Konto-Leitungen) ist offen (OPT-4-WR-2-LUECKEN.md). BACKLOG-PHASEN.md sieht OPT-2 nur hinter ausgeschaltetem Schalter und nach BE-2 A1 vor (gemeinsame Login-Dateien)."
     },
     {
       "id": "OPT-4",
@@ -5168,7 +5168,7 @@
       "prio": "P1",
       "aufwandPT": {"min":3,"max":5},
       "abhaengigkeiten": ["SI-P4"],
-      "status": "IN_PROGRESS",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #182 in integration/release-v4"},
@@ -5187,7 +5187,7 @@
       "akzeptanz": "Kontogebundene TOTP-Einrichtung; bestehende Rollen und Sitzungen; sichere Ersteinrichtung; verpflichtend bei betroffenen Berechtigungen; kontrollierte Migration bestehender Benutzer ohne unsichere Ausnahme; Tests für Rollenwechsel und privilegierte Sitzungen; Mandantentrennung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "server/lib/zweifaktor*.mjs, server/lib/konto*.mjs, server/funktionen/anmeldung.mjs, Migration, Tests",
-      "notiz": "Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen."
+      "notiz": "Genehmigt und priorisiert 2026-11-09. Langfristige Zielarchitektur. Die Konto-Wiederherstellung (WR-9) hängt davon ab und zählt ihren Aufwand separat. Stand 2026-11-10: Teilumfang integriert (#182), siehe docs/acc45/OPT-4-WR-2-LUECKEN.md; Migration bestehender Konten offen. Nachtrag 2026-11-18 (SSOT-Klassifizierung): BLOCKED statt IN_PROGRESS: Der Rest ist Migration bestehender Konten und damit die Betreiberfrage OPT-4 E1 bis E4 (OPT-4-WR-2-LUECKEN.md, ENTSCHEIDUNGSLISTE.md Nachtrag (c)). Teilumfang #182 integriert."
     },
     {
       "id": "WR-1",
@@ -5299,7 +5299,7 @@
       "akzeptanz": "Offline-Werkzeug verlangt Zweitfreigabe; Sicherheitsgrenze dokumentiert: wer Serverzugang hat, kann Zweitfreigabe ohne externe Absicherung nicht technisch verhindern; keine Behauptung über Schutz gegen vollständige Serverkompromittierung",
       "tests": "siehe KONTO-WIEDERHERSTELLUNG.md, Testplan",
       "dateien": "werkzeug/betreiber-2fa-zuruecksetzen.mjs, Dokumentation",
-      "notiz": "Entscheidung 3 (Offline-Ausnahme abgelehnt) und besondere Anforderung 2026-11-09. Das Werkzeug ist nur im Betreiber-Wiederherstellungskonzept freizugeben."
+      "notiz": "Entscheidung 3 (Offline-Ausnahme abgelehnt) und besondere Anforderung 2026-11-09. Das Werkzeug ist nur im Betreiber-Wiederherstellungskonzept freizugeben. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Grund der Sperre ist die Betreiberentscheidung I.6 (Art der Zweitfreigabe für werkzeug/betreiber-2fa-zuruecksetzen.mjs: zweiter personengebundener Betreiberzugang oder externe Instanz); siehe ENTSCHEIDUNGSLISTE.md (Nachtrag 2026-11-18 (c)), WIEDERAUFNAHME.md. Eine selbst erfundene Zweitfreigabe ist nicht zulässig."
     },
     {
       "id": "WR-5",
@@ -5532,12 +5532,12 @@
       "prio": "P3",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["WP-I12"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #355 (67ac57c0, gemergt 2026-11-18): planKennzahlen ruft verteilung mit von/bis auf, spanne und wochenenden endlich; zweite Kopie in src/pruefung.jsx entfernt"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #355: pruefungen/engine-kennzahlen-wp-i12c.test.js 10/10 (gegen den alten Kern 5/10 rot), engine-rechenkern 31/31 inkl. Golden; CI grün"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":true,"beleg":"PR #355 (Merge 67ac57c0 in integration/release-v4, ersetzt PR #139)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -5551,7 +5551,7 @@
       "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
       "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
       "dateien": "server/lib/engine/*, src/engine/rechenkern.js",
-      "notiz": "SCHÄTZUNG Koordinator. Fehler: planKennzahlen ruft verteilung mit Monat statt von/bis auf; spanne undefined, wochenenden NaN. Rot vor grün; Golden-Umstellung nur mit Begründung im Nachweis. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): WP-I12 ist INTEGRATED (#190), die Paketabhängigkeit ist erfüllt. Fehler unverändert im Code (server/lib/engine/kennzahlen.mjs: verteilung(m, von.slice(0, 7))). PR #139 (1 vor / 288 hinter) im Hold bis zur Betreiberentscheidung zur Spanne-Definition."
+      "notiz": "SCHÄTZUNG Koordinator. Fehler: planKennzahlen ruft verteilung mit Monat statt von/bis auf; spanne undefined, wochenenden NaN. Rot vor grün; Golden-Umstellung nur mit Begründung im Nachweis. Stand 2026-11-09: BLOCKED, bis WP-I12 integriert (Merge-Beleg). Arbeit auf Branch darf fortgesetzt werden. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): WP-I12 ist INTEGRATED (#190), die Paketabhängigkeit ist erfüllt. Fehler unverändert im Code (server/lib/engine/kennzahlen.mjs: verteilung(m, von.slice(0, 7))). PR #139 (1 vor / 288 hinter) im Hold bis zur Betreiberentscheidung zur Spanne-Definition. Nachtrag 2026-11-18 (SSOT-Klassifizierung): INTEGRATED durch PR #355 (67ac57c0), der den Fix aus #139 übernimmt und #139 ersetzt; #139 bleibt offen, bis der Betreiber es schließt. Die Spanne-Definition (Frage 4) ist technisch festgelegt, der Betreiber kann widersprechen (ENTSCHEIDUNGSLISTE.md P2-13); ein Widerspruch würde eine Anpassung auslösen, ist aber kein Sperrgrund. reviewt: nicht belegt (kein eigener Review des PR), stagingGeprueft, fachlichFreigegeben, produktiv: nein."
     },
     {
       "id": "RB-1",
@@ -6008,7 +6008,7 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":3},
       "abhaengigkeiten": [],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #280 (Merge bcddf680, 2026-11-13, Vorfahre von integration/release-v4): fehlendes mindest bei neuer Dienstart 422, Bestand bleibt, Oberfläche stürzt nicht ab"},
         "lokalGetestet": {"wert":true,"beleg":"PR #280: CI 23/23 grün; Prüfungen laut ABNAHME-V4-A4-MINDEST.md (personendaten, wp48-teilweg, oberflaeche-render)"},
@@ -6027,7 +6027,7 @@
       "akzeptanz": "Wirkung der mindest-Regel geklärt; Merge mit Review",
       "tests": "siehe PR",
       "dateien": "siehe PR",
-      "notiz": "PR #280 offen, angehalten. Regel seit 2026-11-13 geändert: fehlendes mindest bei neuer Dienstart gibt 422, ein ausdrückliches 0 ist zulässig, nur ganze Zahlen, Zahlen als Zeichenfolge werden normalisiert, historisch Fehlendes wird markiert. Wirkung der Regel auf Bestand und Import offen. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber hat die Fragen Q1 bis Q5 der konsolidierten Vorlage (ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md Abschnitt 6) am 2026-11-14 entschieden: mindest:0 als Kurzform bleibt 422; Weglassen bei bestehender Dienstart lässt den Wert; historische Sicherungen bleiben brauchbar, kein stilles Ergänzen; Bearbeiten historisch fehlender Werte erlaubt und gekennzeichnet; alter Export beim Neuanlegen gibt einen Validierungsfehler, ein Migrationswerkzeug nur mit gesonderter Freigabe. Stufe: entschieden. PR #280 bleibt bis zur Umsetzung dieser Regeln angehalten; technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv: nein. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #280 ist MERGED (2026-11-13, Merge bcddf680); die Aussage „offen, angehalten“ ist überholt. Das Datum des Merges liegt vor der Betreiberentscheidung Q1–Q5 (2026-11-14); die Umsetzung von Q1–Q5 im Code ist nicht einzeln nachgewiesen (Nachweis offen). Kein Review belegt (reviewt false). Status bleibt BLOCKED; stagingGeprueft, fachlichFreigegeben, produktiv: nein."
+      "notiz": "(Überholt, siehe Nachtrag 2026-11-17 und 2026-11-18) PR #280 offen, angehalten. Regel seit 2026-11-13 geändert: fehlendes mindest bei neuer Dienstart gibt 422, ein ausdrückliches 0 ist zulässig, nur ganze Zahlen, Zahlen als Zeichenfolge werden normalisiert, historisch Fehlendes wird markiert. Wirkung der Regel auf Bestand und Import offen. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber hat die Fragen Q1 bis Q5 der konsolidierten Vorlage (ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md Abschnitt 6) am 2026-11-14 entschieden: mindest:0 als Kurzform bleibt 422; Weglassen bei bestehender Dienstart lässt den Wert; historische Sicherungen bleiben brauchbar, kein stilles Ergänzen; Bearbeiten historisch fehlender Werte erlaubt und gekennzeichnet; alter Export beim Neuanlegen gibt einen Validierungsfehler, ein Migrationswerkzeug nur mit gesonderter Freigabe. Stufe: entschieden. PR #280 bleibt bis zur Umsetzung dieser Regeln angehalten; technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv: nein. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): PR #280 ist MERGED (2026-11-13, Merge bcddf680); die Aussage „offen, angehalten“ ist überholt. Das Datum des Merges liegt vor der Betreiberentscheidung Q1–Q5 (2026-11-14); die Umsetzung von Q1–Q5 im Code ist nicht einzeln nachgewiesen (Nachweis offen). Kein Review belegt (reviewt false). Status bleibt BLOCKED; stagingGeprueft, fachlichFreigegeben, produktiv: nein. Nachtrag 2026-11-18 (SSOT-Klassifizierung): IN_PROGRESS statt BLOCKED. #280 (Merge bcddf680) ist Vorfahr von integration/release-v4, Q1 bis Q5 sind am 2026-11-14 entschieden; es fehlt der Nachweis, dass jede der Entscheidungen im gemergten Code einzeln umgesetzt ist (Tests je Entscheidung, Review). Stufe integriert bleibt „teilweise“."
     },
     {
       "id": "ABN-S2",
@@ -6260,7 +6260,7 @@
       "prio": "P2",
       "aufwandPT": {"min":2,"max":4},
       "abhaengigkeiten": [],
-      "status": "IN_PROGRESS",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":"teilweise","beleg":"PR #313 (8208b5a2, Sicherungsjob, Nachweis, Vereinigen, Alterswarnung); PR #316 (45219bd5, Probe der Widerrufbücher, Übungsvorlagen, Checkliste A/B/C); PR #319 (6525dee9, Einrichtungskette IONOS, Messskript, überwiegend Vorbereitung und Doku). Offen: B-1 (Probe mit echtem restic in der CI), produktives Ziel, Zugangsdaten"},
         "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/be3-widerrufbuch-sicherung.test.js (PR #313, #316), pruefungen/staging-o2.test.js (PR #316, #319); kein Lauf gegen echtes restic und kein Lauf auf der Zielumgebung belegt"},
@@ -6274,12 +6274,12 @@
       "agent": "Hauptorchestrator",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#313","#316","#319"],
+      "pr": ["#313","#316","#319","#325"],
       "nachweis": "docs/acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md",
       "akzeptanz": "Option A / restic-Sicherung der Widerrufbücher außer Haus mit Vereinigung, Alterswarnung und Probe; Probe mit echtem restic in der CI (INFRA §8 B-1) und produktives Ziel stehen aus",
       "tests": "pruefung:be3-widerrufbuch-sicherung, pruefung:staging-o2",
       "dateien": "werkzeug/ablage-sicherung.mjs, deploy/sicherung/, docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md, docs/acc45/EINRICHTUNGSKETTE-IONOS.md",
-      "notiz": "Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG."
+      "notiz": "Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18 (SSOT-Klassifizierung): B-1 (Widerrufbuch-Job und Probe mit echtem restic in der CI, B3-8) ist erledigt durch PR #325 (88511380, Vorfahr von integration/release-v4). Status BLOCKED (Korrektur 2026-11-18, zuvor IN_PROGRESS); Grund: P3-6, P3-7, P3-8 (Speicherziel, Zugangsdaten, Kosten, Löschschutz, Aufbewahrung) sind Betreiberfreigaben und nicht entschieden. Der Rest ist nur Betreiberfreigabe (P3-6 bis P3-8 in ENTSCHEIDUNGSLISTE.md); keine Agentenarbeit ohne diese Entscheidungen."
     }
   ]
 }
