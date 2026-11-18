@@ -59,7 +59,7 @@ import { RANG } from "./rollenvergabe.mjs";
 import { herkunftsloseFeedsWiderrufen } from "./feedwiderruf.mjs";
 import { schluesselDesKontos, schluesselWiderrufenWenn } from "./sicherungsschluessel.mjs";
 import { vorgang } from "./schreibhalt.mjs";
-import { kontoSperreVermerken, mitgliedEntzugVermerken } from "./kontowiderrufbuch.mjs";
+import { kontoSperreVermerken, mitgliedEntzugVermerken, passwortAbloesungVermerken } from "./kontowiderrufbuch.mjs";
 
 /** Sicherungsschlüssel eines Kontos endgültig widerrufen (SI-P1). Ein Fehler lässt den Anlass nicht scheitern: Die
     Prüfung beim Gebrauch widerruft ohnehin. Das Ergebnis steht in der Antwort, damit ein Fehler nicht unsichtbar bleibt. */
@@ -536,6 +536,17 @@ export async function accountAendern(store, accountId, felder) {
       await store.setJSON(accountSchluessel(stand.emailNorm), neu);
     } catch (e) {
       throw new AblageFehler(`Account konnte nicht geändert werden: ${e && e.message}`, e);
+    }
+    /* BE-1 Rest (kontowiderrufbuch.mjs): Wird ein vorhandener Prüfwert ABGELÖST (anderer Wert oder null), kommt seine
+       HMAC-Kennung ins Konto-Widerrufbuch — ZUERST die Ablage (oben, der neue Wert gilt sofort), DANN das Buch, in der
+       Reihe dieses Kontos, damit genau der Wert vermerkt wird, der ersetzt wurde (auch bei gleichzeitigen Änderungen).
+       Scheitert das Buch, bleibt die Änderung wirksam: `kontobuch.geschrieben: false` („Widerruf wirksam,
+       Widerrufbuch nicht beschrieben“), Nachtrag, /gesund-Warnung, der nächste Eintrag oder Start holt nach. Das erste
+       Passwort (vorher keins) trägt nichts ein. Weder Prüfwert noch Kennung gehen in das Ergebnis. */
+    if ("passwort" in felder && typeof stand.passwort === "string" && stand.passwort.startsWith("s1$")
+        && stand.passwort !== neu.passwort) {
+      const kontobuch = await passwortAbloesungVermerken(store, stand.id, stand.passwort);
+      return { ok: true, account: neu, kontobuch, ...(kontobuch.geschrieben ? {} : { widerrufWirksam: true }) };
     }
     return { ok: true, account: neu };
   });

@@ -102,7 +102,7 @@ import {
   accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
 import { zweifaktorEinrichtungVerwerfen } from "./zweifaktor.mjs";
-import { kontoZugangImBuch, kontoFaktorPflichtImBuch } from "./kontowiderrufbuch.mjs";
+import { kontoZugangImBuch, kontoFaktorPflichtImBuch, passwortAbgeloestImBuch } from "./kontowiderrufbuch.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
@@ -220,6 +220,11 @@ async function zugangPruefen(store, { email, passwort }) {
   if (!konto) return absage("unbekannt");
   if (!hatPruefwert(konto)) return absage("ohne-passwort");
   if (!stimmt) return absage("passwort");
+  /* BE-1 Rest (kontowiderrufbuch.mjs): Ein abgelöster Prüfwert, den eine zurückgespielte Ablage wieder trägt, gilt
+     nicht — nach außen genau wie ein falsches Passwort (derselbe Satz, derselbe Status, die Bremse zählt mit), intern
+     der Grund „passwort-abgeloest“. Erst nach dem richtigen Passwort gefragt (keine Auskunft an Unbekannte); ist das
+     Buch nicht prüfbar, wirft es (fail-closed, der Endpunkt antwortet 503). */
+  if (await passwortAbgeloestImBuch(store, konto.id, konto.passwort)) return absage("passwort-abgeloest");
   if (konto.status === "gesperrt") return absage("gesperrt");
   /* „eingeladen" heißt: Es gibt den Platz, aber noch niemanden darauf.
      Ein Passwort allein macht daraus keine Anmeldung. */
@@ -599,6 +604,9 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
   if (konto.status === "gesperrt") return schluss("gesperrt");
   if (konto.status !== "aktiv") return schluss("nicht-aktiv");
   if ((Number(konto.epoche) || 1) !== Number(s.epoche)) return schluss("epoche");
+  /* BE-1 Rest (Review MITTEL-1): Eine Kontositzung entsteht nur mit Passwort (anmelden). Trägt das Konto keinen
+     Prüfwert (mehr) — etwa nach der Normalisierung eines abgelösten Passworts —, gilt keine Sitzung. */
+  if (!hatPruefwert(konto)) return schluss("ohne-passwort");
   /* BE-1: Sperre im Konto-Widerrufbuch beendet die Sitzung; nicht prüfbar → wirft (fail-closed, 503). */
   if (await kontoZugangImBuch(store, konto.id)) return schluss("gesperrt");
   /* OPT-1-F, Befund 3 (Zusatzprüfung): Hat das Konto einen aktiven zweiten Faktor, gilt keine Sitzung, die ohne ihn

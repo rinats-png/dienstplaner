@@ -164,7 +164,7 @@ import { ANKER_SCHLUESSEL, MARKE_PRAEFIX, VERWALTER_PRAEFIX, buchLesen, buchNeu,
 import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
 import { KONTOBUCH_ANKER, KONTOBUCH_NACHTRAG, ACCOUNT_PRAEFIX, MITGLIED_PRAEFIX, MITGLIEDLAUF_PRAEFIX, kontobuchLesen,
   kontobuchNeu, kontobuchSchreiben, kontobuchEinsammeln, kontobuchNormalisieren, kontoFaktorSchluessel,
-  faktorZahlen } from "../server/lib/kontowiderrufbuch.mjs";
+  faktorZahlen, passwortZahlen } from "../server/lib/kontowiderrufbuch.mjs";
 import { BUECHER, vereinen as vereinenNach, fehlendeEintraege, eintragZahl, gemeinsameHerkunft }
   from "../server/lib/widerrufbuchsicherung.mjs";
 
@@ -905,7 +905,8 @@ export async function kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest
   buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
   await kontobuchSchreiben(zustandsVerz, buch);
   return { konten: Object.keys(buch.konten).length, mitglieder: Object.keys(buch.mitglieder).length, eingesammelt,
-    nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(buch, n.faktoren) };
+    nachgezogen: n.gesperrt + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(buch, n.faktoren),
+    ...passwortZahlen(buch, n) };
 }
 
 /**
@@ -1292,6 +1293,9 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
       meldung(`Zweiter Faktor (BE-2 A1): ${w.faktorpflicht} Konten mit Pflicht-Faktor, ${w.whverbraucht} verbrauchte `
         + `Wiederherstellungscodes im Buch; ${w.whNachgezogen} Faktoren in der Sicherung nachgezogen, ${w.faktorGesperrt} `
         + "Pflicht-Faktoren fehlen in der Sicherung und sind gesperrt.");
+      /* BE-1 Rest: nur Anzahlen. */
+      meldung(`Passwörter (BE-1): ${w.passwoerterImBuch} abgelöste im Buch; ${w.passwoerterZurueckgesetzt} Konten trugen in der `
+        + "Sicherung ein abgelöstes Passwort und sind ohne Passwort (die Personen setzen es neu).");
       if (w.faktorGesperrt)
         meldung(`ACHTUNG: ${w.faktorGesperrt} Konto/Konten hatten einen aktiven zweiten Faktor, den die Sicherung nicht kennt. Ihre `
           + "Anmeldung bleibt gesperrt (kein Geheimnis wird zurückgelegt). Erst eine jüngere Sicherung prüfen, die den Faktor "

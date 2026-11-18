@@ -459,7 +459,12 @@ try {
   const r = await kontobuchStart(getStore({ name: "centric", consistency: "strong" }));
   console.log(`Konto-Widerrufbuch: ${r.konten} gesperrte Konten, ${r.mitglieder} entzogene Beziehungen, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.laeufe} Läufe angehoben`
     /* BE-2 A1: Pflicht-Faktoren und verbrauchte Wiederherstellungscodes (nur Anzahlen). */
-    + `; Faktoren: ${r.faktorpflicht} Pflicht, ${r.faktorGesperrt} nach Rücksprung gesperrt, ${r.whverbraucht} verbrauchte Wiederherstellungscodes, ${r.whNachgezogen} Faktoren nachgezogen`);
+    + `; Faktoren: ${r.faktorpflicht} Pflicht, ${r.faktorGesperrt} nach Rücksprung gesperrt, ${r.whverbraucht} verbrauchte Wiederherstellungscodes, ${r.whNachgezogen} Faktoren nachgezogen`
+    /* BE-1 Rest: abgelöste Passwörter (nur Anzahlen). */
+    + `; Passwörter: ${r.passwoerterImBuch} abgelöste im Buch, ${r.passwoerterZurueckgesetzt} in der Ablage zurückgesetzt`);
+  if (r.passwoerterZurueckgesetzt)
+    console.error(`WARNUNG Konto-Widerrufbuch: ${r.passwoerterZurueckgesetzt} Konto/Konten trugen ein abgelöstes Passwort (Rücksprung) — `
+      + "Passwort zurückgesetzt, die Personen setzen es neu (BETRIEBSHANDBUCH.md, Wiederherstellung; ABNAHME-V4-BE1 §8).");
   if (r.faktorGesperrt)
     console.error(`WARNUNG Konto-Widerrufbuch: ${r.faktorGesperrt} Konto/Konten mit Pflicht-Faktor ohne Faktor in der Ablage — Anmeldung `
       + "gesperrt (403), bis der Betreiber den Fall klärt (BETRIEBSHANDBUCH.md, Wiederherstellung; ABNAHME-V4-BE2-A1).");

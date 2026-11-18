@@ -5,6 +5,15 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-18 (BE-1 Rest Passwörter, PR #360)
+
+- PR #360 (Branch `feature/be1-passwort-widerruf`): abgelöste Passwort-Prüfwerte im Konto-Widerrufbuch, Nachbesserung nach
+  unabhängigem Sicherheitsreview (MERGE-MIT-AUFLAGEN, kein Befund HOCH) eingearbeitet. Nicht gemergt; Stufen erst nach Merge.
+- **Befund für ein Folgepaket (Review NIEDRIG-2, nicht umgesetzt):** Ohne `CENTRIC_PFEFFER` leitet
+  `server/lib/kontowiderrufbuch.mjs` (`pfefferJetzt`) Kennungs- und Siegelschlüssel aus der leeren Zeichenkette ab;
+  Siegel und Kennungen wären dann fälschbar. Vorschlag: Start in Produktion ohne Pfeffer hart abbrechen (Quelle prüfen,
+  ob andere Module schon abbrechen). Einordnung und Priorität: offen.
+
 ## Konsolidierter Stand 2026-11-15
 
 Abgleich der Dokumente mit dem wirklichen GitHub-Stand (nur lesend: `git log`, `gh pr list`, `gh run list`, `gh pr view`). Einzige Stelle für diese Zusammenfassung; die Betreiberliste steht ausschließlich in `ENTSCHEIDUNGSLISTE.md`. Aussagen, die nicht einzeln nachgesehen wurden, tragen „Quelle prüfen“. Eine entschiedene oder integrierte Sache ist keine Produktionsfreigabe.

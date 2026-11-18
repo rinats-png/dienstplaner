@@ -838,8 +838,11 @@ liegt wie bei der Schlüsselepoche außerhalb von `data/`: das Widerrufbuch
 dem Pfeffer abgeleiteten Siegel), dazu der Anker `widerrufbuch:anker` in `data/` (wird
 mitgesichert). Kontosperren und entzogene Mitgliedschaften deckt seit BE-1 ein **eigenes**
 Konto-Widerrufbuch ab (siehe unten); seit BE-2 A1 auch, dass ein Konto-Faktor einmal aktiv
-war, und eingelöste Wiederherstellungscodes von Konten. **Nicht** abgedeckt sind Passwörter,
-abgelöste 2FA-Geheimnisse (BE-2 A2) und einzeln zurückgesetzte Kalenderfeeds (A3) — eine
+war, und eingelöste Wiederherstellungscodes von Konten; seit BE-1 Rest auch **abgelöste
+Passwörter** (nur HMAC-Kennung des alten Prüfwerts; ein Konto, das nach dem Rücksprung einen
+abgelösten Prüfwert trägt, wird `passwort: null` und meldet sich erst nach Neusetzen wieder an;
+Startprotokoll `Passwörter: n abgelöste im Buch, m in der Ablage zurückgesetzt`, bei m > 0
+`WARNUNG`). **Nicht** abgedeckt sind abgelöste 2FA-Geheimnisse (BE-2 A2) und einzeln zurückgesetzte Kalenderfeeds (A3) — eine
 ältere Sicherung bringt deren alten Stand zurück. Einzelheiten und Matrix:
 `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`, `docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`,
 `docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md`.

@@ -91,6 +91,30 @@
    zurückgelegt); ein verbrauchter Code wird in der Ablage als verbraucht
    vermerkt. Stufen A2/A3 (abgelöste Geheimnisse, Feeds) sind weitere
    Abschnitte derselben Gestalt.
+
+   BE-1 Rest „Passwörter“ (Szenario 1a, docs/acc45/ENTSCHEIDUNG-BE1-BE3.md §1.3
+   Option A; docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md §8): ein weiterer
+   Abschnitt im SELBEN Buch, gleiche Gestalt wie faktorpflicht:
+     passwoerter: { <Kennung „passwort|Konto|abgelöster Prüfwert“>: { am, grund } }
+        Ein ABGELÖSTER Passwort-Prüfwert (scrypt mit eigenem Salz,
+        passwoerter.mjs). Im Buch steht nie das Passwort und nie der Prüfwert,
+        nur eine HMAC-Kennung über Konto und Prüfwert (Schlüssel aus dem
+        Pfeffer, nicht umkehrbar, ohne Pfeffer nicht nachrechenbar). Ein
+        Eintrag entsteht nur bei einer ÄNDERUNG (es gab einen Prüfwert, und
+        er war ein anderer) — das erste Passwort trägt nichts ein.
+   NICHT einsammelbar: Nach der Änderung kennt die Ablage den alten Prüfwert
+   nicht mehr. Reihenfolge deshalb wie oben (ZUERST die Ablage: der neue
+   Prüfwert gilt sofort, DANN das Buch); scheitert das Buch, steht die
+   Kennung im Nachtrag N (Ablage) und im Speicher, /gesund warnt, der nächste
+   Eintrag oder Start trägt nach. Durchsetzung: Prüfen (accountanmeldung.mjs
+   nach dem richtigen Passwort, einladungen.mjs bei der Passwortbestätigung:
+   Prüfwert im Buch → dieselbe Absage wie ein falsches Passwort; Buch nicht
+   prüfbar → wirft, fail-closed) und Normalisieren (Serverstart, Werkzeug):
+   ein Konto, dessen Prüfwert im Buch steht, bekommt in der Ablage
+   `passwort: null` — ein Feld, das jede Fassung kennt (ohne Prüfwert keine
+   Anmeldung, auch nicht im Altbild); die betroffene Person setzt ihr
+   Passwort neu. Es wird nie ein Eintrag entfernt: auch nicht, wenn das Konto
+   fehlt (eine ältere Sicherung kann es samt altem Prüfwert zurückbringen).
    ========================================================================== */
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -107,6 +131,10 @@ export const MITGLIEDLAUF_PRAEFIX = "mitgliedlauf:";
 /** BE-2 A1: Abschnitte im Buch. */
 export const FAKTORPFLICHT = "faktorpflicht";
 export const WHVERBRAUCHT = "whverbraucht";
+/** BE-1 Rest: abgelöste Passwort-Prüfwerte (nur HMAC-Kennungen). */
+export const PASSWOERTER = "passwoerter";
+/** Abschnitte gleicher Gestalt { <Kennung>: { am, grund } }: nur hinzufügen, im Nachtrag mitgeführt. */
+const ABSCHNITTE = [FAKTORPFLICHT, WHVERBRAUCHT, PASSWOERTER];
 /** BE-2 A1: Ablageschlüssel des Faktors (zweifaktor.mjs) — hier wiederholt wie die Präfixe oben (kontofaktor.mjs lädt dieses Modul). */
 export const FAKTOR_PRAEFIX = "zweifaktor:";
 /** Wie kontofaktor.mjs `kontoFaktorId` (Gleichheit belegt die Prüfung be2-a1). @param {string} accountId */
@@ -156,6 +184,14 @@ export const faktorPflichtKennung = (accountId, pfeffer) =>
 export const whCodeKennung = (accountId, { bindung, generation, sel }, pfeffer) =>
   createHmac("sha256", kennungsSchluessel(pfeffer))
     .update(`whcode|${String(accountId)}|${String(bindung)}|${String(generation)}|${String(sel)}`).digest("hex");
+/**
+ * BE-1 Rest: Kennung eines abgelösten Passwort-Prüfwerts — HMAC über Konto und Prüfwert, nie der Prüfwert selbst.
+ * @param {string} accountId @param {string} pruefwert @param {string} [pfeffer]
+ */
+export const passwortKennung = (accountId, pruefwert, pfeffer) =>
+  createHmac("sha256", kennungsSchluessel(pfeffer)).update(`passwort|${String(accountId)}|${String(pruefwert)}`).digest("hex");
+/** Trägt das Konto einen Prüfwert im heutigen Format (wie accountanmeldung.mjs)? */
+const hatPruefwert = (a) => istMap(a) && typeof a.passwort === "string" && a.passwort.startsWith("s1$");
 
 /** Kanonische Form: Schlüssel rekursiv sortiert, ohne `siegel`. */
 function kanonisch(o) {
@@ -271,7 +307,7 @@ export function mitgliederEintragen(b, liste, grund, am = new Date().toISOString
  * @param {any} b @param {string} abschnitt @param {Iterable<string>} kennungen @param {string} grund @param {string} [am]
  */
 export function abschnittEintragen(b, abschnitt, kennungen, grund, am = new Date().toISOString()) {
-  if (abschnitt !== FAKTORPFLICHT && abschnitt !== WHVERBRAUCHT)
+  if (!ABSCHNITTE.includes(abschnitt))
     throw new KontoWiderrufbuchFehler("Unbekannter Abschnitt des Konto-Widerrufbuchs.");
   let neu = 0;
   for (const h of kennungen) {
@@ -305,7 +341,7 @@ export function nachtragTeile(n) {
     ? Object.entries(n.mitglieder).filter(([h, v]) => HEX64.test(h) && istMap(v) && ganz(v.generation))
       .map(([kennung, v]) => ({ kennung, generation: v.generation })) : [];
   const schluessel = (a) => (istMap(n) && istMap(n[a]) ? Object.keys(n[a]).filter((h) => HEX64.test(h)) : []);
-  return { konten, mitglieder, [FAKTORPFLICHT]: schluessel(FAKTORPFLICHT), [WHVERBRAUCHT]: schluessel(WHVERBRAUCHT) };
+  return { konten, mitglieder, ...Object.fromEntries(ABSCHNITTE.map((a) => [a, schluessel(a)])) };
 }
 
 /**
@@ -353,7 +389,9 @@ export function kontobuchEinsammeln(b, stand, { pfeffer } = {}) {
   const f = faktorenEinsammeln(stand, pfeffer);
   return kontenEintragen(b, [...gesperrt, ...n.konten], "aus-ablage") + mitgliederEintragen(b, [...mind, ...n.mitglieder], "aus-ablage")
     + abschnittEintragen(b, FAKTORPFLICHT, [...f.pflicht, ...n[FAKTORPFLICHT]], "aus-ablage")
-    + abschnittEintragen(b, WHVERBRAUCHT, [...f.verbraucht, ...n[WHVERBRAUCHT]], "aus-ablage");
+    + abschnittEintragen(b, WHVERBRAUCHT, [...f.verbraucht, ...n[WHVERBRAUCHT]], "aus-ablage")
+    /* BE-1 Rest: abgelöste Prüfwerte kennt die Ablage nicht mehr — nur der Nachtrag trägt sie. */
+    + abschnittEintragen(b, PASSWOERTER, n[PASSWOERTER], "aus-nachtrag");
 }
 
 /**
@@ -384,14 +422,28 @@ export function kontobuchVereinen(ziel, quelle) {
  *   laeufe:     Lauf unter der Mindestgeneration (oder fehlt neben einer Mitgliedschaft) → generation: Mindestwert
  *   mitglieder: Mitgliedschaft unter der Mindestgeneration und nicht „entzogen“ → status: "entzogen"
  * @param {any} b @param {KontoStand} stand @param {{pfeffer?: string, am?: string}} [o]
+ *   passwort:   (BE-1 Rest) Prüfwert des Kontos steht im Buch als abgelöst → passwort: null, epoche + 1
+ * `gesperrt` und `passwoerter` zählen die Konten je Grund (ein Konto kann beides sein und steht einmal in `konten`).
  * @returns {{konten: Array<{schluessel: string, wert: any}>, laeufe: Array<{schluessel: string, wert: any}>,
- *   mitglieder: Array<{schluessel: string, wert: any}>, faktoren: Array<{schluessel: string, wert: any}>}}
+ *   mitglieder: Array<{schluessel: string, wert: any}>, faktoren: Array<{schluessel: string, wert: any}>,
+ *   gesperrt: number, passwoerter: number}}
  */
 export function kontobuchNormalisieren(b, stand, { pfeffer, am = new Date().toISOString() } = {}) {
   const konten = [];
-  for (const { schluessel, wert: a } of stand.konten || [])
-    if (istMap(a) && typeof a.id === "string" && Object.hasOwn(b.konten, kontoKennung(a.id, pfeffer)) && a.status !== "gesperrt")
-      konten.push({ schluessel, wert: { ...a, status: "gesperrt", aktualisiert: am } });
+  let gesperrt = 0, passwoerter = 0;
+  for (const { schluessel, wert: a } of stand.konten || []) {
+    if (!istMap(a) || typeof a.id !== "string") continue;
+    const sperren = Object.hasOwn(b.konten, kontoKennung(a.id, pfeffer)) && a.status !== "gesperrt";
+    /* BE-1 Rest: Prüfwert im Buch als abgelöst → `passwort: null` (jede Fassung kennt das: keine Anmeldung). */
+    const abgeloest = hatPruefwert(a) && imAbschnitt(b, PASSWOERTER, passwortKennung(a.id, a.passwort, pfeffer));
+    if (!sperren && !abgeloest) continue;
+    gesperrt += sperren ? 1 : 0;
+    passwoerter += abgeloest ? 1 : 0;
+    /* Review MITTEL-1: zusammen mit `passwort: null` die Kontoepoche erhöhen. Ein VM-/Verzeichnis-Image bringt Epoche
+       UND Kontositzungen zurück; eine Sitzung, die mit dem abgelösten Passwort entstand, passte sonst wieder. */
+    konten.push({ schluessel, wert: { ...a, ...(sperren ? { status: "gesperrt" } : {}),
+      ...(abgeloest ? { passwort: null, epoche: (Number(a.epoche) || 1) + 1 } : {}), aktualisiert: am } });
+  }
   const mindestens = (accountId, raum) => {
     const e = b.mitglieder[mitgliedKennung(accountId, raum, pfeffer)];
     return e ? e.generation : 0;
@@ -417,7 +469,7 @@ export function kontobuchNormalisieren(b, stand, { pfeffer, am = new Date().toIS
     if (m.status !== "entzogen" && !(ganz(m.generation) && m.generation >= g))
       mitglieder.push({ schluessel, wert: { ...m, status: "entzogen", entzogenAm: m.entzogenAm || am } });
   }
-  return { konten, laeufe, mitglieder, faktoren: faktorenNormalisieren(b, stand, { pfeffer, am }) };
+  return { konten, laeufe, mitglieder, faktoren: faktorenNormalisieren(b, stand, { pfeffer, am }), gesperrt, passwoerter };
 }
 
 /**
@@ -494,7 +546,7 @@ async function vermerken(p, { schreibt = false } = {}) {
 
 /** Nachtrag im Speicher (falls schon das Schreiben von N scheiterte). */
 const imSpeicher = { konten: new Set(), mitglieder: /** @type {Map<string, number>} */ (new Map()),
-  [FAKTORPFLICHT]: new Set(), [WHVERBRAUCHT]: new Set() };
+  [FAKTORPFLICHT]: new Set(), [WHVERBRAUCHT]: new Set(), [PASSWOERTER]: new Set() };
 
 let zwischen = /** @type {{marke: string, buch: any}|null} */ (null);
 
@@ -542,7 +594,7 @@ async function ablageStand(store) {
     for (const m of t.mitglieder)
       if (!nachtrag.mitglieder[m.kennung] || nachtrag.mitglieder[m.kennung].generation < m.generation)
         nachtrag.mitglieder[m.kennung] = { generation: m.generation };
-    for (const a of [FAKTORPFLICHT, WHVERBRAUCHT])
+    for (const a of ABSCHNITTE)
       nachtrag[a] = Object.fromEntries([...imSpeicher[a], ...t[a]].map((h) => [h, {}]));
     const konten = await alle(ACCOUNT_PRAEFIX);
     /* BE-2 A1: der Faktor jedes Kontos (streng wie oben: ein Lesefehler wirft). */
@@ -608,8 +660,7 @@ export async function kontoZugangImBuch(store, accountId, { raum, generation } =
 async function nachtragAbraeumen(store, a) {
   imSpeicher.konten.clear();
   imSpeicher.mitglieder.clear();
-  imSpeicher[FAKTORPFLICHT].clear();
-  imSpeicher[WHVERBRAUCHT].clear();
+  for (const x of ABSCHNITTE) imSpeicher[x].clear();
   if (a.nachtragDa) { try { await store.delete(KONTOBUCH_NACHTRAG); } catch { /* bleibt: wird erneut eingesammelt */ } }
 }
 
@@ -637,7 +688,7 @@ function fortschreiben(store, aendern) {
 async function nachtragAufnehmen(store, { konten = [], mitglieder = [], abschnitte = {} }) {
   for (const h of konten) imSpeicher.konten.add(h);
   for (const m of mitglieder) imSpeicher.mitglieder.set(m.kennung, Math.max(imSpeicher.mitglieder.get(m.kennung) || 0, m.generation));
-  for (const a of [FAKTORPFLICHT, WHVERBRAUCHT]) for (const h of abschnitte[a] || []) imSpeicher[a].add(h);
+  for (const a of ABSCHNITTE) for (const h of abschnitte[a] || []) imSpeicher[a].add(h);
   lage.nachtrag = true;
   try {
     await nacheinander(async () => {
@@ -647,7 +698,7 @@ async function nachtragAufnehmen(store, { konten = [], mitglieder = [], abschnit
       /** @type {{konten: Record<string, any>, mitglieder: Record<string, any>, [k: string]: Record<string, any>}} */
       const neu = { konten: Object.fromEntries(t.konten.map((h) => [h, { am }])),
         mitglieder: Object.fromEntries(t.mitglieder.map((m) => [m.kennung, { am, generation: m.generation }])) };
-      for (const a of [FAKTORPFLICHT, WHVERBRAUCHT]) {
+      for (const a of ABSCHNITTE) {
         const alle = [...t[a], ...(abschnitte[a] || [])];
         if (alle.length) neu[a] = Object.fromEntries(alle.map((h) => [h, { am }]));
       }
@@ -741,6 +792,33 @@ export async function whCodeVerbrauchVermerken(store, accountId, k) {
 }
 
 /**
+ * BE-1 Rest: Steht dieser Prüfwert des Kontos im Buch als abgelöst? Wirft, wenn das Buch nicht prüfbar ist
+ * (fail-closed: der Aufrufer gewährt nichts). Nur nach einem richtigen Passwort fragen (keine Auskunft an Unbekannte).
+ * @param {any} store @param {string} accountId @param {string} pruefwert
+ */
+export async function passwortAbgeloestImBuch(store, accountId, pruefwert) {
+  return imAbschnitt(await kontobuchGeprueft(store), PASSWOERTER, passwortKennung(accountId, pruefwert));
+}
+
+/**
+ * BE-1 Rest: Nach einer Passwortänderung (der neue Prüfwert steht schon in der Ablage): den ABGELÖSTEN Prüfwert als
+ * Kennung ins Buch. Wirft nie. Scheitert das Buch: Nachtrag (Ablage und Speicher), `geschrieben: false`
+ * („Widerruf wirksam, Widerrufbuch nicht beschrieben“), /gesund warnt, der nächste Eintrag oder Start trägt nach.
+ * @param {any} store @param {string} accountId @param {string} alterPruefwert
+ * @returns {Promise<{geschrieben: boolean}>}
+ */
+export async function passwortAbloesungVermerken(store, accountId, alterPruefwert) {
+  const h = passwortKennung(accountId, alterPruefwert);
+  try {
+    await fortschreiben(store, (b) => abschnittEintragen(b, PASSWOERTER, [h], "passwort-abgeloest") > 0);
+    return { geschrieben: true };
+  } catch {
+    await nachtragAufnehmen(store, { abschnitte: { [PASSWOERTER]: [h] } });
+    return { geschrieben: false };
+  }
+}
+
+/**
  * Beim Serverstart: Stand feststellen, aus der Ablage einsammeln, das Buch in die Ablage nachziehen (Konten sperren,
  * Läufe anheben, Mitgliedschaften entziehen; BE-2 A1: fehlende Pflicht-Faktoren gesperrt, verbrauchte Codes vermerkt).
  * Wirft KontoWiderrufbuchFehler — dann gilt kein Konto-Zugang.
@@ -764,7 +842,8 @@ export async function kontobuchStart(store) {
     /* BE-2 A1: Faktoren (Platzhalter bzw. verbrauchte Codes) — kein Geheimnis wird zurückgelegt. */
     for (const x of n.faktoren) await store.setJSON(x.schluessel, x.wert);
     return { eingesammelt, konten: Object.keys(geschrieben.konten).length, mitglieder: Object.keys(geschrieben.mitglieder).length,
-      nachgezogen: n.konten.length + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(geschrieben, n.faktoren) };
+      nachgezogen: n.gesperrt + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(geschrieben, n.faktoren),
+      ...passwortZahlen(geschrieben, n) };
   }), { schreibt: true });
 }
 
@@ -776,8 +855,14 @@ export function faktorZahlen(b, nachgezogen) {
     whNachgezogen: nachgezogen.filter((x) => !(x.wert && x.wert.ruecksprungSperre === true)).length };
 }
 
+/** BE-1 Rest: Zahlen für Meldungen — nur Anzahlen, keine Kennungen. @param {any} b @param {{passwoerter: number}} n */
+export function passwortZahlen(b, n) {
+  return { passwoerterImBuch: istMap(b[PASSWOERTER]) ? Object.keys(b[PASSWOERTER]).length : 0,
+    passwoerterZurueckgesetzt: n.passwoerter };
+}
+
 /** Nur für Prüfungen: Zwischenspeicher und Lage leeren. */
 export function kontowiderrufbuchVergessen() {
   zwischen = null; lage.unklar = false; lage.nachtrag = false; imSpeicher.konten.clear(); imSpeicher.mitglieder.clear();
-  imSpeicher[FAKTORPFLICHT].clear(); imSpeicher[WHVERBRAUCHT].clear();
+  for (const x of ABSCHNITTE) imSpeicher[x].clear();
 }
