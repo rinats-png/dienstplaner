@@ -51,7 +51,7 @@ import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, loh
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur, hatLaufendeKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
+import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { schichtzuordnungProtokollZeilen } from "../lib/schichtzuordnung.mjs";
@@ -2742,11 +2742,15 @@ async function behandeln(req, context, ctx) {
          Beim Abmelden wird sie entfernt — sonst gingen die Mitteilungen der
          einen Person auf einem geteilten Gerät weiter ein, wenn dort jemand
          anderes arbeitet. Ein Fehler hier hält das Abmelden nicht auf. */
+      /* E-9 (2026-11-18): nur die Anmeldung DIESES Geräts — die Oberfläche
+         schickt `{geraet: {endpoint}}` bzw. `{geraet: null}` (kein Push auf
+         diesem Gerät). Ohne Angabe (ältere Oberfläche) wie bisher. */
       try {
         if (s.person !== null && s.person !== undefined) {
+          const geraet = geraetAusRumpf(rumpf);
           const g = await bestandLesen(store, s.bestand);
           const mL = g && g.bestand ? eigenerMandant(g.bestand, s) : null;
-          if (mL) await geraetAbmelden(store, s.bestand, g.bestand, mL.id, s.person);
+          if (mL) await geraetAbmelden(store, s.bestand, g.bestand, mL.id, s.person, geraet);
         }
       } catch { /* das Abmelden geht vor */ }
       await sitzungBeenden(merkmalAus(req));

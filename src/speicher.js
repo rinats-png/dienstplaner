@@ -152,8 +152,35 @@ export async function raumLoeschen(raum) {
   return daten;
 }
 
+/**
+ * Die Push-Anmeldung DIESES Geräts für den Server (E-9): `{endpoint}`, `null`
+ * (dieses Gerät hat keine) oder `undefined` (unbekannt — der Server entfernt
+ * dann wie bisher die Anmeldung der Person). Höchstens ~1,5 s.
+ * @returns {Promise<{endpoint: string}|null|undefined>}
+ */
+async function diesesGeraet() {
+  try {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
+      || typeof window === "undefined" || !("PushManager" in window)) return null;
+    const suche = (async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const s = reg && await reg.pushManager.getSubscription();
+      return s && typeof s.endpoint === "string" ? { endpoint: s.endpoint } : null;
+    })();
+    const frist = new Promise((ja) => { setTimeout(() => ja(undefined), 1500); });
+    return await Promise.race([suche, frist]);
+  } catch { return undefined; }
+}
+/** Rumpf für Abmelden: ohne bekannte Angabe kein Feld `geraet` (bisheriges Verhalten). */
+const geraetRumpf = (g) => JSON.stringify(g === undefined ? {} : { geraet: g });
+
 export function abmelden(still = false) {
-  if (!still && token) ruf("abmelden", { method: "POST" }).catch(() => {});
+  if (!still && token) {
+    /* Der Kopf wird jetzt festgehalten — das Merkmal ist gleich weg. */
+    const kopfJetzt = kopf();
+    diesesGeraet().then((g) => fetch("/api/abmelden", { method: "POST", headers: kopfJetzt,
+      body: geraetRumpf(g), keepalive: true })).catch(() => {});
+  }
   /* Der zuletzt geladene Bestand liegt im Speicher des Dienstarbeiters. Er
      gehört nicht dem nächsten Menschen an diesem Gerät. */
   offlineDatenLoeschen(stempelInhaber());
@@ -759,13 +786,16 @@ export async function pushEinschalten(personId) {
 }
 
 export async function pushAusschalten() {
+  /* E-9: Der Server entfernt nur die Anmeldung dieses Geräts — der Endpunkt
+     wird vor dem Abbestellen gelesen. */
+  const g = await diesesGeraet();
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const s = reg && await reg.pushManager.getSubscription();
     if (s) await s.unsubscribe();
   } catch { /* egal */ }
   try {
-    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf() });
+    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf(), body: geraetRumpf(g) });
   } catch { /* egal */ }
 }
 

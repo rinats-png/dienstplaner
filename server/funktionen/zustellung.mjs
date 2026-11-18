@@ -4,7 +4,7 @@ import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../l
 import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, sitzungsRolleBekannt } from "../lib/rechte.mjs";
-import { zustellen, pushAnmelden, pushAbmelden, zustellStatusEigene } from "../lib/versand.mjs";
+import { zustellen, pushAnmelden, pushAbmelden, geraetAusRumpf, zustellStatusEigene } from "../lib/versand.mjs";
 import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
 import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
@@ -143,7 +143,10 @@ export default async (req) => {
       const m = bestand ? eigenerMandant(bestand, s) : null;
       const da = m && Array.isArray(m.personen) && m.personen.some((p) => p && String(p.id) === String(s.person));
       if (pfad === "abmelden") {
-        if (da) await pushAbmelden(store(), s.bestand, bestand, m.id, s.person);
+        /* E-9: nur die Anmeldung dieses Geräts (Rumpf `{geraet: {endpoint}}`,
+           `{geraet: null}` = dieses Gerät hat keine); ohne Angabe wie bisher. */
+        const geraet = geraetAusRumpf(await req.json().catch(() => null));
+        if (da) await pushAbmelden(store(), s.bestand, bestand, m.id, s.person, geraet);
         return antwort({ ok: true });
       }
       const { anmeldung } = await req.json().catch(() => ({}));
