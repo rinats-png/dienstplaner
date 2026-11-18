@@ -661,6 +661,14 @@ export const ausstehenderBestand = () => {
 
 /** Verwirft ihn — nur auf ausdrückliche Ansage. */
 export const ausstehendVerwerfen = () => { gescheitert = null; };
+/** Review #354 (Auflage 3): Verwerfen vor dem Neuladen — den gescheiterten UND den wartenden Auftrag. Sonst schickte
+    beforeunload eine Eingabe aus der Wartezeit noch per keepalive hinaus und der Browser fragte „Seite verlassen?",
+    obwohl verworfen wurde. Ein schon laufender Vorgang bleibt unberührt. Nur auf ausdrückliche Ansage. */
+export function allesAusstehendeVerwerfen() {
+  gescheitert = null;
+  offen = null;
+  if (uhr) { clearTimeout(uhr); uhr = null; }
+}
 
 /* P2-12 (Folgepunkt (1) Review #344): 422 UNGUELTIGER_KALENDERTAG des Servers (gestalt.kalendertagFehler). Gespeichert
    wurde nichts. Die Lage nennt den Bereich (aus `feld`, z. B. „mandanten[0].erfassung") und den Text des Servers

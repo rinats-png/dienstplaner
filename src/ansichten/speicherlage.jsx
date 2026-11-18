@@ -84,13 +84,17 @@ export const SPEICHERLAGE = {
     hilfe: true,
   },
   /* P2-12 (Folgepunkt (1) Review #344): 422 UNGUELTIGER_KALENDERTAG. Ein zweiter Versuch schickte denselben Stand —
-     deshalb kein „Noch einmal senden". Der Ausweg: als Datei sichern, dann verwerfen und neu laden. */
+     deshalb kein „Noch einmal senden". Der Ausweg: das Datum korrigieren (das nächste Speichern nimmt alles mit) oder
+     als Datei sichern, verwerfen und neu laden. Offen (Review #354, Auflage 4, Doku-Rest): Nach einem späteren
+     erfolgreichen Speichern bleibt die Leiste stehen, bis sie geschlossen oder neu geladen wird — das Räumen gehört
+     in den onGespeichert-Weg von App.jsx (Aktionsfabriken-Gate), nicht in diese Ansicht. */
   kalendertag: {
     titel: "Ein Datum gibt es nicht — die letzten Änderungen sind nicht gespeichert",
     text: "Ein neuer oder geänderter Eintrag trägt ein ungültiges Datum (etwa den 30. Februar). Der Server hat den "
       + "Speichervorgang deshalb abgewiesen; gespeichert wurde nichts, auch keine andere Änderung seit dem letzten "
-      + "Speichern. Solange der Eintrag hier steht, scheitert jedes weitere Speichern. Sichere die Arbeit bei Bedarf als "
-      + "Datei, verwirf die nicht gespeicherten Änderungen und lade neu; trage sie danach mit gültigem Datum noch einmal ein.",
+      + "Speichern. Solange der Eintrag so hier steht, scheitert jedes weitere Speichern. Korrigiere das Datum des Eintrags "
+      + "(oder entferne ihn) — das nächste Speichern nimmt dann alle Änderungen mit. Oder verwirf die nicht gespeicherten "
+      + "Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
     verwerfen: true,
   },
   unbekannt: {
@@ -100,6 +104,17 @@ export const SPEICHERLAGE = {
     nochmal: true, hilfe: true,
   },
 };
+
+/** Rückfrage vor dem Verwerfen (Review #354, Auflage 1). Abbrechen: nichts geschieht (der Auftrag bleibt ausstehend,
+    kein Neuladen). Bestätigen: gescheiterter und wartender Auftrag verworfen, dann neu laden.
+    @returns {boolean} verworfen */
+export function verwerfenMitRueckfrage() {
+  if (!window.confirm("Alle nicht gespeicherten Änderungen dieser Seite werden verworfen, und die Seite lädt neu. "
+    + "Wer sie behalten will, sichert sie vorher als Datei. Jetzt verwerfen?")) return false;
+  SP.allesAusstehendeVerwerfen();
+  window.location.reload();
+  return true;
+}
 
 export function NichtGespeichert({ lage, melde, aufGeloest }) {
   const [laeuft, setLaeuft] = useState(false);
@@ -171,18 +186,15 @@ export function NichtGespeichert({ lage, melde, aufGeloest }) {
         <Btn size="sm" onClick={sichern}>Als Datei sichern</Btn>
         {l.neuladen && <Btn size="sm" kind="quiet"
           onClick={() => window.location.reload()}>Seite neu laden</Btn>}
-        {/* Folgepunkt (1): der bestehende Verwerfen-Weg (ausstehendVerwerfen), dann neu laden — mit Rückfrage. */}
-        {l.verwerfen && <Btn size="sm" kind="danger" onClick={() => {
-          if (!window.confirm("Alle nicht gespeicherten Änderungen dieser Seite werden verworfen, und die Seite lädt neu. "
-            + "Wer sie behalten will, sichert sie vorher als Datei. Jetzt verwerfen?")) return;
-          SP.ausstehendVerwerfen();
-          window.location.reload();
-        }}>Änderungen verwerfen und neu laden</Btn>}
+        {/* Folgepunkt (1): verwerfen (gescheitert und wartend), dann neu laden — nur nach Rückfrage. */}
+        {l.verwerfen && <Btn size="sm" kind="danger" onClick={() => { verwerfenMitRueckfrage(); }}>
+          Änderungen verwerfen und neu laden</Btn>}
         {l.hilfe && <a href={hilfeVerweis({ betreff: "CENTRIC — Speichern schlägt fehl",
           zusatz: `Lage: ${lage.art}\nMeldung: ${lage.text}\nZeit: ${lage.zeit}` })}
           style={{ fontSize: 13, color: C.accent }}>Uns schreiben</a>}
-        <span style={{ fontSize: 11.5, color: C.dimmer, marginLeft: "auto", ...NUM }}>
-          {lage.text}</span>
+        {/* Review #354: bei „kalendertag" steht der Text schon oben mit dem Bereich — nicht doppelt. */}
+        {!l.verwerfen && <span style={{ fontSize: 11.5, color: C.dimmer, marginLeft: "auto", ...NUM }}>
+          {lage.text}</span>}
       </div>
     </div>);
 }
