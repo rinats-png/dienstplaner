@@ -36,13 +36,15 @@ function bestandC({ alt = true } = {}) {
   for (const pid of ["m0", "a1"]) for (const n of [20, 23]) plan[`${pid}|${tag(n)}`] = "F";
   /* Jenseits der Plandatenfrist (Vorgabe 24 Monate): fällig für den Löschlauf. */
   if (alt) for (const n of [-1000, -900]) plan[`a1|${tag(n)}`] = "F";
+  const stempel = { [`a1|${tag(-1)}`]: { start: "06:01", ende: "14:00", quelle: "app" },
+    ...(alt ? { [`a1|${tag(-1000)}`]: { start: "06:02", ende: "14:00", quelle: "app" } } : {}) };
   return { version: 9, stand: 1, mandanten: [{ id: "m1", name: "Haus", branche: "pflege", bundesland: "BE", status: "aktiv",
     einheiten: [{ id: "e1", name: "WB 1", versatzTage: 0 }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
     zyklus: ["-"], anker: "2026-01-05", zyklusLaenge: 1, gruppen: [], versatzTageVon: {},
     einstellungen: { ruhezeit: 11, maxFolge: 6 },
     personen: [person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1"), person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
-    abweichungen: plan, erfassung: {}, einstempeln: {}, wuensche: [], anfragen: [], nachrichten: [], abwesenheiten: [],
+    abweichungen: plan, erfassung: {}, einstempeln: stempel, wuensche: [], anfragen: [], nachrichten: [], abwesenheiten: [],
     freigaben: {}, bestaetigungen: [], protokoll: [] }] };
 }
 let raumNr = 0;
@@ -180,15 +182,22 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
   it("Kundenrolle mit Teilweg: heutiger Weg, das Speichern geht als Voll-PUT (Stempel stehen nie im Delta)", async () => {
     process.env.CENTRIC_TEILSPEICHERUNG = "true";
     fetchStub();
-    const { token } = await raumMit(["KU"]);
+    const { raum, token } = await raumMit(["KU"]);
     const o = await oberflaeche(token.KU, "l1");
+    o.fehler = [];
     expect(o.SP.teilwegAktiv()).toBe(true);
     aufrufe.length = 0;
     o.akt.loeschlauf();
     expect(o.mUpd).toHaveLength(1);
     expect(wege()).toEqual([]);
-    await o.SP.schreib(o.ref.current, { sofort: true, durch: "Pruefung" });
-    expect(wege()).toEqual(["PUT /api/bestand"]);
+    await o.SP.schreib(o.ref.current, { sofort: true, durch: "Pruefung", onFehler: (l) => o.fehler.push(l) });
+    /* Vor dem Voll-PUT frisch lesen (Review #348 H1), dann der Voll-PUT. */
+    expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(o.fehler).toEqual([]);
+    const m = await gespeichertM(raum);
+    expect(m.abweichungen[`a1|${tag(-1000)}`]).toBeUndefined();
+    expect(m.einstempeln[`a1|${tag(-1000)}`]).toBeUndefined();   // Stempel jenseits der Frist gelöscht (nur über den Voll-PUT)
+    expect(m.einstempeln[`a1|${tag(-1)}`]).toBeTruthy();
     /* Danach (Rückfall gelungen) bleibt die Sitzung beim Voll-PUT; die Vorgabe „voll" ist verbraucht. */
     expect(o.SP.teilwegAktiv()).toBe(false);
   });

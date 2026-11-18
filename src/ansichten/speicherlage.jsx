@@ -61,6 +61,14 @@ export const SPEICHERLAGE = {
       + "Die Änderung ist nicht gespeichert. Lade den Bestand neu und trage sie dann noch einmal ein.",
     neuladen: true,
   },
+  /* WP-48.5 (Review #348 H1): nach „Gleichzeitig bearbeitet" in einer Sitzung mit Teilspeicherung. */
+  vollGesperrt: {
+    titel: "Gleichzeitig bearbeitet — bitte neu laden",
+    text: "Jemand anderes hat dieselben Angaben gespeichert, seit du geladen hast. Deine letzten Änderungen sind "
+      + "noch nicht gespeichert und werden nicht über die andere Fassung geschrieben. Sichere sie als Datei und lade "
+      + "dann neu.",
+    neuladen: true,
+  },
   zuGross: {
     titel: "Der Bestand ist zu groß geworden",
     text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "

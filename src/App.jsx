@@ -1224,7 +1224,9 @@ function AppInnen() {
   /* WP-48.5 Teil 2: Der Teilweg hat den lokalen Stand angepasst (neu aufgesetzt oder entschieden) — übernehmen und
      als geschrieben vermerken (gesendet wird von speicher.js selbst). Ohne Teilweg nie gerufen. */
   const teilLokalUebernehmen = useCallback((b) => {
-    const naechster = { ...b, stand: ((ref.current && ref.current.stand) || 0) + 1 };
+    /* Die Sitzung ist Zustand dieses Reiters: die aktuelle, nicht die des zuletzt übergebenen Stands. */
+    const naechster = { ...b, session: ref.current ? ref.current.session : b.session,
+      stand: ((ref.current && ref.current.stand) || 0) + 1 };
     zuletztGeschrieben.current = abbildVon(naechster);
     setDb(naechster);
   }, []);
@@ -1241,8 +1243,11 @@ function AppInnen() {
             return pp ? `${pp.vorname} ${pp.nachname}` : "Betreiber"; })()
         : "Betreiber",
       onKonflikt: (d) => {
-        const uebernehmen = automatikKonfliktLoesen({ automatisch, geschrieben: abbild, lokal: ref.current,
-          antwort: d, migriere });
+        /* WP-48.5 (Review #348 H1): Mit Teilweg in der Sitzung übernimmt speicher.js den ETag eines 409 nicht — dann auch
+           keinen Bestand daraus (Bestand und ETag gehören zusammen). */
+        const uebernehmen = SP.teilwegGenutzt() ? null
+          : automatikKonfliktLoesen({ automatisch, geschrieben: abbild, lokal: ref.current,
+            antwort: d, migriere });
         if (uebernehmen) {
           /* Nur der automatische Lauf ist gescheitert, niemand hat etwas eingegeben: den Stand des
              Servers übernehmen (den ETag dazu hat speicher.js schon) und den Lauf einmal neu prüfen —
@@ -2021,11 +2026,11 @@ function AppInnen() {
             melde("Entschieden — wird gespeichert.");
           }}
           onSichern={() => teilSichern(melde)}
-          onSichernUndNeuLaden={() => {
-            if (!teilSichern(melde)) return;
+          onNeuLaden={() => {
+            /* Review #348 M1: erst nach ausdrücklichem Klick (nach der Sicherung als Datei). Bis hierher fragt
+               beforeunload weiter nach; jetzt nicht mehr — die Person hat sich entschieden. */
             SP.teilwegVerwerfen();
-            /* Kurz warten, damit der Browser die Datei übernimmt, bevor die Seite neu lädt. */
-            setTimeout(() => window.location.reload(), 800);
+            window.location.reload();
           }} />)}
 
       {fachFrage && sitz && sitz.mandant && (

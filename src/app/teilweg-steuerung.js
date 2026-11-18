@@ -18,8 +18,14 @@
      neuAufsetzen). Ein Voll-PUT umginge sonst den ABA-Schutz.
    - Bei offener Konfliktfrage und in „neu laden" geht nichts hinaus, auch
      nicht per keepalive beim Schließen.
-   - Die Sitzungskennung geht immer mit (B4); sie ist ein Abdruck des
-     Zugangs, nie der Zugang selbst, und verlässt den Browser nicht.
+   - Die Sitzungskennung wird bei jedem Rumpf an rumpfBauen übergeben (B4):
+     Daran prüft die Oberfläche, ob eine Wiederholung aus derselben Sitzung
+     stammt. In den Rumpf selbst kommt sie nicht (rumpfBauen setzt nur
+     Format, Epoche, Anfrage, durch, kern, zellen; der Server bildet seine
+     Kennung aus der eigenen Sitzung). Sie ist ein Abdruck des Zugangs, nie
+     der Zugang selbst.
+   - Vor jedem Rückfall auf den Voll-PUT: frisches GET und vollVorbereiten
+     (Review #348 H1).
    - Nach neuAufsetzen ist der lokale Stand die frische Sicht plus nur die
      eigenen ausstehenden Segmente; der Aufrufer übernimmt ihn.
    ========================================================================== */
@@ -47,6 +53,61 @@ export function bestandMitBetrieb(bestand, mandantId, m) {
   return { ...bestand, mandanten: (bestand.mandanten || []).map((x) => (x && x.id === mandantId ? m : x)) };
 }
 
+const hatFeld = (o, k) => !!o && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k);
+const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const wertVon = (o, k) => (hatFeld(o, k) ? o[k] : null);
+/** Zustand des Reiters bzw. vom Server gezählt — nie Teil eines Vergleichs (wie teilkonflikt.js). */
+const NIE_VERGLEICHEN = new Set(["session", "stand"]);
+
+/**
+ * Rückfall auf den Voll-PUT vorbereiten (Review #348, H1): Der Voll-PUT soll gegen den AKTUELLEN Stand laufen — mit
+ * dessen ETag —, sonst stieße er mit den eigenen Teilspeicherungen zusammen (409 ohne Fremdbeteiligung). Dazu wird der
+ * lokale Stand auf die frische Sicht neu aufgesetzt, und zwar je Zelle bzw. je Feld (auch Felder ohne Version, die der
+ * Teilweg nicht darstellen kann):
+ *   nur ich geändert (lokal ≠ Basis)            → meins
+ *   nur andere geändert (frisch ≠ Basis)        → frisch (fremde Änderungen bleiben erhalten)
+ *   beide, verschieden                          → Frage je Zelle/Feld (kein Senden bis zur Entscheidung)
+ * Nur-Server-Felder kommen immer aus der frischen Sicht. Ohne Frage: `voll` mit neuem lokalem Stand und neuer Basis —
+ * der Voll-PUT mit dem ETag der frischen Antwort überschreibt dann keine fremde Änderung.
+ * @returns {{ ergebnis: "voll"|"konflikt"|"neuLaden"|"gesperrt"|"aus", zustand: any, lokal: any }}
+ */
+export function vollVorbereiten(z, lokal, antwort) {
+  if (z.phase === "neuLaden") return { ergebnis: "neuLaden", zustand: z, lokal };
+  if (z.konflikte.length) return { ergebnis: "gesperrt", zustand: z, lokal };
+  const frisch = T.teilwegStart(antwort, z.mandantId);
+  if (!frisch) return { ergebnis: "aus", zustand: null, lokal };
+  if (frisch.epoche !== z.epoche)
+    return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", unklar: [...z.unklar], ausstehendBeiNeuLaden: { voll: "epoche" } } };
+  const basis = z.basis, f = frisch.basis, l = lokal || {};
+  const neu = {};
+  const fragen = [];
+  for (const feld of new Set([...Object.keys(basis), ...Object.keys(l), ...Object.keys(f)])) {
+    if (NIE_VERGLEICHEN.has(feld)) { if (hatFeld(l, feld)) neu[feld] = l[feld]; continue; }
+    if (T.NUR_SERVER_SPIEGEL.includes(feld)) { if (hatFeld(f, feld)) neu[feld] = f[feld]; continue; }
+    if (T.ZELLFELDER.includes(feld) && [basis[feld], l[feld], f[feld]].every((x) => x === undefined || x === null || istObjekt(x))) {
+      const qb = istObjekt(basis[feld]) ? basis[feld] : {}, ql = istObjekt(l[feld]) ? l[feld] : {}, qf = istObjekt(f[feld]) ? f[feld] : {};
+      const aus = {};
+      for (const k of new Set([...Object.keys(qb), ...Object.keys(ql), ...Object.keys(qf)])) {
+        const b = wertVon(qb, k), m = wertVon(ql, k), fr = wertVon(qf, k);
+        const meins = !T.gleich(m, b), fremd = !T.gleich(fr, b);
+        if (meins && fremd && !T.gleich(m, fr)) fragen.push({ id: `z:${feld}:${k}`, art: "zelle", feld, k, meins: m, fremd: fr });
+        const w = meins ? m : fr;
+        if (w !== null && w !== undefined) aus[k] = w;
+      }
+      if (hatFeld(l, feld) || hatFeld(f, feld)) neu[feld] = aus;
+      continue;
+    }
+    const b = wertVon(basis, feld), m = wertVon(l, feld), fr = wertVon(f, feld);
+    const meins = !T.gleich(m, b), fremd = !T.gleich(fr, b);
+    if (meins && fremd && !T.gleich(m, fr)) fragen.push({ id: `k:${feld}`, art: "kern", feld, meins: m, fremd: fr });
+    const quelle = meins ? l : f;
+    if (hatFeld(quelle, feld)) neu[feld] = quelle[feld];
+  }
+  fragen.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return { ergebnis: fragen.length ? "konflikt" : "voll", lokal: neu,
+    zustand: { ...frisch, konflikte: fragen, phase: fragen.length ? "konflikt" : "bereit" } };
+}
+
 /** Ist der Zustand ruhig — nichts unklar, keine Frage offen, nichts unterwegs, nicht „neu laden"? */
 export const ruhig = (z) => !!z && z.phase === "bereit" && !z.unklar.length && !z.konflikte.length && !z.unterwegs;
 
@@ -67,7 +128,8 @@ export const ruhig = (z) => !!z && z.phase === "bereit" && !z.unklar.length && !
  *   bestand?: any, etag?: any, gesendet?: any, antwort?: any, meldung?: string, grund?: string }>}
  *   `bestand`: neuer lokaler Stand (nach neuAufsetzen) — der Aufrufer übernimmt ihn.
  *   `etag`: Stand des frischen GET (gehört zu `bestand`).
- *   `voll`: Rückfall auf den Voll-PUT (mit `bestand`, falls neu aufgesetzt); `aus`: der Server bietet den Teilweg
+ *   `voll`: Rückfall auf den Voll-PUT — immer erst nach frischem GET und vollVorbereiten, mit `bestand` (neu
+ *   aufgesetzt) und `etag` (Stand des frischen GET), Review #348 H1; `aus`: der Server bietet den Teilweg
  *   nicht mehr an (Voll-PUT, Zustand verwerfen).
  */
 export async function teilSpeichern(teil, o) {
@@ -78,27 +140,52 @@ export async function teilSpeichern(teil, o) {
   const mit = (r) => ({ ...r, ...neu });
   const neuester = () => (typeof o.neuester === "function" && o.neuester()) || bestand;
 
-  const aufsetzen = async (meldung) => {
-    if (o.beimSchliessen) return { fertig: mit({ teil: z, ergebnis: "nichts", grund: "neu-aufsetzen-beim-schliessen" }) };
+  /** Frisches GET; nie beim Schließen, nie aus dem Speicher des Dienstarbeiters. */
+  const frischHolen = async (meldung, grund) => {
+    if (o.beimSchliessen) return { fertig: mit({ teil: z, ergebnis: "nichts", grund: `${grund}-beim-schliessen` }) };
     let g;
     try { g = await o.holen(); } catch { g = { netz: true }; }
-    /* Eine Antwort aus dem Speicher des Dienstarbeiters ist kein frischer Stand. */
     if (!g || g.netz || g.status !== 200 || g.ausSpeicher || !g.daten)
       return { fertig: mit({ teil: z, ergebnis: "fehler", antwort: g && !g.ausSpeicher && !g.netz ? g : { status: null, netz: true },
         meldung: meldung || "Der aktuelle Stand ließ sich nicht laden. Deine Änderungen bleiben erhalten." }) };
+    return { g };
+  };
+  /** Neu aufgesetzten lokalen Stand übernehmen (sofort, vor jedem weiteren Senden). */
+  const annehmen = (jetzt, lokalNeu, etag) => {
+    bestand = bestandMitBetrieb(jetzt, z.mandantId, lokalNeu);
+    neu.bestand = bestand;
+    neu.etag = etag;
+    if (typeof o.uebernehmen === "function") o.uebernehmen(bestand, etag);
+  };
+
+  const aufsetzen = async (meldung) => {
+    const h = await frischHolen(meldung, "neu-aufsetzen");
+    if (h.fertig) return h;
     /* Der jüngste lokale Stand nach dem Warten — sonst gingen Eingaben während des Ladens verloren. */
     const jetzt = neuester();
-    const lokal = T.mandantAus(jetzt, z.mandantId);
-    const n = T.neuAufsetzen(z, g.daten, lokal);
+    const n = T.neuAufsetzen(z, h.g.daten, T.mandantAus(jetzt, z.mandantId));
     if (n.ergebnis === "aus") return { fertig: mit({ teil: null, ergebnis: "aus" }) };
     if (n.ergebnis === "neuLaden") return { fertig: mit({ teil: n.zustand, ergebnis: "neuLaden" }) };
     z = n.zustand;
-    bestand = bestandMitBetrieb(jetzt, z.mandantId, n.lokal);
-    neu.bestand = bestand;
-    neu.etag = g.daten.etag;
-    if (typeof o.uebernehmen === "function") o.uebernehmen(bestand, g.daten.etag);
+    annehmen(jetzt, n.lokal, h.g.daten.etag);
     if (n.ergebnis === "konflikt") return { fertig: mit({ teil: z, ergebnis: "konflikt" }) };
     return { fertig: null };
+  };
+
+  /* Review #348 H1: Vor jedem Rückfall auf den Voll-PUT frisch lesen und je Zelle/Feld neu aufsetzen
+     (vollVorbereiten) — der Voll-PUT trägt dann den ETag des frischen Stands und stößt nicht mit den eigenen
+     Teilspeicherungen zusammen; fremde Änderungen bleiben erhalten, Streit wird zur Frage. */
+  const vorbereiten = async (grund, meldung) => {
+    const h = await frischHolen(undefined, "voll");
+    if (h.fertig) return h.fertig;
+    const jetzt = neuester();
+    const v = vollVorbereiten(z, T.mandantAus(jetzt, z.mandantId), h.g.daten);
+    if (v.ergebnis === "aus") return mit({ teil: null, ergebnis: "aus" });
+    if (v.ergebnis === "neuLaden" || v.ergebnis === "gesperrt") return mit({ teil: v.zustand, ergebnis: v.ergebnis });
+    z = v.zustand;
+    annehmen(jetzt, v.lokal, h.g.daten.etag);
+    if (v.ergebnis === "konflikt") return mit({ teil: z, ergebnis: "konflikt" });
+    return mit({ teil: z, ergebnis: "voll", grund, ...(meldung ? { meldung } : {}) });
   };
 
   for (let runde = 0; runde < 3; runde++) {
@@ -111,7 +198,7 @@ export async function teilSpeichern(teil, o) {
       d = z.unklar.length ? { neuAufsetzen: true, grund: "ausnahme" } : { voll: "ausnahme" };
     if ("gesperrt" in d) return mit({ teil: z, ergebnis: "gesperrt", grund: d.gesperrt });
     if ("leer" in d) return mit({ teil: z, ergebnis: "nichts", grund: "leer" });
-    if ("voll" in d) return mit({ teil: z, ergebnis: "voll", grund: d.voll });
+    if ("voll" in d) return vorbereiten(d.voll);
     if ("neuAufsetzen" in d) {
       const a = await aufsetzen();
       if (a.fertig) return a.fertig;
@@ -133,7 +220,7 @@ export async function teilSpeichern(teil, o) {
     z = e.zustand;
     if (e.ergebnis === "gespeichert") return mit({ teil: z, ergebnis: "gespeichert", gesendet: bestand });
     if (e.ergebnis === "konflikt" || e.ergebnis === "neuLaden") return mit({ teil: z, ergebnis: e.ergebnis });
-    if (e.ergebnis === "voll") return mit({ teil: z, ergebnis: "voll", grund: "zu-gross", meldung: e.meldung });
+    if (e.ergebnis === "voll") return vorbereiten("zu-gross", e.meldung);
     if (e.ergebnis === "neuAufsetzen") {
       const n = await aufsetzen(e.meldung);
       if (n.fertig) return n.fertig;
