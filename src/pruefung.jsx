@@ -18,6 +18,10 @@ import { verbindlichkeit } from "./regelwerk.js";
 /* Die Ortsprüfung beim Stempeln gibt es nur einmal (server/lib/geo.mjs). */
 import { abstandMeter, geoUrteil } from "../server/lib/geo.mjs";
 import { vergebbareRollen, RANG as ROLLEN_RANG } from "../server/lib/rollenvergabe.mjs";
+/* WP-I12c: Den Szenarienvergleich (planKennzahlen) gibt es nur einmal, im Rechenkern
+   (server/lib/engine/kennzahlen.mjs, weitergereicht über src/lib/fachlogik.js). Die frühere
+   Kopie hier rief verteilung mit einem Monat statt von/bis auf (spanne undefined, wochenenden NaN). */
+import { planKennzahlen } from "./lib/fachlogik.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -3221,29 +3225,6 @@ function rangGruende(m, x, datum, dienstId) {
     g.push({ art: "plus", text: "ist in den letzten zwei Monaten nicht eingesprungen" });
 
   return g;
-}
-
-/* ==========================================================================
-   SZENARIENVERGLEICH
-   Zwei Planvarianten nebeneinander, mit denselben Kennzahlen gemessen.
-   ========================================================================== */
-function planKennzahlen(m, von, bis) {
-  const bef = pruefen(m, von, bis);
-  const schwer = bef.filter((x) => x.schwere === "danger").length;
-  let unterbesetzt = 0, ueberbesetzt = 0, dienste = 0, stunden = 0;
-  for (let d = von; d <= bis; d = addDays(d, 1)) {
-    for (const [k, e] of Object.entries(besetzung(m, d))) {
-      if (e.soll === 0) continue;
-      dienste += e.anzahl;
-      if (e.diff < 0) unterbesetzt++;
-      if (e.diff > 1) ueberbesetzt++;
-      if (e.da) stunden += e.anzahl * dauer(e.da);
-    }
-  }
-  const v = verteilung(m, von.slice(0, 7));
-  return { befunde: bef.length, schwer, unterbesetzt, ueberbesetzt, dienste,
-    stunden: Math.round(stunden), spanne: v.spanne,
-    wochenenden: v.zeilen.reduce((a, z) => a + z.wochenendNaechte, 0) };
 }
 
 /* ==========================================================================
@@ -7344,6 +7325,10 @@ function selbsttest() {
   const pk = planKennzahlen(m, `${ym}-01`, `${ym}-14`);
   ok("Kennzahlen zaehlen Dienste", true, pk.dienste > 0);
   ok("Kennzahlen zaehlen Stunden", true, pk.stunden > 0);
+  /* WP-I12c: keine Fehlwerte (undefined, NaN) im Szenarienvergleich */
+  ok("Kennzahlen: Spanne ist eine endliche Zahl", true, Number.isFinite(pk.spanne));
+  ok("Kennzahlen: Wochenenden sind eine endliche Zahl", true, Number.isFinite(pk.wochenenden));
+  ok("Kennzahlen: jeder Wert ist eine endliche Zahl", true, Object.values(pk).every((w) => Number.isFinite(w)));
 
   /* --- Farbsystem der neuen Palette --- */
   ok("Grundflaeche ist warm getoent", true, C.bg !== "#FFFFFF" && C.bg !== "#F5F4F2");

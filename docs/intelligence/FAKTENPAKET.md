@@ -163,6 +163,15 @@ Feste Regeln (per Test): Betriebsrat und Betreiber lösen nie aus; Schichtverant
 
 Die Faktenquelle kann so kein Feld über die Positivliste hinaus, keine fremde Person und keinen Freitext einbringen; was sie als Kennung durchbringt, prüft die Leck-Prüfung.
 
+### 5.4 Kennzahlen des Szenarienvergleichs (technische Festlegung WP-I12c)
+
+`planKennzahlen(m, von, bis)` (`server/lib/engine/kennzahlen.mjs`, einzige Fassung; `src/lib/fachlogik.js` reicht sie weiter, `src/pruefung.jsx` importiert sie) rechnet die Verteilung über genau `von..bis`:
+
+- `spanne` = größte minus kleinste Last je Person, **Last = `weNacht + feier`** (Wochenendnächte plus Feiertagsdienste, der Sortierschlüssel von `verteilung`); 0 ohne Personen.
+- `wochenenden` = Summe der Tage Sa/So mit Dienst über alle Personen der Verteilung.
+
+Alle Werte sind endliche Zahlen. Die Definition der Spanne ist **technisch festgelegt** (wp-i12-fragen Frage 4), keine Betreiberentscheidung; der Betreiber kann widersprechen (`docs/acc45/ENTSCHEIDUNGSLISTE.md`, P2-13). `spanne` und `wochenenden` stehen nicht in `KENNZAHLEN` des Rechenkerns und werden daher nicht als `kennzahl.wert` ins Paket gegeben.
+
 ## 6. Alias-Verfahren
 
 - **Form:** `P_` (Person), `E_` (Einheit), `O_` (Objekt/Standort), `D_` (Dienstart, seit Review F5) + 8 Zeichen aus 20 Konsonanten (20⁸ ≈ 2,6·10¹⁰). Keine Vokale (kein Wort, kein Name), keine Ziffern (keine Verwechslung mit Zahlen im Prüfer). Die Felder `alias`/`bezugAlias` des Pakets nehmen nur `P_`/`E_`/`O_`; `D_` steht in `ref` und in Kennungswerten.

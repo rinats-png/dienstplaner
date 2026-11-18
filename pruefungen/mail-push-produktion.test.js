@@ -647,7 +647,7 @@ describe("Nachtrag B1: ein Notruf geht nach Flut oder großem Versand nicht verl
     expect(post.mails.filter((x) => x.an === "p1@kunde.example").length).toBeLessThanOrEqual(5);
     await stelleZu(m, ["n-notruf-nr-echt2-l1"]);
     expect(await status(m, "n-notruf-nr-echt2-l1", "mail")).toMatchObject({ status: "gesendet" });
-  });
+  }, 60_000);   // eigene Frist: 40 Zustellungen, lokal und unter Last über 5 s
 
   it("dringende Mitteilungen einer Quelle sind je Tag und Kanal begrenzt (über alle Empfänger)", async () => {
     process.env.CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL = "6";
@@ -656,7 +656,7 @@ describe("Nachtrag B1: ein Notruf geht nach Flut oder großem Versand nicht verl
     await stelleZu(m, flut.map((n) => n.id));
     expect(post.mails.length).toBeLessThanOrEqual(6);
     expect(post.mails.length).toBeGreaterThan(0);
-  });
+  }, 60_000);   // eigene Frist: 30 Zustellungen, lokal und unter Last über 5 s
 
   it("Kontingenttag nach Berliner Zeit (nicht UTC), Sommer und Winter; nächster Tag beginnt um Mitternacht in Berlin", () => {
     expect(R.kontingentTag(Date.parse("2026-12-10T23:30:00.000Z"))).toBe("2026-12-11");

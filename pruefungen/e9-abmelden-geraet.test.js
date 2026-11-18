@@ -58,9 +58,10 @@ describe("SP.abmelden startet die Anfrage synchron", () => {
     SP.abmelden();
     expect(abmeldeRumpf.body).toEqual({ geraet: { endpoint: "https://push.example/dieses" } });
   });
-  it("gemerkt „keins“ oder keine Erlaubnis: {geraet: null}; nichts gemerkt: ohne Angabe (bisheriges Verhalten)", async () => {
+  it("gemerkt „keins“ oder keine Erlaubnis ohne Merker: {geraet: null}; nichts gemerkt: ohne Angabe (bisheriges Verhalten)", async () => {
     for (const [fall, erwartet] of [[{ push: true, gemerkt: "keins" }, { geraet: null }],
-      [{ push: true, erlaubnis: "default", gemerkt: JSON.stringify({ endpoint: "https://push.example/x" }) }, { geraet: null }],
+      [{ push: true, erlaubnis: "default" }, { geraet: null }],
+      [{ push: true, erlaubnis: "denied", gemerkt: "keins" }, { geraet: null }],
       [{ push: true }, {}]]) {
       vi.resetModules();
       umgebung(fall);
@@ -68,6 +69,40 @@ describe("SP.abmelden startet die Anfrage synchron", () => {
       await SP.anmelden("code-nur-zum-pruefen", false);
       SP.abmelden();
       expect(abmeldeRumpf && abmeldeRumpf.body, JSON.stringify(fall)).toEqual(erwartet);
+    }
+  });
+  it("Folgepunkt L1: Erlaubnis widerrufen, Endpunkt gemerkt → {geraet: {endpoint}} (die Serveranmeldung wird entfernt)", async () => {
+    for (const erlaubnis of ["default", "denied"]) {
+      vi.resetModules();
+      umgebung({ push: true, erlaubnis, gemerkt: JSON.stringify({ endpoint: "https://push.example/x" }) });
+      const SP = await import("../src/speicher.js");
+      await SP.anmelden("code-nur-zum-pruefen", false);
+      SP.abmelden();
+      expect(abmeldeRumpf.body, erlaubnis).toEqual({ geraet: { endpoint: "https://push.example/x" } });
+    }
+  });
+});
+
+describe("Folgepunkte L1/L2: pushGeraetAuffrischen überschreibt einen gemerkten Endpunkt nicht", () => {
+  const mitAbo = (endpoint) => {
+    globalThis.navigator.serviceWorker.getRegistration = () => Promise.resolve(
+      { pushManager: { getSubscription: () => Promise.resolve(endpoint ? { endpoint } : null) } });
+  };
+  it("Browser ohne Abonnement oder mit anderem: der gemerkte bleibt; ohne Merker gilt der des Browsers", async () => {
+    const gemerkt = JSON.stringify({ endpoint: "https://push.example/alt" });
+    for (const [vorher, browser, erwartet] of [
+      [gemerkt, null, gemerkt],
+      [gemerkt, "https://push.example/neu", gemerkt],
+      [gemerkt, "https://push.example/alt", gemerkt],
+      [undefined, "https://push.example/neu", JSON.stringify({ endpoint: "https://push.example/neu" })],
+      [undefined, null, "keins"],
+      ["keins", "https://push.example/neu", JSON.stringify({ endpoint: "https://push.example/neu" })]]) {
+      vi.resetModules();
+      umgebung({ push: true, gemerkt: vorher });
+      mitAbo(browser);
+      const SP = await import("../src/speicher.js");
+      await SP.pushGeraetAuffrischen();
+      expect(globalThis.localStorage.getItem("centric:pushgeraet"), `${vorher} / ${browser}`).toBe(erwartet);
     }
   });
 });

@@ -335,6 +335,30 @@ describe("Auflage M3: Quote für Leitung und Planung (nur Zähler)", () => {
     }
     expect((await stand(T.a2)).quote).toBeUndefined();
   });
+  it("Folgepunkt L3: blockweise gelesen und kurz gemerkt — gleiche Zähler, neue Adressen sofort, Bestätigen verwirft", async () => {
+    MB.quoteVergessen();
+    const viele = { id: "m-viel", personen: Array.from({ length: MB.QUOTE_BLOCK * 2 + 7 }, (_, i) =>
+      ({ id: `v${i}`, email: i % 9 === 0 ? null : `v${i}@viel.example`, ...(i === 5 ? { anonym: true } : {}) })) };
+    const erwartetMit = viele.personen.filter((p) => p.email && !p.anonym).length;
+    for (const p of viele.personen.filter((x) => x.email && Number(x.id.slice(1)) % 4 === 0))
+      await laden().setJSON(MB.bestaetigtSchluessel("mbq", "m-viel", p.id), { adresse: MB.adressWert(p.email), am: "x" });
+    const bestaetigtSoll = viele.personen.filter((p) => p.email && !p.anonym && Number(p.id.slice(1)) % 4 === 0).length;
+    const q1 = await MB.bestaetigungsQuote(laden(), { raum: "mbq", m: viele, jetzt: FEST });
+    expect(q1).toEqual({ mitAdresse: erwartetMit, unbestaetigt: erwartetMit - bestaetigtSoll });
+    /* Ein Eintrag an den Wegen vorbei: innerhalb der Frist unverändert, danach neu gerechnet */
+    await laden().setJSON(MB.bestaetigtSchluessel("mbq", "m-viel", "v1"), { adresse: MB.adressWert("v1@viel.example"), am: "x" });
+    expect(await MB.bestaetigungsQuote(laden(), { raum: "mbq", m: viele, jetzt: FEST + 1000 })).toEqual(q1);
+    const q2 = await MB.bestaetigungsQuote(laden(), { raum: "mbq", m: viele, jetzt: FEST + MB.QUOTE_FRIST_MS + 1 });
+    expect(q2).toEqual({ mitAdresse: erwartetMit, unbestaetigt: q1.unbestaetigt - 1 });
+    /* Geänderte Adresse: sofort neu (Fingerabdruck), ohne Adresse im Merker */
+    const geaendert = { ...viele, personen: viele.personen.map((p) => (p.id === "v1" ? { ...p, email: "anders@viel.example" } : p)) };
+    expect(await MB.bestaetigungsQuote(laden(), { raum: "mbq", m: geaendert, jetzt: FEST + MB.QUOTE_FRIST_MS + 2 }))
+      .toEqual({ mitAdresse: erwartetMit, unbestaetigt: q1.unbestaetigt });
+    /* Entfernen verwirft den Merker des Betriebs */
+    await MB.bestaetigungEntfernen(laden(), "mbq", "m-viel", "v4");
+    expect(await MB.bestaetigungsQuote(laden(), { raum: "mbq", m: geaendert, jetzt: FEST + MB.QUOTE_FRIST_MS + 3 }))
+      .toEqual({ mitAdresse: erwartetMit, unbestaetigt: q1.unbestaetigt + 1 });
+  });
 });
 
 describe("Auflage N1/N4: Adressbremse normalisiert; Auskunft nennt den Bestätigungszeitpunkt", () => {
@@ -378,6 +402,22 @@ describe("Person entfernt: Bestätigung und offener Code weg (Art. 17); Aufräum
     expect(await laden().getMetadata(MB.bestaetigtSchluessel("mb", "m-a", "gibtsnicht"))).toBeNull();
     expect(await laden().getMetadata(MB.codeSchluessel("mb", "m-a", "a2"))).toBeNull();
     expect(await laden().getMetadata(MB.codeSchluessel("mb", "m-a", "p1"))).not.toBeNull();
+  });
+});
+
+describe("Folgepunkt N4: Anonymisieren räumt die Bestätigung sofort", () => {
+  it("PUT mit anonymisierter Person: mailbest/mailbestcode weg, andere Personen unberührt", async () => {
+    await laden().setJSON(MB.bestaetigtSchluessel("mb", "m-a", "a3"), { adresse: "x", am: "x" });
+    await laden().setJSON(MB.codeSchluessel("mb", "m-a", "a3"), { hash: "x", adresse: "y", ablauf: "2999-01-01T00:00:00.000Z" });
+    await laden().setJSON(MB.bestaetigtSchluessel("mb", "m-a", "a2"), { adresse: "x", am: "x" });
+    const r = await schreibe(T.l1, (m) => {
+      const i = m.personen.findIndex((p) => p.id === "a3");
+      m.personen[i] = { ...m.personen[i], vorname: "", nachname: "Ausgeschieden a3", email: "", anonym: true };
+    });
+    expect(r.status, r.text).toBe(200);
+    expect(await laden().getMetadata(MB.bestaetigtSchluessel("mb", "m-a", "a3"))).toBeNull();
+    expect(await laden().getMetadata(MB.codeSchluessel("mb", "m-a", "a3"))).toBeNull();
+    expect(await laden().getMetadata(MB.bestaetigtSchluessel("mb", "m-a", "a2"))).not.toBeNull();
   });
 });
 
