@@ -206,6 +206,11 @@ describe("A4 vollVorbereiten (Review #348 H1): Neuaufsetzen je Zelle/Feld vor de
     expect(w.ergebnis).toBe("voll");
     expect(w.lokal.abweichungen["a1|2026-08-15"]).toBe("S");
   });
+  it("Stempel als Frage heißt „Stempel“, nicht „Einteilung“", () => {
+    const t = T.frageText({ art: "zelle", feld: "einstempeln", k: "a1|2026-08-01", meins: null, fremd: { start: "06:00", ende: "14:00" } }, betrieb());
+    expect(t.titel).toBe("Stempel von Ana Alt am 01.08.2026");
+    expect(t.fremd).toBe("06:00–14:00");
+  });
   it("andere Epoche → neu laden; offene Frage → gesperrt", () => {
     const z = start();
     expect(W.vollVorbereiten(z, z.basis, getAntwort(betrieb(), "e9e9e9e9")).ergebnis).toBe("neuLaden");
@@ -312,6 +317,8 @@ const speicherAttrappe = (vorab = {}) => { const m = new Map(Object.entries(vora
 const aufrufe = [];
 let netzWeg = null;   // (pfad, methode) => "vorher" | "nachher" | null — Netz bricht vor bzw. nach dem Server ab
 let anmeldeAntwort = null;   // Antwort auf /api/anmelden (Zugangswechsel ohne Neuladen)
+let antwortErsetzen = null;  // (pfad, methode) => { status, daten } | null
+let nachGet = null;          // einmalig nach dem nächsten GET /api/bestand ausgeführt
 function fetchStub() {
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
@@ -321,8 +328,14 @@ function fetchStub() {
     aufrufe.push({ url, methode, rumpf: opt.body ? JSON.parse(opt.body) : null, keepalive: !!opt.keepalive, auth: kopf.authorization || null });
     const weg = netzWeg ? netzWeg(url, methode) : null;
     if (weg === "vorher") throw new TypeError("Failed to fetch");
+    /* Antwort an Stelle des Servers (nur für Lagen, die der echte Server hier nicht erzeugt: 413 des Teilwegs,
+       Fachbefund-409). Der Server wird dann nicht gefragt und schreibt nichts. */
+    const ersatz = antwortErsetzen ? antwortErsetzen(url, methode) : null;
+    if (ersatz) return new Response(JSON.stringify(ersatz.daten), { status: ersatz.status, headers: { "content-type": "application/json" } });
     const a = await daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
     if (weg === "nachher") throw new TypeError("Failed to fetch");
+    /* Rennen: ein Fremdschreiber direkt nach einer Leseantwort (zwischen frischem GET und Voll-PUT). */
+    if (nachGet && methode === "GET" && url === "/api/bestand") { const f = nachGet; nachGet = null; await f(); }
     return a;
   });
 }
@@ -344,7 +357,8 @@ const setze = (o, k, w) => { const m = o.db.mandanten[0]; const abw = { ...m.abw
   o.db = { ...o.db, mandanten: [{ ...m, abweichungen: abw }] }; };
 const speichern = async (o) => { await o.SP.schreib(o.db, optionen(o)); await fertig(o.SP); };
 
-describe("B echter Client (src/speicher.js) gegen den echten Handler", () => {
+/* Eigenes Zeitbudget je Fall (echter Handler, Dateiablage): unabhängig vom Aufruf (Skript 120 s, lokal oft 60 s). */
+describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout: 120000 }, () => {
   beforeAll(async () => {
     wurzel = await mkdtemp(path.join(tmpdir(), "centric-wp48-5o-"));
     process.env.CENTRIC_DATEN = wurzel;
@@ -362,7 +376,7 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", () => {
     const HEUTE = Z.heuteBerlin();
     tag = (n) => Z.tagePlus(HEUTE, n);
   });
-  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; netzWeg = null; anmeldeAntwort = null; });
+  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; netzWeg = null; anmeldeAntwort = null; antwortErsetzen = null; nachGet = null; });
   afterAll(async () => {
     delete process.env.CENTRIC_TEILSPEICHERUNG;
     if (wurzel) await rm(wurzel, { recursive: true, force: true });
@@ -610,6 +624,93 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", () => {
     expect(o.konflikt).toEqual([]);
     expect(o.fehler).toEqual([]);
     expect((await gespeichertM(raum)).abweichungen[Z("a1", 23)]).toBe("N");
+  });
+
+  /* ---------------- Delta-Review #348: Sperre aufheben, 413-Rückfall, Fachbefund-ETag ---------------- */
+  it("Rennen: Fremdschreiber zwischen frischem GET und Voll-PUT → 409 und Sperre; das nächste Speichern liest frisch, hebt sie auf und speichert ohne Verlust", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT", "PL"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const pl = await oberflaeche(token.PL, "p1");
+    setze(o, Z("a1", 20), "N"); await speichern(o);
+    notizen(o, []); setze(o, Z("a1", 23), "N");
+    nachGet = async () => { setze(pl, Z("s1", 23), "-"); await speichern(pl); };
+    await speichern(o);
+    expect(o.konflikt).toHaveLength(1);                   // echtes Rennen, echte Fremdänderung im selben Monat
+    expect((await gespeichertM(raum)).abweichungen[Z("s1", 23)]).toBe("-");
+    const fehlerVorher = o.fehler.length;
+    setze(o, Z("a1", 26), "N");
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(o.fehler.slice(fehlerVorher)).toEqual([]);
+    const g = await gespeichertM(raum);
+    expect(g.abweichungen[Z("s1", 23)]).toBe("-");   // fremd erhalten
+    expect([g.abweichungen[Z("a1", 23)], g.abweichungen[Z("a1", 26)], g.notizen]).toEqual(["N", "N", []]);
+  });
+
+  it("Sperre nach 409 endet mit dem Übernehmen eines gelesenen Stands (teilwegUebernehmen); danach gelingt der Voll-PUT", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT", "PL"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const pl = await oberflaeche(token.PL, "p1");
+    notizen(o, []); await speichern(o);                  // Rückfall gelungen → Teilweg aus
+    setze(pl, Z("s1", 20), "-"); await speichern(pl);
+    setze(o, Z("a1", 20), "N"); await speichern(o);       // 409
+    setze(o, Z("a1", 23), "N"); await speichern(o);       // gesperrt
+    expect(o.fehler.at(-1).art).toBe("vollGesperrt");
+    /* Die Oberfläche übernimmt einen gelesenen Stand (wie nach dem Stempeln); hier ohne Schalter: Voll-PUT direkt. */
+    delete process.env.CENTRIC_TEILSPEICHERUNG;
+    const g0 = await o.SP.lies();
+    expect(g0.teilAntwort).toBeNull();
+    expect(o.SP.teilwegUebernehmen(g0.teilAntwort)).toBe(true);
+    o.db = { ...g0.bestand, session: o.db.session };
+    setze(o, Z("a1", 23), "N");
+    const fehlerVorher = o.fehler.length;
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["PUT /api/bestand"]);
+    expect(o.fehler.slice(fehlerVorher)).toEqual([]);
+    const g = await gespeichertM(raum);
+    expect([g.abweichungen[Z("s1", 20)], g.abweichungen[Z("a1", 23)]]).toEqual(["-", "N"]);
+  });
+
+  it("413 des Teilwegs nach eigener Teilspeicherung: erst frisch lesen, dann Voll-PUT mit frischem ETag (kein 409)", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    setze(o, Z("a1", 20), "N"); await speichern(o);
+    setze(o, Z("a1", 23), "N");
+    antwortErsetzen = (u) => (u === "/api/bestand/teile" ? { status: 413, daten: { code: "TEILE_ZU_GROSS", text: "Zu viel auf einmal." } } : null);
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["POST /api/bestand/teile", "GET /api/bestand", "PUT /api/bestand"]);
+    expect(o.konflikt).toEqual([]);
+    expect(o.fehler).toEqual([]);
+    expect((await gespeichertM(raum)).abweichungen[Z("a1", 23)]).toBe("N");
+  });
+
+  it("Fachbefund-409 des Voll-PUT in einer Sitzung mit Teilweg: kein ETag aus der Antwort", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    notizen(o, []); await speichern(o);                  // Rückfall gelungen → Teilweg aus, Voll-PUT direkt
+    const eigenerEtag = aufrufe.filter((x) => x.methode === "PUT").at(-1).rumpf.etag;
+    setze(o, Z("a1", 20), "N");
+    let einmal = true;
+    antwortErsetzen = (u, m) => (m === "PUT" && einmal ? ((einmal = false), { status: 409, daten: { fehler: "Diese Änderung braucht eine Bestätigung.",
+      fachbefunde: [{ personId: "a1", datum: tag(20), dienstId: "N", befunde: [] }], sammelVorschlag: [], etag: 999999 } }) : null);
+    await speichern(o);
+    expect(o.fehler.at(-1).art).toBe("bestaetigung");
+    aufrufe.length = 0;
+    await o.SP.nochmalSchreiben();
+    const put = aufrufe.find((x) => x.methode === "PUT");
+    expect(put.rumpf.etag).not.toBe(999999);
+    expect(Number(put.rumpf.etag)).toBeGreaterThanOrEqual(Number(eigenerEtag));
   });
 
   it("keepalive beim Schließen: bei offener Frage geht nichts hinaus (B1)", async () => {

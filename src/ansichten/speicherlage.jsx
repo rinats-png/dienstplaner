@@ -69,6 +69,14 @@ export const SPEICHERLAGE = {
       + "dann neu.",
     neuladen: true,
   },
+  /* WP-48.5 (Review #350): Nach einem Löschlauf (auch bei unklarem Ausgang) geht aus dieser Seite nichts mehr hinaus. */
+  neuLadenPflicht: {
+    titel: "Nach dem Löschlauf bitte die Seite neu laden",
+    text: "Bis zum Neuladen wird nichts mehr gespeichert: Jeder Stand dieser Seite kann noch enthalten, was der Löschlauf "
+      + "gelöscht hat. Sichere nicht gespeicherte Änderungen als Datei, lade neu und trage sie danach noch einmal ein — "
+      + "Gelöschtes bitte nicht wieder einspielen.",
+    neuladen: true,
+  },
   zuGross: {
     titel: "Der Bestand ist zu groß geworden",
     text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "
@@ -123,8 +131,10 @@ export function NichtGespeichert({ lage, melde, aufGeloest }) {
     if (!b) return melde("Es liegt nichts mehr aus.");
     const marke = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     if (lade(`centric-ungespeichert-${marke}.json`, JSON.stringify(b, null, 2),
-      "application/json;charset=utf-8"))
+      "application/json;charset=utf-8")) {
+      SP.ausstehendGesichert();   // WP-48.5: beforeunload fragt danach nicht mehr (nur nach einem Löschlauf wirksam)
       melde("Als Datei gesichert.");
+    }
   };
 
   return (
@@ -213,8 +223,12 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
               Neu laden</div>
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
-              Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
-              Speichern sind weg.</div>
+              {lage && lage.selbstAbgleich
+                ? `Du siehst den Stand von ${wer}. Deine Änderungen seit dem letzten Speichern sind dann weg. `
+                  + "Lädst du nicht neu, bleiben sie erhalten: Beim nächsten Speichern gleicht CENTRIC sie mit dem gespeicherten "
+                  + "Stand ab und fragt bei Überschneidungen nach."
+                : <>Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
+              Speichern sind weg.</>}</div>
             <Btn size="sm" kind="primary" onClick={() => window.location.reload()}>
               Neu laden</Btn>
           </div>

@@ -8,7 +8,69 @@ import { exportWarnung } from "../../istdaten.js";
 import { csvText } from "../../csvfeld.js";
 import { imDienst, einheitAm } from "../../../server/lib/fachpruefung.mjs";
 import { n1, n1Ist } from "../../lib/format.js";
+import * as SP from "../../speicher.js";
 import { dim_, pad, toMin, addDays } from "../../regelwerk.js";
+
+/**
+ * WP-48.5 (3): Löschlauf der Leitung über POST /api/loeschlauf (WP-48.4, Entscheidung 6.1) — nur, wenn der Teilweg
+ * aktiv ist (Fähigkeit `teile`, Schalter an) und der Zugang die Rolle Leitung trägt. Zwei Schritte wie auf dem Server:
+ * Vorschau (schreibt nichts), Bestätigung mit der Kennung der Vorschau. Die Rechnung macht der Server unter der
+ * Raumsperre mit derselben Regel; die Oberfläche löscht nichts selbst. Danach den gespeicherten Stand nachladen.
+ */
+/* Keine eigene Ausfuhr: Jede Ausfuhr dieser Datei zählt als Aktionsfabrik (WP-39, pruefungen/wp39-app-aufbau.test.js). */
+/* Review #350 N: ein Lauf zur Zeit (Doppelklick: sonst zwei Läufe, zwei Rückfragen, vertauschte Meldungen). */
+let loeschlaufLaeuft = false;
+async function loeschlaufUeberServer(o) {
+  if (loeschlaufLaeuft) { o.melde("Der Löschlauf läuft bereits."); return { ergebnis: "laeuft" }; }
+  loeschlaufLaeuft = true;
+  try { return await loeschlaufSchritte(o); } finally { loeschlaufLaeuft = false; }
+}
+async function loeschlaufSchritte({ melde, serverstandNachladen, bestaetigen = (t) => window.confirm(t) }) {
+  /* Erst alles Ausstehende speichern: Der Server rechnet auf dem gespeicherten Stand. */
+  await SP.schreibenAbschliessen();
+  if (SP.schreibenAusstehend()) {
+    melde("Erst die offenen Änderungen speichern oder klären, dann den Löschlauf starten.");
+    return { ergebnis: "ausstehend" };
+  }
+  /* Review #350 H1: Auch ein gescheiterter Auftrag (Leiste „nicht gespeichert“) muss vorher gespeichert oder verworfen
+     sein — „Noch einmal senden“ nach dem Löschlauf brächte sonst Gelöschtes zurück (Art. 17). */
+  if (SP.ausstehend()) {
+    melde("Erst die nicht gespeicherten Änderungen speichern oder verwerfen, dann den Löschlauf starten.");
+    return { ergebnis: "ausstehend" };
+  }
+  let v;
+  try { v = await SP.loeschlaufServer({ vorschau: true }); }
+  catch (e) { melde(String((e && e.message) || "Keine Verbindung.")); return { ergebnis: "fehler" }; }
+  if (v.status !== 200) { melde(String(v.daten.text || v.daten.fehler || "Der Löschlauf ist gerade nicht möglich.")); return { ergebnis: "fehler", status: v.status }; }
+  if (!v.daten.faellig) { melde("Nichts fällig — alle Fristen eingehalten."); return { ergebnis: "nichts" }; }
+  if (!bestaetigen(`${v.daten.bericht}\n\n${v.daten.warnung ? `${v.daten.warnung}\n\n` : ""}Das lässt sich nicht rückgängig machen. `
+    + "Bei Zweifel vorher eine Sicherung anlegen.")) return { ergebnis: "abgebrochen" };
+  /* Review #350: Ab hier ist die Bestätigung hinausgegangen. Hat der Server gelöscht — oder ist das unklar (Netz,
+     Zeitgrenze, 5xx) —, geht aus dieser Seite nichts mehr hinaus, bis sie neu geladen ist (SP.neuLadenPflichtSetzen):
+     Jeder ausstehende, gescheiterte oder spätere Stand könnte Gelöschtes zurückbringen (Art. 17). */
+  const unklar = () => {
+    SP.neuLadenPflichtSetzen();
+    melde("Ausgang unklar: Möglicherweise wurde gelöscht. Bitte die Seite neu laden, bevor du weiterarbeitest.");
+    return { ergebnis: "unklar" };
+  };
+  let a;
+  try { a = await SP.loeschlaufServer({ bestaetigt: v.daten.kennung }); }
+  catch (e) {
+    /* Abgemeldet: abgewiesen, bevor etwas geschah. Sonst (Netz) ist der Ausgang unklar. */
+    if (e && e.message === "nicht-angemeldet") { melde("Die Sitzung ist abgelaufen — es wurde nichts gelöscht."); return { ergebnis: "fehler" }; }
+    return unklar();
+  }
+  if (!a.status || a.status >= 500) return unklar();
+  if (a.status === 200 && a.daten.ausgefuehrt) {
+    SP.neuLadenPflichtSetzen();
+    /* Gespeicherten Stand nachladen, damit die Ansicht stimmt; gesendet wird bis zum Neuladen nichts mehr. */
+    await serverstandNachladen((s) => s);
+    melde(`${String(a.daten.bericht || "Löschlauf ausgeführt.")} Bitte die Seite neu laden, bevor du weiterarbeitest.`);
+    return { ergebnis: "ausgefuehrt" };
+  }
+  melde(String(a.daten.text || a.daten.fehler || "Es wurde nichts gelöscht."));
+  return { ergebnis: a.status === 200 ? "ohneWirkung" : "fehler", status: a.status };
+}
 
 export function aktionenAusgaben(k) {
   const { mUpd, melde, ref, setAusgabe, ym } = k;
@@ -26,6 +88,10 @@ export function aktionenAusgaben(k) {
          Fristen im Bestand und taten nichts — Artikel 17 DSGVO verlangt
          die Löschung, nicht die Absicht dazu. */
       loeschlauf: () => {
+        /* WP-48.5 (3): Mit aktivem Teilweg löst die Leitung den Löschlauf über den eigenen Weg aus. Ohne Teilweg
+           (Schalter aus) und für alle anderen Rollen (Kundenrolle) bleibt es beim heutigen Weg unten. */
+        if (SP.teilwegAktiv() && (SP.zugangsdaten() || {}).rolle === "leitung")
+          return loeschlaufUeberServer({ melde, serverstandNachladen: k.serverstandNachladen });
         const s2 = ref.current;
         const m0 = s2.mandanten.find((x) => x.id === s2.session.mandantId);
         const vor = loeschVorschau(m0, heute());
@@ -34,6 +100,9 @@ export function aktionenAusgaben(k) {
           `${loeschBericht(vor)}\n\nDas lässt sich nicht rückgängig machen. `
           + "Bei Zweifel vorher eine Sicherung anlegen.")) return;
         let text = "";
+        /* WP-48.5 (3): Bei aktivem Teilweg (Kundenrolle) geht dieser Schreibvorgang als Voll-PUT — Stempel stehen nie im
+           Delta, ihr Löschen braucht den ganzen Bestand wie heute. Ohne Teilweg wirkungslos. */
+        if (SP.teilwegAktiv()) SP.naechstesSpeichernVoll({ loeschlauf: true });
         mUpd((m) => {
           const { mandant, bericht } = loeschlaufAusfuehren(m, heute());
           text = loeschBericht(bericht);

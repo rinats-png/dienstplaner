@@ -1259,7 +1259,9 @@ function AppInnen() {
           return;
         }
         /* WP-48.5: Rückfall vom Teilweg — kein blindes Übernehmen (Entscheidung 6.4). Ohne Teilweg unverändert. */
-        setKonflikt({ ...d, meiner: ref.current, ...(SP.teilwegGenutzt() ? { ohneUebernehmen: true } : {}) });
+        setKonflikt({ ...d, meiner: ref.current, ...(SP.teilwegGenutzt() ? { ohneUebernehmen: true,
+          /* Teilweg noch aktiv: das nächste Speichern liest frisch und gleicht ab (vollVorbereiten). */
+          selbstAbgleich: SP.teilwegAktiv() } : {}) });
       },
       onFachbefunde: (d) => setFachFrage(d),
       onFehler: (lage) => setNichtGespeichert(lage),

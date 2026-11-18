@@ -995,7 +995,7 @@ weiteres Delta auf diese Zelle läuft in 409 und wird zur Frage (kein stiller Ve
 ### 7.7 WP-48.5 Teil 2: Oberfläche (Branch `feature/wp48-5-oberflaeche`, Basis `integration/release-v4` 57d49e3d)
 
 Stand 2026-11-18. Betreiberfreigabe P1-7 (b) Option A. Umgesetzt sind (1) die Anbindung in `src/speicher.js` und (2) das
-Konfliktfenster je Zelle/Feld. **(3) Löschlauf-Knopf auf `POST /api/loeschlauf` ist noch offen** (eigener PR). Kein
+Konfliktfenster je Zelle/Feld (PR #348); (3) der Löschlauf-Knopf folgt als eigener PR (Abschnitt unten). Kein
 Schalter geändert (`CENTRIC_TEILSPEICHERUNG`, `CENTRIC_ABSCHLUSS_SEGMENTWEISE` bleiben aus), keine neue Umgebungsvariable,
 keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Änderung.
 
@@ -1079,11 +1079,69 @@ keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Ä
   dem aktuellen Stand. Kommentar zur Sitzungskennung präzisiert — sie geht **nicht** im Rumpf an den Server
   (`rumpfBauen` setzt sie nicht ein; Prüfung A1 sichert das), der Server bildet seine Kennung selbst.
 
+**Delta-Review #348 (f1aa18ba), nachgezogen in #350:**
+- Prüfungen über den echten Handler: Rennen (Fremdschreiber zwischen frischem GET und Voll-PUT → 409 und Sperre; das
+  nächste Speichern liest frisch, hebt die Sperre auf, Voll-PUT gelingt, fremder Wert bleibt); Sperre endet mit
+  `teilwegUebernehmen` eines gelesenen Stands; 413 des Teilwegs nach eigener Teilspeicherung → GET, dann Voll-PUT ohne 409;
+  Fachbefund-409 des Voll-PUT übernimmt keinen ETag. Handmutanten (Sperre nach frischem GET bzw. bei
+  `teilwegUebernehmen` nicht aufheben, 413 ohne Vorbereiten, Fachbefund-ETag übernehmen) machen je genau den
+  zugehörigen Fall rot. Die Fälle mit dem echten Handler tragen ein eigenes Zeitbudget (120 s je Fall).
+- Texte: Ist der Teilweg noch aktiv, sagt das Voll-Konfliktfenster, dass die eigenen Änderungen ohne Neuladen erhalten
+  bleiben und beim nächsten Speichern abgeglichen werden. Eine Frage zu einem Stempel heißt „Stempel …“.
+- Grund `voll-beim-schliessen` bzw. `neu-aufsetzen-beim-schliessen`: Beim Schließen (beforeunload, visibilitychange)
+  wird nicht frisch gelesen. Ein Rückfall auf den Voll-PUT oder ein Neuaufsetzen geht deshalb nicht hinaus: Der Auftrag
+  bleibt ausstehend, `beforeunload` fragt nach. Ohne Teilweg geht beim Schließen weiter der Voll-PUT per `keepalive`.
+
 **Restgrenzen:** Nach einem gelungenen Rückfall auf den Voll-PUT bleibt die Sitzung beim Voll-PUT (ohne blindes
 Übernehmen), bis wieder ein gelesener Stand übernommen wird. Ein Demozugang oder die Kundenrolle bekommt den Teilweg erst
 beim ersten Speichern mit gesetzter Sitzung. Eingaben genau zwischen dem Übernehmen nach neuAufsetzen und dem Neuzeichnen
 der Oberfläche bauen über die funktionalen Updates von React auf dem übernommenen Stand auf; ein direkt gesetzter Stand
 in diesem Fenster (kein bekannter Weg) ginge darin auf. Einschalten weiter nur nach Betreiberfreigabe.
+
+**(3) Löschlauf-Knopf (Branch `feature/wp48-5-loeschlauf-knopf`, auf (1)+(2)).** Mit aktivem Teilweg (`teilwegAktiv`)
+und Zugang der Rolle Leitung (wirksame Rolle des Servers aus dem GET) löst „Löschlauf ausführen" den Weg aus 7.5 aus:
+erst Ausstehendes speichern (steht danach noch etwas aus, etwa eine offene Frage: Hinweis, kein Aufruf), dann
+`{ vorschau: true }` → Rückfrage mit dem Bericht des Servers → `{ bestaetigt: <Kennung> }` → gespeicherten Stand
+nachladen (neue Basis). Die Oberfläche löscht dabei nichts selbst. „Nichts fällig", Ablehnung der Rückfrage, veraltete
+Vorschau und „ohne Wirkung" schreiben nichts. Ohne Teilweg (Schalter aus) und für alle anderen Rollen bleibt der heutige
+Weg unverändert; die Kundenrolle (ohne Person) behält ihn auch mit Teilweg — dann geht dieses eine Speichern als Voll-PUT
+(`naechstesSpeichernVoll`), weil Stempel nie im Delta stehen. Prüfung `pruefungen/wp48-5-loeschlauf-knopf.test.js` (in
+`pruefung:wp48-loeschlauf`): echte Aktion und echter Client gegen den echten Handler — Leitung (ausgeführt, nichts
+fällig, abgelehnt, offene Frage), Schalter aus, Kundenrolle (Voll-PUT), Planung (heutiger Weg).
+
+*Review #350 und Delta-Review, eingearbeitet:*
+- **Neu laden Pflicht** (`speicher.js` `neuLadenPflicht`, nur im Arbeitsspeicher, endet nur mit dem Neuladen der Seite):
+  gesetzt, sobald die Bestätigung eines Löschlaufs hinausgegangen ist — bei `ausgefuehrt` und bei jedem unklaren Ausgang
+  (Netzfehler, Zeitgrenze, 5xx; Meldung „Ausgang unklar: Möglicherweise wurde gelöscht …“) — und nach dem Löschlauf per
+  Speichern der Kundenrolle (gesendet und nicht sicher mit 4xx abgewiesen). Solange sie gilt, geht aus der Seite nichts
+  mehr hinaus: kein „Noch einmal senden“, keine neue Eingabe, kein wartender, gescheiterter oder später scheiternder
+  Auftrag, kein Senden beim Schließen; jeder Schreibweg antwortet `{ ok: false, gesperrt: true }`. Die Leiste (Lage
+  `neuLadenPflicht`) bietet nur „Als Datei sichern“ und „Seite neu laden“. Die Datei trägt den Hinweis „Stand von VOR dem
+  Löschlauf, Gelöschtes nicht wieder einspielen“; ein schon gescheiterter Auftrag bleibt darin, spätere Eingaben kommen als
+  `zuletzt` dazu (P4). `beforeunload` fragt nach, solange ein gescheiterter Auftrag nicht als Datei gesichert ist. Damit
+  sind die Gegenbeispiele H1-a (Auftrag scheitert erst nach der Bestätigung) und H1-b (Netzfehler bei der Bestätigung)
+  durch Konstruktion ausgeschlossen. Ein gescheiterter Auftrag sperrt den Löschlauf weiter schon vorher (`SP.ausstehend()`).
+- **Vorgaben am Auftrag** (`vollGewuenscht`, `loeschlaufSpeichern`): Ein neuerer Auftrag übernimmt sie von einem wartenden
+  (Ersetzen innerhalb der Wartezeit), einem laufenden (Aufgehen nach frischem GET) und einem gescheiterten Auftrag (neue
+  Eingabe statt „Noch einmal“); die Entscheidung im Konfliktfenster behält sie; ein anderer Auftrag verbraucht sie nicht.
+- **N:** ein Löschlauf zur Zeit (Doppelklick).
+- **Prüfungen** `pruefungen/wp48-5-loeschlauf-knopf.test.js` (18 Fälle, echter Handler, Zustandsprüfung): H1-a (POST hängt
+  während der Bestätigung, scheitert danach, Basis-Erneuerung, „Noch einmal“ und neue Eingabe senden nichts, Gelöschtes
+  bleibt gelöscht), H1-b, P4, M2-Rest, f (Ersetzen innerhalb der Wartezeit), g (Konfliktentscheidung), M12, Kundenweg,
+  Doppelklick. 14 Handmutanten (u. a. Pflicht bei unklarem Ausgang bzw. nach Ausführung nicht gesetzt, Senden trotz
+  Pflicht, später Gescheitertes nicht gesperrt, gesperrter Auftrag überschrieben, Vorgabe beim Ersetzen / bei der
+  Entscheidung / vom Gescheiterten verloren, Kundenweg ohne Pflicht) machen je ihren Fall rot.
+- **Runde 3:** Ein Teil-Auftrag, der beim Setzen des Merkmals schon läuft, liest und sendet danach nichts mehr
+  (`senden`/`holen` brechen wie ohne Netz ab, vor dem Voll-PUT wird erneut geprüft; Prüfungen P1 413, P2 422). Eine
+  Bestätigung mit 401 setzt das Merkmal nicht (nichts gelöscht), eine mit 5xx gilt als unklar (Prüfungen dazu). Eine
+  neue Eingabe nach der Datei-Sicherung macht den Stand wieder „ungesichert“ (`beforeunload` fragt).
+- **Offener Rest:** Das Merkmal liegt im Arbeitsspeicher dieses Reiters. Ein **anderer Reiter** derselben Person ist
+  dadurch nicht geschützt; dort sichern serverseitig der Abgleich (Erwartungswerte/Versionen des Teilwegs,
+  Drei-Wege-Abgleich und ETag des Voll-PUT, Epoche) und die Rechte ab — ein dort veralteter Stand überschreibt die
+  Löschung nicht ohne Abgleich, eine ausdrückliche „meins“-Wahl bleibt aber möglich.
+- **Bekannt, nicht umgesetzt:** Das Konfliktfenster sagt nicht eigens, wenn die „fremde“ Fassung leer ist, weil der
+  Löschlauf sie gelöscht hat (mit der Pflicht entsteht diese Frage nach einem Lauf der eigenen Seite nicht mehr; aus einer
+  anderen Sitzung bleibt der Text allgemein).
 
 ### 7.8 WP-48.7 Stufe b: Rechnen ohne Raumsperre (Branch `feature/wp48-7-stufe-b`, Basis `integration/release-v4` 9f9c4936)
 
