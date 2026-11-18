@@ -32,8 +32,6 @@
     { "regel": "label-content-name-mismatch", "flaeche": "rechtliches-leitung", "wp": "WP-40",
       "grund": "WCAG 2.5.3 (axe-Regel experimentell), WP-33 Rest 2026-11-17 (axe-core 4.14.0, Viewports 360x740 und 1024x768 gemessen): Kontoknopf .avatarknopf (Initialen sichtbar, Name Konto: <Name>), ab Tabletbreite zusätzlich .suchknopf; gleiche Ursache wie einstellungen-leitung, WP-40-Nacharbeit (Kopfleiste), siehe ENTSCHEIDUNGSLISTE P2-11." },
     { "regel": "label-content-name-mismatch", "flaeche": "personal-leitung", "wp": "WP-40",
-      "grund": "WCAG 2.5.3 (axe-Regel experimentell), WP-33 Rest 2026-11-17 (axe-core 4.14.0, Viewports 360x740 und 1024x768 gemessen): Kontoknopf, Suchknopf und die Personenzellen td[role=button] mit aria-label '<Nachname, Vorname> öffnen' bei sichtbar anderer Namensform (rund 87 Knoten); gleiche Ursache wie plan-subplaner, WP-40-Nacharbeit, siehe ENTSCHEIDUNGSLISTE P2-11." },
-    { "regel": "nested-interactive", "flaeche": "antraege-planer", "wp": "WP-40",
-      "grund": "WCAG 4.1.2, WP-33 Rest 2026-11-17 (axe-core 4.14.0, 360x740 und 1024x768): Antragszeilen sind div[role=button] mit bedienbaren Kindern (vier Knoten in der Demo); gleiche Bauart wie die Schichtkarte in plan-mitarbeiter, Umbau der Zeile (äußerer Knopf oder innere Aktionen trennen) ist WP-40-Nacharbeit." }
+      "grund": "WCAG 2.5.3 (axe-Regel experimentell), WP-33 Rest 2026-11-17 (axe-core 4.14.0, Viewports 360x740 und 1024x768 gemessen): Kontoknopf, Suchknopf und die Personenzellen td[role=button] mit aria-label '<Nachname, Vorname> öffnen' bei sichtbar anderer Namensform (rund 87 Knoten); gleiche Ursache wie plan-subplaner, WP-40-Nacharbeit, siehe ENTSCHEIDUNGSLISTE P2-11." }
   ]
 }
