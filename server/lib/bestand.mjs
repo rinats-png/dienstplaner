@@ -1077,6 +1077,10 @@ async function teileSchreibenGesperrt(store, raum, teile, { erwarteterStand, erw
  */
 export async function bestandLesenAuswahlStreng(store, raum, waehle) {
   if (!sperreGehalten(raum)) throw new Error("bestandLesenAuswahlStreng: nur unter der Raumsperre");
+  return auswahlLesen(store, raum, waehle);
+}
+
+async function auswahlLesen(store, raum, waehle) {
   const streng = async (was, arbeit) => {
     try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
   };
@@ -1135,6 +1139,77 @@ export async function unveraenderteScherben(store, raum, erwarteterStand, aktuel
   const basis = vermerkAbdruecke(await store.get(STAND(raum, Number(erwarteterStand)), { type: "json" }).catch(() => null));
   if (!basis) return new Set();
   return new Set(ids.filter((id) => basis[id] === abd[id]));
+}
+
+/* ---------------------------------------------------------------------------
+   Schnappschuss ohne Sperre und Vergleich unter der Sperre (WP-48.7, Stufe b)
+
+   Der Monatsabschluss rechnet auf einem Schnappschuss, der OHNE Raumsperre
+   gelesen wird, und hält die Sperre nur noch für „unverändert seit dem
+   Schnappschuss?" und das Schreiben (teileSchreiben: compare-and-set auf
+   Stand und Epoche).
+
+   Ein Schnappschuss ohne Sperre kann zerrissen sein: Ein Schreiber legt das
+   Journal, schreibt Kern, Scherben, Vermerk, Zeiger und löscht das Journal
+   zuletzt. Deshalb dieselbe Klammer wie beim milden Lesen (lesen()):
+   Zeiger, Journal, Inhalt, Journal, Zeiger. Lag beim ersten oder zweiten
+   Blick ein Journal, oder stehen die Zeiger vorher und nachher nicht gleich
+   (Nummer und Epoche), gilt der Schnappschuss nicht (null). Begann ein
+   Schreiber nach dem ersten Blick ins Journal, liegt sein Journal beim
+   zweiten noch da (nicht fertig), oder der Zeiger zeigt weiter (fertig).
+
+   Jeder Lesefehler ohne Sperre heißt ebenfalls null — nie 503 aus einem
+   Rennen mit einem Schreiber: Der Aufrufer nimmt dann den gesperrten Weg
+   (Stufe a bzw. voll), der einen echten Fehler dort meldet.
+
+   Gewählt und zusammengesetzt wird genau wie in bestandLesenAuswahlStreng.
+   Die Klammer allein ist nicht die Garantie: Geschrieben wird nur über
+   teileSchreiben mit dem Stand und der Epoche des Schnappschusses, und eine
+   Absage gilt nur, wenn standUnveraendert unter der Sperre ja sagt.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Kern und gewählte Monatsscherben OHNE Raumsperre lesen, als in sich stimmiger Schnappschuss.
+ * @param {(kern: object) => (string[]|null)} waehle  wie bei bestandLesenAuswahlStreng
+ * @returns {Promise<null | {bestand: object, stand: string, epoche: string, zeit: string|null, durch: string|null}>}
+ *   null: kein stimmiger Schnappschuss (Schreiber dazwischen, Journal, Lesefehler) oder nicht segmentweise
+ */
+export async function bestandSchnappschussAuswahl(store, raum, waehle) {
+  const zeigerMarke = async () => {
+    const z = await store.get(STAND_ZEIGER(raum), { type: "json" });
+    return z && typeof z === "object" ? JSON.stringify([Number(z.nr), z.epoche ?? null]) : null;
+  };
+  try {
+    const z1 = await zeigerMarke();
+    if (z1 === null || await journalLesen(store, raum)) return null;
+    const erg = await auswahlLesen(store, raum, waehle);
+    if (!erg || await journalLesen(store, raum)) return null;
+    const z2 = await zeigerMarke();
+    if (z2 !== z1 || z2 !== JSON.stringify([Number(erg.stand), erg.epoche])) return null;
+    return erg;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Unter der gehaltenen Raumsperre: Steht der Raum noch auf genau diesem Stand dieser Epoche, ohne liegendes
+ * Journal? Zeiger und Kern, dieselben Bedingungen wie teileSchreiben, ohne zu schreiben. Ein Lesefehler heißt
+ * „nein" — der Aufrufer wiederholt bzw. nimmt den gesperrten Weg.
+ * @returns {Promise<boolean>}
+ */
+export async function standUnveraendert(store, raum, stand, epoche) {
+  if (!sperreGehalten(raum)) throw new Error("standUnveraendert: nur unter der Raumsperre");
+  try {
+    if (!epocheGueltig(epoche) || await journalLesen(store, raum)) return false;
+    const zeiger = await store.get(STAND_ZEIGER(raum), { type: "json" });
+    const kern = await store.getMetadata(kernSchluessel(raum));
+    if (!zeiger || !kern) return false;
+    return String(zeiger.nr) === String(stand) && zeiger.epoche === epoche
+      && String(kern.metadata?.stand) === String(stand) && kern.metadata?.epoche === epoche;
+  } catch {
+    return false;
+  }
 }
 
 /** Gibt es diesen Betrieb schon? Für die Raumanlage. */

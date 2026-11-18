@@ -21,12 +21,12 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { demoAn, teilwegAn, abschlussSegmentweiseAn } from "../lib/schalter.mjs";
-import { ABSCHLUSS_SEGMENT_AKTIONEN, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
+import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn } from "../lib/schalter.mjs";
+import { ABSCHLUSS_SEGMENT_AKTIONEN, ABSCHLUSS_VERSUCHE, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
 import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten, ohneWirkung } from "../lib/loeschlauf.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandLesenAuswahlStreng, bestandSchreiben, teileSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
-  SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
+  bestandSchnappschussAuswahl, standUnveraendert, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
 import { personalnummerKonflikt, personalnummerText } from "../lib/personalnummer.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
@@ -2650,6 +2650,69 @@ async function behandeln(req, context, ctx) {
       }
       const bM = await bremse("schreiben", kM);
       if (!bM.frei) return zuVielAntwort(bM.wartet);
+      const werM = { personId: s.person ?? null, name: s.name || null, rolle: s.rolle };
+      /* Positivliste (WP-16c, Review): nur diese Felder des Rumpfes erreichen die Monatsabschluss-Funktionen; interne Schalter
+         (etwa die Vorschau der Freigabe) lassen sich von außen nicht setzen. */
+      const rumpfM = {};
+      for (const f of MONATSABSCHLUSS_RUMPF) if (rumpf && Object.prototype.hasOwnProperty.call(rumpf, f)) rumpfM[f] = rumpf[f];
+      const idM = `ma-${randomBytes(6).toString("hex")}`;
+      const rechnenM = (m) => (aktionM === "abschliessen"
+        ? abschliessen(m, rumpfM, werM, new Date(), idM, heuteBerlin())
+        : aktionM === "lohnexport" ? lohnexportBestaetigen(m, rumpfM, werM, new Date(), idM)
+          : aktionM === "korrektur-beginnen" ? korrekturBeginnen(m, rumpfM, werM, new Date(), idM)
+            : aktionM === "korrektur-freigeben" ? korrekturFreigeben(m, rumpfM, werM, new Date(), idM, heuteBerlin())
+              : aktionM === "korrektur-verwerfen" ? korrekturVerwerfen(m, rumpfM, werM, new Date(), idM)
+              : wiederoeffnen(m, rumpfM, werM, new Date(), idM));
+      /* Absage und Erfolg: Spur und Antwort für alle Wege aus derselben Stelle — nur unter der Raumsperre aufgerufen. */
+      const absageM = async (r) => {
+        await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
+        return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),
+          ...(r.vormonate ? { vormonate: r.vormonate } : {}), ...(r.differenz ? { differenz: r.differenz } : {}) }, r.status);
+      };
+      const erfolgM = async (r, ergM) => {
+        /* WP-14b (M1): Die Spur liest der Betreiber — nur Monat, Ausgang, Kennung und Zahlen; der Grund (Freitext)
+           steht im Verlauf am Monat, nicht in der Spur. */
+        await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
+          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.revision > 1 ? ` · Revision ${r.ereignis.revision}` : ""}${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
+          : aktionM === "lohnexport" ? `Monatsabschluss ${monatM} Lohnexport bestätigt ${r.ereignis.id} · Revision ${r.ereignis.revision}`
+            /* Überstimmung offener/geänderter Vormonate (WP-16, Nachtrag vierter Review A-1): nur die Kategorie aus der festen Liste. */
+            + (r.ereignis.trotzVormonat ? ` · trotz Vormonat (${r.ereignis.trotzVormonat.kategorie})` : "")
+            : aktionM === "korrektur-beginnen" ? `Monatsabschluss ${monatM} Korrektur begonnen ${r.ereignis.id} · Revision ${r.ereignis.revision} · Grund im Verlauf`
+              : aktionM === "korrektur-freigeben" ? `Monatsabschluss ${monatM} Korrektur freigegeben ${r.ereignis.id} · ${r.ereignis.n} Zeilen`
+                : aktionM === "korrektur-verwerfen" ? `Monatsabschluss ${monatM} Korrektur verworfen ${r.ereignis.id} · Grund im Verlauf`
+                : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
+        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null,
+          ...(r.differenz ? { differenz: r.differenz } : {}) });
+      };
+      /* WP-48.7 Stufe b (Schalter CENTRIC_ABSCHLUSS_OHNE_SPERRE, nur mit Stufe a): Schnappschuss (Kern + Jahr bis zum Monat,
+         Stand, Epoche) OHNE Raumsperre lesen und dort rechnen. Unter der Sperre nur noch: Absage — gilt, wenn der Raum
+         unverändert auf dem Stand des Schnappschusses steht (standUnveraendert); Erfolg — Kern + Monatsscherbe über
+         teileSchreiben mit Stand und Epoche des Schnappschusses (compare-and-set, ein Journal). Hat sich der Raum
+         geändert: neuer Schnappschuss, höchstens ABSCHLUSS_VERSUCHE. Jeder andere Fall (kein stimmiger Schnappschuss,
+         laufende Korrektur, Betrieb nicht da, Änderung außerhalb des Monats, „unbestimmt", Versuche aufgebraucht) nimmt
+         den gesperrten Weg unten — derselbe wie ohne Stufe b. Geschrieben wird nie auf einem veralteten Schnappschuss. */
+      if (abschlussOhneSperreAn() && ABSCHLUSS_SEGMENT_AKTIONEN.includes(aktionM) && monatM !== "ungültig") {
+        const WIEDERHOLEN = Symbol("wiederholen"), RUECKFALL = Symbol("rückfall");
+        for (let versuch = 0; versuch < ABSCHLUSS_VERSUCHE; versuch++) {
+          const schnapp = await bestandSchnappschussAuswahl(store, s.bestand, abschlussAuswahl(s, monatM));
+          if (!schnapp || schnapp.bestand.mandanten.some(hatLaufendeKorrektur)) break;
+          const mS = eigenerMandant(schnapp.bestand, s);
+          if (!mS) break;
+          const rS = rechnenM(mS);
+          const teileS = "status" in rS ? null : abschlussTeile(schnapp.bestand, mS, rS.mandant, monatM);
+          if (!("status" in rS) && !teileS) break;
+          const aus = await unterRaumsperre(s.bestand, async () => {
+            if ("status" in rS)
+              return (await standUnveraendert(store, s.bestand, schnapp.stand, schnapp.epoche)) ? absageM(rS) : WIEDERHOLEN;
+            const ergS = await teileSchreiben(store, s.bestand, teileS,
+              { erwarteterStand: schnapp.stand, erwarteteEpoche: schnapp.epoche, durch: s.name || "Monatsabschluss" });
+            if (ergS.ok) return erfolgM(rS, ergS);
+            return ergS.grund === "unbestimmt" ? RUECKFALL : WIEDERHOLEN;
+          });
+          if (aus === RUECKFALL) break;
+          if (aus !== WIEDERHOLEN) return aus;
+        }
+      }
       return await unterRaumsperre(s.bestand, async () => {
         /* WP-48.7 (Stufe a, Schalter CENTRIC_ABSCHLUSS_SEGMENTWEISE, lib/abschluss-segmentweise.mjs): nur Kern und die Monate
            des Jahres bis zum Monat lesen, Kern + Scherbe des Monats schreiben. Sonst — und bei laufender Korrekturrevision
@@ -2657,19 +2720,6 @@ async function behandeln(req, context, ctx) {
         let teilM = abschlussSegmentweiseAn() && ABSCHLUSS_SEGMENT_AKTIONEN.includes(aktionM) && monatM !== "ungültig"
           ? await bestandLesenAuswahlStreng(store, s.bestand, abschlussAuswahl(s, monatM)) : null;
         if (teilM && teilM.bestand.mandanten.some(hatLaufendeKorrektur)) teilM = null;
-        const werM = { personId: s.person ?? null, name: s.name || null, rolle: s.rolle };
-        /* Positivliste (WP-16c, Review): nur diese Felder des Rumpfes erreichen die Monatsabschluss-Funktionen; interne Schalter
-           (etwa die Vorschau der Freigabe) lassen sich von außen nicht setzen. */
-        const rumpfM = {};
-        for (const f of MONATSABSCHLUSS_RUMPF) if (rumpf && Object.prototype.hasOwnProperty.call(rumpf, f)) rumpfM[f] = rumpf[f];
-        const idM = `ma-${randomBytes(6).toString("hex")}`;
-        const rechnenM = (m) => (aktionM === "abschliessen"
-          ? abschliessen(m, rumpfM, werM, new Date(), idM, heuteBerlin())
-          : aktionM === "lohnexport" ? lohnexportBestaetigen(m, rumpfM, werM, new Date(), idM)
-            : aktionM === "korrektur-beginnen" ? korrekturBeginnen(m, rumpfM, werM, new Date(), idM)
-              : aktionM === "korrektur-freigeben" ? korrekturFreigeben(m, rumpfM, werM, new Date(), idM, heuteBerlin())
-                : aktionM === "korrektur-verwerfen" ? korrekturVerwerfen(m, rumpfM, werM, new Date(), idM)
-                : wiederoeffnen(m, rumpfM, werM, new Date(), idM));
         let mitM = teilM || await bestandLesenStreng(store, s.bestand);
         if (!mitM) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         let mM = eigenerMandant(mitM.bestand, s);
@@ -2686,11 +2736,7 @@ async function behandeln(req, context, ctx) {
           if (!mM) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
           r = rechnenM(mM);
         }
-        if ("status" in r) {
-          await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
-          return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),
-            ...(r.vormonate ? { vormonate: r.vormonate } : {}), ...(r.differenz ? { differenz: r.differenz } : {}) }, r.status);
-        }
+        if ("status" in r) return absageM(r);
         const neuM = r.mandant, altM = mM;
         const ergM = teilM && teileM
           ? await teileSchreiben(store, s.bestand, teileM, { erwarteterStand: mitM.stand, erwarteteEpoche: teilM.epoche, durch: s.name || "Monatsabschluss" })
@@ -2701,19 +2747,7 @@ async function behandeln(req, context, ctx) {
           await protokoll("schreiben", kM, "konflikt", `Monatsabschluss ${aktionM} ${monatM}`, wer);
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
-        /* WP-14b (M1): Die Spur liest der Betreiber — nur Monat, Ausgang, Kennung und Zahlen; der Grund (Freitext)
-           steht im Verlauf am Monat, nicht in der Spur. */
-        await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
-          ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.revision > 1 ? ` · Revision ${r.ereignis.revision}` : ""}${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
-          : aktionM === "lohnexport" ? `Monatsabschluss ${monatM} Lohnexport bestätigt ${r.ereignis.id} · Revision ${r.ereignis.revision}`
-            /* Überstimmung offener/geänderter Vormonate (WP-16, Nachtrag vierter Review A-1): nur die Kategorie aus der festen Liste. */
-            + (r.ereignis.trotzVormonat ? ` · trotz Vormonat (${r.ereignis.trotzVormonat.kategorie})` : "")
-            : aktionM === "korrektur-beginnen" ? `Monatsabschluss ${monatM} Korrektur begonnen ${r.ereignis.id} · Revision ${r.ereignis.revision} · Grund im Verlauf`
-              : aktionM === "korrektur-freigeben" ? `Monatsabschluss ${monatM} Korrektur freigegeben ${r.ereignis.id} · ${r.ereignis.n} Zeilen`
-                : aktionM === "korrektur-verwerfen" ? `Monatsabschluss ${monatM} Korrektur verworfen ${r.ereignis.id} · Grund im Verlauf`
-                : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
-        return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null,
-          ...(r.differenz ? { differenz: r.differenz } : {}) });
+        return erfolgM(r, ergM);
       });
     }
 

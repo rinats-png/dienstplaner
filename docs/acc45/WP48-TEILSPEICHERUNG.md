@@ -1131,9 +1131,98 @@ fällig, abgelehnt, offene Frage), Schalter aus, Kundenrolle (Voll-PUT), Planung
   Doppelklick. 14 Handmutanten (u. a. Pflicht bei unklarem Ausgang bzw. nach Ausführung nicht gesetzt, Senden trotz
   Pflicht, später Gescheitertes nicht gesperrt, gesperrter Auftrag überschrieben, Vorgabe beim Ersetzen / bei der
   Entscheidung / vom Gescheiterten verloren, Kundenweg ohne Pflicht) machen je ihren Fall rot.
+- **Runde 3:** Ein Teil-Auftrag, der beim Setzen des Merkmals schon läuft, liest und sendet danach nichts mehr
+  (`senden`/`holen` brechen wie ohne Netz ab, vor dem Voll-PUT wird erneut geprüft; Prüfungen P1 413, P2 422). Eine
+  Bestätigung mit 401 setzt das Merkmal nicht (nichts gelöscht), eine mit 5xx gilt als unklar (Prüfungen dazu). Eine
+  neue Eingabe nach der Datei-Sicherung macht den Stand wieder „ungesichert“ (`beforeunload` fragt).
+- **Offener Rest:** Das Merkmal liegt im Arbeitsspeicher dieses Reiters. Ein **anderer Reiter** derselben Person ist
+  dadurch nicht geschützt; dort sichern serverseitig der Abgleich (Erwartungswerte/Versionen des Teilwegs,
+  Drei-Wege-Abgleich und ETag des Voll-PUT, Epoche) und die Rechte ab — ein dort veralteter Stand überschreibt die
+  Löschung nicht ohne Abgleich, eine ausdrückliche „meins“-Wahl bleibt aber möglich.
 - **Bekannt, nicht umgesetzt:** Das Konfliktfenster sagt nicht eigens, wenn die „fremde“ Fassung leer ist, weil der
   Löschlauf sie gelöscht hat (mit der Pflicht entsteht diese Frage nach einem Lauf der eigenen Seite nicht mehr; aus einer
   anderen Sitzung bleibt der Text allgemein).
+
+### 7.8 WP-48.7 Stufe b: Rechnen ohne Raumsperre (Branch `feature/wp48-7-stufe-b`, Basis `integration/release-v4` 9f9c4936)
+
+Stand 2026-11-18, Betreiberfreigabe vom 2026-11-18 für technisch unabhängige, rückwärtskompatible Teilpakete von WP-48.
+Eingeschaltet wird nichts: `CENTRIC_ABSCHLUSS_SEGMENTWEISE` und der neue `CENTRIC_ABSCHLUSS_OHNE_SPERRE` bleiben aus.
+
+- **Was sich ändert (nur mit beiden Schaltern genau `true`):** `POST /api/monatsabschluss` mit `abschliessen`,
+  `wiederoeffnen`, `lohnexport` und gültigem Monat liest einen **Schnappschuss** — Kern + Monate des eigenen Betriebs von
+  Januar bis zum Monat, mit Stand und Epoche — **ohne** Raumsperre (`bestand.mjs` `bestandSchnappschussAuswahl`) und
+  rechnet dort mit denselben Funktionen wie Stufe a. Unter der Raumsperre bleibt nur:
+  - **Erfolg:** Kern + Monatsscherbe über `teileSchreiben` mit Stand und Epoche des Schnappschusses (compare-and-set, ein
+    Journal; Vermerk, Zeiger, Abdrücke wie Stufe a);
+  - **Absage:** Spur und Antwort nur, wenn `standUnveraendert` (kein Journal, Zeiger und Kern auf Stand und Epoche des
+    Schnappschusses) ja sagt — eine Absage auf einem veralteten Stand wird nie ausgeliefert.
+  - Hat sich der Raum geändert (`konflikt`, `epoche`, Stand anders): neuer Schnappschuss, höchstens 3
+    (`ABSCHLUSS_VERSUCHE`). **Abweichung vom Entwurf (Abschnitt 5, Punkt 3):** danach keine neue 409, sondern der
+    gesperrte Weg der Stufe a — Fortschritt garantiert, keine neue Absage für den Nutzer.
+- **Schnappschuss stimmig oder nichts:** Klammer Zeiger → Journal → Inhalt → Journal → Zeiger (Nummer und Epoche), wie
+  das milde Lesen (`lesen()`); ein Journal, ein weitergezogener Zeiger oder **jeder** Lesefehler ohne Sperre → null →
+  gesperrter Weg (dort gibt ein echter Fehler weiter 503; ein Rennen mit einem Schreiber wird nie zu 503). Die Klammer
+  ist nicht die einzige Garantie: geschrieben wird nur per compare-and-set, abgesagt nur nach `standUnveraendert`.
+- **Rückfall auf den gesperrten Weg (Stufe a, dort wie bisher ggf. voll):** kein stimmiger Schnappschuss; laufende
+  Korrekturrevision in irgendeinem Betrieb des Raums; Betrieb nicht da; Rechnung ändert außerhalb des Monats
+  (`abschlussTeile` → null); `teileSchreiben` meldet `unbestimmt`; 3 Versuche aufgebraucht. Korrekturaktionen,
+  ungültige Monate und Monate außerhalb 2000–2999 (P2-12: 422 bzw. 409 `UNGUELTIGER_MONAT`) laufen unverändert.
+- **Integrität:** Antwort, Spur (`absageM`/`erfolgM`, für alle Wege dieselbe Stelle), Abschluss-Objekt, Freeze,
+  Prüfsumme, Lohnexport-Abgleich und Revisionen kommen aus denselben Funktionen; Idempotenz (zweiter Abschluss → 409)
+  gilt, weil die Rechnung auf dem Stand läuft, auf den geschrieben wird. Atomarität: ein Journal wie Stufe a. Rechte,
+  Mandant (`eigenerMandant` aus der Sitzung), Bremse: unverändert vor allem anderen; keine neue Route, kein neues Recht
+  (Routeninventar und Rechtematrix unberührt).
+- **Bekannt (Vermerk-Reihenfolge, schon seit Stufe a/WP-48.3):** Der Segmentschreiber hängt den Abdruck einer neuen
+  Scherbe (Monat ohne Daten, der durch den Abschluss eine bekommt) hinten an; der volle Weg ordnet nach `zerlegen`.
+  Inhalt des Vermerks gleich, Byte-Folge nicht — die Prüfung vergleicht ihn deshalb sortiert, alles andere wörtlich.
+- **Prüfungen** `pruefungen/wp48-7-stufe-b.test.js` (über `pruefung:wp48-abschluss`, CI, feste Zeit 05.11.2026, kein
+  `Math.random`): Differenzialtest auf dem echten Handler, drei gleiche Räume (voll, Stufe a, Stufe b), zwei Folgen à 36
+  Schritte aus festem Startwert (Abschließen/Wiederöffnen/Lohnexport mit falscher Prüfsumme, Leitung/Planung/Mitarbeiter
+  im ersten und Leitung im zweiten Betrieb, Vorjahr, 1999-12, 3000-01, 2026-13, fremde Schreiber zwischen den Schritten)
+  und 22 feste Grenzfälle (Wiederholung, leerer Monat, Jahreswechsel, P2-12, Rollen 403): Status und Antwort wörtlich,
+  Kern-Inhalt und -Metadaten (außer der Epoche je Raum), jede Scherbe, Vermerk, Zeiger gleich; nach **jeder** Absage alle
+  Dateien des Raums bytegleich wie vorher. Verzahnung mit festen Haken nach dem Schnappschuss: Stempel im Monat,
+  Kernänderung, anderer Betrieb, Epochenwechsel → neuer Schnappschuss, Ergebnis gleich „erst fremd, dann Abschluss“ auf
+  dem vollen Weg; dreimal → gesperrter Weg; Absage, die der Schreiber hinfällig macht (409 → 200), und Erfolg, den er
+  unmöglich macht (zweiter Abschluss: 200 → 409, nichts geschrieben); `unbestimmt` → Rückfall. Schnappschuss: Schreiber
+  mitten im Lesen und zwischen Zeiger und Journal → null; liegendes Journal, Lesefehler → null. Schalter nur bei genau
+  `true` und nur mit Stufe a. Von Hand geprüfte Mutanten (Absage ohne `standUnveraendert`; Schreiben auf den Stand unter
+  der Sperre statt dem des Schnappschusses; Schnappschuss ohne Zeigervergleich) machen die zugehörigen Fälle rot.
+- **Messung** (`node werkzeug/wp48-messung.mjs --abschluss`, echter Handler, Dateiablage, lokaler Rechner, Abschluss des
+  Vormonats; Sonde = längste Wartezeit an `unterRaumsperre` desselben Prozesses, Schleife = längste Blockade der
+  Ereignisschleife; Haltezeit = Zeit innerhalb von `unterRaumsperre`, direkt gestoppt mit denselben Aufrufen wie der
+  Handler, in eigenen Räumen; Einzelläufe, Rechner nebenher belastet, Streuung ±30 %):
+
+  | Pers. × Mon. | Haltezeit voll | Haltezeit Stufe a | **Haltezeit Stufe b** | b: Schnappschuss / Rechnen (ohne Sperre) | Anfrage gesamt voll / a / b | Schleife max voll / a / b |
+  |---|---|---|---|---|---|---|
+  | 60 × 12 | 4,8 s | 3,7 s | **0,14 s** | 0,25 s / 4,2 s | 5,2 / 5,2 / 4,7 s | 4,1 / 3,8 / 4,0 s |
+  | 150 × 12 | 7,9 s | 9,5 s | **0,27 s** | 0,27 s / 6,2 s | 11,6 / 8,8 / 10,1 s | 9,3 / 7,5 / 9,1 s |
+  | 150 × 36 | 14,3 s | 7,9 s | **0,23 s** | 0,30 s / 8,9 s | 16,7 / 8,7 / 10,9 s | 10,3 / 6,7 / 8,4 s |
+  | 400 × 36 | 43,9 s | 22,9 s | **0,77 s** | 1,0 s / 18,3 s | 40,4 / 21,9 / 22,8 s | 26,5 / 16,6 / 17,0 s |
+
+  Die Sonde (Wartezeit an der Sperre) unterschätzt die Haltezeit, wenn unter der Sperre synchron gerechnet wird (in
+  der Blockade startet keine Sonde): 400 × 36 voll 7,1 s gemessen gegen 43,9 s Haltezeit; der Wächter meldete dort
+  „seit 30000 ms gehalten“. Deshalb die direkte Haltezeit in der Tabelle.
+
+  **Ziel „Haltezeit < 2 s bei 400 × 36“: erreicht (0,77 s gegen 22,9 s in Stufe a und 43,9 s voll). Ziel „Event-Loop-Block < 200 ms am Stück“: nicht
+  erreicht.** Die Rechnung (`abschliessen` → Freeze, `isteinfrieren.mjs` `personMonat`, darunter `betriebszeit.mjs`
+  `teile`/`versatz` und `regelwerk.mjs` `letzterSonntag`) läuft synchron in einem Stück; Stufe b nimmt sie aus der
+  Raumsperre, nicht aus der Ereignisschleife. Ein Stempel desselben Prozesses wartet deshalb während der Rechnung
+  weiter, nur nicht an der Sperre (keine 503 durch `SPERRE_ZEITGRENZE`, aber dieselbe Verzögerung). Nächster Schritt:
+  Häppchen (`setImmediate`, Abschnitt 5 Punkt 3) oder schnellere Zeitumrechnung — eigener Schritt, eigener
+  Differenzialtest.
+- **Restrisiko Dauerlast (Worst Case, Review #351):** Wird der Raum während jeder Rechnung beschrieben (etwa ständige
+  Stempelungen bei 400 × 36), läuft die Rechnung bis zu dreimal umsonst — je ~18 s synchron ohne Sperre, also mit
+  blockierter Ereignisschleife — und danach einmal der gesperrte Weg der Stufe a (~23 s): zusammen **etwa 75 s Blockade
+  je Anfrage** (Stufe a allein ~23 s, voll ~44 s). Ohne Sperre gibt es zudem keine Warteschlange je Raum mehr: Mehrere
+  Abschlüsse halten ihre Schnappschüsse gleichzeitig im Speicher; begrenzt nur durch `bremse("schreiben")`.
+  **Empfehlung vor dem Einschalten:** Staging-Messung (WP-48.9) unter Stempellast und dort die Versuchszahl festlegen —
+  bis hin zu „nach dem ersten Konflikt direkt der gesperrte Weg“ (`ABSCHLUSS_VERSUCHE = 1`). Die Zahl ist eine
+  Konstante in `abschluss-segmentweise.mjs` (keine Umgebungsvariable); mit ausgeschaltetem Schalter wirkt sie nicht.
+- **Restrisiken:** Die Rechnung kann bei Dauerlast bis zu dreimal umsonst laufen (dann gesperrter Weg, siehe oben). Die Garantie
+  stützt sich darauf, dass jeder Schreiber der Monatsscherben und des Kerns über `festschreiben` (Journal, Stand + 1)
+  geht; ein Schreiben an der Ablage vorbei ohne Standwechsel bliebe unbemerkt (wie schon beim Lesecache, 7.4). Messung
+  auf Staging (WP-48.9) steht aus; Einschalten erst danach und mit Betreiberfreigabe.
 
 ---
 
@@ -1146,6 +1235,7 @@ und löscht es danach. Produktcode und echte Daten berührt es nicht.
 node werkzeug/wp48-messung.mjs                     # Matrix 60/150/400 × 12/24/36 (mit Ablage, lang)
 node werkzeug/wp48-messung.mjs --ohne-ablage       # nur Größen und Rechenzeiten (Tabelle 1.2)
 node werkzeug/wp48-messung.mjs --personen 150 --monate 12 [--json]
+node werkzeug/wp48-messung.mjs --abschluss --personen 400 --monate 36   # Monatsabschluss voll / Stufe a / Stufe b (7.8)
 ```
 
 Gelaufen zum Entwurf: `--ohne-ablage` über die ganze Matrix sowie mit Ablage 150 × 12 (zweimal) und 60 × 12. Nicht

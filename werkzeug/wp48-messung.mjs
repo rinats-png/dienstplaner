@@ -12,6 +12,9 @@
      node werkzeug/wp48-messung.mjs --personen 150 --monate 12
      node werkzeug/wp48-messung.mjs --ohne-ablage         nur Größen und Rechenzeiten
      node werkzeug/wp48-messung.mjs --json                Ergebnis zusätzlich als JSON
+     node werkzeug/wp48-messung.mjs --abschluss [--personen 400 --monate 36]
+                                                          Monatsabschluss über den echten Handler: voller Weg,
+                                                          Stufe a, Stufe b (WP-48.7); Sonde an der Raumsperre
 
    Datenmenge: ein Betrieb in der Gestalt des Demobestands (src/App.jsx,
    baueMandant: Pflegebetrieb, Personen mit Qualifikationen, Nachweisen,
@@ -300,11 +303,145 @@ export function tabelle(zeilen) {
   return [kopf, linie, ...rumpf].join("\n");
 }
 
+/* ------------------------------------------- Monatsabschluss (WP-48.7 b) */
+
+/**
+ * Monatsabschluss über den echten Handler (POST /api/monatsabschluss, Abschließen des Vormonats mit
+ * trotzPrueffaellen) in drei gleichen Räumen: voller Weg, Stufe a (CENTRIC_ABSCHLUSS_SEGMENTWEISE), Stufe b
+ * (dazu CENTRIC_ABSCHLUSS_OHNE_SPERRE). Gemessen je Weg:
+ * - gesamtMs: die ganze Anfrage (mit Sitzungsprüfung, die den Bestand außerhalb der Sperre liest);
+ * - sondeMaxMs: längste Wartezeit einer Sonde, die alle ~2 ms unterRaumsperre(raum, leer) aufruft — so lange
+ *   wartete ein Stempel desselben Prozesses höchstens (Raumsperre UND blockierte Ereignisschleife);
+ * - schleifeMaxMs: längste Blockade der Ereignisschleife (monitorEventLoopDelay, Auflösung 1 ms).
+ * Die Sonde unterschätzt die Haltezeit, wenn unter der Sperre synchron gerechnet wird (in der Blockade startet
+ * keine Sonde). Deshalb zusätzlich vollHaltMs, stufeAHaltMs, stufeBHaltMs: die Zeit INNERHALB von unterRaumsperre,
+ * direkt gestoppt, mit denselben Aufrufen wie der Handler in eigenen Räumen; für Stufe b dazu Schnappschuss und
+ * Rechnen (beide ohne Sperre).
+ */
+export async function abschlussMessen(n, anzahlMonate) {
+  const { monitorEventLoopDelay } = await import("node:perf_hooks");
+  const wurzel = await mkdtemp(path.join(tmpdir(), "wp48-abschluss-"));
+  process.env.CENTRIC_DATEN = wurzel;
+  process.env.CENTRIC_ABLAGE = "dateien";
+  process.env.CENTRIC_PFEFFER = process.env.CENTRIC_PFEFFER || "pfeffer-nur-zum-pruefen-messung-0123456789";
+  const logAlt = console.log; const warnAlt = console.warn;
+  console.log = () => {}; console.warn = () => {};
+  const aus = { personen: n, monate: anzahlMonate };
+  try {
+    const { bestandSchreiben, unterRaumsperre } = await import("../server/lib/bestand.mjs");
+    const { personenAngleichen } = await import("../server/lib/gestalt.mjs");
+    const { sitzungAnlegen } = await import("../server/lib/sitzungen.mjs");
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const daten = (await import("../server/funktionen/daten.mjs")).default;
+    const store = getStore({ name: "centric", consistency: "strong" });
+    const vormonat = monatPlus(LAUFEND, -1);
+    const b = personenAngleichen(bestandErzeugen(n, monateBis(LAUFEND, anzahlMonate)));
+    const WEGE = [["voll", {}], ["stufeA", { CENTRIC_ABSCHLUSS_SEGMENTWEISE: "true" }],
+      ["stufeB", { CENTRIC_ABSCHLUSS_SEGMENTWEISE: "true", CENTRIC_ABSCHLUSS_OHNE_SPERRE: "true" }]];
+    for (const [weg, schalter] of WEGE) {
+      const raum = `mess-abschluss-${n}-${anzahlMonate}-${weg}`;
+      await bestandSchreiben(store, raum, b, { durch: "Mess" });
+      const token = (await sitzungAnlegen({ bestand: raum, name: "L", rolle: "leitung", person: "p1", betrieb: 0,
+        mandantId: b.mandanten[0].id, einheit: null }, 3600 * 1000)).token;
+      for (const k of ["CENTRIC_ABSCHLUSS_SEGMENTWEISE", "CENTRIC_ABSCHLUSS_OHNE_SPERRE"]) delete process.env[k];
+      Object.assign(process.env, schalter);
+      let sondeMax = 0, laeuft = true, sondeAktiv = false;
+      const sonde = setInterval(() => {
+        if (sondeAktiv || !laeuft) return;
+        sondeAktiv = true;
+        const t0 = performance.now();
+        unterRaumsperre(raum, () => {}).then(() => { sondeMax = Math.max(sondeMax, performance.now() - t0); sondeAktiv = false; },
+          () => { sondeAktiv = false; });
+      }, 2);
+      const schleife = monitorEventLoopDelay({ resolution: 1 });
+      schleife.enable();
+      const t0 = performance.now();
+      const a = await daten(new Request("http://127.0.0.1:3000/api/monatsabschluss", { method: "POST",
+        headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000", "content-type": "application/json",
+          "x-forwarded-for": "10.99.0.1", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ aktion: "abschliessen", monat: vormonat, trotzPrueffaellen: true }) }), {});
+      aus[`${weg}GesamtMs`] = Math.round(performance.now() - t0);
+      laeuft = false;
+      clearInterval(sonde);
+      schleife.disable();
+      while (sondeAktiv) await new Promise((r) => setTimeout(r, 5));
+      aus[`${weg}Status`] = a.status;
+      aus[`${weg}SondeMaxMs`] = Math.round(sondeMax);
+      aus[`${weg}SchleifeMaxMs`] = Math.round(schleife.max / 1e6);
+    }
+    /* Haltezeit direkt: Die Sonde misst eine synchron blockierte Ereignisschleife nicht (in der Blockade wird keine
+       Sonde gestartet) — sie unterschätzt die Haltezeit, wenn die Arbeit unter der Sperre synchron rechnet. Deshalb
+       dieselben Aufrufe wie im Handler in eigenen Räumen, die Zeit INNERHALB von unterRaumsperre gestoppt. */
+    const B = await import("../server/lib/bestand.mjs");
+    const MA = await import("../server/lib/monatsabschluss.mjs");
+    const SW = await import("../server/lib/abschluss-segmentweise.mjs");
+    const { eigenerMandant } = await import("../server/lib/rechte.mjs");
+    const { heuteBerlin } = await import("../server/lib/zeiterfassung.mjs");
+    const sitzung = { betrieb: 0, mandantId: b.mandanten[0].id };
+    const wer = { personId: "p1", name: "L", rolle: "leitung" };
+    const rechnen = (m) => MA.abschliessen(m, { aktion: "abschliessen", monat: vormonat, trotzPrueffaellen: true }, wer, new Date(), "ma-000000000001", heuteBerlin());
+    const halten = async (raum, arbeit) => {
+      let ms = 0;
+      await B.unterRaumsperre(raum, async () => { const t = performance.now(); try { await arbeit(); } finally { ms = performance.now() - t; } });
+      return Math.round(ms);
+    };
+    const neu = async (name) => { const raum = `mess-halt-${n}-${anzahlMonate}-${name}`; await bestandSchreiben(store, raum, b, { durch: "Mess" }); return raum; };
+    const rV = await neu("voll");
+    aus.vollHaltMs = await halten(rV, async () => {
+      const g = await B.bestandLesenStreng(store, rV);
+      const m = eigenerMandant(g.bestand, sitzung);
+      const r = rechnen(m);
+      if ("status" in r) throw new Error(`Abschluss abgewiesen: ${r.grund}`);
+      const e = await B.bestandSchreiben(store, rV, { ...g.bestand, mandanten: g.bestand.mandanten.map((x) => (x === m ? r.mandant : x)) },
+        { erwarteterStand: g.stand, durch: "Mess" });
+      if (!e.ok) throw new Error("voll nicht geschrieben");
+    });
+    const rA = await neu("a");
+    aus.stufeAHaltMs = await halten(rA, async () => {
+      const g = await B.bestandLesenAuswahlStreng(store, rA, SW.abschlussAuswahl(sitzung, vormonat));
+      const m = eigenerMandant(g.bestand, sitzung);
+      const r = rechnen(m);
+      const e = await B.teileSchreiben(store, rA, SW.abschlussTeile(g.bestand, m, r.mandant, vormonat),
+        { erwarteterStand: g.stand, erwarteteEpoche: g.epoche, durch: "Mess" });
+      if (!e.ok) throw new Error("Stufe a nicht geschrieben");
+    });
+    const rB = await neu("b");
+    let t = performance.now();
+    const g = await B.bestandSchnappschussAuswahl(store, rB, SW.abschlussAuswahl(sitzung, vormonat));
+    aus.stufeBSchnappschussMs = Math.round(performance.now() - t);
+    t = performance.now();
+    const m = eigenerMandant(g.bestand, sitzung);
+    const r = rechnen(m);
+    const teile = SW.abschlussTeile(g.bestand, m, r.mandant, vormonat);
+    aus.stufeBRechnenMs = Math.round(performance.now() - t);
+    aus.stufeBHaltMs = await halten(rB, async () => {
+      const e = await B.teileSchreiben(store, rB, teile, { erwarteterStand: g.stand, erwarteteEpoche: g.epoche, durch: "Mess" });
+      if (!e.ok) throw new Error("Stufe b nicht geschrieben");
+    });
+  } finally {
+    for (const k of ["CENTRIC_ABSCHLUSS_SEGMENTWEISE", "CENTRIC_ABSCHLUSS_OHNE_SPERRE"]) delete process.env[k];
+    console.log = logAlt; console.warn = warnAlt;
+    await rm(wurzel, { recursive: true, force: true }).catch(() => {});
+  }
+  return aus;
+}
+
 async function main() {
   const arg = process.argv.slice(2);
   const wert = (n) => { const i = arg.indexOf(n); return i >= 0 ? Number(arg[i + 1]) : null; };
   const personen = wert("--personen") ? [wert("--personen")] : [60, 150, 400];
   const monate = wert("--monate") ? [wert("--monate")] : [12, 24, 36];
+  if (arg.includes("--abschluss")) {
+    const zeilen = [];
+    for (const p of personen) for (const mo of monate) {
+      zeilen.push(await abschlussMessen(p, mo));
+      process.stderr.write(`gemessen Abschluss ${p} × ${mo}\n`);
+    }
+    const sp = Object.keys(zeilen[0]);
+    console.log([`| ${sp.join(" | ")} |`, `|${sp.map(() => "---").join("|")}|`, ...zeilen.map((z) => `| ${sp.map((k) => z[k]).join(" | ")} |`)].join("\n"));
+    if (arg.includes("--json")) console.log(JSON.stringify(zeilen, null, 1));
+    return;
+  }
   const zeilen = [];
   for (const p of personen) for (const mo of monate) {
     const z = await zelleMessen(p, mo, { ohneAblage: arg.includes("--ohne-ablage") });

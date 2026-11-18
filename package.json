@@ -229,7 +229,7 @@
     "pruefung:wp48-teilweg": "vitest run pruefungen/wp48-teilweg.test.js --testTimeout=600000 --hookTimeout=120000 && npm run pruefung:wp48-6-kette && npm run pruefung:wp48-loeschlauf",
     "pruefung:wp48-6-kette": "vitest run pruefungen/wp48-6-kette.test.js --testTimeout=600000 --hookTimeout=120000",
     "pruefung:wp48-loeschlauf": "vitest run pruefungen/wp48-loeschlauf.test.js pruefungen/wp48-5-loeschlauf-knopf.test.js --testTimeout=300000 --hookTimeout=120000",
-    "pruefung:wp48-abschluss": "vitest run pruefungen/wp48-7-abschluss-segmentweise.test.js --testTimeout=300000 --hookTimeout=120000",
+    "pruefung:wp48-abschluss": "vitest run pruefungen/wp48-7-abschluss-segmentweise.test.js pruefungen/wp48-7-stufe-b.test.js --testTimeout=300000 --hookTimeout=120000",
     "pruefung:rb1-plan-publish": "vitest run pruefungen/rb1-plan-publish.test.js --testTimeout=120000",
     "pruefung:rb2-krankmeldung": "vitest run pruefungen/rb2-krankmeldung.test.js --testTimeout=120000",
     "pruefung:rb3-kunde-ohne-publish": "vitest run pruefungen/rb3-kunde-ohne-publish.test.js --testTimeout=120000",
