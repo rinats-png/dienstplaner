@@ -40,8 +40,42 @@ const FIXTURE = [P("WP-09", "IN_PROGRESS"), P("WP-01", "INTEGRATED"), P("WP-02",
   P("WP-15", "DONE")];
 
 describe("acc45-backlog: bereit, brief, fortschritt", () => {
-  it("bereit: READY/BLOCKED mit erledigten Abhängigkeiten; WP-09 zählt nicht als Code-Abhängigkeit", () => {
-    expect(BL.bereit(BL.paketeAus(FIXTURE)).map((p) => p.id)).toEqual(["WP-10", "WP-11"]);
+  it("bereit: nur READY oder IN_PROGRESS mit erledigten Abhängigkeiten; BLOCKED nie; WP-09 zählt nicht als Code-Abhängigkeit", () => {
+    const pakete = BL.paketeAus(FIXTURE);
+    /* WP-10 READY, WP-09/02/13 IN_PROGRESS mit erfüllten Abhängigkeiten; WP-12 READY, aber WP-02 noch nicht integriert. */
+    expect(BL.bereit(pakete).map((p) => p.id)).toEqual(["WP-09", "WP-02", "WP-10", "WP-13"]);
+    expect(BL.bereit(pakete).map((p) => p.id)).not.toContain("WP-11");
+    expect(BL.startbereit(pakete).map((p) => p.id)).toEqual(["WP-10"]);
+  });
+
+  it("bereit: BLOCKED mit erfüllten Abhängigkeiten steht nur in der Zweitliste; Erledigte und Unerfüllte nirgends", () => {
+    const pakete = BL.paketeAus(FIXTURE);
+    /* WP-11 BLOCKED, nur WP-09 (Reihenfolge) als Abhängigkeit: erfüllt. WP-14 hängt zusätzlich an WP-02 (IN_PROGRESS): nicht erfüllt. */
+    expect(BL.bereitGesperrt(pakete).map((p) => p.id)).toEqual(["WP-11"]);
+    const alle = new Set([...BL.bereit(pakete), ...BL.bereitGesperrt(pakete)].map((p) => p.id));
+    for (const nein of ["WP-12", "WP-14", "WP-15", "WP-01", "WP-03"]) expect(alle.has(nein)).toBe(false);
+    /* Keine Überschneidung der beiden Listen. */
+    expect(BL.bereit(pakete).some((p) => p.status === "BLOCKED")).toBe(false);
+  });
+
+  it("bereit: externe Pakete nur mit alle; Ausgabe der Befehlszeile mit Zweitliste und Kurzgrund", () => {
+    const basis = BL.paketeAus(FIXTURE);
+    const e = (id, status) => ({ ...basis.find((p) => p.id === "WP-10"), id, strang: "extern", status, abhaengigkeiten: [], wartezeitAT: { min: 1, max: 1 } });
+    const pakete = [...basis, e("E-90", "READY"), e("E-91", "BLOCKED")];
+    expect(BL.bereit(pakete).map((p) => p.id)).not.toContain("E-90");
+    expect(BL.bereitGesperrt(pakete).map((p) => p.id)).not.toContain("E-91");
+    expect(BL.bereit(pakete, { alle: true }).map((p) => p.id)).toContain("E-90");
+    expect(BL.bereitGesperrt(pakete, { alle: true }).map((p) => p.id)).toContain("E-91");
+    const lang = { id: "X", notiz: `${"Grund ".repeat(80)}` };
+    expect(BL.notizKurz(lang).length).toBeLessThanOrEqual(140);
+    expect(BL.notizKurz(lang).endsWith("…")).toBe(true);
+    expect(BL.notizKurz({ notiz: null })).toBe("–");
+    const s = sammeln();
+    expect(BL.main(["bereit"], s.say)).toBe(0);
+    /* Auf dem lebenden Backlog nur Form prüfen: in der Hauptliste (vor der Leerzeile) steht kein BLOCKED-Paket. */
+    const [haupt, zweit = ""] = s.text().split("\n\n");
+    expect(haupt).not.toMatch(/ {2}BLOCKED {2}/);
+    if (zweit) { expect(zweit).toMatch(/^Abhängigkeiten erfüllt, aber BLOCKED \(Prüfung nötig, \d+\):/); expect(zweit).toMatch(/Grund laut Notiz: /); }
   });
 
   it("brief: Auftrag mit Feldern, Abhängigkeiten samt Status, Standardregeln und Vorab-Checkliste", () => {
@@ -59,7 +93,7 @@ describe("acc45-backlog: bereit, brief, fortschritt", () => {
     expect(text).toMatch(/^Pakete 10: /);
     expect(text).toMatch(/kritischer Pfad/);
     expect(text).toMatch(/In Arbeit\/Review: WP-09 IN_PROGRESS; WP-02 IN_PROGRESS; WP-13 IN_PROGRESS/);
-    expect(text).toMatch(/Bereit: WP-10 \[agentId=agent-x\], WP-11$/m);
+    expect(text).toMatch(/Bereit: WP-10 \[agentId=agent-x\]$/m);
     expect(BL.main(["fortschritt"], sammeln().say)).toBe(0);
   });
 
@@ -87,6 +121,65 @@ describe("acc45-backlog: bereit, brief, fortschritt", () => {
   it("das erzeugte JSON im Repo enthält keine lokalen Felder", async () => {
     const json = await readFile(path.join(REPO, "docs", "acc45", "work-packages.json"), "utf8");
     for (const f of BL.LOKALE_FELDER) expect(json).not.toContain(`"${f}"`);
+  });
+});
+
+describe("naechstes-paket: die ersten ausführbaren Pakete, nur lesend", () => {
+  let NP;
+  beforeAll(async () => { NP = await import("../werkzeug/naechstes-paket.mjs"); });
+  /* Feste Daten: Rang nach Priorität, dann offenem Aufwand, dann ID; nur READY/IN_PROGRESS mit erfüllten Abhängigkeiten. */
+  const basis = () => BL.paketeAus(FIXTURE);
+  const mit = (id, teil) => (liste) => liste.map((p) => (p.id === id ? { ...p, ...teil } : p));
+  const bau = () => [
+    mit("WP-10", { prio: "P2", aufwandPT: { min: 1, max: 1 } }),
+    mit("WP-13", { prio: "P0", aufwandPT: { min: 4, max: 4 }, konfliktzonen: ["App.jsx"], notiz: "Rest laut Plan" }),
+    mit("WP-02", { prio: "P1", aufwandPT: { min: 2, max: 2 } }),
+    mit("WP-09", { prio: "P1", aufwandPT: { min: 2, max: 2 } }),
+  ].reduce((l, f) => f(l), basis());
+
+  it("Rang: P0 vor P1 vor P2, dann kleinerer offener Aufwand, dann ID; BLOCKED und unerfüllte Abhängigkeiten fehlen", () => {
+    const l = NP.naechste(bau());
+    expect(l.map((x) => x.id)).toEqual(["WP-13", "WP-02", "WP-09", "WP-10"]);
+    expect(l.map((x) => x.id)).not.toContain("WP-11");
+    expect(l.map((x) => x.id)).not.toContain("WP-12");
+    expect(NP.naechste(bau(), 2).map((x) => x.id)).toEqual(["WP-13", "WP-02"]);
+    expect(l[0]).toMatchObject({ status: "IN_PROGRESS", konfliktzonen: ["App.jsx"], notiz: "Rest laut Plan" });
+  });
+
+  it("extern und bedingt werden nie vorgeschlagen", () => {
+    const l = bau().map((p) => (p.id === "WP-13" ? { ...p, strang: "extern", wartezeitAT: { min: 1, max: 1 } } : p.id === "WP-02" ? { ...p, bedingt: true } : p));
+    expect(NP.naechste(l).map((x) => x.id)).toEqual(["WP-09", "WP-10"]);
+  });
+
+  it("main: Text mit Konfliktzonen-Hinweis und Exit 0; --json ist gültig; Exit 1 ohne Paket; Exit 2 bei falschem Aufruf", () => {
+    const s = sammeln();
+    expect(NP.main([], s.say, bau())).toBe(0);
+    expect(s.text()).toMatch(/^1\. WP-13 {2}P0 .*IN_PROGRESS/);
+    expect(s.text()).toContain("Konfliktzonen: App.jsx (ein Schreiber zur Zeit, docs/acc45/AGENTS.md)");
+    expect(s.text()).toContain("Konfliktzonen: keine");
+    const j = sammeln();
+    expect(NP.main(["--json", "--anzahl", "2"], j.say, bau())).toBe(0);
+    expect(JSON.parse(j.text()).map((x) => x.id)).toEqual(["WP-13", "WP-02"]);
+    const leer = BL.paketeAus(FIXTURE).filter((p) => ["WP-01", "WP-03", "WP-15", "WP-11"].includes(p.id));
+    const k = sammeln();
+    expect(NP.main([], k.say, leer)).toBe(1);
+    expect(k.text()).toMatch(/Kein ausführbares Paket/);
+    expect(JSON.parse((() => { const x = sammeln(); NP.main(["--json"], x.say, leer); return x.text(); })())).toEqual([]);
+    expect(NP.main(["--json"], () => {}, leer)).toBe(1);
+    expect(NP.main(["--anzahl", "0"], () => {}, bau())).toBe(2);
+    expect(NP.main(["--bogus"], () => {}, bau())).toBe(2);
+  });
+
+  it("schreibt nichts: Quelltext enthält keinen Schreib- oder Netzaufruf", async () => {
+    const q = await readFile(path.join(REPO, "werkzeug", "naechstes-paket.mjs"), "utf8");
+    expect(q).not.toMatch(/writeFile|appendFile|execFile|spawn|fetch\(|child_process/);
+  });
+
+  it("auf dem lebenden Backlog: Exit 0 oder 1, nie ein BLOCKED- oder externes Paket", () => {
+    const s = sammeln();
+    const exit = NP.main(["--json", "--anzahl", "50"], s.say);
+    expect([0, 1]).toContain(exit);
+    for (const x of JSON.parse(s.text())) { expect(x.status).not.toBe("BLOCKED"); expect(x.strang).not.toBe("extern"); }
   });
 });
 

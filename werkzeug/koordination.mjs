@@ -272,6 +272,7 @@ function haupt() {
       if (b.wartendePrs.length) console.log(`PRs mit grüner CI ohne Aktivität: #${b.wartendePrs.join(", #")}`);
       if (!b.prDaten) console.log("Hinweis: PR-Daten nicht verfügbar (gh fehlt oder --ohne-pr)");
       console.log(`sichere Wiederaufnahme: ${b.wiederaufnahme}`);
+      console.log("Nächstes Paket: node werkzeug/naechstes-paket.mjs");
     }
     return b.exit;
   }

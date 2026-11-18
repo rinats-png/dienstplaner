@@ -11,7 +11,7 @@
      node werkzeug/acc45-backlog.mjs status-schreiben  dasselbe (ausdrücklicher Name)
      node werkzeug/acc45-backlog.mjs pruefen         Quelle prüfen und Abweichungen der erzeugten
                                                      Dateien melden (Rückgabe 1 bei Abweichung)
-     node werkzeug/acc45-backlog.mjs bereit [--alle] was jetzt starten kann (--alle: auch extern)
+     node werkzeug/acc45-backlog.mjs bereit [--alle] was jetzt starten kann (READY/IN_PROGRESS; BLOCKED mit erfüllten Abhängigkeiten in Zweitliste; --alle: auch extern)
      node werkzeug/acc45-backlog.mjs brief WP-23     Agentenauftrag als Text
      node werkzeug/acc45-backlog.mjs fortschritt     Kurzstatus
      node werkzeug/acc45-backlog.mjs kritischer-pfad [strang]   je Strang und gemeinsam
@@ -208,16 +208,41 @@ export function kennzahlen(pakete) {
 /* --------------------------------------------------------------------------
    bereit — was kann jetzt starten?
 
-   Ein Paket ist bereit, wenn es selbst READY oder BLOCKED ist und alle
-   Abhängigkeiten INTEGRATED, VERIFIED oder DONE sind. WP-09 (Kette B nach
-   main) ist nur die Reihenfolge des Livegangs, keine Code-Abhängigkeit.
-   Externe Pakete (strang extern) erscheinen nur mit {alle: true}.
+   Ein Paket ist bereit, wenn es selbst READY oder IN_PROGRESS (mit offener
+   Restarbeit) ist und alle Abhängigkeiten INTEGRATED, VERIFIED oder DONE
+   sind. BLOCKED-Pakete sind NICHT bereit: auch mit erfüllten Abhängigkeiten
+   hat BLOCKED einen Grund (meist Betreiberentscheidung oder Freigabe). Sie
+   stehen in bereitGesperrt (Zweitliste „Prüfung nötig“). Die Quelle hat kein
+   Feld für einen Betreiber-Sperrgrund; es wird keiner aus der Notiz erraten.
+   WP-09 (Kette B nach main) ist nur die Reihenfolge des Livegangs, keine
+   Code-Abhängigkeit. Externe Pakete (strang extern) erscheinen nur mit
+   {alle: true}.
    -------------------------------------------------------------------------- */
+const abhaengigkeitenErfuellt = (p, nach) =>
+  p.abhaengigkeiten.every((a) => NUR_REIHENFOLGE.includes(a) || ERLEDIGT.includes(nach.get(a)?.status));
+
 export function bereit(pakete, { alle = false } = {}) {
   const nach = new Map(pakete.map((p) => [p.id, p]));
-  return pakete.filter((p) => (alle || p.strang !== "extern") && !p.bedingt && ["READY", "BLOCKED"].includes(p.status)
-    && p.abhaengigkeiten.every((a) => NUR_REIHENFOLGE.includes(a) || ERLEDIGT.includes(nach.get(a)?.status)));
+  return pakete.filter((p) => (alle || p.strang !== "extern") && !p.bedingt
+    && (p.status === "READY" || (p.status === "IN_PROGRESS" && restAufwand(p).max > 0))
+    && abhaengigkeitenErfuellt(p, nach));
 }
+
+/** Nur READY (noch nicht begonnen): „Bereit zum Start“ in Kurzstatus und Statusdokument. */
+export const startbereit = (pakete, opt) => bereit(pakete, opt).filter((p) => p.status === "READY");
+
+/** BLOCKED, aber alle Abhängigkeiten erfüllt: Der Sperrgrund steht in der Notiz und ist zu prüfen. */
+export function bereitGesperrt(pakete, { alle = false } = {}) {
+  const nach = new Map(pakete.map((p) => [p.id, p]));
+  return pakete.filter((p) => (alle || p.strang !== "extern") && !p.bedingt && p.status === "BLOCKED"
+    && abhaengigkeitenErfuellt(p, nach));
+}
+
+/** Notiz als einzeilige Kurzfassung (stabil: feste Länge, Leerraum zusammengezogen). */
+export const notizKurz = (p, max = 140) => {
+  const t = String(p.notiz ?? "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t || "–";
+};
 
 /* --------------------------------------------------------------------------
    brief — ein Agentenauftrag als Text
@@ -319,7 +344,7 @@ export function fortschritt(pakete, lokal = {}) {
     `Pakete ${pakete.length}: ${STATUS.filter((s) => zaehl[s]).map((s) => `${s} ${zaehl[s]}`).join(", ")}`,
     `Offen ${spanneText(offenPT)} PT (ohne extern); kritischer Pfad ${spanneText(kritisch)} PT: ${kritisch.kette.join(" → ")}`,
     `In Arbeit/Review: ${laufend.map((p) => `${p.id} ${p.status}${mitLokal(p)}`).join("; ") || "–"}`,
-    `Bereit: ${bereit(pakete).map((p) => `${p.id}${mitLokal(p)}`).join(", ") || "–"}`,
+    `Bereit: ${startbereit(pakete).map((p) => `${p.id}${mitLokal(p)}`).join(", ") || "–"}`,
   ].join("\n");
 }
 
@@ -517,9 +542,9 @@ function blockStatus(pakete, quelle) {
     "|---|---|---|---|",
     ...laufend.map((p) => `| ${p.id} ${p.titel} | ${p.status} | \`${p.branch ?? "–"}\` | ${p.notiz ?? ""} |`),
     "",
-    `### Bereit zum Start (${bereit(pakete).length})`,
+    `### Bereit zum Start (${startbereit(pakete).length})`,
     "",
-    bereit(pakete).map((p) => `${p.id} (${p.strang}, ${spanneText(p.aufwandPT)} PT)`).join(" · ") || "–",
+    startbereit(pakete).map((p) => `${p.id} (${p.strang}, ${spanneText(p.aufwandPT)} PT)`).join(" · ") || "–",
     "",
     `### Integriert in \`integration/centric-complete\` (${integ.length})`,
     "",
@@ -787,7 +812,15 @@ export function main(argv, say = (s) => console.log(s)) {
     return 1;
   }
   if (befehl === "bereit") {
-    for (const p of bereit(pakete, { alle: rest.includes("--alle") })) say(`${p.id}  ${p.prio}  ${spanneText(p.aufwandPT)} PT  ${p.status}  ${p.strang}  ${p.titel}`);
+    const opt = { alle: rest.includes("--alle") };
+    const zeile = (p) => `${p.id}  ${p.prio}  ${spanneText(p.aufwandPT)} PT  ${p.status}  ${p.strang}  ${p.titel}`;
+    for (const p of bereit(pakete, opt)) say(zeile(p));
+    const gesperrt = bereitGesperrt(pakete, opt);
+    if (gesperrt.length) {
+      say("");
+      say(`Abhängigkeiten erfüllt, aber BLOCKED (Prüfung nötig, ${gesperrt.length}):`);
+      for (const p of gesperrt) { say(zeile(p)); say(`    Grund laut Notiz: ${notizKurz(p)}`); }
+    }
     return 0;
   }
   if (befehl === "brief") {
