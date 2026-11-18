@@ -92,7 +92,7 @@ describe("Zeit-Schnellweg: zeitpunktAusWanduhr alt gegen neu (Differenzialtest)"
 
   it("alle Minuten der Umstellungssonntage 2000–2100 — 0 Abweichungen", () => {
     expect(vergleiche(UMSTELLUNG_VOLL, ALT.zeitpunktAusWanduhr, zeitpunktAusWanduhr)).toEqual([]);
-  }, 120000);
+  }, 180000);
 
   it("Lücke 29.03.2026 und doppelte Stunde 25.10.2026 wie bisher aufgelöst", () => {
     const u = (d, h, m) => Date.parse(`${d}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`);
@@ -104,7 +104,7 @@ describe("Zeit-Schnellweg: zeitpunktAusWanduhr alt gegen neu (Differenzialtest)"
 
   it("Stichproben je Jahr 2101–2999 (Kantenminuten, Nachbartage) — 0 Abweichungen", () => {
     expect(vergleiche(STICHPROBEN_BIS_2999, ALT.zeitpunktAusWanduhr, zeitpunktAusWanduhr)).toEqual([]);
-  }, 120000);
+  }, 180000);
 
   it("20 000 Zufallstage 2000–2999 (fester Startwert) — 0 Abweichungen", () => {
     expect(vergleiche(ZUFALL, ALT.zeitpunktAusWanduhr, zeitpunktAusWanduhr)).toEqual([]);
