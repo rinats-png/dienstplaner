@@ -218,7 +218,7 @@ import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
 import { ROLLEN, rolle, mehrzahl, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, FESTE_RECHTE, rechteDerRolle } from "./lib/rollen.js";
 import { urlaubshinweiseFaellig, zustellungAusstehend } from "./lib/zustellung.js";
-import { abbildVon, schreibAbbild, urlaubshinweiseAnwenden, automatikKonfliktLoesen } from "./app/oeffnen.js";
+import { abbildVon, schreibAbbild, urlaubshinweiseAnwenden, automatikKonfliktLoesen, migrationZurueckschreiben } from "./app/oeffnen.js";
 
 
 import { leererMandant, zugangsPerson } from "./lib/mandant-anlage.js";
@@ -1103,6 +1103,8 @@ function AppInnen() {
          unangetastet und die Anwendung sagt, was zu tun ist. Vorher wurde
          beides gleich behandelt: durch Beispieldaten ersetzt. */
       let b;
+      /* Der endgültig geladene Stand (mit Sitzung) — für einen Konflikt der Migration vor dem ersten Rendern. */
+      let geladen = null;
       if (!bestand) {
         /* Einen leeren Raum befüllt die Oberfläche nicht mehr selbst — bis
            Oktober 2026 schrieb hier der erste Client den Startbestand. Den
@@ -1125,10 +1127,30 @@ function AppInnen() {
         /* WP-48.5: Basis des Teilwegs ist genau dieser Stand. Nach einer Migration bleibt es beim Voll-PUT (Entwurf
            2.6). Ohne Fähigkeit `teile` ist teilAntwort null — der Teilweg bleibt aus. */
         SP.teilwegUebernehmen(erg.schritte > 0 ? null : teilAntwort);
-        if (erg.schritte > 0) {
+        if (migrationZurueckschreiben(erg, zugang)) {
           /* Sofort zurückschreiben, damit die Migration nicht bei jedem
-             Öffnen erneut läuft — und damit ein Fehler darin früh auffällt. */
-          SP.schreib(b, { durch: "Migration", sofort: true });
+             Öffnen erneut läuft — und damit ein Fehler darin früh auffällt.
+             WP-48-GB (Nachtrag): nur mit Schreibrecht (der Betriebsrat bekam eine Absage für eine Änderung, die er nie
+             gemacht hat), und ein Konflikt wird behandelt. Vorher übernahm speicher.js beim 409 nur den ETag, nicht den
+             Inhalt: Öffneten zwei Sitzungen gleichzeitig einen Altbestand, überschrieb die nächste Eingabe der zweiten
+             still, was die erste inzwischen gespeichert hatte. Jetzt wie beim Urlaubshinweis: Hat die Person seitdem
+             nichts geändert, gilt still der Stand des Servers (dort steht die Migration der anderen Sitzung schon) —
+             kein Dialog; sonst der Konfliktdialog wie bei jeder anderen gleichzeitigen Änderung. */
+          const migrationsAbbild = abbildVon(b);
+          SP.schreib(b, { durch: "Migration", sofort: true,
+            onKonflikt: (d) => {
+              const lokal = ref.current || geladen;
+              if (!lokal) return;
+              const uebernehmen = automatikKonfliktLoesen({ automatisch: migrationsAbbild, geschrieben: migrationsAbbild,
+                lokal, antwort: d, migriere });
+              if (uebernehmen) {
+                const naechster = { ...uebernehmen, session: lokal.session, stand: (lokal.stand || 0) + 1 };
+                zuletztGeschrieben.current = abbildVon(naechster);
+                setDb(naechster);
+                return;
+              }
+              setKonflikt({ ...d, meiner: lokal });
+            } });
         }
       }
       /* Der Zugangscode bestimmt die Rolle. Ein Demozugang landet damit
@@ -1157,6 +1179,7 @@ function AppInnen() {
         b = aufgeloest.bestand;
         if (aufgeloest.fehler) setLadefehler(aufgeloest.fehler);
       }
+      geladen = b;
       setDb(b);
     } catch (e) {
       if (lebt && String(e.message) !== "nicht-angemeldet") setLadefehler(String(e.message));

@@ -91,6 +91,24 @@ export function urlaubshinweiseAnwenden(bestand, mandantId, stichtag) {
 }
 
 /**
+ * Migration beim Laden zurückschreiben? (WP-48-GB, Nachtrag)
+ *
+ * Ein Bestand älterer Fassung wird beim Laden hochgezogen und sofort
+ * zurückgeschrieben (Versionsmarke `version`, Urheber „Migration"), damit die
+ * Migration nicht bei jedem Öffnen erneut läuft. Das ist der einzige
+ * Schreibvorgang beim Öffnen, den es geben muss — aber nur für Rollen, die
+ * schreiben dürfen: Der Betriebsrat (Schreibumfang „nein") bekam dafür eine
+ * Absage (403) für eine Änderung, die er nie gemacht hat. Er arbeitet mit dem
+ * migrierten Stand im Arbeitsspeicher; zurückgeschrieben wird von der nächsten
+ * Sitzung mit Schreibrecht. Ohne Angabe zum Schreibumfang wie bisher.
+ * @returns {boolean}
+ */
+export function migrationZurueckschreiben(erg, zugang) {
+  if (!erg || !erg.ok || !(erg.schritte > 0)) return false;
+  return !(zugang && zugang.schreiben === "nein");
+}
+
+/**
  * Konflikt eines Schreibvorgangs, der nur aus einem automatischen Lauf beim
  * Öffnen bestand (Urlaubshinweis): still auflösen statt Dialog?
  *
