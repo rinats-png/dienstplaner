@@ -179,8 +179,10 @@ der Quelltextstelle in dieser Tabelle nachvollziehbar.
 - **Eine Push-Anmeldung je Person** (ein Gerät); mehrere Geräte nicht vorgesehen.
 - **Nach dem Abmelden** muss die Person Gerätemitteilungen neu einschalten (gewollt, Datenschutz); die Oberfläche zeigt den
   Schalter anhand des Merkers an der Person — eine Rückmeldung „serverseitig nicht angemeldet“ gibt es noch nicht (Folgearbeit).
-  **Betreiberentscheidung** (offen): Abmelden löscht die **einzige** Push-Anmeldung der Person, auch wenn sie auf einem anderen
-  Gerät angemeldet bleibt — so belassen (geteilte Geräte) oder mehrere Anmeldungen je Person (eigenes Paket).
+  **Betreiberentscheidung E-9 (2026-11-18, entschieden):** Abmelden entfernt nur noch die Anmeldung **des Geräts, das sich
+  abmeldet** (gleicher Endpunkt; Rumpf `{geraet: {endpoint}}`, `{geraet: null}` = dieses Gerät hat keine). Ohne Angabe zum
+  Gerät (ältere Oberfläche im Speicher) gilt das bisherige Verhalten (Anmeldung der Person entfernt). Weiterhin eine
+  Anmeldung je Person (das zuletzt angemeldete Gerät); mehrere Anmeldungen je Person bleiben ein eigenes Paket.
 - Unabhängiges Review (Opus) und Delta-Review sind erfolgt (Abschnitte 9 und 11); offen sind die Nachprüfung der Behebungen
   F1–F8 und die Staging-Probe.
 

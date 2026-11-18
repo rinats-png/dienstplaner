@@ -152,8 +152,68 @@ export async function raumLoeschen(raum) {
   return daten;
 }
 
+/**
+ * Die Push-Anmeldung DIESES Geräts für den Server (E-9): `{endpoint}`, `null`
+ * (dieses Gerät hat keine) oder `undefined` (unbekannt — der Server entfernt
+ * dann wie bisher die Anmeldung der Person). Höchstens ~1,5 s.
+ * @returns {Promise<{endpoint: string}|null|undefined>}
+ */
+async function diesesGeraet() {
+  try {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
+      || typeof window === "undefined" || !("PushManager" in window)) return null;
+    const suche = (async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const s = reg && await reg.pushManager.getSubscription();
+      return s && typeof s.endpoint === "string" ? { endpoint: s.endpoint } : null;
+    })();
+    const frist = new Promise((ja) => { setTimeout(() => ja(undefined), 1500); });
+    return await Promise.race([suche, frist]);
+  } catch { return undefined; }
+}
+/** Rumpf für Abmelden: ohne bekannte Angabe kein Feld `geraet` (bisheriges Verhalten). */
+const geraetRumpf = (g) => JSON.stringify(g === undefined ? {} : { geraet: g });
+
+/* Review-Auflage M1: Beim Abmelden lädt die Anwendung sofort neu
+   (app/abmelden.js). Die Anfrage muss deshalb SYNCHRON starten — der Endpunkt
+   dieses Geräts wird vorher gemerkt (beim Einschalten, Ausschalten und beim
+   Start, pushGeraetAuffrischen), nicht erst beim Abmelden erfragt. Der Merker
+   gehört zum Gerät (Browser), nicht zur Person; er ist kein Geheimnis des
+   Servers (der Endpunkt steht ohnehin im Browser). */
+const PUSHGERAET = "centric:pushgeraet";
+function geraetMerken(endpoint) {
+  try { localStorage.setItem(PUSHGERAET, endpoint ? JSON.stringify({ endpoint }) : "keins"); } catch { /* egal */ }
+}
+/** Synchron: `{endpoint}`, `null` (keine Anmeldung möglich oder bekannt keine) oder `undefined` (unbekannt). */
+export function geraetGemerkt() {
+  try {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
+      || typeof window === "undefined" || !("PushManager" in window)) return null;
+    if (typeof Notification !== "undefined" && Notification.permission !== "granted") return null;
+    const w = localStorage.getItem(PUSHGERAET);
+    if (w === "keins") return null;
+    if (w) {
+      const g = JSON.parse(w);
+      if (g && typeof g.endpoint === "string" && g.endpoint) return { endpoint: g.endpoint };
+    }
+  } catch { /* unbekannt */ }
+  return undefined;
+}
+/** Den Merker aus dem Browser nachziehen (beim Start, ohne Warten). */
+export async function pushGeraetAuffrischen() {
+  const g = await diesesGeraet();
+  if (g !== undefined) geraetMerken(g && g.endpoint);
+}
+
 export function abmelden(still = false) {
-  if (!still && token) ruf("abmelden", { method: "POST" }).catch(() => {});
+  if (!still && token) {
+    /* Synchron gestartet (M1): kein await vor fetch — ein sofortiges Neuladen
+       bricht die Anfrage dank keepalive nicht ab. */
+    try {
+      fetch("/api/abmelden", { method: "POST", headers: kopf(), body: geraetRumpf(geraetGemerkt()), keepalive: true })
+        .catch(() => {});
+    } catch { /* ohne Netz: die Sitzung läuft serverseitig ab */ }
+  }
   /* Der zuletzt geladene Bestand liegt im Speicher des Dienstarbeiters. Er
      gehört nicht dem nächsten Menschen an diesem Gerät. */
   offlineDatenLoeschen(stempelInhaber());
@@ -711,6 +771,28 @@ export async function zustellwerte() {
   } catch { return { vapid: null, mail: false }; }
 }
 
+/* E-9: Bestätigung der eigenen E-Mail-Adresse (Server: lib/mailbestaetigung.mjs).
+   Ohne Schalter antwortet der Server 404 — dann zeigt die Oberfläche nichts. */
+/** @returns {Promise<{modus: string, adresse: boolean, bestaetigt: boolean, ausstehend: boolean}|null>} */
+export async function mailBestaetigungStand() {
+  try {
+    const a = await fetch("/zustellung/mailbestaetigung", { headers: kopf() });
+    if (!a.ok) return null;
+    return await a.json();
+  } catch { return null; }
+}
+/** @returns {Promise<{ok: boolean, text?: string}>} */
+async function mailBestaetigungRuf(weg, rumpf) {
+  try {
+    const a = await fetch(`/zustellung/mailbestaetigung/${weg}`, { method: "POST", headers: kopf(), body: JSON.stringify(rumpf || {}) });
+    let d = null;
+    try { d = await a.json(); } catch { /* leer */ }
+    return a.ok ? { ok: true } : { ok: false, text: (d && (d.fehler || d.text)) || "Das hat nicht geklappt." };
+  } catch { return { ok: false, text: "Keine Verbindung. Bitte später erneut versuchen." }; }
+}
+export const mailBestaetigungAnfordern = () => mailBestaetigungRuf("anfordern");
+export const mailBestaetigen = (code) => mailBestaetigungRuf("bestaetigen", { code: String(code || "").slice(0, 40) });
+
 /** Zustellung gespeicherter Mitteilungen anstoßen — nur ihre Kennungen
     (Commit 4). Empfänger, Wege und Texte bestimmt der Server. Fehler werden
     gemeldet, nicht geworfen. */
@@ -749,6 +831,7 @@ export async function pushEinschalten(personId) {
   const vorhanden = await reg.pushManager.getSubscription();
   const anmeldung = vorhanden || await reg.pushManager.subscribe({
     userVisibleOnly: true, applicationServerKey: b64(vapid) });
+  geraetMerken(anmeldung.endpoint);      // M1: fürs synchrone Abmelden
 
   /* Die Person kommt aus der Sitzung des Servers, nicht von hier — sonst
      ließe sich die Anmeldung einer Kollegin überschreiben. */
@@ -759,13 +842,17 @@ export async function pushEinschalten(personId) {
 }
 
 export async function pushAusschalten() {
+  /* E-9: Der Server entfernt nur die Anmeldung dieses Geräts — der Endpunkt
+     wird vor dem Abbestellen gelesen. */
+  const g = await diesesGeraet();
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const s = reg && await reg.pushManager.getSubscription();
     if (s) await s.unsubscribe();
+    geraetMerken(null);
   } catch { /* egal */ }
   try {
-    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf() });
+    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf(), body: geraetRumpf(g) });
   } catch { /* egal */ }
 }
 
@@ -784,6 +871,7 @@ export async function offlineEinrichten() {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
   try {
     await navigator.serviceWorker.register("/sw.js");
+    pushGeraetAuffrischen().catch(() => {});   // E-9/M1: Merker für das synchrone Abmelden
     return true;
   } catch { return false; }
 }

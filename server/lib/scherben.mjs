@@ -37,10 +37,21 @@ export const MONATSFELDER = ["abweichungen", "erfassung", "einstempeln", "istEin
     Ein Betrieb ohne dieses Feld bekommt es beim Zusammensetzen nur, wenn eine Scherbe Einträge trägt. */
 const SPAETE_FELDER = new Set(["istEingefroren"]);
 
-/** Aus "p3|2026-08-14" den Monat "2026-08" holen (null ohne erkennbares Datum). */
+/* Ziffer 0–9 (wie \d ohne u-Flag) und Bindestrich, über den Zeichencode. */
+const ziffer = (c) => c >= 48 && c <= 57;
+
+/** Aus "p3|2026-08-14" den Monat "2026-08" holen (null ohne erkennbares Datum).
+    WP-48.6: ohne split/RegExp, gleichwertig zu
+      teil = String(s).split("|")[1] || "";  /^\d{4}-\d{2}/.test(teil) ? teil.slice(0, 7) : null
+    Die sieben geprüften Zeichen (Ziffern, Bindestrich) enthalten nie „|“ — sie liegen also ganz im Teil
+    nach dem ersten Strich (pruefungen/wp48-6-kette.test.js vergleicht beide Fassungen). */
 export function monatVon(schluessel) {
-  const teil = String(schluessel).split("|")[1] || "";
-  return /^\d{4}-\d{2}/.test(teil) ? teil.slice(0, 7) : null;
+  const s = String(schluessel);
+  const i = s.indexOf("|");
+  if (i < 0 || s.length < i + 8) return null;
+  const c = (n) => s.charCodeAt(i + 1 + n);
+  return ziffer(c(0)) && ziffer(c(1)) && ziffer(c(2)) && ziffer(c(3)) && c(4) === 45 && ziffer(c(5)) && ziffer(c(6))
+    ? s.slice(i + 1, i + 8) : null;
 }
 
 export const scherbenSchluessel = (raum, mandantId, monat) =>
@@ -92,6 +103,49 @@ export function zerlegen(bestand) {
     }),
   };
   return { kern, scherben };
+}
+
+/**
+ * Nur die Kennungen „betriebId::JJJJ-MM“ der Scherben, die zerlegen(bestand) bilden würde — ohne Kern und
+ * Inhalte zu bauen (WP-48.6). Dieselbe Zuordnung wie zerlegen: gleiche Betriebe, Felder und Schlüssel.
+ * @returns {Set<string>}
+ */
+export function scherbenKennungen(bestand) {
+  const ids = new Set();
+  if (!bestand || !Array.isArray(bestand.mandanten)) return ids;
+  for (const m of bestand.mandanten) {
+    if (!m || typeof m !== "object") continue;
+    for (const feld of MONATSFELDER) {
+      const inhalt = m[feld];
+      if (!inhalt || typeof inhalt !== "object") continue;
+      for (const k of Object.keys(inhalt)) {
+        const monat = monatVon(k);
+        if (monat) ids.add(`${m.id}::${monat}`);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Tragen zwei Scherben denselben Abdrucktext (abdruckText) — geprüft ohne ihn zu bauen? true nur, wenn je
+ * Monatsfeld dieselben Schlüssel stehen und jeder Wert DASSELBE Objekt bzw. derselbe einfache Wert ist (===).
+ * Dann sind sortierte Schlüssel und JSON-Texte gleich, also auch der Abdruck. false heißt „nicht bewiesen“
+ * (der Aufrufer rechnet den Abdruck dann wie bisher). WP-48.6.
+ */
+export function gleicheEintraege(a, b) {
+  if (!a || !b) return false;
+  const fa = a.felder || {}, fb = b.felder || {};
+  for (const feld of MONATSFELDER) {
+    const x = fa[feld] || {}, y = fb[feld] || {};
+    if (x === y) continue;
+    const kx = Object.keys(x);
+    if (kx.length !== Object.keys(y).length) return false;
+    for (const k of kx) {
+      if (!Object.prototype.hasOwnProperty.call(y, k) || x[k] !== y[k]) return false;
+    }
+  }
+  return true;
 }
 
 /**

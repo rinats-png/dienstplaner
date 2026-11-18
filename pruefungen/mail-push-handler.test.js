@@ -189,6 +189,51 @@ describe("Abmelden räumt die Anmeldung der Sitzungsperson", () => {
   });
 });
 
+describe("E-9: Abmelden räumt nur die Anmeldung DIESES Geräts", () => {
+  const geraet = (e) => ({ geraet: { endpoint: `https://push.example/${e}` } });
+  it("Logout von einem anderen Gerät (anderer Endpunkt oder ohne Push) lässt die Anmeldung stehen", async () => {
+    expect((await anmelden(T.a2, ANM("a2-geraet-B"))).status).toBe(200);
+    let t = await sitzung("MPH2-AAAA-0201", "mitarbeiter", "a2", 0, "m-a");
+    expect((await anfrage(daten, "/api/abmelden", { token: t, rumpf: geraet("a2-geraet-A") })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).toMatchObject({ endpoint: "https://push.example/a2-geraet-B" });
+    t = await sitzung("MPH2-AAAA-0202", "mitarbeiter", "a2", 0, "m-a");
+    expect((await anfrage(daten, "/api/abmelden", { token: t, rumpf: { geraet: null } })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).toMatchObject({ endpoint: "https://push.example/a2-geraet-B" });
+  });
+  it("Logout vom angemeldeten Gerät (gleicher Endpunkt) entfernt sie", async () => {
+    const t = await sitzung("MPH2-AAAA-0203", "mitarbeiter", "a2", 0, "m-a");
+    expect((await anfrage(daten, "/api/abmelden", { token: t, rumpf: geraet("a2-geraet-B") })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).toBeNull();
+  });
+  it("Übergang: ohne Angabe zum Gerät (ältere Oberfläche) wie bisher entfernt; falsche Form zählt als ohne Angabe", async () => {
+    for (const [nr, rumpf] of [["0204", {}], ["0205", { geraet: "https://push.example/a2-x" }], ["0206", { geraet: { endpoint: 5 } }]]) {
+      T.a2 = await sitzung(`MPH2-AAAA-${nr}`, "mitarbeiter", "a2", 0, "m-a");
+      expect((await anmelden(T.a2, ANM("a2-geraet-C"))).status).toBe(200);
+      expect((await anfrage(daten, "/api/abmelden", { token: T.a2, rumpf })).status).toBe(200);
+      expect(await laden().get("push:mph:m-a:a2", { type: "json" }), JSON.stringify(rumpf)).toBeNull();
+    }
+    T.a2 = await sitzung("MPH2-AAAA-0207", "mitarbeiter", "a2", 0, "m-a");
+  });
+  it("/zustellung/abmelden („Mitteilungen auf diesem Gerät“ aus): dieselbe Regel, die Sitzung bleibt", async () => {
+    expect((await anmelden(T.a2, ANM("a2-geraet-D"))).status).toBe(200);
+    expect((await anfrage(zustellung, "/zustellung/abmelden", { token: T.a2, rumpf: geraet("a2-anderes") })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).not.toBeNull();
+    expect((await anfrage(zustellung, "/zustellung/abmelden", { token: T.a2, rumpf: { geraet: null } })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).not.toBeNull();
+    expect((await anfrage(zustellung, "/zustellung/abmelden", { token: T.a2, rumpf: geraet("a2-geraet-D") })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).toBeNull();
+    expect((await anmelden(T.a2, ANM("a2-geraet-D"))).status).toBe(200);
+    expect((await anfrage(zustellung, "/zustellung/abmelden", { token: T.a2 })).status).toBe(200);   // ohne Angabe: wie bisher
+    expect(await laden().get("push:mph:m-a:a2", { type: "json" })).toBeNull();
+  });
+  it("der Endpunkt einer anderen Person entfernt nichts bei ihr", async () => {
+    expect((await anmelden(T.p1, ANM("p1-geraet"))).status).toBe(200);
+    expect((await anfrage(zustellung, "/zustellung/abmelden", { token: T.a2, rumpf: geraet("p1-geraet") })).status).toBe(200);
+    expect(await laden().get("push:mph:m-a:p1", { type: "json" })).toMatchObject({ endpoint: "https://push.example/p1-geraet" });
+    expect((await anmelden(T.a2, ANM("a2-bleibt"))).status).toBe(200);   // für die folgenden Prüfungen
+  });
+});
+
 describe("Person aus dem Betrieb entfernt: Anmeldung und Zustellstatus weg (Art. 17)", () => {
   it("die Leitung entfernt eine Person: Push-Anmeldung, Adresssperre und Status ihrer Mitteilungen werden gelöscht", async () => {
     await anmelden(T.ausz, ANM("ausz"));

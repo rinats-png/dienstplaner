@@ -51,7 +51,8 @@ import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, loh
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur, hatLaufendeKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { zustellen, pushSchluessel, geraetAbmelden, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
+import { bestaetigtAm } from "../lib/mailbestaetigung.mjs";
+import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { schichtzuordnungProtokollZeilen } from "../lib/schichtzuordnung.mjs";
@@ -1502,7 +1503,10 @@ async function behandeln(req, context, ctx) {
          Zusammenführen mit einem Bestand, der nicht mehr gilt. Die
          Zustellung danach braucht die Sperre nicht. */
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
-        const jetzt = await bestandLesenStreng(store, s.bestand);
+        /* WP-48.6 (segmentproportionale Kette, nur Leistung): Abdrücke der gelesenen Scherben merken — bestandSchreiben
+           übernimmt sie für unveränderte Scherben (gelesen: jetzt). Der Teilweg schreibt mit dem eben gelesenen Stand
+           (etag = jetzt.stand) und liest kein zweites Mal: kein Lesecache, keine Kopie des ganzen Bestands. */
+        const jetzt = await bestandLesenStreng(store, s.bestand, { segmente: true, ...(teilweg ? { merken: false } : {}) });
 
         /* WP-48.3: virtueller Rumpf unter der Sperre (2.3 Schritte 2–6). Epoche anders (Wiederherstellen,
            Wiederanlauf) oder ein Bestand ohne Epoche → NEU_LADEN, kein Abgleich je Zelle. Ein einziger
@@ -1823,6 +1827,7 @@ async function behandeln(req, context, ctx) {
         const erg = await bestandSchreiben(store, s.bestand, zuSchreiben, {
           erwarteterStand: etag ?? null,
           durch: durch || s.name || "unbekannt",
+          gelesen: jetzt,
         });
 
         if (!erg.ok) {
@@ -2742,11 +2747,15 @@ async function behandeln(req, context, ctx) {
          Beim Abmelden wird sie entfernt — sonst gingen die Mitteilungen der
          einen Person auf einem geteilten Gerät weiter ein, wenn dort jemand
          anderes arbeitet. Ein Fehler hier hält das Abmelden nicht auf. */
+      /* E-9 (2026-11-18): nur die Anmeldung DIESES Geräts — die Oberfläche
+         schickt `{geraet: {endpoint}}` bzw. `{geraet: null}` (kein Push auf
+         diesem Gerät). Ohne Angabe (ältere Oberfläche) wie bisher. */
       try {
         if (s.person !== null && s.person !== undefined) {
+          const geraet = geraetAusRumpf(rumpf);
           const g = await bestandLesen(store, s.bestand);
           const mL = g && g.bestand ? eigenerMandant(g.bestand, s) : null;
-          if (mL) await geraetAbmelden(store, s.bestand, g.bestand, mL.id, s.person);
+          if (mL) await geraetAbmelden(store, s.bestand, g.bestand, mL.id, s.person, geraet);
         }
       } catch { /* das Abmelden geht vor */ }
       await sitzungBeenden(merkmalAus(req));
@@ -2806,7 +2815,8 @@ async function behandeln(req, context, ctx) {
         /* Das Konto, wenn die Sitzung aus einem stammt (lib/auskunft.mjs). */
         const konto = await kontoFuerAuskunft(store, s);
         const zustellprotokoll = await zustellStatusEigene(store, s.bestand, mA, personA.id).catch(() => []);
-        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht, zustellprotokoll };
+        const mailBestaetigtAm = await bestaetigtAm(store, s.bestand, mA.id, personA).catch(() => null);   // E-9
+        zusatz = { protokoll: protokollA, push, kalender, mailBestaetigtAm, konto, eigeneSicht, zustellprotokoll };
       }
       const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
         ...zusatz });
