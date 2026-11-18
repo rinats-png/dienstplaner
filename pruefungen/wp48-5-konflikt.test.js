@@ -376,6 +376,50 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     expect(Object.keys(d.kern)).toEqual(["wuensche"]);
     expect(JSON.stringify(d)).not.toMatch(/a2\|2026-08-14|dienstarten/);
   });
+  it("A1 offene, nicht entschiedene Konfliktfrage wird nach neuAufsetzen nicht still zu „meins“ (Zelle und Kernfeld)", () => {
+    const z = z0();
+    const da = [...z.basis.dienstarten, { id: "S", name: "Spät" }];
+    const fremdDa = [...z.basis.dienstarten, { id: "X", name: "Extra" }];
+    const l = { ...z.basis, dienstarten: da, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const e = senden(z, l, { status: 409, daten: { code: "TEILE_KONFLIKT", versionen: { "kern:dienstarten": V("e") },
+      konflikt: { zellen: [{ feld: "abweichungen", k: "a1|2026-08-14", aktuell: "S" }],
+        kern: [{ feld: "dienstarten", aktuell: fremdDa, version: V("e") }] } } });
+    expect(e.ergebnis).toBe("konflikt");
+    /* Teilweise gewählt, aber nicht aufgelöst — dann neu geladen (frische Sicht = Stand des 409). */
+    const w = T.waehlen(e.z, "z:abweichungen:a1|2026-08-14", "meins");
+    const frisch = betrieb(); frisch.abweichungen["a1|2026-08-14"] = "S"; frisch.dienstarten = fremdDa;
+    const n = T.neuAufsetzen(w, getAntwort(frisch, { versionen: { "kern:dienstarten": V("e"), "kern:personen": V("b"), "kern:wuensche": V("c") } }), l);
+    expect(n.ergebnis).toBe("konflikt");
+    expect(n.zustand.konflikte.map((f) => [f.id, f.fremd])).toEqual([["k:dienstarten", fremdDa], ["z:abweichungen:a1|2026-08-14", "S"]]);
+    expect(n.zustand.wahl).toEqual({});
+  });
+  it("A2 Rückfall voll umgeht den ABA-Schutz nicht: solange unklar → neuAufsetzen (auch bei 413)", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const e = senden(z, l, { status: null, netz: true });
+    expect(T.deltaBilden(e.z, { ...l, zyklus: ["F"] })).toEqual({ neuAufsetzen: true, grund: "feld:zyklus" });
+    expect(T.deltaBilden(z, { ...l, zyklus: ["F"] })).toEqual({ voll: "feld:zyklus" });
+    const w = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+    const a = T.antwortVerarbeiten(w.zustand, { status: 413, daten: { code: "TEILE_ZU_GROSS" } });
+    expect(a.ergebnis).toBe("neuAufsetzen");
+  });
+  it("A3 dieselbe Sendung aus einer anderen Sitzung ist keine Wiederholung → neuAufsetzen", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const r = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung, sitzung: "s1" });
+    const e = T.antwortVerarbeiten(r.zustand, { status: null, netz: true });
+    const d = T.deltaBilden(e.zustand, l).delta;
+    expect(T.rumpfBauen(e.zustand, d, { neueKennung, sitzung: "s1" }).rumpf.anfrage).toBe(r.rumpf.anfrage);
+    const anders = T.rumpfBauen(e.zustand, d, { neueKennung, sitzung: "s2" });
+    expect(anders.rumpf).toBeNull();
+    expect(anders.neuAufsetzen).toBe(true);
+  });
+  it("G1 Jahre 0000–0099 wie der Server ablehnen", () => {
+    const z = z0();
+    for (const k of ["a1|0099-01-01", "a1|0000-01-01", "a1|0050-02-29"])
+      expect(T.deltaBilden(z, { ...z.basis, abweichungen: { ...z.basis.abweichungen, [k]: "F" } })).toEqual({ voll: "schluessel:abweichungen" });
+    expect("delta" in T.deltaBilden(z, { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|0100-01-01": "F" } })).toBe(true);
+  });
   it("M1 Ausstehendes über den Teilweg nicht darstellbar → nie „aufgesetzt“, sondern neuLaden mit Grund und altem Stand", () => {
     const z = z0();
     for (const l of [{ ...z.basis, zyklus: ["F"] }, { ...z.basis, dienstarten: undefined },
@@ -487,6 +531,15 @@ describe("B Gleichlauf mit server/lib/teilweg.mjs", () => {
     for (const x of [null, 1, "a", [1, { b: 2, a: undefined }], { z: [], a: { y: 1, x: null } }]) expect(T.stabil(x)).toBe(S.stabil(x));
     /* Alle Grenzen gespiegelt (teilweg.mjs ist wegen node:crypto nicht bündelbar): jede Abweichung wird rot. */
     expect({ ...T.GRENZEN }).toEqual({ ...S.TEILE_GRENZEN });
+    /* Zellschlüssel: Client nimmt genau an, was die Formprüfung des Servers annimmt. */
+    const basis = { id: "m1", abweichungen: {} };
+    const z = { basis, versionen: {}, unklar: [] };
+    for (const k of ["a1|2026-08-14", "a1|2024-02-29", "a1|2025-02-29", "a1|0099-12-31", "a1|0100-01-01", "a1|2026-13-01", "a1|2026-04-31"]) {
+      const client = "delta" in T.deltaBilden(z, { ...basis, abweichungen: { [k]: "F" } });
+      const server = S.teileFormFehler({ format: 1, epoche: "e0e0e0e0", zellen: [{ feld: "abweichungen", k, alt: null, neu: "F" }] },
+        { rolle: "planer", person: "p1" }) === null;
+      expect([k, client]).toEqual([k, server]);
+    }
   });
 });
 

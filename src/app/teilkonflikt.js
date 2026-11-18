@@ -96,7 +96,8 @@ function schluesselGueltig(k) {
   const m = typeof k === "string" ? SCHLUESSEL.exec(k) : null;
   if (!m) return false;
   const j = Number(m[2]), mo = Number(m[3]), t = Number(m[4]);
-  if (mo < 1 || mo > 12 || t < 1) return false;
+  /* Jahre 0000–0099 lehnt der Server ab (Date.UTC deutet sie als 19xx, datumGueltig in teilweg.mjs) — hier ebenso. */
+  if (j < 100 || mo < 1 || mo > 12 || t < 1) return false;
   const tage = [31, (j % 4 === 0 && j % 100 !== 0) || j % 400 === 0 ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
   return t <= tage;
 }
@@ -132,8 +133,16 @@ export function mandantAus(bestand, mandantId) {
  * Was sich zwischen Basis und lokalem Stand des eigenen Betriebs geändert hat.
  * @returns {{ leer: true } | { voll: string } | { delta: { kern: Record<string, {basis: string, wert: any}>, zellen: Array<{feld: string, k: string, alt: any, neu: any}> } }}
  *   `voll` = über den Teilweg nicht darstellbar (Grund), die Oberfläche nimmt dann den Voll-PUT.
+ *   `neuAufsetzen` = wäre `voll`, aber ein Segment ist unklar: Auch der Rückfall auf den Voll-PUT umginge den
+ *   ABA-Schutz — erst frisches GET und neuAufsetzen.
  */
 export function deltaBilden(zustand, lokal) {
+  const r = deltaRoh(zustand, lokal);
+  if ("voll" in r && zustand.unklar.length) return { neuAufsetzen: true, grund: r.voll };
+  return r;
+}
+
+function deltaRoh(zustand, lokal) {
   const basis = zustand.basis;
   if (!objekt(lokal)) return { voll: "kein-betrieb" };
   if (lokal === basis) return { leer: true };
@@ -190,18 +199,22 @@ export function segmente(delta) {
  * Änderung, oder die unklare Sendung ist nicht mehr gemerkt (nach 409/Absage) — bekommt keinen Rumpf
  * (`rumpf: null, neuAufsetzen: true`): Erst frisches GET und `neuAufsetzen`, dann weiter. Sonst ginge ein
  * unklares Segment mit altem Erwartungswert unter neuer Kennung hinaus, und der Server merkte nichts.
+ *
+ * Die Wiederholvermerke des Servers gelten je Sitzung. Eine Wiederholung aus einer ANDEREN Sitzung (neu
+ * angemeldet) prüfte dort nur Erwartungswerte — deshalb zählt dieselbe Sendung nur bei gleicher Sitzung.
  * @param {() => string} neueKennung  liefert eine zufällige Kennung [A-Za-z0-9_-]{8,64}
+ * @param {string|null} [sitzung]  Kennung der aktuellen Sitzung (z. B. Abdruck des Tokens), nie an den Server
  * @returns {{ zustand: any, rumpf: any } | { zustand: any, rumpf: null, neuAufsetzen: true }}
  */
-export function rumpfBauen(zustand, delta, { durch, neueKennung }) {
+export function rumpfBauen(zustand, delta, { durch, neueKennung, sitzung = null }) {
   const u = zustand.unterwegs;
-  const gleichGesendet = !!(u && u.anfrage && stabil(u.delta) === stabil(delta));
+  const gleichGesendet = !!(u && u.anfrage && u.sitzung === sitzung && stabil(u.delta) === stabil(delta));
   if (zustand.unklar.length && !gleichGesendet) return { zustand, rumpf: null, neuAufsetzen: true };
   const anfrage = gleichGesendet ? u.anfrage : neueKennung();
   const rumpf = { format: TEILWEG_FORMAT, epoche: zustand.epoche, anfrage, ...(durch ? { durch: String(durch).slice(0, 200) } : {}) };
   if (Object.keys(delta.kern).length) rumpf.kern = delta.kern;
   if (delta.zellen.length) rumpf.zellen = delta.zellen;
-  return { zustand: { ...zustand, phase: "unterwegs", unterwegs: { delta, anfrage } }, rumpf };
+  return { zustand: { ...zustand, phase: "unterwegs", unterwegs: { delta, anfrage, sitzung } }, rumpf };
 }
 
 /** Basis ⊕ Delta (nur die berührten Felder werden neu angelegt). */
@@ -253,12 +266,14 @@ export function antwortVerarbeiten(zustand, antwort) {
     /* Ausgang unklar: Das Delta bleibt ausstehend (lokal steht es ja noch), die Kennung bleibt für eine
        Wiederholung in dieser Sitzung, und die Segmente gelten bis zur Klärung als unklar. */
     const unklar = [...new Set([...zustand.unklar, ...segmente(u.delta)])].sort();
-    return { ergebnis: "fehler", zustand: { ...ohne, unklar, unterwegs: { ...u, offen: true } } };
+    return { ergebnis: "fehler", zustand: { ...ohne, unklar, unterwegs: u } };
   }
   /* Zu groß für den Teilweg (Grenzen des Servers enger als gespiegelt): keine Sackgasse — Rückfall auf den
-     Voll-PUT, dessen Drei-Wege-Abgleich fremde Änderungen weiter erkennt. */
+     Voll-PUT, dessen Drei-Wege-Abgleich fremde Änderungen weiter erkennt. Ist etwas unklar, umginge auch der
+     Voll-PUT den ABA-Schutz: erst neu aufsetzen. */
   if (status === 413 && d.code === "TEILE_ZU_GROSS")
-    return { ergebnis: "voll", zustand: ohne, meldung: String(d.text || "Zu viele Änderungen auf einmal.") };
+    return { ergebnis: zustand.unklar.length ? "neuAufsetzen" : "voll", zustand: ohne,
+      meldung: String(d.text || "Zu viele Änderungen auf einmal.") };
   /* Kennung mit anderem Inhalt: Nach dem ABA-Schutz in rumpfBauen ein Fehler dieser Oberfläche, kein
      Rechtefall. Nichts geschrieben; neu laden und gegen die frische Sicht aufsetzen. */
   if (status === 422 && d.code === "ANFRAGE_WIEDERVERWENDET")
@@ -364,7 +379,7 @@ export function aufloesen(zustand, lokal) {
 export function neuAufsetzen(zustand, antwort, lokal) {
   const frisch = teilwegStart(antwort, zustand.mandantId);
   if (!frisch) return { ergebnis: "aus", zustand: null, lokal };
-  const alt = deltaBilden(zustand, lokal);
+  const alt = deltaRoh(zustand, lokal);
   if ("voll" in alt)
     return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: { voll: alt.voll } } };
   const offen = "delta" in alt ? alt.delta : { kern: {}, zellen: [] };
@@ -372,7 +387,9 @@ export function neuAufsetzen(zustand, antwort, lokal) {
     if (!segmente(offen).length) return { ergebnis: "aufgesetzt", zustand: frisch, lokal: frisch.basis };
     return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: offen } };
   }
-  const unklar = new Set(zustand.unklar);
+  /* Nicht nur unklare Segmente, auch jede noch nicht aufgelöste Konfliktfrage: Ihre Basis trägt schon den
+     fremden Wert. Ohne das würde aus einer offenen Frage nach dem Neuladen still „meins". */
+  const unklar = new Set([...zustand.unklar, ...zustand.konflikte.map((f) => f.id)]);
   const fragen = [];
   const ueberlagern = { kern: {}, zellen: [] };
   for (const z of offen.zellen) {

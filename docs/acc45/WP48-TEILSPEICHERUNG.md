@@ -544,7 +544,8 @@ ab 30 s, `/gesund` wird „kritisch“.
 4. **Konflikt-Nutzerführung**: Das blinde „meinen Stand übernehmen“ (ganze Monate überschreiben) entfällt zugunsten
    der Wahl je Zelle oder Feld. Das ändert ein bekanntes Verhalten der Oberfläche. *Entschieden 2026-11-18
    (Betreiber, Option A): Wahl je Zelle/Feld („fremdes übernehmen“ / „meins setzen“), das blinde Übernehmen entfällt
-   auf dem Teilweg. Umsetzung siehe 7.4.*
+   auf dem Teilweg. Auch der Rückfall auf den Voll-PUT ist gesperrt, solange ein Segment unklar ist (erst frisches
+   GET und Neuaufsetzen). Umsetzung siehe 7.4.*
 5. **Freigabe großer Betriebe**: Produktiver Betrieb für Betriebe bis 150 Personen schon nach Stufe 1 (48.3–48.5)
    oder erst nach Stufe 2 und Abschnitt 5 (48.6, 48.7) für alle? *Empfehlung: erst nach 48.6/48.7 für alle;
    Stufe 1 allein senkt Rumpf und Konflikte, nicht die Sperrdauer.*
@@ -784,6 +785,9 @@ Schalter wurde geändert, keine neue Umgebungsvariable.
   aus `TEILE_GRENZEN` sind gespiegelt (Zahl der Zellen und Kernfelder, Bytes je Rumpf, Kernfeld und Zellwert, Tiefe);
   der Gleichlauf-Test erzwingt Gleichheit (`teilweg.mjs` braucht `node:crypto` und ist nicht bündelbar). Antwortet
   der Server trotzdem 413 `TEILE_ZU_GROSS`, ist das Ergebnis `voll` (Rückfall auf den Voll-PUT), keine Sackgasse.
+  **Solange ein Segment unklar ist, gibt es keinen Rückfall:** `deltaBilden` liefert dann statt `voll`
+  `neuAufsetzen` (mit Grund), ein 413 ebenfalls `neuAufsetzen` — sonst umginge der Voll-PUT den ABA-Schutz.
+  Zellschlüssel mit Jahr 0000–0099 lehnt die Oberfläche ab wie der Server (Gleichlauf-Test über `teileFormFehler`).
 - **Antworten** (`antwortVerarbeiten`): 200 → Basis ⊕ *gesendetes* Delta (spätere lokale Änderungen bleiben
   ausstehend); 409 `TEILE_KONFLIKT` → aktuelle Werte der streitigen Teile in die Basis, je Zelle/Kernfeld eine Frage,
   nicht streitige eigene Änderungen bleiben ausstehend; 409 `NEU_LADEN` → Phase „neu laden“ mit der Liste des
@@ -795,20 +799,24 @@ Schalter wurde geändert, keine neue Umgebungsvariable.
   wenn jede Frage entschieden ist. Ein blindes „alles übernehmen“ gibt es nicht. Bei einem Kernfeld ersetzt die Wahl
   das ganze Feld (Text `frageText` sagt das).
 - **Wiederholschutz (Auflage 7.2):** Netz weg nach dem Senden → Segmente „unklar“. Solange etwas unklar ist, geht in
-  derselben Sitzung **nur genau dieselbe Sendung mit derselben Anfragekennung** hinaus (Server antwortet
+  derselben Sitzung **nur genau dieselbe Sendung mit derselben Anfragekennung** hinaus — „dieselbe Sitzung“ prüft
+  die Oberfläche selbst (Sitzungskennung in der gemerkten Sendung; aus einer anderen Sitzung gilt sie nicht als
+  Wiederholung, weil die Vermerke des Servers je Sitzung gelten) (Server antwortet
   `wiederholt` oder schreibt erstmals). Jedes andere Delta — weitere Änderung, oder die unklare Sendung ist nach
   409/Absage nicht mehr gemerkt — bekommt keinen Rumpf (`neuAufsetzen: true`): erst frisches GET und `neuAufsetzen`.
   Ein unklares Segment geht also nie unter neuer Kennung mit altem Erwartungswert hinaus (ABA in der Sitzung).
 - **Neu aufsetzen** (`neuAufsetzen`, frisches GET, Sitzungswechsel): Der neue lokale Stand ist die **frische Sicht,
   überlagert nur mit den eigenen ausstehenden Segmenten**; fremde Änderungen an anderen Zellen und Kernfeldern kommen
   aus der frischen Sicht und gehen nie im nächsten Delta zurück. Ein unklares Segment wird nie blind wiederholt, auch
-  wenn der frische Wert wieder dem Erwartungswert gleicht (ABA) — es wird eine Frage. Andere Epoche → „neu laden“.
+  wenn der frische Wert wieder dem Erwartungswert gleicht (ABA) — es wird eine Frage. Ebenso wird **jede noch nicht
+  aufgelöste Konfliktfrage** wieder zur Frage (ihre Basis trägt schon den fremden Wert; sonst würde sie nach dem
+  Neuladen still zu „meins“); eine Teilwahl verfällt. Andere Epoche → „neu laden“.
   Ist das Ausstehende über den Teilweg nicht darstellbar (`voll`), gibt es nie „aufgesetzt“, sondern „neu laden“ mit
   Grund; der alte lokale Stand bleibt zurückgegeben, damit Teil 2 ihn vorher als Datei sichern kann.
 - **Keine Rechtelogik in der Oberfläche.** „Meins“ schickt nur Segmente aus dem eigenen Delta; ob die Rolle sie
   schreiben darf, entscheidet der Server wie beim Voll-PUT (Prüfung: SV außerhalb des Bereichs → 403, nichts
   geschrieben).
-- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (66 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
+- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (70 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
   (Start/Gate, Delta, Antworten, Wahl, Idempotenz, Mehrfachkonflikte, unklarer Ausgang, Epoche, 200 Zufallslagen mit
   festem Startwert), Gleichlauf mit `server/lib/teilweg.mjs` (Zellfelder, Nur-Server-Felder, stabiles JSON, Grenzen),
   Ende zu Ende über den echten Handler: Leitung, Planung, Schichtverantwortung × Planzelle/Löschung/Kernfeld
@@ -819,7 +827,8 @@ Schalter wurde geändert, keine neue Umgebungsvariable.
   Basis nach 409 nicht aktualisiert, Kennung nie wiederverwendet, fremde Segmente als Frage, Serverfelder im Delta,
   Epoche ignoriert), K1 (alter lokaler Stand nach Neuaufsetzen), K2 (kein ABA-Schutz in der Sitzung),
   M1 neu (`voll` beim Neuaufsetzen übergangen), Grenzen (Rumpfbytes, Zellwertbytes, Tiefe, 413 ohne Rückfall), G1
-  (422 ohne Meldung).
+  (422 ohne Meldung); nach dem Delta-Review: offene Fragen beim Neuaufsetzen nicht als unklar, `voll` bzw. 413 trotz
+  Unklarem, Sitzung ignoriert, Jahre unter 100 angenommen.
 
 **Offen für Teil 2:** Verdrahtung in `speicher.js` (Basis aus `lies()`, Senden über `POST /api/bestand/teile`,
 `keepalive` mit kleinem Delta, Rückfall auf den Voll-PUT bei `voll`), Konfliktfenster je Zelle/Feld (Radiogruppe je
