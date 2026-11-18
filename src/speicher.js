@@ -322,6 +322,22 @@ export function teilEntscheidungAnwenden(wahl) {
 /** WP-48.5: Inhalt der Sicherung als Datei (Ausstehendes und eigener Betrieb), ohne Netz. */
 export const teilSicherung = () => sicherungInhalt(teil, letzterBestand, new Date().toISOString());
 
+/**
+ * WP-48.5 (3): Löschlauf der Leitung über den eigenen Weg POST /api/loeschlauf (WP-48.4) — `{ vorschau: true }` oder
+ * `{ bestaetigt: <Kennung> }`. Nur aufrufen, wenn der Teilweg aktiv ist (teilwegAktiv): ohne Schalter gibt es den Weg
+ * nicht (404), dann bleibt der Löschlauf beim Speichern.
+ * @returns {Promise<{ status: number, daten: any }>}
+ */
+export async function loeschlaufServer(rumpf) {
+  const { status, daten } = await ruf("loeschlauf", { method: "POST", body: JSON.stringify(rumpf) });
+  return { status, daten: daten || {} };
+}
+
+/** WP-48.5 (3): Der nächste Schreibvorgang geht als Voll-PUT (Löschlauf per Speichern bei aktivem Teilweg, Kundenrolle):
+    Stempel stehen nie im Delta, ihr Löschen braucht den ganzen Bestand. Ohne Teilweg wirkungslos. */
+let vollEinmal = false;
+export function naechstesSpeichernVoll() { if (teil || teilRoh) vollEinmal = true; }
+
 /** WP-48.5: Nach der Sicherung als Datei neu laden — der Teilweg verwirft seinen Zustand (kein Senden, keine Rückfrage). */
 export function teilwegVerwerfen() {
   /* Bis zum Neuladen geht nichts mehr hinaus — auch kein Voll-PUT des alten Stands über einen neu aufgesetzten. */
@@ -759,7 +775,7 @@ async function schreibenAusfuehren(beimSchliessen) {
       }
     }
     if (teil) {
-      const vollGewuenscht = !!(auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig)));
+      const vollGewuenscht = !!(auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig)) || vollEinmal);
       const t = await teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch);
       status = t.status;
       if (t.fehler) throw t.fehler;
@@ -779,6 +795,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     const mit = mitEinmaligerAngabe(ohneServerFelder({ ...auftrag.bestand, session: null }), angabe);
     if (mit.verbraucht) { auftrag.ausnahme = angabe; angabenUnterwegs.add(angabe); }
     const hinaus = mit.bestand;
+    vollEinmal = false;   // WP-48.5 (3): verbraucht, sobald ein Voll-PUT hinausgeht
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
     const ausnahmeAbgewiesen = (text) => {
       if (einmalig === auftrag.ausnahme) einmalig = null;

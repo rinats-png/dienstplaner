@@ -995,7 +995,7 @@ weiteres Delta auf diese Zelle läuft in 409 und wird zur Frage (kein stiller Ve
 ### 7.7 WP-48.5 Teil 2: Oberfläche (Branch `feature/wp48-5-oberflaeche`, Basis `integration/release-v4` 57d49e3d)
 
 Stand 2026-11-18. Betreiberfreigabe P1-7 (b) Option A. Umgesetzt sind (1) die Anbindung in `src/speicher.js` und (2) das
-Konfliktfenster je Zelle/Feld. **(3) Löschlauf-Knopf auf `POST /api/loeschlauf` ist noch offen** (eigener PR). Kein
+Konfliktfenster je Zelle/Feld (PR #348); (3) der Löschlauf-Knopf folgt als eigener PR (Abschnitt unten). Kein
 Schalter geändert (`CENTRIC_TEILSPEICHERUNG`, `CENTRIC_ABSCHLUSS_SEGMENTWEISE` bleiben aus), keine neue Umgebungsvariable,
 keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Änderung.
 
@@ -1063,6 +1063,17 @@ keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Ä
 beim ersten Speichern mit gesetzter Sitzung. Eingaben genau zwischen dem Übernehmen nach neuAufsetzen und dem Neuzeichnen
 der Oberfläche bauen über die funktionalen Updates von React auf dem übernommenen Stand auf; ein direkt gesetzter Stand
 in diesem Fenster (kein bekannter Weg) ginge darin auf. Einschalten weiter nur nach Betreiberfreigabe.
+
+**(3) Löschlauf-Knopf (Branch `feature/wp48-5-loeschlauf-knopf`, auf (1)+(2)).** Mit aktivem Teilweg (`teilwegAktiv`)
+und Zugang der Rolle Leitung (wirksame Rolle des Servers aus dem GET) löst „Löschlauf ausführen" den Weg aus 7.5 aus:
+erst Ausstehendes speichern (steht danach noch etwas aus, etwa eine offene Frage: Hinweis, kein Aufruf), dann
+`{ vorschau: true }` → Rückfrage mit dem Bericht des Servers → `{ bestaetigt: <Kennung> }` → gespeicherten Stand
+nachladen (neue Basis). Die Oberfläche löscht dabei nichts selbst. „Nichts fällig", Ablehnung der Rückfrage, veraltete
+Vorschau und „ohne Wirkung" schreiben nichts. Ohne Teilweg (Schalter aus) und für alle anderen Rollen bleibt der heutige
+Weg unverändert; die Kundenrolle (ohne Person) behält ihn auch mit Teilweg — dann geht dieses eine Speichern als Voll-PUT
+(`naechstesSpeichernVoll`), weil Stempel nie im Delta stehen. Prüfung `pruefungen/wp48-5-loeschlauf-knopf.test.js` (in
+`pruefung:wp48-loeschlauf`): echte Aktion und echter Client gegen den echten Handler — Leitung (ausgeführt, nichts
+fällig, abgelehnt, offene Frage), Schalter aus, Kundenrolle (Voll-PUT), Planung (heutiger Weg).
 
 ---
 
