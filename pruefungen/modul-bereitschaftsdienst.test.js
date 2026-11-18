@@ -168,7 +168,9 @@ describe("Höchstarbeitszeit als Hinweis (R4)", () => {
 
 describe("Schreibweg-Vertrag", () => {
   it("gültige Stufen und Dienste bestehen, ungültige werden mit Grund abgewiesen", () => {
-    expect(bereitschaftZusammen({ bereitschaftStufen: STUFEN, bereitschaft: { "p1|2026-11-02": DIENST() } })).toEqual({});
+    expect(bereitschaftZusammen({ bereitschaftStufen: STUFEN, bereitschaft: { "p1|2026-11-02": DIENST() } }, undefined, { heute: "2026-11-18" })).toEqual({});
+    /* N-BD3: ohne Prüftag des Aufrufers keine Uhr im Modul, sondern eine Abweisung (fail-closed). */
+    expect(bereitschaftZusammen({ bereitschaftStufen: STUFEN, bereitschaft: { "p1|2026-11-02": DIENST() } }).grund).toMatch(/Prüftag/);
     expect(bereitschaftZusammen({ bereitschaftStufen: [{ ...STUFE_B, faktor: 9 }] }).grund).toMatch(/Faktor/);
     expect(bereitschaftZusammen({ bereitschaftStufen: STUFEN, bereitschaft: { "p1": DIENST() } }).grund).toMatch(/Schlüssel/);
     expect(bereitschaftZusammen({ bereitschaftStufen: STUFEN, bereitschaft: { "p1|2026-11-02": DIENST({ stufe: "X" }) } }).grund).toMatch(/Stufe/);

@@ -129,11 +129,25 @@ export function fenster(datum, d) {
    der Sprungpunkt in beiden Fällen bei 02:00 der Ortszeit vor dem Sprung.
    -------------------------------------------------------------------------- */
 
+/* Gemerkt je (Jahr, Monat) für ganze Jahre 2000–2999 und Monate 1–12 (Laufzeit, WP-48.7 Rest): `new Date(j, m, t)`
+   löst je Aufruf die Prozesszeitzone auf (unter Windows teuer, vgl. tagUTC in schutzpruefung.mjs), und uhrsprung
+   fragt das für jeden Tag jedes Dienstes zweimal. Der gemerkte Wert ist der der unveränderten Rechnung unten; das
+   Ergebnis ist ein reines Kalenderdatum (Differenzialtest pruefungen/zeit-schnellweg.test.js, auch unter anderen
+   Prozesszeitzonen). Alles andere rechnet wie bisher, ungemerkt. */
+const LETZTER_SONNTAG = new Map();
+
 /** Der letzte Sonntag eines Monats, als ISO-Tag. */
 export function letzterSonntag(jahr, monat) {
+  const merkbar = Number.isInteger(jahr) && jahr >= 2000 && jahr <= 2999 && Number.isInteger(monat) && monat >= 1 && monat <= 12;
+  if (merkbar) {
+    const v = LETZTER_SONNTAG.get(jahr * 16 + monat);
+    if (v !== undefined) return v;
+  }
   const d = new Date(jahr, monat, 0);              // letzter Tag des Monats
   d.setDate(d.getDate() - ((d.getDay() + 7) % 7)); // zurück auf Sonntag
-  return iso(d);
+  const ergebnis = iso(d);
+  if (merkbar) LETZTER_SONNTAG.set(jahr * 16 + monat, ergebnis);
+  return ergebnis;
 }
 
 /**

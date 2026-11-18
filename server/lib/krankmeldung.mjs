@@ -47,6 +47,10 @@ export const KRANK_STATUS = Object.freeze({
   ZURUECKGEZOGEN: "zurueckgezogen",
 });
 export const KRANK_SCHRITTE = Object.freeze(["melden", "vorlaeufig", "endgueltig", "ablehnen", "zurueckziehen"]);
+/** P2-12 (Folgepunkt (2) Review #344): Feld der Fälle und ihre Tagesangaben — für die Kalendertagsprüfung neuer
+    Einträge (gestalt.kalendertagFehler). Nur eine Angabe, kein Lesen: Wirksam bleibt allein `abwesenheiten`.
+    @type {readonly [string, readonly string[]]} */
+export const FAELLE_TAGESFELDER = Object.freeze(["krankmeldungen", Object.freeze(["von", "bis"])]);
 /** Offen ist ein Fall nur in den beiden ersten Stufen; alles andere (auch Unbekanntes) ist abgeschlossen. */
 export const fallOffen = (f) => !!f && (f.status === KRANK_STATUS.EINGEGANGEN || f.status === KRANK_STATUS.VORLAEUFIG);
 /** Ablehnen ohne Freitext (keine Gesundheitsangabe im Protokoll): nur ein Kennzeichen aus dieser Liste oder keines. */

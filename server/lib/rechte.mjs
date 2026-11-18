@@ -245,6 +245,10 @@ function eigeneEintraege(alt, neu, ich) {
   return [...fremde, ...eigene];
 }
 
+/** Sieht eine beschäftigte Person diesen fremden Antrag? Dieselbe Regel wie sicht.mjs (anfragen): nur ein offenes
+    Tauschgesuch ohne festen Partner. */
+const tauschgesuchSichtbar = (a) => !!a && a.typ === "tausch" && a.status === "offen" && !a.partnerId;
+
 function anfragenZusammen(alt, neu, ich) {
   const alteNachId = new Map((Array.isArray(alt) ? alt : []).filter(Boolean).map((a) => [a.id, a]));
   const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
@@ -259,6 +263,13 @@ function anfragenZusammen(alt, neu, ich) {
         ? { ...a, status, freigaben: vorher.freigaben, entschieden: vorher.entschieden,
             durch: vorher.durch, antwort: vorher.antwort }
         : { ...a, status, freigaben: undefined, entschieden: undefined, durch: undefined, antwort: undefined });
+    } else if (vorher && !tauschgesuchSichtbar(vorher)) {
+      /* Review #356 M1: Ein fremder Antrag, den die Sicht nicht zeigt (sicht.mjs anfragen: von Fremden nur offene
+         Tauschgesuche ohne Partner), bleibt, wie er war — auch keine eigene Interessenmeldung daran. Vorher wurde sie
+         an JEDEN fremden Antrag gehängt (Altlücke), und mit der Kalendertagsprüfung (P2-12) verriete ein 422 Existenz
+         und Tag eines verborgenen Antrags. Still übergangen wie andere unzulässige Änderungen: dieselbe Antwort wie für
+         eine Kennung, die es nicht gibt. */
+      aus.push(vorher);
     } else if (vorher) {
       /* Fremder Antrag: nur die eigene Meldung als Interessent kommt durch. */
       const alteI = (vorher.interessenten || []).filter((x) => String(x) !== String(ich));
