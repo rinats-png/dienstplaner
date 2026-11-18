@@ -4,19 +4,33 @@
    Geprüft wird: Analyse und danach Vorschau rechnen genau einmal; geänderte Eingaben (Spaltenzuordnung, Dienstarten, Personen)
    rechnen neu; anderer Raum oder anderer Vorgang trifft nie; Ablauf, Verwerfen und Übernahme entfernen den Eintrag; die
    Grenzen (je Raum 20, gesamt 200) halten; das Ergebnis ist mit und ohne Zwischenspeicher gleich (Differenz); die
-   Zeilenobergrenze und die Bremse gelten vor einem Treffer; Schalter aus => 404; die Zeit des Worst-Case-Ablaufs sinkt.
+   Zeilenobergrenze und die Bremse gelten vor einem Treffer; Schalter aus => 404; im Worst-Case-Ablauf liest die Vorschau aus dem Speicher keine Zeile neu
+   (gezählt an der Bibliothek, nicht gestoppt; die Zeiten stehen nur noch zur Information im Protokoll).
 
    Nur synthetische Daten. Aufruf:
      npx vitest run pruefungen/import-analyse-cache-imp6.test.js --testTimeout=120000
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mappe } from "./import-parser-hilfen.mjs";
 import * as C from "../server/lib/import/schichtcache.mjs";
 import { schichtVorschau, schichtVorschauMitSpeicher } from "../server/lib/import/schichtvorschau.mjs";
+
+/* Arbeitszähler statt Stoppuhr (Flake-Härtung 2026-11-18): Die teure Rechnung der Vorschau steckt in modelleLesen und
+   zuordnungenLesen der Bibliothek. Der Mock reicht unverändert an die echte Bibliothek durch und zählt nur Aufrufe und
+   gelesene Zeilen — so wird „der Speicher spart Arbeit“ ohne Millisekunden geprüft (unter CI-Last waren die Zeiten nicht
+   verlässlich: 58 gegen 49 ms, 88 gegen 53 ms). */
+const ARBEIT = vi.hoisted(() => ({ aufrufe: 0, zeilen: 0 }));
+vi.mock("../server/lib/import/schichtmodelle.mjs", async (original) => {
+  const echt = /** @type {any} */ (await original());
+  const zaehlend = (f) => (/** @type {any} */ a) => {
+    ARBEIT.aufrufe += 1; ARBEIT.zeilen += Array.isArray(a && a.zeilen) ? a.zeilen.length : 0; return f(a);
+  };
+  return { ...echt, modelleLesen: zaehlend(echt.modelleLesen), zuordnungenLesen: zaehlend(echt.zuordnungenLesen) };
+});
 
 const WIRT = "127.0.0.1:3000";
 let wurzel, laden, imp, B, V, sitzungAnlegen;
@@ -280,7 +294,7 @@ describe("IMP-6 Zwischenspeicher: Grenzen und Schutz", () => {
 });
 
 describe("IMP-6 Zwischenspeicher: Worst-Case an der Grenze (10.000 Zeilen)", { timeout: 300000 }, () => {
-  it("Analyse und Vorschau mit 10.000 Modell- und 10.000 Zuordnungszeilen: Vorschau aus dem Speicher ist deutlich schneller", async () => {
+  it("Analyse und Vorschau mit 10.000 Modell- und 10.000 Zuordnungszeilen: Vorschau aus dem Speicher liest keine Zeile neu", async () => {
     const modelle = [["Modell", "Tag", "Dienst"]];
     for (let m = 0; m < 100; m++) for (let t = 1; t <= 100; t++) modelle.push([`Modell ${m}`, t, ["F", "S", "N", "-", "XX"][(m + t) % 5]]);
     const zuord = [["Personalnummer", "Modell", "Beginn", "Versatz"]];
@@ -288,7 +302,11 @@ describe("IMP-6 Zwischenspeicher: Worst-Case an der Grenze (10.000 Zeilen)", { t
     const { token } = await neuerRaum();
     const up = await hochladen(token, mappe({ Modelle: modelle, Zuordnungen: zuord }));
     expect(up.status).toBe(201);
-    const zeit = async (weg) => { const t0 = performance.now(); const r = await schritt(token, weg, { vorgang: up.vorgang }); return { ms: performance.now() - t0, r }; };
+    const zeit = async (weg) => {
+      const vor = { ...ARBEIT }; const t0 = performance.now();
+      const r = await schritt(token, weg, { vorgang: up.vorgang });
+      return { ms: performance.now() - t0, r, aufrufe: ARBEIT.aufrufe - vor.aufrufe, zeilen: ARBEIT.zeilen - vor.zeilen };
+    };
     const a = await zeit("analyse");
     expect(a.r.status).toBe(200);
     const mit = await zeit("vorschau");
@@ -299,6 +317,15 @@ describe("IMP-6 Zwischenspeicher: Worst-Case an der Grenze (10.000 Zeilen)", { t
     process.stderr.write(`IMP-6 Worst-Case: Analyse ${a.ms.toFixed(0)} ms, Vorschau mit Speicher ${mit.ms.toFixed(0)} ms, Vorschau ohne Speicher ${ohne.ms.toFixed(0)} ms; Ablauf ohne Speicher ${(a.ms + ohne.ms).toFixed(0)} ms, mit Speicher ${(a.ms + mit.ms).toFixed(0)} ms
 `);
     expect(JSON.stringify(mit.r.vorschau)).toBe(JSON.stringify(ohne.r.vorschau));
-    expect(mit.ms).toBeLessThan(ohne.ms * 0.8);
+    /* Die Aussage „Speicher spart Arbeit“, gezählt statt gestoppt: Analyse und Vorschau ohne Speicher lesen beide Blätter
+       vollständig (je 10.001 Zeilen mit Kopf; die Analyse liest zusätzlich nur Kopfzeilen zur Blatterkennung); die Vorschau
+       aus dem Speicher ruft die Bibliothek gar nicht auf. Bewusst streng an die Aufrufe gebunden: Ein legitimer Umbau, der
+       beim Treffer etwa nur die Kopfzeile prüft (1 Zeile), gäbe hier lauten Fehlalarm — dann die Erwartung bewusst anpassen
+       (z. B. höchstens Kopfzeilen), nicht stillschweigend lockern. */
+    expect(a.zeilen).toBeGreaterThanOrEqual(20002);
+    expect(ohne.zeilen).toBeGreaterThanOrEqual(20002);
+    expect(ohne.zeilen).toBeLessThanOrEqual(a.zeilen);
+    expect(mit.aufrufe).toBe(0);
+    expect(mit.zeilen).toBe(0);
   });
 });

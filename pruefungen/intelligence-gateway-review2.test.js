@@ -167,16 +167,21 @@ describe("Gateway-Befunde", () => {
   const anf = (von = "2026-11-01") => ({ funktion: "F2", eingabe: { zeitraum: { von, bis: ZR.bis } } });
 
   it("7 Kontext ist an Betrieb und Rolle gebunden (zwei Betriebe im selben Raum)", async () => {
-    const zwei = () => bestand(betrieb("m1", "Haus Eins"), betrieb("m2", "Haus Zwei"));
+    /* Betriebskennungen mit Punkt (Flake-Härtung 2026-11-18): Mit „m1“ traf die Klartextprüfung in rund 0,5 % der Läufe
+       die zufällige ctxId (16 Zeichen base64url, z. B. „…m1…“). Ein Punkt kommt weder in base64url noch in Hex (Hash, MAC)
+       vor — ein Treffer ist jetzt nur noch ein echter Klartext der Kennung. */
+    const B1 = "m1.eins", B2 = "m2.zwei";
+    const zwei = () => bestand(betrieb(B1, "Haus Eins"), betrieb(B2, "Haus Zwei"));
     const t = bauen({ bestand: zwei });
     const a = await t.gw.ausfuehren(sitzung("leitung", "l1", { betrieb: 0 }), anf());
     expect(a.ctxId).toBeTruthy();
-    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "leitung", ctxId: a.ctxId })).toMatchObject({ funktion: "F2" });
-    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: "m2", rolle: "leitung", ctxId: a.ctxId })).toBeNull();     // anderer Betrieb, gleicher Raum
-    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "planer", ctxId: a.ctxId })).toBeNull();      // andere Rolle
+    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: B1, rolle: "leitung", ctxId: a.ctxId })).toMatchObject({ funktion: "F2" });
+    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: B2, rolle: "leitung", ctxId: a.ctxId })).toBeNull();     // anderer Betrieb, gleicher Raum
+    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: B1, rolle: "planer", ctxId: a.ctxId })).toBeNull();      // andere Rolle
     expect(await t.sp.kontextLesen({ raum: "raum-a", ctxId: a.ctxId })).toBeNull();                                         // ohne Angabe nie
     const roh = JSON.stringify(t.store.m.get([...t.store.m.keys()].find((k) => k.startsWith("ki:ktx:"))));
-    expect(roh).not.toContain("m1");                                                                                      // nur der Hash
+    expect(roh).not.toContain(B1);                                                                                        // nur der Hash
+    expect(roh).not.toContain(B2);
     expect(await t.sp.kontextSchreiben({ raum: "raum-a", funktion: "F2", fingerprint: "e".repeat(64), paket: { fakten: [] } })).toBeNull();
   });
 

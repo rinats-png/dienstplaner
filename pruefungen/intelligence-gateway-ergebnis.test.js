@@ -224,7 +224,7 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
   function bauen(o = {}) {
     const store = o.store || speicherStore();
     const uhr = { t: T0 };
-    const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t });
+    const sp = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store, jetzt: () => uhr.t, ...(o.zufallId ? { zufallId: o.zufallId } : {}) });
     const anbieter = o.anbieter || erzeugeAttrappe({ modus: o.modus || "ok", skript: o.skript });
     const limits = new Limits({ jetzt: () => uhr.t, betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000 });
     const ereignisse = [];
@@ -321,15 +321,31 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
     }
   });
   it("E2/E3 im Betrieb: im Speicher stehen weder Klarnamen noch Kontakte noch Roh-Kennungen, kein Alias im Kontext", async () => {
-    const t = bauen({ modus: "skript", skript: (nr, ein) => ({ text: `Betroffen ist ${ein.paket.fakten.find((f) => f.alias).alias}.` }) });
+    /* Flake-Härtung 2026-11-18 (Ursache „0151“, CI #334): Mit zufälliger ctxId (16 Zeichen base64url) war auch die MAC des
+       Kontexts zufällig (64 Hex) und enthielt in rund 0,1 % der Läufe „0151“ (nachgestellt: 3 von 3000, alle in ki:ktx.mac).
+       Jetzt eine FESTE ctxId: Speicherinhalt und MAC sind deterministisch, die Markerprüfung läuft ohne jede Ausnahme über
+       den ganzen Speicher. Den echten Erzeuger prüft der zweite Teil unten. */
+    let n = 0;
+    const t = bauen({ zufallId: () => `ctx-${String(++n).padStart(8, "0")}`,
+      modus: "skript", skript: (nr, ein) => ({ text: `Betroffen ist ${ein.paket.fakten.find((f) => f.alias).alias}.` }) });
     const r = await t.gw.ausfuehren(S.leitung, anf());
     expect(r.status).toBe("fertig");
+    expect(r.ctxId).toBe("ctx-00000001");
     const roh = fold(JSON.stringify([...t.store.m.entries()]));
     for (const v of VERBOTEN_IM_PAKET.filter((x) => !["notiz", "grund", "anmerkung", "raum-a"].includes(x))) { const i = roh.indexOf(fold(v)); expect(i < 0, `${v} im Speicher, Umgebung: ${i < 0 ? "" : JSON.stringify(roh.slice(Math.max(0, i - 60), i + 40))}`).toBe(true); }
     const ktx = [...t.store.m.entries()].find(([k]) => k.startsWith("ki:ktx:"))[1];
     expect(JSON.stringify(ktx)).not.toMatch(/[PEOD]_[BCDFGHJKLMNPQRSTVWXZ]{8}/);
     expect(JSON.stringify([...t.store.m.entries()].find(([k]) => k.startsWith("ki:erg:"))[1])).toMatch(/P_[BCDFGHJKLMNPQRSTVWXZ]{8}/);   // Alias-Form
     expect(r.ergebnis.text).toMatch(/\{\{person:/);                                                                                      // Antwort an den Menschen: übersetzt
+    /* Der echte Erzeuger der ctxId (ohne Vorgabe): reiner Zufall in Kennungsform, ohne festen Teil. Ein fester Anteil — etwa
+       ein Klartext vorn oder hinten — stünde in allen 200 Kennungen an derselben Stelle; bei echtem Zufall ist die
+       Wahrscheinlichkeit, dass eine Stelle in 200 Ziehungen gleich bleibt, 16 × 64^-199 (praktisch null). */
+    const sp0 = erzeugeErgebnisSpeicher({ schluesselbund: schluesselbundTest(), store: speicherStore(), jetzt: () => T0 });
+    const ids = [];
+    for (let i = 0; i < 200; i++) ids.push(await sp0.kontextSchreiben({ raum: "raum-a", betriebId: "m1", rolle: "leitung", funktion: "F2", fingerprint: "e".repeat(64), paket: { fakten: [] } }));
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{16}$/);
+    expect(new Set(ids).size).toBe(200);
+    for (let p = 0; p < 16; p++) expect(new Set(ids.map((id) => id[p])).size, `Stelle ${p} der ctxId ist fest`).toBeGreaterThan(1);
   });
   it("Speicherausfall bricht den Vorgang nicht: Antwort kommt, nur ohne Treffer", async () => {
     const t = bauen();
