@@ -99,7 +99,7 @@ Beobachtungen ohne Befund: Der Betreiber sieht `dienstarten` (Betriebskonfigurat
 
 **Nachtrag 2026-11-18 (Nachholreview WP-19, erledigt im Code, Delta-Review offen):** M-PQ1 (Betreuungsqualifikation nach § 43b nur in der
 Gruppe `betreuung`, Altbestand mit Hinweis statt Umdeutung), M-BD2 (abgeschlossener Monat aus dem gespeicherten Stand; Stufe als Tarifversion,
-keine rückwirkende Vergütungsänderung), N-1, N-2, N-BD3 (Prüftag vom Aufrufer). Einzelheiten:
+keine rückwirkende Vergütungsänderung, auch nicht durch erstmaliges Setzen eines leeren Faktors einer gebundenen Stufe), N-1, N-2, N-BD3 (Prüftag vom Aufrufer). Einzelheiten:
 [NACHHOLREVIEW-WP19-MODULE-2026-11-13.md](NACHHOLREVIEW-WP19-MODULE-2026-11-13.md), Abschnitt 7. Die Matrix unten ändert sich dadurch nicht
 (gleiche Rollenrechte); Status bleibt `geplant`.
 

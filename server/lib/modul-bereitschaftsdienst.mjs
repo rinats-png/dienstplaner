@@ -23,12 +23,12 @@
          geblich ist der GESPEICHERTE Abschlussstand (altM), nie der Rumpf.
          Unveränderte Alteinträge bleiben speicherbar (wie abschlussWiderspruch).
      (b) Die Stufe ist die Tarifversion des Eintrags: Art und ein gesetzter
-         Faktor einer Stufe, die ein gespeicherter Dienst vor dem Prüftag oder
-         in einem abgeschlossenen Monat trägt, sind nicht mehr änderbar. Eine
-         neue Tariffassung ist eine neue Stufe (neue Kennung); vergangene
-         Dienste behalten ihre Stufe und damit ihre Vergütung. Einzige
-         Ausnahme: ein noch leerer Faktor („ungeklärt“) darf erstmals gesetzt
-         werden — vorher gab es keine Vergütung, die sich ändern könnte.
+         Faktor (auch ein leerer, „ungeklärt“) einer Stufe, die ein gespeicherter
+         Dienst am oder vor dem Prüftag oder in einem abgeschlossenen Monat trägt,
+         sind nicht mehr änderbar. Ein Tarifwert oder eine neue Tariffassung ist
+         eine neue Stufe (neue Kennung); vergangene Dienste behalten ihre Stufe
+         und damit ihre Vergütung (auch „ungeklärt“). Einen leeren Faktor
+         erstmals setzen geht nur bei einer Stufe ohne gebundenen Dienst.
 
    Rein: keine Ablage, keine Uhr. Der Prüftag (heute, „JJJJ-MM-TT“) kommt vom
    Aufrufer (modul-wege.mjs: betriebstag der Serveruhr).
@@ -202,7 +202,7 @@ const OHNE_PRUEFTAG = "Bereitschaft: ohne Prüftag lässt sich die Änderung nic
 
 /**
  * Bindung der Stufen (M-BD2 b): Kennungen der Stufen, die ein GESPEICHERTER
- * Dienst vor dem Prüftag oder in einem abgeschlossenen Monat trägt.
+ * Dienst am oder vor dem Prüftag oder in einem abgeschlossenen Monat trägt.
  * @param {any} altM gespeicherter Betrieb
  * @param {string} heute Prüftag „JJJJ-MM-TT“
  * @returns {Set<string>}
@@ -213,7 +213,7 @@ export function gebundeneStufen(altM, heute) {
   for (const [k, e] of Object.entries(alt)) {
     const tag = tagDes(k);
     if (!istObjekt(e) || !echterTag(tag)) continue;
-    if (tag < heute || monatAbgeschlossen(altM, tag)) aus.add(String(e.stufe));
+    if (tag <= heute || monatAbgeschlossen(altM, tag)) aus.add(String(e.stufe));   // der heutige Dienst läuft schon
   }
   return aus;
 }
@@ -234,7 +234,7 @@ export function bereitschaftZusammen(neuM, altM, { heute } = {}) {
     if (!Array.isArray(neuM.bereitschaftStufen) || neuM.bereitschaftStufen.length > BEREITSCHAFT_GRENZEN.stufen) return { grund: "Stufen: Liste erwartet, höchstens " + BEREITSCHAFT_GRENZEN.stufen + "." };
     for (const s of neuM.bereitschaftStufen) { const f = pruefeBereitschaftStufe(s, neuM.bereitschaftStufen); if (f) return { grund: f }; }
   }
-  /* M-BD2 b: Art und gesetzter Faktor einer gebundenen Stufe bleiben (die Stufe ist die Tarifversion vergangener Dienste). */
+  /* M-BD2 b: Art und Faktor (auch leer) einer gebundenen Stufe bleiben (die Stufe ist die Tarifversion vergangener Dienste). */
   if (mitAlt) {
     const vorher = Array.isArray(altM.bereitschaftStufen) ? altM.bereitschaftStufen.filter(istObjekt) : [];
     const nachher = Array.isArray(neuM.bereitschaftStufen) ? neuM.bereitschaftStufen : [];
@@ -243,7 +243,7 @@ export function bereitschaftZusammen(neuM, altM, { heute } = {}) {
       if (!s1) return false;                          // entfernt: die Einträge prüfen ihre Stufe selbst (Stufe unbekannt)
       const f0 = typeof s0.faktor === "number" ? s0.faktor : null;
       const f1 = typeof s1.faktor === "number" ? s1.faktor : null;
-      return s1.art !== s0.art || (f0 !== null && f1 !== f0);
+      return s1.art !== s0.art || f1 !== f0;              // auch ein leerer Faktor einer gebundenen Stufe bleibt leer
     });
     if (geaendert.length) {
       if (!tagOk) return { grund: OHNE_PRUEFTAG };

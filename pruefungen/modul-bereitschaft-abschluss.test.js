@@ -116,6 +116,17 @@ describe("M-BD2 (a): abgeschlossener Monat (gespeicherter Abschlussstand)", () =
     const neu2 = kopie(offen); neu2.monatsabschluss = { "2026-11": { abgeschlossen: true } }; neu2.bereitschaft["a1|2026-11-20"] = D("Z");
     expect(bereitschaftZusammen(neu2, offen, { heute: HEUTE })).toEqual({});
   });
+  it("Entfernen: ein mitgeschickter „offener“ Oktober erlaubt kein Löschen im gespeichert abgeschlossenen Oktober", () => {
+    const alt = betrieb().mandanten[0];
+    const neu = kopie(alt); neu.monatsabschluss = { "2026-10": { abgeschlossen: false } }; delete neu.bereitschaft["a1|2026-10-12"];
+    expect(bereitschaftZusammen(neu, alt, { heute: HEUTE }).grund).toMatch(/Oktober 2026 ist abgeschlossen/);
+    const { res, unveraendert } = versuch(betrieb(), "LT", (m) => {
+      m.monatsabschluss = { "2026-10": { abgeschlossen: false } };
+      delete m.bereitschaft["a1|2026-10-12"];
+    });
+    expect(abgewiesen(res)).toBe(true);
+    expect(unveraendert).toBe(true);
+  });
   it("…und ein mitgeschickter „abgeschlossener“ November sperrt nichts", () => {
     const { res } = versuch(betrieb(), "LT", (m) => {
       m.monatsabschluss = { ...m.monatsabschluss, "2026-11": { abgeschlossen: true } };
@@ -181,22 +192,43 @@ describe("M-BD2 (b): keine rückwirkende Änderung der Vergütung über die Stuf
     const b = versuch(betrieb(), "LT", (m) => { Object.assign(m.bereitschaftStufen.find((s) => s.id === "B"), { name: "Stufe B neu", quelle: "Tarif X § 12a" }); });
     expect(abgewiesen(b.res)).toBe(false);
   });
-  it("ungeklärter Faktor darf erstmals gesetzt werden (vorher gab es keine Vergütung)", () => {
+  it("Probe: leerer Faktor einer gebundenen Stufe (Dienst im abgeschlossenen Oktober) bleibt leer — kein Sprung null → 600", () => {
+    for (const r of ["LT", "KD"]) {
+      const g = betrieb({ eintraege: { ...EINTRAEGE, "l1|2026-10-05": D("O") } });
+      expect(verguetung(g.mandanten[0], "l1|2026-10-05")).toBeNull();
+      const { res, unveraendert } = versuch(g, r, (m) => { m.bereitschaftStufen.find((s) => s.id === "O").faktor = 1; });
+      expect(abgewiesen(res), r).toBe(true);
+      expect(res.verweigert).toMatch(/Stufe ohne Tarifwert: Art und Faktor gelten für vergangene/);
+      expect(unveraendert, r).toBe(true);
+      expect(verguetung(g.mandanten[0], "l1|2026-10-05")).toBeNull();
+    }
+  });
+  it("leerer Faktor einer Stufe mit vergangenem Dienst im offenen Monat: ebenso fest; Tarifwert kommt als neue Stufe", () => {
     const g = betrieb();
+    const nein = versuch(g, "LT", (m) => { m.bereitschaftStufen.find((s) => s.id === "O").faktor = 0.5; });
+    expect(abgewiesen(nein.res)).toBe(true);
+    expect(nein.unveraendert).toBe(true);
     expect(verguetung(g.mandanten[0], "l1|2026-11-05")).toBeNull();
+    const ja = versuch(g, "LT", (m) => { m.bereitschaftStufen.push({ id: "O2", name: "mit Tarifwert", art: "bereitschaft", faktor: 0.5 }); m.bereitschaft["l1|2026-11-26"] = D("O2"); });
+    expect(abgewiesen(ja.res)).toBe(false);
+    expect(verguetung(ja.res.mandanten[0], "l1|2026-11-05")).toBeNull();
+    expect(verguetung(ja.res.mandanten[0], "l1|2026-11-26")).toBe(300);
+  });
+  it("leerer Faktor einer Stufe ohne gebundenen Dienst darf erstmals gesetzt werden", () => {
+    const g = betrieb({ eintraege: { "a1|2026-11-10": D("B"), "l1|2026-11-27": D("O") } });
     const { res } = versuch(g, "LT", (m) => { m.bereitschaftStufen.find((s) => s.id === "O").faktor = 0.5; });
     expect(abgewiesen(res)).toBe(false);
-    expect(verguetung(res.mandanten[0], "l1|2026-11-05")).toBe(300);
+    expect(verguetung(res.mandanten[0], "l1|2026-11-27")).toBe(300);
   });
   it("Planung ändert Stufen nie (nur Organisationsleitung)", () => {
     const { res, unveraendert } = versuch(betrieb(), "PL", (m) => { m.bereitschaftStufen.find((s) => s.id === "Z").faktor = 0.4; });
     expect(res.verweigert).toMatch(/Organisationsleitung/);
     expect(unveraendert).toBe(true);
   });
-  it("gebunden: vergangene Dienste und Dienste abgeschlossener Monate (auch nach dem Prüftag), sonst nicht", () => {
-    const alt = betrieb({ abschluss: { "2026-12": { abgeschlossen: true } },
-      eintraege: { "a1|2026-11-10": D("B"), "a1|2026-12-03": D("Z"), "a1|2026-11-25": D("O"), "a1|2026-11-18": D("O") } }).mandanten[0];
-    expect([...gebundeneStufen(alt, HEUTE)].sort()).toEqual(["B", "Z"]);
+  it("gebunden: vergangene und heutige Dienste und Dienste abgeschlossener Monate (auch nach dem Prüftag), sonst nicht", () => {
+    const alt = betrieb({ abschluss: { "2026-12": { abgeschlossen: true } }, stufen: [...STUFEN, { id: "H", name: "Heute", art: "bereitschaft", faktor: 0.2 }],
+      eintraege: { "a1|2026-11-10": D("B"), "a1|2026-12-03": D("Z"), "a1|2026-11-25": D("O"), "a1|2026-11-18": D("H") } }).mandanten[0];
+    expect([...gebundeneStufen(alt, HEUTE)].sort()).toEqual(["B", "H", "Z"]);
     const neu = kopie(alt); neu.bereitschaftStufen.find((s) => s.id === "Z").faktor = 0.9;
     expect(bereitschaftZusammen(neu, alt, { heute: HEUTE }).grund).toMatch(/Stufe Z/);
   });
@@ -212,6 +244,21 @@ describe("M-BD2 (b): keine rückwirkende Änderung der Vergütung über die Stuf
     });
     expect(abgewiesen(res)).toBe(true);
     expect(unveraendert).toBe(true);
+  });
+});
+
+describe("heutiger Dienst bindet (Prüftag = Betriebstag Berlin)", () => {
+  const nurMorgen = () => betrieb({ abschluss: null, eintraege: { "a1|2026-11-19": D("Z") } });
+  it("23:30 UTC = 00:30 Berlin am 19.: der Dienst vom 19. läuft, Faktor fest (Zustand byte-gleich)", () => {
+    vi.setSystemTime(new Date("2026-11-18T23:30:00.000Z"));
+    const { res, unveraendert } = versuch(nurMorgen(), "LT", (m) => { m.bereitschaftStufen.find((s) => s.id === "Z").faktor = 0.4; });
+    expect(res.verweigert).toMatch(/Stufe Z/);
+    expect(unveraendert).toBe(true);
+  });
+  it("22:30 UTC = 23:30 Berlin am 18.: der Dienst vom 19. ist künftig, Faktor änderbar", () => {
+    vi.setSystemTime(new Date("2026-11-18T22:30:00.000Z"));
+    const { res } = versuch(nurMorgen(), "LT", (m) => { m.bereitschaftStufen.find((s) => s.id === "Z").faktor = 0.4; });
+    expect(abgewiesen(res)).toBe(false);
   });
 });
 
