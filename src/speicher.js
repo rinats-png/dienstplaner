@@ -380,7 +380,8 @@ function pflichtMelden() {
 function pflichtAufnehmen(auftrag) {
   if (auftrag && auftrag.bestand) { letzterBestand = auftrag.bestand; pflichtZuletzt = auftrag.bestand; }
   /* Ein schon gescheiterter Auftrag bleibt (sein Bestand ginge sonst für die Sicherung verloren, P4). */
-  gescheitert = gescheitert ? { ...gescheitert, gesperrt: true, lage: pflichtLage() }
+  /* Neue Eingabe nach der Datei-Sicherung: wieder ungesichert (beforeunload fragt). */
+  gescheitert = gescheitert ? { ...gescheitert, gesperrt: true, lage: pflichtLage(), ...(auftrag ? { gesichert: false } : {}) }
     : (auftrag ? { auftrag, gesperrt: true, lage: pflichtLage() } : null);
   pflichtMelden();
 }
@@ -757,6 +758,8 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
       bestand: auftrag.bestand, neuester: () => letzterBestand, durch: auftrag.durch, sitzung: sitzungsAbdruck(token),
       neueKennung: anfrageKennung, beimSchliessen: !!beimSchliessen, vollGewuenscht,
       senden: async (rumpf) => {
+        /* Review #350: nach einem Löschlauf geht auch aus einem laufenden Auftrag nichts mehr hinaus (wie ohne Netz). */
+        if (neuLadenPflicht) return { status: null, netz: true };
         try {
           const a = await ruf("bestand/teile", { method: "POST", ...(beimSchliessen ? { keepalive: true } : {}),
             ...(abbruch ? { signal: abbruch.signal } : {}), body: JSON.stringify(rumpf) });
@@ -768,6 +771,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
         }
       },
       holen: async () => {
+        if (neuLadenPflicht) return { status: null, netz: true };
         try {
           const a = await ruf("bestand", abbruch ? { signal: abbruch.signal } : {});
           return { status: a.status, daten: a.daten, ausSpeicher: a.ausSpeicher };
@@ -866,6 +870,8 @@ async function schreibenAusfuehren(beimSchliessen) {
       status = t.status;
       if (t.fehler) throw t.fehler;
       if (!t.weiter) return;
+      /* Review #350: Merkmal während des Teilwegs gesetzt — kein Voll-PUT mehr, Auftrag nur zum Sichern halten. */
+      if (neuLadenPflicht) { pflichtAufnehmen(auftrag); return; }
     }
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist

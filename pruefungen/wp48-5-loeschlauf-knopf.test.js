@@ -483,4 +483,56 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
     expect((await gespeichertM(raum)).abweichungen[`a1|${tag(20)}`]).toBe("-");
   });
+
+  /* ---------------- Delta-Review #350 Runde 3 ---------------- */
+  for (const [fall, antwort] of [["P1 413", { status: 413, daten: { code: "TEILE_ZU_GROSS", text: "zu groß" } }],
+    ["P2 422", { status: 422, daten: { code: "ANFRAGE_WIEDERVERWENDET", text: "andere Änderung" } }]]) {
+    it(`${fall}: ein beim Setzen des Merkmals laufender Teil-Auftrag liest und sendet danach nichts mehr`, async () => {
+      process.env.CENTRIC_TEILSPEICHERUNG = "true";
+      fetchStub();
+      const { raum, token } = await raumMit(["LT"]);
+      const o = await oberflaeche(token.LT, "l1");
+      const lagen = [];
+      let loesen;
+      const haengt = new Promise((j) => { loesen = j; });
+      let eingabe = null;
+      nachAntwort = (u, m, rumpf) => (u === "/api/loeschlauf" && rumpf && rumpf.vorschau ? async () => {
+        let erst = true;
+        antwortErsetzen = (u2) => (u2 === "/api/bestand/teile" && erst ? ((erst = false), { ...antwort, warten: haengt }) : null);
+        o.ref.current = setzeAuf(o.ref.current, tag(20), "-");
+        eingabe = o.SP.schreib(o.ref.current, { sofort: true, onFehler: (l) => lagen.push(l.art) });
+      } : null);
+      expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausgefuehrt" });
+      const vorher = aufrufe.length;
+      loesen();
+      await eingabe;
+      await o.SP.schreibenAbschliessen();
+      expect(aufrufe.slice(vorher)).toEqual([]);          // kein GET, kein POST, kein PUT nach dem Merkmal
+      expect(lagen.at(-1)).toBe("neuLadenPflicht");
+      expect((await gespeichertM(raum)).abweichungen[`a1|${tag(20)}`]).toBe("F");
+      expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
+    });
+  }
+
+  it("Bestätigung mit 401 (abgemeldet): nichts gelöscht, kein Merkmal", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    antwortErsetzen = (u, m, rumpf) => (u === "/api/loeschlauf" && rumpf && rumpf.bestaetigt ? { status: 401, daten: { fehler: "nicht angemeldet" } } : null);
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "fehler" });
+    expect(o.SP.neuLadenNoetig()).toBe(false);
+    expect((await gespeichertM(raum)).abweichungen[`a1|${tag(-1000)}`]).toBe("F");
+  });
+
+  it("Bestätigung mit 5xx: Ausgang unklar, Merkmal gesetzt", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    antwortErsetzen = (u, m, rumpf) => (u === "/api/loeschlauf" && rumpf && rumpf.bestaetigt ? { status: 503, daten: { fehler: "Zeitbudget" } } : null);
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "unklar" });
+    expect(o.SP.neuLadenNoetig()).toBe(true);
+    expect(o.meldungen.at(-1)).toMatch(/Ausgang unklar/);
+  });
 });
