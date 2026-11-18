@@ -1079,6 +1079,19 @@ keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Ä
   dem aktuellen Stand. Kommentar zur Sitzungskennung präzisiert — sie geht **nicht** im Rumpf an den Server
   (`rumpfBauen` setzt sie nicht ein; Prüfung A1 sichert das), der Server bildet seine Kennung selbst.
 
+**Delta-Review #348 (f1aa18ba), nachgezogen in #350:**
+- Prüfungen über den echten Handler: Rennen (Fremdschreiber zwischen frischem GET und Voll-PUT → 409 und Sperre; das
+  nächste Speichern liest frisch, hebt die Sperre auf, Voll-PUT gelingt, fremder Wert bleibt); Sperre endet mit
+  `teilwegUebernehmen` eines gelesenen Stands; 413 des Teilwegs nach eigener Teilspeicherung → GET, dann Voll-PUT ohne 409;
+  Fachbefund-409 des Voll-PUT übernimmt keinen ETag. Handmutanten (Sperre nach frischem GET bzw. bei
+  `teilwegUebernehmen` nicht aufheben, 413 ohne Vorbereiten, Fachbefund-ETag übernehmen) machen je genau den
+  zugehörigen Fall rot. Die Fälle mit dem echten Handler tragen ein eigenes Zeitbudget (120 s je Fall).
+- Texte: Ist der Teilweg noch aktiv, sagt das Voll-Konfliktfenster, dass die eigenen Änderungen ohne Neuladen erhalten
+  bleiben und beim nächsten Speichern abgeglichen werden. Eine Frage zu einem Stempel heißt „Stempel …“.
+- Grund `voll-beim-schliessen` bzw. `neu-aufsetzen-beim-schliessen`: Beim Schließen (beforeunload, visibilitychange)
+  wird nicht frisch gelesen. Ein Rückfall auf den Voll-PUT oder ein Neuaufsetzen geht deshalb nicht hinaus: Der Auftrag
+  bleibt ausstehend, `beforeunload` fragt nach. Ohne Teilweg geht beim Schließen weiter der Voll-PUT per `keepalive`.
+
 **Restgrenzen:** Nach einem gelungenen Rückfall auf den Voll-PUT bleibt die Sitzung beim Voll-PUT (ohne blindes
 Übernehmen), bis wieder ein gelesener Stand übernommen wird. Ein Demozugang oder die Kundenrolle bekommt den Teilweg erst
 beim ersten Speichern mit gesetzter Sitzung. Eingaben genau zwischen dem Übernehmen nach neuAufsetzen und dem Neuzeichnen

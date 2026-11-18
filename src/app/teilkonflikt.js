@@ -502,7 +502,8 @@ export function frageText(frage, m, bezeichne) {
   const [pid, datum] = frage.k.split("|");
   const p = Array.isArray(m && m.personen) ? m.personen.find((x) => x && String(x.id) === pid) : null;
   const wer = p ? [p.vorname, p.nachname].filter(Boolean).join(" ") || pid : pid;
-  const was = frage.feld === "erfassung" ? "Ist-Zeit" : "Einteilung";
+  /* Stempel kommen als Frage nur aus dem Rückfall auf den Voll-PUT (vollVorbereiten). */
+  const was = frage.feld === "erfassung" ? "Ist-Zeit" : frage.feld === "einstempeln" ? "Stempel" : "Einteilung";
   return { titel: `${was} von ${wer} am ${DATUM(datum)}`, meins: zellwertText(frage.feld, frage.meins, m),
     fremd: zellwertText(frage.feld, frage.fremd, m), hinweis: "" };
 }

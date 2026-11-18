@@ -213,8 +213,12 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
               Neu laden</div>
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
-              Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
-              Speichern sind weg.</div>
+              {lage && lage.selbstAbgleich
+                ? `Du siehst den Stand von ${wer}. Deine Änderungen seit dem letzten Speichern sind dann weg. `
+                  + "Lädst du nicht neu, bleiben sie erhalten: Beim nächsten Speichern gleicht CENTRIC sie mit dem gespeicherten "
+                  + "Stand ab und fragt bei Überschneidungen nach."
+                : <>Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
+              Speichern sind weg.</>}</div>
             <Btn size="sm" kind="primary" onClick={() => window.location.reload()}>
               Neu laden</Btn>
           </div>
