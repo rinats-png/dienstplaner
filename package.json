@@ -244,7 +244,7 @@
     "pruefung:modulaktiv": "vitest run pruefungen/modulaktiv-allowlist.test.js",
     "pruefung:abnahme-b": "vitest run pruefungen/abnahme-b-wiederholung.test.js --testTimeout=120000",
     "pruefung:em6-rollback-codes": "vitest run pruefungen/em6-rollback-codes.test.js --testTimeout=240000",
-    "pruefung:be1-konto-widerrufbuch": "vitest run pruefungen/be1-konto-widerrufbuch.test.js --testTimeout=240000 --hookTimeout=240000",
+    "pruefung:be1-konto-widerrufbuch": "vitest run pruefungen/be1-konto-widerrufbuch.test.js pruefungen/be1-passwort-widerruf.test.js --testTimeout=240000 --hookTimeout=240000",
     "pruefung:be2-a1-zweiter-faktor": "vitest run pruefungen/be2-a1-zweiter-faktor.test.js --testTimeout=300000 --hookTimeout=300000",
     "pruefung:be3-widerrufbuch-sicherung": "vitest run pruefungen/be3-widerrufbuch-sicherung.test.js --testTimeout=300000 --hookTimeout=300000",
     "pruefung:erkennung": "vitest run pruefungen/erkennung-gestrandete-betriebe.test.js --testTimeout=120000",
