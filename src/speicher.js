@@ -206,25 +206,48 @@ const PUSHGERAET = "centric:pushgeraet";
 function geraetMerken(endpoint) {
   try { localStorage.setItem(PUSHGERAET, endpoint ? JSON.stringify({ endpoint }) : "keins"); } catch { /* egal */ }
 }
-/** Synchron: `{endpoint}`, `null` (keine Anmeldung möglich oder bekannt keine) oder `undefined` (unbekannt). */
+/** Der gemerkte Endpunkt oder null (nichts oder „keins“ gemerkt). */
+function gemerkterEndpunkt() {
+  try {
+    const w = localStorage.getItem(PUSHGERAET);
+    if (!w || w === "keins") return null;
+    const g = JSON.parse(w);
+    return g && typeof g.endpoint === "string" && g.endpoint ? g.endpoint : null;
+  } catch { return null; }
+}
+/**
+ * Synchron: `{endpoint}`, `null` (keine Anmeldung möglich oder bekannt keine) oder `undefined` (unbekannt).
+ * Review-Folgepunkt L1: Ein gemerkter Endpunkt wird auch ohne Erlaubnis gesendet. Wer die Erlaubnis
+ * auf einem geteilten Gerät widerruft, hat beim Server womöglich noch eine Anmeldung — sie muss beim
+ * Abmelden der Person verschwinden, sonst kämen ihre Mitteilungen nach einem erneuten Erlauben an.
+ * Ein veralteter Endpunkt schadet nicht: Der Server entfernt nur die Anmeldung mit genau diesem Endpunkt.
+ */
 export function geraetGemerkt() {
   try {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
       || typeof window === "undefined" || !("PushManager" in window)) return null;
+    const e = gemerkterEndpunkt();
+    if (e) return { endpoint: e };
     if (typeof Notification !== "undefined" && Notification.permission !== "granted") return null;
-    const w = localStorage.getItem(PUSHGERAET);
-    if (w === "keins") return null;
-    if (w) {
-      const g = JSON.parse(w);
-      if (g && typeof g.endpoint === "string" && g.endpoint) return { endpoint: g.endpoint };
-    }
+    if (localStorage.getItem(PUSHGERAET) === "keins") return null;
   } catch { /* unbekannt */ }
   return undefined;
 }
-/** Den Merker aus dem Browser nachziehen (beim Start, ohne Warten). */
+/**
+ * Den Merker aus dem Browser nachziehen (beim Start, ohne Warten).
+ * Review-Folgepunkte L1/L2: Der Server kennt genau den Endpunkt, den dieses Gerät beim Einschalten
+ * gemeldet hat (pushEinschalten setzt den Merker vor der Meldung). Meldet der Browser später keinen
+ * oder einen anderen Endpunkt (Erlaubnis widerrufen, Abonnement vom Browser gewechselt — es gibt
+ * bewusst keinen pushsubscriptionchange-Handler, der Dienstarbeiter kennt keine Sitzung), bleibt der
+ * gemerkte Endpunkt stehen: Nur mit ihm entfernt das Abmelden die Anmeldung beim Server. Ohne
+ * gemerkten Endpunkt (z. B. Anmeldung aus der Zeit vor E-9) gilt der des Browsers.
+ */
 export async function pushGeraetAuffrischen() {
   const g = await diesesGeraet();
-  if (g !== undefined) geraetMerken(g && g.endpoint);
+  if (g === undefined) return;
+  const alt = gemerkterEndpunkt();
+  if (alt && (!g || g.endpoint !== alt)) return;
+  geraetMerken(g && g.endpoint);
 }
 
 export function abmelden(still = false) {
@@ -1177,7 +1200,10 @@ export async function pushEinschalten(personId) {
 export async function pushAusschalten() {
   /* E-9: Der Server entfernt nur die Anmeldung dieses Geräts — der Endpunkt
      wird vor dem Abbestellen gelesen. */
-  const g = await diesesGeraet();
+  const da = await diesesGeraet();
+  /* L1: Hat der Browser keine Anmeldung mehr (Erlaubnis widerrufen), gilt der gemerkte Endpunkt. */
+  const e = da === null ? gemerkterEndpunkt() : null;
+  const g = e ? { endpoint: e } : da;
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const s = reg && await reg.pushManager.getSubscription();

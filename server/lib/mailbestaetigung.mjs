@@ -153,23 +153,62 @@ export async function bestaetigtAm(store, raum, mandantId, p) {
   return istObjekt(b) && b.adresse === wert && typeof b.am === "string" ? b.am : null;
 }
 
+export const QUOTE_FRIST_MS = 60 * 1000;
+export const QUOTE_BLOCK = 50;
+const QUOTE_MERKER_MAX = 500;
+/** Kurzlebiger Merker der Quote je Raum und Betrieb (nur Zähler; siehe bestaetigungsQuote). */
+const quoteMerker = new Map();
+const quoteSchluessel = (raum, mandantId) => `${String(raum)}\u0000${String(mandantId)}`;
+/** Den Merker eines Betriebs verwerfen (Bestätigen, Entfernen; ohne Raum: alle — für Prüfungen). */
+export function quoteVergessen(raum, mandantId) {
+  if (raum === undefined) quoteMerker.clear();
+  else quoteMerker.delete(quoteSchluessel(raum, mandantId));
+}
+
 /**
  * Review-Auflage M3: Wie viele Personen des Betriebs haben eine Adresse, und
  * wie viele davon sind unbestätigt? Nur Zähler, keine Adressen, keine Namen —
  * die Voraussetzung, bevor jemand „pflicht“ einschaltet. Nicht lesbare
  * Einträge zählen als unbestätigt (vorsichtig).
+ *
+ * Review-Folgepunkt L3: Je Person ein Blob — bei großen Betrieben (bis 5000
+ * Personen) liest der Stand deshalb blockweise parallel (QUOTE_BLOCK je Block)
+ * und merkt sich das Ergebnis kurz (QUOTE_FRIST_MS) je Raum und Betrieb, nur
+ * die beiden Zähler, keine Adressen. Der Merker gilt nur für denselben
+ * Personen-/Adressstand (Fingerabdruck aus Kennung und Adresswert, als Hash):
+ * Eine geänderte, neue oder entfernte Adresse rechnet sofort neu. Bestätigen
+ * und Entfernen verwerfen den Merker des Betriebs; nur was außerhalb dieser
+ * Wege an `mailbest:` geschieht (tägliches Aufräumen, Raumlöschung), zeigt
+ * sich spätestens nach der Frist.
  * @returns {Promise<{mitAdresse: number, unbestaetigt: number}>}
  */
-export async function bestaetigungsQuote(store, { raum, m }) {
-  let mitAdresse = 0, unbestaetigt = 0;
+export async function bestaetigungsQuote(store, { raum, m, jetzt = Date.now() }) {
+  const offen = [];
+  const fp = createHash("sha256");
   for (const p of Array.isArray(m && m.personen) ? m.personen : []) {
     if (!istObjekt(p) || p.anonym === true) continue;
     const an = personAdresse(p);
     if (!an) continue;
-    mitAdresse += 1;
-    if (!(await adresseBestaetigt(store, raum, m.id, p.id, an).catch(() => false))) unbestaetigt += 1;
+    offen.push({ id: p.id, an });
+    fp.update(`${String(p.id)}\u0000${adressWert(an) || ""}\u0001`);
   }
-  return { mitAdresse, unbestaetigt };
+  const schluessel = quoteSchluessel(raum, m && m.id);
+  const abdruck = fp.digest("hex");
+  const alt = quoteMerker.get(schluessel);
+  if (alt && alt.abdruck === abdruck && alt.bis > jetzt) return { ...alt.wert };
+  let unbestaetigt = 0;
+  for (let i = 0; i < offen.length; i += QUOTE_BLOCK) {
+    const ja = await Promise.all(offen.slice(i, i + QUOTE_BLOCK)
+      .map(({ id, an }) => adresseBestaetigt(store, raum, m.id, id, an).catch(() => false)));
+    unbestaetigt += ja.filter((x) => !x).length;
+  }
+  const wert = { mitAdresse: offen.length, unbestaetigt };
+  if (quoteMerker.size >= QUOTE_MERKER_MAX && !quoteMerker.has(schluessel)) {
+    for (const [k, v] of quoteMerker) if (!(v.bis > jetzt)) quoteMerker.delete(k);
+    if (quoteMerker.size >= QUOTE_MERKER_MAX) quoteMerker.delete(quoteMerker.keys().next().value);
+  }
+  quoteMerker.set(schluessel, { abdruck, bis: jetzt + QUOTE_FRIST_MS, wert });
+  return { ...wert };
 }
 
 /** Für die Oberfläche: gibt es eine Adresse, ist sie bestätigt, läuft ein Code? Nie die Adresse selbst. */
@@ -277,6 +316,7 @@ export async function bestaetigen(store, { raum, m, p, code, jetzt = Date.now() 
   /* Erst den Code verbrauchen, dann bestätigen: Ein zweites Einlösen findet keinen Code mehr. */
   await store.delete(ck);
   await store.setJSON(bestaetigtSchluessel(raum, m.id, p.id), { adresse: wert, am: new Date(jetzt).toISOString() });
+  quoteVergessen(raum, m.id);
   return { ok: true };
 }
 
@@ -284,4 +324,5 @@ export async function bestaetigen(store, { raum, m, p, code, jetzt = Date.now() 
 export async function bestaetigungEntfernen(store, raum, mandantId, personId) {
   await store.delete(bestaetigtSchluessel(raum, mandantId, personId)).catch(() => {});
   await store.delete(codeSchluessel(raum, mandantId, personId)).catch(() => {});
+  quoteVergessen(raum, mandantId);
 }
