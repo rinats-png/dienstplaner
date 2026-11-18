@@ -1715,7 +1715,8 @@ async function behandeln(req, context, ctx) {
             text: `${daS.grund} Es wurde nichts geändert.`, feld: daS.feld }, 422);
         }
         /* P2-12 (Variante B, Betreiberentscheidung 2026-11-18): Ein NEU eingeführter oder GEÄNDERTER Eintrag in
-           erfassung/abweichungen/abwesenheiten mit einem Kalendertag, den es nicht gibt (2026-02-30), ist 422 — nur diese
+           erfassung/abweichungen/abwesenheiten/anfragen/ausschreibungen/krankmeldungen mit einem Kalendertag, den es nicht
+           gibt (2026-02-30) oder der nicht die Form JJJJ-MM-TT hat (2026-2-3), ist 422 — nur diese
            Anfrage. Gespeicherte Alteinträge bleiben unverändert speicherbar (weder normalisiert noch gefiltert noch
            gelöscht) und blockieren keine unabhängigen Speichervorgänge. Voll- und Teilweg, nach der Rechteprüfung. */
         const ktS = kalendertagFehler(zuSchreiben, jetzt ? jetzt.bestand : null);
