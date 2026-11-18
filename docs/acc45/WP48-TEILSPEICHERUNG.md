@@ -1109,17 +1109,31 @@ Weg unverändert; die Kundenrolle (ohne Person) behält ihn auch mit Teilweg —
 `pruefung:wp48-loeschlauf`): echte Aktion und echter Client gegen den echten Handler — Leitung (ausgeführt, nichts
 fällig, abgelehnt, offene Frage), Schalter aus, Kundenrolle (Voll-PUT), Planung (heutiger Weg).
 
-*Review #350, eingearbeitet:* **H1 (Art. 17)** — Ein gescheiterter Auftrag („nicht gespeichert“, `SP.ausstehend()`)
-sperrt den Löschlauf, bis er gespeichert oder verworfen ist. Scheitert ein Auftrag während des Laufs, wird er nach der
-Ausführung gesperrt (`ausstehendNachLoeschlauf`, Lage `vorLoeschlauf`): „Noch einmal senden“ schickt ihn nie, er bleibt
-nur zum Sichern als Datei. Sonst brächte er nach dem Nachladen (neue Basis) Gelöschtes zurück. **M2** — Die Vorgabe
-„voll“ hängt am Auftrag (`vollGewuenscht`), nicht global: Ein neuerer Auftrag, der einen wartenden ersetzt oder in
-einem laufenden aufgeht, übernimmt sie; „Noch einmal senden“ behält sie; ein anderer Auftrag verbraucht sie nicht.
-**N** — Ein Lauf zur Zeit (Doppelklick). Prüfungen über den echten Handler mit Zustandsprüfung; Handmutanten
-(Prüfung `ausstehend` entfernt, Sperre nach dem Lauf entfernt, `naechstesSpeichernVoll` entfernt, Vorgabe nie
-zurückgesetzt, Vorgabe beim Aufgehen verloren, kein Schutz gegen Doppelstart) machen je ihren Fall rot. Die
-Kundenprüfung hat dazu `aufbewahrung` und `aenderungen` im Bestand: Ohne Vorgabe „voll“ ginge der Löschlauf dann als
-Delta, und die Stempel blieben stehen.
+*Review #350 und Delta-Review, eingearbeitet:*
+- **Neu laden Pflicht** (`speicher.js` `neuLadenPflicht`, nur im Arbeitsspeicher, endet nur mit dem Neuladen der Seite):
+  gesetzt, sobald die Bestätigung eines Löschlaufs hinausgegangen ist — bei `ausgefuehrt` und bei jedem unklaren Ausgang
+  (Netzfehler, Zeitgrenze, 5xx; Meldung „Ausgang unklar: Möglicherweise wurde gelöscht …“) — und nach dem Löschlauf per
+  Speichern der Kundenrolle (gesendet und nicht sicher mit 4xx abgewiesen). Solange sie gilt, geht aus der Seite nichts
+  mehr hinaus: kein „Noch einmal senden“, keine neue Eingabe, kein wartender, gescheiterter oder später scheiternder
+  Auftrag, kein Senden beim Schließen; jeder Schreibweg antwortet `{ ok: false, gesperrt: true }`. Die Leiste (Lage
+  `neuLadenPflicht`) bietet nur „Als Datei sichern“ und „Seite neu laden“. Die Datei trägt den Hinweis „Stand von VOR dem
+  Löschlauf, Gelöschtes nicht wieder einspielen“; ein schon gescheiterter Auftrag bleibt darin, spätere Eingaben kommen als
+  `zuletzt` dazu (P4). `beforeunload` fragt nach, solange ein gescheiterter Auftrag nicht als Datei gesichert ist. Damit
+  sind die Gegenbeispiele H1-a (Auftrag scheitert erst nach der Bestätigung) und H1-b (Netzfehler bei der Bestätigung)
+  durch Konstruktion ausgeschlossen. Ein gescheiterter Auftrag sperrt den Löschlauf weiter schon vorher (`SP.ausstehend()`).
+- **Vorgaben am Auftrag** (`vollGewuenscht`, `loeschlaufSpeichern`): Ein neuerer Auftrag übernimmt sie von einem wartenden
+  (Ersetzen innerhalb der Wartezeit), einem laufenden (Aufgehen nach frischem GET) und einem gescheiterten Auftrag (neue
+  Eingabe statt „Noch einmal“); die Entscheidung im Konfliktfenster behält sie; ein anderer Auftrag verbraucht sie nicht.
+- **N:** ein Löschlauf zur Zeit (Doppelklick).
+- **Prüfungen** `pruefungen/wp48-5-loeschlauf-knopf.test.js` (18 Fälle, echter Handler, Zustandsprüfung): H1-a (POST hängt
+  während der Bestätigung, scheitert danach, Basis-Erneuerung, „Noch einmal“ und neue Eingabe senden nichts, Gelöschtes
+  bleibt gelöscht), H1-b, P4, M2-Rest, f (Ersetzen innerhalb der Wartezeit), g (Konfliktentscheidung), M12, Kundenweg,
+  Doppelklick. 14 Handmutanten (u. a. Pflicht bei unklarem Ausgang bzw. nach Ausführung nicht gesetzt, Senden trotz
+  Pflicht, später Gescheitertes nicht gesperrt, gesperrter Auftrag überschrieben, Vorgabe beim Ersetzen / bei der
+  Entscheidung / vom Gescheiterten verloren, Kundenweg ohne Pflicht) machen je ihren Fall rot.
+- **Bekannt, nicht umgesetzt:** Das Konfliktfenster sagt nicht eigens, wenn die „fremde“ Fassung leer ist, weil der
+  Löschlauf sie gelöscht hat (mit der Pflicht entsteht diese Frage nach einem Lauf der eigenen Seite nicht mehr; aus einer
+  anderen Sitzung bleibt der Text allgemein).
 
 ---
 

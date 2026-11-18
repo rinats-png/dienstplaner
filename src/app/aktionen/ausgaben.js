@@ -45,16 +45,27 @@ async function loeschlaufSchritte({ melde, serverstandNachladen, bestaetigen = (
   if (!v.daten.faellig) { melde("Nichts fällig — alle Fristen eingehalten."); return { ergebnis: "nichts" }; }
   if (!bestaetigen(`${v.daten.bericht}\n\n${v.daten.warnung ? `${v.daten.warnung}\n\n` : ""}Das lässt sich nicht rückgängig machen. `
     + "Bei Zweifel vorher eine Sicherung anlegen.")) return { ergebnis: "abgebrochen" };
+  /* Review #350: Ab hier ist die Bestätigung hinausgegangen. Hat der Server gelöscht — oder ist das unklar (Netz,
+     Zeitgrenze, 5xx) —, geht aus dieser Seite nichts mehr hinaus, bis sie neu geladen ist (SP.neuLadenPflichtSetzen):
+     Jeder ausstehende, gescheiterte oder spätere Stand könnte Gelöschtes zurückbringen (Art. 17). */
+  const unklar = () => {
+    SP.neuLadenPflichtSetzen();
+    melde("Ausgang unklar: Möglicherweise wurde gelöscht. Bitte die Seite neu laden, bevor du weiterarbeitest.");
+    return { ergebnis: "unklar" };
+  };
   let a;
   try { a = await SP.loeschlaufServer({ bestaetigt: v.daten.kennung }); }
-  catch (e) { melde(String((e && e.message) || "Keine Verbindung.")); return { ergebnis: "fehler" }; }
+  catch (e) {
+    /* Abgemeldet: abgewiesen, bevor etwas geschah. Sonst (Netz) ist der Ausgang unklar. */
+    if (e && e.message === "nicht-angemeldet") { melde("Die Sitzung ist abgelaufen — es wurde nichts gelöscht."); return { ergebnis: "fehler" }; }
+    return unklar();
+  }
+  if (!a.status || a.status >= 500) return unklar();
   if (a.status === 200 && a.daten.ausgefuehrt) {
-    /* Der Server hat gelöscht: gespeicherten Stand nachladen (neue Basis des Teilwegs). Steht lokal etwas aus,
-       bleibt der lokale Stand (spiegeln ohne Änderung). */
-    /* Ist während des Laufs ein Auftrag gescheitert, stammt er von vorher: nie mehr senden, nur als Datei sichern. */
-    SP.ausstehendNachLoeschlauf();
+    SP.neuLadenPflichtSetzen();
+    /* Gespeicherten Stand nachladen, damit die Ansicht stimmt; gesendet wird bis zum Neuladen nichts mehr. */
     await serverstandNachladen((s) => s);
-    melde(String(a.daten.bericht || "Löschlauf ausgeführt."));
+    melde(`${String(a.daten.bericht || "Löschlauf ausgeführt.")} Bitte die Seite neu laden, bevor du weiterarbeitest.`);
     return { ergebnis: "ausgefuehrt" };
   }
   melde(String(a.daten.text || a.daten.fehler || "Es wurde nichts gelöscht."));
@@ -91,7 +102,7 @@ export function aktionenAusgaben(k) {
         let text = "";
         /* WP-48.5 (3): Bei aktivem Teilweg (Kundenrolle) geht dieser Schreibvorgang als Voll-PUT — Stempel stehen nie im
            Delta, ihr Löschen braucht den ganzen Bestand wie heute. Ohne Teilweg wirkungslos. */
-        if (SP.teilwegAktiv()) SP.naechstesSpeichernVoll();
+        if (SP.teilwegAktiv()) SP.naechstesSpeichernVoll({ loeschlauf: true });
         mUpd((m) => {
           const { mandant, bericht } = loeschlaufAusfuehren(m, heute());
           text = loeschBericht(bericht);

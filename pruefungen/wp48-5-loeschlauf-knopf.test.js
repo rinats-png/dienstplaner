@@ -68,6 +68,7 @@ const speicherAttrappe = (vorab = {}) => { const m = new Map(Object.entries(vora
 const aufrufe = [];
 let antwortErsetzen = null;   // (pfad, methode) => { status, daten } | null — Antwort an Stelle des Servers
 let nachAntwort = null;      // (pfad, methode, rumpf) => Promise | null — läuft nach einer Antwort (Verzahnung)
+let netzNach = null;         // (pfad, methode, rumpf) => boolean — der Server hat geantwortet, die Antwort geht verloren
 function fetchStub() {
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
@@ -76,8 +77,10 @@ function fetchStub() {
     const rumpf = opt.body ? JSON.parse(opt.body) : null;
     aufrufe.push({ url, methode, rumpf });
     const ersatz = antwortErsetzen ? antwortErsetzen(url, methode, rumpf) : null;
+    if (ersatz && ersatz.warten) await ersatz.warten;   // hängende Anfrage (antwortet erst später)
     const a = ersatz ? new Response(JSON.stringify(ersatz.daten), { status: ersatz.status, headers: { "content-type": "application/json" } })
       : await daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    if (netzNach && netzNach(url, methode, rumpf)) throw new TypeError("Failed to fetch");
     if (nachAntwort) { const f = nachAntwort(url, methode, rumpf); if (f) { nachAntwort = null; await f(); } }
     return a;
   });
@@ -109,6 +112,11 @@ async function oberflaeche(token, pid) {
   return o;
 }
 const wege = () => aufrufe.map((a) => `${a.methode} ${a.url}`);
+/** Bestand mit geänderter Zelle a1|tag. */
+const setzeAuf = (b, t, w) => ({ ...b, mandanten: [{ ...b.mandanten[0], abweichungen: { ...b.mandanten[0].abweichungen, [`a1|${t}`]: w } }] });
+/** Gelöschtes jenseits der Frist ist gelöscht (Zellen und Stempel). */
+const geloescht = async (raum) => { const m = await gespeichertM(raum);
+  return [m.abweichungen[`a1|${tag(-1000)}`], m.abweichungen[`a1|${tag(-900)}`], m.einstempeln[`a1|${tag(-1000)}`]]; };
 
 describe("WP-48.5 (3) Löschlauf-Knopf", () => {
   beforeAll(async () => {
@@ -128,7 +136,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     const HEUTE = Z.heuteBerlin();
     tag = (n) => Z.tagePlus(HEUTE, n);
   });
-  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; antwortErsetzen = null; nachAntwort = null; });
+  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; antwortErsetzen = null; nachAntwort = null; netzNach = null; });
   afterAll(async () => {
     delete process.env.CENTRIC_TEILSPEICHERUNG;
     if (wurzel) await rm(wurzel, { recursive: true, force: true });
@@ -209,21 +217,30 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     await o.SP.schreib(o.ref.current, { sofort: true, durch: "Pruefung", onFehler: (l) => o.fehler.push(l) });
     /* Vor dem Voll-PUT frisch lesen (Review #348 H1), dann der Voll-PUT. */
     expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
-    expect(o.fehler).toEqual([]);
     const m = await gespeichertM(raum);
     expect(m.abweichungen[`a1|${tag(-1000)}`]).toBeUndefined();
     expect(m.einstempeln[`a1|${tag(-1000)}`]).toBeUndefined();   // Stempel jenseits der Frist gelöscht (nur über den Voll-PUT)
     expect(m.einstempeln[`a1|${tag(-1)}`]).toBeTruthy();
-    /* Danach (Rückfall gelungen) bleibt die Sitzung beim Voll-PUT; die Vorgabe „voll" ist verbraucht. */
-    expect(o.SP.teilwegAktiv()).toBe(false);
-    /* Review #350 M12: Die Vorgabe gilt nur für diesen Auftrag. Nach dem Übernehmen eines gelesenen Stands geht die
-       nächste gewöhnliche Änderung wieder über den Teilweg. */
+    /* Review #350: Auch der Kundenweg verlangt danach Neuladen — es geht nichts mehr hinaus. */
+    expect(o.SP.neuLadenNoetig()).toBe(true);
+    expect(o.fehler.map((l) => l.art)).toEqual(["neuLadenPflicht"]);
+    aufrufe.length = 0;
+    expect(await o.SP.schreib(setzeAuf(o.ref.current, tag(23), "-"), { sofort: true, durch: "Pruefung" })).toEqual({ ok: false, gesperrt: true });
+    expect(wege()).toEqual([]);
+  });
+
+  it("M12: Die Vorgabe „voll“ gilt nur für den nächsten Auftrag", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    o.SP.naechstesSpeichernVoll();
+    await o.SP.schreib(setzeAuf(o.ref.current, tag(20), "-"), { sofort: true });
+    expect(aufrufe.filter((x) => x.methode === "PUT")).toHaveLength(1);
     const n = await o.SP.lies();
     o.SP.teilwegUebernehmen(n.teilAntwort);
-    const s = { ...n.bestand, session: o.ref.current.session };
-    o.ref.current = { ...s, mandanten: [{ ...s.mandanten[0], abweichungen: { ...s.mandanten[0].abweichungen, [`a1|${tag(23)}`]: "-" } }] };
     aufrufe.length = 0;
-    await o.SP.schreib(o.ref.current, { sofort: true, durch: "Pruefung", onFehler: (l) => o.fehler.push(l) });
+    await o.SP.schreib(setzeAuf({ ...n.bestand, session: o.ref.current.session }, tag(23), "-"), { sofort: true });
     expect(wege()).toEqual(["POST /api/bestand/teile"]);
   });
 
@@ -242,7 +259,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     o.ref.current = { ...s0, mandanten: [{ ...s0.mandanten[0], abweichungen: { ...s0.mandanten[0].abweichungen, [`a1|${tag(20)}`]: "-" } }] };
     let postNr = 0, putNr = 0;
     antwortErsetzen = (u, m) => (u === "/api/bestand/teile" && ++postNr === 1 ? { status: 413, daten: { code: "TEILE_ZU_GROSS", text: "zu groß" } }
-      : m === "PUT" && ++putNr === 1 ? { status: 500, daten: { fehler: "Serverfehler" } } : null);
+      : m === "PUT" && ++putNr === 1 ? { status: 429, daten: { fehler: "Gerade wird sehr viel gespeichert." } } : null);
     nachAntwort = (u, m) => (m === "GET" && u === "/api/bestand" ? async () => {
       o.akt.loeschlauf();
       o.SP.schreib(o.ref.current, opt);
@@ -250,7 +267,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     await o.SP.schreib(o.ref.current, { ...opt, sofort: true });
     await o.SP.schreibenAbschliessen();
     expect(o.mUpd).toHaveLength(1);
-    expect(fehler.map((l) => l.art)).toEqual(["server"]);
+    expect(fehler.map((l) => l.art)).toEqual(["unbekannt"]);
     aufrufe.length = 0;
     expect((await o.SP.nochmalSchreiben()).ok).toBe(true);
     expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);   // der Löschlauf geht als Voll-PUT, nicht als Delta
@@ -297,7 +314,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
       antwortErsetzen = null;
     } : null);
     expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausgefuehrt" });
-    expect(lagen).toEqual(["server", "vorLoeschlauf"]);   // die Leiste bietet dann nur Datei sichern und neu laden
+    expect(lagen).toEqual(["server", "neuLadenPflicht"]);   // die Leiste bietet dann nur Datei sichern und neu laden
     aufrufe.length = 0;
     expect(await o.SP.nochmalSchreiben()).toEqual({ ok: false, gesperrt: true });
     expect(wege()).toEqual([]);
@@ -347,5 +364,123 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     aufrufe.length = 0;
     expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausstehend" });
     expect(wege().filter((w) => w.endsWith("/api/loeschlauf"))).toEqual([]);
+  });
+
+  /* ---------------- Delta-Review #350: neu laden Pflicht nach dem Löschlauf ---------------- */
+  it("H1-a: Teil-POST hängt während der Bestätigung, scheitert danach; nach Basis-Erneuerung sendet „Noch einmal“ nichts", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const lagen = [];
+    let loesen;
+    const haengt = new Promise((j) => { loesen = j; });
+    let eingabe = null;
+    nachAntwort = (u, m, rumpf) => (u === "/api/loeschlauf" && rumpf && rumpf.vorschau ? async () => {
+      antwortErsetzen = (u2) => (u2 === "/api/bestand/teile" ? { status: 500, daten: { fehler: "Serverfehler" }, warten: haengt } : null);
+      o.ref.current = setzeAuf(o.ref.current, tag(20), "-");
+      eingabe = o.SP.schreib(o.ref.current, { sofort: true, onFehler: (l) => lagen.push(l.art) });   // hängt
+    } : null);
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausgefuehrt" });
+    expect(o.SP.neuLadenNoetig()).toBe(true);
+    loesen();                                   // der hängende POST scheitert jetzt (500)
+    await eingabe;
+    antwortErsetzen = null;
+    expect(lagen.at(-1)).toBe("neuLadenPflicht");
+    /* Basis-Erneuerung wie nach einem Stempel, dann „Noch einmal senden“ und eine neue Eingabe. */
+    const n = await o.SP.lies();
+    o.SP.teilwegUebernehmen(n.teilAntwort);
+    aufrufe.length = 0;
+    expect(await o.SP.nochmalSchreiben()).toEqual({ ok: false, gesperrt: true });
+    expect(await o.SP.schreib(setzeAuf({ ...n.bestand, session: o.ref.current.session }, tag(23), "-"), { sofort: true })).toEqual({ ok: false, gesperrt: true });
+    expect(wege()).toEqual([]);
+    expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
+    expect(o.SP.ausstehenderBestand().hinweis).toMatch(/VOR dem Löschlauf/);
+  });
+
+  it("H1-b: Netzfehler bei der Bestätigung (Server hat gelöscht): Ausgang unklar, neu laden Pflicht, nichts mehr gesendet", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    netzNach = (u, m, rumpf) => u === "/api/loeschlauf" && !!rumpf && !!rumpf.bestaetigt;
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "unklar" });
+    expect(o.meldungen.at(-1)).toMatch(/Ausgang unklar/);
+    expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);   // der Server hatte gelöscht
+    expect(o.SP.neuLadenNoetig()).toBe(true);
+    aufrufe.length = 0;
+    expect(await o.SP.schreib(setzeAuf(o.ref.current, tag(20), "-"), { sofort: true })).toEqual({ ok: false, gesperrt: true });
+    expect(await o.SP.nochmalSchreiben()).toEqual({ ok: false, gesperrt: true });
+    expect(wege()).toEqual([]);
+    expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("P4: Eingaben nach dem Löschlauf überschreiben den gesperrten Auftrag nicht — er bleibt als Datei zu sichern", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    nachAntwort = (u, m, rumpf) => (u === "/api/loeschlauf" && rumpf && rumpf.vorschau ? async () => {
+      antwortErsetzen = (u2) => (u2 === "/api/bestand/teile" ? { status: 500, daten: { fehler: "Serverfehler" } } : null);
+      o.ref.current = setzeAuf(o.ref.current, tag(20), "-");
+      await o.SP.schreib(o.ref.current, { sofort: true });
+      antwortErsetzen = null;
+    } : null);
+    await o.akt.loeschlauf();
+    await o.SP.schreib(setzeAuf(o.ref.current, tag(23), "N"), { sofort: true });
+    const b = o.SP.ausstehenderBestand();
+    expect(b.ausstehend.mandanten[0].abweichungen[`a1|${tag(20)}`]).toBe("-");
+    expect(b.zuletzt.mandanten[0].abweichungen[`a1|${tag(23)}`]).toBe("N");
+  });
+
+  it("M2-Rest: Löschlauf-Speichern der Kundenrolle sicher abgewiesen (429), dann neue Eingabe: erbt „voll“, Stempel werden gelöscht", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["KU"]);
+    const o = await oberflaeche(token.KU, "l1");
+    o.akt.loeschlauf();
+    let putNr = 0;
+    antwortErsetzen = (u, m) => (m === "PUT" && ++putNr === 1 ? { status: 429, daten: { fehler: "Gerade wird sehr viel gespeichert." } } : null);
+    await o.SP.schreib(o.ref.current, { sofort: true });
+    expect(o.SP.ausstehend()).toBeTruthy();
+    expect(o.SP.neuLadenNoetig()).toBe(false);          // sicher abgewiesen: nichts gelöscht
+    aufrufe.length = 0;
+    await o.SP.schreib(setzeAuf(o.ref.current, tag(23), "-"), { sofort: true });
+    expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
+    expect(o.SP.neuLadenNoetig()).toBe(true);
+  });
+
+  it("f: Eingabe innerhalb der Wartezeit nach dem Löschlauf (Kunde) ersetzt den Auftrag und erbt „voll“", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["KU"]);
+    const o = await oberflaeche(token.KU, "l1");
+    aufrufe.length = 0;
+    o.akt.loeschlauf();
+    o.SP.schreib(o.ref.current, {});                                     // wartet (WARTE)
+    await o.SP.schreib(setzeAuf(o.ref.current, tag(23), "-"), { sofort: true });   // ersetzt den wartenden
+    expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);   // ein Auftrag, als Voll-PUT
+    expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("g: Konfliktfrage beim Löschlauf-Speichern (Kunde): nach der Entscheidung geht es weiter als Voll-PUT", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["KU", "PL"]);
+    const o = await oberflaeche(token.KU, "l1");
+    const pl = await oberflaeche(token.PL, "p1");
+    await pl.SP.schreib(setzeAuf(pl.ref.current, tag(20), "-"), { sofort: true });   // fremd
+    o.ref.current = setzeAuf(o.ref.current, tag(20), "N");                              // eigene, ungespeichert
+    o.akt.loeschlauf();
+    await o.SP.schreib(o.ref.current, { sofort: true, onTeilLage: () => {} });
+    const z = o.SP.teilwegLage();
+    expect(z.konflikte.map((f) => f.k)).toEqual([`a1|${tag(20)}`]);
+    aufrufe.length = 0;
+    o.SP.teilEntscheidungAnwenden({ [z.konflikte[0].id]: "fremd" });
+    await o.SP.schreibenAbschliessen();
+    expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(await geloescht(raum)).toEqual([undefined, undefined, undefined]);
+    expect((await gespeichertM(raum)).abweichungen[`a1|${tag(20)}`]).toBe("-");
   });
 });

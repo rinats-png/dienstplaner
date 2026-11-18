@@ -69,11 +69,12 @@ export const SPEICHERLAGE = {
       + "dann neu.",
     neuladen: true,
   },
-  /* WP-48.5 (Review #350 H1): ein gescheiterter Auftrag von vor dem Löschlauf — er enthielte Gelöschtes. */
-  vorLoeschlauf: {
-    titel: "Diese Änderungen werden nach dem Löschlauf nicht mehr gesendet",
-    text: "Sie stammen von vor dem Löschlauf und enthalten noch, was er eben gelöscht hat. Sichere sie als Datei, lade "
-      + "neu und trage nötige Änderungen danach noch einmal ein.",
+  /* WP-48.5 (Review #350): Nach einem Löschlauf (auch bei unklarem Ausgang) geht aus dieser Seite nichts mehr hinaus. */
+  neuLadenPflicht: {
+    titel: "Nach dem Löschlauf bitte die Seite neu laden",
+    text: "Bis zum Neuladen wird nichts mehr gespeichert: Jeder Stand dieser Seite kann noch enthalten, was der Löschlauf "
+      + "gelöscht hat. Sichere nicht gespeicherte Änderungen als Datei, lade neu und trage sie danach noch einmal ein — "
+      + "Gelöschtes bitte nicht wieder einspielen.",
     neuladen: true,
   },
   zuGross: {
@@ -130,8 +131,10 @@ export function NichtGespeichert({ lage, melde, aufGeloest }) {
     if (!b) return melde("Es liegt nichts mehr aus.");
     const marke = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     if (lade(`centric-ungespeichert-${marke}.json`, JSON.stringify(b, null, 2),
-      "application/json;charset=utf-8"))
+      "application/json;charset=utf-8")) {
+      SP.ausstehendGesichert();   // WP-48.5: beforeunload fragt danach nicht mehr (nur nach einem Löschlauf wirksam)
       melde("Als Datei gesichert.");
+    }
   };
 
   return (

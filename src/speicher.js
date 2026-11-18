@@ -311,14 +311,13 @@ export const teilwegAktiv = () => !!teil || !!teilRoh;
  * @param {Record<string, "fremd"|"meins">} wahl
  */
 export function teilEntscheidungAnwenden(wahl) {
-  if (!letzterBestand) return null;
+  if (neuLadenPflicht || !letzterBestand) return null;
   const r = teilEntscheiden(teil, wahl, letzterBestand);
   if (!r) return null;
   teil = r.teil;
   letzterBestand = r.bestand;
   if (uhr) { clearTimeout(uhr); uhr = null; }
-  const vollGewuenscht = !!((teilAuftrag && teilAuftrag.vollGewuenscht) || (offen && offen.vollGewuenscht));
-  offen = { ...(teilAuftrag || {}), bestand: r.bestand, ausnahme: null, ...(vollGewuenscht ? { vollGewuenscht: true } : {}) };
+  offen = { ...(teilAuftrag || {}), bestand: r.bestand, ausnahme: null, ...vorgabenAus(teilAuftrag, offen) };
   jetztSchreiben().catch(() => {});
   return r.bestand;
 }
@@ -342,7 +341,61 @@ export async function loeschlaufServer(rumpf) {
     beim nächsten schreib() an DIESEN Auftrag über (Review #350 M2: nicht global — ein älterer Auftrag, der noch auf sein
     frisches GET wartet, verbraucht sie nicht) und bleibt an ihm, auch beim Wiederholen. */
 let vollEinmal = false;
-export function naechstesSpeichernVoll() { if (teil || teilRoh) vollEinmal = true; }
+let loeschlaufEinmal = false;
+/** @param {{ loeschlauf?: boolean }} [o]  loeschlauf: dieser Auftrag ist ein Löschlauf per Speichern (danach neu laden) */
+export function naechstesSpeichernVoll({ loeschlauf = false } = {}) {
+  if (!teil && !teilRoh) return;
+  vollEinmal = true;
+  if (loeschlauf) loeschlaufEinmal = true;
+}
+/** Vorgaben „voll" und „Löschlauf per Speichern" der genannten Aufträge vereinen (Review #350 M2: am Auftrag, nicht
+    global; ein neuerer Auftrag übernimmt sie von einem wartenden, laufenden oder gescheiterten). */
+function vorgabenAus(...auftraege) {
+  const aus = {};
+  for (const a of auftraege) {
+    if (a && a.vollGewuenscht) aus.vollGewuenscht = true;
+    if (a && a.loeschlaufSpeichern) aus.loeschlaufSpeichern = true;
+  }
+  return aus;
+}
+
+/* ---------------- Review #350: Merkmal „neu laden Pflicht" nach einem Löschlauf ----------------
+   Sobald die Bestätigung eines Löschlaufs hinausgegangen ist (ausgeführt oder Ausgang unklar) bzw. der Löschlauf per
+   Speichern (Kundenrolle) gesendet wurde, geht aus dieser Seite nichts mehr hinaus: kein „Noch einmal senden", keine
+   neue Eingabe, kein wartender, gescheiterter oder beim Schließen gesendeter Auftrag. Jeder dieser Stände kann noch
+   enthalten, was der Löschlauf gelöscht hat (Art. 17). Die Leiste bietet nur „Als Datei sichern" und „Seite neu laden".
+   Das Merkmal liegt nur im Arbeitsspeicher und endet mit dem Neuladen der Seite. Ohne Teilweg wird es nie gesetzt. */
+let neuLadenPflicht = false;
+/** jüngster lokaler Stand nach Eintritt der Pflicht (für die Datei-Sicherung) */
+let pflichtZuletzt = null;
+/** Rückruf der Leiste „nicht gespeichert" aus dem letzten Auftrag */
+let letzteOnFehler = null;
+const pflichtLage = () => ({ art: "neuLadenPflicht", status: null, zeit: new Date().toISOString(),
+  text: "Nach dem Löschlauf wird nichts mehr gesendet — bitte die Seite neu laden." });
+function pflichtMelden() {
+  const f = (gescheitert && gescheitert.auftrag && gescheitert.auftrag.onFehler) || letzteOnFehler;
+  if (f) { try { f(gescheitert ? gescheitert.lage : pflichtLage()); } catch { /* Anzeige */ } }
+}
+/** Einen Auftrag unter der Pflicht aufnehmen: nicht senden, nur zum Sichern als Datei halten. */
+function pflichtAufnehmen(auftrag) {
+  if (auftrag && auftrag.bestand) { letzterBestand = auftrag.bestand; pflichtZuletzt = auftrag.bestand; }
+  /* Ein schon gescheiterter Auftrag bleibt (sein Bestand ginge sonst für die Sicherung verloren, P4). */
+  gescheitert = gescheitert ? { ...gescheitert, gesperrt: true, lage: pflichtLage() }
+    : (auftrag ? { auftrag, gesperrt: true, lage: pflichtLage() } : null);
+  pflichtMelden();
+}
+/** Merkmal setzen (nach der Bestätigung eines Löschlaufs, auch bei unklarem Ausgang). */
+export function neuLadenPflichtSetzen() {
+  neuLadenPflicht = true;
+  if (uhr) { clearTimeout(uhr); uhr = null; }
+  const a = offen; offen = null;
+  if (a || gescheitert) pflichtAufnehmen(a);
+  else pflichtMelden();
+}
+/** Ist die Seite nach einem Löschlauf neu zu laden? */
+export const neuLadenNoetig = () => neuLadenPflicht;
+/** Die Leiste hat den ausstehenden Bestand als Datei gesichert (beforeunload fragt dann nicht mehr). */
+export function ausstehendGesichert() { if (gescheitert) gescheitert = { ...gescheitert, gesichert: true }; }
 
 /** WP-48.5: Nach der Sicherung als Datei neu laden — der Teilweg verwirft seinen Zustand (kein Senden, keine Rückfrage). */
 export function teilwegVerwerfen() {
@@ -534,11 +587,18 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, o
   /* onTeilLage(zustand): Konfliktfrage oder „neu laden" auf dem Teilweg (WP-48.5); onTeilLokal(bestand): der Teilweg
      hat den lokalen Stand neu aufgesetzt, die Oberfläche übernimmt ihn. Ohne Teilweg werden beide nie gerufen. */
   if (neuLadenSperre) return Promise.resolve();   // WP-48.5: nach Sicherung als Datei, vor dem Neuladen
+  if (onFehler) letzteOnFehler = onFehler;
+  /* Review #350: nach einem Löschlauf nichts mehr senden (ohne Teilweg nie gesetzt). */
+  if (neuLadenPflicht) {
+    pflichtAufnehmen({ bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, onTeilLage, onTeilLokal });
+    return Promise.resolve({ ok: false, gesperrt: true });
+  }
   /* Review #350 M2: die Vorgabe „voll“ hängt am Auftrag; ein neuerer Auftrag, der einen wartenden ersetzt, übernimmt sie. */
-  const vollGewuenscht = vollEinmal || !!(offen && offen.vollGewuenscht);
-  vollEinmal = false;
+  const vorgaben = vorgabenAus(offen, gescheitert && gescheitert.auftrag,
+    { vollGewuenscht: vollEinmal, loeschlaufSpeichern: loeschlaufEinmal });
+  vollEinmal = false; loeschlaufEinmal = false;
   offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, onTeilLage, onTeilLokal,
-    ...(vollGewuenscht ? { vollGewuenscht: true } : {}) };
+    ...vorgaben };
   letzterBestand = bestand;
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
@@ -580,7 +640,7 @@ export const ausstehend = () => (gescheitert ? { ...gescheitert.lage } : null);
 export async function nochmalSchreiben() {
   if (!gescheitert) return { ok: true, nichts: true };
   /* Review #350 H1: Ein Auftrag von vor einem Löschlauf geht nie mehr hinaus (er enthielte Gelöschtes). */
-  if (gescheitert.gesperrt) return { ok: false, gesperrt: true };
+  if (neuLadenPflicht || gescheitert.gesperrt) return { ok: false, gesperrt: true };
   const a = gescheitert;
   gescheitert = null;
   offen = a.auftrag;
@@ -588,22 +648,15 @@ export async function nochmalSchreiben() {
   return { ok: !gescheitert };
 }
 
-/**
- * WP-48.5 (3), Review #350 H1: Nach einem Löschlauf über den Server darf ein gescheiterter Auftrag von vorher nicht mehr
- * gesendet werden — sein Bestand enthält, was der Löschlauf eben gelöscht hat (Art. 17). Er bleibt zum Sichern als
- * Datei erhalten; die Leiste „nicht gespeichert“ zeigt dann „Als Datei sichern“ und „Neu laden“, kein Wiederholen.
- * @returns {boolean} ob ein solcher Auftrag gesperrt wurde
- */
-export function ausstehendNachLoeschlauf() {
-  if (!gescheitert) return false;
-  gescheitert = { ...gescheitert, gesperrt: true, lage: { art: "vorLoeschlauf", status: null, zeit: new Date().toISOString(),
-    text: "Änderungen von vor dem Löschlauf — nicht mehr gesendet." } };
-  if (gescheitert.auftrag.onFehler) { try { gescheitert.auftrag.onFehler(gescheitert.lage); } catch { /* Anzeige */ } }
-  return true;
-}
-
 /** Der ausstehende Bestand, um ihn notfalls als Datei zu sichern. */
-export const ausstehenderBestand = () => (gescheitert ? gescheitert.auftrag.bestand : null);
+export const ausstehenderBestand = () => {
+  if (!gescheitert) return null;
+  if (!neuLadenPflicht) return gescheitert.auftrag.bestand;
+  /* Review #350: nach einem Löschlauf mit Hinweis — und mit dem jüngsten Stand, falls danach noch eingegeben wurde. */
+  return { hinweis: "Enthält den Stand von VOR dem Löschlauf. Gelöschtes bitte nicht wieder einspielen.",
+    ausstehend: gescheitert.auftrag.bestand,
+    ...(pflichtZuletzt && pflichtZuletzt !== gescheitert.auftrag.bestand ? { zuletzt: pflichtZuletzt } : {}) };
+};
 
 /** Verwirft ihn — nur auf ausdrückliche Ansage. */
 export const ausstehendVerwerfen = () => { gescheitert = null; };
@@ -731,7 +784,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
         if (e !== undefined && e !== null) etag = e;
         if (offen) {
           /* Review #350 M2: Der wartende Auftrag geht in diesem auf — seine Vorgabe „voll“ auch. */
-          if (offen.vollGewuenscht) auftrag.vollGewuenscht = true;
+          Object.assign(auftrag, vorgabenAus(offen));
           offen = null; if (uhr) { clearTimeout(uhr); uhr = null; }
         }
         if (auftrag.onTeilLokal) { try { auftrag.onTeilLokal(b); } catch { /* Anzeige */ } }
@@ -787,6 +840,8 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
 
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
+  /* Review #350: nach einem Löschlauf geht kein wartender Auftrag mehr hinaus (auch nicht beim Schließen). */
+  if (neuLadenPflicht) { const a = offen; offen = null; uhr = null; pflichtAufnehmen(a); return; }
   const auftrag = offen; offen = null; uhr = null;
   let status = null;
   unterwegs += 1;
@@ -842,6 +897,7 @@ async function schreibenAusfuehren(beimSchliessen) {
       gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
       if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
     };
+    auftrag.putGesendet = true;
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
       ...(abbruch ? { signal: abbruch.signal } : {}),
@@ -905,6 +961,13 @@ async function schreibenAusfuehren(beimSchliessen) {
       zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
+    /* Review #350: Löschlauf per Speichern (Kundenrolle) gesendet und nicht sicher abgewiesen → neu laden Pflicht. */
+    if (auftrag.loeschlaufSpeichern && auftrag.putGesendet && !(status && status >= 400 && status < 500) && !neuLadenPflicht) {
+      neuLadenPflicht = true;
+      if (!gescheitert) pflichtMelden();
+    }
+    /* Was während der Pflicht noch scheiterte (vorher gesendet, später gescheitert), wird nie wiederholt. */
+    if (neuLadenPflicht && gescheitert && !gescheitert.gesperrt) { gescheitert = { ...gescheitert, gesperrt: true, lage: pflichtLage() }; pflichtMelden(); }
     if (auftrag.ausnahme) angabenUnterwegs.delete(auftrag.ausnahme);
     if (zeitgeber) clearTimeout(zeitgeber);
     unterwegs -= 1;
@@ -955,8 +1018,10 @@ if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", (e) => {
     /* WP-48.5: Auf dem Teilweg kann Ungespeichertes auch ohne wartenden Auftrag liegen (offene Frage, unklarer
        Ausgang, „neu laden") — dann nichts senden, aber nachfragen. Ohne Teilweg ist teilOffen() immer falsch. */
-    if (!offen && !teilOffen()) return;
-    if (offen) jetztSchreiben(true);
+    /* Review #350: nach einem Löschlauf: nichts senden, aber nachfragen, solange Ungesichertes gescheitert ist. */
+    const pflichtOffen = neuLadenPflicht && !!gescheitert && !gescheitert.gesichert;
+    if (!offen && !teilOffen() && !pflichtOffen) return;
+    if (offen && !neuLadenPflicht) jetztSchreiben(true);
     /* Zusätzlich nachfragen: keepalive ist zuverlässig, aber nicht
        garantiert. Bei einem Monatsplan wiegt eine Rückfrage leichter als
        eine verlorene Stunde Arbeit. */
