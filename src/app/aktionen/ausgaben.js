@@ -17,7 +17,8 @@ import { dim_, pad, toMin, addDays } from "../../regelwerk.js";
  * Vorschau (schreibt nichts), Bestätigung mit der Kennung der Vorschau. Die Rechnung macht der Server unter der
  * Raumsperre mit derselben Regel; die Oberfläche löscht nichts selbst. Danach den gespeicherten Stand nachladen.
  */
-export async function loeschlaufUeberServer({ melde, serverstandNachladen, bestaetigen = (t) => window.confirm(t) }) {
+/* Keine eigene Ausfuhr: Jede Ausfuhr dieser Datei zählt als Aktionsfabrik (WP-39, pruefungen/wp39-app-aufbau.test.js). */
+async function loeschlaufUeberServer({ melde, serverstandNachladen, bestaetigen = (t) => window.confirm(t) }) {
   /* Erst alles Ausstehende speichern: Der Server rechnet auf dem gespeicherten Stand. */
   await SP.schreibenAbschliessen();
   if (SP.schreibenAusstehend()) {
