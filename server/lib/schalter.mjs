@@ -12,6 +12,9 @@
                  `teile`, die Oberfläche bleibt beim Voll-PUT. Kein öffentlicher Weg, aber
                  ein neuer Schreibweg — deshalb dieselbe strenge Regel. Einschalten erst mit
                  der Oberfläche (WP-48.5) und nach Betreiberfreigabe.
+                 Derselbe Schalter gibt POST /api/loeschlauf frei (WP-48.4, Löschlauf der
+                 Leitung als eigener Weg, lib/loeschlauf.mjs); aus: 404, der Löschlauf läuft
+                 wie bisher über den Voll-PUT.
    ========================================================================== */
 
 export const demoAn = () => process.env.CENTRIC_DEMO === "true";

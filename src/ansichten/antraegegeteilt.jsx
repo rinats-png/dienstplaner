@@ -44,7 +44,7 @@ export function AntraegeGeteilt({ sitz, akt }) {
       else if (k === "k" || e.key === "ArrowUp") { e.preventDefault(); setZeiger((z) => Math.max(0, z - 1)); }
       else if (k === "g" && aktueller && aktueller.status === "offen") { e.preventDefault(); akt.entscheideAntrag(aktueller.id, true); }
       else if (k === "a" && aktueller && aktueller.status === "offen") { e.preventDefault(); akt.entscheideAntrag(aktueller.id, false); }
-      else if (e.key === " " && aktueller) { e.preventDefault();
+      else if (e.key === " " && aktueller && !(e.target && e.target.closest && e.target.closest("button, a[href]"))) { e.preventDefault();
         setGewaehlt((g) => g.includes(aktueller.id) ? g.filter((x) => x !== aktueller.id) : [...g, aktueller.id]); }
     };
     window.addEventListener("keydown", taste);
@@ -114,7 +114,7 @@ export function AntraegeGeteilt({ sitz, akt }) {
                   const amZeiger = i === zeiger;
                   const tage = between(a.von, a.bis) + 1;
                   return (
-                    <div key={a.id} {...klickbar(() => setZeiger(i))}
+                    <div key={a.id} onClick={() => setZeiger(i)}
                       style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", flexWrap: "wrap",
                         borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                         background: amZeiger ? C.accentLight : anGewaehlt ? C.bg : "transparent",
@@ -123,7 +123,12 @@ export function AntraegeGeteilt({ sitz, akt }) {
                         onChange={(ev) => setGewaehlt(ev.target.checked
                           ? [...gewaehlt, a.id] : gewaehlt.filter((x) => x !== a.id))}
                         className="ziel-haken" style={{ width: 15, height: 15, flexShrink: 0, accentColor: C.accent }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* P2-11a: Die Zeile ist kein Bedienelement mehr (nested-interactive, WCAG 4.1.2).
+                          Der Mausklick auf die freie Fläche der Zeile bleibt; für Tastatur und
+                          Vorlesen ist der Inhaltsbereich die eigene Schaltfläche, Kästchen und
+                          Entscheidungsknöpfe stehen als Geschwister daneben, nicht als Kinder. */}
+                      <div {...klickbar(() => setZeiger(i))} aria-current={amZeiger ? "true" : undefined}
+                        style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                           {p && <Avatar person={p} size="sm" style={{ width: 24, height: 24, fontSize: 10 }} />}
                           <span style={{ fontSize: 13.5, fontWeight: 600 }}>

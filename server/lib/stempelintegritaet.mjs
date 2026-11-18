@@ -60,6 +60,7 @@ import { stichtage, aufbewahrungFehler, STANDORT_FELDER } from "./aufbewahrung.m
 import { geplanterDienst, BEGINN_GLEICH_ENDE } from "./zeiterfassung.mjs";
 import { regelHinweise, pauseZuLang, uhrDauerAbweichend } from "./zeitregeln.mjs";
 import { gemesseneDauerMin, dauerMinText } from "./istdaten.mjs";
+import { ketteAn } from "./kette.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -77,7 +78,31 @@ const UHR = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
-const tagVon = (k) => { const t = String(k).split("|")[1] || ""; return TAG.test(t) ? t : null; };
+const ziffer = (c) => c >= 48 && c <= 57;
+/** Der Tag „JJJJ-MM-TT“ aus „personId|JJJJ-MM-TT“ — null ohne gültige Form. WP-48.6: ohne split/RegExp,
+    gleichwertig zu  t = String(k).split("|")[1] || "";  TAG.test(t) ? t : null
+    (der Teil nach dem ersten Strich ist genau zehn Zeichen in dieser Form; danach Ende oder der nächste Strich).
+    Beide Fassungen vergleicht pruefungen/wp48-6-kette.test.js. */
+const tagVon = (k) => {
+  const s = String(k);
+  const i = s.indexOf("|");
+  if (i < 0 || s.length < i + 11) return null;
+  if (s.length > i + 11 && s.charCodeAt(i + 11) !== 124) return null;
+  const c = (n) => s.charCodeAt(i + 1 + n);
+  return ziffer(c(0)) && ziffer(c(1)) && ziffer(c(2)) && ziffer(c(3)) && c(4) === 45 && ziffer(c(5)) && ziffer(c(6))
+    && c(7) === 45 && ziffer(c(8)) && ziffer(c(9)) ? s.slice(i + 1, i + 11) : null;
+};
+/** Nur für die Prüfung (Differenzialtest WP-48.6). */
+export const tagVonFuerPruefung = tagVon;
+
+/* WP-48.6 (segmentproportionale Kette): Ein Eintrag der Übermittlung, der DASSELBE Objekt ist wie der
+   gespeicherte (im Teilweg aus der Sicht des gelesenen Stands), widerspricht ihm nie — jede Feldprüfung
+   unten vergliche einen Wert mit sich selbst. Ausnahme, die die Abkürzung deshalb ausschließt: Listenfelder
+   (Korrekturen, Anträge, Kennzeichen), die gespeichert KEINE Liste sind — die weist der volle Weg ab, auch
+   unverändert. Ergebnis gleich dem vollen Weg; abschaltbar über CENTRIC_KETTE_AUS=1 (kette.mjs). */
+const LISTENFELDER = ["korrekturen", "antraege", "markierungen"];
+const stempelUnveraendert = (an, e, a) => an && e === a && objekt(a)
+  && LISTENFELDER.every((f) => !Object.prototype.hasOwnProperty.call(a, f) || Array.isArray(a[f]));
 
 /** Tage vor diesem Stichtag sind abgelaufen und dürfen der Löschpflicht weichen.
     Dieselbe Rechnung wie der Datenschutzlauf (lib/aufbewahrung.mjs, stichtage):
@@ -117,6 +142,7 @@ function bekannteIstStaende(gespeichertE, stempel) {
  */
 export function stempelWiderspruch(altM, neuM, o = {}) {
   if (!objekt(neuM)) return null;
+  const kurz = ketteAn();                                       // WP-48.6: Abkürzungen (Vorgabe an)
   const altS = altM && objekt(altM.einstempeln) ? altM.einstempeln : {};
   const altE = altM && objekt(altM.erfassung) ? altM.erfassung : {};
   const stich = o.loeschlauf && o.heute && altM ? loeschStichtag(altM, o.heute) : null;
@@ -145,6 +171,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
     } else {
       for (const [k, e] of Object.entries(n)) {
         const a = altS[k];
+        if (stempelUnveraendert(kurz, e, a)) continue;               // WP-48.6: derselbe Eintrag, kein Widerspruch
         if (a === undefined) {
           if (e === null || e === undefined) continue;          // nichts da, nichts gelöscht
           if (verfallen(k)) continue;                           // vom Datenschutzlauf gelöscht (B1)
@@ -196,7 +223,8 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
       }
       /* Weggelassene Stempel: Wer alle Stempel sieht (Leitung, Planung) und
          den Monat unverändert kennt, hat einen fehlenden Stempel gelöscht. */
-      if (o.vollSicht) {
+      /* WP-48.6: Ist die Übermittlung dasselbe Objekt wie der gespeicherte Stand, fehlt kein Schlüssel. */
+      if (o.vollSicht && !(kurz && n === altS)) {
         for (const k of Object.keys(altS)) {
           if (k in n || abgelaufen(k) || !weggelassenErkennbar(k)) continue;
           return nein("Ein Stempel ist ein Beleg und lässt sich nicht löschen.", k);
@@ -216,6 +244,8 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
     const SA_NEIN = "Selbstauskünfte (Anträge auf Ist-Zeit) entstehen nur über die Zeitbestätigung und werden nur über die Freigabe entschieden — nicht über das Speichern.";
     for (const [k, e] of Object.entries(neuM.erfassung)) {
       const a = altE[k];
+      /* WP-48.6: derselbe Eintrag ohne Selbstauskunft — beide Teile fehlen, nichts zu prüfen (wie unten). */
+      if (kurz && e === a && !(objekt(e) && e.selbstauskunft !== undefined)) continue;
       const asa = objekt(a) ? a.selbstauskunft : undefined, esa = objekt(e) ? e.selbstauskunft : undefined;
       if (esa === undefined && asa === undefined) continue;
       if (esa !== undefined) {
@@ -233,6 +263,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
   /* Ist-Zeit eines gestempelten Tages: nur über die Stempelkorrektur. */
   if ("erfassung" in neuM && objekt(neuM.erfassung)) {
     for (const [k, e] of Object.entries(neuM.erfassung)) {
+      if (kurz && e === altE[k]) continue;                  // WP-48.6: derselbe Wert — gleich(e, a) gälte
       const stempel = altS[k];
       if (!objekt(stempel)) continue;                           // kein Stempel: gewöhnliche Erfassung
       const a = altE[k];
@@ -245,7 +276,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
       if (a !== undefined && !(o.vollSicht && weggelassenErkennbar(k)) && bekannteIstStaende(a, stempel).has(tupel(e))) continue;   // veraltete Kopie
       return nein("Die Ist-Zeit eines gestempelten Tages ändert nur eine Stempelkorrektur (mit Grund) — das Original bleibt.", k);
     }
-    if (o.vollSicht) {
+    if (o.vollSicht && !(kurz && neuM.erfassung === altE)) {
       for (const k of Object.keys(altE)) {
         if (!objekt(altS[k]) || k in neuM.erfassung || abgelaufen(k) || !weggelassenErkennbar(k)) continue;
         return nein("Die Ist-Zeit eines gestempelten Tages lässt sich nicht löschen.", k);
@@ -277,8 +308,11 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
   const stich = o.loeschlauf && o.heute ? loeschStichtag(altM, o.heute) : null;
   const gs = gesendetM && objekt(gesendetM.einstempeln) ? gesendetM.einstempeln : null;
   const ge = gesendetM && objekt(gesendetM.erfassung) ? gesendetM.erfassung : null;
-  const weg = (sammlung, k) => !!stich && !!sammlung && tagVon(k) && tagVon(k) < stich
-    && (!(k in sammlung) || !objekt(sammlung[k]));
+  const weg = (sammlung, k) => {
+    if (!stich || !sammlung) return false;
+    const t = tagVon(k);                                         // WP-48.6: einmal je Schlüssel statt zweimal
+    return !!t && t < stich && (!(k in sammlung) || !objekt(sammlung[k]));
+  };
   /* Monate, die seit dem Stand der Übermittlung unverändert sind (oder ohne
      Abgleich geschrieben werden): Dort gilt der gespeicherte Stempel. In
      den übrigen bleibt die (geprüfte, ehrliche) Kopie stehen — dort
@@ -286,8 +320,17 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
      zurückgeschickt behält er den gespeicherten Monat, verändert ist es ein
      Konflikt (409). Ein Ersetzen auch dort machte jede veraltete Kopie zum
      Konflikt. */
-  const sicher = (k) => !o.unveraendert || !tagVon(k)
-    || o.unveraendert.has(`${altM.id}::${tagVon(k).slice(0, 7)}`);
+  /* WP-48.6: Die Antwort hängt nur am Monat — je Monat einmal nachgesehen (dieselbe Menge, dieselbe Kennung). */
+  const sicherJeMonat = new Map();
+  const sicher = (k) => {
+    if (!o.unveraendert) return true;
+    const t = tagVon(k);
+    if (!t) return true;
+    const mon = t.slice(0, 7);
+    let r = sicherJeMonat.get(mon);
+    if (r === undefined) { r = o.unveraendert.has(`${altM.id}::${mon}`); sicherJeMonat.set(mon, r); }
+    return r;
+  };
   const zielS = objekt(zielM.einstempeln) ? zielM.einstempeln : {};
   const einstempeln = {};
   let geloescht = 0;

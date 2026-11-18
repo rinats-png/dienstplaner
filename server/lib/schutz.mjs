@@ -347,6 +347,9 @@ export const GRENZEN = {
   /* Teilspeicherung (WP-48.3, POST /api/bestand/teile): eigene Art wie schreiben — je Aufruf kostet
      Stufe 1 serverseitig noch O(Bestand), deshalb dieselbe Grenze, aber getrennt gezählt. */
   teile:      { versuche: 120, fenster: 60,   sperre: 60 },
+  /* Löschlauf der Leitung (WP-48.4, POST /api/loeschlauf): selten gebraucht (Vorschau, dann Ausführung), je Lauf
+     O(Bestand) unter der Raumsperre — eine knappe eigene Grenze statt des Schreibbudgets. */
+  loeschlauf: { versuche: 10,  fenster: 60,   sperre: 60 },
   /* Stempeln (WP-47). Eigene Arten, damit eine Stempelspitze weder die
      Planung (schreiben) blockiert noch von ihr gebremst wird.
        stempeln        je PERSON: niemand stempelt zehnmal in der Minute; ein
@@ -374,6 +377,10 @@ export const GRENZEN = {
      damit die Schleife auch über die Zeit nicht mehr als 20 je 5 min schafft. */
   "anmelden-code": { versuche: 20, fenster: 300, sperre: 300 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
+  /* E-9 Mailbestätigung (lib/mailbestaetigung.mjs) je Sitzung: Anfordern verschickt eine Mail — 5 je Stunde;
+     Einlösen 10 je 10 Minuten (dazu höchstens 5 Fehlversuche je Code). */
+  mailbestaetigung: { versuche: 5, fenster: 3600, sperre: 3600 },
+  mailbestaetigen:  { versuche: 10, fenster: 600, sperre: 600 },
   /* Hilfe-Assistent (WP-I23): je PERSON; eine Frage ist eine Eingabe von Hand, 20 je Minute reichen weit. */
   hilfe:      { versuche: 20,  fenster: 60,   sperre: 60 },
   /* Sicherungen je Betrieb: sechs je Stunde reichen für jedes „vorher

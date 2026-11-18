@@ -69,7 +69,9 @@
      versucheMax() Versuche insgesamt.
 
    Push-Register: push:<raum>:<mandantId>:<personId> — eine Anmeldung je
-   Person (ein Gerät). Der alte Schlüssel push:<raum>:<personId> trug keinen
+   Person (ein Gerät). Abmelden (E-9) entfernt sie nur, wenn sie zum Gerät
+   gehört, das sich abmeldet (gleicher Endpunkt); ohne Angabe zum Gerät
+   (ältere Oberfläche) wie bisher immer. Der alte Schlüssel push:<raum>:<personId> trug keinen
    Betrieb; er wird nur übernommen, wenn die Kennung im Raum in genau einem
    Betrieb vorkommt — sonst bleibt er liegen und wird nie benutzt.
    ========================================================================== */
@@ -85,6 +87,7 @@ import { hinweis, pushZiel, betrifftEntwurf, backoffPlan, versucheMax, naechster
   kontingente, kontingentTag, naechsterKontingentTag, kanalAus, einzeilig } from "./zustellregeln.mjs";
 import { zustellEreignis } from "./zustellzaehler.mjs";
 import { istTestOderDemoraum, testraumMailFrei, testraumMailTagMax, testraumMailGesamtMax } from "./testraum.mjs";
+import { mailbestaetigungModus, adresseBestaetigt, bestaetigungEntfernen } from "./mailbestaetigung.mjs";
 
 export const KANAELE = ["mail", "push"];
 const ENDGUELTIG = ["gesendet", "uebersprungen", "gescheitert"];
@@ -154,9 +157,49 @@ export async function pushAnmelden(store, raum, bestand, mandantId, personId, an
   return true;
 }
 
-export async function pushAbmelden(store, raum, bestand, mandantId, personId) {
-  await store.delete(pushSchluessel(raum, mandantId, personId)).catch(() => {});
-  if (eindeutigImRaum(bestand, personId)) await store.delete(altPushSchluessel(raum, personId)).catch(() => {});
+/**
+ * Das Gerät, das sich abmeldet, aus einem Anfragerumpf (E-9, 2026-11-18):
+ * - `undefined`: der Rumpf sagt nichts über das Gerät (ältere Oberfläche) —
+ *   dann gilt das bisherige Verhalten: die Anmeldung der Person wird entfernt.
+ * - `null`: dieses Gerät hat keine Push-Anmeldung — nichts wird entfernt.
+ * - `{ endpoint }`: nur eine Anmeldung mit genau diesem Endpunkt wird entfernt.
+ * Ein Rumpf, der `geraet` in falscher Form trägt, zählt als „sagt nichts“
+ * (bisheriges, strengeres Verhalten).
+ * @returns {undefined|null|{endpoint: string}}
+ */
+export function geraetAusRumpf(rumpf) {
+  if (!istObjekt(rumpf) || !Object.prototype.hasOwnProperty.call(rumpf, "geraet")) return undefined;
+  const g = rumpf.geraet;
+  if (g === null) return null;
+  if (istObjekt(g) && typeof g.endpoint === "string" && g.endpoint.length > 0 && g.endpoint.length <= 4000) return { endpoint: g.endpoint };
+  return undefined;
+}
+
+/**
+ * Die Push-Anmeldung der Person entfernen — seit E-9 nur die des Geräts, das
+ * sich abmeldet. Es gibt je Person eine Anmeldung (das zuletzt angemeldete
+ * Gerät). Meldet sich ein anderes Gerät der Person ab (Logout, „Mitteilungen
+ * auf diesem Gerät“ aus), bleibt die Anmeldung des angemeldeten Geräts stehen.
+ * Ohne Angabe zum Gerät (`geraet === undefined`, ältere Oberfläche) bleibt es
+ * beim bisherigen Verhalten: die Anmeldung der Person wird entfernt.
+ * @param {undefined|null|{endpoint: string}} [geraet]  siehe geraetAusRumpf
+ */
+export async function pushAbmelden(store, raum, bestand, mandantId, personId, geraet = undefined) {
+  const eindeutig = eindeutigImRaum(bestand, personId);
+  if (geraet === undefined) {
+    await store.delete(pushSchluessel(raum, mandantId, personId)).catch(() => {});
+    if (eindeutig) await store.delete(altPushSchluessel(raum, personId)).catch(() => {});
+    return;
+  }
+  if (geraet === null) return;
+  const diesesGeraet = async (schluessel) => {
+    const a = await store.get(schluessel, { type: "json" }).catch(() => null);
+    return istObjekt(a) && typeof a.endpoint === "string" && a.endpoint === geraet.endpoint;
+  };
+  const neu = pushSchluessel(raum, mandantId, personId);
+  if (await diesesGeraet(neu)) await store.delete(neu).catch(() => {});
+  if (eindeutig && await diesesGeraet(altPushSchluessel(raum, personId)))
+    await store.delete(altPushSchluessel(raum, personId)).catch(() => {});
 }
 
 /** Was die Person für diese Art bekommen möchte (ohne Prüfung der Wege). */
@@ -434,6 +477,14 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr
        sonst ließen sich frei gesetzte Adressen über unseren Absender
        anschreiben (Relay, Phishing). Push bleibt (lib/testraum.mjs). */
     if (istTestOderDemoraum(raum, m) && !testraumMailFrei()) return status("uebersprungen", { grund: "testraum" });
+    /* E-9: Mit CENTRIC_MAILBESTAETIGUNG=pflicht nur an eine bestätigte Adresse
+       (lib/mailbestaetigung.mjs). Vorgabe „aus“/„angebot“: wie bisher. Ablage
+       nicht lesbar: zurückstellen, nicht endgültig überspringen. */
+    if (mailbestaetigungModus() === "pflicht") {
+      let ok;
+      try { ok = await adresseBestaetigt(store, raum, m.id, p.id, an); } catch { return fehlschlag({ klasse: "temporaer" }, "bestaetigung-unlesbar"); }
+      if (!ok) return status("uebersprungen", { grund: "unbestaetigt" });
+    }
     const sperre = await store.get(sperrSchluessel(raum, m.id, p.id), { type: "json" }).catch(() => null);
     if (sperreGilt(sperre, an)) return status("uebersprungen", { grund: "unzustellbar" });
   } else {
@@ -688,6 +739,7 @@ export async function zustellungenLoeschen(store, raum, mandantId, ids) {
 export async function personBereinigen(store, raum, mandantId, personId, nachrichtenIds = []) {
   await store.delete(pushSchluessel(raum, mandantId, personId)).catch(() => {});
   await store.delete(sperrSchluessel(raum, mandantId, personId)).catch(() => {});
+  await bestaetigungEntfernen(store, raum, mandantId, personId);          // E-9
   const { blobs } = await store.list({ prefix: `zustellquote:${raum}:${mandantId}:` });
   const wer = `:p-${h(personId)}:`;
   for (const b of blobs) if (b.key.includes(wer)) await store.delete(b.key).catch(() => {});
@@ -695,9 +747,10 @@ export async function personBereinigen(store, raum, mandantId, personId, nachric
   if (nachrichtenIds.length) await zustellungenLoeschen(store, raum, mandantId, nachrichtenIds);
 }
 
-/** Dasselbe für die Anmeldung beim Abmelden des Geräts (Logout). */
-export async function geraetAbmelden(store, raum, bestand, mandantId, personId) {
-  await pushAbmelden(store, raum, bestand, mandantId, personId);
+/** Dasselbe für die Anmeldung beim Abmelden des Geräts (Logout) — seit E-9
+    nur die Anmeldung dieses Geräts (pushAbmelden, geraetAusRumpf). */
+export async function geraetAbmelden(store, raum, bestand, mandantId, personId, geraet = undefined) {
+  await pushAbmelden(store, raum, bestand, mandantId, personId, geraet);
 }
 
 /**
@@ -755,12 +808,16 @@ export async function zustellungAufraeumen(store, { jetzt = Date.now(), tage = 3
       }
       return stande.get(raum);
     };
-    for (const praefix of ["push:", "unzustellbar:"]) {
+    /* E-9: Bestätigungen und offene Codes (mailbest…) wie Sperren: Schlüssel mit h(person). */
+    for (const praefix of ["push:", "unzustellbar:", "mailbest:", "mailbestcode:"]) {
       const { blobs } = await store.list({ prefix: praefix });
       for (const b of blobs) {
         const t = b.key.split(":");
-        if (praefix === "push:" && t.length !== 4) continue;         // alter Schlüssel: nie benutzt, bleibt
-        if (praefix === "unzustellbar:" && t.length !== 4) continue;
+        if (t.length !== 4) continue;                                 // push: alter Schlüssel — nie benutzt, bleibt
+        if (praefix === "mailbestcode:") {                            // abgelaufener Code: weg
+          const c = await store.get(b.key, { type: "json" }).catch(() => null);
+          if (istObjekt(c) && Date.parse(c.ablauf || "") <= jetzt) { aus.waisen += 1; await weg(b.key); continue; }
+        }
         const bestand = await stand(t[1]);
         if (bestand === undefined) continue;                          // Raum nicht lesbar: nichts folgern
         const m = (Array.isArray(bestand.mandanten) ? bestand.mandanten : []).find((x) => istObjekt(x) && gleichId(x.id, t[2]));

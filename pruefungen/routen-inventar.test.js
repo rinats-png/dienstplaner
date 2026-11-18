@@ -57,6 +57,7 @@ export const INVENTAR = {
   "/api/abmelden": ["pentest.mjs", "rollen-failclosed.test.js"],
   "/api/bestand": ["abnahme-409.test.js", "pentest.mjs"],   // rechtematrix.test.js nannte den Weg nur im Kommentar (S4)
   "/api/bestand/teile": ["wp48-teilweg.test.js"],   // WP-48.3 Teilspeicherung; Schalter CENTRIC_TEILSPEICHERUNG (Vorgabe aus: 404)
+  "/api/loeschlauf": ["wp48-loeschlauf.test.js"],   // WP-48.4 Löschlauf der Leitung; Schalter CENTRIC_TEILSPEICHERUNG (Vorgabe aus: 404)
   "/api/br-auswertung": ["br-auswertung.test.js"],
   "/api/stempeln": ["datenintegritaet.test.js", "bremse-wp47.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/stempel-korrektur": ["korrekturworkflow.test.js", "rollen-failclosed.test.js"],
@@ -94,6 +95,9 @@ export const INVENTAR = {
   "/zustellung/anmelden": ["zustellung-rechte.test.js", "sicherheit-intern.test.js"],
   "/zustellung/abmelden": ["zustellung-rechte.test.js"],
   "/zustellung/schluessel": ["server.test.js"],
+  "/zustellung/mailbestaetigung": ["mailbestaetigung.test.js"],             // E-9: Stand ja/nein; Schalter aus 404
+  "/zustellung/mailbestaetigung/anfordern": ["mailbestaetigung.test.js"],   // E-9: nur eigene Adresse, Kontingente
+  "/zustellung/mailbestaetigung/bestaetigen": ["mailbestaetigung.test.js"], // E-9: Code einmalig, nur dieselbe Person
   "/zustellung/status": ["mail-push-handler.test.js", "zustellung-rechte.mjs"],   // WP-30, eigener Zustellstatus
   "/lage": ["rechte.mjs", "server.test.js", "si-p5-sonden.test.js"],
   "/starten": ["starten.test.js", "si-p5-sonden.test.js"],

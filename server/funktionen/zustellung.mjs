@@ -4,8 +4,9 @@ import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../l
 import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, sitzungsRolleBekannt } from "../lib/rechte.mjs";
-import { zustellen, pushAnmelden, pushAbmelden, zustellStatusEigene } from "../lib/versand.mjs";
+import { zustellen, pushAnmelden, pushAbmelden, geraetAusRumpf, zustellStatusEigene } from "../lib/versand.mjs";
 import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
+import { mailbestaetigungModus, bestaetigungStand, bestaetigungAnfordern, bestaetigen, bestaetigungsQuote } from "../lib/mailbestaetigung.mjs";
 import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
 
@@ -143,7 +144,10 @@ export default async (req) => {
       const m = bestand ? eigenerMandant(bestand, s) : null;
       const da = m && Array.isArray(m.personen) && m.personen.some((p) => p && String(p.id) === String(s.person));
       if (pfad === "abmelden") {
-        if (da) await pushAbmelden(store(), s.bestand, bestand, m.id, s.person);
+        /* E-9: nur die Anmeldung dieses Geräts (Rumpf `{geraet: {endpoint}}`,
+           `{geraet: null}` = dieses Gerät hat keine); ohne Angabe wie bisher. */
+        const geraet = geraetAusRumpf(await req.json().catch(() => null));
+        if (da) await pushAbmelden(store(), s.bestand, bestand, m.id, s.person, geraet);
         return antwort({ ok: true });
       }
       const { anmeldung } = await req.json().catch(() => ({}));
@@ -166,6 +170,53 @@ export default async (req) => {
           keys: { ...(k.p256dh !== undefined ? { p256dh: k.p256dh } : {}), ...(k.auth !== undefined ? { auth: k.auth } : {}) } });
       if (!gespeichert) return antwort({ fehler: "Zu viele Geräte im Betrieb angemeldet." }, 409);
       return antwort({ ok: true });
+    }
+
+    /* ------------- E-9: Bestätigung der eigenen E-Mail-Adresse -------------
+       Schalter CENTRIC_MAILBESTAETIGUNG (Vorgabe aus: 404). Nur die Person der
+       Sitzung, nur ihre gespeicherte Adresse; die Anfrage trägt weder Adresse
+       noch Text. Der Code steht nie in einer Antwort (lib/mailbestaetigung.mjs). */
+    if (pfad === "mailbestaetigung" || pfad === "mailbestaetigung/anfordern" || pfad === "mailbestaetigung/bestaetigen") {
+      const modus = mailbestaetigungModus();
+      const lesen = pfad === "mailbestaetigung";
+      if (modus === "aus" || req.method !== (lesen ? "GET" : "POST")) return antwort({ fehler: "Unbekannter Pfad." }, 404);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      const gelesen = await bestandLesen(store(), s.bestand);
+      const bestand = gelesen && gelesen.bestand;
+      const m = bestand ? eigenerMandant(bestand, s) : null;
+      const p = m && Array.isArray(m.personen) ? m.personen.find((x) => x && String(x.id) === String(s.person)) : null;
+      if (!p) return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      if (lesen) {
+        /* Review-Auflage M3: Leitung und Planung sehen zusätzlich die Quote des Betriebs (nur Zähler). */
+        const quote = VOLL.includes(wirksameRolle(s, bestand)) ? { quote: await bestaetigungsQuote(store(), { raum: s.bestand, m }) } : {};
+        return antwort({ modus, ...(await bestaetigungStand(store(), { raum: s.bestand, m, p })), ...quote });
+      }
+      const kz = kennung(req, s);
+      if (pfad === "mailbestaetigung/anfordern") {
+        const bz = await bremse("mailbestaetigung", kz);
+        if (!bz.frei) return zuVielAntwort(bz.wartet);
+        const r = await bestaetigungAnfordern(store(), { raum: s.bestand, m, p });
+        await protokoll("zustellen", kz, r.ok ? "mailbestaetigung-angefordert" : "mailbestaetigung-abgewiesen", r.ok ? null : r.grund);
+        if (r.ok) return antwort({ ok: true });
+        const absage = {
+          keineAdresse: [400, "Es ist keine E-Mail-Adresse hinterlegt."],
+          bestaetigt: [409, "Diese Adresse ist schon bestätigt."],
+          nichtEingerichtet: [503, "Die Bestätigung ist auf diesem Server nicht eingerichtet."],
+          testraum: [409, "Aus diesem Test- oder Demobetrieb gehen keine E-Mails hinaus."],
+          warten: [429, "Bitte eine Minute warten, bevor ein neuer Code angefordert wird."],
+          kontingent: [429, "Für heute wurden genug Codes angefordert. Bitte morgen erneut versuchen."],
+          versand: [503, "Die E-Mail konnte gerade nicht verschickt werden. Bitte später erneut versuchen."],
+        }[r.grund] || [400, "Das hat nicht geklappt."];
+        return antwort({ fehler: absage[1], grund: r.grund }, absage[0]);
+      }
+      const bz = await bremse("mailbestaetigen", kz);
+      if (!bz.frei) return zuVielAntwort(bz.wartet);
+      const rumpf = await req.json().catch(() => null);
+      const code = rumpf && typeof rumpf.code === "string" && rumpf.code.length <= 40 ? rumpf.code : "";
+      const r = await bestaetigen(store(), { raum: s.bestand, m, p, code });
+      await protokoll("zustellen", kz, r.ok ? "mailbestaetigung-bestaetigt" : "mailbestaetigung-ungueltig", null);
+      return r.ok ? antwort({ ok: true }) : antwort({ fehler: "Der Code ist ungültig oder abgelaufen." }, 400);
     }
 
     /* ------------------- Zustellstatus der eigenen Person -------------------

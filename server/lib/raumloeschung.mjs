@@ -243,6 +243,8 @@ export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
   await praefixWeg(`zustellwarte:${raum}:`);
   await praefixWeg(`unzustellbar:${raum}:`);
   await praefixWeg(`zustellquote:${raum}:`);
+  await praefixWeg(`mailbest:${raum}:`);         // E-9: Bestätigungen der Personenadressen (lib/mailbestaetigung.mjs)
+  await praefixWeg(`mailbestcode:${raum}:`);     // E-9: offene Bestätigungscodes (nur Hash)
   await praefixWeg(`importerledigt:${raum}:`);   // IMP-3: Wiederholschutz-Vermerke des Imports (lib/import/uebernahme.mjs)
   await praefixWeg(`teilanfrage:${raum}:`);      // WP-48.3: Wiederholschutz der Teilspeicherung (lib/teilweg.mjs)
 

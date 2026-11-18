@@ -16,6 +16,7 @@ import { tourKapitel, tourStand } from "../lib/tour.js";
 import { NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { useTour } from "./tourleiste.jsx";
 import { InterneVorgaben } from "./vorgaben.jsx";
+import { MailBestaetigung } from "./mailbestaetigung.jsx";
 
 
 /* ==========================================================================
@@ -312,6 +313,8 @@ export function Einstellungen({ sitz, akt, gehZu }) {
           <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
             onChange={(v) => akt.pushUmschalten(v)} />
         </Zeile>
+        {/* E-9: Bestätigung der eigenen E-Mail-Adresse (nur wenn der Server den Weg anbietet). */}
+        <div style={{ padding: "0 var(--pad-x)" }}><MailBestaetigung email={p.email || ""} /></div>
         {/* WP-30: Sammelschalter je Kanal — aus bedeutet: über diesen Weg geht nichts hinaus. */}
         {[["mail", "E-Mail insgesamt", "Aus: keine Benachrichtigung per E-Mail, gleich welche Art."],
           ["push", "Gerätemitteilungen insgesamt", "Aus: keine Benachrichtigung auf dieses oder ein anderes Gerät."]].map(([weg, titel, text]) => {
