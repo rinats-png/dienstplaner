@@ -244,7 +244,7 @@ describe("BE-1 Rest: abgelöste Passwörter im Konto-Widerrufbuch", () => {
     M.kb.kontowiderrufbuchVergessen();
     const r = await M.kb.kontobuchStart(store);
     expect(r).toMatchObject({ passwoerterImBuch: 1, passwoerterZurueckgesetzt: 1, nachgezogen: 0, eingesammelt: 0 });
-    expect(await konto("K")).toEqual({ ...vorherKonto, passwort: null, aktualisiert: FEST_ISO });
+    expect(await konto("K")).toEqual({ ...vorherKonto, passwort: null, epoche: vorherKonto.epoche + 1, aktualisiert: FEST_ISO });
     expect(await readFile(kontoDatei("N"), "utf8")).toBe(nVorher);
     expect(await readFile(kontoDatei("W"), "utf8")).toBe(wVorher);
     expect(await buchRoh(), "Buch unverändert").toBe(buchVorher);
@@ -265,6 +265,10 @@ describe("BE-1 Rest: abgelöste Passwörter im Konto-Widerrufbuch", () => {
     M.kb.kontowiderrufbuchVergessen();
     await expect(anmelden("K", PW_DREI)).rejects.toMatchObject({ kontobuch: true });
     expect((await handlerAnmelden("K", PW_DREI)).status).toBe(503);
+    /* Review MITTEL-2 (M6): Das Buch wird erst NACH dem richtigen Passwort gefragt — ein falsches Passwort bleibt bei
+       kaputtem Buch ein falsches Passwort (Grund „passwort“, 401), nur das richtige führt zu 503. */
+    expect((await anmelden("K", "ganz-falsch-nur-zum-pruefen-1111")).grund).toBe("passwort");
+    expect((await handlerAnmelden("K", "ganz-falsch-nur-zum-pruefen-1111")).status).toBe(401);
     await copyFile(kopie, buchDatei());
     M.kb.kontowiderrufbuchVergessen();
     expect((await anmelden("K", PW_DREI)).ok).toBe(true);
@@ -351,6 +355,72 @@ describe("BE-1 Rest: abgelöste Passwörter im Konto-Widerrufbuch", () => {
   }, LIMIT);
 });
 
+describe("BE-1 Rest: Nachbesserung nach Sicherheitsreview (Sitzungen, Passwortbestätigung)", () => {
+  const PW_Z1 = "be1-passwort-z1-nur-zum-pruefen-4471";
+  const PW_Z2 = "be1-passwort-z2-nur-zum-pruefen-9183";
+  let Z;
+
+  beforeAll(async () => {
+    M.as = await import("../server/lib/accountsitzungen.mjs");
+    M.ein = await import("../server/lib/einladungen.mjs");
+    const store = centric();
+    const email = `be1pw-z-${randomBytes(4).toString("hex")}@example.org`;
+    const a = await M.accounts.accountAnlegen(store, { email });
+    expect(a.ok, JSON.stringify(a)).toBe(true);
+    await M.accounts.emailBestaetigen(store, a.account.id);
+    expect((await M.accounts.passwortSetzen(store, a.account.id, await M.passwoerter.passwortAblegen(PW_Z1))).ok).toBe(true);
+    Z = { id: a.account.id, email };
+    K.Z = Z;
+  }, LIMIT);
+
+  it("Sitzung aus Image-Stand nach Normalisierung wird abgewiesen (Epoche steigt mit passwort: null)", async () => {
+    const store = centric();
+    M.kb.kontowiderrufbuchVergessen();
+    const s = await anmelden("Z", PW_Z1);
+    expect(s.ok, JSON.stringify(s)).toBe(true);
+    /* Image-Stand: Konto (mit Epoche) und Sitzung — beide kommen mit einem VM-/Verzeichnis-Image zurück. */
+    const image = await konto("Z");
+    const g = await M.accounts.passwortSetzen(store, Z.id, await M.passwoerter.passwortAblegen(PW_Z2));
+    expect(g.kontobuch).toEqual({ geschrieben: true });
+    /* Rücksprung: das Konto aus dem Image (alter Prüfwert, alte Epoche); die Sitzung ist nie geprüft worden, liegt also
+       noch genau wie im Image. */
+    await store.setJSON(M.accounts.accountSchluessel(Z.email), image);
+    M.kb.kontowiderrufbuchVergessen();
+    const r = await M.kb.kontobuchStart(store);
+    expect(r.passwoerterZurueckgesetzt).toBe(1);
+    expect(await konto("Z")).toEqual({ ...image, passwort: null, epoche: image.epoche + 1, aktualisiert: FEST_ISO });
+    expect(await M.an.sitzungPruefen(store, s.token)).toEqual({ ok: false, grund: "epoche", hinweis: M.an.HINWEIS_SITZUNG });
+  }, LIMIT);
+
+  it("Sitzung eines Kontos ohne Prüfwert gilt nicht (auch bei passender Epoche)", async () => {
+    const store = centric();
+    const a = await konto("Z");
+    expect(a.passwort).toBeNull();
+    const t = await M.as.accountSitzungAnlegen({ accountId: Z.id, epoche: a.epoche });
+    expect(t.ok).toBe(true);
+    expect(await M.an.sitzungPruefen(store, t.token)).toEqual({ ok: false, grund: "ohne-passwort", hinweis: M.an.HINWEIS_SITZUNG });
+  }, LIMIT);
+
+  it("Passwortbestätigung (einladungen.frischeBestaetigung) weist einen abgelösten Prüfwert ab — 403 wie falsch", async () => {
+    const store = centric();
+    /* Frischer Stand: Z setzt PW_Z1 (kein Prüfwert vorher → kein Eintrag), dann PW_Z2 (PW_Z1 wird abgelöst). */
+    expect((await M.accounts.passwortSetzen(store, Z.id, await M.passwoerter.passwortAblegen(PW_Z1))).kontobuch).toBeUndefined();
+    const z1 = await konto("Z");
+    expect((await M.accounts.passwortSetzen(store, Z.id, await M.passwoerter.passwortAblegen(PW_Z2))).kontobuch)
+      .toEqual({ geschrieben: true });
+    const bestaetigen = (passwort) => M.ein.frischeBestaetigung(store, { sitzung: { herkunft: { accountId: Z.id } },
+      bestaetigung: { passwort }, env: {} });
+    expect(await bestaetigen(PW_Z2)).toEqual({ ok: true, art: "passwort" });
+    /* Rücksprung: der abgelöste Prüfwert ist zurück. */
+    await store.setJSON(M.accounts.accountSchluessel(Z.email), z1);
+    M.kb.kontowiderrufbuchVergessen();
+    const alt = await bestaetigen(PW_Z1);
+    const falsch = await bestaetigen("ganz-falsch-nur-zum-pruefen-2222");
+    expect(alt).toMatchObject({ ok: false, status: 403, bestaetigung: "passwort" });
+    expect(alt).toEqual(falsch);
+  }, LIMIT);
+});
+
 describe("BE-1 Rest: reine Bausteine", () => {
   const h = (c) => c.repeat(64);
 
@@ -402,7 +472,7 @@ describe("BE-1 Rest: reine Bausteine", () => {
     ] };
     const n = M.kb.kontobuchNormalisieren(b, stand, { pfeffer: pf, am: FEST_ISO });
     expect(n.konten).toEqual([{ schluessel: "account:a1",
-      wert: { id: "a1", status: "gesperrt", passwort: null, aktualisiert: FEST_ISO } }]);
+      wert: { id: "a1", status: "gesperrt", passwort: null, epoche: 2, aktualisiert: FEST_ISO } }]);
     expect({ gesperrt: n.gesperrt, passwoerter: n.passwoerter }).toEqual({ gesperrt: 1, passwoerter: 1 });
     expect(M.kb.passwortZahlen(b, n)).toEqual({ passwoerterImBuch: 2, passwoerterZurueckgesetzt: 1 });
   });
