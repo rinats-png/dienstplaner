@@ -1060,7 +1060,15 @@ Eingeschaltet wird nichts: `CENTRIC_ABSCHLUSS_SEGMENTWEISE` und der neue `CENTRI
   weiter, nur nicht an der Sperre (keine 503 durch `SPERRE_ZEITGRENZE`, aber dieselbe Verzögerung). Nächster Schritt:
   Häppchen (`setImmediate`, Abschnitt 5 Punkt 3) oder schnellere Zeitumrechnung — eigener Schritt, eigener
   Differenzialtest.
-- **Restrisiken:** Die Rechnung kann bei Dauerlast bis zu dreimal umsonst laufen (dann gesperrter Weg). Die Garantie
+- **Restrisiko Dauerlast (Worst Case, Review #351):** Wird der Raum während jeder Rechnung beschrieben (etwa ständige
+  Stempelungen bei 400 × 36), läuft die Rechnung bis zu dreimal umsonst — je ~18 s synchron ohne Sperre, also mit
+  blockierter Ereignisschleife — und danach einmal der gesperrte Weg der Stufe a (~23 s): zusammen **etwa 75 s Blockade
+  je Anfrage** (Stufe a allein ~23 s, voll ~44 s). Ohne Sperre gibt es zudem keine Warteschlange je Raum mehr: Mehrere
+  Abschlüsse halten ihre Schnappschüsse gleichzeitig im Speicher; begrenzt nur durch `bremse("schreiben")`.
+  **Empfehlung vor dem Einschalten:** Staging-Messung (WP-48.9) unter Stempellast und dort die Versuchszahl festlegen —
+  bis hin zu „nach dem ersten Konflikt direkt der gesperrte Weg“ (`ABSCHLUSS_VERSUCHE = 1`). Die Zahl ist eine
+  Konstante in `abschluss-segmentweise.mjs` (keine Umgebungsvariable); mit ausgeschaltetem Schalter wirkt sie nicht.
+- **Restrisiken:** Die Rechnung kann bei Dauerlast bis zu dreimal umsonst laufen (dann gesperrter Weg, siehe oben). Die Garantie
   stützt sich darauf, dass jeder Schreiber der Monatsscherben und des Kerns über `festschreiben` (Journal, Stand + 1)
   geht; ein Schreiben an der Ablage vorbei ohne Standwechsel bliebe unbemerkt (wie schon beim Lesecache, 7.4). Messung
   auf Staging (WP-48.9) steht aus; Einschalten erst danach und mit Betreiberfreigabe.

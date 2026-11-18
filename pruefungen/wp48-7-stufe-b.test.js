@@ -235,6 +235,11 @@ beforeAll(async () => {
   ({ sitzungAnlegen } = await import("../server/lib/sitzungen.mjs"));
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(JETZT));
+  /* Aufwärmen (Review #351, A3): Die erste Anfrage im Prozess verbraucht einmalig ein zusätzliches randomBytes(6). Ohne
+     diese Anfrage hinge die Ereigniskennung eines Tests davon ab, ob ein anderer vorher lief. */
+  await raumAnlegen("wp487b-aufwaermen");
+  const aw = await anfrage("monatsabschluss", { token: await token("wp487b-aufwaermen", "m1-leitung"), rumpf: { aktion: "abschliessen", monat: "2026-03" } });
+  expect(aw.status, aw.roh).toBe(409);
 }, 60000);
 afterEach(() => {
   schalten({});
@@ -568,6 +573,39 @@ describe("Schnappschuss: nie ein gemischter Stand", { timeout: 120000 }, () => {
     await raumAnlegen(raum);
     const st = mitHaken(laden(), `journal:${raum}`, () => fremd(raum, (m) => { m.personen[2].stundenuebertrag = 1; }));
     expect(await B.bestandSchnappschussAuswahl(st, raum, waehle)).toBeNull();
+  });
+  it("Schreiber vor dem Zeiger angehalten (Journal liegt, Kern und Scherben neu, Zeiger alt) mitten im Lesen → null", async () => {
+    /* Review #351, A2: Ohne die Journal-Blicke der Klammer ergäbe das einen zerrissenen Schnappschuss (Januar alt,
+       Februar neu) — der Zeiger allein steht vorher und nachher gleich. */
+    const raum = "wp487b-s-vorzeiger";
+    await raumAnlegen(raum);
+    const echt = laden();
+    let erreicht = () => {}, frei = () => {};
+    const amZeiger = new Promise((r) => { erreicht = r; });
+    const tor = new Promise((r) => { frei = r; });
+    const angehalten = { ...echt, setJSON: async (k, w, o) => {
+      if (k === `stand:${raum}:aktuell`) { erreicht(); await tor; }
+      return echt.setJSON(k, w, o);
+    } };
+    let schreiber = null;
+    /* Der Schnappschuss liest Zeiger, Journal, Kern — vor der ersten Scherbe läuft der Schreiber bis vor den Zeiger. */
+    const st = mitHaken(echt, `scherbe:${raum}:`, async () => {
+      const g = await B.bestandLesen(echt, raum);
+      const b = structuredClone(g.bestand);
+      b.mandanten[0].abweichungen["a1|2026-01-05"] = "N";
+      b.mandanten[0].abweichungen["a1|2026-02-05"] = "N";
+      schreiber = B.bestandSchreiben(angehalten, raum, b, { erwarteterStand: g.stand, durch: "Fremd" });
+      await amZeiger;
+      expect(await echt.get(`journal:${raum}`, { type: "json" }), "Journal liegt").toBeTruthy();
+    });
+    try {
+      expect(await B.bestandSchnappschussAuswahl(st, raum, waehle)).toBeNull();
+    } finally {
+      frei();
+      if (schreiber) expect((await schreiber).ok).toBe(true);
+    }
+    const s = await B.bestandSchnappschussAuswahl(echt, raum, waehle);
+    expect([s.bestand.mandanten[0].abweichungen["a1|2026-01-05"], s.bestand.mandanten[0].abweichungen["a1|2026-02-05"]]).toEqual(["N", "N"]);
   });
   it("liegendes Journal → null; Lesefehler → null (nie 503 ohne Sperre)", async () => {
     const raum = "wp487b-s-fehler";

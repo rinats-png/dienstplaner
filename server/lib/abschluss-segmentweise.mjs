@@ -42,7 +42,9 @@ import { eigenerMandant } from "./rechte.mjs";
 /** Diese Aktionen von POST /api/monatsabschluss können segmentweise laufen. */
 export const ABSCHLUSS_SEGMENT_AKTIONEN = Object.freeze(["abschliessen", "wiederoeffnen", "lohnexport"]);
 
-/** Stufe b: so viele Schnappschüsse höchstens, bevor der gesperrte Weg übernimmt (Entwurf Abschnitt 5, Punkt 3). */
+/** Stufe b: so viele Schnappschüsse höchstens, bevor der gesperrte Weg übernimmt (Entwurf Abschnitt 5, Punkt 3).
+    Worst Case je Versuch eine volle Rechnung ohne Sperre (400 × 36: ~18 s Ereignisschleife); vor dem Einschalten auf
+    Staging festlegen (WP48-TEILSPEICHERUNG.md 7.7) — 1 heißt: nach dem ersten Konflikt direkt der gesperrte Weg. */
 export const ABSCHLUSS_VERSUCHE = 3;
 
 const MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
