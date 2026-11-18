@@ -159,7 +159,7 @@
     "pruefung:mail-push-produktion": "vitest run pruefungen/mail-push-produktion.test.js --testTimeout=60000",
     "pruefung:testraum-mail": "vitest run pruefungen/testraum-mail.test.js",
     "pruefung:mail-push-anbieter": "vitest run pruefungen/mail-push-anbieter.test.js",
-    "pruefung:mail-push-handler": "vitest run pruefungen/mail-push-handler.test.js",
+    "pruefung:mail-push-handler": "vitest run pruefungen/mail-push-handler.test.js pruefungen/mailbestaetigung.test.js pruefungen/e9-abmelden-geraet.test.js",
     "pruefung:selbst": "vitest run pruefungen/selbsttest.test.js",
     "pruefung:branchen": "vitest run pruefungen/branchen.test.js",
     "pruefung:branchenmodule": "vitest run pruefungen/branchenmodule.test.js pruefungen/branchen-andock.test.js pruefungen/branchen-app.test.js pruefungen/modul-",
