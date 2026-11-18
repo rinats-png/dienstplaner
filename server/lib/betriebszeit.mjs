@@ -93,15 +93,36 @@ export function montagDerWoche(jetzt = new Date(), zone = BETRIEBSZONE) {
   return d.toISOString().slice(0, 10);
 }
 
+const KALENDERTAG_FORM = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Fehlercode, wenn ein Kalendertag nicht existiert (P2-12, Variante B: nie still gerollt oder korrigiert). */
+export const UNGUELTIGER_KALENDERTAG = "UNGUELTIGER_KALENDERTAG";
+
+/**
+ * Gibt es den Kalendertag „JJJJ-MM-TT" wirklich? Dieselbe Regel wie paketstand.tagGueltig: Form, Jahr 2000–2999,
+ * Monat 1–12, Tag 1 bis Monatsende (Schaltjahre nach dem gregorianischen Kalender). „2026-02-30" oder „2026-13-01"
+ * gibt es nicht — sie werden abgewiesen, nie auf einen anderen Tag gerollt (P2-12, Betreiberentscheidung 2026-11-18).
+ * @param {unknown} s @returns {boolean}
+ */
+export function kalendertagEcht(s) {
+  if (typeof s !== "string" || !KALENDERTAG_FORM.test(s)) return false;
+  const [j, m, t] = s.split("-").map(Number);
+  if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1) return false;
+  return t <= new Date(Date.UTC(j, m, 0)).getUTCDate();
+}
+
 /**
  * Der wirkliche Zeitpunkt (ms seit 1970, UTC) einer Wanduhrzeit in der Zone: Kalendertag `datum` (JJJJ-MM-TT) plus
  * `minuten` (auch über 1440 hinaus, dann Folgetag). Umkehrung von betriebstag/wanduhr, unabhängig von der Zeitzone
  * des Prozesses. Mehrdeutige Wanduhrzeiten fest aufgelöst: Die Frühjahrslücke (02:00–02:59 gibt es nicht) wird nach
  * vorn geschoben (Versatz vor dem Sprung, 02:30 → 03:30 Sommerzeit), die doppelte Herbststunde ist die spätere
  * (Winterzeit). Mitternachten sind in Europe/Berlin immer eindeutig.
+ * Einen Kalendertag, den es nicht gibt (kalendertagEcht), rollt sie nicht still auf einen anderen Tag, sondern wirft
+ * RangeError("UNGUELTIGER_KALENDERTAG") (P2-12, Variante B). Wer keinen Wurf will: zeitpunktAusWanduhrErgebnis.
  * @param {string} datum @param {number} minuten @param {string} [zone] @returns {number}
  */
 export function zeitpunktAusWanduhr(datum, minuten, zone = BETRIEBSZONE) {
+  if (!kalendertagEcht(datum)) throw new RangeError(UNGUELTIGER_KALENDERTAG);
   const [j, mo, t] = String(datum).split("-").map(Number);
   const wand = Date.UTC(j, mo - 1, t) + minuten * 60000;
   const versatz = (ms) => {
@@ -111,4 +132,15 @@ export function zeitpunktAusWanduhr(datum, minuten, zone = BETRIEBSZONE) {
   const passend = [60, 120].filter((v) => versatz(wand - v * 60000) === v);
   const v = passend.length === 1 ? passend[0] : 60;
   return wand - v * 60000;
+}
+
+/**
+ * Wie zeitpunktAusWanduhr, aber ohne Wurf bei einem Kalendertag, den es nicht gibt: { ok: true, ms } oder
+ * { ok: false, grund: "UNGUELTIGER_KALENDERTAG", datum }. Andere Fehler (Zone nicht zugelassen) werfen wie bisher.
+ * @param {string} datum @param {number} minuten @param {string} [zone]
+ * @returns {{ok: true, ms: number} | {ok: false, grund: string, datum: unknown}}
+ */
+export function zeitpunktAusWanduhrErgebnis(datum, minuten, zone = BETRIEBSZONE) {
+  if (!kalendertagEcht(datum)) return { ok: false, grund: UNGUELTIGER_KALENDERTAG, datum };
+  return { ok: true, ms: zeitpunktAusWanduhr(datum, minuten, zone) };
 }

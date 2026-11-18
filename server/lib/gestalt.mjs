@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
+import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
 
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
@@ -256,6 +257,77 @@ export function dienstartenFehler(bestand, vorher = null) {
     if (gespeichert && mindestGleich(gespeichert.mindest, d.mindest)) continue;
     const f = mindestFehler(d.mindest);
     if (f) return { grund: `Bei Dienstart ${d.name || d.id || j} ${f}.`, feld: `mandanten[${i}].dienstarten[${j}].mindest` };
+  }
+  return null;
+}
+
+/* --- P2-12 (Variante B, Betreiberentscheidung 2026-11-18): Kalendertage, die es nicht gibt ---
+   Ein Datumsschlüssel „personId|2026-02-30" in erfassung/abweichungen oder ein von/bis „2026-02-30" einer Abwesenheit
+   wird nicht still korrigiert und nicht unbemerkt angenommen: Ein NEU eingeführter oder GEÄNDERTER Eintrag mit einem
+   solchen Tag wird abgewiesen (422, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt, wie er ist, unverändert
+   speicherbar — er wird weder normalisiert noch gefiltert noch gelöscht (das änderte den Abdruck abgeschlossener
+   Monate), und er blockiert keine unabhängigen Speichervorgänge. */
+const TAG_VORN = /^\d{4}-\d{2}-\d{2}/;
+const KALENDERTAG_FELDER = ["erfassung", "abweichungen"];
+
+/** Beginnt `s` mit einem Tag in der Form JJJJ-MM-TT, den es nicht gibt? */
+const unechterTag = (s) => typeof s === "string" && TAG_VORN.test(s) && !kalendertagEcht(s.slice(0, 10));
+
+/** JSON mit sortierten Objektschlüsseln: unverändert heißt inhaltsgleich, nicht reihenfolgegleich. */
+function stabil(x) {
+  if (Array.isArray(x)) return `[${x.map(stabil).join(",")}]`;
+  if (x && typeof x === "object") return `{${Object.keys(x).sort().map((k) => `${JSON.stringify(k)}:${stabil(x[k])}`).join(",")}}`;
+  return JSON.stringify(x) ?? "undefined";
+}
+
+/**
+ * Neue oder geänderte Einträge mit einem Kalendertag, den es nicht gibt. Gibt null oder { grund, feld, code } zurück.
+ * @param {any} bestand  der zu schreibende Stand
+ * @param {any} [vorher] der gespeicherte Stand (null: alles ist neu)
+ */
+export function kalendertagFehler(bestand, vorher = null) {
+  const mandanten = bestand && Array.isArray(bestand.mandanten) ? bestand.mandanten : [];
+  const altNachId = new Map((vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])
+    .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+  const fehler = (feld, tag) => ({ code: UNGUELTIGER_KALENDERTAG, feld,
+    grund: `Den Kalendertag ${String(tag).slice(0, 10)} gibt es nicht.` });
+  for (let i = 0; i < mandanten.length; i++) {
+    const m = mandanten[i];
+    if (!m || typeof m !== "object") continue;
+    const alt = altNachId.get(m.id) || null;
+    for (const f of KALENDERTAG_FELDER) {
+      const w = m[f];
+      if (!w || typeof w !== "object" || Array.isArray(w)) continue;
+      const a = alt && alt[f] && typeof alt[f] === "object" && !Array.isArray(alt[f]) ? alt[f] : null;
+      for (const k of Object.keys(w)) {
+        const tag = String(k).split("|")[1] || "";
+        if (!unechterTag(tag)) continue;
+        if (a && Object.hasOwn(a, k) && stabil(a[k]) === stabil(w[k])) continue;   // Alteintrag, unverändert
+        return fehler(`mandanten[${i}].${f}`, tag);
+      }
+    }
+    if (Array.isArray(m.abwesenheiten)) {
+      /* Multimenge (Review #344 A2): Ein Eintrag mit unechtem von/bis gilt nur als unverändert, solange es im neuen Stand
+         nicht mehr inhaltsgleiche Kopien (GANZER Eintrag, mit oder ohne Kennung) gibt als im gespeicherten. Eine neue
+         Kopie, eine geänderte Angabe (auch personId/art) oder ein bisher echter Eintrag mit nun unechtem Tag ist neu. */
+      const altAnzahl = new Map();
+      for (const x of (alt && Array.isArray(alt.abwesenheiten) ? alt.abwesenheiten : []))
+        if (x && typeof x === "object" && (unechterTag(x.von) || unechterTag(x.bis))) { const k = stabil(x); altAnzahl.set(k, (altAnzahl.get(k) || 0) + 1); }
+      const neuAnzahl = new Map();
+      for (let j = 0; j < m.abwesenheiten.length; j++) {
+        const x = m.abwesenheiten[j];
+        if (!x || typeof x !== "object") continue;
+        if (!unechterTag(x.von) && !unechterTag(x.bis)) continue;
+        const k = stabil(x);
+        const n = (neuAnzahl.get(k) || 0) + 1;
+        neuAnzahl.set(k, n);
+        if (n <= (altAnzahl.get(k) || 0)) continue;                                  // Alteintrag, unverändert
+        for (const t of ["von", "bis"]) {
+          if (!unechterTag(x[t])) continue;
+          return fehler(`mandanten[${i}].abwesenheiten[${j}].${t}`, x[t]);
+        }
+      }
+    }
   }
   return null;
 }

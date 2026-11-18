@@ -42,6 +42,7 @@
 
 import { selbstauskunftPruefen, geplanterDienst, heuteBerlin, tagePlus } from "./zeiterfassung.mjs";
 import { regelHinweise } from "./zeitregeln.mjs";
+import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
 
 export const SELBSTAUSKUNFT_STATUS = ["offen", "genehmigt", "abgelehnt", "zurueckgezogen"];
 export const SA_GRUND_MIN = 10;
@@ -161,6 +162,8 @@ export function selbstauskunftEntscheiden(m, r, durch, jetzt) {
     return { status: 400, grund: "Entscheidung: genehmigt, abgelehnt oder zurueckgezogen." };
   if (!TAG.test(String(datum || "")) || personId === undefined || personId === null || personId === "")
     return { status: 400, grund: "Person und Tag angeben." };
+  /* P2-12 (Variante B): richtige Form, aber den Tag gibt es nicht (2026-02-30) — nur diese Anfrage wird abgewiesen. */
+  if (!kalendertagEcht(datum)) return { status: 422, grund: "Diesen Kalendertag gibt es nicht.", art: UNGUELTIGER_KALENDERTAG };
   const k = `${personId}|${datum}`;
   const alt = objekt(m.erfassung) ? m.erfassung[k] : undefined;
   const sa = objekt(alt) ? alt.selbstauskunft : null;

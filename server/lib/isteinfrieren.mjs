@@ -380,6 +380,8 @@ const r2 = (x) => Math.round(x * 100) / 100;
  * @returns {Record<string, object>}
  */
 export function istEinfrieren(m, monat) {
+  /* P2-12 (Variante B): nur ein echter Monat „JJJJ-MM" (01–12) — „2026-13" würde sonst still in den Folgemonat rollen. */
+  if (typeof monat !== "string" || !MONAT_RE.test(monat)) throw new RangeError(`Ungültiger Monat: ${String(monat)}`);
   const merk = new Map();
   const ctx = einfrierKontext(m);
   const aus = {};

@@ -35,7 +35,7 @@
    ========================================================================== */
 import { pauseZuLang } from "./zeitregeln.mjs";
 import { dienstAm, imDienst } from "./fachpruefung.mjs";
-import { betriebstag, wanduhr, zeitpunktAusWanduhr, BETRIEBSZONE } from "./betriebszeit.mjs";
+import { betriebstag, wanduhr, zeitpunktAusWanduhr, kalendertagEcht, BETRIEBSZONE } from "./betriebszeit.mjs";
 
 const TAG_MS = 86400000;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,8 +93,8 @@ export const OFFEN_MAX_MINUTEN = 20 * 60;
  */
 export function berlinZeitpunkt(datum, uhrzeit) {
   if (!TAG.test(String(datum)) || typeof uhrzeit !== "string" || !UHRZEIT.test(uhrzeit)) return null;
-  const [y, mo, d] = datum.split("-").map(Number);
-  if (iso(new Date(Date.UTC(y, mo - 1, d))) !== datum) return null;          // 2026-13-01, 2026-02-30
+  /* 2026-13-01, 2026-02-30: den Tag gibt es nicht — dieselbe Regel wie zeitpunktAusWanduhr (P2-12, Jahre 2000–2999). */
+  if (!kalendertagEcht(datum)) return null;
   return zeitpunktAusWanduhr(datum, Number(uhrzeit.slice(0, 2)) * 60 + Number(uhrzeit.slice(3, 5)), BETRIEBSZONE);
 }
 
@@ -150,7 +150,8 @@ const minuten = (z) => Number(z.slice(0, 2)) * 60 + Number(z.slice(3, 5));
  * oder { grund }.
  */
 export function selbstauskunftPruefen(m, person, datum, wert, heute = heuteBerlin()) {
-  if (!TAG.test(String(datum))) return { grund: "Kein gültiges Datum." };
+  /* P2-12 (Variante B): auch ein Tag in richtiger Form, den es nicht gibt (2026-02-30), ist kein gültiges Datum. */
+  if (!kalendertagEcht(datum)) return { grund: "Kein gültiges Datum." };
   if (datum >= heute) return { grund: "Zeiten lassen sich erst nach dem Dienst bestätigen." };
   if (datum < tagePlus(heute, -RUECKBLICK_TAGE))
     return { grund: `Zeiten lassen sich höchstens ${RUECKBLICK_TAGE} Tage rückwirkend bestätigen.` };

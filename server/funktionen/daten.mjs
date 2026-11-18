@@ -9,7 +9,7 @@ import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, a
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
-  personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen } from "../lib/gestalt.mjs";
+  personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen, kalendertagFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
@@ -1714,6 +1714,16 @@ async function behandeln(req, context, ctx) {
           return antwort({ fehler: "Die Dienstart ist unvollständig.",
             text: `${daS.grund} Es wurde nichts geändert.`, feld: daS.feld }, 422);
         }
+        /* P2-12 (Variante B, Betreiberentscheidung 2026-11-18): Ein NEU eingeführter oder GEÄNDERTER Eintrag in
+           erfassung/abweichungen/abwesenheiten mit einem Kalendertag, den es nicht gibt (2026-02-30), ist 422 — nur diese
+           Anfrage. Gespeicherte Alteinträge bleiben unverändert speicherbar (weder normalisiert noch gefiltert noch
+           gelöscht) und blockieren keine unabhängigen Speichervorgänge. Voll- und Teilweg, nach der Rechteprüfung. */
+        const ktS = kalendertagFehler(zuSchreiben, jetzt ? jetzt.bestand : null);
+        if (ktS) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${ktS.code}`, wer);
+          return antwort({ fehler: "Diesen Kalendertag gibt es nicht.", code: ktS.code,
+            text: `${ktS.grund} Es wurde nichts geändert.`, feld: ktS.feld }, 422);
+        }
 
         /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
            vor jedem Umbau von zuSchreiben holen, sonst ginge sie verloren (die Sperren wären wirkungslos). */
@@ -2482,7 +2492,7 @@ async function behandeln(req, context, ctx) {
           `ka-${randomBytes(6).toString("hex")}`, heuteBerlin());
         if ("status" in r) {
           await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag: ${spurGrund(r.grund)}`, wer);
-          return antwort({ fehler: r.grund }, r.status);
+          return antwort({ fehler: r.grund, ...(r.art ? { code: r.art } : {}) }, r.status);
         }
         const ergA = await bestandSchreiben(store, s.bestand,
           { ...mitA.bestand, mandanten: mitA.bestand.mandanten.map((x) => (x === mA ? r.mandant : x)) },
