@@ -300,6 +300,7 @@ const alsMenge = (l) => (Array.isArray(l) ? l : []).map(stabil).sort();
    (ausschreibungenZusammen: fremde vor der eigenen) — sonst gälte ein unveränderter Alteintrag als geändert (falsches 422).
    krankmeldungen gehören dem Server (rechte.mjs nimmt sie nie aus der Übermittlung); neu sind dort nur Fälle aus einer
    Krankmeldung per Speichern (krankAlsFaelle), die bisher nur die Form JJJJ-MM-TT prüfte. */
+/** @type {Array<[string, string[], ((x: any) => any) | null]>} */
 const KALENDERTAG_LISTEN = [
   ["abwesenheiten", ["von", "bis"], null],
   ["anfragen", ["von", "bis"], (x) => ({ ...x, interessenten: alsMenge(x.interessenten) })],
