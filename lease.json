@@ -1,10 +1,10 @@
 {
-  "epoche": 21,
-  "halter": "hauptchat-e21",
-  "uebernommen_am": "2026-11-18T04:53:28.832Z",
-  "erneuert_am": "2026-11-18T15:11:06.901Z",
-  "gueltig_bis": "2026-11-18T18:11:06.901Z",
-  "uebergabe": "Hauptchat 18.11.: Epoche 20 abgelaufen, Leerlauf; Kopf 32951445; Betreiber-Priorisierung erhalten, Entscheidungsvorlage",
-  "vorgaenger": "hauptchat-e20",
+  "epoche": 22,
+  "halter": "hauptchat-e22",
+  "uebernommen_am": "2026-11-18T18:30:51.990Z",
+  "erneuert_am": "2026-11-18T18:30:51.990Z",
+  "gueltig_bis": "2026-11-18T21:30:51.990Z",
+  "uebergabe": "Hauptchat 18.11. Abend: Epoche 21 abgelaufen 18:11Z (Erneuerung versaeumt, kein anderer Koordinator, Kopf dfcd8309, PR #353-#359 gemergt, laufende Agenten: BE-1, Antrag-Kapern, Test-Haertung)",
+  "vorgaenger": "hauptchat-e21",
   "freigegeben_am": null
 }
