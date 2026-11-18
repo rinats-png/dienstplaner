@@ -29,6 +29,7 @@ import { pauseZuLang } from "./zeitregeln.mjs";
 import { korrekturAnhaengen, pauseFuerKorrektur, geplant24Stunden, zeitumstellungSperre, BEGINN_GLEICH_ENDE, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
 import { berlinZeitpunkt } from "./zeiterfassung.mjs";
 import { istStand } from "./istdaten.mjs";
+import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
 
 export const ANTRAG_RUECKBLICK_TAGE = 62;
 export const ANTRAEGE_JE_STEMPEL_MAX = 20;
@@ -48,12 +49,14 @@ const wer = (w) => ({ personId: w && w.personId !== undefined ? w.personId : nul
  * @param {Date} jetzt
  * @param {string} id  Kennung des Antrags
  * @param {string} heute  Berliner Tag
- * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, antrag: object}}
+ * @returns {{status: number, grund: string, art?: string} | {mandant: object, eintrag: object, antrag: object}}
  */
 export function antragStellen(m, von, rumpf, jetzt, id, heute) {
   const { datum, start, ende } = rumpf || {};
   const grund = typeof (rumpf && rumpf.grund) === "string" ? rumpf.grund.trim() : "";
   if (!TAG.test(String(datum || ""))) return { status: 400, grund: "Tag fehlt oder ist ungültig (JJJJ-MM-TT)." };
+  /* P2-12 (Variante B): richtige Form, aber den Tag gibt es nicht (2026-02-30) — abgewiesen, nie still gerollt. */
+  if (!kalendertagEcht(datum)) return { status: 422, grund: "Diesen Kalendertag gibt es nicht.", art: UNGUELTIGER_KALENDERTAG };
   if (datum > heute) return { status: 422, grund: "Für künftige Tage gibt es keine Korrektur." };
   if (datum < tagPlus(heute, -ANTRAG_RUECKBLICK_TAGE))
     return { status: 422, grund: `Ein Korrekturantrag geht höchstens ${ANTRAG_RUECKBLICK_TAGE} Tage zurück — danach klärt es die Leitung.` };

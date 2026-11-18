@@ -17,6 +17,7 @@ export { mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig, minde
 const mindestSumme = (d) => { const md = mindestWerte(d); return md.mo_do + md.fr + md.sa + md.so; };
 import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
+import { UNGUELTIGER_KALENDERTAG } from "../../server/lib/betriebszeit.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
 import { darf, krankRolle } from "./berechtigung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege } from "../standorte.js";
@@ -1398,15 +1399,23 @@ export function zuschlagStunden(m, p, ym) {
     const r = { nacht: 0, sonntag: 0, feiertag: 0, samstag: 0, gesamt: 0 };
     /* ZEIT-E (E6, Z47): offen mit heutigem Rechenstand (Zeitumstellung), abgeschlossen mit dem des Abschlusses. */
     const stand = zuschlagStand(m, ym);
-    for (let i = 1; i <= n; i++) {
-      const d = `${ym}-${pad(i)}`;
-      /* Abgeschlossener Monat: der eingefrorene Dienst und seine Ist-Dauer (WP-16, Review H1). */
-      const t = istTag(m, p, d);
-      const da = t.da;
-      if (!da) continue;
-      const gearbeitet = t.idn.std;
-      r.gesamt += gearbeitet;
-      zuschlagTagAddieren(m, p, d, da, r, stand);
+    try {
+      for (let i = 1; i <= n; i++) {
+        const d = `${ym}-${pad(i)}`;
+        /* Abgeschlossener Monat: der eingefrorene Dienst und seine Ist-Dauer (WP-16, Review H1). */
+        const t = istTag(m, p, d);
+        const da = t.da;
+        if (!da) continue;
+        const gearbeitet = t.idn.std;
+        r.gesamt += gearbeitet;
+        zuschlagTagAddieren(m, p, d, da, r, stand);
+      }
+    } catch (e) {
+      /* P2-12 (Variante B): Ein Kalendertag, den es nicht gibt, wirft in zeitpunktAusWanduhr. Die Oberfläche bricht
+         daran nicht ab, rechnet aber auch nicht still weiter: keine Zahlen, „nicht verfügbar" wie bei abschlussLuecke. */
+      if (e instanceof RangeError && e.message === UNGUELTIGER_KALENDERTAG)
+        return { nacht: null, sonntag: null, feiertag: null, samstag: null, gesamt: null, nichtVerfuegbar: true, ungueltigerKalendertag: true };
+      throw e;
     }
     for (const k of Object.keys(r)) r[k] = Math.round(r[k] * 100) / 100;
     /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Nacht-, Sonn-, Feiertags- und Samstagsstunden wie zum
