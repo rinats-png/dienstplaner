@@ -15,7 +15,7 @@
       Zufalls- und Grenzfälle mit festem Startwert, darunter gemeinsame
       Objekte (Abkürzung greift), kaputte Listenfelder, Selbstauskunft,
       Löschlauf, Fristen, Teilmengen unveränderter Monate.
-   2. Schalter kette.mjs (KETTE.an = false ist der volle Weg, Zeile für Zeile
+   2. Schalter kette.mjs (CENTRIC_KETTE_AUS=1 ist der volle Weg, Zeile für Zeile
       der alte Code): abschlussWiderspruch; bestandSchreiben mit/ohne
       gelesene Abdrücke auf echter Dateiablage (Vermerk, Scherben, Antwort);
       und der echte Handler (Teil-PUT und Voll-PUT, Rollen LT/PL/SV/MA,
@@ -30,8 +30,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import * as REF from "./hilfen/wp48-6-referenz.mjs";
-import { KETTE } from "../server/lib/kette.mjs";
+import { ketteAn } from "../server/lib/kette.mjs";
 import { stempelWiderspruch, stempelSichern, tagVonFuerPruefung } from "../server/lib/stempelintegritaet.mjs";
 import { abschlussWiderspruch } from "../server/lib/monatsabschluss.mjs";
 import { monatVon, zerlegen, abdruck, scherbenKennungen, gleicheEintraege } from "../server/lib/scherben.mjs";
@@ -48,15 +49,18 @@ function zufall(start) {
   const r = () => { z = (z * 1664525 + 1013904223) >>> 0; return z / 2 ** 32; };
   return { r, wahl: (l) => l[Math.floor(r() * l.length)], ja: (p = 0.5) => r() < p, int: (n) => Math.floor(r() * n) };
 }
+/** Abkürzungen an (Vorgabe) oder aus (CENTRIC_KETTE_AUS=1, der volle Weg). */
+function schalten(an) {
+  if (an) delete process.env.CENTRIC_KETTE_AUS; else process.env.CENTRIC_KETTE_AUS = "1";
+  expect(ketteAn()).toBe(an);
+}
 function mitSchalter(an, fn) {
-  const vorher = KETTE.an;
-  KETTE.an = an;
-  try { return fn(); } finally { KETTE.an = vorher; }
+  schalten(an);
+  try { return fn(); } finally { schalten(true); }
 }
 async function mitSchalterAsync(an, fn) {
-  const vorher = KETTE.an;
-  KETTE.an = an;
-  try { return await fn(); } finally { KETTE.an = vorher; }
+  schalten(an);
+  try { return await fn(); } finally { schalten(true); }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -274,7 +278,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   delete process.env.CENTRIC_TEILSPEICHERUNG;
-  KETTE.an = true;
+  delete process.env.CENTRIC_KETTE_AUS;
   if (wurzel) await rm(wurzel, { recursive: true, force: true });
 });
 
@@ -303,7 +307,71 @@ async function platte(raum) {
   return aus;
 }
 
+/** Ein liegendes Schreibjournal wie nach einem Abbruch: eine Scherbe mit geändertem Eintrag (gültige Prüfsumme). */
+async function journalLegen(raum, seed) {
+  const s = laden();
+  const { blobs } = await s.list({ prefix: `scherbe:${raum}:` });
+  const Zj = zufall(seed ^ 0x5a5a);
+  const b = blobs[Zj.int(blobs.length)];
+  const wert = kopie(await s.get(b.key, { type: "json" }));
+  const feld = Object.keys(wert.felder).find((f) => Object.keys(wert.felder[f]).length) || "abweichungen";
+  const k = Object.keys(wert.felder[feld])[0] || `p1|${wert.monat}-01`;
+  wert.felder[feld][k] = "J";
+  const schritte = [{ art: "setzen", schluessel: b.key, wert }];
+  await s.setJSON(`journal:${raum}`, { id: `j${seed}`, stand: 0, zeit: "2026-11-18T00:00:00.000Z", schritte,
+    pruefsumme: createHash("sha256").update(JSON.stringify(schritte)).digest("hex") });
+}
+
 describe("bestandSchreiben: Abdrücke aus dem Lesen = alles gerechnet (echte Dateiablage)", { timeout: 300000 }, () => {
+  it("Veränderung an Ort und Stelle: scheitert laut (TypeError), nichts geht still verloren", async () => {
+    const raum = "wp486-ort-und-stelle";
+    const k = "p1|2026-10-05";
+    await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [{ id: "m1", name: "Haus", personen: [],
+      abweichungen: { "p1|2026-09-01": "F" }, erfassung: { [k]: { start: "06:00", ende: "14:00", bestaetigt: true } }, einstempeln: {} }] },
+    { durch: "Pruefung" });
+    await B.unterRaumsperre(raum, async () => {
+      const g = await B.bestandLesenStreng(laden(), raum, { segmente: true, merken: false });
+      expect(() => { g.bestand.mandanten[0].erfassung[k].ende = "22:00"; }).toThrow(TypeError);
+      expect(() => { g.bestand.mandanten[0].erfassung[k].neu = 1; }).toThrow(TypeError);
+      /* Ersetzen statt Verändern ist der erlaubte Weg — und wird geschrieben. */
+      const neu = { ...g.bestand, mandanten: [{ ...g.bestand.mandanten[0],
+        erfassung: { ...g.bestand.mandanten[0].erfassung, [k]: { ...g.bestand.mandanten[0].erfassung[k], ende: "22:00" } } }] };
+      const e = await B.bestandSchreiben(laden(), raum, neu, { erwarteterStand: g.stand, durch: "Pruefung", gelesen: g });
+      expect(e.ok).toBe(true);
+    });
+    expect((await B.bestandLesenStreng(laden(), raum)).bestand.mandanten[0].erfassung[k].ende).toBe("22:00");
+    /* Ohne segmente (alle anderen Leser) bleibt das Gelesene veränderbar wie bisher. */
+    const frei = await B.bestandLesenStreng(laden(), raum);
+    frei.bestand.mandanten[0].erfassung[k].ende = "23:00";
+    expect(frei.bestand.mandanten[0].erfassung[k].ende).toBe("23:00");
+  });
+
+  it("Abdruckspeicher begrenzt: Überlauf verdrängt die ältesten, das Ergebnis bleibt gleich", async () => {
+    process.env.CENTRIC_ABDRUCK_SPEICHER_MAX = "5";
+    try {
+      const raeume = ["wp486-speicher-a", "wp486-speicher-b"];
+      const m = { id: "m1", name: "Haus", personen: [], abweichungen: {}, erfassung: {}, einstempeln: {} };
+      for (const mon of ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08"])
+        m.abweichungen[`p1|${mon}-03`] = "F";
+      for (const raum of raeume) await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [kopie(m)] }, { durch: "Pruefung" });
+      const erg = [];
+      for (const [i, raum] of raeume.entries()) {
+        erg.push(await mitSchalterAsync(i === 0, () => B.unterRaumsperre(raum, async () => {
+          const g = await B.bestandLesenStreng(laden(), raum, { segmente: true, merken: false });
+          if (i === 0) expect(B.abdruckSpeicherGroesse()).toBeLessThanOrEqual(5);
+          const neu = { ...g.bestand, mandanten: [{ ...g.bestand.mandanten[0],
+            abweichungen: { ...g.bestand.mandanten[0].abweichungen, "p1|2025-04-09": "N" } }] };
+          const e = await B.bestandSchreiben(laden(), raum, neu, { erwarteterStand: g.stand, durch: "Pruefung", gelesen: g });
+          return { ...e, epoche: undefined };
+        })));
+      }
+      expect(B.abdruckSpeicherGroesse()).toBeLessThanOrEqual(5);
+      expect(erg[0]).toEqual(erg[1]);
+      expect(await platte(raeume[0])).toEqual(await platte(raeume[1]));
+      expect(B.ABDRUCK_SPEICHER_MAX).toBe(20000);
+    } finally { delete process.env.CENTRIC_ABDRUCK_SPEICHER_MAX; }
+  });
+
   it("Zufallsfolgen mit gemeinsamen, kopierten, geänderten, verschobenen und gelöschten Einträgen", async () => {
     const Z = zufall(0x486005);
     for (let lauf = 0; lauf < 6; lauf++) {
@@ -315,12 +383,15 @@ describe("bestandSchreiben: Abdrücke aus dem Lesen = alles gerechnet (echte Dat
       }
       for (const raum of raeume) await B.bestandSchreiben(laden(), raum, kopie(start), { durch: "Pruefung" });
       for (let schritt = 0; schritt < 8; schritt++) {
-        const plan = { veraltet: Z.ja(0.25), seed: Z.int(1e9) };
+        /* journal: ein liegendes Schreibjournal (Überlagerung beim Lesen); cache: zweites Lesen aus dem Lesecache. */
+        const plan = { veraltet: Z.ja(0.25), seed: Z.int(1e9), journal: Z.ja(0.25), cache: Z.ja(0.25) };
+        if (plan.journal) for (const raum of raeume) await journalLegen(raum, plan.seed);
         const ergebnisse = [];
         for (const [i, raum] of raeume.entries()) {
           const an = i === 0;
           ergebnisse.push(await mitSchalterAsync(an, () => B.unterRaumsperre(raum, async () => {
-            const g = await B.bestandLesenStreng(laden(), raum, { segmente: true, merken: false });
+            let g = await B.bestandLesenStreng(laden(), raum, { segmente: true, merken: plan.cache });
+            if (plan.cache) g = await B.bestandLesenStreng(laden(), raum, { segmente: true });   // Treffer: Kopie ohne Abdrücke
             const Zs = zufall(plan.seed);
             const neu = { ...g.bestand, mandanten: g.bestand.mandanten.map((m) => {
               const x = { ...m };
@@ -368,6 +439,8 @@ const ROLLEN = {
   PL: { rolle: "planer", person: "p1" },
   SV: { rolle: "subplaner", person: "s1", einheit: "e1" },
   MA: { rolle: "mitarbeiter", person: "m0" },
+  /* zweiter Betrieb im selben Raum (Sitzung betrieb 1) */
+  PL2: { rolle: "planer", person: "p1", betrieb: 1, mandant: "m2" },
 };
 const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: "V", nachname: `N${id}`, rolle, bereich: einheit,
   status: "aktiv", geburtstag: "1980-01-01", qualifikationen: [], zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }],
@@ -401,6 +474,12 @@ function pruefbetrieb() {
     ansichten: {}, kompetenzen: [], einarbeitung: [], aenderungen: [], bestaetigungen: [], dienstbuch: [], uebergaben: [],
     protokoll: [], notizen: {}, tagesnotizen: {}, tarif: "basis", seit: "2026-01-01", preisgestaltung: {}, kontakt: "k@example.org",
   }] };
+}
+/** Zwei Betriebe im Raum: derselbe Prüfbetrieb noch einmal als m2 (eigene Kennung, eigener Name). */
+function pruefraum() {
+  const b = pruefbetrieb();
+  b.mandanten.push({ ...kopie(b.mandanten[0]), id: "m2", name: "Haus 2" });
+  return b;
 }
 
 /** Feste Änderungen je Weg: Plan, Ist (gestempelt, abgeschlossen), Stempel fälschen/löschen, Schrumpfen, veralteter Stand. */
@@ -447,11 +526,11 @@ async function raumPaar(nrPaar) {
   const paar = [];
   for (const seite of ["neu", "alt"]) {
     const raum = `wp486-kette-${seite}-${nrPaar}`;
-    await B.bestandSchreiben(laden(), raum, G.personenAngleichen(G.uebergabenAngleichen(pruefbetrieb())), { durch: "Pruefung" });
+    await B.bestandSchreiben(laden(), raum, G.personenAngleichen(G.uebergabenAngleichen(pruefraum())), { durch: "Pruefung" });
     const token = {};
     for (const [k, r] of Object.entries(ROLLEN)) {
-      token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: 0,
-        mandantId: "m1", einheit: r.einheit || null }, 2 * 3600 * 1000)).token;
+      token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: r.betrieb || 0,
+        mandantId: r.mandant || "m1", einheit: r.einheit || null }, 2 * 3600 * 1000)).token;
     }
     paar.push({ raum, token, an: seite === "neu" });
   }
@@ -463,10 +542,10 @@ async function ausfuehren(seite, k, besch) {
   return mitSchalterAsync(seite.an, async () => {
     const token = seite.token[k];
     const g = await anfrage("/api/bestand", { token });
-    const m = g.bestand.mandanten.find((x) => x.id === "m1");
+    const m = g.bestand.mandanten.find((x) => x.id === (ROLLEN[k].mandant || "m1"));
     if (besch.voll || besch.alsVoll || !g.teile) {
       const b = kopie(g.bestand);
-      const mb = b.mandanten.find((x) => x.id === "m1");
+      const mb = b.mandanten.find((x) => x.id === (ROLLEN[k].mandant || "m1"));
       for (const [feld, fn] of Object.entries(besch.kern || {})) mb[feld] = fn(kopie(mb[feld]));
       for (const z of besch.zellen || []) {
         mb[z.feld] = { ...(mb[z.feld] || {}) };
@@ -501,7 +580,7 @@ describe("Handler: Teil-PUT und Voll-PUT mit Abkürzungen = ohne (alt gegen neu)
       }
       /* Die Folge erreicht Erfolg und die Absagen der Kette (je nach Rolle). */
       expect([...codes].some((c) => c.startsWith("200")), [...codes].join(" | ")).toBe(true);
-      if (k === "LT" || k === "PL") {
+      if (k === "LT" || k === "PL" || k === "PL2") {
         expect(codes.has("403 STEMPEL_UNVERAENDERLICH"), [...codes].join(" | ")).toBe(true);
         expect(codes.has("403 MONAT_ABGESCHLOSSEN"), [...codes].join(" | ")).toBe(true);
       }

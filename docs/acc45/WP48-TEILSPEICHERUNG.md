@@ -768,7 +768,9 @@ keine Entscheidung nötig).
 
 Stand 2026-11-18. Ohne Schalter für den Betrieb, ohne Datenmigration, ohne neue Konflikt- oder Löschregel;
 `CENTRIC_TEILSPEICHERUNG` und `CENTRIC_ABSCHLUSS_SEGMENTWEISE` bleiben aus. Jede Abkürzung liefert beweisbar dasselbe
-Ergebnis wie der volle Weg; abschaltbar nur für den Differenzialtest (`server/lib/kette.mjs`, `KETTE.an`).
+Ergebnis wie der volle Weg. Die Abkürzungen laufen in Produktion immer (Vorgabe an, kein Betreiberschalter);
+`CENTRIC_KETTE_AUS=1` stellt den vollen Weg wieder her (`server/lib/kette.mjs` `ketteAn()`, für den Differenzialtest
+und als Rückfall; kein veränderbares Exportobjekt).
 
 - **Stempel- und Abschlussprüfung** (`stempelintegritaet.mjs`, `monatsabschluss.mjs`): Ein Eintrag der Übermittlung, der
   DASSELBE Objekt ist wie der gespeicherte, wird nicht Feld für Feld verglichen (jede Feldprüfung verglich ihn mit sich
@@ -782,7 +784,10 @@ Ergebnis wie der volle Weg; abschaltbar nur für den Differenzialtest (`server/l
   gelesener Scherbe Objekt und Abdruck — gerechnet beim Lesen, bevor ein Aufrufer sie sieht, und je Inhalt über den
   ETag der Ablage (SHA-256 des gespeicherten JSON) wiederverwendet. `bestandSchreiben({ gelesen })` übernimmt ihn für
   jede Scherbe mit denselben Schlüsseln und denselben Werten (`===`, `gleicheEintraege`); sonst wird gerechnet. Der
-  Vermerk kommt also nicht ungeprüft aus dem alten Vermerk, sondern aus dem tatsächlich Gelesenen.
+  Vermerk kommt also nicht ungeprüft aus dem alten Vermerk, sondern aus dem tatsächlich Gelesenen. Erzwungen (Review
+  #341): Im Modus `segmente` sind die Einträge der gemerkten Scherben tief eingefroren — eine Veränderung an Ort und
+  Stelle scheitert laut (TypeError → 500, nichts geschrieben) statt als „unverändert" still verloren zu gehen. Der
+  Abdruckspeicher je ETag ist auf 20 000 Einträge begrenzt, beim Überlauf fällt der älteste heraus.
 - **Kein zweites Lesen, keine Kopie**: Der Teilweg liest unter der Sperre ohne Lesecache (`merken: false`) — er
   schreibt immer auf den eben gelesenen Stand und liest nicht noch einmal; das `structuredClone` des ganzen Bestands
   entfällt. Der Voll-PUT behält den Lesecache (Drei-Wege-Abgleich).
@@ -791,9 +796,13 @@ Ergebnis wie der volle Weg; abschaltbar nur für den Differenzialtest (`server/l
 - **Prüfungen** `pruefungen/wp48-6-kette.test.js` (`pruefung:wp48-6-kette`, läuft in CI über `pruefung:wp48-teilweg`):
   alt gegen neu — wörtliche Kopie der alten Funktionen (`pruefungen/hilfen/wp48-6-referenz.mjs`) für `tagVon`,
   `monatVon` (über 200 000 Zufalls- und Grenzschlüssel), `stempelWiderspruch`, `stempelSichern` (6 000 Zufallsfälle,
-  Ergebnis, Grund, Schlüssel, Ausnahmen, Schlüsselreihenfolge); Schalter an/aus für `abschlussWiderspruch` (6 000 Fälle),
-  `bestandSchreiben` mit/ohne gelesene Abdrücke auf echter Dateiablage (6 × 8 Zufallsschritte, auch veralteter Stand:
-  Antwort und Platte gleich) und den echten Handler (Teil- und Voll-PUT, LT/PL/SV/MA, 14 feste + 8 zufällige
+  Ergebnis, Grund, Schlüssel, Ausnahmen, Schlüsselreihenfolge). Für `abschlussWiderspruch` (6 000 Fälle),
+  `unveraenderteScherben`, `bestandSchreiben` und den Handler ist das Orakel der ausgeschaltete Zweig
+  (`CENTRIC_KETTE_AUS=1`, Zeile für Zeile der bisherige Code), keine wörtliche Alt-Kopie: `bestandSchreiben` mit/ohne
+  gelesene Abdrücke auf echter Dateiablage (6 × 8 Zufallsschritte, auch veralteter Stand, liegendes Journal,
+  Lesecache-Treffer: Antwort und Platte gleich), Veränderung an Ort und Stelle (TypeError, nichts verloren),
+  Abdruckspeicher-Überlauf, und den echten Handler mit zwei Betrieben im Raum (Teil- und Voll-PUT, LT/PL/SV/MA und PL im
+  zweiten Betrieb, 14 feste + 8 zufällige
   Änderungen je Rolle, darunter `STEMPEL_UNVERAENDERLICH`, `MONAT_ABGESCHLOSSEN`, Schrumpfsicherung, veralteter Stand:
   Status, Antwort und Platte zweier gleicher Räume gleich). Von Hand geprüfte Mutanten (Abkürzung ohne Listenprüfung,
   Abdruck immer übernommen, Abschluss-Schlüssel übergangen) machen die zugehörigen Fälle rot (nicht in
@@ -804,10 +813,10 @@ Ergebnis wie der volle Weg; abschaltbar nur für den Differenzialtest (`server/l
   aller Scherben, Sicht der Rolle und virtueller Rumpf, `zusammenfuehren`, `pruefeGestalt` (`laengeGeprueft`),
   `stempelSichern` (baut `einstempeln`/`erfassung` neu), Zerlegen des neuen Stands. Für < 1 s braucht es Lesen nur
   berührter Scherben unter der Sperre (Rechte und Prüfungen je Segment) — eigener Folgeschritt.
-- **Restrisiko**: Die Abkürzungen setzen voraus, dass gelesene Einträge in der Kette nicht an Ort und Stelle verändert,
-  sondern ersetzt werden (gilt im Code heute; ein künftiger Eingriff an Ort und Stelle würde im Differenzialtest
-  sichtbar). Die ETag-Wiederverwendung setzt voraus, dass niemand eine Ablagedatei von Hand ändert, ohne den ETag
-  anzupassen.
+- **Restrisiko**: Ein künftiger Eingriff an Ort und Stelle in gelesene Einträge der PUT-Kette verliert nichts mehr,
+  bricht aber den Schreibvorgang laut ab (500) — er muss dann auf Ersetzen umgestellt werden. Die Abkürzungen der
+  Stempel-/Abschlussprüfung vergleichen gelesene (eingefrorene) Objekte nur mit sich selbst. Die ETag-Wiederverwendung
+  setzt voraus, dass niemand eine Ablagedatei von Hand ändert, ohne den ETag anzupassen.
 
 ---
 

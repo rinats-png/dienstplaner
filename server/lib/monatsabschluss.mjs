@@ -71,7 +71,7 @@ import { loeschStichtag } from "./stempelintegritaet.mjs";
 import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze, datevHinweise,
   ohneEintrittPrueffaelle, OHNE_EINTRITT_TEXT } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
-import { KETTE } from "./kette.mjs";
+import { ketteAn } from "./kette.mjs";
 
 export { abschlussPersonenRaeumen };
 
@@ -983,6 +983,7 @@ export function abschlussWiderspruch(altM, gesendetM, o = {}) {
      je abgeschlossenem Monat und Feld eine Schleife über alle Schlüssel aller Monate (400 Personen,
      12 Monate: 7,1 s je PUT unter der Raumsperre). Ergebnis wie vorher: der früheste Monat, darin das
      erste Feld in IST_FELDER-Reihenfolge, darin der erste abweichende Schlüssel. */
+  const kurz = ketteAn();                                       // WP-48.6: Abkürzungen (Vorgabe an)
   const pruefen = new Set(monate.filter((monat) => !(o.unveraendert && !o.unveraendert.has(`${altM.id}::${monat}`))));
   if (!pruefen.size) return null;
   /** @type {Map<string, {k: string, feld: string}>} */
@@ -1002,9 +1003,9 @@ export function abschlussWiderspruch(altM, gesendetM, o = {}) {
     const n = objekt(gesendetM[feld]) ? gesendetM[feld] : {};
     /* WP-48.6 (segmentproportionale Kette): Dasselbe Objekt wie gespeichert — jeder Schlüssel wäre gleichWert
        mit sich selbst, keiner fehlt. Ebenso je Schlüssel derselbe Wert (gleichWert(x, x) ist immer wahr). */
-    if (KETTE.an && a === n) continue;
+    if (kurz && a === n) continue;
     const sieh = (k) => {
-      if (KETTE.an && a[k] === n[k]) return;
+      if (kurz && a[k] === n[k]) return;
       const monat = monatDes(k);
       if (!monat || !pruefen.has(monat) || erster.has(monat) || gleichWert(a[k], n[k])) return;
       const tag = String(k).split("|")[1];

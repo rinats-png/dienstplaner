@@ -60,7 +60,7 @@ import { stichtage, aufbewahrungFehler, STANDORT_FELDER } from "./aufbewahrung.m
 import { geplanterDienst, BEGINN_GLEICH_ENDE } from "./zeiterfassung.mjs";
 import { regelHinweise, pauseZuLang, uhrDauerAbweichend } from "./zeitregeln.mjs";
 import { gemesseneDauerMin, dauerMinText } from "./istdaten.mjs";
-import { KETTE } from "./kette.mjs";
+import { ketteAn } from "./kette.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -99,9 +99,9 @@ export const tagVonFuerPruefung = tagVon;
    gespeicherte (im Teilweg aus der Sicht des gelesenen Stands), widerspricht ihm nie — jede Feldprüfung
    unten vergliche einen Wert mit sich selbst. Ausnahme, die die Abkürzung deshalb ausschließt: Listenfelder
    (Korrekturen, Anträge, Kennzeichen), die gespeichert KEINE Liste sind — die weist der volle Weg ab, auch
-   unverändert. Ergebnis gleich dem vollen Weg; abschaltbar für den Differenzialtest (KETTE). */
+   unverändert. Ergebnis gleich dem vollen Weg; abschaltbar über CENTRIC_KETTE_AUS=1 (kette.mjs). */
 const LISTENFELDER = ["korrekturen", "antraege", "markierungen"];
-const stempelUnveraendert = (e, a) => KETTE.an && e === a && objekt(a)
+const stempelUnveraendert = (an, e, a) => an && e === a && objekt(a)
   && LISTENFELDER.every((f) => !Object.prototype.hasOwnProperty.call(a, f) || Array.isArray(a[f]));
 
 /** Tage vor diesem Stichtag sind abgelaufen und dürfen der Löschpflicht weichen.
@@ -142,6 +142,7 @@ function bekannteIstStaende(gespeichertE, stempel) {
  */
 export function stempelWiderspruch(altM, neuM, o = {}) {
   if (!objekt(neuM)) return null;
+  const kurz = ketteAn();                                       // WP-48.6: Abkürzungen (Vorgabe an)
   const altS = altM && objekt(altM.einstempeln) ? altM.einstempeln : {};
   const altE = altM && objekt(altM.erfassung) ? altM.erfassung : {};
   const stich = o.loeschlauf && o.heute && altM ? loeschStichtag(altM, o.heute) : null;
@@ -170,7 +171,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
     } else {
       for (const [k, e] of Object.entries(n)) {
         const a = altS[k];
-        if (stempelUnveraendert(e, a)) continue;               // WP-48.6: derselbe Eintrag, kein Widerspruch
+        if (stempelUnveraendert(kurz, e, a)) continue;               // WP-48.6: derselbe Eintrag, kein Widerspruch
         if (a === undefined) {
           if (e === null || e === undefined) continue;          // nichts da, nichts gelöscht
           if (verfallen(k)) continue;                           // vom Datenschutzlauf gelöscht (B1)
@@ -223,7 +224,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
       /* Weggelassene Stempel: Wer alle Stempel sieht (Leitung, Planung) und
          den Monat unverändert kennt, hat einen fehlenden Stempel gelöscht. */
       /* WP-48.6: Ist die Übermittlung dasselbe Objekt wie der gespeicherte Stand, fehlt kein Schlüssel. */
-      if (o.vollSicht && !(KETTE.an && n === altS)) {
+      if (o.vollSicht && !(kurz && n === altS)) {
         for (const k of Object.keys(altS)) {
           if (k in n || abgelaufen(k) || !weggelassenErkennbar(k)) continue;
           return nein("Ein Stempel ist ein Beleg und lässt sich nicht löschen.", k);
@@ -244,7 +245,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
     for (const [k, e] of Object.entries(neuM.erfassung)) {
       const a = altE[k];
       /* WP-48.6: derselbe Eintrag ohne Selbstauskunft — beide Teile fehlen, nichts zu prüfen (wie unten). */
-      if (KETTE.an && e === a && !(objekt(e) && e.selbstauskunft !== undefined)) continue;
+      if (kurz && e === a && !(objekt(e) && e.selbstauskunft !== undefined)) continue;
       const asa = objekt(a) ? a.selbstauskunft : undefined, esa = objekt(e) ? e.selbstauskunft : undefined;
       if (esa === undefined && asa === undefined) continue;
       if (esa !== undefined) {
@@ -262,7 +263,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
   /* Ist-Zeit eines gestempelten Tages: nur über die Stempelkorrektur. */
   if ("erfassung" in neuM && objekt(neuM.erfassung)) {
     for (const [k, e] of Object.entries(neuM.erfassung)) {
-      if (KETTE.an && e === altE[k]) continue;                  // WP-48.6: derselbe Wert — gleich(e, a) gälte
+      if (kurz && e === altE[k]) continue;                  // WP-48.6: derselbe Wert — gleich(e, a) gälte
       const stempel = altS[k];
       if (!objekt(stempel)) continue;                           // kein Stempel: gewöhnliche Erfassung
       const a = altE[k];
@@ -275,7 +276,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
       if (a !== undefined && !(o.vollSicht && weggelassenErkennbar(k)) && bekannteIstStaende(a, stempel).has(tupel(e))) continue;   // veraltete Kopie
       return nein("Die Ist-Zeit eines gestempelten Tages ändert nur eine Stempelkorrektur (mit Grund) — das Original bleibt.", k);
     }
-    if (o.vollSicht && !(KETTE.an && neuM.erfassung === altE)) {
+    if (o.vollSicht && !(kurz && neuM.erfassung === altE)) {
       for (const k of Object.keys(altE)) {
         if (!objekt(altS[k]) || k in neuM.erfassung || abgelaufen(k) || !weggelassenErkennbar(k)) continue;
         return nein("Die Ist-Zeit eines gestempelten Tages lässt sich nicht löschen.", k);
