@@ -102,6 +102,20 @@ describe("A2 Delta", () => {
     for (let i = 0; i <= T.GRENZEN.zellen; i++) viele[`p${i}|2026-08-01`] = "F";
     expect(T.deltaBilden(z, { ...z.basis, abweichungen: { ...z.basis.abweichungen, ...viele } })).toEqual({ voll: "zu-gross" });
   });
+  it("Byte- und Tiefengrenzen des Servers → Rückfall voll statt Sackgasse 413/422", () => {
+    const z = z0();
+    const gross = "x".repeat(T.GRENZEN.zellwertBytes + 1);
+    expect(T.deltaBilden(z, { ...z.basis, erfassung: { "a1|2026-08-01": { start: "06:00", notiz: gross } } })).toEqual({ voll: "zu-gross" });
+    const kernGross = [{ id: "F", name: "y".repeat(T.GRENZEN.kernfeldBytes) }];
+    expect(T.deltaBilden(z, { ...z.basis, dienstarten: kernGross })).toEqual({ voll: "zu-gross" });
+    /* Viele mittelgroße Zellen: jede unter 4 KB, zusammen über 2 MB. */
+    const viele = {};
+    for (let i = 0; i < 700; i++) viele[`p${i}|2026-08-01`] = { notiz: "z".repeat(3500) };
+    expect(T.deltaBilden(z, { ...z.basis, erfassung: viele })).toEqual({ voll: "zu-gross" });
+    let tief = "F";
+    for (let i = 0; i < T.GRENZEN.tiefe; i++) tief = [tief];
+    expect(T.deltaBilden(z, { ...z.basis, dienstarten: tief })).toEqual({ voll: "zu-tief" });
+  });
   it("Rumpf: Format, Epoche, Kennung; keine Nur-Server-Felder", () => {
     const z = z0();
     const { delta } = T.deltaBilden(z, { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } });
@@ -158,6 +172,18 @@ describe("A3 Antworten", () => {
       expect(e.z.phase).toBe("bereit");
       expect(T.deltaBilden(e.z, l).delta.zellen).toHaveLength(1);
     }
+  });
+  it("413 TEILE_ZU_GROSS → Rückfall voll; 422 ANFRAGE_WIEDERVERWENDET → neuAufsetzen mit verständlicher Meldung", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const g = senden(z, l, { status: 413, daten: { code: "TEILE_ZU_GROSS", text: "Zu viele Zellen." } });
+    expect(g.ergebnis).toBe("voll");
+    expect(g.z.basis).toBe(z.basis);
+    const w = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung });
+    const a = T.antwortVerarbeiten(w.zustand, { status: 422, daten: { code: "ANFRAGE_WIEDERVERWENDET" } });
+    expect(a.ergebnis).toBe("neuAufsetzen");
+    expect(a.meldung).toMatch(/nicht gespeichert.*neu laden/i);
+    expect(a.zustand.basis).toBe(z.basis);
   });
   it("409 NEU_LADEN → Phase neuLaden mit der Liste des Ausstehenden, kein Abgleich je Zelle", () => {
     const z = z0();
@@ -285,15 +311,81 @@ describe("A4 Konflikt je Zelle/Feld: Wahl, Auflösen, Idempotenz, Mehrfachkonfli
 
 describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
   const z0 = () => T.teilwegStart(getAntwort(betrieb()), "m1");
-  it("Netz weg: Kennung bleibt für die Wiederholung desselben Deltas; anderes Delta → neue Kennung", () => {
+  it("Netz weg: dieselbe Sendung geht mit derselben Kennung; ohne Unklares bekommt ein anderes Delta eine neue", () => {
     const z = z0();
     const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
     const e = senden(z, l, { status: null, netz: true });
     expect(e.z.unklar).toEqual(["z:abweichungen:a1|2026-08-14"]);
     const r = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
     expect(r.rumpf.anfrage).toBe(e.rumpf.anfrage);
+    /* Ohne Unklares: zwei verschiedene Deltas → zwei Kennungen. */
+    const a = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung });
     const l2 = { ...l, abweichungen: { ...l.abweichungen, "a1|2026-08-15": "F" } };
-    expect(T.rumpfBauen(e.z, T.deltaBilden(e.z, l2).delta, { neueKennung }).rumpf.anfrage).not.toBe(e.rumpf.anfrage);
+    expect(T.rumpfBauen(a.zustand, T.deltaBilden(z, l2).delta, { neueKennung }).rumpf.anfrage).not.toBe(a.rumpf.anfrage);
+  });
+  it("K2 ABA in derselben Sitzung: nach Netzfehler und weiterer Änderung kein Senden unter neuer Kennung", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const e = senden(z, l, { status: null, netz: true });
+    const l2 = { ...l, abweichungen: { ...l.abweichungen, "a1|2026-08-15": "F" } };
+    const r = T.rumpfBauen(e.z, T.deltaBilden(e.z, l2).delta, { neueKennung });
+    expect(r.rumpf).toBeNull();
+    expect(r.neuAufsetzen).toBe(true);
+    expect(r.zustand).toBe(e.z);
+  });
+  it("K2 unklare Segmente überstehen 409/Absage: danach nur über neuAufsetzen weiter", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N", "a1|2026-08-15": "F" } };
+    const e = senden(z, l, { status: null, netz: true });
+    /* Wiederholung derselben Sendung bekommt 409 nur für a1|15 → a1|14 bleibt unklar. */
+    const w = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+    const k = T.antwortVerarbeiten(w.zustand, { status: 409, daten: { code: "TEILE_KONFLIKT", versionen: {},
+      konflikt: { kern: [], zellen: [{ feld: "abweichungen", k: "a1|2026-08-15", aktuell: "-" }] } } });
+    expect(k.zustand.unklar).toContain("z:abweichungen:a1|2026-08-14");
+    const r = T.aufloesen(T.waehlen(k.zustand, "z:abweichungen:a1|2026-08-15", "fremd"), l);
+    expect(T.rumpfBauen(r.zustand, T.deltaBilden(r.zustand, r.lokal).delta, { neueKennung }).rumpf).toBeNull();
+    for (const [status, daten] of [[403, {}], [503, {}]]) {
+      const w2 = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+      const a = T.antwortVerarbeiten(w2.zustand, { status, daten });
+      expect(T.rumpfBauen(a.zustand, T.deltaBilden(a.zustand, l).delta, { neueKennung }).rumpf).toBeNull();
+    }
+    /* Nach neuAufsetzen (Server hatte a1|14 geschrieben): a1|14 erledigt; a1|15 war mit unklar gesendet und
+       steht frisch auf dem Erwartungswert → Frage (ABA), nie still wiederholt. Erst „meins" schickt sie. */
+    const frisch = betrieb(); frisch.abweichungen["a1|2026-08-14"] = "N";
+    const n0 = T.neuAufsetzen(e.z, getAntwort(frisch), l);
+    expect(n0.ergebnis).toBe("konflikt");
+    expect(n0.zustand.konflikte.map((f) => [f.k, f.meins, f.fremd])).toEqual([["a1|2026-08-15", "F", "N"]]);
+    const n = T.aufloesen(T.waehlen(n0.zustand, n0.zustand.konflikte[0].id, "meins"), n0.lokal);
+    const d = T.deltaBilden(n.zustand, n.lokal).delta;
+    expect(d.zellen).toEqual([{ feld: "abweichungen", k: "a1|2026-08-15", alt: "N", neu: "F" }]);
+    expect(T.rumpfBauen(n.zustand, d, { neueKennung }).rumpf).not.toBeNull();
+  });
+  it("K1 neuAufsetzen: lokal = frische Sicht ⊕ nur eigene Segmente; fremde Zelle und fremdes Kernfeld nie im Delta", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" },
+      wuensche: [{ id: "w1", personId: "a1" }] };
+    const frisch = betrieb();
+    frisch.abweichungen["a2|2026-08-14"] = "S";        // fremder Schreiber, nicht eigene Zelle
+    frisch.dienstarten = [...frisch.dienstarten, { id: "X", name: "Extra" }];   // fremdes Kernfeld, nicht eigenes
+    const n = T.neuAufsetzen(z, getAntwort(frisch, { versionen: { "kern:dienstarten": V("9"), "kern:personen": V("b"), "kern:wuensche": V("c") } }), l);
+    expect(n.ergebnis).toBe("aufgesetzt");
+    expect(n.lokal.abweichungen["a2|2026-08-14"]).toBe("S");
+    expect(n.lokal.dienstarten).toEqual(frisch.dienstarten);
+    const d = T.deltaBilden(n.zustand, n.lokal).delta;
+    expect(d.zellen).toEqual([{ feld: "abweichungen", k: "a1|2026-08-14", alt: "F", neu: "N" }]);
+    expect(Object.keys(d.kern)).toEqual(["wuensche"]);
+    expect(JSON.stringify(d)).not.toMatch(/a2\|2026-08-14|dienstarten/);
+  });
+  it("M1 Ausstehendes über den Teilweg nicht darstellbar → nie „aufgesetzt“, sondern neuLaden mit Grund und altem Stand", () => {
+    const z = z0();
+    for (const l of [{ ...z.basis, zyklus: ["F"] }, { ...z.basis, dienstarten: undefined },
+      { ...z.basis, abweichungen: Object.fromEntries(Array.from({ length: T.GRENZEN.zellen + 1 }, (_, i) => [`p${i}|2026-08-01`, "F"])) }]) {
+      const n = T.neuAufsetzen(z, getAntwort(betrieb()), l);
+      expect(n.ergebnis).toBe("neuLaden");
+      expect(n.zustand.phase).toBe("neuLaden");
+      expect(typeof n.zustand.ausstehendBeiNeuLaden.voll).toBe("string");
+      expect(n.lokal).toBe(l);
+    }
   });
   it("ABA-Schutz: unklarer Ausgang, frischer Wert = Erwartungswert → Frage statt blinder Wiederholung", () => {
     const z = z0();
@@ -309,7 +401,7 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
     const n = T.neuAufsetzen(z, getAntwort(betrieb()), l);
     expect(n.ergebnis).toBe("aufgesetzt");
-    expect(T.deltaBilden(n.zustand, l).delta.zellen).toEqual([{ feld: "abweichungen", k: "a1|2026-08-14", alt: "F", neu: "N" }]);
+    expect(T.deltaBilden(n.zustand, n.lokal).delta.zellen).toEqual([{ feld: "abweichungen", k: "a1|2026-08-14", alt: "F", neu: "N" }]);
   });
   it("frischer Wert = eigener Wert → erledigt; fremd geändert → Frage", () => {
     const z = z0();
@@ -319,6 +411,10 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     frisch.abweichungen["a1|2026-08-15"] = "-";
     const n = T.neuAufsetzen(z, getAntwort(frisch), l);
     expect(n.zustand.konflikte.map((f) => f.id)).toEqual(["z:abweichungen:a1|2026-08-15"]);
+    /* Erledigtes ist nicht mehr ausstehend; die Frage trägt lokal meinen Wert. */
+    expect(n.lokal.abweichungen["a1|2026-08-15"]).toBe("F");
+    const r = T.aufloesen(T.waehlen(n.zustand, "z:abweichungen:a1|2026-08-15", "fremd"), n.lokal);
+    expect(T.deltaBilden(r.zustand, r.lokal)).toEqual({ leer: true });
   });
   it("Kernfeld: gleiche Version → ausstehend; neue Version → Frage", () => {
     const z = z0();
@@ -389,8 +485,8 @@ describe("B Gleichlauf mit server/lib/teilweg.mjs", () => {
     for (const f of T.NUR_SERVER_SPIEGEL) expect(S.NUR_SERVER.includes(f) || (MONATSFELDER.includes(f) && !S.ZELLFELDER.includes(f))).toBe(true);
     for (const f of T.NUR_SERVER_SPIEGEL) expect(S.KERNFELDER.includes(f)).toBe(false);
     for (const x of [null, 1, "a", [1, { b: 2, a: undefined }], { z: [], a: { y: 1, x: null } }]) expect(T.stabil(x)).toBe(S.stabil(x));
-    expect(T.GRENZEN.zellen).toBe(S.TEILE_GRENZEN.zellen);
-    expect(T.GRENZEN.kernfelder).toBe(S.TEILE_GRENZEN.kernfelder);
+    /* Alle Grenzen gespiegelt (teilweg.mjs ist wegen node:crypto nicht bündelbar): jede Abweichung wird rot. */
+    expect({ ...T.GRENZEN }).toEqual({ ...S.TEILE_GRENZEN });
   });
 });
 
@@ -455,6 +551,7 @@ async function speichern(o) {
   const d = T.deltaBilden(o.z, o.lokal);
   if (!("delta" in d)) return { d };
   const r = T.rumpfBauen(o.z, d.delta, { durch: "Pruefung", neueKennung });
+  if (!r.rumpf) return { neuAufsetzen: true };
   const a = await anfrage("/api/bestand/teile", { methode: "POST", token: o.token, rumpf: r.rumpf });
   const e = T.antwortVerarbeiten(r.zustand, a);
   o.z = e.zustand;
@@ -663,5 +760,60 @@ describe("C Ende zu Ende (echter Handler)", () => {
     const n = T.neuAufsetzen(o.z, g.daten, o.lokal);
     expect(n.ergebnis).toBe("konflikt");
     expect(n.zustand.konflikte.map((f) => [f.k, f.meins, f.fremd])).toEqual([[k, "N", "F"]]);
+  });
+
+  it("K1 neu aufsetzen setzt fremde Änderungen (andere Zelle, anderes Kernfeld) nicht still zurück", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    const { raum, token } = await raumMit(["PL", "PL2", "LT"]);
+    const o = await oberflaeche(token.PL);
+    zelle(o, "abweichungen", `a1|${tag(20)}`, "N");            // eigene, noch nicht gesendete Änderung
+    const lt = await oberflaeche(token.LT);
+    zelle(lt, "abweichungen", `s1|${tag(20)}`, "N");           // fremde Zelle
+    lt.lokal = { ...lt.lokal, dienstarten: [...lt.lokal.dienstarten,
+      { id: "X", name: "Extra", start: "08:00", ende: "16:00", pause: 30, mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }] };
+    expect((await speichern(lt)).status).toBe(200);
+    const g = await anfrage("/api/bestand", { token: token.PL2 });
+    const n = T.neuAufsetzen(o.z, g.daten, o.lokal);
+    expect(n.ergebnis).toBe("aufgesetzt");
+    o.z = n.zustand; o.lokal = n.lokal;
+    const s = await speichern(o);
+    expect(s.status).toBe(200);
+    expect(s.rumpf.zellen.map((x) => x.k)).toEqual([`a1|${tag(20)}`]);
+    expect(s.rumpf.kern).toBeUndefined();
+    const m = await gespeichertM(raum);
+    expect(m.abweichungen[`a1|${tag(20)}`]).toBe("N");
+    expect(m.abweichungen[`s1|${tag(20)}`]).toBe("N");
+    expect(m.dienstarten.map((d) => d.id)).toContain("X");
+  });
+
+  it("K2 Netzfehler (Server hatte geschrieben), dann weitere Änderung: nichts unter neuer Kennung, erst neu aufsetzen", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    const { raum, token } = await raumMit(["PL", "LT"]);
+    const o = await oberflaeche(token.PL);
+    const k = `a1|${tag(20)}`;
+    zelle(o, "abweichungen", k, "N");
+    const r = T.rumpfBauen(o.z, T.deltaBilden(o.z, o.lokal).delta, { neueKennung });
+    expect((await anfrage("/api/bestand/teile", { methode: "POST", token: o.token, rumpf: r.rumpf })).status).toBe(200);
+    o.z = T.antwortVerarbeiten(r.zustand, { status: null, netz: true }).zustand;
+    /* Jemand setzt zurück; dann ändert PL weiter. */
+    const lt = await oberflaeche(token.LT);
+    zelle(lt, "abweichungen", k, "F");
+    expect((await speichern(lt)).status).toBe(200);
+    const stand = (await B.bestandLesenStreng(laden(), raum)).stand;
+    zelle(o, "abweichungen", `a1|${tag(23)}`, "N");
+    expect(await speichern(o)).toEqual({ neuAufsetzen: true });
+    expect((await B.bestandLesenStreng(laden(), raum)).stand).toBe(stand);
+    expect((await gespeichertM(raum)).abweichungen[k]).toBe("F");
+    /* Neu aufsetzen: Frage für die unklare Zelle, die zweite Änderung bleibt ausstehend. */
+    const n = T.neuAufsetzen(o.z, (await anfrage("/api/bestand", { token: token.PL })).daten, o.lokal);
+    expect(n.zustand.konflikte.map((f) => [f.k, f.meins, f.fremd])).toEqual([[k, "N", "F"]]);
+    const a = T.aufloesen(T.waehlen(n.zustand, n.zustand.konflikte[0].id, "fremd"), n.lokal);
+    o.z = a.zustand; o.lokal = a.lokal;
+    const s = await speichern(o);
+    expect(s.status).toBe(200);
+    expect(s.rumpf.zellen.map((x) => x.k)).toEqual([`a1|${tag(23)}`]);
+    const m = await gespeichertM(raum);
+    expect(m.abweichungen[k]).toBe("F");
+    expect(m.abweichungen[`a1|${tag(23)}`]).toBe("N");
   });
 });

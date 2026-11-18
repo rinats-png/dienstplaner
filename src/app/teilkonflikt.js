@@ -29,7 +29,13 @@
    - Wiederholschutz (Auflage aus 7.2 für 48.5): Ein Delta, dessen Ausgang
      unklar ist (Netz weg nach dem Senden), wird nach einem Neuladen oder
      Sitzungswechsel nie blind wiederholt. Steht der frische Wert noch auf
-     dem Erwartungswert, wird daraus eine Konfliktfrage (ABA-Schutz).
+     dem Erwartungswert, wird daraus eine Konfliktfrage (ABA-Schutz). In
+     derselben Sitzung geht, solange etwas unklar ist, nur genau dieselbe
+     Sendung mit derselben Kennung hinaus; alles andere verlangt erst ein
+     frisches GET und neuAufsetzen.
+   - Nach neuAufsetzen ist der lokale Stand die frische Sicht plus nur die
+     eigenen ausstehenden Segmente — fremde Änderungen werden nie mit dem
+     alten lokalen Stand zurückgeschrieben.
    - Epoche anders (Wiederherstellen) → kein Abgleich je Zelle, sondern
      „neu laden" mit der Liste des Ausstehenden (2.4, 409 NEU_LADEN).
    ========================================================================== */
@@ -45,8 +51,26 @@ export const NUR_SERVER_SPIEGEL = Object.freeze(["einstempeln", "istEingefroren"
 /** Felder des Betriebs, die nie Teil eines Vergleichs sind (Zustand des Reiters bzw. vom Server gezählt). */
 const UEBERGEHEN = new Set(["session", "stand"]);
 
-/** Grenzen je Anfrage, wie der Server (teilweg.mjs TEILE_GRENZEN); darüber Rückfall statt 413. */
-export const GRENZEN = Object.freeze({ zellen: 5000, kernfelder: 25 });
+/** Grenzen je Anfrage, gespiegelt aus server/lib/teilweg.mjs TEILE_GRENZEN (der Gleichlauf-Test erzwingt Gleichheit;
+    teilweg.mjs braucht node:crypto und lässt sich nicht in die Oberfläche bündeln). Darüber Rückfall statt 413. */
+export const GRENZEN = Object.freeze({ rumpfBytes: 2 * 1024 * 1024, zellen: 5000, kernfelder: 25,
+  kernfeldBytes: 1024 * 1024, zellwertBytes: 4 * 1024, tiefe: 64 });
+/** Platz für Format, Epoche, Kennung und `durch` im Rumpf (großzügig; `durch` ist auf 200 Zeichen begrenzt). */
+const RUMPF_HUELLE = 2048;
+
+const bytes = (x) => new TextEncoder().encode(stabil(x)).length;
+
+/** Iterativ: ist irgendein Wert tiefer als max verschachtelt? (wie teilweg.mjs zuTief) */
+function zuTief(x, max) {
+  const stapel = [[x, 0]];
+  while (stapel.length) {
+    const [w, d] = stapel.pop();
+    if (!w || typeof w !== "object") continue;
+    if (d >= max) return true;
+    for (const v of Array.isArray(w) ? w : Object.values(w)) if (v && typeof v === "object") stapel.push([v, d + 1]);
+  }
+  return false;
+}
 
 const SCHLUESSEL = /^([^|]{1,64})\|(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -141,7 +165,14 @@ export function deltaBilden(zustand, lokal) {
   }
   if (!zellen.length && !Object.keys(kern).length) return { leer: true };
   if (zellen.length > GRENZEN.zellen || Object.keys(kern).length > GRENZEN.kernfelder) return { voll: "zu-gross" };
-  return { delta: { kern, zellen } };
+  const delta = { kern, zellen };
+  /* Dieselben Grenzen wie die Formprüfung des Servers (teilweg.mjs teileFormFehler): Was er mit 413/422
+     abwiese, geht gar nicht erst über den Teilweg — sonst bliebe es als Sackgasse ausstehend. */
+  if (zuTief(delta, GRENZEN.tiefe)) return { voll: "zu-tief" };
+  for (const z of zellen) if (bytes(z.neu) > GRENZEN.zellwertBytes || bytes(z.alt) > GRENZEN.zellwertBytes) return { voll: "zu-gross" };
+  for (const t of Object.values(kern)) if (bytes(t.wert) > GRENZEN.kernfeldBytes) return { voll: "zu-gross" };
+  if (bytes(delta) + RUMPF_HUELLE > GRENZEN.rumpfBytes) return { voll: "zu-gross" };
+  return { delta };
 }
 
 /** Segmentkennungen eines Deltas. */
@@ -153,11 +184,20 @@ export function segmente(delta) {
  * Den Rumpf für POST /api/bestand/teile bauen. Eine Wiederholung desselben Deltas nach einem unklaren
  * Ausgang (Netz) in DERSELBEN Sitzung behält die Anfragekennung — der Server antwortet dann ohne neu zu
  * schreiben. Jedes andere Delta bekommt eine neue Kennung.
+ *
+ * ABA-Schutz auch innerhalb der Sitzung: Solange ein Segment unklar ist (Netz weg nach dem Senden), geht
+ * NUR genau das unklar gesendete Delta mit derselben Kennung hinaus. Jedes andere Delta — eine weitere
+ * Änderung, oder die unklare Sendung ist nicht mehr gemerkt (nach 409/Absage) — bekommt keinen Rumpf
+ * (`rumpf: null, neuAufsetzen: true`): Erst frisches GET und `neuAufsetzen`, dann weiter. Sonst ginge ein
+ * unklares Segment mit altem Erwartungswert unter neuer Kennung hinaus, und der Server merkte nichts.
  * @param {() => string} neueKennung  liefert eine zufällige Kennung [A-Za-z0-9_-]{8,64}
+ * @returns {{ zustand: any, rumpf: any } | { zustand: any, rumpf: null, neuAufsetzen: true }}
  */
 export function rumpfBauen(zustand, delta, { durch, neueKennung }) {
   const u = zustand.unterwegs;
-  const anfrage = u && u.anfrage && stabil(u.delta) === stabil(delta) ? u.anfrage : neueKennung();
+  const gleichGesendet = !!(u && u.anfrage && stabil(u.delta) === stabil(delta));
+  if (zustand.unklar.length && !gleichGesendet) return { zustand, rumpf: null, neuAufsetzen: true };
+  const anfrage = gleichGesendet ? u.anfrage : neueKennung();
   const rumpf = { format: TEILWEG_FORMAT, epoche: zustand.epoche, anfrage, ...(durch ? { durch: String(durch).slice(0, 200) } : {}) };
   if (Object.keys(delta.kern).length) rumpf.kern = delta.kern;
   if (delta.zellen.length) rumpf.zellen = delta.zellen;
@@ -184,7 +224,8 @@ function basisMit(basis, delta) {
  * Antwort auf einen gesendeten Rumpf verarbeiten.
  * @param {any} zustand
  * @param {{ status: number|null, daten?: any, netz?: boolean }} antwort  `netz: true` = keine Antwort (Ausgang unklar)
- * @returns {{ zustand: any, ergebnis: "gespeichert"|"konflikt"|"neuLaden"|"absage"|"fehler" }}
+ * @returns {{ zustand: any, ergebnis: "gespeichert"|"konflikt"|"neuLaden"|"neuAufsetzen"|"voll"|"absage"|"fehler", meldung?: string }}
+ *   `neuAufsetzen` = frisches GET und neuAufsetzen; `voll` = Rückfall auf den Voll-PUT.
  */
 export function antwortVerarbeiten(zustand, antwort) {
   const u = zustand.unterwegs;
@@ -214,9 +255,20 @@ export function antwortVerarbeiten(zustand, antwort) {
     const unklar = [...new Set([...zustand.unklar, ...segmente(u.delta)])].sort();
     return { ergebnis: "fehler", zustand: { ...ohne, unklar, unterwegs: { ...u, offen: true } } };
   }
+  /* Zu groß für den Teilweg (Grenzen des Servers enger als gespiegelt): keine Sackgasse — Rückfall auf den
+     Voll-PUT, dessen Drei-Wege-Abgleich fremde Änderungen weiter erkennt. */
+  if (status === 413 && d.code === "TEILE_ZU_GROSS")
+    return { ergebnis: "voll", zustand: ohne, meldung: String(d.text || "Zu viele Änderungen auf einmal.") };
+  /* Kennung mit anderem Inhalt: Nach dem ABA-Schutz in rumpfBauen ein Fehler dieser Oberfläche, kein
+     Rechtefall. Nichts geschrieben; neu laden und gegen die frische Sicht aufsetzen. */
+  if (status === 422 && d.code === "ANFRAGE_WIEDERVERWENDET")
+    return { ergebnis: "neuAufsetzen", zustand: ohne,
+      meldung: "Diese Änderung ließ sich nicht eindeutig zuordnen und wurde nicht gespeichert. Bitte neu laden — "
+        + "deine Änderungen bleiben bis dahin erhalten und werden danach mit dem aktuellen Stand abgeglichen." };
   /* Jede andere Absage (403, 409 Fachbefunde/Abschluss/Personalnummer, 413, 422, 429, 5xx): Der Server hat
      nichts geschrieben. Basis bleibt, die eigenen Änderungen bleiben ausstehend. */
-  return { ergebnis: status && status < 500 && status !== 429 ? "absage" : "fehler", zustand: ohne };
+  return { ergebnis: status && status < 500 && status !== 429 ? "absage" : "fehler", zustand: ohne,
+    meldung: String(d.text || d.fehler || "Nicht gespeichert.") };
 }
 
 /** 409 TEILE_KONFLIKT: aktuelle Werte der streitigen Teile in die Basis, Fragen je Zelle/Feld anlegen. */
@@ -298,34 +350,47 @@ export function aufloesen(zustand, lokal) {
  * - Sonst: frische Sicht wird Basis. Je ausstehender Zelle/Feld:
  *   frischer Wert = mein Wert → erledigt; frischer Wert = mein Erwartungswert und Ausgang NICHT unklar →
  *   bleibt ausstehend; sonst → Frage (auch bei unklarem Ausgang, ABA-Schutz).
- * @returns {{ zustand: any, ergebnis: "aufgesetzt"|"konflikt"|"neuLaden"|"aus" }}
+ *
+ * Der neue lokale Stand ist IMMER die frische Sicht, überlagert nur mit den eigenen ausstehenden Segmenten
+ * (Zellen/Kernfelder des eigenen Deltas, die nicht erledigt sind). Alles, was andere inzwischen geändert haben,
+ * kommt aus der frischen Sicht — der alte lokale Stand darf sonst nichts beitragen, sonst schickte das nächste
+ * Delta fremde Änderungen mit dem frischen Wert als Erwartungswert still zurück.
+ *
+ * Ist das Ausstehende über den Teilweg nicht darstellbar (`voll`: Feld ohne Version, gelöschtes Kernfeld,
+ * Grenzen), gibt es kein stilles „aufgesetzt": Phase „neuLaden" mit Grund; `lokal` bleibt der alte Stand,
+ * damit die Oberfläche ihn als Datei sichern kann, bevor sie neu lädt.
+ * @returns {{ zustand: any, lokal: any, ergebnis: "aufgesetzt"|"konflikt"|"neuLaden"|"aus" }}
  */
 export function neuAufsetzen(zustand, antwort, lokal) {
   const frisch = teilwegStart(antwort, zustand.mandantId);
+  if (!frisch) return { ergebnis: "aus", zustand: null, lokal };
   const alt = deltaBilden(zustand, lokal);
+  if ("voll" in alt)
+    return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: { voll: alt.voll } } };
   const offen = "delta" in alt ? alt.delta : { kern: {}, zellen: [] };
-  if (!frisch) return { ergebnis: "aus", zustand: null };
   if (frisch.epoche !== zustand.epoche) {
-    const leer = !segmente(offen).length;
-    return { ergebnis: leer ? "aufgesetzt" : "neuLaden",
-      zustand: leer ? frisch : { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: offen } };
+    if (!segmente(offen).length) return { ergebnis: "aufgesetzt", zustand: frisch, lokal: frisch.basis };
+    return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: offen } };
   }
   const unklar = new Set(zustand.unklar);
   const fragen = [];
+  const ueberlagern = { kern: {}, zellen: [] };
   for (const z of offen.zellen) {
     const jetzt = wertIn(frisch.basis[z.feld], z.k);
     if (gleich(jetzt, z.neu)) continue;
+    ueberlagern.zellen.push(z);
     if (gleich(jetzt, z.alt) && !unklar.has(zellId(z.feld, z.k))) continue;
     fragen.push({ id: zellId(z.feld, z.k), art: "zelle", feld: z.feld, k: z.k, meins: z.neu, fremd: jetzt });
   }
   for (const [feld, t] of Object.entries(offen.kern)) {
     const jetzt = hat(frisch.basis, feld) ? frisch.basis[feld] : null;
     if (gleich(jetzt, t.wert)) continue;
+    ueberlagern.kern[feld] = t;
     if (frisch.versionen[`kern:${feld}`] === t.basis && !unklar.has(kernId(feld))) continue;
     fragen.push({ id: kernId(feld), art: "kern", feld, meins: t.wert, fremd: jetzt });
   }
   fragen.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return { ergebnis: fragen.length ? "konflikt" : "aufgesetzt",
+  return { ergebnis: fragen.length ? "konflikt" : "aufgesetzt", lokal: basisMit(frisch.basis, ueberlagern),
     zustand: { ...frisch, konflikte: fragen, phase: fragen.length ? "konflikt" : "bereit" } };
 }
 

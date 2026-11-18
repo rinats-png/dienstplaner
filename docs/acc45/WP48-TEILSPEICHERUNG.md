@@ -780,31 +780,46 @@ Schalter wurde geändert, keine neue Umgebungsvariable.
 - **Delta** (`deltaBilden`): Zellen `abweichungen`/`erfassung` mit Erwartungswert, Kernfelder nur mit bekannter
   Basisversion des Servers (die Oberfläche rechnet keine Hashes). Spiegel der Serverfelder (`einstempeln`,
   `istEingefroren`, `monatsabschluss`) sowie `session`/`stand` gehen nie hinaus. Nicht darstellbar → Rückfall `voll`
-  (Feld ohne Version, gelöschtes Kernfeld, ungültiger Zellschlüssel, über den Grenzen des Servers).
+  (Feld ohne Version, gelöschtes Kernfeld, ungültiger Zellschlüssel, über einer Grenze des Servers). Alle Grenzen
+  aus `TEILE_GRENZEN` sind gespiegelt (Zahl der Zellen und Kernfelder, Bytes je Rumpf, Kernfeld und Zellwert, Tiefe);
+  der Gleichlauf-Test erzwingt Gleichheit (`teilweg.mjs` braucht `node:crypto` und ist nicht bündelbar). Antwortet
+  der Server trotzdem 413 `TEILE_ZU_GROSS`, ist das Ergebnis `voll` (Rückfall auf den Voll-PUT), keine Sackgasse.
 - **Antworten** (`antwortVerarbeiten`): 200 → Basis ⊕ *gesendetes* Delta (spätere lokale Änderungen bleiben
   ausstehend); 409 `TEILE_KONFLIKT` → aktuelle Werte der streitigen Teile in die Basis, je Zelle/Kernfeld eine Frage,
   nicht streitige eigene Änderungen bleiben ausstehend; 409 `NEU_LADEN` → Phase „neu laden“ mit der Liste des
-  Ausstehenden; ein Konflikt ohne eigenes Segment → ebenfalls „neu laden“ (keine Endlosschleife); jede andere Absage
-  → nichts geschrieben, Basis bleibt.
+  Ausstehenden; ein Konflikt ohne eigenes Segment → ebenfalls „neu laden“ (keine Endlosschleife); 422
+  `ANFRAGE_WIEDERVERWENDET` → `neuAufsetzen` mit verständlicher Meldung; jede andere Absage → nichts geschrieben,
+  Basis bleibt, Text des Servers als `meldung`.
 - **Wahl** (`waehlen`, `aufloesen`): „fremd“ setzt lokal genau den aktuellen Wert des Servers (für diese Zelle geht
   nichts mehr hinaus); „meins“ lässt lokal stehen, das nächste Delta trägt bewusst `alt = aktuell`. Aufgelöst wird erst,
   wenn jede Frage entschieden ist. Ein blindes „alles übernehmen“ gibt es nicht. Bei einem Kernfeld ersetzt die Wahl
   das ganze Feld (Text `frageText` sagt das).
-- **Wiederholschutz (Auflage 7.2):** Netz weg nach dem Senden → Segmente „unklar“, Wiederholung desselben Deltas in
-  derselben Sitzung mit derselben Anfragekennung (Server antwortet `wiederholt`). `neuAufsetzen` (frisches GET,
-  Sitzungswechsel): andere Epoche → „neu laden“; ein unklares Segment wird nie blind wiederholt, auch wenn der frische
-  Wert wieder dem Erwartungswert gleicht (ABA) — es wird eine Frage.
+- **Wiederholschutz (Auflage 7.2):** Netz weg nach dem Senden → Segmente „unklar“. Solange etwas unklar ist, geht in
+  derselben Sitzung **nur genau dieselbe Sendung mit derselben Anfragekennung** hinaus (Server antwortet
+  `wiederholt` oder schreibt erstmals). Jedes andere Delta — weitere Änderung, oder die unklare Sendung ist nach
+  409/Absage nicht mehr gemerkt — bekommt keinen Rumpf (`neuAufsetzen: true`): erst frisches GET und `neuAufsetzen`.
+  Ein unklares Segment geht also nie unter neuer Kennung mit altem Erwartungswert hinaus (ABA in der Sitzung).
+- **Neu aufsetzen** (`neuAufsetzen`, frisches GET, Sitzungswechsel): Der neue lokale Stand ist die **frische Sicht,
+  überlagert nur mit den eigenen ausstehenden Segmenten**; fremde Änderungen an anderen Zellen und Kernfeldern kommen
+  aus der frischen Sicht und gehen nie im nächsten Delta zurück. Ein unklares Segment wird nie blind wiederholt, auch
+  wenn der frische Wert wieder dem Erwartungswert gleicht (ABA) — es wird eine Frage. Andere Epoche → „neu laden“.
+  Ist das Ausstehende über den Teilweg nicht darstellbar (`voll`), gibt es nie „aufgesetzt“, sondern „neu laden“ mit
+  Grund; der alte lokale Stand bleibt zurückgegeben, damit Teil 2 ihn vorher als Datei sichern kann.
 - **Keine Rechtelogik in der Oberfläche.** „Meins“ schickt nur Segmente aus dem eigenen Delta; ob die Rolle sie
   schreiben darf, entscheidet der Server wie beim Voll-PUT (Prüfung: SV außerhalb des Bereichs → 403, nichts
   geschrieben).
-- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (58 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
+- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (66 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
   (Start/Gate, Delta, Antworten, Wahl, Idempotenz, Mehrfachkonflikte, unklarer Ausgang, Epoche, 200 Zufallslagen mit
   festem Startwert), Gleichlauf mit `server/lib/teilweg.mjs` (Zellfelder, Nur-Server-Felder, stabiles JSON, Grenzen),
   Ende zu Ende über den echten Handler: Leitung, Planung, Schichtverantwortung × Planzelle/Löschung/Kernfeld
   Dienstarten/Mehrfach, Beschäftigte × Kernfeld Wünsche (zweites Gerät), je „fremd“ und „meins“; Mehrfachkonflikt mit
-  drittem Schreiber; Wiederholung mit gleicher Kennung ohne zweites Schreiben; ABA nach Sitzungswechsel. Handmutanten
-  M1–M7 (fremd wirkungslos, unklar ignoriert, Basis nach 409 nicht aktualisiert, Kennung nie wiederverwendet, fremde
-  Segmente als Frage, Serverfelder im Delta, Epoche ignoriert): alle rot.
+  drittem Schreiber; Wiederholung mit gleicher Kennung ohne zweites Schreiben; ABA nach Sitzungswechsel; Neuaufsetzen
+  setzt fremde Zelle und fremdes Kernfeld nicht zurück (K1); Netzfehler und weitere Änderung senden nichts unter neuer
+  Kennung (K2). Handmutanten (nicht im Repo, von Hand per Textersetzung): M1–M7 (fremd wirkungslos, unklar ignoriert,
+  Basis nach 409 nicht aktualisiert, Kennung nie wiederverwendet, fremde Segmente als Frage, Serverfelder im Delta,
+  Epoche ignoriert), K1 (alter lokaler Stand nach Neuaufsetzen), K2 (kein ABA-Schutz in der Sitzung),
+  M1 neu (`voll` beim Neuaufsetzen übergangen), Grenzen (Rumpfbytes, Zellwertbytes, Tiefe, 413 ohne Rückfall), G1
+  (422 ohne Meldung).
 
 **Offen für Teil 2:** Verdrahtung in `speicher.js` (Basis aus `lies()`, Senden über `POST /api/bestand/teile`,
 `keepalive` mit kleinem Delta, Rückfall auf den Voll-PUT bei `voll`), Konfliktfenster je Zelle/Feld (Radiogruppe je
@@ -814,7 +829,10 @@ Ohne Fähigkeit `teile` bleibt der heutige Weg bytegleich. Einschalten weiter er
 
 **Restgrenzen:** Normalisiert der Server einen gesendeten Zellwert, hält die Basis den gesendeten Wert; die nächste
 Änderung derselben Zelle zeigt dann eine Frage gegen den eigenen, normalisierten Wert (kein Verlust). Ein Delta über
-den Grenzen (5 000 Zellen, 25 Kernfelder) fällt auf den Voll-PUT zurück (große Betriebe dort weiter 413).
+einer Grenze des Servers fällt auf den Voll-PUT zurück (große Betriebe dort weiter 413; dessen Drei-Wege-Abgleich
+erkennt fremde Änderungen weiter). Bei unklarem Ausgang ist ohne Netz kein Weiterspeichern möglich, bis ein frisches
+GET gelingt — gewollt, statt ein unklares Segment unter neuer Kennung zu wiederholen. Die Byte-Grenze des Rumpfs
+rechnet die Hülle (Format, Epoche, Kennung, `durch`) mit 2 KB Reserve.
 
 ---
 
