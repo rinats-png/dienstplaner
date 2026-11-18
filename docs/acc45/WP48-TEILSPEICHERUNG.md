@@ -840,13 +840,24 @@ Server; der Löschlauf-Knopf der Oberfläche bleibt beim Speichern (Umstellung m
 - **Zwei Schritte.** `{ vorschau: true }` schreibt nichts (Bericht, Zahlen ohne Personenangaben, Kennung über Tag,
   Betrieb, betroffene Personen und Zahlen). `{ bestaetigt: <Kennung> }` führt aus; hat sich das Fällige geändert →
   409 `LOESCHLAUF_VORSCHAU_VERALTET` ohne Löschung. Eine wiederholte Bestätigung löst nie einen zweiten Lauf aus.
-- **Recht** wie heute in der Oberfläche (Ansicht „Datenschutz“, `org.edit`) und Vollschreibrecht: Leitung,
-  Kundenrolle. Planung, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber, Sicherungsschlüssel → 403.
+- **Kennung und Neuberechnung (N2):** Die Kennung deckt Tag, Betrieb, betroffene Personen und alle Zahlen der
+  Vorschau, nicht jeden einzelnen Schlüssel. Ausgeführt wird immer die unter der Sperre neu gerechnete Löschung
+  (`raeumen` auf den aktuellen Stand) — sie bleibt damit stets innerhalb der Regel; die Kennung stellt nur sicher,
+  dass die Leitung den Umfang bestätigt hat, der jetzt gilt.
+- **Recht** (Review PR #346, M2): nur die Leitung (`org.edit`, Vollschreibrecht; auch Demozugang mit Rolle Leitung).
+  Kundenrolle, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber, Sicherungsschlüssel → 403. Der
+  Kundenrolle (Altrolle, wird abgelöst) bleibt der unveränderte Weg über das Speichern. **Folgehinweis für 48.5:**
+  Stellt die Oberfläche den Knopf auf diesen Weg um, verlieren Konten der Kundenrolle den Löschlauf-Knopf (gewollt).
+- **Ohne Wirkung kein Schreiben** (Review M1): Ändert die Kette am eigenen Betrieb nichts außer dem eigenen
+  Protokolleintrag, wird nichts geschrieben und nichts protokolliert (200, `ausgefuehrt: false`, `ohneWirkung: true`).
+  So bleibt das Betriebsprotokoll ehrlich, auch wenn die Vorschau nur noch eingefrorenes Ist jenseits der Frist
+  zählt (siehe Befund 2). Die Vorschau zählt dieses Ist weiter mit — sonst wiche der Protokolltext vom heutigen Weg
+  ab. Sicherungsschlüssel-Abgleich nur nach einer Ausführung (N1).
 - **Strenger als heute:** ungültige Fristen → 422 (heute rechnete die Oberfläche mit Ersatzwerten); eigene Bremse
   `loeschlauf` (10/min); Protokollart `loeschlauf` (vorschau, nichts-faellig, konflikt, abgewiesen, erfolg).
 - **Nachweis** `pruefungen/wp48-loeschlauf.test.js` (in `pruefung:wp48-teilweg`): Differenzialprüfung auf zwei gleichen
   Räumen — gleicher Endstand, gleicher Stand, gleiche Schreibzeilen im Serverprotokoll, gleich viele
-  Schutzsicherungen; Leitung und Kundenrolle; Schalter, Rechte, Form, Vorschau, Wiederholung, veraltete Vorschau,
+  Schutzsicherungen; Leitung und Demozugang Leitung; Schalter, Rechte, Form, Vorschau, Wiederholung, veraltete Vorschau,
   ungültige Fristen, Mandantentrennung, Bremse, unlesbarer Bestand (503).
 - **Befunde (unverändert übernommen, weil „dieselbe Regel“):**
   1. Trägt ein Stempel zwischen Gründe-Frist (Standort) und Plandatenfrist noch Standortfelder, nimmt `raeumen` sie
@@ -854,10 +865,15 @@ Server; der Löschlauf-Knopf der Oberfläche bleibt beim Speichern (Umstellung m
      scheitert dann heute wie neu mit 403 `STEMPEL_UNVERAENDERLICH` und löscht nichts. Die Felder entfernt nur der
      Datenschutzlauf (Modus „an“). Prüfung 1b hält das fest.
   2. Das eingefrorene Ist (`istEingefroren`) jenseits der Frist zählt die Vorschau als fällig, das Speichern löscht
-     es aber nicht (Serverfeld). Nach einem Lauf bleibt die Vorschau deshalb „fällig“; ein zweiter Lauf schriebe nur
-     einen weiteren Protokolleintrag. Entfernen kann es nur der Datenschutzlauf.
-  3. Die Kundenrolle ändert keine Krank-Abwesenheiten (RB-3): Ist ein Grund einer Krank-Abwesenheit fällig, wird ihr
-     Löschlauf heute wie neu mit 403 abgewiesen.
+     es aber nicht (Serverfeld). Nach einem Lauf bleibt die Vorschau deshalb „fällig“. Über den heutigen Weg schreibt
+     jeder weitere Klick einen Protokolleintrag „… gelöscht“ ohne Löschung; der neue Weg schreibt dann nichts (siehe
+     „Ohne Wirkung“). Entfernen kann es nur der Datenschutzlauf.
+  3. Über den heutigen Weg darf die Kundenrolle keine Krank-Abwesenheiten ändern (RB-3); ihr Löschlauf scheitert dann
+     mit 403. Den neuen Weg hat sie nicht.
+- **Prüfungen dazu:** dreimal dieselbe Bestätigung nach einem Lauf mit lohnexportiertem Monat jenseits der Frist →
+  genau ein Lauf, ein Protokolleintrag, ältere Einträge nicht verdrängt; exakte Fristgrenze (Stichtag bleibt, Tag
+  davor gelöscht); Kundenrolle 403, Demozugang Leitung erlaubt; `/api/loeschlauf` in
+  `pruefungen/abnahme-c-schalter.test.js` (Vorgabe aus → 404).
 
 ---
 

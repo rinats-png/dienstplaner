@@ -23,7 +23,7 @@ import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten,
   from "../lib/konten.mjs";
 import { demoAn, teilwegAn, abschlussSegmentweiseAn } from "../lib/schalter.mjs";
 import { ABSCHLUSS_SEGMENT_AKTIONEN, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
-import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten } from "../lib/loeschlauf.mjs";
+import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten, ohneWirkung } from "../lib/loeschlauf.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandLesenAuswahlStreng, bestandSchreiben, teileSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
@@ -307,7 +307,7 @@ async function sicherungsschluesselAbgleichen(store, raum) {
 
 /** Wege, die Personal, Rollen oder den Bestand im Ganzen ändern können: immer abgleichen. Alle anderen höchstens alle
     zehn Sekunden je Raum, damit häufige Schreibvorgänge (Stempeln) nicht jedes Mal zahlen. */
-const SK_IMMER_ABGLEICHEN = new Set(["bestand", "bestand/teile", "loeschlauf", "wiederherstellen"]);
+const SK_IMMER_ABGLEICHEN = new Set(["bestand", "bestand/teile", "wiederherstellen"]);
 const skZuletzt = new Map();
 
 /** WP-48.3: Teilweg nur mit Schalter, nur für schreibende Rollen des eigenen Betriebs — der Betreiber (mehrere
@@ -317,12 +317,15 @@ const teilwegNutzbar = (s) => teilwegAn() && !!s && !s.nurSicherung
 const SK_ABSTAND = 10000;
 
 export default async (req, context) => {
-  const ctx = { raum: null };
+  const ctx = { raum: null, loeschlaufAusgefuehrt: false };
   const a = await behandeln(req, context, ctx);
   if (ctx.raum && req.method !== "GET" && req.method !== "HEAD" && a && a.status < 400) {
     const pfad = new URL(req.url).pathname.replace(/^\/api\/?/, "");
     const jetzt = Date.now();
-    if (SK_IMMER_ABGLEICHEN.has(pfad) || jetzt - (skZuletzt.get(ctx.raum) || 0) >= SK_ABSTAND) {
+    /* WP-48.4 (Review PR #346, N1): Der Löschlauf gleicht nur nach einer Ausführung ab (er anonymisiert Personen) —
+       Vorschau, „nichts fällig" und „ohne Wirkung" schreiben nichts, auch keinen Abgleich. */
+    if (pfad === "loeschlauf" && !ctx.loeschlaufAusgefuehrt) return a;
+    if (SK_IMMER_ABGLEICHEN.has(pfad) || ctx.loeschlaufAusgefuehrt || jetzt - (skZuletzt.get(ctx.raum) || 0) >= SK_ABSTAND) {
       skZuletzt.set(ctx.raum, jetzt);
       await sicherungsschluesselAbgleichen(laden(), ctx.raum);
     }
@@ -1464,7 +1467,7 @@ async function behandeln(req, context, ctx) {
       let { bestand, etag } = teilweg || loeschweg ? { bestand: null, etag: null } : rumpf;
       const { durch } = loeschweg ? {} : rumpf;
       /* Löschweg: Bericht der Vorschau, die die Leitung bestätigt hat (für Protokoll und Antwort). */
-      let loeschBericht = null;
+      let loeschBericht = null, loeschMandant = null;
       /* Teilweg: was der virtuelle Rumpf berührt (Kernfelder, Monate), der eigene Betrieb und die Epoche. */
       let teilBeruehrt = null, teilMandant = null, teilEpoche = null;
       /* Wiederholschutz je Sitzung (teilweg.mjs): Kennung der Sitzung und Abdruck des Rumpfs. */
@@ -1613,6 +1616,7 @@ async function behandeln(req, context, ctx) {
           bestand = l.virtuell;
           etag = jetzt.stand;
           loeschBericht = l.bericht;
+          loeschMandant = rohL.id;
           const vorab = await gestaltVorab(bestand);
           if (vorab) return vorab;
         }
@@ -1776,6 +1780,19 @@ async function behandeln(req, context, ctx) {
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+
+        /* WP-48.4 (Review PR #346, M1): Ändert der Löschlauf nach der Kette am eigenen Betrieb nichts außer seinem
+           Protokolleintrag (etwa nur eingefrorenes Ist jenseits der Frist, das das Speichern nie löscht), wird nichts
+           geschrieben und nichts ins Betriebsprotokoll eingetragen — kein „… gelöscht" ohne Löschung. */
+        if (loeschweg) {
+          const finde = (b) => (b && Array.isArray(b.mandanten) ? b.mandanten.find((x) => x && x.id === loeschMandant) : null);
+          const vorherL = finde(personenAngleichen(uebergabenAngleichen(jetzt.bestand)));
+          if (ohneWirkung(vorherL, finde(zuSchreiben))) {
+            await protokoll("loeschlauf", ks, "ohne-wirkung", "nichts löschbar über diesen Weg", wer);
+            return antwort({ ok: true, ausgefuehrt: false, faellig: true, ohneWirkung: true, bericht: loeschBericht,
+              text: "Über diesen Weg ist nichts mehr zu löschen; der Rest ist Sache des täglichen Datenschutzlaufs. Es wurde nichts geändert." });
+          }
+        }
         groesseMerken(s.bestand, zuSchreiben);
 
         /* Einwilligungen nach dem Mutterschutzgesetz (Review N1): dass sie sich
@@ -1985,6 +2002,7 @@ async function behandeln(req, context, ctx) {
         } catch { /* egal */ }
       }
       if (teilweg) return antwort(teilAntwort);
+      if (loeschweg) ctx.loeschlaufAusgefuehrt = true;
       if (loeschweg) return antwort({ ok: true, ausgefuehrt: true, etag: erg.stand, bericht: loeschBericht,
         ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht.` } : {}) });
       return antwort({ ok: true, etag: erg.stand,

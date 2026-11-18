@@ -22,18 +22,21 @@
    Zusätzlich, nur strenger:
    - Schalter: nur mit CENTRIC_TEILSPEICHERUNG=true (sonst 404, wie der
      Teilweg; schalter.mjs). Der heutige Weg bleibt unverändert.
-   - Recht: nur, wer heute den Löschlauf in der Oberfläche sieht
-     (Ansicht „Datenschutz", org.edit) und voll schreibt — Leitung und die
-     Kundenrolle im eigenen Probierraum. Planung, Schichtverantwortung,
-     Beschäftigte, Betriebsrat, Betreiber, Sicherungsschlüssel: 403.
+   - Recht: nur die Leitung (org.edit, Vollschreibrecht; auch als
+     Demozugang). Kundenrolle, Planung, Schichtverantwortung, Beschäftigte,
+     Betriebsrat, Betreiber, Sicherungsschlüssel: 403. Der Kundenrolle
+     bleibt der unveränderte Weg über das Speichern (Review PR #346, M2).
    - Zwei Schritte: `{ vorschau: true }` rechnet und schreibt nichts; die
      Ausführung verlangt `{ bestaetigt: <kennung> }` aus der Vorschau. Hat
      sich das Fällige seitdem geändert (anderer Tag, andere Einträge), gibt
      es 409 LOESCHLAUF_VORSCHAU_VERALTET und nichts wird gelöscht.
    - Ungültige Fristangaben: 422, nichts wird gelöscht (fail-closed wie der
      Datenschutzlauf; der heutige Weg rechnete dann mit Ersatzwerten).
-   - Idempotent: Nach einem Lauf ist nichts mehr fällig; derselbe Aufruf
-     noch einmal schreibt nichts (200, `ausgefuehrt: false`).
+   - Idempotent: Dieselbe Bestätigung noch einmal löst keinen zweiten Lauf
+     aus — das Fällige hat sich geändert (409) oder nichts ist mehr fällig
+     (200). Bleibt nur, was das Speichern nie löscht (eingefrorenes Ist
+     jenseits der Frist), ändert die Kette nichts außer dem Protokolleintrag:
+     dann wird nichts geschrieben (200, `ausgefuehrt: false`, ohneWirkung).
    - Eigene Bremse `loeschlauf` (schutz.mjs).
    Der tägliche Datenschutzlauf (datenschutzlauf.mjs, Modus „an") bleibt
    ein eigener, unabhängiger Weg (B-N3).
@@ -47,11 +50,13 @@ import { darf, rolleBekannt, schreibumfang, SCHREIBEN_VOLL } from "./rechte.mjs"
 const FELDER = new Set(["vorschau", "bestaetigt"]);
 const KENNUNG = /^[0-9a-f]{32}$/;
 
-/** Wer den Löschlauf auslösen darf: wie heute in der Oberfläche (org.edit) und mit Vollschreibrecht. */
+/** Wer den Löschlauf auslösen darf: nur die Leitung (auch als Demozugang mit ausdrücklicher Rolle), mit org.edit und
+    Vollschreibrecht. Die Altrolle „kunde" nicht (Review PR #346, M2: unumkehrbar, Altrolle wird abgelöst; ihr bleibt
+    der unveränderte Weg über das Speichern). */
 export function loeschlaufRecht(s) {
   if (!s || s.nurSicherung) return false;
   const rolle = s.rolle;
-  if (!rolle || !rolleBekannt(rolle) || rolle === "betreiber") return false;
+  if (rolle !== "leitung" || !rolleBekannt(rolle)) return false;
   return schreibumfang(rolle) === SCHREIBEN_VOLL && darf(rolle, "org.edit");
 }
 
@@ -61,7 +66,8 @@ export function loeschlaufRecht(s) {
  */
 export function loeschlaufFormFehler(r) {
   if (!r || typeof r !== "object" || Array.isArray(r)) return { grund: "Der Auftrag fehlt." };
-  for (const k of Object.keys(r)) if (!FELDER.has(k)) return { grund: `Unbekannte Angabe „${k.slice(0, 40)}".` };
+  /* Ohne den Schlüssel selbst: Der Grund steht im Protokoll, Freitext des Absenders gehört dort nicht hin (N3). */
+  for (const k of Object.keys(r)) if (!FELDER.has(k)) return { grund: "Der Auftrag enthält eine unbekannte Angabe." };
   const v = Object.prototype.hasOwnProperty.call(r, "vorschau");
   const b = Object.prototype.hasOwnProperty.call(r, "bestaetigt");
   if (v === b) return { grund: "Entweder eine Vorschau oder eine bestätigte Ausführung." };
@@ -69,6 +75,21 @@ export function loeschlaufFormFehler(r) {
   if (b && (typeof r.bestaetigt !== "string" || !KENNUNG.test(r.bestaetigt)))
     return { grund: "Die Bestätigung passt nicht zu einer Vorschau." };
   return null;
+}
+
+/**
+ * Ändert der Lauf nach der Schreibkette am eigenen Betrieb etwas außer dem eigenen Protokolleintrag? (Review PR #346,
+ * M1.) Die Vorschau zählt mit derselben Rechnung wie die Oberfläche auch, was das Speichern nie löscht (eingefrorenes
+ * Ist jenseits der Frist, Serverfeld). Ohne diese Prüfung schriebe jede weitere Bestätigung einen Protokolleintrag
+ * „… gelöscht" ohne Löschung und verdrängte ältere Einträge. Verglichen wird der eigene Betrieb im Ergebnis der Kette
+ * gegen den gespeicherten Betrieb in derselben Angleichung (personenAngleichen/uebergabenAngleichen), ohne `protokoll`.
+ * @param {any} vorher  eigener Betrieb, gespeichert und angeglichen
+ * @param {any} nachher eigener Betrieb nach der Kette
+ */
+export function ohneWirkung(vorher, nachher) {
+  if (!vorher || !nachher) return false;
+  const ohne = (m) => { const rest = { ...m }; delete rest.protokoll; return rest; };
+  return stabil(ohne(vorher)) === stabil(ohne(nachher));
 }
 
 /** Stabiles JSON (sortierte Schlüssel) für die Kennung. */

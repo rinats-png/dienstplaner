@@ -55,6 +55,8 @@ const ROLLEN = {
   BR: { rolle: "betriebsrat", person: "r1" },
   BT: { rolle: "betreiber", person: null },
   LT2: { rolle: "leitung", person: "l1", betrieb: 1, mandant: "m2" },
+  /* Demozugang mit ausdrücklicher Rolle Leitung (RB-3): wie die Leitung */
+  DL: { rolle: "leitung", person: "l1", demo: true },
 };
 
 let HEUTE, tag;
@@ -77,6 +79,13 @@ function betrieb(id, name, { mitStandort = false } = {}) {
   }
   /* Ein Stempel älter als die Frist der Gründe (3 Monate), jünger als die Plandatenfrist. Mit Standort-Ergebnis
      nimmt raeumen nur die Standortfelder — das weist die Stempel-Integrität des Speicherns heute ab (Befund, 1b). */
+  /* Genau an der Fristgrenze (Stichtag der Plandaten: bleibt) und einen Tag davor (fällig). */
+  const grenze = A.minusMonate(HEUTE, 24);
+  for (const t of [grenze, Z.tagePlus(grenze, -1)]) {
+    plan[`m0|${t}`] = "F";
+    ist[`m0|${t}`] = { start: "06:00", ende: "14:05", bestaetigt: true, grund: "" };
+    stempel[`m0|${t}`] = { start: "05:58", ende: "14:05", quelle: "app" };
+  }
   stempel[`a1|${tag(-200)}`] = { start: "06:01", ende: "14:00", quelle: "app",
     ...(mitStandort ? { geoStart: { lat: 52.5, lon: 13.4 }, innerhalbStart: true } : {}) };
   ist[`a1|${tag(-200)}`] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" };
@@ -98,7 +107,10 @@ function betrieb(id, name, { mitStandort = false } = {}) {
       /* ausgeschieden vor 400 Tagen (Frist Stammdaten 6 Monate): wird anonymisiert */
       person("z1", "mitarbeiter", "e1", { status: "ausgeschieden", austritt: tag(-400), personalnummer: "", notiz: "privat" })],
     abweichungen: plan, planstaende: {}, freigaben: {}, unterschreitungen: [], belegung: {}, therapie: {}, aushang: [],
-    monatsabschluss: { [alt]: abschluss(`${alt}-28T08:00:00.000Z`), [jung]: abschluss(`${jung}-28T08:00:00.000Z`) },
+    /* Der Monat jenseits der Frist ist auch lohnexportiert (bestätigter Export, Revision 1). */
+    monatsabschluss: { [alt]: { ...abschluss(`${alt}-28T08:00:00.000Z`), revision: 1,
+      lohnexport: { am: `${alt}-28T09:00:00.000Z`, wer: "l1", abdruck: "0".repeat(32), revision: 1, stand: 1 } },
+    [jung]: abschluss(`${jung}-28T08:00:00.000Z`) },
     istEingefroren: { [`m0|${tag(-800)}`]: { d: "F", std: 7.5, e: 1 }, [`m0|${tag(-40)}`]: { d: "F", std: 7.5, e: 1 } },
     standorte: [], abwesenheiten: [
       { id: "abw1", personId: "a1", art: "krank", von: tag(-210), bis: tag(-200), notiz: "Grippe" },
@@ -121,7 +133,7 @@ async function neuerRaum({ aendern, mitStandort = false } = {}) {
   const token = {};
   for (const [k, r] of Object.entries(ROLLEN)) {
     token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: r.betrieb || 0,
-      mandantId: r.mandant || "m1", einheit: r.einheit || null }, 2 * 3600 * 1000)).token;
+      mandantId: r.mandant || "m1", einheit: r.einheit || null, ...(r.demo ? { demo: true } : {}) }, 2 * 3600 * 1000)).token;
   }
   return { raum, token };
 }
@@ -254,6 +266,12 @@ describe("1. Differenzialprüfung: derselbe Löschumfang wie der heutige Weg", (
         expect(m.einstempeln[`${pid}|${tag(n)}`]).toBeDefined();
       }
     }
+    /* Exakte Fristgrenze: der Stichtag selbst bleibt, der Tag davor ist gelöscht. */
+    const grenze = A.minusMonate(HEUTE, 24);
+    for (const feld of ["abweichungen", "erfassung", "einstempeln"]) {
+      expect(m[feld][`m0|${grenze}`], `${feld} Stichtag`).toBeDefined();
+      expect(m[feld][`m0|${Z.tagePlus(grenze, -1)}`], `${feld} Stichtag-1`).toBeUndefined();
+    }
     /* Abgeschlossener Monat innerhalb der Frist: Abschluss, Freeze, Ist und Stempel unverändert. */
     const jung = tag(-40).slice(0, 7);
     const vm = vorher.bestand.mandanten.find((x) => x.id === "m1");
@@ -321,11 +339,11 @@ describe("2. Schalter", () => {
 });
 
 describe("3. Rechte", () => {
-  it("Planung, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber: 403, nichts geändert", async () => {
+  it("Kundenrolle, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber: 403, nichts geändert", async () => {
     const r = await neuerRaum();
     const vorher = await gespeichert(r.raum);
     const kennung = (await loeschlauf(r.token.LT, { vorschau: true })).kennung;
-    for (const k of ["PL", "SV", "MA", "BR", "BT"]) {
+    for (const k of ["KU", "PL", "SV", "MA", "BR", "BT"]) {
       for (const w of [{ vorschau: true }, { bestaetigt: kennung }]) {
         const a = await loeschlauf(r.token[k], w);
         expect(a.status, `${k} ${JSON.stringify(w)}`).toBe(403);
@@ -337,28 +355,18 @@ describe("3. Rechte", () => {
     expect(nach.bestand).toEqual(vorher.bestand);
   });
 
-  it("Kundenrolle (Probierraum, org.edit) darf wie heute — mit denselben Grenzen wie über das Speichern", async () => {
-    /* Ohne Krank-Abwesenheit: ausgeführt, gleich dem heutigen Weg. */
+  it("Kundenrolle: der Weg über das Speichern bleibt ihr unverändert (Review M2)", async () => {
     const ohneKrank = (b) => { for (const m of b.mandanten) m.abwesenheiten = m.abwesenheiten.map((x) => ({ ...x, art: "urlaub" })); };
-    const alt = await neuerRaum({ aendern: ohneKrank });
-    const neu = await neuerRaum({ aendern: ohneKrank });
-    const rAlt = await heutigerWeg(alt.token.KU);
-    const { r: e } = await neuerWeg(neu.token.KU);
-    expect(rAlt.status, JSON.stringify(rAlt)).toBe(200);
+    const r = await neuerRaum({ aendern: ohneKrank });
+    expect((await loeschlauf(r.token.KU, { vorschau: true })).code).toBe("LOESCHLAUF_ROLLE");
+    expect((await heutigerWeg(r.token.KU)).status).toBe(200);
+  });
+
+  it("Demozugang mit Rolle Leitung: wie die Leitung", async () => {
+    const r = await neuerRaum();
+    const { r: e } = await neuerWeg(r.token.DL);
     expect(e.status, JSON.stringify(e)).toBe(200);
     expect(e.ausgefuehrt).toBe(true);
-    expect(vergleichbar((await gespeichert(neu.raum)).bestand)).toEqual(vergleichbar((await gespeichert(alt.raum)).bestand));
-    /* Mit einem fälligen Grund einer Krank-Abwesenheit: Die Kundenrolle ändert Krank-Abwesenheiten nicht (RB-3) —
-       heute wie neu 403, nichts gelöscht. */
-    const alt2 = await neuerRaum();
-    const neu2 = await neuerRaum();
-    const vN = await gespeichert(neu2.raum);
-    const rAlt2 = await heutigerWeg(alt2.token.KU);
-    const { r: e2 } = await neuerWeg(neu2.token.KU);
-    expect(rAlt2.status).toBe(403);
-    expect(e2.status).toBe(403);
-    expect(e2.text).toBe(rAlt2.text);
-    expect((await gespeichert(neu2.raum)).bestand).toEqual(vN.bestand);
   });
 });
 
@@ -411,7 +419,20 @@ describe("4. Form, Vorschau, Idempotenz, Konflikte", () => {
     expect(v2.zahlen.plandaten.erfassung).toBe(0);
     expect(v2.zahlen.plandaten.einstempeln).toBe(0);
     expect(v2.zahlen.personen).toBe(0);
+    /* Review M1: Die neue Vorschau ist (wegen des eingefrorenen Ists eines abgeschlossenen, lohnexportierten Monats
+       jenseits der Frist) noch „fällig". Dreimal ihre Bestätigung: kein Lauf, kein Schreiben, kein Protokolleintrag. */
+    expect(v2.faellig).toBe(true);
+    expect(v2.zahlen.plandaten.istEingefroren).toBeGreaterThan(0);
+    for (let i = 0; i < 3; i++) {
+      const w = await loeschlauf(r.token.LT, { bestaetigt: v2.kennung });
+      expect(w.status, JSON.stringify(w)).toBe(200);
+      expect(w.ausgefuehrt).toBe(false);
+      expect(w.ohneWirkung).toBe(true);
+    }
     const nach2 = await gespeichert(r.raum);
+    const prot = nach2.bestand.mandanten.find((x) => x.id === "m1").protokoll;
+    expect(prot.filter((x) => String(x.text).startsWith("Löschlauf:"))).toHaveLength(1);
+    expect(prot.map((x) => x.id)).toContain("lalt");
     expect(nach2.stand).toBe(nach1.stand);
     expect(nach2.bestand).toEqual(nach1.bestand);
   });
@@ -458,6 +479,29 @@ describe("4. Form, Vorschau, Idempotenz, Konflikte", () => {
     expect(nach.mandanten.find((x) => x.id === "m2").einstempeln[`m0|${tag(-800)}`]).toBeUndefined();
   });
 
+  it("leerer Raum und Betrieb ohne Personenliste: abgewiesen, nichts geschrieben", async () => {
+    const leer = (await sitzungAnlegen({ bestand: "wp48-loeschlauf-leer", name: "V Nl1", rolle: "leitung", person: "l1", betrieb: 0,
+      mandantId: "m1", einheit: null }, 3600 * 1000)).token;
+    /* Ohne Bestand gilt die Sitzung schon nicht (401, vor dem Weg); nie eine Antwort mit Inhalt, nie ein Schreiben. */
+    const a = await loeschlauf(leer, { vorschau: true });
+    expect([401, 404]).toContain(a.status);
+    expect(await B.bestandLesen(laden(), "wp48-loeschlauf-leer")).toBeFalsy();
+    const r = await neuerRaum({ aendern: (b) => { delete b.mandanten[0].personen; } });
+    const vorher = await gespeichert(r.raum);
+    /* Ohne Personenliste findet die Sitzung ihre Person nicht (401 vor dem Weg); „Keine Daten.“ (404) ist die
+       zweite Linie im Weg selbst. */
+    const c = await loeschlauf(r.token.LT, { vorschau: true });
+    expect([401, 404]).toContain(c.status);
+    expect((await gespeichert(r.raum)).stand).toBe(vorher.stand);
+  });
+
+  it("zweite Linie: Betrieb nicht in der Sicht oder ohne Personenliste → fehlt (404 „Keine Daten.“)", async () => {
+    const L = await import("../server/lib/loeschlauf.mjs");
+    expect(L.loeschlaufVorbereiten({ mandanten: [{ id: "m1" }] }, "m1", HEUTE, { vorschau: true })).toEqual({ fehlt: true });
+    expect(L.loeschlaufVorbereiten({ mandanten: [{ id: "m2", personen: [] }] }, "m1", HEUTE, { vorschau: true })).toEqual({ fehlt: true });
+    expect(L.loeschlaufVorbereiten(null, "m1", HEUTE, { vorschau: true })).toEqual({ fehlt: true });
+  });
+
   it("Bremse: eigene Art loeschlauf, darüber 429", async () => {
     const r = await neuerRaum();
     const alt = schutz.GRENZEN.loeschlauf;
@@ -465,7 +509,7 @@ describe("4. Form, Vorschau, Idempotenz, Konflikte", () => {
     schutz.GRENZEN.loeschlauf = { versuche: 2, fenster: 60, sperre: 60 };
     try {
       const st = [];
-      for (let i = 0; i < 4; i++) st.push((await loeschlauf(r.token.KU, { vorschau: true })).status);
+      for (let i = 0; i < 4; i++) st.push((await loeschlauf(r.token.LT, { vorschau: true })).status);
       expect(st.slice(0, 2)).toEqual([200, 200]);
       expect(st.slice(2)).toContain(429);
     } finally { schutz.GRENZEN.loeschlauf = alt; }
