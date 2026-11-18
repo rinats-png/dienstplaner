@@ -684,6 +684,36 @@ export const ausstehenderBestand = () => {
 
 /** Verwirft ihn — nur auf ausdrückliche Ansage. */
 export const ausstehendVerwerfen = () => { gescheitert = null; };
+/** Review #354 (Auflage 3): Verwerfen vor dem Neuladen — den gescheiterten UND den wartenden Auftrag. Sonst schickte
+    beforeunload eine Eingabe aus der Wartezeit noch per keepalive hinaus und der Browser fragte „Seite verlassen?",
+    obwohl verworfen wurde. Ein schon laufender Vorgang bleibt unberührt. Nur auf ausdrückliche Ansage. */
+export function allesAusstehendeVerwerfen() {
+  gescheitert = null;
+  offen = null;
+  if (uhr) { clearTimeout(uhr); uhr = null; }
+}
+
+/* P2-12 (Folgepunkt (1) Review #344): 422 UNGUELTIGER_KALENDERTAG des Servers (gestalt.kalendertagFehler). Gespeichert
+   wurde nichts. Die Lage nennt den Bereich (aus `feld`, z. B. „mandanten[0].erfassung") und den Text des Servers
+   („Den Kalendertag 2026-02-30 gibt es nicht. Es wurde nichts geändert.").
+   Bewusst KEIN Zurücknehmen genau dieses einen Eintrags im lokalen Stand: `feld` nennt bei erfassung/abweichungen den
+   Schlüssel nicht, und der Index bei Listen zählt in der Liste NACH der Rechtezusammenführung des Servers (für
+   Beschäftigte und Schichtverantwortung eine andere als die lokale). Den gespeicherten Wert eines geänderten Alteintrags
+   kennt der Client nicht sicher — ein Zurücknehmen könnte einen gespeicherten Eintrag löschen (neuer Datenverlustweg).
+   Der Ausweg ist der bestehende: als Datei sichern, dann verwerfen und neu laden (alle ausstehenden Änderungen). */
+const KALENDERTAG_CODE = "UNGUELTIGER_KALENDERTAG";
+const KALENDERTAG_BEREICHE = Object.freeze({ erfassung: "Zeiterfassung (Ist-Zeiten)", abweichungen: "Dienstplan (Einteilungen)",
+  abwesenheiten: "Abwesenheiten", anfragen: "Anträge", ausschreibungen: "Ausschreibungen", krankmeldungen: "Krankmeldungen" });
+/** Feld und Text der Absage an den Fehler hängen (nur Zeichenketten, gekürzt). @param {any} f @param {any} d */
+function kalendertagAngaben(f, d) {
+  if (d && typeof d.feld === "string") f.feld = d.feld.slice(0, 200);
+  if (d && typeof d.text === "string") f.text = d.text.slice(0, 500);
+}
+/** Bereich zu einem Feld des Servers („mandanten[0].abwesenheiten[2].bis" → „Abwesenheiten"), sonst null. */
+export function kalendertagBereich(feld) {
+  const m = typeof feld === "string" ? /^mandanten\[\d+\]\.([a-z]+)/.exec(feld) : null;
+  return m && Object.prototype.hasOwnProperty.call(KALENDERTAG_BEREICHE, m[1]) ? KALENDERTAG_BEREICHE[m[1]] : null;
+}
 
 /** Woran lag es? Danach richtet sich, was zu tun ist. */
 function fehlerart(e, status) {
@@ -693,6 +723,9 @@ function fehlerart(e, status) {
   if (status === 403 && e && e.code === "STEMPEL_UNVERAENDERLICH") return "stempelStand";
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
+  /* P2-12 (Folgepunkt (1) Review #344): Ein Eintrag mit einem Kalendertag, den es nicht gibt (2026-02-30) — keine
+     unbekannte Störung, und „Noch einmal senden" hülfe nicht (derselbe Stand, dasselbe 422). */
+  if (status === 422 && e && e.code === KALENDERTAG_CODE) return "kalendertag";
   if (status && status >= 500) return "server";
   if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
   if (e && e.teilNetz) return "netz";   // WP-48.5: Teilweg ohne Antwort (Ausgang unklar)
@@ -862,6 +895,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
   const f = new Error(String((d.code === "PERSONALNUMMER_DOPPELT" ? d.text : null) || d.fehler || r.meldung
     || "Speichern fehlgeschlagen."));
   if (typeof d.code === "string") /** @type {any} */ (f).code = d.code;
+  if (a.status === 422 && d.code === KALENDERTAG_CODE) kalendertagAngaben(f, d);
   return { weiter: false, status: a.status, fehler: f };
 }
 
@@ -970,6 +1004,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
+      if (status === 422 && f.code === KALENDERTAG_CODE) kalendertagAngaben(f, daten);
       throw f;
     }
     etag = daten.etag;
@@ -986,8 +1021,11 @@ async function schreibenAusfuehren(beimSchliessen) {
   } catch (e) {
     const art = fehlerart(e, status);
     /* Der Auftrag bleibt liegen, damit er sich wiederholen lässt. */
-    gescheitert = { auftrag, lage: { art, text: String(e && e.message || e), status,
-      zeit: new Date().toISOString() } };
+    gescheitert = { auftrag, lage: art === "kalendertag"
+      /* Folgepunkt (1): Text des Servers (welcher Tag), Feld und Bereich — sonst wie bisher. */
+      ? { art, text: String(e.text || e.message), status, zeit: new Date().toISOString(),
+        feld: typeof e.feld === "string" ? e.feld : null, bereich: kalendertagBereich(e.feld) }
+      : { art, text: String(e && e.message || e), status, zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
     /* Review #350: Löschlauf per Speichern (Kundenrolle) gesendet und nicht sicher abgewiesen → neu laden Pflicht. */

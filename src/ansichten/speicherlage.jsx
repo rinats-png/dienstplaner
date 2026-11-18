@@ -83,6 +83,20 @@ export const SPEICHERLAGE = {
       + "und melde dich bei uns — das lässt sich lösen, aber nicht von hier aus.",
     hilfe: true,
   },
+  /* P2-12 (Folgepunkt (1) Review #344): 422 UNGUELTIGER_KALENDERTAG. Ein zweiter Versuch schickte denselben Stand —
+     deshalb kein „Noch einmal senden". Der Ausweg: das Datum korrigieren (das nächste Speichern nimmt alles mit) oder
+     als Datei sichern, verwerfen und neu laden. Offen (Review #354, Auflage 4, Doku-Rest): Nach einem späteren
+     erfolgreichen Speichern bleibt die Leiste stehen, bis sie geschlossen oder neu geladen wird — das Räumen gehört
+     in den onGespeichert-Weg von App.jsx (Aktionsfabriken-Gate), nicht in diese Ansicht. */
+  kalendertag: {
+    titel: "Ein Datum gibt es nicht — die letzten Änderungen sind nicht gespeichert",
+    text: "Ein neuer oder geänderter Eintrag trägt ein ungültiges Datum (etwa den 30. Februar). Der Server hat den "
+      + "Speichervorgang deshalb abgewiesen; gespeichert wurde nichts, auch keine andere Änderung seit dem letzten "
+      + "Speichern. Solange der Eintrag so hier steht, scheitert jedes weitere Speichern. Korrigiere das Datum des Eintrags "
+      + "(oder entferne ihn) — das nächste Speichern nimmt dann alle Änderungen mit. Oder verwirf die nicht gespeicherten "
+      + "Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
+    verwerfen: true,
+  },
   unbekannt: {
     titel: "Die letzten Änderungen sind nicht gespeichert",
     text: "Woran es lag, ist von hier aus nicht zu erkennen. Ein zweiter Versuch ist "
@@ -90,6 +104,17 @@ export const SPEICHERLAGE = {
     nochmal: true, hilfe: true,
   },
 };
+
+/** Rückfrage vor dem Verwerfen (Review #354, Auflage 1). Abbrechen: nichts geschieht (der Auftrag bleibt ausstehend,
+    kein Neuladen). Bestätigen: gescheiterter und wartender Auftrag verworfen, dann neu laden.
+    @returns {boolean} verworfen */
+export function verwerfenMitRueckfrage() {
+  if (!window.confirm("Alle nicht gespeicherten Änderungen dieser Seite werden verworfen, und die Seite lädt neu. "
+    + "Wer sie behalten will, sichert sie vorher als Datei. Jetzt verwerfen?")) return false;
+  SP.allesAusstehendeVerwerfen();
+  window.location.reload();
+  return true;
+}
 
 export function NichtGespeichert({ lage, melde, aufGeloest }) {
   const [laeuft, setLaeuft] = useState(false);
@@ -143,6 +168,8 @@ export function NichtGespeichert({ lage, melde, aufGeloest }) {
       <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>{l.titel}</div>
       <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {l.text}</p>
+      {l.verwerfen && (lage.bereich || lage.text) && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
+        {lage.bereich ? <>Bereich: <strong>{lage.bereich}</strong>. </> : null}{lage.text}</p>}
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
         {l.nochmal && <Btn kind="primary" size="sm" disabled={laeuft} onClick={nochmal}>
           {laeuft ? "Wird gesendet …" : "Noch einmal senden"}</Btn>}
@@ -159,11 +186,15 @@ export function NichtGespeichert({ lage, melde, aufGeloest }) {
         <Btn size="sm" onClick={sichern}>Als Datei sichern</Btn>
         {l.neuladen && <Btn size="sm" kind="quiet"
           onClick={() => window.location.reload()}>Seite neu laden</Btn>}
+        {/* Folgepunkt (1): verwerfen (gescheitert und wartend), dann neu laden — nur nach Rückfrage. */}
+        {l.verwerfen && <Btn size="sm" kind="danger" onClick={() => { verwerfenMitRueckfrage(); }}>
+          Änderungen verwerfen und neu laden</Btn>}
         {l.hilfe && <a href={hilfeVerweis({ betreff: "CENTRIC — Speichern schlägt fehl",
           zusatz: `Lage: ${lage.art}\nMeldung: ${lage.text}\nZeit: ${lage.zeit}` })}
           style={{ fontSize: 13, color: C.accent }}>Uns schreiben</a>}
-        <span style={{ fontSize: 11.5, color: C.dimmer, marginLeft: "auto", ...NUM }}>
-          {lage.text}</span>
+        {/* Review #354: bei „kalendertag" steht der Text schon oben mit dem Bereich — nicht doppelt. */}
+        {!l.verwerfen && <span style={{ fontSize: 11.5, color: C.dimmer, marginLeft: "auto", ...NUM }}>
+          {lage.text}</span>}
       </div>
     </div>);
 }
