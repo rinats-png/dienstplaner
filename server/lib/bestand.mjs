@@ -33,7 +33,8 @@
    ========================================================================== */
 
 import { zerlegen, zusammensetzen, abdruck, kernAbdruck, abdruckNormal, monatVon, MONATSFELDER,
-  kernSchluessel, scherbenSchluessel } from "./scherben.mjs";
+  kernSchluessel, scherbenSchluessel, scherbenKennungen, gleicheEintraege } from "./scherben.mjs";
+import { ketteAn } from "./kette.mjs";
 import { ereignis } from "./gesund-zaehler.mjs";
 import { unterRaumsperre, sperreGehalten, sperrKontext, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
@@ -128,6 +129,75 @@ async function lesemarke(store, raum) {
    Lesen
    --------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+   Abdrücke aus dem Lesen (WP-48.6, segmentproportionale Kette)
+
+   bestandSchreiben brauchte für jeden Schreibvorgang den Abdruck JEDER
+   Scherbe (zerlegen, sortieren, SHA-256 über den ganzen Bestand) — auch der
+   35 Monate, die niemand angefasst hat. Jetzt:
+   - Ein strenges Lesen mit `segmente: true` merkt sich je gelesener Scherbe
+     das gelesene Objekt und seinen Abdruck — gerechnet beim Lesen, bevor
+     irgendein Aufrufer das Objekt sieht. Der Abdruck je Inhalt wird über den
+     ETag der Ablage wiederverwendet: Der ETag ist der SHA-256 des
+     gespeicherten JSON-Texts (ablage.mjs etagFuer), derselbe ETag heißt
+     also derselbe Inhalt und derselbe Abdruck.
+   - bestandSchreiben({ gelesen }) übernimmt für eine Scherbe den gemerkten
+     Abdruck, wenn sie je Monatsfeld dieselben Schlüssel mit DENSELBEN Werten
+     (===) trägt wie die gelesene (scherben.mjs gleicheEintraege) — dann ist
+     ihr Abdrucktext gleich. Sonst wird gerechnet wie bisher.
+   Das Ergebnis (Vermerk, geschriebene Scherben, Konflikte) ist dasselbe wie
+   auf dem vollen Weg; abschaltbar über CENTRIC_KETTE_AUS=1 (kette.mjs).
+   Voraussetzung: Gelesene Einträge werden nicht an Ort und Stelle verändert,
+   sondern ersetzt. Das ist erzwungen, nicht nur vereinbart: Im Modus
+   `segmente` sind die Einträge der gemerkten Scherben tief eingefroren
+   (Object.freeze). Ein Schreibversuch an Ort und Stelle scheitert laut
+   (TypeError, Module laufen strikt → 500, nichts geschrieben), statt dass die
+   Scherbe als unverändert gälte und die Änderung still verloren ginge.
+   --------------------------------------------------------------------------- */
+
+/** Ergebnis eines strengen Lesens → Map(„betriebId::JJJJ-MM" → { s: gelesene Scherbe, h: ihr Abdruck }). */
+const GELESEN = new WeakMap();
+/** ETag (Inhalt) → Abdruck. Begrenzt (der Server läuft auf einem kleinen VPS): höchstens ABDRUCK_SPEICHER_MAX
+    Einträge, beim Überlauf fällt der zuerst eingetragene heraus (FIFO, kein LRU: ein Treffer frischt nicht auf). Nur ein Zwischenspeicher — ein fehlender Eintrag heißt rechnen. */
+const ABDRUCK_JE_ETAG = new Map();
+export const ABDRUCK_SPEICHER_MAX = 20000;
+/** Die Obergrenze: ABDRUCK_SPEICHER_MAX, nur nach unten verstellbar (CENTRIC_ABDRUCK_SPEICHER_MAX, für die Prüfung). */
+function abdruckSpeicherGrenze() {
+  const n = Number(process.env.CENTRIC_ABDRUCK_SPEICHER_MAX);
+  return Number.isInteger(n) && n >= 1 && n < ABDRUCK_SPEICHER_MAX ? n : ABDRUCK_SPEICHER_MAX;
+}
+/** Wie viele Abdrücke gerade gemerkt sind (nur lesend, für die Prüfung). */
+export const abdruckSpeicherGroesse = () => ABDRUCK_JE_ETAG.size;
+
+function abdruckZumEtag(etag, s) {
+  let h = ABDRUCK_JE_ETAG.get(etag);
+  if (h === undefined) {
+    h = abdruck(s);
+    const grenze = abdruckSpeicherGrenze();
+    while (ABDRUCK_JE_ETAG.size >= grenze) ABDRUCK_JE_ETAG.delete(ABDRUCK_JE_ETAG.keys().next().value);
+    ABDRUCK_JE_ETAG.set(etag, h);
+  }
+  return h;
+}
+
+/** Tief einfrieren (gelesenes JSON: keine Zyklen). Schon Eingefrorenes wird übersprungen. */
+function tiefEinfrieren(x) {
+  if (!x || typeof x !== "object" || Object.isFrozen(x)) return;
+  Object.freeze(x);
+  for (const k of Object.keys(x)) tiefEinfrieren(x[k]);
+}
+
+/** Abdrücke eines zerlegten Bestands — unveränderte Scherben aus dem Lesen (siehe oben), sonst gerechnet. */
+function abdrueckeVon(zerlegt, info) {
+  if (!info || !ketteAn()) return abdruecke(zerlegt);
+  const aus = { kern: kernAbdruck(zerlegt.kern) };
+  for (const [id, s] of zerlegt.scherben) {
+    const g = info.get(id);
+    aus[id] = g && gleicheEintraege(s, g.s) ? g.h : abdruck(s);
+  }
+  return aus;
+}
+
 /**
  * Holt den vollständigen Bestand.
  * @returns {Promise<object|null>} — { bestand, stand, zeit, durch } oder null
@@ -151,10 +221,14 @@ export const BESTAND_UNLESBAR = "BESTAND_UNLESBAR";
  * nächsten Stempel gelöscht. Hier wird stattdessen abgebrochen (→ 503, es
  * wird nichts geschrieben), und die Datei bleibt, wie sie ist.
  *
+ * @param {{merken?: boolean, segmente?: boolean}} [opt]  WP-48.6, beides nur Leistung, nie Inhalt:
+ *   merken: false — unter der Sperre am Lesecache vorbei (kein Gedächtnis, keine Kopie), für einen Schreibweg,
+ *   der nicht ein zweites Mal liest; segmente: true — Abdrücke der gelesenen Scherben merken (siehe oben),
+ *   für bestandSchreiben({ gelesen }).
  * @returns {Promise<object|null>} wie bestandLesen; null nur, wenn es den Raum nicht gibt
  */
-export function bestandLesenStreng(store, raum) {
-  return lesen(store, raum, true);
+export function bestandLesenStreng(store, raum, opt = {}) {
+  return lesen(store, raum, true, opt);
 }
 
 function unlesbar(raum, was, e) {
@@ -247,24 +321,32 @@ async function schritteAusfuehren(store, schritte) {
   }
 }
 
-/** Kern, Altbestand und Scherben so lesen, wie sie gerade auf der Platte liegen. */
-async function rohLesen(store, raum, versuch, kritisch) {
+/** Kern, Altbestand und Scherben so lesen, wie sie gerade auf der Platte liegen.
+    mitEtag (WP-48.6): je Scherbe zusätzlich der ETag der Ablage (derselbe Inhalt wie get). */
+async function rohLesen(store, raum, versuch, kritisch, mitEtag = false) {
   const kern = await kritisch("Kern",
     () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }));
   const alt = kern ? null : await kritisch("Altbestand",
     () => store.getWithMetadata(ALT(raum), { type: "json" }));
   /** @type {Map<string, any>} */
   const scherben = new Map();
+  /** @type {Map<any, string>} gelesene Scherbe → ETag */
+  const etags = new Map();
   if (kern) {
     const { blobs } = await versuch("Verzeichnis der Scherben",
       () => store.list({ prefix: `scherbe:${raum}:` }), { blobs: [] });
     for (const b of blobs) {
-      const s = await versuch(`Scherbe ${b.key}`, () => store.get(b.key, { type: "json" }), null);
+      let s;
+      if (mitEtag) {
+        const r = await versuch(`Scherbe ${b.key}`, () => store.getWithMetadata(b.key, { type: "json" }), null);
+        s = r ? r.data : null;
+        if (s && r && typeof r.etag === "string" && r.etag) etags.set(s, r.etag);
+      } else s = await versuch(`Scherbe ${b.key}`, () => store.get(b.key, { type: "json" }), null);
       if (s) scherben.set(b.key, s);
       else scherben.set(b.key, undefined);           // gelistet, aber nicht (mehr) da
     }
   }
-  return { kern, alt, scherben };
+  return { kern, alt, scherben, etags };
 }
 
 /** Das Journal über das Gelesene legen: Ergebnis ist der neue, vollständige Stand. */
@@ -278,10 +360,13 @@ function ueberlagern(roh, raum, journal) {
       if (s.art === "setzen") scherben.set(s.schluessel, s.wert); else scherben.delete(s.schluessel);
     }
   }
-  return { kern, alt: kern ? null : roh.alt, scherben };
+  return { kern, alt: kern ? null : roh.alt, scherben, etags: roh.etags };
 }
 
-async function lesen(store, raum, streng) {
+async function lesen(store, raum, streng, opt = {}) {
+  /* WP-48.6: Abdrücke merken nur im strengen Lesen, auf Wunsch und mit eingeschalteter Kette. */
+  const segmente = !!(streng && opt.segmente && ketteAn() && store && typeof store.getWithMetadata === "function");
+  const merken = !(ketteAn() && opt.merken === false);
   /* Im strengen Lesen wird jeder Fehler zum Abbruch, im milden zur Lücke —
      aber nur bei einer einzelnen Scherbe oder ihrem Verzeichnis. */
   const versuch = async (was, arbeit, ersatz) => {
@@ -304,10 +389,10 @@ async function lesen(store, raum, streng) {
   /* Ein einziger Durchgang, wenn kein Schreiber dazwischenkommen kann. */
   const einmal = async () => {
     const j = await journal();
-    const roh = await rohLesen(store, raum, versuch, kritisch);
-    return zusammenbauen(j ? ueberlagern(roh, raum, j) : roh, raum, streng);
+    const roh = await rohLesen(store, raum, versuch, kritisch, segmente);
+    return zusammenbauen(j ? ueberlagern(roh, raum, j) : roh, raum, streng, segmente);
   };
-  if (sperreGehalten(raum)) return streng ? mitLesecache(store, raum, einmal) : einmal();
+  if (sperreGehalten(raum)) return streng && merken ? mitLesecache(store, raum, einmal) : einmal();
 
   /* Die Reihenfolge ist wesentlich: Stand, Journal, Inhalt, Journal, Stand.
      Ein Schreiber legt erst das Journal, dann den Kern (mit neuem Stand),
@@ -378,7 +463,7 @@ export function voruebergehend(e) {
   return !!e && [BESTAND_UNLESBAR, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT].includes(/** @type {any} */ (e).code);
 }
 
-function zusammenbauen({ kern, alt, scherben }, raum, streng) {
+function zusammenbauen({ kern, alt, scherben, etags }, raum, streng, segmente = false) {
   if (!kern) {
     /* Noch nicht zerlegt? Dann liegt der Betrieb als ein Blob vor. Er wird
        hier gelesen, aber nicht angefasst — das Zerlegen geschieht beim
@@ -397,7 +482,21 @@ function zusammenbauen({ kern, alt, scherben }, raum, streng) {
     }
     liste.push(s);
   }
-  return {
+  /* WP-48.6: Abdrücke der gelesenen Scherben — gerechnet bzw. über den ETag geholt, BEVOR ein Aufrufer die
+     Objekte sieht. Nur Scherben mit ETag (nicht aus einem Journal) und mit der gewöhnlichen Gestalt. */
+  let info = null;
+  if (segmente && etags) {
+    info = new Map();
+    for (const s of liste) {
+      const etag = etags.get(s);
+      if (!etag || !s || typeof s !== "object" || typeof s.monat !== "string") continue;
+      const h = abdruckZumEtag(etag, s);
+      /* Nach dem Abdruck, bevor ein Aufrufer die Einträge sieht: Veränderung an Ort und Stelle scheitert laut. */
+      tiefEinfrieren(s);
+      info.set(`${s.mandantId}::${s.monat}`, { s, h });
+    }
+  }
+  const erg = {
     bestand: zusammensetzen(kern.data, liste),
     stand: String(kern.metadata?.stand ?? 0),
     zeit: kern.metadata?.zeit || null,
@@ -405,6 +504,8 @@ function zusammenbauen({ kern, alt, scherben }, raum, streng) {
     /* WP-48.2: null bei einem Bestand, den zuletzt ein Server ohne Epoche schrieb. */
     epoche: epocheGueltig(kern.metadata?.epoche) ? kern.metadata.epoche : null,
   };
+  if (info) GELESEN.set(erg, info);
+  return erg;
 }
 
 /* ---------------------------------------------------------------------------
@@ -469,8 +570,11 @@ export function bestandSchreiben(store, raum, neuerBestandRoh, opt = {}) {
 
 /** Der eigentliche Schreibvorgang — nur unter der Sperre des Raums aufrufen. */
 async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
-  erwarteterStand = null, durch = "unbekannt", neueEpoche: epocheWechseln = false,
+  erwarteterStand = null, durch = "unbekannt", neueEpoche: epocheWechseln = false, gelesen = null,
 } = {}) {
+  /* WP-48.6: Abdrücke unveränderter Scherben aus dem strengen Lesen des Aufrufers (bestandLesenStreng mit
+     segmente: true, unter derselben Sperre) — siehe „Abdrücke aus dem Lesen“. Ohne: alles gerechnet wie bisher. */
+  const info = gelesen && typeof gelesen === "object" ? GELESEN.get(gelesen) || null : null;
   /* session ist kein Bestandsfeld (Commit D1b): Die Sitzung lebt im Browser
      und auf dem Server getrennt vom Bestand. Ganz oben gespeichert war sie
      ein Kanal, über den eine Rolle in Betrieb A Daten ablegen konnte, die
@@ -503,7 +607,7 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
      Lohnrelevantes geändert, wird die handelnde Person (Schreibkontext) als Mitwirkende vermerkt. Nur mit Kontext (Anfrage)
      und nur, wenn eine offene Korrektur existiert; sonst kein zusätzliches Lesen. */
   let zNeu = zerlegen(neuerBestand);
-  let abdNeu = abdruecke(zNeu);
+  let abdNeu = abdrueckeVon(zNeu, info);
 
   /* --- Erster Schreibvorgang oder Übernahme eines unzerlegten Betriebs --- */
   if (!kernMeta) {
@@ -604,7 +708,7 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
         neuerBestand = { ...neuerBestand, mandanten: neuerBestand.mandanten.map((x) => (eintragen.has(x)
           ? korrekturMitwirkendeEintragen(x, kontext.person, eintragen.get(x)) : x)) };
         zNeu = zerlegen(neuerBestand);
-        abdNeu = abdruecke(zNeu);
+        abdNeu = abdrueckeVon(zNeu, info);
       }
     }
   }
@@ -1018,7 +1122,11 @@ export async function bestandLesenAuswahlStreng(store, raum, waehle) {
  */
 export async function unveraenderteScherben(store, raum, erwarteterStand, aktuell) {
   if (!aktuell || !aktuell.bestand) return new Set();
-  const abd = abdruecke(zerlegen(ohneSitzung(aktuell.bestand)));
+  /* WP-48.6: Mit aktuellem Stand (oder ohne) zählen nur die Kennungen — dieselben, die zerlegen bildet;
+     kein Abdruck nötig. Sonst die Abdrücke, unveränderte aus dem Lesen (segmente: true). */
+  if (ketteAn() && (erwarteterStand === null || erwarteterStand === undefined
+      || String(erwarteterStand) === String(aktuell.stand))) return scherbenKennungen(ohneSitzung(aktuell.bestand));
+  const abd = abdrueckeVon(zerlegen(ohneSitzung(aktuell.bestand)), GELESEN.get(aktuell) || null);
   const ids = Object.keys(abd).filter((id) => id !== "kern");
   if (erwarteterStand === null || erwarteterStand === undefined
       || String(erwarteterStand) === String(aktuell.stand)) return new Set(ids);
