@@ -71,6 +71,7 @@ import { loeschStichtag } from "./stempelintegritaet.mjs";
 import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze, datevHinweise,
   ohneEintrittPrueffaelle, OHNE_EINTRITT_TEXT } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
+import { KETTE } from "./kette.mjs";
 
 export { abschlussPersonenRaeumen };
 
@@ -999,7 +1000,11 @@ export function abschlussWiderspruch(altM, gesendetM, o = {}) {
     if (!Object.prototype.hasOwnProperty.call(gesendetM, feld)) continue;        // nicht mitgeschickt: unverändert
     const a = objekt(altM[feld]) ? altM[feld] : {};
     const n = objekt(gesendetM[feld]) ? gesendetM[feld] : {};
+    /* WP-48.6 (segmentproportionale Kette): Dasselbe Objekt wie gespeichert — jeder Schlüssel wäre gleichWert
+       mit sich selbst, keiner fehlt. Ebenso je Schlüssel derselbe Wert (gleichWert(x, x) ist immer wahr). */
+    if (KETTE.an && a === n) continue;
     const sieh = (k) => {
+      if (KETTE.an && a[k] === n[k]) return;
       const monat = monatDes(k);
       if (!monat || !pruefen.has(monat) || erster.has(monat) || gleichWert(a[k], n[k])) return;
       const tag = String(k).split("|")[1];

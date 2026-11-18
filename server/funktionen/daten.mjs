@@ -1502,7 +1502,10 @@ async function behandeln(req, context, ctx) {
          Zusammenführen mit einem Bestand, der nicht mehr gilt. Die
          Zustellung danach braucht die Sperre nicht. */
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
-        const jetzt = await bestandLesenStreng(store, s.bestand);
+        /* WP-48.6 (segmentproportionale Kette, nur Leistung): Abdrücke der gelesenen Scherben merken — bestandSchreiben
+           übernimmt sie für unveränderte Scherben (gelesen: jetzt). Der Teilweg schreibt mit dem eben gelesenen Stand
+           (etag = jetzt.stand) und liest kein zweites Mal: kein Lesecache, keine Kopie des ganzen Bestands. */
+        const jetzt = await bestandLesenStreng(store, s.bestand, { segmente: true, ...(teilweg ? { merken: false } : {}) });
 
         /* WP-48.3: virtueller Rumpf unter der Sperre (2.3 Schritte 2–6). Epoche anders (Wiederherstellen,
            Wiederanlauf) oder ein Bestand ohne Epoche → NEU_LADEN, kein Abgleich je Zelle. Ein einziger
@@ -1823,6 +1826,7 @@ async function behandeln(req, context, ctx) {
         const erg = await bestandSchreiben(store, s.bestand, zuSchreiben, {
           erwarteterStand: etag ?? null,
           durch: durch || s.name || "unbekannt",
+          gelesen: jetzt,
         });
 
         if (!erg.ok) {

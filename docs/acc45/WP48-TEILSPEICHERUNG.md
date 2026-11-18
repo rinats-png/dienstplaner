@@ -764,6 +764,51 @@ keine Entscheidung nötig).
   Betrieb → voller Weg; Einheit `abschlussTeile`/`jahrBisMonat`; Lesen nur unter der Sperre; 4 Rennen Abschluss gegen
   Ausstempeln des Nachtdiensts (Prüfsumme stimmt immer). Mutanten A1–A8 in `werkzeug/wp48-mutanten.mjs`.
 
+### 7.4 WP-48.6 Teil: Kette segmentproportional (Branch `feature/wp48-6-kette`, Basis `integration/release-v4` 32951445)
+
+Stand 2026-11-18. Ohne Schalter für den Betrieb, ohne Datenmigration, ohne neue Konflikt- oder Löschregel;
+`CENTRIC_TEILSPEICHERUNG` und `CENTRIC_ABSCHLUSS_SEGMENTWEISE` bleiben aus. Jede Abkürzung liefert beweisbar dasselbe
+Ergebnis wie der volle Weg; abschaltbar nur für den Differenzialtest (`server/lib/kette.mjs`, `KETTE.an`).
+
+- **Stempel- und Abschlussprüfung** (`stempelintegritaet.mjs`, `monatsabschluss.mjs`): Ein Eintrag der Übermittlung, der
+  DASSELBE Objekt ist wie der gespeicherte, wird nicht Feld für Feld verglichen (jede Feldprüfung verglich ihn mit sich
+  selbst). Ausgenommen: Listenfelder (Korrekturen, Anträge, Kennzeichen), die gespeichert keine Liste sind, und
+  Ist-Einträge mit Selbstauskunft — die prüft weiter der volle Weg (beide können auch unverändert abgewiesen werden).
+  Ist das ganze Feld dasselbe Objekt, entfällt die Suche nach weggelassenen Schlüsseln. `tagVon`/`monatVon` ohne
+  `split`/RegExp (gleichwertig), `stempelSichern` sieht je Monat einmal in `unveraendert` nach.
+- **Unveränderte Monate** (`bestand.mjs` `unveraenderteScherben`): mit aktuellem Stand nur die Kennungen
+  (`scherben.mjs` `scherbenKennungen`) statt Zerlegen und Abdruck aller Scherben.
+- **Abdrücke nur berührter Scherben** (`bestand.mjs`): Das strenge Lesen der Schreibkette (`segmente: true`) merkt je
+  gelesener Scherbe Objekt und Abdruck — gerechnet beim Lesen, bevor ein Aufrufer sie sieht, und je Inhalt über den
+  ETag der Ablage (SHA-256 des gespeicherten JSON) wiederverwendet. `bestandSchreiben({ gelesen })` übernimmt ihn für
+  jede Scherbe mit denselben Schlüsseln und denselben Werten (`===`, `gleicheEintraege`); sonst wird gerechnet. Der
+  Vermerk kommt also nicht ungeprüft aus dem alten Vermerk, sondern aus dem tatsächlich Gelesenen.
+- **Kein zweites Lesen, keine Kopie**: Der Teilweg liest unter der Sperre ohne Lesecache (`merken: false`) — er
+  schreibt immer auf den eben gelesenen Stand und liest nicht noch einmal; das `structuredClone` des ganzen Bestands
+  entfällt. Der Voll-PUT behält den Lesecache (Drei-Wege-Abgleich).
+- **Schrumpfprüfung** (`gestalt.mjs` `schrumpfung`) unverändert: zählt nur Listenlängen und Planschlüssel, im Profil
+  ohne Gewicht; außerhalb der Dateien dieses Pakets.
+- **Prüfungen** `pruefungen/wp48-6-kette.test.js` (`pruefung:wp48-6-kette`, läuft in CI über `pruefung:wp48-teilweg`):
+  alt gegen neu — wörtliche Kopie der alten Funktionen (`pruefungen/hilfen/wp48-6-referenz.mjs`) für `tagVon`,
+  `monatVon` (über 200 000 Zufalls- und Grenzschlüssel), `stempelWiderspruch`, `stempelSichern` (6 000 Zufallsfälle,
+  Ergebnis, Grund, Schlüssel, Ausnahmen, Schlüsselreihenfolge); Schalter an/aus für `abschlussWiderspruch` (6 000 Fälle),
+  `bestandSchreiben` mit/ohne gelesene Abdrücke auf echter Dateiablage (6 × 8 Zufallsschritte, auch veralteter Stand:
+  Antwort und Platte gleich) und den echten Handler (Teil- und Voll-PUT, LT/PL/SV/MA, 14 feste + 8 zufällige
+  Änderungen je Rolle, darunter `STEMPEL_UNVERAENDERLICH`, `MONAT_ABGESCHLOSSEN`, Schrumpfsicherung, veralteter Stand:
+  Status, Antwort und Platte zweier gleicher Räume gleich). Von Hand geprüfte Mutanten (Abkürzung ohne Listenprüfung,
+  Abdruck immer übernommen, Abschluss-Schlüssel übergangen) machen die zugehörigen Fälle rot (nicht in
+  `werkzeug/wp48-mutanten.mjs` aufgenommen).
+- **Messung** (Teil-PUT einer Planzelle, Leitung, echter Handler, Dateiablage, lokaler Rechner): 150 × 12 vorher 4,1 s
+  (Median), jetzt 1,8 s; 400 × 36 mit abgeschalteten Abkürzungen 37,9 s (Sperre ≈ 35 s), mit 21,6 s.
+  **Ziel p95 < 1 s bei 400 × 36 nicht erreicht.** Verbleibend O(Bestand) unter der Sperre: das strenge Lesen und Parsen
+  aller Scherben, Sicht der Rolle und virtueller Rumpf, `zusammenfuehren`, `pruefeGestalt` (`laengeGeprueft`),
+  `stempelSichern` (baut `einstempeln`/`erfassung` neu), Zerlegen des neuen Stands. Für < 1 s braucht es Lesen nur
+  berührter Scherben unter der Sperre (Rechte und Prüfungen je Segment) — eigener Folgeschritt.
+- **Restrisiko**: Die Abkürzungen setzen voraus, dass gelesene Einträge in der Kette nicht an Ort und Stelle verändert,
+  sondern ersetzt werden (gilt im Code heute; ein künftiger Eingriff an Ort und Stelle würde im Differenzialtest
+  sichtbar). Die ETag-Wiederverwendung setzt voraus, dass niemand eine Ablagedatei von Hand ändert, ohne den ETag
+  anzupassen.
+
 ---
 
 ### Anhang: Messskript
