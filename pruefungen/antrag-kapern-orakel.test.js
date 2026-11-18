@@ -67,6 +67,7 @@ const bestand = () => ({ version: 9, mandanten: [{ id: "m-a", name: "A", status:
     ANTRAG_A2, ANTRAG_B1,
     { id: "an-a2o", personId: "a2", typ: "abwesenheit", art: "urlaub", von: "2026-11-24", bis: "2026-11-24", status: "offen", text: "offen-a2" },
     { id: "an-b1t", personId: "b1", typ: "tausch", von: T, bis: T, status: "offen", text: "Tausch", interessenten: [] },
+    { id: "1234567", personId: "a2", typ: "abwesenheit", art: "urlaub", von: T, bis: T, status: "offen", text: "zahl-a2" },
   ],
   wuensche: [{ id: "w-a2", personId: "a2", datum: T, art: "frei" }],
   einspruenge: [{ id: "e-b1", personId: "b1", datum: T, dienstId: "F", zeit: "x" }] }] });
@@ -130,6 +131,13 @@ describe("B1 Handler: Beschäftigte mit fremder Kennung und eigener personId", (
       expect(sicht).not.toContain("Begruendung-a2");
     });
   }
+  it("Review #361 N3: Kennung als Zahl statt Zeichenkette (1234567 / \"1234567\"): 200, kein zweiter Eintrag, Zustand byte-gleich", async () => {
+    await frisch("a1");
+    const vorher = JSON.stringify((await roh()).mandanten[0]);
+    const w = await schreiben("a1", (m) => { m.anfragen.push(neuerAntrag(1234567, "a1")); });
+    expect(w.status, JSON.stringify(w)).toBe(200);
+    expect(JSON.stringify((await roh()).mandanten[0])).toBe(vorher);
+  });
   it("gleiche Antwort für fremde verborgene und nicht vorhandene Kennung; die unbekannte wird ein eigener Antrag (wie bisher)", async () => {
     await frisch("a1");
     const fremd = await schreiben("a1", (m) => { m.anfragen.push(neuerAntrag("an-a2", "a1")); });
@@ -331,12 +339,18 @@ function zufallsAntrag(z, id) {
 function veraendern(z, liste, ich, idsFremd) {
   const w = (l) => l[Math.floor(z() * l.length)];
   const l = JSON.parse(JSON.stringify(liste));
-  const art = Math.floor(z() * 9);
+  const art = Math.floor(z() * 11);
   const i = Math.floor(z() * l.length);
+  /* Kennung einer Zahl-Schreibung auch als Zahl (Review #361 N3: 1234567 und "1234567"). */
+  const alsZahl = (id) => (/^\d+$/.test(String(id)) && z() < 0.5 ? Number(id) : id);
   if (art === 0 && l.length) l.splice(i, 1);
   else if (art === 1) l.push(zufallsAntrag(z, `neu${Math.floor(z() * 1000)}`));
   else if (art === 2) l.push({ ...zufallsAntrag(z, `neu${Math.floor(z() * 1000)}`), personId: ich, status: "offen" });
-  else if (art === 3 && idsFremd.length) l.push({ ...zufallsAntrag(z, w(idsFremd)), personId: ich });       // Kapern-Versuch
+  else if (art === 3 && idsFremd.length) l.push({ ...zufallsAntrag(z, alsZahl(w(idsFremd))), personId: ich });       // Kapern-Versuch
+  /* Review #361 N2: eine FREMDE übermittelte Person, die sich von der gespeicherten unterscheidet — an Ort und
+     Stelle (keine doppelte Kennung), damit die Antwort an der übermittelten Person hängt, nicht an der gespeicherten. */
+  else if (art === 9 && l.length) l[i] = { ...l[i], personId: w(PERSONEN.filter((p) => p !== l[i].personId && p !== ich)) };
+  else if (art === 10 && l.length) l[i] = { ...zufallsAntrag(z, l[i].id), personId: w(PERSONEN.filter((p) => p !== ich)) };
   else if (art === 4 && l.length) l[i] = { ...l[i], status: w(ANTRAG_STATUS), antwort: "geändert" };
   else if (art === 5 && l.length) l[i] = { ...l[i], interessenten: [...(l[i].interessenten || []), ich] };
   else if (art === 6 && l.length) l[i] = { ...l[i], interessenten: (l[i].interessenten || []).filter((x) => x !== ich) };
@@ -348,10 +362,11 @@ function veraendern(z, liste, ich, idsFremd) {
 describe("Differenztest alt/neu: Beschäftigte (eigenesZusammen)", () => {
   it("2000 Zufallsbestände: gleich, außer bei fremder Kennung mit eigener Person — dort bleibt der fremde Eintrag byte-gleich", () => {
     const z = zufall(20261118);
-    let abweichend = 0, kapernFaelle = 0;
+    let abweichend = 0, kapernFaelle = 0, zahlFaelle = 0;
     for (let lauf = 0; lauf < 2000; lauf++) {
       const ich = PERSONEN[1 + Math.floor(z() * 4)];
-      const alt = Array.from({ length: 1 + Math.floor(z() * 6) }, (_, k) => zufallsAntrag(z, `an${k}`));
+      /* auch Kennungen in Zahl-Schreibung (Review #361 N3) */
+      const alt = Array.from({ length: 1 + Math.floor(z() * 6) }, (_, k) => zufallsAntrag(z, z() < 0.3 ? String(1000 + k) : `an${k}`));
       if (z() < 0.15 && alt.length > 1) alt[1] = { ...alt[1], id: alt[0].id };           // Altbestand mit doppelter Kennung
       const idsFremd = alt.filter((a) => !eigenerEintrag(a, ich)).map((a) => a.id);
       let neu = alt.map((a) => ({ ...a }));
@@ -366,7 +381,8 @@ describe("Differenztest alt/neu: Beschäftigte (eigenesZusammen)", () => {
 
       /* Kapern-Fälle: ein „eigener" Eintrag unter einer gespeicherten fremden Kennung, ohne eigenen gleicher Kennung. */
       const kapern = (gesp, gesch) => gesch.filter((x) => x && eigenerEintrag(x, ich)
-        && gesp.some((g) => g && g.id === x.id && !eigenerEintrag(g, ich)) && !gesp.some((g) => g && g.id === x.id && eigenerEintrag(g, ich)));
+        && gesp.some((g) => g && String(g.id) === String(x.id) && !eigenerEintrag(g, ich))
+        && !gesp.some((g) => g && String(g.id) === String(x.id) && eigenerEintrag(g, ich)));
       /* Anträge: es zählt je Kennung der letzte übermittelte Eintrag (wie die Map in anfragenZusammen). */
       const letzte = [...new Map(neu.map((x) => [x.id, x])).values()];
       const kA = kapern(alt, letzte), kW = kapern(wAlt, wNeu);
@@ -377,8 +393,11 @@ describe("Differenztest alt/neu: Beschäftigte (eigenesZusammen)", () => {
         const kIds = new Set(kA.map((x) => x.id));
         expect(gleich(n.anfragen, altAnfragenZusammen(alt, neu.filter((x) => !kIds.has(x.id)), ich)), `Lauf ${lauf}`).toBe(true);
         for (const id of kIds) {
-          const fremd = alt.filter((g) => g.id === id);
-          expect(n.anfragen.filter((g) => g.id === id), `Lauf ${lauf}`).toEqual([fremd[fremd.length - 1]]);
+          /* der fremde Antrag byte-gleich, und kein eigener Eintrag gleicher Schreibung dazu */
+          const fremd = alt.filter((g) => String(g.id) === String(id));
+          if (fremd.some((g) => g.id === id)) expect(n.anfragen.filter((g) => g.id === id), `Lauf ${lauf}`).toEqual([fremd[fremd.length - 1]]);
+          expect(n.anfragen.filter((g) => String(g.id) === String(id) && eigenerEintrag(g, ich)), `Lauf ${lauf}`).toEqual([]);
+          if (typeof id === "number") zahlFaelle++;
         }
         abweichend++;
       }
@@ -393,6 +412,7 @@ describe("Differenztest alt/neu: Beschäftigte (eigenesZusammen)", () => {
     }
     /* Die Zufallsbestände treffen beide Arten wirklich. */
     expect(kapernFaelle).toBeGreaterThan(100);
+    expect(zahlFaelle).toBeGreaterThan(20);
     expect(abweichend).toBeGreaterThan(50);
   });
 });

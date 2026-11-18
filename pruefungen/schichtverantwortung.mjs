@@ -106,8 +106,15 @@ const anB = (await gespeichert()).anfragen.find((a) => a.id === "an-b");
 const wDel = await versuch((m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "an-b"); });
 pruef("Fremden Antrag löschen: wirkungslos (nicht sichtbar)", wDel.status === 200
   && JSON.stringify((await gespeichert()).anfragen.find((a) => a.id === "an-b")) === JSON.stringify(anB), `Status ${wDel.status}`);
+/* Befund B2 (Prüfung zu #356): Bis dahin 403 „… umschreiben" für die verborgene Kennung, während eine unbekannte
+   Kennung mit denselben Angaben 200 bekommt (Existenzorakel). Jetzt dieselbe Antwort wie für die unbekannte
+   Kennung — umgehängt wird trotzdem nichts: an-b bleibt byte-gleich. */
 const wUm = await versuch((m) => { m.anfragen.push({ ...anB, personId: "a1" }); });
-pruef("Fremden Antrag auf andere Person umhängen: 403", wUm.status === 403, `Status ${wUm.status}`);
+const anBnach = JSON.stringify((await gespeichert()).anfragen.find((a) => a.id === "an-b"));
+const wUmU = await versuch((m) => { m.anfragen.push({ ...anB, id: "an-unbekannt", personId: "a1" }); });
+pruef("Fremden Antrag auf andere Person umhängen: Antwort wie unbekannte Kennung, an-b unverändert",
+  wUm.status === wUmU.status && (wUm.text || "") === (wUmU.text || "") && anBnach === JSON.stringify(anB),
+  `Status ${wUm.status}/${wUmU.status}`);
 const stB = (await gespeichert()).einstempeln["b1|2026-10-01"];
 const wSt = await versuch((m) => { m.einstempeln = { ...(m.einstempeln || {}), "b1|2026-10-01": { ...stB, innerhalbStart: true } }; });
 /* Seit WP-06 ist ein Widerspruch zum gespeicherten Stempel eine Absage

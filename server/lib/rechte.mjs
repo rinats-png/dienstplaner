@@ -262,16 +262,20 @@ function anfragenZusammen(alt, neu, ich) {
   const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
   const aus = [];
   const uebergangen = new Set();
+  /* Kennungen als Zeichenkette (wie B3): 1234567 und "1234567" sind dieselbe Kennung. */
+  const kennungen = (eigen) => new Set((Array.isArray(alt) ? alt : [])
+    .filter((e) => e && !!eigenerEintrag(e, ich) === eigen).map((e) => String(e.id)));
+  const fremdeK = kennungen(false), eigeneK = kennungen(true);
   for (const a of neueNachId.values()) {
     const vorher = alteNachId.get(a.id);
-    if (vorher && !eigenerEintrag(vorher, ich) && eigenerEintrag(a, ich)
-      && !alt.some((e) => e && e.id === a.id && eigenerEintrag(e, ich))) {   // Altbestand mit doppelter Kennung: wie bisher
+    if (eigenerEintrag(a, ich) && fremdeK.has(String(a.id))
+      && !eigeneK.has(String(a.id))) {   // Altbestand mit eigener Kennung gleicher Schreibung: wie bisher
       /* Befund B1 (Review #356): Die Kennung eines FREMDEN Antrags mit der eigenen personId übernahm bisher den
          fremden Antrag (ersetzt, samt Antwort der Leitung an die andere Person). Wem er gehört, steht im
          gespeicherten Stand: Er bleibt, wie er war — als wäre er nicht mitgeschickt (unten), still übergangen wie
          andere unzulässige Änderungen; dieselbe Antwort wie für eine Kennung, die es nicht gibt. Kein neuer Antrag
          unter anderer Kennung (ein zweiter, nicht bestellter Vorgang); so halten es Krankmeldung und Notruf schon. */
-      uebergangen.add(a.id);
+      if (vorher) uebergangen.add(a.id);   // gleiche Schreibung: unten zurückgelegt; sonst bleibt er ohnehin
     } else if (eigenerEintrag(a, ich)) {
       /* Eigener Antrag: anlegen, ändern, zurückziehen — aber nicht entscheiden. */
       const status = ANTRAGSTATUS_SELBST.includes(a.status) ? a.status
@@ -2393,9 +2397,10 @@ export function einheitZusammen(altM, neuM, sitzung) {
             continue;
           }
           if (gleich(vorher, x)) { ergebnis.push(vorher); continue; }
-          /* Befund B2 (Review #356): Ein Antrag, den die Sicht nicht zeigt (sicht.mjs schichtAnfragen: nicht eigen,
-             nicht aus dem Bereich, kein offenes Tauschgesuch ohne Partner), antwortet wie eine Kennung, die es nicht
-             gibt — sonst verrieten 403-Texte seine Existenz. Geprüft wird wie für einen neuen Antrag; was das
+          /* Befund B2 (Review #356): Ein fremder Antrag außerhalb des Bereichs (nicht eigen, Person am ersten Tag nicht
+             im Bereich, kein offenes Tauschgesuch ohne Partner — Bereichs- und Statusregel OHNE das Sichtfenster von
+             sicht.mjs schichtAnfragen; Restfall siehe RECHTEMATRIX.md, Review #361 N1) antwortet wie eine Kennung,
+             die es nicht gibt — sonst verrieten 403-Texte seine Existenz. Geprüft wird wie für einen neuen Antrag; was das
              besteht, wird still übergangen: Der gespeicherte Antrag bleibt, wie er war. */
           if (!eigen(vorher.personId) && !imBereich(vorher.personId, vorher.von)
             && !(vorher.typ === "tausch" && vorher.status === "offen" && !vorher.partnerId)) {

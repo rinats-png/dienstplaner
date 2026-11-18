@@ -524,9 +524,10 @@ Antrags und der eigenen `personId` schicken, ersetzten bisher den fremden Antrag
 übernahmen dessen Antwort der Leitung (Datenverlust und Inhaltsleck). Jetzt bleibt der fremde Antrag unverändert; der
 Vorgang wird still übergangen (200), wie andere unzulässige Änderungen. Bewusst KEIN neuer eigener Antrag unter anderer
 Kennung (ein nicht bestellter zweiter Vorgang); so halten es Krankmeldung und Notruf bei bekannter Kennung schon.
-**B2:** Die Schichtverantwortung bekommt für einen Antrag, den ihre Sicht nicht zeigt (nicht eigen, nicht aus dem
-Bereich am ersten Tag, kein offenes Tauschgesuch ohne Partner), dieselbe Antwort wie für eine Kennung, die es nicht
-gibt: geprüft wie ein neuer Antrag (fremde Person → 403 „… gehört nicht zu deinem Bereich.", nicht offen → 403 „Ein
+**B2:** Die Schichtverantwortung bekommt für einen fremden Antrag außerhalb ihres Bereichs (Regel im Schreibweg: nicht
+eigen, Person am ersten Tag des Antrags nicht im eigenen Bereich, kein offenes Tauschgesuch ohne Partner — eine
+Bereichs- und Statusregel OHNE das Sichtfenster der Lesesicht, also nicht dieselbe Regel wie `sicht.mjs`
+`schichtAnfragen`) dieselbe Antwort wie für eine Kennung, die es nicht gibt: geprüft wie ein neuer Antrag (fremde Person → 403 „… gehört nicht zu deinem Bereich.", nicht offen → 403 „Ein
 neuer Antrag ist offen …"), sonst 200 — und der gespeicherte Antrag bleibt unverändert (auch keine Interessenmeldung
 an einem verborgenen Antrag). **B3:** Ein eigener Wunsch, Einsprung oder Urlaubsrundenwunsch unter der Kennung eines
 fremden entsteht nicht mehr als zweiter Eintrag mit derselben Kennung (ein schon gespeicherter eigener bleibt
@@ -535,7 +536,12 @@ Kennung erscheint der eigene neue Eintrag, bei einer fremden nicht. Das verlangt
 Basis 36) und gilt ebenso für Krankmeldung und Notruf. **Offen (gering, nicht geändert):** Für die Schichtverantwortung
 antworten `einspruenge`, `nachrichten`, `notrufe`, `dienstbuch`, `uebergaben` und Tagesnotizen bei der Kennung eines
 verborgenen Eintrags mit 403 „Bestehende Einträge sind nicht änderbar", bei einer unbekannten Kennung mit 200 oder
-einem anderen 403 (Existenzorakel, nur mit erratener Kennung; kein Inhalt, keine Änderung). Geprüft in
+einem anderen 403 (Existenzorakel, nur mit erratener Kennung; kein Inhalt, keine Änderung). **Offen (Restfall B2,
+Review #361 N1):** Ein Antrag einer Person, die am ersten Tag des Antrags im eigenen Bereich war, deren Antrag aber
+außerhalb des Sichtfensters liegt (`umfangImZeitraum`, etwa nach einer Versetzung), ist für die Schichtverantwortung
+unsichtbar, gilt im Schreibweg aber als „aus dem Bereich“: weiter 403 „… umschreiben“ statt der Antwort für eine
+unbekannte Kennung, und mit erratenem Kern ließe er sich entscheiden. Bestand schon vor B2; Folgepaket (Regel im
+Schreibweg aus `umfangImZeitraum` ableiten, zusammen mit den übrigen Orakeln oben). Geprüft in
 `pruefungen/antrag-kapern-orakel.test.js` (echter Handler, Zustände byte-gleich, Differenztest alt/neu).
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
