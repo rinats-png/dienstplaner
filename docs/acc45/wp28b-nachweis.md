@@ -74,7 +74,8 @@ Temp-Verzeichnissen; nichts gegen Produktion, VPS oder Staging; `lasttest.yml`/E
   Runden also mehrere Minuten — das Werkzeug arbeitet korrekt (nur Nachkopier-Meldungen, kein ENOENT, kein anderer
   Fehler) und endet mit Code 3. Das 60-s-Limit läuft vorher ab; danach räumt `afterAll` das Wegwerfverzeichnis weg,
   während Sicherung und Schreiber noch schreiben: daher `ENOTEMPTY` beim `rmdir`. Unter Linux (CI) bleibt die Runde
-  im Millisekundenbereich. Nicht geändert (keine Testabschwächung).
+  im Millisekundenbereich. Folgefehler derselben Ursache: Die weiterlaufende Sicherung bremst den nächsten Test
+  derselben Datei („erkennt jede Art von Schaden“, ebenfalls 60 s) aus. Nicht geändert (keine Testabschwächung).
 - **Windows, `wp28b-sicherung-last` „echte parallele Schreiber“:** rot durch `EPERM` beim `rename` des **Test-Schreibers**
   (er hat keine Wiederholung wie `ablage.mjs` `umbenennen`), während die Sicherung die Zieldatei liest — kein Fehler
   der Sicherung. Gemessen: Leser (`stat`/`readFile`) gegen laufendes Ersetzen unter Windows 11, 2400 Lesevorgänge,
@@ -109,6 +110,19 @@ Gleichwertige Mutanten (keine Lücke, deshalb ohne eigenen Test): ENOENT beim Ko
 **schlucken** ohne Unruhe-Meldung. Die fehlende Kopie fällt in der anschließenden Gegenprobe auf (Menge der Kopien ≠
 Liste) oder die Datei ist wirklich weg — dann ist die Sicherung ohne sie der richtige Stand. Die Gegenprobe ist die
 eigentliche Sicherung gegen einen halben Stand; ihr Entfernen ist in beiden Wegen (mit und ohne Halt) jetzt rot.
+
+### Lokaler Lauf (Windows 11, `--maxWorkers=1`)
+
+Grün: `wp28b-sicherung-klammer` (4), `wp28b-sicherung-enoent` (4), `schreibhalt` (15 + 1 übersprungen), `doku`,
+`rb2-krankmeldung`, `endgeraete-speicher`, `verdrahtung-pruefen`, `ci-abdeckung`, `tsc`, `eslint`.
+Unter Windows rot, Ursache Laufzeit bzw. Test-Schreiber (Werkzeug und Halt byte-gleich zur Basis, also Basisverhalten):
+`wp28b-sicherung-last` „echte parallele Schreiber“ (EPERM des Test-Schreibers), `sicherung-ablage` (zwei Tests, 60 s),
+`schreibhalt-last` „10 Sicherungen“ (180 s), `schreibhalt-messung` „30 Sicherungen“ (240 s) und `ablage` (3, Rechte/EPERM,
+schon in `docs/acc45/wp28c-nachweis.md` §3 als Windows-Befund geführt). Grün außerdem: `sicherungen` (33),
+`ablage-pruefen` (8), `ablage-pruefen-matrix` (140), `-matrix2` (54), `-rueckweg` (23 + 1 übersprungen),
+`wp39-app-aufbau` (4), `prozess-wachen` (15), `verdrahtung` (8), `be1-konto-widerrufbuch` (11),
+`be3-widerrufbuch-sicherung` (24). Maßgeblich ist die
+Linux-CI.
 
 ### Bewusst nicht geändert
 
