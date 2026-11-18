@@ -56,6 +56,7 @@ import { bestandLesenStreng, bestandSchreiben, unterRaumsperre } from "./bestand
 import { kontingent, markeNeu } from "./sicherungen.mjs";
 import { protokoll, spurAufraeumen } from "./schutz.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
+import { bestaetigungEntfernen } from "./mailbestaetigung.mjs";
 
 export const VERMERK = "datenschutzlauf:letzter";
 const TAG_MS = 86400000;
@@ -190,7 +191,7 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
               continue;
             }
             const { mandant, bericht } = raeumen(m, heute);
-            berichte.push({ m, bericht });
+            berichte.push({ m, mandant, bericht });
             mandanten.push(mandant);
           }
           if (berichte.length) {
@@ -202,10 +203,14 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
             const erg = await bestandSchreiben(store, raum, { ...g.bestand, mandanten },
               { erwarteterStand: g.stand, durch: "Löschlauf (Aufbewahrungsfristen)" });
             if (!erg.ok) throw new Error("Konflikt beim Schreiben");
-            for (const { m, bericht } of berichte) {
+            for (const { m, mandant, bericht } of berichte) {
               const text = berichtstext(bericht);
               vermerk.geaendert.push({ raum, betrieb: m.id, bericht: text });
               await protokoll("loeschlauf", "system", "erfolg", `${raum}/${m.id}: ${text}`);
+              /* E-9, Review-Folgepunkt N4: Bestätigung und offener Code anonymisierter Personen sofort weg. */
+              const vorher = new Set(m.personen.filter((p) => p && p.anonym !== true).map((p) => String(p.id)));
+              for (const p of Array.isArray(mandant && mandant.personen) ? mandant.personen : [])
+                if (p && p.anonym === true && vorher.has(String(p.id))) await bestaetigungEntfernen(store, raum, m.id, p.id);
             }
           }
         }

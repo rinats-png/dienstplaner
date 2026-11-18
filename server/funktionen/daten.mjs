@@ -52,7 +52,7 @@ import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, loh
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur, hatLaufendeKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { bestaetigtAm } from "../lib/mailbestaetigung.mjs";
+import { bestaetigtAm, bestaetigungEntfernen } from "../lib/mailbestaetigung.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
@@ -1995,6 +1995,13 @@ async function behandeln(req, context, ctx) {
           const mNeu = (Array.isArray(zuSchreiben && zuSchreiben.mandanten) ? zuSchreiben.mandanten : []).find((x) => x && x.id === mAlt.id);
           if (!mNeu || !Array.isArray(mNeu.personen) || !Array.isArray(mAlt.personen)) continue;
           const da = new Set(mNeu.personen.map((p) => String(p && p.id)));
+          /* E-9, Review-Folgepunkt N4: Anonymisiert (Person bleibt, Adresse fällt weg) — die
+             Bestätigung der Adresse und ein offener Code gehen sofort, nicht erst beim täglichen
+             Aufräumen. Ohne Schalter gibt es keine solchen Einträge; das Entfernen ist dann leer. */
+          const anonymNeu = new Set(mNeu.personen.filter((p) => p && p.anonym === true).map((p) => String(p.id)));
+          for (const p of mAlt.personen) {
+            if (p && p.anonym !== true && anonymNeu.has(String(p.id))) await bestaetigungEntfernen(store, s.bestand, mAlt.id, p.id);
+          }
           for (const p of mAlt.personen) {
             if (!p || da.has(String(p.id))) continue;
             const ids = (Array.isArray(mAlt.nachrichten) ? mAlt.nachrichten : []).filter((n) => n && String(n.personId) === String(p.id)).map((n) => String(n.id));

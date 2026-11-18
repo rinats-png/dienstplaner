@@ -90,4 +90,28 @@ Nicht in PR #281, weil Schritt 2/3 Oberfläche, Zustellregeln, Datenmodell und e
   je Person in der Notrufkette.
 - **N1:** Die Tagesgrenze je Adresse zählt `name+x@Domain` und `name@domain` zusammen (Domain ASCII, klein).
 - **N4:** Die Selbstauskunft nennt `emailBestaetigtAm`. Anonymisierte Personen: Bestätigung und Code räumt das tägliche
-  Aufräumen (Waisen, `anonym === true`); sofortiges Räumen beim Anonymisieren ist Folgearbeit.
+  Aufräumen (Waisen, `anonym === true`); sofortiges Räumen beim Anonymisieren ist Folgearbeit (erledigt, siehe unten).
+
+### Folgepunkte Review PR #343 (L1–L3, L5, L6, N4-Rest)
+
+- **L1:** Ein gemerkter Endpunkt (`centric:pushgeraet`) wird beim Abmelden auch ohne Mitteilungserlaubnis gesendet
+  (`{geraet: {endpoint}}`): Wer die Erlaubnis auf einem geteilten Gerät widerruft, verliert beim Abmelden trotzdem die
+  Serveranmeldung dieses Geräts. Dasselbe beim Ausschalten, wenn der Browser kein Abonnement mehr meldet. Ein veralteter
+  Endpunkt schadet nicht (der Server entfernt nur die Anmeldung mit genau diesem Endpunkt).
+- **L2 (Grenze, dokumentiert):** Kein `pushsubscriptionchange`-Handler in `public/sw.js` — der Dienstarbeiter kennt
+  keine Sitzung und darf keine kennen, er kann ein gewechseltes Abonnement also nicht beim Server anmelden. Der Server
+  kennt deshalb genau den Endpunkt, den das Gerät beim Einschalten gemeldet hat; `pushGeraetAuffrischen` (Start)
+  überschreibt einen gemerkten Endpunkt nicht mehr mit einem anderen oder keinem, damit das Abmelden genau diese
+  Anmeldung entfernt. Folge eines Wechsels durch den Browser: Bis zum erneuten Einschalten kommen auf dem Gerät keine
+  Mitteilungen an; die tote Serveranmeldung räumt der Push-Dienst (404/410) bzw. das Abmelden.
+- **L3:** Die Quote liest je Person einen Blob — jetzt blockweise parallel (50 je Block) und 60 s je Raum und Betrieb
+  gemerkt (nur die Zähler, höchstens 500 Betriebe; gültig nur für denselben Stand aus Personenkennung und Adresswert,
+  eine geänderte Adresse rechnet sofort neu). Bestätigen und Entfernen verwerfen den Merker; was sonst an `mailbest:`
+  geschieht (Aufräumen, Raumlöschung), zeigt sich spätestens nach 60 s. Antwort unverändert.
+- **L5:** Plus-Adressen und Tagesgrenze: Betriebshandbuch (`CENTRIC_MAILBESTAETIGUNG`). Keine Codeänderung.
+- **L6:** Die Quote steht im Stand von `/zustellung/mailbestaetigung`, und der verlangt eine eigene Person: Leitungs-,
+  Planungs- und Kundenzugänge **ohne** Personenzuordnung bekommen 400 und sehen die Quote nicht (Doku angeglichen,
+  Verhalten unverändert — keine Rechteausweitung).
+- **N4-Rest:** Anonymisieren räumt Bestätigung und offenen Code sofort — im Schreibweg (PUT, Teilweg, Löschlauf der
+  Oberfläche, `daten.mjs`) und im automatischen Datenschutzlauf (`datenschutzlauf.mjs`). Das tägliche Aufräumen bleibt
+  als Netz.
