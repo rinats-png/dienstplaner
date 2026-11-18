@@ -1064,7 +1064,8 @@ keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Ä
   den ETag — nach „Später entscheiden“ ging der nächste Voll-PUT ohne Abgleich über eine fremde Änderung (P4). Jetzt:
   (a) vor **jedem** Rückfall (Feld ohne Version, gelöschtes Kernfeld, zu groß, 413, Ausnahmeweg Art. 16/17) frisches GET
   und `vollVorbereiten` (`teilweg-steuerung.js`): je Zelle/Feld nur ich geändert → meins, nur andere → frisch, beide
-  verschieden → Frage (kein Senden bis zur Entscheidung); Nur-Server-Felder aus der frischen Sicht; der Voll-PUT trägt
+  verschieden → Frage (kein Senden bis zur Entscheidung); Stempel ebenso je Schlüssel (der Löschlauf per Speichern der
+  Kundenrolle bleibt so wirksam), eingefrorenes Ist und Monatsabschluss aus der frischen Sicht; der Voll-PUT trägt
   den ETag des frischen GET. (b) In einer Sitzung mit Teilweg übernimmt `speicher.js` aus einem 409 (auch
   Fachbefunde) keinen ETag mehr und sperrt weitere Voll-PUTs (Lage `vollGesperrt`: Datei sichern, neu laden), bis
   wieder frisch gelesen ist; App.jsx übernimmt dann auch keinen Bestand aus dem 409 (`automatikKonfliktLoesen`).
