@@ -23,6 +23,7 @@ import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten,
   from "../lib/konten.mjs";
 import { demoAn, teilwegAn, abschlussSegmentweiseAn } from "../lib/schalter.mjs";
 import { ABSCHLUSS_SEGMENT_AKTIONEN, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
+import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten } from "../lib/loeschlauf.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandLesenAuswahlStreng, bestandSchreiben, teileSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
@@ -306,7 +307,7 @@ async function sicherungsschluesselAbgleichen(store, raum) {
 
 /** Wege, die Personal, Rollen oder den Bestand im Ganzen ändern können: immer abgleichen. Alle anderen höchstens alle
     zehn Sekunden je Raum, damit häufige Schreibvorgänge (Stempeln) nicht jedes Mal zahlen. */
-const SK_IMMER_ABGLEICHEN = new Set(["bestand", "bestand/teile", "wiederherstellen"]);
+const SK_IMMER_ABGLEICHEN = new Set(["bestand", "bestand/teile", "loeschlauf", "wiederherstellen"]);
 const skZuletzt = new Map();
 
 /** WP-48.3: Teilweg nur mit Schalter, nur für schreibende Rollen des eigenen Betriebs — der Betreiber (mehrere
@@ -1433,13 +1434,17 @@ async function behandeln(req, context, ctx) {
        nur: Formprüfung des Deltas, Epoche, Erwartungswerte/Versionen je Segment (unter der Raumsperre) und der
        Aufbau des virtuellen Rumpfs aus der Sicht der Rolle. Schalter aus: Den Weg gibt es nicht (404). */
     const teilweg = pfad === "bestand/teile" && req.method === "POST" && teilwegAn();
-    if ((pfad === "bestand" && req.method === "PUT") || teilweg) {
+    /* WP-48.4 Löschlauf der Leitung als eigener Weg (lib/loeschlauf.mjs, Entwurf 2.6/6.1): Der Server baut den Rumpf,
+       den die Oberfläche heute für den Löschlauf schickt (Sicht ⊕ raeumen), und schickt ihn durch GENAU diese
+       Schreibkette. Nur mit dem Schalter der Teilspeicherung; aus: Den Weg gibt es nicht (404). */
+    const loeschweg = pfad === "loeschlauf" && req.method === "POST" && teilwegAn();
+    if ((pfad === "bestand" && req.method === "PUT") || teilweg || loeschweg) {
       const ks = kennung(req, s);
 
       /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
          soll auch keine Bremse und keinen Konfliktvergleich auslösen. */
       if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
-        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
+        await protokoll(loeschweg ? "loeschlauf" : "schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
       }
@@ -1448,11 +1453,18 @@ async function behandeln(req, context, ctx) {
         return antwort({ fehler: "Keine Schreibberechtigung.", code: "TEILWEG_ROLLE",
           text: "Diese Rolle speichert über den vollständigen Weg." }, 403);
       }
+      if (loeschweg && !loeschlaufRecht(s)) {
+        await protokoll("loeschlauf", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", code: "LOESCHLAUF_ROLLE",
+          text: "Den Löschlauf löst die Betriebsleitung aus." }, 403);
+      }
 
-      const bs = await bremse(teilweg ? "teile" : "schreiben", ks);
+      const bs = await bremse(teilweg ? "teile" : loeschweg ? "loeschlauf" : "schreiben", ks);
       if (!bs.frei) return zuVielAntwort(bs.wartet);
-      let { bestand, etag } = teilweg ? { bestand: null, etag: null } : rumpf;
-      const { durch } = rumpf;
+      let { bestand, etag } = teilweg || loeschweg ? { bestand: null, etag: null } : rumpf;
+      const { durch } = loeschweg ? {} : rumpf;
+      /* Löschweg: Bericht der Vorschau, die die Leitung bestätigt hat (für Protokoll und Antwort). */
+      let loeschBericht = null;
       /* Teilweg: was der virtuelle Rumpf berührt (Kernfelder, Monate), der eigene Betrieb und die Epoche. */
       let teilBeruehrt = null, teilMandant = null, teilEpoche = null;
       /* Wiederholschutz je Sitzung (teilweg.mjs): Kennung der Sitzung und Abdruck des Rumpfs. */
@@ -1464,6 +1476,13 @@ async function behandeln(req, context, ctx) {
           await protokoll("schreiben", ks, "abgewiesen", `Teilweg: ${ff.code}`, wer);
           return antwort({ fehler: ff.status === 413 ? "Zu viel auf einmal." : ff.status === 403 ? "Keine Schreibberechtigung." : "Die Änderung ist ungültig.",
             code: ff.code, text: `${ff.grund} Es wurde nichts geändert.` }, ff.status);
+        }
+      } else if (loeschweg) {
+        const lf = loeschlaufFormFehler(rumpf);
+        if (lf) {
+          await protokoll("loeschlauf", ks, "abgewiesen", `Form: ${lf.grund}`, wer);
+          return antwort({ fehler: "Der Auftrag ist ungültig.", code: "LOESCHLAUF_UNGUELTIG",
+            text: `${lf.grund} Es wurde nichts gelöscht.` }, 422);
         }
       } else if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
@@ -1489,7 +1508,7 @@ async function behandeln(req, context, ctx) {
         }
         return null;
       };
-      if (!teilweg) {
+      if (!teilweg && !loeschweg) {
         const vorab = await gestaltVorab(bestand);
         if (vorab) return vorab;
       }
@@ -1556,6 +1575,44 @@ async function behandeln(req, context, ctx) {
           etag = jetzt.stand;
           teilBeruehrt = a.beruehrt;
           teilEpoche = jetzt.epoche;
+          const vorab = await gestaltVorab(bestand);
+          if (vorab) return vorab;
+        }
+
+        /* WP-48.4: Vorschau und Rumpf des Löschlaufs unter der Sperre, aus der Sicht der Rolle auf den eben gelesenen
+           Stand (wie GET) — dieselbe Rechnung wie die Oberfläche. Vorschau, „nichts fällig", veraltete Bestätigung und
+           ungültige Fristen schreiben nichts. Sonst geht der Rumpf mit dem eben gelesenen Stand als ETag weiter durch
+           die Kette unten, wie ein PUT der Leitung. */
+        if (loeschweg) {
+          const heuteL = heuteBerlin();
+          const angeglichenL = jetzt && jetzt.bestand ? personenAngleichen(jetzt.bestand) : null;
+          const rohL = angeglichenL ? eigenerMandant(angeglichenL, s) : null;
+          const sichtL = rohL && typeof rohL.id === "string" ? bestandFuerAntwort(angeglichenL, s) : null;
+          const l = sichtL ? loeschlaufVorbereiten(sichtL, rohL.id, heuteL, rumpf) : { fehlt: true };
+          if ("fehlt" in l) return antwort({ fehler: "Keine Daten." }, 404);
+          if ("ungueltig" in l) {
+            await protokoll("loeschlauf", ks, "abgewiesen", `Fristen ungültig: ${l.ungueltig}`.slice(0, 300), wer);
+            return antwort({ fehler: "Die Aufbewahrungsfristen sind ungültig.", code: "LOESCHLAUF_FRISTEN",
+              text: `${l.ungueltig} Es wurde nichts gelöscht.` }, 422);
+          }
+          if ("nichts" in l) {
+            await protokoll("loeschlauf", ks, "nichts-faellig", l.bericht.slice(0, 300), wer);
+            return antwort({ ok: true, ausgefuehrt: false, faellig: false, bericht: l.bericht, zahlen: l.zahlen });
+          }
+          if ("vorschau" in l) {
+            await protokoll("loeschlauf", ks, "vorschau", l.bericht.slice(0, 300), wer);
+            return antwort({ ok: true, ausgefuehrt: false, faellig: true, bericht: l.bericht, zahlen: l.zahlen,
+              kennung: l.kennung, warnung: l.warnung, heute: heuteL });
+          }
+          if ("veraltet" in l) {
+            await protokoll("loeschlauf", ks, "konflikt", "Vorschau veraltet", wer);
+            return antwort({ fehler: "konflikt", code: "LOESCHLAUF_VORSCHAU_VERALTET",
+              text: "Seit der Vorschau hat sich geändert, was fällig ist. Bitte die Vorschau neu öffnen — es wurde nichts gelöscht.",
+              bericht: l.bericht, zahlen: l.zahlen }, 409);
+          }
+          bestand = l.virtuell;
+          etag = jetzt.stand;
+          loeschBericht = l.bericht;
           const vorab = await gestaltVorab(bestand);
           if (vorab) return vorab;
         }
@@ -1851,6 +1908,9 @@ async function behandeln(req, context, ctx) {
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
+        /* WP-48.4: Pflichtprotokoll des Löschlaufs der Leitung (zusätzlich zu den Zeilen der Kette, die der heutige
+           Weg auch schreibt) — nur Zahlen, keine Person, kein Tag. */
+        if (loeschweg) await protokoll("loeschlauf", ks, "erfolg", `Leitung: ${loeschBericht}`.slice(0, 400), wer);
         /* Teilweg, 2.3 Schritt 7: Stand, Epoche und die Versionen nur der berührten Segmente — über die Sicht des eben
            Geschriebenen, wie das nächste GET sie liefert; nie der ganze Bestand. Noch unter der Sperre als Vermerk
            abgelegt (Wiederholschutz), damit keine Wiederholung dazwischenkommt. */
@@ -1869,7 +1929,7 @@ async function behandeln(req, context, ctx) {
       if (gesperrt instanceof Response) {
         /* Teilweg: Eine Absage der Kette bringt nie den ganzen Bestand und nie einen Stand mit (2.3 Schritt 5) —
            die Oberfläche hält ihre Basis je Segment, ein neuerer ETag ohne Inhalt wäre dort nur irreführend. */
-        if (teilweg && gesperrt.status === 409) {
+        if ((teilweg || loeschweg) && gesperrt.status === 409) {
           let d = {};
           try { d = await gesperrt.json(); } catch { /* leer */ }
           delete d.bestand; delete d.etag;
@@ -1925,6 +1985,8 @@ async function behandeln(req, context, ctx) {
         } catch { /* egal */ }
       }
       if (teilweg) return antwort(teilAntwort);
+      if (loeschweg) return antwort({ ok: true, ausgefuehrt: true, etag: erg.stand, bericht: loeschBericht,
+        ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht.` } : {}) });
       return antwort({ ok: true, etag: erg.stand,
         /* Review N-A: der Betreiber bekommt den gespeicherten Vertragsstand der Pakete zurück. */
         vertragsstand: s.rolle === "betreiber" ? vertragsstandVon(zuSchreiben) : undefined,

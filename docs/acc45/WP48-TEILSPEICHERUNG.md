@@ -824,6 +824,41 @@ und als Rückfall; kein veränderbares Exportobjekt).
   Die ETag-Wiederverwendung
   setzt voraus, dass niemand eine Ablagedatei von Hand ändert, ohne den ETag anzupassen.
 
+### 7.5 WP-48.4 Teil: Löschlauf-Endpunkt (Branch `feature/wp48-4-loeschlauf`, Basis `integration/release-v4` 5e4b23a1)
+
+Stand 2026-11-18, Betreiberfreigabe P1-7 (a) Option A (Entscheidung 6.1: eigener Endpunkt). Umgesetzt ist nur der
+Server; der Löschlauf-Knopf der Oberfläche bleibt beim Speichern (Umstellung mit WP-48.5).
+
+- **Weg** `POST /api/loeschlauf`, nur mit Schalter `CENTRIC_TEILSPEICHERUNG=true` (derselbe Schalter wie der Teilweg,
+  keine neue Variable; aus: 404). Der Löschlauf über `PUT /api/bestand` und der tägliche Datenschutzlauf bleiben
+  unverändert und unabhängig (B-N3).
+- **Keine neue Regel.** Unter der Raumsperre baut der Server aus der Sicht der Rolle (wie `GET`) genau den Rumpf, den
+  die Oberfläche heute schickt (`raeumen` auf den eigenen Betrieb, Eintrag „Löschlauf: …“ im Betriebsprotokoll wie
+  `mUpd`), und schickt ihn mit dem eben gelesenen Stand durch denselben Block der Schreibkette wie den PUT
+  (`lib/loeschlauf.mjs`, `daten.mjs`). Stempel-Integrität (`loeschStichtag`), Monatsabschluss, Rechte, Gestalt,
+  Schrumpfungssicherung und Journal gelten damit unverändert.
+- **Zwei Schritte.** `{ vorschau: true }` schreibt nichts (Bericht, Zahlen ohne Personenangaben, Kennung über Tag,
+  Betrieb, betroffene Personen und Zahlen). `{ bestaetigt: <Kennung> }` führt aus; hat sich das Fällige geändert →
+  409 `LOESCHLAUF_VORSCHAU_VERALTET` ohne Löschung. Eine wiederholte Bestätigung löst nie einen zweiten Lauf aus.
+- **Recht** wie heute in der Oberfläche (Ansicht „Datenschutz“, `org.edit`) und Vollschreibrecht: Leitung,
+  Kundenrolle. Planung, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber, Sicherungsschlüssel → 403.
+- **Strenger als heute:** ungültige Fristen → 422 (heute rechnete die Oberfläche mit Ersatzwerten); eigene Bremse
+  `loeschlauf` (10/min); Protokollart `loeschlauf` (vorschau, nichts-faellig, konflikt, abgewiesen, erfolg).
+- **Nachweis** `pruefungen/wp48-loeschlauf.test.js` (in `pruefung:wp48-teilweg`): Differenzialprüfung auf zwei gleichen
+  Räumen — gleicher Endstand, gleicher Stand, gleiche Schreibzeilen im Serverprotokoll, gleich viele
+  Schutzsicherungen; Leitung und Kundenrolle; Schalter, Rechte, Form, Vorschau, Wiederholung, veraltete Vorschau,
+  ungültige Fristen, Mandantentrennung, Bremse, unlesbarer Bestand (503).
+- **Befunde (unverändert übernommen, weil „dieselbe Regel“):**
+  1. Trägt ein Stempel zwischen Gründe-Frist (Standort) und Plandatenfrist noch Standortfelder, nimmt `raeumen` sie
+     heraus, und die Stempel-Integrität weist das als weggelassenes Originalfeld ab: Der Löschlauf der Leitung
+     scheitert dann heute wie neu mit 403 `STEMPEL_UNVERAENDERLICH` und löscht nichts. Die Felder entfernt nur der
+     Datenschutzlauf (Modus „an“). Prüfung 1b hält das fest.
+  2. Das eingefrorene Ist (`istEingefroren`) jenseits der Frist zählt die Vorschau als fällig, das Speichern löscht
+     es aber nicht (Serverfeld). Nach einem Lauf bleibt die Vorschau deshalb „fällig“; ein zweiter Lauf schriebe nur
+     einen weiteren Protokolleintrag. Entfernen kann es nur der Datenschutzlauf.
+  3. Die Kundenrolle ändert keine Krank-Abwesenheiten (RB-3): Ist ein Grund einer Krank-Abwesenheit fällig, wird ihr
+     Löschlauf heute wie neu mit 403 abgewiesen.
+
 ---
 
 ### Anhang: Messskript
