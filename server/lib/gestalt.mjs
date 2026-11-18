@@ -17,6 +17,7 @@
 
 import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
 import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
+import { FAELLE_TAGESFELDER } from "./krankmeldung.mjs";
 
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
@@ -264,7 +265,7 @@ export function dienstartenFehler(bestand, vorher = null) {
 /* --- P2-12 (Variante B, Betreiberentscheidung 2026-11-18): Kalendertage, die es nicht gibt ---
    Ein Datumsschlüssel „personId|2026-02-30" in erfassung/abweichungen oder ein von/bis „2026-02-30" einer Abwesenheit
    (Folgepunkte Review #344: ebenso von/bis eines Antrags in anfragen, der Tag einer Ausschreibung und von/bis eines
-   Falls in krankmeldungen; ein Tag ohne führende Nullen wie „2026-2-30")
+   Krankmeldungsfalls; ein Tag ohne führende Nullen wie „2026-2-30")
    wird nicht still korrigiert und nicht unbemerkt angenommen: Ein NEU eingeführter oder GEÄNDERTER Eintrag mit einem
    solchen Tag wird abgewiesen (422, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt, wie er ist, unverändert
    speicherbar — er wird weder normalisiert noch gefiltert noch gelöscht (das änderte den Abdruck abgeschlossener
@@ -298,14 +299,15 @@ const alsMenge = (l) => (Array.isArray(l) ? l : []).map(stabil).sort();
    (rechte.mjs) einen unveränderten Eintrag umordnet, die Normalform für den Vergleich. Beschäftigte: Interessenten an
    einem fremden Tauschgesuch (anfragenZusammen hängt die eigene Meldung hinten an) und Bewerbungen auf eine Ausschreibung
    (ausschreibungenZusammen: fremde vor der eigenen) — sonst gälte ein unveränderter Alteintrag als geändert (falsches 422).
-   krankmeldungen gehören dem Server (rechte.mjs nimmt sie nie aus der Übermittlung); neu sind dort nur Fälle aus einer
-   Krankmeldung per Speichern (krankAlsFaelle), die bisher nur die Form JJJJ-MM-TT prüfte. */
+   Die Krankmeldungsfälle gehören dem Server (rechte.mjs nimmt sie nie aus der Übermittlung); neu sind dort nur Fälle
+   aus einer Krankmeldung per Speichern (krankAlsFaelle), die bisher nur die Form JJJJ-MM-TT prüfte. Feld und
+   Tagesangaben kommen aus krankmeldung.mjs (Import oben) — diese Datei liest das Feld nicht selbst. */
 /** @type {Array<[string, string[], ((x: any) => any) | null]>} */
 const KALENDERTAG_LISTEN = [
   ["abwesenheiten", ["von", "bis"], null],
   ["anfragen", ["von", "bis"], (x) => ({ ...x, interessenten: alsMenge(x.interessenten) })],
   ["ausschreibungen", ["datum"], (x) => ({ ...x, bewerbungen: alsMenge(x.bewerbungen) })],
-  ["krankmeldungen", ["von", "bis"], null],
+  [FAELLE_TAGESFELDER[0], [...FAELLE_TAGESFELDER[1]], null],
 ];
 
 /**
