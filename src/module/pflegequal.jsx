@@ -25,5 +25,6 @@ export function PflegeVerteilung({ m, personenImDienst, qualGueltig, heute }) {
           <li key={n.id}>{n.name}: {n.anzahl}</li>))}
       </ul>
       {v.ohneNiveau > 0 && <p style={{ margin: 0 }}>Ohne zugeordnetes Niveau: {v.ohneNiveau}</p>}
+      {(v.hinweise || []).map((x) => <p key={x.niveau} role="note" style={{ margin: 0 }}>Hinweis: {x.text}</p>)}
     </section>);
 }

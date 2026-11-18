@@ -17,10 +17,25 @@
    `bereitschaft` (Personenfeld: Form „personId|Tag“, Wert: der Dienst mit
    Stufe, Fenster und Inanspruchnahmen).
 
-   Rein: keine Ablage, keine Uhr.
+   Monatsabschluss und Rückwirkung (M-BD2, Nachholreview WP-19):
+     (a) Ein Eintrag „Person|Tag“ in einem abgeschlossenen Monat (WP-16) ist
+         unveränderlich: Anlegen, Ändern und Entfernen werden abgewiesen. Maß-
+         geblich ist der GESPEICHERTE Abschlussstand (altM), nie der Rumpf.
+         Unveränderte Alteinträge bleiben speicherbar (wie abschlussWiderspruch).
+     (b) Die Stufe ist die Tarifversion des Eintrags: Art und ein gesetzter
+         Faktor einer Stufe, die ein gespeicherter Dienst vor dem Prüftag oder
+         in einem abgeschlossenen Monat trägt, sind nicht mehr änderbar. Eine
+         neue Tariffassung ist eine neue Stufe (neue Kennung); vergangene
+         Dienste behalten ihre Stufe und damit ihre Vergütung. Einzige
+         Ausnahme: ein noch leerer Faktor („ungeklärt“) darf erstmals gesetzt
+         werden — vorher gab es keine Vergütung, die sich ändern könnte.
+
+   Rein: keine Ablage, keine Uhr. Der Prüftag (heute, „JJJJ-MM-TT“) kommt vom
+   Aufrufer (modul-wege.mjs: betriebstag der Serveruhr).
    ========================================================================== */
 import { modulAktiv, modulParameter } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
+import { monatAbgeschlossen, monatText, monatVon } from "./monatsabschluss.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
@@ -97,6 +112,12 @@ export const inanspruchnahmeLaenge = (i) => (minuten(i.bis) - minuten(i.von) + T
  * Zeiträume desselben Dienstes zählen nur einmal, aneinandergrenzende bleiben
  * unverändert. Die Zeiten liegen relativ zum Fensterbeginn (Mitternacht ist so
  * kein Sonderfall).
+ *
+ * Verbindlich für jede spätere Rechnung (Konto WP-22, Ruhezeit R4, Höchst-
+ * arbeitszeit): Die Arbeitszeit der Inanspruchnahmen eines Dienstes ist DIESER
+ * Wert (Vereinigung). Die Längen einzelner Inanspruchnahmen
+ * (inanspruchnahmeLaenge) dürfen nie aufsummiert werden — überlappende oder
+ * doppelte Einträge zählten sonst mehrfach (M-BD1, N-2).
  * @param {any} e
  * @returns {number}
  */
@@ -109,7 +130,7 @@ export function inanspruchnahmeMinuten(e) {
   let [von, bis] = [0, 0];
   for (const [v, b] of liste) {
     if (v > bis) { summe += bis - von; [von, bis] = [v, b]; }
-    else if (b > bis) { if (bis === von) von = v; bis = b; }
+    else if (b > bis) bis = b;
   }
   return summe + (bis - von);
 }
@@ -169,17 +190,78 @@ export function bereitschaftHoechstBefunde(m, { module } = {}) {
   return aus;
 }
 
+/* Zwei-Jahres-Fenster um den Prüftag (wie bisher: Abstand höchstens 731 Tage und 12 Stunden, gemessen von Tagesmitte zu Tagesmitte). */
+const FENSTER_MS = 731 * 86400000 + 43200000;
+const abstandMs = (tag, heute) => Math.abs(new Date(`${tag}T12:00:00Z`).getTime() - new Date(`${heute}T12:00:00Z`).getTime());
+const tagDes = (k) => k.slice(k.lastIndexOf("|") + 1);
+const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const abgeschlossenText = (tag) =>
+  `Bereitschaft: Der Monat ${monatText(monatVon(tag))} ist abgeschlossen — Bereitschaftsdienste dieses Monats ändern sich erst nach dem Wiederöffnen durch die Leitung. Es wurde nichts gespeichert.`;
+const OHNE_PRUEFTAG = "Bereitschaft: ohne Prüftag lässt sich die Änderung nicht prüfen. Es wurde nichts gespeichert.";
+
+/**
+ * Bindung der Stufen (M-BD2 b): Kennungen der Stufen, die ein GESPEICHERTER
+ * Dienst vor dem Prüftag oder in einem abgeschlossenen Monat trägt.
+ * @param {any} altM gespeicherter Betrieb
+ * @param {string} heute Prüftag „JJJJ-MM-TT“
+ * @returns {Set<string>}
+ */
+export function gebundeneStufen(altM, heute) {
+  const aus = new Set();
+  const alt = istObjekt(altM && altM.bereitschaft) ? altM.bereitschaft : {};
+  for (const [k, e] of Object.entries(alt)) {
+    const tag = tagDes(k);
+    if (!istObjekt(e) || !echterTag(tag)) continue;
+    if (tag < heute || monatAbgeschlossen(altM, tag)) aus.add(String(e.stufe));
+  }
+  return aus;
+}
+
 /**
  * Schreibweg-Vertrag der Stufen und Einträge (Prüfung, keine Ablage).
  * @param {any} neuM
- * @param {any} [altM] gespeicherter Stand: Mit ihm werden nur neue oder geänderte Einträge gegen Person und Zwei-Jahres-Fenster geprüft.
+ * @param {any} [altM] gespeicherter Stand: Mit ihm werden nur neue oder geänderte Einträge gegen Person, Monatsabschluss und
+ *   Zwei-Jahres-Fenster geprüft. Monatsabschluss und Bindung der Stufen kommen nur aus ihm, nie aus neuM.
+ * @param {{ heute?: string }} [o] heute: Prüftag „JJJJ-MM-TT“ des Aufrufers (Serveruhr, betriebstag).
  * @returns {{ grund?: string }}
  */
-export function bereitschaftZusammen(neuM, altM) {
+export function bereitschaftZusammen(neuM, altM, { heute } = {}) {
   if (!neuM || typeof neuM !== "object") return {};
+  const tagOk = echterTag(heute);
+  const mitAlt = altM !== undefined && istObjekt(altM);
   if (neuM.bereitschaftStufen !== undefined) {
     if (!Array.isArray(neuM.bereitschaftStufen) || neuM.bereitschaftStufen.length > BEREITSCHAFT_GRENZEN.stufen) return { grund: "Stufen: Liste erwartet, höchstens " + BEREITSCHAFT_GRENZEN.stufen + "." };
     for (const s of neuM.bereitschaftStufen) { const f = pruefeBereitschaftStufe(s, neuM.bereitschaftStufen); if (f) return { grund: f }; }
+  }
+  /* M-BD2 b: Art und gesetzter Faktor einer gebundenen Stufe bleiben (die Stufe ist die Tarifversion vergangener Dienste). */
+  if (mitAlt) {
+    const vorher = Array.isArray(altM.bereitschaftStufen) ? altM.bereitschaftStufen.filter(istObjekt) : [];
+    const nachher = Array.isArray(neuM.bereitschaftStufen) ? neuM.bereitschaftStufen : [];
+    const geaendert = vorher.filter((s0) => {
+      const s1 = nachher.find((x) => istObjekt(x) && x.id === s0.id);
+      if (!s1) return false;                          // entfernt: die Einträge prüfen ihre Stufe selbst (Stufe unbekannt)
+      const f0 = typeof s0.faktor === "number" ? s0.faktor : null;
+      const f1 = typeof s1.faktor === "number" ? s1.faktor : null;
+      return s1.art !== s0.art || (f0 !== null && f1 !== f0);
+    });
+    if (geaendert.length) {
+      if (!tagOk) return { grund: OHNE_PRUEFTAG };
+      const gebunden = gebundeneStufen(altM, /** @type {string} */ (heute));
+      const s0 = geaendert.find((s) => gebunden.has(String(s.id)));
+      if (s0) return { grund: `Stufe ${String(s0.name || s0.id).slice(0, 30)}: Art und Faktor gelten für vergangene oder abgeschlossene Dienste und sind nicht mehr änderbar. Für eine neue Tariffassung eine neue Stufe anlegen und künftige Dienste ihr zuordnen. Es wurde nichts gespeichert.` };
+    }
+  }
+  const vorherE = mitAlt && istObjekt(altM.bereitschaft) ? altM.bereitschaft : {};
+  /* M-BD2 a: Entfernte Einträge abgeschlossener Monate (fehlt das Feld, gilt es als leer). Auch der Ausnahmeweg (Art. 17) erst nach dem Wiederöffnen. */
+  if (mitAlt) {
+    const neuE = istObjekt(neuM.bereitschaft) ? neuM.bereitschaft : neuM.bereitschaft === undefined ? {} : null;
+    if (neuE) {
+      for (const k of Object.keys(vorherE)) {
+        if (hat(neuE, k)) continue;
+        if (monatAbgeschlossen(altM, tagDes(k))) return { grund: abgeschlossenText(tagDes(k)) };
+      }
+    }
   }
   if (neuM.bereitschaft !== undefined) {
     if (!istObjekt(neuM.bereitschaft)) return { grund: "Bereitschaft: Form „Person|Tag“ erwartet." };
@@ -191,10 +273,12 @@ export function bereitschaftZusammen(neuM, altM) {
       if (i < 1 || !echterTag(k.slice(i + 1))) return { grund: "Bereitschaft: Schlüssel haben die Form „Person|JJJJ-MM-TT“." };
       const f = pruefeBereitschaftEintrag(neuM.bereitschaft[k], stufen);
       if (f) return { grund: f };
-      const vorher = istObjekt(altM && altM.bereitschaft) ? altM.bereitschaft : {};
-      if (altM !== undefined && Object.prototype.hasOwnProperty.call(vorher, k) && JSON.stringify(vorher[k]) === JSON.stringify(neuM.bereitschaft[k])) continue;
+      if (altM !== undefined && hat(vorherE, k) && gleich(vorherE[k], neuM.bereitschaft[k])) continue;
+      /* M-BD2 a: neu oder geändert in einem abgeschlossenen Monat (gespeicherter Abschlussstand). */
+      if (mitAlt && monatAbgeschlossen(altM, k.slice(i + 1))) return { grund: abgeschlossenText(k.slice(i + 1)) };
       if (Array.isArray(neuM.personen) && !neuM.personen.some((p) => istObjekt(p) && String(p.id) === k.slice(0, i))) return { grund: "Bereitschaft: die Person gehört nicht zum Betrieb." };
-      if (Math.abs(new Date(`${k.slice(i + 1)}T12:00:00Z`).getTime() - Date.now()) > 731 * 86400000 + 43200000)
+      if (!tagOk) return { grund: OHNE_PRUEFTAG };
+      if (abstandMs(k.slice(i + 1), /** @type {string} */ (heute)) > FENSTER_MS)
         return { grund: "Bereitschaft: der Tag liegt mehr als zwei Jahre von heute entfernt." };
     }
   }

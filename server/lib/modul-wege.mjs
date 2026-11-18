@@ -22,7 +22,8 @@
        Schreibweg, also bleibt das Eintragen hier geschlossen, bis ein eigener
        Endpunkt entschieden ist (WB-1).
 
-   Rein: keine Ablage. Einzige Uhr: der Zeitpunkt der Erfassung im Wachbuch.
+   Rein: keine Ablage. Uhren: der Zeitpunkt der Erfassung im Wachbuch und der Prüftag des
+   Bereitschaftsdienstes (betriebstag der Serveruhr, M-BD2/N-BD3; das Modul selbst liest keine Uhr).
    ========================================================================== */
 import { wachbuchZusammen } from "./modul-wachbuch.mjs";
 import { bereitschaftZusammen } from "./modul-bereitschaftsdienst.mjs";
@@ -30,6 +31,7 @@ import { funktionsZusammen } from "./modul-funktionsdienst.mjs";
 import { rotationZusammen } from "./modul-rotation.mjs";
 import { pflegeZusammen } from "./modul-pflegequal.mjs";
 import { BRANCHENMODULE, modulAktiv } from "./branchenmodule.mjs";
+import { betriebstag } from "./betriebszeit.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -100,15 +102,17 @@ const wachbuchWeg = weg("wachbuch", { wachbuch: "planung" }, (altM, neuM, ktx) =
   return r.grund ? { grund: r.grund } : { mandant: r.mandant === vorlage ? neuM : r.mandant };
 });
 
+/* Der Prüftag kommt von der Serveruhr (nie aus der Übermittlung); Monatsabschluss und Stufenbindung aus dem gespeicherten Stand.
+   Auch der Ausnahmeweg (Art. 17) entfernt in einem abgeschlossenen Monat nichts: erst wiederöffnen (wie die Ist-Daten, WP-16). */
 const bereitschaftWeg = weg("bereitschaftsdienst", { bereitschaftStufen: "leitung", bereitschaft: "planung" },
-  (altM, neuM) => bereitschaftZusammen(neuM, altM));
+  (altM, neuM) => bereitschaftZusammen(neuM, altM, { heute: betriebstag() }));
 
 const funktionsWeg = weg("funktionsdienst", { funktionsbereiche: "leitung", funktionsPlan: "planung" },
   (altM, neuM) => funktionsZusammen(neuM, altM));
 
 const rotationWeg = weg("rotation", { rotationen: "leitung" }, (_altM, neuM) => rotationZusammen(neuM));
 
-const pflegeWeg = weg("pflegequal", { pflegeNiveaus: "leitung" }, (_altM, neuM) => pflegeZusammen(neuM));
+const pflegeWeg = weg("pflegequal", { pflegeNiveaus: "leitung" }, (altM, neuM) => pflegeZusammen(neuM, altM));
 
 /** Die Schreibwege der sechs Module (der Objektbericht hat keine Betriebsfelder). */
 export const MODULWEGE_WP19 = Object.freeze([wachbuchWeg, bereitschaftWeg, funktionsWeg, rotationWeg, pflegeWeg]);
