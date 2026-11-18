@@ -118,6 +118,20 @@ export function sha256Hex(text) {
 
 export const MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
+export const UNGUELTIGER_MONAT = "UNGUELTIGER_MONAT";
+
+/**
+ * Eingangsprüfung des Monats der Abschlussaktionen: falsche Form wie bisher 422; ein Jahr außerhalb 2000–2999
+ * (P2-12: dieselbe Grenze wie kalendertagEcht, sonst wirft die Zeitbasis beim Einfrieren) ebenfalls 422 mit Code.
+ * @returns {null | {status: number, grund: string, code?: string}}
+ */
+function monatEingangFehler(monat) {
+  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  const j = Number(String(monat).slice(0, 4));
+  if (typeof monat !== "string" || j < 2000 || j > 2999)
+    return { status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: UNGUELTIGER_MONAT };
+  return null;
+}
 export const ABSCHLUSS_FELD = "monatsabschluss";
 export const MONAT_ABGESCHLOSSEN = "MONAT_ABGESCHLOSSEN";
 /** Wiederöffnen nach bestätigtem Lohnexport: abgelehnt, Korrektur nur über den Revisionsprozess (WP-16c). */
@@ -391,7 +405,7 @@ const werForm = (w) => ({ personId: w && w.personId !== undefined ? w.personId :
  */
 export function abschliessen(m, r, wer, jetzt, id, heute, opt = {}) {
   const monat = r && r.monat;
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  { const mf = monatEingangFehler(monat); if (mf) return mf; }
   if (!(String(monat) < String(heute).slice(0, 7)))
     return { status: 422, grund: "Abschließen lässt sich nur ein vergangener Monat." };
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
@@ -474,7 +488,7 @@ function ohneMonat(w, monat) {
  */
 export function wiederoeffnen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  { const mf = monatEingangFehler(monat); if (mf) return mf; }
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
   if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
     return { status: 422, grund: `Wiederöffnen braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };
@@ -514,7 +528,7 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
  */
 export function lohnexportBestaetigen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  { const mf = monatEingangFehler(monat); if (mf) return mf; }
   const alt = abschlussEintrag(m, monat);
   if (!alt || alt.abgeschlossen !== true)
     return { status: 409, grund: `Der Monat ${monatText(monat)} ist nicht abgeschlossen — den Lohnexport bestätigt man erst nach dem Abschluss.` };
@@ -663,7 +677,7 @@ const differenzKurz = (zeilen) => ({ abdruck: datevZeilenAbdruck(zeilen), n: zei
  */
 export function korrekturBeginnen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  { const mf = monatEingangFehler(monat); if (mf) return mf; }
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
   if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
     return { status: 422, grund: `Eine Korrektur braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };
@@ -729,7 +743,7 @@ export function korrekturBeginnen(m, r, wer, jetzt, id) {
  */
 export function korrekturFreigeben(m, r, wer, jetzt, id, heute) {
   const monat = r && r.monat;
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  { const mf = monatEingangFehler(monat); if (mf) return mf; }
   const alt = abschlussEintrag(m, monat);
   const kor = alt && laeuft(alt.korrektur) ? alt.korrektur : null;
   if (!alt || alt.abgeschlossen === true || !kor)
@@ -871,7 +885,7 @@ export function korrekturAutorVermerken(altM, neuM, personId) {
  */
 export function korrekturVerwerfen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  { const mf = monatEingangFehler(monat); if (mf) return mf; }
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
   if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
     return { status: 422, grund: `Das Verwerfen braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };

@@ -308,18 +308,31 @@ export function kalendertagFehler(bestand, vorher = null) {
     }
     if (Array.isArray(m.abwesenheiten)) {
       const altListe = (alt && Array.isArray(alt.abwesenheiten) ? alt.abwesenheiten : []).filter((x) => x && typeof x === "object");
-      const altAbw = new Map(altListe.filter((x) => x.id !== undefined && x.id !== null).map((x) => [String(x.id), x]));
+      /* Je Kennung die Inhalte der Alteinträge (stabiles JSON) — ein Altbestand kann eine Kennung doppelt tragen. */
+      const altAbw = new Map();
+      for (const x of altListe) if (x.id !== undefined && x.id !== null) {
+        const l = altAbw.get(String(x.id)) || []; l.push(stabil(x)); altAbw.set(String(x.id), l);
+      }
       /* Alteinträge ohne Kennung: nur inhaltsgleich wiedererkennbar (nur die mit einem unechten Tag, wenige). */
       const altOhneId = new Set(altListe.filter((x) => (x.id === undefined || x.id === null) && (unechterTag(x.von) || unechterTag(x.bis)))
         .map(stabil));
+      /* Wie oft trägt der neue Stand jede Kennung? Eine doppelte Kennung ist nie „derselbe Alteintrag". */
+      const anzahl = new Map();
+      for (const x of m.abwesenheiten) if (x && typeof x === "object" && x.id !== undefined && x.id !== null)
+        anzahl.set(String(x.id), (anzahl.get(String(x.id)) || 0) + 1);
       for (let j = 0; j < m.abwesenheiten.length; j++) {
         const x = m.abwesenheiten[j];
         if (!x || typeof x !== "object") continue;
-        const g = x.id !== undefined && x.id !== null ? altAbw.get(String(x.id)) : undefined;
+        if (!unechterTag(x.von) && !unechterTag(x.bis)) continue;
+        const mitId = x.id !== undefined && x.id !== null;
+        /* Unverändert nur, wenn der GANZE Eintrag inhaltsgleich zu einem Alteintrag mit derselben Kennung ist und die
+           Kennung im neuen Stand nicht öfter vorkommt als im gespeicherten (eine neu verdoppelte Kennung ist kein
+           Alteintrag) — bzw. ohne Kennung inhaltsgleich zu einem Alteintrag ohne Kennung. */
+        const g = mitId ? altAbw.get(String(x.id)) : undefined;
+        if (mitId && g && anzahl.get(String(x.id)) <= g.length && g.includes(stabil(x))) continue;
+        if (!mitId && altOhneId.has(stabil(x))) continue;
         for (const t of ["von", "bis"]) {
           if (!unechterTag(x[t])) continue;
-          if (g && g[t] === x[t]) continue;                                          // Altangabe, unverändert
-          if (!g && (x.id === undefined || x.id === null) && altOhneId.has(stabil(x))) continue;
           return fehler(`mandanten[${i}].abwesenheiten[${j}].${t}`, x[t]);
         }
       }

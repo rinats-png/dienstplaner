@@ -17,7 +17,7 @@
 
    Aufruf: npx vitest run pruefungen/p212-kalendertag.test.js
    ========================================================================== */
-// zeit-ok: Alle Kalenderdaten sind feste Werte (Februar/März 2026 und Zahlenraster); Zeitpunkte werden nur aus festen Angaben gebildet. Die Handler laufen auf der echten Uhr, die geprüften Tage liegen weit in der Vergangenheit und hängen nicht vom Laufzeitpunkt ab.
+// zeit-ok: Alle Kalenderdaten sind feste Werte ohne Bezug zur Uhr (Zahlenraster 2000–2999, Februar bis Dezember 2026; die Abwesenheiten 2026-11-30/2026-12-01 können je nach Laufzeitpunkt in der Zukunft liegen, die Prüfung hängt davon nicht ab). Zeitpunkte entstehen nur aus festen Angaben; die Handler laufen auf der echten Uhr, ihr Ergebnis hier hängt nicht vom Laufzeitpunkt ab.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -178,7 +178,7 @@ describe("kalendertagFehler: nur neue oder geänderte Einträge", () => {
     expect(kalendertagFehler(alt(), alt())).toBeNull();
     const b = alt();
     b.mandanten[0].erfassung["p1|2026-02-30"] = { bestaetigt: true, ende: "16:00", start: "08:00" };
-    b.mandanten[0].abwesenheiten[0].art = "krank";                              // anderes Feld, Tage gleich
+    b.mandanten[0].abwesenheiten[0] = { bis: "2026-03-01", von: "2026-02-30", art: "urlaub", personId: "p1", id: "a1" };   // nur Reihenfolge
     b.mandanten[0].erfassung["p1|2026-03-04"] = { start: "06:00", ende: "14:00", bestaetigt: true };   // unabhängig, gültig
     expect(kalendertagFehler(b, alt())).toBeNull();
   });
@@ -208,6 +208,19 @@ describe("kalendertagFehler: nur neue oder geänderte Einträge", () => {
     const c = alt();
     c.mandanten[0].abwesenheiten[0].von = "2026-02-31";
     expect(kalendertagFehler(c, alt())).toMatchObject({ feld: "mandanten[0].abwesenheiten[0].von" });
+  });
+  it("Abwesenheit: gleiche Kennung und gleiches unechtes von, aber anderer Inhalt oder doppelte Kennung → Fehler", () => {
+    const fall = (f) => { const b = alt(); f(b.mandanten[0]); return kalendertagFehler(b, alt()); };
+    expect(fall((m) => { m.abwesenheiten[0].personId = "p2"; })).toMatchObject({ feld: "mandanten[0].abwesenheiten[0].von" });
+    expect(fall((m) => { m.abwesenheiten[0].art = "krank"; })).toMatchObject({ feld: "mandanten[0].abwesenheiten[0].von" });
+    expect(fall((m) => { m.abwesenheiten.push({ ...m.abwesenheiten[0] }); })).toMatchObject({ code: UNGUELTIGER_KALENDERTAG });
+    expect(fall((m) => { m.abwesenheiten.push({ ...m.abwesenheiten[0], personId: "p2" }); })).toMatchObject({ code: UNGUELTIGER_KALENDERTAG });
+  });
+  it("Abwesenheit: ein Altbestand mit doppelter Kennung bleibt unverändert speicherbar, eine dritte Kopie nicht", () => {
+    const v = alt(); v.mandanten[0].abwesenheiten.push({ ...v.mandanten[0].abwesenheiten[0] });
+    expect(kalendertagFehler(kopie(v), v)).toBeNull();
+    const b = kopie(v); b.mandanten[0].abwesenheiten.push({ ...b.mandanten[0].abwesenheiten[0] });
+    expect(kalendertagFehler(b, v)).toMatchObject({ code: UNGUELTIGER_KALENDERTAG });
   });
   it("nie verändert: der übergebene Stand bleibt byte-gleich", () => {
     const b = alt(), v = alt(), vorher = JSON.stringify(b);
@@ -355,5 +368,47 @@ describe("Handler: Teilweg POST /api/bestand/teile", () => {
     const s = (await roh()).mandanten[0];
     expect(s.abwesenheiten.map((a) => [a.id, a.von, a.bis])).toEqual([["abw-alt", "2026-06-31", "2026-07-02"], ["abw-t", "2026-11-30", "2026-12-01"]]);
     expect(s.erfassung["m1|2026-02-30"]).toEqual(ALT_ERF);
+  });
+});
+
+/* ---------- A1 (Review #344): Monat der Abschlussaktionen außerhalb 2000–2999 → 422, kein Wurf ---------- */
+describe("Monatsabschluss: Jahr außerhalb 2000–2999", () => {
+  let MA;
+  beforeAll(async () => { MA = await import("../server/lib/monatsabschluss.mjs"); });
+  const betrieb = () => ({ id: "m-a", personen: [{ id: "p1", vorname: "V", nachname: "N", rolle: "mitarbeiter", status: "aktiv", wochenstunden: 39,
+      zugehoerigkeit: [{ ab: "1990-01-01", einheitId: "e1" }], qualifikationen: [] }],
+    einheiten: [{ id: "e1", name: "E" }], zyklus: [], anker: "2026-01-05",
+    dienstarten: [{ id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 0 }],
+    abweichungen: { "p1|1999-12-10": "N", "p1|3000-01-10": "N", "p1|2000-01-10": "N", "p1|2999-12-10": "N" },
+    erfassung: {}, einstempeln: {}, abwesenheiten: [], zuschlaege: [], einstellungen: {} });
+  const wer = { personId: "l1", name: "L", rolle: "leitung" };
+  const jetzt = new Date("2026-03-10T12:00:00.000Z");
+  const aufrufe = (monat) => [
+    ["abschliessen", () => MA.abschliessen(betrieb(), { monat, bestaetigt: true }, wer, jetzt, "ma-1", "2026-03-10")],
+    ["wiederoeffnen", () => MA.wiederoeffnen(betrieb(), { monat, grund: "Prüfung des Monats" }, wer, jetzt, "ma-1")],
+    ["lohnexportBestaetigen", () => MA.lohnexportBestaetigen(betrieb(), { monat }, wer, jetzt, "ma-1")],
+    ["korrekturBeginnen", () => MA.korrekturBeginnen(betrieb(), { monat, grund: "Prüfung des Monats" }, wer, jetzt, "ma-1")],
+    ["korrekturFreigeben", () => MA.korrekturFreigeben(betrieb(), { monat }, wer, jetzt, "ma-1", "2026-03-10")],
+    ["korrekturVerwerfen", () => MA.korrekturVerwerfen(betrieb(), { monat, grund: "Prüfung des Monats" }, wer, jetzt, "ma-1")],
+  ];
+  it("1999-12 und 3000-01: 422 UNGUELTIGER_MONAT in allen Abschlussaktionen", () => {
+    for (const monat of ["1999-12", "3000-01", "0000-01", "9999-12"])
+      for (const [name, f] of aufrufe(monat))
+        expect(f(), `${name} ${monat}`).toEqual({ status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: MA.UNGUELTIGER_MONAT });
+  });
+  it("falsche Form wie bisher (ohne Code)", () => {
+    for (const monat of ["2026-13", "2026-1", "", undefined])
+      for (const [name, f] of aufrufe(monat)) expect(f(), `${name} ${monat}`).toEqual({ status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." });
+  });
+  it("2000-01 und 2999-12 sind gültig: kein Monatsfehler, kein Wurf (Abschluss mit geplantem Nachtdienst)", () => {
+    for (const monat of ["2000-01", "2999-12", "2026-02"])
+      for (const [name, f] of aufrufe(monat)) {
+        const r = f();
+        expect(r && r.code, `${name} ${monat}`).not.toBe(MA.UNGUELTIGER_MONAT);
+        expect(String((r && r.grund) || ""), `${name} ${monat}`).not.toMatch(/Kein gültiger Monat/);
+      }
+    const r = MA.abschliessen(betrieb(), { monat: "2000-01", bestaetigt: true }, wer, jetzt, "ma-1", "2026-03-10");
+    expect("mandant" in r, JSON.stringify(r).slice(0, 300)).toBe(true);
+    expect(r.mandant.istEingefroren["p1|2000-01-10"]).toBeTruthy();
   });
 });
