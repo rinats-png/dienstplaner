@@ -542,7 +542,9 @@ ab 30 s, `/gesund` wird „kritisch“.
 3. **GET-Fenster (WP-48.8)** jetzt (P0) oder später (P1), und welches Fenster als Vorgabe (Vorschlag: 13 Monate zurück,
    3 voraus). Ohne Fenster bleibt der GET bei 400 × 24 bei ~23 MB / ~8 s.
 4. **Konflikt-Nutzerführung**: Das blinde „meinen Stand übernehmen“ (ganze Monate überschreiben) entfällt zugunsten
-   der Wahl je Zelle oder Feld. Das ändert ein bekanntes Verhalten der Oberfläche.
+   der Wahl je Zelle oder Feld. Das ändert ein bekanntes Verhalten der Oberfläche. *Entschieden 2026-11-18
+   (Betreiber, Option A): Wahl je Zelle/Feld („fremdes übernehmen“ / „meins setzen“), das blinde Übernehmen entfällt
+   auf dem Teilweg. Umsetzung siehe 7.4.*
 5. **Freigabe großer Betriebe**: Produktiver Betrieb für Betriebe bis 150 Personen schon nach Stufe 1 (48.3–48.5)
    oder erst nach Stufe 2 und Abschnitt 5 (48.6, 48.7) für alle? *Empfehlung: erst nach 48.6/48.7 für alle;
    Stufe 1 allein senkt Rumpf und Konflikte, nicht die Sperrdauer.*
@@ -763,6 +765,56 @@ keine Entscheidung nötig).
   Stand unverändert; Schalterwerte `TRUE`, `1`, leer, `true ` → voller Weg; Korrekturaktion und laufende Korrektur im anderen
   Betrieb → voller Weg; Einheit `abschlussTeile`/`jahrBisMonat`; Lesen nur unter der Sperre; 4 Rennen Abschluss gegen
   Ausstempeln des Nachtdiensts (Prüfsumme stimmt immer). Mutanten A1–A8 in `werkzeug/wp48-mutanten.mjs`.
+
+### 7.4 WP-48.5 Teil 1: Konfliktführung als reine Logik (Branch `feature/wp48-5-konflikt`, Basis `integration/release-v4` 32951445)
+
+Stand 2026-11-18. Betreiberentscheidung 6.4 (Option A) liegt vor. Wegen des Umfangs in zwei Schritten: **Teil 1 (dieser
+Stand)** ist die reine Logikschicht mit Prüfungen; **Teil 2** verdrahtet sie in `src/speicher.js`/`App.jsx` und baut
+das Konfliktfenster je Zelle/Feld. Teil 1 ändert kein Verhalten der Oberfläche: `src/app/teilkonflikt.js` wird noch
+von keiner Ansicht importiert, `App.jsx`, `speicher.js` und das heutige Konfliktfenster sind unverändert. Kein
+Schalter wurde geändert, keine neue Umgebungsvariable.
+
+- **Gate.** `teilwegStart` nutzt den Teilweg nur, wenn das GET `teile` mit `format: 1`, Epoche, Versionen und dem eigenen
+  Betrieb liefert. Schalter `CENTRIC_TEILSPEICHERUNG` aus (Vorgabe) → kein `teile` → null → Voll-PUT und heutiges
+  Konfliktfenster, unverändert (Prüfung über den echten Handler).
+- **Delta** (`deltaBilden`): Zellen `abweichungen`/`erfassung` mit Erwartungswert, Kernfelder nur mit bekannter
+  Basisversion des Servers (die Oberfläche rechnet keine Hashes). Spiegel der Serverfelder (`einstempeln`,
+  `istEingefroren`, `monatsabschluss`) sowie `session`/`stand` gehen nie hinaus. Nicht darstellbar → Rückfall `voll`
+  (Feld ohne Version, gelöschtes Kernfeld, ungültiger Zellschlüssel, über den Grenzen des Servers).
+- **Antworten** (`antwortVerarbeiten`): 200 → Basis ⊕ *gesendetes* Delta (spätere lokale Änderungen bleiben
+  ausstehend); 409 `TEILE_KONFLIKT` → aktuelle Werte der streitigen Teile in die Basis, je Zelle/Kernfeld eine Frage,
+  nicht streitige eigene Änderungen bleiben ausstehend; 409 `NEU_LADEN` → Phase „neu laden“ mit der Liste des
+  Ausstehenden; ein Konflikt ohne eigenes Segment → ebenfalls „neu laden“ (keine Endlosschleife); jede andere Absage
+  → nichts geschrieben, Basis bleibt.
+- **Wahl** (`waehlen`, `aufloesen`): „fremd“ setzt lokal genau den aktuellen Wert des Servers (für diese Zelle geht
+  nichts mehr hinaus); „meins“ lässt lokal stehen, das nächste Delta trägt bewusst `alt = aktuell`. Aufgelöst wird erst,
+  wenn jede Frage entschieden ist. Ein blindes „alles übernehmen“ gibt es nicht. Bei einem Kernfeld ersetzt die Wahl
+  das ganze Feld (Text `frageText` sagt das).
+- **Wiederholschutz (Auflage 7.2):** Netz weg nach dem Senden → Segmente „unklar“, Wiederholung desselben Deltas in
+  derselben Sitzung mit derselben Anfragekennung (Server antwortet `wiederholt`). `neuAufsetzen` (frisches GET,
+  Sitzungswechsel): andere Epoche → „neu laden“; ein unklares Segment wird nie blind wiederholt, auch wenn der frische
+  Wert wieder dem Erwartungswert gleicht (ABA) — es wird eine Frage.
+- **Keine Rechtelogik in der Oberfläche.** „Meins“ schickt nur Segmente aus dem eigenen Delta; ob die Rolle sie
+  schreiben darf, entscheidet der Server wie beim Voll-PUT (Prüfung: SV außerhalb des Bereichs → 403, nichts
+  geschrieben).
+- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (58 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
+  (Start/Gate, Delta, Antworten, Wahl, Idempotenz, Mehrfachkonflikte, unklarer Ausgang, Epoche, 200 Zufallslagen mit
+  festem Startwert), Gleichlauf mit `server/lib/teilweg.mjs` (Zellfelder, Nur-Server-Felder, stabiles JSON, Grenzen),
+  Ende zu Ende über den echten Handler: Leitung, Planung, Schichtverantwortung × Planzelle/Löschung/Kernfeld
+  Dienstarten/Mehrfach, Beschäftigte × Kernfeld Wünsche (zweites Gerät), je „fremd“ und „meins“; Mehrfachkonflikt mit
+  drittem Schreiber; Wiederholung mit gleicher Kennung ohne zweites Schreiben; ABA nach Sitzungswechsel. Handmutanten
+  M1–M7 (fremd wirkungslos, unklar ignoriert, Basis nach 409 nicht aktualisiert, Kennung nie wiederverwendet, fremde
+  Segmente als Frage, Serverfelder im Delta, Epoche ignoriert): alle rot.
+
+**Offen für Teil 2:** Verdrahtung in `speicher.js` (Basis aus `lies()`, Senden über `POST /api/bestand/teile`,
+`keepalive` mit kleinem Delta, Rückfall auf den Voll-PUT bei `voll`), Konfliktfenster je Zelle/Feld (Radiogruppe je
+Frage mit zugänglichem Namen, Tastatur, kein verschachteltes Bedienelement; „neu laden“ mit Sicherung des
+Ausstehenden als Datei), Ersatz von `abbildVon(db)` im Speicher-Effekt nur auf dem Teilweg, Browser-/axe-Prüfung.
+Ohne Fähigkeit `teile` bleibt der heutige Weg bytegleich. Einschalten weiter erst nach Betreiberfreigabe.
+
+**Restgrenzen:** Normalisiert der Server einen gesendeten Zellwert, hält die Basis den gesendeten Wert; die nächste
+Änderung derselben Zelle zeigt dann eine Frage gegen den eigenen, normalisierten Wert (kein Verlust). Ein Delta über
+den Grenzen (5 000 Zellen, 25 Kernfelder) fällt auf den Voll-PUT zurück (große Betriebe dort weiter 413).
 
 ---
 
