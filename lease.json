@@ -1,10 +1,10 @@
 {
-  "epoche": 20,
-  "halter": "hauptchat-e20",
-  "uebernommen_am": "2026-11-17T16:14:31.711Z",
-  "erneuert_am": "2026-11-17T20:34:27.964Z",
-  "gueltig_bis": "2026-11-17T23:34:27.964Z",
-  "uebergabe": "Hauptchat 16:1xZ: Epoche 19 abgelaufen 15:28Z, Leerlauf nach Merge #333; Kopf 7e66322f; naechstes Paket aus Welle 1",
-  "vorgaenger": "hauptchat",
+  "epoche": 21,
+  "halter": "hauptchat-e21",
+  "uebernommen_am": "2026-11-18T04:53:28.832Z",
+  "erneuert_am": "2026-11-18T04:53:28.832Z",
+  "gueltig_bis": "2026-11-18T07:53:28.832Z",
+  "uebergabe": "Hauptchat 18.11.: Epoche 20 abgelaufen, Leerlauf; Kopf 32951445; Betreiber-Priorisierung erhalten, Entscheidungsvorlage",
+  "vorgaenger": "hauptchat-e20",
   "freigegeben_am": null
 }
