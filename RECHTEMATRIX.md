@@ -518,6 +518,32 @@ Datenfelder des Moduls nur lesbar (`modulschreibwege.mjs`, `moduldatenZusammen`)
 Art. 15 DSGVO nennt die eigenen Einträge im Modulprotokoll (`modulhandlungen`); das Betriebsprotokoll des Servers nur Modul
 und Art (WP-14b, M1). Geprüft in `pruefungen/modul-kern.test.js`, `pruefungen/rechtematrix-zeilen.test.js`.
 
+**Fremde Kennung mit eigener Person (Prüfung zu Review #356, B1–B3, A):** Wem ein Eintrag gehört, steht im
+gespeicherten Stand, nicht in der Übermittlung. **B1:** Beschäftigte, die einen Antrag mit der Kennung eines FREMDEN
+Antrags und der eigenen `personId` schicken, ersetzten bisher den fremden Antrag (z. B. einen genehmigten Urlaub) und
+übernahmen dessen Antwort der Leitung (Datenverlust und Inhaltsleck). Jetzt bleibt der fremde Antrag unverändert; der
+Vorgang wird still übergangen (200), wie andere unzulässige Änderungen. Bewusst KEIN neuer eigener Antrag unter anderer
+Kennung (ein nicht bestellter zweiter Vorgang); so halten es Krankmeldung und Notruf bei bekannter Kennung schon.
+**B2:** Die Schichtverantwortung bekommt für einen fremden Antrag außerhalb ihres Bereichs (Regel im Schreibweg: nicht
+eigen, Person am ersten Tag des Antrags nicht im eigenen Bereich, kein offenes Tauschgesuch ohne Partner — eine
+Bereichs- und Statusregel OHNE das Sichtfenster der Lesesicht, also nicht dieselbe Regel wie `sicht.mjs`
+`schichtAnfragen`) dieselbe Antwort wie für eine Kennung, die es nicht gibt: geprüft wie ein neuer Antrag (fremde Person → 403 „… gehört nicht zu deinem Bereich.", nicht offen → 403 „Ein
+neuer Antrag ist offen …"), sonst 200 — und der gespeicherte Antrag bleibt unverändert (auch keine Interessenmeldung
+an einem verborgenen Antrag). **B3:** Ein eigener Wunsch, Einsprung oder Urlaubsrundenwunsch unter der Kennung eines
+fremden entsteht nicht mehr als zweiter Eintrag mit derselben Kennung (ein schon gespeicherter eigener bleibt
+änderbar). **Restrisiko (bewusst):** Die Antwort ist gleich, der nächste Abruf aber nicht — bei einer nicht vorhandenen
+Kennung erscheint der eigene neue Eintrag, bei einer fremden nicht. Das verlangt eine erratene Kennung (uid, 7 Zeichen
+Basis 36) und gilt ebenso für Krankmeldung und Notruf. **Offen (gering, nicht geändert):** Für die Schichtverantwortung
+antworten `einspruenge`, `nachrichten`, `notrufe`, `dienstbuch`, `uebergaben` und Tagesnotizen bei der Kennung eines
+verborgenen Eintrags mit 403 „Bestehende Einträge sind nicht änderbar", bei einer unbekannten Kennung mit 200 oder
+einem anderen 403 (Existenzorakel, nur mit erratener Kennung; kein Inhalt, keine Änderung). **Offen (Restfall B2,
+Review #361 N1):** Ein Antrag einer Person, die am ersten Tag des Antrags im eigenen Bereich war, deren Antrag aber
+außerhalb des Sichtfensters liegt (`umfangImZeitraum`, etwa nach einer Versetzung), ist für die Schichtverantwortung
+unsichtbar, gilt im Schreibweg aber als „aus dem Bereich“: weiter 403 „… umschreiben“ statt der Antwort für eine
+unbekannte Kennung, und mit erratenem Kern ließe er sich entscheiden. Bestand schon vor B2; Folgepaket (Regel im
+Schreibweg aus `umfangImZeitraum` ableiten, zusammen mit den übrigen Orakeln oben). Geprüft in
+`pruefungen/antrag-kapern-orakel.test.js` (echter Handler, Zustände byte-gleich, Differenztest alt/neu).
+
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
 eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`server/lib/mitteilungen.mjs`).

@@ -128,8 +128,16 @@ describe("C — Anträge", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "an-b"); }));
     expect(m.anfragen.find((a) => a.id === "an-b")).toEqual(gespeichert("anfragen", "an-b"));
   });
-  it("4. auf eine andere Person umhängen: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.anfragen.push({ ...gespeichert("anfragen", "an-b"), personId: "a1" }); }));
+  it("4. auf eine andere Person umhängen: abgewiesen (verborgener Antrag: wirkungslos, Antwort wie unbekannte Kennung)", () => {
+    /* Befund B2 (Prüfung zu #356): Bis dahin 403 „… umschreiben" — für die verborgene Kennung, während eine
+       unbekannte Kennung mit denselben Angaben 200 bekommt (Existenzorakel). Jetzt dieselbe Antwort wie für die
+       unbekannte Kennung; umgehängt wird trotzdem nichts: an-b bleibt byte-gleich, kein Antrag von a1 darunter. */
+    const angriff = schreibe(bestand(), SUB, (m) => { m.anfragen.push({ ...gespeichert("anfragen", "an-b"), personId: "a1" }); });
+    const unbekannt = schreibe(bestand(), SUB, (m) => { m.anfragen.push({ ...gespeichert("anfragen", "an-b"), id: "an-unbekannt", personId: "a1" }); });
+    expect(!!(angriff && angriff.verweigert)).toBe(!!(unbekannt && unbekannt.verweigert));
+    const m = ok(angriff);
+    expect(m.anfragen.filter((a) => a.id === "an-b")).toEqual([gespeichert("anfragen", "an-b")]);
+    expect(JSON.stringify(m.anfragen)).toBe(JSON.stringify(bestand().mandanten[0].anfragen));
     ab(schreibe(bestand(), SUB, (m) => { m.anfragen.find((a) => a.id === "an-a").personId = "b1"; }));
   });
   it("… oder Zeitraum und Art umschreiben: abgewiesen", () => {

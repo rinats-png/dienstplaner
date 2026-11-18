@@ -241,7 +241,15 @@ const ANTRAGSTATUS_SELBST = ["offen", "zurueckgezogen"];
 /** Liste mit personId: eigene Einträge aus dem Neuen, fremde aus dem Alten. */
 function eigeneEintraege(alt, neu, ich) {
   const fremde = (Array.isArray(alt) ? alt : []).filter((e) => !eigenerEintrag(e, ich));
-  const eigene = (Array.isArray(neu) ? neu : []).filter((e) => eigenerEintrag(e, ich));
+  /* Befund B3 (Prüfung zu #356): ein „eigener" Eintrag unter der Kennung eines fremden entstand bisher als
+     zweiter Eintrag mit derselben Kennung — wer danach über die Kennung ändert oder löscht, traf beide. Er wird
+     still übergangen wie in anfragenZusammen (B1); der fremde bleibt. Ein schon gespeicherter eigener Eintrag
+     mit dieser Kennung (Altbestand) bleibt änderbar — kein neuer Verlustweg. */
+  const kennungen = (l, eigen) => new Set((Array.isArray(l) ? l : [])
+    .filter((e) => e && kennungGueltig(e.id) && !!eigenerEintrag(e, ich) === eigen).map((e) => String(e.id)));
+  const fremdeIds = kennungen(alt, false), eigeneIds = kennungen(alt, true);
+  const eigene = (Array.isArray(neu) ? neu : []).filter((e) => eigenerEintrag(e, ich)
+    && !(kennungGueltig(e.id) && fremdeIds.has(String(e.id)) && !eigeneIds.has(String(e.id))));
   return [...fremde, ...eigene];
 }
 
@@ -253,9 +261,25 @@ function anfragenZusammen(alt, neu, ich) {
   const alteNachId = new Map((Array.isArray(alt) ? alt : []).filter(Boolean).map((a) => [a.id, a]));
   const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
   const aus = [];
+  const uebergangen = new Set();
+  /* Kennungen als Zeichenkette (wie B3): 1234567 und "1234567" sind dieselbe Kennung. */
+  const kennungen = (eigen) => new Set((Array.isArray(alt) ? alt : [])
+    .filter((e) => e && !!eigenerEintrag(e, ich) === eigen).map((e) => String(e.id)));
+  const fremdeK = kennungen(false), eigeneK = kennungen(true);
   for (const a of neueNachId.values()) {
     const vorher = alteNachId.get(a.id);
-    if (eigenerEintrag(a, ich)) {
+    /* Altbestand mit eigener Kennung: wie bisher — gibt es einen gespeicherten Antrag mit genau dieser Kennung, zählt
+       ein eigener mit genau dieser Kennung (Review #361 A1: fremd 5 und eigen "5" — der fremde 5 bleibt geschützt),
+       sonst einer gleicher Schreibung. */
+    if (eigenerEintrag(a, ich) && fremdeK.has(String(a.id))
+      && !(vorher ? alt.some((e) => e && e.id === a.id && eigenerEintrag(e, ich)) : eigeneK.has(String(a.id)))) {
+      /* Befund B1 (Review #356): Die Kennung eines FREMDEN Antrags mit der eigenen personId übernahm bisher den
+         fremden Antrag (ersetzt, samt Antwort der Leitung an die andere Person). Wem er gehört, steht im
+         gespeicherten Stand: Er bleibt, wie er war — als wäre er nicht mitgeschickt (unten), still übergangen wie
+         andere unzulässige Änderungen; dieselbe Antwort wie für eine Kennung, die es nicht gibt. Kein neuer Antrag
+         unter anderer Kennung (ein zweiter, nicht bestellter Vorgang); so halten es Krankmeldung und Notruf schon. */
+      if (vorher) uebergangen.add(a.id);   // gleiche Schreibung: unten zurückgelegt; sonst bleibt er ohnehin
+    } else if (eigenerEintrag(a, ich)) {
       /* Eigener Antrag: anlegen, ändern, zurückziehen — aber nicht entscheiden. */
       const status = ANTRAGSTATUS_SELBST.includes(a.status) ? a.status
         : (vorher ? vorher.status : "offen");
@@ -280,7 +304,7 @@ function anfragenZusammen(alt, neu, ich) {
   }
   /* Fremde Anträge, die nicht mehr mitgeschickt wurden, bleiben. */
   for (const v of alteNachId.values())
-    if (!neueNachId.has(v.id) && !eigenerEintrag(v, ich)) aus.push(v);
+    if ((!neueNachId.has(v.id) || uebergangen.has(v.id)) && !eigenerEintrag(v, ich)) aus.push(v);
   return aus;
 }
 
@@ -2376,6 +2400,19 @@ export function einheitZusammen(altM, neuM, sitzung) {
             continue;
           }
           if (gleich(vorher, x)) { ergebnis.push(vorher); continue; }
+          /* Befund B2 (Review #356): Ein fremder Antrag außerhalb des Bereichs (nicht eigen, Person am ersten Tag nicht
+             im Bereich, kein offenes Tauschgesuch ohne Partner — Bereichs- und Statusregel OHNE das Sichtfenster von
+             sicht.mjs schichtAnfragen; Restfall siehe RECHTEMATRIX.md, Review #361 N1) antwortet wie eine Kennung,
+             die es nicht gibt — sonst verrieten 403-Texte seine Existenz. Geprüft wird wie für einen neuen Antrag; was das
+             besteht, wird still übergangen: Der gespeicherte Antrag bleibt, wie er war. */
+          if (!eigen(vorher.personId) && !imBereich(vorher.personId, vorher.von)
+            && !(vorher.typ === "tausch" && vorher.status === "offen" && !vorher.partnerId)) {
+            if (!eigen(x.personId) && !imBereich(x.personId, x.von)) return nein(fremdText(x.personId, x.von));
+            if ((x.status || "offen") !== "offen")
+              return nein("Ein neuer Antrag ist offen — entschieden wird er danach.");
+            ergebnis.push(vorher);
+            continue;
+          }
           /* Wem der Antrag gehört, steht im gespeicherten Stand. */
           for (const f of ANTRAG_KERN)
             if (!gleich(vorher[f], x[f]) && !(eigen(vorher.personId) && f !== "personId" && f !== "typ"))

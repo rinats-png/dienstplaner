@@ -36,7 +36,7 @@
     "pruefung:sicht": "vitest run pruefungen/sicht.test.js",
     "pruefung:intelligence": "vitest run pruefungen/intelligence-",
     "pruefung:intelligence-browser": "vitest run pruefungen/intelligence-oberflaeche-browser.test.js",
-    "pruefung:selbstservice": "vitest run pruefungen/selbstservice.test.js",
+    "pruefung:selbstservice": "vitest run pruefungen/selbstservice.test.js pruefungen/antrag-kapern-orakel.test.js",
     "pruefung:oberflaeche": "vitest run pruefungen/oberflaeche-selbstservice.test.js",
     "pruefung:render": "vitest run pruefungen/oberflaeche-render.test.js pruefungen/personal-rollenauswahl-name.test.js pruefungen/leitungscode-ohne-person.test.js",
     "pruefung:personendaten": "vitest run pruefungen/personendaten.test.js",
