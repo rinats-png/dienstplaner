@@ -79,6 +79,28 @@ describe("Verhaltensgleichheit der Planrechnung (Golden aus bda8b68)", () => {
   });
 });
 
+/* WP-I12c: planKennzahlen liefert keine Fehlwerte (undefined, NaN) nach außen. */
+describe("planKennzahlen: spanne und wochenenden (WP-I12c)", () => {
+  it("beide Kennzahlen sind endliche Zahlen und stimmen mit der Verteilung über von/bis überein", () => {
+    for (const [name, m] of B) {
+      const k = F.planKennzahlen(m, VON, BIS);
+      expect(Number.isFinite(k.spanne), `${name}: spanne`).toBe(true);
+      expect(Number.isFinite(k.wochenenden), `${name}: wochenenden`).toBe(true);
+      const v = F.verteilung(m, VON, BIS);
+      const last = v.zeilen.map((z) => z.weNacht + z.feier);
+      expect(k.spanne, name).toBe(last.length ? Math.max(...last) - Math.min(...last) : 0);
+      expect(k.wochenenden, name).toBe(v.zeilen.reduce((a, z) => a + z.wochenenden, 0));
+    }
+  });
+  it("kein Wert der Kennzahlen ist undefined oder NaN", () => {
+    for (const [name, m] of B) for (const [feld, w] of Object.entries(F.planKennzahlen(m, VON, BIS)))
+      expect(typeof w === "number" && Number.isFinite(w), `${name}.${feld}`).toBe(true);
+  });
+  it("der Demobetrieb hat Wochenendarbeit (die Prüfung prüft etwas)", () => {
+    expect(F.planKennzahlen(demo(), VON, BIS).wochenenden).toBeGreaterThan(0);
+  });
+});
+
 /* ------------------------------------------------------------------------ */
 describe("Rechenkern: Fakten mit Herkunft", () => {
   const OPT = { zeitraum: { von: VON, bis: BIS }, heute: "2026-11-06", merkmale: [] };

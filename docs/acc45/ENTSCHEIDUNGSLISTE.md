@@ -1,6 +1,6 @@
 # Entscheidungsliste für den Betreiber (Einzelquelle)
 
-Stand: 2026-11-14 (Integrationskopf `d84e4a83`; Nachtrag 2026-11-15: Zeile BE-3 und neu P3-6, Kopf `19f3ac8b`), Umsetzungsstufen abgeglichen am 2026-11-15 mit dem Kopf `aff9c320` (Abgleich siehe `WIEDERAUFNAHME.md`, Abschnitt „Konsolidierter Stand 2026-11-15“). Nachtrag 2026-11-17: P3-7 ergänzt, neu P3-8 (Kopf `8300c346`). Nachtrag 2026-11-18: neuer Abschnitt A2 (P1-7, P2-11, P2-11a, P2-12 entschieden), E-9 als eigene Zeile, Betreiberhinweise A1 bis A3 (Kopf `57d49e3d`). Nur Dokumentation, kein Produktcode.
+Stand: 2026-11-14 (Integrationskopf `d84e4a83`; Nachtrag 2026-11-15: Zeile BE-3 und neu P3-6, Kopf `19f3ac8b`), Umsetzungsstufen abgeglichen am 2026-11-15 mit dem Kopf `aff9c320` (Abgleich siehe `WIEDERAUFNAHME.md`, Abschnitt „Konsolidierter Stand 2026-11-15“). Nachtrag 2026-11-17: P3-7 ergänzt, neu P3-8 (Kopf `8300c346`). Nachtrag 2026-11-18: neuer Abschnitt A2 (P1-7, P2-11, P2-11a, P2-12 entschieden), E-9 als eigene Zeile, Betreiberhinweise A1 bis A3 (Kopf `57d49e3d`). Nachtrag 2026-11-18 (WP-I12c): P2-13 (Spanne-Definition, technisch festgelegt). Nur Dokumentation, kein Produktcode.
 Diese Liste ist die **einzige** priorisierte Zusammenfassung der Betreiberentscheidungen. Statusberichte
 verweisen auf diese Datei und wiederholen sie nicht. Bei Abweichung gilt der Wortlaut der jeweiligen Quelle.
 Wo eine Aussage in den Quellen nicht eindeutig nachgesehen wurde, steht „Quelle prüfen“.
@@ -104,6 +104,7 @@ Betreiberhinweise zu WP-48 (Nachtrag b, 2026-11-18):
 | P2-8 | **PR #238 (WP-I16, angehalten):** Das Schreibrecht des Betriebsrats ist **nicht freigegeben**. Offene Fragen: (a) Wer darf die KI-Pause aktivieren und wer aufheben? (b) Wer weist Betriebsrat-Konten zu? (c) Umgehung durch die Leitung über die Rollenvergabe (`roles.assign`)? | Quelle prüfen (`ENTSCHEIDUNG-RB-ERGAENZUNG-2026-11-11.md`) | #238 bleibt ungemergt, Intelligence-Steuerung ohne Recht | `WIEDERAUFNAHME.md`, `work-packages.json` (WP-I16) |
 | P2-9 | Urlaubshinweis (WP-48-GB): täglicher Serverlauf? nur eine Rolle oder nur auf Handlung? Meldung bei still ersetztem Lauf? | Quelle prüfen | Bisheriges Verhalten bleibt (Leitung und Planung, automatisch) | `WP-48-GB-ANALYSE.md` §5 |
 | P2-10 | Fragen zum Erkennungsskript #289: Behandlung der Fälle „unklar“ (Ausgang 1, fail-closed) und Nutzung von `--gespeicherte-kennungen` (gibt die gespeicherte Betriebskennung statt Pseudonym aus, kann dem Raumnamen entsprechen) | Quelle prüfen | Lauf kann nur mit Pseudonymen und ohne Klärung der Fallbacks ausgewertet werden | `ERKENNUNG-GESTRANDETE-BETRIEBE.md` |
+| P2-13 | **WP-I12c, Spanne im Szenarienvergleich** (wp-i12-fragen Frage 4): technisch festgelegt, Betreiber kann widersprechen. `spanne` = größte minus kleinste Last je Person, Last = Wochenendnächte + Feiertagsdienste (`weNacht + feier`); `wochenenden` = Sa/So mit Dienst | So belassen (aus der vorhandenen Verteilung abgeleitet, keine neue Fachregel) | Festlegung gilt weiter; ohne Widerspruch keine Änderung | `wp-i12-fragen.md` Frage 4, `WP-I12c-NACHWEIS.md`, `docs/intelligence/FAKTENPAKET.md` §5.4 |
 
 ### Priorität 3 — Betrieb und Extern
 

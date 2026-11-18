@@ -60,8 +60,13 @@ export function planKennzahlen(m, von, bis) {
       if (e.da) stunden += e.anzahl * dauer(e.da);
     }
   }
-  const v = verteilung(m, von.slice(0, 7));
+  /* WP-I12c: Verteilung über genau von..bis. spanne = Spannweite (größte minus kleinste Last je Person) der
+     Belastung „Wochenendnächte + Feiertagsdienste“ (Sortierschlüssel und Streitfreiheitsmaß von verteilung);
+     wochenenden = Summe der Wochenendtage mit Dienst (Sa/So) über alle Personen. Immer endliche Zahlen. */
+  const v = verteilung(m, von, bis);
+  const last = v.zeilen.map((z) => z.weNacht + z.feier);
   return { befunde: bef.length, schwer, unterbesetzt, ueberbesetzt, dienste,
-    stunden: Math.round(stunden), spanne: v.spanne,
-    wochenenden: v.zeilen.reduce((a, z) => a + z.wochenendNaechte, 0) };
+    stunden: Math.round(stunden),
+    spanne: last.length ? Math.max(...last) - Math.min(...last) : 0,
+    wochenenden: v.zeilen.reduce((a, z) => a + z.wochenenden, 0) };
 }
