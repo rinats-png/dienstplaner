@@ -230,7 +230,12 @@ Start trägt nach. **Nicht einsammelbar**: nach der Änderung kennt die Ablage d
 
 ### 8.4 Normalisieren (Serverstart, Werkzeug `wiederherstellen --zustand`)
 
-`kontobuchNormalisieren`: Konto, dessen Prüfwert als abgelöst im Buch steht → `passwort: null` (plus `aktualisiert`).
+`kontobuchNormalisieren`: Konto, dessen Prüfwert als abgelöst im Buch steht → `passwort: null`, **Kontoepoche + 1**
+(plus `aktualisiert`). Die Epoche ist nötig, weil ein VM-/Verzeichnis-Image Epoche **und** Kontositzungen
+(`centric-accountsitzungen`) zurückbringt: Eine mit dem abgelösten Passwort entstandene Sitzung passte sonst wieder
+(Review MITTEL-1). Zusätzlich weist `sitzungPruefen` jede Kontositzung eines Kontos ohne Prüfwert ab (Grund
+`ohne-passwort`; Kontositzungen entstehen nur über die Anmeldung mit Passwort, legitime Konten ohne Passwort haben
+keine).
 Ein Feld, das jede Fassung kennt (`274bfa0` verlangt `s1$`): ohne Prüfwert keine Anmeldung, auch im Altbild. Ein Konto
 mit Sperre **und** abgelöstem Passwort wird in einem Schreibvorgang nachgezogen. Unbeteiligte Konten bleiben
 bytegleich. Ausgabe (nur Anzahlen): Start `…; Passwörter: n abgelöste im Buch, m in der Ablage zurückgesetzt` und bei
@@ -269,9 +274,12 @@ Normalisierung aus): jeweils rot (PR-Beschreibung).
 
 ### 8.7 Grenzen und Restrisiken
 
-1. **Abbruch zwischen Ablage und Buch und Verlust des Nachtrags** (Prozess stirbt nach dem Schreiben des neuen
-   Prüfwerts und vor Buch **und** Nachtrag) → der Altwert ist nirgends mehr; ein späterer Rücksprung belebt ihn. Nicht
-   einsammelbar, anders als Sperren. Fenster: ein Schreibvorgang.
+1. **Harter Abbruch (SIGKILL) zwischen neuem Prüfwert und Bucheintrag** (`accounts.mjs`, `accountAendern`): Es
+   entsteht weder Eintrag noch Nachtrag — der Nachtrag greift nur, wenn das **Schreiben** des Buchs scheitert, nicht bei
+   einem Absturz. Der Altwert ist danach nirgends mehr; ein späterer Rücksprung belebt ihn (nicht einsammelbar, anders
+   als Sperren). Fenster: ein Schreibvorgang. Abwägung (Review NIEDRIG-1): Ein Vorab-Eintrag vor dem Schreiben der
+   Ablage würde bei einem Absturz zur Aussperrung (Altwert gilt nicht, neuer nicht gespeichert) statt zur möglichen
+   Wiederbelebung führen; bleibt bewusst so, dokumentiert.
 2. **Buch verloren ohne Kopie** (`kontowiderrufbuch-neu`): abgelöste Prüfwerte lassen sich nicht aus der Ablage
    einsammeln → nach einem Rücksprung gelten sie wieder. Abhilfe: BE-3-Sicherung der Bücher; im Ernstfall betroffene
    Passwörter von Hand zurücksetzen.
@@ -287,6 +295,19 @@ Normalisierung aus): jeweils rot (PR-Beschreibung).
    den Altwert kennt, sieht einen messbaren Unterschied — und erfährt nichts, was er nicht schon weiß.
 8. **Betroffene nach Rücksprung** brauchen einen Rücksetzweg per Mail, den es heute nicht gibt (§8.4); bis dahin bleiben
    sie draußen (fail-closed, Supportfall); danach hängt er an der Mailzustellung (E-9).
+9. **Sitzungen und Epoche beim Restore (Review MITTEL-1, behoben):** Ein Image bringt Kontoepoche und Kontositzungen
+   (Klasse C, im VM-/Verzeichnis-Image enthalten) mit zurück. Ohne Gegenmaßnahme galt eine mit dem abgelösten Passwort
+   entstandene Sitzung nach der Normalisierung wieder. Jetzt: Normalisierung erhöht die Epoche (Sitzung → `epoche`), und
+   `sitzungPruefen` lehnt Konten ohne Prüfwert ab (`ohne-passwort`). Test „Sitzung aus Image-Stand nach Normalisierung
+   wird abgewiesen“.
+10. **Heute kein Produktionsauslöser:** `accountAendern` ist der einzige Schreibweg des Passworts, wird produktiv aber
+    nirgends zum Ändern oder Zurücksetzen aufgerufen (`passwortSetzen` nur aus `registrierung.mjs` bei noch nicht
+    gesetztem Passwort; Token-Zweck `zuruecksetzen` ohne Endpunkt). Der Mechanismus ist **Vorarbeit** für einen künftigen
+    Änderungs-/Rücksetzweg; ein Eintrag entsteht heute praktisch nicht, und der „Supportfall“ nach Restore (8) tritt
+    heute praktisch nicht auf.
+11. **Ohne `CENTRIC_PFEFFER`** wird der Schlüssel aus der leeren Zeichenkette abgeleitet (`kontowiderrufbuch.mjs`,
+    `pfefferJetzt`) — Kennungen und Siegel wären dann fälschbar. Befund für ein Folgepaket („Start in Produktion ohne
+    Pfeffer hart abbrechen“, `WIEDERAUFNAHME.md`), nicht Teil dieses PR (Review NIEDRIG-2).
 
 **Bedrohungsmodell (Kurzfassung):** Angreifer kennt ein früheres, inzwischen geändertes Passwort P1 (Phishing,
 Wiederverwendung); der Betreiber spielt nach der Änderung einen Datenstand zurück, der P1s Prüfwert enthält (Image-

@@ -422,7 +422,7 @@ export function kontobuchVereinen(ziel, quelle) {
  *   laeufe:     Lauf unter der Mindestgeneration (oder fehlt neben einer Mitgliedschaft) → generation: Mindestwert
  *   mitglieder: Mitgliedschaft unter der Mindestgeneration und nicht „entzogen“ → status: "entzogen"
  * @param {any} b @param {KontoStand} stand @param {{pfeffer?: string, am?: string}} [o]
- *   passwort:   (BE-1 Rest) Prüfwert des Kontos steht im Buch als abgelöst                → passwort: null
+ *   passwort:   (BE-1 Rest) Prüfwert des Kontos steht im Buch als abgelöst → passwort: null, epoche + 1
  * `gesperrt` und `passwoerter` zählen die Konten je Grund (ein Konto kann beides sein und steht einmal in `konten`).
  * @returns {{konten: Array<{schluessel: string, wert: any}>, laeufe: Array<{schluessel: string, wert: any}>,
  *   mitglieder: Array<{schluessel: string, wert: any}>, faktoren: Array<{schluessel: string, wert: any}>,
@@ -439,8 +439,10 @@ export function kontobuchNormalisieren(b, stand, { pfeffer, am = new Date().toIS
     if (!sperren && !abgeloest) continue;
     gesperrt += sperren ? 1 : 0;
     passwoerter += abgeloest ? 1 : 0;
-    konten.push({ schluessel, wert: { ...a, ...(sperren ? { status: "gesperrt" } : {}), ...(abgeloest ? { passwort: null } : {}),
-      aktualisiert: am } });
+    /* Review MITTEL-1: zusammen mit `passwort: null` die Kontoepoche erhöhen. Ein VM-/Verzeichnis-Image bringt Epoche
+       UND Kontositzungen zurück; eine Sitzung, die mit dem abgelösten Passwort entstand, passte sonst wieder. */
+    konten.push({ schluessel, wert: { ...a, ...(sperren ? { status: "gesperrt" } : {}),
+      ...(abgeloest ? { passwort: null, epoche: (Number(a.epoche) || 1) + 1 } : {}), aktualisiert: am } });
   }
   const mindestens = (accountId, raum) => {
     const e = b.mitglieder[mitgliedKennung(accountId, raum, pfeffer)];

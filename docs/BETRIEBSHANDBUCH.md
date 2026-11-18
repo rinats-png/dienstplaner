@@ -238,6 +238,9 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
   `Passwörter (BE-1): … m Konten … ohne Passwort` bzw. `WARNUNG Konto-Widerrufbuch: m Konto/Konten trugen ein
   abgelöstes Passwort`). Diese Personen kommen weder mit dem alten noch mit dem neuen Passwort hinein; einen
   Rücksetzweg per Mail gibt es noch nicht → Supportfall (Leitung informieren, Vorgang in `betrieb-protokoll.log`).
+  Zugleich steigt die Kontoepoche: Kontositzungen, die ein Image mit zurückgebracht hat, gelten für diese Konten nicht
+  mehr (auch keine Sitzung eines Kontos ohne Passwort). Heute gibt es keinen produktiven Weg, ein gesetztes Passwort zu
+  ändern oder zurückzusetzen; der Mechanismus ist Vorarbeit, und der Supportfall tritt praktisch noch nicht auf.
   Bücher immer vereinigen (g), nie ersetzen, sonst gehen Einträge verloren
   ([ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md](acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md) §8).
 - **R0 (Standard bei Fehlern):** `./abschalten.sh` — Dienst kontrolliert anhalten. Lieber kein Dienst als ein

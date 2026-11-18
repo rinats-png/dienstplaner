@@ -604,6 +604,9 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
   if (konto.status === "gesperrt") return schluss("gesperrt");
   if (konto.status !== "aktiv") return schluss("nicht-aktiv");
   if ((Number(konto.epoche) || 1) !== Number(s.epoche)) return schluss("epoche");
+  /* BE-1 Rest (Review MITTEL-1): Eine Kontositzung entsteht nur mit Passwort (anmelden). Trägt das Konto keinen
+     Prüfwert (mehr) — etwa nach der Normalisierung eines abgelösten Passworts —, gilt keine Sitzung. */
+  if (!hatPruefwert(konto)) return schluss("ohne-passwort");
   /* BE-1: Sperre im Konto-Widerrufbuch beendet die Sitzung; nicht prüfbar → wirft (fail-closed, 503). */
   if (await kontoZugangImBuch(store, konto.id)) return schluss("gesperrt");
   /* OPT-1-F, Befund 3 (Zusatzprüfung): Hat das Konto einen aktiven zweiten Faktor, gilt keine Sitzung, die ohne ihn
