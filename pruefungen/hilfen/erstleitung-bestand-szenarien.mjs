@@ -100,6 +100,22 @@ export const istZufall = (w) => (/[0-9]/.test(w) && /[A-Za-z]/.test(w)) || (/^[0
   || (/^[A-Za-z_-]+$/.test(w) && /[a-z]/.test(w) && /[A-Z]{2}/.test(w))
   || zufallBuchstabenMitTrenner(w);
 
+/* Zufallswerte bekannter Erzeuger exakt ins Register statt per Heuristik (Flake-Härtung 2026-11-18): Die Einladungskennung
+   ist randomBytes(12) als base64url (server/lib/einladungen.mjs), also genau 16 Zeichen aus [A-Za-z0-9_-]. Ohne Ziffer und
+   ohne zwei Großbuchstaben in Folge (z. B. „et_zyppiMxAy_dnf“, CI 18.11.: nur 2 Großbuchstaben, kein Paar) fing die
+   Heuristik istZufall sie nicht. Übernommen wird nur ein Wert, der genau die Form seines Erzeugers hat — eine andere Form
+   bleibt sichtbar und fällt in der Differenz auf. Gleiches für den Sicherungsschlüssel (randomBytes(24) base64url,
+   32 Zeichen, server/funktionen/daten.mjs). Die Heuristik bleibt für alle übrigen Quellen. */
+export const ZUFALL_ERZEUGER = Object.freeze([
+  { pfad: "/api/einladung", feld: "id", form: /^[A-Za-z0-9_-]{16}$/ },
+  { pfad: "/api/sicherungsschluessel", feld: "schluessel", form: /^[A-Za-z0-9_-]{32}$/ },
+]);
+/** Zufallswerte aus einer erfolgreichen Antwort (nur bekannte Erzeuger, nur exakte Form). */
+export function zufallAusAntwort(pfad, status, d) {
+  if (status !== 200 || !d || typeof d !== "object") return [];
+  return ZUFALL_ERZEUGER.filter((z) => z.pfad === pfad && typeof d[z.feld] === "string" && z.form.test(d[z.feld])).map((z) => d[z.feld]);
+}
+
 /** @param {string} s @param {Array<[string,string]>} register */
 function maskeText(s, register, tage) {
   let t = s;
@@ -325,6 +341,7 @@ export async function lauf({ wurzel, schalter, meldung = () => {} }) {
         ...(methode === "GET" ? {} : { body: JSON.stringify(rumpf || {}) }) });
       let d = null; const t = await a.text();
       try { d = JSON.parse(t); } catch { d = { "#text": t.slice(0, 200) }; }
+      for (const w of zufallAusAntwort(pfad, a.status, d)) register.push([w, "<ZUFALL>"]);
       return { status: a.status, rumpf: d };
     }
 

@@ -324,7 +324,15 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
     const t = bauen({ modus: "skript", skript: (nr, ein) => ({ text: `Betroffen ist ${ein.paket.fakten.find((f) => f.alias).alias}.` }) });
     const r = await t.gw.ausfuehren(S.leitung, anf());
     expect(r.status).toBe("fertig");
-    const roh = fold(JSON.stringify([...t.store.m.entries()]));
+    /* Flake-Härtung 2026-11-18 (Ursache „0151“, CI #334): Die ctxId ist Zufall (16 Zeichen base64url), die MAC des Kontexts
+       damit 64 zufällige Hexzeichen — in rund 0,1 % der Läufe stand „0151“ darin (nachgestellt: 3 von 3000 Läufen, alle in
+       ki:ktx.mac). Ausgenommen werden NUR diese beiden Werte, exakt und erst nach Beleg, dass sie kein Klartext tragen:
+       die ctxId hat die Form der Kennung, die MAC ist 64 Hex und echt (kontextLesen prüft sie und liefert den Eintrag). */
+    expect(r.ctxId).toMatch(/^[A-Za-z0-9_-]{16}$/);
+    expect(await t.sp.kontextLesen({ raum: "raum-a", betriebId: "m1", rolle: "leitung", ctxId: r.ctxId })).not.toBeNull();
+    const ktxMac = [...t.store.m.entries()].find(([k]) => k.startsWith("ki:ktx:"))[1].mac;
+    expect(ktxMac).toMatch(/^[0-9a-f]{64}$/);
+    const roh = fold(JSON.stringify([...t.store.m.entries()]).split(ktxMac).join("<MAC>").split(r.ctxId).join("<CTX>"));
     for (const v of VERBOTEN_IM_PAKET.filter((x) => !["notiz", "grund", "anmerkung", "raum-a"].includes(x))) { const i = roh.indexOf(fold(v)); expect(i < 0, `${v} im Speicher, Umgebung: ${i < 0 ? "" : JSON.stringify(roh.slice(Math.max(0, i - 60), i + 40))}`).toBe(true); }
     const ktx = [...t.store.m.entries()].find(([k]) => k.startsWith("ki:ktx:"))[1];
     expect(JSON.stringify(ktx)).not.toMatch(/[PEOD]_[BCDFGHJKLMNPQRSTVWXZ]{8}/);
