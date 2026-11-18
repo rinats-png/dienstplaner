@@ -105,7 +105,17 @@ export const istZufall = (w) => (/[0-9]/.test(w) && /[A-Za-z]/.test(w)) || (/^[0
    ohne zwei Großbuchstaben in Folge (z. B. „et_zyppiMxAy_dnf“, CI 18.11.: nur 2 Großbuchstaben, kein Paar) fing die
    Heuristik istZufall sie nicht. Übernommen wird nur ein Wert, der genau die Form seines Erzeugers hat — eine andere Form
    bleibt sichtbar und fällt in der Differenz auf. Gleiches für den Sicherungsschlüssel (randomBytes(24) base64url,
-   32 Zeichen, server/funktionen/daten.mjs). Die Heuristik bleibt für alle übrigen Quellen. */
+   32 Zeichen, server/funktionen/daten.mjs). Die Heuristik bleibt für alle übrigen Quellen.
+   Übrige erreichbare Zufallsquellen (git grep randomBytes|randomUUID|Math.random in server/, Stand 2026-11-18) und ihr Rest:
+   - Sitzungs- und Einladungstoken (randomBytes(32) base64url, 43 Zeichen): unerkannt nur ohne Ziffer UND ohne
+     Großbuchstabenpaar, weit unter 1e-6 je Wert.
+   - Hexwerte ab 16 Zeichen (Bestandsepoche und Journal-Id randomBytes(8); etag, Kern-Abdrücke, Kennungen, Sitzungs-
+     und Kontoschlüssel als Hash über Inhalte mit Zufall): unerkannt nur ganz ohne Ziffer, (6/16)^16 ≈ 1,5e-7 je Wert
+     bei 16 Zeichen, weniger bei längeren.
+   - Sicherungsmarke (Math.random, sicherungen.mjs), Codes, p_-Kennungen: eigene feste Regeln unten.
+   - Spur-Marke: eigene Regel istSpurMarke (unten).
+   - Nicht erreicht im Katalog (sonst stünde der Rohwert in der Golden): Import-Vorgänge, Löschlauf, Schreibhalt,
+     Zweifaktor, Konto-Wiederherstellung, Accounts (a_…), Kalender-Geheimnis, Bremsversuche (v:…). */
 export const ZUFALL_ERZEUGER = Object.freeze([
   { pfad: "/api/einladung", feld: "id", form: /^[A-Za-z0-9_-]{16}$/ },
   { pfad: "/api/sicherungsschluessel", feld: "schluessel", form: /^[A-Za-z0-9_-]{32}$/ },
@@ -115,6 +125,20 @@ export function zufallAusAntwort(pfad, status, d) {
   if (status !== 200 || !d || typeof d !== "object") return [];
   return ZUFALL_ERZEUGER.filter((z) => z.pfad === pfad && typeof d[z.feld] === "string" && z.form.test(d[z.feld])).map((z) => d[z.feld]);
 }
+
+/* Spur-Marke (zweite Zufallsquelle, CI-Lauf 44410416802): Schlüssel `centric-spur/<tag>/<art>/<marke>` mit
+   marke = Zeit in ms als base36 (8 Zeichen zwischen 1972 und 2059) + randomBytes(5) als Hex (10 Zeichen), server/lib/schutz.mjs
+   (spur). Besteht der Zeitteil nur aus Buchstaben (derzeit so, z. B. „mwmoyrku“) und der Hexteil zufällig nur aus a–f
+   (rund 5,5e-5 je Marke, bei über 100 Spureinträgen je Lauf also rund 0,6 %), fing istZufall sie nicht: „mwmoyrkuaedfbbfced“.
+   Maskiert wird NUR die Marke, NUR in diesem Schlüssel und NUR bei genau dieser Form (Zeitteil muss ein Zeitpunkt
+   2020 bis 2059 sein); Tag und Art bleiben sichtbar. */
+const SPUR_ZEIT_VON = Date.UTC(2020, 0, 1), SPUR_ZEIT_BIS = Date.UTC(2059, 0, 1);
+/** Prädikat: hat w genau die Form einer Spur-Marke? Exportiert für den Beleg. */
+export const istSpurMarke = (w) => {
+  if (typeof w !== "string" || !/^[0-9a-z]{8}[0-9a-f]{10}$/.test(w)) return false;
+  const ms = parseInt(w.slice(0, 8), 36);
+  return ms >= SPUR_ZEIT_VON && ms < SPUR_ZEIT_BIS;
+};
 
 /** @param {string} s @param {Array<[string,string]>} register */
 function maskeText(s, register, tage) {
@@ -128,6 +152,7 @@ function maskeText(s, register, tage) {
   t = t.replace(/\b[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b/g, "<CODE>");
   t = t.replace(/\bp_[0-9a-f]{7}\b/g, "<PID>");
   t = t.replace(/\bd[0-9a-f]{8}\b/g, "<DEMOID>");
+  t = t.replace(/(centric-spur\/[^/"]+\/[a-z0-9-]+\/)([0-9a-z]+)(?![0-9A-Za-z_-])/g, (g, vor, m) => (istSpurMarke(m) ? `${vor}<ZUFALL>` : g));
   /* Zufall: Ziffern und Buchstaben gemischt — oder ein Zufallswert, der zufällig nur aus Ziffern (Epoche, 16 Stellen)
      bzw. nur aus Buchstaben besteht (Einladungskennung, 16 Zeichen base64url: in rund 7 % der Läufe ohne Ziffer,
      z. B. „IPs_uewFyvnfbntG“; Sicherungsschlüssel, 32 Zeichen). Wörter und Bezeichner (klein, camelCase, kebab-case)

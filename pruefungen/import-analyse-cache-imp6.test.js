@@ -319,7 +319,9 @@ describe("IMP-6 Zwischenspeicher: Worst-Case an der Grenze (10.000 Zeilen)", { t
     expect(JSON.stringify(mit.r.vorschau)).toBe(JSON.stringify(ohne.r.vorschau));
     /* Die Aussage „Speicher spart Arbeit“, gezählt statt gestoppt: Analyse und Vorschau ohne Speicher lesen beide Blätter
        vollständig (je 10.001 Zeilen mit Kopf; die Analyse liest zusätzlich nur Kopfzeilen zur Blatterkennung); die Vorschau
-       aus dem Speicher ruft die Bibliothek gar nicht auf. */
+       aus dem Speicher ruft die Bibliothek gar nicht auf. Bewusst streng an die Aufrufe gebunden: Ein legitimer Umbau, der
+       beim Treffer etwa nur die Kopfzeile prüft (1 Zeile), gäbe hier lauten Fehlalarm — dann die Erwartung bewusst anpassen
+       (z. B. höchstens Kopfzeilen), nicht stillschweigend lockern. */
     expect(a.zeilen).toBeGreaterThanOrEqual(20002);
     expect(ohne.zeilen).toBeGreaterThanOrEqual(20002);
     expect(ohne.zeilen).toBeLessThanOrEqual(a.zeilen);

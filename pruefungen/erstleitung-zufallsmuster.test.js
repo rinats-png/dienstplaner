@@ -1,6 +1,6 @@
 /* Prädikat-Beleg für das Zufallsmuster der Bestandsdifferenz-Maskierung (siehe erstleitung-bestand-szenarien.mjs). */
 import { describe, it, expect } from "vitest";
-import { istZufall, maskieren, zufallAusAntwort } from "./hilfen/erstleitung-bestand-szenarien.mjs";
+import { istZufall, istSpurMarke, maskieren, zufallAusAntwort } from "./hilfen/erstleitung-bestand-szenarien.mjs";
 
 describe("Zufallsmuster der Maskierung", () => {
   it("maskiert die beobachtete Einladungskennung (CI-Lauf 44031380657)", () => {
@@ -43,5 +43,30 @@ describe("Zufallswerte bekannter Erzeuger: exakt aus der Antwort statt Heuristik
     expect(zufallAusAntwort("/api/einladung", 403, { id: ID })).toEqual([]);
     expect(zufallAusAntwort("/api/sicherungsschluessel", 200, { schluessel: "a".repeat(32) })).toEqual(["a".repeat(32)]);
     expect(zufallAusAntwort("/api/sicherungsschluessel", 200, { schluessel: "a".repeat(31) })).toEqual([]);
+  });
+});
+
+describe("Spur-Marke: gezielt nach Form statt Heuristik (CI-Lauf 44410416802)", () => {
+  const MARKE = "mwmoyrkuaedfbbfced";   // beobachtet: base36-Zeitteil und Hexteil zufällig ohne Ziffer
+  it("die Heuristik allein fängt die beobachtete Marke nicht (Ursache)", () => {
+    expect(istZufall(MARKE)).toBe(false);
+  });
+  it("die Marke hat die Form der Spur (8 Zeichen base36-Zeit 2020 bis 2059 + 10 Hex) und wird im Spurschlüssel maskiert; Tag und Art bleiben", () => {
+    expect(istSpurMarke(MARKE)).toBe(true);
+    expect(maskieren({ schluessel: `centric-spur/2026-11-18/einrichten/${MARKE}` }, [], [["2026-11-18", "<HEUTE>"]]))
+      .toEqual({ schluessel: "centric-spur/<HEUTE>/einrichten/<ZUFALL>" });
+    const echt = `${Date.UTC(2026, 10, 18).toString(36)}0123456789`;
+    expect(istSpurMarke(echt)).toBe(true);
+  });
+  it("Formprüfung: falsche Länge, Großbuchstaben, Nicht-Hex im Zufallsteil, Zeit außerhalb 2020 bis 2059 und fremde Schlüssel bleiben unmaskiert", () => {
+    expect(istSpurMarke(`${MARKE}a`)).toBe(false);
+    expect(istSpurMarke(MARKE.slice(1))).toBe(false);
+    expect(istSpurMarke("mwmoyrkuaedfbbfceg")).toBe(false);          // g ist kein Hex
+    expect(istSpurMarke("Mwmoyrkuaedfbbfced")).toBe(false);
+    expect(istSpurMarke("zzzzzzzzaedfbbfced")).toBe(false);          // Zeitteil nach 2059
+    expect(istSpurMarke("10000000aedfbbfced")).toBe(false);          // Zeitteil vor 2020
+    expect(maskieren({ k: `centric/konto:${MARKE}` }, [])).toEqual({ k: `centric/konto:${MARKE}` });
+    expect(maskieren({ k: "centric-spur/<HEUTE>/einrichten/vorschauzeilenmenge" }, []))
+      .toEqual({ k: "centric-spur/<HEUTE>/einrichten/vorschauzeilenmenge" });
   });
 });
