@@ -359,6 +359,83 @@ function veraendern(z, liste, ich, idsFremd) {
   return l;
 }
 
+/** Stand 24242d39 (B1 mit genauer Kennung), wörtlich ohne Kommentare — Vergleich für die gemischten Schreibweisen. */
+function anfragen24242(alt, neu, ich) {
+  const alteNachId = new Map((Array.isArray(alt) ? alt : []).filter(Boolean).map((a) => [a.id, a]));
+  const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
+  const aus = [];
+  const uebergangen = new Set();
+  for (const a of neueNachId.values()) {
+    const vorher = alteNachId.get(a.id);
+    if (vorher && !eigenerEintrag(vorher, ich) && eigenerEintrag(a, ich)
+      && !alt.some((e) => e && e.id === a.id && eigenerEintrag(e, ich))) {
+      uebergangen.add(a.id);
+    } else if (eigenerEintrag(a, ich)) {
+      const status = ANTRAGSTATUS_SELBST.includes(a.status) ? a.status
+        : (vorher ? vorher.status : "offen");
+      aus.push(vorher
+        ? { ...a, status, freigaben: vorher.freigaben, entschieden: vorher.entschieden,
+            durch: vorher.durch, antwort: vorher.antwort }
+        : { ...a, status, freigaben: undefined, entschieden: undefined, durch: undefined, antwort: undefined });
+    } else if (vorher && !tauschgesuchSichtbar(vorher)) {
+      aus.push(vorher);
+    } else if (vorher) {
+      const alteI = (vorher.interessenten || []).filter((x) => String(x) !== String(ich));
+      const meineI = (a.interessenten || []).filter((x) => String(x) === String(ich));
+      aus.push({ ...vorher, interessenten: [...alteI, ...meineI] });
+    }
+  }
+  for (const v of alteNachId.values())
+    if ((!neueNachId.has(v.id) || uebergangen.has(v.id)) && !eigenerEintrag(v, ich)) aus.push(v);
+  return aus;
+}
+
+describe("Review #361 A1: gemischte Schreibweisen im Altbestand (fremd 5, eigen \"5\")", () => {
+  it("Differenz 24242d39 gegen neu, 5000 Bestände mit Zahl- und String-Kennungen gemischt: nie verliert nur die neue Fassung einen fremden Antrag", () => {
+    const z = zufall(361);
+    const w = (l) => l[Math.floor(z() * l.length)];
+    const KENNUNGEN = [5, "5", 7, "7", "05", "an1", 1234567, "1234567"];
+    const ich = "a1";
+    let gemischt = 0;
+    for (let lauf = 0; lauf < 5000; lauf++) {
+      const alt = Array.from({ length: 1 + Math.floor(z() * 5) }, () => ({ ...zufallsAntrag(z, w(KENNUNGEN)), personId: w(["a1", "a2", "b1"]) }));
+      if (alt.some((x) => x.personId === ich) && alt.some((x) => x.personId !== ich)) gemischt++;
+      let neu = alt.map((x) => ({ ...x }));
+      for (let k = 0; k < 1 + Math.floor(z() * 3); k++) {
+        if (z() < 0.5) neu.push({ ...zufallsAntrag(z, w(KENNUNGEN)), personId: ich });
+        else neu = veraendern(z, neu, ich, alt.filter((x) => x.personId !== ich).map((x) => x.id));
+      }
+      const vorher = anfragen24242(alt, neu, ich).map((x) => JSON.stringify(x));
+      const jetzt = eigenesZusammen({ anfragen: alt }, { anfragen: neu }, ich).anfragen.map((x) => JSON.stringify(x));
+      for (const f of alt.filter((x) => x.personId !== ich)) {
+        const s = JSON.stringify(f);
+        if (vorher.includes(s)) expect(jetzt.includes(s), `Lauf ${lauf}: ${s}`).toBe(true);
+      }
+      /* und kein eigener Eintrag mit der Antwort eines fremden Antrags, den nicht schon 24242d39 so hatte
+         (Altbestand mit doppelter genauer Kennung fremd+eigen: wie bisher) */
+      for (const x of eigenesZusammen({ anfragen: alt }, { anfragen: neu }, ich).anfragen.filter((y) => y.personId === ich))
+        if (x.antwort !== undefined && !alt.some((g) => g.personId === ich && g.antwort === x.antwort))
+          expect(vorher.includes(JSON.stringify(x)), `Lauf ${lauf}`).toBe(true);
+    }
+    expect(gemischt).toBeGreaterThan(1000);
+  });
+  const fremd5 = { id: 5, personId: "a2", typ: "abwesenheit", art: "urlaub", von: T, bis: T, status: "genehmigt",
+    antwort: "ANTWORT-AN-A2", entschieden: "1.11.2026", durch: "Leitung" };
+  const eigen5 = { id: "5", personId: "a1", typ: "abwesenheit", art: "urlaub", von: T, bis: T, status: "offen" };
+  it("eigener Antrag mit Kennung 5 gesendet: der fremde Antrag 5 bleibt byte-gleich, keine fremde Antwort beim eigenen", () => {
+    const alt = [fremd5, eigen5];
+    const aus = eigenesZusammen({ anfragen: alt }, { anfragen: [eigen5, { ...neuerAntrag(5, "a1") }] }, "a1").anfragen;
+    expect(aus.filter((x) => x.id === 5)).toEqual([fremd5]);
+    expect(JSON.stringify(aus.filter((x) => x.personId === "a1"))).not.toContain("ANTWORT-AN-A2");
+  });
+  it("umgekehrt (fremd \"5\", eigen 5): eigener Antrag 5 bleibt änderbar (Altbestand wie bisher)", () => {
+    const alt = [{ ...fremd5, id: "5" }, { ...eigen5, id: 5 }];
+    const aus = eigenesZusammen({ anfragen: alt }, { anfragen: [{ ...eigen5, id: 5, text: "geändert" }] }, "a1").anfragen;
+    expect(aus.filter((x) => x.id === "5")).toEqual([{ ...fremd5, id: "5" }]);
+    expect(aus.find((x) => x.id === 5)).toMatchObject({ personId: "a1", text: "geändert" });
+  });
+});
+
 describe("Differenztest alt/neu: Beschäftigte (eigenesZusammen)", () => {
   it("2000 Zufallsbestände: gleich, außer bei fremder Kennung mit eigener Person — dort bleibt der fremde Eintrag byte-gleich", () => {
     const z = zufall(20261118);

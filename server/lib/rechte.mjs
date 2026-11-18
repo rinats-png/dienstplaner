@@ -268,8 +268,11 @@ function anfragenZusammen(alt, neu, ich) {
   const fremdeK = kennungen(false), eigeneK = kennungen(true);
   for (const a of neueNachId.values()) {
     const vorher = alteNachId.get(a.id);
+    /* Altbestand mit eigener Kennung: wie bisher — gibt es einen gespeicherten Antrag mit genau dieser Kennung, zählt
+       ein eigener mit genau dieser Kennung (Review #361 A1: fremd 5 und eigen "5" — der fremde 5 bleibt geschützt),
+       sonst einer gleicher Schreibung. */
     if (eigenerEintrag(a, ich) && fremdeK.has(String(a.id))
-      && !eigeneK.has(String(a.id))) {   // Altbestand mit eigener Kennung gleicher Schreibung: wie bisher
+      && !(vorher ? alt.some((e) => e && e.id === a.id && eigenerEintrag(e, ich)) : eigeneK.has(String(a.id)))) {
       /* Befund B1 (Review #356): Die Kennung eines FREMDEN Antrags mit der eigenen personId übernahm bisher den
          fremden Antrag (ersetzt, samt Antwort der Leitung an die andere Person). Wem er gehört, steht im
          gespeicherten Stand: Er bleibt, wie er war — als wäre er nicht mitgeschickt (unten), still übergangen wie
