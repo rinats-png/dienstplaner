@@ -67,12 +67,19 @@ Quelle: Betreiberentscheidungen vom 2026-11-18. **Stufe bei allen Zeilen: `entsc
 
 | ID | Entscheidung 2026-11-18 | Gebaut / offen |
 |---|---|---|
-| P1-7 (a) bis (e) | Alle Option A: (a) eigener Endpunkt `POST /api/loeschlauf`; (b) Konfliktwahl je Zelle/Feld; (c) Voll-PUT nach 4 Wochen ohne Nutzung nur noch für Betreiber/Migration (sonst 410); (d) GET-Fenster später (P1); (e) Freigabe großer Betriebe und Schalter erst nach 48.6 und 48.7 (a und b) mit Staging-Messung (48.9). WP-48.4 und 48.5 grundsätzlich zur Implementierung freigegeben | Gebaut und integriert (Teile, WP-48 bleibt IN_PROGRESS): 48.4 Server-Endpunkt `POST /api/loeschlauf` (#346, b29d780b); 48.5 Teil 1 Konfliktführung je Zelle/Feld als reine Logik (#342, 5176cb8e); 48.6 Teil Schreibkette segmentproportional (#341, 5e4b23a1). Offen: 48.5 Teil 2 (Oberfläche), Löschlauf-Knopf, 48.6 Rest, 48.7 Stufe b, 48.8, 48.9; Messung 60/150/400 × 12/24/36 steht aus; Schalter nicht eingeschaltet |
+| P1-7 (a) bis (e) | Alle Option A: (a) eigener Endpunkt `POST /api/loeschlauf`; (b) Konfliktwahl je Zelle/Feld; (c) Voll-PUT nach 4 Wochen ohne Nutzung nur noch für Betreiber/Migration (sonst 410); (d) GET-Fenster später (P1); (e) Freigabe großer Betriebe und Schalter erst nach 48.6 und 48.7 (a und b) mit Staging-Messung (48.9). WP-48.4 und 48.5 grundsätzlich zur Implementierung freigegeben | Gebaut und integriert hinter Schalter aus (Teile, WP-48 bleibt IN_PROGRESS): 48.4 Server-Endpunkt `POST /api/loeschlauf` (#346, b29d780b) und Löschlauf-Knopf mit `neuLadenPflicht` (#350, 605644be); 48.5 Teil 1 Konfliktführung je Zelle/Feld als reine Logik (#342, 5176cb8e) und Teil 2 Oberfläche (#348, 471c217a); 48.6 Teil Schreibkette segmentproportional (#341, 5e4b23a1); 48.7 Stufe b, Monatsabschluss ohne Raumsperre, Schalter `CENTRIC_ABSCHLUSS_OHNE_SPERRE` aus (#351, 2a721702). Offen: 48.8 (GET-Fenster, später), 48.9 (Staging-Messung 60/150/400 × 12/24/36, Phase D), Einschalten der Schalter (gesonderte Betreiberfreigabe), Voll-PUT-Abschaltung später (P1-7 (c)); Leistungsziel p95 < 1 s bei 400 × 36 nicht erreicht |
 | P2-11 | Option A: zugängliche Namen korrigieren, Ausnahmen nach Korrektur entfernen; keine Abschwächung der WCAG-Prüfungen (Option C ausgeschlossen) | `label-content-name-mismatch`: noch nicht umgesetzt, Ausnahmen in `e2e/axe-ausnahmen.json` bleiben bis zur Korrektur |
-| P2-11a | Option A, vorgezogen: `nested-interactive` auf `antraege-planer` beseitigen, Ausnahme streichen | Gebaut und integriert: #345 (5598c0c8), Ausnahme gestrichen. Browser-axe-Lauf der CI ist das Gate; Nacharbeiten siehe `WIEDERAUFNAHME.md` Nachtrag 2026-11-18 |
+| P2-11a | Option A, vorgezogen: `nested-interactive` auf `antraege-planer` beseitigen, Ausnahme streichen | Gebaut und integriert: #345 (5598c0c8), Ausnahme gestrichen. Browser-axe-Lauf der CI ist das Gate; Nacharbeiten siehe `WIEDERAUFNAHME.md` Nachtrag 2026-11-18. Die verbleibenden 16 Ausnahmen in `e2e/axe-ausnahmen.json` haben keinen Ablauf; Abbau hängt an WP-40 |
 | P2-12 | Variante B mit sichtbarer Kennzeichnung unvollständiger Ergebnisse. Unvollständig darf nie als Monatsabschluss oder abrechnungsfähiger Export freigegeben werden. Auswirkungen auf historische Abrechnungen gesondert vorlegen (siehe A3) | Schritte 1 und 2 gebaut und integriert: unechte Kalendertage werden abgewiesen statt gerollt (#344, 57d49e3d). Schritt 3 (Abschlusssperre UNVOLLSTAENDIG) nicht begonnen, wartet auf die Entscheidung zu historischen Folgen |
 
 Hinweis: Die früheren Zeilen P1-7, P2-11, P2-11a und P2-12 in B sind mit dem Verschieben hierher entfallen.
+
+Betreiberhinweise zu WP-48 (Nachtrag b, 2026-11-18):
+
+- Das Einschalten der drei Schalter `CENTRIC_TEILSPEICHERUNG`, `CENTRIC_ABSCHLUSS_SEGMENTWEISE` und `CENTRIC_ABSCHLUSS_OHNE_SPERRE` erfolgt nur nach der Staging-Messung WP-48.9 und gesonderter Betreiberfreigabe. Die Versuchszahl `ABSCHLUSS_VERSUCHE` wird dort festgelegt.
+- Worst Case Stufe b: ca. 75 s Blockade je Anfrage.
+- Löschlauf-Knopf: Die irreversible produktive Löschung bleibt gesondert freigabepflichtig.
+- Ein anderer Reiter ist durch `neuLadenPflicht` nicht geschützt; der Server sichert ab.
 
 ## B. Weiter offen
 
@@ -128,3 +135,4 @@ Entfernt als entschieden: P1-2, P1-3, P1-4 (BE-1 bis BE-3), P2-E1 bis P2-E8, P2-
 Q2a), Teil von P3-1 (O2). Korrigiert: P2-4 (IMP-6 „Q1 bis Q8“: Q1 bis Q5 entschieden, die Punkte 6 bis 8 offen).
 Geschärft: P1-6 (Anforderungen an die Sicherheitsbewertung), P2-8 (Fragen zu #238), P1-5 (Klärung statt Entscheidung).
 Nachtrag 2026-11-18: P1-7, P2-11, P2-11a, P2-12 nach A2 verschoben (entschieden); E-9 als eigene Zeile in Priorität 1 aufgenommen; Betreiberhinweise A1 bis A3 ergänzt.
+Nachtrag 2026-11-18 (b): A2 Zeile P1-7 (48.4 und 48.5 gebaut hinter Schalter aus, 48.7 Stufe b gebaut) und P2-11a (16 verbleibende Ausnahmen) aktualisiert; Betreiberhinweise zu WP-48 (Schalter, Versuchszahl, Worst Case, Löschlauf-Knopf, anderer Reiter) unter A2 ergänzt.
