@@ -252,6 +252,73 @@ describe("kalendertagFehler: nur neue oder geänderte Einträge", () => {
   });
 });
 
+/* ---------- 2d. Folgepunkte Review #344: anfragen, ausschreibungen, krankmeldungen; Tage ohne führende Nullen ---------- */
+describe("kalendertagFehler: Folgepunkte (2) und (4)", () => {
+  const verlauf = [{ schritt: "eingegangen", von: "p1", rolle: "mitarbeiter", zeit: "2026-03-01T08:00:00.000Z" }];
+  const alt = () => ({ mandanten: [{ id: "m-a",
+    erfassung: { "p1|2026-2-30": { start: "08:00", ende: "16:00" } }, abweichungen: {},
+    anfragen: [{ id: "r1", personId: "p1", typ: "abwesenheit", art: "urlaub", von: "2026-02-30", bis: "2026-03-01", status: "offen" },
+      { id: "r2", personId: "p2", typ: "tausch", status: "offen", von: "2026-04-31", bis: "2026-04-31", partnerId: null, interessenten: ["x9", "p1", "x8"] },
+      { id: "r3", personId: "p1", typ: "abwesenheit", art: "urlaub", von: "2026-03-02", bis: "2026-03-03", status: "offen" }],
+    ausschreibungen: [{ id: "s1", datum: "2026-06-31", dienstId: "F", status: "offen", bewerbungen: [{ personId: "p1", text: "" }, { personId: "p2", text: "" }], vergebenAn: null }],
+    krankmeldungen: [{ id: "km-1", personId: "p1", von: "2026-09-31", bis: "2026-10-01", status: "eingegangen", verlauf }] }] });
+  const fall = (f, v = alt()) => { const b = kopie(v); f(b.mandanten[0]); return kalendertagFehler(b, v); };
+  const kopie = (x) => JSON.parse(JSON.stringify(x));
+  it("unveränderte Alteinträge in allen Listen und mit Schlüssel ohne Nullen blockieren nicht", () => {
+    expect(kalendertagFehler(alt(), alt())).toBeNull();
+    expect(fall((m) => { m.anfragen.push({ id: "r9", personId: "p1", typ: "abwesenheit", art: "urlaub", von: "2026-03-05", bis: "2026-03-06", status: "offen" }); })).toBeNull();
+  });
+  it("Rechtezusammenführung ordnet um oder setzt undefined: kein falsches 422", () => {
+    /* anfragenZusammen (Beschäftigte): eigene Meldung hinten; antwort/freigaben: undefined; fehlende interessenten = [] */
+    expect(fall((m) => { m.anfragen[1] = { ...m.anfragen[1], interessenten: ["x9", "x8", "p1"] }; })).toBeNull();
+    expect(fall((m) => { m.anfragen[0] = { ...m.anfragen[0], freigaben: undefined, entschieden: undefined, durch: undefined, antwort: undefined, interessenten: [] }; })).toBeNull();
+    /* ausschreibungenZusammen: fremde Bewerbungen vor der eigenen */
+    expect(fall((m) => { m.ausschreibungen[0] = { ...m.ausschreibungen[0], bewerbungen: [{ personId: "p2", text: "" }, { personId: "p1", text: "" }] }; })).toBeNull();
+  });
+  it("neu: Antrag, Ausschreibung, Krankmeldungsfall mit unechtem Tag → Fehler mit Feld", () => {
+    expect(fall((m) => { m.anfragen.push({ id: "r9", personId: "p1", typ: "abwesenheit", art: "urlaub", von: "2026-02-30", bis: "2026-03-01", status: "offen" }); }))
+      .toEqual({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].anfragen[3].von", grund: "Den Kalendertag 2026-02-30 gibt es nicht." });
+    expect(fall((m) => { m.anfragen.unshift({ id: "r9", personId: "p1", typ: "tausch", von: "2026-03-01", bis: "2026-11-31", status: "offen" }); }))
+      .toMatchObject({ feld: "mandanten[0].anfragen[0].bis" });
+    expect(fall((m) => { m.ausschreibungen.unshift({ id: "s9", datum: "2026-13-01", dienstId: "F", status: "offen", bewerbungen: [], vergebenAn: null }); }))
+      .toMatchObject({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].ausschreibungen[0].datum" });
+    expect(fall((m) => { m.krankmeldungen.unshift({ id: "km-2", personId: "p1", von: "2026-02-30", bis: "2026-02-30", status: "eingegangen", verlauf }); }))
+      .toMatchObject({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].krankmeldungen[0].von" });
+  });
+  it("geändert: ein unechter Alteintrag lässt sich nicht entscheiden oder umschreiben, aber löschen", () => {
+    expect(fall((m) => { m.anfragen[0].status = "genehmigt"; })).toMatchObject({ feld: "mandanten[0].anfragen[0].von" });
+    expect(fall((m) => { m.anfragen[1].interessenten.push("p3"); })).toMatchObject({ feld: "mandanten[0].anfragen[1].von" });
+    expect(fall((m) => { m.ausschreibungen[0].status = "vergeben"; m.ausschreibungen[0].vergebenAn = "p1"; })).toMatchObject({ feld: "mandanten[0].ausschreibungen[0].datum" });
+    expect(fall((m) => { m.anfragen[2].von = "2026-02-29"; })).toMatchObject({ feld: "mandanten[0].anfragen[2].von" });   // bisher echt
+    expect(fall((m) => { m.anfragen.splice(0, 2); m.ausschreibungen = []; m.krankmeldungen = []; delete m.erfassung["p1|2026-2-30"]; })).toBeNull();
+  });
+  it("(4) Tag ohne führende Nullen: neu oder geändert abgewiesen, unverändert speicherbar; volle Form wie bisher", () => {
+    expect(fall((m) => { m.erfassung["p2|2026-2-3"] = { start: "08:00", ende: "16:00" }; }))
+      .toEqual({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].erfassung", grund: "Das Datum 2026-2-3 hat nicht die Form JJJJ-MM-TT." });
+    expect(fall((m) => { m.abweichungen["p2|2026-03-2"] = "F"; })).toMatchObject({ feld: "mandanten[0].abweichungen" });
+    expect(fall((m) => { m.erfassung["p1|2026-2-30"] = { start: "09:00", ende: "16:00" }; })).toMatchObject({ feld: "mandanten[0].erfassung" });
+    expect(fall((m) => { m.anfragen.push({ id: "r9", personId: "p1", von: "2026-3-1", bis: "2026-03-01" }); })).toMatchObject({ feld: "mandanten[0].anfragen[3].von" });
+    /* volle Form vorn: unverändert die bisherige Regel (echter Tag vorn zählt) */
+    expect(fall((m) => { m.abweichungen["p2|2026-03-02|2"] = "F"; m.anfragen.push({ id: "r9", personId: "p1", von: "2026-03-01T08:00", bis: "2026-03-011" }); })).toBeNull();
+    /* keine Tagesangabe: wie bisher nicht geprüft */
+    expect(fall((m) => { m.abweichungen["p2|x"] = "F"; m.anfragen.push({ id: "r9", personId: "p1", von: "", bis: null }); m.ausschreibungen.push({ id: "s9" }); })).toBeNull();
+  });
+  it("Differenz: für Bestände nur mit echten Tagen immer null (gleich wie vorher) — 300 Zufallsbestände, fester Startwert", () => {
+    const r = zufall(0x3441);
+    const tag = () => { const j = 2000 + Math.floor(r() * 1000), mo = 1 + Math.floor(r() * 12); return tagText(j, mo, 1 + Math.floor(r() * monatsende(j, mo))); };
+    const liste = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+    for (let i = 0; i < 300; i++) {
+      const m = { id: "m-a", erfassung: Object.fromEntries(liste(5, () => [`p${Math.floor(r() * 3)}|${tag()}`, { start: "08:00" }])),
+        abweichungen: Object.fromEntries(liste(5, () => [`p${Math.floor(r() * 3)}|${tag()}`, "F"])),
+        abwesenheiten: liste(3, (k) => ({ id: `a${k}`, von: tag(), bis: tag() })), anfragen: liste(3, (k) => ({ id: `r${k}`, von: tag(), bis: tag(), interessenten: ["b", "a"] })),
+        ausschreibungen: liste(3, (k) => ({ id: `s${k}`, datum: tag(), bewerbungen: [{ personId: "b" }, { personId: "a" }] })), krankmeldungen: liste(2, (k) => ({ id: `k${k}`, von: tag(), bis: tag() })) };
+      const b = { mandanten: [m] };
+      expect(kalendertagFehler(b, null)).toBeNull();
+      expect(kalendertagFehler(b, { mandanten: [{ id: "m-a" }] })).toBeNull();
+    }
+  });
+});
+
 /* ---------- 3. Oberfläche: zuschlagStunden ---------- */
 describe("zuschlagStunden: kein Wurf, „nicht verfügbar“", () => {
   it("ein Monat, dessen Tage es nicht gibt, liefert nichtVerfuegbar statt eines Wurfs", () => {
@@ -262,6 +329,44 @@ describe("zuschlagStunden: kein Wurf, „nicht verfügbar“", () => {
       abweichungen: { "p1|2026-13-01": "N" }, erfassung: {}, einstempeln: {}, abwesenheiten: [], zuschlaege: [], einstellungen: {} };
     const r = zuschlagStunden(m, p, "2026-13");
     expect(r).toMatchObject({ nacht: null, sonntag: null, feiertag: null, samstag: null, gesamt: null, nichtVerfuegbar: true, ungueltigerKalendertag: true });
+  });
+});
+
+/* ---------- 3b. Folgepunkt (3): zuschlagWert reicht „nicht verfügbar" durch ---------- */
+describe("zuschlagWert: unechter Monat → keine Zahlen; gültige Monate wie bisher", () => {
+  const p = { id: "p1", vorname: "V", nachname: "N", rolle: "mitarbeiter", status: "aktiv", wochenstunden: 39,
+    zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], qualifikationen: [] };
+  const betrieb = (abw) => ({ id: "m-a", personen: [p], einheiten: [{ id: "e1", name: "E" }], zyklus: [], anker: "2026-01-05",
+    dienstarten: [{ id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 0 }], abweichungen: abw, erfassung: {}, einstempeln: {},
+    abwesenheiten: [], einstellungen: {},
+    zuschlaege: [{ id: "z1", name: "Nacht", art: "nacht", prozent: 25, aktiv: true }, { id: "z2", name: "Sonntag", art: "sonntag", prozent: 50, aktiv: true },
+      { id: "z3", name: "Aus", art: "samstag", prozent: 10, aktiv: false }] });
+  /* die Formel vor dem Folgepunkt, wörtlich (ohne Freeze-Zweig, der hier nicht greift) */
+  const altWert = (m, ym) => {
+    const std = zuschlagStunden(m, p, ym);
+    const zeilen = (m.zuschlaege || []).filter((z) => z.aktiv).map((z) => {
+      const h = std[z.art] || 0;
+      return { regel: z, stunden: Math.round(h * 100) / 100, wert: Math.round(h * z.prozent / 100 * 100) / 100 };
+    });
+    return { std, zeilen, summe: Math.round(zeilen.reduce((a, l) => a + l.wert, 0) * 100) / 100 };
+  };
+  it("2026-13: nichtVerfuegbar, summe null, je aktiver Regel eine Zeile ohne Wert (keine 0)", async () => {
+    const { zuschlagWert } = await import("../src/lib/fachlogik.js");
+    const m = betrieb({ "p1|2026-13-01": "N" });
+    const w = zuschlagWert(m, p, "2026-13");
+    expect(w.summe).toBeNull();
+    expect(w.nichtVerfuegbar).toBe(true);
+    expect(w.zeilen.map((z) => [z.regel.id, z.stunden, z.wert])).toEqual([["z1", null, null], ["z2", null, null]]);
+    expect(altWert(m, "2026-13").summe).toBe(0);   // das war der Befund: eine Zahl statt „nicht verfügbar"
+  });
+  it("gültige Monate: Ergebnis gleich der alten Formel", async () => {
+    const { zuschlagWert } = await import("../src/lib/fachlogik.js");
+    for (const ym of ["2026-01", "2026-02", "2026-03", "2026-10", "2024-02"]) {
+      const abw = {};
+      for (let t = 1; t <= 28; t += 3) abw[`p1|${ym}-${String(t).padStart(2, "0")}`] = "N";
+      const m = betrieb(abw);
+      expect(zuschlagWert(m, p, ym), ym).toEqual(altWert(betrieb(abw), ym));
+    }
   });
 });
 
@@ -496,5 +601,172 @@ describe("Monatsabschluss: Jahr außerhalb 2000–2999", () => {
     expect(MA.hatLaufendeKorrektur(v.mandant)).toBe(true);
     expect(MA.korrekturFreigeben(laufend, { monat: M }, wer, jetzt, "ma-7", "2026-03-10")).toEqual(ANLEGEN_422());
     expect(MA.korrekturVerwerfen(betrieb(), { monat: "1998-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-7")).toEqual(ANLEGEN_422());
+  });
+});
+
+/* ---------- 2e. Folgepunkte (2)/(4) über den echten Handler, je Rolle (LT/PL/SV/MA/Betriebsrat) ----------
+   Geprüft wird der ZUSTAND (gespeicherter Stand byte-gleich bzw. genau die erwartete Änderung), nicht nur der Status. */
+describe("Handler: anfragen/ausschreibungen/krankmeldungen je Rolle", () => {
+  const R2 = "p212-folgepunkte";
+  const VERLAUF = [{ schritt: "eingegangen", von: "m1", rolle: "mitarbeiter", zeit: "2026-03-01T08:00:00.000Z" }];
+  const p2 = (id, rolle, bereich = "ALLE") => ({ ...person(id, rolle), bereich });
+  const start = () => ({ version: 9, mandanten: [{ id: "m-a", name: "A", status: "aktiv", einstellungen: {},
+    einheiten: [{ id: "e1", name: "E" }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 } }],
+    personen: [p2("l1", "leitung"), p2("pl1", "planer"), p2("sv1", "subplaner", "e1"), p2("m1", "mitarbeiter", "e1"), p2("m2", "mitarbeiter", "e1"), p2("br1", "betriebsrat")],
+    abweichungen: {}, einstempeln: {}, erfassung: { "m1|2026-2-30": ALT_ERF }, abwesenheiten: [], nachrichten: [], wuensche: [],
+    /* Alteinträge mit Tagen, die es nicht gibt */
+    anfragen: [{ id: "r-alt", personId: "m1", typ: "abwesenheit", art: "urlaub", von: "2026-02-30", bis: "2026-03-01", status: "offen", erstellt: "x", antwort: "" },
+      { id: "r-tausch", personId: "m2", typ: "tausch", status: "offen", von: "2026-04-31", bis: "2026-04-31", partnerId: null, interessenten: ["x9", "m1", "x8"], text: "", erstellt: "x" },
+      /* Review #356 M1: fremde Anträge, die die Sicht für m1 verbirgt (kein offenes Tauschgesuch) — einer mit unechtem Tag */
+      { id: "r-verborgen", personId: "m2", typ: "abwesenheit", art: "urlaub", von: "2026-06-31", bis: "2026-07-01", status: "offen", erstellt: "x", antwort: "" },
+      { id: "r-urlaub-ok", personId: "m2", typ: "abwesenheit", art: "urlaub", von: "2026-07-06", bis: "2026-07-07", status: "offen", erstellt: "x", antwort: "" },
+      /* Delta-Review #356 A1: verborgene Tauschgesuche — mit festem Partner und entschieden (je mit unechtem Tag) */
+      { id: "t-partner", personId: "m2", typ: "tausch", status: "offen", von: "2026-09-31", bis: "2026-09-31", partnerId: "m1", interessenten: [], text: "", erstellt: "x" },
+      { id: "t-zu", personId: "m2", typ: "tausch", status: "genehmigt", von: "2026-11-31", bis: "2026-11-31", partnerId: null, interessenten: [], text: "", erstellt: "x" },
+      /* ein sichtbares, gültiges Tauschgesuch (Regression: Interesse melden und zurückziehen) */
+      { id: "r-tausch-ok", personId: "m2", typ: "tausch", status: "offen", von: "2026-07-02", bis: "2026-07-02", partnerId: null, interessenten: [], text: "", erstellt: "x" }],
+    ausschreibungen: [{ id: "as-alt", datum: "2026-06-31", dienstId: "F", einheitId: "e1", hinweis: "", status: "offen", erstellt: "2026-03-01T08:00:00.000Z", durch: "L",
+      bewerbungen: [{ personId: "m1", text: "" }, { personId: "m2", text: "" }], vergebenAn: null }],
+    krankmeldungen: [{ id: "km-alt", personId: "m1", von: "2026-09-31", bis: "2026-10-01", status: "eingegangen", verlauf: VERLAUF }] }] });
+  const roh2 = async () => (await B.bestandLesen(laden(), R2)).bestand;
+  const tok = {};
+  beforeAll(async () => {
+    const { sitzungAnlegen } = await import("../server/lib/sitzungen.mjs");
+    for (const [pid, rolle] of [["l1", "leitung"], ["pl1", "planer"], ["sv1", "subplaner"], ["m1", "mitarbeiter"], ["br1", "betriebsrat"]])
+      tok[rolle] = (await sitzungAnlegen({ bestand: R2, name: pid, rolle, person: pid, betrieb: 0, mandantId: "m-a", einheit: null }, 2 * 3600 * 1000)).token;
+  });
+  const zurueck = () => B.bestandSchreiben(laden(), R2, start(), { durch: "Pruefung" });
+  const put = async (rolle, aendern) => {
+    const g = await anfrage("/api/bestand", { methode: "GET", tok: tok[rolle] });
+    expect(g.status, `GET ${rolle}`).toBe(200);
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    aendern(b.mandanten[0]);
+    return anfrage("/api/bestand", { methode: "PUT", tok: tok[rolle], rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+  };
+  /** Die Alteinträge, wie sie gespeichert sein müssen (Zustand). */
+  const altZustand = (m) => ({ erf: m.erfassung["m1|2026-2-30"], anfragen: m.anfragen.filter((a) => a.id === "r-alt" || a.id === "r-tausch"),
+    as: m.ausschreibungen.filter((a) => a.id === "as-alt"), km: m.krankmeldungen.filter((f) => f.id === "km-alt") });
+  const ALT = altZustand(start().mandanten[0]);
+  /* Beschäftigte: Die Rechtezusammenführung (rechte.mjs, unverändert) ordnet beim Speichern die eigene Meldung bzw.
+     Bewerbung hinter die fremden — das war schon vorher so und ist kein Teil dieses Folgepunkts. Verglichen wird dann
+     inhaltlich ohne diese Reihenfolge; die Umordnung selbst ist ausdrücklich festgehalten. */
+  const ALT_MA = (() => { const z = JSON.parse(JSON.stringify(ALT));
+    z.anfragen[1].interessenten = ["x9", "x8", "m1"]; z.as[0].bewerbungen = [{ personId: "m2", text: "" }, { personId: "m1", text: "" }]; return z; })();
+  const altSoll = (rolle) => (rolle === "mitarbeiter" ? ALT_MA : ALT);
+  const eigenerAntrag = (pid, von, bis = von) => ({ id: `r-neu-${pid}`, personId: pid, typ: "abwesenheit", art: "urlaub", von, bis, status: "offen", erstellt: "y", antwort: "" });
+  const PID = { leitung: "l1", planer: "pl1", subplaner: "sv1", mitarbeiter: "m1" };
+
+  for (const rolle of ["leitung", "planer", "subplaner", "mitarbeiter"]) {
+    it(`${rolle}: unabhängiger gültiger Antrag 200 — Alteinträge (auch umgeordnete Interessenten/Bewerbungen) byte-gleich`, async () => {
+      await zurueck();
+      const w = await put(rolle, (m) => { m.anfragen.unshift(eigenerAntrag(PID[rolle], "2026-03-02")); });
+      expect(w.status, JSON.stringify(w)).toBe(200);
+      const s = (await roh2()).mandanten[0];
+      expect(altZustand(s)).toEqual(altSoll(rolle));
+      expect(s.anfragen.find((a) => a.id === `r-neu-${PID[rolle]}`)).toMatchObject({ von: "2026-03-02", status: "offen" });
+    });
+    it(`${rolle}: eigener Antrag mit 2026-02-30 → 422 UNGUELTIGER_KALENDERTAG, gespeicherter Stand unverändert`, async () => {
+      await zurueck();
+      const vorher = JSON.stringify(await roh2());
+      const w = await put(rolle, (m) => { m.anfragen.unshift(eigenerAntrag(PID[rolle], "2026-02-30", "2026-03-01")); });
+      expect(w.status, JSON.stringify(w)).toBe(422);
+      expect(w.code).toBe(UNGUELTIGER_KALENDERTAG);
+      expect(w.feld).toMatch(/^mandanten\[0\]\.anfragen\[\d+\]\.von$/);
+      expect(w.text).toBe("Den Kalendertag 2026-02-30 gibt es nicht. Es wurde nichts geändert.");
+      expect(JSON.stringify(await roh2())).toBe(vorher);
+    });
+  }
+  it("mitarbeiter: Krankmeldung per Speichern mit 2026-02-30 → 422 (krankmeldungen), kein Fall; gültig → Fall gespeichert", async () => {
+    await zurueck();
+    const vorher = JSON.stringify(await roh2());
+    const krank = (von) => (m) => { m.abwesenheiten.push({ id: "kr-neu", personId: "m1", art: "krank", von, bis: von, notiz: "" }); };
+    const w = await put("mitarbeiter", krank("2026-02-30"));
+    expect(w.status, JSON.stringify(w)).toBe(422);
+    expect(w.code).toBe(UNGUELTIGER_KALENDERTAG);
+    expect(w.feld).toBe("mandanten[0].krankmeldungen[0].von");
+    expect(JSON.stringify(await roh2())).toBe(vorher);
+    const ok = await put("mitarbeiter", krank("2026-03-02"));
+    expect(ok.status, JSON.stringify(ok)).toBe(200);
+    const s = (await roh2()).mandanten[0];
+    expect(s.krankmeldungen.map((f) => [f.id, f.von, f.status])).toEqual([["km-kr-neu", "2026-03-02", "eingegangen"], ["km-alt", "2026-09-31", "eingegangen"]]);
+    expect(s.abwesenheiten).toEqual([]);
+    expect(altZustand(s)).toEqual(ALT_MA);
+  });
+  it("mitarbeiter: fremder Antrag mit unechtem Tag fällt wie bisher still weg (Rechte zuerst, kein 422-Orakel)", async () => {
+    await zurueck();
+    const vorher = JSON.stringify(await roh2());
+    const w = await put("mitarbeiter", (m) => { m.anfragen.unshift({ ...eigenerAntrag("m2", "2026-02-30"), id: "r-fremd" }); });
+    expect(w.status, JSON.stringify(w)).toBe(200);
+    expect((await roh2()).mandanten[0].anfragen.map((a) => a.id).sort()).toEqual(JSON.parse(vorher).mandanten[0].anfragen.map((a) => a.id).sort());
+    expect(altZustand((await roh2()).mandanten[0])).toEqual(ALT_MA);
+  });
+  it("subplaner: neue Ausschreibung am 2026-02-30 → 422; am echten Tag 200", async () => {
+    await zurueck();
+    const vorher = JSON.stringify(await roh2());
+    const neu = (datum) => (m) => { m.ausschreibungen.unshift({ id: "as-neu", datum, dienstId: "F", hinweis: "", status: "offen", bewerbungen: [], vergebenAn: null }); };
+    const w = await put("subplaner", neu("2026-02-30"));
+    expect(w.status, JSON.stringify(w)).toBe(422);
+    expect(w.feld).toBe("mandanten[0].ausschreibungen[0].datum");
+    expect(JSON.stringify(await roh2())).toBe(vorher);
+    const ok = await put("subplaner", neu("2026-03-02"));
+    expect(ok.status, JSON.stringify(ok)).toBe(200);
+    const s = (await roh2()).mandanten[0];
+    expect(s.ausschreibungen.map((a) => [a.id, a.datum])).toEqual([["as-neu", "2026-03-02"], ["as-alt", "2026-06-31"]]);
+    expect(altZustand(s)).toEqual(ALT);
+  });
+  it("leitung: unechten Altantrag entscheiden → 422; Schlüssel ohne Nullen neu → 422; löschen → 200 und weg", async () => {
+    await zurueck();
+    const vorher = JSON.stringify(await roh2());
+    const w = await put("leitung", (m) => { m.anfragen = m.anfragen.map((a) => (a.id === "r-alt" ? { ...a, status: "genehmigt" } : a)); });
+    expect(w.status, JSON.stringify(w)).toBe(422);
+    expect(w.feld).toMatch(/^mandanten\[0\]\.anfragen\[\d+\]\.von$/);
+    expect(JSON.stringify(await roh2())).toBe(vorher);
+    const k = await put("leitung", (m) => { m.erfassung["m2|2026-3-2"] = { ...ALT_ERF }; });
+    expect(k.status, JSON.stringify(k)).toBe(422);
+    expect(k.text).toBe("Das Datum 2026-3-2 hat nicht die Form JJJJ-MM-TT. Es wurde nichts geändert.");
+    expect(JSON.stringify(await roh2())).toBe(vorher);
+    const d = await put("leitung", (m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "r-alt"); });
+    expect(d.status, JSON.stringify(d)).toBe(200);
+    const s = (await roh2()).mandanten[0];
+    expect(s.anfragen.map((a) => a.id)).toEqual(["r-tausch", "r-verborgen", "r-urlaub-ok", "t-partner", "t-zu", "r-tausch-ok"]);
+    expect(s.erfassung["m1|2026-2-30"]).toEqual(ALT_ERF);
+  });
+  it("Review #356 M1: Interesse an einem verborgenen fremden Antrag (erratene Kennung) — 200, Zustand unverändert, wie eine Kennung, die es nicht gibt", async () => {
+    const ohneStand = (w) => { const { etag: _e, stand: _s, ...rest } = w; void _e; void _s; return rest; };
+    const antworten = {};
+    for (const id of ["r-verborgen", "r-urlaub-ok", "t-partner", "t-zu", "r-gibt-es-nicht"]) {
+      await zurueck();
+      const vorher = (await roh2()).mandanten[0];
+      const w = await put("mitarbeiter", (m) => { m.anfragen.push({ id, interessenten: ["m1"] }); });
+      expect(w.status, `${id} ${JSON.stringify(w)}`).toBe(200);
+      antworten[id] = ohneStand(w);
+      const s = (await roh2()).mandanten[0];
+      /* Zustand: alle Anträge außer der umgeordneten Interessenliste des sichtbaren Alt-Tauschgesuchs byte-gleich */
+      /* (anfragenZusammen reiht unverändert die gesendeten vor die nicht gesendeten — Reihenfolge zählt hier nicht) */
+      const ohneTausch = (m) => m.anfragen.filter((a) => a.id !== "r-tausch").sort((x, y) => x.id.localeCompare(y.id));
+      expect(ohneTausch(s), id).toEqual(ohneTausch(vorher));
+      expect(s.anfragen.find((a) => a.id === "r-verborgen").interessenten, id).toBeUndefined();
+      expect(s.anfragen.find((a) => a.id === "r-urlaub-ok").interessenten, id).toBeUndefined();
+      expect(s.anfragen.find((a) => a.id === "t-partner").interessenten, id).toEqual([]);
+      expect(s.anfragen.find((a) => a.id === "t-zu").interessenten, id).toEqual([]);
+    }
+    for (const id of ["r-verborgen", "r-urlaub-ok", "t-partner", "t-zu"]) expect(antworten[id], id).toEqual(antworten["r-gibt-es-nicht"]);
+  });
+  it("Regression: Interesse an einem sichtbaren Tauschgesuch melden und zurückziehen geht weiter", async () => {
+    await zurueck();
+    const an = await put("mitarbeiter", (m) => { m.anfragen.find((a) => a.id === "r-tausch-ok").interessenten = ["m1"]; });
+    expect(an.status, JSON.stringify(an)).toBe(200);
+    expect((await roh2()).mandanten[0].anfragen.find((a) => a.id === "r-tausch-ok").interessenten).toEqual(["m1"]);
+    const ab = await put("mitarbeiter", (m) => { m.anfragen.find((a) => a.id === "r-tausch-ok").interessenten = []; });
+    expect(ab.status, JSON.stringify(ab)).toBe(200);
+    expect((await roh2()).mandanten[0].anfragen.find((a) => a.id === "r-tausch-ok").interessenten).toEqual([]);
+  });
+  it("betriebsrat: Speichern mit unechtem Antrag → Rechte-Absage vor jeder Tagesprüfung (kein 422), nichts geändert", async () => {
+    await zurueck();
+    const vorher = JSON.stringify(await roh2());
+    const w = await put("betriebsrat", (m) => { m.anfragen.unshift(eigenerAntrag("br1", "2026-02-30")); });
+    expect(w.status, JSON.stringify(w)).not.toBe(422);
+    expect(w.code).not.toBe(UNGUELTIGER_KALENDERTAG);
+    expect(JSON.stringify(await roh2())).toBe(vorher);
   });
 });

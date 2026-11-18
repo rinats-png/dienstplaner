@@ -664,12 +664,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "siehe WP-19.x",
       "konfliktzonen": [],
-      "pr": ["#234","#243","#244","#247","#249"],
+      "pr": ["#234","#243","#244","#247","#249","#359"],
       "nachweis": null,
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
       "dateien": "src/module/*, server",
-      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247. Stand #249: Teilumfang (Oberfläche der Betriebsmittel und Kompetenzen zeigt bei Status geplant keine Schreibaktionen, WP-19-B5), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status von INTEGRATED auf IN_PROGRESS zurückgesetzt (das Werkzeug ssot-nach-integration hatte das Sammelpaket nach #247 erneut auf INTEGRATED gesetzt, im Widerspruch zu dieser Notiz). Alle vier Stufen implementiert, lokalGetestet, reviewt und integriert stehen jetzt ausdrücklich auf „teilweise“, damit das Werkzeug auch PRs ohne „Teil“ im Titel nicht auf INTEGRATED setzt (wie bei WP-48)."
+      "notiz": "Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). Stand (automatisch): Teilumfang nach #234, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Stand (automatisch): Teilumfang nach #244 (Schreibwege der fünf älteren Module bei Status geplant geschlossen), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Stand (automatisch): INTEGRATED nach #247. Stand #249: Teilumfang (Oberfläche der Betriebsmittel und Kompetenzen zeigt bei Status geplant keine Schreibaktionen, WP-19-B5), Status bleibt IN_PROGRESS; von Hand korrigiert, weil das Werkzeug das Sammelpaket als INTEGRATED setzte. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status von INTEGRATED auf IN_PROGRESS zurückgesetzt (das Werkzeug ssot-nach-integration hatte das Sammelpaket nach #247 erneut auf INTEGRATED gesetzt, im Widerspruch zu dieser Notiz). Alle vier Stufen implementiert, lokalGetestet, reviewt und integriert stehen jetzt ausdrücklich auf „teilweise“, damit das Werkzeug auch PRs ohne „Teil“ im Titel nicht auf INTEGRATED setzt (wie bei WP-48). Stand #359 (72072ab0, 2026-11-18): Nachbesserung WP-19.5 und WP-19.6 (M-PQ1, M-BD2, N-1, N-2, N-BD3) integriert; Module bleiben geplant, kein Statuswechsel des Sammelpakets, Status bleibt IN_PROGRESS."
     },
     {
       "id": "WP-20",
@@ -972,12 +972,12 @@
       "agent": "Agent B – Infrastructure & Reliability",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#84","#321","#343"],
+      "pr": ["#84","#321","#343","#353"],
       "nachweis": "docs/acc45/wp30-nachweis.md",
       "akzeptanz": "implementiert: synchrone Anbieterantworten klassifiziert (4xx/5xx, 422 ohne Empfängersperre außer ungültigem Empfänger), Notruf-Reserve und Zurückstellen statt Verwerfen, Doppelzustellung mit dokumentierter Restrisikogrenze (Idempotenz 24 h, Push-Topic), SSRF-Abwehr (Allowlist, kein Redirect, keine IP-Literale) mit Tests; asynchrone Bounces/Beschwerden (Webhook mit Signaturprüfung) als Teilpaket WP-30b; produktiv freigegeben erst nach E-9: Resend (SPF/DKIM/DMARC) und VAPID eingerichtet, echter Zustelltest Android + iOS-PWA (extern, Betreiber); Kriterien in docs/acc45/wp30-nachweis.md, Abschnitt Abnahmekriterien",
       "tests": "Zustelltest",
       "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
-      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: Der Code ist gebaut und über PR #84 integriert (Prüfungen pruefung:mail-push-produktion/-anbieter/-handler); „noch nicht gebaut“ ist überholt. Offen: Nachprüfung F1–F8, produktiver Betrieb erst nach E-9. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): Nachprüfung F1–F8 alle erfüllt (PR #321, wp30-nachweis.md Abschnitt 12). Status bleibt BLOCKED wegen E-9 (Mailanbieter, SPF/DKIM/DMARC, VAPID, echter Zustelltest). Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv, WP-30b. Nachtrag 2026-11-18: PR #343 (06572e32, E-9 technischer Teil): gerätebezogene Push-Abmeldung und Adressbestätigung hinter Schalter CENTRIC_MAILBESTAETIGUNG (Vorgabe aus) integriert; Status unverändert BLOCKED, weil E-9 (Betreiber: Mailanbieter inkl. AVV/Drittland, Absender-Domain und DNS, VAPID, Zustelltest, Produktions-.env) offen ist; E-9 selbst unverändert READY."
+      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Korrektur: Der Code ist gebaut und über PR #84 integriert (Prüfungen pruefung:mail-push-produktion/-anbieter/-handler); „noch nicht gebaut“ ist überholt. Offen: Nachprüfung F1–F8, produktiver Betrieb erst nach E-9. Nachtrag 2026-11-17 (SSOT-Nachtrag KG-8, Abgleich gegen origin/integration/release-v4 @ bfa7a110): Nachprüfung F1–F8 alle erfüllt (PR #321, wp30-nachweis.md Abschnitt 12). Status bleibt BLOCKED wegen E-9 (Mailanbieter, SPF/DKIM/DMARC, VAPID, echter Zustelltest). Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv, WP-30b. Nachtrag 2026-11-18: PR #343 (06572e32, E-9 technischer Teil): gerätebezogene Push-Abmeldung und Adressbestätigung hinter Schalter CENTRIC_MAILBESTAETIGUNG (Vorgabe aus) integriert; Status unverändert BLOCKED, weil E-9 (Betreiber: Mailanbieter inkl. AVV/Drittland, Absender-Domain und DNS, VAPID, Zustelltest, Produktions-.env) offen ist; E-9 selbst unverändert READY. Nachtrag 2026-11-18 (Abend): PR #353 (9e6220a7) integriert die E-9-Folgepunkte L1 (Abmeldung ohne Erlaubnis), L3 (Quote-Merker, blockweise), L5 und L6 (Doku), N4-Rest (Anonymisieren räumt mailbest-Einträge); Schalter CENTRIC_MAILBESTAETIGUNG bleibt aus. Status unverändert BLOCKED (E-9). Offen aus dem E-9-Technikteil: Timeouts in mail-push-produktion."
     },
     {
       "id": "WP-31",
@@ -1721,7 +1721,7 @@
         "implementiert": {"wert":"teilweise","beleg":"Teil 1 e88d1c1/5094749 (ENOENT zwischen readdir/stat/readFile); Teil 2 PR #100 (ENOENT beim Store-Verzeichnis, Nachkopieren, Inode, Ruhezeit --ruhe). Kein Erfolg unter Dauerlast: docs/acc45/wp28b2-nachweis.md §6, §8"},
         "lokalGetestet": {"wert":"teilweise","beleg":"wp28b-sicherung-enoent, wp28b-sicherung-last (15), Testfamilie 389 grün, Wiederherstellungsübung 12/12; Ende-zu-Ende (Docker, restic) und Lasttest S2/S5 nicht gelaufen"},
         "reviewt": {"wert":"teilweise","beleg":"Review Teil 1 (Opus), zwei unabhängige Reviews und eine Gegenprüfung zu PR #100 (docs/acc45/wp28b2-nachweis.md §7, §10)"},
-        "integriert": {"wert":"teilweise","beleg":"Teilfix: Teil 1 in integration/release-v4, Teil 2 mit Merge von PR #100. Paket bleibt offen (Dauerlast, E-20)"},
+        "integriert": {"wert":"teilweise","beleg":"Teilfix: Teil 1 in integration/release-v4, Teil 2 mit Merge von PR #100, Prüfungslücke Gegenprobe unter Halt geschlossen mit PR #362 (Merge 8895842c, nur Test und Nachweis, keine Codeänderung). Paket bleibt offen (Nachlauf S2/S5, E-20)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1730,12 +1730,12 @@
       "agent": "Agent B – Infrastructure & Reliability",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#100"],
+      "pr": ["#100","#362"],
       "nachweis": "docs/acc45/wp28b-nachweis.md, docs/acc45/wp28b2-nachweis.md, docs/acc45/wp28-nachweis.md",
       "akzeptanz": "ablage-sicherung wiederholt bei ENOENT zwischen readdir und stat; Nachlauf S2/S5 (E-20) ausgewertet und in wp28-nachweis.md nachgetragen",
       "tests": "werkzeug/last (CI-Profil voll), ablage-sicherung, wp28b-sicherung-last",
       "dateien": "werkzeug/last, werkzeug/ablage-sicherung.mjs",
-      "notiz": "NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Punkt (2) ist überholt oder unsicher: PR #102 (CI-Basis) ist gemergt (2026-11-07, integration/release-v4), die Bedingung „nach Reparatur der CI-Basis“ ist erfüllt; ob die blockierten Prüfungen (Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, Fachprüfungen hinter dem Typen-Schritt) inzwischen nachgeholt wurden, ist nicht belegt. Punkte (1) und (3) unverändert offen."
+      "notiz": "Stand 2026-11-18 (Abend), maßgeblich vor den folgenden Sätzen: Der Befund 6 (ENOENT-Abbruch) ist seit PR #100 und #110 behoben und mit PR #362 (8895842c) zusätzlich abgesichert (wp28b-sicherung-klammer.test.js, Zustandstest der Klammer des Schreib-Halts mit Mutationen); die Lücke lag in der Prüfung, nicht im Code. Mit Schreib-Halt (WP-28c) liegt die Messung bei 1000 von 1000 bei 105 Schreibvorgängen/s. Offen bleibt: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber), (2) Docker-Bildbau und restic-Ende-zu-Ende in der CI nicht belegt, (3) ohne Schreib-Halt nur ein ruhiges Fenster. Die Akzeptanz (Nachlauf S2/S5 ausgewertet und in wp28-nachweis.md nachgetragen) ist nicht erfüllt, deshalb bleibt der Status IN_PROGRESS. Ältere Fassung der Notiz: NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung ohne Schreib-Halt weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Punkt (2) ist überholt oder unsicher: PR #102 (CI-Basis) ist gemergt (2026-11-07, integration/release-v4), die Bedingung „nach Reparatur der CI-Basis“ ist erfüllt; ob die blockierten Prüfungen (Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, Fachprüfungen hinter dem Typen-Schritt) inzwischen nachgeholt wurden, ist nicht belegt. Punkte (1) und (3) unverändert offen."
     },
     {
       "id": "WP-28c",
@@ -1973,7 +1973,7 @@
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 9514c634, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-pflegequal 19/19, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":"teilweise","beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge abe3e157 (9514c634) geprüft; Defekt M-PQ1 (Betreuungskraft als Assistenz zählbar, Q2 a) offen — Behebung und Delta-Review nötig"},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":"teilweise","beleg":"Nachbesserung M-PQ1 über PR #359 (Merge 72072ab0 in integration/release-v4); Grundcode per Direkt-Merge abe3e157, nicht anerkannt, Delta-Review der Nachbesserung nicht dokumentiert"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -1982,12 +1982,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#359"],
       "nachweis": "docs/acc45/WP19-MODULPLAN.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): reviewt teilweise. Defekt M-PQ1 offen: eine Betreuungskraft (§ 43b SGB XI), die als \"assistenz\" klassifizierbar ist, zählt als Pflegekraft. Das ist eine Produkt-/Fachfrage Q2a an den Betreiber (getrennte Betreuungskräfte ohne Anrechnung?); danach Behebung und Delta-Review. Direkt-Merge noch nicht anerkannt. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber hat Q2a / FN-14 entschieden: Betreuungskräfte nach § 43b SGB XI werden getrennt ausgewiesen, keine automatische Anrechnung auf die Fachkraftquote, Fachregeln bleiben gesperrt. Stufe: entschieden. Technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv: nein. Die Entscheidung ist keine Fachfreigabe und keine Produktionsfreigabe; M-PQ1 (Betreuungskraft als 'assistenz' zählt als Pflegekraft) bleibt ein offener Befund."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): reviewt teilweise. Defekt M-PQ1 offen: eine Betreuungskraft (§ 43b SGB XI), die als \"assistenz\" klassifizierbar ist, zählt als Pflegekraft. Das ist eine Produkt-/Fachfrage Q2a an den Betreiber (getrennte Betreuungskräfte ohne Anrechnung?); danach Behebung und Delta-Review. Direkt-Merge noch nicht anerkannt. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber hat Q2a / FN-14 entschieden: Betreuungskräfte nach § 43b SGB XI werden getrennt ausgewiesen, keine automatische Anrechnung auf die Fachkraftquote, Fachregeln bleiben gesperrt. Stufe: entschieden. Technisch umgesetzt, reviewt, integriert, staging-geprüft, fachlich freigegeben, produktiv: nein. Die Entscheidung ist keine Fachfreigabe und keine Produktionsfreigabe; M-PQ1 (Betreuungskraft als 'assistenz' zählt als Pflegekraft) bleibt ein offener Befund. Nachtrag 2026-11-18 (Abend): M-PQ1 ist mit PR #359 (72072ab0) behoben: istBetreuungsQualifikation (§ 43b in Grundlage oder Name, oder Merkmal betreuung) steht nur in der Gruppe betreuung, pflegeVerteilung zählt sie nie als Pflegekraft und liefert hinweise; neue oder geänderte Niveaus anders werden abgewiesen, Altbestand bleibt unverändert speicherbar. Nicht erkannt wird eine Betreuungskraft ohne § 43b und ohne Merkmal. Ein unabhängiges Delta-Review der Behebung ist nicht dokumentiert, das Modul bleibt geplant; Status bleibt BLOCKED (Delta-Review, Fachnachweise, Produktions- und Fachfreigabe offen). Die Aussage oben, M-PQ1 bleibe ein offener Befund, ist damit überholt."
     },
     {
       "id": "WP-19.6",
@@ -2001,7 +2001,7 @@
         "implementiert": {"wert":"teilweise","beleg":"Server und Oberfläche 32f46922, Rechte 6f788b72/424e3ff5 (vorläufig streng), Direkt-Merge abe3e157 (feature/branchenmodule-wp19); Status geplant"},
         "lokalGetestet": {"wert":"teilweise","beleg":"Lauf 2026-11-12 auf 6c195b66: modul-bereitschaftsdienst 22/22, modul-rechte-wp19 54/54; CI-Schritt pruefung:branchenmodule"},
         "reviewt": {"wert":"teilweise","beleg":"Nachholreview 2026-11-13 auf ca25fea9 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): Direkt-Merge abe3e157 (32f46922) geprüft; Defekt M-BD1 (überlappende Inanspruchnahmen doppelt gezählt) und M-BD2 offen — Behebung und Delta-Review (Opus-Klasse) nötig"},
-        "integriert": {"wert":false,"beleg":null},
+        "integriert": {"wert":"teilweise","beleg":"Nachbesserung M-BD2, N-1, N-2, N-BD3 über PR #359 (Merge 72072ab0 in integration/release-v4), M-BD1 über PR #267; Grundcode per Direkt-Merge abe3e157, nicht anerkannt, Delta-Review nicht dokumentiert"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -2010,12 +2010,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "opus",
       "konfliktzonen": ["daten.mjs"],
-      "pr": [],
+      "pr": ["#359"],
       "nachweis": "docs/acc45/WP19-MODULPLAN.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): reviewt teilweise. Defekt M-BD1 (überlappende Inanspruchnahmen doppelt gezählt) ist nach dem Review im Integrationsbranch behoben (Merge #267, WP-19.6 Teil 2, Überlappungen werden als Vereinigung gezählt); ein Delta-Review der Behebung ist nicht dokumentiert. Offen: M-BD2 (Monatsabschluss bei Bereitschaft nicht berücksichtigt), weitere Kriterien (Tarifstufen, Opt-out, Ruhezeit, Konto). Direkt-Merge noch nicht anerkannt."
+      "notiz": "Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge abe3e157, PR-Beleg fehlt; Registry-Status geplant (wirkt nicht). Offene Fragen: docs/acc45/wp19-offene-fragen-agent.md. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: kein unabhängiges Review dokumentiert, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-WP19-MODULE-2026-11-13.md): reviewt teilweise. Defekt M-BD1 (überlappende Inanspruchnahmen doppelt gezählt) ist nach dem Review im Integrationsbranch behoben (Merge #267, WP-19.6 Teil 2, Überlappungen werden als Vereinigung gezählt); ein Delta-Review der Behebung ist nicht dokumentiert. Offen: M-BD2 (Monatsabschluss bei Bereitschaft nicht berücksichtigt), weitere Kriterien (Tarifstufen, Opt-out, Ruhezeit, Konto). Direkt-Merge noch nicht anerkannt. Nachtrag 2026-11-18 (Abend): M-BD2 ist mit PR #359 (72072ab0) behoben: (a) Einträge Person|Tag in einem abgeschlossenen Monat lassen sich weder anlegen noch ändern noch entfernen (maßgeblich der gespeicherte Stand, unveränderte Alteinträge bleiben speicherbar); (b) Art und gesetzter Faktor einer Tarifstufe sind fest, sobald ein gespeicherter Dienst sie vor dem Prüftag oder in einem abgeschlossenen Monat trägt (neue Tariffassung = neue Stufe, BD-1 Datumsversionierung offen). N-BD3: das Modul liest keine Uhr mehr. Offene Entscheidung: Löschen nach Art. 17 im abgeschlossenen Monat erst nach dem Wiederöffnen (strenge Variante, ENTSCHEIDUNGSLISTE P2-14). Weitere Kriterien (Opt-out, Ruhezeit, Konto) und ein Delta-Review sind offen; Status bleibt BLOCKED, Modul geplant."
     },
     {
       "id": "WP-19.7",
@@ -3504,12 +3504,12 @@
       "agent": "Betreiber / extern",
       "modell": "–",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#353"],
       "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-9)",
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (Betreiberentscheidung 2026-11-03: Mail und Push verpflichtend). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-23 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (Betreiberentscheidung 2026-11-03: Mail und Push verpflichtend). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-23 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md. Nachtrag 2026-11-18 (Abend): PR #353 (9e6220a7, Folgepunkte L1, L3, L5, L6, N4-Rest zum E-9-Technikteil #343: Push-Abmeldung auch ohne Mitteilungserlaubnis, Quote-Merker, Doku, Anonymisieren) gemergt in integration/release-v4; nur PR-Beleg (externes Betreiberpaket), kein Statuswechsel, Stufen unverändert."
     },
     {
       "id": "E-10",
@@ -5546,7 +5546,7 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#355"],
       "nachweis": "docs/acc45/wp-i12-fragen.md",
       "akzeptanz": "Teilpaket nach docs/acc45/wp-i12-fragen.md; Verhalten bleibt, außer die Korrektur ist ausdrücklich Gegenstand",
       "tests": "pruefungen/engine-rechenkern.test.js (Golden) und neue Tests je Teil",
@@ -6181,7 +6181,7 @@
         "implementiert": {"wert":"teilweise","beleg":"PR #301 (101989f8, T1: betrieblicher Kalendertag, ZEIT-A/C Kern), PR #303 (df534301, ZEIT-E/E6: Zuschläge in Umstellungsnächten, RECHEN_STAND 3), PR #315 (0ec7ac63, P2: Wanduhr-zu-Zeitpunkt zentral); Vertrag PR #296 (36f5c39b). Offen laut Vertrag: ZEIT-B, ZEIT-D, ICS-Zone, Z56, Z57, Auskunftserläuterung, ZEIT-F, ZEIT-G"},
         "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/betriebstag.test.js (PR #301, #315), pruefung:zeit-e (PR #303); Browserabnahme B8 siehe QS-ZEIT (#305)"},
         "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":"teilweise","beleg":"PR #296, #301, #303, #315, #337 (Merge 7fb14d03: lokale Berlin-Tagesformeln über die zentrale Zeitbasis), #344 (Merge 57d49e3d: P2-12 Schritte 1+2, unechte Kalendertage abweisen) gemergt in integration/release-v4 (alle Merge-Commits Vorfahren); Paket nicht vollständig: ZEIT-B Zonenverlauf und optionale Datumsvalidierung offen"},
+        "integriert": {"wert":"teilweise","beleg":"PR #296, #301, #303, #315, #337 (Merge 7fb14d03: lokale Berlin-Tagesformeln über die zentrale Zeitbasis), #344 (Merge 57d49e3d: P2-12 Schritte 1+2, unechte Kalendertage abweisen), #354 (Merge 02a3869a: Client meldet 422 UNGUELTIGER_KALENDERTAG klar, Verwerfen-Weg), #356 (Merge dfcd8309: P2-12 Folgepunkte 2 bis 4, Kalendertage in anfragen, ausschreibungen, Krankmeldungsfällen), #357 (Merge a8ce186b: Zeitumrechnung schneller, bitgleich) gemergt in integration/release-v4 (alle Merge-Commits Vorfahren); Paket nicht vollständig: ZEIT-B Zonenverlauf und optionale Datumsvalidierung offen"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6190,12 +6190,12 @@
       "agent": "Hauptorchestrator",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#296","#301","#303","#315","#344"],
+      "pr": ["#296","#301","#303","#315","#344","#354","#356","#357"],
       "nachweis": "docs/acc45/ZEIT-BETRIEBSTAG-VERTRAG.md",
       "akzeptanz": "Umsetzungsplan ZEIT-A bis ZEIT-G laut ZEIT-BETRIEBSTAG-VERTRAG.md Abschnitt 10; Stempeltag aus der Betriebszone, nicht aus dem Gerätedatum",
       "tests": "pruefungen/betriebstag.test.js, pruefung:zeit-e, pruefung:geo-uhren, pruefung:qs-zeitbasis",
       "dateien": "server/lib/betriebszeit.mjs, src/stempelvorgang.js, server/lib/isteinfrieren.mjs, pruefungen/",
-      "notiz": "Von Hand angelegt (2026-11-17): bisher kein SSOT-Paket, obwohl PR #296, #301, #303, #315 gemergt sind (BACKLOG-PHASEN.md Abschnitt 7 Punkt 6). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Betreiberentscheidungen E1 bis E8 am 2026-11-14. Review: Quelle prüfen (reviewt nicht belegt). Verwandt: QS-ZEIT (#305, #309). Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18: PR #344 (57d49e3d, P2-12 Teil, Variante B, Schritte 1+2): zentrale Zeitbasis weist unechte Kalendertage ab (kalendertagEcht, UNGUELTIGER_KALENDERTAG; Eingabewege Selbstauskunft, Korrekturantrag, Entscheidung und PUT /api/bestand mit 422, Alteinträge unverändert). Schritt 3 (Abschlusssperre UNVOLLSTAENDIG) nicht begonnen, wartet auf Betreiberentscheidung zu historischen Folgen. Status bleibt IN_PROGRESS."
+      "notiz": "Von Hand angelegt (2026-11-17): bisher kein SSOT-Paket, obwohl PR #296, #301, #303, #315 gemergt sind (BACKLOG-PHASEN.md Abschnitt 7 Punkt 6). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Betreiberentscheidungen E1 bis E8 am 2026-11-14. Review: Quelle prüfen (reviewt nicht belegt). Verwandt: QS-ZEIT (#305, #309). Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18: PR #344 (57d49e3d, P2-12 Teil, Variante B, Schritte 1+2): zentrale Zeitbasis weist unechte Kalendertage ab (kalendertagEcht, UNGUELTIGER_KALENDERTAG; Eingabewege Selbstauskunft, Korrekturantrag, Entscheidung und PUT /api/bestand mit 422, Alteinträge unverändert). Schritt 3 (Abschlusssperre UNVOLLSTAENDIG) nicht begonnen, wartet auf Betreiberentscheidung zu historischen Folgen. Status bleibt IN_PROGRESS. Nachtrag 2026-11-18 (Abend): PR #354 (02a3869a): Client zeigt die Lage kalendertag mit Feld und Bereich, ohne Noch-einmal-senden, mit Sichern und Verwerfen; einzelnes Zurücknehmen bewusst nicht gebaut (Datenverlustrisiko). PR #356 (dfcd8309): Kalendertagsprüfung auch für anfragen von/bis, ausschreibungen datum und Krankmeldungsfälle, Tage ohne Nullen und zuschlagWert (Folgepunkte 2 bis 4 aus den Reviews zu #344); Alteinträge bleiben unverändert speicherbar; die Review-Befunde B1 und B2 (Kapern, Existenzorakel) sind nicht Teil davon und stehen im noch offenen PR #361. PR #357 (a8ce186b): zeitpunktAusWanduhr über eine je Jahr gegen Intl geprüfte Umstellungstabelle (Europe/Berlin, ganze Minuten 2000 bis 2999), Differenzialtest bitgleich; das Ziel am Stück (< 200 ms) ist laut PR weiter nicht erreicht, der Rest liegt in monatsabschluss.mjs und isteinfrieren.mjs. Schritt 3 (Abschlusssperre) unverändert nicht begonnen. Status bleibt IN_PROGRESS."
     },
     {
       "id": "BE-1",

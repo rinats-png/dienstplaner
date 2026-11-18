@@ -518,12 +518,60 @@ Datenfelder des Moduls nur lesbar (`modulschreibwege.mjs`, `moduldatenZusammen`)
 Art. 15 DSGVO nennt die eigenen Einträge im Modulprotokoll (`modulhandlungen`); das Betriebsprotokoll des Servers nur Modul
 und Art (WP-14b, M1). Geprüft in `pruefungen/modul-kern.test.js`, `pruefungen/rechtematrix-zeilen.test.js`.
 
+**Fremde Kennung mit eigener Person (Prüfung zu Review #356, B1–B3, A):** Wem ein Eintrag gehört, steht im
+gespeicherten Stand, nicht in der Übermittlung. **B1:** Beschäftigte, die einen Antrag mit der Kennung eines FREMDEN
+Antrags und der eigenen `personId` schicken, ersetzten bisher den fremden Antrag (z. B. einen genehmigten Urlaub) und
+übernahmen dessen Antwort der Leitung (Datenverlust und Inhaltsleck). Jetzt bleibt der fremde Antrag unverändert; der
+Vorgang wird still übergangen (200), wie andere unzulässige Änderungen. Bewusst KEIN neuer eigener Antrag unter anderer
+Kennung (ein nicht bestellter zweiter Vorgang); so halten es Krankmeldung und Notruf bei bekannter Kennung schon.
+**B2:** Die Schichtverantwortung bekommt für einen fremden Antrag außerhalb ihres Bereichs (Regel im Schreibweg: nicht
+eigen, Person am ersten Tag des Antrags nicht im eigenen Bereich, kein offenes Tauschgesuch ohne Partner — eine
+Bereichs- und Statusregel OHNE das Sichtfenster der Lesesicht, also nicht dieselbe Regel wie `sicht.mjs`
+`schichtAnfragen`) dieselbe Antwort wie für eine Kennung, die es nicht gibt: geprüft wie ein neuer Antrag (fremde Person → 403 „… gehört nicht zu deinem Bereich.", nicht offen → 403 „Ein
+neuer Antrag ist offen …"), sonst 200 — und der gespeicherte Antrag bleibt unverändert (auch keine Interessenmeldung
+an einem verborgenen Antrag). **B3:** Ein eigener Wunsch, Einsprung oder Urlaubsrundenwunsch unter der Kennung eines
+fremden entsteht nicht mehr als zweiter Eintrag mit derselben Kennung (ein schon gespeicherter eigener bleibt
+änderbar). **Restrisiko (bewusst):** Die Antwort ist gleich, der nächste Abruf aber nicht — bei einer nicht vorhandenen
+Kennung erscheint der eigene neue Eintrag, bei einer fremden nicht. Das verlangt eine erratene Kennung (uid, 7 Zeichen
+Basis 36) und gilt ebenso für Krankmeldung und Notruf. **Offen (gering, nicht geändert):** Für die Schichtverantwortung
+antworten `einspruenge`, `nachrichten`, `notrufe`, `dienstbuch`, `uebergaben` und Tagesnotizen bei der Kennung eines
+verborgenen Eintrags mit 403 „Bestehende Einträge sind nicht änderbar", bei einer unbekannten Kennung mit 200 oder
+einem anderen 403 (Existenzorakel, nur mit erratener Kennung; kein Inhalt, keine Änderung). **Offen (Restfall B2,
+Review #361 N1):** Ein Antrag einer Person, die am ersten Tag des Antrags im eigenen Bereich war, deren Antrag aber
+außerhalb des Sichtfensters liegt (`umfangImZeitraum`, etwa nach einer Versetzung), ist für die Schichtverantwortung
+unsichtbar, gilt im Schreibweg aber als „aus dem Bereich“: weiter 403 „… umschreiben“ statt der Antwort für eine
+unbekannte Kennung, und mit erratenem Kern ließe er sich entscheiden. Bestand schon vor B2; Folgepaket (Regel im
+Schreibweg aus `umfangImZeitraum` ableiten, zusammen mit den übrigen Orakeln oben). Geprüft in
+`pruefungen/antrag-kapern-orakel.test.js` (echter Handler, Zustände byte-gleich, Differenztest alt/neu).
+
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
 eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`server/lib/mitteilungen.mjs`).
 Andere Mitteilungen legen Planung, Leitung und die Schichtverantwortung (eigener Bereich) an — Titel ≤ 120,
 Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger ändern an eigenen Mitteilungen nur
 `gelesen`. An der Person wird höchstens der Merker `pushSchluessel: true` geschrieben.
+
+**Interessenmeldung nur an sichtbaren Tauschgesuchen (Review #356 M1, A):** Beschäftigte hängen die eigene
+Interessenmeldung nur an einen fremden Antrag, den ihre Sicht zeigt — ein offenes Tauschgesuch ohne festen Partner
+(`tauschgesuchSichtbar` in `rechte.mjs`, dieselbe Regel wie `sicht.mjs` `anfragen`). An jedem anderen fremden Antrag
+(Urlaub, entschiedenes Gesuch, Gesuch mit Partner) bleibt der gespeicherte Stand; die Meldung wird still übergangen,
+dieselbe Antwort wie für eine Kennung, die es nicht gibt. **Geschlossene Altlücke:** Bis dahin wurde die Meldung an
+JEDEN fremden Antrag gehängt, auch an einen verborgenen Urlaubsantrag (mit erratener Kennung), und gespeichert; mit der
+Kalendertagsprüfung (P2-12) hätte ein 422 Existenz und Tag eines verborgenen Antrags verraten. Geprüft in
+`pruefungen/p212-kalendertag.test.js` (Zustand und gleiche Antwort wie bei unbekannter Kennung; verborgen: Urlaub,
+Tauschgesuch mit festem Partner, entschiedenes Tauschgesuch). **Zustandswechsel (bewusst):** Hängt die eigene Meldung
+schon an einem Gesuch, das danach einen Partner bekommt oder entschieden wird, ist es nicht mehr sichtbar — ein
+Zurückziehen der Meldung wird dann ebenfalls still übergangen; die Meldung bleibt gespeichert, bis Planung oder Leitung
+das Gesuch ändern.
+
+**Betreiberhinweis P2-12 (Kalendertage, die es nicht gibt):** Ein gespeicherter Alteintrag mit einem Tag wie
+„2026-02-30" in `anfragen`, `ausschreibungen`, Krankmeldungsfällen, `abwesenheiten`, `erfassung` oder `abweichungen`
+bleibt unverändert speicherbar und blockiert unabhängige Vorgänge nicht. Jeder Vorgang, der GENAU diesen Eintrag ändert,
+wird mit 422 `UNGUELTIGER_KALENDERTAG` abgewiesen — etwa Interesse/Bewerbung/Zurückziehen durch Beschäftigte, das
+Zurückziehen einer Alt-Ausschreibung durch die Kundenrolle, eine geänderte Antwort der Leitung. Bereinigen: Die Leitung
+löscht den Eintrag oder korrigiert den Tag (200); Beschäftigte löschen den eigenen Antrag. Der Index im `feld` der
+Absage (`mandanten[0].anfragen[3].von`) zählt in der Liste NACH der Rechtezusammenführung des Servers, nicht in der
+gesendeten.
 
 ³⁰ WP-I4 Teil 1 (Intelligence-Plan, Block K), neue Zeile "Interne Vorgaben", keine neue Spalte: **interne Vorgaben** (betriebliche Regeln des Regelbaukastens, `vorgaben`, Verwaltung in `server/lib/vorgaben.mjs`).
 **Lesen:** nur wer `org.edit` hat (Leitung, Kundenrolle; Vollausgabe und Sicherung der Leitung enthalten das Feld wie jedes Betriebsfeld der Leitungssicht). Planung, Schichtverantwortung, Beschäftigte und Betriebsrat bekommen es nicht: Die Planung wird in `rechte.mjs` aus der Sicht genommen, die drei anderen Rollen haben die Regel `weg` in `sicht.mjs` (sie bekommen eine leere Liste). **Eine Lesesicht des Betriebsrats gibt es ausdrücklich nicht**: Ob und in welchem Umfang der Betriebsrat Vorgaben sieht, ist eine offene Mitbestimmungsentscheidung (§ 87 BetrVG) und wartet auf die Freigabe des Betreibers.
@@ -605,4 +653,5 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Ein eigener HR-/DSGVO-Export für eine berechtigte Leitung, Trennung `/api/datenexport` / `/api/externes-backup` | eigener Schritt |
 | Weg des Betreibers zu Sicherungsschlüsseln | bei Bedarf |
 | Änderungsprotokoll `aenderungen` für den Betriebsrat (Legal-Revision 2026-11-07): nur noch die Standardfelder, die jeder Schreibweg setzt (Person, Tag, von/nach, Zeit, Vorlauf, Regelstand); frühere VOLL-Ausgabe mit beliebigen Zusatzfeldern entfällt. Test: `pruefungen/art9-katalog.test.js` | erledigt, hier dokumentiert |
+| P2-12 Folgearbeit (Review #356 N2): Eine Krankmeldung per Speichern mit Tag ohne führende Nullen („2026-2-3") verwirft `krankAlsFaelle` (Form JJJJ-MM-TT) wie schon vorher still — 200, kein Fall. Das widerspricht dem Ziel „nie unbemerkt"; nicht geändert (Krankmeldungsweg RB-2/RB-3) | Folgearbeit |
 | Schichtverantwortung sieht im eigenen Bereich über `planungsregeln` bei Mutterschutz die Kombination (keine Nacht, Sonntag nur mit Freigabe, über 8 h nur nach Absprache) und bei Wiedereingliederung von/bis der Stundengrenze; Planungs-Freitext `ausschreibungen[].hinweis` geht an alle Rollen; Art.-17-Löschung und Raum-/Mandantenlöschung prüfen keinen BewachV-Fristtyp (`docs/legal/TECHNISCHE-FOLGEAUFGABEN.md` T-18 bis T-20) | Betreiberentscheidung |

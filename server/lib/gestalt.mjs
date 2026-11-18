@@ -17,6 +17,7 @@
 
 import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
 import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
+import { FAELLE_TAGESFELDER } from "./krankmeldung.mjs";
 
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
@@ -263,22 +264,51 @@ export function dienstartenFehler(bestand, vorher = null) {
 
 /* --- P2-12 (Variante B, Betreiberentscheidung 2026-11-18): Kalendertage, die es nicht gibt ---
    Ein Datumsschlüssel „personId|2026-02-30" in erfassung/abweichungen oder ein von/bis „2026-02-30" einer Abwesenheit
+   (Folgepunkte Review #344: ebenso von/bis eines Antrags in anfragen, der Tag einer Ausschreibung und von/bis eines
+   Krankmeldungsfalls; ein Tag ohne führende Nullen wie „2026-2-30")
    wird nicht still korrigiert und nicht unbemerkt angenommen: Ein NEU eingeführter oder GEÄNDERTER Eintrag mit einem
    solchen Tag wird abgewiesen (422, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt, wie er ist, unverändert
    speicherbar — er wird weder normalisiert noch gefiltert noch gelöscht (das änderte den Abdruck abgeschlossener
    Monate), und er blockiert keine unabhängigen Speichervorgänge. */
 const TAG_VORN = /^\d{4}-\d{2}-\d{2}/;
+/* Folgepunkt (4) aus Review #344: ein Tag ohne führende Nullen („2026-2-30", „2026-02-3") ist nie ein gelesener Tag —
+   die Anwendung schreibt und liest nur JJJJ-MM-TT. Er wurde bisher still angenommen. Neu oder geändert: wie ein
+   unechter Tag (422); gespeicherte Alteinträge bleiben wie oben unverändert speicherbar. Werte mit der vollen Form
+   vorn (TAG_VORN) behalten ihre bisherige Prüfung unverändert. */
+const TAG_LOSE = /^\d{1,4}-\d{1,2}-\d{1,2}(?!\d)/;
 const KALENDERTAG_FELDER = ["erfassung", "abweichungen"];
 
-/** Beginnt `s` mit einem Tag in der Form JJJJ-MM-TT, den es nicht gibt? */
-const unechterTag = (s) => typeof s === "string" && TAG_VORN.test(s) && !kalendertagEcht(s.slice(0, 10));
+/** Beginnt `s` mit einem Tag, den es nicht gibt (JJJJ-MM-TT unecht) oder der nicht die Form JJJJ-MM-TT hat (2026-2-3)? */
+const unechterTag = (s) => typeof s === "string" && (TAG_VORN.test(s) ? !kalendertagEcht(s.slice(0, 10)) : TAG_LOSE.test(s));
+/** Der Tag am Anfang von `s` für die Meldung. */
+const tagText = (s) => { const t = String(s); const m = TAG_VORN.exec(t) || TAG_LOSE.exec(t); return m ? m[0] : t.slice(0, 10); };
 
-/** JSON mit sortierten Objektschlüsseln: unverändert heißt inhaltsgleich, nicht reihenfolgegleich. */
+/** JSON mit sortierten Objektschlüsseln: unverändert heißt inhaltsgleich, nicht reihenfolgegleich. Schlüssel mit
+    undefined zählen nicht (wie im gespeicherten JSON — eine Zusammenführung, die `antwort: undefined` setzt, ändert nichts). */
 function stabil(x) {
-  if (Array.isArray(x)) return `[${x.map(stabil).join(",")}]`;
-  if (x && typeof x === "object") return `{${Object.keys(x).sort().map((k) => `${JSON.stringify(k)}:${stabil(x[k])}`).join(",")}}`;
+  if (Array.isArray(x)) return `[${x.map((e) => (e === undefined ? "null" : stabil(e))).join(",")}]`;
+  if (x && typeof x === "object") return `{${Object.keys(x).filter((k) => x[k] !== undefined).sort()
+    .map((k) => `${JSON.stringify(k)}:${stabil(x[k])}`).join(",")}}`;
   return JSON.stringify(x) ?? "undefined";
 }
+
+/** Eine Liste als Menge (Reihenfolge egal, fehlend = leer) — für Felder, die die Rechtezusammenführung umordnet. */
+const alsMenge = (l) => (Array.isArray(l) ? l : []).map(stabil).sort();
+
+/* Listen mit Kalendertagen (Folgepunkt (2) aus Review #344): je Feld die Tagesangaben und, wo die Rechtezusammenführung
+   (rechte.mjs) einen unveränderten Eintrag umordnet, die Normalform für den Vergleich. Beschäftigte: Interessenten an
+   einem fremden Tauschgesuch (anfragenZusammen hängt die eigene Meldung hinten an) und Bewerbungen auf eine Ausschreibung
+   (ausschreibungenZusammen: fremde vor der eigenen) — sonst gälte ein unveränderter Alteintrag als geändert (falsches 422).
+   Die Krankmeldungsfälle gehören dem Server (rechte.mjs nimmt sie nie aus der Übermittlung); neu sind dort nur Fälle
+   aus einer Krankmeldung per Speichern (krankAlsFaelle), die bisher nur die Form JJJJ-MM-TT prüfte. Feld und
+   Tagesangaben kommen aus krankmeldung.mjs (Import oben) — diese Datei liest das Feld nicht selbst. */
+/** @type {Array<[string, string[], ((x: any) => any) | null]>} */
+const KALENDERTAG_LISTEN = [
+  ["abwesenheiten", ["von", "bis"], null],
+  ["anfragen", ["von", "bis"], (x) => ({ ...x, interessenten: alsMenge(x.interessenten) })],
+  ["ausschreibungen", ["datum"], (x) => ({ ...x, bewerbungen: alsMenge(x.bewerbungen) })],
+  [FAELLE_TAGESFELDER[0], [...FAELLE_TAGESFELDER[1]], null],
+];
 
 /**
  * Neue oder geänderte Einträge mit einem Kalendertag, den es nicht gibt. Gibt null oder { grund, feld, code } zurück.
@@ -290,7 +320,8 @@ export function kalendertagFehler(bestand, vorher = null) {
   const altNachId = new Map((vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])
     .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
   const fehler = (feld, tag) => ({ code: UNGUELTIGER_KALENDERTAG, feld,
-    grund: `Den Kalendertag ${String(tag).slice(0, 10)} gibt es nicht.` });
+    grund: TAG_VORN.test(String(tag)) ? `Den Kalendertag ${tagText(tag)} gibt es nicht.`
+      : `Das Datum ${tagText(tag)} hat nicht die Form JJJJ-MM-TT.` });
   for (let i = 0; i < mandanten.length; i++) {
     const m = mandanten[i];
     if (!m || typeof m !== "object") continue;
@@ -306,25 +337,28 @@ export function kalendertagFehler(bestand, vorher = null) {
         return fehler(`mandanten[${i}].${f}`, tag);
       }
     }
-    if (Array.isArray(m.abwesenheiten)) {
-      /* Multimenge (Review #344 A2): Ein Eintrag mit unechtem von/bis gilt nur als unverändert, solange es im neuen Stand
+    for (const [f, tage, normal] of KALENDERTAG_LISTEN) {
+      if (!Array.isArray(m[f])) continue;
+      /* Multimenge (Review #344 A2): Ein Eintrag mit unechtem Tag gilt nur als unverändert, solange es im neuen Stand
          nicht mehr inhaltsgleiche Kopien (GANZER Eintrag, mit oder ohne Kennung) gibt als im gespeicherten. Eine neue
-         Kopie, eine geänderte Angabe (auch personId/art) oder ein bisher echter Eintrag mit nun unechtem Tag ist neu. */
+         Kopie, eine geänderte Angabe (auch personId/art/status) oder ein bisher echter Eintrag mit nun unechtem Tag ist
+         neu. Ein unechter Alteintrag lässt sich also löschen, aber nicht ändern (auch nicht entscheiden). */
+      const unecht = (x) => tage.some((t) => unechterTag(x[t]));
+      const schluessel = (x) => stabil(normal ? normal(x) : x);
       const altAnzahl = new Map();
-      for (const x of (alt && Array.isArray(alt.abwesenheiten) ? alt.abwesenheiten : []))
-        if (x && typeof x === "object" && (unechterTag(x.von) || unechterTag(x.bis))) { const k = stabil(x); altAnzahl.set(k, (altAnzahl.get(k) || 0) + 1); }
+      for (const x of (alt && Array.isArray(alt[f]) ? alt[f] : []))
+        if (x && typeof x === "object" && unecht(x)) { const k = schluessel(x); altAnzahl.set(k, (altAnzahl.get(k) || 0) + 1); }
       const neuAnzahl = new Map();
-      for (let j = 0; j < m.abwesenheiten.length; j++) {
-        const x = m.abwesenheiten[j];
-        if (!x || typeof x !== "object") continue;
-        if (!unechterTag(x.von) && !unechterTag(x.bis)) continue;
-        const k = stabil(x);
+      for (let j = 0; j < m[f].length; j++) {
+        const x = m[f][j];
+        if (!x || typeof x !== "object" || !unecht(x)) continue;
+        const k = schluessel(x);
         const n = (neuAnzahl.get(k) || 0) + 1;
         neuAnzahl.set(k, n);
         if (n <= (altAnzahl.get(k) || 0)) continue;                                  // Alteintrag, unverändert
-        for (const t of ["von", "bis"]) {
+        for (const t of tage) {
           if (!unechterTag(x[t])) continue;
-          return fehler(`mandanten[${i}].abwesenheiten[${j}].${t}`, x[t]);
+          return fehler(`mandanten[${i}].${f}[${j}].${t}`, x[t]);
         }
       }
     }
