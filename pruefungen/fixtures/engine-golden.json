@@ -29,6 +29,7 @@
     "ueberbesetzt": 0,
     "dienste": 0,
     "stunden": 0,
+    "spanne": 0,
     "wochenenden": 0
    }
   },
@@ -76,7 +77,8 @@
     "ueberbesetzt": 89,
     "dienste": 1315,
     "stunden": 12851,
-    "wochenenden": null
+    "spanne": 2,
+    "wochenenden": 385
    }
   },
   "demo2-pflege": {
@@ -123,7 +125,8 @@
     "ueberbesetzt": 90,
     "dienste": 1036,
     "stunden": 8288,
-    "wochenenden": null
+    "spanne": 3,
+    "wochenenden": 302
    }
   },
   "demo3-produktion": {
@@ -172,7 +175,8 @@
     "ueberbesetzt": 90,
     "dienste": 846,
     "stunden": 6768,
-    "wochenenden": null
+    "spanne": 3,
+    "wochenenden": 252
    }
   }
  }
