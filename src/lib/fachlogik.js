@@ -1437,6 +1437,15 @@ export function zuschlagStunden(m, p, ym) {
  */
 export function zuschlagWert(m, p, ym) {
   const std = zuschlagStunden(m, p, ym);
+  /* P2-12 (Folgepunkt (3) Review #344): Ein Kalendertag, den es nicht gibt, liefert keine Stunden — dann auch keine
+     Zeilen mit 0 und keine Summe, sondern „nicht verfügbar" (std[art] wäre null und || 0 rechnete still weiter). Je
+     aktiver Regel bleibt eine Zeile ohne Wert (null, angezeigt „–"), damit Spalten einer Ausgabe nicht verrutschen. */
+  if (std && std.ungueltigerKalendertag) {
+    const fbU = eingefrorenerBetrieb(m, ym);
+    const regelnU = fbU && Array.isArray(fbU.zs) ? fbU.zs : m.zuschlaege;
+    return { std, zeilen: (regelnU || []).filter((z) => z.aktiv).map((z) => ({ regel: z, stunden: null, wert: null })),
+      summe: null, nichtVerfuegbar: true };
+  }
   /* Abgeschlossener Monat: die Zuschlagsregeln zum Abschluss (M-neu-2). */
   const fb = eingefrorenerBetrieb(m, ym);
   /* Schema ≥ 2 ohne eingefrorene Regeln (WP-16, Nachtrag dritter Review M-1, P7): nicht die heutigen Regeln

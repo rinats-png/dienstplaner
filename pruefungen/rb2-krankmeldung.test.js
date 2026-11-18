@@ -221,6 +221,18 @@ describe("B  Kein Leser zählt einen nicht endgültigen Fall", () => {
     await lauf("server"); await lauf("src");
     expect(treffer).toEqual([]);
   });
+  it("P2-12: die Kalendertagsprüfung neuer Fälle bezieht Feld und Tagesangaben aus krankmeldung.mjs (genau ein Eintrag)", async () => {
+    /* gestalt.kalendertagFehler nennt das Feld nicht selbst; die Tabelle steht in der erlaubten Datei krankmeldung.mjs. */
+    const q = await readFile(path.join(WURZEL, "server/lib/krankmeldung.mjs"), "utf8");
+    const stellen = q.split(/\r?\n/).filter((z) => /FAELLE_TAGESFELDER\s*=/.test(z));
+    expect(stellen).toEqual(['export const FAELLE_TAGESFELDER = Object.freeze(["krankmeldungen", Object.freeze(["von", "bis"])]);']);
+    const g = await readFile(path.join(WURZEL, "server/lib/gestalt.mjs"), "utf8");
+    expect(g.split(/\r?\n/).filter((z) => z.includes("FAELLE_TAGESFELDER"))).toEqual([
+      'import { FAELLE_TAGESFELDER } from "./krankmeldung.mjs";',
+      "  [FAELLE_TAGESFELDER[0], [...FAELLE_TAGESFELDER[1]], null],"]);
+    const { FAELLE_TAGESFELDER } = await import("../server/lib/krankmeldung.mjs");
+    expect(FAELLE_TAGESFELDER).toEqual(["krankmeldungen", ["von", "bis"]]);
+  });
   it("Tagesaufgabe in fachlogik.js zählt nur offene Fälle, nie als Abwesenheit", async () => {
     const q = await readFile(path.join(WURZEL, "src/lib/fachlogik.js"), "utf8");
     const stellen = q.split("\n").filter((z) => z.includes("krankmeldungen"));
