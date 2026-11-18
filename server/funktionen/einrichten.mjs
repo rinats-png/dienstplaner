@@ -2,6 +2,7 @@ import { smtpStatus } from "../lib/post-smtp.mjs";
 import { getStore } from "../lib/ablage.mjs";
 import { randomBytes } from "node:crypto";
 import { istProduktion } from "../lib/umgebung.mjs";
+import { mailbestaetigungWarnung } from "../lib/mailbestaetigung.mjs";
 import { rollenPflicht, rollenPflichtUnerwartet } from "../lib/betreiber-zweifaktor.mjs";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
@@ -360,6 +361,8 @@ export default async (req) => {
     if (gesetzt("CENTRIC_ADMIN"))
       warnungen.push("CENTRIC_ADMIN ist noch gesetzt. Nach dem Anlegen des ersten "
         + "benannten Verwalterkontos gehört der Ursprungsschlüssel gelöscht.");
+    const mbWarnung = mailbestaetigungWarnung();   // E-9, Review-Auflage M2
+    if (mbWarnung) warnungen.push(mbWarnung);
     const smtp = smtpStatus();
     if (smtp === "fehlerhaft")
       warnungen.push("Der SMTP-Weg ist gewählt, aber fehlerhaft eingerichtet (docs/MAIL-SMTP-IONOS.md). Es geht keine E-Mail hinaus.");

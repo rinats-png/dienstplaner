@@ -51,6 +51,7 @@ import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, loh
   monatAbgeschlossen, MONAT_ABGESCHLOSSEN, korrekturOffen, hatOffeneKorrektur, hatLaufendeKorrektur } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise, pauseZuLang } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
+import { bestaetigtAm } from "../lib/mailbestaetigung.mjs";
 import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
@@ -2810,7 +2811,8 @@ async function behandeln(req, context, ctx) {
         /* Das Konto, wenn die Sitzung aus einem stammt (lib/auskunft.mjs). */
         const konto = await kontoFuerAuskunft(store, s);
         const zustellprotokoll = await zustellStatusEigene(store, s.bestand, mA, personA.id).catch(() => []);
-        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht, zustellprotokoll };
+        const mailBestaetigtAm = await bestaetigtAm(store, s.bestand, mA.id, personA).catch(() => null);   // E-9
+        zusatz = { protokoll: protokollA, push, kalender, mailBestaetigtAm, konto, eigeneSicht, zustellprotokoll };
       }
       const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
         ...zusatz });

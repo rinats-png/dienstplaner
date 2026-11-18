@@ -294,6 +294,73 @@ describe("Versand: pflicht nur an bestätigte Adressen; angebot und aus wie bish
     const s = await anfrage(zustellung, "/zustellung/status", { methode: "GET", token: T.a2 });
     expect(s.stand.find((x) => x.nachricht === "n-pf-a2" && x.kanal === "mail")).toMatchObject({ stand: "uebersprungen", grund: "unbestaetigt" });
   });
+  it("Auflage M2: „pflicht“ ohne Pfeffer in der Auslieferung wirkt als „angebot“ — Versand wie bisher, mit Warnung", async () => {
+    const pf = process.env.CENTRIC_PFEFFER, env = process.env.NODE_ENV;
+    process.env.CENTRIC_MAILBESTAETIGUNG = "pflicht";
+    expect(MB.mailbestaetigungWarnung()).toBeNull();                       // mit Pfeffer: alles in Ordnung
+    const fehler = vi.spyOn(console, "error").mockImplementation(() => {});
+    delete process.env.CENTRIC_PFEFFER; process.env.NODE_ENV = "production";
+    try {
+      expect(MB.mailbestaetigungModus()).toBe("angebot");
+      expect(MB.mailbestaetigungWarnung()).toMatch(/CENTRIC_PFEFFER fehlt.*angebot/);
+      process.env.CENTRIC_MAILBESTAETIGUNG = "angebot";
+      expect(MB.mailbestaetigungWarnung()).toMatch(/CENTRIC_PFEFFER fehlt/);
+      process.env.CENTRIC_MAILBESTAETIGUNG = "pflicht";
+      const { bestand, m } = await betrieb("mb", "m-a");
+      const n = { id: "n-m2", personId: "a2", art: "planFreigegeben", titel: "T", text: "X", ziel: "meine", zeit: "x",
+        erstellt: new Date().toISOString(), gelesen: false, dringend: false };
+      post.mails.length = 0;
+      await V.zustellen(laden(), { raum: "mb", bestand, m: { ...m, nachrichten: [n] }, ids: ["n-m2"] });
+      expect(post.mails.map((x) => x.an)).toEqual(["a2@kunde.example"]);
+    } finally {
+      fehler.mockRestore();
+      process.env.CENTRIC_PFEFFER = pf;
+      if (env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = env;
+    }
+    expect(MB.mailbestaetigungModus()).toBe("pflicht");
+  });
+});
+
+describe("Auflage M3: Quote für Leitung und Planung (nur Zähler)", () => {
+  it("Leitung und Planung sehen {mitAdresse, unbestaetigt}, Beschäftigte nicht; keine Adressen", async () => {
+    const { m } = await betrieb("mb", "m-a");
+    const erwartet = await MB.bestaetigungsQuote(laden(), { raum: "mb", m });
+    expect(erwartet.mitAdresse).toBe(m.personen.filter((p) => p.email).length);
+    expect(erwartet.unbestaetigt).toBe(erwartet.mitAdresse - 1);           // nur a1 ist bestätigt
+    for (const t of [T.l1, T.p1]) {
+      const r = await stand(t);
+      expect(r.status, r.text).toBe(200);
+      expect(r.quote).toEqual(erwartet);
+      expect(r.text).not.toContain("kunde.example");
+    }
+    expect((await stand(T.a2)).quote).toBeUndefined();
+  });
+});
+
+describe("Auflage N1/N4: Adressbremse normalisiert; Auskunft nennt den Bestätigungszeitpunkt", () => {
+  it("bremsAdresse: +tag, Groß/klein, IDN zählen zusammen", () => {
+    expect(MB.bremsAdresse("Opfer+eins@Fremd.Example")).toBe("opfer@fremd.example");
+    expect(MB.bremsAdresse("opfer@fremd.example")).toBe("opfer@fremd.example");
+    expect(MB.bremsAdresse("x@bücher.example")).toBe("x@xn--bcher-kva.example");
+  });
+  it("Tagesgrenze je Adresse gilt über +tag-Varianten hinweg", async () => {
+    const tag = FEST + 7 * 24 * 3600_000;
+    const varianten = ["ziel@fremd.example", "ziel+a@fremd.example", "Ziel+b@FREMD.example", "ziel+c@fremd.example"];
+    const r = [];
+    for (const [i, email] of varianten.entries())
+      r.push(await MB.bestaetigungAnfordern(laden(), { raum: `rn${i}`, m: { id: `mn${i}` }, p: { id: `n${i}`, email }, jetzt: tag }));
+    expect(r.map((x) => x.ok)).toEqual([true, true, true, false]);
+    expect(r[3]).toEqual({ ok: false, grund: "kontingent" });
+  });
+  it("Auskunft nach Art. 15 (selbst): emailBestaetigtAm der aktuellen Adresse; unbestätigt null", async () => {
+    const a1 = await anfrage(daten, "/api/auskunft", { methode: "GET", token: T.a1 });
+    expect(a1.status, a1.text).toBe(200);
+    expect(a1.emailBestaetigtAm).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const a2 = await anfrage(daten, "/api/auskunft", { methode: "GET", token: T.a2 });
+    expect(a2.emailBestaetigtAm).toBeNull();
+    const durchLeitung = await anfrage(daten, "/api/auskunft?person=a1", { methode: "GET", token: T.l1 });
+    expect(durchLeitung.emailBestaetigtAm).toBeUndefined();
+  });
 });
 
 describe("Person entfernt: Bestätigung und offener Code weg (Art. 17); Aufräumen räumt Waisen und abgelaufene Codes", () => {

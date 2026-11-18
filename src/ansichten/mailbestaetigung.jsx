@@ -23,9 +23,15 @@ export function MailBestaetigung({ email }) {
     return () => { aktiv = false; clearTimeout(t); };
   }, [email]);
 
-  if (!stand || !stand.adresse) return null;
+  if (!stand) return null;
+  /* Review-Auflage M3: Leitung und Planung sehen die Quote des Betriebs (nur Zähler). */
+  const quote = stand.quote && stand.quote.mitAdresse > 0 ? (
+    <div style={{ fontSize: 13, color: C.dim, marginTop: 8 }} role="status">
+      Im Betrieb: {stand.quote.unbestaetigt} von {stand.quote.mitAdresse} hinterlegten E-Mail-Adressen noch nicht bestätigt.
+    </div>) : null;
+  if (!stand.adresse) return quote;
   if (stand.bestaetigt)
-    return <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10 }} role="status">Adresse bestätigt.</div>;
+    return <><div style={{ fontSize: 13.5, color: C.dim, marginTop: 10 }} role="status">Adresse bestätigt.</div>{quote}</>;
 
   const anfordern = async () => {
     setLaeuft(true);
@@ -57,5 +63,6 @@ export function MailBestaetigung({ email }) {
           <Btn size="sm" kind="primary" onClick={einloesen} disabled={laeuft || !code.trim()}>Bestätigen</Btn>
         </div>)}
       {meldung && <div role="status" style={{ fontSize: 13, color: C.dim, marginTop: 8 }}>{meldung}</div>}
+      {quote}
     </div>);
 }

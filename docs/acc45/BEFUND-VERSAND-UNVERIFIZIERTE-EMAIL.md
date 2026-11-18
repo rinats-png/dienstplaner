@@ -77,3 +77,17 @@ Nicht in PR #281, weil Schritt 2/3 Oberfläche, Zustellregeln, Datenmodell und e
   `pflicht` — Betreiberentscheidung, wann.
 - **Wächter §4.1** (`pruefungen/mailbestaetigung.test.js`): Nur `registrierung.mjs` (Konto-Adresse), `versand.mjs`
   (Hinweis ohne Geheimnis) und `mailbestaetigung.mjs` verschicken Mail; `registrierung.mjs` liest keine Personenadresse.
+
+### Nachtrag Review PR #343 (Auflagen M1–M3, N1, N4)
+
+- **M1:** Das Abmelden startet die Anfrage synchron (`keepalive`), mit dem beim Einschalten, Ausschalten und Start
+  gemerkten Endpunkt des Geräts (`centric:pushgeraet`). Das sofortige Neuladen in `abmeldenMitHinweis` bricht sie nicht
+  mehr ab (`pruefungen/e9-abmelden-geraet.test.js`).
+- **M2:** `pflicht` ohne `CENTRIC_PFEFFER` in der Auslieferung wirkt als `angebot` (Versand wie bisher), mit Warnung
+  im Serverprotokoll und unter `/einrichten/umgebung`.
+- **M3:** Leitung und Planung sehen die Quote unbestätigter Adressen (nur Zähler). Vor `pflicht` ist ein Kanalnachweis
+  für die Notrufkette Betreiber-Voraussetzung (Betriebshandbuch). Folgearbeit: Quote in der Betreiberlage, Kanalnachweis
+  je Person in der Notrufkette.
+- **N1:** Die Tagesgrenze je Adresse zählt `name+x@Domain` und `name@domain` zusammen (Domain ASCII, klein).
+- **N4:** Die Selbstauskunft nennt `emailBestaetigtAm`. Anonymisierte Personen: Bestätigung und Code räumt das tägliche
+  Aufräumen (Waisen, `anonym === true`); sofortiges Räumen beim Anonymisieren ist Folgearbeit.

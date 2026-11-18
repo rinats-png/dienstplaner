@@ -314,7 +314,7 @@ export function Einstellungen({ sitz, akt, gehZu }) {
             onChange={(v) => akt.pushUmschalten(v)} />
         </Zeile>
         {/* E-9: Bestätigung der eigenen E-Mail-Adresse (nur wenn der Server den Weg anbietet). */}
-        {p.email && <div style={{ padding: "0 var(--pad-x) 14px" }}><MailBestaetigung email={p.email} /></div>}
+        <div style={{ padding: "0 var(--pad-x)" }}><MailBestaetigung email={p.email || ""} /></div>
         {/* WP-30: Sammelschalter je Kanal — aus bedeutet: über diesen Weg geht nichts hinaus. */}
         {[["mail", "E-Mail insgesamt", "Aus: keine Benachrichtigung per E-Mail, gleich welche Art."],
           ["push", "Gerätemitteilungen insgesamt", "Aus: keine Benachrichtigung auf dieses oder ein anderes Gerät."]].map(([weg, titel, text]) => {

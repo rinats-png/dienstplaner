@@ -174,12 +174,45 @@ async function diesesGeraet() {
 /** Rumpf für Abmelden: ohne bekannte Angabe kein Feld `geraet` (bisheriges Verhalten). */
 const geraetRumpf = (g) => JSON.stringify(g === undefined ? {} : { geraet: g });
 
+/* Review-Auflage M1: Beim Abmelden lädt die Anwendung sofort neu
+   (app/abmelden.js). Die Anfrage muss deshalb SYNCHRON starten — der Endpunkt
+   dieses Geräts wird vorher gemerkt (beim Einschalten, Ausschalten und beim
+   Start, pushGeraetAuffrischen), nicht erst beim Abmelden erfragt. Der Merker
+   gehört zum Gerät (Browser), nicht zur Person; er ist kein Geheimnis des
+   Servers (der Endpunkt steht ohnehin im Browser). */
+const PUSHGERAET = "centric:pushgeraet";
+function geraetMerken(endpoint) {
+  try { localStorage.setItem(PUSHGERAET, endpoint ? JSON.stringify({ endpoint }) : "keins"); } catch { /* egal */ }
+}
+/** Synchron: `{endpoint}`, `null` (keine Anmeldung möglich oder bekannt keine) oder `undefined` (unbekannt). */
+export function geraetGemerkt() {
+  try {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)
+      || typeof window === "undefined" || !("PushManager" in window)) return null;
+    if (typeof Notification !== "undefined" && Notification.permission !== "granted") return null;
+    const w = localStorage.getItem(PUSHGERAET);
+    if (w === "keins") return null;
+    if (w) {
+      const g = JSON.parse(w);
+      if (g && typeof g.endpoint === "string" && g.endpoint) return { endpoint: g.endpoint };
+    }
+  } catch { /* unbekannt */ }
+  return undefined;
+}
+/** Den Merker aus dem Browser nachziehen (beim Start, ohne Warten). */
+export async function pushGeraetAuffrischen() {
+  const g = await diesesGeraet();
+  if (g !== undefined) geraetMerken(g && g.endpoint);
+}
+
 export function abmelden(still = false) {
   if (!still && token) {
-    /* Der Kopf wird jetzt festgehalten — das Merkmal ist gleich weg. */
-    const kopfJetzt = kopf();
-    diesesGeraet().then((g) => fetch("/api/abmelden", { method: "POST", headers: kopfJetzt,
-      body: geraetRumpf(g), keepalive: true })).catch(() => {});
+    /* Synchron gestartet (M1): kein await vor fetch — ein sofortiges Neuladen
+       bricht die Anfrage dank keepalive nicht ab. */
+    try {
+      fetch("/api/abmelden", { method: "POST", headers: kopf(), body: geraetRumpf(geraetGemerkt()), keepalive: true })
+        .catch(() => {});
+    } catch { /* ohne Netz: die Sitzung läuft serverseitig ab */ }
   }
   /* Der zuletzt geladene Bestand liegt im Speicher des Dienstarbeiters. Er
      gehört nicht dem nächsten Menschen an diesem Gerät. */
@@ -798,6 +831,7 @@ export async function pushEinschalten(personId) {
   const vorhanden = await reg.pushManager.getSubscription();
   const anmeldung = vorhanden || await reg.pushManager.subscribe({
     userVisibleOnly: true, applicationServerKey: b64(vapid) });
+  geraetMerken(anmeldung.endpoint);      // M1: fürs synchrone Abmelden
 
   /* Die Person kommt aus der Sitzung des Servers, nicht von hier — sonst
      ließe sich die Anmeldung einer Kollegin überschreiben. */
@@ -815,6 +849,7 @@ export async function pushAusschalten() {
     const reg = await navigator.serviceWorker.getRegistration();
     const s = reg && await reg.pushManager.getSubscription();
     if (s) await s.unsubscribe();
+    geraetMerken(null);
   } catch { /* egal */ }
   try {
     await fetch("/zustellung/abmelden", { method: "POST", headers: kopf(), body: geraetRumpf(g) });
@@ -836,6 +871,7 @@ export async function offlineEinrichten() {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
   try {
     await navigator.serviceWorker.register("/sw.js");
+    pushGeraetAuffrischen().catch(() => {});   // E-9/M1: Merker für das synchrone Abmelden
     return true;
   } catch { return false; }
 }

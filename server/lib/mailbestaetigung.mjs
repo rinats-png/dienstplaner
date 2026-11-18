@@ -45,6 +45,7 @@
    ========================================================================== */
 
 import { createHash, createHmac, randomInt } from "node:crypto";
+import { domainToASCII } from "node:url";
 import { istProduktion } from "./umgebung.mjs";
 import { sendeMail, anwendungsAdresse } from "./post.mjs";
 import { gleich } from "./codes.mjs";
@@ -63,10 +64,43 @@ const CODE_LAENGE = 12;
 const h = (s) => createHash("sha256").update(String(s)).digest("hex").slice(0, 24);
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 
-/** Schalter CENTRIC_MAILBESTAETIGUNG: „angebot“ oder „pflicht“; alles andere ist „aus“. */
-export function mailbestaetigungModus() {
+/** Der eingestellte Wert von CENTRIC_MAILBESTAETIGUNG: „angebot“ oder „pflicht“; alles andere ist „aus“. */
+export function mailbestaetigungEingestellt() {
   const w = String(process.env.CENTRIC_MAILBESTAETIGUNG || "").trim().toLowerCase();
   return w === "angebot" || w === "pflicht" ? w : "aus";
+}
+
+/** Läuft der Schalter ins Leere? In der Auslieferung ohne CENTRIC_PFEFFER lässt sich nichts bestätigen. */
+export const mailbestaetigungOhnePfeffer = () => istProduktion() && !String(process.env.CENTRIC_PFEFFER || "").trim();
+
+let gewarnt = false;
+/**
+ * Der wirksame Modus. Review-Auflage M2: „pflicht“ ohne Pfeffer in der
+ * Auslieferung hielte jede Personenmail still und endgültig an (keine Adresse
+ * ist bestätigbar). Dann gilt „angebot“ (Versand wie bisher), mit lauter
+ * Warnung im Serverprotokoll und in der Einrichtungsprüfung (einrichten.mjs).
+ * @returns {"aus"|"angebot"|"pflicht"}
+ */
+export function mailbestaetigungModus() {
+  const w = mailbestaetigungEingestellt();
+  if (w === "pflicht" && mailbestaetigungOhnePfeffer()) {
+    if (!gewarnt) {
+      gewarnt = true;
+      console.error("[mailbestaetigung] CENTRIC_MAILBESTAETIGUNG=pflicht ohne CENTRIC_PFEFFER: es gilt „angebot“ "
+        + "(Versand wie bisher), bis CENTRIC_PFEFFER gesetzt ist.");
+    }
+    return "angebot";
+  }
+  return w;
+}
+
+/** Warnung für die Einrichtungsprüfung (einrichten.mjs, /einrichten/umgebung) oder null. */
+export function mailbestaetigungWarnung() {
+  const w = mailbestaetigungEingestellt();
+  if (w !== "aus" && mailbestaetigungOhnePfeffer())
+    return `CENTRIC_MAILBESTAETIGUNG=${w}, aber CENTRIC_PFEFFER fehlt: Adressen lassen sich nicht bestätigen`
+      + (w === "pflicht" ? " — es gilt deshalb „angebot“ (Versand wie bisher)." : ".");
+  return null;
 }
 
 /** Die Adresse der Person nach derselben Regel wie der Versand (versand.mjs, mailAdresse). */
@@ -83,6 +117,17 @@ export function adressWert(adresse) {
   return istProduktion() ? null : h(`mailbestaetigt:${a}`);
 }
 
+/** Nur für die Tagesgrenze je Adresse (nicht für Versand oder Bestätigung): „name+x@Domain“ und
+    „name@domain“ zählen zusammen, die Domain in ASCII (IDN) und klein. Review-Auflage N1. */
+export function bremsAdresse(adresse) {
+  const a = String(adresse).trim().toLowerCase();
+  const at = a.lastIndexOf("@");
+  if (at < 1) return a;
+  const lokal = a.slice(0, at).split("+")[0] || a.slice(0, at);
+  const domain = domainToASCII(a.slice(at + 1)) || a.slice(at + 1);
+  return `${lokal}@${domain}`;
+}
+
 export const bestaetigtSchluessel = (raum, mandantId, personId) => `mailbest:${raum}:${mandantId}:${h(personId)}`;
 export const codeSchluessel = (raum, mandantId, personId) => `mailbestcode:${raum}:${mandantId}:${h(personId)}`;
 const codeHash = (raum, mandantId, personId, code) =>
@@ -97,6 +142,34 @@ export async function adresseBestaetigt(store, raum, mandantId, personId, adress
   if (!wert) return false;
   const b = await store.get(bestaetigtSchluessel(raum, mandantId, personId), { type: "json" });
   return istObjekt(b) && typeof b.adresse === "string" && gleich(b.adresse, wert);
+}
+
+/** Zeitpunkt der Bestätigung der aktuellen Adresse (Auskunft nach Art. 15) oder null. */
+export async function bestaetigtAm(store, raum, mandantId, p) {
+  const an = personAdresse(p);
+  const wert = an ? adressWert(an) : null;
+  if (!wert) return null;
+  const b = await store.get(bestaetigtSchluessel(raum, mandantId, p.id), { type: "json" }).catch(() => null);
+  return istObjekt(b) && b.adresse === wert && typeof b.am === "string" ? b.am : null;
+}
+
+/**
+ * Review-Auflage M3: Wie viele Personen des Betriebs haben eine Adresse, und
+ * wie viele davon sind unbestätigt? Nur Zähler, keine Adressen, keine Namen —
+ * die Voraussetzung, bevor jemand „pflicht“ einschaltet. Nicht lesbare
+ * Einträge zählen als unbestätigt (vorsichtig).
+ * @returns {Promise<{mitAdresse: number, unbestaetigt: number}>}
+ */
+export async function bestaetigungsQuote(store, { raum, m }) {
+  let mitAdresse = 0, unbestaetigt = 0;
+  for (const p of Array.isArray(m && m.personen) ? m.personen : []) {
+    if (!istObjekt(p) || p.anonym === true) continue;
+    const an = personAdresse(p);
+    if (!an) continue;
+    mitAdresse += 1;
+    if (!(await adresseBestaetigt(store, raum, m.id, p.id, an).catch(() => false))) unbestaetigt += 1;
+  }
+  return { mitAdresse, unbestaetigt };
 }
 
 /** Für die Oberfläche: gibt es eine Adresse, ist sie bestätigt, läuft ein Code? Nie die Adresse selbst. */
@@ -158,7 +231,7 @@ export async function bestaetigungAnfordern(store, { raum, m, p, jetzt = Date.no
   const tag = kontingentTag(jetzt);
   const grenzen = [
     [`zustellquote:${raum}:${m.id}:${tag}:mailbest:p-${h(p.id)}:`, TAG_JE_PERSON],
-    [`zustellquote:_mailbest:alle:${tag}:a-${wert}:`, TAG_JE_ADRESSE],
+    [`zustellquote:_mailbest:alle:${tag}:a-${adressWert(bremsAdresse(an))}:`, TAG_JE_ADRESSE],
     [`zustellquote:${raum}:${m.id}:${tag}:mailbest:b:`, TAG_JE_BETRIEB],
     ...(testraum ? [[`zustellquote:${raum}:raum:${tag}:mail:testraum:`, testraumMailTagMax()],
       [`zustellquote:_testraeume:alle:${tag}:mail:testraum:`, testraumMailGesamtMax()]] : []),

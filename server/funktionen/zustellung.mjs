@@ -6,7 +6,7 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, sitzungsRolleBekannt } from "../lib/rechte.mjs";
 import { zustellen, pushAnmelden, pushAbmelden, geraetAusRumpf, zustellStatusEigene } from "../lib/versand.mjs";
 import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
-import { mailbestaetigungModus, bestaetigungStand, bestaetigungAnfordern, bestaetigen } from "../lib/mailbestaetigung.mjs";
+import { mailbestaetigungModus, bestaetigungStand, bestaetigungAnfordern, bestaetigen, bestaetigungsQuote } from "../lib/mailbestaetigung.mjs";
 import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
 
@@ -187,7 +187,11 @@ export default async (req) => {
       const m = bestand ? eigenerMandant(bestand, s) : null;
       const p = m && Array.isArray(m.personen) ? m.personen.find((x) => x && String(x.id) === String(s.person)) : null;
       if (!p) return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
-      if (lesen) return antwort({ modus, ...(await bestaetigungStand(store(), { raum: s.bestand, m, p })) });
+      if (lesen) {
+        /* Review-Auflage M3: Leitung und Planung sehen zusätzlich die Quote des Betriebs (nur Zähler). */
+        const quote = VOLL.includes(wirksameRolle(s, bestand)) ? { quote: await bestaetigungsQuote(store(), { raum: s.bestand, m }) } : {};
+        return antwort({ modus, ...(await bestaetigungStand(store(), { raum: s.bestand, m, p })), ...quote });
+      }
       const kz = kennung(req, s);
       if (pfad === "mailbestaetigung/anfordern") {
         const bz = await bremse("mailbestaetigung", kz);
