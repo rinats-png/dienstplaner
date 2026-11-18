@@ -67,7 +67,7 @@ const NIE_VERGLEICHEN = new Set(["session", "stand"]);
  *   nur ich geändert (lokal ≠ Basis)            → meins
  *   nur andere geändert (frisch ≠ Basis)        → frisch (fremde Änderungen bleiben erhalten)
  *   beide, verschieden                          → Frage je Zelle/Feld (kein Senden bis zur Entscheidung)
- * Nur-Server-Felder kommen immer aus der frischen Sicht. Ohne Frage: `voll` mit neuem lokalem Stand und neuer Basis —
+ * Stempel (`einstempeln`) je Schlüssel wie Zellen; eingefrorenes Ist und Monatsabschluss aus der frischen Sicht. Ohne Frage: `voll` mit neuem lokalem Stand und neuer Basis —
  * der Voll-PUT mit dem ETag der frischen Antwort überschreibt dann keine fremde Änderung.
  * @returns {{ ergebnis: "voll"|"konflikt"|"neuLaden"|"gesperrt"|"aus", zustand: any, lokal: any }}
  */
@@ -83,8 +83,12 @@ export function vollVorbereiten(z, lokal, antwort) {
   const fragen = [];
   for (const feld of new Set([...Object.keys(basis), ...Object.keys(l), ...Object.keys(f)])) {
     if (NIE_VERGLEICHEN.has(feld)) { if (hatFeld(l, feld)) neu[feld] = l[feld]; continue; }
-    if (T.NUR_SERVER_SPIEGEL.includes(feld)) { if (hatFeld(f, feld)) neu[feld] = f[feld]; continue; }
-    if (T.ZELLFELDER.includes(feld) && [basis[feld], l[feld], f[feld]].every((x) => x === undefined || x === null || istObjekt(x))) {
+    /* Stempel je Schlüssel wie die Zellen (unten): eine eigene Änderung — der Löschlauf über das Speichern, nur über den
+       Voll-PUT darstellbar — bleibt, neue Stempel kommen aus der frischen Sicht. Eingefrorenes Ist und Monatsabschluss
+       gehen ohnehin nicht hinaus (ohneServerFelder): aus der frischen Sicht. */
+    const jeSchluessel = T.ZELLFELDER.includes(feld) || feld === "einstempeln";
+    if (!jeSchluessel && T.NUR_SERVER_SPIEGEL.includes(feld)) { if (hatFeld(f, feld)) neu[feld] = f[feld]; continue; }
+    if (jeSchluessel && [basis[feld], l[feld], f[feld]].every((x) => x === undefined || x === null || istObjekt(x))) {
       const qb = istObjekt(basis[feld]) ? basis[feld] : {}, ql = istObjekt(l[feld]) ? l[feld] : {}, qf = istObjekt(f[feld]) ? f[feld] : {};
       const aus = {};
       for (const k of new Set([...Object.keys(qb), ...Object.keys(ql), ...Object.keys(qf)])) {

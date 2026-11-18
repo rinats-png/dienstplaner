@@ -185,6 +185,34 @@ describe("A3 Befund der Modellprüfung: Kernversionen nach 409 nur mit Wert", ()
   });
 });
 
+describe("A4 vollVorbereiten (Review #348 H1): Neuaufsetzen je Zelle/Feld vor dem Voll-PUT", () => {
+  it("meins bleibt, Fremdes kommt dazu, Streit wird Frage; Stempel je Schlüssel, eingefrorenes Ist aus der frischen Sicht", () => {
+    const b0 = { ...betrieb(), einstempeln: { "a1|2024-01-01": { start: "06:00" }, "a1|2026-08-01": { start: "06:00" } }, istEingefroren: { x: 1 } };
+    const z = T.teilwegStart(getAntwort(b0), "m1");
+    const lokal = { ...b0, zyklus: ["F"], abweichungen: { "a1|2026-08-14": "N", "a1|2026-08-15": "N" },
+      einstempeln: { "a1|2026-08-01": { start: "06:00" } }, istEingefroren: {} };          // Löschlauf lokal: alter Stempel weg
+    const frisch = { ...b0, abweichungen: { "a1|2026-08-14": "F", "a1|2026-08-15": "S", "b1|2026-08-16": "N" },
+      einstempeln: { ...b0.einstempeln, "a1|2026-08-02": { start: "07:00" } }, istEingefroren: { x: 2 } };
+    const v = W.vollVorbereiten(z, lokal, getAntwort(frisch));
+    expect(v.ergebnis).toBe("konflikt");
+    expect(v.zustand.konflikte.map((f) => [f.id, f.meins, f.fremd])).toEqual([["z:abweichungen:a1|2026-08-15", "N", "S"]]);
+    expect(v.lokal.zyklus).toEqual(["F"]);                                              // meins (ohne Version)
+    expect(v.lokal.abweichungen["a1|2026-08-14"]).toBe("N");                           // meins
+    expect(v.lokal.abweichungen["b1|2026-08-16"]).toBe("N");                           // fremd dazu
+    expect(Object.keys(v.lokal.einstempeln).sort()).toEqual(["a1|2026-08-01", "a1|2026-08-02"]);
+    expect(v.lokal.istEingefroren).toEqual({ x: 2 });
+    const a = T.aufloesen(T.waehlen(v.zustand, "z:abweichungen:a1|2026-08-15", "fremd"), v.lokal);
+    const w = W.vollVorbereiten(a.zustand, a.lokal, getAntwort(frisch));
+    expect(w.ergebnis).toBe("voll");
+    expect(w.lokal.abweichungen["a1|2026-08-15"]).toBe("S");
+  });
+  it("andere Epoche → neu laden; offene Frage → gesperrt", () => {
+    const z = start();
+    expect(W.vollVorbereiten(z, z.basis, getAntwort(betrieb(), "e9e9e9e9")).ergebnis).toBe("neuLaden");
+    expect(W.vollVorbereiten({ ...z, konflikte: [{ id: "x" }], phase: "konflikt" }, z.basis, getAntwort(betrieb())).ergebnis).toBe("gesperrt");
+  });
+});
+
 describe("A2 Entscheiden, Sicherung, Texte", () => {
   const imKonflikt = async () => {
     const srv = attrappe({ posts: [{ status: 409, daten: { code: "TEILE_KONFLIKT", konflikt: {
