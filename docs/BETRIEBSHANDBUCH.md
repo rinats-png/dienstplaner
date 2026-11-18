@@ -233,6 +233,13 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
   eine Datei über `zustand/` kopieren. Meldet `/gesund` `widerrufbuchsicherung` „älterer Stand zurückgelegt“: Dienst
   stoppen, letzte Sicherung der Bücher zurückholen, vereinigen, starten
   ([ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md](acc45/ABNAHME-V4-BE3-WIDERRUFBUCH-SICHERUNG.md) §5, BEREITSTELLUNG §5.4).
+  (h) **Abgelöste Passwörter (BE-1 Rest):** Ein nach der Sicherung geändertes Passwort gilt nach keinem Rücksprung
+  wieder. Werkzeug (`--zustand`) und Start setzen bei betroffenen Konten `passwort: null` (Ausgabe
+  `Passwörter (BE-1): … m Konten … ohne Passwort` bzw. `WARNUNG Konto-Widerrufbuch: m Konto/Konten trugen ein
+  abgelöstes Passwort`). Diese Personen kommen weder mit dem alten noch mit dem neuen Passwort hinein; einen
+  Rücksetzweg per Mail gibt es noch nicht → Supportfall (Leitung informieren, Vorgang in `betrieb-protokoll.log`).
+  Bücher immer vereinigen (g), nie ersetzen, sonst gehen Einträge verloren
+  ([ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md](acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md) §8).
 - **R0 (Standard bei Fehlern):** `./abschalten.sh` — Dienst kontrolliert anhalten. Lieber kein Dienst als ein
   unsicheres Bild.
 - **Rücksprung:** `./ruecksprung.sh` nur auf den Eintrag `vorherig` der Freigabeliste, nie auf ein gesperrtes Bild,
