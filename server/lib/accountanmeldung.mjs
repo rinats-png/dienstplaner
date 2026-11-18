@@ -102,7 +102,7 @@ import {
   accountLesenPerMail, accountLesenPerId, anmeldungVermerken, accountAendern,
 } from "./accounts.mjs";
 import { zweifaktorEinrichtungVerwerfen } from "./zweifaktor.mjs";
-import { kontoZugangImBuch, kontoFaktorPflichtImBuch } from "./kontowiderrufbuch.mjs";
+import { kontoZugangImBuch, kontoFaktorPflichtImBuch, passwortAbgeloestImBuch } from "./kontowiderrufbuch.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
@@ -220,6 +220,11 @@ async function zugangPruefen(store, { email, passwort }) {
   if (!konto) return absage("unbekannt");
   if (!hatPruefwert(konto)) return absage("ohne-passwort");
   if (!stimmt) return absage("passwort");
+  /* BE-1 Rest (kontowiderrufbuch.mjs): Ein abgelöster Prüfwert, den eine zurückgespielte Ablage wieder trägt, gilt
+     nicht — nach außen genau wie ein falsches Passwort (derselbe Satz, derselbe Status, die Bremse zählt mit), intern
+     der Grund „passwort-abgeloest“. Erst nach dem richtigen Passwort gefragt (keine Auskunft an Unbekannte); ist das
+     Buch nicht prüfbar, wirft es (fail-closed, der Endpunkt antwortet 503). */
+  if (await passwortAbgeloestImBuch(store, konto.id, konto.passwort)) return absage("passwort-abgeloest");
   if (konto.status === "gesperrt") return absage("gesperrt");
   /* „eingeladen" heißt: Es gibt den Platz, aber noch niemanden darauf.
      Ein Passwort allein macht daraus keine Anmeldung. */

@@ -86,6 +86,7 @@ import { unterRaumsperre } from "./raumsperre.mjs";
 import { rollenPflicht, rollenFaktorFrisch, rollenFaktorEingerichtet } from "./betreiber-zweifaktor.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
 import { passwortPruefen } from "./passwoerter.mjs";
+import { passwortAbgeloestImBuch } from "./kontowiderrufbuch.mjs";
 
 const ART = "zugang";
 const NR_PRAEFIX = "einladungsnr:";
@@ -262,7 +263,13 @@ export async function frischeBestaetigung(store, { sitzung: s, bestaetigung, k =
     let konto;
     try { konto = await accountLesenPerId(store, String(s.herkunft.accountId || "")); }
     catch { return nein(503, "Die Anmeldung lässt sich gerade nicht prüfen. Bitte später erneut versuchen.", "konto nicht lesbar"); }
-    const stimmt = !!konto && konto.status === "aktiv" && await passwortPruefen(b.passwort, konto.passwort);
+    let stimmt = !!konto && konto.status === "aktiv" && await passwortPruefen(b.passwort, konto.passwort);
+    /* BE-1 Rest (kontowiderrufbuch.mjs): ein abgelöster Prüfwert (zurückgespielte Ablage) gilt auch hier nicht — nach
+       außen wie ein falsches Passwort; Buch nicht prüfbar → 503 (fail-closed). */
+    if (stimmt) {
+      try { if (await passwortAbgeloestImBuch(store, konto.id, konto.passwort)) stimmt = false; }
+      catch { return nein(503, "Die Anmeldung lässt sich gerade nicht prüfen. Bitte später erneut versuchen.", "konto-widerrufbuch nicht prüfbar"); }
+    }
     if (!stimmt) {
       await new Promise((r) => setTimeout(r, 400));
       return { ...nein(403, "Das Passwort stimmt nicht.", "passwort falsch"), bestaetigung: "passwort" };
