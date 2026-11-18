@@ -1790,7 +1790,7 @@ async function behandeln(req, context, ctx) {
           if (ohneWirkung(vorherL, finde(zuSchreiben))) {
             await protokoll("loeschlauf", ks, "ohne-wirkung", "nichts löschbar über diesen Weg", wer);
             return antwort({ ok: true, ausgefuehrt: false, faellig: true, ohneWirkung: true, bericht: loeschBericht,
-              text: "Über diesen Weg ist nichts mehr zu löschen; der Rest ist Sache des täglichen Datenschutzlaufs. Es wurde nichts geändert." });
+              text: "Über diesen Weg ist nichts mehr zu löschen. Eingefrorenes Ist jenseits der Frist entfernt nur der tägliche Datenschutzlauf im Modus „an“. Es wurde nichts geändert." });
           }
         }
         groesseMerken(s.bestand, zuSchreiben);

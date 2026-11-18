@@ -148,7 +148,7 @@ async function proben(s) {
   r["bestand/teile LT"] = await holen("/api/bestand/teile", json(t.LT, { teile: [] }));
   /* Löschlauf der Leitung als eigener Weg (WP-48.4), derselbe Schalter; nur die Vorschau (schreibt nie). */
   r["loeschlauf LT"] = await holen("/api/loeschlauf", json(t.LT, { vorschau: true }));
-  const g =await holen("/api/bestand", { headers: h(t.LT) });
+  const g = await holen("/api/bestand", { headers: h(t.LT) });
   r["bestand GET hat teile"] = { status: g.status, rumpf: g.rumpf && typeof g.rumpf === "object" && "teile" in g.rumpf };
   /* Hilfe-Assistent (CENTRIC_HILFE_ASSISTENT). */
   r["hilfe/status MA"] = await holen("/api/hilfe/status", { headers: h(t.MA) });

@@ -14,7 +14,7 @@
       Monat innerhalb der Frist und der zweite Betrieb im Raum bleiben
       unberührt.
    2. Schalter aus → 404 (der heutige Weg löscht weiter).
-   3. Rechte: Leitung und Kundenrolle; Planung, Schichtverantwortung,
+   3. Rechte: nur Leitung (auch Demozugang); Kundenrolle, Planung, Schichtverantwortung,
       Beschäftigte, Betriebsrat, Betreiber 403 — nichts geändert.
    4. Form, Vorschau ohne Schreiben, Idempotenz, veraltete Vorschau (409),
       ungültige Fristen (422), Mandantentrennung, Bremse (429),
@@ -435,6 +435,28 @@ describe("4. Form, Vorschau, Idempotenz, Konflikte", () => {
     expect(prot.map((x) => x.id)).toContain("lalt");
     expect(nach2.stand).toBe(nach1.stand);
     expect(nach2.bestand).toEqual(nach1.bestand);
+
+    /* Delta-Review A1, Tageswechsel: Der letzte Lauf war gestern (zuletztGeraeumt = gestern, wie am Folgetag). raeumen
+       setzt das Datum auf heute — das allein ist keine Wirkung: kein Schreiben, kein Eintrag, Datum unverändert. */
+    const gestern = tag(-1);
+    const b = kopie(nach2.bestand);
+    const m1 = b.mandanten.find((x) => x.id === "m1");
+    m1.aufbewahrung = { ...(m1.aufbewahrung || {}), zuletztGeraeumt: gestern };
+    await B.bestandSchreiben(laden(), r.raum, b, { erwarteterStand: nach2.stand, durch: "Pruefung" });
+    const vorTag = await gespeichert(r.raum);
+    const v3 = await loeschlauf(r.token.LT, { vorschau: true });
+    expect(v3.faellig).toBe(true);
+    const w3 = await loeschlauf(r.token.LT, { bestaetigt: v3.kennung });
+    expect(w3.status, JSON.stringify(w3)).toBe(200);
+    expect(w3.ausgefuehrt).toBe(false);
+    expect(w3.ohneWirkung).toBe(true);
+    expect(w3.text).toContain("Modus „an“");
+    const nachTag = await gespeichert(r.raum);
+    expect(nachTag.stand).toBe(vorTag.stand);
+    expect(nachTag.bestand).toEqual(vorTag.bestand);
+    expect(nachTag.bestand.mandanten.find((x) => x.id === "m1").aufbewahrung.zuletztGeraeumt).toBe(gestern);
+    expect(nach2.stand).toBe(nach1.stand);
+    expect(nach2.bestand).toEqual(nach1.bestand);
   });
 
   it("veraltete oder fremde Bestätigung: 409, nichts gelöscht", async () => {
@@ -493,7 +515,7 @@ describe("4. Form, Vorschau, Idempotenz, Konflikte", () => {
     const c = await loeschlauf(r.token.LT, { vorschau: true });
     expect([401, 404]).toContain(c.status);
     expect((await gespeichert(r.raum)).stand).toBe(vorher.stand);
-  });
+  }, 30000);   // eigener Raum mit Sitzungen; ohne Aufruf-Option sonst nahe an der Vorgabe von 5 s (Delta-Review A4)
 
   it("zweite Linie: Betrieb nicht in der Sicht oder ohne Personenliste → fehlt (404 „Keine Daten.“)", async () => {
     const L = await import("../server/lib/loeschlauf.mjs");

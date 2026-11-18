@@ -849,7 +849,11 @@ Server; der Löschlauf-Knopf der Oberfläche bleibt beim Speichern (Umstellung m
   Kundenrolle (Altrolle, wird abgelöst) bleibt der unveränderte Weg über das Speichern. **Folgehinweis für 48.5:**
   Stellt die Oberfläche den Knopf auf diesen Weg um, verlieren Konten der Kundenrolle den Löschlauf-Knopf (gewollt).
 - **Ohne Wirkung kein Schreiben** (Review M1): Ändert die Kette am eigenen Betrieb nichts außer dem eigenen
-  Protokolleintrag, wird nichts geschrieben und nichts protokolliert (200, `ausgefuehrt: false`, `ohneWirkung: true`).
+  Protokolleintrag, wird nichts geschrieben und nichts ins Betriebsprotokoll eingetragen (200, `ausgefuehrt: false`,
+  `ohneWirkung: true`; im Serverprotokoll eine Zeile `ohne-wirkung`). `aufbewahrung.zuletztGeraeumt`, das `raeumen`
+  bei jedem Lauf auf heute setzt, zählt dabei nicht als Wirkung (Delta-Review A1) — sonst schriebe am Folgetag jeder
+  Lauf ohne Löschung wieder einen Eintrag. Eingefrorenes Ist jenseits der Frist entfernt nur der tägliche
+  Datenschutzlauf im Modus „an“; Vorgabe von `CENTRIC_DATENSCHUTZLAUF` ist „vorschau“, dann bleibt es liegen (A2).
   So bleibt das Betriebsprotokoll ehrlich, auch wenn die Vorschau nur noch eingefrorenes Ist jenseits der Frist
   zählt (siehe Befund 2). Die Vorschau zählt dieses Ist weiter mit — sonst wiche der Protokolltext vom heutigen Weg
   ab. Sicherungsschlüssel-Abgleich nur nach einer Ausführung (N1).
@@ -867,7 +871,7 @@ Server; der Löschlauf-Knopf der Oberfläche bleibt beim Speichern (Umstellung m
   2. Das eingefrorene Ist (`istEingefroren`) jenseits der Frist zählt die Vorschau als fällig, das Speichern löscht
      es aber nicht (Serverfeld). Nach einem Lauf bleibt die Vorschau deshalb „fällig“. Über den heutigen Weg schreibt
      jeder weitere Klick einen Protokolleintrag „… gelöscht“ ohne Löschung; der neue Weg schreibt dann nichts (siehe
-     „Ohne Wirkung“). Entfernen kann es nur der Datenschutzlauf.
+     „Ohne Wirkung“). Entfernen kann es nur der Datenschutzlauf im Modus „an“.
   3. Über den heutigen Weg darf die Kundenrolle keine Krank-Abwesenheiten ändern (RB-3); ihr Löschlauf scheitert dann
      mit 403. Den neuen Weg hat sie nicht.
 - **Prüfungen dazu:** dreimal dieselbe Bestätigung nach einem Lauf mit lohnexportiertem Monat jenseits der Frist →

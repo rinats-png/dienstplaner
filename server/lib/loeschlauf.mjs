@@ -88,7 +88,19 @@ export function loeschlaufFormFehler(r) {
  */
 export function ohneWirkung(vorher, nachher) {
   if (!vorher || !nachher) return false;
-  const ohne = (m) => { const rest = { ...m }; delete rest.protokoll; return rest; };
+  /* Ohne den eigenen Protokolleintrag und ohne `aufbewahrung.zuletztGeraeumt`: raeumen setzt das Datum bei jedem Lauf
+     auf heute — am nächsten Tag sähe ein Lauf ohne Löschung sonst „mit Wirkung" aus (Delta-Review #346, A1). Bei
+     ohneWirkung wird ohnehin nichts geschrieben, das Datum also auch nicht fortgeschrieben. */
+  const ohne = (m) => {
+    const rest = { ...m };
+    delete rest.protokoll;
+    if (rest.aufbewahrung && typeof rest.aufbewahrung === "object" && !Array.isArray(rest.aufbewahrung)) {
+      const a = { ...rest.aufbewahrung };
+      delete a.zuletztGeraeumt;
+      rest.aufbewahrung = a;
+    }
+    return rest;
+  };
   return stabil(ohne(vorher)) === stabil(ohne(nachher));
 }
 
