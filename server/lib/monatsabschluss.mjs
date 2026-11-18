@@ -68,6 +68,7 @@
    ========================================================================== */
 
 import { loeschStichtag } from "./stempelintegritaet.mjs";
+import { UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
 import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze, datevHinweise,
   ohneEintrittPrueffaelle, OHNE_EINTRITT_TEXT } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
@@ -121,16 +122,28 @@ const TAG = /^\d{4}-\d{2}-\d{2}$/;
 export const UNGUELTIGER_MONAT = "UNGUELTIGER_MONAT";
 
 /**
- * Eingangsprüfung des Monats der Abschlussaktionen: falsche Form wie bisher 422; ein Jahr außerhalb 2000–2999
- * (P2-12: dieselbe Grenze wie kalendertagEcht, sonst wirft die Zeitbasis beim Einfrieren) ebenfalls 422 mit Code.
+ * Eingangsprüfung des Monats der Abschlussaktionen: falsche Form (auch kein Text) wie bisher 422. Ein Jahr außerhalb
+ * 2000–2999 (P2-12: dieselbe Grenze wie kalendertagEcht, sonst wirft die Zeitbasis beim Einfrieren) ist 422 mit Code —
+ * für Aktionen, die etwas neu anlegen oder einfrieren (ohne `bestand`). Aktionen, die nur Bestehendes öffnen oder
+ * zurücknehmen, übergeben den Betrieb (`bestand`): Ein dort GESPEICHERTER Abschluss eines solchen Altmonats bleibt
+ * erreichbar (kein Sackgassen-Monat, der das Speichern dauerhaft sperrt); ohne gespeicherten Abschluss weiter 422.
+ * @param {unknown} monat @param {any} [bestand]
  * @returns {null | {status: number, grund: string, code?: string}}
  */
-function monatEingangFehler(monat) {
-  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
-  const j = Number(String(monat).slice(0, 4));
-  if (typeof monat !== "string" || j < 2000 || j > 2999)
-    return { status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: UNGUELTIGER_MONAT };
-  return null;
+function monatEingangFehler(monat, bestand = null) {
+  if (typeof monat !== "string" || !MONAT.test(monat)) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  const j = Number(monat.slice(0, 4));
+  if (j >= 2000 && j <= 2999) return null;
+  if (bestand && abschlussEintrag(bestand, monat)) return null;
+  return { status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: UNGUELTIGER_MONAT };
+}
+
+/** Ist das der Wurf der Zeitbasis für einen Kalendertag, den es nicht gibt (P2-12)? */
+const unechterTagWurf = (e) => e instanceof RangeError && e.message === UNGUELTIGER_KALENDERTAG;
+
+/** istAbweichungen (nur ein Hinweis) für einen gespeicherten Altmonat außerhalb 2000–2999: null statt Wurf. */
+function istAbweichungenHinweis(m, monat) {
+  try { return istAbweichungen(m, monat); } catch (e) { if (unechterTagWurf(e)) return null; throw e; }
 }
 export const ABSCHLUSS_FELD = "monatsabschluss";
 export const MONAT_ABGESCHLOSSEN = "MONAT_ABGESCHLOSSEN";
@@ -488,7 +501,7 @@ function ohneMonat(w, monat) {
  */
 export function wiederoeffnen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  { const mf = monatEingangFehler(monat); if (mf) return mf; }
+  { const mf = monatEingangFehler(monat, m); if (mf) return mf; }
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
   if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
     return { status: 422, grund: `Wiederöffnen braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };
@@ -507,7 +520,7 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
   /* istNeu: so viele Personentage rechnen nach dem Wiederöffnen anders als eingefroren
      (Plan, Dienstart oder Abwesenheit seit dem Abschluss geändert) — ohne Personen. */
   const ereignis = { id, art: "wiederoeffnung", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
-    abdruckGleich: abdruck === alt.abdruck, istNeu: istAbweichungen(m, monat) };
+    abdruckGleich: abdruck === alt.abdruck, istNeu: istAbweichungenHinweis(m, monat) };
   const { abdruck: _weg, stand: _stand, ...rest } = alt;
   void _weg; void _stand;
   /* Eine geschlossene, noch nicht exportierte Korrekturrevision (WP-16c) wird wieder offen — die Freigabe gilt nicht mehr. */
@@ -676,8 +689,18 @@ const differenzKurz = (zeilen) => ({ abdruck: datevZeilenAbdruck(zeilen), n: zei
  * @returns {{status: number, grund: string, code?: string} | {mandant: object, eintrag: object, ereignis: object}}
  */
 export function korrekturBeginnen(m, r, wer, jetzt, id) {
+  /* P2-12: Für einen gespeicherten Altmonat außerhalb 2000–2999 kann die Nachrechnung (Lohnzeilen-Vergleich) an der
+     Zeitbasis scheitern — dann fail-closed mit klarer Meldung (409), kein 500. Wiederöffnen/Verwerfen bleiben möglich. */
+  try { return korrekturBeginnenRechnen(m, r, wer, jetzt, id); } catch (e) {
+    if (!unechterTagWurf(e)) throw e;
+    const monat = r && r.monat;
+    return { status: 409, code: UNGUELTIGER_MONAT,
+      grund: `Der Monat ${monatText(monat)} liegt außerhalb der Jahre 2000 bis 2999 und lässt sich nicht nachrechnen. Eine Korrektur ist hier nicht automatisch möglich — bitte mit dem Betreiber klären.` };
+  }
+}
+function korrekturBeginnenRechnen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  { const mf = monatEingangFehler(monat); if (mf) return mf; }
+  { const mf = monatEingangFehler(monat, m); if (mf) return mf; }
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
   if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
     return { status: 422, grund: `Eine Korrektur braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };
@@ -721,7 +744,7 @@ export function korrekturBeginnen(m, r, wer, jetzt, id) {
     ...(ex.korrekturZu !== null ? { korrekturZu: ex.korrekturZu } : {}) };
   /* istNeu: so viele Personentage rechnen nach dem Verwerfen des Freeze anders (Plan, Vertrags-/Tarifparameter seit
      dem Abschluss geändert) — ohne Personen; die Differenz der Lohnzeilen zeigt es beim Abschluss. */
-  const istNeu = istAbweichungen(m, monat);
+  const istNeu = istAbweichungenHinweis(m, monat);
   const ereignis = { id, art: "korrektur-beginn", am: jetzt.toISOString(), wer: werForm(wer), grund, anlass, revision: revision + 1,
     vonRevision: revision, abdruck: alt.abdruck, istNeu };
   const { abdruck: _a, stand: _s, lohnexport: _l, ...rest } = alt;
@@ -885,7 +908,7 @@ export function korrekturAutorVermerken(altM, neuM, personId) {
  */
 export function korrekturVerwerfen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
-  { const mf = monatEingangFehler(monat); if (mf) return mf; }
+  { const mf = monatEingangFehler(monat, m); if (mf) return mf; }
   const grund = typeof (r && r.grund) === "string" ? r.grund.trim() : "";
   if (grund.length < WIEDEROEFFNEN_GRUND_MIN || grund.length > ABSCHLUSS_GRUND_MAX)
     return { status: 422, grund: `Das Verwerfen braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };

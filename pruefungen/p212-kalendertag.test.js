@@ -216,6 +216,26 @@ describe("kalendertagFehler: nur neue oder geänderte Einträge", () => {
     expect(fall((m) => { m.abwesenheiten.push({ ...m.abwesenheiten[0] }); })).toMatchObject({ code: UNGUELTIGER_KALENDERTAG });
     expect(fall((m) => { m.abwesenheiten.push({ ...m.abwesenheiten[0], personId: "p2" }); })).toMatchObject({ code: UNGUELTIGER_KALENDERTAG });
   });
+  it("Multimenge (Delta-Review A2): zwei gespeicherte gleiche Kennung (unecht + echt) → zwei unechte Kopien abgewiesen", () => {
+    const v = alt();
+    v.mandanten[0].abwesenheiten.push({ id: "a1", personId: "p1", art: "urlaub", von: "2026-03-05", bis: "2026-03-06" });
+    expect(kalendertagFehler(kopie(v), v)).toBeNull();
+    const b = kopie(v);
+    b.mandanten[0].abwesenheiten[2] = { ...b.mandanten[0].abwesenheiten[0] };                    // echt → Kopie des unechten
+    expect(kalendertagFehler(b, v)).toMatchObject({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].abwesenheiten[2].von" });
+    const c = kopie(v);
+    c.mandanten[0].abwesenheiten[2].von = "2026-02-30";                                         // bisher echt, jetzt unecht
+    expect(kalendertagFehler(c, v)).toMatchObject({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].abwesenheiten[2].von" });
+  });
+  it("Multimenge ohne Kennung: 1→1 und unverändert gehen, 1→3 abgewiesen", () => {
+    const ohne = alt().mandanten[0].abwesenheiten[1];
+    expect(ohne.id).toBeUndefined();
+    expect(kalendertagFehler(alt(), alt())).toBeNull();
+    const b = alt(); b.mandanten[0].abwesenheiten.push({ ...ohne }, { ...ohne });
+    expect(kalendertagFehler(b, alt())).toMatchObject({ code: UNGUELTIGER_KALENDERTAG, feld: "mandanten[0].abwesenheiten[2].von" });
+    const c = alt(); c.mandanten[0].abwesenheiten.push({ ...ohne });
+    expect(kalendertagFehler(c, alt())).toMatchObject({ code: UNGUELTIGER_KALENDERTAG });
+  });
   it("Abwesenheit: ein Altbestand mit doppelter Kennung bleibt unverändert speicherbar, eine dritte Kopie nicht", () => {
     const v = alt(); v.mandanten[0].abwesenheiten.push({ ...v.mandanten[0].abwesenheiten[0] });
     expect(kalendertagFehler(kopie(v), v)).toBeNull();
@@ -397,7 +417,7 @@ describe("Monatsabschluss: Jahr außerhalb 2000–2999", () => {
         expect(f(), `${name} ${monat}`).toEqual({ status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: MA.UNGUELTIGER_MONAT });
   });
   it("falsche Form wie bisher (ohne Code)", () => {
-    for (const monat of ["2026-13", "2026-1", "", undefined])
+    for (const monat of ["2026-13", "2026-1", "", undefined, ["2026-01"], 202601, ["1999-12"]])
       for (const [name, f] of aufrufe(monat)) expect(f(), `${name} ${monat}`).toEqual({ status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." });
   });
   it("2000-01 und 2999-12 sind gültig: kein Monatsfehler, kein Wurf (Abschluss mit geplantem Nachtdienst)", () => {
@@ -410,5 +430,43 @@ describe("Monatsabschluss: Jahr außerhalb 2000–2999", () => {
     const r = MA.abschliessen(betrieb(), { monat: "2000-01", bestaetigt: true }, wer, jetzt, "ma-1", "2026-03-10");
     expect("mandant" in r, JSON.stringify(r).slice(0, 300)).toBe(true);
     expect(r.mandant.istEingefroren["p1|2000-01-10"]).toBeTruthy();
+  });
+  /* Delta-Review A1-1: ein GESPEICHERTER Altmonat außerhalb der Grenze darf keine Sackgasse werden. */
+  const mitAbschluss = (eintrag) => ({ ...betrieb(), monatsabschluss: { "1999-12": eintrag } });
+  const zu = { abgeschlossen: true, am: "2000-01-05T08:00:00.000Z", wer: { personId: "l1", name: "L", rolle: "leitung" }, abdruck: "x".repeat(32), verlauf: [] };
+  it("gespeicherter Abschluss 1999-12: wiederoeffnen geht (ohne Wurf), abschliessen bleibt 422", () => {
+    const w = MA.wiederoeffnen(mitAbschluss(zu), { monat: "1999-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-2");
+    expect("mandant" in w, JSON.stringify(w).slice(0, 300)).toBe(true);
+    expect(w.eintrag.abgeschlossen).toBe(false);
+    expect(w.ereignis.istNeu).toBeNull();                       // Hinweis nicht rechenbar (Tage außerhalb der Zeitbasis)
+    expect(MA.monatAbgeschlossen(w.mandant, "1999-12")).toBe(false);
+    expect(MA.abschliessen(w.mandant, { monat: "1999-12", bestaetigt: true }, wer, jetzt, "ma-3", "2026-03-10"))
+      .toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
+    expect(MA.abschliessen(mitAbschluss(zu), { monat: "1999-12", bestaetigt: true }, wer, jetzt, "ma-3", "2026-03-10"))
+      .toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
+    expect(MA.lohnexportBestaetigen(mitAbschluss(zu), { monat: "1999-12" }, wer, jetzt, "ma-3")).toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
+  });
+  it("gespeicherte offene Korrektur 1999-12: korrekturVerwerfen geht, korrekturFreigeben bleibt 422", () => {
+    const offen = { ...zu, abgeschlossen: false, revision: 2, korrektur: { offen: true, id: "k1", am: "2000-02-01T08:00:00.000Z", wer: { personId: "l2" }, anlass: "nachtrag", vonRevision: 1, freigabe: null } };
+    const v = MA.korrekturVerwerfen(mitAbschluss(offen), { monat: "1999-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-4");
+    expect("mandant" in v, JSON.stringify(v).slice(0, 300)).toBe(true);
+    expect(v.eintrag.korrektur).toMatchObject({ offen: false, verworfen: true });
+    expect(MA.korrekturFreigeben(mitAbschluss(offen), { monat: "1999-12" }, wer, jetzt, "ma-4", "2026-03-10"))
+      .toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
+  });
+  it("gespeicherter exportierter Abschluss 1999-12: korrekturBeginnen antwortet (409), nie ein Wurf", () => {
+    const exp = { ...zu, lohnexport: { am: "2000-01-06T08:00:00.000Z", wer: { personId: "l1" } } };
+    const k = MA.korrekturBeginnen(mitAbschluss(exp), { monat: "1999-12", grund: "Prüfung des Monats", anlass: Object.keys(MA.KORREKTUR_ANLAESSE)[0] }, wer, jetzt, "ma-5");
+    expect(k.status, JSON.stringify(k).slice(0, 300)).toBe(409);
+    expect(MA.wiederoeffnen(mitAbschluss(exp), { monat: "1999-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-5"))
+      .toMatchObject({ status: 409, code: MA.KORREKTUR_ERFORDERLICH });
+  });
+  it("nicht gespeichert: 1999-12 bleibt in allen Aktionen 422", () => {
+    const fremd = mitAbschluss(zu);
+    for (const [name, f] of [
+      ["wiederoeffnen", () => MA.wiederoeffnen(fremd, { monat: "1998-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")],
+      ["korrekturVerwerfen", () => MA.korrekturVerwerfen(fremd, { monat: "1998-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")],
+      ["korrekturBeginnen", () => MA.korrekturBeginnen(fremd, { monat: "3000-01", grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")],
+    ]) expect(f(), name).toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
   });
 });
