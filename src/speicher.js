@@ -44,6 +44,8 @@ let teilRoh = null;
 let teilLaeuft = false;
 /** Nach der Sicherung als Datei bis zum Neuladen: nichts mehr senden (teilwegVerwerfen). */
 let neuLadenSperre = false;
+/** Review #348 H1: nach einem 409 des Voll-PUT (Sitzung mit Teilweg) kein Voll-PUT, bis neu gelesen ist. */
+let vollSperre = false;
 /** War der Teilweg in dieser Sitzung aktiv? Dann bietet das Konfliktfenster des Voll-PUT kein blindes Übernehmen an. */
 let teilGenutzt = false;
 /** Rückrufe des letzten Auftrags auf dem Teilweg (Senden nach einer Entscheidung im Konfliktfenster). */
@@ -292,6 +294,7 @@ export function teilwegUebernehmen(teilAntwort) {
   if (teilOffen()) return false;
   teil = null;
   teilRoh = teilAntwort && teilAntwort.teile ? teilAntwort : null;
+  vollSperre = false;   // frisch gelesener Stand: ETag und lokaler Stand gehören wieder zusammen
   return true;
 }
 
@@ -685,6 +688,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
          spätere Eingaben auf dem neuen Stand aufbauen; ein wartender älterer Auftrag ist darin enthalten. */
       uebernehmen: (b, e) => {
         letzterBestand = b;
+        vollSperre = false;   // ETag des frischen GET gehört jetzt zum lokalen Stand
         if (e !== undefined && e !== null) etag = e;
         if (offen) { offen = null; if (uhr) { clearTimeout(uhr); uhr = null; } }
         if (auftrag.onTeilLokal) { try { auftrag.onTeilLokal(b); } catch { /* Anzeige */ } }
@@ -701,7 +705,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
       if (auftrag.onGespeichert) { try { auftrag.onGespeichert(r.gesendet || auftrag.bestand); } catch { /* egal */ } }
       return { weiter: false, status: 200 };
     case "nichts":
-      if (r.grund === "neu-aufsetzen-beim-schliessen") { if (!offen) offen = auftrag; }
+      if (typeof r.grund === "string" && r.grund.endsWith("-beim-schliessen")) { if (!offen) offen = auftrag; }
       else gescheitert = null;
       return { weiter: false, status: null };
     case "konflikt": case "neuLaden": case "gesperrt":
@@ -779,6 +783,15 @@ async function schreibenAusfuehren(beimSchliessen) {
     const mit = mitEinmaligerAngabe(ohneServerFelder({ ...auftrag.bestand, session: null }), angabe);
     if (mit.verbraucht) { auftrag.ausnahme = angabe; angabenUnterwegs.add(angabe); }
     const hinaus = mit.bestand;
+    /* Review #348 H1/P4: Nach einem 409 des Voll-PUT in einer Sitzung mit Teilweg geht kein Voll-PUT mehr hinaus, bis neu
+       gelesen ist (frisches GET über den Teilweg oder Neuladen) — sonst überginge er die fremde Änderung ohne Abgleich.
+       Ohne Teilweg ist vollSperre nie gesetzt. */
+    if (vollSperre) {
+      gescheitert = { auftrag, lage: { art: "vollGesperrt", text: "Gleichzeitig bearbeitet — erst neu laden.", status: 409,
+        zeit: new Date().toISOString() } };
+      if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+      return;
+    }
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
     const ausnahmeAbgewiesen = (text) => {
       if (einmalig === auftrag.ausnahme) einmalig = null;
@@ -796,7 +809,8 @@ async function schreibenAusfuehren(beimSchliessen) {
       /* WP-22: kein Konflikt mit einem fremden Stand, sondern warnende
          Befunde, die der Server bestätigt haben will. Der Auftrag bleibt
          liegen; die Anwendung fragt nach und speichert mit Bestätigung neu. */
-      if (daten.etag) etag = daten.etag;
+      /* Review #348 H1: In einer Sitzung mit Teilweg wird kein ETag aus einer Absage übernommen. */
+      if (daten.etag && !teilGenutzt) etag = daten.etag;
       gescheitert = { auftrag, lage: { art: "bestaetigung", text: String(daten.fehler || "Bestätigung nötig."), status,
         zeit: new Date().toISOString() } };
       if (auftrag.onFachbefunde) auftrag.onFachbefunde(daten);
@@ -814,7 +828,10 @@ async function schreibenAusfuehren(beimSchliessen) {
       throw f;
     }
     if (status === 409) {
-      etag = daten.etag;
+      /* Review #348 H1/P4: Mit Teilweg in der Sitzung bleibt der ETag der eigene; weitere Voll-PUTs sind gesperrt, bis
+         neu gelesen ist (die Wahl im Konfliktfenster ist nur „Neu laden“ bzw. Datei sichern). Ohne Teilweg wie bisher. */
+      if (teilGenutzt) vollSperre = true;
+      else etag = daten.etag;
       /* Wurde dieselbe Angabe inzwischen angenommen, ist der 409 ein gewöhnlicher Konflikt (kein Alarm). */
       if (auftrag.ausnahme && angenommeneAngaben.has(auftrag.ausnahme)) auftrag.ausnahme = null;
       if (auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.text || daten?.fehler || "Der Bestand hat sich geändert.")); return; }

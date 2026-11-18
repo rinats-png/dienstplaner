@@ -1026,8 +1026,8 @@ keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Ä
   `frageText` mit `bezeichne`), „Fremdes übernehmen" / „Meins setzen" mit dem jeweiligen Wert, Pfeiltasten wählen,
   „Entscheidungen speichern" erst, wenn alles entschieden ist; danach sendet `speicher.js` den Rest selbst. Kein
   „alles übernehmen", keine verschachtelten Bedienelemente. „Später entscheiden"/Escape schließt; eine Leiste bleibt,
-  gespeichert wird bis dahin nichts. „Neu laden" (Epoche anders): Liste des Ausstehenden, „Nur als Datei sichern" bzw.
-  „Sichern und neu laden" (JSON mit Delta, offenen Fragen und eigenem Betrieb, ohne Sitzung, ohne Netz; danach sendet
+  gespeichert wird bis dahin nichts. „Neu laden" (Epoche anders): Liste des Ausstehenden, „Als Datei sichern", danach
+  „Jetzt neu laden" (JSON mit Delta, offenen Fragen und eigenem Betrieb, ohne Sitzung, ohne Netz; danach sendet
   die Oberfläche bis zum Neuladen nichts mehr). Das bisherige Konfliktfenster (Rückfall auf den Voll-PUT) zeigt das
   blinde „Meinen Stand übernehmen" nicht, sobald der Teilweg in der Sitzung aktiv war (Entscheidung 6.4).
 - **Urlaubshinweis beim Öffnen** (WP-48-GB): Besteht ein Teil-Konflikt nur aus diesem automatischen Lauf und hat die
@@ -1057,6 +1057,26 @@ keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Ä
   Fähigkeit kommt per Route nur in der Seite, kein Teil-POST erreicht den Server). axe nur auf dem Fenster, gleiches Gate,
   `e2e/axe-ausnahmen.json` unverändert; Radiogruppe mit Namen, Tastatur, kein Übernehmen-Knopf, kein Voll-PUT, Download
   ohne Netz. Lokal nicht gelaufen (`@playwright/test` ist hier nicht installiert); Beleg aus dem CI-Job `browser-abnahme`.
+
+**Review #348 (MERGE-MIT-AUFLAGEN), eingearbeitet:**
+- **H1** Rückfall auf den Voll-PUT nach eigener Teilspeicherung: Eine Teil-Antwort 200 ändert den ETag nicht; ein späterer
+  Voll-PUT stieß deshalb mit den eigenen Teilspeicherungen zusammen (409 ohne Fremdbeteiligung), und das 409 übernahm
+  den ETag — nach „Später entscheiden“ ging der nächste Voll-PUT ohne Abgleich über eine fremde Änderung (P4). Jetzt:
+  (a) vor **jedem** Rückfall (Feld ohne Version, gelöschtes Kernfeld, zu groß, 413, Ausnahmeweg Art. 16/17) frisches GET
+  und `vollVorbereiten` (`teilweg-steuerung.js`): je Zelle/Feld nur ich geändert → meins, nur andere → frisch, beide
+  verschieden → Frage (kein Senden bis zur Entscheidung); Nur-Server-Felder aus der frischen Sicht; der Voll-PUT trägt
+  den ETag des frischen GET. (b) In einer Sitzung mit Teilweg übernimmt `speicher.js` aus einem 409 (auch
+  Fachbefunde) keinen ETag mehr und sperrt weitere Voll-PUTs (Lage `vollGesperrt`: Datei sichern, neu laden), bis
+  wieder frisch gelesen ist; App.jsx übernimmt dann auch keinen Bestand aus dem 409 (`automatikKonfliktLoesen`).
+  Prüfungen P1, P3, P4, P4b, Ausnahmeweg über den echten Handler; Handmutanten „ETag aus 409 übernehmen“ (P4b rot)
+  und „Rückfall ohne Vorbereiten“ (6 Fälle rot); Modellprüfung mit Voll-PUT-Rückfall, Fremdschreiber zwischen GET
+  und PUT und Eingaben bei offener Frage, Mutante „Rückfall voll ohne Neuaufsetzen“ wird gefunden.
+- **M1** „Neu laden“ in zwei Schritten: „Als Datei sichern“, danach erst „Jetzt neu laden“ (kein automatisches
+  Neuladen; bis zum Klick fragt `beforeunload` weiter nach).
+- Fokus zurück zum Auslöser beim Schließen, Fokusfalle im Fenster (das bisherige Konfliktfenster hat keine);
+  Browserprüfung zusätzlich bei 320 px (einmal je Lauf im Projekt 360x740). `teilLokalUebernehmen` nimmt die Sitzung aus
+  dem aktuellen Stand. Kommentar zur Sitzungskennung präzisiert — sie geht **nicht** im Rumpf an den Server
+  (`rumpfBauen` setzt sie nicht ein; Prüfung A1 sichert das), der Server bildet seine Kennung selbst.
 
 **Restgrenzen:** Nach einem gelungenen Rückfall auf den Voll-PUT bleibt die Sitzung beim Voll-PUT (ohne blindes
 Übernehmen), bis wieder ein gelesener Stand übernommen wird. Ein Demozugang oder die Kundenrolle bekommt den Teilweg erst

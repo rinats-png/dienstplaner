@@ -100,9 +100,17 @@ test.describe("WP-48.5 Konfliktfenster der Teilspeicherung", () => {
     await expect(neu.getByRole("list", { name: "Noch nicht gespeichert" })).toBeVisible();
     await axeFenster(page, testInfo, "teilkonflikt-neuladen-planer");
     const zahl = posts.length;
-    const [datei] = await Promise.all([page.waitForEvent("download"), neu.getByRole("button", { name: "Nur als Datei sichern" }).click()]);
+    const [datei] = await Promise.all([page.waitForEvent("download"), neu.getByRole("button", { name: "Als Datei sichern" }).click()]);
     expect(datei.suggestedFilename()).toMatch(/^centric-ausstehend-.*\.json$/);
     expect(posts.length).toBe(zahl);   // die Sicherung braucht kein Netz
+    /* Neu laden erst als eigener Schritt nach der Sicherung (Review #348 M1) — hier nicht ausgelöst. */
+    await expect(neu.getByRole("button", { name: "Jetzt neu laden" })).toBeVisible();
+    /* Schmalste Breite (320 px) einmal je Lauf, ohne weitere Anmeldung: dasselbe Fenster, dasselbe Gate. */
+    if (testInfo.project.name === "360x740") {
+      await page.setViewportSize({ width: 320, height: 640 });
+      await expect(neu).toBeVisible();
+      await axeFenster(page, testInfo, "teilkonflikt-neuladen-planer-320");
+    }
     expect(puts, "kein Voll-PUT auf dem Teilweg").toBe(0);
   });
 });

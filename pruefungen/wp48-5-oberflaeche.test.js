@@ -109,7 +109,7 @@ describe("A1 Ablauf: Senden, Rückfall, Sperren", () => {
     const z = { ...start(), unklar: ["z:abweichungen:a1|2026-08-14"] };
     const srv2 = attrappe();
     const r = await lauf(z, mitSitzung(betrieb()), srv2, { vollGewuenscht: true });
-    expect(srv2.log.gets).toBe(1);
+    expect(srv2.log.gets).toBe(2);   // neu aufsetzen, dann vor dem Voll-PUT noch einmal frisch (Review #348 H1)
     expect(r.teil.unklar).toEqual([]);
   });
   it("offene Frage: nichts senden — auch nicht beim Schließen (B1)", async () => {
@@ -468,7 +468,9 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", () => {
     o.db = { ...o.db, mandanten: [{ ...m, notizen: [] }] };
     aufrufe.length = 0;
     await speichern(o);
-    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["PUT /api/bestand"]);
+    /* Erst frisch lesen, dann der Voll-PUT mit dessen ETag (Review #348 H1). */
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(Number(aufrufe[1].rumpf.etag)).toBe((await B.bestandLesenStreng(laden(), raum)).stand - 1);
     expect(o.fehler).toEqual([]);
     expect(o.SP.teilwegGenutzt()).toBe(true);
     expect(o.SP.teilwegAktiv()).toBe(false);   // Basis veraltet: Rest der Sitzung Voll-PUT
@@ -477,6 +479,109 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", () => {
     await speichern(o);
     expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["PUT /api/bestand"]);
     expect((await gespeichertM(raum)).abweichungen[`a1|${tag(20)}`]).toBe("N");
+  });
+
+  /* ---------------- Review #348 H1: Rückfall auf den Voll-PUT nach eigener Teilspeicherung ---------------- */
+  const notizen = (o, n) => { const m = o.db.mandanten[0]; o.db = { ...o.db, mandanten: [{ ...m, notizen: n }] }; };
+  const Z = (p, n) => `${p}|${tag(n)}`;
+
+  it("P1: Zelle per Teilweg, dann Feld ohne Version + Zelle im selben Monat → Voll-PUT ohne 409 (keine Fremdbeteiligung)", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    setze(o, Z("a1", 20), "N");
+    await speichern(o);
+    expect(aufrufe.at(-1).url).toBe("/api/bestand/teile");
+    notizen(o, []); setze(o, Z("a1", 23), "N");
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(o.konflikt).toEqual([]);
+    expect(o.fehler).toEqual([]);
+    const g = await gespeichertM(raum);
+    expect([g.abweichungen[Z("a1", 20)], g.abweichungen[Z("a1", 23)], g.notizen]).toEqual(["N", "N", []]);
+  });
+
+  it("P3: Kernfeld per Teilweg (Wünsche), dann Feld ohne Version → Voll-PUT ohne 409", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    o.db = { ...o.db, mandanten: [{ ...o.db.mandanten[0], wuensche: [{ id: "w1", personId: "m0", datum: tag(25), art: "frei" }] }] };
+    await speichern(o);
+    expect(aufrufe.at(-1).url).toBe("/api/bestand/teile");
+    notizen(o, []);
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(o.konflikt).toEqual([]);
+    expect(o.fehler).toEqual([]);
+    expect((await gespeichertM(raum)).wuensche.map((w) => w.id)).toEqual(["w1"]);
+  });
+
+  it("P4: fremde Änderung zwischen eigener Teilspeicherung und Rückfall bleibt erhalten; Streit wird zur Frage, nicht zum 409", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT", "PL"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const pl = await oberflaeche(token.PL, "p1");
+    setze(o, Z("a1", 20), "N"); await speichern(o);
+    setze(pl, Z("s1", 20), "-"); setze(pl, Z("a1", 26), "-"); await speichern(pl);
+    expect(pl.fehler).toEqual([]);
+    /* O: Feld ohne Version, eigene Zelle im selben Monat und dieselbe Zelle wie PL (anderer Wert). */
+    notizen(o, []); setze(o, Z("a1", 23), "N"); setze(o, Z("a1", 26), "N");
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => x.methode)).toEqual(["GET"]);   // kein Voll-PUT vor der Entscheidung
+    expect(o.konflikt).toEqual([]);
+    const z = o.SP.teilwegLage();
+    expect(z.konflikte.map((f) => [f.k, f.meins, f.fremd])).toEqual([[Z("a1", 26), "N", "-"]]);
+    o.db = o.SP.teilEntscheidungAnwenden({ [z.konflikte[0].id]: "fremd" });
+    await fertig(o.SP);
+    expect(o.konflikt).toEqual([]);
+    expect(o.fehler).toEqual([]);
+    const g = await gespeichertM(raum);
+    expect(g.abweichungen[Z("s1", 20)]).toBe("-");   // fremde Änderung erhalten
+    expect(g.abweichungen[Z("a1", 26)]).toBe("-");   // „fremd“ gewählt
+    expect([g.abweichungen[Z("a1", 20)], g.abweichungen[Z("a1", 23)], g.notizen]).toEqual(["N", "N", []]);
+  });
+
+  it("P4b: 409 des Voll-PUT (echte Fremdänderung, Teilweg schon aus) übernimmt keinen ETag; „Später“ + Eingabe überschreibt nichts", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT", "PL"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const pl = await oberflaeche(token.PL, "p1");
+    notizen(o, []); await speichern(o);                  // Rückfall gelungen → Rest der Sitzung Voll-PUT
+    expect(o.SP.teilwegAktiv()).toBe(false);
+    setze(pl, Z("s1", 20), "-"); await speichern(pl);    // fremd, selber Monat
+    setze(o, Z("a1", 20), "N"); await speichern(o);
+    expect(o.konflikt).toHaveLength(1);                   // echte Fremdänderung im selben Monat
+    /* „Später entscheiden“, dann noch eine Eingabe im selben Monat. */
+    setze(o, Z("a1", 23), "N");
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.filter((x) => x.methode === "PUT")).toEqual([]);
+    expect(o.fehler.at(-1).art).toBe("vollGesperrt");
+    expect((await gespeichertM(raum)).abweichungen[Z("s1", 20)]).toBe("-");   // nicht still auf „F“ zurückgesetzt
+  });
+
+  it("Ausnahmeweg (Art. 16/17) nach Teilspeicherung: erst frisch lesen, Voll-PUT ohne 409", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    setze(o, Z("a1", 20), "N"); await speichern(o);
+    /* Angabe, die diesen Stand nicht betrifft (erkennt → false): der Auftrag verlangt trotzdem den Voll-PUT. */
+    o.SP.ausnahmeMitschicken("m1", { art: "pruefung" }, () => false);
+    setze(o, Z("a1", 23), "N");
+    aufrufe.length = 0;
+    await speichern(o);
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand", "PUT /api/bestand"]);
+    expect(o.konflikt).toEqual([]);
+    expect(o.fehler).toEqual([]);
+    expect((await gespeichertM(raum)).abweichungen[Z("a1", 23)]).toBe("N");
   });
 
   it("keepalive beim Schließen: bei offener Frage geht nichts hinaus (B1)", async () => {

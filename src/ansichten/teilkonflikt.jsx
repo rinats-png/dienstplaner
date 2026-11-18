@@ -57,9 +57,11 @@ const RAHMEN = { position: "fixed", inset: 0, background: "var(--c-ueberlagerung
 
 /**
  * @param {{ zustand: any, m: any, onEntscheiden: (wahl: Record<string, "fremd"|"meins">) => void,
- *   onSpaeter: () => void, onSichern: () => void, onSichernUndNeuLaden: () => void }} p
+ *   onSpaeter: () => void, onSichern: () => boolean, onNeuLaden: () => void }} p
+ *   „Neu laden" in zwei Schritten (Review #348 M1): erst die Datei sichern, dann ausdrücklich neu laden — ein Download,
+ *   den der Browser blockiert, darf nicht zum Neuladen ohne Datei führen.
  */
-export function Teilkonfliktfenster({ zustand, m, onEntscheiden, onSpaeter, onSichern, onSichernUndNeuLaden }) {
+export function Teilkonfliktfenster({ zustand, m, onEntscheiden, onSpaeter, onSichern, onNeuLaden }) {
   const rahmen = useRef(null);
   const [wahl, setWahl] = useState({});
   const neuLaden = !!zustand && zustand.phase === "neuLaden";
@@ -69,7 +71,24 @@ export function Teilkonfliktfenster({ zustand, m, onEntscheiden, onSpaeter, onSi
     return () => window.removeEventListener("keydown", f);
   }, [onSpaeter]);
   /* Fokus nur beim Öffnen ins Fenster — ein Neuzeichnen der Anwendung darf ihn nicht aus der Radiogruppe nehmen. */
-  useEffect(() => { if (rahmen.current) rahmen.current.focus(); }, []);
+  const [gesichert, setGesichert] = useState(false);
+  useEffect(() => {
+    /* Fokus beim Öffnen ins Fenster, beim Schließen zurück zum Auslöser (wenn es ihn noch gibt). */
+    const vorher = typeof document !== "undefined" ? document.activeElement : null;
+    if (rahmen.current) rahmen.current.focus();
+    return () => { if (vorher && vorher.isConnected && typeof vorher.focus === "function") vorher.focus(); };
+  }, []);
+  /* Fokusfalle (aria-modal): Tab bleibt im Fenster. */
+  const falle = (e) => {
+    if (e.key !== "Tab" || !rahmen.current) return;
+    const z = [...rahmen.current.querySelectorAll("button:not([disabled]), input:not([disabled]), [href]")];
+    if (!z.length) return;
+    const erst = z[0], letzt = z[z.length - 1], akt = document.activeElement;
+    /* Radios einer Gruppe sind ein Tabstopp. */
+    const gleich = (a, b) => a === b || (!!a && !!b && a.type === "radio" && b.type === "radio" && a.name === b.name);
+    if (e.shiftKey && (gleich(akt, erst) || akt === rahmen.current)) { e.preventDefault(); letzt.focus(); }
+    else if (!e.shiftKey && gleich(akt, letzt)) { e.preventDefault(); erst.focus(); }
+  };
   if (!zustand) return null;
   const fragen = zustand.konflikte || [];
   const offen = fragen.filter((f) => wahl[f.id] !== "fremd" && wahl[f.id] !== "meins").length;
@@ -77,7 +96,7 @@ export function Teilkonfliktfenster({ zustand, m, onEntscheiden, onSpaeter, onSi
   if (neuLaden) {
     const liste = ausstehendListe(zustand, m);
     return (
-      <div role="dialog" aria-modal="true" aria-labelledby="teilkonflikt-titel" style={RAHMEN}>
+      <div role="dialog" aria-modal="true" aria-labelledby="teilkonflikt-titel" style={RAHMEN} onKeyDown={falle}>
         <div ref={rahmen} tabIndex={-1} className="blatt" style={{ maxWidth: 600, maxHeight: "90vh", overflowY: "auto", padding: 28, outline: "none" }}>
           <h2 id="teilkonflikt-titel" style={{ fontSize: 18, fontWeight: 650, margin: "0 0 10px" }}>
             Der gespeicherte Stand wurde neu aufgesetzt</h2>
@@ -90,15 +109,17 @@ export function Teilkonfliktfenster({ zustand, m, onEntscheiden, onSpaeter, onSi
               {liste.map((z, i) => <li key={i}>{z}</li>)}
             </ul>)}
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <Btn onClick={onSichern}>Nur als Datei sichern</Btn>
-            <Btn kind="primary" onClick={onSichernUndNeuLaden}>Sichern und neu laden</Btn>
+            <Btn kind={gesichert ? "plain" : "primary"} onClick={() => { if (onSichern()) setGesichert(true); }}>Als Datei sichern</Btn>
+            {gesichert && <Btn kind="primary" onClick={onNeuLaden}>Jetzt neu laden</Btn>}
           </div>
+          {gesichert && <p role="status" style={{ fontSize: 12.5, color: C.dim, margin: "12px 0 0" }}>
+            Prüfe, ob die Datei angekommen ist (Downloads). Erst dann neu laden — ungespeicherte Änderungen gehen dabei verloren.</p>}
         </div>
       </div>);
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="teilkonflikt-titel" aria-describedby="teilkonflikt-text" style={RAHMEN}>
+    <div role="dialog" aria-modal="true" aria-labelledby="teilkonflikt-titel" aria-describedby="teilkonflikt-text" style={RAHMEN} onKeyDown={falle}>
       <div ref={rahmen} tabIndex={-1} className="blatt" style={{ maxWidth: 620, maxHeight: "90vh", overflowY: "auto", padding: 28, outline: "none" }}>
         <h2 id="teilkonflikt-titel" style={{ fontSize: 18, fontWeight: 650, margin: "0 0 10px" }}>
           {fragen.length === 1 ? "Eine Angabe wurde gleichzeitig geändert" : `${fragen.length} Angaben wurden gleichzeitig geändert`}</h2>
