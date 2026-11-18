@@ -53,3 +53,80 @@ bisherigen Läufe. Die Auswertung wird nachgetragen, sobald E-20 Rohdaten liefer
   Ansehens veränderte Ablage als Befund („verändert“), statt sie still durchzulassen. Test vorher rot.
 - Gezielt: `wp28b-sicherung-enoent` (4), `sicherung-ablage` (14), `sicherungen` (33), `ablage-pruefen` (8),
   `ablage-pruefen-matrix` (140), `-matrix2` (54), `-rueckweg` (23 + 1 übersprungen).
+
+## WP-28b/3 (2026-11-18): Befund 6 unter Last nachgeprüft, Klammer des Schreib-Halts abgesichert
+
+Branch `fix/wp28b-sicherung-unter-last`, Basis `integration/release-v4` (`dfcd8309`). Nur Wegwerf-Daten in
+Temp-Verzeichnissen; nichts gegen Produktion, VPS oder Staging; `lasttest.yml`/E-20 nicht angefasst.
+
+### Ursache (Befund 6) und Stand auf der Basis
+
+- **ENOENT-Abbruch:** auf der Basis nicht mehr vorhanden. Alle Stellen, an denen eine Datei zwischen Auflisten und
+  Lesen verschwinden kann (Store-`readdir`, `stat`, `readFile` beim Kopieren, auch im gehaltenen Durchgang), melden
+  „verändert“ und laufen in die begrenzte Wiederholung (Runden × Versuche), danach Code 3 ohne Sicherung
+  (PR #100, WP-28b/2). Die „Dauerlast“-Lücke aus der Notiz (17/s: 1 von 14) gilt für den Weg **ohne** Schreib-Halt;
+  mit Halt (WP-28c, PR #110) gelingt die Sicherung unter Dauerlast (`docs/acc45/wp28c-nachweis.md`: 1000/1000 bei
+  105 Schreibvorgängen/s, 0 Schnitte in Transaktionen). `deploy/sicherung/sicherung-ausser-haus.sh` und S5 nutzen den
+  Halt.
+- **Windows, `sicherung-ablage` „Quelle, die sich beim Sichern ändert“ (60 s, ENOTEMPTY):** andere Ursache, reiner
+  Windows-Testartefakt. Nachgemessen mit dem Testaufbau (300 Schlüssel, Schreiber ohne Pause): eine Runde dauert unter
+  Windows ~9 s (jede Kopie mit `fsync`, der Schreiber ersetzt in jeder Runde fast alle Dateien), zwei Versuche × zwölf
+  Runden also mehrere Minuten — das Werkzeug arbeitet korrekt (nur Nachkopier-Meldungen, kein ENOENT, kein anderer
+  Fehler) und endet mit Code 3. Das 60-s-Limit läuft vorher ab; danach räumt `afterAll` das Wegwerfverzeichnis weg,
+  während Sicherung und Schreiber noch schreiben: daher `ENOTEMPTY` beim `rmdir`. Unter Linux (CI) bleibt die Runde
+  im Millisekundenbereich. Folgefehler derselben Ursache: Die weiterlaufende Sicherung bremst den nächsten Test
+  derselben Datei („erkennt jede Art von Schaden“, ebenfalls 60 s) aus. Nicht geändert (keine Testabschwächung).
+- **Windows, `wp28b-sicherung-last` „echte parallele Schreiber“:** rot durch `EPERM` beim `rename` des **Test-Schreibers**
+  (er hat keine Wiederholung wie `ablage.mjs` `umbenennen`), während die Sicherung die Zieldatei liest — kein Fehler
+  der Sicherung. Gemessen: Leser (`stat`/`readFile`) gegen laufendes Ersetzen unter Windows 11, 2400 Lesevorgänge,
+  0 Fehler beim Leser, 42 × `EPERM` beim Schreiber. Der in WP-28b/2 offene Punkt B8 (EPERM/EBUSY beim **Lesen**)
+  war damit nicht reproduzierbar und bleibt dokumentiertes Restrisiko (roh, Rückgabe 1 — fail-closed, keine Sicherung).
+
+### Neu: `pruefungen/wp28b-sicherung-klammer.test.js` (in `pruefung:schreibhalt`)
+
+Deterministische Haken an `readFile`, Halte-Kanal als Ersatz; bei jeder Freigabe wird der Stand der Quelle
+festgehalten (Ende der Klammer). Jede erfolgreiche Sicherung muss genau diesen Stand enthalten (Byte-Vergleich,
+Manifest-Zahl, `pruefen`), und eine Wiederherstellung muss ihn exakt ergeben.
+
+| Test | Störung im gehaltenen Durchgang | Erwartung |
+|---|---|---|
+| ENOENT beim Lesen | Datei steht in der Liste, ist beim Lesen weg | Durchgang zählt nicht, zweiter Halt gilt, Sicherung = Klammer |
+| Nach dem Lesen neu geschrieben | Schreiber ohne Halt ersetzt die Datei nach dem Lesen | keine veraltete Kopie, Sicherung = Klammer |
+| Endgültig gelöscht | Datei verschwindet im Halt | Sicherung ohne die Datei, Wiederherstellung = Klammer |
+| Dauerstörung | jeder Halt gestört | genau versuche × runden Halte, Code 3, klare Meldung, Ziel leer |
+
+Mutationen (lokal, Windows):
+
+| Mutation in `werkzeug/ablage-sicherung.mjs` | bisherige Prüfungen (`wp28b-*`, `schreibhalt`, `schreibhalt-last`) | mit dem neuen Test |
+|---|---|---|
+| Gegenprobe unter Halt entfernt (`ok = !u`) | **grün (Lücke)** | rot |
+| Halt-Bestätigung ignoriert | rot (`schreibhalt-last`) | – (dort schon abgedeckt) |
+| ENOENT beim Kopieren roh geworfen | rot | rot (3 Tests) |
+| Wiederholung entfernt (ein Versuch) | rot | rot (Dauerstörung) |
+| Gegenprobe ohne Halt entfernt | rot (9 Tests) | – |
+| ENOENT bei `stat` geschluckt ohne „verändert“ | rot | – |
+
+Gleichwertige Mutanten (keine Lücke, deshalb ohne eigenen Test): ENOENT beim Kopieren bzw. beim Store-`readdir`
+**schlucken** ohne Unruhe-Meldung. Die fehlende Kopie fällt in der anschließenden Gegenprobe auf (Menge der Kopien ≠
+Liste) oder die Datei ist wirklich weg — dann ist die Sicherung ohne sie der richtige Stand. Die Gegenprobe ist die
+eigentliche Sicherung gegen einen halben Stand; ihr Entfernen ist in beiden Wegen (mit und ohne Halt) jetzt rot.
+
+### Lokaler Lauf (Windows 11, `--maxWorkers=1`)
+
+Grün: `wp28b-sicherung-klammer` (4), `wp28b-sicherung-enoent` (4), `schreibhalt` (15 + 1 übersprungen), `doku`,
+`rb2-krankmeldung`, `endgeraete-speicher`, `verdrahtung-pruefen`, `ci-abdeckung`, `tsc`, `eslint`.
+Unter Windows rot, Ursache Laufzeit bzw. Test-Schreiber (Werkzeug und Halt byte-gleich zur Basis, also Basisverhalten):
+`wp28b-sicherung-last` „echte parallele Schreiber“ (EPERM des Test-Schreibers), `sicherung-ablage` (zwei Tests, 60 s),
+`schreibhalt-last` „10 Sicherungen“ (180 s), `schreibhalt-messung` „30 Sicherungen“ (240 s) und `ablage` (3, Rechte/EPERM,
+schon in `docs/acc45/wp28c-nachweis.md` §3 als Windows-Befund geführt). Grün außerdem: `sicherungen` (33),
+`ablage-pruefen` (8), `ablage-pruefen-matrix` (140), `-matrix2` (54), `-rueckweg` (23 + 1 übersprungen),
+`wp39-app-aufbau` (4), `prozess-wachen` (15), `verdrahtung` (8), `be1-konto-widerrufbuch` (11),
+`be3-widerrufbuch-sicherung` (24). Maßgeblich ist die
+Linux-CI.
+
+### Bewusst nicht geändert
+
+- Keine Änderung am Werkzeug, am Schreib-Halt (Frist, Verhalten unter Last) oder an `deploy/`: Die Behebung war
+  bereits integriert; die Lücke lag in der Prüfung.
+- Offen bleiben: Nachlauf S2/S5 (E-20, Handstart des Betreibers) und der Nachweis der Ende-zu-Ende-Prüfung mit
+  Docker/restic in der CI; B8 (Windows-Lesefehler) als Restrisiko.
