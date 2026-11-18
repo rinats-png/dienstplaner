@@ -7,6 +7,16 @@
    Korrekturpfads ...", "WP-I24 Teil 1: ..."), setzt das Werkzeug das Paket
    NICHT auf INTEGRATED, sondern vermerkt den PR und hält es auf IN_PROGRESS (Art TEILWEISE). Der Koordinator prüft den Rest.
 
+   Teil-PRs und vorhandener Beleg (Art TEILWEISE): Hat die Stufe "integriert" bereits einen nicht leeren Beleg, der NICHT
+   der Standardtext dieses Werkzeugs ist (z. B. ein Detailbeleg bei WP-48 mit Wert false), bleiben Wert und Beleg erhalten;
+   der PR wird nur angehängt ("(+ PR #N)", idempotent, Wortgrenze: #30 ist nicht #301). Nur ohne Beleg oder mit dem
+   Standardtext wird der Standardtext gesetzt; weitere PRs werden dort in die Liste aufgenommen ("Teilumfang in PR #341,
+   #342 integriert; ..."), nie überschrieben. In der Notiz steht je Paket höchstens EIN Satz "Stand (automatisch): Teilumfang
+   nach #341, #342, #346, ..."; weitere PRs werden in diesen Satz eingefasst (idempotent, keine Dubletten).
+
+   Externe Betreiberpakete (Feld strang = "extern", z. B. E-9): Ein PR setzt sie nie auf INTEGRATED. Das Werkzeug hängt
+   den PR nur an die Liste "pr" an (Art PR_ERGAENZT_EXTERN), ohne Statuswechsel, Stufen- oder Notizänderung.
+
    Aufruf:  node werkzeug/ssot-nach-integration.mjs <PR-Nummer> [--schreibe] [--datei F]
      Ohne --schreibe: nur Plan (Dry-Run, Standard).
      --schreibe: schreibt docs/acc45/work-packages.json, erzeugt die
@@ -64,6 +74,22 @@ export function istDeklariertTeilweise(p) {
   return p?.stufen?.integriert?.wert === "teilweise";
 }
 
+/** Standardtext der Stufe "integriert" bei Teil-PRs; die PR-Liste wird bei weiteren PRs erweitert. */
+const STD_ANFANG = "Teilumfang in PR ";
+const STD_ENDE = " integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist.";
+const stdBeleg = (prs) => `${STD_ANFANG}${prs.join(", ")}${STD_ENDE}`;
+function stdPrs(beleg) {
+  const t = String(beleg || "").trim();
+  if (!t.startsWith(STD_ANFANG) || !t.endsWith(STD_ENDE)) return null;
+  return t.slice(STD_ANFANG.length, t.length - STD_ENDE.length).split(", ").filter(Boolean);
+}
+const NOTIZ_TEIL = /\s*Stand \(automatisch\): Teilumfang nach ([^;]*?), Status [A-Z_]+; Rest offen \(Titel nennt nur einen Teil\)\./g;
+
+/** Externe Betreiberpakete werden in der SSOT über strang = "extern" geführt (alle E-<n>); nie automatisch INTEGRATED. */
+export function istExternBetreiber(p) {
+  return p?.strang === "extern";
+}
+
 export function plan(ssot, pr) {
   const treffer = paketeFuerPr(ssot.pakete.map((p) => p.id), pr);
   const teil = istTeilPr(pr.title);
@@ -71,7 +97,9 @@ export function plan(ssot, pr) {
   for (const id of treffer) {
     const p = ssot.pakete.find((x) => x.id === id);
     const pnr = `#${pr.number}`;
-    if (ERLEDIGT.includes(p.status)) {
+    if (istExternBetreiber(p)) {
+      if (!(p.pr || []).includes(pnr)) aenderungen.push({ id, art: "PR_ERGAENZT_EXTERN", pr: pnr });
+    } else if (ERLEDIGT.includes(p.status)) {
       if (!(p.pr || []).includes(pnr)) aenderungen.push({ id, art: "PR_ERGAENZT", pr: pnr });
     } else if (teil || istDeklariertTeilweise(p)) {
       aenderungen.push({ id, art: "TEILWEISE", von: p.status, pr: pnr });
@@ -88,6 +116,7 @@ export function anwenden(ssot, aenderungen, pr) {
   for (const a of aenderungen) {
     const p = ssot.pakete.find((x) => x.id === a.id);
     p.pr = [...new Set([...(p.pr || []), pnr])];
+    if (a.art === "PR_ERGAENZT_EXTERN") continue;
     if (a.art === "INTEGRIERT") {
       p.status = "INTEGRATED";
       for (const k of ["implementiert", "lokalGetestet", "reviewt", "integriert"]) p.stufen[k] = { wert: true, beleg };
@@ -96,14 +125,21 @@ export function anwenden(ssot, aenderungen, pr) {
       /* Teilumfang: Status nie INTEGRATED. Ein noch nicht begonnenes Paket gilt jetzt als in Arbeit. */
       /* Als „teilweise“ deklarierte Pakete behalten ihren Status: ein BLOCKED-Paket (Betreibersperre, z. B. E-9) wird durch einen PR nicht freigegeben. */
       if (!istDeklariertTeilweise(p) && (p.status === "BLOCKED" || p.status === "READY")) p.status = "IN_PROGRESS";
-      /* Bereits als „teilweise“ geführt: Wert und bisherigen Beleg behalten, den PR nur anhängen (nie zurückstufen). */
-      if (istDeklariertTeilweise(p)) {
-        const alt = String(p.stufen.integriert.beleg || "");
-        if (!new RegExp(pnr + "(?![0-9])").test(alt)) p.stufen.integriert = { wert: "teilweise", beleg: `${alt} (+ PR ${pnr})`.trim() };
+      /* Vorhandener Beleg, der nicht der Standardtext ist: Wert und Beleg behalten, den PR nur anhängen (nie zurückstufen). */
+      p.stufen.integriert = p.stufen.integriert || { wert: false, beleg: null };
+      const alt = String(p.stufen.integriert.beleg || "").trim();
+      const alteStd = stdPrs(alt);
+      if (alt && !alteStd) {
+        if (!new RegExp(pnr + "(?![0-9])").test(alt)) p.stufen.integriert = { wert: p.stufen.integriert.wert, beleg: `${alt} (+ PR ${pnr})` };
       } else {
-        p.stufen.integriert = { wert: false, beleg: `Teilumfang in PR ${pnr} integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist.` };
+        const prs = [...new Set([...(alteStd || []), pnr])];
+        p.stufen.integriert = { wert: istDeklariertTeilweise(p) ? "teilweise" : false, beleg: stdBeleg(prs) };
       }
-      p.notiz = `${(p.notiz || "").trim()} Stand (automatisch): Teilumfang nach ${pnr}, Status ${p.status}; Rest offen (Titel nennt nur einen Teil).`.trim();
+      /* Notiz: höchstens ein automatischer Teilumfang-Satz je Paket, die PRs werden zusammengefasst. */
+      const notizPrs = [];
+      const rest = String(p.notiz || "").replace(NOTIZ_TEIL, (_m, liste) => { notizPrs.push(...liste.split(", ")); return ""; }).trim();
+      const alle = [...new Set([...notizPrs, pnr])];
+      p.notiz = `${rest} Stand (automatisch): Teilumfang nach ${alle.join(", ")}, Status ${p.status}; Rest offen (Titel nennt nur einen Teil).`.trim();
       continue;
     }
     p.notiz = `${(p.notiz || "").trim()} Stand (automatisch): ${p.status} nach ${pnr}.`.trim();

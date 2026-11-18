@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { plan, anwenden, istTeilPr, istDeklariertTeilweise } from "../werkzeug/ssot-nach-integration.mjs";
+import { plan, anwenden, istTeilPr, istDeklariertTeilweise, istExternBetreiber } from "../werkzeug/ssot-nach-integration.mjs";
 
 /* Der Fehler, den diese Prüfung festhält: Ein PR "WP-21 Teil 2: …" setzte WP-21 auf INTEGRATED, obwohl nur ein Teil
    des Pakets integriert war (ebenso OPT-4 und IMP-6). Die Zuordnung über die Paket-ID im Titel bleibt, aber ein Titel,
@@ -127,5 +127,110 @@ describe("plan und anwenden", () => {
     expect(p.stufen.integriert.beleg).toContain("#301 gemergt; Rest nach E-9 (+ PR #30)");
     anwenden(s, plan(s, pr(30, "WP-30 Nachtrag")), pr(30, "x"));
     expect(p.stufen.integriert.beleg.split("(+ PR #30)")).toHaveLength(2);
+  });
+});
+
+describe("Teil-PR bei vorhandenem Detailbeleg (Befund WP-48) und externe Betreiberpakete", () => {
+  const DETAIL = "Detailbeleg: Schritte 1 bis 3 umgesetzt (PR #300), Rest Schritt 4 offen";
+  const teilPr = (n) => pr(n, "WP-48 Teil: weiterer Schritt");
+
+  it("Detailbeleg mit Wert false bleibt erhalten, der PR wird nur angehängt", () => {
+    const p = paket("WP-48", "IN_PROGRESS", { stufen: { integriert: { wert: false, beleg: DETAIL } } });
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, teilPr(341)), teilPr(341));
+    expect(p.stufen.integriert.wert).toBe(false);
+    expect(p.stufen.integriert.beleg).toBe(`${DETAIL} (+ PR #341)`);
+    expect(p.stufen.integriert.beleg).not.toMatch(/Koordinator prüft/);
+    expect(p.status).toBe("IN_PROGRESS");
+  });
+
+  it("mehrere PRs nacheinander: idempotent, keine Dubletten in Beleg und Notiz, ein Notizsatz", () => {
+    const p = paket("WP-48", "IN_PROGRESS", { stufen: { integriert: { wert: false, beleg: DETAIL } } });
+    const s = { pakete: [p] };
+    for (const n of [341, 342, 346, 341, 346]) anwenden(s, plan(s, teilPr(n)), teilPr(n));
+    expect(p.stufen.integriert.beleg).toBe(`${DETAIL} (+ PR #341) (+ PR #342) (+ PR #346)`);
+    expect(p.pr).toEqual(["#341", "#342", "#346"]);
+    expect(p.notiz.match(/Stand \(automatisch\)/g)).toHaveLength(1);
+    expect(p.notiz).toContain("Teilumfang nach #341, #342, #346, Status IN_PROGRESS");
+  });
+
+  it("alte Mehrfach-Notizsätze werden zu einem Satz zusammengefasst", () => {
+    const alt = (n) => ` Stand (automatisch): Teilumfang nach #${n}, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil).`;
+    const p = paket("WP-48", "IN_PROGRESS", { notiz: `Fachnotiz.${alt(341)}${alt(342)}`, stufen: { integriert: { wert: false, beleg: DETAIL } } });
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, teilPr(346)), teilPr(346));
+    expect(p.notiz.match(/Stand \(automatisch\)/g)).toHaveLength(1);
+    expect(p.notiz).toMatch(/^Fachnotiz\. Stand \(automatisch\): Teilumfang nach #341, #342, #346, Status IN_PROGRESS/);
+  });
+
+  it("Paket ohne Beleg bekommt den Standardtext, weitere PRs erweitern die Liste statt zu überschreiben", () => {
+    const p = paket("WP-48", "READY", { stufen: { integriert: { wert: false, beleg: null } } });
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, teilPr(341)), teilPr(341));
+    expect(p.status).toBe("IN_PROGRESS");
+    expect(p.stufen.integriert.beleg).toMatch(/^Teilumfang in PR #341 integriert; der PR-Titel nennt nur einen Teil/);
+    anwenden(s, plan(s, teilPr(342)), teilPr(342));
+    anwenden(s, plan(s, teilPr(342)), teilPr(342));
+    expect(p.stufen.integriert.beleg).toMatch(/^Teilumfang in PR #341, #342 integriert; /);
+    expect(p.stufen.integriert.beleg.match(/#342/g)).toHaveLength(1);
+    expect(p.stufen.integriert.wert).toBe(false);
+  });
+
+  it("Paket ganz ohne Stufe integriert wird nicht zum Fehler", () => {
+    const p = paket("WP-48", "READY");
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, teilPr(341)), teilPr(341));
+    expect(p.stufen.integriert.beleg).toMatch(/#341/);
+  });
+
+  it("Wortgrenze beim Anhängen: #30 ist nicht #301", () => {
+    const p = paket("WP-48", "IN_PROGRESS", { stufen: { integriert: { wert: false, beleg: "Detail, PR #301 gemergt" } } });
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, pr(30, "WP-48 Teil: x")), pr(30, "x"));
+    expect(p.stufen.integriert.beleg).toBe("Detail, PR #301 gemergt (+ PR #30)");
+    anwenden(s, plan(s, pr(30, "WP-48 Teil: x")), pr(30, "x"));
+    expect(p.stufen.integriert.beleg.split("(+ PR #30)")).toHaveLength(2);
+  });
+
+  it("INTEGRIERT-Pfad (vollständiger PR) bleibt unverändert", () => {
+    const p = paket("WP-48", "IN_PROGRESS", { stufen: { integriert: { wert: false, beleg: DETAIL } } });
+    const s = { pakete: [p] };
+    const a = plan(s, pr(350, "WP-48: abgeschlossen"));
+    expect(a).toEqual([{ id: "WP-48", art: "INTEGRIERT", von: "IN_PROGRESS", pr: "#350" }]);
+    anwenden(s, a, pr(350, "x"));
+    expect(p.status).toBe("INTEGRATED");
+    expect(p.stufen.integriert).toEqual({ wert: true, beleg: "PR #350 in integration/release-v4" });
+    expect(p.notiz).toMatch(/INTEGRATED nach #350/);
+  });
+
+  it("BLOCKED bleibt BLOCKED bei als teilweise deklariertem Paket und Detailbeleg", () => {
+    const p = paket("WP-48", "BLOCKED", { stufen: { integriert: { wert: "teilweise", beleg: DETAIL } } });
+    const s = { pakete: [p] };
+    anwenden(s, plan(s, teilPr(341)), teilPr(341));
+    expect(p.status).toBe("BLOCKED");
+    expect(p.stufen.integriert.wert).toBe("teilweise");
+    expect(p.stufen.integriert.beleg).toContain(DETAIL);
+  });
+
+  it("externes Betreiberpaket (strang extern, E-9): nur PR angehängt, kein Statuswechsel", () => {
+    expect(istExternBetreiber({ id: "E-9", strang: "extern" })).toBe(true);
+    expect(istExternBetreiber(paket("WP-48", "READY"))).toBe(false);
+    for (const status of ["READY", "BLOCKED"]) {
+      const e9 = paket("E-9", status, { strang: "extern", stufen: { integriert: { wert: false, beleg: null } }, notiz: "Betreiber" });
+      const s = { pakete: [e9] };
+      for (const titel of ["E-9: E-Mail und Push", "E-9 Teil: Nachtrag"]) {
+        const a = plan(s, pr(343, titel));
+        if (titel.startsWith("E-9:")) {
+          expect(a).toEqual([{ id: "E-9", art: "PR_ERGAENZT_EXTERN", pr: "#343" }]);
+          anwenden(s, a, pr(343, titel));
+        } else {
+          expect(a).toEqual([]);
+        }
+        expect(e9.status).toBe(status);
+        expect(e9.pr).toEqual(["#343"]);
+        expect(e9.stufen.integriert).toEqual({ wert: false, beleg: null });
+        expect(e9.notiz).toBe("Betreiber");
+      }
+    }
   });
 });
