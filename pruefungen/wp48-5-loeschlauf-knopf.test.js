@@ -45,7 +45,9 @@ function bestandC({ alt = true } = {}) {
     einstellungen: { ruhezeit: 11, maxFolge: 6 },
     personen: [person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1"), person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
     abweichungen: plan, erfassung: {}, einstempeln: stempel, wuensche: [], anfragen: [], nachrichten: [], abwesenheiten: [],
-    freigaben: {}, bestaetigungen: [], protokoll: [] }] };
+    /* aufbewahrung und aenderungen im Bestand (raeumen setzt beide): Der Löschlauf ändert dann nur Felder mit Version, Zellen und Stempel — ohne Vorgabe
+       „voll“ ginge er als Delta (Stempel blieben). So trennt die Kundenprüfung (Review #350 M1). */
+    aufbewahrung: {}, aenderungen: [], freigaben: {}, bestaetigungen: [], protokoll: [] }] };
 }
 let raumNr = 0;
 async function raumMit(rollen, opt) {
@@ -64,13 +66,20 @@ const gespeichertM = async (raum) => (await B.bestandLesenStreng(laden(), raum))
 const speicherAttrappe = (vorab = {}) => { const m = new Map(Object.entries(vorab)); return { getItem: (k) => (m.has(k) ? m.get(k) : null),
   setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), clear: () => m.clear() }; };
 const aufrufe = [];
+let antwortErsetzen = null;   // (pfad, methode) => { status, daten } | null — Antwort an Stelle des Servers
+let nachAntwort = null;      // (pfad, methode, rumpf) => Promise | null — läuft nach einer Antwort (Verzahnung)
 function fetchStub() {
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
     const methode = opt.method || "GET";
     const kopf = { ...(opt.headers || {}), host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.51.${Math.floor(nr / 250) % 250}.${nr % 250}` };
-    aufrufe.push({ url, methode, rumpf: opt.body ? JSON.parse(opt.body) : null });
-    return daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    const rumpf = opt.body ? JSON.parse(opt.body) : null;
+    aufrufe.push({ url, methode, rumpf });
+    const ersatz = antwortErsetzen ? antwortErsetzen(url, methode, rumpf) : null;
+    const a = ersatz ? new Response(JSON.stringify(ersatz.daten), { status: ersatz.status, headers: { "content-type": "application/json" } })
+      : await daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    if (nachAntwort) { const f = nachAntwort(url, methode, rumpf); if (f) { nachAntwort = null; await f(); } }
+    return a;
   });
 }
 /** Eine Oberfläche mit der echten Aktion: eigene Modulinstanz, Bestand wie App.jsx, Kontext k wie aktKontext. */
@@ -87,7 +96,14 @@ async function oberflaeche(token, pid) {
     ref: { current: { ...g.bestand, session: { mandantId: "m1", personId: pid } } } };
   o.akt = aktionenAusgaben({ melde: (t) => o.meldungen.push(t), ref: o.ref, setAusgabe: () => {}, ym: tag(0).slice(0, 7),
     mUpd: (fn, text) => { o.mUpd.push(text); const s = o.ref.current; o.ref.current = { ...s, mandanten: s.mandanten.map((m) => (m.id === "m1" ? fn(m) : m)) }; },
-    serverstandNachladen: async () => { o.nachgeladen += 1; } });
+    /* Wie App.jsx serverstandNachladen: nur ohne Ausstehendes den gelesenen Stand übernehmen (neue Basis des Teilwegs). */
+    serverstandNachladen: async () => {
+      o.nachgeladen += 1;
+      if (o.SP.schreibenAusstehend()) return;
+      const n = await o.SP.lies();
+      o.SP.teilwegUebernehmen(n.teilAntwort);
+      o.ref.current = { ...n.bestand, session: o.ref.current.session };
+    } });
   /* Rückfragen bestätigen (nach dem Import: speicher.js meldet sich nur an einem echten window an). */
   vi.stubGlobal("window", { confirm: () => true });
   return o;
@@ -112,7 +128,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     const HEUTE = Z.heuteBerlin();
     tag = (n) => Z.tagePlus(HEUTE, n);
   });
-  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; });
+  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; antwortErsetzen = null; nachAntwort = null; });
   afterAll(async () => {
     delete process.env.CENTRIC_TEILSPEICHERUNG;
     if (wurzel) await rm(wurzel, { recursive: true, force: true });
@@ -127,7 +143,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     aufrufe.length = 0;
     const r = await o.akt.loeschlauf();
     expect(r).toEqual({ ergebnis: "ausgefuehrt" });
-    expect(wege()).toEqual(["POST /api/loeschlauf", "POST /api/loeschlauf"]);
+    expect(wege()).toEqual(["POST /api/loeschlauf", "POST /api/loeschlauf", "GET /api/bestand"]);   // danach nachgeladen
     expect(aufrufe[0].rumpf).toEqual({ vorschau: true });
     expect(Object.keys(aufrufe[1].rumpf)).toEqual(["bestaetigt"]);
     expect(aufrufe[1].rumpf.bestaetigt).toMatch(/^[0-9a-f]{32}$/);
@@ -200,6 +216,108 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     expect(m.einstempeln[`a1|${tag(-1)}`]).toBeTruthy();
     /* Danach (Rückfall gelungen) bleibt die Sitzung beim Voll-PUT; die Vorgabe „voll" ist verbraucht. */
     expect(o.SP.teilwegAktiv()).toBe(false);
+    /* Review #350 M12: Die Vorgabe gilt nur für diesen Auftrag. Nach dem Übernehmen eines gelesenen Stands geht die
+       nächste gewöhnliche Änderung wieder über den Teilweg. */
+    const n = await o.SP.lies();
+    o.SP.teilwegUebernehmen(n.teilAntwort);
+    const s = { ...n.bestand, session: o.ref.current.session };
+    o.ref.current = { ...s, mandanten: [{ ...s.mandanten[0], abweichungen: { ...s.mandanten[0].abweichungen, [`a1|${tag(23)}`]: "-" } }] };
+    aufrufe.length = 0;
+    await o.SP.schreib(o.ref.current, { sofort: true, durch: "Pruefung", onFehler: (l) => o.fehler.push(l) });
+    expect(wege()).toEqual(["POST /api/bestand/teile"]);
+  });
+
+  it("Kundenrolle: Vorgabe „voll“ hängt am Auftrag — ein älterer Voll-Auftrag, der während des Löschlaufs scheitert, verbraucht sie nicht", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["KU"]);
+    const o = await oberflaeche(token.KU, "l1");
+    const fehler = [];
+    const opt = { durch: "Pruefung", onFehler: (l) => fehler.push(l) };
+    /* Älterer Auftrag: eine Zelle; der Teilweg antwortet 413 → Rückfall voll, der Auftrag wartet auf sein frisches GET.
+       In diesem Moment löst die Person den Löschlauf aus; dessen Auftrag reiht sich ein und geht im älteren auf. Dessen
+       Voll-PUT scheitert (500). „Noch einmal senden“ muss dann voll gehen — sonst ginge der Löschlauf als Delta, und die
+       Stempel blieben stehen. */
+    const s0 = o.ref.current;
+    o.ref.current = { ...s0, mandanten: [{ ...s0.mandanten[0], abweichungen: { ...s0.mandanten[0].abweichungen, [`a1|${tag(20)}`]: "-" } }] };
+    let postNr = 0, putNr = 0;
+    antwortErsetzen = (u, m) => (u === "/api/bestand/teile" && ++postNr === 1 ? { status: 413, daten: { code: "TEILE_ZU_GROSS", text: "zu groß" } }
+      : m === "PUT" && ++putNr === 1 ? { status: 500, daten: { fehler: "Serverfehler" } } : null);
+    nachAntwort = (u, m) => (m === "GET" && u === "/api/bestand" ? async () => {
+      o.akt.loeschlauf();
+      o.SP.schreib(o.ref.current, opt);
+    } : null);
+    await o.SP.schreib(o.ref.current, { ...opt, sofort: true });
+    await o.SP.schreibenAbschliessen();
+    expect(o.mUpd).toHaveLength(1);
+    expect(fehler.map((l) => l.art)).toEqual(["server"]);
+    aufrufe.length = 0;
+    expect((await o.SP.nochmalSchreiben()).ok).toBe(true);
+    expect(wege()).toEqual(["GET /api/bestand", "PUT /api/bestand"]);   // der Löschlauf geht als Voll-PUT, nicht als Delta
+    const m = await gespeichertM(raum);
+    expect(m.abweichungen[`a1|${tag(-1000)}`]).toBeUndefined();
+    expect(m.einstempeln[`a1|${tag(-1000)}`]).toBeUndefined();
+    expect(m.einstempeln[`a1|${tag(-1)}`]).toBeTruthy();
+  });
+
+  it("Leitung: gescheiterter Auftrag vor dem Löschlauf → kein Lauf, bis er gespeichert ist; danach bleibt Gelöschtes gelöscht", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const s0 = o.ref.current;
+    o.ref.current = { ...s0, mandanten: [{ ...s0.mandanten[0], abweichungen: { ...s0.mandanten[0].abweichungen, [`a1|${tag(20)}`]: "-" } }] };
+    antwortErsetzen = (u) => (u === "/api/bestand/teile" ? { status: 500, daten: { fehler: "Serverfehler" } } : null);
+    await o.SP.schreib(o.ref.current, { sofort: true });
+    expect(o.SP.ausstehend()).toBeTruthy();
+    expect(o.SP.schreibenAusstehend()).toBe(false);       // die Leiste „nicht gespeichert“, sonst nichts in Arbeit
+    aufrufe.length = 0;
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausstehend" });
+    expect(wege().filter((w) => w.endsWith("/api/loeschlauf"))).toEqual([]);
+    /* Nochmal senden gelingt jetzt, danach der Löschlauf. */
+    antwortErsetzen = null;
+    expect((await o.SP.nochmalSchreiben()).ok).toBe(true);
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausgefuehrt" });
+    const m = await gespeichertM(raum);
+    expect([m.abweichungen[`a1|${tag(-1000)}`], m.abweichungen[`a1|${tag(20)}`]]).toEqual([undefined, "-"]);
+  });
+
+  it("Leitung: scheitert ein Auftrag WÄHREND des Löschlaufs, sendet „Noch einmal“ ihn nie (Gelöschtes käme zurück, Art. 17)", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    const lagen = [];
+    /* Nach der Vorschau: eine Eingabe, deren Speichern scheitert (500) — ihr Bestand enthält die alten Einträge. */
+    nachAntwort = (u, m, rumpf) => (u === "/api/loeschlauf" && rumpf && rumpf.vorschau ? async () => {
+      antwortErsetzen = (u2) => (u2 === "/api/bestand/teile" ? { status: 500, daten: { fehler: "Serverfehler" } } : null);
+      const s = o.ref.current;
+      o.ref.current = { ...s, mandanten: [{ ...s.mandanten[0], abweichungen: { ...s.mandanten[0].abweichungen, [`a1|${tag(20)}`]: "-" } }] };
+      await o.SP.schreib(o.ref.current, { sofort: true, onFehler: (l) => lagen.push(l.art) });
+      antwortErsetzen = null;
+    } : null);
+    expect(await o.akt.loeschlauf()).toEqual({ ergebnis: "ausgefuehrt" });
+    expect(lagen).toEqual(["server", "vorLoeschlauf"]);   // die Leiste bietet dann nur Datei sichern und neu laden
+    aufrufe.length = 0;
+    expect(await o.SP.nochmalSchreiben()).toEqual({ ok: false, gesperrt: true });
+    expect(wege()).toEqual([]);
+    const m = await gespeichertM(raum);
+    expect(m.abweichungen[`a1|${tag(-1000)}`]).toBeUndefined();
+    expect(m.abweichungen[`a1|${tag(-900)}`]).toBeUndefined();
+    expect(m.einstempeln[`a1|${tag(-1000)}`]).toBeUndefined();
+    expect(o.SP.ausstehenderBestand()).toBeTruthy();       // zum Sichern als Datei weiter vorhanden
+  });
+
+  it("Leitung: Doppelklick startet keinen zweiten Lauf", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { token } = await raumMit(["LT"]);
+    const o = await oberflaeche(token.LT, "l1");
+    aufrufe.length = 0;
+    const [a, b] = await Promise.all([o.akt.loeschlauf(), o.akt.loeschlauf()]);
+    expect([a.ergebnis, b.ergebnis]).toEqual(["ausgefuehrt", "laeuft"]);
+    expect(wege().filter((w) => w.endsWith("/api/loeschlauf"))).toHaveLength(2);   // eine Vorschau, eine Bestätigung
+    expect(o.meldungen[0]).toBe("Der Löschlauf läuft bereits.");
   });
 
   it("Planung mit Teilweg: heutiger Weg (kein /api/loeschlauf, das der Server nur der Leitung erlaubt)", async () => {

@@ -1109,6 +1109,18 @@ Weg unverändert; die Kundenrolle (ohne Person) behält ihn auch mit Teilweg —
 `pruefung:wp48-loeschlauf`): echte Aktion und echter Client gegen den echten Handler — Leitung (ausgeführt, nichts
 fällig, abgelehnt, offene Frage), Schalter aus, Kundenrolle (Voll-PUT), Planung (heutiger Weg).
 
+*Review #350, eingearbeitet:* **H1 (Art. 17)** — Ein gescheiterter Auftrag („nicht gespeichert“, `SP.ausstehend()`)
+sperrt den Löschlauf, bis er gespeichert oder verworfen ist. Scheitert ein Auftrag während des Laufs, wird er nach der
+Ausführung gesperrt (`ausstehendNachLoeschlauf`, Lage `vorLoeschlauf`): „Noch einmal senden“ schickt ihn nie, er bleibt
+nur zum Sichern als Datei. Sonst brächte er nach dem Nachladen (neue Basis) Gelöschtes zurück. **M2** — Die Vorgabe
+„voll“ hängt am Auftrag (`vollGewuenscht`), nicht global: Ein neuerer Auftrag, der einen wartenden ersetzt oder in
+einem laufenden aufgeht, übernimmt sie; „Noch einmal senden“ behält sie; ein anderer Auftrag verbraucht sie nicht.
+**N** — Ein Lauf zur Zeit (Doppelklick). Prüfungen über den echten Handler mit Zustandsprüfung; Handmutanten
+(Prüfung `ausstehend` entfernt, Sperre nach dem Lauf entfernt, `naechstesSpeichernVoll` entfernt, Vorgabe nie
+zurückgesetzt, Vorgabe beim Aufgehen verloren, kein Schutz gegen Doppelstart) machen je ihren Fall rot. Die
+Kundenprüfung hat dazu `aufbewahrung` und `aenderungen` im Bestand: Ohne Vorgabe „voll“ ginge der Löschlauf dann als
+Delta, und die Stempel blieben stehen.
+
 ---
 
 ### Anhang: Messskript

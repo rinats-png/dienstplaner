@@ -317,7 +317,8 @@ export function teilEntscheidungAnwenden(wahl) {
   teil = r.teil;
   letzterBestand = r.bestand;
   if (uhr) { clearTimeout(uhr); uhr = null; }
-  offen = { ...(teilAuftrag || {}), bestand: r.bestand, ausnahme: null };
+  const vollGewuenscht = !!((teilAuftrag && teilAuftrag.vollGewuenscht) || (offen && offen.vollGewuenscht));
+  offen = { ...(teilAuftrag || {}), bestand: r.bestand, ausnahme: null, ...(vollGewuenscht ? { vollGewuenscht: true } : {}) };
   jetztSchreiben().catch(() => {});
   return r.bestand;
 }
@@ -337,7 +338,9 @@ export async function loeschlaufServer(rumpf) {
 }
 
 /** WP-48.5 (3): Der nächste Schreibvorgang geht als Voll-PUT (Löschlauf per Speichern bei aktivem Teilweg, Kundenrolle):
-    Stempel stehen nie im Delta, ihr Löschen braucht den ganzen Bestand. Ohne Teilweg wirkungslos. */
+    Stempel stehen nie im Delta, ihr Löschen braucht den ganzen Bestand. Ohne Teilweg wirkungslos. Die Vorgabe geht
+    beim nächsten schreib() an DIESEN Auftrag über (Review #350 M2: nicht global — ein älterer Auftrag, der noch auf sein
+    frisches GET wartet, verbraucht sie nicht) und bleibt an ihm, auch beim Wiederholen. */
 let vollEinmal = false;
 export function naechstesSpeichernVoll() { if (teil || teilRoh) vollEinmal = true; }
 
@@ -531,7 +534,11 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, o
   /* onTeilLage(zustand): Konfliktfrage oder „neu laden" auf dem Teilweg (WP-48.5); onTeilLokal(bestand): der Teilweg
      hat den lokalen Stand neu aufgesetzt, die Oberfläche übernimmt ihn. Ohne Teilweg werden beide nie gerufen. */
   if (neuLadenSperre) return Promise.resolve();   // WP-48.5: nach Sicherung als Datei, vor dem Neuladen
-  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, onTeilLage, onTeilLokal };
+  /* Review #350 M2: die Vorgabe „voll“ hängt am Auftrag; ein neuerer Auftrag, der einen wartenden ersetzt, übernimmt sie. */
+  const vollGewuenscht = vollEinmal || !!(offen && offen.vollGewuenscht);
+  vollEinmal = false;
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, onTeilLage, onTeilLokal,
+    ...(vollGewuenscht ? { vollGewuenscht: true } : {}) };
   letzterBestand = bestand;
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
@@ -572,11 +579,27 @@ export const ausstehend = () => (gescheitert ? { ...gescheitert.lage } : null);
 /** Nimmt den letzten gescheiterten Versuch noch einmal auf. */
 export async function nochmalSchreiben() {
   if (!gescheitert) return { ok: true, nichts: true };
+  /* Review #350 H1: Ein Auftrag von vor einem Löschlauf geht nie mehr hinaus (er enthielte Gelöschtes). */
+  if (gescheitert.gesperrt) return { ok: false, gesperrt: true };
   const a = gescheitert;
   gescheitert = null;
   offen = a.auftrag;
   await jetztSchreiben();
   return { ok: !gescheitert };
+}
+
+/**
+ * WP-48.5 (3), Review #350 H1: Nach einem Löschlauf über den Server darf ein gescheiterter Auftrag von vorher nicht mehr
+ * gesendet werden — sein Bestand enthält, was der Löschlauf eben gelöscht hat (Art. 17). Er bleibt zum Sichern als
+ * Datei erhalten; die Leiste „nicht gespeichert“ zeigt dann „Als Datei sichern“ und „Neu laden“, kein Wiederholen.
+ * @returns {boolean} ob ein solcher Auftrag gesperrt wurde
+ */
+export function ausstehendNachLoeschlauf() {
+  if (!gescheitert) return false;
+  gescheitert = { ...gescheitert, gesperrt: true, lage: { art: "vorLoeschlauf", status: null, zeit: new Date().toISOString(),
+    text: "Änderungen von vor dem Löschlauf — nicht mehr gesendet." } };
+  if (gescheitert.auftrag.onFehler) { try { gescheitert.auftrag.onFehler(gescheitert.lage); } catch { /* Anzeige */ } }
+  return true;
 }
 
 /** Der ausstehende Bestand, um ihn notfalls als Datei zu sichern. */
@@ -706,7 +729,11 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
         letzterBestand = b;
         vollSperre = false;   // ETag des frischen GET gehört jetzt zum lokalen Stand
         if (e !== undefined && e !== null) etag = e;
-        if (offen) { offen = null; if (uhr) { clearTimeout(uhr); uhr = null; } }
+        if (offen) {
+          /* Review #350 M2: Der wartende Auftrag geht in diesem auf — seine Vorgabe „voll“ auch. */
+          if (offen.vollGewuenscht) auftrag.vollGewuenscht = true;
+          offen = null; if (uhr) { clearTimeout(uhr); uhr = null; }
+        }
         if (auftrag.onTeilLokal) { try { auftrag.onTeilLokal(b); } catch { /* Anzeige */ } }
       },
     });
@@ -779,7 +806,7 @@ async function schreibenAusfuehren(beimSchliessen) {
       }
     }
     if (teil) {
-      const vollGewuenscht = !!(auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig)) || vollEinmal);
+      const vollGewuenscht = !!(auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig)) || auftrag.vollGewuenscht);
       const t = await teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch);
       status = t.status;
       if (t.fehler) throw t.fehler;
@@ -808,7 +835,6 @@ async function schreibenAusfuehren(beimSchliessen) {
       if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
       return;
     }
-    vollEinmal = false;   // WP-48.5 (3): verbraucht, sobald ein Voll-PUT hinausgeht
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
     const ausnahmeAbgewiesen = (text) => {
       if (einmalig === auftrag.ausnahme) einmalig = null;

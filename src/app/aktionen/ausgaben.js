@@ -18,11 +18,24 @@ import { dim_, pad, toMin, addDays } from "../../regelwerk.js";
  * Raumsperre mit derselben Regel; die Oberfläche löscht nichts selbst. Danach den gespeicherten Stand nachladen.
  */
 /* Keine eigene Ausfuhr: Jede Ausfuhr dieser Datei zählt als Aktionsfabrik (WP-39, pruefungen/wp39-app-aufbau.test.js). */
-async function loeschlaufUeberServer({ melde, serverstandNachladen, bestaetigen = (t) => window.confirm(t) }) {
+/* Review #350 N: ein Lauf zur Zeit (Doppelklick: sonst zwei Läufe, zwei Rückfragen, vertauschte Meldungen). */
+let loeschlaufLaeuft = false;
+async function loeschlaufUeberServer(o) {
+  if (loeschlaufLaeuft) { o.melde("Der Löschlauf läuft bereits."); return { ergebnis: "laeuft" }; }
+  loeschlaufLaeuft = true;
+  try { return await loeschlaufSchritte(o); } finally { loeschlaufLaeuft = false; }
+}
+async function loeschlaufSchritte({ melde, serverstandNachladen, bestaetigen = (t) => window.confirm(t) }) {
   /* Erst alles Ausstehende speichern: Der Server rechnet auf dem gespeicherten Stand. */
   await SP.schreibenAbschliessen();
   if (SP.schreibenAusstehend()) {
     melde("Erst die offenen Änderungen speichern oder klären, dann den Löschlauf starten.");
+    return { ergebnis: "ausstehend" };
+  }
+  /* Review #350 H1: Auch ein gescheiterter Auftrag (Leiste „nicht gespeichert“) muss vorher gespeichert oder verworfen
+     sein — „Noch einmal senden“ nach dem Löschlauf brächte sonst Gelöschtes zurück (Art. 17). */
+  if (SP.ausstehend()) {
+    melde("Erst die nicht gespeicherten Änderungen speichern oder verwerfen, dann den Löschlauf starten.");
     return { ergebnis: "ausstehend" };
   }
   let v;
@@ -38,6 +51,8 @@ async function loeschlaufUeberServer({ melde, serverstandNachladen, bestaetigen 
   if (a.status === 200 && a.daten.ausgefuehrt) {
     /* Der Server hat gelöscht: gespeicherten Stand nachladen (neue Basis des Teilwegs). Steht lokal etwas aus,
        bleibt der lokale Stand (spiegeln ohne Änderung). */
+    /* Ist während des Laufs ein Auftrag gescheitert, stammt er von vorher: nie mehr senden, nur als Datei sichern. */
+    SP.ausstehendNachLoeschlauf();
     await serverstandNachladen((s) => s);
     melde(String(a.daten.bericht || "Löschlauf ausgeführt."));
     return { ergebnis: "ausgefuehrt" };

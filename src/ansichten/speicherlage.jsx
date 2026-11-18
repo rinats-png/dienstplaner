@@ -69,6 +69,13 @@ export const SPEICHERLAGE = {
       + "dann neu.",
     neuladen: true,
   },
+  /* WP-48.5 (Review #350 H1): ein gescheiterter Auftrag von vor dem Löschlauf — er enthielte Gelöschtes. */
+  vorLoeschlauf: {
+    titel: "Diese Änderungen werden nach dem Löschlauf nicht mehr gesendet",
+    text: "Sie stammen von vor dem Löschlauf und enthalten noch, was er eben gelöscht hat. Sichere sie als Datei, lade "
+      + "neu und trage nötige Änderungen danach noch einmal ein.",
+    neuladen: true,
+  },
   zuGross: {
     titel: "Der Bestand ist zu groß geworden",
     text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "
