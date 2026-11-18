@@ -36,6 +36,22 @@ export const teilwegAn = () => process.env.CENTRIC_TEILSPEICHERUNG === "true";
 export const abschlussSegmentweiseAn = () => process.env.CENTRIC_ABSCHLUSS_SEGMENTWEISE === "true";
 
 /* --------------------------------------------------------------------------
+   MONATSABSCHLUSS OHNE SPERRE RECHNEN (WP-48.7, Stufe b) — Vorgabe AUS
+
+   CENTRIC_ABSCHLUSS_OHNE_SPERRE  Nur zusammen mit CENTRIC_ABSCHLUSS_SEGMENTWEISE.
+                 Abschließen, Wiederöffnen und Lohnexport lesen Kern + Monate
+                 des Jahres bis zum Monat OHNE Raumsperre als Schnappschuss
+                 (Stand, Epoche) und rechnen dort; die Sperre gilt nur für
+                 „unverändert seit dem Schnappschuss?" und das Schreiben
+                 (compare-and-set). Bei Änderung höchstens 3 Versuche, danach
+                 der gesperrte Weg der Stufe a. Ergebnis gleich dem vollen Weg
+                 (pruefungen/wp48-7-stufe-b.test.js). Aus — oder Stufe a aus —:
+                 unverändert. Kein neuer Weg, kein neues Recht.
+   Nur genau `true` schaltet ein.
+   -------------------------------------------------------------------------- */
+export const abschlussOhneSperreAn = () => abschlussSegmentweiseAn() && process.env.CENTRIC_ABSCHLUSS_OHNE_SPERRE === "true";
+
+/* --------------------------------------------------------------------------
    PERSONALIMPORT (IMP-1…IMP-4) — Vorgabe AUS
 
    CENTRIC_IMPORT_AKTIV  alle Wege /api/import/* (upload, analyse, vorschau,

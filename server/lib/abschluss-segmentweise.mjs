@@ -29,8 +29,11 @@
      verändert (abschlussTeile → null): dann wäre die Änderung im
      Segmentweg verloren — der volle Weg rechnet neu und schreibt alles.
 
-   Stufe b (Rechnen außerhalb der Sperre, compare-and-set) ist nicht Teil
-   dieser Stufe.
+   Stufe b (Rechnen außerhalb der Sperre, compare-and-set) steht hinter dem
+   zweiten Schalter CENTRIC_ABSCHLUSS_OHNE_SPERRE im Endpunkt (daten.mjs,
+   bestand.mjs bestandSchnappschussAuswahl/standUnveraendert): dieselben
+   Funktionen hier, nur auf einem Schnappschuss ohne Sperre; jeder Zweifel
+   führt auf den gesperrten Weg dieser Stufe zurück.
    ========================================================================== */
 
 import { zerlegen, monatVon, MONATSFELDER } from "./scherben.mjs";
@@ -38,6 +41,9 @@ import { eigenerMandant } from "./rechte.mjs";
 
 /** Diese Aktionen von POST /api/monatsabschluss können segmentweise laufen. */
 export const ABSCHLUSS_SEGMENT_AKTIONEN = Object.freeze(["abschliessen", "wiederoeffnen", "lohnexport"]);
+
+/** Stufe b: so viele Schnappschüsse höchstens, bevor der gesperrte Weg übernimmt (Entwurf Abschnitt 5, Punkt 3). */
+export const ABSCHLUSS_VERSUCHE = 3;
 
 const MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
