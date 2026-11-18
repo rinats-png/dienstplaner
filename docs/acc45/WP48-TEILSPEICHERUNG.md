@@ -787,7 +787,7 @@ und als Rückfall; kein veränderbares Exportobjekt).
   Vermerk kommt also nicht ungeprüft aus dem alten Vermerk, sondern aus dem tatsächlich Gelesenen. Erzwungen (Review
   #341): Im Modus `segmente` sind die Einträge der gemerkten Scherben tief eingefroren — eine Veränderung an Ort und
   Stelle scheitert laut (TypeError → 500, nichts geschrieben) statt als „unverändert" still verloren zu gehen. Der
-  Abdruckspeicher je ETag ist auf 20 000 Einträge begrenzt, beim Überlauf fällt der älteste heraus.
+  Abdruckspeicher je ETag ist auf 20 000 Einträge begrenzt, beim Überlauf fällt der zuerst eingetragene heraus (FIFO, kein LRU: ein Treffer frischt nicht auf).
 - **Kein zweites Lesen, keine Kopie**: Der Teilweg liest unter der Sperre ohne Lesecache (`merken: false`) — er
   schreibt immer auf den eben gelesenen Stand und liest nicht noch einmal; das `structuredClone` des ganzen Bestands
   entfällt. Der Voll-PUT behält den Lesecache (Drei-Wege-Abgleich).
@@ -811,11 +811,17 @@ und als Rückfall; kein veränderbares Exportobjekt).
   (Median), jetzt 1,8 s; 400 × 36 mit abgeschalteten Abkürzungen 37,9 s (Sperre ≈ 35 s), mit 21,6 s.
   **Ziel p95 < 1 s bei 400 × 36 nicht erreicht.** Verbleibend O(Bestand) unter der Sperre: das strenge Lesen und Parsen
   aller Scherben, Sicht der Rolle und virtueller Rumpf, `zusammenfuehren`, `pruefeGestalt` (`laengeGeprueft`),
-  `stempelSichern` (baut `einstempeln`/`erfassung` neu), Zerlegen des neuen Stands. Für < 1 s braucht es Lesen nur
+  `stempelSichern` (baut `einstempeln`/`erfassung` neu), Zerlegen des neuen Stands, und neu `tiefEinfrieren` (Review
+  #341): läuft bei jedem segmentierten PUT unter der Raumsperre über alle gemerkten Scherben — Zusatzkosten gemessen
+  ≈ 0,1 s bei 150 × 12 (Median 1,9 s statt 1,8 s), 400 × 36 danach nicht neu gemessen. Für < 1 s braucht es Lesen nur
   berührter Scherben unter der Sperre (Rechte und Prüfungen je Segment) — eigener Folgeschritt.
 - **Restrisiko**: Ein künftiger Eingriff an Ort und Stelle in gelesene Einträge der PUT-Kette verliert nichts mehr,
   bricht aber den Schreibvorgang laut ab (500) — er muss dann auf Ersetzen umgestellt werden. Die Abkürzungen der
-  Stempel-/Abschlussprüfung vergleichen gelesene (eingefrorene) Objekte nur mit sich selbst. Die ETag-Wiederverwendung
+  Stempel-/Abschlussprüfung vergleichen gelesene (eingefrorene) Objekte nur mit sich selbst. Eingefroren sind nur die
+  Eintragswerte (und die getrennt gemerkte Scherbe), nicht die Felder des zusammengesetzten Bestands: Ein Schreiben in
+  diesen Behälter (`m.erfassung[k] = x`) wirft nicht, wird aber richtig erkannt, weil `gleicheEintraege` gegen die
+  getrennte, eingefrorene Scherbe vergleicht — die Scherbe gilt dann als geändert und wird gerechnet und geschrieben.
+  Die ETag-Wiederverwendung
   setzt voraus, dass niemand eine Ablagedatei von Hand ändert, ohne den ETag anzupassen.
 
 ---

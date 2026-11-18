@@ -158,7 +158,7 @@ async function lesemarke(store, raum) {
 /** Ergebnis eines strengen Lesens → Map(„betriebId::JJJJ-MM" → { s: gelesene Scherbe, h: ihr Abdruck }). */
 const GELESEN = new WeakMap();
 /** ETag (Inhalt) → Abdruck. Begrenzt (der Server läuft auf einem kleinen VPS): höchstens ABDRUCK_SPEICHER_MAX
-    Einträge, beim Überlauf fällt der älteste heraus. Nur ein Zwischenspeicher — ein fehlender Eintrag heißt rechnen. */
+    Einträge, beim Überlauf fällt der zuerst eingetragene heraus (FIFO, kein LRU: ein Treffer frischt nicht auf). Nur ein Zwischenspeicher — ein fehlender Eintrag heißt rechnen. */
 const ABDRUCK_JE_ETAG = new Map();
 export const ABDRUCK_SPEICHER_MAX = 20000;
 /** Die Obergrenze: ABDRUCK_SPEICHER_MAX, nur nach unten verstellbar (CENTRIC_ABDRUCK_SPEICHER_MAX, für die Prüfung). */
