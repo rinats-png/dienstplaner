@@ -66,9 +66,10 @@ export function Teilkonfliktfenster({ zustand, m, onEntscheiden, onSpaeter, onSi
   useEffect(() => {
     const f = (e) => { if (e.key === "Escape") onSpaeter(); };
     window.addEventListener("keydown", f);
-    if (rahmen.current) rahmen.current.focus();
     return () => window.removeEventListener("keydown", f);
   }, [onSpaeter]);
+  /* Fokus nur beim Öffnen ins Fenster — ein Neuzeichnen der Anwendung darf ihn nicht aus der Radiogruppe nehmen. */
+  useEffect(() => { if (rahmen.current) rahmen.current.focus(); }, []);
   if (!zustand) return null;
   const fragen = zustand.konflikte || [];
   const offen = fragen.filter((f) => wahl[f.id] !== "fremd" && wahl[f.id] !== "meins").length;
