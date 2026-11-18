@@ -542,7 +542,10 @@ ab 30 s, `/gesund` wird „kritisch“.
 3. **GET-Fenster (WP-48.8)** jetzt (P0) oder später (P1), und welches Fenster als Vorgabe (Vorschlag: 13 Monate zurück,
    3 voraus). Ohne Fenster bleibt der GET bei 400 × 24 bei ~23 MB / ~8 s.
 4. **Konflikt-Nutzerführung**: Das blinde „meinen Stand übernehmen“ (ganze Monate überschreiben) entfällt zugunsten
-   der Wahl je Zelle oder Feld. Das ändert ein bekanntes Verhalten der Oberfläche.
+   der Wahl je Zelle oder Feld. Das ändert ein bekanntes Verhalten der Oberfläche. *Entschieden 2026-11-18
+   (Betreiber, Option A): Wahl je Zelle/Feld („fremdes übernehmen“ / „meins setzen“), das blinde Übernehmen entfällt
+   auf dem Teilweg. Auch der Rückfall auf den Voll-PUT ist gesperrt, solange ein Segment unklar ist (erst frisches
+   GET und Neuaufsetzen). Umsetzung siehe 7.6.*
 5. **Freigabe großer Betriebe**: Produktiver Betrieb für Betriebe bis 150 Personen schon nach Stufe 1 (48.3–48.5)
    oder erst nach Stufe 2 und Abschnitt 5 (48.6, 48.7) für alle? *Empfehlung: erst nach 48.6/48.7 für alle;
    Stufe 1 allein senkt Rumpf und Konflikte, nicht die Sperrdauer.*
@@ -878,6 +881,116 @@ Server; der Löschlauf-Knopf der Oberfläche bleibt beim Speichern (Umstellung m
   genau ein Lauf, ein Protokolleintrag, ältere Einträge nicht verdrängt; exakte Fristgrenze (Stichtag bleibt, Tag
   davor gelöscht); Kundenrolle 403, Demozugang Leitung erlaubt; `/api/loeschlauf` in
   `pruefungen/abnahme-c-schalter.test.js` (Vorgabe aus → 404).
+
+### 7.6 WP-48.5 Teil 1: Konfliktführung als reine Logik (Branch `feature/wp48-5-konflikt`, Basis `integration/release-v4` 32951445)
+
+Stand 2026-11-18. Betreiberentscheidung 6.4 (Option A) liegt vor. Wegen des Umfangs in zwei Schritten: **Teil 1 (dieser
+Stand)** ist die reine Logikschicht mit Prüfungen; **Teil 2** verdrahtet sie in `src/speicher.js`/`App.jsx` und baut
+das Konfliktfenster je Zelle/Feld. Teil 1 ändert kein Verhalten der Oberfläche: `src/app/teilkonflikt.js` wird noch
+von keiner Ansicht importiert, `App.jsx`, `speicher.js` und das heutige Konfliktfenster sind unverändert. Kein
+Schalter wurde geändert, keine neue Umgebungsvariable.
+
+- **Gate.** `teilwegStart` nutzt den Teilweg nur, wenn das GET `teile` mit `format: 1`, Epoche, Versionen und dem eigenen
+  Betrieb liefert. Schalter `CENTRIC_TEILSPEICHERUNG` aus (Vorgabe) → kein `teile` → null → Voll-PUT und heutiges
+  Konfliktfenster, unverändert (Prüfung über den echten Handler).
+- **Delta** (`deltaBilden`): Zellen `abweichungen`/`erfassung` mit Erwartungswert, Kernfelder nur mit bekannter
+  Basisversion des Servers (die Oberfläche rechnet keine Hashes). Spiegel der Serverfelder (`einstempeln`,
+  `istEingefroren`, `monatsabschluss`) sowie `session`/`stand` gehen nie hinaus. Nicht darstellbar → Rückfall `voll`
+  (Feld ohne Version, gelöschtes Kernfeld, ungültiger Zellschlüssel, über einer Grenze des Servers). Alle Grenzen
+  aus `TEILE_GRENZEN` sind gespiegelt (Zahl der Zellen und Kernfelder, Bytes je Rumpf, Kernfeld und Zellwert, Tiefe);
+  der Gleichlauf-Test erzwingt Gleichheit (`teilweg.mjs` braucht `node:crypto` und ist nicht bündelbar). Antwortet
+  der Server trotzdem 413 `TEILE_ZU_GROSS`, ist das Ergebnis `voll` (Rückfall auf den Voll-PUT), keine Sackgasse.
+  **Solange ein Segment unklar ist, gibt es keinen Rückfall:** `deltaBilden` liefert dann statt `voll`
+  `neuAufsetzen` (mit Grund), ein 413 ebenfalls `neuAufsetzen` — sonst umginge der Voll-PUT den ABA-Schutz.
+  Zellschlüssel mit Jahr 0000–0099 lehnt die Oberfläche ab wie der Server (Gleichlauf-Test über `teileFormFehler`).
+- **Antworten** (`antwortVerarbeiten`): 200 → Basis ⊕ *gesendetes* Delta (spätere lokale Änderungen bleiben
+  ausstehend); 409 `TEILE_KONFLIKT` → aktuelle Werte der streitigen Teile in die Basis, je Zelle/Kernfeld eine Frage,
+  nicht streitige eigene Änderungen bleiben ausstehend; 409 `NEU_LADEN` → Phase „neu laden“ mit der Liste des
+  Ausstehenden; ein Konflikt ohne eigenes Segment → ebenfalls „neu laden“ (keine Endlosschleife); 422
+  `ANFRAGE_WIEDERVERWENDET` → `neuAufsetzen` mit verständlicher Meldung; jede andere Absage → nichts geschrieben,
+  Basis bleibt, Text des Servers als `meldung`.
+- **Wahl** (`waehlen`, `aufloesen`): „fremd“ setzt lokal genau den aktuellen Wert des Servers (für diese Zelle geht
+  nichts mehr hinaus); „meins“ lässt lokal stehen, das nächste Delta trägt bewusst `alt = aktuell`. Aufgelöst wird erst,
+  wenn jede Frage entschieden ist. Ein blindes „alles übernehmen“ gibt es nicht. Bei einem Kernfeld ersetzt die Wahl
+  das ganze Feld (Text `frageText` sagt das).
+- **Wiederholschutz (Auflage 7.2):** Netz weg nach dem Senden → Segmente „unklar“. Solange etwas unklar ist, geht in
+  derselben Sitzung **nur genau dieselbe Sendung mit derselben Anfragekennung** hinaus — „dieselbe Sitzung“ prüft
+  die Oberfläche selbst (Sitzungskennung in der gemerkten Sendung; aus einer anderen Sitzung gilt sie nicht als
+  Wiederholung, weil die Vermerke des Servers je Sitzung gelten) (Server antwortet
+  `wiederholt` oder schreibt erstmals). Jedes andere Delta — weitere Änderung, oder die unklare Sendung ist nach
+  409/Absage nicht mehr gemerkt — bekommt keinen Rumpf (`neuAufsetzen: true`): erst frisches GET und `neuAufsetzen`.
+  Ein unklares Segment geht also nie unter neuer Kennung mit altem Erwartungswert hinaus (ABA in der Sitzung).
+- **Neu aufsetzen** (`neuAufsetzen`, frisches GET, Sitzungswechsel): Der neue lokale Stand ist die **frische Sicht,
+  überlagert nur mit den eigenen ausstehenden Segmenten**; fremde Änderungen an anderen Zellen und Kernfeldern kommen
+  aus der frischen Sicht und gehen nie im nächsten Delta zurück. Ein unklares Segment wird nie blind wiederholt, auch
+  wenn der frische Wert wieder dem Erwartungswert gleicht (ABA) — es wird eine Frage. Ebenso wird **jede noch nicht
+  aufgelöste Konfliktfrage** wieder zur Frage (ihre Basis trägt schon den fremden Wert; sonst würde sie nach dem
+  Neuladen still zu „meins“); eine Teilwahl verfällt. Andere Epoche → „neu laden“.
+  Ist das Ausstehende über den Teilweg nicht darstellbar (`voll`), gibt es nie „aufgesetzt“, sondern „neu laden“ mit
+  Grund; der alte lokale Stand bleibt zurückgegeben, damit Teil 2 ihn vorher als Datei sichern kann.
+  Unklare Segmente **ohne** ausstehende Änderung (gesendet, Ausgang unklar, lokal zurückgenommen) werden gegen den
+  lokalen Wert geprüft: Weicht der frische Wert ab (die erste Sendung war angekommen), wird daraus eine Frage — die
+  Rücknahme geht nicht still verloren. Dazu liefert `deltaBilden` bei leerem Delta und nicht leerem `unklar`
+  `neuAufsetzen` statt `leer`.
+- **Sperren** (Delta-Review Runde 3): Bei offener Konfliktfrage liefern `deltaBilden` und `rumpfBauen` nichts
+  (`frage-offen`; auch nicht per `keepalive` beim Schließen — sonst wäre das ein blindes „meins“). Phase „neu laden“
+  ist endgültig: kein Delta, kein Rumpf, kein erneutes `neuAufsetzen`; der Ausweg ist `teilwegStart` nach der
+  Sicherung als Datei. Ohne Sitzungskennung kein Rumpf (`sitzung-fehlt`), `null` gilt nie als gleiche Sitzung.
+- **Keine Rechtelogik in der Oberfläche.** „Meins“ schickt nur Segmente aus dem eigenen Delta; ob die Rolle sie
+  schreiben darf, entscheidet der Server wie beim Voll-PUT (Prüfung: SV außerhalb des Bereichs → 403, nichts
+  geschrieben).
+- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (75 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
+  (Start/Gate, Delta, Antworten, Wahl, Idempotenz, Mehrfachkonflikte, unklarer Ausgang, Epoche, 200 Zufallslagen mit
+  festem Startwert), Gleichlauf mit `server/lib/teilweg.mjs` (Zellfelder, Nur-Server-Felder, stabiles JSON, Grenzen),
+  Ende zu Ende über den echten Handler: Leitung, Planung, Schichtverantwortung × Planzelle/Löschung/Kernfeld
+  Dienstarten/Mehrfach, Beschäftigte × Kernfeld Wünsche (zweites Gerät), je „fremd“ und „meins“; Mehrfachkonflikt mit
+  drittem Schreiber; Wiederholung mit gleicher Kennung ohne zweites Schreiben; ABA nach Sitzungswechsel; Neuaufsetzen
+  setzt fremde Zelle und fremdes Kernfeld nicht zurück (K1); Netzfehler und weitere Änderung senden nichts unter neuer
+  Kennung (K2). Handmutanten (nicht im Repo, von Hand per Textersetzung): M1–M7 (fremd wirkungslos, unklar ignoriert,
+  Basis nach 409 nicht aktualisiert, Kennung nie wiederverwendet, fremde Segmente als Frage, Serverfelder im Delta,
+  Epoche ignoriert), K1 (alter lokaler Stand nach Neuaufsetzen), K2 (kein ABA-Schutz in der Sitzung),
+  M1 neu (`voll` beim Neuaufsetzen übergangen), Grenzen (Rumpfbytes, Zellwertbytes, Tiefe, 413 ohne Rückfall), G1
+  (422 ohne Meldung); nach dem Delta-Review: offene Fragen beim Neuaufsetzen nicht als unklar, `voll` bzw. 413 trotz
+  Unklarem, Sitzung ignoriert, Jahre unter 100 angenommen; Runde 3: B1–B4 (Senden bei offener Frage, Rücknahme nach
+  Unklarem übergangen, „neu laden“ nicht endgültig, Sitzung `null` gilt) — alle rot.
+- **Modellprüfung** `pruefungen/wp48-5-konflikt-modell.test.js` (ebenfalls in `pruefung:wp48-gb-oeffnen`): 5 000
+  Lagen mit festen Startwerten (linearer Kongruenzgenerator, keine Uhr) gegen einen simulierten Teilweg-Server
+  (Erwartungswerte je Zelle, Kernfeld mit Version, alles oder nichts, Wiederholvermerk je Sitzung + Kennung, 422,
+  NEU_LADEN), mit Fremdschreiber, Absagen, 413, verlorenen und nicht angekommenen Sendungen, Neuladen,
+  Sitzungswechsel, Wiederherstellen und `keepalive` bei offener Frage. Die Oberfläche ist verdrahtet, wie Teil 2 es
+  tun soll; einen Rückfall `voll` modelliert das Modell als Sicherung + Neuladen. Invarianten: (I1) kein Wert eines
+  Fremdschreibers wird überschrieben, ohne dass die Person genau diesen Wert gesehen und geändert oder „meins“ gewählt
+  hat (wertbasiert wie der Erwartungswert des Servers; ein Fremdschreiben A→B→A bleibt die bekannte Grenze aus 7.2);
+  (I2) keine eigene Änderung geht still verloren (stand danach auf dem Server, „fremd“ gewählt oder als Datei
+  gesichert); (I3) keine Sendung bei offener Frage, in „neu laden“ oder mit Unklarem unter neuer Kennung/anderer
+  Sitzung; (I4) ohne Störungen nach höchstens 40 Schritten ruhig. Laufzeit lokal rund 5 s. Selbstprüfung: sechs
+  Verhaltensmutanten (ABA, K1, A1/B2, B1, „fremd“ wirkungslos, Wiederholung unter neuer Kennung) werden je in den
+  ersten 3 000 Lagen gefunden; die Textmutanten B1 und B2 findet das Modell ebenfalls, B3/B4 die Einheitsprüfung.
+  Grenzen des Modells (Review Runde 4): I1 ist **wertbasiert**; die Menge `erlaubt` (gesehene und geänderte bzw. mit
+  „meins“ entschiedene Werte) wächst nur und wird nie zurückgenommen — ein einmal bewusst überschriebener Wert gilt für
+  diese Zelle danach immer als erlaubt. Die Textmutanten M5 und M10 der Review-Zählung (darunter „fremde Segmente als
+  Frage“) findet nur die Einheitsprüfung, nicht das Modell. Feldbezeichnungen für `frageText` kommen von außen (`bezeichne`,
+  Rückfall Schlüssel); die Bezeichnungsliste gehört in die Oberfläche (Teil 2).
+
+**Offen für Teil 2:** Verdrahtung in `speicher.js` (Basis aus `lies()`, Senden über `POST /api/bestand/teile`,
+`keepalive` mit kleinem Delta, Rückfall auf den Voll-PUT bei `voll`), Konfliktfenster je Zelle/Feld (Radiogruppe je
+Frage mit zugänglichem Namen, Tastatur, kein verschachteltes Bedienelement; „neu laden“ mit Sicherung des
+Ausstehenden als Datei), Ersatz von `abbildVon(db)` im Speicher-Effekt nur auf dem Teilweg, Browser-/axe-Prüfung.
+Ohne Fähigkeit `teile` bleibt der heutige Weg bytegleich. Einschalten weiter erst nach Betreiberfreigabe.
+Ebenfalls Teil 2: Feldbezeichnungen der Kernfelder (`bezeichne` für `frageText`); Erweiterung der Modellprüfung um
+einen Sitzungswechsel ohne Neuladen (neue Sitzung, alter Zustand, erst danach GET) und um ein Kernfeld, das lokal
+fehlen kann (Rückfall `voll`/„neu laden“ im Modell).
+
+**Restgrenzen:** Normalisiert der Server einen gesendeten Zellwert, hält die Basis den gesendeten Wert; die nächste
+Änderung derselben Zelle zeigt dann eine Frage gegen den eigenen, normalisierten Wert (kein Verlust). Ein Delta über
+einer Grenze des Servers fällt auf den Voll-PUT zurück (große Betriebe dort weiter 413; dessen Drei-Wege-Abgleich
+erkennt fremde Änderungen weiter). Bei unklarem Ausgang ist ohne Netz kein Weiterspeichern möglich, bis ein frisches
+GET gelingt — gewollt, statt ein unklares Segment unter neuer Kennung zu wiederholen. Die Byte-Grenze des Rumpfs
+rechnet die Hülle (Format, Epoche, Kennung, `durch`) mit 2 KB Reserve. Bekannte Grenze (Review Runde 4): Eine Sendung
+mit unklarem Ausgang ist angekommen, danach setzt ein Fremder dieselbe Zelle zurück; die Wiederholung derselben
+Sendung mit derselben Kennung bekommt vom Server die gespeicherte 200-Antwort (kein neues Schreiben, richtig so).
+Die Oberfläche hält dann den eigenen Wert für gespeichert — die Anzeige ist veraltet, bis das nächste GET kommt; ein
+weiteres Delta auf diese Zelle läuft in 409 und wird zur Frage (kein stiller Verlust, keine Überschreibung).
 
 ---
 
