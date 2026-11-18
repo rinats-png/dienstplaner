@@ -525,6 +525,24 @@ Andere Mitteilungen legen Planung, Leitung und die Schichtverantwortung (eigener
 Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger ändern an eigenen Mitteilungen nur
 `gelesen`. An der Person wird höchstens der Merker `pushSchluessel: true` geschrieben.
 
+**Interessenmeldung nur an sichtbaren Tauschgesuchen (Review #356 M1, A):** Beschäftigte hängen die eigene
+Interessenmeldung nur an einen fremden Antrag, den ihre Sicht zeigt — ein offenes Tauschgesuch ohne festen Partner
+(`tauschgesuchSichtbar` in `rechte.mjs`, dieselbe Regel wie `sicht.mjs` `anfragen`). An jedem anderen fremden Antrag
+(Urlaub, entschiedenes Gesuch, Gesuch mit Partner) bleibt der gespeicherte Stand; die Meldung wird still übergangen,
+dieselbe Antwort wie für eine Kennung, die es nicht gibt. **Geschlossene Altlücke:** Bis dahin wurde die Meldung an
+JEDEN fremden Antrag gehängt, auch an einen verborgenen Urlaubsantrag (mit erratener Kennung), und gespeichert; mit der
+Kalendertagsprüfung (P2-12) hätte ein 422 Existenz und Tag eines verborgenen Antrags verraten. Geprüft in
+`pruefungen/p212-kalendertag.test.js` (Zustand und gleiche Antwort wie bei unbekannter Kennung).
+
+**Betreiberhinweis P2-12 (Kalendertage, die es nicht gibt):** Ein gespeicherter Alteintrag mit einem Tag wie
+„2026-02-30" in `anfragen`, `ausschreibungen`, Krankmeldungsfällen, `abwesenheiten`, `erfassung` oder `abweichungen`
+bleibt unverändert speicherbar und blockiert unabhängige Vorgänge nicht. Jeder Vorgang, der GENAU diesen Eintrag ändert,
+wird mit 422 `UNGUELTIGER_KALENDERTAG` abgewiesen — etwa Interesse/Bewerbung/Zurückziehen durch Beschäftigte, das
+Zurückziehen einer Alt-Ausschreibung durch die Kundenrolle, eine geänderte Antwort der Leitung. Bereinigen: Die Leitung
+löscht den Eintrag oder korrigiert den Tag (200); Beschäftigte löschen den eigenen Antrag. Der Index im `feld` der
+Absage (`mandanten[0].anfragen[3].von`) zählt in der Liste NACH der Rechtezusammenführung des Servers, nicht in der
+gesendeten.
+
 ³⁰ WP-I4 Teil 1 (Intelligence-Plan, Block K), neue Zeile "Interne Vorgaben", keine neue Spalte: **interne Vorgaben** (betriebliche Regeln des Regelbaukastens, `vorgaben`, Verwaltung in `server/lib/vorgaben.mjs`).
 **Lesen:** nur wer `org.edit` hat (Leitung, Kundenrolle; Vollausgabe und Sicherung der Leitung enthalten das Feld wie jedes Betriebsfeld der Leitungssicht). Planung, Schichtverantwortung, Beschäftigte und Betriebsrat bekommen es nicht: Die Planung wird in `rechte.mjs` aus der Sicht genommen, die drei anderen Rollen haben die Regel `weg` in `sicht.mjs` (sie bekommen eine leere Liste). **Eine Lesesicht des Betriebsrats gibt es ausdrücklich nicht**: Ob und in welchem Umfang der Betriebsrat Vorgaben sieht, ist eine offene Mitbestimmungsentscheidung (§ 87 BetrVG) und wartet auf die Freigabe des Betreibers.
 **Schreiben:** nur mit `org.edit` — anlegen, ändern, aktivieren, deaktivieren, löschen. Für jede andere Rolle ist das Feld **wirkungslos**: Was eine veraltete oder gefälschte Kopie mitschickt, wird übergangen (der gespeicherte Stand gilt, kein 403, damit eine Kopie, die sonst Erlaubtes ändert, nicht daran scheitert; Schichtverantwortung, Beschäftigte und Betriebsrat prüft ihr eigener Katalog). Der Server prüft die Form (geschlossenes Schema, Obergrenzen, der Regelbaukasten rechnet die Parameter probeweise), begrenzt die **aktiven** Vorgaben je Preisstufe (Basis 5, Business 25, Enterprise unbegrenzt, E-21; unbekannte Stufe wie Basis; nach einem Stufenwechsel nach unten bleibt der Bestand, aber keine weitere wird aktiv) und setzt Wann/Wer/Version (`geaendertAm/-Von`, `aktiviertAm/-Von`, `version`) selbst; mitgeschickte Werte dafür zählen nie. Eine neue Berechtigung gibt es nicht; `org.edit` ist bewusst die engste vorhandene Wahl (offen, ob auch die Planung Vorgaben lesen oder ändern darf — Mitbestimmung nach § 87 BetrVG).
@@ -605,4 +623,5 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Ein eigener HR-/DSGVO-Export für eine berechtigte Leitung, Trennung `/api/datenexport` / `/api/externes-backup` | eigener Schritt |
 | Weg des Betreibers zu Sicherungsschlüsseln | bei Bedarf |
 | Änderungsprotokoll `aenderungen` für den Betriebsrat (Legal-Revision 2026-11-07): nur noch die Standardfelder, die jeder Schreibweg setzt (Person, Tag, von/nach, Zeit, Vorlauf, Regelstand); frühere VOLL-Ausgabe mit beliebigen Zusatzfeldern entfällt. Test: `pruefungen/art9-katalog.test.js` | erledigt, hier dokumentiert |
+| P2-12 Folgearbeit (Review #356 N2): Eine Krankmeldung per Speichern mit Tag ohne führende Nullen („2026-2-3") verwirft `krankAlsFaelle` (Form JJJJ-MM-TT) wie schon vorher still — 200, kein Fall. Das widerspricht dem Ziel „nie unbemerkt"; nicht geändert (Krankmeldungsweg RB-2/RB-3) | Folgearbeit |
 | Schichtverantwortung sieht im eigenen Bereich über `planungsregeln` bei Mutterschutz die Kombination (keine Nacht, Sonntag nur mit Freigabe, über 8 h nur nach Absprache) und bei Wiedereingliederung von/bis der Stundengrenze; Planungs-Freitext `ausschreibungen[].hinweis` geht an alle Rollen; Art.-17-Löschung und Raum-/Mandantenlöschung prüfen keinen BewachV-Fristtyp (`docs/legal/TECHNISCHE-FOLGEAUFGABEN.md` T-18 bis T-20) | Betreiberentscheidung |
