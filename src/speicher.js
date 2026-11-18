@@ -20,6 +20,8 @@
    sinnvoll, am Stationsrechner nicht. */
 import * as PUF from "./stempelpuffer.js";
 import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
+import { teilwegStart } from "./app/teilkonflikt.js";
+import { teilSpeichern, teilEntscheiden, sicherungInhalt, sitzungsAbdruck, ruhig as teilRuhig } from "./app/teilweg-steuerung.js";
 
 const SCHLUESSEL = "centric:token";
 const GEMERKT = "centric:gemerkt";
@@ -33,9 +35,27 @@ let unterwegs = 0;           // Zahl der abgeschickten PUTs, deren Antwort ausst
 /** Fünfter Review B-2: Ein PUT, der nicht antwortet, bricht nach dieser Zeit ab (Fehlerart „netz“, Wiederholen möglich). */
 export const SCHREIBEN_ZEITGRENZE = 45000;
 
+/* WP-48.5 Teil 2: Teilspeicherung (docs/acc45/WP48-TEILSPEICHERUNG.md 2.4, 7.6). Nur wenn das GET die Fähigkeit
+   `teile` meldet (Schalter CENTRIC_TEILSPEICHERUNG an); sonst bleiben teil und teilRoh null, und alles läuft wie
+   bisher über den Voll-PUT. teilRoh ist die zuletzt übernommene GET-Antwort; der Zustand entsteht daraus beim ersten
+   Speichern (dann ist der Betrieb der Sitzung bekannt). */
+let teil = null;
+let teilRoh = null;
+let teilLaeuft = false;
+/** Nach der Sicherung als Datei bis zum Neuladen: nichts mehr senden (teilwegVerwerfen). */
+let neuLadenSperre = false;
+/** War der Teilweg in dieser Sitzung aktiv? Dann bietet das Konfliktfenster des Voll-PUT kein blindes Übernehmen an. */
+let teilGenutzt = false;
+/** Rückrufe des letzten Auftrags auf dem Teilweg (Senden nach einer Entscheidung im Konfliktfenster). */
+let teilAuftrag = null;
+/** Der jüngste lokale Stand, der zum Speichern übergeben wurde. */
+let letzterBestand = null;
+/** Steht auf dem Teilweg etwas aus, das nicht von selbst hinausgeht (Frage offen, unklar, „neu laden")? */
+const teilOffen = () => !!teil && !teilRuhig(teil);
+
 /** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
     Stand nicht der gespeicherte. */
-export const schreibenAusstehend = () => !!offen || unterwegs > 0;
+export const schreibenAusstehend = () => !!offen || unterwegs > 0 || teilOffen();
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -256,7 +276,58 @@ export async function lies() {
      Neustart hinausgeht. */
   if (!ausSpeicher && quittungsAbnehmer) stempelSenden().catch(() => {});
   return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch,
-    ausSpeicher: !!ausSpeicher, geholt };
+    ausSpeicher: !!ausSpeicher, geholt,
+    /* WP-48.5: Fähigkeit `teile` (nur mit Schalter, nie aus dem Speicher des Dienstarbeiters). Übernommen wird sie
+       erst mit teilwegUebernehmen — dort, wo die Oberfläche diesen Stand als lokalen Stand übernimmt. */
+    teilAntwort: !ausSpeicher && daten.teile ? { bestand: daten.bestand, etag: daten.etag, teile: daten.teile } : null };
+}
+
+/**
+ * WP-48.5: Den eben gelesenen Stand als Basis des Teilwegs übernehmen — nur dort aufrufen, wo die Oberfläche ihn
+ * als lokalen Stand übernimmt. Ohne Fähigkeit `teile` (Schalter aus) wird der Teilweg ausgeschaltet: Voll-PUT wie
+ * bisher. Steht auf dem Teilweg noch etwas aus (Frage, unklar, „neu laden"), bleibt der Zustand (false).
+ * @param {any} teilAntwort  `teilAntwort` aus lies() oder null
+ */
+export function teilwegUebernehmen(teilAntwort) {
+  if (teilOffen()) return false;
+  teil = null;
+  teilRoh = teilAntwort && teilAntwort.teile ? teilAntwort : null;
+  return true;
+}
+
+/** WP-48.5: Zustand des Teilwegs für das Konfliktfenster (null = Teilweg aus). */
+export const teilwegLage = () => teil;
+/** WP-48.5: War der Teilweg in dieser Sitzung aktiv? */
+export const teilwegGenutzt = () => teilGenutzt;
+/** WP-48.5: Bietet der Server den Teilweg an (Fähigkeit `teile` übernommen)? */
+export const teilwegAktiv = () => !!teil || !!teilRoh;
+
+/**
+ * WP-48.5: Die Fragen des Konfliktfensters entscheiden („fremd" | „meins" je Frage). Gibt den neuen lokalen
+ * Bestand zurück (die Oberfläche übernimmt ihn) und sendet den Rest sofort — oder null, solange eine Frage offen ist.
+ * @param {Record<string, "fremd"|"meins">} wahl
+ */
+export function teilEntscheidungAnwenden(wahl) {
+  if (!letzterBestand) return null;
+  const r = teilEntscheiden(teil, wahl, letzterBestand);
+  if (!r) return null;
+  teil = r.teil;
+  letzterBestand = r.bestand;
+  if (uhr) { clearTimeout(uhr); uhr = null; }
+  offen = { ...(teilAuftrag || {}), bestand: r.bestand, ausnahme: null };
+  jetztSchreiben().catch(() => {});
+  return r.bestand;
+}
+
+/** WP-48.5: Inhalt der Sicherung als Datei (Ausstehendes und eigener Betrieb), ohne Netz. */
+export const teilSicherung = () => sicherungInhalt(teil, letzterBestand, new Date().toISOString());
+
+/** WP-48.5: Nach der Sicherung als Datei neu laden — der Teilweg verwirft seinen Zustand (kein Senden, keine Rückfrage). */
+export function teilwegVerwerfen() {
+  /* Bis zum Neuladen geht nichts mehr hinaus — auch kein Voll-PUT des alten Stands über einen neu aufgesetzten. */
+  neuLadenSperre = true;
+  teil = null; teilRoh = null; offen = null;
+  if (uhr) { clearTimeout(uhr); uhr = null; }
 }
 
 /* ----------------------- Offline-Stempeln (WP-07) ------------------------
@@ -436,8 +507,13 @@ export function stempelSyncEinrichten(beiQuittung) {
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, sofort,
+  onTeilLage, onTeilLokal } = {}) {
+  /* onTeilLage(zustand): Konfliktfrage oder „neu laden" auf dem Teilweg (WP-48.5); onTeilLokal(bestand): der Teilweg
+     hat den lokalen Stand neu aufgesetzt, die Oberfläche übernimmt ihn. Ohne Teilweg werden beide nie gerufen. */
+  if (neuLadenSperre) return Promise.resolve();   // WP-48.5: nach Sicherung als Datei, vor dem Neuladen
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, onServerstand, onTeilLage, onTeilLokal };
+  letzterBestand = bestand;
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
@@ -500,6 +576,7 @@ function fehlerart(e, status) {
   if (status === 413) return "zuGross";
   if (status && status >= 500) return "server";
   if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
+  if (e && e.teilNetz) return "netz";   // WP-48.5: Teilweg ohne Antwort (Ausgang unklar)
   if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
     return "netz";
   return "unbekannt";
@@ -559,6 +636,108 @@ export function ohneServerFelder(bestand) {
   }) };
 }
 
+/** Zufällige Anfragekennung für den Wiederholschutz des Teilwegs ([A-Za-z0-9_-], 24 Zeichen). */
+const KENNUNG_ZEICHEN = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function anfrageKennung() {
+  const b = new Uint8Array(24);
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : null;
+  if (c && typeof c.getRandomValues === "function") c.getRandomValues(b);
+  else for (let i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256);
+  return Array.from(b, (x) => KENNUNG_ZEICHEN[x & 63]).join("");
+}
+
+/**
+ * WP-48.5 Teil 2: ein Auftrag über den Teilweg (src/app/teilweg-steuerung.js). Rückgabe: `weiter` = mit dem Voll-PUT
+ * fortfahren; `fehler` = wie ein gescheiterter Voll-PUT behandeln (NichtGespeichert, Wiederholen möglich).
+ * @returns {Promise<{ weiter: boolean, status: number|null, fehler?: any }>}
+ */
+async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch) {
+  /* Läuft schon ein Teilweg-Auftrag (Schließen wartet nicht auf ihn): nicht dazwischen senden — der Zustand gehört
+     dem laufenden. Der Auftrag bleibt ausstehend. */
+  if (teilLaeuft) { if (!offen) offen = auftrag; return { weiter: false, status: null }; }
+  teilLaeuft = true;
+  let r;
+  try {
+    r = await teilSpeichern(teil, {
+      bestand: auftrag.bestand, neuester: () => letzterBestand, durch: auftrag.durch, sitzung: sitzungsAbdruck(token),
+      neueKennung: anfrageKennung, beimSchliessen: !!beimSchliessen, vollGewuenscht,
+      senden: async (rumpf) => {
+        try {
+          const a = await ruf("bestand/teile", { method: "POST", ...(beimSchliessen ? { keepalive: true } : {}),
+            ...(abbruch ? { signal: abbruch.signal } : {}), body: JSON.stringify(rumpf) });
+          return { status: a.status, daten: a.daten || {} };
+        } catch (e) {
+          /* 401: abgewiesen, bevor etwas geschrieben wurde. Sonst ist der Ausgang unklar (Netz, Zeitgrenze). */
+          if (e && e.message === "nicht-angemeldet") return { status: 401, daten: {} };
+          return { status: null, netz: true };
+        }
+      },
+      holen: async () => {
+        try {
+          const a = await ruf("bestand", abbruch ? { signal: abbruch.signal } : {});
+          return { status: a.status, daten: a.daten, ausSpeicher: a.ausSpeicher };
+        } catch (e) {
+          if (e && e.message === "nicht-angemeldet") return { status: 401, daten: {} };
+          return { status: null, netz: true };
+        }
+      },
+      /* Neu aufgesetzt: frische Sicht plus eigene ausstehende Segmente. Sofort übernehmen (vor dem Senden), damit
+         spätere Eingaben auf dem neuen Stand aufbauen; ein wartender älterer Auftrag ist darin enthalten. */
+      uebernehmen: (b, e) => {
+        letzterBestand = b;
+        if (e !== undefined && e !== null) etag = e;
+        if (offen) { offen = null; if (uhr) { clearTimeout(uhr); uhr = null; } }
+        if (auftrag.onTeilLokal) { try { auftrag.onTeilLokal(b); } catch { /* Anzeige */ } }
+      },
+    });
+  } finally { teilLaeuft = false; }
+  teil = r.teil;
+  teilAuftrag = auftrag;
+  /* `neu`: eine neue Frage bzw. „neu laden" (Fenster öffnen); sonst nur die Lage auffrischen (Frage schon offen). */
+  const lage = () => { if (auftrag.onTeilLage && teil) { try { auftrag.onTeilLage(teil, { neu: r.ergebnis !== "gesperrt" }); } catch { /* Anzeige */ } } };
+  switch (r.ergebnis) {
+    case "gespeichert":
+      gescheitert = null;
+      if (auftrag.onGespeichert) { try { auftrag.onGespeichert(r.gesendet || auftrag.bestand); } catch { /* egal */ } }
+      return { weiter: false, status: 200 };
+    case "nichts":
+      if (r.grund === "neu-aufsetzen-beim-schliessen") { if (!offen) offen = auftrag; }
+      else gescheitert = null;
+      return { weiter: false, status: null };
+    case "konflikt": case "neuLaden": case "gesperrt":
+      lage();
+      return { weiter: false, status: 409 };
+    case "voll": case "aus":
+      if (r.bestand) auftrag.bestand = r.bestand;
+      auftrag.teilRueckfall = true;
+      if (r.ergebnis === "aus") teil = null;
+      return { weiter: true, status: null };
+    default: break;
+  }
+  /* fehler: wie ein gescheiterter Voll-PUT (gleiche Lagen in NichtGespeichert). */
+  const a = r.antwort || { status: null, netz: true };
+  const d = a.daten || {};
+  if (a.netz) {
+    const f = new Error(r.meldung || "Keine Verbindung.");
+    /** @type {any} */ (f).teilNetz = true;
+    return { weiter: false, status: null, fehler: f };
+  }
+  if (a.status === 401) return { weiter: false, status: 401, fehler: new Error("nicht-angemeldet") };
+  if (a.status === 409 && Array.isArray(d.fachbefunde)) {
+    /* WP-22: warnende Befunde — wie beim Voll-PUT nachfragen; die Bestätigung geht mit dem nächsten Delta hinaus
+       (Kernfeld `bestaetigungen`). Den ETag dieser Antwort übernimmt der Teilweg nicht. */
+    gescheitert = { auftrag, lage: { art: "bestaetigung", text: String(d.fehler || "Bestätigung nötig."), status: 409,
+      zeit: new Date().toISOString() } };
+    if (auftrag.onFachbefunde) auftrag.onFachbefunde(d);
+    else if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+    return { weiter: false, status: 409 };
+  }
+  const f = new Error(String((d.code === "PERSONALNUMMER_DOPPELT" ? d.text : null) || d.fehler || r.meldung
+    || "Speichern fehlgeschlagen."));
+  if (typeof d.code === "string") /** @type {any} */ (f).code = d.code;
+  return { weiter: false, status: a.status, fehler: f };
+}
+
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
@@ -568,6 +747,24 @@ async function schreibenAusfuehren(beimSchliessen) {
   const abbruch = typeof AbortController !== "undefined" ? new AbortController() : null;
   const zeitgeber = abbruch ? setTimeout(() => abbruch.abort(), SCHREIBEN_ZEITGRENZE) : null;
   try {
+    /* WP-48.5 Teil 2: Teilweg, nur mit Fähigkeit `teile`. Ohne sie sind teil und teilRoh null — dieser Block wird
+       übersprungen, und der Voll-PUT darunter läuft unverändert. Liefert der Teilweg „voll" (nicht darstellbar,
+       nichts unklar) oder bietet der Server ihn nicht mehr an, geht es unten mit dem Voll-PUT weiter. */
+    if (!teil && teilRoh) {
+      const mid = auftrag.bestand && auftrag.bestand.session && auftrag.bestand.session.mandantId;
+      if (mid) {
+        teil = teilwegStart(teilRoh, mid);
+        teilRoh = null;
+        if (teil) teilGenutzt = true;
+      }
+    }
+    if (teil) {
+      const vollGewuenscht = !!(auftrag.ausnahme || (einmalig && !angabenUnterwegs.has(einmalig)));
+      const t = await teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch);
+      status = t.status;
+      if (t.fehler) throw t.fehler;
+      if (!t.weiter) return;
+    }
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
        verloren — genau in dem Moment, in dem niemand mehr hinsieht. */
@@ -632,6 +829,9 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     etag = daten.etag;
     gescheitert = null;
+    /* WP-48.5: Rückfall vom Teilweg auf den Voll-PUT gelungen — dessen Basis und Versionen sind damit veraltet. Für den
+       Rest der Sitzung bleibt es beim Voll-PUT, bis die Oberfläche wieder einen gelesenen Stand übernimmt. */
+    if (auftrag.teilRueckfall) { teil = null; teilRoh = null; }
     /* Angenommen: erst jetzt ist die Angabe verbraucht. */
     if (auftrag.ausnahme) angenommeneAngaben.add(auftrag.ausnahme);
     if (auftrag.ausnahme && einmalig === auftrag.ausnahme) einmalig = null;
@@ -693,8 +893,10 @@ export async function schluesselWiderrufen(kennung) {
 /** Vor dem Schließen des Fensters noch Ausstehendes wegschreiben. */
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", (e) => {
-    if (!offen) return;
-    jetztSchreiben(true);
+    /* WP-48.5: Auf dem Teilweg kann Ungespeichertes auch ohne wartenden Auftrag liegen (offene Frage, unklarer
+       Ausgang, „neu laden") — dann nichts senden, aber nachfragen. Ohne Teilweg ist teilOffen() immer falsch. */
+    if (!offen && !teilOffen()) return;
+    if (offen) jetztSchreiben(true);
     /* Zusätzlich nachfragen: keepalive ist zuverlässig, aber nicht
        garantiert. Bei einem Monatsplan wiegt eine Rückfrage leichter als
        eine verlorene Stunde Arbeit. */

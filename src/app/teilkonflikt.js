@@ -260,7 +260,8 @@ export function antwortVerarbeiten(zustand, antwort) {
   if (status === 200 && d.ok) {
     const ids = new Set(segmente(u.delta));
     return { ergebnis: "gespeichert", zustand: { ...ohne, basis: basisMit(zustand.basis, u.delta),
-      versionen: { ...zustand.versionen, ...(objekt(d.versionen) ? d.versionen : {}) },
+      /* Nur die Versionen der eben geschriebenen Kernfelder: Deren Basiswert ist jetzt der gesendete. */
+      versionen: versionenMit(zustand.versionen, d.versionen, new Set(Object.keys(u.delta.kern || {}))),
       epoche: typeof d.epoche === "string" && d.epoche ? d.epoche : zustand.epoche,
       unklar: zustand.unklar.filter((x) => !ids.has(x)) } };
   }
@@ -297,10 +298,28 @@ export function antwortVerarbeiten(zustand, antwort) {
     meldung: String(d.text || d.fehler || "Nicht gespeichert.") };
 }
 
+/**
+ * Versionen aus einer Antwort übernehmen — die eines Kernfelds NUR, wenn die Basis zugleich den Wert dazu bekommt
+ * (`kernMitWert`). Sonst passten Basiswert und Basisversion nicht mehr zusammen: Die 409-Antwort trägt die Versionen
+ * ALLER Kernfelder der Sicht; mit ihnen, aber dem alten Basiswert, ginge eine spätere Änderung eines anderen
+ * Kernfelds mit der neuen Version durch und überschriebe still eine fremde Änderung, die die Person nie gesehen hat
+ * (gefunden von der Modellprüfung, Teil 2). Monatsversionen sind nur Auskunft (kein Erwartungswert).
+ */
+function versionenMit(alt, neu, kernMitWert) {
+  const aus = { ...alt };
+  if (!objekt(neu)) return aus;
+  for (const [k, v] of Object.entries(neu)) {
+    if (k.startsWith("kern:") && !kernMitWert.has(k.slice(5))) continue;
+    aus[k] = v;
+  }
+  return aus;
+}
+
 /** 409 TEILE_KONFLIKT: aktuelle Werte der streitigen Teile in die Basis, Fragen je Zelle/Feld anlegen. */
 function konfliktUebernehmen(zustand, delta, d) {
   let basis = zustand.basis;
-  const versionen = { ...zustand.versionen, ...(objekt(d.versionen) ? d.versionen : {}) };
+  /* Kernversionen nur über die streitigen Kernfelder unten (f.version, mit aktuellem Wert). */
+  const versionen = versionenMit(zustand.versionen, d.versionen, new Set());
   const fragen = new Map(zustand.konflikte.map((f) => [f.id, f]));
   const kopiert = new Set();
   for (const z of Array.isArray(d.konflikt.zellen) ? d.konflikt.zellen : []) {

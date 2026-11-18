@@ -240,6 +240,7 @@ import { AntraegeGeteilt } from "./ansichten/antraegegeteilt.jsx";
 import { Monatsplan } from "./ansichten/monatsplan.jsx";
 import { Dienstarten } from "./ansichten/dienstarten.jsx";
 import { Konfliktfenster, NichtGespeichert, Offlineleiste } from "./ansichten/speicherlage.jsx";
+import { Teilkonfliktfenster, TeilwegLeiste, teilSichern } from "./ansichten/teilkonflikt.jsx";
 import { sitzungAusZugang } from "./app/zugangssitzung.js";
 import { Ladefehlerseite } from "./ansichten/ladefehler.jsx";
 import { Import } from "./ansichten/import.jsx";
@@ -1010,6 +1011,10 @@ function AppInnen() {
   const [warnung, setWarnung] = useState(null);
   const [ausgl, setAusgl] = useState(null);
   const [konflikt, setKonflikt] = useState(false);
+  /* WP-48.5 Teil 2: Konfliktfrage bzw. „neu laden" auf dem Teilweg (nur mit Fähigkeit `teile`; sonst bleibt beides
+     leer) und ob das Fenster dazu offen ist. */
+  const [teilLage, setTeilLage] = useState(null);
+  const [teilFenster, setTeilFenster] = useState(false);
   /* WP-22: warnende Befunde, die der Server bestätigt haben will (409). */
   const [fachFrage, setFachFrage] = useState(null);
   /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
@@ -1089,7 +1094,7 @@ function AppInnen() {
   useEffect(() => { let lebt = true; (async () => {
     if (!SP.angemeldet()) { setLaedt(false); return; }
     try {
-      const { bestand, zugang, ausSpeicher, geholt } = await SP.lies();
+      const { bestand, zugang, ausSpeicher, geholt, teilAntwort } = await SP.lies();
       if (!lebt) return;
       if (ausSpeicher) setOffline({ geholt });
 
@@ -1117,6 +1122,9 @@ function AppInnen() {
           return;
         }
         b = erg.bestand;
+        /* WP-48.5: Basis des Teilwegs ist genau dieser Stand. Nach einer Migration bleibt es beim Voll-PUT (Entwurf
+           2.6). Ohne Fähigkeit `teile` ist teilAntwort null — der Teilweg bleibt aus. */
+        SP.teilwegUebernehmen(erg.schritte > 0 ? null : teilAntwort);
         if (erg.schritte > 0) {
           /* Sofort zurückschreiben, damit die Migration nicht bei jedem
              Öffnen erneut läuft — und damit ein Fehler darin früh auffällt. */
@@ -1213,6 +1221,13 @@ function AppInnen() {
   const automatikAbbild = useRef(null);
   const urlaubsLauf = useRef(false);
   const urlaubsLaeufe = useRef(0);
+  /* WP-48.5 Teil 2: Der Teilweg hat den lokalen Stand angepasst (neu aufgesetzt oder entschieden) — übernehmen und
+     als geschrieben vermerken (gesendet wird von speicher.js selbst). Ohne Teilweg nie gerufen. */
+  const teilLokalUebernehmen = useCallback((b) => {
+    const naechster = { ...b, stand: ((ref.current && ref.current.stand) || 0) + 1 };
+    zuletztGeschrieben.current = abbildVon(naechster);
+    setDb(naechster);
+  }, []);
   useEffect(() => { if (!db) return; if (erst.current) { erst.current = false; zuletztGeschrieben.current = abbildVon(db); return; }
     const abbild = schreibAbbild(db, zuletztGeschrieben.current);
     if (abbild === null) return;
@@ -1238,14 +1253,32 @@ function AppInnen() {
           setDb(naechster);
           return;
         }
-        setKonflikt({ ...d, meiner: ref.current });
+        /* WP-48.5: Rückfall vom Teilweg — kein blindes Übernehmen (Entscheidung 6.4). Ohne Teilweg unverändert. */
+        setKonflikt({ ...d, meiner: ref.current, ...(SP.teilwegGenutzt() ? { ohneUebernehmen: true } : {}) });
       },
       onFachbefunde: (d) => setFachFrage(d),
       onFehler: (lage) => setNichtGespeichert(lage),
       onGespeichert: (b) => { zustellungAnstossen(b); },
       onServerstand: (st) => setDb((s) => vertragsstandUebernehmen(s, st)),
+      /* WP-48.5 Teil 2 (nur Teilweg): Frage je Zelle/Feld bzw. „neu laden". Bestand der Schreibvorgang nur aus dem
+         automatischen Lauf beim Öffnen (Urlaubshinweis, WP-48-GB) und hat die Person seitdem nichts geändert, wird
+         still „fremd" gewählt — wie automatikKonfliktLoesen auf dem Voll-PUT — und der Lauf einmal neu geprüft. */
+      onTeilLage: (z, { neu: neueFrage = true } = {}) => {
+        if (neueFrage && z && z.phase === "konflikt" && automatisch && automatisch === abbild && ref.current && abbildVon(ref.current) === abbild) {
+          const neu = SP.teilEntscheidungAnwenden(Object.fromEntries(z.konflikte.map((f) => [f.id, "fremd"])));
+          if (neu) {
+            teilLokalUebernehmen(neu);
+            if (urlaubsLaeufe.current < 2) urlaubsLauf.current = false;
+            return;
+          }
+        }
+        setTeilLage(z);
+        /* Eine schon offene Frage („Später entscheiden") öffnet das Fenster nicht bei jeder Eingabe neu — die Leiste bleibt. */
+        if (neueFrage) setTeilFenster(true);
+      },
+      onTeilLokal: (b) => teilLokalUebernehmen(b),
     });
-  }, [db, zustellungAnstossen]);
+  }, [db, zustellungAnstossen, teilLokalUebernehmen]);
 
   const melde = useCallback((t) => { setHinweis(t); setTimeout(() => setHinweis(null), 3000); }, []);
 
@@ -1400,6 +1433,8 @@ function AppInnen() {
           const jetzt = ref.current;
           if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
             && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            /* WP-48.5: Dieser gelesene Stand ist die neue Basis des Teilwegs (ohne Fähigkeit `teile` null). */
+            SP.teilwegUebernehmen(neu.teilAntwort);
             const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
             zuletztGeschrieben.current = abbildVon(naechster);
             setDb(naechster);
@@ -1440,6 +1475,8 @@ function AppInnen() {
           /* Nur wenn sich zwischendurch lokal nichts getan hat und kein Schreiben ansteht. */
           if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
             && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            /* WP-48.5: Dieser gelesene Stand ist die neue Basis des Teilwegs (ohne Fähigkeit `teile` null). */
+            SP.teilwegUebernehmen(neu.teilAntwort);
             const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
             zuletztGeschrieben.current = abbildVon(naechster);
             setDb(naechster);
@@ -1787,6 +1824,7 @@ function AppInnen() {
           <Offlineleiste lage={offline} />
           <NichtGespeichert lage={nichtGespeichert} melde={melde}
             aufGeloest={() => setNichtGespeichert(null)} />
+          {teilLage && !teilFenster && <TeilwegLeiste zustand={teilLage} onOeffnen={() => setTeilFenster(true)} />}
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
               <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>Für Tablet und Rechner ausgelegt</div>
@@ -1967,6 +2005,27 @@ function AppInnen() {
               onFehler: (l) => setNichtGespeichert(l) });
             setKonflikt(false);
             melde("Dein Stand wurde übernommen.");
+          }} />)}
+
+      {teilLage && teilFenster && (
+        <Teilkonfliktfenster key={`${teilLage.phase}:${(teilLage.konflikte || []).map((f) => f.id).join(",")}`}
+          zustand={teilLage} m={sitz && sitz.mandant}
+          onSpaeter={() => setTeilFenster(false)}
+          onEntscheiden={(wahl) => {
+            /* Je Frage „fremd" oder „meins" — kein Übernehmen im Ganzen. speicher.js sendet danach selbst. */
+            const neu = SP.teilEntscheidungAnwenden(wahl);
+            if (!neu) { melde("Bitte zu jeder Angabe eine Fassung wählen."); return; }
+            teilLokalUebernehmen(neu);
+            setTeilFenster(false);
+            setTeilLage(null);
+            melde("Entschieden — wird gespeichert.");
+          }}
+          onSichern={() => teilSichern(melde)}
+          onSichernUndNeuLaden={() => {
+            if (!teilSichern(melde)) return;
+            SP.teilwegVerwerfen();
+            /* Kurz warten, damit der Browser die Datei übernimmt, bevor die Seite neu lädt. */
+            setTimeout(() => window.location.reload(), 800);
           }} />)}
 
       {fachFrage && sitz && sitz.mandant && (

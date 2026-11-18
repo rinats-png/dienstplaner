@@ -211,7 +211,9 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
               Neu laden</Btn>
           </div>
 
-          <div className="karte" style={{ padding: "13px 15px" }}>
+          {/* WP-48.5 (Entscheidung 6.4): War in dieser Sitzung der Teilweg aktiv, gibt es kein blindes Übernehmen —
+              auch nicht im Rückfall auf den Voll-PUT. Ohne Teilweg bleibt die Karte wie bisher. */}
+          {!(lage && lage.ohneUebernehmen) && <div className="karte" style={{ padding: "13px 15px" }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
               Meinen Stand nehmen</div>
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
@@ -223,7 +225,7 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
                 + `${monate.length ? ` in ${monate.join(", ")}` : ""} werden überschrieben. `
                 + "Das lässt sich nicht rückgängig machen.")) onUebernehmen();
             }}>Meinen Stand übernehmen</Btn>
-          </div>
+          </div>}
 
           <div className="karte" style={{ padding: "13px 15px" }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
