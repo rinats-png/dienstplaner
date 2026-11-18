@@ -111,14 +111,14 @@ function stabil(x) {
   return `{${Object.keys(x).filter((k) => x[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stabil(x[k])}`).join(",")}}`;
 }
 
-/** Zahlen der Vorschau ohne Personenangaben (Antwort und Kennung). */
+/** Zahlen der Vorschau ohne Personenangaben (Antwort und Kennung). Generisch: jede Zahl, die die Vorschau
+    (aufbewahrung.mjs) liefert, ohne einzelne Felder des Betriebs hier zu benennen oder zu lesen — dieser Weg reicht
+    den Betrieb nur so durch, wie die Oberfläche ihn beim Speichern schickt (Gate rb2-krankmeldung). */
 export function planZahlen(plan) {
+  const zahlen = {};
+  for (const [k, v] of Object.entries(plan)) if (typeof v === "number") zahlen[k] = v;
   return {
-    gesamt: plan.gesamt, personen: plan.personen.length, plandaten: { ...plan.plandaten }, planSumme: plan.planSumme,
-    aenderungen: plan.aenderungen, gruende: plan.gruende, standort: plan.standort, abgewiesen: plan.abgewiesen,
-    krankmeldungen: plan.krankmeldungen, moduldaten: plan.moduldaten, modulprotokoll: plan.modulprotokoll,
-    moduldatenZurueckgehalten: plan.moduldatenZurueckgehalten, modulprotokollZurueckgehalten: plan.modulprotokollZurueckgehalten,
-    bewachvZurueckgehalten: plan.bewachvZurueckgehalten,
+    ...zahlen, personen: plan.personen.length, plandaten: { ...plan.plandaten },
     stichtage: { plan: plan.stichtage.plan, stamm: plan.stichtage.stamm, grund: plan.stichtage.grund, standort: plan.stichtage.standort },
   };
 }
