@@ -435,3 +435,14 @@ Hinweise aus den unabhängigen Reviews (nicht blockierend):
   - Neu angelegt: WP-ZEIT (IN_PROGRESS; #296, #301, #303, #315), BE-1 (IN_PROGRESS; #304, #306-#308; Passwoerter offen), BE-2 Stufe A1 (INTEGRATED; #311), BE-3 (IN_PROGRESS; #313, #316, #319). Prioritaet, Strang und Aufwand vorlaeufig nach `BACKLOG-PHASEN.md`, vom Betreiber nicht bestaetigt. Keine Stufe staging-geprueft, fachlich freigegeben oder produktiv.
 - Nicht geaendert: Namenskollision "S-1" (Einladungsbremse ABN-A2 gegen Loeschschutz der Sicherung INFRA) bleibt offen, eindeutige IDs braeuchten Aenderungen in mehreren Dokumenten (Koordinatorsache).
 
+
+## Nachtrag 2026-11-18 01:40Z (geplanter Lauf, nur lesende Prüfung und Statuspflege)
+
+- Integrationskopf `integration/release-v4`: `32951445` (Merge #340). Seit 20:34Z (17.11.) keine neue Integration.
+- Lease: Epoche 20 (`hauptchat-e20`) ist seit 17.11. 23:34Z abgelaufen, kein aktiver Koordinator. Dieser Lauf hat keine Lease übernommen und nichts integriert.
+- Hintergrundbetrieb: Es existiert eine stündliche geplante Aufgabe (Minute 32), die jeweils eine frische Cloud-Sitzung startet. Sitzungsübergreifende Ausschlüsse gibt es nur über die Lease; ohne sie bleiben geplante Läufe auf lesende Prüfung und Statuspflege beschränkt.
+- Umgebungsgrenze: `gh` ist in dieser Cloud-Umgebung nicht nutzbar, `node werkzeug/ssot-abgleich.mjs` bricht deshalb ab („PR-Liste nicht ermittelbar“). Der PR-Stand kommt aus den GitHub-MCP-Werkzeugen.
+- Offene PRs auf `integration/release-v4`: #327 (Entwurf, CI Browserabnahme-Shard), #297, #277, #238, #177 (Entwurf), #175 (Entwurf), #168, #139, #129, #127, #115. Alle mit alter Basis (zuletzt aktualisiert 9.–17.11.), keiner in diesem Lauf geprüft oder gemergt.
+- #277 (ABN-A2, Einladungsbremse): 23 Checks grün auf Stand 13.11. (Head `5579d082`, Basis `ca45a0a2`), sicherheitsrelevant, Basis veraltet; vor Merge Rebase, erneute CI und unabhängiges Review nötig. Test 2.4 in `abnahme-a-ablauf.test.js` ist nach Merge anzupassen.
+- Backlog-Stand (`acc45-backlog.mjs fortschritt`): 218 Pakete, INTEGRATED 94, DONE 3, REVIEW 7, IN_PROGRESS 22, READY 16, BLOCKED 76; offen 305,5–527,2 PT (ohne extern), kritischer Pfad 50–90 PT (WP-I4 → … → WP-I37).
+- Nächste ausführbare Arbeitspakete für einen Koordinator mit Lease: #277 rebasen und reviewen; #327 aus dem Entwurf nehmen, wenn CI grün; Entscheidungsfrage P2-12 aus `ENTSCHEIDUNGSLISTE.md` bleibt beim Betreiber.
