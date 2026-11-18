@@ -301,9 +301,14 @@ describe("A4 Konflikt je Zelle/Feld: Wahl, Auflösen, Idempotenz, Mehrfachkonfli
     expect(t).toEqual({ titel: "Einteilung von Ana Alt am 14.08.2026", meins: "Nacht (N)", fremd: "frei", hinweis: "" });
     const t2 = T.frageText(z.konflikte.find((f) => f.id === "z:abweichungen:a1|2026-08-15"), l);
     expect(t2.fremd).toBe("leer");
-    const tk = T.frageText(z.konflikte.find((f) => f.art === "kern"), l);
+    /* Feldbezeichnungen kommen von der Oberfläche (Teil 2); ohne sie steht der Schlüssel da. */
+    const fk = z.konflikte.find((f) => f.art === "kern");
+    const tk = T.frageText(fk, l, (feld) => ({ dienstarten: "Dienstarten" })[feld]);
     expect(tk.titel).toBe("Stammdaten: Dienstarten");
     expect(tk.hinweis).toMatch(/ganze Feld/);
+    expect(T.frageText(fk, l).titel).toBe("Stammdaten: dienstarten");
+    expect(T.frageText(fk, l, () => undefined).titel).toBe("Stammdaten: dienstarten");
+    expect(T.frageText(fk, l, () => "").titel).toBe("Stammdaten: dienstarten");
     expect(T.frageText({ art: "zelle", feld: "erfassung", k: "p1|2026-08-02", meins: { start: "06:00", ende: "14:00", bestaetigt: true }, fremd: null }, l))
       .toEqual({ titel: "Ist-Zeit von Pia Plan am 02.08.2026", meins: "06:00–14:00, bestätigt", fremd: "leer", hinweis: "" });
   });

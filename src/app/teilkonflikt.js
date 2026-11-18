@@ -454,10 +454,6 @@ export function neuAufsetzen(zustand, antwort, lokal) {
 /* Texte für das Konfliktfenster                                            */
 
 const DATUM = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-const KERNNAMEN = { personen: "Personal", dienstarten: "Dienstarten", abwesenheiten: "Abwesenheiten",
-  anfragen: "Anfragen", nachrichten: "Nachrichten", einstellungen: "Einstellungen", freigaben: "Planfreigaben",
-  wuensche: "Wünsche", einheiten: "Bereiche", bestaetigungen: "Bestätigungen", krankmeldungen: "Krankmeldungen",
-  planstaende: "Planstände", standorte: "Standorte" };
 
 function zellwertText(feld, w, m) {
   if (w === null || w === undefined || w === "") return "leer";
@@ -474,10 +470,13 @@ function zellwertText(feld, w, m) {
  * Lesbare Beschreibung einer Frage: „Einteilung von Vorname Nachname am 14.08.2026: du F, inzwischen N".
  * @param {any} frage  Eintrag aus zustand.konflikte
  * @param {any} m      lokaler Betrieb (für Namen von Personen und Dienstarten)
+ * @param {(feld: string) => (string|null|undefined)} [bezeichne]  Anzeigename eines Kernfelds; kommt von der
+ *   Oberfläche (Teil 2). Diese Logikschicht kennt keine Feldbezeichnungen; ohne Angabe steht der Schlüssel da.
  */
-export function frageText(frage, m) {
+export function frageText(frage, m, bezeichne) {
   if (frage.art === "kern") {
-    const name = KERNNAMEN[frage.feld] || frage.feld;
+    const b = typeof bezeichne === "function" ? bezeichne(frage.feld) : null;
+    const name = typeof b === "string" && b ? b : frage.feld;
     return { titel: `Stammdaten: ${name}`, meins: "deine Fassung", fremd: "die inzwischen gespeicherte Fassung",
       hinweis: "Das ganze Feld wird ersetzt. Wählst du die andere Fassung, gehen deine Änderungen in diesem Feld verloren." };
   }
