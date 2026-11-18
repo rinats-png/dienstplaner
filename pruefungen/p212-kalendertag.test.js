@@ -20,6 +20,8 @@
 // zeit-ok: Alle Kalenderdaten sind feste Werte ohne Bezug zur Uhr (Zahlenraster 2000–2999, Februar bis Dezember 2026; die Abwesenheiten 2026-11-30/2026-12-01 können je nach Laufzeitpunkt in der Zukunft liegen, die Prüfung hängt davon nicht ab). Zeitpunkte entstehen nur aus festen Angaben; die Handler laufen auf der echten Uhr, ihr Ergebnis hier hängt nicht vom Laufzeitpunkt ab.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { freezeStatus } from "../server/lib/isteinfrieren.mjs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -411,10 +413,15 @@ describe("Monatsabschluss: Jahr außerhalb 2000–2999", () => {
     ["korrekturFreigeben", () => MA.korrekturFreigeben(betrieb(), { monat }, wer, jetzt, "ma-1", "2026-03-10")],
     ["korrekturVerwerfen", () => MA.korrekturVerwerfen(betrieb(), { monat, grund: "Prüfung des Monats" }, wer, jetzt, "ma-1")],
   ];
-  it("1999-12 und 3000-01: 422 UNGUELTIGER_MONAT in allen Abschlussaktionen", () => {
+  const ART = { abschliessen: "anlegen", lohnexportBestaetigen: "anlegen", korrekturFreigeben: "anlegen",
+    wiederoeffnen: "oeffnen", korrekturBeginnen: "oeffnen", korrekturVerwerfen: "verwerfen" };
+  const OEFFNEN_409 = (monat) => ({ status: 409, code: MA.UNGUELTIGER_MONAT,
+    grund: `Monat außerhalb der unterstützten Jahre 2000–2999: ${monat} bleibt, wie er ist. Eine Änderung nur durch den Betreiber.` });
+  const ANLEGEN_422 = () => ({ status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: MA.UNGUELTIGER_MONAT });
+  it("1999-12, 3000-01 (nicht gespeichert): anlegen/verwerfen 422, öffnen 409 — alle mit UNGUELTIGER_MONAT", () => {
     for (const monat of ["1999-12", "3000-01", "0000-01", "9999-12"])
       for (const [name, f] of aufrufe(monat))
-        expect(f(), `${name} ${monat}`).toEqual({ status: 422, grund: "Kein gültiger Monat (Jahr 2000 bis 2999).", code: MA.UNGUELTIGER_MONAT });
+        expect(f(), `${name} ${monat}`).toEqual(ART[name] === "oeffnen" ? OEFFNEN_409(monat) : ANLEGEN_422());
   });
   it("falsche Form wie bisher (ohne Code)", () => {
     for (const monat of ["2026-13", "2026-1", "", undefined, ["2026-01"], 202601, ["1999-12"]])
@@ -425,48 +432,69 @@ describe("Monatsabschluss: Jahr außerhalb 2000–2999", () => {
       for (const [name, f] of aufrufe(monat)) {
         const r = f();
         expect(r && r.code, `${name} ${monat}`).not.toBe(MA.UNGUELTIGER_MONAT);
-        expect(String((r && r.grund) || ""), `${name} ${monat}`).not.toMatch(/Kein gültiger Monat/);
+        expect(String((r && r.grund) || ""), `${name} ${monat}`).not.toMatch(/Kein gültiger Monat|außerhalb der unterstützten/);
       }
     const r = MA.abschliessen(betrieb(), { monat: "2000-01", bestaetigt: true }, wer, jetzt, "ma-1", "2026-03-10");
     expect("mandant" in r, JSON.stringify(r).slice(0, 300)).toBe(true);
     expect(r.mandant.istEingefroren["p1|2000-01-10"]).toBeTruthy();
   });
-  /* Delta-Review A1-1: ein GESPEICHERTER Altmonat außerhalb der Grenze darf keine Sackgasse werden. */
-  const mitAbschluss = (eintrag) => ({ ...betrieb(), monatsabschluss: { "1999-12": eintrag } });
-  const zu = { abgeschlossen: true, am: "2000-01-05T08:00:00.000Z", wer: { personId: "l1", name: "L", rolle: "leitung" }, abdruck: "x".repeat(32), verlauf: [] };
-  it("gespeicherter Abschluss 1999-12: wiederoeffnen geht (ohne Wurf), abschliessen bleibt 422", () => {
-    const w = MA.wiederoeffnen(mitAbschluss(zu), { monat: "1999-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-2");
-    expect("mandant" in w, JSON.stringify(w).slice(0, 300)).toBe(true);
-    expect(w.eintrag.abgeschlossen).toBe(false);
-    expect(w.ereignis.istNeu).toBeNull();                       // Hinweis nicht rechenbar (Tage außerhalb der Zeitbasis)
-    expect(MA.monatAbgeschlossen(w.mandant, "1999-12")).toBe(false);
-    expect(MA.abschliessen(w.mandant, { monat: "1999-12", bestaetigt: true }, wer, jetzt, "ma-3", "2026-03-10"))
-      .toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
-    expect(MA.abschliessen(mitAbschluss(zu), { monat: "1999-12", bestaetigt: true }, wer, jetzt, "ma-3", "2026-03-10"))
-      .toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
-    expect(MA.lohnexportBestaetigen(mitAbschluss(zu), { monat: "1999-12" }, wer, jetzt, "ma-3")).toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
+
+  /* Delta-Review Runde 3 (A1-K1): ein GESPEICHERTER Altmonat 1999-12 — echter Schema-3-Freeze mit bestätigtem
+     Lohnexport, erzeugt mit dem Code der Basis 32951445 (pruefungen/fixtures/p212-altmonat-1999-12.json). Sicherer
+     Zustand: abgeschlossen (und exportiert) bleibt abgeschlossen. Geprüft wird der ZUSTAND, nicht nur der Status. */
+  const FIX = JSON.parse(readFileSync(new URL("./fixtures/p212-altmonat-1999-12.json", import.meta.url), "utf8"));
+  const M = "1999-12";
+  const zustand = (m) => {
+    const e = MA.abschlussEintrag(m, M);
+    return { abgeschlossen: e.abgeschlossen, lohnexport: e.lohnexport ?? null, revision: e.revision ?? null, schema: e.schema, abdruck: e.abdruck,
+      verlauf: e.verlauf.length, korrektur: e.korrektur ?? null, freeze: Object.keys(m.istEingefroren).filter((k) => k.includes(M)).sort(),
+      sperre: MA.abschlussSperre(m, "1999-12-10"), laufend: MA.hatLaufendeKorrektur(m) };
+  };
+  it("Fixture: Schema-3-Freeze, bestätigter Lohnexport, Sperre aktiv", () => {
+    const z = zustand(FIX.exportiert);
+    expect(z).toMatchObject({ abgeschlossen: true, laufend: false });
+    expect(z.lohnexport).toBeTruthy();
+    expect(z.freeze.length).toBeGreaterThan(0);
+    expect(z.sperre).toMatchObject({ code: MA.MONAT_ABGESCHLOSSEN, monat: M });
+    expect(freezeStatus(FIX.exportiert, M)).toMatchObject({ reproduzierbar: true });
+    expect(MA.istAbdruck(FIX.exportiert, M)).toBe(z.abdruck);
   });
-  it("gespeicherte offene Korrektur 1999-12: korrekturVerwerfen geht, korrekturFreigeben bleibt 422", () => {
-    const offen = { ...zu, abgeschlossen: false, revision: 2, korrektur: { offen: true, id: "k1", am: "2000-02-01T08:00:00.000Z", wer: { personId: "l2" }, anlass: "nachtrag", vonRevision: 1, freigabe: null } };
-    const v = MA.korrekturVerwerfen(mitAbschluss(offen), { monat: "1999-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-4");
+  it("exportierter Altmonat: korrekturBeginnen 409 vor jeder Zustandsänderung — Abschluss, Lohnexport, Freeze, Revision, Sperre unverändert", () => {
+    const m = JSON.parse(JSON.stringify(FIX.exportiert)), vorher = JSON.stringify(m), z0 = zustand(m);
+    for (const w of [wer, { personId: "l2", name: "L2", rolle: "leitung" }]) {
+      const k = MA.korrekturBeginnen(m, { monat: M, grund: "Prüfung des Monats", anlass: Object.keys(MA.KORREKTUR_ANLAESSE)[0] }, w, jetzt, "ma-5");
+      expect(k).toEqual(OEFFNEN_409(M));
+    }
+    expect(MA.wiederoeffnen(m, { monat: M, grund: "Prüfung des Monats" }, wer, jetzt, "ma-5")).toEqual(OEFFNEN_409(M));
+    expect(MA.korrekturFreigeben(m, { monat: M }, wer, jetzt, "ma-5", "2026-03-10")).toEqual(ANLEGEN_422());
+    expect(MA.korrekturVerwerfen(m, { monat: M, grund: "Prüfung des Monats" }, wer, jetzt, "ma-5").status).toBe(409);   // keine laufende Korrektur
+    expect(JSON.stringify(m)).toBe(vorher);
+    expect(zustand(m)).toEqual(z0);
+  });
+  it("nur geschlossener (nicht exportierter) Altmonat: wiederoeffnen 409 und unverändert; abschliessen/lohnexport 422", () => {
+    const m = JSON.parse(JSON.stringify(FIX.geschlossen)), vorher = JSON.stringify(m), z0 = zustand(m);
+    expect(z0).toMatchObject({ abgeschlossen: true, lohnexport: null });
+    expect(MA.wiederoeffnen(m, { monat: M, grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")).toEqual(OEFFNEN_409(M));
+    expect(MA.abschliessen(m, { monat: M, bestaetigt: true }, wer, jetzt, "ma-6", "2026-03-10")).toEqual(ANLEGEN_422());
+    const a = MA.abschlussEintrag(m, M);
+    expect(MA.lohnexportBestaetigen(m, { monat: M, abdruck: a.abdruck, stand: a.stand, revision: 1, zeilen: "x" }, wer, jetzt, "ma-6")).toEqual(ANLEGEN_422());
+    expect(JSON.stringify(m)).toBe(vorher);
+    expect(zustand(m)).toEqual(z0);
+    expect(z0.sperre).toMatchObject({ code: MA.MONAT_ABGESCHLOSSEN });
+  });
+  it("eine schon laufende Korrektur eines Altmonats (vor P2-12 begonnen) lässt sich verwerfen; ohne gespeicherten Abschluss 422", () => {
+    const e = MA.abschlussEintrag(FIX.exportiert, M);
+    const { abdruck: _a, stand: _s, lohnexport: _l, ...rest } = e;
+    void _a; void _s; void _l;
+    const laufend = { ...FIX.exportiert, istEingefroren: {}, monatsabschluss: { [M]: { ...rest, abgeschlossen: false, revision: 2,
+      korrektur: { offen: true, id: "k1", am: "2026-03-01T08:00:00.000Z", wer: { personId: "l2" }, anlass: Object.keys(MA.KORREKTUR_ANLAESSE)[0], vonRevision: 1, freigabe: null } } } };
+    const v = MA.korrekturVerwerfen(laufend, { monat: M, grund: "Prüfung des Monats" }, wer, jetzt, "ma-7");
     expect("mandant" in v, JSON.stringify(v).slice(0, 300)).toBe(true);
     expect(v.eintrag.korrektur).toMatchObject({ offen: false, verworfen: true });
-    expect(MA.korrekturFreigeben(mitAbschluss(offen), { monat: "1999-12" }, wer, jetzt, "ma-4", "2026-03-10"))
-      .toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
-  });
-  it("gespeicherter exportierter Abschluss 1999-12: korrekturBeginnen antwortet (409), nie ein Wurf", () => {
-    const exp = { ...zu, lohnexport: { am: "2000-01-06T08:00:00.000Z", wer: { personId: "l1" } } };
-    const k = MA.korrekturBeginnen(mitAbschluss(exp), { monat: "1999-12", grund: "Prüfung des Monats", anlass: Object.keys(MA.KORREKTUR_ANLAESSE)[0] }, wer, jetzt, "ma-5");
-    expect(k.status, JSON.stringify(k).slice(0, 300)).toBe(409);
-    expect(MA.wiederoeffnen(mitAbschluss(exp), { monat: "1999-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-5"))
-      .toMatchObject({ status: 409, code: MA.KORREKTUR_ERFORDERLICH });
-  });
-  it("nicht gespeichert: 1999-12 bleibt in allen Aktionen 422", () => {
-    const fremd = mitAbschluss(zu);
-    for (const [name, f] of [
-      ["wiederoeffnen", () => MA.wiederoeffnen(fremd, { monat: "1998-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")],
-      ["korrekturVerwerfen", () => MA.korrekturVerwerfen(fremd, { monat: "1998-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")],
-      ["korrekturBeginnen", () => MA.korrekturBeginnen(fremd, { monat: "3000-01", grund: "Prüfung des Monats" }, wer, jetzt, "ma-6")],
-    ]) expect(f(), name).toMatchObject({ status: 422, code: MA.UNGUELTIGER_MONAT });
+    /* Bestehende Semantik (unverändert, nur dokumentiert): Eine verworfene Korrektur „läuft" bis zum nächsten Abschluss
+       (laeuft zählt verworfen mit) — für einen Altmonat, der sich nicht mehr abschließen lässt, also dauerhaft. */
+    expect(MA.hatLaufendeKorrektur(v.mandant)).toBe(true);
+    expect(MA.korrekturFreigeben(laufend, { monat: M }, wer, jetzt, "ma-7", "2026-03-10")).toEqual(ANLEGEN_422());
+    expect(MA.korrekturVerwerfen(betrieb(), { monat: "1998-12", grund: "Prüfung des Monats" }, wer, jetzt, "ma-7")).toEqual(ANLEGEN_422());
   });
 });
