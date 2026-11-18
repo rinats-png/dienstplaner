@@ -146,6 +146,8 @@ async function proben(s) {
   }
   /* Teilspeicherung (CENTRIC_TEILSPEICHERUNG) und GET ohne `teile`. */
   r["bestand/teile LT"] = await holen("/api/bestand/teile", json(t.LT, { teile: [] }));
+  /* Löschlauf der Leitung als eigener Weg (WP-48.4), derselbe Schalter; nur die Vorschau (schreibt nie). */
+  r["loeschlauf LT"] = await holen("/api/loeschlauf", json(t.LT, { vorschau: true }));
   const g = await holen("/api/bestand", { headers: h(t.LT) });
   r["bestand GET hat teile"] = { status: g.status, rumpf: g.rumpf && typeof g.rumpf === "object" && "teile" in g.rumpf };
   /* Hilfe-Assistent (CENTRIC_HILFE_ASSISTENT). */
@@ -196,6 +198,7 @@ describe("A/B/C — Vorgabe gegen Verstümmelung, Gegenprobe mit genauen Werten"
       expect(vorgabe[`import/${w} ohne`].status, w).toBe(404);
     }
     expect(vorgabe["bestand/teile LT"].status).toBe(404);
+    expect(vorgabe["loeschlauf LT"].status).toBe(404);
     expect(vorgabe["bestand GET hat teile"]).toEqual({ status: 200, rumpf: false });
     expect(vorgabe["hilfe/status MA"]).toEqual({ status: 200, rumpf: { modus: "aus", modell: false } });
     expect(vorgabe["hilfe/frage MA"].status).toBe(404);
@@ -231,6 +234,7 @@ describe("A/B/C — Vorgabe gegen Verstümmelung, Gegenprobe mit genauen Werten"
       const r = await proben(s);
       expect(r["import/upload ohne"].status, "Import an: Sitzung fehlt → 401 statt 404").toBe(401);
       expect(r["bestand/teile LT"].status, "Teilweg an: nicht mehr 404").not.toBe(404);
+      expect(r["loeschlauf LT"].status, "Löschlauf-Weg an: nicht mehr 404").not.toBe(404);
       expect(r["bestand GET hat teile"].rumpf, "Teilweg an: GET trägt teile").toBe(true);
       expect(r["hilfe/status MA"].rumpf).toEqual({ modus: "suche", modell: false });
       expect(r["hilfe/frage MA"].status).toBe(200);
