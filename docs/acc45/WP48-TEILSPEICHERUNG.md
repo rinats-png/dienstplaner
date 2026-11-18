@@ -992,6 +992,99 @@ Sendung mit derselben Kennung bekommt vom Server die gespeicherte 200-Antwort (k
 Die Oberfläche hält dann den eigenen Wert für gespeichert — die Anzeige ist veraltet, bis das nächste GET kommt; ein
 weiteres Delta auf diese Zelle läuft in 409 und wird zur Frage (kein stiller Verlust, keine Überschreibung).
 
+### 7.7 WP-48.5 Teil 2: Oberfläche (Branch `feature/wp48-5-oberflaeche`, Basis `integration/release-v4` 57d49e3d)
+
+Stand 2026-11-18. Betreiberfreigabe P1-7 (b) Option A. Umgesetzt sind (1) die Anbindung in `src/speicher.js` und (2) das
+Konfliktfenster je Zelle/Feld. **(3) Löschlauf-Knopf auf `POST /api/loeschlauf` ist noch offen** (eigener PR). Kein
+Schalter geändert (`CENTRIC_TEILSPEICHERUNG`, `CENTRIC_ABSCHLUSS_SEGMENTWEISE` bleiben aus), keine neue Umgebungsvariable,
+keine neue Rechtelogik, kein neuer Browser-Speicherschlüssel, keine Workflow-Änderung.
+
+- **Ohne Fähigkeit `teile` unverändert.** `lies()` liefert zusätzlich `teilAntwort` (null ohne `teile` oder aus dem
+  Speicher des Dienstarbeiters). Die Oberfläche übernimmt sie mit `teilwegUebernehmen` nur dort, wo sie den gelesenen
+  Stand als lokalen Stand übernimmt (Laden ohne Migration, Nachladen nach Stempel/Monatsabschluss). Ohne sie bleiben
+  Zustand und Rohantwort null: kein Aufruf von `/api/bestand/teile`, der Voll-PUT trägt denselben Rumpf
+  (`{ bestand, etag, durch }`), `schreibenAusstehend`, `beforeunload` und das Konfliktfenster verhalten sich wie bisher
+  (Prüfung über den echten Handler: genau ein PUT mit genau diesem Rumpf).
+- **Ablauf** (`src/app/teilweg-steuerung.js`, ohne Netz und Browser, `senden`/`holen` von außen): Der Zustand entsteht
+  beim ersten Speichern aus der übernommenen Antwort (dann ist der Betrieb der Sitzung bekannt; Betrieb der Sitzung ≠
+  Betrieb des Teilwegs → Voll-PUT). Delta → Rumpf → `POST /api/bestand/teile` (beim Schließen mit `keepalive`) →
+  Antwort. `neuAufsetzen` (Unklares, 422, Sitzungswechsel) holt ein frisches GET (nie aus dem Speicher des
+  Dienstarbeiters, nie beim Schließen), setzt gegen den **jüngsten** lokalen Stand neu auf und übergibt ihn sofort,
+  vor jedem weiteren Senden, an die Oberfläche (`onTeilLokal`); ein wartender älterer Auftrag entfällt (er ist darin
+  enthalten). Der ETag des frischen GET gehört dann zum lokalen Stand. Eine Teil-Antwort 200 ändert den ETag nicht
+  (sonst überginge ein späterer Rückfall auf den Voll-PUT fremde Änderungen).
+- **Rückfall auf den Voll-PUT** nur, wenn teilkonflikt.js `voll` sagt und nichts unklar ist (sonst erst neu aufsetzen),
+  oder wenn der Server die Fähigkeit nicht mehr meldet. Der Ausnahmeweg (Art. 16/17, `einmalig`) geht immer voll — auch
+  er erst nach Klärung des Unklaren. Nach einem gelungenen Rückfall ist die Basis veraltet: Für den Rest der Sitzung
+  Voll-PUT, bis die Oberfläche wieder einen gelesenen Stand übernimmt.
+- **Sitzungskennung** (B4): Abdruck des Zugangs (`sitzungsAbdruck`, nie der Zugang), bei jedem Rumpf; ohne Zugang kein
+  Rumpf (wie abgemeldet). Ein neuer Zugang in derselben Oberfläche (NichtGespeichert „Anmelden und senden") ergibt eine
+  andere Kennung — Unklares wird dann nicht wiederholt, sondern neu aufgesetzt (Prüfung über den echten Handler).
+- **B1**: Bei offener Frage und in „neu laden" geht nichts hinaus, auch nicht beim Schließen; `schreibenAusstehend` ist
+  dann wahr (Nachladen nach Stempel übernimmt keinen fremden Stand), `beforeunload` fragt nach.
+- **Konfliktfenster** (`src/ansichten/teilkonflikt.jsx`): je Frage eine Radiogruppe (`fieldset`/`legend` = Titel aus
+  `frageText` mit `bezeichne`), „Fremdes übernehmen" / „Meins setzen" mit dem jeweiligen Wert, Pfeiltasten wählen,
+  „Entscheidungen speichern" erst, wenn alles entschieden ist; danach sendet `speicher.js` den Rest selbst. Kein
+  „alles übernehmen", keine verschachtelten Bedienelemente. „Später entscheiden"/Escape schließt; eine Leiste bleibt,
+  gespeichert wird bis dahin nichts. „Neu laden" (Epoche anders): Liste des Ausstehenden, „Als Datei sichern", danach
+  „Jetzt neu laden" (JSON mit Delta, offenen Fragen und eigenem Betrieb, ohne Sitzung, ohne Netz; danach sendet
+  die Oberfläche bis zum Neuladen nichts mehr). Das bisherige Konfliktfenster (Rückfall auf den Voll-PUT) zeigt das
+  blinde „Meinen Stand übernehmen" nicht, sobald der Teilweg in der Sitzung aktiv war (Entscheidung 6.4).
+- **Urlaubshinweis beim Öffnen** (WP-48-GB): Besteht ein Teil-Konflikt nur aus diesem automatischen Lauf und hat die
+  Person seitdem nichts geändert, wird still „fremd" gewählt und der Lauf einmal neu geprüft — wie
+  `automatikKonfliktLoesen` beim Voll-PUT.
+- **Feldbezeichnungen** (`src/app/feldbezeichnungen.js`): deutsche Namen der Kernfelder; ein Schlüssel ohne Eintrag wird
+  aus sich selbst gebildet (erster Buchstabe groß). So steht kein weiterer Feldname der Krankmeldung im Quelltext
+  (Gate `rb2-krankmeldung`, unverändert); die Prüfung verlangt, dass nur reine Kleinbuchstaben-Schlüssel ohne Eintrag
+  bleiben.
+- **Befund aus der erweiterten Modellprüfung, in `teilkonflikt.js` behoben:** Die 409-Antwort des Servers trägt die
+  Versionen **aller** Kernfelder der Sicht. Teil 1 übernahm sie in die Basis, ohne die Werte — eine spätere Änderung
+  eines anderen Kernfelds ging dann mit der neuen Version durch und überschrieb still eine fremde Änderung, die die Person
+  nie gesehen hatte (I1). Jetzt übernimmt der Zustand Kernversionen nur zusammen mit dem Wert (streitiges Kernfeld bei
+  409, eben geschriebenes bei 200). Neue Mutante dazu in der Modellprüfung (Suche über alle 5 000 Lagen; der Befund trat
+  in Lage 4 205 auf).
+- **Modellprüfung erweitert** (Teil-2-Punkte aus 7.6): Sitzungswechsel ohne sofortiges Neuladen, Kernfeld lokal gelöscht
+  (nicht darstellbar → im Modell Sicherung + neu laden). I1–I4 halten über 5 000 Lagen; alle Mutanten werden gefunden.
+- **Prüfungen** `pruefungen/wp48-5-oberflaeche.test.js` (in `pruefung:wp48-gb-oeffnen`): Ablauf gegen einen nachgebauten
+  Server (Rückfall nur ohne Unklares, B1 auch beim Schließen, kein GET beim Schließen, Dienstarbeiter-Antwort kein
+  frischer Stand, anderer Betrieb, jüngster Stand und Reihenfolge Übernehmen vor Senden, Ausnahmeweg), Entscheiden,
+  Sicherung, Texte, Kernversionen nach 409/200; dazu der **echte Client** `src/speicher.js` gegen den **echten Handler**
+  (fetch auf `daten()` umgeleitet, je Oberfläche eine Modulinstanz mit eigener Sitzung): Schalter aus (genau ein PUT mit
+  heutigem Rumpf), LT/PL/SV/MA je „fremd" und „meins" (Teil-POST statt PUT, Fenster statt Voll-Konfliktfenster, Rest
+  geht hinaus), Netz weg + Sitzungswechsel ohne Neuladen (nur GET, dann Frage), Rückfall voll (danach Teilweg aus),
+  `keepalive`/Abschließen bei offener Frage (nichts gesendet).
+- **Browser/axe:** `e2e/teilkonflikt.spec.mjs` (Planung, alle acht Viewports; der Testserver bleibt mit Schalter aus, die
+  Fähigkeit kommt per Route nur in der Seite, kein Teil-POST erreicht den Server). axe nur auf dem Fenster, gleiches Gate,
+  `e2e/axe-ausnahmen.json` unverändert; Radiogruppe mit Namen, Tastatur, kein Übernehmen-Knopf, kein Voll-PUT, Download
+  ohne Netz. Lokal nicht gelaufen (`@playwright/test` ist hier nicht installiert); Beleg aus dem CI-Job `browser-abnahme`.
+
+**Review #348 (MERGE-MIT-AUFLAGEN), eingearbeitet:**
+- **H1** Rückfall auf den Voll-PUT nach eigener Teilspeicherung: Eine Teil-Antwort 200 ändert den ETag nicht; ein späterer
+  Voll-PUT stieß deshalb mit den eigenen Teilspeicherungen zusammen (409 ohne Fremdbeteiligung), und das 409 übernahm
+  den ETag — nach „Später entscheiden“ ging der nächste Voll-PUT ohne Abgleich über eine fremde Änderung (P4). Jetzt:
+  (a) vor **jedem** Rückfall (Feld ohne Version, gelöschtes Kernfeld, zu groß, 413, Ausnahmeweg Art. 16/17) frisches GET
+  und `vollVorbereiten` (`teilweg-steuerung.js`): je Zelle/Feld nur ich geändert → meins, nur andere → frisch, beide
+  verschieden → Frage (kein Senden bis zur Entscheidung); Stempel ebenso je Schlüssel (der Löschlauf per Speichern der
+  Kundenrolle bleibt so wirksam), eingefrorenes Ist und Monatsabschluss aus der frischen Sicht; der Voll-PUT trägt
+  den ETag des frischen GET. (b) In einer Sitzung mit Teilweg übernimmt `speicher.js` aus einem 409 (auch
+  Fachbefunde) keinen ETag mehr und sperrt weitere Voll-PUTs (Lage `vollGesperrt`: Datei sichern, neu laden), bis
+  wieder frisch gelesen ist; App.jsx übernimmt dann auch keinen Bestand aus dem 409 (`automatikKonfliktLoesen`).
+  Prüfungen P1, P3, P4, P4b, Ausnahmeweg über den echten Handler; Handmutanten „ETag aus 409 übernehmen“ (P4b rot)
+  und „Rückfall ohne Vorbereiten“ (6 Fälle rot); Modellprüfung mit Voll-PUT-Rückfall, Fremdschreiber zwischen GET
+  und PUT und Eingaben bei offener Frage, Mutante „Rückfall voll ohne Neuaufsetzen“ wird gefunden.
+- **M1** „Neu laden“ in zwei Schritten: „Als Datei sichern“, danach erst „Jetzt neu laden“ (kein automatisches
+  Neuladen; bis zum Klick fragt `beforeunload` weiter nach).
+- Fokus zurück zum Auslöser beim Schließen, Fokusfalle im Fenster (das bisherige Konfliktfenster hat keine);
+  Browserprüfung zusätzlich bei 320 px (einmal je Lauf im Projekt 360x740). `teilLokalUebernehmen` nimmt die Sitzung aus
+  dem aktuellen Stand. Kommentar zur Sitzungskennung präzisiert — sie geht **nicht** im Rumpf an den Server
+  (`rumpfBauen` setzt sie nicht ein; Prüfung A1 sichert das), der Server bildet seine Kennung selbst.
+
+**Restgrenzen:** Nach einem gelungenen Rückfall auf den Voll-PUT bleibt die Sitzung beim Voll-PUT (ohne blindes
+Übernehmen), bis wieder ein gelesener Stand übernommen wird. Ein Demozugang oder die Kundenrolle bekommt den Teilweg erst
+beim ersten Speichern mit gesetzter Sitzung. Eingaben genau zwischen dem Übernehmen nach neuAufsetzen und dem Neuzeichnen
+der Oberfläche bauen über die funktionalen Updates von React auf dem übernommenen Stand auf; ein direkt gesetzter Stand
+in diesem Fenster (kein bekannter Weg) ginge darin auf. Einschalten weiter nur nach Betreiberfreigabe.
+
 ---
 
 ### Anhang: Messskript

@@ -33,11 +33,25 @@
 
    Keine Uhr, kein Math.random: ein linearer Kongruenzgenerator mit festem
    Startwert je Lage. 5 000 Lagen.
+
+   Teil 2 (WP-48.5 Oberfläche): zusätzlich Sitzungswechsel ohne sofortiges
+   Neuladen (neue Sitzung, alter Zustand, GET erst später) und ein
+   Kernfeld, das lokal fehlt (nicht darstellbar → Rückfall, im Modell
+   Sicherung + neu laden). Dabei gefunden und in teilkonflikt.js behoben:
+   Eine 409-Antwort trägt die Versionen ALLER Kernfelder; übernommen ohne
+   die Werte, ging eine spätere Änderung eines anderen Kernfelds über eine
+   nie gesehene fremde Änderung hinweg (I1). Mutante dazu unten.
+   Review #348 H1: Der Rückfall auf den Voll-PUT läuft wie in speicher.js
+   über frisches GET + vollVorbereiten und einen Voll-PUT mit dem ETag des
+   frischen Stands (409 bei Fremdschreiber dazwischen → Sicherung + neu
+   laden); Eingaben auch bei offener Frage („Später entscheiden").
+   Mutante „Rückfall voll ohne Neuaufsetzen" wird gefunden.
    Aufruf: npx vitest run pruefungen/wp48-5-konflikt-modell.test.js
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
 import * as T from "../src/app/teilkonflikt.js";
+import { vollVorbereiten } from "../src/app/teilweg-steuerung.js";
 
 const ZELLEN = ["a1|2026-08-14", "a1|2026-08-15", "b1|2026-08-14"];
 const KERN = "kern";
@@ -77,7 +91,7 @@ function serverNeu(waechter) {
   S.get = () => {
     const abw = {};
     for (const k of ZELLEN) if (S.werte[k].wert !== null) abw[k] = S.werte[k].wert;
-    return { bestand: { mandanten: [{ id: "m1", abweichungen: abw, einstellungen: S.werte[KERN].wert }] }, etag: 1,
+    return { bestand: { mandanten: [{ id: "m1", abweichungen: abw, einstellungen: S.werte[KERN].wert }] }, etag: id,
       teile: { format: 1, epoche: S.epoche, versionen: { "kern:einstellungen": ver(S.werte[KERN].wert) } } };
   };
   S.post = (rumpf, sitzung) => {
@@ -105,6 +119,15 @@ function serverNeu(waechter) {
     const antwort = { ok: true, epoche: S.epoche, versionen: rumpf.kern ? { "kern:einstellungen": ver(S.werte[KERN].wert) } : {} };
     S.vermerke.set(schl, { abdruck, antwort });
     return { status: 200, daten: antwort };
+  };
+  /* Voll-PUT (Review #348 H1): nur mit aktuellem ETag (Stand = letzte Schreibkennung), sonst 409; schreibt jeden Wert. */
+  S.voll = (lokal, etag) => {
+    if (etag !== id) return { status: 409 };
+    for (const k of SCHLUESSEL) {
+      const w = k === KERN ? (lokal.einstellungen ?? null) : ((lokal.abweichungen || {})[k] ?? null);
+      if (!T.gleich(w, S.werte[k].wert)) { waechter.schreibt(k, S.werte[k], w); S.setzen(k, w, "eigen"); }
+    }
+    return { status: 200 };
   };
   S.wiederherstellen = () => { S.epoche = `f${String(++S.anzahlEpoche).padStart(7, "0")}`; };
   return S;
@@ -183,7 +206,24 @@ function lage(start, M = T) {
     const d = M.deltaBilden(c.z, c.lokal);
     if ("leer" in d || "gesperrt" in d) return;
     if ("neuAufsetzen" in d) return laden();
-    if ("voll" in d) { fehler.push(`Lage ${start}: unerwarteter Rückfall voll (${d.voll})`); return; }
+    /* Rückfall voll (Teil 2: Kernfeld lokal gelöscht, nicht darstellbar): im Modell Sicherung als Datei + neu laden. */
+    /* Rückfall voll (Kernfeld lokal gelöscht): wie speicher.js erst frisch lesen und je Zelle/Feld neu aufsetzen
+       (vollVorbereiten), dann der Voll-PUT mit dem ETag des frischen Stands. Ein Fremdschreiber kann dazwischenkommen
+       (409): Dann bleibt nur Sicherung + neu laden (weitere Voll-PUTs gesperrt). */
+    if ("voll" in d) {
+      const g = S.get();
+      const v = (M.vollVorbereiten || vollVorbereiten)(c.z, c.lokal, g);
+      log(`voll ${d.voll} → ${v.ergebnis}`);
+      if (v.ergebnis !== "voll" && v.ergebnis !== "konflikt") return neuStart();
+      c.z = v.zustand; c.lokal = v.lokal;
+      alleKennen();
+      if (v.ergebnis === "konflikt") return fragenMerken();
+      if (Z.r() < 0.2) { const k = Z.wahl(SCHLUESSEL); S.setzen(k, k === KERN ? { r: 9 + Z.int(4) } : Z.wahl(WERTE), "fremd"); }
+      if (S.voll(c.lokal, g.etag).status !== 200) return neuStart();
+      c.z = M.teilwegStart(S.get(), "m1");
+      alleKennen();
+      return;
+    }
     const vorher = c.z;
     const r = M.rumpfBauen(c.z, d.delta, { durch: "x", neueKennung, sitzung: c.sitzung });
     if (!r.rumpf) { if (r.neuAufsetzen) laden(); return; }
@@ -218,9 +258,11 @@ function lage(start, M = T) {
     if (c.z.phase === "neuLaden") { neuStart(); continue; }
     const x = Z.r();
     const modal = c.z.konflikte.length > 0;
-    if (x < 0.30 && !modal) {
+    /* Teil 2: auch bei offener Frage („Später entscheiden") darf die Person weiter eingeben — gesendet wird erst nach der Entscheidung. */
+    if (x < 0.30 && (!modal || Z.r() < 0.3)) {
       const k = Z.wahl(SCHLUESSEL);
-      const wert = k === KERN ? { r: 9 + Z.int(4) } : Z.wahl(WERTE);
+      /* Teil 2: Das Kernfeld kann lokal fehlen (gelöscht) — über den Teilweg nicht darstellbar. */
+      const wert = k === KERN ? (Z.r() < 0.15 ? null : { r: 9 + Z.int(4) }) : Z.wahl(WERTE);
       if (T.gleich(lokalWert(c.lokal, k), wert)) continue;   // keine Änderung (die Absicht bleibt die alte)
       if (kennt[k] !== undefined) erlaubt.add(wk(k, S.verlauf.get(kennt[k])));
       c.lokal = lokalSetzen(c.lokal, k, wert);
@@ -241,7 +283,8 @@ function lage(start, M = T) {
       S.setzen(k, k === KERN ? { r: 9 + Z.int(4) } : Z.wahl(WERTE), "fremd");
       log(`fremd ${k}`);
     } else if (x < 0.80) laden();
-    else if (x < 0.86) { c.sitzung = `s${++sitzungNr}`; laden(); }
+    /* Sitzungswechsel; Teil 2: auch ohne sofortiges Neuladen (neue Sitzung, alter Zustand, erst später GET). */
+    else if (x < 0.86) { c.sitzung = `s${++sitzungNr}`; if (Z.r() < 0.5) laden(); }
     else if (x < 0.96) { if (modal) entscheiden(); }
     else if (x < 0.975) { if (modal) speichern("ok"); }   // Schließen der Seite (keepalive) bei offener Frage: darf nichts senden
     else if (x < 0.99) S.wiederherstellen();
@@ -289,12 +332,22 @@ describe("WP-48.5 Modellprüfung (5 000 Lagen, feste Startwerte)", () => {
        nicht zu Verlust (Entwurf 4.6 Nr. 3); die Einheitsprüfung in wp48-5-konflikt.test.js deckt sie ab. */
     "„fremd“ wirkt nicht (lokal bleibt meins)": { aufloesen: (z, l) => { const r = T.aufloesen(z, l); return r ? { ...r, lokal: l } : r; } },
     "Wiederholung unter neuer Kennung": { rumpfBauen: (z, d, o) => T.rumpfBauen({ ...z, unterwegs: null, unklar: [] }, d, o) },
+    /* Teil 2 (Befund der erweiterten Modellprüfung): Die 409-Antwort trägt die Versionen aller Kernfelder. Übernimmt
+       die Oberfläche sie ohne die Werte, geht eine spätere Kernänderung über eine nie gesehene fremde hinweg. */
+    "409: alle Kernversionen ohne Werte übernommen": { antwortVerarbeiten: (z, a) => { const e = T.antwortVerarbeiten(z, a);
+      return a && a.status === 409 && a.daten && a.daten.code === "TEILE_KONFLIKT" && e.zustand.versionen
+        ? { ...e, zustand: { ...e.zustand, versionen: { ...e.zustand.versionen, ...a.daten.versionen } } } : e; }, grenze: LAGEN },
+    /* Review #348 H1: Rückfall auf den Voll-PUT mit frischem ETag, aber ohne Neuaufsetzen (alter lokaler Stand). */
+    "Rückfall voll ohne Neuaufsetzen": { vollVorbereiten: (z, l, g) => { const v = vollVorbereiten(z, l, g);
+      return v.ergebnis === "voll" || v.ergebnis === "konflikt" ? { ...v, ergebnis: "voll", lokal: l } : v; }, grenze: LAGEN },
   };
   for (const [name, ersatz] of Object.entries(MUTANTEN)) {
     it(`Selbstprüfung: Mutante „${name}“ wird gefunden`, () => {
-      const M = { ...T, ...ersatz };
+      /* Die Mutante aus Teil 2 tritt seltener auf (Kernänderung nach einem Zellkonflikt): Suche über alle Lagen. */
+      const { grenze = 3000, ...rest } = ersatz;
+      const M = { ...T, ...rest };
       let gefunden = null;
-      for (let i = 1; i <= 3000 && !gefunden; i++) { const f = lage(i * 7919, M); if (f.length) gefunden = f[0]; }
+      for (let i = 1; i <= grenze && !gefunden; i++) { const f = lage(i * 7919, M); if (f.length) gefunden = f[0]; }
       expect(gefunden).not.toBeNull();
     }, 120000);
   }

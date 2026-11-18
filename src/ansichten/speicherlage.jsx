@@ -61,6 +61,14 @@ export const SPEICHERLAGE = {
       + "Die Änderung ist nicht gespeichert. Lade den Bestand neu und trage sie dann noch einmal ein.",
     neuladen: true,
   },
+  /* WP-48.5 (Review #348 H1): nach „Gleichzeitig bearbeitet" in einer Sitzung mit Teilspeicherung. */
+  vollGesperrt: {
+    titel: "Gleichzeitig bearbeitet — bitte neu laden",
+    text: "Jemand anderes hat dieselben Angaben gespeichert, seit du geladen hast. Deine letzten Änderungen sind "
+      + "noch nicht gespeichert und werden nicht über die andere Fassung geschrieben. Sichere sie als Datei und lade "
+      + "dann neu.",
+    neuladen: true,
+  },
   zuGross: {
     titel: "Der Bestand ist zu groß geworden",
     text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "
@@ -211,7 +219,9 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
               Neu laden</Btn>
           </div>
 
-          <div className="karte" style={{ padding: "13px 15px" }}>
+          {/* WP-48.5 (Entscheidung 6.4): War in dieser Sitzung der Teilweg aktiv, gibt es kein blindes Übernehmen —
+              auch nicht im Rückfall auf den Voll-PUT. Ohne Teilweg bleibt die Karte wie bisher. */}
+          {!(lage && lage.ohneUebernehmen) && <div className="karte" style={{ padding: "13px 15px" }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
               Meinen Stand nehmen</div>
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
@@ -223,7 +233,7 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
                 + `${monate.length ? ` in ${monate.join(", ")}` : ""} werden überschrieben. `
                 + "Das lässt sich nicht rückgängig machen.")) onUebernehmen();
             }}>Meinen Stand übernehmen</Btn>
-          </div>
+          </div>}
 
           <div className="karte" style={{ padding: "13px 15px" }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
