@@ -133,12 +133,17 @@ export function mandantAus(bestand, mandantId) {
  * Was sich zwischen Basis und lokalem Stand des eigenen Betriebs geändert hat.
  * @returns {{ leer: true } | { voll: string } | { delta: { kern: Record<string, {basis: string, wert: any}>, zellen: Array<{feld: string, k: string, alt: any, neu: any}> } }}
  *   `voll` = über den Teilweg nicht darstellbar (Grund), die Oberfläche nimmt dann den Voll-PUT.
- *   `neuAufsetzen` = wäre `voll`, aber ein Segment ist unklar: Auch der Rückfall auf den Voll-PUT umginge den
- *   ABA-Schutz — erst frisches GET und neuAufsetzen.
+ *   `neuAufsetzen` = ein Segment ist unklar und das Delta wäre `voll` (der Rückfall auf den Voll-PUT umginge den
+ *   ABA-Schutz) oder `leer` (eine Rücknahme nach unklarer Sendung wäre sonst unsichtbar): erst frisches GET und
+ *   neuAufsetzen.
+ *   `gesperrt` = nichts senden: eine Konfliktfrage ist offen („frage-offen", auch nicht per keepalive beim
+ *   Schließen) oder der Zustand verlangt Neuladen („neu-laden", endgültig bis teilwegStart).
  */
 export function deltaBilden(zustand, lokal) {
+  if (zustand.phase === "neuLaden") return { gesperrt: "neu-laden" };
+  if (zustand.konflikte.length) return { gesperrt: "frage-offen" };
   const r = deltaRoh(zustand, lokal);
-  if ("voll" in r && zustand.unklar.length) return { neuAufsetzen: true, grund: r.voll };
+  if (zustand.unklar.length && ("voll" in r || "leer" in r)) return { neuAufsetzen: true, grund: "voll" in r ? r.voll : "unklar" };
   return r;
 }
 
@@ -202,14 +207,20 @@ export function segmente(delta) {
  *
  * Die Wiederholvermerke des Servers gelten je Sitzung. Eine Wiederholung aus einer ANDEREN Sitzung (neu
  * angemeldet) prüfte dort nur Erwartungswerte — deshalb zählt dieselbe Sendung nur bei gleicher Sitzung.
+ * Kein Rumpf außerdem bei offener Konfliktfrage („frage-offen" — sonst wäre das ein blindes „meins"), in Phase
+ * „neuLaden" (endgültig bis teilwegStart) und ohne Sitzungskennung („sitzung-fehlt").
  * @param {() => string} neueKennung  liefert eine zufällige Kennung [A-Za-z0-9_-]{8,64}
- * @param {string|null} [sitzung]  Kennung der aktuellen Sitzung (z. B. Abdruck des Tokens), nie an den Server
- * @returns {{ zustand: any, rumpf: any } | { zustand: any, rumpf: null, neuAufsetzen: true }}
+ * @param {string} sitzung  Kennung der aktuellen Sitzung (z. B. Abdruck des Tokens), Pflicht, nie an den Server
+ * @returns {{ zustand: any, rumpf: any } | { zustand: any, rumpf: null, grund: string, neuAufsetzen?: true }}
  */
-export function rumpfBauen(zustand, delta, { durch, neueKennung, sitzung = null }) {
+export function rumpfBauen(zustand, delta, { durch, neueKennung, sitzung }) {
+  if (zustand.phase === "neuLaden") return { zustand, rumpf: null, grund: "neu-laden" };
+  if (zustand.konflikte.length) return { zustand, rumpf: null, grund: "frage-offen" };
+  if (typeof sitzung !== "string" || !sitzung) return { zustand, rumpf: null, grund: "sitzung-fehlt" };
   const u = zustand.unterwegs;
-  const gleichGesendet = !!(u && u.anfrage && u.sitzung === sitzung && stabil(u.delta) === stabil(delta));
-  if (zustand.unklar.length && !gleichGesendet) return { zustand, rumpf: null, neuAufsetzen: true };
+  const gleichGesendet = !!(u && u.anfrage && typeof u.sitzung === "string" && u.sitzung === sitzung
+    && stabil(u.delta) === stabil(delta));
+  if (zustand.unklar.length && !gleichGesendet) return { zustand, rumpf: null, grund: "unklar", neuAufsetzen: true };
   const anfrage = gleichGesendet ? u.anfrage : neueKennung();
   const rumpf = { format: TEILWEG_FORMAT, epoche: zustand.epoche, anfrage, ...(durch ? { durch: String(durch).slice(0, 200) } : {}) };
   if (Object.keys(delta.kern).length) rumpf.kern = delta.kern;
@@ -377,21 +388,49 @@ export function aufloesen(zustand, lokal) {
  * @returns {{ zustand: any, lokal: any, ergebnis: "aufgesetzt"|"konflikt"|"neuLaden"|"aus" }}
  */
 export function neuAufsetzen(zustand, antwort, lokal) {
+  /* „neuLaden" ist endgültig: Der Ausweg ist teilwegStart (nach Sicherung als Datei), nie ein weiterer Abgleich
+     des alten lokalen Stands gegen eine frische Sicht. */
+  if (zustand.phase === "neuLaden") return { ergebnis: "neuLaden", zustand, lokal };
   const frisch = teilwegStart(antwort, zustand.mandantId);
   if (!frisch) return { ergebnis: "aus", zustand: null, lokal };
-  const alt = deltaRoh(zustand, lokal);
-  if ("voll" in alt)
-    return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: { voll: alt.voll } } };
-  const offen = "delta" in alt ? alt.delta : { kern: {}, zellen: [] };
-  if (frisch.epoche !== zustand.epoche) {
-    if (!segmente(offen).length) return { ergebnis: "aufgesetzt", zustand: frisch, lokal: frisch.basis };
-    return { ergebnis: "neuLaden", lokal, zustand: { ...frisch, phase: "neuLaden", ausstehendBeiNeuLaden: offen } };
-  }
   /* Nicht nur unklare Segmente, auch jede noch nicht aufgelöste Konfliktfrage: Ihre Basis trägt schon den
      fremden Wert. Ohne das würde aus einer offenen Frage nach dem Neuladen still „meins". */
   const unklar = new Set([...zustand.unklar, ...zustand.konflikte.map((f) => f.id)]);
+  const neuLaden = (aus) => ({ ergebnis: "neuLaden", lokal,
+    zustand: { ...frisch, phase: "neuLaden", unklar: [...unklar].sort(), ausstehendBeiNeuLaden: aus } });
+  const alt = deltaRoh(zustand, lokal);
+  if ("voll" in alt) return neuLaden({ voll: alt.voll });
+  const offen = "delta" in alt ? alt.delta : { kern: {}, zellen: [] };
+  if (frisch.epoche !== zustand.epoche) {
+    if (!segmente(offen).length && !unklar.size) return { ergebnis: "aufgesetzt", zustand: frisch, lokal: frisch.basis };
+    return neuLaden(offen);
+  }
   const fragen = [];
   const ueberlagern = { kern: {}, zellen: [] };
+  /* Unklare Segmente OHNE ausstehende Änderung (etwa: gesendet, Ausgang unklar, dann lokal zurückgenommen):
+     Der lokale Wert ist die Absicht. Weicht der frische Wert ab, wird daraus eine Frage — sonst ginge die
+     Rücknahme still verloren, wenn die erste Sendung doch angekommen war. */
+  const imDelta = new Set(segmente(offen));
+  for (const id of [...unklar].sort()) {
+    if (imDelta.has(id)) continue;
+    if (id.startsWith("z:")) {
+      const rest = id.slice(2), i = rest.indexOf(":");
+      const feld = rest.slice(0, i), k = rest.slice(i + 1);
+      if (!ZELLFELDER.includes(feld)) continue;
+      const meins = wertIn(lokal[feld], k), jetzt = wertIn(frisch.basis[feld], k);
+      if (gleich(meins, jetzt)) continue;
+      ueberlagern.zellen.push({ feld, k, alt: null, neu: meins });
+      fragen.push({ id, art: "zelle", feld, k, meins, fremd: jetzt });
+    } else if (id.startsWith("k:")) {
+      const feld = id.slice(2);
+      const meins = hat(lokal, feld) ? lokal[feld] : null, jetzt = hat(frisch.basis, feld) ? frisch.basis[feld] : null;
+      if (gleich(meins, jetzt)) continue;
+      /* Ein Kernfeld lässt sich nicht löschen: fehlt es lokal, nicht darstellbar → neu laden mit Sicherung. */
+      if (meins === null) return neuLaden({ voll: `loeschen:${feld}` });
+      ueberlagern.kern[feld] = { basis: "", wert: meins };
+      fragen.push({ id, art: "kern", feld, meins, fremd: jetzt });
+    }
+  }
   for (const z of offen.zellen) {
     const jetzt = wertIn(frisch.basis[z.feld], z.k);
     if (gleich(jetzt, z.neu)) continue;

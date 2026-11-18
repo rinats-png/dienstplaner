@@ -119,7 +119,7 @@ describe("A2 Delta", () => {
   it("Rumpf: Format, Epoche, Kennung; keine Nur-Server-Felder", () => {
     const z = z0();
     const { delta } = T.deltaBilden(z, { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } });
-    const { rumpf, zustand } = T.rumpfBauen(z, delta, { durch: "Pia Plan", neueKennung });
+    const { rumpf, zustand } = T.rumpfBauen(z, delta, { durch: "Pia Plan", neueKennung, sitzung: "s1" });
     expect(Object.keys(rumpf).sort()).toEqual(["anfrage", "durch", "epoche", "format", "zellen"]);
     expect(rumpf.format).toBe(1);
     expect(rumpf.epoche).toBe("e0e0e0e0");
@@ -132,7 +132,7 @@ describe("A2 Delta", () => {
 function senden(z, lokal, antwort) {
   const d = T.deltaBilden(z, lokal);
   if (!("delta" in d)) return { z, d, rumpf: null };
-  const r = T.rumpfBauen(z, d.delta, { durch: "x", neueKennung });
+  const r = T.rumpfBauen(z, d.delta, { durch: "x", neueKennung, sitzung: "s1" });
   const a = typeof antwort === "function" ? antwort(r.rumpf) : antwort;
   const e = T.antwortVerarbeiten(r.zustand, a);
   return { z: e.zustand, ergebnis: e.ergebnis, rumpf: r.rumpf, d };
@@ -144,7 +144,7 @@ describe("A3 Antworten", () => {
     const z = z0();
     const l1 = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
     const d = T.deltaBilden(z, l1).delta;
-    const r = T.rumpfBauen(z, d, { neueKennung });
+    const r = T.rumpfBauen(z, d, { neueKennung, sitzung: "s1" });
     const l2 = { ...l1, abweichungen: { ...l1.abweichungen, "a1|2026-08-15": "F" } };   // während des Sendens
     const e = T.antwortVerarbeiten(r.zustand, { status: 200, daten: { ok: true, etag: 8, epoche: "e0e0e0e0", versionen: { "m1::2026-08": V("d") } } });
     expect(e.ergebnis).toBe("gespeichert");
@@ -158,7 +158,7 @@ describe("A3 Antworten", () => {
     const a = { status: 200, daten: { ok: true, epoche: "e0e0e0e0", versionen: {} } };
     const e1 = senden(z, l, a);
     expect(T.deltaBilden(e1.z, l)).toEqual({ leer: true });
-    const r = T.rumpfBauen(e1.z, T.deltaBilden(z, l).delta, { neueKennung });
+    const r = T.rumpfBauen(e1.z, T.deltaBilden(z, l).delta, { neueKennung, sitzung: "s1" });
     const e2 = T.antwortVerarbeiten(r.zustand, { ...a, daten: { ...a.daten, wiederholt: true } });
     expect(e2.zustand.basis).toEqual(e1.z.basis);
   });
@@ -179,7 +179,7 @@ describe("A3 Antworten", () => {
     const g = senden(z, l, { status: 413, daten: { code: "TEILE_ZU_GROSS", text: "Zu viele Zellen." } });
     expect(g.ergebnis).toBe("voll");
     expect(g.z.basis).toBe(z.basis);
-    const w = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung });
+    const w = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung, sitzung: "s1" });
     const a = T.antwortVerarbeiten(w.zustand, { status: 422, daten: { code: "ANFRAGE_WIEDERVERWENDET" } });
     expect(a.ergebnis).toBe("neuAufsetzen");
     expect(a.meldung).toMatch(/nicht gespeichert.*neu laden/i);
@@ -316,19 +316,19 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
     const e = senden(z, l, { status: null, netz: true });
     expect(e.z.unklar).toEqual(["z:abweichungen:a1|2026-08-14"]);
-    const r = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+    const r = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung, sitzung: "s1" });
     expect(r.rumpf.anfrage).toBe(e.rumpf.anfrage);
     /* Ohne Unklares: zwei verschiedene Deltas → zwei Kennungen. */
-    const a = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung });
+    const a = T.rumpfBauen(z, T.deltaBilden(z, l).delta, { neueKennung, sitzung: "s1" });
     const l2 = { ...l, abweichungen: { ...l.abweichungen, "a1|2026-08-15": "F" } };
-    expect(T.rumpfBauen(a.zustand, T.deltaBilden(z, l2).delta, { neueKennung }).rumpf.anfrage).not.toBe(a.rumpf.anfrage);
+    expect(T.rumpfBauen(a.zustand, T.deltaBilden(z, l2).delta, { neueKennung, sitzung: "s1" }).rumpf.anfrage).not.toBe(a.rumpf.anfrage);
   });
   it("K2 ABA in derselben Sitzung: nach Netzfehler und weiterer Änderung kein Senden unter neuer Kennung", () => {
     const z = z0();
     const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
     const e = senden(z, l, { status: null, netz: true });
     const l2 = { ...l, abweichungen: { ...l.abweichungen, "a1|2026-08-15": "F" } };
-    const r = T.rumpfBauen(e.z, T.deltaBilden(e.z, l2).delta, { neueKennung });
+    const r = T.rumpfBauen(e.z, T.deltaBilden(e.z, l2).delta, { neueKennung, sitzung: "s1" });
     expect(r.rumpf).toBeNull();
     expect(r.neuAufsetzen).toBe(true);
     expect(r.zustand).toBe(e.z);
@@ -338,16 +338,16 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N", "a1|2026-08-15": "F" } };
     const e = senden(z, l, { status: null, netz: true });
     /* Wiederholung derselben Sendung bekommt 409 nur für a1|15 → a1|14 bleibt unklar. */
-    const w = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+    const w = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung, sitzung: "s1" });
     const k = T.antwortVerarbeiten(w.zustand, { status: 409, daten: { code: "TEILE_KONFLIKT", versionen: {},
       konflikt: { kern: [], zellen: [{ feld: "abweichungen", k: "a1|2026-08-15", aktuell: "-" }] } } });
     expect(k.zustand.unklar).toContain("z:abweichungen:a1|2026-08-14");
     const r = T.aufloesen(T.waehlen(k.zustand, "z:abweichungen:a1|2026-08-15", "fremd"), l);
-    expect(T.rumpfBauen(r.zustand, T.deltaBilden(r.zustand, r.lokal).delta, { neueKennung }).rumpf).toBeNull();
+    expect(T.rumpfBauen(r.zustand, T.deltaBilden(r.zustand, r.lokal).delta, { neueKennung, sitzung: "s1" }).rumpf).toBeNull();
     for (const [status, daten] of [[403, {}], [503, {}]]) {
-      const w2 = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+      const w2 = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung, sitzung: "s1" });
       const a = T.antwortVerarbeiten(w2.zustand, { status, daten });
-      expect(T.rumpfBauen(a.zustand, T.deltaBilden(a.zustand, l).delta, { neueKennung }).rumpf).toBeNull();
+      expect(T.rumpfBauen(a.zustand, T.deltaBilden(a.zustand, l).delta, { neueKennung, sitzung: "s1" }).rumpf).toBeNull();
     }
     /* Nach neuAufsetzen (Server hatte a1|14 geschrieben): a1|14 erledigt; a1|15 war mit unklar gesendet und
        steht frisch auf dem Erwartungswert → Frage (ABA), nie still wiederholt. Erst „meins" schickt sie. */
@@ -358,7 +358,7 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     const n = T.aufloesen(T.waehlen(n0.zustand, n0.zustand.konflikte[0].id, "meins"), n0.lokal);
     const d = T.deltaBilden(n.zustand, n.lokal).delta;
     expect(d.zellen).toEqual([{ feld: "abweichungen", k: "a1|2026-08-15", alt: "N", neu: "F" }]);
-    expect(T.rumpfBauen(n.zustand, d, { neueKennung }).rumpf).not.toBeNull();
+    expect(T.rumpfBauen(n.zustand, d, { neueKennung, sitzung: "s1" }).rumpf).not.toBeNull();
   });
   it("K1 neuAufsetzen: lokal = frische Sicht ⊕ nur eigene Segmente; fremde Zelle und fremdes Kernfeld nie im Delta", () => {
     const z = z0();
@@ -399,7 +399,7 @@ describe("A5 Unklarer Ausgang, Wiederholung, Neu aufsetzen", () => {
     const e = senden(z, l, { status: null, netz: true });
     expect(T.deltaBilden(e.z, { ...l, zyklus: ["F"] })).toEqual({ neuAufsetzen: true, grund: "feld:zyklus" });
     expect(T.deltaBilden(z, { ...l, zyklus: ["F"] })).toEqual({ voll: "feld:zyklus" });
-    const w = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung });
+    const w = T.rumpfBauen(e.z, T.deltaBilden(e.z, l).delta, { neueKennung, sitzung: "s1" });
     const a = T.antwortVerarbeiten(w.zustand, { status: 413, daten: { code: "TEILE_ZU_GROSS" } });
     expect(a.ergebnis).toBe("neuAufsetzen");
   });
@@ -521,6 +521,81 @@ describe("A6 Eigenschaft: „meins“ schickt nie mehr als das eigene Delta, „
 /* -------------------------------------------------------------------------- */
 /* B  Gleichlauf mit dem Server                                               */
 
+describe("A7 Delta-Review Runde 3 (B1–B4)", () => {
+  const z0 = () => T.teilwegStart(getAntwort(betrieb()), "m1");
+  const konflikt = () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const e = senden(z, l, { status: 409, daten: { code: "TEILE_KONFLIKT", versionen: {},
+      konflikt: { kern: [], zellen: [{ feld: "abweichungen", k: "a1|2026-08-14", aktuell: "S" }] } } });
+    return { z: e.z, l };
+  };
+  it("B1 offene Frage: kein Delta, kein Rumpf (auch nicht per keepalive) — sonst blindes „meins“", () => {
+    const { z, l } = konflikt();
+    expect(T.deltaBilden(z, l)).toEqual({ gesperrt: "frage-offen" });
+    const r = T.rumpfBauen(z, { kern: {}, zellen: [{ feld: "abweichungen", k: "a1|2026-08-14", alt: "S", neu: "N" }] },
+      { neueKennung, sitzung: "s1" });
+    expect(r.rumpf).toBeNull();
+    expect(r.grund).toBe("frage-offen");
+    /* Auch eine teilweise Wahl öffnet nichts. */
+    expect(T.deltaBilden(T.waehlen(z, z.konflikte[0].id, "meins"), l)).toEqual({ gesperrt: "frage-offen" });
+  });
+  it("B2 Rücknahme nach unklarer Sendung: leer → neuAufsetzen; Erstsendung angekommen → Frage, nicht still verloren", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const e = senden(z, l, { status: null, netz: true });
+    const zurueck = { ...l, abweichungen: { ...l.abweichungen, "a1|2026-08-14": "F" } };
+    expect(T.deltaBilden(e.z, zurueck)).toEqual({ neuAufsetzen: true, grund: "unklar" });
+    const frisch = betrieb(); frisch.abweichungen["a1|2026-08-14"] = "N";   // die erste Sendung war angekommen
+    const n = T.neuAufsetzen(e.z, getAntwort(frisch), zurueck);
+    expect(n.ergebnis).toBe("konflikt");
+    expect(n.zustand.konflikte.map((f) => [f.id, f.meins, f.fremd])).toEqual([["z:abweichungen:a1|2026-08-14", "F", "N"]]);
+    expect(n.lokal.abweichungen["a1|2026-08-14"]).toBe("F");
+    const r = T.aufloesen(T.waehlen(n.zustand, n.zustand.konflikte[0].id, "meins"), n.lokal);
+    expect(T.deltaBilden(r.zustand, r.lokal).delta.zellen).toEqual([{ feld: "abweichungen", k: "a1|2026-08-14", alt: "N", neu: "F" }]);
+    /* Erstsendung nicht angekommen (frisch = F = Rücknahme): nichts zu fragen. */
+    expect(T.neuAufsetzen(e.z, getAntwort(betrieb()), zurueck).ergebnis).toBe("aufgesetzt");
+  });
+  it("B2 Kernfeld: unklar gesendet, lokal zurückgenommen, Server hat die Sendung → Frage", () => {
+    const z = z0();
+    const l = { ...z.basis, dienstarten: [...z.basis.dienstarten, { id: "S", name: "Spät" }] };
+    const e = senden(z, l, { status: null, netz: true });
+    const f = betrieb(); f.dienstarten = l.dienstarten;
+    const n = T.neuAufsetzen(e.z, getAntwort(f, { versionen: { "kern:dienstarten": V("7"), "kern:personen": V("b"), "kern:wuensche": V("c") } }), z.basis);
+    expect(n.zustand.konflikte.map((x) => x.id)).toEqual(["k:dienstarten"]);
+    expect(n.lokal.dienstarten).toEqual(z.basis.dienstarten);
+  });
+  it("B3 neuLaden ist endgültig: kein Delta, kein Rumpf, kein erneutes Aufsetzen; unklar bleibt vermerkt", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const e = senden(z, l, { status: null, netz: true });
+    const n = T.neuAufsetzen(e.z, getAntwort(betrieb()), { ...l, zyklus: ["F"] });
+    expect(n.ergebnis).toBe("neuLaden");
+    expect(n.zustand.unklar).toEqual(["z:abweichungen:a1|2026-08-14"]);
+    expect(T.deltaBilden(n.zustand, { ...l, zyklus: ["F"] })).toEqual({ gesperrt: "neu-laden" });
+    expect(T.deltaBilden(n.zustand, l)).toEqual({ gesperrt: "neu-laden" });
+    expect(T.rumpfBauen(n.zustand, { kern: {}, zellen: [] }, { neueKennung, sitzung: "s1" }).rumpf).toBeNull();
+    const nochmal = T.neuAufsetzen(n.zustand, getAntwort(betrieb()), l);
+    expect(nochmal.ergebnis).toBe("neuLaden");
+    expect(nochmal.zustand).toBe(n.zustand);
+    /* Andere Epoche mit nur unklarem Segment (lokal zurückgenommen) → ebenfalls neuLaden, nicht „aufgesetzt“. */
+    expect(T.neuAufsetzen(e.z, getAntwort(betrieb(), { epoche: "f1f1f1f1" }), z.basis).ergebnis).toBe("neuLaden");
+  });
+  it("B4 Sitzung Pflicht; null gilt nie als gleiche Sitzung", () => {
+    const z = z0();
+    const l = { ...z.basis, abweichungen: { ...z.basis.abweichungen, "a1|2026-08-14": "N" } };
+    const d = T.deltaBilden(z, l).delta;
+    for (const sitzung of [undefined, null, ""]) {
+      const r = T.rumpfBauen(z, d, { neueKennung, sitzung });
+      expect(r.rumpf).toBeNull();
+      expect(r.grund).toBe("sitzung-fehlt");
+    }
+    /* Ein (fremd erzeugter) gemerkter Stand mit sitzung null wird nie als Wiederholung genommen. */
+    const zu = { ...z, unklar: ["z:abweichungen:a1|2026-08-14"], unterwegs: { delta: d, anfrage: "alt-0000001", sitzung: null } };
+    expect(T.rumpfBauen(zu, d, { neueKennung, sitzung: "s1" }).rumpf).toBeNull();
+  });
+});
+
 describe("B Gleichlauf mit server/lib/teilweg.mjs", () => {
   it("Zellfelder gleich, Spiegel sind Nur-Server- oder Monatsfelder, stabiles JSON gleich", async () => {
     const S = await import("../server/lib/teilweg.mjs");
@@ -533,7 +608,7 @@ describe("B Gleichlauf mit server/lib/teilweg.mjs", () => {
     expect({ ...T.GRENZEN }).toEqual({ ...S.TEILE_GRENZEN });
     /* Zellschlüssel: Client nimmt genau an, was die Formprüfung des Servers annimmt. */
     const basis = { id: "m1", abweichungen: {} };
-    const z = { basis, versionen: {}, unklar: [] };
+    const z = { basis, versionen: {}, unklar: [], konflikte: [], phase: "bereit" };
     for (const k of ["a1|2026-08-14", "a1|2024-02-29", "a1|2025-02-29", "a1|0099-12-31", "a1|0100-01-01", "a1|2026-13-01", "a1|2026-04-31"]) {
       const client = "delta" in T.deltaBilden(z, { ...basis, abweichungen: { [k]: "F" } });
       const server = S.teileFormFehler({ format: 1, epoche: "e0e0e0e0", zellen: [{ feld: "abweichungen", k, alt: null, neu: "F" }] },
@@ -603,7 +678,7 @@ async function oberflaeche(token) {
 async function speichern(o) {
   const d = T.deltaBilden(o.z, o.lokal);
   if (!("delta" in d)) return { d };
-  const r = T.rumpfBauen(o.z, d.delta, { durch: "Pruefung", neueKennung });
+  const r = T.rumpfBauen(o.z, d.delta, { durch: "Pruefung", neueKennung, sitzung: o.token });
   if (!r.rumpf) return { neuAufsetzen: true };
   const a = await anfrage("/api/bestand/teile", { methode: "POST", token: o.token, rumpf: r.rumpf });
   const e = T.antwortVerarbeiten(r.zustand, a);
@@ -781,7 +856,7 @@ describe("C Ende zu Ende (echter Handler)", () => {
     const o = await oberflaeche(token.PL);
     zelle(o, "abweichungen", `a1|${tag(20)}`, "N");
     const d = T.deltaBilden(o.z, o.lokal).delta;
-    const r = T.rumpfBauen(o.z, d, { durch: "Pruefung", neueKennung });
+    const r = T.rumpfBauen(o.z, d, { durch: "Pruefung", neueKennung, sitzung: o.token });
     const echt = await anfrage("/api/bestand/teile", { methode: "POST", token: o.token, rumpf: r.rumpf });
     expect(echt.status).toBe(200);
     const stand1 = (await B.bestandLesenStreng(laden(), raum)).stand;
@@ -801,7 +876,7 @@ describe("C Ende zu Ende (echter Handler)", () => {
     const o = await oberflaeche(token.PL);
     const k = `a1|${tag(20)}`;
     zelle(o, "abweichungen", k, "N");
-    const r = T.rumpfBauen(o.z, T.deltaBilden(o.z, o.lokal).delta, { neueKennung });
+    const r = T.rumpfBauen(o.z, T.deltaBilden(o.z, o.lokal).delta, { neueKennung, sitzung: o.token });
     expect((await anfrage("/api/bestand/teile", { methode: "POST", token: o.token, rumpf: r.rumpf })).status).toBe(200);
     o.z = T.antwortVerarbeiten(r.zustand, { status: null, netz: true }).zustand;
     /* Jemand setzt zurück auf „F". */
@@ -845,7 +920,7 @@ describe("C Ende zu Ende (echter Handler)", () => {
     const o = await oberflaeche(token.PL);
     const k = `a1|${tag(20)}`;
     zelle(o, "abweichungen", k, "N");
-    const r = T.rumpfBauen(o.z, T.deltaBilden(o.z, o.lokal).delta, { neueKennung });
+    const r = T.rumpfBauen(o.z, T.deltaBilden(o.z, o.lokal).delta, { neueKennung, sitzung: o.token });
     expect((await anfrage("/api/bestand/teile", { methode: "POST", token: o.token, rumpf: r.rumpf })).status).toBe(200);
     o.z = T.antwortVerarbeiten(r.zustand, { status: null, netz: true }).zustand;
     /* Jemand setzt zurück; dann ändert PL weiter. */

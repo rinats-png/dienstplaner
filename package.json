@@ -225,7 +225,7 @@
     "pruefung:import-abweichungen": "vitest run pruefungen/import-abweichungen-imp11.test.js",
     "pruefung:imp8-testmatrix": "vitest run pruefungen/imp8-testmatrix.test.js --testTimeout=120000",
     "pruefung:hilfe-assistent": "vitest run pruefungen/hilfe-assistent-i23.test.js pruefungen/hilfe-assistent-i23-oberflaeche.test.js pruefungen/hilfe-assistent-i23-grenzen.test.js --testTimeout=120000",
-    "pruefung:wp48-gb-oeffnen": "vitest run pruefungen/wp48-gb-oeffnen.test.js pruefungen/wp48-5-konflikt.test.js --testTimeout=120000 --hookTimeout=120000",
+    "pruefung:wp48-gb-oeffnen": "vitest run pruefungen/wp48-gb-oeffnen.test.js pruefungen/wp48-5-konflikt.test.js pruefungen/wp48-5-konflikt-modell.test.js --testTimeout=120000 --hookTimeout=120000",
     "pruefung:wp48-teilweg": "vitest run pruefungen/wp48-teilweg.test.js --testTimeout=600000 --hookTimeout=120000",
     "pruefung:wp48-abschluss": "vitest run pruefungen/wp48-7-abschluss-segmentweise.test.js --testTimeout=300000 --hookTimeout=120000",
     "pruefung:rb1-plan-publish": "vitest run pruefungen/rb1-plan-publish.test.js --testTimeout=120000",

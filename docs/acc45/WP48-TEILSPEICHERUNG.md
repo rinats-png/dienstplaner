@@ -813,10 +813,18 @@ Schalter wurde geändert, keine neue Umgebungsvariable.
   Neuladen still zu „meins“); eine Teilwahl verfällt. Andere Epoche → „neu laden“.
   Ist das Ausstehende über den Teilweg nicht darstellbar (`voll`), gibt es nie „aufgesetzt“, sondern „neu laden“ mit
   Grund; der alte lokale Stand bleibt zurückgegeben, damit Teil 2 ihn vorher als Datei sichern kann.
+  Unklare Segmente **ohne** ausstehende Änderung (gesendet, Ausgang unklar, lokal zurückgenommen) werden gegen den
+  lokalen Wert geprüft: Weicht der frische Wert ab (die erste Sendung war angekommen), wird daraus eine Frage — die
+  Rücknahme geht nicht still verloren. Dazu liefert `deltaBilden` bei leerem Delta und nicht leerem `unklar`
+  `neuAufsetzen` statt `leer`.
+- **Sperren** (Delta-Review Runde 3): Bei offener Konfliktfrage liefern `deltaBilden` und `rumpfBauen` nichts
+  (`frage-offen`; auch nicht per `keepalive` beim Schließen — sonst wäre das ein blindes „meins“). Phase „neu laden“
+  ist endgültig: kein Delta, kein Rumpf, kein erneutes `neuAufsetzen`; der Ausweg ist `teilwegStart` nach der
+  Sicherung als Datei. Ohne Sitzungskennung kein Rumpf (`sitzung-fehlt`), `null` gilt nie als gleiche Sitzung.
 - **Keine Rechtelogik in der Oberfläche.** „Meins“ schickt nur Segmente aus dem eigenen Delta; ob die Rolle sie
   schreiben darf, entscheidet der Server wie beim Voll-PUT (Prüfung: SV außerhalb des Bereichs → 403, nichts
   geschrieben).
-- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (70 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
+- **Prüfungen** `pruefungen/wp48-5-konflikt.test.js` (75 Fälle, in `pruefung:wp48-gb-oeffnen`, CI): Einheit
   (Start/Gate, Delta, Antworten, Wahl, Idempotenz, Mehrfachkonflikte, unklarer Ausgang, Epoche, 200 Zufallslagen mit
   festem Startwert), Gleichlauf mit `server/lib/teilweg.mjs` (Zellfelder, Nur-Server-Felder, stabiles JSON, Grenzen),
   Ende zu Ende über den echten Handler: Leitung, Planung, Schichtverantwortung × Planzelle/Löschung/Kernfeld
@@ -828,7 +836,21 @@ Schalter wurde geändert, keine neue Umgebungsvariable.
   Epoche ignoriert), K1 (alter lokaler Stand nach Neuaufsetzen), K2 (kein ABA-Schutz in der Sitzung),
   M1 neu (`voll` beim Neuaufsetzen übergangen), Grenzen (Rumpfbytes, Zellwertbytes, Tiefe, 413 ohne Rückfall), G1
   (422 ohne Meldung); nach dem Delta-Review: offene Fragen beim Neuaufsetzen nicht als unklar, `voll` bzw. 413 trotz
-  Unklarem, Sitzung ignoriert, Jahre unter 100 angenommen.
+  Unklarem, Sitzung ignoriert, Jahre unter 100 angenommen; Runde 3: B1–B4 (Senden bei offener Frage, Rücknahme nach
+  Unklarem übergangen, „neu laden“ nicht endgültig, Sitzung `null` gilt) — alle rot.
+- **Modellprüfung** `pruefungen/wp48-5-konflikt-modell.test.js` (ebenfalls in `pruefung:wp48-gb-oeffnen`): 5 000
+  Lagen mit festen Startwerten (linearer Kongruenzgenerator, keine Uhr) gegen einen simulierten Teilweg-Server
+  (Erwartungswerte je Zelle, Kernfeld mit Version, alles oder nichts, Wiederholvermerk je Sitzung + Kennung, 422,
+  NEU_LADEN), mit Fremdschreiber, Absagen, 413, verlorenen und nicht angekommenen Sendungen, Neuladen,
+  Sitzungswechsel, Wiederherstellen und `keepalive` bei offener Frage. Die Oberfläche ist verdrahtet, wie Teil 2 es
+  tun soll; einen Rückfall `voll` modelliert das Modell als Sicherung + Neuladen. Invarianten: (I1) kein Wert eines
+  Fremdschreibers wird überschrieben, ohne dass die Person genau diesen Wert gesehen und geändert oder „meins“ gewählt
+  hat (wertbasiert wie der Erwartungswert des Servers; ein Fremdschreiben A→B→A bleibt die bekannte Grenze aus 7.2);
+  (I2) keine eigene Änderung geht still verloren (stand danach auf dem Server, „fremd“ gewählt oder als Datei
+  gesichert); (I3) keine Sendung bei offener Frage, in „neu laden“ oder mit Unklarem unter neuer Kennung/anderer
+  Sitzung; (I4) ohne Störungen nach höchstens 40 Schritten ruhig. Laufzeit lokal rund 5 s. Selbstprüfung: sechs
+  Verhaltensmutanten (ABA, K1, A1/B2, B1, „fremd“ wirkungslos, Wiederholung unter neuer Kennung) werden je in den
+  ersten 3 000 Lagen gefunden; die Textmutanten B1 und B2 findet das Modell ebenfalls, B3/B4 die Einheitsprüfung.
 
 **Offen für Teil 2:** Verdrahtung in `speicher.js` (Basis aus `lies()`, Senden über `POST /api/bestand/teile`,
 `keepalive` mit kleinem Delta, Rückfall auf den Voll-PUT bei `voll`), Konfliktfenster je Zelle/Feld (Radiogruppe je
