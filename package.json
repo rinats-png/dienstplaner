@@ -252,7 +252,7 @@
     "pruefung:schnell": "node werkzeug/pruefung-schnell.mjs",
     "pruefung:staging-o2": "vitest run pruefungen/staging-o2.test.js",
     "pruefung:e2e-flaechen": "vitest run pruefungen/e2e-flaechen.test.js pruefungen/p2-11a-antraege-nested.test.js",
-    "pruefung:zeit-tagesformeln": "vitest run pruefungen/zeit-tagesformeln.test.js pruefungen/p212-kalendertag.test.js",
+    "pruefung:zeit-tagesformeln": "vitest run pruefungen/zeit-tagesformeln.test.js pruefungen/p212-kalendertag.test.js pruefungen/zeit-schnellweg.test.js",
     "pruefung:wcag-wp40": "vitest run pruefungen/wcag-wp40.test.js",
     "pruefung:objektbericht-dienstzeit": "vitest run pruefungen/objektbericht-dienstzeit.test.js",
     "pruefung:zeit-e": "vitest run pruefungen/zeit-e-zuschlaege-dst.test.js",

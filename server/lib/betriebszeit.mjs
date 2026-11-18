@@ -106,9 +106,82 @@ export const UNGUELTIGER_KALENDERTAG = "UNGUELTIGER_KALENDERTAG";
  */
 export function kalendertagEcht(s) {
   if (typeof s !== "string" || !KALENDERTAG_FORM.test(s)) return false;
-  const [j, m, t] = s.split("-").map(Number);
+  /* Ziffern direkt aus der (durch KALENDERTAG_FORM gesicherten) Form — ohne split/Date (Laufzeit, WP-48.7 Rest). */
+  const j = (s.charCodeAt(0) - 48) * 1000 + (s.charCodeAt(1) - 48) * 100 + (s.charCodeAt(2) - 48) * 10 + (s.charCodeAt(3) - 48);
+  const m = (s.charCodeAt(5) - 48) * 10 + (s.charCodeAt(6) - 48);
+  const t = (s.charCodeAt(8) - 48) * 10 + (s.charCodeAt(9) - 48);
   if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1) return false;
-  return t <= new Date(Date.UTC(j, m, 0)).getUTCDate();
+  return t <= tageImMonat(j, m);
+}
+
+/** Tage des Monats `m` (1–12) im Jahr `j` nach dem gregorianischen Kalender (wie Date.UTC(j, m, 0) für j ≥ 100). */
+function tageImMonat(j, m) {
+  if (m === 2) return (j % 4 === 0 && j % 100 !== 0) || j % 400 === 0 ? 29 : 28;
+  return m === 4 || m === 6 || m === 9 || m === 11 ? 30 : 31;
+}
+
+/* --------------------------------------------------------------------------
+   Schnellweg Europe/Berlin (Laufzeit, WP-48.7 Rest)
+
+   Der Versatz zur UTC (Minuten) an einem Zeitpunkt kam je Aufruf aus Intl.formatToParts (~5 µs bis 30 µs je
+   Aufruf; der Monatsabschluss bei 400 Personen × 36 Monaten ruft das hunderttausendfach). Für Europe/Berlin und
+   die Jahre 2000–2999 gilt die EU-Regel: Sommerzeit (+120) ab dem letzten Märzsonntag 01:00 UTC, Winterzeit (+60)
+   ab dem letzten Oktobersonntag 01:00 UTC. Je Jahr wird diese Tabelle einmal, lazy, gebaut und GEGEN Intl
+   GEPRÜFT (an den Umstellungskanten je eine Minute davor und danach, an jedem Monatsersten und am Jahresende);
+   stimmt ein Punkt nicht, rechnet das Jahr weiter vollständig über Intl. Der Schnellweg gilt nur für ganze
+   Minuten (dort ist der gerundete Intl-Versatz exakt der Zonenversatz); alles andere — Bruchteile, NaN,
+   Jahre außerhalb 2000–2999, andere Zonen — geht den bisherigen Intl-Weg (auch mit denselben Fehlern).
+   -------------------------------------------------------------------------- */
+const MINUTE = 60000;
+const TAG_MS = 86400000;
+/** Jahr → { m, o } (Umstellungszeitpunkte ms UTC) oder null (Tabelle widerspricht Intl: Intl-Weg). */
+const BERLIN_JAHRE = new Map();
+
+/** ms (UTC, 00:00) des letzten Sonntags im Monat `monat` (1–12) des Jahres `j` — ohne Date-Objekt. */
+function letzterSonntagUtc(j, monat) {
+  const t = Date.UTC(j, monat, 0);
+  const wochentag = ((Math.floor(t / TAG_MS) + 4) % 7 + 7) % 7;   // 1970-01-01 war ein Donnerstag (4)
+  return t - wochentag * TAG_MS;
+}
+
+function berlinJahr(j) {
+  let e = BERLIN_JAHRE.get(j);
+  if (e !== undefined) return e;
+  const m = letzterSonntagUtc(j, 3) + 3600000;
+  const o = letzterSonntagUtc(j, 10) + 3600000;
+  const proben = [[m - MINUTE, 60], [m, 120], [o - MINUTE, 120], [o, 60], [Date.UTC(j + 1, 0, 1) - MINUTE, 60]];
+  for (let mo = 0; mo < 12; mo++) {
+    const t = Date.UTC(j, mo, 1);
+    proben.push([t, t < m || t >= o ? 60 : 120]);
+  }
+  e = proben.every(([ms, v]) => versatzIntl(ms, BETRIEBSZONE) === v) ? { m, o } : null;
+  BERLIN_JAHRE.set(j, e);
+  return e;
+}
+
+/** Versatz (Minuten) eines ganzminütigen Zeitpunkts in Europe/Berlin aus der geprüften Jahrestabelle, sonst undefined. */
+function berlinVersatzSchnell(ms) {
+  let j = Math.floor(ms / 31556952000) + 1970;
+  if (ms < Date.UTC(j, 0, 1)) j--;
+  else if (ms >= Date.UTC(j + 1, 0, 1)) j++;
+  if (j < 2000 || j > 2999) return undefined;
+  const e = berlinJahr(j);
+  if (e === null) return undefined;
+  return ms < e.m || ms >= e.o ? 60 : 120;
+}
+
+/** Der bisherige Versatz über Intl (wörtlich die frühere innere Hilfe von zeitpunktAusWanduhr). */
+function versatzIntl(ms, zone) {
+  const p = teile(ms, zone);
+  return Math.round((Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute)) - ms) / 60000);
+}
+
+function versatzMinuten(ms, zone) {
+  if (zone === BETRIEBSZONE && ms % MINUTE === 0) {
+    const v = berlinVersatzSchnell(ms);
+    if (v !== undefined) return v;
+  }
+  return versatzIntl(ms, zone);
 }
 
 /**
@@ -123,14 +196,16 @@ export function kalendertagEcht(s) {
  */
 export function zeitpunktAusWanduhr(datum, minuten, zone = BETRIEBSZONE) {
   if (!kalendertagEcht(datum)) throw new RangeError(UNGUELTIGER_KALENDERTAG);
-  const [j, mo, t] = String(datum).split("-").map(Number);
-  const wand = Date.UTC(j, mo - 1, t) + minuten * 60000;
-  const versatz = (ms) => {
-    const p = teile(ms, zone);
-    return Math.round((Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute)) - ms) / 60000);
-  };
-  const passend = [60, 120].filter((v) => versatz(wand - v * 60000) === v);
-  const v = passend.length === 1 ? passend[0] : 60;
+  /* kalendertagEcht sichert die Form JJJJ-MM-TT (nur ASCII-Ziffern): Tag direkt aus den Zeichen, ohne split. */
+  const j = (datum.charCodeAt(0) - 48) * 1000 + (datum.charCodeAt(1) - 48) * 100 + (datum.charCodeAt(2) - 48) * 10 + (datum.charCodeAt(3) - 48);
+  const wand = Date.UTC(j, (datum.charCodeAt(5) - 48) * 10 + (datum.charCodeAt(6) - 48) - 1,
+    (datum.charCodeAt(8) - 48) * 10 + (datum.charCodeAt(9) - 48)) + minuten * 60000;
+  /* Kandidaten 60 und 120 in dieser Reihenfolge geprüft (wie früher [60, 120].filter); genau einer passt → der,
+     sonst 60. versatzMinuten ist für jeden Zeitpunkt gleich dem früheren Intl-Versatz (Differenzialtest
+     pruefungen/zeit-schnellweg.test.js). */
+  const p60 = versatzMinuten(wand - 60 * 60000, zone) === 60;
+  const p120 = versatzMinuten(wand - 120 * 60000, zone) === 120;
+  const v = p60 && !p120 ? 60 : p120 && !p60 ? 120 : 60;
   return wand - v * 60000;
 }
 

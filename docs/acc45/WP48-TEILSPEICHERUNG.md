@@ -1223,6 +1223,54 @@ Eingeschaltet wird nichts: `CENTRIC_ABSCHLUSS_SEGMENTWEISE` und der neue `CENTRI
   stützt sich darauf, dass jeder Schreiber der Monatsscherben und des Kerns über `festschreiben` (Journal, Stand + 1)
   geht; ein Schreiben an der Ablage vorbei ohne Standwechsel bliebe unbemerkt (wie schon beim Lesecache, 7.4). Messung
   auf Staging (WP-48.9) steht aus; Einschalten erst danach und mit Betreiberfreigabe.
+  **Nachtrag (7.9):** Mit der schnelleren Zeitumrechnung rechnet Stufe b bei 400 × 36 etwa ein Drittel so lange wie
+  vorher (gleicher Rechner, abwechselnd gemessen); die Blockade je Rechnung bleibt aber im Sekundenbereich, das Ziel
+  „< 200 ms am Stück“ ist weiter nicht erreicht. Die Zahlen oben (~18 s je Rechnung, ~75 s Worst Case) gelten für den
+  Stand vor 7.9.
+
+### 7.9 Zeitumrechnung schneller (Branch `perf/zeitumrechnung`, Basis `integration/release-v4` 1163c54f)
+
+Stand 2026-11-18. Nur Laufzeit, kein Verhalten: Ergebnisse bitgleich (Differenzialtest), kein Schalter, keine neue
+Umgebungsvariable, keine neue Abhängigkeit (die Dateien bleiben browsertauglich, kein `node:`-Import).
+
+- **`betriebszeit.mjs` `zeitpunktAusWanduhr`:** Der Versatz zur UTC kam je Aufruf zweimal aus `Intl.formatToParts`
+  (`teile`/`versatz`, im Profil der größte Posten). Neu für Europe/Berlin und **ganze** Minuten in den Jahren 2000–2999:
+  je Jahr lazy eine Tabelle der Umstellungszeitpunkte (letzter März- bzw. Oktobersonntag 01:00 UTC), die beim Anlegen
+  **gegen Intl geprüft** wird (je eine Minute vor und an beiden Kanten, jeder Monatserste, Jahresende); widerspricht
+  ein Punkt, rechnet das Jahr weiter über Intl. Bruchteile von Minuten, NaN/Infinity, Jahre außerhalb, andere Zonen:
+  unverändert über Intl, mit denselben Fehlern. Die Reihenfolge der Kandidaten (60 vor 120) und die Auflösung von
+  Lücke (29.03.) und doppelter Stunde (25.10.) sind unverändert.
+- **`kalendertagEcht`:** Ziffern direkt aus der Zeichenkette, Monatslänge gregorianisch gerechnet statt `split`/`Date`.
+  Unechte Tage werden weiter abgewiesen und werfen in `zeitpunktAusWanduhr` (P2-12, #344).
+- **`regelwerk.mjs` `letzterSonntag`:** gemerkt je (Jahr, Monat) für ganze Jahre 2000–2999; der Wert ist der der
+  unveränderten Rechnung (`new Date(j, m, 0)`, unter Windows je Aufruf eine Zeitzonenauflösung).
+- **Häppchen (`setImmediate`) bewusst nicht:** `abschliessen` ist synchron und wird vom gesperrten Weg (voll, Stufe a)
+  und von Stufe b gleich aufgerufen; eine Abgabe der Ereignisschleife hieße, die Funktion asynchron zu machen und die
+  Reihenfolgegarantien des gesperrten Wegs zu berühren. Eigener Schritt.
+- **Prüfung** `pruefungen/zeit-schnellweg.test.js` (über `pruefung:zeit-tagesformeln`), alte Fassungen wörtlich in
+  `pruefungen/hilfen/zeit-schnellweg-referenz.mjs`: Ergebnis **und** Fehler (Typ, Text) gleich für alle Minuten
+  −180 … 1620 beider Umstellungssonntage 2000–2100, Kantenminuten samt Nachbartagen je Jahr 2101–2999, 20 000
+  Zufallstage 2000–2999 (fester Startwert, auch Bruchteile von Minuten), Grenzfälle (unechte Tage, NaN, fremde Zone,
+  Jahresränder), jeder Kalendertag 2000–2100 für `kalendertagEcht`, `letzterSonntag` für alle Monate 1990–3010 in fünf
+  Prozesszeitzonen, `uhrsprung`/`uhrversatz`. Ein Mutant (Kante `<` → `<=` in der Tabelle) wird rot.
+- **Messung** (`node werkzeug/wp48-messung.mjs --abschluss`, je zwei Läufe, vorher = Kopie der Basis 1163c54f und
+  nachher abwechselnd auf demselben Rechner; der Rechner war stark nebenher belastet — die Vorher-Werte liegen beim
+  Doppelten der Tabelle in 7.8, Streuung zwischen zwei Läufen bis ±40 %; aussagekräftig ist das Verhältnis):
+
+  | Pers. × Mon. | Stufe b Rechnen vorher | **nachher** | Schleife max Stufe b vorher | **nachher** | Haltezeit Stufe a vorher / nachher |
+  |---|---|---|---|---|---|
+  | 150 × 36 | 13,7 / 20,0 s | **4,9 / 6,6 s** | 18,1 / 19,8 s | **4,3 / 7,1 s** | 15,4 / 21,1 s → 6,4 / 7,6 s |
+  | 400 × 36 | 38,7 / 51,4 s | **12,4 / 18,4 s** | 36,7 / 50,2 s | **16,5 / 17,3 s** | 50,8 / 60,4 s → 15,3 / 18,0 s |
+
+  Rechnen allein (`abschliessen`, 150 × 36, ohne Ablage, Einzelprozess): ~16 s → ~3,7–4,8 s, gleicher Ergebnis-Hash.
+  Auf die Werte von 7.8 übertragen (Faktor ~3): Stufe b rechnet bei 400 × 36 etwa 6 s statt ~18 s am Stück.
+- **Restrisiken:** Ziel „< 200 ms am Stück“ weiter **nicht** erreicht; der Rest liegt nicht mehr in der Zeitumrechnung,
+  sondern in `monatsabschluss.mjs` (`istDesMonats`, `offenePunkte`, `geordnet`) und `isteinfrieren.mjs` (`personMonat`,
+  `planTag`). Nächster Schritt: diese Pfade oder Häppchen (Abschnitt 5 Punkt 3). Der Schnellweg setzt voraus, dass die
+  Intl-Zonendaten für Europe/Berlin zwischen den geprüften Punkten eines Jahres keinen weiteren Wechsel kennen (heute
+  EU-Regel; der Test vergleicht 2000–2100 lückenlos an den Umstellungstagen und bis 2999 stichprobenweise). Ändert
+  die EU die Zeitumstellung, schlägt die Jahresprüfung an den Kanten fehl und das Jahr rechnet über Intl — ein neuer
+  Wechsel mitten im Jahr bliebe nur dann unbemerkt, wenn er zwischen zwei Monatsersten hin- und zurückläge.
 
 ---
 
