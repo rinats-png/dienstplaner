@@ -87,6 +87,7 @@ import { hinweis, pushZiel, betrifftEntwurf, backoffPlan, versucheMax, naechster
   kontingente, kontingentTag, naechsterKontingentTag, kanalAus, einzeilig } from "./zustellregeln.mjs";
 import { zustellEreignis } from "./zustellzaehler.mjs";
 import { istTestOderDemoraum, testraumMailFrei, testraumMailTagMax, testraumMailGesamtMax } from "./testraum.mjs";
+import { mailbestaetigungModus, adresseBestaetigt, bestaetigungEntfernen } from "./mailbestaetigung.mjs";
 
 export const KANAELE = ["mail", "push"];
 const ENDGUELTIG = ["gesendet", "uebersprungen", "gescheitert"];
@@ -476,6 +477,14 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr
        sonst ließen sich frei gesetzte Adressen über unseren Absender
        anschreiben (Relay, Phishing). Push bleibt (lib/testraum.mjs). */
     if (istTestOderDemoraum(raum, m) && !testraumMailFrei()) return status("uebersprungen", { grund: "testraum" });
+    /* E-9: Mit CENTRIC_MAILBESTAETIGUNG=pflicht nur an eine bestätigte Adresse
+       (lib/mailbestaetigung.mjs). Vorgabe „aus“/„angebot“: wie bisher. Ablage
+       nicht lesbar: zurückstellen, nicht endgültig überspringen. */
+    if (mailbestaetigungModus() === "pflicht") {
+      let ok;
+      try { ok = await adresseBestaetigt(store, raum, m.id, p.id, an); } catch { return fehlschlag({ klasse: "temporaer" }, "bestaetigung-unlesbar"); }
+      if (!ok) return status("uebersprungen", { grund: "unbestaetigt" });
+    }
     const sperre = await store.get(sperrSchluessel(raum, m.id, p.id), { type: "json" }).catch(() => null);
     if (sperreGilt(sperre, an)) return status("uebersprungen", { grund: "unzustellbar" });
   } else {
@@ -730,6 +739,7 @@ export async function zustellungenLoeschen(store, raum, mandantId, ids) {
 export async function personBereinigen(store, raum, mandantId, personId, nachrichtenIds = []) {
   await store.delete(pushSchluessel(raum, mandantId, personId)).catch(() => {});
   await store.delete(sperrSchluessel(raum, mandantId, personId)).catch(() => {});
+  await bestaetigungEntfernen(store, raum, mandantId, personId);          // E-9
   const { blobs } = await store.list({ prefix: `zustellquote:${raum}:${mandantId}:` });
   const wer = `:p-${h(personId)}:`;
   for (const b of blobs) if (b.key.includes(wer)) await store.delete(b.key).catch(() => {});
@@ -798,12 +808,16 @@ export async function zustellungAufraeumen(store, { jetzt = Date.now(), tage = 3
       }
       return stande.get(raum);
     };
-    for (const praefix of ["push:", "unzustellbar:"]) {
+    /* E-9: Bestätigungen und offene Codes (mailbest…) wie Sperren: Schlüssel mit h(person). */
+    for (const praefix of ["push:", "unzustellbar:", "mailbest:", "mailbestcode:"]) {
       const { blobs } = await store.list({ prefix: praefix });
       for (const b of blobs) {
         const t = b.key.split(":");
-        if (praefix === "push:" && t.length !== 4) continue;         // alter Schlüssel: nie benutzt, bleibt
-        if (praefix === "unzustellbar:" && t.length !== 4) continue;
+        if (t.length !== 4) continue;                                 // push: alter Schlüssel — nie benutzt, bleibt
+        if (praefix === "mailbestcode:") {                            // abgelaufener Code: weg
+          const c = await store.get(b.key, { type: "json" }).catch(() => null);
+          if (istObjekt(c) && Date.parse(c.ablauf || "") <= jetzt) { aus.waisen += 1; await weg(b.key); continue; }
+        }
         const bestand = await stand(t[1]);
         if (bestand === undefined) continue;                          // Raum nicht lesbar: nichts folgern
         const m = (Array.isArray(bestand.mandanten) ? bestand.mandanten : []).find((x) => istObjekt(x) && gleichId(x.id, t[2]));

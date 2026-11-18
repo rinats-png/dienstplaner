@@ -94,6 +94,9 @@ export const INVENTAR = {
   "/zustellung/anmelden": ["zustellung-rechte.test.js", "sicherheit-intern.test.js"],
   "/zustellung/abmelden": ["zustellung-rechte.test.js"],
   "/zustellung/schluessel": ["server.test.js"],
+  "/zustellung/mailbestaetigung": ["mailbestaetigung.test.js"],             // E-9: Stand ja/nein; Schalter aus 404
+  "/zustellung/mailbestaetigung/anfordern": ["mailbestaetigung.test.js"],   // E-9: nur eigene Adresse, Kontingente
+  "/zustellung/mailbestaetigung/bestaetigen": ["mailbestaetigung.test.js"], // E-9: Code einmalig, nur dieselbe Person
   "/zustellung/status": ["mail-push-handler.test.js", "zustellung-rechte.mjs"],   // WP-30, eigener Zustellstatus
   "/lage": ["rechte.mjs", "server.test.js", "si-p5-sonden.test.js"],
   "/starten": ["starten.test.js", "si-p5-sonden.test.js"],

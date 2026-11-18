@@ -738,6 +738,28 @@ export async function zustellwerte() {
   } catch { return { vapid: null, mail: false }; }
 }
 
+/* E-9: Bestätigung der eigenen E-Mail-Adresse (Server: lib/mailbestaetigung.mjs).
+   Ohne Schalter antwortet der Server 404 — dann zeigt die Oberfläche nichts. */
+/** @returns {Promise<{modus: string, adresse: boolean, bestaetigt: boolean, ausstehend: boolean}|null>} */
+export async function mailBestaetigungStand() {
+  try {
+    const a = await fetch("/zustellung/mailbestaetigung", { headers: kopf() });
+    if (!a.ok) return null;
+    return await a.json();
+  } catch { return null; }
+}
+/** @returns {Promise<{ok: boolean, text?: string}>} */
+async function mailBestaetigungRuf(weg, rumpf) {
+  try {
+    const a = await fetch(`/zustellung/mailbestaetigung/${weg}`, { method: "POST", headers: kopf(), body: JSON.stringify(rumpf || {}) });
+    let d = null;
+    try { d = await a.json(); } catch { /* leer */ }
+    return a.ok ? { ok: true } : { ok: false, text: (d && (d.fehler || d.text)) || "Das hat nicht geklappt." };
+  } catch { return { ok: false, text: "Keine Verbindung. Bitte später erneut versuchen." }; }
+}
+export const mailBestaetigungAnfordern = () => mailBestaetigungRuf("anfordern");
+export const mailBestaetigen = (code) => mailBestaetigungRuf("bestaetigen", { code: String(code || "").slice(0, 40) });
+
 /** Zustellung gespeicherter Mitteilungen anstoßen — nur ihre Kennungen
     (Commit 4). Empfänger, Wege und Texte bestimmt der Server. Fehler werden
     gemeldet, nicht geworfen. */

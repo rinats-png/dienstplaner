@@ -19,6 +19,7 @@ import { AufgabeSymbol, GEO_HINWEIS, pauseVorgabe, PauseFeld, pauseZumStempel } 
 import { KorrekturKarte } from "./korrekturen.jsx";
 import { Kontoblatt } from "./kontoblatt.jsx";
 import { StempelPuffer } from "./stempelpuffer.jsx";
+import { MailBestaetigung } from "./mailbestaetigung.jsx";
 import { UngeplantHinweis } from "./ungeplanthinweis.jsx";
 import { Zelle } from "../ui/leisten.jsx";
 import { ABW, abwArt, personTag, urlaubskonto, offeneErfassung, freigabeStand, nachweisStand, auslastung, tagesaufgaben, wunschAm, kontoVerlauf } from "../lib/fachlogik.js";
@@ -994,6 +995,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
               border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text, minHeight: 48 }} />
+          <MailBestaetigung email={p.email || ""} />
         </MKarte>
 
         {/* Je Art getrennt */}

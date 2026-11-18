@@ -58,3 +58,22 @@ Rücksetzweg über `person.email` hinzugekommen, wäre es P0.
    Adressen (Folge: bis zur Bestätigung keine Mail, Push bleibt) oder eine Frist, in der Bestandsadressen weiter gelten.
 
 Nicht in PR #281, weil Schritt 2/3 Oberfläche, Zustellregeln, Datenmodell und eine Betreiberentscheidung berühren.
+
+## 5. Umsetzung (E-9, Betreiberfreigabe 2026-11-18, nur technisch)
+
+- **Bestätigung** (`server/lib/mailbestaetigung.mjs`, Wege `/zustellung/mailbestaetigung`, `…/anfordern`,
+  `…/bestaetigen`): Die Person fordert für ihre **gespeicherte** Adresse einen Code an (Anfrage ohne Adresse und Text),
+  bekommt ihn per Mail (fester Text, kein Betriebs- oder Personenname) und gibt ihn **angemeldet** ein. Code einmalig,
+  30 Minuten, an Person und Adresse gebunden, nur als Hash gespeichert, Vergleich in gleicher Zeit, 5 Fehlversuche.
+  Kontingente je Tag: 3 je Person, 3 je Adresse (über alle Räume), 30 je Betrieb; frühestens nach 60 s ein neuer Code;
+  Test-/Demoräume nur mit Freigabe (SI-P3). Versand nur über `post.mjs` — ohne `RESEND_API_KEY` Trockenlauf.
+- **Ablage außerhalb des Bestands** (`mailbest:<raum>:<mandantId>:<h(person)>` mit HMAC der Adresse): Kein Schreibweg des
+  Bestands setzt die Bestätigung; eine geänderte Adresse ist ohne Zurücksetzen unbestätigt (Abweichung von §4.2, das ein
+  Feld `emailBestaetigtAm` an der Person vorschlug — so entfällt die Pflege in `zusammenfuehren`). Entfernen der Person,
+  Raumlöschung und Aufräumen (Waisen, abgelaufene Codes) räumen sie.
+- **Schalter `CENTRIC_MAILBESTAETIGUNG`** (Betriebshandbuch): `aus` (Vorgabe, nichts ändert sich) · `angebot` (Übergang:
+  bestätigen möglich, Versand wie bisher) · `pflicht` (Mail nur an bestätigte Adressen, sonst „übersprungen“, Grund
+  `unbestaetigt`; Push und Postfach bleiben). Übergang nach §4.3: erst `angebot`, Personen bestätigen lassen, dann
+  `pflicht` — Betreiberentscheidung, wann.
+- **Wächter §4.1** (`pruefungen/mailbestaetigung.test.js`): Nur `registrierung.mjs` (Konto-Adresse), `versand.mjs`
+  (Hinweis ohne Geheimnis) und `mailbestaetigung.mjs` verschicken Mail; `registrierung.mjs` liest keine Personenadresse.
