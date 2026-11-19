@@ -179,9 +179,13 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await akte.getByRole("button", { name: "Austritt eintragen" }).click();
     await expect.poll(() => rf.gesehen.length).toBe(1);
     expect(rf.gesehen[0]).toEqual({ typ: "prompt", text: "Austritt zum (JJJJ-MM-TT):", vorgabe: heute });
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-    expect((await neuAufServer())[0].austritt, "abgebrochen: kein Austritt").toBeNull();
     await expect(akte.getByRole("button", { name: "Austritt eintragen" })).toBeVisible();
+    /* Nicht vakuös: Der Client schreibt erst WARTE = 1200 ms nach der letzten Änderung (src/speicher.js:28) — Netzruhe
+       sagt darüber nichts. Darum eine weitere, sichtbare Änderung (Wochenstunden 33) und auf DEREN Ankunft warten: Derselbe
+       Voll-PUT trüge einen Austritt aus der abgebrochenen Rückfrage mit. Erst dann „kein Austritt“ prüfen. */
+    await akte.getByLabel("Wochenstunden", { exact: true }).fill("33");
+    await expect.poll(async () => (await neuAufServer())[0].wochenstunden, { timeout: 20000 }).toBe(33);
+    expect((await neuAufServer())[0].austritt, "abgebrochen: kein Austritt").toBeNull();
     rf.naechste({ text: AUSTRITT });
     await akte.getByRole("button", { name: "Austritt eintragen" }).click();
     await expect.poll(async () => (await neuAufServer())[0].austritt, { timeout: 20000 }).toBe(AUSTRITT);
@@ -236,13 +240,15 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await blatt.getByRole("button", { name: "Speichern" }).click();
     await expect(blatt.getByRole("alert").first()).toBeVisible();
     await expect(blatt).toBeVisible();
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-    expect(await zxAufServer(), "Fehlerfall: nichts gespeichert").toEqual([]);
+    /* „Nichts gespeichert“ wird nicht nach Netzruhe geprüft (der Client schreibt verzögert, WARTE = 1200 ms), sondern
+       an der folgenden gültigen Speicherung: Hätte der Fehlerfall eine Dienstart angelegt, stünden danach ZWEI ZX auf dem
+       Server (bzw. eine ohne Mindestbesetzung). Endgültig nach dem Verlassen der Seite (seiteZu wartet jeden PUT ab). */
     for (const l of ["Mo – Do", "Freitag", "Samstag", "So / Feiertag"]) await blatt.getByLabel(l).fill("1");
     await blatt.getByRole("button", { name: "Speichern" }).click();
     await expect(blatt).toBeHidden();
-    await expect.poll(async () => (await zxAufServer()).map((d) => [d.kurz, d.start, d.ende, d.pause]), { timeout: 20000 })
-      .toEqual([["ZX", "08:00", "16:00", 30]]);
+    const zxWerte = async () => (await zxAufServer()).map((d) => [d.kurz, d.start, d.ende, d.pause, d.mindest]);
+    await expect.poll(zxWerte, { timeout: 20000 })
+      .toEqual([["ZX", "08:00", "16:00", 30, { mo_do: 1, fr: 1, sa: 1, so: 1 }]]);
     C.zx = (await zxAufServer())[0].id;
     /* bearbeiten: neue Zeiten */
     await page.getByText(ZX, { exact: true }).locator("xpath=ancestor::*[.//button[normalize-space()='Bearbeiten']][1]")
@@ -256,6 +262,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await expect.poll(async () => (await zxAufServer()).map((d) => [d.start, d.ende]), { timeout: 20000 }).toEqual([["07:00", "15:00"]]);
     await expect(page.getByText("07:00–15:00 · 7,5 h · 30 min Pause").first()).toBeVisible();
     await seiteZu(page, v);
+    expect((await zxAufServer()).length, "nach allen PUT der Seite: genau eine ZX (Fehlerfall hat nichts angelegt)").toBe(1);
     /* Rechte: Die Planung hat kein org.edit → kein Navigationseintrag „Dienstarten“ */
     const v2 = await schreibvorgaengeVerfolgen(page);
     await anmeldenBrowser(page, C.p1);
@@ -331,9 +338,11 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await expect.poll(async () => (await ab())[`a1|${T1}`], { timeout: 20000 }).toBe("S");
     await expect(karteA1(blatt).getByRole("button", { name: "Raus" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-    expect(puts.every(([s]) => s === 200), `bisher nur angenommene PUT: ${JSON.stringify(puts)}`).toBe(true);
+    /* Die Wirkung belegen die Serverstände oben (expect.poll auf die Abweichungen). Diese Zusatzprüfung erst nach
+       seiteZu: Dort ist jeder PUT der Seite beantwortet (auch ein verzögerter, WARTE = 1200 ms) — keiner abgewiesen. */
     await seiteZu(page, v);
+    expect(puts.length, "mindestens die beiden Änderungen gingen hinaus").toBeGreaterThan(0);
+    expect(puts.every(([s]) => s === 200), `nur angenommene PUT: ${JSON.stringify(puts)}`).toBe(true);
     /* Gegenprobe Ruhezeit über die API: T2 AUSDRÜCKLICH mit ZX (Beginn 07:00 nach Spätdienst bis 22:00 = 9 h) → 403,
        nichts gespeichert. */
     const g = await api("/api/bestand", { token: C.p1T || (C.p1T = await anmeldenApi(C.p1)) });
