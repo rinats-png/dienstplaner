@@ -380,8 +380,9 @@ describe("P P2-20 Restrisiko (belegt, Entscheidung offen)", { timeout: 120000 },
   });
   /* P2-20 Hinweis: Das Verhalten bleibt (oben belegt); der Dialog sagt es jetzt ehrlich — in der Karte und in der
      Rückfrage vor dem Übernehmen. Der Knopfname bleibt „Meinen Stand übernehmen". */
-  const HINWEIS = "Auch was andere seit deinem letzten Laden in anderen Monaten geändert haben, kann dabei ersetzt werden.";
-  it("Dialog: die Karte „Meinen Stand nehmen“ nennt auch fremde Änderungen in anderen Monaten (gerendert)", async () => {
+  const HINWEIS = "Auch weitere Änderungen anderer seit deinem letzten Laden, etwa in anderen Monaten oder in den Stammdaten, "
+    + "können dabei ersetzt werden.";
+  it("Dialog: die Karte „Meinen Stand nehmen“ nennt auch fremde Änderungen an anderer Stelle (gerendert)", async () => {
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { Konfliktfenster } = await import("../src/ansichten/speicherlage.jsx");
@@ -394,12 +395,16 @@ describe("P P2-20 Restrisiko (belegt, Entscheidung offen)", { timeout: 120000 },
     const ohne = renderToStaticMarkup(createElement(Konfliktfenster, {
       lage: { monate: ["März 2026"], ohneUebernehmen: true }, onSchliessen: () => {}, onUebernehmen: () => {}, melde: () => {} }));
     expect(ohne).not.toContain(HINWEIS);
+    /* Reiner Stammdaten-Konflikt ohne Monatsliste: der Satz steht auch dann und bleibt verständlich. */
+    const kern = renderToStaticMarkup(createElement(Konfliktfenster, {
+      lage: { monate: [], kernBetroffen: true, durch: "Pat Planung" }, onSchliessen: () => {}, onUebernehmen: () => {}, melde: () => {} }));
+    expect(kern).toContain("Was Pat Planung geändert hat, ist danach weg. " + HINWEIS + " Bitte vorher kurz Rücksprache halten.");
   });
   it("Dialog: die Rückfrage vor dem Übernehmen nennt denselben Hinweis (Quelltext-Vertrag)", async () => {
     const q = (await readFile(path.join(HIER, "..", "src", "ansichten", "speicherlage.jsx"), "utf8")).replace(/\r\n/g, "\n");
-    expect(q).toContain(`const ANDERE_MONATE_ERSETZT = "Auch was andere seit deinem letzten Laden in anderen Monaten geändert haben, "\n`
-      + `  + "kann dabei ersetzt werden.";`);
-    expect(q).toMatch(/window\.confirm\(`Die Änderungen von \$\{wer\}`\n[^\n]*werden überschrieben\. `\n\s*\+ `\$\{ANDERE_MONATE_ERSETZT\} `\n\s*\+ "Das lässt sich nicht rückgängig machen\."\)\) onUebernehmen\(\);/);
+    expect(q).toContain(`const WEITERES_ERSETZT = "Auch weitere Änderungen anderer seit deinem letzten Laden, etwa in anderen Monaten "\n`
+      + `  + "oder in den Stammdaten, können dabei ersetzt werden.";`);
+    expect(q).toMatch(/window\.confirm\(`Die Änderungen von \$\{wer\}`\n[^\n]*werden überschrieben\. `\n\s*\+ `\$\{WEITERES_ERSETZT\} `\n\s*\+ "Das lässt sich nicht rückgängig machen\."\)\) onUebernehmen\(\);/);
   });
 });
 
