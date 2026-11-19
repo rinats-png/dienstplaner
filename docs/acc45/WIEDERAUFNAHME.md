@@ -5,6 +5,11 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-19 (c) (IMP-6 Teil 3, PR #369, offen bis Merge)
+
+- Branch `feat/imp6-schichtmodelle-zyklen`, Ziel `integration/release-v4`, nicht gemergt. Frage 5 vom 2026-11-14 umgesetzt (Lücken und befristetes Ende zulässig, an diesen Tagen „keine“); gespeicherter Versatz außerhalb 0 … n−1 ergibt „ungültig“; Zyklus-Grenzfälle, Differenz alt/neu der Planrechnung, Wächter. Q4 (eigenes Modell für Beschäftigte) folgt als eigener PR.
+- **Folgepaket (Pflicht vor P2-4 Punkt 6, technisch, keine Betreiberfrage):** Wird ein Modell verkürzt, während eine Zuordnung einen Versatz ≥ neue Länge trägt, speichert der Server heute mit 200; die Zuordnung ist danach „ungültig/versatz“. Vor dem Einschalten der Planwirkung abweisen wie `MODELL_VERWENDET` („Modell verkürzt, Versatz einer Zuordnung ≥ n“) und den festschreibenden Test in `imp6-mehrfachmodelle` Abschnitt 4 umstellen. Ebenso vor Punkt 6: Wächter in `imp6-zyklen-grenzfaelle` (D2) bewusst erweitern, Differenzprüfung D umstellen.
+
 ## Nachtrag 2026-11-19 (b) (SV-Orakel im Schreibweg, PR #366, offen bis Merge)
 
 - Folgepaket aus dem Nachtrag 2026-11-18 (d) gebaut, Branch `fix/sv-orakel-schreibweg`, Ziel `integration/release-v4`, nicht gemergt. Schreibweg der Schichtverantwortung: verborgene Kennungen wie unbekannte (`schichtVerborgenAlsUnbekannt`, aus `betriebSichtSchicht`), schließt N1 (verborgenen Antrag entscheiden, Notruf quittieren) und die Existenzorakel der Nachträge 2026-11-18 (d); Stempel-Orakel für alle Rollen ohne vollen Umfang; vorhersagbare Server-Mitteilungskennungen (`n-protokoll80-`, `n-schutzentfernt-`, `n-schutzkonflikt-`, `n-bestaetigung-`) für Clients gesperrt; keine Bewerbung auf nicht offene Ausschreibung. Einzelheiten in `RECHTEMATRIX.md` („Sichtregel im Schreibweg der Schichtverantwortung“).

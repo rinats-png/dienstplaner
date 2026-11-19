@@ -424,6 +424,21 @@ describe("4. Historischer Schutz: kein rückwirkender Wechsel", () => {
     expect((await gespeichert(raum)).m1.schichtmodelle[1].tage).toEqual(["N", "N", "N", "-"]);
     await abgewiesen((m) => { wechselAb(M2)(m); }, { freigegeben: [M2.slice(0, 7)] }, /freigegebenen Plan/);
   });
+  /* Dokumentiertes heutiges Verhalten (Review PR #369, Auflage 1): vor Punkt 6 (Planwirkung) durch Abweisung ersetzen
+     („Modell verkürzt, Versatz einer Zuordnung ≥ n“, analog MODELL_VERWENDET; ENTSCHEIDUNGSLISTE P2-4). */
+  it("Modell verkürzt bei unveränderter künftiger Zuordnung mit Versatz ≥ neue Länge: heute 200, danach ungültig/versatz (nie Modulo)", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const ab = (m) => { wechselAb(M2)(m); pA1(m).schichtmodellZuordnungen[2].versatz = 3; };
+    expect((await schreibeAls(token, "LT", ab)).status).toBe(200);
+    expect(L.anzuwendendesModell((await gespeichert(raum)).m1, (await gespeichert(raum)).a1, M2)).toMatchObject({ art: "modell", modellId: "nacht", versatz: 3 });
+    const a = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    const g = await gespeichert(raum);
+    expect(g.m1.schichtmodelle[1].tage).toEqual(["N", "N", "-"]);
+    expect(g.a1.schichtmodellZuordnungen[2]).toMatchObject({ modellId: "nacht", versatz: 3 });
+    expect(L.anzuwendendesModell(g.m1, g.a1, M2)).toEqual({ art: "ungueltig", grund: "versatz" });
+    expect(L.modellDienstAm(g.m1, g.a1, plus(M2, 5))).toEqual({ art: "ungueltig", grund: "versatz" });
+  });
   it("neue Person: implizites Modell wie bisher; eigenes Modell ab M2 erlaubt, seit gestern abgewiesen", async () => {
     const { raum, token } = await neuerRaum({ rollen: ["LT"] });
     const a = await schreibeAls(token, "LT", (m) => { m.personen.push({ ...person("n9", "mitarbeiter", "e1"),

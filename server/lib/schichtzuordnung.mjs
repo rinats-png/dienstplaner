@@ -114,7 +114,8 @@ export function anzuwendendesModell(m, p, datum) {
   if (!modell) return { art: "ungueltig", grund: "modell-unbekannt" };
   if (!z.gueltigAb) return { art: "ungueltig", grund: "anker" };
   /* Versatz: fehlt er (oder ist leer), gilt Zyklustag 1 wie im Datenmodell. Ein gespeicherter Wert außerhalb 0 … n−1 oder
-     keine ganze Zahl (etwa aus einer alten Sicherung) ist ungültig — nie still 0 oder Modulo. */
+     keine ganze Zahl ist ungültig — nie still 0 oder Modulo. Entsteht über eine alte Sicherung oder ein später verkürztes
+     Modell bei unveränderter Zuordnung (heute mit 200 gespeichert; vor der Planwirkung abweisen, ENTSCHEIDUNGSLISTE P2-4). */
   const v = z.versatz;
   if (v !== undefined && v !== null && !(Number.isInteger(v) && v >= 0 && v < modell.tage.length)) return { art: "ungueltig", grund: "versatz" };
   return { art: "modell", modellId: z.modellId, zuordnungId: z.id ?? null, versatz: Number.isInteger(v) ? v : 0,

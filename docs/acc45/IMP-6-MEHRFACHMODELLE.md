@@ -31,8 +31,13 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    **Lücken** zwischen Zuordnungen und ein befristetes Ende sind seit der Entscheidung vom 2026-11-14 (Frage 5) zulässig:
    an diesen Tagen liefert `anzuwendendesModell` „keine“ (nie still das Betriebsmodell). Eine Lücke, die bis heute oder
    in einen abgeschlossenen bzw. freigegebenen Monat reicht, fängt weiter der historische Schutz (Regel 3).
-   Ein gespeicherter Versatz außerhalb 0 … n−1 oder ohne ganze Zahl (etwa aus einer alten Sicherung) ergibt „ungültig“
-   (`grund: "versatz"`), nie still 0 oder Modulo; ein fehlender Versatz gilt wie dokumentiert als 0.
+   Ein gespeicherter Versatz außerhalb 0 … n−1 oder ohne ganze Zahl ergibt „ungültig“ (`grund: "versatz"`), nie still 0
+   oder Modulo; ein fehlender Versatz gilt wie dokumentiert als 0. Ein solcher Fehlwert entsteht nicht nur über
+   `/api/wiederherstellen` (alte Sicherung), sondern auch **ohne** Wiederherstellen: Verkürzt die Leitung ein Modell, das
+   nur künftig zugeordnet ist, und bleibt eine Zuordnung mit Versatz ≥ neue Länge unverändert, speichert der Server mit 200
+   (die Zuordnungen werden nicht erneut geprüft, der historische Schutz sieht nur Zukunft). Heute folgenlos (keine
+   Planwirkung); festgeschrieben in `imp6-mehrfachmodelle` Abschnitt 4. **Pflicht vor Punkt 6:** diese Modelländerung
+   abweisen wie `MODELL_VERWENDET` (ENTSCHEIDUNGSLISTE P2-4, technische Vorbedingung).
 3. **Historischer Schutz.** Verglichen wird je Abschnitt zwischen allen Grenzen (alt und neu), was vorher und nachher gilt
    (Modell, Versatz, Anker; auch geänderte Zyklustage eines Modells). Abgewiesen, wenn sich etwas ändert an einem Tag **bis
    einschließlich heute** (Europe/Berlin), in einem **abgeschlossenen Monat** (`monatsabschluss`) oder in einem **freigegebenen
@@ -110,7 +115,9 @@ Zykluslage für die Längen 1, 5, 7, 9, 14, 21, 28, 42 mit Beginn über Jahreswe
 mitten im Monat (je Versatz 0, Mitte, n−1; unabhängig Tag für Tag gezählt); Modellwechsel mitten im Monat; Überschneidung
 ohne Vorrang; Validierung von Länge, Muster, Beginn und Versatz; Differenz alt/neu der Planrechnung (Plan, Prüfung,
 Kennzahlen, Soll/Ist/Konto, Zuschläge, Ist-Einfrieren, Rechenkern) über die Golden-Betriebe: mit genau einem Modell je
-Person bit-gleich; ein Wächter listet die Module, die Zuordnungen lesen (Planwirkung = bewusste Erweiterung).
+Person bit-gleich, ebenso mit eigenen Modellen und mit Lücke/befristetem Ende; ein Wächter listet die Module, die
+Zuordnungen bzw. Modelldefinitionen (`schichtmodelle`) im Quelltext nennen (Planwirkung = bewusste Erweiterung; dynamisch
+gebildete Feldzugriffe erkennt er nicht).
 
 ## Zählung „Fragen 1 bis 8“: Berichtigung
 

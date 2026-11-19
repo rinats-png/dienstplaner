@@ -223,7 +223,7 @@ describe("D. Differenz alt/neu: Altbestand rechnet mit genau einem Modell je Per
       expect(m.personen.length, name).toBeGreaterThan(3);
       expect(messen(F, kopie(m)).pruefen.anzahl, name).toBeGreaterThan(0);
     }
-  });
+  }, 240000);
   /** Gleichheit der Zeichenketten; bei Abweichung die Stelle mit Umgebung in der Meldung. */
   const gleich = (neu, alt, name) => {
     if (neu === alt) return;
@@ -236,6 +236,19 @@ describe("D. Differenz alt/neu: Altbestand rechnet mit genau einem Modell je Per
   it("Zuordnung auf ein eigenes Modell: ohne eingeschaltete Planwirkung (P2-4 Punkt 6, offen) ebenfalls bit-gleich", () => {
     for (const [name, m] of FALL) gleich(alles(mitZuordnung(m, true)), alles(kopie(m)), name);
   }, 240000);
+  it("Zuordnungen mit Lücke und befristetem Ende (Frage 5): ohne Planwirkung ebenfalls bit-gleich (Vorbereitung für Punkt 6)", () => {
+    for (const [name, m] of FALL) {
+      const n = mitZuordnung(m, true);
+      n.personen = n.personen.map((p) => ({ ...p, schichtmodellZuordnungen: [
+        { id: `z-${p.id}-a`, modellId: "betrieb", gueltigAb: null, gueltigBis: "2026-11-10" },
+        { id: `z-${p.id}-b`, modellId: "fuenf", gueltigAb: "2026-11-20", gueltigBis: "2026-11-25", versatz: 2 }] }));
+      for (const p of n.personen) {
+        expect(L.pruefeZuordnungen(p.schichtmodellZuordnungen, L.modellVerzeichnis(n)), name).toBeNull();
+        expect(L.anzuwendendesModell(n, p, "2026-11-15"), name).toEqual({ art: "keine" });
+      }
+      gleich(alles(n), alles(kopie(m)), name);
+    }
+  }, 240000);
   it("die Eingabe bleibt unverändert (keine stille Migration, kein neues Feld)", () => {
     for (const [name, m] of FALL) {
       const vorher = JSON.stringify(m);
@@ -247,7 +260,7 @@ describe("D. Differenz alt/neu: Altbestand rechnet mit genau einem Modell je Per
 });
 
 /* ------------------------------------------------------------------------ */
-describe("D2. Wächter: nur bekannte Module lesen Schichtmodelle und Zuordnungen", () => {
+describe("D2. Wächter: nur bekannte Module lesen Zuordnungen und Modelldefinitionen (Quelltextsuche)", () => {
   /* Wer die Zuordnung in die Planrechnung bringt, schaltet die Planwirkung ein (P2-4 Punkt 6) und muss vorher Punkt 8
      (Wiederherstellen) lösen — dann diese Liste bewusst erweitern und die Differenzprüfung D umstellen. */
   const ERLAUBT = ["server/lib/schichtzuordnung.mjs", "server/lib/rechte.mjs", "server/lib/sicht.mjs", "server/funktionen/daten.mjs",
@@ -257,9 +270,19 @@ describe("D2. Wächter: nur bekannte Module lesen Schichtmodelle und Zuordnungen
     const r = `${rel}/${n}`;
     return statSync(path.join(wurzel, r)).isDirectory() ? dateien(r) : /\.(mjs|js|jsx)$/.test(n) ? [r] : [];
   });
+  /* Grenze: erkannt wird nur der Feldname im Quelltext (Punkt, Anführungszeichen, Objektschlüssel, Konstante) — ein
+     dynamisch gebildeter Feldzugriff (etwa m["schicht" + "modelle"]) bleibt unerkannt. */
   it("server/ und src/: schichtmodellZuordnungen oder schichtzuordnung.mjs nur in den erlaubten Modulen", () => {
     const treffer = [...dateien("server"), ...dateien("src")]
       .filter((r) => /schichtmodellZuordnungen|schichtzuordnung\.mjs|\bZUORDNUNG_FELD\b/.test(readFileSync(path.join(wurzel, r), "utf8")));
     expect(treffer.sort()).toEqual([...ERLAUBT].sort());
+  });
+  it("server/ und src/: das Feld der Modelldefinitionen (schichtmodelle) nur in den erlaubten Modulen", () => {
+    /* Erlaubt: die Module, die schon Zuordnungen lesen, ohne daten.mjs (es liest Modelle nur über die Bibliothek), dazu
+       src/app/feldbezeichnungen.js — dort steht nur die deutsche Bezeichnung des Kernfelds, kein Lesen der Definitionen. */
+    const MODELL_ERLAUBT = [...ERLAUBT.filter((r) => r !== "server/funktionen/daten.mjs"), "src/app/feldbezeichnungen.js"];
+    const treffer = [...dateien("server"), ...dateien("src")]
+      .filter((r) => /\.schichtmodelle\b|["'`]schichtmodelle["'`]|\bschichtmodelle\s*:|\bMODELLE_FELD\b/.test(readFileSync(path.join(wurzel, r), "utf8")));
+    expect(treffer.sort()).toEqual([...MODELL_ERLAUBT].sort());
   });
 });
