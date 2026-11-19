@@ -1,6 +1,6 @@
 # IMP-8 — Synthetische Testdateien und Testmatrix (20 Fälle)
 
-Stand: 2026-11-12. Paket: `work-packages.json` IMP-8 („Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E)“), Akzeptanz: „Alle Fälle aus der Anforderungsliste durch Tests belegt; keine echten Personendaten“. Abhängigkeit IMP-2 (integriert).
+Stand: 2026-11-19 (HTTP-Rest geschlossen; erste Fassung 2026-11-12, PR #215). Paket: `work-packages.json` IMP-8 („Synthetische Testdateien und Testmatrix (20 Fälle, je Unit/HTTP/E2E)“), Akzeptanz: „Alle Fälle aus der Anforderungsliste durch Tests belegt; keine echten Personendaten“. Abhängigkeit IMP-2 (integriert).
 Test: `pruefungen/imp8-testmatrix.test.js` (`npm run pruefung:imp8-testmatrix`, Teil der Kette `pruefung` und des Workflows `pruefung.yml`). Fixtures: `pruefungen/import-fixtures/`.
 
 ## 1. Herleitung der 20 Fälle (Annahme, bitte prüfen)
@@ -15,32 +15,32 @@ Annahmen: (A1) Die Zahl 20 ist erreicht, indem zusammengehörige Prüfungen eine
 
 ## 2. Matrix
 
-Status: **belegt** = Test grün; **offen** = Fähigkeit nicht verfügbar (Grund genannt). Spalte E2E ist für alle Fälle **offen**: Die Import-Oberfläche ist per `IMPORT_DATEI_AKTIV` ausgeschaltet und steht nicht im Browserlauf; ein Browser-E2E würde Verdrahtung oder Aktivierung verlangen (ausdrücklich ausgeschlossen). Die Brücke Oberfläche-Schicht → Handler ist unabhängig davon in `import-personal-e2e.test.js` belegt.
+Status: **belegt** = Test grün; **offen** = Fähigkeit nicht verfügbar (Grund genannt). Spalte E2E ist für alle Fälle **offen** (Stand 2026-11-19 unverändert): Die Import-Oberfläche ist per `IMPORT_DATEI_AKTIV` ausgeschaltet und steht nicht im Browserlauf; ein Browser-E2E würde Verdrahtung oder Aktivierung verlangen (ausdrücklich ausgeschlossen). Die Brücke Oberfläche-Schicht → Handler ist unabhängig davon in `import-personal-e2e.test.js` belegt. Der eingeschaltete **Textweg** (Einfügen, `e2e/hauptfunktionen-import.spec.mjs` I1/I2, `e2e/lokale-abnahme-luecken.spec.mjs` L5) prüft im Browser fachlich verwandte Fälle (ungültiges Eintrittsdatum ≈ F07, bereits vorhandene Person ≈ F11, fehlende Pflichtangabe), läuft aber nicht über Parser und Handler des Dateiwegs und zählt deshalb **nicht** als E2E-Beleg dieser Matrix. Ein Dateiweg-E2E wird erst sinnvoll, wenn der Betreiber `IMPORT_DATEI_AKTIV`/`CENTRIC_IMPORT_AKTIV` freigibt; dann genügt ein Durchstich (F01 Upload → Analyse → Vorschau → Übernahme) plus ein Ablehnungsfall (F13 oder F20), weil die Fallbreite auf HTTP-Ebene belegt ist (Browserlaufzeit, siehe CI).
 
 | Fall | Zweck | Fixture | Erwartetes Ergebnis (Quelle) | Test | Unit | HTTP | E2E |
 |---|---|---|---|---|---|---|---|
 | F01 | Normalfall CSV (UTF-8, `;`, Kommazahl, zwei Datumsformen, leere Zellen) | `f01-gueltig.csv` | 5 Personen, alle „neu“, keine Fehler; Eintritt ISO bzw. `null` (nie heute), E-Mail leer bleibt leer (Vertrag §2/§6, IMP-1) | F01 [Unit], F01 [HTTP] | belegt | belegt | offen |
-| F02 | UTF-8-BOM | `erzeuge.mjs csvMitBom` (f01 + BOM) | BOM entfernt, erste Überschrift „Personalnummer“ zugeordnet (§2) | F02 | belegt | – | offen |
-| F03 | Falsche Kodierung (Windows-1252) | `csv1252` | Umlaut erhalten, Hinweis `ZEICHENSATZ_ERSATZ` (§2) | F03 | belegt | – | offen |
-| F04 | TSV | `f04-tabs.tsv` | Format `tsv`, 2 Personen (§2) | F04 | belegt | – | offen |
+| F02 | UTF-8-BOM | `erzeuge.mjs csvMitBom` (f01 + BOM) | BOM entfernt, erste Überschrift „Personalnummer“ zugeordnet (§2) | F02 [Unit], F02 [HTTP] | belegt | belegt | offen |
+| F03 | Falsche Kodierung (Windows-1252) | `csv1252` | Umlaut erhalten, Hinweis `ZEICHENSATZ_ERSATZ` (§2) | F03 [Unit], F03 [HTTP] | belegt | belegt | offen |
+| F04 | TSV | `f04-tabs.tsv` | Format `tsv`, 2 Personen (§2) | F04 [Unit], F04 [HTTP] | belegt | belegt | offen |
 | F05 | XLSX (Datumszelle, Zahlen) | `xlsxGueltig` | Datum als `{typ:"datum"}`, ISO-Eintritt, Zahl 38,5 (§6) | F05 [Unit], F05 [HTTP] | belegt | belegt | offen |
-| F06 | XLS (BIFF) | `xlsGueltig` | gleiche Werte wie F05 als XLSX (§2, §5a) | F06 | belegt | – | offen |
-| F07 | Datumsformen | `f07-datumsformate.csv` | ISO und TT.MM.JJJJ gültig; 31.02., 2024-02-30, Monat 13, Text, US-Form: „Eintrittsdatum ungültig“, nur „überspringen“, Meldung ohne Wert; leer = `null` (IMP-1, `datumAusZelle`) | F07 | belegt | – | offen |
-| F08 | Datumssystem 1904 | `xlsx1904` | Parser normiert auf 1900, `datumssystemQuelle: "1904"`, Hinweis `DATUMSSYSTEM_1904`, gleiche Kalendertage wie 1900-Mappe, keine Doppelverschiebung (§6) | F08 | belegt | – | offen |
+| F06 | XLS (BIFF) | `xlsGueltig` | gleiche Werte wie F05 als XLSX (§2, §5a) | F06 [Unit], F06 [HTTP] | belegt | belegt | offen |
+| F07 | Datumsformen | `f07-datumsformate.csv` | ISO und TT.MM.JJJJ gültig; 31.02., 2024-02-30, Monat 13, Text, US-Form: „Eintrittsdatum ungültig“, nur „überspringen“, Meldung ohne Wert; leer = `null` (IMP-1, `datumAusZelle`) | F07 [Unit], F07 [HTTP] | belegt | belegt | offen |
+| F08 | Datumssystem 1904 | `xlsx1904` | Parser normiert auf 1900, `datumssystemQuelle: "1904"`, Hinweis `DATUMSSYSTEM_1904`, gleiche Kalendertage wie 1900-Mappe, keine Doppelverschiebung (§6) | F08 [Unit], F08 [HTTP] | belegt | belegt | offen |
 | F09 | Formel-Injektion `=` `+` `-` `@` | `f09-formelzellen.csv`, `xlsxFormelzellen` | Text bleibt unverändert Text, nichts wird ausgewertet; echte Formelzelle liefert nur den gespeicherten Wert (§6); Ausgabeseite neutralisiert über `csvText` (SI-02) | F09 ×3 | belegt | belegt | offen |
 | F10 | Doppelte Personalnummer in der Datei (auch Groß-/Kleinschreibung) | `f10-doppelte-personalnummer.csv` | alle beteiligten Zeilen „klären“, nur überspringen/klären, Art `personalnummer-datei` (personen.mjs) | F10 [Unit], F10 [HTTP] | belegt | belegt | offen |
-| F11 | Treffer gegen den Bestand | `f11-gegen-bestand.csv`, `f11b-aehnliche-nummer.csv` | exakte Nummer: klären, nie „neu“; ähnliche Nummer (Trennzeichen, führende Nullen, Schreibweise): klären; nur Name: Vorschlag, klären; neue Nummer: neu (IMP-1, IMP-3) | F11 ×2 | belegt | – (Bestandsfälle liegen in `import-endpunkt.test.js`) | offen |
+| F11 | Treffer gegen den Bestand | `f11-gegen-bestand.csv`, `f11b-aehnliche-nummer.csv` | exakte Nummer: klären, nie „neu“; ähnliche Nummer (Trennzeichen, führende Nullen, Schreibweise): klären; nur Name: Vorschlag, klären; neue Nummer: neu (IMP-1, IMP-3) | F11 [Unit] ×2, F11 [HTTP] | belegt | belegt (exakte, ähnliche, Namens-Treffer gegen den Bestand des Raums; weitere Bestandsfälle in `import-endpunkt.test.js`) | offen |
 | F12 | Leere Datei, nur Leerraum, nur Kopfzeile | `leer`, `nurLeerraum`, `nurKopf` | leer/Leerraum: Fehler ohne Teilergebnis, HTTP 422 `LEER`; nur Kopfzeile: lesbar, 0 Datensätze (§7, §9) | F12 [Unit], F12 [HTTP] | belegt | belegt | offen |
 | F13 | Binär-/Nicht-Textdateien (PNG, EXE, Zufallsbytes, UTF-16-Text) | `png`, `exe`, `zufall`, `csvUtf16` | `UNBEKANNTES_FORMAT` (Erkennung nach Inhalt, nicht Endung; NUL-Bytes sind kein CSV, §2); HTTP 422 ohne Stacktrace | F13 [Unit], F13 [HTTP] | belegt | belegt | offen |
 | F14 | Übergröße | 10 MB + 1 Byte (zur Laufzeit) | `DATEI_ZU_GROSS`; HTTP 413; kein Vorgang (§3) | F14 [Unit], F14 [HTTP] | belegt | belegt | offen |
 | F15 | Zeilen-, Spalten- und Zellgrenzen | `csvZeilen`, `csvSpalten`, `csvZelle` | 20.000 Zeilen ok / 20.001 `ZU_VIELE_ZEILEN`; 200 Spalten ok / 201 `ZU_VIELE_SPALTEN`; Zelle 32.767 ok / 32.768 `TEXT_ZU_GROSS`; HTTP 422 (§3) | F15 [Unit], F15 [HTTP] | belegt | belegt | offen |
 | F16 | ZIP-Bombe | `bombe*` | erklärt über 100 MB: `ENTPACKT_ZU_GROSS`; 50 MB bei hohem Verhältnis: `KOMPRESSION_VERDAECHTIG`; lügender Kopf: abgelehnt; zu viele Einträge: abgelehnt; schnell, kein Teilergebnis; Server antwortet danach weiter (§3, §5) | F16 [Unit], F16 [HTTP] | belegt | belegt | offen |
 | F17 | Dateinamen-/Pfadtricks (`../`, `..\`, NUL, RTL-Zeichen, 5000 Zeichen, `CON`, Shell-/HTML-Zeichen) | Namen im Test, Inhalt `f01-gueltig.csv` | Name steuert nie die Erkennung (§1/§2); gleiches Ergebnis bei jedem Namen; Endung im Hinweis höchstens 10 Zeichen; HTTP 201, Name nicht im Ergebnis, keine Datei dieses Namens im Datenverzeichnis | F17 [Unit], F17 [HTTP] | belegt | belegt | offen |
-| F18 | Unbekannte Spalten | `f18-unbekannte-spalten.csv` | nicht zugeordnet, nicht gelesen, kein Fehler, Werte tauchen in keinem Datensatz auf (FELDER als Weißliste) | F18 | belegt | – | offen |
+| F18 | Unbekannte Spalten | `f18-unbekannte-spalten.csv` | nicht zugeordnet, nicht gelesen, kein Fehler, Werte tauchen in keinem Datensatz auf (FELDER als Weißliste) | F18 [Unit], F18 [HTTP] | belegt | belegt | offen |
 | F19 | Pflichtspalte fehlt | `f19-pflichtspalte-fehlt.csv` | `fehlendePflicht: ["einheit"]`, keine Datensätze; Vorschau 422 `PFLICHTSPALTE_FEHLT` | F19 [Unit], F19 [HTTP] | belegt | belegt | offen |
 | F20 | Nicht unterstützte Formate | `xlsm`, `ods`, `xlsb`, `verschluesselt` | `NICHT_UNTERSTUETZT` (auch mit Endung .xlsx), Meldung „bitte als XLSX oder CSV speichern“ bei ODS; verschlüsselt: `PASSWORTGESCHUETZT`; kein Teilergebnis (§11, §5a) | F20 [Unit], F20 [HTTP] | belegt | belegt | offen |
 
-Zählung: 20 Fälle; 20 auf Unit-Ebene belegt; 12 davon zusätzlich auf HTTP-Ebene belegt (F01, F05, F09, F10, F12, F13, F14, F15, F16, F17, F19, F20); E2E-Ebene bei allen 20 offen (Grund siehe oben). **Befunde: 0.**
+Zählung: 20 Fälle; 20 auf Unit-Ebene belegt; **20 auf HTTP-Ebene** über den echten Handler belegt (2026-11-12: F01, F05, F09, F10, F12, F13, F14, F15, F16, F17, F19, F20; 2026-11-19 ergänzt: F02, F03, F04, F06, F07, F08, F11, F18); E2E-Ebene bei allen 20 offen (Grund siehe oben, Betreiberfreigabe des Dateiwegs). **Befunde: 0** (alle acht neuen HTTP-Prüfungen bestätigen das Unit-Ergebnis ohne Abweichung; kein Test hält ein abweichendes Verhalten fest).
 
 ## 3. Beobachtungen (kein Befund)
 
