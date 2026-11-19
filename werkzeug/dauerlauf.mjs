@@ -39,7 +39,7 @@ const MIN = 60000;
 export const STANDARD = Object.freeze({
   leaseMin: 20,          // kurze Lease: nach Prozessende höchstens ~22 Min Stillstand
   erneuernUnterMin: 10,  // erneuern, wenn weniger als 10 Min Restlaufzeit
-  haengMin: 30,          // kein Puls seit 30 Min -> Worker gilt als hängend
+  haengMin: 20,          // kein Puls seit 20 Min -> Worker gilt als hängend (nicht größer als leaseMin)
   maxVersuche: 3,        // Läufe je Paket ohne Fortschritt
   backoffMin: [5, 15, 45],
   kandidaten: 20,
@@ -61,10 +61,11 @@ export function planeSchritt({ jetzt, lease, zustand, schalterAus = false, kandi
   const ich = zustand.halter;
   const probe = entscheide(lease, jetzt, { aktion: "uebernehmen", halter: ich, uebergabe: "Dauerlauf Pruefung (nur lesend)" });
   const unlesbar = Boolean(lease) && !probe.ok && /unlesbar|beschädigt/.test(probe.grund);
+  const pulsAlterLaufend = zustand.laufend ? t - Date.parse(zustand.laufend.puls) : 0;
   const schreibrecht = !unlesbar && zustand.epoche !== null && entscheide(lease, jetzt, { aktion: "pruefen", halter: ich, epoche: zustand.epoche }).ok;
 
   /* Ein laufender Worker wird zuerst beendet: bei verlorenem Schreibrecht, unlesbarer Lease oder Abschalter. */
-  if (zustand.laufend && !schreibrecht) return aktion("WORKER_BEENDEN", unlesbar ? "Lease unlesbar (fail-closed)" : "Schreibrecht verloren (Epoche, Zone oder Ablauf)", { versuchZaehlen: false });
+  if (zustand.laufend && !schreibrecht) return aktion("WORKER_BEENDEN", unlesbar ? "Lease unlesbar (fail-closed)" : "Schreibrecht verloren (Epoche, Zone oder Ablauf)", { versuchZaehlen: !unlesbar && pulsAlterLaufend >= Math.min(cfg.leaseMin, cfg.haengMin) * MIN });
   if (zustand.laufend && schalterAus) return aktion("WORKER_BEENDEN", "Abschalter gesetzt", { versuchZaehlen: false });
   if (unlesbar) return aktion("STOPP_FAILCLOSED", probe.grund);
   /* Abschalter: danach Lease freigeben. */
@@ -85,8 +86,8 @@ export function planeSchritt({ jetzt, lease, zustand, schalterAus = false, kandi
   const bis = Date.parse(lease.gueltig_bis);
   const erneuern = bis - t < cfg.erneuernUnterMin * MIN;
   if (zustand.laufend) {
-    const pulsAlter = t - Date.parse(zustand.laufend.puls);
-    if (pulsAlter > cfg.haengMin * MIN) return aktion("WORKER_BEENDEN", `kein Puls seit ${cfg.haengMin} Min (hängt)`, { versuchZaehlen: true });
+    const pulsAlter = pulsAlterLaufend;
+    if (pulsAlter >= cfg.haengMin * MIN) return aktion("WORKER_BEENDEN", `kein Puls seit ${cfg.haengMin} Min (hängt)`, { versuchZaehlen: true });
     /* Heartbeat nur bei frischem Puls (jünger als die Lease-Dauer): ein eingefrorener Worker lässt die Lease auslaufen. */
     return aktion("WORKER_LAEUFT", "Worker lebt, Heartbeat", { erneuern: erneuern && pulsAlter < cfg.leaseMin * MIN });
   }
@@ -234,13 +235,15 @@ function echteEffekte({ halter, zustandsDatei, logDatei, abschalter }) {
 }
 
 /** Exklusive Sperrdatei: verhindert zwei Supervisor-Prozesse mit gleichem Halter und gleicher Zustandsdatei. */
-export function sperreNehmen(datei, pid = process.pid, lebt = (p) => { try { process.kill(p, 0); return true; } catch { return false; } }) {
+export function sperreNehmen(datei, pid = process.pid, lebt = (p) => { try { process.kill(p, 0); return true; } catch (e) { return e?.code === "EPERM"; } }) {
   for (let versuch = 0; versuch < 2; versuch++) {
     try { writeFileSync(datei, String(pid), { flag: "wx" }); return true; }
     catch {
-      let alt = NaN; try { alt = Number(readFileSync(datei, "utf8")); } catch { /* weg */ }
+      let roh = null; try { roh = readFileSync(datei, "utf8"); } catch { /* weg */ }
+      const alt = Number(roh);
       if (Number.isInteger(alt) && alt !== pid && lebt(alt)) return false;
-      try { unlinkSync(datei); } catch { return false; }
+      /* Nur löschen, wenn die Sperre seit dem Lesen unverändert ist (verkleinert das Rennen zweier Starter). */
+      try { if (readFileSync(datei, "utf8") !== roh) return false; unlinkSync(datei); } catch { return false; }
     }
   }
   return false;

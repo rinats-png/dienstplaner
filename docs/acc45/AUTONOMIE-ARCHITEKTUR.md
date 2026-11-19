@@ -52,7 +52,7 @@ Vorhanden: atomare Lease mit Compare-and-Swap, Epoche, Fencing-Push, Sicherheits
 Neu (Prototyp, `werkzeug/dauerlauf.mjs`):
 
 - Reiner Entscheidungskern `planeSchritt` (genau eine Aktion je Zyklus, fail-closed).
-- Heartbeat gekoppelt an Worker-Puls: Die Lease wird nur erneuert, solange der letzte Puls jünger als die Lease-Dauer (20 Min) ist. Ein eingefrorener Worker verliert so nach spätestens einer Lease-Dauer das Schreibrecht und wird beendet (im Test vor Minute 33). Ein Worker, der länger als 20 Min keinerlei Ausgabe erzeugt, würde ebenfalls so behandelt; der echte Adapter muss deshalb Streamausgabe (`stream-json`) als Puls nutzen.
+- Heartbeat gekoppelt an Worker-Puls: Die Lease wird nur erneuert, solange der letzte Puls jünger als die Lease-Dauer (20 Min) ist. Ein eingefrorener Worker verliert so nach spätestens einer Lease-Dauer das Schreibrecht und wird beendet (im Test vor Minute 33). Ein eingefrorener Worker wird dabei als Fehlversuch gezählt (Backoff, Sperre nach 3). `haengMin` ist deshalb gleich `leaseMin` (20 Min). Ein Worker, der länger als 20 Min keinerlei Ausgabe erzeugt, würde ebenfalls so behandelt; der echte Adapter muss deshalb Streamausgabe (`stream-json`) als Puls nutzen.
 - Kurze Lease (20 Min, Erneuerung unter 10 Min Rest): nach Ende des Supervisor-Prozesses höchstens etwa 22 Min Stillstand statt bis 182 Min.
 - Kein Übernehmen ohne offenes Paket (verhindert Epochen-Rauschen); laufender Worker wird bei Abschalter, unlesbarer Lease oder verlorenem Schreibrecht immer zuerst beendet.
 - Sperrdatei im Zustandsverzeichnis: zwei Supervisor-Prozesse mit gleichem Halter sind ausgeschlossen (verwaiste Sperre wird übernommen).
@@ -82,7 +82,7 @@ Zwei Wege nach Totalausfall: gleicher Halter mit Zustandsdatei setzt sofort fort
 
 ## 6. Nachweise des Prototyps
 
-`pruefungen/dauerlauf.test.js` (32 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
+`pruefungen/dauerlauf.test.js` (33 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
 
 | Anforderung | Test |
 |---|---|
@@ -103,11 +103,13 @@ Grenze des Beweises: Die Zufallsläufe verwenden eindeutige Halter; ihre Invaria
 1. Der echte Worker-Adapter ist ungetestet. Er meldet derzeit `fortschritt: false`, solange keine Fortschrittsmessung existiert; ein scharfer Lauf würde also jeden Lauf als Fehlversuch zählen. Nötig: Messung über Integrationskopf, SSOT-Status und PR-Zustand (etwa 1 bis 2 PT).
 2. `claude -p` headless braucht eine Berechtigungsstrategie (Allowlist), ohne `--dangerously-skip-permissions`. Das ist eine Berechtigungsentscheidung des Betreibers.
 3. Prozessüberwachung unter Windows (PID-Prüfung, Prozessbaum beenden) muss real getestet werden.
-4. Die Pulsmessung per Log-Änderungszeit ist grob; ein Worker, der still rechnet (lange Testläufe), kann fälschlich als hängend gelten. Die Schwelle `haengMin` ist deshalb 30 Min.
+4. Die Pulsmessung per Log-Änderungszeit ist grob; ein Worker, der still rechnet (lange Testläufe), kann fälschlich als hängend gelten. Die Schwelle beträgt 20 Min (gleich der Lease-Dauer); der echte Adapter soll Streamausgabe als Puls verwenden.
 5. Kosten: jeder Lauf verbraucht Nutzungskontingent oder API-Kosten. Begrenzung nur über `--max-turns`, `maxVersuche` und Abschalter; ein Tageslimit fehlt noch.
 
 6. Das Fencing des Workers ist kooperativ: Der Auftrag verlangt `koordination push`, aber ein Worker mit Projektrechten könnte direkt `git push` ausführen. Die Umgebungsvariablen `CENTRIC_KOORD_*` wertet kein Code aus. Die Berechtigungs-Allowlist (§9.3) muss direktes `git push` sperren. Hinzu kommt der bestehende Schutz durch Pull Request, Review und CI.
 7. Prozesssteuerung unter Windows: `beenden` beendet eine gespeicherte PID; nach Neustart kann sie wiederverwendet sein (Prüfung über Startzeit oder Kommandozeile fehlt), der Prozessbaum wird nicht beendet, und `spawn("claude")` ohne Shell scheitert, falls `claude` eine `.cmd`-Datei ist (kein `error`-Listener). Ob `-p @datei` die Datei so einliest, ist ungeprüft.
+9. Die Sperrdatei verkleinert das Rennen zweier gleichzeitiger Starter (erneutes Lesen vor dem Löschen), schließt es bei verwaister Sperre aber nicht vollständig aus; eine nach Neustart wiederverwendete PID hält die Sperre dauerhaft (fail-closed, manuelles Löschen).
+10. Solange alle offenen Pakete nur im Backoff sind (bis 45 Min), hält der Supervisor die Lease und blockiert den Hauptchat; dieser muss dann warten oder den Supervisor abschalten.
 8. Ergebnis von `erneuern` wird im Zyklus nicht ausgewertet; ein Fehlschlag zeigt sich erst im nächsten Zyklus.
 
 ## 8. Aufwand, Verbesserung, Risiken

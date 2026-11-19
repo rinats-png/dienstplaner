@@ -167,6 +167,18 @@ describe("Dauerlauf: Zyklen gegen Lease (Speicher im Arbeitsspeicher)", () => {
     expect(uhr.t).toBeLessThan(T0 + 33 * MIN);
   });
 
+  it("Eingefrorener Worker wird als Fehlversuch gezählt (Kostenbremse greift), auch wenn das Schreibrecht zuerst ausläuft", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: ["WP-A"] });
+    for (let runde = 1; runde <= STANDARD.maxVersuche && !a.z.gesperrt.includes("WP-A"); runde++) {
+      for (let n = 0; n < 40 && !a.w.lebt; n++) { uhr.t += 3 * MIN; a.schritt(); } // übernehmen, Backoff abwarten, starten
+      expect(a.w.lebt).toBe(true);
+      for (let n = 0; n < 40 && a.w.lebt; n++) { uhr.t += 3 * MIN; a.schritt(); } // Puls bleibt eingefroren
+      expect(a.z.versuche["WP-A"].n).toBe(runde);
+    }
+    expect(a.z.gesperrt).toContain("WP-A");
+  });
+
   it("Hängend bei noch gültiger Lease: Beenden mit Fehlversuch", () => {
     const sp = speicherImSpeicher(); const uhr = { t: T0 };
     const cfg = { ...STANDARD, leaseMin: 120, haengMin: 30 };
