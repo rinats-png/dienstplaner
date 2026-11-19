@@ -8,8 +8,8 @@
      P1  Registrierung: /sw.js wird beim Start registriert (Bereich „/“), aktiviert, übernimmt die Seite; Gerüst und
          letzter Bestand liegen im Zwischenspeicher (centric-schale-*, centric-daten-*), das Manifest ist lesbar.
      P2  Offline-Start: ohne Netz lädt die Seite aus dem Gerüst und zeigt den gespeicherten Stand der Person statt der
-         Fehlerseite des Browsers; mit Netz wieder normal. Heutiges Verhalten B-P2: in der Telefonschale fehlt die Leiste
-         „Keine Verbindung“ (sie steht nur in der Rechneransicht).
+         Fehlerseite des Browsers; mit Netz wieder normal. Gegenprobe: in der Rechneransicht erscheint die Leiste „Keine
+         Verbindung“. Heutiges Verhalten B-P2: in der Telefonschale fehlt sie.
      P3  Abmelden im Browser („Mehr“ → „Abmelden“; Sitzungsablauf, Rest): das alte Merkmal bekommt beim Server 401, der Datenspeicher des
          Dienstarbeiters ist geleert (keine Personaldaten offline nach dem Abmelden); Gegenprobe: vorher lag er dort.
    Nur Projekt 390x844 (Telefon). Keine Installation, kein iOS/Safari — das bleibt produktionsnah (echtes Gerät). */
@@ -71,9 +71,17 @@ test.describe("PWA: Dienstarbeiter lokal (nur diese Datei erlaubt ihn)", () => {
     /* Befund B-P2 (heutiges Verhalten, NICHT repariert): Die Leiste „Keine Verbindung … Stand wurde … geholt“
        (Offlineleiste, src/ansichten/speicherlage.jsx) steht nur in der Rechneransicht (src/App.jsx, Hauptbereich), nicht in
        der Telefonschale (MobilSchale) — Beschäftigte sehen am Telefon einen gespeicherten Stand ohne Hinweis, dass er alt
-       ist. Nach der Behebung umkehren: Leiste sichtbar. */
+       ist. Nach der Behebung umkehren: Leiste sichtbar.
+       Nicht vakuös: Zuerst die Gegenprobe in der Rechneransicht („Mehr“ → „Rechneransicht“, derselbe Zustand ohne
+       Neuladen) — dort erscheint die Leiste, die App hat das Offline-Lesen also erkannt. Erst DANACH zurück in die
+       Telefonansicht und dort das Fehlen prüfen (eine bloß verspätete Leiste bliebe so nicht unbemerkt). */
     const leiste = page.getByRole("status").filter({ hasText: "Keine Verbindung" });
-    await page.waitForLoadState("load");
+    await geheZu(page, "Mehr");
+    await page.getByRole("button", { name: /^Rechneransicht/ }).click();
+    await expect(leiste, "Gegenprobe Rechneransicht: Offline erkannt").toBeVisible({ timeout: 20000 });
+    await expect(leiste).toContainText("Änderungen lassen sich nicht speichern");
+    await page.getByRole("button", { name: "Telefonansicht", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Mein Plan" })).toBeVisible();
     await expect(leiste, "B-P2: heute kein Offline-Hinweis in der Telefonschale").toHaveCount(0);
 
     await context.setOffline(false);
