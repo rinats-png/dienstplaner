@@ -26,8 +26,18 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    oder ausdrücklich `keine`, `mehrdeutig` (mit den Kennungen) bzw. `ungueltig` — nie einen stillen Vorrang.
    `modellDienstAm` liefert den Dienst der Schichtfolge nur bei eindeutigem Modell (Kalendertage, unabhängig von Zeitumstellung).
 2. **Speichern nur eindeutiger Listen.** `pruefeZuordnungen` weist ab: Form/unbekanntes Feld, Kennung, doppelte Kennung, unbekanntes
-   Modell, kein Kalenderdatum, Ende vor Beginn, fehlender Anker, Versatz, **Überschneidung**, **Lücke**, zu viele. Ein verwendetes
+   Modell, kein Kalenderdatum, Ende vor Beginn, fehlender Anker, Versatz, **Überschneidung**, zu viele. Ein verwendetes
    Modell lässt sich nicht entfernen. Antwort 403 mit deutschem Grund (nur Kennungen, kein Name), nichts gespeichert.
+   **Lücken** zwischen Zuordnungen und ein befristetes Ende sind seit der Entscheidung vom 2026-11-14 (Frage 5) zulässig:
+   an diesen Tagen liefert `anzuwendendesModell` „keine“ (nie still das Betriebsmodell). Eine Lücke, die bis heute oder
+   in einen abgeschlossenen bzw. freigegebenen Monat reicht, fängt weiter der historische Schutz (Regel 3).
+   Ein gespeicherter Versatz außerhalb 0 … n−1 oder ohne ganze Zahl ergibt „ungültig“ (`grund: "versatz"`), nie still 0
+   oder Modulo; ein fehlender Versatz gilt wie dokumentiert als 0. Ein solcher Fehlwert entsteht nicht nur über
+   `/api/wiederherstellen` (alte Sicherung), sondern auch **ohne** Wiederherstellen: Verkürzt die Leitung ein Modell, das
+   nur künftig zugeordnet ist, und bleibt eine Zuordnung mit Versatz ≥ neue Länge unverändert, speichert der Server mit 200
+   (die Zuordnungen werden nicht erneut geprüft, der historische Schutz sieht nur Zukunft). Heute folgenlos (keine
+   Planwirkung); festgeschrieben in `imp6-mehrfachmodelle` Abschnitt 4. **Pflicht vor Punkt 6:** diese Modelländerung
+   abweisen wie `MODELL_VERWENDET` (ENTSCHEIDUNGSLISTE P2-4, technische Vorbedingung).
 3. **Historischer Schutz.** Verglichen wird je Abschnitt zwischen allen Grenzen (alt und neu), was vorher und nachher gilt
    (Modell, Versatz, Anker; auch geänderte Zyklustage eines Modells). Abgewiesen, wenn sich etwas ändert an einem Tag **bis
    einschließlich heute** (Europe/Berlin), in einem **abgeschlossenen Monat** (`monatsabschluss`) oder in einem **freigegebenen
@@ -89,6 +99,25 @@ noch nicht umgesetzt, reviewt, integriert, auf Staging geprüft oder aktiviert (
 | 3 | Veröffentlichte Zukunftspläne brauchen nach einer Modelländerung eine neue Planfreigabe. |
 | 4 | Beschäftigte sehen ihr eigenes Modell. Es gibt **keine** neuen Leserechte für den Betriebsrat. Offene Prüfung: Die Selbstauskunft nach Art. 15 DSGVO für `schichtmodellZuordnungen` ist getrennt auf Vollständigkeit zu prüfen. |
 | 5 | Der Zustand „kein Schichtmodell“ ist zulässig. |
+
+### Umsetzungsstand je Frage (Branch `feat/imp6-schichtmodelle-zyklen`, nicht integriert)
+
+| Frage | Stand im Code | Nachweis |
+|---|---|---|
+| 1 | Erfüllt seit Teil 2: jede Änderung an einem Tag bis einschließlich heute wird abgewiesen (`historischeSperre`), frühester Wechsel ist morgen. | `imp6-mehrfachmodelle` Abschnitt 4 „Wechsel ab heute“ |
+| 2 | Erfüllt seit Teil 2: vergangene Tage ändern sich nie über diesen Weg; abgeschlossene Monate erst nach dem Wiederöffnen (WP-16c), nicht rückwirkend. | Abschnitt 4 „Vergangenheit“, „abgeschlossener Monat“ |
+| 3 | Strenger als verlangt, solange die Zuordnungen nicht auf die Planrechnung wirken: Eine Änderung in einem freigegebenen Monat wird abgewiesen; Weg ist Rücknahme der Freigabe (Leitung), Änderung, neue Freigabe — also immer eine neue Planfreigabe. Eine Änderung mit Vorlauf, die die Freigabe selbst zurücknimmt, gehört zur Planwirkung (Punkt 6) und ist nicht gebaut. | Abschnitt 4 „freigegebener Monat“ |
+| 4 | Nicht gebaut (eigener Schritt: Lesesicht der eigenen Person in `sicht.mjs`, RECHTEMATRIX). Bis dahin sehen Beschäftigte die Zuordnung nicht (Abschnitt 1). | — |
+| 5 | **Umgesetzt:** Lücken und befristetes Ende werden gespeichert; „keine“ an diesen Tagen. | `imp6-zyklen-grenzfaelle` Q5, `imp6-mehrfachmodelle` Abschnitt 3 „Frage 5“ |
+
+Zusätzlich geprüft (`pruefungen/imp6-zyklen-grenzfaelle.test.js`, Teil von `npm run pruefung:imp6-mehrfachmodelle`):
+Zykluslage für die Längen 1, 5, 7, 9, 14, 21, 28, 42 mit Beginn über Jahreswechsel, Schalttag, beide Zeitumstellungen und
+mitten im Monat (je Versatz 0, Mitte, n−1; unabhängig Tag für Tag gezählt); Modellwechsel mitten im Monat; Überschneidung
+ohne Vorrang; Validierung von Länge, Muster, Beginn und Versatz; Differenz alt/neu der Planrechnung (Plan, Prüfung,
+Kennzahlen, Soll/Ist/Konto, Zuschläge, Ist-Einfrieren, Rechenkern) über die Golden-Betriebe: mit genau einem Modell je
+Person bit-gleich, ebenso mit eigenen Modellen und mit Lücke/befristetem Ende; ein Wächter listet die Module, die
+Zuordnungen bzw. Modelldefinitionen (`schichtmodelle`) im Quelltext nennen (Planwirkung = bewusste Erweiterung; dynamisch
+gebildete Feldzugriffe erkennt er nicht).
 
 ## Zählung „Fragen 1 bis 8“: Berichtigung
 

@@ -88,7 +88,8 @@ const deckt = (z, d) => (z.gueltigAb === null || z.gueltigAb === undefined || z.
 /**
  * Das an einem Tag anzuwendende Schichtmodell einer Person. Genau ein Ergebnis:
  * - { art: "modell", modellId, zuordnungId, versatz, anker, quelle: "zuordnung" | "betrieb" }
- * - { art: "keine" }                       — kein Modell gilt an diesem Tag (Klärung nötig)
+ * - { art: "keine" }                       — kein Modell gilt an diesem Tag; zulässiger Zustand (Betreiberentscheidung
+ *                                            2026-11-14 Frage 5), nie still das Betriebsmodell oder ein Nachbarmodell
  * - { art: "mehrdeutig", zuordnungIds }    — mehrere gelten (Klärung nötig, nie still entschieden)
  * - { art: "ungueltig", grund }            — Datum oder gespeicherte Zuordnung fehlerhaft (Klärung nötig)
  * @param {any} m Betrieb
@@ -112,7 +113,12 @@ export function anzuwendendesModell(m, p, datum) {
   const modell = modellVerzeichnis(m).get(z.modellId);
   if (!modell) return { art: "ungueltig", grund: "modell-unbekannt" };
   if (!z.gueltigAb) return { art: "ungueltig", grund: "anker" };
-  return { art: "modell", modellId: z.modellId, zuordnungId: z.id ?? null, versatz: Number.isInteger(z.versatz) ? z.versatz : 0,
+  /* Versatz: fehlt er (oder ist leer), gilt Zyklustag 1 wie im Datenmodell. Ein gespeicherter Wert außerhalb 0 … n−1 oder
+     keine ganze Zahl ist ungültig — nie still 0 oder Modulo. Entsteht über eine alte Sicherung oder ein später verkürztes
+     Modell bei unveränderter Zuordnung (heute mit 200 gespeichert; vor der Planwirkung abweisen, ENTSCHEIDUNGSLISTE P2-4). */
+  const v = z.versatz;
+  if (v !== undefined && v !== null && !(Number.isInteger(v) && v >= 0 && v < modell.tage.length)) return { art: "ungueltig", grund: "versatz" };
+  return { art: "modell", modellId: z.modellId, zuordnungId: z.id ?? null, versatz: Number.isInteger(v) ? v : 0,
     anker: z.gueltigAb, quelle: "zuordnung" };
 }
 
@@ -138,8 +144,10 @@ export function modellDienstAm(m, p, datum) {
    -------------------------------------------------------------------------- */
 
 /**
- * Prüft die ganze Zuordnungsliste einer Person: Form, Kennungen, Modelle, Daten, Versatz, Überschneidung, Lücke.
- * Eine leere Liste ist gültig (implizites Betriebsmodell). Liefert den ersten Befund oder null.
+ * Prüft die ganze Zuordnungsliste einer Person: Form, Kennungen, Modelle, Daten, Versatz, Überschneidung.
+ * Eine leere Liste ist gültig (implizites Betriebsmodell). Lücken zwischen Zuordnungen und ein befristetes Ende sind gültig:
+ * Der Zustand „kein Schichtmodell“ ist zulässig (Betreiberentscheidung 2026-11-14 Frage 5); an diesen Tagen liefert
+ * anzuwendendesModell „keine“. Liefert den ersten Befund oder null.
  * @param {any} liste
  * @param {Map<string, any>} modelle Verzeichnis der Modelle des Betriebs (modellVerzeichnis)
  * @returns {null | { code: string, text: string }}
@@ -170,14 +178,12 @@ export function pruefeZuordnungen(liste, modelle) {
         return f("VERSATZ", `Zuordnung ${z.id}: Versatz muss eine ganze Zahl von 0 bis ${len - 1} sein.`);
     }
   }
-  /* Überschneidung und Lücke: nach Beginn geordnet (offen = ganz vorn). Nie still entscheiden. */
+  /* Überschneidung: nach Beginn geordnet (offen = ganz vorn). Nie still entscheiden. Eine Lücke ist zulässig (Frage 5). */
   const geordnet = [...liste].sort((a, b) => (a.gueltigAb === null ? -1 : b.gueltigAb === null ? 1 : a.gueltigAb < b.gueltigAb ? -1 : a.gueltigAb > b.gueltigAb ? 1 : 0));
   for (let i = 1; i < geordnet.length; i++) {
     const v = geordnet[i - 1], z = geordnet[i];
     if (v.gueltigBis === null || z.gueltigAb === null || z.gueltigAb <= v.gueltigBis)
-      return f("UEBERSCHNEIDUNG", `Die Zuordnungen ${v.id} und ${z.id} überschneiden sich. Für jeden Tag muss genau ein Schichtmodell gelten — bitte die Zeiträume klären.`);
-    if (plusTage(v.gueltigBis, 1) !== z.gueltigAb)
-      return f("LUECKE", `Zwischen den Zuordnungen ${v.id} und ${z.id} gilt kein Schichtmodell (ab ${plusTage(v.gueltigBis, 1)}). Bitte die Lücke schließen oder die Zeiträume klären.`);
+      return f("UEBERSCHNEIDUNG", `Die Zuordnungen ${v.id} und ${z.id} überschneiden sich. Für jeden Tag darf höchstens ein Schichtmodell gelten — bitte die Zeiträume klären.`);
   }
   return null;
 }
@@ -307,7 +313,7 @@ const listenGleich = (a, b) => gleich((Array.isArray(a) ? a : []).map(ohneStempe
  * - Ohne Recht (darf=false): beide Felder wirkungslos — der gespeicherte Stand gilt (kein 403, wie Vorgaben).
  * - Fehlt das Feld in der Übermittlung (veraltete Kopie), gilt der gespeicherte Stand.
  * - Unverändert (ohne Serverfelder) zurückgeschickt: gespeicherter Stand, gefälschte Stempel verfallen.
- * - Neu oder geändert: geprüft (Form, Überschneidung, Lücke, Modell), dann historischer Schutz; Wann/Wer/Version vom Server.
+ * - Neu oder geändert: geprüft (Form, Überschneidung, Modell; Lücken zulässig), dann historischer Schutz; Wann/Wer/Version vom Server.
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter Betrieb (nach der Rückfüllung)
  * @param {{ darf: boolean, person: any, jetzt: string, heute: string }} ktx

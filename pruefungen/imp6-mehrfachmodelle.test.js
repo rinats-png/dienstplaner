@@ -8,7 +8,7 @@
 
    A. Bibliothek: genau ein Modell je Tag oder ausdrücklich keine/mehrdeutig/
       ungültig (nie still entschieden); Prüfung der ganzen Liste (Form,
-      Kennung, Modell, Datum, Reihenfolge, Versatz, Überschneidung, Lücke,
+      Kennung, Modell, Datum, Reihenfolge, Versatz, Überschneidung (Lücke zulässig, Frage 5),
       Obergrenzen); Altbestand = implizites Betriebsmodell; Zykluslage über
       Zeitumstellung und Schalttag.
    1. Lesen je Rolle: nur Planung, Leitung, Kundenrolle.
@@ -207,10 +207,12 @@ describe("A. Bibliothek: genau ein Modell oder ausdrücklich Klärung", () => {
       ["VERSATZ", [z({ modellId: "betrieb", versatz: 1 })]],
       ["UEBERSCHNEIDUNG", [z({ id: "a" }), z({ id: "b", gueltigAb: "2027-06-01" })]],
       ["UEBERSCHNEIDUNG", [z({ id: "a", modellId: "betrieb", gueltigAb: null }), z({ id: "b", gueltigAb: "2027-06-01" })]],
-      ["LUECKE", [z({ id: "a", gueltigBis: "2027-01-31" }), z({ id: "b", gueltigAb: "2027-02-02" })]],
       ["ZU_VIELE", Array.from({ length: 51 }, (_, i) => z({ id: `z${i}`, gueltigAb: plus("2027-01-01", i), gueltigBis: plus("2027-01-01", i) }))],
     ];
     for (const [code, liste] of faelle) expect(L.pruefeZuordnungen(liste, verz), code).toMatchObject({ code });
+    /* Umgestellt (Betreiberentscheidung 2026-11-14 Frage 5, „kein Schichtmodell“ zulässig): Eine Lücke war bis dahin der
+       Befund LUECKE; jetzt ist die Liste gültig, an den Tagen dazwischen gilt „keine“ (pruefungen/imp6-zyklen-grenzfaelle.test.js Q5). */
+    expect(L.pruefeZuordnungen([z({ id: "a", gueltigBis: "2027-01-31" }), z({ id: "b", gueltigAb: "2027-02-02" })], verz)).toBeNull();
   });
   it("Modellliste: reservierte Kennung, unbekannte Dienstart, Grenzen", () => {
     expect(L.pruefeModelle(MODELLE(), m.dienstarten)).toBeNull();
@@ -322,7 +324,6 @@ describe("3. Kontrollierte Klärung statt stiller Auflösung (Leitung, PUT)", ()
   const basis = () => [ZUORDNUNGEN_A1()[0], { ...ZUORDNUNGEN_A1()[1], gueltigBis: plus(M2, -1) }];
   const FAELLE = {
     "Überschneidung": [/überschneiden/, (m) => { pA1(m).schichtmodellZuordnungen = [ZUORDNUNGEN_A1()[0], ZUORDNUNGEN_A1()[1], z({})]; }],
-    "Lücke": [/Lücke/, (m) => { pA1(m).schichtmodellZuordnungen = [...basis(), z({ gueltigAb: plus(M2, 3) })]; }],
     "unbekanntes Modell": [/gibt es im Betrieb nicht/, (m) => { pA1(m).schichtmodellZuordnungen = [...basis(), z({ modellId: "gibtsnicht" })]; }],
     "kein Kalenderdatum": [/kein gültiges Datum/, (m) => { pA1(m).schichtmodellZuordnungen = [...basis(), z({ gueltigAb: `${M2.slice(0, 7)}-32` })]; }],
     "Ende vor Beginn": [/vor „Gültig ab“/, (m) => { pA1(m).schichtmodellZuordnungen = [...basis(), z({ gueltigBis: plus(M2, -5) })]; }],
@@ -354,6 +355,28 @@ describe("3. Kontrollierte Klärung statt stiller Auflösung (Leitung, PUT)", ()
       { roh: (r) => JSON.stringify(r).replace('"id":"proto"', '"__proto__":{"admin":true},"id":"proto"') });
     expect(a.status).toBe(403);
     expect(({}).admin).toBeUndefined();
+    expect((await gespeichert(raum)).a1.schichtmodellZuordnungen).toEqual(vorher.a1.schichtmodellZuordnungen);
+  });
+  /* Umgestellt (Betreiberentscheidung 2026-11-14 Frage 5): Die Lücke stand bis dahin unter den abgewiesenen Fällen. */
+  it("Frage 5: Lücke ab M2 und befristetes Ende werden gespeichert; dort gilt „kein Schichtmodell“, nie still das Betriebsmodell", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const a = await schreibeAls(token, "LT", (m) => { pA1(m).schichtmodellZuordnungen = [...basis(),
+      z({ gueltigAb: plus(M2, 3), gueltigBis: plus(M3, 9) })]; });
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(200);
+    const g = await gespeichert(raum);
+    expect(g.a1.schichtmodellZuordnungen.map((x) => [x.id, x.gueltigAb, x.gueltigBis])).toEqual([["a1-alt", null, "2026-06-30"],
+      ["a1-tag", "2026-07-01", plus(M2, -1)], ["neu", plus(M2, 3), plus(M3, 9)]]);
+    expect(g.a1.schichtmodellZuordnungen[2]).toMatchObject({ geaendertVon: "l1", version: 1 });
+    for (const d of [M2, plus(M2, 2), plus(M3, 10)]) expect(L.anzuwendendesModell(g.m1, g.a1, d), d).toEqual({ art: "keine" });
+    expect(L.anzuwendendesModell(g.m1, g.a1, plus(M2, 3))).toMatchObject({ art: "modell", modellId: "nacht" });
+  });
+  it("Frage 5: eine Lücke ab heute bleibt rückwirkend und wird abgewiesen; nichts gespeichert", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const vorher = await gespeichert(raum);
+    const a = await schreibeAls(token, "LT", (m) => { pA1(m).schichtmodellZuordnungen = [ZUORDNUNGEN_A1()[0],
+      { ...ZUORDNUNGEN_A1()[1], gueltigBis: plus(HEUTE, -1) }, z({ gueltigAb: M2 })]; });
+    expect(a.status).toBe(403);
+    expect(String(a.text)).toMatch(/vergangene Tage/);
     expect((await gespeichert(raum)).a1.schichtmodellZuordnungen).toEqual(vorher.a1.schichtmodellZuordnungen);
   });
 });
@@ -400,6 +423,21 @@ describe("4. Historischer Schutz: kein rückwirkender Wechsel", () => {
     expect((await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "N", "-"]; })).status).toBe(200);
     expect((await gespeichert(raum)).m1.schichtmodelle[1].tage).toEqual(["N", "N", "N", "-"]);
     await abgewiesen((m) => { wechselAb(M2)(m); }, { freigegeben: [M2.slice(0, 7)] }, /freigegebenen Plan/);
+  });
+  /* Dokumentiertes heutiges Verhalten (Review PR #369, Auflage 1): vor Punkt 6 (Planwirkung) durch Abweisung ersetzen
+     („Modell verkürzt, Versatz einer Zuordnung ≥ n“, analog MODELL_VERWENDET; ENTSCHEIDUNGSLISTE P2-4). */
+  it("Modell verkürzt bei unveränderter künftiger Zuordnung mit Versatz ≥ neue Länge: heute 200, danach ungültig/versatz (nie Modulo)", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const ab = (m) => { wechselAb(M2)(m); pA1(m).schichtmodellZuordnungen[2].versatz = 3; };
+    expect((await schreibeAls(token, "LT", ab)).status).toBe(200);
+    expect(L.anzuwendendesModell((await gespeichert(raum)).m1, (await gespeichert(raum)).a1, M2)).toMatchObject({ art: "modell", modellId: "nacht", versatz: 3 });
+    const a = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    const g = await gespeichert(raum);
+    expect(g.m1.schichtmodelle[1].tage).toEqual(["N", "N", "-"]);
+    expect(g.a1.schichtmodellZuordnungen[2]).toMatchObject({ modellId: "nacht", versatz: 3 });
+    expect(L.anzuwendendesModell(g.m1, g.a1, M2)).toEqual({ art: "ungueltig", grund: "versatz" });
+    expect(L.modellDienstAm(g.m1, g.a1, plus(M2, 5))).toEqual({ art: "ungueltig", grund: "versatz" });
   });
   it("neue Person: implizites Modell wie bisher; eigenes Modell ab M2 erlaubt, seit gestern abgewiesen", async () => {
     const { raum, token } = await neuerRaum({ rollen: ["LT"] });
@@ -617,6 +655,14 @@ describe("8. Importvorschau: zwei Modelle je Person (ohne Schreiben, Schalter au
     const zuordnung = [["Personalnummer", "Modell", "Beginn", "Versatz"], ["PN-a1", "Nacht", M2, 0], ["PN-m0", "Früh", M3, 0]];
     const r = schichtVorschau({ mandant: m, modellZeilen: MODELLZEILEN, zuordnungZeilen: zuordnung, heute: HEUTE });
     expect(r.zuordnungen.modellwechsel).toMatchObject({ personen: 2, uebernehmbar: 1, rueckwirkend: { anzahl: 1, datensaetze: [1] } });
+  });
+  /* Umgestellt (Frage 5 vom 2026-11-14): Eine Lücke zwischen gespeicherter Zuordnung und importiertem Beginn war „klären“. */
+  it("Frage 5: Lücke vor dem importierten Beginn ist übernehmbar, nicht „klären“", () => {
+    const m = bestand().mandanten[0];
+    const a1 = m.personen.find((p) => p.id === "a1");
+    a1.schichtmodellZuordnungen = [ZUORDNUNGEN_A1()[0], { ...ZUORDNUNGEN_A1()[1], gueltigBis: plus(M2, -10) }];
+    const r = schichtVorschau({ mandant: m, modellZeilen: MODELLZEILEN, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ["PN-a1", "Nacht", M2, 0]], heute: HEUTE });
+    expect(r.zuordnungen.modellwechsel).toMatchObject({ personen: 1, uebernehmbar: 1, klaeren: { anzahl: 0 }, rueckwirkend: { anzahl: 0 } });
   });
   it("ohne Tag (alter Aufruf) bleibt das Ergebnis wie bisher", () => {
     const r = schichtVorschau({ mandant: mandant(), modellZeilen: MODELLZEILEN, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ["PN-m0", "Früh", M2, 0]] });

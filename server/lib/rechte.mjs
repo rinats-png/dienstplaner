@@ -1681,8 +1681,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       if (vorgaben.grund) return { verweigert: vorgaben.grund };
       geschickt = vorgaben.mandant;
       /* Mehrere Schichtmodelle je Person (IMP-6 Teil 2, Betreiberentscheidung 2026-11-13): wer heute Schichtfolge und Personal
-         pflegt (org.edit oder pattern.edit, dazu staff.edit). Form, Überschneidung, Lücke, unbekanntes Modell und Rückwirkung
-         (vergangene, abgeschlossene, freigegebene Monate) weist der Server ab; Wann/Wer/Version vom Server. Ohne Recht wirkungslos. */
+         pflegt (org.edit oder pattern.edit, dazu staff.edit). Form, Überschneidung, unbekanntes Modell und Rückwirkung
+         (vergangene, abgeschlossene, freigegebene Monate) weist der Server ab (Lücken sind zulässig: Frage 5 vom 2026-11-14); Wann/Wer/Version vom Server. Ohne Recht wirkungslos. */
       const modelle = schichtzuordnungZusammen(ort.betrieb, geschickt, { darf: (darf(rolle, "org.edit") || darf(rolle, "pattern.edit")) && darf(rolle, "staff.edit"),
         person: sitzung.person, jetzt: new Date().toISOString(), heute: heuteBerlin() });
       if (modelle.grund) return { verweigert: modelle.grund };

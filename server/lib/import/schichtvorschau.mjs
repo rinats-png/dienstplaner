@@ -92,7 +92,7 @@ function dienstartenZaehlung(m) {
  * Mehrere Modelle je Person (IMP-6 Teil 2): Was die übernehmbaren Zuordnungszeilen für den Bestand bedeuten würden — nur gerechnet,
  * nie geschrieben. Je Person ergibt sich aus den Zeilen eine Kette (jede Zeile gilt bis zum Tag vor dem nächsten Beginn, die letzte
  * unbefristet); sie ersetzt die gespeicherten Zuordnungen ab dem ersten Beginn (davor bleibt, was gilt). Geprüft wird mit derselben
- * Bibliothek wie der Speicherweg (schichtzuordnung.mjs): Form, Überschneidung, Lücke und Rückwirkung (vergangene Tage, abgeschlossene
+ * Bibliothek wie der Speicherweg (schichtzuordnung.mjs): Form, Überschneidung und Rückwirkung (vergangene Tage, abgeschlossene
  * oder freigegebene Monate). Ausgabe nur als Anzahlen und Zeilennummern — keine Person, keine Kennung, kein Datum.
  */
 function modellwechselAus(mandant, datensaetze, modelle, heute) {
