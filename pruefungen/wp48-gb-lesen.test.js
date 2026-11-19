@@ -92,19 +92,31 @@ async function neuerRaum(art) {
   puts = 0;
 }
 
-/** Alle Dateien unter der Datenwurzel, deren Pfad den Raum nennt, mit Inhalt (byte-genau). */
-async function raumDateien() {
+/** Alle Dateien unter der Datenwurzel (Pfad relativ zur Wurzel, mit „/“), mit Inhalt (byte-genau). */
+async function alleDateien() {
   const aus = new Map();
   const gehe = async (dir) => {
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) await gehe(p);
-      else if (p.includes(RAUM)) aus.set(path.relative(wurzel, p), (await readFile(p)).toString("base64"));
+      else aus.set(path.relative(wurzel, p).split(path.sep).join("/"), (await readFile(p)).toString("base64"));
     }
   };
   await gehe(wurzel);
   return aus;
 }
+/** Die Dateien, deren Pfad UNTER der Wurzel den Raum nennt. Geprüft wird der relative Pfad, nie der absolute:
+    Die Wurzel (mkdtemp „centric-wp48-gb-lesen-XXXXXX“) kann den Raumnamen selbst enthalten — Zufallsendung „1…“
+    bei Raum „wp48-gb-lesen-1“, CI-Lauf 44526966423 —, dann fiel jede Datei der Ablage in die Auswahl, auch die
+    Zählvermerke der Lesebremse (Fehlschlag Map(24) statt Map(7)). Die Wurzel unten erzwingt diesen Fall. */
+async function raumDateien() {
+  return new Map([...(await alleDateien())].filter(([rel]) => rel.includes(RAUM)));
+}
+/** Zählvermerke der Lesebremsen des GET (server/lib/schutz.mjs, bremse → versuchVermerken): je Versuch ein eigener
+    Schlüssel `v:<art>:<kennung>:<fenster>:<marke>` mit dem Inhalt 1 — Hashkennungen, kein Bestandsinhalt. */
+const LESEVERMERK = /^centric-takt\/v%3A(bestandlesen|lesen-raum)%3A[^/]+\.json$/;
+const ANKER = "centric/widerrufbuch%3Aanker.json";
+const inhalt = (b64) => JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
 async function gespeichert() {
   const r = await B.bestandLesen(laden(), RAUM);
   return JSON.stringify(r);
@@ -168,7 +180,9 @@ const mandant = (s) => s.db.mandanten.find((x) => x.id === "m1");
 const aendere = (s, fn) => { s.db = { ...s.db, mandanten: s.db.mandanten.map((x) => x.id === "m1" ? fn(x) : x) }; };
 
 beforeAll(async () => {
-  wurzel = await mkdtemp(path.join(tmpdir(), "centric-wp48-gb-lesen-"));
+  /* Absichtlich mit dem Namen des ersten Raums (wp48-gb-lesen-1) im Wurzelpfad: deterministische Wiederholung des
+     CI-Zufalls (Lauf 44526966423) — raumDateien muss trotzdem nur die Raumdateien auswählen. */
+  wurzel = await mkdtemp(path.join(tmpdir(), "centric-wp48-gb-lesen-1-"));
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
   process.env.CENTRIC_PFEFFER = "pfeffer-nur-zum-pruefen-0123456789";
@@ -184,8 +198,26 @@ describe("WP-48-GB Nachtrag: Lesen ändert den Stand nicht", { timeout: 120000 }
   it("G GET ist reines Lesen: Datensatz und Raumdateien byte-gleich, auch mit Angleichung in der Antwort", async () => {
     await neuerRaum({ altPerson: true });
     const vorher = await gespeichert();
+    expect(wurzel.includes(RAUM), "Wurzelpfad nennt den Raum (Fall des CI-Laufs 44526966423)").toBe(true);
     const dateienVorher = await raumDateien();
     expect(dateienVorher.size, "der Raum liegt in Dateien").toBeGreaterThan(0);
+    expect([...dateienVorher.keys()].every((k) => k.startsWith("centric/")), "nur Datensatzdateien des Raums ausgewählt").toBe(true);
+    /* Gesamtabbild VOR jedem GET. Der Vorlauf-GET darf genau Folgendes hinzufügen, sonst nichts: einmalig den Anker
+       des Widerrufbuchs (server/lib/widerrufbuch.mjs, standJetzt: centric/widerrufbuch:anker — die allererste Anfrage
+       an eine frische Ablage richtet ihn ein; kein Raum, kein Lesestand) und je einen Vermerk der beiden Lesebremsen.
+       Vorhandenes bleibt byte-gleich, nichts wird entfernt. Ein GET, der bei jedem Aufruf dieselbe fremde Datei
+       schreibt, fällt damit schon hier auf (nicht erst im Vergleich danach, wo sie schon im Abbild läge). */
+    const alleVorVorlauf = await alleDateien();
+    await oeffne("PL");
+    const alleVorher = await alleDateien();
+    for (const [k, v] of alleVorVorlauf) expect(alleVorher.get(k), `Vorlauf: ${k} unverändert`).toBe(v);
+    const neuImVorlauf = [...alleVorher.keys()].filter((k) => !alleVorVorlauf.has(k));
+    expect(neuImVorlauf.filter((k) => !LESEVERMERK.test(k)), "Vorlauf: neu nur der Anker des Widerrufbuchs")
+      .toEqual(alleVorVorlauf.has(ANKER) ? [] : [ANKER]);
+    expect(inhalt(alleVorher.get(ANKER)).daten, "Anker trägt nur die Kennung des Buchs").toEqual({ id: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    for (const k of neuImVorlauf.filter((x) => LESEVERMERK.test(x))) expect(inhalt(alleVorher.get(k)).daten).toBe(1);
+    expect(neuImVorlauf.filter((k) => k.startsWith("centric-takt/v%3Abestandlesen%3A")).length, "Vorlauf: ein Personenvermerk").toBe(1);
+    expect(neuImVorlauf.filter((k) => k.startsWith("centric-takt/v%3Alesen-raum%3A")).length, "Vorlauf: ein Raumvermerk").toBe(1);
     const sitzungen = [];
     for (let i = 0; i < 2; i++) for (const k of Object.keys(ROLLEN)) sitzungen.push(await oeffne(k));
     /* Die Antwort ist angeglichen (qualifikationen: null → []), gespeichert bleibt der Altwert. */
@@ -193,6 +225,27 @@ describe("WP-48-GB Nachtrag: Lesen ändert den Stand nicht", { timeout: 120000 }
     expect(a1.qualifikationen).toEqual([]);
     expect(await gespeichert(), "GET schreibt nichts (Inhalt, Stand, Zeit, Urheber)").toBe(vorher);
     expect(await raumDateien(), "keine Datei des Raums geändert").toEqual(dateienVorher);
+    /* Schärfer als nur der Raum: JEDE Datei der Ablage (Datensatz, Stände, Sitzungen, alles außer den Zählvermerken
+       der Lesebremse) ist nach dem Lesen vorhanden und byte-gleich, und es kommt keine hinzu. Neu darf nur je GET je
+       ein Vermerk der beiden Lesebremsen sein (bestandlesen je Person, lesen-raum je Raum) — Inhalt 1, nach oben
+       begrenzt. Ein Vermerk in einer anderen Art, mit anderem Inhalt oder ein Vermerk zu viel → rot. */
+    const alleNachher = await alleDateien();
+    const nichtVermerk = (m) => new Map([...m].filter(([k]) => !LESEVERMERK.test(k)));
+    expect(nichtVermerk(alleNachher), "keine Datei außer Lesevermerken neu, geändert oder entfernt").toEqual(nichtVermerk(alleVorher));
+    const neueVermerke = [...alleNachher].filter(([k]) => !alleVorher.has(k));
+    for (const [k, v] of neueVermerke) {
+      expect(k, "neu nur Lesevermerke").toMatch(LESEVERMERK);
+      expect(inhalt(v).daten, `${k}: Vermerk trägt nur die Zahl 1`).toBe(1);
+    }
+    for (const [k, v] of alleVorher) if (alleNachher.has(k)) expect(alleNachher.get(k), `${k} unverändert`).toBe(v);
+    /* Genau ein Vermerk je GET und Art (bremse → versuchVermerken, einmal je Aufruf). Deterministisch: Aufgeräumt
+       werden nur Fenster, die mindestens zwei Fenster alt sind (alteFensterRaeumen: f < jetzt - 1), der Test läuft in
+       Bruchteilen einer Sekunde. Restrisiko nur bei einem Lauf über 60 s: dann könnte zudem die Sitzungsverlängerung
+       (sitzungen.mjs, `ta:` höchstens einmal je Minute) eine Datei anlegen — der Vergleich oben würde das rot melden;
+       bewusst nicht ausgenommen, denn bei diesem Tempo wäre es ein Schreibvorgang des GET, der auffallen soll. */
+    const zahl = (art) => neueVermerke.filter(([k]) => k.startsWith(`centric-takt/v%3A${art}%3A`)).length;
+    expect(zahl("bestandlesen"), "genau ein Personenvermerk je GET").toBe(sitzungen.length);
+    expect(zahl("lesen-raum"), "genau ein Raumvermerk je GET").toBe(sitzungen.length);
     /* Kein Zurückschreiben der Oberfläche: das Abbild ist das geladene, keine Migration nötig. */
     for (const s of sitzungen) {
       expect(s.migration).toBeNull();
