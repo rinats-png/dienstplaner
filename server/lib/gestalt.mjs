@@ -18,6 +18,8 @@
 import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
 import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
 import { FAELLE_TAGESFELDER } from "./krankmeldung.mjs";
+import { pauseAngabe, PAUSE_MAX } from "./zeiterfassung.mjs";
+import { pauseZuLang } from "./zeitregeln.mjs";
 
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
@@ -361,6 +363,49 @@ export function kalendertagFehler(bestand, vorher = null) {
           return fehler(`mandanten[${i}].${f}[${j}].${t}`, x[t]);
         }
       }
+    }
+  }
+  return null;
+}
+
+/* --- WP-14c-Nachbesserung: Pause einer Ist-Zeit im allgemeinen Speichern ---
+   Stempeln, Selbstauskunft, Korrektur und Antrag prüfen die Pause (ganze Minuten 0 bis PAUSE_MAX, kürzer als die
+   Anwesenheit). Das allgemeine Speichern (PUT /api/bestand und Teilweg) nahm eine Ist-Zeit eines ungestempelten Tages
+   bisher ungeprüft an: eine negative Pause (-30) zählte als zusätzliche Arbeitszeit (istZeitFuer: Anwesenheit minus
+   Pause), ein Text oder eine zu lange Pause ebenso still. Jetzt: Ein NEU eingeführter oder GEÄNDERTER Eintrag in
+   erfassung mit einer ungültigen Pause oder einer Pause, die die Anwesenheit (Beginn bis Ende, mit Zeitumstellung)
+   erreicht, ist 422 (fail-closed, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt unverändert speicherbar
+   (weder korrigiert noch gefiltert; wie er zu behandeln ist, ist eine offene Betreiberfrage, ENTSCHEIDUNGSLISTE P2-16).
+   Ohne Pausenangabe (undefined, null, "") gilt wie bisher die Pause der Dienstart. */
+export const PAUSE_UNGUELTIG = "PAUSE_UNGUELTIG";
+const UHR_ERFASSUNG = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
+
+/**
+ * Neue oder geänderte Ist-Zeiten mit ungültiger Pause. Gibt null oder { grund, feld, code } zurück.
+ * @param {any} bestand  der zu schreibende Stand
+ * @param {any} [vorher] der gespeicherte Stand (null: alles ist neu)
+ */
+export function erfassungPauseFehler(bestand, vorher = null) {
+  const mandanten = bestand && Array.isArray(bestand.mandanten) ? bestand.mandanten : [];
+  const altNachId = new Map((vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])
+    .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+  for (let i = 0; i < mandanten.length; i++) {
+    const m = mandanten[i];
+    if (!m || typeof m !== "object" || !m.erfassung || typeof m.erfassung !== "object" || Array.isArray(m.erfassung)) continue;
+    const alt = altNachId.get(m.id) || null;
+    const a = alt && alt.erfassung && typeof alt.erfassung === "object" && !Array.isArray(alt.erfassung) ? alt.erfassung : null;
+    for (const [k, e] of Object.entries(m.erfassung)) {
+      if (!e || typeof e !== "object" || Array.isArray(e)) continue;
+      if (e.pause === undefined || e.pause === null || e.pause === "") continue;            // keine Angabe: Pause der Dienstart
+      if (a && Object.hasOwn(a, k) && stabil(a[k]) === stabil(e)) continue;                  // Alteintrag, unverändert
+      const tag = String(k).split("|")[1] || "";
+      const pause = pauseAngabe(e.pause);
+      if (pause === null || pause === undefined)
+        return { code: PAUSE_UNGUELTIG, feld: `mandanten[${i}].erfassung`,
+          grund: `Die Pause einer Ist-Zeit (${tag}) in ganzen Minuten angeben (0 bis ${PAUSE_MAX}).` };
+      if (UHR_ERFASSUNG.test(String(e.start)) && UHR_ERFASSUNG.test(String(e.ende)) && pauseZuLang(e.start, e.ende, pause, tag))
+        return { code: PAUSE_UNGUELTIG, feld: `mandanten[${i}].erfassung`,
+          grund: `Die Pause einer Ist-Zeit (${tag}) muss kürzer sein als die Anwesenheit von ${e.start} bis ${e.ende} Uhr.` };
     }
   }
   return null;

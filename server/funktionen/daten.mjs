@@ -9,7 +9,7 @@ import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, a
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
-  personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen, kalendertagFehler } from "../lib/gestalt.mjs";
+  personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen, kalendertagFehler, erfassungPauseFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor, betreiberFaktorFrisch, rollenZweifaktor, zweifaktorRolle, merkenErlaubt,
   rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
@@ -1737,6 +1737,15 @@ async function behandeln(req, context, ctx) {
           await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${ktS.code}`, wer);
           return antwort({ fehler: "Diesen Kalendertag gibt es nicht.", code: ktS.code,
             text: `${ktS.grund} Es wurde nichts geändert.`, feld: ktS.feld }, 422);
+        }
+        /* WP-14c-Nachbesserung: Eine NEUE oder GEÄNDERTE Ist-Zeit mit ungültiger Pause (negativ, Text, über PAUSE_MAX,
+           so lang wie die Anwesenheit) ist 422 — sie zählte sonst still als mehr oder als 0 h Arbeitszeit. Alteinträge
+           bleiben unverändert speicherbar (P2-16). Voll- und Teilweg, nach der Rechteprüfung. */
+        const paS = erfassungPauseFehler(zuSchreiben, jetzt ? jetzt.bestand : null);
+        if (paS) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${paS.code}`, wer);
+          return antwort({ fehler: "Die Pause einer Ist-Zeit ist ungültig.", code: paS.code,
+            text: `${paS.grund} Es wurde nichts geändert.`, feld: paS.feld }, 422);
         }
 
         /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
