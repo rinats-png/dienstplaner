@@ -141,6 +141,10 @@ function fremdVerworfen(melde) {
   window.location.reload();
 }
 
+/** Review #382 A-a: Text, wenn die Konfliktfrage nach einem Anmeldungswechsel keine gültige Absage mehr hat. */
+export const OHNE_ABSAGE_TEXT = "Die Konfliktfrage gehört zur vorherigen Anmeldung und lässt sich hier nicht mehr entscheiden. "
+  + "Sichere deine Änderungen bei Bedarf als Datei, verwirf sie dann und lade neu.";
+
 export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null }) {
   const [laeuft, setLaeuft] = useState(false);
   /* Review #381 (1): Enter im Codefeld und der Knopf dürfen keinen zweiten Vorgang starten, solange einer läuft. */
@@ -150,6 +154,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
   useEffect(() => { if (automatisch) window.location.reload(); }, [automatisch]);
   if (!lage) return null;
   const l = SPEICHERLAGE[lage.art] || SPEICHERLAGE.unbekannt;
+  const ohneAbsage = !!l.konflikt && SP.konfliktOhneAbsage();
 
   const nochmal = async () => {
     if (laeuftJetzt.current) return;
@@ -202,10 +207,15 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
       <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>{l.titel}</div>
       <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {l.text}</p>
+      {ohneAbsage && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
+        {OHNE_ABSAGE_TEXT}</p>}
       {l.verwerfen && (lage.bereich || lage.text) && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {lage.bereich ? <>Bereich: <strong>{lage.bereich}</strong>. </> : null}{lage.text}</p>}
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-        {l.konflikt && onKonflikt && <Btn kind="primary" size="sm" onClick={onKonflikt}>Konflikt entscheiden</Btn>}
+        {l.konflikt && onKonflikt && !ohneAbsage && <Btn kind="primary" size="sm" onClick={onKonflikt}>Konflikt entscheiden</Btn>}
+        {/* Review #382 A-a: ohne gültige Absage nichts zu entscheiden — sichern, dann verwerfen und neu laden. */}
+        {ohneAbsage && <Btn size="sm" kind="danger" onClick={() => { verwerfenMitRueckfrage(); }}>
+          Änderungen verwerfen und neu laden</Btn>}
         {l.nochmal && <Btn kind="primary" size="sm" disabled={laeuft} onClick={nochmal}>
           {laeuft ? "Wird gesendet …" : "Noch einmal senden"}</Btn>}
         {l.neuAnmelden && (<>

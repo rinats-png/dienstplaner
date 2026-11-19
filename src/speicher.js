@@ -808,6 +808,9 @@ const konfliktLageText = () => ({ art: "konfliktOffen", text: "Gleichzeitig bear
   zeit: new Date().toISOString() });
 /** Die Absage (409) des ungelösten Konflikts für das Konfliktfenster, sonst null. */
 export const konfliktLage = () => (konfliktSperre ? konfliktSperre.daten : null);
+/** Review #382 A-a: Konfliktsperre ohne gültige Absage (nach einer Anmeldung ohne bekannten Inhaber verworfen) — dann
+    gibt es nichts zu entscheiden; der Ausweg ist sichern und verwerfen/neu laden. */
+export const konfliktOhneAbsage = () => !!konfliktSperre && !konfliktSperre.daten;
 /**
  * Den Konflikt entscheiden. „meins": der Stand der Oberfläche soll den Stand des Servers ersetzen (danach schickt die
  * Oberfläche ihn mit schreib). „server": die Oberfläche hat den Stand aus der Absage übernommen (automatische Lösung,
@@ -997,6 +1000,9 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
   } finally { teilLaeuft = false; }
   /* Review #382 A1: Gilt inzwischen eine andere Anmeldung, kehrt der Teilweg-Zustand der bisherigen nicht zurück (er
      wurde beim Anmelden geräumt oder wird dort geprüft) — der Auftrag bleibt ausstehend wie nach einer 401. */
+  /* Nebenwirkung (Delta-Review #382): Das gilt auch, wenn die neue Anmeldung später als „gleich“ bestätigt wird — der
+     Teilweg-Zustand ist dann trotzdem weg. Der nächste Schreibvorgang geht als Voll-PUT mit dem ETag des Merkers
+     hinaus; hat sich inzwischen etwas geändert, folgt 409 → vollSperre → „neu laden“ (sicher, aber ohne Frage je Zelle). */
   if (token !== fuerTeil) {
     teil = null; teilAuftrag = null;
     return { weiter: false, status: null, fehler: new Error("nicht-angemeldet") };

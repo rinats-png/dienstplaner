@@ -70,9 +70,10 @@ async function seite({ ablage } = {}) {
   vi.stubGlobal("localStorage", speicherAttrappe());
   vi.stubGlobal("window", { addEventListener: () => {} });
   vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => {} });
-  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, putNetzWeg: false, lesenErsatz: null, lesenAnpassen: null, anmeldeToken: null };
+  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, putNetzWeg: false, lesenErsatz: null, lesenAnpassen: null, anmeldeToken: null, aufrufe: [] };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
+    r.aufrufe.push(`${opt.method || "GET"} ${url}`);
     /* A1: die Anmeldung liefert ein vorgegebenes (echt angelegtes) Merkmal; Lesen kann an einem Tor warten. */
     if (url === "/api/anmelden") return new Response(JSON.stringify({ token: r.anmeldeToken, name: "Haus", rolle: "leitung",
       person: "l1", betrieb: 0 }), { status: 200, headers: { "content-type": "application/json" } });
@@ -501,6 +502,15 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     r.anmeldeToken = await neueSitzung({ raum: raum2 });
     await r.SP.anmelden("CODE-B", false);              // direkt, ohne Sitzungsende
     expect(r.SP.konfliktLage(), "keine Absage aus Raum A mehr abrufbar").toBeNull();
+    /* Delta-Review #382 A-a: keine Sackgasse — die Leiste bietet statt „Konflikt entscheiden" Verwerfen und Neuladen. */
+    expect(r.SP.konfliktOhneAbsage()).toBe(true);
+    const { NichtGespeichert, OHNE_ABSAGE_TEXT } = await import("../src/ansichten/speicherlage.jsx");
+    const html = renderToStaticMarkup(h(NichtGespeichert, { lage: r.SP.ausstehend(), melde: () => {}, aufGeloest: () => {}, onKonflikt: () => {} }));
+    expect(r.SP.ausstehend().art).toBe("konfliktOffen");
+    expect(html).not.toContain("Konflikt entscheiden");
+    expect(html).toContain("Änderungen verwerfen und neu laden");
+    expect(html).toContain(OHNE_ABSAGE_TEXT);
+    expect(html).toContain("Als Datei sichern");
     PUTS = [];
     /* „Meinen Stand übernehmen“: die Oberfläche schickt ihren Stand (aus Raum A) erneut. */
     expect(r.SP.konfliktLoesen("meins")).toBe(true);
@@ -509,6 +519,45 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     expect(PUTS.map((x) => x.etag), "ohne Versionsangabe aus Raum A").toEqual([null]);
     const nachB = await B.bestandLesen(laden(), raum2);
     expect([nachB.stand, nachB.bestand.mandanten[0].einstellungen.ruhezeit], "Raum B nicht überschrieben").toEqual([vorB.stand, 11]);
+  });
+
+  it("Delta-Review #382 A-b: Voll-PUT unterwegs, Anmeldung ohne bekannten Inhaber — der nächste PUT trägt keine Versionsangabe", async () => {
+    await neuerRaum();
+    const r = await seite();
+    r.lesenAnpassen = (d) => { const { inhaber: _weg, ...rest } = d; return rest; };
+    const g = await r.SP.lies();
+    const raum2 = `${RAUM}-zwei`;
+    await B.bestandSchreiben(laden(), raum2, bestand(), { durch: "Prüfung" });
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    let auf; r.putTor = new Promise((ja) => { auf = ja; });
+    const laeuft = r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) },
+      { ...opt(r), sofort: true });
+    while (r.amPutTor === 0) await warte();
+    expect(r.SP.ausstehend(), "nichts ausstehend außer dem laufenden PUT").toBeNull();
+    r.anmeldeToken = await neueSitzung({ raum: raum2 });
+    await r.SP.anmelden("CODE-B", false);
+    r.putTor = null; auf();
+    await laeuft;
+    expect(r.SP.ausstehend().art, "Antwort für die vorherige Anmeldung nicht übernommen").toBe("abgemeldet");
+    const vorB = await B.bestandLesen(laden(), raum2);
+    PUTS = [];
+    await r.SP.nochmalSchreiben();
+    expect(PUTS.map((x) => x.etag), "keine Versionsangabe der vorherigen Anmeldung").toEqual([null]);
+    expect((await B.bestandLesen(laden(), raum2)).stand, "Raum B unverändert").toBe(vorB.stand);
+  });
+
+  it("Delta-Review #382 (13): Merker gesetzt, anderer Inhaber — kein POST /wiederherstellen", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await bisZurLeiste(r);
+    r.SP.allesAusstehendeVerwerfen();                  // nichts mehr ausstehend, der Merker bleibt
+    r.anmeldeToken = await neueSitzung({ person: "a1", rolle: "mitarbeiter" });
+    await r.SP.anmelden("CODE-ANDERS", false);
+    r.aufrufe.length = 0;
+    const erg = await r.SP.wiederherstellen("marke-x");
+    expect(erg.status).toBe(0);
+    expect(erg.daten.fehler).toMatch(/anderen Zugang/);
+    expect(r.aufrufe.filter((x) => x.includes("/api/wiederherstellen"))).toEqual([]);
   });
 
   it("Folgepaket #381 (1): verspätete Leseantwort nach Wechsel der Anmeldung — nichts übernommen (ETag, Zugang)", async () => {
@@ -638,5 +687,9 @@ describe("Q Quelltext-Verträge", () => {
     /* App.jsx: Ladefehler „nicht-angemeldet" bleibt still — die Anmeldung kommt über das Neuladen, nicht über die Fehlerseite. */
     const app = await lies("../src/App.jsx");
     expect(app).toContain('if (lebt && String(e.message) !== "nicht-angemeldet") setLadefehler(String(e.message));');
+    /* Delta-Review #382 A-a: „Konflikt entscheiden" ohne Absage fällt auf Verwerfen mit Rückfrage zurück; nach dem
+       Schließen des Fensters erscheint die Leiste auch dann wieder. */
+    expect(app).toContain("if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage();");
+    expect(app).toContain("if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend());");
   });
 });
