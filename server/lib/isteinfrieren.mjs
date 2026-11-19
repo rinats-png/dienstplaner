@@ -96,6 +96,19 @@ export function mindestFuer(m, da, d) {
   return Math.max(wt, feiertag(d, m.bundesland) ? md.so : 0);
 }
 
+/** Ist der Bedarf einer Dienstart an einem Tag NICHT festgelegt (A-4, ABN-A4)? Ja, wenn `mindest` fehlt oder der
+    Tageswert, den mindestFuer liest (am Feiertag auch der So-Wert), nach mindestFeldStatus nicht "ok" ist (fehlt,
+    null, leer, negativ, Kommazahl, kein Zahlwert). 0 und ein Altwert als Text ("2") sind festgelegt. Nur für die
+    Kennzeichnung in der Anzeige; mindestFuer und alles, was damit rechnet, bleiben unverändert. */
+export function mindestTagOffen(m, da, d) {
+  if (!mindestVorhanden(da)) return true;
+  const w = dow(d);
+  const md = da.mindest;
+  const feld = w === 6 ? "so" : w === 5 ? "sa" : w === 4 ? "fr" : "mo_do";
+  if (mindestFeldStatus(md[feld]) !== "ok") return true;
+  return !!feiertag(d, m.bundesland) && mindestFeldStatus(md.so) !== "ok";
+}
+
 /* Abwesenheiten je Person, einmal je Zwischenspeicher (merk) — sonst liefe jeder Tag jeder Person über die ganze Liste. */
 const ABW_INDEX = Symbol("abwesenheiten je Person");
 function abwesenheitenVon(m, pid, merk) {

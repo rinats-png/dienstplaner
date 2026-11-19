@@ -547,6 +547,50 @@ describe("A-4 Nachtrag — Besetzungsanzeige: fehlender Bedarf heißt „Bedarf 
       expect(html, name).not.toMatch(/NaN|undefined/);
     }
   });
+  it("Gegenprobe: ausdrücklich 0 an allen Tagen und ein Posten ohne mindest sind festgelegt — keine Kennzeichnung", () => {
+    const m = betrieb();
+    m.dienstarten[0].mindest = { mo_do: 0, fr: 0, sa: 0, so: 0 };
+    const posten = { ...JSON.parse(JSON.stringify(m.dienstarten[1])), id: "PO", kurz: "PO", name: "Posten ohne Bedarf", posten: true };
+    delete posten.mindest;
+    m.dienstarten.push(posten);
+    const sitz = sitzFuer(m, "leitung");
+    for (const [name, rendern] of ansichten(sitz)) {
+      const html = rendern();
+      expect(html, name).not.toContain(OFFEN);
+      expect(html, name).not.toMatch(/NaN|undefined/);
+    }
+    for (const d of [HEUTE, FREITAG, "2026-11-07", "2026-11-08", "2026-12-25"]) {
+      const b = FL.besetzung(sitz.mandant, d);
+      expect(b[sitz.mandant.dienstarten[0].id], d).not.toHaveProperty("bedarfOffen");
+      expect(b.PO, d).not.toHaveProperty("bedarfOffen");
+      expect(b[sitz.mandant.dienstarten[0].id].soll, d).toBe(0);
+    }
+  });
+  it("Tageswert null, leer, false, Liste oder negativ (auch So-Wert am Feiertag): gekennzeichnet; soll wie bisher", async () => {
+    const IE_ = await import("../server/lib/isteinfrieren.mjs");
+    {
+      const SA = "2026-11-07", WEIHNACHTEN = "2026-12-25", FR_NORMAL = "2026-12-18";
+      for (const sa of [null, "", false, [3], -1]) {
+        const m = betrieb(); const id = m.dienstarten[0].id;
+        m.dienstarten[0].mindest = { mo_do: 2, fr: 2, sa, so: 1 };
+        const b = FL.besetzung(m, SA)[id];
+        expect(b.bedarfOffen, JSON.stringify(sa)).toBe(true);
+        expect(b.soll, JSON.stringify(sa)).toBe(IE_.mindestFuer(m, m.dienstarten[0], SA));
+        expect(FL.besetzung(m, FREITAG)[id], JSON.stringify(sa)).not.toHaveProperty("bedarfOffen");
+      }
+      const m = betrieb(); const id = m.dienstarten[0].id;
+      m.dienstarten[0].mindest = { mo_do: 2, fr: 2, sa: 2, so: null };
+      expect(FL.besetzung(m, WEIHNACHTEN)[id].bedarfOffen).toBe(true);
+      expect(FL.besetzung(m, WEIHNACHTEN)[id].soll).toBe(2);
+      expect(FL.besetzung(m, FR_NORMAL)[id]).not.toHaveProperty("bedarfOffen");
+      /* Altwert als Text bleibt festgelegt. */
+      const t = betrieb(); t.dienstarten[0].mindest = { mo_do: "2", fr: "2", sa: "0", so: "1" };
+      for (const d of [HEUTE, SA, "2026-11-08", WEIHNACHTEN]) expect(FL.besetzung(t, d)[t.dienstarten[0].id], d).not.toHaveProperty("bedarfOffen");
+      const html = renderToStaticMarkup(h(V.Tagesdetail, { sitz: sitzFuer((() => { const x = betrieb();
+        x.dienstarten[0].mindest = { mo_do: 2, fr: 2, sa: null, so: null }; return x; })(), "leitung"), datum: SA, onClose: () => {}, akt }));
+      expect(html).toContain(OFFEN);
+    }
+  });
   it("besetzung und tagesband: bedarfOffen nur ohne festgelegten Bedarf; soll, diff und status wie bisher", () => {
     const m = mit("fehlt"), id = m.dienstarten[0].id;
     const b = FL.besetzung(m, FREITAG)[id];

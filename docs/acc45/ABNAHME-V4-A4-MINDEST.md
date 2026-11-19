@@ -214,7 +214,10 @@ ohne Kennzeichnung. Bei unvollständigem (`{ mo_do: 2 }`) oder unlesbarem (`"abc
 
 Behebung (entscheidungsfrei, folgt „historisch Fehlendes wird gekennzeichnet, nie still 0"):
 `besetzung` (`server/lib/engine/plan.mjs`) setzt `bedarfOffen: true`, wenn eine Dienstart (außer Posten, wie in
-der Planungsreife) kein `mindest` hat oder der Tageswert keine Zahl ergibt; `tagesband` reicht das Kennzeichen
+der Planungsreife) kein `mindest` hat oder der Tageswert, den `mindestFuer` liest (am Feiertag auch der So-Wert),
+nach `mindestFeldStatus` nicht gültig ist (`null`, leer, `false`, Liste, negativ, Kommazahl, kein Zahlwert;
+`mindestTagOffen` in `server/lib/isteinfrieren.mjs`, Review #370 M1); bei Posten zählt nur ein Tageswert, der keine
+Zahl ergibt. 0 und ein Altwert als Text („2“) gelten als festgelegt. `tagesband` reicht das Kennzeichen
 weiter. Die Ansichten zeigen dann „–" und „Bedarf nicht festgelegt" (`sollAnzeige`, `besetztText`,
 `BEDARF_OFFEN_TEXT` in `src/lib/fachlogik.js`). `soll`, `diff` und `status` bleiben unverändert; bei
 festgelegtem Bedarf fehlt das Feld ganz. Differenzlauf alt/neu (gültige Dienstarten, auch Altwerte als Text
@@ -223,4 +226,11 @@ Ausgabe bit-gleich (SHA-256 identisch). Prüfung: `oberflaeche-render.test.js` �
 
 Nicht entschieden und deshalb nicht gebaut: ob der fehlende Bedarf die Ampel, die Lückenlisten und den
 Unterschreitungsnachweis ändern soll — ENTSCHEIDUNGSLISTE **P2-17** (Voreinstellung: nur Kennzeichnung).
-Nicht angepasst: `krankmeldungen-offen.jsx` (eigene Rechnung über `ersatzVorbereiten`, zeigt „x/0").
+Nicht angepasst (Basisverhalten, Restrisiken): `krankmeldungen-offen.jsx` (eigene Rechnung über
+`ersatzVorbereiten`, zeigt „x/0"); bei **unvollständigem** `mindest` ist `soll` an den betroffenen Tagen `NaN`, der
+Unterschreitungsnachweis (`unterschreitungsNachweis`) liefert dann eine Zeile mit `soll: NaN`, und die
+Prioritäten-Kachel „Besetzung heute" verschwindet ohne Hinweis (P2-17). Nur bei **fehlendem** `mindest` (`soll` 0)
+erscheint der Dienst gar nicht im Unterschreitungsnachweis.
+
+Abweichung vom Wortlaut der Regel vom 2026-11-13 („Zahlen als Zeichenfolge werden normalisiert"): gebaut ist neu
+oder geändert 422, gespeichert unverändert (§2.2). Als eigene Betreiberfrage **P2-18** eingetragen.
