@@ -115,6 +115,7 @@ async function raumDateien() {
 /** Zählvermerke der Lesebremsen des GET (server/lib/schutz.mjs, bremse → versuchVermerken): je Versuch ein eigener
     Schlüssel `v:<art>:<kennung>:<fenster>:<marke>` mit dem Inhalt 1 — Hashkennungen, kein Bestandsinhalt. */
 const LESEVERMERK = /^centric-takt\/v%3A(bestandlesen|lesen-raum)%3A[^/]+\.json$/;
+const ANKER = "centric/widerrufbuch%3Aanker.json";
 const inhalt = (b64) => JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
 async function gespeichert() {
   const r = await B.bestandLesen(laden(), RAUM);
@@ -201,11 +202,22 @@ describe("WP-48-GB Nachtrag: Lesen ändert den Stand nicht", { timeout: 120000 }
     const dateienVorher = await raumDateien();
     expect(dateienVorher.size, "der Raum liegt in Dateien").toBeGreaterThan(0);
     expect([...dateienVorher.keys()].every((k) => k.startsWith("centric/")), "nur Datensatzdateien des Raums ausgewählt").toBe(true);
-    /* Ein Vorlauf-GET vor dem Gesamtabbild: Die allererste Anfrage an eine frische Ablage legt einmalig den Anker des
-       Widerrufbuchs an (server/lib/widerrufbuch.mjs, standJetzt: centric/widerrufbuch:anker) — Einrichtung der Ablage,
-       kein Raum, kein Lesestand. Das Raumabbild oben liegt weiterhin VOR jedem GET. */
+    /* Gesamtabbild VOR jedem GET. Der Vorlauf-GET darf genau Folgendes hinzufügen, sonst nichts: einmalig den Anker
+       des Widerrufbuchs (server/lib/widerrufbuch.mjs, standJetzt: centric/widerrufbuch:anker — die allererste Anfrage
+       an eine frische Ablage richtet ihn ein; kein Raum, kein Lesestand) und je einen Vermerk der beiden Lesebremsen.
+       Vorhandenes bleibt byte-gleich, nichts wird entfernt. Ein GET, der bei jedem Aufruf dieselbe fremde Datei
+       schreibt, fällt damit schon hier auf (nicht erst im Vergleich danach, wo sie schon im Abbild läge). */
+    const alleVorVorlauf = await alleDateien();
     await oeffne("PL");
     const alleVorher = await alleDateien();
+    for (const [k, v] of alleVorVorlauf) expect(alleVorher.get(k), `Vorlauf: ${k} unverändert`).toBe(v);
+    const neuImVorlauf = [...alleVorher.keys()].filter((k) => !alleVorVorlauf.has(k));
+    expect(neuImVorlauf.filter((k) => !LESEVERMERK.test(k)), "Vorlauf: neu nur der Anker des Widerrufbuchs")
+      .toEqual(alleVorVorlauf.has(ANKER) ? [] : [ANKER]);
+    expect(inhalt(alleVorher.get(ANKER)).daten, "Anker trägt nur die Kennung des Buchs").toEqual({ id: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    for (const k of neuImVorlauf.filter((x) => LESEVERMERK.test(x))) expect(inhalt(alleVorher.get(k)).daten).toBe(1);
+    expect(neuImVorlauf.filter((k) => k.startsWith("centric-takt/v%3Abestandlesen%3A")).length, "Vorlauf: ein Personenvermerk").toBe(1);
+    expect(neuImVorlauf.filter((k) => k.startsWith("centric-takt/v%3Alesen-raum%3A")).length, "Vorlauf: ein Raumvermerk").toBe(1);
     const sitzungen = [];
     for (let i = 0; i < 2; i++) for (const k of Object.keys(ROLLEN)) sitzungen.push(await oeffne(k));
     /* Die Antwort ist angeglichen (qualifikationen: null → []), gespeichert bleibt der Altwert. */
@@ -226,9 +238,14 @@ describe("WP-48-GB Nachtrag: Lesen ändert den Stand nicht", { timeout: 120000 }
       expect(inhalt(v).daten, `${k}: Vermerk trägt nur die Zahl 1`).toBe(1);
     }
     for (const [k, v] of alleVorher) if (alleNachher.has(k)) expect(alleNachher.get(k), `${k} unverändert`).toBe(v);
+    /* Genau ein Vermerk je GET und Art (bremse → versuchVermerken, einmal je Aufruf). Deterministisch: Aufgeräumt
+       werden nur Fenster, die mindestens zwei Fenster alt sind (alteFensterRaeumen: f < jetzt - 1), der Test läuft in
+       Bruchteilen einer Sekunde. Restrisiko nur bei einem Lauf über 60 s: dann könnte zudem die Sitzungsverlängerung
+       (sitzungen.mjs, `ta:` höchstens einmal je Minute) eine Datei anlegen — der Vergleich oben würde das rot melden;
+       bewusst nicht ausgenommen, denn bei diesem Tempo wäre es ein Schreibvorgang des GET, der auffallen soll. */
     const zahl = (art) => neueVermerke.filter(([k]) => k.startsWith(`centric-takt/v%3A${art}%3A`)).length;
-    expect(zahl("bestandlesen"), "höchstens ein Personenvermerk je GET").toBeLessThanOrEqual(sitzungen.length);
-    expect(zahl("lesen-raum"), "höchstens ein Raumvermerk je GET").toBeLessThanOrEqual(sitzungen.length);
+    expect(zahl("bestandlesen"), "genau ein Personenvermerk je GET").toBe(sitzungen.length);
+    expect(zahl("lesen-raum"), "genau ein Raumvermerk je GET").toBe(sitzungen.length);
     /* Kein Zurückschreiben der Oberfläche: das Abbild ist das geladene, keine Migration nötig. */
     for (const s of sitzungen) {
       expect(s.migration).toBeNull();
