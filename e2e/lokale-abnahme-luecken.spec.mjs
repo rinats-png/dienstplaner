@@ -15,9 +15,12 @@
          Planung bekommt 409 → Konfliktfenster; nach „Später entscheiden“ geht eine weitere Eingabe NICHT hinaus
          (Sendesperre nach 409); die fremde Änderung bleibt auf dem Server; „Neu laden“ zeigt sie.
      L4  Sitzungsende und Wiederanmeldung: Sitzung serverseitig beendet (Abmelden mit dem Merkmal der Seite, wie nach
-         Ablauf), das alte Merkmal bekommt 401. L4a prüft den heutigen Fehlzustand ausdrücklich: das erste Laden
-         bleibt auf dem Ladegerüst (Befund B-L4, offen, nicht versteckt; bei Behebung umkehren). L4b: nach erneutem Laden Anmeldung,
-         Wiederanmeldung mit demselben Code zeigt die Daten wieder.
+         Ablauf), das alte Merkmal bekommt 401. L4a: schon das erste Laden zeigt die Anmeldung mit dem Hinweis „Deine
+         Sitzung ist beendet“, kein Ladegerüst (Befund B-L4, behoben durch #378). L4b: Wiederanmeldung mit demselben
+         Code direkt im angezeigten Feld zeigt die Daten wieder. L4c: Sitzung endet bei offener Seite mit ausstehender
+         Eingabe → kein Neuladen, Leiste „nicht gespeichert“ mit Anmeldung im selben Reiter. „Anmelden und senden“
+         endet heute im Dialog „Gleichzeitig bearbeitet“ (Befund B-L4c, offen, ausdrücklich geprüft; bei Behebung
+         umkehren).
      L5  Personalimport-Fehlerfall im Browser (Text einfügen; der Dateiimport ist ausgeschaltet, IMPORT_DATEI_AKTIV und
          CENTRIC_IMPORT_AKTIV): fehlerhafte Zeile wird erkannt und nicht übernommen, nur die gültige landet auf dem Server;
          nur fehlerhafte Zeilen → Übernahme gesperrt.
@@ -228,47 +231,99 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
 
   /* Sitzung beim Server beenden — wie Ablauf (30 min Untätigkeit, 12 h Frist) oder Abmelden auf einem anderen Gerät.
      Die Uhr des Testservers lässt sich nicht vorstellen; die Fristen selbst belegt pruefungen/sitzungen.test.js. */
-  async function sitzungBeenden(page) {
-    await anmeldenBrowser(page, C.p1);
+  async function merkmalBeenden(page) {
     const alt = await page.evaluate(() => sessionStorage.getItem("centric:token"));
     expect(alt, "Merkmal der Seite").toBeTruthy();
     expect((await api("/api/abmelden", { methode: "POST", token: alt, rumpf: {} })).status).toBe(200);
     expect((await api("/api/bestand", { token: alt })).status).toBe(401);
     return alt;
   }
-
-  /* Befund B-L4 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-19.md §4): Beim Laden mit einem beim Server nicht mehr gültigen
-     Merkmal bleibt die Seite auf dem Ladegerüst „CENTRIC wird geladen“ stehen; die Anmeldung erscheint erst nach einem
-     weiteren Neuladen (src/speicher.js ruf: 401 → abmelden(true) ohne Rückmeldung an die Oberfläche; src/App.jsx: Fehler
-     „nicht-angemeldet“ wird verschluckt, db bleibt leer). Dieser Test prüft ausdrücklich den HEUTIGEN Fehlzustand;
-     jeder Fehler in der Vorbereitung macht ihn rot (kein test.fail).
-     Bei Behebung von B-L4 umkehren (fix-PR folgt): dann Anmelden-Knopf sichtbar, kein Ladegerüst. */
-  test("L4a (B-L4 offen: heutiges Verhalten) Sitzung beim Server beendet: erstes Laden bleibt auf dem Ladegerüst", async ({ page }) => {
-    await sitzungBeenden(page);
+  async function sitzungBeenden(page) {
+    await anmeldenBrowser(page, C.p1);
+    return merkmalBeenden(page);
+  }
+  /** Laden mit totem Merkmal: 401 → kontrolliertes Neuladen (src/app/sitzungsende.js) → Anmeldung mit Hinweis. */
+  async function nachSitzungsendeLaden(page) {
     await page.reload({ waitUntil: "load" });
-    /* Der Ladelauf ist durch: Das Merkmal ist geräumt (401 → abmelden(true)), das Netz ruht. */
-    await expect.poll(() => page.evaluate(() => sessionStorage.getItem("centric:token")), { timeout: 15000 }).toBeNull();
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-    await expect(page.getByRole("status").filter({ hasText: "CENTRIC wird geladen" })).toBeAttached();
-    await expect(page.getByRole("button", { name: /anmelden/i })).toHaveCount(0);
+    const hinweis = page.locator("#sitzungsende-hinweis");
+    await expect(hinweis).toBeVisible({ timeout: 30000 });
+    await expect(hinweis).toContainText("Deine Sitzung ist beendet");
+    await expect(page.locator("#code")).toHaveAttribute("aria-describedby", "sitzungsende-hinweis");
     await expect(page.locator(".m-tabs, .kopfleiste")).toHaveCount(0);
-  });
+    await expect(page.getByRole("status").filter({ hasText: "CENTRIC wird geladen" })).toHaveCount(0);
+    expect(await page.evaluate(() => sessionStorage.getItem("centric:token")), "Merkmal geräumt").toBeNull();
+  }
 
-  test("L4b Sitzung beim Server beendet: altes Merkmal 401, Anmeldung nach erneutem Laden, Wiederanmeldung zeigt die Daten", async ({ page }) => {
-    const alt = await sitzungBeenden(page);
-    await page.reload({ waitUntil: "load" });
-    /* Heutiger Stand (B-L4): das erste Laden räumt nur das Merkmal; erst das nächste zeigt die Anmeldung. */
-    await expect.poll(() => page.evaluate(() => sessionStorage.getItem("centric:token")), { timeout: 15000 }).toBeNull();
+  /* Befund B-L4 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-19.md §4), behoben durch #378: Vorher blieb das erste Laden mit
+     einem beim Server nicht mehr gültigen Merkmal auf dem Ladegerüst „CENTRIC wird geladen“ stehen; erst ein zweites
+     Neuladen zeigte die Anmeldung. Jetzt zeigt schon das erste Laden die Anmeldung mit Hinweis — genau einmal. */
+  test("L4a (B-L4 behoben) Sitzung beim Server beendet: erstes Laden zeigt die Anmeldung mit Hinweis", async ({ page }) => {
+    await sitzungBeenden(page);
+    await nachSitzungsendeLaden(page);
+    /* Der Hinweis gilt genau einmal: ein weiteres Laden zeigt den Einstieg ohne ihn. */
     await page.reload({ waitUntil: "load" });
     await expect(page.getByRole("button", { name: /anmelden/i }).first()).toBeVisible({ timeout: 30000 });
-    await expect(page.locator(".m-tabs, .kopfleiste")).toHaveCount(0);
-    expect(await page.evaluate(() => sessionStorage.getItem("centric:token"))).toBeNull();
-    /* Wiederanmeldung mit demselben Code */
-    await anmeldenBrowser(page, C.p1);
+    await expect(page.locator("#sitzungsende-hinweis")).toHaveCount(0);
+  });
+
+  test("L4b Sitzung beim Server beendet: altes Merkmal 401, Anmeldung mit Hinweis, Wiederanmeldung zeigt die Daten", async ({ page }) => {
+    const alt = await sitzungBeenden(page);
+    await nachSitzungsendeLaden(page);
+    /* Wiederanmeldung mit demselben Code direkt im angezeigten Feld — kein zweites Laden nötig */
+    await page.locator("#code").fill(C.p1);
+    await page.getByRole("button", { name: /anmelden/i }).first().click();
+    await page.waitForSelector(".m-tabs, .kopfleiste", { timeout: 30000 });
+    for (const zu of ['[aria-label="Tour schließen"]', 'button:has-text("Später")', 'button:has-text("Tour überspringen")']) {
+      const t = page.locator(zu).first();
+      if (await t.count()) await t.click().catch(() => {});
+    }
     await geheZu(page, "Personal");
     await expect(page.getByText(`Mitarbeiterin-${MK}`).first()).toBeVisible({ timeout: 15000 });
     const neu = await page.evaluate(() => sessionStorage.getItem("centric:token"));
     expect(neu && neu !== alt).toBe(true);
+  });
+
+  /* Sitzung endet bei offener Seite, während eine Eingabe aussteht (Browserfassung von „O“ in
+     pruefungen/sitzungsende-anmeldung.test.js): kein Neuladen — die Eingabe liegt nur in diesem Reiter —, der PUT
+     bekommt 401, die Leiste „nicht gespeichert“ bietet die Anmeldung mit Code im selben Reiter und „Als Datei sichern“.
+     Eingabe: Dichte der eigenen Person (wie L3). Der Schritt „Anmelden und senden“ zeigt Befund B-L4c (unten). */
+  test("L4c Sitzung endet bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste mit Anmeldung (B-L4c offen)", async ({ page }) => {
+    /* B-L4c erzeugt heute den Dialog „Gleichzeitig bearbeitet“; die Eigenprüfung des Fixtures gilt hier nicht. */
+    await page.removeLocatorHandler(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" }));
+    const puts = [];
+    page.on("response", async (r) => {
+      if (r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/bestand")
+        puts.push([r.status(), r.status() === 409 ? ((await r.json().catch(() => ({}))).text || "") : ""]);
+    });
+    await anmeldenBrowser(page, C.p1);
+    await geheZu(page, "Einstellungen");
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    const dichteP1 = async () => ((await mandant(C.lLT)).personen.find((p) => p.id === "p1") || {}).dichte || "komfortabel";
+    const vorher = await dichteP1();
+    const ziel = vorher === "kompakt" ? "komfortabel" : "kompakt";
+    /* Marke im Fensterzustand: ein Neuladen würde sie löschen. */
+    await page.evaluate(() => { window.__l4cOhneNeuladen = true; });
+    await merkmalBeenden(page);
+    await page.getByRole("tab", { name: ziel === "kompakt" ? "Kompakt" : "Komfortabel", selected: false }).first().click();
+    const leiste = page.getByRole("alert").filter({ hasText: "Die Sitzung ist abgelaufen" });
+    await expect(leiste).toBeVisible({ timeout: 20000 });
+    expect(await page.evaluate(() => window.__l4cOhneNeuladen === true), "kein Neuladen bei ausstehender Eingabe").toBe(true);
+    await expect(leiste.getByRole("button", { name: "Als Datei sichern" })).toBeVisible();
+    expect(await dichteP1(), "Server unverändert, solange nicht angemeldet").toBe(vorher);
+    expect(puts.map((p) => p[0]), "der ausstehende PUT bekam 401").toContain(401);
+    /* Befund B-L4c (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-19.md §4, offen): „Anmelden und senden“ meldet sich an, der
+       erneute PUT geht aber OHNE Versionsangabe hinaus (abmelden(true) in src/speicher.js räumt bei der 401 auch den
+       ETag) → 409 „ohne Versionsangabe nicht überschreibbar“ → Dialog „Gleichzeitig bearbeitet“. Nichts geht verloren
+       (Server unverändert, Eingabe im Reiter), aber der angebotene Weg führt in den Konfliktdialog. Dieser Test prüft
+       ausdrücklich den HEUTIGEN Zustand (kein test.fail); bei Behebung umkehren: Leiste verschwindet, Server hat `ziel`. */
+    await leiste.getByLabel("Zugangscode").fill(C.p1);
+    await leiste.getByRole("button", { name: "Anmelden und senden" }).click();
+    await expect(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" })).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => puts.filter((p) => p[0] === 409).map((p) => p[1]), { timeout: 10000 })
+      .toEqual([expect.stringContaining("ohne Versionsangabe")]);
+    expect(await dichteP1(), "nichts überschrieben").toBe(vorher);
+    expect(await page.evaluate(() => sessionStorage.getItem("centric:token")), "wieder angemeldet").toBeTruthy();
+    expect(await page.evaluate(() => window.__l4cOhneNeuladen === true), "weiterhin dieselbe Seite").toBe(true);
   });
 
   test("L5 Personalimport-Fehlerfall im Browser: fehlerhafte Zeile nicht übernommen, nur fehlerhaft → gesperrt", async ({ page }) => {

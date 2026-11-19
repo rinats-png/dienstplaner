@@ -7,7 +7,7 @@
 
 | | |
 |---|---|
-| Basis | `integration/release-v4` @ `1d8aacce` |
+| Basis | `integration/release-v4` @ `1d8aacce`; Nachtrag L4 nach #378 auf `a0fda313` |
 | Umgebung | Windows 11, Node 24.18.0, Git Bash, `npm ci` im eigenen Worktree, Playwright 1.64.1 Chromium headless |
 | Speicherschonung | `workers: 1`, je Lauf EIN Viewport-Projekt (nacheinander `1024x768` und `390x844`, nie parallel), vitest einzeln mit `--maxWorkers=1`; keine Wiederholungsschleifen |
 | Nicht lokal gelaufen (CI) | `rechtematrix-zeilen`, `erstleitung-bestand-differenz`, `wp48-teilweg` (groß), die übrigen sechs Viewport-Projekte |
@@ -35,7 +35,7 @@ Stufen: **belegt** = Kernablauf lokal nachgewiesen (Browser oder HTTP mit echtem
 | 8 | Abrechnung / Exporte | `monatsabschluss-*` (gelesen); axe-Fläche `abrechnungsdaten-leitung` (gelesen, lief im 1024er-Lauf mit); B10 | Unit, HTTP-in, Browser (nur Ansicht/axe) | Abschluss friert Ist ein; Ansicht Abrechnungsdaten barrierefrei | Export-Datei (Download, Inhalt) im Browser; Lohnausgabe Ende-zu-Ende | Lücke (Export) |
 | 9 | Rechte- und Mandantentrennung | `mandanten.test.js`, `mandanten-session.test.js`, `abnahme-a-ablauf.test.js` (gefälschte Rümpfe/Kennungen/ETags), `abnahme-c-module.test.js`; `e2e/abnahme-a-ablauf.spec.mjs` 1/5; **neu L2** (Antrag aus Betrieb G erscheint nicht, bleibt dort unberührt); `rechtematrix-zeilen` (CI) | HTTP-in, HTTP-Server, Browser | Leitung Nord/Süd sehen nur Eigenes; Anträge fremder Betriebe unsichtbar; Gestalt- und Schreibweg | volle Rechtematrix nur CI (`rechtematrix-zeilen`, groß) | belegt |
 | 10 | Mobile Bedienung / PWA | `e2e/barrierefreiheit*.spec.mjs`, `abnahme-b-ablaeufe` (Telefonviewport, Bedienflächen ≥ 24 px, kein waagrechtes Scrollen); `pwa.test.js` (Manifest-Verknüpfungen, Zwischenspeicher-Regeln; gelesen) | Browser (Chromium-Emulation), Unit | Telefonbreite 390 px und Tablet 1024 px lokal; übrige sechs Viewports in der CI | Dienstarbeiter im Browser ist in der Suite **gesperrt** (`serviceWorkers: "block"`); Installation, iOS/Safari, echtes Gerät | teilweise |
-| 11 | Wiederholte Anmeldung / Sitzungsablauf | `sitzungen`, `sitzungsbindung`, `sitzungsrennen`, `sitzungsinventar`, `sitzungsaufraeumen`, `sitzung-ohne-rolle`; `anmeldung-http` (gelesen); **neu L4a/L4b** | HTTP-in, Browser | Fristen, Widerruf, Rennen, Aufräumen; Browser: beim Server beendete Sitzung → altes Merkmal 401, heutiger Fehlzustand ausdrücklich geprüft (L4a), Anmeldung nach erneutem Laden, Wiederanmeldung mit demselben Code zeigt die Daten | **Befund B-L4** (§4): erstes Laden nach Sitzungsende bleibt auf dem Ladegerüst; Zeitablauf 30 min/12 h selbst nicht im Browser (Server-Uhr nicht vorstellbar) | belegt mit Befund |
+| 11 | Wiederholte Anmeldung / Sitzungsablauf | `sitzungen`, `sitzungsbindung`, `sitzungsrennen`, `sitzungsinventar`, `sitzungsaufraeumen`, `sitzung-ohne-rolle`; `anmeldung-http` (gelesen); `sitzungsende-anmeldung` (#378); **neu L4a/L4b/L4c** | HTTP-in, Browser | Fristen, Widerruf, Rennen, Aufräumen; Browser: beim Server beendete Sitzung → altes Merkmal 401, schon das erste Laden zeigt die Anmeldung mit Hinweis „Deine Sitzung ist beendet“ (L4a, B-L4 behoben durch #378), Wiederanmeldung im angezeigten Feld zeigt die Daten (L4b); Sitzungsende bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste „nicht gespeichert“ mit Anmeldung im selben Reiter, Server unverändert (L4c) | **Befund B-L4c** (§4, offen): „Anmelden und senden“ endet im Dialog „Gleichzeitig bearbeitet“ (PUT ohne Versionsangabe); Zeitablauf 30 min/12 h selbst nicht im Browser (Server-Uhr nicht vorstellbar) | belegt mit Befund |
 
 ## 2. Läufe (lokal, 2026-11-19)
 
@@ -50,6 +50,11 @@ Dauer = Wandzeit inklusive Bau der Oberfläche und Einrichtung des Testservers (
 | `npx playwright test --project=1024x768 e2e/lokale-abnahme-luecken.spec.mjs` (Entwicklung, 4 Läufe) | 1. und 2. rot (Testfehler, §4), 3. rot (L4: Produktfehler B-L4 gefunden, §4), 4. grün mit L4a noch als `test.fail` | 82 s / 76 s / 107 s / 84 s |
 | dieselbe Datei nach Review #377 (L3 mit 3000 ms ohne PUT-Anfrage, L4a prüft den heutigen Zustand ohne `test.fail`) | **grün**: 7 bestanden, 0 rot | 74 s |
 | `npx playwright test --project=1024x768` (alle Specs inkl. neuer Datei, Abschluss) | **grün**: 30 bestanden (Stand vor Review #377, L4a damals als `test.fail`), 5 übersprungen, 0 rot — die neue Datei stört die übrigen Specs nicht (kein Dialog „Gleichzeitig bearbeitet“ im Demo-Betrieb) | 296 s |
+| dieselbe Datei nach #378 auf `integration/release-v4` @ `a0fda313` (L4a umgekehrt, L4b ohne zweites Laden, neu L4c), Entwicklung, 4 Läufe | 1. ganze Datei: L4a/L4b grün, L4c rot — Produktfehler B-L4c gefunden (§4); 2. und 3. nur `-g "L0\|L4c"`: rot, im 3. mit Protokoll der API-Antworten (Ursache bestätigt: 409 „ohne Versionsangabe“); 4. `-g "L0\|L4c"` mit L4c auf heutigem Verhalten: grün | 78 s / 78 s / 66 s / 59 s |
+| dieselbe Datei, Abschluss nach #378 (L4c auf heutigem Verhalten von B-L4c) | **grün**: 8 bestanden (L0–L5 inkl. L4a/L4b/L4c), 0 rot | 90 s |
+
+Nach #378 zusätzlich einzeln (vitest, `--maxWorkers=1`): `sitzungsende-anmeldung.test.js` grün 8/8, `ci-abdeckung.test.js`
+grün 8/8, `doku.test.js` grün 5/5. Die übrigen Specs wurden nach #378 lokal nicht erneut gelaufen (CI).
 
 ### 2.2 vitest einzeln (`npx vitest run <datei> --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000`)
 
@@ -79,7 +84,7 @@ Auftrag genannte `docs/CENTRIC-TEST-UND-ABNAHMEPLAN.md` gibt es auf `integration
 
 ## 3. Neue Prüfung: `e2e/lokale-abnahme-luecken.spec.mjs`
 
-Eine Datei, sieben Tests, nur Projekt `1024x768` (Telefonschritte stellen die Seite auf 390x844 um; in den übrigen sieben
+Eine Datei, acht Tests, nur Projekt `1024x768` (Telefonschritte stellen die Seite auf 390x844 um; in den übrigen sieben
 Projekten übersprungen, wie `abnahme-a-ablauf.spec.mjs`). Eingebunden ohne neue Skripte: `playwright.config.mjs` nimmt jede
 `e2e/**/*.spec.mjs` auf, `npm run e2e` läuft im CI-Job `browser-abnahme` (`pruefung.yml`) und im Staging-Gate. Keine Änderung an
 `hilfen.mjs`, `global-setup.mjs`, `axe-ausnahmen.json`, Allowlists oder Schaltern.
@@ -93,9 +98,15 @@ Projekten übersprungen, wie `abnahme-a-ablauf.spec.mjs`). Eingebunden ohne neue
 - **Synthetisch:** Marker `LueckeE2e`, `GegenE2e`, `SYNTH-URLAUB-L1`; Codes nie ausgegeben.
 - **L3 hebt die Eigenprüfung des Fixtures auf** (`page.removeLocatorHandler` für „Gleichzeitig bearbeitet“), weil dieser Test den
   Konflikt absichtlich erzeugt. Für alle anderen Tests bleibt sie unverändert.
-- **L4a prüft den heutigen Fehlzustand ausdrücklich** (Befund B-L4 ist offen, wird nicht versteckt, kein `test.fail`):
-  Ladegerüst „CENTRIC wird geladen“ vorhanden, kein Anmelden-Knopf, Merkmal geräumt. Jeder Fehler in der Vorbereitung macht den
-  Test rot. Wenn B-L4 behoben ist, wird L4a umgekehrt; der Fix-PR folgt.
+- **L4a ist nach #378 umgekehrt** (B-L4 behoben): Schon das erste Laden mit totem Merkmal zeigt die Anmeldung mit dem Hinweis
+  `#sitzungsende-hinweis` („Deine Sitzung ist beendet …“, am Codefeld über `aria-describedby`), kein Ladegerüst, Merkmal
+  geräumt; ein weiteres Laden zeigt den Hinweis nicht mehr (genau einmal). L4b meldet sich direkt im angezeigten Feld wieder an,
+  ein zweites Laden ist nicht mehr nötig.
+- **L4c prüft den heutigen Zustand von B-L4c ausdrücklich** (offen, nicht versteckt, kein `test.fail`): Sitzungsende bei
+  offener Seite mit ausstehender Eingabe → kein Neuladen (Marke im Fensterzustand bleibt), PUT 401, Leiste „nicht gespeichert“
+  mit Codefeld und „Als Datei sichern“, Server unverändert; „Anmelden und senden“ → 409 „ohne Versionsangabe“ → Dialog
+  „Gleichzeitig bearbeitet“, Server weiter unverändert. L4c hebt dafür wie L3 die Eigenprüfung des Fixtures auf. Bei Behebung
+  umkehren: Leiste verschwindet, die Eingabe liegt auf dem Server.
 - **Gegenprobe L3:** Dieselbe Eingabe (Wechsel der Darstellungsdichte) löst im selben Test vorher den PUT aus, der den 409 bekommt.
   Fehlte die Sperre, ginge nach `WARTE` = 1200 ms eine PUT-Anfrage hinaus. Der Test zählt Anfragen, nicht Antworten, und würde
   innerhalb der 3000 ms rot.
@@ -106,15 +117,22 @@ Projekten übersprungen, wie `abnahme-a-ablauf.spec.mjs`). Eingebunden ohne neue
 | L1 | Urlaubsantrag am Telefon: Fehlerfall „Ende vor Beginn“ (`aria-invalid`, Blatt bleibt offen), gültiger Antrag genau einmal |
 | L2 | Genehmigung durch die Planung; Antrag aus G unsichtbar und unberührt; Beschäftigte sieht „genehmigt“ |
 | L3 | 409 → Konfliktfenster → „Später entscheiden“ → weitere Eingabe: 3000 ms keine PUT-Anfrage → fremde Änderung bleibt → „Neu laden“ |
-| L4a | B-L4 offen, heutiges Verhalten: erstes Laden nach Sitzungsende bleibt auf dem Ladegerüst, kein Anmelden-Knopf (bei Behebung umkehren) |
-| L4b | Altes Merkmal 401; Anmeldung nach erneutem Laden; Wiederanmeldung zeigt die Daten |
+| L4a | B-L4 behoben (#378): erstes Laden nach Sitzungsende zeigt die Anmeldung mit Hinweis „Deine Sitzung ist beendet“, kein Ladegerüst; Hinweis genau einmal |
+| L4b | Altes Merkmal 401; Anmeldung mit Hinweis; Wiederanmeldung im angezeigten Feld zeigt die Daten (kein zweites Laden) |
+| L4c | Sitzungsende bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste mit Anmeldung, Server unverändert; „Anmelden und senden“ → Konfliktdialog (B-L4c offen, bei Behebung umkehren) |
 | L5 | Import-Fehlerfall: nur fehlerhafte Zeile → gesperrt; gemischt → genau die gültige Person auf dem Server |
 
 ## 4. Befunde
 
-### B-L4 (Produktfehler, mittel, UX): Nach Sitzungsende bleibt die Seite auf dem Ladegerüst
+### B-L4 (Produktfehler, mittel, UX): Nach Sitzungsende bleibt die Seite auf dem Ladegerüst — **behoben durch #378, nicht mehr offen**
 
-Reproduziert und als heutiges Verhalten festgehalten in L4a (lokal, Chromium, 1024x768): Anmelden, Sitzung beim Server beenden (wie Ablauf nach 30 min Untätigkeit,
+**Stand nach #378** (`integration/release-v4` @ `a0fda313`): Bei 401 meldet `src/speicher.js` das Sitzungsende an
+`src/app/sitzungsende.js`; ohne Ausstehendes lädt die Seite neu und zeigt die Anmeldung mit Code und dem Hinweis
+`#sitzungsende-hinweis` („Deine Sitzung ist beendet …“), genau einmal. Mit Ausstehendem bleibt die Seite (Leiste „nicht
+gespeichert“). Belegt im Browser durch L4a/L4b (umgekehrt) und L4c, unterhalb des Browsers durch
+`pruefungen/sitzungsende-anmeldung.test.js`. Der folgende Befundtext ist der Stand vor #378 (Fundbericht).
+
+Reproduziert und als damaliges Verhalten festgehalten in L4a (lokal, Chromium, 1024x768): Anmelden, Sitzung beim Server beenden (wie Ablauf nach 30 min Untätigkeit,
 12-h-Frist oder Abmelden/Entzug auf einem anderen Weg), Seite neu laden → dauerhaft „CENTRIC wird geladen“ (Ladegerüst), keine
 Anmeldung, kein Hinweis. Erst ein **zweites** Neuladen zeigt die Anmeldung. Kein Datenverlust (es wird nichts gesendet), aber für
 Beschäftigte am Telefon wirkt die App „hängend“.
@@ -126,10 +144,27 @@ Ursache (gelesen, nicht geändert):
 - `src/App.jsx:1675` — `if (!db)` zeigt das Ladegerüst; `src/main.jsx:623` hält `an` (angemeldet) aus dem Start fest und wechselt
   nicht zur Anmeldung.
 
-Vorschlag (nicht umgesetzt, eigener PR): nach `nicht-angemeldet` im Ladelauf auf die Anmeldung wechseln (z. B. Rückmeldung an
-`Einstieg`, oder `window.location.reload()` nach geräumtem Merkmal) und einen Hinweis „Sitzung abgelaufen, bitte neu anmelden“ zeigen.
-Danach L4a umkehren (Anmelden-Knopf sichtbar, kein Ladegerüst). Nicht geprüft: dasselbe Ereignis **ohne** Neuladen (Sitzung endet, während die Seite offen ist
-und gespeichert wird).
+Vorschlag damals: nach `nicht-angemeldet` im Ladelauf auf die Anmeldung wechseln und einen Hinweis zeigen — umgesetzt in #378,
+L4a ist umgekehrt. Der damals offene Fall **ohne** Neuladen (Sitzung endet, während die Seite offen ist und gespeichert wird)
+ist jetzt L4c und hat B-L4c ergeben.
+
+### B-L4c (Produktfehler, mittel, offen): „Anmelden und senden“ nach Sitzungsende endet im Konfliktdialog
+
+Gefunden mit L4c (lokal, Chromium, 1024x768, nach #378): Planung auf „Einstellungen“, Sitzung beim Server beendet, Eingabe
+(Dichte) → PUT 401 → Leiste „Die Sitzung ist abgelaufen — die letzten Änderungen sind noch nicht gespeichert“ (richtig, kein
+Neuladen, Eingabe bleibt im Reiter). Code eingeben, „Anmelden und senden“ → `POST /api/anmelden` 200, danach
+`PUT /api/bestand` **409** „Der Stand ist ohne Versionsangabe nicht überschreibbar. Bitte neu laden.“ → Dialog „Gleichzeitig
+bearbeitet“, obwohl niemand anders geschrieben hat. Kein stiller Datenverlust (Server unverändert, Eingabe im Reiter, „Als
+Datei sichern“ bleibt), aber der angebotene Weg führt nicht zum Speichern, und „Neu laden“ im Dialog verwirft die Eingabe.
+
+Ursache (gelesen, nicht geändert): `src/speicher.js` `abmelden(true)` setzt neben dem Merkmal auch `etag = null`; es wird von
+`sitzungEndet()` bei jeder 401 gerufen. `nochmalSchreiben()` schickt den Auftrag danach ohne Versionsangabe. Der Fehler
+bestand vermutlich schon vor #378 (401 → `abmelden(true)` gab es dort auch); `pruefungen/sitzungsende-anmeldung.test.js` „O“
+prüft die Leiste, nicht das anschließende Senden.
+
+Vorschlag (eigener Fix-PR): beim stillen Abmelden wegen 401 mit ausstehendem Auftrag den ETag des Auftrags behalten (oder
+nach der Wiederanmeldung vor dem Senden den Stand lesen und nur bei unverändertem Kern senden); danach L4c umkehren (Leiste
+verschwindet, Eingabe liegt auf dem Server) und „O“ in `sitzungsende-anmeldung.test.js` um das Senden ergänzen.
 
 ### Keine weiteren Produktfehler
 
