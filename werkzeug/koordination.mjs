@@ -33,7 +33,7 @@
      node werkzeug/koordination.mjs erneuern   --halter H [--minuten 90]
      node werkzeug/koordination.mjs freigeben  --halter H
      node werkzeug/koordination.mjs pruefen    --halter H [--epoche N]  (Exit 0 = darf schreiben)
-     node werkzeug/koordination.mjs push --halter H --epoche N --ziel refs/heads/X [--quelle HEAD]
+     node werkzeug/koordination.mjs push --halter H --epoche N --ziel refs/heads/X [--quelle HEAD] [--minuten N]
          Atomarer Push (Arbeits-Branch + Lease). Nur so pushen Koordinatoren; schlägt fehl, wenn die
          Lease sich geändert hat (ehemaliger Koordinator). Nie auf main/master, nie auf die Lease selbst.
      node werkzeug/koordination.mjs leerlauf [--schwelle-min 60] [--ohne-pr] [--json] [--jetzt ISO]
@@ -156,7 +156,7 @@ export function schreiben(spitze, lease, nachricht) {
     gesamten Push ab; der Arbeits-Branch bleibt unverändert. Ein ehemaliger Koordinator kann so
     nichts mehr schreiben, auch wenn er seine Prüfung vor der Übernahme bestanden hatte. */
 export const GESPERRTE_ZIELE = /^refs\/heads\/(main|master|integration|koordination|release)(\/|$)/;
-export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(), ansicht }) {
+export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(), ansicht, minuten }) {
   if (!/^refs\/heads\/[\w./-]+$/.test(ziel) || ziel.includes("..") || GESPERRTE_ZIELE.test(ziel) || ziel === REF) {
     throw new Error(`Zielref nicht erlaubt: ${ziel} (Integration, Release, main, Lease sind gesperrt; Arbeit nur über PR)`);
   }
@@ -164,7 +164,7 @@ export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(
     throw new Error("push braucht --epoche (Fencing)");
   }
   const { spitze, lease } = ansicht || lesen();
-  const e = entscheide(lease, jetzt, { aktion: "erneuern", halter, epoche });
+  const e = entscheide(lease, jetzt, { aktion: "erneuern", halter, epoche, minuten });
   if (!e.ok) throw new Error(`Kein Schreibrecht: ${e.grund}`);
   const lc = leaseCommit(spitze, e.neu, `Lease erneuert beim Push: ${halter} Epoche ${e.neu.epoche}`);
   git(["push", "--atomic", "--quiet", remote(), `${git(["rev-parse", quelle])}:${ziel}`, `${lc}:${REF}`]);
@@ -280,7 +280,7 @@ function haupt() {
     console.error(`ABGELEHNT: ${aktion} braucht --epoche (Fencing)`); return 1;
   }
   if (aktion === "push") {
-    try { gepruefterPush({ halter: arg("--halter"), epoche: arg("--epoche"), quelle: arg("--quelle") || "HEAD", ziel: arg("--ziel") }); }
+    try { gepruefterPush({ halter: arg("--halter"), epoche: arg("--epoche"), quelle: arg("--quelle") || "HEAD", ziel: arg("--ziel"), minuten: arg("--minuten") }); }
     catch (err) { console.error(`ABGELEHNT: ${err.message.split("\n")[0]}`); return 3; }
     console.log("OK: Push mit Lease-Fencing"); return 0;
   }
