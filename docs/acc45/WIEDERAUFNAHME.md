@@ -5,6 +5,11 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-19 (WP-48-GB Nachtrag, PR #365)
+
+- **Ergebnis:** Der Befund „Öffnen schreibt“ ist durch #271 behoben. `GET /api/bestand` liest rein, und das ist jetzt byte-genau belegt. Behoben ist zusätzlich ein Randfall der Migration beim Laden (verlorene Änderung, Betriebsrat 403). Einzelheiten in `WP-48-GB-ANALYSE.md` §6. WP-48-GB bleibt IN_PROGRESS (`workers: 1`, Review, Produktfragen).
+- **Folgepaket (offen, nicht in #365, Review #365 Punkt 1b):** Nach einem 409 übernimmt `speicher.js` den ETag der Absage (Voll-PUT ohne Teilweg, Stelle `if (status === 409)` in `schreibenAusfuehren`). Eine schon wartende eigene Eingabe (`offen`) geht danach mit diesem ETag hinaus. Sie kann den fremden Stand überschreiben, obwohl der Konfliktdialog offen ist. Das Verhalten bestand schon vor #365. Zu bauen: Senden bis zur Entscheidung im Dialog anhalten, oder den ETag erst mit dem übernommenen Bestand setzen. Dazu ein Test mit wartender Eingabe während des Dialogs.
+
 ## Nachtrag 2026-11-18 (BE-1 Rest Passwörter, PR #360)
 
 - PR #360 (Branch `feature/be1-passwort-widerruf`): abgelöste Passwort-Prüfwerte im Konto-Widerrufbuch, Nachbesserung nach
