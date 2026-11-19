@@ -5,6 +5,14 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-19 (g) (SSOT-Nachtrag #372 bis #374 und Einordnung P2-14 bis P2-20, nur Doku und SSOT)
+
+- Integrationskopf `integration/release-v4`: `1d8aacce` (Merge #374). Merge-Commits aus `gh pr view`: #372 (`c581f903`, IMP-6 Teil 2, Q4: Beschäftigte sehen ihr eigenes Schichtmodell, Lesesicht; Betriebsrat keine neuen Leserechte); #373 (`a9b32b4f`, Lastflake `zugaenge-frischer-faktor`: nur Zeitgrenze 30 s, Aussage unverändert, kein Servercode); #374 (`1d8aacce`, `speicher.js` Sendesperre nach 409 bis zur Entscheidung, Folgepaket aus Review #365).
+- **SSOT (Werkzeug nur als Dry-Run, `--schreibe` nicht benutzt, Teil-PRs nie auf INTEGRATED):** IMP-6: #372 als Beleg und Notiz ergänzt, Status bleibt IN_PROGRESS, `integriert` false. WP-48-GB: #374 als Beleg und Notiz ergänzt, Status bleibt IN_PROGRESS, `integriert` und `reviewt` false (Akzeptanz `workers: 1` weiter offen). #373 gehört zu keinem Paket (Dry-Run: kein Paket zugeordnet), nur hier vermerkt. `status-schreiben` und `pruefen` danach grün.
+- **Reviews:** #374 Opus MERGE-MIT-AUFLAGEN, Auflagen M1/M2/N1 erfüllt (Selbstauskunft); für #372 und #373 ist auf GitHub kein Review-Eintrag belegt (bei #372 nennt der Commit-Text Review-Auflagen M1, N1, N2, N4). Einzelheiten und Ehrlichkeitsvermerk in `REVIEW-NACHWEIS-2026-11-19.md`.
+- **Einordnung der Betreiberfragen P2-14 bis P2-20** (Entscheidungsliste, Block unter der Tabelle P2): beim Betreiber liegen nur Kategorie C: P2-14, P2-15, P2-16, P2-19(c), P2-20(Reichweite). P2-17 und P2-18 Kategorie A, die übrigen Teile von P2-19 und P2-20 Kategorie B. Keine Voreinstellung und kein Codeverhalten geändert.
+- **Folgepaket (nicht begonnen, eigener Code-PR):** P2-20 Rückfragetext ergänzen.
+
 ## Nachtrag 2026-11-19 (f) (Folgepaket speicher.js 409, Branch `fix/speicher-409-konfliktsperre`, offen bis Merge)
 
 - Folgepaket (5) aus dem Nachtrag (d) bzw. Review #365 Punkt 1b gebaut, Ziel `integration/release-v4`, nicht gemergt. Befund mit echtem Client gegen echten Handler bestätigt (Server schreibt mit aktuellem ETag ohne Abgleich; Verlust echt). Behebung: Konfliktsperre in `src/speicher.js` (ohne Teilweg) bis `konfliktLoesen`; Teilweg-Pfad, Schalter und Speicherschlüssel unverändert. Einzelheiten und Varianten in `WP-48-GB-ANALYSE.md` §7.
