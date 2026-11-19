@@ -8,8 +8,8 @@
      P1  Registrierung: /sw.js wird beim Start registriert (Bereich „/“), aktiviert, übernimmt die Seite; Gerüst und
          letzter Bestand liegen im Zwischenspeicher (centric-schale-*, centric-daten-*), das Manifest ist lesbar.
      P2  Offline-Start: ohne Netz lädt die Seite aus dem Gerüst und zeigt den gespeicherten Stand der Person statt der
-         Fehlerseite des Browsers; mit Netz wieder normal. Gegenprobe: in der Rechneransicht erscheint die Leiste „Keine
-         Verbindung“ in der Telefonschale (B-P2 behoben) und ebenso in der Rechneransicht.
+         Fehlerseite des Browsers, mit der Leiste „Keine Verbindung“ in der Telefonschale (B-P2 behoben; Rechneransicht
+         nur Parallelprobe); mit Netz wieder normal, die Leiste ist weg.
      P3  Abmelden im Browser („Mehr“ → „Abmelden“; Sitzungsablauf, Rest): das alte Merkmal bekommt beim Server 401, der Datenspeicher des
          Dienstarbeiters ist geleert (keine Personaldaten offline nach dem Abmelden); Gegenprobe: vorher lag er dort.
    Nur Projekt 390x844 (Telefon). Keine Installation, kein iOS/Safari — das bleibt produktionsnah (echtes Gerät). */
@@ -71,18 +71,23 @@ test.describe("PWA: Dienstarbeiter lokal (nur diese Datei erlaubt ihn)", () => {
     /* Befund B-P2 (behoben): Die Leiste „Keine Verbindung … Stand wurde … geholt“ (Offlineleiste,
        src/ansichten/speicherlage.jsx) steht jetzt auch in der Telefonschale (MobilSchale, über jedem Reiter) — vorher nur
        in der Rechneransicht, sodass Beschäftigte am Telefon einen gespeicherten Stand ohne Hinweis sahen.
-       Zuerst in der Telefonansicht (wie nach dem Start), dann Gegenprobe in der Rechneransicht und zurück: dieselbe
-       Leiste in beiden Schalen. */
+       Geprüft wird in der Telefonansicht (wie nach dem Start) und im Reiter „Mehr“; die Rechneransicht ist nur noch
+       Parallelprobe (dieselbe Leiste dort), danach zurück. Wieder online verschwindet die Leiste. */
     const leiste = page.getByRole("status").filter({ hasText: "Keine Verbindung" });
     await expect(leiste, "B-P2: Offline-Hinweis in der Telefonschale").toBeVisible({ timeout: 20000 });
     await expect(leiste).toContainText("Änderungen lassen sich nicht speichern");
     await expect(leiste).toContainText("geholt");
-    /* Kein waagrechtes Scrollen durch die Leiste am Telefon */
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "kein waagrechtes Scrollen").toBe(true);
+    /* Kein waagrechtes Scrollen durch die Leiste am Telefon — bei 390 px und bei der schmalsten Breite 320 px */
+    const ohneUeberlauf = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(await ohneUeberlauf(), "kein waagrechtes Scrollen (390 px)").toBe(true);
+    await page.setViewportSize({ width: 320, height: 844 });
+    await expect(leiste).toBeVisible();
+    expect(await ohneUeberlauf(), "kein waagrechtes Scrollen (320 px)").toBe(true);
+    await page.setViewportSize({ width: 390, height: 844 });
     await geheZu(page, "Mehr");
     await expect(leiste, "B-P2: auch im Reiter „Mehr“").toBeVisible();
     await page.getByRole("button", { name: /^Rechneransicht/ }).click();
-    await expect(leiste, "Gegenprobe Rechneransicht").toBeVisible({ timeout: 20000 });
+    await expect(leiste, "Parallelprobe Rechneransicht").toBeVisible({ timeout: 20000 });
     await page.getByRole("button", { name: "Telefonansicht", exact: true }).click();
     await expect(page.getByRole("button", { name: "Mein Plan" })).toBeVisible();
     await expect(leiste, "B-P2: zurück in der Telefonansicht weiterhin sichtbar").toBeVisible();
@@ -91,6 +96,8 @@ test.describe("PWA: Dienstarbeiter lokal (nur diese Datei erlaubt ihn)", () => {
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector(".m-tabs, .kopfleiste", { timeout: 30000 });
     await expect(page.getByRole("button", { name: "Mein Plan" })).toBeVisible();
+    /* Wieder online: Die Leiste ist weg (B-P2, „verschwindet, sobald die Verbindung zurück ist“). */
+    await expect(leiste, "B-P2: online keine Offline-Leiste").toHaveCount(0);
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
     await page.goto("about:blank");
     await v.abgeschlossen();

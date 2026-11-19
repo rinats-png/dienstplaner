@@ -33,7 +33,7 @@ describe("B-P2: Offline-Hinweis auch in der Telefonschale", () => {
     expect(mobil).toMatch(/<main style=\{\{ padding: "20px 18px 10px" \}\}>\s*\{\/\*[^*]*\*\/\}\s*\{hinweise\}/);
   });
 
-  it("Render: MobilSchale zeigt die Leiste (role=status) vor dem Reiter, ohne Leiste nichts davon", () => {
+  it("Render: MobilSchale zeigt die Leiste (role=status) im Hauptbereich, ohne Leiste nichts davon", () => {
     const m = A.leererMandant("Offline-Probe", "pflege");
     const ich = { id: "p1", vorname: "Alex", nachname: "Probe", rolle: "mitarbeiter", aktiv: true, qualifikationen: [] };
     m.personen = [...(m.personen || []), ich];
