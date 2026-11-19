@@ -77,6 +77,8 @@ Vorgeschlagene Pakete (Aufwand = **Schätzung dieser Analyse**, nicht vom Betrei
 | V4-6 Port + Freigabe | Weg A/B nach main, Staging-Abnahme, Rollback (Betreiberfreigabe) | 2-4 |
 | **Summe** | | **16,5-28** |
 
+Wirkung auf die Prognose: Mit diesen Paketen steigt der offene SSOT-Aufwand um 16,5 bis 28 PT (311,9–535,4 auf 328,4–563,4 PT, jeweils ohne externe Pakete). Die Wellenzuordnung in `GESAMTPLAN.md` für V4-2 bis V4-6 ist ein Ergebnis der Simulation und kein Terminplan: sie berücksichtigt weder die Konfliktzone `App.jsx` noch die Betreiberfreigabe für V4-6.
+
 ## 6. Abhängigkeiten und Konflikte
 
 - **App.jsx ist Engpass**: Konfliktzone von WP-40, WP-48, WP-48-GB, WP-21, WP-35, WP-39 (SSOT `konfliktzonen`). Letzte Änderungen an `App.jsx`/`speicherlage.jsx`/`speicher.js` stammen aus WP-48-GB und Folgepaketen (#365, #374, #376, #381, #382). V4-2/V4-3 erst nach Ruhe in WP-48-GB und abgestimmt mit WP-40.

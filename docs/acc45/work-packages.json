@@ -6360,7 +6360,7 @@
       "konfliktzonen": ["App.jsx"],
       "pr": [],
       "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
-      "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke SVG; backdrop-filter mit Rückfall",
+      "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke als SVG; Avatar-Paare aus Tokens (src/farben.js); Glas-Rückfall für reduzierte Transparenz in src/gestalt/stil.js und App.jsx; rgba-Reste in App.jsx auf Tokens; vorschau.png/Marketing-Bilder gegen das C-Logo geprüft",
       "tests": "Unit, E2E",
       "dateien": "src/, public/",
       "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
@@ -6444,7 +6444,7 @@
       "konfliktzonen": [],
       "pr": [],
       "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
-      "akzeptanz": "Website mit V4-Logo und V4-Palette; Quelle liegt lokal ohne Remote (centric-website bd7d155); Veröffentlichung nur auf Freigabe",
+      "akzeptanz": "Website mit V4-Logo und V4-Palette; Quelle liegt lokal ohne Remote (centric-website bd7d155); Veröffentlichung nur auf Freigabe; zeitlich nach dem Hauptauftrag laut Betreiberentscheidung 2026-11-04 (v4-entscheidungen)",
       "tests": "Unit, E2E",
       "dateien": "centric-website/",
       "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
