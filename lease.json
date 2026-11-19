@@ -2,8 +2,8 @@
   "epoche": 22,
   "halter": "hauptchat-e22",
   "uebernommen_am": "2026-11-18T18:30:51.990Z",
-  "erneuert_am": "2026-11-19T05:28:02.478Z",
-  "gueltig_bis": "2026-11-19T08:28:02.478Z",
+  "erneuert_am": "2026-11-19T05:47:00.866Z",
+  "gueltig_bis": "2026-11-19T08:47:00.866Z",
   "uebergabe": "Hauptchat 18.11. Abend: Epoche 21 abgelaufen 18:11Z (Erneuerung versaeumt, kein anderer Koordinator, Kopf dfcd8309, PR #353-#359 gemergt, laufende Agenten: BE-1, Antrag-Kapern, Test-Haertung)",
   "vorgaenger": "hauptchat-e21",
   "freigegeben_am": null
