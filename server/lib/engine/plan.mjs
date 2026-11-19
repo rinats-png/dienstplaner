@@ -8,7 +8,7 @@
    ========================================================================== */
 import { ABW_WEITERE, entgeltStatus } from "./abwesenheitsarten.mjs";
 import { imDienst, einheitAm, einheitDienst, teilzeitDienst, nachtschwelle, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig } from "../fachpruefung.mjs";
-import { postenBesatzung as postenBesatzungRechnen, mindestFuer, eingefrorenerMonat, abschlussLuecke, freezeStatus, sollMonat, nachtAnteilAm, eingefrorenerTag, eingefrorenerDienst } from "../isteinfrieren.mjs";
+import { postenBesatzung as postenBesatzungRechnen, mindestFuer, mindestVorhanden, eingefrorenerMonat, abschlussLuecke, freezeStatus, sollMonat, nachtAnteilAm, eingefrorenerTag, eingefrorenerDienst } from "../isteinfrieren.mjs";
 import { istEntwurfstag } from "../planfreigabe.mjs";
 import { dim_, pad, addDays, istNachtdienst } from "../regelwerk.mjs";
 import { istVerfuegbar, zeitraumMonat, IST_NICHT_VERFUEGBAR, zeitraumBisMonat, istZeitFuer, ungeplanterDienst } from "../istdaten.mjs";
@@ -92,6 +92,11 @@ export function besetzung(m, d) {
       });
       e.qualFehlt = e.qual.some((q) => !q.ok);
       e.status = e.diff < -1 ? "danger" : e.diff < 0 || e.qualFehlt ? "warn" : "ok";
+      /* A-4 (ABN-A4): Bedarf an diesem Tag nicht festgelegt — Altdienstart ohne mindest (Posten brauchen keinen
+         Bedarf, wie in der Planungsreife) oder ein Tageswert, der keine Zahl ergibt. Nur Kennzeichen für die
+         Anzeige („Bedarf nicht festgelegt" statt 0/0 oder NaN); soll, diff und status bleiben wie bisher. Das Feld
+         fehlt bei festgelegtem Bedarf ganz, das Ergebnis gültiger Dienstarten ist unverändert. */
+      if ((!e.da.posten && !mindestVorhanden(e.da)) || !Number.isFinite(e.soll)) e.bedarfOffen = true;
     }
     return out;
   });

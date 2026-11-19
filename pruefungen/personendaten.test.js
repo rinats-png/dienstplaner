@@ -613,3 +613,41 @@ describe("A-4 Nachbesserung: echter Handler (Kennung, veraltete Kopie, Rechte)",
     }
   });
 });
+
+/* ==========================================================================
+   A-4, Entscheidung Q3 (Betreiber 2026-11-14, ENTSCHEIDUNGSLISTE „#280 Q3“):
+   historische Sicherungen bleiben brauchbar, kein stilles Ergänzen. Das
+   Wiederherstellen prüft `mindest` nicht und ergänzt nichts: Eine Sicherung
+   mit Dienstarten ohne `mindest` (auch eine, die es im jetzigen Stand nicht
+   gibt) wird angenommen; die Dienstarten bleiben ohne `mindest`, nie still 0.
+   ========================================================================== */
+describe("A-4 Q3: Wiederherstellen aus einer Sicherung mit Dienstarten ohne mindest", () => {
+  const RAUM_Q3 = "personenraum-q3";
+  const MD = { mo_do: 1, fr: 1, sa: 0, so: 0 };
+  let tok;
+  beforeAll(async () => {
+    const b = legacy();
+    b.mandanten[0].dienstarten = [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", mindest: { ...MD } }];
+    await B.bestandSchreiben(laden(), RAUM_Q3, b, { durch: "Pruefung" });
+    await kontoSchreiben(laden(), ablageSchluessel("PERS51-AAAA-0051"), { name: "lq3", bestand: RAUM_Q3, rolle: "leitung", person: "l1",
+      betrieb: 0, mandantId: "m-a", angelegt: "2026-01-01T00:00:00.000Z" });
+    tok = (await anfrage("/api/anmelden", { rumpf: { zugangscode: "PERS51-AAAA-0051" } })).token;
+    expect(tok).toBeTruthy();
+  });
+  it("200; F ohne mindest und eine nur in der Sicherung vorhandene Dienstart ohne mindest bleiben ohne mindest", async () => {
+    const sicherung = JSON.parse(JSON.stringify(await roh(RAUM_Q3)));
+    delete sicherung.mandanten[0].dienstarten[0].mindest;
+    sicherung.mandanten[0].dienstarten.push({ id: "N", name: "Nacht", start: "22:00", ende: "06:00" });
+    const marke = "2026-10-01-08-00-00";
+    await laden().setJSON(`sicherung:${RAUM_Q3}:${marke}`, sicherung,
+      { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Test", automatisch: "ja" } });
+    const g = await anfrage("/api/bestand", { methode: "GET", token: tok });
+    expect(g.status).toBe(200);
+    const w = await anfrage("/api/wiederherstellen", { token: tok, rumpf: { marke, etag: g.etag } });
+    expect(w.status, w.text || w.fehler).toBe(200);
+    const da = (await roh(RAUM_Q3)).mandanten[0].dienstarten;
+    expect(da.map((d) => d.id)).toEqual(["F", "N"]);
+    for (const d of da) expect(d, d.id).not.toHaveProperty("mindest");
+    expect(JSON.stringify(da)).toBe(JSON.stringify(sicherung.mandanten[0].dienstarten));
+  });
+});

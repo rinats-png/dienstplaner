@@ -8,6 +8,7 @@ import { C } from "../farben.js";
 import { NUM } from "../ui/thema.js";
 import { feiertag } from "../../server/lib/feiertage.mjs";
 import { Zelle } from "../ui/leisten.jsx";
+import { sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 
 /* --------------------------------------------------------------------------
    WOCHENLISTE — der Monatsplan auf dem Telefon
@@ -72,7 +73,7 @@ export function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
                 {m.dienstarten.map((da) => {
                   const b = (bes[d] || {})[da.id];
                   if (!b) return null;
-                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
+                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.bedarfOffen ? 0 : b.soll)) * 100));
                   const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
                   return (
                     <div key={da.id} style={{ display: "flex", alignItems: "center", gap: 11,
@@ -85,7 +86,8 @@ export function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
                       <div style={{ textAlign: "right", flexShrink: 0, minWidth: 62 }}>
                         <div style={{ fontSize: 14, ...NUM }}>
                           <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
-                          <span style={{ color: C.dimmer, fontSize: 11.5 }}>/{b.soll}</span></div>
+                          <span style={{ color: C.dimmer, fontSize: 11.5 }}>/{sollAnzeige(b)}</span></div>
+                        {b.bedarfOffen && <div style={{ fontSize: 11, color: C.warn }}>{BEDARF_OFFEN_TEXT}</div>}
                         <div style={{ width: 58, height: 3, borderRadius: 2, background: C.lineSoft,
                           overflow: "hidden", marginLeft: "auto", marginTop: 3 }}>
                           <div style={{ width: `${anteil}%`, height: "100%",

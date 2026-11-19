@@ -15,6 +15,11 @@ import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschl
    (kein Absturz) und wird als „Mindestbesetzung fehlt" gezeigt (mindestVorhanden) — nie still gespeichert. */
 export { mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig, mindestFeldStatus };
 const mindestSumme = (d) => { const md = mindestWerte(d); return md.mo_do + md.fr + md.sa + md.so; };
+/* A-4 (ABN-A4): Ist der Bedarf eines Tages nicht festgelegt (besetzung(...).bedarfOffen), zeigt die Oberfläche
+   „–" und „Bedarf nicht festgelegt" statt „0" oder „NaN". Sonst genau die Zahl wie bisher. */
+export const BEDARF_OFFEN_TEXT = "Bedarf nicht festgelegt";
+export const sollAnzeige = (b) => (b && b.bedarfOffen ? "–" : b.soll);
+export const besetztText = (b) => (b && b.bedarfOffen ? `${b.anzahl} eingeteilt, ${BEDARF_OFFEN_TEXT}` : `${b.anzahl} von ${b.soll}`);
 import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT, istZeitFuer, PAUSE_ANWESENHEIT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { UNGUELTIGER_KALENDERTAG } from "../../server/lib/betriebszeit.mjs";
@@ -2415,7 +2420,7 @@ export function tagesband(m, datum) {
       const s = toMin(da.start);
       let e = toMin(da.ende); if (e <= s) e += 1440;
       spuren.push({ da, von: s, bis: e, ueberNacht: e > 1440,
-        anzahl: b.anzahl, soll: b.soll, status: b.status, personen: b.personen });
+        anzahl: b.anzahl, soll: b.soll, status: b.status, personen: b.personen, ...(b.bedarfOffen ? { bedarfOffen: true } : {}) });
     }
     return spuren.sort((a, b) => a.von - b.von);
   });

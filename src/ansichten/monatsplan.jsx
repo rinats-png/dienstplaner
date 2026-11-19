@@ -15,7 +15,7 @@ import { Wochenliste } from "./wochenliste.jsx";
 import { TeamAuslastungLeiste } from "./teamauslastungleiste.jsx";
 import { Tagesfazit } from "./tagesfazit.jsx";
 import { Standortwahl, Standortleiste, Zelle } from "../ui/leisten.jsx";
-import { aktive, abwesenheitAm, besetzung, teamAuslastung, ALLE_STANDORTE, einheitenAmStandort } from "../lib/fachlogik.js";
+import { aktive, abwesenheitAm, besetzung, teamAuslastung, ALLE_STANDORTE, einheitenAmStandort, sollAnzeige, besetztText, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
 import { anzahlWort } from "../lib/rollen.js";
 import { zelleBedienbar } from "../ui/raster.js";
@@ -164,11 +164,11 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                       <div style={{ fontSize: 11, color: C.dimmer }}>{da.ort}</div></div></div></td>
                 {tage.map((d) => { const b = bes[d][da.id];
                   const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
-                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
+                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.bedarfOffen ? 0 : b.soll)) * 100));
                   const kalender = dow(d) >= 5 || feiertag(d, m.bundesland);
                   return (<td key={d}
                     {...zelleBedienbar(() => oeffneTag(d),
-                      `${fLang(d)} · ${da.name} · ${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`)}
+                      `${fLang(d)} · ${da.name} · ${besetztText(b)}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`)}
                     style={{ textAlign: "center", padding: "5px 1px", cursor: "pointer",
                       /* Fläche trägt den Kalender, nicht den Zustand. Der
                          Zustand steht in Zahl und Füllstand — „3/4" sagt, wie
@@ -179,7 +179,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                       <div style={{ fontSize: 11.5, lineHeight: 1.1, ...NUM }}>
                         <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
-                        <span style={{ color: C.dimmer, fontSize: 9.5 }}>/{b.soll}</span></div>
+                        <span style={{ color: C.dimmer, fontSize: 9.5 }} {...(b.bedarfOffen ? { title: BEDARF_OFFEN_TEXT } : {})}>/{sollAnzeige(b)}</span></div>
                       <div style={{ width: "72%", height: 3, borderRadius: 2, background: C.lineSoft, overflow: "hidden" }}>
                         <div style={{ width: `${anteil}%`, height: "100%",
                           background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
