@@ -203,4 +203,5 @@ Ausnahmewegs geht die nächste Eingabe erst nach der Entscheidung hinaus, dann o
   der nächsten Eingabe.
 
 **Offen:** P2-20 (`ENTSCHEIDUNGSLISTE.md`): „Meinen Stand übernehmen“ ersetzt auch fremde Änderungen in Monaten, die der
-Dialog nicht nennt (Ist-Verhalten, als Test belegt). Ausführung von `App.jsx` nur über Quelltext-Verträge geprüft.
+Dialog nicht nennt (Ist-Verhalten, als Test belegt). Hinweistext ergänzt (PR #376), Verhalten der Wahl unverändert;
+Wahl zwischen B und C bleibt offen. Ausführung von `App.jsx` nur über Quelltext-Verträge geprüft.

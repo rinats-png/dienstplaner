@@ -209,6 +209,13 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
     </div>);
 }
 
+/* P2-20 (Hinweis, Verhalten unverändert): „Meinen Stand übernehmen" schickt den ganzen eigenen Stand mit dem ETag
+   der Absage; der Server schreibt ihn ohne Abgleich. Ersetzt wird damit auch, was andere seit dem letzten eigenen
+   Laden an anderer Stelle geändert haben (weitere Monate, Stammdaten), die der Dialog nicht nennt — das sagt der
+   Text ehrlich dazu. Er trägt auch beim reinen Stammdaten-Konflikt ohne Monatsliste. */
+const WEITERES_ERSETZT = "Auch weitere Änderungen anderer seit deinem letzten Laden, etwa in anderen Monaten "
+  + "oder in den Stammdaten, können dabei ersetzt werden.";
+
 export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
   const rahmen = useRef(null);
   useEffect(() => {
@@ -285,10 +292,11 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
               Dein Stand wird gespeichert. Was {wer}
               {monate.length ? ` in ${monate.join(", ")}` : ""} geändert hat, ist
-              danach weg — bitte vorher kurz Rücksprache halten.</div>
+              danach weg. {WEITERES_ERSETZT} Bitte vorher kurz Rücksprache halten.</div>
             <Btn size="sm" kind="danger" onClick={() => {
               if (window.confirm(`Die Änderungen von ${wer}`
                 + `${monate.length ? ` in ${monate.join(", ")}` : ""} werden überschrieben. `
+                + `${WEITERES_ERSETZT} `
                 + "Das lässt sich nicht rückgängig machen.")) onUebernehmen();
             }}>Meinen Stand übernehmen</Btn>
           </div>}
