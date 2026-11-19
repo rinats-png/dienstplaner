@@ -319,6 +319,7 @@ let netzWeg = null;   // (pfad, methode) => "vorher" | "nachher" | null — Netz
 let anmeldeAntwort = null;   // Antwort auf /api/anmelden (Zugangswechsel ohne Neuladen)
 let antwortErsetzen = null;  // (pfad, methode) => { status, daten } | null
 let nachGet = null;          // einmalig nach dem nächsten GET /api/bestand ausgeführt
+let teilTor = null;          // { offen: Promise, erreicht: number } — Teil-POST wartet vor dem Server
 let leseAnpassen = null;     // (daten) => daten: Antwort des echten Handlers auf GET /api/bestand verändern
 function fetchStub() {
   vi.stubGlobal("fetch", async (url, opt = {}) => {
@@ -327,6 +328,7 @@ function fetchStub() {
     if (url === "/api/anmelden") return new Response(JSON.stringify(anmeldeAntwort), { status: 200, headers: { "content-type": "application/json" } });
     const kopf = { ...(opt.headers || {}), host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.49.${Math.floor(nr / 250) % 250}.${nr % 250}` };
     aufrufe.push({ url, methode, rumpf: opt.body ? JSON.parse(opt.body) : null, keepalive: !!opt.keepalive, auth: kopf.authorization || null });
+    if (teilTor && methode === "POST" && url === "/api/bestand/teile") { teilTor.erreicht += 1; await teilTor.offen; }
     const weg = netzWeg ? netzWeg(url, methode) : null;
     if (weg === "vorher") throw new TypeError("Failed to fetch");
     /* Antwort an Stelle des Servers (nur für Lagen, die der echte Server hier nicht erzeugt: 413 des Teilwegs,
@@ -379,7 +381,7 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout
     const HEUTE = Z.heuteBerlin();
     tag = (n) => Z.tagePlus(HEUTE, n);
   });
-  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; netzWeg = null; anmeldeAntwort = null; antwortErsetzen = null; nachGet = null; leseAnpassen = null; });
+  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; netzWeg = null; anmeldeAntwort = null; antwortErsetzen = null; nachGet = null; leseAnpassen = null; teilTor = null; });
   afterAll(async () => {
     delete process.env.CENTRIC_TEILSPEICHERUNG;
     if (wurzel) await rm(wurzel, { recursive: true, force: true });
@@ -570,6 +572,36 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout
       expect((await gespeichertM(raum)).abweichungen[`a1|${tag(23)}`]).not.toBe("N");
     });
   }
+
+  it("Review #382 A1: Anmeldung (ohne Inhaber) während ein Teil-POST läuft — der Teilweg-Zustand kehrt nicht zurück, nichts unter der neuen Kennung", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    leseAnpassen = (d) => { const { inhaber: _weg, ...rest } = d; return rest; };
+    const { token } = await raumMit(["PL"]);
+    const fremdRaum = await raumMit(["LT"]);
+    const o = await oberflaeche(token.PL, "p1");
+    expect(o.SP.zugangsdaten().inhaber).toBeNull();
+    setze(o, `a1|${tag(20)}`, "N");
+    let auf; teilTor = { offen: new Promise((ja) => { auf = ja; }), erreicht: 0 };
+    const laeuft = o.SP.schreib(o.db, optionen(o));
+    while (teilTor.erreicht === 0) await new Promise((r) => setTimeout(r, 5));
+    const vorherFremd = await gespeichertM(fremdRaum.raum);
+    anmeldeAntwort = { token: fremdRaum.token.LT, name: "Haus", rolle: "leitung", person: "l1", betrieb: 0 };
+    await o.SP.anmelden("PRUEF-CODE", false);           // während der Teil-POST unterwegs ist
+    auf(); teilTor = null;
+    await laeuft;
+    await fertig(o.SP);
+    expect(o.SP.teilwegLage(), "Teilweg-Zustand der bisherigen Anmeldung kehrt nicht zurück").toBeNull();
+    /* Nächste Eingabe unter der neuen Anmeldung: kein Teil-POST, keine Versionsangabe der bisherigen. */
+    setze(o, `a1|${tag(23)}`, "N");
+    aufrufe.length = 0;
+    await o.SP.schreib(o.db, optionen(o));
+    for (let i = 0; i < 200 && o.SP.schreibenAusstehend(); i++) await new Promise((r) => setTimeout(r, 5));
+    const neu = `Bearer ${fremdRaum.token.LT}`;
+    expect(aufrufe.filter((x) => x.auth === neu && x.url === "/api/bestand/teile")).toEqual([]);
+    expect(aufrufe.filter((x) => x.methode === "PUT" && x.rumpf.etag !== null)).toEqual([]);
+    expect(await gespeichertM(fremdRaum.raum), "fremder Raum unverändert").toEqual(vorherFremd);
+  });
 
   it("Rückfall voll (Feld ohne Version): Voll-PUT, danach Teilweg aus; Konfliktfenster ohne blindes Übernehmen gekennzeichnet", async () => {
     process.env.CENTRIC_TEILSPEICHERUNG = "true";

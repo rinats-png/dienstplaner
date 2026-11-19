@@ -133,7 +133,7 @@ beforeAll(async () => {
   daten = (await import("../server/funktionen/daten.mjs")).default;
   B = await import("../server/lib/bestand.mjs");
   ({ sitzungAnlegen } = await import("../server/lib/sitzungen.mjs"));
-});
+}, 60000);   // Review #382 (15): Hook-Zeitbudget unter Last (sonst alle Fälle übersprungen)
 afterEach(() => { netzWegEinmal = false; vi.unstubAllGlobals(); });
 afterAll(async () => { if (wurzel) await rm(wurzel, { recursive: true, force: true }); });
 

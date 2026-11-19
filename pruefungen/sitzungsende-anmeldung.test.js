@@ -70,7 +70,7 @@ async function seite({ ablage } = {}) {
   vi.stubGlobal("localStorage", speicherAttrappe());
   vi.stubGlobal("window", { addEventListener: () => {} });
   vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => {} });
-  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, putNetzWeg: false, lesenErsatz: null, anmeldeToken: null };
+  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, putNetzWeg: false, lesenErsatz: null, lesenAnpassen: null, anmeldeToken: null };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
     /* A1: die Anmeldung liefert ein vorgegebenes (echt angelegtes) Merkmal; Lesen kann an einem Tor warten. */
@@ -90,7 +90,11 @@ async function seite({ ablage } = {}) {
       r.amPutTor += 1; await r.putTor;
       return antwort;
     }
-    return daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    const antwort = await daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    /* Review #382: Leseantwort verändern (etwa ohne Inhaber, wie bei Sitzungen ohne Person). */
+    if (r.lesenAnpassen && String(url) === "/api/bestand" && methode === "GET" && antwort.status === 200)
+      return new Response(JSON.stringify(r.lesenAnpassen(await antwort.json())), { status: 200, headers: { "content-type": "application/json" } });
+    return antwort;
   });
   const SP = await import("../src/speicher.js");
   const E = await import("../src/app/sitzungsende.js");
@@ -471,6 +475,40 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     expect(PUTS.map((x) => x.etag)).toEqual([frisch]);
     const m = await gespeichert();
     expect([m.name, m.einstellungen.ruhezeit]).toEqual(["Haus fremd", 14]);
+  });
+
+  it("Review #382 A2: direkte Anmeldung ohne bekannten Inhaber bei offener Konfliktfrage — weder ETag noch Absage wirken in Raum B", async () => {
+    await neuerRaum();
+    const r = await seite();
+    r.lesenAnpassen = (d) => { const { inhaber: _weg, ...rest } = d; return rest; };   // Sitzung ohne Inhaber
+    const g = await r.SP.lies();
+    expect(g.zugang.inhaber).toBeNull();
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    const fremd = bestand(); fremd.mandanten[0].name = "Haus fremd";
+    await B.bestandSchreiben(laden(), RAUM, fremd, { durch: "Andere" });
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) },
+      { ...opt(r), sofort: true });
+    expect(r.SP.konfliktLage(), "Konfliktfrage offen").not.toBeNull();
+    const etagA = (await B.bestandLesen(laden(), RAUM)).stand;
+    /* Raum B mit demselben Zählerstand wie Raum A (ETags sind Zähler). */
+    const raum2 = `${RAUM}-zwei`;
+    for (let i = 0; i < 20 && (await B.bestandLesen(laden(), raum2))?.stand !== etagA; i++) {
+      const zwei = bestand(); zwei.mandanten[0].name = `Haus zwei ${i}`;
+      await B.bestandSchreiben(laden(), raum2, zwei, { durch: "Prüfung" });
+    }
+    const vorB = await B.bestandLesen(laden(), raum2);
+    expect(vorB.stand, "gleicher Stand in beiden Räumen").toBe(etagA);
+    r.anmeldeToken = await neueSitzung({ raum: raum2 });
+    await r.SP.anmelden("CODE-B", false);              // direkt, ohne Sitzungsende
+    expect(r.SP.konfliktLage(), "keine Absage aus Raum A mehr abrufbar").toBeNull();
+    PUTS = [];
+    /* „Meinen Stand übernehmen“: die Oberfläche schickt ihren Stand (aus Raum A) erneut. */
+    expect(r.SP.konfliktLoesen("meins")).toBe(true);
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) },
+      { ...opt(r), sofort: true });
+    expect(PUTS.map((x) => x.etag), "ohne Versionsangabe aus Raum A").toEqual([null]);
+    const nachB = await B.bestandLesen(laden(), raum2);
+    expect([nachB.stand, nachB.bestand.mandanten[0].einstellungen.ruhezeit], "Raum B nicht überschrieben").toEqual([vorB.stand, 11]);
   });
 
   it("Folgepaket #381 (1): verspätete Leseantwort nach Wechsel der Anmeldung — nichts übernommen (ETag, Zugang)", async () => {

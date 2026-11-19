@@ -182,13 +182,18 @@ function gemerktZuruecknehmen() {
    neuen Merkmals aufrufen. */
 function anmeldungWechselt() {
   if (vorSitzungsende) return;
-  if (!(offen || gescheitert || konfliktSperre || teil || teilRoh)) return;
+  /* Review #382 A1: auch ein laufender Schreibvorgang (Voll-PUT oder Teilweg) gehört zur bisherigen Anmeldung. */
+  if (!(offen || gescheitert || konfliktSperre || teil || teilRoh || unterwegs > 0 || teilLaeuft || laufend)) return;
   if (zugang && typeof zugang.inhaber === "string" && zugang.inhaber) {
     vorSitzungsende = { etag, inhaber: zugang.inhaber, fuer: null };
     return;
   }
   teil = null; teilRoh = null; teilAuftrag = null;
   etag = null;
+  /* Review #382 A2: Die offene Konfliktfrage bleibt (nichts geht ohne Entscheidung hinaus), aber weder ihr ETag (ETags
+     sind Zähler, derselbe Stand in einem anderen Raum ist möglich) noch die Absage mit dem Stand der bisherigen
+     Anmeldung wirken weiter. Nach der Entscheidung geht der Auftrag ohne Versionsangabe hinaus (Server: 409). */
+  if (konfliktSperre) konfliktSperre = { etag: null, daten: null };
 }
 
 export async function anmelden(zugangscode, merken, zweifaktor) {
@@ -990,6 +995,12 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
       },
     });
   } finally { teilLaeuft = false; }
+  /* Review #382 A1: Gilt inzwischen eine andere Anmeldung, kehrt der Teilweg-Zustand der bisherigen nicht zurück (er
+     wurde beim Anmelden geräumt oder wird dort geprüft) — der Auftrag bleibt ausstehend wie nach einer 401. */
+  if (token !== fuerTeil) {
+    teil = null; teilAuftrag = null;
+    return { weiter: false, status: null, fehler: new Error("nicht-angemeldet") };
+  }
   teil = r.teil;
   teilAuftrag = auftrag;
   /* `neu`: eine neue Frage bzw. „neu laden" (Fenster öffnen); sonst nur die Lage auffrischen (Frage schon offen). */
@@ -1360,6 +1371,14 @@ export async function wiederherstellen(marke) {
     return { status: 0, daten: { fehler: "Es wird noch gespeichert. Bitte kurz warten und erneut versuchen." } };
   if (gescheitert)
     return { status: 0, daten: { fehler: "Eine Änderung ist noch nicht gespeichert. Erst speichern oder verwerfen, dann zurückspielen." } };
+  /* Review #382 (13): wie vor jedem Senden — nach einem Sitzungsende oder Anmeldungswechsel erst den Inhaber prüfen. */
+  if (sitzungsendeUngeprueft()) {
+    const klar = await sitzungsendeKlaeren();
+    if (klar !== "gleich" || sitzungsendeUngeprueft())
+      return { status: 0, daten: { fehler: klar === "fremd"
+        ? "Mit einem anderen Zugang angemeldet — bitte die Seite neu laden."
+        : "Die Anmeldung ließ sich nicht prüfen. Bitte erneut versuchen." } };
+  }
   const { status, daten } = await ruf("wiederherstellen", { method: "POST", body: JSON.stringify({ marke, etag }) });
   if (status === 200 && daten && daten.etag !== undefined) etag = daten.etag;
   return { status, daten };
