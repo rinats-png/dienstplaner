@@ -12,6 +12,9 @@
 | Speicherschonung | `workers: 1`, je Lauf EIN Viewport-Projekt (nacheinander `1024x768` und `390x844`, nie parallel), vitest einzeln mit `--maxWorkers=1`; keine Wiederholungsschleifen |
 | Nicht lokal gelaufen (CI) | `rechtematrix-zeilen`, `erstleitung-bestand-differenz`, `wp48-teilweg` (groß), die übrigen sechs Viewport-Projekte |
 
+**Fortsetzung:** Personal, Dienstart/Schichtfolge, Schichtplanung, Zeiterfassung mit Pause, Zuschläge, Export, Import und
+PWA sind in [LOKALE-E2E-ABNAHME-2026-11-20.md](LOKALE-E2E-ABNAHME-2026-11-20.md) nachgetragen (Matrix dort, Befunde B-H5, B-I1, B-P2).
+
 Legende Ebene: **Unit** = Bibliothek/Rendern ohne Server; **HTTP-in** = echter Handler im Testprozess (Dateiablage, echte
 Sitzungen); **HTTP-Server** = `server.mjs` als Kindprozess über HTTP; **Browser** = Playwright gegen `server.mjs`.
 Belegt heißt: Datei gelesen (mindestens Kopf und Testnamen) **und** in diesem Auftrag ausgeführt — oder ausdrücklich nur
