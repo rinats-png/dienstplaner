@@ -6,7 +6,7 @@ import path from "node:path";
 import { entscheide, lesen, schreiben, gepruefterPush } from "../werkzeug/koordination.mjs";
 import {
   STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel, sperreNehmen,
-  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX, pruefeClaudePfad,
+  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX, pruefeClaudePfad, ghPfad,
 } from "../werkzeug/dauerlauf.mjs";
 import { loeseBefehl, startPlan, optionenPruefen, istDerselbe } from "../werkzeug/dauerlauf-prozess.mjs";
 
@@ -460,6 +460,32 @@ describe("Nicht beendbarer Worker und fester claude-Pfad", () => {
     a.eff.worker.beenden = () => ({ beendet: true });
     a.schritt();
     expect(a.z.laufend).toBeNull();
+  });
+
+  it("Laufzeit- und Wallclock-Limit mit scheiterndem Beenden: Eskalation je Grund nur einmal je Auftrag", () => {
+    const mitLimits = (o) => ({ ...STANDARD, limits: { ...STANDARD.limits, ...o } });
+    for (const [o, re] of [[{ laufzeitMin: 30 }, /Laufzeitlimit 30/], [{ wallMinTag: 30, laufzeitMin: 90 }, /Wallclock-Limit 30/]]) {
+      const sp = speicherImSpeicher(); const uhr = { t: T0 };
+      const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: ["WP-A"], cfg: mitLimits(o) });
+      a.schritt(); a.schritt();
+      a.eff.worker.beenden = () => ({ beendet: false, grund: "Beenden fehlgeschlagen" });
+      for (let i = 0; i < 9; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); expect(a.schritt()).toBe("WORKER_LAEUFT"); }
+      for (let i = 0; i < 6; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); expect(a.schritt()).toBe("WORKER_BEENDEN"); }
+      expect(a.w.eskalationen.filter((g) => re.test(g))).toHaveLength(1);
+      expect(a.w.eskalationen.filter((g) => /nicht beendbar/.test(g))).toHaveLength(1);
+      expect(a.z.laufend).toMatchObject({ paketId: "WP-A", limitEskaliert: true, beendenFehlgeschlagen: 6 });
+      expect(a.w.starts).toHaveLength(1);
+      a.eff.worker.beenden = () => ({ beendet: true });
+      uhr.t += MIN; a.schritt();
+      expect(a.z.laufend).toBeNull();
+    }
+  });
+
+  it("ghPfad: absolute Auflösung über PATH, nur direkt startbar (keine .cmd), sonst null", () => {
+    expect(ghPfad({ plattform: "win32", pfad: "C:\\a;C:\\gh", existiert: (f) => f === "C:\\gh\\gh.exe" })).toBe("C:\\gh\\gh.exe");
+    expect(ghPfad({ plattform: "win32", pfad: "C:\\a", existiert: (f) => f === "C:\\a\\gh.cmd" })).toBeNull();
+    expect(ghPfad({ plattform: "linux", pfad: "/usr/bin", existiert: (f) => f === "/usr/bin/gh" })).toBe("/usr/bin/gh");
+    expect(ghPfad({ plattform: "linux", pfad: "", existiert: () => false })).toBeNull();
   });
 
   it("pruefeClaudePfad: Pflicht, absolut, vorhanden, keine PATH-Suche", () => {
