@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 218,
+  "anzahl": 225,
   "statusZaehlung": {
-    "BLOCKED": 79,
-    "READY": 16,
+    "BLOCKED": 85,
+    "READY": 17,
     "IN_PROGRESS": 17,
     "REVIEW": 7,
     "INTEGRATED": 96,
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 10,
-      "offen": 6,
+      "pakete": 17,
+      "offen": 13,
       "restPT": {
-        "min": 5.1,
-        "max": 10.1
+        "min": 21.6,
+        "max": 38.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 311.9,
-    "max": 535.35
+    "min": 328.4,
+    "max": 563.35
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6280,6 +6280,202 @@
       "tests": "pruefung:be3-widerrufbuch-sicherung, pruefung:staging-o2",
       "dateien": "werkzeug/ablage-sicherung.mjs, deploy/sicherung/, docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md, docs/acc45/EINRICHTUNGSKETTE-IONOS.md",
       "notiz": "Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18 (SSOT-Klassifizierung): B-1 (Widerrufbuch-Job und Probe mit echtem restic in der CI, B3-8) ist erledigt durch PR #325 (88511380, Vorfahr von integration/release-v4). Status BLOCKED (Korrektur 2026-11-18, zuvor IN_PROGRESS); Grund: P3-6, P3-7, P3-8 (Speicherziel, Zugangsdaten, Kosten, Löschschutz, Aufbewahrung) sind Betreiberfreigaben und nicht entschieden. Der Rest ist nur Betreiberfreigabe (P3-6 bis P3-8 in ENTSCHEIDUNGSLISTE.md); keine Agentenarbeit ohne diese Entscheidungen."
+    },
+    {
+      "id": "V4-0",
+      "titel": "V4: Spezifikation übernehmen, V3 als abgelöst kennzeichnen",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "DESIGNSYSTEM.md, MIGRATION.md, Mockups von design/v4-glass-logo im Integrationsstand; design/README.md nennt V3 abgelöst; src/v4/tokens.js verweist auf vorhandene Datei",
+      "tests": "Unit, E2E",
+      "dateien": "docs/, design/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+    },
+    {
+      "id": "V4-1",
+      "titel": "V4: Inventar und Screenshot-Baseline (MIGRATION Schritt 2)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":2,"max":3},
+      "abhaengigkeiten": ["V4-0"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "Inventar aller Ansichten/Komponenten mit V4-Status; Baseline hell/dunkel als Nenner für den Integrationsstand",
+      "tests": "Unit, E2E",
+      "dateien": "docs/, e2e/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+    },
+    {
+      "id": "V4-2",
+      "titel": "V4: Markenrest (theme-color/Manifest, Wortmarke als SVG, Avatar-Paare, Rückfall für reduzierte Transparenz)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": ["V4-1","WP-40"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke SVG; backdrop-filter mit Rückfall",
+      "tests": "Unit, E2E",
+      "dateien": "src/, public/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+    },
+    {
+      "id": "V4-3",
+      "titel": "V4: Modulmigration (V4Karte/V4Knopf/V4Feld/V4Dialog statt Overlay)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":6,"max":10},
+      "abhaengigkeiten": ["V4-1","WP-40","WP-48-GB"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "Module nach Inventar migriert, V4-Bausteine produktiv genutzt, keine Verhaltensänderung, 38 rgb/rgba-Literale abgebaut",
+      "tests": "Unit, E2E",
+      "dateien": "src/ansichten, src/App.jsx",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+    },
+    {
+      "id": "V4-4",
+      "titel": "V4: Visuelle QA hell/dunkel in der CI",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":2,"max":3},
+      "abhaengigkeiten": ["V4-1","WP-33"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "Dunkel-Browserprüfung (pruefungen/browser/v4-abnahme.mjs) und Bildvergleich in der CI; e2e/axe auch im Dunkelmodus; Workflow-Änderung nur auf Betreiberauftrag",
+      "tests": "Unit, E2E",
+      "dateien": "e2e/, pruefungen/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+    },
+    {
+      "id": "V4-5",
+      "titel": "V4: Website auf V4 (lokale Quelle centric-website)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":3,"max":5},
+      "abhaengigkeiten": ["V4-2"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "Website mit V4-Logo und V4-Palette; Quelle liegt lokal ohne Remote (centric-website bd7d155); Veröffentlichung nur auf Freigabe",
+      "tests": "Unit, E2E",
+      "dateien": "centric-website/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+    },
+    {
+      "id": "V4-6",
+      "titel": "V4: Weg nach main und Freigabe (Weg A oder B)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":2,"max":4},
+      "abhaengigkeiten": ["V4-3","V4-4"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "akzeptanz": "Betreiberfreigabe nötig: Weg A oder B laut WIEDERAUFNAHME.md offen; kein Merge nach main ohne ausdrückliche Freigabe; #91/#92 schließen entscheidet der Betreiber",
+      "tests": "Unit, E2E",
+      "dateien": "docs/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Betreiberentscheidung offen."
     }
   ]
 }
