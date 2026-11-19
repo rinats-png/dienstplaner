@@ -296,7 +296,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     /* Planwirkung: jeder Tag des Monats trägt die Dienstart; das Tagesblatt nennt die neuen Zeiten und teilt ein */
     await geheZu(page, "Monatsplan");
     await expect(page.locator(`[role=gridcell][aria-label$=" · ${C.einheit.name} · ${ZX}"]`)).toHaveCount(tageImMonat);
-    await page.locator(`[role=gridcell][aria-label^="${fLang(T1)} · ${C.einheit.name} · "]`).click();
+    await page.locator(`[role=gridcell][aria-label*="${fLang(T1)} · ${C.einheit.name} · "]`).click();
     const tag = page.getByRole("dialog", { name: fLang(T1) });
     await expect(tag).toBeVisible();
     /* Das Blatt öffnet auf der ersten Dienstart (F aus der Vorlage „leer“) — zur neuen wechseln */
@@ -318,7 +318,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await anmeldenBrowser(page, C.p1);
     await geheZu(page, "Monatsplan");
     const tagOeffnen = async (iso) => {
-      await page.locator(`[role=gridcell][aria-label^="${fLang(iso)} · ${C.einheit.name} · "]`).click();
+      await page.locator(`[role=gridcell][aria-label*="${fLang(iso)} · ${C.einheit.name} · "]`).click();
       const t = page.getByRole("dialog", { name: fLang(iso) });
       await expect(t).toBeVisible();
       await t.getByRole("button", { name: /^ZX \d+\/\d+$/ }).click();     // öffnet sonst auf F (erste Dienstart)
@@ -368,7 +368,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     const v = await schreibvorgaengeVerfolgen(page);
     await anmeldenBrowser(page, C.p1);
     await geheZu(page, "Monatsplan");
-    await page.locator(`[role=gridcell][aria-label^="${fLang(T2)} · ${C.einheit.name} · "]`).click();
+    await page.locator(`[role=gridcell][aria-label*="${fLang(T2)} · ${C.einheit.name} · "]`).click();
     const blatt = page.getByRole("dialog", { name: fLang(T2) });
     await expect(blatt).toBeVisible();
     await blatt.getByRole("button", { name: /^ZX \d+\/\d+$/ }).click();
