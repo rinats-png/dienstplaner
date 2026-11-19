@@ -1756,7 +1756,9 @@ function AppInnen() {
       <style>{bauStyles()}</style>
       <div style={{display:"none"}}><i /><i /><i /><i /></div>
       <div>
+        {/* B-P2: Auch am Telefon sagt die Leiste, dass ein gespeicherter Stand ohne Verbindung gezeigt wird. */}
         <MobilSchale sitz={sitz} akt={akt} dialoge={dialogBlock} startTab={mobilStart}
+          hinweise={<Offlineleiste lage={offline} />}
           aufRechner={() => setRechnerAnsicht(true)} />
       </div>
     </div>);

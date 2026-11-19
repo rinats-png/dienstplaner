@@ -378,7 +378,8 @@ export function Offlineleiste({ lage }) {
       background: C.warnLight, border: `1px solid ${C.warn}33`,
       display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
       <span style={{ fontSize: 14, fontWeight: 640 }}>Keine Verbindung</span>
-      <span style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, flex: 1, minWidth: 260 }}>
+      {/* min(): auch in der Telefonschale bei 320 px kein waagrechtes Scrollen (B-P2). */}
+      <span style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, flex: 1, minWidth: "min(260px, 100%)" }}>
         Der Plan ist lesbar, aber Änderungen lassen sich nicht speichern.
         {alter ? ` Der angezeigte Stand wurde ${alter} geholt.` : ""}
         {" "}Sobald die Verbindung zurück ist, verschwindet dieser Hinweis.
