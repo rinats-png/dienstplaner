@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { appQuelle } from "./app-quelle.js";
 import { readFileSync } from "node:fs";
-import { demobestand, importParsen, importZuordnen, importPruefen, IMPORT_VERGEBBAR, rolleAm } from "../src/lib/fachlogik.js";
+import { demobestand, importParsen, importZuordnen, importPruefen, IMPORT_VERGEBBAR, rolleAm, importOrgAufloesen } from "../src/lib/fachlogik.js";
 import { einheitAm as einheitAmServer } from "../server/lib/fachpruefung.mjs";
 import { einheitAm as einheitAmClient } from "../src/standorte.js";
 import { zugehoerigkeitsAbschnitte } from "../server/lib/sicht.mjs";
@@ -542,5 +542,101 @@ describe("IMP-1 Auflagen aus dem Datenreview (PR #130)", () => {
     const leer = pr(`${KOPF_A}\nA;B;P1;;${einheit};01.03.2024;`).zeilen[0];
     expect(leer.rolle).toBe("mitarbeiter");
     expect(leer.ok).toBe(true);
+  });
+});
+
+/* --------------------------------------------------------------------------
+   B-I1 (E2E-Abnahme 2026-11-20): „Fehlende Einheiten … mit anlegen“ war wirkungslos — eine Zeile mit neuer Einheit galt in
+   importPruefen als fehlerhaft, übernommen wurden nur fehlerfreie Zeilen. Regel jetzt wie im Dateiimport (IMP-5,
+   docs/acc45/IMPORT-VERTRAG.md): ohne Haken bleibt eine unbekannte Einheit/Qualifikation ein Fehler; mit Haken (nur
+   org.edit) ist sie keiner und wird beim Übernehmen über orgAnlegen angelegt. Zuordnung nach orgSchluessel.
+   -------------------------------------------------------------------------- */
+describe("B-I1 Textimport: fehlende Einheiten und Qualifikationen anlegen", () => {
+  const KOPF_B = "Nachname;Vorname;Einheit;Qualifikationen";
+  const pr = (text, optionen = { vergeber: "leitung" }, mandant = m0) => {
+    const { kopf, daten } = importParsen(text);
+    const { zu } = importZuordnen(kopf, daten);
+    return importPruefen(mandant, kopf, daten, zu, {}, optionen);
+  };
+  const MIT = { vergeber: "leitung", einheitenAnlegen: true };
+  const lies = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  let n = 0;
+  const id = (p) => `${p}_t${++n}`;
+
+  it("BI1-1 ohne Haken: unbekannte Einheit bleibt ein Fehler, nichts wird als neu angelegt geführt", () => {
+    const r = pr(`${KOPF_B}\nNeu;Ina;Station Neu;`);
+    expect(r.zeilen[0].ok).toBe(false);
+    expect(r.zeilen[0].fehler).toContain('Einheit „Station Neu" unbekannt');
+    expect(r.zeilen[0].einheitNeu).toBe(false);
+    expect(r.neueEinheiten).toEqual(["Station Neu"]);
+  });
+  it("BI1-2 mit Haken: unbekannte Einheit ist kein Fehler, die Zeile ist übernehmbar und als „neu“ gekennzeichnet", () => {
+    const r = pr(`${KOPF_B}\nNeu;Ina;Station Neu;`, MIT);
+    expect(r.zeilen[0].fehler).toEqual([]);
+    expect(r.zeilen[0].ok).toBe(true);
+    expect(r.zeilen[0].einheitNeu).toBe(true);
+    expect(r.zeilen[0].einheitId).toBe(null);
+    expect(r.gut).toBe(1);
+  });
+  it("BI1-3 Schreibvarianten: Groß-/Kleinschreibung und Leerraum ergeben EINE neue Einheit; vorhandene Einheit wird trotz Variante getroffen", () => {
+    const r = pr(`${KOPF_B}\nA;Ida;Station  Neu;\nB;Ira; station neu ;\nC;Iva;schichtgruppe   1;`, MIT);
+    expect(r.neueEinheiten).toEqual(["Station Neu"]);
+    expect(r.zeilen.map((z) => z.ok)).toEqual([true, true, true]);
+    expect(r.zeilen[2].einheitId).toBe(m0.einheiten[0].id);
+    expect(r.zeilen[2].einheitNeu).toBe(false);
+  });
+  it("BI1-4 unbekannte Qualifikation ohne Haken ist ein Fehler, nicht still weggelassen; mit Haken übernehmbar", () => {
+    const ohne = pr(`${KOPF_B}\nA;Ida;${einheit};SK, Brandschutz`);
+    expect(ohne.zeilen[0].ok).toBe(false);
+    expect(ohne.zeilen[0].fehler).toContain('Qualifikation „Brandschutz" unbekannt');
+    const mit = pr(`${KOPF_B}\nA;Ida;${einheit};SK, Brandschutz`, MIT);
+    expect(mit.zeilen[0].ok).toBe(true);
+    expect(mit.zeilen[0].fehlendeQuals).toEqual(["Brandschutz"]);
+    expect(mit.neueQuals).toEqual(["Brandschutz"]);
+  });
+  it("BI1-5 Übernehmen ohne Recht (darfAnlegen false): Zeile mit fehlender Einheit wird übersprungen, nichts angelegt, nie die erste Einheit", () => {
+    const r = pr(`${KOPF_B}\nNeu;Ina;Station Neu;\nAlt;Ole;${einheit};`, MIT);
+    const o = importOrgAufloesen(m0, r.zeilen.filter((z) => z.ok), false, id);
+    expect(o.uebernehmen.map((u) => u.zeile.nachname)).toEqual(["Alt"]);
+    expect(o.uebersprungen).toHaveLength(1);
+    expect(o.uebersprungen[0].fehler).toContain('Einheit „Station Neu" unbekannt');
+    expect(o.mandant.einheiten).toHaveLength(m0.einheiten.length);
+    expect(o.neueEinheiten).toEqual([]);
+  });
+  it("BI1-6 Übernehmen mit Recht: eine Einheit je Schlüssel, Name aus der Datei, Vorgaben wie im Dateiimport; Bestand unverändert", () => {
+    const vorher = JSON.stringify(m0.einheiten);
+    const r = pr(`${KOPF_B}\nA;Ida;Station  Neu;Brandschutz\nB;Ira;station neu;brandschutz`, MIT);
+    const o = importOrgAufloesen(m0, r.zeilen.filter((z) => z.ok), true, id);
+    expect(JSON.stringify(m0.einheiten)).toBe(vorher);
+    const neu = o.mandant.einheiten.filter((e) => !m0.einheiten.some((x) => x.id === e.id));
+    expect(neu).toHaveLength(1);
+    expect(neu[0].name).toBe("Station Neu");
+    expect(neu[0].versatz).toBe(m0.einheiten.length % m0.zyklus.wochen);
+    expect(neu[0].standortId).toBe(m0.standorte[0].id);
+    expect(typeof neu[0].farbe).toBe("string");
+    expect(o.uebernehmen.map((u) => u.einheitId)).toEqual([neu[0].id, neu[0].id]);
+    const q = o.mandant.qualifikationen.filter((x) => !m0.qualifikationen.some((y) => y.id === x.id));
+    expect(q).toHaveLength(1);
+    expect(q[0]).toMatchObject({ name: "Brandschutz", fachkraft: false, harteSperre: false, nachweisPflicht: false });
+    expect(o.uebernehmen.every((u) => u.qualifikationen.includes(q[0].id))).toBe(true);
+    expect(o.neueEinheiten).toEqual(["Station Neu"]);
+  });
+  it("BI1-7 Inzwischen vorhandene Einheit (aktueller Bestand) wird verwendet, nicht doppelt angelegt", () => {
+    const r = pr(`${KOPF_B}\nA;Ida;Station Neu;`, MIT);
+    const jetzt = { ...m0, einheiten: [...m0.einheiten, { id: "e_da", name: "STATION NEU" }] };
+    const o = importOrgAufloesen(jetzt, r.zeilen.filter((z) => z.ok), true, id);
+    expect(o.mandant.einheiten).toHaveLength(jetzt.einheiten.length);
+    expect(o.uebernehmen[0].einheitId).toBe("e_da");
+  });
+  it("BI1-8 Oberfläche: Haken nur mit org.edit, Vorgabe aus; die Aktion legt nur mit org.edit an", () => {
+    const ui = lies("../src/ansichten/import.jsx");
+    expect(ui).toMatch(/const \[anlegen, setAnlegen\] = useState\(false\)/);
+    expect(ui).toMatch(/const darfAnlegen = darf\(sitz, "org\.edit"\)/);
+    expect(ui).toMatch(/einheitenAnlegen: mitAnlegen && darfAnlegen/);
+    expect(ui).toMatch(/akt\.importieren\(pruef\.zeilen\.filter\(\(z\) => z\.ok\), anlegen && darfAnlegen\)/);
+    expect(ui).toMatch(/wird neu angelegt/);
+    const akt = lies("../src/app/aktionen/stammdaten.js");
+    expect(akt).toMatch(/importOrgAufloesen\(m, gegen\.uebernehmen, anlegen === true && darf\(sitz, "org\.edit"\)\)/);
+    expect(akt).not.toMatch(/\|\| einheiten\[0\]\.id/);
   });
 });

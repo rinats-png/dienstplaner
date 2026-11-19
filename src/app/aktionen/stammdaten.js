@@ -2,9 +2,10 @@
    Der Kontext k kommt aus AppInnen (useMemo von akt) und traegt dieselben Werte wie vorher der Abschluss. */
 import { uid } from "../../lib/format.js";
 import { RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE } from "../../../server/lib/geo.mjs";
-import { PALETTE, waehltEinheit, eigeneEinheitVon, uebergabeAm, besetzung, uebergabenVon, tabelleCSV, vollExport, lohnWarnung, datevCSV, datevSaetze, lohnexportStand, EXPORT_STAND, lohnausgabeDateiname, lohnausgabeText, importGegenBestand } from "../../lib/fachlogik.js";
+import { waehltEinheit, eigeneEinheitVon, uebergabeAm, besetzung, uebergabenVon, tabelleCSV, vollExport, lohnWarnung, datevCSV, datevSaetze, lohnexportStand, EXPORT_STAND, lohnausgabeDateiname, lohnausgabeText, importGegenBestand, importOrgAufloesen } from "../../lib/fachlogik.js";
 import { einheitAm } from "../../../server/lib/fachpruefung.mjs";
 import { lade } from "../../lib/download.js";
+import { darf } from "../../lib/berechtigung.js";
 import { exportWarnung } from "../../istdaten.js";
 
 export function aktionenStammdaten(k) {
@@ -84,36 +85,31 @@ export function aktionenStammdaten(k) {
       }, "Standort gelöscht"),
       oeffneImport: () => setImp(true),
       importieren: (zeilen, anlegen) => mUpd((m) => {
-        let einheiten = [...m.einheiten], quals = [...m.qualifikationen];
-        if (anlegen) {
-          for (const name of [...new Set(zeilen.filter((z) => !z.einheitId).map((z) => z.einheitName))])
-            einheiten.push({ id: uid("e"), name, versatz: einheiten.length % m.zyklus.wochen,
-              standortId: (m.standorte && m.standorte[0]) ? m.standorte[0].id : null,
-              farbe: PALETTE[einheiten.length % PALETTE.length] });
-          for (const q of [...new Set(zeilen.flatMap((z) => z.fehlendeQuals))])
-            quals.push({ id: uid("q"), name: q, kurz: q.slice(0, 4).toUpperCase(), farbe: PALETTE[quals.length % PALETTE.length] });
-        }
         /* IMP-1 Review: nur übernehmbare Zeilen (ok true) werden angelegt; zielId wird hier nie gelesen —
            eine Dublette (ok false) führt zu keinem Schreibpfad, auch nicht zu einer Aktualisierung.
            Eintritt leer (null): zugehoerigkeit.ab und rolleSeit bleiben bewusst null; die Leser
            (einheitAm, rolleAm, zugehoerigkeitsAbschnitte) lesen leeres ab als „von Anfang an“. */
         /* Datenreview PR #130 (3): vor dem Anlegen gegen den aktuellen Bestand (m.personen) — eine vorhandene
            Personalnummer wird nie angelegt, die Zeile mit Fehler übersprungen. */
-        const { uebernehmen, uebersprungen } = importGegenBestand(m.personen, zeilen.filter((z) => z.ok === true));
-        const neue = uebernehmen.map((z) => {
-          const eid = z.einheitId || (einheiten.find((e) => e.name === z.einheitName) || {}).id || einheiten[0].id;
-          const zusatz = z.fehlendeQuals.map((q) => (quals.find((x) => x.name === q) || {}).id).filter(Boolean);
+        const gegen = importGegenBestand(m.personen, zeilen.filter((z) => z.ok === true));
+        /* B-I1: Fehlende Einheiten/Qualifikationen nur mit Haken UND org.edit (Leitung) anlegen, sonst Zeile überspringen
+           (importOrgAufloesen in src/lib/fachlogik.js, Regel wie im Dateiimport IMP-5). */
+        const org = importOrgAufloesen(m, gegen.uebernehmen, anlegen === true && darf(sitz, "org.edit"));
+        const uebersprungen = [...gegen.uebersprungen, ...org.uebersprungen];
+        const neue = org.uebernehmen.map(({ zeile: z, einheitId: eid, qualifikationen }) => {
           return { id: uid("p"), vorname: z.vorname, nachname: z.nachname, funktion: z.funktion,
             email: z.email || "", personalnummer: z.personalnummer || "",
             zugehoerigkeit: [{ ab: z.eintritt || null, einheitId: eid }], eintritt: z.eintritt || null, austritt: null,
             wochenstunden: z.wochenstunden, urlaubsanspruch: z.urlaubsanspruch, urlaubsuebertrag: 0, stundenuebertrag: 0,
-            qualifikationen: [...z.qualifikationen, ...zusatz], einschraenkungen: {}, teilzeit: z.teilzeit, springer: false,
+            qualifikationen, einschraenkungen: {}, teilzeit: z.teilzeit, springer: false,
             rolle: z.rolle, bereich: ["leitung", "planer", "betriebsrat"].includes(z.rolle) ? "ALLE" : eid,
             rolleSeit: z.eintritt || null, status: "aktiv" };
         });
+        const neuE = org.neueEinheiten.length, neuQ = org.neueQualifikationen.length;
         melde(`${neue.length} Personen übernommen.`
+          + (neuE || neuQ ? ` Neu angelegt: ${neuE} Einheiten, ${neuQ} Qualifikationen.` : "")
           + (uebersprungen.length ? ` Übersprungen: ${uebersprungen.map((u) => u.fehler).join("; ")}.` : ""));
-        return { ...m, einheiten, qualifikationen: quals, personen: [...m.personen, ...neue] };
+        return { ...org.mandant, personen: [...m.personen, ...neue] };
       }, "Personal importiert"),
       dienstbuchEintrag: (datum, art, text, einheitId = null) => mUpd((m) => ({ ...m, dienstbuch: [
         { id: uid("db"), datum, art, text, zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),

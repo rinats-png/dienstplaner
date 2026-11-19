@@ -8,6 +8,7 @@ import { Icon } from "../gestalt/icons.jsx";
 import { Sheet } from "../ui/leisten.jsx";
 import { importParsen, importZuordnen, importPruefen, IMPORT_BEISPIEL } from "../lib/fachlogik.js";
 import { rolle } from "../lib/rollen.js";
+import { darf } from "../lib/berechtigung.js";
 /* IMP-4: Dateiimport über den Import-Endpunkt (IMP-3). IMPORT_DATEI_AKTIV bleibt false, bis der Import freigegeben ist. */
 import { IMPORT_DATEI_AKTIV, erzeugeImportSchnittstelle } from "../lib/import-schnittstelle.js";
 import { ImportDatei } from "./import-datei.jsx";
@@ -23,19 +24,28 @@ export function Import({ sitz, akt, onClose }) {
   const m = sitz.mandant;
   const [text, setText] = useState("");
   const [pruef, setPruef] = useState(null);
-  const [anlegen, setAnlegen] = useState(true);
+  /* B-I1: Anlegen nur auf ausdrücklichen Wunsch (Vorgabe aus, wie im Dateiimport) und nur mit org.edit (Leitung). */
+  const [anlegen, setAnlegen] = useState(false);
+  const darfAnlegen = darf(sitz, "org.edit");
   const [datei, setDatei] = useState(false);
   const schnittstelle = useMemo(() => (IMPORT_DATEI_AKTIV ? erzeugeImportSchnittstelle() : null), []);
   /* IMP-1 Review: Die Rollenprüfung rechnet mit der Rolle des Anwenders, nicht mit der Vorgabe „planer“
      (sonst wäre eine Leitung fälschlich gesperrt). sitz.rolle ist hier stets „kunde“ (Mandantensitzung);
      maßgeblich ist die Rolle der angemeldeten Person. */
-  const optionen = { vergeber: sitz.person && sitz.person.rolle };
+  const optionenFuer = (mitAnlegen) => ({ vergeber: sitz.person && sitz.person.rolle, einheitenAnlegen: mitAnlegen && darfAnlegen });
+  const optionen = optionenFuer(anlegen);
 
   const analysieren = () => {
     const { kopf, daten } = importParsen(text);
     if (!daten.length) return;
     const { zu, herkunft } = importZuordnen(kopf, daten);
     setPruef({ ...importPruefen(m, kopf, daten, zu, {}, optionen), kopf, zu, herkunft, daten });
+  };
+
+  /* Der Haken ändert die Vorschau: mit ihm ist eine fehlende Einheit kein Fehler, sondern „wird neu angelegt“. */
+  const setzeAnlegen = (an) => {
+    setAnlegen(an);
+    if (pruef) setPruef({ ...pruef, ...importPruefen(m, pruef.kopf, pruef.daten, pruef.zu, {}, optionenFuer(an)) });
   };
 
   /* Zuordnung von Hand ändern — die Erkennung ist gut, aber nicht unfehlbar. */
@@ -126,10 +136,13 @@ export function Import({ sitz, akt, onClose }) {
 
         {(pruef.neueEinheiten.length > 0 || pruef.neueQuals.length > 0) && (
           <div className="karte" style={{ padding: 16, marginTop: 18 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
-              <input type="checkbox" checked={anlegen} onChange={(e) => setAnlegen(e.target.checked)} />
-              <span style={{ fontSize: 13.5 }}>Fehlende Einheiten und Qualifikationen mit anlegen</span>
-            </label>
+            {darfAnlegen ? (
+              <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
+                <input type="checkbox" checked={anlegen} onChange={(e) => setzeAnlegen(e.target.checked)} />
+                <span style={{ fontSize: 13.5 }}>Fehlende Einheiten und Qualifikationen mit anlegen</span>
+              </label>) : (
+              <div style={{ fontSize: 13.5 }}>
+                Fehlende Einheiten und Qualifikationen legt nur die Leitung an. Diese Zeilen bleiben bis dahin fehlerhaft.</div>)}
             <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8, lineHeight: 1.5 }}>
               {pruef.neueEinheiten.length > 0 && <>Einheiten: {pruef.neueEinheiten.join(", ")}<br /></>}
               {pruef.neueQuals.length > 0 && <>Qualifikationen: {pruef.neueQuals.join(", ")}</>}
@@ -159,7 +172,9 @@ export function Import({ sitz, akt, onClose }) {
                   {z.fehlendeQuals.length > 0 && <span style={{ color: C.warn }}> +{z.fehlendeQuals.join(" ")}</span>}</td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 12,
                   color: z.fehler.length ? C.danger : z.doppelt ? C.warn : C.dimmer }}>
-                  {[...z.fehler, z.dublettenGrund].filter(Boolean).join(", ")}</td>
+                  {[...z.fehler, z.dublettenGrund, z.einheitNeu && `Einheit „${z.einheitName}" wird neu angelegt`,
+                    ...(z.fehler.length || !anlegen ? [] : z.fehlendeQuals.map((q) => `Qualifikation „${q}" wird neu angelegt`))]
+                    .filter(Boolean).join(", ")}</td>
               </tr>))}</tbody>
           </table>
         </Card>
@@ -168,7 +183,7 @@ export function Import({ sitz, akt, onClose }) {
           <Btn kind="quiet" onClick={() => setPruef(null)}>Zurück</Btn>
           <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
           <Btn kind="primary" disabled={!pruef.gut}
-            onClick={() => { akt.importieren(pruef.zeilen.filter((z) => z.ok), anlegen); onClose(); }}>
+            onClick={() => { akt.importieren(pruef.zeilen.filter((z) => z.ok), anlegen && darfAnlegen); onClose(); }}>
             {pruef.gut} Personen übernehmen</Btn>
         </div>
       </div>)}
