@@ -376,7 +376,9 @@ export function kalendertagFehler(bestand, vorher = null) {
    erfassung mit einer ungültigen Pause oder einer Pause, die die Anwesenheit (Beginn bis Ende, mit Zeitumstellung)
    erreicht, ist 422 (fail-closed, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt unverändert speicherbar
    (weder korrigiert noch gefiltert; wie er zu behandeln ist, ist eine offene Betreiberfrage, ENTSCHEIDUNGSLISTE P2-16).
-   Ohne Pausenangabe (undefined, null, "") gilt wie bisher die Pause der Dienstart. */
+   Ohne Pausenangabe (Feld fehlt, undefined, null) gilt wie bisher die Pause der Dienstart. Eine LEERE Pause ("") ist keine
+   „keine Angabe“: istZeitFuer liest Number("") = 0 und rechnete still ohne Pause (Review #368, M1) — neu oder geändert 422;
+   gespeicherte Alteinträge mit "" bleiben unverändert speicherbar (P2-16). */
 export const PAUSE_UNGUELTIG = "PAUSE_UNGUELTIG";
 const UHR_ERFASSUNG = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
 
@@ -396,7 +398,7 @@ export function erfassungPauseFehler(bestand, vorher = null) {
     const a = alt && alt.erfassung && typeof alt.erfassung === "object" && !Array.isArray(alt.erfassung) ? alt.erfassung : null;
     for (const [k, e] of Object.entries(m.erfassung)) {
       if (!e || typeof e !== "object" || Array.isArray(e)) continue;
-      if (e.pause === undefined || e.pause === null || e.pause === "") continue;            // keine Angabe: Pause der Dienstart
+      if (e.pause === undefined || e.pause === null) continue;                             // keine Angabe: Pause der Dienstart
       if (a && Object.hasOwn(a, k) && stabil(a[k]) === stabil(e)) continue;                  // Alteintrag, unverändert
       const tag = String(k).split("|")[1] || "";
       const pause = pauseAngabe(e.pause);

@@ -29,12 +29,13 @@ import { betriebErzeugen, istEinfrierenSchema1 } from "../werkzeug/wp16-messung.
 const OKT = "2026-10";
 const HEUTE = "2026-11-19";
 const WER = { personId: "p1", name: "L", rolle: "leitung" };
-let FL, Monatsabschluss;
+let FL, Monatsabschluss, Abrechnungsdaten;
 beforeAll(async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${HEUTE}T09:00:00Z`));
   FL = await import("../src/lib/fachlogik.js");
   ({ Monatsabschluss } = await import("../src/ansichten/monatsabschluss.jsx"));
+  ({ Abrechnungsdaten } = await import("../src/ansichten/abrechnungsdaten.jsx"));
 }, 120000);
 afterAll(() => { vi.useRealTimers(); });
 
@@ -118,6 +119,25 @@ describe("K: bestätigte Ist-Zeit mit Pause ≥ Anwesenheit wird sichtbar gekenn
       expect(FL.pauseAnwesenheitFaelle(y, OKT)).toMatchObject({ anzahl: 1, faelle: [{ personId: "p2", datum }] });
       expect(JSON.stringify(y.istEingefroren)).toBe(frz);
     }
+  });
+  it("N2 (Review #368): bestaetigt als Wahrheitswert wie istZeitFuer (1, \"ja\") — gekennzeichnet; 0, \"\" nicht", () => {
+    const { m, tag, datum } = grund();
+    for (const bestaetigt of [1, "ja"]) {
+      const x = { ...m, erfassung: { [tag]: { ...PAUSE_LAENGER, bestaetigt } } };
+      expect(istZeitFuer(x, x.personen.find((q) => q.id === "p2"), datum, x.dienstarten[0]).pauseUeberAnwesenheit, String(bestaetigt)).toBe(true);
+      expect(FL.pauseAnwesenheitFaelle(x, OKT), String(bestaetigt)).toMatchObject({ anzahl: 1, faelle: [{ personId: "p2", datum }] });
+    }
+    for (const bestaetigt of [0, ""]) expect(FL.pauseAnwesenheitFaelle({ ...m, erfassung: { [tag]: { ...PAUSE_LAENGER, bestaetigt } } }, OKT)).toBeNull();
+  });
+  it("N1 (Review #368): Oberfläche Abrechnungsdaten zeigt das Band mit Tag; ohne Fall kein Band", () => {
+    const { m, tag, datum } = grund();
+    const akt = new Proxy({}, { get: () => () => {} });
+    const leer = text(h(Abrechnungsdaten, { sitz: sitz({ ...m, erfassung: { [tag]: NORMAL } }), ym: OKT, akt }));
+    expect(leer).not.toMatch(/mit zu langer Pause/);
+    const mit = text(h(Abrechnungsdaten, { sitz: sitz({ ...m, erfassung: { [tag]: PAUSE_LAENGER } }), ym: OKT, akt }));
+    expect(mit).toMatch(/1 Ist-Zeit mit zu langer Pause · Oktober 2026/);
+    expect(mit).toContain(`Betroffen: ${datum}`);
+    expect(mit).toContain(PAUSE_ANWESENHEIT_TEXT);
   });
   it("Rollenschutz: ohne Ist-Daten der Person (Betriebsrat, sichtIstDaten keine) keine Fälle", () => {
     const { m, tag } = grund();
@@ -214,7 +234,7 @@ describe("P (Einheit): erfassungPauseFehler", () => {
   const ALT = b({ "a|2026-11-01": { start: "06:00", ende: "14:00", bestaetigt: true, pause: -30 } });
   it.each([
     ["negativ", -30], ["Text", "abc"], ["Text negativ", "-30"], ["Bruch", 12.5], ["über 180", 181], ["NaN", Number.NaN], ["unendlich", 1e999],
-    ["Objekt", { m: 30 }], ["Liste", [30]], ["wahr", true],
+    ["Objekt", { m: 30 }], ["Liste", [30]], ["wahr", true], ["leer (M1, Review #368: istZeitFuer rechnet \"\" als 0 statt Dienstart-Pause)", ""],
   ])("neu mit Pause %s ⇒ PAUSE_UNGUELTIG", (_t, pause) => {
     const f = erfassungPauseFehler(b({ "a|2026-11-02": { start: "06:00", ende: "14:00", bestaetigt: true, pause } }), null);
     expect(f).toMatchObject({ code: PAUSE_UNGUELTIG, feld: "mandanten[0].erfassung" });
@@ -225,8 +245,8 @@ describe("P (Einheit): erfassungPauseFehler", () => {
     /* 29.03.: 01:30–03:20 sind 50 min wirkliche Anwesenheit — 60 min Pause ist zu lang, obwohl die Uhr 110 min zeigt */
     expect(erfassungPauseFehler(b({ "a|2026-03-29": { start: "01:30", ende: "03:20", bestaetigt: true, pause: 60 } }))).toMatchObject({ code: PAUSE_UNGUELTIG });
   });
-  it("gültig ⇒ null: keine Angabe, null, \"\", 0, 30, \"45\", 180 bei 8 h, über Mitternacht, ohne Beginn/Ende (wie geplant)", () => {
-    for (const e of [{}, { pause: null }, { pause: "" }, { pause: 0 }, { pause: 30 }, { pause: "45" }, { pause: 180 }])
+  it("gültig ⇒ null: keine Angabe, null, 0, 30, \"45\", 180 bei 8 h, über Mitternacht, ohne Beginn/Ende (wie geplant)", () => {
+    for (const e of [{}, { pause: null }, { pause: 0 }, { pause: 30 }, { pause: "45" }, { pause: 180 }])
       expect(erfassungPauseFehler(b({ "a|2026-11-02": { start: "06:00", ende: "14:00", bestaetigt: true, ...e } })), JSON.stringify(e)).toBeNull();
     expect(erfassungPauseFehler(b({ "a|2026-11-02": { start: "22:00", ende: "06:00", bestaetigt: true, pause: 45 } }))).toBeNull();
     expect(erfassungPauseFehler(b({ "a|2026-11-02": { start: null, ende: null, bestaetigt: true, pause: 30 } }))).toBeNull();
@@ -237,6 +257,11 @@ describe("P (Einheit): erfassungPauseFehler", () => {
     expect(erfassungPauseFehler(b({ "a|2026-11-01": { start: "06:00", ende: "15:00", bestaetigt: true, pause: -30 } }), ALT)).toMatchObject({ code: PAUSE_UNGUELTIG });
     expect(erfassungPauseFehler(b({ "a|2026-11-01": { start: "06:00", ende: "14:00", bestaetigt: true, pause: 30 } }), ALT)).toBeNull();
     expect(erfassungPauseFehler(b({}), ALT)).toBeNull();
+    /* M1 (Review #368): Alteintrag mit leerer Pause bleibt speicherbar (auch andere Reihenfolge); geändert 422 */
+    const LEER = b({ "a|2026-11-01": { start: "06:00", ende: "14:00", bestaetigt: true, pause: "" } });
+    expect(erfassungPauseFehler(LEER, LEER)).toBeNull();
+    expect(erfassungPauseFehler(b({ "a|2026-11-01": { pause: "", bestaetigt: true, ende: "14:00", start: "06:00" } }), LEER)).toBeNull();
+    expect(erfassungPauseFehler(b({ "a|2026-11-01": { start: "06:00", ende: "15:00", bestaetigt: true, pause: "" } }), LEER)).toMatchObject({ code: PAUSE_UNGUELTIG });
     /* anderer Betrieb mit gleichem Schlüssel ist neu */
     expect(erfassungPauseFehler({ mandanten: [{ id: "m-b", erfassung: ALT.mandanten[0].erfassung }] }, ALT)).toMatchObject({ code: PAUSE_UNGUELTIG });
   });
@@ -315,6 +340,7 @@ describe("P (Handler): PUT /api/bestand und Teilweg", () => {
   for (const [titel, aendern] of [
     ["neue Ist-Zeit mit Pause -30", (m) => { m.erfassung["m1|2026-11-04"] = { start: "06:00", ende: "14:00", bestaetigt: true, pause: -30, grund: "" }; }],
     ["neue Ist-Zeit mit Pause als Text", (m) => { m.erfassung["m1|2026-11-04"] = { start: "06:00", ende: "14:00", bestaetigt: true, pause: "x", grund: "" }; }],
+    ["neue Ist-Zeit mit leerer Pause (M1)", (m) => { m.erfassung["m1|2026-11-04"] = { start: "06:00", ende: "14:00", bestaetigt: true, pause: "", grund: "" }; }],
     ["neue Ist-Zeit mit Pause über der Anwesenheit", (m) => { m.erfassung["m1|2026-11-04"] = { start: "06:00", ende: "06:20", bestaetigt: true, pause: 30, grund: "" }; }],
     ["Alteintrag geändert, Pause weiter negativ", (m) => { m.erfassung["m1|2026-11-03"] = { ...ALT_ERF, ende: "17:00" }; }],
   ]) {

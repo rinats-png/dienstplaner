@@ -3331,7 +3331,7 @@ export function pauseAnwesenheitFaelle(m, ym) {
   const faelle = [];
   for (const [k, e] of Object.entries(erf)) {
     const [pid, d] = String(k).split("|");
-    if (!d || !d.startsWith(`${ym}-`) || !e || typeof e !== "object" || e.bestaetigt !== true) continue;
+    if (!d || !d.startsWith(`${ym}-`) || !e || typeof e !== "object" || !e.bestaetigt) continue;   // Wahrheitswert wie istZeitFuer (Review #368, N2)
     const p = personen.get(pid);
     if (!p) continue;
     const t = istTag(m, p, d);
