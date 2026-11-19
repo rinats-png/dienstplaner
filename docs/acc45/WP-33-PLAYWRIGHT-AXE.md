@@ -105,6 +105,12 @@ ob er beim Scan noch sichtbar war (3 s), hing von der Laufzeit ab (CI schnell, W
   wahrscheinliche Ursache des Konfliktdialogs bei parallelen Sitzungen (Nebenbefund oben).
 - Kontrast: Rücknahmeknopf hell vorher 1,98:1, jetzt 7,36:1 (hell) und 11,0:1 (dunkel).
 
+## 4a-2. Lokale E2E-Abnahme 2026-11-19
+
+`e2e/lokale-abnahme-luecken.spec.mjs` (nur Projekt `1024x768`, eigene Betriebe): Urlaubsantrag und Genehmigung, 409 mit Sendesperre,
+Sitzungsende und Wiederanmeldung (B-L4 behoben durch #378: Anmeldung mit Hinweis; Sitzungsende bei offener Seite L4c: Anmelden und senden speichert mit altem ETag, B-L4c behoben durch #381; L4d anderer Zugang verwirft), Import-Fehlerfall, Mandantentrennung bei Anträgen. Matrix, Läufe und
+Befund: [LOKALE-E2E-ABNAHME-2026-11-19.md](LOKALE-E2E-ABNAHME-2026-11-19.md).
+
 ## 4b. WP-33 Rest: weitere axe-Flächen (2026-11-17)
 
 Neu: `e2e/barrierefreiheit-flaechen.spec.mjs` mit den Flächen aus `e2e/weitere-flaechen.mjs` (reine Daten), je Viewport der Gerätematrix:
