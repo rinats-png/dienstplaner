@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync as schreibeDatei } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { entscheide, lesen, schreiben, gepruefterPush } from "../werkzeug/koordination.mjs";
 import {
-  STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel,
+  STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel, sperreNehmen,
 } from "../werkzeug/dauerlauf.mjs";
 
 /* Feste Uhr: jede Zeit kommt aus T0 plus Minuten (kein Wanduhr-Bezug). */
@@ -101,6 +101,20 @@ describe("Dauerlauf: reiner Kern", () => {
     const v = verbucheErgebnis({ ...z({ epoche: 7 }), laufend: { paketId: "WP-A" } }, { exit: 0, fortschritt: false, ciGruen: null }, new Date(T0), STANDARD);
     expect(v.zustand.versuche["WP-A"].n).toBe(1);
   });
+  it("Abschalter und unlesbare Lease beenden einen laufenden Worker zuerst", () => {
+    const mitWorker = { ...leererZustand("dauerlauf-a"), epoche: 7, laufend: { paketId: "WP-A", puls: new Date(T0).toISOString() } };
+    expect(planeSchritt({ jetzt: new Date(T0), lease: null, zustand: mitWorker, schalterAus: true, kandidaten: ["WP-A"] }).aktion).toBe("WORKER_BEENDEN");
+    expect(planeSchritt({ jetzt: new Date(T0), lease: { halter: "x" }, zustand: mitWorker, kandidaten: ["WP-A"] }).aktion).toBe("WORKER_BEENDEN");
+    expect(planeSchritt({ jetzt: new Date(T0), lease: { halter: "x" }, zustand: leererZustand("dauerlauf-a"), kandidaten: ["WP-A"] }).aktion).toBe("STOPP_FAILCLOSED");
+  });
+  it("Sperrdatei: zweiter Prozess mit gleichem Halter wird abgewiesen, verwaiste Sperre übernommen", () => {
+    const datei = path.join(mkdtempSync(path.join(tmpdir(), "sperre-")), "sperre.lock");
+    expect(sperreNehmen(datei, 111, () => true)).toBe(true);
+    expect(sperreNehmen(datei, 222, () => true)).toBe(false); // Halter 111 lebt
+    expect(sperreNehmen(datei, 222, () => false)).toBe(true); // 111 tot: übernommen
+    schreibeDatei(datei, "kaputt");
+    expect(sperreNehmen(datei, 333, () => true)).toBe(true); // unlesbare Sperre gilt als verwaist
+  });
   it("claudeBefehl: begrenzt, ohne Berechtigungsumgehung, Eingaben validiert", () => {
     const b = claudeBefehl({ paketId: "WP-A", halter: "dauerlauf-a", epoche: 3, promptDatei: "x.md" });
     expect(b.args).toContain("--max-turns");
@@ -129,7 +143,7 @@ describe("Dauerlauf: Zyklen gegen Lease (Speicher im Arbeitsspeicher)", () => {
     expect(a.z.versuche["WP-A"]).toBeUndefined();
   });
 
-  it("Hängender Agent: Puls bleibt aus, Lease wird NICHT erneuert, Worker wird beendet, Fehlversuch gezählt", () => {
+  it("Hängender Agent: Puls bleibt aus, Lease wird NICHT erneuert, Worker wird beendet (Versuch hier noch nicht gezählt)", () => {
     const sp = speicherImSpeicher(); const uhr = { t: T0 };
     const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr });
     a.schritt(); a.schritt();
@@ -140,6 +154,17 @@ describe("Dauerlauf: Zyklen gegen Lease (Speicher im Arbeitsspeicher)", () => {
     expect(a.schritt()).toBe("WORKER_BEENDEN"); // Schreibrecht weg: beendet, bevor irgendetwas anderes passiert
     expect(a.w.beendet).toBe(1);
     expect(a.z.laufend).toBeNull();
+  });
+
+  it("Eingefrorener Puls: Heartbeat endet nach einer Lease-Dauer, Schreibrecht läuft aus, Worker wird vor Minute 33 beendet", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr });
+    a.schritt(); a.schritt(); // Puls bleibt auf T0 stehen
+    let maxBis = 0;
+    for (let m = 3; m <= 45 && a.w.beendet === 0; m += 3) { uhr.t = T0 + m * MIN; a.schritt(); maxBis = Math.max(maxBis, Date.parse(sp.lease.gueltig_bis)); }
+    expect(a.w.beendet).toBe(1);
+    expect(maxBis).toBeLessThanOrEqual(T0 + 32 * MIN); // letzte Erneuerung bei Minute 12 (Puls jünger als 20 Min)
+    expect(uhr.t).toBeLessThan(T0 + 33 * MIN);
   });
 
   it("Hängend bei noch gültiger Lease: Beenden mit Fehlversuch", () => {
@@ -212,11 +237,21 @@ describe("Dauerlauf: Zyklen gegen Lease (Speicher im Arbeitsspeicher)", () => {
 
   it("Fehlende Freigabe (keine Kandidaten): Lease wird freigegeben, nichts gestartet", () => {
     const sp = speicherImSpeicher(); const uhr = { t: T0 };
-    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: [] });
+    const liste = ["WP-A"];
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: liste });
     a.schritt();
+    liste.length = 0; // SSOT meldet nichts mehr als freigegeben
     expect(a.schritt()).toBe("FREIGEBEN");
     expect(sp.lease.freigegeben_am).toBeTruthy();
     expect(a.w.starts).toHaveLength(0);
+  });
+
+  it("Ohne offenes Paket wird nie übernommen: kein Epochen-Rauschen auf der Lease", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: [] });
+    for (let i = 0; i < 10; i++) { uhr.t += MIN; expect(a.schritt()).toBe("WARTEN_LEERLAUF"); }
+    expect(sp.spitze).toBe(0);
+    expect(sp.lease).toBeNull();
   });
 
   it("Abschalter während der Arbeit: Worker beendet, Lease freigegeben, nichts Neues", () => {

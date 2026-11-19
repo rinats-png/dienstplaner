@@ -52,8 +52,10 @@ Vorhanden: atomare Lease mit Compare-and-Swap, Epoche, Fencing-Push, Sicherheits
 Neu (Prototyp, `werkzeug/dauerlauf.mjs`):
 
 - Reiner Entscheidungskern `planeSchritt` (genau eine Aktion je Zyklus, fail-closed).
-- Heartbeat gekoppelt an Worker-Puls: Die Lease wird nur erneuert, solange der Worker nachweislich lebt.
-- Kurze Lease (20 Min, Erneuerung unter 10 Min Rest): nach Prozessende höchstens etwa 22 Min Stillstand statt bis 182 Min.
+- Heartbeat gekoppelt an Worker-Puls: Die Lease wird nur erneuert, solange der letzte Puls jünger als die Lease-Dauer (20 Min) ist. Ein eingefrorener Worker verliert so nach spätestens einer Lease-Dauer das Schreibrecht und wird beendet (im Test vor Minute 33). Ein Worker, der länger als 20 Min keinerlei Ausgabe erzeugt, würde ebenfalls so behandelt; der echte Adapter muss deshalb Streamausgabe (`stream-json`) als Puls nutzen.
+- Kurze Lease (20 Min, Erneuerung unter 10 Min Rest): nach Ende des Supervisor-Prozesses höchstens etwa 22 Min Stillstand statt bis 182 Min.
+- Kein Übernehmen ohne offenes Paket (verhindert Epochen-Rauschen); laufender Worker wird bei Abschalter, unlesbarer Lease oder verlorenem Schreibrecht immer zuerst beendet.
+- Sperrdatei im Zustandsverzeichnis: zwei Supervisor-Prozesse mit gleichem Halter sind ausgeschlossen (verwaiste Sperre wird übernommen).
 - Verbuchung von Ergebnissen mit Fortschrittsprüfung, Backoff, Sperre, Eskalation.
 - Doppelstart-Schutz (Auftragsschlüssel `Paket@Kopf`, kein Start bei laufendem Auftrag, Start nur nach `pruefen`).
 - Abschalter (Datei `AUTONOMIE-AUS` oder `CENTRIC_AUTONOMIE` ungleich `ja`).
@@ -67,7 +69,7 @@ Windows-Aufgabenplanung / Dienst (Betreiber richtet ein)  ->  dauerlauf.mjs --sc
    Zyklus alle 2 bis 5 Min:
      Lease lesen -> planeSchritt -> eine Aktion
        UEBERNEHMEN   nur bei abgelaufener/freigegebener Lease, eigene Kennung, Übergabetext
-       STARTEN       frischer `claude -p` je Paket; Epoche in der Umgebung; Schreiben nur per `koordination push`
+       STARTEN       frischer `claude -p` je Paket; Epoche in der Umgebung; Schreiben per `koordination push` (kooperativ, siehe §7)
        WORKER_LAEUFT Heartbeat (Lease erneuern) nur bei frischem Puls
        WORKER_BEENDEN bei Hängen, verlorener Epoche oder Abschalter
        FREIGEBEN     kein Paket, Eskalation oder Abschalter
@@ -80,7 +82,7 @@ Zwei Wege nach Totalausfall: gleicher Halter mit Zustandsdatei setzt sofort fort
 
 ## 6. Nachweise des Prototyps
 
-`pruefungen/dauerlauf.test.js` (28 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
+`pruefungen/dauerlauf.test.js` (32 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
 
 | Anforderung | Test |
 |---|---|
@@ -92,9 +94,9 @@ Zwei Wege nach Totalausfall: gleicher Halter mit Zustandsdatei setzt sofort fort
 | Fehlgeschlagene CI | Backoff, nach 3 Versuchen gesperrt, Lease freigegeben, kein Dauerlauf |
 | Fehlende Betreiberfreigabe | extern, bedingt, BLOCKED, unerfüllte Abhängigkeit: nie Kandidat; ohne Kandidat Freigabe der Lease |
 | Wiederholter Start desselben Auftrags | genau ein Start trotz mehrerer Zyklen |
-| Nie zwei Schreiber | 8 reproduzierbare Zufallsläufe à 400 Schritte (3 Supervisoren, Abstürze, hängende Worker, Abschalter, verwaiste Worker): höchstens ein Koordinator besteht `pruefen`, Epochen steigen nur, Worker nur mit Schreibrecht, Schreibversuche gelingen nur dem aktuellen Halter mit aktueller Epoche; zusätzlich echte CAS-Probe: zwei Supervisoren lesen dieselbe leere Lease, genau eine Übernahme gelingt |
+| Nie zwei Schreiber (Teilbeweis, siehe Grenze) | 8 reproduzierbare Zufallsläufe à 400 Schritte (3 Supervisoren, Abstürze, hängende Worker, Abschalter, verwaiste Worker): höchstens ein Koordinator besteht `pruefen`, Epochen steigen nur, Worker nur mit Schreibrecht, Schreibversuche gelingen nur dem aktuellen Halter mit aktueller Epoche; zusätzlich echte CAS-Probe: zwei Supervisoren lesen dieselbe leere Lease, genau eine Übernahme gelingt |
 
-Grenze des Beweises: Der Beweis stützt sich auf die Korrektheit von `entscheide` und den Git-CAS (beide bereits getestet). Er deckt das Zusammenspiel Supervisor/Lease ab, **nicht** das Verhalten eines echten `claude -p`-Prozesses unter Windows.
+Grenze des Beweises: Die Zufallsläufe verwenden eindeutige Halter; ihre Invarianten 1 und 4 folgen weitgehend aus `entscheide` und sind keine unabhängige Prüfung, aussagekräftig sind Epochen-Monotonie und "Worker nur mit Schreibrecht" (nur für den jeweils schrittenden Supervisor). Gleichzeitige Prozesse mit gleichem Halter verhindert die Sperrdatei (eigener Test), nicht der Zufallslauf. Der Beweis stützt sich auf die Korrektheit von `entscheide` und den Git-CAS (beide bereits getestet). Er deckt das Zusammenspiel Supervisor/Lease ab, **nicht** das Verhalten eines echten `claude -p`-Prozesses unter Windows.
 
 ## 7. Bekannte Lücken des Prototyps (ehrlich)
 
@@ -104,9 +106,13 @@ Grenze des Beweises: Der Beweis stützt sich auf die Korrektheit von `entscheide
 4. Die Pulsmessung per Log-Änderungszeit ist grob; ein Worker, der still rechnet (lange Testläufe), kann fälschlich als hängend gelten. Die Schwelle `haengMin` ist deshalb 30 Min.
 5. Kosten: jeder Lauf verbraucht Nutzungskontingent oder API-Kosten. Begrenzung nur über `--max-turns`, `maxVersuche` und Abschalter; ein Tageslimit fehlt noch.
 
+6. Das Fencing des Workers ist kooperativ: Der Auftrag verlangt `koordination push`, aber ein Worker mit Projektrechten könnte direkt `git push` ausführen. Die Umgebungsvariablen `CENTRIC_KOORD_*` wertet kein Code aus. Die Berechtigungs-Allowlist (§9.3) muss direktes `git push` sperren. Hinzu kommt der bestehende Schutz durch Pull Request, Review und CI.
+7. Prozesssteuerung unter Windows: `beenden` beendet eine gespeicherte PID; nach Neustart kann sie wiederverwendet sein (Prüfung über Startzeit oder Kommandozeile fehlt), der Prozessbaum wird nicht beendet, und `spawn("claude")` ohne Shell scheitert, falls `claude` eine `.cmd`-Datei ist (kein `error`-Listener). Ob `-p @datei` die Datei so einliest, ist ungeprüft.
+8. Ergebnis von `erneuern` wird im Zyklus nicht ausgewertet; ein Fehlschlag zeigt sich erst im nächsten Zyklus.
+
 ## 8. Aufwand, Verbesserung, Risiken
 
-- Aufwand bis zum scharfen Probelauf: etwa 3 bis 5 PT (Fortschrittsmessung, Worker-Adapter real testen, Windows-Prozesssteuerung, Tageslimit, Protokoll-/Statusanzeige), danach Beobachtungsphase.
+- Aufwand bis zum scharfen Probelauf: etwa 4 bis 6 PT (Fortschrittsmessung, Worker-Adapter real testen, Windows-Prozesssteuerung inklusive PID-/Prozessbaum-Behandlung, Tageslimit, Protokoll-/Statusanzeige), danach Beobachtungsphase.
 - Erwartete Verbesserung: Stillstand nach Sitzungsende von bis zu 182 Min auf höchstens etwa 25 Min, solange freigegebene Pakete existieren; kein manuelles Wiederanstoßen im Regelfall.
 - Risiken: Kosten ohne Limit, Fehlsteuerung durch falsche Fortschrittsmessung, ein Worker mit zu weiten Rechten, Doppelarbeit bei parallelem Hauptchat (durch Lease ausgeschlossen, aber der Hauptchat müsste dann `freigeben`/warten).
 

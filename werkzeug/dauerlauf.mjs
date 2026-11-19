@@ -7,8 +7,9 @@
 
      Supervisor (ein Prozess außerhalb jeder Claude-Sitzung)
        Zyklus: Lease lesen -> entscheiden (reiner Kern) -> genau eine Aktion
-       Heartbeat: die Lease wird NUR erneuert, solange der Worker nachweislich lebt (frischer Puls).
-                  Ein hängender Worker lässt die Lease also auslaufen; er wird zusätzlich beendet.
+       Heartbeat: die Lease wird NUR erneuert, solange der Puls jünger als die Lease-Dauer ist.
+                  Ein eingefrorener Worker lässt die Lease also nach höchstens einer Lease-Dauer auslaufen
+                  (Schreibrecht weg, Worker beendet); spätestens nach haengMin wird er ohnehin beendet.
        Worker: je Arbeitspaket ein frischer, begrenzter `claude -p`-Lauf (eigener Kontext). Er schreibt
                nur über `koordination.mjs push --halter --epoche` (Fencing, atomar mit der Lease).
 
@@ -26,7 +27,7 @@
    Scharf (nur auf ausdrückliche Betreiberfreigabe, siehe docs/acc45/AUTONOMIE-ARCHITEKTUR.md §9):
      CENTRIC_AUTONOMIE=ja node werkzeug/dauerlauf.mjs --scharf --halter dauerlauf-<kennung> [--zyklen N]
    ========================================================================== */
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, appendFileSync, openSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, appendFileSync, openSync, unlinkSync } from "node:fs";
 import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,22 +59,22 @@ const aktion = (name, grund, extra = {}) => ({ aktion: name, grund, ...extra });
 export function planeSchritt({ jetzt, lease, zustand, schalterAus = false, kandidaten = [], cfg = STANDARD }) {
   const t = jetzt.getTime();
   const ich = zustand.halter;
-  if (!lease) {
-    if (schalterAus) return aktion("STOPP", "Abschalter gesetzt");
-  }
   const probe = entscheide(lease, jetzt, { aktion: "uebernehmen", halter: ich, uebergabe: "Dauerlauf Pruefung (nur lesend)" });
-  if (lease && !probe.ok && /unlesbar|beschädigt/.test(probe.grund)) return aktion("STOPP_FAILCLOSED", probe.grund);
+  const unlesbar = Boolean(lease) && !probe.ok && /unlesbar|beschädigt/.test(probe.grund);
+  const schreibrecht = !unlesbar && zustand.epoche !== null && entscheide(lease, jetzt, { aktion: "pruefen", halter: ich, epoche: zustand.epoche }).ok;
 
-  const schreibrecht = zustand.epoche !== null && entscheide(lease, jetzt, { aktion: "pruefen", halter: ich, epoche: zustand.epoche }).ok;
-
-  /* 5. Schreibrecht verloren: laufenden Worker zuerst beenden, bevor irgendetwas anderes geschieht. */
-  if (zustand.laufend && !schreibrecht) return aktion("WORKER_BEENDEN", "Schreibrecht verloren (Epoche, Zone oder Ablauf)", { versuchZaehlen: false });
-  /* 1. Abschalter: laufender Worker wird beendet, danach Lease freigeben. */
-  if (schalterAus && zustand.laufend) return aktion("WORKER_BEENDEN", "Abschalter gesetzt", { versuchZaehlen: false });
+  /* Ein laufender Worker wird zuerst beendet: bei verlorenem Schreibrecht, unlesbarer Lease oder Abschalter. */
+  if (zustand.laufend && !schreibrecht) return aktion("WORKER_BEENDEN", unlesbar ? "Lease unlesbar (fail-closed)" : "Schreibrecht verloren (Epoche, Zone oder Ablauf)", { versuchZaehlen: false });
+  if (zustand.laufend && schalterAus) return aktion("WORKER_BEENDEN", "Abschalter gesetzt", { versuchZaehlen: false });
+  if (unlesbar) return aktion("STOPP_FAILCLOSED", probe.grund);
+  /* Abschalter: danach Lease freigeben. */
   if (schalterAus) return aktion(schreibrecht ? "FREIGEBEN" : "STOPP", "Abschalter gesetzt");
+  const offenKandidaten = kandidaten.filter((id) => !zustand.gesperrt.includes(id));
 
   if (!schreibrecht) {
-    if (probe.ok) return aktion("UEBERNEHMEN", probe.grund, { uebergabe: `Dauerlauf ${ich}: Lease frei oder abgelaufen, ${kandidaten.length} freigegebene Pakete` });
+    /* Ohne offene Kandidaten nie übernehmen: sonst würde jeder Zyklus übernehmen und wieder freigeben (Epochen-Rauschen). */
+    if (probe.ok && !offenKandidaten.length) return aktion("WARTEN_LEERLAUF", "kein offenes freigegebenes Paket: Lease wird nicht übernommen");
+    if (probe.ok) return aktion("UEBERNEHMEN", probe.grund, { uebergabe: `Dauerlauf ${ich}: Lease frei oder abgelaufen, ${offenKandidaten.length} offene Pakete` });
     const bis = Date.parse(lease.gueltig_bis);
     const fremd = lease.halter !== ich;
     if (!lease.freigegeben_am && t <= bis + 120000 && t > bis - 120000) return aktion("WARTEN_SICHERHEITSZONE", `Zone um ${lease.gueltig_bis}: niemand schreibt`);
@@ -84,8 +85,10 @@ export function planeSchritt({ jetzt, lease, zustand, schalterAus = false, kandi
   const bis = Date.parse(lease.gueltig_bis);
   const erneuern = bis - t < cfg.erneuernUnterMin * MIN;
   if (zustand.laufend) {
-    if (t - Date.parse(zustand.laufend.puls) > cfg.haengMin * MIN) return aktion("WORKER_BEENDEN", `kein Puls seit ${cfg.haengMin} Min (hängt)`, { versuchZaehlen: true });
-    return aktion("WORKER_LAEUFT", "Worker lebt, Heartbeat", { erneuern });
+    const pulsAlter = t - Date.parse(zustand.laufend.puls);
+    if (pulsAlter > cfg.haengMin * MIN) return aktion("WORKER_BEENDEN", `kein Puls seit ${cfg.haengMin} Min (hängt)`, { versuchZaehlen: true });
+    /* Heartbeat nur bei frischem Puls (jünger als die Lease-Dauer): ein eingefrorener Worker lässt die Lease auslaufen. */
+    return aktion("WORKER_LAEUFT", "Worker lebt, Heartbeat", { erneuern: erneuern && pulsAlter < cfg.leaseMin * MIN });
   }
   if (!kandidaten.length) return aktion("FREIGEBEN", "kein freigegebenes Paket (Leerlauf, nichts ohne Betreiberfreigabe)", { leerlauf: true });
   const offen = kandidaten.filter((id) => !zustand.gesperrt.includes(id));
@@ -230,6 +233,19 @@ function echteEffekte({ halter, zustandsDatei, logDatei, abschalter }) {
   };
 }
 
+/** Exklusive Sperrdatei: verhindert zwei Supervisor-Prozesse mit gleichem Halter und gleicher Zustandsdatei. */
+export function sperreNehmen(datei, pid = process.pid, lebt = (p) => { try { process.kill(p, 0); return true; } catch { return false; } }) {
+  for (let versuch = 0; versuch < 2; versuch++) {
+    try { writeFileSync(datei, String(pid), { flag: "wx" }); return true; }
+    catch {
+      let alt = NaN; try { alt = Number(readFileSync(datei, "utf8")); } catch { /* weg */ }
+      if (Number.isInteger(alt) && alt !== pid && lebt(alt)) return false;
+      try { unlinkSync(datei); } catch { return false; }
+    }
+  }
+  return false;
+}
+
 const speichereZustand = (datei, z) => { const t = `${datei}.tmp`; writeFileSync(t, JSON.stringify(z, null, 2)); renameSync(t, datei); };
 
 function haupt(argv) {
@@ -245,6 +261,9 @@ function haupt(argv) {
   const dir = process.env.CENTRIC_AUTONOMIE_DIR || path.join(process.env.LOCALAPPDATA || WURZEL, "centric-dauerlauf");
   mkdirSync(dir, { recursive: true });
   const zustandsDatei = path.join(dir, "zustand.json");
+  const sperre = path.join(dir, "sperre.lock");
+  if (!sperreNehmen(sperre)) { console.error("ABGELEHNT: ein anderer Supervisor-Prozess läuft (Sperrdatei)"); return 1; }
+  process.on("exit", () => { try { unlinkSync(sperre); } catch { /* egal */ } });
   const eff = echteEffekte({ halter, zustandsDatei, logDatei: path.join(dir, "protokoll.jsonl"), abschalter: path.join(dir, "AUTONOMIE-AUS") });
   let z = existsSync(zustandsDatei) ? JSON.parse(readFileSync(zustandsDatei, "utf8")) : leererZustand(halter);
   if (z.halter !== halter) { console.error("ABGELEHNT: Zustandsdatei gehört zu anderem Halter"); return 1; }
