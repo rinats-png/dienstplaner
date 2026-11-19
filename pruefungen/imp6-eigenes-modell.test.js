@@ -18,12 +18,14 @@
       Schichtverantwortung: unverändert zurück = gespeicherter Stand (mit
       Stempeln), geändert = 403 wie jedes Leitungsfeld; verborgenes und
       unbekanntes Modell bzw. fremde Person mit und ohne Zuordnung: dieselbe
-      Antwort.
+      Antwort. Ältere Kopie der Schichtverantwortung ohne die neuen Felder:
+      403 statt 200, Bestand byte-gleich (Review #372 M1, P2-19 (e)).
    3. Teilweg: die Versionen folgen der Sicht (verborgene Modelle ändern sie nicht).
    4. Differenz alt/neu über Zufallsbestände (bestandFuerRolle, alle Rollen):
       Ohne die neu freigegebenen Teile ist jede Antwort bit-gleich mit der
       Antwort ohne Zuordnungen im Bestand (vor Q4 hing keine Antwort dieser
-      Rollen von den Zuordnungen ab).
+      Rollen von den Zuordnungen ab). Dazu ein Golden-Hash der Antworten für
+      PL, LT, KU, BR, BT, erzeugt mit sicht.mjs vor Q4 (echter Vergleich alt/neu).
 
    Aufruf: npx vitest run pruefungen/imp6-eigenes-modell.test.js --maxWorkers=1
    ========================================================================== */
@@ -34,6 +36,10 @@ import path from "node:path";
 import { heuteBerlin } from "../server/lib/zeiterfassung.mjs";
 import { plusTage } from "../server/lib/schichtzuordnung.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
+import { createHash } from "node:crypto";
+
+/** sha256 der Antworten PL/LT/KU/BR/BT über 40 Zufallsbestände, erzeugt mit sicht.mjs von 87473f12 (Abschnitt 4). */
+const GOLDEN_ALT = "29e70a5d184a42e2d08b45f6bea355ae30ff1b3a5e2557cbaf13f48c75e8ce9a";
 
 const WIRT = "127.0.0.1:3000";
 let wurzel, laden, daten, B, G, sitzungAnlegen;
@@ -237,6 +243,34 @@ describe("2. Schreibweg unverändert, kein neues Orakel", () => {
     expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
     await unveraendert(raum, "SV Rundweg");
   });
+  /* Review #372 M1 (festgeschrieben, P2-19 (e)): Eine ältere Client-Kopie der Schichtverantwortung aus der Zeit VOR
+     Teil 2 kennt die neuen Felder nicht — sie lässt die eigene Zuordnung weg bzw. schickt [] oder schichtmodelle: []. Seit
+     die eigene Person die Felder sieht, liest die Rückfüllung (rechte.mjs, personenRueckfuellen/listeRueckfuellen:
+     „sichtbar, aber nicht mitgeschickt = gelöscht“) das als Löschung: 403 statt 200 (Basis 87473f12: 200), fail-closed,
+     Bestand byte-gleich, Neuladen löst es. VOR PRODUKTIVSETZEN TEIL 2: entweder die Rückfüllregel für die SV anpassen
+     (P2-19 (e) B) oder Deploy-Hinweis „Clients neu laden“. */
+  it("Gegenprobe: aktuelle Kopie der Schichtverantwortung, nur eigenes Telefon geändert = 200, Zuordnungen und Modelle bleiben", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["SV"] });
+    const a = await putMit(token, "SV", (m) => { pers(m, "s1").telefon = "0301234"; });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    await unveraendert(raum, "SV Telefon");
+  });
+  for (const [fall, aendern, text] of [
+    ["eigene Zuordnung fehlt", (m) => { delete pers(m, "s1").schichtmodellZuordnungen; }, "An der eigenen Person ist schichtmodellZuordnungen der Leitung vorbehalten."],
+    ["eigene Zuordnung []", (m) => { pers(m, "s1").schichtmodellZuordnungen = []; }, "An der eigenen Person ist schichtmodellZuordnungen der Leitung vorbehalten."],
+    ["schichtmodelle []", (m) => { m.schichtmodelle = []; }, "Änderungen an schichtmodelle sind der Leitung vorbehalten."],
+    ["beides wie vor Teil 2", (m) => { delete pers(m, "s1").schichtmodellZuordnungen; m.schichtmodelle = []; }, null],
+  ]) {
+    it(`Schichtverantwortung, ältere Kopie (${fall}) mit geändertem eigenem Telefon: 403, Bestand byte-gleich`, async () => {
+      const { raum, token } = await neuerRaum({ rollen: ["SV"] });
+      const vorher = JSON.stringify(await gespeichert(raum));
+      const a = await putMit(token, "SV", (m) => { pers(m, "s1").telefon = "0301234"; aendern(m); });
+      expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(403);
+      if (text) expect(a.text).toBe(text);
+      else expect(a.text).toMatch(/der Leitung vorbehalten/);
+      expect(JSON.stringify(await gespeichert(raum))).toBe(vorher);
+    });
+  }
   it("Schichtverantwortung: eigene Zuordnung geändert = 403 wie jedes Leitungsfeld, nichts gespeichert", async () => {
     const { raum, token } = await neuerRaum({ rollen: ["SV"] });
     const a = await putMit(token, "SV", (m) => { pers(m, "s1").schichtmodellZuordnungen[0].versatz = 0; });
@@ -374,4 +408,18 @@ describe("4. Differenz alt/neu über Zufallsbestände (alle Rollen)", () => {
     expect(geprueft).toBeGreaterThan(2000);
     expect(eigeneGesehen, "die neue Sicht kam im Zufall vor").toBeGreaterThan(80);
   }, 240000);
+  /* Review #372 N4: echter Vergleich ALT gegen NEU für die Rollen ohne neue Sicht. Der Hash stammt aus dem Lauf mit
+     server/lib/sicht.mjs von 87473f12 (vor Q4) über dieselben 40 Zufallsbestände (Seed 815, feste Daten, keine Uhr). */
+  it("Golden-Hash alt/neu: PL, LT, KU, BR, BT bit-gleich mit dem Stand vor Q4", () => {
+    const r = zufall(815);
+    const h = createHash("sha256");
+    for (let n = 0; n < 40; n += 1) {
+      const b = zufallsBestand(r);
+      for (const rolle of ["planer", "leitung", "kunde", "betriebsrat", "betreiber"]) {
+        const ids = ["betreiber", "kunde"].includes(rolle) ? [null] : b.mandanten[0].personen.map((p) => p.id);
+        for (const ich of ids) h.update(JSON.stringify(bestandFuerRolle(b, { rolle, person: ich, betrieb: 0, einheit: null })));
+      }
+    }
+    expect(h.digest("hex")).toBe(GOLDEN_ALT);
+  });
 });

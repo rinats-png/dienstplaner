@@ -49,8 +49,15 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    und nur deren Modelle, ohne Wann/Wer/Version. Fremde Personen, Betriebsrat (auch an der eigenen Person), Betreiber: nicht
    sichtbar. Mitgeschickt wirkungslos bzw. (Schichtverantwortung) 403 wie jedes Leitungsfeld; unverändert Zurückgeschicktes
    behält den gespeicherten Stand. Ein vom Betreiber neu angelegter Betrieb bekommt die Felder nicht. RB-1 bis RB-5 unverändert.
+   Die Schreibregeln (Inhalt und Rechte) sind mit Frage 4 unverändert. **Ausnahme im Verhalten (Review #372 M1):** Seit die
+   Schichtverantwortung die eigene Zuordnung und deren Modelle sieht, wertet ihre Rückfüllung (`rechte.mjs`,
+   „sichtbar, aber nicht mitgeschickt = gelöscht“) eine **ältere Client-Kopie** ohne diese Felder (eigene Zuordnung fehlt
+   oder `[]`, `schichtmodelle: []`) als Löschung: **403 statt 200**, fail-closed, Bestand byte-gleich, Neuladen löst es.
+   Betrifft nur Schichtverantwortliche mit gespeicherter eigener Zuordnung. Vor dem Produktivsetzen: Rückfüllregel anpassen
+   oder Deploy-Hinweis „Clients neu laden“ (ENTSCHEIDUNGSLISTE P2-19 (e); festgeschrieben in `imp6-eigenes-modell`).
 5. **Server setzt Wann/Wer/Version**; mitgeschickte Stempel verfallen. Unverändert Zurückgeschicktes behält den gespeicherten
-   Datensatz. Fehlt ein Feld in der Übermittlung (veraltete Kopie), gilt der gespeicherte Stand (kein 403).
+   Datensatz. Fehlt ein Feld in der Übermittlung (veraltete Kopie), gilt der gespeicherte Stand (kein 403) — außer für die
+   Schichtverantwortung an Feldern, die sie seit Frage 4 sieht (siehe Regel 4, Ausnahme).
 6. **Protokoll**: je angelegtem/geändertem/entferntem Modell bzw. Zuordnung eine Zeile im Betriebsprotokoll (`schichtmodell`)
    nur mit Kennungen (Modell, Person, Zuordnung); keine Namen, Modellnamen oder Zeiträume; höchstens 50 Zeilen je Speichern.
 7. **Dienstarten**: Eine Dienstart, die ein Zyklustag eines Modells noch nennt, lässt sich nicht löschen (403, deutscher Grund).
@@ -109,7 +116,7 @@ noch nicht umgesetzt, reviewt, integriert, auf Staging geprüft oder aktiviert (
 | 1 | Erfüllt seit Teil 2: jede Änderung an einem Tag bis einschließlich heute wird abgewiesen (`historischeSperre`), frühester Wechsel ist morgen. | `imp6-mehrfachmodelle` Abschnitt 4 „Wechsel ab heute“ |
 | 2 | Erfüllt seit Teil 2: vergangene Tage ändern sich nie über diesen Weg; abgeschlossene Monate erst nach dem Wiederöffnen (WP-16c), nicht rückwirkend. | Abschnitt 4 „Vergangenheit“, „abgeschlossener Monat“ |
 | 3 | Strenger als verlangt, solange die Zuordnungen nicht auf die Planrechnung wirken: Eine Änderung in einem freigegebenen Monat wird abgewiesen; Weg ist Rücknahme der Freigabe (Leitung), Änderung, neue Freigabe — also immer eine neue Planfreigabe. Eine Änderung mit Vorlauf, die die Freigabe selbst zurücknimmt, gehört zur Planwirkung (Punkt 6) und ist nicht gebaut. | Abschnitt 4 „freigegebener Monat“ |
-| 4 | **Lesesicht umgesetzt** (Branch `feat/imp6-eigenes-modell`, PR an `integration/release-v4`): `GET /api/bestand` liefert Beschäftigten und der Schichtverantwortung an der eigenen Person die eigenen Zuordnungen (Kennung, Modell, Gültigkeit, Versatz) und im Betrieb nur die Modelle dieser Zuordnungen (Kennung, Name, Zyklustage), jeweils ohne Wann/Wer/Version; fremde Personen nie; Betriebsrat und Betreiber nichts; Planung, Leitung, Kundenrolle unverändert. Schreibregeln unverändert. **Nicht gebaut:** eine Anzeige in der Oberfläche (die Modelle wirken noch nicht auf den Plan, eine Anzeige „Mein Schichtmodell“ neben einem anders gerechneten Plan wäre irreführend), Selbstauskunft (Punkt 7). Offene Abgrenzungen: ENTSCHEIDUNGSLISTE P2-19. | `imp6-eigenes-modell` (Matrix, Schreibweg, Teilweg, Differenz alt/neu); `imp6-mehrfachmodelle` Abschnitt 1 (umgestellt); `rechtematrix-zeilen` |
+| 4 | **Lesesicht umgesetzt** (Branch `feat/imp6-eigenes-modell`, PR an `integration/release-v4`): `GET /api/bestand` liefert Beschäftigten und der Schichtverantwortung an der eigenen Person die eigenen Zuordnungen (Kennung, Modell, Gültigkeit, Versatz) und im Betrieb nur die Modelle dieser Zuordnungen (Kennung, Name, Zyklustage), jeweils ohne Wann/Wer/Version; fremde Personen nie; Betriebsrat und Betreiber nichts; Planung, Leitung, Kundenrolle unverändert. Schreibregeln (Inhalt, Rechte) unverändert; ältere Client-Kopie der Schichtverantwortung ohne die neuen Felder: 403 statt 200 (Regel 4, Ausnahme; P2-19 (e)). **Nicht gebaut:** eine Anzeige in der Oberfläche (die Modelle wirken noch nicht auf den Plan, eine Anzeige „Mein Schichtmodell“ neben einem anders gerechneten Plan wäre irreführend), Selbstauskunft (Punkt 7). Offene Abgrenzungen: ENTSCHEIDUNGSLISTE P2-19. | `imp6-eigenes-modell` (Matrix, Schreibweg, Teilweg, Differenz alt/neu); `imp6-mehrfachmodelle` Abschnitt 1 (umgestellt); `rechtematrix-zeilen` |
 | 5 | **Umgesetzt:** Lücken und befristetes Ende werden gespeichert; „keine“ an diesen Tagen. | `imp6-zyklen-grenzfaelle` Q5, `imp6-mehrfachmodelle` Abschnitt 3 „Frage 5“ |
 
 Zusätzlich geprüft (`pruefungen/imp6-zyklen-grenzfaelle.test.js`, Teil von `npm run pruefung:imp6-mehrfachmodelle`):

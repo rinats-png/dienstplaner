@@ -168,6 +168,11 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
    nur SELBST_FELDER), Schichtverantwortung: unverändert zurückgeschickt
    bleibt der gespeicherte Stand, geändert 403 wie jedes Leitungsfeld
    (personenRueckfuellen/schichtRueckfuellen rechnen mit dieser Sicht).
+   Folge (Review #372 M1, P2-19 (e)): Eine ältere Kopie der Schichtver-
+   antwortung ohne diese Felder gilt dort als Löschung — 403 statt 200,
+   Bestand unverändert; Neuladen löst es.
+   Modellnamen sind Freitext der Planung (betriebliche Bezeichnung, keine
+   Personendaten); ein Name eines Modells, das auch andere nutzen, geht mit.
    ------------------------------------------------------------------------ */
 const ZUORDNUNG_FELD = "schichtmodellZuordnungen";
 /** Was an einer eigenen Zuordnung hinausgeht (keine Stempel). */
