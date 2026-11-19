@@ -34,13 +34,13 @@ gelaufen; **teilweise**; **Lücke**. Neu in diesem Auftrag fett.
 
 | # | Bereich | Neu belegt (Test) | Ebene | Stufe vorher → jetzt | Später produktionsnah |
 |---|---|---|---|---|---|
-| 2 | Personal anlegen / bearbeiten / löschen | **H1**: Fehlerfall ohne Namen (Meldung, `aria-invalid`, Fokus, nichts gespeichert); Anlegen mit Eintritt; Wochenstunden in der Akte; „Austritt eintragen“ mit Rückfrage — abgebrochen → nichts, bestätigt (Datum) → Server, Liste „ausgetreten“, Filter „Ausgetreten“. **H2** Rechte: Betriebsrat sieht Liste, kein „Person hinzufügen“/„Importieren“, in der Akte kein „Austritt eintragen“, keine Wochenstunden-Eingabe | Browser + Server | teilweise → **belegt** | — |
+| 2 | Personal anlegen / bearbeiten / löschen | **H1**: Fehlerfall ohne Namen (Meldung, `aria-invalid`, Fokus; „nichts gespeichert“ an der folgenden gültigen Speicherung geprüft: genau eine Person); Anlegen mit Eintritt; Wochenstunden in der Akte; „Austritt eintragen“ mit Rückfrage — abgebrochen → kein Austritt (geprüft, nachdem eine weitere Änderung nachweislich auf dem Server angekommen ist, nicht nach Netzruhe), bestätigt (Datum) → Server, Liste „ausgetreten“, Filter „Ausgetreten“. **H2** Rechte: Betriebsrat sieht Liste, kein „Person hinzufügen“/„Importieren“, in der Akte kein „Austritt eintragen“, keine Wochenstunden-Eingabe | Browser + Server | teilweise → **belegt (ohne endgültiges Löschen)** | endgültiges Löschen (Löschlauf, §5) |
 | 3 | Excel-Import inkl. Fehlerfälle | **I1** Textweg gemischt: fehlerfreie Zeile übernommen (Wochenstunden, Eintritt, Einheit); fehlender Nachname, ungültiges Datum `2025-13-45`, Dublette nicht übernommen; Zähler der Vorschau; Zeile mit neuer Einheit heute fehlerhaft (Befund **B-I1**). **I2** Abbrechen in der Vorschau übernimmt nichts, leer → „Prüfen“ gesperrt | Browser + Server | teilweise → teilweise (Dateiweg weiter aus) | XLSX-Dateiweg im Browser (Schalter `IMPORT_DATEI_AKTIV`/`CENTRIC_IMPORT_AKTIV`, Freigabe nötig) |
-| 4 | Schichtmodelle und Dienstplanung | **H3** Dienstart (Leitung): Fehlerfall Mindestbesetzung leer, Anlegen, Bearbeiten der Zeiten; Planung ohne „Dienstarten“. **H4** Schichtfolge: 3-Wochen-Zyklus mit der neuen Dienstart belegt → alle 30 Tage im Monatsplan, Tagesblatt nennt neue Zeiten und teilt ein (vorher 0 Tage). **H5** Tagesblatt: „Raus“, „+ S“ (Server); Ruhezeit 9 h ausdrücklich → 403. **H5b** Befund **B-H5** | Browser + Server | teilweise → **belegt** (mit Befund B-H5) | — |
+| 4 | Schichtmodelle und Dienstplanung | **H3** Dienstart (Leitung): Fehlerfall Mindestbesetzung leer (danach genau eine Dienstart mit Mindestbesetzung, auch nach dem Abwarten aller PUT der Seite), Anlegen, Bearbeiten der Zeiten; Planung ohne „Dienstarten“. **H4** Schichtfolge: 3-Wochen-Zyklus mit der neuen Dienstart belegt → alle 30 Tage im Monatsplan, Tagesblatt nennt neue Zeiten und teilt ein (vorher 0 Tage). **H5** Tagesblatt: „Raus“, „+ S“ (Serverstand per Poll; „nur angenommene PUT“ erst nach dem Abwarten aller PUT der Seite); Ruhezeit 9 h ausdrücklich über die API → 403. **H5b** Befund **B-H5** | Browser + Server | teilweise → **belegt** (mit Befund B-H5) | — |
 | 7 | Zeiterfassung / Pausen / Zuschläge | **Z1** Ein-/Ausstempeln am Rechner (Frühdienst heute); Pause vorbelegt 30; ungültige Pause 999 → Stempel bleibt, ohne Pause, `PAUSE_UNGUELTIG`; Ist-Zeit bleibt Prüffall (`DAUER_NULL`/`PAUSE_ZU_LANG`, nie still bestätigt); Leitung sieht „Pausenangabe ungültig — ohne Pause gespeichert“. **Z2** Vollschreibweg: Pause `""`, 240, 90 bei 60 min Anwesenheit → **422 `PAUSE_UNGUELTIG`**, nichts gespeichert; 60 → 200. **Z3** Zuschläge im Browser: Sonntag aus dem Plan, Gegenprobe 0,0; „Gearbeitet“ 7,0 durch die Pause | Browser + HTTP-Server | teilweise → **belegt** (Beobachtung B-Z3) | — |
 | 8 | Abrechnung / Exporte | **Z4** „Export“ mit offenem Prüffall: Rückfrage (nennt Prüffall, Tag, „Trotzdem jetzt ausgeben?“); abgebrochen → kein Download; bestätigt → `zuschlaege_2026-11.csv` heruntergeladen und gelesen (Kopf, Zeilen, Werte). „Blatt zum Gegenlesen“ (Lohnausgabe) heruntergeladen: Prüffall „zur Prüfung, Planzeit vorläufig“ gekennzeichnet | Browser (Download) | Lücke → **belegt** | Lohnausgabe-CSV (DATEV) gegen echtes Lohnprogramm |
 | 9 | Rechte- und Mandantentrennung | H2 (Betriebsrat), H3 (Planung ohne Dienstarten); **I3** Leitung des Demo-Betriebs liest ihren Bestand: keine Person/kein Name des Import-Betriebs (Gegenprobe: dort vorhanden) | Browser, HTTP-Server | belegt → belegt (erweitert) | volle Rechtematrix weiter nur CI (`rechtematrix-zeilen`) |
-| 10 | Mobile Bedienung / PWA | **P1** `/sw.js` registriert (Bereich `/`), aktiv, steuert die Seite; `centric-schale-*` und Bestand in `centric-daten-*`; Manifest lesbar. **P2** offline: Neuladen aus dem Gerüst zeigt den gespeicherten Stand der Person statt der Fehlerseite; Befund **B-P2** | Browser (Chromium 390x844, Dienstarbeiter erlaubt) | teilweise → **belegt** (lokal, Chromium) | Installation, iOS/Safari, echtes Gerät, Aktualisierung des Dienstarbeiters |
+| 10 | Mobile Bedienung / PWA | **P1** `/sw.js` registriert (Bereich `/`), aktiv, steuert die Seite; `centric-schale-*` und Bestand in `centric-daten-*`; Manifest lesbar. **P2** offline: Neuladen aus dem Gerüst zeigt den gespeicherten Stand der Person statt der Fehlerseite; Gegenprobe Rechneransicht („Mehr“ → „Rechneransicht“): Leiste „Keine Verbindung“ erscheint; zurück in der Telefonansicht fehlt sie — Befund **B-P2** | Browser (Chromium 390x844, Dienstarbeiter erlaubt) | teilweise → **belegt** (lokal, Chromium) | Installation, iOS/Safari, echtes Gerät, Aktualisierung des Dienstarbeiters |
 | 11 | Wiederholte Anmeldung / Sitzungsablauf | **P3** Abmelden im Browser („Mehr“ → „Abmelden“): Anmeldung erscheint, Bestand aus dem Zwischenspeicher entfernt, altes Merkmal beim Server 401 | Browser | belegt → belegt (erweitert) | Zeitablauf 30 min / 12 h in Echtzeit |
 
 ## 3. Läufe (lokal, 2026-11-20)
@@ -53,9 +53,12 @@ rund 10 s). In der CI läuft die Einrichtung einmal für alle Specs; dort zählt
 | Entwicklung, `E2E_DIST` vorgebaut, Port 3291, je Datei einzeln | rot → grün; Testfehler (Tagesblatt öffnet auf der ersten Dienstart, falscher Pausen-Grenzwert, KPI-Zählung) und die Befunde B-H5, B-I1, B-P2, B-Z3 (§4) | — | 35–134 s je Lauf |
 | Abschluss `npx playwright test e2e/hauptfunktionen- --project=1024x768`, frischer Bau | **grün**: 16 bestanden (H0–H5b, Z0–Z4, I0–I3), 0 rot | 3,9 min | 246 s |
 | Abschluss `npx playwright test e2e/pwa-dienstarbeiter.spec.mjs --project=390x844`, frischer Bau | **grün**: 2 bestanden (P1+P2, P3), 0 rot | 1,0 min | 70 s |
+| Nach Review (#390 H1/H3/H5 an Bedingungen statt Netzruhe; #392 P2 mit Gegenprobe Rechneransicht), frischer Bau, je Datei | **grün**: `hauptfunktionen-personal-plan` 7/7 (1024x768), `pwa-dienstarbeiter` 2/2 (390x844); #391 nur Kommentare/Meldungstexte geändert | 2,6 min / 2,6 min (Rechner zeitgleich ausgelastet) | 172 s / 170 s |
 
-Zusatz der CI-Browserabnahme: rund 4 min Testzeit im Projekt `1024x768` und rund 1 min in `390x844`; in den übrigen
-sechs Projekten werden die Tests übersprungen (Sekundenbruchteile). Der Job hat 40 min Zeitgrenze.
+CI-Laufzeit: Der Job `browser-abnahme` braucht heute rund 25 der 40 min Zeitgrenze. Erwartete Mehrzeit: rund 4–5 min Testzeit
+im Projekt `1024x768` und rund 1 min in `390x844` (CI-Runner mit 2 Kernen eher am oberen Rand); in den übrigen sechs
+Projekten werden die Tests übersprungen (Sekundenbruchteile). Danach rund 30–31 von 40 min — Reserve vorhanden, aber
+weitere schreibende Abläufe sollten in denselben Projekten bleiben.
 
 vitest einzeln (`--maxWorkers=1`): `doku.test.js` grün 5/5, `ci-abdeckung.test.js` grün 8/8. eslint auf den vier neuen Dateien ohne Befund.
 
@@ -72,12 +75,17 @@ der Server nimmt den PUT mit **200** an — Ergebnis: 9 h Ruhezeit nach dem Spä
 Ursache (gelesen, nicht geändert): `server/lib/schutzdurchsetzung.mjs` sammelt die zu prüfenden Zellen nur aus den Schlüsseln
 der **neuen** Abweichungen (`for (const k in neuAbw)`, um Zeile 398); ein entfernter Schlüssel (Rückkehr zur Schichtfolge)
 wird nicht als geänderte Einteilung geprüft, solange die Änderung nicht als strukturell gilt.
-Vorschlag: auch Schlüssel aus `altAbw`, die in `neuAbw` fehlen, als Zelle mit dem Planwert (`undefined`) prüfen; danach H5b
-umkehren (403, Abweichung bleibt `-`).
+
+**Analyse liegt vor** (Koordination, `b-h5-analyse.md`): Kategorie A. Fix Stufe 1: gelöschte Abweichungen ab heute als
+geänderte Zellen mit dem Planwert prüfen; Stufe 2: dasselbe für entfernte Abwesenheiten; Aufwand rund 1,5–2,5 PT. Das
+Fix-Paket wird separat gebaut. Nebenbefund dort: `/api/wiederherstellen` ohne Fachprüfung — Kategorie C, auf die
+Entscheidungsliste. Der Test H5b bleibt bis dahin auf dem heutigen Verhalten und wird **nach der Behebung umgekehrt**
+(403, Abweichung bleibt `-`).
 
 ### B-I1 (Produktfehler, mittel, UX/Import): „Fehlende Einheiten … mit anlegen“ wirkt nicht
 
-Belegt in **I1**. Eine Importzeile mit noch unbekannter Einheit erhält in `importPruefen` (`src/lib/fachlogik.js`, Zeile 2004)
+Belegt in **I1**. Eine Importzeile mit noch unbekannter Einheit erhält in `importPruefen` (`src/lib/fachlogik.js`, Zeile 2004 auf `integration/release-v4` @ `afb1a68b`, nachgezählt mit
+`grep -n`; die Zeile davor prüft „Vorname fehlt“)
 den Fehler „Einheit „…" unbekannt“ und ist damit nicht übernehmbar; gleichzeitig zählt die Vorschau „Neue Einheiten 1“ und
 bietet den (angehakten) Schalter „Fehlende Einheiten und Qualifikationen mit anlegen“ an. `importieren`
 (`src/app/aktionen/stammdaten.js:86`) würde die Einheit anlegen, bekommt die Zeile aber nie. Kein Datenverlust (nichts
@@ -86,7 +94,7 @@ neuer Einheit angelegt).
 
 ### B-P2 (Produktfehler, mittel, Sicherheit der Information): Offline-Hinweis fehlt in der Telefonschale
 
-Belegt in **P2** (390x844, Beschäftigte). Ohne Netz startet die Anwendung aus dem Gerüst und zeigt den gespeicherten Stand —
+Belegt in **P2** (390x844, Beschäftigte; nicht vakuös: dieselbe Seite zeigt die Leiste in der Rechneransicht, die App hat das Offline-Lesen also erkannt). Ohne Netz startet die Anwendung aus dem Gerüst und zeigt den gespeicherten Stand —
 richtig —, aber ohne die Leiste „Keine Verbindung … Der angezeigte Stand wurde … geholt“ (`Offlineleiste`,
 `src/ansichten/speicherlage.jsx`). Sie ist nur im Hauptbereich der Rechneransicht eingehängt (`src/App.jsx`, `<Offlineleiste
 lage={offline} />`), nicht in `MobilSchale`. Der Kommentar in `public/sw.js` verspricht ausdrücklich, dass die Anwendung sagt,
@@ -98,7 +106,7 @@ Belegt in **Z3/Z4**. Die Zuschlagsstunden (Sonntag) eines geplanten Frühdienste
 die gearbeiteten Stunden 7,5: Zuschlagsanteile rechnen die Anwesenheit ohne Pausenabzug
 (`server/lib/isteinfrieren.mjs`, `zuschlagTagAddieren`/`tagesanteile`). Ob das gewollt ist (Pause nicht verortet) oder die
 Pause anteilig abgezogen werden muss (§ 3b EStG: zuschlagsfähig ist tatsächlich geleistete Arbeit), entscheidet die
-Fachseite. Der Test hält 8,0 fest.
+Fachseite. Der Test hält 8,0 fest und ist als „nach fachlicher Klärung ggf. umkehren“ markiert (dann 7,5 in Z3 und Z4).
 
 ### Hinweis zum Auftrag „ungültige Pause 422 PAUSE_UNGUELTIG“
 
