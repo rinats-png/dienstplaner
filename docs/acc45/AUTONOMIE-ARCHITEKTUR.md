@@ -82,7 +82,7 @@ Zwei Wege nach Totalausfall: gleicher Halter mit Zustandsdatei setzt sofort fort
 
 ## 6. Nachweise des Prototyps
 
-`pruefungen/dauerlauf.test.js` (33 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
+`pruefungen/dauerlauf.test.js` (34 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
 
 | Anforderung | Test |
 |---|---|
@@ -108,9 +108,9 @@ Grenze des Beweises: Die Zufallsläufe verwenden eindeutige Halter; ihre Invaria
 
 6. Das Fencing des Workers ist kooperativ: Der Auftrag verlangt `koordination push`, aber ein Worker mit Projektrechten könnte direkt `git push` ausführen. Die Umgebungsvariablen `CENTRIC_KOORD_*` wertet kein Code aus. Die Berechtigungs-Allowlist (§9.3) muss direktes `git push` sperren. Hinzu kommt der bestehende Schutz durch Pull Request, Review und CI.
 7. Prozesssteuerung unter Windows: `beenden` beendet eine gespeicherte PID; nach Neustart kann sie wiederverwendet sein (Prüfung über Startzeit oder Kommandozeile fehlt), der Prozessbaum wird nicht beendet, und `spawn("claude")` ohne Shell scheitert, falls `claude` eine `.cmd`-Datei ist (kein `error`-Listener). Ob `-p @datei` die Datei so einliest, ist ungeprüft.
+8. Ergebnis von `erneuern` wird im Zyklus nicht ausgewertet; ein Fehlschlag zeigt sich erst im nächsten Zyklus.
 9. Die Sperrdatei verkleinert das Rennen zweier gleichzeitiger Starter (erneutes Lesen vor dem Löschen), schließt es bei verwaister Sperre aber nicht vollständig aus; eine nach Neustart wiederverwendete PID hält die Sperre dauerhaft (fail-closed, manuelles Löschen).
 10. Solange alle offenen Pakete nur im Backoff sind (bis 45 Min), hält der Supervisor die Lease und blockiert den Hauptchat; dieser muss dann warten oder den Supervisor abschalten.
-8. Ergebnis von `erneuern` wird im Zyklus nicht ausgewertet; ein Fehlschlag zeigt sich erst im nächsten Zyklus.
 
 ## 8. Aufwand, Verbesserung, Risiken
 

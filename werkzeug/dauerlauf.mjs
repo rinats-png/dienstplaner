@@ -240,8 +240,8 @@ export function sperreNehmen(datei, pid = process.pid, lebt = (p) => { try { pro
     try { writeFileSync(datei, String(pid), { flag: "wx" }); return true; }
     catch {
       let roh = null; try { roh = readFileSync(datei, "utf8"); } catch { /* weg */ }
-      const alt = Number(roh);
-      if (Number.isInteger(alt) && alt !== pid && lebt(alt)) return false;
+      const alt = /^[0-9]+$/.test(roh ?? "") ? Number(roh) : NaN;
+      if (Number.isInteger(alt) && alt > 0 && alt !== pid && lebt(alt)) return false;
       /* Nur löschen, wenn die Sperre seit dem Lesen unverändert ist (verkleinert das Rennen zweier Starter). */
       try { if (readFileSync(datei, "utf8") !== roh) return false; unlinkSync(datei); } catch { return false; }
     }

@@ -101,6 +101,19 @@ describe("Dauerlauf: reiner Kern", () => {
     const v = verbucheErgebnis({ ...z({ epoche: 7 }), laufend: { paketId: "WP-A" } }, { exit: 0, fortschritt: false, ciGruen: null }, new Date(T0), STANDARD);
     expect(v.zustand.versuche["WP-A"].n).toBe(1);
   });
+  it("Verlorenes Schreibrecht zählt nur bei eingefrorenem Puls als Fehlversuch (Kernpfad, auch bei ausgelassenen Zyklen)", () => {
+    const eigen = (o = {}) => ({ epoche: 7, halter: "dauerlauf-a", gueltig_bis: new Date(T0 + 20 * MIN).toISOString(), freigegeben_am: null, ...o });
+    const lauf = (min) => ({ ...leererZustand("dauerlauf-a"), epoche: 7, laufend: { paketId: "WP-A", puls: new Date(T0 - min * MIN).toISOString() } });
+    const jetzt = new Date(T0 + 25 * MIN); // Lease abgelaufen (Ablauf + Zone), Supervisor hat Zyklen ausgelassen
+    const alt = planeSchritt({ jetzt, lease: eigen({ gueltig_bis: new Date(T0).toISOString() }), zustand: lauf(0), kandidaten: ["WP-A"] });
+    expect(alt).toMatchObject({ aktion: "WORKER_BEENDEN", versuchZaehlen: true }); // Puls 25 Min alt
+    const frisch = planeSchritt({ jetzt, lease: eigen({ gueltig_bis: new Date(T0).toISOString() }), zustand: lauf(-24), kandidaten: ["WP-A"] });
+    expect(frisch).toMatchObject({ aktion: "WORKER_BEENDEN", versuchZaehlen: false }); // Puls 1 Min alt
+    const fremd = planeSchritt({ jetzt: new Date(T0 + 5 * MIN), lease: eigen({ halter: "fremd", epoche: 8 }), zustand: lauf(-4), kandidaten: ["WP-A"] });
+    expect(fremd).toMatchObject({ aktion: "WORKER_BEENDEN", versuchZaehlen: false });
+    const kaputt = planeSchritt({ jetzt, lease: { halter: "x" }, zustand: lauf(0), kandidaten: ["WP-A"] });
+    expect(kaputt).toMatchObject({ aktion: "WORKER_BEENDEN", versuchZaehlen: false });
+  });
   it("Abschalter und unlesbare Lease beenden einen laufenden Worker zuerst", () => {
     const mitWorker = { ...leererZustand("dauerlauf-a"), epoche: 7, laufend: { paketId: "WP-A", puls: new Date(T0).toISOString() } };
     expect(planeSchritt({ jetzt: new Date(T0), lease: null, zustand: mitWorker, schalterAus: true, kandidaten: ["WP-A"] }).aktion).toBe("WORKER_BEENDEN");
@@ -167,7 +180,7 @@ describe("Dauerlauf: Zyklen gegen Lease (Speicher im Arbeitsspeicher)", () => {
     expect(uhr.t).toBeLessThan(T0 + 33 * MIN);
   });
 
-  it("Eingefrorener Worker wird als Fehlversuch gezählt (Kostenbremse greift), auch wenn das Schreibrecht zuerst ausläuft", () => {
+  it("Eingefrorener Worker wird als Fehlversuch gezählt (Kostenbremse greift; Hängeschwelle gleich Lease-Dauer)", () => {
     const sp = speicherImSpeicher(); const uhr = { t: T0 };
     const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: ["WP-A"] });
     for (let runde = 1; runde <= STANDARD.maxVersuche && !a.z.gesperrt.includes("WP-A"); runde++) {
