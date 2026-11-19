@@ -97,8 +97,14 @@ export function beiSitzungsende(fn) {
    Server entscheidet (passt → gespeichert, veraltet → gewöhnlicher 409 mit Abgleich). Meldet er einen anderen Inhaber
    (andere Person, anderer Betrieb, anderer Datenraum), wird ALLES der vorherigen Sitzung verworfen (ETag, Eingabe,
    Konfliktsperre) und nichts gesendet. Bis dahin geht nichts der vorherigen Sitzung hinaus. Absichtliches Abmelden
-   (abmelden) löscht den Merker. Am Räumen von abmelden(true) selbst ändert sich nichts. */
-/** @type {{ etag: any, inhaber: string } | null} */
+   (abmelden) löscht den Merker. Am Räumen von abmelden(true) selbst ändert sich nichts.
+   Review #381 (1): Die Prüfung gilt nur für das Merkmal, mit dem das GET hinausging (`fuer`). Wechselt die Anmeldung
+   währenddessen oder bis zum PUT, geht nichts hinaus; die nächste Anmeldung wird neu geprüft. Der Merker fällt erst,
+   wenn ein PUT mit dem geprüften Merkmal beantwortet ist.
+   Bewusste Grenze (Review #381 (4)): Der Inhaber ist die Prüfsumme aus Raum, Betrieb und Person, ohne Rolle und
+   Einheit — dieselbe Person mit anderer Rolle gilt als gleich (die Rechte prüft ohnehin der Server). Sitzungen ohne
+   Person (Betreiber, Kunde) melden keinen Inhaber: dann kein Merker, es bleibt beim bisherigen Verhalten (fail-safe). */
+/** @type {{ etag: any, inhaber: string, fuer: string|null } | null} */
 let vorSitzungsende = null;
 /** Hat die Prüfung nach einer neuen Anmeldung die Eingaben einer anderen Sitzung verworfen? (für nochmalSchreiben) */
 let vorgaengerVerworfen = false;
@@ -111,7 +117,7 @@ function sitzungEndet(gesendet) {
   /* B-L4c: Ein noch ungeprüfter Merker bleibt (auch über eine weitere 401 hinweg, etwa wenn die neue Sitzung vor der
      Prüfung endet); sonst ETag und Inhaber dieser Sitzung — nur mit bekanntem Inhaber. */
   const merker = vorSitzungsende
-    || (gesendet && zugang && typeof zugang.inhaber === "string" && zugang.inhaber ? { etag, inhaber: zugang.inhaber } : null);
+    || (gesendet && zugang && typeof zugang.inhaber === "string" && zugang.inhaber ? { etag, inhaber: zugang.inhaber, fuer: null } : null);
   abmelden(true);
   vorSitzungsende = merker;
   if (!gesendet) return;
@@ -989,11 +995,21 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
  */
 async function sitzungsendeKlaeren() {
   const vor = vorSitzungsende;
+  const gesendet = token;
   const { status, daten, ausSpeicher } = await ruf("bestand");
   if (!vor || vorSitzungsende !== vor) return "unklar";   // inzwischen abgemeldet oder neu gemerkt
+  /* Review #381 (1): Die Antwort gehört zu dem Merkmal, mit dem das GET hinausging — inzwischen anders angemeldet,
+     sagt sie über die jetzige Anmeldung nichts. */
+  if (!gesendet || token !== gesendet) return "unklar";
   if (status !== 200 || ausSpeicher || !daten || typeof daten.inhaber !== "string" || !daten.inhaber) return "unklar";
+  if (daten.inhaber === vor.inhaber) {
+    vor.fuer = gesendet;
+    etag = vor.etag;
+    /* Review #381 (3): wie lies() — ein weiteres Sitzungsende kann ETag und Inhaber wieder merken. */
+    if (zugang) zugang.inhaber = daten.inhaber;
+    return "gleich";
+  }
   vorSitzungsende = null;
-  if (daten.inhaber === vor.inhaber) { etag = vor.etag; return "gleich"; }
   vorgaengerVerwerfen();
   return "fremd";
 }
@@ -1011,6 +1027,19 @@ function vorgaengerVerwerfen() {
   vorgaengerVerworfen = true;
 }
 
+/** B-L4c: Steht die Prüfung für das jetzige Merkmal aus? (Ohne Merkmal: bisheriger Weg, die 401 hält den Auftrag.) */
+const sitzungsendeUngeprueft = () => !!vorSitzungsende && !!token && vorSitzungsende.fuer !== token;
+/** B-L4c: Auftrag nicht senden, ausstehend halten und melden (Prüfung offen oder gescheitert). */
+function pruefungHalten(auftrag, fehler) {
+  gescheitert = { auftrag, lage: { art: fehler ? fehlerart(fehler, null) : "netz",
+    text: String(fehler && fehler.message || "Die Anmeldung ließ sich nicht prüfen."), status: null,
+    zeit: new Date().toISOString() } };
+  if (auftrag.onFehler) { try { auftrag.onFehler({ ...gescheitert.lage, ...(fehler ? { fehler } : {}) }); } catch { /* Anzeige */ } }
+}
+/** Lage nach dem Verwerfen (Review #381 (2)): die Oberfläche meldet sie und lädt neu. */
+const FREMD_LAGE = () => ({ art: "fremd", status: null, zeit: new Date().toISOString(),
+  text: "Mit einem anderen Zugang angemeldet — die nicht gespeicherten Eingaben der vorherigen Sitzung sind verworfen." });
+
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   /* Review #350: nach einem Löschlauf geht kein wartender Auftrag mehr hinaus (auch nicht beim Schließen). */
@@ -1019,20 +1048,15 @@ async function schreibenAusfuehren(beimSchliessen) {
   /* B-L4c: Nach einem Sitzungsende und neuer Anmeldung erst den Inhaber prüfen — vor der Konfliktsperre, damit auch eine
      offene Konfliktfrage der vorherigen Sitzung bei einem anderen Inhaber verworfen wird. Beim Schließen keine Prüfung
      möglich: dann nichts senden, der Auftrag bleibt ausstehend. */
-  if (vorSitzungsende && token) {
+  if (sitzungsendeUngeprueft()) {
     let klar = "unklar", fehler = null;
     unterwegs += 1;
     try { if (!beimSchliessen) klar = await sitzungsendeKlaeren(); }
     catch (e) { fehler = e; }
     finally { unterwegs -= 1; }
-    if (klar === "fremd") return;
-    if (klar !== "gleich") {
-      gescheitert = { auftrag, lage: { art: fehler ? fehlerart(fehler, null) : "netz",
-        text: String(fehler && fehler.message || "Die Anmeldung ließ sich nicht prüfen."), status: null,
-        zeit: new Date().toISOString() } };
-      if (auftrag.onFehler) { try { auftrag.onFehler({ ...gescheitert.lage, ...(fehler ? { fehler } : {}) }); } catch { /* Anzeige */ } }
-      return;
-    }
+    /* Review #381 (2): auch ohne „Noch einmal senden" (Zeitgeber) erfährt die Oberfläche vom Verwerfen. */
+    if (klar === "fremd") { if (auftrag.onFehler) { try { auftrag.onFehler(FREMD_LAGE()); } catch { /* Anzeige */ } } return; }
+    if (klar !== "gleich" || sitzungsendeUngeprueft()) { pruefungHalten(auftrag, fehler); return; }
   }
   /* Konfliktsperre: bis zur Entscheidung nichts senden, auch nicht beim Schließen (ohne Teilweg nie gesetzt). */
   if (konfliktSperre) { konfliktHalten(auftrag); return; }
@@ -1092,12 +1116,18 @@ async function schreibenAusfuehren(beimSchliessen) {
       gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
       if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
     };
+    /* Review #381 (1): unmittelbar vor dem PUT (synchron bis zum fetch in ruf) — inzwischen anders angemeldet und
+       ungeprüft: nichts senden. */
+    if (sitzungsendeUngeprueft()) { pruefungHalten(auftrag, null); return; }
+    const geprueftFuer = vorSitzungsende ? vorSitzungsende.fuer : null;
     auftrag.putGesendet = true;
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
       ...(abbruch ? { signal: abbruch.signal } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
+    /* B-L4c: Der Server hat den PUT mit dem geprüften Merkmal beantwortet — ab hier gilt der ETag-Weg wie immer. */
+    if (geprueftFuer && vorSitzungsende && vorSitzungsende.fuer === geprueftFuer) vorSitzungsende = null;
     const daten = antwort.daten;
     if (status === 409 && daten && Array.isArray(daten.fachbefunde)) {
       /* WP-22: kein Konflikt mit einem fremden Stand, sondern warnende

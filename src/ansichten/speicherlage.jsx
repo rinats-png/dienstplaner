@@ -106,6 +106,14 @@ export const SPEICHERLAGE = {
       + "Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
     verwerfen: true,
   },
+  /* Befund B-L4c / Review #381 (2): Nach dem Sitzungsende hat sich ein anderer Zugang angemeldet (anderer Inhaber).
+     speicher.js hat nichts gesendet und die Eingaben der vorherigen Sitzung verworfen; die Seite lädt neu. */
+  fremd: {
+    titel: "Mit einem anderen Zugang angemeldet — die Seite lädt neu",
+    text: "Die nicht gespeicherten Eingaben der vorherigen Sitzung gehören nicht zu diesem Zugang. Sie wurden nicht "
+      + "gesendet und sind verworfen. Nach dem Neuladen siehst du den Stand dieses Zugangs.",
+    neuladen: true, automatischNeuladen: true,
+  },
   unbekannt: {
     titel: "Die letzten Änderungen sind nicht gespeichert",
     text: "Woran es lag, ist von hier aus nicht zu erkennen. Ein zweiter Versuch ist "
@@ -135,11 +143,17 @@ function fremdVerworfen(melde) {
 
 export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null }) {
   const [laeuft, setLaeuft] = useState(false);
+  /* Review #381 (1): Enter im Codefeld und der Knopf dürfen keinen zweiten Vorgang starten, solange einer läuft. */
+  const laeuftJetzt = useRef(false);
   const [code, setCode] = useState("");
+  const automatisch = !!(lage && SPEICHERLAGE[lage.art] && SPEICHERLAGE[lage.art].automatischNeuladen);
+  useEffect(() => { if (automatisch) window.location.reload(); }, [automatisch]);
   if (!lage) return null;
   const l = SPEICHERLAGE[lage.art] || SPEICHERLAGE.unbekannt;
 
   const nochmal = async () => {
+    if (laeuftJetzt.current) return;
+    laeuftJetzt.current = true;
     setLaeuft(true);
     try {
       const erg = await SP.nochmalSchreiben();
@@ -147,7 +161,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
       if (erg.ok) { aufGeloest(); melde("Gespeichert."); }
       else melde("Es hat wieder nicht geklappt.");
     } catch { melde("Es hat wieder nicht geklappt."); }
-    finally { setLaeuft(false); }
+    finally { laeuftJetzt.current = false; setLaeuft(false); }
   };
 
   /* Anmelden muss in diesem Reiter geschehen, nicht in einem zweiten.
@@ -158,7 +172,8 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
      zurück" führte deshalb geradewegs in dieselbe Meldung. */
   const anmeldenUndSenden = async () => {
     const c = code.trim().toUpperCase();
-    if (!c) return;
+    if (!c || laeuftJetzt.current) return;
+    laeuftJetzt.current = true;
     setLaeuft(true);
     try {
       await SP.anmelden(c, SP.wirdGemerkt());
@@ -167,7 +182,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
       if (erg.ok) { aufGeloest(); melde("Angemeldet und gespeichert."); }
       else melde("Angemeldet — das Speichern hat trotzdem nicht geklappt.");
     } catch (e) { melde(String(e.message || e)); }
-    finally { setLaeuft(false); }
+    finally { laeuftJetzt.current = false; setLaeuft(false); }
   };
 
   const sichern = () => {
@@ -195,7 +210,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
           {laeuft ? "Wird gesendet …" : "Noch einmal senden"}</Btn>}
         {l.neuAnmelden && (<>
           <Inp value={code} onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") anmeldenUndSenden(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !laeuft) anmeldenUndSenden(); }}
             placeholder="Zugangscode" aria-label="Zugangscode"
             style={{ width: 190, textTransform: "uppercase", letterSpacing: ".05em" }} />
           <Btn kind="primary" size="sm" disabled={laeuft || !code.trim()} onClick={anmeldenUndSenden}>
