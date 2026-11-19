@@ -31,7 +31,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSyn
 import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { entscheide, lesen, schreiben, gepruefterPush } from "./koordination.mjs";
+import { entscheide, lesen, schreiben } from "./koordination.mjs";
 import { naechste } from "./naechstes-paket.mjs";
 import { paketeAus } from "./acc45-backlog.mjs";
 
