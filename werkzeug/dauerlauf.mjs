@@ -32,7 +32,7 @@
    Worker-Kopie einrichten (nur lokale Git-Konfiguration DIESER Kopie):
      node werkzeug/dauerlauf.mjs --worker-kopie-einrichten <pfad>
    Scharf (nur auf ausdrückliche Betreiberfreigabe, siehe docs/acc45/AUTONOMIE-ARCHITEKTUR.md §9):
-     CENTRIC_AUTONOMIE=ja node werkzeug/dauerlauf.mjs --scharf --halter dauerlauf-<kennung> --worker-kopie <pfad>
+     CENTRIC_AUTONOMIE=ja node werkzeug/dauerlauf.mjs --scharf --halter dauerlauf-<kennung> --worker-kopie <pfad> --claude-pfad <absolut>
        --limit-starts-tag N --limit-starts-gesamt N --limit-laeufe-paket N --limit-laufzeit-min N --limit-wall-min-tag N
        [--zyklen N] [--intervall-ms 180000]
    Testmodus (nur mit lokalem Bare-Remote in KOORD_REMOTE): CENTRIC_DAUERLAUF_TESTWORKER=<node-Skript> ersetzt claude,
@@ -134,14 +134,19 @@ const RANG = Object.freeze({ BLOCKED: 0, READY: 1, IN_PROGRESS: 2, REVIEW: 3, CI
     Fortschritt nur mit Beleg: neuer offener/gemergter PR, neue Commits auf einem offenen PR, Merge, oder ein SSOT-Schritt
     am geänderten Integrationskopf, der (falls PR-Daten vorliegen) durch einen nicht geschlossenen PR gedeckt ist.
     Scheinfortschritt (wird NICHT gezählt): geschlossener PR, Status rückwärts, SSOT-PR ohne existierenden PR,
-    Statussprung ohne PR-Beleg. Ein geänderter Integrationskopf allein ist kein Fortschritt des Pakets. */
+    Statussprung ohne PR-Beleg. Ein geänderter Integrationskopf allein ist kein Fortschritt des Pakets.
+    Gemessen wird Aktivität, nicht Qualität: auch ein leerer Worker-PR oder ein PR eines Menschen mit der Paket-ID
+    zählt; begrenzt wird das nur durch laeufeJePaket und die übrigen Limits. */
 export function fortschritt(vorher, nachher) {
   const gruende = []; const schein = []; const hinweise = [];
   if (!vorher || !nachher) return { fortschritt: false, ciGruen: null, gruende, schein: ["Messung fehlt (fail-closed)"], hinweise };
   const prsDa = Array.isArray(nachher.prs);
   const alt = new Map((vorher.prs || []).map((p) => [p.nummer, p]));
   const belege = [];
-  for (const p of nachher.prs || []) {
+  /* PR-Vergleich nur, wenn BEIDE Messungen PR-Daten haben: sonst wäre jeder vorhandene PR "neu". */
+  const prVergleich = Array.isArray(vorher.prs) && prsDa;
+  if (prsDa && !prVergleich) hinweise.push("PR-Daten nur in der zweiten Messung: PRs nicht verglichen");
+  for (const p of prVergleich ? nachher.prs : []) {
     const a = alt.get(p.nummer);
     if (p.zustand === "CLOSED") { if (a?.zustand !== "CLOSED") schein.push(`PR #${p.nummer} geschlossen ohne Merge`); continue; }
     if (!a) { gruende.push(`neuer PR #${p.nummer} (${p.zustand})`); belege.push(p); continue; }
@@ -322,7 +327,14 @@ export function zyklus(eff, zustand, cfg = STANDARD) {
     }
     case "WORKER_BEENDEN": {
       const b = eff.worker.beenden(z.laufend);
-      if (b && b.beendet === false) eff.protokoll({ ereignis: `Worker nicht beendet: ${b.grund}` });
+      if (b && b.beendet === false) {
+        /* Nicht sicher beendet (Identität unklar, Beenden gescheitert): Auftrag bleibt eingetragen, damit kein zweiter
+           Worker startet; jeder Zyklus versucht erneut zu beenden. Eskalation einmal je Auftrag. */
+        eff.protokoll({ ereignis: `Worker nicht beendet: ${b.grund}` });
+        if (!z.laufend.beendenFehlgeschlagen) eff.eskalieren?.(`Worker ${z.laufend.paketId} (PID ${z.laufend.pid}) nicht beendbar: ${b.grund}; keine neuen Starts bis zur Klärung`);
+        z = { ...z, laufend: { ...z.laufend, beendenFehlgeschlagen: (z.laufend.beendenFehlgeschlagen || 0) + 1 } };
+        break;
+      }
       if (plan.versuchZaehlen) abschliessen({ exit: 1 });
       else z = { ...z, laufend: null, nutzung: zaehleLaufzeit(z.nutzung, jetzt, z.laufend) };
       break;
@@ -419,7 +431,18 @@ export function messeFortschritt(paketId, { ssot = ssotAmKopf, gh = ghListe } = 
   return { kopf: s?.kopf ?? null, paket, prs: liste ? prsFuerPaket(liste, paketId, paket?.pr || []) : null };
 }
 
-function echteEffekte({ zustandsDatei, logDatei, abschalter, eskalationsDatei, workerKopie, test }) {
+/** Fester claude-Pfad für den scharfen Lauf (Pflicht): absolut, vorhanden, ausführbare Art. Keine PATH-Suche
+    (Schutz gegen PATH-Kapern und gegen eine untergeschobene claude.exe vor claude.cmd). */
+export function pruefeClaudePfad(pfad, { plattform = process.platform, existiert = existsSync } = {}) {
+  if (!pfad) return { ok: false, grund: "--claude-pfad <absoluter Pfad> fehlt (keine PATH-Suche im scharfen Lauf)" };
+  const pp = plattform === "win32" ? path.win32 : path.posix;
+  if (!pp.isAbsolute(pfad)) return { ok: false, grund: "--claude-pfad muss absolut sein" };
+  const a = loeseBefehl(pfad, { plattform, existiert });
+  if (!a) return { ok: false, grund: "--claude-pfad: Datei fehlt oder ist nicht startbar" };
+  return { ok: true, datei: a.datei, art: a.art };
+}
+
+function echteEffekte({ zustandsDatei, logDatei, abschalter, eskalationsDatei, workerKopie, test, claudePfad }) {
   const dir = path.dirname(zustandsDatei);
   const jetzt = test?.uhrDatei ? () => new Date(readFileSync(test.uhrDatei, "utf8").trim()) : () => new Date();
   const log = (z) => appendFileSync(logDatei, JSON.stringify({ zeit: jetzt().toISOString(), ...z }) + "\n");
@@ -437,11 +460,11 @@ function echteEffekte({ zustandsDatei, logDatei, abschalter, eskalationsDatei, w
       starten(paketId, h, epoche) {
         const schutz = pruefeWorkerKopie(workerKopie);
         if (!schutz.ok) return { ok: false, grund: `Worker-Kopie ungeschützt: ${schutz.maengel.join("; ")}` };
-        let befehl = claudeBefehl({ paketId, halter: h, epoche });
+        let befehl = { ...claudeBefehl({ paketId, halter: h, epoche }), datei: claudePfad };
         if (test?.worker) befehl = { datei: process.execPath, args: [test.worker] };
         else {
           if (hilfeGeprueft === null) {
-            const plan = startPlan(loeseBefehl("claude"), ["--help"]);
+            const plan = startPlan(loeseBefehl(claudePfad), ["--help"]);
             let hilfe = "";
             try { hilfe = plan.ok ? execFileSync(plan.datei, plan.args, { encoding: "utf8", timeout: 60000, windowsHide: true, ...plan.optionen }) : ""; } catch { hilfe = ""; }
             hilfeGeprueft = optionenPruefen(hilfe, befehl.args);
@@ -482,7 +505,9 @@ async function haupt(argv) {
   const arg = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
   const halter = arg("--halter") || "dauerlauf-probe";
   if (argv.includes("--worker-kopie-einrichten")) {
-    const r = richteWorkerKopieEin(path.resolve(arg("--worker-kopie-einrichten") || ""));
+    const ziel = arg("--worker-kopie-einrichten");
+    if (!ziel || ziel.startsWith("--")) { console.error("ABGELEHNT: --worker-kopie-einrichten braucht den Pfad eines eigenständigen Klons"); return 1; }
+    const r = richteWorkerKopieEin(path.resolve(ziel));
     console.log(r.ok ? "OK: Worker-Kopie geschützt (nur lokale Konfiguration dieser Kopie)" : `FEHLER: ${r.maengel.join("; ")}`);
     return r.ok ? 0 : 1;
   }
@@ -497,6 +522,8 @@ async function haupt(argv) {
   if (!l.ok) { console.error(`ABGELEHNT: ohne vollständige Limits kein Start: ${l.fehler.join("; ")}`); return 1; }
   const test = istTestmodus() ? { worker: process.env.CENTRIC_DAUERLAUF_TESTWORKER || null, uhrDatei: process.env.CENTRIC_DAUERLAUF_UHRDATEI || null } : null;
   if (!test && (process.env.CENTRIC_DAUERLAUF_TESTWORKER || process.env.CENTRIC_DAUERLAUF_UHRDATEI)) { console.error("ABGELEHNT: Testworker/Testuhr nur mit lokalem Bare-Remote (KOORD_REMOTE)"); return 1; }
+  const claude = test ? null : pruefeClaudePfad(arg("--claude-pfad"));
+  if (claude && !claude.ok) { console.error(`ABGELEHNT: ${claude.grund}`); return 1; }
   const workerKopie = arg("--worker-kopie") ? path.resolve(arg("--worker-kopie")) : null;
   const schutz = pruefeWorkerKopie(workerKopie);
   if (!schutz.ok) { console.error(`ABGELEHNT: Worker-Kopie nicht geschützt: ${schutz.maengel.join("; ")} (einrichten: --worker-kopie-einrichten <pfad>)`); return 1; }
@@ -508,7 +535,7 @@ async function haupt(argv) {
   const sperre = path.join(dir, "sperre.lock");
   if (!sperreNehmen(sperre)) { console.error("ABGELEHNT: ein anderer Supervisor-Prozess läuft (Sperrdatei)"); return 1; }
   process.on("exit", () => { try { unlinkSync(sperre); } catch { /* egal */ } });
-  const eff = echteEffekte({ zustandsDatei, logDatei: path.join(dir, "protokoll.jsonl"), eskalationsDatei: path.join(dir, "eskalation.jsonl"), abschalter: path.join(dir, "AUTONOMIE-AUS"), workerKopie, test });
+  const eff = echteEffekte({ zustandsDatei, logDatei: path.join(dir, "protokoll.jsonl"), eskalationsDatei: path.join(dir, "eskalation.jsonl"), abschalter: path.join(dir, "AUTONOMIE-AUS"), workerKopie, test, claudePfad: claude?.datei ?? null });
   let z = existsSync(zustandsDatei) ? JSON.parse(readFileSync(zustandsDatei, "utf8")) : leererZustand(halter);
   if (z.halter !== halter) { console.error("ABGELEHNT: Zustandsdatei gehört zu anderem Halter"); return 1; }
   const cfg = { ...STANDARD, limits: l.limits };

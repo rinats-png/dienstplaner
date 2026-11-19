@@ -3,11 +3,11 @@
   "zweck": "Berechtigungen fuer headless Worker (claude -p) des Dauerlaufs, ohne --dangerously-skip-permissions. Worker schreiben nur ueber node werkzeug/koordination.mjs push (Fencing).",
   "form": "Muster im Stil der Claude-Code-Berechtigungsregeln (permissions.allow / permissions.deny). Bei Uebernahme in eine Konfiguration gegen die dann gueltige Syntax pruefen; deny hat Vorrang vor allow.",
   "allow": [
-    "Read",
-    "Grep",
-    "Glob",
-    "Edit",
-    "Write",
+    "Read(<WORKER_KOPIE>/**)",
+    "Grep(<WORKER_KOPIE>/**)",
+    "Glob(<WORKER_KOPIE>/**)",
+    "Edit(<WORKER_KOPIE>/**)",
+    "Write(<WORKER_KOPIE>/**)",
     "Bash(git status:*)",
     "Bash(git diff:*)",
     "Bash(git log:*)",
@@ -67,12 +67,21 @@
     "Edit(.claude/**)",
     "Write(.git/**)",
     "Write(.github/workflows/**)",
-    "Write(.claude/**)"
+    "Write(.claude/**)",
+    "Edit(<WORKER_KOPIE>/.git/**)",
+    "Write(<WORKER_KOPIE>/.git/**)",
+    "Edit(<WORKER_KOPIE>/werkzeug/koordination.mjs)",
+    "Write(<WORKER_KOPIE>/werkzeug/koordination.mjs)"
   ],
   "grenzen": [
     "Musterlisten fuer Shell-Befehle sind umgehbar (Skriptdateien schreiben und mit node ausfuehren, Umgebungsvariablen, Aliase). Sie senken das Risiko versehentlicher Direkt-Pushes, ersetzen aber keine Sicherheitsgrenze.",
     "Der technische Push-Schutz der Worker-Kopie (werkzeug/dauerlauf-schutz.mjs: gesperrte pushurl, pre-push-Hook mit Einmalmarke) ist ebenfalls umgehbar (--no-verify, hooksPath zuruecksetzen).",
     "Wirksam bleiben: Fencing ueber Epoche, gesperrte Ziele im Wrapper (main, integration, release, koordination), PR-Pflicht, Review, CI und serverseitiger Branch-Schutz.",
-    "gh pr create braucht einen gh-Token in der Worker-Umgebung; mit ihm waere auch ein HTTPS-Push moeglich. Ein Token nur mit PR-Rechten (fein granuliert) waere vorzuziehen."
-  ]
+    "gh pr create braucht einen gh-Token in der Worker-Umgebung; mit ihm waere auch ein HTTPS-Push moeglich. Ein Token nur mit PR-Rechten (fein granuliert) waere vorzuziehen.",
+    "Edit/Write sind auf die Worker-Kopie begrenzt; ausserhalb (Haupt-Repo, Zustandsordner des Supervisors mit Zaehlern und Sperre, Benutzerprofil) darf der Worker nichts schreiben. Ohne diese Grenze koennte er die Zaehlerdatei zuruecksetzen."
+  ],
+  "platzhalter": {
+    "<WORKER_KOPIE>": "absoluter Pfad des eigenstaendigen, mit --worker-kopie-einrichten geschuetzten Klons; Lesen/Schreiben nur darin (Pfadgrenze)"
+  },
+  "startbefehl": "Der Supervisor startet claude im scharfen Lauf nur ueber --claude-pfad <absoluter Pfad> (Pflicht, keine PATH-Suche: Schutz gegen PATH-Kapern und gegen eine untergeschobene claude.exe vor claude.cmd)."
 }

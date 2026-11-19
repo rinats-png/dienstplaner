@@ -6,7 +6,7 @@ import path from "node:path";
 import { entscheide, lesen, schreiben, gepruefterPush } from "../werkzeug/koordination.mjs";
 import {
   STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel, sperreNehmen,
-  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX,
+  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX, pruefeClaudePfad,
 } from "../werkzeug/dauerlauf.mjs";
 import { loeseBefehl, startPlan, optionenPruefen, istDerselbe } from "../werkzeug/dauerlauf-prozess.mjs";
 
@@ -328,6 +328,12 @@ describe("Lücke 2: Fortschritt misst der Supervisor selbst", () => {
     expect(nurKopf.hinweise.join(" ")).toMatch(/nicht für dieses Paket/);
   });
 
+  it("PR-Daten nur nachher (gh beim Start nicht erreichbar): vorhandene PRs zählen NICHT als neu", () => {
+    const f = fortschritt(m({ prs: null }), m({ prs: [pr(7), pr(8, { zustand: "MERGED" })] }));
+    expect(f).toMatchObject({ fortschritt: false, gruende: [] });
+    expect(f.hinweise.join(" ")).toMatch(/nicht verglichen/);
+  });
+
   it("nichts geändert: kein Fortschritt, kein Schein; fehlende Messung ist fail-closed", () => {
     expect(fortschritt(m({ prs: [pr(7)] }), m({ prs: [pr(7)] }))).toMatchObject({ fortschritt: false, gruende: [], schein: [] });
     expect(fortschritt(null, m()).fortschritt).toBe(false);
@@ -433,6 +439,36 @@ describe("Lücke 1 (Kern): Pfadauflösung, sichere Argumente, Optionen, Prozess-
     expect(istDerselbe(g, { lebt: true, startzeit: null, kommandozeile: "claude" })).toBe(false); // unklar: nicht beenden
     expect(istDerselbe({ ...g, startzeit: null }, { lebt: true, startzeit: g.startzeit })).toBe(false);
     expect(istDerselbe(g, { lebt: false })).toBe(false);
+  });
+});
+
+describe("Nicht beendbarer Worker und fester claude-Pfad", () => {
+  it("beendet:false (Identität unklar): Auftrag bleibt eingetragen, Eskalation einmal, nie ein zweiter Start", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 }; const schalter = { aus: false };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, schalter, kandidaten: ["WP-A"] });
+    a.schritt(); a.schritt();
+    a.eff.worker.beenden = () => ({ beendet: false, grund: "Identität unklar" });
+    schalter.aus = true;
+    for (let i = 0; i < 4; i++) { uhr.t += MIN; expect(a.schritt()).toBe("WORKER_BEENDEN"); }
+    expect(a.z.laufend).toMatchObject({ paketId: "WP-A", beendenFehlgeschlagen: 4 });
+    expect(a.w.eskalationen.filter((g) => /nicht beendbar/.test(g))).toHaveLength(1);
+    schalter.aus = false;
+    for (let i = 0; i < 10; i++) { uhr.t += 5 * MIN; a.schritt(); } // Lease läuft ab: weiter nur Beendeversuche
+    expect(a.w.starts).toHaveLength(1);
+    expect(a.z.laufend.paketId).toBe("WP-A");
+    /* sobald das Beenden gelingt, ist der Weg wieder frei */
+    a.eff.worker.beenden = () => ({ beendet: true });
+    a.schritt();
+    expect(a.z.laufend).toBeNull();
+  });
+
+  it("pruefeClaudePfad: Pflicht, absolut, vorhanden, keine PATH-Suche", () => {
+    const opt = { plattform: "win32", existiert: (f) => ["C:\\npm\\claude.cmd", "C:\\npm\\claude"].includes(f) };
+    expect(pruefeClaudePfad(undefined, opt).ok).toBe(false);
+    expect(pruefeClaudePfad("claude", opt).ok).toBe(false); // relativ: würde PATH durchsuchen
+    expect(pruefeClaudePfad("C:\\npm\\claude", opt).ok).toBe(false); // ohne Endung nicht startbar
+    expect(pruefeClaudePfad("C:\\npm\\fehlt.exe", opt).ok).toBe(false);
+    expect(pruefeClaudePfad("C:\\npm\\claude.cmd", opt)).toEqual({ ok: true, datei: "C:\\npm\\claude.cmd", art: "cmd" });
   });
 });
 
@@ -543,7 +579,10 @@ describe("Dauerlauf: nie zwei schreibberechtigte Koordinatoren (Zufallsläufe, S
       const r = zufall(seed); const sp = speicherImSpeicher(); const uhr = { t: T0 };
       const schalter = { aus: false };
       let nummer = 0;
-      const neu = () => { nummer += 1; return supervisor({ halter: `dauerlauf-${nummer}`, speicher: sp, uhr, schalter, kandidaten: ["WP-A", "WP-B", "WP-C"] }); };
+      /* Hohe Limits: die Zufallsläufe prüfen Lease-Invarianten, die Nutzungsgrenzen dürfen die Abdeckung nicht ausdünnen. */
+      const cfg = { ...STANDARD, limits: { startsTag: 1e6, startsGesamt: 1e6, laeufeJePaket: 1e6, laufzeitMin: 1e9, wallMinTag: 1e9 } };
+      const neu = () => { nummer += 1; const s = supervisor({ halter: `dauerlauf-${nummer}`, speicher: sp, uhr, schalter, kandidaten: ["WP-A", "WP-B", "WP-C"], cfg }); alleJe.push(s); return s; };
+      const alleJe = [];
       const alle = [neu(), neu(), neu()];
       const verwaist = []; // Worker abgestürzter Supervisoren leben weiter
       let hoechsteEpoche = 0; let schreibVersuche = 0; let schreibErfolge = 0;
@@ -579,6 +618,7 @@ describe("Dauerlauf: nie zwei schreibberechtigte Koordinatoren (Zufallsläufe, S
       expect(hoechsteEpoche).toBeGreaterThan(1); // der Lauf hat Wechsel erzwungen
       expect(schreibVersuche).toBeGreaterThan(0);
       expect(schreibErfolge).toBeLessThanOrEqual(schreibVersuche);
+      expect(alleJe.reduce((n, x) => n + x.w.starts.length, 0)).toBeGreaterThan(15); // genug Worker-Starts für Aussagekraft
     });
   }
 });

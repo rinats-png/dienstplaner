@@ -6,12 +6,12 @@
 // Verzeichnisse. Kein echtes Remote, kein claude-Aufruf, keine globale Konfiguration.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync, spawn } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prozessAdapter, prozessInfo, baumBeenden } from "../werkzeug/dauerlauf-prozess.mjs";
-import { richteWorkerKopieEin, pruefeWorkerKopie } from "../werkzeug/dauerlauf-schutz.mjs";
+import { richteWorkerKopieEin, pruefeWorkerKopie, kopieGrund } from "../werkzeug/dauerlauf-schutz.mjs";
 import { entscheide, leaseCommit } from "../werkzeug/koordination.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -94,7 +94,7 @@ describe("Lücke 1: Prozess-Adapter mit echtem Attrappen-Kindprozess", () => {
     await warte(() => existsSync(path.join(d, "w.log")) && readFileSync(path.join(d, "w.log"), "utf8").includes("puls"), 30000, "Puls im Log");
     expect(adapter.status(r)).toMatchObject({ laeuft: true });
     expect(lebt(enkel)).toBe(true);
-    expect(adapter.beenden(r)).toMatchObject({ beendet: true });
+    expect(adapter.beenden(r), "beenden").toMatchObject({ beendet: true });
     await warte(() => !lebt(r.pid) && !lebt(start.pid) && !lebt(enkel), 30000, "Prozessbaum beendet");
     expect(adapter.status(r).laeuft).toBe(false);
   });
@@ -115,12 +115,42 @@ describe("Lücke 1: Prozess-Adapter mit echtem Attrappen-Kindprozess", () => {
     const adapter = prozessAdapter();
     const alt = { pid: fremd.pid, startzeit: "2001-01-01T00:00:00.000Z", merkmal: "node" }; // gespeicherter Worker von früher
     expect(adapter.status(alt)).toMatchObject({ laeuft: false, grund: expect.stringMatching(/wiederverwendet/) });
-    expect(adapter.beenden(alt)).toMatchObject({ beendet: false });
-    expect(adapter.beenden({ ...alt, startzeit: info.startzeit, merkmal: "claude-gibt-es-hier-nicht" })).toMatchObject({ beendet: false });
+    /* Worker längst weg, PID gehört einem anderen Prozess: als beendet gemeldet, fremder Prozess bleibt unangetastet */
+    expect(adapter.beenden(alt)).toMatchObject({ beendet: true, fremd: true });
+    expect(adapter.beenden({ ...alt, startzeit: info.startzeit, merkmal: "claude-gibt-es-hier-nicht" })).toMatchObject({ beendet: true, fremd: true });
+    /* Identität unklar (Startzeit nicht ermittelbar): weder beendet noch als beendet gemeldet */
+    const blind = prozessAdapter({ info: () => ({ lebt: true, startzeit: null, kommandozeile: null }) });
+    expect(blind.beenden({ pid: fremd.pid, startzeit: info.startzeit, merkmal: "setInterval" })).toMatchObject({ beendet: false });
+    expect(blind.status({ pid: fremd.pid, startzeit: info.startzeit, merkmal: "setInterval" })).toMatchObject({ laeuft: true });
     await schlafen(300);
     expect(lebt(fremd.pid)).toBe(true);
     expect(adapter.beenden({ pid: fremd.pid, startzeit: info.startzeit, merkmal: "setInterval" })).toMatchObject({ beendet: true });
     await warte(() => !lebt(fremd.pid), 30000, "beendet");
+  });
+
+  it("unbekannte Startzeit beim Start: Prozess wird sofort über das eigene Handle beendet, Start gilt als gescheitert", async () => {
+    const d = neuesVerzeichnis("blindstart");
+    const gesehen = [];
+    const adapter = prozessAdapter({ info: (pid) => { gesehen.push(pid); return { lebt: true, startzeit: null, kommandozeile: null }; } });
+    const r = adapter.starten({ befehl: { datei: process.execPath, args: [path.join(basis, "attrappe.mjs")] }, cwd: d, env: { ...process.env, ATTRAPPE_DIR: d }, logDatei: path.join(d, "w.log") });
+    expect(r).toMatchObject({ ok: false, grund: expect.stringMatching(/Startzeit/) });
+    offen.push(gesehen[0]);
+    await warte(() => !lebt(gesehen[0]), 30000, "sofort beendet");
+    await schlafen(1500);
+    for (const z of zeilen(path.join(d, "starts.log"))) { offen.push(z.pid); expect(lebt(z.pid)).toBe(false); } // auch ein schon gestarteter Worker
+  });
+
+  it("gefälschte Exit-Datei bei lebendem Worker: Exit-Code nicht vertraut, Prozessbaum beendet", async () => {
+    const d = neuesVerzeichnis("faelschung");
+    const adapter = prozessAdapter();
+    const r = adapter.starten({ befehl: { datei: process.execPath, args: [path.join(basis, "attrappe.mjs")] }, cwd: d, env: { ...process.env, ATTRAPPE_DIR: d }, logDatei: path.join(d, "w.log") });
+    expect(r.ok).toBe(true);
+    offen.push(r.pid);
+    const start = await warte(() => zeilen(path.join(d, "starts.log"))[0], 30000, "Worker gestartet");
+    offen.push(start.pid);
+    writeFileSync(r.exitDatei, JSON.stringify({ exit: 0 })); // vom Worker gefälscht
+    expect(adapter.status(r)).toMatchObject({ laeuft: false, ergebnis: { exit: null }, grund: expect.stringMatching(/nicht vertraut/) });
+    await warte(() => !lebt(r.pid) && !lebt(start.pid), 30000, "Baum beendet");
   });
 
   it("Startfehler werfen nie: unbekannter Befehl und nicht ausführbare Datei liefern ok:false oder ein beendetes Ergebnis", async () => {
@@ -150,7 +180,7 @@ describe("Lücke 1: Prozess-Adapter mit echtem Attrappen-Kindprozess", () => {
     const enkel = Number(await warte(() => existsSync(path.join(d, `enkel-${start.pid}.txt`)) && readFileSync(path.join(d, `enkel-${start.pid}.txt`), "utf8")));
     expect(await warte(() => existsSync(path.join(d, `prompt-${start.pid}.txt`)) && readFileSync(path.join(d, `prompt-${start.pid}.txt`), "utf8"), 30000, "Auftrag über stdin durch cmd.exe")).toBe("per stdin\n");
     await warte(() => existsSync(path.join(d, "w.log")) && readFileSync(path.join(d, "w.log"), "utf8").includes("puls"), 30000, "Ausgabe durch cmd.exe im Log");
-    expect(adapter.beenden(r)).toMatchObject({ beendet: true });
+    expect(adapter.beenden(r), "beenden").toMatchObject({ beendet: true });
     await warte(() => !lebt(r.pid) && !lebt(start.pid) && !lebt(enkel), 30000, "cmd-Baum beendet");
   });
 });
@@ -215,6 +245,34 @@ describe("Lücke 3: Worker darf nur über koordination.mjs push schreiben (lokal
     expect(wrapper(kopie, remote, ["--halter", "dauerlauf-a", "--epoche", "1", "--ziel", "refs/heads/integration/release-v4", "--quelle", q])).toBe(3);
   });
 
+  it("nur eigenständige Klone: git worktree, Haupt-Repo, Unterordner und leerer Pfad werden abgelehnt, ohne dass sich eine Konfiguration ändert", () => {
+    const d = neuesVerzeichnis("worktree");
+    const haupt = path.join(d, "haupt");
+    git(["init", "-q", haupt]);
+    git(["-c", "user.name=t", "-c", "user.email=t@t.invalid", "commit", "-q", "--allow-empty", "-m", "start"], haupt);
+    git(["remote", "add", "origin", bareRemote()], haupt);
+    const wt = path.join(d, "wt");
+    git(["worktree", "add", "-q", wt], haupt);
+    const konfig = () => git(["config", "--list", "--local"], haupt);
+    const vorher = konfig();
+    const r = richteWorkerKopieEin(wt, { hauptWurzel: haupt });
+    expect(r).toMatchObject({ ok: false, maengel: [expect.stringMatching(/worktree/)] });
+    expect(konfig()).toBe(vorher); // keine pushurl, kein hooksPath, kein geleerter credential.helper im Haupt-Repo
+    expect(existsSync(path.join(haupt, ".git", "centric-hooks"))).toBe(false);
+    expect(richteWorkerKopieEin(haupt, { hauptWurzel: haupt })).toMatchObject({ ok: false, maengel: [expect.stringMatching(/Haupt-Repository/)] });
+    expect(konfig()).toBe(vorher);
+    expect(kopieGrund("")).toMatch(/kein Pfad/);
+    expect(kopieGrund(WURZEL)).toBeTruthy(); // das Repo, aus dem der Supervisor läuft, nie als Worker-Kopie
+    mkdirSync(path.join(haupt, "unter"), { recursive: true });
+    expect(kopieGrund(path.join(haupt, "unter"))).toMatch(/nicht die Wurzel/);
+    expect(pruefeWorkerKopie(wt, { hauptWurzel: haupt }).ok).toBe(false);
+    /* CLI: Einrichten ohne Pfad wird abgelehnt (früher: path.resolve("") = aktuelles Repo) */
+    let code = 0;
+    try { execFileSync(process.execPath, [DAUERLAUF, "--worker-kopie-einrichten"], { cwd: haupt, stdio: "pipe" }); } catch (e) { code = e.status; }
+    expect(code).toBe(1);
+    expect(konfig()).toBe(vorher);
+  });
+
   it("Grenze (ehrlich): ein Worker mit freier Shell kann den Hook umgehen; der Schutz ist eine Hürde, kein Sicherheitsrand", () => {
     const remote = bareRemote();
     const kopie = workerKopie(remote);
@@ -232,6 +290,8 @@ describe("Wiederanlauf in isolierter Umgebung: echter Supervisor-Prozess, harter
   it("scharfer Lauf verweigert ohne Limits, Testworker ohne Bare-Remote und ungeschützte Worker-Kopie", () => {
     const lauf = (args, env) => { try { execFileSync(process.execPath, [DAUERLAUF, "--scharf", "--halter", "dauerlauf-x", ...args], { cwd: WURZEL, env: { ...process.env, CENTRIC_AUTONOMIE: "ja", CENTRIC_AUTONOMIE_DIR: neuesVerzeichnis("verweigert"), ...env }, stdio: "pipe" }); return { code: 0 }; } catch (e) { return { code: e.status, aus: String(e.stderr) }; } };
     expect(lauf([])).toMatchObject({ code: 1, aus: expect.stringMatching(/ohne vollständige Limits/) });
+    expect(lauf(LIMITS, { KOORD_REMOTE: "" })).toMatchObject({ code: 1, aus: expect.stringMatching(/--claude-pfad/) }); // ohne festen Pfad keine PATH-Suche
+    expect(lauf([...LIMITS, "--claude-pfad", "claude"], { KOORD_REMOTE: "" })).toMatchObject({ code: 1, aus: expect.stringMatching(/absolut/) });
     const ohneRemote = { KOORD_REMOTE: "", CENTRIC_DAUERLAUF_TESTWORKER: path.join(basis, "attrappe.mjs") };
     expect(lauf(LIMITS, ohneRemote)).toMatchObject({ code: 1, aus: expect.stringMatching(/nur mit lokalem Bare-Remote/) });
     const remote = bareRemote();
@@ -250,7 +310,7 @@ describe("Wiederanlauf in isolierter Umgebung: echter Supervisor-Prozess, harter
     const uhr = (min) => writeFileSync(uhrDatei, new Date(T0 + min * MIN).toISOString());
     const env = { ...process.env, CENTRIC_AUTONOMIE: "ja", KOORD_REMOTE: remote, CENTRIC_DAUERLAUF_TESTWORKER: path.join(basis, "attrappe.mjs"), CENTRIC_DAUERLAUF_UHRDATEI: uhrDatei, ATTRAPPE_DIR: adir, ATTRAPPE_PUSH_BEIM_START: "1" };
     const supervisor = (dir, halter, zyklen, intervall) => {
-      const k = spawn(process.execPath, [DAUERLAUF, "--scharf", "--halter", halter, "--worker-kopie", kopie, "--zyklen", String(zyklen), "--intervall-ms", String(intervall), ...LIMITS], { cwd: WURZEL, env: { ...env, CENTRIC_AUTONOMIE_DIR: dir }, stdio: "ignore", windowsHide: true });
+      const k = spawn(process.execPath, [DAUERLAUF, "--scharf", "--halter", halter, "--worker-kopie", kopie, "--zyklen", String(zyklen), "--intervall-ms", String(intervall), ...LIMITS], { cwd: WURZEL, env: { ...env, CENTRIC_AUTONOMIE_DIR: dir }, stdio: ["ignore", openSync(path.join(dir, "supervisor.log"), "a"), openSync(path.join(dir, "supervisor.log"), "a")], windowsHide: true });
       offen.push(k.pid);
       return { k, ende: new Promise((r) => k.on("exit", (code) => r(code))) };
     };

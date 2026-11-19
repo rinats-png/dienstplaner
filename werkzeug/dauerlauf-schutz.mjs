@@ -20,8 +20,10 @@
    sowie die Berechtigungs-Allowlist (Vorschlag: docs/acc45/AUTONOMIE-ALLOWLIST-VORSCHLAG.json).
    ========================================================================== */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { gitPfad } from "./dauerlauf-prozess.mjs";
 
 export const UNGUELTIGE_PUSHURL = "ungueltig://push-nur-ueber-koordination-mjs";
 export const HOOK_KENNUNG = "CENTRIC-WORKER-PUSHSCHUTZ v1";
@@ -37,12 +39,39 @@ echo "ABGELEHNT: direkter git push im Worker-Kontext. Nur: node werkzeug/koordin
 exit 1
 `;
 
-const git = (cwd, args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-const gitOpt = (cwd, args) => { try { return git(cwd, args); } catch { return ""; } };
-const hookDir = (kopie) => path.resolve(kopie, git(kopie, ["rev-parse", "--git-path", "centric-hooks"]));
+const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/* git mit absolutem Pfad (PATH des Supervisors, nie das Verzeichnis der Worker-Kopie) und Arbeitsverzeichnis des
+   Supervisors; die Kopie wird nur über -C angesprochen (eine dort abgelegte git.exe wird so nie gestartet). */
+const git = (kopie, args) => execFileSync(gitPfad(), ["-C", kopie, ...args], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const gitOpt = (kopie, args) => { try { return git(kopie, args); } catch { return ""; } };
+const norm = (p) => { let r = path.resolve(p); try { r = realpathSync.native(r); } catch { /* bleibt */ } return process.platform === "win32" ? r.toLowerCase() : r; };
+const hookDir = (kopie) => path.join(git(kopie, ["rev-parse", "--absolute-git-dir"]), "centric-hooks");
 
-/** Richtet eine Worker-Arbeitskopie ein (nur lokale Konfiguration dieser Kopie). */
-export function richteWorkerKopieEin(kopie, { remoteName = "origin" } = {}) {
+/** Grund, warum ein Pfad NICHT als Worker-Kopie taugt, sonst null. Schreibt nichts.
+    Zulässig ist nur die Wurzel eines eigenständigen Klons: kein `git worktree` (geteiltes Git-Verzeichnis; jede
+    `git config` landete in der gemeinsamen Konfiguration des Haupt-Repos), nicht das Haupt-Repo selbst. */
+export function kopieGrund(kopie, { hauptWurzel = WURZEL } = {}) {
+  if (typeof kopie !== "string" || !kopie.trim()) return "kein Pfad zur Worker-Kopie angegeben";
+  if (!existsSync(kopie)) return "Worker-Kopie fehlt";
+  let oben, gitDir, gemeinsam;
+  try {
+    oben = git(kopie, ["rev-parse", "--show-toplevel"]);
+    gitDir = git(kopie, ["rev-parse", "--absolute-git-dir"]);
+    gemeinsam = git(kopie, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  } catch { return "keine Git-Arbeitskopie"; }
+  if (norm(oben) !== norm(kopie)) return "Pfad ist nicht die Wurzel einer Arbeitskopie";
+  if (norm(gitDir) !== norm(gemeinsam)) return "geteiltes Git-Verzeichnis (git worktree): nur eigenständige Klone zulässig";
+  let hauptGemeinsam = null;
+  try { hauptGemeinsam = git(hauptWurzel, ["rev-parse", "--path-format=absolute", "--git-common-dir"]); } catch { /* kein Repo */ }
+  if (hauptGemeinsam && norm(hauptGemeinsam) === norm(gemeinsam)) return "Worker-Kopie ist das Haupt-Repository (oder teilt dessen Git-Verzeichnis)";
+  return null;
+}
+
+/** Richtet eine Worker-Arbeitskopie ein (nur lokale Konfiguration dieser Kopie). Lehnt ungeeignete Pfade ab, bevor
+    irgendetwas geschrieben wird. */
+export function richteWorkerKopieEin(kopie, { remoteName = "origin", hauptWurzel = WURZEL } = {}) {
+  const grund = kopieGrund(kopie, { hauptWurzel });
+  if (grund) return { ok: false, maengel: [grund] };
   const dir = hookDir(kopie);
   mkdirSync(dir, { recursive: true });
   const hook = path.join(dir, "pre-push");
@@ -51,22 +80,23 @@ export function richteWorkerKopieEin(kopie, { remoteName = "origin" } = {}) {
   const echt = gitOpt(kopie, ["config", "--get", `remote.${remoteName}.url`]);
   if (!echt) throw new Error(`Remote ${remoteName} fehlt in der Worker-Kopie`);
   const helfer = gitOpt(kopie, ["config", "--get-all", "credential.helper"]).split(/\r?\n/).filter(Boolean).at(-1) || "";
-  git(kopie, ["config", "core.hooksPath", dir]);
-  git(kopie, ["config", `remote.${remoteName}.pushurl`, UNGUELTIGE_PUSHURL]);
-  git(kopie, ["config", "centric.pushurl", echt]);
-  if (helfer) git(kopie, ["config", "centric.credentialhelper", helfer]);
-  git(kopie, ["config", "credential.helper", ""]);
-  return pruefeWorkerKopie(kopie, { remoteName });
+  git(kopie, ["config", "--local", "core.hooksPath", dir]);
+  git(kopie, ["config", "--local", `remote.${remoteName}.pushurl`, UNGUELTIGE_PUSHURL]);
+  git(kopie, ["config", "--local", "centric.pushurl", echt]);
+  if (helfer) git(kopie, ["config", "--local", "centric.credentialhelper", helfer]);
+  git(kopie, ["config", "--local", "credential.helper", ""]);
+  return pruefeWorkerKopie(kopie, { remoteName, hauptWurzel });
 }
 
 /** Prüft, ob die Schutzeinrichtung vollständig ist. { ok, maengel } — ohne ok startet der Supervisor keinen Worker. */
-export function pruefeWorkerKopie(kopie, { remoteName = "origin" } = {}) {
+export function pruefeWorkerKopie(kopie, { remoteName = "origin", hauptWurzel = WURZEL } = {}) {
   const maengel = [];
-  if (!kopie || !existsSync(kopie)) return { ok: false, maengel: ["Worker-Kopie fehlt"] };
+  const grund = kopieGrund(kopie, { hauptWurzel });
+  if (grund) return { ok: false, maengel: [grund] };
   let dir;
   try { dir = hookDir(kopie); } catch { return { ok: false, maengel: ["keine Git-Arbeitskopie"] }; }
   const hp = gitOpt(kopie, ["config", "--get", "core.hooksPath"]);
-  if (path.resolve(kopie, hp || ".") !== dir) maengel.push("core.hooksPath zeigt nicht auf den Schutz-Hook");
+  if (!hp || norm(path.resolve(kopie, hp)) !== norm(dir)) maengel.push("core.hooksPath zeigt nicht auf den Schutz-Hook");
   const hook = path.join(dir, "pre-push");
   if (!existsSync(hook) || !readFileSync(hook, "utf8").includes(HOOK_KENNUNG)) maengel.push("pre-push-Hook fehlt oder ist verändert");
   if (gitOpt(kopie, ["config", "--get", `remote.${remoteName}.pushurl`]) !== UNGUELTIGE_PUSHURL) maengel.push("pushurl ist nicht gesperrt");
