@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 312,2–536,25 PT in 84 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 311,7–534,75 PT in 83 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -44,7 +44,6 @@ flowchart LR
     WP_ST1["WP-ST1<br/>BLOCKED"]
     ABN_A2["ABN-A2<br/>BLOCKED"]
     ABN_A3["ABN-A3<br/>BLOCKED"]
-    ABN_A4["ABN-A4<br/>IN_PROGRESS"]
     ABN_S2["ABN-S2<br/>BLOCKED"]
     ABN_C1["ABN-C1<br/>BLOCKED"]
     WP_ZEIT["WP-ZEIT<br/>IN_PROGRESS"]
@@ -508,7 +507,7 @@ flowchart LR
 | QS-5 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
 | ABN-A2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
 | ABN-A3 | acc45 | P2 | 1–3 | 1–3 | – | – | opus | BLOCKED |
-| ABN-A4 | acc45 | P2 | 1–3 | 0,5–1,5 | – | – | opus | IN_PROGRESS |
+| ABN-A4 | acc45 | P2 | 1–3 | 0 | – | – | opus | INTEGRATED |
 | ABN-S2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
 | ABN-C1 | acc45 | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
 | ABN-B3 | acc45 | P3 | 0,25–0,5 | 0 | – | – | opus | INTEGRATED |
