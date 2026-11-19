@@ -17,6 +17,10 @@ import { CODEFELD } from "./lib/eingabefelder.js";
 import { useVerlustSperre } from "./verlustweg.jsx";
 import { halter as verlustHalter } from "./lib/verlustweg-halter.js";
 import { v4EinstiegAnwenden, v4EinstiegVerlassen, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
+import { sitzungsendeBeobachten, sitzungsendeHinweisAbholen } from "./app/sitzungsende.js";
+
+/* Befund B-L4: der Hinweis nach dem Neuladen wegen Sitzungsende — einmal je Laden gelesen (nicht im Zustand, StrictMode). */
+const SITZUNGSENDE_BEIM_START = sitzungsendeHinweisAbholen();
 
 /* ==========================================================================
    EINSTIEG
@@ -642,7 +646,8 @@ function Einstieg() {
   const [laeuft, setLaeuft] = useState(false);
   const [begruessung, setBegruessung] = useState(null);
   const [demos, setDemos] = useState(null);
-  const [mitCode, setMitCode] = useState(false);
+  /* B-L4: nach dem Sitzungsende (src/app/sitzungsende.js) gleich die Anmeldung mit Code und dem Hinweis. */
+  const [mitCode, setMitCode] = useState(!!SITZUNGSENDE_BEIM_START);
   const [betreiber, setBetreiber] = useState(false);
   const [selbst, setSelbst] = useState(false);
   const [preise, setPreise] = useState(false);
@@ -829,6 +834,9 @@ function Einstieg() {
                   ? "Für die Verwaltung von Mandanten, Zugängen und Rechnungen. Die Sitzung läuft nach zwei Stunden ab."
                   : "Der Zugangscode wurde dir von deinem Betrieb mitgeteilt. Er gilt zwölf Stunden."}
               </p>
+              {SITZUNGSENDE_BEIM_START && (
+                <p role="status" style={{ fontSize: 14, color: C.text, lineHeight: 1.6, margin: "-12px 0 20px" }}>
+                  {SITZUNGSENDE_BEIM_START}</p>)}
               <label htmlFor="code" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
                 color: C.dim, marginBottom: 7 }}>Zugangscode</label>
               <input id="code" {...CODEFELD} value={code} autoFocus autoCapitalize="characters"
@@ -953,6 +961,10 @@ function Einstieg() {
    Er fragt nichts ab und zeigt nichts an. Schlägt die Einrichtung fehl —
    privater Modus, alter Browser —, ändert sich für die Anwendung nichts. */
 SP.offlineEinrichten();
+
+/* Befund B-L4: Endet die Sitzung beim Server (401), erscheint die Anmeldung — ohne Ausstehendes über ein Neuladen,
+   mit Ausstehendem bleibt die Seite (Leiste „nicht gespeichert": Anmelden und senden, Als Datei sichern). */
+sitzungsendeBeobachten();
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode><Einstieg /></React.StrictMode>);

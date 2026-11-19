@@ -154,7 +154,7 @@
     "pruefung:sicherung-ablage": "vitest run pruefungen/sicherung-ablage.test.js",
     "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
     "pruefung:token": "vitest run pruefungen/token.test.js",
-    "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",
+    "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js pruefungen/sitzungsende-anmeldung.test.js",
     "pruefung:post": "vitest run pruefungen/post.test.js",
     "pruefung:mail-push-produktion": "vitest run pruefungen/mail-push-produktion.test.js --testTimeout=60000",
     "pruefung:testraum-mail": "vitest run pruefungen/testraum-mail.test.js",
