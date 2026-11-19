@@ -18,9 +18,9 @@
          Ablauf), das alte Merkmal bekommt 401. L4a: schon das erste Laden zeigt die Anmeldung mit dem Hinweis „Deine
          Sitzung ist beendet“, kein Ladegerüst (Befund B-L4, behoben durch #378). L4b: Wiederanmeldung mit demselben
          Code direkt im angezeigten Feld zeigt die Daten wieder. L4c: Sitzung endet bei offener Seite mit ausstehender
-         Eingabe → kein Neuladen, Leiste „nicht gespeichert“ mit Anmeldung im selben Reiter. „Anmelden und senden“
-         endet heute im Dialog „Gleichzeitig bearbeitet“ (Befund B-L4c, offen, ausdrücklich geprüft; bei Behebung
-         umkehren).
+         Eingabe → kein Neuladen, Leiste „nicht gespeichert“ mit Anmeldung im selben Reiter; „Anmelden und senden“
+         speichert mit dem alten ETag, genau ein PUT, kein Konfliktdialog (Befund B-L4c, behoben durch #381).
+         L4d: dasselbe, aber eine andere Person meldet sich an → Eingabe verworfen, nichts gesendet, Neuladen.
      L5  Personalimport-Fehlerfall im Browser (Text einfügen; der Dateiimport ist ausgeschaltet, IMPORT_DATEI_AKTIV und
          CENTRIC_IMPORT_AKTIV): fehlerhafte Zeile wird erkannt und nicht übernommen, nur die gültige landet auf dem Server;
          nur fehlerhafte Zeilen → Übernahme gesperrt.
@@ -297,15 +297,14 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
   /* Sitzung endet bei offener Seite, während eine Eingabe aussteht (Browserfassung von „O“ in
      pruefungen/sitzungsende-anmeldung.test.js): kein Neuladen — die Eingabe liegt nur in diesem Reiter —, der PUT
      bekommt 401, die Leiste „nicht gespeichert“ bietet die Anmeldung mit Code im selben Reiter und „Als Datei sichern“.
-     Eingabe: Dichte der eigenen Person (wie L3). Der Schritt „Anmelden und senden“ zeigt Befund B-L4c (unten). */
-  test("L4c Sitzung endet bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste mit Anmeldung (B-L4c offen)", async ({ page }) => {
-    /* B-L4c erzeugt heute den Dialog „Gleichzeitig bearbeitet“; die Eigenprüfung des Fixtures gilt hier nicht. */
-    await page.removeLocatorHandler(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" }));
-    const puts = [];
-    page.on("response", async (r) => {
-      if (r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/bestand")
-        puts.push([r.status(), r.status() === 409 ? ((await r.json().catch(() => ({}))).text || "") : ""]);
-    });
+     Eingabe: Dichte der eigenen Person (wie L3). Gemeinsamer Anfang von L4c und L4d. */
+  async function offeneSeiteSitzungsende(page) {
+    const puts = [];      // [status, etag im Rumpf] je PUT-Antwort
+    const putAnfragen = []; // etag im Rumpf je hinausgehender PUT-Anfrage
+    const istPut = (q) => q.method() === "PUT" && new URL(q.url()).pathname === "/api/bestand";
+    const etagVon = (q) => { try { return JSON.parse(q.postData() || "{}").etag ?? null; } catch { return null; } };
+    page.on("request", (q) => { if (istPut(q)) putAnfragen.push(etagVon(q)); });
+    page.on("response", (r) => { if (istPut(r.request())) puts.push([r.status(), etagVon(r.request())]); });
     await anmeldenBrowser(page, C.p1);
     await geheZu(page, "Einstellungen");
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
@@ -313,7 +312,7 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
     const vorher = await dichteP1();
     const ziel = vorher === "kompakt" ? "komfortabel" : "kompakt";
     /* Marke im Fensterzustand: ein Neuladen würde sie löschen. */
-    await page.evaluate(() => { window.__l4cOhneNeuladen = true; });
+    await page.evaluate(() => { window.__l4OhneNeuladen = true; });
     /* Reihenfolge fest, ohne Zeitbezug: erst die Eingabe, ihr PUT wird angehalten, DANN endet die Sitzung, dann geht der
        PUT (mit dem alten Merkmal) weiter → 401, während die Eingabe aussteht. Endete die Sitzung vor der Eingabe, könnte
        eine Hintergrundanfrage die 401 ohne Ausstehendes bekommen und die App neu laden (CI-Zeitverhalten). */
@@ -330,23 +329,49 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
     freigeben();
     const leiste = page.getByRole("alert").filter({ hasText: "Die Sitzung ist abgelaufen" });
     await expect(leiste).toBeVisible({ timeout: 20000 });
-    expect(await page.evaluate(() => window.__l4cOhneNeuladen === true), "kein Neuladen bei ausstehender Eingabe").toBe(true);
+    expect(await page.evaluate(() => window.__l4OhneNeuladen === true), "kein Neuladen bei ausstehender Eingabe").toBe(true);
     await expect(leiste.getByRole("button", { name: "Als Datei sichern" })).toBeVisible();
     expect(await dichteP1(), "Server unverändert, solange nicht angemeldet").toBe(vorher);
-    expect(puts.map((p) => p[0]), "der ausstehende PUT bekam 401").toContain(401);
-    /* Befund B-L4c (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-19.md §4, offen): „Anmelden und senden“ meldet sich an, der
-       erneute PUT geht aber OHNE Versionsangabe hinaus (abmelden(true) in src/speicher.js räumt bei der 401 auch den
-       ETag) → 409 „ohne Versionsangabe nicht überschreibbar“ → Dialog „Gleichzeitig bearbeitet“. Nichts geht verloren
-       (Server unverändert, Eingabe im Reiter), aber der angebotene Weg führt in den Konfliktdialog. Dieser Test prüft
-       ausdrücklich den HEUTIGEN Zustand (kein test.fail); bei Behebung umkehren: Leiste verschwindet, Server hat `ziel`. */
+    expect(puts.map((p) => p[0]), "der ausstehende PUT bekam 401").toEqual([401]);
+    const etag401 = puts[0][1];
+    expect(etag401, "der abgewiesene PUT trug eine Versionsangabe").toBeTruthy();
+    return { leiste, puts, putAnfragen, dichteP1, vorher, ziel, etag401 };
+  }
+
+  /* Befund B-L4c, behoben durch #381: Nach dem Sitzungsende merkt sich src/speicher.js den ETag samt Inhaber der Sitzung;
+     meldet die neue Anmeldung denselben Inhaber, geht der Auftrag MIT dem alten ETag hinaus. Vorher ging er ohne
+     Versionsangabe hinaus → 409 → Dialog „Gleichzeitig bearbeitet“. Die Eigenprüfung des Fixtures (dieser Dialog = Fehler)
+     bleibt hier bewusst aktiv. */
+  test("L4c Sitzung endet bei offener Seite mit ausstehender Eingabe: Anmelden und senden speichert mit altem ETag (B-L4c behoben)", async ({ page }) => {
+    const { leiste, puts, dichteP1, ziel, etag401 } = await offeneSeiteSitzungsende(page);
     await leiste.getByLabel("Zugangscode").fill(C.p1);
     await leiste.getByRole("button", { name: "Anmelden und senden" }).click();
-    await expect(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" })).toBeVisible({ timeout: 20000 });
-    await expect.poll(() => puts.filter((p) => p[0] === 409).map((p) => p[1]), { timeout: 10000 })
-      .toEqual([expect.stringContaining("ohne Versionsangabe")]);
-    expect(await dichteP1(), "nichts überschrieben").toBe(vorher);
+    await expect(leiste).toBeHidden({ timeout: 20000 });
+    await expect.poll(dichteP1, { timeout: 20000 }).toBe(ziel);
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    expect(puts.slice(1), "genau ein erfolgreicher PUT, mit dem alten ETag").toEqual([[200, etag401]]);
+    await expect(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" })).toHaveCount(0);
     expect(await page.evaluate(() => sessionStorage.getItem("centric:token")), "wieder angemeldet").toBeTruthy();
-    expect(await page.evaluate(() => window.__l4cOhneNeuladen === true), "weiterhin dieselbe Seite").toBe(true);
+    expect(await page.evaluate(() => window.__l4OhneNeuladen === true), "weiterhin dieselbe Seite").toBe(true);
+  });
+
+  /* Gegenfall zu L4c (#381): Nach dem Sitzungsende meldet sich in der Leiste eine ANDERE Person an (Beschäftigte a1,
+     anderer Inhaber). Die Eingaben der vorherigen Sitzung gehören nicht zu diesem Zugang: nichts wird gesendet, sie
+     werden verworfen, die Seite lädt neu (Lage „fremd“). Die Meldung selbst steht nur bis zum Neuladen und wird
+     deshalb nicht abgefragt; geprüft werden ihre Folgen. */
+  test("L4d Sitzungsende, dann Anmeldung einer anderen Person: Eingabe verworfen, nichts gesendet, Neuladen", async ({ page }) => {
+    const { leiste, putAnfragen, dichteP1, vorher } = await offeneSeiteSitzungsende(page);
+    const anfragenVorher = putAnfragen.length;
+    await leiste.getByLabel("Zugangscode").fill(C.a1);
+    await leiste.getByRole("button", { name: "Anmelden und senden" }).click();
+    await expect.poll(() => page.evaluate(() => window.__l4OhneNeuladen === true).catch(() => true), { timeout: 20000 })
+      .toBe(false);
+    await page.waitForSelector(".m-tabs, .kopfleiste", { timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    expect(putAnfragen.length, "nach der fremden Anmeldung keine PUT-Anfrage").toBe(anfragenVorher);
+    expect(await dichteP1(), "Server unverändert").toBe(vorher);
+    await expect(page.getByRole("alert").filter({ hasText: "Die Sitzung ist abgelaufen" })).toHaveCount(0);
+    expect(await page.evaluate(() => sessionStorage.getItem("centric:token")), "als a1 angemeldet").toBeTruthy();
   });
 
   test("L5 Personalimport-Fehlerfall im Browser: fehlerhafte Zeile nicht übernommen, nur fehlerhaft → gesperrt", async ({ page }) => {

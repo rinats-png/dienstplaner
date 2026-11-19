@@ -35,7 +35,7 @@ Stufen: **belegt** = Kernablauf lokal nachgewiesen (Browser oder HTTP mit echtem
 | 8 | Abrechnung / Exporte | `monatsabschluss-*` (gelesen); axe-Fläche `abrechnungsdaten-leitung` (gelesen, lief im 1024er-Lauf mit); B10 | Unit, HTTP-in, Browser (nur Ansicht/axe) | Abschluss friert Ist ein; Ansicht Abrechnungsdaten barrierefrei | Export-Datei (Download, Inhalt) im Browser; Lohnausgabe Ende-zu-Ende | Lücke (Export) |
 | 9 | Rechte- und Mandantentrennung | `mandanten.test.js`, `mandanten-session.test.js`, `abnahme-a-ablauf.test.js` (gefälschte Rümpfe/Kennungen/ETags), `abnahme-c-module.test.js`; `e2e/abnahme-a-ablauf.spec.mjs` 1/5; **neu L2** (Antrag aus Betrieb G erscheint nicht, bleibt dort unberührt); `rechtematrix-zeilen` (CI) | HTTP-in, HTTP-Server, Browser | Leitung Nord/Süd sehen nur Eigenes; Anträge fremder Betriebe unsichtbar; Gestalt- und Schreibweg | volle Rechtematrix nur CI (`rechtematrix-zeilen`, groß) | belegt |
 | 10 | Mobile Bedienung / PWA | `e2e/barrierefreiheit*.spec.mjs`, `abnahme-b-ablaeufe` (Telefonviewport, Bedienflächen ≥ 24 px, kein waagrechtes Scrollen); `pwa.test.js` (Manifest-Verknüpfungen, Zwischenspeicher-Regeln; gelesen) | Browser (Chromium-Emulation), Unit | Telefonbreite 390 px und Tablet 1024 px lokal; übrige sechs Viewports in der CI | Dienstarbeiter im Browser ist in der Suite **gesperrt** (`serviceWorkers: "block"`); Installation, iOS/Safari, echtes Gerät | teilweise |
-| 11 | Wiederholte Anmeldung / Sitzungsablauf | `sitzungen`, `sitzungsbindung`, `sitzungsrennen`, `sitzungsinventar`, `sitzungsaufraeumen`, `sitzung-ohne-rolle`; `anmeldung-http` (gelesen); `sitzungsende-anmeldung` (#378); **neu L4a/L4b/L4c** | HTTP-in, Browser | Fristen, Widerruf, Rennen, Aufräumen; Browser: beim Server beendete Sitzung → altes Merkmal 401, schon das erste Laden zeigt die Anmeldung mit Hinweis „Deine Sitzung ist beendet“ (L4a, B-L4 behoben durch #378), Wiederanmeldung im angezeigten Feld zeigt die Daten (L4b); Sitzungsende bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste „nicht gespeichert“ mit Anmeldung im selben Reiter, Server unverändert (L4c) | **Befund B-L4c** (§4, offen): „Anmelden und senden“ endet im Dialog „Gleichzeitig bearbeitet“ (PUT ohne Versionsangabe); Zeitablauf 30 min/12 h selbst nicht im Browser (Server-Uhr nicht vorstellbar) | belegt mit Befund |
+| 11 | Wiederholte Anmeldung / Sitzungsablauf | `sitzungen`, `sitzungsbindung`, `sitzungsrennen`, `sitzungsinventar`, `sitzungsaufraeumen`, `sitzung-ohne-rolle`; `anmeldung-http` (gelesen); `sitzungsende-anmeldung` (#378); **neu L4a/L4b/L4c/L4d** | HTTP-in, Browser | Fristen, Widerruf, Rennen, Aufräumen; Browser: beim Server beendete Sitzung → altes Merkmal 401, schon das erste Laden zeigt die Anmeldung mit Hinweis „Deine Sitzung ist beendet“ (L4a, B-L4 behoben durch #378), Wiederanmeldung im angezeigten Feld zeigt die Daten (L4b); Sitzungsende bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste „nicht gespeichert“, „Anmelden und senden“ speichert mit dem alten ETag, genau ein PUT, kein Konfliktdialog (L4c, B-L4c behoben durch #381); Anmeldung einer anderen Person → Eingabe verworfen, nichts gesendet, Neuladen (L4d) | Zeitablauf 30 min/12 h selbst nicht im Browser (Server-Uhr nicht vorstellbar) | belegt |
 
 ## 2. Läufe (lokal, 2026-11-19)
 
@@ -55,9 +55,11 @@ Dauer = Wandzeit inklusive Bau der Oberfläche und Einrichtung des Testservers (
 | CI-Lauf 44551113318 (Kopf `623e35ce`) | **rot** nur L4a in `1024x768` (`#sitzungsende-hinweis` nie sichtbar), lokal grün. Vermutete Ursache (im Code plausibel, NICHT reproduziert, lokal nie rot; Hinweis auf einen Produktfehler gibt es nicht): Die Sitzung wurde bei OFFENER Seite beendet; eine Hintergrundanfrage konnte die 401 vor dem Neuladen des Tests bekommen (App lädt selbst neu und verbraucht den einmaligen Hinweis, oder hält die Seite wegen eines wartenden Schreibvorgangs und räumt nur das Merkmal). Korrektur: L4a/L4b verlassen die Seite vor dem Sitzungsende (`about:blank`, Merkmal bleibt im Reiter) und öffnen sie danach neu; L4c hält den PUT der Eingabe per `page.route` an, beendet dann die Sitzung und lässt ihn weiter (feste Reihenfolge ohne Zeitbezug) | — |
 | dieselbe Datei nach der Korrektur | **grün**: 8 bestanden, 0 rot | 90 s |
 | `npx playwright test --project=1024x768` (alle Specs, nach der Korrektur, Reihenfolge wie CI) | **grün**: 31 bestanden, 5 übersprungen, 0 rot | 426 s |
+| dieselbe Datei nach #381 auf `integration/release-v4` @ `70f007b5` (L4c umgekehrt, neu L4d), frischer Bau | **grün**: 9 bestanden, 0 rot | 90 s |
 
 Nach #378 zusätzlich einzeln (vitest, `--maxWorkers=1`): `sitzungsende-anmeldung.test.js` grün 8/8, `ci-abdeckung.test.js`
 grün 8/8, `doku.test.js` grün 5/5. Die übrigen Specs wurden nach #378 lokal nicht erneut gelaufen (CI).
+Nach #381 einzeln: `sitzungsende-anmeldung.test.js` grün 22/22, `ci-abdeckung.test.js` grün 8/8, `doku.test.js` grün 5/5.
 
 ### 2.2 vitest einzeln (`npx vitest run <datei> --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000`)
 
@@ -87,7 +89,7 @@ Auftrag genannte `docs/CENTRIC-TEST-UND-ABNAHMEPLAN.md` gibt es auf `integration
 
 ## 3. Neue Prüfung: `e2e/lokale-abnahme-luecken.spec.mjs`
 
-Eine Datei, acht Tests, nur Projekt `1024x768` (Telefonschritte stellen die Seite auf 390x844 um; in den übrigen sieben
+Eine Datei, neun Tests, nur Projekt `1024x768` (Telefonschritte stellen die Seite auf 390x844 um; in den übrigen sieben
 Projekten übersprungen, wie `abnahme-a-ablauf.spec.mjs`). Eingebunden ohne neue Skripte: `playwright.config.mjs` nimmt jede
 `e2e/**/*.spec.mjs` auf, `npm run e2e` läuft im CI-Job `browser-abnahme` (`pruefung.yml`) und im Staging-Gate. Keine Änderung an
 `hilfen.mjs`, `global-setup.mjs`, `axe-ausnahmen.json`, Allowlists oder Schaltern.
@@ -105,11 +107,15 @@ Projekten übersprungen, wie `abnahme-a-ablauf.spec.mjs`). Eingebunden ohne neue
   `#sitzungsende-hinweis` („Deine Sitzung ist beendet …“, am Codefeld über `aria-describedby`), kein Ladegerüst, Merkmal
   geräumt; ein weiteres Laden zeigt den Hinweis nicht mehr (genau einmal). L4b meldet sich direkt im angezeigten Feld wieder an,
   ein zweites Laden ist nicht mehr nötig.
-- **L4c prüft den heutigen Zustand von B-L4c ausdrücklich** (offen, nicht versteckt, kein `test.fail`): Sitzungsende bei
-  offener Seite mit ausstehender Eingabe → kein Neuladen (Marke im Fensterzustand bleibt), PUT 401, Leiste „nicht gespeichert“
-  mit Codefeld und „Als Datei sichern“, Server unverändert; „Anmelden und senden“ → 409 „ohne Versionsangabe“ → Dialog
-  „Gleichzeitig bearbeitet“, Server weiter unverändert. L4c hebt dafür wie L3 die Eigenprüfung des Fixtures auf. Bei Behebung
-  umkehren: Leiste verschwindet, die Eingabe liegt auf dem Server.
+- **L4c ist nach #381 umgekehrt** (B-L4c behoben): Sitzungsende bei offener Seite mit ausstehender Eingabe → kein Neuladen
+  (Marke im Fensterzustand bleibt), PUT 401, Leiste „nicht gespeichert“ mit Codefeld und „Als Datei sichern“, Server
+  unverändert; „Anmelden und senden“ mit demselben Code → genau ein weiterer PUT, 200, mit dem ETag des abgewiesenen PUT;
+  Leiste weg, Eingabe auf dem Server, kein Dialog „Gleichzeitig bearbeitet“ (die Eigenprüfung des Fixtures bleibt in L4c
+  aktiv), dieselbe Seite. Feste Reihenfolge ohne Zeitbezug: Der PUT der Eingabe wird per `page.route` angehalten, dann endet
+  die Sitzung, dann geht er weiter.
+- **L4d (neu, Gegenfall):** derselbe Anfang, aber in der Leiste meldet sich die Beschäftigte a1 an (anderer Inhaber) → keine
+  PUT-Anfrage mehr, Server unverändert, die Seite lädt neu (Lage „fremd“) und zeigt den Stand von a1. Die Meldung „fremd“
+  steht nur bis zum Neuladen und wird deshalb nicht abgefragt, sondern ihre Folgen.
 - **Gegenprobe L3:** Dieselbe Eingabe (Wechsel der Darstellungsdichte) löst im selben Test vorher den PUT aus, der den 409 bekommt.
   Fehlte die Sperre, ginge nach `WARTE` = 1200 ms eine PUT-Anfrage hinaus. Der Test zählt Anfragen, nicht Antworten, und würde
   innerhalb der 3000 ms rot.
@@ -122,7 +128,8 @@ Projekten übersprungen, wie `abnahme-a-ablauf.spec.mjs`). Eingebunden ohne neue
 | L3 | 409 → Konfliktfenster → „Später entscheiden“ → weitere Eingabe: 3000 ms keine PUT-Anfrage → fremde Änderung bleibt → „Neu laden“ |
 | L4a | B-L4 behoben (#378): erstes Laden nach Sitzungsende zeigt die Anmeldung mit Hinweis „Deine Sitzung ist beendet“, kein Ladegerüst; Hinweis genau einmal |
 | L4b | Altes Merkmal 401; Anmeldung mit Hinweis; Wiederanmeldung im angezeigten Feld zeigt die Daten (kein zweites Laden) |
-| L4c | Sitzungsende bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste mit Anmeldung, Server unverändert; „Anmelden und senden“ → Konfliktdialog (B-L4c offen, bei Behebung umkehren) |
+| L4c | B-L4c behoben (#381): Sitzungsende bei offener Seite mit ausstehender Eingabe: kein Neuladen, Leiste mit Anmeldung; „Anmelden und senden“ → genau ein PUT 200 mit altem ETag, Eingabe auf dem Server, kein Konfliktdialog |
+| L4d | Sitzungsende, dann Anmeldung einer anderen Person: Eingabe verworfen, keine PUT-Anfrage, Server unverändert, Neuladen |
 | L5 | Import-Fehlerfall: nur fehlerhafte Zeile → gesperrt; gemischt → genau die gültige Person auf dem Server |
 
 ## 4. Befunde
@@ -151,7 +158,13 @@ Vorschlag damals: nach `nicht-angemeldet` im Ladelauf auf die Anmeldung wechseln
 L4a ist umgekehrt. Der damals offene Fall **ohne** Neuladen (Sitzung endet, während die Seite offen ist und gespeichert wird)
 ist jetzt L4c und hat B-L4c ergeben.
 
-### B-L4c (Produktfehler, mittel, offen): „Anmelden und senden“ nach Sitzungsende endet im Konfliktdialog
+### B-L4c (Produktfehler, mittel): „Anmelden und senden“ nach Sitzungsende endet im Konfliktdialog — **behoben durch #381, nicht mehr offen**
+
+**Stand nach #381** (`integration/release-v4` @ `70f007b5`): `src/speicher.js` merkt sich beim Sitzungsende den ETag samt
+Inhaber der Sitzung; meldet die neue Anmeldung denselben Inhaber, geht der Auftrag mit dem alten ETag hinaus (der Server
+entscheidet), bei einem anderen Inhaber werden die Eingaben verworfen und die Seite lädt neu (Lage „fremd“). Belegt im Browser
+durch L4c (umgekehrt) und L4d, unterhalb des Browsers durch `pruefungen/sitzungsende-anmeldung.test.js`. Der folgende
+Befundtext ist der Stand vor #381 (Fundbericht).
 
 Gefunden mit L4c (lokal, Chromium, 1024x768, nach #378): Planung auf „Einstellungen“, Sitzung beim Server beendet, Eingabe
 (Dichte) → PUT 401 → Leiste „Die Sitzung ist abgelaufen — die letzten Änderungen sind noch nicht gespeichert“ (richtig, kein
@@ -165,7 +178,7 @@ Ursache (gelesen, nicht geändert): `src/speicher.js` `abmelden(true)` setzt neb
 bestand vermutlich schon vor #378 (401 → `abmelden(true)` gab es dort auch); `pruefungen/sitzungsende-anmeldung.test.js` „O“
 prüft die Leiste, nicht das anschließende Senden.
 
-Vorschlag (eigener Fix-PR): beim stillen Abmelden wegen 401 mit ausstehendem Auftrag den ETag des Auftrags behalten (oder
+Vorschlag damals (umgesetzt in #381): beim stillen Abmelden wegen 401 mit ausstehendem Auftrag den ETag des Auftrags behalten (oder
 nach der Wiederanmeldung vor dem Senden den Stand lesen und nur bei unverändertem Kern senden); danach L4c umkehren (Leiste
 verschwindet, Eingabe liegt auf dem Server) und „O“ in `sitzungsende-anmeldung.test.js` um das Senden ergänzen.
 
