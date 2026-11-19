@@ -205,3 +205,57 @@ Ausnahmewegs geht die nächste Eingabe erst nach der Entscheidung hinaus, dann o
 **Offen:** P2-20 (`ENTSCHEIDUNGSLISTE.md`): „Meinen Stand übernehmen“ ersetzt auch fremde Änderungen in Monaten, die der
 Dialog nicht nennt (Ist-Verhalten, als Test belegt). Hinweistext ergänzt (PR #376), Verhalten der Wahl unverändert;
 Wahl zwischen B und C bleibt offen. Ausführung von `App.jsx` nur über Quelltext-Verträge geprüft.
+
+## 8. Nachtrag 2026-11-19: Browsernachweis mit parallelen Sitzungen
+
+Grundlage: integration/release-v4 (b621fd90, nach Review #396 auf afb1a68b umgesetzt). Offen war laut SSOT nur noch der
+Nachweis im echten Browser, dass mehrere gleichzeitige Sitzungen den Plan öffnen, ohne dass ein Dialog erscheint oder
+etwas geschrieben wird.
+
+**Ist-Stand vor diesem Nachtrag:** Behoben und gemergt sind die Ursachen (Tour-Selbststart, Urlaubshinweis, #271), der
+Randfall der Migration beim Laden (#365) und die Sendesperre nach 409 (#374). Belegt war das nur über nachgebaute Abläufe
+gegen den echten Handler (`wp48-gb-oeffnen`, `wp48-gb-lesen`) und Quelltext-Verträge für `App.jsx`, nicht im Browser.
+
+**Neue Spec `e2e/oeffnen-parallel.spec.mjs`** (echter Server aus `e2e/global-setup.mjs`, echte gebaute Oberfläche, feste
+Abnahmeuhr 2026-11-14, nur erfundene Daten, kein Schalter eingeschaltet, nur Projekt 1024x768). Weil die Suite mit
+`workers: 1` läuft, steht die Parallelität in **einem** Test mit mehreren Browser-Kontexten (je eigener Speicher, eigene
+Anmeldung, eigene Herkunft), die gleichzeitig anmelden:
+
+- **P1** Leitung und Planung (Rollenzugänge) öffnen gleichzeitig; der Urlaubshinweis ist im November fällig (oder schon
+  verschickt). Erlaubt ist nur `PUT /api/bestand`, höchstens einer je Sitzung (zusammen höchstens 2); kein Dialog, keine
+  Leiste „Gleichzeitig bearbeitet“.
+- **P2** Sechs Sitzungen öffnen gleichzeitig und werden danach gleichzeitig neu geladen: Planung auf **zwei getrennten
+  Browser-Kontexten** (zwei Geräte derselben Person; kein zweiter Reiter im selben Kontext), Subplanung und Mitarbeiter
+  mit **frischen Zugängen** (`OEFFNEN_ZUGAENGE` in `e2e/umgebung.mjs`, angelegt in `global-setup.mjs`: Personen ohne
+  Tourzustand, die kein anderer Test anmeldet), Leitung und Betriebsrat mit den Rollenzugängen (im Demo-Bestand gibt es
+  je nur eine aktive Person). Geprüft: kein schreibender API-Aufruf außer der Anmeldung, kein Dialog, keine
+  Konfliktleiste, `GET /api/bestand` liefert danach denselben ETag und byte-gleichen Inhalt.
+- Bewusster Verzicht auf `anmelden()` und die Fixture aus `hilfen.mjs`: `tourZu()` schließt dort die Tour (Handlung,
+  schreibt); das axe-Gate der Meldungsstreifen gehört nicht zu diesem Befund und wird von den übrigen Specs gedeckt.
+
+**Reichweite (Review #396, Punkt 2).** In der CI läuft 1024x768 als fünftes Projekt nach den anderen Specs. Diese haben
+über `anmelden()`/`tourZu()` die Tour der Rollenpersonen geschlossen und den Urlaubshinweis schon ausgelöst. Folgen:
+
+- P1 läuft in der CI im Zweig „schon verschickt“ (0 PUT). Das Rennen zweier Urlaubshinweis-Läufe aus #271 ist **nur im
+  Einzellauf** (frischer Server) belegt: dort je ein `PUT /api/bestand` beider Sitzungen, kein Dialog.
+- Der Mutant „Tour-Selbststart von vor #271“ war in der ersten Fassung (nur Rollenzugänge) **im Suite-Lauf grün** und
+  nur im Einzellauf rot (6 PUT ohne Eingabe: Planung je Kontext einmal, Subplanung und Mitarbeiter je zweimal). Seit
+  dieser Fassung öffnen Planung, Subplanung und Mitarbeiter in P2 mit frischen Zugängen; der Mutant fällt dadurch auch
+  im Suite-Lauf auf (konstruktionsbedingt, ein Mutantenlauf auf der neuen Fassung wurde aus Ressourcengründen nicht
+  wiederholt). Für Leitung und Betriebsrat schützt P2 im Suite-Lauf nur vor Schreibpfaden, die bei **jedem** Öffnen
+  wirken.
+- Lastbremse `anmelden-code` (20 je Code und 5 min, `server/lib/schutz.mjs`): Die Spec meldet je Code höchstens dreimal
+  an (frische Planung: zwei Kontexte und API), Rollenzugang Planung einmal, Leitung zweimal, Betriebsrat einmal.
+
+**Läufe:** erste Fassung drei Einzelläufe grün, Mutant rot (siehe oben); Fassung nach Review ein Einzellauf (Ergebnis im PR).
+
+**Kein neuer Schreibpfad beim Lesen gefunden.** Produktcode unverändert (`src/speicher.js`, `src/ansichten/speicherlage.jsx`,
+`App.jsx`, `daten.mjs` nicht angefasst).
+
+**`workers: 1` bleibt** (Kommentar in `playwright.config.mjs` angepasst): Die ursprüngliche Begründung (Dialog beim
+bloßen Öffnen) trägt nicht mehr; praktisch alle Specs schreiben (`anmelden()` schließt eine offene Tour, dazu die Abläufe
+von Abnahme A/B, Teilkonflikt und lokaler Abnahme) — parallele Worker ergäben echte, zu Recht gemeldete Konflikte. Die
+Akzeptanzformulierung „e2e-Suite ohne workers: 1“ ist damit nicht wörtlich erfüllt; ihr Zweck (paralleles Öffnen ohne
+Dialog) ist belegt. Ob die Formulierung so ersetzt wird, entscheidet der Koordinator/Betreiber.
+
+**Weiter offen:** Produktfragen Abschnitt 5 (P2-9), P2-20, unabhängiges Review, Restrisiken §6/§7 (Telefon/PWA).
