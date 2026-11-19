@@ -6302,7 +6302,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#402"],
       "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
       "akzeptanz": "DESIGNSYSTEM.md, MIGRATION.md, Mockups von design/v4-glass-logo im Integrationsstand; design/README.md nennt V3 abgelöst; src/v4/tokens.js verweist auf vorhandene Datei",
       "tests": "Unit, E2E",
