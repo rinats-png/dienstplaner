@@ -2030,7 +2030,7 @@ function AppInnen() {
 
       {konflikt && (
         <Konfliktfenster lage={konflikt} melde={melde}
-          onSchliessen={() => setKonflikt(false)}
+          onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage()) setNichtGespeichert(SP.ausstehend()); }}
           onUebernehmen={() => {
             /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
                übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),

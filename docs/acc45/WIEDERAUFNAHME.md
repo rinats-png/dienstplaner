@@ -9,6 +9,7 @@
 
 - Folgepaket (5) aus dem Nachtrag (d) bzw. Review #365 Punkt 1b gebaut, Ziel `integration/release-v4`, nicht gemergt. Befund mit echtem Client gegen echten Handler bestätigt (Server schreibt mit aktuellem ETag ohne Abgleich; Verlust echt). Behebung: Konfliktsperre in `src/speicher.js` (ohne Teilweg) bis `konfliktLoesen`; Teilweg-Pfad, Schalter und Speicherschlüssel unverändert. Einzelheiten und Varianten in `WP-48-GB-ANALYSE.md` §7.
 - Neue Betreiberfrage P2-20 in `ENTSCHEIDUNGSLISTE.md` (Reichweite von „Meinen Stand übernehmen“, Voreinstellung A = unverändert). Umgestellte bestehende Prüfungen: `wp48-gb-lesen` V, `modul-kern-nachtrag3` „Abweisung 409“ (offengelegt in §7 und im PR-Text).
+- Review #374 (MERGE-MIT-AUFLAGEN) eingearbeitet: Test für Schließen/Verbergen bei Sperre (V7), Leiste sofort nach „Später entscheiden“ (N1), Telefon-Hinweis in der Leiste. **Restrisiko:** Wegwischen am Telefon/PWA (nur `visibilitychange`, kein `beforeunload`) verwirft gehaltene eigene Eingaben ohne Rückfrage — bewusst statt still eine fremde Änderung zu überschreiben; dazu N2 bis N4, siehe `WP-48-GB-ANALYSE.md` §7.
 
 ## Nachtrag 2026-11-19 (e) (Lastflake `zugaenge-frischer-faktor`, Branch `test/flake-zugaenge-frischer-faktor`, nur Test, offen bis Merge)
 

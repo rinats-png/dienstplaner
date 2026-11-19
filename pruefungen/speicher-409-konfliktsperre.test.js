@@ -83,6 +83,13 @@ async function reiter(k) {
   const tok = TOKEN[k];
   const r = { get puts() { return PUTS.filter((x) => x.token === tok).map((x) => x.rumpf); },
     konflikt: [], fehler: [], gespeichert: [] };
+  /* Fenster und Dokument je Reiter (Muster modul-kern-nachtrag5-speicher): beforeunload und visibilitychange auslösbar. */
+  const lauscher = {}, sicht = {};
+  vi.stubGlobal("window", { addEventListener: (art, f) => { lauscher[art] = f; } });
+  vi.stubGlobal("document", { visibilityState: "visible", addEventListener: (art, f) => { sicht[art] = f; } });
+  r.schliessen = () => { const e = { verhindert: false, preventDefault() { this.verhindert = true; }, returnValue: "x" };
+    lauscher.beforeunload(e); return e; };
+  r.verbergen = () => { globalThis.document.visibilityState = "hidden"; sicht.visibilitychange(); };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
     if (netzWegEinmal) { netzWegEinmal = false; throw new TypeError("Failed to fetch"); }
@@ -212,6 +219,31 @@ describe("V Varianten: nach dem 409 geht nichts hinaus, X bleibt", { timeout: 12
     const r = await lt.SP.wiederherstellen("egal");
     expect(r.status, "Zurückspielen wartet auf die Entscheidung").toBe(0);
     expect(lt.puts).toHaveLength(1);
+  });
+
+  it("V7 Schließen (beforeunload) und Verbergen (visibilitychange) bei Sperre: kein PUT, beforeunload fragt nach", async () => {
+    await neuerRaum();
+    const lt = await reiter("LT");
+    await fremdX();
+    await lt.SP.schreib(ruhezeit(lt, 12), { ...opt(lt), sofort: true });
+    expect(lt.konflikt).toHaveLength(1);
+    /* N1: gleich nach dem 409 (ohne weitere Eingabe) liegt die Lage für die Leiste vor („Später entscheiden“). */
+    expect(lt.SP.ausstehend()).toMatchObject({ art: "konfliktOffen" });
+    /* Nichts wartet, aber Ungesichertes ist gehalten: nachfragen. */
+    expect(lt.schliessen().verhindert, "beforeunload fragt ohne wartende Eingabe").toBe(true);
+    /* Mit wartender Eingabe: nichts hinaus (auch nicht per keepalive), aber nachfragen. */
+    lt.SP.schreib(ruhezeit(lt, 13), opt(lt));
+    expect(lt.schliessen().verhindert).toBe(true);
+    await lt.SP.schreibenAbschliessen();
+    lt.SP.schreib(ruhezeit(lt, 14), opt(lt));
+    lt.verbergen();
+    await lt.SP.schreibenAbschliessen();
+    expect(lt.puts, "nur der abgewiesene PUT").toHaveLength(1);
+    expect(lt.SP.ausstehenderBestand().mandanten[0].einstellungen.ruhezeit).toBe(14);
+    expect((await gespeichert()).name).toBe("Haus Planung");
+    /* Als Datei gesichert: keine Nachfrage mehr (wie nach einem Löschlauf). */
+    lt.SP.ausstehendGesichert();
+    expect(lt.schliessen().verhindert).toBe(false);
   });
 
   it("V6 zwei Reiter derselben Sitzung: jeder hält nach seinem 409 an, der Server sichert über den ETag ab", async () => {
@@ -355,10 +387,14 @@ describe("Q Quelltext-Verträge", () => {
     expect(app).toMatch(/SP\.konfliktLoesen\("meins"\);\s*setNichtGespeichert\([^\n]*\);\s*SP\.schreib\(ref\.current, \{ durch: "Übernahme nach Konflikt"/);
     expect(app).toMatch(/onKonflikt=\{\(\) => \{ const d = SP\.konfliktLage\(\); if \(d\) setKonflikt\(\{ \.\.\.d, meiner: ref\.current \}\); \}\}/);
     expect(app.match(/SP\.konfliktLoesen\(/g)).toHaveLength(3);
+    /* Review #374 N1: „Später entscheiden“ zeigt die Leiste sofort, nicht erst mit der nächsten Eingabe. */
+    expect(app).toMatch(/onSchliessen=\{\(\) => \{ setKonflikt\(false\); if \(SP\.konfliktLage\(\)\) setNichtGespeichert\(SP\.ausstehend\(\)\); \}\}/);
   });
   it("speicherlage.jsx: Lage „konfliktOffen“ mit Entscheiden; Neu laden ohne Teilweg verwirft nach Rückfrage", async () => {
     const q = (await readFile(path.join(HIER, "..", "src", "ansichten", "speicherlage.jsx"), "utf8")).replace(/\r\n/g, "\n");
     expect(q).toMatch(/konfliktOffen: \{[^}]*konflikt: true,\s*\}/);
+    /* Review #374 M2: Wegwischen am Telefon löst kein beforeunload aus — der Hinweis steht in der Leiste. */
+    expect(q).toMatch(/Am Telefon "\s*\+ "vor dem Schließen der App entscheiden oder als Datei sichern/);
     expect(q).toMatch(/\{l\.konflikt && onKonflikt && <Btn[^>]*onClick=\{onKonflikt\}>Konflikt entscheiden<\/Btn>\}/);
     expect(q).toMatch(/if \(lage && lage\.ohneUebernehmen\) window\.location\.reload\(\); else verwerfenMitRueckfrage\(\);/);
   });

@@ -74,7 +74,8 @@ export const SPEICHERLAGE = {
     titel: "Gleichzeitig bearbeitet — bis zur Entscheidung wird nichts gespeichert",
     text: "Jemand anderes hat dieselben Angaben gespeichert, seit du geladen hast. Damit nichts still überschrieben "
       + "wird, sendet diese Seite nichts mehr, bis du entschieden hast: neu laden (deine ungespeicherten Änderungen "
-      + "verwerfen) oder deinen Stand übernehmen. Sichere deine Änderungen vorher bei Bedarf als Datei.",
+      + "verwerfen) oder deinen Stand übernehmen. Sichere deine Änderungen vorher bei Bedarf als Datei. Am Telefon "
+      + "vor dem Schließen der App entscheiden oder als Datei sichern — sonst sind diese Änderungen weg.",
     konflikt: true,
   },
   /* WP-48.5 (Review #350): Nach einem Löschlauf (auch bei unklarem Ausgang) geht aus dieser Seite nichts mehr hinaus. */

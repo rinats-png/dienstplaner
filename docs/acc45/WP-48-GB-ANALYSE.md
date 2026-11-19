@@ -186,5 +186,21 @@ entscheiden“). Konfliktfreie Abläufe senden dieselben Requests (Test D, auf a
 zusätzlich `SP.konfliktLoesen("server")` rufen); `modul-kern-nachtrag3` „Abweisung 409“ (nach dem 409 eines
 Ausnahmewegs geht die nächste Eingabe erst nach der Entscheidung hinaus, dann ohne Angabe und mit dem ETag der Absage).
 
+**Restrisiken (Review #374):**
+- **M2 Telefon/PWA:** Wird die App weggewischt, kommt nur `visibilitychange`, kein `beforeunload` (in iOS Safari ist
+  `beforeunload` ohnehin unzuverlässig). Gehaltene Eingaben sind dann ohne Rückfrage weg; vorher gingen sie hinaus und
+  überschrieben die fremde Änderung. Der Tausch ist bewusst: lieber die eigene, ungespeicherte Eingabe verlieren als
+  still eine fremde, gespeicherte. Die Leiste „konfliktOffen“ sagt es („Am Telefon vor dem Schließen der App entscheiden
+  oder als Datei sichern“). Geprüft: bei Sperre weder per `beforeunload` noch per `visibilitychange` ein PUT, und
+  `beforeunload` fragt nach (V7).
+- **N2 Ausnahmeweg:** Ein 409 auf dem Ausnahmeweg setzt ebenfalls die Sperre; die nächste Eingabe ersetzt die Lage
+  „ausnahmeZurueck“ (neu laden) durch „konfliktOffen“, der Hinweis „abgewiesen, neu laden“ geht verloren. Reines
+  Anzeigeproblem: die Angabe geht nicht mehr mit (`modul-kern-nachtrag3`), der Server bleibt sicher.
+- **N3 (schon vorher so):** Nach „Meinen Stand übernehmen“ meldet `App.jsx` „Dein Stand wurde übernommen.“ vor der
+  Antwort; bei erneutem 409 ist das falsch, die Leiste „konfliktOffen“ korrigiert es.
+- **N4:** `App.jsx` nur über Quelltext-Verträge geprüft, kein Browserlauf.
+- Behoben (N1): „Später entscheiden“ zeigt die Leiste sofort (`onSchliessen` setzt `SP.ausstehend()`), nicht erst mit
+  der nächsten Eingabe.
+
 **Offen:** P2-20 (`ENTSCHEIDUNGSLISTE.md`): „Meinen Stand übernehmen“ ersetzt auch fremde Änderungen in Monaten, die der
 Dialog nicht nennt (Ist-Verhalten, als Test belegt). Ausführung von `App.jsx` nur über Quelltext-Verträge geprüft.
