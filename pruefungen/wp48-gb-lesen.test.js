@@ -37,7 +37,7 @@ import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { abbildVon, schreibAbbild, automatikKonfliktLoesen, migrationZurueckschreiben } from "../src/app/oeffnen.js";
+import { abbildVon, schreibAbbild, migrationZurueckschreiben, migrationKonflikt } from "../src/app/oeffnen.js";
 import { migriere } from "../src/migration.js";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
@@ -124,6 +124,7 @@ async function oeffne(k, { alt = false, ohneMigrationsschreiben = false } = {}) 
   const s = { k, etag: r.etag, zugang, db: { ...erg.bestand, session: { rolle: "kunde", mandantId: "m1", personId: ROLLEN[k].person } },
     zuletzt: null, dialog: null, migration: null, erg };
   s.zuletzt = abbildVon(s.db);   // erst.current in App.jsx: der erste Bestand gilt als geschrieben
+  s.geladen = s.db;
   if (!ohneMigrationsschreiben && (alt ? erg.schritte > 0 : migrationZurueckschreiben(erg, zugang))) {
     s.migration = erg.bestand;   // wartet auf migrationSenden (zwei Sitzungen laden zuerst beide)
   }
@@ -140,9 +141,10 @@ async function migrationSenden(s, { alt = false } = {}) {
   if (a.status === 409) {
     s.etag = a.etag;   // speicher.js übernimmt den ETag der Absage
     if (alt) return a;  // vorher: kein onKonflikt — nur der ETag, der Inhalt blieb der eigene
-    const uebernehmen = automatikKonfliktLoesen({ automatisch: geschrieben, geschrieben, lokal: s.db, antwort: a, migriere });
-    if (uebernehmen) {
-      s.db = { ...uebernehmen, session: s.db.session };
+    /* Dieselbe Entscheidung wie App.jsx (migrationKonflikt); `geladen` = der Stand direkt nach dem Laden. */
+    const e = migrationKonflikt({ geschrieben, aktuell: s.db, geladen: s.geladen, antwort: a, migriere });
+    if (e && e.art === "uebernehmen") {
+      s.db = e.bestand;
       s.zuletzt = abbildVon(s.db);
       return a;
     }
@@ -302,10 +304,36 @@ describe("WP-48-GB Nachtrag: Lesen ändert den Stand nicht", { timeout: 120000 }
     /* Mutante „Migration ohne Konfliktbehandlung": SP.schreib ohne onKonflikt. */
     const schreib = lade.slice(lade.indexOf("SP.schreib(b,"));
     expect(schreib).toMatch(/^SP\.schreib\(b, \{ durch: "Migration", sofort: true,\s*onKonflikt:/);
-    expect(schreib).toMatch(/automatikKonfliktLoesen\(\{ automatisch: migrationsAbbild, geschrieben: migrationsAbbild,/);
-    expect(schreib).toMatch(/zuletztGeschrieben\.current = abbildVon\(naechster\)/);
-    expect(schreib).toMatch(/setKonflikt\(\{ \.\.\.d, meiner: lokal \}\)/);
-    /* Die Prüfung oben bildet genau diese Entscheidung nach. */
-    expect(app).toMatch(/import \{[^}]*migrationZurueckschreiben[^}]*\} from "\.\/app\/oeffnen\.js"/);
+    /* Die Entscheidung trifft migrationKonflikt (Fall K führt sie aus): aktueller Stand vor dem geladenen, Teilweg. */
+    expect(schreib).toMatch(/migrationKonflikt\(\{ geschrieben: migrationsAbbild, aktuell: ref\.current, geladen,\s*antwort: d, migriere, teilwegGenutzt: SP\.teilwegGenutzt\(\) \}\)/);
+    expect(schreib).toMatch(/if \(e\.art === "uebernehmen"\) \{\s*zuletztGeschrieben\.current = abbildVon\(e\.bestand\);\s*setDb\(e\.bestand\);\s*return;\s*\}/);
+    expect(schreib).toMatch(/setKonflikt\(\{ \.\.\.d, meiner: e\.meiner, \.\.\.\(SP\.teilwegGenutzt\(\) \? \{ ohneUebernehmen: true,/);
+    expect(schreib.slice(0, schreib.indexOf("} });")), "keine eigene Entscheidung mehr im Handler").not.toMatch(/automatikKonfliktLoesen/);
+    expect(app).toMatch(/import \{[^}]*migrationZurueckschreiben[^}]*migrationKonflikt[^}]*\} from "\.\/app\/oeffnen\.js"/);
+  });
+
+  it("K migrationKonflikt (der Handler-Rumpf aus App.jsx als Funktion): aktueller Stand zählt, Teilweg, ältere Serverfassung", () => {
+    const geladen = { ...bestand(), session: { rolle: "kunde", mandantId: "m1", personId: "l1" }, stand: 3 };
+    const geschrieben = abbildVon(geladen);
+    const server = { ...bestand(), mandanten: bestand().mandanten.map((m) => ({ ...m, name: "Haus Planung" })) };
+    const antwort = { bestand: server, etag: "7" };
+    /* Rein: still übernommen, Sitzung dieses Reiters, Stand hochgezählt. */
+    const a = migrationKonflikt({ geschrieben, aktuell: geladen, geladen, antwort, migriere });
+    expect(a.art).toBe("uebernehmen");
+    expect(a.bestand.mandanten[0].name).toBe("Haus Planung");
+    expect(a.bestand.session).toEqual(geladen.session);
+    expect(a.bestand.stand).toBe(4);
+    /* Noch nicht gerendert (aktuell fehlt): der geladene Stand gilt. */
+    expect(migrationKonflikt({ geschrieben, aktuell: null, geladen, antwort, migriere }).art).toBe("uebernehmen");
+    expect(migrationKonflikt({ geschrieben, aktuell: null, geladen: null, antwort, migriere })).toBeNull();
+    /* Eigene Eingabe im aktuellen Stand: Dialog mit genau diesem Stand — nie der geladene (Mutante `lokal = geladen`). */
+    const aktuell = { ...geladen, mandanten: geladen.mandanten.map((m) => ({ ...m, name: "Haus Leitung" })) };
+    const d = migrationKonflikt({ geschrieben, aktuell, geladen, antwort, migriere });
+    expect(d.art).toBe("dialog");
+    expect(d.meiner).toBe(aktuell);
+    /* Teilweg in der Sitzung genutzt: kein Bestand ohne ETag — Dialog. */
+    expect(migrationKonflikt({ geschrieben, aktuell: geladen, geladen, antwort, migriere, teilwegGenutzt: true }).art).toBe("dialog");
+    /* Server noch auf älterer Fassung (schritte > 0): Dialog statt stiller Übernahme (sicher, wenn auch unnötig). */
+    expect(migrationKonflikt({ geschrieben, aktuell: geladen, geladen, antwort: { bestand: bestand({ version: 8 }) }, migriere }).art).toBe("dialog");
   });
 });

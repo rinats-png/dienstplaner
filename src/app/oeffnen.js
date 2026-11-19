@@ -128,3 +128,26 @@ export function automatikKonfliktLoesen({ automatisch, geschrieben, lokal, antwo
   if (!mig || !mig.ok || mig.schritte !== 0) return null;
   return mig.bestand;
 }
+
+/**
+ * Konflikt (409) des sofortigen Zurückschreibens einer Migration beim Laden (WP-48-GB, Nachtrag; Review #365).
+ *
+ * Maßgeblich ist der AKTUELLE Stand der Oberfläche (`aktuell`, ref.current) — hat die Person seit dem Laden etwas
+ * eingegeben, darf der Stand des Servers sie nicht still ersetzen. Nur solange noch nicht gerendert ist (aktuell
+ * fehlt), gilt der geladene Stand (`geladen`). Wurde in der Sitzung der Teilweg genutzt, übernimmt speicher.js den
+ * ETag eines 409 nicht — dann auch keinen Bestand (Bestand und ETag gehören zusammen), wie im Speicher-Effekt.
+ * Steht der Server selbst noch auf einer älteren Fassung (Migration nötig), bleibt es beim Dialog (sicher, wenn
+ * auch unnötig).
+ *
+ * @returns {{ art: "uebernehmen", bestand: any } | { art: "dialog", meiner: any } | null}
+ *   uebernehmen: still den Stand des Servers (mit der Sitzung dieses Reiters, Stand hochgezählt);
+ *   dialog: Konfliktdialog mit dem eigenen Stand; null: nichts geladen, nichts zu tun.
+ */
+export function migrationKonflikt({ geschrieben, aktuell, geladen, antwort, migriere, teilwegGenutzt = false }) {
+  const lokal = aktuell || geladen;
+  if (!lokal) return null;
+  const uebernehmen = teilwegGenutzt ? null
+    : automatikKonfliktLoesen({ automatisch: geschrieben, geschrieben, lokal, antwort, migriere });
+  if (uebernehmen) return { art: "uebernehmen", bestand: { ...uebernehmen, session: lokal.session, stand: (lokal.stand || 0) + 1 } };
+  return { art: "dialog", meiner: lokal };
+}

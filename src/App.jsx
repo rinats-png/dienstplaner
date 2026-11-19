@@ -218,7 +218,8 @@ import { GeoSchalter } from "./ansichten/geo-schalter.jsx";
 import { darf } from "./lib/berechtigung.js";
 import { ROLLEN, rolle, mehrzahl, ROLLEN_VORGABE, rollenName, RECHTE_GRUPPEN, ALLE_RECHTE, FESTE_RECHTE, rechteDerRolle } from "./lib/rollen.js";
 import { urlaubshinweiseFaellig, zustellungAusstehend } from "./lib/zustellung.js";
-import { abbildVon, schreibAbbild, urlaubshinweiseAnwenden, automatikKonfliktLoesen, migrationZurueckschreiben } from "./app/oeffnen.js";
+import { abbildVon, schreibAbbild, urlaubshinweiseAnwenden, automatikKonfliktLoesen, migrationZurueckschreiben,
+  migrationKonflikt } from "./app/oeffnen.js";
 
 
 import { leererMandant, zugangsPerson } from "./lib/mandant-anlage.js";
@@ -1139,17 +1140,17 @@ function AppInnen() {
           const migrationsAbbild = abbildVon(b);
           SP.schreib(b, { durch: "Migration", sofort: true,
             onKonflikt: (d) => {
-              const lokal = ref.current || geladen;
-              if (!lokal) return;
-              const uebernehmen = automatikKonfliktLoesen({ automatisch: migrationsAbbild, geschrieben: migrationsAbbild,
-                lokal, antwort: d, migriere });
-              if (uebernehmen) {
-                const naechster = { ...uebernehmen, session: lokal.session, stand: (lokal.stand || 0) + 1 };
-                zuletztGeschrieben.current = abbildVon(naechster);
-                setDb(naechster);
+              /* Entscheidung in app/oeffnen.js (migrationKonflikt, dort geprüft); hier nur ausführen. */
+              const e = migrationKonflikt({ geschrieben: migrationsAbbild, aktuell: ref.current, geladen,
+                antwort: d, migriere, teilwegGenutzt: SP.teilwegGenutzt() });
+              if (!e) return;
+              if (e.art === "uebernehmen") {
+                zuletztGeschrieben.current = abbildVon(e.bestand);
+                setDb(e.bestand);
                 return;
               }
-              setKonflikt({ ...d, meiner: lokal });
+              setKonflikt({ ...d, meiner: e.meiner, ...(SP.teilwegGenutzt() ? { ohneUebernehmen: true,
+                selbstAbgleich: SP.teilwegAktiv() } : {}) });
             } });
         }
       }

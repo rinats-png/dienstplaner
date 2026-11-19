@@ -109,9 +109,12 @@ Fassung (Versionsmarke `version`, Urheber „Migration“):
 - `migrationZurueckschreiben(erg, zugang)`: nur bei Schritten > 0 und nicht für den Schreibumfang „nein“. Ohne Angabe wie
   bisher. Der Betriebsrat arbeitet mit dem migrierten Stand im Arbeitsspeicher; zurück schreibt die nächste Sitzung mit
   Schreibrecht.
-- Konflikt der Migration wie beim Urlaubshinweis (`automatikKonfliktLoesen`): Hat die Person seitdem nichts geändert, gilt
-  still der Stand des Servers (dort steht die Migration der anderen Sitzung schon); kein Dialog. Sonst der Konfliktdialog
-  wie bei jeder gleichzeitigen Änderung.
+- Konflikt der Migration (`migrationKonflikt`, `App.jsx` führt nur aus) wie beim Urlaubshinweis
+  (`automatikKonfliktLoesen`): Hat die Person seitdem nichts geändert (maßgeblich ist der aktuelle Stand `ref.current`,
+  der geladene nur vor dem ersten Rendern), gilt still der Stand des Servers (dort steht die Migration der anderen Sitzung
+  schon); kein Dialog. Sonst der Konfliktdialog wie bei jeder gleichzeitigen Änderung. Wurde in der Sitzung der Teilweg
+  genutzt (dann übernimmt `speicher.js` den ETag eines 409 nicht), wird kein Bestand übernommen, sondern der Dialog mit
+  denselben Angaben wie im Speicher-Effekt gezeigt (Review #365, Punkt 2; bei ausgeschaltetem Teilweg nicht erreichbar).
 
 Zustand danach: Ein Altbestand wird von der ersten Sitzung mit Schreibrecht auf die aktuelle Fassung gehoben; jede weitere
 Sitzung migriert nicht mehr und schreibt beim Öffnen nichts. Keine Änderung an Server, Rechten, ETag, Drei-Wege-Abgleich,
@@ -119,12 +122,31 @@ Teilweg (Schalter bleiben aus), Umgebung oder gespeicherten Daten; keine Migrati
 schon aktuell, der Weg greift nur bei einem Altbestand).
 
 **Nachweis:** `pruefungen/wp48-gb-lesen.test.js` (in `pruefung:wp48-gb-oeffnen`, CI-Schritt „Öffnen des Plans schreibt
-nicht (WP-48-GB)“), echter Handler: G (Lesen byte-gleich), M1 (Reproduktion verlorene Änderung, alter Ablauf), M2 (reine
+nicht (WP-48-GB)“). Der **Server** ist der echte Handler (`daten.mjs`); der **Ablauf der Oberfläche** ist nachgebaut und
+ruft die echten Entscheidungsfunktionen aus `src/app/oeffnen.js` auf (`migrationZurueckschreiben`, `migrationKonflikt`,
+`schreibAbbild`). `App.jsx` selbst wird nicht ausgeführt: Dass der Ladeeffekt genau diese Funktionen mit `ref.current`,
+`geladen`, `SP.teilwegGenutzt()` aufruft und das Ergebnis (`setDb`, `zuletztGeschrieben`, `setKonflikt`) umsetzt, prüft V
+nur über den Quelltext (Regex). Fälle: G (Lesen byte-gleich), M1 (Reproduktion verlorene Änderung, alter Ablauf), M2 (reine
 Migration im Konflikt still übernommen, fremde Änderung erhalten, eigene Eingabe danach normal), M3 (Betriebsrat kein PUT),
-M4 (eigene Änderung dazwischen: Dialog bleibt), D (Differenz: Eingabe speichert wie bisher), V (Verdrahtung `App.jsx`).
-Rot vorher: auf 899ce304 schlagen M2, M3, M4 und V fehl; G und D ebenfalls, aber nur, weil die neue Funktion fehlt —
+M4 (eigene Änderung dazwischen: Dialog bleibt), D (Differenz: Eingabe speichert wie bisher), K (`migrationKonflikt` direkt:
+aktueller vor geladenem Stand, Sitzung/Stand, Teilweg, ältere Serverfassung), V (Verdrahtung `App.jsx`).
+Rot vorher: auf 899ce304 schlagen M2, M3, M4, K und V fehl; G und D ebenfalls, aber nur, weil die neue Funktion fehlt —
 inhaltlich bestätigen sie den alten Stand (Lesen schrieb schon nicht). M1 ist auf dem alten Stand grün (die
-Reproduktion). Mutante „Rollenprüfung entfernt“ → M3 rot.
+Reproduktion). Mutanten: „Rollenprüfung entfernt“ → M3 rot; „`lokal = geladen`“ (eigene Eingabe ignoriert) → M4 und K
+rot; „Teilweg-Abfrage entfernt“ → K rot.
+
+**Restrisiken** (Review #365):
+
+1. **Millisekunden-Fenster.** Gibt die Person zwischen dem Absenden der Migration und der Absage (409) schon etwas ein,
+   erscheint jetzt der Konfliktdialog (vorher: die Eingabe überschrieb später still den fremden Stand).
+2. **Bestehendes Verhalten von `speicher.js` (vor diesem Nachtrag, nicht geändert):** Nach einem 409 übernimmt
+   `speicher.js` den ETag der Absage. Eine schon wartende eigene Eingabe (`offen`) geht danach mit diesem ETag hinaus und
+   kann den fremden Stand überschreiben, obwohl der Dialog offen ist. Dieser Nachtrag behebt nur den Fall „keine eigene
+   Eingabe“; bei M4 erscheint der Dialog, das stille Überschreiben durch die nächste Eingabe bleibt möglich. Eigenes
+   Folgepaket (vermerkt in `WIEDERAUFNAHME.md`), hier nicht gebaut.
+3. **Ältere Serverfassung.** Steht der Server bei der Absage selbst noch auf einer Fassung < 9 (`automatikKonfliktLoesen`
+   verlangt `schritte === 0`), erscheint ein unnötiger, aber sicherer Dialog statt der stillen Übernahme.
+4. **Ausführung von `App.jsx`:** siehe Nachweis — nur über den Quelltext geprüft.
 
 **Weiter offen** (nicht Teil dieses Nachtrags): `workers: 1` in `playwright.config.mjs` — die e2e-Tests teilen einen
 Demo-Betrieb und ändern ihn teils; ob sie parallel ohne echte Konflikte laufen, ist nur mit einem e2e-Lauf zu belegen.

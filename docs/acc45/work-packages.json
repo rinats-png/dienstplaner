@@ -5815,7 +5815,7 @@
       "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #271 (Merge bbd5e6e0) in integration/release-v4: Tour-Selbststart entfernt, Konflikt des Urlaubshinweis-Laufs still aufgelöst, src/app/oeffnen.js"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/wp48-gb-oeffnen.test.js (echter Handler, zwei Sitzungen; laut PR rot vorher); Nachtrag pruefungen/wp48-gb-lesen.test.js 7/7 (2026-11-19, rot vorher auf 899ce304)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/wp48-gb-oeffnen.test.js (echter Handler, zwei Sitzungen; laut PR rot vorher); Nachtrag pruefungen/wp48-gb-lesen.test.js 8/8 (2026-11-19, rot vorher auf 899ce304; Auflagen Review #365)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":"PR #271 in integration/release-v4 gemergt (Teilumfang), Akzeptanz nicht vollständig: workers: 1 bleibt, Produktfragen offen"},
         "stagingGeprueft": {"wert":false,"beleg":null},
