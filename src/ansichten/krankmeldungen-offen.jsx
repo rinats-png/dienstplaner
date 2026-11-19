@@ -52,7 +52,7 @@ export function ErsatzVorbereitet({ m, fallId, name, dienstName, oeffneTag }) {
             <div>{v.direkt.length ? `Infrage: ${v.direkt.slice(0, 3).map((k) => name(k.personId)).join(", ")}` : "Niemand ohne Hindernis."}
               {v.nahe.length ? ` · Knapp (Ruhezeit): ${v.nahe.slice(0, 2).map((k) => name(k.personId)).join(", ")}` : ""}</div>
             {oeffneTag && <Btn size="sm" kind="quiet" onClick={() => oeffneTag(v.datum)}
-              aria-label={`Tag ${fKurz(v.datum)} in der Planung öffnen`}>Tag öffnen</Btn>}
+              aria-label={`Tag öffnen: ${fKurz(v.datum)} in der Planung`}>Tag öffnen</Btn>}
           </div>);
       })}
     </div>);

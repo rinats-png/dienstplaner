@@ -154,6 +154,12 @@ Gate, Regeln, Tags und Viewports ist nichts geändert. Ursachen und Korrektur (n
 | Achtungszeilen im Lagebild: Name „Datum: Titel“, sichtbar „Titel Datum“ | abnahme-b-lagebild-planer | Zeile ohne eigenen Namen (`src/ansichten/lagebild.jsx`) |
 | Karte „Zeiten bestätigen“ in Mein Plan: Knopf mit Zeile `role=button` darin (nested-interactive); axe zieht die innere Zielfläche von der äußeren ab, daher der 17-px-Streifen (target-size) | plan-mitarbeiter | innere Zeile ohne Bedienung, nur die Karte ist Knopf (`src/ansichten/mobil.jsx`) |
 
+Nach Review (#389): Der Fokusrahmen der Wochenlisten-Kopfzeile liegt innen (`outlineOffset: -3`), weil die Karte mit
+`overflow: hidden` abschneidet (WCAG 2.4.7). Vorsorglich gleich behandelt, obwohl die Suite diese Ansichten nicht abdeckt:
+Zeitachse (Tageszellen), Jahresansicht (Personenzeile), Bereitschaft (Tageszeile) und „Tag öffnen“ bei offenen
+Krankmeldungen („Tag öffnen: <Datum> in der Planung“).
+
 Absicherung ohne Browser: `pruefungen/wcag-wp40.test.js` (Abschnitt P2-11; bildet die Wortfolge-Prüfung von axe 4.14 nach
-und prüft, dass keine Ausnahme dieser drei Regeln mehr eingetragen ist). Gate bleibt der Browser-axe-Lauf der CI an allen
-acht Viewports; lokal lief nur das Projekt 1024x768 (Ergebnis im PR).
+und verlangt eine ganz leere Ausnahmeliste). Gate bleibt der Browser-axe-Lauf der CI an allen acht Viewports; lokal liefen
+1024x768 (alle betroffenen Flächen) und 390x844 (plan-planer, plan-mitarbeiter), Ergebnisse im PR. `target-size` auf
+plan-mitarbeiter ist für die Telefone quer (feste untere Leiste) nur durch die CI belegbar.

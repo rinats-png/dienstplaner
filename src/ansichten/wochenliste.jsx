@@ -64,7 +64,9 @@ export function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
               <div {...klickbar(() => oeffneTag(d),
                 `${pISO(d).getDate()}. ${DOW_LANG[dow(d)]}${fei ? `, ${fei}` : ""}${istHeute ? ", heute" : ""}${t ? `, ${t.text}` : ""}`)}
                 onClick={undefined}
-                style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
+                /* WCAG 2.4.7: Die Karte schneidet mit overflow:hidden ab; der Fokusrahmen liegt deshalb innen
+                   (wie .utab), sonst wäre er oben, links und rechts weg. */
+                style={{ outlineOffset: -3, display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
                 background: istHeute ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent" }}>
                 <span style={{ fontSize: 19, fontWeight: 700, ...NUM,
                   color: istHeute ? C.accent : C.text }}>{pISO(d).getDate()}.</span>

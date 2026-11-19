@@ -210,11 +210,30 @@ describe("WP-40 P2-11: sichtbarer Text im zugänglichen Namen (WCAG 2.5.3), kein
     expect(woche).toContain('{istHeute && <>{" "}<Pill size="sm" tone="accent">heute</Pill></>}');
   });
 
-  it("axe-Ausnahmen: keine für label-content-name-mismatch, nested-interactive oder target-size", () => {
-    const aus = JSON.parse(LIES("e2e/axe-ausnahmen.json")).ausnahmen;
-    for (const r of ["label-content-name-mismatch", "nested-interactive", "target-size"]) {
-      expect(aus.filter((a) => a.regel === r).map((a) => a.flaeche)).toEqual([]);
-    }
+  it("Wochenliste (2.4.7): Fokusrahmen der Kopfzeile liegt innen, weil die Karte mit overflow:hidden abschneidet", () => {
+    const stelle = woche.slice(woche.indexOf("<Card key={d} onClick"), woche.indexOf("<span style={{ fontSize: 19"));
+    expect(stelle).toContain('overflow: "hidden"');
+    expect(stelle).toMatch(/onClick=\{undefined\}[\s\S]*style=\{\{ outlineOffset: -3,/);
+    /* Inline schlägt die globale Regel :focus-visible{outline-offset:2px}, solange dort kein !important steht. */
+    expect(LIES("src/App.jsx")).not.toMatch(/outline-offset:[^;}]*!important/);
+  });
+
+  it("vorsorglich: Zeitachse, Jahresansicht, Bereitschaft, offene Krankmeldungen mit sichtbarem Text im Namen", () => {
+    const zeit = LIES("src/ansichten/zeitachse.jsx"), jahr = LIES("src/ansichten/jahresansicht.jsx");
+    const ber = LIES("src/ansichten/bereitschaft.jsx"), krank = LIES("src/ansichten/krankmeldungen-offen.jsx");
+    expect(zeit).toContain('`${DOW[dow(d)]} ${Number(d.slice(8))}${fei ? " Feiertag" : ""}${eng ? " knapp" : ""} · ${fKurz(d)} öffnen`');
+    expect(zeit).toContain('{fei && <>{" "}<div style={{ fontSize: 10, color: C.danger }}>Feiertag</div></>}');
+    expect(zeit).not.toContain("klickbar(() => oeffneTag(d), `${fKurz(d)} öffnen`)");
+    expect(jahr).toContain("<div {...klickbar(() => oeffnePerson(p.id))}");
+    expect(ber).toContain("{...klickbar(() => oeffneTag(t.datum))}");
+    expect(krank).toContain("aria-label={`Tag öffnen: ${fKurz(v.datum)} in der Planung`}>Tag öffnen</Btn>");
+    expect(imNamen("Tag öffnen", "Tag 19.11. in der Planung öffnen")).toBe(false);
+    expect(imNamen("Tag öffnen", "Tag öffnen: 19.11. in der Planung")).toBe(true);
+    expect(imNamen("Mo 19 Feiertag", "Mo 19 Feiertag · 19.11. öffnen")).toBe(true);
+  });
+
+  it("axe-Ausnahmen: die Liste ist ganz leer (P2-11 Option A, keine neue Ausnahme)", () => {
+    expect(JSON.parse(LIES("e2e/axe-ausnahmen.json")).ausnahmen).toEqual([]);
   });
 });
 
