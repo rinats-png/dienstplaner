@@ -32,12 +32,23 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    an diesen Tagen liefert `anzuwendendesModell` „keine“ (nie still das Betriebsmodell). Eine Lücke, die bis heute oder
    in einen abgeschlossenen bzw. freigegebenen Monat reicht, fängt weiter der historische Schutz (Regel 3).
    Ein gespeicherter Versatz außerhalb 0 … n−1 oder ohne ganze Zahl ergibt „ungültig“ (`grund: "versatz"`), nie still 0
-   oder Modulo; ein fehlender Versatz gilt wie dokumentiert als 0. Ein solcher Fehlwert entsteht nicht nur über
-   `/api/wiederherstellen` (alte Sicherung), sondern auch **ohne** Wiederherstellen: Verkürzt die Leitung ein Modell, das
-   nur künftig zugeordnet ist, und bleibt eine Zuordnung mit Versatz ≥ neue Länge unverändert, speichert der Server mit 200
-   (die Zuordnungen werden nicht erneut geprüft, der historische Schutz sieht nur Zukunft). Heute folgenlos (keine
-   Planwirkung); festgeschrieben in `imp6-mehrfachmodelle` Abschnitt 4. **Pflicht vor Punkt 6:** diese Modelländerung
-   abweisen wie `MODELL_VERWENDET` (ENTSCHEIDUNGSLISTE P2-4, technische Vorbedingung).
+   oder Modulo; ein fehlender Versatz gilt wie dokumentiert als 0. Ein solcher Fehlwert entsteht nur noch über
+   `/api/wiederherstellen` (alte Sicherung; P2-4 Punkt 8). **Modell verkürzt, Versatz ≥ n (umgesetzt, Vorbedingung vor
+   Punkt 6, Branch `feat/imp6-versatz-vorbedingung`):** Wird ein Modell verkürzt (neue Zahl der Zyklustage n kleiner als
+   gespeichert) und trägt eine Zuordnung zu diesem Modell im zusammengeführten Stand einen Versatz ≥ n, antwortet der
+   Server **422 `MODELL_VERKUERZT_VERSATZ`** (`feld: mandanten[i].schichtmodelle`, Text nur mit Kennungen: Modell,
+   Zuordnung, Person, neue Länge, Versatz) und speichert nichts — kein stilles „ungültig“, kein Modulo, kein Ersatzwert.
+   Bisher speicherte er mit 200, wenn die Zuordnung unverändert blieb (sie wurde nicht erneut geprüft). Ausweg: im selben
+   oder einem vorherigen Speichern den Versatz anpassen. Wird die Zuordnung im selben Speichern auch sonst geändert, greift
+   wie bisher die Listenprüfung (403 „Versatz muss …“). Geprüft wird jede Zuordnung zum verkürzten Modell (vergangene
+   fängt schon der historische Schutz); ein Modell, das nicht verkürzt wird, prüft die Regel nicht, ein gespeicherter
+   Altfehler blockiert also kein unabhängiges Speichern. Voll- und Teilweg gleich (nach der Rechteprüfung, in
+   `daten.mjs` neben den übrigen 422-Absagen; Bibliothek `modellKuerzungFehler`/`modellKuerzungFehlerBestand`).
+   Statuscode 422 statt 403 wie `MODELL_VERWENDET`: es ist eine inhaltliche Absage, kein Rechtefall (Code im Rumpf).
+   Die Oberfläche kennt den Code noch nicht (es gibt keine Modellpflege in der Oberfläche; `src/speicher.js` zeigt eine
+   unbekannte 422 als allgemeinen Fehler) — Anzeige des Servertexts zusammen mit der Oberfläche (P2-19 (d)).
+   Nicht erfasst: das Betriebsmodell (`m.zyklus`, Versatz der Einheit), das wie bisher modulo rechnet.
+   Prüfung: `imp6-mehrfachmodelle` Abschnitte 4 und 4b.
 3. **Historischer Schutz.** Verglichen wird je Abschnitt zwischen allen Grenzen (alt und neu), was vorher und nachher gilt
    (Modell, Versatz, Anker; auch geänderte Zyklustage eines Modells). Abgewiesen, wenn sich etwas ändert an einem Tag **bis
    einschließlich heute** (Europe/Berlin), in einem **abgeschlossenen Monat** (`monatsabschluss`) oder in einem **freigegebenen

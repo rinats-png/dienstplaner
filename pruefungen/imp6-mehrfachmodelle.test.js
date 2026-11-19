@@ -440,20 +440,23 @@ describe("4. Historischer Schutz: kein rückwirkender Wechsel", () => {
     expect((await gespeichert(raum)).m1.schichtmodelle[1].tage).toEqual(["N", "N", "N", "-"]);
     await abgewiesen((m) => { wechselAb(M2)(m); }, { freigegeben: [M2.slice(0, 7)] }, /freigegebenen Plan/);
   });
-  /* Dokumentiertes heutiges Verhalten (Review PR #369, Auflage 1): vor Punkt 6 (Planwirkung) durch Abweisung ersetzen
-     („Modell verkürzt, Versatz einer Zuordnung ≥ n“, analog MODELL_VERWENDET; ENTSCHEIDUNGSLISTE P2-4). */
-  it("Modell verkürzt bei unveränderter künftiger Zuordnung mit Versatz ≥ neue Länge: heute 200, danach ungültig/versatz (nie Modulo)", async () => {
+  /* Vorbedingung vor Punkt 6 (Review PR #369, Auflage 1; ENTSCHEIDUNGSLISTE P2-4): Bis hierher speicherte der Server das
+     Verkürzen mit 200 und die Zuordnung war danach still „ungültig/versatz“. Jetzt 422 MODELL_VERKUERZT_VERSATZ, nichts
+     gespeichert; kein Modulo, kein Ersatzwert. Abschnitt 4b prüft die Grenzfälle. */
+  it("Modell verkürzt bei unveränderter künftiger Zuordnung mit Versatz ≥ neue Länge: 422 MODELL_VERKUERZT_VERSATZ, nichts gespeichert", async () => {
     const { raum, token } = await neuerRaum({ rollen: ["LT"] });
     const ab = (m) => { wechselAb(M2)(m); pA1(m).schichtmodellZuordnungen[2].versatz = 3; };
     expect((await schreibeAls(token, "LT", ab)).status).toBe(200);
-    expect(L.anzuwendendesModell((await gespeichert(raum)).m1, (await gespeichert(raum)).a1, M2)).toMatchObject({ art: "modell", modellId: "nacht", versatz: 3 });
+    const vorher = await gespeichert(raum);
+    expect(L.anzuwendendesModell(vorher.m1, vorher.a1, M2)).toMatchObject({ art: "modell", modellId: "nacht", versatz: 3 });
     const a = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; });
-    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(422);
+    expect(a.code).toBe("MODELL_VERKUERZT_VERSATZ");
+    expect(String(a.text)).toMatch(/nacht.*3 Zyklustage.*a1-nacht.*Versatz 3.*Es wurde nichts geändert/);
+    expect(a.feld).toBe("mandanten[0].schichtmodelle");
     const g = await gespeichert(raum);
-    expect(g.m1.schichtmodelle[1].tage).toEqual(["N", "N", "-"]);
-    expect(g.a1.schichtmodellZuordnungen[2]).toMatchObject({ modellId: "nacht", versatz: 3 });
-    expect(L.anzuwendendesModell(g.m1, g.a1, M2)).toEqual({ art: "ungueltig", grund: "versatz" });
-    expect(L.modellDienstAm(g.m1, g.a1, plus(M2, 5))).toEqual({ art: "ungueltig", grund: "versatz" });
+    expect(g.bestand).toEqual(vorher.bestand);
+    expect(L.anzuwendendesModell(g.m1, g.a1, M2)).toMatchObject({ art: "modell", modellId: "nacht", versatz: 3 });
   });
   it("neue Person: implizites Modell wie bisher; eigenes Modell ab M2 erlaubt, seit gestern abgewiesen", async () => {
     const { raum, token } = await neuerRaum({ rollen: ["LT"] });
@@ -463,6 +466,135 @@ describe("4. Historischer Schutz: kein rückwirkender Wechsel", () => {
     expect((await gespeichert(raum)).m1.personen.find((p) => p.id === "n9").schichtmodellZuordnungen).toHaveLength(2);
     await abgewiesen((m) => { m.personen.push({ ...person("n8", "mitarbeiter", "e1"),
       schichtmodellZuordnungen: [{ id: "n8-a", modellId: "tag", gueltigAb: plus(HEUTE, -1), gueltigBis: null }] }); }, {}, /vergangene Tage/);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+describe("4b. Modell verkürzt, Versatz ≥ n: abweisen statt still ungültig (Vorbedingung vor P2-4 Punkt 6)", () => {
+  /* Bibliothek rein: nur verkürzte Modelle, jede Zuordnung zu ihnen, Grenze n−1 erlaubt, n abgewiesen. */
+  const betrieb = (tageNacht, zuordnungen) => ({ schichtmodelle: [{ id: "tag", tage: ["F", "F", "-"] }, { id: "nacht", tage: tageNacht }],
+    personen: [{ id: "a1", schichtmodellZuordnungen: zuordnungen }, { id: "m0" }] });
+  const Z = (versatz, extra = {}) => [{ id: "z1", modellId: "nacht", gueltigAb: M2, gueltigBis: null, ...(versatz === undefined ? {} : { versatz }), ...extra }];
+  const ALT4 = ["N", "N", "-", "-"];
+  it("Bibliothek: Versatz n abgewiesen, n−1 erlaubt; Code, Kennungen, keine Namen", () => {
+    const alt = betrieb(ALT4, Z(3));
+    const f = L.modellKuerzungFehler(betrieb(["N", "N", "-"], Z(3)), alt);
+    expect(f).toMatchObject({ code: L.MODELL_VERKUERZT_VERSATZ, modellId: "nacht", zuordnungId: "z1", personId: "a1", laenge: 3, versatz: 3 });
+    expect(f.grund).toMatch(/erlaubt 0 bis 2/);
+    expect(L.modellKuerzungFehler(betrieb(["N", "N", "-"], Z(2)), betrieb(ALT4, Z(2)))).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N"], Z(1)), betrieb(ALT4, Z(1)))?.laenge).toBe(1);
+    expect(L.modellKuerzungFehler(betrieb(["N"], Z(0)), betrieb(ALT4, Z(0)))).toBeNull();
+  });
+  it("Bibliothek: nicht verkürzt (gleich lang, länger, neues Modell), fehlender Versatz (= 0) oder anderes Modell: keine Abweisung", () => {
+    expect(L.modellKuerzungFehler(betrieb(["F", "N", "-", "-"], Z(3)), betrieb(ALT4, Z(3)))).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N", "N", "-", "-", "-"], Z(3)), betrieb(ALT4, Z(3)))).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N"], Z(3)), { schichtmodelle: [], personen: [] })).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N"], Z(undefined)), betrieb(ALT4, Z(undefined)))).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N"], Z(null)), betrieb(ALT4, Z(null)))).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N"], [{ id: "z", modellId: "tag", gueltigAb: M2, gueltigBis: null, versatz: 2 }]),
+      betrieb(ALT4, [{ id: "z", modellId: "tag", gueltigAb: M2, gueltigBis: null, versatz: 2 }]))).toBeNull();
+    expect(L.modellKuerzungFehler(betrieb(["N"], Z(3)), null)).toBeNull();
+  });
+  it("Bibliothek: jede Zuordnung zählt (auch vergangene oder befristete), und ein Versatz über der alten Länge ebenso", () => {
+    const vergangen = Z(3, { gueltigAb: "2020-01-01", gueltigBis: "2020-12-31" });
+    expect(L.modellKuerzungFehler(betrieb(["N", "N"], vergangen), betrieb(ALT4, vergangen))?.code).toBe(L.MODELL_VERKUERZT_VERSATZ);
+    expect(L.modellKuerzungFehler(betrieb(["N", "N"], Z(9)), betrieb(ALT4, Z(9)))?.versatz).toBe(9);
+  });
+  it("Bestand: der Betrieb mit verkürztem Modell wird genannt; ein anderer Betrieb ohne Kürzung stört nicht", () => {
+    const alt = { mandanten: [{ id: "x", ...betrieb(ALT4, Z(3)) }, { id: "y", ...betrieb(ALT4, Z(3)) }] };
+    const neu = { mandanten: [{ id: "x", ...betrieb(ALT4, Z(3)) }, { id: "y", ...betrieb(["N", "N"], Z(3)) }] };
+    expect(L.modellKuerzungFehlerBestand(neu, alt)).toMatchObject({ code: "MODELL_VERKUERZT_VERSATZ", feld: "mandanten[1].schichtmodelle" });
+    expect(L.modellKuerzungFehlerBestand(alt, alt)).toBeNull();
+    expect(L.modellKuerzungFehlerBestand(neu, null)).toBeNull();
+  });
+
+  /* Echter Handler. Ausgang: a1 hat ab M2 „nacht“ (4 Tage) mit Versatz v. */
+  const ausgang = async (v) => {
+    const r = await neuerRaum({ rollen: ["LT", "PL", "KU"] });
+    const ab = (m) => { pA1(m).schichtmodellZuordnungen = [ZUORDNUNGEN_A1()[0], { ...ZUORDNUNGEN_A1()[1], gueltigBis: plus(M2, -1) },
+      { id: "a1-nacht", modellId: "nacht", gueltigAb: M2, gueltigBis: null, versatz: v }]; };
+    expect((await schreibeAls(r.token, "LT", ab)).status).toBe(200);
+    return r;
+  };
+  for (const k of ERLAUBT) {
+    it(`${k}: Versatz 3, Modell auf 3 Tage verkürzt: 422, Bestand byte-gleich, Text ohne Modellnamen`, async () => {
+      const { raum, token } = await ausgang(3);
+      const vorher = await gespeichert(raum);
+      const a = await schreibeAls(token, k, (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; m.schichtmodelle[0].name = "anders"; });
+      expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(422);
+      expect(a.code).toBe("MODELL_VERKUERZT_VERSATZ");
+      expect(JSON.stringify(a)).not.toMatch(/Nacht|MODELLNAME-GEHEIM|anders/);
+      expect((await gespeichert(raum)).bestand).toEqual(vorher.bestand);
+    });
+  }
+  it("Versatz 2 (= n−1), Modell auf 3 Tage verkürzt: 200, Zuordnung gültig", async () => {
+    const { raum, token } = await ausgang(2);
+    const a = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; });
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(200);
+    const g = await gespeichert(raum);
+    expect(g.m1.schichtmodelle[1].tage).toEqual(["N", "N", "-"]);
+    expect(L.anzuwendendesModell(g.m1, g.a1, M2)).toMatchObject({ art: "modell", modellId: "nacht", versatz: 2 });
+  });
+  it("Verkürzen und im selben Speichern den Versatz anpassen: 200 (der Weg, den die Absage nennt)", async () => {
+    const { raum, token } = await ausgang(3);
+    const a = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; pA1(m).schichtmodellZuordnungen[2].versatz = 0; });
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(200);
+    const g = await gespeichert(raum);
+    expect(g.a1.schichtmodellZuordnungen[2]).toMatchObject({ versatz: 0, version: 2 });
+    expect(L.anzuwendendesModell(g.m1, g.a1, M2)).toMatchObject({ art: "modell", versatz: 0 });
+  });
+  it("Verkürzen und im selben Speichern die Zuordnung sonst ändern (Versatz bleibt 3): wie bisher 403 aus der Listenprüfung, nichts gespeichert", async () => {
+    const { raum, token } = await ausgang(3);
+    const vorher = await gespeichert(raum);
+    const a = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; pA1(m).schichtmodellZuordnungen[2].gueltigBis = plus(M3, 10); });
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(403);
+    expect(String(a.text)).toMatch(/Versatz muss eine ganze Zahl von 0 bis 2/);
+    expect((await gespeichert(raum)).bestand).toEqual(vorher.bestand);
+  });
+  it("Verlängern oder Tage tauschen bei gleicher Länge: 200", async () => {
+    const { raum, token } = await ausgang(3);
+    expect((await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-", "-", "-"]; })).status).toBe(200);
+    expect((await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "-", "N", "-", "-"]; })).status).toBe(200);
+    expect((await gespeichert(raum)).m1.schichtmodelle[1].tage).toEqual(["N", "-", "N", "-", "-"]);
+  });
+  it("gespeicherter Altfehler (Versatz ≥ n aus alter Sicherung): unabhängiges Speichern bleibt 200, Verkürzen dieses Modells 422", async () => {
+    const { raum, token } = await ausgang(3);
+    const g = await gespeichert(raum);
+    const roh = kopie(g.bestand);
+    roh.mandanten.find((m) => m.id === "m1").personen.find((p) => p.id === "a1").schichtmodellZuordnungen[2].versatz = 7;
+    await B.bestandSchreiben(laden(), raum, roh, { durch: "Pruefung" });
+    const u = await schreibeAls(token, "LT", (m) => { m.dienstarten = m.dienstarten.map((d) => (d.id === "F" ? { ...d, ende: "14:15" } : d)); });
+    expect(u.status, JSON.stringify(u).slice(0, 300)).toBe(200);
+    expect(L.anzuwendendesModell((await gespeichert(raum)).m1, (await gespeichert(raum)).a1, M2)).toEqual({ art: "ungueltig", grund: "versatz" });
+    const k = await schreibeAls(token, "LT", (m) => { m.schichtmodelle[1].tage = ["N", "N", "-"]; });
+    expect(k.status, JSON.stringify(k).slice(0, 300)).toBe(422);
+    expect(k.code).toBe("MODELL_VERKUERZT_VERSATZ");
+  });
+  it("Teilweg: dasselbe 422 und derselbe Stand wie der Voll-PUT", async () => {
+    const { raum, token } = await ausgang(3);
+    const vorher = await gespeichert(raum);
+    const gA = await anfrage("/api/bestand", { token: token.LT });
+    expect(gA.teile).toBeTruthy();
+    const m = kopie(gA.bestand.mandanten[0]);
+    m.schichtmodelle[1].tage = ["N", "N", "-"];
+    const t = await anfrage("/api/bestand/teile", { methode: "POST", token: token.LT, rumpf: { format: 1, epoche: gA.teile.epoche, durch: "Pruefung",
+      kern: { schichtmodelle: { basis: gA.teile.versionen["kern:schichtmodelle"], wert: m.schichtmodelle } } } });
+    expect(t.status, JSON.stringify(t).slice(0, 300)).toBe(422);
+    expect(t.code).toBe("MODELL_VERKUERZT_VERSATZ");
+    expect((await gespeichert(raum)).bestand).toEqual(vorher.bestand);
+  });
+  it("Rolle ohne Modellrecht (Schichtverantwortung, Beschäftigte): Verkürzen bleibt wirkungslos bzw. 403, nie 422, nichts gespeichert", async () => {
+    const { raum } = await ausgang(3);
+    const vorher = await gespeichert(raum);
+    for (const k of ["SV", "MA"]) {
+      const token = {};
+      const r = ROLLEN[k];
+      token[k] = (await sitzungAnlegen({ bestand: raum, name: `V N${r.person}`, rolle: r.rolle, person: r.person, betrieb: 0,
+        mandantId: "m1", einheit: r.einheit || null }, 2 * 3600 * 1000)).token;
+      const a = await schreibeAls(token, k, (mm) => { if (Array.isArray(mm.schichtmodelle) && mm.schichtmodelle[1]) mm.schichtmodelle[1].tage = ["N", "N", "-"]; });
+      expect(a.status, `${k}: ${JSON.stringify(a).slice(0, 200)}`).not.toBe(422);
+      expect((await gespeichert(raum)).m1.schichtmodelle, k).toEqual(vorher.m1.schichtmodelle);
+    }
   });
 });
 

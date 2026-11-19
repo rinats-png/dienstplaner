@@ -398,6 +398,63 @@ export function schichtzuordnungZusammen(altM, neuM, { darf, person, jetzt, heut
 }
 
 /* --------------------------------------------------------------------------
+   MODELL VERKÜRZT, VERSATZ ≥ n (Vorbedingung vor P2-4 Punkt 6, Review PR #369)
+   -------------------------------------------------------------------------- */
+/** Fehlercode: Ein Modell wurde verkürzt, eine Zuordnung trägt einen Versatz ≥ neue Länge (Antwort 422). */
+export const MODELL_VERKUERZT_VERSATZ = "MODELL_VERKUERZT_VERSATZ";
+
+/**
+ * Wird ein Schichtmodell verkürzt (neue Zahl der Zyklustage n kleiner als gespeichert), darf keine Zuordnung des
+ * Betriebs einen Versatz ≥ n behalten: Die Zuordnung wäre danach still „ungültig/versatz“, und Modulo oder ein
+ * Ersatzwert wären erfunden. Geprüft wird der zusammengeführte Stand (nach der Rechteprüfung), jede Zuordnung zu
+ * einem verkürzten Modell — gleich ob vergangen, laufend oder künftig, gleich ob sie in diesem Speichern geändert
+ * wurde. Ein Modell, das nicht verkürzt wird, prüft diese Regel nicht (ein gespeicherter Altfehler blockiert keine
+ * unabhängige Änderung; anzuwendendesModell meldet ihn weiter als „ungültig“). Nur Kennungen im Text, keine Namen.
+ * @param {any} neuM zusammengeführter Betrieb
+ * @param {any} altM gespeicherter Betrieb (null: neuer Betrieb, nichts verkürzt)
+ * @returns {{ code: string, grund: string, modellId: string, zuordnungId: string, personId: string, laenge: number, versatz: number } | null}
+ */
+export function modellKuerzungFehler(neuM, altM) {
+  if (!istObjekt(neuM) || !istObjekt(altM)) return null;
+  const alt = modellVerzeichnis(altM), neu = modellVerzeichnis(neuM);
+  const verkuerzt = new Map();
+  for (const [id, x] of neu) { const v = alt.get(id); if (v && x.tage.length < v.tage.length) verkuerzt.set(id, x.tage.length); }
+  if (!verkuerzt.size) return null;
+  for (const p of Array.isArray(neuM.personen) ? neuM.personen : []) {
+    if (!istObjekt(p) || !Array.isArray(p[ZUORDNUNG_FELD])) continue;
+    for (const z of p[ZUORDNUNG_FELD]) {
+      if (!istObjekt(z) || !verkuerzt.has(z.modellId)) continue;
+      const n = verkuerzt.get(z.modellId), v = z.versatz;
+      if (typeof v === "number" && Number.isFinite(v) && v >= n)
+        return { code: MODELL_VERKUERZT_VERSATZ, modellId: kennung(z.modellId), zuordnungId: kennung(z.id), personId: kennung(p.id), laenge: n, versatz: v,
+          grund: `Schichtmodelle: Das Schichtmodell ${kennung(z.modellId)} hätte nur noch ${n} Zyklustage, die Zuordnung ${kennung(z.id)} `
+            + `(Person ${kennung(p.id)}) trägt aber den Versatz ${v} (erlaubt 0 bis ${n - 1}). Bitte zuerst den Versatz der Zuordnung `
+            + `ändern oder das Modell nicht verkürzen.` };
+    }
+  }
+  return null;
+}
+
+/**
+ * Dieselbe Prüfung für den ganzen Bestand (Voll- und Teilweg in daten.mjs, nach der Rechteprüfung): je Betrieb gegen
+ * den gespeicherten Betrieb gleicher Kennung. `feld` nennt den Betrieb wie die übrigen 422-Absagen.
+ * @param {any} neuB zusammengeführter Bestand
+ * @param {any} altB gespeicherter Bestand
+ * @returns {{ code: string, grund: string, feld: string } | null}
+ */
+export function modellKuerzungFehlerBestand(neuB, altB) {
+  const neuL = neuB && Array.isArray(neuB.mandanten) ? neuB.mandanten : [];
+  const altNach = new Map((altB && Array.isArray(altB.mandanten) ? altB.mandanten : []).filter(istObjekt).map((m) => [m.id, m]));
+  for (let i = 0; i < neuL.length; i++) {
+    const m = neuL[i];
+    if (!istObjekt(m)) continue;
+    const f = modellKuerzungFehler(m, altNach.get(m.id) || null);
+    if (f) return { code: f.code, grund: f.grund, feld: `mandanten[${i}].${MODELLE_FELD}` };
+  }
+  return null;
+}
+
+/* --------------------------------------------------------------------------
    PROTOKOLL (nur Kennungen, keine Namen, keine Zeiträume)
    -------------------------------------------------------------------------- */
 const kennung = (x) => String(x ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
