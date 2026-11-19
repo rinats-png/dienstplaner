@@ -2,6 +2,8 @@
 
 **Stand:** 15.10.2026. Hier liegt das neue Design von CENTRIC mit dem vollständigen Code der Entwürfe. Die laufende Anwendung ist noch nicht umgestellt; das erledigt der Befehl unten.
 
+> **V3 ist abgelöst, V4 Glass ist maßgeblich (Stand 2026-11-20, Paket V4-0).** Die Spezifikation liegt unter [`design/v4-glass/`](v4-glass/) (`DESIGNSYSTEM.md`, `MIGRATION.md`, `README.md`, `index.html`, `assets/`, `mockups/`); umgesetzt wird sie in `src/v4/`. Alles in diesem Verzeichnis, was V3 betrifft, bleibt als **abgelöst (Referenz)** erhalten und wird nicht gelöscht: `design/app/stil.css`, die `canvas/V3-*.dc.html` und `canvas/V3D-*.dc.html` sowie der Befehl `/design-aufspielen`. Neue Gestaltung richtet sich nach `design/v4-glass/DESIGNSYSTEM.md`, nicht nach den V3-Werten unten. Die Website-Entwürfe (`canvas/W-*`, `website/quelle/`) sind noch nicht auf V4 umgestellt.
+
 ## Befehl
 
 Im Repository Claude Code starten und eingeben:
