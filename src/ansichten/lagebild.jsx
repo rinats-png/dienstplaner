@@ -1,7 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { heute, fLang, DOW, fKurz } from "../lib/datum.js";
 import { useMemo } from "react";
-import { besetzung, befundeFuer, pruefen, simulation, aktive, abwesenheitAm, kontoSichtbar, stundenkonto, darfEinheit, personTag } from "../lib/fachlogik.js";
+import { besetzung, befundeFuer, pruefen, simulation, aktive, abwesenheitAm, kontoSichtbar, stundenkonto, darfEinheit, personTag, sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { addDays, dow, pad, pISO } from "../regelwerk.js";
 import { zeitraumBisMonat, istVerfuegbar, ISTDATEN_TEXT } from "../istdaten.js";
 import { einheitAm, einheitDienst } from "../../server/lib/fachpruefung.mjs";
@@ -91,8 +91,9 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
               <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 14 }}>
                 <span style={{ fontSize: 32, fontWeight: 450, letterSpacing: "-.035em",
                   color: b.diff < 0 ? C.danger : C.text, ...NUM }}>{b.anzahl}</span>
-                <span style={{ fontSize: 14, color: C.dim, ...NUM }}>/ {b.soll}</span></div>
-              <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.soll} tone={b.status} /></div>
+                <span style={{ fontSize: 14, color: C.dim, ...NUM }}>/ {sollAnzeige(b)}</span></div>
+              {b.bedarfOffen && <div style={{ fontSize: 12, color: C.warn, marginTop: 4 }}>{BEDARF_OFFEN_TEXT}</div>}
+              <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.bedarfOffen ? 0 : b.soll} tone={b.status} /></div>
               <div style={{ fontSize: 12, color: C.dim, marginTop: 10 }}>{e ? `${e.name} im Regeldienst` : "aus Abweichungen besetzt"}</div>
               {b.qualFehlt && <div style={{ marginTop: 9 }}><Pill size="sm" tone="danger">Qualifikation fehlt</Pill></div>}
               {luecke && darfBesetzen && (

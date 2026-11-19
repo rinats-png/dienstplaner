@@ -476,6 +476,149 @@ describe("A-4 — Zahl als Text im gespeicherten mindest bleibt, was sie war", (
   });
 });
 
+/* ==========================================================================
+   A-4 Nachtrag (ABN-A4, 2026-11-19) — Besetzungsanzeige ohne festgelegten Bedarf
+
+   Betreiberentscheidung 2026-11-13/14 (#280 Q3/Q4): historisch fehlende
+   Mindestbesetzung wird gekennzeichnet, nie still 0. Die Planansichten
+   zeigten für eine Altdienstart ohne `mindest` aber „0/0" (scheinbar
+   gedeckt), bei unvollständigem oder unlesbarem `mindest` „NaN". Jetzt:
+   „–" mit dem Text „Bedarf nicht festgelegt". soll, diff und status bleiben
+   unverändert (ob ein fehlender Bedarf die Ampel ändern soll, ist eine
+   offene Betreiberfrage, ENTSCHEIDUNGSLISTE P2-17); gültige Dienstarten
+   rendern wie bisher.
+   ========================================================================== */
+describe("A-4 Nachtrag — Besetzungsanzeige: fehlender Bedarf heißt „Bedarf nicht festgelegt\", nie 0/0 oder NaN", () => {
+  let FL; const V = {};
+  beforeAll(async () => {
+    FL = await import("../src/lib/fachlogik.js");
+    ({ Monatsplan: V.Monatsplan } = await import("../src/ansichten/monatsplan.jsx"));
+    ({ Tagesdetail: V.Tagesdetail } = await import("../src/ansichten/tagesdetail.jsx"));
+    ({ Lagebild: V.Lagebild } = await import("../src/ansichten/lagebild.jsx"));
+    ({ Zeitachse: V.Zeitachse } = await import("../src/ansichten/zeitachse.jsx"));
+    ({ Schnellbesetzung: V.Schnellbesetzung } = await import("../src/ansichten/schnellbesetzung.jsx"));
+    ({ Ersatzliste: V.Ersatzliste } = await import("../src/ansichten/ersatzliste.jsx"));
+    ({ Eskalation: V.Eskalation } = await import("../src/ansichten/eskalation.jsx"));
+  }, 120000);
+  const FREITAG = "2026-11-06";   // in der Woche von HEUTE; ein Teil-mindest { mo_do } hat freitags keinen Wert
+  const OFFEN = "Bedarf nicht festgelegt";
+  const mit = (wie) => {
+    const m = betrieb(); const d = m.dienstarten[0];
+    if (wie === "fehlt") delete d.mindest;
+    else if (wie === "null") d.mindest = null;
+    else if (wie === "teil") d.mindest = { mo_do: 2 };
+    else if (wie === "unlesbar") d.mindest = { mo_do: "abc", fr: "abc", sa: "abc", so: "abc" };
+    return m;
+  };
+  const ansichten = (sitz) => {
+    const daId = sitz.mandant.dienstarten[0].id, zu = () => {};
+    return [
+      ["Monatsplan", () => renderToStaticMarkup(h(V.Monatsplan, { sitz, ym: MONAT, setYm: zu, oeffneTag: zu, akt }))],
+      ["Wochenliste", () => renderToStaticMarkup(h(V.Monatsplan, { sitz, ym: MONAT, setYm: zu, oeffneTag: zu, akt, schmal: true }))],
+      ["Tagesdetail", () => renderToStaticMarkup(h(V.Tagesdetail, { sitz, datum: FREITAG, onClose: zu, akt }))],
+      ["Zeitachse", () => renderToStaticMarkup(h(V.Zeitachse, { sitz, oeffneTag: zu, akt }))],
+      ["Schnellbesetzung", () => renderToStaticMarkup(h(V.Schnellbesetzung, { sitz, datum: FREITAG, dienstId: daId, akt, onClose: zu }))],
+      ["Ersatzliste", () => renderToStaticMarkup(h(V.Ersatzliste, { sitz, datum: FREITAG, dienstId: daId, akt, onFertig: zu }))],
+      ["Eskalation", () => renderToStaticMarkup(h(V.Eskalation, { sitz, datum: FREITAG, dienstId: daId, akt, onClose: zu }))],
+      ["Lagebild", () => renderToStaticMarkup(h(V.Lagebild, { sitz, akt, oeffneTag: zu }))],
+    ];
+  };
+
+  it("fehlend, null, unvollständig, unlesbar: kein Absturz, kein NaN/undefined, „Bedarf nicht festgelegt\" statt Zahl", () => {
+    for (const wie of ["fehlt", "null", "teil", "unlesbar"]) {
+      const sitz = sitzFuer(mit(wie), "leitung");
+      const vorher = JSON.stringify(sitz.mandant);
+      for (const [name, rendern] of ansichten(sitz)) {
+        /* Lagebild zeigt nur heute (Mittwoch): ein Teil-mindest mit mo_do ist dort festgelegt. */
+        if (wie === "teil" && name === "Lagebild") continue;
+        let html = "";
+        expect(() => { html = rendern(); }, `${wie}/${name}`).not.toThrow();
+        expect(html, `${wie}/${name}`).not.toMatch(/NaN|undefined/);
+        expect(html, `${wie}/${name}`).toContain(OFFEN);
+      }
+      expect(JSON.stringify(sitz.mandant), `${wie}: Oberfläche verändert den Altstand nicht`).toBe(vorher);
+    }
+  });
+  it("Gegenprobe gültige Dienstarten: keine Kennzeichnung, kein NaN/undefined", () => {
+    const sitz = sitzFuer(betrieb(), "leitung");
+    for (const [name, rendern] of ansichten(sitz)) {
+      const html = rendern();
+      expect(html, name).not.toContain(OFFEN);
+      expect(html, name).not.toMatch(/NaN|undefined/);
+    }
+  });
+  it("Gegenprobe: ausdrücklich 0 an allen Tagen und ein Posten ohne mindest sind festgelegt — keine Kennzeichnung", () => {
+    const m = betrieb();
+    m.dienstarten[0].mindest = { mo_do: 0, fr: 0, sa: 0, so: 0 };
+    const posten = { ...JSON.parse(JSON.stringify(m.dienstarten[1])), id: "PO", kurz: "PO", name: "Posten ohne Bedarf", posten: true };
+    delete posten.mindest;
+    m.dienstarten.push(posten);
+    const sitz = sitzFuer(m, "leitung");
+    for (const [name, rendern] of ansichten(sitz)) {
+      const html = rendern();
+      expect(html, name).not.toContain(OFFEN);
+      expect(html, name).not.toMatch(/NaN|undefined/);
+    }
+    for (const d of [HEUTE, FREITAG, "2026-11-07", "2026-11-08", "2026-12-25"]) {
+      const b = FL.besetzung(sitz.mandant, d);
+      expect(b[sitz.mandant.dienstarten[0].id], d).not.toHaveProperty("bedarfOffen");
+      expect(b.PO, d).not.toHaveProperty("bedarfOffen");
+      expect(b[sitz.mandant.dienstarten[0].id].soll, d).toBe(0);
+    }
+  });
+  it("Tageswert null, leer, false, Liste oder negativ (auch So-Wert am Feiertag): gekennzeichnet; soll wie bisher", async () => {
+    const IE_ = await import("../server/lib/isteinfrieren.mjs");
+    {
+      const SA = "2026-11-07", WEIHNACHTEN = "2026-12-25", FR_NORMAL = "2026-12-18";
+      for (const sa of [null, "", false, [3], -1]) {
+        const m = betrieb(); const id = m.dienstarten[0].id;
+        m.dienstarten[0].mindest = { mo_do: 2, fr: 2, sa, so: 1 };
+        const b = FL.besetzung(m, SA)[id];
+        expect(b.bedarfOffen, JSON.stringify(sa)).toBe(true);
+        expect(b.soll, JSON.stringify(sa)).toBe(IE_.mindestFuer(m, m.dienstarten[0], SA));
+        expect(FL.besetzung(m, FREITAG)[id], JSON.stringify(sa)).not.toHaveProperty("bedarfOffen");
+      }
+      const m = betrieb(); const id = m.dienstarten[0].id;
+      m.dienstarten[0].mindest = { mo_do: 2, fr: 2, sa: 2, so: null };
+      expect(FL.besetzung(m, WEIHNACHTEN)[id].bedarfOffen).toBe(true);
+      expect(FL.besetzung(m, WEIHNACHTEN)[id].soll).toBe(2);
+      expect(FL.besetzung(m, FR_NORMAL)[id]).not.toHaveProperty("bedarfOffen");
+      /* Altwert als Text bleibt festgelegt. */
+      const t = betrieb(); t.dienstarten[0].mindest = { mo_do: "2", fr: "2", sa: "0", so: "1" };
+      for (const d of [HEUTE, SA, "2026-11-08", WEIHNACHTEN]) expect(FL.besetzung(t, d)[t.dienstarten[0].id], d).not.toHaveProperty("bedarfOffen");
+      const html = renderToStaticMarkup(h(V.Tagesdetail, { sitz: sitzFuer((() => { const x = betrieb();
+        x.dienstarten[0].mindest = { mo_do: 2, fr: 2, sa: null, so: null }; return x; })(), "leitung"), datum: SA, onClose: () => {}, akt }));
+      expect(html).toContain(OFFEN);
+    }
+  });
+  it("besetzung und tagesband: bedarfOffen nur ohne festgelegten Bedarf; soll, diff und status wie bisher", () => {
+    const m = mit("fehlt"), id = m.dienstarten[0].id;
+    const b = FL.besetzung(m, FREITAG)[id];
+    expect(b.bedarfOffen).toBe(true);
+    expect([b.soll, b.diff, b.status]).toEqual([0, b.anzahl, "ok"]);
+    expect(FL.tagesband(m, FREITAG).find((s) => s.da.id === id).bedarfOffen).toBe(true);
+    const t = mit("teil"), tid = t.dienstarten[0].id;
+    expect(FL.besetzung(t, FREITAG)[tid].bedarfOffen).toBe(true);
+    expect(FL.besetzung(t, HEUTE)[tid]).not.toHaveProperty("bedarfOffen");
+    expect(FL.besetzung(t, HEUTE)[tid].soll).toBe(2);
+    /* Gültige Dienstarten: das Feld fehlt ganz — das Ergebnis hat dieselben Schlüssel wie bisher. */
+    const g = betrieb();
+    for (const d of Array.from({ length: 30 }, (_, i) => `${MONAT}-${String(i + 1).padStart(2, "0")}`)) {
+      for (const e of Object.values(FL.besetzung(g, d))) expect(e, d).not.toHaveProperty("bedarfOffen");
+      for (const s of FL.tagesband(g, d)) expect(s, d).not.toHaveProperty("bedarfOffen");
+    }
+  });
+  it("Anzeigehelfer: „–\" und Text nur bei bedarfOffen, sonst die Zahl wie bisher", () => {
+    expect(FL.sollAnzeige({ soll: 3 })).toBe(3);
+    expect(FL.sollAnzeige({ soll: 0 })).toBe(0);
+    expect(FL.sollAnzeige({ soll: 0, bedarfOffen: true })).toBe("–");
+    expect(FL.sollAnzeige({ soll: NaN, bedarfOffen: true })).toBe("–");
+    expect(FL.besetztText({ anzahl: 2, soll: 3 })).toBe("2 von 3");
+    expect(FL.besetztText({ anzahl: 2, soll: 0, bedarfOffen: true })).toBe(`2 eingeteilt, ${OFFEN}`);
+    expect(FL.BEDARF_OFFEN_TEXT).toBe(OFFEN);
+  });
+});
+
 describe("A-4 — Eingabe der Mindestbesetzung (Dialog)", () => {
   let DA;
   beforeAll(async () => { DA = await import("../src/ansichten/dienstarten.jsx"); }, 120000);

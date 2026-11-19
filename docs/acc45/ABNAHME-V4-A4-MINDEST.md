@@ -185,3 +185,52 @@ Status (200/403/409/422) sind unverändert.
    (b) für Importe alter Exporte annehmen, aber je Dienstart als fehlend kennzeichnen (kein stilles 0); (c) ein
    ausdrückliches Migrationswerkzeug, das `mindest` je Dienstart abfragt oder aus einer Vorgabe setzt und
    protokolliert. Empfehlung steht aus; bis zur Entscheidung gilt (a).
+
+## 5. Nachtrag 2026-11-19 (ABN-A4): tatsächlicher Stand, Nachweis je Entscheidung
+
+Stand: Basis `origin/integration/release-v4` @ `9fd6045f`. PR #280 ist gemergt (2026-11-13, Merge `bcddf680`,
+Vorfahre der Basis). Der SSOT-Satz „PR #280 offen, angehalten" ist überholt. Der Absturz („reading 'fr'") ist
+behoben: `mindestFuer`, `mindestWerte`, `mindestVorhanden` (`server/lib/isteinfrieren.mjs:52–96`) lesen eine
+fehlende Angabe ohne Absturz. Die Betreiberentscheidungen vom 2026-11-14 (Q1 bis Q5, jeweils Option A bzw. (a))
+bestätigen das gebaute Verhalten; es war keine Codeänderung an der Regel nötig.
+
+| Entscheidung | Code | Prüfung (je Entscheidung) |
+|---|---|---|
+| Q1 `mindest: 0` als Zahl bleibt 422 | `server/lib/gestalt.mjs:143` `mindestFehler` (kein Objekt → Fehler) | `personendaten.test.js` „PUT: 2.5, -1, … 0 als Zahl, Liste → 422" und Einheit „ungültig: … kein Objekt" |
+| Q2 Weglassen bei gespeicherter Dienstart: Wert bleibt | `gestalt.mjs:231` `dienstartenAngleichen` | `personendaten.test.js` „PUT: fehlt mindest an einer gespeicherten Dienstart (oder null), bleibt der gespeicherte Stand" |
+| Q3 Sicherungen bleiben brauchbar, kein stilles Ergänzen | `server/funktionen/daten.mjs` `wiederherstellen` (ruft `dienstartenFehler`/`-Angleichen` bewusst nicht) | **neu** `personendaten.test.js` „A-4 Q3: Wiederherstellen aus einer Sicherung mit Dienstarten ohne mindest" (200, byte-gleich, kein `mindest` ergänzt) |
+| Q4 Bearbeiten historisch fehlender Werte erlaubt, gekennzeichnet | `gestalt.mjs:172` `mindestGleich`, `:256` `dienstartenFehler`; Kennzeichnung Planungsreife und Dienstarten-Karte | `personendaten.test.js` „Kennung einer gespeicherten Dienstart ohne mindest: vollständig ersetzbar …"; `oberflaeche-render.test.js` „Dienstarten-Karte …", „Planungsreife meldet …" |
+| Q5 Alter Export beim Neuanlegen: Validierungsfehler | `daten.mjs:800` (`bestand-anlegen`, `dienstartenFehler(neuerBestand, null)`) | `personendaten.test.js` „bestand-anlegen (Betreiber): ohne/null/ungültig → 422 …" |
+
+Ein Migrationswerkzeug (Q5 (c)) ist nicht gebaut und braucht eine gesonderte Freigabe.
+
+### 5.1 Lücke in der Kennzeichnung: Besetzungsanzeige
+
+Befund (Basis): Für eine Altdienstart ohne `mindest` zeigten Monatsplan, Wochenliste, Tagesdetail, Lagebild,
+Zeitachse, Schnellbesetzung, Ersatzliste und Eskalation „0/0" bzw. „0 von 0" mit Ampel „ok" — scheinbar gedeckt,
+ohne Kennzeichnung. Bei unvollständigem (`{ mo_do: 2 }`) oder unlesbarem (`"abc"`) `mindest` lieferte
+`mindestFuer` an den betroffenen Tagen `NaN` (`Math.max(undefined, 0)`), angezeigt als „NaN" und als Breite
+„NaN%" im Füllbalken (Monatsplan, Wochenliste).
+
+Behebung (entscheidungsfrei, folgt „historisch Fehlendes wird gekennzeichnet, nie still 0"):
+`besetzung` (`server/lib/engine/plan.mjs`) setzt `bedarfOffen: true`, wenn eine Dienstart (außer Posten, wie in
+der Planungsreife) kein `mindest` hat oder der Tageswert, den `mindestFuer` liest (am Feiertag auch der So-Wert),
+nach `mindestFeldStatus` nicht gültig ist (`null`, leer, `false`, Liste, negativ, Kommazahl, kein Zahlwert;
+`mindestTagOffen` in `server/lib/isteinfrieren.mjs`, Review #370 M1); bei Posten zählt nur ein Tageswert, der keine
+Zahl ergibt. 0 und ein Altwert als Text („2“) gelten als festgelegt. `tagesband` reicht das Kennzeichen
+weiter. Die Ansichten zeigen dann „–" und „Bedarf nicht festgelegt" (`sollAnzeige`, `besetztText`,
+`BEDARF_OFFEN_TEXT` in `src/lib/fachlogik.js`). `soll`, `diff` und `status` bleiben unverändert; bei
+festgelegtem Bedarf fehlt das Feld ganz. Differenzlauf alt/neu (gültige Dienstarten, auch Altwerte als Text
+„2"; acht Ansichten, Prioritäten, `besetzung`, `tagesband`, `unterschreitungsNachweis`, Leitung und Planung):
+Ausgabe bit-gleich (SHA-256 identisch). Prüfung: `oberflaeche-render.test.js` „A-4 Nachtrag — Besetzungsanzeige".
+
+Nicht entschieden und deshalb nicht gebaut: ob der fehlende Bedarf die Ampel, die Lückenlisten und den
+Unterschreitungsnachweis ändern soll — ENTSCHEIDUNGSLISTE **P2-17** (Voreinstellung: nur Kennzeichnung).
+Nicht angepasst (Basisverhalten, Restrisiken): `krankmeldungen-offen.jsx` (eigene Rechnung über
+`ersatzVorbereiten`, zeigt „x/0"); bei **unvollständigem** `mindest` ist `soll` an den betroffenen Tagen `NaN`, der
+Unterschreitungsnachweis (`unterschreitungsNachweis`) liefert dann eine Zeile mit `soll: NaN`, und die
+Prioritäten-Kachel „Besetzung heute" verschwindet ohne Hinweis (P2-17). Nur bei **fehlendem** `mindest` (`soll` 0)
+erscheint der Dienst gar nicht im Unterschreitungsnachweis.
+
+Abweichung vom Wortlaut der Regel vom 2026-11-13 („Zahlen als Zeichenfolge werden normalisiert"): gebaut ist neu
+oder geändert 422, gespeichert unverändert (§2.2). Als eigene Betreiberfrage **P2-18** eingetragen.

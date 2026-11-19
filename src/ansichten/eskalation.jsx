@@ -1,5 +1,5 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
-import { besetzung } from "../lib/fachlogik.js";
+import { besetzung, besetztText } from "../lib/fachlogik.js";
 import { useState } from "react";
 import { Sheet, Zelle } from "../ui/leisten.jsx";
 import { fLang } from "../lib/datum.js";
@@ -27,7 +27,7 @@ export function Eskalation({ sitz, datum, dienstId, akt, onClose }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 600}}>{da.name} · {fLang(datum)}</div>
           <div style={{ fontSize: 12.5, color: C.danger, ...NUM }}>
-            {b.anzahl} von {b.soll}{b.qualFehlt ? " · Qualifikation fehlt" : ""}</div>
+            {besetztText(b)}{b.qualFehlt ? " · Qualifikation fehlt" : ""}</div>
         </div>
       </div>
 

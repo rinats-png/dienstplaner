@@ -6,7 +6,7 @@ import { NUM } from "../ui/thema.js";
 import { fLang, fKurz } from "../lib/datum.js";
 import { Icon } from "../gestalt/icons.jsx";
 import { Zelle, Sheet } from "../ui/leisten.jsx";
-import { besetzung, ersatzVorschlaege } from "../lib/fachlogik.js";
+import { besetzung, ersatzVorschlaege, sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { anfrageText, folgenPruefen } from "../lib/planhilfen.js";
 import { FONT } from "../ui/schriftart.js";
 
@@ -43,8 +43,9 @@ export function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 24, fontWeight: 650, color: b.diff < 0 ? C.danger : C.ok, ...NUM }}>
-            {b.anzahl}<span style={{ fontSize: 14, color: C.dimmer, fontWeight: 500 }}>/{b.soll}</span></div>
-          <div style={{ fontSize: 11.5, color: C.dimmer }}>{b.diff < 0 ? `${Math.abs(b.diff)} fehlen` : "gedeckt"}</div>
+            {b.anzahl}<span style={{ fontSize: 14, color: C.dimmer, fontWeight: 500 }}>/{sollAnzeige(b)}</span></div>
+          <div style={{ fontSize: 11.5, color: b.bedarfOffen ? C.warn : C.dimmer }}>{b.bedarfOffen ? BEDARF_OFFEN_TEXT
+            : b.diff < 0 ? `${Math.abs(b.diff)} fehlen` : "gedeckt"}</div>
         </div>
       </div>
 

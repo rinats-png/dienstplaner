@@ -1,6 +1,6 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState, useMemo } from "react";
-import { besetzung, ersatzVorschlaege, rangGruende } from "../lib/fachlogik.js";
+import { besetzung, ersatzVorschlaege, rangGruende, sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { Zelle } from "../ui/leisten.jsx";
 import { fKurz } from "../lib/datum.js";
 import { C } from "../farben.js";
@@ -34,8 +34,9 @@ export function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 22, fontWeight: 650, color: b.diff < 0 ? C.danger : C.ok, ...NUM }}>
-            {b.anzahl}<span style={{ fontSize: 13, color: C.dimmer, fontWeight: 500 }}>/{b.soll}</span></div>
-          <div style={{ fontSize: 11.5, color: C.dimmer }}>{b.diff < 0 ? `${Math.abs(b.diff)} fehlen` : "gedeckt"}</div>
+            {b.anzahl}<span style={{ fontSize: 13, color: C.dimmer, fontWeight: 500 }}>/{sollAnzeige(b)}</span></div>
+          <div style={{ fontSize: 11.5, color: b.bedarfOffen ? C.warn : C.dimmer }}>{b.bedarfOffen ? BEDARF_OFFEN_TEXT
+            : b.diff < 0 ? `${Math.abs(b.diff)} fehlen` : "gedeckt"}</div>
         </div>
       </div>
       {b.qual && b.qual.filter((q) => !q.ok).length > 0 && (

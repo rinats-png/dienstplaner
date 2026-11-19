@@ -1,6 +1,6 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState, useMemo } from "react";
-import { besetzung, aktive, darfEinheit, personTag, notizenZu, abwesenheitAm, abwArt } from "../lib/fachlogik.js";
+import { besetzung, aktive, darfEinheit, personTag, notizenZu, abwesenheitAm, abwArt, sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { feiertag } from "../../server/lib/feiertage.mjs";
 import { einheitAm, nachtAnteil } from "../../server/lib/fachpruefung.mjs";
 import { Sheet } from "../ui/leisten.jsx";
@@ -44,7 +44,7 @@ export function Tagesdetail({ sitz, datum, onClose, akt }) {
               <button onClick={() => setTab(d.id)} className="btn"
                 style={{ background: on ? `${d.farbe}1E` : C.bg, color: on ? d.farbe : C.dim,
                   fontWeight: on ? 650 : 500, display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontWeight: 700 }}>{d.kurz}</span><span style={NUM}>{b.anzahl}/{b.soll}</span>
+                <span style={{ fontWeight: 700 }}>{d.kurz}</span><span style={NUM}>{b.anzahl}/{sollAnzeige(b)}</span>
                 {b.diff < 0 && <span style={{ color: C.danger, fontWeight: 700 }}>−{Math.abs(b.diff)}</span>}
                 {b.qualFehlt && <span style={{ color: C.warn }}>!</span>}</button>
             </Ablage>); })}
@@ -62,8 +62,9 @@ export function Tagesdetail({ sitz, datum, onClose, akt }) {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 28, fontWeight: 650, color: e.diff < 0 ? C.danger : C.ok, ...NUM }}>
-            {e.anzahl}<span style={{ fontSize: 15, color: C.dimmer, fontWeight: 500 }}>/{e.soll}</span></div>
-          <div style={{ fontSize: 12, color: C.dimmer }}>{e.diff < 0 ? `${Math.abs(e.diff)} fehlen` : `${e.diff} über Soll`}</div>
+            {e.anzahl}<span style={{ fontSize: 15, color: C.dimmer, fontWeight: 500 }}>/{sollAnzeige(e)}</span></div>
+          <div style={{ fontSize: 12, color: e.bedarfOffen ? C.warn : C.dimmer }}>{e.bedarfOffen ? BEDARF_OFFEN_TEXT
+            : e.diff < 0 ? `${Math.abs(e.diff)} fehlen` : `${e.diff} über Soll`}</div>
         </div>
       </div>
 

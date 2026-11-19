@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { heute, fLang, fDatum, fKurz, DOW } from "../lib/datum.js";
 import { addDays, montag, pad, toMin, dow } from "../regelwerk.js";
-import { tagesband, aktive, personTag, abwArt } from "../lib/fachlogik.js";
+import { tagesband, aktive, personTag, abwArt, sollAnzeige, besetztText } from "../lib/fachlogik.js";
 
 import { klickbar, H1, Seg, Card, Lab, Leer, Avatar, Filterleiste, Schalter, Btn } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
@@ -43,8 +43,8 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
     const namen = s.personen.slice(0, 3).map((p) => p.nachname).join(", ");
     return (
       <div {...klickbar(() => oeffneTag(tag),
-        `${s.da.name} ${s.da.start}–${s.da.ende}, ${s.anzahl} von ${s.soll} besetzt${namen ? ` · ${namen}` : ""}`)}
-        title={`${s.da.name} ${s.da.start}–${s.da.ende} · ${s.anzahl} von ${s.soll}${namen ? ` · ${namen}` : ""}`}
+        `${s.da.name} ${s.da.start}–${s.da.ende}, ${s.bedarfOffen ? besetztText(s) : `${s.anzahl} von ${s.soll} besetzt`}${namen ? ` · ${namen}` : ""}`)}
+        title={`${s.da.name} ${s.da.start}–${s.da.ende} · ${besetztText(s)}${namen ? ` · ${namen}` : ""}`}
         style={{ position: "absolute", top: oben, height: hoehe,
           left: `calc(${index * breite}% + 2px)`, width: `calc(${breite}% - 4px)`,
           background: `${s.da.farbe}1C`, borderLeft: `3px solid ${s.da.farbe}`,
@@ -55,7 +55,7 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
         {hoehe > 40 && (
           <div style={{ fontSize: 10.5, marginTop: 2, lineHeight: 1.25,
             color: s.status === "ok" ? C.dim : s.status === "warn" ? C.warn : C.danger, ...NUM }}>
-            {s.anzahl}/{s.soll}</div>)}
+            {s.anzahl}/{sollAnzeige(s)}</div>)}
         {hoehe > 62 && namen && (
           <div style={{ fontSize: 10, color: C.dimmer, marginTop: 2, lineHeight: 1.25,
             overflow: "hidden" }}>{namen}</div>)}
