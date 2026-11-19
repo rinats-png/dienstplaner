@@ -55,6 +55,14 @@
      macht (B-H5 Stufe 2).
    - /api/wiederherstellen (nur Leitung) läuft ohne diese Prüfung
      (Entscheidungsliste, Kategorie C).
+   - B-H5: Tage vor heute bleiben ausgenommen. Wer die Abweichung von
+     GESTERN löscht, ändert damit auch die Ruhezeit zum Dienst von heute —
+     das prüft der Server nicht.
+   - B-H5: Verletzt schon der Dienst aus der Schichtfolge eine Regel
+     (Altbefund der Schichtfolge), geht „zurück zur Schichtfolge“ nicht
+     (403). Ausweg: den Tag ausdrücklich auf „-“ oder einen anderen Dienst
+     setzen.
+   - Mengensperre ABWESENHEIT_TAGE_MAX (2 000 Tage), auch ohne Befund.
 
    Rein: keine Ablage.
    ========================================================================== */
@@ -66,7 +74,9 @@ import { einteilungsBefunde, imDienst, mindestOhneFeiertag, einheitAm, einheitDi
 
 /** Wie weit der Server mittelbare Änderungen voraus nachrechnet (Tage ab heute). */
 export const SCHUTZ_HORIZONT_TAGE = 120;
-/** B-H5 Stufe 2: höchstens so viele wieder dienstpflichtige Tage aus aufgehobenen Abwesenheiten je Übermittlung. */
+/** B-H5 Stufe 2: höchstens so viele wieder dienstpflichtige Tage aus aufgehobenen Abwesenheiten je Übermittlung.
+    Bewusste Mengensperre (Entscheidung Kategorie B): Sie greift auch ohne Befund — etwa Betriebsferien von 150
+    Personen × 14 Tagen auf einmal aufheben (2 100 Tage) → 403 „in kleineren Schritten“. */
 export const ABWESENHEIT_TAGE_MAX = 2000;
 
 /** Was der Server je Einteilung durchsetzt (Schlüssel im Befundkatalog). Dazu

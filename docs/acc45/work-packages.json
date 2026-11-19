@@ -753,7 +753,7 @@
       "akzeptanz": "Qualifikation/Ruhezeit/Höchstarbeitszeit/Untergrenzen serverseitig, Warnung mit Bestätigungsprotokoll; Dienstarten nur mit org.edit",
       "tests": "Unit, HTTP",
       "dateien": "server/lib",
-      "notiz": "Nachtrag B-H5 (2026-11-19, Branch fix/b-h5-ruhezeit-geloeschte-abweichung, nicht integriert): Eine gelöschte Abweichung ab heute (zurück zur Schichtfolge) und Tage, die eine gelöschte/verkürzte/aufgehobene Abwesenheit wieder dienstpflichtig macht (120 Tage, höchstens 2 000), prüft der Server wie gesetzte Einteilungen (403/409); vergangene Tage nicht. Nebenbefund /api/wiederherstellen ohne Fachprüfung: ENTSCHEIDUNGSLISTE P2-21 (C)."
+      "notiz": "Nachtrag B-H5 (2026-11-19, PR #397; integriert erst mit dessen Merge): Eine gelöschte Abweichung ab heute (zurück zur Schichtfolge) und Tage, die eine gelöschte/verkürzte/aufgehobene Abwesenheit wieder dienstpflichtig macht (120 Tage, höchstens 2 000), prüft der Server wie gesetzte Einteilungen (403/409); vergangene Tage nicht. Mengensperre 2 000 Tage auch ohne Befund (Kategorie B). Nebenbefund /api/wiederherstellen ohne Fachprüfung: ENTSCHEIDUNGSLISTE P2-21 (C). Folgepaket (B): 403-Text der Fachprüfung in der Oberfläche anzeigen (speicher.js zeigt nur „nicht zulässig“)."
     },
     {
       "id": "WP-23",

@@ -31,7 +31,9 @@ Status, Schutzangaben) — 120 Tage, nur Einteilungen, an denen sich etwas geän
 gelöscht, gilt am Tag wieder der Dienst aus der Schichtfolge; der Server prüft ihn wie einen gesetzten (dieselben
 Antworten 403/409, Partner für „kein Alleindienst“, Mindestbesetzung, Bereich der Schichtverantwortung). Ebenso die
 Tage ab heute bis zum Ende des Horizonts, die eine gelöschte, verkürzte oder aufgehobene Abwesenheit wieder
-dienstpflichtig macht (höchstens `ABWESENHEIT_TAGE_MAX` = 2 000 je Übermittlung, sonst Absage). Vergangene Tage
+dienstpflichtig macht (höchstens `ABWESENHEIT_TAGE_MAX` = 2 000 je Übermittlung, sonst Absage). Das ist eine bewusste Mengensperre
+(Kategorie B), die auch ohne Befund greift: Betriebsferien von 150 Personen × 14 Tagen auf einmal aufheben ergibt
+2 100 Tage und damit 403 „bitte in kleineren Schritten“. Vergangene Tage
 nicht: Löschlauf und Aufbewahrung bleiben frei. Altbestände bleiben unverändert; nur neue Befunde zählen.
 
 **Schutzangaben immer speichern (Nachprüfung 9717ddf, M2).** Ändern sich nur Mutterschutz, Einwilligung,
@@ -92,6 +94,12 @@ Strukturelle Änderung der Schichtfolge (ungünstigster Fall), warm, Minimum aus
 - Rufbereitschaft zählt nicht; tatsächliche Einsätze daraus kennt die Planung nicht.
 - Dienste in Folge, Verfügbarkeit und Teilzeit-Wochentage bleiben Hinweise der Oberfläche.
 - Aufgehobene Abwesenheiten nur 120 Tage voraus (B-H5); spätere Tage zeigt die Planprüfung.
+- B-H5, Tage vor heute ausgenommen: Wer die Abweichung von **gestern** löscht, verändert damit auch die Ruhezeit zum
+  Dienst von heute; das prüft der Server nicht.
+- B-H5, Altbefund der Schichtfolge: Verletzt schon der Dienst aus der Schichtfolge eine Regel, geht „zurück zur
+  Schichtfolge“ nicht (403). Ausweg: den Tag ausdrücklich auf „-“ oder einen anderen Dienst setzen.
+- Die Oberfläche zeigt den Text einer 403 der Fachprüfung (`text`) nicht an: `src/speicher.js` wirft nur `fehler`,
+  `fehlerart` macht daraus „nicht zulässig“. Folgepaket (Kategorie B), nicht Teil von B-H5.
 - `/api/wiederherstellen` (nur Leitung) läuft ohne Fachprüfung (Entscheidungsliste P2-21, Kategorie C).
 - Mittelbar nur 120 Tage voraus. Ändern sich nur Vorgaben des Betriebs, prüft der Server bestehende Einteilungen nicht nach.
 - Die Bremse für Strukturänderungen lebt im Speicher des einen Serverprozesses.

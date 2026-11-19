@@ -233,7 +233,9 @@ Einteilung, deren Abweichung **gelöscht** wird (B-H5, „zurück zur Schichtfol
 Dienst aus der Schichtfolge wie einen gesetzten (dieselben Antworten 403/409, Bestätigung zu Person und Tag ohne
 Abweichung möglich); ebenso Tage ab heute (120 Tage), die eine gelöschte, verkürzte oder für einen Tag aufgehobene
 Abwesenheit wieder dienstpflichtig macht (höchstens 2 000 Tage je Übermittlung, sonst Absage „in kleineren
-Schritten“). Vergangene Tage nicht (Löschlauf, Aufbewahrung). Die Dienstart kommt aus
+Schritten“, bewusste Mengensperre auch ohne Befund). Vergangene Tage nicht (Löschlauf, Aufbewahrung). Verletzt schon
+der Dienst aus der Schichtfolge eine Regel, geht „zurück zur Schichtfolge“ nicht (403); Ausweg: den Tag ausdrücklich
+auf „-“ oder einen anderen Dienst setzen. Die Dienstart kommt aus
 dem neuen Stand; eine unbekannte sperrt (fail-closed). Ändert eine Übermittlung Dienstzeiten, Schichtfolge (`zyklus`,
 `anker`), Einheiten (Versatz) oder Zugehörigkeit, Springer oder Schichtdienst einer Person, rechnet der Server für
 jede geschützte Person die nächsten 120 Tage vorher und nachher nach (Abweichung, sonst Schichtfolge) und weist ab,
