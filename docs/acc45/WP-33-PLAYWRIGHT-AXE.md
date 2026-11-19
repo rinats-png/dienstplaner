@@ -133,6 +133,33 @@ Lauf mit den Ausnahmen (lokal, Windows, einzeln nacheinander): **56 von 56 besta
 
 ## 5. Offen
 
-- Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.
+- ~~Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.~~ Erledigt 2026-11-19
+  (WP-40, P2-11 Option A), siehe Abschnitt 6.
 - Weitere Flächen: Anträge, Tauschbörse, Personal, Prüfung, Abrechnungsdaten, Hilfe, Rechtliches und Lagebild sind in der Suite (siehe 4b); offen bleiben die Betreiberkonsole (eigener Zugang, eigener Betrieb) und weitere Verwaltungsansichten. Offline: Stempeln ohne Netz deckt B7 der Abnahme B ab; weitere Offline-Fälle brauchen eine Fachvorgabe.
 - Erster Lauf auf dem GitHub-Runner (Chromium-Download) steht mit dem PR aus.
+
+## 6. WP-40: Abbau aller axe-Ausnahmen (P2-11 Option A, 2026-11-19)
+
+Betreiberentscheidung 2026-11-18: zugängliche Namen korrigieren, verschachtelte Bedienelemente beseitigen, Ausnahmen nach
+Korrektur streichen, keine Abschwächung der Prüfungen. Alle 16 Einträge in `e2e/axe-ausnahmen.json` sind gestrichen; an
+Gate, Regeln, Tags und Viewports ist nichts geändert. Ursachen und Korrektur (nur Markup/ARIA, keine Logik):
+
+| Ursache (Regel) | Flächen | Korrektur |
+|---|---|---|
+| Kontoknopf `.avatarknopf`: sichtbar Initialen, Name „Konto: Name“ (label-content-name-mismatch) | alle Flächen mit Kopfleiste | Name `„<Initialen>, Konto <Name>“` (`src/gestalt/rahmen.jsx`) |
+| Suchknopf `.suchknopf`: sichtbar „Suchen … Strg K“, Name „Suchen (Strg K)“ (axe streicht Klammerinhalt) | ab Tabletbreite | Name „Suchen, Strg K“, dazu `aria-keyshortcuts` |
+| Monatsplan-Raster: Kopfzellen („So 01“), Einheitszellen (Kürzel, „2 ab“), Besetzungszellen („3/4“) mit abweichendem Namen | plan-planer, plan-leitung, plan-betriebsrat | Name beginnt mit dem sichtbaren Text, danach die Erklärung; Kopf weiter mit „Tag · “ (`src/ansichten/monatsplan.jsx`) |
+| Tageskarten der Wochenliste (schmale Monatsplanansicht): ganze Karte als Knopf mit Name nur des Kopfes | plan-* an schmalen Viewports | Maus öffnet weiter über die ganze Karte; Bedienelement für Tastatur und Vorlesesoftware ist die Kopfzeile, Name = ihr sichtbarer Text (`src/ansichten/wochenliste.jsx`) |
+| Personenzellen `td[role=button]` „Name öffnen“ bei sichtbarer Funktion/Rolle; Tageszellen ohne Kürzel im Namen | plan-subplaner, personal-leitung | Personenzelle ohne eigenen Namen (Inhalt ist der Name); Tageszelle beginnt mit dem Kürzel (`einsatzplan.jsx`, `personal.jsx`) |
+| Achtungszeilen im Lagebild: Name „Datum: Titel“, sichtbar „Titel Datum“ | abnahme-b-lagebild-planer | Zeile ohne eigenen Namen (`src/ansichten/lagebild.jsx`) |
+| Karte „Zeiten bestätigen“ in Mein Plan: Knopf mit Zeile `role=button` darin (nested-interactive); axe zieht die innere Zielfläche von der äußeren ab, daher der 17-px-Streifen (target-size) | plan-mitarbeiter | innere Zeile ohne Bedienung, nur die Karte ist Knopf (`src/ansichten/mobil.jsx`) |
+
+Nach Review (#389): Der Fokusrahmen der Wochenlisten-Kopfzeile liegt innen (`outlineOffset: -3`), weil die Karte mit
+`overflow: hidden` abschneidet (WCAG 2.4.7). Vorsorglich gleich behandelt, obwohl die Suite diese Ansichten nicht abdeckt:
+Zeitachse (Tageszellen), Jahresansicht (Personenzeile), Bereitschaft (Tageszeile) und „Tag öffnen“ bei offenen
+Krankmeldungen („Tag öffnen: <Datum> in der Planung“).
+
+Absicherung ohne Browser: `pruefungen/wcag-wp40.test.js` (Abschnitt P2-11; bildet die Wortfolge-Prüfung von axe 4.14 nach
+und verlangt eine ganz leere Ausnahmeliste). Gate bleibt der Browser-axe-Lauf der CI an allen acht Viewports; lokal liefen
+1024x768 (alle betroffenen Flächen) und 390x844 (plan-planer, plan-mitarbeiter), Ergebnisse im PR. `target-size` auf
+plan-mitarbeiter ist für die Telefone quer (feste untere Leiste) nur durch die CI belegbar.

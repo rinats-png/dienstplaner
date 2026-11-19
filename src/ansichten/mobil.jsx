@@ -49,9 +49,10 @@ export const MKarte = ({ children, onClick, ton, style }) => (
     borderRadius: 18, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
     boxShadow: "var(--schatten)", ...style }}>{children}</div>);
 
-export const MZeile = ({ links, rechts, unten, onClick, ton }) => (
+/* zeiger: Zeile ohne eigene Bedienung in einer bedienbaren Karte (WP-40, kein Knopf im Knopf) behält den Zeiger. */
+export const MZeile = ({ links, rechts, unten, onClick, ton, zeiger }) => (
   <div {...klickbar(onClick)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 4px",
-    minHeight: 46, cursor: onClick ? "pointer" : "default", borderBottom: `1px solid ${C.lineSoft}` }}>
+    minHeight: 46, cursor: onClick || zeiger ? "pointer" : "default", borderBottom: `1px solid ${C.lineSoft}` }}>
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontSize: 15.5, fontWeight: 500,
         color: ton === "danger" ? C.danger : ton === "warn" ? C.warn : C.text }}>{links}</div>
@@ -303,10 +304,12 @@ export function MPlan({ sitz, akt, oeffnen }) {
       {/* WP-15: eigene Zeiten-Anträge (Selbstauskunft) — auch in der Smartphone-Ansicht. */}
       <SelbstauskunftStatus m={m} ich={ich} onErgebnis={akt.uebernehmeSelbstauskunft} melde={akt.melde} />
 
+      {/* WP-40 (WCAG 4.1.2, nested-interactive): Nur die Karte ist bedienbar; die Zeile darin ist reiner Inhalt, kein
+          zweiter Knopf im Knopf. Klick und Tastatur öffnen wie bisher die Zeiten. */}
       {offen.length > 0 && (
         <MKarte ton="warn" onClick={() => oeffnen("zeiten")}>
-          <MZeile ton="warn" links={`${offen.length} Zeiten bestätigen`}
-            unten="Solange offen, bleibt dein Stundenkonto eine Hochrechnung" onClick={() => {}} />
+          <MZeile ton="warn" zeiger links={`${offen.length} Zeiten bestätigen`}
+            unten="Solange offen, bleibt dein Stundenkonto eine Hochrechnung" />
         </MKarte>)}
 
       {ansicht === "liste" ? (

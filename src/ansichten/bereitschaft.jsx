@@ -31,7 +31,8 @@ export function Bereitschaft({ sitz, akt, oeffneTag }) {
         {plan.tage.map((t, i) => {
           const fei = feiertag(t.datum, m.bundesland);
           return (
-            <div key={t.datum} className="row" {...klickbar(() => oeffneTag(t.datum), `${fKurz(t.datum)} öffnen`)}
+            /* WP-40 (WCAG 2.5.3): kein eigener Name; die Zeile heißt, was sichtbar in ihr steht (Tag, Einträge). */
+            <div key={t.datum} className="row" {...klickbar(() => oeffneTag(t.datum))}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "13px 22px", cursor: "pointer",
                 borderBottom: i < plan.tage.length - 1 ? `1px solid ${C.lineSoft}` : "none",
                 background: t.datum === heute() ? C.accentLight : undefined, flexWrap: "wrap" }}>

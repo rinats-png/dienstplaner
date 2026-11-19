@@ -197,16 +197,19 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
               const eng = eintrag && knapp(eintrag.b);
               const aus = nurKnapp && !eng;
               return (
-                <div key={d} {...klickbar(() => oeffneTag(d), `${fKurz(d)} öffnen`)}
+                /* WP-40 (WCAG 2.5.3): Name beginnt mit dem sichtbaren Text (Wochentag, Tag, Feiertag, knapp), danach das
+                   Datum; unsichtbare Leerzeichen zwischen den Blöcken. */
+                <div key={d} {...klickbar(() => oeffneTag(d),
+                  `${DOW[dow(d)]} ${Number(d.slice(8))}${fei ? " Feiertag" : ""}${eng ? " knapp" : ""} · ${fKurz(d)} öffnen`)}
                   style={{ flex: 1, textAlign: "center",
                   cursor: "pointer", opacity: aus ? .3 : 1, padding: "0 3px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: dow(d) >= 5 ? C.dim : C.text }}>
                     {DOW[dow(d)]}</div>
-                  <div style={{ fontSize: 15, fontWeight: d === heute() ? 700 : 400, ...NUM,
+                  {" "}<div style={{ fontSize: 15, fontWeight: d === heute() ? 700 : 400, ...NUM,
                     color: d === heute() ? C.accent : fei ? C.danger : C.text, marginTop: 2 }}>
                     {Number(d.slice(8))}</div>
-                  {fei && <div style={{ fontSize: 10, color: C.danger }}>Feiertag</div>}
-                  {eng && <div style={{ fontSize: 10, color: C.warn }}>knapp</div>}
+                  {fei && <>{" "}<div style={{ fontSize: 10, color: C.danger }}>Feiertag</div></>}
+                  {eng && <>{" "}<div style={{ fontSize: 10, color: C.warn }}>knapp</div></>}
                 </div>);
             })}
           </div>

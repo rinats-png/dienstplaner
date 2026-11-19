@@ -44,7 +44,8 @@ export function Jahresansicht({ sitz, ym, oeffnePerson }) {
             const url = urlaubskonto(m, p, jahr);
             return (
               <div key={p.id} style={{ minWidth: 0 }}>
-                <div {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                {/* WP-40 (WCAG 2.5.3): kein eigener Name; die Zeile heißt, was sichtbar in ihr steht. */}
+                <div {...klickbar(() => oeffnePerson(p.id))}
                   style={{ display: "flex", alignItems: "baseline",
                   gap: 12, marginBottom: 7, cursor: "pointer", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{p.nachname}, {p.vorname}</span>

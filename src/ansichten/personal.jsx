@@ -127,7 +127,8 @@ export function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDO
             const e = m.einheiten.find((x) => x.id === einheitAm(p, d0));
             const r = rolle(p.rolle);
             return (<tr key={p.id} className="row">
-              <td {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+              {/* WP-40 (WCAG 2.5.3): kein eigener Name; die Zelle heißt, was sichtbar in ihr steht (Name, Funktion). */}
+              <td {...klickbar(() => oeffnePerson(p.id))}
                 style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Avatar person={p} style={{ opacity: p.austritt ? .45 : 1 }} />
