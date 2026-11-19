@@ -13,7 +13,12 @@
    Zwei Wege führen zu einer Einteilung, beide werden geprüft:
    1. Ausdrücklich: eine neue oder geänderte Einteilung in `abweichungen`.
       Die Dienstart kommt aus dem NEUEN Stand; eine unbekannte sperrt
-      (fail-closed); „-" heißt frei.
+      (fail-closed); „-" heißt frei. Auch eine GELÖSCHTE Abweichung ab heute
+      (B-H5): Am Tag gilt wieder der Dienst aus der Schichtfolge — der wird
+      geprüft wie ein gesetzter. Ebenso Tage ab heute (im Horizont), die eine
+      gelöschte, verkürzte oder aufgehobene Abwesenheit wieder dienstpflichtig
+      macht (höchstens ABWESENHEIT_TAGE_MAX je Übermittlung). Vergangene Tage
+      (Löschlauf, Aufbewahrung) nicht.
    2. Mittelbar: Ändert die Übermittlung Dienstarten, Schichtfolge (zyklus,
       anker), Einheiten (Versatz) oder Personen (Zugehörigkeit, Springer,
       Schichtdienst, Teilzeit, Eintritt, Austritt, Status), rechnet der Server
@@ -45,7 +50,11 @@
      die Mindestbesetzung ohne Feiertagsanhebung.
    - Höchstarbeitszeit nur je Dienst (über zehn Stunden), nicht der
      Durchschnitt über sechs Monate.
-   - Mittelbar nur im Horizont; spätere Tage prüft die Planprüfung.
+   - Mittelbar nur im Horizont; spätere Tage prüft die Planprüfung. Das gilt
+     auch für Tage, die eine aufgehobene Abwesenheit wieder dienstpflichtig
+     macht (B-H5 Stufe 2).
+   - /api/wiederherstellen (nur Leitung) läuft ohne diese Prüfung
+     (Entscheidungsliste, Kategorie C).
 
    Rein: keine Ablage.
    ========================================================================== */
@@ -57,6 +66,8 @@ import { einteilungsBefunde, imDienst, mindestOhneFeiertag, einheitAm, einheitDi
 
 /** Wie weit der Server mittelbare Änderungen voraus nachrechnet (Tage ab heute). */
 export const SCHUTZ_HORIZONT_TAGE = 120;
+/** B-H5 Stufe 2: höchstens so viele wieder dienstpflichtige Tage aus aufgehobenen Abwesenheiten je Übermittlung. */
+export const ABWESENHEIT_TAGE_MAX = 2000;
 
 /** Was der Server je Einteilung durchsetzt (Schlüssel im Befundkatalog). Dazu
     schutzWeich (Nachprüfung WP-11): etwa ein Einsatz 20–23 Uhr ab 16 Jahren
@@ -406,7 +417,48 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
       return { sperre: `Einteilung am ${tag} nicht möglich: Die Dienstart ist nicht bekannt.` };   // fail-closed
     zellen.set(`${pid}|${tag}`, wert);
   }
-  const struktur = [];                                                       // [Person, Tag] — mittelbar zu prüfen
+  /* B-H5 (Stufe 1): Eine GELÖSCHTE Abweichung ist ebenfalls eine geänderte
+     Einteilung — am Tag gilt wieder der Dienst aus der Schichtfolge (etwa
+     „+ Dienst der Schichtfolge" im Tagesblatt, Klick im Einsatzplan, Tausch).
+     Geprüft wird dieser abgeleitete Dienst (undefined → rN.am) wie ein
+     ausdrücklich gesetzter: nur neue Befunde, dieselben Antworten (403/409).
+     Nur ab heute: Vergangene Tage (Löschlauf, Aufbewahrung) bleiben unberührt. */
+  if (neuAbw !== altAbw) for (const k in altAbw) {
+    if (zeitUm()) { yield; weiter(); }
+    if (!hat(altAbw, k) || hat(neuAbw, k)) continue;
+    const [pid, tag] = String(k).split("|");
+    if (!TAG.test(tag || "") || tag < heute || !neuNach.has(String(pid))) continue;
+    if (!zellen.has(`${pid}|${tag}`)) zellen.set(`${pid}|${tag}`, undefined);
+  }
+  /* B-H5 (Stufe 2): Eine gelöschte, verkürzte oder für einen Tag aufgehobene
+     Abwesenheit macht Tage wieder dienstpflichtig (Schichtfolge oder
+     Abweichung). Geprüft werden die Tage ab heute bis zum Ende des Horizonts,
+     an denen sich der Dienst der Person dadurch tatsächlich ändert; spätere
+     Tage zeigt die Planprüfung (wie bei mittelbaren Änderungen). Höchstens
+     ABWESENHEIT_TAGE_MAX solcher Tage je Übermittlung, sonst fail-closed. */
+  if (mAlt.abwesenheiten !== mNeu.abwesenheiten && Array.isArray(mAlt.abwesenheiten)) {
+    const bleibt = new Set(liste(mNeu.abwesenheiten).map((a) => `${a.personId}|${a.von}|${a.bis}`));
+    const bisTag = addDays(heute, SCHUTZ_HORIZONT_TAGE);
+    let zusatz = 0;
+    for (const a of liste(mAlt.abwesenheiten)) {
+      if (zeitUm()) { yield; weiter(); }
+      if (bleibt.has(`${a.personId}|${a.von}|${a.bis}`)) continue;
+      if (typeof a.von !== "string" || typeof a.bis !== "string" || !TAG.test(a.von) || !TAG.test(a.bis)) continue;
+      const p = neuNach.get(String(a.personId)), pA = altNach.get(String(a.personId));
+      if (!p) continue;
+      for (let d = a.von < heute ? heute : a.von; d <= a.bis && d <= bisTag; d = addDays(d, 1)) {
+        if (zeitUm()) { yield; weiter(); }
+        const k = `${p.id}|${d}`;
+        if (zellen.has(k)) continue;
+        const n = rN.am(p, d);
+        if (!n || (pA && String(rA.am(pA, d)) === String(n))) continue;
+        if (++zusatz > ABWESENHEIT_TAGE_MAX)
+          return { sperre: "Diese Änderung hebt Abwesenheiten an zu vielen Tagen auf einmal auf. Bitte in kleineren Schritten speichern." };
+        zellen.set(k, undefined);
+      }
+    }
+  }
+  const struktur = [];                                                     // [Person, Tag] — mittelbar zu prüfen
   const strukturell = !!altM && (yield* planStrukturSchritte(mAlt, neuM, zeitUm, weiter));
   zaehler.mittelbar = strukturell;
   const horizont = Array.from({ length: SCHUTZ_HORIZONT_TAGE + 1 }, (_, i) => addDays(heute, i));

@@ -753,7 +753,7 @@
       "akzeptanz": "Qualifikation/Ruhezeit/Höchstarbeitszeit/Untergrenzen serverseitig, Warnung mit Bestätigungsprotokoll; Dienstarten nur mit org.edit",
       "tests": "Unit, HTTP",
       "dateien": "server/lib",
-      "notiz": null
+      "notiz": "Nachtrag B-H5 (2026-11-19, Branch fix/b-h5-ruhezeit-geloeschte-abweichung, nicht integriert): Eine gelöschte Abweichung ab heute (zurück zur Schichtfolge) und Tage, die eine gelöschte/verkürzte/aufgehobene Abwesenheit wieder dienstpflichtig macht (120 Tage, höchstens 2 000), prüft der Server wie gesetzte Einteilungen (403/409); vergangene Tage nicht. Nebenbefund /api/wiederherstellen ohne Fachprüfung: ENTSCHEIDUNGSLISTE P2-21 (C)."
     },
     {
       "id": "WP-23",

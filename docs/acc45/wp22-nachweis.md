@@ -27,6 +27,13 @@ Ruhezeitprüfung zu oder von ihr. Tatsächliche Einsätze aus der Rufbereitschaf
 Einheiten und Personen (neu angelegt, Zugehörigkeit, Springer, Schichtdienst, Teilzeit, Wochenstunden, Ein-/Austritt,
 Status, Schutzangaben) — 120 Tage, nur Einteilungen, an denen sich etwas geändert haben kann.
 
+**Gelöschte Abweichungen und aufgehobene Abwesenheiten (B-H5, 2026-11-19).** Wird eine Abweichung ab heute
+gelöscht, gilt am Tag wieder der Dienst aus der Schichtfolge; der Server prüft ihn wie einen gesetzten (dieselben
+Antworten 403/409, Partner für „kein Alleindienst“, Mindestbesetzung, Bereich der Schichtverantwortung). Ebenso die
+Tage ab heute bis zum Ende des Horizonts, die eine gelöschte, verkürzte oder aufgehobene Abwesenheit wieder
+dienstpflichtig macht (höchstens `ABWESENHEIT_TAGE_MAX` = 2 000 je Übermittlung, sonst Absage). Vergangene Tage
+nicht: Löschlauf und Aufbewahrung bleiben frei. Altbestände bleiben unverändert; nur neue Befunde zählen.
+
 **Schutzangaben immer speichern (Nachprüfung 9717ddf, M2).** Ändern sich nur Mutterschutz, Einwilligung,
 Geburtsdatum (oder Schwerbehinderung, Vorsorge) einer Person, wird gespeichert; bestehende widersprechende
 Einteilungen kommen als Konflikt zurück und Planung und Leitung bekommen eine dringende, neutrale Mitteilung. Neue
@@ -60,6 +67,8 @@ Regel oder Kennung aus dem fremden Bereich.
 | `pruefungen/fachpruefung-server.mjs` (HTTP) | Dienstarten (Planung 200, Leitung 200, Schichtverantwortung 403), sperrend 403, langer Dienst 200, warnend 409 → mit Bestätigung 200 (Wer/Zeit vom Server), Mutterschutz bei geplantem Nachtdienst gespeichert + Mitteilung, Schichtverantwortung 409 neutral |
 | `pruefungen/nachpruefung-wp11.test.js` | WP-11-Nachprüfungen in WP-22-Semantik; Laufzeit (300 Personen < 300 ms; 2000/300 gemessen); B2: Event-Loop (`perf_hooks.monitorEventLoopDelay`), längster Block ≤ 50 ms, Zeitbudget, Bremse |
 | `pruefungen/rechtematrix-zeilen.test.js` | Abschnitt 2: Dienstarten — MA, BR, SV abgewiesen oder wirkungslos; PL, LT, Kunde gespeichert |
+| `pruefungen/fachpruefung-server.test.js` (Block B-H5) | gelöschte Abweichung: 403 Ruhezeit, 409/200 mit Bestätigung (auch in der Form der Oberfläche), Mutterschutz neutral, vor heute 200, Mindestbesetzung, kein Alleindienst, Schichtverantwortung und fremder Bereich; Abwesenheit verkürzt/gelöscht 403, vergangen 200, Obergrenze; feste Uhr. 10 von 16 Fällen rot ohne B-H5 (grün bleiben die „bleibt 200“-Fälle, das Orakel und die Uhr) |
+| `pruefungen/b-h5-teilweg.test.js` | Voll-PUT und `POST /api/bestand/teile` geben bei gelöschter Abweichung dieselbe Antwort (403, 409/200, vor heute 200); 2 von 3 rot ohne B-H5 |
 
 Rot → grün: gegen den WP-11-Stand ohne WP-22 sind die Regel-, Bestätigungs-, Datenschutz- und Rollenfälle rot
 (erste Fassung: 12 von 18); die neuen Fälle zu B1–B4 sind ohne die jeweilige Änderung rot (Sammelbestätigung wird
@@ -82,5 +91,7 @@ Strukturelle Änderung der Schichtfolge (ungünstigster Fall), warm, Minimum aus
 - Der Durchschnitt nach § 3 Satz 2 ArbZG wird nicht je Einteilung geprüft; lange Dienste sind nur ein Hinweis.
 - Rufbereitschaft zählt nicht; tatsächliche Einsätze daraus kennt die Planung nicht.
 - Dienste in Folge, Verfügbarkeit und Teilzeit-Wochentage bleiben Hinweise der Oberfläche.
+- Aufgehobene Abwesenheiten nur 120 Tage voraus (B-H5); spätere Tage zeigt die Planprüfung.
+- `/api/wiederherstellen` (nur Leitung) läuft ohne Fachprüfung (Entscheidungsliste P2-21, Kategorie C).
 - Mittelbar nur 120 Tage voraus. Ändern sich nur Vorgaben des Betriebs, prüft der Server bestehende Einteilungen nicht nach.
 - Die Bremse für Strukturänderungen lebt im Speicher des einen Serverprozesses.
