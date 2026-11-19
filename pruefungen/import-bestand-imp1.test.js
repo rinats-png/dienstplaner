@@ -585,7 +585,7 @@ describe("B-I1 Textimport: fehlende Einheiten und Qualifikationen anlegen", () =
     expect(r.zeilen[2].einheitId).toBe(m0.einheiten[0].id);
     expect(r.zeilen[2].einheitNeu).toBe(false);
   });
-  it("BI1-4 unbekannte Qualifikation ohne Haken ist ein Fehler, nicht still weggelassen; mit Haken übernehmbar", () => {
+  it("BI1-4 unbekannte Qualifikation ohne Haken ist ein Fehler (Zuordnungskonflikt wie IMP-5); mit Haken übernehmbar", () => {
     const ohne = pr(`${KOPF_B}\nA;Ida;${einheit};SK, Brandschutz`);
     expect(ohne.zeilen[0].ok).toBe(false);
     expect(ohne.zeilen[0].fehler).toContain('Qualifikation „Brandschutz" unbekannt');
@@ -628,6 +628,46 @@ describe("B-I1 Textimport: fehlende Einheiten und Qualifikationen anlegen", () =
     expect(o.mandant.einheiten).toHaveLength(jetzt.einheiten.length);
     expect(o.uebernehmen[0].einheitId).toBe("e_da");
   });
+  /* Review #412 (c): die AKTION importieren selbst, mit der Sitzung der jeweiligen Rolle und angehaktem Anlegen (anlegen=true,
+     etwa aus einer veralteten Vorschau oder einem manipulierten Client). Nur org.edit (Leitung) legt an; Planung und Betriebsrat
+     nicht — die Zeile wird mit Fehler übersprungen. Rot, sobald die darf-Verdrahtung in der Aktion fehlt. */
+  const importiereAls = async (rolle) => {
+    const { aktionenStammdaten } = await import("../src/app/aktionen/stammdaten.js");
+    const st = { m: m0, meldungen: [] };
+    const k = new Proxy({ mUpd: (fn) => { st.m = fn(st.m); }, melde: (t) => { st.meldungen.push(t); },
+      setImp: () => {}, setAusgabe: () => {}, ref: { current: null },
+      sitz: { rolle: "kunde", mandant: m0, person: { id: "x1", vorname: "X", nachname: "Y", rolle } } },
+    { get: (z, key) => (key in z ? z[key] : () => {}) });
+    const zeilen = pr(`${KOPF_B}
+NeuEinheit;Ina;Station Aktion;
+NeuQual;Ida;${einheit};Brandschutz Aktion
+Alt;Ole;${einheit};`, MIT).zeilen;
+    expect(zeilen.map((z) => z.ok)).toEqual([true, true, true]);
+    aktionenStammdaten(k).importieren(zeilen.filter((z) => z.ok), true);
+    return st;
+  };
+  it("BI1-9 Aktion importieren mit Leitung (org.edit): Einheit und Qualifikation angelegt, alle drei Personen übernommen", async () => {
+    const st = await importiereAls("leitung");
+    const e = st.m.einheiten.filter((x) => x.name === "Station Aktion");
+    expect(e).toHaveLength(1);
+    const q = st.m.qualifikationen.filter((x) => x.name === "Brandschutz Aktion");
+    expect(q).toHaveLength(1);
+    const neu = st.m.personen.slice(m0.personen.length);
+    expect(neu.map((p) => p.nachname)).toEqual(["NeuEinheit", "NeuQual", "Alt"]);
+    expect(neu[0].zugehoerigkeit[0].einheitId).toBe(e[0].id);
+    expect(neu[1].qualifikationen).toContain(q[0].id);
+  });
+  for (const rolle of ["planer", "betriebsrat"]) {
+    it(`BI1-10 Aktion importieren als ${rolle} (ohne org.edit): nichts angelegt, Zeilen mit Fehler übersprungen`, async () => {
+      const st = await importiereAls(rolle);
+      expect(st.m.einheiten).toHaveLength(m0.einheiten.length);
+      expect(st.m.qualifikationen).toHaveLength(m0.qualifikationen.length);
+      expect(st.m.personen.slice(m0.personen.length).map((p) => p.nachname)).toEqual(["Alt"]);
+      const t = st.meldungen.join(" ");
+      expect(t).toContain(`Einheit „Station Aktion" unbekannt`);
+      expect(t).toContain(`Qualifikation „Brandschutz Aktion" unbekannt`);
+    });
+  }
   it("BI1-8 Oberfläche: Haken nur mit org.edit, Vorgabe aus; die Aktion legt nur mit org.edit an", () => {
     const ui = lies("../src/ansichten/import.jsx");
     expect(ui).toMatch(/const \[anlegen, setAnlegen\] = useState\(false\)/);

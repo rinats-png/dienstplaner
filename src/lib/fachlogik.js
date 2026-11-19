@@ -2170,7 +2170,8 @@ export function importGegenBestand(personen, zeilen) {
  *  Qualifikationen ohne Sonderstatus). Zugeordnet wird nach orgSchluessel (Groß-/Kleinschreibung, Leerraum, unsichtbare
  *  Zeichen egal): Was inzwischen existiert, wird verwendet, Schreibvarianten ergeben EINE neue Einheit. Eine Zeile, deren
  *  Einheit oder Qualifikation fehlt und nicht angelegt werden darf, oder deren Qualifikation mehrdeutig ist, wird mit
- *  Fehler übersprungen — nie still der ersten Einheit zugeordnet, nie ohne die Qualifikation angelegt.
+ *  Fehler übersprungen, nicht der ersten Einheit zugeordnet und nicht ohne die Qualifikation angelegt (der frühere Rückfall
+ *  „einheiten[0]“ war toter Code: übernehmbare Zeilen trugen immer eine bekannte Einheit; kein Vorfall).
  *  Verändert m nicht; gibt eine Kopie mit erweiterten Einheiten/Qualifikationen zurück.
  *  @returns {{ mandant: object, uebernehmen: { zeile: object, einheitId: string, qualifikationen: string[] }[],
  *    uebersprungen: { nr: number, personalnummer: string, fehler: string }[], neueEinheiten: string[], neueQualifikationen: string[] }} */
