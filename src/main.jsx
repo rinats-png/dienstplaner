@@ -835,11 +835,12 @@ function Einstieg() {
                   : "Der Zugangscode wurde dir von deinem Betrieb mitgeteilt. Er gilt zwölf Stunden."}
               </p>
               {SITZUNGSENDE_BEIM_START && (
-                <p role="status" style={{ fontSize: 14, color: C.text, lineHeight: 1.6, margin: "-12px 0 20px" }}>
+                <p id="sitzungsende-hinweis" role="status" style={{ fontSize: 14, color: C.text, lineHeight: 1.6, margin: "-12px 0 20px" }}>
                   {SITZUNGSENDE_BEIM_START}</p>)}
               <label htmlFor="code" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
                 color: C.dim, marginBottom: 7 }}>Zugangscode</label>
               <input id="code" {...CODEFELD} value={code} autoFocus autoCapitalize="characters"
+                aria-describedby={SITZUNGSENDE_BEIM_START ? "sitzungsende-hinweis" : undefined}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && senden()}
                 placeholder="XXXX-XXXX-XXXX"

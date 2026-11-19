@@ -10,6 +10,7 @@ Diese Datei wird durch `pruefungen/endgeraete-speicher.test.js` geprüft: Jeder 
 |---|---|---|---|---|---|---|
 | `centric:token` | `sessionStorage` (immer), zusätzlich `localStorage` nur bei „Zugang merken“ | `src/speicher.js` | Sitzungstoken für die API (Header) | zufälliges Sitzungsmerkmal, kein Klartextpasswort | ja, mittelbar: berechtigt zum Zugriff auf Personendaten der Rolle | `sessionStorage`: bis der Reiter schließt; `localStorage`: bis Abmelden (wird dort entfernt) |
 | `centric:gemerkt` | `localStorage` | `src/speicher.js` | Marker „Zugang merken“ gewählt | `"ja"` | nein (Einstellung) | bis Abmelden |
+| `centric:sitzungsende` | `sessionStorage` | `src/app/sitzungsende.js` | Merker über ein Neuladen hinweg: Die Sitzung endete beim Server (401), die Anmeldung zeigt danach einmal den Hinweis „Deine Sitzung ist beendet“ (Befund B-L4) | `"ja"`, kein Inhalt | nein | gesetzt unmittelbar vor dem Neuladen; beim nächsten Laden gelesen und sofort gelöscht; sonst bis der Reiter schließt |
 | `centric:pushgeraet` | `localStorage` | `src/speicher.js` | Push-Endpunkt dieses Geräts, damit das Abmelden nur die Push-Anmeldung dieses Geräts entfernt (E-9, gerätebezogene Abmeldung; synchron beim Abmelden lesbar) | `{"endpoint": "<URL des Push-Dienstes>"}` oder `"keins"` | nein, nur Gerätebezug (Endpunkt des Browsers, keine Personenkennung) | gesetzt beim Ein- und Ausschalten der Gerätemitteilungen und beim Start (dort nur, wenn noch kein Endpunkt gemerkt ist oder der Browser denselben meldet: ein gemerkter Endpunkt bleibt auch bei widerrufener Erlaubnis oder gewechseltem Abonnement stehen und wird beim Abmelden gesendet, damit der Server genau diese Anmeldung entfernt); bleibt über das Abmelden (gehört zum Gerät, nicht zur Person); Ausschalten setzt `"keins"`; Löschen der Websitedaten entfernt ihn |
 | `centric.thema` | `localStorage` | `src/v4/thema.js` | gewählte Darstellung (hell/dunkel/System) | Wert der Auswahl | nein | unbefristet, nur lokal; nicht beim Abmelden geleert |
 | `centric-stempel` | IndexedDB (Datenbank, Objektspeicher `ereignisse`) | `src/stempelpuffer.js` | Gerätepuffer für Stempelereignisse (offline/Wiederholung) | je Ereignis: `id`, `art` (start/ende), `datum`, `inhaber` (Personenkennung), `reihe`, `erfasstAm`, `offline`, `pause`, **`koord` {lat, lon, accuracy} als Rohkoordinate nur wenn die Geo-Prüfung des Betriebs an ist**, `positionGrund` (Code), `zustand`, `versuche`, `fehler`, `quittung` | ja (Arbeitszeit, ggf. Standort) | siehe Abschnitt Stempelpuffer |
@@ -24,6 +25,7 @@ Diese Datei wird durch `pruefungen/endgeraete-speicher.test.js` geprüft: Jeder 
 ## Dateien, die Browserspeicher benutzen
 
 - `src/speicher.js`
+- `src/app/sitzungsende.js`
 - `src/stempelpuffer.js`
 - `src/v4/thema.js`
 - `public/sw.js`

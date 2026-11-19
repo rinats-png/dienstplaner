@@ -88,18 +88,22 @@ export function beiSitzungsende(fn) {
   sitzungsendeHoerer.add(fn);
   return () => { sitzungsendeHoerer.delete(fn); };
 }
-function sitzungEndet() {
-  const warAngemeldet = !!token;
+/** @param {string|null} gesendet  das Merkmal, mit dem die abgewiesene Anfrage hinausging */
+function sitzungEndet(gesendet) {
+  /* Review #378 A1: Eine verspätete 401 einer Anfrage mit einem älteren Merkmal (inzwischen neu angemeldet) räumt das
+     neue Merkmal nicht. Ohne Merkmal (gesendet null) bleibt es beim bisherigen Räumen, gemeldet wird dann nichts. */
+  if (gesendet !== token) return;
   abmelden(true);
-  if (!warAngemeldet) return;
+  if (!gesendet) return;
   for (const fn of [...sitzungsendeHoerer]) { try { fn(); } catch { /* ein Hörer hält die anderen nicht auf */ } }
 }
 
 async function ruf(pfad, opt = {}) {
+  const gesendet = token;
   const a = await fetch(`/api/${pfad}`, { ...opt, headers: { ...kopf(), ...(opt.headers || {}) } });
   let d = null;
   try { d = await a.json(); } catch { /* leere Antwort */ }
-  if (a.status === 401) { sitzungEndet(); throw new Error("nicht-angemeldet"); }
+  if (a.status === 401) { sitzungEndet(gesendet); throw new Error("nicht-angemeldet"); }
   /* Der Dienstarbeiter kennzeichnet eine Antwort, die aus seinem Speicher
      kommt. Ohne dieses Kennzeichen sähe ein drei Tage alter Plan aus wie
      der aktuelle — und das wäre schlimmer als gar keiner. */

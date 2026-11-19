@@ -67,8 +67,13 @@ async function seite({ ablage } = {}) {
   vi.stubGlobal("localStorage", speicherAttrappe());
   vi.stubGlobal("window", { addEventListener: () => {} });
   vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => {} });
+  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, anmeldeToken: null };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
+    /* A1: die Anmeldung liefert ein vorgegebenes (echt angelegtes) Merkmal; Lesen kann an einem Tor warten. */
+    if (url === "/api/anmelden") return new Response(JSON.stringify({ token: r.anmeldeToken, name: "Haus", rolle: "leitung",
+      person: "l1", betrieb: 0 }), { status: 200, headers: { "content-type": "application/json" } });
+    if (r.tor && String(url).includes("bestand")) await r.tor;
     const kopf = { ...(opt.headers || {}), host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.52.${Math.floor(nr / 250) % 250}.${nr % 250}` };
     const methode = opt.method || "GET";
     if (methode === "PUT") PUTS.push(JSON.parse(opt.body));
@@ -76,7 +81,7 @@ async function seite({ ablage } = {}) {
   });
   const SP = await import("../src/speicher.js");
   const E = await import("../src/app/sitzungsende.js");
-  const r = { SP, E, sitzung, neuGeladen: 0, fehler: [], gespeichert: [] };
+  Object.assign(r, { SP, E });
   r.ab = E.sitzungsendeBeobachten({ neuLaden: () => { r.neuGeladen += 1; }, ablage: sitzung });
   return r;
 }
@@ -195,6 +200,28 @@ describe("K kein Kreislauf", { timeout: 120000 }, () => {
   });
 });
 
+describe("A1 verspätete 401 einer alten Anfrage (Review #378)", { timeout: 120000 }, () => {
+  it("räumt das inzwischen neue Merkmal nicht und meldet kein Sitzungsende", async () => {
+    await neuerRaum();
+    const alt = TOKEN;
+    const r = await seite();
+    r.anmeldeToken = (await S.sitzungAnlegen({ bestand: RAUM, name: "V Nl1", rolle: "leitung", person: "l1", betrieb: 0,
+      mandantId: "m1", einheit: null }, 2 * 3600 * 1000)).token;
+    await S.sitzungBeenden(alt);
+    let auf; r.tor = new Promise((ja) => { auf = ja; });
+    const spaet = r.SP.lies();                         // geht mit dem alten Merkmal hinaus, Antwort verzögert
+    await r.SP.anmelden("CODE-NEU", false);           // inzwischen neu angemeldet
+    expect(r.sitzung.getItem("centric:token")).toBe(r.anmeldeToken);
+    r.tor = null; auf();
+    await expect(spaet).rejects.toThrow("nicht-angemeldet");
+    expect(r.SP.angemeldet(), "neues Merkmal bleibt").toBe(true);
+    expect(r.sitzung.getItem("centric:token")).toBe(r.anmeldeToken);
+    expect(r.neuGeladen, "kein Sitzungsende gemeldet").toBe(0);
+    const g = await r.SP.lies();
+    expect(g.bestand.mandanten[0].name, "mit dem neuen Merkmal lesbar").toBe("Haus");
+  });
+});
+
 describe("F Entscheidungstafel", () => {
   it("nur ohne Ausstehendes zur Anmeldung", async () => {
     const { sitzungsendeFolge, sitzungsendeBehandeln } = await import("../src/app/sitzungsende.js");
@@ -212,13 +239,16 @@ describe("Q Quelltext-Verträge", () => {
   const lies = async (p) => (await readFile(new URL(p, import.meta.url), "utf8")).replace(/\r\n/g, "\n");
   it("speicher.js meldet das Ende bei 401; main.jsx beobachtet und zeigt die Anmeldung mit Hinweis", async () => {
     const sp = await lies("../src/speicher.js");
-    expect(sp).toMatch(/if \(a\.status === 401\) \{ sitzungEndet\(\); throw new Error\("nicht-angemeldet"\); \}/);
-    expect(sp).toMatch(/const warAngemeldet = !!token;\n  abmelden\(true\);\n  if \(!warAngemeldet\) return;/);
+    expect(sp).toMatch(/const gesendet = token;\n  const a = await fetch/);
+    expect(sp).toMatch(/if \(a\.status === 401\) \{ sitzungEndet\(gesendet\); throw new Error\("nicht-angemeldet"\); \}/);
+    expect(sp).toMatch(/if \(gesendet !== token\) return;\n  abmelden\(true\);\n  if \(!gesendet\) return;/);
     const main = await lies("../src/main.jsx");
     expect(main).toMatch(/\nsitzungsendeBeobachten\(\);\n/);
     expect(main).toMatch(/const SITZUNGSENDE_BEIM_START = sitzungsendeHinweisAbholen\(\);/);
     expect(main).toMatch(/useState\(!!SITZUNGSENDE_BEIM_START\)/);
-    expect(main).toMatch(/role="status"[^>]*>\n\s*\{SITZUNGSENDE_BEIM_START\}/);
+    expect(main).toMatch(/<p id="sitzungsende-hinweis" role="status"[^>]*>\n\s*\{SITZUNGSENDE_BEIM_START\}/);
+    /* Review #378 A3: das Codefeld verweist auf den Hinweis. */
+    expect(main).toMatch(/aria-describedby=\{SITZUNGSENDE_BEIM_START \? "sitzungsende-hinweis" : undefined\}/);
     /* App.jsx: Ladefehler „nicht-angemeldet" bleibt still — die Anmeldung kommt über das Neuladen, nicht über die Fehlerseite. */
     const app = await lies("../src/App.jsx");
     expect(app).toContain('if (lebt && String(e.message) !== "nicht-angemeldet") setLadefehler(String(e.message));');
